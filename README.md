@@ -177,6 +177,37 @@ python3 -m llm_wiki.cli data/research/daily/2026-04-26/papers/2601.17835/paper.m
 
 Important: keep `--cognee-system-root` isolated when changing embedding dimensions. Previous deterministic runs create 128-dim LanceDB tables; Qwen3 embeddings are 1024-dim, so reusing the same Cognee system root causes LanceDB/Arrow dimension errors.
 
+Expose a compiled ResearchGraph JSON as a local stdio MCP server:
+
+```bash
+python3 -m llm_wiki.mcp_server \
+  --graph output/cognee_qwen_embedding_full_graph.json
+```
+
+The server implements JSON-RPC/MCP `initialize`, `tools/list`, and `tools/call` without requiring the Python MCP SDK. Available tools:
+
+- `schema` — return the controlled node/edge type whitelist
+- `graph_summary` — return node/edge counts and type distributions
+- `search_nodes` — search node names, aliases, descriptions, types, and metadata
+- `node_context` — return a node with incident edges and neighboring nodes
+
+Example Hermes MCP config when the project is not installed as a package:
+
+```yaml
+mcp_servers:
+  llm_wiki:
+    command: "python3"
+    args:
+      - "-m"
+      - "llm_wiki.mcp_server"
+      - "--graph"
+      - "/Users/neo/Developer/Projects/LLM-Wiki/output/cognee_qwen_embedding_full_graph.json"
+    env:
+      PYTHONPATH: "/Users/neo/Developer/Projects/LLM-Wiki"
+```
+
+Restart Hermes/gateway after adding the config so the native MCP client discovers tools such as `mcp_llm_wiki_search_nodes`.
+
 Run a full deterministic corpus ingest without `--limit`:
 
 ```bash
