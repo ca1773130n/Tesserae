@@ -30,6 +30,12 @@ COGNEE_EMBEDDING_IMPORT_MODULES = [
     "cognee.infrastructure.databases.graph.get_graph_engine",
 ]
 
+COGNEE_GRAPH_UTIL_IMPORT_MODULES = [
+    "cognee.modules.graph.utils.retrieve_existing_edges",
+    "cognee.modules.graph.utils",
+    "cognee.tasks.graph.extract_graph_from_data",
+]
+
 
 class CodexCLIError(RuntimeError):
     pass
@@ -197,6 +203,57 @@ class DeterministicEmbeddingEngine:
         return values
 
 
+async def retrieve_existing_edges_uuid_safe(data_chunks, chunk_graphs, graph_engine) -> Dict[str, bool]:
+    """Cognee 0.1.20-compatible retrieve_existing_edges that stringifies UUIDs.
+
+    Cognee's implementation builds keys with `edge[0] + edge[1] + edge[2]` even
+    though graph engines may return UUID objects for the first two columns. This
+    runtime wrapper keeps the patch in LLM-Wiki instead of modifying site-packages.
+    """
+    from cognee.modules.engine.utils import generate_node_id
+
+    processed_nodes = {}
+    type_node_edges = []
+    entity_node_edges = []
+    type_entity_edges = []
+    graph_node_edges = []
+
+    for index, data_chunk in enumerate(data_chunks):
+        graph = chunk_graphs[index]
+        if graph is None:
+            continue
+
+        for node in graph.nodes:
+            type_node_id = generate_node_id(node.type)
+            entity_node_id = generate_node_id(node.id)
+
+            if str(type_node_id) not in processed_nodes:
+                type_node_edges.append((data_chunk.id, type_node_id, "exists_in"))
+                processed_nodes[str(type_node_id)] = True
+
+            if str(entity_node_id) not in processed_nodes:
+                entity_node_edges.append((data_chunk.id, entity_node_id, "mentioned_in"))
+                type_entity_edges.append((entity_node_id, type_node_id, "is_a"))
+                processed_nodes[str(entity_node_id)] = True
+
+        graph_node_edges.extend(
+            (edge.target_node_id, edge.source_node_id, edge.relationship_name)
+            for edge in graph.edges
+        )
+
+    existing_edges = await graph_engine.has_edges([
+        *type_node_edges,
+        *entity_node_edges,
+        *type_entity_edges,
+        *graph_node_edges,
+    ])
+
+    existing_edges_map = {}
+    for edge in existing_edges:
+        existing_edges_map[str(edge[0]) + str(edge[1]) + str(edge[2])] = True
+    return existing_edges_map
+
+
 class CogneeCodexPatch:
     """Runtime patch Cognee's get_llm_client() to return CodexCLICogneeAdapter."""
 
@@ -212,6 +269,7 @@ class CogneeCodexPatch:
         self._original_embedding = None
         self._patched_llm_refs = []
         self._patched_embedding_refs = []
+        self._patched_graph_refs = []
 
     def __enter__(self):
         ensure_event_loop()
@@ -248,6 +306,14 @@ class CogneeCodexPatch:
                 if hasattr(module, "get_embedding_engine"):
                     self._patched_embedding_refs.append((module, module.get_embedding_engine))
                     module.get_embedding_engine = patched_get_embedding_engine
+        for module_name in COGNEE_GRAPH_UTIL_IMPORT_MODULES:
+            try:
+                module = importlib.import_module(module_name)
+            except Exception:
+                continue
+            if hasattr(module, "retrieve_existing_edges"):
+                self._patched_graph_refs.append((module, module.retrieve_existing_edges))
+                module.retrieve_existing_edges = retrieve_existing_edges_uuid_safe
         return self
 
     def __exit__(self, exc_type, exc, tb):
@@ -259,4 +325,6 @@ class CogneeCodexPatch:
             self._embedding_module.get_embedding_engine = self._original_embedding
         for module, original in self._patched_embedding_refs:
             module.get_embedding_engine = original
+        for module, original in self._patched_graph_refs:
+            module.retrieve_existing_edges = original
         return False

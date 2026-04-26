@@ -11,6 +11,7 @@ from llm_wiki.cognee_codex import (
     extract_json_object,
     build_structured_prompt,
     ensure_event_loop,
+    retrieve_existing_edges_uuid_safe,
 )
 
 
@@ -73,6 +74,25 @@ def test_cognee_codex_patch_replaces_and_restores_get_llm_client(monkeypatch):
 
     assert llm_module.get_llm_client() is original
     assert embed_module.get_embedding_engine() is original_embedding
+
+
+def test_retrieve_existing_edges_uuid_safe_stringifies_uuid_edges():
+    import uuid
+    from types import SimpleNamespace
+
+    class FakeGraphEngine:
+        async def has_edges(self, edges):
+            return [(uuid.uuid4(), uuid.uuid4(), "mentions")]
+
+    result = asyncio.run(retrieve_existing_edges_uuid_safe(
+        data_chunks=[SimpleNamespace(id=uuid.uuid4())],
+        chunk_graphs=[SimpleNamespace(nodes=[], edges=[])],
+        graph_engine=FakeGraphEngine(),
+    ))
+
+    assert len(result) == 1
+    assert next(iter(result.values())) is True
+    assert isinstance(next(iter(result.keys())), str)
 
 
 def test_deterministic_embedding_engine_is_stable_and_sized():
