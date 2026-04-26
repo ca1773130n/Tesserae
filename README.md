@@ -22,18 +22,30 @@ Run tests:
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest tests/ -q
 ```
 
+Install the CLI so shell commands work without `python3 -m`:
+
+```bash
+# From GitHub (recommended for a fresh machine)
+curl -fsSL https://raw.githubusercontent.com/ca1773130n/LLM-Wiki/main/scripts/install.sh | bash
+
+# Or from a local checkout
+./scripts/install.sh --dir /path/to/LLM-Wiki
+```
+
+The installer clones or updates the repo, creates `.venv` by default, runs `pip install -e`, and writes `llm_wiki` / `llm-wiki` wrappers into `~/.local/bin`. Use `--help` to see options such as `--branch`, `--dir`, `--no-venv`, and `--skip-shell-config`.
+
 Initialize a self-contained LLM-Wiki inside any project directory:
 
 ```bash
 cd /path/to/my-project
-python3 -m llm_wiki.cli project init \
+llm_wiki project init \
   --name my_project_wiki \
   --source-kind Repository \
   --source README.md \
   --source docs \
   --source src
-python3 -m llm_wiki.cli project compile --changed-only
-python3 -m llm_wiki.cli project mcp-config \
+llm_wiki project compile --changed-only
+llm_wiki project mcp-config \
   --server-name my_project_wiki
 ```
 
@@ -73,13 +85,13 @@ Paste the `project mcp-config` output into Hermes `~/.hermes/config.yaml` under 
 Export or optionally sync project-local temporal facts into Graphiti/Zep-style storage:
 
 ```bash
-python3 -m llm_wiki.cli project export-graphiti \
+llm_wiki project export-graphiti \
   --project /path/to/my-project
-python3 -m llm_wiki.cli project sync-graphiti \
+llm_wiki project sync-graphiti \
   --project /path/to/my-project \
   --dry-run
 # Live sync requires graphiti_core plus a reachable Neo4j backend:
-python3 -m llm_wiki.cli project sync-graphiti \
+llm_wiki project sync-graphiti \
   --project /path/to/my-project \
   --neo4j-uri bolt://localhost:7687 \
   --neo4j-user neo4j \
@@ -91,18 +103,18 @@ python3 -m llm_wiki.cli project sync-graphiti \
 Export coding-agent harnesses and an Obsidian vault projection:
 
 ```bash
-python3 -m llm_wiki.cli project export-agent-harness \
+llm_wiki project export-agent-harness \
   --project /path/to/my-project
 # Or only selected agents:
-python3 -m llm_wiki.cli project export-agent-harness \
+llm_wiki project export-agent-harness \
   --project /path/to/my-project \
   --target claude-code \
   --target cursor \
   --target opencode
-python3 -m llm_wiki.cli project export-obsidian \
+llm_wiki project export-obsidian \
   --project /path/to/my-project
 # Write to a real Obsidian vault path instead of .llm-wiki/obsidian_vault:
-python3 -m llm_wiki.cli project export-obsidian \
+llm_wiki project export-obsidian \
   --project /path/to/my-project \
   --vault "$OBSIDIAN_VAULT_PATH"
 ```
@@ -119,9 +131,9 @@ The agent harness currently emits:
 Build and serve the local frontend:
 
 ```bash
-python3 -m llm_wiki.cli project build-site \
+llm_wiki project build-site \
   --project /path/to/my-project
-python3 -m llm_wiki.cli project serve \
+llm_wiki project serve \
   --project /path/to/my-project \
   --port 8765
 ```
@@ -129,14 +141,14 @@ python3 -m llm_wiki.cli project serve \
 For development projects, initialize with `--source-kind CodeProject` or `Repository` and include code directories. Code files become graph nodes (`CodeProject`, `SourceFile`, `CodeClass`, `CodeFunction`, `Dependency`) alongside research nodes, while source files remain raw evidence and generated markdown/site outputs remain projections:
 
 ```bash
-python3 -m llm_wiki.cli project init \
+llm_wiki project init \
   --project /path/to/my-app \
   --name my_app_wiki \
   --source-kind CodeProject \
   --source README.md \
   --source docs \
   --source src
-python3 -m llm_wiki.cli project compile --project /path/to/my-app
+llm_wiki project compile --project /path/to/my-app
 ```
 
 Optional graph/storage packages currently used by the local environment:
@@ -148,7 +160,7 @@ python3 -m pip install --user kuzu cognee graphiti-core
 Extract a JSON graph from a paper note:
 
 ```bash
-python3 -m llm_wiki.cli data/research/daily/2026-04-26/papers/2601.17835/paper.md \
+llm_wiki data/research/daily/2026-04-26/papers/2601.17835/paper.md \
   --source-kind Paper \
   --pretty \
   -o output/research_graph_sample.json
@@ -157,7 +169,7 @@ python3 -m llm_wiki.cli data/research/daily/2026-04-26/papers/2601.17835/paper.m
 Extract multiple notes and add corpus-level trend nodes for concepts that recur across sources:
 
 ```bash
-python3 -m llm_wiki.cli \
+llm_wiki \
   data/research/daily/2026-04-25/papers/2604.00538/paper.md \
   data/research/daily/2026-04-26/papers/2601.17835/paper.md \
   --source-kind Paper \
@@ -170,7 +182,7 @@ python3 -m llm_wiki.cli \
 Use Claude CLI/OAuth instead of API-key LLM calls for higher-quality candidate extraction. The Claude output is still validated against the controlled node/edge whitelist before it becomes a `ResearchGraph`:
 
 ```bash
-python3 -m llm_wiki.cli output/claude_cli_smoke_note.md \
+llm_wiki output/claude_cli_smoke_note.md \
   --source-kind Paper \
   --extractor claude-cli \
   --claude-config-dir /Users/neo/.claude-personal1 \
@@ -183,7 +195,7 @@ python3 -m llm_wiki.cli output/claude_cli_smoke_note.md \
 Canonicalize high-confidence aliases and write a review queue for ambiguous near-duplicates:
 
 ```bash
-python3 -m llm_wiki.cli \
+llm_wiki \
   data/research/daily/2026-04-25/papers/2604.00538/paper.md \
   data/research/daily/2026-04-26/papers/2601.17835/paper.md \
   --source-kind Paper \
@@ -197,7 +209,7 @@ python3 -m llm_wiki.cli \
 Run the full local pipeline: typed graph extraction, trend projection, canonicalization, review queue, markdown projection, and SQLite persistence:
 
 ```bash
-python3 -m llm_wiki.cli \
+llm_wiki \
   data/research/daily/2026-04-25/papers/2604.00538/paper.md \
   data/research/daily/2026-04-26/papers/2601.17835/paper.md \
   --source-kind Paper \
@@ -213,7 +225,7 @@ python3 -m llm_wiki.cli \
 Apply reviewed merge decisions:
 
 ```bash
-python3 -m llm_wiki.cli path/to/papers \
+llm_wiki path/to/papers \
   --source-kind Paper \
   --canonicalize \
   --apply-review-decisions output/review_decisions.json \
@@ -223,7 +235,7 @@ python3 -m llm_wiki.cli path/to/papers \
 Incrementally ingest a corpus in batches. Unchanged files are skipped using content hashes in the manifest; with `--limit`, the runner keeps scanning past skipped files until it processes up to that many changed files:
 
 ```bash
-python3 -m llm_wiki.cli data/research/daily \
+llm_wiki data/research/daily \
   --source-kind Paper \
   --batch-manifest output/research_batch_manifest.json \
   --changed-only \
@@ -241,7 +253,7 @@ Persist to Kuzu, export a Cognee bundle, write review UX files, and generate a r
 
 ```bash
 python3 -m pip install --user kuzu cognee
-python3 -m llm_wiki.cli data/research/daily \
+llm_wiki data/research/daily \
   --source-kind Paper \
   --limit 5 \
   --trends \
@@ -262,7 +274,7 @@ python3 -m llm_wiki.cli data/research/daily \
 Add an exported bundle directly to Cognee without running `cognify`:
 
 ```bash
-python3 -m llm_wiki.cli data/research/daily/2026-04-26/papers/2601.17835/paper.md \
+llm_wiki data/research/daily/2026-04-26/papers/2601.17835/paper.md \
   --source-kind Paper \
   --cognee-output output/cognee_direct_data_test_bundle \
   --cognee-add \
@@ -277,7 +289,7 @@ Run Cognee `cognify` through Codex CLI/OAuth instead of API-key LLM calls. This 
 ```bash
 ollama serve
 ollama pull qwen3-embedding:0.6b
-python3 -m llm_wiki.cli data/research/daily/2026-04-26/papers/2601.17835/paper.md \
+llm_wiki data/research/daily/2026-04-26/papers/2601.17835/paper.md \
   --source-kind Paper \
   --cognee-output output/cognee_qwen_embedding_sample_bundle \
   --cognee-codex-cognify \
@@ -328,7 +340,7 @@ Restart Hermes/gateway after adding the config so the native MCP client discover
 Run a full deterministic corpus ingest without `--limit`:
 
 ```bash
-python3 -m llm_wiki.cli data/research/daily \
+llm_wiki data/research/daily \
   --source-kind Paper \
   --trends \
   --canonicalize \
@@ -349,7 +361,7 @@ python3 -m llm_wiki.cli data/research/daily \
 Use cost-aware selective Claude enrichment only for matching paths:
 
 ```bash
-python3 -m llm_wiki.cli data/research/daily \
+llm_wiki data/research/daily \
   --source-kind Paper \
   --extractor selective-claude \
   --claude-include '*/2601.17835/*' \

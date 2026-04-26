@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llm-wiki"
+version = "0.1.0"
+description = "Typed LLM wiki graph pipeline for research and development projects"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [
+  { name = "LLM-Wiki Contributors" }
+]
+keywords = ["llm", "wiki", "knowledge-graph", "mcp", "obsidian"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  "pydantic>=2",
+]
+
+[project.scripts]
+llm_wiki = "llm_wiki.cli:main"
+llm-wiki = "llm_wiki.cli:main"
+llm_wiki_mcp = "llm_wiki.mcp_server:main"
+
+[tool.setuptools.packages.find]
+include = ["llm_wiki*"]
