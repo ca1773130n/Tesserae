@@ -52,6 +52,8 @@ This creates project-local artifacts under `.llm-wiki/`:
   competitive_report.md
   graphiti_episodes.jsonl
   markdown_projection/
+  obsidian_vault/
+  agent_harness/
   cognee_bundle/
 ```
 
@@ -59,6 +61,8 @@ Competitive hardening versus MegaMem/Graphiti-style systems:
 
 - `temporal_facts.jsonl` projects every validated edge into a Graphiti-style fact with `valid_from`, `current`, `invalidated_by`, `confidence`, evidence, and source provenance.
 - `graphiti_episodes.jsonl` exports those temporal facts as Graphiti-compatible episodes without requiring Graphiti at compile time; `project sync-graphiti` can optionally push them to Graphiti/Neo4j when `graphiti_core` is installed.
+- `obsidian_vault/` is a ready-to-open Obsidian projection with `.obsidian` defaults, graph coloring, attachments under `raw/assets`, and a Dataview dashboard.
+- `agent_harness/` writes shared context and target-specific harness files for Claude Code, Codex, Gemini CLI, Kiro, Cursor, and OpenCode so external coding agents can discover the graph and MCP server.
 - `competitive_report.md` records what was absorbed from MegaMem, Graphiti/Zep, MCP graph servers, and agentic RAG systems while preserving LLM-Wiki's controlled ontology/no-API-key differentiators.
 - MCP now exposes temporal tools as well as node tools: `search_facts` and `timeline` join `schema`, `graph_summary`, `search_nodes`, and `node_context`.
 
@@ -81,6 +85,34 @@ python3 -m llm_wiki.cli project sync-graphiti \
 ```
 
 `export-graphiti` is dependency-free and writes `.llm-wiki/graphiti_episodes.jsonl`. `sync-graphiti --dry-run` counts the same episodes without importing Graphiti, which is useful for local smoke tests.
+
+Export coding-agent harnesses and an Obsidian vault projection:
+
+```bash
+python3 -m llm_wiki.cli project export-agent-harness \
+  --project /path/to/my-project
+# Or only selected agents:
+python3 -m llm_wiki.cli project export-agent-harness \
+  --project /path/to/my-project \
+  --target claude-code \
+  --target cursor \
+  --target opencode
+python3 -m llm_wiki.cli project export-obsidian \
+  --project /path/to/my-project
+# Write to a real Obsidian vault path instead of .llm-wiki/obsidian_vault:
+python3 -m llm_wiki.cli project export-obsidian \
+  --project /path/to/my-project \
+  --vault "$OBSIDIAN_VAULT_PATH"
+```
+
+The agent harness currently emits:
+
+- Claude Code: `claude/CLAUDE.md`, `claude/.claude/settings.json`
+- Codex: `codex/AGENTS.md`, `codex/mcp.toml`
+- Gemini: `gemini/GEMINI.md`, `gemini/.gemini/settings.json`
+- Kiro: `kiro/.kiro/steering/llm-wiki.md`, `kiro/.kiro/settings/mcp.json`
+- Cursor: `cursor/.cursor/rules/llm-wiki.mdc`, `cursor/.cursor/mcp.json`
+- OpenCode: `opencode/AGENTS.md`, `opencode/opencode.json`
 
 Optional graph/storage packages currently used by the local environment:
 

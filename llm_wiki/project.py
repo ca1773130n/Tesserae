@@ -13,10 +13,12 @@ from datetime import date
 from pathlib import Path
 from typing import Iterable, List, Optional
 
+from .agent_harness import AgentHarnessAdapter, SUPPORTED_AGENT_HARNESSES
 from .batch import BatchIngestRunner
 from .cognee_adapter import CogneeResearchGraphAdapter
 from .graphiti_adapter import GraphitiResearchGraphAdapter
 from .markdown_projection import GraphMarkdownProjector
+from .obsidian_adapter import ObsidianVaultAdapter
 from .persistence import SQLiteResearchGraphStore
 from .report import GraphReporter
 from .research_graph import ResearchCorpusAnalyzer, ResearchEdge, ResearchGraph, ResearchGraphExtractor, ResearchNode, ResearchNodeType
@@ -36,6 +38,8 @@ class ProjectPaths:
     temporal_facts: Path
     competitive_report: Path
     graphiti_episodes: Path
+    agent_harness: Path
+    obsidian_vault: Path
 
 
 class ProjectWiki:
@@ -56,6 +60,8 @@ class ProjectWiki:
             temporal_facts=self.root / "temporal_facts.jsonl",
             competitive_report=self.root / "competitive_report.md",
             graphiti_episodes=self.root / "graphiti_episodes.jsonl",
+            agent_harness=self.root / "agent_harness",
+            obsidian_vault=self.root / "obsidian_vault",
         )
 
     @classmethod
@@ -64,6 +70,8 @@ class ProjectWiki:
         wiki.root.mkdir(parents=True, exist_ok=True)
         wiki.paths.markdown_projection.mkdir(parents=True, exist_ok=True)
         wiki.paths.cognee_bundle.mkdir(parents=True, exist_ok=True)
+        wiki.paths.agent_harness.mkdir(parents=True, exist_ok=True)
+        wiki.paths.obsidian_vault.mkdir(parents=True, exist_ok=True)
         if not wiki.paths.graph.exists():
             wiki.paths.graph.write_text(ResearchGraph().to_json(indent=2) + "\n", encoding="utf-8")
         if not wiki.paths.manifest.exists():
@@ -83,6 +91,8 @@ class ProjectWiki:
             "temporal_facts_path": ".llm-wiki/temporal_facts.jsonl",
             "competitive_report_path": ".llm-wiki/competitive_report.md",
             "graphiti_episodes_path": ".llm-wiki/graphiti_episodes.jsonl",
+            "agent_harness_path": ".llm-wiki/agent_harness",
+            "obsidian_vault_path": ".llm-wiki/obsidian_vault",
         }
         wiki.paths.config.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return wiki
@@ -134,6 +144,8 @@ class ProjectWiki:
             "edge_count": len(graph.edges),
             "graph_path": str(self.paths.graph),
             "graphiti_episodes_path": str(self.paths.graphiti_episodes),
+            "agent_harness_path": str(self.paths.agent_harness),
+            "obsidian_vault_path": str(self.paths.obsidian_vault),
             "mcp_server_name": cfg.get("name", sanitize_server_name(self.project_root.name)),
         }
 
@@ -182,6 +194,27 @@ class ProjectWiki:
         episodes = adapter.write_episodes(graph, target)
         return {"episodes": len(episodes), "path": str(target), "group_id": adapter.group_id}
 
+    def export_agent_harness(self, targets: Optional[Iterable[str]] = None, output: Optional[str | Path] = None) -> dict:
+        cfg = self.config()
+        graph = load_graph_file(self.paths.graph)
+        target = Path(output) if output else self.paths.agent_harness
+        name = cfg.get("name") or sanitize_server_name(self.project_root.name)
+        written = AgentHarnessAdapter(project_name=name).write_harness(
+            graph,
+            target,
+            mcp_command="python3",
+            mcp_args=["-m", "llm_wiki.mcp_server", "--graph", str(self.paths.graph.resolve())],
+            targets=list(targets) if targets else SUPPORTED_AGENT_HARNESSES,
+        )
+        return {"path": str(target), "files": len(written), "targets": list(targets) if targets else SUPPORTED_AGENT_HARNESSES}
+
+    def export_obsidian(self, vault: Optional[str | Path] = None) -> dict:
+        cfg = self.config()
+        graph = load_graph_file(self.paths.graph)
+        target = Path(vault) if vault else self.paths.obsidian_vault
+        name = cfg.get("name") or sanitize_server_name(self.project_root.name)
+        return ObsidianVaultAdapter(vault_name=name).write_vault(graph, target)
+
     def sync_graphiti(
         self,
         neo4j_uri: Optional[str] = None,
@@ -211,6 +244,8 @@ class ProjectWiki:
         self.paths.report.write_text(report, encoding="utf-8")
         TemporalFactProjector().write_jsonl(graph, self.paths.temporal_facts)
         self.export_graphiti()
+        self.export_agent_harness()
+        self.export_obsidian()
         self.paths.competitive_report.write_text(render_competitive_report(), encoding="utf-8")
 
 

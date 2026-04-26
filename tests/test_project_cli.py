@@ -119,6 +119,39 @@ def test_cli_project_sync_graphiti_dry_run_reports_episode_count(tmp_path, capsy
     assert "episodes=" in captured
 
 
+def test_project_compile_writes_agent_harness_and_obsidian_vault(tmp_path):
+    project = tmp_path / "harness-project"
+    project.mkdir()
+    (project / "note.md").write_text("# Harness Note\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")
+    wiki = ProjectWiki.init(project, name="harness_wiki", source_kind="Paper", sources=["note.md"])
+
+    result = wiki.compile()
+
+    assert result["agent_harness_path"] == str(project / ".llm-wiki" / "agent_harness")
+    assert result["obsidian_vault_path"] == str(project / ".llm-wiki" / "obsidian_vault")
+    assert (project / ".llm-wiki" / "agent_harness" / "manifest.json").exists()
+    assert (project / ".llm-wiki" / "agent_harness" / "cursor" / ".cursor" / "rules" / "llm-wiki.mdc").exists()
+    assert (project / ".llm-wiki" / "obsidian_vault" / ".obsidian" / "app.json").exists()
+    assert (project / ".llm-wiki" / "obsidian_vault" / "index.md").exists()
+
+
+def test_cli_project_export_agent_harness_and_obsidian(tmp_path, capsys):
+    project = tmp_path / "harness-cli-project"
+    project.mkdir()
+    (project / "note.md").write_text("# CLI Harness Note\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")
+
+    assert main(["project", "init", "--project", str(project), "--name", "harness_cli", "--source-kind", "Paper", "--source", "note.md"]) == 0
+    assert main(["project", "compile", "--project", str(project)]) == 0
+    assert main(["project", "export-agent-harness", "--project", str(project), "--target", "claude-code", "--target", "cursor"]) == 0
+    assert main(["project", "export-obsidian", "--project", str(project)]) == 0
+
+    captured = capsys.readouterr().out
+    assert "Exported agent harness" in captured
+    assert "Exported Obsidian vault" in captured
+    assert (project / ".llm-wiki" / "agent_harness" / "claude" / "CLAUDE.md").exists()
+    assert (project / ".llm-wiki" / "obsidian_vault" / "_meta" / "dashboard.md").exists()
+
+
 def test_cli_project_init_ingest_and_mcp_config_from_working_directory(tmp_path, capsys):
     project = tmp_path / "demo-project"
     project.mkdir()

@@ -111,6 +111,15 @@ def project_main(argv: List[str] | None = None) -> int:
     sync_graphiti_parser.add_argument("--neo4j-password", default="password", help="Neo4j password")
     sync_graphiti_parser.add_argument("--dry-run", action="store_true", help="Count episodes without requiring Graphiti or Neo4j")
 
+    harness_parser = subparsers.add_parser("export-agent-harness", help="Export context/config harnesses for coding agents")
+    harness_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    harness_parser.add_argument("--target", action="append", default=[], help="Agent target to export; repeat for multiple targets. Defaults to all supported targets")
+    harness_parser.add_argument("--output", help="Harness output directory; defaults to .llm-wiki/agent_harness")
+
+    obsidian_parser = subparsers.add_parser("export-obsidian", help="Export the compiled graph as an Obsidian vault")
+    obsidian_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    obsidian_parser.add_argument("--vault", help="Vault output directory; defaults to .llm-wiki/obsidian_vault")
+
     args = parser.parse_args(argv)
     if args.command == "init":
         wiki = ProjectWiki.init(args.project, name=args.name, source_kind=args.source_kind, sources=args.source)
@@ -175,6 +184,16 @@ def project_main(argv: List[str] | None = None) -> int:
             return 2
         prefix = "Graphiti dry-run" if result.get("dry_run") else "Synced Graphiti"
         print(f"{prefix}: episodes={result['episodes']} group_id={result['group_id']}")
+        return 0
+    if args.command == "export-agent-harness":
+        wiki = ProjectWiki.load(args.project)
+        result = wiki.export_agent_harness(targets=args.target or None, output=args.output)
+        print(f"Exported agent harness: files={result['files']} path={result['path']} targets={','.join(result['targets'])}")
+        return 0
+    if args.command == "export-obsidian":
+        wiki = ProjectWiki.load(args.project)
+        result = wiki.export_obsidian(vault=args.vault)
+        print(f"Exported Obsidian vault: notes={result['notes']} path={result['vault_path']}")
         return 0
     raise ValueError(f"Unknown project command: {args.command}")
 
