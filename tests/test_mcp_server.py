@@ -97,6 +97,21 @@ def test_json_rpc_handler_responds_to_initialize_tools_list_and_tools_call(tmp_p
     assert payload["node_count"] == 3
 
 
+def test_mcp_server_exposes_temporal_fact_search_and_timeline(tmp_path):
+    graph_path = sample_graph_path(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    tools = {tool["name"] for tool in server.list_tools()}
+    facts = server.call_tool("search_facts", {"query": "Gaussian", "limit": 5})
+    timeline = server.call_tool("timeline", {"query": "DualSplat"})
+
+    assert {"search_facts", "timeline"}.issubset(tools)
+    assert facts["total_matches"] >= 1
+    assert facts["facts"][0]["predicate"] == "uses"
+    assert timeline["events"]
+    assert timeline["events"][0]["valid_from"]
+
+
 def test_json_rpc_notifications_do_not_emit_response():
     handler = MCPRequestHandler(LLMWikiMCPServer())
 

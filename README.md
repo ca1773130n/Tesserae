@@ -45,12 +45,20 @@ This creates project-local artifacts under `.llm-wiki/`:
 .llm-wiki/
   config.json
   graph.json
+  temporal_facts.jsonl
   manifest.json
   sqlite.db
   report.md
+  competitive_report.md
   markdown_projection/
   cognee_bundle/
 ```
+
+Competitive hardening versus MegaMem/Graphiti-style systems:
+
+- `temporal_facts.jsonl` projects every validated edge into a Graphiti-style fact with `valid_from`, `current`, `invalidated_by`, `confidence`, evidence, and source provenance.
+- `competitive_report.md` records what was absorbed from MegaMem, Graphiti/Zep, MCP graph servers, and agentic RAG systems while preserving LLM-Wiki's controlled ontology/no-API-key differentiators.
+- MCP now exposes temporal tools as well as node tools: `search_facts` and `timeline` join `schema`, `graph_summary`, `search_nodes`, and `node_context`.
 
 Paste the `project mcp-config` output into Hermes `~/.hermes/config.yaml` under `mcp_servers`, then restart Hermes/gateway. The project wiki will be exposed as native MCP tools such as `mcp_my_project_wiki_search_nodes` and `mcp_my_project_wiki_node_context`.
 

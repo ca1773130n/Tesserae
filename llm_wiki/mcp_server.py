@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from .research_graph import ALLOWED_EDGE_TYPES, ALLOWED_NODE_TYPES, ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
+from .temporal import TemporalFactProjector, search_facts, timeline
 
 
 JSONDict = Dict[str, Any]
@@ -110,6 +111,34 @@ class LLMWikiMCPServer:
                     "additionalProperties": False,
                 },
             },
+            {
+                "name": "search_facts",
+                "description": "Search Graphiti-style temporal facts projected from the validated ResearchGraph, including evidence and provenance.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": {"type": "string", "description": "Path to a ResearchGraph JSON file. Defaults to server --graph."},
+                        "query": {"type": "string", "description": "Whitespace-separated fact search terms."},
+                        "current_only": {"type": "boolean", "default": False},
+                        "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10},
+                    },
+                    "required": ["query"],
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "timeline",
+                "description": "Return a temporal timeline of matching facts ordered by valid_from/source time.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": {"type": "string", "description": "Path to a ResearchGraph JSON file. Defaults to server --graph."},
+                        "query": {"type": "string", "description": "Optional fact search terms."},
+                        "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
+                    },
+                    "additionalProperties": False,
+                },
+            },
         ]
 
     def call_tool(self, name: str, arguments: Optional[JSONDict] = None) -> JSONDict:
@@ -132,6 +161,12 @@ class LLMWikiMCPServer:
                 node_name=args.get("name"),
                 limit=int(args.get("limit", 50)),
             )
+        if name == "search_facts":
+            facts = TemporalFactProjector().project(self._load_requested_graph(args))
+            return search_facts(facts, query=str(args.get("query", "")), limit=int(args.get("limit", 10)), current_only=bool(args.get("current_only", False)))
+        if name == "timeline":
+            facts = TemporalFactProjector().project(self._load_requested_graph(args))
+            return timeline(facts, query=str(args.get("query", "")), limit=int(args.get("limit", 50)))
         raise ValueError(f"Unknown LLM-Wiki MCP tool: {name}")
 
     def graph_summary(self, graph: ResearchGraph) -> JSONDict:

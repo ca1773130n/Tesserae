@@ -57,6 +57,22 @@ def test_project_ingest_updates_standard_artifacts(tmp_path):
     assert (project / ".llm-wiki" / "sqlite.db").exists()
     assert (project / ".llm-wiki" / "markdown_projection" / "index.md").exists()
     assert (project / ".llm-wiki" / "cognee_bundle" / "nodes.jsonl").exists()
+    assert (project / ".llm-wiki" / "temporal_facts.jsonl").exists()
+    assert (project / ".llm-wiki" / "competitive_report.md").exists()
+
+
+def test_project_temporal_artifacts_include_provenance(tmp_path):
+    project = tmp_path / "temporal-project"
+    project.mkdir()
+    (project / "note.md").write_text("# Temporal Note\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")
+    wiki = ProjectWiki.init(project, source_kind="Paper", sources=["note.md"])
+
+    wiki.compile()
+
+    facts = [json.loads(line) for line in (project / ".llm-wiki" / "temporal_facts.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert facts
+    assert all("provenance" in fact for fact in facts)
+    assert "MegaMem" in (project / ".llm-wiki" / "competitive_report.md").read_text(encoding="utf-8")
 
 
 def test_cli_project_init_ingest_and_mcp_config_from_working_directory(tmp_path, capsys):

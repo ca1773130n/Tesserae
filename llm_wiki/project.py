@@ -19,6 +19,7 @@ from .markdown_projection import GraphMarkdownProjector
 from .persistence import SQLiteResearchGraphStore
 from .report import GraphReporter
 from .research_graph import ResearchCorpusAnalyzer, ResearchEdge, ResearchGraph, ResearchGraphExtractor, ResearchNode, ResearchNodeType
+from .temporal import TemporalFactProjector, render_competitive_report
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,8 @@ class ProjectPaths:
     markdown_projection: Path
     cognee_bundle: Path
     report: Path
+    temporal_facts: Path
+    competitive_report: Path
 
 
 class ProjectWiki:
@@ -48,6 +51,8 @@ class ProjectWiki:
             markdown_projection=self.root / "markdown_projection",
             cognee_bundle=self.root / "cognee_bundle",
             report=self.root / "report.md",
+            temporal_facts=self.root / "temporal_facts.jsonl",
+            competitive_report=self.root / "competitive_report.md",
         )
 
     @classmethod
@@ -72,6 +77,8 @@ class ProjectWiki:
             "markdown_projection_path": ".llm-wiki/markdown_projection",
             "cognee_bundle_path": ".llm-wiki/cognee_bundle",
             "report_path": ".llm-wiki/report.md",
+            "temporal_facts_path": ".llm-wiki/temporal_facts.jsonl",
+            "competitive_report_path": ".llm-wiki/competitive_report.md",
         }
         wiki.paths.config.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return wiki
@@ -170,6 +177,8 @@ class ProjectWiki:
         CogneeResearchGraphAdapter().write_bundle(graph, self.paths.cognee_bundle)
         report = GraphReporter().render_markdown(GraphReporter().summarize(graph))
         self.paths.report.write_text(report, encoding="utf-8")
+        TemporalFactProjector().write_jsonl(graph, self.paths.temporal_facts)
+        self.paths.competitive_report.write_text(render_competitive_report(), encoding="utf-8")
 
 
 def load_graph_file(path: str | Path) -> ResearchGraph:
