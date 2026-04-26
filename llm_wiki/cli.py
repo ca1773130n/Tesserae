@@ -132,7 +132,7 @@ def main(argv: List[str] | None = None) -> int:
             changed_only=args.changed_only,
             limit=args.limit,
         )
-        graphs = [batch.graph]
+        graphs = batch.graphs or [batch.graph]
     else:
         if args.limit is not None:
             markdown_files = markdown_files[: args.limit]

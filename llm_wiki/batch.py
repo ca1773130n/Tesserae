@@ -18,6 +18,7 @@ class ExtractorLike(Protocol):
 @dataclass
 class BatchIngestResult:
     graph: ResearchGraph
+    graphs: List[ResearchGraph] = field(default_factory=list)
     processed: int = 0
     skipped: int = 0
     manifest_path: Optional[Path] = None
@@ -72,6 +73,7 @@ class BatchIngestRunner:
         self._write_manifest(manifest)
         return BatchIngestResult(
             graph=merge_graphs(graphs),
+            graphs=graphs,
             processed=processed,
             skipped=skipped,
             manifest_path=self.manifest_path,
