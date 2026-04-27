@@ -446,6 +446,174 @@ def test_render_about_renders_full_doc(site_ctx: SiteContext) -> None:
 
 
 # ---------------------------------------------------------------------------
+# new bug-fix coverage
+# ---------------------------------------------------------------------------
+
+
+def test_paper_detail_strips_duplicate_h1_when_body_repeats_frontmatter_title(
+    site_ctx: SiteContext,
+) -> None:
+    """When the body opens with ``# Same as frontmatter title`` we strip it
+    so the page header doesn't render the title twice."""
+    page = WikiPage(
+        kind="papers",
+        slug="dupe-h1-paper",
+        title="Dupe H1 Paper",
+        body="# Dupe H1 Paper\n\nAbstract goes here.\n",
+        path=Path("wiki/papers/dupe-h1-paper.md"),
+        frontmatter={"title": "Dupe H1 Paper"},
+    )
+    out = render_paper_detail(site_ctx, page)
+    body_section = re.search(
+        r'<section class="markdown-body">(.*?)</section>', out, flags=re.DOTALL
+    )
+    assert body_section, "detail must wrap body in .markdown-body"
+    inner = body_section.group(1)
+    # The duplicate H1 must not appear inside the markdown body.
+    assert "Dupe H1 Paper</h1>" not in inner, (
+        "leading H1 matching frontmatter title should be stripped"
+    )
+    # Page header still renders the title once.
+    assert "<h1>Dupe H1 Paper</h1>" in out
+
+
+def test_paper_detail_keeps_body_h2_intact(site_ctx: SiteContext) -> None:
+    """Stripping only fires for a leading H1; deeper headings stay intact."""
+    page = WikiPage(
+        kind="papers",
+        slug="deeper-headings-paper",
+        title="Deeper Headings Paper",
+        body="# Deeper Headings Paper\n\n## Section\n\nContent.\n",
+        path=Path("wiki/papers/deeper-headings-paper.md"),
+        frontmatter={"title": "Deeper Headings Paper"},
+    )
+    out = render_paper_detail(site_ctx, page)
+    body_section = re.search(
+        r'<section class="markdown-body">(.*?)</section>', out, flags=re.DOTALL
+    )
+    assert body_section
+    inner = body_section.group(1)
+    assert "<h2" in inner and ">Section</h2>" in inner
+
+
+def test_paper_detail_related_section_has_real_anchors(
+    site_ctx: SiteContext,
+) -> None:
+    """The Related section must surface at least one ``<a href=...>`` link
+    when the node has neighbours in the graph."""
+    pages = site_ctx.wiki_pages_by_kind["papers"]
+    if not pages:
+        pytest.skip("fixture has no paper page")
+    out = render_paper_detail(site_ctx, pages[0])
+    related = re.search(
+        r'<section id="related"[^>]*>(.*?)</section>', out, flags=re.DOTALL
+    )
+    assert related, "Related section must be present"
+    inner = related.group(1)
+    assert re.search(r'<a [^>]*href="[^"]+"', inner), (
+        f"Related must contain an <a href=...> anchor: {inner[:300]}"
+    )
+
+
+def test_paper_detail_activity_svg_has_nonzero_rect_when_activity_exists(
+    site_ctx: SiteContext,
+) -> None:
+    """A node with at least one dated source path produces a sparkline whose
+    polyline isn't pinned to the zero-line."""
+    pages = site_ctx.wiki_pages_by_kind["papers"]
+    if not pages:
+        pytest.skip("fixture has no paper page")
+    # Synthesize an activity bucket for the page's underlying node so the
+    # test is deterministic regardless of fixture content.
+    node_id = (pages[0].frontmatter or {}).get("node_id")
+    if not node_id:
+        pytest.skip("paper fixture has no node_id frontmatter")
+    new_activity = dict(site_ctx.activity_by_node_id)
+    new_activity[node_id] = [0, 1, 2, 1, 0, 3, 5, 2, 0, 1, 0, 4]
+    ctx2 = SiteContext(
+        site_title=site_ctx.site_title,
+        graph=site_ctx.graph,
+        wiki_pages_by_kind=site_ctx.wiki_pages_by_kind,
+        nodes_by_id=site_ctx.nodes_by_id,
+        nodes_by_kind=site_ctx.nodes_by_kind,
+        nodes_by_name=site_ctx.nodes_by_name,
+        outgoing=site_ctx.outgoing,
+        incoming=site_ctx.incoming,
+        type_counts=site_ctx.type_counts,
+        source_counts=site_ctx.source_counts,
+        activity_weeks=site_ctx.activity_weeks,
+        relevance=site_ctx.relevance,
+        page_slug_for_node=site_ctx.page_slug_for_node,
+        activity_by_node_id=new_activity,
+        source_body_by_path=site_ctx.source_body_by_path,
+        node_id_for_source_path=site_ctx.node_id_for_source_path,
+    )
+    out = render_paper_detail(ctx2, pages[0])
+    activity = re.search(
+        r'<section id="activity"[^>]*>(.*?)</section>', out, flags=re.DOTALL
+    )
+    assert activity, "Activity section must be present"
+    inner = activity.group(1)
+    # The sparkline polyline must not be a flat zero line — at least one
+    # point should sit above the floor (y < height-2).
+    points_match = re.search(r'<polyline points="([^"]+)"', inner)
+    assert points_match, f"sparkline polyline missing: {inner[:300]}"
+    points = points_match.group(1)
+    ys = [float(p.split(",")[1]) for p in points.split() if "," in p]
+    assert any(y < 25 for y in ys), f"expected at least one elevated y: {ys}"
+
+
+def test_paper_detail_renders_default_site_title_when_unset() -> None:
+    """When ``SiteContext`` is built with the default site_title we render
+    ``LLM-Wiki`` in the page chrome, not the project's MCP server name."""
+    from llm_wiki.research_graph import ResearchGraph
+    ctx = SiteContext.build(
+        graph=ResearchGraph(nodes=[], edges=[]),
+        wiki_pages_by_kind={
+            "sources": [], "concepts": [], "entities": [], "papers": [],
+            "repos": [], "topics": [], "syntheses": [], "questions": [],
+        },
+    )
+    assert ctx.site_title == "LLM-Wiki"
+
+
+def test_paper_detail_autolinks_bare_arxiv_url(site_ctx: SiteContext) -> None:
+    """A bare arxiv URL in a markdown body becomes a clickable anchor."""
+    pages = site_ctx.wiki_pages_by_kind["papers"]
+    if not pages:
+        pytest.skip("fixture has no paper page")
+    page = WikiPage(
+        kind="papers",
+        slug=pages[0].slug,
+        title=pages[0].title,
+        body="See https://arxiv.org/abs/2604.20329 for details.\n",
+        path=pages[0].path,
+        frontmatter=pages[0].frontmatter,
+    )
+    out = render_paper_detail(site_ctx, page)
+    assert '<a href="https://arxiv.org/abs/2604.20329"' in out
+    assert ">https://arxiv.org/abs/2604.20329</a>" in out
+
+
+def test_paper_detail_autolinks_arxiv_id_token(site_ctx: SiteContext) -> None:
+    """``arXiv:2604.20329`` becomes a link to https://arxiv.org/abs/2604.20329."""
+    pages = site_ctx.wiki_pages_by_kind["papers"]
+    if not pages:
+        pytest.skip("fixture has no paper page")
+    page = WikiPage(
+        kind="papers",
+        slug=pages[0].slug,
+        title=pages[0].title,
+        body="The paper is arXiv:2604.20329 from 2026.\n",
+        path=pages[0].path,
+        frontmatter=pages[0].frontmatter,
+    )
+    out = render_paper_detail(site_ctx, page)
+    assert '<a href="https://arxiv.org/abs/2604.20329"' in out
+    assert "arXiv:2604.20329</a>" in out
+
+
+# ---------------------------------------------------------------------------
 # routing rules: no detail page for code-layer types
 # ---------------------------------------------------------------------------
 

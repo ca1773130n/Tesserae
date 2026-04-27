@@ -90,12 +90,29 @@ class ProjectWiki:
             wiki.paths.graph.write_text(ResearchGraph().to_json(indent=2) + "\n", encoding="utf-8")
         if not wiki.paths.manifest.exists():
             wiki.paths.manifest.write_text(json.dumps({"files": {}}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        # When the user passes nothing for ``sources``, seed a sensible default
+        # that covers the typical project layout: top-level README + docs/ and
+        # data/ subtrees (the latter holds research/daily/<date>/ and friends).
+        # ``compile()`` also auto-includes ``data/`` even if it wasn't listed
+        # explicitly — this default keeps that visible in config.json.
+        if sources is None:
+            default_sources: List[str] = []
+            if (wiki.project_root / "README.md").exists():
+                default_sources.append("README.md")
+            if (wiki.project_root / "docs").exists():
+                default_sources.append("docs")
+            if (wiki.project_root / "data").exists():
+                default_sources.append("data")
+            source_list = default_sources
+        else:
+            source_list = [str(source) for source in sources]
         config = {
             "name": name or sanitize_server_name(wiki.project_root.name),
+            "site_title": "LLM-Wiki",
             "project_root": str(wiki.project_root),
             "created": date.today().isoformat(),
             "source_kind": source_kind,
-            "sources": [str(source) for source in (sources or [])],
+            "sources": source_list,
             "graph_path": ".llm-wiki/graph.json",
             "manifest_path": ".llm-wiki/manifest.json",
             "sqlite_path": ".llm-wiki/sqlite.db",
@@ -137,8 +154,14 @@ class ProjectWiki:
         extractor = ResearchGraphExtractor()
         markdown_files: List[Path] = []
         code_inputs: List[Path] = []
+        seen_md: set[Path] = set()
         for input_path in input_paths:
-            markdown_files.extend(iter_markdown_files(input_path))
+            for md in iter_markdown_files(input_path):
+                resolved = md.resolve()
+                if resolved in seen_md:
+                    continue
+                seen_md.add(resolved)
+                markdown_files.append(md)
             code_inputs.append(input_path)
         markdown_source_kind = "SourceDocument" if kind in {"CodeProject", "Repository", "Project"} else kind
         batch = BatchIngestRunner(extractor=extractor, manifest_path=self.paths.manifest).run(
@@ -178,9 +201,36 @@ class ProjectWiki:
         limit: Optional[int] = None,
         trends: bool = False,
         min_trend_sources: int = 2,
+        exclude_data: bool = False,
     ) -> dict:
+        """Compile every configured source into the .llm-wiki artifacts.
+
+        In addition to the ``sources`` listed in ``config.json``, the
+        ``data/`` directory under ``project_root`` is auto-included when it
+        exists. This is what makes ``data/research/daily/<date>/papers/<id>/``
+        markdowns reachable without forcing every project to remember to add
+        ``data`` to their sources list. Pass ``exclude_data=True`` to opt out
+        (e.g. for projects that store unrelated binaries under ``data/``).
+        """
         cfg = self.config()
-        sources = cfg.get("sources") or ["."]
+        sources = list(cfg.get("sources") or ["."])
+        # Auto-include the project-root ``data/`` directory if it exists and
+        # isn't already part of the configured sources. ``iter_markdown_files``
+        # walks recursively and ``BatchIngestRunner`` deduplicates by file
+        # hash, so listing the same path twice would not double-process — but
+        # we still skip the redundant entry to keep the work-list tight.
+        if not exclude_data:
+            data_dir = self.project_root / "data"
+            if data_dir.exists():
+                resolved_data = data_dir.resolve()
+                already_listed = False
+                for entry in sources:
+                    candidate = resolve_project_input(self.project_root, entry).resolve()
+                    if candidate == resolved_data:
+                        already_listed = True
+                        break
+                if not already_listed:
+                    sources.append("data")
         return self.ingest(
             sources,
             source_kind=source_kind,
@@ -241,9 +291,14 @@ class ProjectWiki:
         cfg = self.config()
         graph = load_graph_file(self.paths.graph)
         target = Path(output) if output else self.paths.site
-        name = cfg.get("name") or sanitize_server_name(self.project_root.name)
+        # The user-facing site title defaults to ``"LLM-Wiki"``; it can be
+        # overridden in ``config.json`` via the ``site_title`` field. We
+        # deliberately do *not* fall back to the sanitized server name (e.g.
+        # ``llm_wiki_self``) — that string is for MCP server identifiers, not
+        # for humans reading the rendered HTML.
+        site_title = cfg.get("site_title") or "LLM-Wiki"
         self.paths.wiki.mkdir(parents=True, exist_ok=True)
-        return StaticSiteBuilder(site_title=name).write_site(graph, self.paths.wiki, target)
+        return StaticSiteBuilder(site_title=site_title).write_site(graph, self.paths.wiki, target)
 
     def deploy_github_pages(
         self,

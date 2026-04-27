@@ -77,6 +77,14 @@ _CODE_INLINE_RE = re.compile(r"`([^`]+)`")
 _BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
 _ITALIC_STAR_RE = re.compile(r"(?<![\*\w])\*(?!\s)([^*\n]+?)(?<!\s)\*(?![\*\w])")
 _ITALIC_UNDER_RE = re.compile(r"(?<![\w_])_(?!\s)([^_\n]+?)(?<!\s)_(?![\w_])")
+# Bare URL autolinker — runs *after* explicit ``[label](url)`` parsing has
+# already stashed real link tags as placeholders, so we never double-wrap a
+# URL that the author already linked. Trailing punctuation like ``.``, ``,``,
+# ``)`` and ``;`` is excluded so prose like "see https://x.org/abs/2604.20329."
+# does not glue the period into the URL.
+_AUTOLINK_URL_RE = re.compile(r"(?<![\w/\"'>])(https?://[^\s<>\"'`]+?)(?=[)\].,;:!?]*(?:\s|$))")
+# arXiv:2604.20329 (or 2604.20329v2 etc.) — links to https://arxiv.org/abs/...
+_AUTOLINK_ARXIV_RE = re.compile(r"\barXiv:(\d{4}\.\d{4,6}(?:v\d+)?)\b", re.IGNORECASE)
 
 
 def _render_inline(text: str, link_rewriter: Optional[Callable[[str], str]] = None) -> str:
@@ -118,6 +126,36 @@ def _render_inline(text: str, link_rewriter: Optional[Callable[[str], str]] = No
         )
 
     text = _LINK_RE.sub(_link_repl, text)
+
+    # 3.5. Autolink bare URLs and arXiv-id tokens that the author didn't wrap
+    #      in ``[label](url)``. We stash the rendered ``<a>`` tags as
+    #      placeholders so the subsequent ``html.escape`` doesn't break them.
+    def _autolink_url(m: re.Match[str]) -> str:
+        url = m.group(1)
+        # Strip trailing punctuation that the regex couldn't reasonably exclude
+        # without breaking on legitimate URL characters.
+        trailing = ""
+        while url and url[-1] in ".,;:!?)]":
+            trailing = url[-1] + trailing
+            url = url[:-1]
+        if not url:
+            return m.group(0)
+        return _stash(
+            f'<a href="{html.escape(url, quote=True)}" rel="nofollow noopener">'
+            f"{html.escape(url)}</a>"
+        ) + trailing
+
+    text = _AUTOLINK_URL_RE.sub(_autolink_url, text)
+
+    def _autolink_arxiv(m: re.Match[str]) -> str:
+        arxiv_id = m.group(1)
+        url = f"https://arxiv.org/abs/{arxiv_id}"
+        return _stash(
+            f'<a href="{html.escape(url, quote=True)}" rel="nofollow noopener">'
+            f"arXiv:{html.escape(arxiv_id)}</a>"
+        )
+
+    text = _AUTOLINK_ARXIV_RE.sub(_autolink_arxiv, text)
 
     # 4. Now escape the remaining text.
     text = html.escape(text)

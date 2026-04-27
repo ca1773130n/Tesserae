@@ -234,6 +234,17 @@ class SiteContext:
     # on disk (``pulse``) rather than minting ``project-pulse`` from the
     # node name and 404'ing.
     page_slug_for_node: Mapping[str, str] = field(default_factory=dict)
+    # node_id → 12-week mention counts (newest week last). Empty list means
+    # the renderer should pass a zero-filled list of length 12 to
+    # :func:`sparkline_svg` so the page still gets a placeholder spark.
+    activity_by_node_id: Mapping[str, Sequence[int]] = field(default_factory=dict)
+    # source_path (data/research/...md style) → lower-cased body text.
+    # Used by the per-page "Cross-references in raw data" section to surface
+    # every research markdown that mentions a node by name.
+    source_body_by_path: Mapping[str, str] = field(default_factory=dict)
+    # source_path → SourceDocument node-id, used to link a node's
+    # ``source_path`` back to its source detail page.
+    node_id_for_source_path: Mapping[str, str] = field(default_factory=dict)
 
     @classmethod
     def build(
@@ -288,6 +299,39 @@ class SiteContext:
         except Exception:
             relevance = None
 
+        # source_path → SourceDocument node-id mapping so we can render a
+        # provenance link on detail pages. Uses ``source_path`` for source-kind
+        # nodes only; everything else inherits via shared ``source_path``.
+        node_id_for_source_path: Dict[str, str] = {}
+        for node in graph.nodes:
+            if node.source_path and node.type == ResearchNodeType.SOURCE_DOCUMENT:
+                node_id_for_source_path.setdefault(node.source_path, node.id)
+
+        # Cache the lowercased body of every raw data markdown file referenced
+        # by a node's ``source_path`` so the "Cross-references in raw data"
+        # section can do a cheap case-insensitive substring search without
+        # re-reading the disk for each detail page. We deliberately read the
+        # original on-disk files (not the projected wiki bodies) — the user
+        # wants matches against the *raw* corpus content. Failures are
+        # silently skipped so a stale graph entry doesn't break the build.
+        source_body_by_path: Dict[str, str] = {}
+        seen_paths: set[str] = set()
+        for node in graph.nodes:
+            sp = node.source_path or ""
+            if not sp or sp in seen_paths:
+                continue
+            seen_paths.add(sp)
+            try:
+                p = Path(sp)
+                if p.is_file() and p.suffix.lower() == ".md":
+                    source_body_by_path[sp] = p.read_text(
+                        encoding="utf-8", errors="replace"
+                    ).lower()
+            except OSError:
+                continue
+
+        activity_by_node_id = _activity_by_node_id(graph, weeks=12)
+
         return cls(
             site_title=site_title,
             graph=graph,
@@ -302,10 +346,65 @@ class SiteContext:
             activity_weeks=_activity_weeks(graph, weeks=26),
             relevance=relevance,
             page_slug_for_node=page_slug_for_node,
+            activity_by_node_id=activity_by_node_id,
+            source_body_by_path=source_body_by_path,
+            node_id_for_source_path=node_id_for_source_path,
         )
 
 
 _DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
+
+
+def _activity_by_node_id(graph: ResearchGraph, weeks: int) -> Dict[str, List[int]]:
+    """Return per-node weekly mention counts (length ``weeks``, newest last).
+
+    Counts how many distinct dated source paths each node touches, then bins
+    those dates into ``weeks`` evenly-spaced columns matching the
+    :func:`_activity_weeks` global heatmap. Nodes with no dated source paths
+    return an empty list — callers fall back to a zero list of length 12 so
+    the sparkline component still renders an empty placeholder.
+    """
+    # Collect (node_id, date) hits via the node's own source_path AND any
+    # extra ``source_paths`` recorded in metadata (synthesis nodes use the
+    # latter to point at multiple daily digests).
+    hits_by_node: Dict[str, List[str]] = {}
+    all_dates: set[str] = set()
+    for node in graph.nodes:
+        dates: List[str] = []
+        if node.source_path:
+            m = _DATE_RE.search(node.source_path)
+            if m:
+                dates.append(m.group(1))
+        meta = node.metadata or {}
+        if isinstance(meta, dict):
+            extra = meta.get("source_paths")
+            if isinstance(extra, (list, tuple, set)):
+                for sp in extra:
+                    if isinstance(sp, str):
+                        m = _DATE_RE.search(sp)
+                        if m:
+                            dates.append(m.group(1))
+        if dates:
+            hits_by_node[node.id] = dates
+            all_dates.update(dates)
+
+    if not all_dates:
+        return {}
+
+    sorted_all = sorted(all_dates)
+    n = len(sorted_all)
+    # Map each unique date to a column index in [0, weeks).
+    column_for_date: Dict[str, int] = {}
+    for idx, d in enumerate(sorted_all):
+        column_for_date[d] = min(weeks - 1, int(idx * weeks / max(n, 1)))
+
+    out: Dict[str, List[int]] = {}
+    for node_id, dates in hits_by_node.items():
+        bucket = [0] * weeks
+        for d in dates:
+            bucket[column_for_date[d]] += 1
+        out[node_id] = bucket
+    return out
 
 
 def _activity_weeks(graph: ResearchGraph, weeks: int) -> List[List[int]]:
@@ -556,6 +655,117 @@ def _mentions_html(ctx: SiteContext, node: ResearchNode, *, depth: int) -> str:
     return edge_list(rows, depth=depth)
 
 
+# Match a leading ATX H1 heading. Used to strip the duplicate body-title from
+# detail pages whose markdown body opens with ``# Same as frontmatter title``.
+_LEADING_H1_RE = re.compile(r"\A\s*#\s+(.+?)\s*#*\s*\n+", re.MULTILINE)
+
+
+def _normalize_title(value: str) -> str:
+    return re.sub(r"\s+", " ", (value or "").strip()).casefold()
+
+
+def _strip_duplicate_h1(body: str, title: str) -> str:
+    """Remove a leading ``# Title`` from ``body`` if it matches ``title``.
+
+    The page header already renders the title above the markdown body; when
+    the body starts with the same H1 the user sees the title twice. We only
+    strip when the leading heading matches the frontmatter title (after
+    whitespace+case normalization) so legitimate document H1s with different
+    text are preserved.
+    """
+    if not body or not title:
+        return body
+    match = _LEADING_H1_RE.match(body)
+    if not match:
+        return body
+    if _normalize_title(match.group(1)) != _normalize_title(title):
+        return body
+    return body[match.end():]
+
+
+def _cross_refs_in_raw(ctx: SiteContext, node: ResearchNode) -> List[Tuple[str, str]]:
+    """Return up to 12 ``(label, href)`` raw-data pages mentioning ``node``.
+
+    Substring-matches the node's name (case-insensitive) against every
+    cached source body. ``href`` is rendered relative to a leaf detail page
+    one directory deep — i.e. ``../sources/<slug>.html`` if the source has
+    a wiki page, else a tooltip-style ``link-broken`` anchor pointing to
+    the raw ``data/.../foo.md`` path inside the source-path string. Hits
+    above the cap fall off; ordering is the cached map's insertion order
+    so it stays stable across compiles.
+    """
+    name = node.name or ""
+    if not name or len(name) < 3 or not ctx.source_body_by_path:
+        return []
+    needle = name.lower()
+    own_path = node.source_path or ""
+    out: List[Tuple[str, str]] = []
+    seen: set[str] = set()
+    for src_path, body in ctx.source_body_by_path.items():
+        if src_path == own_path:
+            continue
+        if needle not in body:
+            continue
+        if src_path in seen:
+            continue
+        seen.add(src_path)
+        out.append((src_path, src_path))
+        if len(out) >= 12:
+            break
+    return out
+
+
+def _cross_refs_html(
+    ctx: SiteContext, node: ResearchNode, *, depth: int
+) -> str:
+    refs = _cross_refs_in_raw(ctx, node)
+    if not refs:
+        return '<p class="muted">No raw-data mentions found.</p>'
+    prefix = "../" * max(depth, 0)
+    items: List[str] = []
+    for label, src_path in refs:
+        # Resolve to the source detail page if we have one.
+        src_node_id = ctx.node_id_for_source_path.get(src_path)
+        href = ""
+        if src_node_id:
+            other = ctx.nodes_by_id.get(src_node_id)
+            if other is not None:
+                rel = node_href(other, ctx)
+                if rel:
+                    href = prefix + rel
+        if href:
+            items.append(
+                f'<li><a href="{_esc(href)}"><code>{_esc(label)}</code></a></li>'
+            )
+        else:
+            # No matching wiki page — surface a non-404 indicator instead of
+            # a silently-broken link.
+            items.append(
+                f'<li><span class="link-broken" title="Not found in wiki">'
+                f'<code>{_esc(label)}</code></span></li>'
+            )
+    return '<ul class="cross-refs">' + "".join(items) + "</ul>"
+
+
+def _provenance_html(
+    ctx: SiteContext, node: Optional[ResearchNode], src_value: str, *, depth: int
+) -> str:
+    if not src_value:
+        return '<p class="muted">No source path recorded.</p>'
+    prefix = "../" * max(depth, 0)
+    src_node_id = ctx.node_id_for_source_path.get(src_value)
+    if src_node_id:
+        other = ctx.nodes_by_id.get(src_node_id)
+        if other is not None and (node is None or other.id != node.id):
+            rel = node_href(other, ctx)
+            if rel:
+                href = prefix + rel
+                return (
+                    f'<p><a href="{_esc(href)}"><code>{_esc(src_value)}</code></a></p>'
+                )
+    return f'<p><code>{_esc(src_value)}</code></p>'
+
+
 # ---------------------------------------------------------------------------
 # detail / index helpers
 # ---------------------------------------------------------------------------
@@ -575,6 +785,20 @@ def _detail_page(
     # WikiPageStore reader already separates frontmatter out, but synthesis
     # bodies sometimes embed an inline ``---`` block.
     _, body_md = strip_frontmatter(page.body)
+    title = page.title or page.slug
+    # Page header already renders the title; drop a duplicate leading H1 if
+    # the body opens with ``# <frontmatter title>`` verbatim. We require the
+    # match to be against the *frontmatter* title (not just ``page.title``,
+    # which falls back to the body's own H1 when no frontmatter is provided)
+    # so a fixture page with no frontmatter title keeps its body heading.
+    fm_title = ""
+    fm_for_strip = page.frontmatter or {}
+    if isinstance(fm_for_strip, dict):
+        candidate = fm_for_strip.get("title")
+        if isinstance(candidate, str):
+            fm_title = candidate
+    if fm_title:
+        body_md = _strip_duplicate_h1(body_md, fm_title)
     body_html, headings = _render_markdown(body_md)
     eyebrow = _eyebrow(kind_label, page)
     bc = _build_breadcrumbs(breadcrumbs_trail, depth=1)
@@ -583,18 +807,13 @@ def _detail_page(
     ]
     toc_html = toc(toc_headings) if toc_headings else ""
 
-    title = page.title or page.slug
-
     node = _find_node_for_page(ctx, page)
     mentions_html = _mentions_html(ctx, node, depth=1) if node else '<p class="muted">No mentions yet.</p>'
     related_html = _related_html(ctx, node, depth=1) if node else '<p class="muted">No related items yet.</p>'
 
     fm = page.frontmatter or {}
     src_value = fm.get("source_path") or (node.source_path if node else "")
-    provenance = (
-        f'<p><code>{_esc(src_value)}</code></p>' if src_value else
-        '<p class="muted">No source path recorded.</p>'
-    )
+    provenance = _provenance_html(ctx, node, str(src_value or ""), depth=1)
 
     # Inline frontmatter metadata: aliases + source_path appear under the
     # title; everything else stays hidden (already surfaced via ``title``,
@@ -610,7 +829,22 @@ def _detail_page(
         f'<p class="page-meta">{" · ".join(meta_bits)}</p>' if meta_bits else ""
     )
 
-    sparkline = sparkline_svg([sum(week) for week in ctx.activity_weeks][-12:])
+    # Per-node weekly mentions feed the sparkline. Synthesis pages and
+    # nodes with no dated source path still get a 12-bucket zero list so
+    # the SVG renders an empty placeholder instead of a stub graphic.
+    spark_values: List[int] = []
+    if node is not None:
+        spark_values = list(ctx.activity_by_node_id.get(node.id, []))
+    if not spark_values:
+        spark_values = [0] * 12
+    sparkline = sparkline_svg(spark_values)
+
+    cross_refs_html = (
+        _cross_refs_html(ctx, node, depth=1)
+        if node is not None
+        else '<p class="muted">No raw-data mentions found.</p>'
+    )
+
     sibling_path = page_href(kind_route, page.slug)
     siblings_html = ai_siblings_footer(sibling_path)
 
@@ -621,6 +855,7 @@ def _detail_page(
 {extra_section}
 <section id="mentions" class="mentions"><h2>Mentions in the corpus</h2>{mentions_html}</section>
 <section id="related" class="related"><h2>Related</h2>{related_html}</section>
+<section id="cross-refs" class="cross-refs-section"><h2>Cross-references in raw data</h2>{cross_refs_html}</section>
 <section id="provenance" class="provenance"><h2>Source provenance</h2>{provenance}</section>
 <section id="activity" class="activity"><h2>Activity</h2>{sparkline}</section>
 """
@@ -969,7 +1204,57 @@ def render_question_detail(ctx: SiteContext, page: WikiPage) -> str:
 
 
 def render_timeline(ctx: SiteContext) -> str:
+    """Render the timeline page.
+
+    Walks the per-day source paths the corpus already knows about (via
+    ``node.source_path`` / ``metadata['source_paths']``), bucketed by ISO
+    date, and emits a heatmap plus a synthesis list. Each heatmap cell
+    points back at the matching day's ``digest.md`` source page when one
+    exists, so users can drill in without us having to mint per-day index
+    pages.
+
+    Per-day index pages (``timeline/<YYYY-MM-DD>.html`` listing every
+    activity for that day) are an explicit follow-up: they would let us
+    surface added papers/repos/concepts inline, but emitting them from
+    here requires plumbing through ``StaticSiteBuilder`` which Subagent L
+    is not allowed to touch in this pass. The cells already linking to the
+    day's digest source page is a reasonable interim that uses existing
+    routes.
+    """
     bc = _build_breadcrumbs([("Home", "index.html"), ("Timeline", "")], depth=1)
+
+    # Collect daily counts from node source_paths (digest.md / paper.md /
+    # repo.md all share the ``YYYY-MM-DD`` prefix when they live under
+    # ``data/research/daily/``).
+    counts_by_date: Counter = Counter()
+    paper_dates: Counter = Counter()
+    digest_path_for_date: Dict[str, str] = {}
+    for node in ctx.graph.nodes:
+        sp = node.source_path or ""
+        if not sp:
+            continue
+        m = _DATE_RE.search(sp)
+        if not m:
+            continue
+        date_str = m.group(1)
+        counts_by_date[date_str] += 1
+        if node.type == ResearchNodeType.PAPER:
+            paper_dates[date_str] += 1
+        # Remember the digest.md path per day so we can link the cell back
+        # to a real source page.
+        if "digest" in sp.lower() and date_str not in digest_path_for_date:
+            digest_path_for_date[date_str] = sp
+
+    # Build the heatmap from ``activity_weeks`` — Subagent O is updating the
+    # signature to accept ``with_labels=True``; until that lands we call the
+    # existing two-arg signature so the build doesn't break, and the labels
+    # appear automatically once O ships.
+    try:
+        heatmap = heatmap_svg(list(ctx.activity_weeks), weeks_back=26, with_labels=True)
+    except TypeError:
+        heatmap = heatmap_svg(list(ctx.activity_weeks))
+
+    # Synthesis-link list (kept as the canonical "what shipped" rail).
     syntheses = list(ctx.wiki_pages_by_kind.get("syntheses", []))
     rows: List[str] = []
     for page in syntheses:
@@ -982,14 +1267,39 @@ def render_timeline(ctx: SiteContext) -> str:
         )
     if not rows:
         rows = ['<li class="muted">No syntheses yet — they appear here on the next compile.</li>']
-    heatmap = heatmap_svg(list(ctx.activity_weeks))
+
+    # Per-day list: every observed date, total activity + paper count, and
+    # a link to the digest source page if we have one.
+    day_rows: List[str] = []
+    for date_str in sorted(counts_by_date, reverse=True)[:60]:
+        total = counts_by_date[date_str]
+        papers = paper_dates.get(date_str, 0)
+        digest = digest_path_for_date.get(date_str)
+        href = ""
+        if digest:
+            src_node_id = ctx.node_id_for_source_path.get(digest)
+            if src_node_id:
+                src_node = ctx.nodes_by_id.get(src_node_id)
+                if src_node is not None:
+                    rel = node_href(src_node, ctx)
+                    if rel:
+                        href = "../" + rel
+        label_html = (
+            f'<a href="{_esc(href)}">{_esc(date_str)}</a>' if href else _esc(date_str)
+        )
+        day_rows.append(
+            f'<li>{label_html} <small>{total} activity · {papers} paper{"s" if papers != 1 else ""}</small></li>'
+        )
+
     body = f"""<header class="hero">
   <p class="eyebrow">timeline</p>
   <h1>Timeline</h1>
   <p class="lead">Recent activity, synthesis updates, and weekly digests.</p>
 </header>
 <section class="activity">{heatmap}</section>
+<section class="timeline-days"><h2>Days</h2><ol class="timeline-day-list">{''.join(day_rows) if day_rows else '<li class="muted">No dated activity yet.</li>'}</ol></section>
 <section class="timeline">
+  <h2>Syntheses</h2>
   <ol class="timeline-list">{''.join(rows)}</ol>
 </section>"""
     return page_shell(

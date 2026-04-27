@@ -241,3 +241,49 @@ def test_wiki_corpus_site_has_no_broken_links(
 
     broken = _walk_site_for_broken_links(out)
     assert not broken, "broken internal links:\n" + "\n".join(broken)
+
+
+def test_cross_references_emit_only_valid_internal_hrefs(
+    tmp_path: Path, wiki_sample_graph
+) -> None:
+    """The ``Cross-references in raw data`` section may surface a path that
+    has no matching wiki page. Those must be rendered as ``link-broken``
+    spans (not anchors), so the link walker never sees a 404.
+    """
+    from llm_wiki.wiki_projector import WikiLayerProjector
+
+    wiki = tmp_path / "wiki"
+    wiki.mkdir()
+    store = WikiPageStore(wiki)
+    WikiLayerProjector(store).project(wiki_sample_graph)
+
+    out = tmp_path / "site"
+    StaticSiteBuilder(site_title="Wiki Corpus").write_site(
+        wiki_sample_graph, wiki, out
+    )
+
+    # Walk every detail page and confirm any ``cross-refs`` section's anchors
+    # all resolve to a real file under the site root.
+    site_root = out.resolve()
+    issues: list[str] = []
+    for html_path in sorted(out.rglob("*.html")):
+        text = html_path.read_text(encoding="utf-8")
+        match = re.search(
+            r'<section id="cross-refs"[^>]*>(.*?)</section>', text, flags=re.DOTALL
+        )
+        if not match:
+            continue
+        section_html = match.group(1)
+        for href_match in re.finditer(r'<a [^>]*href="([^"]+)"', section_html):
+            href = href_match.group(1)
+            if href.startswith(("http://", "https://", "mailto:", "#")):
+                continue
+            target = (html_path.parent / href.split("#", 1)[0].split("?", 1)[0]).resolve()
+            try:
+                target.relative_to(site_root)
+            except ValueError:
+                issues.append(f"{html_path.relative_to(out)} -> {href} escapes site root")
+                continue
+            if not target.exists():
+                issues.append(f"{html_path.relative_to(out)} -> {href} missing")
+    assert not issues, "broken cross-ref hrefs:\n" + "\n".join(issues)

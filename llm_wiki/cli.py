@@ -92,6 +92,8 @@ def project_main(argv: List[str] | None = None) -> int:
     compile_parser.add_argument("--limit", type=int, help="Maximum number of changed files to process")
     compile_parser.add_argument("--trends", action="store_true", help="Add corpus-level Trend nodes")
     compile_parser.add_argument("--min-trend-sources", type=int, default=2, help="Minimum sources needed for Trend nodes")
+    compile_parser.add_argument("--include-data", action="store_true", help="Documentation flag: project_root/data is auto-included by default; this flag is a no-op kept for clarity")
+    compile_parser.add_argument("--exclude-data", action="store_true", help="Skip the implicit project_root/data auto-include even if data/ exists")
 
     mcp_parser = subparsers.add_parser("mcp-config", help="Print a Hermes mcp_servers config snippet for this project")
     mcp_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
@@ -176,6 +178,7 @@ def project_main(argv: List[str] | None = None) -> int:
             limit=args.limit,
             trends=args.trends,
             min_trend_sources=args.min_trend_sources,
+            exclude_data=args.exclude_data,
         )
         print(
             "Compiled project wiki: "
