@@ -60,13 +60,133 @@ def edge_to_dict(edge: ResearchEdge) -> JSONDict:
     return edge.model_dump()
 
 
+DEFAULT_REGISTRY_PATH = Path.home() / ".llm-wiki" / "registry.json"
+
+
+def _sanitize_project_name(raw: str) -> str:
+    cleaned = "".join(c if c.isalnum() or c in "-_" else "_" for c in raw.strip().lower())
+    cleaned = cleaned.strip("_-")
+    return cleaned or "project"
+
+
+class ProjectRegistry:
+    """File-backed registry of LLM-Wiki project graphs.
+
+    Each entry maps a friendly name to a project root and its compiled
+    graph.json so a single MCP server can serve many projects.
+    """
+
+    def __init__(self, path: str | Path | None = None) -> None:
+        self.path = Path(path) if path is not None else DEFAULT_REGISTRY_PATH
+
+    def load(self) -> JSONDict:
+        if not self.path.exists():
+            return {"version": 1, "active": None, "projects": {}}
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Corrupt registry at {self.path}: {exc}") from exc
+        data.setdefault("version", 1)
+        data.setdefault("active", None)
+        data.setdefault("projects", {})
+        return data
+
+    def save(self, data: JSONDict) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    def register(self, path: str | Path, name: Optional[str] = None) -> JSONDict:
+        graph_path, project_root = _discover_graph_and_root(Path(path).expanduser())
+        derived = _sanitize_project_name(name) if name else _sanitize_project_name(project_root.name)
+        data = self.load()
+        data["projects"][derived] = {
+            "root": str(project_root),
+            "graph_path": str(graph_path),
+        }
+        self.save(data)
+        return {"name": derived, "root": str(project_root), "graph_path": str(graph_path)}
+
+    def activate(self, name: str) -> JSONDict:
+        data = self.load()
+        if name not in data["projects"]:
+            raise ValueError(f"Unknown project: {name}. Register it first via register_project.")
+        data["active"] = name
+        self.save(data)
+        entry = data["projects"][name]
+        return {"name": name, **entry}
+
+    def unregister(self, name: str) -> JSONDict:
+        data = self.load()
+        if name not in data["projects"]:
+            raise ValueError(f"Unknown project: {name}")
+        del data["projects"][name]
+        if data.get("active") == name:
+            data["active"] = None
+        self.save(data)
+        return {"removed": name}
+
+    def list_projects(self) -> JSONDict:
+        data = self.load()
+        return {
+            "active": data.get("active"),
+            "projects": [
+                {"name": name, **entry}
+                for name, entry in sorted(data["projects"].items())
+            ],
+        }
+
+    def resolve_graph_path(self, name: str) -> Optional[Path]:
+        data = self.load()
+        entry = data["projects"].get(name)
+        return Path(entry["graph_path"]) if entry else None
+
+    def active_graph_path(self) -> Optional[Path]:
+        data = self.load()
+        active = data.get("active")
+        if not active:
+            return None
+        entry = data["projects"].get(active)
+        return Path(entry["graph_path"]) if entry else None
+
+
+def _discover_graph_and_root(path: Path) -> tuple[Path, Path]:
+    """Resolve a user-provided path to (graph.json path, project root).
+
+    Accepts:
+      - a project root containing ``.llm-wiki/graph.json``
+      - the ``.llm-wiki`` directory itself
+      - a graph.json file (anywhere)
+    """
+
+    p = path.resolve() if path.exists() else path
+    if p.is_file() and p.suffix == ".json":
+        if p.parent.name == ".llm-wiki":
+            return p, p.parent.parent
+        return p, p.parent
+    if p.is_dir():
+        if p.name == ".llm-wiki" and (p / "graph.json").is_file():
+            return p / "graph.json", p.parent
+        nested = p / ".llm-wiki" / "graph.json"
+        if nested.is_file():
+            return nested, p
+        raise ValueError(f"No .llm-wiki/graph.json found at {p}")
+    raise ValueError(f"Path does not exist: {p}")
+
+
 class LLMWikiMCPServer:
     """Tool implementation backing the LLM-Wiki MCP JSON-RPC server."""
 
-    def __init__(self, default_graph_path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        default_graph_path: str | Path | None = None,
+        registry_path: str | Path | None = None,
+    ) -> None:
         self.default_graph_path = Path(default_graph_path) if default_graph_path else None
+        self.registry = ProjectRegistry(registry_path)
 
     def list_tools(self) -> List[JSONDict]:
+        graph_path_prop = {"type": "string", "description": "Path to a ResearchGraph JSON file. Defaults to active project, then server --graph."}
+        project_prop = {"type": "string", "description": "Registered project name (see list_projects). Overridden by graph_path."}
         return [
             {
                 "name": "schema",
@@ -78,7 +198,7 @@ class LLMWikiMCPServer:
                 "description": "Summarize a ResearchGraph JSON file with node/edge counts and type distributions.",
                 "inputSchema": {
                     "type": "object",
-                    "properties": {"graph_path": {"type": "string", "description": "Path to a ResearchGraph JSON file. Defaults to server --graph."}},
+                    "properties": {"graph_path": graph_path_prop, "project": project_prop},
                     "additionalProperties": False,
                 },
             },
@@ -88,7 +208,8 @@ class LLMWikiMCPServer:
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "graph_path": {"type": "string", "description": "Path to a ResearchGraph JSON file. Defaults to server --graph."},
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
                         "query": {"type": "string", "description": "Whitespace-separated search terms."},
                         "types": {"type": "array", "items": {"type": "string"}, "description": "Optional whitelist of node types."},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10},
@@ -103,7 +224,8 @@ class LLMWikiMCPServer:
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "graph_path": {"type": "string", "description": "Path to a ResearchGraph JSON file. Defaults to server --graph."},
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
                         "node_id": {"type": "string", "description": "Exact node id to inspect."},
                         "name": {"type": "string", "description": "Exact case-insensitive node name if node_id is omitted."},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
@@ -117,7 +239,8 @@ class LLMWikiMCPServer:
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "graph_path": {"type": "string", "description": "Path to a ResearchGraph JSON file. Defaults to server --graph."},
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
                         "query": {"type": "string", "description": "Whitespace-separated fact search terms."},
                         "current_only": {"type": "boolean", "default": False},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10},
@@ -132,10 +255,49 @@ class LLMWikiMCPServer:
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "graph_path": {"type": "string", "description": "Path to a ResearchGraph JSON file. Defaults to server --graph."},
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
                         "query": {"type": "string", "description": "Optional fact search terms."},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
                     },
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "list_projects",
+                "description": "List registered LLM-Wiki projects and the active project alias.",
+                "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+            },
+            {
+                "name": "register_project",
+                "description": "Register a project so future tool calls can reference it by name. Accepts a project root containing .llm-wiki/, the .llm-wiki directory itself, or a graph.json path.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string", "description": "Project root, .llm-wiki dir, or graph.json file."},
+                        "name": {"type": "string", "description": "Optional alias; defaults to the project directory name."},
+                    },
+                    "required": ["path"],
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "activate_project",
+                "description": "Set the active project so subsequent tool calls without graph_path/project use it.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"name": {"type": "string"}},
+                    "required": ["name"],
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "unregister_project",
+                "description": "Remove a project from the registry. Clears active if it matched.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"name": {"type": "string"}},
+                    "required": ["name"],
                     "additionalProperties": False,
                 },
             },
@@ -167,6 +329,23 @@ class LLMWikiMCPServer:
         if name == "timeline":
             facts = TemporalFactProjector().project(self._load_requested_graph(args))
             return timeline(facts, query=str(args.get("query", "")), limit=int(args.get("limit", 50)))
+        if name == "list_projects":
+            return self.registry.list_projects()
+        if name == "register_project":
+            path = args.get("path")
+            if not path:
+                raise ValueError("register_project requires 'path'")
+            return self.registry.register(str(path), name=args.get("name"))
+        if name == "activate_project":
+            project = args.get("name")
+            if not project:
+                raise ValueError("activate_project requires 'name'")
+            return self.registry.activate(str(project))
+        if name == "unregister_project":
+            project = args.get("name")
+            if not project:
+                raise ValueError("unregister_project requires 'name'")
+            return self.registry.unregister(str(project))
         raise ValueError(f"Unknown LLM-Wiki MCP tool: {name}")
 
     def graph_summary(self, graph: ResearchGraph) -> JSONDict:
@@ -211,10 +390,23 @@ class LLMWikiMCPServer:
 
     def _load_requested_graph(self, args: JSONDict) -> ResearchGraph:
         raw_path = args.get("graph_path")
-        graph_path = Path(raw_path) if raw_path else self.default_graph_path
-        if not graph_path:
-            raise ValueError("graph_path is required when the MCP server was not started with --graph")
-        return load_graph(graph_path)
+        if raw_path:
+            return load_graph(Path(raw_path))
+        project = args.get("project")
+        if project:
+            resolved = self.registry.resolve_graph_path(str(project))
+            if resolved is None:
+                raise ValueError(f"Unknown project: {project}. Use list_projects or register_project.")
+            return load_graph(resolved)
+        active = self.registry.active_graph_path()
+        if active is not None:
+            return load_graph(active)
+        if self.default_graph_path:
+            return load_graph(self.default_graph_path)
+        raise ValueError(
+            "No graph specified. Pass graph_path, project, activate a project, "
+            "or start the MCP server with --graph."
+        )
 
     def _find_node(self, graph: ResearchGraph, node_id: Optional[str], node_name: Optional[str]) -> Optional[ResearchNode]:
         if node_id:
@@ -286,8 +478,12 @@ def serve_stdio(server: LLMWikiMCPServer, stdin=sys.stdin, stdout=sys.stdout) ->
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Run the LLM-Wiki ResearchGraph MCP stdio server.")
     parser.add_argument("--graph", help="Default ResearchGraph JSON file used when tool calls omit graph_path")
+    parser.add_argument(
+        "--registry",
+        help=f"Path to project registry (default: {DEFAULT_REGISTRY_PATH})",
+    )
     args = parser.parse_args(argv)
-    serve_stdio(LLMWikiMCPServer(default_graph_path=args.graph))
+    serve_stdio(LLMWikiMCPServer(default_graph_path=args.graph, registry_path=args.registry))
     return 0
 
 
