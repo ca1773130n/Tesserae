@@ -27,6 +27,114 @@ raw sources → validated graph → reproducible projections → human/agent int
 - [Self-dogfood demo](docs/self-dogfood.md)
 - [Publishing checklist](docs/publishing-checklist.md)
 
+## Deploy a demo site
+
+Every compile produces a static site at `.llm-wiki/site/`. There are two ways to make it browsable.
+
+### A. Run a local demo server
+
+```bash
+cd .llm-wiki/site
+python3 -m http.server 8765 --bind 127.0.0.1
+# open http://127.0.0.1:8765/ in a browser
+```
+
+Bind to `0.0.0.0` instead of `127.0.0.1` if you want LAN devices (or a DDNS hostname with router port-forwarding) to reach it. The site is plain static HTML; any web server will do — Caddy, nginx, `serve`, GitHub Codespaces, etc.
+
+### B. Publish to GitHub Pages from the CLI
+
+The `project deploy` command pushes the compiled site to the `gh-pages` branch of your project's git origin and (optionally) enables Pages on the repo. It uses a temporary `git worktree`, so your working tree is never checked out to `gh-pages`.
+
+**Prerequisites**
+
+1. The project directory you ran `project init` in is itself a git repository with a GitHub origin remote. Confirm with `git remote get-url origin`.
+2. You can `git push` to that remote (SSH key or `gh auth login`).
+3. Optional but recommended: install the `gh` CLI so `--enable-pages` can flip the Pages toggle for you.
+
+**One-line deploy**
+
+```bash
+llm_wiki project deploy --build --enable-pages
+```
+
+- `--build` runs `project compile` first so the site is fresh.
+- `--enable-pages` calls `gh api` to enable Pages on `gh-pages` (idempotent; if `gh` isn't installed it prints the manual settings URL).
+
+After the push completes, the site is live at:
+
+```
+https://<github-owner>.github.io/<repo-name>/
+```
+
+GitHub Pages takes ~30–90 s to publish the first time.
+
+**Common variations**
+
+```bash
+# Stage + commit on gh-pages locally, but skip the push (preview the deploy):
+llm_wiki project deploy --dry-run
+
+# Use a different branch or remote:
+llm_wiki project deploy --branch site --remote upstream
+
+# Custom commit message:
+llm_wiki project deploy --message "Refresh wiki for 2026-W17 digest"
+
+# Deploy with uncommitted changes in your main tree (refused by default):
+llm_wiki project deploy --force
+
+# Force-push the deploy branch (refused for main/master regardless):
+llm_wiki project deploy --force-push
+
+# Custom domain via DNS — add this to .llm-wiki/config.json:
+#   "site_cname": "wiki.example.com"
+# then re-deploy; a CNAME file is written automatically.
+```
+
+**What gets pushed**
+
+- Every file under `.llm-wiki/site/` (HTML pages, AI siblings, `assets/`, `graph.json`, `graph.jsonld`, `llms.txt`, `llms-full.txt`, `manifest.json`, `search-index.json`, `sitemap.xml`, `rss.xml`, `robots.txt`, `ai-readme.md`).
+- A `.nojekyll` file at the root so Pages doesn't strip underscore-prefixed asset paths.
+- A `CNAME` file if `site_cname` is set in the project config.
+
+**Re-deploys are incremental.** The `gh-pages` branch advances with one new commit per `project deploy` run; old revisions stay in the branch history.
+
+**Using GitHub Actions instead.** A minimal workflow works too:
+
+```yaml
+# .github/workflows/deploy-wiki.yml
+name: Deploy LLM-Wiki
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -e .
+      - run: llm_wiki project compile
+      - run: llm_wiki project deploy --enable-pages --message "${{ github.sha }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+**Troubleshooting**
+
+| Symptom | Fix |
+|---|---|
+| `Cowardly refusing: working tree is dirty` | Commit or stash changes, or pass `--force`. |
+| `Site directory is empty — run project compile first` | Run `llm_wiki project compile` (or pass `--build`). |
+| `gh` not found | Install via `brew install gh` / `winget install GitHub.cli`, run `gh auth login`, or skip `--enable-pages` and toggle Pages manually in the repo Settings. |
+| Pages serves a 404 on a known URL | Wait 60 s for the first publish; then check `https://github.com/<owner>/<repo>/actions` for the `pages-build-deployment` workflow status. |
+| Custom domain shows "DNS check failed" | Make sure your DNS has an `A` record (185.199.108–111.153) or a `CNAME` to `<owner>.github.io`. |
+
 ## Current implementation
 
 The baseline implementation uses deterministic guardrail extractors and optional CLI/OAuth enrichment. `llm_wiki.research_graph` defines controlled node/edge vocabularies and prevents arbitrary node types such as `software`, `technique`, `domain`, or generic `Entity` from becoming graph schema.
