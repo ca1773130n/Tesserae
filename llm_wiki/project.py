@@ -17,6 +17,7 @@ from .agent_harness import AgentHarnessAdapter, SUPPORTED_AGENT_HARNESSES
 from .batch import BatchIngestRunner
 from .code_graph import CodeGraphExtractor
 from .cognee_adapter import CogneeResearchGraphAdapter
+from .deploy import GitHubPagesDeployer
 from .site import StaticSiteBuilder
 from .synthesis import SynthesisProjector
 from .wiki_projector import WikiLayerProjector
@@ -243,6 +244,32 @@ class ProjectWiki:
         name = cfg.get("name") or sanitize_server_name(self.project_root.name)
         self.paths.wiki.mkdir(parents=True, exist_ok=True)
         return StaticSiteBuilder(site_title=name).write_site(graph, self.paths.wiki, target)
+
+    def deploy_github_pages(
+        self,
+        branch: str = "gh-pages",
+        remote: str = "origin",
+        commit_message: Optional[str] = None,
+        dry_run: bool = False,
+        force: bool = False,
+        force_push: bool = False,
+        enable_pages: bool = False,
+    ) -> dict:
+        """Deploy the compiled site at ``self.paths.site`` to ``branch`` on ``remote``."""
+        cfg = self.config() if self.paths.config.exists() else {}
+        cname = cfg.get("site_cname")
+        deployer = GitHubPagesDeployer(self.project_root)
+        return deployer.deploy(
+            self.paths.site,
+            branch=branch,
+            remote=remote,
+            commit_message=commit_message,
+            dry_run=dry_run,
+            force=force,
+            force_push=force_push,
+            cname=cname,
+            enable_pages=enable_pages,
+        )
 
     def sync_graphiti(
         self,

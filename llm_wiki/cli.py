@@ -124,6 +124,20 @@ def project_main(argv: List[str] | None = None) -> int:
     site_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     site_parser.add_argument("--output", help="Site output directory; defaults to .llm-wiki/site")
 
+    deploy_parser = subparsers.add_parser(
+        "deploy",
+        help="Deploy the compiled site to the GitHub Pages branch of the project's git origin. Optionally rebuilds first and turns Pages on via the gh CLI.",
+    )
+    deploy_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    deploy_parser.add_argument("--branch", default="gh-pages", help="Branch to push the site to (default: gh-pages)")
+    deploy_parser.add_argument("--remote", default="origin", help="Git remote to push to (default: origin)")
+    deploy_parser.add_argument("--message", help="Commit message for the deploy commit")
+    deploy_parser.add_argument("--dry-run", action="store_true", help="Stage and commit but skip the final git push")
+    deploy_parser.add_argument("--build", action="store_true", help="Run project compile before deploying so the site is fresh")
+    deploy_parser.add_argument("--enable-pages", action="store_true", help="Enable GitHub Pages on the repo via the gh CLI (idempotent)")
+    deploy_parser.add_argument("--force", action="store_true", help="Allow deploying even when the project working tree is dirty")
+    deploy_parser.add_argument("--force-push", action="store_true", help="Use git push --force; refused for protected branches")
+
     serve_parser = subparsers.add_parser("serve", help="Serve the static frontend site")
     serve_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     serve_parser.add_argument("--host", default="127.0.0.1", help="Host to bind")
@@ -209,6 +223,28 @@ def project_main(argv: List[str] | None = None) -> int:
         wiki = ProjectWiki.load(args.project)
         result = wiki.build_site(output=args.output)
         print(f"Built frontend site: nodes={result['nodes']} edges={result['edges']} path={result['site_path']}")
+        return 0
+    if args.command == "deploy":
+        wiki = ProjectWiki.load(args.project)
+        if args.build:
+            wiki.compile()
+        try:
+            result = wiki.deploy_github_pages(
+                branch=args.branch,
+                remote=args.remote,
+                commit_message=args.message,
+                dry_run=args.dry_run,
+                force=args.force,
+                force_push=args.force_push,
+                enable_pages=args.enable_pages,
+            )
+        except Exception as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        print(f"Deployed to {result['site_url']}")
+        print(f"  branch: {result['branch']}")
+        print(f"  files: {result['files_uploaded']}")
+        print(f"  sha: {result['commit_sha']}")
         return 0
     if args.command == "serve":
         wiki = ProjectWiki.load(args.project)

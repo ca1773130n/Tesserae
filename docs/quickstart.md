@@ -138,3 +138,15 @@ llm_wiki project sync-graphiti \
   --neo4j-user neo4j \
   --neo4j-password '<password>'
 ```
+
+## 8. Deploy to GitHub Pages
+
+Push the compiled site at `.llm-wiki/site/` to the `gh-pages` branch of the project's git origin:
+
+```bash
+llm_wiki project deploy --build --enable-pages
+```
+
+`--build` runs `project compile` first so the site is fresh. `--enable-pages` turns Pages on via the `gh` CLI (idempotent; skipped with a hint if `gh` is missing). Use `--dry-run` to stage and commit without pushing, `--branch` / `--remote` to override defaults, and `--force` to allow deploying with a dirty working tree.
+
+The site becomes reachable at `https://<owner>.github.io/<repo>/`.
