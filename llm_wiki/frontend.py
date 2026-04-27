@@ -1,3 +1,4 @@
+# Deprecated: use llm_wiki.site.StaticSiteBuilder. This module retained for backward compatibility only.
 """Static frontend for compiled LLM-Wiki graphs.
 
 The frontend intentionally mirrors the strong ideas from Pratiyush/llm-wiki:
@@ -633,3 +634,15 @@ window.addEventListener('scroll', () => { const h=document.documentElement.scrol
 const typeFilter=document.getElementById('type-filter');
 typeFilter?.addEventListener('input', () => { const q=typeFilter.value.toLowerCase(); document.querySelectorAll('.type-section').forEach(sec => { sec.style.display = sec.innerText.toLowerCase().includes(q) ? '' : 'none'; }); });
 """
+
+
+# ---------------------------------------------------------------------------
+# Deprecation shim: redirect the public ``StaticSiteBuilder`` symbol to the
+# new package so legacy imports (``from llm_wiki.frontend import
+# StaticSiteBuilder``) pick up the redesigned builder transparently.
+# ---------------------------------------------------------------------------
+
+from llm_wiki.site import StaticSiteBuilder as _NewStaticSiteBuilder  # noqa: E402
+
+StaticSiteBuilder = _NewStaticSiteBuilder  # type: ignore[assignment,misc]
+
