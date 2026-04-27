@@ -1,28 +1,753 @@
-"""Stub for the synthesis projector. Filled in by Subagent B in Phase 1.
+"""Deterministic synthesis projector for the wiki layer.
 
-Generates the higher-order wiki layer: pulse, daily/weekly digests, topic and
-comparison summaries, and field overviews. Deterministic baseline; LLM upgrade
-is gated behind ``LLM_WIKI_SYNTHESIS_LLM=1``.
+Produces seven kinds of higher-order pages from a `ResearchGraph` (pulse,
+daily_digest, weekly, topic, comparison, field_overview) with stable, hashable
+markdown bodies and matching `Synthesis` nodes/edges. Idempotent: a page is
+only rewritten when its content hash changes.
+
+LLM upgrade is deliberately out of scope here; the heuristic baseline is the
+guaranteed-shippable path and runs without any external dependency.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
+import re
+from collections import Counter, defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
-from .research_graph import ResearchGraph
+from .research_graph import (
+    ResearchEdge,
+    ResearchGraph,
+    ResearchNode,
+    ResearchNodeType,
+    stable_id,
+)
 from .wiki_store import WikiPage, WikiPageStore
 
 
+GENERATOR = "heuristic-v1"
+
+
+_DAILY_RE = re.compile(r"data/research/daily/(\d{4}-\d{2}-\d{2})/")
+_WEEKLY_RE = re.compile(r"data/research/weekly/(\d{4}-W\d{2})/")
+
+
+_SOURCE_TYPES = {
+    ResearchNodeType.SOURCE_DOCUMENT,
+    ResearchNodeType.PAPER,
+    ResearchNodeType.REPOSITORY,
+    ResearchNodeType.PROJECT,
+}
+
+
+_CONCEPT_TYPES = {
+    ResearchNodeType.CONCEPT,
+    ResearchNodeType.TECHNICAL_TERM,
+    ResearchNodeType.MATHEMATICAL_CONCEPT,
+    ResearchNodeType.METHODOLOGICAL_CONCEPT,
+    ResearchNodeType.ALGORITHM,
+    ResearchNodeType.OBJECTIVE_FUNCTION,
+    ResearchNodeType.ARCHITECTURE_PATTERN,
+    ResearchNodeType.TRAINING_PARADIGM,
+    ResearchNodeType.INFERENCE_STRATEGY,
+    ResearchNodeType.EVALUATION_PROTOCOL,
+    ResearchNodeType.TASK,
+    ResearchNodeType.CAPABILITY,
+}
+
+
+_TOPIC_TYPES = {
+    ResearchNodeType.RESEARCH_TOPIC,
+    ResearchNodeType.APPROACH_FAMILY,
+}
+
+
+def _slugify(value: str) -> str:
+    safe = "".join(ch.lower() if ch.isalnum() else "-" for ch in value).strip("-")
+    while "--" in safe:
+        safe = safe.replace("--", "-")
+    if not safe:
+        safe = hashlib.sha1(value.encode("utf-8")).hexdigest()[:12]
+    return safe[:80]
+
+
+def _hash_body(body: str) -> str:
+    return "sha256-" + hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def _yaml_scalar(value: object) -> str:
+    if isinstance(value, str):
+        # Quote when the value contains characters YAML treats specially.
+        if value == "" or any(ch in value for ch in ":#\n\"'") or value.startswith(("-", "?", "&", "*", "[", "{", "!", "|", ">")):
+            escaped = value.replace("\\", "\\\\").replace("\"", "\\\"")
+            return f"\"{escaped}\""
+        return value
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return "null"
+    return str(value)
+
+
+def _yaml_list(values: Sequence[object]) -> str:
+    if not values:
+        return "[]"
+    parts = [_yaml_scalar(v) for v in values]
+    return "[" + ", ".join(parts) + "]"
+
+
+def _format_frontmatter(fm: Dict[str, object]) -> str:
+    lines = ["---"]
+    for key, value in fm.items():
+        if isinstance(value, list):
+            lines.append(f"{key}: {_yaml_list(value)}")
+        else:
+            lines.append(f"{key}: {_yaml_scalar(value)}")
+    lines.append("---")
+    return "\n".join(lines)
+
+
+def _node_field(node: ResearchNode) -> Optional[str]:
+    """Return the linked ResearchField name, if any (looked up at call site)."""
+    return None  # placeholder; field discovery is graph-wide, done in builder.
+
+
 class SynthesisProjector:
-    def __init__(self, wiki_store: WikiPageStore, manifest_path: Path | str | None = None) -> None:
+    """Deterministic synthesis layer over a `ResearchGraph`."""
+
+    def __init__(
+        self,
+        wiki_store: WikiPageStore,
+        manifest_path: Path | str | None = None,
+    ) -> None:
         self.wiki_store = wiki_store
         self.manifest_path = Path(manifest_path) if manifest_path else None
 
-    def project(self, graph: ResearchGraph) -> Tuple[ResearchGraph, List[WikiPage]]:
-        """Add Synthesis nodes to ``graph`` and write wiki pages. Returns the
-        updated graph and the list of pages that were (re)written.
+    # ------------------------------------------------------------------
+    # Entry point
+    # ------------------------------------------------------------------
 
-        Phase-0 stub: no-op pass-through. Subagent B replaces this body.
-        """
-        return graph, []
+    def project(self, graph: ResearchGraph) -> Tuple[ResearchGraph, List[WikiPage]]:
+        ctx = _GraphContext(graph)
+        generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        plans: List[_PagePlan] = []
+
+        plans.append(self._plan_pulse(ctx))
+        plans.extend(self._plan_daily(ctx))
+        plans.extend(self._plan_weekly(ctx))
+        plans.extend(self._plan_topics(ctx))
+        plans.extend(self._plan_comparisons(ctx))
+        plans.extend(self._plan_fields(ctx))
+
+        new_nodes: List[ResearchNode] = list(graph.nodes)
+        new_edges: List[ResearchEdge] = list(graph.edges)
+        written: List[WikiPage] = []
+
+        for plan in plans:
+            content_hash = _hash_body(plan.body)
+            frontmatter = {
+                "synthesis_kind": plan.kind,
+                "slug": plan.slug,
+                "title": plan.title,
+                "sources": sorted(plan.sources),
+                "inputs": sorted(plan.input_ids),
+                "generated_at": generated_at,
+                "generator": GENERATOR,
+                "content_hash": content_hash,
+            }
+            full_body = _format_frontmatter(frontmatter) + "\n\n" + plan.body
+            page = WikiPage(
+                kind="syntheses",
+                slug=plan.slug,
+                title=plan.title,
+                body=full_body,
+                path=self.wiki_store.path_for("syntheses", plan.slug),
+                frontmatter=frontmatter,
+            )
+            changed = self.wiki_store.write_page(page)
+            if changed:
+                written.append(page)
+
+            node_id = stable_id(ResearchNodeType.SYNTHESIS.value, plan.slug)
+            metadata = {
+                "synthesis_kind": plan.kind,
+                "content_hash": content_hash,
+                "generated_at": generated_at,
+                "input_ids": sorted(plan.input_ids),
+            }
+            new_nodes.append(
+                ResearchNode(
+                    id=node_id,
+                    name=plan.title,
+                    type=ResearchNodeType.SYNTHESIS,
+                    aliases=[],
+                    description=plan.summary,
+                    source_path=None,
+                    metadata=metadata,
+                )
+            )
+            for input_id in plan.input_ids:
+                new_edges.append(
+                    ResearchEdge(
+                        source=node_id,
+                        target=input_id,
+                        type="synthesizes",
+                        evidence=None,
+                        metadata={},
+                    )
+                )
+            for source_id in plan.summarize_targets:
+                new_edges.append(
+                    ResearchEdge(
+                        source=node_id,
+                        target=source_id,
+                        type="summarizes",
+                        evidence=None,
+                        metadata={},
+                    )
+                )
+
+        return ResearchGraph(nodes=new_nodes, edges=new_edges), written
+
+    # ------------------------------------------------------------------
+    # Plans
+    # ------------------------------------------------------------------
+
+    def _plan_pulse(self, ctx: "_GraphContext") -> "_PagePlan":
+        counts = ctx.type_counts()
+        recent = ctx.recent_nodes(limit=5)
+        top_fields = ctx.top_fields(limit=3)
+
+        lines: List[str] = []
+        lines.append("# Project Pulse")
+        lines.append("")
+        lines.append("Snapshot of the wiki at the most recent compile.")
+        lines.append("")
+        lines.append("## Counts")
+        for label, total in counts:
+            lines.append(f"- {label}: {total}")
+        lines.append("")
+        lines.append("## Recently added")
+        if recent:
+            for node in recent:
+                lines.append(f"- {node.name} ({node.type.value})")
+        else:
+            lines.append("- (none)")
+        lines.append("")
+        lines.append("## Top fields")
+        if top_fields:
+            for name, total in top_fields:
+                lines.append(f"- {name} — {total} linked artifacts")
+        else:
+            lines.append("- (none)")
+        lines.append("")
+        lines.append("## Tagline")
+        lines.append("LLM-Wiki — a self-evolving research notebook.")
+
+        body = "\n".join(lines).rstrip() + "\n"
+        sources = sorted({node.source_path for node in ctx.graph.nodes if node.source_path})
+        input_ids = sorted({node.id for node in recent})
+        # Pulse summarises every source document at a glance.
+        summarize_targets = sorted({node.id for node in ctx.graph.nodes if node.type in _SOURCE_TYPES})
+        return _PagePlan(
+            kind="pulse",
+            slug="pulse",
+            title="Project Pulse",
+            body=body,
+            summary="Top-level snapshot of the wiki at compile time.",
+            sources=sources,
+            input_ids=input_ids,
+            summarize_targets=summarize_targets,
+        )
+
+    def _plan_daily(self, ctx: "_GraphContext") -> List["_PagePlan"]:
+        plans: List[_PagePlan] = []
+        for date, source_nodes in sorted(ctx.daily_sources().items()):
+            slug = f"daily-{date}"
+            title = f"Daily Digest — {date}"
+            concept_ids: List[str] = []
+            concepts: List[ResearchNode] = []
+            seen_concept_ids = set()
+            for source in source_nodes:
+                for concept in ctx.concepts_for_source(source.id):
+                    if concept.id in seen_concept_ids:
+                        continue
+                    seen_concept_ids.add(concept.id)
+                    concepts.append(concept)
+                    concept_ids.append(concept.id)
+
+            lines: List[str] = []
+            lines.append(f"# Daily Digest — {date}")
+            lines.append("")
+            lines.append(f"Sources ingested under `data/research/daily/{date}/`.")
+            lines.append("")
+            lines.append("## Papers and repos")
+            for source in source_nodes:
+                lines.append(f"- {source.name} ({source.type.value})")
+            lines.append("")
+            lines.append("## Extracted concepts")
+            if concepts:
+                for concept in concepts:
+                    lines.append(f"- {concept.name} ({concept.type.value})")
+            else:
+                lines.append("- (none extracted)")
+
+            body = "\n".join(lines).rstrip() + "\n"
+            sources = sorted({n.source_path for n in source_nodes if n.source_path})
+            input_ids = sorted({n.id for n in source_nodes} | set(concept_ids))
+            plans.append(
+                _PagePlan(
+                    kind="daily_digest",
+                    slug=slug,
+                    title=title,
+                    body=body,
+                    summary=f"Digest of {date} ingest.",
+                    sources=sources,
+                    input_ids=input_ids,
+                    summarize_targets=sorted({n.id for n in source_nodes}),
+                )
+            )
+        return plans
+
+    def _plan_weekly(self, ctx: "_GraphContext") -> List["_PagePlan"]:
+        plans: List[_PagePlan] = []
+        for week, source_nodes in sorted(ctx.weekly_sources().items()):
+            slug = f"weekly-{week}"
+            title = f"Weekly Synthesis — {week}"
+
+            family_counts: Counter = Counter()
+            for source in source_nodes:
+                for family in ctx.approach_families_for_source(source.id):
+                    family_counts[family.name] += 1
+
+            lines: List[str] = []
+            lines.append(f"# Weekly Synthesis — {week}")
+            lines.append("")
+            lines.append(f"Coverage of `data/research/weekly/{week}/`.")
+            lines.append("")
+            lines.append("## Papers and repos")
+            for source in source_nodes:
+                lines.append(f"- {source.name} ({source.type.value})")
+            lines.append("")
+            lines.append("## Dominant approach families")
+            if family_counts:
+                for name, total in family_counts.most_common():
+                    lines.append(f"- {name} — {total} contributing source(s)")
+            else:
+                lines.append("- (none)")
+
+            body = "\n".join(lines).rstrip() + "\n"
+            sources = sorted({n.source_path for n in source_nodes if n.source_path})
+            input_ids = sorted({n.id for n in source_nodes})
+            plans.append(
+                _PagePlan(
+                    kind="weekly",
+                    slug=slug,
+                    title=title,
+                    body=body,
+                    summary=f"Synthesis of week {week}.",
+                    sources=sources,
+                    input_ids=input_ids,
+                    summarize_targets=sorted({n.id for n in source_nodes}),
+                )
+            )
+        return plans
+
+    def _plan_topics(self, ctx: "_GraphContext") -> List["_PagePlan"]:
+        plans: List[_PagePlan] = []
+        for topic in ctx.topics_with_threshold(min_papers=3):
+            papers = ctx.papers_for_topic(topic.id)
+            related_concepts = ctx.related_concepts_for_topic(topic.id)
+            related_repos = ctx.related_repos_for_topic(topic.id)
+            slug = f"topic-{_slugify(topic.name)}"
+            title = f"Topic — {topic.name}"
+
+            lines: List[str] = []
+            lines.append(f"# Topic — {topic.name}")
+            lines.append("")
+            lines.append(f"Type: {topic.type.value}.")
+            lines.append("")
+            lines.append("## Contributing papers")
+            for paper in papers:
+                lines.append(f"- {paper.name}")
+            lines.append("")
+            lines.append("## Related concepts")
+            if related_concepts:
+                for concept in related_concepts:
+                    lines.append(f"- {concept.name} ({concept.type.value})")
+            else:
+                lines.append("- (none)")
+            lines.append("")
+            lines.append("## Related repos")
+            if related_repos:
+                for repo in related_repos:
+                    lines.append(f"- {repo.name}")
+            else:
+                lines.append("- (none)")
+
+            body = "\n".join(lines).rstrip() + "\n"
+            sources = sorted({n.source_path for n in papers if n.source_path})
+            input_ids = sorted({topic.id, *(n.id for n in papers), *(n.id for n in related_concepts), *(n.id for n in related_repos)})
+            plans.append(
+                _PagePlan(
+                    kind="topic",
+                    slug=slug,
+                    title=title,
+                    body=body,
+                    summary=f"Topic synthesis for {topic.name}.",
+                    sources=sources,
+                    input_ids=input_ids,
+                    summarize_targets=sorted({n.id for n in papers}),
+                )
+            )
+        return plans
+
+    def _plan_comparisons(self, ctx: "_GraphContext") -> List["_PagePlan"]:
+        plans: List[_PagePlan] = []
+        for (family_a, family_b, shared) in ctx.competing_family_pairs():
+            slug = f"compare-{_slugify(family_a.name)}-vs-{_slugify(family_b.name)}"
+            title = f"Comparison — {family_a.name} vs {family_b.name}"
+            papers_a = ctx.papers_for_topic(family_a.id)
+            papers_b = ctx.papers_for_topic(family_b.id)
+
+            lines: List[str] = []
+            lines.append(f"# Comparison — {family_a.name} vs {family_b.name}")
+            lines.append("")
+            lines.append(f"Both approach families connect to `{shared.name}` ({shared.type.value}).")
+            lines.append("")
+            lines.append("| Family | Papers | Shared target |")
+            lines.append("| --- | --- | --- |")
+            lines.append(f"| {family_a.name} | {len(papers_a)} | {shared.name} |")
+            lines.append(f"| {family_b.name} | {len(papers_b)} | {shared.name} |")
+
+            body = "\n".join(lines).rstrip() + "\n"
+            sources = sorted({n.source_path for n in (papers_a + papers_b) if n.source_path})
+            input_ids = sorted({family_a.id, family_b.id, shared.id, *(n.id for n in papers_a + papers_b)})
+            plans.append(
+                _PagePlan(
+                    kind="comparison",
+                    slug=slug,
+                    title=title,
+                    body=body,
+                    summary=f"{family_a.name} vs {family_b.name} on {shared.name}.",
+                    sources=sources,
+                    input_ids=input_ids,
+                    summarize_targets=sorted({n.id for n in papers_a + papers_b}),
+                )
+            )
+        return plans
+
+    def _plan_fields(self, ctx: "_GraphContext") -> List["_PagePlan"]:
+        plans: List[_PagePlan] = []
+        for field in ctx.fields():
+            topics = ctx.topics_for_field(field.id)
+            concepts = ctx.concepts_for_field(field.id)
+            slug = f"field-{_slugify(field.name)}"
+            title = f"Field Overview — {field.name}"
+
+            lines: List[str] = []
+            lines.append(f"# Field Overview — {field.name}")
+            lines.append("")
+            if topics:
+                for topic in topics:
+                    paper_count = len(ctx.papers_for_topic(topic.id))
+                    lines.append(
+                        f"{topic.name} ({topic.type.value}) — {paper_count} contributing paper(s) connect to this thread."
+                    )
+                    lines.append("")
+            else:
+                lines.append("No linked topics yet.")
+                lines.append("")
+            lines.append("## Representative concepts")
+            if concepts:
+                for concept in concepts[:20]:
+                    lines.append(f"- {concept.name} ({concept.type.value})")
+            else:
+                lines.append("- (none)")
+
+            body = "\n".join(lines).rstrip() + "\n"
+            papers = ctx.papers_for_field(field.id)
+            sources = sorted({n.source_path for n in papers if n.source_path})
+            input_ids = sorted({field.id, *(n.id for n in topics), *(n.id for n in concepts)})
+            plans.append(
+                _PagePlan(
+                    kind="field_overview",
+                    slug=slug,
+                    title=title,
+                    body=body,
+                    summary=f"Overview of the {field.name} research field.",
+                    sources=sources,
+                    input_ids=input_ids,
+                    summarize_targets=sorted({n.id for n in papers}),
+                )
+            )
+        return plans
+
+
+# ----------------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------------
+
+
+class _PagePlan:
+    __slots__ = ("kind", "slug", "title", "body", "summary", "sources", "input_ids", "summarize_targets")
+
+    def __init__(
+        self,
+        kind: str,
+        slug: str,
+        title: str,
+        body: str,
+        summary: str,
+        sources: List[str],
+        input_ids: List[str],
+        summarize_targets: List[str],
+    ) -> None:
+        self.kind = kind
+        self.slug = slug
+        self.title = title
+        self.body = body
+        self.summary = summary
+        self.sources = sources
+        self.input_ids = input_ids
+        self.summarize_targets = summarize_targets
+
+
+class _GraphContext:
+    """Indices over a `ResearchGraph` so plan builders stay declarative."""
+
+    def __init__(self, graph: ResearchGraph) -> None:
+        self.graph = graph
+        self.nodes_by_id: Dict[str, ResearchNode] = {n.id: n for n in graph.nodes}
+        self.out_edges: Dict[str, List[ResearchEdge]] = defaultdict(list)
+        self.in_edges: Dict[str, List[ResearchEdge]] = defaultdict(list)
+        for edge in graph.edges:
+            self.out_edges[edge.source].append(edge)
+            self.in_edges[edge.target].append(edge)
+
+    # -- type-based slices ---------------------------------------------
+
+    def _nodes_of(self, types) -> List[ResearchNode]:
+        wanted = types if isinstance(types, set) else {types}
+        return [n for n in self.graph.nodes if n.type in wanted]
+
+    def fields(self) -> List[ResearchNode]:
+        return sorted(
+            self._nodes_of({ResearchNodeType.RESEARCH_FIELD}),
+            key=lambda n: n.name,
+        )
+
+    def papers(self) -> List[ResearchNode]:
+        return self._nodes_of({ResearchNodeType.PAPER})
+
+    def repositories(self) -> List[ResearchNode]:
+        return self._nodes_of({ResearchNodeType.REPOSITORY})
+
+    # -- pulse helpers --------------------------------------------------
+
+    def type_counts(self) -> List[Tuple[str, int]]:
+        counter: Counter = Counter()
+        for node in self.graph.nodes:
+            counter[node.type.value] += 1
+        # Stable sort: alphabetical on type value.
+        return sorted(counter.items(), key=lambda item: item[0])
+
+    def recent_nodes(self, limit: int) -> List[ResearchNode]:
+        eligible = [
+            n for n in self.graph.nodes
+            if n.type in (_CONCEPT_TYPES | {ResearchNodeType.PAPER, ResearchNodeType.REPOSITORY} | _TOPIC_TYPES)
+        ]
+        # Deterministic: prefer nodes whose metadata has analysis_date; fall back
+        # to sorted order on (type, name).
+        with_date = [n for n in eligible if n.metadata.get("analysis_date")]
+        without_date = [n for n in eligible if not n.metadata.get("analysis_date")]
+        with_date.sort(key=lambda n: (str(n.metadata.get("analysis_date")), n.name), reverse=True)
+        without_date.sort(key=lambda n: (n.type.value, n.name))
+        ordered = with_date + without_date
+        return ordered[:limit]
+
+    def top_fields(self, limit: int) -> List[Tuple[str, int]]:
+        results = []
+        for field in self.fields():
+            count = sum(
+                1 for edge in self.in_edges.get(field.id, [])
+                if edge.type == "part_of"
+            )
+            results.append((field.name, count))
+        results.sort(key=lambda item: (-item[1], item[0]))
+        return results[:limit]
+
+    # -- daily/weekly ---------------------------------------------------
+
+    def daily_sources(self) -> Dict[str, List[ResearchNode]]:
+        buckets: Dict[str, List[ResearchNode]] = defaultdict(list)
+        for node in self.graph.nodes:
+            if node.type not in _SOURCE_TYPES or not node.source_path:
+                continue
+            match = _DAILY_RE.search(node.source_path)
+            if match:
+                buckets[match.group(1)].append(node)
+        for date, items in buckets.items():
+            items.sort(key=lambda n: (n.type.value, n.name))
+        return buckets
+
+    def weekly_sources(self) -> Dict[str, List[ResearchNode]]:
+        buckets: Dict[str, List[ResearchNode]] = defaultdict(list)
+        for node in self.graph.nodes:
+            if node.type not in _SOURCE_TYPES or not node.source_path:
+                continue
+            match = _WEEKLY_RE.search(node.source_path)
+            if match:
+                buckets[match.group(1)].append(node)
+        for week, items in buckets.items():
+            items.sort(key=lambda n: (n.type.value, n.name))
+        return buckets
+
+    def concepts_for_source(self, source_id: str) -> List[ResearchNode]:
+        out: List[ResearchNode] = []
+        seen = set()
+        for edge in self.out_edges.get(source_id, []):
+            target = self.nodes_by_id.get(edge.target)
+            if target and target.type in _CONCEPT_TYPES and target.id not in seen:
+                seen.add(target.id)
+                out.append(target)
+        out.sort(key=lambda n: (n.type.value, n.name))
+        return out
+
+    def approach_families_for_source(self, source_id: str) -> List[ResearchNode]:
+        out: List[ResearchNode] = []
+        seen = set()
+        for edge in self.out_edges.get(source_id, []):
+            if edge.type != "belongs_to_approach_family":
+                continue
+            target = self.nodes_by_id.get(edge.target)
+            if target and target.id not in seen:
+                seen.add(target.id)
+                out.append(target)
+        out.sort(key=lambda n: n.name)
+        return out
+
+    # -- topics ---------------------------------------------------------
+
+    def topics_with_threshold(self, min_papers: int) -> List[ResearchNode]:
+        topics = self._nodes_of(_TOPIC_TYPES)
+        result = [t for t in topics if len(self.papers_for_topic(t.id)) >= min_papers]
+        result.sort(key=lambda n: (n.type.value, n.name))
+        return result
+
+    def papers_for_topic(self, topic_id: str) -> List[ResearchNode]:
+        out: List[ResearchNode] = []
+        seen = set()
+        for edge in self.in_edges.get(topic_id, []):
+            source = self.nodes_by_id.get(edge.source)
+            if source and source.type == ResearchNodeType.PAPER and source.id not in seen:
+                seen.add(source.id)
+                out.append(source)
+        out.sort(key=lambda n: n.name)
+        return out
+
+    def related_concepts_for_topic(self, topic_id: str) -> List[ResearchNode]:
+        # Concepts mentioned by any paper attached to this topic.
+        papers = self.papers_for_topic(topic_id)
+        out: Dict[str, ResearchNode] = {}
+        for paper in papers:
+            for concept in self.concepts_for_source(paper.id):
+                out[concept.id] = concept
+        ordered = sorted(out.values(), key=lambda n: (n.type.value, n.name))
+        return ordered
+
+    def related_repos_for_topic(self, topic_id: str) -> List[ResearchNode]:
+        papers = self.papers_for_topic(topic_id)
+        repos: Dict[str, ResearchNode] = {}
+        # Repos that share an approach_family with the topic, OR repos linked
+        # directly to the topic via belongs_to_approach_family.
+        for edge in self.in_edges.get(topic_id, []):
+            source = self.nodes_by_id.get(edge.source)
+            if source and source.type == ResearchNodeType.REPOSITORY:
+                repos[source.id] = source
+        return sorted(repos.values(), key=lambda n: n.name)
+
+    # -- comparisons ----------------------------------------------------
+
+    def competing_family_pairs(self) -> List[Tuple[ResearchNode, ResearchNode, ResearchNode]]:
+        families = self._nodes_of({ResearchNodeType.APPROACH_FAMILY})
+        family_targets: Dict[str, List[ResearchNode]] = {}
+        for fam in families:
+            connected: List[ResearchNode] = []
+            seen = set()
+            # Outbound edges from family (e.g., uses Task/Benchmark) and inbound
+            # edges into family from papers — inspect both directions for
+            # shared Task/Benchmark links.
+            for edge in self.out_edges.get(fam.id, []):
+                target = self.nodes_by_id.get(edge.target)
+                if target and target.type in {ResearchNodeType.TASK, ResearchNodeType.BENCHMARK} and target.id not in seen:
+                    seen.add(target.id)
+                    connected.append(target)
+            # Pull through papers: papers belonging to this family, and the tasks
+            # those papers address.
+            for paper in self.papers_for_topic(fam.id):
+                for edge in self.out_edges.get(paper.id, []):
+                    target = self.nodes_by_id.get(edge.target)
+                    if target and target.type in {ResearchNodeType.TASK, ResearchNodeType.BENCHMARK} and target.id not in seen:
+                        seen.add(target.id)
+                        connected.append(target)
+            family_targets[fam.id] = connected
+
+        results: List[Tuple[ResearchNode, ResearchNode, ResearchNode]] = []
+        ordered = sorted(families, key=lambda n: n.name)
+        for i in range(len(ordered)):
+            for j in range(i + 1, len(ordered)):
+                a = ordered[i]
+                b = ordered[j]
+                a_targets = {n.id: n for n in family_targets.get(a.id, [])}
+                b_targets = {n.id: n for n in family_targets.get(b.id, [])}
+                shared_ids = sorted(set(a_targets) & set(b_targets))
+                if not shared_ids:
+                    continue
+                shared = a_targets[shared_ids[0]]
+                results.append((a, b, shared))
+        return results
+
+    # -- fields ---------------------------------------------------------
+
+    def topics_for_field(self, field_id: str) -> List[ResearchNode]:
+        topics: Dict[str, ResearchNode] = {}
+        # A topic is "linked" to a field if any paper in that topic is part_of
+        # the field (via the paper -> field part_of edge).
+        for edge in self.in_edges.get(field_id, []):
+            if edge.type != "part_of":
+                continue
+            source = self.nodes_by_id.get(edge.source)
+            if not source:
+                continue
+            if source.type in _TOPIC_TYPES:
+                topics[source.id] = source
+                continue
+            # If the source is a paper, harvest topics it belongs to.
+            if source.type == ResearchNodeType.PAPER:
+                for outgoing in self.out_edges.get(source.id, []):
+                    candidate = self.nodes_by_id.get(outgoing.target)
+                    if candidate and candidate.type in _TOPIC_TYPES:
+                        topics[candidate.id] = candidate
+        return sorted(topics.values(), key=lambda n: (n.type.value, n.name))
+
+    def concepts_for_field(self, field_id: str) -> List[ResearchNode]:
+        concepts: Dict[str, ResearchNode] = {}
+        for paper in self.papers_for_field(field_id):
+            for concept in self.concepts_for_source(paper.id):
+                concepts[concept.id] = concept
+        return sorted(concepts.values(), key=lambda n: (n.type.value, n.name))
+
+    def papers_for_field(self, field_id: str) -> List[ResearchNode]:
+        out: Dict[str, ResearchNode] = {}
+        for edge in self.in_edges.get(field_id, []):
+            if edge.type != "part_of":
+                continue
+            source = self.nodes_by_id.get(edge.source)
+            if source and source.type == ResearchNodeType.PAPER:
+                out[source.id] = source
+        return sorted(out.values(), key=lambda n: n.name)
