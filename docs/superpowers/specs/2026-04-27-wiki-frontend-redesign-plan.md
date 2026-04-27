@@ -1,0 +1,235 @@
+# LLM-Wiki Frontend Redesign — Implementation Plan
+
+Companion to `2026-04-27-wiki-frontend-redesign-design.md`. This plan sequences work into **phases** so we can run independent **subagents in parallel** within each phase, then converge.
+
+## Conventions
+
+- All paths are relative to repo root `/Users/neo/Developer/Projects/LLM-Wiki`.
+- Tests run via `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest tests/ -q`.
+- Each subagent commits their own changes locally with a clear message; the main thread merges/reorders if needed.
+- No subagent runs `git push`. No subagent edits files outside its assigned list.
+
+---
+
+## Phase 0 — Schema bedrock (sequential, blocks everything)
+
+**Owner:** main thread (small enough to do inline before dispatching).
+
+**Task 0.1** Extend `llm_wiki/research_graph.py`:
+- Add `ResearchNodeType.SYNTHESIS = "Synthesis"`. Append to `ALLOWED_NODE_TYPES` automatically (it's already derived from the enum).
+- Add `"synthesizes"` and `"summarizes"` to `ALLOWED_EDGE_TYPES`.
+- Update tests where the type set is asserted (search for `ALLOWED_NODE_TYPES` and `Synthesis`).
+
+**Task 0.2** Create empty stubs (so subagents can import in parallel):
+- `llm_wiki/synthesis.py` (single class `SynthesisProjector` with `write(graph, wiki_root) -> dict` returning `{}`).
+- `llm_wiki/wiki_store.py` (single class `WikiPageStore` with method stubs `read_all`, `write_page`, `slug_for`, `path_for`).
+- `llm_wiki/site/__init__.py` re-exporting current `StaticSiteBuilder` from `llm_wiki.frontend` so existing imports keep working.
+
+After Phase 0, run `pytest -q`; everything must still be green.
+
+---
+
+## Phase 1 — Wiki layer + synthesis (parallel)
+
+Run **subagents A, B, C in parallel**. None of them touches `frontend.py`.
+
+### Subagent A — `WikiPageStore`
+
+**Files owned:**
+- `llm_wiki/wiki_store.py`
+- `tests/test_wiki_store.py` (new)
+
+**Deliverables:**
+- `WikiPage` dataclass: `kind: str`, `slug: str`, `title: str`, `body: str`, `frontmatter: dict`, `path: Path`.
+- `WikiPageStore(root: Path)`:
+  - `path_for(kind, slug) -> Path` returns `root / kind / f"{slug}.md"`.
+  - `slug_for(name: str) -> str` reuses canonical slug logic from `frontend.py` (`canonical_slug` exists; lift it into a small shared helper or duplicate carefully).
+  - `write_page(page) -> bool` — returns True if file changed, False if skipped due to identical body (idempotence via sha256 hash on body excluding frontmatter `generated_at`).
+  - `read_page(path) -> WikiPage` parses YAML frontmatter + markdown body.
+  - `list_pages(kind: str) -> list[WikiPage]`.
+- Unit tests: write twice with same body → second write returns False; frontmatter parse roundtrip.
+
+**Out of scope:** rendering HTML, generating syntheses.
+
+### Subagent B — `SynthesisProjector`
+
+**Files owned:**
+- `llm_wiki/synthesis.py`
+- `tests/test_synthesis.py` (new)
+- `tests/fixtures/synthesis/` (small fixture corpus)
+
+**Deliverables:**
+- `SynthesisProjector(wiki_store, manifest_path)`:
+  - `project(graph: ResearchGraph) -> tuple[ResearchGraph, list[WikiPage]]`
+  - Generates the seven kinds from §4 of the design spec: pulse, daily_digest (when `data/research/daily/<date>` is referenced by ≥1 source), weekly, topic, comparison, field_overview.
+  - For each, writes a deterministic markdown body via small templates pulled from a `_TEMPLATES` dict.
+  - Adds `Synthesis` nodes + `synthesizes` / `summarizes` edges into the returned graph.
+  - Idempotent: `content_hash` = sha256(body); skip rewrite when unchanged.
+- Tests:
+  - Run twice over the same fixture → second run produces zero file diffs.
+  - Topic synthesis emits a node with metadata `synthesis_kind="topic"`.
+  - Pulse synthesis exists exactly once per compile.
+
+**Depends on:** Phase 0 schema additions, Subagent A's `WikiPageStore` (use the path stubbed in Phase 0; sync with A by importing `WikiPageStore`).
+
+### Subagent C — Test fixture corpus
+
+**Files owned:**
+- `tests/fixtures/wiki_corpus/` (new)
+- `tests/conftest.py` (extend, not rewrite)
+
+**Deliverables:**
+- A small but representative corpus: 4 papers (markdown), 2 repos (markdown), 2 docs files, 1 daily folder, 1 weekly folder under `tests/fixtures/wiki_corpus/data/research/`.
+- A `wiki_sample` pytest fixture that builds a `ResearchGraph` from this corpus using `ResearchGraphExtractor`.
+
+**Used by:** Phase 2 site renderer tests.
+
+---
+
+## Phase 2 — Site renderer split (parallel after Phase 1)
+
+After Subagent A + B + C land, run **subagents D, E, F, G in parallel**.
+
+### Subagent D — Site package skeleton + tokens + components
+
+**Files owned:**
+- `llm_wiki/site/__init__.py` (replace the temporary shim)
+- `llm_wiki/site/tokens.py`
+- `llm_wiki/site/components.py`
+- `llm_wiki/site/relevance.py`
+
+**Deliverables:**
+- `tokens.py`: exports `CSS` string with all design tokens from §5.1, dark theme included; typography rules; layout primitives.
+- `components.py`: pure functions returning HTML strings — `breadcrumbs`, `card`, `badge`, `tag_chip`, `node_table`, `edge_list`, `sparkline_svg`, `heatmap_svg`, `ai_siblings_footer`, `toc`, `page_shell`.
+- `relevance.py`: 4-signal relevance — `score(node_a, node_b, graph_context, signals=("link","source","adamic_adar","type"))` with weights matching the design spec.
+- Unit tests: each component renderer returns valid HTML with required markers (assert classes/elements present).
+
+### Subagent E — Page templates
+
+**Files owned:**
+- `llm_wiki/site/pages.py`
+- `llm_wiki/site/js.py`
+- `tests/test_site_pages.py` (new, can extend `tests/test_frontend.py` selectively)
+
+**Deliverables:**
+- `pages.py` exposes one function per route in §3.1: `render_home`, `render_sources_index`, `render_source_detail`, `render_concepts_index`, `render_concept_detail`, `render_entities_index`, `render_entity_detail`, `render_papers_index`, `render_paper_detail`, `render_repos_index`, `render_repo_detail`, `render_topics_index`, `render_topic_detail`, `render_syntheses_index`, `render_synthesis_detail`, `render_questions_index`, `render_question_detail`, `render_timeline`, `render_graph_view`, `render_about`.
+- All page renderers consume a single `SiteContext` plus the relevant model object(s); they never reach back into the graph globally.
+- `js.py`: search-palette JS, theme-toggle JS, sigma graph JS — refactored from current `frontend.py`.
+- Tests cover: every route renders; every page contains breadcrumbs + TOC + AI siblings footer; no code-class detail page is generated.
+
+### Subagent F — Exports + search
+
+**Files owned:**
+- `llm_wiki/site/exports.py`
+- `llm_wiki/site/search.py`
+- `tests/test_site_exports.py`
+
+**Deliverables:**
+- `exports.py`:
+  - `render_llms_txt(...)`, `render_llms_full_txt(...)` (carry over from current frontend, scoped to wiki layer types only).
+  - `render_graph_jsonld(graph, context)` — schema.org-flavored JSON-LD (`"@type": "Dataset"` root, nodes as `Article`/`DefinedTerm`/`SoftwareSourceCode` etc.).
+  - `render_sitemap_xml(routes)`.
+  - `render_rss_xml(recent_syntheses)` — last 30 syntheses.
+  - `render_robots_txt()`, `render_ai_readme()`.
+  - Per-page sibling: `write_siblings(page_html_path, page_record)` writes `.txt` + `.json` next to the HTML.
+- `search.py`: builds `search-index.json` from the wiki layer only (sources, concepts, entities, papers, repos, topics, syntheses, questions). No code-class entries.
+- Tests: assert each artifact produces valid JSON / XML / well-formed text; AI siblings exist for two arbitrary pages.
+
+### Subagent G — Top-level `StaticSiteBuilder`
+
+**Files owned:**
+- `llm_wiki/frontend.py` (now becomes a small shim) and `llm_wiki/site/__init__.py` (final form)
+- `tests/test_frontend.py` (replace assertions matching the new IA — keep the link-integrity test)
+
+**Deliverables:**
+- New `StaticSiteBuilder` class in `llm_wiki/site/__init__.py`:
+  - `write_site(graph, wiki_root, output_dir)` — reads `wiki_root` (the markdown wiki) + graph, walks the routes, calls renderers, writes outputs, calls export functions, runs sibling writer.
+  - Wipes target dir at start (already implemented). Skips wiping if `--keep-stale` is passed (CLI plumbing follow-up).
+- `frontend.py` becomes `from llm_wiki.site import StaticSiteBuilder` plus a deprecation comment so existing call sites (`project.py`) keep working without a one-shot rename.
+- `tests/test_frontend.py` rewritten to validate the new IA: assert routes exist, no `nodes/codeclass-*.html` is generated, link-integrity passes for all internal anchors.
+
+**Depends on:** D, E, F shipping their modules.
+
+---
+
+## Phase 3 — Pipeline integration
+
+Single sequential step (small).
+
+**Owner:** main thread.
+
+- `llm_wiki/project.py::_write_artifacts`:
+  ```
+  graph = ...
+  wiki_store = WikiPageStore(self.paths.wiki)   # new path: .llm-wiki/wiki/
+  graph, _ = SynthesisProjector(wiki_store, self.paths.manifest).project(graph)
+  self.paths.graph.write_text(graph.to_json(indent=2) + "\n", encoding="utf-8")
+  ...
+  StaticSiteBuilder(...).write_site(graph, self.paths.wiki, self.paths.site)
+  ```
+- Add `wiki: Path = self.root / "wiki"` to `ProjectPaths`.
+- Update `ProjectWiki.init` to create `wiki_root` with empty `index.md`/`overview.md`/`log.md`.
+- Run end-to-end `ProjectWiki(...).compile()` against the fixture corpus from Subagent C; assert site/ is byte-identical across two consecutive compiles.
+
+---
+
+## Phase 4 — Documentation refresh
+
+**Owner:** main thread (or a dedicated small subagent if available).
+
+- `README.md`: replace the "browsable LLM-Wiki frontend" paragraph with a 3-sentence description of the new IA + a screenshot placeholder reference.
+- `docs/architecture.md`: update the data-flow diagram (Phase 1 + 2 boxes) to show the wiki layer.
+- `docs/feature-map.md`: add a "Frontend redesign 2026-04" row.
+- `docs/frontend-redesign.md` (new): walk through every route with a one-paragraph explanation.
+
+No code changes here; safe to land separately.
+
+---
+
+## Phase 5 — Verification
+
+Sequential.
+
+1. `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest tests/ -q` — all green.
+2. From repo root, run `python3 -m llm_wiki.cli project compile --changed-only` (or the equivalent), then a second time. `git status` on `.llm-wiki/site/` and `.llm-wiki/wiki/` must show no changes.
+3. Open `.llm-wiki/site/index.html` in a browser, click into Sources / Concepts / Papers / Topics / Syntheses / Graph. Confirm: no broken links, no empty pages, no `CodeClass` pages, command palette works, theme toggle works.
+4. Run `python3 -c "import json; d = json.load(open('.llm-wiki/site/manifest.json')); print(len(d['files']))"` and sanity-check counts.
+5. Manual spot check: pick one paper page, confirm related concepts list is non-trivial and the AI siblings download.
+
+---
+
+## Dependency graph
+
+```
+Phase 0 (schema bedrock)
+  │
+  ├──▶ Subagent A (wiki_store)
+  ├──▶ Subagent B (synthesis)        ──depends on A's import surface
+  └──▶ Subagent C (fixtures)
+       │
+       ▼
+Phase 2 in parallel:
+  ├──▶ Subagent D (tokens/components/relevance)
+  ├──▶ Subagent E (pages + js)        ──depends on D
+  ├──▶ Subagent F (exports + search)
+  └──▶ Subagent G (StaticSiteBuilder) ──depends on D, E, F
+       │
+       ▼
+Phase 3 (pipeline integration)
+  │
+  ▼
+Phase 4 (docs)
+  │
+  ▼
+Phase 5 (verification)
+```
+
+A and C are independent. B can stub-import `WikiPageStore` ahead of A's full landing because Phase 0 creates the empty class; final tests run after merge.
+
+D is independent. E imports D's components. F is independent. G depends on D/E/F.
+
+We use `superpowers:dispatching-parallel-agents` to run A+B+C as one wave, then D+E+F+G as a second wave.
+
+## Rollback plan
+
+If Phase 2 destabilizes more than expected, revert subagent G's commit to restore the old `frontend.py`; subagents A/B can stay (they're orthogonal). The schema additions in Phase 0 are forward-compatible (additive enum + edge types) and need no rollback.
