@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import shutil
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -64,6 +65,8 @@ class StaticSiteBuilder:
 
     def write_site(self, graph: ResearchGraph, output_dir: str | Path) -> Dict[str, object]:
         out = Path(output_dir)
+        if out.exists():
+            shutil.rmtree(out)
         (out / "assets").mkdir(parents=True, exist_ok=True)
         (out / "nodes").mkdir(parents=True, exist_ok=True)
         (out / "sources").mkdir(parents=True, exist_ok=True)
@@ -151,7 +154,7 @@ def build_search_index(graph: ResearchGraph, context: SiteContext | None = None)
 
 
 def render_home(title: str, graph: ResearchGraph, context: SiteContext, search_index: List[Dict[str, object]]) -> str:
-    research = [n for n in graph.nodes if node_kind(n) == "research"]
+    wiki_nodes = [n for n in graph.nodes if n.type in {ResearchNodeType.SOURCE_DOCUMENT, ResearchNodeType.CONCEPT}]
     development = [n for n in graph.nodes if node_kind(n) == "development"]
     high_degree = sorted(graph.nodes, key=lambda n: len(context.outgoing.get(n.id, [])) + len(context.incoming.get(n.id, [])), reverse=True)[:12]
     recent_sources = sorted(context.source_counts.items(), key=lambda item: (-item[1], item[0]))[:10]
@@ -169,8 +172,8 @@ def render_home(title: str, graph: ResearchGraph, context: SiteContext, search_i
 </section>
 <section class="stats">{render_stats(context, len(graph.nodes), len(graph.edges))}</section>
 <section class="grid two">
-  <article class="panel"><h2>Research slice</h2><p class="muted">Claims, evidence, methods, datasets, papers, and conceptual pages.</p>{render_node_cards(research[:10], context)}</article>
-  <article class="panel"><h2>Development slice</h2><p class="muted">Repository, source files, classes, functions, dependencies, and code structure.</p>{render_node_cards(development[:10], context)}</article>
+  <article class="panel"><h2>Wiki documents</h2><p class="muted">Repository README/docs become source-document pages with section headings and provenance, so each compile adds navigable wiki structure.</p>{render_node_cards(wiki_nodes[:10], context)}</article>
+  <article class="panel"><h2>Code graph</h2><p class="muted">Source files, classes, functions, dependencies, and relations extracted from the repository.</p>{render_node_cards(development[:10], context)}</article>
 </section>
 <section class="grid two">
   <article class="panel"><h2>Most connected nodes</h2>{render_node_table(high_degree, context)}</article>
@@ -182,12 +185,12 @@ def render_home(title: str, graph: ResearchGraph, context: SiteContext, search_i
 
 
 def render_nodes_index(title: str, graph: ResearchGraph, context: SiteContext, search_index: List[Dict[str, object]]) -> str:
-    groups: Dict[str, List[ResearchNode]] = defaultdict(list)
-    for node in sorted(graph.nodes, key=lambda n: (n.type.value, n.name.lower())):
-        groups[node.type.value].append(node)
+    by_type: Dict[str, List[ResearchNode]] = defaultdict(list)
+    for node in graph.nodes:
+        by_type[node.type.value].append(node)
     sections = []
-    for type_name, nodes in sorted(groups.items()):
-        sections.append(f"<section class='panel type-section' data-type='{esc(type_name)}'><h2>{esc(type_name)} <span class='count'>{len(nodes)}</span></h2>{render_node_table(nodes, context, limit=200)}</section>")
+    for node_type, nodes in sorted(by_type.items()):
+        sections.append(f"<section class='panel node-section' data-type='{esc(node_type)}'><h2>{esc(node_type)} <span>{len(nodes)}</span></h2>{render_node_table(sorted(nodes, key=lambda n: n.name.lower()), context, limit=500, depth=1)}</section>")
     body = f"""
 <section class="panel"><h1>Nodes</h1><p class="lead">Every typed graph node. Filter by type or use the command palette.</p><div class="filter-row"><input id="type-filter" placeholder="Filter node types or names…"><button class="button" data-open-search>Search all</button></div></section>
 {''.join(sections)}
@@ -260,7 +263,7 @@ def render_graph_page(title: str, graph: ResearchGraph, context: SiteContext, se
     <div id="ctx-menu" role="menu" aria-label="Node actions"><div class="ctx-header" id="ctx-target">—</div><button type="button" role="menuitem" data-action="open">Open page <span class="ctx-kbd">Enter</span></button><button type="button" role="menuitem" data-action="neighbours">Find neighbours <span class="ctx-kbd">N</span></button><button type="button" role="menuitem" data-action="copy-id">Copy node id <span class="ctx-kbd">C</span></button></div>
   </div>
 </section>
-<section class="panel"><h2>Top connected nodes</h2>{render_node_table(top, context)}</section>
+<section class="panel"><h2>Top connected nodes</h2>{render_node_table(top, context, depth=1)}</section>
 <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js" integrity="sha384-yxKDWWf0wwdUj/gPeuL11czrnKFQROnLgY8ll7En9NYoXibgg3C6NK/UDHNtUgWJ" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script id="graph-data" type="application/json">{safe_json_for_script(payload)}</script>
 <script>{GRAPH_JS}</script>
@@ -271,6 +274,7 @@ def render_graph_page(title: str, graph: ResearchGraph, context: SiteContext, se
 def render_source_page(title: str, source_path: str, graph: ResearchGraph, context: SiteContext, search_index: List[Dict[str, object]]) -> str:
     nodes = sorted([node for node in graph.nodes if node.source_path == source_path], key=lambda n: (n.type.value, n.name))
     local_edges = [edge for edge in graph.edges if edge.source in {n.id for n in nodes} or edge.target in {n.id for n in nodes}]
+    excerpt = render_source_excerpt(source_path)
     body = f"""
 <section class="panel">
   <p class="eyebrow">source evidence</p>
@@ -278,11 +282,12 @@ def render_source_page(title: str, source_path: str, graph: ResearchGraph, conte
   <p class="lead"><code>{esc(source_path)}</code></p>
   <div class="stats"><span>{len(nodes)} nodes</span><span>{len(local_edges)} related edges</span><span>{len({n.type.value for n in nodes})} types</span></div>
 </section>
+<section class="panel"><h2>Source preview</h2>{excerpt}</section>
 <section class="grid two">
-  <article class="panel"><h2>Nodes from this source</h2>{render_node_table(nodes, context, limit=250)}</article>
+  <article class="panel"><h2>Nodes from this source</h2>{render_node_table(nodes, context, limit=250, depth=1)}</article>
   <article class="panel"><h2>Type mix</h2>{render_bar_list(Counter(node.type.value for node in nodes))}</article>
 </section>
-<section class="panel"><h2>Edges touching this source</h2>{render_edge_table(local_edges[:250], context)}</section>
+<section class="panel"><h2>Edges touching this source</h2>{render_edge_table(local_edges[:250], context, depth=1)}</section>
 """
     return page(title, short_path(source_path), body, search_index, active="sources", depth=1)
 
@@ -303,8 +308,8 @@ def render_node_page(title: str, node: ResearchNode, context: SiteContext, searc
   </div>
 </section>
 <section class="grid two">
-  <article class="panel"><h2>Outgoing edges</h2>{render_edge_list(out_edges, context, outgoing=True)}</article>
-  <article class="panel"><h2>Incoming edges</h2>{render_edge_list(in_edges, context, outgoing=False)}</article>
+  <article class="panel"><h2>Outgoing edges</h2>{render_edge_list(out_edges, context, outgoing=True, depth=1)}</article>
+  <article class="panel"><h2>Incoming edges</h2>{render_edge_list(in_edges, context, outgoing=False, depth=1)}</article>
 </section>
 <section class="panel"><h2>Metadata</h2><pre><code>{esc(metadata)}</code></pre></section>
 """
@@ -363,14 +368,20 @@ def render_node_card(node: ResearchNode, context: SiteContext) -> str:
     return f"<a class='node-card' href='{rel_href(node_href(node.id))}'><span class='badge'>{esc(node.type.value)}</span><strong>{esc(node.name)}</strong><p>{esc(node.description or node.source_path or node.id)}</p><small>{degree} links</small></a>"
 
 
-def render_node_table(nodes: Sequence[ResearchNode], context: SiteContext, limit: int = 50) -> str:
+def render_node_table(nodes: Sequence[ResearchNode], context: SiteContext, limit: int = 50, depth: int = 0) -> str:
     if not nodes:
         return "<p class='muted'>No nodes.</p>"
     rows = []
+    link_prefix = asset_prefix(depth)
     for node in nodes[:limit]:
         degree = len(context.outgoing.get(node.id, [])) + len(context.incoming.get(node.id, []))
-        rows.append(f"<tr><td><a href='{rel_href(node_href(node.id))}'>{esc(node.name)}</a></td><td><span class='badge'>{esc(node.type.value)}</span></td><td>{degree}</td><td>{esc(node.source_path or '')}</td></tr>")
+        source_html = source_link(node.source_path, depth) if node.source_path else ""
+        rows.append(f"<tr><td><a href='{link_prefix}{rel_href(node_href(node.id))}'>{esc(node.name)}</a></td><td><span class='badge'>{esc(node.type.value)}</span></td><td>{degree}</td><td>{source_html}</td></tr>")
     return "<table><thead><tr><th>Name</th><th>Type</th><th>Links</th><th>Source</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
+
+
+def source_link(source: str, depth: int = 0) -> str:
+    return f"<a href='{asset_prefix(depth)}{rel_href(source_href(source))}'><code>{esc(source)}</code></a>"
 
 
 def render_source_table(rows: Sequence[tuple[str, int]], limit: int = 50, depth: int = 0) -> str:
@@ -380,11 +391,27 @@ def render_source_table(rows: Sequence[tuple[str, int]], limit: int = 50, depth:
     for source, count in rows[:limit]:
         label = source if source != "unknown" else "Unknown / generated"
         if source != "unknown":
-            label_html = f"<a href='{asset_prefix(depth)}{rel_href(source_href(source))}'><code>{esc(label)}</code></a>"
+            label_html = source_link(source, depth)
         else:
             label_html = f"<code>{esc(label)}</code>"
         body.append(f"<tr><td>{label_html}</td><td>{count}</td></tr>")
     return "<table><thead><tr><th>Source path</th><th>Nodes</th></tr></thead><tbody>" + "".join(body) + "</tbody></table>"
+
+
+def render_source_excerpt(source_path: str, max_lines: int = 80) -> str:
+    path = Path(source_path)
+    if not path.exists() or not path.is_file():
+        return "<p class='muted'>Source file is not available on this machine.</p>"
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return f"<p class='muted'>Could not read source: {esc(str(exc))}</p>"
+    lines = text.splitlines()[:max_lines]
+    if not lines:
+        return "<p class='muted'>Source file is empty.</p>"
+    body = "\n".join(f"{idx + 1:>4} | {line}" for idx, line in enumerate(lines))
+    suffix = "\n…" if len(text.splitlines()) > max_lines else ""
+    return f"<pre class='source-preview'><code>{esc(body + suffix)}</code></pre>"
 
 
 def render_bar_list(counts: Mapping[str, int]) -> str:
@@ -398,31 +425,33 @@ def render_bar_list(counts: Mapping[str, int]) -> str:
     return "<div class='bars'>" + "".join(items) + "</div>"
 
 
-def render_edge_list(edges: Sequence[ResearchEdge], context: SiteContext, outgoing: bool) -> str:
+def render_edge_list(edges: Sequence[ResearchEdge], context: SiteContext, outgoing: bool, depth: int = 0) -> str:
     if not edges:
         return "<p class='muted'>No edges.</p>"
     rows = []
+    link_prefix = asset_prefix(depth)
     for edge in edges[:100]:
         other_id = edge.target if outgoing else edge.source
         other = context.nodes_by_id.get(other_id)
         name = other.name if other else other_id
-        rows.append(f"<li><span class='badge'>{esc(edge.type)}</span> <a href='{rel_href(node_href(other_id))}'>{esc(name)}</a></li>")
+        rows.append(f"<li><span class='badge'>{esc(edge.type)}</span> <a href='{link_prefix}{rel_href(node_href(other_id))}'>{esc(name)}</a></li>")
     return "<ul class='edge-list'>" + "".join(rows) + "</ul>"
 
 
-def render_edge_table(edges: Sequence[ResearchEdge], context: SiteContext) -> str:
+def render_edge_table(edges: Sequence[ResearchEdge], context: SiteContext, depth: int = 0) -> str:
     if not edges:
         return "<p class='muted'>No edges.</p>"
     rows = []
+    link_prefix = asset_prefix(depth)
     for edge in edges:
         source = context.nodes_by_id.get(edge.source)
         target = context.nodes_by_id.get(edge.target)
         source_name = source.name if source else edge.source
         target_name = target.name if target else edge.target
         rows.append(
-            f"<tr><td><a href='../{rel_href(node_href(edge.source))}'>{esc(source_name)}</a></td>"
+            f"<tr><td><a href='{link_prefix}{rel_href(node_href(edge.source))}'>{esc(source_name)}</a></td>"
             f"<td><span class='badge'>{esc(edge.type)}</span></td>"
-            f"<td><a href='../{rel_href(node_href(edge.target))}'>{esc(target_name)}</a></td></tr>"
+            f"<td><a href='{link_prefix}{rel_href(node_href(edge.target))}'>{esc(target_name)}</a></td></tr>"
         )
     return "<table><thead><tr><th>Source</th><th>Relation</th><th>Target</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
 

@@ -20,6 +20,8 @@ def frontend_sample_graph():
 
 def test_static_site_builder_writes_frontend_assets(tmp_path):
     out = tmp_path / "site"
+    (out / "nodes").mkdir(parents=True)
+    (out / "nodes" / "stale.html").write_text("old broken page", encoding="utf-8")
 
     result = StaticSiteBuilder(site_title="Demo Wiki").write_site(frontend_sample_graph(), out)
 
@@ -33,11 +35,19 @@ def test_static_site_builder_writes_frontend_assets(tmp_path):
     assert (out / "assets" / "style.css").exists()
     assert (out / "assets" / "app.js").exists()
     assert (out / "nodes" / "index.html").exists()
+    assert not (out / "nodes" / "stale.html").exists()
     assert (out / "sources" / "index.html").exists()
     source_pages = sorted((out / "sources").glob("*.html"))
     assert len(source_pages) > 1
     assert any("src-api-py" in page.name for page in source_pages)
-    assert "Nodes from this source" in next(page for page in source_pages if "src-api-py" in page.name).read_text(encoding="utf-8")
+    source_page = next(page for page in source_pages if "src-api-py" in page.name)
+    source_html = source_page.read_text(encoding="utf-8")
+    assert "Nodes from this source" in source_html
+    assert "href='../nodes/sourcefile-api.html'" in source_html
+    assert "href='nodes/sourcefile-api.html'" not in source_html
+    nodes_html = (out / "nodes" / "index.html").read_text(encoding="utf-8")
+    assert "href='../nodes/sourcefile-api.html'" in nodes_html
+    assert "href='nodes/sourcefile-api.html'" not in nodes_html
     graph_html = (out / "graph" / "index.html")
     assert graph_html.exists()
     graph_source = graph_html.read_text(encoding="utf-8")
@@ -48,8 +58,8 @@ def test_static_site_builder_writes_frontend_assets(tmp_path):
     html = (out / "index.html").read_text(encoding="utf-8")
     assert "Demo Wiki" in html
     assert "LLM-Wiki" in html
-    assert "Research" in html
-    assert "Development" in html
+    assert "Wiki documents" in html
+    assert "Code graph" in html
     assert "Command palette" in html
     assert "Browse nodes" in html
     assert "Source files" in html
