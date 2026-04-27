@@ -284,6 +284,10 @@ class ResearchGraphExtractor:
         paper_metadata = {"source_kind": source_kind, **extract_source_metadata(text, source_path)}
         paper = builder.add_node(title, source_type, source_path=source_path, metadata=paper_metadata)
 
+        if source_type in {ResearchNodeType.SOURCE_DOCUMENT, ResearchNodeType.REPOSITORY, ResearchNodeType.PROJECT}:
+            self._add_document_structure(builder, paper, text, source_path)
+            return builder.build()
+
         field = builder.add_node(infer_research_field(text), ResearchNodeType.RESEARCH_FIELD)
         builder.add_edge(paper, "part_of", field)
 
@@ -316,6 +320,19 @@ class ResearchGraphExtractor:
         self._add_comparative_claims(builder, paper, text, source_path)
         self._connect_related_terms(builder, matched_terms, text)
         return builder.build()
+
+    def _add_document_structure(self, builder: ResearchGraphBuilder, document: ResearchNode, text: str, source_path: Optional[str]) -> None:
+        for heading in extract_markdown_headings(text)[:24]:
+            if heading.lower() == document.name.lower():
+                continue
+            concept = builder.add_node(
+                heading,
+                ResearchNodeType.CONCEPT,
+                description=f"Section heading in {document.name}",
+                source_path=source_path,
+                metadata={"source_kind": "document_heading"},
+            )
+            builder.add_edge(document, "documents", concept)
 
     def _add_evidence(self, builder: ResearchGraphBuilder, paper: ResearchNode, evidence: str, source_path: Optional[str]) -> ResearchNode:
         name = "Evidence: " + truncate(evidence, 72)
@@ -455,10 +472,22 @@ class ResearchCorpusAnalyzer:
         return builder.build()
 
 
+def extract_markdown_headings(text: str) -> List[str]:
+    headings: List[str] = []
+    for line in text.splitlines():
+        match = re.match(r"^#{1,4}\s+(.+?)\s*$", line.strip())
+        if not match:
+            continue
+        heading = re.sub(r"\s+#*$", "", match.group(1)).strip()
+        if heading and heading not in headings:
+            headings.append(heading)
+    return headings
+
+
 def source_kind_to_node_type(source_kind: str, source_path: Optional[str]) -> ResearchNodeType:
     lowered = (source_kind or "").lower()
     path = (source_path or "").lower()
-    if "paper" in lowered or "/papers/" in path or "arxiv" in path:
+    if "paper" in lowered or "/papers/" in path or path.endswith("paper.md") or "arxiv" in path:
         return ResearchNodeType.PAPER
     if "repo" in lowered or "repo" in path or "github" in path:
         return ResearchNodeType.REPOSITORY

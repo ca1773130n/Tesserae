@@ -67,7 +67,7 @@ The generated workspace is intentionally not committed by default. It is reprodu
 
 ## Latest verified run
 
-Verified on `2026-04-27 07:07:55 KST` from the LLM-Wiki repository itself.
+Verified on `2026-04-27 11:11:23 KST` from the LLM-Wiki repository itself.
 
 ```text
 install command: ./scripts/install.sh --dir /Users/neo/Developer/Projects/LLM-Wiki --skip-shell-config
@@ -75,46 +75,50 @@ init command:    llm_wiki project init --name llm_wiki_self --source-kind Reposi
 ingest command:  llm_wiki project ingest README.md docs --changed-only
 compile command: llm_wiki project compile
 site command:    llm_wiki project build-site
-serve command:   llm_wiki project serve --port 56821
-browser URL:     http://127.0.0.1:56821/
+serve command:   llm_wiki project serve --host 0.0.0.0 --port 56821
+local URL:       http://127.0.0.1:56821/
+LAN URL:         http://192.168.45.130:56821/
 ```
 
 Final artifact counts:
 
 ```text
-nodes:              594
-edges:              960
-markdown notes:     596
-obsidian notes:     598
+nodes:               667
+edges:               1020
+markdown notes:      684
+obsidian notes:      686
 agent harness files: 14
-cognee nodes:       594
-cognee edges:       960
-graphiti episodes: 960
-temporal facts:     960
-site files:         index.html, graph.json, search-index.json, llms.txt
+cognee nodes:        667
+cognee edges:        1020
+graphiti episodes:  1020
+temporal facts:      1020
+site files:          index.html, nodes/index.html, sources/index.html, graph/index.html, graph.json, search-index.json, llms.txt, llms-full.txt, manifest.json, assets/style.css, assets/app.js
+node pages:          687
+source pages:        56
 ```
 
 Top node types:
 
 ```text
-CodeFunction:          420
-Dependency:             55
-CodeClass:              53
-SourceFile:             46
-Repository:              7
-EvidenceSpan:            4
-Claim:                   2
-ResearchField:           1
-MethodologicalConcept:   1
-ApproachFamily:          1
+CodeFunction:    452
+Dependency:       55
+CodeClass:        54
+Concept:          51
+SourceFile:       47
+SourceDocument:    7
+CodeProject:       1
 ```
 
 Browser verification:
 
 ```text
-loaded title: llm_wiki_self
-visible stats: 594 nodes / 960 edges
-search smoke: CodeGraphExtractor returned CodeClass/CodeFunction results
+loaded title: Home · llm_wiki_self
+visible stats: 667 nodes / 1020 edges / 55 sources / 7 types
+sources page: source evidence table links to per-source pages
+source detail: llm_wiki/frontend.py shows 41 nodes, 54 related edges, type mix, node links, and edge table
+search smoke: StaticSiteBuilder returned CodeClass and StaticSiteBuilder.write_site results
+console: no JavaScript errors on home, sources, source detail, or graph pages
+server: TCP *:56821 LISTEN, serving via --host 0.0.0.0
 ```
 
 ## What this demonstrates

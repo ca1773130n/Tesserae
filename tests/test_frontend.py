@@ -6,7 +6,7 @@ from llm_wiki.research_graph import ResearchEdge, ResearchGraph, ResearchNode, R
 
 def frontend_sample_graph():
     project = ResearchNode(id="CodeProject:demo", name="demo-app", type=ResearchNodeType.CODE_PROJECT, description="Demo application")
-    file_node = ResearchNode(id="SourceFile:api", name="src/api.py", type=ResearchNodeType.SOURCE_FILE, metadata={"language": "python"})
+    file_node = ResearchNode(id="SourceFile:api", name="src/api.py", type=ResearchNodeType.SOURCE_FILE, source_path="src/api.py", metadata={"language": "python"})
     symbol = ResearchNode(id="CodeFunction:route", name="route", type=ResearchNodeType.CODE_FUNCTION)
     paper = ResearchNode(id="Paper:demo", name="Demo Paper", type=ResearchNodeType.PAPER)
     return ResearchGraph(
@@ -28,12 +28,31 @@ def test_static_site_builder_writes_frontend_assets(tmp_path):
     assert (out / "graph.json").exists()
     assert (out / "search-index.json").exists()
     assert (out / "llms.txt").exists()
+    assert (out / "llms-full.txt").exists()
+    assert (out / "manifest.json").exists()
+    assert (out / "assets" / "style.css").exists()
+    assert (out / "assets" / "app.js").exists()
+    assert (out / "nodes" / "index.html").exists()
+    assert (out / "sources" / "index.html").exists()
+    source_pages = sorted((out / "sources").glob("*.html"))
+    assert len(source_pages) > 1
+    assert any("src-api-py" in page.name for page in source_pages)
+    assert "Nodes from this source" in next(page for page in source_pages if "src-api-py" in page.name).read_text(encoding="utf-8")
+    graph_html = (out / "graph" / "index.html")
+    assert graph_html.exists()
+    graph_source = graph_html.read_text(encoding="utf-8")
+    assert "vis-network" in graph_source
+    assert "Cluster:" in graph_source
+    assert "Find neighbours" in graph_source
+    assert "stats-overlay" in graph_source
     html = (out / "index.html").read_text(encoding="utf-8")
     assert "Demo Wiki" in html
-    assert "CodeProject" in html
+    assert "LLM-Wiki" in html
     assert "Research" in html
     assert "Development" in html
-    assert "search" in html.lower()
+    assert "Command palette" in html
+    assert "Browse nodes" in html
+    assert "Source files" in html
     graph = json.loads((out / "graph.json").read_text(encoding="utf-8"))
     assert graph["nodes"][0]["type"]
 

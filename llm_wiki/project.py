@@ -131,9 +131,10 @@ class ProjectWiki:
         for input_path in input_paths:
             markdown_files.extend(iter_markdown_files(input_path))
             code_inputs.append(input_path)
+        markdown_source_kind = "SourceDocument" if kind in {"CodeProject", "Repository", "Project"} else kind
         batch = BatchIngestRunner(extractor=extractor, manifest_path=self.paths.manifest).run(
             markdown_files,
-            source_kind=kind,
+            source_kind=markdown_source_kind,
             changed_only=changed_only,
             limit=limit,
         )
