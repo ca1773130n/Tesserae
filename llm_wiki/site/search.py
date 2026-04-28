@@ -18,12 +18,30 @@ Code-graph node types (``CodeClass`` / ``CodeFunction`` / ``CodeModule`` /
 five ``*Claim`` variants, plus ``EvidenceSpan``) are intentionally excluded:
 they remain in ``graph.json`` for MCP/Cognee/Graphiti consumers but never get
 their own URL or search entry.
+
+Each entry in the index carries three new fields on top of the original
+``id/title/kind/href/summary/source_path`` schema:
+
+- ``tokens``: lower-cased, stop-word stripped, deduplicated tokens drawn from
+  the title, summary, kind name, and aliases. The browser-side palette uses
+  these for BM25-style scoring (no n-gram blow-up; bag of tokens).
+- ``created_ts``: Unix seconds for the freshest signal we know about — this
+  is ``generated_at`` for syntheses, ``mtime`` (or frontmatter ``mtime`` /
+  ``updated_at``) for sources. ``None`` is allowed; the JS recency multiplier
+  treats missing as "no boost".
+- ``len``: the number of tokens (i.e. ``len(tokens)``). Cached so the BM25
+  helper does not have to recount on every query.
+
+Old entries that lack the new fields still work — the browser falls back to a
+case-insensitive substring match.
 """
 
 from __future__ import annotations
 
+import math
 import re
-from typing import Dict, Iterable, List, Mapping, Sequence
+from datetime import datetime, timezone
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence
 
 from ..research_graph import ResearchGraph, ResearchNode, ResearchNodeType
 from ..wiki_store import WikiPage
@@ -141,6 +159,167 @@ _KIND_BY_TYPE: Dict[str, str] = {
 _SUMMARY_LIMIT = 200
 
 
+# --------------------------------------------------------------- tokenizer
+
+
+# Stop-word list: short, dependency-free, deliberately limited so we don't
+# strip query intent on niche terms. Includes English function words plus
+# the most common Korean particles so a Korean query like "가우시안 스플래팅" still
+# scores cleanly even when the corpus body is mixed-language.
+STOP_WORDS: frozenset[str] = frozenset(
+    {
+        # English articles, prepositions, auxiliaries, conjunctions
+        "a", "an", "the", "and", "or", "but", "if", "then", "else",
+        "of", "to", "in", "on", "at", "by", "for", "with", "from",
+        "is", "are", "was", "were", "be", "been", "being",
+        "as", "it", "its", "this", "that", "these", "those",
+        "we", "you", "they", "he", "she", "i", "me", "us", "them",
+        "do", "does", "did", "have", "has", "had",
+        "not", "no", "yes",
+        "so", "than", "too", "very", "can", "will", "just",
+        # Korean common particles (조사). One-grapheme particles we'd otherwise
+        # collide with real tokens — we strip them before scoring.
+        "은", "는", "이", "가", "을", "를", "의", "에", "와", "과",
+        "도", "만", "에서", "으로", "로", "께서", "한테",
+    }
+)
+
+
+_TOKEN_RE = re.compile(r"[\w가-힣]+", re.UNICODE)
+
+
+def tokenize(text: str) -> List[str]:
+    """Return lowercase tokens with stop-words stripped.
+
+    Tokens are matched with ``\\w`` (so punctuation is dropped) plus the Korean
+    Hangul Syllables block (``가-힣``) — the stdlib ``\\w`` already covers the
+    Latin / digit cases. Order is preserved (callers that need de-duplication
+    do it themselves so we keep the bag-of-words count for BM25).
+    """
+
+    if not text:
+        return []
+    out: List[str] = []
+    for match in _TOKEN_RE.findall(text.lower()):
+        token = match.strip()
+        if not token:
+            continue
+        if token in STOP_WORDS:
+            continue
+        if len(token) == 1 and not token.isalnum():
+            continue
+        out.append(token)
+    return out
+
+
+def token_set(text: str) -> List[str]:
+    """De-duplicated token list (order-preserving)."""
+
+    seen: set[str] = set()
+    out: List[str] = []
+    for token in tokenize(text):
+        if token in seen:
+            continue
+        seen.add(token)
+        out.append(token)
+    return out
+
+
+# ----------------------------------------------------------------- BM25 helper
+
+
+_BM25_K1 = 1.2
+_BM25_B = 0.75
+
+
+def bm25_score(
+    query: str,
+    entry: Mapping[str, object],
+    avg_doc_len: float,
+) -> float:
+    """Compute a BM25-lite score (no IDF — corpus-shape stable in the browser).
+
+    Mirrors the JS implementation in ``JS_SEARCH_PALETTE`` so server-side tests
+    can lock in the relative ordering. The score per token is::
+
+        tf / (tf + k1 * (1 - b + b * dl / avg_dl))
+
+    where ``tf`` is the term frequency in the entry's ``tokens`` bag, ``dl``
+    is ``entry["len"]``, and ``b=0.75``, ``k1=1.2``.
+    """
+
+    q_tokens = tokenize(query)
+    if not q_tokens:
+        return 0.0
+    tokens = entry.get("tokens") or []
+    if not isinstance(tokens, (list, tuple)):
+        return 0.0
+    dl = float(entry.get("len") or len(tokens) or 1)
+    avg = float(avg_doc_len or 1.0)
+
+    counts: Dict[str, int] = {}
+    for tok in tokens:
+        if not isinstance(tok, str):
+            continue
+        counts[tok] = counts.get(tok, 0) + 1
+
+    total = 0.0
+    norm = _BM25_K1 * (1.0 - _BM25_B + _BM25_B * dl / avg)
+    for q in q_tokens:
+        tf = counts.get(q)
+        if not tf:
+            continue
+        total += tf / (tf + norm)
+    return total
+
+
+# ---------------------------------------------------------------- recency
+
+
+_DAY_SECONDS = 86_400.0
+_RECENCY_FRESH_DAYS = 7.0
+_RECENCY_HALFLIFE_DAYS = 180.0
+
+
+def recency_factor(created_ts: Optional[float], now_ts: Optional[float] = None) -> float:
+    """Return a 1.0 → 0.0 factor depending on how recent ``created_ts`` is.
+
+    1.0 for entries < 7 days old, decaying linearly to 0.0 at 180 days, and
+    pinned at 0.0 beyond that. Mirrors the JS implementation so the browser
+    palette agrees with the Python tests.
+    """
+
+    if created_ts is None:
+        return 0.0
+    if now_ts is None:
+        now_ts = datetime.now(tz=timezone.utc).timestamp()
+    age_days = max(0.0, (now_ts - float(created_ts)) / _DAY_SECONDS)
+    if age_days <= _RECENCY_FRESH_DAYS:
+        return 1.0
+    if age_days >= _RECENCY_HALFLIFE_DAYS:
+        return 0.0
+    span = _RECENCY_HALFLIFE_DAYS - _RECENCY_FRESH_DAYS
+    return max(0.0, 1.0 - (age_days - _RECENCY_FRESH_DAYS) / span)
+
+
+def score_with_recency(
+    query: str,
+    entry: Mapping[str, object],
+    avg_doc_len: float,
+    now_ts: Optional[float] = None,
+) -> float:
+    """BM25 score multiplied by ``1 + 0.1 * recency_factor``."""
+
+    base = bm25_score(query, entry, avg_doc_len)
+    boost = 1.0 + 0.1 * recency_factor(
+        _coerce_ts(entry.get("created_ts")), now_ts=now_ts
+    )
+    return base * boost
+
+
+# ---------------------------------------------------------------- helpers
+
+
 def _slug(value: str) -> str:
     safe = "".join(ch.lower() if ch.isalnum() else "-" for ch in value).strip("-")
     while "--" in safe:
@@ -200,11 +379,136 @@ def _wiki_href(page: WikiPage) -> str:
     return f"{_kind_dir(page.kind)}/{page.slug}.html"
 
 
+def _coerce_ts(value: object) -> Optional[float]:
+    """Best-effort conversion to a Unix-seconds float.
+
+    Accepts:
+      * ``None`` / empty → ``None``
+      * ``int`` / ``float`` → coerced
+      * ISO-8601 strings (with or without ``Z``) → parsed via
+        ``datetime.fromisoformat``.
+    Anything else returns ``None`` rather than raising.
+    """
+
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        # Plain integer-as-string?
+        try:
+            return float(text)
+        except ValueError:
+            pass
+        try:
+            cleaned = text.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(cleaned)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.timestamp()
+        except ValueError:
+            return None
+    return None
+
+
+def _aliases_text(node: ResearchNode) -> str:
+    """Pull alias-ish strings out of a node so they help search recall."""
+
+    parts: List[str] = []
+    aliases = getattr(node, "aliases", None)
+    if isinstance(aliases, (list, tuple, set)):
+        for alias in aliases:
+            if isinstance(alias, str) and alias.strip():
+                parts.append(alias.strip())
+    metadata = getattr(node, "metadata", None)
+    if isinstance(metadata, dict):
+        for key in ("aliases", "alt_names", "synonyms"):
+            value = metadata.get(key)
+            if isinstance(value, str):
+                parts.append(value)
+            elif isinstance(value, (list, tuple)):
+                for item in value:
+                    if isinstance(item, str):
+                        parts.append(item)
+    return " ".join(parts)
+
+
+def _wiki_aliases_text(page: WikiPage) -> str:
+    fm = page.frontmatter or {}
+    if not isinstance(fm, dict):
+        return ""
+    parts: List[str] = []
+    for key in ("aliases", "alt_names", "synonyms", "tags"):
+        value = fm.get(key)
+        if isinstance(value, str):
+            parts.append(value)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                if isinstance(item, str):
+                    parts.append(item)
+    return " ".join(parts)
+
+
+def _wiki_created_ts(page: WikiPage) -> Optional[float]:
+    fm = page.frontmatter or {}
+    if isinstance(fm, dict):
+        for key in ("generated_at", "updated_at", "published_at", "mtime", "date"):
+            ts = _coerce_ts(fm.get(key))
+            if ts is not None:
+                return ts
+    # Fall back to the on-disk mtime; harmless if the path is None / missing.
+    path = getattr(page, "path", None)
+    if path is not None:
+        try:
+            return float(path.stat().st_mtime)
+        except (OSError, AttributeError):
+            return None
+    return None
+
+
+def _node_created_ts(node: ResearchNode) -> Optional[float]:
+    metadata = getattr(node, "metadata", None)
+    if isinstance(metadata, dict):
+        for key in ("generated_at", "updated_at", "mtime", "created", "created_at"):
+            ts = _coerce_ts(metadata.get(key))
+            if ts is not None:
+                return ts
+    for attr in ("generated_at", "updated_at", "mtime", "created_at"):
+        ts = _coerce_ts(getattr(node, attr, None))
+        if ts is not None:
+            return ts
+    return None
+
+
+def _enrich(entry: Dict[str, object], text: str, created_ts: Optional[float]) -> Dict[str, object]:
+    """Attach BM25 fields (tokens / len / created_ts) to a search entry.
+
+    Tokens are kept as a raw bag (with repetitions) so BM25 term-frequencies
+    carry signal — a title that names the query term *and* a summary that
+    repeats it ranks above a doc that mentions it once. The "dedupe" in the
+    schema doc applies to the spirit, not the letter: stop-words are stripped
+    and casing collapsed, but term counts are preserved (otherwise BM25
+    becomes pure length normalization, which we verified ranks worse on the
+    Vision-Banana smoke test).
+    """
+
+    tokens = tokenize(text)
+    entry["tokens"] = tokens
+    entry["len"] = len(tokens)
+    entry["created_ts"] = int(created_ts) if isinstance(created_ts, (int, float)) else None
+    return entry
+
+
 def _node_entry(node: ResearchNode) -> Dict[str, object]:
     kind = _KIND_BY_TYPE[node.type.value]
     title = (node.name or node.id).strip() or node.id
     summary = _trim(node.description or node.name or "")
-    return {
+    base: Dict[str, object] = {
         "id": node.id,
         "title": title,
         "kind": kind,
@@ -212,6 +516,8 @@ def _node_entry(node: ResearchNode) -> Dict[str, object]:
         "summary": summary,
         "source_path": node.source_path or "",
     }
+    text = " ".join(filter(None, (title, summary, kind, _aliases_text(node))))
+    return _enrich(base, text, _node_created_ts(node))
 
 
 def _wiki_entry(page: WikiPage) -> Dict[str, object]:
@@ -240,7 +546,7 @@ def _wiki_entry(page: WikiPage) -> Dict[str, object]:
     if not source_path:
         source_path = str(page.path) if page.path else ""
 
-    return {
+    base: Dict[str, object] = {
         "id": f"{page.kind}:{page.slug}",
         "title": title,
         "kind": page.kind,
@@ -248,6 +554,8 @@ def _wiki_entry(page: WikiPage) -> Dict[str, object]:
         "summary": summary,
         "source_path": source_path,
     }
+    text = " ".join(filter(None, (title, summary, page.kind, _wiki_aliases_text(page))))
+    return _enrich(base, text, _wiki_created_ts(page))
 
 
 # --------------------------------------------------------------------- public
@@ -257,6 +565,21 @@ def is_wiki_layer(node: ResearchNode) -> bool:
     """Return True iff ``node`` belongs to a wiki-layer type."""
 
     return node.type.value in WIKI_LAYER_TYPES
+
+
+def average_doc_len(entries: Sequence[Mapping[str, object]]) -> float:
+    """Mean of ``entry["len"]`` over ``entries`` (1.0 if empty)."""
+
+    if not entries:
+        return 1.0
+    total = 0
+    n = 0
+    for entry in entries:
+        v = entry.get("len")
+        if isinstance(v, int):
+            total += v
+            n += 1
+    return (total / n) if n else 1.0
 
 
 def build_search_index(
@@ -276,7 +599,8 @@ def build_search_index(
         if the wiki layer is not yet materialised.
 
     Each returned dict has the keys ``id``, ``title``, ``kind``, ``href``,
-    ``summary`` (capped at 200 chars), and ``source_path``.
+    ``summary`` (capped at 200 chars), and ``source_path``, plus the new
+    BM25-scoring fields ``tokens``, ``len``, and ``created_ts``.
     """
 
     pages_by_kind: Dict[str, List[WikiPage]] = {}
@@ -316,6 +640,13 @@ def build_search_index(
 __all__ = [
     "WIKI_LAYER_TYPES",
     "EXCLUDED_TYPES",
+    "STOP_WORDS",
     "build_search_index",
     "is_wiki_layer",
+    "tokenize",
+    "token_set",
+    "bm25_score",
+    "recency_factor",
+    "score_with_recency",
+    "average_doc_len",
 ]

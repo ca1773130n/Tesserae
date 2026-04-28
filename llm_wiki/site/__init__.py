@@ -19,7 +19,9 @@ produces byte-identical output across all files, including ``manifest.json``.
 
 from __future__ import annotations
 
+import gzip
 import hashlib
+import io
 import json
 import re
 import shutil
@@ -41,10 +43,11 @@ from .exports import (
     render_sitemap_xml,
     write_siblings,
 )
-from .js import JS_BUNDLE
+from .js import JS_BUNDLE_BASE, JS_BUNDLE_GRAPH
 from .pages import (
     ROUTE_FOR_KIND,
     SiteContext,
+    build_graph_payload,
     page_href,
     render_about,
     render_concept_detail,
@@ -203,21 +206,29 @@ class StaticSiteBuilder:
         )
 
         # ------------------------------------------------------ static assets
+        # ``app.js`` is the small base bundle (theme toggle / rail drawer /
+        # search palette) that every page loads. ``graph.js`` is the heavier
+        # ``3d-force-graph`` driver that only the graph route pulls in via a
+        # second ``<script defer>`` tag — see ``render_graph_view`` in
+        # ``pages.py``. Splitting the bundle keeps non-graph pages well under
+        # 30 KB of JS even on the dogfood corpus.
         (out / "assets").mkdir(parents=True, exist_ok=True)
         (out / "assets" / "style.css").write_text(CSS, encoding="utf-8")
-        (out / "assets" / "app.js").write_text(JS_BUNDLE, encoding="utf-8")
+        (out / "assets" / "app.js").write_text(JS_BUNDLE_BASE, encoding="utf-8")
+        (out / "assets" / "graph.js").write_text(JS_BUNDLE_GRAPH, encoding="utf-8")
 
         # ------------------------------------------------- graph + search idx
         graph_payload = graph.model_dump()
-        (out / "graph.json").write_text(
-            json.dumps(graph_payload, ensure_ascii=False, indent=2, sort_keys=True, default=str) + "\n",
-            encoding="utf-8",
+        graph_json_text = (
+            json.dumps(graph_payload, ensure_ascii=False, indent=2, sort_keys=True, default=str) + "\n"
         )
+        (out / "graph.json").write_text(graph_json_text, encoding="utf-8")
+        _write_gzip_sibling(out / "graph.json", graph_json_text.encode("utf-8"))
+
         search_index = build_search_index(graph, wiki_pages_by_kind)
-        (out / "search-index.json").write_text(
-            json.dumps(search_index, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        search_index_text = json.dumps(search_index, ensure_ascii=False, indent=2) + "\n"
+        (out / "search-index.json").write_text(search_index_text, encoding="utf-8")
+        _write_gzip_sibling(out / "search-index.json", search_index_text.encode("utf-8"))
 
         # --------------------------------------------------- routes inventory
         # We collect every emitted route here so sitemap.xml stays in lockstep.
@@ -269,6 +280,16 @@ class StaticSiteBuilder:
 
         (out / "graph").mkdir(parents=True, exist_ok=True)
         (out / "graph" / "index.html").write_text(render_graph_view(site_ctx), encoding="utf-8")
+        # Split the graph payload out of the HTML so the page itself stays
+        # under the 50 KB perf budget and non-graph routes never download it.
+        # ``Cache-Control: public, max-age=86400`` is a hint for the server
+        # (gh-pages / nginx); we cannot enforce it from a static file. The
+        # nginx snippet at the site root encodes the same hint.
+        graph_view_payload = build_graph_payload(site_ctx)
+        graph_payload_text = (
+            json.dumps(graph_view_payload, ensure_ascii=False, sort_keys=True, default=str) + "\n"
+        )
+        (out / "graph" / "payload.json").write_text(graph_payload_text, encoding="utf-8")
         _track("graph/index.html")
 
         # --------------------------------------------------- index/detail kinds
@@ -342,6 +363,14 @@ class StaticSiteBuilder:
         (out / "ai-readme.md").write_text(
             render_ai_readme(self.site_title, export_ctx), encoding="utf-8"
         )
+
+        # ----- ops snippet (nginx) — guidance only, NEVER auto-applied -------
+        # We pre-emit ``.gz`` siblings next to the big artifacts (graph.json,
+        # search-index.json) so a CDN / nginx with ``gzip_static on`` can
+        # serve the compressed payload with ``Content-Encoding: gzip`` for a
+        # ~10x size reduction. The local stdlib http.server does not auto-
+        # serve gzipped, so the uncompressed file must remain alongside.
+        (out / "nginx.snippet.conf").write_text(_NGINX_SNIPPET, encoding="utf-8")
 
         # ---------------------------------------------------------- manifest
         manifest_payload = self._manifest(out)
@@ -457,6 +486,66 @@ class StaticSiteBuilder:
             "file_count": len(files),
             "files": files,
         }
+
+
+def _write_gzip_sibling(target: Path, payload: bytes) -> None:
+    """Write ``<target>.gz`` deterministically next to ``target``.
+
+    Uses ``gzip.GzipFile(mtime=0)`` so the timestamp byte in the gzip header
+    is fixed across rebuilds — without this, every compile would produce a
+    different ``.gz`` file even with identical content, breaking the
+    "nothing to commit on second compile" guarantee.
+
+    The local stdlib ``http.server`` does not auto-serve gzipped files; this
+    is purely a pre-compression hint for ``gh-pages`` / nginx /  CDN setups
+    with ``gzip_static on`` (see ``nginx.snippet.conf`` in the site root).
+    """
+
+    buf = io.BytesIO()
+    # mtime=0 + no filename + maximum compression — deterministic output.
+    with gzip.GzipFile(filename="", fileobj=buf, mode="wb", compresslevel=9, mtime=0) as gz:
+        gz.write(payload)
+    sibling = target.with_suffix(target.suffix + ".gz")
+    sibling.write_bytes(buf.getvalue())
+
+
+_NGINX_SNIPPET = """# nginx snippet for serving the LLM-Wiki static site with pre-compressed assets.
+# Drop into a server { } block. Never auto-applied by the build — this file is
+# documentation only.
+#
+# Highlights:
+#   * gzip_static on  — serve the pre-emitted .gz siblings (graph.json.gz,
+#     search-index.json.gz) with Content-Encoding: gzip when the client sends
+#     Accept-Encoding: gzip.
+#   * Cache-Control hints — the big JSON payloads (graph.json, payload.json)
+#     change at most once per compile; 1 day is a safe upper bound.
+#   * .gz MIME type for the JSON payload so plain ``curl`` over the .gz file
+#     does not return text/plain.
+#
+# location / {
+#     gzip_static on;
+#     gzip_proxied any;
+#     gzip_vary on;
+#     types {
+#         application/json json;
+#     }
+# }
+#
+# location ~* \\.(json|jsonld)$ {
+#     gzip_static on;
+#     add_header Cache-Control "public, max-age=86400";
+# }
+#
+# location /graph/payload.json {
+#     gzip_static on;
+#     add_header Cache-Control "public, max-age=86400";
+# }
+#
+# location ~* \\.(html|css|js)$ {
+#     gzip_static on;
+#     add_header Cache-Control "public, max-age=300";
+# }
+"""
 
 
 def _read_synthesis_history(path: Path) -> List[Dict[str, str]]:

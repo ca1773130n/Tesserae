@@ -168,13 +168,78 @@ JS_SEARCH_PALETTE = r"""
 (function(){
   var data = null;
   var dataReady = null;
+  var avgDocLen = 1;
   var palette = null;
   var input = null;
   var resultsEl = null;
   var statusEl = null;
+  var tabsEl = null;
   var highlightIndex = 0;
   var currentItems = [];
+  var activeTab = 'all';
   var RECENTS_KEY = 'llm-wiki-recents';
+  var TAB_KEY = 'llm-wiki-search-tab';
+  var BM25_K1 = 1.2;
+  var BM25_B = 0.75;
+
+  // Tab strip: All / Sources / Concepts / Papers / Repos / Topics / Syntheses / Questions.
+  // ``prefix`` is the digit-prefix kind hint that the parser accepts in the
+  // query (``p:vision``, ``c:gauss``, etc.).
+  var TABS = [
+    { id: 'all',       label: 'All',       kind: null,         prefix: null },
+    { id: 'sources',   label: 'Sources',   kind: 'sources',    prefix: 's' },
+    { id: 'concepts',  label: 'Concepts',  kind: 'concepts',   prefix: 'c' },
+    { id: 'papers',    label: 'Papers',    kind: 'papers',     prefix: 'p' },
+    { id: 'repos',     label: 'Repos',     kind: 'repos',      prefix: 'r' },
+    { id: 'topics',    label: 'Topics',    kind: 'topics',     prefix: 't' },
+    { id: 'syntheses', label: 'Syntheses', kind: 'syntheses',  prefix: 'y' },
+    { id: 'questions', label: 'Questions', kind: 'questions',  prefix: 'q' }
+  ];
+
+  // English + Korean common-particle stop-words. Mirrors STOP_WORDS in
+  // llm_wiki.site.search so server-built tokens and client queries agree.
+  var STOP_WORDS = (function(){
+    var arr = [
+      'a','an','the','and','or','but','if','then','else',
+      'of','to','in','on','at','by','for','with','from',
+      'is','are','was','were','be','been','being',
+      'as','it','its','this','that','these','those',
+      'we','you','they','he','she','i','me','us','them',
+      'do','does','did','have','has','had',
+      'not','no','yes',
+      'so','than','too','very','can','will','just',
+      '은','는','이','가',
+      '을','를','의','에',
+      '와','과','도','만'
+    ];
+    var s = Object.create(null);
+    for (var i = 0; i < arr.length; i++) s[arr[i]] = true;
+    // Inline literals for the common Hangul particles (decomposed JAMO above
+    // is a defensive backup; many browsers compose to single syllables).
+    var literals = ['은','는','이','가','을','를','의',
+      '에','와','과','도','만','에서','으로',
+      '로','께서','한테'];
+    for (var k = 0; k < literals.length; k++) s[literals[k]] = true;
+    return s;
+  })();
+
+  // Word/digit/underscore + Latin-Extended + Hangul Syllables block.
+  var TOKEN_RE = /[\wÀ-ɏ가-힯]+/g;
+
+  function tokenize(text){
+    if (!text) return [];
+    var out = [];
+    var lc = String(text).toLowerCase();
+    TOKEN_RE.lastIndex = 0;
+    var m;
+    while ((m = TOKEN_RE.exec(lc)) !== null) {
+      var t = m[0];
+      if (!t) continue;
+      if (STOP_WORDS[t]) continue;
+      out.push(t);
+    }
+    return out;
+  }
 
   function loadRecents(){
     try { return JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]'); } catch (_) { return []; }
@@ -185,6 +250,24 @@ JS_SEARCH_PALETTE = r"""
       list.unshift({ title: item.title, href: item.href, kind: item.kind || item.type });
       localStorage.setItem(RECENTS_KEY, JSON.stringify(list.slice(0, 10)));
     } catch (_) {}
+  }
+  function loadActiveTab(){
+    try {
+      var saved = localStorage.getItem(TAB_KEY);
+      if (saved && tabById(saved)) return saved;
+    } catch (_) {}
+    return 'all';
+  }
+  function saveActiveTab(id){
+    try { localStorage.setItem(TAB_KEY, id); } catch (_) {}
+  }
+  function tabById(id){
+    for (var i = 0; i < TABS.length; i++) if (TABS[i].id === id) return TABS[i];
+    return null;
+  }
+  function tabByPrefix(p){
+    for (var i = 0; i < TABS.length; i++) if (TABS[i].prefix === p) return TABS[i];
+    return null;
   }
 
   // Resolve search-index location relative to the document. The site emits
@@ -197,7 +280,11 @@ JS_SEARCH_PALETTE = r"""
     if (dataReady) return dataReady;
     var inline = document.getElementById('search-data');
     if (inline) {
-      try { data = JSON.parse(inline.textContent || '[]'); return Promise.resolve(data); } catch (_) {}
+      try {
+        data = JSON.parse(inline.textContent || '[]');
+        recomputeAvg();
+        return Promise.resolve(data);
+      } catch (_) {}
     }
     var prefix = '';
     var brand = document.querySelector('.topbar .brand');
@@ -209,18 +296,54 @@ JS_SEARCH_PALETTE = r"""
     dataReady = fetch(prefix + 'search-index.json')
       .then(function(r){ return r.ok ? r.json() : Promise.reject(new Error('not ok')); })
       .catch(function(){ return fetch('/search-index.json').then(function(r){ return r.ok ? r.json() : []; }); })
-      .then(function(j){ data = Array.isArray(j) ? j : (j && j.items) || []; return data; })
+      .then(function(j){ data = Array.isArray(j) ? j : (j && j.items) || []; recomputeAvg(); return data; })
       .catch(function(){ data = []; return data; });
     return dataReady;
+  }
+
+  function recomputeAvg(){
+    if (!data || !data.length) { avgDocLen = 1; return; }
+    var total = 0, n = 0;
+    for (var i = 0; i < data.length; i++) {
+      var v = data[i].len;
+      if (typeof v === 'number') { total += v; n += 1; }
+    }
+    avgDocLen = n ? (total / n) : 1;
   }
 
   function ensurePaletteShell(){
     palette = document.getElementById('palette');
     if (!palette) return false;
     input = palette.querySelector('#search') || document.getElementById('search');
-    // Add the missing pieces (results list + status row) lazily on first open.
+    // Add the missing pieces (tabs / results / status) lazily on first open.
     var box = palette.querySelector('.palette-box');
     if (!box) return false;
+    tabsEl = palette.querySelector('#palette-tabs');
+    if (!tabsEl) {
+      tabsEl = document.createElement('div');
+      tabsEl.id = 'palette-tabs';
+      tabsEl.className = 'palette-tabs';
+      tabsEl.setAttribute('role', 'tablist');
+      tabsEl.setAttribute('aria-label', 'Filter by type');
+      for (var ti = 0; ti < TABS.length; ti++) {
+        var tab = TABS[ti];
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'palette-tab';
+        btn.dataset.tab = tab.id;
+        btn.setAttribute('role', 'tab');
+        btn.textContent = tab.label;
+        tabsEl.appendChild(btn);
+      }
+      // Insert tabs above the input row so the strip is the first focus stop.
+      if (box.firstChild) box.insertBefore(tabsEl, box.firstChild);
+      else box.appendChild(tabsEl);
+      tabsEl.addEventListener('click', function(ev){
+        var t = ev.target && ev.target.closest && ev.target.closest('.palette-tab');
+        if (!t) return;
+        setActiveTab(t.dataset.tab || 'all');
+      });
+    }
     resultsEl = palette.querySelector('#palette-results');
     if (!resultsEl) {
       resultsEl = document.createElement('ul');
@@ -250,7 +373,27 @@ JS_SEARCH_PALETTE = r"""
         if (e.target === palette) closePalette();
       });
     }
+    paintTabs();
     return true;
+  }
+
+  function paintTabs(){
+    if (!tabsEl) return;
+    var btns = tabsEl.querySelectorAll('.palette-tab');
+    for (var i = 0; i < btns.length; i++) {
+      var on = btns[i].dataset.tab === activeTab;
+      btns[i].classList.toggle('is-active', on);
+      btns[i].setAttribute('aria-selected', on ? 'true' : 'false');
+      btns[i].tabIndex = on ? 0 : -1;
+    }
+  }
+
+  function setActiveTab(id){
+    if (!tabById(id)) id = 'all';
+    activeTab = id;
+    saveActiveTab(id);
+    paintTabs();
+    runSearch();
   }
 
   function setStatus(text){
@@ -258,9 +401,133 @@ JS_SEARCH_PALETTE = r"""
     statusEl.textContent = text || '';
   }
 
-  function makeRow(item, index){
+  // ----- ranking ------------------------------------------------------------
+
+  function recencyFactor(ts){
+    if (typeof ts !== 'number' || !isFinite(ts) || ts <= 0) return 0;
+    var nowSec = Date.now() / 1000;
+    var ageDays = Math.max(0, (nowSec - ts) / 86400);
+    if (ageDays <= 7) return 1.0;
+    if (ageDays >= 180) return 0.0;
+    return Math.max(0, 1 - (ageDays - 7) / (180 - 7));
+  }
+
+  function recencyBadge(ts){
+    if (typeof ts !== 'number' || !isFinite(ts) || ts <= 0) return '';
+    var nowSec = Date.now() / 1000;
+    var ageDays = Math.max(0, Math.floor((nowSec - ts) / 86400));
+    if (ageDays < 1) return 'today';
+    if (ageDays < 14) return ageDays + 'd';
+    if (ageDays < 60) return Math.floor(ageDays / 7) + 'w';
+    if (ageDays < 365) return Math.floor(ageDays / 30) + 'mo';
+    if (ageDays > 180) return '180d+';
+    return ageDays + 'd';
+  }
+
+  function bm25Tokens(qTokens, entry){
+    var tokens = entry.tokens;
+    if (!tokens || !tokens.length || !qTokens.length) return 0;
+    // Build a small frequency map over entry.tokens — done once per call so
+    // typing latency stays linear in the corpus size.
+    var counts = Object.create(null);
+    for (var i = 0; i < tokens.length; i++) {
+      var t = tokens[i];
+      counts[t] = (counts[t] || 0) + 1;
+    }
+    var dl = entry.len || tokens.length || 1;
+    var norm = BM25_K1 * (1 - BM25_B + BM25_B * dl / (avgDocLen || 1));
+    var s = 0;
+    for (var j = 0; j < qTokens.length; j++) {
+      var q = qTokens[j];
+      var tf = counts[q];
+      if (!tf) continue;
+      s += tf / (tf + norm);
+    }
+    return s;
+  }
+
+  function substringFallback(query, entry){
+    var q = query.toLowerCase();
+    var title = (entry.title || '').toString().toLowerCase();
+    var summary = (entry.summary || entry.description || '').toString().toLowerCase();
+    var kind = (entry.kind || entry.type || '').toString().toLowerCase();
+    if (title.indexOf(q) !== -1) return 0.6;
+    if (summary.indexOf(q) !== -1) return 0.3;
+    if (kind.indexOf(q) !== -1) return 0.15;
+    return 0;
+  }
+
+  function scoreEntry(query, qTokens, entry){
+    var base;
+    if (entry.tokens && entry.tokens.length) {
+      base = bm25Tokens(qTokens, entry);
+      if (!base) {
+        // Token-level miss: try the legacy substring as a soft fallback so
+        // partial matches like "splat" still surface "Gaussian Splatting".
+        base = substringFallback(query, entry) * 0.5;
+      }
+    } else {
+      base = substringFallback(query, entry);
+    }
+    if (!base) return 0;
+    var rec = recencyFactor(entry.created_ts);
+    return base * (1 + 0.1 * rec);
+  }
+
+  function parseQuery(raw){
+    // ``c:gauss`` / ``p:vision`` etc. set the kind hint for this query only,
+    // overlaying whatever tab is active.
+    var hintTab = null;
+    var query = raw;
+    var m = /^([a-z]):\s*(.*)$/.exec(raw);
+    if (m) {
+      var t = tabByPrefix(m[1]);
+      if (t) {
+        hintTab = t.id;
+        query = m[2];
+      }
+    }
+    return { query: query, hintTab: hintTab, tokens: tokenize(query) };
+  }
+
+  function appendHighlightedText(parent, text, qTokens){
+    if (!qTokens.length) {
+      parent.appendChild(document.createTextNode(text));
+      return;
+    }
+    var lc = text.toLowerCase();
+    var i = 0;
+    var n = text.length;
+    while (i < n) {
+      var bestStart = -1, bestEnd = -1;
+      for (var j = 0; j < qTokens.length; j++) {
+        var q = qTokens[j];
+        if (!q) continue;
+        var idx = lc.indexOf(q, i);
+        if (idx === -1) continue;
+        if (bestStart === -1 || idx < bestStart) {
+          bestStart = idx;
+          bestEnd = idx + q.length;
+        }
+      }
+      if (bestStart === -1) {
+        parent.appendChild(document.createTextNode(text.slice(i)));
+        return;
+      }
+      if (bestStart > i) {
+        parent.appendChild(document.createTextNode(text.slice(i, bestStart)));
+      }
+      var mark = document.createElement('mark');
+      mark.textContent = text.slice(bestStart, bestEnd);
+      parent.appendChild(mark);
+      i = bestEnd;
+    }
+  }
+
+  function makeRow(item, index, qTokens){
     var li = document.createElement('li');
     li.className = 'palette-result';
+    li.dataset.kind = (item.kind || item.type || '').toString();
     li.setAttribute('role', 'option');
     li.dataset.index = String(index);
     li.dataset.href = item.href || '';
@@ -272,20 +539,27 @@ JS_SEARCH_PALETTE = r"""
     badge.textContent = (item.kind || item.type || '').toString();
     var title = document.createElement('strong');
     title.className = 'palette-result-title';
-    title.textContent = item.title || item.id || '';
+    appendHighlightedText(title, (item.title || item.id || '').toString(), qTokens);
     var summary = document.createElement('span');
     summary.className = 'palette-result-summary muted';
     var summaryText = (item.summary || item.description || item.source_path || '').toString();
     if (summaryText.length > 160) summaryText = summaryText.slice(0, 157) + '…';
-    summary.textContent = summaryText;
+    appendHighlightedText(summary, summaryText, qTokens);
     a.appendChild(badge);
     a.appendChild(title);
     a.appendChild(summary);
+    var rec = recencyBadge(item.created_ts);
+    if (rec) {
+      var recEl = document.createElement('span');
+      recEl.className = 'palette-result-recency';
+      recEl.textContent = rec;
+      a.appendChild(recEl);
+    }
     li.appendChild(a);
     return li;
   }
 
-  function render(items, label){
+  function render(items, label, qTokens){
     if (!resultsEl) return;
     while (resultsEl.firstChild) resultsEl.removeChild(resultsEl.firstChild);
     currentItems = items.slice(0, 30);
@@ -295,7 +569,7 @@ JS_SEARCH_PALETTE = r"""
     }
     setStatus(label || (currentItems.length + ' result' + (currentItems.length === 1 ? '' : 's')));
     for (var i = 0; i < currentItems.length; i++) {
-      resultsEl.appendChild(makeRow(currentItems[i], i));
+      resultsEl.appendChild(makeRow(currentItems[i], i, qTokens || []));
     }
     highlightIndex = 0;
     updateHighlight();
@@ -318,30 +592,34 @@ JS_SEARCH_PALETTE = r"""
     }
   }
 
-  function matches(query, item){
-    if (!query) return true;
-    var q = query.toLowerCase();
-    var title = (item.title || '').toString().toLowerCase();
-    var summary = (item.summary || item.description || '').toString().toLowerCase();
-    var kind = (item.kind || item.type || '').toString().toLowerCase();
-    return title.indexOf(q) !== -1 || summary.indexOf(q) !== -1 || kind.indexOf(q) !== -1;
-  }
-
   function runSearch(){
     if (!input) return;
-    var q = (input.value || '').trim();
+    var raw = (input.value || '').trim();
+    var parsed = parseQuery(raw);
+    var effectiveTab = parsed.hintTab || activeTab;
     ensureData().then(function(items){
-      if (!q) {
+      var corpus = items;
+      var tab = tabById(effectiveTab);
+      if (tab && tab.kind) {
+        corpus = corpus.filter(function(it){ return (it.kind || it.type) === tab.kind; });
+      }
+      if (!parsed.query) {
         var recents = loadRecents();
-        if (recents.length) {
-          render(recents, 'Recent');
+        if (recents.length && effectiveTab === 'all') {
+          render(recents, 'Recent', []);
         } else {
-          render(items.slice(0, 12), 'Browse');
+          render(corpus.slice(0, 12), 'Browse · ' + (tab ? tab.label : 'All'), []);
         }
         return;
       }
-      var matched = items.filter(function(it){ return matches(q, it); });
-      render(matched, matched.length ? null : 'No matches for “' + q + '”');
+      var scored = [];
+      for (var i = 0; i < corpus.length; i++) {
+        var s = scoreEntry(parsed.query, parsed.tokens, corpus[i]);
+        if (s > 0) scored.push({ s: s, e: corpus[i] });
+      }
+      scored.sort(function(a, b){ return b.s - a.s; });
+      var matched = scored.map(function(x){ return x.e; });
+      render(matched, matched.length ? null : 'No matches for “' + parsed.query + '”', parsed.tokens);
     });
   }
 
@@ -362,6 +640,26 @@ JS_SEARCH_PALETTE = r"""
         highlightIndex = (highlightIndex - 1 + currentItems.length) % currentItems.length;
         updateHighlight();
       }
+    } else if (e.key === 'PageDown') {
+      e.preventDefault();
+      if (currentItems.length) {
+        highlightIndex = Math.min(currentItems.length - 1, highlightIndex + 5);
+        updateHighlight();
+      }
+    } else if (e.key === 'PageUp') {
+      e.preventDefault();
+      if (currentItems.length) {
+        highlightIndex = Math.max(0, highlightIndex - 5);
+        updateHighlight();
+      }
+    } else if (e.key === 'Tab') {
+      // Tab cycles through the type-scope tabs (Shift+Tab steps backward).
+      e.preventDefault();
+      var idx = -1;
+      for (var i = 0; i < TABS.length; i++) if (TABS[i].id === activeTab) { idx = i; break; }
+      if (idx === -1) idx = 0;
+      var nextIdx = e.shiftKey ? (idx - 1 + TABS.length) % TABS.length : (idx + 1) % TABS.length;
+      setActiveTab(TABS[nextIdx].id);
     } else if (e.key === 'Enter') {
       var item = currentItems[highlightIndex];
       if (item && item.href) {
@@ -377,6 +675,8 @@ JS_SEARCH_PALETTE = r"""
 
   function openPalette(){
     if (!ensurePaletteShell()) return;
+    activeTab = loadActiveTab();
+    paintTabs();
     palette.hidden = false;
     palette.setAttribute('data-open', '');
     document.body.classList.add('palette-open');
@@ -1094,11 +1394,24 @@ JS_GRAPH = r"""
 """
 
 
-JS_BUNDLE = (
+# ``JS_BUNDLE_BASE`` is what every page loads (theme toggle, rail/TOC drawer,
+# search palette). ``JS_BUNDLE_GRAPH`` is the heavier graph renderer that we
+# only ship on the graph route — see ``llm_wiki.site.__init__`` (writes both
+# ``assets/app.js`` and ``assets/graph.js``) and ``render_graph_view`` in
+# ``pages.py`` (injects the second ``<script defer>`` only on the graph page).
+JS_BUNDLE_BASE = (
     JS_THEME_TOGGLE
     + "\n" + JS_RAIL_DRAWER
     + "\n" + JS_SEARCH_PALETTE
-    + "\n" + JS_GRAPH
+)
+
+JS_BUNDLE_GRAPH = JS_GRAPH
+
+# Back-compat alias: tests and any older callers can still import ``JS_BUNDLE``
+# and get the union (so ``"data-toggle-theme" in JS_BUNDLE`` etc. still work).
+JS_BUNDLE = (
+    JS_BUNDLE_BASE
+    + "\n" + JS_BUNDLE_GRAPH
 )
 
 
@@ -1108,4 +1421,6 @@ __all__ = [
     "JS_SEARCH_PALETTE",
     "JS_GRAPH",
     "JS_BUNDLE",
+    "JS_BUNDLE_BASE",
+    "JS_BUNDLE_GRAPH",
 ]

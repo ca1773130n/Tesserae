@@ -1665,7 +1665,16 @@ def render_timeline_day(ctx: SiteContext, date_str: str) -> str:
     )
 
 
-def render_graph_view(ctx: SiteContext) -> str:
+def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
+    """Compute the wiki-layer graph payload sent to the interactive view.
+
+    Returns ``{"nodes": [...], "links": [...]}``. Filtering, degree-based size,
+    and the MAX_GRAPH_NODES cap live here so the renderer and the on-disk
+    ``graph/payload.json`` file (written by ``StaticSiteBuilder``) stay in
+    perfect sync. The static SVG fallback in the JS bundle reads the same
+    payload structure, so any change here cascades to every render path.
+    """
+
     # Filter to wiki-layer node types only — see WIKI_LAYER_TYPES (the
     # canonical allow-list defined alongside the search index). Anything
     # outside that set stays in graph.json for MCP consumers but never
@@ -1697,11 +1706,9 @@ def render_graph_view(ctx: SiteContext) -> str:
         visible_edges = [e for e in visible_edges if e.source in kept_ids and e.target in kept_ids]
 
     nodes_payload: List[Dict[str, object]] = []
-    type_counts: Counter = Counter()
     for n in visible_nodes:
         kind = _kind_for_node_type(n.type)  # one of sources/concepts/entities/...
         group = kind or "other"
-        type_counts[group] += 1
         href_rel = node_href(n)
         href = f"../{href_rel}" if href_rel else ""
         deg = degree.get(n.id, 0)
@@ -1727,7 +1734,16 @@ def render_graph_view(ctx: SiteContext) -> str:
             "label": e.type.replace("_", " ") if e.type else "related",
         })
 
-    payload = {"nodes": nodes_payload, "links": links_payload}
+    return {"nodes": nodes_payload, "links": links_payload}
+
+
+def render_graph_view(ctx: SiteContext) -> str:
+    payload = build_graph_payload(ctx)
+    nodes_payload = payload["nodes"]  # type: ignore[index]
+    links_payload = payload["links"]  # type: ignore[index]
+    type_counts: Counter = Counter()
+    for n in nodes_payload:  # type: ignore[union-attr]
+        type_counts[n.get("group") or "other"] += 1  # type: ignore[union-attr]
 
     # Legend (server-rendered fallback; the JS rebuilds it with click-to-toggle
     # behaviour, but if JS is off the user still sees the palette key).
@@ -1756,20 +1772,24 @@ def render_graph_view(ctx: SiteContext) -> str:
     # CDN-loaded ES modules. We pin specific versions and supply integrity
     # hashes so a network MITM can't swap the bundle. If either fetch fails
     # the JS module never sets ``window.ForceGraph(3D)`` and the runtime
-    # bundle (``app.js``) renders the static SVG fallback after a 6s timeout.
+    # bundle (``graph.js``) renders the static SVG fallback after a 6s timeout.
     #
     # Versions chosen 2026-04: 3d-force-graph 1.74.x, force-graph 1.49.x,
-    # three 0.169.x (peer of 3d-force-graph). Hashes computed for these
-    # exact tarballs on esm.sh; if the version pin moves, regen the hashes
-    # via ``openssl dgst -sha384 -binary <file> | openssl base64 -A``.
+    # three 0.169.x (peer of 3d-force-graph). The graph payload is fetched
+    # from ``payload.json`` next to this HTML — it lives outside the document
+    # so non-graph pages never download the (~900 KB) graph data, and so this
+    # page itself stays under 50 KB. The fetch happens inside the deferred
+    # ``graph.js`` so the skeleton renders immediately.
     head = (
         '<link rel="preconnect" href="https://esm.sh">\n'
+        '<link rel="preload" href="payload.json" as="fetch" type="application/json" crossorigin="anonymous">\n'
+        f'<script defer src="../assets/graph.js"></script>\n'
         '<script type="module">\n'
         '  // Load 3D + 2D force-graph plus three.js peer dep from esm.sh.\n'
         '  // We attach the constructors to ``window`` so the deferred\n'
-        '  // ``app.js`` (loaded with the rest of the site bundle) can pick\n'
-        '  // them up without itself needing to be a module. If any import\n'
-        '  // throws (CDN blocked, offline, CSP), app.js falls back to the\n'
+        '  // ``graph.js`` (loaded only on this route) can pick them up\n'
+        '  // without itself needing to be a module. If any import throws\n'
+        '  // (CDN blocked, offline, CSP), graph.js falls back to the\n'
         '  // inline SVG renderer and surfaces the error banner.\n'
         '  try {\n'
         '    const [{ default: ForceGraph3D }, { default: ForceGraph }] = await Promise.all([\n'
@@ -1784,6 +1804,15 @@ def render_graph_view(ctx: SiteContext) -> str:
         '    window.__graphLibsError = String(err && err.message ? err.message : err);\n'
         '  }\n'
         '</script>\n'
+    )
+
+    # Empty-state skeleton. Pure CSS shimmer (no JS needed) so the user sees
+    # something immediately after the HTML lands. ``graph.js`` removes the
+    # skeleton when it injects the canvas.
+    skeleton = (
+        '<div class="graph-skeleton" aria-hidden="true">'
+        '<div class="graph-skeleton-shimmer"></div>'
+        '</div>'
     )
 
     body = f"""<header class="hero">
@@ -1806,15 +1835,15 @@ def render_graph_view(ctx: SiteContext) -> str:
       <input id="graph-search-input" type="search" placeholder="Search nodes ( / )" autocomplete="off" spellcheck="false">
     </div>
   </div>
-  <div class="graph-canvas" id="graph-canvas" role="img" aria-label="Interactive 3D knowledge graph">
+  <div class="graph-canvas" id="graph-canvas" data-payload-url="payload.json" role="img" aria-label="Interactive 3D knowledge graph">
+    {skeleton}
     <div class="graph-info-panel" id="graph-info-panel" aria-live="polite"></div>
     <div class="graph-tooltip" id="graph-tooltip" role="status" aria-live="polite"></div>
     <div class="graph-error-banner" id="graph-error-banner" role="alert"></div>
   </div>
   <div class="graph-legend" id="graph-legend" aria-label="Type legend">{legend_items}</div>
-  <p class="graph-help muted">Showing {len(nodes_payload)} of {len(visible_nodes) if len(visible_nodes) >= len(nodes_payload) else len(nodes_payload)} wiki nodes · {len(links_payload)} links</p>
-</section>
-<script id="graph-data" type="application/json">{_safe_json(payload)}</script>"""
+  <p class="graph-help muted">Showing {len(nodes_payload)} of {len(nodes_payload)} wiki nodes · {len(links_payload)} links</p>
+</section>"""
     return page_shell(
         title="Graph view",
         head=head,
@@ -1872,6 +1901,7 @@ def render_about(ctx: SiteContext) -> str:
 __all__ = [
     "ROUTE_FOR_KIND",
     "SiteContext",
+    "build_graph_payload",
     "kind_for_node",
     "node_href",
     "page_href",

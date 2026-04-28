@@ -423,19 +423,22 @@ def test_render_timeline_renders_full_doc(site_ctx: SiteContext) -> None:
 
 
 def test_render_graph_view_includes_payload_script(site_ctx: SiteContext) -> None:
+    from llm_wiki.site.pages import build_graph_payload
+
     out = render_graph_view(site_ctx)
     _assert_doc_shape(out)
     _assert_breadcrumb_contains(out, "Graph view")
-    # Payload script tag present with the documented id.
-    m = re.search(r'<script id="graph-data" type="application/json">(.+?)</script>', out, flags=re.DOTALL)
-    assert m, "render_graph_view must emit a <script id='graph-data'> payload"
-    payload = json.loads(m.group(1).replace("<\\/", "</"))
-    # The interactive 3D layout uses ``links`` (3d-force-graph convention);
-    # the legacy 2D sigma renderer used ``edges``. Accept either to keep the
-    # contract loose enough that future renderer swaps don't break this test.
+    # Graph payload now lives in graph/payload.json (fetched by graph.js) so
+    # the HTML does NOT inline the payload — the perf budget caps the page at
+    # 50 KB. The fetch hint still points at payload.json.
+    assert 'data-payload-url="payload.json"' in out
+    assert "payload.json" in out
+    # The graph.js bundle is loaded only on this route via the second script.
+    assert "assets/graph.js" in out
+    # And the payload itself is computable from the same context.
+    payload = build_graph_payload(site_ctx)
     assert "nodes" in payload
     assert "links" in payload or "edges" in payload
-    # No code-class nodes leak into the graph view payload.
     leaked = [n for n in payload["nodes"] if n.get("type") in {"CodeClass", "CodeFunction", "CodeModule"}]
     assert not leaked, f"graph view leaked code-layer nodes: {leaked!r}"
 
