@@ -5,19 +5,24 @@ daily_digest, weekly, topic, comparison, field_overview) with stable, hashable
 markdown bodies and matching `Synthesis` nodes/edges. Idempotent: a page is
 only rewritten when its content hash changes.
 
-LLM upgrade is deliberately out of scope here; the heuristic baseline is the
-guaranteed-shippable path and runs without any external dependency.
+The deterministic heuristic is the default ship and the always-available
+fallback. An optional LLM upgrade path lives in ``llm_wiki.llm_synthesis``;
+it activates only when ``LLM_WIKI_SYNTHESIS_LLM`` is truthy, an Anthropic
+API key is available, and the SDK can be imported. Any failure on a single
+page falls back to the heuristic body for that page only.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .research_graph import (
     ResearchEdge,
@@ -30,6 +35,7 @@ from .wiki_store import WikiPage, WikiPageStore
 
 
 GENERATOR = "heuristic-v1"
+DEFAULT_LLM_MODEL = "claude-sonnet-4-6"
 
 
 _DAILY_RE = re.compile(r"data/research/daily/(\d{4}-\d{2}-\d{2})/")
@@ -126,6 +132,111 @@ class SynthesisProjector:
     ) -> None:
         self.wiki_store = wiki_store
         self.manifest_path = Path(manifest_path) if manifest_path else None
+        # Memoized per ``project()`` call; None means "not yet checked".
+        self._llm_state: Optional[Dict[str, Any]] = None
+
+    # ------------------------------------------------------------------
+    # LLM gating
+    # ------------------------------------------------------------------
+
+    def _llm_state_for_run(self, ctx: "_GraphContext") -> Dict[str, Any]:
+        """Decide once per ``project()`` whether the LLM path is active."""
+
+        if self._llm_state is not None:
+            return self._llm_state
+
+        from . import llm_synthesis  # lazy: avoid hard dep on import order
+
+        state: Dict[str, Any] = {"enabled": False, "synthesizer": None, "model": None}
+
+        if not llm_synthesis.env_enabled():
+            self._llm_state = state
+            return state
+
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+        dry_run = llm_synthesis.env_dry_run()
+
+        if not api_key and not dry_run:
+            print(
+                "[llm-wiki] LLM synthesis disabled (ANTHROPIC_API_KEY not set)",
+                file=sys.stderr,
+            )
+            self._llm_state = state
+            return state
+
+        # Test seam OR a real anthropic install both satisfy the import gate.
+        has_factory = getattr(llm_synthesis, "_CLIENT_FACTORY", None) is not None
+        if not dry_run and not has_factory:
+            try:
+                import anthropic  # type: ignore[import-not-found]  # noqa: F401
+            except ImportError:
+                print(
+                    "[llm-wiki] LLM synthesis disabled (anthropic SDK not "
+                    "installed; run `pip install llm-wiki[synthesis-llm]`)",
+                    file=sys.stderr,
+                )
+                self._llm_state = state
+                return state
+
+        model = os.environ.get("LLM_WIKI_SYNTHESIS_MODEL", "").strip() or DEFAULT_LLM_MODEL
+        try:
+            synthesizer = llm_synthesis.LlmSynthesizer(
+                model=model,
+                api_key=api_key or None,
+                dry_run=dry_run,
+            )
+        except Exception as exc:  # noqa: BLE001 — never block compile on construct
+            print(
+                f"[llm-wiki] LLM synthesis disabled (constructor failed: {exc})",
+                file=sys.stderr,
+            )
+            self._llm_state = state
+            return state
+
+        state.update(enabled=True, synthesizer=synthesizer, model=model, ctx=ctx)
+        # Reset the per-process error dedupe so each compile starts fresh —
+        # a transient failure last run shouldn't silence a real one this run.
+        llm_synthesis.reset_failure_log_for_tests()
+        self._llm_state = state
+        return state
+
+    def _build_llm_request(
+        self, plan: "_PagePlan", ctx: "_GraphContext"
+    ) -> "LlmSynthesisRequest":
+        """Project a plan into a structured prompt input for the LLM.
+
+        Only ids + names + types + light counts are sent. Source-document
+        bodies are NOT shipped to the API; the privacy contract is "graph
+        metadata only".
+        """
+
+        from .llm_synthesis import LlmSynthesisRequest
+
+        inputs: List[Dict[str, Any]] = []
+        for node_id in plan.input_ids:
+            node = ctx.nodes_by_id.get(node_id)
+            if not node:
+                continue
+            inputs.append(
+                {
+                    "id": node.id,
+                    "name": node.name,
+                    "type": node.type.value,
+                    "description": (node.description or "").strip()[:280] or None,
+                }
+            )
+        context: Dict[str, Any] = {
+            "kind": plan.kind,
+            "summary": plan.summary,
+            "source_paths": list(plan.sources),
+            "summarize_targets": list(plan.summarize_targets),
+        }
+        return LlmSynthesisRequest(
+            kind=plan.kind,
+            title=plan.title,
+            inputs=tuple(inputs),
+            context=context,
+        )
 
     # ------------------------------------------------------------------
     # Entry point
@@ -143,6 +254,28 @@ class SynthesisProjector:
         plans.extend(self._plan_comparisons(ctx))
         plans.extend(self._plan_fields(ctx))
 
+        # Reset memoized LLM state for this run, then evaluate it once.
+        self._llm_state = None
+        llm_state = self._llm_state_for_run(ctx)
+
+        # Per-plan LLM upgrade. Each successful response replaces the
+        # heuristic body in-place; failures leave the heuristic body intact.
+        if llm_state["enabled"]:
+            synthesizer = llm_state["synthesizer"]
+            llm_model = llm_state["model"]
+            for plan in plans:
+                request = self._build_llm_request(plan, ctx)
+                response = synthesizer.synthesize(request)
+                if response is None:
+                    continue
+                plan.body = response.body
+                plan.llm_metadata = {
+                    "generator": f"llm-{llm_model}",
+                    "llm_model": response.model,
+                    "llm_cache_id": response.cache_id,
+                    "llm_citations": list(response.citations),
+                }
+
         new_nodes: List[ResearchNode] = list(graph.nodes)
         new_edges: List[ResearchEdge] = list(graph.edges)
         written: List[WikiPage] = []
@@ -158,15 +291,23 @@ class SynthesisProjector:
             # timestamp-free dict and pass ``plan.body`` (no embedded
             # frontmatter), avoiding the dual-frontmatter trap that otherwise
             # leaks ``generated_at`` into the body hash.
-            disk_frontmatter = {
+            generator_label = (
+                plan.llm_metadata.get("generator")
+                if plan.llm_metadata
+                else GENERATOR
+            )
+            disk_frontmatter: Dict[str, object] = {
                 "synthesis_kind": plan.kind,
                 "slug": plan.slug,
                 "title": plan.title,
                 "sources": sorted(plan.sources),
                 "inputs": sorted(plan.input_ids),
-                "generator": GENERATOR,
+                "generator": generator_label,
                 "content_hash": content_hash,
             }
+            if plan.llm_metadata:
+                disk_frontmatter["llm_model"] = plan.llm_metadata["llm_model"]
+                disk_frontmatter["llm_cache_id"] = plan.llm_metadata["llm_cache_id"]
             page = WikiPage(
                 kind="syntheses",
                 slug=plan.slug,
@@ -183,7 +324,7 @@ class SynthesisProjector:
                         "slug": plan.slug,
                         "content_hash": content_hash,
                         "generated_at": generated_at,
-                        "generator": GENERATOR,
+                        "generator": generator_label,
                     }
                 )
 
@@ -534,7 +675,17 @@ class SynthesisProjector:
 
 
 class _PagePlan:
-    __slots__ = ("kind", "slug", "title", "body", "summary", "sources", "input_ids", "summarize_targets")
+    __slots__ = (
+        "kind",
+        "slug",
+        "title",
+        "body",
+        "summary",
+        "sources",
+        "input_ids",
+        "summarize_targets",
+        "llm_metadata",
+    )
 
     def __init__(
         self,
@@ -555,6 +706,10 @@ class _PagePlan:
         self.sources = sources
         self.input_ids = input_ids
         self.summarize_targets = summarize_targets
+        # Populated only when the LLM upgrade path generated this body. The
+        # heuristic path leaves this as ``None`` and the on-disk frontmatter
+        # uses ``GENERATOR`` ("heuristic-v1").
+        self.llm_metadata: Optional[Dict[str, Any]] = None
 
 
 class _GraphContext:

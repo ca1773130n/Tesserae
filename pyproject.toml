@@ -24,6 +24,9 @@ dependencies = [
   "pydantic>=2",
 ]
 
+[project.optional-dependencies]
+synthesis-llm = ["anthropic>=0.40"]
+
 [project.scripts]
 llm_wiki = "llm_wiki.cli:main"
 llm-wiki = "llm_wiki.cli:main"
