@@ -64,6 +64,7 @@ from .pages import (
     render_synthesis_detail,
     render_syntheses_index,
     render_timeline,
+    render_timeline_day,
     render_topic_detail,
     render_topics_index,
 )
@@ -173,16 +174,26 @@ class StaticSiteBuilder:
             wiki_root = None
 
         out = Path(output_dir)
+        # Preserve the append-only build history ledger across rebuilds: read
+        # any existing entries before wiping the site directory, then re-emit
+        # them (plus this build's entry) at the end. The ledger lives next to
+        # ``manifest.json`` and is the only file in ``out`` that is allowed to
+        # carry a build-time timestamp.
+        prior_build_history = _read_build_history(out / ".build-history.jsonl")
         if out.exists():
             shutil.rmtree(out)
         out.mkdir(parents=True)
 
         # ------------------------------------------------------------ load wiki
         wiki_pages_by_kind: Dict[str, List[WikiPage]] = {kind: [] for kind in _WIKI_KINDS}
+        synthesis_history: List[Dict[str, str]] = []
         if wiki_root is not None:
             store = WikiPageStore(wiki_root)
             for kind in _WIKI_KINDS:
                 wiki_pages_by_kind[kind] = list(store.list_pages(kind))
+            synthesis_history = _read_synthesis_history(
+                Path(wiki_root) / "syntheses" / ".history.jsonl"
+            )
 
         # ----------------------------------------------------------- contexts
         site_ctx = SiteContext.build(
@@ -228,6 +239,33 @@ class StaticSiteBuilder:
         (out / "timeline").mkdir(parents=True, exist_ok=True)
         (out / "timeline" / "index.html").write_text(render_timeline(site_ctx), encoding="utf-8")
         _track("timeline/index.html")
+
+        # Per-day timeline detail pages — one per ISO date with at least
+        # one node anchored to it. Sorted lexicographically (== ISO chrono)
+        # so the emission order is deterministic.
+        for day in sorted(d for d, ids in site_ctx.activity_by_day.items() if ids):
+            day_html = out / "timeline" / f"{day}.html"
+            day_html.write_text(render_timeline_day(site_ctx, day), encoding="utf-8")
+
+            # AI siblings next to each day page so MCP/Cognee consumers can
+            # diff a day's structured fields without parsing HTML.
+            ids = site_ctx.activity_by_day.get(day, frozenset())
+            sources = list(site_ctx.sources_by_day.get(day, ()))
+            day_record: Dict[str, object] = {
+                "title": day,
+                "kind": "timeline_day",
+                "body": f"Activity for {day}",
+                "body_text": f"Activity for {day}: {len(ids)} item(s) indexed.",
+                "links": [],
+                "source_path": "",
+                "frontmatter": {
+                    "date": day,
+                    "activity": len(ids),
+                    "sources": sources,
+                },
+            }
+            write_siblings(day_html, day_record)
+            _track(f"timeline/{day}.html")
 
         (out / "graph").mkdir(parents=True, exist_ok=True)
         (out / "graph" / "index.html").write_text(render_graph_view(site_ctx), encoding="utf-8")
@@ -282,6 +320,7 @@ class StaticSiteBuilder:
             graph=graph,
             wiki_pages_by_kind=wiki_pages_by_kind,
             routes=tuple(routes),
+            synthesis_history=tuple(synthesis_history),
         )
 
         (out / "llms.txt").write_text(render_llms_txt(self.site_title, export_ctx), encoding="utf-8")
@@ -292,9 +331,12 @@ class StaticSiteBuilder:
             render_graph_jsonld(graph, export_ctx), encoding="utf-8"
         )
         (out / "sitemap.xml").write_text(render_sitemap_xml(routes), encoding="utf-8")
-        recent_syntheses = self._recent_syntheses(wiki_pages_by_kind.get("syntheses", []))
+        recent_syntheses = self._recent_syntheses(
+            wiki_pages_by_kind.get("syntheses", []), synthesis_history
+        )
         (out / "rss.xml").write_text(
-            render_rss_xml(self.site_title, recent_syntheses), encoding="utf-8"
+            render_rss_xml(self.site_title, recent_syntheses, synthesis_history),
+            encoding="utf-8",
         )
         (out / "robots.txt").write_text(render_robots_txt(), encoding="utf-8")
         (out / "ai-readme.md").write_text(
@@ -304,8 +346,28 @@ class StaticSiteBuilder:
         # ---------------------------------------------------------- manifest
         manifest_payload = self._manifest(out)
         (out / "manifest.json").write_text(
-            json.dumps(manifest_payload, ensure_ascii=False, indent=2) + "\n",
+            json.dumps(manifest_payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
+        )
+
+        # ---------------------------------------------- build-history ledger
+        # Append a single line for this build, preserving any prior entries that
+        # survived from before the rebuild. The ledger is the *only* file in
+        # ``out`` that is allowed to differ between back-to-back compiles —
+        # everything else is byte-identical when nothing real has changed.
+        build_entry = {
+            "built_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "file_count": int(manifest_payload.get("file_count", 0)),
+            "total_bytes": sum(
+                int(entry.get("size", 0))
+                for entry in manifest_payload.get("files", [])
+                if isinstance(entry, dict)
+            ),
+        }
+        history_lines = list(prior_build_history)
+        history_lines.append(json.dumps(build_entry, sort_keys=True, ensure_ascii=False))
+        (out / ".build-history.jsonl").write_text(
+            "\n".join(history_lines) + "\n", encoding="utf-8"
         )
 
         return {
@@ -320,23 +382,39 @@ class StaticSiteBuilder:
     # -------------------------------------------------------------- internals
 
     @staticmethod
-    def _recent_syntheses(pages: Sequence[WikiPage]) -> List[WikiPage]:
+    def _recent_syntheses(
+        pages: Sequence[WikiPage],
+        history: Sequence[Mapping[str, str]] = (),
+    ) -> List[WikiPage]:
         """Return up to 30 synthesis pages sorted newest-first.
 
-        Pages without a parseable timestamp fall to the end in slug order so
-        the result remains deterministic.
+        Order is keyed off the synthesis history ledger (``slug -> latest
+        generated_at``). Pages without a ledger entry fall to the end in slug
+        order so the result remains deterministic across recompiles.
         """
 
+        ledger: Dict[str, str] = {}
+        for entry in history:
+            if not isinstance(entry, Mapping):
+                continue
+            slug = entry.get("slug")
+            when = entry.get("generated_at")
+            if not isinstance(slug, str) or not isinstance(when, str):
+                continue
+            prior = ledger.get(slug)
+            if prior is None or when > prior:
+                ledger[slug] = when
+
         def _sort_key(p: WikiPage) -> Tuple[int, str, str]:
-            fm = p.frontmatter or {}
-            stamp = ""
-            if isinstance(fm, dict):
-                for key in ("generated_at", "updated_at", "published_at", "date"):
-                    candidate = fm.get(key)
-                    if isinstance(candidate, str) and candidate.strip():
-                        stamp = candidate.strip()
-                        break
-            # Negative key so newer comes first when sorted ascending.
+            stamp = ledger.get(p.slug, "")
+            if not stamp:
+                fm = p.frontmatter or {}
+                if isinstance(fm, dict):
+                    for key in ("generated_at", "updated_at", "published_at", "date"):
+                        candidate = fm.get(key)
+                        if isinstance(candidate, str) and candidate.strip():
+                            stamp = candidate.strip()
+                            break
             return (0 if stamp else 1, "" if not stamp else _negate_string(stamp), p.slug)
 
         ordered = sorted(pages, key=_sort_key)
@@ -349,6 +427,10 @@ class StaticSiteBuilder:
         Iterates ``sorted(out.rglob("*"))`` and records ``{path, sha256, size}``
         for every regular file. Two consecutive ``write_site`` calls over the
         same input must yield byte-identical manifests.
+
+        Build-time timestamps live in ``.build-history.jsonl`` (next to this
+        manifest); they are intentionally excluded from the manifest itself so
+        the manifest is content-stable.
         """
         files: List[Dict[str, object]] = []
         for path in sorted(out.rglob("*")):
@@ -356,6 +438,10 @@ class StaticSiteBuilder:
                 continue
             # Skip the manifest itself — we are about to write it.
             if path.name == "manifest.json" and path.parent == out:
+                continue
+            # Skip the build-history ledger; it is the audit trail, not a
+            # content-addressable artifact.
+            if path.name == ".build-history.jsonl" and path.parent == out:
                 continue
             data = path.read_bytes()
             files.append(
@@ -366,10 +452,49 @@ class StaticSiteBuilder:
                 }
             )
         return {
-            "generator": "llm_wiki.site.StaticSiteBuilder",
+            "version": "1",
+            "generator": "llm-wiki",
             "file_count": len(files),
             "files": files,
         }
+
+
+def _read_synthesis_history(path: Path) -> List[Dict[str, str]]:
+    """Parse the synthesis history ledger; return ``[]`` if it doesn't exist.
+
+    One JSON object per line. Malformed lines are skipped silently — this
+    mirrors how every other "append-only audit log" tool we ship handles
+    partial writes.
+    """
+    if not path.exists():
+        return []
+    out: List[Dict[str, str]] = []
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            entry = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(entry, dict):
+            out.append({str(k): str(v) for k, v in entry.items()})
+    return out
+
+
+def _read_build_history(path: Path) -> List[str]:
+    """Return existing build-history lines so we can preserve them across rebuilds."""
+    if not path.exists():
+        return []
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    return [line for line in text.splitlines() if line.strip()]
 
 
 def _negate_string(value: str) -> str:

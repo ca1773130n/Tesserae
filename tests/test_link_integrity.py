@@ -36,14 +36,15 @@ def _toy_graph() -> ResearchGraph:
             name="Demo Paper",
             type=ResearchNodeType.PAPER,
             description="A demo paper.",
-            source_path="data/papers/demo.pdf",
+            # Anchor the paper to a real day so per-day timeline pages get emitted.
+            source_path="data/research/daily/2026-04-26/papers/demo.pdf",
         ),
         ResearchNode(
             id="Concept:gs",
             name="Gaussian Splatting",
             type=ResearchNodeType.CONCEPT,
             description="A 3D scene representation.",
-            source_path="data/papers/demo.pdf",
+            source_path="data/research/daily/2026-04-26/papers/demo.pdf",
         ),
         ResearchNode(
             id="Repository:demo",
@@ -239,6 +240,33 @@ def test_wiki_corpus_site_has_no_broken_links(
         wiki_sample_graph, wiki, out
     )
 
+    broken = _walk_site_for_broken_links(out)
+    assert not broken, "broken internal links:\n" + "\n".join(broken)
+
+
+def test_per_day_timeline_pages_are_emitted_and_walked(tmp_path: Path) -> None:
+    """Every day with activity gets a ``timeline/<YYYY-MM-DD>.html`` page,
+    those pages are walked by the link-integrity check, and the timeline
+    index links into them via the heatmap anchor wrapper."""
+    out = tmp_path / "site"
+    wiki = tmp_path / "wiki"
+    wiki.mkdir()
+    _seed_wiki(wiki)
+    StaticSiteBuilder(site_title="Demo Wiki").write_site(_toy_graph(), wiki, out)
+
+    # The toy graph anchors nodes to 2026-04-26.
+    day_html = out / "timeline" / "2026-04-26.html"
+    assert day_html.exists(), f"expected per-day page at {day_html}"
+    # Sibling artifacts also land next to the HTML.
+    assert (out / "timeline" / "2026-04-26.txt").exists()
+    assert (out / "timeline" / "2026-04-26.json").exists()
+
+    # The timeline index's heatmap should wrap the cell for 2026-04-26 in
+    # an <a xlink:href> pointing back at the day page.
+    timeline_index = (out / "timeline" / "index.html").read_text(encoding="utf-8")
+    assert 'xlink:href="../timeline/2026-04-26.html"' in timeline_index
+
+    # Link integrity holds end-to-end across the day pages too.
     broken = _walk_site_for_broken_links(out)
     assert not broken, "broken internal links:\n" + "\n".join(broken)
 

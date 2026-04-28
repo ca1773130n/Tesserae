@@ -245,6 +245,15 @@ class SiteContext:
     # source_path → SourceDocument node-id, used to link a node's
     # ``source_path`` back to its source detail page.
     node_id_for_source_path: Mapping[str, str] = field(default_factory=dict)
+    # ``YYYY-MM-DD`` → set of node ids whose ``source_path`` (or
+    # ``metadata['source_paths']`` / ``metadata['created']`` / source-file
+    # mtime) places them on that day. Used by the timeline page + per-day
+    # detail pages so we can answer "what shipped on 2026-04-27?"
+    # deterministically without rescanning the graph each render.
+    activity_by_day: Mapping[str, frozenset] = field(default_factory=dict)
+    # ``YYYY-MM-DD`` → list of source paths anchored to that day, ordered
+    # for stable rendering.
+    sources_by_day: Mapping[str, Sequence[str]] = field(default_factory=dict)
 
     @classmethod
     def build(
@@ -332,6 +341,12 @@ class SiteContext:
 
         activity_by_node_id = _activity_by_node_id(graph, weeks=12)
 
+        # Per-day activity. Map every node onto a date string by inspecting
+        # ``source_path`` / ``metadata['source_paths']`` / ``metadata['created']``
+        # (in that order). Failure to resolve a date is fine — those nodes
+        # simply don't appear on any timeline day page.
+        activity_by_day, sources_by_day = _activity_by_day(graph)
+
         return cls(
             site_title=site_title,
             graph=graph,
@@ -349,6 +364,8 @@ class SiteContext:
             activity_by_node_id=activity_by_node_id,
             source_body_by_path=source_body_by_path,
             node_id_for_source_path=node_id_for_source_path,
+            activity_by_day=activity_by_day,
+            sources_by_day=sources_by_day,
         )
 
 
@@ -405,6 +422,78 @@ def _activity_by_node_id(graph: ResearchGraph, weeks: int) -> Dict[str, List[int
             bucket[column_for_date[d]] += 1
         out[node_id] = bucket
     return out
+
+
+_ISOWEEK_RE = re.compile(r"weekly/(\d{4})-W(\d{2})", re.IGNORECASE)
+
+
+def _node_days(node: ResearchNode) -> List[str]:
+    """Return every ``YYYY-MM-DD`` string this node touches.
+
+    Resolution order (each returns 0+ dates):
+      1. ``source_path`` — substring match for ``YYYY-MM-DD``.
+      2. ``metadata['source_paths']`` — same regex over each entry.
+      3. ``metadata['created']`` — accepted as ``YYYY-MM-DD`` (or longer ISO).
+
+    No mtime fallback here; that requires filesystem access and would
+    break determinism across machines. Callers that want the mtime path
+    can pass it through ``metadata['created']`` upstream.
+    """
+    out: List[str] = []
+    seen: set[str] = set()
+    candidates: List[str] = []
+    if node.source_path:
+        candidates.append(node.source_path)
+    meta = node.metadata or {}
+    if isinstance(meta, dict):
+        extra = meta.get("source_paths")
+        if isinstance(extra, (list, tuple, set)):
+            for sp in extra:
+                if isinstance(sp, str):
+                    candidates.append(sp)
+        created = meta.get("created")
+        if isinstance(created, str):
+            m = _DATE_RE.search(created)
+            if m and m.group(1) not in seen:
+                seen.add(m.group(1))
+                out.append(m.group(1))
+    for sp in candidates:
+        m = _DATE_RE.search(sp)
+        if m:
+            d = m.group(1)
+            if d not in seen:
+                seen.add(d)
+                out.append(d)
+    return out
+
+
+def _activity_by_day(
+    graph: ResearchGraph,
+) -> Tuple[Dict[str, frozenset], Dict[str, List[str]]]:
+    """Bucket every node onto the days it touches.
+
+    Returns ``(activity_by_day, sources_by_day)``. The first maps
+    ``YYYY-MM-DD`` to the frozen set of node ids that mention the day; the
+    second to the sorted list of source paths anchored to that day.
+    """
+    by_day: Dict[str, set] = defaultdict(set)
+    sources_by_day: Dict[str, set] = defaultdict(set)
+    for node in graph.nodes:
+        for day in _node_days(node):
+            by_day[day].add(node.id)
+            if node.source_path:
+                sources_by_day[day].add(node.source_path)
+            meta = node.metadata or {}
+            if isinstance(meta, dict):
+                extras = meta.get("source_paths")
+                if isinstance(extras, (list, tuple, set)):
+                    for sp in extras:
+                        if isinstance(sp, str) and day in sp:
+                            sources_by_day[day].add(sp)
+    return (
+        {d: frozenset(ids) for d, ids in by_day.items()},
+        {d: sorted(paths) for d, paths in sources_by_day.items()},
+    )
 
 
 def _activity_weeks(graph: ResearchGraph, weeks: int) -> List[List[int]]:
@@ -991,7 +1080,23 @@ def render_home(ctx: SiteContext) -> str:
         card(title="Graph view", href="graph/index.html", kind_label="tools", description="Interactive sigma.js graph."),
     ]) + "</section>"
 
-    heatmap = heatmap_svg(list(ctx.activity_weeks))
+    # Home heatmap: anchor cells to ``timeline/<YYYY-MM-DD>.html`` (no
+    # ``../`` prefix because home renders at depth 0). We use the same
+    # real-day grid the timeline page uses so the cells line up with the
+    # day pages we emit.
+    home_weeks_grid, home_start_date = _build_real_heatmap_grid(
+        ctx.activity_by_day, weeks_back=26
+    )
+    try:
+        heatmap = heatmap_svg(
+            home_weeks_grid,
+            weeks_back=26,
+            with_labels=True,
+            start_date=home_start_date,
+            day_href_prefix="",
+        )
+    except TypeError:
+        heatmap = heatmap_svg(home_weeks_grid)
 
     body = f"""<section class="hero" aria-label="Project pulse">
   <p class="eyebrow">{_esc(ctx.site_title)} · self-indexing knowledge base</p>
@@ -1203,56 +1308,106 @@ def render_question_detail(ctx: SiteContext, page: WikiPage) -> str:
     )
 
 
+def _build_real_heatmap_grid(
+    activity_by_day: Mapping[str, frozenset], weeks_back: int
+) -> Tuple[List[List[int]], object]:
+    """Return ``(weeks, start_date)`` for the activity heatmap.
+
+    Snaps the rightmost column to the Sunday of the most-recent observed
+    day, walking backwards ``weeks_back`` Mondays to define the
+    ``start_date`` (the Monday of the leftmost column). Each cell counts
+    the number of distinct nodes anchored to that day.
+
+    Output shape matches :func:`heatmap_svg`: a list of ``weeks_back``
+    week-columns, each a 7-int list (Mon..Sun).
+    """
+    from datetime import date as _date_cls, timedelta as _td
+
+    # Use the latest observed day in the corpus as our right edge — never
+    # ``date.today()``, which would make output non-deterministic.
+    if activity_by_day:
+        try:
+            latest = max(_date_cls.fromisoformat(d) for d in activity_by_day)
+        except ValueError:
+            latest = _date_cls(2026, 1, 1)
+    else:
+        latest = _date_cls(2026, 1, 1)
+    end_sunday = latest + _td(days=(6 - latest.weekday()))
+    start_monday = end_sunday - _td(days=weeks_back * 7 - 1)
+    weeks: List[List[int]] = []
+    for col in range(weeks_back):
+        col_start = start_monday + _td(days=col * 7)
+        bucket = [0] * 7
+        for row in range(7):
+            day = (col_start + _td(days=row)).isoformat()
+            ids = activity_by_day.get(day)
+            if ids:
+                bucket[row] = len(ids)
+        weeks.append(bucket)
+    return weeks, start_monday
+
+
 def render_timeline(ctx: SiteContext) -> str:
-    """Render the timeline page.
+    """Render the timeline index page.
 
-    Walks the per-day source paths the corpus already knows about (via
-    ``node.source_path`` / ``metadata['source_paths']``), bucketed by ISO
-    date, and emits a heatmap plus a synthesis list. Each heatmap cell
-    points back at the matching day's ``digest.md`` source page when one
-    exists, so users can drill in without us having to mint per-day index
-    pages.
-
-    Per-day index pages (``timeline/<YYYY-MM-DD>.html`` listing every
-    activity for that day) are an explicit follow-up: they would let us
-    surface added papers/repos/concepts inline, but emitting them from
-    here requires plumbing through ``StaticSiteBuilder`` which Subagent L
-    is not allowed to touch in this pass. The cells already linking to the
-    day's digest source page is a reasonable interim that uses existing
-    routes.
+    Heatmap cells are wrapped in ``<a xlink:href>`` anchors that land on
+    the matching ``timeline/<YYYY-MM-DD>.html`` page (also stamped with
+    ``data-day-click`` for any future JS hook). Below the heatmap we list
+    the last 14 days with non-zero activity as cards.
     """
     bc = _build_breadcrumbs([("Home", "index.html"), ("Timeline", "")], depth=1)
 
-    # Collect daily counts from node source_paths (digest.md / paper.md /
-    # repo.md all share the ``YYYY-MM-DD`` prefix when they live under
-    # ``data/research/daily/``).
-    counts_by_date: Counter = Counter()
-    paper_dates: Counter = Counter()
-    digest_path_for_date: Dict[str, str] = {}
-    for node in ctx.graph.nodes:
-        sp = node.source_path or ""
-        if not sp:
-            continue
-        m = _DATE_RE.search(sp)
-        if not m:
-            continue
-        date_str = m.group(1)
-        counts_by_date[date_str] += 1
-        if node.type == ResearchNodeType.PAPER:
-            paper_dates[date_str] += 1
-        # Remember the digest.md path per day so we can link the cell back
-        # to a real source page.
-        if "digest" in sp.lower() and date_str not in digest_path_for_date:
-            digest_path_for_date[date_str] = sp
-
-    # Build the heatmap from ``activity_weeks`` — Subagent O is updating the
-    # signature to accept ``with_labels=True``; until that lands we call the
-    # existing two-arg signature so the build doesn't break, and the labels
-    # appear automatically once O ships.
+    weeks_grid, start_date = _build_real_heatmap_grid(
+        ctx.activity_by_day, weeks_back=26
+    )
     try:
-        heatmap = heatmap_svg(list(ctx.activity_weeks), weeks_back=26, with_labels=True)
+        heatmap = heatmap_svg(
+            weeks_grid,
+            weeks_back=26,
+            with_labels=True,
+            start_date=start_date,
+            day_href_prefix="../",
+        )
     except TypeError:
-        heatmap = heatmap_svg(list(ctx.activity_weeks))
+        # Fallback for older components signatures (Subagent O / P interplay).
+        heatmap = heatmap_svg(
+            weeks_grid,
+            weeks_back=26,
+            with_labels=True,
+            start_date=start_date,
+        )
+
+    # Last-14-days card list: only days with non-zero activity, newest first.
+    active_days = sorted(
+        (d for d, ids in ctx.activity_by_day.items() if ids),
+        reverse=True,
+    )[:14]
+    day_cards: List[str] = []
+    for day in active_days:
+        ids = ctx.activity_by_day.get(day, frozenset())
+        total = len(ids)
+        papers = sum(
+            1
+            for nid in ids
+            if (n := ctx.nodes_by_id.get(nid)) is not None
+            and n.type == ResearchNodeType.PAPER
+        )
+        day_cards.append(
+            card(
+                title=day,
+                href=f"{day}.html",
+                kind_label="day",
+                description=(
+                    f"{total} item{'s' if total != 1 else ''} · "
+                    f"{papers} paper{'s' if papers != 1 else ''}"
+                ),
+            )
+        )
+    day_cards_html = (
+        '<section class="cards timeline-day-cards">' + "".join(day_cards) + "</section>"
+        if day_cards
+        else '<p class="muted">No dated activity yet.</p>'
+    )
 
     # Synthesis-link list (kept as the canonical "what shipped" rail).
     syntheses = list(ctx.wiki_pages_by_kind.get("syntheses", []))
@@ -1268,42 +1423,238 @@ def render_timeline(ctx: SiteContext) -> str:
     if not rows:
         rows = ['<li class="muted">No syntheses yet — they appear here on the next compile.</li>']
 
-    # Per-day list: every observed date, total activity + paper count, and
-    # a link to the digest source page if we have one.
-    day_rows: List[str] = []
-    for date_str in sorted(counts_by_date, reverse=True)[:60]:
-        total = counts_by_date[date_str]
-        papers = paper_dates.get(date_str, 0)
-        digest = digest_path_for_date.get(date_str)
-        href = ""
-        if digest:
-            src_node_id = ctx.node_id_for_source_path.get(digest)
-            if src_node_id:
-                src_node = ctx.nodes_by_id.get(src_node_id)
-                if src_node is not None:
-                    rel = node_href(src_node, ctx)
-                    if rel:
-                        href = "../" + rel
-        label_html = (
-            f'<a href="{_esc(href)}">{_esc(date_str)}</a>' if href else _esc(date_str)
-        )
-        day_rows.append(
-            f'<li>{label_html} <small>{total} activity · {papers} paper{"s" if papers != 1 else ""}</small></li>'
-        )
-
     body = f"""<header class="hero">
   <p class="eyebrow">timeline</p>
   <h1>Timeline</h1>
   <p class="lead">Recent activity, synthesis updates, and weekly digests.</p>
 </header>
 <section class="activity">{heatmap}</section>
-<section class="timeline-days"><h2>Days</h2><ol class="timeline-day-list">{''.join(day_rows) if day_rows else '<li class="muted">No dated activity yet.</li>'}</ol></section>
+<section class="timeline-days"><h2>Last 14 active days</h2>{day_cards_html}</section>
 <section class="timeline">
   <h2>Syntheses</h2>
   <ol class="timeline-list">{''.join(rows)}</ol>
 </section>"""
     return page_shell(
         title="Timeline",
+        head="",
+        body=body,
+        depth=1,
+        active="timeline",
+        site_title=ctx.site_title,
+        counts=_nav_counts(ctx),
+        breadcrumbs_html=bc,
+    )
+
+
+def _render_bar_list(rows: Sequence[Tuple[str, int]], *, max_width: int = 240) -> str:
+    """Render a small inline bar chart as ``<label> <bar> <count>`` rows.
+
+    Pure HTML — no SVG — so the link integrity walker has no anchors to
+    chase. Empty input returns a muted placeholder.
+    """
+    if not rows:
+        return '<p class="muted">No edges added that day.</p>'
+    max_v = max((c for _, c in rows), default=1) or 1
+    items: List[str] = []
+    for label, count in rows:
+        width = int(round(max_width * (count / max_v)))
+        items.append(
+            '<li class="bar-row">'
+            f'<span class="bar-label">{_esc(label)}</span>'
+            f'<span class="bar-track" aria-hidden="true">'
+            f'<span class="bar-fill" style="width:{width}px"></span>'
+            f"</span>"
+            f'<span class="bar-count">{count}</span>'
+            "</li>"
+        )
+    return '<ol class="bar-list">' + "".join(items) + "</ol>"
+
+
+def _iso_week_label(date_str: str) -> str:
+    from datetime import date as _date_cls
+    try:
+        d = _date_cls.fromisoformat(date_str)
+    except ValueError:
+        return ""
+    iso_year, iso_week, _ = d.isocalendar()
+    weekday = d.strftime("%A")
+    return f"{weekday} · ISO week {iso_year}-W{iso_week:02d}"
+
+
+def _concepts_introduced_on(ctx: SiteContext, date_str: str) -> set:
+    """Return the set of node ids first introduced on ``date_str``.
+
+    A node's introduction day is the earliest day among:
+      - its own ``source_path`` / ``metadata['created']`` / ``metadata['source_paths']``
+      - the days of any node that points at it via ``mentioned_in``.
+
+    Comparison sorts on ISO date strings (lexicographic == chronological)
+    so the result is stable across compiles.
+    """
+    earliest: Dict[str, str] = {}
+    for node in ctx.graph.nodes:
+        for d in _node_days(node):
+            cur = earliest.get(node.id)
+            if cur is None or d < cur:
+                earliest[node.id] = d
+    for edge in ctx.graph.edges:
+        if edge.type != "mentioned_in":
+            continue
+        src = ctx.nodes_by_id.get(edge.source)
+        if src is None:
+            continue
+        for d in _node_days(src):
+            cur = earliest.get(edge.target)
+            if cur is None or d < cur:
+                earliest[edge.target] = d
+    return {nid for nid, day in earliest.items() if day == date_str}
+
+
+def render_timeline_day(ctx: SiteContext, date_str: str) -> str:
+    """Render the per-day timeline detail page for ``date_str``.
+
+    Four sections when the day has activity (sources touched, concepts
+    introduced, edges added by type, syntheses that consumed this day);
+    a single empty-state panel + back-link when it doesn't. Body content
+    is graph-derived only — no timestamps — so two consecutive compiles
+    produce byte-identical output.
+    """
+    bc = _build_breadcrumbs(
+        [
+            ("Home", "index.html"),
+            ("Timeline", "timeline/index.html"),
+            (date_str, ""),
+        ],
+        depth=1,
+    )
+    eyebrow_label = _iso_week_label(date_str)
+    eyebrow_html = (
+        f'<p class="eyebrow">{_esc(eyebrow_label)}</p>' if eyebrow_label else ""
+    )
+
+    node_ids = ctx.activity_by_day.get(date_str) or frozenset()
+
+    if not node_ids:
+        body = f"""<header class="hero">
+  {eyebrow_html}
+  <h1>{_esc(date_str)}</h1>
+  <p class="lead">Nothing was indexed on this day.</p>
+</header>
+<section class="empty-day">
+  <p class="muted">No sources, concepts, or edges anchored to {_esc(date_str)} were found in the graph.</p>
+  <p><a href="index.html">← Back to Timeline</a></p>
+</section>"""
+        return page_shell(
+            title=date_str,
+            head="",
+            body=body,
+            depth=1,
+            active="timeline",
+            site_title=ctx.site_title,
+            counts=_nav_counts(ctx),
+            breadcrumbs_html=bc,
+        )
+
+    nodes_today = [
+        ctx.nodes_by_id[nid] for nid in node_ids if nid in ctx.nodes_by_id
+    ]
+
+    # 1. Source files touched that day (sources/papers/repos).
+    source_kinds = {"sources", "papers", "repos"}
+    source_nodes: List[ResearchNode] = sorted(
+        (n for n in nodes_today if _kind_for_node_type(n.type) in source_kinds),
+        key=lambda n: (n.type.value, n.name.lower()),
+    )
+    source_cards: List[str] = []
+    for n in source_nodes:
+        href = node_href(n, ctx)
+        if not href:
+            continue
+        source_cards.append(
+            card(
+                title=n.name,
+                href=f"../{href}",
+                kind_label=n.type.value,
+                description=(n.description or "")[:200],
+                footer=n.source_path or "",
+            )
+        )
+    sources_html = (
+        '<section class="cards day-sources">' + "".join(source_cards) + "</section>"
+        if source_cards
+        else '<p class="muted">No source documents touched on this day.</p>'
+    )
+
+    # 2. Concepts introduced that day → tag-chip cloud.
+    from .components import tag_chip
+    concept_kinds = {"concepts", "entities", "topics", "questions"}
+    intro_node_ids = _concepts_introduced_on(ctx, date_str)
+    intro_chips: List[str] = []
+    for nid in sorted(intro_node_ids):
+        node = ctx.nodes_by_id.get(nid)
+        if node is None:
+            continue
+        kind = _kind_for_node_type(node.type)
+        if kind not in concept_kinds:
+            continue
+        href = node_href(node, ctx)
+        if not href:
+            continue
+        intro_chips.append(tag_chip(node.name, f"../{href}"))
+    concepts_html = (
+        '<div class="tag-cloud">' + "".join(intro_chips) + "</div>"
+        if intro_chips
+        else '<p class="muted">No new concepts introduced this day.</p>'
+    )
+
+    # 3. Edges added that day, by type. Approximated as edges whose
+    # source or target node is anchored to this day.
+    edge_counts: Counter = Counter()
+    for edge in ctx.graph.edges:
+        if edge.source in node_ids or edge.target in node_ids:
+            edge_counts[edge.type] += 1
+    edge_rows: List[Tuple[str, int]] = sorted(
+        edge_counts.items(), key=lambda kv: (-kv[1], kv[0])
+    )
+    edges_html = _render_bar_list(edge_rows)
+
+    # 4. Syntheses that consumed this day (via ``summarizes`` or
+    # ``synthesizes`` edges pointing at any node anchored to this day).
+    synth_ids: set = set()
+    for edge in ctx.graph.edges:
+        if edge.type not in {"summarizes", "synthesizes"}:
+            continue
+        if edge.target in node_ids:
+            synth_ids.add(edge.source)
+    synth_links: List[str] = []
+    for sid in sorted(synth_ids):
+        node = ctx.nodes_by_id.get(sid)
+        if node is None or node.type != ResearchNodeType.SYNTHESIS:
+            continue
+        href = node_href(node, ctx)
+        if not href:
+            continue
+        synth_links.append(
+            f'<li><a href="../{_esc(href)}">{_esc(node.name)}</a></li>'
+        )
+    syntheses_html = (
+        '<ul class="day-syntheses">' + "".join(synth_links) + "</ul>"
+        if synth_links
+        else '<p class="muted">No syntheses consumed this day.</p>'
+    )
+
+    body = f"""<header class="hero day-hero">
+  {eyebrow_html}
+  <h1>{_esc(date_str)}</h1>
+  <p class="lead">{len(node_ids)} item{'s' if len(node_ids) != 1 else ''} indexed.</p>
+</header>
+<section id="day-sources"><h2>Source files touched</h2>{sources_html}</section>
+<section id="day-concepts"><h2>Concepts introduced</h2>{concepts_html}</section>
+<section id="day-edges"><h2>Edges added (by type)</h2>{edges_html}</section>
+<section id="day-syntheses"><h2>Syntheses that consumed this day</h2>{syntheses_html}</section>
+<p><a href="index.html">← Back to Timeline</a></p>"""
+    return page_shell(
+        title=date_str,
         head="",
         body=body,
         depth=1,
@@ -1542,6 +1893,7 @@ __all__ = [
     "render_synthesis_detail",
     "render_syntheses_index",
     "render_timeline",
+    "render_timeline_day",
     "render_topic_detail",
     "render_topics_index",
 ]

@@ -1,118 +1,230 @@
 # Architecture
 
-LLM-Wiki turns source material into a controlled, typed knowledge graph and then projects that graph into formats humans and agents can use.
+LLM-Wiki turns a directory of source material into a controlled, typed knowledge graph and projects that graph through a durable markdown wiki layer into a static, AI-friendly website. The April 2026 redesign reorganised the system around a Karpathy three-layer model: raw evidence stays raw, a typed graph governs ontology, and a markdown wiki layer sits between the graph and any rendered output. The static site is now a *renderer* of that wiki layer rather than a direct dump of the graph, with the controlled ontology in [`llm_wiki/research_graph.py`](../llm_wiki/research_graph.py) as the schema.
 
-```text
-raw sources
-  → deterministic or selective LLM extraction
-  → validated ResearchGraph / code graph
-  → canonicalization and review queues
-  → durable graph artifacts
-  → markdown, Obsidian, static site, agent harnesses, MCP, Cognee, Graphiti episodes
+## The Karpathy three-layer model
+
+Andrej Karpathy's framing for LLM-friendly knowledge bases distinguishes three layers, each with its own durability guarantee:
+
+| Layer | Concern | Repo location | Owner |
+|---|---|---|---|
+| L1 — Raw sources | The literal bytes the user authored or harvested. Append-only. | `data/`, `docs/`, project trees referenced in `.llm-wiki/config.json` | the user |
+| L2 — Wiki | Typed markdown pages (sources, concepts, entities, papers, repos, topics, syntheses, questions) with YAML frontmatter. Idempotent: regenerated each compile, but only rewritten when content hashes change. | `.llm-wiki/wiki/` | `WikiPageStore`, `WikiLayerProjector`, `SynthesisProjector` |
+| L3 — Rendered | The static HTML site, AI-sibling exports, search index, sitemaps, JSON-LD. Wiped and rewritten every compile, but byte-stable across reruns. | `.llm-wiki/site/` | `StaticSiteBuilder` (`llm_wiki/site/`) |
+
+The schema sits across all three layers as a separate axis: `ResearchGraph` in `graph.json` is the controlled ontology that L2 pages link against, and the `ResearchNodeType` / edge whitelist in [`llm_wiki/research_graph.py`](../llm_wiki/research_graph.py) is the source of truth for what types exist at all.
+
+The redesign added L2 explicitly. Before April 2026 the static site was projected straight from `graph.json`; the wiki layer existed only inside the Obsidian vault export. Splitting it out gave us:
+
+- A single human-editable surface (open `.llm-wiki/wiki/` in Obsidian or any markdown editor).
+- Idempotent rebuilds: re-running `project compile` produces zero file diffs unless source content changed.
+- An evolution log: synthesis pages accumulate over time and let the project narrate itself.
+
+## Pipeline
+
+```
+data/, docs/, src/                                    (L1 raw)
+        │
+        ▼  project compile  (llm_wiki/project.py)
+┌───────────────────────────┐
+│ ResearchGraphExtractor    │   deterministic + selective Claude
+│ + canonicalization        │
+└───────────┬───────────────┘
+            │
+            ▼
+┌───────────────────────────┐
+│ ResearchGraph (graph.json)│   schema: research_graph.py
+└───────────┬───────────────┘
+            │
+            ├──▶ WikiLayerProjector   (one page per L1/L2 node)
+            ├──▶ SynthesisProjector   (pulse, daily, weekly, topic, …)
+            │
+            ▼
+┌───────────────────────────┐
+│ .llm-wiki/wiki/  (L2 md)  │   sources/, concepts/, entities/,
+│                            │   papers/, repos/, topics/,
+│                            │   syntheses/, questions/
+└───────────┬───────────────┘
+            │
+            ▼  StaticSiteBuilder.write_site
+┌───────────────────────────┐
+│ .llm-wiki/site/  (L3 html)│   index.html, <kind>/index.html,
+│                            │   <kind>/<slug>.html,
+│                            │   per-page .txt + .json siblings,
+│                            │   llms.txt, llms-full.txt,
+│                            │   graph.json, graph.jsonld,
+│                            │   search-index.json,
+│                            │   sitemap.xml, rss.xml,
+│                            │   robots.txt, ai-readme.md,
+│                            │   manifest.json
+└───────────────────────────┘
 ```
 
-## Design principles
+Every step is incremental. The graph extractor uses `manifest.json` content hashes to skip unchanged source files. `WikiPageStore.write_page` returns `False` (and skips the write) when the body hash matches what's already on disk. `StaticSiteBuilder` wipes and rewrites `.llm-wiki/site/`, but its output is deterministic — see "Idempotence story" below.
 
-1. **Raw evidence stays raw.** Source markdown, papers, docs, and code files are treated as evidence. Generated wiki pages and frontend files are projections, not the source of truth.
-2. **The graph schema is controlled in code.** LLM output is never allowed to invent arbitrary ontology labels such as `Entity`, `technology`, or `feature`.
-3. **Research and development share a pipeline but keep distinct ontology slices.** Papers and claims are modeled differently from source files and functions, while both can be served through the same graph/frontend/MCP layer.
-4. **No API-key dependency by default.** Deterministic extraction, CLI/OAuth enrichment, local embeddings, and dependency-free exports are preferred.
-5. **Every projection should be reproducible.** `project compile` and `project build-site` can regenerate local artifacts from source files and config.
+## Module map
 
-## Research graph slice
+### Wiki + synthesis (L2)
 
-The research slice models literature intelligence:
+| Module | Responsibility |
+|---|---|
+| [`llm_wiki/wiki_store.py`](../llm_wiki/wiki_store.py) | `WikiPage` dataclass, `WikiPageStore` for filesystem I/O. Stdlib-only YAML-subset frontmatter parser. Body-hash idempotence. |
+| [`llm_wiki/wiki_projector.py`](../llm_wiki/wiki_projector.py) | `WikiLayerProjector`: maps each `ResearchGraph` node of a wiki-layer type to a markdown page in the right `kind/` folder. |
+| [`llm_wiki/synthesis.py`](../llm_wiki/synthesis.py) | `SynthesisProjector`: deterministic templates for pulse, daily_digest, weekly, topic, comparison, field_overview. Adds `Synthesis` nodes and `synthesizes` / `summarizes` edges back into the graph. |
 
-- `Paper`, `Repository`, `Project`, `Model`
-- `ResearchField`, `ResearchTopic`, `ProblemArea`, `ApproachFamily`, `Trend`
-- `Dataset`, `Benchmark`, `Metric`, `Result`
-- `MethodologicalConcept`, `MathematicalConcept`, `Algorithm`, `ArchitecturePattern`, `Task`, `Capability`
-- `Claim`, `ContributionClaim`, `PerformanceClaim`, `ComparisonClaim`, `LimitationClaim`, `CausalClaim`, `OpenQuestion`
-- `EvidenceSpan`
+### Graph + ontology
 
-Representative edges include:
+| Module | Responsibility |
+|---|---|
+| [`llm_wiki/research_graph.py`](../llm_wiki/research_graph.py) | `ResearchNodeType` enum (incl. `SYNTHESIS`), edge-type whitelist (incl. `synthesizes`, `summarizes`), validation. |
+| [`llm_wiki/canonicalization.py`](../llm_wiki/canonicalization.py) | Alias canonicalization + near-duplicate review queue. |
+| [`llm_wiki/code_graph.py`](../llm_wiki/code_graph.py) | Deterministic Python AST extractor for the development slice. |
+| [`llm_wiki/llm_extractor.py`](../llm_wiki/llm_extractor.py) | Claude CLI/OAuth selective extractor. |
 
-- `uses`
-- `introduces`
-- `extends`
-- `improves_on`
-- `compares_against`
-- `addresses`
-- `evaluated_on`
-- `reports_result`
-- `supports_claim`
-- `evidenced_by`
-- `implemented_in`
-- `rising_in`
+### Site renderer (L3)
 
-## Development-code graph slice
+| Module | Responsibility |
+|---|---|
+| [`llm_wiki/site/__init__.py`](../llm_wiki/site/__init__.py) | `StaticSiteBuilder.write_site`: wipes + rebuilds the site, walks every route, emits exports + AI siblings + manifest. |
+| [`llm_wiki/site/pages.py`](../llm_wiki/site/pages.py) | One renderer per route (home, indexes, detail pages, timeline, graph, about). `SiteContext` carries precomputed indices so renderers stay pure. |
+| [`llm_wiki/site/components.py`](../llm_wiki/site/components.py) | HTML primitives: `breadcrumbs`, `card`, `badge`, `node_table`, `edge_list`, `sparkline_svg`, `heatmap_svg`, `toc`, `page_shell`, `ai_siblings_footer`. |
+| [`llm_wiki/site/tokens.py`](../llm_wiki/site/tokens.py) | Design tokens — CSS variables, light + dark themes, layout, typography, all components styled here. |
+| [`llm_wiki/site/js.py`](../llm_wiki/site/js.py) | Client JS bundle: search palette, theme toggle, sigma + 3D-force graph view. |
+| [`llm_wiki/site/markdown.py`](../llm_wiki/site/markdown.py) | Stdlib-only markdown renderer (links, autolinks, code, emphasis, headings). No external dependency. |
+| [`llm_wiki/site/relevance.py`](../llm_wiki/site/relevance.py) | Four-signal relevance scoring (direct link, source overlap, Adamic-Adar, type affinity) used by every `Related` section. |
+| [`llm_wiki/site/search.py`](../llm_wiki/site/search.py) | `search-index.json` builder. Wiki-layer kinds only. |
+| [`llm_wiki/site/exports.py`](../llm_wiki/site/exports.py) | `llms.txt`, `llms-full.txt`, `graph.jsonld`, `sitemap.xml`, `rss.xml`, `robots.txt`, `ai-readme.md`, per-page `.txt`/`.json` siblings. |
 
-The development slice models code projects without pretending source code is the same as paper text:
+### Pipeline orchestration
 
-- `CodeProject`
-- `SourceFile`
-- `CodeModule`
-- `CodeClass`
-- `CodeFunction`
-- `Dependency`
+| Module | Responsibility |
+|---|---|
+| [`llm_wiki/project.py`](../llm_wiki/project.py) | `ProjectWiki.compile`: drives extraction → graph → wiki layer → site. Owns `ProjectPaths` (`config`, `graph`, `manifest`, `wiki`, `site`, etc.). |
+| [`llm_wiki/cli.py`](../llm_wiki/cli.py) | All `llm_wiki project …` subcommands, including `compile`, `build-site`, `serve`, `watch`, `deploy`. |
+| [`llm_wiki/deploy.py`](../llm_wiki/deploy.py) | `project deploy`: pushes `.llm-wiki/site/` to a `gh-pages` branch via worktree, optionally enables Pages via `gh`. |
 
-Representative edges include:
+### External adapters (unchanged this round)
 
-- `contains`
-- `defines`
-- `imports`
-- `calls`
-- `documents`
+| Module | Responsibility |
+|---|---|
+| [`llm_wiki/obsidian_adapter.py`](../llm_wiki/obsidian_adapter.py) | Obsidian vault projection (graph coloring, Dataview dashboard, raw assets). |
+| [`llm_wiki/agent_harness.py`](../llm_wiki/agent_harness.py) | Claude Code / Codex / Gemini / Kiro / Cursor / OpenCode harness exports. |
+| [`llm_wiki/graphiti_adapter.py`](../llm_wiki/graphiti_adapter.py) | Temporal-fact JSONL + optional live Graphiti sync. |
+| [`llm_wiki/cognee_adapter.py`](../llm_wiki/cognee_adapter.py) | Cognee nodes/edges JSONL bundle and direct add/cognify path. |
+| [`llm_wiki/mcp_server.py`](../llm_wiki/mcp_server.py) | MCP stdio server exposing `schema`, `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`. |
 
-The deterministic Python extractor parses source files with `ast`, records source paths, hashes, classes, functions/methods, and import dependencies.
-
-## Project workspace
-
-Every initialized project owns a local `.llm-wiki/` workspace:
+## Project workspace layout
 
 ```text
 .llm-wiki/
-  config.json                 # project name, source kind, source list
-  graph.json                  # validated graph JSON
-  manifest.json               # changed-only content hashes
-  sqlite.db                   # SQLite persistence
-  temporal_facts.jsonl        # Graphiti-style temporal fact projection
-  graphiti_episodes.jsonl     # dependency-free Graphiti episode export
-  report.md                   # graph quality/summary report
-  competitive_report.md       # comparison against related memory/KG systems
-  markdown_projection/        # human-readable generated markdown
-  obsidian_vault/             # ready-to-open Obsidian projection
-  agent_harness/              # coding-agent context/config files
-  site/                       # static frontend
-  cognee_bundle/              # nodes/edges JSONL bundle for Cognee
+  config.json                 project name, source kind, source list
+  graph.json                  validated ResearchGraph (incl. Synthesis nodes)
+  manifest.json               per-source content hashes (input dedup)
+  sqlite.db                   SQLite graph store
+  temporal_facts.jsonl        Graphiti-style temporal projection
+  graphiti_episodes.jsonl     dependency-free Graphiti episode export
+  report.md                   graph quality / summary
+  competitive_report.md       comparison vs. MegaMem / Graphiti / others
+  markdown_projection/        flat human-readable markdown
+  obsidian_vault/             Obsidian projection w/ .obsidian/, raw/assets/
+  agent_harness/              Claude Code / Codex / etc. harness files
+  cognee_bundle/              Cognee nodes/edges/manifest JSONL
+  wiki/                       L2 markdown wiki — see below
+  site/                       L3 static site — see below
 ```
 
-## Frontend
+### `.llm-wiki/wiki/` (L2)
 
-The frontend is intentionally static and dependency-light:
+```text
+wiki/
+  sources/<slug>.md           raw documents from data/ + docs/, with frontmatter
+  concepts/<slug>.md          Concept / TechnicalTerm / Algorithm / etc.
+  entities/<slug>.md          Model / Dataset / Benchmark / Metric / Org / Person
+  papers/<slug>.md            Paper hub
+  repos/<slug>.md             Repository / Project / CodeProject
+  topics/<slug>.md            ResearchField / ResearchTopic / ApproachFamily / Trend
+  syntheses/<slug>.md         pulse, daily_digest, weekly, topic, comparison, field_overview
+  questions/<slug>.md         OpenQuestion
+```
 
-- `index.html` — search and graph browser UI.
-- `graph.json` — graph payload for humans and custom tooling.
-- `search-index.json` — lightweight client-side search data.
-- `llms.txt` — agent-readable summary and entrypoint.
+Each file is editable by hand; the next compile honours user edits as long as the body hash differs from what the projector would write. (Editing only the body wins; editing the frontmatter loses on next compile because frontmatter is regenerated.) Obsidian users can open `.llm-wiki/wiki/` directly; the existing `obsidian_vault/` adapter is a separate projection, not a substitute.
 
-This mirrors the useful part of Pratiyush/llm-wiki's approach: build artifacts that are easy for both humans and language models to inspect.
+### `.llm-wiki/site/` (L3)
 
-## MCP server
+```text
+site/
+  index.html                  home + project pulse
+  about.html                  schema, build info
+  assets/{style.css,app.js}   single CSS bundle + single JS bundle
+  sources/index.html
+  sources/<slug>.html
+  sources/<slug>.txt          AI sibling — plain text
+  sources/<slug>.json         AI sibling — structured record
+  concepts/…  entities/…  papers/…  repos/…  topics/…  syntheses/…  questions/…
+  timeline/index.html
+  graph/index.html            interactive 2D + 3D force layout
+  graph.json                  full graph payload (incl. code nodes, for tooling)
+  graph.jsonld                schema.org Dataset, wiki-layer nodes only
+  search-index.json           palette + page search; wiki-layer kinds only
+  llms.txt                    llmstxt.org — short index
+  llms-full.txt               llmstxt.org — every page body, capped 5MB
+  sitemap.xml                 every emitted route
+  rss.xml                     last 30 syntheses
+  robots.txt                  permissive (crawl + index)
+  ai-readme.md                machine-readable site map
+  manifest.json               sha256 + size for every emitted file
+```
 
-`llm_wiki_mcp` / `python3 -m llm_wiki.mcp_server` serves a compiled graph over stdio JSON-RPC/MCP with tools such as:
+## What's deliberately excluded
 
-- `schema`
-- `graph_summary`
-- `search_nodes`
-- `node_context`
-- `search_facts`
-- `timeline`
+The redesign drew an explicit line: code-class and code-function nodes stay in `graph.json` (so MCP, Cognee, and Graphiti consumers still see them) but never get HTML pages, never appear in `search-index.json`, and never appear in the navigation. That's the user-facing contract — the wiki is a document-first knowledge base, not a function browser.
 
-## External projections
+Concretely, `StaticSiteBuilder` skips any node whose type is not in the L2 wiki kind map (`llm_wiki/wiki_projector.py::_KIND_FOR_TYPE`):
 
-- **Obsidian:** `.obsidian` defaults, graph coloring, markdown projection, Dataview dashboard.
-- **Agent harnesses:** Claude Code, Codex, Gemini, Kiro, Cursor, and OpenCode context/config files.
-- **Graphiti:** dependency-free episode JSONL plus optional live sync.
-- **Cognee:** nodes/edges JSONL bundle and optional direct add/cognify workflows.
-- **SQLite/Kuzu:** local graph persistence for inspection and downstream tooling.
+- Excluded from L2 + L3: `CodeClass`, `CodeFunction`, `CodeModule`, `Dependency`, `EvidenceSpan`, `SourceFile`, all `Claim` variants (`Claim`, `ContributionClaim`, `PerformanceClaim`, `ComparisonClaim`, `LimitationClaim`, `CausalClaim`).
+- Surface where they still appear: as bullets, badges, neighbour counts, or evidence excerpts inline on related wiki pages, and in `graph.json` for downstream tooling.
+
+If you need code-level browsing, point an LSP / call-graph tool at the source tree directly — that's a different problem from "wiki of what this project knows."
+
+## Idempotence story
+
+The redesign aims for **byte-identical output across two consecutive `project compile` runs over unchanged inputs**. The pieces:
+
+1. **Source extraction** uses `manifest.json` content hashes; unchanged files are skipped, so the graph remains stable.
+2. **Wiki layer writes** are idempotent at the body level. `WikiPageStore.write_page` reads the existing file, strips frontmatter, sha256s the body, and short-circuits if the new body hashes the same — even if the new frontmatter has a different `generated_at` timestamp. This is the key trick that keeps git diffs tight on rebuild.
+3. **Synthesis output** carries a `content_hash: sha256-…` in its frontmatter. The body hash is computed without `generated_at` so repeated compiles on the same graph produce the same hash, and `Synthesis` nodes carry the same `content_hash` in graph metadata.
+4. **Site rendering** wipes `site/` at the start of `write_site`, then writes deterministically: routes are sorted, dictionaries dumped with `sort_keys=True`, `manifest.json` walked via `sorted(rglob("*"))`. Two runs produce byte-identical files including the manifest.
+
+This is verified by `tests/test_site_pages.py` and the end-to-end smoke in `tests/test_project_e2e_redesign.py` (compile twice, diff sites, expect zero file deltas).
+
+## Scaling notes
+
+- **Graph view node cap.** [`MAX_GRAPH_NODES = 1500`](../llm_wiki/site/pages.py) bounds the page-embedded payload for the interactive force layout. Beyond ~1500 nodes the browser-side simulation gets sluggish on mid-range hardware, so the page drops the lowest-degree wiki-layer nodes first when the count exceeds the cap. The exported `graph.json` is unaffected — it always contains the full graph. Code nodes are filtered out before the cap is applied.
+- **`llms-full.txt` cap.** A 5 MB safety cap applies in [`llm_wiki/site/exports.py`](../llm_wiki/site/exports.py); the file ends with a `[TRUNCATED — see graph.jsonld for the full set]` marker if the cap is hit. `graph.jsonld` is uncapped because JSON-LD consumers expect the full set.
+- **Search index.** Wiki-layer kinds only. Code-graph nodes never enter `search-index.json`; the redesign target is < 500 KB for the dogfood corpus and we're well under that today.
+- **Per-page byte budget (rule of thumb).** Each detail page < 60 KB gz HTML, shared CSS < 30 KB, shared JS < 25 KB, sigma vendor on the graph page only (~60 KB). The graph view uses 3D-force-graph + Three.js loaded once; all other pages stay vanilla.
+- **Compile time on dogfood.** ~300 markdown files extract in under 5 s on a recent dev machine; site render adds another ~2 s. The wiki layer's idempotence means subsequent compiles touch only the changed paths.
+
+## Frontend interaction surface
+
+- **Search palette** — `cmd+k` / `ctrl+k` / `/`. Fuzzy match over `search-index.json`, scoped to wiki kinds. Recent pages persisted in `localStorage`.
+- **Theme toggle** — top-right button; `data-theme="dark"` is stored in `localStorage` and applied before paint to avoid flash.
+- **Sticky right TOC** — desktop only; collapses to a `<details>` drawer on mobile. Generated from `<h2>` / `<h3>` in the page body.
+- **Activity heatmap** — 26-week SVG with month + weekday labels. Cells link to the day's `digest.md` source page when one exists. (Per-day timeline detail pages — `/timeline/<YYYY-MM-DD>.html` — are an explicit follow-up; the inline notice in `render_timeline` flags it. ⚠ in-progress.)
+- **Graph view** — `/graph/`. 3D force layout (3d-force-graph + Three.js) with hover tooltips, edge labels, cursor-anchored zoom, and a 2D fallback view. Node colors come from `ResearchNodeType`.
+- **Mobile shell** — drawer rail, bottom nav, fluid type, touch-safe hit targets (≥ 44 px).
+
+## Testing strategy
+
+- **Unit** — `tests/test_wiki_store.py`, `tests/test_synthesis.py`, `tests/test_site_components.py`, `tests/test_site_pages.py`, `tests/test_site_exports.py`, `tests/test_relevance.py`.
+- **Idempotence** — `tests/test_project_e2e_redesign.py` compiles twice and asserts zero diffs in `wiki/` and `site/`.
+- **Link integrity** — `tests/test_frontend.py` parses every emitted HTML for hrefs and asserts every internal link resolves to a generated file. No `nodes/codeclass-*.html` is produced.
+- **AI siblings** — for every `path/foo.html`, the test suite asserts `path/foo.txt` and `path/foo.json` exist; the JSON parses and contains `{title, kind, body, links}`.
+- **No Playwright** — vanilla pytest under `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`.
+
+## Related docs
+
+- [Quickstart](quickstart.md) — minimum path from `project init` to a browsable site.
+- [Frontend redesign walkthrough](frontend-redesign.md) — annotated tour of every route.
+- [Feature map](feature-map.md) — what's shipped, what's in-progress, with file pointers.
+- [Self-dogfood demo](self-dogfood.md) — running LLM-Wiki against its own repo.

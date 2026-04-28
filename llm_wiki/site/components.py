@@ -312,6 +312,7 @@ def heatmap_svg(
     weeks_back: int = 26,
     with_labels: bool = True,
     start_date: _date | None = None,
+    day_href_prefix: str = "",
 ) -> str:
     """Render the activity heatmap (GitHub-style 7-row grid).
 
@@ -329,7 +330,12 @@ def heatmap_svg(
     When ``start_date`` is provided the renderer stamps each cell with a
     ``data-day-click="YYYY-MM-DD"`` attribute (computed from the cell's
     column and row offsets), so JS can hook day-level click handlers.
-    ``start_date`` should be the Monday of the first week-column.
+    Each ``<rect>`` is also wrapped in an ``<a xlink:href>`` pointing at
+    ``{day_href_prefix}timeline/<YYYY-MM-DD>.html`` so the cell stays
+    clickable when JS is off — graceful degradation. Pass
+    ``day_href_prefix="../"`` from a depth-1 page (e.g. ``timeline/index.html``)
+    or leave empty for site-root pages. ``start_date`` should be the Monday
+    of the first week-column.
     """
     cell = 12
     gap = 2
@@ -400,15 +406,30 @@ def heatmap_svg(
             y = top_gutter + gap + row_idx * (cell + gap)
             cls = f"day l-{level}" if level else "day"
             day_attr = ""
+            day_iso = ""
             if start_date is not None:
                 day = start_date + _timedelta(days=col_idx * 7 + row_idx)
-                day_attr = f' data-day-click="{day.isoformat()}"'
-            cells.append(
+                day_iso = day.isoformat()
+                day_attr = f' data-day-click="{day_iso}"'
+            rect_html = (
                 f'<rect class="{cls}" x="{x}" y="{y}" width="{cell}" '
                 f'height="{cell}" rx="2" ry="2"{day_attr}>'
                 f"<title>{v} on day {row_idx} (week {col_idx})</title>"
                 "</rect>"
             )
+            if day_iso and v > 0:
+                # Wrap the cell in an SVG anchor so plain-HTML clicks work
+                # even with JS off. Use ``xlink:href`` for older renderers
+                # plus a plain ``href`` for SVG2-aware browsers. Only days
+                # with activity get a link — empty cells are visual filler
+                # whose target page (timeline/<day>.html) isn't emitted.
+                href = f"{day_href_prefix}timeline/{day_iso}.html"
+                rect_html = (
+                    f'<a xlink:href="{_esc(href)}" href="{_esc(href)}">'
+                    f"{rect_html}"
+                    "</a>"
+                )
+            cells.append(rect_html)
 
     # When no start_date is supplied, fall back to a coarse month label
     # heuristic: divide the columns into ~quarters and label them. This
@@ -435,8 +456,14 @@ def heatmap_svg(
         weekday_svg = _heatmap_weekday_labels(top_gutter, cell, gap)
         label_svg = "".join(month_label_svg) + weekday_svg
 
+    # Declare the xlink namespace whenever we wrapped cells in <a xlink:href>.
+    xlink_ns = (
+        ' xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"'
+        if start_date is not None
+        else ""
+    )
     return (
-        f'<svg class="heatmap" viewBox="0 0 {view_w} {view_h}" '
+        f'<svg class="heatmap"{xlink_ns} viewBox="0 0 {view_w} {view_h}" '
         f'preserveAspectRatio="xMidYMid meet" '
         f'style="width:100%;height:auto" '
         f'role="img" '

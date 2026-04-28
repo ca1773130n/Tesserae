@@ -39,6 +39,7 @@ from llm_wiki.site.pages import (
     render_synthesis_detail,
     render_syntheses_index,
     render_timeline,
+    render_timeline_day,
     render_topic_detail,
     render_topics_index,
 )
@@ -652,3 +653,93 @@ def test_js_bundle_concatenates_three_modules() -> None:
     assert "data-theme" in JS_THEME_TOGGLE
     assert "search-data" in JS_SEARCH_PALETTE or "search-index.json" in JS_SEARCH_PALETTE
     assert "graph-data" in JS_GRAPH
+
+
+# ---------------------------------------------------------------------------
+# per-day timeline pages + heatmap anchors
+# ---------------------------------------------------------------------------
+
+
+def _ctx_with_day(site_ctx: SiteContext, date_str: str) -> SiteContext:
+    """Return a copy of ``site_ctx`` whose ``activity_by_day`` is forced to
+    contain ``date_str`` mapped to *every* node in the graph.
+
+    Lets the timeline-day tests run deterministically regardless of which
+    dates the wiki_corpus fixture happens to mention.
+    """
+    every_id = frozenset(n.id for n in site_ctx.graph.nodes)
+    activity = dict(site_ctx.activity_by_day)
+    activity[date_str] = every_id
+    return SiteContext(
+        site_title=site_ctx.site_title,
+        graph=site_ctx.graph,
+        wiki_pages_by_kind=site_ctx.wiki_pages_by_kind,
+        nodes_by_id=site_ctx.nodes_by_id,
+        nodes_by_kind=site_ctx.nodes_by_kind,
+        nodes_by_name=site_ctx.nodes_by_name,
+        outgoing=site_ctx.outgoing,
+        incoming=site_ctx.incoming,
+        type_counts=site_ctx.type_counts,
+        source_counts=site_ctx.source_counts,
+        activity_weeks=site_ctx.activity_weeks,
+        relevance=site_ctx.relevance,
+        page_slug_for_node=site_ctx.page_slug_for_node,
+        activity_by_node_id=site_ctx.activity_by_node_id,
+        source_body_by_path=site_ctx.source_body_by_path,
+        node_id_for_source_path=site_ctx.node_id_for_source_path,
+        activity_by_day=activity,
+        sources_by_day=site_ctx.sources_by_day,
+    )
+
+
+def test_render_timeline_day_returns_full_html_doc(site_ctx: SiteContext) -> None:
+    ctx2 = _ctx_with_day(site_ctx, "2026-04-27")
+    out = render_timeline_day(ctx2, "2026-04-27")
+    _assert_doc_shape(out)
+    _assert_breadcrumb_contains(out, "Timeline")
+    _assert_breadcrumb_contains(out, "2026-04-27")
+    # Sections we promised in the spec.
+    assert "Source files touched" in out
+    assert "Concepts introduced" in out
+    assert "Edges added" in out
+    assert "Syntheses that consumed this day" in out
+
+
+def test_render_timeline_day_has_iso_week_eyebrow(site_ctx: SiteContext) -> None:
+    ctx2 = _ctx_with_day(site_ctx, "2026-04-27")
+    out = render_timeline_day(ctx2, "2026-04-27")
+    # 2026-04-27 is a Monday in ISO week 18.
+    assert "Monday" in out
+    assert "ISO week 2026-W18" in out
+
+
+def test_render_timeline_day_empty_state_when_no_activity(site_ctx: SiteContext) -> None:
+    out = render_timeline_day(site_ctx, "1999-01-01")
+    _assert_doc_shape(out)
+    assert "Nothing was indexed on this day" in out
+    # Back-link to the timeline index.
+    assert 'href="index.html"' in out
+    assert "Back to Timeline" in out
+
+
+def test_render_timeline_day_idempotent(site_ctx: SiteContext) -> None:
+    """Two consecutive renders of the same day must be byte-identical."""
+    ctx2 = _ctx_with_day(site_ctx, "2026-04-27")
+    a = render_timeline_day(ctx2, "2026-04-27")
+    b = render_timeline_day(ctx2, "2026-04-27")
+    assert a == b
+
+
+def test_render_timeline_heatmap_cells_are_anchored(site_ctx: SiteContext) -> None:
+    """When the corpus has dated activity, heatmap cells become <a> wrappers
+    around the <rect>, with the href pointing at ``../timeline/<day>.html``.
+    """
+    ctx2 = _ctx_with_day(site_ctx, "2026-04-27")
+    out = render_timeline(ctx2)
+    # The SVG must declare the xlink namespace and contain at least one
+    # anchor wrapping a heatmap rect.
+    assert 'xmlns:xlink="http://www.w3.org/1999/xlink"' in out
+    assert re.search(
+        r'<a [^>]*xlink:href="\.\./timeline/2026-04-27\.html"[^>]*>\s*<rect',
+        out,
+    ), "heatmap cell for 2026-04-27 must be wrapped in an <a> link"
