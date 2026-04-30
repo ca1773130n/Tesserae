@@ -8,6 +8,7 @@ markdown projection, Cognee export bundle, report, and MCP config snippet.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from dataclasses import dataclass
 from datetime import date
@@ -28,8 +29,9 @@ from .markdown_projection import GraphMarkdownProjector
 from .obsidian_adapter import ObsidianVaultAdapter
 from .persistence import SQLiteResearchGraphStore
 from .report import GraphReporter
-from .research_graph import ResearchCorpusAnalyzer, ResearchEdge, ResearchGraph, ResearchGraphExtractor, ResearchNode, ResearchNodeType, prefer_research_node
+from .research_graph import ResearchCorpusAnalyzer, ResearchEdge, ResearchGraph, ResearchGraphExtractor, ResearchNode, ResearchNodeType, link_paper_repo_pairs, prefer_research_node
 from .temporal import TemporalFactProjector, render_competitive_report
+from .wiki_projector import partition_graph
 
 
 @dataclass(frozen=True)
@@ -37,6 +39,9 @@ class ProjectPaths:
     root: Path
     config: Path
     graph: Path
+    code_graph: Path
+    combined_graph: Path
+    build_history: Path
     manifest: Path
     sqlite: Path
     markdown_projection: Path
@@ -61,6 +66,14 @@ class ProjectWiki:
             root=self.root,
             config=self.root / "config.json",
             graph=self.root / "graph.json",
+            code_graph=self.root / "code-graph.json",
+            combined_graph=self.root / "combined-graph.json",
+            # Build-history ledger lives at the project-wiki root, *not* inside
+            # the wiped site directory — see F-11. ``StaticSiteBuilder`` clears
+            # ``site/`` on every compile, so any ledger that lived inside would
+            # be reset to one line per build (the xfail test in
+            # tests/test_idempotence.py exercises this regression).
+            build_history=self.root / ".build-history.jsonl",
             manifest=self.root / "manifest.json",
             sqlite=self.root / "sqlite.db",
             markdown_projection=self.root / "markdown_projection",
@@ -359,7 +372,46 @@ class ProjectWiki:
         wiki_store = WikiPageStore(self.paths.wiki)
         WikiLayerProjector(wiki_store).project(graph)
         graph, _written = SynthesisProjector(wiki_store, manifest_path=self.paths.manifest).project(graph)
-        self.paths.graph.write_text(graph.to_json(indent=2) + "\n", encoding="utf-8")
+
+        # ------------------------------------------------------------ F-11
+        # Split the union ``ResearchGraph`` into two artifacts:
+        #   * ``graph.json``       — research-layer nodes/edges only (no
+        #                            ``CodeProject``/``SourceFile``/etc.). MCP,
+        #                            search, llms.txt, sitemap, RSS, and the
+        #                            site graph payload all read this file.
+        #   * ``code-graph.json``  — code-graph layer (``CodeProject``,
+        #                            ``SourceFile``, ``CodeModule``,
+        #                            ``CodeClass``, ``CodeFunction``,
+        #                            ``Dependency``) plus any cross-layer
+        #                            anchor edges so a downstream consumer can
+        #                            rebuild the union if it wants one.
+        #   * ``combined-graph.json`` is only written when the project config
+        #                            opts in via ``combined_graph: true`` (or
+        #                            the ``LLM_WIKI_INCLUDE_COMBINED_GRAPH``
+        #                            env var is set / a future CLI flag flips
+        #                            it). Default is *off* — code-graph noise
+        #                            should not bloat agent-facing artifacts.
+        research_graph, code_graph = partition_graph(graph)
+
+        self.paths.graph.write_text(research_graph.to_json(indent=2) + "\n", encoding="utf-8")
+        self.paths.code_graph.write_text(code_graph.to_json(indent=2) + "\n", encoding="utf-8")
+
+        cfg = self.config() if self.paths.config.exists() else {}
+        include_combined = bool(
+            cfg.get("combined_graph")
+            or cfg.get("include_combined_graph")
+            or os.environ.get("LLM_WIKI_INCLUDE_COMBINED_GRAPH")
+        )
+        if include_combined:
+            self.paths.combined_graph.write_text(graph.to_json(indent=2) + "\n", encoding="utf-8")
+        elif self.paths.combined_graph.exists():
+            # Don't let a stale combined graph survive a config flip.
+            self.paths.combined_graph.unlink()
+
+        # The downstream stores (SQLite, markdown projection, Cognee bundle,
+        # report, temporal facts, Graphiti episodes, agent harness, Obsidian
+        # vault) keep operating on the union so existing consumers see the
+        # same structure they always did.
         SQLiteResearchGraphStore(self.paths.sqlite).write_graph(graph, replace=True)
         GraphMarkdownProjector().write_projection(graph, self.paths.markdown_projection)
         CogneeResearchGraphAdapter().write_bundle(graph, self.paths.cognee_bundle)
@@ -371,6 +423,39 @@ class ProjectWiki:
         self.export_obsidian()
         self.build_site()
         self.paths.competitive_report.write_text(render_competitive_report(), encoding="utf-8")
+        self._append_build_history(research_graph, code_graph)
+
+    def _append_build_history(
+        self, research_graph: ResearchGraph, code_graph: ResearchGraph
+    ) -> None:
+        """Append one line to the project-level build-history ledger.
+
+        Lives at ``.llm-wiki/.build-history.jsonl`` (next to ``manifest.json``,
+        outside the wiped ``site/`` directory) so it survives across
+        recompiles. Each line records the timestamp and node/edge counts for
+        both partitions so an audit consumer can see the artifact split.
+        """
+        from datetime import datetime, timezone
+        entry = {
+            "built_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "research_nodes": len(research_graph.nodes),
+            "research_edges": len(research_graph.edges),
+            "code_nodes": len(code_graph.nodes),
+            "code_edges": len(code_graph.edges),
+        }
+        line = json.dumps(entry, sort_keys=True, ensure_ascii=False)
+        existing = ""
+        if self.paths.build_history.exists():
+            try:
+                existing = self.paths.build_history.read_text(encoding="utf-8")
+            except OSError:
+                existing = ""
+        # Ensure trailing newline normalization so the file always ends with
+        # exactly one newline after the latest entry.
+        existing = existing.rstrip("\n")
+        if existing:
+            existing += "\n"
+        self.paths.build_history.write_text(existing + line + "\n", encoding="utf-8")
 
 
 def merge_graphs(graphs: Iterable[ResearchGraph]) -> ResearchGraph:
@@ -382,7 +467,8 @@ def merge_graphs(graphs: Iterable[ResearchGraph]) -> ResearchGraph:
             nodes[node.id] = prefer_research_node(existing, node) if existing else node
         for edge in graph.edges:
             edges[(edge.source, edge.type, edge.target)] = edge
-    return ResearchGraph(nodes=list(nodes.values()), edges=list(edges.values()))
+    merged = ResearchGraph(nodes=list(nodes.values()), edges=list(edges.values()))
+    return link_paper_repo_pairs(merged)
 
 
 def load_graph_file(path: str | Path) -> ResearchGraph:

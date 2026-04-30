@@ -177,12 +177,14 @@ class StaticSiteBuilder:
             wiki_root = None
 
         out = Path(output_dir)
-        # Preserve the append-only build history ledger across rebuilds: read
-        # any existing entries before wiping the site directory, then re-emit
-        # them (plus this build's entry) at the end. The ledger lives next to
-        # ``manifest.json`` and is the only file in ``out`` that is allowed to
-        # carry a build-time timestamp.
-        prior_build_history = _read_build_history(out / ".build-history.jsonl")
+        # The build-history ledger used to live inside ``out`` next to
+        # ``manifest.json``, but ``write_site`` wipes ``out`` on every compile,
+        # so any append-only file inside the site dir got reset to a single
+        # line per build (codex review F-11 / failing test
+        # ``test_build_history_ledger_grows_each_compile``). The ledger now
+        # lives at the project-wiki root (``.llm-wiki/.build-history.jsonl``),
+        # written by :meth:`ProjectWiki._append_build_history` *outside* this
+        # builder. ``site/`` itself is content-stable and timestamp-free.
         if out.exists():
             shutil.rmtree(out)
         out.mkdir(parents=True)
@@ -379,25 +381,10 @@ class StaticSiteBuilder:
             encoding="utf-8",
         )
 
-        # ---------------------------------------------- build-history ledger
-        # Append a single line for this build, preserving any prior entries that
-        # survived from before the rebuild. The ledger is the *only* file in
-        # ``out`` that is allowed to differ between back-to-back compiles —
-        # everything else is byte-identical when nothing real has changed.
-        build_entry = {
-            "built_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "file_count": int(manifest_payload.get("file_count", 0)),
-            "total_bytes": sum(
-                int(entry.get("size", 0))
-                for entry in manifest_payload.get("files", [])
-                if isinstance(entry, dict)
-            ),
-        }
-        history_lines = list(prior_build_history)
-        history_lines.append(json.dumps(build_entry, sort_keys=True, ensure_ascii=False))
-        (out / ".build-history.jsonl").write_text(
-            "\n".join(history_lines) + "\n", encoding="utf-8"
-        )
+        # The build-history ledger now lives at the project-wiki root (see
+        # ``ProjectWiki._append_build_history``) so it survives the rebuild
+        # of ``site/``. The site directory itself is fully content-stable and
+        # carries no build-time timestamps.
 
         return {
             "site_path": str(out),
@@ -467,10 +454,6 @@ class StaticSiteBuilder:
                 continue
             # Skip the manifest itself — we are about to write it.
             if path.name == "manifest.json" and path.parent == out:
-                continue
-            # Skip the build-history ledger; it is the audit trail, not a
-            # content-addressable artifact.
-            if path.name == ".build-history.jsonl" and path.parent == out:
                 continue
             data = path.read_bytes()
             files.append(
@@ -573,17 +556,6 @@ def _read_synthesis_history(path: Path) -> List[Dict[str, str]]:
         if isinstance(entry, dict):
             out.append({str(k): str(v) for k, v in entry.items()})
     return out
-
-
-def _read_build_history(path: Path) -> List[str]:
-    """Return existing build-history lines so we can preserve them across rebuilds."""
-    if not path.exists():
-        return []
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        return []
-    return [line for line in text.splitlines() if line.strip()]
 
 
 def _negate_string(value: str) -> str:

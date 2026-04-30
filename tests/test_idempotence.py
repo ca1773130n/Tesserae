@@ -127,23 +127,32 @@ def test_history_ledger_records_writes(tmp_path: Path) -> None:
     )
 
 
-@pytest.mark.xfail(
-    reason="Codex review F-11: build-history ledger is wiped when StaticSiteBuilder rebuilds the site dir; subagent X reconciles ledger persistence with byte-idempotent rebuilds.",
-    strict=True,
-)
 def test_build_history_ledger_grows_each_compile(tmp_path: Path) -> None:
-    """The build-history ledger appends one line per compile, even if nothing changed."""
+    """The build-history ledger appends one line per compile, even if nothing changed.
+
+    Codex review F-11 fixed: the ledger now lives at the project-wiki root
+    (``.llm-wiki/.build-history.jsonl``) so it survives the rebuild of
+    ``site/``. ``ProjectWiki._append_build_history`` writes one line per
+    compile recording node/edge counts of both partitions.
+    """
     project_root = tmp_path / "project"
     wiki = _seed_project(project_root)
 
     wiki.compile()
-    build_history = wiki.paths.site / ".build-history.jsonl"
+    build_history = wiki.paths.build_history
     assert build_history.exists(), "expected build-history ledger after first compile"
-    first_lines = build_history.read_text(encoding="utf-8").splitlines()
+    assert build_history.parent == wiki.root, (
+        "ledger must live at the project-wiki root, not inside the wiped site/ dir"
+    )
+    first_lines = [
+        line for line in build_history.read_text(encoding="utf-8").splitlines() if line
+    ]
     assert len(first_lines) == 1
 
     wiki.compile()
-    second_lines = build_history.read_text(encoding="utf-8").splitlines()
+    second_lines = [
+        line for line in build_history.read_text(encoding="utf-8").splitlines() if line
+    ]
     assert len(second_lines) == 2, (
         "second compile should append a new build-history entry; "
         f"got {len(second_lines)} line(s)"

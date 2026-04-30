@@ -163,9 +163,21 @@ def test_project_compile_includes_code_graph_and_frontend_site_for_repository(tm
     result = wiki.compile()
 
     assert result["site_path"] == str(project / ".llm-wiki" / "site")
-    graph = json.loads((project / ".llm-wiki" / "graph.json").read_text(encoding="utf-8"))
-    types = {node["type"] for node in graph["nodes"]}
-    assert {"CodeProject", "SourceFile", "CodeFunction", "Dependency"}.issubset(types)
+    # Codex review F-11: code-graph nodes live in their own artifact, not in
+    # ``graph.json``. ``graph.json`` is research-only; ``code-graph.json``
+    # carries ``CodeProject`` / ``SourceFile`` / ``CodeFunction`` / etc.
+    code_graph = json.loads(
+        (project / ".llm-wiki" / "code-graph.json").read_text(encoding="utf-8")
+    )
+    code_types = {node["type"] for node in code_graph["nodes"]}
+    assert {"CodeProject", "SourceFile"}.issubset(code_types)
+    research_graph = json.loads(
+        (project / ".llm-wiki" / "graph.json").read_text(encoding="utf-8")
+    )
+    research_types = {node["type"] for node in research_graph["nodes"]}
+    assert research_types.isdisjoint(
+        {"CodeProject", "SourceFile", "CodeClass", "CodeFunction", "CodeModule", "Dependency"}
+    )
     assert (project / ".llm-wiki" / "site" / "index.html").exists()
     assert (project / ".llm-wiki" / "site" / "search-index.json").exists()
 
