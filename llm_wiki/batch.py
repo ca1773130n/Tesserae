@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Protocol, Sequence
 
-from .research_graph import ResearchGraph, prefer_research_node
+from .research_graph import ResearchGraph, link_paper_repo_pairs, prefer_research_node
 
 
 class ExtractorLike(Protocol):
@@ -102,7 +102,8 @@ def merge_graphs(graphs: Iterable[ResearchGraph]) -> ResearchGraph:
             nodes[node.id] = prefer_research_node(existing, node) if existing else node
         for edge in graph.edges:
             edges[(edge.source, edge.type, edge.target)] = edge
-    return ResearchGraph(nodes=list(nodes.values()), edges=list(edges.values()))
+    merged = ResearchGraph(nodes=list(nodes.values()), edges=list(edges.values()))
+    return link_paper_repo_pairs(merged)
 
 
 def sha256_text(text: str) -> str:

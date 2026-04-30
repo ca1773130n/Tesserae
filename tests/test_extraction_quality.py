@@ -156,7 +156,14 @@ Wrap-up.
     assert not (forbidden & {c.name for c in concepts})
 
 
-def test_concept_shaped_heading_still_becomes_concept():
+def test_registry_term_heading_still_becomes_typed_concept():
+    """Headings that exactly match a registered term canonical name are typed.
+
+    After the F-5 fix the heading classifier no longer mints ``Concept`` nodes
+    from arbitrary noun-like headings. Registry-matched headings still get
+    promoted, but they take the ontology-correct node type from the registry
+    entry (e.g. ``Volumetric Rendering`` -> ``MethodologicalConcept``).
+    """
     text = """# Doc
 
 ## Volumetric Rendering
@@ -166,14 +173,23 @@ Discussion of volumetric rendering.
     graph = ResearchGraphExtractor().extract_text(
         text, source_path="docs/notes.md", source_kind="SourceDocument"
     )
-    concept_names = {c.name for c in _by_type(graph, ResearchNodeType.CONCEPT)}
+    concept_layer_types = {
+        ResearchNodeType.CONCEPT,
+        ResearchNodeType.TECHNICAL_TERM,
+        ResearchNodeType.METHODOLOGICAL_CONCEPT,
+        ResearchNodeType.MATHEMATICAL_CONCEPT,
+        ResearchNodeType.ALGORITHM,
+        ResearchNodeType.ARCHITECTURE_PATTERN,
+        ResearchNodeType.TRAINING_PARADIGM,
+        ResearchNodeType.INFERENCE_STRATEGY,
+        ResearchNodeType.EVALUATION_PROTOCOL,
+        ResearchNodeType.TASK,
+        ResearchNodeType.CAPABILITY,
+    }
+    concept_names = {n.name for n in graph.nodes if n.type in concept_layer_types}
     assert "Volumetric Rendering" in concept_names
 
 
-@pytest.mark.xfail(
-    reason="Codex review F-5: heading classifier still admits paper-title-shaped headings as Concepts; subagent W converts back to passing.",
-    strict=True,
-)
 def test_papers_outnumber_concepts_on_fixture_corpus():
     """Run over the bundled wiki_corpus fixture and check the overall ratio.
 

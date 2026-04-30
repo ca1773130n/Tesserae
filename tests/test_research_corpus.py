@@ -43,7 +43,13 @@ def test_extract_title_prefers_real_paper_title_over_analysis_heading_and_arxiv_
     assert papers[0].metadata["analysis_date"] == "2026-04-25"
 
 
-def test_paper_file_without_title_stays_arxiv_only_not_abstract_title():
+def test_paper_file_without_title_falls_back_to_needs_metadata_not_abstract_title():
+    """Without a parsable title and no offline cache, F-3 emits ``needs_metadata``.
+
+    The resolver explicitly avoids fabricating a title from the abstract body —
+    "MHMO 렌더링" is not promoted to a paper title. ``needs_metadata`` is
+    treated as private until the offline arXiv cache resolves the real title.
+    """
     graph = ResearchGraphExtractor().extract_text(
         """
 # 논문 분석: 2604.02996
@@ -59,7 +65,7 @@ def test_paper_file_without_title_stays_arxiv_only_not_abstract_title():
 
     paper = next(node for node in graph.nodes if node.type == ResearchNodeType.PAPER)
     assert paper.name == "arXiv:2604.02996"
-    assert paper.metadata["title_quality"] == "arxiv_only"
+    assert paper.metadata["title_quality"] == "needs_metadata"
 
 
 def test_paper_file_skips_papers_cool_ui_and_rank_markers():
@@ -257,7 +263,7 @@ def test_paper_file_scaffold_apology_does_not_become_public_title():
 
     paper = next(node for node in graph.nodes if node.type == ResearchNodeType.PAPER)
     assert paper.name == "arXiv:2410.17897"
-    assert paper.metadata["title_quality"] == "arxiv_only"
+    assert paper.metadata["title_quality"] == "needs_metadata"
 
 
 def test_paper_file_translation_intro_does_not_become_public_title():
@@ -275,4 +281,4 @@ def test_paper_file_translation_intro_does_not_become_public_title():
 
     paper = next(node for node in graph.nodes if node.type == ResearchNodeType.PAPER)
     assert paper.name == "arXiv:2604.12345"
-    assert paper.metadata["title_quality"] == "arxiv_only"
+    assert paper.metadata["title_quality"] == "needs_metadata"

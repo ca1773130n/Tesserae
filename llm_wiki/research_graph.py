@@ -10,11 +10,12 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import os
 import re
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 
 class ResearchNodeType(str, Enum):
@@ -73,6 +74,39 @@ class ResearchNodeType(str, Enum):
 
 
 ALLOWED_NODE_TYPES: Set[str] = {item.value for item in ResearchNodeType}
+
+
+class TitleQuality(str, Enum):
+    """Quality tier for a Paper node's display title.
+
+    The ranking matters for de-duplication: when a digest mention and a
+    full ``paper.md`` resolve to the same arXiv id, the higher-quality
+    title wins.
+    """
+
+    INVALID = "invalid"
+    NEEDS_METADATA = "needs_metadata"
+    ARXIV_ONLY = "arxiv_only"
+    REFERENCE_CONTEXT = "reference_context"
+    PAPER_FILE = "paper_file"
+    VERIFIED = "verified"
+
+
+_TITLE_QUALITY_RANK: Dict[str, int] = {
+    TitleQuality.INVALID.value: -1,
+    TitleQuality.NEEDS_METADATA.value: 0,
+    TitleQuality.ARXIV_ONLY.value: 1,
+    TitleQuality.REFERENCE_CONTEXT.value: 2,
+    TitleQuality.PAPER_FILE.value: 3,
+    TitleQuality.VERIFIED.value: 4,
+}
+
+
+VERIFIED_PAPER_TITLE_QUALITIES: Set[str] = {
+    TitleQuality.PAPER_FILE.value,
+    TitleQuality.VERIFIED.value,
+    TitleQuality.REFERENCE_CONTEXT.value,
+}
 
 ALLOWED_EDGE_TYPES: Set[str] = {
     "is_a",
@@ -159,12 +193,19 @@ def prefer_research_node(existing: ResearchNode, incoming: ResearchNode) -> Rese
     context titles. When the real per-paper raw document is also ingested, keep
     the same stable node id but upgrade the display name to the paper title.
     """
-    quality_rank = {"arxiv_only": 0, "reference_context": 1, "paper_file": 3, "verified": 4}
     existing_quality = str(existing.metadata.get("title_quality") or "")
     incoming_quality = str(incoming.metadata.get("title_quality") or "")
     existing_placeholder = is_arxiv_placeholder_name(existing.name)
     incoming_placeholder = is_arxiv_placeholder_name(incoming.name)
-    if quality_rank.get(incoming_quality, 2) > quality_rank.get(existing_quality, 2):
+    # Unknown quality tiers default to ``arxiv_only`` so unlabelled nodes never
+    # silently win against a properly tagged ``paper_file`` peer.
+    incoming_rank = _TITLE_QUALITY_RANK.get(
+        incoming_quality, _TITLE_QUALITY_RANK[TitleQuality.ARXIV_ONLY.value]
+    )
+    existing_rank = _TITLE_QUALITY_RANK.get(
+        existing_quality, _TITLE_QUALITY_RANK[TitleQuality.ARXIV_ONLY.value]
+    )
+    if incoming_rank > existing_rank:
         chosen = incoming
     elif existing_placeholder and not incoming_placeholder:
         chosen = incoming
@@ -273,37 +314,38 @@ class ResearchGraphBuilder:
         return ResearchGraph(nodes=nodes, edges=list(self._edges.values()))
 
 
+# ``TermRule`` is a backward-compat alias used by older tests. The canonical
+# typed registry now lives in :mod:`llm_wiki.term_registry`.
 @dataclass(frozen=True)
 class TermRule:
     canonical_name: str
     node_type: ResearchNodeType
     aliases: Tuple[str, ...] = ()
     approach_family: Optional[str] = None
+    relation: str = "uses"
 
     def patterns(self) -> Tuple[str, ...]:
         return (self.canonical_name, *self.aliases)
 
 
-DEFAULT_TERM_RULES: Tuple[TermRule, ...] = (
-    TermRule("Gaussian Splatting", ResearchNodeType.METHODOLOGICAL_CONCEPT, ("3D Gaussian Splatting", "3DGS", "GS"), "Gaussian Splatting Reconstruction"),
-    TermRule("Geometry-Grounded Gaussian Splatting", ResearchNodeType.APPROACH_FAMILY, ("Geometry-Grounded GS",), "Geometry-Grounded Gaussian Splatting"),
-    TermRule("Novel View Synthesis", ResearchNodeType.TASK, ("new view synthesis",)),
-    TermRule("Shape Reconstruction", ResearchNodeType.TASK, ("형상 재구성", "geometry extraction", "기하 추출")),
-    TermRule("Stochastic Solid", ResearchNodeType.MATHEMATICAL_CONCEPT, ("stochastic solid",)),
-    TermRule("Volumetric Rendering", ResearchNodeType.METHODOLOGICAL_CONCEPT, ("volumetric 특성", "volumetric")),
-    TermRule("Depth Map", ResearchNodeType.TECHNICAL_TERM, ("depth map", "depth maps")),
-    TermRule("Multi-View Consistency", ResearchNodeType.EVALUATION_PROTOCOL, ("multi-view consistency",)),
-    TermRule("Floaters", ResearchNodeType.LIMITATION_CLAIM, ("floaters",)),
-    TermRule("4D Gaussian Splatting", ResearchNodeType.METHODOLOGICAL_CONCEPT, ("4DGS", "4D Gaussian Splatting"), "Dynamic Gaussian Splatting"),
-    TermRule("Video Diffusion", ResearchNodeType.METHODOLOGICAL_CONCEPT, ("video diffusion",)),
-    TermRule("Point Cloud", ResearchNodeType.TECHNICAL_TERM, ("point cloud", "4D point cloud")),
-    TermRule("Image-to-3D", ResearchNodeType.TASK, ("image-to-3D",)),
-    TermRule("World Model", ResearchNodeType.RESEARCH_TOPIC, ("world model", "world models")),
-    TermRule("Pseudo-Mask", ResearchNodeType.TECHNICAL_TERM, ("pseudo-mask", "pseudo mask")),
-    TermRule("Object-Level Prior", ResearchNodeType.METHODOLOGICAL_CONCEPT, ("object-level prior", "object-level pseudo-mask")),
-    TermRule("Visual SLAM", ResearchNodeType.RESEARCH_TOPIC, ("Visual SLAM", "SLAM")),
-    TermRule("Multi-Robot Cooperative Mapping", ResearchNodeType.TASK, ("multi-robot cooperative mapping",)),
-)
+# Sentinel: the default registry is built lazily from term_registry.py to avoid
+# import cycles. Tests can still import ``DEFAULT_TERM_RULES`` for back-compat.
+def _build_default_term_rules() -> Tuple[TermRule, ...]:
+    from .term_registry import TermRegistry
+
+    return tuple(
+        TermRule(
+            canonical_name=entry.canonical_name,
+            node_type=entry.node_type,
+            aliases=entry.aliases,
+            approach_family=entry.approach_family,
+            relation=entry.relation,
+        )
+        for entry in TermRegistry.default().entries
+    )
+
+
+DEFAULT_TERM_RULES: Tuple[TermRule, ...] = _build_default_term_rules()
 
 
 class ResearchGraphExtractor:
@@ -313,8 +355,15 @@ class ResearchGraphExtractor:
     domain ontology and provides stable tests/evaluation fixtures.
     """
 
-    def __init__(self, term_rules: Sequence[TermRule] = DEFAULT_TERM_RULES) -> None:
-        self.term_rules = tuple(term_rules)
+    def __init__(self, term_rules: Optional[Sequence[TermRule]] = None) -> None:
+        from .term_registry import TermRegistry
+
+        self.registry = TermRegistry.default()
+        # Back-compat: tests can still construct ``TermRule`` lists.
+        if term_rules is None:
+            self.term_rules = DEFAULT_TERM_RULES
+        else:
+            self.term_rules = tuple(term_rules)
 
     def extract_file(self, path: str | Path, source_kind: str = "SourceDocument") -> ResearchGraph:
         file_path = Path(path)
@@ -327,17 +376,44 @@ class ResearchGraphExtractor:
         source_kind: str = "SourceDocument",
     ) -> ResearchGraph:
         builder = ResearchGraphBuilder()
-        title = extract_title(text, source_path)
         source_type = source_kind_to_node_type(source_kind, source_path)
         source_metadata = extract_source_metadata(text, source_path)
         if source_type == ResearchNodeType.SOURCE_DOCUMENT and is_social_feed_source_path(source_path):
             return builder.build()
-        # Pre-compute heading-derived candidate paper titles so we can attach
-        # them to the source-document metadata up-front (ResearchNode is frozen).
-        candidate_paper_titles, surviving_concept_headings = self._classify_document_headings(text)
+        # Pre-compute heading-derived sections + candidate paper titles. We
+        # store all headings as structural metadata; concepts only get minted
+        # for headings that match the typed term registry.
+        sections = _collect_document_sections(text)
+        registry_aliases = self.registry.all_aliases()
+        candidate_paper_titles, registry_concept_headings = self._classify_document_headings(text, registry_aliases)
         paper_metadata: Dict[str, object] = {"source_kind": source_kind, **source_metadata}
+        if sections:
+            paper_metadata["sections"] = sections
+
+        title = extract_title(text, source_path)
         if source_type == ResearchNodeType.PAPER:
-            paper_metadata["title_quality"] = "paper_file" if is_verified_paper_title(title, source_metadata) else "arxiv_only"
+            arxiv_id = str(source_metadata.get("arxiv_id") or "")
+            if is_verified_paper_title(title, source_metadata):
+                paper_metadata["title_quality"] = TitleQuality.PAPER_FILE.value
+            elif arxiv_id:
+                resolved = resolve_missing_paper_title(arxiv_id, text, source_metadata)
+                if resolved.title and is_verified_paper_title(resolved.title, source_metadata):
+                    title = resolved.title
+                    paper_metadata["title_quality"] = resolved.quality.value
+                else:
+                    paper_metadata["title_quality"] = TitleQuality.NEEDS_METADATA.value
+            else:
+                paper_metadata["title_quality"] = TitleQuality.INVALID.value
+
+        # Repository identity: prefer the GitHub URL so duplicate notes about
+        # the same repo collapse on a stable id even when the markdown title
+        # differs (Korean prefix, mirror notes, etc.).
+        repo_identity: Optional[Tuple[str, str, str]] = None  # (owner_repo, url, display)
+        if source_type == ResearchNodeType.REPOSITORY:
+            github_repo = str(source_metadata.get("github_repo") or "")
+            repo_url = str(source_metadata.get("repo_url") or "")
+            if github_repo and repo_url:
+                repo_identity = (github_repo, repo_url, title)
 
         # When the path identifies a Paper subfolder we want all references
         # (digest mentions, per-paper file ingest) to collapse onto the same
@@ -346,7 +422,12 @@ class ResearchGraphExtractor:
         # the arxiv id captured as an alias for cross-reference search.
         arxiv_id = str(source_metadata.get("arxiv_id", ""))
         if source_type == ResearchNodeType.PAPER and arxiv_id:
-            display_name = title if is_verified_paper_title(title, source_metadata) else f"arXiv:{arxiv_id}"
+            quality = paper_metadata.get("title_quality")
+            display_name = (
+                title
+                if quality in {TitleQuality.PAPER_FILE.value, TitleQuality.VERIFIED.value, TitleQuality.REFERENCE_CONTEXT.value}
+                else f"arXiv:{arxiv_id}"
+            )
             aliases: List[str] = [f"arXiv:{arxiv_id}"]
             paper = builder.add_node(
                 display_name,
@@ -356,14 +437,66 @@ class ResearchGraphExtractor:
                 metadata=paper_metadata,
                 id_seed=f"arXiv:{arxiv_id}",
             )
+        elif repo_identity is not None:
+            owner_repo, repo_url, display = repo_identity
+            paper = builder.add_node(
+                display,
+                ResearchNodeType.REPOSITORY,
+                aliases=[owner_repo, repo_url],
+                source_path=source_path,
+                metadata=paper_metadata,
+                id_seed=f"github:{owner_repo}",
+            )
+            # If the repo notes link to a paper via arxiv_id, upsert the
+            # paper placeholder and emit an ``implemented_in`` edge. The
+            # paper node may later be upgraded by a real ``paper.md``.
+            repo_arxiv = str(source_metadata.get("arxiv_id") or "")
+            if repo_arxiv:
+                paper_placeholder = builder.add_node(
+                    f"arXiv:{repo_arxiv}",
+                    ResearchNodeType.PAPER,
+                    aliases=[f"arXiv:{repo_arxiv}"],
+                    source_path=source_path,
+                    metadata={
+                        "source_kind": "Paper",
+                        "arxiv_id": repo_arxiv,
+                        "title_quality": TitleQuality.ARXIV_ONLY.value,
+                        "discovered_in": source_path,
+                    },
+                    id_seed=f"arXiv:{repo_arxiv}",
+                )
+                builder.add_edge(paper_placeholder, "implemented_in", paper)
+            # The repository owner is often the releasing Organization. We
+            # only mint Organization nodes for owners that look organizational
+            # (multi-segment names, contains hyphen, or appears in a small
+            # known list of research orgs).
+            owner = owner_repo.split("/", 1)[0]
+            if _looks_like_organization_owner(owner):
+                org = builder.add_node(
+                    owner,
+                    ResearchNodeType.ORGANIZATION,
+                    aliases=[],
+                    source_path=source_path,
+                )
+                builder.add_edge(paper, "released_by", org)
         else:
             if candidate_paper_titles:
                 paper_metadata["candidate_paper_titles"] = candidate_paper_titles
             paper = builder.add_node(title, source_type, source_path=source_path, metadata=paper_metadata)
 
         if source_type in {ResearchNodeType.SOURCE_DOCUMENT, ResearchNodeType.REPOSITORY, ResearchNodeType.PROJECT}:
-            self._add_document_structure(builder, paper, surviving_concept_headings, source_path)
+            self._add_document_structure(builder, paper, registry_concept_headings, source_path)
             self._extract_paper_references(builder, paper, text, source_path)
+            return builder.build()
+
+        # Hard gate: if a paper.md failed to produce a verifiable title, we
+        # still emit the paper placeholder for de-dup, but skip body
+        # extraction so we don't inflate the graph with invalid claims.
+        if (
+            source_type == ResearchNodeType.PAPER
+            and paper_metadata.get("title_quality")
+            in {TitleQuality.INVALID.value, TitleQuality.NEEDS_METADATA.value}
+        ):
             return builder.build()
 
         field = builder.add_node(infer_research_field(text), ResearchNodeType.RESEARCH_FIELD)
@@ -371,41 +504,54 @@ class ResearchGraphExtractor:
         research_text = strip_non_research_scaffold(text)
 
         matched_terms: List[ResearchNode] = []
-        for rule in self.term_rules:
-            evidence = find_evidence(research_text, rule.patterns())
+        for entry in self.registry.entries:
+            evidence = find_evidence(research_text, entry.patterns())
             if not evidence:
                 continue
             node = builder.add_node(
-                rule.canonical_name,
-                rule.node_type,
-                aliases=list(rule.aliases),
+                entry.canonical_name,
+                entry.node_type,
+                aliases=list(entry.aliases),
                 source_path=source_path,
             )
             matched_terms.append(node)
-            relation = relation_for_node_type(rule.node_type)
-            builder.add_edge(paper, relation, node, evidence=evidence)
+            builder.add_edge(paper, entry.relation, node, evidence=evidence)
 
             span = self._add_evidence(builder, paper, evidence, source_path)
             claim = self._add_claim_for_term(builder, paper, node, evidence, source_path)
             builder.add_edge(claim, "evidenced_by", span, evidence=evidence)
             builder.add_edge(claim, "mentioned_in", paper, evidence=evidence)
 
-            if rule.approach_family:
-                family = builder.add_node(rule.approach_family, ResearchNodeType.APPROACH_FAMILY)
+            if entry.approach_family:
+                family = builder.add_node(entry.approach_family, ResearchNodeType.APPROACH_FAMILY)
                 builder.add_edge(paper, "belongs_to_approach_family", family, evidence=evidence)
                 if node.type != ResearchNodeType.APPROACH_FAMILY:
                     builder.add_edge(family, "uses", node, evidence=evidence)
 
-        self._add_comparative_claims(builder, paper, research_text, source_path)
+        # Typed entity extraction reads the *raw* text because the scaffold
+        # stripper removes ``저자:``/``Authors:`` blocks (those lines are
+        # routed straight into typed Person/Org nodes here).
+        self._extract_typed_entities(builder, paper, text, source_path)
+        self._add_contribution_claims(builder, paper, research_text, source_path)
+        self._add_comparison_claims(builder, paper, research_text, source_path)
+        self._add_open_questions(builder, paper, research_text, source_path)
+        self._add_performance_claims(builder, paper, research_text, source_path)
         self._connect_related_terms(builder, matched_terms, research_text)
         return builder.build()
 
-    def _classify_document_headings(self, text: str) -> Tuple[List[str], List[str]]:
-        """Sort markdown headings into (paper-title candidates, concept-shaped)."""
+    def _classify_document_headings(
+        self, text: str, registry_aliases: Set[str]
+    ) -> Tuple[List[str], List[str]]:
+        """Return (paper-title candidates, registry-aliased headings).
+
+        The second list is intentionally small: only headings whose normalized
+        text exactly matches a registered term canonical name or alias are
+        promoted to ``Concept`` candidates downstream. Everything else stays
+        in the source-document ``metadata["sections"]`` blob.
+        """
         candidate_paper_titles: List[str] = []
-        concept_headings: List[str] = []
-        whitelist_terms = {rule.canonical_name.lower() for rule in self.term_rules}
-        whitelist_terms |= {alias.lower() for rule in self.term_rules for alias in rule.aliases}
+        registry_headings: List[str] = []
+        lowered_aliases = {alias.lower() for alias in registry_aliases}
         for raw in extract_markdown_headings(text):
             cleaned = _strip_heading_numbering(raw)
             if not cleaned:
@@ -415,10 +561,10 @@ class ResearchGraphExtractor:
             if _looks_like_paper_title_heading(raw, cleaned):
                 candidate_paper_titles.append(cleaned)
                 continue
-            if _is_concept_shaped_heading(cleaned, whitelist_terms):
-                concept_headings.append(cleaned)
-        # Cap heading-derived concepts at 6 per file to limit pollution.
-        return candidate_paper_titles, concept_headings[:6]
+            normalized = normalize_display_name(cleaned).lower()
+            if normalized in lowered_aliases:
+                registry_headings.append(normalize_display_name(cleaned))
+        return candidate_paper_titles, registry_headings
 
     def _add_document_structure(
         self,
@@ -427,13 +573,19 @@ class ResearchGraphExtractor:
         concept_headings: Sequence[str],
         source_path: Optional[str],
     ) -> None:
+        # Only headings that exactly matched a registered term make it here.
+        # Mint the concept node via the typed registry to preserve typing.
         for heading in concept_headings:
+            entry = self.registry.lookup(heading)
+            if entry is None:
+                continue
             if heading.lower() == document.name.lower():
                 continue
             concept = builder.add_node(
-                heading,
-                ResearchNodeType.CONCEPT,
-                description=f"Section heading in {document.name}",
+                entry.canonical_name,
+                entry.node_type,
+                aliases=list(entry.aliases),
+                description=f"Registered term referenced in {document.name}",
                 source_path=source_path,
                 metadata={"source_kind": "document_heading"},
             )
@@ -506,24 +658,155 @@ class ResearchGraphExtractor:
         builder.add_edge(claim, "uses" if term.type not in {ResearchNodeType.TASK, ResearchNodeType.CAPABILITY} else "addresses", term, evidence=evidence)
         return claim
 
-    def _add_comparative_claims(
-        self, builder: ResearchGraphBuilder, paper: ResearchNode, text: str, source_path: Optional[str]
+    def _extract_typed_entities(
+        self,
+        builder: ResearchGraphBuilder,
+        paper: ResearchNode,
+        text: str,
+        source_path: Optional[str],
     ) -> None:
-        sentences = split_sentences(text)
-        for sentence in sentences:
-            if any(marker in sentence.lower() for marker in ["우수", "outperform", "better", "improve", "성능"]):
-                claim = builder.add_node(
-                    "Performance claim: " + truncate(sentence, 96),
-                    ResearchNodeType.PERFORMANCE_CLAIM,
-                    description=sentence,
-                    source_path=source_path,
-                )
-                span = self._add_evidence(builder, paper, sentence, source_path)
-                builder.add_edge(paper, "supports_claim", claim, evidence=sentence)
-                builder.add_edge(claim, "evidenced_by", span, evidence=sentence)
-                if "dataset" in sentence.lower() or "데이터셋" in sentence:
-                    dataset = builder.add_node("Public Datasets", ResearchNodeType.DATASET)
-                    builder.add_edge(claim, "evaluated_on", dataset, evidence=sentence)
+        """Emit typed Person/Org/Dataset/Benchmark/Metric/Algorithm/Model nodes."""
+        # Authors -> Person, Organization (when an Organization line is present)
+        for person in extract_authors(text):
+            node = builder.add_node(
+                person,
+                ResearchNodeType.PERSON,
+                source_path=source_path,
+            )
+            builder.add_edge(paper, "authored_by", node)
+        for org in extract_organizations(text):
+            node = builder.add_node(
+                org,
+                ResearchNodeType.ORGANIZATION,
+                source_path=source_path,
+            )
+            builder.add_edge(paper, "released_by", node)
+
+        datasets, benchmarks, metrics, results = extract_eval_entities(text)
+        for ds in datasets:
+            ds_node = builder.add_node(ds, ResearchNodeType.DATASET, source_path=source_path)
+            builder.add_edge(paper, "uses_dataset", ds_node)
+        for bm in benchmarks:
+            bm_node = builder.add_node(bm, ResearchNodeType.BENCHMARK, source_path=source_path)
+            builder.add_edge(paper, "evaluated_on", bm_node)
+        for m in metrics:
+            metric_node = builder.add_node(m, ResearchNodeType.METRIC, source_path=source_path)
+            builder.add_edge(paper, "uses_metric", metric_node)
+        for result in results:
+            result_node = builder.add_node(
+                result["name"],
+                ResearchNodeType.RESULT,
+                description=result.get("evidence", ""),
+                source_path=source_path,
+                metadata={
+                    "metric": result.get("metric"),
+                    "value": result.get("value"),
+                    "benchmark": result.get("benchmark"),
+                },
+            )
+            builder.add_edge(paper, "reports_result", result_node)
+            metric = result.get("metric")
+            if metric:
+                metric_node = builder.add_node(metric, ResearchNodeType.METRIC, source_path=source_path)
+                builder.add_edge(result_node, "uses_metric", metric_node)
+            benchmark = result.get("benchmark")
+            if benchmark:
+                bm_node = builder.add_node(benchmark, ResearchNodeType.BENCHMARK, source_path=source_path)
+                builder.add_edge(result_node, "evaluated_on", bm_node)
+
+        algorithms, models, training_paradigms, inference_strategies = extract_method_entities(text)
+        for algo in algorithms:
+            node = builder.add_node(
+                algo,
+                ResearchNodeType.ALGORITHM,
+                source_path=source_path,
+            )
+            builder.add_edge(paper, "introduces", node)
+        for model in models:
+            node = builder.add_node(model, ResearchNodeType.MODEL, source_path=source_path)
+            builder.add_edge(paper, "uses", node)
+        for paradigm in training_paradigms:
+            node = builder.add_node(
+                paradigm, ResearchNodeType.TRAINING_PARADIGM, source_path=source_path
+            )
+            builder.add_edge(paper, "uses", node)
+        for strategy in inference_strategies:
+            node = builder.add_node(
+                strategy, ResearchNodeType.INFERENCE_STRATEGY, source_path=source_path
+            )
+            builder.add_edge(paper, "uses", node)
+
+    def _add_contribution_claims(
+        self,
+        builder: ResearchGraphBuilder,
+        paper: ResearchNode,
+        text: str,
+        source_path: Optional[str],
+    ) -> None:
+        for sentence in extract_contribution_claims(text):
+            claim = builder.add_node(
+                "Contribution: " + truncate(sentence, 96),
+                ResearchNodeType.CONTRIBUTION_CLAIM,
+                description=sentence,
+                source_path=source_path,
+            )
+            span = self._add_evidence(builder, paper, sentence, source_path)
+            builder.add_edge(paper, "supports_claim", claim, evidence=sentence)
+            builder.add_edge(claim, "evidenced_by", span, evidence=sentence)
+
+    def _add_comparison_claims(
+        self,
+        builder: ResearchGraphBuilder,
+        paper: ResearchNode,
+        text: str,
+        source_path: Optional[str],
+    ) -> None:
+        for sentence in extract_comparison_claims(text):
+            claim = builder.add_node(
+                "Comparison: " + truncate(sentence, 96),
+                ResearchNodeType.COMPARISON_CLAIM,
+                description=sentence,
+                source_path=source_path,
+            )
+            span = self._add_evidence(builder, paper, sentence, source_path)
+            builder.add_edge(paper, "supports_claim", claim, evidence=sentence)
+            builder.add_edge(claim, "evidenced_by", span, evidence=sentence)
+
+    def _add_open_questions(
+        self,
+        builder: ResearchGraphBuilder,
+        paper: ResearchNode,
+        text: str,
+        source_path: Optional[str],
+    ) -> None:
+        for sentence in extract_open_questions(text):
+            question = builder.add_node(
+                "Open question: " + truncate(sentence, 96),
+                ResearchNodeType.OPEN_QUESTION,
+                description=sentence,
+                source_path=source_path,
+            )
+            span = self._add_evidence(builder, paper, sentence, source_path)
+            builder.add_edge(paper, "supports_claim", question, evidence=sentence)
+            builder.add_edge(question, "evidenced_by", span, evidence=sentence)
+
+    def _add_performance_claims(
+        self,
+        builder: ResearchGraphBuilder,
+        paper: ResearchNode,
+        text: str,
+        source_path: Optional[str],
+    ) -> None:
+        for sentence in extract_performance_claims(text):
+            claim = builder.add_node(
+                "Performance claim: " + truncate(sentence, 96),
+                ResearchNodeType.PERFORMANCE_CLAIM,
+                description=sentence,
+                source_path=source_path,
+            )
+            span = self._add_evidence(builder, paper, sentence, source_path)
+            builder.add_edge(paper, "supports_claim", claim, evidence=sentence)
+            builder.add_edge(claim, "evidenced_by", span, evidence=sentence)
 
     def _connect_related_terms(self, builder: ResearchGraphBuilder, terms: Sequence[ResearchNode], text: str) -> None:
         names = {term.name: term for term in terms}
@@ -644,9 +927,6 @@ _PAPER_REPO_FILE_RE = re.compile(
 )
 _DAILY_REPOS_RE = re.compile(r"data/research/.+?/repos/.+?\.md$", re.IGNORECASE)
 _DAILY_FEEDS_RE = re.compile(r"data/research/.+?/feeds/.+?\.md$", re.IGNORECASE)
-
-
-VERIFIED_PAPER_TITLE_QUALITIES = {"paper_file", "verified"}
 
 
 def is_social_feed_source_path(source_path: Optional[str]) -> bool:
@@ -955,18 +1235,174 @@ def classify_claim_type(sentence: str) -> ResearchNodeType:
     return ResearchNodeType.CLAIM
 
 
-def extract_title(text: str, source_path: Optional[str]) -> str:
-    """Extract the human paper title, not scraper scaffolding headings.
+_INSIDE_FENCE_PROBE = re.compile(r"^```")
 
-    The papers.cool notes often start with ``# 논문 분석: <arxiv_id>`` and then
-    ``## <arxiv_id>`` before the real title. Those are metadata headings, not the
-    research artifact title.
+
+def _line_is_inside_fence(text: str, target_index: int) -> bool:
+    fence_count = 0
+    for line in text.splitlines()[:target_index]:
+        if _INSIDE_FENCE_PROBE.match(line.strip()):
+            fence_count += 1
+    return fence_count % 2 == 1
+
+
+# Patterns that disqualify a line from ever being a paper title. These are
+# anchored on common scraper / Korean-assistant chatter the corpus exposes.
+_TITLE_REJECT_PREFIXES: Tuple[str, ...] = (
+    "extract ",
+    "rt ",
+    "tl;dr",
+    "📄",
+    "논문:",
+    "관련 링크:",
+    "본 연구",
+    "제공하신",
+    "제공된 원문",
+    "`paper_prompt.txt`",
+    "paper_prompt.txt",
+    "의미 있는 내용을",
+    "중국어 분석",
+    "희소 뷰",
+    "authors:",
+    "저자:",
+    "subject:",
+    "publish:",
+)
+
+# Substrings that mark assistant/scraper chatter; if any appears, the line is
+# not a real research title regardless of where it sits.
+_TITLE_REJECT_CONTAINS: Tuple[str, ...] = (
+    "designed by",
+    "powered by",
+    "github:",
+    "disclaimer",
+    "번역 완료",
+    "파일 생성됨",
+    "파일 확인",
+    "확인해야 합니다",
+    "확인해보겠습니다",
+    "들어있는",
+    "분석 내용이 없습니다",
+    "내용이 포함되어",
+    "원문 웹페이지",
+    "scrap",
+    "[paper](",
+    "[논문 분석](",
+)
+
+
+def classify_paper_title_candidate(line: str, *, in_fence: bool = False) -> bool:
+    """Strict gate: return True iff ``line`` could plausibly be a paper title.
+
+    This is the production replacement for ``looks_like_research_title``. It
+    rejects code fences, markdown file paths, Korean assistant chatter,
+    action verbs, RT/TL;DR feed lines, emoji-prefixed status messages, and
+    any line that lives inside a fenced code block.
+    """
+    if line is None:
+        return False
+    if in_fence:
+        return False
+    cleaned = line.strip()
+    if not cleaned:
+        return False
+    if len(cleaned) < 3 or len(cleaned) > 220:
+        return False
+    lowered = cleaned.lower()
+    # Code fences and bare fence markers ("```markdown", "```python") are
+    # never titles. We also reject inline backtick-only lines.
+    if cleaned.startswith("```") or cleaned == "```" or re.fullmatch(r"`+\s*[a-zA-Z]*\s*`*", cleaned):
+        return False
+    if cleaned in {"```markdown", "```python", "```javascript", "```bash"}:
+        return False
+    # Reject literal markdown filenames or paths.
+    if re.search(r"\.(?:md|txt|json|yaml|yml|csv|ipynb)\b", lowered):
+        return False
+    if "/" in cleaned and re.search(r"`[^`]*\.(?:md|txt|py|json|ipynb)`", cleaned):
+        return False
+    # Reject lines that are mostly URLs / arxiv references.
+    if cleaned.lower().startswith(("http://", "https://", "arxiv.org", "doi.org")):
+        return False
+    if re.fullmatch(r"arXiv:\d{4}\.\d{4,6}", cleaned, flags=re.IGNORECASE):
+        return False
+    # Lookahead-style chatter: "RT @X:", "[Paper]", "[논문 분석]"
+    if any(lowered.startswith(prefix) for prefix in _TITLE_REJECT_PREFIXES):
+        return False
+    if any(token in lowered for token in _TITLE_REJECT_CONTAINS):
+        return False
+    # Common Korean status sentences end with "~다." / "~합니다." — not titles.
+    if re.search(r"[가-힣](?:다|니다|합니다|겠습니다|입니다)\.\s*$", cleaned):
+        return False
+    # Sentence-ish lines with multiple terminal periods are not titles.
+    if cleaned.count("。") >= 1:
+        return False
+    # Reject anything that opens with an action verb pattern.
+    if re.match(r"^(?:I |We |You |Please |Note that |Here )", cleaned, flags=re.IGNORECASE):
+        return False
+    return bool(re.search(r"[A-Za-z가-힣]", cleaned))
+
+
+def looks_like_research_title(text: str) -> bool:
+    """Backward-compatible thin wrapper over :func:`classify_paper_title_candidate`."""
+    return classify_paper_title_candidate(text, in_fence=False)
+
+
+def extract_title(text: str, source_path: Optional[str]) -> str:
+    """Extract the human paper title, scanning multiple candidate lines.
+
+    Strategy for ``paper.md`` files (in priority order):
+
+    1. ``# <title>`` *after* a ``## #N`` rank marker (papers.cool layout).
+    2. ``<title> | Cool Papers`` line.
+    3. The first heading-level title that survives
+       :func:`classify_paper_title_candidate`.
+    4. arXiv placeholder fallback if nothing else qualifies.
     """
     metadata = extract_source_metadata(text, source_path)
     arxiv_id = str(metadata.get("arxiv_id", ""))
-    candidates: List[str] = []
-    for line in text.splitlines():
-        stripped = line.strip().strip("# ").strip()
+    lines = text.splitlines()
+
+    # Pre-compute a parallel "is this line inside a fenced block?" mask.
+    fence_state = False
+    fence_mask: List[bool] = []
+    for raw in lines:
+        stripped_raw = raw.strip()
+        is_fence_line = bool(_INSIDE_FENCE_PROBE.match(stripped_raw))
+        fence_mask.append(fence_state)
+        if is_fence_line:
+            fence_state = not fence_state
+
+    # Priority 1: title heading immediately after a ``## #N`` rank line.
+    rank_marker_re = re.compile(r"^#{1,6}\s*#?\d+\s*$")
+    for idx, raw in enumerate(lines):
+        if not rank_marker_re.match(raw.strip()):
+            continue
+        # Walk forward up to 8 lines looking for the first heading.
+        for follow in lines[idx + 1 : idx + 9]:
+            stripped = follow.strip()
+            if not stripped:
+                continue
+            heading_match = re.match(r"^#{1,6}\s+(.+)$", stripped)
+            if heading_match:
+                candidate = _strip_papers_cool_chrome(heading_match.group(1))
+                if classify_paper_title_candidate(candidate, in_fence=False):
+                    return candidate
+            break
+
+    # Priority 2: "<title> | Cool Papers" pattern, anywhere outside fences.
+    for idx, raw in enumerate(lines):
+        if fence_mask[idx]:
+            continue
+        if " | Cool Papers" in raw:
+            candidate = raw.split(" | Cool Papers", 1)[0].strip().lstrip("# ").strip()
+            candidate = _strip_papers_cool_chrome(candidate)
+            if classify_paper_title_candidate(candidate, in_fence=False):
+                return candidate
+
+    # Priority 3: any other heading line that survives the title gate.
+    for idx, raw in enumerate(lines):
+        in_fence = fence_mask[idx]
+        stripped = raw.strip().strip("# ").strip()
         if not stripped or stripped.startswith(">"):
             continue
         if stripped.startswith("논문 분석:"):
@@ -977,63 +1413,98 @@ def extract_title(text: str, source_path: Optional[str]) -> str:
             continue
         if stripped in {"총계: 1", "Total: 1", "검색", "필터", "하이라이트", "내보내기", "저장"}:
             continue
-        # papers.cool can render result headings as ``### #1 Title``. Keep the
-        # title, not the rank marker. Do this before title validation so valid
-        # headings like ``# WorldCompass: ...`` and ``### #1 FullCircle: ...``
-        # both converge to the paper title.
         stripped = re.sub(r"^(?:#?\d+|#\d+)\s+(?=\S)", "", stripped).strip()
-        if " | Cool Papers" in stripped:
-            stripped = stripped.split(" | Cool Papers", 1)[0].strip()
-        if stripped.endswith("  "):
-            stripped = stripped.rstrip()
-        if looks_like_research_title(stripped):
-            candidates.append(stripped)
-    if candidates:
-        return candidates[0]
+        stripped = _strip_papers_cool_chrome(stripped)
+        if classify_paper_title_candidate(stripped, in_fence=in_fence):
+            return stripped
+
     if source_path:
         return Path(source_path).stem
     return "Untitled Source"
 
 
-def looks_like_research_title(text: str) -> bool:
-    if len(text) < 3 or len(text) > 220:
-        return False
-    lowered = text.lower()
-    if any(skip in lowered for skip in ["designed by", "powered by", "github:", "disclaimer"]):
-        return False
-    if lowered.startswith((
-        "extract ",
-        "rt ",
-        "tl;dr",
-        "📄",
-        "논문:",
-        "관련 링크:",
-        "본 연구",
-        "제공하신",
-        "제공된 원문",
-        "`paper_prompt.txt`",
-        "paper_prompt.txt",
-        "의미 있는 내용을",
-        "중국어 분석",
-        "희소 뷰",
-        "authors:",
-        "저자:",
-        "subject:",
-        "publish:",
-    )):
-        return False
-    if "[paper](" in lowered or "[논문 분석](" in lowered:
-        return False
-    return bool(re.search(r"[A-Za-z가-힣]", text))
+def _strip_papers_cool_chrome(text: str) -> str:
+    """Remove papers.cool decorations from a candidate title line."""
+    out = text.strip()
+    if " | Cool Papers" in out:
+        out = out.split(" | Cool Papers", 1)[0].strip()
+    if out.endswith("  "):
+        out = out.rstrip()
+    return out
 
 
 def is_verified_paper_title(title: str, metadata: Dict[str, object]) -> bool:
-    if not looks_like_research_title(title):
+    if not classify_paper_title_candidate(title, in_fence=False):
         return False
     arxiv_id = str(metadata.get("arxiv_id") or "")
     if title in {"paper", "main", "abstract"} or (arxiv_id and title == arxiv_id):
         return False
     return True
+
+
+_GITHUB_URL_RE = re.compile(
+    r"https?://github\.com/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38})?)/([A-Za-z0-9_.\-]{1,100})",
+    re.IGNORECASE,
+)
+
+
+# Known research / industry orgs whose GitHub handle is the org name. We use
+# this as a denylist of "looks personal" rather than positive matching — most
+# orgs have hyphens or multi-token names.
+_KNOWN_ORG_OWNERS: Set[str] = {
+    "facebookresearch",
+    "google-research",
+    "google",
+    "googleresearch",
+    "deepmind",
+    "google-deepmind",
+    "openai",
+    "anthropic",
+    "microsoft",
+    "microsoftresearch",
+    "nvidia",
+    "nvlabs",
+    "huggingface",
+    "stanford-crfm",
+    "stability-ai",
+    "stabilityai",
+    "tencent",
+    "tencent-hunyuan",
+    "alibaba-research",
+    "bytedance",
+    "salesforceresearch",
+    "apple",
+    "intel-isl",
+    "iclr",
+    "neurips",
+    "skalskip",
+    "url-kaist",
+}
+
+
+def _looks_like_organization_owner(owner: str) -> bool:
+    """Heuristic: does a GitHub ``owner`` slug look like an org rather than a person?
+
+    Heuristics:
+      * Known org slugs always qualify.
+      * Hyphenated names (>= 2 tokens) usually indicate an org (``foo-research``,
+        ``meta-llama``).
+      * Camel-cased multi-word names (``FacebookResearch``) qualify.
+      * Anything else (single Latin name, e.g. ``alice123``) is treated as
+        personal and skipped.
+    """
+    if not owner:
+        return False
+    lowered = owner.lower()
+    if lowered in _KNOWN_ORG_OWNERS:
+        return True
+    if "-" in owner and len(owner.split("-")) >= 2:
+        return True
+    if re.search(r"[a-z][A-Z]", owner):
+        return True
+    if owner.lower().endswith(("research", "labs", "ai", "team")):
+        return True
+    return False
 
 
 def extract_source_metadata(text: str, source_path: Optional[str]) -> Dict[str, object]:
@@ -1052,6 +1523,20 @@ def extract_source_metadata(text: str, source_path: Optional[str]) -> Dict[str, 
         date_match = re.search(r"daily/(\d{4}-\d{2}-\d{2})/", source_path)
     if date_match:
         metadata["analysis_date"] = date_match.group(1)
+    # Repository identity: parse the *first* GitHub URL that looks like a
+    # repository root. We deliberately ignore the well-known papers.cool
+    # mirror which appears as a footer in every scrape.
+    for match in _GITHUB_URL_RE.finditer(text):
+        owner = match.group(1)
+        repo = match.group(2)
+        if repo.lower().endswith(".git"):
+            repo = repo[:-4]
+        normalized = f"{owner.lower()}/{repo.lower()}"
+        if normalized in {"bojone/papers.cool"}:
+            continue
+        metadata["github_repo"] = normalized
+        metadata["repo_url"] = f"https://github.com/{owner}/{repo}"
+        break
     return metadata
 
 
@@ -1106,3 +1591,443 @@ def truncate(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 1].rstrip() + "…"
+
+
+# ---------------------------------------------------------------------------
+# Document-structure helpers
+# ---------------------------------------------------------------------------
+
+
+def _collect_document_sections(text: str) -> List[Dict[str, object]]:
+    """Return all markdown headings as structural metadata."""
+    out: List[Dict[str, object]] = []
+    seen: Set[Tuple[int, str]] = set()
+    for line in text.splitlines():
+        match = re.match(r"^(#{1,6})\s+(.+?)\s*$", line.strip())
+        if not match:
+            continue
+        level = len(match.group(1))
+        heading = match.group(2).strip()
+        if not heading:
+            continue
+        anchor = re.sub(r"[^A-Za-z0-9가-힣]+", "-", heading.lower()).strip("-")[:80]
+        key = (level, heading)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"level": level, "text": heading, "anchor": anchor})
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Typed-entity extractors
+# ---------------------------------------------------------------------------
+
+
+_AUTHOR_BLOCK_RE = re.compile(
+    r"^\s*(?:authors?|저자)\s*[:：]\s*$",
+    re.IGNORECASE,
+)
+
+
+def extract_authors(text: str) -> List[str]:
+    """Extract author Person names from ``Authors:`` / ``저자:`` blocks."""
+    if not text:
+        return []
+    lines = text.splitlines()
+    authors: List[str] = []
+    seen: Set[str] = set()
+
+    def _emit(raw_name: str) -> None:
+        name = raw_name.strip(" \t,，;:•-")
+        if not name:
+            return
+        if not re.search(r"[A-Za-z가-힣]", name):
+            return
+        tokens = re.findall(r"\S+", name)
+        if not tokens or len(tokens) > 8:
+            return
+        name = re.sub(r"\s*\d+\s*$", "", name).strip()
+        name = re.sub(r"\(.*?\)$", "", name).strip()
+        normalized = name
+        key = normalized.lower()
+        if key in seen:
+            return
+        seen.add(key)
+        authors.append(normalized)
+
+    idx = 0
+    while idx < len(lines):
+        raw = lines[idx]
+        stripped = raw.strip()
+        if _AUTHOR_BLOCK_RE.match(stripped):
+            idx += 1
+            while idx < len(lines):
+                line = lines[idx].strip().lstrip("*-•").strip()
+                if not line:
+                    break
+                lowered = line.lower()
+                if lowered.startswith(
+                    (
+                        "subject",
+                        "publish",
+                        "주제",
+                        "게시",
+                        "abstract",
+                        "include",
+                        "exclude",
+                        "designed by",
+                    )
+                ):
+                    break
+                if line.startswith("#"):
+                    break
+                cleaned_line = re.sub(r"[\*†‡§¶]+", " ", line).strip()
+                for chunk in re.split(r"\s*,\s*|\s+and\s+", cleaned_line):
+                    _emit(chunk)
+                idx += 1
+            continue
+        match = re.match(r"^(?:authors?|저자)\s*[:：]\s*(.+)$", stripped, re.IGNORECASE)
+        if match:
+            cleaned_inline = re.sub(r"[\*†‡§¶]+", " ", match.group(1)).strip()
+            for chunk in re.split(r"\s*,\s*|\s+and\s+", cleaned_inline):
+                _emit(chunk)
+        idx += 1
+    return sorted(authors, key=str.casefold)
+
+
+_ORG_LINE_RE = re.compile(
+    r"^(?:organi[sz]ation|affiliation|소속|기관)\s*[:：]\s*(.+)$",
+    re.IGNORECASE,
+)
+
+
+def extract_organizations(text: str) -> List[str]:
+    """Extract organizations from ``Organization:`` / ``Affiliation:`` lines."""
+    if not text:
+        return []
+    out: List[str] = []
+    seen: Set[str] = set()
+    for line in text.splitlines():
+        match = _ORG_LINE_RE.match(line.strip())
+        if not match:
+            continue
+        for chunk in re.split(r"\s*,\s*|\s*;\s*", match.group(1)):
+            org = chunk.strip()
+            if not org or len(org) < 2 or len(org) > 120:
+                continue
+            key = org.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(org)
+    return sorted(out, key=str.casefold)
+
+
+def extract_eval_entities(
+    text: str,
+) -> Tuple[List[str], List[str], List[str], List[Dict[str, object]]]:
+    """Return (datasets, benchmarks, metrics, results) extracted from ``text``."""
+    from .term_registry import (
+        benchmark_registry,
+        dataset_registry,
+        find_registry_matches,
+        metric_registry,
+    )
+
+    if not text:
+        return [], [], [], []
+    cleaned = strip_non_research_scaffold(text)
+    datasets = find_registry_matches(cleaned, dataset_registry())
+    benchmarks = find_registry_matches(cleaned, benchmark_registry())
+    metrics = find_registry_matches(cleaned, metric_registry())
+    datasets = [d for d in datasets if d not in set(benchmarks)]
+
+    results: List[Dict[str, object]] = []
+    metric_pattern = "|".join(re.escape(m) for m in metric_registry())
+    bench_pattern = "|".join(re.escape(b) for b in benchmark_registry())
+    if metric_pattern and bench_pattern:
+        result_re = re.compile(
+            rf"({metric_pattern})\s*(?:=|:)?\s*([0-9]+(?:\.[0-9]+)?)\s+(?:on|in|at)\s+({bench_pattern})",
+            re.IGNORECASE,
+        )
+        for match in result_re.finditer(cleaned):
+            metric = match.group(1)
+            value = match.group(2)
+            benchmark = match.group(3)
+            results.append(
+                {
+                    "name": f"{metric}={value} on {benchmark}",
+                    "metric": metric,
+                    "value": value,
+                    "benchmark": benchmark,
+                    "evidence": match.group(0),
+                }
+            )
+    results.sort(key=lambda r: r["name"])
+    return datasets, benchmarks, metrics, results
+
+
+_NOVEL_METHOD_PATTERNS: Tuple[str, ...] = (
+    r"우리는\s+([A-Z][A-Za-z0-9][A-Za-z0-9\- ]{1,80}?)(?:라고\s*부른|를\s*제안한다|을\s*제안한다)",
+    r"\bwe\s+(?:propose|introduce|present)\s+([A-Z][A-Za-z0-9][A-Za-z0-9\- ]{1,80}?)(?:[,.\s]|$)",
+    r"본\s+논문은\s+([A-Z][A-Za-z0-9][A-Za-z0-9\- ]{1,80}?)(?:라고|를)",
+    r"called\s+([A-Z][A-Za-z0-9][A-Za-z0-9\- ]{1,80}?)(?:[,.\s]|$)",
+)
+
+
+def extract_method_entities(
+    text: str,
+) -> Tuple[List[str], List[str], List[str], List[str]]:
+    """Return (algorithms, models, training_paradigms, inference_strategies)."""
+    from .term_registry import (
+        find_registry_matches,
+        inference_strategy_registry,
+        model_registry,
+        training_paradigm_registry,
+    )
+
+    if not text:
+        return [], [], [], []
+    cleaned = strip_non_research_scaffold(text)
+
+    algorithms: Set[str] = set()
+    for pattern in _NOVEL_METHOD_PATTERNS:
+        for match in re.finditer(pattern, cleaned, flags=re.IGNORECASE):
+            name = match.group(1).strip().rstrip(".,;:")
+            if not name:
+                continue
+            if len(name) < 2 or len(name) > 80:
+                continue
+            if name.lower() in {
+                "the method",
+                "an algorithm",
+                "a method",
+                "novel method",
+                "the framework",
+                "the approach",
+                "a new",
+                "a novel",
+            }:
+                continue
+            tokens = name.split()
+            if not tokens:
+                continue
+            head = tokens[0]
+            looks_named = (
+                bool(re.search(r"[A-Z][a-z0-9]*[A-Z]", head))
+                or bool(re.search(r"\d", head))
+                or bool(re.match(r"^[A-Z]{2,}$", head))
+                or (
+                    len(tokens) >= 2
+                    and head[0].isupper()
+                    and head.lower() not in {"a", "an", "the", "this", "that"}
+                )
+            )
+            if not looks_named:
+                continue
+            algorithms.add(name)
+
+    models = find_registry_matches(cleaned, model_registry())
+    training_paradigms = find_registry_matches(cleaned, training_paradigm_registry())
+    inference_strategies = find_registry_matches(cleaned, inference_strategy_registry())
+
+    return (
+        sorted(algorithms, key=str.casefold),
+        models,
+        training_paradigms,
+        inference_strategies,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Claim extractors
+# ---------------------------------------------------------------------------
+
+
+_CONTRIBUTION_PATTERNS: Tuple[str, ...] = (
+    r"\bwe\s+(?:propose|present|introduce|contribute)\b",
+    r"\bin\s+this\s+(?:paper|work)\s*,?\s*we\s+(?:propose|present|introduce)\b",
+    r"본\s*(?:논문|연구)(?:은|는|에서는)\s.{0,80}?(?:제안한다|소개한다)",
+    r"우리는\s+.{0,80}?(?:제안한다|소개한다)",
+    r"\b(?:our|the)\s+main\s+contribution\b",
+)
+
+
+def extract_contribution_claims(text: str) -> List[str]:
+    return _match_sentences(text, _CONTRIBUTION_PATTERNS)
+
+
+_COMPARISON_PATTERNS: Tuple[str, ...] = (
+    r"\b(?:outperform|outperforms|outperformed)\b",
+    r"\b(?:compared\s+with|compared\s+to)\b",
+    r"\b(?:state[- ]of[- ]the[- ]art|sota)\b",
+    r"\bvs\.?\s+",
+    r"\+\s*\d+(?:\.\d+)?\s*%",
+    r"보다\s+(?:우수|뛰어난|좋은|나은)",
+    r"최신\s+(?:방법|모델|알고리즘)들?(?:과|에|보다)",
+    r"기존\s+(?:방법|모델|알고리즘)들?(?:보다|에)",
+)
+
+
+def extract_comparison_claims(text: str) -> List[str]:
+    return _match_sentences(text, _COMPARISON_PATTERNS)
+
+
+_OPEN_QUESTION_PATTERNS: Tuple[str, ...] = (
+    r"\bfuture\s+work\b",
+    r"\bopen\s+(?:question|problem)s?\b",
+    r"\bremains?\s+(?:unclear|an open question|unsolved)\b",
+    r"\b(?:limitations?\s+include|main\s+limitations?)\b",
+    r"추가\s+연구",
+    r"향후\s+연구",
+    r"한계점",
+    r"해결되지\s+않(?:는|은|았)",
+)
+
+
+def extract_open_questions(text: str) -> List[str]:
+    return _match_sentences(text, _OPEN_QUESTION_PATTERNS)
+
+
+_PERFORMANCE_PATTERNS: Tuple[str, ...] = (
+    r"\b(?:improves?|improved|achiev(?:e|es|ed))\b",
+    r"\bbetter\b",
+    r"\b(?:state[- ]of[- ]the[- ]art|sota)\b",
+    r"성능",
+    r"달성한다",
+    r"우수한",
+)
+
+
+def extract_performance_claims(text: str) -> List[str]:
+    return _match_sentences(text, _PERFORMANCE_PATTERNS)
+
+
+def _match_sentences(text: str, patterns: Sequence[str]) -> List[str]:
+    if not text:
+        return []
+    cleaned = strip_non_research_scaffold(text)
+    sentences = split_sentences(cleaned)
+    out: List[str] = []
+    seen: Set[str] = set()
+    for sentence in sentences:
+        if any(re.search(pat, sentence, flags=re.IGNORECASE) for pat in patterns):
+            key = sentence.strip()
+            if not key or key.lower() in seen:
+                continue
+            seen.add(key.lower())
+            out.append(key)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Title resolver: handles paper.md files with a missing title but a
+# resolvable arXiv id.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ResolvedTitle:
+    title: Optional[str]
+    quality: TitleQuality
+
+
+def resolve_missing_paper_title(
+    arxiv_id: str, text: str, metadata: Mapping[str, object]
+) -> ResolvedTitle:
+    """Resolve a paper title for ``arxiv_id`` when the body has no clear title.
+
+    Stages:
+      1. Re-parse known local scrape fields (``Title:``).
+      2. Look up an offline arXiv metadata cache at
+         ``.llm-wiki/arxiv-cache.json``.
+      3. Emit ``NEEDS_METADATA`` if everything fails. We never invent a title
+         from the abstract.
+    """
+    title_line_re = re.compile(r"^\s*title\s*[:：]\s*(.+)$", re.IGNORECASE)
+    for line in text.splitlines():
+        match = title_line_re.match(line)
+        if match:
+            candidate = _strip_papers_cool_chrome(match.group(1).strip())
+            if classify_paper_title_candidate(candidate, in_fence=False):
+                return ResolvedTitle(candidate, TitleQuality.PAPER_FILE)
+    cache_title = _lookup_arxiv_cache(arxiv_id)
+    if cache_title and classify_paper_title_candidate(cache_title, in_fence=False):
+        return ResolvedTitle(cache_title, TitleQuality.REFERENCE_CONTEXT)
+    return ResolvedTitle(None, TitleQuality.NEEDS_METADATA)
+
+
+def _arxiv_cache_path() -> Path:
+    """Return the offline arXiv metadata cache path."""
+    override = os.environ.get("LLM_WIKI_ARXIV_CACHE")
+    if override:
+        return Path(override)
+    here = Path.cwd()
+    for parent in [here, *here.parents]:
+        candidate = parent / ".llm-wiki" / "arxiv-cache.json"
+        if candidate.exists():
+            return candidate
+    return here / ".llm-wiki" / "arxiv-cache.json"
+
+
+def _lookup_arxiv_cache(arxiv_id: str) -> Optional[str]:
+    if not arxiv_id:
+        return None
+    path = _arxiv_cache_path()
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    entry = payload.get(arxiv_id) if isinstance(payload, dict) else None
+    if isinstance(entry, dict):
+        title = entry.get("title")
+        if isinstance(title, str):
+            return title.strip() or None
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Post-pass: link Paper <-> Repository pairs that share an arxiv_id.
+# ---------------------------------------------------------------------------
+
+
+def link_paper_repo_pairs(graph: ResearchGraph) -> ResearchGraph:
+    """Return a graph with ``Paper -implemented_in-> Repository`` edges added.
+
+    Idempotent: only adds edges that aren't already present, only acts on
+    Paper / Repository pairs that explicitly share an ``arxiv_id`` value.
+    """
+    nodes = list(graph.nodes)
+    edges = list(graph.edges)
+    repos_by_arxiv: Dict[str, ResearchNode] = {}
+    papers_by_arxiv: Dict[str, ResearchNode] = {}
+    for node in nodes:
+        arxiv = str(node.metadata.get("arxiv_id") or "")
+        if not arxiv:
+            continue
+        if node.type == ResearchNodeType.REPOSITORY:
+            repos_by_arxiv.setdefault(arxiv, node)
+        elif node.type == ResearchNodeType.PAPER:
+            papers_by_arxiv.setdefault(arxiv, node)
+    existing_edge_keys = {(edge.source, edge.type, edge.target) for edge in edges}
+    for arxiv, paper in papers_by_arxiv.items():
+        repo = repos_by_arxiv.get(arxiv)
+        if not repo:
+            continue
+        key = (paper.id, "implemented_in", repo.id)
+        if key in existing_edge_keys:
+            continue
+        edges.append(
+            ResearchEdge(
+                source=paper.id,
+                target=repo.id,
+                type="implemented_in",
+                evidence=None,
+                metadata={},
+            )
+        )
+        existing_edge_keys.add(key)
+    return ResearchGraph(nodes=nodes, edges=edges)

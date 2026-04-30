@@ -197,10 +197,6 @@ VALID_PAPER_TITLE_QUALITIES: frozenset[str] = frozenset(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason="awaiting subagent W fix for F-1: title gate must reject ```markdown fences",
-    strict=True,
-)
 def test_no_paper_title_starts_with_fence(corpus_nodes: List[ResearchNode]) -> None:
     offenders = [
         node.name
@@ -214,10 +210,6 @@ def test_no_paper_title_starts_with_fence(corpus_nodes: List[ResearchNode]) -> N
     )
 
 
-@pytest.mark.xfail(
-    reason="awaiting subagent W fix for F-1: blacklist .md and assistant/provenance chatter",
-    strict=True,
-)
 def test_no_paper_title_contains_md_or_assistant_chatter(
     corpus_nodes: List[ResearchNode],
 ) -> None:
@@ -238,10 +230,6 @@ def test_no_paper_title_contains_md_or_assistant_chatter(
     )
 
 
-@pytest.mark.xfail(
-    reason="awaiting subagent W fix for F-1: known-bad arxiv ids must not surface garbage titles",
-    strict=True,
-)
 def test_specific_paper_title_resolves(corpus_nodes: List[ResearchNode]) -> None:
     """For each known-bad arxiv id, the Paper must either carry a real title
     (no fence/chatter) or be hidden (``is_public_research_node`` returns False).
@@ -279,10 +267,6 @@ def test_specific_paper_title_resolves(corpus_nodes: List[ResearchNode]) -> None
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason="awaiting subagent W fix for F-4: extract_authors() not yet implemented",
-    strict=True,
-)
 def test_authors_extracted_for_known_paper(
     corpus_nodes: List[ResearchNode], corpus_edges: List[ResearchEdge]
 ) -> None:
@@ -390,10 +374,6 @@ def test_benchmarks_and_datasets_extracted_for_known_papers(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason="awaiting subagent W fix for F-8: Repository identity must seed from github_repo URL",
-    strict=True,
-)
 def test_repository_identity_uses_github_url(corpus_nodes: List[ResearchNode]) -> None:
     repos = [
         node for node in corpus_nodes if node.type == ResearchNodeType.REPOSITORY
@@ -417,10 +397,6 @@ def test_repository_identity_uses_github_url(corpus_nodes: List[ResearchNode]) -
     assert not failures, "\n".join(failures[:5])
 
 
-@pytest.mark.xfail(
-    reason="awaiting subagent W fix for F-7: _link_paper_repo_pairs must emit Paper -implemented_in-> Repository",
-    strict=True,
-)
 def test_paper_implemented_in_repository_for_known_pair(
     corpus_nodes: List[ResearchNode], corpus_edges: List[ResearchEdge]
 ) -> None:

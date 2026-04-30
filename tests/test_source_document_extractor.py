@@ -21,11 +21,16 @@ Static HTML site generation.
 
     assert ResearchNodeType.SOURCE_DOCUMENT in types
     assert "Feature Map" in names
-    # Concept-shaped headings (whitelist match) survive as Concept nodes.
+    # Headings that exactly match a registered term get the registry's typed
+    # node type — ``Volumetric Rendering`` is registered as a
+    # ``MethodologicalConcept``. After F-5 we no longer mint generic
+    # ``Concept`` nodes from arbitrary headings.
     assert "Volumetric Rendering" in names
     # Generic single-word section markers like "Frontend" are intentionally
-    # NOT promoted to Concept nodes after the heading-classifier fix.
+    # NOT promoted to typed concept nodes — they are not in the registry.
     assert "Frontend" not in names
     assert ResearchNodeType.CLAIM not in types
     assert ResearchNodeType.EVIDENCE_SPAN not in types
-    assert ResearchNodeType.METHODOLOGICAL_CONCEPT not in types
+    # SourceDocument extraction does not run the body claim/evidence pass, so
+    # the registry-promoted heading is the only typed concept-layer node.
+    assert ResearchNodeType.METHODOLOGICAL_CONCEPT in types
