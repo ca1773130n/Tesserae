@@ -18,7 +18,7 @@ from .llm_extractor import ClaudeCLIResearchExtractor
 from .markdown_projection import GraphMarkdownProjector
 from .persistence import KuzuResearchGraphStore, SQLiteResearchGraphStore
 from .graphiti_adapter import GraphitiSyncUnavailableError
-from .project import ProjectWiki
+from .project import CognifyOptions, ProjectWiki
 from .report import GraphReporter
 from .research_graph import ResearchCorpusAnalyzer, ResearchGraph, ResearchGraphExtractor
 from .review_workflow import ReviewQueueExporter
@@ -94,6 +94,20 @@ def project_main(argv: List[str] | None = None) -> int:
     compile_parser.add_argument("--min-trend-sources", type=int, default=2, help="Minimum sources needed for Trend nodes")
     compile_parser.add_argument("--include-data", action="store_true", help="Documentation flag: project_root/data is auto-included by default; this flag is a no-op kept for clarity")
     compile_parser.add_argument("--exclude-data", action="store_true", help="Skip the implicit project_root/data auto-include even if data/ exists")
+    # --- Cognee cognify pass (opt-in, runs after the bundle is written) ----
+    compile_parser.add_argument("--cognee-add", action="store_true", help="After compile, add the Cognee bundle to the Cognee dataset (no cognify)")
+    compile_parser.add_argument("--cognee-cognify", action="store_true", help="After compile, add the bundle and run Cognee cognify (uses configured LLM/embedding providers)")
+    compile_parser.add_argument("--cognee-codex-cognify", action="store_true", help="After compile, run Cognee cognify with Cognee's LLM client patched to Codex CLI/OAuth")
+    compile_parser.add_argument("--cognee-codex-model", default="gpt-5.4", help="Codex CLI model for --cognee-codex-cognify")
+    compile_parser.add_argument("--cognee-codex-timeout", type=int, default=300, help="Timeout per Codex CLI structured call")
+    compile_parser.add_argument("--cognee-local-embedding-dimensions", type=int, default=128, help="Embedding dimensions for --cognee-codex-cognify; qwen3-embedding:0.6b uses 1024")
+    compile_parser.add_argument("--cognee-embedding-provider", choices=["deterministic", "ollama"], default="deterministic", help="Embedding provider for cognify")
+    compile_parser.add_argument("--cognee-ollama-embedding-model", default="qwen3-embedding:0.6b", help="Ollama embedding model when --cognee-embedding-provider=ollama")
+    compile_parser.add_argument("--cognee-ollama-embedding-endpoint", default="http://127.0.0.1:11434/api/embed", help="Ollama /api/embed endpoint for Cognee embeddings")
+    compile_parser.add_argument("--cognee-ollama-embedding-timeout", type=int, default=120, help="Ollama embedding request timeout in seconds")
+    compile_parser.add_argument("--cognee-dataset", default="llm_wiki_research_graph", help="Cognee dataset name")
+    compile_parser.add_argument("--cognee-system-root", help="Optional isolated Cognee system root directory")
+    compile_parser.add_argument("--cognee-data-root", help="Optional isolated Cognee data root directory")
 
     mcp_parser = subparsers.add_parser("mcp-config", help="Print a Hermes mcp_servers config snippet for this project")
     mcp_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
@@ -183,6 +197,25 @@ def project_main(argv: List[str] | None = None) -> int:
         return 0
     if args.command == "compile":
         wiki = ProjectWiki.load(args.project)
+        cognify_mode = (
+            "codex_cognify" if args.cognee_codex_cognify
+            else "cognify" if args.cognee_cognify
+            else "add" if args.cognee_add
+            else "off"
+        )
+        cognify_options = CognifyOptions(
+            mode=cognify_mode,
+            dataset=args.cognee_dataset,
+            codex_model=args.cognee_codex_model,
+            codex_timeout=args.cognee_codex_timeout,
+            embedding_provider=args.cognee_embedding_provider,
+            ollama_embedding_model=args.cognee_ollama_embedding_model,
+            ollama_embedding_endpoint=args.cognee_ollama_embedding_endpoint,
+            ollama_embedding_timeout=args.cognee_ollama_embedding_timeout,
+            local_embedding_dimensions=args.cognee_local_embedding_dimensions,
+            system_root=args.cognee_system_root,
+            data_root=args.cognee_data_root,
+        )
         result = wiki.compile(
             source_kind=args.source_kind,
             changed_only=args.changed_only,
@@ -190,6 +223,7 @@ def project_main(argv: List[str] | None = None) -> int:
             trends=args.trends,
             min_trend_sources=args.min_trend_sources,
             exclude_data=args.exclude_data,
+            cognify=cognify_options if cognify_options.is_active else None,
         )
         print(
             "Compiled project wiki: "

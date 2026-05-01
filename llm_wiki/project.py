@@ -7,10 +7,11 @@ markdown projection, Cognee export bundle, report, and MCP config snippet.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 from typing import Iterable, List, Optional
@@ -19,6 +20,8 @@ from .agent_harness import AgentHarnessAdapter, SUPPORTED_AGENT_HARNESSES
 from .batch import BatchIngestRunner
 from .code_graph import CodeGraphExtractor
 from .cognee_adapter import CogneeResearchGraphAdapter
+from .cognee_codex import CogneeCodexPatch
+from .cognee_direct import CogneeDirectImporter
 from .deploy import GitHubPagesDeployer
 from .site import StaticSiteBuilder
 from .synthesis import SynthesisProjector
@@ -32,6 +35,37 @@ from .report import GraphReporter
 from .research_graph import ResearchCorpusAnalyzer, ResearchEdge, ResearchGraph, ResearchGraphExtractor, ResearchNode, ResearchNodeType, link_paper_repo_pairs, prefer_research_node
 from .temporal import TemporalFactProjector, render_competitive_report
 from .wiki_projector import partition_graph
+
+
+@dataclass(frozen=True)
+class CognifyOptions:
+    """Optional Cognee/Codex cognify pass run after the bundle is written.
+
+    All fields default to no-op values; the pass is a no-op when ``mode`` is
+    ``"off"``. The CLI ``project compile`` builds this from --cognee-* flags;
+    direct callers can construct it explicitly. Defaults mirror the legacy
+    ``ingest`` subcommand at ``llm_wiki.cli.main``.
+    """
+
+    mode: str = "off"  # off | add | cognify | codex_cognify
+    dataset: str = "llm_wiki_research_graph"
+    codex_model: str = "gpt-5.4"
+    codex_timeout: int = 300
+    embedding_provider: str = "deterministic"  # deterministic | ollama
+    ollama_embedding_model: str = "qwen3-embedding:0.6b"
+    ollama_embedding_endpoint: str = "http://127.0.0.1:11434/api/embed"
+    ollama_embedding_timeout: int = 120
+    local_embedding_dimensions: int = 128
+    system_root: Optional[str] = None
+    data_root: Optional[str] = None
+
+    @property
+    def is_active(self) -> bool:
+        return self.mode in {"add", "cognify", "codex_cognify"}
+
+    @property
+    def runs_cognify(self) -> bool:
+        return self.mode in {"cognify", "codex_cognify"}
 
 
 @dataclass(frozen=True)
@@ -161,6 +195,7 @@ class ProjectWiki:
         limit: Optional[int] = None,
         trends: bool = False,
         min_trend_sources: int = 2,
+        cognify: Optional[CognifyOptions] = None,
     ) -> dict:
         cfg = self.config()
         kind = source_kind or cfg.get("source_kind", "SourceDocument")
@@ -191,7 +226,7 @@ class ProjectWiki:
             graph = merge_graphs([graph, code_graph])
         if changed_only and batch.processed == 0 and self.paths.graph.exists() and not graph.nodes:
             graph = load_graph_file(self.paths.graph)
-        self._write_artifacts(graph)
+        self._write_artifacts(graph, cognify=cognify)
         return {
             "project_root": str(self.project_root),
             "wiki_root": str(self.root),
@@ -216,6 +251,7 @@ class ProjectWiki:
         trends: bool = False,
         min_trend_sources: int = 2,
         exclude_data: bool = False,
+        cognify: Optional[CognifyOptions] = None,
     ) -> dict:
         """Compile every configured source into the .llm-wiki artifacts.
 
@@ -252,6 +288,7 @@ class ProjectWiki:
             limit=limit,
             trends=trends,
             min_trend_sources=min_trend_sources,
+            cognify=cognify,
         )
 
     def render_mcp_config(self, server_name: Optional[str] = None, pythonpath: Optional[str] = None) -> str:
@@ -359,7 +396,7 @@ class ProjectWiki:
             dry_run=dry_run,
         )
 
-    def _write_artifacts(self, graph: ResearchGraph) -> None:
+    def _write_artifacts(self, graph: ResearchGraph, cognify: Optional[CognifyOptions] = None) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
         # The wiki/site layers are generated projections. Clean them before each
         # compile so nodes that are newly filtered out (e.g. noisy social feed
@@ -415,6 +452,8 @@ class ProjectWiki:
         SQLiteResearchGraphStore(self.paths.sqlite).write_graph(graph, replace=True)
         GraphMarkdownProjector().write_projection(graph, self.paths.markdown_projection)
         CogneeResearchGraphAdapter().write_bundle(graph, self.paths.cognee_bundle)
+        if cognify and cognify.is_active:
+            self._run_cognify(cognify)
         report = GraphReporter().render_markdown(GraphReporter().summarize(graph))
         self.paths.report.write_text(report, encoding="utf-8")
         TemporalFactProjector().write_jsonl(graph, self.paths.temporal_facts)
@@ -424,6 +463,48 @@ class ProjectWiki:
         self.build_site()
         self.paths.competitive_report.write_text(render_competitive_report(), encoding="utf-8")
         self._append_build_history(research_graph, code_graph)
+
+    def _run_cognify(self, options: "CognifyOptions") -> None:
+        """Invoke Cognee on the freshly written bundle.
+
+        ``add`` only loads the bundle into the Cognee dataset. ``cognify`` runs
+        Cognee's full cognify pipeline (LLM + embedding calls). ``codex_cognify``
+        wraps the cognify pass in :class:`CogneeCodexPatch` so Cognee's LLM
+        client is patched to OAuth Codex CLI — useful when you don't have an
+        OpenAI API key but do have Codex installed.
+        """
+
+        bundle = self.paths.cognee_bundle
+        if not bundle.exists() or not any(bundle.iterdir()):
+            print(
+                "[llm-wiki] cognify skipped: cognee bundle is empty",
+                flush=True,
+            )
+            return
+
+        async def _add() -> None:
+            await CogneeDirectImporter().add_bundle(
+                bundle,
+                dataset_name=options.dataset,
+                cognify=options.runs_cognify,
+                system_root=options.system_root,
+                data_root=options.data_root,
+            )
+
+        if options.mode == "codex_cognify":
+            with CogneeCodexPatch(
+                model=options.codex_model,
+                timeout=options.codex_timeout,
+                deterministic_embeddings=options.embedding_provider == "deterministic",
+                ollama_embeddings=options.embedding_provider == "ollama",
+                ollama_model=options.ollama_embedding_model,
+                ollama_endpoint=options.ollama_embedding_endpoint,
+                ollama_timeout=options.ollama_embedding_timeout,
+                embedding_dimensions=options.local_embedding_dimensions,
+            ):
+                asyncio.run(_add())
+        else:
+            asyncio.run(_add())
 
     def _append_build_history(
         self, research_graph: ResearchGraph, code_graph: ResearchGraph
