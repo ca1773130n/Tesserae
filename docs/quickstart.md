@@ -88,7 +88,23 @@ The frontend is dependency-light and writes:
 .llm-wiki/site/llms.txt
 ```
 
-## 4. Export agent harness files
+## 4. Lint the wiki
+
+```bash
+llm_wiki project lint
+```
+
+Walks the compiled graph + wiki + site and flags orphan papers, stale citations, drift between graph and wiki/, ghost synthesis inputs, and more. Writes `.llm-wiki/lint-report.md` and `.llm-wiki/lint-report.json`. Pass `--fix-trivial` to apply safe auto-fixes (missing `implemented_in` edges, ghost-input pruning) and `--severity error` to only fail the exit code on errors.
+
+## 5. Query the wiki
+
+```bash
+llm_wiki project query "What is Gaussian Splatting?"
+```
+
+Search-only by default — BM25 over `.llm-wiki/site/search-index.json`, with a 200-char excerpt pulled from the matching `wiki/<kind>/<slug>.md`. Pass `--kind papers` (or `concepts`, `repos`, etc.) to narrow, `--top-k N` to widen, and `--json` for structured output. Add `--llm` (or set `LLM_WIKI_QUERY_LLM=1`) to ask Claude for a synthesized answer with `[node_id]` citations; `--interactive` opens a readline REPL — blank line or EOF exits. `LLM_WIKI_QUERY_DRY_RUN=1` exercises the prompt without an API call.
+
+## 6. Export agent harness files
 
 ```bash
 llm_wiki project export-agent-harness
@@ -112,7 +128,7 @@ llm_wiki project export-agent-harness \
   --target opencode
 ```
 
-## 5. Export an Obsidian vault
+## 7. Export an Obsidian vault
 
 ```bash
 llm_wiki project export-obsidian
@@ -126,7 +142,7 @@ llm_wiki project export-obsidian --vault "$OBSIDIAN_VAULT_PATH"
 
 The vault includes markdown projections, `.obsidian` defaults, graph coloring, `raw/assets/`, and a Dataview dashboard.
 
-## 6. Configure MCP
+## 8. Configure MCP
 
 ```bash
 llm_wiki project mcp-config --server-name my_project_wiki
@@ -134,7 +150,7 @@ llm_wiki project mcp-config --server-name my_project_wiki
 
 Paste the output under `mcp_servers` in `~/.hermes/config.yaml`, then restart Hermes/gateway.
 
-## 7. Graphiti export / sync
+## 9. Graphiti export / sync
 
 Dependency-free episode export:
 
@@ -157,7 +173,7 @@ llm_wiki project sync-graphiti \
   --neo4j-password '<password>'
 ```
 
-## 8. Deploy to GitHub Pages
+## 9. Deploy to GitHub Pages
 
 Push the compiled site at `.llm-wiki/site/` to the `gh-pages` branch of the project's git origin:
 

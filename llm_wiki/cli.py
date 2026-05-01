@@ -66,6 +66,117 @@ def load_review_decisions(path: Path) -> List[ReviewDecision]:
     return decisions
 
 
+def _project_query_handler(args) -> int:
+    """Handle ``project query`` (one-shot or interactive REPL).
+
+    Lives outside ``project_main`` so the parser-vs-handler block ordering can
+    stay in lockstep without inflating the dispatch ladder. Tolerant of
+    missing arguments: an interactive session falls back to the REPL when
+    ``question`` is empty, and one-shot prints a friendly error when the
+    index isn't built yet.
+    """
+
+    from .query import QueryResult, WikiQuery
+
+    project_root = args.project
+    top_k = args.top_k
+    kind_filter = args.kind
+    use_llm = bool(args.llm)
+    no_llm = bool(args.no_llm)
+    model = args.model
+    json_output = bool(args.json_output)
+    interactive = bool(args.interactive)
+
+    wq = WikiQuery(project_root, top_k=top_k, kind_filter=kind_filter)
+
+    def run_one(question: str, history: List[dict] | None = None) -> "QueryResult":
+        return wq.answer(
+            question,
+            model=model,
+            force_llm=use_llm,
+            force_no_llm=no_llm,
+            history=history,
+        )
+
+    if interactive:
+        return _run_query_repl(run_one, json_output=json_output, use_llm=use_llm)
+
+    question = (args.question or "").strip()
+    if not question:
+        print("project query: question is required (or use --interactive)", file=sys.stderr)
+        return 2
+
+    result = run_one(question)
+
+    if json_output:
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+        return 0
+
+    _print_query_result(result)
+    return 0
+
+
+def _print_query_result(result) -> None:
+    """Print a human-readable summary of a :class:`QueryResult`."""
+
+    hits = result.hits
+    if not hits:
+        print(f"No matches for: {result.question!r}")
+    else:
+        print(f"Top {len(hits)} hit(s) for: {result.question!r}")
+        for idx, hit in enumerate(hits, start=1):
+            badge = f"[{hit.kind}]"
+            path = str(hit.page_path) if hit.page_path else "(no page)"
+            print(f"  {idx}. {badge} {hit.title}  (score={hit.score:.3f})")
+            print(f"     {path}")
+            if hit.excerpt:
+                print(f"     {hit.excerpt}")
+
+    if result.answer:
+        print()
+        print(f"Answer (model={result.model}, used_llm={result.used_llm}):")
+        print(result.answer)
+    elif result.fallback_reason:
+        print()
+        print(f"(no LLM answer: {result.fallback_reason})")
+
+
+def _run_query_repl(run_one, *, json_output: bool, use_llm: bool) -> int:
+    """A tiny readline-backed REPL.
+
+    Blank line or EOF exits cleanly. The chat history is kept short (last 6
+    turns) so the prompt stays bounded; the system block carries the wiki
+    overview and ontology and is cached across turns.
+    """
+
+    try:
+        import readline  # noqa: F401 — importing enables arrow-key history
+    except ImportError:
+        pass  # Windows or stripped builds: REPL still works, no history.
+
+    history: List[dict] = []
+    print("LLM-Wiki query REPL — blank line or EOF exits.")
+    while True:
+        try:
+            question = input("wiki> ")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 0
+        if not question.strip():
+            return 0
+        result = run_one(question, history=history if use_llm else None)
+        if json_output:
+            print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            _print_query_result(result)
+        if use_llm and result.answer:
+            history.append({"role": "user", "content": question})
+            history.append({"role": "assistant", "content": result.answer})
+            # Keep the last 6 turns (12 messages).
+            if len(history) > 12:
+                history = history[-12:]
+
+
 def project_main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Manage a per-project .llm-wiki workspace.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -108,6 +219,43 @@ def project_main(argv: List[str] | None = None) -> int:
     compile_parser.add_argument("--cognee-dataset", default="llm_wiki_research_graph", help="Cognee dataset name")
     compile_parser.add_argument("--cognee-system-root", help="Optional isolated Cognee system root directory")
     compile_parser.add_argument("--cognee-data-root", help="Optional isolated Cognee data root directory")
+
+    lint_parser = subparsers.add_parser(
+        "lint",
+        help="Lint the compiled wiki: orphan papers, stale citations, drift, ghost synthesis inputs, and more.",
+    )
+    lint_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    lint_parser.add_argument(
+        "--fix-trivial",
+        action="store_true",
+        help="Apply safe auto-fixes (add missing implemented_in edges; prune ghost synthesis inputs)",
+    )
+    lint_parser.add_argument(
+        "--severity",
+        choices=["info", "warning", "error"],
+        default="warning",
+        help="Severity floor for the exit code (default: warning). Findings below the floor are still reported.",
+    )
+    lint_parser.add_argument(
+        "--json",
+        dest="lint_json",
+        action="store_true",
+        help="Print the JSON report to stdout instead of the markdown summary.",
+    )
+
+    query_parser = subparsers.add_parser(
+        "query",
+        help="Search the compiled wiki and (optionally) ask the LLM for a synthesized answer with citations.",
+    )
+    query_parser.add_argument("question", nargs="?", default=None, help="Question text; omit to use --interactive")
+    query_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    query_parser.add_argument("--top-k", type=int, default=8, help="Maximum number of search hits to return / feed to the LLM (default: 8)")
+    query_parser.add_argument("--kind", help="Restrict hits to a single wiki kind (e.g. papers, concepts, repos)")
+    query_parser.add_argument("--llm", action="store_true", help="Force the LLM path on, even if LLM_WIKI_QUERY_LLM is unset")
+    query_parser.add_argument("--no-llm", action="store_true", help="Force the LLM path off, even if LLM_WIKI_QUERY_LLM=1")
+    query_parser.add_argument("--model", default="claude-sonnet-4-6", help="Anthropic model id for --llm (default: claude-sonnet-4-6)")
+    query_parser.add_argument("--json", dest="json_output", action="store_true", help="Print the structured QueryResult as JSON")
+    query_parser.add_argument("--interactive", action="store_true", help="Drop into a REPL with readline history; blank line or EOF exits")
 
     mcp_parser = subparsers.add_parser("mcp-config", help="Print a Hermes mcp_servers config snippet for this project")
     mcp_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
@@ -232,6 +380,26 @@ def project_main(argv: List[str] | None = None) -> int:
         )
         print(f"Graph: {result['graph_path']}")
         return 0
+    if args.command == "lint":
+        wiki = ProjectWiki.load(args.project)
+        report = wiki.lint(fix_trivial=args.fix_trivial, severity_floor=args.severity)
+        if args.lint_json:
+            sys.stdout.write(report.to_json())
+        else:
+            sys.stdout.write(report.to_markdown())
+        # Exit code maps to severity floor: ``--severity warning`` (default)
+        # treats warnings as failure; ``--severity error`` only fails on
+        # errors; ``--severity info`` makes any finding fail.
+        floor = args.severity
+        if report.has_errors():
+            return 2
+        if floor in ("info", "warning") and report.has_warnings():
+            return 1
+        if floor == "info" and report.findings:
+            return 1
+        return 0
+    if args.command == "query":
+        return _project_query_handler(args)
     if args.command == "mcp-config":
         wiki = ProjectWiki.load(args.project)
         print(wiki.render_mcp_config(server_name=args.server_name, pythonpath=args.pythonpath), end="")

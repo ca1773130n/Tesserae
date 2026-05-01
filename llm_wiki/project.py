@@ -23,6 +23,7 @@ from .cognee_adapter import CogneeResearchGraphAdapter
 from .cognee_codex import CogneeCodexPatch
 from .cognee_direct import CogneeDirectImporter
 from .deploy import GitHubPagesDeployer
+from .lint import LintReport, WikiLinter
 from .site import StaticSiteBuilder
 from .synthesis import SynthesisProjector
 from .wiki_projector import WikiLayerProjector
@@ -291,6 +292,19 @@ class ProjectWiki:
             cognify=cognify,
         )
 
+    def lint(self, fix_trivial: bool = False, severity_floor: str = "info") -> LintReport:
+        """Run :class:`WikiLinter` against this project's compiled artifacts.
+
+        Thin wrapper that defers all work — including artifact writes and the
+        colored stderr summary — to :class:`WikiLinter`. The returned
+        :class:`LintReport` lets callers inspect findings programmatically;
+        the CLI uses it to derive the exit code.
+        """
+        return WikiLinter(self.project_root).run(
+            fix_trivial=fix_trivial,
+            severity_floor=severity_floor,
+        )
+
     def render_mcp_config(self, server_name: Optional[str] = None, pythonpath: Optional[str] = None) -> str:
         cfg = self.config() if self.paths.config.exists() else {}
         name = sanitize_server_name(server_name or cfg.get("name") or self.project_root.name)
@@ -350,6 +364,31 @@ class ProjectWiki:
         site_title = cfg.get("site_title") or "LLM-Wiki"
         self.paths.wiki.mkdir(parents=True, exist_ok=True)
         return StaticSiteBuilder(site_title=site_title).write_site(graph, self.paths.wiki, target)
+
+    def query(
+        self,
+        question: str,
+        *,
+        top_k: int = 8,
+        kind: Optional[str] = None,
+        use_llm: bool = False,
+        model: str = "claude-sonnet-4-6",
+    ) -> "QueryResult":
+        """Convenience wrapper around :class:`llm_wiki.query.WikiQuery`.
+
+        Builds a fresh :class:`WikiQuery` per call. Cheap (the search index
+        is loaded lazily on the first ``search``/``answer`` call), and we
+        prefer to avoid hidden global state on the project handle.
+        """
+
+        from .query import WikiQuery
+
+        wq = WikiQuery(self.project_root, top_k=top_k, kind_filter=kind)
+        return wq.answer(
+            question,
+            model=model,
+            force_llm=use_llm,
+        )
 
     def deploy_github_pages(
         self,
