@@ -23,6 +23,7 @@ from .cognee_adapter import CogneeResearchGraphAdapter
 from .cognee_codex import CogneeCodexPatch
 from .cognee_direct import CogneeDirectImporter
 from .deploy import GitHubPagesDeployer
+from .karpathy_layer import KarpathyLayerWriter
 from .lint import LintReport, WikiLinter
 from .site import StaticSiteBuilder
 from .synthesis import SynthesisProjector
@@ -448,6 +449,16 @@ class ProjectWiki:
         wiki_store = WikiPageStore(self.paths.wiki)
         WikiLayerProjector(wiki_store).project(graph)
         graph, _written = SynthesisProjector(wiki_store, manifest_path=self.paths.manifest).project(graph)
+        # Karpathy schema layer: purpose / schema / index / log files at the
+        # top of the wiki dir. ``purpose.md`` is seeded once and preserved on
+        # later compiles so user edits survive; the others regenerate.
+        cfg_for_layer = self.config() if self.paths.config.exists() else {}
+        KarpathyLayerWriter(
+            wiki_root=self.paths.wiki,
+            log_root=self.root,  # log.md lives next to .build-history.jsonl, outside the byte-idempotent wiki dir
+            site_title=str(cfg_for_layer.get("site_title") or "LLM-Wiki"),
+            project_name=str(cfg_for_layer.get("name") or self.project_root.name),
+        ).write_all(graph, build_history_path=self.paths.build_history)
 
         # ------------------------------------------------------------ F-11
         # Split the union ``ResearchGraph`` into two artifacts:
