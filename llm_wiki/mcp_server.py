@@ -15,6 +15,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
+from .ports import GraphStore
 from .research_graph import ALLOWED_EDGE_TYPES, ALLOWED_NODE_TYPES, ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
 from .temporal import TemporalFactProjector, search_facts, timeline
 
@@ -149,6 +150,24 @@ class ProjectRegistry:
         return Path(entry["graph_path"]) if entry else None
 
 
+def _materialize_graph(store: GraphStore) -> ResearchGraph:
+    """Snapshot a :class:`GraphStore` into an in-memory :class:`ResearchGraph`.
+
+    Used by the MCP server when the operator points it at a backing store
+    (via ``--graph-store-url``) instead of a serialized ``graph.json`` file.
+    All tool semantics still operate on a :class:`ResearchGraph`, so we
+    materialize one on demand using only the :class:`GraphStore` protocol
+    methods. ``query_subgraph`` with every node id as a seed and depth 1
+    pulls every edge incident to any node — i.e., the full edge set.
+    """
+    nodes = list(store.iterate_nodes())
+    if not nodes:
+        return ResearchGraph(nodes=[], edges=[])
+    seeds = [node.id for node in nodes]
+    subgraph = store.query_subgraph(seeds, depth=1)
+    return ResearchGraph(nodes=nodes, edges=list(subgraph.edges))
+
+
 def _discover_graph_and_root(path: Path) -> tuple[Path, Path]:
     """Resolve a user-provided path to (graph.json path, project root).
 
@@ -180,9 +199,11 @@ class LLMWikiMCPServer:
         self,
         default_graph_path: str | Path | None = None,
         registry_path: str | Path | None = None,
+        graph_store: Optional[GraphStore] = None,
     ) -> None:
         self.default_graph_path = Path(default_graph_path) if default_graph_path else None
         self.registry = ProjectRegistry(registry_path)
+        self.graph_store = graph_store
 
     def list_tools(self) -> List[JSONDict]:
         graph_path_prop = {"type": "string", "description": "Path to a ResearchGraph JSON file. Defaults to active project, then server --graph."}
@@ -401,11 +422,13 @@ class LLMWikiMCPServer:
         active = self.registry.active_graph_path()
         if active is not None:
             return load_graph(active)
+        if self.graph_store is not None:
+            return _materialize_graph(self.graph_store)
         if self.default_graph_path:
             return load_graph(self.default_graph_path)
         raise ValueError(
             "No graph specified. Pass graph_path, project, activate a project, "
-            "or start the MCP server with --graph."
+            "start the MCP server with --graph, or pass --graph-store-url."
         )
 
     def _find_node(self, graph: ResearchGraph, node_id: Optional[str], node_name: Optional[str]) -> Optional[ResearchNode]:
@@ -482,8 +505,28 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--registry",
         help=f"Path to project registry (default: {DEFAULT_REGISTRY_PATH})",
     )
+    parser.add_argument(
+        "--graph-store-url",
+        help=(
+            "URL of a backing GraphStore, e.g. sqlite:///path/to.db. "
+            "Postgres URLs are reserved for the HypePaper integration. "
+            "When set, tool calls without graph_path/project read from this store."
+        ),
+    )
     args = parser.parse_args(argv)
-    serve_stdio(LLMWikiMCPServer(default_graph_path=args.graph, registry_path=args.registry))
+    graph_store = None
+    if args.graph_store_url:
+        # Lazy import to keep the resolver path independent of the rest of the module.
+        from .graph_stores.url_resolver import resolve_graph_store
+
+        graph_store = resolve_graph_store(args.graph_store_url)
+    serve_stdio(
+        LLMWikiMCPServer(
+            default_graph_path=args.graph,
+            registry_path=args.registry,
+            graph_store=graph_store,
+        )
+    )
     return 0
 
 

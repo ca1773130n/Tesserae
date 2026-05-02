@@ -17,15 +17,18 @@ from pathlib import Path
 from typing import Iterable, List, Optional
 
 from .agent_harness import AgentHarnessAdapter, SUPPORTED_AGENT_HARNESSES
-from .batch import BatchIngestRunner
+from .batch import BatchIngestRunner, sha256_text
 from .code_graph import CodeGraphExtractor
 from .cognee_adapter import CogneeResearchGraphAdapter
 from .cognee_codex import CogneeCodexPatch
 from .cognee_direct import CogneeDirectImporter
 from .deploy import GitHubPagesDeployer
+from .graph_stores import SqliteGraphStore
 from .karpathy_layer import KarpathyLayerWriter
 from .lint import LintReport, WikiLinter
+from .ports import GraphStore, Source, SourceLoader
 from .site import StaticSiteBuilder
+from .source_loaders import FilesystemSourceLoader
 from .synthesis import SynthesisProjector
 from .wiki_projector import WikiLayerProjector
 from .wiki_store import WikiPageStore
@@ -198,43 +201,84 @@ class ProjectWiki:
         trends: bool = False,
         min_trend_sources: int = 2,
         cognify: Optional[CognifyOptions] = None,
+        loader: Optional[SourceLoader] = None,
+        store: Optional[GraphStore] = None,
     ) -> dict:
+        """Run the substrate-discovery + extraction pipeline for this project.
+
+        ``loader`` and ``store`` are the hexagonal ports. When unset, defaults
+        preserve the original behavior:
+
+        * ``loader`` defaults to ``FilesystemSourceLoader`` walking the
+          ``inputs`` paths under ``project_root`` (markdown only).
+        * ``store`` defaults to :class:`SqliteGraphStore` pointing at
+          ``self.paths.sqlite`` — writes happen at the end of compile via
+          :meth:`_write_artifacts`.
+
+        When an explicit ``loader`` is supplied, the FS walk and the
+        per-file manifest dance are bypassed: each :class:`Source` from
+        ``loader.discover()`` is extracted directly via
+        :meth:`ResearchGraphExtractor.extract_text` and changed-only
+        deduplication is keyed on the Source id + content hash.
+        """
         cfg = self.config()
         kind = source_kind or cfg.get("source_kind", "SourceDocument")
         input_paths = [resolve_project_input(self.project_root, item) for item in inputs]
         extractor = ResearchGraphExtractor()
-        markdown_files: List[Path] = []
-        code_inputs: List[Path] = []
-        seen_md: set[Path] = set()
-        for input_path in input_paths:
-            for md in iter_markdown_files(input_path):
-                resolved = md.resolve()
-                if resolved in seen_md:
-                    continue
-                seen_md.add(resolved)
-                markdown_files.append(md)
-            code_inputs.append(input_path)
+        code_inputs: List[Path] = list(input_paths)
         markdown_source_kind = "SourceDocument" if kind in {"CodeProject", "Repository", "Project"} else kind
-        batch = BatchIngestRunner(extractor=extractor, manifest_path=self.paths.manifest).run(
-            markdown_files,
-            source_kind=markdown_source_kind,
-            changed_only=changed_only,
-            limit=limit,
-        )
-        graphs = batch.graphs or [batch.graph]
-        graph = ResearchCorpusAnalyzer().summarize_trends(graphs, min_sources=min_trend_sources) if trends else batch.graph
+
+        if loader is None:
+            # Default path: filesystem walk via the legacy ``BatchIngestRunner``,
+            # which preserves the changed-only manifest schema (keyed on file
+            # path) used by every existing project workspace on disk.
+            markdown_files: List[Path] = []
+            seen_md: set[Path] = set()
+            for input_path in input_paths:
+                for md in iter_markdown_files(input_path):
+                    resolved = md.resolve()
+                    if resolved in seen_md:
+                        continue
+                    seen_md.add(resolved)
+                    markdown_files.append(md)
+            batch = BatchIngestRunner(extractor=extractor, manifest_path=self.paths.manifest).run(
+                markdown_files,
+                source_kind=markdown_source_kind,
+                changed_only=changed_only,
+                limit=limit,
+            )
+            graphs = batch.graphs or [batch.graph]
+            processed = batch.processed
+            skipped = batch.skipped
+            base_graph = batch.graph
+        else:
+            # Injected loader path: ``Source`` records carry their own content,
+            # so we extract from text and bookkeep changed-only against a
+            # source-id-keyed manifest. The on-disk manifest format stays the
+            # same JSON dict; entries are merged so a future FS-loader run
+            # does not erase loader-keyed entries (and vice versa).
+            graphs, processed, skipped = self._ingest_via_loader(
+                loader=loader,
+                extractor=extractor,
+                source_kind=markdown_source_kind,
+                changed_only=changed_only,
+                limit=limit,
+            )
+            base_graph = merge_graphs(graphs) if graphs else ResearchGraph()
+
+        graph = ResearchCorpusAnalyzer().summarize_trends(graphs, min_sources=min_trend_sources) if trends else base_graph
         if kind in {"CodeProject", "Repository", "Project"}:
             code_graph = CodeGraphExtractor(self.project_root).extract_paths(code_inputs)
             graph = merge_graphs([graph, code_graph])
-        if changed_only and batch.processed == 0 and self.paths.graph.exists() and not graph.nodes:
+        if changed_only and processed == 0 and self.paths.graph.exists() and not graph.nodes:
             graph = load_graph_file(self.paths.graph)
-        self._write_artifacts(graph, cognify=cognify)
+        self._write_artifacts(graph, cognify=cognify, store=store)
         return {
             "project_root": str(self.project_root),
             "wiki_root": str(self.root),
             "source_kind": kind,
-            "processed_files": batch.processed,
-            "skipped_files": batch.skipped,
+            "processed_files": processed,
+            "skipped_files": skipped,
             "node_count": len(graph.nodes),
             "edge_count": len(graph.edges),
             "graph_path": str(self.paths.graph),
@@ -245,6 +289,57 @@ class ProjectWiki:
             "mcp_server_name": cfg.get("name", sanitize_server_name(self.project_root.name)),
         }
 
+    def _ingest_via_loader(
+        self,
+        loader: SourceLoader,
+        extractor: ResearchGraphExtractor,
+        source_kind: str,
+        changed_only: bool,
+        limit: Optional[int],
+    ) -> tuple[List[ResearchGraph], int, int]:
+        """Drive extraction from a :class:`SourceLoader` instead of the FS walker.
+
+        Manifest bookkeeping mirrors :class:`BatchIngestRunner`: entries are
+        keyed on ``source.id`` (rather than file path), value carries the
+        content sha256 and source kind. Skipping is an exact-hash match.
+        """
+        manifest = self._load_manifest()
+        graphs: List[ResearchGraph] = []
+        processed = 0
+        skipped = 0
+        for source in loader.discover():
+            digest = sha256_text(source.content)
+            key = f"source:{source.id}"
+            if changed_only and manifest.get(key, {}).get("sha256") == digest:
+                skipped += 1
+                continue
+            if limit is not None and processed >= limit:
+                break
+            graph = extractor.extract_text(
+                source.content,
+                source_path=source.path or source.id,
+                source_kind=source_kind,
+            )
+            graphs.append(graph)
+            processed += 1
+            manifest[key] = {"sha256": digest, "source_kind": source_kind}
+        self._write_manifest(manifest)
+        return graphs, processed, skipped
+
+    def _load_manifest(self) -> dict:
+        if not self.paths.manifest.exists():
+            return {}
+        payload = json.loads(self.paths.manifest.read_text(encoding="utf-8"))
+        files = payload.get("files", payload if isinstance(payload, dict) else {})
+        return files if isinstance(files, dict) else {}
+
+    def _write_manifest(self, manifest: dict) -> None:
+        self.paths.manifest.parent.mkdir(parents=True, exist_ok=True)
+        self.paths.manifest.write_text(
+            json.dumps({"files": manifest}, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
     def compile(
         self,
         source_kind: Optional[str] = None,
@@ -254,6 +349,8 @@ class ProjectWiki:
         min_trend_sources: int = 2,
         exclude_data: bool = False,
         cognify: Optional[CognifyOptions] = None,
+        loader: Optional[SourceLoader] = None,
+        store: Optional[GraphStore] = None,
     ) -> dict:
         """Compile every configured source into the .llm-wiki artifacts.
 
@@ -291,6 +388,8 @@ class ProjectWiki:
             trends=trends,
             min_trend_sources=min_trend_sources,
             cognify=cognify,
+            loader=loader,
+            store=store,
         )
 
     def lint(self, fix_trivial: bool = False, severity_floor: str = "info") -> LintReport:
@@ -436,7 +535,12 @@ class ProjectWiki:
             dry_run=dry_run,
         )
 
-    def _write_artifacts(self, graph: ResearchGraph, cognify: Optional[CognifyOptions] = None) -> None:
+    def _write_artifacts(
+        self,
+        graph: ResearchGraph,
+        cognify: Optional[CognifyOptions] = None,
+        store: Optional[GraphStore] = None,
+    ) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
         # The wiki/site layers are generated projections. Clean them before each
         # compile so nodes that are newly filtered out (e.g. noisy social feed
@@ -499,7 +603,21 @@ class ProjectWiki:
         # report, temporal facts, Graphiti episodes, agent harness, Obsidian
         # vault) keep operating on the union so existing consumers see the
         # same structure they always did.
-        SQLiteResearchGraphStore(self.paths.sqlite).write_graph(graph, replace=True)
+        if store is None:
+            # Default path: keep the legacy graph-at-a-time write. This preserves
+            # byte-compatibility with any existing ``.llm-wiki/sqlite.db`` on
+            # disk — :class:`SQLiteResearchGraphStore` clears+rewrites the table
+            # rather than upserting row-by-row, which is the expected behavior
+            # for the standalone CLI flow.
+            SQLiteResearchGraphStore(self.paths.sqlite).write_graph(graph, replace=True)
+        else:
+            # Injected store path: drive the union graph through the
+            # :class:`GraphStore` port. The Postgres adapter (HypePaper-side)
+            # and any test-double share this code path.
+            for node in graph.nodes:
+                store.upsert_node(node)
+            for edge in graph.edges:
+                store.upsert_edge(edge)
         GraphMarkdownProjector().write_projection(graph, self.paths.markdown_projection)
         CogneeResearchGraphAdapter().write_bundle(graph, self.paths.cognee_bundle)
         if cognify and cognify.is_active:
@@ -636,17 +754,31 @@ def resolve_project_input(project_root: Path, item: str | Path) -> Path:
 
 
 def iter_markdown_files(path: Path) -> List[Path]:
+    """Walk ``path`` and return the ``.md`` files inside it.
+
+    Thin wrapper over :class:`FilesystemSourceLoader` (the hexagonal
+    ``SourceLoader`` adapter) so the FS-walking logic lives in one place.
+    Behavior matches the legacy inline walker:
+
+    * Single-file ``path`` returns ``[path]`` if it is a ``.md`` file, else
+      ``[]``.
+    * Missing ``path`` raises :class:`FileNotFoundError` (preserved here for
+      backward compatibility — the loader itself is forgiving).
+    * Directory ``path`` is walked recursively; hidden components
+      (dot-prefix) are skipped; results are sorted deterministically.
+    """
+    from .source_loaders import FilesystemSourceLoader
+
     if path.is_file():
         return [path] if path.suffix.lower() == ".md" else []
     if not path.exists():
         raise FileNotFoundError(f"Input path does not exist: {path}")
-    files = []
-    for child in sorted(path.rglob("*.md")):
-        rel = child.relative_to(path)
-        if any(part.startswith(".") for part in rel.parts):
-            continue
-        files.append(child)
-    return files
+    loader = FilesystemSourceLoader([path], extensions=(".md",))
+    # We only need the absolute paths — bypass content reads by walking the
+    # internal iterator directly. ``discover()`` reads file bodies eagerly,
+    # which would be wasteful here since downstream consumers re-read the
+    # file via :class:`BatchIngestRunner`.
+    return list(loader.iter_paths(path))
 
 
 def sanitize_server_name(value: str) -> str:

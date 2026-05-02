@@ -1,9 +1,12 @@
 import json
 import subprocess
 import sys
+from typing import Iterator, List, Optional
 
 from llm_wiki.cli import main
+from llm_wiki.ports import Source
 from llm_wiki.project import ProjectWiki
+from llm_wiki.research_graph import ResearchEdge, ResearchNode
 
 
 def test_project_init_creates_llm_wiki_workspace(tmp_path):
@@ -290,3 +293,105 @@ def test_cli_module_can_init_from_current_working_directory(tmp_path):
     assert result.returncode == 0, result.stderr
     assert (project / ".llm-wiki" / "config.json").exists()
     assert "Initialized project wiki" in result.stdout
+
+
+class _StubSourceLoader:
+    """In-memory ``SourceLoader`` that yields a fixed list of Sources.
+
+    Used to verify ``ProjectWiki.compile()`` consumes its injected loader
+    instead of walking the filesystem.
+    """
+
+    def __init__(self, sources: List[Source]) -> None:
+        self._sources = sources
+        self.discover_calls = 0
+        self.fetched_ids: List[str] = []
+
+    def discover(self) -> Iterator[Source]:
+        self.discover_calls += 1
+        for source in self._sources:
+            yield source
+
+    def fetch(self, source_id: str) -> Source:
+        self.fetched_ids.append(source_id)
+        for source in self._sources:
+            if source.id == source_id:
+                return source
+        raise KeyError(source_id)
+
+
+class _StubGraphStore:
+    """In-memory ``GraphStore`` that records every upsert call."""
+
+    def __init__(self) -> None:
+        self.upserted_nodes: List[ResearchNode] = []
+        self.upserted_edges: List[ResearchEdge] = []
+
+    def upsert_node(self, node: ResearchNode) -> str:
+        self.upserted_nodes.append(node)
+        return node.id
+
+    def upsert_edge(self, edge: ResearchEdge) -> None:
+        self.upserted_edges.append(edge)
+
+    def get_node(self, node_id: str) -> Optional[ResearchNode]:
+        for node in self.upserted_nodes:
+            if node.id == node_id:
+                return node
+        return None
+
+    def iterate_nodes(self, node_type=None, owner_user_id=None):
+        for node in self.upserted_nodes:
+            if node_type is None or node.type.value == node_type:
+                yield node
+
+    def query_subgraph(self, seeds, depth=1):
+        from llm_wiki.research_graph import ResearchGraph
+
+        return ResearchGraph(nodes=list(self.upserted_nodes), edges=list(self.upserted_edges))
+
+    def find_canonical(self, name: str, node_type: str):
+        for node in self.upserted_nodes:
+            if node.name.lower() == name.lower() and node.type.value == node_type:
+                return node
+        return None
+
+
+def test_project_compile_uses_injected_loader_and_store(tmp_path):
+    """``ProjectWiki.compile`` consumes the injected loader and writes to the injected store."""
+    project = tmp_path / "injection-project"
+    project.mkdir()
+    wiki = ProjectWiki.init(project, source_kind="Paper", sources=["docs"])
+    # No actual files on disk under docs/ — proving the loader isn't FS-walked.
+
+    sources = [
+        Source(
+            id="src-1",
+            path="memory://src-1",
+            content="# Stub Paper One\nGaussian Splatting enables novel view synthesis.\n",
+            metadata={"extension": ".md"},
+        ),
+        Source(
+            id="src-2",
+            path="memory://src-2",
+            content="# Stub Paper Two\nRetrieval-Augmented Generation improves factuality.\n",
+            metadata={"extension": ".md"},
+        ),
+    ]
+    loader = _StubSourceLoader(sources)
+    store = _StubGraphStore()
+
+    result = wiki.compile(loader=loader, store=store)
+
+    assert loader.discover_calls == 1, "compile should call loader.discover() exactly once"
+    assert result["processed_files"] == 2
+    assert len(store.upserted_nodes) >= 2, (
+        "extractor should produce at least one node per Source via the injected store"
+    )
+    node_names = {node.name for node in store.upserted_nodes}
+    assert "Stub Paper One" in node_names
+    assert "Stub Paper Two" in node_names
+    # Default SQLite path must NOT be touched when an alternate store is injected.
+    assert not wiki.paths.sqlite.exists(), (
+        "injected GraphStore must replace the default SQLite write"
+    )

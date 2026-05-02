@@ -18,22 +18,11 @@ from .llm_extractor import ClaudeCLIResearchExtractor
 from .markdown_projection import GraphMarkdownProjector
 from .persistence import KuzuResearchGraphStore, SQLiteResearchGraphStore
 from .graphiti_adapter import GraphitiSyncUnavailableError
-from .project import CognifyOptions, ProjectWiki
+from .project import CognifyOptions, ProjectWiki, iter_markdown_files
 from .report import GraphReporter
 from .research_graph import ResearchCorpusAnalyzer, ResearchGraph, ResearchGraphExtractor
 from .review_workflow import ReviewQueueExporter
 from .selective_extractor import SelectiveClaudeResearchExtractor
-
-
-def iter_markdown_files(path: Path) -> Iterable[Path]:
-    if path.is_file():
-        if path.suffix.lower() == ".md":
-            yield path
-        return
-    for child in sorted(path.rglob("*.md")):
-        if any(part.startswith(".") for part in child.relative_to(path).parts):
-            continue
-        yield child
 
 
 def merge_graphs(graphs: Iterable[ResearchGraph]) -> ResearchGraph:
