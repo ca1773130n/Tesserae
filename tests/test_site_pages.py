@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from llm_wiki.research_graph import ResearchGraph, ResearchNodeType
+from llm_wiki.research_graph import ResearchGraph, ResearchNode, ResearchNodeType
 from llm_wiki.site.js import JS_BUNDLE, JS_GRAPH, JS_SEARCH_PALETTE, JS_THEME_TOGGLE
 from llm_wiki.site.pages import (
     SiteContext,
@@ -435,12 +435,48 @@ def test_render_graph_view_includes_payload_script(site_ctx: SiteContext) -> Non
     assert "payload.json" in out
     # The graph.js bundle is loaded only on this route via the second script.
     assert "assets/graph.js" in out
+    assert "graph-explore-v13" in out
     # And the payload itself is computable from the same context.
     payload = build_graph_payload(site_ctx)
     assert "nodes" in payload
     assert "links" in payload or "edges" in payload
     leaked = [n for n in payload["nodes"] if n.get("type") in {"CodeClass", "CodeFunction", "CodeModule"}]
     assert not leaked, f"graph view leaked code-layer nodes: {leaked!r}"
+
+
+def test_graph_payload_uses_actual_synthesis_page_slug() -> None:
+    """Graph-node clicks must target emitted synthesis pages, not title slugs.
+
+    Synthesis pages can have stable semantic filenames such as ``pulse.html``
+    while the graph node is named ``Project pulse``. The graph payload is what
+    click navigation consumes, so it must resolve through ``SiteContext``'s
+    page_slug_for_node mapping rather than minting ``project-pulse.html``.
+    """
+    graph = ResearchGraph(
+        nodes=[
+            ResearchNode(
+                id="Synthesis:pulse:test",
+                name="Project pulse",
+                type=ResearchNodeType.SYNTHESIS,
+            )
+        ],
+        edges=[],
+    )
+    page = WikiPage(
+        kind="syntheses",
+        slug="pulse",
+        title="Project pulse",
+        body="# Project pulse\n\nSummary.\n",
+        path=Path("wiki/syntheses/pulse.md"),
+        frontmatter={"synthesis_kind": "pulse"},
+    )
+    ctx = SiteContext.build(graph=graph, wiki_pages_by_kind={"syntheses": [page]})
+
+    from llm_wiki.site.pages import build_graph_payload
+
+    payload = build_graph_payload(ctx)
+
+    assert payload["nodes"][0]["href"] == "../syntheses/pulse.html"
 
 
 def test_render_about_renders_full_doc(site_ctx: SiteContext) -> None:

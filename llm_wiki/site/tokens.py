@@ -657,10 +657,14 @@ html, body { overflow-x: clip; }
   min-height: 520px;
   border-radius: var(--radius);
   overflow: hidden;
-  background: var(--surface-2);
-  border: 1px solid var(--rule);
+  background:
+    radial-gradient(circle at 18% 18%, rgba(96, 165, 250, 0.16), transparent 28%),
+    radial-gradient(circle at 82% 24%, rgba(167, 139, 250, 0.13), transparent 30%),
+    linear-gradient(135deg, #020617 0%, #0f172a 52%, #111827 100%);
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.035), 0 24px 70px rgba(2, 6, 23, 0.28);
 }
-.graph-page .graph-canvas canvas { display: block; }
+.graph-page .graph-canvas canvas { display: block; width: 100% !important; height: 100% !important; }
 .graph-page .graph-info-panel {
   position: absolute;
   top: var(--space-4);

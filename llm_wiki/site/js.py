@@ -224,7 +224,7 @@ JS_SEARCH_PALETTE = r"""
   })();
 
   // Word/digit/underscore + Latin-Extended + Hangul Syllables block.
-  var TOKEN_RE = /[\wÀ-ɏ가-힯]+/g;
+  var TOKEN_RE = /[\w\u00C0-\u024F\uAC00-\uD7AF]+/g;
 
   function tokenize(text){
     if (!text) return [];
@@ -737,20 +737,52 @@ JS_SEARCH_PALETTE = r"""
 JS_GRAPH = r"""
 (function(){
   var GROUP_COLORS = {
-    sources:   '#5b574f',
-    papers:    '#be185d',
-    repos:     '#2563eb',
-    concepts:  '#0891b2',
-    entities:  '#7c3aed',
-    topics:    '#b3502b',
-    syntheses: '#2a6f4f',
-    questions: '#c08a1a',
-    other:     '#64748b'
+    sources:   '#94a3b8',
+    papers:    '#fb7185',
+    repos:     '#60a5fa',
+    concepts:  '#22d3ee',
+    entities:  '#a78bfa',
+    topics:    '#fb923c',
+    syntheses: '#34d399',
+    questions: '#facc15',
+    other:     '#cbd5e1'
   };
-  var EDGE_COLOR_LIGHT = 'rgba(91,87,79,0.35)';
-  var EDGE_COLOR_DIM   = 'rgba(91,87,79,0.06)';
-  var EDGE_COLOR_HOT   = 'rgba(179,80,43,0.95)';
+  var EDGE_COLOR_LIGHT = 'rgba(191,219,254,0.34)';
+  var EDGE_COLOR_DIM   = 'rgba(148,163,184,0.012)';
+  var EDGE_COLOR_HOT   = 'rgba(250,204,21,1)';
   var THREE_URL = 'https://esm.sh/three@0.169.0';
+
+  var GROUP_HSL = {
+    sources:   { h: 215, s: 20, l: 70 },
+    papers:    { h: 350, s: 88, l: 70 },
+    repos:     { h: 213, s: 92, l: 68 },
+    concepts:  { h: 188, s: 88, l: 64 },
+    entities:  { h: 258, s: 88, l: 74 },
+    topics:    { h: 25,  s: 94, l: 68 },
+    syntheses: { h: 154, s: 72, l: 62 },
+    questions: { h: 48,  s: 96, l: 64 },
+    other:     { h: 215, s: 22, l: 78 }
+  };
+
+  function hashString(value){
+    var s = String(value || '');
+    var h = 2166136261;
+    for (var i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  function nodeColorVariant(n){
+    var group = (n && n.group) || 'other';
+    var base = GROUP_HSL[group] || GROUP_HSL.other;
+    var h = hashString((n && (n.id || n.name)) || group);
+    var hue = (base.h + ((h % 19) - 9) + 360) % 360;
+    var sat = Math.max(42, Math.min(98, base.s + (((h >>> 5) % 13) - 6)));
+    var light = Math.max(48, Math.min(82, base.l + (((h >>> 9) % 17) - 8)));
+    return 'hsl(' + hue + ' ' + sat + '% ' + light + '%)';
+  }
 
   function ready(fn){
     if (document.readyState === 'loading') {
@@ -770,7 +802,7 @@ JS_GRAPH = r"""
 
     var byId = new Map();
     payload.nodes.forEach(function(n){
-      n.color = n.color || GROUP_COLORS[n.group || 'other'] || GROUP_COLORS.other;
+      n.color = n.color || nodeColorVariant(n);
       n.neighbors = new Set();
       n.edges = [];
       n.degree = 0;
@@ -785,9 +817,15 @@ JS_GRAPH = r"""
       a.degree += 1; b.degree += 1;
     });
 
-    // Compute the median val (or degree if val missing) for label visibility.
+    // Compute a high-value cutoff for overview labels. The graph can have
+    // hundreds of nodes; showing the top half as labels turns 2D into a hairball.
     var vals = payload.nodes.map(function(n){ return Math.max(1, n.val || n.degree || 1); }).slice().sort(function(a,b){ return a - b; });
     var medianVal = vals.length ? vals[Math.floor(vals.length / 2)] : 1;
+    var overviewLabelVal = vals.length ? vals[Math.floor(vals.length * 0.86)] : medianVal;
+
+    function shouldShowOverviewLabel(n){
+      return Math.max(1, (n && (n.val || n.degree)) || 1) >= Math.max(medianVal + 1, overviewLabelVal);
+    }
 
     var infoPanel = document.getElementById('graph-info-panel');
     var tooltip   = document.getElementById('graph-tooltip');
@@ -839,14 +877,47 @@ JS_GRAPH = r"""
     var hoverNode = null;
     var hoverLink = null;
     var pinnedNode = null;
+    var pinnedLink = null;
     var Graph = null;
     var THREE = null;
+    var fallbackSvg = null;
+    var fallbackPositions = {};
     var mode = '3d';
     var searchQuery = '';
     var dayFilter = null;
+    var didInitialFit = false;
+
+    function shortLabel(value, limit){
+      var s = String(value || '');
+      limit = limit || 24;
+      return s.length <= limit ? s : s.slice(0, limit - 1) + '…';
+    }
+
+    function nodeLabelText(n){
+      return shortLabel(n && (n.name || n.id), 24);
+    }
+
+    function edgeLabelText(l){
+      return shortLabel(l && (l.label || l.type), 18);
+    }
 
     function nodeAccent(n){
-      return GROUP_COLORS[n.group || 'other'] || GROUP_COLORS.other;
+      return (n && n.color) || GROUP_COLORS[(n && n.group) || 'other'] || GROUP_COLORS.other;
+    }
+
+    function clearInfoPanel(){
+      if (!infoPanel) return;
+      while (infoPanel.firstChild) infoPanel.removeChild(infoPanel.firstChild);
+      infoPanel.classList.remove('is-visible');
+    }
+
+    function appendInfoLink(label, href){
+      if (!infoPanel || !href) return;
+      var a = document.createElement('a');
+      a.className = 'graph-info-link';
+      a.href = href;
+      a.textContent = label;
+      infoPanel.appendChild(a);
     }
 
     function showInfoPanel(node){
@@ -880,12 +951,32 @@ JS_GRAPH = r"""
         infoPanel.appendChild(desc);
       }
       if (node.href) {
-        var a = document.createElement('a');
-        a.className = 'graph-info-link';
-        a.href = node.href;
-        a.textContent = 'Open page →';
-        infoPanel.appendChild(a);
+        appendInfoLink('Open page →', node.href);
       }
+      infoPanel.classList.add('is-visible');
+    }
+
+    function showLinkInfoPanel(link){
+      if (!infoPanel || !link) return;
+      while (infoPanel.firstChild) infoPanel.removeChild(infoPanel.firstChild);
+      var endpoints = linkEndpoints(link);
+      var source = endpoints.source;
+      var target = endpoints.target;
+      var label = link.label || link.type || 'related';
+      var h = document.createElement('h3');
+      h.className = 'graph-info-title';
+      h.textContent = label;
+      infoPanel.appendChild(h);
+      var meta = document.createElement('p');
+      meta.className = 'graph-info-meta';
+      meta.textContent = ((source && source.name) || 'source') + ' → ' + ((target && target.name) || 'target');
+      infoPanel.appendChild(meta);
+      var hint = document.createElement('p');
+      hint.className = 'graph-info-desc';
+      hint.textContent = 'Tap again to open the target page. Use source/target links below for exact navigation.';
+      infoPanel.appendChild(hint);
+      appendInfoLink('Open target →', target && target.href);
+      appendInfoLink('Open source →', source && source.href);
       infoPanel.classList.add('is-visible');
     }
 
@@ -906,12 +997,64 @@ JS_GRAPH = r"""
         node.neighbors.forEach(function(nb){ highlightNodes.add(nb); });
         node.edges.forEach(function(e){ highlightLinks.add(e); });
       }
+      refreshHighlightStyles();
+    }
+
+    function applyLinkHighlight(link){
+      highlightNodes.clear();
+      highlightLinks.clear();
+      if (link) {
+        var endpoints = linkEndpoints(link);
+        if (endpoints.source) highlightNodes.add(endpoints.source);
+        if (endpoints.target) highlightNodes.add(endpoints.target);
+        highlightLinks.add(link);
+      }
+      refreshHighlightStyles();
+    }
+
+    function hasFocusFilter(){
+      return highlightNodes.size > 0 || highlightLinks.size > 0;
+    }
+
+    function isDimmedNode(node){
+      return hasFocusFilter() && !highlightNodes.has(node);
+    }
+
+    function isDimmedLink(link){
+      return hasFocusFilter() && !highlightLinks.has(link);
+    }
+
+    function refreshHighlightStyles(){
       if (Graph && Graph.refresh) {
         try { Graph.refresh(); } catch (_) {}
       }
       if (Graph && Graph.nodeColor) {
         try { Graph.nodeColor(Graph.nodeColor()); } catch (_) {}
       }
+      if (Graph && Graph.linkColor) {
+        try { Graph.linkColor(Graph.linkColor()); } catch (_) {}
+      }
+      refreshFallbackFocusStyles();
+    }
+
+    function nodeIdOf(node){
+      return node && (node.id || String(node));
+    }
+
+    function linkEndpointId(value){
+      return value && typeof value === 'object' ? value.id : value;
+    }
+
+    function linkEndpoints(link){
+      return {
+        source: byId.get(linkEndpointId(link && link.source)),
+        target: byId.get(linkEndpointId(link && link.target))
+      };
+    }
+
+    function linkKey(link){
+      if (!link) return '';
+      return [linkEndpointId(link.source), linkEndpointId(link.target), link.type || link.label || ''].join('→');
     }
 
     function isVisible(node){
@@ -959,6 +1102,8 @@ JS_GRAPH = r"""
         var angle = (i / Math.max(visible.length, 1)) * Math.PI * 2;
         positions[n.id] = { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) };
       });
+      fallbackSvg = svg;
+      fallbackPositions = positions;
       payload.links.forEach(function(e){
         var sId = typeof e.source === 'object' ? e.source.id : e.source;
         var tId = typeof e.target === 'object' ? e.target.id : e.target;
@@ -968,24 +1113,72 @@ JS_GRAPH = r"""
         line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
         line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
         line.setAttribute('stroke', EDGE_COLOR_LIGHT);
-        line.setAttribute('stroke-width', '1');
+        line.setAttribute('stroke-width', '0.24');
+        line.setAttribute('tabindex', '0');
+        line.setAttribute('data-link-key', linkKey(e));
+        line.style.cursor = 'pointer';
+        line.addEventListener('click', function(evt){ evt.preventDefault(); activateLink(e, evt); });
         svg.appendChild(line);
       });
       visible.forEach(function(n){
         var p = positions[n.id]; if (!p) return;
-        var link = document.createElementNS(NS, 'a');
-        link.setAttribute('href', n.href || '#');
         var circle = document.createElementNS(NS, 'circle');
         circle.setAttribute('cx', p.x); circle.setAttribute('cy', p.y);
         circle.setAttribute('r', String(3 + Math.min(8, Math.sqrt(n.val || 1))));
         circle.setAttribute('fill', n.color);
+        circle.setAttribute('tabindex', '0');
+        circle.setAttribute('role', 'button');
+        circle.setAttribute('data-node-id', n.id);
+        circle.style.cursor = 'pointer';
         var title = document.createElementNS(NS, 'title');
-        title.textContent = (n.name || '') + ' — ' + (n.type || '');
+        title.textContent = (n.name || '') + ' — ' + (n.type || '') + '. Tap once to zoom, again to open.';
         circle.appendChild(title);
-        link.appendChild(circle);
-        svg.appendChild(link);
+        circle.addEventListener('click', function(evt){ evt.preventDefault(); activateNode(n, evt); });
+        circle.addEventListener('keydown', function(evt){ if (evt.key === 'Enter' || evt.key === ' ') { evt.preventDefault(); activateNode(n, evt); } });
+        svg.appendChild(circle);
+        var showAlways = shouldShowOverviewLabel(n);
+        if (showAlways) {
+          var text = document.createElementNS(NS, 'text');
+          text.setAttribute('x', p.x);
+          text.setAttribute('y', p.y + 18);
+          text.setAttribute('text-anchor', 'middle');
+          text.setAttribute('data-node-label-id', n.id);
+          text.setAttribute('fill', nodeAccent(n));
+          text.setAttribute('font-size', '11');
+          text.setAttribute('font-family', 'Inter, system-ui, sans-serif');
+          text.setAttribute('paint-order', 'stroke');
+          text.setAttribute('stroke', 'rgba(4,7,15,0.34)');
+          text.setAttribute('stroke-width', '2');
+          text.textContent = nodeLabelText(n);
+          svg.appendChild(text);
+        }
       });
       container.appendChild(svg);
+    }
+
+    function refreshFallbackFocusStyles(){
+      if (!fallbackSvg) return;
+      fallbackSvg.querySelectorAll('circle[data-node-id]').forEach(function(el){
+        var node = byId.get(el.getAttribute('data-node-id'));
+        var dim = node && isDimmedNode(node);
+        el.setAttribute('opacity', dim ? '0.06' : '0.95');
+        el.style.pointerEvents = dim ? 'none' : 'auto';
+      });
+      fallbackSvg.querySelectorAll('text[data-node-label-id]').forEach(function(el){
+        var node = byId.get(el.getAttribute('data-node-label-id'));
+        var dim = node && isDimmedNode(node);
+        var hot = node && highlightNodes.has(node);
+        el.setAttribute('opacity', dim ? '0' : (hot ? '1' : '0.72'));
+      });
+      fallbackSvg.querySelectorAll('line[data-link-key]').forEach(function(el){
+        var key = el.getAttribute('data-link-key') || '';
+        var hot = false;
+        highlightLinks.forEach(function(link){ if (linkKey(link) === key) hot = true; });
+        var dim = hasFocusFilter() && !hot;
+        el.setAttribute('opacity', dim ? '0.02' : (hot ? '1' : '0.82'));
+        el.setAttribute('stroke-width', hot ? '0.85' : '0.28');
+        el.style.pointerEvents = dim ? 'none' : 'auto';
+      });
     }
 
     // ---- Sprite label cache ---------------------------------------------
@@ -998,7 +1191,7 @@ JS_GRAPH = r"""
       var fontSize = 32;
       var pad = 12;
       var ctx = canvas.getContext('2d');
-      ctx.font = '500 ' + fontSize + 'px "Inter", system-ui, sans-serif';
+      ctx.font = '650 ' + fontSize + 'px "Inter", system-ui, sans-serif';
       var metrics = ctx.measureText(text);
       var w = Math.ceil(metrics.width) + pad * 2;
       var h = fontSize + pad * 2;
@@ -1006,20 +1199,49 @@ JS_GRAPH = r"""
       canvas.height = h;
       ctx = canvas.getContext('2d');
       ctx.font = '500 ' + fontSize + 'px "Inter", system-ui, sans-serif';
-      ctx.fillStyle = 'rgba(20,18,15,0.78)';
+      ctx.fillStyle = 'rgba(2,6,23,0.26)';
       ctx.fillRect(0, 0, w, h);
       ctx.fillStyle = color;
       ctx.textBaseline = 'middle';
       ctx.fillText(text, pad, h / 2);
       var tex = new THREE.CanvasTexture(canvas);
       tex.minFilter = THREE.LinearFilter;
-      var mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+      var mat = new THREE.SpriteMaterial({
+        map: tex,
+        transparent: true,
+        depthWrite: false,
+        depthTest: false,
+        opacity: 0.74
+      });
       var sprite = new THREE.Sprite(mat);
       var scale = 0.18;
       sprite.scale.set(w * scale, h * scale, 1);
+      sprite.renderOrder = 999;
       sprite.userData.isLabel = true;
       spriteCache.set(key, sprite);
-      return sprite.clone();
+      var clone = sprite.clone();
+      clone.renderOrder = 999;
+      return clone;
+    }
+
+    function cameraDistanceOpacity(x, y, z){
+      if (!Graph || !Graph.camera) return 0.74;
+      var camera = Graph.camera && Graph.camera();
+      if (!camera || !camera.position) return 0.74;
+      var dx = (camera.position.x || 0) - (x || 0);
+      var dy = (camera.position.y || 0) - (y || 0);
+      var dz = (camera.position.z || 0) - (z || 0);
+      var d = Math.hypot(dx, dy, dz);
+      if (d < 120) return 0.26;
+      if (d < 220) return 0.42;
+      if (d < 360) return 0.58;
+      return 0.74;
+    }
+
+    function applySpriteOpacity(sprite, opacity){
+      if (!sprite || !sprite.material) return;
+      sprite.material.opacity = opacity;
+      sprite.material.transparent = true;
     }
 
     // ---- Cursor-anchored zoom (raycast through cursor → world) -----------
@@ -1072,12 +1294,13 @@ JS_GRAPH = r"""
     // ---- Fit-to-view via bounding sphere over current node positions ----
     function fitAll(durationMs){
       if (!Graph) return;
+      var duration = reduceMotion ? 0 : (durationMs || 600);
       if (mode === '2d') {
-        try { Graph.zoomToFit(durationMs || 600, 60); } catch (_) {}
+        try { Graph.zoomToFit(duration, 55); } catch (_) {}
         return;
       }
       if (!THREE) {
-        try { Graph.zoomToFit(durationMs || 600, 60); } catch (_) {}
+        try { Graph.zoomToFit(duration, 55); } catch (_) {}
         return;
       }
       var visible = payload.nodes.filter(function(n){
@@ -1091,21 +1314,65 @@ JS_GRAPH = r"""
       var sphere = new THREE.Sphere();
       box.getBoundingSphere(sphere);
       var camera = Graph.camera && Graph.camera();
+      var controls = Graph.controls && Graph.controls();
       if (!camera) {
-        try { Graph.zoomToFit(durationMs || 600, 60); } catch (_) {}
+        try { Graph.zoomToFit(duration, 55); } catch (_) {}
         return;
       }
       var fov = (camera.fov || 50) * Math.PI / 180;
-      var distance = sphere.radius / Math.sin(fov / 2);
-      distance = Math.max(distance, 80);
+      var aspect = (container.clientWidth || 1) / Math.max(1, container.clientHeight || 1);
+      var fitHeightDistance = sphere.radius / Math.sin(fov / 2);
+      var fitWidthDistance = fitHeightDistance / Math.max(0.45, aspect);
+      var distance = Math.max(fitHeightDistance, fitWidthDistance, 160) * 1.04;
       var center = sphere.center;
       try {
+        if (controls && controls.target && controls.target.set) {
+          controls.target.set(center.x, center.y, center.z);
+          if (controls.update) controls.update();
+        }
         Graph.cameraPosition(
           { x: center.x, y: center.y, z: center.z + distance },
           { x: center.x, y: center.y, z: center.z },
-          reduceMotion ? 0 : (durationMs || 600)
+          duration
         );
-      } catch (_) {}
+      } catch (_) {
+        try { Graph.zoomToFit(duration, 90); } catch (__) {}
+      }
+    }
+
+    function scheduleCenteredFit(){
+      if (didInitialFit || pinnedNode || pinnedLink) return;
+      didInitialFit = true;
+      [250, 900, 1800, 3600, 6200].forEach(function(delay){
+        setTimeout(function(){
+          if (!pinnedNode && !pinnedLink) fitAll(delay > 250 ? 500 : 0);
+        }, delay);
+      });
+    }
+
+    function sizeGraphToContainer(inst){
+      if (!inst || !container) return;
+      var w = Math.max(320, Math.floor(container.clientWidth || container.getBoundingClientRect().width || 800));
+      var h = Math.max(360, Math.floor(container.clientHeight || container.getBoundingClientRect().height || 520));
+      try { if (inst.width) inst.width(w); } catch (_) {}
+      try { if (inst.height) inst.height(h); } catch (_) {}
+      var canvas = container.querySelector('canvas');
+      if (canvas) {
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+      }
+    }
+
+    function installGraphResize(inst){
+      if (!inst || !window) return;
+      var pending = null;
+      window.addEventListener('resize', function(){
+        if (pending) window.clearTimeout(pending);
+        pending = window.setTimeout(function(){
+          sizeGraphToContainer(inst);
+          if (!pinnedNode && !pinnedLink) fitAll(300);
+        }, 120);
+      });
     }
 
     // ---- Build the renderer ---------------------------------------------
@@ -1122,22 +1389,21 @@ JS_GRAPH = r"""
         .nodeLabel(function(n){ return ''; })
         .nodeVal(function(n){ return Math.max(1, n.val || 1); })
         .nodeColor(function(n){
-          if (highlightNodes.size && !highlightNodes.has(n)) return 'rgba(120,116,108,0.18)';
+          if (isDimmedNode(n)) return 'rgba(120,116,108,0.035)';
           return n.color;
         })
-        .nodeOpacity(0.95)
         .linkColor(function(l){
-          if (highlightLinks.size === 0) return EDGE_COLOR_LIGHT;
+          if (!hasFocusFilter()) return EDGE_COLOR_LIGHT;
           return highlightLinks.has(l) ? EDGE_COLOR_HOT : EDGE_COLOR_DIM;
         })
-        .linkWidth(function(l){ return highlightLinks.has(l) ? 1.6 : 0.4; })
+        .linkWidth(function(l){ return isDimmedLink(l) ? 0.001 : (highlightLinks.has(l) ? 0.85 : 0.22); })
         .linkHoverPrecision(8)
         .linkDirectionalParticles(function(l){ return highlightLinks.has(l) ? 2 : 0; })
-        .linkDirectionalParticleWidth(1.8)
+        .linkDirectionalParticleWidth(0.9)
         .onNodeHover(function(node){
           hoverNode = node || null;
-          container.style.cursor = node ? 'pointer' : 'default';
-          if (!pinnedNode) {
+          container.style.cursor = node && !isDimmedNode(node) ? 'pointer' : 'default';
+          if (!pinnedNode && !pinnedLink) {
             applyHighlight(node);
             showInfoPanel(node);
           }
@@ -1153,49 +1419,67 @@ JS_GRAPH = r"""
           showTooltip(sName + ' → ' + label + ' → ' + tName, lastMouseX, lastMouseY);
         })
         .onNodeClick(function(node, evt){
-          if (!node) return;
-          if (evt && (evt.metaKey || evt.ctrlKey)) {
-            pinnedNode = node;
-            applyHighlight(node);
-            showInfoPanel(node);
-            focusOnNode(node);
-            return;
-          }
-          if (node.href) window.location.href = node.href;
+          activateNode(node, evt);
+        })
+        .onLinkClick(function(link, evt){
+          activateLink(link, evt);
         })
         .onBackgroundClick(function(){
           pinnedNode = null;
+          pinnedLink = null;
           applyHighlight(null);
-          showInfoPanel(null);
+          clearInfoPanel();
         });
+
+      try { if (inst.nodeOpacity) inst.nodeOpacity(0.95); } catch (_) {}
+      try { if (inst.linkOpacity) inst.linkOpacity(0.8); } catch (_) {}
+      try { if (inst.linkDirectionalParticleColor) inst.linkDirectionalParticleColor(function(l){ return highlightLinks.has(l) ? EDGE_COLOR_HOT : EDGE_COLOR_LIGHT; }); } catch (_) {}
+      try {
+        if (mode === '3d' && inst.linkResolution) inst.linkResolution(6);
+      } catch (_) {}
 
       // Mode-specific labels.
       if (mode === '3d' && THREE) {
         try {
           inst.nodeThreeObject(function(n){
-            var showAlways = (n.val || n.degree || 1) > medianVal;
+            var showAlways = shouldShowOverviewLabel(n);
             var isHover = (hoverNode === n) || highlightNodes.has(n);
+            if (isDimmedNode(n)) return null;
             if (!showAlways && !isHover) return null;
-            var sprite = makeSpriteLabel(n.name || n.id || '', nodeAccent(n));
-            if (sprite) sprite.position.set(0, 6 + Math.sqrt(n.val || 1), 0);
+            var sprite = makeSpriteLabel(nodeLabelText(n), nodeAccent(n));
+            if (sprite) {
+              sprite.position.set(0, 6 + Math.sqrt(n.val || 1), 0);
+              applySpriteOpacity(sprite, 0.74);
+            }
             return sprite;
           });
           if (inst.nodeThreeObjectExtend) inst.nodeThreeObjectExtend(true);
+          if (inst.nodePositionUpdate) {
+            inst.nodePositionUpdate(function(sprite, coords, node){
+              if (!sprite || !coords) return false;
+              sprite.position.set(coords.x || 0, (coords.y || 0) + 6 + Math.sqrt((node && node.val) || 1), coords.z || 0);
+              applySpriteOpacity(sprite, cameraDistanceOpacity(coords.x, coords.y, coords.z));
+              return true;
+            });
+          }
           inst.linkThreeObject(function(l){
-            var label = l.label || l.type || '';
+            var label = edgeLabelText(l);
             if (!label) return null;
             var s = typeof l.source === 'object' ? l.source : byId.get(l.source);
             var t = typeof l.target === 'object' ? l.target : byId.get(l.target);
             var important = (hoverNode && (hoverNode === s || hoverNode === t)) || highlightLinks.has(l);
+            if (isDimmedLink(l)) return null;
             if (!important) return null;
             return makeSpriteLabel(label, '#ece7dc');
           });
+          if (inst.linkThreeObjectExtend) inst.linkThreeObjectExtend(true);
           if (inst.linkPositionUpdate) {
             inst.linkPositionUpdate(function(sprite, coords){
               if (!sprite || !coords) return false;
               var s = coords.start; var t = coords.end;
               if (!s || !t) return false;
               sprite.position.set((s.x + t.x) / 2, (s.y + t.y) / 2, (s.z + t.z) / 2);
+              applySpriteOpacity(sprite, cameraDistanceOpacity((s.x + t.x) / 2, (s.y + t.y) / 2, (s.z + t.z) / 2));
               return true;
             });
           }
@@ -1207,31 +1491,39 @@ JS_GRAPH = r"""
         try {
           inst.nodeCanvasObjectMode(function(){ return 'after'; });
           inst.nodeCanvasObject(function(n, ctx, globalScale){
-            var showAlways = (n.val || n.degree || 1) > medianVal;
-            var isHover = (hoverNode === n);
+            var showAlways = shouldShowOverviewLabel(n);
+            var isHover = (hoverNode === n) || highlightNodes.has(n);
+            if (isDimmedNode(n)) return;
             if (!showAlways && !isHover) return;
-            var label = n.name || n.id || '';
-            var fontSize = 12 / globalScale;
-            ctx.font = fontSize + 'px Inter, system-ui, sans-serif';
-            ctx.fillStyle = nodeAccent(n);
+            var label = nodeLabelText(n);
+            var fontSize = (highlightNodes.has(n) ? 14 : 12) / globalScale;
+            ctx.font = '650 ' + fontSize + 'px Inter, system-ui, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
-            ctx.fillText(label, n.x, n.y + 6);
+            ctx.lineWidth = 2.5 / globalScale;
+            ctx.strokeStyle = 'rgba(2,6,23,0.38)';
+            ctx.strokeText(label, n.x, n.y + 7);
+            ctx.fillStyle = nodeAccent(n);
+            ctx.fillText(label, n.x, n.y + 7);
           });
           inst.linkCanvasObjectMode(function(){ return 'after'; });
           inst.linkCanvasObject(function(l, ctx, globalScale){
-            var label = l.label || l.type || '';
+            var label = edgeLabelText(l);
             if (!label) return;
             var s = typeof l.source === 'object' ? l.source : byId.get(l.source);
             var t = typeof l.target === 'object' ? l.target : byId.get(l.target);
             if (!s || !t) return;
             var important = (hoverNode && (hoverNode === s || hoverNode === t)) || highlightLinks.has(l);
+            if (isDimmedLink(l)) return;
             if (!important) return;
-            var fontSize = 10 / globalScale;
-            ctx.font = fontSize + 'px Inter, system-ui, sans-serif';
-            ctx.fillStyle = '#5b574f';
+            var fontSize = 11 / globalScale;
+            ctx.font = '650 ' + fontSize + 'px Inter, system-ui, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
+            ctx.lineWidth = 2.5 / globalScale;
+            ctx.strokeStyle = 'rgba(2,6,23,0.38)';
+            ctx.strokeText(label, (s.x + t.x) / 2, (s.y + t.y) / 2);
+            ctx.fillStyle = '#f8fafc';
             ctx.fillText(label, (s.x + t.x) / 2, (s.y + t.y) / 2);
           });
         } catch (err) {
@@ -1241,22 +1533,26 @@ JS_GRAPH = r"""
 
       try {
         if (inst.d3Force) {
-          var charge = inst.d3Force('charge'); if (charge && charge.strength) charge.strength(-120);
-          var link = inst.d3Force('link'); if (link && link.distance) link.distance(40);
+          var charge = inst.d3Force('charge'); if (charge && charge.strength) charge.strength(mode === '2d' ? -260 : -170);
+          var link = inst.d3Force('link'); if (link && link.distance) link.distance(mode === '2d' ? 68 : 48);
         }
       } catch (_) {}
       try { inst.cooldownTicks(120); } catch (_) {}
 
       try {
         inst.onEngineStop(function(){
+          if (pinnedNode || pinnedLink) return;
           if (reduceMotion) return;
-          setTimeout(function(){ fitAll(600); }, 50);
+          setTimeout(function(){ if (!pinnedNode && !pinnedLink) fitAll(700); }, 80);
         });
       } catch (_) {}
 
       Graph = inst;
+      sizeGraphToContainer(inst);
+      installGraphResize(inst);
       if (mode === '3d') installCursorZoom(inst);
       refreshVisibility();
+      if (!pinnedNode && !pinnedLink) setTimeout(scheduleCenteredFit, 350);
       return inst;
     }
 
@@ -1272,11 +1568,49 @@ JS_GRAPH = r"""
     });
     container.addEventListener('mouseleave', hideTooltip);
 
+    function activateNode(node, evt){
+      if (!node) return;
+      if (isDimmedNode(node)) return;
+      var samePinned = pinnedNode && nodeIdOf(pinnedNode) === nodeIdOf(node);
+      // Graph browsing comes first: first tap/click pins, highlights neighbors,
+      // and zooms to the entity. A second activation on the same pinned node
+      // opens its detail page. Ctrl/⌘-click always behaves as "focus only".
+      if (evt && (evt.metaKey || evt.ctrlKey)) samePinned = false;
+      if (!samePinned) {
+        pinnedNode = node;
+        pinnedLink = null;
+        applyHighlight(node);
+        showInfoPanel(node);
+        focusOnNode(node);
+        return;
+      }
+      if (node.href) window.location.href = node.href;
+    }
+
+    function activateLink(link, evt){
+      if (!link) return;
+      if (isDimmedLink(link)) return;
+      var samePinned = pinnedLink && linkKey(pinnedLink) === linkKey(link);
+      if (evt && (evt.metaKey || evt.ctrlKey)) samePinned = false;
+      if (!samePinned) {
+        pinnedNode = null;
+        pinnedLink = link;
+        applyLinkHighlight(link);
+        showLinkInfoPanel(link);
+        focusOnLink(link);
+        return;
+      }
+      var endpoints = linkEndpoints(link);
+      var target = endpoints.target || endpoints.source;
+      if (target && target.href) window.location.href = target.href;
+    }
+
     function focusOnNode(node){
-      if (!Graph) return;
+      if (!Graph) { focusFallbackNode(node); return; }
       if (mode === '3d' && Graph.cameraPosition && node && node.x !== undefined) {
-        var distance = 120;
-        var distRatio = 1 + distance / Math.hypot(node.x || 1, node.y || 1, node.z || 1);
+        var distance = 300;
+        var norm = Math.max(240, Math.hypot(node.x || 1, node.y || 1, node.z || 1));
+        var distRatio = 1 + distance / norm;
         try {
           Graph.cameraPosition(
             { x: (node.x || 0) * distRatio, y: (node.y || 0) * distRatio, z: (node.z || 0) * distRatio },
@@ -1285,17 +1619,75 @@ JS_GRAPH = r"""
           );
         } catch (_) {}
       } else if (mode === '2d' && Graph.centerAt && node) {
-        try { Graph.centerAt(node.x || 0, node.y || 0, reduceMotion ? 0 : 600); Graph.zoom(4, reduceMotion ? 0 : 600); } catch (_) {}
+        try { Graph.centerAt(node.x || 0, node.y || 0, reduceMotion ? 0 : 600); Graph.zoom(1.8, reduceMotion ? 0 : 600); } catch (_) {}
+      }
+    }
+
+    function focusFallbackNode(node){
+      if (!fallbackSvg || !node) return;
+      var p = fallbackPositions[node.id];
+      if (!p) return;
+      var box = 420;
+      fallbackSvg.setAttribute('viewBox', (p.x - box / 2) + ' ' + (p.y - box / 2) + ' ' + box + ' ' + box);
+    }
+
+    function focusFallbackLink(link){
+      if (!fallbackSvg || !link) return;
+      var s = fallbackPositions[linkEndpointId(link.source)];
+      var t = fallbackPositions[linkEndpointId(link.target)];
+      if (!s && !t) return;
+      if (!s || !t) {
+        var onlyId = s ? linkEndpointId(link.source) : linkEndpointId(link.target);
+        focusFallbackNode(byId.get(onlyId));
+        return;
+      }
+      var minX = Math.min(s.x, t.x), maxX = Math.max(s.x, t.x);
+      var minY = Math.min(s.y, t.y), maxY = Math.max(s.y, t.y);
+      var pad = 80;
+      fallbackSvg.setAttribute('viewBox', (minX - pad) + ' ' + (minY - pad) + ' ' + Math.max(180, maxX - minX + pad * 2) + ' ' + Math.max(180, maxY - minY + pad * 2));
+    }
+
+    function focusOnLink(link){
+      if (!Graph) { focusFallbackLink(link); return; }
+      if (!link) return;
+      var endpoints = linkEndpoints(link);
+      var source = endpoints.source;
+      var target = endpoints.target;
+      if (!source && !target) return;
+      if (!source || !target) { focusOnNode(source || target); return; }
+      var sx = source.x || 0, sy = source.y || 0, sz = source.z || 0;
+      var tx = target.x || 0, ty = target.y || 0, tz = target.z || 0;
+      var cx = (sx + tx) / 2, cy = (sy + ty) / 2, cz = (sz + tz) / 2;
+      var span = Math.max(240, Math.hypot(sx - tx, sy - ty, sz - tz) * 3.2);
+      if (mode === '3d' && Graph.cameraPosition) {
+        try {
+          Graph.cameraPosition(
+            { x: cx, y: cy, z: cz + span },
+            { x: cx, y: cy, z: cz },
+            reduceMotion ? 0 : 600
+          );
+        } catch (_) {}
+      } else if (mode === '2d' && Graph.centerAt) {
+        try { Graph.centerAt(cx, cy, reduceMotion ? 0 : 600); Graph.zoom(1.5, reduceMotion ? 0 : 600); } catch (_) {}
       }
     }
 
     function setMode(next){
       if (next === mode) return;
-      buildGraph(next);
       if (btn2D) btn2D.classList.toggle('is-active', next === '2d');
       if (btn3D) btn3D.classList.toggle('is-active', next === '3d');
       if (btn2D) btn2D.setAttribute('aria-pressed', String(next === '2d'));
       if (btn3D) btn3D.setAttribute('aria-pressed', String(next === '3d'));
+      try {
+        didInitialFit = false;
+        buildGraph(next);
+      } catch (err) {
+        console.error('graph: mode switch failed', err);
+        if (banner) {
+          banner.textContent = 'Graph mode switch failed: ' + (err && err.message ? err.message : err);
+          banner.classList.add('is-visible');
+        }
+      }
     }
 
     if (btn2D) btn2D.addEventListener('click', function(){ setMode('2d'); });
@@ -1303,8 +1695,9 @@ JS_GRAPH = r"""
     if (btnFit) btnFit.addEventListener('click', function(){ fitAll(400); });
     if (btnReset) btnReset.addEventListener('click', function(){
       pinnedNode = null;
+      pinnedLink = null;
       applyHighlight(null);
-      showInfoPanel(null);
+      clearInfoPanel();
       if (Graph && Graph.cameraPosition && mode === '3d') {
         try { Graph.cameraPosition({ x: 0, y: 0, z: 400 }, { x: 0, y: 0, z: 0 }, reduceMotion ? 0 : 600); } catch (_) {}
       } else if (Graph && Graph.centerAt) {
@@ -1355,8 +1748,9 @@ JS_GRAPH = r"""
       if (e.key === '3') setMode('3d');
       if (e.key === 'Escape') {
         pinnedNode = null;
+        pinnedLink = null;
         applyHighlight(null);
-        showInfoPanel(null);
+        clearInfoPanel();
         dayFilter = null;
         if (searchEl) { searchEl.value = ''; searchQuery = ''; }
         refreshVisibility();

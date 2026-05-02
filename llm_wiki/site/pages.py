@@ -1714,7 +1714,7 @@ def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
     for n in visible_nodes:
         kind = _kind_for_node_type(n.type)  # one of sources/concepts/entities/...
         group = kind or "other"
-        href_rel = node_href(n)
+        href_rel = node_href(n, ctx)
         href = f"../{href_rel}" if href_rel else ""
         deg = degree.get(n.id, 0)
         description = (n.description or "").strip()
@@ -1788,7 +1788,7 @@ def render_graph_view(ctx: SiteContext) -> str:
     head = (
         '<link rel="preconnect" href="https://esm.sh">\n'
         '<link rel="preload" href="payload.json" as="fetch" type="application/json" crossorigin="anonymous">\n'
-        f'<script defer src="../assets/graph.js?v=payload-fetch"></script>\n'
+        f'<script defer src="../assets/graph.js?v=graph-explore-v13"></script>\n'
         '<script type="module">\n'
         '  // Load 3D + 2D force-graph plus three.js peer dep from esm.sh.\n'
         '  // We attach the constructors to ``window`` so the deferred\n'
@@ -1823,7 +1823,7 @@ def render_graph_view(ctx: SiteContext) -> str:
     body = f"""<header class="hero">
   <p class="eyebrow">interactive graph · 3D force layout</p>
   <h1>Knowledge graph</h1>
-  <p class="lead">Hover a node to inspect it. Click to open the page; ⌘/Ctrl-click to focus the camera. Drag to orbit, scroll to zoom. Press <kbd>/</kbd> to search, <kbd>f</kbd> to fit, <kbd>2</kbd>/<kbd>3</kbd> to switch projection.</p>
+  <p class="lead">Tap or click a node to zoom into that entity and inspect its neighbors; tap the same node again to open its page. Tap an edge to focus the relationship first, then tap it again to open the target page. Drag to orbit, scroll/pinch to zoom. Press <kbd>/</kbd> to search, <kbd>f</kbd> to fit, <kbd>2</kbd>/<kbd>3</kbd> to switch projection.</p>
 </header>
 <section class="graph-page" aria-label="Knowledge graph visualization">
   <div class="graph-toolbar" role="toolbar" aria-label="Graph controls">
