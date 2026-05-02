@@ -498,6 +498,40 @@ def serve_stdio(server: LLMWikiMCPServer, stdin=sys.stdin, stdout=sys.stdout) ->
             stdout.flush()
 
 
+def _resolve_auth_token_to_user_id(token: str) -> str:
+    """Resolve a HypePaper MCP auth token to its owning user_id.
+
+    Lazy-imports the HypePaper backend so the LLM-Wiki package keeps
+    zero hard dependency on it. Runs the async lookup in a fresh event
+    loop and returns the user_id as a string. Raises ``RuntimeError``
+    with a clear message if the token is unknown / expired / revoked,
+    or if the HypePaper backend isn't importable.
+    """
+    try:
+        from src.core.database import AsyncSessionLocal
+        from src.features.wiki.mcp_token_service import WikiMcpTokenService
+    except ImportError as exc:  # pragma: no cover — import error path
+        raise RuntimeError(
+            "--auth-token requires the HypePaper backend to be importable "
+            "(set PYTHONPATH to hypepaper/backend, or install it as a package)."
+        ) from exc
+
+    async def _lookup() -> Optional[str]:
+        async with AsyncSessionLocal() as session:
+            user = await WikiMcpTokenService.get_user_from_token(token, session)
+            return str(user.id) if user else None
+
+    import asyncio
+
+    user_id = asyncio.run(_lookup())
+    if not user_id:
+        raise RuntimeError(
+            "Auth token is invalid, expired, or revoked. Mint a fresh "
+            "token from your HypePaper account settings."
+        )
+    return user_id
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Run the LLM-Wiki ResearchGraph MCP stdio server.")
     parser.add_argument("--graph", help="Default ResearchGraph JSON file used when tool calls omit graph_path")
@@ -508,18 +542,35 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument(
         "--graph-store-url",
         help=(
-            "URL of a backing GraphStore, e.g. sqlite:///path/to.db. "
-            "Postgres URLs are reserved for the HypePaper integration. "
+            "URL of a backing GraphStore, e.g. sqlite:///path/to.db or "
+            "hypepaper-postgres://user:pass@host/db (HypePaper integration). "
             "When set, tool calls without graph_path/project read from this store."
         ),
     )
+    parser.add_argument(
+        "--auth-token",
+        help=(
+            "HypePaper MCP token (mint via Account Settings > MCP Tokens). "
+            "When set, the token is resolved to the owning user_id at startup, "
+            "and Postgres tool calls are scoped to that user's private graph layer. "
+            "Requires --graph-store-url to point at a hypepaper-postgres:// URL."
+        ),
+    )
     args = parser.parse_args(argv)
+
+    # Resolve auth token → user_id at startup so a bad token fails fast.
+    owner_user_id: Optional[str] = None
+    if args.auth_token:
+        owner_user_id = _resolve_auth_token_to_user_id(args.auth_token)
+
     graph_store = None
     if args.graph_store_url:
         # Lazy import to keep the resolver path independent of the rest of the module.
         from .graph_stores.url_resolver import resolve_graph_store
 
-        graph_store = resolve_graph_store(args.graph_store_url)
+        graph_store = resolve_graph_store(
+            args.graph_store_url, owner_user_id=owner_user_id
+        )
     serve_stdio(
         LLMWikiMCPServer(
             default_graph_path=args.graph,

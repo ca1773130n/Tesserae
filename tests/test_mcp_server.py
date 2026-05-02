@@ -163,16 +163,39 @@ def test_resolve_graph_store_sqlite_url(tmp_path):
     assert isinstance(store, SqliteGraphStore)
 
 
-def test_resolve_graph_store_postgres_url_raises_notimplementederror():
-    """Postgres URLs are reserved for the HypePaper integration."""
-    with pytest.raises(NotImplementedError, match="HypePaper"):
-        resolve_graph_store("postgresql://localhost/x")
-    with pytest.raises(NotImplementedError):
-        resolve_graph_store("postgres://localhost/x")
-    with pytest.raises(NotImplementedError):
-        resolve_graph_store("postgresql+asyncpg://localhost/x")
-    with pytest.raises(NotImplementedError):
-        resolve_graph_store("hypepaper-postgres://localhost/x")
+def test_resolve_graph_store_postgres_url_requires_hypepaper(monkeypatch):
+    """Postgres URLs lazy-import the HypePaper backend.
+
+    When the HypePaper backend is NOT importable (the LLM-Wiki repo's
+    standalone test environment), resolve_graph_store should raise
+    ImportError with a clear message pointing at the HypePaper
+    integration. When it IS importable, it should return a
+    GraphStore-conforming wrapper.
+    """
+    import builtins
+    import importlib
+
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        # Block the HypePaper-side imports so we exercise the ImportError branch
+        if name.startswith("src.features.wiki") or name.startswith("src.core.database"):
+            raise ImportError(f"No module named {name!r} (test stub)")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    # Force re-import of the resolver under the fake_import scope so the
+    # lazy import inside resolve_graph_store triggers our stub.
+    importlib.invalidate_caches()
+
+    for url in (
+        "postgresql://localhost/x",
+        "postgres://localhost/x",
+        "postgresql+asyncpg://localhost/x",
+        "hypepaper-postgres://localhost/x",
+    ):
+        with pytest.raises(ImportError, match="HypePaper"):
+            resolve_graph_store(url)
 
 
 def test_resolve_graph_store_unknown_scheme_raises_valueerror():
@@ -237,3 +260,73 @@ def test_main_accepts_graph_store_url_flag(tmp_path, monkeypatch):
     assert rc == 0
     assert captured["server"].graph_store is not None
     assert isinstance(captured["server"].graph_store, SqliteGraphStore)
+
+
+def test_main_auth_token_resolves_user_and_scopes_postgres_store(monkeypatch):
+    """--auth-token resolves to a user_id and is forwarded to the resolver.
+
+    Mocks both the HypePaper-side token lookup and the resolver so we
+    exercise the CLI plumbing without needing the HypePaper backend
+    importable in the LLM-Wiki test environment.
+    """
+    from llm_wiki import mcp_server as mcp_module
+
+    captured = {}
+
+    # Stub the auth-token lookup to return a stable user_id.
+    monkeypatch.setattr(
+        mcp_module,
+        "_resolve_auth_token_to_user_id",
+        lambda token: "11111111-2222-3333-4444-555555555555",
+    )
+
+    # Stub the resolver to capture the owner_user_id keyword.
+    def fake_resolve_graph_store(url, *, owner_user_id=None):
+        captured["url"] = url
+        captured["owner_user_id"] = owner_user_id
+        # Return a sentinel so LLMWikiMCPServer accepts it.
+        sentinel = object()
+        return sentinel
+
+    monkeypatch.setattr(
+        "llm_wiki.graph_stores.url_resolver.resolve_graph_store",
+        fake_resolve_graph_store,
+    )
+
+    def fake_serve(server, *args, **kwargs):
+        captured["server"] = server
+
+    monkeypatch.setattr(mcp_module, "serve_stdio", fake_serve)
+
+    rc = mcp_module.main(
+        [
+            "--graph-store-url",
+            "hypepaper-postgres://user:pw@localhost/hypepaper",
+            "--auth-token",
+            "tok_abc123",
+        ]
+    )
+
+    assert rc == 0
+    assert captured["url"] == "hypepaper-postgres://user:pw@localhost/hypepaper"
+    assert captured["owner_user_id"] == "11111111-2222-3333-4444-555555555555"
+
+
+def test_main_auth_token_rejects_invalid_token(monkeypatch):
+    """When --auth-token is invalid, main exits with a clear RuntimeError."""
+    from llm_wiki import mcp_server as mcp_module
+
+    def fake_resolver(token):
+        raise RuntimeError("Auth token is invalid, expired, or revoked.")
+
+    monkeypatch.setattr(mcp_module, "_resolve_auth_token_to_user_id", fake_resolver)
+
+    with pytest.raises(RuntimeError, match="invalid"):
+        mcp_module.main(
+            [
+                "--graph-store-url",
+                "hypepaper-postgres://localhost/x",
+                "--auth-token",
+                "bogus",
+            ]
+        )
