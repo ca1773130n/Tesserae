@@ -636,17 +636,31 @@ def resolve_project_input(project_root: Path, item: str | Path) -> Path:
 
 
 def iter_markdown_files(path: Path) -> List[Path]:
+    """Walk ``path`` and return the ``.md`` files inside it.
+
+    Thin wrapper over :class:`FilesystemSourceLoader` (the hexagonal
+    ``SourceLoader`` adapter) so the FS-walking logic lives in one place.
+    Behavior matches the legacy inline walker:
+
+    * Single-file ``path`` returns ``[path]`` if it is a ``.md`` file, else
+      ``[]``.
+    * Missing ``path`` raises :class:`FileNotFoundError` (preserved here for
+      backward compatibility — the loader itself is forgiving).
+    * Directory ``path`` is walked recursively; hidden components
+      (dot-prefix) are skipped; results are sorted deterministically.
+    """
+    from .source_loaders import FilesystemSourceLoader
+
     if path.is_file():
         return [path] if path.suffix.lower() == ".md" else []
     if not path.exists():
         raise FileNotFoundError(f"Input path does not exist: {path}")
-    files = []
-    for child in sorted(path.rglob("*.md")):
-        rel = child.relative_to(path)
-        if any(part.startswith(".") for part in rel.parts):
-            continue
-        files.append(child)
-    return files
+    loader = FilesystemSourceLoader([path], extensions=(".md",))
+    # We only need the absolute paths — bypass content reads by walking the
+    # internal iterator directly. ``discover()`` reads file bodies eagerly,
+    # which would be wasteful here since downstream consumers re-read the
+    # file via :class:`BatchIngestRunner`.
+    return list(loader._iter_files(path))
 
 
 def sanitize_server_name(value: str) -> str:
