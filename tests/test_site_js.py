@@ -227,10 +227,13 @@ def test_graph_selection_fades_and_deprioritizes_non_neighbors():
 
 
 def test_graph_edges_are_visible_lines_not_only_particles():
-    assert "rgba(191,219,254,0.34)" in JS_GRAPH
-    # Issue 4 — keep base edge opacity at 0.35 so non-incident edges
-    # read as faint background structure; incident edges get the bump
-    # via the linkColor accessor (EDGE_COLOR_HOT at 0.85 alpha).
+    # Default edge: WHITE at 0.5 alpha. Hot (hovered/focused incident): YELLOW
+    # at 0.5 alpha. Same alpha across the two states — the cue is the colour
+    # shift, not a brightness jump. Forbid the prior light-blue / 0.85 yellow.
+    assert "rgba(255,255,255,0.5)" in JS_GRAPH
+    assert "rgba(250,204,21,0.5)" in JS_GRAPH
+    assert "rgba(191,219,254,0.34)" not in JS_GRAPH
+    assert "rgba(250,204,21,0.85)" not in JS_GRAPH
     assert "if (inst.linkOpacity) inst.linkOpacity(0.35);" in JS_GRAPH
     # Issue 4 — edges thinner everywhere. Default 0.25, incident 0.9.
     assert "function isHoverIncidentLink" in JS_GRAPH

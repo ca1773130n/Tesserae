@@ -757,12 +757,16 @@ JS_GRAPH = r"""
     questions: '#facc15',
     other:     '#cbd5e1'
   };
-  var EDGE_COLOR_LIGHT = 'rgba(191,219,254,0.34)';
-  var EDGE_COLOR_DIM   = 'rgba(148,163,184,0.012)';
-  // Issue 4 — hot edges (incident to focus or hover) jump to 0.85 alpha
-  // so they pop against the calm 0.34 baseline. Pure yellow particles
+  // Default edge: WHITE at 0.5 alpha. Hot (hovered/focused incident): YELLOW
+  // at 0.5 alpha. Dim (everything else when a focus is active): white at very
+  // low alpha so it's still implied without dominating.
+  var EDGE_COLOR_LIGHT = 'rgba(255,255,255,0.5)';
+  var EDGE_COLOR_DIM   = 'rgba(255,255,255,0.05)';
+  // Issue 4 — hot edges (incident to focus or hover) get pure yellow at
+  // 0.5 alpha — same alpha as the white default so the "lit" cue is the
+  // colour shift, not a brightness jump. Yellow particles
   // ride on top — the color stays warm but readable across themes.
-  var EDGE_COLOR_HOT   = 'rgba(250,204,21,0.85)';
+  var EDGE_COLOR_HOT   = 'rgba(250,204,21,0.5)';
   var THREE_URL = 'https://esm.sh/three@0.169.0';
 
   var GROUP_HSL = {
