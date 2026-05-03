@@ -298,10 +298,6 @@ def test_authors_extracted_for_known_paper(
     )
 
 
-@pytest.mark.xfail(
-    reason="awaiting subagent W fix for F-4: dataset/benchmark/result extractors not implemented",
-    strict=True,
-)
 def test_benchmarks_and_datasets_extracted_for_known_papers(
     corpus_nodes: List[ResearchNode], corpus_edges: List[ResearchEdge]
 ) -> None:

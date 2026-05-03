@@ -386,6 +386,13 @@ def build_wiki_link_resolver(
     repo_by_arxiv: dict[str, object] = {}
     paper_by_arxiv: dict[str, object] = {}
 
+    # ``Paper`` nodes whose ``title_quality`` is one of ``arxiv_only`` /
+    # ``invalid`` / ``needs_metadata`` are intentionally hidden by the wiki
+    # projector (see ``research_graph.is_public_research_node``). Indexing
+    # them here would let the resolver mint hrefs to pages that were never
+    # written, producing the bulk of the ``DANGLING_HTML_LINK`` findings.
+    _verified_qualities = {"paper_file", "verified", "reference_context"}
+
     nodes = getattr(graph, "nodes", None) or []
     for node in nodes:
         node_type = getattr(node, "type", None)
@@ -402,6 +409,9 @@ def build_wiki_link_resolver(
             if isinstance(arxiv_id, str) and arxiv_id:
                 repo_by_arxiv.setdefault(arxiv_id, node)
         elif type_str == "Paper":
+            quality = str(meta.get("title_quality") or "")
+            if quality and quality not in _verified_qualities:
+                continue
             arxiv_id = meta.get("arxiv_id")
             if isinstance(arxiv_id, str) and arxiv_id:
                 paper_by_arxiv.setdefault(arxiv_id, node)
@@ -423,12 +433,28 @@ def build_wiki_link_resolver(
         if not kind or not key:
             return None
         if kind == "papers":
-            # Curated digests use ``papers/<arxiv>/repo.md`` → repo page.
+            # ``papers/<arxiv>/paper.md`` → the LLM-Wiki paper detail page.
+            # We prefer the paper node here so the rewriter at the call
+            # site builds a real ``../papers/<paper-slug>.html`` href; the
+            # previous implementation preferred the repo companion which
+            # produced ``../papers/<repo-slug>.html`` dangling hrefs (the
+            # repo page lives under ``/repos/``, not ``/papers/``).
+            node = paper_by_arxiv.get(key)
+            if node is not None:
+                slug = _slug_for(node)
+                if slug:
+                    return slug
+            # Fallback: surface the repo companion's slug so callers that
+            # still want the GitHub-analysis page (``papers/<id>/repo.md``)
+            # can find it. The rewriter routes the result under ``/repos/``.
             node = repo_by_arxiv.get(key)
             if node is not None:
                 return _slug_for(node)
-            # Fallback: the paper page itself, if no companion repo exists.
-            node = paper_by_arxiv.get(key)
+            return None
+        if kind == "papers-repo":
+            # Explicit lookup for the curated ``papers/<arxiv>/repo.md``
+            # shorthand: always return the repo companion's slug.
+            node = repo_by_arxiv.get(key)
             if node is not None:
                 return _slug_for(node)
             return None
@@ -481,6 +507,25 @@ def _render_markdown_body(
         if "?" in rest:
             rest, q = rest.split("?", 1)
             query = "?" + q
+        # Project-file references in docs (``[research_graph.py](../llm_wiki/research_graph.py)``)
+        # used to fall through unchanged and 404. The raw viewer can render
+        # any project-relative file path, so resolve these against the doc's
+        # own directory and emit a ``../raw/<safe>.html`` href.
+        if (
+            project_root is not None
+            and not rest.endswith(".md")
+            and "." in rest.rsplit("/", 1)[-1]
+            and not any(part in {".", ".."} for part in rest.split("/")[-1:])
+        ):
+            try:
+                resolved = (absolute.parent / rest).resolve()
+                if resolved.is_file():
+                    project_rel = resolved.relative_to(project_root)
+                    href = raw_href(project_root, str(project_rel), depth=1)
+                    if href:
+                        return f"{href}{query}{fragment}"
+            except (ValueError, OSError):
+                pass
         if not rest.endswith(".md"):
             return target
         # arxiv-paper shorthand: papers/<id>/paper|main|abstract.md.
@@ -503,19 +548,35 @@ def _render_markdown_body(
                     return f"../papers/{slug}.html{query}{fragment}"
             return f"https://arxiv.org/abs/{arxiv_id}{query}{fragment}"
         # arxiv-repo shorthand: papers/<id>/repo.md → canonical repo page.
+        # Weekly digests prefix the same shorthand with ``daily/<date>/``;
+        # accept both forms so links from weekly summaries also resolve.
         if wiki_link_resolver is not None:
             m_repo = re.fullmatch(
-                r"(?:\.\./)*papers/(\d{4}\.\d{4,6})/repo\.md",
+                r"(?:\.\./)*(?:daily/\d{4}-\d{2}-\d{2}/)?papers/(\d{4}\.\d{4,6})/repo\.md",
                 rest,
                 flags=re.IGNORECASE,
             )
             if m_repo:
-                slug = wiki_link_resolver("papers", m_repo.group(1))
+                slug = wiki_link_resolver("papers-repo", m_repo.group(1))
                 if slug:
                     return f"../repos/{slug}.html{query}{fragment}"
+            # Weekly-digest paper shorthand: ``daily/<date>/papers/<id>/(paper|main|abstract).md``.
+            m_paper_daily = re.fullmatch(
+                r"(?:\.\./)*daily/\d{4}-\d{2}-\d{2}/papers/(\d{4}\.\d{4,6})/(?:paper|main|abstract)\.md",
+                rest,
+                flags=re.IGNORECASE,
+            )
+            if m_paper_daily:
+                arxiv_id = m_paper_daily.group(1)
+                slug = wiki_link_resolver("papers", arxiv_id)
+                if slug:
+                    return f"../papers/{slug}.html{query}{fragment}"
+                return f"https://arxiv.org/abs/{arxiv_id}{query}{fragment}"
             # repo shorthand: repos/<owner>_<repo>.md → canonical repo page.
+            # ``daily/<date>/repos/<owner>_<repo>.md`` is the weekly digest
+            # form of the same convention.
             m_repo2 = re.fullmatch(
-                r"(?:\.\./)*repos/([^/]+)\.md",
+                r"(?:\.\./)*(?:daily/\d{4}-\d{2}-\d{2}/)?repos/([^/]+)\.md",
                 rest,
                 flags=re.IGNORECASE,
             )

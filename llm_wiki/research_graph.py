@@ -487,6 +487,16 @@ class ResearchGraphExtractor:
         if source_type in {ResearchNodeType.SOURCE_DOCUMENT, ResearchNodeType.REPOSITORY, ResearchNodeType.PROJECT}:
             self._add_document_structure(builder, paper, registry_concept_headings, source_path)
             self._extract_paper_references(builder, paper, text, source_path)
+            # Repository / source-document bodies (curated GitHub READMEs,
+            # weekly digests, daily raw bundles) frequently mention canonical
+            # benchmark and metric names that the curated paper.md set never
+            # references directly. Run the registry-driven eval extractor
+            # here too so those mentions surface as Benchmark / Dataset /
+            # Metric / Result nodes. This is precision-first — the registry
+            # contains only canonical names, so the false-positive risk is
+            # low; ``builder.add_node`` is content-addressed so duplicates
+            # against the paper-side extraction collapse cleanly.
+            self._extract_repo_eval_entities(builder, paper, text, source_path)
             return builder.build()
 
         # Hard gate: if a paper.md failed to produce a verifiable title, we
@@ -736,6 +746,65 @@ class ResearchGraphExtractor:
             )
             builder.add_edge(paper, "uses", node)
 
+    def _extract_repo_eval_entities(
+        self,
+        builder: ResearchGraphBuilder,
+        repo: ResearchNode,
+        text: str,
+        source_path: Optional[str],
+    ) -> None:
+        """Surface Benchmark/Dataset/Metric/Result nodes from repo READMEs.
+
+        Repositories tied to research papers often expose evaluation
+        artefacts the abstract never mentions verbatim (long-form READMEs,
+        ``checkpoints/`` tables, training protocol notes). Running the
+        registry-driven extractor here keeps those mentions in the public
+        graph so the wiki can surface "this repo evaluates on COCO/KITTI".
+        ``builder.add_node`` is content-addressed, so duplicates against
+        the paper-side extraction collapse cleanly.
+        """
+        datasets, benchmarks, metrics, results = extract_eval_entities(text)
+        for ds in datasets:
+            ds_node = builder.add_node(
+                ds, ResearchNodeType.DATASET, source_path=source_path
+            )
+            builder.add_edge(repo, "uses_dataset", ds_node)
+        for bm in benchmarks:
+            bm_node = builder.add_node(
+                bm, ResearchNodeType.BENCHMARK, source_path=source_path
+            )
+            builder.add_edge(repo, "evaluated_on", bm_node)
+        for m in metrics:
+            metric_node = builder.add_node(
+                m, ResearchNodeType.METRIC, source_path=source_path
+            )
+            builder.add_edge(repo, "uses_metric", metric_node)
+        for result in results:
+            result_node = builder.add_node(
+                result["name"],
+                ResearchNodeType.RESULT,
+                description=result.get("evidence", ""),
+                source_path=source_path,
+                metadata={
+                    "metric": result.get("metric"),
+                    "value": result.get("value"),
+                    "benchmark": result.get("benchmark"),
+                },
+            )
+            builder.add_edge(repo, "reports_result", result_node)
+            metric = result.get("metric")
+            if metric:
+                metric_node = builder.add_node(
+                    metric, ResearchNodeType.METRIC, source_path=source_path
+                )
+                builder.add_edge(result_node, "uses_metric", metric_node)
+            benchmark = result.get("benchmark")
+            if benchmark:
+                bm_node = builder.add_node(
+                    benchmark, ResearchNodeType.BENCHMARK, source_path=source_path
+                )
+                builder.add_edge(result_node, "evaluated_on", bm_node)
+
     def _add_contribution_claims(
         self,
         builder: ResearchGraphBuilder,
@@ -797,6 +866,7 @@ class ResearchGraphExtractor:
         text: str,
         source_path: Optional[str],
     ) -> None:
+        claims_added: List[ResearchNode] = []
         for sentence in extract_performance_claims(text):
             claim = builder.add_node(
                 "Performance claim: " + truncate(sentence, 96),
@@ -807,6 +877,52 @@ class ResearchGraphExtractor:
             span = self._add_evidence(builder, paper, sentence, source_path)
             builder.add_edge(paper, "supports_claim", claim, evidence=sentence)
             builder.add_edge(claim, "evidenced_by", span, evidence=sentence)
+            claims_added.append(claim)
+
+        # Tie performance claims to numeric Results from the same paper. We
+        # rescan the body once at paper level (a sentence-level scan misses
+        # cases where the claim and the number live in adjacent sentences,
+        # which is the common pattern in arXiv abstracts). Each claim gets
+        # ``supports_claim`` edges to every Result node minted from the same
+        # extraction pass so readers can navigate "this claim is backed by N
+        # concrete numbers". ``builder.add_node`` is content-addressed, so
+        # the Result nodes here de-duplicate against any minted by
+        # :meth:`_extract_typed_entities` for the same paper.
+        if not claims_added:
+            return
+        _, _, _, paper_results = extract_eval_entities(text)
+        if not paper_results:
+            return
+        for result in paper_results:
+            result_node = builder.add_node(
+                result["name"],
+                ResearchNodeType.RESULT,
+                description=result.get("evidence", ""),
+                source_path=source_path,
+                metadata={
+                    "metric": result.get("metric"),
+                    "value": result.get("value"),
+                    "benchmark": result.get("benchmark"),
+                },
+            )
+            for claim in claims_added:
+                builder.add_edge(claim, "supports_claim", result_node)
+            metric = result.get("metric")
+            if metric:
+                metric_node = builder.add_node(
+                    metric,
+                    ResearchNodeType.METRIC,
+                    source_path=source_path,
+                )
+                builder.add_edge(result_node, "uses_metric", metric_node)
+            benchmark = result.get("benchmark")
+            if benchmark:
+                bm_node = builder.add_node(
+                    benchmark,
+                    ResearchNodeType.BENCHMARK,
+                    source_path=source_path,
+                )
+                builder.add_edge(result_node, "evaluated_on", bm_node)
 
     def _connect_related_terms(self, builder: ResearchGraphBuilder, terms: Sequence[ResearchNode], text: str) -> None:
         names = {term.name: term for term in terms}
@@ -1727,7 +1843,23 @@ def extract_organizations(text: str) -> List[str]:
 def extract_eval_entities(
     text: str,
 ) -> Tuple[List[str], List[str], List[str], List[Dict[str, object]]]:
-    """Return (datasets, benchmarks, metrics, results) extracted from ``text``."""
+    """Return (datasets, benchmarks, metrics, results) extracted from ``text``.
+
+    The ``results`` list captures numeric measurements anchored on a known
+    metric token. Three precision-first patterns are recognised:
+
+    1. ``metric value on benchmark`` (e.g. ``PSNR=32.5 on DTU``) — the
+       canonical "complete" form, emits a Result with all three fields set.
+    2. ``value <unit> metric`` (e.g. ``28.5 dB PSNR``, ``47.2% mIoU``) —
+       common in abstracts; emits a Result with metric+value, no benchmark.
+    3. ``metric value`` / ``value metric`` without a benchmark phrase
+       (e.g. ``mIoU 47.2``, ``FID 12.3``) — last-resort form, kept narrow
+       so we don't false-positive on prose like ``F1 score``.
+
+    Patterns 2 and 3 emit a Result but leave ``benchmark=None``; the caller
+    can still use them to wire ``Paper -reports_result-> Result -uses_metric->
+    Metric`` even when the surrounding sentence doesn't name a benchmark.
+    """
     from .term_registry import (
         benchmark_registry,
         dataset_registry,
@@ -1744,6 +1876,30 @@ def extract_eval_entities(
     datasets = [d for d in datasets if d not in set(benchmarks)]
 
     results: List[Dict[str, object]] = []
+    seen_results: Set[str] = set()
+
+    def _add_result(
+        metric: str, value: str, benchmark: Optional[str], evidence: str
+    ) -> None:
+        if benchmark:
+            name = f"{metric}={value} on {benchmark}"
+        else:
+            name = f"{metric}={value}"
+        if name in seen_results:
+            return
+        seen_results.add(name)
+        # Always emit ``benchmark`` (``None`` when absent) so downstream
+        # consumers and tests can index the key unconditionally.
+        results.append(
+            {
+                "name": name,
+                "metric": metric,
+                "value": value,
+                "benchmark": benchmark,
+                "evidence": evidence,
+            }
+        )
+
     metric_pattern = "|".join(re.escape(m) for m in metric_registry())
     bench_pattern = "|".join(re.escape(b) for b in benchmark_registry())
     if metric_pattern and bench_pattern:
@@ -1752,18 +1908,41 @@ def extract_eval_entities(
             re.IGNORECASE,
         )
         for match in result_re.finditer(cleaned):
-            metric = match.group(1)
-            value = match.group(2)
-            benchmark = match.group(3)
-            results.append(
-                {
-                    "name": f"{metric}={value} on {benchmark}",
-                    "metric": metric,
-                    "value": value,
-                    "benchmark": benchmark,
-                    "evidence": match.group(0),
-                }
+            _add_result(
+                match.group(1), match.group(2), match.group(3), match.group(0)
             )
+
+    if metric_pattern:
+        # Pattern 2: ``value <unit> metric`` — covers ``28.5 dB PSNR``,
+        # ``47.2% mIoU``, etc. The unit token is optional but constrained
+        # to a small whitelist to avoid false positives.
+        unit_value_re = re.compile(
+            rf"\b([0-9]+(?:\.[0-9]+)?)\s*(?:dB|%|pts?)?\s+({metric_pattern})\b",
+            re.IGNORECASE,
+        )
+        for match in unit_value_re.finditer(cleaned):
+            _add_result(
+                match.group(2),
+                match.group(1),
+                None,
+                match.group(0).strip(),
+            )
+
+        # Pattern 3: ``metric value`` (no ``on benchmark`` tail). Kept after
+        # patterns 1 and 2 so the ``seen_results`` dedupe drops weaker
+        # signals when a stronger form already fired.
+        metric_value_re = re.compile(
+            rf"\b({metric_pattern})\s*(?:=|:|of)?\s*([0-9]+(?:\.[0-9]+)?)\b",
+            re.IGNORECASE,
+        )
+        for match in metric_value_re.finditer(cleaned):
+            _add_result(
+                match.group(1),
+                match.group(2),
+                None,
+                match.group(0).strip(),
+            )
+
     results.sort(key=lambda r: r["name"])
     return datasets, benchmarks, metrics, results
 
@@ -1893,10 +2072,19 @@ def extract_open_questions(text: str) -> List[str]:
 _PERFORMANCE_PATTERNS: Tuple[str, ...] = (
     r"\b(?:improves?|improved|achiev(?:e|es|ed))\b",
     r"\bbetter\b",
-    r"\b(?:state[- ]of[- ]the[- ]art|sota)\b",
+    # ``state-of-the-art`` followed by Korean particles (``를``/``을``/``의``)
+    # used to slip past the trailing ``\b`` boundary because Hangul codepoints
+    # are word characters in the ``re`` module. Match the English phrase as a
+    # standalone token instead so a sentence like
+    # ``새로운 state-of-the-art를 수립하며`` still fires the performance gate.
+    r"(?:^|[^A-Za-z0-9])(?:state[- ]of[- ]the[- ]art|sota)(?:[^A-Za-z0-9]|$)",
     r"성능",
-    r"달성한다",
+    r"달성(?:한다|했(?:다|고|으며))",
     r"우수한",
+    # Korean abstracts often phrase numeric improvements as ``X% 감소``,
+    # ``X% 향상``, or ``X% 개선`` without the ``state-of-the-art`` token. These
+    # forms are precision-first: the ``%`` anchor keeps prose noise out.
+    r"\d+(?:\.\d+)?\s*%\s*(?:감소|향상|개선|증가)",
 )
 
 

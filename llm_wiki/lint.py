@@ -27,7 +27,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, FrozenSet, Iterable, List, Optional, Tuple
 
 
 # --------------------------------------------------------------------------- types
@@ -392,10 +392,18 @@ class WikiLinter:
         # ``daily-digest-2026-04-30.md``). The ghost-input check validates
         # them from the other direction; mixing the two here would just
         # produce a wave of false positives.
+        #
+        # We also mirror :func:`llm_wiki.research_graph.is_public_research_node`
+        # here: nodes that the projector intentionally skips (e.g. ``Paper``
+        # entries whose ``title_quality`` is ``arxiv_only``/``needs_metadata``/
+        # ``invalid``, or any node whose ``source_path`` is a social feed
+        # capture) must not surface as drift findings.
         expected: Dict[Tuple[str, str], str] = {}
         for node_id, node in nodes_by_id.items():
             kind = _KIND_FOR_TYPE.get(node.get("type", ""))
             if kind is None or kind == "syntheses":
+                continue
+            if not _node_is_public(node):
                 continue
             slug = _slug_for(node.get("name", "") or node_id)
             expected[(kind, slug)] = node_id
@@ -790,12 +798,65 @@ _KIND_FOR_TYPE: Dict[str, str] = {
 }
 
 
-_SLUG_NON_ALNUM = re.compile(r"[^a-z0-9]+")
+# Same set used by ``research_graph.VERIFIED_PAPER_TITLE_QUALITIES``. Kept as
+# a flat tuple so the linter has zero import-time dependency on
+# ``research_graph`` (which keeps lint runnable against arbitrary graphs).
+_VERIFIED_PAPER_TITLE_QUALITIES: FrozenSet[str] = frozenset(
+    {"paper_file", "verified", "reference_context"}
+)
+
+
+# Mirror of :data:`research_graph._DAILY_FEEDS_RE` — recognises the social
+# feed capture sub-tree that the projector deliberately omits from public
+# wiki pages. Anything under ``data/research/daily/<date>/feeds/`` is treated
+# as private evidence rather than a public research entity.
+_LINT_FEED_PATH_RE = re.compile(r"data/research/daily/[^/]+/feeds/")
+
+
+def _node_is_public(node: Dict[str, object]) -> bool:
+    """True iff ``node`` would survive ``is_public_research_node()``.
+
+    Mirrors ``research_graph.is_public_research_node`` against the JSON
+    payload shape (no enum types). Two gates: source-path social-feed filter
+    and the paper title-quality gate.
+    """
+    source_path = node.get("source_path") or ""
+    if isinstance(source_path, str) and _LINT_FEED_PATH_RE.search(
+        source_path.replace("\\", "/")
+    ):
+        return False
+    if node.get("type") == "Paper":
+        metadata = node.get("metadata") or {}
+        if isinstance(metadata, dict):
+            quality = str(metadata.get("title_quality") or "")
+            if quality and quality not in _VERIFIED_PAPER_TITLE_QUALITIES:
+                return False
+    return True
 
 
 def _slug_for(name: str) -> str:
-    cleaned = _SLUG_NON_ALNUM.sub("-", name.lower()).strip("-")
-    return cleaned or "node"
+    """Canonical slug — byte-identical to :func:`WikiPageStore.slug_for`.
+
+    Mirrors the algorithm in ``llm_wiki.wiki_store._canonical_slug`` (and
+    ``llm_wiki.site.pages._canonical_slug``) so the linter computes the same
+    on-disk filename that the projector would write. The previous
+    implementation was ASCII-only via ``[^a-z0-9]+``, which silently produced
+    different slugs for names containing CJK / accented characters and
+    therefore reported phantom forward + reverse drift.
+    """
+    import hashlib
+
+    safe = "".join(ch.lower() if ch.isalnum() else "-" for ch in name).strip("-")
+    while "--" in safe:
+        safe = safe.replace("--", "-")
+    if len(safe.encode("utf-8")) > 96:
+        digest = hashlib.sha1(name.encode("utf-8")).hexdigest()[:8]
+        safe = (
+            safe.encode("utf-8")[:80].decode("utf-8", errors="ignore").strip("-")
+            + "-"
+            + digest
+        )
+    return safe or hashlib.sha1(name.encode("utf-8")).hexdigest()[:12]
 
 
 def _claim_text(node: Dict[str, object]) -> str:
