@@ -203,35 +203,37 @@ def test_main_graph_modifier_keeps_left_rail_visible():
     assert "var(--toc-w)" not in block.group(1)
 
 
-def test_graph_info_overlay_floats_inside_canvas_wrapper():
-    """Issue 1 — the focused-node panel folds into a floating overlay
-    anchored at the bottom-right of the canvas wrapper. Accent border,
-    surface background, slight shadow, with a description clamp that
-    keeps the overlay from blowing out vertically."""
-    assert ".graph-info-overlay" in CSS
-    assert ".graph-info-overlay .graph-info-panel" in CSS
-    assert ".graph-info-overlay .graph-info-title" in CSS
-    assert ".graph-info-overlay .graph-info-desc" in CSS
-    # 6-line clamp on the description block.
-    assert "-webkit-line-clamp: 6" in CSS
-    # Title wrapping for long node names.
-    assert "overflow-wrap: anywhere" in CSS
-    # Neighbor list rows for the JS-populated section.
-    assert ".graph-info-overlay .graph-neighbor-row" in CSS
-    assert ".graph-info-overlay .graph-neighbor-list" in CSS
-    # The bottom-right anchoring + size clamp comes from the desktop rule.
+def test_graph_cursor_tooltip_styles_present():
+    """Issue 2 — the bottom-right ``.graph-info-overlay`` panel is gone.
+    A cursor-following ``.graph-tooltip`` replaces it: dark-translucent
+    surface in dark theme, light-translucent in light theme, no display
+    toggling per interaction (we toggle ``hidden`` instead — that's how
+    we kill the page-blink the user reported)."""
+    assert ".graph-info-overlay" not in CSS
+    assert ".graph-tooltip" in CSS
+    # The hidden attribute selector is what gates visibility — no
+    # display: none thrashing on every hover.
+    assert ".graph-tooltip[hidden]" in CSS
     import re as _re
-    block = _re.search(
-        r"\.graph-info-overlay\s*\{([^}]*)\}", CSS,
-    )
-    assert block is not None
+    block = _re.search(r"^\.graph-tooltip\s*\{([^}]*)\}", CSS, _re.M)
+    assert block is not None, ".graph-tooltip rule missing"
     body = block.group(1)
+    # Spec: position absolute, pointer-events none, dark-translucent, blur,
+    # 6 px radius, 320 px max-width, 13 px font, z-index 50, fade transition.
     assert "position: absolute" in body
-    assert "right: 16px" in body and "bottom: 16px" in body
-    assert "clamp(280px, 26vw, 360px)" in body
-    assert "max-height: 60vh" in body
-    # Accent border ties it to the focused-node visual language.
-    assert "border-left: 3px solid var(--accent)" in body
+    assert "pointer-events: none" in body
+    assert "rgba(20,20,20,0.78)" in body
+    assert "color: #fff" in body
+    assert "backdrop-filter: blur(6px)" in body
+    assert "border-radius: 6px" in body
+    assert "padding: 10px 14px" in body
+    assert "max-width: 320px" in body
+    assert "font-size: 13px" in body
+    assert "z-index: 50" in body
+    assert "transition: opacity 100ms ease" in body
+    # Light-theme override flips the surface to a light translucent.
+    assert "[data-theme=\"light\"] .graph-tooltip" in CSS
+    assert "rgba(255,255,255,0.92)" in CSS
 
 
 def test_topbar_nav_active_uses_accent_with_bottom_border():

@@ -963,13 +963,14 @@ def test_timeline_day_uses_canonical_article_shell(site_ctx: SiteContext) -> Non
     assert "main--wide" not in out
 
 
-def test_render_graph_view_drops_right_rail_uses_floating_overlay(
+def test_render_graph_view_drops_right_rail_uses_cursor_tooltip(
     site_ctx: SiteContext,
 ) -> None:
-    """Issue 1 — the graph route no longer ships a right rail. The
-    focused-node info panel folds into a floating overlay anchored at
-    the bottom-right of the canvas wrapper. The canvas spans the full
-    content column width via the new ``main--graph`` shell modifier.
+    """Issue 2 — the bottom-right floating ``.graph-info-overlay`` panel
+    is GONE. The cursor-following ``#graph-tooltip`` (injected into
+    ``.graph-canvas-wrapper`` so the Fullscreen API still draws it on
+    top) replaces it for hover preview, and the focused node's label
+    sprite carries focus details inline.
     """
     out = render_graph_view(site_ctx)
     # main--graph modifier replaces main--wide; right rail is gone.
@@ -982,16 +983,19 @@ def test_render_graph_view_drops_right_rail_uses_floating_overlay(
     assert "toc toc--graph" not in out
     # Left rail (doc-tree explorer) stays — the rail is part of page_shell.
     assert '<aside class="rail"' in out
-    # Floating focused-node overlay carries the JS-contracted IDs.
-    assert 'class="graph-info-overlay"' in out
-    assert 'id="graph-info-panel"' in out
-    assert 'id="graph-info-empty"' in out
-    assert 'id="graph-info-content"' in out
-    assert 'id="graph-info-neighbors"' in out
-    # Empty state collapses to a "Selected node" pill so it doesn't
-    # dominate the canvas when nothing's focused.
-    assert "Selected node" in out
-    assert "Click a node" in out
+    # Issue 2 — every trace of the bottom-right overlay panel must be
+    # gone from the rendered HTML.
+    assert "graph-info-overlay" not in out
+    assert 'id="graph-info-panel"' not in out
+    assert 'id="graph-info-empty"' not in out
+    assert 'id="graph-info-content"' not in out
+    assert 'id="graph-info-neighbors"' not in out
+    assert "Selected node" not in out
+    # The cursor-following tooltip lives inside the canvas wrapper so
+    # the Fullscreen API draws it on top of the canvas.
+    assert 'id="graph-tooltip"' in out
+    assert 'class="graph-tooltip"' in out
+    assert 'hidden' in out  # tooltip starts hidden
     # Canvas wrapper carries the .graph-canvas class with CSS-controlled
     # dimensions (clamp(560px, 70vh, 880px) on desktop).
     assert '<div class="graph-canvas"' in out
@@ -1044,6 +1048,62 @@ def test_build_graph_payload_uses_sqrt_node_sizing(site_ctx: SiteContext) -> Non
         assert node["val"] >= 2.0
         # Cap is 200, so val never exceeds round(2 + sqrt(200) * 1.6, 2) = ~24.63.
         assert node["val"] <= round(2 + math.sqrt(200) * 1.6, 2) + 0.001
+
+
+def test_build_graph_payload_hides_person_nodes_and_authored_by_edges() -> None:
+    """Issue 5 — Person nodes (paper authors) and ``authored_by`` edges
+    are filtered out of the interactive graph payload. They stay in
+    ``graph.json`` (MCP / cognee see them); they only disappear from the
+    on-page visualization so the canvas isn't drowned by author chrome.
+    """
+    from llm_wiki.site.pages import _GRAPH_HIDDEN_TYPES, build_graph_payload
+    from llm_wiki.research_graph import ResearchEdge
+
+    # Sanity-check the hidden-types contract.
+    assert "Person" in _GRAPH_HIDDEN_TYPES
+
+    paper = ResearchNode(
+        id="Paper:scaling-laws:abc",
+        name="Scaling Laws for Neural Language Models",
+        type=ResearchNodeType.PAPER,
+    )
+    author = ResearchNode(
+        id="Person:kaplan:def",
+        name="Jared Kaplan",
+        type=ResearchNodeType.PERSON,
+    )
+    concept = ResearchNode(
+        id="Concept:scaling-laws:xyz",
+        name="Scaling laws",
+        type=ResearchNodeType.CONCEPT,
+    )
+    graph = ResearchGraph(
+        nodes=[paper, author, concept],
+        edges=[
+            ResearchEdge(source=paper.id, target=author.id, type="authored_by"),
+            ResearchEdge(source=concept.id, target=paper.id, type="mentioned_in"),
+        ],
+    )
+    ctx = SiteContext.build(graph=graph, wiki_pages_by_kind={})
+
+    payload = build_graph_payload(ctx)
+    nodes = payload["nodes"]
+    edges = payload["links"]
+
+    # No Person node in the payload, no authored_by edge either.
+    assert all(n.get("type") != "Person" for n in nodes), (
+        f"Person nodes leaked into the graph payload: "
+        f"{[n for n in nodes if n.get('type') == 'Person']!r}"
+    )
+    assert all(n.get("name") != "Jared Kaplan" for n in nodes)
+    assert all(e.get("type") != "authored_by" for e in edges), (
+        f"authored_by edges leaked into the graph payload: "
+        f"{[e for e in edges if e.get('type') == 'authored_by']!r}"
+    )
+    # The legitimate Concept node + its non-authored edge survive.
+    assert any(n.get("type") == "Paper" for n in nodes)
+    assert any(n.get("type") == "Concept" for n in nodes)
+    assert any(e.get("type") == "mentioned_in" for e in edges)
 
 
 def test_detail_page_keeps_sticky_toc_aside_for_long_articles(

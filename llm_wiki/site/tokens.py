@@ -1028,180 +1028,12 @@ details[open] > .doc-tree-folder-summary::before { transform: rotate(90deg); }
   }
 }
 .graph-page .graph-canvas canvas { display: block; width: 100% !important; height: 100% !important; }
-/* Floating focused-node info overlay (Issue 1).
-   Anchored at the bottom-right of the canvas wrapper. Empty state
-   collapses to a single "Selected node" pill via the muted small
-   typography and reduced padding so it doesn't dominate the canvas
-   when nothing is focused. JS toggles ``hidden`` on the empty/content/
-   neighbors children to swap states; ID contracts (graph-info-panel /
-   graph-info-empty / graph-info-content / graph-info-neighbors) are
-   preserved. */
-.graph-info-overlay {
-  position: absolute;
-  right: 16px;
-  bottom: 16px;
-  width: clamp(280px, 26vw, 360px);
-  max-height: 60vh;
-  overflow-y: auto;
-  z-index: 6;
-  background: color-mix(in srgb, var(--surface) 96%, transparent);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--accent-soft);
-  border-left: 3px solid var(--accent);
-  border-radius: var(--radius);
-  box-shadow: 0 12px 32px rgba(2, 6, 23, 0.18);
-  padding: 12px 14px;
-  font-family: var(--type-sans);
-  font-size: 0.86rem;
-  color: var(--ink);
-  pointer-events: auto;
-}
-.graph-info-overlay .graph-info-panel {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-.graph-info-overlay .graph-info-empty p { margin: 0 0 6px 0; }
-.graph-info-overlay .graph-info-empty {
-  font-size: 0.82rem;
-}
-.graph-info-overlay .graph-info-empty strong { color: var(--accent); }
-.graph-info-overlay .graph-info-title {
-  margin: 0 0 6px 0;
-  font-size: 1.05rem;
-  font-family: var(--type-serif);
-  line-height: 1.25;
-  color: var(--accent);
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-.graph-info-overlay .graph-info-meta {
-  margin: 0 0 8px 0;
-  font-family: var(--type-mono);
-  font-size: 0.74rem;
-  color: var(--ink-muted);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-.graph-info-overlay .graph-info-badge {
-  display: inline-block;
-  padding: 1px 8px;
-  border-radius: 999px;
-  color: #fff;
-  font-size: 0.68rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.graph-info-overlay .graph-info-degree { color: var(--ink-muted); }
-.graph-info-overlay .graph-info-desc {
-  margin: 0 0 10px 0;
-  font-family: var(--type-serif);
-  font-size: 0.86rem;
-  line-height: 1.4;
-  color: var(--ink);
-  display: -webkit-box;
-  -webkit-line-clamp: 6;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  overflow-wrap: anywhere;
-}
-.graph-info-overlay .graph-info-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
-.graph-info-overlay .graph-info-link,
-.graph-info-overlay .graph-info-button {
-  display: inline-block;
-  font-family: var(--type-mono);
-  font-size: 0.78rem;
-  color: var(--accent);
-  text-decoration: none;
-  background: transparent;
-  border: 1px solid var(--accent-soft);
-  border-radius: var(--radius);
-  padding: 4px 10px;
-  cursor: pointer;
-  transition: border-color 160ms ease, background 160ms ease;
-}
-.graph-info-overlay .graph-info-link:hover,
-.graph-info-overlay .graph-info-button:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-.graph-info-overlay .graph-info-button--ghost {
-  color: var(--ink-muted);
-  border-color: var(--rule);
-}
-.graph-info-overlay .graph-info-subhead {
-  margin: 10px 0 4px 0;
-  font-family: var(--type-mono);
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-muted);
-}
-.graph-info-overlay .graph-neighbor-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  max-height: 220px;
-  overflow-y: auto;
-}
-.graph-info-overlay .graph-neighbor-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 4px 6px;
-  font-family: var(--type-mono);
-  font-size: 0.76rem;
-  color: var(--ink);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  text-align: left;
-  cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease;
-}
-.graph-info-overlay .graph-neighbor-row:hover,
-.graph-info-overlay .graph-neighbor-row:focus-visible {
-  background: var(--surface-2);
-  border-color: var(--accent-soft);
-  outline: none;
-}
-.graph-info-overlay .graph-neighbor-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  flex-shrink: 0;
-}
-.graph-info-overlay .graph-neighbor-type {
-  flex-shrink: 0;
-  font-size: 0.66rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-muted);
-  padding: 1px 5px;
-  border-radius: 999px;
-  background: var(--surface-2);
-}
-.graph-info-overlay .graph-neighbor-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-[data-theme="dark"] .graph-info-overlay {
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-}
+/* (Removed Issue 2) The bottom-right floating focused-node info panel
+   is gone — it caused the page to blink on every click and gave the
+   user a redundant view of what the focused-node label sprite already
+   showed inline. The cursor-following tooltip below replaces it for
+   hover preview; the focused-node label sprite shows focus details
+   directly on the canvas. */
 /* Fullscreen mode (Issue 4). The wrapper covers the viewport; the
    toolbar sits on top, the legend bottom-left, the rail-style info panel
    is repositioned to the right inside the fullscreen container. */
@@ -1246,29 +1078,59 @@ details[open] > .doc-tree-folder-summary::before { transform: rotate(90deg); }
   border: 1px solid var(--rule);
   border-radius: var(--radius);
 }
-/* (Removed) Legacy in-canvas overlay panel scoped under .graph-page. The
-   focused-node overlay now lives at top-level inside .graph-canvas-wrapper
-   (selector ``.graph-info-overlay`` above) and supersedes those rules. */
-.graph-page .graph-tooltip {
+/* Cursor-following tooltip (Issue 2). Lives inside ``.graph-canvas-wrapper``
+   so the Fullscreen API still draws it on top of the canvas. JS sets
+   ``style.left`` / ``style.top`` per ``mousemove`` and toggles the ``hidden``
+   attribute on hover-in / hover-out — no display:none thrashing on every
+   interaction (which is what made the previous bottom-right panel blink).
+   Dark theme by default; light-theme override below flips the surface. */
+.graph-tooltip {
   position: absolute;
   pointer-events: none;
-  padding: 4px 10px;
-  font-family: var(--type-mono);
-  font-size: 0.78rem;
-  color: var(--ink);
-  background: var(--surface-2);
-  border: 1px solid var(--rule);
-  border-radius: 4px;
-  box-shadow: var(--shadow);
-  opacity: 0;
-  transition: opacity 140ms ease;
-  z-index: 6;
-  white-space: nowrap;
+  background: rgba(20,20,20,0.78);
+  color: #fff;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 6px;
+  padding: 10px 14px;
   max-width: 320px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 13px;
+  line-height: 1.4;
+  z-index: 50;
+  transition: opacity 100ms ease;
 }
-.graph-page .graph-tooltip.is-visible { opacity: 1; }
+.graph-tooltip[hidden] { display: none; }
+.graph-tooltip strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+.graph-tooltip .graph-tooltip-meta {
+  font-family: var(--type-mono);
+  font-size: 11px;
+  opacity: 0.78;
+  margin-bottom: 4px;
+}
+.graph-tooltip .graph-tooltip-desc {
+  font-family: var(--type-serif);
+  font-size: 12px;
+  opacity: 0.86;
+}
+.graph-tooltip .graph-tooltip-hint {
+  display: block;
+  margin-top: 6px;
+  font-family: var(--type-mono);
+  font-size: 10px;
+  opacity: 0.6;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+[data-theme="light"] .graph-tooltip {
+  background: rgba(255,255,255,0.92);
+  color: var(--ink);
+  border-color: var(--rule);
+}
 .graph-page .graph-error-banner {
   position: absolute;
   top: var(--space-4);
@@ -1344,8 +1206,9 @@ details[open] > .doc-tree-folder-summary::before { transform: rotate(90deg); }
   white-space: nowrap;
 }
 /* (Removed) Right-rail graph control panel — the graph route no longer
-   ships a right rail (Issue 1). The floating ``.graph-info-overlay``
-   above is the single source of focused-node UI. */
+   ships a right rail (Issue 1). Hover preview lives in the cursor
+   tooltip above; focused-node display lives in the focused label
+   sprite. */
 .graph-page .visually-hidden {
   position: absolute;
   width: 1px; height: 1px;
@@ -1354,9 +1217,6 @@ details[open] > .doc-tree-folder-summary::before { transform: rotate(90deg); }
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
-}
-[data-theme="dark"] .graph-page .graph-tooltip {
-  background: var(--surface-2);
 }
 
 /* Stat row (home hero §5.3)
@@ -1706,21 +1566,9 @@ body {
   .ai-siblings { flex-direction: column; align-items: stretch; gap: var(--space-2); }
   .ai-siblings a { justify-content: center; padding: 10px 12px; }
 
-  /* Graph view — fit phones, stacked toolbar, full-width bottom overlay
-     (Issue 1). On mobile the floating overlay pins to the bottom of the
-     canvas wrapper and stretches edge-to-edge. */
-  .graph-info-overlay {
-    position: absolute;
-    left: 8px;
-    right: 8px;
-    bottom: 8px;
-    width: auto;
-    max-height: 45vh;
-  }
-  @keyframes graphInfoSheet {
-    from { transform: translateY(20px); opacity: 0; }
-    to   { transform: translateY(0);    opacity: 1; }
-  }
+  /* Graph view — fit phones, stacked toolbar (Issue 1). The bottom
+     floating overlay panel is gone (replaced by the cursor tooltip);
+     mobile rules below just stack the toolbar + size the canvas. */
   .graph-page .graph-canvas {
     height: clamp(420px, 70vh, 720px);
     min-height: 0;
@@ -1792,11 +1640,6 @@ body {
   .graph-page .graph-toolbar { flex-direction: column; align-items: stretch; }
   .graph-page .graph-toolbar .button { font-size: 16px; padding: 10px 12px; }
   .graph-page .graph-search input { width: 100%; font-size: 16px; }
-  .graph-info-overlay {
-    left: 8px; right: 8px; bottom: 8px;
-    width: auto;
-    max-height: 45vh;
-  }
 }
 
 /* 8. Tablet landscape (768-1023 px) ------------------------------------ */

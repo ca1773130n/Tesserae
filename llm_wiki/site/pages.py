@@ -2091,6 +2091,19 @@ def render_timeline_day(ctx: SiteContext, date_str: str) -> str:
     )
 
 
+# Issue 5 — node ``type``s the interactive graph view hides. They stay in
+# ``graph.json`` (MCP / cognee / etc. still see them) but never appear in the
+# on-page payload so the canvas isn't drowned by author chrome. Easy to extend
+# (e.g. add ``Organization`` if it ever gets noisy too).
+_GRAPH_HIDDEN_TYPES: frozenset[str] = frozenset({"Person"})
+
+# Edge ``type``s the interactive graph view hides. ``authored_by`` is the
+# only one today; if a Person node *still* slips through (e.g. via a different
+# edge type) the node-type filter above will drop the endpoint and the edge
+# falls out via the source/target visibility check below.
+_GRAPH_HIDDEN_EDGE_TYPES: frozenset[str] = frozenset({"authored_by"})
+
+
 def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
     """Compute the wiki-layer graph payload sent to the interactive view.
 
@@ -2099,23 +2112,36 @@ def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
     ``graph/payload.json`` file (written by ``StaticSiteBuilder``) stay in
     perfect sync. The static SVG fallback in the JS bundle reads the same
     payload structure, so any change here cascades to every render path.
+
+    Issue 5 — Person nodes (paper authors) and ``authored_by`` edges are
+    filtered out of this view. They remain in ``graph.json`` so MCP and
+    other consumers see the full graph; they only disappear from the
+    on-page interactive view.
     """
 
     # Filter to wiki-layer node types only — see WIKI_LAYER_TYPES (the
     # canonical allow-list defined alongside the search index). Anything
     # outside that set stays in graph.json for MCP consumers but never
-    # surfaces in the on-page interactive view.
+    # surfaces in the on-page interactive view. Issue 5 also drops nodes
+    # whose ``type`` lives in ``_GRAPH_HIDDEN_TYPES`` (Person, today).
     visible_nodes: List[ResearchNode] = [
-        n for n in ctx.graph.nodes if n.type.value in WIKI_LAYER_TYPES
+        n for n in ctx.graph.nodes
+        if n.type.value in WIKI_LAYER_TYPES and n.type.value not in _GRAPH_HIDDEN_TYPES
     ]
     visible_ids = {n.id for n in visible_nodes}
 
     # Compute degree on the wiki-layer subgraph so we can:
     #   (a) size nodes by degree, and
     #   (b) drop low-degree nodes if we exceed MAX_GRAPH_NODES.
+    # Issue 5 — also drop edges whose ``type`` is in ``_GRAPH_HIDDEN_EDGE_TYPES``
+    # (authored_by). Person endpoints already fail the source/target visibility
+    # check above; this keeps the edge list clean even if a non-Person node
+    # somehow ends up on an authored_by edge.
     degree: Dict[str, int] = {nid: 0 for nid in visible_ids}
     visible_edges: List[ResearchEdge] = []
     for e in ctx.graph.edges:
+        if e.type in _GRAPH_HIDDEN_EDGE_TYPES:
+            continue
         if e.source in visible_ids and e.target in visible_ids:
             visible_edges.append(e)
             degree[e.source] = degree.get(e.source, 0) + 1
@@ -2202,26 +2228,11 @@ def render_graph_view(ctx: SiteContext) -> str:
         for group, count in sorted(type_counts.items(), key=lambda kv: kv[0])
     )
 
-    # Floating overlay anchored inside the canvas wrapper (Issue 1). The
-    # right rail is gone on the graph route — the canvas now spans the
-    # full content column width. Empty state collapses to a single
-    # "Selected node" pill; the JS bundle expands it when the user clicks
-    # a node. Stable IDs (graph-info-panel / -empty / -content /
-    # -neighbors) are part of the JS contract.
-    graph_overlay_html = (
-        '<aside class="graph-info-overlay" aria-label="Focused node">'
-        '<div class="graph-info-panel" id="graph-info-panel" aria-live="polite">'
-        '<div class="graph-info-empty" id="graph-info-empty">'
-        '<p class="muted small"><strong>Selected node</strong></p>'
-        '<p class="muted small">Click a node in the graph to inspect it. '
-        'Hover a neighbor to highlight it; click to focus.</p>'
-        '</div>'
-        '<div class="graph-info-content" id="graph-info-content" hidden></div>'
-        '<div class="graph-info-neighbors" id="graph-info-neighbors" hidden></div>'
-        '</div>'
-        '</aside>'
-    )
-
+    # Issue 2 — the bottom-right floating info overlay panel that
+    # populated on every click is GONE. The cursor-following ``#graph-tooltip``
+    # below (injected into ``.graph-canvas-wrapper`` so it survives the
+    # Fullscreen API hop) replaces it for hover preview, and the focused
+    # node's label sprite shows the focus details inline.
     bc = _build_breadcrumbs([("Home", "index.html"), ("Graph", "")], depth=1)
 
     # CDN-loaded ES modules. We pin specific versions and supply integrity
@@ -2295,10 +2306,9 @@ def render_graph_view(ctx: SiteContext) -> str:
     </div>
     <div class="graph-canvas" id="graph-canvas" data-payload-url="payload.json" role="img" aria-label="Interactive 3D knowledge graph">
       {skeleton}
-      <div class="graph-tooltip" id="graph-tooltip" role="status" aria-live="polite"></div>
       <div class="graph-error-banner" id="graph-error-banner" role="alert"></div>
     </div>
-    {graph_overlay_html}
+    <div class="graph-tooltip" id="graph-tooltip" role="status" aria-live="polite" hidden></div>
     <div class="graph-legend" id="graph-legend" aria-label="Type legend">{legend_items}</div>
   </div>
   <p class="graph-help muted">Showing {len(nodes_payload)} of {len(nodes_payload)} wiki nodes · {len(links_payload)} links · <kbd>/</kbd> search · <kbd>f</kbd> fit · <kbd>r</kbd> reset · <kbd>o</kbd> orbit · <kbd>2</kbd>/<kbd>3</kbd> mode · <kbd>Esc</kbd> unfocus</p>

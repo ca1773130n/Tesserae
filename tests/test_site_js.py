@@ -94,12 +94,20 @@ def test_bundle_palette_recents_storage():
 # ---------------------------------------------------------------------------
 
 def test_bundle_zoom_uses_library_default_orbitcontrols():
-    """Issue 2 — three rounds of bespoke cursor-anchored zoom shipped
-    and all stuttered or inverted direction. Reverted to plain
-    OrbitControls zoom: ``enableZoom = true``, ``zoomSpeed = 0.8``,
-    ``enableDamping = true`` for smooth, monotonic wheel-toward-target."""
+    """Issue 3 — three rounds of bespoke cursor-anchored zoom all
+    stuttered or inverted direction. ``THREE.OrbitControls`` ships a
+    built-in ``zoomToCursor`` flag — flipping it on (and letting the
+    library own the wheel handler) is the entire fix. Asserts the flag
+    is set exactly once, evaluates to ``true``, and that the custom
+    wheel handler / raycaster zoom path is still gone."""
     assert "controls.enableZoom = true" in JS_GRAPH
-    assert "controls.zoomSpeed = 0.8" in JS_GRAPH
+    # Issue 3 — the load-bearing line. Set exactly once on the controls
+    # object so the library reads cursor position and zooms toward it.
+    assert JS_GRAPH.count("controls.zoomToCursor") == 1, (
+        "controls.zoomToCursor must be assigned exactly once in the bundle"
+    )
+    assert "controls.zoomToCursor = true" in JS_GRAPH
+    assert "controls.zoomSpeed = 1.0" in JS_GRAPH
     assert "controls.enableDamping = true" in JS_GRAPH
     assert "controls.dampingFactor = 0.08" in JS_GRAPH
     # The custom wheel handler / raycaster zoom path is GONE — never
@@ -128,7 +136,12 @@ def test_graph_link_activation_focuses_relationship_before_navigation():
     assert "function activateLink" in JS_GRAPH
     assert "var samePinned = pinnedLink" in JS_GRAPH
     assert "focusOnLink(link)" in JS_GRAPH
-    assert "showLinkInfoPanel(link)" in JS_GRAPH
+    # Issue 2 — the bottom-right info panel is gone; the cursor-following
+    # tooltip + focused-node label sprite cover hover preview + focus
+    # display. Click activation hides the tooltip so the focused label
+    # can carry the focus details inline.
+    assert "showLinkInfoPanel" not in JS_GRAPH
+    assert "applyLinkHighlight(link)" in JS_GRAPH
 
 
 def test_graph_static_fallback_is_explorable_not_anchor_navigation():
@@ -177,11 +190,17 @@ def test_graph_focus_zoom_is_moderate():
 
 
 def test_bundle_node_labels_present_in_both_modes():
+    """Issue 1 + 4 — both render paths apply the same variant hierarchy
+    (default / neighbor / hover / focused) so the relative prominence of
+    each label matches between 2D and 3D for the same node."""
     assert "nodeThreeObject" in JS_GRAPH
     assert "nodeCanvasObject" in JS_GRAPH
     assert "function shouldShowOverviewLabel" in JS_GRAPH
     assert "Math.floor(vals.length * 0.86)" in JS_GRAPH
-    assert "var isHover = (hoverNode === n) || highlightNodes.has(n);" in JS_GRAPH
+    # 2D variant decision tree mirrors the 3D nodeThreeObject group.
+    assert "var isHovered = (hoverNode === n) && !isFocused;" in JS_GRAPH
+    assert "var isFocusedNeighbor = focusedNode" in JS_GRAPH
+    assert "var showDefault = shouldShowOverviewLabel(n);" in JS_GRAPH
     assert "ctx.strokeText(label, n.x, n.y + 7);" in JS_GRAPH
 
 
@@ -254,12 +273,15 @@ def test_graph_labels_are_truncated():
     assert "shortLabel(n && (n.name || n.id), 24)" in JS_GRAPH
     assert "function edgeLabelText" in JS_GRAPH
     assert "shortLabel(l && (l.label || l.type), 18)" in JS_GRAPH
-    # Both the unified ``makeLabelSprite`` factory and the ``makeSpriteLabel``
-    # back-compat shim that delegates to it must remain wired so existing
-    # callsites (link sprites, focused/hover/neighbor variants) keep working.
+    # Issue 1 — the label factory is now ``makeLabel(text, opts)`` with a
+    # ``variant`` switch (default / neighbor / hover / focused / edge).
+    # ``makeLabelSprite`` / ``makeSpriteLabel`` survive as back-compat
+    # shims that delegate to ``makeLabel``.
+    assert "function makeLabel(" in JS_GRAPH
     assert "function makeLabelSprite" in JS_GRAPH
     assert "function makeSpriteLabel" in JS_GRAPH
-    assert "makeSpriteLabel(nodeLabelText(n)" in JS_GRAPH or "makeLabelSprite(nodeLabelText(n)" in JS_GRAPH
+    # 3D nodeThreeObject uses the new factory directly.
+    assert "makeLabel(nodeLabelText(n)" in JS_GRAPH
     assert "ctx.fillText(text" in JS_GRAPH
 
 
@@ -368,46 +390,63 @@ def test_graph_uses_node_rel_size_for_perceptible_radius_differences():
 
 
 def test_graph_focused_node_label_scales_up_with_outline():
-    """Issue 2 — selecting a node should swap in a larger label sprite
-    rendered above the scene with a thick white stroke so it pops over
-    any background, anchored above the node sphere."""
+    """Issue 1 — selecting a node should swap in a larger label sprite
+    rendered above the scene with a thick stroke + accent fill on a solid
+    background pill so it pops over any background, anchored above the
+    node sphere. The focused label is the ONE label the user explicitly
+    asked to keep a pill background on."""
     # The dual-sprite group keys off node.__focused (a per-node flag).
     assert "__focused" in JS_BUNDLE_GRAPH
     assert "function makeFocusedSpriteLabel" in JS_BUNDLE_GRAPH
     assert "function markFocused" in JS_BUNDLE_GRAPH
-    # Focused label uses the unified factory with variant=focused; renderOrder
-    # 999 sits on top of every other object in the scene.
-    assert "function makeLabelSprite" in JS_BUNDLE_GRAPH
+    # Focused label uses the unified factory with variant=focused.
+    assert "function makeLabel(" in JS_BUNDLE_GRAPH
     assert "variant: 'focused'" in JS_BUNDLE_GRAPH
     assert "isFocusedLabel" in JS_BUNDLE_GRAPH
-    # Spec font sizes: focused 28, hover 22, neighbor 18, base 12.
-    assert "{ base: 12, neighbor: 18, hover: 22, focused: 28 }" in JS_BUNDLE_GRAPH
-    # Thick 4-px white outline under the text fill.
-    assert "ctx.lineWidth = 4 * pxScale" in JS_BUNDLE_GRAPH
-    assert "rgba(255,255,255,0.95)" in JS_BUNDLE_GRAPH
+    # Spec font sizes: focused 26, hover 16, neighbor 14, default 11, edge 10.
+    assert "{ default: 11, edge: 10, neighbor: 14, hover: 16, focused: 26 }" in JS_BUNDLE_GRAPH
+    # 4-px stroke under the focused text fill.
+    assert "{ default: 1, edge: 1, neighbor: 1, hover: 2, focused: 4 }" in JS_BUNDLE_GRAPH
     # The focused sprite anchors above the node (positive +y offset based
     # on node.val so it never overlaps the sphere itself).
     assert "n.val * 1.2 + 8" in JS_BUNDLE_GRAPH
     # nodeThreeObject builds a Group so the focused / hover / neighbor /
-    # base / glow sprites can be toggled individually per frame.
+    # default / glow sprites can be toggled individually per frame.
     assert "new THREE.Group()" in JS_BUNDLE_GRAPH
     assert "nodeThreeObject" in JS_BUNDLE_GRAPH
+    # Focused sprite carries an "[Enter] Open page" hint when href is set.
+    assert "'[Enter] Open page'" in JS_BUNDLE_GRAPH
+    # Pressing Enter while a node is focused navigates to its href.
+    assert "if (e.key === 'Enter' && focusedNode && focusedNode.href)" in JS_BUNDLE_GRAPH
 
 
-def test_graph_label_sprites_have_opaque_pill_background():
-    """Issue 2 — sprite labels paint a solid background pill (white in
-    light theme, near-black in dark theme) with a 2px accent border so
-    the text reads against any backdrop, not the previous translucent
-    rgba(2,6,23,0.26) wash that disappeared on light nodes."""
+def test_graph_focused_label_has_solid_pill_default_does_not():
+    """Issue 1 — ONLY the focused variant paints a solid background pill
+    (white in light theme, near-black in dark theme) with a 2-px accent
+    border. Default / neighbor / hover / edge labels render translucent
+    text-only with NO pill (the user explicitly does not want white pills
+    on every label — the previous build painted one on every node)."""
+    # The pill is gated on the focused variant only.
+    assert "var hasPill = variant === 'focused'" in JS_BUNDLE_GRAPH
+    # Focused pill colors live in the bundle so the node's accent border
+    # can read against any backdrop.
     assert "rgba(255,255,255,0.95)" in JS_BUNDLE_GRAPH  # light pill
     assert "rgba(0,0,0,0.85)" in JS_BUNDLE_GRAPH         # dark pill
     # The 2-px border picks up the node's accent color.
     assert "ctx.lineWidth = 2 * pxScale" in JS_BUNDLE_GRAPH
     assert "ctx.strokeStyle = accent" in JS_BUNDLE_GRAPH
-    # Hover label is a separate variant — toggled on hover, removed when
-    # the user moves off. Hover loses to focus on the same node.
+    # Every label variant is wired through the unified factory.
+    assert "isFocusedLabel" in JS_BUNDLE_GRAPH
     assert "isHoverLabel" in JS_BUNDLE_GRAPH
     assert "isNeighborLabel" in JS_BUNDLE_GRAPH
+    assert "isDefaultLabel" in JS_BUNDLE_GRAPH
+    assert "isEdgeLabel" in JS_BUNDLE_GRAPH
+    # Default / edge labels keep depth testing on so peers can occlude
+    # them (Issue 1); hover / neighbor / focused turn it off so they
+    # always sit on top.
+    assert "var depthTest = (variant === 'default' || variant === 'edge')" in JS_BUNDLE_GRAPH
+    # Default label opacity (0.55) lives in the variant table.
+    assert "{ default: 0.55, edge: 0.7, neighbor: 0.95, hover: 1.0, focused: 1.0 }" in JS_BUNDLE_GRAPH
 
 
 def test_graph_fullscreen_button_and_listener_present():
@@ -423,20 +462,37 @@ def test_graph_fullscreen_button_and_listener_present():
     assert "sizeGraphToContainer" in JS_BUNDLE_GRAPH
 
 
-def test_graph_focused_node_info_panel_in_right_rail():
-    """Issue 1 — the right rail's ``#graph-info-panel`` is the canonical
-    info panel; the JS contract expects ``graph-info-empty / graph-info-content
-    / graph-info-neighbors`` IDs to populate."""
-    assert "getElementById('graph-info-panel')" in JS_BUNDLE_GRAPH
-    assert "getElementById('graph-info-empty')" in JS_BUNDLE_GRAPH
-    assert "getElementById('graph-info-content')" in JS_BUNDLE_GRAPH
-    assert "getElementById('graph-info-neighbors')" in JS_BUNDLE_GRAPH
-    # Neighbor row hover wires up hoverNode + refresh so the corresponding
-    # canvas node lights up.
-    assert "graph-neighbor-row" in JS_BUNDLE_GRAPH
-    assert "function renderNeighborList" in JS_BUNDLE_GRAPH
-    assert "Open page →" in JS_BUNDLE_GRAPH
-    assert "Clear focus" in JS_BUNDLE_GRAPH
+def test_graph_hover_uses_cursor_tooltip_not_overlay_panel():
+    """Issue 2 — the bottom-right ``#graph-info-panel`` overlay is GONE.
+    Hover preview lives in a single cursor-following ``#graph-tooltip``
+    element. Per-frame DOM mutations are bounded to ``style.left`` /
+    ``style.top`` + ``textContent`` updates inside the existing element
+    (no display:none thrashing — that's what made the page blink)."""
+    # The tooltip element is the only piece of right-side UI the bundle
+    # touches now.
+    assert "getElementById('graph-tooltip')" in JS_BUNDLE_GRAPH
+    # The dead overlay-panel IDs must not be referenced anywhere.
+    assert "getElementById('graph-info-panel')" not in JS_BUNDLE_GRAPH
+    assert "getElementById('graph-info-empty')" not in JS_BUNDLE_GRAPH
+    assert "getElementById('graph-info-content')" not in JS_BUNDLE_GRAPH
+    assert "getElementById('graph-info-neighbors')" not in JS_BUNDLE_GRAPH
+    assert "function renderNeighborList" not in JS_BUNDLE_GRAPH
+    assert "function showInfoPanel" not in JS_BUNDLE_GRAPH
+    assert "function showLinkInfoPanel" not in JS_BUNDLE_GRAPH
+    # Tooltip is positioned by cursor offset (+12, +14) per spec.
+    assert "function positionTooltip" in JS_BUNDLE_GRAPH
+    assert "(x + 12) + 'px'" in JS_BUNDLE_GRAPH
+    assert "(y + 14) + 'px'" in JS_BUNDLE_GRAPH
+    # Hover populates name + meta + clamped description + click hint.
+    assert "function showNodeTooltip" in JS_BUNDLE_GRAPH
+    assert "function showLinkTooltip" in JS_BUNDLE_GRAPH
+    assert "function clampDesc" in JS_BUNDLE_GRAPH
+    assert "TOOLTIP_DESC_LIMIT = 120" in JS_BUNDLE_GRAPH
+    assert "'click to focus'" in JS_BUNDLE_GRAPH
+    # No display:none thrashing — the only DOM mutation per frame is the
+    # ``hidden`` attribute toggle + style.left/top + textContent.
+    assert "tooltip.hidden = false" in JS_BUNDLE_GRAPH
+    assert "tooltip.hidden = true" in JS_BUNDLE_GRAPH
 
 
 def test_graph_camera_orbits_focused_node_via_engine_tick():
@@ -473,6 +529,34 @@ def test_graph_keyboard_shortcuts_include_orbit_and_unfocus():
     # Esc resets focus state (focusedNode + markFocused(null)).
     assert "focusedNode = null" in JS_BUNDLE_GRAPH
     assert "markFocused(null)" in JS_BUNDLE_GRAPH
+
+
+def test_graph_label_variants_unified_across_2d_and_3d():
+    """Issue 1 + 4 — the same five-variant hierarchy (default / neighbor
+    / hover / focused / edge) drives label rendering in BOTH 2D and 3D
+    so the relative prominence of a node's label matches between modes."""
+    # 2D variant decision tree mirrors the 3D nodeThreeObject group.
+    assert "if (isFocused) variant = 'focused';" in JS_BUNDLE_GRAPH
+    assert "else if (isHovered) variant = 'hover';" in JS_BUNDLE_GRAPH
+    assert "else if (isFocusedNeighbor) variant = 'neighbor';" in JS_BUNDLE_GRAPH
+    assert "else if (showDefault) variant = 'default';" in JS_BUNDLE_GRAPH
+    # Variant tables drive both paths.
+    assert "VARIANT_FONT" in JS_BUNDLE_GRAPH
+    assert "VARIANT_OPACITY" in JS_BUNDLE_GRAPH
+    assert "VARIANT_STROKE" in JS_BUNDLE_GRAPH
+    # Edge labels use the 'edge' variant in both render paths.
+    assert "variant: 'edge'" in JS_BUNDLE_GRAPH
+    assert "VARIANT_FONT.edge" in JS_BUNDLE_GRAPH
+    # Edge labels only render for edges incident to the focused (or
+    # hover) node — the same rule in both 2D and 3D.
+    assert "var incidentToFocus = focusedNode && (focusedNode === s || focusedNode === t);" in JS_BUNDLE_GRAPH
+
+
+def test_graph_2d_uses_library_default_cursor_zoom():
+    """Issue 3 — in 2D mode (``force-graph``, not ``3d-force-graph``)
+    the library zooms toward the cursor by default. We just confirm
+    enableNodeDrag is on so the user can rearrange the layout."""
+    assert "if (inst.enableNodeDrag) inst.enableNodeDrag(true)" in JS_BUNDLE_GRAPH
 
 
 def test_graph_pixel_ratio_capped_at_two_for_retina():

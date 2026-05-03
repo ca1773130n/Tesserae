@@ -829,10 +829,10 @@ JS_GRAPH = r"""
       return Math.max(1, (n && (n.val || n.degree)) || 1) >= Math.max(medianVal + 1, overviewLabelVal);
     }
 
-    var infoPanel    = document.getElementById('graph-info-panel');
-    var infoEmpty    = document.getElementById('graph-info-empty');
-    var infoContent  = document.getElementById('graph-info-content');
-    var infoNeighbors= document.getElementById('graph-info-neighbors');
+    // Issue 2 — the bottom-right ``#graph-info-panel`` overlay (with its
+    // empty/content/neighbors children) is GONE. The cursor-following
+    // ``#graph-tooltip`` below replaces it for hover preview; the focused
+    // node's label sprite carries the focus details inline.
     var tooltip      = document.getElementById('graph-tooltip');
     var legendEl     = document.getElementById('graph-legend');
     var searchEl     = document.getElementById('graph-search-input');
@@ -938,200 +938,85 @@ JS_GRAPH = r"""
       return (n && n.color) || GROUP_COLORS[(n && n.group) || 'other'] || GROUP_COLORS.other;
     }
 
+    // Issue 2 — the bottom-right info-panel write functions are GONE.
+    // Hover preview lives in the cursor-following ``#graph-tooltip``;
+    // focused-node details live in the focused label sprite (which
+    // renders an ``[Enter] Open page`` hint when ``node.href`` is set).
+    // The functions kept below are the only DOM mutations we still do
+    // per interaction.
     function clearInfoPanel(){
-      if (!infoPanel) return;
-      if (infoContent) {
-        while (infoContent.firstChild) infoContent.removeChild(infoContent.firstChild);
-        infoContent.hidden = true;
-      }
-      if (infoNeighbors) {
-        while (infoNeighbors.firstChild) infoNeighbors.removeChild(infoNeighbors.firstChild);
-        infoNeighbors.hidden = true;
-      }
-      if (infoEmpty) infoEmpty.hidden = false;
-      infoPanel.classList.remove('is-visible');
-      if (wrapper) wrapper.classList.remove('has-focus');
+      // Kept as a no-op for the call sites that still invoke it (Esc key,
+      // background click, reset button) — every focus-clear path used to
+      // call this and we want the call sites to keep reading naturally.
+      hideTooltip();
     }
 
-    function appendInfoLink(parent, label, href, extraClass){
-      if (!parent || !href) return;
-      var a = document.createElement('a');
-      a.className = 'graph-info-link' + (extraClass ? ' ' + extraClass : '');
-      a.href = href;
-      a.textContent = label;
-      parent.appendChild(a);
+    // Cursor-following tooltip (Issue 2). The DOM mutation per frame is
+    // bounded to ``style.left`` / ``style.top`` + a single ``textContent``
+    // refresh inside the existing ``#graph-tooltip`` element — no display
+    // toggling, no element creation, no layout thrash.
+    var TOOLTIP_DESC_LIMIT = 120;
+    function clampDesc(s){
+      var t = String(s || '').trim();
+      if (t.length <= TOOLTIP_DESC_LIMIT) return t;
+      return t.slice(0, TOOLTIP_DESC_LIMIT - 1).replace(/\s+\S*$/, '') + '…';
     }
-
-    function appendInfoButton(parent, label, onclick, extraClass){
-      if (!parent) return;
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'graph-info-button' + (extraClass ? ' ' + extraClass : '');
-      b.textContent = label;
-      b.addEventListener('click', onclick);
-      parent.appendChild(b);
-    }
-
-    function renderNeighborList(node){
-      if (!infoNeighbors || !node) return;
-      while (infoNeighbors.firstChild) infoNeighbors.removeChild(infoNeighbors.firstChild);
-      var heading = document.createElement('h4');
-      heading.className = 'graph-info-subhead';
-      var nbrCount = node.neighbors ? node.neighbors.size : 0;
-      heading.textContent = 'Neighbors (' + nbrCount + ')';
-      infoNeighbors.appendChild(heading);
-      if (!nbrCount) {
-        var empty = document.createElement('p');
-        empty.className = 'muted small';
-        empty.textContent = 'No incident edges.';
-        infoNeighbors.appendChild(empty);
-        infoNeighbors.hidden = false;
-        return;
-      }
-      var list = document.createElement('ul');
-      list.className = 'graph-neighbor-list';
-      var items = [];
-      node.neighbors.forEach(function(nb){ items.push(nb); });
-      items.sort(function(a, b){ return (b.degree || 0) - (a.degree || 0); });
-      items.slice(0, 80).forEach(function(nb){
-        var li = document.createElement('li');
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'graph-neighbor-row';
-        btn.dataset.nodeId = nb.id;
-        var dot = document.createElement('span');
-        dot.className = 'graph-neighbor-dot';
-        dot.style.background = nodeAccent(nb);
-        var typeBadge = document.createElement('span');
-        typeBadge.className = 'graph-neighbor-type';
-        typeBadge.textContent = (nb.group || nb.kind || 'node');
-        var name = document.createElement('span');
-        name.className = 'graph-neighbor-name';
-        name.textContent = nb.name || nb.id || '';
-        btn.appendChild(dot);
-        btn.appendChild(typeBadge);
-        btn.appendChild(name);
-        // Hover the row → highlight that node in the canvas. Click → focus it.
-        btn.addEventListener('mouseenter', function(){
-          if (focusedNode && nb !== focusedNode) {
-            hoverNode = nb;
-            refreshHighlightStyles();
-          }
-        });
-        btn.addEventListener('mouseleave', function(){
-          hoverNode = null;
-          refreshHighlightStyles();
-        });
-        btn.addEventListener('click', function(){
-          activateNode(nb, null);
-        });
-        li.appendChild(btn);
-        list.appendChild(li);
-      });
-      infoNeighbors.appendChild(list);
-      infoNeighbors.hidden = false;
-    }
-
-    function showInfoPanel(node){
-      if (!infoPanel) return;
-      // No node? Reset to empty state. Hover-only previews on the canvas
-      // do NOT populate the rail (only focused/pinned nodes do).
-      if (!node) { clearInfoPanel(); return; }
-      if (infoEmpty) infoEmpty.hidden = true;
-      if (infoContent) {
-        while (infoContent.firstChild) infoContent.removeChild(infoContent.firstChild);
-        var h = document.createElement('h3');
-        h.className = 'graph-info-title';
-        h.style.color = nodeAccent(node);
-        h.textContent = node.name || node.id || '';
-        infoContent.appendChild(h);
-        var meta = document.createElement('p');
-        meta.className = 'graph-info-meta';
-        var t = document.createElement('span');
-        t.className = 'graph-info-badge';
-        t.style.background = nodeAccent(node);
-        t.textContent = node.group || node.kind || '';
-        meta.appendChild(t);
-        var typeSpan = document.createElement('span');
-        typeSpan.textContent = ' ' + (node.type || '');
-        meta.appendChild(typeSpan);
-        var degSpan = document.createElement('span');
-        degSpan.className = 'graph-info-degree';
-        degSpan.textContent = ' · degree ' + (node.degree || 0);
-        meta.appendChild(degSpan);
-        infoContent.appendChild(meta);
-        if (node.description) {
-          var desc = document.createElement('p');
-          desc.className = 'graph-info-desc';
-          desc.textContent = String(node.description);
-          infoContent.appendChild(desc);
-        }
-        var actions = document.createElement('div');
-        actions.className = 'graph-info-actions';
-        if (node.href) appendInfoLink(actions, 'Open page →', node.href);
-        appendInfoButton(actions, 'Clear focus', function(){
-          // Equivalent to pressing Esc on the focused node only — does not
-          // touch search or day filter.
-          pinnedNode = null;
-          pinnedLink = null;
-          focusedNode = null;
-          markFocused(null);
-          autoOrbitEnabled = false;
-          applyHighlight(null);
-          clearInfoPanel();
-        }, 'graph-info-button--ghost');
-        infoContent.appendChild(actions);
-        infoContent.hidden = false;
-      }
-      renderNeighborList(node);
-      infoPanel.classList.add('is-visible');
-      if (wrapper) wrapper.classList.add('has-focus');
-    }
-
-    function showLinkInfoPanel(link){
-      if (!infoPanel || !link) return;
-      if (infoEmpty) infoEmpty.hidden = true;
-      if (infoNeighbors) {
-        while (infoNeighbors.firstChild) infoNeighbors.removeChild(infoNeighbors.firstChild);
-        infoNeighbors.hidden = true;
-      }
-      var endpoints = linkEndpoints(link);
-      var source = endpoints.source;
-      var target = endpoints.target;
-      var label = link.label || link.type || 'related';
-      if (infoContent) {
-        while (infoContent.firstChild) infoContent.removeChild(infoContent.firstChild);
-        var h = document.createElement('h3');
-        h.className = 'graph-info-title';
-        h.textContent = label;
-        infoContent.appendChild(h);
-        var meta = document.createElement('p');
-        meta.className = 'graph-info-meta';
-        meta.textContent = ((source && source.name) || 'source') + ' → ' + ((target && target.name) || 'target');
-        infoContent.appendChild(meta);
-        var hint = document.createElement('p');
-        hint.className = 'graph-info-desc';
-        hint.textContent = 'Tap again to open the target page. Use source/target links below for exact navigation.';
-        infoContent.appendChild(hint);
-        var actions = document.createElement('div');
-        actions.className = 'graph-info-actions';
-        if (target && target.href) appendInfoLink(actions, 'Open target →', target.href);
-        if (source && source.href) appendInfoLink(actions, 'Open source →', source.href);
-        infoContent.appendChild(actions);
-        infoContent.hidden = false;
-      }
-      infoPanel.classList.add('is-visible');
-      if (wrapper) wrapper.classList.add('has-focus');
-    }
-
-    function showTooltip(text, x, y){
+    function positionTooltip(x, y){
       if (!tooltip) return;
-      tooltip.textContent = text;
+      // Cursor offset (+12, +14) per spec. The container is the canvas, so
+      // ``x``/``y`` are already relative to its top-left.
       tooltip.style.left = (x + 12) + 'px';
-      tooltip.style.top  = (y + 12) + 'px';
-      tooltip.classList.add('is-visible');
+      tooltip.style.top  = (y + 14) + 'px';
     }
-    function hideTooltip(){ if (tooltip) tooltip.classList.remove('is-visible'); }
+    function showNodeTooltip(node, x, y){
+      if (!tooltip || !node) { hideTooltip(); return; }
+      // Build content inside the existing element (no re-create).
+      while (tooltip.firstChild) tooltip.removeChild(tooltip.firstChild);
+      var name = document.createElement('strong');
+      name.textContent = node.name || node.id || '';
+      tooltip.appendChild(name);
+      var meta = document.createElement('div');
+      meta.className = 'graph-tooltip-meta';
+      var kind = (node.group || node.kind || '');
+      meta.textContent = kind + (kind ? ' · ' : '') + 'degree ' + (node.degree || 0);
+      tooltip.appendChild(meta);
+      if (node.description) {
+        var desc = document.createElement('div');
+        desc.className = 'graph-tooltip-desc';
+        desc.textContent = clampDesc(node.description);
+        tooltip.appendChild(desc);
+      }
+      var hint = document.createElement('span');
+      hint.className = 'graph-tooltip-hint';
+      hint.textContent = 'click to focus';
+      tooltip.appendChild(hint);
+      positionTooltip(x, y);
+      tooltip.hidden = false;
+    }
+    function showLinkTooltip(link, x, y){
+      if (!tooltip || !link) { hideTooltip(); return; }
+      while (tooltip.firstChild) tooltip.removeChild(tooltip.firstChild);
+      var endpoints = linkEndpoints(link);
+      var s = endpoints.source;
+      var t = endpoints.target;
+      var label = link.type || link.label || 'related';
+      var line = document.createElement('strong');
+      line.textContent = ((s && s.name) || 'source') + ' → ' + label + ' → ' + ((t && t.name) || 'target');
+      tooltip.appendChild(line);
+      positionTooltip(x, y);
+      tooltip.hidden = false;
+    }
+    function showTooltip(text, x, y){
+      // Back-compat for the SVG fallback — text-only path.
+      if (!tooltip) return;
+      while (tooltip.firstChild) tooltip.removeChild(tooltip.firstChild);
+      tooltip.textContent = text;
+      positionTooltip(x, y);
+      tooltip.hidden = false;
+    }
+    function hideTooltip(){
+      if (tooltip) tooltip.hidden = true;
+    }
 
     function applyHighlight(node){
       highlightNodes.clear();
@@ -1325,112 +1210,171 @@ JS_GRAPH = r"""
       });
     }
 
-    // ---- Unified label sprite (Issue 2) ---------------------------------
-    // ``makeLabelSprite(text, opts)`` paints text onto a canvas with an
-    // OPAQUE pill background + 2px accent border + thick white outline
-    // under the text fill, then wraps the texture in a Sprite that:
-    //   * disables depth testing so it always renders on top, and
-    //   * uses ``renderOrder`` to control stacking (focused > neighbor > base).
+    // ---- Hierarchical label sprite (Issue 1) ---------------------------
+    // ``makeLabel(text, opts)`` paints text onto a canvas and wraps it in a
+    // THREE.Sprite. The label hierarchy splits five ways depending on what
+    // role the label plays in the user's current focus state:
     //
-    // ``opts`` keys:
-    //   variant   : 'base' | 'neighbor' | 'hover' | 'focused' (default 'base')
-    //   accent    : pill border + text fill color (CSS string)
-    //   theme     : 'light' | 'dark' (drives pill background opacity)
-    //   isLabel/isFocusedLabel/isNeighborLabel/isHoverLabel: tags on userData
+    //   variant='default'  : every node that is not focused / not a 1-hop
+    //                        neighbor / not hovered. Translucent text only,
+    //                        NO background pill, 11px, ``depthTest=true``
+    //                        (default depth — peers can occlude it). 1px
+    //                        text-shadow for legibility against busy edges.
+    //   variant='neighbor' : a 1-hop neighbor of the focused node. 14px,
+    //                        opacity 0.95, NO pill, slight stroke.
+    //                        ``depthTest=false`` renderOrder=998.
+    //   variant='hover'    : the node currently under the mouse. 16px, full
+    //                        opacity, NO pill, 2px text-stroke.
+    //                        ``depthTest=false`` renderOrder=999.
+    //   variant='focused'  : the focused node (always exactly one). 26px,
+    //                        full opacity, accent color, 4px text-stroke,
+    //                        SOLID background pill — the one label the
+    //                        user explicitly asked to be visible.
+    //                        ``depthTest=false`` ``depthWrite=false``
+    //                        renderOrder=999. The focused label also
+    //                        renders an ``[Enter] Open page`` hint
+    //                        underneath when the node has an href.
+    //   variant='edge'     : an edge label, only rendered for edges
+    //                        incident to the focused node. Same translucent
+    //                        style as 'default': 10px, no pill, 0.7
+    //                        opacity, 1px stroke. Default depth.
     //
-    // Cached by ``text|variant|accent|theme`` so identical labels reuse
+    // Cached by ``text|variant|accent|theme|hint`` so identical labels reuse
     // their canvas/texture across nodes.
-    var VARIANT_FONT = { base: 12, neighbor: 18, hover: 22, focused: 28 };
-    var VARIANT_RENDER_ORDER = { base: 990, neighbor: 998, hover: 999, focused: 999 };
+    var VARIANT_FONT       = { default: 11, edge: 10, neighbor: 14, hover: 16, focused: 26 };
+    var VARIANT_OPACITY    = { default: 0.55, edge: 0.7, neighbor: 0.95, hover: 1.0, focused: 1.0 };
+    var VARIANT_STROKE     = { default: 1, edge: 1, neighbor: 1, hover: 2, focused: 4 };
+    var VARIANT_RENDER_ORDER = { default: 1, edge: 1, neighbor: 998, hover: 999, focused: 999 };
     var labelSpriteCache = new Map();
-    function makeLabelSprite(text, opts){
-      if (!THREE) return null;
+    function makeLabel(text, opts){
+      if (!THREE || !text) return null;
       opts = opts || {};
-      var variant = opts.variant || 'base';
+      var variant = opts.variant || 'default';
       var accent = opts.accent || '#ece7dc';
       var theme = opts.theme || 'dark';
-      var key = text + '|' + variant + '|' + accent + '|' + theme;
+      var hint = opts.hint || '';
+      var key = text + '|' + variant + '|' + accent + '|' + theme + '|' + hint;
       if (labelSpriteCache.has(key)) {
         var cached = labelSpriteCache.get(key);
         var c = cached.clone();
-        c.material = cached.material; // share material/texture
+        c.material = cached.material;
         c.renderOrder = cached.renderOrder;
-        // Tag clone with userData so position-update can identify it.
-        if (variant === 'focused') c.userData = { isFocusedLabel: true, variant: variant };
-        else if (variant === 'neighbor') c.userData = { isNeighborLabel: true, variant: variant };
-        else if (variant === 'hover') c.userData = { isHoverLabel: true, variant: variant };
-        else c.userData = { isLabel: true, variant: variant };
+        c.userData = Object.assign({}, cached.userData);
         return c;
       }
-      var fontSize = VARIANT_FONT[variant] || 12;
-      // Canvas-internal metrics scaled up so the pill stays crisp at any
-      // sprite scale. We keep the world-space height proportional to the
-      // logical font size below.
-      var pxScale = 3;          // canvas pixels per logical unit
+      var fontSize = VARIANT_FONT[variant] || 11;
+      var pxScale = 3;
       var fontPx = fontSize * pxScale;
-      var padX = 14 * pxScale;
-      var padY = 8 * pxScale;
-      var lineH = Math.round(fontPx * 1.5);
+      var hintFontPx = Math.max(8 * pxScale, Math.round(fontPx * 0.42));
+      var hasPill = variant === 'focused';
+      var padX = (hasPill ? 14 : 6) * pxScale;
+      var padY = (hasPill ? 8 : 4) * pxScale;
+      var lineH = Math.round(fontPx * 1.45);
+      var hintLineH = hint ? Math.round(hintFontPx * 1.4) : 0;
       var canvas = document.createElement('canvas');
       var ctx = canvas.getContext('2d');
       ctx.font = (variant === 'focused' ? '700 ' : '600 ') + fontPx + 'px "Inter", system-ui, sans-serif';
       var textW = ctx.measureText(text).width;
-      var w = Math.ceil(textW) + padX * 2;
-      var h = lineH + padY * 2;
+      var hintW = 0;
+      if (hint) {
+        ctx.font = '600 ' + hintFontPx + 'px "Inter", system-ui, sans-serif';
+        hintW = ctx.measureText(hint).width;
+      }
+      var contentW = Math.max(textW, hintW);
+      var w = Math.ceil(contentW) + padX * 2;
+      var h = lineH + hintLineH + padY * 2;
       canvas.width = w;
       canvas.height = h;
       ctx = canvas.getContext('2d');
-      // Pill background. Light theme: white 95%, dark theme: black 85%.
-      var bg = (theme === 'light') ? 'rgba(255,255,255,0.95)' : 'rgba(0,0,0,0.85)';
-      var radius = Math.min(h / 2, 18 * pxScale);
-      ctx.fillStyle = bg;
-      ctx.beginPath();
-      // Rounded-rect pill.
-      ctx.moveTo(radius, 0);
-      ctx.lineTo(w - radius, 0);
-      ctx.quadraticCurveTo(w, 0, w, radius);
-      ctx.lineTo(w, h - radius);
-      ctx.quadraticCurveTo(w, h, w - radius, h);
-      ctx.lineTo(radius, h);
-      ctx.quadraticCurveTo(0, h, 0, h - radius);
-      ctx.lineTo(0, radius);
-      ctx.quadraticCurveTo(0, 0, radius, 0);
-      ctx.closePath();
-      ctx.fill();
-      // 2px accent border.
-      ctx.lineWidth = 2 * pxScale;
-      ctx.strokeStyle = accent;
-      ctx.stroke();
-      // Text: thick 4px white stroke under the accent fill so the text
-      // stays readable even if the pill background is dropped/translucent.
+      // Solid pill ONLY for the focused variant — every other variant
+      // renders text-only on a transparent canvas (Issue 1 — no white pills
+      // on default labels).
+      if (hasPill) {
+        var bg = (theme === 'light') ? 'rgba(255,255,255,0.95)' : 'rgba(0,0,0,0.85)';
+        var radius = Math.min(h / 2, 18 * pxScale);
+        ctx.fillStyle = bg;
+        ctx.beginPath();
+        ctx.moveTo(radius, 0);
+        ctx.lineTo(w - radius, 0);
+        ctx.quadraticCurveTo(w, 0, w, radius);
+        ctx.lineTo(w, h - radius);
+        ctx.quadraticCurveTo(w, h, w - radius, h);
+        ctx.lineTo(radius, h);
+        ctx.quadraticCurveTo(0, h, 0, h - radius);
+        ctx.lineTo(0, radius);
+        ctx.quadraticCurveTo(0, 0, radius, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.lineWidth = 2 * pxScale;
+        ctx.strokeStyle = accent;
+        ctx.stroke();
+      }
       ctx.font = (variant === 'focused' ? '700 ' : '600 ') + fontPx + 'px "Inter", system-ui, sans-serif';
       ctx.textBaseline = 'middle';
-      ctx.textAlign = 'left';
-      ctx.lineWidth = 4 * pxScale;
-      ctx.strokeStyle = (theme === 'light') ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.95)';
-      ctx.strokeText(text, padX, h / 2);
-      ctx.fillStyle = (variant === 'focused' || variant === 'hover') ? accent : (theme === 'light' ? '#0f172a' : '#f8fafc');
-      ctx.fillText(text, padX, h / 2);
+      ctx.textAlign = 'center';
+      // Subtle text-stroke for legibility against busy edges. The default
+      // variant gets a 1px shadow-style stroke so the translucent text
+      // stays readable on any background.
+      var strokePx = (VARIANT_STROKE[variant] || 1) * pxScale;
+      ctx.lineWidth = strokePx;
+      ctx.strokeStyle = (theme === 'light') ? 'rgba(255,255,255,0.78)' : 'rgba(0,0,0,0.85)';
+      var textY = padY + lineH / 2;
+      ctx.strokeText(text, w / 2, textY);
+      // Default + neighbor + edge use translucent white on dark theme so the
+      // hierarchy (default 0.55, neighbor 0.95, edge 0.7) is visible without
+      // a background. Hover + focused use full opacity (focused = accent on
+      // pill; hover = white text).
+      var textOpacity = VARIANT_OPACITY[variant] || 1.0;
+      if (variant === 'focused') {
+        ctx.fillStyle = accent;
+      } else if (variant === 'hover') {
+        ctx.fillStyle = (theme === 'light') ? '#0f172a' : '#ffffff';
+      } else {
+        // default / neighbor / edge — translucent white (or dark on light
+        // theme). Encode the per-variant opacity directly in the fillStyle
+        // so the SpriteMaterial can stay at opacity=1 (cleaner blending).
+        var op = textOpacity;
+        if (theme === 'light') {
+          ctx.fillStyle = 'rgba(15,23,42,' + op + ')';
+        } else {
+          ctx.fillStyle = 'rgba(255,255,255,' + op + ')';
+        }
+      }
+      ctx.fillText(text, w / 2, textY);
+      // Optional small hint below the main text — used for the focused
+      // node's ``[Enter] Open page`` affordance (Issue 2).
+      if (hint) {
+        var hintY = textY + lineH / 2 + hintLineH / 2 + 1 * pxScale;
+        ctx.font = '600 ' + hintFontPx + 'px "Inter", system-ui, sans-serif';
+        ctx.lineWidth = 1 * pxScale;
+        ctx.strokeStyle = (theme === 'light') ? 'rgba(255,255,255,0.78)' : 'rgba(0,0,0,0.85)';
+        ctx.strokeText(hint, w / 2, hintY);
+        ctx.fillStyle = (theme === 'light') ? 'rgba(15,23,42,0.7)' : 'rgba(255,255,255,0.7)';
+        ctx.fillText(hint, w / 2, hintY);
+      }
       var tex = new THREE.CanvasTexture(canvas);
       tex.minFilter = THREE.LinearFilter;
+      // depthTest stays true for default + edge variants (peers can occlude),
+      // false for hover/neighbor/focused so they always sit on top of nodes.
+      var depthTest = (variant === 'default' || variant === 'edge');
       var mat = new THREE.SpriteMaterial({
         map: tex,
         transparent: true,
         depthWrite: false,
-        depthTest: false,
+        depthTest: depthTest,
         opacity: 1.0
       });
       var sprite = new THREE.Sprite(mat);
-      // World-space size: keep proportional to font; the per-frame hook
-      // scales by 1/camera.zoom when the camera is orthographic so the
-      // label stays readable at any zoom level.
-      var spriteScale = 0.10;   // world units per canvas pixel
+      var spriteScale = 0.10;
       sprite.scale.set(w * spriteScale, h * spriteScale, 1);
-      sprite.renderOrder = VARIANT_RENDER_ORDER[variant] || 990;
-      if (variant === 'focused') sprite.userData = { isFocusedLabel: true, variant: variant };
-      else if (variant === 'neighbor') sprite.userData = { isNeighborLabel: true, variant: variant };
-      else if (variant === 'hover') sprite.userData = { isHoverLabel: true, variant: variant };
-      else sprite.userData = { isLabel: true, variant: variant };
+      sprite.renderOrder = VARIANT_RENDER_ORDER[variant] || 1;
+      var ud = { variant: variant };
+      if (variant === 'focused') ud.isFocusedLabel = true;
+      else if (variant === 'neighbor') ud.isNeighborLabel = true;
+      else if (variant === 'hover') ud.isHoverLabel = true;
+      else if (variant === 'edge') ud.isEdgeLabel = true;
+      else ud.isDefaultLabel = true;
+      sprite.userData = ud;
       labelSpriteCache.set(key, sprite);
       var out = sprite.clone();
       out.material = sprite.material;
@@ -1439,17 +1383,19 @@ JS_GRAPH = r"""
       return out;
     }
 
-    // Back-compat shim — earlier code paths called ``makeSpriteLabel`` for
-    // the default canvas-text label and ``makeFocusedSpriteLabel`` for the
-    // focused-node title. They now delegate to ``makeLabelSprite`` so the
-    // cache, depthTest, renderOrder behaviour is identical everywhere.
+    // Back-compat shim — earlier code paths called ``makeLabelSprite`` /
+    // ``makeSpriteLabel`` / ``makeFocusedSpriteLabel``. They now delegate
+    // to ``makeLabel`` with a default variant so any stray callsite still
+    // produces a valid sprite. New code should call ``makeLabel`` directly
+    // with an explicit ``variant``.
+    function makeLabelSprite(text, opts){ return makeLabel(text, opts || {}); }
     function makeSpriteLabel(text, color){
       var theme = (document.documentElement.getAttribute('data-theme') === 'light') ? 'light' : 'dark';
-      return makeLabelSprite(text, { variant: 'base', accent: color, theme: theme });
+      return makeLabel(text, { variant: 'default', accent: color, theme: theme });
     }
-    function makeFocusedSpriteLabel(text, accent /*, kindBadge*/){
+    function makeFocusedSpriteLabel(text, accent){
       var theme = (document.documentElement.getAttribute('data-theme') === 'light') ? 'light' : 'dark';
-      return makeLabelSprite(text, { variant: 'focused', accent: accent, theme: theme });
+      return makeLabel(text, { variant: 'focused', accent: accent, theme: theme });
     }
 
     // Neighbor "glow" sprite — a soft white ring at 1.5x node size for
@@ -1505,19 +1451,20 @@ JS_GRAPH = r"""
       sprite.material.transparent = true;
     }
 
-    // ---- Library-default zoom (Issue 2) ---------------------------------
-    // Three rounds of bespoke cursor-anchored zoom shipped, all stuttered
-    // or inverted direction. Reverted to plain OrbitControls zoom: the
-    // library's own wheel handler aims at ``controls.target`` and feels
-    // monotonic + smooth with damping enabled. The wheel listener +
-    // raycaster code is GONE — do not reintroduce it without a working
-    // physical UX trial.
+    // ---- Cursor-anchored zoom via the library option (Issue 3) ---------
+    // Three rounds of bespoke cursor-anchored zoom shipped and all
+    // stuttered or inverted direction. ``THREE.OrbitControls`` ships a
+    // built-in ``zoomToCursor`` flag (since r150+) — flipping it on is
+    // the entire fix. The library reads cursor position, raycasts from
+    // it, and zooms toward whatever's under the pointer. No custom
+    // ``wheel`` listener, no raycasting, no camera mutation.
     function installLibraryZoom(inst){
       var controls = inst && inst.controls && inst.controls();
       if (!controls) return;
       try {
-        controls.enableZoom = true;
-        controls.zoomSpeed = 0.8;       // subtle; pairs well with damping
+        controls.enableZoom = true;     // library owns the wheel
+        controls.zoomToCursor = true;   // <— THIS line is the whole fix
+        controls.zoomSpeed = 1.0;
         controls.enableDamping = true;
         controls.dampingFactor = 0.08;
       } catch (_) {}
@@ -1648,20 +1595,25 @@ JS_GRAPH = r"""
         .onNodeHover(function(node){
           hoverNode = node || null;
           container.style.cursor = node && !isDimmedNode(node) ? 'pointer' : 'default';
+          // Issue 2 — hover preview lives in the cursor-following tooltip.
+          // The focused-node label sprite already shows everything important
+          // for the focused node, so we suppress the tooltip when hovering
+          // the focused node itself (don't double-show).
+          if (node && node !== focusedNode && !isDimmedNode(node)) {
+            showNodeTooltip(node, lastMouseX, lastMouseY);
+          } else {
+            hideTooltip();
+          }
+          // Highlight ring still updates when nothing is pinned, so the
+          // 1-hop neighbors light up under the cursor.
           if (!pinnedNode && !pinnedLink) {
             applyHighlight(node);
-            showInfoPanel(node);
           }
         })
         .onLinkHover(function(link){
           hoverLink = link || null;
           if (!link) { hideTooltip(); return; }
-          var s = typeof link.source === 'object' ? link.source : byId.get(link.source);
-          var t = typeof link.target === 'object' ? link.target : byId.get(link.target);
-          var sName = (s && s.name) || '';
-          var tName = (t && t.name) || '';
-          var label = link.label || link.type || 'related';
-          showTooltip(sName + ' → ' + label + ' → ' + tName, lastMouseX, lastMouseY);
+          showLinkTooltip(link, lastMouseX, lastMouseY);
         })
         .onNodeClick(function(node, evt){
           activateNode(node, evt);
@@ -1717,30 +1669,36 @@ JS_GRAPH = r"""
             group.userData.nodeId = n.id;
             var radius = Math.sqrt(n.val || 1);
             var theme = (document.documentElement.getAttribute('data-theme') === 'light') ? 'light' : 'dark';
-            // Base label (12-14px, used for high-degree overview nodes).
-            var base = makeLabelSprite(nodeLabelText(n), { variant: 'base', accent: nodeAccent(n), theme: theme });
-            if (base) {
-              base.position.set(0, n.val * 1.2 + 8 + radius, 0);
-              group.add(base);
+            // Issue 1 — every label variant the node may need. Per-frame
+            // visibility toggling in nodePositionUpdate picks exactly one.
+            //   default  : 11px translucent text, NO pill (the user
+            //              explicitly does not want white background pills
+            //              on default labels). depthTest=true (peers can
+            //              occlude — keeps the canvas readable).
+            //   neighbor : 14px translucent, NO pill, on top of nodes.
+            //   hover    : 16px opaque, NO pill, on top of nodes.
+            //   focused  : 26px accent on a SOLID pill (the one label the
+            //              user explicitly asked to be visible). Carries an
+            //              ``[Enter] Open page`` hint when href is set.
+            var def = makeLabel(nodeLabelText(n), { variant: 'default', accent: nodeAccent(n), theme: theme });
+            if (def) {
+              def.position.set(0, n.val * 1.2 + 8 + radius, 0);
+              group.add(def);
             }
-            // Hover label (22px, transient — toggled by hoverNode === n).
-            var hover = makeLabelSprite(nodeLabelText(n), { variant: 'hover', accent: nodeAccent(n), theme: theme });
+            var hover = makeLabel(nodeLabelText(n), { variant: 'hover', accent: nodeAccent(n), theme: theme });
             if (hover) {
               hover.position.set(0, n.val * 1.2 + 8 + radius, 0);
               hover.visible = false;
               group.add(hover);
             }
-            // Neighbor label (18px white pill, depthTest=false renderOrder=998).
-            var neighbor = makeLabelSprite(nodeLabelText(n), { variant: 'neighbor', accent: nodeAccent(n), theme: theme });
+            var neighbor = makeLabel(nodeLabelText(n), { variant: 'neighbor', accent: nodeAccent(n), theme: theme });
             if (neighbor) {
               neighbor.position.set(0, n.val * 1.2 + 8 + radius, 0);
               neighbor.visible = false;
               group.add(neighbor);
             }
-            // Focused label (28px accent, opaque pill, depthTest=false
-            // renderOrder=999 → on top of every other object). Toggled by
-            // ``n.__focused`` in nodePositionUpdate.
-            var focused = makeLabelSprite(nodeLabelText(n), { variant: 'focused', accent: nodeAccent(n), theme: theme });
+            var focusedHint = n.href ? '[Enter] Open page' : '';
+            var focused = makeLabel(nodeLabelText(n), { variant: 'focused', accent: nodeAccent(n), theme: theme, hint: focusedHint });
             if (focused) {
               focused.position.set(0, n.val * 1.2 + 8 + radius, 0);
               focused.visible = !!n.__focused;
@@ -1806,9 +1764,12 @@ JS_GRAPH = r"""
                   child.visible = isHovered;
                   child.position.set(0, labelY, 0);
                   applySpriteOpacity(child, 1.0);
-                } else if (ud.isLabel) {
-                  // Base label hides when any of the larger label variants
-                  // is showing — otherwise we'd see stacked titles.
+                } else if (ud.isDefaultLabel || ud.isLabel) {
+                  // Default label — translucent text, no pill (Issue 1).
+                  // Hidden when ANY larger variant is showing on this node
+                  // so we never stack titles. Otherwise: visible for the
+                  // high-degree overview nodes (avoids hairball when every
+                  // tiny leaf draws its name).
                   child.visible = !isFocused && !isFocusedNeighbor && !isHovered && showBaseAlways;
                   child.position.set(0, labelY, 0);
                   applySpriteOpacity(child, cameraDistanceOpacity(coords.x, coords.y, coords.z));
@@ -1822,10 +1783,15 @@ JS_GRAPH = r"""
             if (!label) return null;
             var s = typeof l.source === 'object' ? l.source : byId.get(l.source);
             var t = typeof l.target === 'object' ? l.target : byId.get(l.target);
-            var important = (hoverNode && (hoverNode === s || hoverNode === t)) || highlightLinks.has(l);
+            // Issue 1 — edge labels only render for edges incident to the
+            // focused node (when one exists) OR the hover node. Same
+            // translucent ``edge`` variant style as default node labels.
             if (isDimmedLink(l)) return null;
-            if (!important) return null;
-            return makeSpriteLabel(label, '#ece7dc');
+            var incidentToFocus = focusedNode && (focusedNode === s || focusedNode === t);
+            var incidentToHover = hoverNode && (hoverNode === s || hoverNode === t);
+            if (!incidentToFocus && !incidentToHover) return null;
+            var theme = (document.documentElement.getAttribute('data-theme') === 'light') ? 'light' : 'dark';
+            return makeLabel(label, { variant: 'edge', accent: '#ece7dc', theme: theme });
           });
           if (inst.linkThreeObjectExtend) inst.linkThreeObjectExtend(true);
           if (inst.linkPositionUpdate) {
@@ -1846,39 +1812,103 @@ JS_GRAPH = r"""
         try {
           inst.nodeCanvasObjectMode(function(){ return 'after'; });
           inst.nodeCanvasObject(function(n, ctx, globalScale){
-            var showAlways = shouldShowOverviewLabel(n);
-            var isHover = (hoverNode === n) || highlightNodes.has(n);
+            // Issue 1 + 4 — same variant hierarchy as 3D, applied to the
+            // 2D canvas painter so the relative prominence of each node
+            // label matches between modes:
+            //   focused  : 26px, accent on a SOLID pill, opaque.
+            //   hover    : 16px, opaque white text, NO pill, 2px stroke.
+            //   neighbor : 14px, 0.95 opacity white text, NO pill, 1px stroke.
+            //   default  : 11px, 0.55 opacity white text, NO pill, 1px stroke.
+            // Default labels only render for high-degree overview nodes
+            // (otherwise 2D becomes a hairball of tiny names).
             if (isDimmedNode(n)) return;
-            if (!showAlways && !isHover) return;
+            var isFocused = !!n.__focused;
+            var isFocusedNeighbor = focusedNode && n !== focusedNode && highlightNodes.has(n);
+            var isHovered = (hoverNode === n) && !isFocused;
+            var showDefault = shouldShowOverviewLabel(n);
+            var theme = (document.documentElement.getAttribute('data-theme') === 'light') ? 'light' : 'dark';
+            var variant;
+            if (isFocused) variant = 'focused';
+            else if (isHovered) variant = 'hover';
+            else if (isFocusedNeighbor) variant = 'neighbor';
+            else if (showDefault) variant = 'default';
+            else return;
             var label = nodeLabelText(n);
-            var fontSize = (highlightNodes.has(n) ? 14 : 12) / globalScale;
-            ctx.font = '650 ' + fontSize + 'px Inter, system-ui, sans-serif';
+            var fontSize = (VARIANT_FONT[variant] || 11) / globalScale;
+            ctx.font = (variant === 'focused' ? '700 ' : '600 ') + fontSize + 'px Inter, system-ui, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
-            ctx.lineWidth = 2.5 / globalScale;
-            ctx.strokeStyle = 'rgba(2,6,23,0.38)';
+            // Solid pill ONLY for the focused variant, mirroring makeLabel.
+            if (variant === 'focused') {
+              ctx.font = '700 ' + fontSize + 'px Inter, system-ui, sans-serif';
+              var textW = ctx.measureText(label).width;
+              var padX = 10 / globalScale;
+              var padY = 5 / globalScale;
+              var pillH = fontSize * 1.45 + padY * 2;
+              var pillW = textW + padX * 2;
+              var pillX = n.x - pillW / 2;
+              var pillY = n.y + 7 - padY;
+              var pillR = Math.min(pillH / 2, 8 / globalScale);
+              ctx.fillStyle = (theme === 'light') ? 'rgba(255,255,255,0.95)' : 'rgba(0,0,0,0.85)';
+              ctx.beginPath();
+              ctx.moveTo(pillX + pillR, pillY);
+              ctx.lineTo(pillX + pillW - pillR, pillY);
+              ctx.quadraticCurveTo(pillX + pillW, pillY, pillX + pillW, pillY + pillR);
+              ctx.lineTo(pillX + pillW, pillY + pillH - pillR);
+              ctx.quadraticCurveTo(pillX + pillW, pillY + pillH, pillX + pillW - pillR, pillY + pillH);
+              ctx.lineTo(pillX + pillR, pillY + pillH);
+              ctx.quadraticCurveTo(pillX, pillY + pillH, pillX, pillY + pillH - pillR);
+              ctx.lineTo(pillX, pillY + pillR);
+              ctx.quadraticCurveTo(pillX, pillY, pillX + pillR, pillY);
+              ctx.closePath();
+              ctx.fill();
+              ctx.lineWidth = 1.5 / globalScale;
+              ctx.strokeStyle = nodeAccent(n);
+              ctx.stroke();
+            }
+            // Stroke + fill the text. Stroke widths mirror the 3D variants.
+            var strokePx = (VARIANT_STROKE[variant] || 1) / globalScale;
+            ctx.lineWidth = Math.max(strokePx, 0.6 / globalScale);
+            ctx.strokeStyle = (theme === 'light') ? 'rgba(255,255,255,0.78)' : 'rgba(0,0,0,0.85)';
             ctx.strokeText(label, n.x, n.y + 7);
-            ctx.fillStyle = nodeAccent(n);
+            var op = VARIANT_OPACITY[variant] || 1.0;
+            if (variant === 'focused') {
+              ctx.fillStyle = nodeAccent(n);
+            } else if (variant === 'hover') {
+              ctx.fillStyle = (theme === 'light') ? '#0f172a' : '#ffffff';
+            } else {
+              ctx.fillStyle = (theme === 'light')
+                ? 'rgba(15,23,42,' + op + ')'
+                : 'rgba(255,255,255,' + op + ')';
+            }
             ctx.fillText(label, n.x, n.y + 7);
           });
           inst.linkCanvasObjectMode(function(){ return 'after'; });
           inst.linkCanvasObject(function(l, ctx, globalScale){
+            // Issue 1 — edge labels only render for edges incident to the
+            // focused node (when one exists) OR the hover node, matching
+            // the 3D ``linkThreeObject`` rule. Translucent ``edge`` style.
             var label = edgeLabelText(l);
             if (!label) return;
             var s = typeof l.source === 'object' ? l.source : byId.get(l.source);
             var t = typeof l.target === 'object' ? l.target : byId.get(l.target);
             if (!s || !t) return;
-            var important = (hoverNode && (hoverNode === s || hoverNode === t)) || highlightLinks.has(l);
             if (isDimmedLink(l)) return;
-            if (!important) return;
-            var fontSize = 11 / globalScale;
-            ctx.font = '650 ' + fontSize + 'px Inter, system-ui, sans-serif';
+            var incidentToFocus = focusedNode && (focusedNode === s || focusedNode === t);
+            var incidentToHover = hoverNode && (hoverNode === s || hoverNode === t);
+            if (!incidentToFocus && !incidentToHover) return;
+            var theme = (document.documentElement.getAttribute('data-theme') === 'light') ? 'light' : 'dark';
+            var fontSize = (VARIANT_FONT.edge || 10) / globalScale;
+            ctx.font = '600 ' + fontSize + 'px Inter, system-ui, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.lineWidth = 2.5 / globalScale;
-            ctx.strokeStyle = 'rgba(2,6,23,0.38)';
+            ctx.lineWidth = (VARIANT_STROKE.edge || 1) / globalScale;
+            ctx.strokeStyle = (theme === 'light') ? 'rgba(255,255,255,0.78)' : 'rgba(0,0,0,0.85)';
             ctx.strokeText(label, (s.x + t.x) / 2, (s.y + t.y) / 2);
-            ctx.fillStyle = '#f8fafc';
+            var eop = VARIANT_OPACITY.edge || 0.7;
+            ctx.fillStyle = (theme === 'light')
+              ? 'rgba(15,23,42,' + eop + ')'
+              : 'rgba(255,255,255,' + eop + ')';
             ctx.fillText(label, (s.x + t.x) / 2, (s.y + t.y) / 2);
           });
         } catch (err) {
@@ -1960,6 +1990,12 @@ JS_GRAPH = r"""
         try {
           if (inst.cameraPosition) inst.cameraPosition({ x: 0, y: 0, z: 600 }, { x: 0, y: 0, z: 0 }, 0);
         } catch (_) {}
+      } else if (mode === '2d') {
+        // Issue 3 — 2D ``force-graph`` zooms toward the cursor by default
+        // (the library reads pointer position on wheel). We just confirm
+        // node-drag is on so the user can rearrange the layout while
+        // exploring.
+        try { if (inst.enableNodeDrag) inst.enableNodeDrag(true); } catch (_) {}
       }
       refreshVisibility();
       // Fallback fit (if the engine never stops, e.g. on tiny graphs that
@@ -1971,11 +2007,14 @@ JS_GRAPH = r"""
     var lastMouseX = 0, lastMouseY = 0;
     container.addEventListener('mousemove', function(e){
       var rect = container.getBoundingClientRect();
-      lastMouseX = e.clientX - rect.left;
-      lastMouseY = e.clientY - rect.top;
-      if (tooltip && tooltip.classList.contains('is-visible')) {
-        tooltip.style.left = (lastMouseX + 12) + 'px';
-        tooltip.style.top  = (lastMouseY + 12) + 'px';
+      // Tooltip lives in the wrapper (so the Fullscreen API still draws
+      // it on top of the canvas). The wrapper is the canvas's offset
+      // parent, so we add the canvas's offset to the mouse position so
+      // the tooltip lands at cursor.
+      lastMouseX = e.clientX - rect.left + container.offsetLeft;
+      lastMouseY = e.clientY - rect.top + container.offsetTop;
+      if (tooltip && !tooltip.hidden) {
+        positionTooltip(lastMouseX, lastMouseY);
       }
     });
     container.addEventListener('mouseleave', hideTooltip);
@@ -1994,7 +2033,10 @@ JS_GRAPH = r"""
         focusedNode = node;
         markFocused(node);
         applyHighlight(node);
-        showInfoPanel(node);
+        // Issue 2 — focused node's label sprite carries the focus details
+        // inline (with an ``[Enter] Open page`` hint when href is set).
+        // The bottom-right info panel is gone.
+        hideTooltip();
         focusOnNode(node);
         return;
       }
@@ -2010,7 +2052,7 @@ JS_GRAPH = r"""
         pinnedNode = null;
         pinnedLink = link;
         applyLinkHighlight(link);
-        showLinkInfoPanel(link);
+        hideTooltip();
         focusOnLink(link);
         return;
       }
@@ -2200,8 +2242,9 @@ JS_GRAPH = r"""
           });
           if (match) {
             pinnedNode = match;
+            focusedNode = match;
+            markFocused(match);
             applyHighlight(match);
-            showInfoPanel(match);
             focusOnNode(match);
           }
         }
@@ -2237,6 +2280,12 @@ JS_GRAPH = r"""
       }
       if (e.key === '2') setMode('2d');
       if (e.key === '3') setMode('3d');
+      // Issue 2 — Enter on the focused node opens its page (the focused
+      // label sprite advertises this with an ``[Enter] Open page`` hint).
+      if (e.key === 'Enter' && focusedNode && focusedNode.href) {
+        e.preventDefault();
+        window.location.href = focusedNode.href;
+      }
       if (e.key === 'Escape') {
         // Bug 5 — Esc unfocuses, clears search/day filter, then auto-fits
         // back to the whole graph so the user gets visual confirmation
