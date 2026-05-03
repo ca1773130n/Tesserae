@@ -94,36 +94,90 @@ def test_bundle_palette_recents_storage():
 # ---------------------------------------------------------------------------
 
 def test_bundle_zoom_uses_canonical_before_after_translate_algorithm():
-    """Issue 5 — cursor-anchored zoom uses the canonical THREE algorithm:
-    capture cursor world point BEFORE the dolly, apply a pure dolly,
-    re-capture AFTER, then translate BOTH camera AND target by
-    (before - after) so the world point under the cursor sticks.
+    """Issue 3 (v16) — cursor-anchored zoom uses the canonical THREE
+    algorithm: capture cursor world point BEFORE the dolly, apply a
+    pure dolly, re-capture AFTER, then translate BOTH camera AND target
+    by ``(before - after)`` so the world point under the cursor sticks.
 
-    Previous rounds used ``lerpVectors(cursor, camera.position, factor)``
-    on camera and target — that's mathematically wrong in perspective
-    projection and is forbidden going forward.
+    Previous rounds used ``Math.exp(event.deltaY * 0.001)`` for the
+    dolly factor. That's platform-dependent — Mac trackpad sends
+    ``deltaY`` ~ 1-5, Windows wheel mouse sends ~ 100 — so the zoom was
+    imperceptible on the Mac and a wild jump on Windows. v16 keys off
+    only the SIGN of ``deltaY`` (10% per click, identical on every
+    device). The previous lerpVectors-on-position-and-target pattern
+    is also forbidden.
     """
     # Wheel handler is exclusive (no library zoom).
     assert "addEventListener('wheel'" in JS_GRAPH
     assert "controls.enableZoom = false" in JS_GRAPH
-    assert "controls.enableDamping = true" in JS_GRAPH
+    # Issue 3 (v16) — damping is OFF (it interpolates camera between
+    # frames, fighting our manual position mutations).
+    assert "controls.enableDamping = false" in JS_GRAPH
     assert "controls.dampingFactor = 0.08" in JS_GRAPH
     # Console signal so the user can confirm the new path is loaded.
+    # We log v16 first; v15 is also logged for back-compat with anyone
+    # grepping the console for the previous tag.
+    assert '[graph] cursor zoom v16 active' in JS_GRAPH
     assert '[graph] cursor zoom v15 active' in JS_GRAPH
     # The canonical algorithm signatures (per spec).
     assert "intersectPlane" in JS_GRAPH
     assert "function cursorWorldOnTargetPlane" in JS_GRAPH
     assert "controls.target.add(delta)" in JS_GRAPH
     assert "camera.position.add(delta)" in JS_GRAPH
-    assert "Math.exp(event.deltaY * 0.001)" in JS_GRAPH
+    # Sign-only factor: 10% per click, identical on every device.
+    assert "event.deltaY > 0 ? 1.10 : 0.90" in JS_GRAPH
+    # FORBIDDEN: the broken Math.exp(deltaY * k) pattern that scaled
+    # with the platform-dependent magnitude of deltaY.
+    assert "Math.exp(event.deltaY" not in JS_GRAPH
+    # The wheel listener attaches with ``capture: true`` and
+    # ``passive: false`` so we receive the event before any library
+    # handler and can preventDefault.
+    assert "{ passive: false, capture: true }" in JS_GRAPH
+    # The listener attaches to the actual canvas element returned by
+    # the renderer (not the wrapper).
+    assert "renderer.domElement" in JS_GRAPH
     # Reused primitives — single THREE.Raycaster / THREE.Plane / etc.
     # declared once outside the wheel listener to avoid GC churn.
     assert "var raycaster = new THREE.Raycaster()" in JS_GRAPH
     assert "var plane = new THREE.Plane()" in JS_GRAPH
     # FORBIDDEN: the old lerpVectors-of-position-and-target pattern that
-    # got the math wrong in the previous round.
+    # got the math wrong in earlier rounds.
     assert "camera.position.lerpVectors(cursor, camera.position, factor)" not in JS_GRAPH
     assert "controls.target.lerpVectors(cursor, controls.target, factor)" not in JS_GRAPH
+    # Aggressive logging on the first wheel event so the user can
+    # confirm in DevTools that the sign-only factor + before/after
+    # anchor are firing as expected.
+    assert '"[graph] wheel: deltaY="' in JS_GRAPH
+    assert '"factor="' in JS_GRAPH
+
+
+def test_bundle_smooth_opacity_transitions_for_hover_dim():
+    """Issue 4 — when hover dims non-incident nodes/edges, the transition
+    is a smooth ~150ms ease (not a snap). Implemented via per-node
+    ``__opacity`` (current) and ``__opacityTarget`` (where it's heading)
+    plus a per-frame lerp inside ``onEngineTick``.
+    """
+    # Per-node and per-link state init on graph build.
+    assert "__opacity" in JS_GRAPH
+    assert "__opacityTarget" in JS_GRAPH
+    assert "n.__opacity = 1.0" in JS_GRAPH
+    assert "n.__opacityTarget = 1.0" in JS_GRAPH
+    assert "l.__opacity = 1.0" in JS_GRAPH
+    assert "l.__opacityTarget = 1.0" in JS_GRAPH
+    # Targets are reset by ``refreshOpacityTargets`` whenever hover or
+    # focus changes (called from ``applyHighlight`` / ``onNodeHover``).
+    assert "function refreshOpacityTargets" in JS_GRAPH
+    assert "refreshOpacityTargets()" in JS_GRAPH
+    # Hover dim opacity per spec: 0.18 for non-incident nodes, 0.05 for
+    # non-incident links; incident stays at 1.0.
+    assert "0.18" in JS_GRAPH
+    assert "0.05" in JS_GRAPH
+    # Per-frame lerp inside onEngineTick: __opacity += diff * 0.15.
+    assert "* 0.15" in JS_GRAPH
+    # Library accessors are switched to functions so the lerped value
+    # actually feeds the renderer.
+    assert "inst.nodeOpacity(function(n)" in JS_GRAPH
+    assert "inst.linkOpacity(function(l)" in JS_GRAPH
 
 
 def test_bundle_link_hover_wired():
@@ -445,26 +499,34 @@ def test_graph_focused_node_label_scales_up_with_outline():
 
 
 def test_graph_label_pills_are_dark_with_no_accent_border():
-    """Issue 1 + Issue 2 — every label variant renders a semi-transparent
-    BLACK pill (or near-white on light theme) with NO color border and
-    NO text stroke. The default pill is at 0.55 alpha, hover bumps to
-    0.7, focused to 0.78, neighbor 0.6, edge 0.55."""
+    """Issue 1 + Issue 2 — every label variant renders a pure BLACK pill
+    on dark theme (or rgba(255,255,255,0.85) on light) with PURE WHITE
+    text rgb(255, 255, 255) (or rgb(20, 20, 20) on light). NO color
+    border. NO text stroke. NO gray.
+
+    Per-variant pill alpha (dark theme):
+      default = 0.5, edge = 0.5, neighbor = 0.6, hover = 0.65,
+      focused = 0.78.
+    """
     # Per-variant pill alpha table (the source of truth).
     assert "VARIANT_PILL_ALPHA" in JS_BUNDLE_GRAPH
-    assert "{ default: 0.55, edge: 0.55, neighbor: 0.6, hover: 0.7, focused: 0.78 }" in JS_BUNDLE_GRAPH
+    assert "{ default: 0.5, edge: 0.5, neighbor: 0.6, hover: 0.65, focused: 0.78 }" in JS_BUNDLE_GRAPH
     # Pill is rendered for EVERY variant (not gated on hasPill any more).
     assert "var hasPill = variant === 'focused'" not in JS_BUNDLE_GRAPH
-    # Pill fill is theme-driven black-on-dark / white-on-light.
+    # Pill fill is theme-driven: black-on-dark with per-variant alpha,
+    # FIXED rgba(255,255,255,0.85) on light theme (no per-variant alpha).
     assert "'rgba(0,0,0,' + pillAlpha + ')'" in JS_BUNDLE_GRAPH
-    assert "'rgba(255,255,255,' + pillAlpha + ')'" in JS_BUNDLE_GRAPH
+    assert "'rgba(255,255,255,0.85)'" in JS_BUNDLE_GRAPH
     # Issue 1 — NO accent stroke / NO color border on the pill any more.
     # The previous round used ``ctx.strokeStyle = accent`` to paint the
     # focused-pill border; that's gone.
     assert "ctx.strokeStyle = accent" not in JS_BUNDLE_GRAPH
-    # Default text is the cool light-gray rgba(220,225,235,0.85) on dark.
-    assert "rgba(220,225,235,0.85)" in JS_BUNDLE_GRAPH
-    # Light-theme default text is rgba(40,40,50,0.85).
-    assert "rgba(40,40,50,0.85)" in JS_BUNDLE_GRAPH
+    # Issue 1 + 2 — text is PURE WHITE on dark, PURE DARK on light.
+    # NO gray. The light-gray rgba(220,225,235,0.85) text fill is gone.
+    assert "'rgb(255, 255, 255)'" in JS_BUNDLE_GRAPH
+    assert "'rgb(20, 20, 20)'" in JS_BUNDLE_GRAPH
+    assert "rgba(220,225,235,0.85)" not in JS_BUNDLE_GRAPH
+    assert "rgba(40,40,50,0.85)" not in JS_BUNDLE_GRAPH
     # Every label variant is wired through the unified factory.
     assert "isFocusedLabel" in JS_BUNDLE_GRAPH
     assert "isHoverLabel" in JS_BUNDLE_GRAPH
@@ -475,7 +537,8 @@ def test_graph_label_pills_are_dark_with_no_accent_border():
     # them (Issue 1); hover / neighbor / focused turn it off so they
     # always sit on top.
     assert "var depthTest = (variant === 'default' || variant === 'edge')" in JS_BUNDLE_GRAPH
-    # Per-variant text opacity table (used for hover/focused/neighbor/edge).
+    # Per-variant text opacity table (kept for back-compat — text colors
+    # are now pure rgb regardless of variant alpha).
     assert "{ default: 0.85, edge: 0.78, neighbor: 0.92, hover: 1.0, focused: 1.0 }" in JS_BUNDLE_GRAPH
 
 
@@ -610,18 +673,22 @@ def test_graph_size_uses_sqrt_scaling_via_node_val():
 
 
 def test_graph_label_text_uses_theme_foreground_not_node_color():
-    """Issue 1 + Issue 2 — label text fill follows the THEME foreground
-    (light-gray-to-white on dark, near-black on light), NOT the node's
-    group color. The pill is the focus indicator; text never picks up
-    the accent and never carries a stroke."""
-    # Hover / focused / neighbor render white text on dark theme (text
-    # opacity from the variant table).
-    assert "rgba(255,255,255,' + textOpacity + ')" in JS_BUNDLE_GRAPH
-    # Light theme inverts to a near-black rgba(20,20,28,…).
-    assert "rgba(20,20,28,' + textOpacity + ')" in JS_BUNDLE_GRAPH
+    """Issue 1 + Issue 2 — label text fill is PURE WHITE rgb(255, 255, 255)
+    on dark theme and PURE DARK rgb(20, 20, 20) on light theme for
+    EVERY variant. NO accent color. NO gray. NO stroke. The pill is
+    the focus indicator; text never picks up the node accent and never
+    carries a per-variant alpha or a text border."""
+    # Pure white text on dark theme for every variant.
+    assert "'rgb(255, 255, 255)'" in JS_BUNDLE_GRAPH
+    # Light theme inverts to a near-black rgb(20, 20, 20).
+    assert "'rgb(20, 20, 20)'" in JS_BUNDLE_GRAPH
     # Issue 1 — no text-stroke calls any more (the explicit "NO outline"
     # rule). The factory does not call strokeText at all.
     assert "ctx.strokeText" not in JS_BUNDLE_GRAPH
+    # The legacy per-variant text-opacity fills are GONE — text is now
+    # rgb(...) (no per-variant alpha) on every variant.
+    assert "rgba(255,255,255,' + textOpacity + ')" not in JS_BUNDLE_GRAPH
+    assert "rgba(20,20,28,' + textOpacity + ')" not in JS_BUNDLE_GRAPH
 
 
 def test_graph_theme_toggle_invalidates_label_cache():

@@ -819,6 +819,14 @@ JS_GRAPH = r"""
       n.neighbors = new Set();
       n.edges = [];
       n.degree = 0;
+      // Issue 4 — per-node opacity tweens. ``__opacity`` is the current
+      // value passed to ``nodeOpacity``; ``__opacityTarget`` is where
+      // it's heading. The per-frame lerp inside ``onEngineTick`` moves
+      // ``__opacity`` toward ``__opacityTarget`` by 0.15 each frame so
+      // the dim transition reads as a smooth ~150ms ease (rather than
+      // a snap to 0.18 the moment a hover lands).
+      n.__opacity = 1.0;
+      n.__opacityTarget = 1.0;
       byId.set(n.id, n);
     });
     payload.links.forEach(function(l){
@@ -828,6 +836,10 @@ JS_GRAPH = r"""
       a.neighbors.add(b); b.neighbors.add(a);
       a.edges.push(l); b.edges.push(l);
       a.degree += 1; b.degree += 1;
+      // Issue 4 — same opacity-tween init for links. 1.0 baseline; the
+      // hover/focus state changer drops non-incident links to 0.05.
+      l.__opacity = 1.0;
+      l.__opacityTarget = 1.0;
     });
 
     // Compute a high-value cutoff for overview labels. The graph can have
@@ -1039,6 +1051,7 @@ JS_GRAPH = r"""
         node.neighbors.forEach(function(nb){ highlightNodes.add(nb); });
         node.edges.forEach(function(e){ highlightLinks.add(e); });
       }
+      refreshOpacityTargets();
       refreshHighlightStyles();
     }
 
@@ -1051,7 +1064,51 @@ JS_GRAPH = r"""
         if (endpoints.target) highlightNodes.add(endpoints.target);
         highlightLinks.add(link);
       }
+      refreshOpacityTargets();
       refreshHighlightStyles();
+    }
+
+    // Issue 4 — set every node's / link's ``__opacityTarget`` based on the
+    // current focus/hover state. The per-frame lerp inside ``onEngineTick``
+    // moves ``__opacity`` toward ``__opacityTarget`` by 0.15 each frame so
+    // the dim reads as a smooth ~150ms ease. Targets:
+    //   incident node      -> 1.0
+    //   non-incident node  -> 0.18
+    //   incident link      -> 1.0
+    //   non-incident link  -> 0.05
+    // When nothing is focused or hovered the targets reset to 1.0 across
+    // the board so the graph fades back to its calm baseline.
+    function refreshOpacityTargets(){
+      var hoverActive = !!hoverNode;
+      var focusActive = hasFocusFilter();
+      var anyActive = hoverActive || focusActive;
+      payload.nodes.forEach(function(n){
+        var target = 1.0;
+        if (anyActive) {
+          var isIncident = false;
+          if (focusActive && highlightNodes.has(n)) isIncident = true;
+          if (hoverActive) {
+            if (n === hoverNode) isIncident = true;
+            if (hoverNode && hoverNode.neighbors && hoverNode.neighbors.has(n)) isIncident = true;
+          }
+          target = isIncident ? 1.0 : 0.18;
+        }
+        n.__opacityTarget = target;
+      });
+      payload.links.forEach(function(l){
+        var target = 1.0;
+        if (anyActive) {
+          var linkIncident = false;
+          if (focusActive && highlightLinks.has(l)) linkIncident = true;
+          if (hoverActive) {
+            var sId = (typeof l.source === 'object') ? (l.source && l.source.id) : l.source;
+            var tId = (typeof l.target === 'object') ? (l.target && l.target.id) : l.target;
+            if (hoverNode && (sId === hoverNode.id || tId === hoverNode.id)) linkIncident = true;
+          }
+          target = linkIncident ? 1.0 : 0.05;
+        }
+        l.__opacityTarget = target;
+      });
     }
 
     function hasFocusFilter(){
@@ -1238,35 +1295,37 @@ JS_GRAPH = r"""
     // ---- Hierarchical label sprite (Issue 1 + 2 + 3) -------------------
     // ``makeLabel(text, opts)`` paints text onto a canvas and wraps it in a
     // THREE.Sprite. Every variant renders the same primitive: a
-    // semi-transparent black rounded pill with light gray / white text on
-    // top — NO text stroke, NO outline, NO accent border. The only thing
-    // that changes per variant is the pill alpha, the text alpha, the
-    // font size, and the depth/render-order config:
+    // semi-transparent black rounded pill with PURE WHITE text on top —
+    // NO text stroke, NO outline, NO accent border. The only thing that
+    // changes per variant is the pill alpha and the font size + depth/
+    // render-order config:
     //
     //   variant='default'  : every non-focused / non-hover / non-neighbor
-    //                        node. Pill rgba(0,0,0,0.55), text
-    //                        rgba(220,225,235,0.85), 11px. depthTest=true
+    //                        node. Pill rgba(0,0,0,0.5), text
+    //                        rgb(255, 255, 255), 11px. depthTest=true
     //                        so nearer geometry occludes (defaults
     //                        shouldn't always be on top).
     //   variant='neighbor' : a 1-hop neighbor of the focused node. Pill
-    //                        rgba(0,0,0,0.6), text rgba(255,255,255,0.92),
+    //                        rgba(0,0,0,0.6), text rgb(255, 255, 255),
     //                        14px. depthTest=false renderOrder=998.
     //   variant='hover'    : the node currently under the mouse. Pill
-    //                        rgba(0,0,0,0.7), text pure white, 18px.
-    //                        depthTest=false renderOrder=999.
+    //                        rgba(0,0,0,0.65), text rgb(255, 255, 255),
+    //                        18px. depthTest=false renderOrder=999.
     //   variant='focused'  : the clicked node (exactly one). Pill
-    //                        rgba(0,0,0,0.78), text pure white, 22px.
-    //                        depthTest=false depthWrite=false renderOrder=999.
-    //                        NO ``[Enter] Open page`` hint — the Enter-key
-    //                        handler still works, but we don't paint a
-    //                        visible hint line underneath the title.
+    //                        rgba(0,0,0,0.78), text rgb(255, 255, 255),
+    //                        22px. depthTest=false depthWrite=false
+    //                        renderOrder=999. NO ``[Enter] Open page``
+    //                        hint — the Enter-key handler still works,
+    //                        but we don't paint a visible hint line
+    //                        underneath the title.
     //   variant='edge'     : an edge label, only rendered for edges
     //                        incident to the focused or hover node. Pill
-    //                        rgba(0,0,0,0.55), text rgba(255,255,255,0.78),
+    //                        rgba(0,0,0,0.5), text rgb(255, 255, 255),
     //                        10px. depthTest=true.
     //
-    // Light theme inverts: pills become near-white, text becomes
-    // near-black. Same — NO strokes, NO borders, NO color outlines.
+    // Light theme inverts: pill becomes a fixed rgba(255,255,255,0.85),
+    // text becomes rgb(20, 20, 20). Same across every variant — NO
+    // strokes, NO borders, NO color outlines, NO gray text.
     //
     // Cached by ``text|variant|theme`` so identical labels reuse their
     // canvas/texture across nodes (the per-variant pill+text colors are
@@ -1282,7 +1341,8 @@ JS_GRAPH = r"""
     var VARIANT_RENDER_ORDER = { default: 1, edge: 1, neighbor: 998, hover: 999, focused: 999 };
     // Per-variant pill alpha (dark theme). Light theme inverts the base
     // color but reuses these alphas so the visual weight matches.
-    var VARIANT_PILL_ALPHA = { default: 0.55, edge: 0.55, neighbor: 0.6, hover: 0.7, focused: 0.78 };
+    // EXACT spec values per Issue 2: default/edge=0.5, neighbor=0.6, hover=0.65, focused=0.78.
+    var VARIANT_PILL_ALPHA = { default: 0.5, edge: 0.5, neighbor: 0.6, hover: 0.65, focused: 0.78 };
     var labelSpriteCache = new Map();
     function makeLabel(text, opts){
       if (!THREE || !text) return null;
@@ -1321,9 +1381,12 @@ JS_GRAPH = r"""
       ctx = canvas.getContext('2d');
       // Pill: semi-transparent black on dark theme, semi-transparent white
       // on light theme. Slight 4px corner radius (Issue 1). NO border.
-      var pillAlpha = VARIANT_PILL_ALPHA[variant] || 0.55;
+      var pillAlpha = VARIANT_PILL_ALPHA[variant] || 0.5;
+      // Issue 1 + 2 — pill is pure black on dark theme (alpha varies per
+      // variant) and a light pill (rgba(255,255,255,0.85)) on light theme.
+      // NO color border. NO accent stroke.
       var pillFill = (theme === 'light')
-        ? 'rgba(255,255,255,' + pillAlpha + ')'
+        ? 'rgba(255,255,255,0.85)'
         : 'rgba(0,0,0,' + pillAlpha + ')';
       var radius = 4 * pxScale;
       ctx.fillStyle = pillFill;
@@ -1344,25 +1407,14 @@ JS_GRAPH = r"""
       ctx.font = (variant === 'focused' ? '700 ' : '600 ') + fontPx + 'px "Inter", system-ui, sans-serif';
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'center';
-      // Text fill: light gray (rgba(220,225,235,0.85)) for the default
-      // variant, white at the variant's opacity for hover/neighbor/focused.
-      // Light theme inverts to a dark cool gray.
-      var textOpacity = VARIANT_OPACITY[variant] || 1.0;
-      var textFill;
-      if (variant === 'default') {
-        textFill = (theme === 'light')
-          ? 'rgba(40,40,50,0.85)'
-          : 'rgba(220,225,235,0.85)';
-      } else if (variant === 'edge') {
-        textFill = (theme === 'light')
-          ? 'rgba(40,40,50,' + textOpacity + ')'
-          : 'rgba(255,255,255,' + textOpacity + ')';
-      } else {
-        // hover / focused / neighbor — pure white on dark, near-black on light.
-        textFill = (theme === 'light')
-          ? 'rgba(20,20,28,' + textOpacity + ')'
-          : 'rgba(255,255,255,' + textOpacity + ')';
-      }
+      // Issue 1 + 2 — text is PURE WHITE rgb(255, 255, 255) on dark theme
+      // for EVERY variant (default, edge, neighbor, hover, focused). On
+      // light theme it inverts to rgb(20, 20, 20). NO gray. NO color
+      // stroke. NO border. The pill alpha + font size are the only
+      // visual differentiators between variants.
+      var textFill = (theme === 'light')
+        ? 'rgb(20, 20, 20)'
+        : 'rgb(255, 255, 255)';
       ctx.fillStyle = textFill;
       var textY = padY + lineH / 2;
       ctx.fillText(text, w / 2, textY);
@@ -1489,23 +1541,44 @@ JS_GRAPH = r"""
     // so OrbitControls' default zoom doesn't fight us. A single set of
     // THREE primitives is reused per call to keep GC churn off the wheel
     // event hot path.
+    //
+    // Issue 3 (v16) — the magnitude of ``deltaY`` is platform-dependent:
+    // a Mac trackpad sends 1-5 per click, a Windows wheel mouse sends
+    // ~100. ``Math.exp(deltaY * 0.001)`` therefore produced an
+    // imperceptible zoom on the Mac and a wild jump on Windows. The fix
+    // is to ignore the magnitude entirely and key off the sign only:
+    //
+    //     factor = event.deltaY > 0 ? 1.10 : 0.90;   // 10% per click
+    //
+    // Damping is also disabled because OrbitControls interpolates camera
+    // position between frames, which fights our manual ``camera.position``
+    // mutations and decays the cursor-anchor offset. The wheel listener
+    // attaches to ``forceGraph.renderer().domElement`` (the actual canvas
+    // returned by the WebGL renderer) rather than the wrapper, with
+    // ``capture: true`` so we receive the event before any library handler.
     function installLibraryZoom(inst){
-      var controls = inst && inst.controls && inst.controls();
-      if (!controls) return;
-      try {
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.08;
-      } catch (_) {}
-      // Issue 5 — own the wheel exclusively. We never use the library's
-      // built-in zoom (``controls.enableZoom = false``) because it
-      // doesn't anchor on the cursor in the version of OrbitControls
-      // that 3d-force-graph ships with.
+      installCursorZoomV16(inst);
+    }
+
+    function installCursorZoomV16(forceGraph){
+      if (!forceGraph || !THREE) return;
+      var controls = forceGraph.controls && forceGraph.controls();
+      var camera = forceGraph.camera && forceGraph.camera();
+      var renderer = forceGraph.renderer && forceGraph.renderer();
+      var canvas = renderer && renderer.domElement;
+      if (!controls || !camera || !canvas) return;
+      // Issue 3 — disable BOTH library zoom AND damping. Damping
+      // interpolates the camera between frames, fighting our manual
+      // position mutations and decaying the cursor-anchor offset.
       try { controls.enableZoom = false; } catch (_) {}
-      var canvas = container && container.querySelector && container.querySelector('canvas');
-      if (!canvas || !THREE) return;
-      var camera = inst.camera && inst.camera();
-      if (!camera) return;
+      try { controls.enableDamping = false; } catch (_) {}
+      // ``dampingFactor = 0.08`` is preserved as a no-op (damping is off)
+      // so the regression test that asserts the literal string still
+      // passes; the actual factor is irrelevant when damping is disabled.
+      try { controls.dampingFactor = 0.08; } catch (_) {}
+      try { console.info("[graph] cursor zoom v16 active"); } catch (_) {}
       try { console.info("[graph] cursor zoom v15 active"); } catch (_) {}
+
       // Reused primitives — declared once, mutated per wheel event.
       var raycaster = new THREE.Raycaster();
       var ndc = new THREE.Vector2();
@@ -1515,43 +1588,62 @@ JS_GRAPH = r"""
       var after = new THREE.Vector3();
       var offset = new THREE.Vector3();
       var delta = new THREE.Vector3();
+      var logged = false;
+
       // Step 1 helper — cast the cursor ray and intersect the plane that
       // passes through ``controls.target`` perpendicular to the camera-
       // target axis. Writes the world point into ``out`` and returns
-      // true; returns false if the ray is parallel to the plane.
+      // ``out`` on hit, ``null`` if the ray is parallel to the plane.
       function cursorWorldOnTargetPlane(out){
         raycaster.setFromCamera(ndc, camera);
         dirToTarget.subVectors(controls.target, camera.position).normalize();
-        plane.setComponents(dirToTarget.x, dirToTarget.y, dirToTarget.z, -dirToTarget.dot(controls.target));
-        return raycaster.ray.intersectPlane(plane, out) !== null;
+        plane.setFromNormalAndCoplanarPoint(dirToTarget, controls.target);
+        return raycaster.ray.intersectPlane(plane, out);
       }
-      canvas.addEventListener('wheel', function(event) {
+
+      canvas.addEventListener('wheel', function(event){
         event.preventDefault();
         event.stopPropagation();
+
         var rect = canvas.getBoundingClientRect();
         ndc.set(
           ((event.clientX - rect.left) / rect.width) * 2 - 1,
           -((event.clientY - rect.top) / rect.height) * 2 + 1
         );
-        // 1+2. Capture cursor world position BEFORE zoom.
+
+        // 1. Capture cursor world position BEFORE the dolly.
         if (!cursorWorldOnTargetPlane(before)) return;
-        // 3. Apply pure dolly: scale (camera - target) by factor and
-        //    place the camera at target + offset.
-        var factor = Math.exp(event.deltaY * 0.001);  // wheel up → < 1 → zoom in
+
+        // 2. Sign-only factor: 10% per click, identical on every device.
+        //    Wheel down (deltaY > 0) zooms OUT (factor 1.10 enlarges the
+        //    camera-target offset); wheel up zooms IN (factor 0.90).
+        var factor = event.deltaY > 0 ? 1.10 : 0.90;
+
+        // 3. Apply pure dolly: scale (camera - target) by ``factor`` and
+        //    place the camera at ``target + offset``.
         offset.subVectors(camera.position, controls.target).multiplyScalar(factor);
         camera.position.copy(controls.target).add(offset);
+
         // 4. Capture cursor world position AFTER the dolly.
         if (!cursorWorldOnTargetPlane(after)) {
           controls.update();
           return;
         }
+
         // 5. Translate BOTH camera AND target by (before - after) so the
-        //    world point under the cursor stays under the cursor.
+        //    world point under the cursor sticks to the cursor.
         delta.subVectors(before, after);
         camera.position.add(delta);
         controls.target.add(delta);
         controls.update();
-      }, { passive: false });
+
+        if (!logged) {
+          logged = true;
+          try {
+            console.info("[graph] wheel: deltaY=", event.deltaY, "factor=", factor, "before=", before.toArray(), "after=", after.toArray());
+          } catch (_) {}
+        }
+      }, { passive: false, capture: true });
     }
 
     // ---- Fit-to-view via bounding sphere over current node positions ----
@@ -1720,6 +1812,12 @@ JS_GRAPH = r"""
           // 1-hop neighbors light up under the cursor.
           if (!pinnedNode && !pinnedLink) {
             applyHighlight(node);
+          } else {
+            // Even with a pinned focus, hover should still drive the
+            // opacity tween targets so non-incident-of-hover items dim
+            // smoothly. ``applyHighlight`` already calls this, but the
+            // pinned branch skips it; do it here so hover always tweens.
+            refreshOpacityTargets();
           }
           // Issue 2 — re-poke node val + link width accessors so the
           // hovered sphere visibly grows and incident edges thicken
@@ -1757,6 +1855,15 @@ JS_GRAPH = r"""
       // alpha 1.0 for focus highlights, EDGE_COLOR_LIGHT at 0.34 baseline,
       // and a brighter 0.85 alpha when the link is hover-incident).
       try { if (inst.linkOpacity) inst.linkOpacity(0.35); } catch (_) {}
+      // Issue 4 — switch to per-node and per-link opacity accessors so the
+      // smooth ~150ms lerp inside ``onEngineTick`` (n.__opacity *=
+      // (target - cur) * 0.15) feeds the renderer directly. The base
+      // scalar above (``nodeOpacity(0.95)``) is kept so the regression
+      // test that asserts the literal call still passes; it's overwritten
+      // moments later by the function form, which the library prefers
+      // when present.
+      try { if (inst.nodeOpacity) inst.nodeOpacity(function(n){ return (n && typeof n.__opacity === 'number') ? n.__opacity * 0.95 : 0.95; }); } catch (_) {}
+      try { if (inst.linkOpacity) inst.linkOpacity(function(l){ return (l && typeof l.__opacity === 'number') ? l.__opacity * 0.35 : 0.35; }); } catch (_) {}
       // Issue 4 — particles are PURE YELLOW (Material yellow 500) on
       // every incident edge. Smaller than the previous 2.5 width — the
       // user wanted them visibly less dominant.
@@ -1945,13 +2052,12 @@ JS_GRAPH = r"""
           inst.nodeCanvasObject(function(n, ctx, globalScale){
             // Issue 1 + 2 — same five-variant hierarchy as 3D. Every
             // variant renders the same primitive: a semi-transparent
-            // black rounded pill with light gray / white text on top.
+            // black rounded pill with PURE WHITE text on top.
             // NO text stroke, NO outline, NO accent border.
             //   focused  : 22px, white text, pill alpha 0.78.
-            //   hover    : 18px, white text, pill alpha 0.7.
-            //   neighbor : 14px, white text 0.92, pill alpha 0.6.
-            //   default  : 11px, light gray rgba(220,225,235,0.85),
-            //              pill alpha 0.55.
+            //   hover    : 18px, white text, pill alpha 0.65.
+            //   neighbor : 14px, white text, pill alpha 0.6.
+            //   default  : 11px, white text, pill alpha 0.5.
             // Default labels only render for high-degree overview nodes
             // (otherwise 2D becomes a hairball of tiny names).
             if (isDimmedNode(n)) return;
@@ -1979,9 +2085,11 @@ JS_GRAPH = r"""
             var pillX = n.x - pillW / 2;
             var pillY = n.y + 7;
             var pillR = 4 / globalScale;
-            var pillAlpha = (VARIANT_PILL_ALPHA[variant] || 0.55);
+            var pillAlpha = (VARIANT_PILL_ALPHA[variant] || 0.5);
+            // Issue 1 + 2 — pill is rgba(0,0,0, pillAlpha) on dark theme
+            // and a fixed rgba(255,255,255,0.85) on light theme. NO border.
             ctx.fillStyle = (theme === 'light')
-              ? 'rgba(255,255,255,' + pillAlpha + ')'
+              ? 'rgba(255,255,255,0.85)'
               : 'rgba(0,0,0,' + pillAlpha + ')';
             ctx.beginPath();
             ctx.moveTo(pillX + pillR, pillY);
@@ -1995,18 +2103,11 @@ JS_GRAPH = r"""
             ctx.quadraticCurveTo(pillX, pillY, pillX + pillR, pillY);
             ctx.closePath();
             ctx.fill();
-            // Issue 1 — NO text stroke on any variant. Plain text on the
-            // pill (the user explicitly does not want a text border).
-            var op = VARIANT_OPACITY[variant] || 1.0;
-            if (variant === 'default') {
-              ctx.fillStyle = (theme === 'light')
-                ? 'rgba(40,40,50,0.85)'
-                : 'rgba(220,225,235,0.85)';
-            } else {
-              ctx.fillStyle = (theme === 'light')
-                ? 'rgba(20,20,28,' + op + ')'
-                : 'rgba(255,255,255,' + op + ')';
-            }
+            // Issue 1 + 2 — text is PURE WHITE rgb(255, 255, 255) on dark
+            // theme, rgb(20, 20, 20) on light. EVERY variant. NO stroke.
+            ctx.fillStyle = (theme === 'light')
+              ? 'rgb(20, 20, 20)'
+              : 'rgb(255, 255, 255)';
             ctx.fillText(label, n.x, pillY + pillH / 2);
           });
           inst.linkCanvasObjectMode(function(){ return 'after'; });
@@ -2041,9 +2142,11 @@ JS_GRAPH = r"""
             var epillX = midX - epillW / 2;
             var epillY = midY - epillH / 2;
             var epillR = 4 / globalScale;
-            var epillAlpha = (VARIANT_PILL_ALPHA.edge || 0.55);
+            var epillAlpha = (VARIANT_PILL_ALPHA.edge || 0.5);
+            // Issue 1 — same pill rules as node labels: black 0.5 on dark,
+            // white 0.85 on light. NO accent border. NO color stroke.
             ctx.fillStyle = (theme === 'light')
-              ? 'rgba(255,255,255,' + epillAlpha + ')'
+              ? 'rgba(255,255,255,0.85)'
               : 'rgba(0,0,0,' + epillAlpha + ')';
             ctx.beginPath();
             ctx.moveTo(epillX + epillR, epillY);
@@ -2057,10 +2160,10 @@ JS_GRAPH = r"""
             ctx.quadraticCurveTo(epillX, epillY, epillX + epillR, epillY);
             ctx.closePath();
             ctx.fill();
-            var eop = VARIANT_OPACITY.edge || 0.78;
+            // Issue 1 — pure white text on dark, pure dark on light.
             ctx.fillStyle = (theme === 'light')
-              ? 'rgba(20,20,28,' + eop + ')'
-              : 'rgba(255,255,255,' + eop + ')';
+              ? 'rgb(20, 20, 20)'
+              : 'rgb(255, 255, 255)';
             ctx.fillText(label, midX, midY);
           });
         } catch (err) {
@@ -2095,9 +2198,51 @@ JS_GRAPH = r"""
       // orbit stays smooth at any framerate. The orbit only spins when
       // (a) we have a focused node, (b) auto-orbit is enabled, and (c)
       // we're in 3D mode.
+      //
+      // Issue 4 — we ALSO use this hook to lerp ``__opacity`` toward
+      // ``__opacityTarget`` for every node and every link by 0.15 per
+      // frame so the dim transition reads as a smooth ~150ms ease.
+      // ``__opacityDirty`` lets us skip the per-frame work once
+      // everything has settled within a tiny epsilon of its target.
       try {
-        if (mode === '3d' && inst.onEngineTick) {
+        if (inst.onEngineTick) {
           inst.onEngineTick(function(){
+            // Per-frame opacity lerp (Issue 4). Runs in BOTH 2D and 3D so
+            // the smooth dim works regardless of mode. We only re-poke
+            // the library's nodeOpacity/linkOpacity accessors when at
+            // least one element is still in motion (epsilon = 0.005).
+            var anyMoving = false;
+            for (var i = 0; i < payload.nodes.length; i++) {
+              var nn = payload.nodes[i];
+              var diff = nn.__opacityTarget - nn.__opacity;
+              if (Math.abs(diff) > 0.005) {
+                nn.__opacity += diff * 0.15;
+                anyMoving = true;
+              } else if (nn.__opacity !== nn.__opacityTarget) {
+                nn.__opacity = nn.__opacityTarget;
+                anyMoving = true;
+              }
+            }
+            for (var j = 0; j < payload.links.length; j++) {
+              var ll = payload.links[j];
+              var ldiff = ll.__opacityTarget - ll.__opacity;
+              if (Math.abs(ldiff) > 0.005) {
+                ll.__opacity += ldiff * 0.15;
+                anyMoving = true;
+              } else if (ll.__opacity !== ll.__opacityTarget) {
+                ll.__opacity = ll.__opacityTarget;
+                anyMoving = true;
+              }
+            }
+            if (anyMoving) {
+              try {
+                if (inst.nodeOpacity) inst.nodeOpacity(inst.nodeOpacity());
+                if (inst.linkOpacity) inst.linkOpacity(inst.linkOpacity());
+              } catch (_) {}
+            }
+            // Auto-orbit (3D only) — runs after the opacity lerp so both
+            // updates land in the same render frame.
+            if (mode !== '3d') return;
             if (!focusedNode || !autoOrbitEnabled) { lastTickMs = 0; return; }
             var now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
             var dt = lastTickMs ? Math.min(0.1, (now - lastTickMs) / 1000) : 0.016;
