@@ -127,7 +127,10 @@ def test_node_table_renders_rows_and_includes_header():
         {"title": "Bar", "href": "papers/bar.html", "kind": "Paper", "tone": "warm", "mentions": 1, "source": ""},
     ]
     out = node_table(rows)
-    assert out.startswith("<table")
+    # Wide tables now ride inside a ``.table-scroll`` wrapper so they
+    # don't bust narrow viewports — the table itself is the second tag.
+    assert out.startswith('<div class="table-scroll">')
+    assert "<table" in out
     assert 'class="node-table"' in out
     assert "<thead>" in out and "<tbody>" in out
     assert "Foo" in out and "Bar" in out
@@ -437,3 +440,32 @@ def test_css_contains_required_mobile_breakpoints():
     assert "[data-toc-open]" in CSS
     # Bottom nav styles ship with the bundle.
     assert ".mobile-bottom-nav" in CSS
+
+
+# ---------------------------------------------------------------------------
+# main_variant ("wide") wiring (Issue 1)
+# ---------------------------------------------------------------------------
+
+
+def test_page_shell_default_main_class_has_no_wide_modifier():
+    out = _shell()
+    assert 'class="main"' in out
+    assert "main--wide" not in out
+
+
+def test_page_shell_main_variant_wide_emits_modifier_class():
+    out = _shell(main_variant="wide")
+    assert 'class="main main--wide"' in out
+    assert 'class="shell shell--wide"' in out
+
+
+# ---------------------------------------------------------------------------
+# table-scroll wrapper now wraps every node_table
+# ---------------------------------------------------------------------------
+
+
+def test_node_table_wraps_in_table_scroll_div():
+    rows = [{"title": "Foo", "href": "concepts/foo.html", "kind": "Concept"}]
+    out = node_table(rows)
+    assert out.startswith('<div class="table-scroll">')
+    assert out.endswith("</div>")

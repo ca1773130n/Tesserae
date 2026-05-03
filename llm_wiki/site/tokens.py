@@ -5,9 +5,13 @@ The full CSS string is exposed as ``CSS``. It is consumed by
 
 The tokens mirror §5.1 of ``docs/superpowers/specs/2026-04-27-wiki-frontend-redesign-design.md``
 (warm terracotta accent, serif body, system-fallback fonts, dark theme variant).
-Layout primitives implement §5.2: 1280px page max width, 240px left rail,
-220px right TOC, 720px reading column. Mobile first; the rail unlocks at
-``min-width: 768px`` and the TOC unlocks at ``min-width: 1024px``.
+Layout primitives originally implemented §5.2 (1280×720 reading column);
+the polish pass widens the desktop layout so PCs no longer waste 70% of
+the viewport — the shell now spans up to 1640 px (1800 px ultra-wide),
+with a 1100 px / 75ch prose cap on detail pages and a ``main--wide``
+modifier that opens index/listing routes to the full viewport. Mobile
+first; the rail unlocks at ``min-width: 768px`` and the TOC at
+``min-width: 1024px``.
 """
 
 from __future__ import annotations
@@ -46,9 +50,9 @@ CSS: str = r"""
   --space-7: 48px;
   --space-8: 64px;
   --rail-w: 240px;
-  --toc-w: 220px;
-  --read-w: 720px;
-  --page-w: 1280px;
+  --toc-w: 260px;
+  --read-w: min(1100px, 75ch);
+  --page-w: min(100vw - 32px, 1640px);
   --topbar-height: 56px;
 }
 
@@ -1070,6 +1074,30 @@ section.panel > h3,
   font-size: 10px;
   fill: var(--ink-muted);
 }
+
+/* Auto-linker — subtle dotted underline so auto-generated links read as
+   informative without dominating the page (Issue 3). Authored ``<a>``
+   tags keep the heavier underline-offset treatment. */
+.auto-link {
+  border-bottom: 1px dotted var(--ink-muted);
+  text-decoration: none;
+  color: var(--ink);
+}
+.auto-link:hover,
+.auto-link:focus {
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Markdown-rendered tables get a horizontal scroll affordance on narrow
+   viewports without needing the renderer to wrap each one. */
+.markdown-body table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-collapse: collapse;
+}
 """
 
 
@@ -1387,6 +1415,108 @@ body {
 /* 10. Reduced motion — kill drawer slide animations. */
 @media (prefers-reduced-motion: reduce) {
   .rail, .toc-rail { transition: none !important; }
+}
+
+/* ============================================================
+   Mobile overlap fixes — Issue 2
+   ============================================================
+   Land last so they win the cascade against earlier @media blocks.
+   - Topbar clearance via padding-block-start on <main>.
+   - Bottom-nav clearance via padding-block-end on <main>.
+   - TOC drawer overlay backdrop so the body never bleeds through.
+   - Subtype chips: 44 px hit area + flex-wrap so they don't smash.
+   - Long titles wrap aggressively so arxiv ids never push horizontal scroll.
+   - Tables on detail pages get a horizontal scroll wrapper. */
+@media (max-width: 1023px) {
+  .main {
+    padding-block-start: max(12px, env(safe-area-inset-top));
+    padding-block-end: 88px; /* clear the mobile bottom nav */
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .main h1, .main h2, .main h3, .main .eyebrow, .raw-title {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .breadcrumbs {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  /* Subtype chips: real tap targets, no smash. */
+  .subtype-chips { gap: 8px; }
+  .subtype-chip {
+    min-block-size: 44px;
+    padding: 6px 14px;
+    line-height: 1.2;
+  }
+  /* Backdrop for the TOC drawer — kicks in via [data-toc-open] state. */
+  [data-toc-open]::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .4);
+    z-index: 50;
+    pointer-events: auto;
+  }
+  /* Backdrop for the rail drawer too. */
+  [data-rail-open]::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, .4);
+    z-index: 50;
+    pointer-events: auto;
+  }
+  /* Tables breathe inside their scroll wrapper. */
+  .table-scroll { margin: var(--space-3) 0; }
+  /* Auto-fill card grid stays tappable: every card a fat target. */
+  .card { min-block-size: 44px; }
+}
+
+/* ============================================================
+   Full-width desktop layout — Issue 1
+   ============================================================
+   Override the earlier ``.shell`` grid so the content column expands
+   past the historical 720 px reading limit on wide monitors. Detail
+   pages keep a humane prose width via ``--read-w`` (~75ch).
+   Index pages opt in via ``main--wide`` and let the table use the full
+   viewport. */
+@media (min-width: 1280px) {
+  .shell {
+    max-width: var(--page-w);
+    grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--toc-w);
+    gap: 24px;
+    padding: var(--space-6) clamp(16px, 2vw, 24px);
+  }
+  .main {
+    /* Detail pages cap at the prose-comfortable reading column. */
+    max-width: var(--read-w);
+    margin-inline: auto;
+    width: 100%;
+  }
+  .main--wide {
+    /* Index/listing pages stretch — they're tabular not prose. */
+    max-width: min(100vw - 320px, 1640px);
+  }
+  .shell--wide {
+    /* TOC rail stays available for now but the wide-main is allowed
+       to consume the gap when there's no TOC content. */
+    grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--toc-w);
+  }
+}
+
+/* Ultra-wide (>= 1920 px): roomier rails, slightly wider content. */
+@media (min-width: 1920px) {
+  :root {
+    --rail-w: 280px;
+    --toc-w: 300px;
+  }
+  .main {
+    max-width: min(1280px, 80ch);
+  }
+  .main--wide {
+    max-width: min(100vw - 360px, 1800px);
+  }
 }
 """
 

@@ -37,6 +37,7 @@ from .raw_view import (
     render_raw_view,
     safe_raw_slug,
 )
+from .auto_link import AutoLinker
 from .components import (
     ai_siblings_footer,
     badge,
@@ -268,6 +269,26 @@ class SiteContext:
     # was used and source paths are surfaced verbatim (still safe for
     # already-relative paths).
     project_root: Optional[Path] = None
+    # Pre-built auto-linker — populated by :meth:`build` so every detail
+    # page renderer can call ``ctx.auto_linker.linkify(...)`` without
+    # rebuilding the candidate set per render. ``None`` when the context
+    # is constructed directly (tests / older callers); callers should use
+    # :meth:`get_auto_linker` to materialise it lazily.
+    auto_linker: Optional[AutoLinker] = None
+
+    def get_auto_linker(self) -> AutoLinker:
+        """Return the cached :class:`AutoLinker`, building it lazily.
+
+        Frozen-dataclass instances built without ``auto_linker`` (older
+        tests, direct construction) still get a working linker on demand;
+        the lazily-built one is stashed via ``object.__setattr__`` so the
+        cost is paid once.
+        """
+        if self.auto_linker is not None:
+            return self.auto_linker
+        linker = AutoLinker.from_context(self)
+        object.__setattr__(self, "auto_linker", linker)
+        return linker
 
     @classmethod
     def build(
@@ -362,7 +383,7 @@ class SiteContext:
         # simply don't appear on any timeline day page.
         activity_by_day, sources_by_day = _activity_by_day(graph)
 
-        return cls(
+        ctx = cls(
             site_title=site_title,
             graph=graph,
             wiki_pages_by_kind={k: list(v) for k, v in wiki_pages_by_kind.items()},
@@ -383,6 +404,11 @@ class SiteContext:
             sources_by_day=sources_by_day,
             project_root=project_root,
         )
+        # Build the auto-link table eagerly — it's a one-time scan over
+        # the graph and amortises over every detail-page render. Stash via
+        # ``object.__setattr__`` because the dataclass is frozen.
+        object.__setattr__(ctx, "auto_linker", AutoLinker.from_context(ctx))
+        return ctx
 
 
 _DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
@@ -935,6 +961,14 @@ def _detail_page(
     if fm_title:
         body_md = _strip_duplicate_h1(body_md, fm_title)
     body_html, headings = _render_markdown(body_md)
+    # Auto-link known node-name mentions in the rendered body so plain
+    # text references become links into the wiki. The current page's own
+    # node id is excluded so the page never auto-links to itself.
+    node_for_excl = _find_node_for_page(ctx, page)
+    excluded_ids: set = {node_for_excl.id} if node_for_excl is not None else set()
+    body_html = ctx.get_auto_linker().linkify(
+        body_html, depth=1, exclude_node_ids=excluded_ids
+    )
     eyebrow = _eyebrow(kind_label, page)
     bc = _build_breadcrumbs(breadcrumbs_trail, depth=1)
     toc_headings: List[Tuple[int, str, str]] = [
@@ -1145,12 +1179,14 @@ def _render_index_table(rows: Sequence[dict]) -> str:
             "</tr>"
         )
     return (
+        '<div class="table-scroll">'
         '<table class="node-table index-table" data-filterable-table>'
         "<thead><tr>"
         "<th>Title</th><th>Type</th><th>Summary</th><th>Source</th>"
         "</tr></thead>"
         f"<tbody>{''.join(body_rows)}</tbody>"
         "</table>"
+        "</div>"
     )
 
 
@@ -1186,6 +1222,7 @@ def _index_page(
         site_title=ctx.site_title,
         counts=_nav_counts(ctx),
         breadcrumbs_html=bc,
+        main_variant="wide",
     )
 
 
@@ -1285,6 +1322,7 @@ def render_home(ctx: SiteContext) -> str:
         active="home",
         site_title=ctx.site_title,
         counts=counts,
+        main_variant="wide",
     )
 
 
@@ -1607,6 +1645,7 @@ def render_timeline(ctx: SiteContext) -> str:
         site_title=ctx.site_title,
         counts=_nav_counts(ctx),
         breadcrumbs_html=bc,
+        main_variant="wide",
     )
 
 
@@ -1717,6 +1756,7 @@ def render_timeline_day(ctx: SiteContext, date_str: str) -> str:
             site_title=ctx.site_title,
             counts=_nav_counts(ctx),
             breadcrumbs_html=bc,
+            main_variant="wide",
         )
 
     nodes_today = [
@@ -1826,6 +1866,7 @@ def render_timeline_day(ctx: SiteContext, date_str: str) -> str:
         site_title=ctx.site_title,
         counts=_nav_counts(ctx),
         breadcrumbs_html=bc,
+        main_variant="wide",
     )
 
 
@@ -2017,6 +2058,7 @@ def render_graph_view(ctx: SiteContext) -> str:
         site_title=ctx.site_title,
         counts=_nav_counts(ctx),
         breadcrumbs_html=bc,
+        main_variant="wide",
     )
 
 
@@ -2047,8 +2089,8 @@ def render_about(ctx: SiteContext) -> str:
     <li>/graph — interactive graph view</li>
   </ul>
   <h2>Node-type counts</h2>
-  <table class="node-table"><thead><tr><th>Type</th><th>Count</th></tr></thead>
-  <tbody>{type_rows}</tbody></table>
+  <div class="table-scroll"><table class="node-table"><thead><tr><th>Type</th><th>Count</th></tr></thead>
+  <tbody>{type_rows}</tbody></table></div>
 </section>"""
     return page_shell(
         title="About",
@@ -2059,6 +2101,7 @@ def render_about(ctx: SiteContext) -> str:
         site_title=ctx.site_title,
         counts=_nav_counts(ctx),
         breadcrumbs_html=bc,
+        main_variant="wide",
     )
 
 

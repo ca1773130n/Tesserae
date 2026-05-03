@@ -782,3 +782,103 @@ def test_render_timeline_heatmap_cells_are_anchored(site_ctx: SiteContext) -> No
         r'<a [^>]*xlink:href="\.\./timeline/2026-04-27\.html"[^>]*>\s*<rect',
         out,
     ), "heatmap cell for 2026-04-27 must be wrapped in an <a> link"
+
+
+# ---------------------------------------------------------------------------
+# Issue 1 — wide layout for index/listing routes
+# ---------------------------------------------------------------------------
+
+
+def test_index_pages_emit_main_wide_class(site_ctx: SiteContext) -> None:
+    """Index/listing routes opt into the wide-content variant so the table
+    can fill the desktop viewport instead of squishing into the prose
+    column."""
+    for renderer in (
+        render_concepts_index,
+        render_papers_index,
+        render_repos_index,
+        render_topics_index,
+        render_syntheses_index,
+        render_questions_index,
+        render_entities_index,
+        render_sources_index,
+    ):
+        out = renderer(site_ctx)
+        assert 'class="main main--wide"' in out, (
+            f"{renderer.__name__} must opt into main--wide"
+        )
+
+
+def test_detail_pages_keep_default_main(site_ctx: SiteContext) -> None:
+    """Detail pages stay in the prose-comfortable reading column."""
+    pages = site_ctx.wiki_pages_by_kind["papers"]
+    if not pages:
+        pytest.skip("fixture has no paper page")
+    out = render_paper_detail(site_ctx, pages[0])
+    # The plain ``main`` class — no ``main--wide`` modifier on detail
+    # pages.
+    assert 'class="main"' in out
+    assert "main--wide" not in out
+
+
+def test_home_emits_main_wide_class(site_ctx: SiteContext) -> None:
+    """Home is index-like (stats, entry-point cards, heatmap) so it goes
+    wide too."""
+    out = render_home(site_ctx)
+    assert 'class="main main--wide"' in out
+
+
+# ---------------------------------------------------------------------------
+# Issue 3 — auto-link post-pass on detail pages
+# ---------------------------------------------------------------------------
+
+
+def test_paper_detail_runs_auto_link_post_pass(
+    wiki_sample_graph: ResearchGraph,
+) -> None:
+    """A paper-detail body that mentions another graph node by name must
+    have that mention rewritten into a ``class="auto-link"`` anchor.
+    """
+    # Pick any concept node from the fixture corpus and craft a paper body
+    # that references its name in plain text.
+    concept = next(
+        (n for n in wiki_sample_graph.nodes
+         if n.type == ResearchNodeType.CONCEPT and len(n.name) >= 4),
+        None,
+    )
+    paper = next(
+        (n for n in wiki_sample_graph.nodes
+         if n.type == ResearchNodeType.PAPER),
+        None,
+    )
+    if concept is None or paper is None:
+        pytest.skip("fixture has no concept or paper node")
+
+    pages_by_kind = _wiki_pages_for(wiki_sample_graph)
+    # Replace the synthesised paper page body with one that mentions the
+    # chosen concept by name in plain prose. We use a body that already
+    # has rendered HTML markers so we know the auto-linker walked it.
+    if not pages_by_kind["papers"]:
+        pytest.skip("paper fixture missing")
+    paper_page = pages_by_kind["papers"][0]
+    rich_page = WikiPage(
+        kind="papers",
+        slug=paper_page.slug,
+        title=paper_page.title,
+        body=f"# Note\n\nThis paper relies on {concept.name} extensively.\n",
+        path=paper_page.path,
+        frontmatter=paper_page.frontmatter,
+    )
+    pages_by_kind["papers"][0] = rich_page
+
+    ctx = SiteContext.build(
+        graph=wiki_sample_graph,
+        wiki_pages_by_kind=pages_by_kind,
+        site_title="LLM-Wiki",
+    )
+    out = render_paper_detail(ctx, rich_page)
+    # The body must now contain an auto-link wrapper for the concept.
+    assert 'class="auto-link"' in out, (
+        "paper detail must auto-link known node mentions"
+    )
+    assert concept.name in out

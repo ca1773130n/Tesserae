@@ -222,11 +222,15 @@ def node_table(
                 cells.append(f"<td>{_esc(row.get(col, ''))}</td>")
         body_rows.append("<tr>" + "".join(cells) + "</tr>")
 
+    # Wrap in ``.table-scroll`` so wide tables get a horizontal scroll
+    # affordance on narrow viewports instead of busting the page layout.
     return (
+        '<div class="table-scroll">'
         '<table class="node-table">'
         f"<thead><tr>{head}</tr></thead>"
         f"<tbody>{''.join(body_rows)}</tbody>"
         "</table>"
+        "</div>"
     )
 
 
@@ -637,6 +641,7 @@ def page_shell(
     toc_html: str = "",
     breadcrumbs_html: str = "",
     ai_siblings_html: str = "",
+    main_variant: str = "",
 ) -> str:
     """Render the top-level HTML document.
 
@@ -651,6 +656,11 @@ def page_shell(
     ``body`` is the article HTML. ``toc_html`` / ``breadcrumbs_html`` /
     ``ai_siblings_html`` are slot-style optional pieces — pass the output
     of the matching component function or leave empty.
+
+    ``main_variant`` (``"wide"`` or ``""``) toggles the ``main--wide``
+    class on the ``<main>`` element. Index/listing routes pass ``"wide"``
+    so the table can fill the desktop viewport rather than getting
+    squished into the prose-comfortable reading column.
     """
     prefix = _prefix(depth)
     counts = dict(counts or {})
@@ -659,6 +669,8 @@ def page_shell(
         f'<aside class="toc-rail" id="toc">{toc_html}</aside>' if toc_html else '<aside class="toc-rail" id="toc" hidden></aside>'
     )
     bottom_nav = _render_bottom_nav(active=active, prefix=prefix)
+    main_class = "main main--wide" if main_variant == "wide" else "main"
+    shell_class = "shell shell--wide" if main_variant == "wide" else "shell"
 
     # Top-bar nav mirrors the rail's headline categories so the site is
     # navigable even when the rail is collapsed on mobile.
@@ -696,9 +708,9 @@ def page_shell(
         '<button class="rail-toggle" aria-controls="rail" aria-expanded="false" '
         'data-toggle-rail type="button">Menu</button>\n'
         "</header>\n"
-        '<div class="shell">\n'
+        f'<div class="{_esc(shell_class)}">\n'
         f"{rail}\n"
-        '<main class="main" id="main">\n'
+        f'<main class="{_esc(main_class)}" id="main">\n'
         f"{breadcrumbs_html}\n"
         '<button class="toc-toggle" aria-controls="toc" aria-expanded="false" '
         'data-toggle-toc type="button">On this page</button>\n'
