@@ -274,7 +274,10 @@ def test_bundle_node_labels_present_in_both_modes():
     # 2D variant decision tree mirrors the 3D nodeThreeObject group.
     assert "var isHovered = (hoverNode === n) && !isFocused;" in JS_GRAPH
     assert "var isFocusedNeighbor = focusedNode" in JS_GRAPH
-    assert "var showDefault = shouldShowOverviewLabel(n);" in JS_GRAPH
+    # 2D mode now renders ALL labels (the previous filter via
+    # shouldShowOverviewLabel was removed — the user wants every node
+    # named in the flat layout). Importance drives alpha instead.
+    assert "function degreeImportanceAlpha" in JS_GRAPH
     # Issue 1 — NO ``ctx.strokeText`` calls anywhere in the 2D painter.
     assert "ctx.strokeText(label" not in JS_GRAPH
 
@@ -339,7 +342,7 @@ def test_graph_resize_handler_does_not_auto_refit():
 def test_graph_initial_camera_position_is_known():
     """The first frame parks the camera at z=600 so we don't see a wild
     zoom-out from the origin before the simulation settles."""
-    assert "inst.cameraPosition({ x: 0, y: 0, z: 110 }, { x: 0, y: 0, z: 0 }, 0)" in JS_GRAPH
+    assert "inst.cameraPosition({ x: 0, y: 0, z: 220 }, { x: 0, y: 0, z: 0 }, 0)" in JS_GRAPH
 
 
 def test_graph_labels_are_truncated():
@@ -632,10 +635,14 @@ def test_graph_label_variants_unified_across_2d_and_3d():
     / hover / focused / edge) drives label rendering in BOTH 2D and 3D
     so the relative prominence of a node's label matches between modes."""
     # 2D variant decision tree mirrors the 3D nodeThreeObject group.
+    # The user wants ALL labels in 2D — the prior overview-filter
+    # ``else if (showDefault)`` was replaced by an unconditional
+    # ``else variant = 'default'`` and per-node alpha modulation via
+    # ``degreeImportanceAlpha``.
     assert "if (isFocused) variant = 'focused';" in JS_BUNDLE_GRAPH
     assert "else if (isHovered) variant = 'hover';" in JS_BUNDLE_GRAPH
     assert "else if (isFocusedNeighbor) variant = 'neighbor';" in JS_BUNDLE_GRAPH
-    assert "else if (showDefault) variant = 'default';" in JS_BUNDLE_GRAPH
+    assert "else variant = 'default';" in JS_BUNDLE_GRAPH
     # Variant tables drive both paths.
     assert "VARIANT_FONT" in JS_BUNDLE_GRAPH
     assert "VARIANT_OPACITY" in JS_BUNDLE_GRAPH

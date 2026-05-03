@@ -856,6 +856,28 @@ JS_GRAPH = r"""
       return Math.max(1, (n && (n.val || n.degree)) || 1) >= Math.max(medianVal + 1, overviewLabelVal);
     }
 
+    // Maximum degree across the corpus — used by ``degreeImportanceAlpha``
+    // to scale label opacity so that high-connection hubs read clearly
+    // and isolated leaves fade into the background. Floors at 1 so the
+    // division below can't divide by zero on an empty graph.
+    var maxDegree = 1;
+    for (var __i = 0; __i < payload.nodes.length; __i++) {
+      var __d = (payload.nodes[__i] && payload.nodes[__i].degree) || 0;
+      if (__d > maxDegree) maxDegree = __d;
+    }
+
+    // Default-label opacity = importance(degree) × camera-distance.
+    // Range clamped to [0.18, 1.0]. With nothing focused/hovered, this
+    // is the SOLE driver of "which labels do I read first" — the more
+    // connected a node, the more legible its label.
+    function degreeImportanceAlpha(n){
+      if (!n) return 0.18;
+      var d = n.degree || 0;
+      // sqrt curve so the top 20% pop without the leaf 80% disappearing.
+      var t = Math.sqrt(Math.min(1.0, d / Math.max(1, maxDegree)));
+      return 0.18 + t * 0.82;
+    }
+
     // Issue 2 — the bottom-right ``#graph-info-panel`` overlay (with its
     // empty/content/neighbors children) is GONE. The cursor-following
     // ``#graph-tooltip`` below replaces it for hover preview; the focused
@@ -1933,6 +1955,25 @@ JS_GRAPH = r"""
           clearInfoPanel();
         });
 
+      // Right-click anywhere on the canvas → unselect. Mirrors the
+      // background-click handler exactly. ``preventDefault`` so the
+      // browser context menu doesn't pop up.
+      try {
+        var rendererCanvas = inst.renderer && inst.renderer() && inst.renderer().domElement;
+        if (rendererCanvas) {
+          rendererCanvas.addEventListener('contextmenu', function(event){
+            event.preventDefault();
+            pinnedNode = null;
+            pinnedLink = null;
+            focusedNode = null;
+            try { markFocused(null); } catch (_) {}
+            autoOrbitEnabled = false;
+            try { applyHighlight(null); } catch (_) {}
+            try { clearInfoPanel(); } catch (_) {}
+          });
+        }
+      } catch (_) {}
+
       try { if (inst.nodeOpacity) inst.nodeOpacity(0.95); } catch (_) {}
       // Issue 4 — keep base edge opacity at 0.35 so non-incident edges
       // read as faint background structure. Incident edges get an opacity
@@ -2100,14 +2141,16 @@ JS_GRAPH = r"""
                   child.userData.__lastScale = camScale;
                   applySpriteOpacity(child, 1.0);
                 } else if (ud.isDefaultLabel || ud.isLabel) {
-                  // Default label — translucent text, no pill (Issue 1).
-                  // Hidden when ANY larger variant is showing on this node
-                  // so we never stack titles. Otherwise: visible for the
-                  // high-degree overview nodes (avoids hairball when every
-                  // tiny leaf draws its name).
-                  child.visible = !isFocused && !isFocusedNeighbor && !isHovered && showBaseAlways;
+                  // Default label — visible whenever no larger variant
+                  // is active. Importance (degree) drives opacity so
+                  // hubs read clearly and leaves fade into the canvas.
+                  // Camera-distance is folded in as a multiplier so
+                  // far-away labels also calm down.
+                  child.visible = !isFocused && !isFocusedNeighbor && !isHovered;
                   child.position.set(0, labelY, 0);
-                  applySpriteOpacity(child, cameraDistanceOpacity(coords.x, coords.y, coords.z));
+                  var distAlpha = cameraDistanceOpacity(coords.x, coords.y, coords.z);
+                  var impAlpha = degreeImportanceAlpha(node);
+                  applySpriteOpacity(child, Math.min(1.0, distAlpha * 0.6 + impAlpha * 0.6));
                 }
               }
               return true;
@@ -2167,14 +2210,19 @@ JS_GRAPH = r"""
             var isFocused = !!n.__focused;
             var isFocusedNeighbor = focusedNode && n !== focusedNode && highlightNodes.has(n);
             var isHovered = (hoverNode === n) && !isFocused;
-            var showDefault = shouldShowOverviewLabel(n);
             var theme = (document.documentElement.getAttribute('data-theme') === 'light') ? 'light' : 'dark';
             var variant;
+            // 2D mode renders ALL labels (the user wants to see every
+            // node's name in the flat layout — there's room for them
+            // unlike in 3D where the canvas is busier). Importance
+            // drives alpha so hubs read clearly and leaves fade.
             if (isFocused) variant = 'focused';
             else if (isHovered) variant = 'hover';
             else if (isFocusedNeighbor) variant = 'neighbor';
-            else if (showDefault) variant = 'default';
-            else return;
+            else variant = 'default';
+            var impAlpha = (variant === 'default')
+              ? degreeImportanceAlpha(n)
+              : 1.0;
             var label = nodeLabelText(n);
             var fontSize = (VARIANT_FONT[variant] || 11) / globalScale;
             ctx.font = (variant === 'focused' ? '700 ' : '600 ') + fontSize + 'px Inter, system-ui, sans-serif';
@@ -2188,12 +2236,16 @@ JS_GRAPH = r"""
             var pillX = n.x - pillW / 2;
             var pillY = n.y + 7;
             var pillR = 4 / globalScale;
-            var pillAlpha = (VARIANT_PILL_ALPHA[variant] || 0.5);
+            // ``pillAlpha === 0`` skips the pill entirely (e.g. edge
+            // labels). Otherwise scale by importance for default labels
+            // so hubs read clearly and leaves fade gracefully.
+            var basePillAlpha = (typeof VARIANT_PILL_ALPHA[variant] === 'number') ? VARIANT_PILL_ALPHA[variant] : 0.5;
+            var pillAlpha = basePillAlpha * impAlpha;
             // Issue 1 + 2 — pill is rgba(0,0,0, pillAlpha) on dark theme
             // and a fixed rgba(255,255,255,0.85) on light theme. NO border.
             ctx.fillStyle = (theme === 'light')
-              ? 'rgba(255,255,255,0.85)'
-              : 'rgba(0,0,0,' + pillAlpha + ')';
+              ? 'rgba(255,255,255,' + (0.85 * impAlpha).toFixed(3) + ')'
+              : 'rgba(0,0,0,' + pillAlpha.toFixed(3) + ')';
             ctx.beginPath();
             ctx.moveTo(pillX + pillR, pillY);
             ctx.lineTo(pillX + pillW - pillR, pillY);
@@ -2206,11 +2258,12 @@ JS_GRAPH = r"""
             ctx.quadraticCurveTo(pillX, pillY, pillX + pillR, pillY);
             ctx.closePath();
             ctx.fill();
-            // Issue 1 + 2 — text is PURE WHITE rgb(255, 255, 255) on dark
-            // theme, rgb(20, 20, 20) on light. EVERY variant. NO stroke.
+            // Issue 1 + 2 — text is PURE WHITE on dark theme, dark on
+            // light. Multiply by ``impAlpha`` so default labels for
+            // low-degree leaves fade into the background.
             ctx.fillStyle = (theme === 'light')
-              ? 'rgb(20, 20, 20)'
-              : 'rgb(255, 255, 255)';
+              ? 'rgba(20, 20, 20,' + impAlpha.toFixed(3) + ')'
+              : 'rgba(255, 255, 255,' + impAlpha.toFixed(3) + ')';
             ctx.fillText(label, n.x, pillY + pillH / 2);
           });
           inst.linkCanvasObjectMode(function(){ return 'after'; });
@@ -2361,7 +2414,7 @@ JS_GRAPH = r"""
         // a wild zoom-out from the origin. The single-shot scheduleCenteredFit
         // will refine the framing once the simulation settles.
         try {
-          if (inst.cameraPosition) inst.cameraPosition({ x: 0, y: 0, z: 110 }, { x: 0, y: 0, z: 0 }, 0);
+          if (inst.cameraPosition) inst.cameraPosition({ x: 0, y: 0, z: 220 }, { x: 0, y: 0, z: 0 }, 0);
         } catch (_) {}
       } else if (mode === '2d') {
         // Issue 3 — 2D ``force-graph`` zooms toward the cursor by default
@@ -2477,15 +2530,14 @@ JS_GRAPH = r"""
           }
         } catch (_) {}
         var radius = Math.sqrt((node && node.val) || 1);
-        // Bounding sphere radius from the cluster spread; floor at the
-        // node's own visual radius + a small comfort gap. The user
-        // repeatedly reports the camera ends up too far — keep
-        // orbitRadius tight (multiplier 0.35, floor ~70) so the focused
-        // node fills a chunk of the canvas instead of vanishing into
-        // a wide overview.
+        // Bounding sphere radius from the cluster spread. The user has
+        // bounced between "too close" and "too far"; settling on a
+        // reasonable middle ground: cluster spread × 0.75 so neighbours
+        // fit comfortably with breathing room, floor 130 so a leaf
+        // with no neighbours still sits at a comfortable reading distance.
         var spread = Math.max(
-          Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) * 0.35,
-          Math.max(30 + radius * 10, 70)
+          Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) * 0.75,
+          Math.max(80 + radius * 12, 130)
         );
         orbitRadius = spread;
         orbitAngle = 0;
