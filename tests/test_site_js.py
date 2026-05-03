@@ -225,11 +225,13 @@ def test_graph_edges_are_visible_lines_not_only_particles():
     assert "rgba(191,219,254,0.34)" not in JS_GRAPH
     assert "rgba(250,204,21,0.85)" not in JS_GRAPH
     assert "if (inst.linkOpacity) inst.linkOpacity(0.35);" in JS_GRAPH
-    # Issue 4 — edges thinner everywhere. Default 0.25, incident 0.9.
+    # Issue 4 — edges thinner everywhere; widths now scale by camera
+    # distance so they grow when zoomed out and shrink when zoomed in.
+    # Defaults: 0.25, incident: 0.9. Multiplied by ``camScale``.
     assert "function isHoverIncidentLink" in JS_GRAPH
-    assert "if (highlightLinks.has(l)) return 0.9;" in JS_GRAPH
-    assert "if (isHoverIncidentLink(l)) return 0.9;" in JS_GRAPH
-    assert "return 0.25;" in JS_GRAPH
+    assert "if (highlightLinks.has(l)) return 0.9 * camScale;" in JS_GRAPH
+    assert "if (isHoverIncidentLink(l)) return 0.9 * camScale;" in JS_GRAPH
+    assert "return 0.25 * camScale;" in JS_GRAPH
     # Forbid the previous round's thicker widths.
     assert "if (highlightLinks.has(l)) return 2.0;" not in JS_GRAPH
     assert "if (isHoverIncidentLink(l)) return 0.75;" not in JS_GRAPH
@@ -337,7 +339,7 @@ def test_graph_resize_handler_does_not_auto_refit():
 def test_graph_initial_camera_position_is_known():
     """The first frame parks the camera at z=600 so we don't see a wild
     zoom-out from the origin before the simulation settles."""
-    assert "inst.cameraPosition({ x: 0, y: 0, z: 320 }, { x: 0, y: 0, z: 0 }, 0)" in JS_GRAPH
+    assert "inst.cameraPosition({ x: 0, y: 0, z: 180 }, { x: 0, y: 0, z: 0 }, 0)" in JS_GRAPH
 
 
 def test_graph_labels_are_truncated():

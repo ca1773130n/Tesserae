@@ -31,10 +31,22 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Iterable, List, Optional, Tuple
+from typing import Callable, Iterable, List, Mapping, Optional, Tuple
 
 from .components import breadcrumbs, page_shell
 from .markdown import render_markdown
+
+
+# A wiki-link resolver maps a ``(kind, key)`` lookup onto a page slug.
+#  * ``kind="papers"`` + ``key=<arxiv-id>`` (e.g. ``"2509.23563"``) →
+#    ``slug`` of the corresponding paper-detail page, or ``None``.
+#  * ``kind="repos"`` + ``key="<owner>/<repo>"`` (case-insensitive) →
+#    ``slug`` of the corresponding repo-detail page, or ``None``.
+# Used by :func:`_render_markdown_body` to rewrite cross-page references like
+# ``[GitHub 분석](papers/2509.23563/repo.md)`` and
+# ``[분석](repos/OpenDriveLab_WorldEngine.md)`` onto canonical analysis URLs
+# instead of leaving 404s under ``/raw/``.
+WikiLinkResolver = Callable[[str, str], Optional[str]]
 
 
 __all__ = [
@@ -47,6 +59,8 @@ __all__ = [
     "iter_raw_sources",
     "copy_raw_asset",
     "is_binary_extension",
+    "WikiLinkResolver",
+    "build_wiki_link_resolver",
 ]
 
 
@@ -336,10 +350,103 @@ def _render_breadcrumb_long_path(rel_path: str) -> str:
     return breadcrumbs(items)
 
 
+def build_wiki_link_resolver(
+    graph: object,
+    page_slug_for_node: Optional[Mapping[str, str]] = None,
+    canonical_slug: Optional[Callable[[str], str]] = None,
+) -> WikiLinkResolver:
+    """Build a :data:`WikiLinkResolver` from the graph.
+
+    The graph carries ``Paper`` nodes (with ``metadata.arxiv_id``) and
+    ``Repository`` / ``CodeProject`` / ``Project`` nodes (with
+    ``metadata.github_repo`` like ``"owner/repo"``). The returned resolver
+    maps:
+
+      * ``("papers", "<arxiv-id>")`` — looks up the *repo companion* of that
+        paper. Curated digests use ``papers/<id>/repo.md`` to mean "the
+        GitHub analysis page for the repo paired with this paper". We
+        match by ``metadata.arxiv_id`` against ``Repository``-kind nodes.
+      * ``("repos", "owner/repo")`` — looks up a repo node by its
+        ``metadata.github_repo`` field (case-insensitive).
+
+    Slug resolution prefers ``page_slug_for_node`` (the on-disk slug
+    written by the projector) and falls back to
+    :func:`canonical_slug(node.name)` so the link is still self-consistent
+    when no page exists yet.
+    """
+    page_slug_for_node = page_slug_for_node or {}
+
+    if canonical_slug is None:
+        # Late import to dodge the pages → raw_view import cycle.
+        from .pages import _canonical_slug as canonical_slug  # type: ignore
+
+    # Pre-index the graph once. We index every plausibly-public node-kind so
+    # the resolver works for both ``Paper`` and the ``Repository`` family.
+    repo_by_github: dict[str, object] = {}
+    repo_by_arxiv: dict[str, object] = {}
+    paper_by_arxiv: dict[str, object] = {}
+
+    nodes = getattr(graph, "nodes", None) or []
+    for node in nodes:
+        node_type = getattr(node, "type", None)
+        type_name = getattr(node_type, "value", node_type)
+        type_str = str(type_name)
+        meta = getattr(node, "metadata", None) or {}
+        if not isinstance(meta, dict):
+            continue
+        if type_str in {"Repository", "CodeProject", "Project"}:
+            github_repo = meta.get("github_repo")
+            if isinstance(github_repo, str) and github_repo:
+                repo_by_github.setdefault(github_repo.lower(), node)
+            arxiv_id = meta.get("arxiv_id")
+            if isinstance(arxiv_id, str) and arxiv_id:
+                repo_by_arxiv.setdefault(arxiv_id, node)
+        elif type_str == "Paper":
+            arxiv_id = meta.get("arxiv_id")
+            if isinstance(arxiv_id, str) and arxiv_id:
+                paper_by_arxiv.setdefault(arxiv_id, node)
+
+    def _slug_for(node: object) -> Optional[str]:
+        node_id = getattr(node, "id", None)
+        if isinstance(node_id, str):
+            slug = page_slug_for_node.get(node_id)
+            if slug:
+                return slug
+        name = getattr(node, "name", None)
+        if isinstance(name, str) and name:
+            slug = canonical_slug(name)
+            if slug:
+                return slug
+        return None
+
+    def resolve(kind: str, key: str) -> Optional[str]:
+        if not kind or not key:
+            return None
+        if kind == "papers":
+            # Curated digests use ``papers/<arxiv>/repo.md`` → repo page.
+            node = repo_by_arxiv.get(key)
+            if node is not None:
+                return _slug_for(node)
+            # Fallback: the paper page itself, if no companion repo exists.
+            node = paper_by_arxiv.get(key)
+            if node is not None:
+                return _slug_for(node)
+            return None
+        if kind == "repos":
+            node = repo_by_github.get(key.lower())
+            if node is not None:
+                return _slug_for(node)
+            return None
+        return None
+
+    return resolve
+
+
 def _render_markdown_body(
     absolute: Path,
     project_root: Optional[Path] = None,
     project_relative_path: Optional[str] = None,
+    wiki_link_resolver: Optional[WikiLinkResolver] = None,
 ) -> str:
     """Render the raw markdown body and rewrite neighbor ``.md`` links.
 
@@ -353,6 +460,13 @@ def _render_markdown_body(
     Cross-arxiv ``papers/<id>/(paper|main|abstract).md`` links still go
     out to arxiv.org via the same ``arxiv_paper_match`` rule that
     ``pages._wiki_link_rewriter`` uses.
+
+    Curated digests ship pseudo-paths like ``papers/<arxiv>/repo.md`` or
+    ``repos/<owner>_<repo>.md`` that don't exist on disk but DO have a
+    canonical analysis page in the rendered site. ``wiki_link_resolver``
+    (when threaded in) maps those tokens to the on-disk slug so the link
+    lands on the real ``../repos/<slug>.html`` / ``../papers/<slug>.html``
+    instead of 404'ing.
     """
     text = absolute.read_text(encoding="utf-8", errors="replace")
 
@@ -369,14 +483,49 @@ def _render_markdown_body(
             query = "?" + q
         if not rest.endswith(".md"):
             return target
-        # arxiv-paper shorthand: papers/<id>/paper|main|abstract.md → arxiv URL.
+        # arxiv-paper shorthand: papers/<id>/paper|main|abstract.md.
+        # Priority order:
+        #   (1) ../papers/<slug>.html — the LLM-Wiki paper page is where
+        #       the analysis lives, so a "[논문 분석]" link should land
+        #       there first.
+        #   (2) https://arxiv.org/abs/<id> — fall back to arxiv only when
+        #       the wiki has no extracted paper page yet.
         m = re.fullmatch(
             r"(?:\.\./)*papers/(\d{4}\.\d{4,6})/(?:paper|main|abstract)\.md",
             rest,
             flags=re.IGNORECASE,
         )
         if m:
-            return f"https://arxiv.org/abs/{m.group(1)}{query}{fragment}"
+            arxiv_id = m.group(1)
+            if wiki_link_resolver is not None:
+                slug = wiki_link_resolver("papers", arxiv_id)
+                if slug:
+                    return f"../papers/{slug}.html{query}{fragment}"
+            return f"https://arxiv.org/abs/{arxiv_id}{query}{fragment}"
+        # arxiv-repo shorthand: papers/<id>/repo.md → canonical repo page.
+        if wiki_link_resolver is not None:
+            m_repo = re.fullmatch(
+                r"(?:\.\./)*papers/(\d{4}\.\d{4,6})/repo\.md",
+                rest,
+                flags=re.IGNORECASE,
+            )
+            if m_repo:
+                slug = wiki_link_resolver("papers", m_repo.group(1))
+                if slug:
+                    return f"../repos/{slug}.html{query}{fragment}"
+            # repo shorthand: repos/<owner>_<repo>.md → canonical repo page.
+            m_repo2 = re.fullmatch(
+                r"(?:\.\./)*repos/([^/]+)\.md",
+                rest,
+                flags=re.IGNORECASE,
+            )
+            if m_repo2:
+                stem = m_repo2.group(1)
+                # ``Owner_Repo`` underscored → ``Owner/Repo`` for lookup.
+                key = stem.replace("_", "/", 1)
+                slug = wiki_link_resolver("repos", key)
+                if slug:
+                    return f"../repos/{slug}.html{query}{fragment}"
         if project_root is None:
             return target
         # Resolve the relative path against the raw doc's own directory.
@@ -471,6 +620,7 @@ def render_raw_view(
     asset_filename: Optional[str] = None,
     counts: Optional[dict] = None,
     doc_tree_html: str = "",
+    wiki_link_resolver: Optional[WikiLinkResolver] = None,
 ) -> str:
     """Render the full ``raw/<safe>.html`` document.
 
@@ -512,6 +662,7 @@ def render_raw_view(
             absolute_path,
             project_root=project_root,
             project_relative_path=project_relative_path,
+            wiki_link_resolver=wiki_link_resolver,
         )
     elif suffix in _TEXT_EXTS and absolute_path.stat().st_size <= _TEXT_INLINE_LIMIT:
         body_html = _render_text_body(absolute_path)

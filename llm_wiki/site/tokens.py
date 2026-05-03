@@ -49,8 +49,8 @@ CSS: str = r"""
   --space-6: 32px;
   --space-7: 48px;
   --space-8: 64px;
-  --rail-w: 220px;
-  --toc-w: 220px;
+  --rail-w: 180px;
+  --toc-w: 200px;
   --read-w: min(1100px, 75ch);
   --page-w: min(100vw - 32px, 1640px);
   --topbar-height: 56px;

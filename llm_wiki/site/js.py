@@ -1842,9 +1842,21 @@ JS_GRAPH = r"""
         // first, then hover-incident, then default.
         .linkWidth(function(l){
           if (isDimmedLink(l)) return 0.001;
-          if (highlightLinks.has(l)) return 0.9;
-          if (isHoverIncidentLink(l)) return 0.9;
-          return 0.25;
+          // Camera-distance-aware width: zooming out grows the lines so
+          // they stay readable, zooming in shrinks them. Same scaling
+          // formula the labels use (clamp 0.5..2.5 via dist/600).
+          var camScale = 1.0;
+          try {
+            var cam = Graph && Graph.camera && Graph.camera();
+            var ctrls = Graph && Graph.controls && Graph.controls();
+            if (cam && ctrls && ctrls.target) {
+              var dist = cam.position.distanceTo(ctrls.target);
+              camScale = Math.max(0.5, Math.min(2.5, dist / 600));
+            }
+          } catch (_) {}
+          if (highlightLinks.has(l)) return 0.9 * camScale;
+          if (isHoverIncidentLink(l)) return 0.9 * camScale;
+          return 0.25 * camScale;
         })
         .linkHoverPrecision(8)
         // Issue 4 — particles ONLY on edges incident to the hovered or
@@ -2344,7 +2356,7 @@ JS_GRAPH = r"""
         // a wild zoom-out from the origin. The single-shot scheduleCenteredFit
         // will refine the framing once the simulation settles.
         try {
-          if (inst.cameraPosition) inst.cameraPosition({ x: 0, y: 0, z: 320 }, { x: 0, y: 0, z: 0 }, 0);
+          if (inst.cameraPosition) inst.cameraPosition({ x: 0, y: 0, z: 180 }, { x: 0, y: 0, z: 0 }, 0);
         } catch (_) {}
       } else if (mode === '2d') {
         // Issue 3 — 2D ``force-graph`` zooms toward the cursor by default

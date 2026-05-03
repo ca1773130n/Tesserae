@@ -2249,7 +2249,7 @@ def render_graph_view(ctx: SiteContext) -> str:
     head = (
         '<link rel="preconnect" href="https://esm.sh">\n'
         '<link rel="preload" href="payload.json" as="fetch" type="application/json" crossorigin="anonymous">\n'
-        f'<script defer src="../assets/graph.js?v=graph-explore-v21"></script>\n'
+        f'<script defer src="../assets/graph.js?v=graph-explore-v22"></script>\n'
         '<script type="module">\n'
         '  // Load 3D + 2D force-graph plus three.js peer dep from esm.sh.\n'
         '  // We attach the constructors to ``window`` so the deferred\n'
