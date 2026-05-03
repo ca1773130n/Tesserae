@@ -25,14 +25,14 @@ CSS: str = r"""
 :root {
   --bg: #fafaf7;
   --surface: #ffffff;
-  --surface-2: #f3f1ec;
+  --surface-2: #ece8df;        /* polish: bumped for light-theme contrast (was #f3f1ec) */
   --ink: #1f1d1a;
-  --ink-muted: #5b574f;
-  --accent: #b3502b;       /* warm terracotta */
+  --ink-muted: #4a463f;        /* polish: darker for WCAG AA on --surface-2 (was #5b574f) */
+  --accent: #a3441f;            /* polish: WCAG AA against --bg (was #b3502b) */
   --accent-soft: #f4d4c2;
-  --link: #8a3a18;
-  --rule: #e6e2da;
-  --code-bg: #f3f1ec;
+  --link: #7a3010;              /* polish: AA against --surface (was #8a3a18) */
+  --rule: #d8d3c8;              /* polish: stronger 1px borders on light */
+  --code-bg: #ece8df;
   --good: #2a6f4f;
   --warn: #c08a1a;
   --danger: #b03b3b;
@@ -61,10 +61,10 @@ CSS: str = r"""
   --surface: #1c1b17;
   --surface-2: #232118;
   --ink: #ece7dc;
-  --ink-muted: #a59f90;
-  --accent: #e08555;
+  --ink-muted: #b6b0a0;       /* polish: lighter for WCAG AA on --surface-2 (was #a59f90) */
+  --accent: #e8915f;           /* polish: AA on --bg in dark theme (was #e08555) */
   --accent-soft: #432215;
-  --link: #f0a075;
+  --link: #f3aa82;             /* polish: AA on dark surfaces (was #f0a075) */
   --rule: #2c2a23;
   --code-bg: #1f1d18;
   --shadow: 0 1px 2px rgba(0, 0, 0, .5);
@@ -83,6 +83,75 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Accessibility utility — visually hidden but exposed to AT.
+   Used by the skip-link, the search-palette aria-live region, and
+   any other text we render only for screen readers. */
+.visually-hidden,
+.skip-link {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Skip-to-content link (WCAG 2.4.1). The link is the very first focusable
+   element on every page. It only becomes visible when the user tabs to it
+   so keyboard / screen-reader users can jump past the topbar straight to
+   ``#main``. The visible state pins it to the top-left corner with the
+   accent surface so it's unmistakable. */
+.skip-link:focus,
+.skip-link:focus-visible {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 100;
+  width: auto;
+  height: auto;
+  padding: 8px 14px;
+  margin: 0;
+  clip: auto;
+  overflow: visible;
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius);
+  text-decoration: none;
+  font-family: var(--type-sans);
+  font-weight: 600;
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Universal focus ring (WCAG 2.4.7).
+   Every interactive element shows a 2 px accent outline on keyboard focus.
+   We use ``:focus-visible`` so mouse users don't get a permanent outline
+   on click — only keyboard / programmatic focus paints the ring. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible,
+[data-toggle-theme]:focus-visible,
+[data-toggle-rail]:focus-visible,
+[data-toggle-toc]:focus-visible,
+[data-open-search]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Some inputs already paint their own ring via box-shadow; keep that
+   replacement as a *visible* affordance (≥ 2 px) so it satisfies AA. */
+.doc-tree-search:focus-visible,
+.graph-page .graph-search input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -1375,6 +1444,118 @@ section.panel > h3,
   -webkit-overflow-scrolling: touch;
   border-collapse: collapse;
 }
+
+/* ============================================================
+   Light-theme polish — overrides for [data-theme="light"]
+   ============================================================
+   The site is dark-first; the light theme inherits the :root tokens
+   above (already light) but a handful of components were tuned for
+   dark surfaces and need explicit overrides so the light variant
+   reads as intentional rather than washed-out. */
+
+[data-theme="light"] {
+  /* Mirror the :root values explicitly so a JS toggle to ``light``
+     resets every token after a previous ``dark`` mount.  The values
+     match the :root block above. */
+  --bg: #fafaf7;
+  --surface: #ffffff;
+  --surface-2: #ece8df;
+  --ink: #1f1d1a;
+  --ink-muted: #4a463f;
+  --accent: #a3441f;
+  --accent-soft: #f4d4c2;
+  --link: #7a3010;
+  --rule: #d8d3c8;
+  --code-bg: #ece8df;
+  --shadow: 0 1px 2px rgba(20, 18, 15, .06);
+}
+
+/* Code blocks need a stronger lift off the page background on the
+   light surface so the eye reads them as a callout, not as prose. */
+[data-theme="light"] .code,
+[data-theme="light"] code,
+[data-theme="light"] pre,
+[data-theme="light"] pre code,
+[data-theme="light"] .raw-text {
+  background: var(--surface-2);
+}
+[data-theme="light"] pre {
+  border-color: var(--rule);
+  box-shadow: inset 0 1px 0 rgba(20, 18, 15, .03);
+}
+
+/* Subtype chip — readable inactive state on light surfaces, clear
+   active fill, AA-rated count pill. */
+[data-theme="light"] .subtype-chip {
+  background: var(--surface);
+  border-color: var(--rule);
+  color: var(--ink);
+}
+[data-theme="light"] .subtype-chip .chip-count {
+  background: var(--surface-2);
+  color: var(--ink-muted);
+}
+[data-theme="light"] .subtype-chip:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+[data-theme="light"] .subtype-chip.is-active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* The graph-info-panel was tuned for the dark gradient canvas. On
+   light theme it sits over the same dark canvas (we keep the canvas
+   gradient regardless of theme so the visualization stays legible)
+   but if a future theme shows it on a light surface this override
+   keeps text + border AA. */
+[data-theme="light"] .graph-info-panel {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  box-shadow: var(--shadow);
+}
+
+/* Doc-tree active leaf — terracotta accent over a soft tint reads as
+   a focused row without overwhelming the surrounding tree. */
+[data-theme="light"] .doc-tree-leaf.is-active > a {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-left-color: var(--accent);
+}
+
+/* Auto-link dotted underline — bump to 1.5 px for retina visibility
+   on light prose, and deepen the hover color so the affordance
+   stays AA against --bg. */
+[data-theme="light"] .auto-link {
+  border-bottom: 1.5px dotted var(--ink-muted);
+  color: var(--ink);
+}
+[data-theme="light"] .auto-link:hover,
+[data-theme="light"] .auto-link:focus {
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Topbar brand + sticky chrome — make the backdrop blur a touch
+   stronger on light theme so scrolled content reads cleanly under
+   it without the bar disappearing into the page. */
+[data-theme="light"] .topbar {
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+}
+
+/* AI siblings footer chips — better contrast inside the muted card. */
+[data-theme="light"] .ai-siblings a {
+  background: var(--surface);
+  border-color: var(--rule);
+  color: var(--accent);
+}
+[data-theme="light"] .ai-siblings a:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
 """
 
 
@@ -1460,32 +1641,46 @@ body {
   border-top: 1px solid var(--rule);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
-  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  /* iOS HIG: extend padding into the home-indicator safe area while
+     keeping a real 8 px gap above (max() picks the larger of the two). */
+  padding: 6px 8px max(8px, env(safe-area-inset-bottom));
   font-family: var(--type-sans);
 }
 .mobile-bottom-nav ul {
   list-style: none;
-  display: flex;
-  justify-content: space-around;
+  /* 5 quick-access slots that always fit, regardless of label length —
+     pure flex was prone to overflow on the smallest viewports (320 px). */
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
   align-items: stretch;
   padding: 0;
   margin: 0;
   gap: 4px;
 }
-.mobile-bottom-nav li { flex: 1 1 0; display: flex; }
+.mobile-bottom-nav li { display: flex; min-width: 0; }
 .mobile-bottom-nav a {
+  display: flex;
   flex: 1 1 0;
   flex-direction: column;
   justify-content: center;
+  align-items: center;
   text-align: center;
   text-decoration: none;
   color: var(--ink-muted);
   font-size: .68rem;
   letter-spacing: .04em;
   text-transform: uppercase;
-  padding: 4px 2px;
+  padding: 6px 2px;
   border-radius: 6px;
   gap: 2px;
+  min-width: 0;
+  min-block-size: 44px;
+}
+.mobile-bottom-nav a .label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 .mobile-bottom-nav a .icon { font-size: 1.25rem; line-height: 1; }
 .mobile-bottom-nav a.active { color: var(--accent); }

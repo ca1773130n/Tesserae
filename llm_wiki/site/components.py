@@ -290,7 +290,7 @@ def sparkline_svg(values: list[int], *, width: int = 120, height: int = 28) -> s
     if not values:
         return (
             f'<svg class="sparkline" viewBox="0 0 {width} {height}" '
-            f'width="{width}" height="{height}" role="img" aria-label="No data">'
+            f'width="{width}" height="{height}" aria-hidden="true" focusable="false">'
             f'<title>No data</title></svg>'
         )
 
@@ -315,8 +315,8 @@ def sparkline_svg(values: list[int], *, width: int = 120, height: int = 28) -> s
     )
     return (
         f'<svg class="sparkline" viewBox="0 0 {width} {height}" '
-        f'width="{width}" height="{height}" role="img" '
-        f'aria-label="Sparkline of {n} values">'
+        f'width="{width}" height="{height}" aria-hidden="true" focusable="false">'
+        f'<title>Sparkline of {n} values</title>'
         f'<polygon class="sparkline-area" points="{area_points}"/>'
         f'<polyline points="{point_str}"/>'
         f"</svg>"
@@ -388,8 +388,8 @@ def heatmap_svg(
             f'<svg class="heatmap" viewBox="0 0 {view_w} {view_h}" '
             f'preserveAspectRatio="xMidYMid meet" '
             f'style="width:100%;height:auto" '
-            f'role="img" '
-            f'aria-label="No activity yet"><title>No activity yet</title>'
+            f'aria-hidden="true" focusable="false">'
+            f'<title>No activity yet</title>'
             f"{empty_labels}"
             f"</svg>"
         )
@@ -489,8 +489,8 @@ def heatmap_svg(
         f'<svg class="heatmap"{xlink_ns} viewBox="0 0 {view_w} {view_h}" '
         f'preserveAspectRatio="xMidYMid meet" '
         f'style="width:100%;height:auto" '
-        f'role="img" '
-        f'aria-label="Activity heatmap, last {len(cols)} weeks">'
+        f'aria-hidden="true" focusable="false">'
+        f'<title>Activity heatmap, last {len(cols)} weeks</title>'
         + label_svg
         + "".join(cells)
         + "</svg>"
@@ -559,7 +559,7 @@ def toc(headings: list[tuple[int, str, str]]) -> str:
     """
     if not headings:
         return (
-            '<aside class="toc" role="doc-toc">'
+            '<aside class="toc" role="doc-toc" aria-label="On this page">'
             '<h2>On this page</h2>'
             '<p class="muted small">No sections.</p>'
             "</aside>"
@@ -575,7 +575,7 @@ def toc(headings: list[tuple[int, str, str]]) -> str:
             f'<a class="toc-l-{lvl}" href="#{_esc(anchor)}">{_esc(text)}</a></li>'
         )
     return (
-        '<aside class="toc" role="doc-toc">'
+        '<aside class="toc" role="doc-toc" aria-label="On this page">'
         '<h2>On this page</h2>'
         '<ol>' + "".join(items) + '</ol>'
         '</aside>'
@@ -773,10 +773,11 @@ def _render_doc_tree_rail(
         "</nav>"
     )
     return (
-        '<aside class="rail" id="rail" aria-label="Source documents">'
+        '<aside class="rail" id="rail" aria-label="Document tree">'
         + drawer_nav
         + '<div class="doc-tree-search-row">'
-        '<input class="doc-tree-search" type="search" '
+        '<label class="visually-hidden" for="doc-tree-filter">Filter source files</label>'
+        '<input class="doc-tree-search" id="doc-tree-filter" type="search" '
         'placeholder="Filter files…" aria-label="Filter source files" '
         'data-doc-tree-search>'
         "</div>"
@@ -942,6 +943,13 @@ def page_shell(
             + "</article>\n"
         )
 
+    # Build the <main> aria-label so the graph route reads as
+    # "Knowledge graph" while every other page just reads "Main content".
+    if main_variant == "graph":
+        main_aria = ' aria-label="Knowledge graph"'
+    else:
+        main_aria = ' aria-label="Main content"'
+
     return (
         "<!doctype html>\n"
         '<html lang="en" data-theme="light">\n'
@@ -954,25 +962,36 @@ def page_shell(
         f"{head}\n"
         "</head>\n"
         "<body>\n"
-        '<header class="topbar">\n'
+        # Skip-link (a11y): first focusable element on the page so keyboard
+        # / screen-reader users can jump past the topnav directly to the
+        # main content. Visually hidden until focused (see ``.skip-link``
+        # rule in tokens.py).
+        '<a class="skip-link" href="#main">Skip to content</a>\n'
+        '<header class="topbar" role="banner">\n'
         f'<a class="brand" href="{_esc(prefix)}index.html">{_esc(site_title)}</a>\n'
-        f"<nav aria-label=\"Primary\">{nav_html}</nav>\n"
-        '<button class="search-button" data-open-search type="button">Search /</button>\n'
-        '<button class="theme-toggle" data-toggle-theme type="button">Theme</button>\n'
+        f"<nav role=\"navigation\" aria-label=\"Primary\">{nav_html}</nav>\n"
+        '<button class="search-button" data-open-search type="button" aria-label="Open search">Search /</button>\n'
+        '<button class="theme-toggle" data-toggle-theme type="button" aria-label="Toggle color theme">Theme</button>\n'
         '<button class="rail-toggle" aria-controls="rail" aria-expanded="false" '
+        'aria-label="Toggle navigation drawer" '
         'data-toggle-rail type="button">Menu</button>\n'
         "</header>\n"
         f'<div class="{_esc(shell_class)}">\n'
         f"{rail}\n"
-        f'<main class="{_esc(main_class)}" id="main">\n'
+        f'<main class="{_esc(main_class)}" id="main"{main_aria}>\n'
         f"{main_inner}"
         "</main>\n"
         f"{toc_block}\n"
         "</div>\n"
         f"{bottom_nav}\n"
-        '<div class="palette" id="palette" hidden>\n'
-        '<div class="palette-box"><input id="search" type="search" '
-        'placeholder="Search the wiki…" aria-label="Search"></div>\n'
+        '<div class="palette" id="palette" hidden role="dialog" aria-modal="true" aria-label="Search palette">\n'
+        '<div class="palette-box">'
+        '<label class="visually-hidden" for="search">Search the wiki</label>'
+        '<input id="search" type="search" '
+        'placeholder="Search the wiki…" aria-label="Search the wiki" '
+        'autocomplete="off" spellcheck="false">'
+        '<div class="visually-hidden" id="palette-live" aria-live="polite" aria-atomic="true"></div>'
+        "</div>\n"
         "</div>\n"
         "</body>\n"
         "</html>\n"

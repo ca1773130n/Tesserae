@@ -287,3 +287,107 @@ def test_graph_auto_browse_cursor_cue_present():
     the graph is in tour mode (camera moving on its own)."""
     assert ".graph-canvas-wrapper.is-auto-browsing" in CSS
     assert "cursor: progress" in CSS
+
+
+# ---------------------------------------------------------------------------
+# Polish pass — accessibility, light theme, mobile
+# ---------------------------------------------------------------------------
+
+
+def test_css_includes_universal_focus_ring_rule():
+    """WCAG 2.4.7 — every interactive element must paint a visible focus
+    ring of at least 2 px against the accent color when keyboard-focused."""
+    assert "outline: 2px solid var(--accent)" in CSS
+    # ``:focus-visible`` pin so mouse users don't get a permanent outline.
+    assert ":focus-visible" in CSS
+
+
+def test_css_no_orphan_outline_none():
+    """If a rule sets ``outline: none`` it MUST also paint a replacement
+    focus ring (via box-shadow or another outline declaration). This test
+    walks the CSS for unconditional ``outline: none`` rules whose body
+    lacks any of those replacements."""
+    import re
+
+    rule_re = re.compile(r"([^{}@]+?)\{([^{}]*)\}", re.DOTALL)
+    css_no_comments = re.sub(r"/\*.*?\*/", "", CSS, flags=re.DOTALL)
+    for match in rule_re.finditer(css_no_comments):
+        body = match.group(2)
+        if re.search(r"outline\s*:\s*none\b", body):
+            # Replacement focus affordance must be present in the same rule.
+            has_replacement = (
+                "box-shadow" in body
+                or re.search(r"outline\s*:\s*[^;]*(?:solid|dashed|dotted|var\()", body) is not None
+            )
+            selector = match.group(1).strip()
+            assert has_replacement, (
+                f"{selector!r} sets outline:none without a replacement ring"
+            )
+
+
+def test_css_includes_skip_link_styling():
+    """The skip-to-content link must be visually hidden by default and
+    revealed on focus."""
+    assert ".skip-link" in CSS
+    # Visually-hidden util the skip-link inherits from.
+    assert ".visually-hidden" in CSS
+    # Focused skip-link must be visible (position fixed, accent fill).
+    assert ".skip-link:focus" in CSS
+
+
+def test_css_light_theme_overrides_present():
+    """Polish — explicit ``[data-theme="light"]`` overrides exist for the
+    components historically tuned for dark surfaces."""
+    assert '[data-theme="light"] .code' in CSS or '[data-theme="light"] code' in CSS
+    assert '[data-theme="light"] .subtype-chip' in CSS
+    assert '[data-theme="light"] .graph-info-panel' in CSS
+    assert '[data-theme="light"] .doc-tree-leaf.is-active' in CSS
+
+
+def test_css_bottom_nav_uses_grid_repeat_5():
+    """Mobile bottom nav must always fit 5 icons regardless of label
+    length — pure flex was prone to overflow on the smallest viewports."""
+    assert "grid-template-columns: repeat(5, 1fr)" in CSS
+    # And the rule belongs to the bottom-nav <ul>.
+    import re
+    block = re.search(r"\.mobile-bottom-nav\s+ul\s*\{([^}]*)\}", CSS)
+    assert block is not None
+    assert "repeat(5, 1fr)" in block.group(1)
+
+
+def test_css_bottom_nav_safe_area_padding():
+    """Bottom nav must reserve space for the iOS home indicator using
+    ``max(8px, env(safe-area-inset-bottom))`` so it never sits flush."""
+    assert "max(8px, env(safe-area-inset-bottom))" in CSS
+
+
+def test_css_bottom_nav_tap_targets_meet_44px():
+    import re
+    block = re.search(r"\.mobile-bottom-nav\s+a\s*\{([^}]*)\}", CSS)
+    assert block is not None
+    assert "min-block-size: 44px" in block.group(1)
+
+
+def test_css_no_overflow_x_scroll_or_hidden_on_layout_roots():
+    """Regression test for sticky-positioning. ``.shell``, ``.main``,
+    ``body``, ``html`` must not declare ``overflow-x: hidden|scroll``
+    (or ``overflow-x: clip``) anywhere — those silently kill
+    ``position: sticky`` on every descendant."""
+    import re
+
+    forbidden_overflow_x = re.compile(
+        r"\boverflow-x\s*:\s*(?:hidden|scroll|clip)\b"
+    )
+    rule_re = re.compile(r"([^{}@]+?)\{([^{}]*)\}", re.DOTALL)
+    css_no_comments = re.sub(r"/\*.*?\*/", "", CSS, flags=re.DOTALL)
+    bare_selectors = {".shell", ".main", "body", "html"}
+    for match in rule_re.finditer(css_no_comments):
+        selector_list = match.group(1).strip()
+        body = match.group(2)
+        for sel in selector_list.split(","):
+            sel = sel.strip()
+            if sel in bare_selectors and forbidden_overflow_x.search(body):
+                raise AssertionError(
+                    f"{sel!r} carries overflow-x: hidden|scroll|clip — "
+                    f"breaks sticky descendants. Body: {body.strip()[:120]}"
+                )

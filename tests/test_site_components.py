@@ -647,3 +647,107 @@ def test_page_shell_doc_tree_html_renders_inside_left_rail():
     )
     assert '<aside class="rail"' in out
     assert '<details class="doc-tree-folder doc-tree-root">' in out
+
+
+# ---------------------------------------------------------------------------
+# Workstream 1 — accessibility (WCAG AA)
+# ---------------------------------------------------------------------------
+
+
+def test_page_shell_emits_skip_to_content_link_as_first_body_child():
+    """Every page must include a skip-link as the very first focusable
+    element, pointing at ``#main`` — keyboard / SR users skip the topnav."""
+    out = _shell()
+    body_idx = out.index("<body>")
+    after_body = out[body_idx + len("<body>"):].lstrip()
+    assert after_body.startswith('<a class="skip-link" href="#main">'), (
+        "skip-link must be the first child of <body>"
+    )
+    assert ">Skip to content<" in out
+
+
+def test_page_shell_main_carries_id_main_for_skip_link_target():
+    out = _shell()
+    assert 'id="main"' in out
+    # Default pages also get an aria-label on <main> for AT.
+    assert 'aria-label="Main content"' in out
+
+
+def test_page_shell_graph_variant_main_aria_label():
+    out = page_shell(
+        "Graph",
+        head="",
+        body="<p>x</p>",
+        omit_toc=True,
+        main_variant="graph",
+    )
+    assert 'aria-label="Knowledge graph"' in out
+
+
+def test_page_shell_topbar_uses_role_banner():
+    out = _shell()
+    assert '<header class="topbar" role="banner">' in out
+
+
+def test_page_shell_primary_nav_carries_role_navigation():
+    out = _shell()
+    assert 'role="navigation"' in out
+    assert 'aria-label="Primary"' in out
+
+
+def test_page_shell_left_rail_aside_has_aria_label_document_tree():
+    out = _shell()
+    assert '<aside class="rail" id="rail" aria-label="Document tree">' in out
+
+
+def test_subtype_chips_are_buttons_not_anchors():
+    """Subtype chips filter in place — they must be ``<button>`` elements
+    so screen readers announce them as buttons (and Enter/Space activate
+    them) rather than as links."""
+    from llm_wiki.site.pages import _render_subtype_chips
+
+    rows = [
+        {"subtype": "Concept"},
+        {"subtype": "Paper"},
+        {"subtype": "Concept"},
+    ]
+    out = _render_subtype_chips(rows)
+    assert "<button" in out
+    # No anchor-style chips.
+    assert '<a class="subtype-chip"' not in out
+    # The "All" chip leads with aria-pressed="true".
+    assert 'aria-pressed="true"' in out
+
+
+def test_palette_has_aria_live_region_and_label():
+    out = _shell()
+    assert 'id="palette-live"' in out
+    assert 'aria-live="polite"' in out
+    assert 'role="dialog"' in out
+    # Search input has both an associated <label> and an aria-label.
+    assert '<label class="visually-hidden" for="search">' in out
+
+
+def test_doc_tree_filter_input_has_associated_label():
+    out = _shell()
+    # The filter input rides above the tree with a visually-hidden label
+    # so AT users get a programmatic association without visual clutter.
+    assert '<label class="visually-hidden" for="doc-tree-filter">' in out
+    assert 'id="doc-tree-filter"' in out
+
+
+def test_sparkline_decorative_svg_aria_hidden():
+    out = sparkline_svg([1, 2, 3])
+    assert 'aria-hidden="true"' in out
+    assert 'focusable="false"' in out
+
+
+def test_heatmap_decorative_svg_aria_hidden():
+    out = heatmap_svg([[1] * 7] * 4)
+    assert 'aria-hidden="true"' in out
+    assert 'focusable="false"' in out
+
+
+def test_toc_aside_has_aria_label_on_this_page():
+    out = toc([(2, "Overview", "overview")])
+    assert 'aria-label="On this page"' in out
