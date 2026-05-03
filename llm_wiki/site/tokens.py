@@ -584,6 +584,46 @@ html, body { overflow-x: clip; }
 .toc .toc-l-3 { padding-left: 20px; }
 .toc .toc-l-4 { padding-left: 32px; }
 
+/* TOC scrollspy: the currently-visible section's <li> picks up
+   ``is-active`` from JS_TOC_SCROLLSPY. The accent border + colour shift
+   make the active item visually pop while scrolling. */
+.toc li.is-active > a {
+  color: var(--accent);
+  border-left: 2px solid var(--accent);
+  padding-left: 8px;
+  margin-left: -10px;
+}
+
+/* Canonical article shell (every detail page).
+   ------------------------------------------------------------
+   Header / body / footer slots keep alignment byte-stable across
+   sources / concepts / entities / papers / repos / topics / syntheses /
+   questions / raw / timeline-day / about — the rail/TOC gutter and the
+   first-section vertical rhythm are owned here, not by the renderers. */
+.article {
+  display: block;
+  max-width: 100%;
+}
+.article-header {
+  margin: 0 0 var(--space-4);
+}
+.article-header .breadcrumbs {
+  margin-bottom: 0;
+}
+.article-body {
+  display: block;
+}
+.article-body > :first-child {
+  margin-top: 0;
+}
+.article-body > section + section,
+.article-body > section + footer {
+  margin-top: var(--space-6);
+}
+.article-footer {
+  margin-top: var(--space-6);
+}
+
 /* Sparkline
    ------------------------------------------------------------ */
 .sparkline {
@@ -773,7 +813,11 @@ html, body { overflow-x: clip; }
 }
 .graph-page .graph-canvas {
   position: relative;
-  height: calc(100vh - 200px);
+  /* On the dedicated graph route the canvas owns the viewport; outside
+     of that route (rare but possible if someone embeds .graph-page) we
+     keep the historical clamp so it doesn't blow the page. */
+  width: 100%;
+  height: calc(100vh - var(--topbar-height, 56px));
   min-height: 520px;
   border-radius: var(--radius);
   overflow: hidden;
@@ -783,6 +827,17 @@ html, body { overflow-x: clip; }
     linear-gradient(135deg, #020617 0%, #0f172a 52%, #111827 100%);
   border: 1px solid rgba(148, 163, 184, 0.26);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.035), 0 24px 70px rgba(2, 6, 23, 0.28);
+}
+.main--graph .graph-page {
+  margin-top: 0;
+  gap: var(--space-2);
+}
+.main--graph .graph-page .graph-canvas {
+  width: 100vw;
+  margin-left: calc(-1 * (100vw - 100%) / 2);
+  border-radius: 0;
+  border-left: 0;
+  border-right: 0;
 }
 .graph-page .graph-canvas canvas { display: block; width: 100% !important; height: 100% !important; }
 .graph-page .graph-info-panel {
@@ -1502,6 +1557,23 @@ body {
     /* TOC rail stays available for now but the wide-main is allowed
        to consume the gap when there's no TOC content. */
     grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--toc-w);
+  }
+  /* Graph route owns the viewport: rail is collapsed by default,
+     TOC is hidden, the canvas spans full width. */
+  .main--graph {
+    max-width: none;
+    margin-inline: 0;
+    width: 100%;
+  }
+  .shell--graph {
+    max-width: none;
+    grid-template-columns: 1fr;
+    padding: 0;
+    gap: 0;
+  }
+  .shell--graph > .rail,
+  .shell--graph > .toc-rail {
+    display: none;
   }
 }
 

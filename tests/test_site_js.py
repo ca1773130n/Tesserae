@@ -18,9 +18,12 @@ import pytest
 
 from llm_wiki.site.js import (
     JS_BUNDLE,
+    JS_BUNDLE_BASE,
+    JS_BUNDLE_GRAPH,
     JS_GRAPH,
     JS_SEARCH_PALETTE,
     JS_THEME_TOGGLE,
+    JS_TOC_SCROLLSPY,
 )
 
 
@@ -89,12 +92,21 @@ def test_bundle_palette_recents_storage():
 # 3D graph view
 # ---------------------------------------------------------------------------
 
-def test_bundle_cursor_anchored_zoom():
-    # A wheel listener is the load-bearing piece for cursor-anchored zoom.
-    assert "addEventListener('wheel'" in JS_GRAPH or 'addEventListener("wheel"' in JS_GRAPH
-    # Raycaster from cursor position is how we anchor zoom on the cursor.
+def test_bundle_cursor_anchored_zoom_uses_library_native_wheel():
+    # Polish pass: we removed the custom wheel listener that fought
+    # ``3d-force-graph``'s built-in zoom. The library now owns the wheel
+    # event, which fixes the jittery / non-monotonic zoom we used to see.
+    assert "addEventListener('wheel'" not in JS_GRAPH
+    assert 'addEventListener("wheel"' not in JS_GRAPH
+    # Cursor-anchored hooks (raycaster + setFromCamera) still exist on
+    # ``pointermove`` so the library can aim its zoom toward the cursor
+    # world point — but we never touch ``camera.position`` ourselves.
     assert "Raycaster" in JS_GRAPH
     assert "setFromCamera" in JS_GRAPH
+    assert "addEventListener('pointermove'" in JS_GRAPH
+    # OrbitControls damping makes pan/orbit feel smooth.
+    assert "controls.enableDamping = true" in JS_GRAPH
+    assert "controls.dampingFactor = 0.08" in JS_GRAPH
 
 
 def test_bundle_link_hover_wired():
@@ -197,9 +209,40 @@ def test_bundle_fit_uses_engine_stop_and_camera_position():
     assert "if (inst.width) inst.width(w);" in JS_GRAPH
     assert "if (inst.height) inst.height(h);" in JS_GRAPH
     assert "setTimeout(scheduleCenteredFit, 350)" in JS_GRAPH
-    assert "if (!pinnedNode && !pinnedLink) fitAll" in JS_GRAPH
     assert "controls.target.set(center.x, center.y, center.z)" in JS_GRAPH
     assert "cameraPosition" in JS_GRAPH
+
+
+def test_graph_auto_fit_runs_exactly_once_via_has_initial_fit_flag():
+    """The polish pass replaced the multi-pass auto-fit (which fired on
+    every onEngineStop) with a single-shot ``hasInitialFit`` guard."""
+    assert "var hasInitialFit = false" in JS_GRAPH
+    # Guard inside scheduleCenteredFit: returns early once the flag flips.
+    assert "if (hasInitialFit || pinnedNode || pinnedLink) return;" in JS_GRAPH
+    assert "hasInitialFit = true;" in JS_GRAPH
+    # onEngineStop bails out unconditionally once the first fit has run.
+    assert "if (hasInitialFit) return;" in JS_GRAPH
+    # Mode switch resets the flag so the new projection still gets framed.
+    assert "hasInitialFit = false;" in JS_GRAPH
+    # The old 5-pass [250, 900, 1800, 3600, 6200] fade-in is gone.
+    assert "[250, 900, 1800, 3600, 6200]" not in JS_GRAPH
+
+
+def test_graph_resize_handler_does_not_auto_refit():
+    """The resize handler used to auto-fit on every resize, which felt
+    like the camera was zooming-out on its own. Now it just resizes the
+    canvas; the user re-fits on demand via ``f`` or the Fit button."""
+    assert "function installGraphResize" in JS_GRAPH
+    assert "addEventListener('resize'" in JS_GRAPH
+    # Inside the resize callback we resize the canvas; we do NOT call
+    # fitAll — that's the load-bearing change.
+    assert "sizeGraphToContainer(inst);\n        }, 120);" in JS_GRAPH
+
+
+def test_graph_initial_camera_position_is_known():
+    """The first frame parks the camera at z=600 so we don't see a wild
+    zoom-out from the origin before the simulation settles."""
+    assert "inst.cameraPosition({ x: 0, y: 0, z: 600 }, { x: 0, y: 0, z: 0 }, 0)" in JS_GRAPH
 
 
 def test_graph_labels_are_truncated():
@@ -230,6 +273,49 @@ def test_graph_3d_labels_use_camera_distance_opacity():
 
 def test_bundle_day_filter_listener():
     assert "data-graph-filter-day" in JS_GRAPH or "data-day-click" in JS_GRAPH
+
+
+# ---------------------------------------------------------------------------
+# TOC scrollspy
+# ---------------------------------------------------------------------------
+
+
+def test_bundle_base_includes_toc_scrollspy():
+    """Every page loads the scrollspy as part of the base bundle."""
+    assert "IntersectionObserver" in JS_BUNDLE_BASE
+    assert "data-toc-target" in JS_BUNDLE_BASE
+    # The scrollspy module itself.
+    assert "IntersectionObserver" in JS_TOC_SCROLLSPY
+    assert "data-toc-target" in JS_TOC_SCROLLSPY
+
+
+def test_toc_scrollspy_uses_top_band_root_margin():
+    """rootMargin ``-20% 0px -70% 0px`` puts the active band in the top
+    fifth of the viewport so the highlight follows the heading you're
+    actually reading."""
+    assert "-20% 0px -70% 0px" in JS_TOC_SCROLLSPY
+
+
+def test_toc_scrollspy_handles_intersection_observer_absence():
+    """Falls back gracefully when the browser lacks IntersectionObserver."""
+    assert "typeof IntersectionObserver === 'undefined'" in JS_TOC_SCROLLSPY
+
+
+def test_toc_scrollspy_smooth_scrolls_on_anchor_click():
+    """TOC item click smoothly scrolls to the heading."""
+    assert "scrollIntoView" in JS_TOC_SCROLLSPY
+    assert "behavior: 'smooth'" in JS_TOC_SCROLLSPY
+    assert "block: 'start'" in JS_TOC_SCROLLSPY
+
+
+def test_toc_scrollspy_targets_article_body_h2_h3():
+    """Scrollspy keys off h2/h3 inside the canonical .article-body container."""
+    assert ".article-body h2[id], .article-body h3[id]" in JS_TOC_SCROLLSPY
+
+
+def test_bundle_graph_alias_matches_js_graph():
+    """JS_BUNDLE_GRAPH (used by the graph route) is the JS_GRAPH module."""
+    assert JS_BUNDLE_GRAPH is JS_GRAPH or JS_BUNDLE_GRAPH == JS_GRAPH
 
 
 # ---------------------------------------------------------------------------

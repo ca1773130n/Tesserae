@@ -882,3 +882,113 @@ def test_paper_detail_runs_auto_link_post_pass(
         "paper detail must auto-link known node mentions"
     )
     assert concept.name in out
+
+
+# ---------------------------------------------------------------------------
+# Polish pass: canonical article shell + graph layout + scrollspy
+# ---------------------------------------------------------------------------
+
+
+def _detail_renderers(site_ctx):
+    """Yield ``(name, html)`` pairs for each detail-page renderer that has a
+    fixture page. Skips kinds the fixture does not provide."""
+    pages = site_ctx.wiki_pages_by_kind
+    pairs = []
+    if pages.get("sources"):
+        pairs.append(("source", render_source_detail(site_ctx, pages["sources"][0])))
+    if pages.get("concepts"):
+        pairs.append(("concept", render_concept_detail(site_ctx, pages["concepts"][0])))
+    if pages.get("entities"):
+        pairs.append(("entity", render_entity_detail(site_ctx, pages["entities"][0])))
+    if pages.get("papers"):
+        pairs.append(("paper", render_paper_detail(site_ctx, pages["papers"][0])))
+    if pages.get("repos"):
+        pairs.append(("repo", render_repo_detail(site_ctx, pages["repos"][0])))
+    if pages.get("topics"):
+        pairs.append(("topic", render_topic_detail(site_ctx, pages["topics"][0])))
+    if pages.get("syntheses"):
+        pairs.append(("synthesis", render_synthesis_detail(site_ctx, pages["syntheses"][0])))
+    if pages.get("questions"):
+        pairs.append(("question", render_question_detail(site_ctx, pages["questions"][0])))
+    return pairs
+
+
+def test_every_detail_renderer_emits_canonical_article_shell(
+    site_ctx: SiteContext,
+) -> None:
+    """The polish pass unifies every detail page on the same article shape.
+
+    Each renderer (sources / concepts / entities / papers / repos / topics /
+    syntheses / questions) must emit ``<article class="article">`` exactly
+    once with header / body / footer slots so CSS owns alignment.
+    """
+    pairs = _detail_renderers(site_ctx)
+    assert pairs, "fixture must surface at least one detail renderer"
+    for name, html in pairs:
+        assert html.count('<article class="article">') == 1, (
+            f"{name} detail must emit <article class='article'> exactly once"
+        )
+        assert '<header class="article-header">' in html, (
+            f"{name} detail missing article-header slot"
+        )
+        assert '<div class="article-body">' in html, (
+            f"{name} detail missing article-body slot"
+        )
+        assert '<footer class="article-footer">' in html, (
+            f"{name} detail missing article-footer slot"
+        )
+
+
+def test_about_page_uses_canonical_article_shell(site_ctx: SiteContext) -> None:
+    """About is a detail-style page (single column of prose), not an
+    index, so it follows the same alignment as paper / concept / etc."""
+    out = render_about(site_ctx)
+    assert '<article class="article">' in out
+    assert '<header class="article-header">' in out
+    assert '<div class="article-body">' in out
+    # About no longer opts into main--wide.
+    assert "main--wide" not in out
+
+
+def test_timeline_day_uses_canonical_article_shell(site_ctx: SiteContext) -> None:
+    """Per-day timeline detail pages share the same article shell as the
+    other detail kinds — they are detail pages, not index pages."""
+    from llm_wiki.site.pages import render_timeline_day
+    # Pick any date that has activity in the fixture; if none, the empty
+    # state must still emit the canonical shell.
+    day = next(iter(site_ctx.activity_by_day.keys()), "2026-04-27")
+    out = render_timeline_day(site_ctx, day)
+    assert '<article class="article">' in out
+    assert "main--wide" not in out
+
+
+def test_render_graph_view_uses_full_width_canvas_layout(
+    site_ctx: SiteContext,
+) -> None:
+    """Graph view gets its own ``main--graph`` modifier so the canvas
+    spans the viewport width and the rail/TOC are collapsed."""
+    out = render_graph_view(site_ctx)
+    assert 'class="main main--graph"' in out, (
+        "graph route must opt into the graph layout modifier"
+    )
+    # Canvas wrapper carries the .graph-canvas class with viewport-sized
+    # dimensions (height comes from CSS using --topbar-height).
+    assert '<div class="graph-canvas"' in out
+    assert 'id="graph-canvas"' in out
+
+
+def test_index_pages_emit_canonical_main_wide_not_article_shell(
+    site_ctx: SiteContext,
+) -> None:
+    """Index/listing pages keep the wide layout — they do NOT pick up the
+    detail-page canonical article shell."""
+    from llm_wiki.site.pages import (
+        render_concepts_index,
+        render_papers_index,
+    )
+    for renderer in (render_concepts_index, render_papers_index):
+        out = renderer(site_ctx)
+        assert 'class="main main--wide"' in out
+        assert '<article class="article">' not in out, (
+            "index pages keep the loose layout — no canonical article wrap"
+        )

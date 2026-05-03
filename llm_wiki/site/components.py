@@ -549,8 +549,11 @@ def toc(headings: list[tuple[int, str, str]]) -> str:
     items: list[str] = []
     for level, text, anchor in headings:
         lvl = max(2, min(4, int(level)))
+        # ``data-toc-target`` is what JS_TOC_SCROLLSPY pairs against the
+        # heading ``id`` so the active <li> highlight follows the viewport.
         items.append(
-            f'<li><a class="toc-l-{lvl}" href="#{_esc(anchor)}">{_esc(text)}</a></li>'
+            f'<li data-toc-target="{_esc(anchor)}">'
+            f'<a class="toc-l-{lvl}" href="#{_esc(anchor)}">{_esc(text)}</a></li>'
         )
     return (
         '<aside class="toc" role="doc-toc">'
@@ -657,10 +660,15 @@ def page_shell(
     ``ai_siblings_html`` are slot-style optional pieces — pass the output
     of the matching component function or leave empty.
 
-    ``main_variant`` (``"wide"`` or ``""``) toggles the ``main--wide``
-    class on the ``<main>`` element. Index/listing routes pass ``"wide"``
-    so the table can fill the desktop viewport rather than getting
-    squished into the prose-comfortable reading column.
+    ``main_variant`` toggles modifier classes on the ``<main>`` element:
+      - ``"wide"``: index/listing routes that want to fill the desktop
+        viewport rather than getting squished into the prose-comfortable
+        reading column.
+      - ``"graph"``: the graph route — full viewport width, rail is
+        collapsible, no article wrapper. The canvas owns the viewport.
+      - ``""`` (default): detail pages get the canonical
+        ``<article class="article">`` shell with header/body/footer slots
+        so every detail kind aligns identically.
     """
     prefix = _prefix(depth)
     counts = dict(counts or {})
@@ -669,8 +677,15 @@ def page_shell(
         f'<aside class="toc-rail" id="toc">{toc_html}</aside>' if toc_html else '<aside class="toc-rail" id="toc" hidden></aside>'
     )
     bottom_nav = _render_bottom_nav(active=active, prefix=prefix)
-    main_class = "main main--wide" if main_variant == "wide" else "main"
-    shell_class = "shell shell--wide" if main_variant == "wide" else "shell"
+    if main_variant == "wide":
+        main_class = "main main--wide"
+        shell_class = "shell shell--wide"
+    elif main_variant == "graph":
+        main_class = "main main--graph"
+        shell_class = "shell shell--graph"
+    else:
+        main_class = "main"
+        shell_class = "shell"
 
     # Top-bar nav mirrors the rail's headline categories so the site is
     # navigable even when the rail is collapsed on mobile.
@@ -687,6 +702,41 @@ def page_shell(
             f'<a class="{cls}" href="{_esc(prefix + entry.href)}">{_esc(entry.label)}</a>'
         )
     nav_html = "".join(nav_links)
+
+    # Default detail pages use the canonical ``<article class="article">``
+    # shell with explicit header / body / footer slots so every detail kind
+    # (sources / concepts / entities / papers / repos / topics / syntheses /
+    # questions / raw / timeline-day / about) aligns identically. Index and
+    # graph routes opt out — they use the loose layout the rest of the page
+    # has historically used.
+    toc_toggle_html = (
+        '<button class="toc-toggle" aria-controls="toc" aria-expanded="false" '
+        'data-toggle-toc type="button">On this page</button>\n'
+    )
+    if main_variant in ("wide", "graph"):
+        main_inner = (
+            f"{breadcrumbs_html}\n"
+            + toc_toggle_html
+            + f"<article>{body}</article>\n"
+            + f"{ai_siblings_html}\n"
+        )
+    else:
+        # Canonical detail-page article shape. Breadcrumbs live inside the
+        # <header> so the first article section starts the same distance
+        # below them on every page; ai-siblings live inside the <footer>
+        # so they share the article's gutter.
+        main_inner = (
+            toc_toggle_html
+            + '<article class="article">\n'
+            + '<header class="article-header">\n'
+            + f"{breadcrumbs_html}\n"
+            + "</header>\n"
+            + f'<div class="article-body">{body}</div>\n'
+            + '<footer class="article-footer">\n'
+            + f"{ai_siblings_html}\n"
+            + "</footer>\n"
+            + "</article>\n"
+        )
 
     return (
         "<!doctype html>\n"
@@ -711,11 +761,7 @@ def page_shell(
         f'<div class="{_esc(shell_class)}">\n'
         f"{rail}\n"
         f'<main class="{_esc(main_class)}" id="main">\n'
-        f"{breadcrumbs_html}\n"
-        '<button class="toc-toggle" aria-controls="toc" aria-expanded="false" '
-        'data-toggle-toc type="button">On this page</button>\n'
-        f"<article>{body}</article>\n"
-        f"{ai_siblings_html}\n"
+        f"{main_inner}"
         "</main>\n"
         f"{toc_block}\n"
         "</div>\n"

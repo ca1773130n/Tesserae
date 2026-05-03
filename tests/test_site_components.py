@@ -311,6 +311,15 @@ def test_toc_clamps_out_of_range_levels():
     assert 'class="toc-l-4"' in out
 
 
+def test_toc_li_carries_data_toc_target_for_scrollspy():
+    """The scrollspy in JS_TOC_SCROLLSPY pairs each TOC <li> against the
+    matching heading via ``data-toc-target="<anchor>"``. The attribute
+    must be present on every list item."""
+    out = toc([(2, "Section A", "section-a"), (3, "Sub", "sub-anchor")])
+    assert '<li data-toc-target="section-a">' in out
+    assert '<li data-toc-target="sub-anchor">' in out
+
+
 # ---------------------------------------------------------------------------
 # page shell
 # ---------------------------------------------------------------------------

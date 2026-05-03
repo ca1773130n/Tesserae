@@ -1756,7 +1756,6 @@ def render_timeline_day(ctx: SiteContext, date_str: str) -> str:
             site_title=ctx.site_title,
             counts=_nav_counts(ctx),
             breadcrumbs_html=bc,
-            main_variant="wide",
         )
 
     nodes_today = [
@@ -1866,7 +1865,6 @@ def render_timeline_day(ctx: SiteContext, date_str: str) -> str:
         site_title=ctx.site_title,
         counts=_nav_counts(ctx),
         breadcrumbs_html=bc,
-        main_variant="wide",
     )
 
 
@@ -2058,7 +2056,7 @@ def render_graph_view(ctx: SiteContext) -> str:
         site_title=ctx.site_title,
         counts=_nav_counts(ctx),
         breadcrumbs_html=bc,
-        main_variant="wide",
+        main_variant="graph",
     )
 
 
@@ -2101,7 +2099,6 @@ def render_about(ctx: SiteContext) -> str:
         site_title=ctx.site_title,
         counts=_nav_counts(ctx),
         breadcrumbs_html=bc,
-        main_variant="wide",
     )
 
 

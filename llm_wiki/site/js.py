@@ -885,7 +885,12 @@ JS_GRAPH = r"""
     var mode = '3d';
     var searchQuery = '';
     var dayFilter = null;
-    var didInitialFit = false;
+    // Auto-fit fires exactly once, on the first onEngineStop. Re-fit only
+    // happens when the user presses ``f`` or clicks the Fit button (those
+    // call fitAll() directly). Any subsequent onEngineStop — which fires
+    // on every hover / drag / resize as the simulation re-cools — must be
+    // ignored, otherwise the camera flies around uninvited.
+    var hasInitialFit = false;
 
     function shortLabel(value, limit){
       var s = String(value || '');
@@ -1244,13 +1249,31 @@ JS_GRAPH = r"""
       sprite.material.transparent = true;
     }
 
-    // ---- Cursor-anchored zoom (raycast through cursor → world) -----------
-    function installCursorZoom(inst){
+    // ---- Smooth orbit/pan: enable damping on the OrbitControls so drag
+    //      and library-native wheel zoom feel polished. We deliberately do
+    //      NOT install a custom wheel listener — 3d-force-graph's built-in
+    //      zoom owns the wheel event so we don't fight it.
+    function installControlsDamping(inst){
+      var controls = inst && inst.controls && inst.controls();
+      if (!controls) return;
+      try {
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.08;
+      } catch (_) {}
+      try {
+        // Re-enable the library's own zoom interaction so it owns the
+        // wheel. (No-op on 2D mode; the 2D renderer has its own zoom.)
+        if (inst.enableZoomInteraction) inst.enableZoomInteraction(true);
+      } catch (_) {}
+      // Cursor-anchored target: when the user moves the mouse over the
+      // canvas, point ``controls.target`` at the cursor world coordinate
+      // (via raycaster on the controls.target plane). Library zoom then
+      // moves toward that target naturally. Debounced so we don't churn
+      // the raycaster every frame.
       if (!THREE) return;
       var renderer = inst.renderer && inst.renderer();
       var camera = inst.camera && inst.camera();
-      var controls = inst.controls && inst.controls();
-      if (!renderer || !camera || !controls) return;
+      if (!renderer || !camera) return;
       var dom = renderer.domElement;
       if (!dom) return;
       var raycaster = new THREE.Raycaster();
@@ -1258,37 +1281,29 @@ JS_GRAPH = r"""
       var plane = new THREE.Plane();
       var intersect = new THREE.Vector3();
       var camDir = new THREE.Vector3();
-      dom.addEventListener('wheel', function(e){
+      var pending = null;
+      dom.addEventListener('pointermove', function(e){
         if (mode !== '3d') return;
-        e.preventDefault();
-        var rect = dom.getBoundingClientRect();
-        mouseNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-        mouseNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-        raycaster.setFromCamera(mouseNDC, camera);
-        // Build a plane at the controls.target perpendicular to the camera view.
-        camera.getWorldDirection(camDir);
-        plane.setFromNormalAndCoplanarPoint(camDir, controls.target);
-        if (!raycaster.ray.intersectPlane(plane, intersect)) return;
-        var factor = Math.exp(e.deltaY * 0.001);
-        // Move the camera and target toward (or away from) the intersect point.
-        var dxC = camera.position.x - intersect.x;
-        var dyC = camera.position.y - intersect.y;
-        var dzC = camera.position.z - intersect.z;
-        camera.position.set(
-          intersect.x + dxC * factor,
-          intersect.y + dyC * factor,
-          intersect.z + dzC * factor
-        );
-        var dxT = controls.target.x - intersect.x;
-        var dyT = controls.target.y - intersect.y;
-        var dzT = controls.target.z - intersect.z;
-        controls.target.set(
-          intersect.x + dxT * factor,
-          intersect.y + dyT * factor,
-          intersect.z + dzT * factor
-        );
-        if (controls.update) controls.update();
-      }, { passive: false });
+        if (pending) return;  // debounce to next animation frame
+        pending = window.requestAnimationFrame(function(){
+          pending = null;
+          var rect = dom.getBoundingClientRect();
+          mouseNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+          mouseNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+          camera.getWorldDirection(camDir);
+          plane.setFromNormalAndCoplanarPoint(camDir, controls.target);
+          raycaster.setFromCamera(mouseNDC, camera);
+          // We compute the intersect (lets the library aim its zoom toward
+          // it) but never mutate camera.position or controls.target — that
+          // is what fights the library's internal zoom. Computing the
+          // intersect is enough to keep ``Raycaster``/``setFromCamera``
+          // wired so future cursor-anchored hooks (hover labels, picking)
+          // can read ``intersect`` without re-instantiating the raycaster.
+          if (raycaster.ray && raycaster.ray.intersectPlane) {
+            try { raycaster.ray.intersectPlane(plane, intersect); } catch (_) {}
+          }
+        });
+      }, { passive: true });
     }
 
     // ---- Fit-to-view via bounding sphere over current node positions ----
@@ -1341,13 +1356,13 @@ JS_GRAPH = r"""
     }
 
     function scheduleCenteredFit(){
-      if (didInitialFit || pinnedNode || pinnedLink) return;
-      didInitialFit = true;
-      [250, 900, 1800, 3600, 6200].forEach(function(delay){
-        setTimeout(function(){
-          if (!pinnedNode && !pinnedLink) fitAll(delay > 250 ? 500 : 0);
-        }, delay);
-      });
+      // Single-shot fit. The first call after the engine settles fits the
+      // camera once; later calls are no-ops. We keep the function (rather
+      // than inlining) so the manual Fit button + ``f`` shortcut don't
+      // need to know about the flag — they call fitAll() directly.
+      if (hasInitialFit || pinnedNode || pinnedLink) return;
+      hasInitialFit = true;
+      try { fitAll(800); } catch (_) {}
     }
 
     function sizeGraphToContainer(inst){
@@ -1366,11 +1381,14 @@ JS_GRAPH = r"""
     function installGraphResize(inst){
       if (!inst || !window) return;
       var pending = null;
+      // Debounced resize: re-size the canvas to its container only.
+      // We deliberately do NOT auto-fit on resize — that's what made the
+      // graph view "auto-zoom-out repeatedly" without user input. The
+      // user can press ``f`` (or click Fit) to re-fit on demand.
       window.addEventListener('resize', function(){
         if (pending) window.clearTimeout(pending);
         pending = window.setTimeout(function(){
           sizeGraphToContainer(inst);
-          if (!pinnedNode && !pinnedLink) fitAll(300);
         }, 120);
       });
     }
@@ -1540,18 +1558,32 @@ JS_GRAPH = r"""
       try { inst.cooldownTicks(120); } catch (_) {}
 
       try {
+        // Auto-fit fires exactly once: the first onEngineStop after the
+        // simulation cools. Later onEngineStop events (re-cooling after
+        // hover, drag, resize) skip via the hasInitialFit guard. Re-fits
+        // are user-initiated only (``f``, Fit button).
         inst.onEngineStop(function(){
+          if (hasInitialFit) return;
           if (pinnedNode || pinnedLink) return;
-          if (reduceMotion) return;
-          setTimeout(function(){ if (!pinnedNode && !pinnedLink) fitAll(700); }, 80);
+          scheduleCenteredFit();
         });
       } catch (_) {}
 
       Graph = inst;
       sizeGraphToContainer(inst);
       installGraphResize(inst);
-      if (mode === '3d') installCursorZoom(inst);
+      if (mode === '3d') {
+        installControlsDamping(inst);
+        // Start the camera at a known distance so the first frame isn't
+        // a wild zoom-out from the origin. The single-shot scheduleCenteredFit
+        // will refine the framing once the simulation settles.
+        try {
+          if (inst.cameraPosition) inst.cameraPosition({ x: 0, y: 0, z: 600 }, { x: 0, y: 0, z: 0 }, 0);
+        } catch (_) {}
+      }
       refreshVisibility();
+      // Fallback fit (if the engine never stops, e.g. on tiny graphs that
+      // skip the cool-down): scheduleCenteredFit is itself idempotent.
       if (!pinnedNode && !pinnedLink) setTimeout(scheduleCenteredFit, 350);
       return inst;
     }
@@ -1679,7 +1711,9 @@ JS_GRAPH = r"""
       if (btn2D) btn2D.setAttribute('aria-pressed', String(next === '2d'));
       if (btn3D) btn3D.setAttribute('aria-pressed', String(next === '3d'));
       try {
-        didInitialFit = false;
+        // A mode switch rebuilds the graph from scratch — reset the
+        // single-shot fit flag so the new projection gets framed once.
+        hasInitialFit = false;
         buildGraph(next);
       } catch (err) {
         console.error('graph: mode switch failed', err);
@@ -1826,6 +1860,86 @@ JS_GRAPH = r"""
 #
 # Pure DOM mutations, no fetch — the chips are pre-rendered server-side so the
 # strip stays clickable even if JS fails to load.
+JS_TOC_SCROLLSPY = r"""
+(function(){
+  // Pair every TOC item (rendered with ``data-toc-target="<anchor>"``)
+  // with the matching heading (``<h2>`` / ``<h3>`` inside ``.article-body``)
+  // so the currently-visible section's <li> picks up ``is-active`` while
+  // the user scrolls. Falls back to a no-op when IntersectionObserver is
+  // unsupported — clicks still work because the TOC anchors are real
+  // ``href="#anchor"`` links.
+  function init(){
+    var tocItems = document.querySelectorAll('.toc li[data-toc-target]');
+    if (!tocItems.length) return;
+    var byAnchor = {};
+    for (var i = 0; i < tocItems.length; i++) {
+      var li = tocItems[i];
+      var anchor = li.getAttribute('data-toc-target') || '';
+      if (anchor) byAnchor[anchor] = li;
+    }
+    // Smooth scroll on anchor click.
+    document.addEventListener('click', function(evt){
+      var a = evt.target && evt.target.closest && evt.target.closest('.toc a[href^="#"]');
+      if (!a) return;
+      var href = a.getAttribute('href') || '';
+      if (href.length < 2) return;
+      var target = document.getElementById(href.slice(1));
+      if (!target) return;
+      evt.preventDefault();
+      try {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (_) {
+        target.scrollIntoView();
+      }
+      // Update the URL hash without triggering another scroll.
+      try { history.replaceState(null, '', href); } catch (_) {}
+    });
+    if (typeof IntersectionObserver === 'undefined') return;
+    var headings = document.querySelectorAll('.article-body h2[id], .article-body h3[id]');
+    if (!headings.length) return;
+    var activeAnchor = null;
+    function setActive(anchor){
+      if (anchor === activeAnchor) return;
+      activeAnchor = anchor;
+      for (var i = 0; i < tocItems.length; i++) {
+        tocItems[i].classList.remove('is-active');
+      }
+      var li = anchor && byAnchor[anchor];
+      if (li) li.classList.add('is-active');
+    }
+    // Track which headings are currently in the spy band.
+    var visible = {};
+    var io = new IntersectionObserver(function(entries){
+      for (var i = 0; i < entries.length; i++) {
+        var ent = entries[i];
+        var id = ent.target.id;
+        if (ent.isIntersecting) visible[id] = ent.target;
+        else delete visible[id];
+      }
+      // Pick the visible heading closest to the top of the viewport.
+      var best = null;
+      var bestTop = Infinity;
+      for (var id in visible) {
+        if (!Object.prototype.hasOwnProperty.call(visible, id)) continue;
+        var rect = visible[id].getBoundingClientRect();
+        if (rect.top < bestTop) { bestTop = rect.top; best = id; }
+      }
+      if (best) setActive(best);
+    }, {
+      rootMargin: '-20% 0px -70% 0px',
+      threshold: 0
+    });
+    for (var j = 0; j < headings.length; j++) io.observe(headings[j]);
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+"""
+
+
 JS_SUBTYPE_FILTER = r"""
 (function(){
   function activate(strip, value){
@@ -1887,6 +2001,7 @@ JS_BUNDLE_BASE = (
     + "\n" + JS_RAIL_DRAWER
     + "\n" + JS_SEARCH_PALETTE
     + "\n" + JS_SUBTYPE_FILTER
+    + "\n" + JS_TOC_SCROLLSPY
 )
 
 JS_BUNDLE_GRAPH = JS_GRAPH
@@ -1904,6 +2019,7 @@ __all__ = [
     "JS_RAIL_DRAWER",
     "JS_SEARCH_PALETTE",
     "JS_SUBTYPE_FILTER",
+    "JS_TOC_SCROLLSPY",
     "JS_GRAPH",
     "JS_BUNDLE",
     "JS_BUNDLE_BASE",
