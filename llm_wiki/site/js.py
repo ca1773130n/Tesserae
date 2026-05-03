@@ -759,7 +759,10 @@ JS_GRAPH = r"""
   };
   var EDGE_COLOR_LIGHT = 'rgba(191,219,254,0.34)';
   var EDGE_COLOR_DIM   = 'rgba(148,163,184,0.012)';
-  var EDGE_COLOR_HOT   = 'rgba(250,204,21,1)';
+  // Issue 4 — hot edges (incident to focus or hover) jump to 0.85 alpha
+  // so they pop against the calm 0.34 baseline. Pure yellow particles
+  // ride on top — the color stays warm but readable across themes.
+  var EDGE_COLOR_HOT   = 'rgba(250,204,21,0.85)';
   var THREE_URL = 'https://esm.sh/three@0.169.0';
 
   var GROUP_HSL = {
@@ -949,8 +952,9 @@ JS_GRAPH = r"""
 
     // Issue 2 — the bottom-right info-panel write functions are GONE.
     // Hover preview lives in the cursor-following ``#graph-tooltip``;
-    // focused-node details live in the focused label sprite (which
-    // renders an ``[Enter] Open page`` hint when ``node.href`` is set).
+    // focused-node details live in the focused label sprite (Issue 3 —
+    // the visible ``[Enter] Open page`` hint that used to render under
+    // the title is dropped; pressing Enter still navigates).
     // The functions kept below are the only DOM mutations we still do
     // per interaction.
     function clearInfoPanel(){
@@ -1231,50 +1235,64 @@ JS_GRAPH = r"""
       });
     }
 
-    // ---- Hierarchical label sprite (Issue 1) ---------------------------
+    // ---- Hierarchical label sprite (Issue 1 + 2 + 3) -------------------
     // ``makeLabel(text, opts)`` paints text onto a canvas and wraps it in a
-    // THREE.Sprite. The label hierarchy splits five ways depending on what
-    // role the label plays in the user's current focus state:
+    // THREE.Sprite. Every variant renders the same primitive: a
+    // semi-transparent black rounded pill with light gray / white text on
+    // top — NO text stroke, NO outline, NO accent border. The only thing
+    // that changes per variant is the pill alpha, the text alpha, the
+    // font size, and the depth/render-order config:
     //
-    //   variant='default'  : every node that is not focused / not a 1-hop
-    //                        neighbor / not hovered. Translucent text only,
-    //                        NO background pill, 11px, ``depthTest=true``
-    //                        (default depth — peers can occlude it). 1px
-    //                        text-shadow for legibility against busy edges.
-    //   variant='neighbor' : a 1-hop neighbor of the focused node. 14px,
-    //                        opacity 0.95, NO pill, slight stroke.
-    //                        ``depthTest=false`` renderOrder=998.
-    //   variant='hover'    : the node currently under the mouse. 16px, full
-    //                        opacity, NO pill, 2px text-stroke.
-    //                        ``depthTest=false`` renderOrder=999.
-    //   variant='focused'  : the focused node (always exactly one). 26px,
-    //                        full opacity, accent color, 4px text-stroke,
-    //                        SOLID background pill — the one label the
-    //                        user explicitly asked to be visible.
-    //                        ``depthTest=false`` ``depthWrite=false``
-    //                        renderOrder=999. The focused label also
-    //                        renders an ``[Enter] Open page`` hint
-    //                        underneath when the node has an href.
+    //   variant='default'  : every non-focused / non-hover / non-neighbor
+    //                        node. Pill rgba(0,0,0,0.55), text
+    //                        rgba(220,225,235,0.85), 11px. depthTest=true
+    //                        so nearer geometry occludes (defaults
+    //                        shouldn't always be on top).
+    //   variant='neighbor' : a 1-hop neighbor of the focused node. Pill
+    //                        rgba(0,0,0,0.6), text rgba(255,255,255,0.92),
+    //                        14px. depthTest=false renderOrder=998.
+    //   variant='hover'    : the node currently under the mouse. Pill
+    //                        rgba(0,0,0,0.7), text pure white, 18px.
+    //                        depthTest=false renderOrder=999.
+    //   variant='focused'  : the clicked node (exactly one). Pill
+    //                        rgba(0,0,0,0.78), text pure white, 22px.
+    //                        depthTest=false depthWrite=false renderOrder=999.
+    //                        NO ``[Enter] Open page`` hint — the Enter-key
+    //                        handler still works, but we don't paint a
+    //                        visible hint line underneath the title.
     //   variant='edge'     : an edge label, only rendered for edges
-    //                        incident to the focused node. Same translucent
-    //                        style as 'default': 10px, no pill, 0.7
-    //                        opacity, 1px stroke. Default depth.
+    //                        incident to the focused or hover node. Pill
+    //                        rgba(0,0,0,0.55), text rgba(255,255,255,0.78),
+    //                        10px. depthTest=true.
     //
-    // Cached by ``text|variant|accent|theme|hint`` so identical labels reuse
-    // their canvas/texture across nodes.
-    var VARIANT_FONT       = { default: 11, edge: 10, neighbor: 16, hover: 22, focused: 26 };
-    var VARIANT_OPACITY    = { default: 0.55, edge: 0.7, neighbor: 0.95, hover: 1.0, focused: 1.0 };
-    var VARIANT_STROKE     = { default: 1.5, edge: 1, neighbor: 1, hover: 2.5, focused: 4 };
+    // Light theme inverts: pills become near-white, text becomes
+    // near-black. Same — NO strokes, NO borders, NO color outlines.
+    //
+    // Cached by ``text|variant|theme`` so identical labels reuse their
+    // canvas/texture across nodes (the per-variant pill+text colors are
+    // implied by the variant + theme so we don't need ``accent`` or
+    // ``hint`` in the key any more).
+    var VARIANT_FONT       = { default: 11, edge: 10, neighbor: 14, hover: 18, focused: 22 };
+    var VARIANT_OPACITY    = { default: 0.85, edge: 0.78, neighbor: 0.92, hover: 1.0, focused: 1.0 };
+    // Stroke widths are kept in the table for back-compat but are NEVER
+    // applied to label text (Issue 1 — explicit "NO text stroke. NO outline.
+    // NO border."). The previous round used these to paint accent-tinted
+    // text strokes; we now leave them unused.
+    var VARIANT_STROKE     = { default: 0, edge: 0, neighbor: 0, hover: 0, focused: 0 };
     var VARIANT_RENDER_ORDER = { default: 1, edge: 1, neighbor: 998, hover: 999, focused: 999 };
+    // Per-variant pill alpha (dark theme). Light theme inverts the base
+    // color but reuses these alphas so the visual weight matches.
+    var VARIANT_PILL_ALPHA = { default: 0.55, edge: 0.55, neighbor: 0.6, hover: 0.7, focused: 0.78 };
     var labelSpriteCache = new Map();
     function makeLabel(text, opts){
       if (!THREE || !text) return null;
       opts = opts || {};
       var variant = opts.variant || 'default';
-      var accent = opts.accent || '#ece7dc';
       var theme = opts.theme || 'dark';
-      var hint = opts.hint || '';
-      var key = text + '|' + variant + '|' + accent + '|' + theme + '|' + hint;
+      // ``accent`` and ``hint`` are accepted for back-compat but ignored:
+      // every label uses the theme-driven pill/text colors and the
+      // focused-node ``[Enter] Open page`` hint is dropped (Issue 3).
+      var key = text + '|' + variant + '|' + theme;
       if (labelSpriteCache.has(key)) {
         var cached = labelSpriteCache.get(key);
         var c = cached.clone();
@@ -1286,103 +1304,81 @@ JS_GRAPH = r"""
       var fontSize = VARIANT_FONT[variant] || 11;
       var pxScale = 3;
       var fontPx = fontSize * pxScale;
-      var hintFontPx = Math.max(8 * pxScale, Math.round(fontPx * 0.42));
-      var hasPill = variant === 'focused';
-      var padX = (hasPill ? 14 : 6) * pxScale;
-      var padY = (hasPill ? 8 : 4) * pxScale;
-      var lineH = Math.round(fontPx * 1.45);
-      var hintLineH = hint ? Math.round(hintFontPx * 1.4) : 0;
+      // Padding inside the pill: 4px horizontal, 2px vertical (Issue 1).
+      // Focused/hover get a touch more breathing room because they're the
+      // larger labels that double as the focus indicator.
+      var padX = (variant === 'focused' || variant === 'hover' ? 8 : 4) * pxScale;
+      var padY = (variant === 'focused' || variant === 'hover' ? 4 : 2) * pxScale;
+      var lineH = Math.round(fontPx * 1.3);
       var canvas = document.createElement('canvas');
       var ctx = canvas.getContext('2d');
       ctx.font = (variant === 'focused' ? '700 ' : '600 ') + fontPx + 'px "Inter", system-ui, sans-serif';
       var textW = ctx.measureText(text).width;
-      var hintW = 0;
-      if (hint) {
-        ctx.font = '600 ' + hintFontPx + 'px "Inter", system-ui, sans-serif';
-        hintW = ctx.measureText(hint).width;
-      }
-      var contentW = Math.max(textW, hintW);
-      var w = Math.ceil(contentW) + padX * 2;
-      var h = lineH + hintLineH + padY * 2;
+      var w = Math.ceil(textW) + padX * 2;
+      var h = lineH + padY * 2;
       canvas.width = w;
       canvas.height = h;
       ctx = canvas.getContext('2d');
-      // Solid pill ONLY for the focused variant — every other variant
-      // renders text-only on a transparent canvas (Issue 1 — no white pills
-      // on default labels). Issue 3 — focused pill is a SUBTLE accent-tinted
-      // background in the same color family as the canvas (a slightly
-      // lighter blue on dark, a slightly darker tint on light) so the
-      // focus indication comes from font size + stroke, not a jarring
-      // pill that punches out of the theme.
-      if (hasPill) {
-        var bg = (theme === 'light') ? 'rgba(241,245,249,0.92)' : 'rgba(40,55,90,0.55)';
-        var radius = Math.min(h / 2, 18 * pxScale);
-        ctx.fillStyle = bg;
-        ctx.beginPath();
-        ctx.moveTo(radius, 0);
-        ctx.lineTo(w - radius, 0);
-        ctx.quadraticCurveTo(w, 0, w, radius);
-        ctx.lineTo(w, h - radius);
-        ctx.quadraticCurveTo(w, h, w - radius, h);
-        ctx.lineTo(radius, h);
-        ctx.quadraticCurveTo(0, h, 0, h - radius);
-        ctx.lineTo(0, radius);
-        ctx.quadraticCurveTo(0, 0, radius, 0);
-        ctx.closePath();
-        ctx.fill();
-        ctx.lineWidth = 2 * pxScale;
-        ctx.strokeStyle = accent;
-        ctx.stroke();
-      }
+      // Pill: semi-transparent black on dark theme, semi-transparent white
+      // on light theme. Slight 4px corner radius (Issue 1). NO border.
+      var pillAlpha = VARIANT_PILL_ALPHA[variant] || 0.55;
+      var pillFill = (theme === 'light')
+        ? 'rgba(255,255,255,' + pillAlpha + ')'
+        : 'rgba(0,0,0,' + pillAlpha + ')';
+      var radius = 4 * pxScale;
+      ctx.fillStyle = pillFill;
+      ctx.beginPath();
+      ctx.moveTo(radius, 0);
+      ctx.lineTo(w - radius, 0);
+      ctx.quadraticCurveTo(w, 0, w, radius);
+      ctx.lineTo(w, h - radius);
+      ctx.quadraticCurveTo(w, h, w - radius, h);
+      ctx.lineTo(radius, h);
+      ctx.quadraticCurveTo(0, h, 0, h - radius);
+      ctx.lineTo(0, radius);
+      ctx.quadraticCurveTo(0, 0, radius, 0);
+      ctx.closePath();
+      ctx.fill();
+      // No stroke: the user explicitly said NO text border, NO outline,
+      // NO color border on any variant.
       ctx.font = (variant === 'focused' ? '700 ' : '600 ') + fontPx + 'px "Inter", system-ui, sans-serif';
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'center';
-      // Issue 3 — text stroke colors. Hover/focused get a subtle
-      // accent-tinted stroke (the "indication" without resorting to a
-      // pill), while default/neighbor/edge get a theme-foreground stroke
-      // (light shadow on light theme, dark shadow on dark) so the text
-      // stays readable against busy edges.
-      var strokePx = (VARIANT_STROKE[variant] || 1) * pxScale;
-      ctx.lineWidth = strokePx;
-      if (variant === 'hover' || variant === 'focused') {
-        ctx.strokeStyle = accent;
-      } else {
-        ctx.strokeStyle = (theme === 'light') ? 'rgba(255,255,255,0.78)' : 'rgba(0,0,0,0.85)';
-      }
-      var textY = padY + lineH / 2;
-      ctx.strokeText(text, w / 2, textY);
-      // Issue 1 + Issue 3 — every variant uses the THEME foreground for
-      // text color (white on dark, dark on light), NOT the node's own
-      // group color. The "indication" comes from font size, opacity, and
-      // the accent-tinted stroke (above) — never from a label that looks
-      // out of theme.
+      // Text fill: light gray (rgba(220,225,235,0.85)) for the default
+      // variant, white at the variant's opacity for hover/neighbor/focused.
+      // Light theme inverts to a dark cool gray.
       var textOpacity = VARIANT_OPACITY[variant] || 1.0;
-      if (theme === 'light') {
-        ctx.fillStyle = 'rgba(15,23,42,' + textOpacity + ')';
+      var textFill;
+      if (variant === 'default') {
+        textFill = (theme === 'light')
+          ? 'rgba(40,40,50,0.85)'
+          : 'rgba(220,225,235,0.85)';
+      } else if (variant === 'edge') {
+        textFill = (theme === 'light')
+          ? 'rgba(40,40,50,' + textOpacity + ')'
+          : 'rgba(255,255,255,' + textOpacity + ')';
       } else {
-        ctx.fillStyle = 'rgba(255,255,255,' + textOpacity + ')';
+        // hover / focused / neighbor — pure white on dark, near-black on light.
+        textFill = (theme === 'light')
+          ? 'rgba(20,20,28,' + textOpacity + ')'
+          : 'rgba(255,255,255,' + textOpacity + ')';
       }
+      ctx.fillStyle = textFill;
+      var textY = padY + lineH / 2;
       ctx.fillText(text, w / 2, textY);
-      // Optional small hint below the main text — used for the focused
-      // node's ``[Enter] Open page`` affordance (Issue 2).
-      if (hint) {
-        var hintY = textY + lineH / 2 + hintLineH / 2 + 1 * pxScale;
-        ctx.font = '600 ' + hintFontPx + 'px "Inter", system-ui, sans-serif';
-        ctx.lineWidth = 1 * pxScale;
-        ctx.strokeStyle = (theme === 'light') ? 'rgba(255,255,255,0.78)' : 'rgba(0,0,0,0.85)';
-        ctx.strokeText(hint, w / 2, hintY);
-        ctx.fillStyle = (theme === 'light') ? 'rgba(15,23,42,0.7)' : 'rgba(255,255,255,0.7)';
-        ctx.fillText(hint, w / 2, hintY);
-      }
       var tex = new THREE.CanvasTexture(canvas);
       tex.minFilter = THREE.LinearFilter;
-      // depthTest stays true for default + edge variants (peers can occlude),
-      // false for hover/neighbor/focused so they always sit on top of nodes.
+      // Issue 1 — defaults and edge labels keep depthTest=true so nearer
+      // geometry occludes them (defaults shouldn't always be on top).
+      // Hover / neighbor / focused turn depthTest off so they always sit
+      // on top. The focused variant additionally turns depthWrite off and
+      // bumps renderOrder to 999 so it renders above EVERYTHING.
       var depthTest = (variant === 'default' || variant === 'edge');
+      var depthWrite = !(variant === 'focused');
       var mat = new THREE.SpriteMaterial({
         map: tex,
         transparent: true,
-        depthWrite: false,
+        depthWrite: depthWrite,
         depthTest: depthTest,
         opacity: 1.0
       });
@@ -1473,64 +1469,87 @@ JS_GRAPH = r"""
       sprite.material.transparent = true;
     }
 
-    // ---- Cursor-anchored zoom (Issue 4) --------------------------------
-    // Step A: try the built-in OrbitControls.zoomToCursor flag (r150+).
-    //   If it's available, flip it on and we're done — the library reads
-    //   cursor position and zooms toward it.
-    // Step B: if the loaded OrbitControls predates the flag, install our
-    //   own EXCLUSIVE wheel handler. The KEY trick that prior rounds got
-    //   wrong: scale BOTH camera.position AND controls.target by the SAME
-    //   factor relative to the SAME cursor anchor. That keeps the orbit
-    //   center consistent and the world point under the cursor stays put.
+    // ---- Cursor-anchored zoom (Issue 5 — v15 canonical algorithm) -----
+    // The canonical THREE ``zoomToCursor`` algorithm (which previous
+    // rounds got wrong by using a single ``lerpVectors`` of camera and
+    // target relative to the cursor — that's mathematically wrong in
+    // perspective projection because the cursor's world projection
+    // moves as the camera moves).
+    //
+    // Right way (this is what THREE's built-in ``zoomToCursor`` does):
+    //   1. Find the world point under the cursor on the plane through
+    //      ``controls.target`` perpendicular to the camera-target axis.
+    //   2. Apply a pure dolly: scale the (camera - target) offset by
+    //      ``factor`` and place the camera at ``target + offset``.
+    //   3. Re-project the cursor to the same plane AFTER the dolly.
+    //   4. Translate BOTH camera AND target by ``before - after`` so
+    //      the world point under the cursor stays under the cursor.
+    //
+    // We own the wheel handler exclusively (``controls.enableZoom = false``)
+    // so OrbitControls' default zoom doesn't fight us. A single set of
+    // THREE primitives is reused per call to keep GC churn off the wheel
+    // event hot path.
     function installLibraryZoom(inst){
       var controls = inst && inst.controls && inst.controls();
       if (!controls) return;
-      var supportsZoomToCursor = typeof controls.zoomToCursor !== 'undefined';
-      try { console.info('[graph] OrbitControls.zoomToCursor available:', supportsZoomToCursor); } catch (_) {}
       try {
         controls.enableDamping = true;
         controls.dampingFactor = 0.08;
       } catch (_) {}
-      if (supportsZoomToCursor) {
-        try {
-          controls.enableZoom = true;     // library owns the wheel
-          controls.zoomToCursor = true;   // built-in cursor-anchored zoom
-          controls.zoomSpeed = 1.0;
-        } catch (_) {}
-        return;
-      }
-      // ---- Fallback custom wheel handler ------------------------------
-      // The library option is unavailable; we own the wheel exclusively.
+      // Issue 5 — own the wheel exclusively. We never use the library's
+      // built-in zoom (``controls.enableZoom = false``) because it
+      // doesn't anchor on the cursor in the version of OrbitControls
+      // that 3d-force-graph ships with.
       try { controls.enableZoom = false; } catch (_) {}
       var canvas = container && container.querySelector && container.querySelector('canvas');
       if (!canvas || !THREE) return;
       var camera = inst.camera && inst.camera();
       if (!camera) return;
+      try { console.info("[graph] cursor zoom v15 active"); } catch (_) {}
+      // Reused primitives — declared once, mutated per wheel event.
+      var raycaster = new THREE.Raycaster();
+      var ndc = new THREE.Vector2();
+      var plane = new THREE.Plane();
+      var dirToTarget = new THREE.Vector3();
+      var before = new THREE.Vector3();
+      var after = new THREE.Vector3();
+      var offset = new THREE.Vector3();
+      var delta = new THREE.Vector3();
+      // Step 1 helper — cast the cursor ray and intersect the plane that
+      // passes through ``controls.target`` perpendicular to the camera-
+      // target axis. Writes the world point into ``out`` and returns
+      // true; returns false if the ray is parallel to the plane.
+      function cursorWorldOnTargetPlane(out){
+        raycaster.setFromCamera(ndc, camera);
+        dirToTarget.subVectors(controls.target, camera.position).normalize();
+        plane.setComponents(dirToTarget.x, dirToTarget.y, dirToTarget.z, -dirToTarget.dot(controls.target));
+        return raycaster.ray.intersectPlane(plane, out) !== null;
+      }
       canvas.addEventListener('wheel', function(event) {
         event.preventDefault();
         event.stopPropagation();
-        // 1. Cursor → world point on the plane through controls.target
-        //    perpendicular to the camera-target axis.
         var rect = canvas.getBoundingClientRect();
-        var ndc = new THREE.Vector2(
+        ndc.set(
           ((event.clientX - rect.left) / rect.width) * 2 - 1,
           -((event.clientY - rect.top) / rect.height) * 2 + 1
         );
-        var raycaster = new THREE.Raycaster();
-        raycaster.setFromCamera(ndc, camera);
-        var dirToTarget = new THREE.Vector3().subVectors(controls.target, camera.position).normalize();
-        var plane = new THREE.Plane(dirToTarget, -dirToTarget.dot(controls.target));
-        var cursor = new THREE.Vector3();
-        if (!raycaster.ray.intersectPlane(plane, cursor)) return;
-        // 2. Exponential, monotonic, symmetric zoom factor.
-        //    deltaY < 0 (wheel up) → factor < 1 → camera moves toward cursor.
-        var factor = Math.exp(event.deltaY * 0.001);
-        // 3. Scale BOTH camera.position and controls.target relative to
-        //    the same cursor anchor by the SAME factor. This preserves
-        //    the camera-target distance ratio so the orbit center stays
-        //    consistent and the world point under the cursor sticks.
-        camera.position.lerpVectors(cursor, camera.position, factor);
-        controls.target.lerpVectors(cursor, controls.target, factor);
+        // 1+2. Capture cursor world position BEFORE zoom.
+        if (!cursorWorldOnTargetPlane(before)) return;
+        // 3. Apply pure dolly: scale (camera - target) by factor and
+        //    place the camera at target + offset.
+        var factor = Math.exp(event.deltaY * 0.001);  // wheel up → < 1 → zoom in
+        offset.subVectors(camera.position, controls.target).multiplyScalar(factor);
+        camera.position.copy(controls.target).add(offset);
+        // 4. Capture cursor world position AFTER the dolly.
+        if (!cursorWorldOnTargetPlane(after)) {
+          controls.update();
+          return;
+        }
+        // 5. Translate BOTH camera AND target by (before - after) so the
+        //    world point under the cursor stays under the cursor.
+        delta.subVectors(before, after);
+        camera.position.add(delta);
+        controls.target.add(delta);
         controls.update();
       }, { passive: false });
     }
@@ -1653,26 +1672,38 @@ JS_GRAPH = r"""
           return n.color;
         })
         .linkColor(function(l){
-          if (!hasFocusFilter()) return EDGE_COLOR_LIGHT;
-          return highlightLinks.has(l) ? EDGE_COLOR_HOT : EDGE_COLOR_DIM;
+          // Issue 4 — incident edges (focus highlight OR hover incident)
+          // light up at 0.85 alpha; everything else stays at the calm
+          // 0.34 baseline so the canvas reads as quiet by default.
+          if (highlightLinks.has(l)) return EDGE_COLOR_HOT;
+          if (isHoverIncidentLink(l)) return EDGE_COLOR_HOT;
+          if (hasFocusFilter()) return EDGE_COLOR_DIM;
+          return EDGE_COLOR_LIGHT;
         })
-        // Bug 6 — focused-incident edges thicken from 0.5 to 2.0 and pick up
-        // the accent. Issue 2 — hover-incident edges thicken to 1.5x without
-        // dimming non-incident (that's reserved for focus). Non-incident
-        // edges drop to 0.001 so they read as 10% opacity (combined with
-        // EDGE_COLOR_DIM alpha 0.012). Default 0.5.
+        // Issue 4 — edges are visibly THINNER everywhere. Default drops to
+        // 0.25; incident edges (hover or focus) bump to 0.9. Non-incident
+        // dimmed edges drop to 0.001 so they read as ~no-line (combined
+        // with EDGE_COLOR_DIM alpha 0.012). Single ladder: focus wins
+        // first, then hover-incident, then default.
         .linkWidth(function(l){
           if (isDimmedLink(l)) return 0.001;
-          if (highlightLinks.has(l)) return 2.0;
-          if (isHoverIncidentLink(l)) return 0.75;  // 1.5x of 0.5 default
-          return 0.5;
+          if (highlightLinks.has(l)) return 0.9;
+          if (isHoverIncidentLink(l)) return 0.9;
+          return 0.25;
         })
         .linkHoverPrecision(8)
-        // Issue 5 — particles per-edge: 2 by default, 4 on focused-incident
-        // edges (more energetic, draws the eye toward neighbor flow).
-        .linkDirectionalParticles(function(l){ return highlightLinks.has(l) ? 4 : 2; })
-        .linkDirectionalParticleWidth(2.5)
-        .linkDirectionalParticleSpeed(function(l){ return highlightLinks.has(l) ? 0.008 : 0.005; })
+        // Issue 4 — particles ONLY on edges incident to the hovered or
+        // focused node. Default state (nothing focused, nothing hovered):
+        // ZERO particles on every edge — the canvas reads as calm. The
+        // moment the user hovers or clicks a node, the edges touching it
+        // start flowing yellow particles and nothing else does.
+        .linkDirectionalParticles(function(l){
+          if (highlightLinks.has(l)) return 2;
+          if (isHoverIncidentLink(l)) return 2;
+          return 0;
+        })
+        .linkDirectionalParticleWidth(1.5)
+        .linkDirectionalParticleSpeed(0.005)
         .onNodeHover(function(node){
           hoverNode = node || null;
           container.style.cursor = node && !isDimmedNode(node) ? 'pointer' : 'default';
@@ -1720,14 +1751,16 @@ JS_GRAPH = r"""
         });
 
       try { if (inst.nodeOpacity) inst.nodeOpacity(0.95); } catch (_) {}
-      // Issue 5 — drop edge opacity to 0.35 so edges read as present-but-
-      // -not-dominating; the white particles below can pop against any
-      // edge color (yellow-on-yellow used to make particles invisible).
+      // Issue 4 — keep base edge opacity at 0.35 so non-incident edges
+      // read as faint background structure. Incident edges get an opacity
+      // bump via the ``linkColor`` accessor (it returns EDGE_COLOR_HOT at
+      // alpha 1.0 for focus highlights, EDGE_COLOR_LIGHT at 0.34 baseline,
+      // and a brighter 0.85 alpha when the link is hover-incident).
       try { if (inst.linkOpacity) inst.linkOpacity(0.35); } catch (_) {}
-      // Issue 5 — particles render WHITE (not the edge color) so they're
-      // visible against every per-type edge tint. ``rgba(255,255,255,0.95)``
-      // pops on both dim and hot edges in dark + light themes alike.
-      try { if (inst.linkDirectionalParticleColor) inst.linkDirectionalParticleColor(function(l){ return 'rgba(255,255,255,0.95)'; }); } catch (_) {}
+      // Issue 4 — particles are PURE YELLOW (Material yellow 500) on
+      // every incident edge. Smaller than the previous 2.5 width — the
+      // user wanted them visibly less dominant.
+      try { if (inst.linkDirectionalParticleColor) inst.linkDirectionalParticleColor(function(l){ return 'rgb(255, 235, 59)'; }); } catch (_) {}
       try {
         if (mode === '3d' && inst.linkResolution) inst.linkResolution(6);
       } catch (_) {}
@@ -1771,9 +1804,11 @@ JS_GRAPH = r"""
             //              occlude — keeps the canvas readable).
             //   neighbor : 14px translucent, NO pill, on top of nodes.
             //   hover    : 16px opaque, NO pill, on top of nodes.
-            //   focused  : 26px accent on a SOLID pill (the one label the
-            //              user explicitly asked to be visible). Carries an
-            //              ``[Enter] Open page`` hint when href is set.
+            //   focused  : 22px white text on a slightly more opaque dark
+            //              pill (Issue 2). NO color border, NO accent stroke.
+            //              The visible ``[Enter] Open page`` hint was dropped
+            //              (Issue 3) — Enter still navigates, just no hint
+            //              line painted under the title.
             var def = makeLabel(nodeLabelText(n), { variant: 'default', accent: nodeAccent(n), theme: theme });
             if (def) {
               def.position.set(0, n.val * 1.2 + 8 + radius, 0);
@@ -1791,8 +1826,10 @@ JS_GRAPH = r"""
               neighbor.visible = false;
               group.add(neighbor);
             }
-            var focusedHint = n.href ? '[Enter] Open page' : '';
-            var focused = makeLabel(nodeLabelText(n), { variant: 'focused', accent: nodeAccent(n), theme: theme, hint: focusedHint });
+            // Issue 3 — drop the visible ``[Enter] Open page`` hint; the
+            // Enter-key handler still navigates focused-node href on press,
+            // we just don't render the hint line under the title any more.
+            var focused = makeLabel(nodeLabelText(n), { variant: 'focused', accent: nodeAccent(n), theme: theme });
             if (focused) {
               focused.position.set(0, n.val * 1.2 + 8 + radius, 0);
               focused.visible = !!n.__focused;
@@ -1906,13 +1943,15 @@ JS_GRAPH = r"""
         try {
           inst.nodeCanvasObjectMode(function(){ return 'after'; });
           inst.nodeCanvasObject(function(n, ctx, globalScale){
-            // Issue 1 + 4 — same variant hierarchy as 3D, applied to the
-            // 2D canvas painter so the relative prominence of each node
-            // label matches between modes:
-            //   focused  : 26px, accent on a SOLID pill, opaque.
-            //   hover    : 16px, opaque white text, NO pill, 2px stroke.
-            //   neighbor : 14px, 0.95 opacity white text, NO pill, 1px stroke.
-            //   default  : 11px, 0.55 opacity white text, NO pill, 1px stroke.
+            // Issue 1 + 2 — same five-variant hierarchy as 3D. Every
+            // variant renders the same primitive: a semi-transparent
+            // black rounded pill with light gray / white text on top.
+            // NO text stroke, NO outline, NO accent border.
+            //   focused  : 22px, white text, pill alpha 0.78.
+            //   hover    : 18px, white text, pill alpha 0.7.
+            //   neighbor : 14px, white text 0.92, pill alpha 0.6.
+            //   default  : 11px, light gray rgba(220,225,235,0.85),
+            //              pill alpha 0.55.
             // Default labels only render for high-degree overview nodes
             // (otherwise 2D becomes a hairball of tiny names).
             if (isDimmedNode(n)) return;
@@ -1931,51 +1970,44 @@ JS_GRAPH = r"""
             var fontSize = (VARIANT_FONT[variant] || 11) / globalScale;
             ctx.font = (variant === 'focused' ? '700 ' : '600 ') + fontSize + 'px Inter, system-ui, sans-serif';
             ctx.textAlign = 'center';
-            ctx.textBaseline = 'top';
-            // Solid pill ONLY for the focused variant, mirroring makeLabel.
-            if (variant === 'focused') {
-              ctx.font = '700 ' + fontSize + 'px Inter, system-ui, sans-serif';
-              var textW = ctx.measureText(label).width;
-              var padX = 10 / globalScale;
-              var padY = 5 / globalScale;
-              var pillH = fontSize * 1.45 + padY * 2;
-              var pillW = textW + padX * 2;
-              var pillX = n.x - pillW / 2;
-              var pillY = n.y + 7 - padY;
-              var pillR = Math.min(pillH / 2, 8 / globalScale);
-              ctx.fillStyle = (theme === 'light') ? 'rgba(255,255,255,0.95)' : 'rgba(0,0,0,0.85)';
-              ctx.beginPath();
-              ctx.moveTo(pillX + pillR, pillY);
-              ctx.lineTo(pillX + pillW - pillR, pillY);
-              ctx.quadraticCurveTo(pillX + pillW, pillY, pillX + pillW, pillY + pillR);
-              ctx.lineTo(pillX + pillW, pillY + pillH - pillR);
-              ctx.quadraticCurveTo(pillX + pillW, pillY + pillH, pillX + pillW - pillR, pillY + pillH);
-              ctx.lineTo(pillX + pillR, pillY + pillH);
-              ctx.quadraticCurveTo(pillX, pillY + pillH, pillX, pillY + pillH - pillR);
-              ctx.lineTo(pillX, pillY + pillR);
-              ctx.quadraticCurveTo(pillX, pillY, pillX + pillR, pillY);
-              ctx.closePath();
-              ctx.fill();
-              ctx.lineWidth = 1.5 / globalScale;
-              ctx.strokeStyle = nodeAccent(n);
-              ctx.stroke();
-            }
-            // Stroke + fill the text. Stroke widths mirror the 3D variants.
-            var strokePx = (VARIANT_STROKE[variant] || 1) / globalScale;
-            ctx.lineWidth = Math.max(strokePx, 0.6 / globalScale);
-            ctx.strokeStyle = (theme === 'light') ? 'rgba(255,255,255,0.78)' : 'rgba(0,0,0,0.85)';
-            ctx.strokeText(label, n.x, n.y + 7);
+            ctx.textBaseline = 'middle';
+            var textW = ctx.measureText(label).width;
+            var padX = (variant === 'focused' || variant === 'hover' ? 8 : 4) / globalScale;
+            var padY = (variant === 'focused' || variant === 'hover' ? 4 : 2) / globalScale;
+            var pillH = fontSize + padY * 2;
+            var pillW = textW + padX * 2;
+            var pillX = n.x - pillW / 2;
+            var pillY = n.y + 7;
+            var pillR = 4 / globalScale;
+            var pillAlpha = (VARIANT_PILL_ALPHA[variant] || 0.55);
+            ctx.fillStyle = (theme === 'light')
+              ? 'rgba(255,255,255,' + pillAlpha + ')'
+              : 'rgba(0,0,0,' + pillAlpha + ')';
+            ctx.beginPath();
+            ctx.moveTo(pillX + pillR, pillY);
+            ctx.lineTo(pillX + pillW - pillR, pillY);
+            ctx.quadraticCurveTo(pillX + pillW, pillY, pillX + pillW, pillY + pillR);
+            ctx.lineTo(pillX + pillW, pillY + pillH - pillR);
+            ctx.quadraticCurveTo(pillX + pillW, pillY + pillH, pillX + pillW - pillR, pillY + pillH);
+            ctx.lineTo(pillX + pillR, pillY + pillH);
+            ctx.quadraticCurveTo(pillX, pillY + pillH, pillX, pillY + pillH - pillR);
+            ctx.lineTo(pillX, pillY + pillR);
+            ctx.quadraticCurveTo(pillX, pillY, pillX + pillR, pillY);
+            ctx.closePath();
+            ctx.fill();
+            // Issue 1 — NO text stroke on any variant. Plain text on the
+            // pill (the user explicitly does not want a text border).
             var op = VARIANT_OPACITY[variant] || 1.0;
-            if (variant === 'focused') {
-              ctx.fillStyle = nodeAccent(n);
-            } else if (variant === 'hover') {
-              ctx.fillStyle = (theme === 'light') ? '#0f172a' : '#ffffff';
+            if (variant === 'default') {
+              ctx.fillStyle = (theme === 'light')
+                ? 'rgba(40,40,50,0.85)'
+                : 'rgba(220,225,235,0.85)';
             } else {
               ctx.fillStyle = (theme === 'light')
-                ? 'rgba(15,23,42,' + op + ')'
+                ? 'rgba(20,20,28,' + op + ')'
                 : 'rgba(255,255,255,' + op + ')';
             }
-            ctx.fillText(label, n.x, n.y + 7);
+            ctx.fillText(label, n.x, pillY + pillH / 2);
           });
           inst.linkCanvasObjectMode(function(){ return 'after'; });
           inst.linkCanvasObject(function(l, ctx, globalScale){
@@ -1996,14 +2028,40 @@ JS_GRAPH = r"""
             ctx.font = '600 ' + fontSize + 'px Inter, system-ui, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.lineWidth = (VARIANT_STROKE.edge || 1) / globalScale;
-            ctx.strokeStyle = (theme === 'light') ? 'rgba(255,255,255,0.78)' : 'rgba(0,0,0,0.85)';
-            ctx.strokeText(label, (s.x + t.x) / 2, (s.y + t.y) / 2);
-            var eop = VARIANT_OPACITY.edge || 0.7;
+            // Issue 1 — NO text stroke on edge labels. Pill primitive
+            // matches the node-label pill so the visual language stays
+            // consistent across nodes and edges.
+            var midX = (s.x + t.x) / 2;
+            var midY = (s.y + t.y) / 2;
+            var etw = ctx.measureText(label).width;
+            var epadX = 4 / globalScale;
+            var epadY = 2 / globalScale;
+            var epillH = fontSize + epadY * 2;
+            var epillW = etw + epadX * 2;
+            var epillX = midX - epillW / 2;
+            var epillY = midY - epillH / 2;
+            var epillR = 4 / globalScale;
+            var epillAlpha = (VARIANT_PILL_ALPHA.edge || 0.55);
             ctx.fillStyle = (theme === 'light')
-              ? 'rgba(15,23,42,' + eop + ')'
+              ? 'rgba(255,255,255,' + epillAlpha + ')'
+              : 'rgba(0,0,0,' + epillAlpha + ')';
+            ctx.beginPath();
+            ctx.moveTo(epillX + epillR, epillY);
+            ctx.lineTo(epillX + epillW - epillR, epillY);
+            ctx.quadraticCurveTo(epillX + epillW, epillY, epillX + epillW, epillY + epillR);
+            ctx.lineTo(epillX + epillW, epillY + epillH - epillR);
+            ctx.quadraticCurveTo(epillX + epillW, epillY + epillH, epillX + epillW - epillR, epillY + epillH);
+            ctx.lineTo(epillX + epillR, epillY + epillH);
+            ctx.quadraticCurveTo(epillX, epillY + epillH, epillX, epillY + epillH - epillR);
+            ctx.lineTo(epillX, epillY + epillR);
+            ctx.quadraticCurveTo(epillX, epillY, epillX + epillR, epillY);
+            ctx.closePath();
+            ctx.fill();
+            var eop = VARIANT_OPACITY.edge || 0.78;
+            ctx.fillStyle = (theme === 'light')
+              ? 'rgba(20,20,28,' + eop + ')'
               : 'rgba(255,255,255,' + eop + ')';
-            ctx.fillText(label, (s.x + t.x) / 2, (s.y + t.y) / 2);
+            ctx.fillText(label, midX, midY);
           });
         } catch (err) {
           console.warn('graph: 2D labels failed', err);
@@ -2133,7 +2191,7 @@ JS_GRAPH = r"""
         markFocused(node);
         applyHighlight(node);
         // Issue 2 — focused node's label sprite carries the focus details
-        // inline (with an ``[Enter] Open page`` hint when href is set).
+        // inline (Issue 3 — no visible Enter-hint line; key still works).
         // The bottom-right info panel is gone.
         hideTooltip();
         focusOnNode(node);
@@ -2519,8 +2577,9 @@ JS_GRAPH = r"""
       if (e.key === 'b') { toggleAutoBrowse(); }
       if (e.key === '2') setMode('2d');
       if (e.key === '3') setMode('3d');
-      // Issue 2 — Enter on the focused node opens its page (the focused
-      // label sprite advertises this with an ``[Enter] Open page`` hint).
+      // Issue 2 + Issue 3 — Enter on the focused node opens its page.
+      // The visible hint under the focused label is gone, but the key
+      // binding is preserved so power-users still get the shortcut.
       if (e.key === 'Enter' && focusedNode && focusedNode.href) {
         e.preventDefault();
         window.location.href = focusedNode.href;

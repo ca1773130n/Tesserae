@@ -93,31 +93,37 @@ def test_bundle_palette_recents_storage():
 # 3D graph view
 # ---------------------------------------------------------------------------
 
-def test_bundle_zoom_uses_library_default_orbitcontrols():
-    """Issue 4 — cursor-anchored zoom. Step A uses the library's built-in
-    ``OrbitControls.zoomToCursor`` flag when available (r150+). Step B
-    falls back to a custom EXCLUSIVE wheel handler that scales BOTH
-    ``camera.position`` AND ``controls.target`` by the SAME factor relative
-    to the SAME cursor anchor — the trick prior rounds got wrong.
+def test_bundle_zoom_uses_canonical_before_after_translate_algorithm():
+    """Issue 5 — cursor-anchored zoom uses the canonical THREE algorithm:
+    capture cursor world point BEFORE the dolly, apply a pure dolly,
+    re-capture AFTER, then translate BOTH camera AND target by
+    (before - after) so the world point under the cursor sticks.
+
+    Previous rounds used ``lerpVectors(cursor, camera.position, factor)``
+    on camera and target — that's mathematically wrong in perspective
+    projection and is forbidden going forward.
     """
-    # Step A — runtime check + flip the built-in flag.
-    assert "controls.zoomToCursor" in JS_GRAPH
-    assert "supportsZoomToCursor" in JS_GRAPH
-    assert "controls.zoomToCursor = true" in JS_GRAPH
-    assert "controls.zoomSpeed = 1.0" in JS_GRAPH
-    assert "controls.enableDamping = true" in JS_GRAPH
-    assert "controls.dampingFactor = 0.08" in JS_GRAPH
-    # Step B — fallback custom wheel handler (Issue 4 explicitly requires
-    # this when the library option is missing).
+    # Wheel handler is exclusive (no library zoom).
     assert "addEventListener('wheel'" in JS_GRAPH
     assert "controls.enableZoom = false" in JS_GRAPH
+    assert "controls.enableDamping = true" in JS_GRAPH
+    assert "controls.dampingFactor = 0.08" in JS_GRAPH
+    # Console signal so the user can confirm the new path is loaded.
+    assert '[graph] cursor zoom v15 active' in JS_GRAPH
+    # The canonical algorithm signatures (per spec).
+    assert "intersectPlane" in JS_GRAPH
+    assert "function cursorWorldOnTargetPlane" in JS_GRAPH
+    assert "controls.target.add(delta)" in JS_GRAPH
+    assert "camera.position.add(delta)" in JS_GRAPH
     assert "Math.exp(event.deltaY * 0.001)" in JS_GRAPH
-    # The KEY trick: SAME factor, SAME anchor, applied to BOTH
-    # camera.position AND controls.target via lerpVectors.
-    assert "camera.position.lerpVectors(cursor, camera.position, factor)" in JS_GRAPH
-    assert "controls.target.lerpVectors(cursor, controls.target, factor)" in JS_GRAPH
-    # Plane raycast for the cursor → world point conversion.
-    assert "intersectPlane(plane, cursor)" in JS_GRAPH
+    # Reused primitives — single THREE.Raycaster / THREE.Plane / etc.
+    # declared once outside the wheel listener to avoid GC churn.
+    assert "var raycaster = new THREE.Raycaster()" in JS_GRAPH
+    assert "var plane = new THREE.Plane()" in JS_GRAPH
+    # FORBIDDEN: the old lerpVectors-of-position-and-target pattern that
+    # got the math wrong in the previous round.
+    assert "camera.position.lerpVectors(cursor, camera.position, factor)" not in JS_GRAPH
+    assert "controls.target.lerpVectors(cursor, controls.target, factor)" not in JS_GRAPH
 
 
 def test_bundle_link_hover_wired():
@@ -168,18 +174,24 @@ def test_graph_selection_fades_and_deprioritizes_non_neighbors():
 
 def test_graph_edges_are_visible_lines_not_only_particles():
     assert "rgba(191,219,254,0.34)" in JS_GRAPH
-    # Issue 5 — drop edge opacity to 0.35 so white particles can pop
-    # against translucent edges (yellow-on-yellow used to hide them).
+    # Issue 4 — keep base edge opacity at 0.35 so non-incident edges
+    # read as faint background structure; incident edges get the bump
+    # via the linkColor accessor (EDGE_COLOR_HOT at 0.85 alpha).
     assert "if (inst.linkOpacity) inst.linkOpacity(0.35);" in JS_GRAPH
-    # Link width still uses the focused/hover/default ladder; new
-    # branch widens hover-incident edges to 0.75 (1.5x of 0.5 default).
+    # Issue 4 — edges thinner everywhere. Default 0.25, incident 0.9.
     assert "function isHoverIncidentLink" in JS_GRAPH
-    assert "if (highlightLinks.has(l)) return 2.0;" in JS_GRAPH
-    assert "if (isHoverIncidentLink(l)) return 0.75;" in JS_GRAPH
+    assert "if (highlightLinks.has(l)) return 0.9;" in JS_GRAPH
+    assert "if (isHoverIncidentLink(l)) return 0.9;" in JS_GRAPH
+    assert "return 0.25;" in JS_GRAPH
+    # Forbid the previous round's thicker widths.
+    assert "if (highlightLinks.has(l)) return 2.0;" not in JS_GRAPH
+    assert "if (isHoverIncidentLink(l)) return 0.75;" not in JS_GRAPH
     assert "line.setAttribute('stroke-width', '0.24');" in JS_GRAPH
     assert "el.setAttribute('stroke-width', hot ? '0.85' : '0.28');" in JS_GRAPH
     assert "if (inst.linkThreeObjectExtend) inst.linkThreeObjectExtend(true);" in JS_GRAPH
-    assert "return highlightLinks.has(l) ? EDGE_COLOR_HOT : EDGE_COLOR_DIM" in JS_GRAPH
+    # The linkColor function now branches on hover-incident too.
+    assert "if (highlightLinks.has(l)) return EDGE_COLOR_HOT;" in JS_GRAPH
+    assert "if (isHoverIncidentLink(l)) return EDGE_COLOR_HOT;" in JS_GRAPH
 
 
 def test_graph_dimmed_labels_are_hidden_with_dimmed_nodes_and_edges():
@@ -198,9 +210,11 @@ def test_graph_focus_zoom_is_moderate():
 
 
 def test_bundle_node_labels_present_in_both_modes():
-    """Issue 1 + 4 — both render paths apply the same variant hierarchy
+    """Issue 1 + 2 — both render paths apply the same variant hierarchy
     (default / neighbor / hover / focused) so the relative prominence of
-    each label matches between 2D and 3D for the same node."""
+    each label matches between 2D and 3D for the same node. Issue 1
+    additionally requires NO text stroke on either path — the pill is
+    the indicator, never an outlined letterform."""
     assert "nodeThreeObject" in JS_GRAPH
     assert "nodeCanvasObject" in JS_GRAPH
     assert "function shouldShowOverviewLabel" in JS_GRAPH
@@ -209,7 +223,8 @@ def test_bundle_node_labels_present_in_both_modes():
     assert "var isHovered = (hoverNode === n) && !isFocused;" in JS_GRAPH
     assert "var isFocusedNeighbor = focusedNode" in JS_GRAPH
     assert "var showDefault = shouldShowOverviewLabel(n);" in JS_GRAPH
-    assert "ctx.strokeText(label, n.x, n.y + 7);" in JS_GRAPH
+    # Issue 1 — NO ``ctx.strokeText`` calls anywhere in the 2D painter.
+    assert "ctx.strokeText(label" not in JS_GRAPH
 
 
 def test_graph_node_colors_vary_within_type_family():
@@ -398,11 +413,9 @@ def test_graph_uses_node_rel_size_for_perceptible_radius_differences():
 
 
 def test_graph_focused_node_label_scales_up_with_outline():
-    """Issue 1 — selecting a node should swap in a larger label sprite
-    rendered above the scene with a thick stroke + accent fill on a solid
-    background pill so it pops over any background, anchored above the
-    node sphere. The focused label is the ONE label the user explicitly
-    asked to keep a pill background on."""
+    """Issue 2 + 3 — selecting a node swaps in a larger 22px white label on
+    a slightly-more-opaque dark pill. NO color border, NO accent stroke,
+    NO ``[Enter] Open page`` hint. The Enter-key handler still works."""
     # The dual-sprite group keys off node.__focused (a per-node flag).
     assert "__focused" in JS_BUNDLE_GRAPH
     assert "function makeFocusedSpriteLabel" in JS_BUNDLE_GRAPH
@@ -411,13 +424,13 @@ def test_graph_focused_node_label_scales_up_with_outline():
     assert "function makeLabel(" in JS_BUNDLE_GRAPH
     assert "variant: 'focused'" in JS_BUNDLE_GRAPH
     assert "isFocusedLabel" in JS_BUNDLE_GRAPH
-    # Issue 2 — hover bumps to 22px (was 16) so the user can see it
-    # before they click; neighbor bumps to 16px to match the new
-    # mid-tier emphasis.
-    assert "{ default: 11, edge: 10, neighbor: 16, hover: 22, focused: 26 }" in JS_BUNDLE_GRAPH
-    # Issue 2 — hover stroke bumps to 2.5 (from 2); default keeps a
-    # 1.5px stroke for the dark-theme legibility shadow (Issue 1).
-    assert "{ default: 1.5, edge: 1, neighbor: 1, hover: 2.5, focused: 4 }" in JS_BUNDLE_GRAPH
+    # Issue 2 — hover drops to 18px (down from 22) and focused drops to
+    # 22px (down from 26) because the pill itself is the focus
+    # indicator, so the font no longer has to do all the work.
+    assert "{ default: 11, edge: 10, neighbor: 14, hover: 18, focused: 22 }" in JS_BUNDLE_GRAPH
+    # Issue 1 — explicit "NO text stroke. NO outline. NO border." on
+    # every variant. The stroke widths are zeroed in the table.
+    assert "{ default: 0, edge: 0, neighbor: 0, hover: 0, focused: 0 }" in JS_BUNDLE_GRAPH
     # The focused sprite anchors above the node (positive +y offset based
     # on node.val so it never overlaps the sphere itself).
     assert "n.val * 1.2 + 8" in JS_BUNDLE_GRAPH
@@ -425,29 +438,33 @@ def test_graph_focused_node_label_scales_up_with_outline():
     # default / glow sprites can be toggled individually per frame.
     assert "new THREE.Group()" in JS_BUNDLE_GRAPH
     assert "nodeThreeObject" in JS_BUNDLE_GRAPH
-    # Focused sprite carries an "[Enter] Open page" hint when href is set.
-    assert "'[Enter] Open page'" in JS_BUNDLE_GRAPH
-    # Pressing Enter while a node is focused navigates to its href.
+    # Issue 3 — the visible "[Enter] Open page" hint sprite is GONE.
+    assert "'[Enter] Open page'" not in JS_BUNDLE_GRAPH
+    # The Enter-key handler still navigates focused-node href on press.
     assert "if (e.key === 'Enter' && focusedNode && focusedNode.href)" in JS_BUNDLE_GRAPH
 
 
-def test_graph_focused_label_has_solid_pill_default_does_not():
-    """Issue 1 + Issue 3 — ONLY the focused variant paints a background
-    pill, and even that pill is now SUBTLE: a slightly-lighter accent-
-    tinted blue on dark theme (rgba(40,55,90,0.55)) rather than a jarring
-    near-black or white. Default / neighbor / hover / edge labels render
-    text-only with NO pill, theme-foreground colors, and an accent stroke
-    on hover/focused so the indication comes from font + stroke, not from
-    a pill that looks out of theme."""
-    # The pill is gated on the focused variant only.
-    assert "var hasPill = variant === 'focused'" in JS_BUNDLE_GRAPH
-    # Issue 3 — subtle accent-tinted background pills, same color family
-    # as the canvas (no jarring white-on-dark or black-on-light).
-    assert "rgba(40,55,90,0.55)" in JS_BUNDLE_GRAPH      # dark-theme subtle pill
-    assert "rgba(241,245,249,0.92)" in JS_BUNDLE_GRAPH   # light-theme subtle pill
-    # The 2-px border picks up the node's accent color.
-    assert "ctx.lineWidth = 2 * pxScale" in JS_BUNDLE_GRAPH
-    assert "ctx.strokeStyle = accent" in JS_BUNDLE_GRAPH
+def test_graph_label_pills_are_dark_with_no_accent_border():
+    """Issue 1 + Issue 2 — every label variant renders a semi-transparent
+    BLACK pill (or near-white on light theme) with NO color border and
+    NO text stroke. The default pill is at 0.55 alpha, hover bumps to
+    0.7, focused to 0.78, neighbor 0.6, edge 0.55."""
+    # Per-variant pill alpha table (the source of truth).
+    assert "VARIANT_PILL_ALPHA" in JS_BUNDLE_GRAPH
+    assert "{ default: 0.55, edge: 0.55, neighbor: 0.6, hover: 0.7, focused: 0.78 }" in JS_BUNDLE_GRAPH
+    # Pill is rendered for EVERY variant (not gated on hasPill any more).
+    assert "var hasPill = variant === 'focused'" not in JS_BUNDLE_GRAPH
+    # Pill fill is theme-driven black-on-dark / white-on-light.
+    assert "'rgba(0,0,0,' + pillAlpha + ')'" in JS_BUNDLE_GRAPH
+    assert "'rgba(255,255,255,' + pillAlpha + ')'" in JS_BUNDLE_GRAPH
+    # Issue 1 — NO accent stroke / NO color border on the pill any more.
+    # The previous round used ``ctx.strokeStyle = accent`` to paint the
+    # focused-pill border; that's gone.
+    assert "ctx.strokeStyle = accent" not in JS_BUNDLE_GRAPH
+    # Default text is the cool light-gray rgba(220,225,235,0.85) on dark.
+    assert "rgba(220,225,235,0.85)" in JS_BUNDLE_GRAPH
+    # Light-theme default text is rgba(40,40,50,0.85).
+    assert "rgba(40,40,50,0.85)" in JS_BUNDLE_GRAPH
     # Every label variant is wired through the unified factory.
     assert "isFocusedLabel" in JS_BUNDLE_GRAPH
     assert "isHoverLabel" in JS_BUNDLE_GRAPH
@@ -458,8 +475,8 @@ def test_graph_focused_label_has_solid_pill_default_does_not():
     # them (Issue 1); hover / neighbor / focused turn it off so they
     # always sit on top.
     assert "var depthTest = (variant === 'default' || variant === 'edge')" in JS_BUNDLE_GRAPH
-    # Default label opacity (0.55) lives in the variant table.
-    assert "{ default: 0.55, edge: 0.7, neighbor: 0.95, hover: 1.0, focused: 1.0 }" in JS_BUNDLE_GRAPH
+    # Per-variant text opacity table (used for hover/focused/neighbor/edge).
+    assert "{ default: 0.85, edge: 0.78, neighbor: 0.92, hover: 1.0, focused: 1.0 }" in JS_BUNDLE_GRAPH
 
 
 def test_graph_fullscreen_button_and_listener_present():
@@ -593,18 +610,18 @@ def test_graph_size_uses_sqrt_scaling_via_node_val():
 
 
 def test_graph_label_text_uses_theme_foreground_not_node_color():
-    """Issue 1 + Issue 3 — label text fill follows the THEME foreground
-    (white on dark, dark on light), NOT the node's group color. The
-    "indication" comes from font size + accent stroke + opacity, not
-    from a label that paints itself in a non-theme color."""
-    # Default / neighbor / hover / focused all use the theme white/dark
-    # rgba string; no variant pulls the node's accent color into the
-    # text fill any more.
-    assert "ctx.fillStyle = 'rgba(15,23,42,' + textOpacity + ')'" in JS_BUNDLE_GRAPH
-    assert "ctx.fillStyle = 'rgba(255,255,255,' + textOpacity + ')'" in JS_BUNDLE_GRAPH
-    # Stroke flips to accent on hover/focused (the "indicated" variants).
-    assert "if (variant === 'hover' || variant === 'focused')" in JS_BUNDLE_GRAPH
-    assert "ctx.strokeStyle = accent" in JS_BUNDLE_GRAPH
+    """Issue 1 + Issue 2 — label text fill follows the THEME foreground
+    (light-gray-to-white on dark, near-black on light), NOT the node's
+    group color. The pill is the focus indicator; text never picks up
+    the accent and never carries a stroke."""
+    # Hover / focused / neighbor render white text on dark theme (text
+    # opacity from the variant table).
+    assert "rgba(255,255,255,' + textOpacity + ')" in JS_BUNDLE_GRAPH
+    # Light theme inverts to a near-black rgba(20,20,28,…).
+    assert "rgba(20,20,28,' + textOpacity + ')" in JS_BUNDLE_GRAPH
+    # Issue 1 — no text-stroke calls any more (the explicit "NO outline"
+    # rule). The factory does not call strokeText at all.
+    assert "ctx.strokeText" not in JS_BUNDLE_GRAPH
 
 
 def test_graph_theme_toggle_invalidates_label_cache():
@@ -621,30 +638,39 @@ def test_graph_theme_toggle_invalidates_label_cache():
 
 
 def test_graph_hover_grows_node_and_thickens_incident_edges():
-    """Issue 2 — hovered node sphere grows to ``val * 1.25`` and incident
-    edges thicken to 1.5x of the default 0.5 width. Both apply WITHOUT
-    dimming non-incident (which is reserved for focus)."""
+    """Issue 2 + Issue 4 — hovered node sphere grows to ``val * 1.25``
+    and incident edges thicken to 0.9 (from the calmer 0.25 baseline)."""
     # nodeVal accessor multiplies the base by 1.25 when hovered.
     assert "if (hoverNode === n) return base * 1.25" in JS_BUNDLE_GRAPH
-    # Hover-incident link width = 0.75 = 1.5 * 0.5 default.
-    assert "if (isHoverIncidentLink(l)) return 0.75" in JS_BUNDLE_GRAPH
+    # Hover-incident link width = 0.9 (Issue 4 — thinner overall).
+    assert "if (isHoverIncidentLink(l)) return 0.9" in JS_BUNDLE_GRAPH
     # Hover handler re-pokes the accessors so the change is visible
     # immediately (without waiting for the next sim tick).
     assert "Graph.nodeVal(Graph.nodeVal())" in JS_BUNDLE_GRAPH
     assert "Graph.linkWidth(Graph.linkWidth())" in JS_BUNDLE_GRAPH
 
 
-def test_graph_particles_render_white_against_translucent_edges():
-    """Issue 5 — directional particles paint as near-opaque white so
-    they're visible against any per-type edge color (yellow particles
-    on yellow edges used to be invisible). Edge opacity drops to 0.35
-    so the particles can pop. Particles per edge: 2 default, 4 on focus.
-    Particle width 2.5; speed 0.005 default, 0.008 on focus."""
-    assert "'rgba(255,255,255,0.95)'" in JS_BUNDLE_GRAPH
+def test_graph_particles_only_on_incident_edges_pure_yellow_smaller():
+    """Issue 4 — particles render PURE YELLOW (Material yellow 500) only
+    on edges incident to the hovered or focused node. Default state
+    (nothing focused, nothing hovered): ZERO particles on every edge —
+    the canvas reads as calm. Width drops from 2.5 to 1.5 (smaller)."""
+    # Pure yellow particles (Material yellow 500). Not white.
+    assert "'rgb(255, 235, 59)'" in JS_BUNDLE_GRAPH
     assert "linkDirectionalParticleColor" in JS_BUNDLE_GRAPH
-    assert "linkDirectionalParticleWidth(2.5)" in JS_BUNDLE_GRAPH
-    assert "return highlightLinks.has(l) ? 4 : 2" in JS_BUNDLE_GRAPH
-    assert "return highlightLinks.has(l) ? 0.008 : 0.005" in JS_BUNDLE_GRAPH
+    # Smaller particle width.
+    assert "linkDirectionalParticleWidth(1.5)" in JS_BUNDLE_GRAPH
+    # Speed is now a constant 0.005 (no per-link speed bump on focus).
+    assert "linkDirectionalParticleSpeed(0.005)" in JS_BUNDLE_GRAPH
+    # Particles are 2 on incident edges (focus or hover), 0 otherwise.
+    # Default state has ZERO particles — the canvas is calm by default.
+    assert "if (highlightLinks.has(l)) return 2;" in JS_BUNDLE_GRAPH
+    assert "if (isHoverIncidentLink(l)) return 2;" in JS_BUNDLE_GRAPH
+    assert "return 0;" in JS_BUNDLE_GRAPH
+    # Forbid the previous round's "always-on 2 particles" baseline and
+    # the "white" particle color.
+    assert "return highlightLinks.has(l) ? 4 : 2" not in JS_BUNDLE_GRAPH
+    assert "'rgba(255,255,255,0.95)'" not in JS_BUNDLE_GRAPH
 
 
 def test_graph_auto_browse_wired():
