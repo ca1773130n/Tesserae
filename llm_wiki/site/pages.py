@@ -2161,6 +2161,7 @@ def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
     # check above; this keeps the edge list clean even if a non-Person node
     # somehow ends up on an authored_by edge.
     degree: Dict[str, int] = {nid: 0 for nid in visible_ids}
+    in_degree: Dict[str, int] = {nid: 0 for nid in visible_ids}
     visible_edges: List[ResearchEdge] = []
     for e in ctx.graph.edges:
         if e.type in _GRAPH_HIDDEN_EDGE_TYPES:
@@ -2169,6 +2170,7 @@ def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
             visible_edges.append(e)
             degree[e.source] = degree.get(e.source, 0) + 1
             degree[e.target] = degree.get(e.target, 0) + 1
+            in_degree[e.target] = in_degree.get(e.target, 0) + 1
 
     # Cap at MAX_GRAPH_NODES, dropping low-degree nodes first. Stable on
     # ties by node id so the build stays byte-identical across runs.
@@ -2195,13 +2197,17 @@ def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
         href = f"../{href_rel}" if href_rel else ""
         deg = degree.get(n.id, 0)
         capped = min(deg, 200)
-        # Node size scaled to make hubs visually obvious. Previous
-        # ``2 + sqrt(degree) * 1.6`` made a 50-edge hub only ~2.5x the
-        # area of a 1-edge leaf — too subtle. ``capped ** 0.85`` keeps
-        # it sub-linear (so a 200-edge mega-hub doesn't dominate the
-        # canvas) but pulls high-connection nodes well clear of the
-        # leaf cloud. Floor at 2 so even degree-0 nodes are clickable.
-        val = round(2 + (capped ** 0.85) * 0.95, 2)
+        # Sphere size encodes IMPORTANCE — measured by incoming edges
+        # (other nodes pointing AT this one). A paper cited by 50
+        # syntheses is much more important than one referencing 50
+        # concepts; in-degree is the right signal. Cap at 200 so a
+        # mega-hub doesn't eat the canvas. The exponent (0.92) is more
+        # aggressive than the prior 0.85 sqrt-shape so important nodes
+        # pull visibly above the leaf cloud — a 50-incoming hub now
+        # renders ~9× the radius of a leaf, vs ~3× under the old curve.
+        in_deg = in_degree.get(n.id, 0)
+        capped_in = min(in_deg, 200)
+        val = round(2 + (capped_in ** 0.92) * 1.4, 2)
         description = (n.description or "").strip()
         nodes_payload.append({
             "id": n.id,
@@ -2212,6 +2218,7 @@ def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
             "href": href,
             "val": val,
             "degree": deg,
+            "in_degree": in_deg,
             "description": description[:400],  # JS clips to 200 chars itself
         })
 

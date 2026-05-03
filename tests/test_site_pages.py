@@ -1029,12 +1029,13 @@ def test_index_pages_emit_canonical_main_wide_not_article_shell(
         )
 
 
-def test_build_graph_payload_node_sizing_pulls_hubs_above_leaves(site_ctx: SiteContext) -> None:
-    """Node radius scales with degree (capped at 200) so hubs pull well
-    clear of the leaf cloud while remaining sub-linear. Formula:
-    ``round(2 + min(degree, 200)**0.85 * 0.95, 2)`` — verify against the
-    payload's own ``degree`` field. Previous sqrt-based formula made
-    hubs only ~2.5× the leaf radius which was too subtle."""
+def test_build_graph_payload_node_sizing_uses_in_degree(site_ctx: SiteContext) -> None:
+    """Node sphere size encodes IMPORTANCE — measured by in-degree
+    (incoming edges). A paper cited by 50 syntheses is more important
+    than one referencing 50 concepts. Formula:
+    ``round(2 + min(in_degree, 200)**0.92 * 1.4, 2)``. Verify against
+    the payload's own ``in_degree`` field which the build step exposes
+    alongside total ``degree`` for this assertion."""
 
     from llm_wiki.site.pages import build_graph_payload
 
@@ -1042,20 +1043,18 @@ def test_build_graph_payload_node_sizing_pulls_hubs_above_leaves(site_ctx: SiteC
     nodes = payload["nodes"]
     assert nodes, "fixture must produce at least one node"
     for node in nodes:
-        deg = node.get("degree", 0)
-        capped = min(deg, 200)
-        # Sizing formula bumped: ``2 + capped**0.85 * 0.95`` so hubs
-        # pull well clear of the leaf cloud while staying sub-linear.
-        expected = round(2 + (capped ** 0.85) * 0.95, 2)
+        in_deg = node.get("in_degree", 0)
+        capped = min(in_deg, 200)
+        expected = round(2 + (capped ** 0.92) * 1.4, 2)
         assert node["val"] == expected, (
             f"node {node['id']!r} has val={node['val']!r} but expected {expected!r} "
-            f"(degree={deg})"
+            f"(in_degree={in_deg})"
         )
         # Floor at 2.0 — leaves still need a visible sphere.
         assert node["val"] >= 2.0
-        # Cap is 200; with ``2 + 200**0.85 * 0.95`` ≈ 88, leave a comfort
-        # margin so float jitter doesn't trip the assertion.
-        assert node["val"] <= 100.0
+        # Cap is 200; max val ≈ 2 + 200**0.92 * 1.4 ≈ 200. Leave a wide
+        # comfort margin so float jitter never trips the bound.
+        assert node["val"] <= 250.0
 
 
 def test_build_graph_payload_hides_person_nodes_and_authored_by_edges() -> None:
