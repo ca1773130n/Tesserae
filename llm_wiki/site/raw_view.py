@@ -417,6 +417,7 @@ def render_raw_view(
     absolute_path: Path,
     asset_filename: Optional[str] = None,
     counts: Optional[dict] = None,
+    doc_tree_html: str = "",
 ) -> str:
     """Render the full ``raw/<safe>.html`` document.
 
@@ -482,4 +483,5 @@ def render_raw_view(
         site_title=site_title,
         counts=dict(counts or {}),
         breadcrumbs_html=bc,
+        doc_tree_html=doc_tree_html,
     )

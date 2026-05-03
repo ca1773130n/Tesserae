@@ -384,11 +384,21 @@ class StaticSiteBuilder:
                 )
                 for kind in ROUTE_FOR_KIND
             }
+            from .pages import _doc_tree_for  # local import: avoid public surface
             for rel_path, slug, absolute in sources_inventory:
                 asset_filename: Optional[str] = None
                 if is_binary_extension(absolute.suffix):
                     asset_filename = copy_raw_asset(absolute, slug, assets_dir)
                 raw_html_path = raw_dir / f"{slug}.html"
+                # Highlight the active leaf in the doc-tree rail. The tree
+                # walker keys off ``node.source_path`` strings; the raw-view
+                # iterator gives us the absolute path that matches what the
+                # extractor wrote into the graph.
+                doc_tree_html = _doc_tree_for(
+                    site_ctx,
+                    depth=1,
+                    current_source_path=str(absolute),
+                )
                 raw_html_path.write_text(
                     render_raw_view(
                         site_title=self.site_title,
@@ -396,6 +406,7 @@ class StaticSiteBuilder:
                         absolute_path=absolute,
                         asset_filename=asset_filename,
                         counts=raw_nav_counts,
+                        doc_tree_html=doc_tree_html,
                     ),
                     encoding="utf-8",
                 )
