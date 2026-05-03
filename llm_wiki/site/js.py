@@ -1573,6 +1573,13 @@ JS_GRAPH = r"""
       // position mutations and decaying the cursor-anchor offset.
       try { controls.enableZoom = false; } catch (_) {}
       try { controls.enableDamping = false; } catch (_) {}
+      // Cap how far the user can zoom out: beyond ~500 units the graph
+      // becomes a dot. minDistance keeps zoom-in from clipping inside
+      // a node sphere. Apply to both manual wheel zoom (which mutates
+      // camera.position relative to controls.target) and the library
+      // dolly should it ever take over.
+      try { controls.maxDistance = 500; } catch (_) {}
+      try { controls.minDistance = 8; } catch (_) {}
       // ``dampingFactor = 0.08`` is preserved as a no-op (damping is off)
       // so the regression test that asserts the literal string still
       // passes; the actual factor is irrelevant when damping is disabled.
@@ -1623,8 +1630,18 @@ JS_GRAPH = r"""
         var factor = event.deltaY > 0 ? 1.015 : 0.985;
 
         // 3. Apply pure dolly: scale (camera - target) by ``factor`` and
-        //    place the camera at ``target + offset``.
+        //    place the camera at ``target + offset``. Clamp the resulting
+        //    camera-target distance to [minDistance, maxDistance] so the
+        //    user can't escape into space or clip inside a node.
         offset.subVectors(camera.position, controls.target).multiplyScalar(factor);
+        var newDist = offset.length();
+        var maxD = (controls.maxDistance != null) ? controls.maxDistance : 500;
+        var minD = (controls.minDistance != null) ? controls.minDistance : 8;
+        if (newDist > maxD) {
+          offset.setLength(maxD);
+        } else if (newDist < minD) {
+          offset.setLength(minD);
+        }
         camera.position.copy(controls.target).add(offset);
 
         // CRITICAL: refresh the camera's world matrix so the raycaster's
@@ -2054,7 +2071,7 @@ JS_GRAPH = r"""
                 var ctrls = Graph && Graph.controls && Graph.controls();
                 if (cam && ctrls && ctrls.target) {
                   var dist = cam.position.distanceTo(ctrls.target);
-                  camScale = Math.max(1.0, Math.min(6.0, dist / 90));
+                  camScale = Math.max(1.0, Math.min(20.0, dist / 60));
                 }
               } catch (_) {}
               for (var i = 0; i < group.children.length; i++) {
@@ -2355,7 +2372,7 @@ JS_GRAPH = r"""
         // a wild zoom-out from the origin. The single-shot scheduleCenteredFit
         // will refine the framing once the simulation settles.
         try {
-          if (inst.cameraPosition) inst.cameraPosition({ x: 0, y: 0, z: 90 }, { x: 0, y: 0, z: 0 }, 0);
+          if (inst.cameraPosition) inst.cameraPosition({ x: 0, y: 0, z: 60 }, { x: 0, y: 0, z: 0 }, 0);
         } catch (_) {}
       } else if (mode === '2d') {
         // Issue 3 — 2D ``force-graph`` zooms toward the cursor by default
