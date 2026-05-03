@@ -1898,31 +1898,29 @@ JS_GRAPH = r"""
         .linkDirectionalParticleWidth(0.6)
         .linkDirectionalParticleSpeed(0.005)
         .onNodeHover(function(node){
+          // When a node is selected (pinned/focused), HOVER MODE IS OFF.
+          // The focused node's own neighborhood is already highlighted —
+          // overlaying a fresh hover highlight on top would compete with
+          // it. The user explicitly said hover is only for the
+          // "nothing-selected" state. We still keep the cursor pointer
+          // so the click affordance is visible.
+          if (focusedNode || pinnedNode || pinnedLink) {
+            hoverNode = null;
+            container.style.cursor = node && !isDimmedNode(node) ? 'pointer' : 'default';
+            hideTooltip();
+            return;
+          }
           hoverNode = node || null;
           container.style.cursor = node && !isDimmedNode(node) ? 'pointer' : 'default';
-          // Issue 2 — hover preview lives in the cursor-following tooltip.
-          // The focused-node label sprite already shows everything important
-          // for the focused node, so we suppress the tooltip when hovering
-          // the focused node itself (don't double-show).
-          if (node && node !== focusedNode && !isDimmedNode(node)) {
+          if (node && !isDimmedNode(node)) {
             showNodeTooltip(node, lastMouseX, lastMouseY);
           } else {
             hideTooltip();
           }
-          // Highlight ring still updates when nothing is pinned, so the
-          // 1-hop neighbors light up under the cursor.
-          if (!pinnedNode && !pinnedLink) {
-            applyHighlight(node);
-          } else {
-            // Even with a pinned focus, hover should still drive the
-            // opacity tween targets so non-incident-of-hover items dim
-            // smoothly. ``applyHighlight`` already calls this, but the
-            // pinned branch skips it; do it here so hover always tweens.
-            refreshOpacityTargets();
-          }
-          // Issue 2 — re-poke node val + link width accessors so the
-          // hovered sphere visibly grows and incident edges thicken
-          // without waiting for the next simulation tick.
+          applyHighlight(node);
+          // Re-poke node val + link width accessors so the hovered
+          // sphere visibly grows and incident edges thicken without
+          // waiting for the next simulation tick.
           try {
             if (Graph && Graph.nodeVal) Graph.nodeVal(Graph.nodeVal());
             if (Graph && Graph.linkWidth) Graph.linkWidth(Graph.linkWidth());
@@ -2152,19 +2150,12 @@ JS_GRAPH = r"""
               if (!s || !t) return false;
               sprite.position.set((s.x + t.x) / 2, (s.y + t.y) / 2, (s.z + t.z) / 2);
               applySpriteOpacity(sprite, cameraDistanceOpacity((s.x + t.x) / 2, (s.y + t.y) / 2, (s.z + t.z) / 2));
-              // Scale edge labels by camera distance — same approach as
-              // focused/hover/neighbor node labels above.
-              try {
-                var cam = Graph && Graph.camera && Graph.camera();
-                var ctrls = Graph && Graph.controls && Graph.controls();
-                if (cam && ctrls && ctrls.target) {
-                  var dist = cam.position.distanceTo(ctrls.target);
-                  var camScale = Math.max(1.0, Math.min(3.0, dist / 180));
-                  sprite.scale.multiplyScalar(camScale / (sprite.userData.__lastScale || 1));
-                  sprite.userData = sprite.userData || {};
-                  sprite.userData.__lastScale = camScale;
-                }
-              } catch (_) {}
+              // Edge labels stay at their fixed tiny world-space size —
+              // do NOT scale them with camera distance. The user wants
+              // edge labels strictly smaller than node labels at every
+              // zoom level. Default node labels also don't camera-scale,
+              // so without this skip edge labels would zoom-grow past
+              // them at far distances.
               return true;
             });
           }
@@ -2735,43 +2726,73 @@ JS_GRAPH = r"""
       }
       return best;
     }
-    function autoBrowseStep(node){
+    // Sort a node's neighbors by importance (degree) descending,
+    // skipping already-visited ones. Returns up to ``limit`` refs.
+    function topImportantNeighbors(node, limit){
+      if (!node || !node.neighbors) return [];
+      var arr = [];
+      node.neighbors.forEach(function(nb){
+        if (!nb) return;
+        if (autoBrowseVisited && autoBrowseVisited.has(nb.id)) return;
+        if (isDimmedNode(nb)) return;
+        arr.push(nb);
+      });
+      arr.sort(function(a, b){ return (b.degree || 0) - (a.degree || 0); });
+      return arr.slice(0, limit || 5);
+    }
+
+    // The user asked: tour the IMPORTANT connected nodes around the
+    // current focused node before jumping to the next starting node.
+    // The new step pipeline:
+    //   1. Focus the seed node, dwell longer (AUTO_BROWSE_DWELL_MS).
+    //   2. Visit its top-N most-important unvisited neighbors in
+    //      sequence, each with a shorter dwell (AUTO_BROWSE_NB_DWELL_MS).
+    //   3. After the neighbour tour, pick a fresh starting node and
+    //      repeat. ``AUTO_BROWSE_MAX_HOPS`` is no longer the limit;
+    //      we let the per-seed neighbour list do the bounding.
+    var AUTO_BROWSE_NB_DWELL_MS = 5000;        // shorter than seed dwell
+    var AUTO_BROWSE_NEIGHBOURS_PER_SEED = 5;
+    var autoBrowseSeedQueue = null;            // pending neighbours of current seed
+    function autoBrowseStep(seedNode){
       if (!autoBrowseActive) return;
-      if (!node) {
-        // Out of unvisited reachable nodes — start a fresh chain from
-        // the next-highest-degree unvisited node, or stop if none.
-        var fresh = pickStartNode();
-        if (!fresh) { stopAutoBrowse(); return; }
-        autoBrowseHopCount = 0;
-        autoBrowseStep(fresh);
+      if (!seedNode) {
+        // Out of unvisited seeds — stop cleanly.
+        stopAutoBrowse();
         return;
       }
-      autoBrowseVisited.add(node.id);
-      autoBrowseHopCount += 1;
-      // Cinematic fly-to: 1400ms ease in/out between stops (vs the
-      // 600ms snap used for click-focus). The library's tween easing
-      // is cubic in/out by default, which is what the user asked for.
-      try { focusOnNode(node, 1400); } catch (_) {}
-      // Treat focus as a pin so re-builds don't drop the highlight.
-      pinnedNode = node;
-      focusedNode = node;
-      markFocused(node);
-      applyHighlight(node);
+      autoBrowseVisited.add(seedNode.id);
+      // Cinematic fly-to the seed: 1400ms ease in/out between stops.
+      try { focusOnNode(seedNode, 1400); } catch (_) {}
+      pinnedNode = seedNode;
+      focusedNode = seedNode;
+      markFocused(seedNode);
+      applyHighlight(seedNode);
+      // Pre-compute the neighbour tour list for this seed.
+      autoBrowseSeedQueue = topImportantNeighbors(seedNode, AUTO_BROWSE_NEIGHBOURS_PER_SEED);
       autoBrowseTimer = window.setTimeout(function(){
-        if (!autoBrowseActive) return;
-        var nextNode;
-        if (autoBrowseHopCount >= AUTO_BROWSE_MAX_HOPS) {
-          autoBrowseHopCount = 0;
-          nextNode = pickStartNode();
-        } else {
-          nextNode = pickNextNeighbor(node);
-          if (!nextNode) {
-            autoBrowseHopCount = 0;
-            nextNode = pickStartNode();
-          }
-        }
-        autoBrowseStep(nextNode);
+        autoBrowseVisitNextNeighbour(seedNode);
       }, AUTO_BROWSE_DWELL_MS);
+    }
+    function autoBrowseVisitNextNeighbour(seedNode){
+      if (!autoBrowseActive) return;
+      if (autoBrowseSeedQueue && autoBrowseSeedQueue.length > 0) {
+        var nb = autoBrowseSeedQueue.shift();
+        autoBrowseVisited.add(nb.id);
+        // Shorter, snappier fly to the neighbour (900ms).
+        try { focusOnNode(nb, 900); } catch (_) {}
+        pinnedNode = nb;
+        focusedNode = nb;
+        markFocused(nb);
+        applyHighlight(nb);
+        autoBrowseTimer = window.setTimeout(function(){
+          autoBrowseVisitNextNeighbour(seedNode);
+        }, AUTO_BROWSE_NB_DWELL_MS);
+        return;
+      }
+      // Neighbour tour done — pick a fresh seed.
+      var fresh = pickStartNode();
+      if (!fresh) { stopAutoBrowse(); return; }
+      autoBrowseStep(fresh);
     }
     function startAutoBrowse(){
       if (autoBrowseActive) return;
