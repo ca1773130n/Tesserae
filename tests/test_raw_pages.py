@@ -350,3 +350,155 @@ def test_every_raw_link_on_detail_pages_resolves(tmp_path: Path) -> None:
                     f"{html_path.relative_to(site_root)} -> {href} missing"
                 )
     assert not issues, "broken raw hrefs:\n" + "\n".join(issues)
+
+
+# ---------------------------------------------------------------------------
+# raw markdown rewrites curated cross-page refs onto canonical analysis URLs
+# ---------------------------------------------------------------------------
+
+
+def _seed_digest_corpus(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
+    """Lay out a tiny corpus: one digest with cross-page refs, one repo md.
+
+    The digest is a curated weekly summary that uses the same shorthand the
+    real ``data/research/weekly/.../digest.md`` files do:
+
+        [GitHub 분석](papers/2509.23563/repo.md)
+        [분석](repos/OpenDriveLab_WorldEngine.md)
+
+    Neither link points at a file that exists on disk — they point at the
+    canonical analysis pages the site emits at ``repos/<slug>.html``.
+    """
+    project = tmp_path / "myproject"
+    digest_dir = project / "data" / "research" / "weekly" / "2026-W17"
+    digest_dir.mkdir(parents=True)
+    digest_md = digest_dir / "digest.md"
+    digest_md.write_text(
+        "# Weekly digest\n\n"
+        "- 코드: [GitHub 분석](papers/2509.23563/repo.md) | repo\n"
+        "- WorldEngine: [분석](repos/OpenDriveLab_WorldEngine.md)\n",
+        encoding="utf-8",
+    )
+
+    repo_dir = project / "data" / "research" / "daily" / "2026-04-23" / "repos"
+    repo_dir.mkdir(parents=True)
+    repo_md = repo_dir / "facebookresearch_map-anything.md"
+    repo_md.write_text("# GitHub: facebookresearch/map-anything\n", encoding="utf-8")
+    repo2_md = (
+        project
+        / "data"
+        / "research"
+        / "daily"
+        / "2026-04-13"
+        / "repos"
+        / "OpenDriveLab_WorldEngine.md"
+    )
+    repo2_md.parent.mkdir(parents=True)
+    repo2_md.write_text("# GitHub: OpenDriveLab/WorldEngine\n", encoding="utf-8")
+
+    wiki_root = project / ".llm-wiki" / "wiki"
+    wiki_root.mkdir(parents=True)
+    site_root = project / ".llm-wiki" / "site"
+    return project, wiki_root, site_root, digest_md
+
+
+def _digest_graph(digest_md: Path, repo_md: Path, repo2_md: Path) -> ResearchGraph:
+    return ResearchGraph(
+        nodes=[
+            ResearchNode(
+                id="Source:digest",
+                name="Weekly digest 2026-W17",
+                type=ResearchNodeType.SOURCE_DOCUMENT,
+                source_path=str(digest_md),
+            ),
+            ResearchNode(
+                id="Repository:map-anything",
+                name="GitHub 분석: facebookresearch/map-anything",
+                type=ResearchNodeType.REPOSITORY,
+                source_path=str(repo_md),
+                metadata={
+                    "arxiv_id": "2509.23563",
+                    "github_repo": "facebookresearch/map-anything",
+                },
+            ),
+            ResearchNode(
+                id="Repository:worldengine",
+                name="GitHub 분석: OpenDriveLab/WorldEngine",
+                type=ResearchNodeType.REPOSITORY,
+                source_path=str(repo2_md),
+                metadata={"github_repo": "opendrivelab/worldengine"},
+            ),
+        ],
+        edges=[],
+    )
+
+
+def _seed_wiki_for_repos(wiki_root: Path) -> None:
+    """Seed wiki pages so the StaticSiteBuilder emits ``repos/<slug>.html``."""
+    store = WikiPageStore(wiki_root)
+    pages = [
+        (
+            "github-분석-facebookresearch-map-anything",
+            "GitHub 분석: facebookresearch/map-anything",
+            "Repository:map-anything",
+        ),
+        (
+            "github-분석-opendrivelab-worldengine",
+            "GitHub 분석: OpenDriveLab/WorldEngine",
+            "Repository:worldengine",
+        ),
+    ]
+    for slug, title, node_id in pages:
+        page = WikiPage(
+            kind="repos",
+            slug=slug,
+            title=title,
+            body="Repo analysis stub.\n",
+            path=store.path_for("repos", slug),
+            frontmatter={"node_id": node_id, "title": title, "node_type": "Repository"},
+        )
+        store.write_page(page)
+
+
+def test_raw_markdown_rewrites_papers_arxiv_repo_md_to_repo_page(
+    tmp_path: Path,
+) -> None:
+    """``papers/<arxiv>/repo.md`` in a raw markdown body resolves to the
+    canonical ``../repos/<slug>.html`` analysis page, not a 404."""
+    _project, wiki_root, site_root, digest_md = _seed_digest_corpus(tmp_path)
+    repo_md = digest_md.parent.parent.parent / "daily" / "2026-04-23" / "repos" / "facebookresearch_map-anything.md"
+    repo2_md = digest_md.parent.parent.parent / "daily" / "2026-04-13" / "repos" / "OpenDriveLab_WorldEngine.md"
+    _seed_wiki_for_repos(wiki_root)
+    graph = _digest_graph(digest_md, repo_md, repo2_md)
+    StaticSiteBuilder().write_site(graph, wiki_root, site_root)
+
+    raw_html = next(
+        p for p in (site_root / "raw").glob("*.html") if "digest" in p.name
+    ).read_text(encoding="utf-8")
+
+    # The arxiv-shorthand link redirects onto the repo analysis page.
+    expected_repo_slug = "github-분석-facebookresearch-map-anything"
+    assert f'href="../repos/{expected_repo_slug}.html"' in raw_html, raw_html
+    # And the rendered page actually exists at that path — i.e. the rewrite
+    # points at a real file the build wrote, not a 404.
+    assert (site_root / "repos" / f"{expected_repo_slug}.html").exists()
+
+
+def test_raw_markdown_rewrites_repos_owner_repo_md_to_repo_page(
+    tmp_path: Path,
+) -> None:
+    """``repos/<owner>_<repo>.md`` shorthand resolves to ``../repos/<slug>.html``."""
+    _project, wiki_root, site_root, digest_md = _seed_digest_corpus(tmp_path)
+    repo_md = digest_md.parent.parent.parent / "daily" / "2026-04-23" / "repos" / "facebookresearch_map-anything.md"
+    repo2_md = digest_md.parent.parent.parent / "daily" / "2026-04-13" / "repos" / "OpenDriveLab_WorldEngine.md"
+    _seed_wiki_for_repos(wiki_root)
+    graph = _digest_graph(digest_md, repo_md, repo2_md)
+    StaticSiteBuilder().write_site(graph, wiki_root, site_root)
+
+    raw_html = next(
+        p for p in (site_root / "raw").glob("*.html") if "digest" in p.name
+    ).read_text(encoding="utf-8")
+
+    expected_slug = "github-분석-opendrivelab-worldengine"
+    assert f'href="../repos/{expected_slug}.html"' in raw_html, raw_html
+    assert (site_root / "repos" / f"{expected_slug}.html").exists()
