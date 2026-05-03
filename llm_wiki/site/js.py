@@ -1618,15 +1618,24 @@ JS_GRAPH = r"""
         // 1. Capture cursor world position BEFORE the dolly.
         if (!cursorWorldOnTargetPlane(before)) return;
 
-        // 2. Sign-only factor: 10% per click, identical on every device.
-        //    Wheel down (deltaY > 0) zooms OUT (factor 1.10 enlarges the
-        //    camera-target offset); wheel up zooms IN (factor 0.90).
-        var factor = event.deltaY > 0 ? 1.10 : 0.90;
+        // 2. Sign-only factor: 4% per click, identical on every device.
+        //    Wheel down (deltaY > 0) zooms OUT (factor 1.04 enlarges the
+        //    camera-target offset); wheel up zooms IN (factor 0.96). The
+        //    user said the previous 10% was too aggressive; halved-and-then-some.
+        var factor = event.deltaY > 0 ? 1.04 : 0.96;
 
         // 3. Apply pure dolly: scale (camera - target) by ``factor`` and
         //    place the camera at ``target + offset``.
         offset.subVectors(camera.position, controls.target).multiplyScalar(factor);
         camera.position.copy(controls.target).add(offset);
+
+        // CRITICAL: refresh the camera's world matrix so the raycaster's
+        // next ``setFromCamera`` reads the new position. Without this,
+        // the AFTER raycast uses the cached OLD matrixWorld and we get
+        // the same intersection point as BEFORE — delta = (0,0,0) and
+        // cursor anchoring silently no-ops. This was the actual root
+        // cause of every "cursor zoom doesn't work" report.
+        camera.updateMatrixWorld(true);
 
         // 4. Capture cursor world position AFTER the dolly.
         if (!cursorWorldOnTargetPlane(after)) {
@@ -2019,13 +2028,20 @@ JS_GRAPH = r"""
               var isFocusedNeighbor = focusedNode && node && focusedNode !== node && highlightNodes.has(node);
               var isHovered = (hoverNode === node) && !isFocused;
               var showBaseAlways = node && shouldShowOverviewLabel(node);
-              // Camera-zoom-aware scale factor. The library uses a perspective
-              // camera; ``camera.zoom`` is normally 1, so this is a no-op
-              // unless an upstream change swaps in an ortho camera.
+              // Camera-distance-aware scale factor. PerspectiveCamera's
+              // ``zoom`` is always 1 — the right metric is camera distance
+              // to controls.target. At the default ~600u distance we keep
+              // scale=1; zooming out grows labels, zooming in shrinks them.
+              // This makes the focused/hover-incident label set readable
+              // at any zoom level.
               var camScale = 1.0;
               try {
                 var cam = Graph && Graph.camera && Graph.camera();
-                if (cam && cam.zoom) camScale = Math.max(0.6, Math.min(1.6, 1 / cam.zoom));
+                var ctrls = Graph && Graph.controls && Graph.controls();
+                if (cam && ctrls && ctrls.target) {
+                  var dist = cam.position.distanceTo(ctrls.target);
+                  camScale = Math.max(0.5, Math.min(2.5, dist / 600));
+                }
               } catch (_) {}
               for (var i = 0; i < group.children.length; i++) {
                 var child = group.children[i];
@@ -2045,12 +2061,16 @@ JS_GRAPH = r"""
                   // of the focused node and is NOT itself focused or hovered.
                   child.visible = !!isFocusedNeighbor && !isHovered;
                   child.position.set(0, labelY, 0);
+                  if (isFocusedNeighbor) child.scale.multiplyScalar(camScale / (child.userData.__lastScale || 1));
+                  child.userData.__lastScale = camScale;
                   applySpriteOpacity(child, 1.0);
                 } else if (ud.isHoverLabel) {
                   // Hover label only shows when the node is being mouse-hovered
                   // and is NOT focused (focus wins on the same node).
                   child.visible = isHovered;
                   child.position.set(0, labelY, 0);
+                  if (isHovered) child.scale.multiplyScalar(camScale / (child.userData.__lastScale || 1));
+                  child.userData.__lastScale = camScale;
                   applySpriteOpacity(child, 1.0);
                 } else if (ud.isDefaultLabel || ud.isLabel) {
                   // Default label — translucent text, no pill (Issue 1).
@@ -2089,6 +2109,19 @@ JS_GRAPH = r"""
               if (!s || !t) return false;
               sprite.position.set((s.x + t.x) / 2, (s.y + t.y) / 2, (s.z + t.z) / 2);
               applySpriteOpacity(sprite, cameraDistanceOpacity((s.x + t.x) / 2, (s.y + t.y) / 2, (s.z + t.z) / 2));
+              // Scale edge labels by camera distance — same approach as
+              // focused/hover/neighbor node labels above.
+              try {
+                var cam = Graph && Graph.camera && Graph.camera();
+                var ctrls = Graph && Graph.controls && Graph.controls();
+                if (cam && ctrls && ctrls.target) {
+                  var dist = cam.position.distanceTo(ctrls.target);
+                  var camScale = Math.max(0.5, Math.min(2.5, dist / 600));
+                  sprite.scale.multiplyScalar(camScale / (sprite.userData.__lastScale || 1));
+                  sprite.userData = sprite.userData || {};
+                  sprite.userData.__lastScale = camScale;
+                }
+              } catch (_) {}
               return true;
             });
           }
