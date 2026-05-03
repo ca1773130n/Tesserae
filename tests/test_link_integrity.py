@@ -271,6 +271,49 @@ def test_per_day_timeline_pages_are_emitted_and_walked(tmp_path: Path) -> None:
     assert not broken, "broken internal links:\n" + "\n".join(broken)
 
 
+def test_every_raw_html_link_resolves_to_a_file(
+    tmp_path: Path, wiki_sample_graph
+) -> None:
+    """Every ``raw/<safe>.html`` href emitted from a detail page must point
+    at a real file under the site output. Bug-class regression test for
+    Issue 4: the Source link is now a clickable raw-viewer URL, so a typo
+    in the slug helper would silently break every detail page in the site.
+    """
+    from llm_wiki.wiki_projector import WikiLayerProjector
+
+    wiki = tmp_path / "wiki"
+    wiki.mkdir()
+    store = WikiPageStore(wiki)
+    WikiLayerProjector(store).project(wiki_sample_graph)
+
+    out = tmp_path / "site"
+    StaticSiteBuilder(site_title="Wiki Corpus").write_site(
+        wiki_sample_graph, wiki, out
+    )
+
+    site_root = out.resolve()
+    issues: list[str] = []
+    for html_path in sorted(out.rglob("*.html")):
+        text = html_path.read_text(encoding="utf-8")
+        for match in re.finditer(r'href="([^"]*raw/[^"]+\.html)"', text):
+            href = match.group(1)
+            if href.startswith(("http://", "https://")):
+                continue
+            target = (html_path.parent / href.split("#", 1)[0].split("?", 1)[0]).resolve()
+            try:
+                target.relative_to(site_root)
+            except ValueError:
+                issues.append(
+                    f"{html_path.relative_to(out)} -> {href} escapes site root"
+                )
+                continue
+            if not target.exists():
+                issues.append(
+                    f"{html_path.relative_to(out)} -> {href} missing"
+                )
+    assert not issues, "broken raw hrefs:\n" + "\n".join(issues)
+
+
 def test_cross_references_emit_only_valid_internal_hrefs(
     tmp_path: Path, wiki_sample_graph
 ) -> None:

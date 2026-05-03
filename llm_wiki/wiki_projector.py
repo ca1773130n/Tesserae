@@ -182,20 +182,17 @@ class WikiLayerProjector:
         outgoing.sort()
         incoming.sort()
         type_mix = Counter(item[2] for item in outgoing + incoming)
+        # The page header in ``site/pages.py`` already renders type / aliases /
+        # source path. Emitting them here too made every detail page show
+        # "Source:" twice (once in the eyebrow metadata, once in the markdown
+        # body). We keep the description + relations only; the page chrome
+        # surfaces the structured fields via frontmatter.
         body_lines = [
             f"# {title}",
-            "",
-            f"_Type: **{node.type.value}**_",
             "",
         ]
         if node.description:
             body_lines.extend([node.description, ""])
-        if node.aliases:
-            body_lines.append("**Aliases:** " + ", ".join(sorted(node.aliases)))
-            body_lines.append("")
-        if node.source_path:
-            body_lines.append(f"**Source:** `{node.source_path}`")
-            body_lines.append("")
         if outgoing:
             body_lines.append(_format_relation_block("Outgoing relations", outgoing))
         if incoming:
@@ -207,13 +204,15 @@ class WikiLayerProjector:
                 body_lines.append(f"- {kind_name}: {count}")
             body_lines.append("")
         body = "\n".join(body_lines).rstrip() + "\n"
-        frontmatter = {
+        frontmatter: Dict[str, object] = {
             "title": title,
             "kind": kind,
             "node_id": node.id,
             "node_type": node.type.value,
             "source_path": node.source_path or "",
         }
+        if node.aliases:
+            frontmatter["aliases"] = sorted(node.aliases)
         path = self.wiki_store.path_for(kind, slug)
         return WikiPage(kind=kind, slug=slug, title=title, body=body, path=path, frontmatter=frontmatter)
 

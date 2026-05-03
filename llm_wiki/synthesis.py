@@ -32,6 +32,7 @@ from .research_graph import (
     is_public_research_node,
     stable_id,
 )
+from .site.raw_view import derive_project_root, relativize_source_path
 from .wiki_store import WikiPage, WikiPageStore
 
 
@@ -300,6 +301,20 @@ class SynthesisProjector:
         plans.extend(self._plan_comparisons(ctx))
         plans.extend(self._plan_fields(ctx))
         self._remove_stale_synthesis_pages({plan.slug for plan in plans})
+
+        # Normalise every plan's ``sources`` list to project-relative paths.
+        # Recovered from the wiki store's root via the same convention
+        # ``ProjectPaths`` uses (``<project_root>/.llm-wiki/wiki/``). When we
+        # cannot recover a project root (e.g. the test fixtures point the
+        # wiki store at an arbitrary tmp path) the helper is a no-op for
+        # already-relative paths — absolute paths simply pass through.
+        project_root = derive_project_root(Path(self.wiki_store.root))
+        for plan in plans:
+            plan.sources = sorted({
+                relativize_source_path(s, project_root=project_root)
+                for s in plan.sources
+                if s
+            })
 
         # Reset memoized LLM state for this run, then evaluate it once.
         self._llm_state = None

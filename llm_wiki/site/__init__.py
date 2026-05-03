@@ -71,6 +71,15 @@ from .pages import (
     render_topic_detail,
     render_topics_index,
 )
+from .raw_view import (
+    RAW_ASSETS_DIR,
+    RAW_ROUTE_DIR,
+    copy_raw_asset,
+    derive_project_root,
+    is_binary_extension,
+    iter_raw_sources,
+    render_raw_view,
+)
 from .search import build_search_index
 from .tokens import CSS
 
@@ -201,10 +210,15 @@ class StaticSiteBuilder:
             )
 
         # ----------------------------------------------------------- contexts
+        # Recover the project root from the wiki layer location so the page
+        # renderers can relativise absolute source paths and mint
+        # ``raw/<safe>.html`` hrefs (Issues 1 + 4 in the polish pass).
+        project_root = derive_project_root(Path(wiki_root)) if wiki_root else None
         site_ctx = SiteContext.build(
             graph=graph,
             wiki_pages_by_kind=wiki_pages_by_kind,
             site_title=self.site_title,
+            project_root=project_root,
         )
 
         # ------------------------------------------------------ static assets
@@ -336,6 +350,71 @@ class StaticSiteBuilder:
                         if lastmod is not None:
                             break
                 _track(f"{kind}/{page.slug}.html", lastmod)
+
+        # ----------------------------------------------- raw document viewer
+        # Emit ``raw/<safe>.html`` for every unique source path on the graph
+        # that resolves to a real file under the project root. Binary types
+        # (PDF / images) are also copied alongside under ``raw-assets/``.
+        if project_root is not None:
+            raw_dir = out / RAW_ROUTE_DIR
+            assets_dir = out / RAW_ASSETS_DIR
+            seen_paths: List[str] = []
+            for node in graph.nodes:
+                if node.source_path:
+                    seen_paths.append(node.source_path)
+            for kind_pages in wiki_pages_by_kind.values():
+                for page in kind_pages:
+                    fm = page.frontmatter or {}
+                    if isinstance(fm, dict):
+                        sp = fm.get("source_path")
+                        if isinstance(sp, str) and sp:
+                            seen_paths.append(sp)
+                        sources_field = fm.get("sources")
+                        if isinstance(sources_field, (list, tuple)):
+                            for s in sources_field:
+                                if isinstance(s, str) and s:
+                                    seen_paths.append(s)
+            sources_inventory = iter_raw_sources(seen_paths, project_root)
+            if sources_inventory:
+                raw_dir.mkdir(parents=True, exist_ok=True)
+            raw_nav_counts: Dict[str, int] = {
+                kind: max(
+                    len(site_ctx.wiki_pages_by_kind.get(kind, [])),
+                    len(site_ctx.nodes_by_kind.get(kind, [])),
+                )
+                for kind in ROUTE_FOR_KIND
+            }
+            for rel_path, slug, absolute in sources_inventory:
+                asset_filename: Optional[str] = None
+                if is_binary_extension(absolute.suffix):
+                    asset_filename = copy_raw_asset(absolute, slug, assets_dir)
+                raw_html_path = raw_dir / f"{slug}.html"
+                raw_html_path.write_text(
+                    render_raw_view(
+                        site_title=self.site_title,
+                        project_relative_path=rel_path,
+                        absolute_path=absolute,
+                        asset_filename=asset_filename,
+                        counts=raw_nav_counts,
+                    ),
+                    encoding="utf-8",
+                )
+                _track(f"{RAW_ROUTE_DIR}/{slug}.html")
+                # AI siblings: only useful for text-style sources.
+                if absolute.suffix.lower() in {".md", ".markdown", ".mdx", ".txt"}:
+                    try:
+                        body_text = absolute.read_text(encoding="utf-8", errors="replace")
+                    except OSError:
+                        body_text = ""
+                    record: Dict[str, object] = {
+                        "title": absolute.name,
+                        "kind": "raw",
+                        "body": body_text,
+                        "body_text": body_text,
+                        "links": [],
+                        "source_path": rel_path,
+                    }
+                    write_siblings(raw_html_path, record)
 
         # ------------------------------------------------------------ exports
         export_ctx = ExportContext(

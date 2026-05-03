@@ -1814,15 +1814,79 @@ JS_GRAPH = r"""
 """
 
 
+# ---------------------------------------------------------------------------
+# Subtype chip filter (index pages)
+# ---------------------------------------------------------------------------
+#
+# Renders nothing on its own — it picks up every ``[data-subtype-chips]`` strip
+# the index renderer emits and toggles ``[data-type]`` rows in any sibling
+# ``[data-filterable-table]`` element. The "All" chip carries an empty
+# ``data-filter-type`` (always shows every row); other chips filter to their
+# exact subtype. Click the active chip again to reset to "All".
+#
+# Pure DOM mutations, no fetch — the chips are pre-rendered server-side so the
+# strip stays clickable even if JS fails to load.
+JS_SUBTYPE_FILTER = r"""
+(function(){
+  function activate(strip, value){
+    var chips = strip.querySelectorAll('.subtype-chip');
+    for (var i=0; i<chips.length; i++){
+      var chip = chips[i];
+      var match = (chip.getAttribute('data-filter-type') || '') === value;
+      chip.classList.toggle('is-active', match);
+      chip.setAttribute('aria-pressed', match ? 'true' : 'false');
+    }
+    var scope = strip.parentNode || document;
+    var tables = scope.querySelectorAll('[data-filterable-table]');
+    for (var t=0; t<tables.length; t++){
+      var rows = tables[t].querySelectorAll('tbody > tr');
+      for (var r=0; r<rows.length; r++){
+        var row = rows[r];
+        var rowType = row.getAttribute('data-type') || '';
+        var visible = !value || rowType === value;
+        row.style.display = visible ? '' : 'none';
+      }
+    }
+  }
+  function bind(strip){
+    if (strip.__chipsBound) return;
+    strip.__chipsBound = true;
+    strip.addEventListener('click', function(evt){
+      var chip = evt.target.closest && evt.target.closest('.subtype-chip');
+      if (!chip || !strip.contains(chip)) return;
+      var value = chip.getAttribute('data-filter-type') || '';
+      // Click the active non-All chip again to reset.
+      if (chip.classList.contains('is-active') && value){
+        activate(strip, '');
+        return;
+      }
+      activate(strip, value);
+    });
+  }
+  function init(){
+    var strips = document.querySelectorAll('[data-subtype-chips]');
+    for (var i=0; i<strips.length; i++) bind(strips[i]);
+  }
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+"""
+
+
 # ``JS_BUNDLE_BASE`` is what every page loads (theme toggle, rail/TOC drawer,
-# search palette). ``JS_BUNDLE_GRAPH`` is the heavier graph renderer that we
-# only ship on the graph route — see ``llm_wiki.site.__init__`` (writes both
-# ``assets/app.js`` and ``assets/graph.js``) and ``render_graph_view`` in
-# ``pages.py`` (injects the second ``<script defer>`` only on the graph page).
+# search palette, subtype chip filter). ``JS_BUNDLE_GRAPH`` is the heavier
+# graph renderer that we only ship on the graph route — see
+# ``llm_wiki.site.__init__`` (writes both ``assets/app.js`` and
+# ``assets/graph.js``) and ``render_graph_view`` in ``pages.py`` (injects the
+# second ``<script defer>`` only on the graph page).
 JS_BUNDLE_BASE = (
     JS_THEME_TOGGLE
     + "\n" + JS_RAIL_DRAWER
     + "\n" + JS_SEARCH_PALETTE
+    + "\n" + JS_SUBTYPE_FILTER
 )
 
 JS_BUNDLE_GRAPH = JS_GRAPH
@@ -1839,6 +1903,7 @@ __all__ = [
     "JS_THEME_TOGGLE",
     "JS_RAIL_DRAWER",
     "JS_SEARCH_PALETTE",
+    "JS_SUBTYPE_FILTER",
     "JS_GRAPH",
     "JS_BUNDLE",
     "JS_BUNDLE_BASE",

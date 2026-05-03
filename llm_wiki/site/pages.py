@@ -30,6 +30,13 @@ from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 from ..research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType, is_public_research_node
 from ..wiki_store import WikiPage
+from .raw_view import (
+    RAW_ASSETS_DIR,
+    raw_href,
+    relativize_source_path,
+    render_raw_view,
+    safe_raw_slug,
+)
 from .components import (
     ai_siblings_footer,
     badge,
@@ -256,6 +263,11 @@ class SiteContext:
     # ``YYYY-MM-DD`` → list of source paths anchored to that day, ordered
     # for stable rendering.
     sources_by_day: Mapping[str, Sequence[str]] = field(default_factory=dict)
+    # Project root used to relativise absolute source paths and to mint
+    # ``raw/<safe>.html`` hrefs. ``None`` means the legacy two-arg call shape
+    # was used and source paths are surfaced verbatim (still safe for
+    # already-relative paths).
+    project_root: Optional[Path] = None
 
     @classmethod
     def build(
@@ -263,6 +275,7 @@ class SiteContext:
         graph: ResearchGraph,
         wiki_pages_by_kind: Mapping[str, Sequence[WikiPage]],
         site_title: str = "LLM-Wiki",
+        project_root: Optional[Path] = None,
     ) -> "SiteContext":
         nodes_by_id = {n.id: n for n in graph.nodes}
         outgoing: Dict[str, List[ResearchEdge]] = defaultdict(list)
@@ -368,6 +381,7 @@ class SiteContext:
             node_id_for_source_path=node_id_for_source_path,
             activity_by_day=activity_by_day,
             sources_by_day=sources_by_day,
+            project_root=project_root,
         )
 
 
@@ -812,31 +826,44 @@ def _cross_refs_in_raw(ctx: SiteContext, node: ResearchNode) -> List[Tuple[str, 
 def _cross_refs_html(
     ctx: SiteContext, node: ResearchNode, *, depth: int
 ) -> str:
+    """Render the ``Cross-references in raw data`` section.
+
+    Link target preference, in order:
+      1. The ``raw/<safe>.html`` page for the raw file (Issue 4 — humans get
+         the original document rendered).
+      2. The matching wiki source-detail page.
+      3. A non-anchor ``link-broken`` span (no 404).
+
+    Labels show the project-relative path so the reader sees
+    ``data/research/...`` rather than the absolute machine path.
+    """
     refs = _cross_refs_in_raw(ctx, node)
     if not refs:
         return '<p class="muted">No raw-data mentions found.</p>'
     prefix = "../" * max(depth, 0)
     items: List[str] = []
     for label, src_path in refs:
-        # Resolve to the source detail page if we have one.
-        src_node_id = ctx.node_id_for_source_path.get(src_path)
-        href = ""
-        if src_node_id:
-            other = ctx.nodes_by_id.get(src_node_id)
-            if other is not None:
-                rel = node_href(other, ctx)
-                if rel:
-                    href = prefix + rel
+        rel_label = relativize_source_path(label, ctx.project_root) or label
+        href = raw_href(ctx.project_root, src_path, depth=depth) or ""
+        if not href:
+            # Fall back to the wiki source-detail page when we have one.
+            src_node_id = ctx.node_id_for_source_path.get(src_path)
+            if src_node_id:
+                other = ctx.nodes_by_id.get(src_node_id)
+                if other is not None:
+                    rel = node_href(other, ctx)
+                    if rel:
+                        href = prefix + rel
         if href:
             items.append(
-                f'<li><a href="{_esc(href)}"><code>{_esc(label)}</code></a></li>'
+                f'<li><a href="{_esc(href)}"><code>{_esc(rel_label)}</code></a></li>'
             )
         else:
-            # No matching wiki page — surface a non-404 indicator instead of
-            # a silently-broken link.
+            # No matching raw page or wiki page — surface a non-404 indicator
+            # instead of a silently-broken link.
             items.append(
                 f'<li><span class="link-broken" title="Not found in wiki">'
-                f'<code>{_esc(label)}</code></span></li>'
+                f'<code>{_esc(rel_label)}</code></span></li>'
             )
     return '<ul class="cross-refs">' + "".join(items) + "</ul>"
 
@@ -844,8 +871,22 @@ def _cross_refs_html(
 def _provenance_html(
     ctx: SiteContext, node: Optional[ResearchNode], src_value: str, *, depth: int
 ) -> str:
+    """Render the "Source provenance" section.
+
+    Order of preference for the link target:
+      1. The ``raw/<safe>.html`` page (so the user can read the original
+         document directly — Issue 4 in the polish pass).
+      2. The matching wiki source-detail page (legacy behaviour).
+      3. Plain ``<code>`` text when neither is available.
+    """
     if not src_value:
         return '<p class="muted">No source path recorded.</p>'
+    rel_value = relativize_source_path(src_value, ctx.project_root) or src_value
+    raw = raw_href(ctx.project_root, src_value, depth=depth)
+    if raw:
+        return (
+            f'<p><a href="{_esc(raw)}"><code>{_esc(rel_value)}</code></a></p>'
+        )
     prefix = "../" * max(depth, 0)
     src_node_id = ctx.node_id_for_source_path.get(src_value)
     if src_node_id:
@@ -855,9 +896,9 @@ def _provenance_html(
             if rel:
                 href = prefix + rel
                 return (
-                    f'<p><a href="{_esc(href)}"><code>{_esc(src_value)}</code></a></p>'
+                    f'<p><a href="{_esc(href)}"><code>{_esc(rel_value)}</code></a></p>'
                 )
-    return f'<p><code>{_esc(src_value)}</code></p>'
+    return f'<p><code>{_esc(rel_value)}</code></p>'
 
 
 # ---------------------------------------------------------------------------
@@ -918,7 +959,20 @@ def _detail_page(
         rendered_aliases = ", ".join(_esc(str(a)) for a in aliases)
         meta_bits.append(f'<span class="meta-aliases"><b>Also known as:</b> {rendered_aliases}</span>')
     if src_value:
-        meta_bits.append(f'<span class="meta-source"><b>Source:</b> <code>{_esc(src_value)}</code></span>')
+        # Always show the project-relative form (never the absolute path).
+        # When we can mint a ``raw/<safe>.html`` route the path becomes a
+        # clickable link that lands on the rendered original document.
+        rel_src = relativize_source_path(str(src_value), ctx.project_root) or str(src_value)
+        raw_link = raw_href(ctx.project_root, str(src_value), depth=1)
+        if raw_link:
+            meta_bits.append(
+                f'<span class="meta-source"><b>Source:</b> '
+                f'<a href="{_esc(raw_link)}"><code>{_esc(rel_src)}</code></a></span>'
+            )
+        else:
+            meta_bits.append(
+                f'<span class="meta-source"><b>Source:</b> <code>{_esc(rel_src)}</code></span>'
+            )
     metadata_html = (
         f'<p class="page-meta">{" · ".join(meta_bits)}</p>' if meta_bits else ""
     )
@@ -967,6 +1021,139 @@ def _detail_page(
     )
 
 
+def _subtype_for_page(page: WikiPage, kind_route: str) -> str:
+    """Return the subtype label to surface on an index row.
+
+    Order of preference:
+      * ``page.frontmatter['node_type']`` — the typed graph kind
+        (``Concept``, ``TechnicalTerm``, …) emitted by the wiki projector.
+      * ``page.frontmatter['synthesis_kind']`` — for syntheses
+        (``pulse``, ``daily_digest``, …).
+      * ``page.frontmatter['type']`` — legacy fallback.
+      * ``kind_route.rstrip("s")`` — last-resort generic label.
+    """
+    fm = page.frontmatter or {}
+    if not isinstance(fm, dict):
+        return kind_route.rstrip("s")
+    for key in ("node_type", "synthesis_kind", "type"):
+        value = fm.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return kind_route.rstrip("s")
+
+
+def _index_rows(
+    ctx: "SiteContext",
+    pages: Sequence[WikiPage],
+    nodes: Sequence[ResearchNode],
+    kind_route: str,
+) -> List[dict]:
+    """Materialise the index-page row dicts (title/href/subtype/source).
+
+    Order: pages first (sorted by slug for stability), then any unseen graph
+    nodes. The shared shape lets the chip strip + table renderer sort
+    deterministically and stamp ``data-type`` on every row.
+    """
+    rows: List[dict] = []
+    seen: set[str] = set()
+    for page in sorted(pages, key=lambda p: p.slug):
+        if page.slug in seen:
+            continue
+        seen.add(page.slug)
+        rows.append({
+            "title": page.title or page.slug,
+            "href": f"{page.slug}.html",
+            "subtype": _subtype_for_page(page, kind_route),
+            "summary": str((page.frontmatter or {}).get("summary") or "")[:200],
+            "footer": str((page.frontmatter or {}).get("generated_at") or ""),
+            "source": "",
+        })
+    for n in sorted(nodes, key=lambda n: (n.type.value, n.name.lower())):
+        slug = ctx.page_slug_for_node.get(n.id) or _canonical_slug(n.name)
+        if slug in seen:
+            continue
+        seen.add(slug)
+        rows.append({
+            "title": n.name,
+            "href": f"{slug}.html",
+            "subtype": n.type.value,
+            "summary": n.description or "",
+            "footer": "",
+            "source": relativize_source_path(n.source_path or "", ctx.project_root),
+        })
+    return rows
+
+
+def _render_subtype_chips(rows: Sequence[dict]) -> str:
+    """Render the chip strip at the top of an index page.
+
+    First chip is always ``All``; remaining chips are sorted alphabetically by
+    subtype label. ``data-filter-type`` is the marker the JS hook reads.
+    """
+    counts: Counter = Counter()
+    for row in rows:
+        counts[row.get("subtype") or "Other"] += 1
+    if not counts:
+        return ""
+    parts: List[str] = []
+    parts.append(
+        '<button type="button" class="subtype-chip is-active" '
+        'data-filter-type="" aria-pressed="true">'
+        f'All <span class="chip-count">{sum(counts.values())}</span>'
+        "</button>"
+    )
+    for subtype in sorted(counts):
+        count = counts[subtype]
+        parts.append(
+            '<button type="button" class="subtype-chip" '
+            f'data-filter-type="{_esc(subtype)}" aria-pressed="false">'
+            f'{_esc(subtype)} <span class="chip-count">{count}</span>'
+            "</button>"
+        )
+    return (
+        '<nav class="subtype-chips" data-subtype-chips '
+        'aria-label="Filter by subtype">' + "".join(parts) + "</nav>"
+    )
+
+
+def _render_index_table(rows: Sequence[dict]) -> str:
+    """Render the index listing as a sortable table with a Type column.
+
+    Each row carries ``data-type="<subtype>"`` so the chip filter JS can
+    show/hide rows in place. Empty input renders the same empty-state copy
+    as the previous card-grid layout.
+    """
+    if not rows:
+        return (
+            '<p class="muted">No entries yet — they appear here as the '
+            "corpus grows.</p>"
+        )
+    body_rows: List[str] = []
+    for row in rows:
+        subtype = str(row.get("subtype") or "")
+        title = str(row.get("title") or "")
+        href = str(row.get("href") or "")
+        summary = str(row.get("summary") or "")
+        source = str(row.get("source") or "")
+        source_html = f"<code>{_esc(source)}</code>" if source else ""
+        body_rows.append(
+            f'<tr data-type="{_esc(subtype)}">'
+            f'<td><a href="{_esc(href)}">{_esc(title)}</a></td>'
+            f'<td><span class="badge tone-neutral">{_esc(subtype)}</span></td>'
+            f"<td>{_esc(summary)}</td>"
+            f"<td>{source_html}</td>"
+            "</tr>"
+        )
+    return (
+        '<table class="node-table index-table" data-filterable-table>'
+        "<thead><tr>"
+        "<th>Title</th><th>Type</th><th>Summary</th><th>Source</th>"
+        "</tr></thead>"
+        f"<tbody>{''.join(body_rows)}</tbody>"
+        "</table>"
+    )
+
+
 def _index_page(
     *,
     ctx: SiteContext,
@@ -978,45 +1165,17 @@ def _index_page(
     active: str,
 ) -> str:
     bc = _build_breadcrumbs([("Home", "index.html"), (title, "")], depth=1)
-    cards_html: List[str] = []
-    seen: set[str] = set()
-    for page in pages:
-        if page.slug in seen:
-            continue
-        seen.add(page.slug)
-        cards_html.append(card(
-            title=page.title or page.slug,
-            href=f"{page.slug}.html",
-            kind_label=str((page.frontmatter or {}).get("type") or kind_route.rstrip("s")),
-            description=str((page.frontmatter or {}).get("summary") or "")[:200],
-            footer=str((page.frontmatter or {}).get("generated_at") or ""),
-        ))
-    for n in nodes:
-        # Prefer the on-disk slug recorded in SiteContext (so synthesis
-        # nodes resolve to ``pulse.html``, not ``project-pulse.html``).
-        # Fall back to ``slug_for(node.name)`` for nodes without a
-        # materialised page yet.
-        slug = ctx.page_slug_for_node.get(n.id) or _canonical_slug(n.name)
-        if slug in seen:
-            continue
-        seen.add(slug)
-        cards_html.append(card(
-            title=n.name,
-            href=f"{slug}.html",
-            kind_label=n.type.value,
-            description=n.description or "",
-            footer=n.source_path or "",
-        ))
-
-    if not cards_html:
-        cards_html = ['<p class="muted">No entries yet — they appear here as the corpus grows.</p>']
+    rows = _index_rows(ctx, pages, nodes, kind_route)
+    chips_html = _render_subtype_chips(rows)
+    table_html = _render_index_table(rows)
 
     body = f"""<header class="hero">
   <p class="eyebrow">{_esc(kind_route)}</p>
   <h1>{_esc(title)}</h1>
   <p class="lead">{_esc(description)}</p>
 </header>
-<section class="cards">{''.join(cards_html)}</section>
+{chips_html}
+<section class="index-listing">{table_html}</section>
 """
     return page_shell(
         title=title,

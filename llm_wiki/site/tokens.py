@@ -385,6 +385,122 @@ html, body { overflow-x: clip; }
 }
 .tag-chip:hover { color: var(--accent); border-color: var(--accent); }
 
+/* Subtype chips (index page filter strip)
+   ------------------------------------------------------------ */
+.subtype-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: var(--space-3) 0 var(--space-4);
+  padding: 0;
+  font-family: var(--type-sans);
+}
+.subtype-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--type-sans);
+  font-size: .82rem;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  line-height: 1.2;
+  transition: background-color .12s ease, color .12s ease, border-color .12s ease;
+}
+.subtype-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.subtype-chip .chip-count {
+  font-variant-numeric: tabular-nums;
+  font-size: .72rem;
+  color: var(--ink-muted);
+  background: var(--surface-2);
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+.subtype-chip.is-active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.subtype-chip.is-active .chip-count {
+  background: rgba(255, 255, 255, .18);
+  color: #fff;
+}
+
+/* Index listing table (sortable + filterable)
+   ------------------------------------------------------------ */
+.index-listing {
+  margin-top: var(--space-2);
+}
+.index-table .badge {
+  font-size: .7rem;
+}
+
+/* Raw document viewer
+   ------------------------------------------------------------ */
+.raw-page {
+  margin-top: var(--space-3);
+}
+.raw-page .raw-markdown {
+  font-family: var(--type-serif);
+}
+.raw-meta {
+  font-family: var(--type-sans);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--ink-muted);
+  font-size: .72rem;
+}
+.raw-path {
+  font-size: .85rem;
+  color: var(--ink-muted);
+  word-break: break-all;
+}
+.raw-text {
+  background: var(--code-bg);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  overflow-x: auto;
+  font-family: var(--type-mono);
+  font-size: .82rem;
+  line-height: 1.5;
+}
+.raw-asset {
+  margin: var(--space-3) 0;
+}
+.raw-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius);
+  border: 1px solid var(--rule);
+}
+.raw-pdf embed {
+  width: 100%;
+  height: 900px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+.raw-html-frame {
+  width: 100%;
+  height: 720px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.raw-download {
+  padding: var(--space-3);
+  border: 1px dashed var(--rule);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
 /* Tables
    ------------------------------------------------------------ */
 .node-table {
