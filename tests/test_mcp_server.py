@@ -330,3 +330,245 @@ def test_main_auth_token_rejects_invalid_token(monkeypatch):
                 "bogus",
             ]
         )
+
+
+# ---------------------------------------------------------------------------
+# Modernized MCP surface: ontology-aware filters and code-graph exclusion
+# ---------------------------------------------------------------------------
+
+
+def _project_with_wiki_and_lint(tmp_path):
+    """Build a tmp project with .llm-wiki/graph.json + a wiki page + lint-report.
+
+    Mirrors the canonical layout (``<root>/.llm-wiki/...``) so the MCP
+    server's project-root inference and filesystem-backed tools (wiki_page,
+    raw_source, lint_report) all resolve correctly. Includes a ``Synthesis``
+    node with both ``synthesizes`` and ``summarizes`` edges and a
+    ``CodeFunction`` so we can assert it never surfaces in search results.
+    """
+    paper = ResearchNode(
+        id="Paper:vision-paper",
+        name="Vision Paper",
+        type=ResearchNodeType.PAPER,
+        description="A paper about computer vision.",
+        metadata={"arxiv_id": "2026.00001", "title_quality": "verified"},
+    )
+    concept = ResearchNode(
+        id="MethodologicalConcept:gaussian-splatting",
+        name="Gaussian Splatting",
+        type=ResearchNodeType.METHODOLOGICAL_CONCEPT,
+        description="3D reconstruction method.",
+    )
+    syn = ResearchNode(
+        id="Synthesis:pulse:abc",
+        name="Daily Pulse",
+        type=ResearchNodeType.SYNTHESIS,
+        description="Synthesis prose tying things together.",
+        metadata={"synthesis_kind": "pulse"},
+    )
+    # Code-graph node — must never appear in MCP search results.
+    code_fn = ResearchNode(
+        id="CodeFunction:llm_wiki/example.py:vision_helper",
+        name="vision_helper",
+        type=ResearchNodeType.CODE_FUNCTION,
+        description="Helper for the Vision Paper code path.",
+    )
+    graph = ResearchGraph(
+        nodes=[paper, concept, syn, code_fn],
+        edges=[
+            ResearchEdge(source=paper.id, target=concept.id, type="uses"),
+            ResearchEdge(source=syn.id, target=paper.id, type="synthesizes"),
+            ResearchEdge(source=syn.id, target=concept.id, type="summarizes"),
+        ],
+    )
+    project_root = tmp_path / "proj"
+    wiki_dir = project_root / ".llm-wiki"
+    wiki_dir.mkdir(parents=True, exist_ok=True)
+    graph_path = wiki_dir / "graph.json"
+    graph_path.write_text(graph.to_json(indent=2), encoding="utf-8")
+
+    # Render a minimal wiki page for the Paper.
+    papers_dir = wiki_dir / "wiki" / "papers"
+    papers_dir.mkdir(parents=True, exist_ok=True)
+    (papers_dir / "vision-paper.md").write_text(
+        "---\ntitle: Vision Paper\nkind: papers\nnode_id: Paper:vision-paper\n---\n"
+        "# Vision Paper\n\nThis paper introduces [[Gaussian Splatting]] for 3D vision.\n"
+        "See also [related work](concepts/gaussian-splatting.md) and https://arxiv.org/abs/2026.00001.\n",
+        encoding="utf-8",
+    )
+
+    # And a wiki page for the Synthesis (to exercise wiki_page on Synthesis).
+    syn_dir = wiki_dir / "wiki" / "syntheses"
+    syn_dir.mkdir(parents=True, exist_ok=True)
+    (syn_dir / "daily-pulse.md").write_text(
+        "---\ntitle: Daily Pulse\nkind: syntheses\n---\n# Daily Pulse\n\nSummary body.\n",
+        encoding="utf-8",
+    )
+
+    # And a raw source file behind the paper.
+    src_dir = project_root / "data" / "research" / "weekly" / "2026-W18"
+    src_dir.mkdir(parents=True, exist_ok=True)
+    (src_dir / "raw.md").write_text("# Raw paper notes\n\nbody body body\n", encoding="utf-8")
+
+    # And a lint report.
+    (wiki_dir / "lint-report.md").write_text(
+        "# Lint report\n\n## Summary\n\n- Total findings: 0\n",
+        encoding="utf-8",
+    )
+
+    return project_root, graph_path
+
+
+def test_search_nodes_honours_singular_type_filter(tmp_path):
+    _, graph_path = _project_with_wiki_and_lint(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    result = server.call_tool("search_nodes", {"type": "Paper", "q": "vision"})
+
+    types = {node["type"] for node in result["nodes"]}
+    assert types == {"Paper"}
+    assert all("vision" in (node["name"] + node.get("description", "")).lower() for node in result["nodes"])
+
+
+def test_search_nodes_honours_kind_filter(tmp_path):
+    _, graph_path = _project_with_wiki_and_lint(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    result = server.call_tool("search_nodes", {"kind": "syntheses"})
+
+    types = {node["type"] for node in result["nodes"]}
+    assert types == {"Synthesis"}
+
+
+def test_search_nodes_excludes_code_graph_nodes_even_on_name_match(tmp_path):
+    """CodeFunction must never surface, even when q matches its name verbatim."""
+    _, graph_path = _project_with_wiki_and_lint(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    result = server.call_tool("search_nodes", {"q": "vision_helper"})
+
+    assert result["total_matches"] == 0
+    assert all(node["type"] != "CodeFunction" for node in result["nodes"])
+
+
+def test_graph_summary_excludes_code_graph_types(tmp_path):
+    _, graph_path = _project_with_wiki_and_lint(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    summary = server.call_tool("graph_summary", {})
+
+    assert "CodeFunction" not in summary["node_types"]
+    # Paper + Concept + Synthesis = 3 (CodeFunction filtered).
+    assert summary["node_count"] == 3
+
+
+def test_schema_omits_code_graph_types_and_lists_wiki_kinds(tmp_path):
+    server = LLMWikiMCPServer()
+    schema = server.call_tool("schema", {})
+
+    for hidden in ("CodeProject", "SourceFile", "CodeClass", "CodeFunction", "CodeModule", "Dependency"):
+        assert hidden not in schema["node_types"], f"{hidden} leaked into MCP schema"
+    for public_type in ("Paper", "Repository", "Concept", "Synthesis", "OpenQuestion", "SourceDocument"):
+        assert public_type in schema["node_types"]
+    assert "wiki_kinds" in schema
+    assert "papers" in schema["wiki_kinds"]
+    assert "syntheses" in schema["wiki_kinds"]
+
+
+def test_node_context_for_synthesis_returns_synthesizes_and_summarizes_edges(tmp_path):
+    _, graph_path = _project_with_wiki_and_lint(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    ctx = server.call_tool("node_context", {"node_id": "Synthesis:pulse:abc"})
+
+    edge_types = {edge["type"] for edge in ctx["edges"]}
+    assert {"synthesizes", "summarizes"}.issubset(edge_types)
+    neighbour_names = {n["name"] for n in ctx["neighbors"]}
+    assert {"Vision Paper", "Gaussian Splatting"}.issubset(neighbour_names)
+
+
+def test_wiki_page_returns_body_and_internal_links(tmp_path):
+    _, graph_path = _project_with_wiki_and_lint(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    page = server.call_tool("wiki_page", {"node_id": "Paper:vision-paper"})
+
+    assert page["kind"] == "papers"
+    assert page["slug"] == "vision-paper"
+    assert "Vision Paper" in page["body"]
+    hrefs = {link["href"] for link in page["internal_links"]}
+    assert "Gaussian Splatting" in hrefs  # wikilink
+    assert any(link["kind"] == "wikilink" for link in page["internal_links"])
+    # External https link must not be in internal_links.
+    assert all(not link["href"].startswith("http") for link in page["internal_links"])
+
+
+def test_wiki_page_unknown_node_id_raises_clear_error(tmp_path):
+    _, graph_path = _project_with_wiki_and_lint(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    with pytest.raises(ValueError, match="not found"):
+        server.call_tool("wiki_page", {"node_id": "Paper:does-not-exist"})
+
+
+def test_wiki_page_for_node_without_public_kind_raises(tmp_path):
+    _, graph_path = _project_with_wiki_and_lint(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    with pytest.raises(ValueError, match="no public wiki page|wiki_page"):
+        server.call_tool(
+            "wiki_page",
+            {"node_id": "CodeFunction:llm_wiki/example.py:vision_helper"},
+        )
+
+
+def test_raw_source_returns_markdown_body(tmp_path):
+    _, graph_path = _project_with_wiki_and_lint(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    out = server.call_tool(
+        "raw_source",
+        {"source_path": "data/research/weekly/2026-W18/raw.md"},
+    )
+
+    assert "Raw paper notes" in out["body"]
+    assert out["truncated"] is False
+    assert out["byte_count"] > 0
+
+
+def test_raw_source_rejects_path_escape(tmp_path):
+    _, graph_path = _project_with_wiki_and_lint(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    with pytest.raises(ValueError, match="escapes|outside|not found"):
+        server.call_tool("raw_source", {"source_path": "../../../etc/passwd"})
+
+
+def test_lint_report_returns_body_when_present(tmp_path):
+    _, graph_path = _project_with_wiki_and_lint(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    out = server.call_tool("lint_report", {})
+
+    assert out["exists"] is True
+    assert "Lint report" in out["body"]
+    assert out["byte_count"] > 0
+
+
+def test_lint_report_returns_empty_when_absent(tmp_path):
+    """A project with no lint-report.md returns exists=False with empty body."""
+    project_root, graph_path = _project_with_wiki_and_lint(tmp_path)
+    (project_root / ".llm-wiki" / "lint-report.md").unlink()
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    out = server.call_tool("lint_report", {})
+
+    assert out["exists"] is False
+    assert out["body"] == ""
+    assert out["byte_count"] == 0
+
+
+def test_new_tools_listed_in_tool_registry():
+    tools = LLMWikiMCPServer().list_tools()
+    names = {tool["name"] for tool in tools}
+    assert {"wiki_page", "raw_source", "lint_report"}.issubset(names)

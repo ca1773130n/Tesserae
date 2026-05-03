@@ -10,17 +10,39 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .ports import GraphStore
-from .research_graph import ALLOWED_EDGE_TYPES, ALLOWED_NODE_TYPES, ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
+from .research_graph import (
+    ALLOWED_EDGE_TYPES,
+    ALLOWED_NODE_TYPES,
+    ResearchEdge,
+    ResearchGraph,
+    ResearchNode,
+    ResearchNodeType,
+    is_public_research_node,
+)
 from .temporal import TemporalFactProjector, search_facts, timeline
+from .wiki_projector import is_code_graph_node, kind_for_node
+from .wiki_store import WikiPageStore
 
 
 JSONDict = Dict[str, Any]
+
+
+# Cap raw payload sizes returned to MCP clients so a malicious / huge file
+# can't blow up the agent's context window.
+RAW_SOURCE_BYTE_CAP = 16 * 1024
+LINT_REPORT_BYTE_CAP = 64 * 1024
+WIKI_BODY_BYTE_CAP = 64 * 1024
+
+
+_INTERNAL_LINK_RE = re.compile(r"\[\[([^\]\|]+?)(?:\|[^\]]+)?\]\]")
+_MARKDOWN_LINK_RE = re.compile(r"\]\(([^)]+)\)")
 
 
 def load_graph(path: str | Path) -> ResearchGraph:
@@ -168,6 +190,71 @@ def _materialize_graph(store: GraphStore) -> ResearchGraph:
     return ResearchGraph(nodes=nodes, edges=list(subgraph.edges))
 
 
+# Public ontology types (everything in ALLOWED_NODE_TYPES minus the code-graph
+# layer). These are the only types ever surfaced by the MCP `schema` tool —
+# CodeProject/SourceFile/CodeClass/CodeFunction/CodeModule/Dependency live in
+# code-graph.json and stay invisible to external coding agents.
+_CODE_GRAPH_TYPE_VALUES: frozenset[str] = frozenset({
+    ResearchNodeType.CODE_PROJECT.value,
+    ResearchNodeType.SOURCE_FILE.value,
+    ResearchNodeType.CODE_MODULE.value,
+    ResearchNodeType.CODE_CLASS.value,
+    ResearchNodeType.CODE_FUNCTION.value,
+    ResearchNodeType.DEPENDENCY.value,
+})
+_PUBLIC_NODE_TYPE_VALUES: frozenset[str] = frozenset(ALLOWED_NODE_TYPES) - _CODE_GRAPH_TYPE_VALUES
+_KNOWN_WIKI_KINDS: frozenset[str] = frozenset({
+    "papers", "concepts", "entities", "topics", "questions", "syntheses", "sources", "repos",
+})
+
+
+def _coerce_str_list(value: Any) -> List[str]:
+    """Accept a string, list of strings, or None and return a flat list."""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value else []
+    if isinstance(value, (list, tuple, set)):
+        return [str(item) for item in value if item is not None and str(item) != ""]
+    return [str(value)]
+
+
+def _project_root_for_graph_path(graph_path: str | Path) -> Optional[Path]:
+    """Return the project root for a graph.json path, or None if unrecognizable.
+
+    Recognizes the canonical layout ``<root>/.llm-wiki/graph.json``. Returns
+    ``None`` for ad-hoc paths so filesystem-backed tools fall back gracefully.
+    """
+    p = Path(graph_path).resolve() if Path(graph_path).exists() else Path(graph_path)
+    if p.parent.name == ".llm-wiki":
+        return p.parent.parent
+    return None
+
+
+def _extract_internal_links(body: str) -> List[JSONDict]:
+    """Pull wiki-style and markdown links out of a page body.
+
+    Returns a deduped list of ``{"href": str, "kind": "wikilink"|"markdown"}``
+    so agents can crawl page-to-page without re-parsing markdown themselves.
+    Wiki-style links are emitted verbatim (no slug coercion) to match the
+    static-site renderer's resolution rules.
+    """
+    seen: dict[str, JSONDict] = {}
+    for match in _INTERNAL_LINK_RE.finditer(body):
+        href = match.group(1).strip()
+        if href and href not in seen:
+            seen[href] = {"href": href, "kind": "wikilink"}
+    for match in _MARKDOWN_LINK_RE.finditer(body):
+        href = match.group(1).strip()
+        # Skip absolute external links — agents care about graph-internal nav.
+        if not href or href.startswith(("http://", "https://", "mailto:", "#")):
+            continue
+        if href in seen:
+            continue
+        seen[href] = {"href": href, "kind": "markdown"}
+    return list(seen.values())
+
+
 def _discover_graph_and_root(path: Path) -> tuple[Path, Path]:
     """Resolve a user-provided path to (graph.json path, project root).
 
@@ -225,17 +312,36 @@ class LLMWikiMCPServer:
             },
             {
                 "name": "search_nodes",
-                "description": "Search graph nodes by name, aliases, description, type, and metadata text.",
+                "description": (
+                    "Search public research-graph nodes by name, aliases, description, type, "
+                    "kind (papers/concepts/entities/topics/questions/syntheses/sources/repos), "
+                    "and metadata text. Code-graph nodes (CodeProject/SourceFile/CodeClass/"
+                    "CodeFunction/CodeModule/Dependency) are filtered out."
+                ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "graph_path": graph_path_prop,
                         "project": project_prop,
-                        "query": {"type": "string", "description": "Whitespace-separated search terms."},
-                        "types": {"type": "array", "items": {"type": "string"}, "description": "Optional whitelist of node types."},
+                        "query": {"type": "string", "description": "Whitespace-separated search terms (optional)."},
+                        "q": {"type": "string", "description": "Alias for 'query' for short call sites."},
+                        "type": {
+                            "oneOf": [
+                                {"type": "string"},
+                                {"type": "array", "items": {"type": "string"}},
+                            ],
+                            "description": "Single ontology type or list of types to filter by (e.g. 'Paper').",
+                        },
+                        "types": {"type": "array", "items": {"type": "string"}, "description": "Backwards-compatible alias for 'type' (list form)."},
+                        "kind": {
+                            "oneOf": [
+                                {"type": "string"},
+                                {"type": "array", "items": {"type": "string"}},
+                            ],
+                            "description": "Wiki kind filter: papers, concepts, entities, topics, questions, syntheses, sources, repos.",
+                        },
                         "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10},
                     },
-                    "required": ["query"],
                     "additionalProperties": False,
                 },
             },
@@ -285,6 +391,55 @@ class LLMWikiMCPServer:
                 },
             },
             {
+                "name": "wiki_page",
+                "description": (
+                    "Return the rendered markdown body of a wiki page for a graph node, "
+                    "plus the internal links it references. Reads from .llm-wiki/wiki/<kind>/<slug>.md."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
+                        "node_id": {"type": "string", "description": "Exact node id whose wiki page to return."},
+                        "name": {"type": "string", "description": "Exact case-insensitive node name if node_id is omitted."},
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "raw_source",
+                "description": (
+                    "Return the raw markdown contents of a project-relative source path "
+                    "(capped at 16 KB). Used to inspect the original document behind a node."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
+                        "source_path": {"type": "string", "description": "Project-relative source path (e.g. data/research/...)."},
+                    },
+                    "required": ["source_path"],
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "lint_report",
+                "description": (
+                    "Return the contents of .llm-wiki/lint-report.md for the active/given "
+                    "project (capped at 64 KB). Empty if the report does not exist."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            {
                 "name": "list_projects",
                 "description": "List registered LLM-Wiki projects and the active project alias.",
                 "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -327,14 +482,26 @@ class LLMWikiMCPServer:
     def call_tool(self, name: str, arguments: Optional[JSONDict] = None) -> JSONDict:
         args = arguments or {}
         if name == "schema":
-            return {"node_types": sorted(ALLOWED_NODE_TYPES), "edge_types": sorted(ALLOWED_EDGE_TYPES)}
+            return {
+                "node_types": sorted(_PUBLIC_NODE_TYPE_VALUES),
+                "edge_types": sorted(ALLOWED_EDGE_TYPES),
+                "wiki_kinds": sorted(_KNOWN_WIKI_KINDS),
+            }
         if name == "graph_summary":
             return self.graph_summary(self._load_requested_graph(args))
         if name == "search_nodes":
+            # Accept both 'query' and 'q' (short alias), plus singular 'type'
+            # alongside the legacy 'types' list. Either may be omitted.
+            query = str(args.get("query") or args.get("q") or "")
+            type_arg = args.get("type")
+            types_arg = args.get("types")
+            type_filter = _coerce_str_list(type_arg) + _coerce_str_list(types_arg)
+            kind_filter = _coerce_str_list(args.get("kind"))
             return self.search_nodes(
                 self._load_requested_graph(args),
-                query=str(args.get("query", "")),
-                types=args.get("types"),
+                query=query,
+                types=type_filter or None,
+                kinds=kind_filter or None,
                 limit=int(args.get("limit", 10)),
             )
         if name == "node_context":
@@ -350,6 +517,23 @@ class LLMWikiMCPServer:
         if name == "timeline":
             facts = TemporalFactProjector().project(self._load_requested_graph(args))
             return timeline(facts, query=str(args.get("query", "")), limit=int(args.get("limit", 50)))
+        if name == "wiki_page":
+            graph, project_root = self._load_requested_graph_with_root(args)
+            return self.wiki_page(
+                graph,
+                project_root,
+                node_id=args.get("node_id"),
+                node_name=args.get("name"),
+            )
+        if name == "raw_source":
+            source_path = args.get("source_path")
+            if not source_path:
+                raise ValueError("raw_source requires 'source_path'")
+            _, project_root = self._load_requested_graph_with_root(args)
+            return self.raw_source(project_root, str(source_path))
+        if name == "lint_report":
+            _, project_root = self._load_requested_graph_with_root(args)
+            return self.lint_report(project_root)
         if name == "list_projects":
             return self.registry.list_projects()
         if name == "register_project":
@@ -370,21 +554,51 @@ class LLMWikiMCPServer:
         raise ValueError(f"Unknown LLM-Wiki MCP tool: {name}")
 
     def graph_summary(self, graph: ResearchGraph) -> JSONDict:
+        # Code-graph nodes live in code-graph.json; never count them in the
+        # MCP-visible summary even if a graph.json happens to include them.
+        public_nodes = [node for node in graph.nodes if not is_code_graph_node(node)]
+        public_node_ids = {node.id for node in public_nodes}
+        public_edges = [
+            edge for edge in graph.edges
+            if edge.source in public_node_ids and edge.target in public_node_ids
+        ]
         return {
-            "node_count": len(graph.nodes),
-            "edge_count": len(graph.edges),
-            "node_types": dict(sorted(Counter(node.type.value for node in graph.nodes).items())),
-            "edge_types": dict(sorted(Counter(edge.type for edge in graph.edges).items())),
+            "node_count": len(public_nodes),
+            "edge_count": len(public_edges),
+            "node_types": dict(sorted(Counter(node.type.value for node in public_nodes).items())),
+            "edge_types": dict(sorted(Counter(edge.type for edge in public_edges).items())),
         }
 
-    def search_nodes(self, graph: ResearchGraph, query: str, types: Optional[Iterable[str]] = None, limit: int = 10) -> JSONDict:
+    def search_nodes(
+        self,
+        graph: ResearchGraph,
+        query: str = "",
+        types: Optional[Iterable[str]] = None,
+        kinds: Optional[Iterable[str]] = None,
+        limit: int = 10,
+    ) -> JSONDict:
         terms = [term.casefold() for term in query.split() if term.strip()]
         type_filter = {str(item) for item in types or []}
+        kind_filter = {str(item).lower() for item in kinds or []}
         scored = []
         for index, node in enumerate(graph.nodes):
+            # Code-graph nodes never surface via MCP search.
+            if is_code_graph_node(node):
+                continue
             if type_filter and node.type.value not in type_filter:
                 continue
-            haystack_parts = [node.id, node.name, node.type.value, node.description, " ".join(node.aliases), json.dumps(node.metadata, ensure_ascii=False)]
+            if kind_filter:
+                node_kind = kind_for_node(node)
+                if node_kind is None or node_kind not in kind_filter:
+                    continue
+            haystack_parts = [
+                node.id,
+                node.name,
+                node.type.value,
+                node.description,
+                " ".join(node.aliases),
+                json.dumps(node.metadata, ensure_ascii=False),
+            ]
             haystack = " ".join(haystack_parts).casefold()
             score = sum(1 for term in terms if term in haystack)
             if not terms or score > 0:
@@ -393,6 +607,113 @@ class LLMWikiMCPServer:
         matches = [node_to_dict(node) for score, _index, node in scored if score > 0 or not terms]
         bounded_limit = max(1, min(limit, 100))
         return {"query": query, "total_matches": len(matches), "nodes": matches[:bounded_limit]}
+
+    # ------------------------------------------------------------------ wiki / raw / lint
+
+    def wiki_page(
+        self,
+        graph: ResearchGraph,
+        project_root: Optional[Path],
+        node_id: Optional[str] = None,
+        node_name: Optional[str] = None,
+    ) -> JSONDict:
+        node = self._find_node(graph, node_id=node_id, node_name=node_name)
+        if not node:
+            raise ValueError("wiki_page: node not found; provide an exact node_id or node name")
+        kind = kind_for_node(node)
+        if kind is None:
+            raise ValueError(
+                f"wiki_page: node {node.id!r} ({node.type.value}) has no public wiki page "
+                f"(it is a code-graph or assertion-layer node)."
+            )
+        if project_root is None:
+            raise ValueError(
+                "wiki_page requires a project root — pass graph_path or project, or set a default graph."
+            )
+        wiki_root = project_root / ".llm-wiki" / "wiki"
+        store = WikiPageStore(wiki_root)
+        slug = store.slug_for(node.name)
+        page_path = store.path_for(kind, slug)
+        if not page_path.exists():
+            raise ValueError(
+                f"wiki_page: no wiki page found at {page_path.relative_to(project_root)} "
+                f"for node {node.id!r}. The wiki layer may not be projected."
+            )
+        page = store.read_page(page_path)
+        body = page.body
+        if len(body.encode("utf-8")) > WIKI_BODY_BYTE_CAP:
+            truncated = body.encode("utf-8")[:WIKI_BODY_BYTE_CAP].decode("utf-8", errors="ignore")
+            body = truncated + "\n\n<!-- truncated -->\n"
+            truncated_flag = True
+        else:
+            truncated_flag = False
+        return {
+            "node_id": node.id,
+            "kind": kind,
+            "slug": page.slug,
+            "title": page.title,
+            "path": str(page_path.relative_to(project_root)),
+            "body": body,
+            "frontmatter": dict(page.frontmatter),
+            "internal_links": _extract_internal_links(page.body),
+            "truncated": truncated_flag,
+        }
+
+    def raw_source(self, project_root: Optional[Path], source_path: str) -> JSONDict:
+        if project_root is None:
+            raise ValueError(
+                "raw_source requires a project root — pass graph_path or project, or set a default graph."
+            )
+        # Normalize and confine the path to the project root to prevent escapes.
+        rel = Path(source_path)
+        if rel.is_absolute():
+            try:
+                rel = Path(rel).resolve().relative_to(project_root.resolve())
+            except ValueError as exc:
+                raise ValueError(f"raw_source: path is outside the project root: {source_path}") from exc
+        target = (project_root / rel).resolve()
+        try:
+            target.relative_to(project_root.resolve())
+        except ValueError as exc:
+            raise ValueError(f"raw_source: path escapes the project root: {source_path}") from exc
+        if not target.exists() or not target.is_file():
+            raise ValueError(f"raw_source: file not found: {source_path}")
+        raw = target.read_bytes()
+        truncated = len(raw) > RAW_SOURCE_BYTE_CAP
+        body = raw[:RAW_SOURCE_BYTE_CAP].decode("utf-8", errors="ignore")
+        return {
+            "source_path": str(target.relative_to(project_root.resolve())),
+            "body": body,
+            "byte_count": len(raw),
+            "truncated": truncated,
+            "cap_bytes": RAW_SOURCE_BYTE_CAP,
+        }
+
+    def lint_report(self, project_root: Optional[Path]) -> JSONDict:
+        if project_root is None:
+            raise ValueError(
+                "lint_report requires a project root — pass graph_path or project, or set a default graph."
+            )
+        report_path = project_root / ".llm-wiki" / "lint-report.md"
+        if not report_path.exists():
+            return {
+                "exists": False,
+                "path": str(report_path.relative_to(project_root)),
+                "body": "",
+                "byte_count": 0,
+                "truncated": False,
+            }
+        raw = report_path.read_bytes()
+        truncated = len(raw) > LINT_REPORT_BYTE_CAP
+        body = raw[:LINT_REPORT_BYTE_CAP].decode("utf-8", errors="ignore")
+        return {
+            "exists": True,
+            "path": str(report_path.relative_to(project_root)),
+            "body": body,
+            "byte_count": len(raw),
+            "truncated": truncated,
+            "cap_bytes": LINT_REPORT_BYTE_CAP,
+        }
 
     def node_context(self, graph: ResearchGraph, node_id: Optional[str] = None, node_name: Optional[str] = None, limit: int = 50) -> JSONDict:
         node = self._find_node(graph, node_id=node_id, node_name=node_name)
@@ -410,22 +731,35 @@ class LLMWikiMCPServer:
         return {"node": node_to_dict(node), "edges": [edge_to_dict(edge) for edge in incident_edges], "neighbors": neighbors}
 
     def _load_requested_graph(self, args: JSONDict) -> ResearchGraph:
+        graph, _root = self._load_requested_graph_with_root(args)
+        return graph
+
+    def _load_requested_graph_with_root(self, args: JSONDict) -> Tuple[ResearchGraph, Optional[Path]]:
+        """Load the requested graph plus the project root for filesystem lookups.
+
+        ``project_root`` is the directory containing ``.llm-wiki/`` for the
+        active source. Returns ``None`` for stores that have no on-disk root
+        (e.g. an in-memory ``GraphStore``), which makes filesystem-backed
+        tools (``wiki_page``/``raw_source``/``lint_report``) raise a clear
+        error instead of misreading paths.
+        """
         raw_path = args.get("graph_path")
         if raw_path:
-            return load_graph(Path(raw_path))
+            graph_path = Path(str(raw_path))
+            return load_graph(graph_path), _project_root_for_graph_path(graph_path)
         project = args.get("project")
         if project:
             resolved = self.registry.resolve_graph_path(str(project))
             if resolved is None:
                 raise ValueError(f"Unknown project: {project}. Use list_projects or register_project.")
-            return load_graph(resolved)
+            return load_graph(resolved), _project_root_for_graph_path(resolved)
         active = self.registry.active_graph_path()
         if active is not None:
-            return load_graph(active)
+            return load_graph(active), _project_root_for_graph_path(active)
         if self.graph_store is not None:
-            return _materialize_graph(self.graph_store)
+            return _materialize_graph(self.graph_store), None
         if self.default_graph_path:
-            return load_graph(self.default_graph_path)
+            return load_graph(self.default_graph_path), _project_root_for_graph_path(self.default_graph_path)
         raise ValueError(
             "No graph specified. Pass graph_path, project, activate a project, "
             "start the MCP server with --graph, or pass --graph-store-url."
