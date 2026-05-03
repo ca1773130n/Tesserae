@@ -1851,7 +1851,7 @@ JS_GRAPH = r"""
             var ctrls = Graph && Graph.controls && Graph.controls();
             if (cam && ctrls && ctrls.target) {
               var dist = cam.position.distanceTo(ctrls.target);
-              camScale = Math.max(0.5, Math.min(2.5, dist / 600));
+              camScale = Math.max(1.0, Math.min(3.0, dist / 180));
             }
           } catch (_) {}
           if (highlightLinks.has(l)) return 0.9 * camScale;
@@ -2055,7 +2055,7 @@ JS_GRAPH = r"""
                 var ctrls = Graph && Graph.controls && Graph.controls();
                 if (cam && ctrls && ctrls.target) {
                   var dist = cam.position.distanceTo(ctrls.target);
-                  camScale = Math.max(0.5, Math.min(2.5, dist / 600));
+                  camScale = Math.max(1.0, Math.min(3.0, dist / 180));
                 }
               } catch (_) {}
               for (var i = 0; i < group.children.length; i++) {
@@ -2131,7 +2131,7 @@ JS_GRAPH = r"""
                 var ctrls = Graph && Graph.controls && Graph.controls();
                 if (cam && ctrls && ctrls.target) {
                   var dist = cam.position.distanceTo(ctrls.target);
-                  var camScale = Math.max(0.5, Math.min(2.5, dist / 600));
+                  var camScale = Math.max(1.0, Math.min(3.0, dist / 180));
                   sprite.scale.multiplyScalar(camScale / (sprite.userData.__lastScale || 1));
                   sprite.userData = sprite.userData || {};
                   sprite.userData.__lastScale = camScale;
@@ -2356,7 +2356,7 @@ JS_GRAPH = r"""
         // a wild zoom-out from the origin. The single-shot scheduleCenteredFit
         // will refine the framing once the simulation settles.
         try {
-          if (inst.cameraPosition) inst.cameraPosition({ x: 0, y: 0, z: 180 }, { x: 0, y: 0, z: 0 }, 0);
+          if (inst.cameraPosition) inst.cameraPosition({ x: 0, y: 0, z: 90 }, { x: 0, y: 0, z: 0 }, 0);
         } catch (_) {}
       } else if (mode === '2d') {
         // Issue 3 — 2D ``force-graph`` zooms toward the cursor by default
@@ -2473,10 +2473,14 @@ JS_GRAPH = r"""
         } catch (_) {}
         var radius = Math.sqrt((node && node.val) || 1);
         // Bounding sphere radius from the cluster spread; floor at the
-        // node's own visual radius + a small comfort gap.
+        // node's own visual radius + a small comfort gap. The user
+        // repeatedly reports the camera ends up too far — keep
+        // orbitRadius tight (multiplier 0.35, floor ~70) so the focused
+        // node fills a chunk of the canvas instead of vanishing into
+        // a wide overview.
         var spread = Math.max(
-          Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) * 0.6,
-          Math.max(60 + radius * 14, 120)
+          Math.hypot(maxX - minX, maxY - minY, maxZ - minZ) * 0.35,
+          Math.max(30 + radius * 10, 70)
         );
         orbitRadius = spread;
         orbitAngle = 0;

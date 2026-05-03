@@ -436,7 +436,7 @@ def test_render_graph_view_includes_payload_script(site_ctx: SiteContext) -> Non
     assert "payload.json" in out
     # The graph.js bundle is loaded only on this route via the second script.
     assert "assets/graph.js" in out
-    assert "graph-explore-v22" in out
+    assert "graph-explore-v23" in out
     # And the payload itself is computable from the same context.
     payload = build_graph_payload(site_ctx)
     assert "nodes" in payload
