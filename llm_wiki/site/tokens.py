@@ -49,8 +49,8 @@ CSS: str = r"""
   --space-6: 32px;
   --space-7: 48px;
   --space-8: 64px;
-  --rail-w: 280px;
-  --toc-w: 260px;
+  --rail-w: 220px;
+  --toc-w: 220px;
   --read-w: min(1100px, 75ch);
   --page-w: min(100vw - 32px, 1640px);
   --topbar-height: 56px;
@@ -1792,8 +1792,8 @@ body {
 /* Ultra-wide (>= 1920 px): roomier rails, slightly wider content. */
 @media (min-width: 1920px) {
   :root {
-    --rail-w: 280px;
-    --toc-w: 300px;
+    --rail-w: 220px;
+    --toc-w: 240px;
   }
   .main {
     max-width: min(1280px, 80ch);
