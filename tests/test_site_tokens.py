@@ -472,6 +472,28 @@ def test_shell_horizontal_padding_is_tight_at_desktop():
     )
 
 
+def test_table_does_not_use_display_block_in_outer_rule():
+    """The combined ``.article-body table, .markdown-body table`` rule must
+    NOT set ``display: block`` — that silently drops cell borders on some
+    rendering paths because ``border-collapse: collapse`` needs a regular
+    ``display: table`` element to compute cell edges. Horizontal-scroll for
+    wide tables is handled by the outer ``<div class="table-scroll">``
+    wrapper that the markdown post-processor emits."""
+    import re
+
+    table_block = re.search(
+        r"\.article-body table,\s*\.markdown-body table\s*\{([^}]*)\}", CSS
+    )
+    assert table_block is not None, "combined table selector block missing"
+    body = table_block.group(1)
+    assert "display: block" not in body, (
+        "outer markdown table rule must not set display: block — the "
+        "wrapping div carries the horizontal scroll instead"
+    )
+    # And the table now spans its scroll wrapper.
+    assert "width: 100%" in body, "table should fill its scroll wrapper"
+
+
 def test_article_body_tables_have_visible_borders_and_padding():
     """Markdown tables on content pages render inside ``.article-body``
     (paper / source / concept detail pages) and ``.markdown-body`` (raw

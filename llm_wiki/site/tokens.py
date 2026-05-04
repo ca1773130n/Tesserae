@@ -1666,17 +1666,16 @@ section.panel > h3,
   color: var(--accent);
 }
 
-/* Markdown-rendered tables get a horizontal scroll affordance on narrow
-   viewports without needing the renderer to wrap each one. We style
-   both the article wrappers (``.article-body`` for paper / source /
-   concept detail pages) and the legacy ``.markdown-body`` so the cells
-   actually have visible borders + padding — not just rows of plain text. */
+/* Markdown-rendered tables: cell borders + padding so the body reads as a
+   real table, not rows of plain text. The horizontal-scroll affordance for
+   wide tables on narrow viewports is provided by the outer
+   ``<div class="table-scroll">`` wrapper that the markdown post-processor
+   emits — keeping ``display: block`` on the table itself silently dropped
+   cell borders on some rendering paths because ``border-collapse: collapse``
+   needs a regular ``display: table`` context to compute cell edges. */
 .article-body table,
 .markdown-body table {
-  display: block;
-  max-width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  width: 100%;
   border-collapse: collapse;
   margin: var(--space-3) 0;
   font-family: var(--type-sans);

@@ -32,6 +32,7 @@ from ..research_graph import ResearchEdge, ResearchGraph, ResearchNode, Research
 from ..wiki_store import WikiPage
 from .raw_view import (
     RAW_ASSETS_DIR,
+    _wrap_tables_in_scroll,
     raw_href,
     relativize_source_path,
     render_raw_view,
@@ -833,6 +834,11 @@ def _render_markdown(body: str) -> Tuple[str, List[Tuple[int, str, str]]]:
     so the YAML never bleeds through as visible text.
     """
     html_out, heading_objs = render_markdown(body, link_rewriter=_wiki_link_rewriter)
+    # Wrap markdown-emitted tables in a horizontal-scroll container so cell
+    # borders render reliably (the outer ``.markdown-body table`` rule no
+    # longer carries ``display: block``; the wrapping div carries the
+    # scroll affordance instead).
+    html_out = _wrap_tables_in_scroll(html_out)
     headings: List[Tuple[int, str, str]] = [
         (h.level, h.text, h.anchor) for h in heading_objs
     ]

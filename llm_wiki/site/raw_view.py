@@ -33,8 +33,21 @@ import re
 from pathlib import Path
 from typing import Callable, Iterable, List, Mapping, Optional, Tuple
 
-from .components import breadcrumbs, page_shell
+from .components import breadcrumbs, page_shell, toc
 from .markdown import render_markdown
+
+
+# Regex used by :func:`_unique_heading_anchors` to find ``<h2>`` / ``<h3>``
+# blocks in already-rendered HTML. Groups: 1=level digit, 2=attrs, 3=inner.
+# DOTALL so headings spanning a newline (rare but possible) still match.
+_HEADING_TAG_RE = re.compile(r'<h([23])([^>]*)>(.*?)</h\1>', re.DOTALL)
+_HEADING_ID_RE = re.compile(r'\bid="([^"]+)"')
+_HEADING_CLASS_RE = re.compile(r'\bclass="([^"]+)"')
+# Strip every HTML tag for the TOC label — ``<code>foo</code>`` inside an
+# ``<h3>`` should display as just ``foo`` because the TOC builder calls
+# ``_esc(text)`` on the label and we don't want literal angle brackets in
+# the rail.
+_HEADING_TAG_STRIP_RE = re.compile(r'<[^>]+>')
 
 
 # A wiki-link resolver maps a ``(kind, key)`` lookup onto a page slug.
@@ -468,6 +481,117 @@ def build_wiki_link_resolver(
     return resolve
 
 
+def _wrap_tables_in_scroll(html_text: str) -> str:
+    """Wrap every top-level ``<table>...</table>`` in a ``.table-scroll`` div.
+
+    Markdown engines emit raw ``<table>`` blocks that, when rendered inside
+    ``.markdown-body`` / ``.article-body``, sometimes lose their cell borders
+    on certain rendering paths because the outer table rule used to set
+    ``display: block; overflow-x: auto`` to handle horizontal overflow on
+    narrow viewports. The wrapping div carries the scroll affordance instead
+    so the table itself stays a normal ``display: table`` element with
+    ``border-collapse: collapse`` working as intended.
+
+    Idempotent — does not double-wrap a table that already sits inside a
+    ``<div class="table-scroll">``. Tables already wrapped (for example by
+    :func:`components.node_table`) keep their existing wrapper.
+    """
+    if not html_text or "<table" not in html_text:
+        return html_text
+
+    # Find every <table>...</table> block (non-greedy across newlines), then
+    # check whether the immediately preceding text already opens a
+    # ``<div class="table-scroll">``. If it does, leave the block alone;
+    # otherwise wrap it.
+    out: list[str] = []
+    cursor = 0
+    for match in re.finditer(r"<table\b[^>]*>.*?</table>", html_text, flags=re.DOTALL):
+        start, end = match.span()
+        before = html_text[cursor:start]
+        out.append(before)
+        # Look at the trailing chunk of ``before`` for an existing wrapper.
+        # We check the last ~120 chars — a reasonable window for whitespace
+        # plus the opening ``<div class="table-scroll">``.
+        tail = before[-160:].rstrip()
+        already_wrapped = tail.endswith('<div class="table-scroll">')
+        if already_wrapped:
+            out.append(match.group(0))
+        else:
+            out.append('<div class="table-scroll">')
+            out.append(match.group(0))
+            out.append("</div>")
+        cursor = end
+    out.append(html_text[cursor:])
+    return "".join(out)
+
+
+def _unique_heading_anchors(
+    html_text: str,
+) -> Tuple[str, List[Tuple[int, str, str]]]:
+    """Extract ``(level, text, anchor)`` triples for h2/h3 in ``html_text``.
+
+    The markdown slugger (``_slug_anchor``) collapses non-ASCII characters
+    to ``-`` and falls back to ``"section"`` when the heading text has no
+    ASCII alphanumerics. Two H3s in Korean text therefore both end up with
+    ``id="section"``, which would cause every TOC link in the rail to jump
+    to the first one. We deduplicate the anchors here and rewrite the
+    rendered HTML so each heading's ``id`` matches the unique anchor.
+
+    Headings without an ``id`` attribute are skipped — there's no anchor
+    to scroll-spy against. ``rail-section-label`` headings (used by the
+    left rail) are skipped too in case any leak into the body.
+
+    Returns ``(rewritten_html, headings)``.
+    """
+    if not html_text:
+        return html_text, []
+
+    seen: dict[str, int] = {}
+    headings: List[Tuple[int, str, str]] = []
+
+    def _replace(match: re.Match[str]) -> str:
+        level = int(match.group(1))
+        attrs = match.group(2) or ""
+        inner = match.group(3) or ""
+        id_match = _HEADING_ID_RE.search(attrs)
+        if not id_match:
+            # No anchor → no scrollspy target. Leave the heading alone.
+            return match.group(0)
+        class_match = _HEADING_CLASS_RE.search(attrs)
+        if class_match and "rail-section-label" in class_match.group(1):
+            return match.group(0)
+        original_id = id_match.group(1)
+        count = seen.get(original_id, 0) + 1
+        seen[original_id] = count
+        if count == 1:
+            unique_id = original_id
+        else:
+            unique_id = f"{original_id}-{count}"
+        # Strip HTML tags from the label so ``<code>foo</code>`` becomes ``foo``.
+        label = _HEADING_TAG_STRIP_RE.sub("", inner)
+        # Decode the few entities the inline renderer emits so the TOC label
+        # isn't double-escaped when the ``toc()`` builder calls ``_esc``.
+        label = (
+            label.replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", '"')
+            .replace("&#39;", "'")
+        )
+        label = label.strip()
+        if not label:
+            return match.group(0)
+        headings.append((level, label, unique_id))
+        if unique_id == original_id:
+            return match.group(0)
+        # Rewrite the id= so the anchor in the body matches the TOC link.
+        new_attrs = _HEADING_ID_RE.sub(f'id="{unique_id}"', attrs, count=1)
+        return f"<h{level}{new_attrs}>{inner}</h{level}>"
+
+    rewritten = _HEADING_TAG_RE.sub(_replace, html_text)
+    return rewritten, headings
+
+
 def _render_markdown_body(
     absolute: Path,
     project_root: Optional[Path] = None,
@@ -601,6 +725,7 @@ def _render_markdown_body(
         return f"{href}{query}{fragment}"
 
     body, _ = render_markdown(text, link_rewriter=_link_rewriter)
+    body = _wrap_tables_in_scroll(body)
     return f'<section class="markdown-body raw-markdown">{body}</section>'
 
 
@@ -738,6 +863,14 @@ def render_raw_view(
     else:
         body_html = _render_download_body(asset_href, oversized=True)
 
+    # Extract h2/h3 anchors from the rendered body so the right rail
+    # ("On this page") can scroll-spy through the markdown sections. The
+    # helper also dedupes any colliding ids the slugger emitted (common for
+    # non-ASCII headings that all collapse to ``id="section"``) and rewrites
+    # the body HTML so each heading's id matches the unique TOC anchor.
+    body_html, headings = _unique_heading_anchors(body_html)
+    toc_html = toc(headings) if headings else ""
+
     eyebrow_bits: list[str] = []
     if size_label:
         eyebrow_bits.append(size_label)
@@ -767,4 +900,5 @@ def render_raw_view(
         counts=dict(counts or {}),
         breadcrumbs_html=bc,
         doc_tree_html=doc_tree_html,
+        toc_html=toc_html,
     )
