@@ -1959,6 +1959,25 @@ JS_GRAPH = r"""
     // ---- Build the renderer ---------------------------------------------
     function buildGraph(initialMode){
       mode = initialMode || '3d';
+      // Dispose the previous instance BEFORE clearing the container so the
+      // WebGL context, three.js scene, force simulation, and event listeners
+      // are released cleanly. Without this, every mode switch (2D <-> 3D)
+      // leaks a renderer; browsers cap WebGL contexts (~16 in Chrome) and
+      // start force-killing the oldest one with the warning the user saw:
+      //   "Web page caused context loss and was blocked".
+      if (Graph) {
+        try {
+          // 3d-force-graph and force-graph both expose ``_destructor`` —
+          // it stops the engine, disposes the renderer, and removes
+          // listeners. Wrapped because it's an undocumented internal API
+          // and a future major-version bump might rename it.
+          if (typeof Graph._destructor === 'function') Graph._destructor();
+          else if (typeof Graph.pauseAnimation === 'function') Graph.pauseAnimation();
+        } catch (err) {
+          console.warn('graph: previous instance disposal threw', err);
+        }
+        Graph = null;
+      }
       while (container.firstChild) container.removeChild(container.firstChild);
       var ctor = (mode === '2d') ? window.ForceGraph : window.ForceGraph3D;
       if (!ctor) { renderFallback('Renderer constructor missing.'); return; }

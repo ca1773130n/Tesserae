@@ -174,6 +174,31 @@ def test_bundle_uses_scalar_node_and_link_opacity():
     assert "inst.linkOpacity(function(l)" not in JS_GRAPH
 
 
+def test_bundle_disposes_previous_graph_before_rebuild():
+    """Mode switching (2D <-> 3D) calls ``buildGraph`` which previously
+    leaked a ``THREE.WebGLRenderer`` per call. Browsers cap WebGL
+    contexts (~16 in Chrome) and after a few switches Chrome started
+    refusing new contexts:
+        "THREE.WebGLRenderer: A WebGL context could not be created.
+         Reason: Web page caused context loss and was blocked"
+    The fix disposes the prior ``Graph`` instance via ``_destructor()``
+    (the undocumented but stable 3d-force-graph teardown hook) at the
+    top of every ``buildGraph`` call, BEFORE the container is emptied
+    so the renderer and scene get a chance to release GL state.
+    """
+    assert "function buildGraph(" in JS_GRAPH
+    # The disposal block must reference _destructor and pre-date the
+    # container.removeChild loop in the same function.
+    body_start = JS_GRAPH.index("function buildGraph(")
+    body = JS_GRAPH[body_start:body_start + 4000]
+    assert "Graph._destructor" in body
+    dispose_idx = body.index("Graph._destructor")
+    clear_idx = body.index("container.removeChild")
+    assert dispose_idx < clear_idx, (
+        "_destructor must run BEFORE the container is cleared"
+    )
+
+
 def test_bundle_link_hover_wired():
     assert "linkHoverPrecision" in JS_GRAPH
     assert "onLinkHover" in JS_GRAPH
