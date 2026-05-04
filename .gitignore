@@ -15,3 +15,6 @@ __pycache__/
 *.sqlite
 *.kuzu/
 *.duckdb
+
+# Local agent session markers
+.agent-sessions/
