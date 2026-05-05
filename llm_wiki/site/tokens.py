@@ -2129,6 +2129,70 @@ section.panel > h3,
 .session-table .session-link {
   font-weight: 600;
 }
+.session-page code {
+  font-size: 14px;
+}
+.session-page .panel li,
+.session-page .panel p,
+.session-page .panel dd {
+  font-size: 1rem;
+}
+.session-detail-rail {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding-block: 12px;
+}
+.session-turn-nav ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.session-turn-nav a {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  row-gap: 1px;
+  padding: 7px 8px;
+  border-radius: 5px;
+  color: var(--ink);
+  text-decoration: none;
+  font-family: var(--type-sans);
+}
+.session-turn-nav a:hover,
+.session-turn-nav a:focus-visible {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+.session-turn-nav-index {
+  grid-row: 1 / span 2;
+  font-family: var(--type-mono);
+  font-size: 12px;
+  color: var(--accent);
+}
+.session-turn-nav-role {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+.session-turn-nav-summary {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-turn-nav-more {
+  padding: 8px;
+  font-family: var(--type-sans);
+  font-size: 12px;
+  color: var(--ink-muted);
+}
 .session-conversation {
   gap: 12px;
 }
@@ -2173,8 +2237,8 @@ section.panel > h3,
   border-radius: 0;
   background: transparent;
   padding: 12px;
-  font-size: 13px;
-  line-height: 1.55;
+  font-size: 15px;
+  line-height: 1.65;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

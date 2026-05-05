@@ -45,7 +45,13 @@ def test_css_session_pages_use_compact_readable_scale():
     assert "table-layout: fixed" in CSS
     assert "text-overflow: ellipsis" in CSS
     assert ".session-turn-list" in CSS
-    assert ".session-turn" in CSS
+    assert ".session-turn-text" in CSS
+    assert "font-size: 15px" in CSS
+    assert "line-height: 1.65" in CSS
+    assert ".session-page code" in CSS
+    assert "font-size: 14px" in CSS
+    assert ".session-turn-nav" in CSS
+    assert ".session-detail-rail" in CSS
 
 
 def test_css_rails_have_breathing_room_padding():

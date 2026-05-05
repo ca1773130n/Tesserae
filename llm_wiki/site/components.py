@@ -870,6 +870,7 @@ def page_shell(
     ai_siblings_html: str = "",
     main_variant: str = "",
     doc_tree_html: str = "",
+    rail_html: str | None = None,
     omit_toc: bool = False,
 ) -> str:
     """Render the top-level HTML document.
@@ -899,7 +900,7 @@ def page_shell(
     """
     prefix = _prefix(depth)
     counts = dict(counts or {})
-    rail = _render_doc_tree_rail(
+    rail = rail_html if rail_html is not None else _render_doc_tree_rail(
         doc_tree_html=doc_tree_html,
         active=active,
         counts=counts,

@@ -90,9 +90,16 @@ def test_static_site_renders_harness_sessions_and_search_entries(tmp_path):
     assert "llm_wiki/project.py" in detail_html
     assert "Turn-by-turn conversation" in detail_html
     assert "session-turn-list" in detail_html
+    assert "id='turn-1'" in detail_html
+    assert "id='turn-3'" in detail_html
+    assert "session-turn-nav" in detail_html
+    assert "Conversation turns" in detail_html
+    assert "href=\"#turn-1\"" in detail_html
+    assert "href=\"#turn-3\"" in detail_html
     assert "Please ingest Claude Code and Codex sessions." in detail_html
     assert "I will add normalized project-memory session pages." in detail_html
     assert "pytest tests/test_harness_sessions.py -q" in detail_html
+    assert "Source explorer" not in detail_html
 
     search = json.loads((wiki.paths.site / "search-index.json").read_text(encoding="utf-8"))
     session_entries = [entry for entry in search if entry["kind"] == "session"]

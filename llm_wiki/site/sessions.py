@@ -44,6 +44,19 @@ def _role_label(turn: Dict[str, object]) -> str:
     return role or "Message"
 
 
+def _turn_anchor(index: int) -> str:
+    return f"turn-{index}"
+
+
+def _turn_summary(turn: Dict[str, object], limit: int = 64) -> str:
+    text = " ".join(str(turn.get("text") or "").split())
+    if not text and turn.get("name"):
+        text = str(turn.get("name"))
+    if len(text) <= limit:
+        return text or "Turn"
+    return text[:limit].rstrip() + "…"
+
+
 def session_search_entries(sessions: Iterable[HarnessSession]) -> List[Dict[str, object]]:
     entries: List[Dict[str, object]] = []
     for session in sessions:
@@ -168,8 +181,9 @@ def _render_conversation(session: HarnessSession) -> str:
         role = str(turn.get("role") or "message").strip().lower() or "message"
         timestamp = str(turn.get("timestamp") or "")
         text = str(turn.get("text") or "")
+        anchor = _turn_anchor(idx)
         rows.append(
-            f"<article class='session-turn session-turn--{_esc(role)}'>"
+            f"<article class='session-turn session-turn--{_esc(role)}' id='{_esc(anchor)}'>"
             "<header class='session-turn-header'>"
             f"<span class='session-turn-index'>#{idx}</span>"
             f"<span class='session-turn-role'>{_esc(_role_label(turn))}</span>"
@@ -184,6 +198,33 @@ def _render_conversation(session: HarnessSession) -> str:
         "<p class='muted'>Redacted transcript turns, rendered in chronological order like the reference session pages.</p>"
         f"<div class='session-turn-list'>{''.join(rows)}</div>"
         "</section>"
+    )
+
+
+def _render_turn_rail(session: HarnessSession) -> str:
+    turns = _turns(session)
+    items: List[str] = []
+    for idx, turn in enumerate(turns[:160], start=1):
+        anchor = _turn_anchor(idx)
+        role = _role_label(turn)
+        summary = _turn_summary(turn)
+        items.append(
+            "<li>"
+            f"<a href=\"#{_esc(anchor)}\">"
+            f"<span class='session-turn-nav-index'>#{idx}</span>"
+            f"<span class='session-turn-nav-role'>{_esc(role)}</span>"
+            f"<span class='session-turn-nav-summary'>{_esc(summary)}</span>"
+            "</a></li>"
+        )
+    if len(turns) > 160:
+        items.append(f"<li class='session-turn-nav-more'>+{len(turns) - 160} more turns in the page</li>")
+    body = "".join(items) or "<li class='muted'>No normalized turns attached.</li>"
+    return (
+        "<aside class='rail session-detail-rail' id='rail' aria-label='Conversation turns'>"
+        "<div class='rail-section-label'>Conversation turns</div>"
+        "<nav class='session-turn-nav' aria-label='Conversation turns'>"
+        f"<ol>{body}</ol>"
+        "</nav></aside>"
     )
 
 
@@ -289,6 +330,7 @@ def render_session_detail(site_title: str, session: HarnessSession, session_coun
         site_title=site_title,
         counts={"sessions": session_count or 1},
         breadcrumbs_html=breadcrumbs([("Home", "../../index.html"), ("Sessions", "../index.html"), (session.title or session.slug, "")]),
+        rail_html=_render_turn_rail(session),
         toc_html=toc([
             (2, "High-Level Summary", "summary"),
             (2, "Timeline & size", "metadata"),
