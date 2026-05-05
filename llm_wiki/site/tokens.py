@@ -2152,6 +2152,30 @@ section.panel > h3,
   font-size: .85rem;
 }
 
+/* Markdown-rendered images: never overflow the prose column. The
+   markdown parser emits bare ``<img>`` tags whose intrinsic dimensions
+   come from the source asset, so unconstrained they spill into the
+   right TOC rail. ``max-width: 100%`` + ``height: auto`` keeps the
+   aspect ratio; we don't touch ``display`` so inline icons inside a
+   paragraph stay inline. */
+.article-body img,
+.markdown-body img,
+.raw-markdown img {
+  max-width: 100%;
+  height: auto;
+}
+/* Standalone images (markdown emits these as the only child of a <p>):
+   give them block presentation, breathing room, and a soft 1px rule so
+   they read as a discrete figure rather than a floating sliver. */
+.article-body p > img:only-child,
+.markdown-body p > img:only-child,
+.raw-markdown p > img:only-child {
+  display: block;
+  margin: var(--space-3) auto;
+  border-radius: var(--radius);
+  border: 1px solid var(--rule);
+}
+
 /* ============================================================
    Light-theme polish — overrides for [data-theme="light"]
    ============================================================
