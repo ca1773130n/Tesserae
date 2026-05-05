@@ -721,6 +721,12 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>sources/harness-session-history.html</loc>
+    <lastmod>2024-08-31T00:00:00Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>sources/installation.html</loc>
     <lastmod>2024-08-16T00:00:00Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -5895,6 +5901,12 @@
   <url>
     <loc>raw/docs-self-dogfood-md.html</loc>
     <lastmod>2024-08-31T00:00:00Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>raw/docs-session-history-md.html</loc>
+    <lastmod>2024-12-19T00:00:00Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.4</priority>
   </url>

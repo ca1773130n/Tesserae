@@ -37,7 +37,7 @@ AI siblings footer      — links to the .txt and .json
 Site-wide chrome:
 
 - **Top bar.** Logo + project name on the left, search trigger + theme toggle on the right.
-- **Left rail** (desktop ≥ 1024 px): hierarchical tree — Home, Recent activity, Sources, Concepts, Entities, Papers, Repos, Topics, Syntheses, Open questions, Timeline, Graph view, About. Counts come from `manifest.json`.
+- **Left rail** (desktop ≥ 1024 px): hierarchical tree — Home, Recent activity, Sources, Concepts, Entities, Papers, Repos, Topics, Syntheses, Open questions, Sessions, Timeline, Graph view, About. Counts come from `manifest.json`.
 - **Bottom nav** (mobile): drawer rail collapses; bottom nav surfaces the most-used kinds.
 - **Search palette.** `cmd+k` / `ctrl+k` / `/` — fuzzy match over `search-index.json`, scoped to wiki kinds. Recent pages are persisted in `localStorage`.
 - **Theme.** Light by default; toggle persists `data-theme="dark"` in `localStorage`. Applied before paint to avoid flash.
@@ -247,6 +247,26 @@ A focused page on a single open question with:
 - **Adjacent questions** — same source or shared concepts.
 
 This is the page to land on when an agent is asked "what's still unanswered in this area?"
+
+## Sessions
+
+Sessions are imported local AI-harness transcripts, normalized into `.llm-wiki/harness_sessions/`, then rendered as searchable project memory. Import is explicit via `llm_wiki project sessions discover --import` or `llm_wiki project sessions import ...`; normal site builds only consume already-normalized records.
+
+### `/sessions/` ✅
+
+> _Screenshot: sessions-index.png_
+
+The sessions index groups top-level Claude Code and Codex sessions for the project. Cards/tables surface title, harness, model, project path, start/end timestamps, message count, tool count, token counts when known, files touched, commands, and preview text. The page is linked from the global rail, home Browse cards, and search palette entries of kind `session`.
+
+### `/sessions/<project>/<session>.html` ✅
+
+> _Screenshot: session-detail.png_
+
+A session detail page uses the shared shell rather than a raw transcript dump. The layout includes a hero, stat strip, High-Level Summary, Timeline & size, decisions/files/commands/tools/errors, collapsed subagent tree, and a turn-by-turn conversation block.
+
+The session-specific left rail replaces the generic file-tree rail with user/assistant turn anchors (`#turn-N`). User and assistant turns render through the site markdown renderer; semantic surfaces such as inline code, command/tag markup, paths, filenames, and hashtags become compact chips. Tool calls are collapsed under the preceding assistant turn, with dark code/tool backgrounds in both light and dark themes.
+
+Current detail typography keeps normal conversation prose compact at 8 px, generic conversation code fences at 10 px, bash/shell fenced code content at 11 px, tool details/summary at 10 px, tool headers at 8 px, and tool payload text at 6 px. See [`session-history.md`](session-history.md) for the selector map and publishing privacy checklist.
 
 ## Timeline
 

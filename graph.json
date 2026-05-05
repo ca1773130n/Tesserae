@@ -38,6 +38,13 @@
     {
       "evidence": null,
       "metadata": {},
+      "source": "SourceDocument:quickstart:f079b828e4b5",
+      "target": "Metric:map:592bcbe13f80",
+      "type": "uses_metric"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
       "source": "SourceDocument:codex-extraction-review-2026-05-01:683d572754b6",
       "target": "Benchmark:dtu:6d7430ac31a1",
       "type": "evaluated_on"
@@ -11477,6 +11484,13 @@
       "evidence": null,
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "SourceDocument:harness-session-history:9dca453bcd88",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
       "target": "SourceDocument:installation:2907ce8b4567",
       "type": "summarizes"
     },
@@ -16371,6 +16385,21 @@
             "text": "`/questions/<slug>.html` ✅"
           },
           {
+            "anchor": "sessions",
+            "level": 2,
+            "text": "Sessions"
+          },
+          {
+            "anchor": "sessions",
+            "level": 3,
+            "text": "`/sessions/` ✅"
+          },
+          {
+            "anchor": "sessions-project-session-html",
+            "level": 3,
+            "text": "`/sessions/<project>/<session>.html` ✅"
+          },
+          {
             "anchor": "timeline",
             "level": 2,
             "text": "Timeline"
@@ -16589,6 +16618,7 @@
           "Initialize a project wiki",
           "Compile the graph and projections",
           "Build and serve the static frontend",
+          "Import local agent session history",
           "Lint the wiki",
           "Query the wiki",
           "Export agent harness files",
@@ -16634,39 +16664,64 @@
             "text": "terminal 2"
           },
           {
-            "anchor": "4-lint-the-wiki",
+            "anchor": "4-import-local-agent-session-history",
             "level": 2,
-            "text": "4. Lint the wiki"
+            "text": "4. Import local agent session history"
           },
           {
-            "anchor": "5-query-the-wiki",
-            "level": 2,
-            "text": "5. Query the wiki"
+            "anchor": "preview-matching-claude-code-codex-sessions-for-this-project",
+            "level": 1,
+            "text": "Preview matching Claude Code/Codex sessions for this project:"
           },
           {
-            "anchor": "6-export-agent-harness-files",
-            "level": 2,
-            "text": "6. Export agent harness files"
+            "anchor": "normalize-and-store-them-under-llm-wiki-harness-sessions",
+            "level": 1,
+            "text": "Normalize and store them under .llm-wiki/harness_sessions/:"
           },
           {
-            "anchor": "7-export-an-obsidian-vault",
-            "level": 2,
-            "text": "7. Export an Obsidian vault"
+            "anchor": "confirm-the-imported-set",
+            "level": 1,
+            "text": "Confirm the imported set:"
           },
           {
-            "anchor": "8-configure-mcp",
-            "level": 2,
-            "text": "8. Configure MCP"
+            "anchor": "rebuild-so-sessions-index-html-and-session-detail-pages-are-emitted",
+            "level": 1,
+            "text": "Rebuild so sessions/index.html and session detail pages are emitted:"
           },
           {
-            "anchor": "9-graphiti-export-sync",
+            "anchor": "5-lint-the-wiki",
             "level": 2,
-            "text": "9. Graphiti export / sync"
+            "text": "5. Lint the wiki"
           },
           {
-            "anchor": "10-deploy-to-github-pages",
+            "anchor": "6-query-the-wiki",
             "level": 2,
-            "text": "10. Deploy to GitHub Pages"
+            "text": "6. Query the wiki"
+          },
+          {
+            "anchor": "7-export-agent-harness-files",
+            "level": 2,
+            "text": "7. Export agent harness files"
+          },
+          {
+            "anchor": "8-export-an-obsidian-vault",
+            "level": 2,
+            "text": "8. Export an Obsidian vault"
+          },
+          {
+            "anchor": "9-configure-mcp",
+            "level": 2,
+            "text": "9. Configure MCP"
+          },
+          {
+            "anchor": "10-graphiti-export-sync",
+            "level": 2,
+            "text": "10. Graphiti export / sync"
+          },
+          {
+            "anchor": "11-deploy-to-github-pages",
+            "level": 2,
+            "text": "11. Deploy to GitHub Pages"
           }
         ],
         "source_kind": "SourceDocument"
@@ -16736,6 +16791,59 @@
       },
       "name": "Self-dogfood Demo",
       "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/self-dogfood.md",
+      "type": "SourceDocument"
+    },
+    {
+      "aliases": [],
+      "description": "",
+      "id": "SourceDocument:harness-session-history:9dca453bcd88",
+      "metadata": {
+        "sections": [
+          {
+            "anchor": "harness-session-history",
+            "level": 1,
+            "text": "Harness session history"
+          },
+          {
+            "anchor": "privacy-model",
+            "level": 2,
+            "text": "Privacy model"
+          },
+          {
+            "anchor": "discover-and-import-local-sessions",
+            "level": 2,
+            "text": "Discover and import local sessions"
+          },
+          {
+            "anchor": "import-normalized-json-directly",
+            "level": 2,
+            "text": "Import normalized JSON directly"
+          },
+          {
+            "anchor": "list-imported-sessions",
+            "level": 2,
+            "text": "List imported sessions"
+          },
+          {
+            "anchor": "build-the-static-session-pages",
+            "level": 2,
+            "text": "Build the static session pages"
+          },
+          {
+            "anchor": "session-detail-page-layout",
+            "level": 2,
+            "text": "Session detail page layout"
+          },
+          {
+            "anchor": "publishing-checklist-for-sessions",
+            "level": 2,
+            "text": "Publishing checklist for sessions"
+          }
+        ],
+        "source_kind": "SourceDocument"
+      },
+      "name": "Harness session history",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/session-history.md",
       "type": "SourceDocument"
     },
     {
@@ -34332,7 +34440,7 @@
       "description": "Top-level snapshot of the wiki at compile time.",
       "id": "Synthesis:pulse:6ffe96c09f0f",
       "metadata": {
-        "content_hash": "sha256-f86753cbf99c619953eb864a30de6569b3ac035be38dbff6daa2d9383207c3da",
+        "content_hash": "sha256-256ee2873fb6805d2a997ff6318e20ef2975e65ce600a885db96680e0eb94366",
         "input_ids": [
           "Paper:arxiv-2411-07096:24b0b33c3698",
           "Paper:arxiv-2501-19252:f188522141a2",

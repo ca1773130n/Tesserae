@@ -55,6 +55,7 @@
 - [Feature Map](sources/feature-map.html): - **uses_metric** → mAP _(Metric)_
 - [Frontend redesign — annotated route walkthrough](sources/frontend-redesign-annotated-route-walkthrough.html): - **uses_metric** → mAP _(Metric)_
 - [Geometry-Grounded Gaussian Splatting](sources/geometry-grounded-gaussian-splatting.html): - **evaluated_on** → DTU _(Benchmark)_ - **evaluated_on** → Tanks and Temples _(Benchmark)_ - **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **mentioned_in** → Confidence-Based Mesh Extra…
+- [Harness session history](sources/harness-session-history.html)
 - [Installation](sources/installation.html)
 - [Karpathy alignment — plan](sources/karpathy-alignment-plan.html)
 - [LLM-Backed Synthesis Prose](sources/llm-backed-synthesis-prose.html)
@@ -62,7 +63,7 @@
 - [LLM-Wiki Frontend Redesign — Design Spec](sources/llm-wiki-frontend-redesign-design-spec.html)
 - [LLM-Wiki Frontend Redesign — Implementation Plan](sources/llm-wiki-frontend-redesign-implementation-plan.html): - **uses_metric** → mAP _(Metric)_
 - [Publishing Checklist](sources/publishing-checklist.html): - **uses_metric** → mAP _(Metric)_
-- [Quickstart](sources/quickstart.html)
+- [Quickstart](sources/quickstart.html): - **uses_metric** → mAP _(Metric)_
 - [Quickstart (fixture)](sources/quickstart-fixture.html)
 - [Self-dogfood Demo](sources/self-dogfood-demo.html)
 - [Synthesis fixtures](sources/synthesis-fixtures.html)

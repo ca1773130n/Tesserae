@@ -1,10 +1,10 @@
 {
   "title": "Quickstart",
   "kind": "sources",
-  "body_text": "# Quickstart",
+  "body_text": "# Quickstart\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
   "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/quickstart.md",
   "links": [],
-  "body": "# Quickstart",
+  "body": "# Quickstart\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
   "frontmatter": {
     "kind": "sources",
     "node_id": "SourceDocument:quickstart:f079b828e4b5",

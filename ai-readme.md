@@ -16,7 +16,7 @@ Every `path/foo.html` is paired with a `path/foo.txt` (plain text) and a `path/f
 
 ## Wiki-layer kinds
 
-- `/sources/` — 68 page(s).
+- `/sources/` — 69 page(s).
 - `/papers/` — 47 page(s).
 - `/repos/` — 127 page(s).
 - `/concepts/` — 19 page(s).

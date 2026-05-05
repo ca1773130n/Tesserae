@@ -12,6 +12,7 @@ Use this checklist before presenting LLM-Wiki publicly.
 - [ ] Quickstart uses `llm_wiki`, not `python3 -m`.
 - [ ] Architecture docs explain raw evidence → graph → projections.
 - [ ] Feature map lists implemented features without overselling future work.
+- [ ] Session-history docs explain explicit import, privacy review, generated routes, and transcript typography.
 - [ ] Self-dogfood demo has been run and documented.
 - [ ] Generated artifacts are reproducible and either ignored or intentionally published.
 
@@ -36,6 +37,7 @@ llm_wiki project init \
   --source tests \
   --source scripts
 llm_wiki project compile --changed-only
+llm_wiki project sessions list
 llm_wiki project build-site
 llm_wiki project serve --port 8765
 ```
@@ -47,3 +49,4 @@ llm_wiki project serve --port 8765
 - Markdown and HTML are projections, not authoritative truth stores.
 - The default path is local and no-API-key friendly.
 - Agent harnesses and MCP make the graph usable by coding agents.
+- Imported harness session pages turn prior Claude Code/Codex work into searchable project memory while keeping transcript discovery explicit.

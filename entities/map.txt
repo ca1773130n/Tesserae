@@ -24,16 +24,16 @@ mAP
 - **uses_metric** → LLM-Wiki _(SourceDocument)_
 - **uses_metric** → LLM-Wiki Frontend Redesign — Implementation Plan _(SourceDocument)_
 - **uses_metric** → Publishing Checklist _(SourceDocument)_
+- **uses_metric** → Quickstart _(SourceDocument)_
 - **uses_metric** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
 - **uses_metric** → Sapiens2 _(Paper)_
 - **uses_metric** → Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation _(Paper)_
 - **uses_metric** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
 - **uses_metric** → mAP=4 _(Result)_
-- **uses_metric** → 📊 주간 리서치 다이제스트 — 2026-W17 _(SourceDocument)_
 
 ## Connected node types
 
-- SourceDocument: 22
+- SourceDocument: 23
 - Paper: 6
 - Repository: 2
 - Result: 1

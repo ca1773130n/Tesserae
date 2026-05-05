@@ -55,6 +55,7 @@
 - [Feature Map](sources/feature-map.html): - **uses_metric** → mAP _(Metric)_
 - [Frontend redesign — annotated route walkthrough](sources/frontend-redesign-annotated-route-walkthrough.html): - **uses_metric** → mAP _(Metric)_
 - [Geometry-Grounded Gaussian Splatting](sources/geometry-grounded-gaussian-splatting.html): - **evaluated_on** → DTU _(Benchmark)_ - **evaluated_on** → Tanks and Temples _(Benchmark)_ - **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **mentioned_in** → Confidence-Based Mesh Extra…
+- [Harness session history](sources/harness-session-history.html)
 - [Installation](sources/installation.html)
 - [Karpathy alignment — plan](sources/karpathy-alignment-plan.html)
 - [LLM-Backed Synthesis Prose](sources/llm-backed-synthesis-prose.html)
@@ -62,7 +63,7 @@
 - [LLM-Wiki Frontend Redesign — Design Spec](sources/llm-wiki-frontend-redesign-design-spec.html)
 - [LLM-Wiki Frontend Redesign — Implementation Plan](sources/llm-wiki-frontend-redesign-implementation-plan.html): - **uses_metric** → mAP _(Metric)_
 - [Publishing Checklist](sources/publishing-checklist.html): - **uses_metric** → mAP _(Metric)_
-- [Quickstart](sources/quickstart.html)
+- [Quickstart](sources/quickstart.html): - **uses_metric** → mAP _(Metric)_
 - [Quickstart (fixture)](sources/quickstart-fixture.html)
 - [Self-dogfood Demo](sources/self-dogfood-demo.html)
 - [Synthesis fixtures](sources/synthesis-fixtures.html)
@@ -1503,6 +1504,11 @@ _sources/geometry-grounded-gaussian-splatting.html_
 - Benchmark: 2
 - Result: 2
 
+### Harness session history
+_sources/harness-session-history.html_
+
+# Harness session history
+
 ### Installation
 _sources/installation.html_
 
@@ -1566,6 +1572,14 @@ _sources/publishing-checklist.html_
 _sources/quickstart.html_
 
 # Quickstart
+
+## Outgoing relations
+
+- **uses_metric** → mAP _(Metric)_
+
+## Connected node types
+
+- Metric: 1
 
 ### Quickstart (fixture)
 _sources/quickstart-fixture.html_
@@ -7010,16 +7024,16 @@ _entities/map.html_
 - **uses_metric** → LLM-Wiki _(SourceDocument)_
 - **uses_metric** → LLM-Wiki Frontend Redesign — Implementation Plan _(SourceDocument)_
 - **uses_metric** → Publishing Checklist _(SourceDocument)_
+- **uses_metric** → Quickstart _(SourceDocument)_
 - **uses_metric** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
 - **uses_metric** → Sapiens2 _(Paper)_
 - **uses_metric** → Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation _(Paper)_
 - **uses_metric** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
 - **uses_metric** → mAP=4 _(Result)_
-- **uses_metric** → 📊 주간 리서치 다이제스트 — 2026-W17 _(SourceDocument)_
 
 ## Connected node types
 
-- SourceDocument: 22
+- SourceDocument: 23
 - Paper: 6
 - Repository: 2
 - Result: 1
@@ -10289,7 +10303,7 @@ Snapshot of the wiki at the most recent compile.
 - ResearchField: 3
 - ResearchTopic: 2
 - Result: 3
-- SourceDocument: 70
+- SourceDocument: 71
 - SourceFile: 113
 - Task: 2
 - TechnicalTerm: 2

@@ -96,6 +96,7 @@ Every step is incremental. The graph extractor uses `manifest.json` content hash
 | [`llm_wiki/site/markdown.py`](../llm_wiki/site/markdown.py) | Stdlib-only markdown renderer (links, autolinks, code, emphasis, headings). No external dependency. |
 | [`llm_wiki/site/relevance.py`](../llm_wiki/site/relevance.py) | Four-signal relevance scoring (direct link, source overlap, Adamic-Adar, type affinity) used by every `Related` section. |
 | [`llm_wiki/site/search.py`](../llm_wiki/site/search.py) | `search-index.json` builder. Wiki-layer kinds only. |
+| [`llm_wiki/site/sessions.py`](../llm_wiki/site/sessions.py) | Session index/detail renderers for imported harness history: project-memory summary sections, conversation turn rail, markdown transcript rendering, and collapsed tool-use blocks. |
 | [`llm_wiki/site/exports.py`](../llm_wiki/site/exports.py) | `llms.txt`, `llms-full.txt`, `graph.jsonld`, `sitemap.xml`, `rss.xml`, `robots.txt`, `ai-readme.md`, per-page `.txt`/`.json` siblings. |
 
 ### Pipeline orchestration
@@ -112,6 +113,7 @@ Every step is incremental. The graph extractor uses `manifest.json` content hash
 |---|---|
 | [`llm_wiki/obsidian_adapter.py`](../llm_wiki/obsidian_adapter.py) | Obsidian vault projection (graph coloring, Dataview dashboard, raw assets). |
 | [`llm_wiki/agent_harness.py`](../llm_wiki/agent_harness.py) | Claude Code / Codex / Gemini / Kiro / Cursor / OpenCode harness exports. |
+| [`llm_wiki/harness_sessions.py`](../llm_wiki/harness_sessions.py) | Inbound Claude Code/Codex session discovery, normalization, storage under `.llm-wiki/harness_sessions/`, and redacted markdown summaries. |
 | [`llm_wiki/graphiti_adapter.py`](../llm_wiki/graphiti_adapter.py) | Temporal-fact JSONL + optional live Graphiti sync. |
 | [`llm_wiki/cognee_adapter.py`](../llm_wiki/cognee_adapter.py) | Cognee nodes/edges JSONL bundle and direct add/cognify path. |
 | [`llm_wiki/mcp_server.py`](../llm_wiki/mcp_server.py) | MCP stdio server exposing `schema`, `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`. |
@@ -131,6 +133,7 @@ Every step is incremental. The graph extractor uses `manifest.json` content hash
   markdown_projection/        flat human-readable markdown
   obsidian_vault/             Obsidian projection w/ .obsidian/, raw/assets/
   agent_harness/              Claude Code / Codex / etc. harness files
+  harness_sessions/           imported local Claude Code/Codex sessions
   cognee_bundle/              Cognee nodes/edges/manifest JSONL
   wiki/                       L2 markdown wiki — see below
   site/                       L3 static site — see below
@@ -164,6 +167,8 @@ site/
   sources/<slug>.txt          AI sibling — plain text
   sources/<slug>.json         AI sibling — structured record
   concepts/…  entities/…  papers/…  repos/…  topics/…  syntheses/…  questions/…
+  sessions/index.html          imported harness-session index
+  sessions/<project>/<id>.html session detail: summary, metadata, turn rail, markdown turns, collapsed tools
   timeline/index.html
   graph/index.html            interactive 2D + 3D force layout
   graph.json                  full graph payload (incl. code nodes, for tooling)

@@ -72,6 +72,13 @@
       "additionalType": "SourceDocument"
     },
     {
+      "@id": "#SourceDocument:harness-session-history:9dca453bcd88",
+      "@type": "CreativeWork",
+      "name": "Harness session history",
+      "url": "sources/harness-session-history.html",
+      "additionalType": "SourceDocument"
+    },
+    {
       "@id": "#Benchmark:dtu:6d7430ac31a1",
       "@type": "Dataset",
       "name": "DTU",
@@ -9665,5 +9672,5 @@
       ]
     }
   ],
-  "dateModified": "2026-05-05T21:12:10Z"
+  "dateModified": "2026-05-05T21:20:15Z"
 }
