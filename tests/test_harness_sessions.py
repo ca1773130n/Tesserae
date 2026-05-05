@@ -32,7 +32,7 @@ def sample_session(project_root):
         metadata={
             "turns": [
                 {"role": "user", "timestamp": "2026-05-05T10:00:00Z", "text": "Please ingest Claude Code and Codex sessions."},
-                {"role": "assistant", "timestamp": "2026-05-05T10:01:00Z", "text": "I will add normalized project-memory session pages."},
+                {"role": "assistant", "timestamp": "2026-05-05T10:01:00Z", "text": "I will add **normalized** project-memory session pages.\n\n- Render sessions\n- Index turns"},
                 {"role": "tool", "timestamp": "2026-05-05T10:02:00Z", "name": "Bash", "text": "pytest tests/test_harness_sessions.py -q"},
                 {"role": "assistant", "timestamp": "2026-05-05T10:42:00Z", "text": "Implemented session import and static pages."},
             ]
@@ -105,8 +105,15 @@ def test_static_site_renders_harness_sessions_and_search_entries(tmp_path):
     assert "shell shell--session" in detail_html
     assert "href=\"#turn-3\"" in detail_html
     assert "Please ingest Claude Code and Codex sessions." in detail_html
-    assert "I will add normalized project-memory session pages." in detail_html
+    assert "I will add <strong>normalized</strong> project-memory session pages." in detail_html
+    assert "<li>Render sessions</li>" in detail_html
+    assert "session-tool-details" in detail_html
+    assert "Tool use (1)" in detail_html
+    assert "session-tool-use-text" in detail_html
     assert "pytest tests/test_harness_sessions.py -q" in detail_html
+    rail_html = detail_html.split("<nav class='session-turn-nav'", 1)[1].split("</nav>", 1)[0]
+    assert "Tool · Bash" not in rail_html
+    assert "pytest tests/test_harness_sessions.py -q" not in rail_html
     assert "Source explorer" not in detail_html
 
     search = json.loads((wiki.paths.site / "search-index.json").read_text(encoding="utf-8"))

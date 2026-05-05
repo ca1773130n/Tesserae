@@ -2292,12 +2292,72 @@ section.panel > h3,
   padding: 8px 10px;
   font-size: 10px;
   line-height: 1.5;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.session-turn--tool .session-turn-text {
+.session-turn-text > :first-child { margin-top: 0; }
+.session-turn-text > :last-child { margin-bottom: 0; }
+.session-turn-text p,
+.session-turn-text li,
+.session-turn-text blockquote,
+.session-turn-text table {
+  font-size: 10px;
+}
+.session-turn-text pre {
+  font-size: 9px;
+  line-height: 1.45;
+  padding: 8px;
+  margin: 8px 0;
+}
+.session-tool-details {
+  border-top: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  font-family: var(--type-sans);
+}
+.session-tool-details > summary {
+  cursor: pointer;
+  padding: 7px 10px;
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 700;
+  user-select: none;
+}
+.session-tool-details > summary:hover {
+  color: var(--accent);
+}
+.session-tool-use-list {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+.session-tool-use {
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--code-bg);
+}
+.session-tool-use-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--ink-muted);
+  font-family: var(--type-mono);
+  font-size: 9px;
+}
+.session-tool-use-header time {
+  margin-left: auto;
+}
+.session-tool-use-text {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 8px;
   font-size: 8px;
   line-height: 1.45;
+  background: transparent;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .session-turn--user .session-turn-role { color: var(--accent); }
 .session-turn--assistant .session-turn-role { color: var(--ink); }

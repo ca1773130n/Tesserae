@@ -47,7 +47,8 @@ def test_css_session_pages_use_compact_readable_scale():
     assert ".session-turn-list" in CSS
     assert ".session-turn-text" in CSS
     assert "font-size: 8px" in CSS
-    assert ".session-turn--tool .session-turn-text" in CSS
+    assert ".session-tool-use-text" in CSS
+    assert ".session-tool-details" in CSS
     assert "font-size: 10px" in CSS
     assert "line-height: 1.5" in CSS
     assert ".session-page code" in CSS

@@ -9,6 +9,7 @@ from typing import Dict, Iterable, List
 
 from ..harness_sessions import HarnessSession
 from .components import breadcrumbs, page_shell, toc
+from .markdown import render_markdown
 from .search import token_set
 
 
@@ -46,6 +47,39 @@ def _role_label(turn: Dict[str, object]) -> str:
 
 def _turn_anchor(index: int) -> str:
     return f"turn-{index}"
+
+
+def _is_tool_turn(turn: Dict[str, object]) -> bool:
+    return str(turn.get("role") or "").strip().lower() == "tool"
+
+
+def _is_conversation_turn(turn: Dict[str, object]) -> bool:
+    role = str(turn.get("role") or "").strip().lower()
+    return role in {"user", "assistant"}
+
+
+def _conversation_groups(session: HarnessSession) -> List[Dict[str, object]]:
+    groups: List[Dict[str, object]] = []
+    last_assistant: Dict[str, object] | None = None
+    for turn in _turns(session):
+        if _is_tool_turn(turn):
+            if last_assistant is not None:
+                tools = last_assistant.setdefault("tools", [])
+                if isinstance(tools, list):
+                    tools.append(turn)
+            continue
+        if not _is_conversation_turn(turn):
+            continue
+        group = {"turn": turn, "tools": []}
+        groups.append(group)
+        role = str(turn.get("role") or "").strip().lower()
+        last_assistant = group if role == "assistant" else None
+    return groups
+
+
+def _render_turn_markdown(text: str) -> str:
+    rendered, _ = render_markdown(text or "")
+    return rendered or "<p></p>"
 
 
 def _turn_summary(turn: Dict[str, object], limit: int = 110) -> str:
@@ -167,17 +201,46 @@ def render_sessions_index(site_title: str, sessions: List[HarnessSession]) -> st
     )
 
 
+def _render_tool_details(tools: List[Dict[str, object]]) -> str:
+    if not tools:
+        return ""
+    items: List[str] = []
+    for idx, tool in enumerate(tools, start=1):
+        name = str(tool.get("name") or "tool")
+        timestamp = str(tool.get("timestamp") or "")
+        text = str(tool.get("text") or "")
+        items.append(
+            "<article class='session-tool-use'>"
+            "<header class='session-tool-use-header'>"
+            f"<span>#{idx}</span>"
+            f"<span>{_esc(name)}</span>"
+            f"<time>{_esc(timestamp)}</time>"
+            "</header>"
+            f"<pre class='session-tool-use-text'>{_esc(text)}</pre>"
+            "</article>"
+        )
+    return (
+        f"<details class='session-tool-details'><summary>Tool use ({len(tools)})</summary>"
+        f"<div class='session-tool-use-list'>{''.join(items)}</div>"
+        "</details>"
+    )
+
+
 def _render_conversation(session: HarnessSession) -> str:
-    turns = _turns(session)
-    if not turns:
+    groups = _conversation_groups(session)
+    if not groups:
         return (
             "<section class='panel session-conversation' id='conversation'>"
             "<h2>Turn-by-turn conversation</h2>"
-            "<p class='muted'>No normalized turn transcript is attached yet. Re-run session discovery/import to populate redacted turns.</p>"
+            "<p class='muted'>No normalized user/assistant transcript is attached yet. Re-run session discovery/import to populate redacted turns.</p>"
             "</section>"
         )
     rows: List[str] = []
-    for idx, turn in enumerate(turns, start=1):
+    for idx, group in enumerate(groups, start=1):
+        turn = group["turn"]
+        if not isinstance(turn, dict):
+            continue
+        tools = group.get("tools") if isinstance(group.get("tools"), list) else []
         role = str(turn.get("role") or "message").strip().lower() or "message"
         timestamp = str(turn.get("timestamp") or "")
         text = str(turn.get("text") or "")
@@ -189,22 +252,26 @@ def _render_conversation(session: HarnessSession) -> str:
             f"<span class='session-turn-role'>{_esc(_role_label(turn))}</span>"
             f"<time>{_esc(timestamp)}</time>"
             "</header>"
-            f"<pre class='session-turn-text'>{_esc(text)}</pre>"
+            f"<div class='session-turn-text markdown-body'>{_render_turn_markdown(text)}</div>"
+            f"{_render_tool_details(tools)}"
             "</article>"
         )
     return (
         "<section class='panel session-conversation' id='conversation'>"
         "<h2>Turn-by-turn conversation</h2>"
-        "<p class='muted'>Redacted transcript turns, rendered in chronological order like the reference session pages.</p>"
+        "<p class='muted'>Redacted user/assistant transcript turns, with assistant tool use collapsed under its response.</p>"
         f"<div class='session-turn-list'>{''.join(rows)}</div>"
         "</section>"
     )
 
 
 def _render_turn_rail(session: HarnessSession) -> str:
-    turns = _turns(session)
+    groups = _conversation_groups(session)
     items: List[str] = []
-    for idx, turn in enumerate(turns[:160], start=1):
+    for idx, group in enumerate(groups[:160], start=1):
+        turn = group.get("turn") if isinstance(group, dict) else None
+        if not isinstance(turn, dict):
+            continue
         anchor = _turn_anchor(idx)
         role = _role_label(turn)
         summary = _turn_summary(turn)
@@ -216,9 +283,9 @@ def _render_turn_rail(session: HarnessSession) -> str:
             f"<span class='session-turn-nav-summary'>{_esc(summary)}</span>"
             "</a></li>"
         )
-    if len(turns) > 160:
-        items.append(f"<li class='session-turn-nav-more'>+{len(turns) - 160} more turns in the page</li>")
-    body = "".join(items) or "<li class='muted'>No normalized turns attached.</li>"
+    if len(groups) > 160:
+        items.append(f"<li class='session-turn-nav-more'>+{len(groups) - 160} more turns in the page</li>")
+    body = "".join(items) or "<li class='muted'>No normalized user/assistant turns attached.</li>"
     return (
         "<aside class='rail session-detail-rail' id='rail' aria-label='Conversation turns'>"
         "<div class='rail-title-row'>"
