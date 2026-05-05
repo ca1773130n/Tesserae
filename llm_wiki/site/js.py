@@ -2022,21 +2022,28 @@ JS_GRAPH = r"""
           // corpora. The base colour ladder gives the same visual cue
           // (yellow on incident, white default, near-invisible when
           // focus is active and this link isn't incident).
-          if (highlightLinks.has(l)) return EDGE_COLOR_HOT;
-          if (isHoverIncidentLink(l)) return EDGE_COLOR_HOT;
-          if (hasFocusFilter()) return EDGE_COLOR_DIM;
-          return EDGE_COLOR_LIGHT;
+          // 2D needs more saturated alpha because pixel-thin lines lose
+          // visibility when their alpha is halved for 3D's translucent
+          // webbing aesthetic.
+          var hot = mode === '2d' ? 'rgba(250,204,21,0.95)' : EDGE_COLOR_HOT;
+          var light = mode === '2d' ? 'rgba(180,176,168,0.55)' : EDGE_COLOR_LIGHT;
+          var dim = mode === '2d' ? 'rgba(120,116,108,0.10)' : EDGE_COLOR_DIM;
+          if (highlightLinks.has(l)) return hot;
+          if (isHoverIncidentLink(l)) return hot;
+          if (hasFocusFilter()) return dim;
+          return light;
         })
-        // Edges are HALF as thick as the prior pass: default drops to
-        // 0.125; incident edges (hover or focus) bump to 0.45. Non-incident
-        // dimmed edges drop to 0.001 so they read as ~no-line (combined
-        // with EDGE_COLOR_DIM alpha 0.012). Single ladder: focus wins
-        // first, then hover-incident, then default.
+        // 3D returns world-space units (sub-pixel works because the
+        // renderer multiplies by zoom). 2D returns CSS pixels — sub-pixel
+        // values render invisible, so default ~0.6 px, hot ~2.0 px.
         .linkWidth(function(l){
-          if (isDimmedLink(l)) return 0.001;
-          // Camera-distance-aware width: zooming out grows the lines so
-          // they stay readable, zooming in shrinks them. Same scaling
-          // formula the labels use (clamp 0.5..2.5 via dist/600).
+          if (isDimmedLink(l)) return mode === '2d' ? 0.05 : 0.001;
+          if (mode === '2d') {
+            if (highlightLinks.has(l)) return 2.0;
+            if (isHoverIncidentLink(l)) return 2.0;
+            return 0.6;
+          }
+          // 3D: camera-distance-aware width.
           var camScale = 1.0;
           try {
             var cam = Graph && Graph.camera && Graph.camera();
@@ -2390,19 +2397,27 @@ JS_GRAPH = r"""
               ? degreeImportanceAlpha(n)
               : 1.0;
             var label = nodeLabelText(n);
-            // Default-variant labels scale font size by importance: hubs
-            // grow up to ~150% of base, leaves shrink to ~60%. Other
-            // variants (focused/hover/neighbor) keep their canonical size
-            // so they always pop above the importance-driven defaults.
-            var baseFont = VARIANT_FONT[variant] || 11;
+            // 2D uses its own default-font base (smaller than the 3D
+            // sprite base of 22 — at canvas zoom ~1, 22px floods the
+            // canvas with text). Importance scaling is stronger:
+            // hubs ~24px, leaves get hidden via the visibility floor.
+            // Other variants (focused/hover/neighbor) keep their
+            // canonical 3D sprite size so they pop above the importance
+            // ladder.
+            var baseFont;
+            if (variant === 'default') baseFont = 10;
+            else baseFont = VARIANT_FONT[variant] || 11;
             var fontSize;
             if (variant === 'default') {
-              var impScale = 0.6 + degreeImportanceScale(n) * 0.9;
+              // Steeper curve: 0.4 floor (drops to ~4px on leaves at
+              // globalScale 1, hidden by the visibility floor below) up
+              // to 2.4× ceiling on hubs (~24px on top-degree nodes).
+              var impScale = 0.4 + degreeImportanceScale(n) * 2.0;
               fontSize = (baseFont * impScale) / globalScale;
-              // Skip labels that would render smaller than ~5 CSS px on
-              // screen: at far zoom, leaf labels become unreadable noise
-              // anyway and pile on top of the ones that matter.
-              if (fontSize * globalScale < 5) return;
+              // Skip labels that would render smaller than ~6 CSS px on
+              // screen — leaves and small mid-degree nodes drop out at
+              // every zoom so the canvas is dominated by hub names.
+              if (fontSize * globalScale < 6) return;
             } else {
               fontSize = baseFont / globalScale;
             }
