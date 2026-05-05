@@ -197,7 +197,8 @@ def _highlight_code_html(code_html: str, lang: str = "") -> str:
 def _highlight_code_blocks(rendered: str) -> str:
     def repl(match: re.Match[str]) -> str:
         lang = match.group(1) or ""
-        code = _highlight_code_html(match.group(2), lang)
+        pretty = _prettify_code_text(match.group(2), lang)
+        code = _highlight_code_html(pretty, lang)
         lang_attr = f' class="language-{html.escape(lang, quote=True)}"' if lang else ""
         label = f"<span class='session-code-lang'>{html.escape(lang)}</span>" if lang else ""
         return f"<pre class='session-code-block'>{label}<code{lang_attr}>{code}</code></pre>"
@@ -217,8 +218,18 @@ def _guess_code_lang(text: str, tool_name: str = "") -> str:
     return "text"
 
 
+def _prettify_code_text(text: str, lang: str) -> str:
+    if lang.lower() == "json":
+        try:
+            return json.dumps(json.loads(text), indent=2, ensure_ascii=False)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return text
+    return text
+
+
 def _render_highlighted_pre(text: str, *, lang: str, class_name: str) -> str:
-    escaped = html.escape(text or "")
+    pretty_text = _prettify_code_text(text or "", lang)
+    escaped = html.escape(pretty_text)
     highlighted = _highlight_code_html(escaped, lang)
     lang_label = f"<span class='session-code-lang'>{html.escape(lang)}</span>" if lang and lang != "text" else ""
     lang_attr = f" data-lang='{html.escape(lang, quote=True)}'" if lang else ""

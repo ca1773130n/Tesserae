@@ -130,6 +130,7 @@ def test_static_site_renders_harness_sessions_and_search_entries(tmp_path):
     assert "Tool use (1)" in detail_html
     assert "session-tool-use-text" in detail_html
     assert "data-lang='json'" in detail_html
+    assert "{\n  <span class='session-code-string'>&quot;ok&quot;</span>" in detail_html
     assert "session-code-string'>&quot;ok&quot;</span>" in detail_html
     assert "session-code-keyword'>true</span>" in detail_html
     assert "session-code-number'>2</span>" in detail_html

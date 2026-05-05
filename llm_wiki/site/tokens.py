@@ -2322,7 +2322,7 @@ section.panel > h3,
   background: transparent;
   padding: 8px 10px;
   font-family: var(--type-serif);
-  font-size: 10px;
+  font-size: 9px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -2332,10 +2332,10 @@ section.panel > h3,
 .session-turn-text li,
 .session-turn-text blockquote,
 .session-turn-text table {
-  font-size: 10px;
+  font-size: 9px;
 }
 .session-turn-text pre {
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1.45;
   padding: 8px;
   margin: 8px 0;
@@ -2518,7 +2518,7 @@ section.panel > h3,
   border: 0;
   border-radius: 0;
   padding: 8px;
-  font-size: 8px;
+  font-size: 7px;
   line-height: 1.45;
   background: #151515;
   color: #ece7dc;
@@ -2685,6 +2685,7 @@ section.panel > h3,
   box-shadow: inset 0 1px 0 rgba(20, 18, 15, .03);
 }
 [data-theme="light"] .session-code-block,
+[data-theme="light"] .session-code-block code,
 [data-theme="light"] .session-tool-use-text,
 [data-theme="light"] .session-tool-use-text code {
   background: #151515;

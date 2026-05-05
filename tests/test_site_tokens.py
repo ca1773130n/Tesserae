@@ -68,10 +68,13 @@ def test_css_session_pages_use_compact_readable_scale():
     assert "--session-tag-fg: #5b3f9a" in CSS
     assert "--session-tag-fg: #ffc29f" in CSS
     assert "font-family: var(--type-serif)" in CSS
+    assert "font-size: 9px" in CSS
     assert "font-size: 10px" in CSS
+    assert "font-size: 7px" in CSS
     assert "line-height: 1.45" in CSS
     assert "background: #151515" in CSS
     assert '[data-theme="light"] .session-code-block' in CSS
+    assert '[data-theme="light"] .session-code-block code' in CSS
     assert '[data-theme="light"] .session-tool-use-text' in CSS
     assert ".session-tool-use-text code" in CSS
     assert "data-lang" not in CSS
