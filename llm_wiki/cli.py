@@ -14,7 +14,7 @@ from .canonicalization import GraphCanonicalizer, ReviewDecision
 from .cognee_adapter import CogneeResearchGraphAdapter
 from .cognee_codex import CogneeCodexPatch
 from .cognee_direct import CogneeDirectImporter
-from .harness_sessions import HarnessSession, HarnessSessionStore
+from .harness_sessions import HarnessSession, HarnessSessionStore, discover_harness_sessions
 from .llm_extractor import ClaudeCLIResearchExtractor
 from .markdown_projection import GraphMarkdownProjector
 from .persistence import KuzuResearchGraphStore, SQLiteResearchGraphStore
@@ -279,6 +279,11 @@ def project_main(argv: List[str] | None = None) -> int:
     sessions_import = sessions_sub.add_parser("import", help="Import normalized HarnessSession JSON files")
     sessions_import.add_argument("paths", nargs="+", help="JSON files containing one session object or a list of sessions")
     sessions_import.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    sessions_discover = sessions_sub.add_parser("discover", help="Discover local Claude Code/Codex sessions scoped to this project")
+    sessions_discover.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    sessions_discover.add_argument("--root", action="append", default=[], help="Harness config root to scan; repeat for multiple roots. Defaults to ~/.claude*, ~/.codex*")
+    sessions_discover.add_argument("--harness", action="append", default=[], choices=["claude-code", "codex"], help="Harness to scan; repeat for multiple harnesses. Defaults to both")
+    sessions_discover.add_argument("--import", dest="import_sessions", action="store_true", help="Import discovered normalized sessions into .llm-wiki/harness_sessions")
     sessions_list = sessions_sub.add_parser("list", help="List normalized harness sessions for this project")
     sessions_list.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
 
@@ -447,6 +452,24 @@ def project_main(argv: List[str] | None = None) -> int:
                     sessions.append(HarnessSession.from_dict(item))
             result = store.write_sessions(sessions)
             print(f"Imported harness sessions: {result['sessions']} path={result['path']}")
+            return 0
+        if args.sessions_command == "discover":
+            sessions = discover_harness_sessions(
+                wiki.project_root,
+                roots=args.root or None,
+                harnesses=args.harness or None,
+            )
+            print(f"Discovered harness sessions: {len(sessions)}")
+            for session in sessions[:100]:
+                print(
+                    f"  {session.date}  {session.harness}  {session.project_name}  "
+                    f"{session.title or session.slug}"
+                )
+            if len(sessions) > 100:
+                print(f"  ... {len(sessions) - 100} more")
+            if args.import_sessions:
+                result = store.write_sessions(sessions)
+                print(f"Imported harness sessions: {result['sessions']} path={result['path']}")
             return 0
         if args.sessions_command == "list":
             sessions = store.list_sessions()

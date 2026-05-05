@@ -8,11 +8,12 @@ future local coding harnesses.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, Optional
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 
 @dataclass(frozen=True)
@@ -59,7 +60,9 @@ class HarnessSession:
 
     @property
     def filename(self) -> str:
-        return f"{self.date}-{safe_slug(self.slug or self.title or self.id)}"
+        stem = safe_slug(self.slug or self.title or self.id)
+        digest = hashlib.sha1(self.id.encode("utf-8")).hexdigest()[:8]
+        return f"{self.date}-{stem}-{digest}"
 
     @property
     def href(self) -> str:
@@ -104,6 +107,14 @@ class HarnessSessionStore:
     def write_sessions(self, sessions: Iterable[HarnessSession]) -> Dict[str, object]:
         ordered = sorted(list(sessions), key=lambda s: (s.started_at or "", s.harness, s.slug))
         self.root.mkdir(parents=True, exist_ok=True)
+        # Treat writes as an authoritative normalized import. Remove stale
+        # session records first so changed filename schemes or deduped imports
+        # cannot leave orphan pages/search entries behind on the next build.
+        for stale in list(self.root.glob("*/*.json")) + list(self.root.glob("*/*.md")):
+            try:
+                stale.unlink()
+            except OSError:
+                pass
         manifest_sessions: List[Dict[str, object]] = []
         for session in ordered:
             harness_dir = self.root / safe_slug(session.harness)
@@ -130,6 +141,393 @@ class HarnessSessionStore:
                 continue
         sessions.sort(key=lambda s: (s.started_at or "", s.harness, s.slug), reverse=True)
         return sessions
+
+
+DEFAULT_HARNESS_ROOTS: Tuple[Path, ...] = (
+    Path.home() / ".claude",
+    Path.home() / ".claude-personal1",
+    Path.home() / ".claude-personal2",
+    Path.home() / ".codex",
+    Path.home() / ".codex-personal1",
+    Path.home() / ".codex-personal2",
+)
+
+
+def discover_harness_sessions(
+    project_root: str | Path,
+    roots: Optional[Sequence[str | Path]] = None,
+    harnesses: Optional[Sequence[str]] = None,
+) -> List[HarnessSession]:
+    """Discover local Claude Code / Codex JSONL sessions for ``project_root``.
+
+    Discovery is intentionally project-scoped: a transcript must carry a strong
+    cwd/workdir signal equal to the project root, or live in Claude Code's
+    project-encoded directory for that root. Raw transcript text is not copied
+    into the generated pages; the path is stored as provenance only.
+    """
+
+    project = Path(project_root).resolve()
+    selected = {h.lower() for h in (harnesses or ("claude-code", "codex"))}
+    scan_roots = [Path(r).expanduser() for r in (roots or DEFAULT_HARNESS_ROOTS)]
+    sessions: List[HarnessSession] = []
+    seen: set[str] = set()
+    for root in scan_roots:
+        if not root.exists():
+            continue
+        root_name = root.name.lower()
+        if "claude" in root_name and "claude-code" in selected:
+            for session in _discover_claude_sessions(project, root):
+                if session.id not in seen:
+                    seen.add(session.id)
+                    sessions.append(session)
+        if "codex" in root_name and "codex" in selected:
+            for session in _discover_codex_sessions(project, root):
+                if session.id not in seen:
+                    seen.add(session.id)
+                    sessions.append(session)
+    sessions.sort(key=lambda s: (s.started_at or "", s.harness, s.slug), reverse=True)
+    return sessions
+
+
+def _discover_claude_sessions(project: Path, root: Path) -> List[HarnessSession]:
+    project_dir = root / "projects" / _claude_project_dir(project)
+    candidates: List[Path] = []
+    if project_dir.exists():
+        candidates.extend(project_dir.rglob("*.jsonl"))
+    projects_root = root / "projects"
+    if projects_root.exists():
+        # Some account directories may encode paths differently, and history can
+        # move between accounts. Scan all project transcripts but keep the
+        # parser's strong cwd/path match before importing anything.
+        candidates.extend(projects_root.rglob("*.jsonl"))
+    history = root / "history.jsonl"
+    if history.exists():
+        candidates.append(history)
+    return [s for p in sorted(set(candidates)) if (s := _parse_claude_session(project, root, p))]
+
+
+def _discover_codex_sessions(project: Path, root: Path) -> List[HarnessSession]:
+    sessions_dir = root / "sessions"
+    if not sessions_dir.exists():
+        return []
+    return [s for p in sorted(sessions_dir.rglob("*.jsonl")) if (s := _parse_codex_session(project, root, p))]
+
+
+def _parse_jsonl(path: Path) -> List[Mapping[str, object]]:
+    rows: List[Mapping[str, object]] = []
+    try:
+        with path.open(encoding="utf-8", errors="ignore") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(obj, dict):
+                    rows.append(obj)
+    except OSError:
+        return []
+    return rows
+
+
+def _parse_claude_session(project: Path, root: Path, path: Path) -> Optional[HarnessSession]:
+    rows = _parse_jsonl(path)
+    if not rows:
+        return None
+    if not _claude_path_matches_project(path, project) and not _rows_match_project(rows, project):
+        return None
+    session_id = _first_str(rows, "sessionId") or path.stem
+    timestamps = [v for row in rows if isinstance((v := row.get("timestamp")), str)]
+    started_at = min(timestamps) if timestamps else ""
+    ended_at = max(timestamps) if timestamps else ""
+    title, preview = _title_and_preview_from_claude(rows)
+    tools, commands, files = _claude_activity(rows, project)
+    message_count = sum(1 for row in rows if row.get("type") in {"user", "assistant"})
+    branch = _first_str(rows, "gitBranch")
+    model = _first_message_model(rows)
+    slug = safe_slug(title or session_id)
+    return HarnessSession(
+        id=f"claude-code:{session_id}:{path.stem}",
+        slug=slug,
+        harness="claude-code",
+        agent_label="Claude Code",
+        project_name=project.name,
+        project_root=str(project),
+        started_at=started_at,
+        ended_at=ended_at,
+        branch=branch,
+        model=model,
+        title=title or f"Claude Code session {path.stem}",
+        summary=preview,
+        message_count=message_count,
+        tool_call_count=len(set(tools)) + len(_dedupe(commands)),
+        tools_used=sorted(set(tools)),
+        files_touched=sorted(set(files)),
+        commands_run=_dedupe(commands)[:50],
+        raw_transcript_path=str(path),
+        redacted_preview=preview,
+        metadata={"config_root": str(root), "transcript": str(path)},
+    )
+
+
+def _parse_codex_session(project: Path, root: Path, path: Path) -> Optional[HarnessSession]:
+    rows = _parse_jsonl(path)
+    if not rows or not _rows_match_project(rows, project):
+        return None
+    session_meta = next((r.get("payload") for r in rows if r.get("type") == "session_meta" and isinstance(r.get("payload"), dict)), {})
+    session_id = str(session_meta.get("id") or path.stem) if isinstance(session_meta, dict) else path.stem
+    timestamps = [v for row in rows if isinstance((v := row.get("timestamp")), str)]
+    started_at = min(timestamps) if timestamps else (str(session_meta.get("timestamp", "")) if isinstance(session_meta, dict) else "")
+    ended_at = max(timestamps) if timestamps else started_at
+    title, preview = _title_and_preview_from_codex(rows)
+    tools, commands, files = _codex_activity(rows, project)
+    message_count = 0
+    for row in rows:
+        payload = row.get("payload")
+        if isinstance(payload, dict) and payload.get("type") == "message" and payload.get("role") in {"user", "assistant"}:
+            message_count += 1
+    slug = safe_slug(title or session_id)
+    model = ""
+    if isinstance(session_meta, dict):
+        model = str(session_meta.get("model") or session_meta.get("model_slug") or session_meta.get("model_provider") or "")
+    return HarnessSession(
+        id=f"codex:{session_id}",
+        slug=slug,
+        harness="codex",
+        agent_label="Codex",
+        project_name=project.name,
+        project_root=str(project),
+        started_at=started_at,
+        ended_at=ended_at,
+        model=model,
+        title=title or f"Codex session {path.stem}",
+        summary=preview,
+        message_count=message_count,
+        tool_call_count=len(set(tools)),
+        tools_used=sorted(set(tools)),
+        files_touched=sorted(set(files)),
+        commands_run=_dedupe(commands)[:50],
+        raw_transcript_path=str(path),
+        redacted_preview=preview,
+        metadata={"config_root": str(root), "transcript": str(path)},
+    )
+
+
+def _claude_project_dir(project: Path) -> str:
+    return str(project).replace("/", "-")
+
+
+def _claude_path_matches_project(path: Path, project: Path) -> bool:
+    return _claude_project_dir(project) in path.parts
+
+
+def _rows_match_project(rows: Sequence[Mapping[str, object]], project: Path) -> bool:
+    project_str = str(project)
+    for row in rows:
+        if row.get("cwd") == project_str:
+            return True
+        payload = row.get("payload")
+        if isinstance(payload, dict):
+            if payload.get("cwd") == project_str:
+                return True
+            if payload.get("workdir") == project_str:
+                return True
+            if payload.get("type") == "function_call":
+                args = payload.get("arguments")
+                if _jsonish_contains_workdir(args, project_str):
+                    return True
+        attachment = row.get("attachment")
+        if isinstance(attachment, dict) and _jsonish_contains_workdir(attachment, project_str):
+            return True
+    return False
+
+
+def _jsonish_contains_workdir(value: object, project_str: str) -> bool:
+    if isinstance(value, str):
+        if project_str in value:
+            return True
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return False
+        return _jsonish_contains_workdir(decoded, project_str)
+    if isinstance(value, dict):
+        return any(_jsonish_contains_workdir(v, project_str) for v in value.values())
+    if isinstance(value, list):
+        return any(_jsonish_contains_workdir(v, project_str) for v in value)
+    return False
+
+
+def _first_str(rows: Sequence[Mapping[str, object]], key: str) -> str:
+    for row in rows:
+        value = row.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
+def _first_message_model(rows: Sequence[Mapping[str, object]]) -> str:
+    for row in rows:
+        msg = row.get("message")
+        if isinstance(msg, dict):
+            value = msg.get("model") or msg.get("model_slug")
+            if isinstance(value, str):
+                return value
+    return ""
+
+
+def _title_and_preview_from_claude(rows: Sequence[Mapping[str, object]]) -> Tuple[str, str]:
+    texts: List[str] = []
+    for row in rows:
+        if row.get("type") not in {"user", "assistant"}:
+            continue
+        msg = row.get("message")
+        if isinstance(msg, dict):
+            text = _content_to_text(msg.get("content"))
+            if text:
+                texts.append(text)
+    return _title_and_preview(texts)
+
+
+def _title_and_preview_from_codex(rows: Sequence[Mapping[str, object]]) -> Tuple[str, str]:
+    texts: List[str] = []
+    for row in rows:
+        payload = row.get("payload")
+        if isinstance(payload, dict) and payload.get("type") == "message" and payload.get("role") in {"user", "assistant"}:
+            text = _content_to_text(payload.get("content"))
+            if text and not text.startswith("<environment_context>") and not text.startswith("<permissions instructions>"):
+                texts.append(text)
+    return _title_and_preview(texts)
+
+
+def _title_and_preview(texts: Sequence[str]) -> Tuple[str, str]:
+    if not texts:
+        return "", ""
+    first_raw = texts[0].strip()
+    title = _clean_text(first_raw.splitlines()[0]).strip("# ")[:96]
+    preview = _clean_text("\n\n".join(texts[:4]))[:1200]
+    return title, preview
+
+
+def _content_to_text(content: object) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: List[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                text = item.get("text") or item.get("input_text") or item.get("output_text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "\n".join(parts)
+    return ""
+
+
+def _claude_activity(rows: Sequence[Mapping[str, object]], project: Path) -> Tuple[List[str], List[str], List[str]]:
+    tools: List[str] = []
+    commands: List[str] = []
+    files: List[str] = []
+    for row in rows:
+        msg = row.get("message")
+        if isinstance(msg, dict):
+            content = msg.get("content")
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "tool_use":
+                        name = str(item.get("name") or "tool")
+                        tools.append(name)
+                        _collect_activity_from_value(item.get("input"), project, commands, files)
+        attachment = row.get("attachment")
+        if isinstance(attachment, dict):
+            command = attachment.get("command")
+            if isinstance(command, str) and command.strip():
+                commands.append(command.strip())
+            atype = attachment.get("type")
+            if isinstance(atype, str) and atype and atype not in {"hook_success", "hook_additional_context"}:
+                tools.append(atype)
+            _collect_activity_from_value(attachment, project, commands, files)
+        _collect_activity_from_value(row, project, commands, files)
+    return tools, commands, files
+
+
+def _codex_activity(rows: Sequence[Mapping[str, object]], project: Path) -> Tuple[List[str], List[str], List[str]]:
+    tools: List[str] = []
+    commands: List[str] = []
+    files: List[str] = []
+    for row in rows:
+        payload = row.get("payload")
+        if isinstance(payload, dict):
+            if payload.get("type") == "function_call":
+                name = str(payload.get("name") or "function_call")
+                tools.append(name)
+                _collect_activity_from_value(payload.get("arguments"), project, commands, files)
+            elif payload.get("type") == "message":
+                _collect_activity_from_value(payload.get("content"), project, commands, files)
+            else:
+                _collect_activity_from_value(payload, project, commands, files)
+    return tools, commands, files
+
+
+def _collect_activity_from_value(value: object, project: Path, commands: List[str], files: List[str]) -> None:
+    if isinstance(value, str):
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            decoded = None
+        if decoded is not None:
+            _collect_activity_from_value(decoded, project, commands, files)
+        text = value
+        for key in ("cmd", "command"):
+            # handled below for dicts; regex catches serialized snippets.
+            pass
+        files.extend(_extract_project_files(text, project))
+        return
+    if isinstance(value, dict):
+        for key in ("cmd", "command"):
+            item = value.get(key)
+            if isinstance(item, str) and item.strip():
+                commands.append(item.strip())
+        for key in ("file_path", "path"):
+            item = value.get(key)
+            if isinstance(item, str):
+                files.extend(_extract_project_files(item, project))
+        for item in value.values():
+            _collect_activity_from_value(item, project, commands, files)
+    elif isinstance(value, list):
+        for item in value:
+            _collect_activity_from_value(item, project, commands, files)
+
+
+def _extract_project_files(text: str, project: Path) -> List[str]:
+    out: List[str] = []
+    if not text:
+        return out
+    project_str = re.escape(str(project))
+    for match in re.finditer(project_str + r"/([^\s\"'`<>),]+)", text):
+        rel = match.group(1).strip()
+        if rel and not rel.startswith(".llm-wiki/"):
+            out.append(rel)
+    for match in re.finditer(r"\b(?:llm_wiki|tests|docs|data)/[\w./-]+", text):
+        out.append(match.group(0).rstrip(".,);:"))
+    return _dedupe(out)[:100]
+
+
+def _dedupe(items: Iterable[str]) -> List[str]:
+    seen: set[str] = set()
+    out: List[str] = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out
+
+
+def _clean_text(text: str) -> str:
+    text = re.sub(r"<[^>]{1,80}>", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
 
 
 def _manifest_entry(session: HarnessSession) -> Dict[str, object]:

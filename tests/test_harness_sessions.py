@@ -43,8 +43,9 @@ def test_harness_session_store_writes_manifest_and_json(tmp_path):
     assert written["sessions"] == 1
     manifest = json.loads((store.root / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["sessions"][0]["title"] == "Project memory ingestion"
-    assert manifest["sessions"][0]["href"] == "sessions/demo-project/2026-05-05-project-memory.html"
-    payload = json.loads((store.root / "claude-code" / "2026-05-05-project-memory.json").read_text(encoding="utf-8"))
+    expected_href = session.href
+    assert manifest["sessions"][0]["href"] == expected_href
+    payload = json.loads((store.root / "claude-code" / f"{session.filename}.json").read_text(encoding="utf-8"))
     assert payload["harness"] == "claude-code"
     assert payload["tools_used"] == ["Read", "Write", "Bash"]
 
@@ -61,7 +62,7 @@ def test_static_site_renders_harness_sessions_and_search_entries(tmp_path):
 
     assert result["sessions"] == 1
     sessions_index = wiki.paths.site / "sessions" / "index.html"
-    detail = wiki.paths.site / "sessions" / "demo-project" / "2026-05-05-project-memory.html"
+    detail = wiki.paths.site / "sessions" / "demo-project" / f"{sample_session(project).filename}.html"
     assert sessions_index.exists()
     assert detail.exists()
     assert "Project memory ingestion" in sessions_index.read_text(encoding="utf-8")
@@ -75,7 +76,25 @@ def test_static_site_renders_harness_sessions_and_search_entries(tmp_path):
     assert session_entries[0]["type"] == "session"
     assert session_entries[0]["project"] == "demo-project"
     assert session_entries[0]["model"] == "claude-sonnet-4-6"
-    assert session_entries[0]["href"] == "sessions/demo-project/2026-05-05-project-memory.html"
+    assert session_entries[0]["href"] == sample_session(project).href
+
+
+def test_harness_sessions_with_same_date_and_title_get_distinct_pages(tmp_path):
+    project = tmp_path / "demo-project"
+    project.mkdir()
+    wiki = ProjectWiki.init(project, name="demo_project", source_kind="Repository")
+    base = sample_session(project)
+    other = HarnessSession.from_dict({**base.to_dict(), "id": "claude-code:other", "raw_transcript_path": "/tmp/other.jsonl"})
+    HarnessSessionStore(project / ".llm-wiki" / "harness_sessions").write_sessions([base, other])
+
+    StaticSiteBuilder(site_title="LLM-Wiki").write_site(
+        ResearchGraph(), wiki.paths.wiki, wiki.paths.site
+    )
+
+    pages = list((wiki.paths.site / "sessions" / "demo-project").glob("*.html"))
+    assert len(pages) == 2
+    search = json.loads((wiki.paths.site / "search-index.json").read_text(encoding="utf-8"))
+    assert len([entry for entry in search if entry["kind"] == "session"]) == 2
 
 
 def test_cli_project_sessions_import_and_list(tmp_path, capsys):
