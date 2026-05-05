@@ -97,17 +97,27 @@ def test_harness_sessions_with_same_date_and_title_get_distinct_pages(tmp_path):
     assert len([entry for entry in search if entry["kind"] == "session"]) == 2
 
 
-def test_cli_project_sessions_import_and_list(tmp_path, capsys):
+def test_cli_project_sessions_import_filters_other_project_sessions(tmp_path, capsys):
     project = tmp_path / "demo-project"
+    other_project = tmp_path / "other-project"
     project.mkdir()
+    other_project.mkdir()
     ProjectWiki.init(project, name="demo_project", source_kind="Repository")
-    session_file = tmp_path / "session.json"
-    session_file.write_text(json.dumps(sample_session(project).to_dict()), encoding="utf-8")
+    focused = sample_session(project)
+    foreign = HarnessSession.from_dict({
+        **sample_session(other_project).to_dict(),
+        "id": "claude-code:foreign",
+        "title": "Foreign project session",
+        "project_root": str(other_project),
+    })
+    session_file = tmp_path / "sessions.json"
+    session_file.write_text(json.dumps([focused.to_dict(), foreign.to_dict()]), encoding="utf-8")
 
     assert main(["project", "sessions", "import", "--project", str(project), str(session_file)]) == 0
     assert main(["project", "sessions", "list", "--project", str(project)]) == 0
 
     captured = capsys.readouterr().out
     assert "Imported harness sessions: 1" in captured
+    assert "Skipped non-project harness sessions: 1" in captured
     assert "Project memory ingestion" in captured
-    assert "claude-code" in captured
+    assert "Foreign project session" not in captured

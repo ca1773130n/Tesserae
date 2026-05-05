@@ -97,6 +97,12 @@ def safe_slug(value: str) -> str:
     return text or "session"
 
 
+def session_matches_project(session: HarnessSession, project_root: str | Path) -> bool:
+    """Return true when a normalized session belongs to ``project_root``."""
+
+    return _path_value_matches_project(session.project_root, Path(project_root).resolve())
+
+
 class HarnessSessionStore:
     """Read/write normalized sessions under ``.llm-wiki/harness_sessions``."""
 
@@ -356,39 +362,54 @@ def _claude_path_matches_project(path: Path, project: Path) -> bool:
 
 
 def _rows_match_project(rows: Sequence[Mapping[str, object]], project: Path) -> bool:
-    project_str = str(project)
+    project = project.resolve()
     for row in rows:
-        if row.get("cwd") == project_str:
+        if _path_value_matches_project(row.get("cwd"), project):
             return True
         payload = row.get("payload")
         if isinstance(payload, dict):
-            if payload.get("cwd") == project_str:
-                return True
-            if payload.get("workdir") == project_str:
+            if _jsonish_contains_project_context(payload, project):
                 return True
             if payload.get("type") == "function_call":
                 args = payload.get("arguments")
-                if _jsonish_contains_workdir(args, project_str):
+                if _jsonish_contains_project_context(args, project):
                     return True
         attachment = row.get("attachment")
-        if isinstance(attachment, dict) and _jsonish_contains_workdir(attachment, project_str):
+        if isinstance(attachment, dict) and _jsonish_contains_project_context(attachment, project):
             return True
     return False
 
 
-def _jsonish_contains_workdir(value: object, project_str: str) -> bool:
+def _path_value_matches_project(value: object, project: Path) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    try:
+        return Path(value).expanduser().resolve() == project
+    except OSError:
+        return value == str(project)
+
+
+def _jsonish_contains_project_context(value: object, project: Path) -> bool:
+    """Return true only for explicit cwd/workdir-style project context.
+
+    Plain transcript text or shell commands that merely mention the focused
+    project path are not enough to import a session. A discovered transcript must
+    declare that the harness was running in the plugged-in project root.
+    """
+
     if isinstance(value, str):
-        if project_str in value:
-            return True
         try:
             decoded = json.loads(value)
         except json.JSONDecodeError:
             return False
-        return _jsonish_contains_workdir(decoded, project_str)
+        return _jsonish_contains_project_context(decoded, project)
     if isinstance(value, dict):
-        return any(_jsonish_contains_workdir(v, project_str) for v in value.values())
+        for key in ("cwd", "workdir", "project_root", "root"):
+            if _path_value_matches_project(value.get(key), project):
+                return True
+        return any(_jsonish_contains_project_context(v, project) for v in value.values())
     if isinstance(value, list):
-        return any(_jsonish_contains_workdir(v, project_str) for v in value)
+        return any(_jsonish_contains_project_context(v, project) for v in value)
     return False
 
 

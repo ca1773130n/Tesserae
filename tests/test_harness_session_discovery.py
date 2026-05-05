@@ -104,6 +104,53 @@ def test_default_discovery_uses_dynamic_account_roots(tmp_path, monkeypatch):
     assert sessions[0].title == "Import dynamic root"
 
 
+def test_discovery_ignores_sessions_that_only_mention_project_path(tmp_path):
+    project = tmp_path / "focused-project"
+    other_project = tmp_path / "other-project"
+    project.mkdir()
+    other_project.mkdir()
+    root = tmp_path / ".codex-any-account"
+    session_dir = root / "sessions" / "2026" / "05" / "05"
+    session_dir.mkdir(parents=True)
+    (session_dir / "rollout-2026-05-05T11-00-00-other.jsonl").write_text(
+        "\n".join([
+            json.dumps({"timestamp": "2026-05-05T11:00:00Z", "type": "session_meta", "payload": {"id": "codex-other", "cwd": str(other_project)}}),
+            json.dumps({"timestamp": "2026-05-05T11:00:01Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": f"Compare with docs in {project}"}]}}),
+            json.dumps({"timestamp": "2026-05-05T11:00:02Z", "type": "response_item", "payload": {"type": "function_call", "name": "exec_command", "arguments": json.dumps({"cmd": f"grep -R TODO {project}", "workdir": str(other_project)})}}),
+        ]) + "\n",
+        encoding="utf-8",
+    )
+
+    sessions = discover_harness_sessions(project, [root], harnesses=["codex"])
+
+    assert sessions == []
+
+
+def test_discovery_uses_plugged_project_root_not_neighbor_project(tmp_path):
+    focused = tmp_path / "focused-project"
+    neighbor = tmp_path / "neighbor-project"
+    focused.mkdir()
+    neighbor.mkdir()
+    root = tmp_path / ".codex-any-account"
+    session_dir = root / "sessions" / "2026" / "05" / "05"
+    session_dir.mkdir(parents=True)
+    (session_dir / "rollout-2026-05-05T11-00-00-focused.jsonl").write_text(
+        json.dumps({"timestamp": "2026-05-05T11:00:00Z", "type": "session_meta", "payload": {"id": "codex-focused", "cwd": str(focused)}}) + "\n"
+        + json.dumps({"timestamp": "2026-05-05T11:00:01Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Focused project session"}]}}) + "\n",
+        encoding="utf-8",
+    )
+    (session_dir / "rollout-2026-05-05T12-00-00-neighbor.jsonl").write_text(
+        json.dumps({"timestamp": "2026-05-05T12:00:00Z", "type": "session_meta", "payload": {"id": "codex-neighbor", "cwd": str(neighbor)}}) + "\n"
+        + json.dumps({"timestamp": "2026-05-05T12:00:01Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Neighbor project session"}]}}) + "\n",
+        encoding="utf-8",
+    )
+
+    sessions = discover_harness_sessions(focused, [root], harnesses=["codex"])
+
+    assert [session.title for session in sessions] == ["Focused project session"]
+    assert all(session.project_root == str(focused.resolve()) for session in sessions)
+
+
 def test_cli_sessions_discover_imports_matching_roots(tmp_path, capsys):
     project = tmp_path / "demo-project"
     project.mkdir()

@@ -14,7 +14,7 @@ from .canonicalization import GraphCanonicalizer, ReviewDecision
 from .cognee_adapter import CogneeResearchGraphAdapter
 from .cognee_codex import CogneeCodexPatch
 from .cognee_direct import CogneeDirectImporter
-from .harness_sessions import HarnessSession, HarnessSessionStore, discover_harness_sessions
+from .harness_sessions import HarnessSession, HarnessSessionStore, discover_harness_sessions, session_matches_project
 from .llm_extractor import ClaudeCLIResearchExtractor
 from .markdown_projection import GraphMarkdownProjector
 from .persistence import KuzuResearchGraphStore, SQLiteResearchGraphStore
@@ -281,7 +281,7 @@ def project_main(argv: List[str] | None = None) -> int:
     sessions_import.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     sessions_discover = sessions_sub.add_parser("discover", help="Discover local Claude Code/Codex sessions scoped to this project")
     sessions_discover.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    sessions_discover.add_argument("--root", action="append", default=[], help="Harness config root to scan; repeat for multiple roots. Defaults to ~/.claude*, ~/.codex*")
+    sessions_discover.add_argument("--root", action="append", default=[], help="Harness config root to scan; repeat for multiple roots. Defaults to auto-detected Claude/Codex config roots under HOME")
     sessions_discover.add_argument("--harness", action="append", default=[], choices=["claude-code", "codex"], help="Harness to scan; repeat for multiple harnesses. Defaults to both")
     sessions_discover.add_argument("--import", dest="import_sessions", action="store_true", help="Import discovered normalized sessions into .llm-wiki/harness_sessions")
     sessions_list = sessions_sub.add_parser("list", help="List normalized harness sessions for this project")
@@ -443,15 +443,22 @@ def project_main(argv: List[str] | None = None) -> int:
         store = HarnessSessionStore(wiki.paths.harness_sessions)
         if args.sessions_command == "import":
             sessions = []
+            skipped = 0
             for raw_path in args.paths:
                 payload = json.loads(Path(raw_path).read_text(encoding="utf-8"))
                 items = payload if isinstance(payload, list) else [payload]
                 for item in items:
                     if not isinstance(item, dict):
                         raise ValueError(f"Session import item must be an object: {raw_path}")
-                    sessions.append(HarnessSession.from_dict(item))
+                    session = HarnessSession.from_dict(item)
+                    if session_matches_project(session, wiki.project_root):
+                        sessions.append(session)
+                    else:
+                        skipped += 1
             result = store.write_sessions(sessions)
             print(f"Imported harness sessions: {result['sessions']} path={result['path']}")
+            if skipped:
+                print(f"Skipped non-project harness sessions: {skipped}")
             return 0
         if args.sessions_command == "discover":
             sessions = discover_harness_sessions(
