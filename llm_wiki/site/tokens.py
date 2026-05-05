@@ -418,6 +418,76 @@ hr {
   font-size: .92rem;
 }
 
+/* Slim, translucent overlay scrollbar — matches the macOS-style viewport
+   scrollbar so the rail / TOC / palette / table-scroll containers don't
+   show chunky OS chrome inside the layout. Track is invisible; thumb is
+   a 6 px translucent pill that gets a touch more opaque on hover. Firefox
+   uses ``scrollbar-width: thin`` plus ``scrollbar-color`` since it doesn't
+   honour the WebKit pseudo-elements. */
+.rail,
+.toc-rail .toc,
+aside.toc,
+.palette-results,
+.table-scroll,
+.doc-tree,
+.toc-rail {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--ink) 22%, transparent) transparent;
+}
+.rail::-webkit-scrollbar,
+.toc-rail .toc::-webkit-scrollbar,
+aside.toc::-webkit-scrollbar,
+.palette-results::-webkit-scrollbar,
+.table-scroll::-webkit-scrollbar,
+.doc-tree::-webkit-scrollbar,
+.toc-rail::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  background: transparent;
+}
+.rail::-webkit-scrollbar-track,
+.toc-rail .toc::-webkit-scrollbar-track,
+aside.toc::-webkit-scrollbar-track,
+.palette-results::-webkit-scrollbar-track,
+.table-scroll::-webkit-scrollbar-track,
+.doc-tree::-webkit-scrollbar-track,
+.toc-rail::-webkit-scrollbar-track {
+  background: transparent;
+  border: 0;
+}
+.rail::-webkit-scrollbar-thumb,
+.toc-rail .toc::-webkit-scrollbar-thumb,
+aside.toc::-webkit-scrollbar-thumb,
+.palette-results::-webkit-scrollbar-thumb,
+.table-scroll::-webkit-scrollbar-thumb,
+.doc-tree::-webkit-scrollbar-thumb,
+.toc-rail::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ink) 18%, transparent);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background 160ms ease;
+}
+.rail:hover::-webkit-scrollbar-thumb,
+.toc-rail .toc:hover::-webkit-scrollbar-thumb,
+aside.toc:hover::-webkit-scrollbar-thumb,
+.palette-results:hover::-webkit-scrollbar-thumb,
+.table-scroll:hover::-webkit-scrollbar-thumb,
+.doc-tree:hover::-webkit-scrollbar-thumb,
+.toc-rail:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ink) 38%, transparent);
+  background-clip: padding-box;
+}
+.rail::-webkit-scrollbar-corner,
+.toc-rail .toc::-webkit-scrollbar-corner,
+aside.toc::-webkit-scrollbar-corner,
+.palette-results::-webkit-scrollbar-corner,
+.table-scroll::-webkit-scrollbar-corner,
+.doc-tree::-webkit-scrollbar-corner,
+.toc-rail::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* ---- Doc-tree explorer (Issue 3) ---------------------------------------- */
 .doc-tree-search-row { padding: 0 4px var(--space-3); }
 .doc-tree-search {
