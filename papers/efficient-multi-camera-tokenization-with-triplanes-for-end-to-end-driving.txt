@@ -1,0 +1,31 @@
+Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving
+=========================================================================
+
+# Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving
+
+## Outgoing relations
+
+- **authored_by** → Boris Ivanovic _(Person)_
+- **authored_by** → Cristiano Saltori _(Person)_
+- **authored_by** → Marco Pavone _(Person)_
+- **authored_by** → Wenjie Luo _(Person)_
+- **authored_by** → Yan Wang _(Person)_
+- **authored_by** → Yurong You _(Person)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- **uses_metric** → Accuracy _(Metric)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-23 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-24 _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-23 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-24 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 6
+- SourceDocument: 6
+- Metric: 1
+- ResearchField: 1

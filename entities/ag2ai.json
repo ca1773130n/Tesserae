@@ -1,0 +1,15 @@
+{
+  "title": "ag2ai",
+  "kind": "entities",
+  "body_text": "# ag2ai\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: ag2ai/ag2studio _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/repos/ag2ai_ag2studio.md",
+  "links": [],
+  "body": "# ag2ai\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: ag2ai/ag2studio _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:ag2ai:7fecca7828b4",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/repos/ag2ai_ag2studio.md",
+    "title": "ag2ai"
+  }
+}

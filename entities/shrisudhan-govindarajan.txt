@@ -1,0 +1,12 @@
+Shrisudhan Govindarajan
+=======================
+
+# Shrisudhan Govindarajan
+
+## Incoming relations
+
+- **authored_by** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
+
+## Connected node types
+
+- Paper: 1

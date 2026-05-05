@@ -1,0 +1,52 @@
+EvolvingLMMs-Lab_SimpleStream.md
+================================
+
+# GitHub 분석: EvolvingLMMs-Lab/SimpleStream
+
+> - URL: https://github.com/EvolvingLMMs-Lab/SimpleStream
+> - 분석일: 2026-04-07
+
+## 개요
+
+- **설명**: A simple video streaming baseline that outperforms SOTAs.
+- **Stars**: ⭐ 57 | Forks: 2
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (10개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.gitignore
+assets/logo.svg
+assets/main_results.png
+assets/teaser.png
+efficiency/eval_efficiency.py
+lib/__init__.py
+lib/qwen_exact_recent_decoder.py
+lib/recent_window_eval_qwen3.py
+lib/recent_window_eval.py
+main_experiments/eval_qwen25vl_ovo.py
+main_experiments/eval_qwen3vl_ovo.py
+main_experiments/eval_streamingbench.py
+main_experiments/run_qwen3vl_ovo_4gpu.sh
+ovo_constants.py
+README.md
+requirements.txt
+scoring/score_ovo_bench.py
+```

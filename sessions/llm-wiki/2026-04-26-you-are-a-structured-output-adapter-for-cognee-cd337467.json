@@ -1,0 +1,50 @@
+{
+  "title": "You are a structured-output adapter for Cognee.",
+  "kind": "session",
+  "body_text": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for KnowledgeGraph: { \"$defs\": { \"Edge\": { \"description\": \"Edge in a knowledge graph.\", \"properties\": { \"source_node_id\": { \"title\": \"Source Node Id\", \"type\": \"string\" }, \"target_node_id\": { \"title\": \"Target Node Id\", \"type\": \"string\" }, \"relationship_name\": { \"title\": \"Relationship Name\", \"type\": \"string\" }, \"properties\": { \"anyOf\": [ { \"type\": \"object\" }, { \"type\": \"null\" } ], \"default\": null, \"description\": \"A dictionary of properties associated with the edge.\", \"title\": \"Properties\" } }, \"required\": [ \"source_node_id\", \"target_node_id\", \"relationship_name\" ], \"title\": \"Edge\", \"type\": \"object\" }, \"Node\": { \"description\": \"Node in a knowledge graph.\", \"properties\": { \"id\": { \"title\": \"Id\", \"type\": \"string\" }, \"name\": { \"title\": \"Name\", \"type\": \"string\" }, \"type\": { \"title\": \"Type\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" }, \"properties\": { \"anyOf\": [ { \"type\": \"object\" }, { \"type\": \"null\" } ], \"default\": null, \"description\": \"A dictionary of properties associated with th",
+  "source_path": "/Users/neo/.codex_old/sessions/2026/04/26/rollout-2026-04-26T23-57-17-019dca4b-7980-7490-9006-e987de0a3eb0.jsonl",
+  "links": [],
+  "body": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for KnowledgeGraph: { \"$defs\": { \"Edge\": { \"description\": \"Edge in a knowledge graph.\", \"properties\": { \"source_node_id\": { \"title\": \"Source Node Id\", \"type\": \"string\" }, \"target_node_id\": { \"title\": \"Target Node Id\", \"type\": \"string\" }, \"relationship_name\": { \"title\": \"Relationship Name\", \"type\": \"string\" }, \"properties\": { \"anyOf\": [ { \"type\": \"object\" }, { \"type\": \"null\" } ], \"default\": null, \"description\": \"A dictionary of properties associated with the edge.\", \"title\": \"Properties\" } }, \"required\": [ \"source_node_id\", \"target_node_id\", \"relationship_name\" ], \"title\": \"Edge\", \"type\": \"object\" }, \"Node\": { \"description\": \"Node in a knowledge graph.\", \"properties\": { \"id\": { \"title\": \"Id\", \"type\": \"string\" }, \"name\": { \"title\": \"Name\", \"type\": \"string\" }, \"type\": { \"title\": \"Type\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" }, \"properties\": { \"anyOf\": [ { \"type\": \"object\" }, { \"type\": \"null\" } ], \"default\": null, \"description\": \"A dictionary of properties associated with th",
+  "frontmatter": {
+    "id": "codex:019dca4b-7980-7490-9006-e987de0a3eb0",
+    "slug": "you-are-a-structured-output-adapter-for-cognee",
+    "harness": "codex",
+    "agent_label": "Codex",
+    "project_name": "LLM-Wiki",
+    "project_root": "/Users/neo/Developer/Projects/LLM-Wiki",
+    "started_at": "2026-04-26T14:57:19.921Z",
+    "ended_at": "2026-04-26T14:58:04.557Z",
+    "branch": "",
+    "commit_before": "",
+    "commit_after": "",
+    "model": "openai",
+    "title": "You are a structured-output adapter for Cognee.",
+    "summary": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for KnowledgeGraph: { \"$defs\": { \"Edge\": { \"description\": \"Edge in a knowledge graph.\", \"properties\": { \"source_node_id\": { \"title\": \"Source Node Id\", \"type\": \"string\" }, \"target_node_id\": { \"title\": \"Target Node Id\", \"type\": \"string\" }, \"relationship_name\": { \"title\": \"Relationship Name\", \"type\": \"string\" }, \"properties\": { \"anyOf\": [ { \"type\": \"object\" }, { \"type\": \"null\" } ], \"default\": null, \"description\": \"A dictionary of properties associated with the edge.\", \"title\": \"Properties\" } }, \"required\": [ \"source_node_id\", \"target_node_id\", \"relationship_name\" ], \"title\": \"Edge\", \"type\": \"object\" }, \"Node\": { \"description\": \"Node in a knowledge graph.\", \"properties\": { \"id\": { \"title\": \"Id\", \"type\": \"string\" }, \"name\": { \"title\": \"Name\", \"type\": \"string\" }, \"type\": { \"title\": \"Type\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" }, \"properties\": { \"anyOf\": [ { \"type\": \"object\" }, { \"type\": \"null\" } ], \"default\": null, \"description\": \"A dictionary of properties associated with th",
+    "message_count": 3,
+    "tool_call_count": 1,
+    "token_input": 0,
+    "token_output": 0,
+    "token_total": 0,
+    "cache_hit_ratio": null,
+    "tools_used": [
+      "exec_command"
+    ],
+    "files_touched": [
+      "data/research/daily/2026-04-26/papers/2601.17835/paper.md",
+      "docs/SKILL.md"
+    ],
+    "commands_run": [
+      "sed -n '1,240p' output/cognee_codex_cognify_smoke_bundle/nodes.jsonl"
+    ],
+    "decisions": [],
+    "errors": [],
+    "raw_transcript_path": "/Users/neo/.codex_old/sessions/2026/04/26/rollout-2026-04-26T23-57-17-019dca4b-7980-7490-9006-e987de0a3eb0.jsonl",
+    "redacted_preview": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for KnowledgeGraph: { \"$defs\": { \"Edge\": { \"description\": \"Edge in a knowledge graph.\", \"properties\": { \"source_node_id\": { \"title\": \"Source Node Id\", \"type\": \"string\" }, \"target_node_id\": { \"title\": \"Target Node Id\", \"type\": \"string\" }, \"relationship_name\": { \"title\": \"Relationship Name\", \"type\": \"string\" }, \"properties\": { \"anyOf\": [ { \"type\": \"object\" }, { \"type\": \"null\" } ], \"default\": null, \"description\": \"A dictionary of properties associated with the edge.\", \"title\": \"Properties\" } }, \"required\": [ \"source_node_id\", \"target_node_id\", \"relationship_name\" ], \"title\": \"Edge\", \"type\": \"object\" }, \"Node\": { \"description\": \"Node in a knowledge graph.\", \"properties\": { \"id\": { \"title\": \"Id\", \"type\": \"string\" }, \"name\": { \"title\": \"Name\", \"type\": \"string\" }, \"type\": { \"title\": \"Type\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" }, \"properties\": { \"anyOf\": [ { \"type\": \"object\" }, { \"type\": \"null\" } ], \"default\": null, \"description\": \"A dictionary of properties associated with th",
+    "metadata": {
+      "config_root": "/Users/neo/.codex_old",
+      "transcript": "/Users/neo/.codex_old/sessions/2026/04/26/rollout-2026-04-26T23-57-17-019dca4b-7980-7490-9006-e987de0a3eb0.jsonl"
+    },
+    "date": "2026-04-26",
+    "href": "sessions/llm-wiki/2026-04-26-you-are-a-structured-output-adapter-for-cognee-cd337467.html"
+  }
+}

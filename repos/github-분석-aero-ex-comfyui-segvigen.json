@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: Aero-Ex/ComfyUI-SegviGen",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: Aero-Ex/ComfyUI-SegviGen\n\n## Outgoing relations\n\n- **released_by** → aero-ex _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation _(Paper)_\n\n## Connected node types\n\n- Organization: 1\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2509.10687/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: Aero-Ex/ComfyUI-SegviGen\n\n## Outgoing relations\n\n- **released_by** → aero-ex _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation _(Paper)_\n\n## Connected node types\n\n- Organization: 1\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "aero-ex/comfyui-segvigen",
+      "https://github.com/Aero-Ex/ComfyUI-SegviGen"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-aero-ex-comfyui-segvigen:6828f0b5da02",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2509.10687/repo.md",
+    "title": "GitHub 분석: Aero-Ex/ComfyUI-SegviGen"
+  }
+}

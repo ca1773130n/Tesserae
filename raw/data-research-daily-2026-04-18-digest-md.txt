@@ -1,0 +1,70 @@
+digest.md
+=========
+
+# 📬 Daily Research Digest — 2026-04-18
+
+## 🔥 오늘의 하이라이트
+
+### 1. 장기 시퀀스를 겨냥한 스트리밍 3D 재구성 모델, LingBot-Map 공개
+
+![preview](https://pbs.twimg.com/amplify_video_thumb/2017301184533741568/img/X4-QXLggkWic7eXP.jpg)
+
+LingBot-Map은 순수 autoregressive 방식으로 스트리밍 3D 재구성을 수행하며, 10,000프레임이 넘는 긴 시퀀스에서도 20 FPS 수준을 목표로 한다는 점이 핵심이다. 기존 SLAM의 구조적 강점을 유지하면서도 최적화와 후처리 없이 end-to-end 학습으로 밀어붙였다는 점에서, 장기 시계열 3D 이해와 spatial intelligence 파이프라인에 직접적인 시사점을 준다.
+
+- 💻 코드: [GitHub 분석](repos/Robbyant_lingbot-va.md) | [repo](https://github.com/Robbyant/lingbot-va) | ⭐ 1030
+- 🔗 [원문](https://x.com/YinghaoXu1/status/2044807811453047028)
+
+---
+
+### 2. TokenGS, 픽셀당 Gaussian 1개라는 제약을 깨는 feed-forward 3D 재구성 제안
+
+TokenGS는 3D Gaussian 예측을 이미지 해상도와 입력 뷰 수로부터 분리하기 위해 learnable token을 도입했다. 이는 feed-forward 3D reconstruction이 더 이상 입력 해상도에 종속된 밀집 예측만을 따를 필요가 없다는 문제의식을 전면에 내세우며, 효율성과 표현력 사이의 새로운 설계 공간을 연다.
+
+- 🔗 [원문](https://x.com/jatentaki/status/2045181633100145093)
+
+---
+
+### 3. 파노라마 깊이 추정을 위한 foundation model 흐름 부상
+
+![preview](https://pbs.twimg.com/media/HGKn9mrXQAEvkpZ?format=png&name=orig)
+
+전방위 이미지 기반 depth estimation은 로보틱스, 실내 매핑, immersive sensing에서 수요가 큰 과제인데, 이번 피드는 panoramic depth estimation을 위한 foundation model 방향을 짧게나마 환기했다. 입력 시야가 넓어질수록 왜곡과 장면 불연속성이 커지는 만큼, 파노라마 전용 사전학습 모델은 기존 perspective depth 모델과 다른 설계 원칙을 요구한다.
+
+- 💻 코드: [GitHub 분석](repos/enix_x509-certificate-exporter.md) | [repo](https://github.com/enix/x509-certificate-exporter) | ⭐ 855
+- 🔗 [원문](https://x.com/tom_doerr/status/2045201493939110188)
+
+---
+
+## 📋 주목할 만한 피드
+
+### ▫️ 장기 메모리를 전제로 한 3D foundation model 경쟁 본격화
+
+LingBot-Map은 스트리밍 상태를 압축해 유지하면서 긴 문맥을 다루는 구조를 강조한다. 이는 단발성 장면 복원보다 긴 작업 맥락을 따라가는 spatial intelligence 시스템에 더 적합한 방향이다.
+
+- 💻 [GitHub 분석](repos/Robbyant_lingbot-va.md) | [repo](https://github.com/Robbyant/lingbot-va)
+- 🔗 [원문](https://x.com/YinghaoXu1/status/2044807811453047028)
+
+---
+
+### ▫️ 3D Gaussian 예측의 해상도 종속성을 줄이려는 TokenGS
+
+TokenGS는 예측 단위를 픽셀에서 토큰으로 재구성하면서, 입력 뷰 수와 이미지 크기에 덜 묶이는 feed-forward 3D 복원 구조를 제안한다. 멀티뷰 설정이 자주 바뀌는 실환경에서 특히 유연성이 기대된다.
+
+- 🔗 [원문](https://x.com/jatentaki/status/2045181633100145093)
+
+---
+
+### ▫️ 파노라마 depth 전용 foundation model이 별도 축으로 분화
+
+360도 입력은 일반 monocular depth와 다른 왜곡 특성을 가지므로, panoramic depth estimation 전용 모델은 충분히 독립적인 연구 주제가 될 수 있다. 공간 전체를 한 번에 본다는 점에서 mapping과 embodied perception에도 연결된다.
+
+- 💻 [GitHub 분석](repos/enix_x509-certificate-exporter.md) | [repo](https://github.com/enix/x509-certificate-exporter)
+- 🔗 [원문](https://x.com/tom_doerr/status/2045201493939110188)
+
+---
+
+## 📊 오늘의 숫자
+
+- 전체 피드: 19개 → 관련 피드: 3개
+- 논문: 0편 | GitHub: 2개 레포
+- 가장 많은 스타: Robbyant/lingbot-va (⭐ 1030)

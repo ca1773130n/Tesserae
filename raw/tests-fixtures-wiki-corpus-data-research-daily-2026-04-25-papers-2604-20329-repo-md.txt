@@ -1,0 +1,17 @@
+repo.md
+=======
+
+# GitHub 분석: google-research/vision-banana
+
+> - URL: https://github.com/google-research/vision-banana
+> - 분석일: 2026-04-25
+
+## 개요
+
+- **설명**: Reference instruction-tuning recipe for Vision Banana, the
+  generalist vision learner derived from Nano Banana Pro NBP.
+- **Stars**: ⭐ 318 | Forks: 21
+- **주 언어**: Python
+
+The repository ships training scripts, evaluation hooks for segmentation and
+metric depth, and the Hugging Face conversion utility.

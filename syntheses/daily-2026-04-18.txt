@@ -1,0 +1,15 @@
+Daily Digest — 2026-04-18
+=========================
+
+# Daily Digest — 2026-04-18
+
+Sources ingested under `data/research/daily/2026-04-18/`.
+
+## Papers and repos
+- [GitHub 분석: Robbyant/lingbot-va](../repos/github-분석-robbyant-lingbot-va.md) (Repository)
+- [GitHub 분석: enix/x509-certificate-exporter](../repos/github-분석-enix-x509-certificate-exporter.md) (Repository)
+- [Daily Feed Summary — 2026-04-18](../sources/daily-feed-summary-2026-04-18.md) (SourceDocument)
+- [📬 Daily Research Digest — 2026-04-18](../sources/daily-research-digest-2026-04-18.md) (SourceDocument)
+
+## Extracted concepts
+- (none extracted)

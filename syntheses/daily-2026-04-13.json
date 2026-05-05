@@ -1,0 +1,44 @@
+{
+  "title": "Daily Digest — 2026-04-13",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-04-13\n\nSources ingested under `data/research/daily/2026-04-13/`.\n\n## Papers and repos\n- [GitHub 분석: KAIST-Visual-AI-Group/MatLat](../repos/github-분석-kaist-visual-ai-group-matlat.md) (Repository)\n- [GitHub 분석: NVIDIA/OpenShell](../repos/github-분석-nvidia-openshell.md) (Repository)\n- [GitHub 분석: OpenDriveLab/WorldEngine](../repos/github-분석-opendrivelab-worldengine.md) (Repository)\n- [GitHub 분석: TheRealMJP/MSAAFilter](../repos/github-분석-therealmjp-msaafilter.md) (Repository)\n- [GitHub 분석: World-In-World/world-in-world](../repos/github-분석-world-in-world-world-in-world.md) (Repository)\n- [GitHub 분석: anthropics/claude-code](../repos/github-분석-anthropics-claude-code.md) (Repository)\n- [GitHub 분석: colmap/colmap](../repos/github-분석-colmap-colmap.md) (Repository)\n- [Daily Feed Summary — 2026-04-13](../sources/daily-feed-summary-2026-04-13.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "source_path": "",
+  "links": [
+    "../repos/github-분석-kaist-visual-ai-group-matlat.md",
+    "../repos/github-분석-nvidia-openshell.md",
+    "../repos/github-분석-opendrivelab-worldengine.md",
+    "../repos/github-분석-therealmjp-msaafilter.md",
+    "../repos/github-분석-world-in-world-world-in-world.md",
+    "../repos/github-분석-anthropics-claude-code.md",
+    "../repos/github-분석-colmap-colmap.md",
+    "../sources/daily-feed-summary-2026-04-13.md"
+  ],
+  "body": "# Daily Digest — 2026-04-13\n\nSources ingested under `data/research/daily/2026-04-13/`.\n\n## Papers and repos\n- [GitHub 분석: KAIST-Visual-AI-Group/MatLat](../repos/github-분석-kaist-visual-ai-group-matlat.md) (Repository)\n- [GitHub 분석: NVIDIA/OpenShell](../repos/github-분석-nvidia-openshell.md) (Repository)\n- [GitHub 분석: OpenDriveLab/WorldEngine](../repos/github-분석-opendrivelab-worldengine.md) (Repository)\n- [GitHub 분석: TheRealMJP/MSAAFilter](../repos/github-분석-therealmjp-msaafilter.md) (Repository)\n- [GitHub 분석: World-In-World/world-in-world](../repos/github-분석-world-in-world-world-in-world.md) (Repository)\n- [GitHub 분석: anthropics/claude-code](../repos/github-분석-anthropics-claude-code.md) (Repository)\n- [GitHub 분석: colmap/colmap](../repos/github-분석-colmap-colmap.md) (Repository)\n- [Daily Feed Summary — 2026-04-13](../sources/daily-feed-summary-2026-04-13.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "frontmatter": {
+    "content_hash": "sha256-fc9b44c0578b23065e36e5038dfb726bf8b930b3c8ca6c261fcd0934e6df06f3",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Repository:github-anthropics-claude-code:081da797b7f6",
+      "Repository:github-colmap-colmap:edb519c00c42",
+      "Repository:github-kaist-visual-ai-group-matlat:5c2d7a234ba4",
+      "Repository:github-nvidia-openshell:a7dfbb55473b",
+      "Repository:github-opendrivelab-worldengine:6a1e9badad61",
+      "Repository:github-therealmjp-msaafilter:7d616ecbf96b",
+      "Repository:github-world-in-world-world-in-world:7db0721bcc67",
+      "SourceDocument:daily-feed-summary-2026-04-13:1731f53d395b"
+    ],
+    "slug": "daily-2026-04-13",
+    "sources": [
+      "data/research/daily/2026-04-13/papers/2503.22194/repo.md",
+      "data/research/daily/2026-04-13/papers/2509.06950/repo.md",
+      "data/research/daily/2026-04-13/raw.md",
+      "data/research/daily/2026-04-13/repos/NVIDIA_OpenShell.md",
+      "data/research/daily/2026-04-13/repos/OpenDriveLab_WorldEngine.md",
+      "data/research/daily/2026-04-13/repos/TheRealMJP_MSAAFilter.md",
+      "data/research/daily/2026-04-13/repos/anthropics_claude-code.md",
+      "data/research/daily/2026-04-13/repos/colmap_colmap.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-04-13"
+  }
+}

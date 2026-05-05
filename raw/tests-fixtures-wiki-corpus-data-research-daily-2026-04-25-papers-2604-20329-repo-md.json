@@ -1,0 +1,8 @@
+{
+  "title": "repo.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: google-research/vision-banana\n\n> - URL: https://github.com/google-research/vision-banana\n> - 분석일: 2026-04-25\n\n## 개요\n\n- **설명**: Reference instruction-tuning recipe for Vision Banana, the\n  generalist vision learner derived from Nano Banana Pro NBP.\n- **Stars**: ⭐ 318 | Forks: 21\n- **주 언어**: Python\n\nThe repository ships training scripts, evaluation hooks for segmentation and\nmetric depth, and the Hugging Face conversion utility.",
+  "source_path": "tests/fixtures/wiki_corpus/data/research/daily/2026-04-25/papers/2604.20329/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: google-research/vision-banana\n\n> - URL: https://github.com/google-research/vision-banana\n> - 분석일: 2026-04-25\n\n## 개요\n\n- **설명**: Reference instruction-tuning recipe for Vision Banana, the\n  generalist vision learner derived from Nano Banana Pro NBP.\n- **Stars**: ⭐ 318 | Forks: 21\n- **주 언어**: Python\n\nThe repository ships training scripts, evaluation hooks for segmentation and\nmetric depth, and the Hugging Face conversion utility.\n"
+}

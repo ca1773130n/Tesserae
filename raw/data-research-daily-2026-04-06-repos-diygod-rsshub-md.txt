@@ -1,0 +1,69 @@
+DIYgod_RSSHub.md
+================
+
+# GitHub 분석: DIYgod/RSSHub
+
+> - URL: https://github.com/DIYgod/RSSHub
+> - 분석일: 2026-04-06
+
+## 개요
+
+- **설명**: 🧡 Everything is RSSible
+- **Stars**: ⭐ 43244 | Forks: 9558
+- **라이선스**: AGPL-3.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (131개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | Y |
+
+## 파일 구조
+
+```
+.codecov.yml
+.devcontainer/devcontainer.json
+.dockerignore
+.editorconfig
+.envrc
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.github/dependabot.yml
+.github/labeler.yml
+.github/PULL_REQUEST_TEMPLATE.md
+.github/pull.yml
+.gitignore
+.husky/pre-commit
+.idx/dev.nix
+.npmrc
+.oxfmtrc.json
+.oxlintrc.json
+.puppeteerrc.cjs
+AGENTS.md
+app.json
+assets/404.html
+assets/CNAME
+assets/index.html
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+devenv.nix
+docker-compose.yml
+Dockerfile
+eslint-plugins/no-then.js
+eslint-plugins/nsfw-flag.js
+eslint.config.mjs
+flake.lock
+flake.nix
+fly.toml
+lib/app-bootstrap.test.tsx
+lib/app-bootstrap.tsx
+```

@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: apple/ml-mobileclip",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: apple/ml-mobileclip\n\n## Outgoing relations\n\n- **released_by** → apple _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-09/papers/2411.14517/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: apple/ml-mobileclip\n\n## Outgoing relations\n\n- **released_by** → apple _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "frontmatter": {
+    "aliases": [
+      "apple/ml-mobileclip",
+      "https://github.com/apple/ml-mobileclip"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-apple-ml-mobileclip:3a2124454f6d",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-09/papers/2411.14517/repo.md",
+    "title": "GitHub 분석: apple/ml-mobileclip"
+  }
+}

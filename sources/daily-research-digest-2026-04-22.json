@@ -1,0 +1,15 @@
+{
+  "title": "📬 Daily Research Digest — 2026-04-22",
+  "kind": "sources",
+  "body_text": "# 📬 Daily Research Digest — 2026-04-22\n\n## Outgoing relations\n\n- **mentioned_in** → All elementary functions from a single binary operator _(Paper)_\n- **mentioned_in** → An Outlook into the Future of Egocentric Vision _(Paper)_\n- **mentioned_in** → Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation _(Paper)_\n- **mentioned_in** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Paper: 5\n- Metric: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/digest.md",
+  "links": [],
+  "body": "# 📬 Daily Research Digest — 2026-04-22\n\n## Outgoing relations\n\n- **mentioned_in** → All elementary functions from a single binary operator _(Paper)_\n- **mentioned_in** → An Outlook into the Future of Egocentric Vision _(Paper)_\n- **mentioned_in** → Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation _(Paper)_\n- **mentioned_in** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Paper: 5\n- Metric: 1",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:daily-research-digest-2026-04-22:4c7e62360913",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/digest.md",
+    "title": "📬 Daily Research Digest — 2026-04-22"
+  }
+}

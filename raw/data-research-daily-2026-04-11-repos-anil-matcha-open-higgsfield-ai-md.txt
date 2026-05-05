@@ -1,0 +1,60 @@
+Anil-matcha_Open-Higgsfield-AI.md
+=================================
+
+# GitHub 분석: Anil-matcha/Open-Higgsfield-AI
+
+> - URL: https://github.com/Anil-matcha/Open-Higgsfield-AI
+> - 분석일: 2026-04-11
+
+## 개요
+
+- **설명**: Open-source alternative to Higgsfield AI — Free AI image generation & cinema studio with 20+ models (Flux, SDXL, Midjourney, Ideogram). Self-hosted, customizable, MIT licensed.
+- **Stars**: ⭐ 4138 | Forks: 745
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 체크포인트 미공개 (추론 불가 가능성)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (29개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+afterPack.js
+app/globals.css
+app/layout.js
+app/page.js
+components/ApiKeyModal.js
+components/StandaloneShell.js
+electron/main.js
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+index.html
+jsconfig.json
+models_dump.json
+next.config.mjs
+package.json
+package-lock.json
+postcss.config.js
+project_knowledge.md
+public/banner.png
+public/vite.svg
+README.md
+src/counter.js
+src/javascript.svg
+src/main.js
+src/style.css
+tailwind.config.js
+vite.config.js
+```

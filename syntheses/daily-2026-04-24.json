@@ -1,0 +1,33 @@
+{
+  "title": "Daily Digest — 2026-04-24",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-04-24\n\nSources ingested under `data/research/daily/2026-04-24/`.\n\n## Papers and repos\n- [Learning in Deep Factor Graphs with Gaussian Belief Propagation (arXiv:2311.14649)](../papers/learning-in-deep-factor-graphs-with-gaussian-belief-propagation.md) (Paper)\n- [Scaling Sequence-to-Sequence Generative Neural Rendering (arXiv:2510.04236)](../papers/scaling-sequence-to-sequence-generative-neural-rendering.md) (Paper)\n- [Daily Feed Summary — 2026-04-24](../sources/daily-feed-summary-2026-04-24.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-04-24](../sources/daily-research-digest-2026-04-24.md) (SourceDocument)\n\n## Extracted concepts\n- Pre-training (TrainingParadigm)",
+  "source_path": "",
+  "links": [
+    "../papers/learning-in-deep-factor-graphs-with-gaussian-belief-propagation.md",
+    "../papers/scaling-sequence-to-sequence-generative-neural-rendering.md",
+    "../sources/daily-feed-summary-2026-04-24.md",
+    "../sources/daily-research-digest-2026-04-24.md"
+  ],
+  "body": "# Daily Digest — 2026-04-24\n\nSources ingested under `data/research/daily/2026-04-24/`.\n\n## Papers and repos\n- [Learning in Deep Factor Graphs with Gaussian Belief Propagation (arXiv:2311.14649)](../papers/learning-in-deep-factor-graphs-with-gaussian-belief-propagation.md) (Paper)\n- [Scaling Sequence-to-Sequence Generative Neural Rendering (arXiv:2510.04236)](../papers/scaling-sequence-to-sequence-generative-neural-rendering.md) (Paper)\n- [Daily Feed Summary — 2026-04-24](../sources/daily-feed-summary-2026-04-24.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-04-24](../sources/daily-research-digest-2026-04-24.md) (SourceDocument)\n\n## Extracted concepts\n- Pre-training (TrainingParadigm)",
+  "frontmatter": {
+    "content_hash": "sha256-6988e09b7e36c1a4c906316ce04182402de09f69891fb2f3ebaa5e997cbd9190",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Paper:arxiv-2311-14649:e09bf5ce008b",
+      "Paper:arxiv-2510-04236:f58067d9af1a",
+      "SourceDocument:daily-feed-summary-2026-04-24:231477a2a46d",
+      "SourceDocument:daily-research-digest-2026-04-24:6fabb2a07663",
+      "TrainingParadigm:pre-training:98f245c2dade"
+    ],
+    "slug": "daily-2026-04-24",
+    "sources": [
+      "data/research/daily/2026-04-24/digest.md",
+      "data/research/daily/2026-04-24/papers/2311.14649/paper.md",
+      "data/research/daily/2026-04-24/papers/2510.04236/paper.md",
+      "data/research/daily/2026-04-24/raw.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-04-24"
+  }
+}

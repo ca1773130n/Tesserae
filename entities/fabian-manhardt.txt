@@ -1,0 +1,12 @@
+Fabian Manhardt
+===============
+
+# Fabian Manhardt
+
+## Incoming relations
+
+- **authored_by** → Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas _(Paper)_
+
+## Connected node types
+
+- Paper: 1

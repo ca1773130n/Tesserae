@@ -1,0 +1,8 @@
+{
+  "title": "deepseek-ai_TileKernels.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: deepseek-ai/TileKernels\n\n> - URL: https://github.com/deepseek-ai/TileKernels\n> - 분석일: 2026-04-30\n\n## 개요\n\n- **설명**: A kernel library written in tilelang\n- **Stars**: ⭐ 1347 | Forks: 112\n- **라이선스**: MIT\n- **주 언어**: Python\n\n## 실행 가능 상태: 모델 체크포인트 미공개 (추론 불가 가능성)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (108개) | Y |\n| 의존성 파일 | Y |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\n.editorconfig\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\nLICENSE\npyproject.toml\nREADME.md\ntests/conftest.py\ntests/__init__.py\ntests/pytest_benchmark_plugin.py\ntests/pytest_random_plugin.py\ntile_kernels/config.py\ntile_kernels/__init__.py\ntile_kernels/utils.py\n```",
+  "source_path": "data/research/daily/2026-04-30/repos/deepseek-ai_TileKernels.md",
+  "links": [],
+  "body": "# GitHub 분석: deepseek-ai/TileKernels\n\n> - URL: https://github.com/deepseek-ai/TileKernels\n> - 분석일: 2026-04-30\n\n## 개요\n\n- **설명**: A kernel library written in tilelang\n- **Stars**: ⭐ 1347 | Forks: 112\n- **라이선스**: MIT\n- **주 언어**: Python\n\n## 실행 가능 상태: 모델 체크포인트 미공개 (추론 불가 가능성)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (108개) | Y |\n| 의존성 파일 | Y |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\n.editorconfig\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\nLICENSE\npyproject.toml\nREADME.md\ntests/conftest.py\ntests/__init__.py\ntests/pytest_benchmark_plugin.py\ntests/pytest_random_plugin.py\ntile_kernels/config.py\ntile_kernels/__init__.py\ntile_kernels/utils.py\n```\n"
+}

@@ -1,0 +1,46 @@
+WorldCompass: Reinforcement Learning for Long-Horizon World Models
+==================================================================
+
+# WorldCompass: Reinforcement Learning for Long-Horizon World Models
+
+## Outgoing relations
+
+- **addresses** → World Model _(ResearchTopic)_
+- **authored_by** → Chenjie Cao _(Person)_
+- **authored_by** → Chunchao Guo _(Person)_
+- **authored_by** → Haiyu Zhang _(Person)_
+- **authored_by** → Haoyuan Wang _(Person)_
+- **authored_by** → Hengshuang Zhao _(Person)_
+- **authored_by** → Junta Wu _(Person)_
+- **authored_by** → Tengfei Wang _(Person)_
+- **authored_by** → Wenqiang Sun _(Person)_
+- **authored_by** → Xuhui Zuo _(Person)_
+- **authored_by** → Zehan Wang _(Person)_
+- **authored_by** → Zhenwei Wang _(Person)_
+- **authored_by** → Zhou Zhao _(Person)_
+- **implemented_in** → GitHub 분석: imlixinyang/FlashWorld _(Repository)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- **part_of** → Research Literature _(ResearchField)_
+- **uses** → CLIP _(Model)_
+- **uses** → Fine-tuning _(TrainingParadigm)_
+- **uses** → Reinforcement Learning _(TrainingParadigm)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-25 _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 주간 논문 분석 — 2026-W15 (2026-04-06 ~ 2026-04-12) _(SourceDocument)_
+- **mentioned_in** → 📊 주간 리서치 다이제스트 — 2026-W17 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-25 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 12
+- SourceDocument: 7
+- ResearchField: 2
+- TrainingParadigm: 2
+- Model: 1
+- Repository: 1
+- ResearchTopic: 1

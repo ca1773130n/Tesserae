@@ -1,0 +1,82 @@
+paper.md
+========
+
+# 논문 분석: 2308.07123
+
+> - arxiv: https://arxiv.org/abs/2308.07123
+> - papers.cool: https://papers.cool/arxiv/2308.07123
+> - 분석일: 2026-04-22
+
+제공된 원문은 중국어가 아니라 영어입니다. 아래는 한국어 번역입니다.
+
+# An Outlook into the Future of Egocentric Vision | Cool Papers - 몰입형 논문 탐색
+
+## 2308.07123
+
+Total: 1
+
+## #1  
+An Outlook into the Future of Egocentric Vision  
+[PDF]  
+[복사]  
+[Kimi]  
+[REL]
+
+Authors:  
+Chiara Plizzari,  
+Gabriele Goletto,  
+Antonino Furnari,  
+Siddhant Bansal,  
+Francesco Ragusa,  
+Giovanni Maria Farinella,  
+Dima Damen,  
+Tatiana Tommasi
+
+미래는 어떻게 될까? 우리는 궁금하다! 이 survey에서 우리는 egocentric vision의 현재 연구와 언제나 기대되어 온 미래 사이의 간극을 탐구한다. 그 미래에서는 바깥을 향한 카메라와 digital overlay를 갖춘 wearable computing이 우리의 일상생활에 통합될 것으로 예상된다. 이 간극을 이해하기 위해, 이 글은 인물 기반 이야기들을 통해 미래를 상상하는 것에서 시작하며, 예시를 통해 현재 기술의 한계를 보여준다. 이어서 우리는 이러한 미래와 기존에 정의된 연구 과제들 사이의 mapping을 제공한다. 각 과제에 대해 seminal works, 현재 state-of-the-art 방법론, 사용 가능한 datasets를 조사한 뒤, 미래 연구에 적용되는 것을 제한하는 부족한 점들을 고찰한다. 이 survey는 특정 hardware와 무관하게 egocentric vision을 위한 software model에 초점을 맞춘다는 점에 유의하라. 논문은 항상 켜져 있고, 개인화되어 있으며, 삶을 향상시키는 미래의 egocentric vision으로 나아가기 위해 즉시 탐구해야 할 영역들에 대한 권고로 마무리된다.
+
+Subject:
+
+Computer Vision and Pattern Recognition
+
+Publish: 2023-08-14 13:10:48 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+Include(OR):
+
+Exclude:
+
+Search
+
+Filter
+
+Highlight
+
+Stared Paper(s):
+
+#1  
+An Outlook into the Future of Egocentric Vision
+
+Export
+
+Magic Token:
+
+Kimi Language:
+
+중국어  
+English
+
+Desc Language:
+
+중국어  
+English
+
+Save
+
+Bug report? Issue submit? Please visit:
+
+Github: https://github.com/bojone/papers.cool
+
+진행하기 전에 Disclaimer를 읽어 주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문해 확인하세요.

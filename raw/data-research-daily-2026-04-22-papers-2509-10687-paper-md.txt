@@ -1,0 +1,78 @@
+paper.md
+========
+
+# 논문 분석: 2509.10687
+
+> - arxiv: https://arxiv.org/abs/2509.10687
+> - papers.cool: https://papers.cool/arxiv/2509.10687
+> - 분석일: 2026-04-22
+
+# Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation | Cool Papers - Immersive Paper Discovery
+
+## 2509.10687
+
+Total: 1
+
+## #1
+
+Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation  
+[PDF2]  
+[Copy]  
+[Kimi4]  
+[REL]
+
+Authors:  
+Hao Zhang,  
+Chun-Han Yao,  
+Simon Donné,  
+Narendra Ahuja,  
+Varun Jampani
+
+우리는 단안 입력으로부터 쌍을 이루는 RGB 및 kinematic part 비디오를 생성하는 프레임워크인 Stable Part Diffusion 4D (SP4D)를 제안한다. 외형 기반 의미 단서에 의존하는 기존 part segmentation 방법과 달리, SP4D는 객체의 articulation과 정렬되고 view 및 시간 전반에서 일관적인 구조적 구성 요소인 kinematic parts를 생성하도록 학습한다. SP4D는 RGB 프레임과 이에 대응하는 part segmentation map을 공동으로 합성하는 dual-branch diffusion model을 채택한다. 아키텍처를 단순화하고 서로 다른 part 개수를 유연하게 지원하기 위해, 우리는 part mask를 연속적인 RGB 유사 이미지로 매핑하는 spatial color encoding 방식을 도입한다. 이 encoding은 segmentation branch가 RGB branch의 latent VAE를 공유할 수 있게 하며, 동시에 간단한 후처리를 통해 part segmentation을 복원할 수 있게 한다. Bidirectional Diffusion Fusion (BiDiFuse) module은 cross-branch consistency를 향상시키며, part prediction의 공간적 및 시간적 정렬을 촉진하기 위한 contrastive part consistency loss가 이를 보조한다. 우리는 생성된 2D part map을 3D로 lift하여 약간의 수동 조정만으로 skeletal structure와 harmonic skinning weights를 도출할 수 있음을 보인다. SP4D를 학습하고 평가하기 위해, 우리는 Objaverse XL (Deitke et al., 2023)에서 선택 및 처리한 20K개 이상의 rigged object로 구성된 curated dataset인 KinematicParts20K를 구축했으며, 각 객체는 multi-view RGB 및 part video sequence와 쌍을 이룬다. 실험 결과 SP4D는 real-world video, 새롭게 생성된 object, 드문 articulated pose를 포함한 다양한 시나리오에 강하게 일반화하며, downstream animation 및 motion-related task에 적합한 kinematic-aware output을 생성함을 보여준다.
+
+Subject:
+
+Computer Vision and Pattern Recognition
+
+Publish: 2025-09-12 20:39:43 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+Include(OR):
+
+Exclude:
+
+Search
+
+Filter
+
+Highlight
+
+Stared Paper(s):
+
+#1  
+Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation
+
+Export
+
+Magic Token:
+
+Kimi Language:
+
+中文  
+English
+
+Desc Language:
+
+中文  
+English
+
+Save
+
+Bug report? Issue submit? Please visit:
+
+Github: https://github.com/bojone/papers.cool
+
+계속 진행하기 전에 Disclaimer를 읽어 주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문해 확인해 주세요.

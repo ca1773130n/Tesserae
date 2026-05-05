@@ -1,0 +1,15 @@
+{
+  "title": "📊 주간 리서치 다이제스트 — 2026-W17",
+  "kind": "sources",
+  "body_text": "# 📊 주간 리서치 다이제스트 — 2026-W17\n\n## Outgoing relations\n\n- **mentioned_in** → All elementary functions from a single binary operator _(Paper)_\n- **mentioned_in** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_\n- **mentioned_in** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Paper: 4\n- Metric: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/weekly/2026-W17/digest.md",
+  "links": [],
+  "body": "# 📊 주간 리서치 다이제스트 — 2026-W17\n\n## Outgoing relations\n\n- **mentioned_in** → All elementary functions from a single binary operator _(Paper)_\n- **mentioned_in** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_\n- **mentioned_in** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Paper: 4\n- Metric: 1",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:2026-w17:b2982fefd199",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/weekly/2026-W17/digest.md",
+    "title": "📊 주간 리서치 다이제스트 — 2026-W17"
+  }
+}

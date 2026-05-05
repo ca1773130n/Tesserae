@@ -1,0 +1,13 @@
+📬 Daily Research Digest — 2026-04-15
+====================================
+
+# 📬 Daily Research Digest — 2026-04-15
+
+## Outgoing relations
+
+- **mentioned_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_
+- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(Paper)_
+
+## Connected node types
+
+- Paper: 2

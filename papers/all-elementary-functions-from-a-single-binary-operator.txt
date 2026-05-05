@@ -1,0 +1,24 @@
+All elementary functions from a single binary operator
+======================================================
+
+# All elementary functions from a single binary operator
+
+## Outgoing relations
+
+- **authored_by** → Andrzej Odrzywołek _(Person)_
+- **implemented_in** → GitHub 분석: heygen-com/hyperframes _(Repository)_
+- **part_of** → Research Literature _(ResearchField)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📊 주간 리서치 다이제스트 — 2026-W17 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-22 _(SourceDocument)_
+
+## Connected node types
+
+- SourceDocument: 4
+- Person: 1
+- Repository: 1
+- ResearchField: 1

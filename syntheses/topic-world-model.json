@@ -1,0 +1,32 @@
+{
+  "title": "Topic — World Model",
+  "kind": "syntheses",
+  "body_text": "# Topic — World Model\n\nType: ResearchTopic.\n\n## Contributing papers\n- [Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective (arXiv:2604.14025)](../papers/feed-forward-3d-scene-modeling-a-problem-driven-perspective.md)\n- [Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas (arXiv:2603.28980)](../papers/stepper-stepwise-immersive-scene-generation-with-multiview-panoramas.md)\n- [WorldCompass: Reinforcement Learning for Long-Horizon World Models (arXiv:2602.09022)](../papers/worldcompass-reinforcement-learning-for-long-horizon-world-models.md)\n\n## Related concepts\n- Fine-tuning (TrainingParadigm)\n- Reinforcement Learning (TrainingParadigm)\n\n## Related repos\n- (none)",
+  "source_path": "",
+  "links": [
+    "../papers/feed-forward-3d-scene-modeling-a-problem-driven-perspective.md",
+    "../papers/stepper-stepwise-immersive-scene-generation-with-multiview-panoramas.md",
+    "../papers/worldcompass-reinforcement-learning-for-long-horizon-world-models.md"
+  ],
+  "body": "# Topic — World Model\n\nType: ResearchTopic.\n\n## Contributing papers\n- [Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective (arXiv:2604.14025)](../papers/feed-forward-3d-scene-modeling-a-problem-driven-perspective.md)\n- [Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas (arXiv:2603.28980)](../papers/stepper-stepwise-immersive-scene-generation-with-multiview-panoramas.md)\n- [WorldCompass: Reinforcement Learning for Long-Horizon World Models (arXiv:2602.09022)](../papers/worldcompass-reinforcement-learning-for-long-horizon-world-models.md)\n\n## Related concepts\n- Fine-tuning (TrainingParadigm)\n- Reinforcement Learning (TrainingParadigm)\n\n## Related repos\n- (none)",
+  "frontmatter": {
+    "content_hash": "sha256-3672236687c71ea78a7ce964d100965ac64f30dd2ef20bc56e1f006a0cb86801",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Paper:arxiv-2602-09022:76f8dde846e6",
+      "Paper:arxiv-2603-28980:2f6981d6a09d",
+      "Paper:arxiv-2604-14025:49ca47d6aba7",
+      "ResearchTopic:world-model:df0bb7d75cb8",
+      "TrainingParadigm:fine-tuning:f617b4eb06c6",
+      "TrainingParadigm:reinforcement-learning:f5b7c7b442da"
+    ],
+    "slug": "topic-world-model",
+    "sources": [
+      "data/research/daily/2026-04-22/papers/2602.09022/paper.md",
+      "data/research/daily/2026-05-03/papers/2604.14025/paper.md",
+      "data/research/daily/2026-05-05/papers/2603.28980/paper.md"
+    ],
+    "synthesis_kind": "topic",
+    "title": "Topic — World Model"
+  }
+}

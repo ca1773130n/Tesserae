@@ -1,0 +1,53 @@
+repo.md
+=======
+
+# GitHub 분석: Eyeline-Labs/Vista4D
+
+> - URL: https://github.com/Eyeline-Labs/Vista4D
+> - 분석일: 2026-04-25
+
+## 개요
+
+- **설명**: Official code, models, and data for Vista4D: Video Reshooting with 4D Point Clouds (CVPR 2026 Highlight)
+- **Stars**: ⭐ 61 | Forks: 1
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (203개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+cam_ui/startup.sh
+depth_anything_3/api.py
+depth_anything_3/cfg.py
+depth_anything_3/cli.py
+depth_anything_3/registry.py
+depth_anything_3/specs.py
+diffsynth/__init__.py
+eval_data/eval_data_here.txt
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE
+README.md
+requirements.txt
+sam3/__init__.py
+sam3/logger.py
+sam3/model_builder.py
+sam3/visualization_utils.py
+utils/media.py
+utils/misc.py
+```

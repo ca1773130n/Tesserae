@@ -1,0 +1,15 @@
+{
+  "title": "awesome-opencode",
+  "kind": "entities",
+  "body_text": "# awesome-opencode\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: awesome-opencode/awesome-opencode _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/repos/awesome-opencode_awesome-opencode.md",
+  "links": [],
+  "body": "# awesome-opencode\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: awesome-opencode/awesome-opencode _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:awesome-opencode:0b874ec360d9",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/repos/awesome-opencode_awesome-opencode.md",
+    "title": "awesome-opencode"
+  }
+}

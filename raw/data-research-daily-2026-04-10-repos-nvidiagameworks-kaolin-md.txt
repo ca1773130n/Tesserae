@@ -1,0 +1,69 @@
+NVIDIAGameWorks_kaolin.md
+=========================
+
+# GitHub 분석: NVIDIAGameWorks/kaolin
+
+> - URL: https://github.com/NVIDIAGameWorks/kaolin
+> - 분석일: 2026-04-10
+
+## 개요
+
+- **설명**: A PyTorch Library for Accelerating 3D Deep Learning Research
+- **Stars**: ⭐ 5069 | Forks: 619
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (59개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+Acknowledgements.txt
+assets/avocado.png
+assets/diffuse.png
+assets/flexicubes.png
+assets/gltf.png
+assets/kaolin.png
+assets/no_densifier_small.gif
+assets/nvidia-logo-horz.png
+assets/optimization.gif
+assets/physics_bulldozer.gif
+assets/spc_tutorial.gif
+assets/specular.gif
+assets/specular.png
+assets/visualizer.gif
+assets/with_densifier_small.gif
+assets/working_with_meshes.png
+CONTRIBUTING.md
+COPYRIGHT
+.coveragerc
+.dockerignore
+docs/conf.py
+docs/index.rst
+docs/kaolin_ext.py
+docs/make.bat
+docs/Makefile
+docs/README.md
+docs/readthedocs_requirements.txt
+.drone.yml
+.flake8
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.gitmodules
+.git/packed-refs
+.git/shallow
+kaolin/__init__.py
+LICENSE
+LICENSE.NSCL
+```

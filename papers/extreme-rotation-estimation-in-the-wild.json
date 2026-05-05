@@ -1,0 +1,18 @@
+{
+  "title": "Extreme Rotation Estimation in the Wild",
+  "kind": "papers",
+  "body_text": "# Extreme Rotation Estimation in the Wild\n\n## Outgoing relations\n\n- **authored_by** → Dotan Ankri _(Person)_\n- **authored_by** → Hadar Averbuch-Elor _(Person)_\n- **authored_by** → Hana Bezalel _(Person)_\n- **authored_by** → Ruojin Cai _(Person)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-05-05 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-05 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 4\n- SourceDocument: 2\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-05/papers/2411.07096/paper.md",
+  "links": [],
+  "body": "# Extreme Rotation Estimation in the Wild\n\n## Outgoing relations\n\n- **authored_by** → Dotan Ankri _(Person)_\n- **authored_by** → Hadar Averbuch-Elor _(Person)_\n- **authored_by** → Hana Bezalel _(Person)_\n- **authored_by** → Ruojin Cai _(Person)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-05-05 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-05 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 4\n- SourceDocument: 2\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2411.07096"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2411-07096:24b0b33c3698",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-05/papers/2411.07096/paper.md",
+    "title": "Extreme Rotation Estimation in the Wild"
+  }
+}

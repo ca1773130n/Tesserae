@@ -1,0 +1,15 @@
+{
+  "title": "Anish Prabhu",
+  "kind": "entities",
+  "body_text": "# Anish Prabhu\n\n## Incoming relations\n\n- **authored_by** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2604.24994/paper.md",
+  "links": [],
+  "body": "# Anish Prabhu\n\n## Incoming relations\n\n- **authored_by** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:anish-prabhu:7f524ba65098",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2604.24994/paper.md",
+    "title": "Anish Prabhu"
+  }
+}

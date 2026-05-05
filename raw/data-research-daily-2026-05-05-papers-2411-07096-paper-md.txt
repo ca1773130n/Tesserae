@@ -1,0 +1,113 @@
+paper.md
+========
+
+# 논문 분석: 2411.07096
+
+> - arxiv: https://arxiv.org/abs/2411.07096
+> - papers.cool: https://papers.cool/arxiv/2411.07096
+> - 분석일: 2026-05-05
+
+Extreme Rotation Estimation in the Wild | Cool Papers - 몰입형 논문 탐색
+
+## 2411.07096
+
+Total: 1
+
+## 
+#1  
+Extreme Rotation Estimation in the Wild  
+[PDF2]  
+[Copy]  
+[Kimi5]  
+[REL]
+
+Authors:  
+Hana Bezalel,  
+Dotan Ankri,  
+Ruojin Cai,  
+Hadar Averbuch-Elor
+
+우리는 극한 환경에서 촬영된 한 쌍의 Internet 이미지 사이의 상대적 3D 방향을 추정하기 위한 기법과 벤치마크 데이터셋을 제시한다. 여기서 이미지는 시야가 제한적이거나 서로 겹치지 않는다. 기존의 극한 회전 추정 연구는 제약된 3D 환경을 가정하고, panoramic view에서 영역을 잘라 perspective image를 모사한다. 그러나 실제 환경에서 촬영된 이미지는 외형과 camera intrinsics 모두에서 변화를 보이며 매우 다양하다. 본 연구에서는 극한의 실제 환경 설정에서 상대 회전을 추정하기 위한 Transformer 기반 방법을 제안하고, 장면 수준의 Internet 사진 컬렉션으로부터 구성한 ExtremeLandmarkPairs 데이터셋을 제공한다. 우리의 평가는 제안 방법이 매우 다양한 극한 시점의 Internet 이미지 쌍에서 상대 회전을 성공적으로 추정하며, 전용 회전 추정 기법과 현대적인 3D reconstruction 방법을 포함한 여러 기준선보다 우수함을 보여준다.
+
+Subject:  
+Computer Vision and Pattern Recognition
+
+Publish: 2024-11-11 16:18:28 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+Include OR:
+
+Exclude:
+
+Search
+
+Filter
+
+Highlight
+
+Stared Paper(s):
+
+#1  
+Extreme Rotation Estimation in the Wild
+
+Export
+
+Magic Token:
+
+Kimi Language:
+
+中文  
+English
+
+Desc Language:
+
+中文  
+English
+
+Save
+
+버그 신고 또는 이슈 제출은 다음을 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+계속 진행하기 전에 Disclaimer를 읽어 주세요.
+
+더 흥미로운 기능을 보려면 kexue.fm 및 kimi.ai를 방문하세요.
+
+```javascript
+var macros = {
+    'argmin': '\\mathop{\\text{argmin}}',
+    'argmax': '\\mathop{\\text{argmax}}'
+};
+MathJax.Hub.Config({
+    tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']], processEscapes: true},
+    TeX: {equationNumbers: {autoNumber: ['AMS'], useLabelIds: true}, extensions: ['AMSmath.js', 'AMSsymbols.js', 'extpfeil.js'], Macros: macros},
+    'HTML-CSS': {noReflows: false, availableFonts: ['tex'], styles: {'.MathJax_Display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}},
+    'CommonHTML': {noReflows: false, availableFonts: ['tex'], styles: {'.MJXc-display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}},
+    'SVG': {styles: {'.MathJax_SVG_Display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}}
+});
+MathJax.Hub.Queue(function() {
+    document.querySelectorAll('.MathJax').forEach(element => element.classList.add('notranslate'));
+    document.querySelectorAll('a.title-link, p.summary').forEach(element => element.classList.remove('notranslate'));
+    highlightQuery();
+});
+```
+
+```javascript
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement('script');
+  hm.src = 'https://hm.baidu.com/hm.js?606b976365dabacb1f69823d8de064ee';
+  var s = document.getElementsByTagName('script')[0];
+  s.parentNode.insertBefore(hm, s);
+})();
+```
+
+```javascript
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+
+gtag('config', 'G-214H31WLDF');
+```

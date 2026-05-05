@@ -1,0 +1,12 @@
+Pre-training
+============
+
+# Pre-training
+
+## Incoming relations
+
+- **uses** → Scaling Sequence-to-Sequence Generative Neural Rendering _(Paper)_
+
+## Connected node types
+
+- Paper: 1

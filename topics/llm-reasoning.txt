@@ -1,0 +1,12 @@
+LLM Reasoning
+=============
+
+# LLM Reasoning
+
+## Incoming relations
+
+- **part_of** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_
+
+## Connected node types
+
+- Paper: 1

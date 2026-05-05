@@ -1,0 +1,8 @@
+{
+  "title": "digest.md",
+  "kind": "raw",
+  "body_text": "# Daily Research Digest — 2026-04-25\n\n## Highlights\n\n### Vision Banana: image generators as generalist vision learners\n\nVision Banana shows that lightweight instruction tuning on a generative image\nbackbone yields strong zero-shot segmentation and metric depth estimation,\nchallenging task-specific heads.\n\n- 논문: [paper](papers/2604.20329/paper.md) | [arxiv](https://arxiv.org/abs/2604.20329)\n- 코드: [repo](papers/2604.20329/repo.md)\n\n### AnyRecon\n\n희소 시점에서도 동작하는 3D reconstruction baseline.",
+  "source_path": "tests/fixtures/wiki_corpus/data/research/daily/2026-04-25/digest.md",
+  "links": [],
+  "body": "# Daily Research Digest — 2026-04-25\n\n## Highlights\n\n### Vision Banana: image generators as generalist vision learners\n\nVision Banana shows that lightweight instruction tuning on a generative image\nbackbone yields strong zero-shot segmentation and metric depth estimation,\nchallenging task-specific heads.\n\n- 논문: [paper](papers/2604.20329/paper.md) | [arxiv](https://arxiv.org/abs/2604.20329)\n- 코드: [repo](papers/2604.20329/repo.md)\n\n### AnyRecon\n\n희소 시점에서도 동작하는 3D reconstruction baseline.\n"
+}

@@ -1,0 +1,12 @@
+Yong-Lu Li
+==========
+
+# Yong-Lu Li
+
+## Incoming relations
+
+- **authored_by** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_
+
+## Connected node types
+
+- Paper: 1

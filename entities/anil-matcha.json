@@ -1,0 +1,15 @@
+{
+  "title": "anil-matcha",
+  "kind": "entities",
+  "body_text": "# anil-matcha\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: Anil-matcha/Open-Higgsfield-AI _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/repos/Anil-matcha_Open-Higgsfield-AI.md",
+  "links": [],
+  "body": "# anil-matcha\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: Anil-matcha/Open-Higgsfield-AI _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:anil-matcha:293936d1b257",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/repos/Anil-matcha_Open-Higgsfield-AI.md",
+    "title": "anil-matcha"
+  }
+}

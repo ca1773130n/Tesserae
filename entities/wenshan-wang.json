@@ -1,0 +1,15 @@
+{
+  "title": "Wenshan Wang",
+  "kind": "entities",
+  "body_text": "# Wenshan Wang\n\n## Incoming relations\n\n- **authored_by** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2509.23563/paper.md",
+  "links": [],
+  "body": "# Wenshan Wang\n\n## Incoming relations\n\n- **authored_by** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:wenshan-wang:caabb96a3f67",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2509.23563/paper.md",
+    "title": "Wenshan Wang"
+  }
+}

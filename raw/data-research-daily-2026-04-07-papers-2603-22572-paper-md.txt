@@ -1,0 +1,30 @@
+paper.md
+========
+
+# 논문 분석: 2603.22572
+
+> - arxiv: https://arxiv.org/abs/2603.22572
+> - papers.cool: https://papers.cool/arxiv/2603.22572
+> - 분석일: 2026-04-07
+
+제공하신 파일을 확인한 결과, **중국어 내용이 포함되어 있지 않습니다**. 파일은 영어로 된 논문 메타데이터(제목, 저자, 초록)와 웹사이트 UI 요소들로 구성되어 있습니다.
+
+의미 있는 내용을 한국어로 번역해 드립니다:
+
+---
+
+## 2603.22572
+
+### #1 FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성
+
+**저자:** Yalda Foroutan, Ipek Oztas, Daniel Rebain, Aysegul Dundar, Kwang Moo Yi, Lily Goli, Andrea Tagliasacchi
+
+**초록:** Radiance field는 3D 장면 재구성을 위한 강력한 도구로 부상했다. 그러나 파노라마 카메라의 좁은 시야각으로 인해 시점 coverage와 신뢰할 수 있는 카메라 보정 및 재구성에 필요한 feature correspondence가 제한되어 casual capture는 여전히 어렵다. 상용 360° 카메라는 동일한 촬영 노력으로 파노라마 카메라보다 훨씬 넓은 coverage를 제공하지만, 기존 360° 재구성 방법은 radiance field의 핵심 약속인 '촬영과 3D 장면 재구성의 손쉬운 워크플로우'를 훼손하는 특별한 촬영 프로토콜과 전처리 단계를 요구한다. 우리는 raw 360° 카메라 촬영에서 직접 3D 장면을 재구성하는 실용적인 파이프라인을 제안한다. 특별한 촬영 프로토콜이나 전처리가 필요 없으며, 모든 360° 이미지에 보이는 human operator라는 재구성 오류의 주요 원인에 대해 강인함을 보인다. 평가를 위해 raw dual-fisheye 이미지로 촬영된 장면의 multi-tiered 데이터셋을 도입하여, robust casual 360° 재구성을 위한 벤치마크를 구축했다. 우리 방법은 동일한 촬영에서 파노라마 카메라를 시뮬레이션한 robust perspective baseline은 물론 360° 카메라용 vanilla 3DGS보다 훨씬 우수한 성능을 보이며, casual 재구성에서 360° 촬영의 장점을 입증한다. 추가 결과는 https://theialab.github.io/fullcircle 에서 확인할 수 있다.
+
+**주제:** Computer Vision and Pattern Recognition
+
+**게시일:** 2026-03-23 21:09:28 UTC
+
+---
+
+중국어 분석 문서가 있었다면 다른 파일을 확인해 주시거나, 올바른 파일 경로를 알려주세요.

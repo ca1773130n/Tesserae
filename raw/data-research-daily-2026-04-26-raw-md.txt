@@ -1,0 +1,17 @@
+raw.md
+======
+
+# Daily Feed Summary — 2026-04-26
+
+Total: 8 relevant feeds (from 29)
+
+| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |
+|------|------|-------|-----|--------|-------|-----------|-------------|
+| 2026-04-26 | 14:00 | Do you want the power to freeze time? ⏳ With 360 capture +...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-26 | 08:55 | Netflix's Eyeline Labs just dropped Vista4D at CVPR 2026. Re...... | https://arxiv.org/pdf/2601.17835 | https://github.com/Eyeline-Labs/Vista4D | 88 | [분석](papers/2601.17835/paper.md) | [분석](papers/2601.17835/repo.md) |
+| 2026-04-26 | 14:59 | RT Chonghyuk (ND) Song: Check out our #ICLR2026 paper Genera...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-26 | 03:18 | DualSplat: Robust 3D Gaussian Splatting via Pseudo-Mask Boot...... | https://arxiv.org/pdf/2604.18744 | N/A | N/A | [분석](papers/2604.18744/paper.md) | N/A |
+| 2026-04-26 | 20:10 | RT Florian Hahlbohm: Jingxiang (aka harry7557558) and collea...... | https://arxiv.org/pdf/2604.00538 | https://github.com/nvidia/asset-harvester | 156 | [분석](papers/2604.00538/paper.md) | [분석](papers/2604.00538/repo.md) |
+| 2026-04-26 | 23:13 | insta360の公式から3DGSが紹介された フォロワ�... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-26 | 02:39 | RT Jordan Lin: Really excited to release this! Vista4D lets ...... | N/A | https://github.com/OpsiClear-4DGS/TriGSVanilla | 5 | N/A | [분석](repos/OpsiClear-4DGS_TriGSVanilla.md) |
+| 2026-04-26 | 00:29 | Check out PhysHead by Gerard Pons-Moll! ?‍♂️✨ Presen...... | N/A | https://github.com/team-aprl/MR.ScaleMaster | 77 | N/A | [분석](repos/team-aprl_MR.ScaleMaster.md) |

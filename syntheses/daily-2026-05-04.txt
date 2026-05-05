@@ -1,0 +1,20 @@
+Daily Digest — 2026-05-04
+=========================
+
+# Daily Digest — 2026-05-04
+
+Sources ingested under `data/research/daily/2026-05-04/`.
+
+## Papers and repos
+- [Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search (arXiv:2501.19252)](../papers/inference-time-text-to-video-alignment-with-diffusion-latent-beam-search.md) (Paper)
+- [GitHub 분석: AmyangXYZ/reze-studio](../repos/github-분석-amyangxyz-reze-studio.md) (Repository)
+- [GitHub 분석: LeapLabTHU/RvR](../repos/github-분석-leaplabthu-rvr.md) (Repository)
+- [GitHub 분석: asimovinc/asimov-v1](../repos/github-분석-asimovinc-asimov-v1.md) (Repository)
+- [GitHub 분석: facebookresearch/tribev2](../repos/github-분석-facebookresearch-tribev2.md) (Repository)
+- [GitHub 분석: huskydoge/Awesome-Loop-Models](../repos/github-분석-huskydoge-awesome-loop-models.md) (Repository)
+- [Daily Feed Summary — 2026-05-04](../sources/daily-feed-summary-2026-05-04.md) (SourceDocument)
+- [📬 Daily Research Digest — 2026-05-04](../sources/daily-research-digest-2026-05-04.md) (SourceDocument)
+
+## Extracted concepts
+- Beam Search (InferenceStrategy)
+- Video Diffusion (MethodologicalConcept)

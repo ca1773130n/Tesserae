@@ -1,0 +1,14 @@
+Weekly Synthesis — 2026-W17
+===========================
+
+# Weekly Synthesis — 2026-W17
+
+Coverage of `data/research/weekly/2026-W17/`.
+
+## Papers and repos
+- [Weekly Research Digest — 2026-W17](../sources/weekly-research-digest-2026-w17.md) (SourceDocument)
+- [WorldCompass: Reinforcement Learning for Long-Horizon World Models](../sources/worldcompass-reinforcement-learning-for-long-horizon-world-models.md) (SourceDocument)
+- [📊 주간 리서치 다이제스트 — 2026-W17](../sources/주간-리서치-다이제스트-2026-w17.md) (SourceDocument)
+
+## Dominant approach families
+- (none)

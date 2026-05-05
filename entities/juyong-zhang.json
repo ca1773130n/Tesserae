@@ -1,0 +1,15 @@
+{
+  "title": "Juyong Zhang",
+  "kind": "entities",
+  "body_text": "# Juyong Zhang\n\n## Incoming relations\n\n- **authored_by** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-29/papers/2604.23537/paper.md",
+  "links": [],
+  "body": "# Juyong Zhang\n\n## Incoming relations\n\n- **authored_by** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:juyong-zhang:a9aa08d2a627",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-29/papers/2604.23537/paper.md",
+    "title": "Juyong Zhang"
+  }
+}

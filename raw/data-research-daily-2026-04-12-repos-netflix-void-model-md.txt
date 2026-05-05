@@ -1,0 +1,69 @@
+Netflix_void-model.md
+=====================
+
+# GitHub 분석: Netflix/void-model
+
+> - URL: https://github.com/Netflix/void-model
+> - 분석일: 2026-04-12
+
+## 개요
+
+- **설명**:   
+- **Stars**: ⭐ 1479 | Forks: 131
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (67개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+assets/hi.txt
+assets/teaser-with-name.mp4
+assets/void-logo-web.png
+config/default_cogvideox.py
+config/default_omnimatte.py
+config/quadmask_cogvideox.py
+config/zero_stage2_config.json
+data_generation/apply_physics_config.py
+data_generation/blender_utils.py
+data_generation/convert_all_scenarios_for_characters.py
+data_generation/convert_masks_to_grid_hybrid.py
+data_generation/convert_split_remy_sophie.sh
+data_generation/convert_trimask_to_quadmask.py
+data_generation/generate_physics_config.py
+data_generation/generate_review_frames_direct.py
+data_generation/generate_review_frames.py
+data_generation/kubric_variable_objects.py
+data_generation/object_texture_mapping.py
+data_generation/physics_config.json
+data_generation/physics_review_ui.py
+data_generation/README.md
+data_generation/render_paired_videos_blender_quadmask.py
+data_generation/requirements.txt
+datasets/void_train_data.json
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+inference/pass_2_refine.sh
+LICENSE
+notebook.ipynb
+README.md
+requirements.txt
+videox_fun/__init__.py
+VLM-MASK-REASONER/edit_quadmask.py
+VLM-MASK-REASONER/point_selector_gui.py
+VLM-MASK-REASONER/README.md
+VLM-MASK-REASONER/run_pipeline.sh
+```

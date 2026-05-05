@@ -1,0 +1,15 @@
+{
+  "title": "team-aprl",
+  "kind": "entities",
+  "body_text": "# team-aprl\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: team-aprl/MR.ScaleMaster _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/repos/team-aprl_MR.ScaleMaster.md",
+  "links": [],
+  "body": "# team-aprl\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: team-aprl/MR.ScaleMaster _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:team-aprl:e3746fb2bf32",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/repos/team-aprl_MR.ScaleMaster.md",
+    "title": "team-aprl"
+  }
+}

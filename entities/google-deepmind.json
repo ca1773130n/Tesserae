@@ -1,0 +1,15 @@
+{
+  "title": "google-deepmind",
+  "kind": "entities",
+  "body_text": "# google-deepmind\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: google-deepmind/representations4d _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/papers/2412.15212/repo.md",
+  "links": [],
+  "body": "# google-deepmind\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: google-deepmind/representations4d _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:google-deepmind:c97f527d8f6e",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/papers/2412.15212/repo.md",
+    "title": "google-deepmind"
+  }
+}

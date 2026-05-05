@@ -1,0 +1,19 @@
+GitHub 분석: facebookresearch/map-anything
+========================================
+
+# GitHub 분석: facebookresearch/map-anything
+
+## Outgoing relations
+
+- **released_by** → facebookresearch _(Organization)_
+- **uses_metric** → mAP _(Metric)_
+
+## Incoming relations
+
+- **implemented_in** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
+
+## Connected node types
+
+- Metric: 1
+- Organization: 1
+- Paper: 1

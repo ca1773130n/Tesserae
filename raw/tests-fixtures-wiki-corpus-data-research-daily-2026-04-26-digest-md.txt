@@ -1,0 +1,19 @@
+digest.md
+=========
+
+# Daily Research Digest — 2026-04-26
+
+## Highlights
+
+### Gaussian Splatting goes consumer
+
+3DGS pipelines are quietly absorbing into prosumer 360 capture tooling. The
+shift matters less for novel view synthesis quality and more for how cheaply
+digital twins can now be authored end to end.
+
+### JOSH: 4D human-scene reconstruction in the wild
+
+JOSH is an ICLR 2026 baseline that jointly reconstructs people and scenes from
+casual video.
+
+- 코드: [repo](repos/sample-repo.md) | [github](https://github.com/genforce/JOSH)

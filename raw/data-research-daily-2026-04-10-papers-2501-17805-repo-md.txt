@@ -1,0 +1,67 @@
+repo.md
+=======
+
+# GitHub 분석: dqj5182/HACO_RELEASE
+
+> - URL: https://github.com/dqj5182/HACO_RELEASE
+> - 분석일: 2026-04-10
+
+## 개요
+
+- **설명**: [NeurIPS 2025] This repo is official PyTorch implementation of the paper \
+- **Stars**: ⭐ 52 | Forks: 5
+- **라이선스**: NOASSERTION
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (36개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+asset/logo_cvlab.png
+asset/teaser.png
+data/dataset.py
+demo.py
+demo_video.py
+docs/data_demo.md
+docs/data_eval.md
+docs/data_train.md
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE
+README.md
+requirements.txt
+scripts/download_demo_base_data.sh
+scripts/download_demo_example_videos.sh
+scripts/download_gsdf_obman.sh
+scripts/download_haco_checkpoints.sh
+scripts/download_initial_checkpoints.sh
+scripts/download_official_decaf.sh
+scripts/download_official_dexycb.sh
+scripts/download_official_hi4d.sh
+scripts/download_official_hic.sh
+scripts/download_official_hoi4d.sh
+scripts/download_official_interhand26m.sh
+scripts/download_official_mow.sh
+scripts/download_official_prox.sh
+scripts/download_official_rich.sh
+scripts/download_official_ycb_models.sh
+scripts/download_train_base_data.sh
+scripts/download_train_preprocessed_data.sh
+scripts/extract_official_hi4d.sh
+test.py
+train.py
+```

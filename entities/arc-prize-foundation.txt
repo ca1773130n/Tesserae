@@ -1,0 +1,12 @@
+ARC Prize Foundation
+====================
+
+# ARC Prize Foundation
+
+## Incoming relations
+
+- **authored_by** → ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전 _(Paper)_
+
+## Connected node types
+
+- Paper: 1

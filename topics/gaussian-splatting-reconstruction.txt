@@ -1,0 +1,23 @@
+Gaussian Splatting Reconstruction
+=================================
+
+# Gaussian Splatting Reconstruction
+
+## Outgoing relations
+
+- **uses** → Gaussian Splatting _(MethodologicalConcept)_
+
+## Incoming relations
+
+- **belongs_to_approach_family** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_
+- **belongs_to_approach_family** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_
+- **belongs_to_approach_family** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_
+- **belongs_to_approach_family** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- **belongs_to_approach_family** → Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction _(Paper)_
+- **belongs_to_approach_family** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
+- **belongs_to_approach_family** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_
+
+## Connected node types
+
+- Paper: 7
+- MethodologicalConcept: 1

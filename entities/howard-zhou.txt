@@ -1,0 +1,12 @@
+Howard Zhou
+===========
+
+# Howard Zhou
+
+## Incoming relations
+
+- **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+
+## Connected node types
+
+- Paper: 1

@@ -1,0 +1,15 @@
+{
+  "title": "Daily Feed Summary — 2026-04-06",
+  "kind": "sources",
+  "body_text": "# Daily Feed Summary — 2026-04-06\n\n## Outgoing relations\n\n- **mentioned_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_\n- **mentioned_in** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_\n- **mentioned_in** → 자기지도학습 요리책 _(Paper)_\n\n## Connected node types\n\n- Paper: 3",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-06/raw.md",
+  "links": [],
+  "body": "# Daily Feed Summary — 2026-04-06\n\n## Outgoing relations\n\n- **mentioned_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_\n- **mentioned_in** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_\n- **mentioned_in** → 자기지도학습 요리책 _(Paper)_\n\n## Connected node types\n\n- Paper: 3",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:daily-feed-summary-2026-04-06:095f611ec0ee",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-06/raw.md",
+    "title": "Daily Feed Summary — 2026-04-06"
+  }
+}

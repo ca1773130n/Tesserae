@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: ReconWorldLab/godot-gaussian-splatting",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: ReconWorldLab/godot-gaussian-splatting\n\n## Incoming relations\n\n- **implemented_in** → Geometry-Grounded Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-15/papers/2601.17835/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: ReconWorldLab/godot-gaussian-splatting\n\n## Incoming relations\n\n- **implemented_in** → Geometry-Grounded Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/ReconWorldLab/godot-gaussian-splatting",
+      "reconworldlab/godot-gaussian-splatting"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-reconworldlab-godot-gaussian-splatting:c108fe50fb51",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-15/papers/2601.17835/repo.md",
+    "title": "GitHub 분석: ReconWorldLab/godot-gaussian-splatting"
+  }
+}

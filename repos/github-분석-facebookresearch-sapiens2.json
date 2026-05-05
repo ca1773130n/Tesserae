@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: facebookresearch/sapiens2",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: facebookresearch/sapiens2\n\n## Outgoing relations\n\n- **released_by** → facebookresearch _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_\n- **implemented_in** → Sapiens2 _(Paper)_\n\n## Connected node types\n\n- Paper: 2\n- Organization: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-27/papers/2604.21681/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: facebookresearch/sapiens2\n\n## Outgoing relations\n\n- **released_by** → facebookresearch _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_\n- **implemented_in** → Sapiens2 _(Paper)_\n\n## Connected node types\n\n- Paper: 2\n- Organization: 1",
+  "frontmatter": {
+    "aliases": [
+      "facebookresearch/sapiens2",
+      "https://github.com/facebookresearch/sapiens2"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-facebookresearch-sapiens2:2ba53e792cac",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-27/papers/2604.21681/repo.md",
+    "title": "GitHub 분석: facebookresearch/sapiens2"
+  }
+}

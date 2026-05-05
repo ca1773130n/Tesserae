@@ -1,0 +1,65 @@
+repo.md
+=======
+
+# GitHub 분석: tue-mps/eomt
+
+> - URL: https://github.com/tue-mps/eomt
+> - 분석일: 2026-04-10
+
+## 개요
+
+- **설명**: [CVPR 2025 Highlight] Official code and models for Encoder-only Mask Transformer (EoMT).
+- **Stars**: ⭐ 569 | Forks: 55
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (22개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+datasets/ade20k_panoptic.py
+datasets/ade20k_semantic.py
+datasets/cityscapes_semantic.py
+datasets/coco_instance.py
+datasets/coco_panoptic.py
+datasets/dataset.py
+datasets/__init__.py
+datasets/lightning_data_module.py
+datasets/transforms.py
+docs/index.html
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+inference.ipynb
+__init__.py
+LICENSE
+main.py
+models/eomt.py
+models/__init__.py
+models/scale_block.py
+models/vit.py
+model_zoo/dinov2.md
+model_zoo/dinov3.md
+README.md
+requirements.txt
+training/__init__.py
+training/lightning_module.py
+training/mask_classification_instance.py
+training/mask_classification_loss.py
+training/mask_classification_panoptic.py
+training/mask_classification_semantic.py
+training/two_stage_warmup_poly_schedule.py
+```

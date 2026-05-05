@@ -1,0 +1,15 @@
+{
+  "title": "ARC Prize Foundation",
+  "kind": "entities",
+  "body_text": "# ARC Prize Foundation\n\n## Incoming relations\n\n- **authored_by** → ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전 _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2603.24621/paper.md",
+  "links": [],
+  "body": "# ARC Prize Foundation\n\n## Incoming relations\n\n- **authored_by** → ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전 _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:arc-prize-foundation:bf520b27dcfb",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2603.24621/paper.md",
+    "title": "ARC Prize Foundation"
+  }
+}

@@ -1,0 +1,11 @@
+Comparison — Gaussian Splatting Reconstruction vs Geometry-Grounded Gaussian Splatting
+================================================================================
+
+# Comparison — Gaussian Splatting Reconstruction vs Geometry-Grounded Gaussian Splatting
+
+Both approach families connect to `Novel View Synthesis` (Task).
+
+| Family | Papers | Shared target |
+| --- | --- | --- |
+| Gaussian Splatting Reconstruction | 7 | Novel View Synthesis |
+| Geometry-Grounded Gaussian Splatting | 1 | Novel View Synthesis |

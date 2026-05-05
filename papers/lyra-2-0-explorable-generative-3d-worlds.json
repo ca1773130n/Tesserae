@@ -1,0 +1,18 @@
+{
+  "title": "Lyra 2.0: Explorable Generative 3D Worlds",
+  "kind": "papers",
+  "body_text": "# Lyra 2.0: Explorable Generative 3D Worlds\n\n## Outgoing relations\n\n- **implemented_in** → GitHub 분석: NVIDIA/OpenShell _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-16 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-23 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-23 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 5\n- Repository: 1\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2604.13036/paper.md",
+  "links": [],
+  "body": "# Lyra 2.0: Explorable Generative 3D Worlds\n\n## Outgoing relations\n\n- **implemented_in** → GitHub 분석: NVIDIA/OpenShell _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-16 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-23 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-23 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 5\n- Repository: 1\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2604.13036"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2604-13036:4faf162fa4af",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2604.13036/paper.md",
+    "title": "Lyra 2.0: Explorable Generative 3D Worlds"
+  }
+}

@@ -1,0 +1,26 @@
+ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전
+===================================================
+
+# ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전
+
+## Outgoing relations
+
+- **authored_by** → ARC Prize Foundation _(Person)_
+- **implemented_in** → GitHub 분석: GalaxyGeneralRobotics/LATENT _(Repository)_
+- **implemented_in** → GitHub 분석: mfranzon/render _(Repository)_
+- **part_of** → Research Literature _(ResearchField)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-11 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-23 _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-23 _(SourceDocument)_
+
+## Connected node types
+
+- SourceDocument: 5
+- Repository: 2
+- Person: 1
+- ResearchField: 1

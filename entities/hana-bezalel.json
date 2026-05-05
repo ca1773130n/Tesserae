@@ -1,0 +1,15 @@
+{
+  "title": "Hana Bezalel",
+  "kind": "entities",
+  "body_text": "# Hana Bezalel\n\n## Incoming relations\n\n- **authored_by** → Extreme Rotation Estimation in the Wild _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-05/papers/2411.07096/paper.md",
+  "links": [],
+  "body": "# Hana Bezalel\n\n## Incoming relations\n\n- **authored_by** → Extreme Rotation Estimation in the Wild _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:hana-bezalel:93ccca2ab90a",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-05/papers/2411.07096/paper.md",
+    "title": "Hana Bezalel"
+  }
+}

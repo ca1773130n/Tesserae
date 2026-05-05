@@ -1,0 +1,83 @@
+digest.md
+=========
+
+# 📬 Daily Research Digest — 2026-04-24
+
+## 🔥 오늘의 하이라이트
+
+### 1. 단일 Transformer로 재구성 파이프라인을 압축한 Map Anything
+
+![preview](https://pbs.twimg.com/media/HFuur74aYAAivaW?format=jpg&name=orig)
+
+`facebookresearch/map-anything`은 깊이 추정, 카메라 보정, 포즈 복원, multi-view stereo를 하나의 모델로 묶어 metric 3D geometry를 바로 출력하는 흐름을 제시한다. 기존에 여러 모듈을 이어 붙이던 재구성 스택을 단일 forward pass로 단순화했다는 점에서, 3D 비전 시스템의 구현 비용과 통합 복잡도를 크게 낮출 가능성이 있다.
+
+- 📄 논문: [논문 분석](papers/2509.23563/paper.md) | [arxiv](https://arxiv.org/abs/2509.23563)
+- 💻 코드: [GitHub 분석](papers/2509.23563/repo.md) | [repo](https://github.com/facebookresearch/map-anything) | ⭐ 3233
+- 🔗 [원문](https://x.com/Nik__V__/status/2047014762177831179)
+
+---
+
+### 2. Vision Banana, 시각 이해를 위한 새로운 대규모 모델 축
+
+4월 24일 피드에서 가장 강하게 반복 언급된 주제 중 하나는 Google DeepMind의 Vision Banana다. 아직 공개 요약은 제한적이지만, 강한 시각 표현 학습과 범용 다운스트림 전이를 겨냥한 모델로 읽히며, foundation vision model 경쟁 구도에서 새로운 기준점을 만들 가능성이 있다.
+
+- 📄 논문: [논문 분석](papers/2604.20329/paper.md) | [arxiv](https://arxiv.org/abs/2604.20329)
+- 🔗 [원문](https://x.com/RaduSoricut/status/2046758752879950189)
+
+---
+
+### 3. HY-WorldPlay, 생성형 3D 월드 빌딩의 오픈소스 가속기
+
+생성형 3D 월드 제작 도구인 `Tencent-Hunyuan/HY-WorldPlay`는 하루 피드 기준으로 빠르게 주목을 끌며 1473 스타를 기록했다. Spatial Intelligence 관점에서는 월드 생성, 상호작용 가능한 환경 구성, 시뮬레이션용 장면 제작을 빠르게 연결하는 실용 레이어로 볼 수 있다.
+
+- 💻 코드: [GitHub 분석](repos/Tencent-Hunyuan_HY-WorldPlay.md) | [repo](https://github.com/Tencent-Hunyuan/HY-WorldPlay) | ⭐ 1473
+- 🔗 [원문](https://x.com/HunyuanWorld/status/2046759411712813248)
+
+---
+
+## 📋 주목할 만한 피드
+
+### ▫️ 4D Digital Twins 워크숍과 실세계 Physical AI 접점 확대
+
+![preview](https://pbs.twimg.com/media/HCGbOZrXsAAAhox?format=jpg&name=orig)
+
+CVPR 2026의 4DDT 워크숍 소식은 4D digital twins가 단순 시각화가 아니라 real-to-sim-to-real 루프의 핵심 인프라로 자리 잡고 있음을 보여준다. 실제 환경, 시뮬레이션, embodied AI를 잇는 연구 축이 더 선명해졌다.
+
+- 📄 논문: [논문 분석](papers/2506.12251/paper.md) | [arxiv](https://arxiv.org/abs/2506.12251)
+- 🔗 [원문](https://x.com/amritamaz/status/2046666747055370307)
+
+### ▫️ PoInit-of-View, 3D 재구성 초기화 단계에 대한 공격 표면 제시
+
+![preview](https://pbs.twimg.com/media/HGhRgTyXcAEL3IA?format=jpg&name=orig)
+
+이 작업은 view initialization을 교란해 여러 3D reconstruction 시스템으로 공격이 전이될 수 있음을 보여준다. 재구성 정확도 경쟁 못지않게, SfM과 MVS 파이프라인의 보안성과 견고성이 중요한 연구 주제로 올라오고 있다는 점이 핵심이다.
+
+- 📄 논문: [논문 분석](papers/2503.11806/paper.md) | [arxiv](https://arxiv.org/abs/2503.11806)
+- 🔗 [원문](https://x.com/ducha_aiki/status/2046976282647216150)
+
+### ▫️ factor graph를 world model로 다시 읽는 시각
+
+Andrew Davison의 코멘트는 factor graph를 energy-based world model로 해석하며, SLAM과 학습 기반 world modeling 사이의 개념적 거리를 좁힌다. Spatial Intelligence에서 구조화된 추론과 학습 가능한 그래프 계산을 다시 결합하는 흐름으로 볼 만하다.
+
+- 📄 논문: [논문 분석](papers/2311.14649/paper.md) | [arxiv](https://arxiv.org/abs/2311.14649)
+- 💻 코드: [GitHub 분석](papers/2311.14649/repo.md) | [repo](https://github.com/mfranzon/render) | ⭐ 90
+- 🔗 [원문](https://x.com/AjdDavison/status/2047078241735671875)
+
+### ▫️ AnyRecon, arbitrary-view 3D reconstruction 문제를 정면으로 다룸
+
+AnyRecon은 sparse하거나 제약된 시점이 아닌 arbitrary-view 입력 조건에서 3D reconstruction을 다루는 흐름으로 읽힌다. 실제 배치 환경에서 촬영 조건을 통제하기 어렵다는 점을 감안하면, 범용성 높은 재구성 모델에 대한 수요와 정확히 맞닿아 있다.
+
+- 🔗 [원문](https://x.com/search?q=AnyRecon)
+
+### ▫️ 생성형 neural rendering 커뮤니티의 밀도 상승
+
+ICLR 현장에서 generative neural rendering 관련 세션과 논문 공유가 이어졌다는 점은, 생성형 비디오와 3D 표현 학습이 더 강하게 결합되고 있음을 시사한다. 장면 표현, novel view synthesis, world generation 사이의 경계가 빠르게 흐려지고 있다.
+
+- 📄 논문: [논문 분석](papers/2510.04236/paper.md) | [arxiv](https://arxiv.org/abs/2510.04236)
+- 🔗 [원문](https://x.com/search?q=2510.04236)
+
+## 📊 오늘의 숫자
+
+- 전체 피드: 36개 → 관련 피드: 10개
+- 논문: 6편 | GitHub: 3개 레포
+- 가장 많은 스타: facebookresearch/map-anything (⭐ 3233)

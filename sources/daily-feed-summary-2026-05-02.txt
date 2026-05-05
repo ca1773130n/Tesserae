@@ -1,0 +1,13 @@
+Daily Feed Summary — 2026-05-02
+===============================
+
+# Daily Feed Summary — 2026-05-02
+
+## Outgoing relations
+
+- **mentioned_in** → Long-tail Internet photo reconstruction _(Paper)_
+- **mentioned_in** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
+
+## Connected node types
+
+- Paper: 2

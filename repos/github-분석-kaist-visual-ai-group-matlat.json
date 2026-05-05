@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: KAIST-Visual-AI-Group/MatLat",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: KAIST-Visual-AI-Group/MatLat\n\n## Outgoing relations\n\n- **released_by** → kaist-visual-ai-group _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-13/papers/2503.22194/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: KAIST-Visual-AI-Group/MatLat\n\n## Outgoing relations\n\n- **released_by** → kaist-visual-ai-group _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/KAIST-Visual-AI-Group/MatLat",
+      "kaist-visual-ai-group/matlat"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-kaist-visual-ai-group-matlat:5c2d7a234ba4",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-13/papers/2503.22194/repo.md",
+    "title": "GitHub 분석: KAIST-Visual-AI-Group/MatLat"
+  }
+}

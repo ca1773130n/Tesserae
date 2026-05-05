@@ -1,0 +1,59 @@
+repo.md
+=======
+
+# GitHub 분석: ArthurBrussee/brush
+
+> - URL: https://github.com/ArthurBrussee/brush
+> - 분석일: 2026-04-09
+
+## 개요
+
+- **설명**: 3D Reconstruction for all
+- **Stars**: ⭐ 3906 | Forks: 203
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 체크포인트 미공개 (추론 불가 가능성)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (1개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+brush_blueprint.rbl
+brush_nextjs/.gitignore
+brush_nextjs/next.config.js
+brush_nextjs/package.json
+brush_nextjs/README.md
+brush_nextjs/tsconfig.json
+.cargo/config.toml
+Cargo.lock
+Cargo.toml
+CHANGELOG.md
+deny.toml
+dist-workspace.toml
+.dockerignore
+extras/Dockerfile
+.git/config
+.git/description
+.git/HEAD
+.github/dependabot.yml
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE
+package.json
+package-lock.json
+README.md
+_typos.toml
+.vscode/launch.json
+.zed/debug.json
+.zed/tasks.json
+```

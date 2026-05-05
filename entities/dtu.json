@@ -1,0 +1,15 @@
+{
+  "title": "DTU",
+  "kind": "entities",
+  "body_text": "# DTU\n\n## Incoming relations\n\n- **evaluated_on** → Codex extraction review (2026-05-01) _(SourceDocument)_\n- **evaluated_on** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_\n- **evaluated_on** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 2\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/superpowers/codex-extraction-review.md",
+  "links": [],
+  "body": "# DTU\n\n## Incoming relations\n\n- **evaluated_on** → Codex extraction review (2026-05-01) _(SourceDocument)_\n- **evaluated_on** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_\n- **evaluated_on** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 2\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Benchmark:dtu:6d7430ac31a1",
+    "node_type": "Benchmark",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/superpowers/codex-extraction-review.md",
+    "title": "DTU"
+  }
+}

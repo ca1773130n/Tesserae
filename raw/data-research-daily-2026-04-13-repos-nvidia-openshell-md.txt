@@ -1,0 +1,69 @@
+NVIDIA_OpenShell.md
+===================
+
+# GitHub 분석: NVIDIA/OpenShell
+
+> - URL: https://github.com/NVIDIA/OpenShell
+> - 분석일: 2026-04-13
+
+## 개요
+
+- **설명**: OpenShell is the safe, private runtime for autonomous AI agents.
+- **Stars**: ⭐ 4810 | Forks: 511
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (25개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+about.toml
+AGENTS.md
+architecture/build-containers.md
+architecture/custom-vm-runtime.md
+architecture/docs-site.md
+architecture/gateway-deploy-connect.md
+architecture/gateway.md
+architecture/gateway-security.md
+architecture/gateway-settings.md
+architecture/gateway-single-node.md
+architecture/inference-routing.md
+architecture/policy-advisor.md
+architecture/README.md
+architecture/sandbox-connect.md
+architecture/sandbox-custom-containers.md
+architecture/sandbox.md
+architecture/sandbox-providers.md
+architecture/security-policy.md
+architecture/system-architecture.md
+architecture/tui.md
+Cargo.lock
+Cargo.toml
+CLAUDE.md
+.claude/README.md
+CONTRIBUTING.md
+DCO
+.dockerignore
+docs/CONTRIBUTING.mdx
+docs/index.mdx
+docs/index.yml
+.env.example
+examples/gateway-deploy-connect.md
+examples/openclaw.md
+examples/sync-files.md
+examples/vscode-remote-sandbox.md
+fern/docs.yml
+fern/fern.config.json
+fern/main.css
+.gitattributes
+.git/config
+```

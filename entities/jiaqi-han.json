@@ -1,0 +1,15 @@
+{
+  "title": "Jiaqi Han",
+  "kind": "entities",
+  "body_text": "# Jiaqi Han\n\n## Incoming relations\n\n- **authored_by** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/papers/2408.01437/paper.md",
+  "links": [],
+  "body": "# Jiaqi Han\n\n## Incoming relations\n\n- **authored_by** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:jiaqi-han:da3018034156",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/papers/2408.01437/paper.md",
+    "title": "Jiaqi Han"
+  }
+}

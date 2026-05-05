@@ -1,0 +1,28 @@
+{
+  "title": "2026-04-10",
+  "kind": "timeline_day",
+  "body_text": "Activity for 2026-04-10: 24 item(s) indexed.",
+  "source_path": "",
+  "links": [],
+  "body": "Activity for 2026-04-10",
+  "frontmatter": {
+    "date": "2026-04-10",
+    "activity": 24,
+    "sources": [
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/papers/2501.17805/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/papers/2506.04598/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/papers/2509.13588/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/papers/2510.11718/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/papers/2512.20157/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/papers/2603.25398/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/raw.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/repos/GalaxyGeneralRobotics_LATENT.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/repos/LilanOvO_Auto-Resubmit.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/repos/NVIDIAGameWorks_kaolin.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/repos/TakashiYoshinaga_Perspective-Effect-with-Head-Tracking-of-MediaPipe.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/repos/facebookresearch_threadweaver.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/repos/h-shiono_MRTKLIB.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/repos/isaaccorley_terrabit.md"
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+architecture.md
+===============
+
+# Architecture (fixture)
+
+The wiki corpus is shaped after the real `data/research/` layout used by
+LLM-Wiki: a `daily/<date>/` folder per day with a `digest.md`, optional
+`papers/<arxiv-id>/paper.md` plus `repo.md`, and `feeds/` or `repos/`
+sidecars; a `weekly/<iso-week>/` folder for synthesis.
+
+The wiki layer reads these as raw `SourceDocument`, `Paper`, or `Repository`
+nodes and lets the synthesis projector emit higher-order pages on top.

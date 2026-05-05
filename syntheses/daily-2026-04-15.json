@@ -1,0 +1,51 @@
+{
+  "title": "Daily Digest — 2026-04-15",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-04-15\n\nSources ingested under `data/research/daily/2026-04-15/`.\n\n## Papers and repos\n- [Geometry-Grounded Gaussian Splatting (arXiv:2601.17835)](../papers/geometry-grounded-gaussian-splatting.md) (Paper)\n- [GitHub 분석: ReconWorldLab/godot-gaussian-splatting](../repos/github-분석-reconworldlab-godot-gaussian-splatting.md) (Repository)\n- [GitHub 분석: YuqingWang1029/CubiD](../repos/github-분석-yuqingwang1029-cubid.md) (Repository)\n- [GitHub 분석: baidu/ernie-image](../repos/github-분석-baidu-ernie-image.md) (Repository)\n- [GitHub 분석: fanegg/Feat2GS](../repos/github-분석-fanegg-feat2gs.md) (Repository)\n- [GitHub 분석: mrdoob/three.js](../repos/github-분석-mrdoob-three-js.md) (Repository)\n- [Daily Feed Summary — 2026-04-15](../sources/daily-feed-summary-2026-04-15.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-04-15](../sources/daily-research-digest-2026-04-15.md) (SourceDocument)\n\n## Extracted concepts\n- Multi-View Consistency (EvaluationProtocol)\n- Stochastic Solid (MathematicalConcept)\n- Gaussian Splatting (MethodologicalConcept)\n- Volumetric Rendering (MethodologicalConcept)\n- Novel View Synthesis (Task)\n- Shape Reconstruction (Task)\n- Depth Map (TechnicalTerm)",
+  "source_path": "",
+  "links": [
+    "../papers/geometry-grounded-gaussian-splatting.md",
+    "../repos/github-분석-reconworldlab-godot-gaussian-splatting.md",
+    "../repos/github-분석-yuqingwang1029-cubid.md",
+    "../repos/github-분석-baidu-ernie-image.md",
+    "../repos/github-분석-fanegg-feat2gs.md",
+    "../repos/github-분석-mrdoob-three-js.md",
+    "../sources/daily-feed-summary-2026-04-15.md",
+    "../sources/daily-research-digest-2026-04-15.md"
+  ],
+  "body": "# Daily Digest — 2026-04-15\n\nSources ingested under `data/research/daily/2026-04-15/`.\n\n## Papers and repos\n- [Geometry-Grounded Gaussian Splatting (arXiv:2601.17835)](../papers/geometry-grounded-gaussian-splatting.md) (Paper)\n- [GitHub 분석: ReconWorldLab/godot-gaussian-splatting](../repos/github-분석-reconworldlab-godot-gaussian-splatting.md) (Repository)\n- [GitHub 분석: YuqingWang1029/CubiD](../repos/github-분석-yuqingwang1029-cubid.md) (Repository)\n- [GitHub 분석: baidu/ernie-image](../repos/github-분석-baidu-ernie-image.md) (Repository)\n- [GitHub 분석: fanegg/Feat2GS](../repos/github-분석-fanegg-feat2gs.md) (Repository)\n- [GitHub 분석: mrdoob/three.js](../repos/github-분석-mrdoob-three-js.md) (Repository)\n- [Daily Feed Summary — 2026-04-15](../sources/daily-feed-summary-2026-04-15.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-04-15](../sources/daily-research-digest-2026-04-15.md) (SourceDocument)\n\n## Extracted concepts\n- Multi-View Consistency (EvaluationProtocol)\n- Stochastic Solid (MathematicalConcept)\n- Gaussian Splatting (MethodologicalConcept)\n- Volumetric Rendering (MethodologicalConcept)\n- Novel View Synthesis (Task)\n- Shape Reconstruction (Task)\n- Depth Map (TechnicalTerm)",
+  "frontmatter": {
+    "content_hash": "sha256-373f4541a850486a81f88bef9b6d44b1cc464c33cd0bc5b074e6856b6f892d80",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "EvaluationProtocol:multi-view-consistency:77bea1e95667",
+      "MathematicalConcept:stochastic-solid:935f4dd3e32e",
+      "MethodologicalConcept:gaussian-splatting:4f4b246c6522",
+      "MethodologicalConcept:volumetric-rendering:7527b301d064",
+      "Paper:arxiv-2601-17835:46d524dd9e5e",
+      "Repository:github-baidu-ernie-image:c7018389a709",
+      "Repository:github-fanegg-feat2gs:41e87411f32a",
+      "Repository:github-mrdoob-three-js:b280327be2fc",
+      "Repository:github-reconworldlab-godot-gaussian-splatting:c108fe50fb51",
+      "Repository:github-yuqingwang1029-cubid:bc35f95582e3",
+      "SourceDocument:daily-feed-summary-2026-04-15:54e80f8fa59a",
+      "SourceDocument:daily-research-digest-2026-04-15:fd456dbd0892",
+      "Task:novel-view-synthesis:19d55dfb9b83",
+      "Task:shape-reconstruction:b86872dcc192",
+      "TechnicalTerm:depth-map:349c240dc3dc"
+    ],
+    "slug": "daily-2026-04-15",
+    "sources": [
+      "data/research/daily/2026-04-15/digest.md",
+      "data/research/daily/2026-04-15/papers/2512.11988/repo.md",
+      "data/research/daily/2026-04-15/papers/2601.17835/paper.md",
+      "data/research/daily/2026-04-15/papers/2601.17835/repo.md",
+      "data/research/daily/2026-04-15/papers/2602.06959/repo.md",
+      "data/research/daily/2026-04-15/raw.md",
+      "data/research/daily/2026-04-15/repos/baidu_ernie-image.md",
+      "data/research/daily/2026-04-15/repos/mrdoob_three.js.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-04-15"
+  }
+}

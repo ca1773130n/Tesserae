@@ -1,0 +1,14 @@
+Daily Feed Summary — 2026-05-05
+===============================
+
+# Daily Feed Summary — 2026-05-05
+
+## Outgoing relations
+
+- **mentioned_in** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_
+- **mentioned_in** → Extreme Rotation Estimation in the Wild _(Paper)_
+- **mentioned_in** → Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas _(Paper)_
+
+## Connected node types
+
+- Paper: 3

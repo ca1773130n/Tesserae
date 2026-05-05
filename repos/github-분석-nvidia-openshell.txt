@@ -1,0 +1,17 @@
+GitHub 분석: NVIDIA/OpenShell
+===========================
+
+# GitHub 분석: NVIDIA/OpenShell
+
+## Outgoing relations
+
+- **released_by** → nvidia _(Organization)_
+
+## Incoming relations
+
+- **implemented_in** → Lyra 2.0: Explorable Generative 3D Worlds _(Paper)_
+
+## Connected node types
+
+- Organization: 1
+- Paper: 1

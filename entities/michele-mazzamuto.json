@@ -1,0 +1,15 @@
+{
+  "title": "Michele Mazzamuto",
+  "kind": "entities",
+  "body_text": "# Michele Mazzamuto\n\n## Incoming relations\n\n- **authored_by** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-05/papers/2512.13238/paper.md",
+  "links": [],
+  "body": "# Michele Mazzamuto\n\n## Incoming relations\n\n- **authored_by** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:michele-mazzamuto:d22365d3a34d",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-05/papers/2512.13238/paper.md",
+    "title": "Michele Mazzamuto"
+  }
+}

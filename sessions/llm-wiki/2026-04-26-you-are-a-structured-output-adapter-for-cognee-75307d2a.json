@@ -1,0 +1,59 @@
+{
+  "title": "You are a structured-output adapter for Cognee.",
+  "kind": "session",
+  "body_text": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_qwen_embedding_full_bundle/nodes.jsonl {\"summary\":\"A JSONL knowledge graph bundle that captures AI research and discourse, mainly around world models, 3D/4D vision, Gaussian splatting, visual SLAM, LLM reasoning, and agent tooling.\",\"description\":\"The file contains 1,331 graph nodes extracted from daily research feeds and social posts. It is dominated by Paper, EvidenceSpan, Claim, and",
+  "source_path": "/Users/neo/.codex_old/sessions/2026/04/27/rollout-2026-04-27T01-34-10-019dcaa4-2c53-7051-adb7-7f7fdaaf9a94.jsonl",
+  "links": [],
+  "body": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_qwen_embedding_full_bundle/nodes.jsonl {\"summary\":\"A JSONL knowledge graph bundle that captures AI research and discourse, mainly around world models, 3D/4D vision, Gaussian splatting, visual SLAM, LLM reasoning, and agent tooling.\",\"description\":\"The file contains 1,331 graph nodes extracted from daily research feeds and social posts. It is dominated by Paper, EvidenceSpan, Claim, and ",
+  "frontmatter": {
+    "id": "codex:019dcaa4-2c53-7051-adb7-7f7fdaaf9a94",
+    "slug": "you-are-a-structured-output-adapter-for-cognee",
+    "harness": "codex",
+    "agent_label": "Codex",
+    "project_name": "LLM-Wiki",
+    "project_root": "/Users/neo/Developer/Projects/LLM-Wiki",
+    "started_at": "2026-04-26T16:34:15.036Z",
+    "ended_at": "2026-04-26T16:34:38.399Z",
+    "branch": "",
+    "commit_before": "",
+    "commit_after": "",
+    "model": "openai",
+    "title": "You are a structured-output adapter for Cognee.",
+    "summary": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_qwen_embedding_full_bundle/nodes.jsonl {\"summary\":\"A JSONL knowledge graph bundle that captures AI research and discourse, mainly around world models, 3D/4D vision, Gaussian splatting, visual SLAM, LLM reasoning, and agent tooling.\",\"description\":\"The file contains 1,331 graph nodes extracted from daily research feeds and social posts. It is dominated by Paper, EvidenceSpan, Claim, and ",
+    "message_count": 3,
+    "tool_call_count": 1,
+    "token_input": 0,
+    "token_output": 0,
+    "token_total": 0,
+    "cache_hit_ratio": null,
+    "tools_used": [
+      "exec_command"
+    ],
+    "files_touched": [
+      "data/research/daily/2026-04-06/feeds/20260311055335.md",
+      "data/research/daily/2026-04-06/feeds/20260402135009.md",
+      "data/research/daily/2026-04-06/feeds/20260404050000.md",
+      "data/research/daily/2026-04-06/feeds/20260404084045.md",
+      "data/research/daily/2026-04-07/feeds/20260404214436.md",
+      "data/research/daily/2026-04-07/feeds/20260405034806.md",
+      "data/research/daily/2026-04-07/feeds/20260405060037.md",
+      "docs/SKILL.md"
+    ],
+    "commands_run": [
+      "wc -l output/cognee_qwen_embedding_full_bundle/nodes.jsonl && sed -n '1,120p' output/cognee_qwen_embedding_full_bundle/nodes.jsonl",
+      "jq -r '.metadata.research_node_type' output/cognee_qwen_embedding_full_bundle/nodes.jsonl | sort | uniq -c | sort -nr | head -30",
+      "jq -r 'select(.metadata.research_node_type==\"ResearchField\" or .metadata.research_node_type==\"ResearchTopic\" or .metadata.research_node_type==\"ApproachFamily\" or .metadata.research_node_type==\"MethodologicalConcept\" or .metadata.research_node_type==\"Task\" or .metadata.research_node_type==\"Dataset\") | [.metadata.research_node_type,.name] | @tsv' output/cognee_qwen_embedding_full_bundle/nodes.jsonl | sed -n '1,120p'",
+      "jq -r 'select(.metadata.research_node_type==\"Paper\") | .name' output/cognee_qwen_embedding_full_bundle/nodes.jsonl | sed -n '1,80p'"
+    ],
+    "decisions": [],
+    "errors": [],
+    "raw_transcript_path": "/Users/neo/.codex_old/sessions/2026/04/27/rollout-2026-04-27T01-34-10-019dcaa4-2c53-7051-adb7-7f7fdaaf9a94.jsonl",
+    "redacted_preview": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_qwen_embedding_full_bundle/nodes.jsonl {\"summary\":\"A JSONL knowledge graph bundle that captures AI research and discourse, mainly around world models, 3D/4D vision, Gaussian splatting, visual SLAM, LLM reasoning, and agent tooling.\",\"description\":\"The file contains 1,331 graph nodes extracted from daily research feeds and social posts. It is dominated by Paper, EvidenceSpan, Claim, and ",
+    "metadata": {
+      "config_root": "/Users/neo/.codex_old",
+      "transcript": "/Users/neo/.codex_old/sessions/2026/04/27/rollout-2026-04-27T01-34-10-019dcaa4-2c53-7051-adb7-7f7fdaaf9a94.jsonl"
+    },
+    "date": "2026-04-26",
+    "href": "sessions/llm-wiki/2026-04-26-you-are-a-structured-output-adapter-for-cognee-75307d2a.html"
+  }
+}

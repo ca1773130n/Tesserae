@@ -1,0 +1,19 @@
+{
+  "title": "World Model",
+  "kind": "topics",
+  "body_text": "# World Model\n\n## Incoming relations\n\n- **addresses** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_\n- **addresses** → Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas _(Paper)_\n- **addresses** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_\n\n## Connected node types\n\n- Paper: 3",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2602.09022/paper.md",
+  "links": [],
+  "body": "# World Model\n\n## Incoming relations\n\n- **addresses** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_\n- **addresses** → Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas _(Paper)_\n- **addresses** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_\n\n## Connected node types\n\n- Paper: 3",
+  "frontmatter": {
+    "aliases": [
+      "world model",
+      "world models"
+    ],
+    "kind": "topics",
+    "node_id": "ResearchTopic:world-model:df0bb7d75cb8",
+    "node_type": "ResearchTopic",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2602.09022/paper.md",
+    "title": "World Model"
+  }
+}

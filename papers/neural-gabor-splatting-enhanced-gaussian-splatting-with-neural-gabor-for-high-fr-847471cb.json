@@ -1,0 +1,18 @@
+{
+  "title": "Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction",
+  "kind": "papers",
+  "body_text": "# Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction\n\n## Outgoing relations\n\n- **authored_by** → Haato Watanabe _(Person)_\n- **authored_by** → Nobuyuki Umetani _(Person)_\n- **belongs_to_approach_family** → Gaussian Splatting Reconstruction _(ApproachFamily)_\n- **evaluated_on** → Mip-NeRF360 _(Benchmark)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses** → Gaussian Splatting _(MethodologicalConcept)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-25 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-25 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 4\n- Person: 2\n- ApproachFamily: 1\n- Benchmark: 1\n- MethodologicalConcept: 1\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2604.15941/paper.md",
+  "links": [],
+  "body": "# Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction\n\n## Outgoing relations\n\n- **authored_by** → Haato Watanabe _(Person)_\n- **authored_by** → Nobuyuki Umetani _(Person)_\n- **belongs_to_approach_family** → Gaussian Splatting Reconstruction _(ApproachFamily)_\n- **evaluated_on** → Mip-NeRF360 _(Benchmark)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses** → Gaussian Splatting _(MethodologicalConcept)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-25 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-25 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 4\n- Person: 2\n- ApproachFamily: 1\n- Benchmark: 1\n- MethodologicalConcept: 1\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2604.15941"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2604-15941:ae9ff358479e",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2604.15941/paper.md",
+    "title": "Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction"
+  }
+}

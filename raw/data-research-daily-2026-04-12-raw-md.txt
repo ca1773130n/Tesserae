@@ -1,0 +1,19 @@
+raw.md
+======
+
+# Daily Feed Summary — 2026-04-12
+
+Total: 10 relevant feeds (from 70)
+
+| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |
+|------|------|-------|-----|--------|-------|-----------|-------------|
+| 2026-04-12 | 14:56 | RT MrNeRF: I am proud to announce that @VolingaAI has joined...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-12 | 12:42 | We analyzed CFG in diffusion editing models and discovered h...... | https://arxiv.org/pdf/2602.20989 | https://github.com/edward3862/ImgDecom | 10 | N/A | [분석](papers/2602.20989/repo.md) |
+| 2026-04-12 | 09:45 | 1/n Autoregressive Visual Generation Needs Foresight. Excite...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-12 | 20:21 | Exciting news! ? Our paper has been accepted for an Oral pre...... | https://arxiv.org/pdf/2511.20263 | https://github.com/omerb01/didicm | 5 | N/A | [분석](papers/2511.20263/repo.md) |
+| 2026-04-12 | 14:43 | RT Robert Scoble: It's CVPR paper time (big computer vision ...... | https://arxiv.org/pdf/2603.14482 | https://github.com/facebookresearch/vjepa2 | 3597 | N/A | [분석](papers/2603.14482/repo.md) |
+| 2026-04-12 | 15:10 | RT DailyPapers: Google just released the dense prediction TI...... | N/A | https://github.com/Netflix/void-model | 1479 | N/A | [분석](repos/Netflix_void-model.md) |
+| 2026-04-12 | 23:14 | ? ULTIMA HORA: Alguien acaba de conectar Claude directamente...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-12 | 01:44 | This is so fire. ? Once you have PBR maps you can apply them...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-12 | 13:16 | RT Justus Thies: Most existing head avatar methods assume ri...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-12 | 20:06 | RT Omar Alama عمر الأعمى: I think this is a cool di...... | https://arxiv.org/pdf/2509.23563 | N/A | N/A | N/A | N/A |

@@ -1,0 +1,15 @@
+{
+  "title": "Donny Y. Chen",
+  "kind": "entities",
+  "body_text": "# Donny Y. Chen\n\n## Incoming relations\n\n- **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/papers/2604.14025/paper.md",
+  "links": [],
+  "body": "# Donny Y. Chen\n\n## Incoming relations\n\n- **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:donny-y-chen:d703e4317982",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/papers/2604.14025/paper.md",
+    "title": "Donny Y. Chen"
+  }
+}

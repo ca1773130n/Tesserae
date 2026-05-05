@@ -1,0 +1,18 @@
+{
+  "title": "Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving",
+  "kind": "papers",
+  "body_text": "# Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving\n\n## Outgoing relations\n\n- **authored_by** → Boris Ivanovic _(Person)_\n- **authored_by** → Cristiano Saltori _(Person)_\n- **authored_by** → Marco Pavone _(Person)_\n- **authored_by** → Wenjie Luo _(Person)_\n- **authored_by** → Yan Wang _(Person)_\n- **authored_by** → Yurong You _(Person)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses_metric** → Accuracy _(Metric)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-23 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-24 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-23 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-24 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 6\n- SourceDocument: 6\n- Metric: 1\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2506.12251/paper.md",
+  "links": [],
+  "body": "# Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving\n\n## Outgoing relations\n\n- **authored_by** → Boris Ivanovic _(Person)_\n- **authored_by** → Cristiano Saltori _(Person)_\n- **authored_by** → Marco Pavone _(Person)_\n- **authored_by** → Wenjie Luo _(Person)_\n- **authored_by** → Yan Wang _(Person)_\n- **authored_by** → Yurong You _(Person)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses_metric** → Accuracy _(Metric)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-23 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-24 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-23 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-24 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 6\n- SourceDocument: 6\n- Metric: 1\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2506.12251"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2506-12251:8a86fd5242d9",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2506.12251/paper.md",
+    "title": "Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving"
+  }
+}

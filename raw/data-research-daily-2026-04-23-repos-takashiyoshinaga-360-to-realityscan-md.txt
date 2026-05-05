@@ -1,0 +1,44 @@
+TakashiYoshinaga_360-to-RealityScan.md
+======================================
+
+# GitHub 분석: TakashiYoshinaga/360-to-RealityScan
+
+> - URL: https://github.com/TakashiYoshinaga/360-to-RealityScan
+> - 분석일: 2026-04-23
+
+## 개요
+
+- **설명**:  A tool for converting SfM outputs from 360° Gaussian (https://laskosvirtuals.gumroad.com/l/360gaussian) — a 360° equirectangular-based  reconstruction app — into RealityScan compatible images/XMP and COLMAP format. Features automatic image splitting, pose calculation, and  mask support.
+- **Stars**: ⭐ 26 | Forks: 3
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (4개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+Build/build.ps1
+Build/metashape_to_realityscan.py
+Build/spheresfm_to_realityscan.py
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE
+metashape_to_realityscan.py
+README_JP.md
+README.md
+spheresfm_to_realityscan.py
+```

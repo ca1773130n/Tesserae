@@ -1,0 +1,23 @@
+Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation
+================================================================================
+
+# Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation
+
+## Outgoing relations
+
+- **implemented_in** → GitHub 분석: KumapowerLIU/AvatarPointillist _(Repository)_
+- **part_of** → Research Literature _(ResearchField)_
+- **uses** → Stable Diffusion _(Model)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-08 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-09 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-08 _(SourceDocument)_
+
+## Connected node types
+
+- SourceDocument: 3
+- Model: 1
+- Repository: 1
+- ResearchField: 1

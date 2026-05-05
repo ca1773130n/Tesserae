@@ -1,0 +1,41 @@
+lllyasviel_VCC.md
+=================
+
+# GitHub 분석: lllyasviel/VCC
+
+> - URL: https://github.com/lllyasviel/VCC
+> - 분석일: 2026-04-11
+
+## 개요
+
+- **설명**: Compile agent conversations!
+- **Stars**: ⭐ 266 | Forks: 17
+- **라이선스**: Apache-2.0
+- **주 언어**: unknown
+
+## 실행 가능 상태: 코드 미공개 (README/asset만 존재)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (0개) | N |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+INSTALL.md
+LICENSE
+README_cn.md
+README_jp.md
+README.md
+```

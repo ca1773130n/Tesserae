@@ -1,0 +1,13 @@
+Songyou Peng
+============
+
+# Songyou Peng
+
+## Incoming relations
+
+- **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_
+- **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+
+## Connected node types
+
+- Paper: 2

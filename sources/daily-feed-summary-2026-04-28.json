@@ -1,0 +1,15 @@
+{
+  "title": "Daily Feed Summary — 2026-04-28",
+  "kind": "sources",
+  "body_text": "# Daily Feed Summary — 2026-04-28\n\n## Outgoing relations\n\n- **mentioned_in** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_\n- **reports_result** → accuracy=90 _(Result)_\n- **uses_metric** → Accuracy _(Metric)_\n\n## Connected node types\n\n- Metric: 1\n- Paper: 1\n- Result: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-28/raw.md",
+  "links": [],
+  "body": "# Daily Feed Summary — 2026-04-28\n\n## Outgoing relations\n\n- **mentioned_in** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_\n- **reports_result** → accuracy=90 _(Result)_\n- **uses_metric** → Accuracy _(Metric)_\n\n## Connected node types\n\n- Metric: 1\n- Paper: 1\n- Result: 1",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:daily-feed-summary-2026-04-28:e32b1fd34fb2",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-28/raw.md",
+    "title": "Daily Feed Summary — 2026-04-28"
+  }
+}

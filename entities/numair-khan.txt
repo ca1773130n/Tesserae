@@ -1,0 +1,12 @@
+Numair Khan
+===========
+
+# Numair Khan
+
+## Incoming relations
+
+- **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+
+## Connected node types
+
+- Paper: 1

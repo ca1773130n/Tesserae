@@ -1,0 +1,15 @@
+{
+  "title": "Julian Straub",
+  "kind": "entities",
+  "body_text": "# Julian Straub\n\n## Incoming relations\n\n- **authored_by** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2503.11806/paper.md",
+  "links": [],
+  "body": "# Julian Straub\n\n## Incoming relations\n\n- **authored_by** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:julian-straub:42bbf6561d8a",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2503.11806/paper.md",
+    "title": "Julian Straub"
+  }
+}

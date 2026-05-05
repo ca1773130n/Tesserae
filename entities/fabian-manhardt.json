@@ -1,0 +1,15 @@
+{
+  "title": "Fabian Manhardt",
+  "kind": "entities",
+  "body_text": "# Fabian Manhardt\n\n## Incoming relations\n\n- **authored_by** → Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-05/papers/2603.28980/paper.md",
+  "links": [],
+  "body": "# Fabian Manhardt\n\n## Incoming relations\n\n- **authored_by** → Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:fabian-manhardt:c7b05c82e675",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-05/papers/2603.28980/paper.md",
+    "title": "Fabian Manhardt"
+  }
+}

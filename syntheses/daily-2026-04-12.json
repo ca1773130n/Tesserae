@@ -1,0 +1,35 @@
+{
+  "title": "Daily Digest — 2026-04-12",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-04-12\n\nSources ingested under `data/research/daily/2026-04-12/`.\n\n## Papers and repos\n- [GitHub 분석: Netflix/void-model](../repos/github-분석-netflix-void-model.md) (Repository)\n- [GitHub 분석: edward3862/ImgDecom](../repos/github-분석-edward3862-imgdecom.md) (Repository)\n- [GitHub 분석: facebookresearch/vjepa2](../repos/github-분석-facebookresearch-vjepa2.md) (Repository)\n- [GitHub 분석: omerb01/didicm](../repos/github-분석-omerb01-didicm.md) (Repository)\n- [Daily Feed Summary — 2026-04-12](../sources/daily-feed-summary-2026-04-12.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "source_path": "",
+  "links": [
+    "../repos/github-분석-netflix-void-model.md",
+    "../repos/github-분석-edward3862-imgdecom.md",
+    "../repos/github-분석-facebookresearch-vjepa2.md",
+    "../repos/github-분석-omerb01-didicm.md",
+    "../sources/daily-feed-summary-2026-04-12.md"
+  ],
+  "body": "# Daily Digest — 2026-04-12\n\nSources ingested under `data/research/daily/2026-04-12/`.\n\n## Papers and repos\n- [GitHub 분석: Netflix/void-model](../repos/github-분석-netflix-void-model.md) (Repository)\n- [GitHub 분석: edward3862/ImgDecom](../repos/github-분석-edward3862-imgdecom.md) (Repository)\n- [GitHub 분석: facebookresearch/vjepa2](../repos/github-분석-facebookresearch-vjepa2.md) (Repository)\n- [GitHub 분석: omerb01/didicm](../repos/github-분석-omerb01-didicm.md) (Repository)\n- [Daily Feed Summary — 2026-04-12](../sources/daily-feed-summary-2026-04-12.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "frontmatter": {
+    "content_hash": "sha256-e01ec13d43ec6650498d3e80e6ea571fdf9d4ad39df36ba12a07e9655c09110e",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Repository:github-edward3862-imgdecom:8e7c8e3fcb24",
+      "Repository:github-facebookresearch-vjepa2:58de50f4993d",
+      "Repository:github-netflix-void-model:3b4b48b9c715",
+      "Repository:github-omerb01-didicm:6f343e32ae7f",
+      "SourceDocument:daily-feed-summary-2026-04-12:62863231fa30"
+    ],
+    "slug": "daily-2026-04-12",
+    "sources": [
+      "data/research/daily/2026-04-12/papers/2511.20263/repo.md",
+      "data/research/daily/2026-04-12/papers/2602.20989/repo.md",
+      "data/research/daily/2026-04-12/papers/2603.14482/repo.md",
+      "data/research/daily/2026-04-12/raw.md",
+      "data/research/daily/2026-04-12/repos/Netflix_void-model.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-04-12"
+  }
+}

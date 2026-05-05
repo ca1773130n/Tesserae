@@ -1,0 +1,15 @@
+{
+  "title": "Mohammad H. Taghavi",
+  "kind": "entities",
+  "body_text": "# Mohammad H. Taghavi\n\n## Incoming relations\n\n- **authored_by** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2512.03040/paper.md",
+  "links": [],
+  "body": "# Mohammad H. Taghavi\n\n## Incoming relations\n\n- **authored_by** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:mohammad-h-taghavi:81426d038dd1",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2512.03040/paper.md",
+    "title": "Mohammad H. Taghavi"
+  }
+}

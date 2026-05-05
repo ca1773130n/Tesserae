@@ -1,0 +1,12 @@
+GitHub 분석: Tencent-Hunyuan/HY-WorldPlay
+=======================================
+
+# GitHub 분석: Tencent-Hunyuan/HY-WorldPlay
+
+## Outgoing relations
+
+- **released_by** → tencent-hunyuan _(Organization)_
+
+## Connected node types
+
+- Organization: 1

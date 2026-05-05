@@ -1,0 +1,19 @@
+{
+  "title": "Volumetric Rendering",
+  "kind": "concepts",
+  "body_text": "# Volumetric Rendering\n\n## Incoming relations\n\n- **uses** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_\n- **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-26/papers/2601.17835/paper.md",
+  "links": [],
+  "body": "# Volumetric Rendering\n\n## Incoming relations\n\n- **uses** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_\n- **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "frontmatter": {
+    "aliases": [
+      "volumetric",
+      "volumetric 특성"
+    ],
+    "kind": "concepts",
+    "node_id": "MethodologicalConcept:volumetric-rendering:7527b301d064",
+    "node_type": "MethodologicalConcept",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-26/papers/2601.17835/paper.md",
+    "title": "Volumetric Rendering"
+  }
+}

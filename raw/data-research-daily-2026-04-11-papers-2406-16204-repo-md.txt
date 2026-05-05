@@ -1,0 +1,57 @@
+repo.md
+=======
+
+# GitHub 분석: weitong8591/global_edge_prior
+
+> - URL: https://github.com/weitong8591/global_edge_prior
+> - 분석일: 2026-04-11
+
+## 개요
+
+- **설명**:   
+- **Stars**: ⭐ 16 | Forks: 0
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (31개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+dataloaders/MegadepthDataloader.py
+dataloaders/MegadepthDataset.py
+dataloaders/TestDataset.py
+demo/best.yaml
+demo.py
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.gitmodules
+.git/packed-refs
+.git/shallow
+main.py
+models/class_model_new.py
+models/helper.py
+models/__init__.py
+models/vpr_model.py
+.pre-commit-config.yaml
+README.md
+run_colmap.py
+src/kruskals.py
+src/losses.py
+src/sfm_utils.py
+src/test_utils.py
+src/train_util.py
+test_baseline.py
+test.py
+```

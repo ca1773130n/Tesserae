@@ -1,0 +1,18 @@
+{
+  "title": "ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전",
+  "kind": "papers",
+  "body_text": "# ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전\n\n## Outgoing relations\n\n- **authored_by** → ARC Prize Foundation _(Person)_\n- **implemented_in** → GitHub 분석: GalaxyGeneralRobotics/LATENT _(Repository)_\n- **implemented_in** → GitHub 분석: mfranzon/render _(Repository)_\n- **part_of** → Research Literature _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-11 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-23 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-23 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 5\n- Repository: 2\n- Person: 1\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2603.24621/paper.md",
+  "links": [],
+  "body": "# ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전\n\n## Outgoing relations\n\n- **authored_by** → ARC Prize Foundation _(Person)_\n- **implemented_in** → GitHub 분석: GalaxyGeneralRobotics/LATENT _(Repository)_\n- **implemented_in** → GitHub 분석: mfranzon/render _(Repository)_\n- **part_of** → Research Literature _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-11 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-23 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-23 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 5\n- Repository: 2\n- Person: 1\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2603.24621"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2603-24621:6cdb29452f1e",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2603.24621/paper.md",
+    "title": "ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전"
+  }
+}

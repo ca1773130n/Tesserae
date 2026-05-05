@@ -1,0 +1,18 @@
+{
+  "title": "Confidence-Based Mesh Extraction from 3D Gaussians",
+  "kind": "papers",
+  "body_text": "# Confidence-Based Mesh Extraction from 3D Gaussians\n\n## Outgoing relations\n\n- **authored_by** → Andreas Kurz _(Person)_\n- **authored_by** → Felix Windisch _(Person)_\n- **authored_by** → Lukas Radl _(Person)_\n- **authored_by** → Markus Steinberger _(Person)_\n- **authored_by** → Michael Steiner _(Person)_\n- **authored_by** → Thomas Köhler _(Person)_\n- **belongs_to_approach_family** → Gaussian Splatting Reconstruction _(ApproachFamily)_\n- **implemented_in** → GitHub 분석: m-schuetz/CuRast _(Repository)_\n- **implemented_in** → GitHub 분석: r4dl/CoMe _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses** → Gaussian Splatting _(MethodologicalConcept)_\n- **uses_metric** → SSIM _(Metric)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-25 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-05-01 _(SourceDocument)_\n- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-25 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-01 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 8\n- Person: 6\n- Repository: 2\n- ApproachFamily: 1\n- MethodologicalConcept: 1\n- Metric: 1\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2603.24725/paper.md",
+  "links": [],
+  "body": "# Confidence-Based Mesh Extraction from 3D Gaussians\n\n## Outgoing relations\n\n- **authored_by** → Andreas Kurz _(Person)_\n- **authored_by** → Felix Windisch _(Person)_\n- **authored_by** → Lukas Radl _(Person)_\n- **authored_by** → Markus Steinberger _(Person)_\n- **authored_by** → Michael Steiner _(Person)_\n- **authored_by** → Thomas Köhler _(Person)_\n- **belongs_to_approach_family** → Gaussian Splatting Reconstruction _(ApproachFamily)_\n- **implemented_in** → GitHub 분석: m-schuetz/CuRast _(Repository)_\n- **implemented_in** → GitHub 분석: r4dl/CoMe _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses** → Gaussian Splatting _(MethodologicalConcept)_\n- **uses_metric** → SSIM _(Metric)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-25 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-05-01 _(SourceDocument)_\n- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-25 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-01 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 8\n- Person: 6\n- Repository: 2\n- ApproachFamily: 1\n- MethodologicalConcept: 1\n- Metric: 1\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2603.24725"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2603-24725:484ce405625a",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2603.24725/paper.md",
+    "title": "Confidence-Based Mesh Extraction from 3D Gaussians"
+  }
+}

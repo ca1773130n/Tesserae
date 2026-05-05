@@ -1,0 +1,15 @@
+{
+  "title": "📬 Daily Research Digest — 2026-04-18",
+  "kind": "sources",
+  "body_text": "# 📬 Daily Research Digest — 2026-04-18\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-18/digest.md",
+  "links": [],
+  "body": "# 📬 Daily Research Digest — 2026-04-18\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:daily-research-digest-2026-04-18:665788341c96",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-18/digest.md",
+    "title": "📬 Daily Research Digest — 2026-04-18"
+  }
+}

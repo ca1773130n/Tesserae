@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: facebookresearch/map-anything",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: facebookresearch/map-anything\n\n## Outgoing relations\n\n- **released_by** → facebookresearch _(Organization)_\n- **uses_metric** → mAP _(Metric)_\n\n## Incoming relations\n\n- **implemented_in** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_\n\n## Connected node types\n\n- Metric: 1\n- Organization: 1\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-14/repos/facebookresearch_map-anything.md",
+  "links": [],
+  "body": "# GitHub 분석: facebookresearch/map-anything\n\n## Outgoing relations\n\n- **released_by** → facebookresearch _(Organization)_\n- **uses_metric** → mAP _(Metric)_\n\n## Incoming relations\n\n- **implemented_in** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_\n\n## Connected node types\n\n- Metric: 1\n- Organization: 1\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "facebookresearch/map-anything",
+      "https://github.com/facebookresearch/map-anything"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-facebookresearch-map-anything:a09b4a860b3e",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-14/repos/facebookresearch_map-anything.md",
+    "title": "GitHub 분석: facebookresearch/map-anything"
+  }
+}

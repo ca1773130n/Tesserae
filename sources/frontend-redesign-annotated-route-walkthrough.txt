@@ -1,0 +1,12 @@
+Frontend redesign — annotated route walkthrough
+===============================================
+
+# Frontend redesign — annotated route walkthrough
+
+## Outgoing relations
+
+- **uses_metric** → mAP _(Metric)_
+
+## Connected node types
+
+- Metric: 1

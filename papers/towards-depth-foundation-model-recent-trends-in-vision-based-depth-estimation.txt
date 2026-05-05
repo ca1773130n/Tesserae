@@ -1,0 +1,41 @@
+Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation
+==============================================================================
+
+# Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation
+
+## Outgoing relations
+
+- **authored_by** → Haotong Lin _(Person)_
+- **authored_by** → Haoyu Guo _(Person)_
+- **authored_by** → Hongyu Zhou _(Person)_
+- **authored_by** → Hujun Bao _(Person)_
+- **authored_by** → Jiahao Shao _(Person)_
+- **authored_by** → Peishan Yang _(Person)_
+- **authored_by** → Qinglin Yang _(Person)_
+- **authored_by** → Ruizhen Hu _(Person)_
+- **authored_by** → Sheng Miao _(Person)_
+- **authored_by** → Sida Peng _(Person)_
+- **authored_by** → Xiaowei Zhou _(Person)_
+- **authored_by** → Xingyi He _(Person)_
+- **authored_by** → Yifan Wang _(Person)_
+- **authored_by** → Yiyi Liao _(Person)_
+- **authored_by** → Yue Wang _(Person)_
+- **authored_by** → Zhen Xu _(Person)_
+- **implemented_in** → GitHub 분석: zju3dv/Scal3R _(Repository)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- **supports_claim** → Open question: 핵심 아키텍처와 학습 전략을 식별함으로써, 본 논문은 강건한 depth foundation models로 나아가는 경로를 조명하고, 향후 연구와 응용에 대한 통찰을 제공하… _(OpenQuestion)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-25 _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-25 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 16
+- SourceDocument: 4
+- OpenQuestion: 1
+- Repository: 1
+- ResearchField: 1

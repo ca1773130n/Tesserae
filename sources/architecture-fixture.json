@@ -1,0 +1,15 @@
+{
+  "title": "Architecture (fixture)",
+  "kind": "sources",
+  "body_text": "# Architecture (fixture)",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/tests/fixtures/wiki_corpus/docs/architecture.md",
+  "links": [],
+  "body": "# Architecture (fixture)",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:architecture-fixture:3fdcfdf40776",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/tests/fixtures/wiki_corpus/docs/architecture.md",
+    "title": "Architecture (fixture)"
+  }
+}

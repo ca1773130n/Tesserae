@@ -1,0 +1,14 @@
+Video Diffusion
+===============
+
+# Video Diffusion
+
+## Incoming relations
+
+- **uses** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_
+- **uses** → Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습 _(Paper)_
+- **uses** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Paper)_
+
+## Connected node types
+
+- Paper: 3

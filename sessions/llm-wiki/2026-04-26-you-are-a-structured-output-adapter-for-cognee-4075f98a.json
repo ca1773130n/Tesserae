@@ -1,0 +1,53 @@
+{
+  "title": "You are a structured-output adapter for Cognee.",
+  "kind": "session",
+  "body_text": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_qwen_embedding_full_bundle/edges.jsonl {\"summary\":\"A JSONL edge list for a research knowledge graph linking papers, claims, evidence spans, methods, topics, and fields.\",\"description\":\"This file stores structured graph relationships extracted from AI and vision research content. It mainly connects papers to research fields, claims, supporting evidence, methods, approach families, and to",
+  "source_path": "/Users/neo/.codex_old/sessions/2026/04/27/rollout-2026-04-27T01-34-10-019dcaa4-2c53-7612-8d2b-4b92b1764dd2.jsonl",
+  "links": [],
+  "body": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_qwen_embedding_full_bundle/edges.jsonl {\"summary\":\"A JSONL edge list for a research knowledge graph linking papers, claims, evidence spans, methods, topics, and fields.\",\"description\":\"This file stores structured graph relationships extracted from AI and vision research content. It mainly connects papers to research fields, claims, supporting evidence, methods, approach families, and to",
+  "frontmatter": {
+    "id": "codex:019dcaa4-2c53-7612-8d2b-4b92b1764dd2",
+    "slug": "you-are-a-structured-output-adapter-for-cognee",
+    "harness": "codex",
+    "agent_label": "Codex",
+    "project_name": "LLM-Wiki",
+    "project_root": "/Users/neo/Developer/Projects/LLM-Wiki",
+    "started_at": "2026-04-26T16:34:15.036Z",
+    "ended_at": "2026-04-26T16:34:40.777Z",
+    "branch": "",
+    "commit_before": "",
+    "commit_after": "",
+    "model": "openai",
+    "title": "You are a structured-output adapter for Cognee.",
+    "summary": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_qwen_embedding_full_bundle/edges.jsonl {\"summary\":\"A JSONL edge list for a research knowledge graph linking papers, claims, evidence spans, methods, topics, and fields.\",\"description\":\"This file stores structured graph relationships extracted from AI and vision research content. It mainly connects papers to research fields, claims, supporting evidence, methods, approach families, and to",
+    "message_count": 3,
+    "tool_call_count": 1,
+    "token_input": 0,
+    "token_output": 0,
+    "token_total": 0,
+    "cache_hit_ratio": null,
+    "tools_used": [
+      "exec_command"
+    ],
+    "files_touched": [
+      "docs/SKILL.md"
+    ],
+    "commands_run": [
+      "wc -l output/cognee_qwen_embedding_full_bundle/edges.jsonl && sed -n '1,120p' output/cognee_qwen_embedding_full_bundle/edges.jsonl",
+      "python - <<'PY'\nimport json,collections,re\nfrom pathlib import Path\np=Path('output/cognee_qwen_embedding_full_bundle/edges.jsonl')\nrel=collections.Counter(); src=collections.Counter(); tgt=collections.Counter(); evid=0; total=0\nfor line in p.open():\n    total+=1\n    obj=json.loads(line)\n    rel[obj['relationship']]+=1\n    src[obj['source_id'].split(':',1)[0]]+=1\n    tgt[obj['target_id'].split(':',1)[0]]+=1\n    if obj.get('evidence'): evid+=1\nprint('total', total)\nprint('with_evidence', evid)\nprint('relationships', rel.most_common(12))\nprint('source_types', src.most_common(12))\nprint('target_types', tgt.most_common(12))\nPY",
+      "python - <<'PY'\nimport json,collections\nfrom pathlib import Path\np=Path('output/cognee_qwen_embedding_full_bundle/edges.jsonl')\nexamples=collections.defaultdict(list)\nfor line in p.open():\n    obj=json.loads(line)\n    r=obj['relationship']\n    if len(examples[r])<3:\n        examples[r].append((obj['source_id'],obj['target_id']))\nfor r in sorted(examples):\n    print(r)\n    for s,t in examples[r]:\n        print(' ',s,'->',t)\nPY",
+      "python -c \"import json,collections,pathlib; p=pathlib.Path('output/cognee_qwen_embedding_full_bundle/edges.jsonl'); rel=collections.Counter(); src=collections.Counter(); tgt=collections.Counter(); evid=0; total=0\nfor line in p.open():\n obj=json.loads(line); total+=1; rel[obj['relationship']]+=1; src[obj['source_id'].split(':',1)[0]]+=1; tgt[obj['target_id'].split(':',1)[0]]+=1; evid += bool(obj.get('evidence'))\nprint('total', total); print('with_evidence', evid); print('relationships', rel.most_common(12)); print('source_types', src.most_common(12)); print('target_types', tgt.most_common(12))\"",
+      "python -c \"import json,collections,pathlib; p=pathlib.Path('output/cognee_qwen_embedding_full_bundle/edges.jsonl'); ex=collections.defaultdict(list)\nfor line in p.open():\n obj=json.loads(line); r=obj['relationship'];\n if len(ex[r])<3: ex[r].append((obj['source_id'],obj['target_id']))\nfor r in sorted(ex):\n print(r)\n for s,t in ex[r]: print(' ',s,'->',t)\""
+    ],
+    "decisions": [],
+    "errors": [],
+    "raw_transcript_path": "/Users/neo/.codex_old/sessions/2026/04/27/rollout-2026-04-27T01-34-10-019dcaa4-2c53-7612-8d2b-4b92b1764dd2.jsonl",
+    "redacted_preview": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_qwen_embedding_full_bundle/edges.jsonl {\"summary\":\"A JSONL edge list for a research knowledge graph linking papers, claims, evidence spans, methods, topics, and fields.\",\"description\":\"This file stores structured graph relationships extracted from AI and vision research content. It mainly connects papers to research fields, claims, supporting evidence, methods, approach families, and to",
+    "metadata": {
+      "config_root": "/Users/neo/.codex_old",
+      "transcript": "/Users/neo/.codex_old/sessions/2026/04/27/rollout-2026-04-27T01-34-10-019dcaa4-2c53-7612-8d2b-4b92b1764dd2.jsonl"
+    },
+    "date": "2026-04-26",
+    "href": "sessions/llm-wiki/2026-04-26-you-are-a-structured-output-adapter-for-cognee-4075f98a.html"
+  }
+}

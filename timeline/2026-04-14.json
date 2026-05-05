@@ -1,0 +1,20 @@
+{
+  "title": "2026-04-14",
+  "kind": "timeline_day",
+  "body_text": "Activity for 2026-04-14: 14 item(s) indexed.",
+  "source_path": "",
+  "links": [],
+  "body": "Activity for 2026-04-14",
+  "frontmatter": {
+    "date": "2026-04-14",
+    "activity": 14,
+    "sources": [
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-14/papers/2312.08568/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-14/papers/2409.08189/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-14/papers/2603.20617/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-14/raw.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-14/repos/alexbatalov_fallout1-re.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-14/repos/facebookresearch_map-anything.md"
+    ]
+  }
+}

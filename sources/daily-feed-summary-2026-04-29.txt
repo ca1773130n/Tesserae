@@ -1,0 +1,16 @@
+Daily Feed Summary — 2026-04-29
+===============================
+
+# Daily Feed Summary — 2026-04-29
+
+## Outgoing relations
+
+- **mentioned_in** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_
+- **mentioned_in** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_
+- **mentioned_in** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
+- **uses_metric** → mAP _(Metric)_
+
+## Connected node types
+
+- Paper: 3
+- Metric: 1

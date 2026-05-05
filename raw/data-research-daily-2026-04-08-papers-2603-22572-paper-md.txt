@@ -1,0 +1,92 @@
+paper.md
+========
+
+# 논문 분석: 2603.22572
+
+> - arxiv: https://arxiv.org/abs/2603.22572
+> - papers.cool: https://papers.cool/arxiv/2603.22572
+> - 분석일: 2026-04-08
+
+# FullCircle: 일상적인 360$^\circ$ 촬영으로부터 손쉬운 3D Reconstruction | Cool Papers - 몰입형 논문 탐색
+
+## 2603.22572
+
+총계: 1
+
+## #1
+
+# FullCircle: 일상적인 360$^\circ$ 촬영으로부터 손쉬운 3D Reconstruction
+
+[PDF3]  
+[Copy]  
+[Kimi2]  
+[REL]
+
+저자:  
+Yalda Foroutan,  
+Ipek Oztas,  
+Daniel Rebain,  
+Aysegul Dundar,  
+Kwang Moo Yi,  
+Lily Goli,  
+Andrea Tagliasacchi
+
+Radiance fields는 3D 장면 재구성을 위한 강력한 도구로 부상했다. 그러나 casual capture는 perspective camera의 좁은 시야각 때문에 여전히 어렵다. 이 좁은 시야각은 신뢰할 수 있는 camera calibration과 reconstruction에 필요한 시점 범위와 feature correspondence를 제한한다. 상용 360$^\circ$ camera는 동일한 촬영 노력 대비 perspective camera보다 훨씬 넓은 범위를 제공하지만, 기존 360$^\circ$ reconstruction 방법은 radiance fields의 약속, 즉 손쉬운 3D 장면 촬영 및 재구성 워크플로를 훼손하는 특수한 촬영 프로토콜과 전처리 단계를 요구한다. 우리는 raw 360$^\circ$ camera capture로부터 직접 3D 장면을 재구성하는 실용적인 파이프라인을 제안한다. 본 방법은 특수한 촬영 프로토콜이나 전처리를 필요로 하지 않으며, 모든 360$^\circ$ 영상에 등장하는 인간 촬영자라는 흔한 reconstruction 오류 원인에 대해서도 강건함을 보인다. 평가를 용이하게 하기 위해, 우리는 raw dual-fisheye image로 촬영된 장면의 다단계 dataset을 도입하여, 강건한 casual 360$^\circ$ reconstruction을 위한 benchmark를 구축한다. 우리의 방법은 360$^\circ$ camera용 vanilla 3DGS뿐 아니라, 동일한 촬영으로부터 perspective camera를 시뮬레이션한 경우의 강건한 perspective baseline보다도 크게 우수한 성능을 보이며, casual reconstruction에서 360$^\circ$ capture의 장점을 입증한다. 추가 결과는 다음에서 확인할 수 있다: https://theialab.github.io/fullcircle
+
+주제:  
+Computer Vision and Pattern Recognition
+
+게시: 2026-03-23 21:09:28 UTC
+
+kexue.fm이 설계 | kimi.ai 기반 제공
+
+포함 OR:
+
+제외:
+
+검색  
+필터  
+하이라이트
+
+표시된 논문:
+
+#1  
+FullCircle: 일상적인 360$^\circ$ 촬영으로부터 손쉬운 3D Reconstruction
+
+내보내기
+
+Magic Token:
+
+Kimi 언어:
+
+- 中文
+- English
+
+설명 언어:
+
+- 中文
+- English
+
+저장
+
+버그 제보 또는 이슈 제출은 다음을 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+진행하기 전에 Disclaimer를 읽어주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문하세요.
+
+## MathJax 설정
+
+매크로:
+
+- `argmin`: `\\mathop{\\text{argmin}}`
+- `argmax`: `\\mathop{\\text{argmax}}`
+
+MathJax는 인라인 수식 `$...$` 및 `\\(...\\)`를 처리하도록 설정되어 있으며, AMS 수식 번호 매기기, 관련 확장, 표시 스타일 및 하이라이트 처리가 포함되어 있다.
+
+## 통계 및 추적 스크립트
+
+- Baidu 통계 스크립트가 포함되어 있다.
+- Google Analytics 설정 `G-214H31WLDF`가 포함되어 있다.

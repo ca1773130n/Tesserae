@@ -1,0 +1,36 @@
+{
+  "title": "Comparison — Gaussian Splatting Reconstruction vs Geometry-Grounded Gaussian Splatting",
+  "kind": "syntheses",
+  "body_text": "# Comparison — Gaussian Splatting Reconstruction vs Geometry-Grounded Gaussian Splatting\n\nBoth approach families connect to `Novel View Synthesis` (Task).\n\n| Family | Papers | Shared target |\n| --- | --- | --- |\n| Gaussian Splatting Reconstruction | 7 | Novel View Synthesis |\n| Geometry-Grounded Gaussian Splatting | 1 | Novel View Synthesis |",
+  "source_path": "",
+  "links": [],
+  "body": "# Comparison — Gaussian Splatting Reconstruction vs Geometry-Grounded Gaussian Splatting\n\nBoth approach families connect to `Novel View Synthesis` (Task).\n\n| Family | Papers | Shared target |\n| --- | --- | --- |\n| Gaussian Splatting Reconstruction | 7 | Novel View Synthesis |\n| Geometry-Grounded Gaussian Splatting | 1 | Novel View Synthesis |",
+  "frontmatter": {
+    "content_hash": "sha256-0bc6ee8ca30c43583a5c307fffb83d8c26d8928d43163f13d512e00cc9c7d644",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "ApproachFamily:gaussian-splatting-reconstruction:84097d3185ea",
+      "ApproachFamily:geometry-grounded-gaussian-splatting:0ba271d39ba0",
+      "Paper:arxiv-2601-17835:46d524dd9e5e",
+      "Paper:arxiv-2603-22572:c6d5f8ff5815",
+      "Paper:arxiv-2603-24725:484ce405625a",
+      "Paper:arxiv-2604-00538:511c59325ae3",
+      "Paper:arxiv-2604-15612:e4eebb59cbbb",
+      "Paper:arxiv-2604-15941:ae9ff358479e",
+      "Paper:arxiv-2604-24994:058a2f90e8fc",
+      "Task:novel-view-synthesis:19d55dfb9b83"
+    ],
+    "slug": "compare-gaussian-splatting-reconstruction-vs-geometry-grounded-gaussian-splatting",
+    "sources": [
+      "data/research/daily/2026-04-07/papers/2603.22572/paper.md",
+      "data/research/daily/2026-04-15/papers/2601.17835/paper.md",
+      "data/research/daily/2026-04-25/papers/2603.24725/paper.md",
+      "data/research/daily/2026-04-25/papers/2604.00538/paper.md",
+      "data/research/daily/2026-04-25/papers/2604.15612/paper.md",
+      "data/research/daily/2026-04-25/papers/2604.15941/paper.md",
+      "data/research/daily/2026-04-30/papers/2604.24994/paper.md"
+    ],
+    "synthesis_kind": "comparison",
+    "title": "Comparison — Gaussian Splatting Reconstruction vs Geometry-Grounded Gaussian Splatting"
+  }
+}

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Session: You are extracting a typed research intelligence graph for LLM-Wiki. — LLM-Wiki</title>
+  <link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+
+<main id="main-content" class="page session-detail">
+  <p><a href="../index.html">← All sessions</a></p>
+  <script type="application/json" id="llmwiki-metadata">{&quot;date&quot;: &quot;2026-04-26&quot;, &quot;harness&quot;: &quot;claude-code&quot;, &quot;id&quot;: &quot;claude-code:3fa4bc4b-1396-4e53-9b29-aefe3d60d760:3fa4bc4b-1396-4e53-9b29-aefe3d60d760&quot;, &quot;kind&quot;: &quot;session&quot;, &quot;model&quot;: &quot;claude-sonnet-4-6&quot;, &quot;project&quot;: &quot;LLM-Wiki&quot;}</script>
+  <section class="panel">
+    <p class="eyebrow">Claude Code · 2026-04-26 · main</p>
+    <h1>You are extracting a typed research intelligence graph for LLM-Wiki.</h1>
+    <p class="lead">You are extracting a typed research intelligence graph for LLM-Wiki. Return ONLY one valid JSON object. No markdown fences, no commentary. Schema: { &quot;nodes&quot;: [ {&quot;key&quot;: &quot;local-reference&quot;, &quot;name&quot;: &quot;display name&quot;, &quot;type&quot;: &quot;one allowed node type&quot;, &quot;aliases&quot;: [], &quot;description&quot;: &quot;&quot;, &quot;metadata&quot;: {}} ], &quot;edges&quot;: [ {&quot;source&quot;: &quot;node key or name&quot;, &quot;target&quot;: &quot;node key or name&quot;, &quot;type&quot;: &quot;one allowed edge type&quot;, &quot;evidence&quot;: &quot;exact source sentence/span&quot;, &quot;metadata&quot;: {}} ] } Allowed node types: [&quot;Algorithm&quot;, &quot;ApproachFamily&quot;, &quot;ArchitecturePattern&quot;, &quot;Benchmark&quot;, &quot;Capability&quot;, &quot;CausalClaim&quot;, &quot;Claim&quot;, &quot;ComparisonClaim&quot;, &quot;Concept&quot;, &quot;ContributionClaim&quot;, &quot;Dataset&quot;, &quot;EvaluationProtocol&quot;, &quot;EvidenceSpan&quot;, &quot;InferenceStrategy&quot;, &quot;LimitationClaim&quot;, &quot;MathematicalConcept&quot;, &quot;MethodologicalConcept&quot;, &quot;Metric&quot;, &quot;Model&quot;, &quot;ObjectiveFunction&quot;, &quot;OpenQuestion&quot;, &quot;Organization&quot;, &quot;Paper&quot;, &quot;PerformanceClaim&quot;, &quot;Person&quot;, &quot;ProblemArea&quot;, &quot;Project&quot;, &quot;Repository&quot;, &quot;ResearchField&quot;, &quot;ResearchTopic&quot;, &quot;Result&quot;, &quot;SourceDocument&quot;, &quot;Task&quot;, &quot;TechnicalTerm&quot;, &quot;TrainingParadigm&quot;, &quot;Trend&quot;] Allowed edge types: [&quot;achieves_score&quot;, &quot;addresses&quot;, &quot;attributes_improvement_to&quot;, &quot;authored_by&quot;, &quot;belongs_to_approach_family&quot;, &quot;compares_against&quot;, &quot;contradi</p>
+    <dl class="meta-grid">
+      <dt>Project</dt><dd>LLM-Wiki</dd>
+      <dt>Model</dt><dd><code>claude-sonnet-4-6</code></dd>
+      <dt>Messages</dt><dd>3</dd>
+      <dt>Tool calls</dt><dd>9</dd>
+      <dt>Tokens</dt><dd>0</dd>
+    </dl>
+  </section>
+  <section class="panel"><h2>Key decisions</h2><p class='muted'>None recorded.</p></section>
+  <section class="panel"><h2>Files touched</h2><p class='muted'>None recorded.</p></section>
+  <section class="panel"><h2>Commands run</h2><ul><li><code>&quot;${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd&quot; session-start</code></li><li><code>node ${CLAUDE_PLUGIN_ROOT}/hooks/sessionstart.mjs</code></li><li><code>node &quot;${CLAUDE_PLUGIN_ROOT}/bin/grd-tools.js&quot; verify-path-exists .planning 2&gt;/dev/null || true</code></li><li><code>bash ${CLAUDE_PLUGIN_ROOT}/hooks/mempal-stop-hook.sh</code></li><li><code>python3 ${CLAUDE_PLUGIN_ROOT}/hooks/stop.py</code></li></ul></section>
+  <section class="panel"><h2>Tools used</h2><ul><li>deferred_tools_delta</li><li>hook_non_blocking_error</li><li>mcp_instructions_delta</li><li>skill_listing</li></ul></section>
+  <section class='panel'><h2>Subagent sessions</h2><p class='muted'>No subagent transcripts attached.</p></section>
+  <section class="panel"><h2>Redacted preview</h2><pre>You are extracting a typed research intelligence graph for LLM-Wiki. Return ONLY one valid JSON object. No markdown fences, no commentary. Schema: { &quot;nodes&quot;: [ {&quot;key&quot;: &quot;local-reference&quot;, &quot;name&quot;: &quot;display name&quot;, &quot;type&quot;: &quot;one allowed node type&quot;, &quot;aliases&quot;: [], &quot;description&quot;: &quot;&quot;, &quot;metadata&quot;: {}} ], &quot;edges&quot;: [ {&quot;source&quot;: &quot;node key or name&quot;, &quot;target&quot;: &quot;node key or name&quot;, &quot;type&quot;: &quot;one allowed edge type&quot;, &quot;evidence&quot;: &quot;exact source sentence/span&quot;, &quot;metadata&quot;: {}} ] } Allowed node types: [&quot;Algorithm&quot;, &quot;ApproachFamily&quot;, &quot;ArchitecturePattern&quot;, &quot;Benchmark&quot;, &quot;Capability&quot;, &quot;CausalClaim&quot;, &quot;Claim&quot;, &quot;ComparisonClaim&quot;, &quot;Concept&quot;, &quot;ContributionClaim&quot;, &quot;Dataset&quot;, &quot;EvaluationProtocol&quot;, &quot;EvidenceSpan&quot;, &quot;InferenceStrategy&quot;, &quot;LimitationClaim&quot;, &quot;MathematicalConcept&quot;, &quot;MethodologicalConcept&quot;, &quot;Metric&quot;, &quot;Model&quot;, &quot;ObjectiveFunction&quot;, &quot;OpenQuestion&quot;, &quot;Organization&quot;, &quot;Paper&quot;, &quot;PerformanceClaim&quot;, &quot;Person&quot;, &quot;ProblemArea&quot;, &quot;Project&quot;, &quot;Repository&quot;, &quot;ResearchField&quot;, &quot;ResearchTopic&quot;, &quot;Result&quot;, &quot;SourceDocument&quot;, &quot;Task&quot;, &quot;TechnicalTerm&quot;, &quot;TrainingParadigm&quot;, &quot;Trend&quot;] Allowed edge types: [&quot;achieves_score&quot;, &quot;addresses&quot;, &quot;attributes_improvement_to&quot;, &quot;authored_by&quot;, &quot;belongs_to_approach_family&quot;, &quot;compares_against&quot;, &quot;contradi</pre></section>
+</main>
+
+</body>
+</html>

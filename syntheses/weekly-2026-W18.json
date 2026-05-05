@@ -1,0 +1,23 @@
+{
+  "title": "Weekly Synthesis — 2026-W18",
+  "kind": "syntheses",
+  "body_text": "# Weekly Synthesis — 2026-W18\n\nCoverage of `data/research/weekly/2026-W18/`.\n\n## Papers and repos\n- [Geometry-Grounded Gaussian Splatting](../sources/geometry-grounded-gaussian-splatting.md) (SourceDocument)\n\n## Dominant approach families\n- (none)",
+  "source_path": "",
+  "links": [
+    "../sources/geometry-grounded-gaussian-splatting.md"
+  ],
+  "body": "# Weekly Synthesis — 2026-W18\n\nCoverage of `data/research/weekly/2026-W18/`.\n\n## Papers and repos\n- [Geometry-Grounded Gaussian Splatting](../sources/geometry-grounded-gaussian-splatting.md) (SourceDocument)\n\n## Dominant approach families\n- (none)",
+  "frontmatter": {
+    "content_hash": "sha256-573f875db2e0cf5a636894018e8856899fa9e0e2379f9b2fd68ace902c63ba93",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "SourceDocument:geometry-grounded-gaussian-splatting:3edb2e35a848"
+    ],
+    "slug": "weekly-2026-W18",
+    "sources": [
+      "data/research/weekly/2026-W18/papers.md"
+    ],
+    "synthesis_kind": "weekly",
+    "title": "Weekly Synthesis — 2026-W18"
+  }
+}

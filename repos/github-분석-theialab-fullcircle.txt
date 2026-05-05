@@ -1,0 +1,12 @@
+GitHub 분석: theialab/fullcircle
+==============================
+
+# GitHub 분석: theialab/fullcircle
+
+## Incoming relations
+
+- **implemented_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_
+
+## Connected node types
+
+- Paper: 1

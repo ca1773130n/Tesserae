@@ -1,0 +1,49 @@
+OpsiClear-4DGS_TriGSVanilla.md
+==============================
+
+# GitHub 분석: OpsiClear-4DGS/TriGSVanilla
+
+> - URL: https://github.com/OpsiClear-4DGS/TriGSVanilla
+> - 분석일: 2026-04-26
+
+## 개요
+
+- **설명**:   
+- **Stars**: ⭐ 5 | Forks: 0
+- **라이선스**: AGPL-3.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 체크포인트 미공개 (추론 불가 가능성)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (6개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+CLAUDE.md
+CONTRIBUTING.md
+docs/PAPER_MAPPING.md
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE
+pyproject.toml
+README.md
+scripts/preprocess_selfcap.py
+scripts/run_colmap.sh
+scripts/run_plys.sh
+tests/__init__.py
+tests/test_se3.py
+tests/test_selfcap_loader.py
+tests/test_trainer.py
+```

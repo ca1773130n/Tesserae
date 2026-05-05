@@ -1,0 +1,53 @@
+Image Generators are Generalist Vision Learners
+===============================================
+
+# Image Generators are Generalist Vision Learners
+
+## Outgoing relations
+
+- **authored_by** → Howard Zhou _(Person)_
+- **authored_by** → Huizhong Chen _(Person)_
+- **authored_by** → Jean-Baptiste Alayrac _(Person)_
+- **authored_by** → Jonathan T. Barron _(Person)_
+- **authored_by** → Kaiming He _(Person)_
+- **authored_by** → Kaiming He. _(Person)_
+- **authored_by** → Karen Truong _(Person)_
+- **authored_by** → Kyle Genova _(Person)_
+- **authored_by** → Mandy Guo _(Person)_
+- **authored_by** → Nithish Kannen _(Person)_
+- **authored_by** → Oliver Wang _(Person)_
+- **authored_by** → Paul Voigtlaender _(Person)_
+- **authored_by** → Radu Soricut _(Person)_
+- **authored_by** → Saining Xie _(Person)_
+- **authored_by** → Shangbang Long _(Person)_
+- **authored_by** → Sherry Ben _(Person)_
+- **authored_by** → Shuyang Sun _(Person)_
+- **authored_by** → Songyou Peng _(Person)_
+- **authored_by** → Suhas Yogin _(Person)_
+- **authored_by** → Thomas Funkhouser _(Person)_
+- **authored_by** → Valentin Gabeur _(Person)_
+- **authored_by** → Wenlei Zhou _(Person)_
+- **authored_by** → Yanan Bao _(Person)_
+- **authored_by** → Yandong Li _(Person)_
+- **authored_by** → Yiming Gu _(Person)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-24 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_
+- **mentioned_in** → Daily Research Digest — 2026-04-25 _(SourceDocument)_
+- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_
+- **mentioned_in** → Weekly Research Digest — 2026-W17 _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-24 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-27 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 26
+- SourceDocument: 9
+- ResearchField: 2
+- Model: 1
+- Repository: 1
+- TrainingParadigm: 1

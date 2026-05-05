@@ -1,0 +1,25 @@
+{
+  "title": "2026-04-11",
+  "kind": "timeline_day",
+  "body_text": "Activity for 2026-04-11: 22 item(s) indexed.",
+  "source_path": "",
+  "links": [],
+  "body": "Activity for 2026-04-11",
+  "frontmatter": {
+    "date": "2026-04-11",
+    "activity": 22,
+    "sources": [
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/papers/2403.14370/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/papers/2406.16204/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/papers/2506.22433/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/papers/2511.23369/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/papers/2602.08961/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/papers/2604.02317/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/raw.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/repos/Anil-matcha_Open-Higgsfield-AI.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/repos/ahujasid_blender-mcp.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/repos/allenai_molmoact.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/repos/lllyasviel_VCC.md"
+    ]
+  }
+}

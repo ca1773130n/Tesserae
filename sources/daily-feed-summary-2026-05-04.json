@@ -1,0 +1,15 @@
+{
+  "title": "Daily Feed Summary — 2026-05-04",
+  "kind": "sources",
+  "body_text": "# Daily Feed Summary — 2026-05-04\n\n## Outgoing relations\n\n- **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_\n- **mentioned_in** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-04/raw.md",
+  "links": [],
+  "body": "# Daily Feed Summary — 2026-05-04\n\n## Outgoing relations\n\n- **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_\n- **mentioned_in** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:daily-feed-summary-2026-05-04:30f0b659ffbb",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-04/raw.md",
+    "title": "Daily Feed Summary — 2026-05-04"
+  }
+}

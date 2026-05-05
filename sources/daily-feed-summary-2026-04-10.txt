@@ -1,0 +1,13 @@
+Daily Feed Summary — 2026-04-10
+===============================
+
+# Daily Feed Summary — 2026-04-10
+
+## Outgoing relations
+
+- **mentioned_in** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- **mentioned_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_
+
+## Connected node types
+
+- Paper: 2

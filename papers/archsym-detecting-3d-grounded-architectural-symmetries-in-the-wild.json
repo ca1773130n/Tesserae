@@ -1,0 +1,18 @@
+{
+  "title": "ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild",
+  "kind": "papers",
+  "body_text": "# ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild\n\n## Outgoing relations\n\n- **authored_by** → Hanyu Chen _(Person)_\n- **authored_by** → Noah Snavely _(Person)_\n- **authored_by** → Ruojin Cai _(Person)_\n- **authored_by** → Steve Marschner _(Person)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses_metric** → mAP _(Metric)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-05-03 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-05-04 _(SourceDocument)_\n- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-03 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-04 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 6\n- Person: 4\n- Metric: 1\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/papers/2604.22202/paper.md",
+  "links": [],
+  "body": "# ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild\n\n## Outgoing relations\n\n- **authored_by** → Hanyu Chen _(Person)_\n- **authored_by** → Noah Snavely _(Person)_\n- **authored_by** → Ruojin Cai _(Person)_\n- **authored_by** → Steve Marschner _(Person)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses_metric** → mAP _(Metric)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-05-03 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-05-04 _(SourceDocument)_\n- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-03 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-04 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 6\n- Person: 4\n- Metric: 1\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2604.22202"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2604-22202:b92a65e5c17a",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/papers/2604.22202/paper.md",
+    "title": "ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild"
+  }
+}

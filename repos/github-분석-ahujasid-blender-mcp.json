@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: ahujasid/blender-mcp",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: ahujasid/blender-mcp\n\n## Outgoing relations\n\n- **uses_dataset** → Blender _(Dataset)_\n\n## Connected node types\n\n- Dataset: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/repos/ahujasid_blender-mcp.md",
+  "links": [],
+  "body": "# GitHub 분석: ahujasid/blender-mcp\n\n## Outgoing relations\n\n- **uses_dataset** → Blender _(Dataset)_\n\n## Connected node types\n\n- Dataset: 1",
+  "frontmatter": {
+    "aliases": [
+      "ahujasid/blender-mcp",
+      "https://github.com/ahujasid/blender-mcp"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-ahujasid-blender-mcp:6228afba619f",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/repos/ahujasid_blender-mcp.md",
+    "title": "GitHub 분석: ahujasid/blender-mcp"
+  }
+}

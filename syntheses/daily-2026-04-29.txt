@@ -1,0 +1,20 @@
+Daily Digest — 2026-04-29
+=========================
+
+# Daily Digest — 2026-04-29
+
+Sources ingested under `data/research/daily/2026-04-29/`.
+
+## Papers and repos
+- [Distance Field Rasterization for End-to-End Mesh Reconstruction (arXiv:2604.23537)](../papers/distance-field-rasterization-for-end-to-end-mesh-reconstruction.md) (Paper)
+- [OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control (arXiv:2602.23843)](../papers/omnixtreme-breaking-the-generality-barrier-in-high-dynamic-humanoid-control.md) (Paper)
+- [GitHub 분석: Perkins729/OmniXtreme](../repos/github-분석-perkins729-omnixtreme.md) (Repository)
+- [GitHub 분석: apinanaivot/IKEA-3D-Model-Download-Button](../repos/github-분석-apinanaivot-ikea-3d-model-download-button.md) (Repository)
+- [GitHub 분석: autowarefoundation/autoware](../repos/github-분석-autowarefoundation-autoware.md) (Repository)
+- [Daily Feed Summary — 2026-04-29](../sources/daily-feed-summary-2026-04-29.md) (SourceDocument)
+- [📬 Daily Research Digest — 2026-04-29](../sources/daily-research-digest-2026-04-29.md) (SourceDocument)
+
+## Extracted concepts
+- SDFRaster (Algorithm)
+- Volumetric Rendering (MethodologicalConcept)
+- Novel View Synthesis (Task)

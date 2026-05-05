@@ -1,0 +1,12 @@
+ADE20K
+======
+
+# ADE20K
+
+## Incoming relations
+
+- **uses_dataset** → GitHub 분석: ClaudiaCuttano/SANSA _(Repository)_
+
+## Connected node types
+
+- Repository: 1

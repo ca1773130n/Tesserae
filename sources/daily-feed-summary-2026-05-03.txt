@@ -1,0 +1,14 @@
+Daily Feed Summary — 2026-05-03
+===============================
+
+# Daily Feed Summary — 2026-05-03
+
+## Outgoing relations
+
+- **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_
+- **mentioned_in** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_
+- **mentioned_in** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_
+
+## Connected node types
+
+- Paper: 3

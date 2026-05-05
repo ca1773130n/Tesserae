@@ -1,0 +1,66 @@
+AHEKOT_ComfyUI_HYWorld2.md
+==========================
+
+# GitHub 분석: AHEKOT/ComfyUI_HYWorld2
+
+> - URL: https://github.com/AHEKOT/ComfyUI_HYWorld2
+> - 분석일: 2026-04-23
+
+## 개요
+
+- **설명**:   
+- **Stars**: ⭐ 28 | Forks: 4
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (34개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.github/copilot-instructions.md
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+gsplat/gsplat-1.5.3-cp312-cp312-win_amd64.whl
+gsplat/gsplat-1.5.3-cp313-cp313-win_amd64.whl
+hyworld2/.DS_Store
+hyworld2/__init__.py
+__init__.py
+install.py
+nodes/__init__.py
+nodes/panorama_mapper.py
+nodes/world_mirror_v1.py
+nodes/world_mirror_v2.py
+nodes/world_stereo.py
+pyproject.toml
+README.md
+requirements.txt
+scripts/build_gsplat.py
+scripts/extract_worldplay_weights.py
+scripts/pipinstall.bat
+tests/test_world_stereo_nodes.py
+web/vnccs_panorama_mapper.js
+workflows/World-Mirror-panorama.json
+workflows/World-single-image.json
+worldmirror/.DS_Store
+worldmirror/__init__.py
+worldstereo/.gitignore
+worldstereo/LICENSE.md
+worldstereo/README.md
+worldstereo/requirements.txt
+worldstereo/run_camera_control.py
+worldstereo/run_multi_traj.py
+```

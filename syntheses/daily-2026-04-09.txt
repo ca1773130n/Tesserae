@@ -1,0 +1,14 @@
+Daily Digest — 2026-04-09
+=========================
+
+# Daily Digest — 2026-04-09
+
+Sources ingested under `data/research/daily/2026-04-09/`.
+
+## Papers and repos
+- [GitHub 분석: ArthurBrussee/brush](../repos/github-분석-arthurbrussee-brush.md) (Repository)
+- [GitHub 분석: apple/ml-mobileclip](../repos/github-분석-apple-ml-mobileclip.md) (Repository)
+- [Daily Feed Summary — 2026-04-09](../sources/daily-feed-summary-2026-04-09.md) (SourceDocument)
+
+## Extracted concepts
+- (none extracted)

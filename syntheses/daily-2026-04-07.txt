@@ -1,0 +1,29 @@
+Daily Digest — 2026-04-07
+=========================
+
+# Daily Digest — 2026-04-07
+
+Sources ingested under `data/research/daily/2026-04-07/`.
+
+## Papers and repos
+- [FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 (arXiv:2603.22572)](../papers/fullcircle-casual한-360-촬영으로-손쉬운-3d-재구성.md) (Paper)
+- [Integrating Symmetry into Differentiable Planning with Steerable Convolutions (arXiv:2206.03674)](../papers/integrating-symmetry-into-differentiable-planning-with-steerable-convolutions.md) (Paper)
+- [Scaling 4D Representations (arXiv:2412.15212)](../papers/scaling-4d-representations.md) (Paper)
+- [GitHub 분석: EnidPinxit/awesome-openclaw-agents](../repos/github-분석-enidpinxit-awesome-openclaw-agents.md) (Repository)
+- [GitHub 분석: EvolvingLMMs-Lab/SimpleStream](../repos/github-분석-evolvinglmms-lab-simplestream.md) (Repository)
+- [GitHub 분석: PolymathicAI/the_well](../repos/github-분석-polymathicai-the-well.md) (Repository)
+- [GitHub 분석: ZXP-S-works/EquAct](../repos/github-분석-zxp-s-works-equact.md) (Repository)
+- [GitHub 분석: addyosmani/agent-skills](../repos/github-분석-addyosmani-agent-skills.md) (Repository)
+- [GitHub 분석: awesome-opencode/awesome-opencode](../repos/github-분석-awesome-opencode-awesome-opencode.md) (Repository)
+- [GitHub 분석: cedarconnor/SPAG4d](../repos/github-분석-cedarconnor-spag4d.md) (Repository)
+- [GitHub 분석: facebookresearch/EUPE](../repos/github-분석-facebookresearch-eupe.md) (Repository)
+- [GitHub 분석: google-deepmind/representations4d](../repos/github-분석-google-deepmind-representations4d.md) (Repository)
+- [GitHub 분석: imlixinyang/FlashWorld](../repos/github-분석-imlixinyang-flashworld.md) (Repository)
+- [GitHub 분석: openclaw/openclaw](../repos/github-분석-openclaw-openclaw.md) (Repository)
+- [GitHub 분석: theialab/fullcircle](../repos/github-분석-theialab-fullcircle.md) (Repository)
+- [GitHub 분석: xyxingx/LumiNet](../repos/github-분석-xyxingx-luminet.md) (Repository)
+- [Daily Feed Summary — 2026-04-07](../sources/daily-feed-summary-2026-04-07.md) (SourceDocument)
+- [digest](../sources/digest.md) (SourceDocument)
+
+## Extracted concepts
+- Gaussian Splatting (MethodologicalConcept)

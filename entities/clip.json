@@ -1,0 +1,15 @@
+{
+  "title": "CLIP",
+  "kind": "entities",
+  "body_text": "# CLIP\n\n## Incoming relations\n\n- **uses** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2602.09022/paper.md",
+  "links": [],
+  "body": "# CLIP\n\n## Incoming relations\n\n- **uses** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Model:clip:36751cbf41da",
+    "node_type": "Model",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2602.09022/paper.md",
+    "title": "CLIP"
+  }
+}

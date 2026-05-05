@@ -1,0 +1,55 @@
+{
+  "title": "Daily Digest — 2026-04-22",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-04-22\n\nSources ingested under `data/research/daily/2026-04-22/`.\n\n## Papers and repos\n- [All elementary functions from a single binary operator (arXiv:2603.21852)](../papers/all-elementary-functions-from-a-single-binary-operator.md) (Paper)\n- [An Outlook into the Future of Egocentric Vision (arXiv:2308.07123)](../papers/an-outlook-into-the-future-of-egocentric-vision.md) (Paper)\n- [Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation (arXiv:2509.10687)](../papers/stable-part-diffusion-4d-multi-view-rgb-and-kinematic-parts-video-generation.md) (Paper)\n- [T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion (arXiv:2510.12724)](../papers/t-r-o-grasp-cross-embodiment-dexterous-grasping을-위한-robot-object-spatial-t-e5dccb3a.md) (Paper)\n- [WorldCompass: Reinforcement Learning for Long-Horizon World Models (arXiv:2602.09022)](../papers/worldcompass-reinforcement-learning-for-long-horizon-world-models.md) (Paper)\n- [GitHub 분석: Aero-Ex/ComfyUI-SegviGen](../repos/github-분석-aero-ex-comfyui-segvigen.md) (Repository)\n- [GitHub 분석: FanJunqiao/M4Human](../repos/github-분석-fanjunqiao-m4human.md) (Repository)\n- [GitHub 분석: heygen-com/hyperframes](../repos/github-분석-heygen-com-hyperframes.md) (Repository)\n- [GitHub 분석: team-aprl/MR.ScaleMaster](../repos/github-분석-team-aprl-mr-scalemaster.md) (Repository)\n- [Daily Feed Summary — 2026-04-22](../sources/daily-feed-summary-2026-04-22.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-04-22](../sources/daily-research-digest-2026-04-22.md) (SourceDocument)\n\n## Extracted concepts\n- Fine-tuning (TrainingParadigm)\n- Reinforcement Learning (TrainingParadigm)",
+  "source_path": "",
+  "links": [
+    "../papers/all-elementary-functions-from-a-single-binary-operator.md",
+    "../papers/an-outlook-into-the-future-of-egocentric-vision.md",
+    "../papers/stable-part-diffusion-4d-multi-view-rgb-and-kinematic-parts-video-generation.md",
+    "../papers/t-r-o-grasp-cross-embodiment-dexterous-grasping을-위한-robot-object-spatial-t-e5dccb3a.md",
+    "../papers/worldcompass-reinforcement-learning-for-long-horizon-world-models.md",
+    "../repos/github-분석-aero-ex-comfyui-segvigen.md",
+    "../repos/github-분석-fanjunqiao-m4human.md",
+    "../repos/github-분석-heygen-com-hyperframes.md",
+    "../repos/github-분석-team-aprl-mr-scalemaster.md",
+    "../sources/daily-feed-summary-2026-04-22.md",
+    "../sources/daily-research-digest-2026-04-22.md"
+  ],
+  "body": "# Daily Digest — 2026-04-22\n\nSources ingested under `data/research/daily/2026-04-22/`.\n\n## Papers and repos\n- [All elementary functions from a single binary operator (arXiv:2603.21852)](../papers/all-elementary-functions-from-a-single-binary-operator.md) (Paper)\n- [An Outlook into the Future of Egocentric Vision (arXiv:2308.07123)](../papers/an-outlook-into-the-future-of-egocentric-vision.md) (Paper)\n- [Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation (arXiv:2509.10687)](../papers/stable-part-diffusion-4d-multi-view-rgb-and-kinematic-parts-video-generation.md) (Paper)\n- [T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion (arXiv:2510.12724)](../papers/t-r-o-grasp-cross-embodiment-dexterous-grasping을-위한-robot-object-spatial-t-e5dccb3a.md) (Paper)\n- [WorldCompass: Reinforcement Learning for Long-Horizon World Models (arXiv:2602.09022)](../papers/worldcompass-reinforcement-learning-for-long-horizon-world-models.md) (Paper)\n- [GitHub 분석: Aero-Ex/ComfyUI-SegviGen](../repos/github-분석-aero-ex-comfyui-segvigen.md) (Repository)\n- [GitHub 분석: FanJunqiao/M4Human](../repos/github-분석-fanjunqiao-m4human.md) (Repository)\n- [GitHub 분석: heygen-com/hyperframes](../repos/github-분석-heygen-com-hyperframes.md) (Repository)\n- [GitHub 분석: team-aprl/MR.ScaleMaster](../repos/github-분석-team-aprl-mr-scalemaster.md) (Repository)\n- [Daily Feed Summary — 2026-04-22](../sources/daily-feed-summary-2026-04-22.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-04-22](../sources/daily-research-digest-2026-04-22.md) (SourceDocument)\n\n## Extracted concepts\n- Fine-tuning (TrainingParadigm)\n- Reinforcement Learning (TrainingParadigm)",
+  "frontmatter": {
+    "content_hash": "sha256-dcb6eca2e9a8c1b1e02cf49764d4efdc13da613c09329134469e77d7d5d17ad7",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Paper:arxiv-2308-07123:1e8192d4026d",
+      "Paper:arxiv-2509-10687:e0f731f037ac",
+      "Paper:arxiv-2510-12724:a77dd0d4c1a0",
+      "Paper:arxiv-2602-09022:76f8dde846e6",
+      "Paper:arxiv-2603-21852:07fcc246073a",
+      "Repository:github-aero-ex-comfyui-segvigen:6828f0b5da02",
+      "Repository:github-fanjunqiao-m4human:23d97b10c5ec",
+      "Repository:github-heygen-com-hyperframes:2923f62c862a",
+      "Repository:github-team-aprl-mr-scalemaster:ca11ce40821e",
+      "SourceDocument:daily-feed-summary-2026-04-22:d5e5d817d1a0",
+      "SourceDocument:daily-research-digest-2026-04-22:4c7e62360913",
+      "TrainingParadigm:fine-tuning:f617b4eb06c6",
+      "TrainingParadigm:reinforcement-learning:f5b7c7b442da"
+    ],
+    "slug": "daily-2026-04-22",
+    "sources": [
+      "data/research/daily/2026-04-22/digest.md",
+      "data/research/daily/2026-04-22/papers/2308.07123/paper.md",
+      "data/research/daily/2026-04-22/papers/2509.10687/paper.md",
+      "data/research/daily/2026-04-22/papers/2509.10687/repo.md",
+      "data/research/daily/2026-04-22/papers/2510.12724/paper.md",
+      "data/research/daily/2026-04-22/papers/2510.12724/repo.md",
+      "data/research/daily/2026-04-22/papers/2602.09022/paper.md",
+      "data/research/daily/2026-04-22/papers/2603.21852/paper.md",
+      "data/research/daily/2026-04-22/papers/2603.21852/repo.md",
+      "data/research/daily/2026-04-22/raw.md",
+      "data/research/daily/2026-04-22/repos/team-aprl_MR.ScaleMaster.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-04-22"
+  }
+}

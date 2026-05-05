@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: nv-tlabs/lyra",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: nv-tlabs/lyra\n\n## Outgoing relations\n\n- **released_by** → nv-tlabs _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-16/papers/2509.19296/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: nv-tlabs/lyra\n\n## Outgoing relations\n\n- **released_by** → nv-tlabs _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/nv-tlabs/lyra",
+      "nv-tlabs/lyra"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-nv-tlabs-lyra:a4b0970f3c90",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-16/papers/2509.19296/repo.md",
+    "title": "GitHub 분석: nv-tlabs/lyra"
+  }
+}

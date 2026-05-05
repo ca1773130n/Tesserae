@@ -1,0 +1,15 @@
+{
+  "title": "Publishing Checklist",
+  "kind": "sources",
+  "body_text": "# Publishing Checklist\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/publishing-checklist.md",
+  "links": [],
+  "body": "# Publishing Checklist\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:publishing-checklist:e45b6f74910f",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/publishing-checklist.md",
+    "title": "Publishing Checklist"
+  }
+}

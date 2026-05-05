@@ -1,0 +1,64 @@
+visinf_INSID3.md
+================
+
+# GitHub 분석: visinf/INSID3
+
+> - URL: https://github.com/visinf/INSID3
+> - 분석일: 2026-04-08
+
+## 개요
+
+- **설명**: [CVPR 2026] Official repository for the paper:  \
+- **Stars**: ⭐ 154 | Forks: 10
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 체크포인트 미공개 (추론 불가 가능성)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (19개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.gitignore
+assets/clustering.png
+assets/positional_subspace.png
+assets/similarity_maps.png
+assets/teaser.png
+datasets/__init__.py
+datasets/coco.py
+datasets/isaid.py
+datasets/isic.py
+datasets/lung.py
+datasets/lvis.py
+datasets/paco_part.py
+datasets/pascal_part.py
+datasets/permis.py
+datasets/suim.py
+docs/data.md
+inference.py
+LICENSE
+models/__init__.py
+models/insid3.py
+opts.py
+pyproject.toml
+README.md
+requirements.txt
+utils/__init__.py
+utils/clustering.py
+utils/data.py
+utils/metrics.py
+utils/refinement.py
+```

@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: roboflow/rf-detr",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: roboflow/rf-detr\n\n## Outgoing relations\n\n- **evaluated_on** → COCO _(Benchmark)_\n\n## Connected node types\n\n- Benchmark: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-16/repos/roboflow_rf-detr.md",
+  "links": [],
+  "body": "# GitHub 분석: roboflow/rf-detr\n\n## Outgoing relations\n\n- **evaluated_on** → COCO _(Benchmark)_\n\n## Connected node types\n\n- Benchmark: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/roboflow/rf-detr",
+      "roboflow/rf-detr"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-roboflow-rf-detr:05c3483eded8",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-16/repos/roboflow_rf-detr.md",
+    "title": "GitHub 분석: roboflow/rf-detr"
+  }
+}

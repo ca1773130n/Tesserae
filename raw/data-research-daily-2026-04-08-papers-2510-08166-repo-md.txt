@@ -1,0 +1,69 @@
+repo.md
+=======
+
+# GitHub 분석: elias1518693/jpeg_textures
+
+> - URL: https://github.com/elias1518693/jpeg_textures
+> - 분석일: 2026-04-08
+
+## 개요
+
+- **설명**:   
+- **Stars**: ⭐ 100 | Forks: 2
+- **라이선스**: NOASSERTION
+- **주 언어**: C++/CUDA
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (29개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.gitignore
+.vscode/launch.json
+.vscode/settings.json
+.vscode/tasks.json
+cache_sponza.jpg
+cmake/common.cmake
+cmake/glfw.cmake
+CMakeLists.txt
+docs/cache_sponza.jpg
+docs/cover.jpg
+docs/mcus.jpg
+docs/miplevel.jpg
+docs/sponza_vr_caching.jpg
+docs/texIDs.jpg
+docs/textured.jpg
+docs/uvs.jpg
+LICENSE.md
+README.md
+sponza_vr_caching.jpg
+src/BitReader.h
+src/CudaModularProgram.h
+src/CudaVirtualMemory.h
+src/CURuntime.h
+src/GLRenderer_linux.cpp
+src/GLRenderer_win32.cpp
+src/GLRenderer.cpp
+src/GLRenderer.h
+src/ImageLoader.cpp
+src/JPEGindexer.h
+src/main.cpp
+src/MouseEvents.h
+src/OpenVRHelper.cpp
+src/OpenVRHelper.h
+src/OrbitControls.h
+```

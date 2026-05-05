@@ -1,0 +1,8 @@
+{
+  "title": "architecture.md",
+  "kind": "raw",
+  "body_text": "# Architecture (fixture)\n\nThe wiki corpus is shaped after the real `data/research/` layout used by\nLLM-Wiki: a `daily/<date>/` folder per day with a `digest.md`, optional\n`papers/<arxiv-id>/paper.md` plus `repo.md`, and `feeds/` or `repos/`\nsidecars; a `weekly/<iso-week>/` folder for synthesis.\n\nThe wiki layer reads these as raw `SourceDocument`, `Paper`, or `Repository`\nnodes and lets the synthesis projector emit higher-order pages on top.",
+  "source_path": "tests/fixtures/wiki_corpus/docs/architecture.md",
+  "links": [],
+  "body": "# Architecture (fixture)\n\nThe wiki corpus is shaped after the real `data/research/` layout used by\nLLM-Wiki: a `daily/<date>/` folder per day with a `digest.md`, optional\n`papers/<arxiv-id>/paper.md` plus `repo.md`, and `feeds/` or `repos/`\nsidecars; a `weekly/<iso-week>/` folder for synthesis.\n\nThe wiki layer reads these as raw `SourceDocument`, `Paper`, or `Repository`\nnodes and lets the synthesis projector emit higher-order pages on top.\n"
+}

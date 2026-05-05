@@ -1,0 +1,15 @@
+{
+  "title": "mIoU=24.3",
+  "kind": "entities",
+  "body_text": "# mIoU=24.3\n\n24.3 mIoU\n\n## Outgoing relations\n\n- **uses_metric** → mIoU _(Metric)_\n\n## Incoming relations\n\n- **reports_result** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **reports_result** → Sapiens2 _(Paper)_\n\n## Connected node types\n\n- Metric: 1\n- Paper: 1\n- SourceDocument: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-27/papers/2604.21681/paper.md",
+  "links": [],
+  "body": "# mIoU=24.3\n\n24.3 mIoU\n\n## Outgoing relations\n\n- **uses_metric** → mIoU _(Metric)_\n\n## Incoming relations\n\n- **reports_result** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **reports_result** → Sapiens2 _(Paper)_\n\n## Connected node types\n\n- Metric: 1\n- Paper: 1\n- SourceDocument: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Result:miou-24-3:e3d0f8f50ab2",
+    "node_type": "Result",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-27/papers/2604.21681/paper.md",
+    "title": "mIoU=24.3"
+  }
+}

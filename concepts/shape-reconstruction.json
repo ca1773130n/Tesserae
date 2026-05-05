@@ -1,0 +1,20 @@
+{
+  "title": "Shape Reconstruction",
+  "kind": "concepts",
+  "body_text": "# Shape Reconstruction\n\n## Incoming relations\n\n- **addresses** → Depth Map _(TechnicalTerm)_\n- **addresses** → Geometry-Grounded Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 1\n- TechnicalTerm: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-15/papers/2601.17835/paper.md",
+  "links": [],
+  "body": "# Shape Reconstruction\n\n## Incoming relations\n\n- **addresses** → Depth Map _(TechnicalTerm)_\n- **addresses** → Geometry-Grounded Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 1\n- TechnicalTerm: 1",
+  "frontmatter": {
+    "aliases": [
+      "geometry extraction",
+      "기하 추출",
+      "형상 재구성"
+    ],
+    "kind": "concepts",
+    "node_id": "Task:shape-reconstruction:b86872dcc192",
+    "node_type": "Task",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-15/papers/2601.17835/paper.md",
+    "title": "Shape Reconstruction"
+  }
+}

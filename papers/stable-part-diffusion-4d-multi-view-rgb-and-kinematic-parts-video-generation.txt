@@ -1,0 +1,31 @@
+Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation
+=============================================================================
+
+# Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation
+
+## Outgoing relations
+
+- **authored_by** → Chun-Han Yao _(Person)_
+- **authored_by** → Hao Zhang _(Person)_
+- **authored_by** → Narendra Ahuja _(Person)_
+- **authored_by** → Simon Donné _(Person)_
+- **authored_by** → Varun Jampani _(Person)_
+- **implemented_in** → GitHub 분석: Aero-Ex/ComfyUI-SegviGen _(Repository)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- **uses_dataset** → Objaverse _(Dataset)_
+- **uses_metric** → mAP _(Metric)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-22 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 5
+- SourceDocument: 3
+- Dataset: 1
+- Metric: 1
+- Repository: 1
+- ResearchField: 1

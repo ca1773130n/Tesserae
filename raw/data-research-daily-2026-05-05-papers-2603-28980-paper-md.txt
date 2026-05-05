@@ -1,0 +1,116 @@
+paper.md
+========
+
+# 논문 분석: 2603.28980
+
+> - arxiv: https://arxiv.org/abs/2603.28980
+> - papers.cool: https://papers.cool/arxiv/2603.28980
+> - 분석일: 2026-05-05
+
+Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas | Cool Papers - 몰입형 논문 탐색
+
+## 2603.28980
+
+총계: 1
+
+## 
+#1  
+Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas  
+[PDF1]  
+[Copy]  
+[Kimi1]  
+[REL]
+
+저자:  
+Felix Wimbauer,  
+Fabian Manhardt,  
+Michael Oechsle,  
+Nikolai Kalischek,  
+Christian Rupprecht,  
+Daniel Cremers,  
+Federico Tombari
+
+텍스트로부터 몰입형 3D 장면을 합성하는 기술은 새로운 비디오 생성 모델과 feed-forward 3D reconstruction에 힘입어 빠르게 성숙하고 있으며, AR/VR과 world modeling에서 큰 잠재력을 지닌다. 파노라마 이미지는 장면 초기화에 효과적인 것으로 입증되었지만, 기존 접근법은 시각적 충실도와 탐색 가능성 사이의 상충 관계를 안고 있다. autoregressive expansion은 context drift 문제를 겪고, panoramic video generation은 낮은 해상도로 제한된다. 저자들은 이러한 한계를 단계적 파노라마 장면 확장을 통해 극복하는 텍스트 기반 몰입형 3D 장면 합성의 통합 프레임워크인 Stepper를 제안한다. Stepper는 일관된 고해상도 확장을 가능하게 하는 새로운 multi-view 360° diffusion model과 기하학적 일관성을 강제하는 geometry reconstruction pipeline을 결합한다. 새로운 대규모 multi-view panorama dataset으로 학습된 Stepper는 충실도와 구조적 일관성에서 state-of-the-art 성능을 달성하며 기존 접근법을 능가하고, 몰입형 장면 생성의 새로운 기준을 제시한다.
+
+주제:  
+Computer Vision and Pattern Recognition
+
+게시일: 2026-03-30 20:26:28 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+포함 OR:
+
+제외:
+
+검색
+
+필터
+
+하이라이트
+
+표시된 논문:
+
+#1  
+Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas
+
+내보내기
+
+Magic Token:
+
+Kimi 언어:
+
+中文  
+English
+
+설명 언어:
+
+中文  
+English
+
+저장
+
+버그 신고 또는 이슈 제출은 다음을 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+계속 진행하기 전에 Disclaimer를 읽어 주세요.
+
+더 흥미로운 기능은 kexue.fm과 kimi.ai를 방문해 확인하세요.
+
+```javascript
+var macros = {
+    'argmin': '\\mathop{\\text{argmin}}',
+    'argmax': '\\mathop{\\text{argmax}}'
+};
+MathJax.Hub.Config({
+    tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']], processEscapes: true},
+    TeX: {equationNumbers: {autoNumber: ['AMS'], useLabelIds: true}, extensions: ['AMSmath.js', 'AMSsymbols.js', 'extpfeil.js'], Macros: macros},
+    'HTML-CSS': {noReflows: false, availableFonts: ['tex'], styles: {'.MathJax_Display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}},
+    'CommonHTML': {noReflows: false, availableFonts: ['tex'], styles: {'.MJXc-display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}},
+    'SVG': {styles: {'.MathJax_SVG_Display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}}
+});
+MathJax.Hub.Queue(function() {
+    document.querySelectorAll('.MathJax').forEach(element => element.classList.add('notranslate'));
+    document.querySelectorAll('a.title-link, p.summary').forEach(element => element.classList.remove('notranslate'));
+    highlightQuery();
+});
+```
+
+```javascript
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement('script');
+  hm.src = 'https://hm.baidu.com/hm.js?606b976365dabacb1f69823d8de064ee';
+  var s = document.getElementsByTagName('script')[0];
+  s.parentNode.insertBefore(hm, s);
+})();
+```
+
+```javascript
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+
+gtag('config', 'G-214H31WLDF');
+```

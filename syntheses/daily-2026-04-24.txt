@@ -1,0 +1,15 @@
+Daily Digest — 2026-04-24
+=========================
+
+# Daily Digest — 2026-04-24
+
+Sources ingested under `data/research/daily/2026-04-24/`.
+
+## Papers and repos
+- [Learning in Deep Factor Graphs with Gaussian Belief Propagation (arXiv:2311.14649)](../papers/learning-in-deep-factor-graphs-with-gaussian-belief-propagation.md) (Paper)
+- [Scaling Sequence-to-Sequence Generative Neural Rendering (arXiv:2510.04236)](../papers/scaling-sequence-to-sequence-generative-neural-rendering.md) (Paper)
+- [Daily Feed Summary — 2026-04-24](../sources/daily-feed-summary-2026-04-24.md) (SourceDocument)
+- [📬 Daily Research Digest — 2026-04-24](../sources/daily-research-digest-2026-04-24.md) (SourceDocument)
+
+## Extracted concepts
+- Pre-training (TrainingParadigm)

@@ -1,0 +1,18 @@
+{
+  "title": "Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링",
+  "kind": "papers",
+  "body_text": "# Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링\n\n## Outgoing relations\n\n- **authored_by** → Francis Engelmann _(Person)_\n- **authored_by** → Hansheng Chen _(Person)_\n- **authored_by** → Haotong Zhang _(Person)_\n- **authored_by** → Jiaqi Han _(Person)_\n- **authored_by** → Leonidas Guibas _(Person)_\n- **authored_by** → Mikaela Angelina Uy _(Person)_\n- **authored_by** → Rahul Thomas _(Person)_\n- **authored_by** → Suya You _(Person)_\n- **authored_by** → Yang You _(Person)_\n- **authored_by** → Yi Du _(Person)_\n- **implemented_in** → GitHub 분석: qq456cvb/Img2CAD _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses_dataset** → ShapeNet _(Dataset)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-05-03 _(SourceDocument)_\n- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-03 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 10\n- SourceDocument: 4\n- Dataset: 1\n- Repository: 1\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/papers/2408.01437/paper.md",
+  "links": [],
+  "body": "# Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링\n\n## Outgoing relations\n\n- **authored_by** → Francis Engelmann _(Person)_\n- **authored_by** → Hansheng Chen _(Person)_\n- **authored_by** → Haotong Zhang _(Person)_\n- **authored_by** → Jiaqi Han _(Person)_\n- **authored_by** → Leonidas Guibas _(Person)_\n- **authored_by** → Mikaela Angelina Uy _(Person)_\n- **authored_by** → Rahul Thomas _(Person)_\n- **authored_by** → Suya You _(Person)_\n- **authored_by** → Yang You _(Person)_\n- **authored_by** → Yi Du _(Person)_\n- **implemented_in** → GitHub 분석: qq456cvb/Img2CAD _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses_dataset** → ShapeNet _(Dataset)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-05-03 _(SourceDocument)_\n- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-03 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 10\n- SourceDocument: 4\n- Dataset: 1\n- Repository: 1\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2408.01437"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2408-01437:9c1714e9cecd",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/papers/2408.01437/paper.md",
+    "title": "Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링"
+  }
+}

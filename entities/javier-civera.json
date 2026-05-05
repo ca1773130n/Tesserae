@@ -1,0 +1,15 @@
+{
+  "title": "Javier Civera",
+  "kind": "entities",
+  "body_text": "# Javier Civera\n\n## Incoming relations\n\n- **authored_by** → Cross-Attentive Multiview Fusion of Vision-Language Embeddings _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2604.12551/paper.md",
+  "links": [],
+  "body": "# Javier Civera\n\n## Incoming relations\n\n- **authored_by** → Cross-Attentive Multiview Fusion of Vision-Language Embeddings _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:javier-civera:c7a3cd74397d",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2604.12551/paper.md",
+    "title": "Javier Civera"
+  }
+}

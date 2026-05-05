@@ -1,0 +1,19 @@
+Accuracy
+========
+
+# Accuracy
+
+## Incoming relations
+
+- **uses_metric** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_
+- **uses_metric** → Daily Feed Summary — 2026-04-28 _(SourceDocument)_
+- **uses_metric** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_
+- **uses_metric** → ViBA: Implicit Bundle Adjustment with Geometric and Temporal Consistency for Robust Visual Matching _(Paper)_
+- **uses_metric** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **uses_metric** → accuracy=90 _(Result)_
+
+## Connected node types
+
+- SourceDocument: 3
+- Paper: 2
+- Result: 1

@@ -1,0 +1,33 @@
+GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow
+===========================================================================
+
+# GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow
+
+## Outgoing relations
+
+- **addresses** → Visual SLAM _(ResearchTopic)_
+- **authored_by** → Dong-Uk Seo _(Person)_
+- **authored_by** → Eungchang Mason Lee _(Person)_
+- **authored_by** → Hyun Myung _(Person)_
+- **authored_by** → Jinwoo Jeon _(Person)_
+- **belongs_to_approach_family** → Gaussian Splatting Reconstruction _(ApproachFamily)_
+- **introduces** → GaussianFlow SLAM _(Algorithm)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- **uses** → Gaussian Splatting _(MethodologicalConcept)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-25 _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-25 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 4
+- SourceDocument: 4
+- Algorithm: 1
+- ApproachFamily: 1
+- MethodologicalConcept: 1
+- ResearchField: 1
+- ResearchTopic: 1

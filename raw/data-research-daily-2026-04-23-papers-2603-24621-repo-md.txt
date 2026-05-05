@@ -1,0 +1,42 @@
+repo.md
+=======
+
+# GitHub 분석: mfranzon/render
+
+> - URL: https://github.com/mfranzon/render
+> - 분석일: 2026-04-23
+
+## 개요
+
+- **설명**: Render is a skill to create beautiful 3D models directly from coding agents.
+- **Stars**: ⭐ 84 | Forks: 9
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (3개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+README.md
+setup.sh
+SKILL.md
+viewer/index.html
+viewer/render.py
+viewer/serve.py
+```

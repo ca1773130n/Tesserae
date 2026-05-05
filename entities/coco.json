@@ -1,0 +1,15 @@
+{
+  "title": "COCO",
+  "kind": "entities",
+  "body_text": "# COCO\n\n## Incoming relations\n\n- **evaluated_on** → GitHub 분석: ClaudiaCuttano/SANSA _(Repository)_\n- **evaluated_on** → GitHub 분석: roboflow/rf-detr _(Repository)_\n- **evaluated_on** → GitHub 분석: visinf/INSID3 _(Repository)_\n\n## Connected node types\n\n- Repository: 3",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/repos/ClaudiaCuttano_SANSA.md",
+  "links": [],
+  "body": "# COCO\n\n## Incoming relations\n\n- **evaluated_on** → GitHub 분석: ClaudiaCuttano/SANSA _(Repository)_\n- **evaluated_on** → GitHub 분석: roboflow/rf-detr _(Repository)_\n- **evaluated_on** → GitHub 분석: visinf/INSID3 _(Repository)_\n\n## Connected node types\n\n- Repository: 3",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Benchmark:coco:931b84ca6c55",
+    "node_type": "Benchmark",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/repos/ClaudiaCuttano_SANSA.md",
+    "title": "COCO"
+  }
+}

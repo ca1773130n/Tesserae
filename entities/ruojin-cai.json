@@ -1,0 +1,15 @@
+{
+  "title": "Ruojin Cai",
+  "kind": "entities",
+  "body_text": "# Ruojin Cai\n\n## Incoming relations\n\n- **authored_by** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_\n- **authored_by** → Extreme Rotation Estimation in the Wild _(Paper)_\n- **authored_by** → Long-tail Internet photo reconstruction _(Paper)_\n\n## Connected node types\n\n- Paper: 3",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/papers/2604.22714/paper.md",
+  "links": [],
+  "body": "# Ruojin Cai\n\n## Incoming relations\n\n- **authored_by** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_\n- **authored_by** → Extreme Rotation Estimation in the Wild _(Paper)_\n- **authored_by** → Long-tail Internet photo reconstruction _(Paper)_\n\n## Connected node types\n\n- Paper: 3",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:ruojin-cai:8fa77de569db",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/papers/2604.22714/paper.md",
+    "title": "Ruojin Cai"
+  }
+}

@@ -1,0 +1,63 @@
+LeapLabTHU_RvR.md
+=================
+
+# GitHub 분석: LeapLabTHU/RvR
+
+> - URL: https://github.com/LeapLabTHU/RvR
+> - 분석일: 2026-05-04
+
+## 개요
+
+- **설명**: 🔥 Regeneration over editing: unlocking more effective image refinement!
+- **Stars**: ⭐ 44 | Forks: 1
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (43개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+app.py
+assets/banner.png
+assets/bench.png
+assets/overview.png
+assets/teaser.png
+data/data_paths.py
+data/dataset_base.py
+data/dataset_info.py
+data/data_utils.py
+data/distributed_iterable_dataset.py
+data/__init__.py
+data/parquet_utils.py
+data/t2i_dataset.py
+data/transforms.py
+data/video_utils.py
+data/vlm_dataset.py
+eval/__init__.py
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+inferencer.py
+LICENSE
+modeling/autoencoder.py
+modeling/__init__.py
+README.md
+requirements.txt
+scripts/train.sh
+train/fsdp_utils.py
+train/__init__.py
+train/pretrain_unified_navit.py
+train/train_utils.py
+```

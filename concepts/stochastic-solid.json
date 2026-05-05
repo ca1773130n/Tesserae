@@ -1,0 +1,18 @@
+{
+  "title": "Stochastic Solid",
+  "kind": "concepts",
+  "body_text": "# Stochastic Solid\n\n## Incoming relations\n\n- **uses** → Geometry-Grounded Gaussian Splatting _(ApproachFamily)_\n- **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- ApproachFamily: 1\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-15/papers/2601.17835/paper.md",
+  "links": [],
+  "body": "# Stochastic Solid\n\n## Incoming relations\n\n- **uses** → Geometry-Grounded Gaussian Splatting _(ApproachFamily)_\n- **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- ApproachFamily: 1\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "stochastic solid"
+    ],
+    "kind": "concepts",
+    "node_id": "MathematicalConcept:stochastic-solid:935f4dd3e32e",
+    "node_type": "MathematicalConcept",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-15/papers/2601.17835/paper.md",
+    "title": "Stochastic Solid"
+  }
+}

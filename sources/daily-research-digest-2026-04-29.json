@@ -1,0 +1,15 @@
+{
+  "title": "📬 Daily Research Digest — 2026-04-29",
+  "kind": "sources",
+  "body_text": "# 📬 Daily Research Digest — 2026-04-29\n\n## Outgoing relations\n\n- **mentioned_in** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_\n- **mentioned_in** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_\n- **mentioned_in** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_\n- **mentioned_in** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Paper: 4\n- Metric: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-29/digest.md",
+  "links": [],
+  "body": "# 📬 Daily Research Digest — 2026-04-29\n\n## Outgoing relations\n\n- **mentioned_in** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_\n- **mentioned_in** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_\n- **mentioned_in** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_\n- **mentioned_in** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Paper: 4\n- Metric: 1",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:daily-research-digest-2026-04-29:08e6f15da96e",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-29/digest.md",
+    "title": "📬 Daily Research Digest — 2026-04-29"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "title": "2026-05-02",
+  "kind": "timeline_day",
+  "body_text": "Activity for 2026-05-02: 20 item(s) indexed.",
+  "source_path": "",
+  "links": [],
+  "body": "Activity for 2026-05-02",
+  "frontmatter": {
+    "date": "2026-05-02",
+    "activity": 20,
+    "sources": [
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/digest.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/papers/2512.06818/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/papers/2604.22714/paper.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/papers/2604.22714/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/papers/2604.24994/paper.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/raw.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/repos/BoPeng_ai-marketplace-monitor.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/repos/ag2ai_ag2studio.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/repos/aree6_LiftShift.md"
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "title": "Objaverse",
+  "kind": "entities",
+  "body_text": "# Objaverse\n\n## Incoming relations\n\n- **uses_dataset** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_\n- **uses_dataset** → Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation _(Paper)_\n- **uses_dataset** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n\n## Connected node types\n\n- Paper: 2\n- SourceDocument: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2604.04874/paper.md",
+  "links": [],
+  "body": "# Objaverse\n\n## Incoming relations\n\n- **uses_dataset** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_\n- **uses_dataset** → Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation _(Paper)_\n- **uses_dataset** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n\n## Connected node types\n\n- Paper: 2\n- SourceDocument: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Dataset:objaverse:d724d1b0f54a",
+    "node_type": "Dataset",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2604.04874/paper.md",
+    "title": "Objaverse"
+  }
+}

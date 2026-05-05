@@ -1,0 +1,12 @@
+GitHub 분석: allenai/molmoact
+===========================
+
+# GitHub 분석: allenai/molmoact
+
+## Outgoing relations
+
+- **released_by** → allenai _(Organization)_
+
+## Connected node types
+
+- Organization: 1

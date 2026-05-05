@@ -1,0 +1,15 @@
+{
+  "title": "Christopher Xie",
+  "kind": "entities",
+  "body_text": "# Christopher Xie\n\n## Incoming relations\n\n- **authored_by** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2503.11806/paper.md",
+  "links": [],
+  "body": "# Christopher Xie\n\n## Incoming relations\n\n- **authored_by** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:christopher-xie:6366d5fb5628",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2503.11806/paper.md",
+    "title": "Christopher Xie"
+  }
+}

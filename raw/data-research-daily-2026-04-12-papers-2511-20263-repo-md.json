@@ -1,0 +1,8 @@
+{
+  "title": "repo.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: omerb01/didicm\n\n> - URL: https://github.com/omerb01/didicm\n> - 분석일: 2026-04-12\n\n## 개요\n\n- **설명**: An official implementation of the paper: \\\n- **Stars**: ⭐ 5 | Forks: 0\n- **라이선스**: MIT\n- **주 언어**: Python\n\n## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (12개) | Y |\n| 의존성 파일 | Y |\n| 모델/체크포인트 | script |\n| Docker | N |\n\n## 파일 구조\n\n```\ndidicm/__init__.py\ndidicm/loss.py\ndidicm/score_sampling.py\nfigures/didirn.png\nfigures/overview.gif\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\nLICENSE\nREADME.md\nrequirements.txt\nsetup.py\ntrain.py\nvalidate.py\n```",
+  "source_path": "data/research/daily/2026-04-12/papers/2511.20263/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: omerb01/didicm\n\n> - URL: https://github.com/omerb01/didicm\n> - 분석일: 2026-04-12\n\n## 개요\n\n- **설명**: An official implementation of the paper: \\\n- **Stars**: ⭐ 5 | Forks: 0\n- **라이선스**: MIT\n- **주 언어**: Python\n\n## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (12개) | Y |\n| 의존성 파일 | Y |\n| 모델/체크포인트 | script |\n| Docker | N |\n\n## 파일 구조\n\n```\ndidicm/__init__.py\ndidicm/loss.py\ndidicm/score_sampling.py\nfigures/didirn.png\nfigures/overview.gif\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\nLICENSE\nREADME.md\nrequirements.txt\nsetup.py\ntrain.py\nvalidate.py\n```\n"
+}

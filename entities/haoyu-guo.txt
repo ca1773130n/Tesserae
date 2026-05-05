@@ -1,0 +1,12 @@
+Haoyu Guo
+=========
+
+# Haoyu Guo
+
+## Incoming relations
+
+- **authored_by** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+
+## Connected node types
+
+- Paper: 1

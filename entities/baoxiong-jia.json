@@ -1,0 +1,15 @@
+{
+  "title": "Baoxiong Jia",
+  "kind": "entities",
+  "body_text": "# Baoxiong Jia\n\n## Incoming relations\n\n- **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_\n- **authored_by** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-29/papers/2602.23843/paper.md",
+  "links": [],
+  "body": "# Baoxiong Jia\n\n## Incoming relations\n\n- **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_\n- **authored_by** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:baoxiong-jia:dc895787a0a9",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-29/papers/2602.23843/paper.md",
+    "title": "Baoxiong Jia"
+  }
+}

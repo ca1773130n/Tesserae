@@ -1,0 +1,14 @@
+Daily Feed Summary — 2026-04-09
+===============================
+
+# Daily Feed Summary — 2026-04-09
+
+## Outgoing relations
+
+- **mentioned_in** → Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation _(Paper)_
+- **mentioned_in** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- **mentioned_in** → ViBA: Implicit Bundle Adjustment with Geometric and Temporal Consistency for Robust Visual Matching _(Paper)_
+
+## Connected node types
+
+- Paper: 3

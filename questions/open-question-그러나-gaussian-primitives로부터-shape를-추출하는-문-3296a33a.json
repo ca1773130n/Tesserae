@@ -1,0 +1,15 @@
+{
+  "title": "Open question: 그러나 Gaussian primitives로부터 shape를 추출하는 문제는 여전히 해결되지 않은 과제로 남아 있다.",
+  "kind": "questions",
+  "body_text": "# Open question: 그러나 Gaussian primitives로부터 shape를 추출하는 문제는 여전히 해결되지 않은 과제로 남아 있다.\n\n그러나 Gaussian primitives로부터 shape를 추출하는 문제는 여전히 해결되지 않은 과제로 남아 있다.\n\n## Incoming relations\n\n- **supports_claim** → Geometry-Grounded Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-27/papers/2601.17835/paper.md",
+  "links": [],
+  "body": "# Open question: 그러나 Gaussian primitives로부터 shape를 추출하는 문제는 여전히 해결되지 않은 과제로 남아 있다.\n\n그러나 Gaussian primitives로부터 shape를 추출하는 문제는 여전히 해결되지 않은 과제로 남아 있다.\n\n## Incoming relations\n\n- **supports_claim** → Geometry-Grounded Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "questions",
+    "node_id": "OpenQuestion:open-question-gaussian-primitives-shape:e0ff55f7cfe5",
+    "node_type": "OpenQuestion",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-27/papers/2601.17835/paper.md",
+    "title": "Open question: 그러나 Gaussian primitives로부터 shape를 추출하는 문제는 여전히 해결되지 않은 과제로 남아 있다."
+  }
+}

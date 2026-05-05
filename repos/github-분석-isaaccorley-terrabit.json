@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: isaaccorley/terrabit",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: isaaccorley/terrabit\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/repos/isaaccorley_terrabit.md",
+  "links": [],
+  "body": "# GitHub 분석: isaaccorley/terrabit\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/isaaccorley/terrabit",
+      "isaaccorley/terrabit"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-isaaccorley-terrabit:d3e37b56448e",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/repos/isaaccorley_terrabit.md",
+    "title": "GitHub 분석: isaaccorley/terrabit"
+  }
+}

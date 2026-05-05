@@ -1,0 +1,15 @@
+{
+  "title": "Yan Wang",
+  "kind": "entities",
+  "body_text": "# Yan Wang\n\n## Incoming relations\n\n- **authored_by** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_\n- **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_\n- **authored_by** → ViBA: Implicit Bundle Adjustment with Geometric and Temporal Consistency for Robust Visual Matching _(Paper)_\n\n## Connected node types\n\n- Paper: 3",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2604.03377/paper.md",
+  "links": [],
+  "body": "# Yan Wang\n\n## Incoming relations\n\n- **authored_by** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_\n- **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_\n- **authored_by** → ViBA: Implicit Bundle Adjustment with Geometric and Temporal Consistency for Robust Visual Matching _(Paper)_\n\n## Connected node types\n\n- Paper: 3",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:yan-wang:4fb38a586443",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2604.03377/paper.md",
+    "title": "Yan Wang"
+  }
+}

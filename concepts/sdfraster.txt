@@ -1,0 +1,12 @@
+SDFRaster
+=========
+
+# SDFRaster
+
+## Incoming relations
+
+- **introduces** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_
+
+## Connected node types
+
+- Paper: 1

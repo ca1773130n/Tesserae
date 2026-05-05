@@ -1,0 +1,18 @@
+{
+  "title": "Learning in Deep Factor Graphs with Gaussian Belief Propagation",
+  "kind": "papers",
+  "body_text": "# Learning in Deep Factor Graphs with Gaussian Belief Propagation\n\n## Outgoing relations\n\n- **authored_by** → Andrew J Davison _(Person)_\n- **authored_by** → Mark van der Wilk _(Person)_\n- **authored_by** → Seth Nabarro _(Person)_\n- **implemented_in** → GitHub 분석: mfranzon/render _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-24 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-24 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 4\n- Person: 3\n- Repository: 1\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-24/papers/2311.14649/paper.md",
+  "links": [],
+  "body": "# Learning in Deep Factor Graphs with Gaussian Belief Propagation\n\n## Outgoing relations\n\n- **authored_by** → Andrew J Davison _(Person)_\n- **authored_by** → Mark van der Wilk _(Person)_\n- **authored_by** → Seth Nabarro _(Person)_\n- **implemented_in** → GitHub 분석: mfranzon/render _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-24 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-24 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 4\n- Person: 3\n- Repository: 1\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2311.14649"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2311-14649:e09bf5ce008b",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-24/papers/2311.14649/paper.md",
+    "title": "Learning in Deep Factor Graphs with Gaussian Belief Propagation"
+  }
+}

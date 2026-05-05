@@ -1,0 +1,68 @@
+digest.md
+=========
+
+# 📬 Daily Research Digest — 2026-05-02
+
+## 🔥 오늘의 하이라이트
+
+### 1. 장면 재구성의 긴 꼬리 문제를 다시 겨냥한 MegaDepth-X 계열 업데이트
+
+![preview](https://pbs.twimg.com/media/HHEuCJOaQAEynVT?format=jpg&name=orig)
+
+인터넷 이미지처럼 시점 분포가 불균일하고 난도가 높은 장면에서 3D 재구성 성능을 끌어올리려는 시도가 다시 전면에 나왔습니다. 정제된 MegaScenes 계열 데이터와 MoGe2 기반 depth refinement, 그리고 hard scene을 흉내 내는 sparse sampler 조합은 기존 COLMAP 계열 파이프라인이 약했던 긴 꼬리 구간을 직접 겨냥합니다.
+
+- 📄 논문: [논문 분석](papers/2604.22714/paper.md) | [arxiv](https://arxiv.org/abs/2604.22714)
+- 💻 코드: [GitHub 분석](papers/2604.22714/repo.md) | [repo](https://github.com/lyehe/build_gpu_colmap) | ⭐ 57
+- 🔗 [원문](https://x.com/YeheLiu/status/2049661760219537865)
+
+---
+
+### 2. Power Foam, ray tracing과 rasterization을 함께 노리는 3D 표현
+
+![preview](https://pbs.twimg.com/amplify_video_thumb/2049337028928765952/img/JV6swalZtX2dQPh2.jpg)
+
+3DGS급 속도와 ray-traced 품질을 동시에 노리는 표현 학습이 다시 주목받고 있습니다. 실시간 렌더링 품질과 처리 경로를 양립시키려는 접근은 3D 표현 연구가 이제 단순 복원 정확도보다 실제 시스템 통합 가능성으로 이동하고 있음을 보여줍니다.
+
+- 📄 논문: [논문 분석](papers/2604.24994/paper.md) | [arxiv](https://arxiv.org/abs/2604.24994)
+- 🔗 [원문](https://x.com/YeheLiu/status/2049661760219537865)
+
+---
+
+### 3. Depth Anything V3 기반 실시간 metric depth 추정 데모
+
+실시간 metric depth 추정을 바로 체험 가능한 형태로 묶어낸 저장소가 올라왔습니다. 논문 발표보다 엔지니어링 완성도가 중요한 현업 관점에서, 빠른 프로토타이핑과 배포 실험에 바로 연결된다는 점이 강점입니다.
+
+- 💻 코드: [GitHub 분석](repos/ag2ai_ag2studio.md) | [repo](https://github.com/ag2ai/ag2studio) | ⭐ 47
+- 🔗 [원문](https://x.com/tom_doerr/status/2049319649100157334)
+
+---
+
+## 📋 주목할 만한 피드
+
+### ▫️ COLMAP 계열 재구성 파이프라인의 실전 복귀 신호
+
+GPU 지원 COLMAP 배포와 함께, 어려운 인터넷 사진 장면을 겨냥한 데이터 정제와 depth refinement 조합이 다시 부상했습니다. 전통 SfM과 최신 depth prior를 섞는 흐름이 더 강해질 가능성이 큽니다.
+
+- 📄 [논문 분석](papers/2604.22714/paper.md) | [arxiv](https://arxiv.org/abs/2604.22714)
+- 💻 [GitHub 분석](papers/2604.22714/repo.md) | [repo](https://github.com/lyehe/build_gpu_colmap)
+- 🔗 [원문](https://x.com/YeheLiu/status/2049661760219537865)
+
+### ▫️ 실시간 3D 표현 경쟁이 품질 대 속도 균형으로 재편
+
+Power Foam은 rasterization과 ray tracing을 모두 겨냥하면서 표현 자체를 시스템 친화적으로 재구성하려는 방향을 보여줍니다. NeRF 이후의 표현 경쟁이 이제 렌더링 경로 통합 문제로 확장되고 있습니다.
+
+- 📄 [논문 분석](papers/2604.24994/paper.md) | [arxiv](https://arxiv.org/abs/2604.24994)
+- 🔗 [원문](https://x.com/YeheLiu/status/2049661760219537865)
+
+### ▫️ 실시간 depth 데모는 여전히 배포 가능한 형태가 핵심
+
+Depth Anything V3 기반 metric depth 데모는 새 알고리즘 자체보다, 실시간 추론을 실제 사용 흐름으로 연결하는 구현이 중요하다는 점을 보여줍니다. 연구 결과를 현장 적용으로 넘기는 마지막 단계에 관심이 큰 팀이라면 바로 참고할 만합니다.
+
+- 💻 [GitHub 분석](repos/ag2ai_ag2studio.md) | [repo](https://github.com/ag2ai/ag2studio)
+- 🔗 [원문](https://x.com/tom_doerr/status/2049319649100157334)
+
+## 📊 오늘의 숫자
+
+- 전체 피드: 22개 → 관련 피드: 3개
+- 논문: 2편 | GitHub: 2개 레포
+- 가장 많은 스타: build_gpu_colmap (⭐ 57)

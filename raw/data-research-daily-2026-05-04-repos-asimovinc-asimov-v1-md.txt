@@ -1,0 +1,45 @@
+asimovinc_asimov-v1.md
+======================
+
+# GitHub 분석: asimovinc/asimov-v1
+
+> - URL: https://github.com/asimovinc/asimov-v1
+> - 분석일: 2026-05-04
+
+## 개요
+
+- **설명**: v1 of Asimov, an open-source humanoid robot 
+- **Stars**: ⭐ 459 | Forks: 51
+- **라이선스**: CERN-OHL-S-2.0
+- **주 언어**: unknown
+
+## 실행 가능 상태: 코드 미공개 (README/asset만 존재)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (0개) | N |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+assets/asimov-v1.jpg
+electrical/README.md
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.gitmodules
+.git/packed-refs
+.git/shallow
+HARDWARE-LICENSE.txt
+mechanical/naming_convention.png
+mechanical/README.md
+README.md
+sim-model/README.md
+SOFTWARE-LICENSE.txt
+```

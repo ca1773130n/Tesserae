@@ -1,0 +1,14 @@
+📬 Daily Research Digest — 2026-04-27
+====================================
+
+# 📬 Daily Research Digest — 2026-04-27
+
+## Outgoing relations
+
+- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- **mentioned_in** → Image Generators are Generalist Vision Learners _(Paper)_
+- **mentioned_in** → Sapiens2 _(Paper)_
+
+## Connected node types
+
+- Paper: 3

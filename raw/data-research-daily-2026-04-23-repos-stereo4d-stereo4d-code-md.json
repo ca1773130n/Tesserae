@@ -1,0 +1,8 @@
+{
+  "title": "Stereo4d_stereo4d-code.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: Stereo4d/stereo4d-code\n\n> - URL: https://github.com/Stereo4d/stereo4d-code\n> - 분석일: 2026-04-23\n\n## 개요\n\n- **설명**: Stereo4D dataset and processing code\n- **Stars**: ⭐ 304 | Forks: 11\n- **라이선스**: CC0-1.0\n- **주 언어**: Python\n\n## 실행 가능 상태: 의존성 파일 없음\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (6개) | Y |\n| 의존성 파일 | N |\n| 모델/체크포인트 | script |\n| Docker | N |\n\n## 파일 구조\n\n```\ndemo_run.bash\nenvironment.yml\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.gitmodules\n.git/packed-refs\n.git/shallow\ninference_raft.py\nLICENSE\nREADME.md\nrectify.py\nsea-raft-changes.patch\nsegmentation.py\ntracking.py\ntrack_optimization.py\ntrack_visualization.ipynb\nutils.py\n```",
+  "source_path": "data/research/daily/2026-04-23/repos/Stereo4d_stereo4d-code.md",
+  "links": [],
+  "body": "# GitHub 분석: Stereo4d/stereo4d-code\n\n> - URL: https://github.com/Stereo4d/stereo4d-code\n> - 분석일: 2026-04-23\n\n## 개요\n\n- **설명**: Stereo4D dataset and processing code\n- **Stars**: ⭐ 304 | Forks: 11\n- **라이선스**: CC0-1.0\n- **주 언어**: Python\n\n## 실행 가능 상태: 의존성 파일 없음\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (6개) | Y |\n| 의존성 파일 | N |\n| 모델/체크포인트 | script |\n| Docker | N |\n\n## 파일 구조\n\n```\ndemo_run.bash\nenvironment.yml\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.gitmodules\n.git/packed-refs\n.git/shallow\ninference_raft.py\nLICENSE\nREADME.md\nrectify.py\nsea-raft-changes.patch\nsegmentation.py\ntracking.py\ntrack_optimization.py\ntrack_visualization.ipynb\nutils.py\n```\n"
+}

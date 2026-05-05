@@ -1,0 +1,15 @@
+{
+  "title": "Jean-Baptiste Alayrac",
+  "kind": "entities",
+  "body_text": "# Jean-Baptiste Alayrac\n\n## Incoming relations\n\n- **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-24/papers/2604.20329/paper.md",
+  "links": [],
+  "body": "# Jean-Baptiste Alayrac\n\n## Incoming relations\n\n- **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:jean-baptiste-alayrac:9fb404a05a75",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-24/papers/2604.20329/paper.md",
+    "title": "Jean-Baptiste Alayrac"
+  }
+}

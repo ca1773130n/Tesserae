@@ -1,0 +1,12 @@
+quickstart.md
+=============
+
+# Quickstart (fixture)
+
+This fixture corpus is consumed by the Phase 2 site renderer tests. To use it
+in a test, request the `wiki_sample_graph` fixture; it walks
+`tests/fixtures/wiki_corpus/data/research/` and `tests/fixtures/wiki_corpus/docs/`,
+calls `ResearchGraphExtractor.extract_file` with the right `source_kind` per
+path heuristic, and merges the per-file graphs via `merge_graphs`.
+
+The corpus exercises Paper, Repository, and SourceDocument code paths.

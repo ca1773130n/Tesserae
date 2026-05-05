@@ -1,0 +1,71 @@
+digest.md
+=========
+
+# 📬 Daily Research Digest — 2026-05-01
+
+## 🔥 오늘의 하이라이트
+
+### 1. 초대형 3DGS를 소비자 GPU로 다루는 'A LoD of Gaussians'
+
+100M+ Gaussian 규모의 초대형 장면을 청크 분할 없이 학습·렌더링할 수 있다는 점이 핵심입니다. out-of-core 학습과 LoD 구조를 결합해 메모리 제약을 낮추면서도 대규모 3D scene representation의 실용성을 끌어올렸고, 함께 공개된 CoMe 코드는 mesh extraction까지 이어지는 후속 활용성을 보여줍니다.
+
+- 📄 논문: [논문 분석](papers/2603.24725/paper.md) | [arxiv](https://arxiv.org/abs/2603.24725)
+- 💻 코드: [GitHub 분석](papers/2603.24725/repo.md) | [repo](https://github.com/r4dl/CoMe) | ⭐ 55
+- 🔗 [원문](https://x.com/rafourdl/status/2049829262782300495)
+
+---
+
+### 2. STream3R, 3D 재구성을 'causal Transformer' 문제로 재정의
+
+STream3R는 multi-view reconstruction을 decoder-only Transformer 기반의 streaming 문제로 바꿔, 긴 시퀀스와 dynamic scene에서의 확장성을 정면으로 다룹니다. 기존의 global optimization 중심 접근이나 약한 메모리 메커니즘의 한계를 피해, 대규모 사전학습과 온라인 3D perception으로 자연스럽게 연결된다는 점이 특히 중요합니다.
+
+- 📄 논문: [논문 분석](papers/2604.24994/paper.md) | [arxiv](https://arxiv.org/abs/2604.24994)
+- 🔗 [원문](https://x.com/Almorgand/status/2049887765110587490)
+
+---
+
+### 3. Power Foam, ray tracing과 rasterization을 하나의 3D 표현으로 통합
+
+![preview](https://pbs.twimg.com/media/HHIqpk9XEAA7ZA_?format=png&name=orig)
+
+Power Foam은 실시간 ray tracing과 rasterization을 하나의 표현 위에서 함께 다루려는 시도입니다. 품질 타협 없이 두 렌더링 경로를 통합하겠다는 메시지는 3DGS 이후 representation 설계가 단순 재구성 성능을 넘어 rendering pipeline 전반으로 확장되고 있음을 보여줍니다.
+
+- 📄 논문: [논문 분석](papers/2604.24994/paper.md) | [arxiv](https://arxiv.org/abs/2604.24994)
+- 🔗 [원문](https://x.com/Underfox3/status/2049351548212265208)
+
+---
+
+## 📋 주목할 만한 피드
+
+### ▫️ 고속 dynamic scene을 위한 color-encoded volumetric reconstruction
+
+![preview](https://pbs.twimg.com/amplify_video_thumb/2049337028928765952/img/JV6swalZtX2dQPh2.jpg)
+
+순차적 color strobing을 이용해 60fps 카메라 여러 대로 600fps 수준의 dynamic volumetric reconstruction을 노린 접근입니다. 고속 이벤트를 고가의 초고속 카메라 없이 복원하려는 점에서 캡처 시스템 설계 측면의 실용성이 큽니다.
+
+- 🔗 [원문](https://x.com/janusch_patas/status/2049743125581549765)
+
+---
+
+### ▫️ 3D reconstruction 방법 비교표 공유
+
+COLMAP, DUSt3R, MASt3R, CUT3R, Fast3R, VGGT, π³, MapAnything, DA3 등 여러 계열을 한 표로 비교한 자료입니다. 새로운 방법 제안은 아니지만, 최근 3D reconstruction 계보를 빠르게 훑고 포지셔닝하기에 유용한 레퍼런스입니다.
+
+- 🔗 [원문](https://x.com/gabriberton/status/2049659307747385345)
+
+---
+
+### ▫️ STream3R의 streaming 3D 인식 비전 재강조
+
+같은 STream3R 주제를 다른 피드에서 다시 조명하며, long sequence와 dynamic scene에 대한 일반화 가능성을 강조했습니다. LLM 스타일 학습 인프라와의 호환성까지 언급된 만큼, 3D foundation model 계열과의 접점도 계속 커질 가능성이 있습니다.
+
+- 📄 관련 링크: [논문 분석](papers/2604.24994/paper.md) | [arxiv](https://arxiv.org/abs/2604.24994)
+- 🔗 [원문](https://x.com/rsasaki0109/status/2049618985118036348)
+
+---
+
+## 📊 오늘의 숫자
+
+- 전체 피드: 20개 → 관련 피드: 7개
+- 논문: 2편 | GitHub: 1개 레포
+- 가장 많은 스타: CoMe (⭐ 55)

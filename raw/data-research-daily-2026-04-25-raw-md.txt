@@ -1,0 +1,21 @@
+raw.md
+======
+
+# Daily Feed Summary — 2026-04-25
+
+Total: 12 relevant feeds (from 26)
+
+| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |
+|------|------|-------|-----|--------|-------|-----------|-------------|
+| 2026-04-25 | 20:21 | Woop! Woop! Join our discord. Goated things are happening ov...... | https://arxiv.org/pdf/2603.24725 | https://github.com/m-schuetz/CuRast | 111 | [분석](papers/2603.24725/paper.md) | [분석](papers/2603.24725/repo.md) |
+| 2026-04-25 | 23:32 | [CVPR 2026 (Highlight)] Scal3R: Scalable Test-Time Training ...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-25 | 15:13 | Congrats to the Omni team! ?? Camera pose estimation? Just A...... | https://arxiv.org/pdf/2507.11540 | https://github.com/zju3dv/Scal3R | 382 | [분석](papers/2507.11540/paper.md) | [분석](papers/2507.11540/repo.md) |
+| 2026-04-25 | 06:19 | DJI OSMO360 から3DGSの試作 ・動画->JPG：360Extracto...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-25 | 07:56 | Open-Source Multi-Sensor Data Platform for Neural 3D Reconst...... | N/A | https://github.com/NVIDIA/ncore | 119 | N/A | [분석](repos/NVIDIA_ncore.md) |
+| 2026-04-25 | 17:50 | RT Jon Barron: Re I’m biased of course, but I’m particul...... | https://arxiv.org/pdf/2604.00538 | https://github.com/nvidia/asset-harvester | 153 | [분석](papers/2604.00538/paper.md) | [분석](papers/2604.00538/repo.md) |
+| 2026-04-25 | 08:07 | Revisiting this game a few months later: (i) It's pretty imp...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-25 | 04:43 | ?告知?5/13 (水) 18:25 - 20:50 @ さくらインターネ�...... | https://arxiv.org/pdf/2604.15941 | N/A | N/A | [분석](papers/2604.15941/paper.md) | N/A |
+| 2026-04-25 | 07:17 | Amazing and make sense! Can discard min-max normalization fo...... | https://arxiv.org/pdf/2602.09022 | https://github.com/imlixinyang/FlashWorld | 764 | [분석](papers/2602.09022/paper.md) | [분석](papers/2602.09022/repo.md) |
+| 2026-04-25 | 03:18 | WildSplatter: Feed-forward 3D Gaussian Splatting with Appear...... | https://arxiv.org/pdf/2604.15612 | N/A | N/A | [분석](papers/2604.15612/paper.md) | N/A |
+| 2026-04-25 | 02:39 | Really excited to release this! Vista4D lets you reshoot a v...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-25 | 02:30 | ? Eyeline Labs and Netflix’s latest research, ?Vista4D?, a...... | https://arxiv.org/pdf/2512.03040 | https://github.com/Eyeline-Labs/Vista4D | 61 | [분석](papers/2512.03040/paper.md) | [분석](papers/2512.03040/repo.md) |

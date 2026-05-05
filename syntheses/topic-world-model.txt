@@ -1,0 +1,18 @@
+Topic — World Model
+===================
+
+# Topic — World Model
+
+Type: ResearchTopic.
+
+## Contributing papers
+- [Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective (arXiv:2604.14025)](../papers/feed-forward-3d-scene-modeling-a-problem-driven-perspective.md)
+- [Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas (arXiv:2603.28980)](../papers/stepper-stepwise-immersive-scene-generation-with-multiview-panoramas.md)
+- [WorldCompass: Reinforcement Learning for Long-Horizon World Models (arXiv:2602.09022)](../papers/worldcompass-reinforcement-learning-for-long-horizon-world-models.md)
+
+## Related concepts
+- Fine-tuning (TrainingParadigm)
+- Reinforcement Learning (TrainingParadigm)
+
+## Related repos
+- (none)

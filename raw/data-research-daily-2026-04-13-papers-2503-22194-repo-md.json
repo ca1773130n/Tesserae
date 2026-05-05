@@ -1,0 +1,8 @@
+{
+  "title": "repo.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: KAIST-Visual-AI-Group/MatLat\n\n> - URL: https://github.com/KAIST-Visual-AI-Group/MatLat\n> - 분석일: 2026-04-13\n\n## 개요\n\n- **설명**: [CVPR 2026 Highlight] Official code for MatLat: Material Latent Space for PBR Texture Generation\n- **Stars**: ⭐ 7 | Forks: 0\n- **라이선스**: N/A\n- **주 언어**: unknown\n\n## 실행 가능 상태: 코드 미공개 (README/asset만 존재)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (0개) | N |\n| 의존성 파일 | N |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\nassets/result_1.gif\nassets/result_2.gif\nassets/result_3.gif\nassets/result_4.gif\nassets/result_5.gif\nassets/result_6.gif\n.git/config\n.git/description\n.git/HEAD\n.git/index\n.git/packed-refs\n.git/shallow\nREADME.md\n```",
+  "source_path": "data/research/daily/2026-04-13/papers/2503.22194/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: KAIST-Visual-AI-Group/MatLat\n\n> - URL: https://github.com/KAIST-Visual-AI-Group/MatLat\n> - 분석일: 2026-04-13\n\n## 개요\n\n- **설명**: [CVPR 2026 Highlight] Official code for MatLat: Material Latent Space for PBR Texture Generation\n- **Stars**: ⭐ 7 | Forks: 0\n- **라이선스**: N/A\n- **주 언어**: unknown\n\n## 실행 가능 상태: 코드 미공개 (README/asset만 존재)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (0개) | N |\n| 의존성 파일 | N |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\nassets/result_1.gif\nassets/result_2.gif\nassets/result_3.gif\nassets/result_4.gif\nassets/result_5.gif\nassets/result_6.gif\n.git/config\n.git/description\n.git/HEAD\n.git/index\n.git/packed-refs\n.git/shallow\nREADME.md\n```\n"
+}

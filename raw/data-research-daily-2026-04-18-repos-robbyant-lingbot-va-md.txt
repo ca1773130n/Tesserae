@@ -1,0 +1,50 @@
+Robbyant_lingbot-va.md
+======================
+
+# GitHub 분석: Robbyant/lingbot-va
+
+> - URL: https://github.com/Robbyant/lingbot-va
+> - 분석일: 2026-04-18
+
+## 개요
+
+- **설명**: Causal video-action world model for generalist robot control
+- **Stars**: ⭐ 1030 | Forks: 77
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (36개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+assets/teaser.mp4
+assets/teaser_v3.png
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+INSTALL.md
+LICENSE.txt
+LingBot_VA_paper.pdf
+Makefile
+pyproject.toml
+README.md
+requirements.txt
+script/run_launch_va_server_sync.sh
+script/run_va_posttrain.sh
+wan_va/__init__.py
+wan_va/train.py
+wan_va/wan_va_server.py
+```

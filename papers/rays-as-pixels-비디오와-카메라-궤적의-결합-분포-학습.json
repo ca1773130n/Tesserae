@@ -1,0 +1,18 @@
+{
+  "title": "Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습",
+  "kind": "papers",
+  "body_text": "# Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습\n\n## Outgoing relations\n\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses** → Video Diffusion _(MethodologicalConcept)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-30 _(SourceDocument)_\n- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-30 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 4\n- MethodologicalConcept: 1\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2604.09429/paper.md",
+  "links": [],
+  "body": "# Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습\n\n## Outgoing relations\n\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses** → Video Diffusion _(MethodologicalConcept)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-30 _(SourceDocument)_\n- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-30 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 4\n- MethodologicalConcept: 1\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2604.09429"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2604-09429:89f9960e33a5",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2604.09429/paper.md",
+    "title": "Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습"
+  }
+}

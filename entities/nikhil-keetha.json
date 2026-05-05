@@ -1,0 +1,15 @@
+{
+  "title": "Nikhil Keetha",
+  "kind": "entities",
+  "body_text": "# Nikhil Keetha\n\n## Incoming relations\n\n- **authored_by** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2509.23563/paper.md",
+  "links": [],
+  "body": "# Nikhil Keetha\n\n## Incoming relations\n\n- **authored_by** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:nikhil-keetha:7c037708cd5c",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2509.23563/paper.md",
+    "title": "Nikhil Keetha"
+  }
+}

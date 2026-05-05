@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: Perkins729/OmniXtreme",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: Perkins729/OmniXtreme\n\n## Incoming relations\n\n- **implemented_in** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-29/papers/2602.23843/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: Perkins729/OmniXtreme\n\n## Incoming relations\n\n- **implemented_in** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/Perkins729/OmniXtreme",
+      "perkins729/omnixtreme"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-perkins729-omnixtreme:fa352ebb585e",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-29/papers/2602.23843/repo.md",
+    "title": "GitHub 분석: Perkins729/OmniXtreme"
+  }
+}

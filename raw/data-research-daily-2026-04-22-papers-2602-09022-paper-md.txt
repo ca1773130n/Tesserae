@@ -1,0 +1,78 @@
+paper.md
+========
+
+# 논문 분석: 2602.09022
+
+> - arxiv: https://arxiv.org/abs/2602.09022
+> - papers.cool: https://papers.cool/arxiv/2602.09022
+> - 분석일: 2026-04-22
+
+## 2602.09022
+
+Total: 1
+
+## #1
+
+# WorldCompass: Reinforcement Learning for Long-Horizon World Models
+
+[PDF12]  
+[Copy]  
+[Kimi16]  
+[REL]
+
+Authors:  
+Zehan Wang, Tengfei Wang, Haiyu Zhang, Xuhui Zuo, Junta Wu, Haoyuan Wang, Wenqiang Sun, Zhenwei Wang, Chenjie Cao, Hengshuang Zhao, Chunchao Guo, Zhou Zhao
+
+이 연구는 장기 지평의 상호작용형 비디오 기반 World Models를 위한 새로운 Reinforcement Learning 후훈련 프레임워크인 WorldCompass를 제시한다. 이 프레임워크는 상호작용 신호를 기반으로 모델이 세계를 더 정확하고 일관되게 탐색할 수 있도록 한다.
+
+World Model의 탐색을 효과적으로 조종하기 위해, 우리는 자기회귀 비디오 생성 패러다임에 맞춘 세 가지 핵심 혁신을 도입한다.
+
+1. Clip-level rollout Strategy: 단일 목표 클립에서 여러 샘플을 생성하고 평가하여 rollout 효율을 크게 높이고 세밀한 reward 신호를 제공한다.
+2. Complementary Reward Functions: 상호작용 준수 정확도와 시각 품질을 모두 위한 reward functions를 설계하여 직접적인 감독을 제공하고 reward-hacking 행동을 효과적으로 억제한다.
+3. Efficient RL Algorithm: negative-aware fine-tuning 전략과 다양한 효율 최적화를 함께 사용하여 모델 역량을 효율적이고 효과적으로 향상한다.
+
+최신 오픈소스 World Model인 WorldPlay에 대한 평가는 WorldCompass가 다양한 시나리오에서 상호작용 정확도와 시각적 충실도를 크게 개선함을 보여준다.
+
+Subject:  
+Computer Vision and Pattern Recognition
+
+Publish: 2026-02-09 18:59:47 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+Include OR:
+
+Exclude:
+
+Search
+
+Filter
+
+Highlight
+
+Stared Paper(s):
+
+#1  
+WorldCompass: Reinforcement Learning for Long-Horizon World Models
+
+Export
+
+Magic Token:
+
+Kimi Language:  
+中文  
+English
+
+Desc Language:  
+中文  
+English
+
+Save
+
+Bug report? Issue submit? Please visit:
+
+Github: https://github.com/bojone/papers.cool
+
+계속 진행하기 전에 Disclaimer를 읽어 주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문해 확인해 주세요.

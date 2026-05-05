@@ -1,0 +1,15 @@
+{
+  "title": "Nobuyuki Umetani",
+  "kind": "entities",
+  "body_text": "# Nobuyuki Umetani\n\n## Incoming relations\n\n- **authored_by** → Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2604.15941/paper.md",
+  "links": [],
+  "body": "# Nobuyuki Umetani\n\n## Incoming relations\n\n- **authored_by** → Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:nobuyuki-umetani:3c59c172c009",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2604.15941/paper.md",
+    "title": "Nobuyuki Umetani"
+  }
+}

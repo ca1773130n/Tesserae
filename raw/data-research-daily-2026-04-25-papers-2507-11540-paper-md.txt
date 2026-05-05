@@ -1,0 +1,89 @@
+paper.md
+========
+
+# 논문 분석: 2507.11540
+
+> - arxiv: https://arxiv.org/abs/2507.11540
+> - papers.cool: https://papers.cool/arxiv/2507.11540
+> - 분석일: 2026-04-25
+
+Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation | Cool Papers - 몰입형 논문 탐색
+
+## 2507.11540
+
+총계: 1
+
+## #1
+
+# Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation
+
+[PDF30]  
+[Copy]  
+[Kimi12]  
+[REL]
+
+저자:  
+Zhen Xu,  
+Hongyu Zhou,  
+Sida Peng,  
+Haotong Lin,  
+Haoyu Guo,  
+Jiahao Shao,  
+Peishan Yang,  
+Qinglin Yang,  
+Sheng Miao,  
+Xingyi He,  
+Yifan Wang,  
+Yue Wang,  
+Ruizhen Hu,  
+Yiyi Liao,  
+Xiaowei Zhou,  
+Hujun Bao
+
+깊이 추정은 3D computer vision의 기본 과제로, 3D reconstruction, free-viewpoint rendering, robotics, autonomous driving, 그리고 AR/VR 기술과 같은 응용에서 핵심적인 역할을 한다. LiDAR와 같은 하드웨어 센서에 의존하는 전통적인 방법은 높은 비용, 낮은 해상도, 환경 민감성 때문에 제약을 받는 경우가 많아 실제 환경에서의 적용 가능성이 제한된다. 최근 vision-based 방법의 발전은 유망한 대안을 제공하지만, 낮은 용량의 모델 아키텍처 또는 도메인 특화된 소규모 데이터셋에 대한 의존으로 인해 일반화와 안정성 측면에서 여전히 어려움을 겪고 있다. 다른 분야에서 scaling laws와 foundation models의 등장은 깊이 foundation models의 개발에 영감을 주었다. 이는 대규모 데이터셋으로 학습되며 강력한 zero-shot 일반화 능력을 갖춘 심층 신경망을 뜻한다. 본 논문은 monocular, stereo, multi-view, 그리고 monocular video 환경 전반에 걸쳐 깊이 추정을 위한 딥러닝 아키텍처와 패러다임의 진화를 정리한다. 또한 이러한 모델들이 기존 과제를 해결할 수 있는 잠재력을 탐구하고, 그 발전을 촉진할 수 있는 대규모 데이터셋에 대한 종합적인 개요를 제공한다. 핵심 아키텍처와 학습 전략을 식별함으로써, 본 논문은 강건한 depth foundation models로 나아가는 경로를 조명하고, 향후 연구와 응용에 대한 통찰을 제공하는 것을 목표로 한다.
+
+주제:  
+Computer Vision and Pattern Recognition
+
+게시일: 2025-07-15 17:59:59 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+포함 OR:
+
+제외:
+
+검색
+
+필터
+
+강조
+
+표시한 논문:
+
+#1  
+Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation
+
+내보내기
+
+Magic Token:
+
+Kimi 언어:
+
+中文  
+English
+
+설명 언어:
+
+中文  
+English
+
+저장
+
+버그 제보? Issue 제출? 다음을 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+진행하기 전에 Disclaimer를 읽어 주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문하세요.

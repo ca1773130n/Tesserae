@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: microsoft/World-R1",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: microsoft/World-R1\n\n## Outgoing relations\n\n- **released_by** → microsoft _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_\n\n## Connected node types\n\n- Organization: 1\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/repos/microsoft_World-R1.md",
+  "links": [],
+  "body": "# GitHub 분석: microsoft/World-R1\n\n## Outgoing relations\n\n- **released_by** → microsoft _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_\n\n## Connected node types\n\n- Organization: 1\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/microsoft/World-R1",
+      "microsoft/world-r1"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-microsoft-world-r1:eb50806a65d7",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/repos/microsoft_World-R1.md",
+    "title": "GitHub 분석: microsoft/World-R1"
+  }
+}

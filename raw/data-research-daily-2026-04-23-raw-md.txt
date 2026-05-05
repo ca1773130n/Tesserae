@@ -1,0 +1,23 @@
+raw.md
+======
+
+# Daily Feed Summary — 2026-04-23
+
+Total: 14 relevant feeds (from 23)
+
+| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |
+|------|------|-------|-----|--------|-------|-----------|-------------|
+| 2026-04-23 | 22:21 | Yes, absolutely: factor graphs are energy-based world models...... | https://arxiv.org/pdf/2603.24621 | https://github.com/mfranzon/render | 84 | [분석](papers/2603.24621/paper.md) | [분석](papers/2603.24621/repo.md) |
+| 2026-04-23 | 16:49 | RT Khiem Vuong: [1/7] Video diffusion has come a long way, g...... | https://arxiv.org/pdf/2509.23563 | https://github.com/facebookresearch/map-anything | 3229 | [분석](papers/2509.23563/paper.md) | [분석](papers/2509.23563/repo.md) |
+| 2026-04-23 | 19:05 | ? Really excited to announce the first ever 4D Digital Twins...... | https://arxiv.org/pdf/2506.12251 | N/A | N/A | [분석](papers/2506.12251/paper.md) | N/A |
+| 2026-04-23 | 13:31 | Geometric Context Transformer for Streaming 3D Reconstructio...... | https://arxiv.org/pdf/2503.11806 | N/A | N/A | [분석](papers/2503.11806/paper.md) | N/A |
+| 2026-04-23 | 14:00 | Introducing http://FreeGaussian.ai, powered by Over the Real...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-23 | 11:31 | AnyRecon: Arbitrary-View 3D Reconstruction with Video Diffus...... | https://arxiv.org/pdf/2604.12551 | N/A | N/A | [분석](papers/2604.12551/paper.md) | N/A |
+| 2026-04-23 | 11:20 | https://x.com/Tks_Yoshinaga/status/2046485235500794304/video...... | N/A | https://github.com/TakashiYoshinaga/360-to-RealityScan | 26 | N/A | [분석](repos/TakashiYoshinaga_360-to-RealityScan.md) |
+| 2026-04-23 | 09:23 | We just shipped 3D Gaussian Splatting to Mesh 3.0 and wanted...... | https://arxiv.org/pdf/2601.17835 | N/A | N/A | [분석](papers/2601.17835/paper.md) | N/A |
+| 2026-04-23 | 22:05 | Hair simulation code is available here: https://github.com/b...... | N/A | https://github.com/bernakabadayi/physhead | 32 | N/A | [분석](repos/bernakabadayi_physhead.md) |
+| 2026-04-23 | 14:56 | UniGeo: Camera-controllable image editing with Wan2.2 +LoRA....... | N/A | https://github.com/AHEKOT/ComfyUI_HYWorld2 | 28 | N/A | [분석](repos/AHEKOT_ComfyUI_HYWorld2.md) |
+| 2026-04-23 | 02:25 | Can dense 2D supervision help learning 4D? Introducing UFO-4...... | N/A | https://github.com/Stereo4d/stereo4d-code | 304 | N/A | [분석](repos/Stereo4d_stereo4d-code.md) |
+| 2026-04-23 | 01:55 | Introducing CityRAG! We wanted video generative models to be...... | https://arxiv.org/pdf/2604.13036 | N/A | N/A | [분석](papers/2604.13036/paper.md) | N/A |
+| 2026-04-23 | 14:52 | すげえLiDAR出るらしいじゃん... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-23 | 23:54 | What if you combined a world model and a VLA? DAWN is one of...... | https://arxiv.org/pdf/2604.11251 | https://github.com/SkalskiP/top-cvpr-2026-papers | 87 | [분석](papers/2604.11251/paper.md) | [분석](papers/2604.11251/repo.md) |

@@ -1,0 +1,15 @@
+{
+  "title": "aero-ex",
+  "kind": "entities",
+  "body_text": "# aero-ex\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: Aero-Ex/ComfyUI-SegviGen _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2509.10687/repo.md",
+  "links": [],
+  "body": "# aero-ex\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: Aero-Ex/ComfyUI-SegviGen _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:aero-ex:6533649ffeb3",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2509.10687/repo.md",
+    "title": "aero-ex"
+  }
+}

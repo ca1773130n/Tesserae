@@ -1,0 +1,38 @@
+baidu_ernie-image.md
+====================
+
+# GitHub 분석: baidu/ernie-image
+
+> - URL: https://github.com/baidu/ernie-image
+> - 분석일: 2026-04-15
+
+## 개요
+
+- **설명**: ERNIE-Image is an open text-to-image generation model developed by the ERNIE-Image team at Baidu. It is built on a single-stream Diffusion Transformer (DiT), with only 8B DiT parameters, it reaches state-of-the-art performance among open-weight text-to-image models.
+- **Stars**: ⭐ 129 | Forks: 4
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (2개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+assets/ernie.jpeg
+LICENSE
+README.md
+```

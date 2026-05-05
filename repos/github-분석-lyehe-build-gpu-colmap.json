@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: lyehe/build_gpu_colmap",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: lyehe/build_gpu_colmap\n\n## Incoming relations\n\n- **implemented_in** → Long-tail Internet photo reconstruction _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/papers/2604.22714/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: lyehe/build_gpu_colmap\n\n## Incoming relations\n\n- **implemented_in** → Long-tail Internet photo reconstruction _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/lyehe/build_gpu_colmap",
+      "lyehe/build_gpu_colmap"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-lyehe-build-gpu-colmap:0cc9f65cb2f3",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/papers/2604.22714/repo.md",
+    "title": "GitHub 분석: lyehe/build_gpu_colmap"
+  }
+}

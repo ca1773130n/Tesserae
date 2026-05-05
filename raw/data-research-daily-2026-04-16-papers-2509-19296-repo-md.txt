@@ -1,0 +1,49 @@
+repo.md
+=======
+
+# GitHub 분석: nv-tlabs/lyra
+
+> - URL: https://github.com/nv-tlabs/lyra
+> - 분석일: 2026-04-16
+
+## 개요
+
+- **설명**: Project Lyra: Open Generative 3D World Models
+- **Stars**: ⭐ 1004 | Forks: 65
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (9개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+ATTRIBUTIONS.md
+CONTRIBUTING.md
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE
+Lyra-1/inference.sh
+Lyra-1/INSTALL.md
+Lyra-1/lyra.yaml
+Lyra-1/README.md
+Lyra-1/requirements_gen3c.txt
+Lyra-1/requirements_lyra.txt
+Lyra-1/sample.py
+Lyra-1/train.py
+Lyra-1/train.sh
+Lyra-2/README.md
+README.md
+```

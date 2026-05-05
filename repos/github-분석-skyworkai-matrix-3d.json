@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: SkyworkAI/Matrix-3D",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: SkyworkAI/Matrix-3D\n\n## Outgoing relations\n\n- **released_by** → skyworkai _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-28/repos/SkyworkAI_Matrix-3D.md",
+  "links": [],
+  "body": "# GitHub 분석: SkyworkAI/Matrix-3D\n\n## Outgoing relations\n\n- **released_by** → skyworkai _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/SkyworkAI/Matrix-3D",
+      "skyworkai/matrix-3d"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-skyworkai-matrix-3d:885f361b3b4a",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-28/repos/SkyworkAI_Matrix-3D.md",
+    "title": "GitHub 분석: SkyworkAI/Matrix-3D"
+  }
+}

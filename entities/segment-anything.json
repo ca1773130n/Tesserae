@@ -1,0 +1,15 @@
+{
+  "title": "Segment Anything",
+  "kind": "entities",
+  "body_text": "# Segment Anything\n\n## Incoming relations\n\n- **uses** → Image Generators are Generalist Vision Learners _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/tests/fixtures/wiki_corpus/data/research/daily/2026-04-25/papers/2604.20329/paper.md",
+  "links": [],
+  "body": "# Segment Anything\n\n## Incoming relations\n\n- **uses** → Image Generators are Generalist Vision Learners _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Model:segment-anything:015028fb58b8",
+    "node_type": "Model",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/tests/fixtures/wiki_corpus/data/research/daily/2026-04-25/papers/2604.20329/paper.md",
+    "title": "Segment Anything"
+  }
+}

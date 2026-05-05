@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: zju3dv/Scal3R",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: zju3dv/Scal3R\n\n## Incoming relations\n\n- **implemented_in** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2507.11540/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: zju3dv/Scal3R\n\n## Incoming relations\n\n- **implemented_in** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/zju3dv/Scal3R",
+      "zju3dv/scal3r"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-zju3dv-scal3r:45ce10e09597",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2507.11540/repo.md",
+    "title": "GitHub 분석: zju3dv/Scal3R"
+  }
+}

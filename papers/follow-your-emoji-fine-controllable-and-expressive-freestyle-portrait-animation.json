@@ -1,0 +1,18 @@
+{
+  "title": "Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation",
+  "kind": "papers",
+  "body_text": "# Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation\n\n## Outgoing relations\n\n- **implemented_in** → GitHub 분석: KumapowerLIU/AvatarPointillist _(Repository)_\n- **part_of** → Research Literature _(ResearchField)_\n- **uses** → Stable Diffusion _(Model)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-08 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-09 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-08 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 3\n- Model: 1\n- Repository: 1\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2406.01900/paper.md",
+  "links": [],
+  "body": "# Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation\n\n## Outgoing relations\n\n- **implemented_in** → GitHub 분석: KumapowerLIU/AvatarPointillist _(Repository)_\n- **part_of** → Research Literature _(ResearchField)_\n- **uses** → Stable Diffusion _(Model)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-08 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-09 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-08 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 3\n- Model: 1\n- Repository: 1\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2406.01900"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2406-01900:4fa2d3dcbd8f",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2406.01900/paper.md",
+    "title": "Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation"
+  }
+}

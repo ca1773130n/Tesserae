@@ -1,0 +1,12 @@
+GitHub 분석: cvg/resplat
+======================
+
+# GitHub 분석: cvg/resplat
+
+## Incoming relations
+
+- **implemented_in** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+
+## Connected node types
+
+- Paper: 1

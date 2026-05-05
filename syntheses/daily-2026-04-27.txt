@@ -1,0 +1,15 @@
+Daily Digest — 2026-04-27
+=========================
+
+# Daily Digest — 2026-04-27
+
+Sources ingested under `data/research/daily/2026-04-27/`.
+
+## Papers and repos
+- [Sapiens2 (arXiv:2604.21681)](../papers/sapiens2.md) (Paper)
+- [GitHub 분석: facebookresearch/sapiens2](../repos/github-분석-facebookresearch-sapiens2.md) (Repository)
+- [Daily Feed Summary — 2026-04-27](../sources/daily-feed-summary-2026-04-27.md) (SourceDocument)
+- [📬 Daily Research Digest — 2026-04-27](../sources/daily-research-digest-2026-04-27.md) (SourceDocument)
+
+## Extracted concepts
+- (none extracted)

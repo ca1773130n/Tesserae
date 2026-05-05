@@ -1,0 +1,109 @@
+codex-graph-review.md
+=====================
+
+# Codex graph-view review (2026-05-04)
+
+## TL;DR
+- The split-payload path still behaves like a first-paint optimization bolted onto a single-payload UI: counts, legend filters, label thresholds, camera fit, and simulation state are computed from the 80-node core and then the 328-node rest is shoved into the live graph.
+- Focus mode is over-constrained. It disables hover inspection, replaces the old details panel with a 24-character label, and then auto-orbit fights the cluster-framing camera target.
+- The visual encoding is internally inconsistent: edges specified as 0.5 alpha are effectively much fainter because `linkOpacity(0.35)` multiplies the RGBA alpha, and 2D edge labels accidentally still draw a pill.
+- The page explains many controls, but the actual interaction model is not discoverable where it matters: mobile has no tooltip, focused nodes show no details, and second-click-to-open is hidden after the visible hint was removed.
+- There is too much historical patch sediment in the graph bundle. Comments, stale variables, no-op paths, and contradictory fixes make the next tweak likely to regress something else.
+
+## Findings
+
+### F-1: Rest-payload merge invalidates the initial camera fit
+- **Severity**: major.
+- **Where**: `llm_wiki/site/js.py:2435`, `llm_wiki/site/js.py:3011`, `llm_wiki/site/js.py:3037`.
+- **Symptom**: the graph first appears fitted, then the rest of the graph arrives and the layout expands or churns outside the framed view. The user sees a graph that either feels cropped, drifts away from the first view, or needs a manual Fit after load.
+- **Root cause**: `scheduleCenteredFit()` runs against `payload-core.json` and sets `hasInitialFit = true`. When `payload-rest.json` merges 328 more nodes and 1032 more links into the same force simulation, there is no second fit or settled-layout handoff. This is visible in the current payload: core is only 80 nodes / 390 links; the complete graph is 408 nodes / 1422 links.
+- **Fix**: after `__graphMergeRestPayload`, if the user has not interacted, wait for a short settle window or `onEngineStop` and call `fitAll(600)` once for the full graph. Track a real `userInteracted` flag so this does not steal the camera after a click, drag, search, or wheel.
+
+### F-2: Legend counts and filters are built from the core only
+- **Severity**: major.
+- **Where**: `llm_wiki/site/js.py:899`, `llm_wiki/site/js.py:905`, `llm_wiki/site/js.py:3011`.
+- **Symptom**: after JS starts, the legend can omit or miscount groups that mostly live in the rest payload. In the current split, the core has no `repos` nodes, while the rest has 126 repos; a user cannot reliably filter or understand the final graph from the legend.
+- **Root cause**: the server renders a correct full legend, but startup JS clears `#graph-legend` and rebuilds it from the core payload only. The rest merge appends nodes and links but never recomputes `typeCounts`, never rebuilds legend chips, and never restores full counts.
+- **Fix**: do not clear the server-rendered full legend, or rebuild it after rest merge from `payload.nodes`. Keep hidden-group state in a set and reapply it after the rebuild.
+
+### F-3: Focus camera framing and auto-orbit target disagree
+- **Severity**: major.
+- **Where**: `llm_wiki/site/js.py:2375`, `llm_wiki/site/js.py:2380`, `llm_wiki/site/js.py:2559`, `llm_wiki/site/js.py:2570`.
+- **Symptom**: clicking a hub can frame the neighborhood briefly, then the moving camera recenters around the focused node and the neighbor cluster stops being framed as promised. The experience feels like the camera has a mind of its own.
+- **Root cause**: `focusOnNode()` computes a bounding box and flies the camera to the cluster centroid, but `onEngineTick` auto-orbit always uses `focusedNode.x/y/z` as the orbit center and look-at target. The deferred `controls.target` update also sets the centroid after the tween, while the next auto-orbit tick writes a focused-node target again.
+- **Fix**: store `orbitTarget = {x: cx, y: cy, z: cz}` during focus and use that in the auto-orbit tick. If the intended behavior is node-centered orbit, remove the centroid framing code and frame the node consistently.
+
+### F-4: Hover inspection is dead while focused
+- **Severity**: major.
+- **Where**: `llm_wiki/site/js.py:1910`, `llm_wiki/site/js.py:1917`.
+- **Symptom**: after selecting a node, moving over its neighbors does not show their tooltip or edge context. The user has to unselect before exploring the exact neighborhood they just focused.
+- **Root cause**: `onNodeHover` short-circuits whenever `focusedNode || pinnedNode || pinnedLink` is true. That preserves the focus highlight, but it also removes the most natural inspection action inside focus mode.
+- **Fix**: allow hover tooltips for the focused node and currently highlighted neighbors while keeping the focus dimming. Do not replace `highlightNodes` on hover in focus mode; just show tooltip, pointer, and optionally a small secondary hover cue.
+
+### F-5: Focus removed the details panel but did not replace its information
+- **Severity**: major.
+- **Where**: `llm_wiki/site/js.py:973`, `llm_wiki/site/js.py:991`, `llm_wiki/site/js.py:2066`, `llm_wiki/site/pages.py:2326`.
+- **Symptom**: a focused node shows only a truncated name. Type, degree, description, and open-page affordance disappear, even though comments claim the focused label carries focus details inline.
+- **Root cause**: `nodeLabelText()` truncates to 24 characters and `makeLabel()` renders a single-line sprite. The old info panel is a no-op now, and the visible `[Enter] Open page` hint was removed. Hover tooltip has metadata, but hover is suppressed during focus.
+- **Fix**: restore a compact focused detail surface: either a non-blinking side panel or a multi-line focused sprite with title, type, degree, and a short description. Also add an explicit Open button or visible link target for the focused node.
+
+### F-6: Edge alpha is much lower than the stated design
+- **Severity**: major.
+- **Where**: `llm_wiki/site/js.py:763`, `llm_wiki/site/js.py:769`, `llm_wiki/site/js.py:1863`, `llm_wiki/site/js.py:1979`.
+- **Symptom**: default and incident edges read washed out, especially against the dark gradient and moving particles. Yellow incident edges are not as clear as the constants suggest.
+- **Root cause**: edge colors already include alpha `0.5`, then `inst.linkOpacity(0.35)` applies another material opacity multiplier. The effective baseline/hot alpha is around 0.175, while comments and parameters discuss 0.5.
+- **Fix**: choose one opacity mechanism. Use opaque RGB/HSL strings plus `linkOpacity`, or keep RGBA colors and set `linkOpacity(1)`.
+
+### F-7: 2D edge labels accidentally draw pills
+- **Severity**: minor.
+- **Where**: `llm_wiki/site/js.py:1369`, `llm_wiki/site/js.py:2271`, `llm_wiki/site/js.py:2303`.
+- **Symptom**: 2D edge labels still get a background pill even though the stated design says edge labels are white text with no pill.
+- **Root cause**: `VARIANT_PILL_ALPHA.edge` is `0`, but the 2D code reads it with `(VARIANT_PILL_ALPHA.edge || 0.5)`, so JavaScript treats `0` as falsy and falls back to `0.5`.
+- **Fix**: use a numeric check: `typeof VARIANT_PILL_ALPHA.edge === 'number' ? VARIANT_PILL_ALPHA.edge : 0.5`, and skip the pill draw when the value is `0`.
+
+### F-8: Search hides the graph without giving a usable result workflow
+- **Severity**: major.
+- **Where**: `llm_wiki/site/js.py:1197`, `llm_wiki/site/js.py:1208`, `llm_wiki/site/js.py:2924`.
+- **Symptom**: typing filters nodes immediately, but there is no result count, no list, no empty state, and no automatic fit to the filtered result set. Pressing Enter focuses the first substring match, which may not be the intended node.
+- **Root cause**: search is implemented as a visibility predicate plus a first-match Enter handler. It does not rank matches, expose multiple results, or reframe the camera after the visible graph changes.
+- **Fix**: add a small result list or selected-result index, show count / empty state, and call `fitAll()` after debounced search changes when the user has not manually positioned the camera in the filtered view.
+
+### F-9: Mobile loses hover help and keeps a desktop control model
+- **Severity**: major.
+- **Where**: `llm_wiki/site/tokens.py:1812`, `llm_wiki/site/tokens.py:1826`, `llm_wiki/site/pages.py:2389`.
+- **Symptom**: on mobile, the help text still describes hover/cursor-centered exploration, but `.graph-tooltip` is hidden and there is no touch equivalent for previewing node metadata. The graph becomes tap-to-focus with very little context.
+- **Root cause**: mobile CSS simply disables tooltip display, while the interaction model remains built around mouse hover and wheel/cursor zoom. The focused label does not carry the metadata that mobile users lose with the hidden tooltip.
+- **Fix**: on touch, first tap should show a persistent node detail popover or bottom sheet, with a clear Open action. Keep second tap optional, but do not make it the only discoverable navigation path.
+
+### F-10: Reset does not reset to a fitted graph
+- **Severity**: minor.
+- **Where**: `llm_wiki/site/js.py:2709`, `llm_wiki/site/js.py:2719`.
+- **Symptom**: Reset can leave the graph at an arbitrary z=400 view rather than the best full-graph view, especially after the rest payload has expanded the layout.
+- **Root cause**: the reset button clears focus and manually moves the 3D camera to `{x:0,y:0,z:400}`. This bypasses the same bounding-sphere logic used by Fit and does not account for current visible nodes or filters.
+- **Fix**: make Reset clear interaction state and then call `fitAll(600)`. If a hard canonical camera is still desired, make it a separate developer-only path, not the user-facing reset.
+
+### F-11: The graph route still burns first-viewport space on prose
+- **Severity**: minor.
+- **Where**: `llm_wiki/site/pages.py:2389`, `llm_wiki/site/pages.py:2392`, `llm_wiki/site/pages.py:2394`.
+- **Symptom**: the graph view opens with a hero title and a long instruction paragraph above the actual graph. On smaller screens this pushes the interactive surface down and makes the page feel more like documentation than a graph tool.
+- **Root cause**: the graph route uses the same hero pattern as content pages, then repeats shortcuts again in `.graph-help`. The user is asking about viewing quality; the first screen should be the viewer and its controls.
+- **Fix**: collapse the hero into a compact toolbar/header row on graph pages. Put shortcuts behind button titles, a help popover, or a small `?` control.
+
+### F-12: Historical patch sediment is now a UX regression risk
+- **Severity**: major.
+- **Where**: `llm_wiki/site/js.py:843`, `llm_wiki/site/js.py:991`, `llm_wiki/site/js.py:1359`, `llm_wiki/site/js.py:2360`, `llm_wiki/site/tokens.py:1547`.
+- **Symptom**: future fixes are likely to re-break old complaints because the code contains no-op variables, stale comments, compatibility shims, and contradictory descriptions of removed UI. It is hard to tell which behavior is intentional.
+- **Root cause**: the graph bundle has absorbed many rounds of complaint-specific patches without a cleanup pass. Examples: opacity target fields are still initialized after the lerp was removed, stroke tables remain but are never used, comments refer to a removed info panel, and fullscreen comments mention a rail-style info panel that no longer exists.
+- **Fix**: do a graph-view consolidation pass before more parameter tuning. Delete dead state, rename state to match current behavior, write a small interaction-state table, and add regression tests around focus, hover, search, rest merge, and reset.
+
+## Recommendations
+
+1. **Fix the split-payload lifecycle (M)**: keep first paint, but recompute legend/counts, refresh labels if needed, and perform one full-graph fit after rest merge unless the user has interacted.
+2. **Redesign focus as an inspection state, not a lockout state (M)**: allow hover previews on focused neighborhoods, restore focused metadata, and make Open explicit.
+3. **Make camera behavior consistent (S)**: use one orbit target for focus framing and auto-orbit, and make Reset call `fitAll()`.
+4. **Normalize edge and label rendering (S)**: remove double alpha, fix 2D edge pill fallback, and decide whether edge labels need a subtle backing surface or truly no backing.
+5. **Replace search filtering with a real find workflow (M)**: ranked results, count/empty state, keyboard selection, and auto-fit to filtered visible nodes.
+
+## What works
+
+The current implementation has several good pieces worth preserving: the content-hashed graph bundle avoids stale cache confusion, the core/rest payload split improves first paint in principle, fullscreen includes the toolbar and legend, right-click/Esc unselect paths exist, and the cursor-anchored wheel math is much more defensible than earlier zoom attempts. The degree-based sizing also makes high-value hubs visible; the problem is how the surrounding lifecycle, focus model, and camera rules interact with that sizing.

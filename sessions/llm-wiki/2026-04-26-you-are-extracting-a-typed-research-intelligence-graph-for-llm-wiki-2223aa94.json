@@ -1,0 +1,54 @@
+{
+  "title": "You are extracting a typed research intelligence graph for LLM-Wiki.",
+  "kind": "session",
+  "body_text": "You are extracting a typed research intelligence graph for LLM-Wiki. Return ONLY one valid JSON object. No markdown fences, no commentary. Schema: { \"nodes\": [ {\"key\": \"local-reference\", \"name\": \"display name\", \"type\": \"one allowed node type\", \"aliases\": [], \"description\": \"\", \"metadata\": {}} ], \"edges\": [ {\"source\": \"node key or name\", \"target\": \"node key or name\", \"type\": \"one allowed edge type\", \"evidence\": \"exact source sentence/span\", \"metadata\": {}} ] } Allowed node types: [\"Algorithm\", \"ApproachFamily\", \"ArchitecturePattern\", \"Benchmark\", \"Capability\", \"CausalClaim\", \"Claim\", \"ComparisonClaim\", \"Concept\", \"ContributionClaim\", \"Dataset\", \"EvaluationProtocol\", \"EvidenceSpan\", \"InferenceStrategy\", \"LimitationClaim\", \"MathematicalConcept\", \"MethodologicalConcept\", \"Metric\", \"Model\", \"ObjectiveFunction\", \"OpenQuestion\", \"Organization\", \"Paper\", \"PerformanceClaim\", \"Person\", \"ProblemArea\", \"Project\", \"Repository\", \"ResearchField\", \"ResearchTopic\", \"Result\", \"SourceDocument\", \"Task\", \"TechnicalTerm\", \"TrainingParadigm\", \"Trend\"] Allowed edge types: [\"achieves_score\", \"addresses\", \"attributes_improvement_to\", \"authored_by\", \"belongs_to_approach_family\", \"compares_against\", \"contradi",
+  "source_path": "/Users/neo/.claude-personal2/projects/-Users-neo-Developer-Projects-LLM-Wiki/4d0851f7-35d9-4c07-aac2-ba4d09246540.jsonl",
+  "links": [],
+  "body": "You are extracting a typed research intelligence graph for LLM-Wiki. Return ONLY one valid JSON object. No markdown fences, no commentary. Schema: { \"nodes\": [ {\"key\": \"local-reference\", \"name\": \"display name\", \"type\": \"one allowed node type\", \"aliases\": [], \"description\": \"\", \"metadata\": {}} ], \"edges\": [ {\"source\": \"node key or name\", \"target\": \"node key or name\", \"type\": \"one allowed edge type\", \"evidence\": \"exact source sentence/span\", \"metadata\": {}} ] } Allowed node types: [\"Algorithm\", \"ApproachFamily\", \"ArchitecturePattern\", \"Benchmark\", \"Capability\", \"CausalClaim\", \"Claim\", \"ComparisonClaim\", \"Concept\", \"ContributionClaim\", \"Dataset\", \"EvaluationProtocol\", \"EvidenceSpan\", \"InferenceStrategy\", \"LimitationClaim\", \"MathematicalConcept\", \"MethodologicalConcept\", \"Metric\", \"Model\", \"ObjectiveFunction\", \"OpenQuestion\", \"Organization\", \"Paper\", \"PerformanceClaim\", \"Person\", \"ProblemArea\", \"Project\", \"Repository\", \"ResearchField\", \"ResearchTopic\", \"Result\", \"SourceDocument\", \"Task\", \"TechnicalTerm\", \"TrainingParadigm\", \"Trend\"] Allowed edge types: [\"achieves_score\", \"addresses\", \"attributes_improvement_to\", \"authored_by\", \"belongs_to_approach_family\", \"compares_against\", \"contradi",
+  "frontmatter": {
+    "id": "claude-code:4d0851f7-35d9-4c07-aac2-ba4d09246540:4d0851f7-35d9-4c07-aac2-ba4d09246540",
+    "slug": "you-are-extracting-a-typed-research-intelligence-graph-for-llm-wiki",
+    "harness": "claude-code",
+    "agent_label": "Claude Code",
+    "project_name": "LLM-Wiki",
+    "project_root": "/Users/neo/Developer/Projects/LLM-Wiki",
+    "started_at": "2026-04-26T14:17:38.703Z",
+    "ended_at": "2026-04-26T14:18:40.665Z",
+    "branch": "main",
+    "commit_before": "",
+    "commit_after": "",
+    "model": "claude-sonnet-4-6",
+    "title": "You are extracting a typed research intelligence graph for LLM-Wiki.",
+    "summary": "You are extracting a typed research intelligence graph for LLM-Wiki. Return ONLY one valid JSON object. No markdown fences, no commentary. Schema: { \"nodes\": [ {\"key\": \"local-reference\", \"name\": \"display name\", \"type\": \"one allowed node type\", \"aliases\": [], \"description\": \"\", \"metadata\": {}} ], \"edges\": [ {\"source\": \"node key or name\", \"target\": \"node key or name\", \"type\": \"one allowed edge type\", \"evidence\": \"exact source sentence/span\", \"metadata\": {}} ] } Allowed node types: [\"Algorithm\", \"ApproachFamily\", \"ArchitecturePattern\", \"Benchmark\", \"Capability\", \"CausalClaim\", \"Claim\", \"ComparisonClaim\", \"Concept\", \"ContributionClaim\", \"Dataset\", \"EvaluationProtocol\", \"EvidenceSpan\", \"InferenceStrategy\", \"LimitationClaim\", \"MathematicalConcept\", \"MethodologicalConcept\", \"Metric\", \"Model\", \"ObjectiveFunction\", \"OpenQuestion\", \"Organization\", \"Paper\", \"PerformanceClaim\", \"Person\", \"ProblemArea\", \"Project\", \"Repository\", \"ResearchField\", \"ResearchTopic\", \"Result\", \"SourceDocument\", \"Task\", \"TechnicalTerm\", \"TrainingParadigm\", \"Trend\"] Allowed edge types: [\"achieves_score\", \"addresses\", \"attributes_improvement_to\", \"authored_by\", \"belongs_to_approach_family\", \"compares_against\", \"contradi",
+    "message_count": 3,
+    "tool_call_count": 7,
+    "token_input": 0,
+    "token_output": 0,
+    "token_total": 0,
+    "cache_hit_ratio": null,
+    "tools_used": [
+      "deferred_tools_delta",
+      "mcp_instructions_delta",
+      "skill_listing"
+    ],
+    "files_touched": [
+      "data/research/daily/2026-04-26/papers/2601.17835/paper.md"
+    ],
+    "commands_run": [
+      "node ${CLAUDE_PLUGIN_ROOT}/hooks/sessionstart.mjs",
+      "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" session-start",
+      "node \"${CLAUDE_PLUGIN_ROOT}/bin/grd-tools.js\" verify-path-exists .planning 2>/dev/null || true",
+      "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/stop.py"
+    ],
+    "decisions": [],
+    "errors": [],
+    "raw_transcript_path": "/Users/neo/.claude-personal2/projects/-Users-neo-Developer-Projects-LLM-Wiki/4d0851f7-35d9-4c07-aac2-ba4d09246540.jsonl",
+    "redacted_preview": "You are extracting a typed research intelligence graph for LLM-Wiki. Return ONLY one valid JSON object. No markdown fences, no commentary. Schema: { \"nodes\": [ {\"key\": \"local-reference\", \"name\": \"display name\", \"type\": \"one allowed node type\", \"aliases\": [], \"description\": \"\", \"metadata\": {}} ], \"edges\": [ {\"source\": \"node key or name\", \"target\": \"node key or name\", \"type\": \"one allowed edge type\", \"evidence\": \"exact source sentence/span\", \"metadata\": {}} ] } Allowed node types: [\"Algorithm\", \"ApproachFamily\", \"ArchitecturePattern\", \"Benchmark\", \"Capability\", \"CausalClaim\", \"Claim\", \"ComparisonClaim\", \"Concept\", \"ContributionClaim\", \"Dataset\", \"EvaluationProtocol\", \"EvidenceSpan\", \"InferenceStrategy\", \"LimitationClaim\", \"MathematicalConcept\", \"MethodologicalConcept\", \"Metric\", \"Model\", \"ObjectiveFunction\", \"OpenQuestion\", \"Organization\", \"Paper\", \"PerformanceClaim\", \"Person\", \"ProblemArea\", \"Project\", \"Repository\", \"ResearchField\", \"ResearchTopic\", \"Result\", \"SourceDocument\", \"Task\", \"TechnicalTerm\", \"TrainingParadigm\", \"Trend\"] Allowed edge types: [\"achieves_score\", \"addresses\", \"attributes_improvement_to\", \"authored_by\", \"belongs_to_approach_family\", \"compares_against\", \"contradi",
+    "metadata": {
+      "config_root": "/Users/neo/.claude-personal2",
+      "transcript": "/Users/neo/.claude-personal2/projects/-Users-neo-Developer-Projects-LLM-Wiki/4d0851f7-35d9-4c07-aac2-ba4d09246540.jsonl"
+    },
+    "date": "2026-04-26",
+    "href": "sessions/llm-wiki/2026-04-26-you-are-extracting-a-typed-research-intelligence-graph-for-llm-wiki-2223aa94.html"
+  }
+}

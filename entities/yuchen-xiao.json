@@ -1,0 +1,15 @@
+{
+  "title": "Yuchen Xiao",
+  "kind": "entities",
+  "body_text": "# Yuchen Xiao\n\n## Incoming relations\n\n- **authored_by** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-29/papers/2602.23843/paper.md",
+  "links": [],
+  "body": "# Yuchen Xiao\n\n## Incoming relations\n\n- **authored_by** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:yuchen-xiao:df1cd5f9a6ec",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-29/papers/2602.23843/paper.md",
+    "title": "Yuchen Xiao"
+  }
+}

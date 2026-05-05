@@ -1,0 +1,13 @@
+Volumetric Rendering
+====================
+
+# Volumetric Rendering
+
+## Incoming relations
+
+- **uses** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_
+- **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_
+
+## Connected node types
+
+- Paper: 2

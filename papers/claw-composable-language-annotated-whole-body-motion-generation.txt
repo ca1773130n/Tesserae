@@ -1,0 +1,26 @@
+CLAW: Composable Language-Annotated Whole-body Motion Generation
+================================================================
+
+# CLAW: Composable Language-Annotated Whole-body Motion Generation
+
+## Outgoing relations
+
+- **authored_by** → Jianuo Cao _(Person)_
+- **authored_by** → Masayoshi Tomizuka _(Person)_
+- **authored_by** → Yuxin Chen _(Person)_
+- **implemented_in** → GitHub 분석: SkalskiP/top-cvpr-2026-papers _(Repository)_
+- **part_of** → Research Literature _(ResearchField)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-23 _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-23 _(SourceDocument)_
+
+## Connected node types
+
+- SourceDocument: 4
+- Person: 3
+- Repository: 1
+- ResearchField: 1

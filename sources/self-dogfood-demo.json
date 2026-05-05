@@ -1,0 +1,15 @@
+{
+  "title": "Self-dogfood Demo",
+  "kind": "sources",
+  "body_text": "# Self-dogfood Demo",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/self-dogfood.md",
+  "links": [],
+  "body": "# Self-dogfood Demo",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:self-dogfood-demo:68420477ed3a",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/self-dogfood.md",
+    "title": "Self-dogfood Demo"
+  }
+}

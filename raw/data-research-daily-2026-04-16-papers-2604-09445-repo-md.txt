@@ -1,0 +1,55 @@
+repo.md
+=======
+
+# GitHub 분석: gmberton/vismatch
+
+> - URL: https://github.com/gmberton/vismatch
+> - 분석일: 2026-04-16
+
+## 개요
+
+- **설명**: Wrapper of 50+ image matching models with a unified interface
+- **Stars**: ⭐ 813 | Forks: 75
+- **라이선스**: BSD-3-Clause
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (44개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+CONTRIBUTING.md
+demo.ipynb
+docs/Makefile
+.gitattributes
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.gitmodules
+.git/packed-refs
+.git/shallow
+LICENSE
+MANIFEST.in
+pyproject.toml
+README.md
+.readthedocs.yaml
+requirements.txt
+vismatch/base_matcher.py
+vismatch_extract.py
+vismatch/__init__.py
+vismatch_match.py
+vismatch/TEMPLATE.py
+vismatch_test.py
+vismatch/utils.py
+vismatch/viz.py
+```

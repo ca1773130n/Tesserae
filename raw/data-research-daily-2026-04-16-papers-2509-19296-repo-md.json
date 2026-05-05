@@ -1,0 +1,8 @@
+{
+  "title": "repo.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: nv-tlabs/lyra\n\n> - URL: https://github.com/nv-tlabs/lyra\n> - 분석일: 2026-04-16\n\n## 개요\n\n- **설명**: Project Lyra: Open Generative 3D World Models\n- **Stars**: ⭐ 1004 | Forks: 65\n- **라이선스**: Apache-2.0\n- **주 언어**: Python\n\n## 실행 가능 상태: 의존성 파일 없음\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (9개) | Y |\n| 의존성 파일 | N |\n| 모델/체크포인트 | script |\n| Docker | N |\n\n## 파일 구조\n\n```\nATTRIBUTIONS.md\nCONTRIBUTING.md\n.git/config\n.git/description\n.git/HEAD\n.git/index\n.git/packed-refs\n.git/shallow\nLICENSE\nLyra-1/inference.sh\nLyra-1/INSTALL.md\nLyra-1/lyra.yaml\nLyra-1/README.md\nLyra-1/requirements_gen3c.txt\nLyra-1/requirements_lyra.txt\nLyra-1/sample.py\nLyra-1/train.py\nLyra-1/train.sh\nLyra-2/README.md\nREADME.md\n```",
+  "source_path": "data/research/daily/2026-04-16/papers/2509.19296/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: nv-tlabs/lyra\n\n> - URL: https://github.com/nv-tlabs/lyra\n> - 분석일: 2026-04-16\n\n## 개요\n\n- **설명**: Project Lyra: Open Generative 3D World Models\n- **Stars**: ⭐ 1004 | Forks: 65\n- **라이선스**: Apache-2.0\n- **주 언어**: Python\n\n## 실행 가능 상태: 의존성 파일 없음\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (9개) | Y |\n| 의존성 파일 | N |\n| 모델/체크포인트 | script |\n| Docker | N |\n\n## 파일 구조\n\n```\nATTRIBUTIONS.md\nCONTRIBUTING.md\n.git/config\n.git/description\n.git/HEAD\n.git/index\n.git/packed-refs\n.git/shallow\nLICENSE\nLyra-1/inference.sh\nLyra-1/INSTALL.md\nLyra-1/lyra.yaml\nLyra-1/README.md\nLyra-1/requirements_gen3c.txt\nLyra-1/requirements_lyra.txt\nLyra-1/sample.py\nLyra-1/train.py\nLyra-1/train.sh\nLyra-2/README.md\nREADME.md\n```\n"
+}

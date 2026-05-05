@@ -1,0 +1,67 @@
+NVIDIA_ncore.md
+===============
+
+# GitHub 분석: NVIDIA/ncore
+
+> - URL: https://github.com/NVIDIA/ncore
+> - 분석일: 2026-04-25
+
+## 개요
+
+- **설명**: Data representations, APIs, and tools for high quality AV and robotics applications
+- **Stars**: ⭐ 119 | Forks: 13
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (24개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+ATTRIBUTIONS.md
+.bazelignore
+.bazelrc
+.bazelversion
+BUILD.bazel
+CHANGELOG.md
+CODE_OF_CONDUCT.md
+.cog.toml
+CONTRIBUTING.md
+docs/BUILD.bazel
+docs/conf.py
+docs/index.rst
+docs/README.md
+.git/config
+.git/description
+.git/HEAD
+.github/PULL_REQUEST_TEMPLATE.md
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE
+MODULE.bazel
+ncore/BUILD.bazel
+ncore/PYPI_README.md
+ncore/py.typed
+ncore/README.md
+pyproject.toml
+README.md
+SECURITY.md
+tools/BUILD.bazel
+tools/cli.py
+tools/debug.py
+tools/ncore_export_camera.py
+tools/ncore_export_colored_pc.py
+tools/ncore_export_ply.py
+tools/ncore_project_pc_to_img.py
+tools/ncore_sequence_meta.py
+```

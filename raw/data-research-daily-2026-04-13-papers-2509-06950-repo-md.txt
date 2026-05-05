@@ -1,0 +1,69 @@
+repo.md
+=======
+
+# GitHub 분석: World-In-World/world-in-world
+
+> - URL: https://github.com/World-In-World/world-in-world
+> - 분석일: 2026-04-13
+
+## 개요
+
+- **설명**: Code implementation of the paper \
+- **Stars**: ⭐ 155 | Forks: 3
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (71개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+assets/genex_logo.png
+assets/logo.svg
+assets/overview.png
+collect_bbox/coordinate_transformation.py
+collect_bbox/draw_bbox.py
+data_filtering/filter_util.py
+data_filtering/pcd_reproject.py
+docs/01_setup_env.md
+docs/02_evaluation_datasets.md
+docs/03_run_commands.md
+docs/04_post_training.md
+docs/05_add_new_WM.md
+docs/09_WM_server_details.md
+downstream/downstream_datasets.py
+downstream/evaluator.py
+downstream/__init__.py
+downstream/prompts.py
+downstream/simulator.py
+downstream/solver_AEQA.py
+downstream/solver_AR.py
+downstream/solver_base.py
+downstream/solver_IGNav.py
+downstream/visualize.py
+downstream/vlm.py
+FTsvd/dataset.py
+FTsvd/eval_inference.py
+FTsvd/__init__.py
+FTsvd/README.md
+FTsvd/train_svd.py
+FTsvd/train_svd.sh
+FTsvd/train_svd.txt
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.gitmodules
+.git/packed-refs
+.git/shallow
+habitat_data/config_utils.py
+```

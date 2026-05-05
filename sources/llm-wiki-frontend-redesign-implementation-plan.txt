@@ -1,0 +1,12 @@
+LLM-Wiki Frontend Redesign — Implementation Plan
+================================================
+
+# LLM-Wiki Frontend Redesign — Implementation Plan
+
+## Outgoing relations
+
+- **uses_metric** → mAP _(Metric)_
+
+## Connected node types
+
+- Metric: 1

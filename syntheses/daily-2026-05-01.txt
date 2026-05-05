@@ -1,0 +1,14 @@
+Daily Digest — 2026-05-01
+=========================
+
+# Daily Digest — 2026-05-01
+
+Sources ingested under `data/research/daily/2026-05-01/`.
+
+## Papers and repos
+- [GitHub 분석: r4dl/CoMe](../repos/github-분석-r4dl-come.md) (Repository)
+- [Daily Feed Summary — 2026-05-01](../sources/daily-feed-summary-2026-05-01.md) (SourceDocument)
+- [📬 Daily Research Digest — 2026-05-01](../sources/daily-research-digest-2026-05-01.md) (SourceDocument)
+
+## Extracted concepts
+- (none extracted)

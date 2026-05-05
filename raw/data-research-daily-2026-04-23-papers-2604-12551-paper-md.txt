@@ -1,0 +1,81 @@
+paper.md
+========
+
+# 논문 분석: 2604.12551
+
+> - arxiv: https://arxiv.org/abs/2604.12551
+> - papers.cool: https://papers.cool/arxiv/2604.12551
+> - 분석일: 2026-04-23
+
+# Cross-Attentive Multiview Fusion of Vision-Language Embeddings | Cool Papers - Immersive Paper Discovery
+
+## 2604.12551
+
+Total: 1
+
+## #1
+
+# Cross-Attentive Multiview Fusion of Vision-Language Embeddings
+
+[PDF1]  
+[Copy]  
+[Kimi]  
+[REL]
+
+Authors:  
+Tomas Berriel Martins,  
+Martin R. Oswald,  
+Javier Civera
+
+Vision-language models는 open-vocabulary 2D semantic segmentation의 발전에 핵심적인 역할을 해왔다. 그러나 이러한 모델을 2D 이미지에서 3D 장면으로 확장하는 것은 여전히 어려운 문제다. 기존 접근법은 일반적으로 여러 시점의 2D descriptor를 back-project한 뒤 평균을 내거나, 휴리스틱하게 하나의 대표 descriptor를 선택하는 방식이며, 이는 종종 최적이 아닌 3D representation으로 이어진다.
+
+이 연구에서는 여러 viewpoint에서 얻은 vision-language descriptor들 사이에 cross-attention을 수행하고, 이를 통합된 per-3D-instance embedding으로 융합하는 새로운 multiview transformer architecture를 제안한다. 두 번째 기여로, 이 융합을 위한 self-supervision signal로 multiview consistency를 활용하며, 이를 표준 supervised target-class loss에 추가했을 때 성능이 크게 향상됨을 보인다.
+
+저자들이 약어로 CAMFusion이라 부르는 Cross-Attentive Multiview Fusion은 단순 평균이나 single-view descriptor 선택보다 일관되게 우수할 뿐 아니라, out-of-domain dataset에 대한 zero-shot evaluation을 포함한 3D semantic 및 instance classification benchmark에서 state-of-the-art 결과를 달성한다.
+
+Subject:
+
+Computer Vision and Pattern Recognition
+
+Publish: 2026-04-14 10:25:32 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+Include(OR):
+
+Exclude:
+
+Search
+
+Filter
+
+Highlight
+
+Stared Paper(s):
+
+#1  
+Cross-Attentive Multiview Fusion of Vision-Language Embeddings
+
+Export
+
+Magic Token:
+
+Kimi Language:
+
+中文  
+English
+
+Desc Language:
+
+中文  
+English
+
+Save
+
+Bug report? Issue submit? Please visit:
+
+Github: https://github.com/bojone/papers.cool
+
+진행하기 전에 Disclaimer를 읽어 주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문해 확인할 수 있다.

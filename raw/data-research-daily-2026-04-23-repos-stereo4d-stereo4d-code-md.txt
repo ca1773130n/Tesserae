@@ -1,0 +1,49 @@
+Stereo4d_stereo4d-code.md
+=========================
+
+# GitHub 분석: Stereo4d/stereo4d-code
+
+> - URL: https://github.com/Stereo4d/stereo4d-code
+> - 분석일: 2026-04-23
+
+## 개요
+
+- **설명**: Stereo4D dataset and processing code
+- **Stars**: ⭐ 304 | Forks: 11
+- **라이선스**: CC0-1.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (6개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+demo_run.bash
+environment.yml
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.gitmodules
+.git/packed-refs
+.git/shallow
+inference_raft.py
+LICENSE
+README.md
+rectify.py
+sea-raft-changes.patch
+segmentation.py
+tracking.py
+track_optimization.py
+track_visualization.ipynb
+utils.py
+```

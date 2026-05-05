@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Session: You are a structured-output adapter for Cognee. — LLM-Wiki</title>
+  <link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+
+<main id="main-content" class="page session-detail">
+  <p><a href="../index.html">← All sessions</a></p>
+  <script type="application/json" id="llmwiki-metadata">{&quot;date&quot;: &quot;2026-04-26&quot;, &quot;harness&quot;: &quot;codex&quot;, &quot;id&quot;: &quot;codex:019dca9f-175c-7cb2-8d40-15e035846cd9&quot;, &quot;kind&quot;: &quot;session&quot;, &quot;model&quot;: &quot;openai&quot;, &quot;project&quot;: &quot;LLM-Wiki&quot;}</script>
+  <section class="panel">
+    <p class="eyebrow">Codex · 2026-04-26 · unknown branch</p>
+    <h1>You are a structured-output adapter for Cognee.</h1>
+    <p class="lead">You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { &quot;description&quot;: &quot;Class for a single class label summary and description.&quot;, &quot;properties&quot;: { &quot;summary&quot;: { &quot;title&quot;: &quot;Summary&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;description&quot;: { &quot;title&quot;: &quot;Description&quot;, &quot;type&quot;: &quot;string&quot; } }, &quot;required&quot;: [ &quot;summary&quot;, &quot;description&quot; ], &quot;title&quot;: &quot;SummarizedContent&quot;, &quot;type&quot;: &quot;object&quot; } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_qwen_embedding_sample_bundle/nodes.jsonl I’m reading `output/cognee_qwen_embedding_sample_bundle/nodes.jsonl` to extract its content and produce the required structured summary JSON. {&quot;summary&quot;:&quot;A research graph bundle centered on the paper \&quot;Geometry-Grounded Gaussian Splatting\&quot; in 3D/4D vision and reconstruction.&quot;,&quot;description&quot;:&quot;The file lists structured nodes from a research knowled</p>
+    <dl class="meta-grid">
+      <dt>Project</dt><dd>LLM-Wiki</dd>
+      <dt>Model</dt><dd><code>openai</code></dd>
+      <dt>Messages</dt><dd>4</dd>
+      <dt>Tool calls</dt><dd>1</dd>
+      <dt>Tokens</dt><dd>0</dd>
+    </dl>
+  </section>
+  <section class="panel"><h2>Key decisions</h2><p class='muted'>None recorded.</p></section>
+  <section class="panel"><h2>Files touched</h2><ul><li><code>data/research/daily/2026-04-26/papers/2601.17835/paper.md</code></li><li><code>docs/SKILL.md</code></li></ul></section>
+  <section class="panel"><h2>Commands run</h2><ul><li><code>sed -n &#x27;1,240p&#x27; output/cognee_qwen_embedding_sample_bundle/nodes.jsonl</code></li></ul></section>
+  <section class="panel"><h2>Tools used</h2><ul><li>exec_command</li></ul></section>
+  <section class='panel'><h2>Subagent sessions</h2><p class='muted'>No subagent transcripts attached.</p></section>
+  <section class="panel"><h2>Redacted preview</h2><pre>You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { &quot;description&quot;: &quot;Class for a single class label summary and description.&quot;, &quot;properties&quot;: { &quot;summary&quot;: { &quot;title&quot;: &quot;Summary&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;description&quot;: { &quot;title&quot;: &quot;Description&quot;, &quot;type&quot;: &quot;string&quot; } }, &quot;required&quot;: [ &quot;summary&quot;, &quot;description&quot; ], &quot;title&quot;: &quot;SummarizedContent&quot;, &quot;type&quot;: &quot;object&quot; } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_qwen_embedding_sample_bundle/nodes.jsonl I’m reading `output/cognee_qwen_embedding_sample_bundle/nodes.jsonl` to extract its content and produce the required structured summary JSON. {&quot;summary&quot;:&quot;A research graph bundle centered on the paper \&quot;Geometry-Grounded Gaussian Splatting\&quot; in 3D/4D vision and reconstruction.&quot;,&quot;description&quot;:&quot;The file lists structured nodes from a research knowled</pre></section>
+</main>
+
+</body>
+</html>

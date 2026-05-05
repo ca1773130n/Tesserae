@@ -1,0 +1,74 @@
+paper.md
+========
+
+# 논문 분석: 2604.15941
+
+> - arxiv: https://arxiv.org/abs/2604.15941
+> - papers.cool: https://papers.cool/arxiv/2604.15941
+> - 분석일: 2026-04-25
+
+# Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction | Cool Papers - 몰입형 논문 탐색
+
+## 2604.15941
+
+총계: 1
+
+## #1
+
+# Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction
+
+[PDF5]  
+[Copy]  
+[Kimi1]  
+[REL]
+
+저자:  
+Haato Watanabe,  
+Nobuyuki Umetani
+
+최근 몇 년간 3D Gaussian splatting, 즉 3DGS는 3D 재구성과 새로운 시점 합성을 위한 강력한 접근법으로 빠르게 부상했다. Gaussian primitive를 사용하는 명시적 표현은 빠른 학습, 실시간 렌더링, 그리고 편집 및 표면 재구성과 같은 편리한 후처리를 가능하게 한다. 그러나 3DGS에는 중요한 단점이 있다. 장면에 고주파 외관 디테일이 포함될 경우 primitive의 수가 급격히 증가한다는 점이다. 이는 각 primitive가 단 하나의 색만 표현할 수 있어, 모든 날카로운 색 전이에 대해 여러 primitive가 필요하기 때문이다. 이러한 한계를 극복하기 위해, 우리는 neural Gabor splatting을 제안한다. 이 방법은 각 Gaussian primitive에 경량 multi-layer perceptron을 추가하여, 하나의 primitive 내부에서 폭넓은 색상 변화를 모델링한다. 또한 primitive 수를 더 효과적으로 제어하기 위해, 주파수 에너지를 기준으로 불일치 primitive를 선택해 pruning과 cloning을 수행하는 frequency-aware densification 전략을 도입한다. 우리의 방법은 까다로운 고주파 표면을 정확하게 재구성할 수 있다. Mip-NeRF360 및 High-Frequency 데이터셋, 예를 들어 checkered patterns를 포함한 표준 벤치마크에서의 광범위한 실험과 포괄적인 ablation study를 통해 그 효과를 입증한다.
+
+주제:  
+Computer Vision and Pattern Recognition,  
+Graphics
+
+게시: 2026-04-17 11:00:19 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+포함 OR:
+
+제외:
+
+검색
+
+필터
+
+하이라이트
+
+별표한 논문:
+
+#1  
+Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction
+
+내보내기
+
+Magic Token:
+
+Kimi 언어:  
+中文  
+English
+
+설명 언어:  
+中文  
+English
+
+저장
+
+버그 신고 또는 이슈 제출은 다음을 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+진행하기 전에 Disclaimer를 읽어주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문하세요.

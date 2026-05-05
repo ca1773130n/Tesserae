@@ -1,0 +1,8 @@
+{
+  "title": "OpsiClear-4DGS_TriGSVanilla.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: OpsiClear-4DGS/TriGSVanilla\n\n> - URL: https://github.com/OpsiClear-4DGS/TriGSVanilla\n> - 분석일: 2026-04-26\n\n## 개요\n\n- **설명**:   \n- **Stars**: ⭐ 5 | Forks: 0\n- **라이선스**: AGPL-3.0\n- **주 언어**: Python\n\n## 실행 가능 상태: 모델 체크포인트 미공개 (추론 불가 가능성)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (6개) | Y |\n| 의존성 파일 | Y |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\nCLAUDE.md\nCONTRIBUTING.md\ndocs/PAPER_MAPPING.md\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\nLICENSE\npyproject.toml\nREADME.md\nscripts/preprocess_selfcap.py\nscripts/run_colmap.sh\nscripts/run_plys.sh\ntests/__init__.py\ntests/test_se3.py\ntests/test_selfcap_loader.py\ntests/test_trainer.py\n```",
+  "source_path": "data/research/daily/2026-04-26/repos/OpsiClear-4DGS_TriGSVanilla.md",
+  "links": [],
+  "body": "# GitHub 분석: OpsiClear-4DGS/TriGSVanilla\n\n> - URL: https://github.com/OpsiClear-4DGS/TriGSVanilla\n> - 분석일: 2026-04-26\n\n## 개요\n\n- **설명**:   \n- **Stars**: ⭐ 5 | Forks: 0\n- **라이선스**: AGPL-3.0\n- **주 언어**: Python\n\n## 실행 가능 상태: 모델 체크포인트 미공개 (추론 불가 가능성)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (6개) | Y |\n| 의존성 파일 | Y |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\nCLAUDE.md\nCONTRIBUTING.md\ndocs/PAPER_MAPPING.md\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\nLICENSE\npyproject.toml\nREADME.md\nscripts/preprocess_selfcap.py\nscripts/run_colmap.sh\nscripts/run_plys.sh\ntests/__init__.py\ntests/test_se3.py\ntests/test_selfcap_loader.py\ntests/test_trainer.py\n```\n"
+}

@@ -1,0 +1,41 @@
+TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting
+====================================================================
+
+# TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting
+
+## Outgoing relations
+
+- **authored_by** → Jaesik Park _(Person)_
+- **authored_by** → Joonsik Nam _(Person)_
+- **authored_by** → Joonsoo Kim _(Person)_
+- **authored_by** → Kugjin Yun _(Person)_
+- **authored_by** → Kyeongbo Kong _(Person)_
+- **authored_by** → Lucas Yunkyu Lee _(Person)_
+- **authored_by** → Sangmin Kim _(Person)_
+- **authored_by** → Seunggyu Choi _(Person)_
+- **authored_by** → Sukju Kang _(Person)_
+- **authored_by** → Suwoong Yeom _(Person)_
+- **belongs_to_approach_family** → Dynamic Gaussian Splatting _(ApproachFamily)_
+- **belongs_to_approach_family** → Gaussian Splatting Reconstruction _(ApproachFamily)_
+- **implemented_in** → GitHub 분석: nvidia/asset-harvester _(Repository)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- **uses** → 4D Gaussian Splatting _(MethodologicalConcept)_
+- **uses** → Gaussian Splatting _(MethodologicalConcept)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-25 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-26 _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-25 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-26 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 10
+- SourceDocument: 6
+- ApproachFamily: 2
+- MethodologicalConcept: 2
+- Repository: 1
+- ResearchField: 1

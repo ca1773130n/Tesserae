@@ -1,0 +1,23 @@
+Lyra 2.0: Explorable Generative 3D Worlds
+=========================================
+
+# Lyra 2.0: Explorable Generative 3D Worlds
+
+## Outgoing relations
+
+- **implemented_in** → GitHub 분석: NVIDIA/OpenShell _(Repository)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-16 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-23 _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-23 _(SourceDocument)_
+
+## Connected node types
+
+- SourceDocument: 5
+- Repository: 1
+- ResearchField: 1

@@ -1,0 +1,19 @@
+Daily Feed Summary — 2026-04-24
+===============================
+
+# Daily Feed Summary — 2026-04-24
+
+## Outgoing relations
+
+- **mentioned_in** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_
+- **mentioned_in** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_
+- **mentioned_in** → Image Generators are Generalist Vision Learners _(Paper)_
+- **mentioned_in** → Learning in Deep Factor Graphs with Gaussian Belief Propagation _(Paper)_
+- **mentioned_in** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
+- **mentioned_in** → Scaling Sequence-to-Sequence Generative Neural Rendering _(Paper)_
+- **uses_metric** → mAP _(Metric)_
+
+## Connected node types
+
+- Paper: 6
+- Metric: 1

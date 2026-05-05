@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Session: You are a structured-output adapter for Cognee. — LLM-Wiki</title>
+  <link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+
+<main id="main-content" class="page session-detail">
+  <p><a href="../index.html">← All sessions</a></p>
+  <script type="application/json" id="llmwiki-metadata">{&quot;date&quot;: &quot;2026-04-26&quot;, &quot;harness&quot;: &quot;codex&quot;, &quot;id&quot;: &quot;codex:019dca5d-43d3-77f0-91ef-707d45832717&quot;, &quot;kind&quot;: &quot;session&quot;, &quot;model&quot;: &quot;openai&quot;, &quot;project&quot;: &quot;LLM-Wiki&quot;}</script>
+  <section class="panel">
+    <p class="eyebrow">Codex · 2026-04-26 · unknown branch</p>
+    <h1>You are a structured-output adapter for Cognee.</h1>
+    <p class="lead">You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for KnowledgeGraph: { &quot;$defs&quot;: { &quot;Edge&quot;: { &quot;description&quot;: &quot;Edge in a knowledge graph.&quot;, &quot;properties&quot;: { &quot;source_node_id&quot;: { &quot;title&quot;: &quot;Source Node Id&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;target_node_id&quot;: { &quot;title&quot;: &quot;Target Node Id&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;relationship_name&quot;: { &quot;title&quot;: &quot;Relationship Name&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;properties&quot;: { &quot;anyOf&quot;: [ { &quot;type&quot;: &quot;object&quot; }, { &quot;type&quot;: &quot;null&quot; } ], &quot;default&quot;: null, &quot;description&quot;: &quot;A dictionary of properties associated with the edge.&quot;, &quot;title&quot;: &quot;Properties&quot; } }, &quot;required&quot;: [ &quot;source_node_id&quot;, &quot;target_node_id&quot;, &quot;relationship_name&quot; ], &quot;title&quot;: &quot;Edge&quot;, &quot;type&quot;: &quot;object&quot; }, &quot;Node&quot;: { &quot;description&quot;: &quot;Node in a knowledge graph.&quot;, &quot;properties&quot;: { &quot;id&quot;: { &quot;title&quot;: &quot;Id&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;name&quot;: { &quot;title&quot;: &quot;Name&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;type&quot;: { &quot;title&quot;: &quot;Type&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;description&quot;: { &quot;title&quot;: &quot;Description&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;properties&quot;: { &quot;anyOf&quot;: [ { &quot;type&quot;: &quot;object&quot; }, { &quot;type&quot;: &quot;null&quot; } ], &quot;default&quot;: null, &quot;description&quot;: &quot;A dictionary of properties associated with th</p>
+    <dl class="meta-grid">
+      <dt>Project</dt><dd>LLM-Wiki</dd>
+      <dt>Model</dt><dd><code>openai</code></dd>
+      <dt>Messages</dt><dd>3</dd>
+      <dt>Tool calls</dt><dd>0</dd>
+      <dt>Tokens</dt><dd>0</dd>
+    </dl>
+  </section>
+  <section class="panel"><h2>Key decisions</h2><p class='muted'>None recorded.</p></section>
+  <section class="panel"><h2>Files touched</h2><ul><li><code>docs/SKILL.md</code></li></ul></section>
+  <section class="panel"><h2>Commands run</h2><p class='muted'>None recorded.</p></section>
+  <section class="panel"><h2>Tools used</h2><p class='muted'>None recorded.</p></section>
+  <section class='panel'><h2>Subagent sessions</h2><p class='muted'>No subagent transcripts attached.</p></section>
+  <section class="panel"><h2>Redacted preview</h2><pre>You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for KnowledgeGraph: { &quot;$defs&quot;: { &quot;Edge&quot;: { &quot;description&quot;: &quot;Edge in a knowledge graph.&quot;, &quot;properties&quot;: { &quot;source_node_id&quot;: { &quot;title&quot;: &quot;Source Node Id&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;target_node_id&quot;: { &quot;title&quot;: &quot;Target Node Id&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;relationship_name&quot;: { &quot;title&quot;: &quot;Relationship Name&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;properties&quot;: { &quot;anyOf&quot;: [ { &quot;type&quot;: &quot;object&quot; }, { &quot;type&quot;: &quot;null&quot; } ], &quot;default&quot;: null, &quot;description&quot;: &quot;A dictionary of properties associated with the edge.&quot;, &quot;title&quot;: &quot;Properties&quot; } }, &quot;required&quot;: [ &quot;source_node_id&quot;, &quot;target_node_id&quot;, &quot;relationship_name&quot; ], &quot;title&quot;: &quot;Edge&quot;, &quot;type&quot;: &quot;object&quot; }, &quot;Node&quot;: { &quot;description&quot;: &quot;Node in a knowledge graph.&quot;, &quot;properties&quot;: { &quot;id&quot;: { &quot;title&quot;: &quot;Id&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;name&quot;: { &quot;title&quot;: &quot;Name&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;type&quot;: { &quot;title&quot;: &quot;Type&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;description&quot;: { &quot;title&quot;: &quot;Description&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;properties&quot;: { &quot;anyOf&quot;: [ { &quot;type&quot;: &quot;object&quot; }, { &quot;type&quot;: &quot;null&quot; } ], &quot;default&quot;: null, &quot;description&quot;: &quot;A dictionary of properties associated with th</pre></section>
+</main>
+
+</body>
+</html>

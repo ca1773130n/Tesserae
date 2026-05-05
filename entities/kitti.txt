@@ -1,0 +1,12 @@
+KITTI
+=====
+
+# KITTI
+
+## Incoming relations
+
+- **evaluated_on** → GitHub 분석: team-aprl/MR.ScaleMaster _(Repository)_
+
+## Connected node types
+
+- Repository: 1

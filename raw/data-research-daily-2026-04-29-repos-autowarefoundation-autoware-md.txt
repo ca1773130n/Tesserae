@@ -1,0 +1,69 @@
+autowarefoundation_autoware.md
+==============================
+
+# GitHub 분석: autowarefoundation/autoware
+
+> - URL: https://github.com/autowarefoundation/autoware
+> - 분석일: 2026-04-29
+
+## 개요
+
+- **설명**: Autoware - the world's leading open-source software project for autonomous driving
+- **Stars**: ⭐ 11431 | Forks: 3598
+- **라이선스**: Apache-2.0
+- **주 언어**: unknown
+
+## 실행 가능 상태: 코드 미공개 (README/asset만 존재)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (0개) | N |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+ansible/COLCON_IGNORE
+ansible-galaxy-requirements.yaml
+ansible/galaxy.yml
+ansible/.gitignore
+.ansible-lint
+ansible/README.md
+.clang-format
+.clang-tidy
+.clang-tidy-ci
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+CPPLINT.cfg
+.devcontainer/Dockerfile
+DISCLAIMER.md
+docker/base-cuda.Dockerfile
+docker/base.Dockerfile
+docker/core.Dockerfile
+docker/docker-bake.hcl
+docker/docker-entrypoint.sh
+.dockerignore
+docker/README.md
+docker/universe-cuda.Dockerfile
+docker/universe.Dockerfile
+.fdignore
+.git/config
+.git/description
+.git/HEAD
+.github/CODEOWNERS
+.github/dependabot.yaml
+.github/pull_request_template.md
+.github/stale.yml
+.github/sync-files.yaml
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+.hadolint.yaml
+LICENSE
+.markdown-link-check.json
+.markdownlint.yaml
+```

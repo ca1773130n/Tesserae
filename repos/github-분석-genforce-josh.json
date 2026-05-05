@@ -1,0 +1,20 @@
+{
+  "title": "GitHub 분석: genforce/JOSH",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: genforce/JOSH",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/tests/fixtures/wiki_corpus/data/research/daily/2026-04-26/repos/sample-repo.md",
+  "links": [],
+  "body": "# GitHub 분석: genforce/JOSH",
+  "frontmatter": {
+    "aliases": [
+      "genforce/josh",
+      "https://github.com/genforce/JOSH",
+      "주간 GitHub 분석 — 2026-W18 (2026-04-27 ~ 2026-05-03)"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-genforce-josh:ed26713cfc96",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/tests/fixtures/wiki_corpus/data/research/daily/2026-04-26/repos/sample-repo.md",
+    "title": "GitHub 분석: genforce/JOSH"
+  }
+}

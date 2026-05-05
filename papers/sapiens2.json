@@ -1,0 +1,18 @@
+{
+  "title": "Sapiens2",
+  "kind": "papers",
+  "body_text": "# Sapiens2\n\n## Outgoing relations\n\n- **authored_by** → He Wen _(Person)_\n- **authored_by** → Julieta Martinez _(Person)_\n- **authored_by** → Rawal Khirodkar _(Person)_\n- **authored_by** → Shunsuke Saito _(Person)_\n- **authored_by** → Su Zhaoen _(Person)_\n- **authored_by** → Yuan Dong _(Person)_\n- **implemented_in** → GitHub 분석: facebookresearch/sapiens2 _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **reports_result** → mAP=4 _(Result)_\n- **reports_result** → mIoU=24.3 _(Result)_\n- **uses_metric** → mAP _(Metric)_\n- **uses_metric** → mIoU _(Metric)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-27 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 6\n- SourceDocument: 3\n- Metric: 2\n- Result: 2\n- Repository: 1\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-27/papers/2604.21681/paper.md",
+  "links": [],
+  "body": "# Sapiens2\n\n## Outgoing relations\n\n- **authored_by** → He Wen _(Person)_\n- **authored_by** → Julieta Martinez _(Person)_\n- **authored_by** → Rawal Khirodkar _(Person)_\n- **authored_by** → Shunsuke Saito _(Person)_\n- **authored_by** → Su Zhaoen _(Person)_\n- **authored_by** → Yuan Dong _(Person)_\n- **implemented_in** → GitHub 분석: facebookresearch/sapiens2 _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **reports_result** → mAP=4 _(Result)_\n- **reports_result** → mIoU=24.3 _(Result)_\n- **uses_metric** → mAP _(Metric)_\n- **uses_metric** → mIoU _(Metric)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-27 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 6\n- SourceDocument: 3\n- Metric: 2\n- Result: 2\n- Repository: 1\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2604.21681"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2604-21681:42263d5afb74",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-27/papers/2604.21681/paper.md",
+    "title": "Sapiens2"
+  }
+}

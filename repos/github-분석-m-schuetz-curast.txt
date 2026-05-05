@@ -1,0 +1,17 @@
+GitHub 분석: m-schuetz/CuRast
+===========================
+
+# GitHub 분석: m-schuetz/CuRast
+
+## Outgoing relations
+
+- **released_by** → m-schuetz _(Organization)_
+
+## Incoming relations
+
+- **implemented_in** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_
+
+## Connected node types
+
+- Organization: 1
+- Paper: 1

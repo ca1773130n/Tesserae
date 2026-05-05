@@ -1,0 +1,13 @@
+Antonino Furnari
+================
+
+# Antonino Furnari
+
+## Incoming relations
+
+- **authored_by** → An Outlook into the Future of Egocentric Vision _(Paper)_
+- **authored_by** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_
+
+## Connected node types
+
+- Paper: 2

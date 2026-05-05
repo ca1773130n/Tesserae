@@ -1,0 +1,8 @@
+{
+  "title": "repo.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: KumapowerLIU/AvatarPointillist\n\n> - URL: https://github.com/KumapowerLIU/AvatarPointillist\n> - 분석일: 2026-04-08\n\n## 개요\n\n- **설명**: Official PyTorch implementation of AvatarPointillist: AutoRegressive 4D Gaussian Avatarization. CVPR 2026\n- **Stars**: ⭐ 15 | Forks: 1\n- **라이선스**: N/A\n- **주 언어**: unknown\n\n## 실행 가능 상태: 코드 미공개 (README/asset만 존재)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (0개) | N |\n| 의존성 파일 | N |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\n.git/config\n.git/description\n.git/HEAD\n.git/index\n.git/packed-refs\n.git/shallow\nassets/method_overview.jpg\nassets/teaser.jpg\nREADME.md\n```",
+  "source_path": "data/research/daily/2026-04-08/papers/2406.01900/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: KumapowerLIU/AvatarPointillist\n\n> - URL: https://github.com/KumapowerLIU/AvatarPointillist\n> - 분석일: 2026-04-08\n\n## 개요\n\n- **설명**: Official PyTorch implementation of AvatarPointillist: AutoRegressive 4D Gaussian Avatarization. CVPR 2026\n- **Stars**: ⭐ 15 | Forks: 1\n- **라이선스**: N/A\n- **주 언어**: unknown\n\n## 실행 가능 상태: 코드 미공개 (README/asset만 존재)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (0개) | N |\n| 의존성 파일 | N |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\n.git/config\n.git/description\n.git/HEAD\n.git/index\n.git/packed-refs\n.git/shallow\nassets/method_overview.jpg\nassets/teaser.jpg\nREADME.md\n```\n"
+}

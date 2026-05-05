@@ -1,0 +1,13 @@
+📊 주간 리서치 다이제스트 — 2026-W15
+=========================
+
+# 📊 주간 리서치 다이제스트 — 2026-W15
+
+## Outgoing relations
+
+- **mentioned_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_
+- **mentioned_in** → Integrating Symmetry into Differentiable Planning with Steerable Convolutions _(Paper)_
+
+## Connected node types
+
+- Paper: 2

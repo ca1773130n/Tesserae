@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: KumapowerLIU/AvatarPointillist",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: KumapowerLIU/AvatarPointillist\n\n## Incoming relations\n\n- **implemented_in** → Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2406.01900/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: KumapowerLIU/AvatarPointillist\n\n## Incoming relations\n\n- **implemented_in** → Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/KumapowerLIU/AvatarPointillist",
+      "kumapowerliu/avatarpointillist"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-kumapowerliu-avatarpointillist:b18275fa65dc",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2406.01900/repo.md",
+    "title": "GitHub 분석: KumapowerLIU/AvatarPointillist"
+  }
+}

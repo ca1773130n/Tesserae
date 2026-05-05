@@ -1,0 +1,32 @@
+{
+  "title": "Daily Digest — 2026-04-27",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-04-27\n\nSources ingested under `data/research/daily/2026-04-27/`.\n\n## Papers and repos\n- [Sapiens2 (arXiv:2604.21681)](../papers/sapiens2.md) (Paper)\n- [GitHub 분석: facebookresearch/sapiens2](../repos/github-분석-facebookresearch-sapiens2.md) (Repository)\n- [Daily Feed Summary — 2026-04-27](../sources/daily-feed-summary-2026-04-27.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-04-27](../sources/daily-research-digest-2026-04-27.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "source_path": "",
+  "links": [
+    "../papers/sapiens2.md",
+    "../repos/github-분석-facebookresearch-sapiens2.md",
+    "../sources/daily-feed-summary-2026-04-27.md",
+    "../sources/daily-research-digest-2026-04-27.md"
+  ],
+  "body": "# Daily Digest — 2026-04-27\n\nSources ingested under `data/research/daily/2026-04-27/`.\n\n## Papers and repos\n- [Sapiens2 (arXiv:2604.21681)](../papers/sapiens2.md) (Paper)\n- [GitHub 분석: facebookresearch/sapiens2](../repos/github-분석-facebookresearch-sapiens2.md) (Repository)\n- [Daily Feed Summary — 2026-04-27](../sources/daily-feed-summary-2026-04-27.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-04-27](../sources/daily-research-digest-2026-04-27.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "frontmatter": {
+    "content_hash": "sha256-fe9d5b0b3938d27da1aa642bd1cdebe944eb8683114fb17f1bdf9d095c3468cc",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Paper:arxiv-2604-21681:42263d5afb74",
+      "Repository:github-facebookresearch-sapiens2:2ba53e792cac",
+      "SourceDocument:daily-feed-summary-2026-04-27:d6eb92b2d548",
+      "SourceDocument:daily-research-digest-2026-04-27:cb7e5e4ebfce"
+    ],
+    "slug": "daily-2026-04-27",
+    "sources": [
+      "data/research/daily/2026-04-27/digest.md",
+      "data/research/daily/2026-04-27/papers/2604.21681/paper.md",
+      "data/research/daily/2026-04-27/papers/2604.21681/repo.md",
+      "data/research/daily/2026-04-27/raw.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-04-27"
+  }
+}

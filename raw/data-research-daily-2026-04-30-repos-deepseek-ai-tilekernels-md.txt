@@ -1,0 +1,47 @@
+deepseek-ai_TileKernels.md
+==========================
+
+# GitHub 분석: deepseek-ai/TileKernels
+
+> - URL: https://github.com/deepseek-ai/TileKernels
+> - 분석일: 2026-04-30
+
+## 개요
+
+- **설명**: A kernel library written in tilelang
+- **Stars**: ⭐ 1347 | Forks: 112
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 체크포인트 미공개 (추론 불가 가능성)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (108개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+.editorconfig
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE
+pyproject.toml
+README.md
+tests/conftest.py
+tests/__init__.py
+tests/pytest_benchmark_plugin.py
+tests/pytest_random_plugin.py
+tile_kernels/config.py
+tile_kernels/__init__.py
+tile_kernels/utils.py
+```

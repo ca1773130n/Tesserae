@@ -1,0 +1,20 @@
+주간 논문 분석 — 2026-W15 (2026-04-06 ~ 2026-04-12)
+=============================================
+
+# 주간 논문 분석 — 2026-W15 (2026-04-06 ~ 2026-04-12)
+
+## Outgoing relations
+
+- **evaluated_on** → ImageNet _(Benchmark)_
+- **mentioned_in** → Efficient Universal Perception Encoder _(Paper)_
+- **mentioned_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_
+- **mentioned_in** → Integrating Symmetry into Differentiable Planning with Steerable Convolutions _(Paper)_
+- **mentioned_in** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_
+- **mentioned_in** → Scaling 4D Representations _(Paper)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+- **mentioned_in** → 자기지도학습 요리책 _(Paper)_
+
+## Connected node types
+
+- Paper: 7
+- Benchmark: 1

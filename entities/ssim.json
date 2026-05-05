@@ -1,0 +1,15 @@
+{
+  "title": "SSIM",
+  "kind": "entities",
+  "body_text": "# SSIM\n\n## Incoming relations\n\n- **uses_metric** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_\n- **uses_metric** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **uses_metric** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 2\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2603.24725/paper.md",
+  "links": [],
+  "body": "# SSIM\n\n## Incoming relations\n\n- **uses_metric** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_\n- **uses_metric** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **uses_metric** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 2\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Metric:ssim:4a9f532eb002",
+    "node_type": "Metric",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2603.24725/paper.md",
+    "title": "SSIM"
+  }
+}

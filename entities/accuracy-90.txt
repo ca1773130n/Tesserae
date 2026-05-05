@@ -1,0 +1,20 @@
+accuracy=90
+===========
+
+# accuracy=90
+
+90% accuracy
+
+## Outgoing relations
+
+- **uses_metric** → Accuracy _(Metric)_
+
+## Incoming relations
+
+- **reports_result** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_
+- **reports_result** → Daily Feed Summary — 2026-04-28 _(SourceDocument)_
+
+## Connected node types
+
+- SourceDocument: 2
+- Metric: 1

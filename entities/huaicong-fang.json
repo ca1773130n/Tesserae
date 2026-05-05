@@ -1,0 +1,15 @@
+{
+  "title": "Huaicong Fang",
+  "kind": "entities",
+  "body_text": "# Huaicong Fang\n\n## Incoming relations\n\n- **authored_by** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2510.12724/paper.md",
+  "links": [],
+  "body": "# Huaicong Fang\n\n## Incoming relations\n\n- **authored_by** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:huaicong-fang:770627ab6eb9",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2510.12724/paper.md",
+    "title": "Huaicong Fang"
+  }
+}

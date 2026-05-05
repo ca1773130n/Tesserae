@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: visinf/INSID3",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: visinf/INSID3\n\n## Outgoing relations\n\n- **evaluated_on** → COCO _(Benchmark)_\n\n## Connected node types\n\n- Benchmark: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/repos/visinf_INSID3.md",
+  "links": [],
+  "body": "# GitHub 분석: visinf/INSID3\n\n## Outgoing relations\n\n- **evaluated_on** → COCO _(Benchmark)_\n\n## Connected node types\n\n- Benchmark: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/visinf/INSID3",
+      "visinf/insid3"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-visinf-insid3:672e261dfb6c",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/repos/visinf_INSID3.md",
+    "title": "GitHub 분석: visinf/INSID3"
+  }
+}

@@ -1,0 +1,15 @@
+Objaverse
+=========
+
+# Objaverse
+
+## Incoming relations
+
+- **uses_dataset** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- **uses_dataset** → Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation _(Paper)_
+- **uses_dataset** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+
+## Connected node types
+
+- Paper: 2
+- SourceDocument: 1

@@ -1,0 +1,15 @@
+{
+  "title": "Frontend redesign — annotated route walkthrough",
+  "kind": "sources",
+  "body_text": "# Frontend redesign — annotated route walkthrough\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/frontend-redesign.md",
+  "links": [],
+  "body": "# Frontend redesign — annotated route walkthrough\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:frontend-redesign-annotated-route-walkthrough:f2decde7ffbb",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/frontend-redesign.md",
+    "title": "Frontend redesign — annotated route walkthrough"
+  }
+}

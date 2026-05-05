@@ -1,0 +1,13 @@
+Lily Goli
+=========
+
+# Lily Goli
+
+## Incoming relations
+
+- **authored_by** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_
+- **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_
+
+## Connected node types
+
+- Paper: 2

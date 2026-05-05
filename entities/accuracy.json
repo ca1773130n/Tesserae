@@ -1,0 +1,18 @@
+{
+  "title": "Accuracy",
+  "kind": "entities",
+  "body_text": "# Accuracy\n\n## Incoming relations\n\n- **uses_metric** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **uses_metric** → Daily Feed Summary — 2026-04-28 _(SourceDocument)_\n- **uses_metric** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_\n- **uses_metric** → ViBA: Implicit Bundle Adjustment with Geometric and Temporal Consistency for Robust Visual Matching _(Paper)_\n- **uses_metric** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **uses_metric** → accuracy=90 _(Result)_\n\n## Connected node types\n\n- SourceDocument: 3\n- Paper: 2\n- Result: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2604.03377/paper.md",
+  "links": [],
+  "body": "# Accuracy\n\n## Incoming relations\n\n- **uses_metric** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **uses_metric** → Daily Feed Summary — 2026-04-28 _(SourceDocument)_\n- **uses_metric** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_\n- **uses_metric** → ViBA: Implicit Bundle Adjustment with Geometric and Temporal Consistency for Robust Visual Matching _(Paper)_\n- **uses_metric** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **uses_metric** → accuracy=90 _(Result)_\n\n## Connected node types\n\n- SourceDocument: 3\n- Paper: 2\n- Result: 1",
+  "frontmatter": {
+    "aliases": [
+      "accuracy"
+    ],
+    "kind": "entities",
+    "node_id": "Metric:accuracy:f676b93ef955",
+    "node_type": "Metric",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2604.03377/paper.md",
+    "title": "Accuracy"
+  }
+}

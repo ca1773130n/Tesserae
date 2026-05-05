@@ -1,0 +1,28 @@
+T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion
+================================================================================
+
+# T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion
+
+## Outgoing relations
+
+- **authored_by** → Huaicong Fang _(Person)_
+- **authored_by** → Lin Shao _(Person)_
+- **authored_by** → Tianrui Zhang _(Person)_
+- **authored_by** → Xin Fei _(Person)_
+- **authored_by** → Zhixuan Xu _(Person)_
+- **implemented_in** → GitHub 분석: FanJunqiao/M4Human _(Repository)_
+- **part_of** → Research Literature _(ResearchField)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📊 주간 리서치 다이제스트 — 2026-W17 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-22 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 5
+- SourceDocument: 4
+- Repository: 1
+- ResearchField: 1

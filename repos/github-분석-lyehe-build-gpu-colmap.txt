@@ -1,0 +1,12 @@
+GitHub 분석: lyehe/build_gpu_colmap
+=================================
+
+# GitHub 분석: lyehe/build_gpu_colmap
+
+## Incoming relations
+
+- **implemented_in** → Long-tail Internet photo reconstruction _(Paper)_
+
+## Connected node types
+
+- Paper: 1

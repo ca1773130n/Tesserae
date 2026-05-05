@@ -1,0 +1,12 @@
+Stable Diffusion
+================
+
+# Stable Diffusion
+
+## Incoming relations
+
+- **uses** → Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation _(Paper)_
+
+## Connected node types
+
+- Paper: 1

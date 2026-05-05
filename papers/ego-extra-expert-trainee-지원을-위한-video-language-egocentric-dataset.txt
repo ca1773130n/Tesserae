@@ -1,0 +1,30 @@
+Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset
+==================================================================
+
+# Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset
+
+## Outgoing relations
+
+- **authored_by** → Antonino Furnari _(Person)_
+- **authored_by** → Francesco Ragusa _(Person)_
+- **authored_by** → Giovanni Maria Farinella _(Person)_
+- **authored_by** → Irene D&#039;Ambra _(Person)_
+- **authored_by** → Jakob Engel _(Person)_
+- **authored_by** → James Fort _(Person)_
+- **authored_by** → Michele Mazzamuto _(Person)_
+- **authored_by** → Rosario Forte _(Person)_
+- **implemented_in** → GitHub 분석: facebookresearch/AINA _(Repository)_
+- **implemented_in** → GitHub 분석: facebookresearch/sapiens2 _(Repository)_
+- **part_of** → LLM Reasoning _(ResearchField)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-05-05 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-05-05 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 8
+- Repository: 2
+- SourceDocument: 2
+- ResearchField: 1

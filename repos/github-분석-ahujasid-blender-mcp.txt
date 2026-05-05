@@ -1,0 +1,12 @@
+GitHub 분석: ahujasid/blender-mcp
+===============================
+
+# GitHub 분석: ahujasid/blender-mcp
+
+## Outgoing relations
+
+- **uses_dataset** → Blender _(Dataset)_
+
+## Connected node types
+
+- Dataset: 1

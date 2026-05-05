@@ -1,0 +1,8 @@
+{
+  "title": "asimovinc_asimov-v1.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: asimovinc/asimov-v1\n\n> - URL: https://github.com/asimovinc/asimov-v1\n> - 분석일: 2026-05-04\n\n## 개요\n\n- **설명**: v1 of Asimov, an open-source humanoid robot \n- **Stars**: ⭐ 459 | Forks: 51\n- **라이선스**: CERN-OHL-S-2.0\n- **주 언어**: unknown\n\n## 실행 가능 상태: 코드 미공개 (README/asset만 존재)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (0개) | N |\n| 의존성 파일 | N |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\nassets/asimov-v1.jpg\nelectrical/README.md\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.gitmodules\n.git/packed-refs\n.git/shallow\nHARDWARE-LICENSE.txt\nmechanical/naming_convention.png\nmechanical/README.md\nREADME.md\nsim-model/README.md\nSOFTWARE-LICENSE.txt\n```",
+  "source_path": "data/research/daily/2026-05-04/repos/asimovinc_asimov-v1.md",
+  "links": [],
+  "body": "# GitHub 분석: asimovinc/asimov-v1\n\n> - URL: https://github.com/asimovinc/asimov-v1\n> - 분석일: 2026-05-04\n\n## 개요\n\n- **설명**: v1 of Asimov, an open-source humanoid robot \n- **Stars**: ⭐ 459 | Forks: 51\n- **라이선스**: CERN-OHL-S-2.0\n- **주 언어**: unknown\n\n## 실행 가능 상태: 코드 미공개 (README/asset만 존재)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (0개) | N |\n| 의존성 파일 | N |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\nassets/asimov-v1.jpg\nelectrical/README.md\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.gitmodules\n.git/packed-refs\n.git/shallow\nHARDWARE-LICENSE.txt\nmechanical/naming_convention.png\nmechanical/README.md\nREADME.md\nsim-model/README.md\nSOFTWARE-LICENSE.txt\n```\n"
+}

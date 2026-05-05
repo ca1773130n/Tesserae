@@ -1,0 +1,12 @@
+Nobuyuki Umetani
+================
+
+# Nobuyuki Umetani
+
+## Incoming relations
+
+- **authored_by** → Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction _(Paper)_
+
+## Connected node types
+
+- Paper: 1

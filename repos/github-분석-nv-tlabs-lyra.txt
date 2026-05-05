@@ -1,0 +1,12 @@
+GitHub 분석: nv-tlabs/lyra
+========================
+
+# GitHub 분석: nv-tlabs/lyra
+
+## Outgoing relations
+
+- **released_by** → nv-tlabs _(Organization)_
+
+## Connected node types
+
+- Organization: 1

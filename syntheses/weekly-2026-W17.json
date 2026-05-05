@@ -1,0 +1,29 @@
+{
+  "title": "Weekly Synthesis — 2026-W17",
+  "kind": "syntheses",
+  "body_text": "# Weekly Synthesis — 2026-W17\n\nCoverage of `data/research/weekly/2026-W17/`.\n\n## Papers and repos\n- [Weekly Research Digest — 2026-W17](../sources/weekly-research-digest-2026-w17.md) (SourceDocument)\n- [WorldCompass: Reinforcement Learning for Long-Horizon World Models](../sources/worldcompass-reinforcement-learning-for-long-horizon-world-models.md) (SourceDocument)\n- [📊 주간 리서치 다이제스트 — 2026-W17](../sources/주간-리서치-다이제스트-2026-w17.md) (SourceDocument)\n\n## Dominant approach families\n- (none)",
+  "source_path": "",
+  "links": [
+    "../sources/weekly-research-digest-2026-w17.md",
+    "../sources/worldcompass-reinforcement-learning-for-long-horizon-world-models.md",
+    "../sources/주간-리서치-다이제스트-2026-w17.md"
+  ],
+  "body": "# Weekly Synthesis — 2026-W17\n\nCoverage of `data/research/weekly/2026-W17/`.\n\n## Papers and repos\n- [Weekly Research Digest — 2026-W17](../sources/weekly-research-digest-2026-w17.md) (SourceDocument)\n- [WorldCompass: Reinforcement Learning for Long-Horizon World Models](../sources/worldcompass-reinforcement-learning-for-long-horizon-world-models.md) (SourceDocument)\n- [📊 주간 리서치 다이제스트 — 2026-W17](../sources/주간-리서치-다이제스트-2026-w17.md) (SourceDocument)\n\n## Dominant approach families\n- (none)",
+  "frontmatter": {
+    "content_hash": "sha256-4665c8dc57b9ce8f0a5c2abecda4ed10f6c1a9c02b26eaa8dee6e99aa7bae449",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "SourceDocument:2026-w17:b2982fefd199",
+      "SourceDocument:weekly-research-digest-2026-w17:51ad543b8374",
+      "SourceDocument:worldcompass-reinforcement-learning-for-long-hor:4840c8e5ba67"
+    ],
+    "slug": "weekly-2026-W17",
+    "sources": [
+      "data/research/weekly/2026-W17/digest.md",
+      "data/research/weekly/2026-W17/papers.md",
+      "tests/fixtures/wiki_corpus/data/research/weekly/2026-W17/digest.md"
+    ],
+    "synthesis_kind": "weekly",
+    "title": "Weekly Synthesis — 2026-W17"
+  }
+}

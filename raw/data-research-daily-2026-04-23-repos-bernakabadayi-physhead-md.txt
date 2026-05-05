@@ -1,0 +1,44 @@
+bernakabadayi_physhead.md
+=========================
+
+# GitHub 분석: bernakabadayi/physhead
+
+> - URL: https://github.com/bernakabadayi/physhead
+> - 분석일: 2026-04-23
+
+## 개요
+
+- **설명**: [CVPR 2026] PhysHead: Simulation-Ready Gaussian Head Avatars
+- **Stars**: ⭐ 32 | Forks: 1
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (17개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+CHANGELOG.md
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+hairsim/environment.yml
+hairsim/README.md
+hairsim/requirements.txt
+hairsim/run_after_sim.sh
+hairsim/run_hair.sh
+hairsim/run_head.sh
+README.md
+```

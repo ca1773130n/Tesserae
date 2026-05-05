@@ -1,0 +1,12 @@
+Lucas Yunkyu Lee
+================
+
+# Lucas Yunkyu Lee
+
+## Incoming relations
+
+- **authored_by** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_
+
+## Connected node types
+
+- Paper: 1

@@ -1,0 +1,1387 @@
+papers.md
+=========
+
+# 주간 논문 분석 — 2026-W17 (2026-04-20 ~ 2026-04-26)
+
+
+---
+
+## 2308.07123 (2026-04-22)
+
+# 논문 분석: 2308.07123
+
+> - arxiv: https://arxiv.org/abs/2308.07123
+> - papers.cool: https://papers.cool/arxiv/2308.07123
+> - 분석일: 2026-04-22
+
+제공된 원문은 중국어가 아니라 영어입니다. 아래는 한국어 번역입니다.
+
+# An Outlook into the Future of Egocentric Vision | Cool Papers - 몰입형 논문 탐색
+
+## 2308.07123
+
+Total: 1
+
+## #1  
+An Outlook into the Future of Egocentric Vision  
+[PDF]  
+[복사]  
+[Kimi]  
+[REL]
+
+Authors:  
+Chiara Plizzari,  
+Gabriele Goletto,  
+Antonino Furnari,  
+Siddhant Bansal,  
+Francesco Ragusa,  
+Giovanni Maria Farinella,  
+Dima Damen,  
+Tatiana Tommasi
+
+---
+
+## 2509.10687 (2026-04-22)
+
+# 논문 분석: 2509.10687
+
+> - arxiv: https://arxiv.org/abs/2509.10687
+> - papers.cool: https://papers.cool/arxiv/2509.10687
+> - 분석일: 2026-04-22
+
+# Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation | Cool Papers - Immersive Paper Discovery
+
+## 2509.10687
+
+Total: 1
+
+## #1
+
+Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation  
+[PDF2]  
+[Copy]  
+[Kimi4]  
+[REL]
+
+Authors:  
+Hao Zhang,  
+Chun-Han Yao,  
+Simon Donné,  
+Narendra Ahuja,  
+Varun Jampani
+
+우리는 단안 입력으로부터 쌍을 이루는 RGB 및 kinematic part 비디오를 생성하는 프레임워크인 Stable Part Diffusion 4D (SP4D)를 제안한다. 외형 기반 의미 단서에 의존하는 기존 part segmentation 방법과 달리, SP4D는 객체의 articulation과 정렬되고 view 및 시간 전반에서 일관적인 구조적 구성 요소인 kinematic parts를 생성하도록 학습한다. SP4D는 RGB 프레임과 이에 대응하는 part segmentation map을 공동으로 합성하는 dual-branch diffusion model을 채택한다. 아키텍처를 단순화하고 서로 다른 part 개수를 유연하게 지원하기 위해, 우리는 part mask를 연속적인 RGB 유사 이미지로 매핑하는 spatial color encoding 방식을 도입한다. 이 encoding은 segmentation branch가 RGB branch의 latent VAE를 공유할 수 있게 하며, 동시에 간단한 후처리를 통해 part segmentation을 복원할 수 있게 한다. Bidirectional Diffusion Fusion (BiDiFuse) module은 cross-branch consistency를 향상시키며, part prediction의 공간적 및 시간적 정렬을 촉진하기 위한 contrastive part consistency loss가 이를 보조한다. 우리는 생성된 2D part map을 3D로 lift하여 약간의 수동 조정만으로 skeletal structure와 harmonic skinning weights를 도출할 수 있음을 보인다. SP4D를 학습하고 평가하기 위해, 우리는 Objaverse XL (Deitke et al., 2023)에서 선택 및 처리한 20K개 이상의 rigged object로 구성된 curated dataset인 KinematicParts20K를 구축했으며, 각 객체는 multi-view RGB 및 part video sequence와 쌍을 이룬다. 실험 결과 SP4D는 real-world video, 새롭게 생성된 object, 드문 articulated pose를 포함한 다양한 시나리오에 강하게 일반화하며, downstream animation 및 motion-related task에 적합한 kinematic-aware output을 생성함을 보여준다.
+
+Subject:
+
+### 관련 GitHub 분석
+
+# GitHub 분석: Aero-Ex/ComfyUI-SegviGen
+
+> - URL: https://github.com/Aero-Ex/ComfyUI-SegviGen
+> - 분석일: 2026-04-22
+
+## 개요
+
+- **설명**: ComfyUI-SegviGen: A ComfyUI implementation of SegviGen, providing precise 3D part segmentation for SegviGen.
+- **Stars**: ⭐ 30 | Forks: 5
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (60개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+
+---
+
+## 2510.12724 (2026-04-22)
+
+# 논문 분석: 2510.12724
+
+> - arxiv: https://arxiv.org/abs/2510.12724
+> - papers.cool: https://papers.cool/arxiv/2510.12724
+> - 분석일: 2026-04-22
+
+T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion | Cool Papers - 몰입형 논문 탐색
+
+## 2510.12724
+
+Total: 1
+
+## 
+#1  
+T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion  
+[PDF3]  
+[Copy]  
+[Kimi3]  
+[REL]
+
+저자:  
+Xin Fei,  
+Zhixuan Xu,  
+Huaicong Fang,  
+Tianrui Zhang,  
+Lin Shao
+
+Dexterous grasping은 고차원 상태 및 행동 공간의 복잡성 때문에 robotics에서 여전히 핵심적인 과제로 남아 있다. 우리는 여러 robotic hands에 걸쳐 정확하고 다양한 grasp를 효율적으로 생성하는 diffusion 기반 프레임워크인 T(R,O) Grasp를 제안한다. 그 핵심에는 T(R,O) Graph가 있으며, 이는 robotic hands와 objects 사이의 spatial transformations를 모델링하는 동시에 그들의 geometric properties를 인코딩하는 통합 표현이다. Graph diffusion model은 효율적인 inverse kinematics solver와 결합되어 unconditioned 및 conditioned grasp synthesis를 모두 지원한다. 다양한 dexterous hands에 대한 광범위한 실험에서 T(R,O) Grasp는 NVIDIA A100 40GB GPU에서 평균 성공률 94.83%, inference speed 0.21초, 초당 41 grasps의 throughput을 달성하여 기존 baselines를 크게 능가했다. 또한 우리의 접근법은 embodiments 전반에서 robust하고 generalizable하며, memory consumption을 크게 줄인다. 더 중요하게는 높은 inference speed가 closed-loop dexterous manipulation을 가능하게 하며, 이는 T(R,O) Grasp가 dexterous grasping을 위한 foundation model로 확장될 잠재력을 보여준다.
+
+주제:
+
+### 관련 GitHub 분석
+
+# GitHub 분석: FanJunqiao/M4Human
+
+> - URL: https://github.com/FanJunqiao/M4Human
+> - 분석일: 2026-04-22
+
+## 개요
+
+- **설명**: [CVPR 2026] Official Repo of M4Human: A Large-Scale Multimodal mmWave Radar Benchmark for Human Mesh Reconstruction
+- **Stars**: ⭐ 30 | Forks: 0
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (16개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+
+---
+
+## 2602.09022 (2026-04-22)
+
+# 논문 분석: 2602.09022
+
+> - arxiv: https://arxiv.org/abs/2602.09022
+> - papers.cool: https://papers.cool/arxiv/2602.09022
+> - 분석일: 2026-04-22
+
+## 2602.09022
+
+Total: 1
+
+## #1
+
+# WorldCompass: Reinforcement Learning for Long-Horizon World Models
+
+[PDF12]  
+[Copy]  
+[Kimi16]  
+[REL]
+
+Authors:  
+Zehan Wang, Tengfei Wang, Haiyu Zhang, Xuhui Zuo, Junta Wu, Haoyuan Wang, Wenqiang Sun, Zhenwei Wang, Chenjie Cao, Hengshuang Zhao, Chunchao Guo, Zhou Zhao
+
+이 연구는 장기 지평의 상호작용형 비디오 기반 World Models를 위한 새로운 Reinforcement Learning 후훈련 프레임워크인 WorldCompass를 제시한다. 이 프레임워크는 상호작용 신호를 기반으로 모델이 세계를 더 정확하고 일관되게 탐색할 수 있도록 한다.
+
+World Model의 탐색을 효과적으로 조종하기 위해, 우리는 자기회귀 비디오 생성 패러다임에 맞춘 세 가지 핵심 혁신을 도입한다.
+
+1. Clip-level rollout Strategy: 단일 목표 클립에서 여러 샘플을 생성하고 평가하여 rollout 효율을 크게 높이고 세밀한 reward 신호를 제공한다.
+2. Complementary Reward Functions: 상호작용 준수 정확도와 시각 품질을 모두 위한 reward functions를 설계하여 직접적인 감독을 제공하고 reward-hacking 행동을 효과적으로 억제한다.
+3. Efficient RL Algorithm: negative-aware fine-tuning 전략과 다양한 효율 최적화를 함께 사용하여 모델 역량을 효율적이고 효과적으로 향상한다.
+
+
+### 관련 GitHub 분석
+
+# GitHub 분석: imlixinyang/FlashWorld
+
+> - URL: https://github.com/imlixinyang/FlashWorld
+> - 분석일: 2026-04-22
+
+## 개요
+
+- **설명**: Code for \
+- **Stars**: ⭐ 762 | Forks: 59
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (9개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+
+---
+
+## 2603.21852 (2026-04-22)
+
+# 논문 분석: 2603.21852
+
+> - arxiv: https://arxiv.org/abs/2603.21852
+> - papers.cool: https://papers.cool/arxiv/2603.21852
+> - 분석일: 2026-04-22
+
+## All elementary functions from a single binary operator | Cool Papers - Immersive Paper Discovery
+
+## 2603.21852
+
+Total: 1
+
+## #1
+
+# All elementary functions from a single binary operator
+
+[PDF9]  
+[Copy]  
+[Kimi4]  
+[REL]
+
+Author:  
+Andrzej Odrzywołek
+
+디지털 하드웨어의 Boolean logic 전체에는 단 하나의 2입력 gate만으로 충분하다. 그러나 연속 수학에서는 이에 견줄 만한 primitive가 알려져 있지 않았다. sin, cos, sqrt, log 같은 elementary functions를 계산하려면 항상 여러 개의 서로 다른 연산이 필요했다. 여기서 나는 단일 binary operator인 eml(x,y)=exp(x)-ln(y)가 상수 1과 함께 scientific calculator의 표준 레퍼토리를 생성한다는 것을 보인다. 여기에는 $e$, $π$, $i$ 같은 상수, $+$, $-$, $\times$, $/$, exponentiation을 포함한 산술 연산, 그리고 일반적인 transcendental functions와 algebraic functions가 포함된다. 예를 들어 $e^x=\operatorname{eml}(x,1)$, $\ln x=\operatorname{eml}(1,\operatorname{eml}(\operatorname{eml}(1,x),1))$이며, 다른 모든 연산도 마찬가지다. 이런 operator가 존재한다는 것은 예상되지 않았다. 나는 체계적인 exhaustive search를 통해 이를 발견했고, 구체적인 scientific-calculator basis에 충분하다는 것을 구성적으로 확립했다. EML, 즉 Exp-Minus-Log 형태에서 이러한 모든 표현식은 동일한 node로 이루어진 binary tree가 되며, $S \to 1 \mid \operatorname{eml}(S,S)$처럼 단순한 grammar를 산출한다. 이러한 균일한 구조는 gradient-based symbolic regression도 가능하게 한다. EML tree를 표준 optimizer인 Adam을 사용하는 trainable circuit으로 활용하여, 최대 4의 얕은 tree depth에서 수치 데이터로부터 closed-form elementary functions를 정확히 복원할 수 있음을 시연한다. 동일한 architecture는 임의의 데이터에도 fit할 수 있지만, 생성 법칙이 elementary일 경우 정확한 formula를 복원할 수 있다.
+
+Subjects:
+
+Symbolic Computation,
+
+
+### 관련 GitHub 분석
+
+# GitHub 분석: heygen-com/hyperframes
+
+> - URL: https://github.com/heygen-com/hyperframes
+> - 분석일: 2026-04-22
+
+## 개요
+
+- **설명**: Write HTML. Render video. Built for agents.
+- **Stars**: ⭐ 8662 | Forks: 688
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (20개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+
+---
+
+## 2503.11806 (2026-04-23)
+
+# 논문 분석: 2503.11806
+
+> - arxiv: https://arxiv.org/abs/2503.11806
+> - papers.cool: https://papers.cool/arxiv/2503.11806
+> - 분석일: 2026-04-23
+
+# Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling | Cool Papers - Immersive Paper Discovery
+
+## 2503.11806
+
+총계: 1
+
+## #1
+
+# Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling
+
+[PDF]  
+[Copy]  
+[Kimi]  
+[REL]
+
+저자:  
+Christopher Xie,  
+Armen Avetisyan,  
+Henry Howard-Jenkins,  
+Yawar Siddiqui,  
+Julian Straub,  
+Richard Newcombe,  
+Vasileios Balntas,  
+Jakob Engel
+
+---
+
+## 2506.12251 (2026-04-23)
+
+# 논문 분석: 2506.12251
+
+> - arxiv: https://arxiv.org/abs/2506.12251
+> - papers.cool: https://papers.cool/arxiv/2506.12251
+> - 분석일: 2026-04-23
+
+# Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving | Cool Papers - Immersive Paper Discovery
+
+## 2506.12251
+
+Total: 1
+
+## #1
+
+# Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving
+
+[PDF2]  
+[Copy]  
+[Kimi2]  
+[REL]
+
+Authors:  
+Boris Ivanovic,  
+Cristiano Saltori,  
+Yurong You,  
+Yan Wang,  
+Wenjie Luo,  
+Marco Pavone
+
+Autoregressive Transformers는 확장성과 일반화를 위한 인터넷 규모 사전학습 활용 가능성 덕분에, end-to-end robot 및 autonomous vehicle, 즉 AV 정책 아키텍처로 점점 더 많이 배치되고 있다. 이에 따라 sensor data를 효율적으로 tokenizing하는 것은 embedded hardware에서 이러한 아키텍처의 실시간 실행 가능성을 보장하는 데 매우 중요하다. 이를 위해 우리는 3D neural reconstruction 및 rendering의 최근 발전을 활용하는 효율적인 triplane 기반 multi-camera tokenization 전략을 제시한다. 이 전략은 입력 camera 수와 해상도에 구애받지 않는 sensor tokens를 생성하는 동시에, AV 주변의 geometry를 명시적으로 고려한다. 대규모 AV dataset 및 state-of-the-art neural simulator에서의 실험은 우리의 접근법이 현재 image patch 기반 tokenization 전략에 비해 상당한 절감을 달성함을 보여준다. 최대 72% 더 적은 tokens를 생성하여, 동일한 open-loop motion planning accuracy를 달성하면서 policy inference를 최대 50% 더 빠르게 하고, closed-loop driving simulations에서 offroad rates를 개선한다.
+
+---
+
+## 2509.23563 (2026-04-23)
+
+# 논문 분석: 2509.23563
+
+> - arxiv: https://arxiv.org/abs/2509.23563
+> - papers.cool: https://papers.cool/arxiv/2509.23563
+> - 분석일: 2026-04-23
+
+## 2509.23563
+
+Total: 1
+
+## 
+#1  
+RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation  
+[PDF]  
+[Copy]  
+[Kimi1]  
+[REL]
+
+Authors:  
+Seungchan Kim,  
+Omar Alama,  
+Dmytro Kurdydyk,  
+John Keller,  
+Nikhil Keetha,  
+Wenshan Wang,  
+Yonatan Bisk,  
+Sebastian Scherer
+
+야외 항공 의미론적 내비게이션은 로봇이 대규모의 비정형 환경을 탐색하여 목표 객체를 찾도록 요구한다. 최근 의미론적 내비게이션의 발전은 실내 환경에서 open-set object-goal navigation을 입증했지만, 이러한 방법들은 제한된 공간 범위와 구조화된 배치에 묶여 있어 장거리 야외 탐색에는 적합하지 않다. 야외 의미론적 내비게이션 접근법이 존재하긴 하지만, 이들은 현재 관측에 기반한 반응형 정책에 의존하여 근시안적 행동을 만들기 쉽거나, 내비게이션을 위해 scene graph를 오프라인으로 사전 계산하므로 온라인 배포에서의 적응성이 제한된다. 본 논문은 비정형 야외 환경에서의 항공 의미론적 내비게이션을 위한 3D memory 기반 behavior tree 프레임워크인 RAVEN을 제시한다. RAVEN은 (1) 공간적으로 일관된 semantic voxel-ray map을 지속 메모리로 사용하여 장기 계획을 가능하게 하고 순수 반응형 행동을 피하며, (2) 단거리 voxel search와 장거리 ray search를 결합하여 대규모 환경으로 확장하고, (3) large vision-language model을 활용해 보조 단서를 제안함으로써 야외 목표의 희소성을 완화한다. 이러한 구성 요소들은 behavior tree에 의해 조율되며, 견고한 작동을 위해 행동을 적응적으로 전환한다. 우리는 10개의 사실적인 야외 시뮬레이션 환경에서 100개의 의미론적 과제에 대해 RAVEN을 평가했으며, 여기에는 단일 객체 탐색, 다중 클래스 및 다중 인스턴스 내비게이션, 순차적 과제 변경이 포함된다. 결과는 RAVEN이 시뮬레이션에서 baseline보다 85.25% 우수함을 보여주며, 야외 현장 테스트에서 항공 로봇에 배포함으로써 실제 적용 가능성도 입증한다.
+
+
+### 관련 GitHub 분석
+
+# GitHub 분석: facebookresearch/map-anything
+
+> - URL: https://github.com/facebookresearch/map-anything
+> - 분석일: 2026-04-23
+
+## 개요
+
+- **설명**: MapAnything: Universal Feed-Forward Metric 3D Reconstruction
+- **Stars**: ⭐ 3229 | Forks: 238
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (43개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+
+---
+
+## 2601.17835 (2026-04-23)
+
+# 논문 분석: 2601.17835
+
+> - arxiv: https://arxiv.org/abs/2601.17835
+> - papers.cool: https://papers.cool/arxiv/2601.17835
+> - 분석일: 2026-04-23
+
+## 2601.17835
+
+Total: 1
+
+## #1
+
+# Geometry-Grounded Gaussian Splatting
+
+[PDF15]  
+[Copy]  
+[Kimi6]  
+[REL]
+
+Authors:  
+Baowen Zhang,  
+Chenxing Jiang,  
+Heng Li,  
+Shaojie Shen,  
+Ping Tan
+
+Gaussian Splatting (GS)는 새로운 시점 합성에서 인상적인 품질과 효율성을 보여주었다. 그러나 Gaussian primitives로부터 형상을 추출하는 문제는 여전히 미해결 과제로 남아 있다. 부적절한 기하 파라미터화와 근사 때문에, 기존 형상 재구성 방법들은 다중 시점 일관성이 낮고 floaters에 민감하다. 본 논문에서는 Gaussian primitives를 특정 유형의 stochastic solids로 정립하는 엄밀한 이론적 유도를 제시한다. 이 이론적 프레임워크는 Gaussian primitives를 명시적 기하 표현으로 직접 다룰 수 있게 함으로써 Geometry-Grounded Gaussian Splatting의 원리적 기반을 제공한다. stochastic solids의 체적적 성질을 활용하여, 본 방법은 세밀한 기하 추출을 위한 고품질 depth maps를 효율적으로 렌더링한다. 실험 결과, 본 방법은 공개 데이터셋에서 모든 Gaussian Splatting 기반 방법 중 최상의 형상 재구성 결과를 달성함을 보여준다.
+
+Subject:
+
+
+---
+
+## 2603.24621 (2026-04-23)
+
+# 논문 분석: 2603.24621
+
+> - arxiv: https://arxiv.org/abs/2603.24621
+> - papers.cool: https://papers.cool/arxiv/2603.24621
+> - 분석일: 2026-04-23
+
+## ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전 | Cool Papers - Immersive Paper Discovery
+
+## 2603.24621
+
+총계: 1
+
+## #1
+
+# ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전
+
+[PDF1]  
+[Copy]  
+[Kimi1]  
+[REL]
+
+저자:  
+ARC Prize Foundation
+
+우리는 ARC-AGI-3를 소개한다. 이는 명시적 지시 없이 agent가 탐색하고, 목표를 추론하며, 환경 동역학에 대한 내부 모델을 구축하고, 효과적인 행동 시퀀스를 계획해야 하는 새롭고 추상적인 턴 기반 환경을 통해 agentic intelligence를 연구하기 위한 interactive benchmark이다. 이전 버전인 ARC-AGI-1 및 ARC-AGI-2와 마찬가지로, ARC-AGI-3는 언어와 외부 지식을 피하면서 새로운 과제에서의 유동적 적응 효율성을 평가하는 데 전적으로 초점을 둔다. ARC-AGI-3 환경은 Core Knowledge 사전 지식만 활용하며, 인간 테스트 참가자를 대상으로 한 광범위한 테스트를 통해 난이도가 보정되었다. 우리의 테스트에 따르면 인간은 환경의 100%를 해결할 수 있었던 반면, 2026년 3월 기준 frontier AI systems는 1% 미만의 점수를 기록했다. 본 논문에서는 benchmark 설계, 인간 행동 기준선에 기반한 효율성 중심 채점 프레임워크, 그리고 환경을 구성하고 검증하며 보정하는 데 사용된 방법론을 제시한다.
+
+주제:
+
+Artificial Intelligence
+
+
+### 관련 GitHub 분석
+
+# GitHub 분석: mfranzon/render
+
+> - URL: https://github.com/mfranzon/render
+> - 분석일: 2026-04-23
+
+## 개요
+
+- **설명**: Render is a skill to create beautiful 3D models directly from coding agents.
+- **Stars**: ⭐ 84 | Forks: 9
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (3개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+
+---
+
+## 2604.11251 (2026-04-23)
+
+# 논문 분석: 2604.11251
+
+> - arxiv: https://arxiv.org/abs/2604.11251
+> - papers.cool: https://papers.cool/arxiv/2604.11251
+> - 분석일: 2026-04-23
+
+```markdown
+CLAW: Composable Language-Annotated Whole-body Motion Generation | Cool Papers - 몰입형 논문 탐색
+
+## 2604.11251
+
+Total: 1
+
+## #1
+
+# CLAW: Composable Language-Annotated Whole-body Motion Generation
+
+[PDF1] [Copy] [Kimi1] [REL]
+
+Authors:
+Jianuo Cao,
+Yuxin Chen,
+Masayoshi Tomizuka
+
+휴머노이드 로봇을 위한 언어 조건부 전신 컨트롤러를 학습하려면 모션 궤적과 자연어 설명이 쌍을 이루는 대규모 데이터셋이 필요하다. 기존의 motion capture 기반 접근법은 비용이 많이 들고 다양성이 제한적이며, text-to-motion 생성 모델은 순수한 운동학적 출력만 생성하므로 물리적으로 실현 가능하다는 보장이 없다. 따라서 우리는 Unitree G1 휴머노이드 로봇을 위한 언어 주석 전신 모션 데이터를 확장 가능하게 생성하는 대화형 웹 기반 파이프라인인 CLAW를 제안한다.
+
+CLAW는 운동학적 플래너의 모션 모드를 조합 가능한 구성 블록으로 다루며, 각 블록은 movement, heading, speed, pelvis height, duration으로 매개변수화된다. 또한 탐색적 및 배치 데이터 수집을 위해 두 가지 브라우저 기반 인터페이스, 즉 실시간 키보드 모드와 타임라인 기반 시퀀스 편집기를 제공한다.
+
+저수준 전신 컨트롤러는 MuJoCo 시뮬레이션에서 플래너의 운동학적 참조를 추적하여, 50Hz로 기록되는 물리 기반 궤적을 생성한다. 동시에 결정론적 템플릿 기반 주석 엔진은 모든 세그먼트와 전체 궤적에 대해 여러 문체 수준의 다양한 자연어 설명을 생성한다. 우리는 휴머노이드 로봇 학습을 위한 언어-모션 쌍 데이터의 확장 가능한 생성을 지원하기 위해 이 시스템을 오픈소스로 공개한다.
+
+
+### 관련 GitHub 분석
+
+# GitHub 분석: SkalskiP/top-cvpr-2026-papers
+
+> - URL: https://github.com/SkalskiP/top-cvpr-2026-papers
+> - 분석일: 2026-04-23
+
+## 개요
+
+- **설명**: About This repository is a curated collection of the most exciting and influential CVPR 2026 papers. 🔥 [Paper + Code + Demo]
+- **Stars**: ⭐ 87 | Forks: 1
+- **라이선스**: CC0-1.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (1개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | script |
+
+---
+
+## 2604.12551 (2026-04-23)
+
+# 논문 분석: 2604.12551
+
+> - arxiv: https://arxiv.org/abs/2604.12551
+> - papers.cool: https://papers.cool/arxiv/2604.12551
+> - 분석일: 2026-04-23
+
+# Cross-Attentive Multiview Fusion of Vision-Language Embeddings | Cool Papers - Immersive Paper Discovery
+
+## 2604.12551
+
+Total: 1
+
+## #1
+
+# Cross-Attentive Multiview Fusion of Vision-Language Embeddings
+
+[PDF1]  
+[Copy]  
+[Kimi]  
+[REL]
+
+Authors:  
+Tomas Berriel Martins,  
+Martin R. Oswald,  
+Javier Civera
+
+Vision-language models는 open-vocabulary 2D semantic segmentation의 발전에 핵심적인 역할을 해왔다. 그러나 이러한 모델을 2D 이미지에서 3D 장면으로 확장하는 것은 여전히 어려운 문제다. 기존 접근법은 일반적으로 여러 시점의 2D descriptor를 back-project한 뒤 평균을 내거나, 휴리스틱하게 하나의 대표 descriptor를 선택하는 방식이며, 이는 종종 최적이 아닌 3D representation으로 이어진다.
+
+이 연구에서는 여러 viewpoint에서 얻은 vision-language descriptor들 사이에 cross-attention을 수행하고, 이를 통합된 per-3D-instance embedding으로 융합하는 새로운 multiview transformer architecture를 제안한다. 두 번째 기여로, 이 융합을 위한 self-supervision signal로 multiview consistency를 활용하며, 이를 표준 supervised target-class loss에 추가했을 때 성능이 크게 향상됨을 보인다.
+
+
+---
+
+## 2604.13036 (2026-04-23)
+
+# 논문 분석: 2604.13036
+
+> - arxiv: https://arxiv.org/abs/2604.13036
+> - papers.cool: https://papers.cool/arxiv/2604.13036
+> - 분석일: 2026-04-23
+
+# Lyra 2.0: Explorable Generative 3D Worlds | Cool Papers - Immersive Paper Discovery
+
+## 2604.13036
+
+총계: 1
+
+## #1
+
+Lyra 2.0: Explorable Generative 3D Worlds  
+[PDF24] [Copy] [Kimi23] [REL]
+
+**저자:**  
+Tianchang Shen,  
+Sherwin Bahmani,  
+Kai He,  
+Sangeetha Grama Srinivasan,  
+Tianshi Cao,  
+Jiawei Ren,  
+Ruilong Li,  
+Zian Wang,  
+Nicholas Sharp,  
+Zan Gojcic,  
+Sanja Fidler,  
+Jiahui Huang,  
+
+---
+
+## 2311.14649 (2026-04-24)
+
+# 논문 분석: 2311.14649
+
+> - arxiv: https://arxiv.org/abs/2311.14649
+> - papers.cool: https://papers.cool/arxiv/2311.14649
+> - 분석일: 2026-04-24
+
+Learning in Deep Factor Graphs with Gaussian Belief Propagation | Cool Papers - 몰입형 논문 탐색
+
+## 2311.14649
+
+총계: 1
+
+## 
+#1
+
+Learning in Deep Factor Graphs with Gaussian Belief Propagation  
+[PDF]  
+[Copy]  
+[Kimi]  
+[REL]
+
+저자:  
+Seth Nabarro,  
+Mark van der Wilk,  
+Andrew J Davison
+
+우리는 Gaussian factor graphs에서 학습을 수행하는 방법을 제안한다. 우리는 모든 관련된 양들입력, 출력, 파라미터, 잠재변수를 그래프 모델의 확률변수로 다루며, 학습과 예측을 서로 다른 관측 노드를 갖는 추론 문제로 본다. 실험 결과, 이러한 문제들은 belief propagation, BP로 효율적으로 해결될 수 있으며, 그 업데이트는 본질적으로 국소적이어서 분산 및 비동기 학습에 대한 흥미로운 가능성을 제시한다. 우리의 방법은 deep networks로 확장될 수 있고 continual learning을 수행하는 자연스러운 수단도 제공한다. 즉, 현재 작업에서 BP가 추정한 파라미터 주변분포를 다음 작업의 파라미터 사전분포로 사용한다. 비디오 denoising 작업에서 우리는 고전적인 factor graph 접근법에 비해 학습 가능한 파라미터의 이점을 입증하고, continual image classification에서 deep factor graphs의 고무적인 성능을 보여준다.
+
+주제:  
+Machine Learning,  
+
+### 관련 GitHub 분석
+
+# GitHub 분석: mfranzon/render
+
+> - URL: https://github.com/mfranzon/render
+> - 분석일: 2026-04-24
+
+## 개요
+
+- **설명**: Render is a skill to create beautiful 3D models directly from coding agents.
+- **Stars**: ⭐ 90 | Forks: 9
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (3개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+
+---
+
+## 2503.11806 (2026-04-24)
+
+# 논문 분석: 2503.11806
+
+> - arxiv: https://arxiv.org/abs/2503.11806
+> - papers.cool: https://papers.cool/arxiv/2503.11806
+> - 분석일: 2026-04-24
+
+Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling | Cool Papers - 몰입형 논문 탐색
+
+## 2503.11806
+
+총계: 1
+
+## 
+#1
+
+Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling  
+[PDF]  
+[Copy]  
+[Kimi]  
+[REL]
+
+저자:  
+Christopher Xie,  
+Armen Avetisyan,  
+Henry Howard-Jenkins,  
+Yawar Siddiqui,  
+Julian Straub,  
+Richard Newcombe,  
+Vasileios Balntas,  
+Jakob Engel
+
+---
+
+## 2506.12251 (2026-04-24)
+
+# 논문 분석: 2506.12251
+
+> - arxiv: https://arxiv.org/abs/2506.12251
+> - papers.cool: https://papers.cool/arxiv/2506.12251
+> - 분석일: 2026-04-24
+
+Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving | Cool Papers - 몰입형 논문 탐색
+
+## 2506.12251
+
+총계: 1
+
+## #1
+
+Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving  
+[PDF2]  
+[Copy]  
+[Kimi2]  
+[REL]
+
+저자:  
+Boris Ivanovic,  
+Cristiano Saltori,  
+Yurong You,  
+Yan Wang,  
+Wenjie Luo,  
+Marco Pavone
+
+Autoregressive Transformers는 확장성과 일반화를 위한 인터넷 규모 사전학습 활용 가능성 덕분에 end-to-end robot 및 autonomous vehicle AV 정책 아키텍처로 점점 더 많이 배치되고 있다. 따라서 임베디드 하드웨어에서 이러한 아키텍처의 실시간 실현 가능성을 보장하려면 센서 데이터를 효율적으로 토큰화하는 것이 매우 중요하다. 이를 위해 우리는 최근의 3D neural reconstruction 및 rendering 발전을 활용하는 효율적인 triplane 기반 multi-camera 토큰화 전략을 제안한다. 이 전략은 입력 카메라의 개수와 해상도에 무관한 센서 토큰을 생성하면서, AV 주변의 기하 구조를 명시적으로 반영한다. 대규모 AV 데이터셋과 state-of-the-art neural simulator에서의 실험은 우리의 접근법이 기존 image patch 기반 토큰화 전략 대비 상당한 절감을 제공함을 보여준다. 최대 72% 더 적은 토큰을 생성하며, 그 결과 정책 추론 속도가 최대 50% 더 빨라지고, open-loop motion planning 정확도는 동일하게 유지하면서 closed-loop 주행 시뮬레이션에서는 offroad 비율이 개선된다.
+
+
+---
+
+## 2509.23563 (2026-04-24)
+
+# 논문 분석: 2509.23563
+
+> - arxiv: https://arxiv.org/abs/2509.23563
+> - papers.cool: https://papers.cool/arxiv/2509.23563
+> - 분석일: 2026-04-24
+
+# RAVEN: Open-Set Semantic Memory와 Behavior Adaptation을 통한 강인한 Aerial Navigation | Cool Papers - 몰입형 논문 탐색
+
+## 2509.23563
+
+총계: 1
+
+## #1
+
+### RAVEN: Open-Set Semantic Memory와 Behavior Adaptation을 통한 강인한 Aerial Navigation
+
+[PDF]  
+[복사]  
+[Kimi1]  
+[REL]
+
+저자:  
+Seungchan Kim,  
+Omar Alama,  
+Dmytro Kurdydyk,  
+John Keller,  
+Nikhil Keetha,  
+Wenshan Wang,  
+Yonatan Bisk,  
+Sebastian Scherer
+
+### 관련 GitHub 분석
+
+# GitHub 분석: facebookresearch/map-anything
+
+> - URL: https://github.com/facebookresearch/map-anything
+> - 분석일: 2026-04-24
+
+## 개요
+
+- **설명**: MapAnything: Universal Feed-Forward Metric 3D Reconstruction
+- **Stars**: ⭐ 3233 | Forks: 239
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (43개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+
+---
+
+## 2510.04236 (2026-04-24)
+
+# 논문 분석: 2510.04236
+
+> - arxiv: https://arxiv.org/abs/2510.04236
+> - papers.cool: https://papers.cool/arxiv/2510.04236
+> - 분석일: 2026-04-24
+
+# Scaling Sequence-to-Sequence Generative Neural Rendering | Cool Papers - Immersive Paper Discovery
+
+## 2510.04236
+
+총계: 1
+
+## 
+#1  
+Scaling Sequence-to-Sequence Generative Neural Rendering  
+[PDF2]  
+[Copy]  
+[Kimi1]  
+[REL]
+
+저자:  
+Shikun Liu,  
+Kam Woh Ng,  
+Wonbong Jang,  
+Jiadong Guo,  
+Junlin Han,  
+Haozhe Liu,  
+Yiannis Douratsos,  
+Juan C. Pérez,  
+Zijian Zhou,  
+
+---
+
+## 2604.20329 (2026-04-24)
+
+# 논문 분석: 2604.20329
+
+> - arxiv: https://arxiv.org/abs/2604.20329
+> - papers.cool: https://papers.cool/arxiv/2604.20329
+> - 분석일: 2026-04-24
+
+# Image Generators are Generalist Vision Learners | Cool Papers - 몰입형 논문 탐색
+
+## 2604.20329
+
+총계: 1
+
+## #1
+
+# Image Generators are Generalist Vision Learners
+
+[PDF7]  
+[Copy]  
+[Kimi8]  
+[REL]
+
+저자:  
+Valentin Gabeur,  
+Shangbang Long,  
+Songyou Peng,  
+Paul Voigtlaender,  
+Shuyang Sun,  
+Yanan Bao,  
+Karen Truong,  
+Zhicheng Wang,  
+
+---
+
+## 2507.11540 (2026-04-25)
+
+# 논문 분석: 2507.11540
+
+> - arxiv: https://arxiv.org/abs/2507.11540
+> - papers.cool: https://papers.cool/arxiv/2507.11540
+> - 분석일: 2026-04-25
+
+Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation | Cool Papers - 몰입형 논문 탐색
+
+## 2507.11540
+
+총계: 1
+
+## #1
+
+# Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation
+
+[PDF30]  
+[Copy]  
+[Kimi12]  
+[REL]
+
+저자:  
+Zhen Xu,  
+Hongyu Zhou,  
+Sida Peng,  
+Haotong Lin,  
+Haoyu Guo,  
+Jiahao Shao,  
+Peishan Yang,  
+Qinglin Yang,  
+
+### 관련 GitHub 분석
+
+# GitHub 분석: zju3dv/Scal3R
+
+> - URL: https://github.com/zju3dv/Scal3R
+> - 분석일: 2026-04-25
+
+## 개요
+
+- **설명**: [CVPR 2026 (Highlight)] Scal3R: Scalable Test-Time Training for Large-Scale 3D Reconstruction 
+- **Stars**: ⭐ 382 | Forks: 22
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (27개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+
+---
+
+## 2512.03040 (2026-04-25)
+
+# 논문 분석: 2512.03040
+
+> - arxiv: https://arxiv.org/abs/2512.03040
+> - papers.cool: https://papers.cool/arxiv/2512.03040
+> - 분석일: 2026-04-25
+
+# Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 | Cool Papers - 몰입형 논문 탐색
+
+## 2512.03040
+
+Total: 1
+
+## #1
+
+# Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여
+
+[PDF7]  
+[Copy]  
+[Kimi8]  
+[REL]
+
+저자:  
+Zeqi Xiao,  
+Yiwei Zhao,  
+Lingxiao Li,  
+Yushi Lan,  
+Yu Ning,  
+Rahul Garg,  
+Roshni Cooper,  
+Mohammad H. Taghavi,  
+
+### 관련 GitHub 분석
+
+# GitHub 분석: Eyeline-Labs/Vista4D
+
+> - URL: https://github.com/Eyeline-Labs/Vista4D
+> - 분석일: 2026-04-25
+
+## 개요
+
+- **설명**: Official code, models, and data for Vista4D: Video Reshooting with 4D Point Clouds (CVPR 2026 Highlight)
+- **Stars**: ⭐ 61 | Forks: 1
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (203개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+
+---
+
+## 2602.09022 (2026-04-25)
+
+# 논문 분석: 2602.09022
+
+> - arxiv: https://arxiv.org/abs/2602.09022
+> - papers.cool: https://papers.cool/arxiv/2602.09022
+> - 분석일: 2026-04-25
+
+# WorldCompass: Reinforcement Learning for Long-Horizon World Models | Cool Papers - 몰입형 논문 탐색
+
+## 2602.09022
+
+총계: 1
+
+## 
+#1  
+WorldCompass: Reinforcement Learning for Long-Horizon World Models  
+[PDF12]  
+[Copy]  
+[Kimi16]  
+[REL]
+
+저자:  
+Zehan Wang,  
+Tengfei Wang,  
+Haiyu Zhang,  
+Xuhui Zuo,  
+Junta Wu,  
+Haoyuan Wang,  
+Wenqiang Sun,  
+Zhenwei Wang,  
+Chenjie Cao,  
+
+### 관련 GitHub 분석
+
+# GitHub 분석: imlixinyang/FlashWorld
+
+> - URL: https://github.com/imlixinyang/FlashWorld
+> - 분석일: 2026-04-25
+
+## 개요
+
+- **설명**: Code for \
+- **Stars**: ⭐ 764 | Forks: 59
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (9개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+
+---
+
+## 2603.24725 (2026-04-25)
+
+# 논문 분석: 2603.24725
+
+> - arxiv: https://arxiv.org/abs/2603.24725
+> - papers.cool: https://papers.cool/arxiv/2603.24725
+> - 분석일: 2026-04-25
+
+# Confidence-Based Mesh Extraction from 3D Gaussians | Cool Papers - Immersive Paper Discovery
+
+## 2603.24725
+
+총계: 1
+
+## #1
+
+### Confidence-Based Mesh Extraction from 3D Gaussians
+
+[PDF4] [Copy] [Kimi] [REL]
+
+저자:
+Lukas Radl,  
+Felix Windisch,  
+Andreas Kurz,  
+Thomas Köhler,  
+Michael Steiner,  
+Markus Steinberger
+
+최근 3D Gaussian Splatting, 3DGS는 명시적 표현과 빠른 소프트웨어 래스터화를 통해 포즈가 주어진 이미지로부터의 mesh 추출을 크게 가속했다. 기하 손실과 기타 사전 정보를 추가함으로써 추출된 표면의 정확도는 향상되었지만, 시점 의존 효과가 풍부한 장면에서는 여전히 mesh 추출이 어렵다. 이로 인해 발생하는 모호성을 해결하기 위해, 기존 연구들은 multi-view 기법, 반복적 mesh 추출, 또는 대규모 사전학습 모델에 의존해 왔으며, 그 대가로 3DGS 고유의 효율성을 희생했다. 본 연구에서는 3DGS에 자기지도 confidence 프레임워크를 도입함으로써 단순하고 효율적인 대안을 제시한다. 이 프레임워크 내에서 학습 가능한 confidence 값은 photometric supervision과 geometric supervision의 균형을 동적으로 조절한다. confidence 기반 공식화를 확장하여, 각 primitive별 color 및 normal 분산에 패널티를 부여하는 손실을 도입하고, 이것이 표면 추출에 주는 이점을 입증한다. 마지막으로, D-SSIM loss의 개별 항을 분리함으로써 개선된 appearance model을 추가한다. 최종적으로 제안하는 방법은 높은 효율성을 유지하면서 unbounded mesh에서 state-of-the-art 성능을 달성한다.
+
+주제:
+Computer Vision and Pattern Recognition,  
+
+### 관련 GitHub 분석
+
+# GitHub 분석: m-schuetz/CuRast
+
+> - URL: https://github.com/m-schuetz/CuRast
+> - 분석일: 2026-04-25
+
+## 개요
+
+- **설명**: Cuda-Based Software Rasterization for Billions of Triangles
+- **Stars**: ⭐ 111 | Forks: 3
+- **라이선스**: NOASSERTION
+- **주 언어**: C++/CUDA
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (26개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+
+---
+
+## 2604.00538 (2026-04-25)
+
+# 논문 분석: 2604.00538
+
+> - arxiv: https://arxiv.org/abs/2604.00538
+> - papers.cool: https://papers.cool/arxiv/2604.00538
+> - 분석일: 2026-04-25
+
+# TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting | Cool Papers - 몰입형 논문 탐색
+
+## 2604.00538
+
+총계: 1
+
+## #1
+
+TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting  
+[PDF3]  
+[Copy]  
+[Kimi2]  
+[REL]
+
+저자:  
+Suwoong Yeom,  
+Joonsik Nam,  
+Seunggyu Choi,  
+Lucas Yunkyu Lee,  
+Sangmin Kim,  
+Jaesik Park,  
+Joonsoo Kim,  
+Kugjin Yun,  
+Kyeongbo Kong,  
+
+### 관련 GitHub 분석
+
+# GitHub 분석: nvidia/asset-harvester
+
+> - URL: https://github.com/nvidia/asset-harvester
+> - 분석일: 2026-04-25
+
+## 개요
+
+- **설명**: Asset Harvester: Extracting 3D Assets from Autonomous Driving Logs for Simulation
+- **Stars**: ⭐ 153 | Forks: 10
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (32개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+
+---
+
+## 2604.15612 (2026-04-25)
+
+# 논문 분석: 2604.15612
+
+> - arxiv: https://arxiv.org/abs/2604.15612
+> - papers.cool: https://papers.cool/arxiv/2604.15612
+> - 분석일: 2026-04-25
+
+# GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow | Cool Papers - 몰입형 논문 탐색
+
+## 2604.15612
+
+총계: 1
+
+## #1
+
+### GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow
+
+[PDF2] [Copy] [Kimi1] [REL]
+
+저자:
+Dong-Uk Seo,  
+Jinwoo Jeon,  
+Eungchang Mason Lee,  
+Hyun Myung
+
+Gaussian splatting은 최근 SLAM 시스템을 위한 강력한 지도 표현 방식으로 주목받고 있으며, 조밀하고 사실적인 장면 모델링을 가능하게 한다. 그러나 monocular 입력으로부터 신뢰할 수 있는 기하학적 단서를 얻기 어렵기 때문에, 이를 monocular SLAM에 적용하는 일은 여전히 도전적이다. 기하학적 감독이 없으면 매핑이나 트래킹이 local minima에 빠질 수 있으며, 그 결과 구조적 퇴화와 부정확성이 발생할 수 있다. 이러한 문제를 해결하기 위해 우리는 GaussianFlow SLAM을 제안한다. 이는 optical flow를 기하 인식 단서로 활용하여 장면 구조와 카메라 포즈의 최적화를 함께 유도하는 monocular 3DGS-SLAM이다. GaussianFlow라고 부르는 Gaussian의 투영 운동이 optical flow와 일치하도록 유도함으로써, 우리의 방법은 지도 재구성과 포즈 추정을 모두 정규화하는 일관된 구조적 단서를 도입한다. 또한 비활성 및 불안정한 Gaussian을 정제하기 위해 정규화된 오류 기반의 densification 및 pruning 모듈을 도입하여, 지도 품질과 포즈 정확도를 더욱 향상시킨다. 공개 데이터셋에 대한 실험 결과, 우리의 방법은 최신 알고리즘들과 비교해 더 우수한 렌더링 품질과 트래킹 정확도를 달성함을 보여준다. 소스 코드는 다음에서 확인할 수 있다: https://github.com/url-kaist/gaussianflow-slam
+
+주제:
+- Robotics
+- Computer Vision and Pattern Recognition
+
+
+---
+
+## 2604.15941 (2026-04-25)
+
+# 논문 분석: 2604.15941
+
+> - arxiv: https://arxiv.org/abs/2604.15941
+> - papers.cool: https://papers.cool/arxiv/2604.15941
+> - 분석일: 2026-04-25
+
+# Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction | Cool Papers - 몰입형 논문 탐색
+
+## 2604.15941
+
+총계: 1
+
+## #1
+
+# Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction
+
+[PDF5]  
+[Copy]  
+[Kimi1]  
+[REL]
+
+저자:  
+Haato Watanabe,  
+Nobuyuki Umetani
+
+최근 몇 년간 3D Gaussian splatting, 즉 3DGS는 3D 재구성과 새로운 시점 합성을 위한 강력한 접근법으로 빠르게 부상했다. Gaussian primitive를 사용하는 명시적 표현은 빠른 학습, 실시간 렌더링, 그리고 편집 및 표면 재구성과 같은 편리한 후처리를 가능하게 한다. 그러나 3DGS에는 중요한 단점이 있다. 장면에 고주파 외관 디테일이 포함될 경우 primitive의 수가 급격히 증가한다는 점이다. 이는 각 primitive가 단 하나의 색만 표현할 수 있어, 모든 날카로운 색 전이에 대해 여러 primitive가 필요하기 때문이다. 이러한 한계를 극복하기 위해, 우리는 neural Gabor splatting을 제안한다. 이 방법은 각 Gaussian primitive에 경량 multi-layer perceptron을 추가하여, 하나의 primitive 내부에서 폭넓은 색상 변화를 모델링한다. 또한 primitive 수를 더 효과적으로 제어하기 위해, 주파수 에너지를 기준으로 불일치 primitive를 선택해 pruning과 cloning을 수행하는 frequency-aware densification 전략을 도입한다. 우리의 방법은 까다로운 고주파 표면을 정확하게 재구성할 수 있다. Mip-NeRF360 및 High-Frequency 데이터셋, 예를 들어 checkered patterns를 포함한 표준 벤치마크에서의 광범위한 실험과 포괄적인 ablation study를 통해 그 효과를 입증한다.
+
+주제:  
+Computer Vision and Pattern Recognition,  
+Graphics
+
+---
+
+## 2601.17835 (2026-04-26)
+
+# 논문 분석: 2601.17835
+
+> - arxiv: https://arxiv.org/abs/2601.17835
+> - papers.cool: https://papers.cool/arxiv/2601.17835
+> - 분석일: 2026-04-26
+
+# Geometry-Grounded Gaussian Splatting | Cool Papers - Immersive Paper Discovery
+
+## 2601.17835
+
+총계: 1
+
+## #1
+
+### Geometry-Grounded Gaussian Splatting
+
+[PDF15] [Copy] [Kimi6] [REL]
+
+저자:
+Baowen Zhang,
+Chenxing Jiang,
+Heng Li,
+Shaojie Shen,
+Ping Tan
+
+Gaussian Splatting, GS는 novel view synthesis에서 인상적인 품질과 효율성을 보여주었다. 그러나 Gaussian primitive로부터 형상을 추출하는 문제는 여전히 미해결 과제이다. 기하 파라미터화와 근사가 충분하지 않기 때문에, 기존 형상 재구성 방법은 multi-view consistency가 낮고 floaters에 민감하다는 문제가 있다. 본 논문에서는 Gaussian primitive를 특정한 유형의 stochastic solid로 정립하는 엄밀한 이론적 유도를 제시한다. 이 이론적 프레임워크는 Gaussian primitive를 명시적 기하 표현으로 직접 다룰 수 있게 함으로써 Geometry-Grounded Gaussian Splatting을 위한 원리적 토대를 제공한다. stochastic solid의 volumetric 특성을 활용하여, 우리 방법은 세밀한 기하 추출을 위한 고품질 depth map을 효율적으로 렌더링한다. 실험 결과, 우리 방법은 공개 데이터셋에서 모든 Gaussian Splatting 기반 방법 가운데 가장 우수한 형상 재구성 성능을 달성하였다.
+
+주제:
+Computer Vision and Pattern Recognition
+
+
+### 관련 GitHub 분석
+
+# GitHub 분석: Eyeline-Labs/Vista4D
+
+> - URL: https://github.com/Eyeline-Labs/Vista4D
+> - 분석일: 2026-04-26
+
+## 개요
+
+- **설명**: Official code, models, and data for Vista4D: Video Reshooting with 4D Point Clouds (CVPR 2026 Highlight)
+- **Stars**: ⭐ 88 | Forks: 2
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (203개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+
+---
+
+## 2604.00538 (2026-04-26)
+
+# 논문 분석: 2604.00538
+
+> - arxiv: https://arxiv.org/abs/2604.00538
+> - papers.cool: https://papers.cool/arxiv/2604.00538
+> - 분석일: 2026-04-26
+
+TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting | Cool Papers - 몰입형 논문 탐색
+
+## 2604.00538
+
+총계: 1
+
+## 
+#1
+
+TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting  
+[PDF3]  
+[Copy]  
+[Kimi2]  
+[REL]
+
+저자:
+Suwoong Yeom,  
+Joonsik Nam,  
+Seunggyu Choi,  
+Lucas Yunkyu Lee,  
+Sangmin Kim,  
+Jaesik Park,  
+Joonsoo Kim,  
+Kugjin Yun,  
+
+### 관련 GitHub 분석
+
+# GitHub 분석: nvidia/asset-harvester
+
+> - URL: https://github.com/nvidia/asset-harvester
+> - 분석일: 2026-04-26
+
+## 개요
+
+- **설명**: Asset Harvester: Extracting 3D Assets from Autonomous Driving Logs for Simulation
+- **Stars**: ⭐ 156 | Forks: 10
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (32개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+
+---
+
+## 2604.18744 (2026-04-26)
+
+# 논문 분석: 2604.18744
+
+> - arxiv: https://arxiv.org/abs/2604.18744
+> - papers.cool: https://papers.cool/arxiv/2604.18744
+> - 분석일: 2026-04-26
+
+Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras | Cool Papers - 몰입형 논문 탐색
+
+## 2604.18744
+
+총계: 1
+
+## #1
+# Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras
+[PDF]  
+[Copy]  
+[Kimi]  
+[REL]
+
+저자:  
+Ruijun Zhang,  
+Hang Su,  
+Kostas Daniilidis,  
+Ziyun Wang
+
+Event camera는 저조도와 빠른 motion에 대한 강인성 덕분에 순간적인 motion estimation에서 최근 유망한 성능을 보여주고 있다. 그러나 두 임의 시점 사이에서 wide-baseline correspondence를 계산하는 일은 여전히 중대한 도전 과제로 남아 있다. 이는 motion에 따라 event appearance가 크게 변하고, learning-based 접근법은 확장성과 제한적인 wide-baseline supervision 모두에 제약을 받기 때문이다. 이에 따라 우리는 zero-shot 방식으로 cross-dataset wide-baseline correspondence를 달성하는 최초의 event matching model을 제안한다. 즉, 한 번만 학습된 단일 model을 target-domain fine-tuning이나 adaptation 없이 보지 못한 dataset에 그대로 적용할 수 있다. 이러한 성능을 가능하게 하기 위해, 우리는 event stream으로부터 multi-timescale feature를 학습하는 motion-robust하면서도 computationally efficient한 attention backbone을 도입하고, 여기에 sparsity-aware event token selection을 결합하여 다양한 wide-baseline supervision에 대한 대규모 학습을 계산적으로 가능하게 만든다. 또한 wide-baseline generalization에 필요한 supervision을 제공하기 위해, viewpoint, modality, motion을 증강한 대규모 event-matching dataset을 생성하는 강건한 event motion synthesis framework를 개발한다. 여러 benchmark에 대한 광범위한 실험 결과, 우리 framework는 기존 최고 event feature matching 방법 대비 37.7% 향상을 달성했다. 코드와 데이터는 다음에서 확인할 수 있다: https://github.com/spikelab-jhu/Match-Any-Events
+
+주제:  
+Computer Vision and Pattern Recognition

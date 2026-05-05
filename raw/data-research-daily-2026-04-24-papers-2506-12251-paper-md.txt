@@ -1,0 +1,78 @@
+paper.md
+========
+
+# 논문 분석: 2506.12251
+
+> - arxiv: https://arxiv.org/abs/2506.12251
+> - papers.cool: https://papers.cool/arxiv/2506.12251
+> - 분석일: 2026-04-24
+
+Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving | Cool Papers - 몰입형 논문 탐색
+
+## 2506.12251
+
+총계: 1
+
+## #1
+
+Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving  
+[PDF2]  
+[Copy]  
+[Kimi2]  
+[REL]
+
+저자:  
+Boris Ivanovic,  
+Cristiano Saltori,  
+Yurong You,  
+Yan Wang,  
+Wenjie Luo,  
+Marco Pavone
+
+Autoregressive Transformers는 확장성과 일반화를 위한 인터넷 규모 사전학습 활용 가능성 덕분에 end-to-end robot 및 autonomous vehicle AV 정책 아키텍처로 점점 더 많이 배치되고 있다. 따라서 임베디드 하드웨어에서 이러한 아키텍처의 실시간 실현 가능성을 보장하려면 센서 데이터를 효율적으로 토큰화하는 것이 매우 중요하다. 이를 위해 우리는 최근의 3D neural reconstruction 및 rendering 발전을 활용하는 효율적인 triplane 기반 multi-camera 토큰화 전략을 제안한다. 이 전략은 입력 카메라의 개수와 해상도에 무관한 센서 토큰을 생성하면서, AV 주변의 기하 구조를 명시적으로 반영한다. 대규모 AV 데이터셋과 state-of-the-art neural simulator에서의 실험은 우리의 접근법이 기존 image patch 기반 토큰화 전략 대비 상당한 절감을 제공함을 보여준다. 최대 72% 더 적은 토큰을 생성하며, 그 결과 정책 추론 속도가 최대 50% 더 빨라지고, open-loop motion planning 정확도는 동일하게 유지하면서 closed-loop 주행 시뮬레이션에서는 offroad 비율이 개선된다.
+
+주제:  
+Computer Vision and Pattern Recognition,  
+Machine Learning,  
+Robotics
+
+게시: 2025-06-13 21:56:52 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+포함 OR:
+
+제외:
+
+검색
+
+필터
+
+강조 표시
+
+표시한 논문:
+
+#1  
+Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving
+
+내보내기
+
+Magic Token:
+
+Kimi 언어:  
+中文  
+English
+
+설명 언어:  
+中文  
+English
+
+저장
+
+버그 제보 또는 이슈 제출은 다음을 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+계속 진행하기 전에 Disclaimer를 읽어 주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문하세요.

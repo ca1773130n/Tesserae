@@ -1,0 +1,29 @@
+Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction
+================================================================================
+
+# Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction
+
+## Outgoing relations
+
+- **authored_by** → Haato Watanabe _(Person)_
+- **authored_by** → Nobuyuki Umetani _(Person)_
+- **belongs_to_approach_family** → Gaussian Splatting Reconstruction _(ApproachFamily)_
+- **evaluated_on** → Mip-NeRF360 _(Benchmark)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- **uses** → Gaussian Splatting _(MethodologicalConcept)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-25 _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-25 _(SourceDocument)_
+
+## Connected node types
+
+- SourceDocument: 4
+- Person: 2
+- ApproachFamily: 1
+- Benchmark: 1
+- MethodologicalConcept: 1
+- ResearchField: 1

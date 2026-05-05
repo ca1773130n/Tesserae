@@ -1,0 +1,18 @@
+Depth Map
+=========
+
+# Depth Map
+
+## Outgoing relations
+
+- **addresses** → Shape Reconstruction _(Task)_
+
+## Incoming relations
+
+- **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- **uses** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_
+
+## Connected node types
+
+- Paper: 2
+- Task: 1

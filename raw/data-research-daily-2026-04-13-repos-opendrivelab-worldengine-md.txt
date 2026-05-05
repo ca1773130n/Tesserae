@@ -1,0 +1,52 @@
+OpenDriveLab_WorldEngine.md
+===========================
+
+# GitHub 분석: OpenDriveLab/WorldEngine
+
+> - URL: https://github.com/OpenDriveLab/WorldEngine
+> - 분석일: 2026-04-13
+
+## 개요
+
+- **설명**: WorldEngine: Towards the Era of Post-Training for Physical AI
+- **Stars**: ⭐ 132 | Forks: 7
+- **라이선스**: Apache-2.0
+- **주 언어**: unknown
+
+## 실행 가능 상태: 코드 미공개 (README/asset만 존재)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (0개) | N |
+| 의존성 파일 | N |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+CHANGELOG.md
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+docs/algengine_usage.md
+docs/config_guide.md
+docs/data_organization.md
+docs/installation.md
+docs/quick_start.md
+docs/simengine_usage.md
+.git/config
+.git/description
+.git/HEAD
+.github/FUNDING.yml
+.github/pull_request_template.md
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE
+.pre-commit-config.yaml
+README.md
+scripts/closed_loop_test.sh
+scripts/multigpu_closed_loop_test.sh
+```

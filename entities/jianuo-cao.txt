@@ -1,0 +1,12 @@
+Jianuo Cao
+==========
+
+# Jianuo Cao
+
+## Incoming relations
+
+- **authored_by** → CLAW: Composable Language-Annotated Whole-body Motion Generation _(Paper)_
+
+## Connected node types
+
+- Paper: 1

@@ -1,0 +1,15 @@
+Daily Feed Summary — 2026-04-30
+===============================
+
+# Daily Feed Summary — 2026-04-30
+
+## Outgoing relations
+
+- **mentioned_in** → Efficient Universal Perception Encoder _(Paper)_
+- **mentioned_in** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_
+- **mentioned_in** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
+- **mentioned_in** → Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습 _(Paper)_
+
+## Connected node types
+
+- Paper: 4

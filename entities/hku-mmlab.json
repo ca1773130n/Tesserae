@@ -1,0 +1,15 @@
+{
+  "title": "hku-mmlab",
+  "kind": "entities",
+  "body_text": "# hku-mmlab\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: HKU-MMLab/Macro _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/papers/2510.11718/repo.md",
+  "links": [],
+  "body": "# hku-mmlab\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: HKU-MMLab/Macro _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:hku-mmlab:fe72a88e6865",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/papers/2510.11718/repo.md",
+    "title": "hku-mmlab"
+  }
+}

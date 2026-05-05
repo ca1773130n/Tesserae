@@ -1,0 +1,24 @@
+Cross-Attentive Multiview Fusion of Vision-Language Embeddings
+==============================================================
+
+# Cross-Attentive Multiview Fusion of Vision-Language Embeddings
+
+## Outgoing relations
+
+- **authored_by** → Javier Civera _(Person)_
+- **authored_by** → Martin R. Oswald _(Person)_
+- **authored_by** → Tomas Berriel Martins _(Person)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-23 _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-23 _(SourceDocument)_
+
+## Connected node types
+
+- SourceDocument: 4
+- Person: 3
+- ResearchField: 1

@@ -1,0 +1,12 @@
+Reinforcement Learning
+======================
+
+# Reinforcement Learning
+
+## Incoming relations
+
+- **uses** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+
+## Connected node types
+
+- Paper: 1

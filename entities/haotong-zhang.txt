@@ -1,0 +1,12 @@
+Haotong Zhang
+=============
+
+# Haotong Zhang
+
+## Incoming relations
+
+- **authored_by** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_
+
+## Connected node types
+
+- Paper: 1

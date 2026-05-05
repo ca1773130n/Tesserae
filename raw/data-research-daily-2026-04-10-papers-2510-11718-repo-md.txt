@@ -1,0 +1,65 @@
+repo.md
+=======
+
+# GitHub 분석: HKU-MMLab/Macro
+
+> - URL: https://github.com/HKU-MMLab/Macro
+> - 분석일: 2026-04-10
+
+## 개요
+
+- **설명**: The official repo of \
+- **Stars**: ⭐ 53 | Forks: 1
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (64개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+api_generator/generator.py
+api_generator/__init__.py
+api_generator/utils.py
+assets/head.jpg
+assets/teaser.jpg
+bagel/config.yaml
+bagel/__init__.py
+bagel/process_config.py
+closed_api/gpt_run.py
+closed_api/__init__.py
+closed_api/nano_run.py
+eval/config.yaml
+eval/evaluate.py
+eval/__init__.py
+eval/run_eval.py
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+inference_utils/common_utils.py
+inference_utils/__init__.py
+omnigen/config.yaml
+omnigen/__init__.py
+omnigen/process_config.py
+qwen/config.yaml
+qwen/__init__.py
+qwen/process_config.py
+README.md
+scripts/test_bagel.py
+scripts/test_omnigen.py
+scripts/test_qwen.py
+vis/__init__.py
+vis/visualize.py
+```

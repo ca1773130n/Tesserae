@@ -1,0 +1,34 @@
+Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여
+================================================================
+
+# Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여
+
+## Outgoing relations
+
+- **authored_by** → Lingxiao Li _(Person)_
+- **authored_by** → Mohammad H. Taghavi _(Person)_
+- **authored_by** → Rahul Garg _(Person)_
+- **authored_by** → Roshni Cooper _(Person)_
+- **authored_by** → Xingang Pan _(Person)_
+- **authored_by** → Yiwei Zhao _(Person)_
+- **authored_by** → Yu Ning _(Person)_
+- **authored_by** → Yushi Lan _(Person)_
+- **authored_by** → Zeqi Xiao _(Person)_
+- **implemented_in** → GitHub 분석: Eyeline-Labs/Vista4D _(Repository)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- **uses** → Video Diffusion _(MethodologicalConcept)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-25 _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-25 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 9
+- SourceDocument: 4
+- MethodologicalConcept: 1
+- Repository: 1
+- ResearchField: 1

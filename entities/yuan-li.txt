@@ -1,0 +1,12 @@
+Yuan Li
+=======
+
+# Yuan Li
+
+## Incoming relations
+
+- **authored_by** → Long-tail Internet photo reconstruction _(Paper)_
+
+## Connected node types
+
+- Paper: 1

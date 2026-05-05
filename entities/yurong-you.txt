@@ -1,0 +1,12 @@
+Yurong You
+==========
+
+# Yurong You
+
+## Incoming relations
+
+- **authored_by** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_
+
+## Connected node types
+
+- Paper: 1

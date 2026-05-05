@@ -1,0 +1,14 @@
+Daily Feed Summary — 2026-04-16
+===============================
+
+# Daily Feed Summary — 2026-04-16
+
+## Outgoing relations
+
+- **mentioned_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_
+- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- **mentioned_in** → Lyra 2.0: Explorable Generative 3D Worlds _(Paper)_
+
+## Connected node types
+
+- Paper: 3

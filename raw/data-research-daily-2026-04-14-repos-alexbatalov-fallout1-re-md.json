@@ -1,0 +1,8 @@
+{
+  "title": "alexbatalov_fallout1-re.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: alexbatalov/fallout1-re\n\n> - URL: https://github.com/alexbatalov/fallout1-re\n> - 분석일: 2026-04-14\n\n## 개요\n\n- **설명**: Reverse engineered Fallout\n- **Stars**: ⭐ 159 | Forks: 11\n- **라이선스**: NOASSERTION\n- **주 언어**: unknown\n\n## 실행 가능 상태: 코드 미공개 (README/asset만 존재)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (0개) | N |\n| 의존성 파일 | N |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\n.clang-format\nCMakeLists.txt\nCMakeSettings.json\n.editorconfig\n.gitattributes\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\nLICENSE.md\nREADME.md\nsrc/movie_lib.c\nsrc/movie_lib.h\nsrc/sound_decoder.c\nsrc/sound_decoder.h\n```",
+  "source_path": "data/research/daily/2026-04-14/repos/alexbatalov_fallout1-re.md",
+  "links": [],
+  "body": "# GitHub 분석: alexbatalov/fallout1-re\n\n> - URL: https://github.com/alexbatalov/fallout1-re\n> - 분석일: 2026-04-14\n\n## 개요\n\n- **설명**: Reverse engineered Fallout\n- **Stars**: ⭐ 159 | Forks: 11\n- **라이선스**: NOASSERTION\n- **주 언어**: unknown\n\n## 실행 가능 상태: 코드 미공개 (README/asset만 존재)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (0개) | N |\n| 의존성 파일 | N |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\n.clang-format\nCMakeLists.txt\nCMakeSettings.json\n.editorconfig\n.gitattributes\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\nLICENSE.md\nREADME.md\nsrc/movie_lib.c\nsrc/movie_lib.h\nsrc/sound_decoder.c\nsrc/sound_decoder.h\n```\n"
+}

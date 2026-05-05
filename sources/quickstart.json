@@ -1,0 +1,15 @@
+{
+  "title": "Quickstart",
+  "kind": "sources",
+  "body_text": "# Quickstart",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/quickstart.md",
+  "links": [],
+  "body": "# Quickstart",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:quickstart:f079b828e4b5",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/quickstart.md",
+    "title": "Quickstart"
+  }
+}

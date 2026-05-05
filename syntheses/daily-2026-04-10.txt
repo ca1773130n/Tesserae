@@ -1,0 +1,24 @@
+Daily Digest — 2026-04-10
+=========================
+
+# Daily Digest — 2026-04-10
+
+Sources ingested under `data/research/daily/2026-04-10/`.
+
+## Papers and repos
+- [GitHub 분석: AISmithLab/CoBRA](../repos/github-분석-aismithlab-cobra.md) (Repository)
+- [GitHub 분석: Blaizzy/mlx-vlm](../repos/github-분석-blaizzy-mlx-vlm.md) (Repository)
+- [GitHub 분석: GalaxyGeneralRobotics/LATENT](../repos/github-분석-galaxygeneralrobotics-latent.md) (Repository)
+- [GitHub 분석: HKU-MMLab/Macro](../repos/github-분석-hku-mmlab-macro.md) (Repository)
+- [GitHub 분석: LilanOvO/Auto-Resubmit](../repos/github-분석-lilanovo-auto-resubmit.md) (Repository)
+- [GitHub 분석: NVIDIAGameWorks/kaolin](../repos/github-분석-nvidiagameworks-kaolin.md) (Repository)
+- [GitHub 분석: TakashiYoshinaga/Perspective-Effect-with-Head-Tracking-of-MediaPipe](../repos/github-분석-takashiyoshinaga-perspective-effect-with-head-tracking-of-mediapipe.md) (Repository)
+- [GitHub 분석: dqj5182/HACO_RELEASE](../repos/github-분석-dqj5182-haco-release.md) (Repository)
+- [GitHub 분석: facebookresearch/threadweaver](../repos/github-분석-facebookresearch-threadweaver.md) (Repository)
+- [GitHub 분석: h-shiono/MRTKLIB](../repos/github-분석-h-shiono-mrtklib.md) (Repository)
+- [GitHub 분석: isaaccorley/terrabit](../repos/github-분석-isaaccorley-terrabit.md) (Repository)
+- [GitHub 분석: tue-mps/eomt](../repos/github-분석-tue-mps-eomt.md) (Repository)
+- [Daily Feed Summary — 2026-04-10](../sources/daily-feed-summary-2026-04-10.md) (SourceDocument)
+
+## Extracted concepts
+- (none extracted)

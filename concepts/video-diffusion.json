@@ -1,0 +1,18 @@
+{
+  "title": "Video Diffusion",
+  "kind": "concepts",
+  "body_text": "# Video Diffusion\n\n## Incoming relations\n\n- **uses** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_\n- **uses** → Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습 _(Paper)_\n- **uses** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Paper)_\n\n## Connected node types\n\n- Paper: 3",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2512.03040/paper.md",
+  "links": [],
+  "body": "# Video Diffusion\n\n## Incoming relations\n\n- **uses** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_\n- **uses** → Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습 _(Paper)_\n- **uses** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Paper)_\n\n## Connected node types\n\n- Paper: 3",
+  "frontmatter": {
+    "aliases": [
+      "video diffusion"
+    ],
+    "kind": "concepts",
+    "node_id": "MethodologicalConcept:video-diffusion:72ecb908974b",
+    "node_type": "MethodologicalConcept",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2512.03040/paper.md",
+    "title": "Video Diffusion"
+  }
+}

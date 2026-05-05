@@ -1,0 +1,13 @@
+raw.md
+======
+
+# Daily Feed Summary — 2026-04-15
+
+Total: 4 relevant feeds (from 84)
+
+| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |
+|------|------|-------|-----|--------|-------|-----------|-------------|
+| 2026-04-15 | 08:12 | Remove Background for 3D Gaussian Splatting isn't just a cle...... | https://arxiv.org/pdf/2601.17835 | https://github.com/ReconWorldLab/godot-gaussian-splatting | 143 | [분석](papers/2601.17835/paper.md) | [분석](papers/2601.17835/repo.md) |
+| 2026-04-15 | 14:22 | RT clem ?: Time to follow http://hf.co/tencent!... | N/A | https://github.com/baidu/ernie-image | 129 | N/A | [분석](repos/baidu_ernie-image.md) |
+| 2026-04-15 | 04:25 | Just Implemented headless MCP server that gives Claude direc...... | N/A | https://github.com/mrdoob/three.js | 111942 | N/A | [분석](repos/mrdoob_three.js.md) |
+| 2026-04-15 | 00:43 | Tran and Košecká, "PointSplat: Efficient Geometry-Driven P...... | https://arxiv.org/pdf/2603.22572 | https://github.com/theialab/fullcircle | 88 | [분석](papers/2603.22572/paper.md) | [분석](papers/2603.22572/repo.md) |

@@ -1,0 +1,18 @@
+{
+  "title": "Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras",
+  "kind": "papers",
+  "body_text": "# Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras\n\n## Outgoing relations\n\n- **authored_by** → Hang Su _(Person)_\n- **authored_by** → Kostas Daniilidis _(Person)_\n- **authored_by** → Ruijun Zhang _(Person)_\n- **authored_by** → Ziyun Wang _(Person)_\n- **part_of** → Research Literature _(ResearchField)_\n- **uses** → Fine-tuning _(TrainingParadigm)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-26 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-26 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 4\n- SourceDocument: 4\n- ResearchField: 1\n- TrainingParadigm: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-26/papers/2604.18744/paper.md",
+  "links": [],
+  "body": "# Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras\n\n## Outgoing relations\n\n- **authored_by** → Hang Su _(Person)_\n- **authored_by** → Kostas Daniilidis _(Person)_\n- **authored_by** → Ruijun Zhang _(Person)_\n- **authored_by** → Ziyun Wang _(Person)_\n- **part_of** → Research Literature _(ResearchField)_\n- **uses** → Fine-tuning _(TrainingParadigm)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-26 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-26 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 4\n- SourceDocument: 4\n- ResearchField: 1\n- TrainingParadigm: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2604.18744"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2604-18744:d418fd397b58",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-26/papers/2604.18744/paper.md",
+    "title": "Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras"
+  }
+}

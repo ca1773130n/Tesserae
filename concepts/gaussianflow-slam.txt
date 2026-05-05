@@ -1,0 +1,12 @@
+GaussianFlow SLAM
+=================
+
+# GaussianFlow SLAM
+
+## Incoming relations
+
+- **introduces** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_
+
+## Connected node types
+
+- Paper: 1

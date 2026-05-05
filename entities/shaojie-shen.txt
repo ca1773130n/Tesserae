@@ -1,0 +1,12 @@
+Shaojie Shen
+============
+
+# Shaojie Shen
+
+## Incoming relations
+
+- **authored_by** → Geometry-Grounded Gaussian Splatting _(Paper)_
+
+## Connected node types
+
+- Paper: 1

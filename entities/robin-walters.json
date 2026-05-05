@@ -1,0 +1,15 @@
+{
+  "title": "Robin Walters",
+  "kind": "entities",
+  "body_text": "# Robin Walters\n\n## Incoming relations\n\n- **authored_by** → Integrating Symmetry into Differentiable Planning with Steerable Convolutions _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/papers/2206.03674/paper.md",
+  "links": [],
+  "body": "# Robin Walters\n\n## Incoming relations\n\n- **authored_by** → Integrating Symmetry into Differentiable Planning with Steerable Convolutions _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:robin-walters:333ef337a927",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/papers/2206.03674/paper.md",
+    "title": "Robin Walters"
+  }
+}

@@ -1,0 +1,90 @@
+digest.md
+=========
+
+# 📬 Daily Research Digest — 2026-04-30
+
+## 🔥 오늘의 하이라이트
+
+### 1. 인터넷 비디오에서 3D 장면 데이터를 대규모로 끌어올린 SceneVerse++
+
+SceneVerse++는 수집과 라벨링 비용이 큰 3D 장면 데이터 병목을, 인터넷 비디오 재구성과 자동 주석으로 우회하려는 시도입니다. 실제 세계의 대규모 장면 데이터를 기반으로 3D VQA, visual navigation, Embodied AI까지 한 번에 확장하려는 점이 중요합니다. 데이터셋 스케일이 곧 성능 상한을 정하는 시점에서, 이 작업은 3D spatial reasoning의 학습 기반 자체를 넓히는 제안입니다.
+
+- 📄 논문: [논문 분석](papers/2604.01907/paper.md) | [arxiv](https://arxiv.org/abs/2604.01907)
+- 💻 코드: [GitHub 분석](papers/2604.01907/repo.md) | [repo](https://github.com/sv-pp/SceneVersepp) | ⭐ 24
+- 🔗 [원문](https://x.com/undefined/status/2049141593517535683)
+
+---
+
+### 2. 고해상도 depth·normal 추정을 단일 인코더로 압축한 EUPE
+
+![preview](https://pbs.twimg.com/media/HFPK-A4bkAAeR1y?format=jpg&name=orig)
+
+EUPE는 depth와 surface normal 같은 dense perception 작업을 고해상도에서도 더 빠르게 처리하기 위한 compact vision encoder 계열입니다. 작업별 전문가 모델을 따로 두지 않고도 범용 인코더 하나로 성능을 맞추거나 넘어서는 방향이라, 멀티태스크 3D perception 스택을 단순화할 가능성이 큽니다.
+
+- 📄 논문: [논문 분석](papers/2603.22387/paper.md) | [arxiv](https://arxiv.org/abs/2603.22387)
+- 💻 코드: [GitHub 분석](papers/2603.22387/repo.md) | [repo](https://github.com/facebookresearch/EUPE) | ⭐ 542
+- 🔗 [원문](https://x.com/marcmapeke/status/2049188661263290509)
+
+---
+
+### 3. rasterization과 ray tracing을 동시에 노리는 3D 표현, Power Foam
+
+![preview](https://pbs.twimg.com/amplify_video_thumb/2049337028928765952/img/JV6swalZtX2dQPh2.jpg)
+
+Power Foam은 3DGS 계열의 빠른 rasterization과 foam 계열의 ray tracing 적합성을 하나의 표현으로 묶으려는 제안입니다. 실시간 렌더링 파이프라인이 raster와 ray tracing 사이에서 표현을 갈아타야 했던 문제를 줄이기 때문에, 동적 장면 재구성·시각화 모두에 파급력이 있습니다.
+
+- 📄 논문: [논문 분석](papers/2604.24994/paper.md) | [arxiv](https://arxiv.org/abs/2604.24994)
+- 🔗 [원문](https://x.com/janusch_patas/status/2049408771428930025)
+
+---
+
+## 📋 주목할 만한 피드
+
+### ▫️ 3DGS의 범주를 다시 묻는 현장 논의
+
+Gaussian splats를 AI라 부르는 것이 적절한지에 대한 문제 제기입니다. 표현 자체와 생성 모델을 분리해서 봐야 한다는 지적은, 3D representation 연구를 평가할 때 기술 분류와 벤치마크 설계를 더 엄밀하게 만들 필요를 드러냅니다.
+
+- 📄 관련 링크: [논문 분석](papers/2604.09429/paper.md) | [arxiv](https://arxiv.org/abs/2604.24994)
+- 🔗 [원문](https://x.com/yiningkarlli/status/2049202699598766376)
+
+### ▫️ World-R1이 보여준 비디오 모델의 3D 일관성 강화
+
+![preview](https://pbs.twimg.com/amplify_video_thumb/2049248658445697024/img/afcR90Vuk6A4x7gK.jpg)
+
+World-R1은 비디오 생성 모델에 RL 기반 3D 기하 평가를 결합해, 별도 아키텍처 변경 없이 더 강한 공간 일관성을 끌어내려는 접근입니다. camera trajectory를 직접 다루고 rigid structure와 non-rigid motion을 함께 유지하려는 점에서, world model 계열 연구와 spatial intelligence 사이의 간극을 좁힙니다.
+
+- 💻 관련 링크: [GitHub 분석](repos/microsoft_World-R1.md) | [repo](https://github.com/microsoft/World-R1) | ⭐ 252
+- 🔗 [원문](https://x.com/berryxia/status/2049255217603178794)
+
+### ▫️ SATO가 겨냥한 point cloud 기반 프로덕션급 메쉬 생성
+
+SATO는 point cloud에서 바로 triangle·quad mesh를 생성하고, strip-based tokenization과 UV segmentation을 함께 다루는 방향을 제시합니다. 깨끗한 edge flow와 구조 보존이 중요했던 3D asset 제작 파이프라인에서, 생성형 메쉬 품질을 한 단계 끌어올리려는 시도로 읽힙니다.
+
+- 💻 관련 링크: [GitHub 분석](repos/deepseek-ai_TileKernels.md)
+- 🔗 [원문](https://x.com/aisearchio/status/2049195095841501652)
+
+### ▫️ 실시간 온보드 SLAM 데모가 보여준 현장 적용성
+
+매끄러운 바닥과 복잡한 조명 환경에서도 실시간 dense point cloud map을 온보드로 구축했다는 데모입니다. ROS 스트리밍만 외부로 넘기고 VSLAM과 point cloud 처리를 기기 내부에서 수행한 점이, 로보틱스 현장 배치 가능성을 직접 보여줍니다.
+
+- 🔗 [원문](https://x.com/undefined/status/2048725740733255976)
+
+### ▫️ 대형 교량 전체를 다룬 3DGS 장면 재현 사례
+
+해질녘의 광범위한 야외 구조물을 전천구 영상으로 포착해 3DGS로 재현하려는 사례입니다. 넓은 범위, 시간에 따라 변하는 조명, 대형 인공 구조물이 한꺼번에 들어간다는 점에서 대규모 outdoor reconstruction의 난점을 잘 보여줍니다.
+
+- 📄 관련 링크: [논문 분석](papers/2604.24994/paper.md) | [arxiv](https://arxiv.org/abs/2604.24994)
+- 🔗 [원문](https://x.com/janusch_patas/status/2049408771428930025)
+
+### ▫️ Boston LiDAR point cloud 탐색 실험
+
+도시 LiDAR point cloud를 직접 탐색하며 반복적으로 부딪히는 문제를 공유한 피드입니다. 정제된 논문 결과는 아니지만, geospatial point cloud 처리에서 데이터 접근성과 도구 체인의 불편함이 여전히 실무 병목임을 보여줍니다.
+
+- 💻 관련 링크: [GitHub 분석](repos/taylorallenux_engine-lab.md) | [repo](https://github.com/taylorallenux/engine-lab) | ⭐ 1
+- 🔗 [원문](https://x.com/undefined/status/2048725740733255976)
+
+## 📊 오늘의 숫자
+
+- 전체 피드: 33개 → 관련 피드: 9개
+- 논문: 4편 | GitHub: 5개 레포
+- 가장 많은 스타: deepseek-ai/TileKernels (⭐ 1347)

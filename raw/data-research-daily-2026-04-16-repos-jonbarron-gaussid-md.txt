@@ -1,0 +1,36 @@
+jonbarron_gaussid.md
+====================
+
+# GitHub 분석: jonbarron/gaussid
+
+> - URL: https://github.com/jonbarron/gaussid
+> - 분석일: 2026-04-16
+
+## 개요
+
+- **설명**: Sam Roweis's gaussid.pdf as a markdown file
+- **Stars**: ⭐ 9 | Forks: 1
+- **라이선스**: N/A
+- **주 언어**: unknown
+
+## 실행 가능 상태: 코드 미공개 (README/asset만 존재)
+
+| 항목 | 상태 |
+|------|------|
+| README | N |
+| 소스 코드 (0개) | N |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+gaussid.md
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+```

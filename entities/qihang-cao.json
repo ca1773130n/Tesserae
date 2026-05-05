@@ -1,0 +1,15 @@
+{
+  "title": "Qihang Cao",
+  "kind": "entities",
+  "body_text": "# Qihang Cao\n\n## Incoming relations\n\n- **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/papers/2604.14025/paper.md",
+  "links": [],
+  "body": "# Qihang Cao\n\n## Incoming relations\n\n- **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:qihang-cao:b31652db9efa",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/papers/2604.14025/paper.md",
+    "title": "Qihang Cao"
+  }
+}

@@ -1,0 +1,68 @@
+ag2ai_ag2studio.md
+==================
+
+# GitHub 분석: ag2ai/ag2studio
+
+> - URL: https://github.com/ag2ai/ag2studio
+> - 분석일: 2026-05-02
+
+## 개요
+
+- **설명**: AG2 Studio
+- **Stars**: ⭐ 47 | Forks: 12
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (19개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | Y |
+
+## 파일 구조
+
+```
+ag2studio/chatmanager.py
+ag2studio/cli.py
+ag2studio/datamodel.py
+ag2studio/__init__.py
+ag2studio/version.py
+ag2studio/workflowmanager.py
+build_frontend.py
+Dockerfile
+docs/faq.md
+docs/readme_stockprices.png
+frontend/.env.default
+frontend/.gitignore
+frontend/LICENSE
+frontend/next.config.js
+frontend/next-env.d.ts
+frontend/package.json
+frontend/package-lock.json
+frontend/postcss.config.js
+frontend/README.md
+frontend/tailwind.config.js
+frontend/tsconfig.json
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE
+MANIFEST.in
+notebooks/agent_spec.json
+notebooks/groupchat_spec.json
+notebooks/tutorial.ipynb
+PyPiREADME.md
+pyproject.toml
+README.md
+requirements.txt
+setup.py
+.vscode/launch.json
+```

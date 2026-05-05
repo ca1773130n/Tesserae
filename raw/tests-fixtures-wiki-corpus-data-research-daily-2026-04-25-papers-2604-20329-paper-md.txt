@@ -1,0 +1,17 @@
+paper.md
+========
+
+# 논문 분석: 2604.20329
+
+> - arxiv: https://arxiv.org/abs/2604.20329
+> - 분석일: 2026-04-25
+
+# Image Generators are Generalist Vision Learners
+
+저자: Valentin Gabeur, Songyou Peng, Kaiming He.
+
+Vision Banana instruction-tunes Nano Banana Pro NBP on a mixture of
+image-generation data and small vision task data. By parameterising the output
+space of segmentation, metric depth estimation, and surface normal estimation
+as RGB images, perception is recast as image generation. The generalist model
+matches Segment Anything Model 3 and Depth Anything zero-shot.

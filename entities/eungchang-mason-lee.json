@@ -1,0 +1,15 @@
+{
+  "title": "Eungchang Mason Lee",
+  "kind": "entities",
+  "body_text": "# Eungchang Mason Lee\n\n## Incoming relations\n\n- **authored_by** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2604.15612/paper.md",
+  "links": [],
+  "body": "# Eungchang Mason Lee\n\n## Incoming relations\n\n- **authored_by** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:eungchang-mason-lee:e4c48f5d5881",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2604.15612/paper.md",
+    "title": "Eungchang Mason Lee"
+  }
+}

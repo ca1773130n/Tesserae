@@ -1,0 +1,15 @@
+SSIM
+====
+
+# SSIM
+
+## Incoming relations
+
+- **uses_metric** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_
+- **uses_metric** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_
+- **uses_metric** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+
+## Connected node types
+
+- SourceDocument: 2
+- Paper: 1

@@ -1,0 +1,12 @@
+Hyun Myung
+==========
+
+# Hyun Myung
+
+## Incoming relations
+
+- **authored_by** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_
+
+## Connected node types
+
+- Paper: 1

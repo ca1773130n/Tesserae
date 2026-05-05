@@ -1,0 +1,18 @@
+{
+  "title": "Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search",
+  "kind": "papers",
+  "body_text": "# Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search\n\n## Outgoing relations\n\n- **authored_by** → Hiroki Furuta _(Person)_\n- **authored_by** → Masahiro Suzuki _(Person)_\n- **authored_by** → Yuta Oshima _(Person)_\n- **authored_by** → Yutaka Matsuo _(Person)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses** → Beam Search _(InferenceStrategy)_\n- **uses** → Video Diffusion _(MethodologicalConcept)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-05-04 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-04 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 4\n- SourceDocument: 2\n- InferenceStrategy: 1\n- MethodologicalConcept: 1\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-04/papers/2501.19252/paper.md",
+  "links": [],
+  "body": "# Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search\n\n## Outgoing relations\n\n- **authored_by** → Hiroki Furuta _(Person)_\n- **authored_by** → Masahiro Suzuki _(Person)_\n- **authored_by** → Yuta Oshima _(Person)_\n- **authored_by** → Yutaka Matsuo _(Person)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses** → Beam Search _(InferenceStrategy)_\n- **uses** → Video Diffusion _(MethodologicalConcept)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-05-04 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-04 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 4\n- SourceDocument: 2\n- InferenceStrategy: 1\n- MethodologicalConcept: 1\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2501.19252"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2501-19252:f188522141a2",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-04/papers/2501.19252/paper.md",
+    "title": "Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search"
+  }
+}

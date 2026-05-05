@@ -1,0 +1,12 @@
+Yuqing Wang
+===========
+
+# Yuqing Wang
+
+## Incoming relations
+
+- **authored_by** → ViBA: Implicit Bundle Adjustment with Geometric and Temporal Consistency for Robust Visual Matching _(Paper)_
+
+## Connected node types
+
+- Paper: 1

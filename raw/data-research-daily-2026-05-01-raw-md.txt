@@ -1,0 +1,16 @@
+raw.md
+======
+
+# Daily Feed Summary — 2026-05-01
+
+Total: 7 relevant feeds (from 20)
+
+| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |
+|------|------|-------|-----|--------|-------|-----------|-------------|
+| 2026-05-01 | 12:32 | Checkout our new SIGGRAPH paper! tl;dr: We introduce a metho...... | https://arxiv.org/pdf/2603.24725 | https://github.com/r4dl/CoMe | 55 | [분석](papers/2603.24725/paper.md) | [분석](papers/2603.24725/repo.md) |
+| 2026-05-01 | 16:25 | "STream3R: Scalable Sequential 3D Reconstruction with Causal...... | https://arxiv.org/pdf/2604.24994 | N/A | N/A | [분석](papers/2604.24994/paper.md) | N/A |
+| 2026-05-01 | 10:57 | RT Felix Windisch: ? 1/6 I am excited to announce that A LoD...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-05-01 | 06:50 | Color-Encoded Illumination for High-Speed Volumetric Scene R...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-05-01 | 04:54 | In this paper is introduced Power Foam, a novel 3D represent...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-05-01 | 01:17 | I (my agents) made a table comparing different 3D reconstruc...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-05-01 | 22:37 | STream3R: Scalable Sequential 3D Reconstruction with Causal ...... | N/A | N/A | N/A | N/A | N/A |

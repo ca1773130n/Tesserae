@@ -1,0 +1,12 @@
+Sara Sabour
+===========
+
+# Sara Sabour
+
+## Incoming relations
+
+- **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_
+
+## Connected node types
+
+- Paper: 1

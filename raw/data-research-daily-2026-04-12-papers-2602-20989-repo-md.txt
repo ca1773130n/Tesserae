@@ -1,0 +1,38 @@
+repo.md
+=======
+
+# GitHub 분석: edward3862/ImgDecom
+
+> - URL: https://github.com/edward3862/ImgDecom
+> - 분석일: 2026-04-12
+
+## 개요
+
+- **설명**: Cycle-Consistent Tuning for Layered Image Decomposition (CVPR 2026)
+- **Stars**: ⭐ 10 | Forks: 0
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (6개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+index.html
+README.md
+static/.DS_Store
+```

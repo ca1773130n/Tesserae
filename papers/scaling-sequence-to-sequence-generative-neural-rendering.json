@@ -1,0 +1,18 @@
+{
+  "title": "Scaling Sequence-to-Sequence Generative Neural Rendering",
+  "kind": "papers",
+  "body_text": "# Scaling Sequence-to-Sequence Generative Neural Rendering\n\n## Outgoing relations\n\n- **authored_by** → Chi Phung _(Person)_\n- **authored_by** → Haozhe Liu _(Person)_\n- **authored_by** → Jiadong Guo _(Person)_\n- **authored_by** → Juan C. Pérez _(Person)_\n- **authored_by** → Juan-Manuel Pérez-Rúa _(Person)_\n- **authored_by** → Junlin Han _(Person)_\n- **authored_by** → Kam Woh Ng _(Person)_\n- **authored_by** → Shikun Liu _(Person)_\n- **authored_by** → Tao Xiang _(Person)_\n- **authored_by** → Wonbong Jang _(Person)_\n- **authored_by** → Yiannis Douratsos _(Person)_\n- **authored_by** → Zijian Zhou _(Person)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses** → Pre-training _(TrainingParadigm)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-24 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-24 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 12\n- SourceDocument: 4\n- ResearchField: 1\n- TrainingParadigm: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-24/papers/2510.04236/paper.md",
+  "links": [],
+  "body": "# Scaling Sequence-to-Sequence Generative Neural Rendering\n\n## Outgoing relations\n\n- **authored_by** → Chi Phung _(Person)_\n- **authored_by** → Haozhe Liu _(Person)_\n- **authored_by** → Jiadong Guo _(Person)_\n- **authored_by** → Juan C. Pérez _(Person)_\n- **authored_by** → Juan-Manuel Pérez-Rúa _(Person)_\n- **authored_by** → Junlin Han _(Person)_\n- **authored_by** → Kam Woh Ng _(Person)_\n- **authored_by** → Shikun Liu _(Person)_\n- **authored_by** → Tao Xiang _(Person)_\n- **authored_by** → Wonbong Jang _(Person)_\n- **authored_by** → Yiannis Douratsos _(Person)_\n- **authored_by** → Zijian Zhou _(Person)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses** → Pre-training _(TrainingParadigm)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-24 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-24 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 12\n- SourceDocument: 4\n- ResearchField: 1\n- TrainingParadigm: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2510.04236"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2510-04236:f58067d9af1a",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-24/papers/2510.04236/paper.md",
+    "title": "Scaling Sequence-to-Sequence Generative Neural Rendering"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "title": "Gaussian Splatting Reconstruction",
+  "kind": "topics",
+  "body_text": "# Gaussian Splatting Reconstruction\n\n## Outgoing relations\n\n- **uses** → Gaussian Splatting _(MethodologicalConcept)_\n\n## Incoming relations\n\n- **belongs_to_approach_family** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_\n- **belongs_to_approach_family** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_\n- **belongs_to_approach_family** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_\n- **belongs_to_approach_family** → Geometry-Grounded Gaussian Splatting _(Paper)_\n- **belongs_to_approach_family** → Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction _(Paper)_\n- **belongs_to_approach_family** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_\n- **belongs_to_approach_family** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 7\n- MethodologicalConcept: 1",
+  "source_path": "",
+  "links": [],
+  "body": "# Gaussian Splatting Reconstruction\n\n## Outgoing relations\n\n- **uses** → Gaussian Splatting _(MethodologicalConcept)_\n\n## Incoming relations\n\n- **belongs_to_approach_family** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_\n- **belongs_to_approach_family** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_\n- **belongs_to_approach_family** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_\n- **belongs_to_approach_family** → Geometry-Grounded Gaussian Splatting _(Paper)_\n- **belongs_to_approach_family** → Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction _(Paper)_\n- **belongs_to_approach_family** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_\n- **belongs_to_approach_family** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 7\n- MethodologicalConcept: 1",
+  "frontmatter": {
+    "kind": "topics",
+    "node_id": "ApproachFamily:gaussian-splatting-reconstruction:84097d3185ea",
+    "node_type": "ApproachFamily",
+    "source_path": "",
+    "title": "Gaussian Splatting Reconstruction"
+  }
+}

@@ -1,0 +1,57 @@
+anthropics_claude-code.md
+=========================
+
+# GitHub 분석: anthropics/claude-code
+
+> - URL: https://github.com/anthropics/claude-code
+> - 분석일: 2026-04-13
+
+## 개요
+
+- **설명**: Claude Code is an agentic coding tool that lives in your terminal, understands your codebase, and helps you code faster by executing routine tasks, explaining complex code, and handling git workflows - all through natural language commands.
+- **Stars**: ⭐ 112986 | Forks: 18893
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (6개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+CHANGELOG.md
+.claude-plugin/marketplace.json
+demo.gif
+.devcontainer/devcontainer.json
+.devcontainer/Dockerfile
+.devcontainer/init-firewall.sh
+.gitattributes
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE.md
+plugins/README.md
+README.md
+Script/run_devcontainer_claude_code.ps1
+scripts/auto-close-duplicates.ts
+scripts/backfill-duplicate-comments.ts
+scripts/comment-on-duplicates.sh
+scripts/edit-issue-labels.sh
+scripts/gh.sh
+scripts/issue-lifecycle.ts
+scripts/lifecycle-comment.ts
+scripts/sweep.ts
+SECURITY.md
+.vscode/extensions.json
+```

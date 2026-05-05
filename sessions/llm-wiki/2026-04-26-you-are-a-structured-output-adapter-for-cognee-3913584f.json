@@ -1,0 +1,52 @@
+{
+  "title": "You are a structured-output adapter for Cognee.",
+  "kind": "session",
+  "body_text": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_codex_full_bundle/edges.jsonl I’m reading `output/cognee_codex_full_bundle/edges.jsonl` to extract the subject and produce the requested structured summary. The file is a graph edge dump rather than prose. I’m sampling the relation and node patterns to identify the dominant subject before compressing it into the required summary fields. {\"summary\":\"A knowledge-graph edge file mapping AI",
+  "source_path": "/Users/neo/.codex_old/sessions/2026/04/27/rollout-2026-04-27T00-23-20-019dca63-5391-7513-b002-63436f12ad23.jsonl",
+  "links": [],
+  "body": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_codex_full_bundle/edges.jsonl I’m reading `output/cognee_codex_full_bundle/edges.jsonl` to extract the subject and produce the requested structured summary. The file is a graph edge dump rather than prose. I’m sampling the relation and node patterns to identify the dominant subject before compressing it into the required summary fields. {\"summary\":\"A knowledge-graph edge file mapping AI",
+  "frontmatter": {
+    "id": "codex:019dca63-5391-7513-b002-63436f12ad23",
+    "slug": "you-are-a-structured-output-adapter-for-cognee",
+    "harness": "codex",
+    "agent_label": "Codex",
+    "project_name": "LLM-Wiki",
+    "project_root": "/Users/neo/Developer/Projects/LLM-Wiki",
+    "started_at": "2026-04-26T15:23:22.836Z",
+    "ended_at": "2026-04-26T15:23:42.606Z",
+    "branch": "",
+    "commit_before": "",
+    "commit_after": "",
+    "model": "openai",
+    "title": "You are a structured-output adapter for Cognee.",
+    "summary": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_codex_full_bundle/edges.jsonl I’m reading `output/cognee_codex_full_bundle/edges.jsonl` to extract the subject and produce the requested structured summary. The file is a graph edge dump rather than prose. I’m sampling the relation and node patterns to identify the dominant subject before compressing it into the required summary fields. {\"summary\":\"A knowledge-graph edge file mapping AI",
+    "message_count": 5,
+    "tool_call_count": 1,
+    "token_input": 0,
+    "token_output": 0,
+    "token_total": 0,
+    "cache_hit_ratio": null,
+    "tools_used": [
+      "exec_command"
+    ],
+    "files_touched": [
+      "docs/SKILL.md"
+    ],
+    "commands_run": [
+      "wc -l output/cognee_codex_full_bundle/edges.jsonl",
+      "sed -n '1,120p' output/cognee_codex_full_bundle/edges.jsonl",
+      "rg -o '\"relationship\": \"[^\"]+\"' output/cognee_codex_full_bundle/edges.jsonl | sort | uniq -c | sort -nr | sed -n '1,40p'",
+      "rg -o 'ResearchTopic:[^:\"]+|ResearchField:[^:\"]+|MethodologicalConcept:[^:\"]+' output/cognee_codex_full_bundle/edges.jsonl | sort | uniq -c | sort -nr | sed -n '1,60p'"
+    ],
+    "decisions": [],
+    "errors": [],
+    "raw_transcript_path": "/Users/neo/.codex_old/sessions/2026/04/27/rollout-2026-04-27T00-23-20-019dca63-5391-7513-b002-63436f12ad23.jsonl",
+    "redacted_preview": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_codex_full_bundle/edges.jsonl I’m reading `output/cognee_codex_full_bundle/edges.jsonl` to extract the subject and produce the requested structured summary. The file is a graph edge dump rather than prose. I’m sampling the relation and node patterns to identify the dominant subject before compressing it into the required summary fields. {\"summary\":\"A knowledge-graph edge file mapping AI",
+    "metadata": {
+      "config_root": "/Users/neo/.codex_old",
+      "transcript": "/Users/neo/.codex_old/sessions/2026/04/27/rollout-2026-04-27T00-23-20-019dca63-5391-7513-b002-63436f12ad23.jsonl"
+    },
+    "date": "2026-04-26",
+    "href": "sessions/llm-wiki/2026-04-26-you-are-a-structured-output-adapter-for-cognee-3913584f.html"
+  }
+}

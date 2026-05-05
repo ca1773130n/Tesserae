@@ -1,0 +1,15 @@
+Mip-NeRF360
+===========
+
+# Mip-NeRF360
+
+## Incoming relations
+
+- **evaluated_on** → Codex extraction review (2026-05-01) _(SourceDocument)_
+- **evaluated_on** → Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction _(Paper)_
+- **evaluated_on** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+
+## Connected node types
+
+- SourceDocument: 2
+- Paper: 1

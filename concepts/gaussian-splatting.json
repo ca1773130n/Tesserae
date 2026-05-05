@@ -1,0 +1,20 @@
+{
+  "title": "Gaussian Splatting",
+  "kind": "concepts",
+  "body_text": "# Gaussian Splatting\n\n## Incoming relations\n\n- **uses** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_\n- **uses** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_\n- **uses** → Gaussian Splatting Reconstruction _(ApproachFamily)_\n- **uses** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_\n- **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_\n- **uses** → Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction _(Paper)_\n- **uses** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_\n- **uses** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 7\n- ApproachFamily: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/papers/2603.22572/paper.md",
+  "links": [],
+  "body": "# Gaussian Splatting\n\n## Incoming relations\n\n- **uses** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_\n- **uses** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_\n- **uses** → Gaussian Splatting Reconstruction _(ApproachFamily)_\n- **uses** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_\n- **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_\n- **uses** → Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction _(Paper)_\n- **uses** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_\n- **uses** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 7\n- ApproachFamily: 1",
+  "frontmatter": {
+    "aliases": [
+      "3D Gaussian Splatting",
+      "3DGS",
+      "Gaussian splatting"
+    ],
+    "kind": "concepts",
+    "node_id": "MethodologicalConcept:gaussian-splatting:4f4b246c6522",
+    "node_type": "MethodologicalConcept",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/papers/2603.22572/paper.md",
+    "title": "Gaussian Splatting"
+  }
+}

@@ -1,0 +1,14 @@
+World Model
+===========
+
+# World Model
+
+## Incoming relations
+
+- **addresses** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_
+- **addresses** → Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas _(Paper)_
+- **addresses** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+
+## Connected node types
+
+- Paper: 3

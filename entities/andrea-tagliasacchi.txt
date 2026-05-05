@@ -1,0 +1,15 @@
+Andrea Tagliasacchi
+===================
+
+# Andrea Tagliasacchi
+
+## Incoming relations
+
+- **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- **authored_by** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_
+- **authored_by** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
+- **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_
+
+## Connected node types
+
+- Paper: 4

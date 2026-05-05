@@ -1,0 +1,31 @@
+{
+  "title": "2026-04-08",
+  "kind": "timeline_day",
+  "body_text": "Activity for 2026-04-08: 90 item(s) indexed.",
+  "source_path": "",
+  "links": [],
+  "body": "Activity for 2026-04-08",
+  "frontmatter": {
+    "date": "2026-04-08",
+    "activity": 90,
+    "sources": [
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/digest.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2406.01900/paper.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2406.01900/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2411.18650/paper.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2411.18650/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2510.08166/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2510.12174/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2603.22572/paper.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2604.03377/paper.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2604.04874/paper.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2604.04874/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/raw.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/repos/ClaudiaCuttano_SANSA.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/repos/Lab-of-AI-and-Robotics_LEGO-SLAM.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/repos/inspatio_inspatio-world.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/repos/safishamsi_graphify.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/repos/visinf_INSID3.md"
+    ]
+  }
+}

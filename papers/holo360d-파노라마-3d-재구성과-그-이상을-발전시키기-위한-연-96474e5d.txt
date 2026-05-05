@@ -1,0 +1,39 @@
+Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋
+==============================================================
+
+# Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋
+
+## Outgoing relations
+
+- **addresses** → Visual SLAM _(ResearchTopic)_
+- **authored_by** → Hui Xiong _(Person)_
+- **authored_by** → Jing Ou _(Person)_
+- **authored_by** → Jinjing Zhu _(Person)_
+- **authored_by** → Shuai Zhang _(Person)_
+- **authored_by** → Tongyan Hua _(Person)_
+- **authored_by** → Wufan Zhao _(Person)_
+- **authored_by** → Yinrui Ren _(Person)_
+- **authored_by** → Zhuoxiao Li _(Person)_
+- **authored_by** → Zidong Cao _(Person)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- **uses** → Depth Map _(TechnicalTerm)_
+- **uses** → Fine-tuning _(TrainingParadigm)_
+- **uses** → Point Cloud _(TechnicalTerm)_
+- **uses_metric** → mAP _(Metric)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-28 _(SourceDocument)_
+- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-28 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 9
+- SourceDocument: 4
+- TechnicalTerm: 2
+- Metric: 1
+- ResearchField: 1
+- ResearchTopic: 1
+- TrainingParadigm: 1

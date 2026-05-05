@@ -1,0 +1,13 @@
+Jakob Engel
+===========
+
+# Jakob Engel
+
+## Incoming relations
+
+- **authored_by** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_
+- **authored_by** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_
+
+## Connected node types
+
+- Paper: 2

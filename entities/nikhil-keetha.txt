@@ -1,0 +1,12 @@
+Nikhil Keetha
+=============
+
+# Nikhil Keetha
+
+## Incoming relations
+
+- **authored_by** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
+
+## Connected node types
+
+- Paper: 1

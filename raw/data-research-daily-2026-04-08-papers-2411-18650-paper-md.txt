@@ -1,0 +1,84 @@
+paper.md
+========
+
+# 논문 분석: 2411.18650
+
+> - arxiv: https://arxiv.org/abs/2411.18650
+> - papers.cool: https://papers.cool/arxiv/2411.18650
+> - 분석일: 2026-04-08
+
+# RoMo: Robust Motion Segmentation Improves Structure from Motion | Cool Papers - Immersive Paper Discovery
+
+## 2411.18650
+
+총계: 1
+
+## #1
+
+# RoMo: Robust Motion Segmentation Improves Structure from Motion
+
+[PDF2]  
+[Copy]  
+[Kimi3]  
+[REL]
+
+저자:  
+Lily Goli,  
+Sara Sabour,  
+Mark Matthews,  
+Marcus Brubaker,  
+Dmitry Lagun,  
+Alec Jacobson,  
+David J. Fleet,  
+Saurabh Saxena,  
+Andrea Tagliasacchi
+
+단안으로 일상적으로 촬영된 비디오로부터 4D 장면을 재구성하고 생성하는 분야는 큰 진전을 이루어 왔다. 이러한 작업은 알려진 카메라 포즈에 크게 의존하지만, Structure-from-Motion, SfM을 사용해 이러한 포즈를 찾는 문제는 종종 비디오에서 정적인 부분과 동적인 부분을 견고하게 분리하는 데 달려 있다. 이 문제에 대한 견고한 해결책의 부재는 SfM 카메라 보정 파이프라인의 성능을 제한한다. 우리는 고정된 세계 좌표계를 기준으로 움직이는 장면 구성 요소를 식별하기 위한 새로운 비디오 기반 motion segmentation 접근법을 제안한다. 단순하지만 효과적인 우리의 반복적 방법인 RoMo는 optical flow와 epipolar 단서를 사전 학습된 비디오 segmentation 모델과 결합한다. 이 방법은 motion segmentation에서 비지도 기준선뿐 아니라 합성 데이터로 학습된 지도 기준선도 능가한다. 더 중요한 점은, 기성 SfM 파이프라인과 우리의 segmentation mask를 결합함으로써 동적 콘텐츠가 있는 장면의 카메라 보정에서 새로운 state-of-the-art를 확립하며, 기존 방법들을 큰 폭으로 능가한다는 것이다.
+
+주제:  
+Computer Vision and Pattern Recognition
+
+게시: 2024-11-27 01:09:56 UTC
+
+---
+
+Designed by kexue.fm | Powered by kimi.ai
+
+포함 OR:
+
+제외:
+
+검색
+
+필터
+
+강조 표시
+
+별표한 논문:
+
+#1  
+RoMo: Robust Motion Segmentation Improves Structure from Motion
+
+내보내기
+
+Magic Token:
+
+Kimi 언어:
+
+- 中文
+- English
+
+설명 언어:
+
+- 中文
+- English
+
+저장
+
+버그 신고 또는 이슈 제출은 아래를 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+진행하기 전에 Disclaimer를 읽어 주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문해 확인할 수 있습니다.

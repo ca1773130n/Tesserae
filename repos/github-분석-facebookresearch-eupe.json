@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: facebookresearch/EUPE",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: facebookresearch/EUPE\n\n## Outgoing relations\n\n- **released_by** → facebookresearch _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Efficient Universal Perception Encoder _(Paper)_\n- **implemented_in** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_\n\n## Connected node types\n\n- Paper: 2\n- Organization: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/papers/2603.22387/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: facebookresearch/EUPE\n\n## Outgoing relations\n\n- **released_by** → facebookresearch _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Efficient Universal Perception Encoder _(Paper)_\n- **implemented_in** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_\n\n## Connected node types\n\n- Paper: 2\n- Organization: 1",
+  "frontmatter": {
+    "aliases": [
+      "facebookresearch/eupe",
+      "https://github.com/facebookresearch/EUPE"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-facebookresearch-eupe:11ec62f63acf",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/papers/2603.22387/repo.md",
+    "title": "GitHub 분석: facebookresearch/EUPE"
+  }
+}

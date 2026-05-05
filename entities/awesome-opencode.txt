@@ -1,0 +1,12 @@
+awesome-opencode
+================
+
+# awesome-opencode
+
+## Incoming relations
+
+- **released_by** → GitHub 분석: awesome-opencode/awesome-opencode _(Repository)_
+
+## Connected node types
+
+- Repository: 1

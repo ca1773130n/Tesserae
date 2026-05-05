@@ -1,0 +1,17 @@
+📊 주간 리서치 다이제스트 — 2026-W17
+=========================
+
+# 📊 주간 리서치 다이제스트 — 2026-W17
+
+## Outgoing relations
+
+- **mentioned_in** → All elementary functions from a single binary operator _(Paper)_
+- **mentioned_in** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
+- **mentioned_in** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+- **uses_metric** → mAP _(Metric)_
+
+## Connected node types
+
+- Paper: 4
+- Metric: 1

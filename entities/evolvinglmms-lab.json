@@ -1,0 +1,15 @@
+{
+  "title": "evolvinglmms-lab",
+  "kind": "entities",
+  "body_text": "# evolvinglmms-lab\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: EvolvingLMMs-Lab/SimpleStream _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/repos/EvolvingLMMs-Lab_SimpleStream.md",
+  "links": [],
+  "body": "# evolvinglmms-lab\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: EvolvingLMMs-Lab/SimpleStream _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:evolvinglmms-lab:58e52fa4e4e8",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/repos/EvolvingLMMs-Lab_SimpleStream.md",
+    "title": "evolvinglmms-lab"
+  }
+}

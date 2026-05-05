@@ -1,0 +1,14 @@
+Daily Feed Summary — 2026-04-26
+===============================
+
+# Daily Feed Summary — 2026-04-26
+
+## Outgoing relations
+
+- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- **mentioned_in** → Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras _(Paper)_
+- **mentioned_in** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_
+
+## Connected node types
+
+- Paper: 3

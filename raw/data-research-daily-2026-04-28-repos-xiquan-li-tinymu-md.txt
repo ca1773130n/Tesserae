@@ -1,0 +1,48 @@
+xiquan-li_TinyMU.md
+===================
+
+# GitHub 분석: xiquan-li/TinyMU
+
+> - URL: https://github.com/xiquan-li/TinyMU
+> - 분석일: 2026-04-28
+
+## 개요
+
+- **설명**: [ICASSP 2026] TinyMU: A Compact Audio Language Model for Music Understanding
+- **Stars**: ⭐ 29 | Forks: 1
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (12개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+demo.py
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+README.md
+requirements.txt
+resource/example1.wav
+resource/Logo.png
+resource/MusicSkills-3.5M-stats.png
+scripts/infer.sh
+scripts/train_tinymu.sh
+src/inference.py
+src/__init__.py
+src/train_accelerate.py
+src/utils.py
+```

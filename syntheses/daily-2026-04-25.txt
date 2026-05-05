@@ -1,0 +1,31 @@
+Daily Digest — 2026-04-25
+=========================
+
+# Daily Digest — 2026-04-25
+
+Sources ingested under `data/research/daily/2026-04-25/`.
+
+## Papers and repos
+- [Confidence-Based Mesh Extraction from 3D Gaussians (arXiv:2603.24725)](../papers/confidence-based-mesh-extraction-from-3d-gaussians.md) (Paper)
+- [GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow (arXiv:2604.15612)](../papers/gaussianflow-slam-monocular-gaussian-splatting-slam-guided-by-gaussianflow.md) (Paper)
+- [Image Generators are Generalist Vision Learners (arXiv:2604.20329)](../papers/image-generators-are-generalist-vision-learners.md) (Paper)
+- [Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction (arXiv:2604.15941)](../papers/neural-gabor-splatting-enhanced-gaussian-splatting-with-neural-gabor-for-high-fr-847471cb.md) (Paper)
+- [TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting (arXiv:2604.00538)](../papers/trigs-temporal-rigid-body-motion-for-scalable-4d-gaussian-splatting.md) (Paper)
+- [Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation (arXiv:2507.11540)](../papers/towards-depth-foundation-model-recent-trends-in-vision-based-depth-estimation.md) (Paper)
+- [Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 (arXiv:2512.03040)](../papers/video4spatial-context-guided-video-generation을-통한-시각-공간-지능을-향하여.md) (Paper)
+- [GitHub 분석: Eyeline-Labs/Vista4D](../repos/github-분석-eyeline-labs-vista4d.md) (Repository)
+- [GitHub 분석: NVIDIA/ncore](../repos/github-분석-nvidia-ncore.md) (Repository)
+- [GitHub 분석: google-research/vision-banana](../repos/github-분석-google-research-vision-banana.md) (Repository)
+- [GitHub 분석: m-schuetz/CuRast](../repos/github-분석-m-schuetz-curast.md) (Repository)
+- [GitHub 분석: nvidia/asset-harvester](../repos/github-분석-nvidia-asset-harvester.md) (Repository)
+- [GitHub 분석: zju3dv/Scal3R](../repos/github-분석-zju3dv-scal3r.md) (Repository)
+- [Daily Feed Summary — 2026-04-25](../sources/daily-feed-summary-2026-04-25.md) (SourceDocument)
+- [Daily Research Digest — 2026-04-25](../sources/daily-research-digest-2026-04-25.md) (SourceDocument)
+- [📬 Daily Research Digest — 2026-04-25](../sources/daily-research-digest-2026-04-25.md) (SourceDocument)
+
+## Extracted concepts
+- Gaussian Splatting (MethodologicalConcept)
+- GaussianFlow SLAM (Algorithm)
+- Pretraining (TrainingParadigm)
+- 4D Gaussian Splatting (MethodologicalConcept)
+- Video Diffusion (MethodologicalConcept)

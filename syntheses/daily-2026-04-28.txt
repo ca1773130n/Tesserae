@@ -1,0 +1,18 @@
+Daily Digest — 2026-04-28
+=========================
+
+# Daily Digest — 2026-04-28
+
+Sources ingested under `data/research/daily/2026-04-28/`.
+
+## Papers and repos
+- [Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 (arXiv:2604.22482)](../papers/holo360d-파노라마-3d-재구성과-그-이상을-발전시키기-위한-연-96474e5d.md) (Paper)
+- [GitHub 분석: SkyworkAI/Matrix-3D](../repos/github-분석-skyworkai-matrix-3d.md) (Repository)
+- [GitHub 분석: xiquan-li/TinyMU](../repos/github-분석-xiquan-li-tinymu.md) (Repository)
+- [Daily Feed Summary — 2026-04-28](../sources/daily-feed-summary-2026-04-28.md) (SourceDocument)
+- [📬 Daily Research Digest — 2026-04-28](../sources/daily-research-digest-2026-04-28.md) (SourceDocument)
+
+## Extracted concepts
+- Depth Map (TechnicalTerm)
+- Point Cloud (TechnicalTerm)
+- Fine-tuning (TrainingParadigm)

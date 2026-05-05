@@ -1,0 +1,17 @@
+Daily Digest — 2026-05-05
+=========================
+
+# Daily Digest — 2026-05-05
+
+Sources ingested under `data/research/daily/2026-05-05/`.
+
+## Papers and repos
+- [Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset (arXiv:2512.13238)](../papers/ego-extra-expert-trainee-지원을-위한-video-language-egocentric-dataset.md) (Paper)
+- [Extreme Rotation Estimation in the Wild (arXiv:2411.07096)](../papers/extreme-rotation-estimation-in-the-wild.md) (Paper)
+- [Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas (arXiv:2603.28980)](../papers/stepper-stepwise-immersive-scene-generation-with-multiview-panoramas.md) (Paper)
+- [GitHub 분석: facebookresearch/AINA](../repos/github-분석-facebookresearch-aina.md) (Repository)
+- [Daily Feed Summary — 2026-05-05](../sources/daily-feed-summary-2026-05-05.md) (SourceDocument)
+- [📬 Daily Research Digest — 2026-05-05](../sources/daily-research-digest-2026-05-05.md) (SourceDocument)
+
+## Extracted concepts
+- (none extracted)

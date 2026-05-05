@@ -1,0 +1,40 @@
+Confidence-Based Mesh Extraction from 3D Gaussians
+==================================================
+
+# Confidence-Based Mesh Extraction from 3D Gaussians
+
+## Outgoing relations
+
+- **authored_by** → Andreas Kurz _(Person)_
+- **authored_by** → Felix Windisch _(Person)_
+- **authored_by** → Lukas Radl _(Person)_
+- **authored_by** → Markus Steinberger _(Person)_
+- **authored_by** → Michael Steiner _(Person)_
+- **authored_by** → Thomas Köhler _(Person)_
+- **belongs_to_approach_family** → Gaussian Splatting Reconstruction _(ApproachFamily)_
+- **implemented_in** → GitHub 분석: m-schuetz/CuRast _(Repository)_
+- **implemented_in** → GitHub 분석: r4dl/CoMe _(Repository)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- **uses** → Gaussian Splatting _(MethodologicalConcept)_
+- **uses_metric** → SSIM _(Metric)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-25 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-05-01 _(SourceDocument)_
+- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-25 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-05-01 _(SourceDocument)_
+
+## Connected node types
+
+- SourceDocument: 8
+- Person: 6
+- Repository: 2
+- ApproachFamily: 1
+- MethodologicalConcept: 1
+- Metric: 1
+- ResearchField: 1

@@ -1,0 +1,69 @@
+repo.md
+=======
+
+# GitHub 분석: eth-ait/Gaussian-Garments
+
+> - URL: https://github.com/eth-ait/Gaussian-Garments
+> - 분석일: 2026-04-14
+
+## 개요
+
+- **설명**: Code for paper \
+- **Stars**: ⭐ 164 | Forks: 8
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (47개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+arguments/__init__.py
+DataPreparation.md
+gaussian_renderer/__init__.py
+gaussian_renderer/network_gui.py
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+inference.py
+lbs.py
+README.md
+requirements.txt
+s1_initialisation.py
+s2_registration.py
+s3_appearance.py
+scene/appearance.py
+scene/avatar_gaussian_model.py
+scene/avatar_net.py
+scene/cameras.py
+scene/colmap_loader.py
+scene/cross_scene.py
+scene/dataloader.py
+scene/dataset_readers.py
+scene/gaussian_model.py
+scene/__init__.py
+scene/mesh_gaussian_model.py
+scene/mesh_model.py
+scene/scene.py
+setup.sh
+utils/camera_utils.py
+utils/defaults.py
+utils/general_utils.py
+utils/geometry_utils.py
+utils/graphics_utils.py
+utils/initialisation_utils.py
+utils/__init__.py
+utils/io_utils.py
+```

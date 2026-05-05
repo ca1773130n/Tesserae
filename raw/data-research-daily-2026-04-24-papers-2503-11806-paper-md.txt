@@ -1,0 +1,118 @@
+paper.md
+========
+
+# 논문 분석: 2503.11806
+
+> - arxiv: https://arxiv.org/abs/2503.11806
+> - papers.cool: https://papers.cool/arxiv/2503.11806
+> - 분석일: 2026-04-24
+
+Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling | Cool Papers - 몰입형 논문 탐색
+
+## 2503.11806
+
+총계: 1
+
+## 
+#1
+
+Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling  
+[PDF]  
+[Copy]  
+[Kimi]  
+[REL]
+
+저자:  
+Christopher Xie,  
+Armen Avetisyan,  
+Henry Howard-Jenkins,  
+Yawar Siddiqui,  
+Julian Straub,  
+Richard Newcombe,  
+Vasileios Balntas,  
+Jakob Engel
+
+우리는 자기중심적 관점에서의 인간 피드백을 사용하는, 3D 장면 레이아웃 추정을 위한 새로운 human-in-the-loop 접근법을 제시한다. 우리는 사용자가 국소적 오류를 식별하고, 모델이 이를 자동으로 수정하도록 요청하는 새로운 국소 수정 과제를 도입함으로써 이 접근법을 연구한다. 구조화된 언어를 활용하는 3D 장면 레이아웃 추정의 최신 프레임워크인 SceneScript를 기반으로, 우리는 이 문제를 자연어 처리에서 연구되어 온 과제인 infilling으로 구조화하는 해법을 제안한다. 우리는 전역 예측 성능을 유지하면서도 국소 수정 능력을 크게 향상시키는 다중 과업 버전의 SceneScript를 학습시킨다. 이를 human-in-the-loop 시스템에 통합하여, 사용자가 마찰이 적은 원클릭 수정 워크플로를 통해 장면 레이아웃 추정을 반복적으로 정제할 수 있도록 한다. 우리의 시스템은 최종적으로 정제된 레이아웃이 학습 분포에서 벗어날 수 있게 하여, 복잡한 레이아웃을 더 정확하게 모델링할 수 있도록 한다.
+
+주제:  
+Computer Vision and Pattern Recognition
+
+게시일: 2025-03-14 18:45:19 UTC
+
+kexue.fm이 설계 | kimi.ai 기반 제공
+
+포함 OR:
+
+제외:
+
+검색
+
+필터
+
+강조 표시
+
+표시한 논문:
+
+#1  
+Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling
+
+내보내기
+
+Magic Token:
+
+Kimi 언어:
+
+中文  
+English
+
+설명 언어:
+
+中文  
+English
+
+저장
+
+버그 제보? 이슈 제출? 다음을 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+진행하기 전에 Disclaimer를 읽어 주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문하세요.
+
+```javascript
+var macros = {
+    'argmin': '\\mathop{\\text{argmin}}',
+    'argmax': '\\mathop{\\text{argmax}}'
+};
+MathJax.Hub.Config({
+    tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']], processEscapes: true},
+    TeX: {equationNumbers: {autoNumber: ['AMS'], useLabelIds: true}, extensions: ['AMSmath.js', 'AMSsymbols.js', 'extpfeil.js'], Macros: macros},
+    'HTML-CSS': {noReflows: false, availableFonts: ['tex'], styles: {'.MathJax_Display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}},
+    'CommonHTML': {noReflows: false, availableFonts: ['tex'], styles: {'.MJXc-display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}},
+    'SVG': {styles: {'.MathJax_SVG_Display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}}
+});
+MathJax.Hub.Queue(function() {
+    document.querySelectorAll('.MathJax').forEach(element => element.classList.add('notranslate'));
+    document.querySelectorAll('a.title-link, p.summary').forEach(element => element.classList.remove('notranslate'));
+    highlightQuery();
+});
+```
+
+```javascript
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement('script');
+  hm.src = 'https://hm.baidu.com/hm.js?606b976365dabacb1f69823d8de064ee';
+  var s = document.getElementsByTagName('script')[0];
+  s.parentNode.insertBefore(hm, s);
+})();
+```
+
+```javascript
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+
+gtag('config', 'G-214H31WLDF');
+```

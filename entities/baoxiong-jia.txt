@@ -1,0 +1,13 @@
+Baoxiong Jia
+============
+
+# Baoxiong Jia
+
+## Incoming relations
+
+- **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_
+- **authored_by** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_
+
+## Connected node types
+
+- Paper: 2

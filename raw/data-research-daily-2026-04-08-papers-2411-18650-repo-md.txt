@@ -1,0 +1,69 @@
+repo.md
+=======
+
+# GitHub 분석: machinestein/Deep-Improvement-Supervision
+
+> - URL: https://github.com/machinestein/Deep-Improvement-Supervision
+> - 분석일: 2026-04-08
+
+## 개요
+
+- **설명**: Official PyTorch implementation of \
+- **Stars**: ⭐ 12 | Forks: 0
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (31개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.gitignore
+config/cfg_pretrain_orig.yaml
+config/cfg_pretrain.yaml
+dataset/build_arc_dataset_one_shot.py
+dataset/build_arc_dataset_with_steps.py
+dataset/build_arc_dataset.py
+dataset/build_maze_dataset.py
+dataset/build_nqueens_dataset.py
+dataset/build_sudoku_dataset.py
+dataset/common.py
+evaluators/arc.py
+evaluators/nqueens.py
+models/common.py
+models/ema.py
+models/layers.py
+models/losses.py
+models/sparse_embedding.py
+paper/Deep_Improvement_Supervision_ARC.pdf
+paper/README.md
+pretrain.py
+puzzle_dataset_with_steps.py
+puzzle_dataset.py
+queens/nqueens_trm_package.tar.gz
+queens/NQUEENS_TRM_QUICKSTART.md
+queens/run_nqueens_trm.sh
+queens/test_nqueens_dataset.py
+queens/train_arc_tiny_corrupt_queens.py
+README.md
+requirements.txt
+steps_common.py
+train_arc_tiny_corrupt.py
+train_arc_tiny.py
+utils/check_arc_ids.py
+utils/check_ids.py
+```

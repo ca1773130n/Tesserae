@@ -1,0 +1,17 @@
+digest.md
+=========
+
+# Weekly Research Digest — 2026-W17
+
+This week clusters around two threads: generalist vision via image generation
+(Vision Banana) and 3D/4D reconstruction stacks closing the loop with
+diffusion priors (AnyRecon, Vista4D, JOSH).
+
+## Threads
+
+- Generative perception: image generators as a unified interface for
+  segmentation and metric depth.
+- 3D Gaussian Splatting reaching consumer capture pipelines.
+- 4D reconstruction conditioned on geometry-aware video diffusion.
+
+Linked papers: [arxiv](https://arxiv.org/abs/2604.20329).

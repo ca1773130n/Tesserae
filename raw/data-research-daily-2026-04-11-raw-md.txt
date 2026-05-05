@@ -1,0 +1,32 @@
+raw.md
+======
+
+# Daily Feed Summary — 2026-04-11
+
+Total: 23 relevant feeds (from 96)
+
+| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |
+|------|------|-------|-----|--------|-------|-----------|-------------|
+| 2026-04-11 | 14:20 | Our paper has been accepted as an oral at #CVPR2026 See you ...... | https://arxiv.org/pdf/2406.16204 | https://github.com/weitong8591/global_edge_prior | 16 | N/A | [분석](papers/2406.16204/repo.md) |
+| 2026-04-11 | 15:14 | Happy to share our #CVPR2026 Oral "Relightable Holoported Ch...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-11 | 03:11 | A controllable diffusion solution based on a 3-billion-param...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-11 | 08:11 | I am releasing the “MLSharp” app for macOS. MLSharp is a...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-11 | 16:16 | HOLY SHIT. AI just broke 3D design. Someone connected Claude...... | N/A | https://github.com/ahujasid/blender-mcp | 18637 | N/A | [분석](repos/ahujasid_blender-mcp.md) |
+| 2026-04-11 | 12:29 | ?The code, model and data of #Kinema4D have been open source...... | https://arxiv.org/pdf/2604.02317 | https://github.com/mutianxu/Kinema4D | 48 | N/A | [분석](papers/2604.02317/repo.md) |
+| 2026-04-11 | 12:07 | ? Someone just connected Claude directly to blender. you can...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-11 | 15:18 | Submit your method to the NeRSemble 3D Head Avatar benchmark...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-11 | 15:50 | "Selfi: Self Improving Reconstruction Engine via 3D Geometri...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-11 | 14:28 | ?Announcing NeRSemble 3D Head Avatar Benchmark v2 Version 2 ...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-11 | 12:52 | ? Excited to share that our paper, "??????: Material Latent ...... | https://arxiv.org/pdf/2403.14370 | https://github.com/KAIST-Visual-AI-Group/GrounDiT | 59 | N/A | [분석](papers/2403.14370/repo.md) |
+| 2026-04-11 | 12:12 | SimScale is selected as CVPR 2026 Oral ?? Code, simulation d...... | https://arxiv.org/pdf/2511.23369 | https://github.com/OpenDriveLab/SimScale | 199 | N/A | [분석](papers/2511.23369/repo.md) |
+| 2026-04-11 | 14:26 | ?FROM BLOBS TO SPOKES? We released paper and code for Gaussi...... | https://arxiv.org/pdf/2604.07337 | N/A | N/A | N/A | N/A |
+| 2026-04-11 | 05:00 | RT Pablo Vela: I've migrated the old Mast3r-SLAM example I h...... | https://arxiv.org/pdf/2603.24621 | https://github.com/GalaxyGeneralRobotics/LATENT | 582 | N/A | [분석](papers/2603.24621/repo.md) |
+| 2026-04-11 | 09:47 | Introducing 3D Gaussian Splatting to Mesh 3.0 by KIRI Engine...... | https://arxiv.org/pdf/2506.22433 | https://github.com/inspatio/inspatio-world | 744 | N/A | [분석](papers/2506.22433/repo.md) |
+| 2026-04-11 | 06:36 | Anthropic is secretly nerfing Opus 4.6 and hoping you won't ...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-11 | 02:07 | OPUS 4.6 WAS NERFED DUE TO DEMAND BUT OPUS 4.5 DOES NOT SEEM...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-11 | 05:00 | I've migrated the old Mast3r-SLAM example I had made last ye...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-11 | 03:58 | ??? MotionCrafter was selected as a CVPR 2026 Highlight? pap...... | https://arxiv.org/pdf/2602.08961 | https://github.com/TencentARC/MotionCrafter | 149 | N/A | [분석](papers/2602.08961/repo.md) |
+| 2026-04-11 | 01:22 | Converts meshes to 3D Gaussian Splatting https://github.com/...... | N/A | https://github.com/allenai/molmoact | 319 | N/A | [분석](repos/allenai_molmoact.md) |
+| 2026-04-11 | 20:37 | cough cough @theworldlabs... | N/A | https://github.com/lllyasviel/VCC | 266 | N/A | [분석](repos/lllyasviel_VCC.md) |
+| 2026-04-11 | 21:30 | Reconstructs 3D worlds from video diffusion models https://g...... | N/A | https://github.com/Anil-matcha/Open-Higgsfield-AI | 4138 | N/A | [분석](repos/Anil-matcha_Open-Higgsfield-AI.md) |
+| 2026-04-11 | 08:05 | Selected as a Highlight paper? @CVPR #CVPR2026... | https://arxiv.org/pdf/2512.07504 | N/A | N/A | N/A | N/A |

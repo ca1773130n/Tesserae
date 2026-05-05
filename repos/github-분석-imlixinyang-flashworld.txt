@@ -1,0 +1,12 @@
+GitHub 분석: imlixinyang/FlashWorld
+=================================
+
+# GitHub 분석: imlixinyang/FlashWorld
+
+## Incoming relations
+
+- **implemented_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+
+## Connected node types
+
+- Paper: 1

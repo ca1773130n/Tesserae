@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: imlixinyang/FlashWorld",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: imlixinyang/FlashWorld\n\n## Incoming relations\n\n- **implemented_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/papers/2602.09022/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: imlixinyang/FlashWorld\n\n## Incoming relations\n\n- **implemented_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/imlixinyang/FlashWorld",
+      "imlixinyang/flashworld"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-imlixinyang-flashworld:91fe95cd3eb5",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/papers/2602.09022/repo.md",
+    "title": "GitHub 분석: imlixinyang/FlashWorld"
+  }
+}

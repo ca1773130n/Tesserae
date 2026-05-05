@@ -1,0 +1,8 @@
+{
+  "title": "README.md",
+  "kind": "raw",
+  "body_text": "# Synthesis fixtures\n\nTiny corpus for `tests/test_synthesis.py`. The graph is built directly in the\ntest (no extractor pass), so this directory is intentionally minimal — kept as\na hook for future fixture expansion (e.g. a real markdown corpus the extractor\ningests). The README is checked in so the directory is tracked.",
+  "source_path": "tests/fixtures/synthesis/README.md",
+  "links": [],
+  "body": "# Synthesis fixtures\n\nTiny corpus for `tests/test_synthesis.py`. The graph is built directly in the\ntest (no extractor pass), so this directory is intentionally minimal — kept as\na hook for future fixture expansion (e.g. a real markdown corpus the extractor\ningests). The README is checked in so the directory is tracked.\n"
+}

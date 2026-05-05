@@ -1,0 +1,67 @@
+AmyangXYZ_reze-studio.md
+========================
+
+# GitHub 분석: AmyangXYZ/reze-studio
+
+> - URL: https://github.com/AmyangXYZ/reze-studio
+> - 분석일: 2026-05-04
+
+## 개요
+
+- **설명**: Web-based MMD animation curve editor
+- **Stars**: ⭐ 247 | Forks: 18
+- **라이선스**: GPL-3.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 체크포인트 미공개 (추론 불가 가능성)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (6개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+app/favicon.ico
+app/globals.css
+app/layout.tsx
+app/page.tsx
+.claude/settings.local.json
+components/axis-slider-row.tsx
+components/bone-list.tsx
+components/engine-bridge.tsx
+components/interpolation-curve-editor.tsx
+components.json
+components/material-list.tsx
+components/morph-list.tsx
+components/properties-inspector.tsx
+components/studio-status.tsx
+components/studio.tsx
+components/timeline.tsx
+context/playback-context.ts
+context/studio-context.ts
+eslint.config.mjs
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+lib/animation.ts
+lib/materials.ts
+lib/utils.ts
+LICENSE
+next.config.ts
+package.json
+package-lock.json
+postcss.config.mjs
+public/github-mark-white.svg
+README.md
+screenshot.png
+tsconfig.json
+```

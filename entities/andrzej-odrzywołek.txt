@@ -1,0 +1,12 @@
+Andrzej Odrzywołek
+==================
+
+# Andrzej Odrzywołek
+
+## Incoming relations
+
+- **authored_by** → All elementary functions from a single binary operator _(Paper)_
+
+## Connected node types
+
+- Paper: 1

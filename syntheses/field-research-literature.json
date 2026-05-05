@@ -1,0 +1,39 @@
+{
+  "title": "Field Overview — Research Literature",
+  "kind": "syntheses",
+  "body_text": "# Field Overview — Research Literature\n\nWorld Model (ResearchTopic) — 3 contributing paper(s) connect to this thread.\n\n## Representative concepts\n- Fine-tuning (TrainingParadigm)\n- Pretraining (TrainingParadigm)\n- Reinforcement Learning (TrainingParadigm)\n- Self-Supervised Learning (TrainingParadigm)\n- Supervised Learning (TrainingParadigm)",
+  "source_path": "",
+  "links": [],
+  "body": "# Field Overview — Research Literature\n\nWorld Model (ResearchTopic) — 3 contributing paper(s) connect to this thread.\n\n## Representative concepts\n- Fine-tuning (TrainingParadigm)\n- Pretraining (TrainingParadigm)\n- Reinforcement Learning (TrainingParadigm)\n- Self-Supervised Learning (TrainingParadigm)\n- Supervised Learning (TrainingParadigm)",
+  "frontmatter": {
+    "content_hash": "sha256-0d50d64d5bd26445f52f33051629b2a090f449df73e087db1a290d1f401849ca",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "ResearchField:research-literature:8be73da23ed0",
+      "ResearchTopic:world-model:df0bb7d75cb8",
+      "TrainingParadigm:fine-tuning:f617b4eb06c6",
+      "TrainingParadigm:pretraining:560929c8f562",
+      "TrainingParadigm:reinforcement-learning:f5b7c7b442da",
+      "TrainingParadigm:self-supervised-learning:47928f14fd91",
+      "TrainingParadigm:supervised-learning:a9d85c2238a1"
+    ],
+    "slug": "field-research-literature",
+    "sources": [
+      "data/research/daily/2026-04-06/papers/2304.12210/paper_ko.md",
+      "data/research/daily/2026-04-07/papers/2206.03674/paper.md",
+      "data/research/daily/2026-04-08/papers/2406.01900/paper.md",
+      "data/research/daily/2026-04-22/papers/2308.07123/paper.md",
+      "data/research/daily/2026-04-22/papers/2510.12724/paper.md",
+      "data/research/daily/2026-04-22/papers/2602.09022/paper.md",
+      "data/research/daily/2026-04-22/papers/2603.21852/paper.md",
+      "data/research/daily/2026-04-23/papers/2603.24621/paper.md",
+      "data/research/daily/2026-04-23/papers/2604.11251/paper.md",
+      "data/research/daily/2026-04-26/papers/2604.18744/paper.md",
+      "data/research/daily/2026-04-29/papers/2602.23843/paper.md",
+      "data/research/daily/2026-04-30/papers/2603.22387/paper.md",
+      "tests/fixtures/wiki_corpus/data/research/daily/2026-04-25/papers/2604.20329/paper.md"
+    ],
+    "synthesis_kind": "field_overview",
+    "title": "Field Overview — Research Literature"
+  }
+}

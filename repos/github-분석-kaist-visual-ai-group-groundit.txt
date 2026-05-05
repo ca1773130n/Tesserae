@@ -1,0 +1,12 @@
+GitHub 분석: KAIST-Visual-AI-Group/GrounDiT
+=========================================
+
+# GitHub 분석: KAIST-Visual-AI-Group/GrounDiT
+
+## Outgoing relations
+
+- **released_by** → kaist-visual-ai-group _(Organization)_
+
+## Connected node types
+
+- Organization: 1

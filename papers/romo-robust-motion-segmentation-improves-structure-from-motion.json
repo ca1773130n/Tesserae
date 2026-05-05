@@ -1,0 +1,18 @@
+{
+  "title": "RoMo: Robust Motion Segmentation Improves Structure from Motion",
+  "kind": "papers",
+  "body_text": "# RoMo: Robust Motion Segmentation Improves Structure from Motion\n\n## Outgoing relations\n\n- **authored_by** → Alec Jacobson _(Person)_\n- **authored_by** → Andrea Tagliasacchi _(Person)_\n- **authored_by** → David J. Fleet _(Person)_\n- **authored_by** → Dmitry Lagun _(Person)_\n- **authored_by** → Lily Goli _(Person)_\n- **authored_by** → Marcus Brubaker _(Person)_\n- **authored_by** → Mark Matthews _(Person)_\n- **authored_by** → Sara Sabour _(Person)_\n- **authored_by** → Saurabh Saxena _(Person)_\n- **implemented_in** → GitHub 분석: machinestein/Deep-Improvement-Supervision _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-06 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-08 _(SourceDocument)_\n- **mentioned_in** → 주간 논문 분석 — 2026-W15 (2026-04-06 ~ 2026-04-12) _(SourceDocument)_\n\n## Connected node types\n\n- Person: 9\n- SourceDocument: 3\n- Repository: 1\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2411.18650/paper.md",
+  "links": [],
+  "body": "# RoMo: Robust Motion Segmentation Improves Structure from Motion\n\n## Outgoing relations\n\n- **authored_by** → Alec Jacobson _(Person)_\n- **authored_by** → Andrea Tagliasacchi _(Person)_\n- **authored_by** → David J. Fleet _(Person)_\n- **authored_by** → Dmitry Lagun _(Person)_\n- **authored_by** → Lily Goli _(Person)_\n- **authored_by** → Marcus Brubaker _(Person)_\n- **authored_by** → Mark Matthews _(Person)_\n- **authored_by** → Sara Sabour _(Person)_\n- **authored_by** → Saurabh Saxena _(Person)_\n- **implemented_in** → GitHub 분석: machinestein/Deep-Improvement-Supervision _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-06 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-08 _(SourceDocument)_\n- **mentioned_in** → 주간 논문 분석 — 2026-W15 (2026-04-06 ~ 2026-04-12) _(SourceDocument)_\n\n## Connected node types\n\n- Person: 9\n- SourceDocument: 3\n- Repository: 1\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2411.18650"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2411-18650:e2cb0259f11f",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2411.18650/paper.md",
+    "title": "RoMo: Robust Motion Segmentation Improves Structure from Motion"
+  }
+}

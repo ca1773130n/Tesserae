@@ -1,0 +1,21 @@
+자기지도학습 요리책
+==========
+
+# 자기지도학습 요리책
+
+## Outgoing relations
+
+- **part_of** → Research Literature _(ResearchField)_
+- **uses** → Self-Supervised Learning _(TrainingParadigm)_
+- **uses** → Supervised Learning _(TrainingParadigm)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-06 _(SourceDocument)_
+- **mentioned_in** → 주간 논문 분석 — 2026-W15 (2026-04-06 ~ 2026-04-12) _(SourceDocument)_
+
+## Connected node types
+
+- SourceDocument: 2
+- TrainingParadigm: 2
+- ResearchField: 1

@@ -1,0 +1,15 @@
+{
+  "title": "Dotan Ankri",
+  "kind": "entities",
+  "body_text": "# Dotan Ankri\n\n## Incoming relations\n\n- **authored_by** → Extreme Rotation Estimation in the Wild _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-05/papers/2411.07096/paper.md",
+  "links": [],
+  "body": "# Dotan Ankri\n\n## Incoming relations\n\n- **authored_by** → Extreme Rotation Estimation in the Wild _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:dotan-ankri:c68b068ce9cd",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-05/papers/2411.07096/paper.md",
+    "title": "Dotan Ankri"
+  }
+}

@@ -1,0 +1,13 @@
+GitHub 분석: mfranzon/render
+==========================
+
+# GitHub 분석: mfranzon/render
+
+## Incoming relations
+
+- **implemented_in** → ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전 _(Paper)_
+- **implemented_in** → Learning in Deep Factor Graphs with Gaussian Belief Propagation _(Paper)_
+
+## Connected node types
+
+- Paper: 2

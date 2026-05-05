@@ -1,0 +1,42 @@
+GalaxyGeneralRobotics_LATENT.md
+===============================
+
+# GitHub 분석: GalaxyGeneralRobotics/LATENT
+
+> - URL: https://github.com/GalaxyGeneralRobotics/LATENT
+> - 분석일: 2026-04-10
+
+## 개요
+
+- **설명**: Official implementation of Learning Athletic Humanoid Tennis Skills from Imperfect Human Motion Data
+- **Stars**: ⭐ 582 | Forks: 33
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (19개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+latent_mj/constant.py
+latent_mj/__init__.py
+latent_mj/utils.py
+pyproject.toml
+README.md
+uv.lock
+```

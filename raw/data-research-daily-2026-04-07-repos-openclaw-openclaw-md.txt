@@ -1,0 +1,69 @@
+openclaw_openclaw.md
+====================
+
+# GitHub 분석: openclaw/openclaw
+
+> - URL: https://github.com/openclaw/openclaw
+> - 분석일: 2026-04-07
+
+## 개요
+
+- **설명**: Your own personal AI assistant. Any OS. Any Platform. The lobster way. 🦞 
+- **Stars**: ⭐ 349761 | Forks: 70159
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (5124개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | Y |
+
+## 파일 구조
+
+```
+.agents/maintainers.md
+.codex
+.detect-secrets.cfg
+.dockerignore
+.env.example
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.gitattributes
+.github/actionlint.yaml
+.github/CODEOWNERS
+.github/dependabot.yml
+.github/labeler.yml
+.github/pull_request_template.md
+.gitignore
+.jscpd.json
+.mailmap
+.markdownlint-cli2.jsonc
+.npmignore
+.npmrc
+.oxfmtrc.jsonc
+.oxlintrc.json
+.pre-commit-config.yaml
+.prettierignore
+.secrets.baseline
+.shellcheckrc
+.swiftformat
+.swiftlint.yml
+.vscode/extensions.json
+.vscode/settings.json
+AGENTS.md
+appcast.xml
+assets/avatar-placeholder.svg
+assets/dmg-background-small.png
+assets/dmg-background.png
+CHANGELOG.md
+CONTRIBUTING.md
+```

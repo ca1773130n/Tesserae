@@ -1,0 +1,15 @@
+{
+  "title": "Wenjie Luo",
+  "kind": "entities",
+  "body_text": "# Wenjie Luo\n\n## Incoming relations\n\n- **authored_by** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2506.12251/paper.md",
+  "links": [],
+  "body": "# Wenjie Luo\n\n## Incoming relations\n\n- **authored_by** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:wenjie-luo:cddf5baac333",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2506.12251/paper.md",
+    "title": "Wenjie Luo"
+  }
+}

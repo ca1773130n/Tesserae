@@ -1,0 +1,12 @@
+Irene D&#039;Ambra
+==================
+
+# Irene D&#039;Ambra
+
+## Incoming relations
+
+- **authored_by** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_
+
+## Connected node types
+
+- Paper: 1

@@ -1,0 +1,58 @@
+repo.md
+=======
+
+# GitHub 분석: FanJunqiao/M4Human
+
+> - URL: https://github.com/FanJunqiao/M4Human
+> - 분석일: 2026-04-22
+
+## 개요
+
+- **설명**: [CVPR 2026] Official Repo of M4Human: A Large-Scale Multimodal mmWave Radar Benchmark for Human Mesh Reconstruction
+- **Stars**: ⭐ 30 | Forks: 0
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (16개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+assets/method.jpg
+assets/teaser.png
+config.yaml
+dataset/data_loader_camera_calibration.py
+dataset/data_loader_Load_data.py
+dataset/data_loader_Plotting_projection.py
+dataset/dataset_config_clean.py
+dataset/lmdb_utils.py
+dataset/m4human_dataset.py
+dataset/m4human_utils.py
+demo.ipynb
+environment.yml
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+main1_multigpu_clean.py
+__pycache__/plot_loss.cpython-39.pyc
+__pycache__/plot_paper_func.cpython-39.pyc
+README.md
+sources/evaluation_module_pc_multigpu.py
+sources/Train_and_model_loss.py
+sources/Train_and_model_plotting_3D_mesh.py
+vis_depth/combined_output_depth_1.gif
+vis_depth/combined_output_depth_2.gif
+vis_depth/combined_output_depth_3.gif
+```

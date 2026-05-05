@@ -1,0 +1,28 @@
+raw.md
+======
+
+# Daily Feed Summary — 2026-04-13
+
+Total: 19 relevant feeds (from 67)
+
+| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |
+|------|------|-------|-----|--------|-------|-----------|-------------|
+| 2026-04-13 | 22:48 | SLNR A super lightweight neural representation for large-sca...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-13 | 18:33 | Thanks Andrei and nice working with you over the years ;)... | https://arxiv.org/pdf/2511.23369 | https://github.com/OpenDriveLab/SimScale | 211 | N/A | [분석](papers/2511.23369/repo.md) |
+| 2026-04-13 | 18:00 | update: enhanced 3d world generation just dropped in Telepor...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-13 | 16:36 | Learning about TAA on technical level, there's an amazing SI...... | N/A | https://github.com/TheRealMJP/MSAAFilter | 343 | N/A | [분석](repos/TheRealMJP_MSAAFilter.md) |
+| 2026-04-13 | 13:57 | How the fuck did MrNeRF beat MRNF? What the fuck is Mykonos?... | N/A | https://github.com/Kotohibi/3DGS_pipeline_guide | 100 | N/A | [분석](repos/Kotohibi_3DGS_pipeline_guide.md) |
+| 2026-04-13 | 13:32 | CLAUDE OPUS 4.6 IS NERFED. BridgeBench just proved it. Last ...... | N/A | https://github.com/anthropics/claude-code | 112986 | N/A | [분석](repos/anthropics_claude-code.md) |
+| 2026-04-13 | 18:56 | #WorldEngine is one of the most exciting projects in AD in t...... | N/A | https://github.com/OpenDriveLab/WorldEngine | 132 | N/A | [분석](repos/OpenDriveLab_WorldEngine.md) |
+| 2026-04-13 | 03:17 | Zhang et al., "SparseSplat: Towards Applicable Feed-Forward ...... | https://arxiv.org/pdf/2603.22572 | https://github.com/theialab/fullcircle | 88 | N/A | [분석](papers/2603.22572/repo.md) |
+| 2026-04-13 | 09:11 | An article about Real-Scale 3DGS using LiDAR SLAM with the l...... | N/A | https://github.com/colmap/colmap | 11415 | N/A | [분석](repos/colmap_colmap.md) |
+| 2026-04-13 | 06:30 | Beautiful rooms that no one can use ? SceneTeract asks the q...... | https://arxiv.org/pdf/2603.17995 | N/A | N/A | N/A | N/A |
+| 2026-04-13 | 12:48 | Excited to share our CVPR paper: Endless World: Real-Time 3D...... | https://arxiv.org/pdf/2509.06950 | https://github.com/World-In-World/world-in-world | 155 | N/A | [분석](papers/2509.06950/repo.md) |
+| 2026-04-13 | 02:34 | ? Making latent models 3D-material aware. Thrilled to introd...... | https://arxiv.org/pdf/2503.22194 | https://github.com/KAIST-Visual-AI-Group/MatLat | 7 | N/A | [분석](papers/2503.22194/repo.md) |
+| 2026-04-13 | 04:27 | Real? or AI-Generated? Two papers from our lab tackle this f...... | https://arxiv.org/pdf/2411.14517 | https://github.com/apple/ml-mobileclip | 1486 | N/A | [분석](papers/2411.14517/repo.md) |
+| 2026-04-13 | 10:51 | [1/5] Is Text Enough for Control? ? Text-driven video editin...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-13 | 08:55 | ? BREAKING: CLAUDE JUST GOT NERFED. AMD’s AI director just...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-13 | 10:57 | RT el.cine: this is insane… they just connected Claude to ...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-13 | 18:36 | CVPR 2026 highlight! ? In this work co-led with @YehezkelSha...... | https://arxiv.org/pdf/2510.21697 | N/A | N/A | N/A | N/A |
+| 2026-04-13 | 17:46 | Excited to share SA-FARI which will be presented as an oral ...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-13 | 23:09 | Assigning mechanical properties to 3D objects for physics si...... | N/A | https://github.com/NVIDIA/OpenShell | 4810 | N/A | [분석](repos/NVIDIA_OpenShell.md) |

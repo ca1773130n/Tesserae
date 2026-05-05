@@ -1,0 +1,12 @@
+GitHub 분석: zju3dv/Scal3R
+========================
+
+# GitHub 분석: zju3dv/Scal3R
+
+## Incoming relations
+
+- **implemented_in** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+
+## Connected node types
+
+- Paper: 1

@@ -1,0 +1,33 @@
+Field Overview — 3D/4D Vision and Reconstruction
+================================================
+
+# Field Overview — 3D/4D Vision and Reconstruction
+
+Dynamic Gaussian Splatting (ApproachFamily) — 1 contributing paper(s) connect to this thread.
+
+Gaussian Splatting Reconstruction (ApproachFamily) — 7 contributing paper(s) connect to this thread.
+
+Geometry-Grounded Gaussian Splatting (ApproachFamily) — 1 contributing paper(s) connect to this thread.
+
+Visual SLAM (ResearchTopic) — 2 contributing paper(s) connect to this thread.
+
+World Model (ResearchTopic) — 3 contributing paper(s) connect to this thread.
+
+## Representative concepts
+- GaussianFlow SLAM (Algorithm)
+- SDFRaster (Algorithm)
+- Multi-View Consistency (EvaluationProtocol)
+- Beam Search (InferenceStrategy)
+- Stochastic Solid (MathematicalConcept)
+- 4D Gaussian Splatting (MethodologicalConcept)
+- Gaussian Splatting (MethodologicalConcept)
+- Video Diffusion (MethodologicalConcept)
+- Volumetric Rendering (MethodologicalConcept)
+- Novel View Synthesis (Task)
+- Shape Reconstruction (Task)
+- Depth Map (TechnicalTerm)
+- Point Cloud (TechnicalTerm)
+- Fine-tuning (TrainingParadigm)
+- Pre-training (TrainingParadigm)
+- Pretraining (TrainingParadigm)
+- Reinforcement Learning (TrainingParadigm)

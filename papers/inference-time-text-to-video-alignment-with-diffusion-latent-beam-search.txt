@@ -1,0 +1,27 @@
+Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search
+========================================================================
+
+# Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search
+
+## Outgoing relations
+
+- **authored_by** → Hiroki Furuta _(Person)_
+- **authored_by** → Masahiro Suzuki _(Person)_
+- **authored_by** → Yuta Oshima _(Person)_
+- **authored_by** → Yutaka Matsuo _(Person)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- **uses** → Beam Search _(InferenceStrategy)_
+- **uses** → Video Diffusion _(MethodologicalConcept)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-05-04 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-05-04 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 4
+- SourceDocument: 2
+- InferenceStrategy: 1
+- MethodologicalConcept: 1
+- ResearchField: 1

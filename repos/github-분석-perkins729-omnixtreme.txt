@@ -1,0 +1,12 @@
+GitHub 분석: Perkins729/OmniXtreme
+================================
+
+# GitHub 분석: Perkins729/OmniXtreme
+
+## Incoming relations
+
+- **implemented_in** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_
+
+## Connected node types
+
+- Paper: 1

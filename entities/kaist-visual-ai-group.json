@@ -1,0 +1,15 @@
+{
+  "title": "kaist-visual-ai-group",
+  "kind": "entities",
+  "body_text": "# kaist-visual-ai-group\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: KAIST-Visual-AI-Group/GrounDiT _(Repository)_\n- **released_by** → GitHub 분석: KAIST-Visual-AI-Group/MatLat _(Repository)_\n\n## Connected node types\n\n- Repository: 2",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/papers/2403.14370/repo.md",
+  "links": [],
+  "body": "# kaist-visual-ai-group\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: KAIST-Visual-AI-Group/GrounDiT _(Repository)_\n- **released_by** → GitHub 분석: KAIST-Visual-AI-Group/MatLat _(Repository)_\n\n## Connected node types\n\n- Repository: 2",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:kaist-visual-ai-group:145d1f8c713c",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/papers/2403.14370/repo.md",
+    "title": "kaist-visual-ai-group"
+  }
+}

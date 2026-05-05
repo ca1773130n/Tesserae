@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Session: You are a structured-output adapter for Cognee. — LLM-Wiki</title>
+  <link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+
+<main id="main-content" class="page session-detail">
+  <p><a href="../index.html">← All sessions</a></p>
+  <script type="application/json" id="llmwiki-metadata">{&quot;date&quot;: &quot;2026-04-26&quot;, &quot;harness&quot;: &quot;codex&quot;, &quot;id&quot;: &quot;codex:019dca5d-43d3-7ae0-b230-3a869c3245a8&quot;, &quot;kind&quot;: &quot;session&quot;, &quot;model&quot;: &quot;openai&quot;, &quot;project&quot;: &quot;LLM-Wiki&quot;}</script>
+  <section class="panel">
+    <p class="eyebrow">Codex · 2026-04-26 · unknown branch</p>
+    <h1>You are a structured-output adapter for Cognee.</h1>
+    <p class="lead">You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for KnowledgeGraph: { &quot;$defs&quot;: { &quot;Edge&quot;: { &quot;description&quot;: &quot;Edge in a knowledge graph.&quot;, &quot;properties&quot;: { &quot;source_node_id&quot;: { &quot;title&quot;: &quot;Source Node Id&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;target_node_id&quot;: { &quot;title&quot;: &quot;Target Node Id&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;relationship_name&quot;: { &quot;title&quot;: &quot;Relationship Name&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;properties&quot;: { &quot;anyOf&quot;: [ { &quot;type&quot;: &quot;object&quot; }, { &quot;type&quot;: &quot;null&quot; } ], &quot;default&quot;: null, &quot;description&quot;: &quot;A dictionary of properties associated with the edge.&quot;, &quot;title&quot;: &quot;Properties&quot; } }, &quot;required&quot;: [ &quot;source_node_id&quot;, &quot;target_node_id&quot;, &quot;relationship_name&quot; ], &quot;title&quot;: &quot;Edge&quot;, &quot;type&quot;: &quot;object&quot; }, &quot;Node&quot;: { &quot;description&quot;: &quot;Node in a knowledge graph.&quot;, &quot;properties&quot;: { &quot;id&quot;: { &quot;title&quot;: &quot;Id&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;name&quot;: { &quot;title&quot;: &quot;Name&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;type&quot;: { &quot;title&quot;: &quot;Type&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;description&quot;: { &quot;title&quot;: &quot;Description&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;properties&quot;: { &quot;anyOf&quot;: [ { &quot;type&quot;: &quot;object&quot; }, { &quot;type&quot;: &quot;null&quot; } ], &quot;default&quot;: null, &quot;description&quot;: &quot;A dictionary of properties associated with th</p>
+    <dl class="meta-grid">
+      <dt>Project</dt><dd>LLM-Wiki</dd>
+      <dt>Model</dt><dd><code>openai</code></dd>
+      <dt>Messages</dt><dd>7</dd>
+      <dt>Tool calls</dt><dd>1</dd>
+      <dt>Tokens</dt><dd>0</dd>
+    </dl>
+  </section>
+  <section class="panel"><h2>Key decisions</h2><p class='muted'>None recorded.</p></section>
+  <section class="panel"><h2>Files touched</h2><ul><li><code>data/research/daily/2026-04-06/feeds/20260311055335.md</code></li><li><code>data/research/daily/2026-04-06/feeds/20260404050000.md</code></li><li><code>data/research/daily/2026-04-06/feeds/20260404084045.md</code></li><li><code>data/research/daily/2026-04-06/feeds/20260404091616.md</code></li><li><code>data/research/daily/2026-04-06/feeds/20260404131018.md</code></li><li><code>data/research/daily/2026-04-06/feeds/20260404141853.md</code></li><li><code>data/research/daily/2026-04-06/feeds/20260404161930.md</code></li><li><code>data/research/daily/2026-04-06/repos/NVlabs_PointWorld.md</code></li><li><code>data/research/daily/2026-04-07/feeds/20260311055335.md</code></li><li><code>data/research/daily/2026-04-07/feeds/20260402135009.md</code></li><li><code>data/research/daily/2026-04-07/feeds/20260404093030.md</code></li><li><code>data/research/daily/2026-04-07/feeds/20260404113031.md</code></li><li><code>data/research/daily/2026-04-07/feeds/20260404164523.md</code></li><li><code>data/research/daily/2026-04-07/feeds/20260404214436.md</code></li><li><code>data/research/daily/2026-04-07/feeds/20260405034806.md</code></li><li><code>data/research/daily/2026-04-07/feeds/20260405060037.md</code></li><li><code>data/research/daily/2026-04-15/feeds/20260414072157.md</code></li><li><code>data/research/daily/2026-04-24/repos/Tencent-Hunyuan_HY-WorldPlay.md</code></li><li><code>data/research/daily/2026-04-26/digest.md</code></li><li><code>data/research/daily/2026-04-26/papers/2601.17835/repo.md</code></li><li><code>data/research/daily/2026-04-26/repos/OpsiClear-4DGS_TriGSVanilla.md</code></li><li><code>data/research/daily/2026-04-26/repos/team-aprl_MR.ScaleMaster.md</code></li><li><code>docs/SKILL.md</code></li></ul></section>
+  <section class="panel"><h2>Commands run</h2><ul><li><code>sed -n &#x27;1,220p&#x27; output/cognee_codex_full_bundle/edges.jsonl</code></li><li><code>rg --files output/cognee_codex_full_bundle</code></li><li><code>ls -1 output/cognee_codex_full_bundle</code></li><li><code>wc -l output/cognee_codex_full_bundle/nodes.jsonl output/cognee_codex_full_bundle/edges.jsonl</code></li><li><code>sed -n &#x27;1,120p&#x27; output/cognee_codex_full_bundle/nodes.jsonl</code></li><li><code>python - &lt;&lt;&#x27;PY&#x27;
+import json
+from collections import Counter
+nodes={}
+with open(&#x27;output/cognee_codex_full_bundle/nodes.jsonl&#x27;) as f:
+    for line in f:
+        obj=json.loads(line)
+        nodes[obj[&#x27;cognee_id&#x27;]]=obj
+used=set()
+rels=Counter()
+missing=set()
+count=0
+with open(&#x27;output/cognee_codex_full_bundle/edges.jsonl&#x27;) as f:
+    for line in f:
+        e=json.loads(line)
+        count+=1
+        used.add(e[&#x27;source_id&#x27;]); used.add(e[&#x27;target_id&#x27;]); rels[e[&#x27;relationship&#x27;]]+=1
+for uid in used:
+    if uid not in nodes:
+        missing.add(uid)
+print(&#x27;edge_count&#x27;,count)
+print(&#x27;used_nodes&#x27;,len(used))
+print(&#x27;missing_nodes&#x27;,len(missing))
+print(&#x27;top_relationships&#x27;, rels.most_common(20))
+if missing:
+    print(&#x27;sample_missing&#x27;, list(sorted(missing))[:50])
+PY</code></li><li><code>python -c $&#x27;import json\nfrom collections import Counter\nnodes={}\nfor line in open(&quot;output/cognee_codex_full_bundle/nodes.jsonl&quot;):\n    obj=json.loads(line); nodes[obj[&quot;cognee_id&quot;]]=obj\nused=set(); rels=Counter(); count=0\nfor line in open(&quot;output/cognee_codex_full_bundle/edges.jsonl&quot;):\n    e=json.loads(line); count+=1; used.add(e[&quot;source_id&quot;]); used.add(e[&quot;target_id&quot;]); rels[e[&quot;relationship&quot;]]+=1\nmissing=sorted(uid for uid in used if uid not in nodes)\nprint(&quot;edge_count&quot;, count)\nprint(&quot;used_nodes&quot;, len(used))\nprint(&quot;missing_nodes&quot;, len(missing))\nprint(&quot;top_relationships&quot;, rels.most_common(20))\nprint(&quot;sample_missing&quot;, missing[:20])&#x27;</code></li><li><code>python -c $&#x27;import json, collections\nnodes={}\nfor line in open(&quot;output/cognee_codex_full_bundle/nodes.jsonl&quot;):\n    o=json.loads(line); nodes[o[&quot;cognee_id&quot;]]=o\nctype=collections.Counter(); cname=collections.Counter(); pairs=collections.Counter()\nfor line in open(&quot;output/cognee_codex_full_bundle/edges.jsonl&quot;):\n    e=json.loads(line)\n    s=nodes[e[&quot;source_id&quot;]]; t=nodes[e[&quot;target_id&quot;]]\n    st=s[&quot;metadata&quot;].get(&quot;research_node_type&quot;,&quot;Unknown&quot;)\n    tt=t[&quot;metadata&quot;].get(&quot;research_node_type&quot;,&quot;Unknown&quot;)\n    ctype[(st,e[&quot;relationship&quot;],tt)] += 1\n    if st in {&quot;ResearchField&quot;,&quot;ResearchTopic&quot;,&quot;MethodologicalConcept&quot;,&quot;ApproachFamily&quot;,&quot;TechnicalTerm&quot;} and tt in {&quot;ResearchField&quot;,&quot;ResearchTopic&quot;,&quot;MethodologicalConcept&quot;,&quot;ApproachFamily&quot;,&quot;TechnicalTerm&quot;}:\n        pairs[(s[&quot;name&quot;],e[&quot;relationship&quot;],t[&quot;name&quot;])] += 1\nprint(&quot;top type triples:&quot;)\nfor k,v in ctype.most_common(20): print(v,k)\nprint(&quot;top concept pairs:&quot;)\nfor k,v in pairs.most_common(20): print(v,k)\n&#x27;</code></li><li><code>sed -n &#x27;1,160p&#x27; output/cognee_codex_full_bundle/README.md</code></li></ul></section>
+  <section class="panel"><h2>Tools used</h2><ul><li>exec_command</li></ul></section>
+  <section class='panel'><h2>Subagent sessions</h2><p class='muted'>No subagent transcripts attached.</p></section>
+  <section class="panel"><h2>Redacted preview</h2><pre>You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for KnowledgeGraph: { &quot;$defs&quot;: { &quot;Edge&quot;: { &quot;description&quot;: &quot;Edge in a knowledge graph.&quot;, &quot;properties&quot;: { &quot;source_node_id&quot;: { &quot;title&quot;: &quot;Source Node Id&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;target_node_id&quot;: { &quot;title&quot;: &quot;Target Node Id&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;relationship_name&quot;: { &quot;title&quot;: &quot;Relationship Name&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;properties&quot;: { &quot;anyOf&quot;: [ { &quot;type&quot;: &quot;object&quot; }, { &quot;type&quot;: &quot;null&quot; } ], &quot;default&quot;: null, &quot;description&quot;: &quot;A dictionary of properties associated with the edge.&quot;, &quot;title&quot;: &quot;Properties&quot; } }, &quot;required&quot;: [ &quot;source_node_id&quot;, &quot;target_node_id&quot;, &quot;relationship_name&quot; ], &quot;title&quot;: &quot;Edge&quot;, &quot;type&quot;: &quot;object&quot; }, &quot;Node&quot;: { &quot;description&quot;: &quot;Node in a knowledge graph.&quot;, &quot;properties&quot;: { &quot;id&quot;: { &quot;title&quot;: &quot;Id&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;name&quot;: { &quot;title&quot;: &quot;Name&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;type&quot;: { &quot;title&quot;: &quot;Type&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;description&quot;: { &quot;title&quot;: &quot;Description&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;properties&quot;: { &quot;anyOf&quot;: [ { &quot;type&quot;: &quot;object&quot; }, { &quot;type&quot;: &quot;null&quot; } ], &quot;default&quot;: null, &quot;description&quot;: &quot;A dictionary of properties associated with th</pre></section>
+</main>
+
+</body>
+</html>

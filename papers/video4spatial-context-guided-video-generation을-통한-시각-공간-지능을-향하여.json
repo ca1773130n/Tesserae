@@ -1,0 +1,18 @@
+{
+  "title": "Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여",
+  "kind": "papers",
+  "body_text": "# Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여\n\n## Outgoing relations\n\n- **authored_by** → Lingxiao Li _(Person)_\n- **authored_by** → Mohammad H. Taghavi _(Person)_\n- **authored_by** → Rahul Garg _(Person)_\n- **authored_by** → Roshni Cooper _(Person)_\n- **authored_by** → Xingang Pan _(Person)_\n- **authored_by** → Yiwei Zhao _(Person)_\n- **authored_by** → Yu Ning _(Person)_\n- **authored_by** → Yushi Lan _(Person)_\n- **authored_by** → Zeqi Xiao _(Person)_\n- **implemented_in** → GitHub 분석: Eyeline-Labs/Vista4D _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses** → Video Diffusion _(MethodologicalConcept)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-25 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-25 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 9\n- SourceDocument: 4\n- MethodologicalConcept: 1\n- Repository: 1\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2512.03040/paper.md",
+  "links": [],
+  "body": "# Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여\n\n## Outgoing relations\n\n- **authored_by** → Lingxiao Li _(Person)_\n- **authored_by** → Mohammad H. Taghavi _(Person)_\n- **authored_by** → Rahul Garg _(Person)_\n- **authored_by** → Roshni Cooper _(Person)_\n- **authored_by** → Xingang Pan _(Person)_\n- **authored_by** → Yiwei Zhao _(Person)_\n- **authored_by** → Yu Ning _(Person)_\n- **authored_by** → Yushi Lan _(Person)_\n- **authored_by** → Zeqi Xiao _(Person)_\n- **implemented_in** → GitHub 분석: Eyeline-Labs/Vista4D _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses** → Video Diffusion _(MethodologicalConcept)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-25 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-25 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 9\n- SourceDocument: 4\n- MethodologicalConcept: 1\n- Repository: 1\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2512.03040"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2512-03040:ec316d5b8db7",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2512.03040/paper.md",
+    "title": "Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여"
+  }
+}

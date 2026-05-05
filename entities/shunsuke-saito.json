@@ -1,0 +1,15 @@
+{
+  "title": "Shunsuke Saito",
+  "kind": "entities",
+  "body_text": "# Shunsuke Saito\n\n## Incoming relations\n\n- **authored_by** → Sapiens2 _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-27/papers/2604.21681/paper.md",
+  "links": [],
+  "body": "# Shunsuke Saito\n\n## Incoming relations\n\n- **authored_by** → Sapiens2 _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:shunsuke-saito:a941965da438",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-27/papers/2604.21681/paper.md",
+    "title": "Shunsuke Saito"
+  }
+}

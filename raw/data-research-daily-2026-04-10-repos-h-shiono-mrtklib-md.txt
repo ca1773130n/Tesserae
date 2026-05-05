@@ -1,0 +1,59 @@
+h-shiono_MRTKLIB.md
+===================
+
+# GitHub 분석: h-shiono/MRTKLIB
+
+> - URL: https://github.com/h-shiono/MRTKLIB
+> - 분석일: 2026-04-10
+
+## 개요
+
+- **설명**: Modern GNSS positioning library — PPP, PPP-AR, PPP-RTK (CLAS/MADOCA) built on RTKLIB
+- **Stars**: ⭐ 19 | Forks: 8
+- **라이선스**: NOASSERTION
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (25개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+CHANGELOG.md
+.clang-format
+.clang-tidy
+CLAUDE.md
+CMakeLists.txt
+CMakePresets.json
+docs/index.md
+docs/requirements.txt
+Doxyfile.in
+.gitattributes
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+include/rtklib.h
+LICENSE
+mkdocs.yml
+README.md
+ruff.toml
+scripts/apply_headers.py
+scripts/pyproject.toml
+scripts/uv.lock
+taplo.toml
+upstream/.gitkeep
+vcpkg.json
+.vscode/extensions.json
+.vscode/settings.json
+```

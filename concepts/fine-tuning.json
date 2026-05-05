@@ -1,0 +1,15 @@
+{
+  "title": "Fine-tuning",
+  "kind": "concepts",
+  "body_text": "# Fine-tuning\n\n## Incoming relations\n\n- **uses** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_\n- **uses** → Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras _(Paper)_\n- **uses** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_\n\n## Connected node types\n\n- Paper: 3",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2602.09022/paper.md",
+  "links": [],
+  "body": "# Fine-tuning\n\n## Incoming relations\n\n- **uses** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_\n- **uses** → Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras _(Paper)_\n- **uses** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_\n\n## Connected node types\n\n- Paper: 3",
+  "frontmatter": {
+    "kind": "concepts",
+    "node_id": "TrainingParadigm:fine-tuning:f617b4eb06c6",
+    "node_type": "TrainingParadigm",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2602.09022/paper.md",
+    "title": "Fine-tuning"
+  }
+}

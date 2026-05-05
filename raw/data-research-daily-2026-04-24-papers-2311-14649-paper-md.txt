@@ -1,0 +1,110 @@
+paper.md
+========
+
+# 논문 분석: 2311.14649
+
+> - arxiv: https://arxiv.org/abs/2311.14649
+> - papers.cool: https://papers.cool/arxiv/2311.14649
+> - 분석일: 2026-04-24
+
+Learning in Deep Factor Graphs with Gaussian Belief Propagation | Cool Papers - 몰입형 논문 탐색
+
+## 2311.14649
+
+총계: 1
+
+## 
+#1
+
+Learning in Deep Factor Graphs with Gaussian Belief Propagation  
+[PDF]  
+[Copy]  
+[Kimi]  
+[REL]
+
+저자:  
+Seth Nabarro,  
+Mark van der Wilk,  
+Andrew J Davison
+
+우리는 Gaussian factor graphs에서 학습을 수행하는 방법을 제안한다. 우리는 모든 관련된 양들입력, 출력, 파라미터, 잠재변수를 그래프 모델의 확률변수로 다루며, 학습과 예측을 서로 다른 관측 노드를 갖는 추론 문제로 본다. 실험 결과, 이러한 문제들은 belief propagation, BP로 효율적으로 해결될 수 있으며, 그 업데이트는 본질적으로 국소적이어서 분산 및 비동기 학습에 대한 흥미로운 가능성을 제시한다. 우리의 방법은 deep networks로 확장될 수 있고 continual learning을 수행하는 자연스러운 수단도 제공한다. 즉, 현재 작업에서 BP가 추정한 파라미터 주변분포를 다음 작업의 파라미터 사전분포로 사용한다. 비디오 denoising 작업에서 우리는 고전적인 factor graph 접근법에 비해 학습 가능한 파라미터의 이점을 입증하고, continual image classification에서 deep factor graphs의 고무적인 성능을 보여준다.
+
+주제:  
+Machine Learning,  
+Machine Learning
+
+게시: 2023-11-24 18:31:11 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+포함OR:
+
+제외:
+
+검색
+
+필터
+
+강조 표시
+
+표시한 논문:
+
+#1  
+Learning in Deep Factor Graphs with Gaussian Belief Propagation
+
+내보내기
+
+Magic Token:
+
+Kimi 언어:
+
+中文  
+English
+
+설명 언어:
+
+中文  
+English
+
+저장
+
+버그 신고나 이슈 제출은 다음을 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+계속 진행하기 전에 Disclaimer를 읽어 주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문하세요.
+
+```javascript
+var macros = {
+    'argmin': '\\mathop{\\text{argmin}}',
+    'argmax': '\\mathop{\\text{argmax}}'
+};
+MathJax.Hub.Config({
+    tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']], processEscapes: true},
+    TeX: {equationNumbers: {autoNumber: ['AMS'], useLabelIds: true}, extensions: ['AMSmath.js', 'AMSsymbols.js', 'extpfeil.js'], Macros: macros},
+    'HTML-CSS': {noReflows: false, availableFonts: ['tex'], styles: {'.MathJax_Display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}},
+    'CommonHTML': {noReflows: false, availableFonts: ['tex'], styles: {'.MJXc-display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}},
+    'SVG': {styles: {'.MathJax_SVG_Display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}}
+});
+MathJax.Hub.Queue(function() {
+    document.querySelectorAll('.MathJax').forEach(element => element.classList.add('notranslate'));
+    document.querySelectorAll('a.title-link, p.summary').forEach(element => element.classList.remove('notranslate'));
+    highlightQuery();
+});
+
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement('script');
+  hm.src = 'https://hm.baidu.com/hm.js?606b976365dabacb1f69823d8de064ee';
+  var s = document.getElementsByTagName('script')[0];
+  s.parentNode.insertBefore(hm, s);
+})();
+
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+
+gtag('config', 'G-214H31WLDF');
+```

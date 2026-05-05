@@ -1,0 +1,50 @@
+{
+  "title": "You are a structured-output adapter for Cognee.",
+  "kind": "session",
+  "body_text": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_codex_cognify_smoke_bundle/nodes.jsonl I’m reading `output/cognee_codex_cognify_smoke_bundle/nodes.jsonl` to extract the content and produce the requested structured summary. {\"summary\":\"A research graph entry for the paper \\\"Geometry-Grounded Gaussian Splatting,\\\" focused on 3D/4D vision, novel view synthesis, and shape reconstruction.\",\"description\":\"The content describes a Gaussian S",
+  "source_path": "/Users/neo/.codex_old/sessions/2026/04/26/rollout-2026-04-26T23-58-09-019dca4c-46ed-74f2-98fc-719dc2f43540.jsonl",
+  "links": [],
+  "body": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_codex_cognify_smoke_bundle/nodes.jsonl I’m reading `output/cognee_codex_cognify_smoke_bundle/nodes.jsonl` to extract the content and produce the requested structured summary. {\"summary\":\"A research graph entry for the paper \\\"Geometry-Grounded Gaussian Splatting,\\\" focused on 3D/4D vision, novel view synthesis, and shape reconstruction.\",\"description\":\"The content describes a Gaussian S",
+  "frontmatter": {
+    "id": "codex:019dca4c-46ed-74f2-98fc-719dc2f43540",
+    "slug": "you-are-a-structured-output-adapter-for-cognee",
+    "harness": "codex",
+    "agent_label": "Codex",
+    "project_name": "LLM-Wiki",
+    "project_root": "/Users/neo/Developer/Projects/LLM-Wiki",
+    "started_at": "2026-04-26T14:58:13.958Z",
+    "ended_at": "2026-04-26T14:58:22.272Z",
+    "branch": "",
+    "commit_before": "",
+    "commit_after": "",
+    "model": "openai",
+    "title": "You are a structured-output adapter for Cognee.",
+    "summary": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_codex_cognify_smoke_bundle/nodes.jsonl I’m reading `output/cognee_codex_cognify_smoke_bundle/nodes.jsonl` to extract the content and produce the requested structured summary. {\"summary\":\"A research graph entry for the paper \\\"Geometry-Grounded Gaussian Splatting,\\\" focused on 3D/4D vision, novel view synthesis, and shape reconstruction.\",\"description\":\"The content describes a Gaussian S",
+    "message_count": 4,
+    "tool_call_count": 1,
+    "token_input": 0,
+    "token_output": 0,
+    "token_total": 0,
+    "cache_hit_ratio": null,
+    "tools_used": [
+      "exec_command"
+    ],
+    "files_touched": [
+      "data/research/daily/2026-04-26/papers/2601.17835/paper.md",
+      "docs/SKILL.md"
+    ],
+    "commands_run": [
+      "sed -n '1,220p' output/cognee_codex_cognify_smoke_bundle/nodes.jsonl"
+    ],
+    "decisions": [],
+    "errors": [],
+    "raw_transcript_path": "/Users/neo/.codex_old/sessions/2026/04/26/rollout-2026-04-26T23-58-09-019dca4c-46ed-74f2-98fc-719dc2f43540.jsonl",
+    "redacted_preview": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_codex_cognify_smoke_bundle/nodes.jsonl I’m reading `output/cognee_codex_cognify_smoke_bundle/nodes.jsonl` to extract the content and produce the requested structured summary. {\"summary\":\"A research graph entry for the paper \\\"Geometry-Grounded Gaussian Splatting,\\\" focused on 3D/4D vision, novel view synthesis, and shape reconstruction.\",\"description\":\"The content describes a Gaussian S",
+    "metadata": {
+      "config_root": "/Users/neo/.codex_old",
+      "transcript": "/Users/neo/.codex_old/sessions/2026/04/26/rollout-2026-04-26T23-58-09-019dca4c-46ed-74f2-98fc-719dc2f43540.jsonl"
+    },
+    "date": "2026-04-26",
+    "href": "sessions/llm-wiki/2026-04-26-you-are-a-structured-output-adapter-for-cognee-6acb58f6.html"
+  }
+}

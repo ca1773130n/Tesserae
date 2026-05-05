@@ -1,0 +1,15 @@
+{
+  "title": "Daily Feed Summary — 2026-04-26",
+  "kind": "sources",
+  "body_text": "# Daily Feed Summary — 2026-04-26\n\n## Outgoing relations\n\n- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(Paper)_\n- **mentioned_in** → Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras _(Paper)_\n- **mentioned_in** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 3",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-26/raw.md",
+  "links": [],
+  "body": "# Daily Feed Summary — 2026-04-26\n\n## Outgoing relations\n\n- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(Paper)_\n- **mentioned_in** → Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras _(Paper)_\n- **mentioned_in** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 3",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:daily-feed-summary-2026-04-26:aa5f959a1199",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-26/raw.md",
+    "title": "Daily Feed Summary — 2026-04-26"
+  }
+}

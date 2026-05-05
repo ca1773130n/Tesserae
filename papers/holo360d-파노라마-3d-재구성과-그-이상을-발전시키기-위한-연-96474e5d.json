@@ -1,0 +1,18 @@
+{
+  "title": "Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋",
+  "kind": "papers",
+  "body_text": "# Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋\n\n## Outgoing relations\n\n- **addresses** → Visual SLAM _(ResearchTopic)_\n- **authored_by** → Hui Xiong _(Person)_\n- **authored_by** → Jing Ou _(Person)_\n- **authored_by** → Jinjing Zhu _(Person)_\n- **authored_by** → Shuai Zhang _(Person)_\n- **authored_by** → Tongyan Hua _(Person)_\n- **authored_by** → Wufan Zhao _(Person)_\n- **authored_by** → Yinrui Ren _(Person)_\n- **authored_by** → Zhuoxiao Li _(Person)_\n- **authored_by** → Zidong Cao _(Person)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses** → Depth Map _(TechnicalTerm)_\n- **uses** → Fine-tuning _(TrainingParadigm)_\n- **uses** → Point Cloud _(TechnicalTerm)_\n- **uses_metric** → mAP _(Metric)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-28 _(SourceDocument)_\n- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-28 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 9\n- SourceDocument: 4\n- TechnicalTerm: 2\n- Metric: 1\n- ResearchField: 1\n- ResearchTopic: 1\n- TrainingParadigm: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-28/papers/2604.22482/paper.md",
+  "links": [],
+  "body": "# Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋\n\n## Outgoing relations\n\n- **addresses** → Visual SLAM _(ResearchTopic)_\n- **authored_by** → Hui Xiong _(Person)_\n- **authored_by** → Jing Ou _(Person)_\n- **authored_by** → Jinjing Zhu _(Person)_\n- **authored_by** → Shuai Zhang _(Person)_\n- **authored_by** → Tongyan Hua _(Person)_\n- **authored_by** → Wufan Zhao _(Person)_\n- **authored_by** → Yinrui Ren _(Person)_\n- **authored_by** → Zhuoxiao Li _(Person)_\n- **authored_by** → Zidong Cao _(Person)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses** → Depth Map _(TechnicalTerm)_\n- **uses** → Fine-tuning _(TrainingParadigm)_\n- **uses** → Point Cloud _(TechnicalTerm)_\n- **uses_metric** → mAP _(Metric)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-28 _(SourceDocument)_\n- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-28 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 9\n- SourceDocument: 4\n- TechnicalTerm: 2\n- Metric: 1\n- ResearchField: 1\n- ResearchTopic: 1\n- TrainingParadigm: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2604.22482"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2604-22482:89c23a62af15",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-28/papers/2604.22482/paper.md",
+    "title": "Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋"
+  }
+}

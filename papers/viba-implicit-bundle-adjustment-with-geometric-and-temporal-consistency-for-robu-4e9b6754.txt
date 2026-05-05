@@ -1,0 +1,28 @@
+ViBA: Implicit Bundle Adjustment with Geometric and Temporal Consistency for Robust Visual Matching
+================================================================================
+
+# ViBA: Implicit Bundle Adjustment with Geometric and Temporal Consistency for Robust Visual Matching
+
+## Outgoing relations
+
+- **authored_by** → Hailiang Tang _(Person)_
+- **authored_by** → Tisheng Zhang _(Person)_
+- **authored_by** → Xiaoji Niu _(Person)_
+- **authored_by** → Yan Wang _(Person)_
+- **authored_by** → Yuqing Wang _(Person)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- **uses_metric** → ATE _(Metric)_
+- **uses_metric** → Accuracy _(Metric)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-08 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-09 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-08 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 5
+- SourceDocument: 3
+- Metric: 2
+- ResearchField: 1

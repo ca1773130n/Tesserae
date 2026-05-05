@@ -1,0 +1,55 @@
+repo.md
+=======
+
+# GitHub 분석: facebookresearch/AINA
+
+> - URL: https://github.com/facebookresearch/AINA
+> - 분석일: 2026-05-05
+
+## 개요
+
+- **설명**: Official implementation of Dexterity from Smart Lenses Multi-Fingered Robot Manipulation with In-the-Wild Human Demonstrations. Project website https://aina-robot.github.io/. 
+- **Stars**: ⭐ 51 | Forks: 5
+- **라이선스**: NOASSERTION
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (31개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+aina/__init__.py
+align_aria_to_in_scene.py
+assets/example_output.gif
+assets/website_teaser.gif
+cfgs/train.yaml
+CODE_OF_CONDUCT.md
+collect_human_demonstration.py
+conda_env.yaml
+CONTRIBUTING.md
+download_data.sh
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.gitmodules
+.git/packed-refs
+.git/shallow
+hand_eye_calibration.py
+LICENSE
+preprocess_aria_demo.py
+preprocess_in_scene_demo.py
+README.md
+setup.py
+start_camera_servers.py
+train.py
+```

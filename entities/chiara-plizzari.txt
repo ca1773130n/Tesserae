@@ -1,0 +1,12 @@
+Chiara Plizzari
+===============
+
+# Chiara Plizzari
+
+## Incoming relations
+
+- **authored_by** → An Outlook into the Future of Egocentric Vision _(Paper)_
+
+## Connected node types
+
+- Paper: 1

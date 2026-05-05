@@ -1,0 +1,19 @@
+raw.md
+======
+
+# Daily Feed Summary — 2026-04-24
+
+Total: 10 relevant feeds (from 36)
+
+| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |
+|------|------|-------|-----|--------|-------|-----------|-------------|
+| 2026-04-24 | 21:43 | NAB Show 2026 | Filming and Broadcasting use casess (5/10) X...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-24 | 12:06 | If you’re at ICLR and into generative neural rendering, sw...... | https://arxiv.org/pdf/2510.04236 | N/A | N/A | [분석](papers/2510.04236/paper.md) | N/A |
+| 2026-04-24 | 06:22 | Chen et al., "AnyRecon: Arbitrary-View 3D Reconstruction wit...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-24 | 01:03 | RT Radu Soricut: Meet Vision Banana ? from @GoogleDeepMind! ...... | https://arxiv.org/pdf/2604.20329 | N/A | N/A | [분석](papers/2604.20329/paper.md) | N/A |
+| 2026-04-24 | 15:35 | PoInit-of-View: Poisoning Initialization of Views Transfers ...... | https://arxiv.org/pdf/2503.11806 | N/A | N/A | [분석](papers/2503.11806/paper.md) | N/A |
+| 2026-04-24 | 01:25 | ? Excited to announce Vision Banana ? and our new paper: “...... | N/A | https://github.com/Tencent-Hunyuan/HY-WorldPlay | 1473 | N/A | [분석](repos/Tencent-Hunyuan_HY-WorldPlay.md) |
+| 2026-04-24 | 01:03 | Meet Vision Banana ? from @GoogleDeepMind! We provide strong...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-24 | 22:21 | Yes, absolutely: factor graphs are energy-based world models...... | https://arxiv.org/pdf/2311.14649 | https://github.com/mfranzon/render | 90 | [분석](papers/2311.14649/paper.md) | [분석](papers/2311.14649/repo.md) |
+| 2026-04-24 | 16:49 | RT Khiem Vuong: [1/7] Video diffusion has come a long way, g...... | https://arxiv.org/pdf/2509.23563 | https://github.com/facebookresearch/map-anything | 3233 | [분석](papers/2509.23563/paper.md) | [분석](papers/2509.23563/repo.md) |
+| 2026-04-24 | 19:05 | ? Really excited to announce the first ever 4D Digital Twins...... | https://arxiv.org/pdf/2506.12251 | N/A | N/A | [분석](papers/2506.12251/paper.md) | N/A |

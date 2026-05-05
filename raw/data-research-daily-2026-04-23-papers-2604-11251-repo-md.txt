@@ -1,0 +1,42 @@
+repo.md
+=======
+
+# GitHub 분석: SkalskiP/top-cvpr-2026-papers
+
+> - URL: https://github.com/SkalskiP/top-cvpr-2026-papers
+> - 분석일: 2026-04-23
+
+## 개요
+
+- **설명**: About This repository is a curated collection of the most exciting and influential CVPR 2026 papers. 🔥 [Paper + Code + Demo]
+- **Stars**: ⭐ 87 | Forks: 1
+- **라이선스**: CC0-1.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (1개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+automation/data.csv
+automation/generate.py
+automation/requirements.txt
+CONTRIBUTING.md
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE
+README.md
+```

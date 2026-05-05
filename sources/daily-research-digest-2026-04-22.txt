@@ -1,0 +1,18 @@
+📬 Daily Research Digest — 2026-04-22
+====================================
+
+# 📬 Daily Research Digest — 2026-04-22
+
+## Outgoing relations
+
+- **mentioned_in** → All elementary functions from a single binary operator _(Paper)_
+- **mentioned_in** → An Outlook into the Future of Egocentric Vision _(Paper)_
+- **mentioned_in** → Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation _(Paper)_
+- **mentioned_in** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+- **uses_metric** → mAP _(Metric)_
+
+## Connected node types
+
+- Paper: 5
+- Metric: 1

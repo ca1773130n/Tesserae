@@ -1,0 +1,21 @@
+Scaling 4D Representations
+==========================
+
+# Scaling 4D Representations
+
+## Outgoing relations
+
+- **evaluated_on** → ImageNet _(Benchmark)_
+- **implemented_in** → GitHub 분석: google-deepmind/representations4d _(Repository)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+
+## Incoming relations
+
+- **mentioned_in** → 주간 논문 분석 — 2026-W15 (2026-04-06 ~ 2026-04-12) _(SourceDocument)_
+
+## Connected node types
+
+- Benchmark: 1
+- Repository: 1
+- ResearchField: 1
+- SourceDocument: 1

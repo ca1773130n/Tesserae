@@ -1,0 +1,49 @@
+{
+  "title": "You are a structured-output adapter for Cognee.",
+  "kind": "session",
+  "body_text": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_codex_cognify_smoke_bundle/edges.jsonl {\"summary\":\"A knowledge-graph edge list describing the paper \\\"Geometry-Grounded Gaussian Splatting\\\" and its main links to methods, claims, tasks, limits, and results.\",\"description\":\"The file records relationships showing that the paper belongs to 3D/4D vision and Gaussian-splatting research, targets novel view synthesis and shape reconstruction,",
+  "source_path": "/Users/neo/.codex_old/sessions/2026/04/26/rollout-2026-04-26T23-58-09-019dca4c-46ed-70e2-aebf-38110788c3b5.jsonl",
+  "links": [],
+  "body": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_codex_cognify_smoke_bundle/edges.jsonl {\"summary\":\"A knowledge-graph edge list describing the paper \\\"Geometry-Grounded Gaussian Splatting\\\" and its main links to methods, claims, tasks, limits, and results.\",\"description\":\"The file records relationships showing that the paper belongs to 3D/4D vision and Gaussian-splatting research, targets novel view synthesis and shape reconstruction,",
+  "frontmatter": {
+    "id": "codex:019dca4c-46ed-70e2-aebf-38110788c3b5",
+    "slug": "you-are-a-structured-output-adapter-for-cognee",
+    "harness": "codex",
+    "agent_label": "Codex",
+    "project_name": "LLM-Wiki",
+    "project_root": "/Users/neo/Developer/Projects/LLM-Wiki",
+    "started_at": "2026-04-26T14:58:12.765Z",
+    "ended_at": "2026-04-26T14:58:22.435Z",
+    "branch": "",
+    "commit_before": "",
+    "commit_after": "",
+    "model": "openai",
+    "title": "You are a structured-output adapter for Cognee.",
+    "summary": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_codex_cognify_smoke_bundle/edges.jsonl {\"summary\":\"A knowledge-graph edge list describing the paper \\\"Geometry-Grounded Gaussian Splatting\\\" and its main links to methods, claims, tasks, limits, and results.\",\"description\":\"The file records relationships showing that the paper belongs to 3D/4D vision and Gaussian-splatting research, targets novel view synthesis and shape reconstruction,",
+    "message_count": 3,
+    "tool_call_count": 1,
+    "token_input": 0,
+    "token_output": 0,
+    "token_total": 0,
+    "cache_hit_ratio": null,
+    "tools_used": [
+      "exec_command"
+    ],
+    "files_touched": [
+      "docs/SKILL.md"
+    ],
+    "commands_run": [
+      "sed -n '1,200p' output/cognee_codex_cognify_smoke_bundle/edges.jsonl"
+    ],
+    "decisions": [],
+    "errors": [],
+    "raw_transcript_path": "/Users/neo/.codex_old/sessions/2026/04/26/rollout-2026-04-26T23-58-09-019dca4c-46ed-70e2-aebf-38110788c3b5.jsonl",
+    "redacted_preview": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_codex_cognify_smoke_bundle/edges.jsonl {\"summary\":\"A knowledge-graph edge list describing the paper \\\"Geometry-Grounded Gaussian Splatting\\\" and its main links to methods, claims, tasks, limits, and results.\",\"description\":\"The file records relationships showing that the paper belongs to 3D/4D vision and Gaussian-splatting research, targets novel view synthesis and shape reconstruction,",
+    "metadata": {
+      "config_root": "/Users/neo/.codex_old",
+      "transcript": "/Users/neo/.codex_old/sessions/2026/04/26/rollout-2026-04-26T23-58-09-019dca4c-46ed-70e2-aebf-38110788c3b5.jsonl"
+    },
+    "date": "2026-04-26",
+    "href": "sessions/llm-wiki/2026-04-26-you-are-a-structured-output-adapter-for-cognee-c4577663.html"
+  }
+}

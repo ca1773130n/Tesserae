@@ -1,0 +1,34 @@
+Distance Field Rasterization for End-to-End Mesh Reconstruction
+===============================================================
+
+# Distance Field Rasterization for End-to-End Mesh Reconstruction
+
+## Outgoing relations
+
+- **addresses** → Novel View Synthesis _(Task)_
+- **authored_by** → Chumeng Niu _(Person)_
+- **authored_by** → Jinkai Cui _(Person)_
+- **authored_by** → Juyong Zhang _(Person)_
+- **authored_by** → Kaiwen Song _(Person)_
+- **evaluated_on** → DTU _(Benchmark)_
+- **evaluated_on** → Tanks and Temples _(Benchmark)_
+- **introduces** → SDFRaster _(Algorithm)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- **uses** → Volumetric Rendering _(MethodologicalConcept)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-29 _(SourceDocument)_
+- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-29 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 4
+- SourceDocument: 4
+- Benchmark: 2
+- Algorithm: 1
+- MethodologicalConcept: 1
+- ResearchField: 1
+- Task: 1

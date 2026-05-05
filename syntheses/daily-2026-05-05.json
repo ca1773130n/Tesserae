@@ -1,0 +1,38 @@
+{
+  "title": "Daily Digest — 2026-05-05",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-05-05\n\nSources ingested under `data/research/daily/2026-05-05/`.\n\n## Papers and repos\n- [Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset (arXiv:2512.13238)](../papers/ego-extra-expert-trainee-지원을-위한-video-language-egocentric-dataset.md) (Paper)\n- [Extreme Rotation Estimation in the Wild (arXiv:2411.07096)](../papers/extreme-rotation-estimation-in-the-wild.md) (Paper)\n- [Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas (arXiv:2603.28980)](../papers/stepper-stepwise-immersive-scene-generation-with-multiview-panoramas.md) (Paper)\n- [GitHub 분석: facebookresearch/AINA](../repos/github-분석-facebookresearch-aina.md) (Repository)\n- [Daily Feed Summary — 2026-05-05](../sources/daily-feed-summary-2026-05-05.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-05-05](../sources/daily-research-digest-2026-05-05.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "source_path": "",
+  "links": [
+    "../papers/ego-extra-expert-trainee-지원을-위한-video-language-egocentric-dataset.md",
+    "../papers/extreme-rotation-estimation-in-the-wild.md",
+    "../papers/stepper-stepwise-immersive-scene-generation-with-multiview-panoramas.md",
+    "../repos/github-분석-facebookresearch-aina.md",
+    "../sources/daily-feed-summary-2026-05-05.md",
+    "../sources/daily-research-digest-2026-05-05.md"
+  ],
+  "body": "# Daily Digest — 2026-05-05\n\nSources ingested under `data/research/daily/2026-05-05/`.\n\n## Papers and repos\n- [Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset (arXiv:2512.13238)](../papers/ego-extra-expert-trainee-지원을-위한-video-language-egocentric-dataset.md) (Paper)\n- [Extreme Rotation Estimation in the Wild (arXiv:2411.07096)](../papers/extreme-rotation-estimation-in-the-wild.md) (Paper)\n- [Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas (arXiv:2603.28980)](../papers/stepper-stepwise-immersive-scene-generation-with-multiview-panoramas.md) (Paper)\n- [GitHub 분석: facebookresearch/AINA](../repos/github-분석-facebookresearch-aina.md) (Repository)\n- [Daily Feed Summary — 2026-05-05](../sources/daily-feed-summary-2026-05-05.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-05-05](../sources/daily-research-digest-2026-05-05.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "frontmatter": {
+    "content_hash": "sha256-3ecc8c68f08b835b39a3b5f72859e98443c0ff32a211c9f6a5179e517857b1e8",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Paper:arxiv-2411-07096:24b0b33c3698",
+      "Paper:arxiv-2512-13238:85a4b38cbb7f",
+      "Paper:arxiv-2603-28980:2f6981d6a09d",
+      "Repository:github-facebookresearch-aina:1ab1f8fc5164",
+      "SourceDocument:daily-feed-summary-2026-05-05:6aab6b626b72",
+      "SourceDocument:daily-research-digest-2026-05-05:5435de4760f4"
+    ],
+    "slug": "daily-2026-05-05",
+    "sources": [
+      "data/research/daily/2026-05-05/digest.md",
+      "data/research/daily/2026-05-05/papers/2411.07096/paper.md",
+      "data/research/daily/2026-05-05/papers/2512.13238/paper.md",
+      "data/research/daily/2026-05-05/papers/2512.13238/repo.md",
+      "data/research/daily/2026-05-05/papers/2603.28980/paper.md",
+      "data/research/daily/2026-05-05/raw.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-05-05"
+  }
+}

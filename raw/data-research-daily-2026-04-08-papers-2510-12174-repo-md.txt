@@ -1,0 +1,58 @@
+repo.md
+=======
+
+# GitHub 분석: RPL-CS-UCL/SDS
+
+> - URL: https://github.com/RPL-CS-UCL/SDS
+> - 분석일: 2026-04-08
+
+## 개요
+
+- **설명**: Code for SDS: Quadrupedal Skill Synthesis from Single Video Demonstration
+- **Stars**: ⭐ 100 | Forks: 7
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (23개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.gitignore
+.gitmodules
+forward_locomotion_sds/LICENSE
+forward_locomotion_sds/setup.py
+README.md
+SDS/agents.py
+SDS/evaluator.py
+SDS/sds.py
+setup.py
+utils/contact_plot.py
+utils/dtw_util.py
+utils/dtw_utils.py
+utils/easy_vit_pose.py
+utils/extract_task_code.py
+utils/file_utils.py
+utils/icp.py
+utils/misc.py
+utils/torque_plotter.py
+utils/vid_utils.py
+videos/bound.mp4
+videos/hop.mp4
+videos/pace.mp4
+videos/trot.mp4
+```

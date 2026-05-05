@@ -1,0 +1,15 @@
+{
+  "title": "Numair Khan",
+  "kind": "entities",
+  "body_text": "# Numair Khan\n\n## Incoming relations\n\n- **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2604.04874/paper.md",
+  "links": [],
+  "body": "# Numair Khan\n\n## Incoming relations\n\n- **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:numair-khan:d5a5bf9e62a4",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2604.04874/paper.md",
+    "title": "Numair Khan"
+  }
+}

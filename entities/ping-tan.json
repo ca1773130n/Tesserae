@@ -1,0 +1,15 @@
+{
+  "title": "Ping Tan",
+  "kind": "entities",
+  "body_text": "# Ping Tan\n\n## Incoming relations\n\n- **authored_by** → Geometry-Grounded Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-15/papers/2601.17835/paper.md",
+  "links": [],
+  "body": "# Ping Tan\n\n## Incoming relations\n\n- **authored_by** → Geometry-Grounded Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:ping-tan:fa67453a0f39",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-15/papers/2601.17835/paper.md",
+    "title": "Ping Tan"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: xiquan-li/TinyMU",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: xiquan-li/TinyMU\n\n## Outgoing relations\n\n- **released_by** → xiquan-li _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-28/repos/xiquan-li_TinyMU.md",
+  "links": [],
+  "body": "# GitHub 분석: xiquan-li/TinyMU\n\n## Outgoing relations\n\n- **released_by** → xiquan-li _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/xiquan-li/TinyMU",
+      "xiquan-li/tinymu"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-xiquan-li-tinymu:bec207783ca1",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-28/repos/xiquan-li_TinyMU.md",
+    "title": "GitHub 분석: xiquan-li/TinyMU"
+  }
+}

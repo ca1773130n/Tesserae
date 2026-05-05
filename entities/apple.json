@@ -1,0 +1,15 @@
+{
+  "title": "apple",
+  "kind": "entities",
+  "body_text": "# apple\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: apple/ml-4m _(Repository)_\n- **released_by** → GitHub 분석: apple/ml-mobileclip _(Repository)_\n\n## Connected node types\n\n- Repository: 2",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-09/papers/2411.14517/repo.md",
+  "links": [],
+  "body": "# apple\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: apple/ml-4m _(Repository)_\n- **released_by** → GitHub 분석: apple/ml-mobileclip _(Repository)_\n\n## Connected node types\n\n- Repository: 2",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:apple:19576e16c6d5",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-09/papers/2411.14517/repo.md",
+    "title": "apple"
+  }
+}

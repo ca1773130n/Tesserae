@@ -1,0 +1,40 @@
+repo.md
+=======
+
+# GitHub 분석: ReconWorldLab/godot-gaussian-splatting
+
+> - URL: https://github.com/ReconWorldLab/godot-gaussian-splatting
+> - 분석일: 2026-04-15
+
+## 개요
+
+- **설명**: [GDGS] A real-time 3D Gaussian Splatting (3DGS) rendering plugin for the Godot Engine. Godot引擎的实时3DGS渲染插件
+- **Stars**: ⭐ 143 | Forks: 11
+- **라이선스**: MIT
+- **주 언어**: unknown
+
+## 실행 가능 상태: 코드 미공개 (README/asset만 존재)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (0개) | N |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.gitignore
+docs/architecture.md
+LICENSE
+README_CN.md
+README.md
+```

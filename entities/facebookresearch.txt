@@ -1,0 +1,18 @@
+facebookresearch
+================
+
+# facebookresearch
+
+## Incoming relations
+
+- **released_by** → GitHub 분석: facebookresearch/AINA _(Repository)_
+- **released_by** → GitHub 분석: facebookresearch/EUPE _(Repository)_
+- **released_by** → GitHub 분석: facebookresearch/map-anything _(Repository)_
+- **released_by** → GitHub 분석: facebookresearch/sapiens2 _(Repository)_
+- **released_by** → GitHub 분석: facebookresearch/threadweaver _(Repository)_
+- **released_by** → GitHub 분석: facebookresearch/tribev2 _(Repository)_
+- **released_by** → GitHub 분석: facebookresearch/vjepa2 _(Repository)_
+
+## Connected node types
+
+- Repository: 7

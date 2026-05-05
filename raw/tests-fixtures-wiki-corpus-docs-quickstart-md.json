@@ -1,0 +1,8 @@
+{
+  "title": "quickstart.md",
+  "kind": "raw",
+  "body_text": "# Quickstart (fixture)\n\nThis fixture corpus is consumed by the Phase 2 site renderer tests. To use it\nin a test, request the `wiki_sample_graph` fixture; it walks\n`tests/fixtures/wiki_corpus/data/research/` and `tests/fixtures/wiki_corpus/docs/`,\ncalls `ResearchGraphExtractor.extract_file` with the right `source_kind` per\npath heuristic, and merges the per-file graphs via `merge_graphs`.\n\nThe corpus exercises Paper, Repository, and SourceDocument code paths.",
+  "source_path": "tests/fixtures/wiki_corpus/docs/quickstart.md",
+  "links": [],
+  "body": "# Quickstart (fixture)\n\nThis fixture corpus is consumed by the Phase 2 site renderer tests. To use it\nin a test, request the `wiki_sample_graph` fixture; it walks\n`tests/fixtures/wiki_corpus/data/research/` and `tests/fixtures/wiki_corpus/docs/`,\ncalls `ResearchGraphExtractor.extract_file` with the right `source_kind` per\npath heuristic, and merges the per-file graphs via `merge_graphs`.\n\nThe corpus exercises Paper, Repository, and SourceDocument code paths.\n"
+}

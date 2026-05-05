@@ -1,0 +1,18 @@
+{
+  "title": "Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction",
+  "kind": "papers",
+  "body_text": "# Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction\n\n## Outgoing relations\n\n- **authored_by** → Ahan Shabanov _(Person)_\n- **authored_by** → Andrea Tagliasacchi _(Person)_\n- **authored_by** → Andrea Vedaldi _(Person)_\n- **authored_by** → Bo Zhu _(Person)_\n- **authored_by** → Christian Richardt _(Person)_\n- **authored_by** → Denis Rozumny _(Person)_\n- **authored_by** → Ethan Weber _(Person)_\n- **authored_by** → Gael Le Lan _(Person)_\n- **authored_by** → Lei Luo _(Person)_\n- **authored_by** → Naina Dhingra _(Person)_\n- **authored_by** → Numair Khan _(Person)_\n- **authored_by** → Peter Hedman _(Person)_\n- **authored_by** → Zhengqin Li _(Person)_\n- **implemented_in** → GitHub 분석: cvg/resplat _(Repository)_\n- **implemented_in** → GitHub 분석: facebookresearch/EUPE _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses_dataset** → Objaverse _(Dataset)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-08 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-09 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-10 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-08 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 13\n- SourceDocument: 4\n- Repository: 2\n- Dataset: 1\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2604.04874/paper.md",
+  "links": [],
+  "body": "# Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction\n\n## Outgoing relations\n\n- **authored_by** → Ahan Shabanov _(Person)_\n- **authored_by** → Andrea Tagliasacchi _(Person)_\n- **authored_by** → Andrea Vedaldi _(Person)_\n- **authored_by** → Bo Zhu _(Person)_\n- **authored_by** → Christian Richardt _(Person)_\n- **authored_by** → Denis Rozumny _(Person)_\n- **authored_by** → Ethan Weber _(Person)_\n- **authored_by** → Gael Le Lan _(Person)_\n- **authored_by** → Lei Luo _(Person)_\n- **authored_by** → Naina Dhingra _(Person)_\n- **authored_by** → Numair Khan _(Person)_\n- **authored_by** → Peter Hedman _(Person)_\n- **authored_by** → Zhengqin Li _(Person)_\n- **implemented_in** → GitHub 분석: cvg/resplat _(Repository)_\n- **implemented_in** → GitHub 분석: facebookresearch/EUPE _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses_dataset** → Objaverse _(Dataset)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-08 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-09 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-10 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-08 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 13\n- SourceDocument: 4\n- Repository: 2\n- Dataset: 1\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2604.04874"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2604-04874:1f755770b5fb",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2604.04874/paper.md",
+    "title": "Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction"
+  }
+}

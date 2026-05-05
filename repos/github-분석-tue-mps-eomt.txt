@@ -1,0 +1,12 @@
+GitHub 분석: tue-mps/eomt
+=======================
+
+# GitHub 분석: tue-mps/eomt
+
+## Outgoing relations
+
+- **released_by** → tue-mps _(Organization)_
+
+## Connected node types
+
+- Organization: 1

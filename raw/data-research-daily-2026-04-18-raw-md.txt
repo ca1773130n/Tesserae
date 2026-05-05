@@ -1,0 +1,12 @@
+raw.md
+======
+
+# Daily Feed Summary — 2026-04-18
+
+Total: 3 relevant feeds (from 19)
+
+| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |
+|------|------|-------|-----|--------|-------|-----------|-------------|
+| 2026-04-18 | 18:03 | Foundation model for panoramic depth estimation https://gith...... | N/A | https://github.com/enix/x509-certificate-exporter | 855 | N/A | [분석](repos/enix_x509-certificate-exporter.md) |
+| 2026-04-18 | 16:44 | Feed-forward 3D reconstruction should not be limited to pred...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-18 | 15:59 | ? After one year of teamwork, we are excited to release our ...... | N/A | https://github.com/Robbyant/lingbot-va | 1030 | N/A | [분석](repos/Robbyant_lingbot-va.md) |

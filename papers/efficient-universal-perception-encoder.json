@@ -1,0 +1,18 @@
+{
+  "title": "Efficient Universal Perception Encoder",
+  "kind": "papers",
+  "body_text": "# Efficient Universal Perception Encoder\n\n## Outgoing relations\n\n- **authored_by** → Chenchen Zhu _(Person)_\n- **authored_by** → Cijo Jose _(Person)_\n- **authored_by** → Marc Szafraniec _(Person)_\n- **authored_by** → Maxime Oquab _(Person)_\n- **authored_by** → Patrick Labatut _(Person)_\n- **authored_by** → Piotr Bojanowski _(Person)_\n- **authored_by** → Raghuraman Krishnamoorthi _(Person)_\n- **authored_by** → Saksham Suri _(Person)_\n- **authored_by** → Vikas Chandra _(Person)_\n- **authored_by** → Wei Wen _(Person)_\n- **authored_by** → Yunyang Xiong _(Person)_\n- **implemented_in** → GitHub 분석: facebookresearch/EUPE _(Repository)_\n- **part_of** → Research Literature _(ResearchField)_\n- **supports_claim** → Open question: 향후 연구를 촉진하기 위해 EUPE 모델 전체 계열과 코드를 공개할 예정이다. _(OpenQuestion)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-30 _(SourceDocument)_\n- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **mentioned_in** → 주간 논문 분석 — 2026-W15 (2026-04-06 ~ 2026-04-12) _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-30 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 11\n- SourceDocument: 5\n- OpenQuestion: 1\n- Repository: 1\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2603.22387/paper.md",
+  "links": [],
+  "body": "# Efficient Universal Perception Encoder\n\n## Outgoing relations\n\n- **authored_by** → Chenchen Zhu _(Person)_\n- **authored_by** → Cijo Jose _(Person)_\n- **authored_by** → Marc Szafraniec _(Person)_\n- **authored_by** → Maxime Oquab _(Person)_\n- **authored_by** → Patrick Labatut _(Person)_\n- **authored_by** → Piotr Bojanowski _(Person)_\n- **authored_by** → Raghuraman Krishnamoorthi _(Person)_\n- **authored_by** → Saksham Suri _(Person)_\n- **authored_by** → Vikas Chandra _(Person)_\n- **authored_by** → Wei Wen _(Person)_\n- **authored_by** → Yunyang Xiong _(Person)_\n- **implemented_in** → GitHub 분석: facebookresearch/EUPE _(Repository)_\n- **part_of** → Research Literature _(ResearchField)_\n- **supports_claim** → Open question: 향후 연구를 촉진하기 위해 EUPE 모델 전체 계열과 코드를 공개할 예정이다. _(OpenQuestion)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-30 _(SourceDocument)_\n- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **mentioned_in** → 주간 논문 분석 — 2026-W15 (2026-04-06 ~ 2026-04-12) _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-30 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 11\n- SourceDocument: 5\n- OpenQuestion: 1\n- Repository: 1\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2603.22387"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2603-22387:f0293d2f76a7",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2603.22387/paper.md",
+    "title": "Efficient Universal Perception Encoder"
+  }
+}

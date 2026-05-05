@@ -1,0 +1,69 @@
+repo.md
+=======
+
+# GitHub 분석: fanegg/Feat2GS
+
+> - URL: https://github.com/fanegg/Feat2GS
+> - 분석일: 2026-04-15
+
+## 개요
+
+- **설명**: [CVPR2025] Feat2GS: Probing Visual Foundation Models with Gaussian Splatting
+- **Stars**: ⭐ 229 | Forks: 12
+- **라이선스**: NOASSERTION
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (113개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+arguments/__init__.py
+assets/Feat2GS_Benchmark.pdf
+build_dataset/0_create_json.py
+build_dataset/1_create_feat2gs_dataset.py
+build_dataset/preprocess_dtu.py
+coarse_init_eval_dtu.py
+coarse_init_eval.py
+command
+demo.py
+demo_run_video.py
+demo_train_feat2gs.py
+gaussian_renderer/__init__.py
+gaussian_renderer/network_gui.py
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+init_test_pose_dtu.py
+init_test_pose.py
+LICENSE
+lpipsPyTorch/__init__.py
+metrics.py
+paper/bar_chart.py
+paper/common.py
+paper/correlation_dataset_permetric.py
+paper/correlation_dataset_permode_topsis.py
+paper/correlation_dataset_topsis.py
+paper/correlation_final.py
+paper/correlation_metric_corssdataset_dtu.py
+paper/generate_baseline_comparison_table_crossdataset.py
+paper/generate_baseline_comparison_table_perscene.py
+paper/generate_baseline_comparison_table.py
+paper/generate_gta_table_crossdataset.py
+paper/generate_gta_table_perscene.py
+paper/generate_gta_table.py
+paper/line_chart.py
+paper/radar_chart.py
+```

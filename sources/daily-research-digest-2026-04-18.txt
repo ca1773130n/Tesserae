@@ -1,0 +1,12 @@
+📬 Daily Research Digest — 2026-04-18
+====================================
+
+# 📬 Daily Research Digest — 2026-04-18
+
+## Outgoing relations
+
+- **uses_metric** → mAP _(Metric)_
+
+## Connected node types
+
+- Metric: 1

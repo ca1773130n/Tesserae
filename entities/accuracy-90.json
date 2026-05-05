@@ -1,0 +1,15 @@
+{
+  "title": "accuracy=90",
+  "kind": "entities",
+  "body_text": "# accuracy=90\n\n90% accuracy\n\n## Outgoing relations\n\n- **uses_metric** → Accuracy _(Metric)_\n\n## Incoming relations\n\n- **reports_result** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **reports_result** → Daily Feed Summary — 2026-04-28 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 2\n- Metric: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-28/raw.md",
+  "links": [],
+  "body": "# accuracy=90\n\n90% accuracy\n\n## Outgoing relations\n\n- **uses_metric** → Accuracy _(Metric)_\n\n## Incoming relations\n\n- **reports_result** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **reports_result** → Daily Feed Summary — 2026-04-28 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 2\n- Metric: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Result:accuracy-90:1b95cca53815",
+    "node_type": "Result",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-28/raw.md",
+    "title": "accuracy=90"
+  }
+}

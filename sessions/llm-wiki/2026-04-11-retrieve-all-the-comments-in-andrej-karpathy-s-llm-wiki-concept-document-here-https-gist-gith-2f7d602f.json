@@ -1,0 +1,68 @@
+{
+  "title": "retrieve all the comments in Andrej Karpathy's LLM Wiki concept document here: https://gist.gith",
+  "kind": "session",
+  "body_text": "retrieve all the comments in Andrej Karpathy's LLM Wiki concept document here: https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f and then find all github urls. and get the most trending github repos implementing newly or on top of their base project. Artifacts saved. Here is the summary. ## Actions - Fetched all **400 comments** on Karpathy's LLM Wiki gist (4 pages, GitHub API) - Extracted **134 unique GitHub repos** referenced in comment bodies; enriched each with stars/forks/created date via `gh api` - Ranked by stars, filtered to repos **created on/after the gist date (2026-04-04)** = \"newly built on top\" ## Files - `data/comments.json` — all 400 raw comments - `data/repos_meta.json` — 132 repos with metadata (stars, forks, created, desc, lang) ## Top trending repos built on Karpathy's LLM Wiki (created ≥ 2026-04-04) | # | Stars | Repo | Lang | Description | |---|---|---|---|---| | 1 | **41,314★** | [milla-jovovich/mempalace](https://github.com/milla-jovovich/mempalace) | Python | \"Highest-scoring AI memory system ever benchmarked. And it's free.\" | | 2 | 819★ | [Houseofmvps/codesight](https://github.com/Houseofmvps/codesight) | TS | Universal AI context generato",
+  "source_path": "/Users/neo/.claude-personal1/projects/-Users-neo-Developer-Projects-LLM-Wiki/ce628622-05b9-4c64-a70b-a7ae0f7dfe09.jsonl",
+  "links": [],
+  "body": "retrieve all the comments in Andrej Karpathy's LLM Wiki concept document here: https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f and then find all github urls. and get the most trending github repos implementing newly or on top of their base project. Artifacts saved. Here is the summary. ## Actions - Fetched all **400 comments** on Karpathy's LLM Wiki gist (4 pages, GitHub API) - Extracted **134 unique GitHub repos** referenced in comment bodies; enriched each with stars/forks/created date via `gh api` - Ranked by stars, filtered to repos **created on/after the gist date (2026-04-04)** = \"newly built on top\" ## Files - `data/comments.json` — all 400 raw comments - `data/repos_meta.json` — 132 repos with metadata (stars, forks, created, desc, lang) ## Top trending repos built on Karpathy's LLM Wiki (created ≥ 2026-04-04) | # | Stars | Repo | Lang | Description | |---|---|---|---|---| | 1 | **41,314★** | [milla-jovovich/mempalace](https://github.com/milla-jovovich/mempalace) | Python | \"Highest-scoring AI memory system ever benchmarked. And it's free.\" | | 2 | 819★ | [Houseofmvps/codesight](https://github.com/Houseofmvps/codesight) | TS | Universal AI context generato",
+  "frontmatter": {
+    "id": "claude-code:ce628622-05b9-4c64-a70b-a7ae0f7dfe09:ce628622-05b9-4c64-a70b-a7ae0f7dfe09",
+    "slug": "retrieve-all-the-comments-in-andrej-karpathy-s-llm-wiki-concept-document-here-https-gist-gith",
+    "harness": "claude-code",
+    "agent_label": "Claude Code",
+    "project_name": "LLM-Wiki",
+    "project_root": "/Users/neo/Developer/Projects/LLM-Wiki",
+    "started_at": "2026-04-11T15:27:24.632Z",
+    "ended_at": "2026-04-14T21:32:30.429Z",
+    "branch": "main",
+    "commit_before": "",
+    "commit_after": "",
+    "model": "claude-opus-4-6",
+    "title": "retrieve all the comments in Andrej Karpathy's LLM Wiki concept document here: https://gist.gith",
+    "summary": "retrieve all the comments in Andrej Karpathy's LLM Wiki concept document here: https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f and then find all github urls. and get the most trending github repos implementing newly or on top of their base project. Artifacts saved. Here is the summary. ## Actions - Fetched all **400 comments** on Karpathy's LLM Wiki gist (4 pages, GitHub API) - Extracted **134 unique GitHub repos** referenced in comment bodies; enriched each with stars/forks/created date via `gh api` - Ranked by stars, filtered to repos **created on/after the gist date (2026-04-04)** = \"newly built on top\" ## Files - `data/comments.json` — all 400 raw comments - `data/repos_meta.json` — 132 repos with metadata (stars, forks, created, desc, lang) ## Top trending repos built on Karpathy's LLM Wiki (created ≥ 2026-04-04) | # | Stars | Repo | Lang | Description | |---|---|---|---|---| | 1 | **41,314★** | [milla-jovovich/mempalace](https://github.com/milla-jovovich/mempalace) | Python | \"Highest-scoring AI memory system ever benchmarked. And it's free.\" | | 2 | 819★ | [Houseofmvps/codesight](https://github.com/Houseofmvps/codesight) | TS | Universal AI context generato",
+    "message_count": 37,
+    "tool_call_count": 18,
+    "token_input": 0,
+    "token_output": 0,
+    "token_total": 0,
+    "cache_hit_ratio": null,
+    "tools_used": [
+      "Bash",
+      "ToolSearch",
+      "deferred_tools_delta",
+      "mcp__plugin_context-mode_context-mode__ctx_execute",
+      "mcp__plugin_context-mode_context-mode__ctx_fetch_and_index",
+      "mcp__plugin_context-mode_context-mode__ctx_search",
+      "mcp_instructions_delta",
+      "skill_listing",
+      "task_reminder"
+    ],
+    "files_touched": [
+      "data",
+      "data/",
+      "data/comments.json",
+      "data/repos_meta.json"
+    ],
+    "commands_run": [
+      "node ${CLAUDE_PLUGIN_ROOT}/hooks/sessionstart.mjs",
+      "node \"${CLAUDE_PLUGIN_ROOT}/bin/grd-tools.js\" verify-path-exists .planning 2>/dev/null || true",
+      "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" session-start",
+      "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse.py",
+      "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/posttooluse.py",
+      "mkdir -p /Users/neo/Developer/Projects/LLM-Wiki/data && cp /tmp/llmwiki/all.json /Users/neo/Developer/Projects/LLM-Wiki/data/comments.json && cp /tmp/llmwiki/meta.json /Users/neo/Developer/Projects/LLM-Wiki/data/repos_meta.json && ls /Users/neo/Developer/Projects/LLM-Wiki/data/",
+      "node ${CLAUDE_PLUGIN_ROOT}/hooks/pretooluse.mjs",
+      "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/stop.py",
+      "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/stop-hook.sh\""
+    ],
+    "decisions": [],
+    "errors": [],
+    "raw_transcript_path": "/Users/neo/.claude-personal1/projects/-Users-neo-Developer-Projects-LLM-Wiki/ce628622-05b9-4c64-a70b-a7ae0f7dfe09.jsonl",
+    "redacted_preview": "retrieve all the comments in Andrej Karpathy's LLM Wiki concept document here: https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f and then find all github urls. and get the most trending github repos implementing newly or on top of their base project. Artifacts saved. Here is the summary. ## Actions - Fetched all **400 comments** on Karpathy's LLM Wiki gist (4 pages, GitHub API) - Extracted **134 unique GitHub repos** referenced in comment bodies; enriched each with stars/forks/created date via `gh api` - Ranked by stars, filtered to repos **created on/after the gist date (2026-04-04)** = \"newly built on top\" ## Files - `data/comments.json` — all 400 raw comments - `data/repos_meta.json` — 132 repos with metadata (stars, forks, created, desc, lang) ## Top trending repos built on Karpathy's LLM Wiki (created ≥ 2026-04-04) | # | Stars | Repo | Lang | Description | |---|---|---|---|---| | 1 | **41,314★** | [milla-jovovich/mempalace](https://github.com/milla-jovovich/mempalace) | Python | \"Highest-scoring AI memory system ever benchmarked. And it's free.\" | | 2 | 819★ | [Houseofmvps/codesight](https://github.com/Houseofmvps/codesight) | TS | Universal AI context generato",
+    "metadata": {
+      "config_root": "/Users/neo/.claude-personal1",
+      "transcript": "/Users/neo/.claude-personal1/projects/-Users-neo-Developer-Projects-LLM-Wiki/ce628622-05b9-4c64-a70b-a7ae0f7dfe09.jsonl"
+    },
+    "date": "2026-04-11",
+    "href": "sessions/llm-wiki/2026-04-11-retrieve-all-the-comments-in-andrej-karpathy-s-llm-wiki-concept-document-here-https-gist-gith-2f7d602f.html"
+  }
+}

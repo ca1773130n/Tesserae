@@ -1,0 +1,49 @@
+LilanOvO_Auto-Resubmit.md
+=========================
+
+# GitHub 분석: LilanOvO/Auto-Resubmit
+
+> - URL: https://github.com/LilanOvO/Auto-Resubmit
+> - 분석일: 2026-04-10
+
+## 개요
+
+- **설명**: 🚀 Automated & lossless LaTeX paper migration tool. Instantly convert your Overleaf source between top-tier AI conference templates (NeurIPS, ICLR, ACL等). 一键无损转换顶会论文格式！解决转投时的排版折磨，完美保留公式、图表与引用，让科研人员专注研究而
+- **Stars**: ⭐ 153 | Forks: 7
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 체크포인트 미공개 (추론 불가 가능성)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (7개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+assets/auto-resubmit-banner.png
+assets/auto-resubmit-header.png
+auto_resubmit/cli.py
+auto_resubmit/conferences.py
+auto_resubmit/__init__.py
+auto_resubmit/latex.py
+auto_resubmit/__main__.py
+auto_resubmit/pipeline.py
+auto_resubmit/review.py
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+pyproject.toml
+README.md
+README_zh.md
+SUPPORT_MATRIX.md
+```

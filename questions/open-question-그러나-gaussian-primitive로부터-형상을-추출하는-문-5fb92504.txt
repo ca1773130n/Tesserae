@@ -1,0 +1,14 @@
+Open question: 그러나 Gaussian primitive로부터 형상을 추출하는 문제는 여전히 해결되지 않은 과제로 남아 있다.
+============================================================================
+
+# Open question: 그러나 Gaussian primitive로부터 형상을 추출하는 문제는 여전히 해결되지 않은 과제로 남아 있다.
+
+그러나 Gaussian primitive로부터 형상을 추출하는 문제는 여전히 해결되지 않은 과제로 남아 있다.
+
+## Incoming relations
+
+- **supports_claim** → Geometry-Grounded Gaussian Splatting _(Paper)_
+
+## Connected node types
+
+- Paper: 1

@@ -1,0 +1,117 @@
+paper.md
+========
+
+# 논문 분석: 2603.22572
+
+> - arxiv: https://arxiv.org/abs/2603.22572
+> - papers.cool: https://papers.cool/arxiv/2603.22572
+> - 분석일: 2026-04-15
+
+FullCircle: Effortless 3D Reconstruction from Casual 360$^\circ$ Captures | Cool Papers - 몰입형 논문 탐색
+
+## 2603.22572
+
+총계: 1
+
+## #1
+
+# FullCircle: Effortless 3D Reconstruction from Casual 360$^\circ$ Captures
+
+[PDF3]  
+[Copy]  
+[Kimi2]  
+[REL]
+
+저자:  
+Yalda Foroutan,  
+Ipek Oztas,  
+Daniel Rebain,  
+Aysegul Dundar,  
+Kwang Moo Yi,  
+Lily Goli,  
+Andrea Tagliasacchi
+
+Radiance fields는 3D 장면 재구성을 위한 강력한 도구로 부상했다. 그러나 일반적인 촬영은 여전히 어려운 과제로 남아 있는데, 이는 원근 카메라의 좁은 시야각이 신뢰할 수 있는 카메라 보정과 재구성에 필요한 시점 커버리지와 특징 대응을 제한하기 때문이다. 상용 360$^\circ$ 카메라는 동일한 촬영 노력 대비 원근 카메라보다 훨씬 넓은 커버리지를 제공하지만, 기존 360$^\circ$ 재구성 방법은 특별한 촬영 프로토콜과 전처리 단계를 요구하여 radiance fields의 약속인 손쉬운 3D 장면 촬영 및 재구성 워크플로를 훼손한다. 본 논문은 원시 360$^\circ$ 카메라 캡처로부터 직접 3D 장면을 재구성하는 실용적인 파이프라인을 제안한다. 특별한 촬영 프로토콜이나 전처리가 필요 없으며, 모든 360$^\circ$ 이미지에 나타나는 사람 촬영자라는 흔한 재구성 오류 원인에 대해서도 강건함을 보인다. 평가를 용이하게 하기 위해, 원시 dual-fisheye 이미지로 촬영된 장면의 다층 데이터셋을 도입하여 강건한 일반적 360$^\circ$ 재구성을 위한 벤치마크를 구축한다. 제안 방법은 360$^\circ$ 카메라용 vanilla 3DGS뿐 아니라 동일한 캡처로부터 원근 카메라를 시뮬레이션한 경우의 강건한 원근 기준 방법들보다도 현저히 우수한 성능을 보이며, 일반적 재구성에서 360$^\circ$ 촬영의 장점을 입증한다. 추가 결과는 다음에서 확인할 수 있다: https://theialab.github.io/fullcircle
+
+주제:  
+Computer Vision and Pattern Recognition
+
+게시: 2026-03-23 21:09:28 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+Include(OR):
+
+Exclude:
+
+Search
+
+Filter
+
+Highlight
+
+Stared Paper(s):
+
+#1  
+FullCircle: Effortless 3D Reconstruction from Casual 360$^\circ$ Captures
+
+Export
+
+Magic Token:
+
+Kimi Language:
+
+中文  
+English
+
+Desc Language:
+
+中文  
+English
+
+Save
+
+버그 제보 또는 Issue 제출은 다음을 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+계속 진행하기 전에 Disclaimer를 읽어 주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문하세요。
+
+```javascript
+var macros = {
+    "argmin": "\\mathop{\\text{argmin}}",
+    "argmax": "\\mathop{\\text{argmax}}"
+};
+MathJax.Hub.Config({
+    tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']], processEscapes: true},
+    TeX: {equationNumbers: {autoNumber: ["AMS"], useLabelIds: true}, extensions: ["AMSmath.js", "AMSsymbols.js", "extpfeil.js"], Macros: macros},
+    "HTML-CSS": {noReflows: false, availableFonts: ["tex"], styles: {".MathJax_Display": {margin: "1em 0em 0.7em;", display: "inline-block!important;"}}},
+    "CommonHTML": {noReflows: false, availableFonts: ["tex"], styles: {".MJXc-display": {margin: "1em 0em 0.7em;", display: "inline-block!important;"}}},
+    "SVG": {styles: {".MathJax_SVG_Display": {margin: "1em 0em 0.7em;", display: "inline-block!important;"}}}
+});
+MathJax.Hub.Queue(function() {
+    document.querySelectorAll('.MathJax').forEach(element => element.classList.add('notranslate'));
+    document.querySelectorAll('a.title-link, p.summary').forEach(element => element.classList.remove('notranslate'));
+    highlightQuery();
+});
+```
+
+```javascript
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement("script");
+  hm.src = "https://hm.baidu.com/hm.js?606b976365dabacb1f69823d8de064ee";
+  var s = document.getElementsByTagName("script")[0]; 
+  s.parentNode.insertBefore(hm, s);
+})();
+```
+
+```javascript
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+
+gtag('config', 'G-214H31WLDF');
+```

@@ -1,0 +1,42 @@
+repo.md
+=======
+
+# GitHub 분석: KAIST-Visual-AI-Group/MatLat
+
+> - URL: https://github.com/KAIST-Visual-AI-Group/MatLat
+> - 분석일: 2026-04-13
+
+## 개요
+
+- **설명**: [CVPR 2026 Highlight] Official code for MatLat: Material Latent Space for PBR Texture Generation
+- **Stars**: ⭐ 7 | Forks: 0
+- **라이선스**: N/A
+- **주 언어**: unknown
+
+## 실행 가능 상태: 코드 미공개 (README/asset만 존재)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (0개) | N |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+assets/result_1.gif
+assets/result_2.gif
+assets/result_3.gif
+assets/result_4.gif
+assets/result_5.gif
+assets/result_6.gif
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+README.md
+```

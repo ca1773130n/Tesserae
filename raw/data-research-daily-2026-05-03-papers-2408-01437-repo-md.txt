@@ -1,0 +1,63 @@
+repo.md
+=======
+
+# GitHub 분석: qq456cvb/Img2CAD
+
+> - URL: https://github.com/qq456cvb/Img2CAD
+> - 분석일: 2026-05-03
+
+## 개요
+
+- **설명**:   
+- **Stars**: ⭐ 30 | Forks: 2
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (19개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+cadlib/curves.py
+cadlib/extrude.py
+cadlib/__init__.py
+cadlib/macro.py
+cadlib/math_utils.py
+cadlib/sketch.py
+cadlib/visualize.py
+data/.gitkeep
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.gitmodules
+.git/packed-refs
+.git/shallow
+LICENSE
+LlamaFT/finetune.py
+LlamaFT/infer.py
+LlamaFT/prompt.txt
+README.md
+requirements.txt
+teaser.gif
+TrAssembler/config.yaml
+TrAssembler/dataset.py
+TrAssembler/eval.py
+TrAssembler/model.py
+TrAssembler/train.py
+utils/cmd_to_vec.py
+utils/diffsdf.py
+utils/io.py
+utils/misc.py
+utils/partseg.py
+utils/transformer_utils.py
+```

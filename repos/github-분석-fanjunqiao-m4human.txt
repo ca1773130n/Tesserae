@@ -1,0 +1,12 @@
+GitHub 분석: FanJunqiao/M4Human
+=============================
+
+# GitHub 분석: FanJunqiao/M4Human
+
+## Incoming relations
+
+- **implemented_in** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_
+
+## Connected node types
+
+- Paper: 1

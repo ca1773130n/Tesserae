@@ -1,0 +1,12 @@
+Patrick Labatut
+===============
+
+# Patrick Labatut
+
+## Incoming relations
+
+- **authored_by** → Efficient Universal Perception Encoder _(Paper)_
+
+## Connected node types
+
+- Paper: 1

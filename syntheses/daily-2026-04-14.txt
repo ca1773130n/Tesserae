@@ -1,0 +1,17 @@
+Daily Digest — 2026-04-14
+=========================
+
+# Daily Digest — 2026-04-14
+
+Sources ingested under `data/research/daily/2026-04-14/`.
+
+## Papers and repos
+- [GitHub 분석: alexbatalov/fallout1-re](../repos/github-분석-alexbatalov-fallout1-re.md) (Repository)
+- [GitHub 분석: eth-ait/Gaussian-Garments](../repos/github-분석-eth-ait-gaussian-garments.md) (Repository)
+- [GitHub 분석: facebookresearch/map-anything](../repos/github-분석-facebookresearch-map-anything.md) (Repository)
+- [GitHub 분석: jendrikseipp/vulture](../repos/github-분석-jendrikseipp-vulture.md) (Repository)
+- [GitHub 분석: naver/pow3r](../repos/github-분석-naver-pow3r.md) (Repository)
+- [Daily Feed Summary — 2026-04-14](../sources/daily-feed-summary-2026-04-14.md) (SourceDocument)
+
+## Extracted concepts
+- (none extracted)

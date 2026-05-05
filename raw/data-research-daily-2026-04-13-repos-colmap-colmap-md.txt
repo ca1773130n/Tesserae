@@ -1,0 +1,69 @@
+colmap_colmap.md
+================
+
+# GitHub 분석: colmap/colmap
+
+> - URL: https://github.com/colmap/colmap
+> - 분석일: 2026-04-13
+
+## 개요
+
+- **설명**: COLMAP - Structure-from-Motion and Multi-View Stereo
+- **Stars**: ⭐ 11415 | Forks: 1968
+- **라이선스**: NOASSERTION
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (16개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+AGENTS.md
+CHANGELOG.rst
+.clang-format
+.clang-tidy
+cmake/CMakeHelper.cmake
+cmake/CMakeUninstall.cmake.in
+cmake/colmap-config.cmake.in
+cmake/colmap-config-version.cmake.in
+cmake/FindCHOLMOD.cmake
+cmake/FindCryptoPP.cmake
+cmake/FindDependencies.cmake
+cmake/FindGlew.cmake
+cmake/FindGlog.cmake
+cmake/FindMetis.cmake
+cmake/Findonnxruntime.cmake
+cmake/GenerateVersionDefinitions.cmake
+CMakeLists.txt
+CONTRIBUTING.md
+COPYING.txt
+doc/bibliography.rst
+doc/cameras.rst
+doc/changelog.rst
+doc/cli.rst
+doc/colmap.1
+doc/COLMAP.desktop
+doc/concepts.rst
+doc/conf.py
+doc/contribution.rst
+doc/database.rst
+doc/datasets.rst
+doc/faq.rst
+doc/features.rst
+doc/format.rst
+doc/gui.rst
+doc/index.rst
+doc/install.rst
+docker/build.sh
+docker/Dockerfile
+.dockerignore
+docker/README.md
+```

@@ -1,0 +1,18 @@
+Daily Feed Summary — 2026-04-25
+===============================
+
+# Daily Feed Summary — 2026-04-25
+
+## Outgoing relations
+
+- **mentioned_in** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_
+- **mentioned_in** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_
+- **mentioned_in** → Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction _(Paper)_
+- **mentioned_in** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_
+- **mentioned_in** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+- **mentioned_in** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Paper)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+
+## Connected node types
+
+- Paper: 7

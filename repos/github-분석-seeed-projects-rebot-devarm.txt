@@ -1,0 +1,12 @@
+GitHub 분석: Seeed-Projects/reBot-DevArm
+======================================
+
+# GitHub 분석: Seeed-Projects/reBot-DevArm
+
+## Outgoing relations
+
+- **released_by** → seeed-projects _(Organization)_
+
+## Connected node types
+
+- Organization: 1

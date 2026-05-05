@@ -1,0 +1,21 @@
+{
+  "title": "Field Overview — LLM Reasoning",
+  "kind": "syntheses",
+  "body_text": "# Field Overview — LLM Reasoning\n\nNo linked topics yet.\n\n## Representative concepts\n- (none)",
+  "source_path": "",
+  "links": [],
+  "body": "# Field Overview — LLM Reasoning\n\nNo linked topics yet.\n\n## Representative concepts\n- (none)",
+  "frontmatter": {
+    "content_hash": "sha256-34a9943df8b7a3a1400cddcf6a7b62803c6e2f3b5df653e08a0a91f80a08cf7f",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "ResearchField:llm-reasoning:530f2afb39c4"
+    ],
+    "slug": "field-llm-reasoning",
+    "sources": [
+      "data/research/daily/2026-05-05/papers/2512.13238/paper.md"
+    ],
+    "synthesis_kind": "field_overview",
+    "title": "Field Overview — LLM Reasoning"
+  }
+}

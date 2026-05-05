@@ -1,0 +1,15 @@
+{
+  "title": "Mark Matthews",
+  "kind": "entities",
+  "body_text": "# Mark Matthews\n\n## Incoming relations\n\n- **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2411.18650/paper.md",
+  "links": [],
+  "body": "# Mark Matthews\n\n## Incoming relations\n\n- **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:mark-matthews:a0321123e2cc",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2411.18650/paper.md",
+    "title": "Mark Matthews"
+  }
+}

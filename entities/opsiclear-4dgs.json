@@ -1,0 +1,15 @@
+{
+  "title": "opsiclear-4dgs",
+  "kind": "entities",
+  "body_text": "# opsiclear-4dgs\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: OpsiClear-4DGS/TriGSVanilla _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-26/repos/OpsiClear-4DGS_TriGSVanilla.md",
+  "links": [],
+  "body": "# opsiclear-4dgs\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: OpsiClear-4DGS/TriGSVanilla _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:opsiclear-4dgs:455594f80d32",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-26/repos/OpsiClear-4DGS_TriGSVanilla.md",
+    "title": "opsiclear-4dgs"
+  }
+}

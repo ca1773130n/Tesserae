@@ -1,0 +1,82 @@
+paper.md
+========
+
+# 논문 분석: 2408.01437
+
+> - arxiv: https://arxiv.org/abs/2408.01437
+> - papers.cool: https://papers.cool/arxiv/2408.01437
+> - 분석일: 2026-05-03
+
+# Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 | Cool Papers - 몰입형 논문 탐색
+
+## 2408.01437
+
+총계: 1
+
+## #1
+
+# Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링
+
+[PDF3]  
+[Copy]  
+[Kimi6]  
+[REL]
+
+저자:  
+Yang You,  
+Mikaela Angelina Uy,  
+Jiaqi Han,  
+Rahul Thomas,  
+Haotong Zhang,  
+Yi Du,  
+Hansheng Chen,  
+Francis Engelmann,  
+Suya You,  
+Leonidas Guibas
+
+이미지로부터 3D computer-aided design, CAD 모델을 리버스 엔지니어링하는 것은 인터랙티브 편집, 제조, 건축, 로보틱스 등 많은 다운스트림 응용을 위해 중요한 과제이다. 이 과제의 어려움은 CAD 출력과 이미지 입력 사이에 존재하는 매우 큰 표현 격차에 있다. CAD 모델은 이산적 명령 구조와 연속적 속성을 결합하는 순차적 연산을 포함하는 정밀한 프로그램적 구조이므로, 종단간 방식으로 학습하고 최적화하기가 어렵다. 동시에 입력 이미지는 광도 변화와 센서 노이즈 같은 본질적인 어려움을 가져와 리버스 엔지니어링 과정을 더욱 복잡하게 만든다. 이 연구에서 우리는 이 과제를 조건부로 두 개의 하위 문제로 분해하는 새로운 접근법을 제안한다. 첫째, 의미 정보를 포함한 전역적 이산 기본 구조를 예측하기 위해 vision-language foundation models, VLMs와 파인튜닝된 Llama3.2를 활용한다. 둘째, 의미를 포함한 이산 구조를 조건으로 하여 연속적 속성 값을 예측하는 TrAssembler를 제안한다. 또한 TrAssembler의 학습을 지원하기 위해 ShapeNet으로부터 일반적인 객체들에 대한 주석 포함 CAD 데이터셋을 새롭게 구축했다. 이를 종합하면, 우리의 접근법과 데이터는 실제 환경의 이미지를 CAD화하는 방향으로 나아가는 중요한 첫걸음을 보여준다. 코드와 데이터는 https://github.com/qq456cvb/Img2CAD 에서 확인할 수 있다.
+
+주제:  
+Computer Vision and Pattern Recognition,  
+Graphics
+
+게시일: 2024-07-19 06:53:30 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+포함 OR:
+
+제외:
+
+검색
+
+필터
+
+강조 표시
+
+표시한 논문:
+
+#1  
+Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링
+
+내보내기
+
+Magic Token:
+
+Kimi 언어:  
+中文  
+English
+
+설명 언어:  
+中文  
+English
+
+저장
+
+버그 신고 또는 이슈 제출은 다음을 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+계속 진행하기 전에 Disclaimer를 읽어 주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문해 확인할 수 있습니다.

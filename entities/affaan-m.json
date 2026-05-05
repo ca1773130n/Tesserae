@@ -1,0 +1,15 @@
+{
+  "title": "affaan-m",
+  "kind": "entities",
+  "body_text": "# affaan-m\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: affaan-m/everything-claude-code _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-06/repos/affaan-m_everything-claude-code.md",
+  "links": [],
+  "body": "# affaan-m\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: affaan-m/everything-claude-code _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:affaan-m:8a4f5bcb14d0",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-06/repos/affaan-m_everything-claude-code.md",
+    "title": "affaan-m"
+  }
+}

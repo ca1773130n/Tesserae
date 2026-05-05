@@ -1,0 +1,81 @@
+paper.md
+========
+
+# 논문 분석: 2512.13238
+
+> - arxiv: https://arxiv.org/abs/2512.13238
+> - papers.cool: https://papers.cool/arxiv/2512.13238
+> - 분석일: 2026-05-05
+
+Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset | Cool Papers - 몰입형 논문 탐색
+
+## 2512.13238
+
+총계: 1
+
+## #1
+
+### Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset
+
+[PDF5]  
+[Copy]  
+[Kimi2]  
+[REL]
+
+저자:  
+Francesco Ragusa,  
+Michele Mazzamuto,  
+Rosario Forte,  
+Irene D&#039;Ambra,  
+James Fort,  
+Jakob Engel,  
+Antonino Furnari,  
+Giovanni Maria Farinella
+
+우리는 EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset인 Ego-EXTRA를 제안한다. Ego-EXTRA는 절차적 활동을 수행하는 피실험자들, 즉 trainees가 실제 전문가의 안내를 받으며 자연어로 구체적인 질문에 대한 답변과 지도를 제공받는, 대본 없는 egocentric 비디오 50시간으로 구성된다. Wizard of OZ 데이터 수집 패러다임을 따라, 전문가는 착용형 지능형 비서의 역할을 수행하며 trainee가 수행하는 활동을 오직 그들의 egocentric 시점에서 관찰한다. 또한 trainee가 질문할 때 답변하거나, 절차 수행 중 제안을 통해 선제적으로 상호작용한다. 이러한 고유한 데이터 수집 프로토콜을 통해 Ego-EXTRA는 전문가 수준의 피드백이 trainee에게 제공되는 고품질 대화를 포착할 수 있다. 전문가와 trainee 사이의 양방향 대화는 녹음되고 전사되며, 15k개 이상의 고품질 Visual Question Answer 세트로 구성된 새로운 벤치마크를 만드는 데 사용된다. 우리는 이를 통해 Multimodal Large Language Models를 평가한다. 결과는 Ego-EXTRA가 도전적인 데이터셋임을 보여주며, 현재 모델들이 사용자에게 전문가 수준의 지원을 제공하는 데 사용될 때의 한계를 부각한다. Ego-EXTRA 데이터셋은 egocentric video-language assistants 벤치마크를 지원하기 위해 공개되어 있다: https://fpv-iplab.github.io/Ego-EXTRA/
+
+주제:  
+Computer Vision and Pattern Recognition
+
+게시: 2025-12-15 11:53:35 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+포함 OR:
+
+제외:
+
+검색
+
+필터
+
+강조 표시
+
+별표한 논문:
+
+#1  
+Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset
+
+내보내기
+
+Magic Token:
+
+Kimi 언어:
+
+- 中文
+- English
+
+설명 언어:
+
+- 中文
+- English
+
+저장
+
+버그 제보 또는 이슈 제출은 다음을 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+계속 진행하기 전에 Disclaimer를 읽어 주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문하세요.

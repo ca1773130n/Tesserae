@@ -1,0 +1,69 @@
+inspatio_inspatio-world.md
+==========================
+
+# GitHub 분석: inspatio/inspatio-world
+
+> - URL: https://github.com/inspatio/inspatio-world
+> - 분석일: 2026-04-08
+
+## 개요
+
+- **설명**:   
+- **Stars**: ⭐ 651 | Forks: 48
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (47개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.gitignore
+configs/default_config.yaml
+configs/inference_1.3b.yaml
+configs/inference.yaml
+datasets/__init__.py
+datasets/test_dataset.py
+datasets/utils.py
+datasets/video_dataset.py
+demo_utils/memory.py
+depth/__init__.py
+depth/depth_predict_da3_cli.py
+depth/depth_predict_da3.py
+depth/depth_utils.py
+environment.yml
+inference_causal_test.py
+LICENSE
+pipeline/__init__.py
+pipeline/causal_inference.py
+README.md
+requirements.txt
+run_example.sh
+run_test_pipeline.sh
+scripts/convert_da3_to_pi3.py
+scripts/download.sh
+scripts/gen_json.py
+scripts/merge_partial_jsons.py
+scripts/render_point_cloud.py
+scripts/run_da3_parallel.py
+scripts/run_render_parallel.py
+traj/x_y_circle_cycle.txt
+traj/zoom_out_in.txt
+utils/convert_pth_to_safetensors.py
+utils/misc.py
+utils/render_warper.py
+```

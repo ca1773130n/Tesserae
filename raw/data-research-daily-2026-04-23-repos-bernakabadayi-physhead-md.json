@@ -1,0 +1,8 @@
+{
+  "title": "bernakabadayi_physhead.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: bernakabadayi/physhead\n\n> - URL: https://github.com/bernakabadayi/physhead\n> - 분석일: 2026-04-23\n\n## 개요\n\n- **설명**: [CVPR 2026] PhysHead: Simulation-Ready Gaussian Head Avatars\n- **Stars**: ⭐ 32 | Forks: 1\n- **라이선스**: N/A\n- **주 언어**: Python\n\n## 실행 가능 상태: 의존성 파일 없음\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (17개) | Y |\n| 의존성 파일 | N |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\nCHANGELOG.md\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\nhairsim/environment.yml\nhairsim/README.md\nhairsim/requirements.txt\nhairsim/run_after_sim.sh\nhairsim/run_hair.sh\nhairsim/run_head.sh\nREADME.md\n```",
+  "source_path": "data/research/daily/2026-04-23/repos/bernakabadayi_physhead.md",
+  "links": [],
+  "body": "# GitHub 분석: bernakabadayi/physhead\n\n> - URL: https://github.com/bernakabadayi/physhead\n> - 분석일: 2026-04-23\n\n## 개요\n\n- **설명**: [CVPR 2026] PhysHead: Simulation-Ready Gaussian Head Avatars\n- **Stars**: ⭐ 32 | Forks: 1\n- **라이선스**: N/A\n- **주 언어**: Python\n\n## 실행 가능 상태: 의존성 파일 없음\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (17개) | Y |\n| 의존성 파일 | N |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\nCHANGELOG.md\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\nhairsim/environment.yml\nhairsim/README.md\nhairsim/requirements.txt\nhairsim/run_after_sim.sh\nhairsim/run_hair.sh\nhairsim/run_head.sh\nREADME.md\n```\n"
+}

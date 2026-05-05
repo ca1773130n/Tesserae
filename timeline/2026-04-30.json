@@ -1,0 +1,24 @@
+{
+  "title": "2026-04-30",
+  "kind": "timeline_day",
+  "body_text": "Activity for 2026-04-30: 54 item(s) indexed.",
+  "source_path": "",
+  "links": [],
+  "body": "Activity for 2026-04-30",
+  "frontmatter": {
+    "date": "2026-04-30",
+    "activity": 54,
+    "sources": [
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/digest.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2603.22387/paper.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2604.01907/paper.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2604.01907/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2604.09429/paper.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2604.24994/paper.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/raw.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/repos/deepseek-ai_TileKernels.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/repos/microsoft_World-R1.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/repos/taylorallenux_engine-lab.md"
+    ]
+  }
+}

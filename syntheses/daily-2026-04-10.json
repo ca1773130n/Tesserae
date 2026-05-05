@@ -1,0 +1,59 @@
+{
+  "title": "Daily Digest — 2026-04-10",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-04-10\n\nSources ingested under `data/research/daily/2026-04-10/`.\n\n## Papers and repos\n- [GitHub 분석: AISmithLab/CoBRA](../repos/github-분석-aismithlab-cobra.md) (Repository)\n- [GitHub 분석: Blaizzy/mlx-vlm](../repos/github-분석-blaizzy-mlx-vlm.md) (Repository)\n- [GitHub 분석: GalaxyGeneralRobotics/LATENT](../repos/github-분석-galaxygeneralrobotics-latent.md) (Repository)\n- [GitHub 분석: HKU-MMLab/Macro](../repos/github-분석-hku-mmlab-macro.md) (Repository)\n- [GitHub 분석: LilanOvO/Auto-Resubmit](../repos/github-분석-lilanovo-auto-resubmit.md) (Repository)\n- [GitHub 분석: NVIDIAGameWorks/kaolin](../repos/github-분석-nvidiagameworks-kaolin.md) (Repository)\n- [GitHub 분석: TakashiYoshinaga/Perspective-Effect-with-Head-Tracking-of-MediaPipe](../repos/github-분석-takashiyoshinaga-perspective-effect-with-head-tracking-of-mediapipe.md) (Repository)\n- [GitHub 분석: dqj5182/HACO_RELEASE](../repos/github-분석-dqj5182-haco-release.md) (Repository)\n- [GitHub 분석: facebookresearch/threadweaver](../repos/github-분석-facebookresearch-threadweaver.md) (Repository)\n- [GitHub 분석: h-shiono/MRTKLIB](../repos/github-분석-h-shiono-mrtklib.md) (Repository)\n- [GitHub 분석: isaaccorley/terrabit](../repos/github-분석-isaaccorley-terrabit.md) (Repository)\n- [GitHub 분석: tue-mps/eomt](../repos/github-분석-tue-mps-eomt.md) (Repository)\n- [Daily Feed Summary — 2026-04-10](../sources/daily-feed-summary-2026-04-10.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "source_path": "",
+  "links": [
+    "../repos/github-분석-aismithlab-cobra.md",
+    "../repos/github-분석-blaizzy-mlx-vlm.md",
+    "../repos/github-분석-galaxygeneralrobotics-latent.md",
+    "../repos/github-분석-hku-mmlab-macro.md",
+    "../repos/github-분석-lilanovo-auto-resubmit.md",
+    "../repos/github-분석-nvidiagameworks-kaolin.md",
+    "../repos/github-분석-takashiyoshinaga-perspective-effect-with-head-tracking-of-mediapipe.md",
+    "../repos/github-분석-dqj5182-haco-release.md",
+    "../repos/github-분석-facebookresearch-threadweaver.md",
+    "../repos/github-분석-h-shiono-mrtklib.md",
+    "../repos/github-분석-isaaccorley-terrabit.md",
+    "../repos/github-분석-tue-mps-eomt.md",
+    "../sources/daily-feed-summary-2026-04-10.md"
+  ],
+  "body": "# Daily Digest — 2026-04-10\n\nSources ingested under `data/research/daily/2026-04-10/`.\n\n## Papers and repos\n- [GitHub 분석: AISmithLab/CoBRA](../repos/github-분석-aismithlab-cobra.md) (Repository)\n- [GitHub 분석: Blaizzy/mlx-vlm](../repos/github-분석-blaizzy-mlx-vlm.md) (Repository)\n- [GitHub 분석: GalaxyGeneralRobotics/LATENT](../repos/github-분석-galaxygeneralrobotics-latent.md) (Repository)\n- [GitHub 분석: HKU-MMLab/Macro](../repos/github-분석-hku-mmlab-macro.md) (Repository)\n- [GitHub 분석: LilanOvO/Auto-Resubmit](../repos/github-분석-lilanovo-auto-resubmit.md) (Repository)\n- [GitHub 분석: NVIDIAGameWorks/kaolin](../repos/github-분석-nvidiagameworks-kaolin.md) (Repository)\n- [GitHub 분석: TakashiYoshinaga/Perspective-Effect-with-Head-Tracking-of-MediaPipe](../repos/github-분석-takashiyoshinaga-perspective-effect-with-head-tracking-of-mediapipe.md) (Repository)\n- [GitHub 분석: dqj5182/HACO_RELEASE](../repos/github-분석-dqj5182-haco-release.md) (Repository)\n- [GitHub 분석: facebookresearch/threadweaver](../repos/github-분석-facebookresearch-threadweaver.md) (Repository)\n- [GitHub 분석: h-shiono/MRTKLIB](../repos/github-분석-h-shiono-mrtklib.md) (Repository)\n- [GitHub 분석: isaaccorley/terrabit](../repos/github-분석-isaaccorley-terrabit.md) (Repository)\n- [GitHub 분석: tue-mps/eomt](../repos/github-분석-tue-mps-eomt.md) (Repository)\n- [Daily Feed Summary — 2026-04-10](../sources/daily-feed-summary-2026-04-10.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "frontmatter": {
+    "content_hash": "sha256-ce5999ef0812141418d36c0c2f622af4c7c45c49e628f9188106417b5b4a5bee",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Repository:github-aismithlab-cobra:2b89ce2fa684",
+      "Repository:github-blaizzy-mlx-vlm:022b06351549",
+      "Repository:github-dqj5182-haco-release:33f9868459b9",
+      "Repository:github-facebookresearch-threadweaver:52ad1a83b1b2",
+      "Repository:github-galaxygeneralrobotics-latent:410badcc0f66",
+      "Repository:github-h-shiono-mrtklib:a3dd9c7f9c88",
+      "Repository:github-hku-mmlab-macro:ab24ff0bedad",
+      "Repository:github-isaaccorley-terrabit:d3e37b56448e",
+      "Repository:github-lilanovo-auto-resubmit:6f6906c9743b",
+      "Repository:github-nvidiagameworks-kaolin:beb55e91ee05",
+      "Repository:github-takashiyoshinaga-perspective-effect-with-:2872a82ab141",
+      "Repository:github-tue-mps-eomt:676b4ec5d953",
+      "SourceDocument:daily-feed-summary-2026-04-10:cabea4506f09"
+    ],
+    "slug": "daily-2026-04-10",
+    "sources": [
+      "data/research/daily/2026-04-10/papers/2501.17805/repo.md",
+      "data/research/daily/2026-04-10/papers/2506.04598/repo.md",
+      "data/research/daily/2026-04-10/papers/2509.13588/repo.md",
+      "data/research/daily/2026-04-10/papers/2510.11718/repo.md",
+      "data/research/daily/2026-04-10/papers/2512.20157/repo.md",
+      "data/research/daily/2026-04-10/raw.md",
+      "data/research/daily/2026-04-10/repos/GalaxyGeneralRobotics_LATENT.md",
+      "data/research/daily/2026-04-10/repos/LilanOvO_Auto-Resubmit.md",
+      "data/research/daily/2026-04-10/repos/NVIDIAGameWorks_kaolin.md",
+      "data/research/daily/2026-04-10/repos/TakashiYoshinaga_Perspective-Effect-with-Head-Tracking-of-MediaPipe.md",
+      "data/research/daily/2026-04-10/repos/facebookresearch_threadweaver.md",
+      "data/research/daily/2026-04-10/repos/h-shiono_MRTKLIB.md",
+      "data/research/daily/2026-04-10/repos/isaaccorley_terrabit.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-04-10"
+  }
+}

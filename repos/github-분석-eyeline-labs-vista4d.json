@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: Eyeline-Labs/Vista4D",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: Eyeline-Labs/Vista4D\n\n## Outgoing relations\n\n- **released_by** → eyeline-labs _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Geometry-Grounded Gaussian Splatting _(Paper)_\n- **implemented_in** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Paper)_\n\n## Connected node types\n\n- Paper: 2\n- Organization: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2512.03040/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: Eyeline-Labs/Vista4D\n\n## Outgoing relations\n\n- **released_by** → eyeline-labs _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Geometry-Grounded Gaussian Splatting _(Paper)_\n- **implemented_in** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Paper)_\n\n## Connected node types\n\n- Paper: 2\n- Organization: 1",
+  "frontmatter": {
+    "aliases": [
+      "eyeline-labs/vista4d",
+      "https://github.com/Eyeline-Labs/Vista4D"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-eyeline-labs-vista4d:ece0de913e24",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2512.03040/repo.md",
+    "title": "GitHub 분석: Eyeline-Labs/Vista4D"
+  }
+}

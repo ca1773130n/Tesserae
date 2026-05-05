@@ -1,0 +1,15 @@
+{
+  "title": "Song-Chun Zhu",
+  "kind": "entities",
+  "body_text": "# Song-Chun Zhu\n\n## Incoming relations\n\n- **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2604.01907/paper.md",
+  "links": [],
+  "body": "# Song-Chun Zhu\n\n## Incoming relations\n\n- **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:song-chun-zhu:4a801effbda1",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2604.01907/paper.md",
+    "title": "Song-Chun Zhu"
+  }
+}

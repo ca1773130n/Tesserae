@@ -1,0 +1,69 @@
+repo.md
+=======
+
+# GitHub 분석: theialab/fullcircle
+
+> - URL: https://github.com/theialab/fullcircle
+> - 분석일: 2026-04-07
+
+## 개요
+
+- **설명**: Implementation of \
+- **Stars**: ⭐ 80 | Forks: 8
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (75개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | Y |
+
+## 파일 구조
+
+```
+.dockerignore
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.gitattributes
+.gitignore
+.gitmodules
+assets/playground_glass.gif
+ATTRIBUTIONS.md
+configs/base_gs.yaml
+configs/base_mcmc.yaml
+Dockerfile
+docs/gallery.html
+docs/index.html
+formatter.sh
+install_env.ps1
+install_env.sh
+LICENSE
+masking/dilate.py
+masking/mapping.txt
+masking/mask_perspectives.py
+masking/mask_test.png
+masking/mask_train.png
+masking/omni2fisheye.py
+masking/omni2perspective.py
+masking/omni2synthetic.py
+masking/perspective2omni.py
+masking/requirements.txt
+masking/synthetic2omni.py
+playground.py
+README.md
+rebase_helper.sh
+render.py
+requirements.txt
+scripts/run_colmap.sh
+scripts/run_masking.sh
+setup.py
+```

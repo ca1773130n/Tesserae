@@ -1,0 +1,15 @@
+{
+  "title": "ShapeNet",
+  "kind": "entities",
+  "body_text": "# ShapeNet\n\n## Incoming relations\n\n- **uses_dataset** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/papers/2408.01437/paper.md",
+  "links": [],
+  "body": "# ShapeNet\n\n## Incoming relations\n\n- **uses_dataset** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Dataset:shapenet:2b99afaf2fa7",
+    "node_type": "Dataset",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/papers/2408.01437/paper.md",
+    "title": "ShapeNet"
+  }
+}

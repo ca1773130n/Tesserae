@@ -1,0 +1,38 @@
+{
+  "title": "Daily Digest — 2026-04-26",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-04-26\n\nSources ingested under `data/research/daily/2026-04-26/`.\n\n## Papers and repos\n- [Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras (arXiv:2604.18744)](../papers/match-any-events-zero-shot-motion-robust-feature-matching-across-wide-baselines-dbc18631.md) (Paper)\n- [GitHub 분석: OpsiClear-4DGS/TriGSVanilla](../repos/github-분석-opsiclear-4dgs-trigsvanilla.md) (Repository)\n- [GitHub 분석: genforce/JOSH](../repos/github-분석-genforce-josh.md) (Repository)\n- [Daily Feed Summary — 2026-04-26](../sources/daily-feed-summary-2026-04-26.md) (SourceDocument)\n- [Daily Research Digest — 2026-04-26](../sources/daily-research-digest-2026-04-26.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-04-26](../sources/daily-research-digest-2026-04-26.md) (SourceDocument)\n\n## Extracted concepts\n- Fine-tuning (TrainingParadigm)",
+  "source_path": "",
+  "links": [
+    "../papers/match-any-events-zero-shot-motion-robust-feature-matching-across-wide-baselines-dbc18631.md",
+    "../repos/github-분석-opsiclear-4dgs-trigsvanilla.md",
+    "../repos/github-분석-genforce-josh.md",
+    "../sources/daily-feed-summary-2026-04-26.md",
+    "../sources/daily-research-digest-2026-04-26.md"
+  ],
+  "body": "# Daily Digest — 2026-04-26\n\nSources ingested under `data/research/daily/2026-04-26/`.\n\n## Papers and repos\n- [Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras (arXiv:2604.18744)](../papers/match-any-events-zero-shot-motion-robust-feature-matching-across-wide-baselines-dbc18631.md) (Paper)\n- [GitHub 분석: OpsiClear-4DGS/TriGSVanilla](../repos/github-분석-opsiclear-4dgs-trigsvanilla.md) (Repository)\n- [GitHub 분석: genforce/JOSH](../repos/github-분석-genforce-josh.md) (Repository)\n- [Daily Feed Summary — 2026-04-26](../sources/daily-feed-summary-2026-04-26.md) (SourceDocument)\n- [Daily Research Digest — 2026-04-26](../sources/daily-research-digest-2026-04-26.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-04-26](../sources/daily-research-digest-2026-04-26.md) (SourceDocument)\n\n## Extracted concepts\n- Fine-tuning (TrainingParadigm)",
+  "frontmatter": {
+    "content_hash": "sha256-402536292814aa59fb551d33d7daaf01d338a1d67f690d880499ac4f371bf717",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Paper:arxiv-2604-18744:d418fd397b58",
+      "Repository:github-genforce-josh:ed26713cfc96",
+      "Repository:github-opsiclear-4dgs-trigsvanilla:94246333da95",
+      "SourceDocument:daily-feed-summary-2026-04-26:aa5f959a1199",
+      "SourceDocument:daily-research-digest-2026-04-26:afd7e22c5bd6",
+      "SourceDocument:daily-research-digest-2026-04-26:f18ff2c3de9f",
+      "TrainingParadigm:fine-tuning:f617b4eb06c6"
+    ],
+    "slug": "daily-2026-04-26",
+    "sources": [
+      "data/research/daily/2026-04-26/digest.md",
+      "data/research/daily/2026-04-26/papers/2604.18744/paper.md",
+      "data/research/daily/2026-04-26/raw.md",
+      "data/research/daily/2026-04-26/repos/OpsiClear-4DGS_TriGSVanilla.md",
+      "tests/fixtures/wiki_corpus/data/research/daily/2026-04-26/digest.md",
+      "tests/fixtures/wiki_corpus/data/research/daily/2026-04-26/repos/sample-repo.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-04-26"
+  }
+}

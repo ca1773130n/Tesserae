@@ -1,0 +1,14 @@
+Shape Reconstruction
+====================
+
+# Shape Reconstruction
+
+## Incoming relations
+
+- **addresses** → Depth Map _(TechnicalTerm)_
+- **addresses** → Geometry-Grounded Gaussian Splatting _(Paper)_
+
+## Connected node types
+
+- Paper: 1
+- TechnicalTerm: 1

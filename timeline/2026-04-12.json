@@ -1,0 +1,19 @@
+{
+  "title": "2026-04-12",
+  "kind": "timeline_day",
+  "body_text": "Activity for 2026-04-12: 8 item(s) indexed.",
+  "source_path": "",
+  "links": [],
+  "body": "Activity for 2026-04-12",
+  "frontmatter": {
+    "date": "2026-04-12",
+    "activity": 8,
+    "sources": [
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-12/papers/2511.20263/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-12/papers/2602.20989/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-12/papers/2603.14482/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-12/raw.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-12/repos/Netflix_void-model.md"
+    ]
+  }
+}

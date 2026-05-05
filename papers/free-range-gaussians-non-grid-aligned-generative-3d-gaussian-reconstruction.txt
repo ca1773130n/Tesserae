@@ -1,0 +1,39 @@
+Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction
+============================================================================
+
+# Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction
+
+## Outgoing relations
+
+- **authored_by** → Ahan Shabanov _(Person)_
+- **authored_by** → Andrea Tagliasacchi _(Person)_
+- **authored_by** → Andrea Vedaldi _(Person)_
+- **authored_by** → Bo Zhu _(Person)_
+- **authored_by** → Christian Richardt _(Person)_
+- **authored_by** → Denis Rozumny _(Person)_
+- **authored_by** → Ethan Weber _(Person)_
+- **authored_by** → Gael Le Lan _(Person)_
+- **authored_by** → Lei Luo _(Person)_
+- **authored_by** → Naina Dhingra _(Person)_
+- **authored_by** → Numair Khan _(Person)_
+- **authored_by** → Peter Hedman _(Person)_
+- **authored_by** → Zhengqin Li _(Person)_
+- **implemented_in** → GitHub 분석: cvg/resplat _(Repository)_
+- **implemented_in** → GitHub 분석: facebookresearch/EUPE _(Repository)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- **uses_dataset** → Objaverse _(Dataset)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-08 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-09 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-10 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-08 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 13
+- SourceDocument: 4
+- Repository: 2
+- Dataset: 1
+- ResearchField: 1

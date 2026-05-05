@@ -1,0 +1,50 @@
+facebookresearch_tribev2.md
+===========================
+
+# GitHub 분석: facebookresearch/tribev2
+
+> - URL: https://github.com/facebookresearch/tribev2
+> - 분석일: 2026-05-04
+
+## 개요
+
+- **설명**: This repository contains the code to train and evaluate TRIBE v2, a multimodal model for brain response prediction
+- **Stars**: ⭐ 2376 | Forks: 531
+- **라이선스**: NOASSERTION
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (25개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE
+pyproject.toml
+README.md
+tribe_demo.ipynb
+tribev2/demo_utils.py
+tribev2/eventstransforms.py
+tribev2/__init__.py
+tribev2/main.py
+tribev2/model.py
+tribev2/pl_module.py
+tribev2/utils_fmri.py
+tribev2/utils.py
+```

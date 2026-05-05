@@ -1,0 +1,23 @@
+Daily Digest — 2026-04-22
+=========================
+
+# Daily Digest — 2026-04-22
+
+Sources ingested under `data/research/daily/2026-04-22/`.
+
+## Papers and repos
+- [All elementary functions from a single binary operator (arXiv:2603.21852)](../papers/all-elementary-functions-from-a-single-binary-operator.md) (Paper)
+- [An Outlook into the Future of Egocentric Vision (arXiv:2308.07123)](../papers/an-outlook-into-the-future-of-egocentric-vision.md) (Paper)
+- [Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation (arXiv:2509.10687)](../papers/stable-part-diffusion-4d-multi-view-rgb-and-kinematic-parts-video-generation.md) (Paper)
+- [T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion (arXiv:2510.12724)](../papers/t-r-o-grasp-cross-embodiment-dexterous-grasping을-위한-robot-object-spatial-t-e5dccb3a.md) (Paper)
+- [WorldCompass: Reinforcement Learning for Long-Horizon World Models (arXiv:2602.09022)](../papers/worldcompass-reinforcement-learning-for-long-horizon-world-models.md) (Paper)
+- [GitHub 분석: Aero-Ex/ComfyUI-SegviGen](../repos/github-분석-aero-ex-comfyui-segvigen.md) (Repository)
+- [GitHub 분석: FanJunqiao/M4Human](../repos/github-분석-fanjunqiao-m4human.md) (Repository)
+- [GitHub 분석: heygen-com/hyperframes](../repos/github-분석-heygen-com-hyperframes.md) (Repository)
+- [GitHub 분석: team-aprl/MR.ScaleMaster](../repos/github-분석-team-aprl-mr-scalemaster.md) (Repository)
+- [Daily Feed Summary — 2026-04-22](../sources/daily-feed-summary-2026-04-22.md) (SourceDocument)
+- [📬 Daily Research Digest — 2026-04-22](../sources/daily-research-digest-2026-04-22.md) (SourceDocument)
+
+## Extracted concepts
+- Fine-tuning (TrainingParadigm)
+- Reinforcement Learning (TrainingParadigm)

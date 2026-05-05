@@ -1,0 +1,12 @@
+GitHub 분석: apple/ml-mobileclip
+==============================
+
+# GitHub 분석: apple/ml-mobileclip
+
+## Outgoing relations
+
+- **released_by** → apple _(Organization)_
+
+## Connected node types
+
+- Organization: 1

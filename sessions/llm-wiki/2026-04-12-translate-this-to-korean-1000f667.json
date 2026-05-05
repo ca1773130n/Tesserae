@@ -1,0 +1,55 @@
+{
+  "title": "translate this to Korean:",
+  "kind": "session",
+  "body_text": "translate this to Korean: Extra usage credit for Pro, Max, and Team plans Updated over a week ago To celebrate the launch of usage bundles, we’re giving every Pro, Max, and Team plan subscriber a one-time extra usage credit equal to your subscription price or as otherwise listed below. Plan Credit amount Pro $20 Max 5x $100 Max 20x $200 Team $200 Eligibility requirements To be eligible for this promotion, you must meet the following criteria: You’ve subscribed to a Pro, Max, or Team plan by April 3, 2026 at 9 AM PT You’ve enabled extra usage This offer doesn’t apply to Enterprise plans or Console accounts. There are no exceptions to these eligibility requirements. This offer has no cash value and isn’t assignable or transferable. It can’t be combined with other offers. How to claim your credit If extra usage isn’t enabled yet, go to Settings > Usage (for Pro and Max plans) or Organization settings > Usage (for Team plan owners) and switch the Extra usage toggle on. Click the “Claim” button on the banner at the top of the Usage page to redeem your one-time extra usage credit. Claiming the credit adds the extra usage balance to your account without charging your payment method. This",
+  "source_path": "/Users/neo/.claude-personal1/projects/-Users-neo-Developer-Projects-LLM-Wiki/1af6a232-ece0-416e-9f54-4443c39fccec.jsonl",
+  "links": [],
+  "body": "translate this to Korean: Extra usage credit for Pro, Max, and Team plans Updated over a week ago To celebrate the launch of usage bundles, we’re giving every Pro, Max, and Team plan subscriber a one-time extra usage credit equal to your subscription price or as otherwise listed below. Plan Credit amount Pro $20 Max 5x $100 Max 20x $200 Team $200 Eligibility requirements To be eligible for this promotion, you must meet the following criteria: You’ve subscribed to a Pro, Max, or Team plan by April 3, 2026 at 9 AM PT You’ve enabled extra usage This offer doesn’t apply to Enterprise plans or Console accounts. There are no exceptions to these eligibility requirements. This offer has no cash value and isn’t assignable or transferable. It can’t be combined with other offers. How to claim your credit If extra usage isn’t enabled yet, go to Settings > Usage (for Pro and Max plans) or Organization settings > Usage (for Team plan owners) and switch the Extra usage toggle on. Click the “Claim” button on the banner at the top of the Usage page to redeem your one-time extra usage credit. Claiming the credit adds the extra usage balance to your account without charging your payment method. This ",
+  "frontmatter": {
+    "id": "claude-code:1af6a232-ece0-416e-9f54-4443c39fccec:1af6a232-ece0-416e-9f54-4443c39fccec",
+    "slug": "translate-this-to-korean",
+    "harness": "claude-code",
+    "agent_label": "Claude Code",
+    "project_name": "LLM-Wiki",
+    "project_root": "/Users/neo/Developer/Projects/LLM-Wiki",
+    "started_at": "2026-04-12T03:53:53.562Z",
+    "ended_at": "2026-04-12T03:54:19.134Z",
+    "branch": "main",
+    "commit_before": "",
+    "commit_after": "",
+    "model": "claude-opus-4-6",
+    "title": "translate this to Korean:",
+    "summary": "translate this to Korean: Extra usage credit for Pro, Max, and Team plans Updated over a week ago To celebrate the launch of usage bundles, we’re giving every Pro, Max, and Team plan subscriber a one-time extra usage credit equal to your subscription price or as otherwise listed below. Plan Credit amount Pro $20 Max 5x $100 Max 20x $200 Team $200 Eligibility requirements To be eligible for this promotion, you must meet the following criteria: You’ve subscribed to a Pro, Max, or Team plan by April 3, 2026 at 9 AM PT You’ve enabled extra usage This offer doesn’t apply to Enterprise plans or Console accounts. There are no exceptions to these eligibility requirements. This offer has no cash value and isn’t assignable or transferable. It can’t be combined with other offers. How to claim your credit If extra usage isn’t enabled yet, go to Settings > Usage (for Pro and Max plans) or Organization settings > Usage (for Team plan owners) and switch the Extra usage toggle on. Click the “Claim” button on the banner at the top of the Usage page to redeem your one-time extra usage credit. Claiming the credit adds the extra usage balance to your account without charging your payment method. This ",
+    "message_count": 3,
+    "tool_call_count": 10,
+    "token_input": 0,
+    "token_output": 0,
+    "token_total": 0,
+    "cache_hit_ratio": null,
+    "tools_used": [
+      "deferred_tools_delta",
+      "hook_non_blocking_error",
+      "mcp_instructions_delta",
+      "skill_listing"
+    ],
+    "files_touched": [],
+    "commands_run": [
+      "node ${CLAUDE_PLUGIN_ROOT}/hooks/sessionstart.mjs",
+      "node \"${CLAUDE_PLUGIN_ROOT}/bin/grd-tools.js\" verify-path-exists .planning 2>/dev/null || true",
+      "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" session-start",
+      "bash ${CLAUDE_PLUGIN_ROOT}/hooks/mempal-stop-hook.sh",
+      "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/stop.py",
+      "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/stop-hook.sh\""
+    ],
+    "decisions": [],
+    "errors": [],
+    "raw_transcript_path": "/Users/neo/.claude-personal1/projects/-Users-neo-Developer-Projects-LLM-Wiki/1af6a232-ece0-416e-9f54-4443c39fccec.jsonl",
+    "redacted_preview": "translate this to Korean: Extra usage credit for Pro, Max, and Team plans Updated over a week ago To celebrate the launch of usage bundles, we’re giving every Pro, Max, and Team plan subscriber a one-time extra usage credit equal to your subscription price or as otherwise listed below. Plan Credit amount Pro $20 Max 5x $100 Max 20x $200 Team $200 Eligibility requirements To be eligible for this promotion, you must meet the following criteria: You’ve subscribed to a Pro, Max, or Team plan by April 3, 2026 at 9 AM PT You’ve enabled extra usage This offer doesn’t apply to Enterprise plans or Console accounts. There are no exceptions to these eligibility requirements. This offer has no cash value and isn’t assignable or transferable. It can’t be combined with other offers. How to claim your credit If extra usage isn’t enabled yet, go to Settings > Usage (for Pro and Max plans) or Organization settings > Usage (for Team plan owners) and switch the Extra usage toggle on. Click the “Claim” button on the banner at the top of the Usage page to redeem your one-time extra usage credit. Claiming the credit adds the extra usage balance to your account without charging your payment method. This ",
+    "metadata": {
+      "config_root": "/Users/neo/.claude-personal1",
+      "transcript": "/Users/neo/.claude-personal1/projects/-Users-neo-Developer-Projects-LLM-Wiki/1af6a232-ece0-416e-9f54-4443c39fccec.jsonl"
+    },
+    "date": "2026-04-12",
+    "href": "sessions/llm-wiki/2026-04-12-translate-this-to-korean-1000f667.html"
+  }
+}

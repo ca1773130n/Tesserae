@@ -1,0 +1,15 @@
+{
+  "title": "tue-mps",
+  "kind": "entities",
+  "body_text": "# tue-mps\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: tue-mps/eomt _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/papers/2506.04598/repo.md",
+  "links": [],
+  "body": "# tue-mps\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: tue-mps/eomt _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:tue-mps:d3400f839b05",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/papers/2506.04598/repo.md",
+    "title": "tue-mps"
+  }
+}

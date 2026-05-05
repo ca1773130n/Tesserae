@@ -1,0 +1,16 @@
+Daily Digest — 2026-04-12
+=========================
+
+# Daily Digest — 2026-04-12
+
+Sources ingested under `data/research/daily/2026-04-12/`.
+
+## Papers and repos
+- [GitHub 분석: Netflix/void-model](../repos/github-분석-netflix-void-model.md) (Repository)
+- [GitHub 분석: edward3862/ImgDecom](../repos/github-분석-edward3862-imgdecom.md) (Repository)
+- [GitHub 분석: facebookresearch/vjepa2](../repos/github-분석-facebookresearch-vjepa2.md) (Repository)
+- [GitHub 분석: omerb01/didicm](../repos/github-분석-omerb01-didicm.md) (Repository)
+- [Daily Feed Summary — 2026-04-12](../sources/daily-feed-summary-2026-04-12.md) (SourceDocument)
+
+## Extracted concepts
+- (none extracted)

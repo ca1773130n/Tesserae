@@ -1,0 +1,12 @@
+microsoft
+=========
+
+# microsoft
+
+## Incoming relations
+
+- **released_by** → GitHub 분석: microsoft/World-R1 _(Repository)_
+
+## Connected node types
+
+- Repository: 1

@@ -1,0 +1,21 @@
+mAP=4
+=====
+
+# mAP=4
+
+4 mAP
+
+## Outgoing relations
+
+- **uses_metric** → mAP _(Metric)_
+
+## Incoming relations
+
+- **reports_result** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_
+- **reports_result** → Sapiens2 _(Paper)_
+
+## Connected node types
+
+- Metric: 1
+- Paper: 1
+- SourceDocument: 1

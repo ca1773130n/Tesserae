@@ -1,0 +1,18 @@
+Daily Digest — 2026-04-16
+=========================
+
+# Daily Digest — 2026-04-16
+
+Sources ingested under `data/research/daily/2026-04-16/`.
+
+## Papers and repos
+- [GitHub 분석: apple/ml-4m](../repos/github-분석-apple-ml-4m.md) (Repository)
+- [GitHub 분석: gmberton/vismatch](../repos/github-분석-gmberton-vismatch.md) (Repository)
+- [GitHub 분석: jonbarron/gaussid](../repos/github-분석-jonbarron-gaussid.md) (Repository)
+- [GitHub 분석: nv-tlabs/lyra](../repos/github-분석-nv-tlabs-lyra.md) (Repository)
+- [GitHub 분석: reinehonoka/Voice-Design-Cloner](../repos/github-분석-reinehonoka-voice-design-cloner.md) (Repository)
+- [GitHub 분석: roboflow/rf-detr](../repos/github-분석-roboflow-rf-detr.md) (Repository)
+- [Daily Feed Summary — 2026-04-16](../sources/daily-feed-summary-2026-04-16.md) (SourceDocument)
+
+## Extracted concepts
+- (none extracted)

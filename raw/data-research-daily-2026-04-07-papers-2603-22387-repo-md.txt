@@ -1,0 +1,48 @@
+repo.md
+=======
+
+# GitHub 분석: facebookresearch/EUPE
+
+> - URL: https://github.com/facebookresearch/EUPE
+> - 분석일: 2026-04-07
+
+## 개요
+
+- **설명**: Efficient Universal Perception Encoder: a single on-device vision encoder with versatile representations that match or exceed specialized experts across multiple task domains.
+- **Stars**: ⭐ 351 | Forks: 16
+- **라이선스**: NOASSERTION
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (44개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+.docstr.yaml
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.gitignore
+assets/teaser.png
+CODE_OF_CONDUCT.md
+conda.yaml
+CONTRIBUTING.md
+eupe/__init__.py
+hubconf.py
+LICENSE.md
+pyproject.toml
+README.md
+requirements.txt
+setup.py
+```

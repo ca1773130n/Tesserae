@@ -1,0 +1,15 @@
+{
+  "title": "Hadar Averbuch-Elor",
+  "kind": "entities",
+  "body_text": "# Hadar Averbuch-Elor\n\n## Incoming relations\n\n- **authored_by** → Extreme Rotation Estimation in the Wild _(Paper)_\n- **authored_by** → Long-tail Internet photo reconstruction _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/papers/2604.22714/paper.md",
+  "links": [],
+  "body": "# Hadar Averbuch-Elor\n\n## Incoming relations\n\n- **authored_by** → Extreme Rotation Estimation in the Wild _(Paper)_\n- **authored_by** → Long-tail Internet photo reconstruction _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:hadar-averbuch-elor:016f958a24bf",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/papers/2604.22714/paper.md",
+    "title": "Hadar Averbuch-Elor"
+  }
+}

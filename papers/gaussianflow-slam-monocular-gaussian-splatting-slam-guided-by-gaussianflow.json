@@ -1,0 +1,18 @@
+{
+  "title": "GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow",
+  "kind": "papers",
+  "body_text": "# GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow\n\n## Outgoing relations\n\n- **addresses** → Visual SLAM _(ResearchTopic)_\n- **authored_by** → Dong-Uk Seo _(Person)_\n- **authored_by** → Eungchang Mason Lee _(Person)_\n- **authored_by** → Hyun Myung _(Person)_\n- **authored_by** → Jinwoo Jeon _(Person)_\n- **belongs_to_approach_family** → Gaussian Splatting Reconstruction _(ApproachFamily)_\n- **introduces** → GaussianFlow SLAM _(Algorithm)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses** → Gaussian Splatting _(MethodologicalConcept)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-25 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-25 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 4\n- SourceDocument: 4\n- Algorithm: 1\n- ApproachFamily: 1\n- MethodologicalConcept: 1\n- ResearchField: 1\n- ResearchTopic: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2604.15612/paper.md",
+  "links": [],
+  "body": "# GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow\n\n## Outgoing relations\n\n- **addresses** → Visual SLAM _(ResearchTopic)_\n- **authored_by** → Dong-Uk Seo _(Person)_\n- **authored_by** → Eungchang Mason Lee _(Person)_\n- **authored_by** → Hyun Myung _(Person)_\n- **authored_by** → Jinwoo Jeon _(Person)_\n- **belongs_to_approach_family** → Gaussian Splatting Reconstruction _(ApproachFamily)_\n- **introduces** → GaussianFlow SLAM _(Algorithm)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses** → Gaussian Splatting _(MethodologicalConcept)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-25 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-25 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 4\n- SourceDocument: 4\n- Algorithm: 1\n- ApproachFamily: 1\n- MethodologicalConcept: 1\n- ResearchField: 1\n- ResearchTopic: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2604.15612"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2604-15612:e4eebb59cbbb",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2604.15612/paper.md",
+    "title": "GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow"
+  }
+}

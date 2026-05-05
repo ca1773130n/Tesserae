@@ -1,0 +1,29 @@
+raw.md
+======
+
+# Daily Feed Summary — 2026-04-14
+
+Total: 20 relevant feeds (from 84)
+
+| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |
+|------|------|-------|-----|--------|-------|-----------|-------------|
+| 2026-04-14 | 14:01 | Given a fixed number of tokens to represent an image with a ...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-14 | 16:47 | --Towards Scalable Sidewalk Autonomy (2/4)-- Introducing Urb...... | N/A | https://github.com/genforce/JOSH | 214 | N/A | [분석](repos/genforce_JOSH.md) |
+| 2026-04-14 | 17:41 | Check our new work on #learning a joint distribution over #v...... | https://arxiv.org/pdf/2409.08189 | https://github.com/eth-ait/Gaussian-Garments | 164 | N/A | [분석](papers/2409.08189/repo.md) |
+| 2026-04-14 | 17:12 | New paper: Rays as Pixels We represent camera rays as pixels...... | https://arxiv.org/pdf/2312.08568 | https://github.com/naver/pow3r | 222 | N/A | [분석](papers/2312.08568/repo.md) |
+| 2026-04-14 | 02:07 | for folks who feel their Claude Code got nerfed, here's what...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-14 | 13:54 | RT MrNeRF: Left: MRNF. Right: Mykonos densification, which a...... | https://arxiv.org/pdf/2603.20617 | https://github.com/jendrikseipp/vulture | 4519 | N/A | [분석](papers/2603.20617/repo.md) |
+| 2026-04-14 | 13:59 | ? Amazing news! INSID3 has been selected as an Oral at #CVPR...... | N/A | https://github.com/ClaudiaCuttano/SANSA | 190 | N/A | [분석](repos/ClaudiaCuttano_SANSA.md) |
+| 2026-04-14 | 13:26 | RT Felix Heide: Chop the gradients ✂️! We found that tru...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-14 | 16:00 | #otd in 1980 a Japanese computer scientist published a paper...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-14 | 13:26 | RT Felix Heide: Chop the gradients ✂️! We found that tru...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-14 | 23:45 | Compressed 3D scene tokens for diffusion https://github.com/...... | N/A | https://github.com/alexbatalov/fallout1-re | 159 | N/A | [분석](repos/alexbatalov_fallout1-re.md) |
+| 2026-04-14 | 04:36 | copy and paste this { "effortLevel":"high", "env":{ "CLAUDE_...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-14 | 20:00 | if you're building anything with 3D right now, stop what you...... | N/A | https://github.com/facebookresearch/map-anything | 3160 | N/A | [분석](repos/facebookresearch_map-anything.md) |
+| 2026-04-14 | 09:25 | You don't imagine the future by mentally rendering a movie. ...... | https://arxiv.org/pdf/2603.04179 | N/A | N/A | N/A | N/A |
+| 2026-04-14 | 20:36 | Check out how visual diffusion models can effectively solve ...... | https://arxiv.org/pdf/2603.21210 | N/A | N/A | N/A | N/A |
+| 2026-04-14 | 09:52 | 3D-Fixer: Coarse-to-Fine In-place Completion for 3D Scenes f...... | https://arxiv.org/pdf/2603.03269 | N/A | N/A | N/A | N/A |
+| 2026-04-14 | 13:54 | RT MrNeRF: Left: MRNF. Right: Mykonos densification, which a...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-14 | 18:00 | RT Martin Maly: update: enhanced 3d world generation just dr...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-14 | 12:25 | We present LightMover — controllable light movement from a...... | https://arxiv.org/pdf/2603.27209 | N/A | N/A | N/A | N/A |
+| 2026-04-14 | 20:12 | Vanast: Virtual Try-On with Human Image Animation CVPR 2026 ...... | N/A | N/A | N/A | N/A | N/A |

@@ -1,0 +1,111 @@
+paper.md
+========
+
+# 논문 분석: 2604.21681
+
+> - arxiv: https://arxiv.org/abs/2604.21681
+> - papers.cool: https://papers.cool/arxiv/2604.21681
+> - 분석일: 2026-04-27
+
+Sapiens2 | Cool Papers - 몰입형 논문 탐색
+
+## 2604.21681
+
+총계: 1
+
+## #1
+
+Sapiens2  
+[PDF5]  
+[Copy]  
+[Kimi1]  
+[REL]
+
+저자:  
+Rawal Khirodkar,  
+He Wen,  
+Julieta Martinez,  
+Yuan Dong,  
+Su Zhaoen,  
+Shunsuke Saito
+
+우리는 일반화, 범용성, 그리고 고충실도 출력을 중심으로 인간 중심 비전을 위해 설계된 고해상도 transformer 모델 계열인 Sapiens2를 제시한다. 우리 모델의 크기는 4억에서 50억 개의 파라미터 범위이며, 기본적으로 1K 해상도를 지원하고 4K를 지원하는 계층형 변형도 포함한다. Sapiens2는 사전학습과 사후학습 모두에서 이전 세대 대비 큰 폭의 향상을 이룬다. 첫째, 저수준 세부 정보 밀집 예측용와 고수준 의미 정보 zero-shot 또는 소수 라벨 설정용를 모두 포착하는 특징을 학습하기 위해, 우리는 masked image reconstruction과 self-distilled contrastive objective를 결합한다. 우리의 평가 결과는 이 통합 사전학습 목표가 더 넓은 범위의 다운스트림 작업에 더 적합함을 보여준다. 둘째, 데이터 측면에서 우리는 10억 장의 고품질 인간 이미지로 선별된 데이터셋에서 사전학습을 수행하고, 작업 주석의 품질과 양을 개선했다. 셋째, 아키텍처 측면에서 우리는 더 긴 학습 스케줄을 더 높은 안정성으로 가능하게 하는 frontier model의 발전을 도입했다. 우리의 4K 모델은 더 긴 공간적 문맥을 추론하기 위해 windowed attention을 채택하며, 2K 출력 해상도로 사전학습된다. Sapiens2는 새로운 state-of-the-art를 수립하며, 1세대 대비 pose에서 +4 mAP, body-part segmentation에서 +24.3 mIoU, normal estimation에서 각도 오차 45.6% 감소를 달성했고, pointmap 및 albedo estimation 같은 새로운 작업으로 확장된다. 코드: https://github.com/facebookresearch/sapiens2
+
+주제:  
+Computer Vision and Pattern Recognition
+
+게시: 2026-04-23 13:45:32 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+포함 OR:
+
+제외:
+
+검색
+
+필터
+
+강조 표시
+
+별표한 논문:
+
+#1  
+Sapiens2
+
+내보내기
+
+Magic Token:
+
+Kimi 언어:
+
+中文  
+English
+
+설명 언어:
+
+中文  
+English
+
+저장
+
+버그 신고 또는 Issue 제출이 필요하신가요? 다음을 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+진행하기 전에 Disclaimer를 읽어 주세요.
+
+더 흥미로운 기능을 보려면 kexue.fm 및 kimi.ai를 방문하세요.
+
+```javascript
+var macros = {
+    'argmin': '\\mathop{\\text{argmin}}',
+    'argmax': '\\mathop{\\text{argmax}}'
+};
+MathJax.Hub.Config({
+    tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']], processEscapes: true},
+    TeX: {equationNumbers: {autoNumber: ['AMS'], useLabelIds: true}, extensions: ['AMSmath.js', 'AMSsymbols.js', 'extpfeil.js'], Macros: macros},
+    'HTML-CSS': {noReflows: false, availableFonts: ['tex'], styles: {'.MathJax_Display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}},
+    'CommonHTML': {noReflows: false, availableFonts: ['tex'], styles: {'.MJXc-display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}},
+    'SVG': {styles: {'.MathJax_SVG_Display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}}
+});
+MathJax.Hub.Queue(function() {
+    document.querySelectorAll('.MathJax').forEach(element => element.classList.add('notranslate'));
+    document.querySelectorAll('a.title-link, p.summary').forEach(element => element.classList.remove('notranslate'));
+    highlightQuery();
+});
+
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement('script');
+  hm.src = 'https://hm.baidu.com/hm.js?606b976365dabacb1f69823d8de064ee';
+  var s = document.getElementsByTagName('script')[0];
+  s.parentNode.insertBefore(hm, s);
+})();
+
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+
+gtag('config', 'G-214H31WLDF');
+```

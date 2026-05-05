@@ -1,0 +1,16 @@
+raw.md
+======
+
+# Daily Feed Summary — 2026-04-27
+
+Total: 7 relevant feeds (from 20)
+
+| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |
+|------|------|-------|-----|--------|-------|-----------|-------------|
+| 2026-04-27 | 07:47 | Google DeepMind Introduces Vision Banana: An Instruction-Tun...... | https://arxiv.org/pdf/2604.20329 | N/A | N/A | [분석](papers/2604.20329/paper.md) | N/A |
+| 2026-04-27 | 22:41 | the AI to 3D pipeline in 2026: - generate concept art (GPT i...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-27 | 05:06 | AnyRecon: 3D Reconstruction from Any Sparse Views Arbitrary ...... | https://arxiv.org/pdf/2604.21681 | https://github.com/facebookresearch/sapiens2 | 273 | [분석](papers/2604.21681/paper.md) | [분석](papers/2604.21681/repo.md) |
+| 2026-04-27 | 16:12 | Vista4D pushes toward scalable any-view 4D video reconstruct...... | N/A | https://github.com/genforce/JOSH | 214 | N/A | [분석](repos/genforce_JOSH.md) |
+| 2026-04-27 | 04:09 | Excited to present our ICLR 2026 paper tomorrow: Unified 3D ...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-27 | 14:00 | Do you want the power to freeze time? ⏳ With 360 capture +...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-27 | 08:55 | Netflix's Eyeline Labs just dropped Vista4D at CVPR 2026. Re...... | https://arxiv.org/pdf/2601.17835 | https://github.com/Eyeline-Labs/Vista4D | 112 | [분석](papers/2601.17835/paper.md) | [분석](papers/2601.17835/repo.md) |

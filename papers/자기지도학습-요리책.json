@@ -1,0 +1,18 @@
+{
+  "title": "자기지도학습 요리책",
+  "kind": "papers",
+  "body_text": "# 자기지도학습 요리책\n\n## Outgoing relations\n\n- **part_of** → Research Literature _(ResearchField)_\n- **uses** → Self-Supervised Learning _(TrainingParadigm)_\n- **uses** → Supervised Learning _(TrainingParadigm)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-06 _(SourceDocument)_\n- **mentioned_in** → 주간 논문 분석 — 2026-W15 (2026-04-06 ~ 2026-04-12) _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 2\n- TrainingParadigm: 2\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-06/papers/2304.12210/paper_ko.md",
+  "links": [],
+  "body": "# 자기지도학습 요리책\n\n## Outgoing relations\n\n- **part_of** → Research Literature _(ResearchField)_\n- **uses** → Self-Supervised Learning _(TrainingParadigm)_\n- **uses** → Supervised Learning _(TrainingParadigm)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-06 _(SourceDocument)_\n- **mentioned_in** → 주간 논문 분석 — 2026-W15 (2026-04-06 ~ 2026-04-12) _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 2\n- TrainingParadigm: 2\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2304.12210"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2304-12210:911e880ff6d6",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-06/papers/2304.12210/paper_ko.md",
+    "title": "자기지도학습 요리책"
+  }
+}

@@ -1,0 +1,52 @@
+repo.md
+=======
+
+# GitHub 분석: facebookresearch/sapiens2
+
+> - URL: https://github.com/facebookresearch/sapiens2
+> - 분석일: 2026-04-27
+
+## 개요
+
+- **설명**: [ICLR 26] 1K resolution vision transformers pretrained on 1B human images.
+- **Stars**: ⭐ 273 | Forks: 16
+- **라이선스**: NOASSERTION
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (11개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+.flake8
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.github/PULL_REQUEST_TEMPLATE.md
+.gitignore
+.shellcheckrc
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+docs/MODEL_ZOO.md
+docs/NORMAL.md
+docs/POINTMAP.md
+docs/POSE.md
+docs/SEG.md
+LICENSE.md
+pyproject.toml
+README.md
+sapiens/__init__.py
+sapiens/registry.py
+sapiens/version.py
+```

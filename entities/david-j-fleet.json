@@ -1,0 +1,15 @@
+{
+  "title": "David J. Fleet",
+  "kind": "entities",
+  "body_text": "# David J. Fleet\n\n## Incoming relations\n\n- **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2411.18650/paper.md",
+  "links": [],
+  "body": "# David J. Fleet\n\n## Incoming relations\n\n- **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:david-j-fleet:cfe8ebd7ac79",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2411.18650/paper.md",
+    "title": "David J. Fleet"
+  }
+}

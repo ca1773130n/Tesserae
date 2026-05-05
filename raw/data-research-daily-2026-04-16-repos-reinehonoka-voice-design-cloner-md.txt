@@ -1,0 +1,69 @@
+reinehonoka_Voice-Design-Cloner.md
+==================================
+
+# GitHub 분석: reinehonoka/Voice-Design-Cloner
+
+> - URL: https://github.com/reinehonoka/Voice-Design-Cloner
+> - 분석일: 2026-04-16
+
+## 개요
+
+- **설명**: 録音不要でオリジナルAI音声の教師データを作るGUIツール
+- **Stars**: ⭐ 97 | Forks: 14
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (16개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+app.bat
+app.py
+app.sh
+assets/screenshot1.png
+config.json
+config.py
+.gitattributes
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+lang.py
+LICENSE
+modules/__init__.py
+modules/model_manager.py
+modules/translator.py
+modules/utils.py
+modules/voice_clone.py
+modules/voice_design.py
+NOTICE
+output/.gitignore
+presets/preset_name_map.json
+presets/voice_presets_en.json
+presets/voice_presets_ja.json
+presets/voice_presets_zh.json
+README.md
+requirements.txt
+resample_wavs.py
+setup.bat
+setup.sh
+THIRD_PARTY_LICENSES.md
+ui/__init__.py
+ui/tab_manual.py
+ui/tab_settings.py
+ui/tab_tools.py
+ui/tab_voice_clone.py
+ui/tab_voice_design.py
+```

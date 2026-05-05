@@ -1,0 +1,19 @@
+{
+  "title": "Novel View Synthesis",
+  "kind": "concepts",
+  "body_text": "# Novel View Synthesis\n\n## Incoming relations\n\n- **addresses** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_\n- **addresses** → Geometry-Grounded Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-26/papers/2601.17835/paper.md",
+  "links": [],
+  "body": "# Novel View Synthesis\n\n## Incoming relations\n\n- **addresses** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_\n- **addresses** → Geometry-Grounded Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "frontmatter": {
+    "aliases": [
+      "new view synthesis",
+      "novel view synthesis"
+    ],
+    "kind": "concepts",
+    "node_id": "Task:novel-view-synthesis:19d55dfb9b83",
+    "node_type": "Task",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-26/papers/2601.17835/paper.md",
+    "title": "Novel View Synthesis"
+  }
+}

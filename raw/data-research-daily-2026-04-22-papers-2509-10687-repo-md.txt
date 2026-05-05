@@ -1,0 +1,69 @@
+repo.md
+=======
+
+# GitHub 분석: Aero-Ex/ComfyUI-SegviGen
+
+> - URL: https://github.com/Aero-Ex/ComfyUI-SegviGen
+> - 분석일: 2026-04-22
+
+## 개요
+
+- **설명**: ComfyUI-SegviGen: A ComfyUI implementation of SegviGen, providing precise 3D part segmentation for SegviGen.
+- **Stars**: ⭐ 30 | Forks: 5
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (60개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+app.py
+assets/teaser.png
+data_toolkit/bpy_render.py
+data_toolkit/color_glb.py
+data_toolkit/color_img.py
+data_toolkit/example_full_seg.py
+data_toolkit/example_full_seg_w_2d_map.py
+data_toolkit/example_interactive_seg.py
+data_toolkit/glb_to_parts.py
+data_toolkit/glb_to_vxz.py
+data_toolkit/img_to_cond.py
+data_toolkit/texturing_pipeline.json
+data_toolkit/transforms.json
+data_toolkit/vxz_to_slat.py
+examples/00aee5c2fef743d69421bb642d446a5b.glb
+examples/00aee5c2fef743d69421bb642d446a5b.png
+examples/01b8043112e74366a21256d5e64398fb.glb
+examples/01b8043112e74366a21256d5e64398fb.png
+examples/0c070001a3904cd6809a31345475e930.glb
+examples/0c070001a3904cd6809a31345475e930.png
+examples/0c3ca2b32545416f8f1e6f0e87def1a6.glb
+examples/0c3ca2b32545416f8f1e6f0e87def1a6.png
+examples/1b3e8b99913442308aa989e3f87680b3.glb
+examples/1b3e8b99913442308aa989e3f87680b3.png
+examples/1c33b2e86c023a72905a5bea4ae713d0.glb
+examples/1c33b2e86c023a72905a5bea4ae713d0.png
+examples/1ca8ea337fbc4bcfbeb3c633bc4c43f0.glb
+examples/1ca8ea337fbc4bcfbeb3c633bc4c43f0.png
+examples/2260799ee4e342398b64ab4ce8af1559.glb
+examples/2260799ee4e342398b64ab4ce8af1559.png
+examples/2ae5cf2990c34e7db704f677de8de74c.glb
+examples/2ae5cf2990c34e7db704f677de8de74c.png
+examples/2ceb6778ac114101833e4c531544ada8.glb
+examples/2ceb6778ac114101833e4c531544ada8.png
+examples/4b57e73e82ab400aa307adac36ea0e5e.glb
+examples/4b57e73e82ab400aa307adac36ea0e5e.png
+examples/Trellis2MV_00001_.glb
+examples/Trellis2MV_00001_.png
+.git/config
+.git/description
+```

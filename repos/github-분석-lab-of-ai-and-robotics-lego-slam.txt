@@ -1,0 +1,12 @@
+GitHub 분석: Lab-of-AI-and-Robotics/LEGO-SLAM
+===========================================
+
+# GitHub 분석: Lab-of-AI-and-Robotics/LEGO-SLAM
+
+## Outgoing relations
+
+- **released_by** → lab-of-ai-and-robotics _(Organization)_
+
+## Connected node types
+
+- Organization: 1

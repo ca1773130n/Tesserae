@@ -1,0 +1,18 @@
+{
+  "title": "Multi-View Consistency",
+  "kind": "concepts",
+  "body_text": "# Multi-View Consistency\n\n## Incoming relations\n\n- **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-26/papers/2601.17835/paper.md",
+  "links": [],
+  "body": "# Multi-View Consistency\n\n## Incoming relations\n\n- **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "multi-view consistency"
+    ],
+    "kind": "concepts",
+    "node_id": "EvaluationProtocol:multi-view-consistency:77bea1e95667",
+    "node_type": "EvaluationProtocol",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-26/papers/2601.17835/paper.md",
+    "title": "Multi-View Consistency"
+  }
+}

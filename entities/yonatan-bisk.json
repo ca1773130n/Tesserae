@@ -1,0 +1,15 @@
+{
+  "title": "Yonatan Bisk",
+  "kind": "entities",
+  "body_text": "# Yonatan Bisk\n\n## Incoming relations\n\n- **authored_by** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2509.23563/paper.md",
+  "links": [],
+  "body": "# Yonatan Bisk\n\n## Incoming relations\n\n- **authored_by** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:yonatan-bisk:4915ab68be91",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2509.23563/paper.md",
+    "title": "Yonatan Bisk"
+  }
+}

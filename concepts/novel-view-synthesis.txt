@@ -1,0 +1,13 @@
+Novel View Synthesis
+====================
+
+# Novel View Synthesis
+
+## Incoming relations
+
+- **addresses** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_
+- **addresses** → Geometry-Grounded Gaussian Splatting _(Paper)_
+
+## Connected node types
+
+- Paper: 2

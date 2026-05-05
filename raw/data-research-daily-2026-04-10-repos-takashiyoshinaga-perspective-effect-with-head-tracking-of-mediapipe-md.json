@@ -1,0 +1,8 @@
+{
+  "title": "TakashiYoshinaga_Perspective-Effect-with-Head-Tracking-of-MediaPipe.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: TakashiYoshinaga/Perspective-Effect-with-Head-Tracking-of-MediaPipe\n\n> - URL: https://github.com/TakashiYoshinaga/Perspective-Effect-with-Head-Tracking-of-MediaPipe\n> - 분석일: 2026-04-10\n\n## 개요\n\n- **설명**:   \n- **Stars**: ⭐ 23 | Forks: 2\n- **라이선스**: MIT\n- **주 언어**: unknown\n\n## 실행 가능 상태: 코드 미공개 (README/asset만 존재)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (0개) | N |\n| 의존성 파일 | N |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\nassets/Astronaut_BaseColor.png\nassets/Astronaut.mtl\nassets/Astronaut.obj\nassets/wall.png\n.gitattributes\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\nindex2.html\nindex.html\nLICENSE\nREADME.md\n```",
+  "source_path": "data/research/daily/2026-04-10/repos/TakashiYoshinaga_Perspective-Effect-with-Head-Tracking-of-MediaPipe.md",
+  "links": [],
+  "body": "# GitHub 분석: TakashiYoshinaga/Perspective-Effect-with-Head-Tracking-of-MediaPipe\n\n> - URL: https://github.com/TakashiYoshinaga/Perspective-Effect-with-Head-Tracking-of-MediaPipe\n> - 분석일: 2026-04-10\n\n## 개요\n\n- **설명**:   \n- **Stars**: ⭐ 23 | Forks: 2\n- **라이선스**: MIT\n- **주 언어**: unknown\n\n## 실행 가능 상태: 코드 미공개 (README/asset만 존재)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (0개) | N |\n| 의존성 파일 | N |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\nassets/Astronaut_BaseColor.png\nassets/Astronaut.mtl\nassets/Astronaut.obj\nassets/wall.png\n.gitattributes\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\nindex2.html\nindex.html\nLICENSE\nREADME.md\n```\n"
+}

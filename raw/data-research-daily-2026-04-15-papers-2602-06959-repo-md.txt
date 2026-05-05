@@ -1,0 +1,48 @@
+repo.md
+=======
+
+# GitHub 분석: YuqingWang1029/CubiD
+
+> - URL: https://github.com/YuqingWang1029/CubiD
+> - 분석일: 2026-04-15
+
+## 개요
+
+- **설명**: [CVPR2026 Highlight] Cubic Discrete Diffusion: Discrete Visual Generation on High-Dimensional Representation Tokens https://arxiv.org/abs/2603.19232
+- **Stars**: ⭐ 55 | Forks: 0
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (11개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+demo.jpg
+engine.py
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+main_cache.py
+main_cubid.py
+models/cubid.py
+models/__init__.py
+rae.py
+README.md
+util/crop.py
+util/__init__.py
+util/loader.py
+util/lr_sched.py
+util/misc.py
+```

@@ -1,0 +1,12 @@
+aero-ex
+=======
+
+# aero-ex
+
+## Incoming relations
+
+- **released_by** → GitHub 분석: Aero-Ex/ComfyUI-SegviGen _(Repository)_
+
+## Connected node types
+
+- Repository: 1

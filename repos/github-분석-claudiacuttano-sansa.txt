@@ -1,0 +1,14 @@
+GitHub 분석: ClaudiaCuttano/SANSA
+===============================
+
+# GitHub 분석: ClaudiaCuttano/SANSA
+
+## Outgoing relations
+
+- **evaluated_on** → COCO _(Benchmark)_
+- **uses_dataset** → ADE20K _(Dataset)_
+
+## Connected node types
+
+- Benchmark: 1
+- Dataset: 1

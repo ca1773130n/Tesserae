@@ -1,0 +1,12 @@
+Weekly Synthesis — 2026-W18
+===========================
+
+# Weekly Synthesis — 2026-W18
+
+Coverage of `data/research/weekly/2026-W18/`.
+
+## Papers and repos
+- [Geometry-Grounded Gaussian Splatting](../sources/geometry-grounded-gaussian-splatting.md) (SourceDocument)
+
+## Dominant approach families
+- (none)

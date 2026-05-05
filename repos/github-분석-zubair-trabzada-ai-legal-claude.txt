@@ -1,0 +1,12 @@
+GitHub 분석: zubair-trabzada/ai-legal-claude
+==========================================
+
+# GitHub 분석: zubair-trabzada/ai-legal-claude
+
+## Outgoing relations
+
+- **released_by** → zubair-trabzada _(Organization)_
+
+## Connected node types
+
+- Organization: 1

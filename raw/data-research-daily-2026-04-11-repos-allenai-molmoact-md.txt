@@ -1,0 +1,69 @@
+allenai_molmoact.md
+===================
+
+# GitHub 분석: allenai/molmoact
+
+> - URL: https://github.com/allenai/molmoact
+> - 분석일: 2026-04-11
+
+## 개요
+
+- **설명**: Official Repository for MolmoAct
+- **Stars**: ⭐ 319 | Forks: 37
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (93개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | Y |
+
+## 파일 구조
+
+```
+assets/molmoact_logo.svg
+Dockerfile
+.dockerignore
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+launch_scripts/eval_downstream.py
+launch_scripts/eval.py
+launch_scripts/train_captioner.py
+launch_scripts/train_multitask_model.py
+launch_scripts/utils.py
+LICENSE
+Midtraining_camera_mount.stl
+olmo/config.py
+olmo/exceptions.py
+olmo/html_utils.py
+olmo/__init__.py
+olmo/io.py
+olmo/safetensors_util.py
+olmo/tokenizer.py
+olmo/torch_util.py
+olmo/util.py
+olmo/version.py
+preprocess/action_reasoning_data.py
+preprocess/line_utils.py
+preprocess/processors.py
+pyproject.toml
+README.md
+scripts/build_submission_file.py
+scripts/calculate_params.py
+scripts/compare_weights.py
+scripts/convert_hf_to_molmo.py
+scripts/convert_to_unsharded.py
+scripts/dataset_visualize.py
+scripts/download_data.py
+scripts/download_robot_data.py
+```

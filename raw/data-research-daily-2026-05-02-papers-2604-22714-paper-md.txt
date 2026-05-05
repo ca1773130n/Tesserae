@@ -1,0 +1,112 @@
+paper.md
+========
+
+# 논문 분석: 2604.22714
+
+> - arxiv: https://arxiv.org/abs/2604.22714
+> - papers.cool: https://papers.cool/arxiv/2604.22714
+> - 분석일: 2026-05-02
+
+# Long-tail Internet photo reconstruction | Cool Papers - 몰입형 논문 탐색
+
+## 2604.22714
+
+총계: 1
+
+## #1
+
+Long-tail Internet photo reconstruction  
+[PDF8]  
+[Copy]  
+[Kimi6]  
+[REL]
+
+저자:  
+Yuan Li,  
+Yuanbo Xiangli,  
+Hadar Averbuch-Elor,  
+Noah Snavely,  
+Ruojin Cai
+
+인터넷 사진 컬렉션은 매우 극단적인 long-tail 분포를 보인다. 소수의 유명 랜드마크는 매우 조밀하게 촬영되어 3D로 쉽게 재구성되지만, 현실 세계의 대부분 장소는 희소하고 잡음이 많으며 불균일한 이미지로만 표현되어 고전적 3D 방법과 학습 기반 3D 방법 모두의 한계를 벗어난다. 우리는 이러한 long-tail 영역을 다루는 것이 3D foundation models의 다음 프런티어 중 하나라고 본다. 희소한 장면으로부터 신뢰할 수 있는 ground-truth 3D supervision을 얻는 것은 어렵지만, 잘 재구성된 인터넷 랜드마크에서 희소 부분집합을 샘플링함으로써 이를 효과적으로 시뮬레이션할 수 있음을 관찰했다. 이를 위해 우리는 깨끗하고 조밀한 depth를 갖는 대규모 3D reconstruction 데이터셋 MegaDepth-X와 함께, long-tail 장면의 카메라 분포를 모사하는 학습 이미지 집합 샘플링 전략을 제안한다. 이러한 구성 요소로 3D foundation models를 파인튜닝하면 극단적인 희소성 조건에서도 견고한 재구성이 가능해지고, 대칭적이고 반복적인 장면에서도 더 신뢰할 수 있는 재구성이 가능해지며, 동시에 표준적이고 조밀한 3D benchmark 데이터셋에 대한 일반화 성능도 유지된다.
+
+주제:  
+Computer Vision and Pattern Recognition
+
+게시: 2026-04-24 16:54:47 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+포함 OR:
+
+제외:
+
+검색
+
+필터
+
+하이라이트
+
+별표한 논문:
+
+#1  
+Long-tail Internet photo reconstruction
+
+내보내기
+
+Magic Token:
+
+Kimi Language:  
+中文  
+English
+
+Desc Language:  
+中文  
+English
+
+저장
+
+버그 제보? 이슈 제출? 다음을 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+계속 진행하기 전에 Disclaimer를 읽어주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문하세요.
+
+```javascript
+var macros = {
+    "argmin": "\\mathop{\\text{argmin}}",
+    "argmax": "\\mathop{\\text{argmax}}"
+};
+MathJax.Hub.Config({
+    tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']], processEscapes: true},
+    TeX: {equationNumbers: {autoNumber: ["AMS"], useLabelIds: true}, extensions: ["AMSmath.js", "AMSsymbols.js", "extpfeil.js"], Macros: macros},
+    "HTML-CSS": {noReflows: false, availableFonts: ["tex"], styles: {".MathJax_Display": {margin: "1em 0em 0.7em;", display: "inline-block!important;"}}},
+    "CommonHTML": {noReflows: false, availableFonts: ["tex"], styles: {".MJXc-display": {margin: "1em 0em 0.7em;", display: "inline-block!important;"}}},
+    "SVG": {styles: {".MathJax_SVG_Display": {margin: "1em 0em 0.7em;", display: "inline-block!important;"}}}
+});
+MathJax.Hub.Queue(function() {
+    document.querySelectorAll('.MathJax').forEach(element => element.classList.add('notranslate'));
+    document.querySelectorAll('a.title-link, p.summary').forEach(element => element.classList.remove('notranslate'));
+    highlightQuery();
+});
+```
+
+```javascript
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement("script");
+  hm.src = "https://hm.baidu.com/hm.js?606b976365dabacb1f69823d8de064ee";
+  var s = document.getElementsByTagName("script")[0]; 
+  s.parentNode.insertBefore(hm, s);
+})();
+```
+
+```javascript
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+
+gtag('config', 'G-214H31WLDF');
+```

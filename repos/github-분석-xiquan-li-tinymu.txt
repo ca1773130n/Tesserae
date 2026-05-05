@@ -1,0 +1,12 @@
+GitHub 분석: xiquan-li/TinyMU
+===========================
+
+# GitHub 분석: xiquan-li/TinyMU
+
+## Outgoing relations
+
+- **released_by** → xiquan-li _(Organization)_
+
+## Connected node types
+
+- Organization: 1

@@ -1,0 +1,29 @@
+{
+  "title": "Daily Digest — 2026-05-01",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-05-01\n\nSources ingested under `data/research/daily/2026-05-01/`.\n\n## Papers and repos\n- [GitHub 분석: r4dl/CoMe](../repos/github-분석-r4dl-come.md) (Repository)\n- [Daily Feed Summary — 2026-05-01](../sources/daily-feed-summary-2026-05-01.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-05-01](../sources/daily-research-digest-2026-05-01.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "source_path": "",
+  "links": [
+    "../repos/github-분석-r4dl-come.md",
+    "../sources/daily-feed-summary-2026-05-01.md",
+    "../sources/daily-research-digest-2026-05-01.md"
+  ],
+  "body": "# Daily Digest — 2026-05-01\n\nSources ingested under `data/research/daily/2026-05-01/`.\n\n## Papers and repos\n- [GitHub 분석: r4dl/CoMe](../repos/github-분석-r4dl-come.md) (Repository)\n- [Daily Feed Summary — 2026-05-01](../sources/daily-feed-summary-2026-05-01.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-05-01](../sources/daily-research-digest-2026-05-01.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "frontmatter": {
+    "content_hash": "sha256-9ccb591e430f0e3fdc60156f6bcda7bb756cdc5e648422a14b7365263bdac4c4",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Repository:github-r4dl-come:6c77a30e8c15",
+      "SourceDocument:daily-feed-summary-2026-05-01:3e3861f1e183",
+      "SourceDocument:daily-research-digest-2026-05-01:8cbf7f753602"
+    ],
+    "slug": "daily-2026-05-01",
+    "sources": [
+      "data/research/daily/2026-05-01/digest.md",
+      "data/research/daily/2026-05-01/papers/2603.24725/repo.md",
+      "data/research/daily/2026-05-01/raw.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-05-01"
+  }
+}

@@ -1,0 +1,12 @@
+Multi-View Consistency
+======================
+
+# Multi-View Consistency
+
+## Incoming relations
+
+- **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_
+
+## Connected node types
+
+- Paper: 1

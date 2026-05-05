@@ -1,0 +1,12 @@
+GitHub 분석: isaaccorley/terrabit
+===============================
+
+# GitHub 분석: isaaccorley/terrabit
+
+## Outgoing relations
+
+- **uses_metric** → mAP _(Metric)_
+
+## Connected node types
+
+- Metric: 1

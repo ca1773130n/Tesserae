@@ -1,0 +1,12 @@
+Point Cloud
+===========
+
+# Point Cloud
+
+## Incoming relations
+
+- **uses** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_
+
+## Connected node types
+
+- Paper: 1

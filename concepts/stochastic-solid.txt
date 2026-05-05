@@ -1,0 +1,14 @@
+Stochastic Solid
+================
+
+# Stochastic Solid
+
+## Incoming relations
+
+- **uses** → Geometry-Grounded Gaussian Splatting _(ApproachFamily)_
+- **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_
+
+## Connected node types
+
+- ApproachFamily: 1
+- Paper: 1

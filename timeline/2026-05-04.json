@@ -1,0 +1,22 @@
+{
+  "title": "2026-05-04",
+  "kind": "timeline_day",
+  "body_text": "Activity for 2026-05-04: 15 item(s) indexed.",
+  "source_path": "",
+  "links": [],
+  "body": "Activity for 2026-05-04",
+  "frontmatter": {
+    "date": "2026-05-04",
+    "activity": 15,
+    "sources": [
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-04/digest.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-04/papers/2501.19252/paper.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-04/raw.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-04/repos/AmyangXYZ_reze-studio.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-04/repos/LeapLabTHU_RvR.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-04/repos/asimovinc_asimov-v1.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-04/repos/facebookresearch_tribev2.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-04/repos/huskydoge_Awesome-Loop-Models.md"
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "title": "Architecture",
+  "kind": "sources",
+  "body_text": "# Architecture\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/architecture.md",
+  "links": [],
+  "body": "# Architecture\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:architecture:32ae01205996",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/architecture.md",
+    "title": "Architecture"
+  }
+}

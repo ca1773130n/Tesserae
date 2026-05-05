@@ -1,0 +1,69 @@
+repo.md
+=======
+
+# GitHub 분석: lyehe/build_gpu_colmap
+
+> - URL: https://github.com/lyehe/build_gpu_colmap
+> - 분석일: 2026-05-02
+
+## 개요
+
+- **설명**:   
+- **Stars**: ⭐ 57 | Forks: 2
+- **라이선스**: Unlicense
+- **주 언어**: unknown
+
+## 실행 가능 상태: 코드 미공개 (README/asset만 존재)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (0개) | N |
+| 의존성 파일 | N |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+.claude/CLAUDE.md
+.claude/settings.local.json
+CMakeLists.txt
+cmake/patch_ceres_suitesparse.cmake
+cmake/patch_colmap_config.cmake
+cmake/patch_colmap_flann.cmake
+cmake/patch_colmap_flann_link.cmake
+cmake/patch_colmap_gflags.cmake
+cmake/patch_colmap_onnx_install.cmake
+cmake/patch_colmap_targets.cmake
+docs/BUILD_PYTHON_WHEELS.md
+docs/DEBUG_LOG.md
+docs/INSTALL_CUDSS.md
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.gitmodules
+.git/packed-refs
+.git/shallow
+LICENSE
+overlay-ports/README.md
+README.md
+releases/README.txt
+releases/RELEASE_NOTES.md
+releases/SHA256SUMS.txt
+scripts_linux/bootstrap.sh
+scripts_linux/build_ceres.sh
+scripts_linux/build_colmap.sh
+scripts_linux/build_pycolmap_wheels_all.sh
+scripts_linux/build_pycolmap_wheel.sh
+scripts_linux/build_pycolmap_wheels.sh
+scripts_linux/build.sh
+scripts_linux/download_models.sh
+scripts_linux/initialize_repository.sh
+scripts_linux/update_submodules.sh
+scripts_linux/verify_build_environment.sh
+scripts_windows/bootstrap.ps1
+scripts_windows/build_ceres.ps1
+```

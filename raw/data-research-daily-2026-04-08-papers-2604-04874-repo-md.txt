@@ -1,0 +1,66 @@
+repo.md
+=======
+
+# GitHub 분석: cvg/resplat
+
+> - URL: https://github.com/cvg/resplat
+> - 분석일: 2026-04-08
+
+## 개요
+
+- **설명**: ReSplat: Learning Recurrent Gaussian Splatting
+- **Stars**: ⭐ 193 | Forks: 14
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (49개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.gitignore
+assets/dl3dv_start_0_distance_10_ctx_2v_tgt_4v.json
+assets/evaluation_index_acid.json
+assets/evaluation_index_re10k.json
+assets/re10k_start_0_distance_200_ctx_8v_tgt_8v.json
+config/main.yaml
+DATASETS.md
+LICENSE
+MODEL_ZOO.md
+README.md
+requirements.txt
+scripts/dl3dv_view16_256x448_base_init.sh
+scripts/dl3dv_view16_256x448_base_refine.sh
+scripts/dl3dv_view16_540x960_base_init.sh
+scripts/dl3dv_view16_540x960_base_refine.sh
+scripts/dl3dv_view32_256x448_base_init.sh
+scripts/dl3dv_view32_256x448_base_refine.sh
+scripts/dl3dv_view8_256x448_base_init.sh
+scripts/dl3dv_view8_256x448_base_refine.sh
+scripts/dl3dv_view8_256x448_large_init.sh
+scripts/dl3dv_view8_256x448_small_init.sh
+scripts/dl3dv_view8_256x448_small_refine.sh
+scripts/dl3dv_view8_512x960_base_init.sh
+scripts/dl3dv_view8_512x960_base_refine.sh
+scripts/infer_colmap.py
+scripts/infer_colmap.sh
+scripts/re10k_view2_256x256_base_init.sh
+scripts/re10k_view2_256x256_base_refine.sh
+src/config.py
+src/global_cfg.py
+src/main.py
+```

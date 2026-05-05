@@ -1,0 +1,12 @@
+Daily Feed Summary — 2026-04-12
+===============================
+
+# Daily Feed Summary — 2026-04-12
+
+## Outgoing relations
+
+- **mentioned_in** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
+
+## Connected node types
+
+- Paper: 1

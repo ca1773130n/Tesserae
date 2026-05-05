@@ -1,0 +1,15 @@
+{
+  "title": "Blender",
+  "kind": "entities",
+  "body_text": "# Blender\n\n## Incoming relations\n\n- **uses_dataset** → Daily Feed Summary — 2026-04-11 _(SourceDocument)_\n- **uses_dataset** → GitHub 분석: ahujasid/blender-mcp _(Repository)_\n\n## Connected node types\n\n- Repository: 1\n- SourceDocument: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/raw.md",
+  "links": [],
+  "body": "# Blender\n\n## Incoming relations\n\n- **uses_dataset** → Daily Feed Summary — 2026-04-11 _(SourceDocument)_\n- **uses_dataset** → GitHub 분석: ahujasid/blender-mcp _(Repository)_\n\n## Connected node types\n\n- Repository: 1\n- SourceDocument: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Dataset:blender:5884a8250dff",
+    "node_type": "Dataset",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/raw.md",
+    "title": "Blender"
+  }
+}

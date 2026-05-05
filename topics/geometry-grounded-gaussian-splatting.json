@@ -1,0 +1,18 @@
+{
+  "title": "Geometry-Grounded Gaussian Splatting",
+  "kind": "topics",
+  "body_text": "# Geometry-Grounded Gaussian Splatting\n\nRegistered term referenced in WorldCompass: Reinforcement Learning for Long-Horizon World Models\n\n## Outgoing relations\n\n- **uses** → Stochastic Solid _(MathematicalConcept)_\n\n## Incoming relations\n\n- **belongs_to_approach_family** → Geometry-Grounded Gaussian Splatting _(Paper)_\n- **documents** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n\n## Connected node types\n\n- MathematicalConcept: 1\n- Paper: 1\n- SourceDocument: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-15/papers/2601.17835/paper.md",
+  "links": [],
+  "body": "# Geometry-Grounded Gaussian Splatting\n\nRegistered term referenced in WorldCompass: Reinforcement Learning for Long-Horizon World Models\n\n## Outgoing relations\n\n- **uses** → Stochastic Solid _(MathematicalConcept)_\n\n## Incoming relations\n\n- **belongs_to_approach_family** → Geometry-Grounded Gaussian Splatting _(Paper)_\n- **documents** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n\n## Connected node types\n\n- MathematicalConcept: 1\n- Paper: 1\n- SourceDocument: 1",
+  "frontmatter": {
+    "aliases": [
+      "Geometry-Grounded GS"
+    ],
+    "kind": "topics",
+    "node_id": "ApproachFamily:geometry-grounded-gaussian-splatting:0ba271d39ba0",
+    "node_type": "ApproachFamily",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-15/papers/2601.17835/paper.md",
+    "title": "Geometry-Grounded Gaussian Splatting"
+  }
+}

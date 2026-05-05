@@ -1,0 +1,20 @@
+{
+  "title": "2026-05-01",
+  "kind": "timeline_day",
+  "body_text": "Activity for 2026-05-01: 13 item(s) indexed.",
+  "source_path": "",
+  "links": [],
+  "body": "Activity for 2026-05-01",
+  "frontmatter": {
+    "date": "2026-05-01",
+    "activity": 13,
+    "sources": [
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-01/digest.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-01/papers/2603.24725/paper.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-01/papers/2603.24725/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-01/papers/2604.24994/paper.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-01/raw.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/docs/superpowers/specs/2026-05-01-karpathy-alignment-plan.md"
+    ]
+  }
+}

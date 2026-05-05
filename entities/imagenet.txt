@@ -1,0 +1,14 @@
+ImageNet
+========
+
+# ImageNet
+
+## Incoming relations
+
+- **evaluated_on** → Scaling 4D Representations _(Paper)_
+- **evaluated_on** → 주간 논문 분석 — 2026-W15 (2026-04-06 ~ 2026-04-12) _(SourceDocument)_
+
+## Connected node types
+
+- Paper: 1
+- SourceDocument: 1

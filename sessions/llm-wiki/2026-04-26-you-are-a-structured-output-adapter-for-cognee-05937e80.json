@@ -1,0 +1,54 @@
+{
+  "title": "You are a structured-output adapter for Cognee.",
+  "kind": "session",
+  "body_text": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_codex_full_v2_bundle/edges.jsonl Inspecting `output/cognee_codex_full_v2_bundle/edges.jsonl` to extract the subject and produce the required concise summary JSON. The file is a JSONL edge list for a research knowledge graph. I’m checking the dominant node and relation patterns so the summary reflects the dataset rather than a few sample records. The sandbox blocks here-doc temp files, s",
+  "source_path": "/Users/neo/.codex_old/sessions/2026/04/27/rollout-2026-04-27T00-36-32-019dca6f-6871-73f0-a4fb-6f42e24e4b9b.jsonl",
+  "links": [],
+  "body": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_codex_full_v2_bundle/edges.jsonl Inspecting `output/cognee_codex_full_v2_bundle/edges.jsonl` to extract the subject and produce the required concise summary JSON. The file is a JSONL edge list for a research knowledge graph. I’m checking the dominant node and relation patterns so the summary reflects the dataset rather than a few sample records. The sandbox blocks here-doc temp files, s",
+  "frontmatter": {
+    "id": "codex:019dca6f-6871-73f0-a4fb-6f42e24e4b9b",
+    "slug": "you-are-a-structured-output-adapter-for-cognee",
+    "harness": "codex",
+    "agent_label": "Codex",
+    "project_name": "LLM-Wiki",
+    "project_root": "/Users/neo/Developer/Projects/LLM-Wiki",
+    "started_at": "2026-04-26T15:36:34.421Z",
+    "ended_at": "2026-04-26T15:37:08.477Z",
+    "branch": "",
+    "commit_before": "",
+    "commit_after": "",
+    "model": "openai",
+    "title": "You are a structured-output adapter for Cognee.",
+    "summary": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_codex_full_v2_bundle/edges.jsonl Inspecting `output/cognee_codex_full_v2_bundle/edges.jsonl` to extract the subject and produce the required concise summary JSON. The file is a JSONL edge list for a research knowledge graph. I’m checking the dominant node and relation patterns so the summary reflects the dataset rather than a few sample records. The sandbox blocks here-doc temp files, s",
+    "message_count": 6,
+    "tool_call_count": 1,
+    "token_input": 0,
+    "token_output": 0,
+    "token_total": 0,
+    "cache_hit_ratio": null,
+    "tools_used": [
+      "exec_command"
+    ],
+    "files_touched": [
+      "docs/SKILL.md"
+    ],
+    "commands_run": [
+      "wc -l output/cognee_codex_full_v2_bundle/edges.jsonl",
+      "sed -n '1,80p' output/cognee_codex_full_v2_bundle/edges.jsonl",
+      "python - <<'PY'\nimport json, collections, re\nfrom pathlib import Path\np=Path('output/cognee_codex_full_v2_bundle/edges.jsonl')\nrel=collections.Counter()\nsrc=collections.Counter()\ntgt=collections.Counter()\nwith p.open() as f:\n    for line in f:\n        o=json.loads(line)\n        rel[o['relationship']]+=1\n        src[o['source_id'].split(':',1)[0]]+=1\n        tgt[o['target_id'].split(':',1)[0]]+=1\nprint('relationships', rel.most_common(12))\nprint('source_types', src.most_common(12))\nprint('target_types', tgt.most_common(12))\nPY",
+      "python - <<'PY'\nimport json, collections\nfrom pathlib import Path\np=Path('output/cognee_codex_full_v2_bundle/edges.jsonl')\n# topics/fields targets\nfield=collections.Counter(); topic=collections.Counter(); approach=collections.Counter(); method=collections.Counter()\nwith p.open() as f:\n    for line in f:\n        o=json.loads(line)\n        t=o['target_id']\n        if t.startswith('ResearchField:'): field[t]+=1\n        if t.startswith('ResearchTopic:'): topic[t]+=1\n        if t.startswith('ApproachFamily:'): approach[t]+=1\n        if t.startswith('MethodologicalConcept:'): method[t]+=1\nprint('fields', field.most_common(10))\nprint('topics', topic.most_common(10))\nprint('approaches', approach.most_common(10))\nprint('methods', method.most_common(10))\nPY",
+      "python -c \"import json,collections; from pathlib import Path; p=Path('output/cognee_codex_full_v2_bundle/edges.jsonl'); rel=collections.Counter(); src=collections.Counter(); tgt=collections.Counter();\nfor line in p.open():\n o=json.loads(line); rel[o['relationship']]+=1; src[o['source_id'].split(':',1)[0]]+=1; tgt[o['target_id'].split(':',1)[0]]+=1\nprint('relationships', rel.most_common(12)); print('source_types', src.most_common(12)); print('target_types', tgt.most_common(12))\"",
+      "python -c \"import json,collections; from pathlib import Path; p=Path('output/cognee_codex_full_v2_bundle/edges.jsonl'); field=collections.Counter(); topic=collections.Counter(); approach=collections.Counter(); method=collections.Counter();\nfor line in p.open():\n o=json.loads(line); t=o['target_id'];\n field[t]+=1 if t.startswith('ResearchField:') else 0; topic[t]+=1 if t.startswith('ResearchTopic:') else 0; approach[t]+=1 if t.startswith('ApproachFamily:') else 0; method[t]+=1 if t.startswith('MethodologicalConcept:') else 0\nprint('fields', field.most_common(10)); print('topics', topic.most_common(10)); print('approaches', approach.most_common(10)); print('methods', method.most_common(10))\""
+    ],
+    "decisions": [],
+    "errors": [],
+    "raw_transcript_path": "/Users/neo/.codex_old/sessions/2026/04/27/rollout-2026-04-27T00-36-32-019dca6f-6871-73f0-a4fb-6f42e24e4b9b.jsonl",
+    "redacted_preview": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_codex_full_v2_bundle/edges.jsonl Inspecting `output/cognee_codex_full_v2_bundle/edges.jsonl` to extract the subject and produce the required concise summary JSON. The file is a JSONL edge list for a research knowledge graph. I’m checking the dominant node and relation patterns so the summary reflects the dataset rather than a few sample records. The sandbox blocks here-doc temp files, s",
+    "metadata": {
+      "config_root": "/Users/neo/.codex_old",
+      "transcript": "/Users/neo/.codex_old/sessions/2026/04/27/rollout-2026-04-27T00-36-32-019dca6f-6871-73f0-a4fb-6f42e24e4b9b.jsonl"
+    },
+    "date": "2026-04-26",
+    "href": "sessions/llm-wiki/2026-04-26-you-are-a-structured-output-adapter-for-cognee-05937e80.html"
+  }
+}

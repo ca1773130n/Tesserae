@@ -1,0 +1,112 @@
+paper.md
+========
+
+# 논문 분석: 2601.17835
+
+> - arxiv: https://arxiv.org/abs/2601.17835
+> - papers.cool: https://papers.cool/arxiv/2601.17835
+> - 분석일: 2026-04-26
+
+# Geometry-Grounded Gaussian Splatting | Cool Papers - Immersive Paper Discovery
+
+## 2601.17835
+
+총계: 1
+
+## #1
+
+### Geometry-Grounded Gaussian Splatting
+
+[PDF15] [Copy] [Kimi6] [REL]
+
+저자:
+Baowen Zhang,
+Chenxing Jiang,
+Heng Li,
+Shaojie Shen,
+Ping Tan
+
+Gaussian Splatting, GS는 novel view synthesis에서 인상적인 품질과 효율성을 보여주었다. 그러나 Gaussian primitive로부터 형상을 추출하는 문제는 여전히 미해결 과제이다. 기하 파라미터화와 근사가 충분하지 않기 때문에, 기존 형상 재구성 방법은 multi-view consistency가 낮고 floaters에 민감하다는 문제가 있다. 본 논문에서는 Gaussian primitive를 특정한 유형의 stochastic solid로 정립하는 엄밀한 이론적 유도를 제시한다. 이 이론적 프레임워크는 Gaussian primitive를 명시적 기하 표현으로 직접 다룰 수 있게 함으로써 Geometry-Grounded Gaussian Splatting을 위한 원리적 토대를 제공한다. stochastic solid의 volumetric 특성을 활용하여, 우리 방법은 세밀한 기하 추출을 위한 고품질 depth map을 효율적으로 렌더링한다. 실험 결과, 우리 방법은 공개 데이터셋에서 모든 Gaussian Splatting 기반 방법 가운데 가장 우수한 형상 재구성 성능을 달성하였다.
+
+주제:
+Computer Vision and Pattern Recognition
+
+게시일: 2026-01-25 13:32:53 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+포함 OR:
+
+제외:
+
+검색
+
+필터
+
+강조
+
+표시된 논문:
+
+#1
+Geometry-Grounded Gaussian Splatting
+
+내보내기
+
+Magic Token:
+
+Kimi Language:
+
+中文
+English
+
+Desc Language:
+
+中文
+English
+
+저장
+
+버그 제보 또는 이슈 제출은 아래를 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+계속 진행하기 전에 Disclaimer를 읽어주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문하세요.
+
+```javascript
+var macros = {
+    'argmin': '\\mathop{\\text{argmin}}',
+    'argmax': '\\mathop{\\text{argmax}}'
+};
+MathJax.Hub.Config({
+    tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']], processEscapes: true},
+    TeX: {equationNumbers: {autoNumber: ['AMS'], useLabelIds: true}, extensions: ['AMSmath.js', 'AMSsymbols.js', 'extpfeil.js'], Macros: macros},
+    'HTML-CSS': {noReflows: false, availableFonts: ['tex'], styles: {'.MathJax_Display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}},
+    'CommonHTML': {noReflows: false, availableFonts: ['tex'], styles: {'.MJXc-display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}},
+    'SVG': {styles: {'.MathJax_SVG_Display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}}
+});
+MathJax.Hub.Queue(function() {
+    document.querySelectorAll('.MathJax').forEach(element => element.classList.add('notranslate'));
+    document.querySelectorAll('a.title-link, p.summary').forEach(element => element.classList.remove('notranslate'));
+    highlightQuery();
+});
+```
+
+```javascript
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement('script');
+  hm.src = 'https://hm.baidu.com/hm.js?606b976365dabacb1f69823d8de064ee';
+  var s = document.getElementsByTagName('script')[0]; 
+  s.parentNode.insertBefore(hm, s);
+})();
+```
+
+```javascript
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+
+gtag('config', 'G-214H31WLDF');
+```

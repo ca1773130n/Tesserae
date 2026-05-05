@@ -1,0 +1,19 @@
+digest.md
+=========
+
+# Daily Research Digest — 2026-04-25
+
+## Highlights
+
+### Vision Banana: image generators as generalist vision learners
+
+Vision Banana shows that lightweight instruction tuning on a generative image
+backbone yields strong zero-shot segmentation and metric depth estimation,
+challenging task-specific heads.
+
+- 논문: [paper](papers/2604.20329/paper.md) | [arxiv](https://arxiv.org/abs/2604.20329)
+- 코드: [repo](papers/2604.20329/repo.md)
+
+### AnyRecon
+
+희소 시점에서도 동작하는 3D reconstruction baseline.

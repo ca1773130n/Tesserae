@@ -1,0 +1,44 @@
+{
+  "title": "Daily Digest — 2026-05-02",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-05-02\n\nSources ingested under `data/research/daily/2026-05-02/`.\n\n## Papers and repos\n- [Long-tail Internet photo reconstruction (arXiv:2604.22714)](../papers/long-tail-internet-photo-reconstruction.md) (Paper)\n- [GitHub 분석: BoPeng/ai-marketplace-monitor](../repos/github-분석-bopeng-ai-marketplace-monitor.md) (Repository)\n- [GitHub 분석: ag2ai/ag2studio](../repos/github-분석-ag2ai-ag2studio.md) (Repository)\n- [GitHub 분석: aree6/LiftShift](../repos/github-분석-aree6-liftshift.md) (Repository)\n- [GitHub 분석: lyehe/build_gpu_colmap](../repos/github-분석-lyehe-build-gpu-colmap.md) (Repository)\n- [GitHub 분석: meshsplatting/mesh-splatting](../repos/github-분석-meshsplatting-mesh-splatting.md) (Repository)\n- [Daily Feed Summary — 2026-05-02](../sources/daily-feed-summary-2026-05-02.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-05-02](../sources/daily-research-digest-2026-05-02.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "source_path": "",
+  "links": [
+    "../papers/long-tail-internet-photo-reconstruction.md",
+    "../repos/github-분석-bopeng-ai-marketplace-monitor.md",
+    "../repos/github-분석-ag2ai-ag2studio.md",
+    "../repos/github-분석-aree6-liftshift.md",
+    "../repos/github-분석-lyehe-build-gpu-colmap.md",
+    "../repos/github-분석-meshsplatting-mesh-splatting.md",
+    "../sources/daily-feed-summary-2026-05-02.md",
+    "../sources/daily-research-digest-2026-05-02.md"
+  ],
+  "body": "# Daily Digest — 2026-05-02\n\nSources ingested under `data/research/daily/2026-05-02/`.\n\n## Papers and repos\n- [Long-tail Internet photo reconstruction (arXiv:2604.22714)](../papers/long-tail-internet-photo-reconstruction.md) (Paper)\n- [GitHub 분석: BoPeng/ai-marketplace-monitor](../repos/github-분석-bopeng-ai-marketplace-monitor.md) (Repository)\n- [GitHub 분석: ag2ai/ag2studio](../repos/github-분석-ag2ai-ag2studio.md) (Repository)\n- [GitHub 분석: aree6/LiftShift](../repos/github-분석-aree6-liftshift.md) (Repository)\n- [GitHub 분석: lyehe/build_gpu_colmap](../repos/github-분석-lyehe-build-gpu-colmap.md) (Repository)\n- [GitHub 분석: meshsplatting/mesh-splatting](../repos/github-분석-meshsplatting-mesh-splatting.md) (Repository)\n- [Daily Feed Summary — 2026-05-02](../sources/daily-feed-summary-2026-05-02.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-05-02](../sources/daily-research-digest-2026-05-02.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "frontmatter": {
+    "content_hash": "sha256-1fa0de382591111eaa6b94e96768e44bbe13811a27605656410ef1fbf1c33557",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Paper:arxiv-2604-22714:4796576a1c60",
+      "Repository:github-ag2ai-ag2studio:9b9901b73d10",
+      "Repository:github-aree6-liftshift:f95654b0657f",
+      "Repository:github-bopeng-ai-marketplace-monitor:b0dd2fd96fac",
+      "Repository:github-lyehe-build-gpu-colmap:0cc9f65cb2f3",
+      "Repository:github-meshsplatting-mesh-splatting:2feddc81e3bf",
+      "SourceDocument:daily-feed-summary-2026-05-02:6c541c67e3fb",
+      "SourceDocument:daily-research-digest-2026-05-02:6152c054d56f"
+    ],
+    "slug": "daily-2026-05-02",
+    "sources": [
+      "data/research/daily/2026-05-02/digest.md",
+      "data/research/daily/2026-05-02/papers/2512.06818/repo.md",
+      "data/research/daily/2026-05-02/papers/2604.22714/paper.md",
+      "data/research/daily/2026-05-02/papers/2604.22714/repo.md",
+      "data/research/daily/2026-05-02/raw.md",
+      "data/research/daily/2026-05-02/repos/BoPeng_ai-marketplace-monitor.md",
+      "data/research/daily/2026-05-02/repos/ag2ai_ag2studio.md",
+      "data/research/daily/2026-05-02/repos/aree6_LiftShift.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-05-02"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: ag2ai/ag2studio",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: ag2ai/ag2studio\n\n## Outgoing relations\n\n- **released_by** → ag2ai _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/repos/ag2ai_ag2studio.md",
+  "links": [],
+  "body": "# GitHub 분석: ag2ai/ag2studio\n\n## Outgoing relations\n\n- **released_by** → ag2ai _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "frontmatter": {
+    "aliases": [
+      "ag2ai/ag2studio",
+      "https://github.com/ag2ai/ag2studio"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-ag2ai-ag2studio:9b9901b73d10",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/repos/ag2ai_ag2studio.md",
+    "title": "GitHub 분석: ag2ai/ag2studio"
+  }
+}

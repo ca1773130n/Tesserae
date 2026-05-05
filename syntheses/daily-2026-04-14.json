@@ -1,0 +1,38 @@
+{
+  "title": "Daily Digest — 2026-04-14",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-04-14\n\nSources ingested under `data/research/daily/2026-04-14/`.\n\n## Papers and repos\n- [GitHub 분석: alexbatalov/fallout1-re](../repos/github-분석-alexbatalov-fallout1-re.md) (Repository)\n- [GitHub 분석: eth-ait/Gaussian-Garments](../repos/github-분석-eth-ait-gaussian-garments.md) (Repository)\n- [GitHub 분석: facebookresearch/map-anything](../repos/github-분석-facebookresearch-map-anything.md) (Repository)\n- [GitHub 분석: jendrikseipp/vulture](../repos/github-분석-jendrikseipp-vulture.md) (Repository)\n- [GitHub 분석: naver/pow3r](../repos/github-분석-naver-pow3r.md) (Repository)\n- [Daily Feed Summary — 2026-04-14](../sources/daily-feed-summary-2026-04-14.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "source_path": "",
+  "links": [
+    "../repos/github-분석-alexbatalov-fallout1-re.md",
+    "../repos/github-분석-eth-ait-gaussian-garments.md",
+    "../repos/github-분석-facebookresearch-map-anything.md",
+    "../repos/github-분석-jendrikseipp-vulture.md",
+    "../repos/github-분석-naver-pow3r.md",
+    "../sources/daily-feed-summary-2026-04-14.md"
+  ],
+  "body": "# Daily Digest — 2026-04-14\n\nSources ingested under `data/research/daily/2026-04-14/`.\n\n## Papers and repos\n- [GitHub 분석: alexbatalov/fallout1-re](../repos/github-분석-alexbatalov-fallout1-re.md) (Repository)\n- [GitHub 분석: eth-ait/Gaussian-Garments](../repos/github-분석-eth-ait-gaussian-garments.md) (Repository)\n- [GitHub 분석: facebookresearch/map-anything](../repos/github-분석-facebookresearch-map-anything.md) (Repository)\n- [GitHub 분석: jendrikseipp/vulture](../repos/github-분석-jendrikseipp-vulture.md) (Repository)\n- [GitHub 분석: naver/pow3r](../repos/github-분석-naver-pow3r.md) (Repository)\n- [Daily Feed Summary — 2026-04-14](../sources/daily-feed-summary-2026-04-14.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "frontmatter": {
+    "content_hash": "sha256-0ed517cf55b60878372e3b3b644fc939d2db072a0aeac5b05b7b5d321cf6a56b",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Repository:github-alexbatalov-fallout1-re:8a8dd63e2519",
+      "Repository:github-eth-ait-gaussian-garments:d790e1c06864",
+      "Repository:github-facebookresearch-map-anything:a09b4a860b3e",
+      "Repository:github-jendrikseipp-vulture:8f53f51ff351",
+      "Repository:github-naver-pow3r:28530876a852",
+      "SourceDocument:daily-feed-summary-2026-04-14:0b992f56b54c"
+    ],
+    "slug": "daily-2026-04-14",
+    "sources": [
+      "data/research/daily/2026-04-14/papers/2312.08568/repo.md",
+      "data/research/daily/2026-04-14/papers/2409.08189/repo.md",
+      "data/research/daily/2026-04-14/papers/2603.20617/repo.md",
+      "data/research/daily/2026-04-14/raw.md",
+      "data/research/daily/2026-04-14/repos/alexbatalov_fallout1-re.md",
+      "data/research/daily/2026-04-14/repos/facebookresearch_map-anything.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-04-14"
+  }
+}

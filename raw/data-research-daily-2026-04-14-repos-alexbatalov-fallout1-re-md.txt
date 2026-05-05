@@ -1,0 +1,47 @@
+alexbatalov_fallout1-re.md
+==========================
+
+# GitHub 분석: alexbatalov/fallout1-re
+
+> - URL: https://github.com/alexbatalov/fallout1-re
+> - 분석일: 2026-04-14
+
+## 개요
+
+- **설명**: Reverse engineered Fallout
+- **Stars**: ⭐ 159 | Forks: 11
+- **라이선스**: NOASSERTION
+- **주 언어**: unknown
+
+## 실행 가능 상태: 코드 미공개 (README/asset만 존재)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (0개) | N |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+.clang-format
+CMakeLists.txt
+CMakeSettings.json
+.editorconfig
+.gitattributes
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE.md
+README.md
+src/movie_lib.c
+src/movie_lib.h
+src/sound_decoder.c
+src/sound_decoder.h
+```

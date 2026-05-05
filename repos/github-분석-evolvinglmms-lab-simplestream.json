@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: EvolvingLMMs-Lab/SimpleStream",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: EvolvingLMMs-Lab/SimpleStream\n\n## Outgoing relations\n\n- **released_by** → evolvinglmms-lab _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/repos/EvolvingLMMs-Lab_SimpleStream.md",
+  "links": [],
+  "body": "# GitHub 분석: EvolvingLMMs-Lab/SimpleStream\n\n## Outgoing relations\n\n- **released_by** → evolvinglmms-lab _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "frontmatter": {
+    "aliases": [
+      "evolvinglmms-lab/simplestream",
+      "https://github.com/EvolvingLMMs-Lab/SimpleStream"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-evolvinglmms-lab-simplestream:e86d7014b637",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/repos/EvolvingLMMs-Lab_SimpleStream.md",
+    "title": "GitHub 분석: EvolvingLMMs-Lab/SimpleStream"
+  }
+}

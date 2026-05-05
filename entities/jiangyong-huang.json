@@ -1,0 +1,15 @@
+{
+  "title": "Jiangyong Huang",
+  "kind": "entities",
+  "body_text": "# Jiangyong Huang\n\n## Incoming relations\n\n- **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2604.01907/paper.md",
+  "links": [],
+  "body": "# Jiangyong Huang\n\n## Incoming relations\n\n- **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:jiangyong-huang:3182b2fea7d9",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2604.01907/paper.md",
+    "title": "Jiangyong Huang"
+  }
+}

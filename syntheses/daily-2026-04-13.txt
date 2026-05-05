@@ -1,0 +1,19 @@
+Daily Digest — 2026-04-13
+=========================
+
+# Daily Digest — 2026-04-13
+
+Sources ingested under `data/research/daily/2026-04-13/`.
+
+## Papers and repos
+- [GitHub 분석: KAIST-Visual-AI-Group/MatLat](../repos/github-분석-kaist-visual-ai-group-matlat.md) (Repository)
+- [GitHub 분석: NVIDIA/OpenShell](../repos/github-분석-nvidia-openshell.md) (Repository)
+- [GitHub 분석: OpenDriveLab/WorldEngine](../repos/github-분석-opendrivelab-worldengine.md) (Repository)
+- [GitHub 분석: TheRealMJP/MSAAFilter](../repos/github-분석-therealmjp-msaafilter.md) (Repository)
+- [GitHub 분석: World-In-World/world-in-world](../repos/github-분석-world-in-world-world-in-world.md) (Repository)
+- [GitHub 분석: anthropics/claude-code](../repos/github-분석-anthropics-claude-code.md) (Repository)
+- [GitHub 분석: colmap/colmap](../repos/github-분석-colmap-colmap.md) (Repository)
+- [Daily Feed Summary — 2026-04-13](../sources/daily-feed-summary-2026-04-13.md) (SourceDocument)
+
+## Extracted concepts
+- (none extracted)

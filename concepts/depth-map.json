@@ -1,0 +1,19 @@
+{
+  "title": "Depth Map",
+  "kind": "concepts",
+  "body_text": "# Depth Map\n\n## Outgoing relations\n\n- **addresses** → Shape Reconstruction _(Task)_\n\n## Incoming relations\n\n- **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_\n- **uses** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_\n\n## Connected node types\n\n- Paper: 2\n- Task: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-15/papers/2601.17835/paper.md",
+  "links": [],
+  "body": "# Depth Map\n\n## Outgoing relations\n\n- **addresses** → Shape Reconstruction _(Task)_\n\n## Incoming relations\n\n- **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_\n- **uses** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_\n\n## Connected node types\n\n- Paper: 2\n- Task: 1",
+  "frontmatter": {
+    "aliases": [
+      "depth map",
+      "depth maps"
+    ],
+    "kind": "concepts",
+    "node_id": "TechnicalTerm:depth-map:349c240dc3dc",
+    "node_type": "TechnicalTerm",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-15/papers/2601.17835/paper.md",
+    "title": "Depth Map"
+  }
+}

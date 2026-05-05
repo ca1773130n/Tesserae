@@ -1,0 +1,14 @@
+Daily Feed Summary — 2026-04-11
+===============================
+
+# Daily Feed Summary — 2026-04-11
+
+## Outgoing relations
+
+- **mentioned_in** → ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전 _(Paper)_
+- **uses_dataset** → Blender _(Dataset)_
+
+## Connected node types
+
+- Dataset: 1
+- Paper: 1

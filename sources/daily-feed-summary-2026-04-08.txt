@@ -1,0 +1,16 @@
+Daily Feed Summary — 2026-04-08
+===============================
+
+# Daily Feed Summary — 2026-04-08
+
+## Outgoing relations
+
+- **mentioned_in** → Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation _(Paper)_
+- **mentioned_in** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- **mentioned_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_
+- **mentioned_in** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_
+- **mentioned_in** → ViBA: Implicit Bundle Adjustment with Geometric and Temporal Consistency for Robust Visual Matching _(Paper)_
+
+## Connected node types
+
+- Paper: 5

@@ -1,0 +1,49 @@
+publishing-checklist.md
+=======================
+
+# Publishing Checklist
+
+Use this checklist before presenting LLM-Wiki publicly.
+
+## Repository hygiene
+
+- [ ] README explains what the project is and what problem it solves.
+- [ ] Install command works from a fresh shell.
+- [ ] Quickstart uses `llm_wiki`, not `python3 -m`.
+- [ ] Architecture docs explain raw evidence → graph → projections.
+- [ ] Feature map lists implemented features without overselling future work.
+- [ ] Self-dogfood demo has been run and documented.
+- [ ] Generated artifacts are reproducible and either ignored or intentionally published.
+
+## Verification
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest tests/ -q
+./scripts/install.sh --help
+llm_wiki project init --help
+llm_wiki project compile --help
+```
+
+## Self-dogfood
+
+```bash
+llm_wiki project init \
+  --name llm_wiki_self \
+  --source-kind Repository \
+  --source README.md \
+  --source docs \
+  --source llm_wiki \
+  --source tests \
+  --source scripts
+llm_wiki project compile --changed-only
+llm_wiki project build-site
+llm_wiki project serve --port 8765
+```
+
+## Demo talking points
+
+- LLM-Wiki is not a generic noun-phrase graph. It uses a controlled ontology.
+- Research and development code share infrastructure but keep distinct schemas.
+- Markdown and HTML are projections, not authoritative truth stores.
+- The default path is local and no-API-key friendly.
+- Agent harnesses and MCP make the graph usable by coding agents.

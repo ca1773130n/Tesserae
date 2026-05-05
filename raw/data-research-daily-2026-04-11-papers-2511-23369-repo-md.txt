@@ -1,0 +1,69 @@
+repo.md
+=======
+
+# GitHub 분석: OpenDriveLab/SimScale
+
+> - URL: https://github.com/OpenDriveLab/SimScale
+> - 분석일: 2026-04-11
+
+## 개요
+
+- **설명**: [CVPR 2026 Oral] Learning to Drive via Real-World Simulation at Scale
+- **Stars**: ⭐ 199 | Forks: 19
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (25개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+assets/pipeline.png
+assets/teaser.png
+docs/agents.md
+docs/cache.md
+docs/install.md
+docs/metrics.md
+docs/splits.md
+docs/submission.md
+docs/traffic_agents.md
+download/download_maps.sh
+download/download_mini.sh
+download/download_navhard_two_stage.sh
+download/download_navtrain_aws.sh
+download/download_navtrain_hf.sh
+download/download_private_test_hard_two_stage.sh
+download/download_test.sh
+download/download_trainval.sh
+download/download_warmup_two_stage.sh
+environment.yml
+.flake8
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+.isort.cfg
+LICENSE
+navsim/__init__.py
+.pre-commit-config.yaml
+README.md
+requirements.txt
+setup.py
+tools/download_hf.sh
+tools/download_ms.sh
+tools/move.sh
+traj_final/16384.npy
+traj_final/8192.npy
+traj_final/kmeans_navsim_traj_20.npy
+```

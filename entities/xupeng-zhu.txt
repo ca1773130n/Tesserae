@@ -1,0 +1,12 @@
+Xupeng Zhu
+==========
+
+# Xupeng Zhu
+
+## Incoming relations
+
+- **authored_by** → Integrating Symmetry into Differentiable Planning with Steerable Convolutions _(Paper)_
+
+## Connected node types
+
+- Paper: 1

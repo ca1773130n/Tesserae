@@ -1,0 +1,12 @@
+Zhenwei Wang
+============
+
+# Zhenwei Wang
+
+## Incoming relations
+
+- **authored_by** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+
+## Connected node types
+
+- Paper: 1

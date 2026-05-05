@@ -1,0 +1,61 @@
+addyosmani_agent-skills.md
+==========================
+
+# GitHub 분석: addyosmani/agent-skills
+
+> - URL: https://github.com/addyosmani/agent-skills
+> - 분석일: 2026-04-07
+
+## 개요
+
+- **설명**: Production-grade engineering skills for AI coding agents.
+- **Stars**: ⭐ 5022 | Forks: 518
+- **라이선스**: MIT
+- **주 언어**: unknown
+
+## 실행 가능 상태: 코드 미공개 (README/asset만 존재)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (0개) | N |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+.claude-plugin/marketplace.json
+.claude-plugin/plugin.json
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.gitignore
+AGENTS.md
+agents/code-reviewer.md
+agents/security-auditor.md
+agents/test-engineer.md
+CLAUDE.md
+CONTRIBUTING.md
+docs/copilot-setup.md
+docs/cursor-setup.md
+docs/gemini-cli-setup.md
+docs/getting-started.md
+docs/skill-anatomy.md
+docs/windsurf-setup.md
+hooks/hooks.json
+hooks/session-start.sh
+hooks/simplify-ignore-test.sh
+hooks/SIMPLIFY-IGNORE.md
+hooks/simplify-ignore.sh
+LICENSE
+README.md
+references/accessibility-checklist.md
+references/performance-checklist.md
+references/security-checklist.md
+references/testing-patterns.md
+```

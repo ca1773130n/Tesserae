@@ -1,0 +1,12 @@
+Hiroki Furuta
+=============
+
+# Hiroki Furuta
+
+## Incoming relations
+
+- **authored_by** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_
+
+## Connected node types
+
+- Paper: 1

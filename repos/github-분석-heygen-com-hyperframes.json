@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: heygen-com/hyperframes",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: heygen-com/hyperframes\n\n## Outgoing relations\n\n- **released_by** → heygen-com _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → All elementary functions from a single binary operator _(Paper)_\n\n## Connected node types\n\n- Organization: 1\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2603.21852/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: heygen-com/hyperframes\n\n## Outgoing relations\n\n- **released_by** → heygen-com _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → All elementary functions from a single binary operator _(Paper)_\n\n## Connected node types\n\n- Organization: 1\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "heygen-com/hyperframes",
+      "https://github.com/heygen-com/hyperframes"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-heygen-com-hyperframes:2923f62c862a",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2603.21852/repo.md",
+    "title": "GitHub 분석: heygen-com/hyperframes"
+  }
+}

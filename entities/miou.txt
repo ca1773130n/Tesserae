@@ -1,0 +1,16 @@
+mIoU
+====
+
+# mIoU
+
+## Incoming relations
+
+- **uses_metric** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_
+- **uses_metric** → Sapiens2 _(Paper)_
+- **uses_metric** → mIoU=24.3 _(Result)_
+
+## Connected node types
+
+- Paper: 1
+- Result: 1
+- SourceDocument: 1

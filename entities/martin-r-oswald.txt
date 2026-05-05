@@ -1,0 +1,12 @@
+Martin R. Oswald
+================
+
+# Martin R. Oswald
+
+## Incoming relations
+
+- **authored_by** → Cross-Attentive Multiview Fusion of Vision-Language Embeddings _(Paper)_
+
+## Connected node types
+
+- Paper: 1

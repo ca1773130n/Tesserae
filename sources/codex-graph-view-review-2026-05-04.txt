@@ -1,0 +1,12 @@
+Codex graph-view review (2026-05-04)
+====================================
+
+# Codex graph-view review (2026-05-04)
+
+## Outgoing relations
+
+- **evaluated_on** → MATH _(Benchmark)_
+
+## Connected node types
+
+- Benchmark: 1

@@ -1,0 +1,15 @@
+{
+  "title": "Quickstart (fixture)",
+  "kind": "sources",
+  "body_text": "# Quickstart (fixture)",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/tests/fixtures/wiki_corpus/docs/quickstart.md",
+  "links": [],
+  "body": "# Quickstart (fixture)",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:quickstart-fixture:3bffb733acc8",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/tests/fixtures/wiki_corpus/docs/quickstart.md",
+    "title": "Quickstart (fixture)"
+  }
+}

@@ -1,0 +1,69 @@
+repo.md
+=======
+
+# GitHub 분석: meshsplatting/mesh-splatting
+
+> - URL: https://github.com/meshsplatting/mesh-splatting
+> - 분석일: 2026-05-02
+
+## 개요
+
+- **설명**:   
+- **Stars**: ⭐ 542 | Forks: 35
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (41개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+annotate_points_boxes.py
+arguments/__init__.py
+assets/teaser.png
+bash_scripts/run_all.sh
+bash_scripts/video_all.sh
+checkpoints/download_ckpts.sh
+compile.bat
+compile.sh
+create_ply.py
+create_video.py
+eval.py
+extract_normals.py
+full_eval.py
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.gitmodules
+.git/packed-refs
+.git/shallow
+LICENSE_GS.md
+LICENSE.md
+lpipsPyTorch/__init__.py
+mesh.py
+metrics.py
+README.md
+render.py
+render_utils.py
+requirements.txt
+scene/cameras.py
+scene/colmap_loader.py
+scene/dataset_readers.py
+scene/__init__.py
+scene/triangle_model.py
+segmentation/create_ply.py
+segmentation/extract_images.py
+segmentation/run_single_object.py
+segmentation/sam_mask_generator_json.py
+segmentation/segment.py
+```

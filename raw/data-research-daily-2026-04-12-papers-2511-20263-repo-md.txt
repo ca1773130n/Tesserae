@@ -1,0 +1,47 @@
+repo.md
+=======
+
+# GitHub 분석: omerb01/didicm
+
+> - URL: https://github.com/omerb01/didicm
+> - 분석일: 2026-04-12
+
+## 개요
+
+- **설명**: An official implementation of the paper: \
+- **Stars**: ⭐ 5 | Forks: 0
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (12개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+didicm/__init__.py
+didicm/loss.py
+didicm/score_sampling.py
+figures/didirn.png
+figures/overview.gif
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE
+README.md
+requirements.txt
+setup.py
+train.py
+validate.py
+```

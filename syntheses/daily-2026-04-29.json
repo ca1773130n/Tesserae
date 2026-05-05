@@ -1,0 +1,44 @@
+{
+  "title": "Daily Digest — 2026-04-29",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-04-29\n\nSources ingested under `data/research/daily/2026-04-29/`.\n\n## Papers and repos\n- [Distance Field Rasterization for End-to-End Mesh Reconstruction (arXiv:2604.23537)](../papers/distance-field-rasterization-for-end-to-end-mesh-reconstruction.md) (Paper)\n- [OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control (arXiv:2602.23843)](../papers/omnixtreme-breaking-the-generality-barrier-in-high-dynamic-humanoid-control.md) (Paper)\n- [GitHub 분석: Perkins729/OmniXtreme](../repos/github-분석-perkins729-omnixtreme.md) (Repository)\n- [GitHub 분석: apinanaivot/IKEA-3D-Model-Download-Button](../repos/github-분석-apinanaivot-ikea-3d-model-download-button.md) (Repository)\n- [GitHub 분석: autowarefoundation/autoware](../repos/github-분석-autowarefoundation-autoware.md) (Repository)\n- [Daily Feed Summary — 2026-04-29](../sources/daily-feed-summary-2026-04-29.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-04-29](../sources/daily-research-digest-2026-04-29.md) (SourceDocument)\n\n## Extracted concepts\n- SDFRaster (Algorithm)\n- Volumetric Rendering (MethodologicalConcept)\n- Novel View Synthesis (Task)",
+  "source_path": "",
+  "links": [
+    "../papers/distance-field-rasterization-for-end-to-end-mesh-reconstruction.md",
+    "../papers/omnixtreme-breaking-the-generality-barrier-in-high-dynamic-humanoid-control.md",
+    "../repos/github-분석-perkins729-omnixtreme.md",
+    "../repos/github-분석-apinanaivot-ikea-3d-model-download-button.md",
+    "../repos/github-분석-autowarefoundation-autoware.md",
+    "../sources/daily-feed-summary-2026-04-29.md",
+    "../sources/daily-research-digest-2026-04-29.md"
+  ],
+  "body": "# Daily Digest — 2026-04-29\n\nSources ingested under `data/research/daily/2026-04-29/`.\n\n## Papers and repos\n- [Distance Field Rasterization for End-to-End Mesh Reconstruction (arXiv:2604.23537)](../papers/distance-field-rasterization-for-end-to-end-mesh-reconstruction.md) (Paper)\n- [OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control (arXiv:2602.23843)](../papers/omnixtreme-breaking-the-generality-barrier-in-high-dynamic-humanoid-control.md) (Paper)\n- [GitHub 분석: Perkins729/OmniXtreme](../repos/github-분석-perkins729-omnixtreme.md) (Repository)\n- [GitHub 분석: apinanaivot/IKEA-3D-Model-Download-Button](../repos/github-분석-apinanaivot-ikea-3d-model-download-button.md) (Repository)\n- [GitHub 분석: autowarefoundation/autoware](../repos/github-분석-autowarefoundation-autoware.md) (Repository)\n- [Daily Feed Summary — 2026-04-29](../sources/daily-feed-summary-2026-04-29.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-04-29](../sources/daily-research-digest-2026-04-29.md) (SourceDocument)\n\n## Extracted concepts\n- SDFRaster (Algorithm)\n- Volumetric Rendering (MethodologicalConcept)\n- Novel View Synthesis (Task)",
+  "frontmatter": {
+    "content_hash": "sha256-86e1183e85244b10086298a59683af067c6a78319e1d5dd6f622915f1929eb1b",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Algorithm:sdfraster:9cb5c83996c4",
+      "MethodologicalConcept:volumetric-rendering:7527b301d064",
+      "Paper:arxiv-2602-23843:4149460c4353",
+      "Paper:arxiv-2604-23537:a56901f8a875",
+      "Repository:github-apinanaivot-ikea-3d-model-download-button:086ca50504c1",
+      "Repository:github-autowarefoundation-autoware:d40862d4ff66",
+      "Repository:github-perkins729-omnixtreme:fa352ebb585e",
+      "SourceDocument:daily-feed-summary-2026-04-29:dc078a57008c",
+      "SourceDocument:daily-research-digest-2026-04-29:08e6f15da96e",
+      "Task:novel-view-synthesis:19d55dfb9b83"
+    ],
+    "slug": "daily-2026-04-29",
+    "sources": [
+      "data/research/daily/2026-04-29/digest.md",
+      "data/research/daily/2026-04-29/papers/2602.23843/paper.md",
+      "data/research/daily/2026-04-29/papers/2602.23843/repo.md",
+      "data/research/daily/2026-04-29/papers/2604.23537/paper.md",
+      "data/research/daily/2026-04-29/raw.md",
+      "data/research/daily/2026-04-29/repos/apinanaivot_IKEA-3D-Model-Download-Button.md",
+      "data/research/daily/2026-04-29/repos/autowarefoundation_autoware.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-04-29"
+  }
+}

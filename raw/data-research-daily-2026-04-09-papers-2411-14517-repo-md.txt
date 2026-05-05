@@ -1,0 +1,69 @@
+repo.md
+=======
+
+# GitHub 분석: apple/ml-mobileclip
+
+> - URL: https://github.com/apple/ml-mobileclip
+> - 분석일: 2026-04-09
+
+## 개요
+
+- **설명**: This repository contains the official implementation of the research papers, \
+- **Stars**: ⭐ 1480 | Forks: 116
+- **라이선스**: NOASSERTION
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (17개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+ACKNOWLEDGEMENTS
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+docs/fig_accuracy_latency.png
+docs/fig_accuracy_latency_v2.png
+eval/zeroshot_imagenet.py
+get_pretrained_models.sh
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+hf_dataset_example.py
+ios_app/ACKNOWLEDGEMENTS
+ios_app/README.md
+LICENSE
+LICENSE_DATA
+LICENSE_MODELS
+mobileclip2/mobileclip2.py
+mobileclip2/open_clip_inference_only.patch
+mobileclip/clip.py
+mobileclip/image_encoder.py
+mobileclip/__init__.py
+mobileclip/logger.py
+mobileclip/text_encoder.py
+README.md
+requirements.txt
+results/mobileclip2_b.jsonl
+results/mobileclip2_l14.jsonl
+results/mobileclip2_s0.jsonl
+results/mobileclip2_s2.jsonl
+results/mobileclip2_s3.jsonl
+results/mobileclip2_s4.jsonl
+results/mobileclip_b.jsonl
+results/mobileclip_b_lt.jsonl
+results/mobileclip_l14.jsonl
+results/mobileclip_s0.jsonl
+results/mobileclip_s1.jsonl
+```

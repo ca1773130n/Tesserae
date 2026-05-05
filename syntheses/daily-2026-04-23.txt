@@ -1,0 +1,26 @@
+Daily Digest — 2026-04-23
+=========================
+
+# Daily Digest — 2026-04-23
+
+Sources ingested under `data/research/daily/2026-04-23/`.
+
+## Papers and repos
+- [ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전 (arXiv:2603.24621)](../papers/arc-agi-3-frontier-agentic-intelligence를-위한-새로운-도전.md) (Paper)
+- [CLAW: Composable Language-Annotated Whole-body Motion Generation (arXiv:2604.11251)](../papers/claw-composable-language-annotated-whole-body-motion-generation.md) (Paper)
+- [Cross-Attentive Multiview Fusion of Vision-Language Embeddings (arXiv:2604.12551)](../papers/cross-attentive-multiview-fusion-of-vision-language-embeddings.md) (Paper)
+- [Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving (arXiv:2506.12251)](../papers/efficient-multi-camera-tokenization-with-triplanes-for-end-to-end-driving.md) (Paper)
+- [Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling (arXiv:2503.11806)](../papers/human-in-the-loop-local-corrections-of-3d-scene-layouts-via-infilling.md) (Paper)
+- [Lyra 2.0: Explorable Generative 3D Worlds (arXiv:2604.13036)](../papers/lyra-2-0-explorable-generative-3d-worlds.md) (Paper)
+- [RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation (arXiv:2509.23563)](../papers/raven-resilient-aerial-navigation-via-open-set-semantic-memory-and-behavior-adaptation.md) (Paper)
+- [GitHub 분석: AHEKOT/ComfyUI_HYWorld2](../repos/github-분석-ahekot-comfyui-hyworld2.md) (Repository)
+- [GitHub 분석: SkalskiP/top-cvpr-2026-papers](../repos/github-분석-skalskip-top-cvpr-2026-papers.md) (Repository)
+- [GitHub 분석: Stereo4d/stereo4d-code](../repos/github-분석-stereo4d-stereo4d-code.md) (Repository)
+- [GitHub 분석: TakashiYoshinaga/360-to-RealityScan](../repos/github-분석-takashiyoshinaga-360-to-realityscan.md) (Repository)
+- [GitHub 분석: bernakabadayi/physhead](../repos/github-분석-bernakabadayi-physhead.md) (Repository)
+- [GitHub 분석: mfranzon/render](../repos/github-분석-mfranzon-render.md) (Repository)
+- [Daily Feed Summary — 2026-04-23](../sources/daily-feed-summary-2026-04-23.md) (SourceDocument)
+- [📬 Daily Research Digest — 2026-04-23](../sources/daily-research-digest-2026-04-23.md) (SourceDocument)
+
+## Extracted concepts
+- (none extracted)

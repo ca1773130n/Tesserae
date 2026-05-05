@@ -1,0 +1,69 @@
+facebookresearch_map-anything.md
+================================
+
+# GitHub 분석: facebookresearch/map-anything
+
+> - URL: https://github.com/facebookresearch/map-anything
+> - 분석일: 2026-04-14
+
+## 개요
+
+- **설명**: MapAnything: Universal Feed-Forward Metric 3D Reconstruction
+- **Stars**: ⭐ 3160 | Forks: 234
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (43개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+assets/finetuning_benchmarking.png
+assets/gradio_example.png
+assets/profiling_memory.png
+assets/profiling_speed.png
+assets/teaser.png
+CHANGELOG.md
+CODE_OF_CONDUCT.md
+configs/calibration_benchmark.yaml
+configs/dense_n_view_benchmark.yaml
+configs/rmvd_benchmark.yaml
+configs/train.yaml
+CONTRIBUTING.md
+data_processing/aggregate_metadata.py
+data_processing/aggregate_scene_names.py
+data_processing/download_and_extract_benchmarking_data.py
+data_processing/README.md
+data_processing/viz_data.py
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE
+mapanything/__init__.py
+.pre-commit-config.yaml
+pyproject.toml
+README.md
+scripts/convert_hf_to_benchmark_checkpoint.py
+scripts/demo_colmap.py
+scripts/demo_images_only_inference.py
+scripts/demo_inference_on_colmap_outputs.py
+scripts/demo_local_weight.py
+scripts/gradio_app.py
+scripts/profile_dataloading.py
+scripts/profile_memory_runtime.py
+scripts/train.py
+scripts/visualize_colmap_format_in_rerun.py
+setup.py
+```

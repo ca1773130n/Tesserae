@@ -1,0 +1,12 @@
+GitHub 분석: ag2ai/ag2studio
+==========================
+
+# GitHub 분석: ag2ai/ag2studio
+
+## Outgoing relations
+
+- **released_by** → ag2ai _(Organization)_
+
+## Connected node types
+
+- Organization: 1

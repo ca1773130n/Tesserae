@@ -1,0 +1,15 @@
+{
+  "title": "Feature Map",
+  "kind": "sources",
+  "body_text": "# Feature Map\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/feature-map.md",
+  "links": [],
+  "body": "# Feature Map\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:feature-map:274bc054247f",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/feature-map.md",
+    "title": "Feature Map"
+  }
+}

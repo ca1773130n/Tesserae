@@ -1,0 +1,15 @@
+{
+  "title": "Joonsik Nam",
+  "kind": "entities",
+  "body_text": "# Joonsik Nam\n\n## Incoming relations\n\n- **authored_by** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2604.00538/paper.md",
+  "links": [],
+  "body": "# Joonsik Nam\n\n## Incoming relations\n\n- **authored_by** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:joonsik-nam:be693628aeed",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2604.00538/paper.md",
+    "title": "Joonsik Nam"
+  }
+}

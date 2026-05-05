@@ -1,0 +1,67 @@
+facebookresearch_threadweaver.md
+================================
+
+# GitHub 분석: facebookresearch/threadweaver
+
+> - URL: https://github.com/facebookresearch/threadweaver
+> - 분석일: 2026-04-10
+
+## 개요
+
+- **설명**: The implementation for ThreadWeaver Adaptive Threading for Efficient Parallel Reasoning in Language Models
+- **Stars**: ⭐ 38 | Forks: 4
+- **라이선스**: NOASSERTION
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (36개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+assets/aime_speedup.png
+assets/amc_speedup.png
+assets/decomposition_inference.png
+assets/decomposition_training.png
+assets/main_figure_animation.gif
+assets/math_mult_comparison.png
+assets/math_speedup.png
+assets/olympiad_speedup.png
+assets/visualization_example.png
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+data_generation/.gitignore
+data_generation/README.md
+data_generation/run.sh
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE
+LICENSE_Apache
+README.md
+threadweaver_rl/.gitignore
+threadweaver_rl/LICENSE
+threadweaver_rl/multinode_run.slurm
+threadweaver_rl/Notice.txt
+threadweaver_rl/pyproject.toml
+threadweaver_rl/README.md
+threadweaver_rl/README_verl.md
+threadweaver_rl/setup.py
+threadweaver_rl/train_par.slurm
+threadweaver_rl/train_seq.slurm
+threadweaver_sft/.gitignore
+threadweaver_sft/README.md
+threadweaver_sft/train_ar.sh
+threadweaver_sft/train.sh
+```

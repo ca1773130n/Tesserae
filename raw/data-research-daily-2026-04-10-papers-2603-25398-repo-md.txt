@@ -1,0 +1,69 @@
+repo.md
+=======
+
+# GitHub 분석: ClaudiaCuttano/SANSA
+
+> - URL: https://github.com/ClaudiaCuttano/SANSA
+> - 분석일: 2026-04-10
+
+## 개요
+
+- **설명**: [NeurIPS 2025 Spotlight] \
+- **Stars**: ⭐ 190 | Forks: 6
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (32개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+assets/logo.png
+assets/sansa_promptable.gif
+datasets/ade20k.py
+datasets/coco.py
+datasets/deepglobe.py
+datasets/fss.py
+datasets/__init__.py
+datasets/isic.py
+datasets/lung.py
+datasets/lvis.py
+datasets/paco_part.py
+datasets/pascal_part.py
+datasets/samplers.py
+datasets/transform_utils.py
+docs/data.md
+engine.py
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+hubconf.py
+inference_fss.py
+LICENSE
+main.py
+models/__init__.py
+opts.py
+README.md
+requirements.txt
+sansa_demo.ipynb
+util/commons.py
+util/demo_sansa.py
+util/__init__.py
+util/losses.py
+util/metrics.py
+util/misc.py
+util/path_utils.py
+util/promptable_utils.py
+```

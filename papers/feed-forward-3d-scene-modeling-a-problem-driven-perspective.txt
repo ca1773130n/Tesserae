@@ -1,0 +1,38 @@
+Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective
+============================================================
+
+# Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective
+
+## Outgoing relations
+
+- **addresses** → World Model _(ResearchTopic)_
+- **authored_by** → Andreas Geiger _(Person)_
+- **authored_by** → Bohan Zhuang _(Person)_
+- **authored_by** → Chuanxia Zheng _(Person)_
+- **authored_by** → Donny Y. Chen _(Person)_
+- **authored_by** → Haofei Xu _(Person)_
+- **authored_by** → Jia-Wang Bian _(Person)_
+- **authored_by** → Jianfei Cai _(Person)_
+- **authored_by** → Qihang Cao _(Person)_
+- **authored_by** → Sensen Gao _(Person)_
+- **authored_by** → Songyou Peng _(Person)_
+- **authored_by** → Tat-Jen Cham _(Person)_
+- **authored_by** → Weijie Wang _(Person)_
+- **authored_by** → Wenjing Bian _(Person)_
+- **implemented_in** → GitHub 분석: microsoft/World-R1 _(Repository)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-05-03 _(SourceDocument)_
+- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-05-03 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 13
+- SourceDocument: 4
+- Repository: 1
+- ResearchField: 1
+- ResearchTopic: 1

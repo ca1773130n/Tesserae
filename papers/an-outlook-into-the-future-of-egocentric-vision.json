@@ -1,0 +1,18 @@
+{
+  "title": "An Outlook into the Future of Egocentric Vision",
+  "kind": "papers",
+  "body_text": "# An Outlook into the Future of Egocentric Vision\n\n## Outgoing relations\n\n- **authored_by** → Antonino Furnari _(Person)_\n- **authored_by** → Chiara Plizzari _(Person)_\n- **authored_by** → Dima Damen _(Person)_\n- **authored_by** → Francesco Ragusa _(Person)_\n- **authored_by** → Gabriele Goletto _(Person)_\n- **authored_by** → Giovanni Maria Farinella _(Person)_\n- **authored_by** → Siddhant Bansal _(Person)_\n- **authored_by** → Tatiana Tommasi _(Person)_\n- **part_of** → Research Literature _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-22 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 8\n- SourceDocument: 3\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2308.07123/paper.md",
+  "links": [],
+  "body": "# An Outlook into the Future of Egocentric Vision\n\n## Outgoing relations\n\n- **authored_by** → Antonino Furnari _(Person)_\n- **authored_by** → Chiara Plizzari _(Person)_\n- **authored_by** → Dima Damen _(Person)_\n- **authored_by** → Francesco Ragusa _(Person)_\n- **authored_by** → Gabriele Goletto _(Person)_\n- **authored_by** → Giovanni Maria Farinella _(Person)_\n- **authored_by** → Siddhant Bansal _(Person)_\n- **authored_by** → Tatiana Tommasi _(Person)_\n- **part_of** → Research Literature _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-22 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 8\n- SourceDocument: 3\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2308.07123"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2308-07123:1e8192d4026d",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2308.07123/paper.md",
+    "title": "An Outlook into the Future of Egocentric Vision"
+  }
+}

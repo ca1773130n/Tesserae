@@ -1,0 +1,15 @@
+{
+  "title": "Songyou Peng",
+  "kind": "entities",
+  "body_text": "# Songyou Peng\n\n## Incoming relations\n\n- **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_\n- **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/tests/fixtures/wiki_corpus/data/research/daily/2026-04-25/papers/2604.20329/paper.md",
+  "links": [],
+  "body": "# Songyou Peng\n\n## Incoming relations\n\n- **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_\n- **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:songyou-peng:ff331011f80f",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/tests/fixtures/wiki_corpus/data/research/daily/2026-04-25/papers/2604.20329/paper.md",
+    "title": "Songyou Peng"
+  }
+}

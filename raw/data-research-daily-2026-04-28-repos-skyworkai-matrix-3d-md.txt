@@ -1,0 +1,55 @@
+SkyworkAI_Matrix-3D.md
+======================
+
+# GitHub 분석: SkyworkAI/Matrix-3D
+
+> - URL: https://github.com/SkyworkAI/Matrix-3D
+> - 분석일: 2026-04-28
+
+## 개요
+
+- **설명**: Generate large-scale explorable 3D scenes with high-quality panorama videos from a single image or text prompt.
+- **Stars**: ⭐ 706 | Forks: 51
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (44개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+asset/logo.PNG
+code/app_matrix3d.py
+code/download_checkpoints.py
+code/generate_example_camera.py
+code/panoramic_image_generation.py
+code/panoramic_image_to_video.py
+code/panoramic_video_480p_to_3DScene_lrm.py
+code/panoramic_video_to_3DScene.py
+data/image1.jpg
+data/image2.jpg
+data/image3.jpg
+data/image4.jpg
+data/image5.jpg
+generate.sh
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.gitmodules
+.git/packed-refs
+.git/shallow
+install.sh
+LICENSE
+NOTICE
+README.md
+```

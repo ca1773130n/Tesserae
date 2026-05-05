@@ -1,0 +1,15 @@
+{
+  "title": "Piotr Bojanowski",
+  "kind": "entities",
+  "body_text": "# Piotr Bojanowski\n\n## Incoming relations\n\n- **authored_by** → Efficient Universal Perception Encoder _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2603.22387/paper.md",
+  "links": [],
+  "body": "# Piotr Bojanowski\n\n## Incoming relations\n\n- **authored_by** → Efficient Universal Perception Encoder _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:piotr-bojanowski:4ea4229ebb1e",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2603.22387/paper.md",
+    "title": "Piotr Bojanowski"
+  }
+}

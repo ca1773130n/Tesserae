@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: team-aprl/MR.ScaleMaster",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: team-aprl/MR.ScaleMaster\n\n## Outgoing relations\n\n- **evaluated_on** → KITTI _(Benchmark)_\n- **released_by** → team-aprl _(Organization)_\n\n## Connected node types\n\n- Benchmark: 1\n- Organization: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/repos/team-aprl_MR.ScaleMaster.md",
+  "links": [],
+  "body": "# GitHub 분석: team-aprl/MR.ScaleMaster\n\n## Outgoing relations\n\n- **evaluated_on** → KITTI _(Benchmark)_\n- **released_by** → team-aprl _(Organization)_\n\n## Connected node types\n\n- Benchmark: 1\n- Organization: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/team-aprl/MR.ScaleMaster",
+      "team-aprl/mr.scalemaster"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-team-aprl-mr-scalemaster:ca11ce40821e",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/repos/team-aprl_MR.ScaleMaster.md",
+    "title": "GitHub 분석: team-aprl/MR.ScaleMaster"
+  }
+}

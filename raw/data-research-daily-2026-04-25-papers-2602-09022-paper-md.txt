@@ -1,0 +1,121 @@
+paper.md
+========
+
+# 논문 분석: 2602.09022
+
+> - arxiv: https://arxiv.org/abs/2602.09022
+> - papers.cool: https://papers.cool/arxiv/2602.09022
+> - 분석일: 2026-04-25
+
+# WorldCompass: Reinforcement Learning for Long-Horizon World Models | Cool Papers - 몰입형 논문 탐색
+
+## 2602.09022
+
+총계: 1
+
+## 
+#1  
+WorldCompass: Reinforcement Learning for Long-Horizon World Models  
+[PDF12]  
+[Copy]  
+[Kimi16]  
+[REL]
+
+저자:  
+Zehan Wang,  
+Tengfei Wang,  
+Haiyu Zhang,  
+Xuhui Zuo,  
+Junta Wu,  
+Haoyuan Wang,  
+Wenqiang Sun,  
+Zhenwei Wang,  
+Chenjie Cao,  
+Hengshuang Zhao,  
+Chunchao Guo,  
+Zhou Zhao
+
+이 연구는 장기 시계열, 상호작용형 비디오 기반 world model을 위한 새로운 Reinforcement Learning, RL 후학습 프레임워크인 WorldCompass를 제시한다. 이를 통해 모델은 상호작용 신호를 바탕으로 세계를 더욱 정확하고 일관되게 탐색할 수 있다. world model의 탐색을 효과적으로 조정하기 위해, 우리는 autoregressive 비디오 생성 패러다임에 맞춘 세 가지 핵심 혁신을 도입한다. 1) Clip-level rollout Strategy: 단일 목표 clip에서 여러 샘플을 생성하고 평가하여 rollout 효율을 크게 높이고 더 세밀한 reward 신호를 제공한다. 2) Complementary Reward Functions: 상호작용 추종 정확도와 시각적 품질 모두를 위한 reward function을 설계하여 직접적인 supervision을 제공하고 reward-hacking 행동을 효과적으로 억제한다. 3) Efficient RL Algorithm: negative-aware fine-tuning 전략과 다양한 효율 최적화를 결합하여 모델 성능을 효율적이고 효과적으로 향상시킨다. SoTA 오픈소스 world model인 WorldPlay에서의 평가 결과, WorldCompass는 다양한 시나리오에서 상호작용 정확도와 시각적 충실도를 크게 향상시키는 것으로 나타났다.
+
+주제:  
+Computer Vision and Pattern Recognition
+
+게시일: 2026-02-09 18:59:47 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+포함 OR:
+
+제외:
+
+검색
+
+필터
+
+강조 표시
+
+표시한 논문:
+
+#1  
+WorldCompass: Reinforcement Learning for Long-Horizon World Models
+
+내보내기
+
+Magic Token:
+
+Kimi 언어:
+
+中文  
+English
+
+설명 언어:
+
+中文  
+English
+
+저장
+
+버그 제보 또는 Issue 제출은 다음을 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+계속 진행하기 전에 Disclaimer를 읽어 주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문하세요.
+
+```javascript
+var macros = {
+    "argmin": "\\mathop{\\text{argmin}}",
+    "argmax": "\\mathop{\\text{argmax}}"
+};
+MathJax.Hub.Config({
+    tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']], processEscapes: true},
+    TeX: {equationNumbers: {autoNumber: ["AMS"], useLabelIds: true}, extensions: ["AMSmath.js", "AMSsymbols.js", "extpfeil.js"], Macros: macros},
+    "HTML-CSS": {noReflows: false, availableFonts: ["tex"], styles: {".MathJax_Display": {margin: "1em 0em 0.7em;", display: "inline-block!important;"}}},
+    "CommonHTML": {noReflows: false, availableFonts: ["tex"], styles: {".MJXc-display": {margin: "1em 0em 0.7em;", display: "inline-block!important;"}}},
+    "SVG": {styles: {".MathJax_SVG_Display": {margin: "1em 0em 0.7em;", display: "inline-block!important;"}}}
+});
+MathJax.Hub.Queue(function() {
+    document.querySelectorAll('.MathJax').forEach(element => element.classList.add('notranslate'));
+    document.querySelectorAll('a.title-link, p.summary').forEach(element => element.classList.remove('notranslate'));
+    highlightQuery();
+});
+```
+
+```javascript
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement("script");
+  hm.src = "https://hm.baidu.com/hm.js?606b976365dabacb1f69823d8de064ee";
+  var s = document.getElementsByTagName("script")[0]; 
+  s.parentNode.insertBefore(hm, s);
+})();
+```
+
+```javascript
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+
+gtag('config', 'G-214H31WLDF');
+```

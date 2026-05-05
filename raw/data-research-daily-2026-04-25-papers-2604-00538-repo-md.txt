@@ -1,0 +1,50 @@
+repo.md
+=======
+
+# GitHub 분석: nvidia/asset-harvester
+
+> - URL: https://github.com/nvidia/asset-harvester
+> - 분석일: 2026-04-25
+
+## 개요
+
+- **설명**: Asset Harvester: Extracting 3D Assets from Autonomous Driving Logs for Simulation
+- **Stars**: ⭐ 153 | Forks: 10
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (32개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+asset_harvester/__init__.py
+CONTRIBUTING.MD
+docs/end_to_end_example.md
+docs/tokengs.md
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE.txt
+pyproject.toml
+README.md
+run_inference.py
+run.sh
+scripts/check_license_headers.py
+scripts/run_ncore_parser.sh
+SECURITY.md
+setup.sh
+THIRD_PARTY_LICENSE.txt
+```

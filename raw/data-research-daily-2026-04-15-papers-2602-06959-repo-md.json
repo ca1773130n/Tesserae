@@ -1,0 +1,8 @@
+{
+  "title": "repo.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: YuqingWang1029/CubiD\n\n> - URL: https://github.com/YuqingWang1029/CubiD\n> - 분석일: 2026-04-15\n\n## 개요\n\n- **설명**: [CVPR2026 Highlight] Cubic Discrete Diffusion: Discrete Visual Generation on High-Dimensional Representation Tokens https://arxiv.org/abs/2603.19232\n- **Stars**: ⭐ 55 | Forks: 0\n- **라이선스**: N/A\n- **주 언어**: Python\n\n## 실행 가능 상태: 의존성 파일 없음\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (11개) | Y |\n| 의존성 파일 | N |\n| 모델/체크포인트 | script |\n| Docker | N |\n\n## 파일 구조\n\n```\ndemo.jpg\nengine.py\n.git/config\n.git/description\n.git/HEAD\n.git/index\n.git/packed-refs\n.git/shallow\nmain_cache.py\nmain_cubid.py\nmodels/cubid.py\nmodels/__init__.py\nrae.py\nREADME.md\nutil/crop.py\nutil/__init__.py\nutil/loader.py\nutil/lr_sched.py\nutil/misc.py\n```",
+  "source_path": "data/research/daily/2026-04-15/papers/2602.06959/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: YuqingWang1029/CubiD\n\n> - URL: https://github.com/YuqingWang1029/CubiD\n> - 분석일: 2026-04-15\n\n## 개요\n\n- **설명**: [CVPR2026 Highlight] Cubic Discrete Diffusion: Discrete Visual Generation on High-Dimensional Representation Tokens https://arxiv.org/abs/2603.19232\n- **Stars**: ⭐ 55 | Forks: 0\n- **라이선스**: N/A\n- **주 언어**: Python\n\n## 실행 가능 상태: 의존성 파일 없음\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (11개) | Y |\n| 의존성 파일 | N |\n| 모델/체크포인트 | script |\n| Docker | N |\n\n## 파일 구조\n\n```\ndemo.jpg\nengine.py\n.git/config\n.git/description\n.git/HEAD\n.git/index\n.git/packed-refs\n.git/shallow\nmain_cache.py\nmain_cubid.py\nmodels/cubid.py\nmodels/__init__.py\nrae.py\nREADME.md\nutil/crop.py\nutil/__init__.py\nutil/loader.py\nutil/lr_sched.py\nutil/misc.py\n```\n"
+}

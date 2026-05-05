@@ -1,0 +1,15 @@
+{
+  "title": "Daily Feed Summary — 2026-04-30",
+  "kind": "sources",
+  "body_text": "# Daily Feed Summary — 2026-04-30\n\n## Outgoing relations\n\n- **mentioned_in** → Efficient Universal Perception Encoder _(Paper)_\n- **mentioned_in** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_\n- **mentioned_in** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_\n- **mentioned_in** → Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습 _(Paper)_\n\n## Connected node types\n\n- Paper: 4",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/raw.md",
+  "links": [],
+  "body": "# Daily Feed Summary — 2026-04-30\n\n## Outgoing relations\n\n- **mentioned_in** → Efficient Universal Perception Encoder _(Paper)_\n- **mentioned_in** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_\n- **mentioned_in** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_\n- **mentioned_in** → Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습 _(Paper)_\n\n## Connected node types\n\n- Paper: 4",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:daily-feed-summary-2026-04-30:a26a9d0b169d",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/raw.md",
+    "title": "Daily Feed Summary — 2026-04-30"
+  }
+}

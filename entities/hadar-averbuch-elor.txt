@@ -1,0 +1,13 @@
+Hadar Averbuch-Elor
+===================
+
+# Hadar Averbuch-Elor
+
+## Incoming relations
+
+- **authored_by** → Extreme Rotation Estimation in the Wild _(Paper)_
+- **authored_by** → Long-tail Internet photo reconstruction _(Paper)_
+
+## Connected node types
+
+- Paper: 2

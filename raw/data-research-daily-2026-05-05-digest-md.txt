@@ -1,0 +1,82 @@
+digest.md
+=========
+
+# 📬 Daily Research Digest — 2026-05-05
+
+## 🔥 오늘의 하이라이트
+
+### 1. 단안 비디오만으로 언어 질의 가능한 3D 맵 구축
+
+Aria Digital Twin을 활용한 RADIO-ViPE 계열 작업이 다시 주목받고 있습니다. 고가의 정밀 센서 리그 없이도 비보정 예측으로 실시간 3D 공간 이해 정확도를 끌어올렸다는 점이 핵심이며, 로보틱스와 embodied AI의 배포 비용을 크게 낮출 수 있는 방향을 보여줍니다.
+
+- 📄 논문: [논문 분석](papers/2512.13238/paper.md) | [arxiv](https://arxiv.org/abs/2512.13238)
+- 💻 코드: [GitHub 분석](papers/2512.13238/repo.md) | [repo](https://github.com/facebookresearch/AINA) | ⭐ 51
+- 🔗 [원문](https://x.com/meta_aria/status/2051358559326355683)
+
+---
+
+### 2. 겹침이 거의 없는 이미지 쌍에서도 회전을 추정하는 기하 벤치마크
+
+![preview](https://pbs.twimg.com/media/GcpwV5qWgAAk9Yr?format=jpg&name=orig)
+
+Extreme Rotation Estimation in the Wild는 작은 겹침, 큰 겹침, 무겹침 상황을 모두 포함하는 데이터 설정으로 3D 기하 추정의 난점을 정면으로 다룹니다. 기존 매칭 중심 파이프라인이 약한 구간을 별도 과제로 분리해, extreme-view geometry 문제를 더 정교하게 측정할 수 있게 합니다.
+
+- 📄 논문: [논문 분석](papers/2411.07096/paper.md) | [arxiv](https://arxiv.org/abs/2411.07096)
+- 🔗 [원문](https://x.com/ruojin8/status/2051037005572677692)
+
+---
+
+### 3. 파노라마를 단계적으로 확장하는 몰입형 3D 장면 생성
+
+![preview](https://pbs.twimg.com/ext_tw_video_thumb/2051234882987098113/pu/img/aDad-5b2czxYv_8u.jpg)
+
+Stepper는 텍스트에서 출발해 몰입형 3D 장면을 만들 때, 고해상도 품질과 탐색 가능성 사이의 기존 트레이드오프를 줄이려는 접근입니다. 한 번에 전부 생성하지 않고 multiview panorama를 단계적으로 확장해 context drift를 줄이는 설계가 인상적입니다.
+
+- 📄 논문: [논문 분석](papers/2603.28980/paper.md) | [arxiv](https://arxiv.org/abs/2603.28980)
+- 🔗 [원문](https://x.com/ai_bites/status/2051234917816652117)
+
+---
+
+## 📋 주목할 만한 피드
+
+### ▫️ Aria Digital Twin 기반 3D 공간 이해의 실용성 재확인
+
+ADT 같은 고정밀 디지털 트윈 데이터셋이 단안 비디오 기반 3D 이해 모델의 검증 기준으로 자리잡고 있습니다. 자연어 질의가 가능한 3D 맵 구성까지 연결되며 robotics stack과의 접점이 분명해졌습니다.
+
+- 📄 [논문 분석](papers/2512.13238/paper.md) | [arxiv](https://arxiv.org/abs/2512.13238)
+- 💻 [GitHub 분석](papers/2512.13238/repo.md) | [repo](https://github.com/facebookresearch/AINA) | ⭐ 51
+- 🔗 [원문](https://x.com/meta_aria/status/2051358559326355683)
+
+### ▫️ 극단 시점 회전 추정 문제를 전면에 둔 CVPR 2026 채택 논문
+
+겹침이 부족한 이미지 쌍에서의 회전 추정은 SfM, localization, retrieval 이후 기하 검증 단계 전반에 영향을 줍니다. 이 작업은 어려운 시점 변화 자체를 독립 과제로 정의해 평가 축을 분명히 했습니다.
+
+- 📄 [논문 분석](papers/2411.07096/paper.md) | [arxiv](https://arxiv.org/abs/2411.07096)
+- 🔗 [원문](https://x.com/ruojin8/status/2051037005572677692)
+
+### ▫️ 텍스트 기반 immersive 3D 생성에서 stepwise expansion 제안
+
+기존 panoramic video 생성의 해상도 한계와 autoregressive 확장의 drift 문제를 동시에 겨냥합니다. AR/VR과 world modeling에서 장면 초기화 이후의 탐색 가능 구조를 더 안정적으로 만들려는 시도입니다.
+
+- 📄 [논문 분석](papers/2603.28980/paper.md) | [arxiv](https://arxiv.org/abs/2603.28980)
+- 🔗 [원문](https://x.com/ai_bites/status/2051234917816652117)
+
+### ▫️ 나선형 계단 환경에서의 온보드 SLAM 데모
+
+곡선 경로와 고도 변화가 동시에 있는 환경에서 실시간 3D 포인트클라우드를 안정적으로 만든 데모입니다. VSLAM과 depth 계산을 전부 온보드에서 수행했다는 점이 현장 적용성을 강조합니다.
+
+- 🔗 [원문](https://x.com/LooperRobotics/status/2050908232051470500)
+
+### ▫️ 희소하고 잡음 많은 인터넷 사진으로 3D 재구성 범위를 확장
+
+MegaDepth-X는 조밀 촬영 중심 데이터셋에서 벗어나 long-tail 인터넷 사진 컬렉션으로 3D foundation model의 일반화를 노립니다. sparsity-aware sampling을 전면에 내세운 점에서 실제 웹 데이터 적응력이 핵심 포인트입니다.
+
+- 🔗 [원문](https://x.com/ruojin8/status/2051035316438401109)
+
+---
+
+## 📊 오늘의 숫자
+
+- 전체 피드: 21개 → 관련 피드: 5개
+- 논문: 3편 | GitHub: 1개 레포
+- 가장 많은 스타: AINA (⭐ 51)

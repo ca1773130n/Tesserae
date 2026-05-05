@@ -1,0 +1,64 @@
+aree6_LiftShift.md
+==================
+
+# GitHub 분석: aree6/LiftShift
+
+> - URL: https://github.com/aree6/LiftShift
+> - 분석일: 2026-05-02
+
+## 개요
+
+- **설명**: Analyze your workout logs from Hevy, Strong, Lyfta, and more, with actionable insights, interactive muscle heatmaps, plateau detection, AI-powered analysis, calendar filtering, shareable progress cards, and detailed exercise + muscle breakdowns, all for FREE.
+- **Stars**: ⭐ 413 | Forks: 60
+- **라이선스**: NOASSERTION
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 체크포인트 미공개 (추론 불가 가능성)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (19개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+backend/Dockerfile
+backend/.env.example
+backend/package.json
+backend/package-lock.json
+backend/tsconfig.json
+CONTRIBUTING.md
+DEPLOYMENT.md
+docs/CONTRIBUTING-DETAILS.md
+.env.example
+frontend/App.tsx
+frontend/constants.ts
+frontend/index.html
+frontend/index.tsx
+frontend/tailwind.css
+frontend/types.ts
+frontend/vite-env.d.ts
+.git/config
+.git/description
+.git/HEAD
+.github/pull_request_template.md
+GITHUB_SETUP.md
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE
+metadata.json
+netlify.toml
+package.json
+package-lock.json
+QUICKSTART.md
+README.md
+scripts/warp-male-bodymaps.mjs
+tsconfig.json
+vite.config.ts
+```

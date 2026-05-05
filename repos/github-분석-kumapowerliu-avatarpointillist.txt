@@ -1,0 +1,12 @@
+GitHub 분석: KumapowerLIU/AvatarPointillist
+=========================================
+
+# GitHub 분석: KumapowerLIU/AvatarPointillist
+
+## Incoming relations
+
+- **implemented_in** → Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation _(Paper)_
+
+## Connected node types
+
+- Paper: 1

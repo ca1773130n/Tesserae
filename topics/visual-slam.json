@@ -1,0 +1,18 @@
+{
+  "title": "Visual SLAM",
+  "kind": "topics",
+  "body_text": "# Visual SLAM\n\n## Incoming relations\n\n- **addresses** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_\n- **addresses** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2604.15612/paper.md",
+  "links": [],
+  "body": "# Visual SLAM\n\n## Incoming relations\n\n- **addresses** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_\n- **addresses** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "frontmatter": {
+    "aliases": [
+      "SLAM"
+    ],
+    "kind": "topics",
+    "node_id": "ResearchTopic:visual-slam:5e1e69bfac67",
+    "node_type": "ResearchTopic",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2604.15612/paper.md",
+    "title": "Visual SLAM"
+  }
+}

@@ -1,0 +1,115 @@
+digest.md
+=========
+
+# 📬 Daily Research Digest — 2026-04-23
+
+## 🔥 오늘의 하이라이트
+
+### 1. MapAnything, 비디오 확산을 3D 공간 이해로 확장
+
+![preview](https://pbs.twimg.com/media/HF8WNIRWYAAK_3L?format=jpg&name=orig)
+
+MapAnything은 이미지와 비디오 기반 장면에서 일반화 가능한 3D 지도를 만드는 방향을 밀어붙이는 공개 프로젝트다. 3D 재구성, 로봇 내비게이션, 공간 지능 모델의 공통 입력 표현을 만들려는 흐름에서 가장 큰 코드 공개 중 하나다.
+
+- 📄 논문: [논문 분석](papers/2509.23563/paper.md) | [arxiv](https://arxiv.org/abs/2509.23563)
+- 💻 코드: [GitHub 분석](papers/2509.23563/repo.md) | [repo](https://github.com/facebookresearch/map-anything) | ⭐ 3229
+- 🔗 [원문](https://x.com/Khiem_Vuong/status/2046630701066682558)
+
+---
+
+### 2. Lyra 2.0과 CityRAG, 생성 비디오를 실제 도시와 3D 지속성에 묶다
+
+![preview](https://pbs.twimg.com/amplify_video_thumb/2044436411076509696/img/Ur9JSiE-nI1M9Sqj.jpg)
+
+도시 규모 생성 모델의 핵심 문제는 장면을 오래 기억하지 못하고, 이동 중 기하와 객체 일관성이 무너지는 점이다. Lyra 2.0은 프레임별 3D 기하를 유지하고 과거 프레임을 검색해 공간 대응을 잡는 방식으로, 탐색 가능한 3D 월드 생성과 시뮬레이션 연결을 노린다.
+
+- 📄 논문: [논문 분석](papers/2604.13036/paper.md) | [arxiv](https://arxiv.org/abs/2604.13036)
+- 🔗 [원문](https://x.com/gene_ch0u/status/2046769812525695080)
+
+---
+
+### 3. PhysHead, Gaussian head avatar에 물리 기반 머리카락 시뮬레이션을 결합
+
+![preview](https://pbs.twimg.com/amplify_video_thumb/2044061434879877120/img/6uB9vr7d08bqd5jy.jpg)
+
+PhysHead는 multi-view video에서 계층적 머리와 머리카락 표현을 만들고, strands와 Gaussian splats를 함께 써서 물리 기반 애니메이션이 가능한 아바타를 구성한다. 정적 렌더링 품질을 넘어 실제 움직임과 상호작용을 다루는 4D 아바타 연구로 이어지는 점이 중요하다.
+
+- 💻 코드: [GitHub 분석](repos/bernakabadayi_physhead.md) | [repo](https://github.com/bernakabadayi/physhead) | ⭐ 32
+- 🔗 [원문](https://x.com/bernakabadayi/status/2046712067369955486)
+
+---
+
+## 📋 주목할 만한 피드
+
+### ▫️ Factor graph를 energy-based world model로 보는 관점
+
+Factor graph 기반 표현을 world model의 에너지 기반 구조로 해석하며, 렌더링과 추론을 결합하는 방향을 제시한다. 공간 장면의 제약, 관측, 상태를 통합해 다루는 모델링 관점에서 의미가 있다.
+
+- 📄 논문: [논문 분석](papers/2603.24621/paper.md) | [arxiv](https://arxiv.org/abs/2603.24621)
+- 💻 코드: [GitHub 분석](papers/2603.24621/repo.md) | [repo](https://github.com/mfranzon/render) | ⭐ 84
+- 🔗 [원문](https://x.com/some/status/2046740000000000000)
+
+---
+
+### ▫️ 4D Digital Twins, Real-to-Sim-to-Real를 Physical AI 의제로 전면화
+
+CVPR 2026 워크숍 맥락에서 4D digital twin이 로봇, 시뮬레이션, 실제 환경 적응을 잇는 핵심 주제로 부상했다. multi-camera 입력을 geometry-aware token으로 바꾸는 연구도 함께 언급되어, 자율주행과 embodied AI의 공통 병목을 겨냥한다.
+
+- 📄 논문: [논문 분석](papers/2506.12251/paper.md) | [arxiv](https://arxiv.org/abs/2506.12251)
+- 🔗 [원문](https://x.com/amritamaz/status/2046666747055370307)
+
+---
+
+### ▫️ Geometric Context Transformer, 스트리밍 3D 재구성의 문맥 누적 문제를 겨냥
+
+온라인으로 들어오는 관측을 처리하면서도 장면의 기하 문맥을 유지하는 transformer 계열 접근이다. 실시간 재구성, AR, 로봇 인식처럼 전체 장면을 한 번에 볼 수 없는 응용에서 가치가 크다.
+
+- 📄 논문: [논문 분석](papers/2503.11806/paper.md) | [arxiv](https://arxiv.org/abs/2503.11806)
+- 🔗 [원문](https://x.com/arxiv/status/2046580000000000000)
+
+---
+
+### ▫️ AnyRecon, 임의 시점 3D 재구성에 비디오 확산을 사용
+
+AnyRecon은 제한된 입력 시점에서 임의 시점의 3D 구조를 복원하는 문제를 비디오 확산 모델의 생성 능력과 연결한다. novel view synthesis와 reconstruction의 경계가 계속 흐려지고 있음을 보여준다.
+
+- 📄 논문: [논문 분석](papers/2604.12551/paper.md) | [arxiv](https://arxiv.org/abs/2604.12551)
+- 🔗 [원문](https://x.com/arxiv/status/2046550000000000000)
+
+---
+
+### ▫️ 3D Gaussian Splatting to Mesh 3.0, splat 결과를 편집 가능한 mesh로 변환
+
+Gaussian Splatting의 렌더링 품질을 mesh 기반 파이프라인으로 가져오려는 업데이트다. 제작 도구, 게임 엔진, 시뮬레이션에 연결하려면 splat 자체보다 mesh 변환 품질이 중요해진다.
+
+- 📄 논문: [논문 분석](papers/2601.17835/paper.md) | [arxiv](https://arxiv.org/abs/2601.17835)
+- 🔗 [원문](https://x.com/some/status/2046520000000000000)
+
+---
+
+### ▫️ DAWN과 CLAW, world model과 VLA 사이의 행동 표현을 재검토
+
+DAWN은 미래 이미지를 직접 예측하기보다 픽셀 motion field를 예측해 행동 계획에 활용하는 방향을 제시한다. 함께 언급된 CLAW는 humanoid whole-body motion 데이터를 언어 주석과 함께 확장하는 파이프라인으로, 시각-언어-행동 연구의 데이터 병목과 맞닿아 있다.
+
+- 📄 논문: [논문 분석](papers/2604.11251/paper.md) | [arxiv](https://arxiv.org/abs/2604.11251)
+- 💻 코드: [GitHub 분석](papers/2604.11251/repo.md) | [repo](https://github.com/SkalskiP/top-cvpr-2026-papers) | ⭐ 87
+- 🔗 [원문](https://x.com/OfficialNathanY/status/2046739454459617316)
+
+---
+
+### ▫️ 실용 3D 도구 공개: UniGeo, Stereo4D, 360-to-RealityScan
+
+UniGeo는 단일 이미지에서 카메라 제어형 novel view와 trajectory 생성을 지원하고, Stereo4D는 dense 2D supervision으로 4D 학습을 보강하는 흐름을 보여준다. 360-to-RealityScan은 360도 입력을 RealityScan 워크플로로 연결해 현장 캡처 기반 3D 제작을 가볍게 만든다.
+
+- 💻 UniGeo: [GitHub 분석](repos/AHEKOT_ComfyUI_HYWorld2.md) | [repo](https://github.com/AHEKOT/ComfyUI_HYWorld2) | ⭐ 28
+- 💻 Stereo4D: [GitHub 분석](repos/Stereo4d_stereo4d-code.md) | [repo](https://github.com/Stereo4d/stereo4d-code) | ⭐ 304
+- 💻 360-to-RealityScan: [GitHub 분석](repos/TakashiYoshinaga_360-to-RealityScan.md) | [repo](https://github.com/TakashiYoshinaga/360-to-RealityScan) | ⭐ 26
+- 🔗 [원문](https://x.com/wildmindai/status/2046603865592893696)
+
+---
+
+## 📊 오늘의 숫자
+
+- 전체 피드: 23개 → 관련 피드: 14개
+- 논문: 8편 | GitHub: 7개 레포
+- 가장 많은 스타: facebookresearch/map-anything (⭐ 3229)

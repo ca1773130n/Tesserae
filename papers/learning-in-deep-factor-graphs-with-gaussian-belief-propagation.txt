@@ -1,0 +1,26 @@
+Learning in Deep Factor Graphs with Gaussian Belief Propagation
+===============================================================
+
+# Learning in Deep Factor Graphs with Gaussian Belief Propagation
+
+## Outgoing relations
+
+- **authored_by** → Andrew J Davison _(Person)_
+- **authored_by** → Mark van der Wilk _(Person)_
+- **authored_by** → Seth Nabarro _(Person)_
+- **implemented_in** → GitHub 분석: mfranzon/render _(Repository)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-24 _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-24 _(SourceDocument)_
+
+## Connected node types
+
+- SourceDocument: 4
+- Person: 3
+- Repository: 1
+- ResearchField: 1

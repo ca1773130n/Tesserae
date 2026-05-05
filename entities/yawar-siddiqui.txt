@@ -1,0 +1,12 @@
+Yawar Siddiqui
+==============
+
+# Yawar Siddiqui
+
+## Incoming relations
+
+- **authored_by** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_
+
+## Connected node types
+
+- Paper: 1

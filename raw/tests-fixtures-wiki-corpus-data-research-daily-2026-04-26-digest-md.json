@@ -1,0 +1,8 @@
+{
+  "title": "digest.md",
+  "kind": "raw",
+  "body_text": "# Daily Research Digest — 2026-04-26\n\n## Highlights\n\n### Gaussian Splatting goes consumer\n\n3DGS pipelines are quietly absorbing into prosumer 360 capture tooling. The\nshift matters less for novel view synthesis quality and more for how cheaply\ndigital twins can now be authored end to end.\n\n### JOSH: 4D human-scene reconstruction in the wild\n\nJOSH is an ICLR 2026 baseline that jointly reconstructs people and scenes from\ncasual video.\n\n- 코드: [repo](repos/sample-repo.md) | [github](https://github.com/genforce/JOSH)",
+  "source_path": "tests/fixtures/wiki_corpus/data/research/daily/2026-04-26/digest.md",
+  "links": [],
+  "body": "# Daily Research Digest — 2026-04-26\n\n## Highlights\n\n### Gaussian Splatting goes consumer\n\n3DGS pipelines are quietly absorbing into prosumer 360 capture tooling. The\nshift matters less for novel view synthesis quality and more for how cheaply\ndigital twins can now be authored end to end.\n\n### JOSH: 4D human-scene reconstruction in the wild\n\nJOSH is an ICLR 2026 baseline that jointly reconstructs people and scenes from\ncasual video.\n\n- 코드: [repo](repos/sample-repo.md) | [github](https://github.com/genforce/JOSH)\n"
+}

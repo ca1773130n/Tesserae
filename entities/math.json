@@ -1,0 +1,15 @@
+{
+  "title": "MATH",
+  "kind": "entities",
+  "body_text": "# MATH\n\n## Incoming relations\n\n- **evaluated_on** → Codex graph-view review (2026-05-04) _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/superpowers/codex-graph-review.md",
+  "links": [],
+  "body": "# MATH\n\n## Incoming relations\n\n- **evaluated_on** → Codex graph-view review (2026-05-04) _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Benchmark:math:fd91e205596b",
+    "node_type": "Benchmark",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/superpowers/codex-graph-review.md",
+    "title": "MATH"
+  }
+}

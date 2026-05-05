@@ -1,0 +1,8 @@
+{
+  "title": "sample-repo.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: genforce/JOSH\n\n> - URL: https://github.com/genforce/JOSH\n> - 분석일: 2026-04-26\n\n## 개요\n\n- **설명**: [ICLR 2026] Joint Optimisation for Scene+Human reconstruction\n  in the wild. Tackles 4D human-scene reconstruction from monocular video.\n- **Stars**: ⭐ 214 | Forks: 6\n- **주 언어**: Python\n\n## 실행 가능 상태\n\nModel checkpoints download via josh_demo.sh. Depends on TRAM and SAM3 for\npreprocessing, and exports rerun .rrd recordings.",
+  "source_path": "tests/fixtures/wiki_corpus/data/research/daily/2026-04-26/repos/sample-repo.md",
+  "links": [],
+  "body": "# GitHub 분석: genforce/JOSH\n\n> - URL: https://github.com/genforce/JOSH\n> - 분석일: 2026-04-26\n\n## 개요\n\n- **설명**: [ICLR 2026] Joint Optimisation for Scene+Human reconstruction\n  in the wild. Tackles 4D human-scene reconstruction from monocular video.\n- **Stars**: ⭐ 214 | Forks: 6\n- **주 언어**: Python\n\n## 실행 가능 상태\n\nModel checkpoints download via josh_demo.sh. Depends on TRAM and SAM3 for\npreprocessing, and exports rerun .rrd recordings.\n"
+}

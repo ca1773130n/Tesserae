@@ -1,0 +1,15 @@
+{
+  "title": "Tianrui Zhang",
+  "kind": "entities",
+  "body_text": "# Tianrui Zhang\n\n## Incoming relations\n\n- **authored_by** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2510.12724/paper.md",
+  "links": [],
+  "body": "# Tianrui Zhang\n\n## Incoming relations\n\n- **authored_by** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:tianrui-zhang:31d4546aed2a",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2510.12724/paper.md",
+    "title": "Tianrui Zhang"
+  }
+}

@@ -1,0 +1,104 @@
+digest.md
+=========
+
+# 📬 Daily Research Digest — 2026-04-22
+
+## 🔥 오늘의 하이라이트
+
+### 1. HY-World 2.0, 생성과 복원, 시뮬레이션을 잇는 3D 월드 모델
+
+![preview](https://pbs.twimg.com/amplify_video_thumb/2044597175129391104/img/6MYPJEg6ufrS4LW2.jpg)
+
+HY-World 2.0은 텍스트, 이미지, 비디오에서 상호작용 가능한 3D 월드를 만들고, 이를 게임 엔진과 embodied simulation 파이프라인으로 넘기는 방향을 분명히 한다. 단순한 3D 에셋 생성이 아니라 mesh, 3DGS, point cloud 등 표준 출력과 물리 기반 이동까지 포함해 Spatial Intelligence 시스템의 실행 환경을 겨냥한다.
+
+- 📄 논문: [논문 분석](papers/2602.09022/paper.md) | [arxiv](https://arxiv.org/abs/2602.09022)
+- 💻 코드: [GitHub 분석](papers/2602.09022/repo.md) | [repo](https://github.com/imlixinyang/FlashWorld) | ⭐ 762
+- 🔗 [원문](https://x.com/DylanTFWang/status/2046476088063529392)
+
+---
+
+### 2. HyperFrames, 3D Gaussian Splatting 품질과 비디오 생성을 연결
+
+![preview](https://pbs.twimg.com/amplify_video_thumb/1978684461878583296/img/P-q8crxnXen9Dmuv.jpg)
+
+HyperFrames는 3D Gaussian Splatting 기반 표현을 더 높은 품질의 시간적 생성 파이프라인으로 끌어올리는 흐름에서 주목할 만하다. 특히 레포지토리 스타 수가 압도적으로 높아, 3D 표현과 생성형 비디오 모델을 결합하려는 엔지니어링 수요가 이미 커졌다는 신호로 읽힌다.
+
+- 📄 논문: [논문 분석](papers/2603.21852/paper.md) | [arxiv](https://arxiv.org/abs/2603.21852)
+- 💻 코드: [GitHub 분석](papers/2603.21852/repo.md) | [repo](https://github.com/heygen-com/hyperframes) | ⭐ 8662
+
+---
+
+### 3. PiLoT, 카메라만으로 드론의 자기 위치와 목표를 지도 위에서 찾다
+
+PiLoT은 드론의 실시간 영상과 3D 지도를 직접 정합해 자기 위치 추정과 목표 탐색을 동시에 다루는 접근이다. GPS 의존도를 낮춘 항법, 재난 대응, 저고도 로보틱스에서 카메라 기반 geolocalization을 더 실용적인 시스템 문제로 끌어온다.
+
+- 📄 논문: [논문 분석](papers/2510.12724/paper.md) | [arxiv](https://arxiv.org/abs/2510.12724)
+- 💻 코드: [GitHub 분석](papers/2510.12724/repo.md) | [repo](https://github.com/FanJunqiao/M4Human) | ⭐ 30
+- 🔗 [원문](https://x.com/jiqizhixin/status/2046401532426346788)
+
+---
+
+## 📋 주목할 만한 피드
+
+### ▫️ RAP, 3D Rasterization 기반 월드 엔진
+
+OpenDriveLab의 WorldEngine은 ICLR 2026 발표와 함께 3D rasterization을 월드 모델링과 주행 시뮬레이션 쪽으로 확장하는 흐름을 보여준다. 자율주행 연구에서 생성형 장면 표현과 평가 환경을 함께 다루려는 시도가 더 강해지고 있다.
+
+- 💻 관련 링크: [GitHub 분석](repos/OpenDriveLab_WorldEngine.md) | [repo](https://github.com/OpenDriveLab/WorldEngine) | ⭐ 240
+
+---
+
+### ▫️ LaviGen, 네이티브 3D 레이아웃 기반 생성
+
+LaviGen은 3D 공간의 레이아웃을 직접 모델링해 생성 결과의 구조적 일관성을 높이려는 CVPR 2026 계열 작업이다. 2D 이미지 생성의 후처리식 깊이 추정이 아니라, 장면의 3D 배치를 생성 조건으로 끌어들이는 점이 핵심이다.
+
+- 📄 관련 링크: [논문 분석](papers/2509.10687/paper.md) | [arxiv](https://arxiv.org/abs/2509.10687)
+- 💻 관련 링크: [GitHub 분석](papers/2509.10687/repo.md) | [repo](https://github.com/Aero-Ex/ComfyUI-SegviGen) | ⭐ 30
+
+---
+
+### ▫️ 3D 장면 이해를 위한 기존 벤치마크 논문 재조명
+
+2308.07123 논문은 이번 피드에서 직접적인 신규 코드 릴리스는 없지만, 3D 장면 이해와 공간 추론 연구의 비교 기준으로 다시 언급됐다. 최근 월드 모델과 embodied AI 논의가 커지면서, 과거 벤치마크와 평가 프로토콜의 의미도 함께 재평가되는 분위기다.
+
+- 📄 관련 링크: [논문 분석](papers/2308.07123/paper.md) | [arxiv](https://arxiv.org/abs/2308.07123)
+
+---
+
+### ▫️ MR.ScaleMaster, CUDA 가속 Structure from Motion 생태계의 실용 도구
+
+MR.ScaleMaster는 PyCuSFM 언급과 함께 SfM 파이프라인의 스케일 정합과 재구성 품질 관리 측면에서 눈에 띈다. 대규모 이미지 컬렉션을 다루는 3D 재구성 작업에서 GPU 가속과 후처리 자동화는 여전히 실전 병목을 줄이는 핵심 요소다.
+
+- 💻 관련 링크: [GitHub 분석](repos/team-aprl_MR.ScaleMaster.md) | [repo](https://github.com/team-aprl/MR.ScaleMaster) | ⭐ 64
+
+---
+
+### ▫️ 스테레오 카메라와 디지털 LiDAR의 역할 분리
+
+스테레오 카메라와 디지털 LiDAR가 같은 깊이 문제를 푸는 경쟁 기술이라기보다, 서로 다른 관측 조건과 거리 영역을 보완한다는 논점이 제기됐다. 로보틱스와 자율주행 센서 설계에서는 단일 모달리티 성능보다 실패 모드의 조합을 보는 관점이 중요하다.
+
+- 🔗 관련 링크: 원문 URL 미제공
+
+---
+
+### ▫️ Dynamic Gaussian Splatting, 움직이는 월드 모델의 표현 방식
+
+Dynamic Gaussian Splatting은 정적인 3DGS 장면을 넘어 시간 변화와 상호작용을 표현하려는 흐름을 대표한다. 월드 모델이 실제 시뮬레이션 환경으로 쓰이려면, 장면의 모양뿐 아니라 움직임과 상태 변화까지 효율적으로 표현해야 한다.
+
+- 🔗 관련 링크: 원문 URL 미제공
+
+---
+
+### ▫️ DepthMakerMac, 데스크톱 깊이 생성 도구의 확산
+
+DepthMakerMac 출시는 깊이 추정과 3D 변환 도구가 연구 코드에서 크리에이터용 로컬 앱으로 내려오고 있음을 보여준다. Mac 기반 워크플로에서 depth map 생성이 쉬워지면 2.5D 편집, 3DGS 전처리, 시차 기반 콘텐츠 제작의 진입 장벽도 낮아진다.
+
+- 🔗 관련 링크: 원문 URL 미제공
+
+---
+
+## 📊 오늘의 숫자
+
+- 전체 피드: 30개 → 관련 피드: 14개
+- 논문: 5편 | GitHub: 6개 레포
+- 가장 많은 스타: heygen-com/hyperframes (⭐ 8662)

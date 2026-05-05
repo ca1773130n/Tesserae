@@ -1,0 +1,15 @@
+{
+  "title": "sv-pp",
+  "kind": "entities",
+  "body_text": "# sv-pp\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: sv-pp/SceneVersepp _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2604.01907/repo.md",
+  "links": [],
+  "body": "# sv-pp\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: sv-pp/SceneVersepp _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:sv-pp:47ae51d99154",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2604.01907/repo.md",
+    "title": "sv-pp"
+  }
+}

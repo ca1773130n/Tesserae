@@ -1,0 +1,51 @@
+{
+  "title": "Topic — Gaussian Splatting Reconstruction",
+  "kind": "syntheses",
+  "body_text": "# Topic — Gaussian Splatting Reconstruction\n\nType: ApproachFamily.\n\n## Contributing papers\n- [Confidence-Based Mesh Extraction from 3D Gaussians (arXiv:2603.24725)](../papers/confidence-based-mesh-extraction-from-3d-gaussians.md)\n- [FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 (arXiv:2603.22572)](../papers/fullcircle-casual한-360-촬영으로-손쉬운-3d-재구성.md)\n- [GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow (arXiv:2604.15612)](../papers/gaussianflow-slam-monocular-gaussian-splatting-slam-guided-by-gaussianflow.md)\n- [Geometry-Grounded Gaussian Splatting (arXiv:2601.17835)](../papers/geometry-grounded-gaussian-splatting.md)\n- [Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction (arXiv:2604.15941)](../papers/neural-gabor-splatting-enhanced-gaussian-splatting-with-neural-gabor-for-high-fr-847471cb.md)\n- [Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization (arXiv:2604.24994)](../papers/power-foam-unifying-real-time-differentiable-ray-tracing-and-rasterization.md)\n- [TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting (arXiv:2604.00538)](../papers/trigs-temporal-rigid-body-motion-for-scalable-4d-gaussian-splatting.md)\n\n## Related concepts\n- GaussianFlow SLAM (Algorithm)\n- Multi-View Consistency (EvaluationProtocol)\n- Stochastic Solid (MathematicalConcept)\n- 4D Gaussian Splatting (MethodologicalConcept)\n- Gaussian Splatting (MethodologicalConcept)\n- Volumetric Rendering (MethodologicalConcept)\n- Novel View Synthesis (Task)\n- Shape Reconstruction (Task)\n- Depth Map (TechnicalTerm)\n\n## Related repos\n- (none)",
+  "source_path": "",
+  "links": [
+    "../papers/confidence-based-mesh-extraction-from-3d-gaussians.md",
+    "../papers/fullcircle-casual한-360-촬영으로-손쉬운-3d-재구성.md",
+    "../papers/gaussianflow-slam-monocular-gaussian-splatting-slam-guided-by-gaussianflow.md",
+    "../papers/geometry-grounded-gaussian-splatting.md",
+    "../papers/neural-gabor-splatting-enhanced-gaussian-splatting-with-neural-gabor-for-high-fr-847471cb.md",
+    "../papers/power-foam-unifying-real-time-differentiable-ray-tracing-and-rasterization.md",
+    "../papers/trigs-temporal-rigid-body-motion-for-scalable-4d-gaussian-splatting.md"
+  ],
+  "body": "# Topic — Gaussian Splatting Reconstruction\n\nType: ApproachFamily.\n\n## Contributing papers\n- [Confidence-Based Mesh Extraction from 3D Gaussians (arXiv:2603.24725)](../papers/confidence-based-mesh-extraction-from-3d-gaussians.md)\n- [FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 (arXiv:2603.22572)](../papers/fullcircle-casual한-360-촬영으로-손쉬운-3d-재구성.md)\n- [GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow (arXiv:2604.15612)](../papers/gaussianflow-slam-monocular-gaussian-splatting-slam-guided-by-gaussianflow.md)\n- [Geometry-Grounded Gaussian Splatting (arXiv:2601.17835)](../papers/geometry-grounded-gaussian-splatting.md)\n- [Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction (arXiv:2604.15941)](../papers/neural-gabor-splatting-enhanced-gaussian-splatting-with-neural-gabor-for-high-fr-847471cb.md)\n- [Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization (arXiv:2604.24994)](../papers/power-foam-unifying-real-time-differentiable-ray-tracing-and-rasterization.md)\n- [TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting (arXiv:2604.00538)](../papers/trigs-temporal-rigid-body-motion-for-scalable-4d-gaussian-splatting.md)\n\n## Related concepts\n- GaussianFlow SLAM (Algorithm)\n- Multi-View Consistency (EvaluationProtocol)\n- Stochastic Solid (MathematicalConcept)\n- 4D Gaussian Splatting (MethodologicalConcept)\n- Gaussian Splatting (MethodologicalConcept)\n- Volumetric Rendering (MethodologicalConcept)\n- Novel View Synthesis (Task)\n- Shape Reconstruction (Task)\n- Depth Map (TechnicalTerm)\n\n## Related repos\n- (none)",
+  "frontmatter": {
+    "content_hash": "sha256-c131ceebdfea668204ae6a45246fb05272e12cdccecbf1a62ddaacbc80505cd9",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Algorithm:gaussianflow-slam:d1735802fd71",
+      "ApproachFamily:gaussian-splatting-reconstruction:84097d3185ea",
+      "EvaluationProtocol:multi-view-consistency:77bea1e95667",
+      "MathematicalConcept:stochastic-solid:935f4dd3e32e",
+      "MethodologicalConcept:4d-gaussian-splatting:ebf4cb197985",
+      "MethodologicalConcept:gaussian-splatting:4f4b246c6522",
+      "MethodologicalConcept:volumetric-rendering:7527b301d064",
+      "Paper:arxiv-2601-17835:46d524dd9e5e",
+      "Paper:arxiv-2603-22572:c6d5f8ff5815",
+      "Paper:arxiv-2603-24725:484ce405625a",
+      "Paper:arxiv-2604-00538:511c59325ae3",
+      "Paper:arxiv-2604-15612:e4eebb59cbbb",
+      "Paper:arxiv-2604-15941:ae9ff358479e",
+      "Paper:arxiv-2604-24994:058a2f90e8fc",
+      "Task:novel-view-synthesis:19d55dfb9b83",
+      "Task:shape-reconstruction:b86872dcc192",
+      "TechnicalTerm:depth-map:349c240dc3dc"
+    ],
+    "slug": "topic-gaussian-splatting-reconstruction",
+    "sources": [
+      "data/research/daily/2026-04-07/papers/2603.22572/paper.md",
+      "data/research/daily/2026-04-15/papers/2601.17835/paper.md",
+      "data/research/daily/2026-04-25/papers/2603.24725/paper.md",
+      "data/research/daily/2026-04-25/papers/2604.00538/paper.md",
+      "data/research/daily/2026-04-25/papers/2604.15612/paper.md",
+      "data/research/daily/2026-04-25/papers/2604.15941/paper.md",
+      "data/research/daily/2026-04-30/papers/2604.24994/paper.md"
+    ],
+    "synthesis_kind": "topic",
+    "title": "Topic — Gaussian Splatting Reconstruction"
+  }
+}

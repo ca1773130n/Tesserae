@@ -1,0 +1,15 @@
+{
+  "title": "m-schuetz",
+  "kind": "entities",
+  "body_text": "# m-schuetz\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: m-schuetz/CuRast _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2603.24725/repo.md",
+  "links": [],
+  "body": "# m-schuetz\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: m-schuetz/CuRast _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:m-schuetz:6724c70d316f",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2603.24725/repo.md",
+    "title": "m-schuetz"
+  }
+}

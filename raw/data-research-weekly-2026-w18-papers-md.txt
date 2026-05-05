@@ -1,0 +1,865 @@
+papers.md
+=========
+
+# 주간 논문 분석 — 2026-W18 (2026-04-27 ~ 2026-05-03)
+
+
+---
+
+## 2601.17835 (2026-04-27)
+
+# 논문 분석: 2601.17835
+
+> - arxiv: https://arxiv.org/abs/2601.17835
+> - papers.cool: https://papers.cool/arxiv/2601.17835
+> - 분석일: 2026-04-27
+
+# Geometry-Grounded Gaussian Splatting | Cool Papers - 몰입형 논문 탐색
+
+## 2601.17835
+
+총계: 1
+
+## #1
+
+# Geometry-Grounded Gaussian Splatting
+
+[PDF15]  
+[Copy]  
+[Kimi6]  
+[REL]
+
+저자:  
+Baowen Zhang,  
+Chenxing Jiang,  
+Heng Li,  
+Shaojie Shen,  
+Ping Tan
+
+Gaussian Splatting, GS는 novel view synthesis에서 인상적인 품질과 효율성을 보여주었다. 그러나 Gaussian primitives로부터 shape를 추출하는 문제는 여전히 해결되지 않은 과제로 남아 있다. 기하 파라미터화와 근사가 충분하지 않기 때문에, 기존 shape reconstruction 방법은 multi-view consistency가 떨어지고 floaters에 민감하다는 문제가 있다. 본 논문에서는 Gaussian primitives를 특정한 유형의 stochastic solids로 정립하는 엄밀한 이론적 유도를 제시한다. 이 이론적 프레임워크는 Gaussian primitives를 명시적 기하 표현으로 직접 다룰 수 있게 함으로써 Geometry-Grounded Gaussian Splatting을 위한 원리적인 기반을 제공한다. stochastic solids의 volumetric 특성을 활용하여, 우리의 방법은 세밀한 geometry 추출을 위한 고품질 depth maps를 효율적으로 렌더링한다. 실험 결과, 우리의 방법은 공개 데이터셋에서 모든 Gaussian Splatting 기반 방법 가운데 최고의 shape reconstruction 성능을 달성한다.
+
+
+### 관련 GitHub 분석
+
+# GitHub 분석: Eyeline-Labs/Vista4D
+
+> - URL: https://github.com/Eyeline-Labs/Vista4D
+> - 분석일: 2026-04-27
+
+## 개요
+
+- **설명**: Official code, models, and data for Vista4D: Video Reshooting with 4D Point Clouds (CVPR 2026 Highlight)
+- **Stars**: ⭐ 112 | Forks: 2
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (203개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+
+---
+
+## 2604.20329 (2026-04-27)
+
+# 논문 분석: 2604.20329
+
+> - arxiv: https://arxiv.org/abs/2604.20329
+> - papers.cool: https://papers.cool/arxiv/2604.20329
+> - 분석일: 2026-04-27
+
+# Image Generators are Generalist Vision Learners | Cool Papers - 몰입형 논문 탐색
+
+## 2604.20329
+
+총계: 1
+
+## #1
+
+# Image Generators are Generalist Vision Learners
+
+[PDF16]  
+[Copy]  
+[Kimi29]  
+[REL]
+
+저자:  
+Valentin Gabeur,  
+Shangbang Long,  
+Songyou Peng,  
+Paul Voigtlaender,  
+Shuyang Sun,  
+Yanan Bao,  
+Karen Truong,  
+Zhicheng Wang,  
+
+---
+
+## 2604.21681 (2026-04-27)
+
+# 논문 분석: 2604.21681
+
+> - arxiv: https://arxiv.org/abs/2604.21681
+> - papers.cool: https://papers.cool/arxiv/2604.21681
+> - 분석일: 2026-04-27
+
+Sapiens2 | Cool Papers - 몰입형 논문 탐색
+
+## 2604.21681
+
+총계: 1
+
+## #1
+
+Sapiens2  
+[PDF5]  
+[Copy]  
+[Kimi1]  
+[REL]
+
+저자:  
+Rawal Khirodkar,  
+He Wen,  
+Julieta Martinez,  
+Yuan Dong,  
+Su Zhaoen,  
+Shunsuke Saito
+
+우리는 일반화, 범용성, 그리고 고충실도 출력을 중심으로 인간 중심 비전을 위해 설계된 고해상도 transformer 모델 계열인 Sapiens2를 제시한다. 우리 모델의 크기는 4억에서 50억 개의 파라미터 범위이며, 기본적으로 1K 해상도를 지원하고 4K를 지원하는 계층형 변형도 포함한다. Sapiens2는 사전학습과 사후학습 모두에서 이전 세대 대비 큰 폭의 향상을 이룬다. 첫째, 저수준 세부 정보 밀집 예측용와 고수준 의미 정보 zero-shot 또는 소수 라벨 설정용를 모두 포착하는 특징을 학습하기 위해, 우리는 masked image reconstruction과 self-distilled contrastive objective를 결합한다. 우리의 평가 결과는 이 통합 사전학습 목표가 더 넓은 범위의 다운스트림 작업에 더 적합함을 보여준다. 둘째, 데이터 측면에서 우리는 10억 장의 고품질 인간 이미지로 선별된 데이터셋에서 사전학습을 수행하고, 작업 주석의 품질과 양을 개선했다. 셋째, 아키텍처 측면에서 우리는 더 긴 학습 스케줄을 더 높은 안정성으로 가능하게 하는 frontier model의 발전을 도입했다. 우리의 4K 모델은 더 긴 공간적 문맥을 추론하기 위해 windowed attention을 채택하며, 2K 출력 해상도로 사전학습된다. Sapiens2는 새로운 state-of-the-art를 수립하며, 1세대 대비 pose에서 +4 mAP, body-part segmentation에서 +24.3 mIoU, normal estimation에서 각도 오차 45.6% 감소를 달성했고, pointmap 및 albedo estimation 같은 새로운 작업으로 확장된다. 코드: https://github.com/facebookresearch/sapiens2
+
+
+### 관련 GitHub 분석
+
+# GitHub 분석: facebookresearch/sapiens2
+
+> - URL: https://github.com/facebookresearch/sapiens2
+> - 분석일: 2026-04-27
+
+## 개요
+
+- **설명**: [ICLR 26] 1K resolution vision transformers pretrained on 1B human images.
+- **Stars**: ⭐ 273 | Forks: 16
+- **라이선스**: NOASSERTION
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (11개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+
+---
+
+## 2604.22482 (2026-04-28)
+
+# 논문 분석: 2604.22482
+
+> - arxiv: https://arxiv.org/abs/2604.22482
+> - papers.cool: https://papers.cool/arxiv/2604.22482
+> - 분석일: 2026-04-28
+
+# Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 | Cool Papers - Immersive Paper Discovery
+
+## 2604.22482
+
+총계: 1
+
+## 
+#1
+
+Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋  
+[PDF5]  
+[Copy]  
+[Kimi1]  
+[REL]
+
+저자:  
+Jing Ou,  
+Zidong Cao,  
+Yinrui Ren,  
+Zhuoxiao Li,  
+Jinjing Zhu,  
+Tongyan Hua,  
+Shuai Zhang,  
+Hui Xiong,  
+
+---
+
+## 2509.23563 (2026-04-29)
+
+# 논문 분석: 2509.23563
+
+> - arxiv: https://arxiv.org/abs/2509.23563
+> - papers.cool: https://papers.cool/arxiv/2509.23563
+> - 분석일: 2026-04-29
+
+# RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation | Cool Papers - 몰입형 논문 탐색
+
+## 2509.23563
+
+총계: 1
+
+## #1
+
+# RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation
+
+[PDF]  
+[Copy]  
+[Kimi1]  
+[REL]
+
+저자:  
+Seungchan Kim,  
+Omar Alama,  
+Dmytro Kurdydyk,  
+John Keller,  
+Nikhil Keetha,  
+Wenshan Wang,  
+Yonatan Bisk,  
+Sebastian Scherer
+
+### 관련 GitHub 분석
+
+# GitHub 분석: facebookresearch/map-anything
+
+> - URL: https://github.com/facebookresearch/map-anything
+> - 분석일: 2026-04-29
+
+## 개요
+
+- **설명**: MapAnything: Universal Feed-Forward Metric 3D Reconstruction
+- **Stars**: ⭐ 3241 | Forks: 241
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (43개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+
+---
+
+## 2602.23843 (2026-04-29)
+
+# 논문 분석: 2602.23843
+
+> - arxiv: https://arxiv.org/abs/2602.23843
+> - papers.cool: https://papers.cool/arxiv/2602.23843
+> - 분석일: 2026-04-29
+
+## 2602.23843
+
+Total: 1
+
+## #1
+
+# OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control
+
+[PDF7]  
+[Copy]  
+[Kimi4]  
+[REL]
+
+저자:  
+Yunshen Wang,  
+Shaohang Zhu,  
+Peiyuan Zhi,  
+Yuhan Li,  
+Jiaxin Li,  
+Yong-Lu Li,  
+Yuchen Xiao,  
+Xingxing Wang,  
+Baoxiong Jia,  
+Siyuan Huang
+
+### 관련 GitHub 분석
+
+# GitHub 분석: Perkins729/OmniXtreme
+
+> - URL: https://github.com/Perkins729/OmniXtreme
+> - 분석일: 2026-04-29
+
+## 개요
+
+- **설명**:   
+- **Stars**: ⭐ 626 | Forks: 46
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 체크포인트 미공개 (추론 불가 가능성)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (6개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | N |
+
+---
+
+## 2604.23537 (2026-04-29)
+
+# 논문 분석: 2604.23537
+
+> - arxiv: https://arxiv.org/abs/2604.23537
+> - papers.cool: https://papers.cool/arxiv/2604.23537
+> - 분석일: 2026-04-29
+
+Distance Field Rasterization for End-to-End Mesh Reconstruction | Cool Papers - 몰입형 논문 탐색
+
+## 2604.23537
+
+Total: 1
+
+## 
+#1
+
+Distance Field Rasterization for End-to-End Mesh Reconstruction  
+[PDF1]  
+[Copy]  
+[Kimi]  
+[REL]
+
+저자:  
+Jinkai Cui,  
+Kaiwen Song,  
+Chumeng Niu,  
+Juyong Zhang
+
+Rasterization 기반 방법은 최근 실시간 속도로 고품질 novel view synthesis를 가능하게 했지만, 그 기반이 되는 volumetric primitive는 직접적이고 전역적으로 일관된 surface representation을 제공하지 않기 때문에 surface extraction은 휴리스틱한 후처리에 의존하게 된다. 반면, implicit signed distance field, SDF 방법은 잘 정의된 표면을 제공하지만, 일반적으로 계산 비용이 큰 ray marching으로 최적화된다. 우리는 SDFRaster를 제안한다. 이는 rasterizable SDF representation으로, rasterization의 효율성과 signed distance field를 결합하여 end-to-end mesh reconstruction을 가능하게 함으로써 이 간극을 메운다. Delaunay tetrahedralization에서 시작하여, 우리는 tetrahedral grid 위에서 연속적인 SDF를 최적화하고, tetrahedra를 rasterizing하고 그 기여를 alpha-compositing하여 이를 효율적으로 렌더링한다. 또한 differentiable Marching Tetrahedra를 최적화 루프에 통합하여, 후처리 mesh extraction 없이 end-to-end mesh reconstruction이 가능하도록 한다. DTU 및 Tanks and Temples에서의 실험은 SDFRaster가 최신 방법들보다 더 낮은 저장 비용으로 더 높은 품질과 더 완전한 surface reconstruction을 달성함을 보여준다.  
+프로젝트 페이지: https://ustc3dv.github.io/SDFRaster/
+
+
+---
+
+## 2603.22387 (2026-04-30)
+
+# 논문 분석: 2603.22387
+
+> - arxiv: https://arxiv.org/abs/2603.22387
+> - papers.cool: https://papers.cool/arxiv/2603.22387
+> - 분석일: 2026-04-30
+
+Efficient Universal Perception Encoder | Cool Papers - 몰입형 논문 탐색
+
+## 2603.22387
+
+총계: 1
+
+## 
+#1  
+Efficient Universal Perception Encoder  
+[PDF6]  
+[Copy]  
+[Kimi10]  
+[REL]
+
+저자:  
+Chenchen Zhu,  
+Saksham Suri,  
+Cijo Jose,  
+Maxime Oquab,  
+Marc Szafraniec,  
+Wei Wen,  
+Yunyang Xiong,  
+Patrick Labatut,  
+Piotr Bojanowski,  
+
+### 관련 GitHub 분석
+
+# GitHub 분석: facebookresearch/EUPE
+
+> - URL: https://github.com/facebookresearch/EUPE
+> - 분석일: 2026-04-30
+
+## 개요
+
+- **설명**: Efficient Universal Perception Encoder: a single on-device vision encoder with versatile representations that match or exceed specialized experts across multiple task domains.
+- **Stars**: ⭐ 542 | Forks: 31
+- **라이선스**: NOASSERTION
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (44개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+
+---
+
+## 2604.01907 (2026-04-30)
+
+# 논문 분석: 2604.01907
+
+> - arxiv: https://arxiv.org/abs/2604.01907
+> - papers.cool: https://papers.cool/arxiv/2604.01907
+> - 분석일: 2026-04-30
+
+# Lifting Unlabeled Internet-level Data for 3D Scene Understanding | Cool Papers - Immersive Paper Discovery
+
+## 2604.01907
+
+총계: 1
+
+## 
+#1  
+Lifting Unlabeled Internet-level Data for 3D Scene Understanding  
+[PDF2]  
+[Copy]  
+[Kimi2]  
+[REL]
+
+저자:  
+Yixin Chen,  
+Yaowei Zhang,  
+Huangyue Yu,  
+Junchao He,  
+Yan Wang,  
+Jiangyong Huang,  
+Hongyu Shen,  
+Junfeng Ni,  
+Shaofei Wang,  
+
+### 관련 GitHub 분석
+
+# GitHub 분석: sv-pp/SceneVersepp
+
+> - URL: https://github.com/sv-pp/SceneVersepp
+> - 분석일: 2026-04-30
+
+## 개요
+
+- **설명**: Official implementation of CVPR26 paper \
+- **Stars**: ⭐ 24 | Forks: 3
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (46개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+
+---
+
+## 2604.09429 (2026-04-30)
+
+# 논문 분석: 2604.09429
+
+> - arxiv: https://arxiv.org/abs/2604.09429
+> - papers.cool: https://papers.cool/arxiv/2604.09429
+> - 분석일: 2026-04-30
+
+# Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습 | Cool Papers - 몰입형 논문 탐색
+
+## 2604.09429
+
+총계: 1
+
+## #1
+**Rays as Pixels: Learning A Joint Distribution of Videos and Camera Trajectories**  
+[PDF5]  
+[Copy]  
+[Kimi4]  
+[REL]
+
+**저자:**  
+Wonbong Jang,  
+Shikun Liu,  
+Soubhik Sanyal,  
+Juan Camilo Perez,  
+Kam Woh Ng,  
+Sanskar Agrawal,  
+Juan-Manuel Perez-Rua,  
+Yiannis Douratsos,  
+Tao Xiang
+
+
+---
+
+## 2604.24994 (2026-04-30)
+
+# 논문 분석: 2604.24994
+
+> - arxiv: https://arxiv.org/abs/2604.24994
+> - papers.cool: https://papers.cool/arxiv/2604.24994
+> - 분석일: 2026-04-30
+
+# Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization | Cool Papers - 몰입형 논문 탐색
+
+## 2604.24994
+
+총계: 1
+
+## 
+#1  
+Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization  
+[PDF]  
+[Copy]  
+[Kimi1]  
+[REL]
+
+저자:  
+Shrisudhan Govindarajan,  
+Daniel Rebain,  
+Dor Verbin,  
+Kwang Moo Yi,  
+Anish Prabhu,  
+Andrea Tagliasacchi
+
+우리는 foam 기반 ray tracing의 ray tracing 성능과 현대적 rasterization 파이프라인의 효율성을 통합하는 미분 가능한 3D 표현을 제안한다. 기존 foam 표현은 공간의 명시적 체적 분할을 통해 상수 시간 ray traversal을 가능하게 하지만, 잠재적으로 무한한 셀 때문에 효율적인 타일 기반 rasterization이 어렵다. 우리는 Voronoi foams를 셀 범위를 제어할 수 있는 bounded power diagrams로 일반화하여 이 한계를 해결하며, 이를 통해 학습 중 고비용의 Delaunay triangulations를 요구하지 않으면서도 공간적으로 경계가 있는 primitive를 가능하게 한다. 또한 내부 영역과 외부 영역 사이의 경계를 명시적으로 모델링하는 oriented surface formulation을 도입하고, 이 표면들에 미분 가능한 texture를 직접 임베딩함으로써 geometry와 appearance를 분리한다. 이러한 기여를 결합하면 최첨단 ray tracing 효율성을 유지하면서도 현 세대 3DGS에 필적하는 rasterization 성능을 달성하는 표현이 되며, 통합된 실시간 미분 가능 렌더링을 향한 실용적인 경로를 제공한다.
+
+
+---
+
+## 2603.24725 (2026-05-01)
+
+# 논문 분석: 2603.24725
+
+> - arxiv: https://arxiv.org/abs/2603.24725
+> - papers.cool: https://papers.cool/arxiv/2603.24725
+> - 분석일: 2026-05-01
+
+# Confidence-Based Mesh Extraction from 3D Gaussians | Cool Papers - 몰입형 논문 발견
+
+## 2603.24725
+
+총계: 1
+
+## 
+#1
+
+Confidence-Based Mesh Extraction from 3D Gaussians  
+[PDF4]  
+[Copy]  
+[Kimi1]  
+[REL]
+
+저자:  
+Lukas Radl,  
+Felix Windisch,  
+Andreas Kurz,  
+Thomas Köhler,  
+Michael Steiner,  
+Markus Steinberger
+
+최근 3D Gaussian Splatting 3DGS는 명시적 표현과 빠른 소프트웨어 래스터화를 바탕으로 포즈가 주어진 이미지로부터의 메쉬 추출을 크게 가속했다. 기하학적 손실 및 기타 사전 정보를 추가함으로써 추출된 표면의 정확도는 향상되었지만, 시점 의존 효과가 풍부한 장면에서는 메쉬 추출이 여전히 어렵다. 이러한 모호성을 해결하기 위해 기존 연구들은 멀티뷰 기법, 반복적 메쉬 추출, 또는 대규모 사전학습 모델에 의존해 왔으며, 그 대가로 3DGS 고유의 효율성을 희생했다. 본 연구에서는 3DGS에 자기지도 confidence 프레임워크를 도입함으로써 간단하고 효율적인 대안을 제시한다. 이 프레임워크 내에서 학습 가능한 confidence 값은 광도 기반 감독과 기하학적 감독의 균형을 동적으로 조정한다. 또한 confidence 기반 공식화를 확장하여 primitive별 색상 및 법선 분산에 패널티를 부과하는 손실을 도입하고, 이것이 표면 추출에 주는 이점을 입증한다. 마지막으로 D-SSIM 손실의 개별 항을 분리함으로써 개선된 appearance model을 추가한다. 최종적으로 우리의 접근법은 높은 효율성을 유지하면서도 비제한 메쉬에서 최신 수준의 성능을 달성한다.
+
+### 관련 GitHub 분석
+
+# GitHub 분석: r4dl/CoMe
+
+> - URL: https://github.com/r4dl/CoMe
+> - 분석일: 2026-05-01
+
+## 개요
+
+- **설명**: Official implementation for the paper \
+- **Stars**: ⭐ 55 | Forks: 3
+- **라이선스**: NOASSERTION
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (95개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | script |
+
+---
+
+## 2604.24994 (2026-05-01)
+
+# 논문 분석: 2604.24994
+
+> - arxiv: https://arxiv.org/abs/2604.24994
+> - papers.cool: https://papers.cool/arxiv/2604.24994
+> - 분석일: 2026-05-01
+
+# Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization | Cool Papers - Immersive Paper Discovery
+
+## 2604.24994
+
+총계: 1
+
+## #1
+### Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization
+
+[PDF]  
+[Copy]  
+[Kimi1]  
+[REL]
+
+저자:  
+Shrisudhan Govindarajan,  
+Daniel Rebain,  
+Dor Verbin,  
+Kwang Moo Yi,  
+Anish Prabhu,  
+Andrea Tagliasacchi
+
+우리는 foam 기반 ray tracing의 ray tracing 성능과 현대적 rasterization 파이프라인의 효율성을 통합하는 미분 가능한 3D 표현을 제안한다. 기존 foam 표현은 공간의 명시적 체적 분할을 통해 상수 시간 ray traversal을 가능하게 하지만, 잠재적으로 경계가 없는 셀 때문에 효율적인 타일 기반 rasterization이 어렵다. 우리는 Voronoi foams를 셀 범위를 제어할 수 있는 bounded power diagrams로 일반화함으로써 이 한계를 해결하며, 학습 중 비용이 큰 Delaunay triangulation을 요구하지 않으면서도 공간적으로 경계가 있는 primitive를 가능하게 한다. 또한 내부 영역과 외부 영역 사이의 경계를 명시적으로 모델링하는 oriented surface formulation을 도입하고, 이러한 표면 위에 미분 가능한 texture를 직접 임베딩함으로써 geometry와 appearance를 분리한다. 이러한 기여를 통해 state-of-the-art ray tracing 효율성을 유지하면서도 현재 세대 3DGS와 경쟁 가능한 rasterization 성능을 달성하는 표현을 얻으며, 통합된 실시간 미분 가능 렌더링을 향한 실용적인 경로를 제시한다.
+
+
+---
+
+## 2604.22714 (2026-05-02)
+
+# 논문 분석: 2604.22714
+
+> - arxiv: https://arxiv.org/abs/2604.22714
+> - papers.cool: https://papers.cool/arxiv/2604.22714
+> - 분석일: 2026-05-02
+
+# Long-tail Internet photo reconstruction | Cool Papers - 몰입형 논문 탐색
+
+## 2604.22714
+
+총계: 1
+
+## #1
+
+Long-tail Internet photo reconstruction  
+[PDF8]  
+[Copy]  
+[Kimi6]  
+[REL]
+
+저자:  
+Yuan Li,  
+Yuanbo Xiangli,  
+Hadar Averbuch-Elor,  
+Noah Snavely,  
+Ruojin Cai
+
+인터넷 사진 컬렉션은 매우 극단적인 long-tail 분포를 보인다. 소수의 유명 랜드마크는 매우 조밀하게 촬영되어 3D로 쉽게 재구성되지만, 현실 세계의 대부분 장소는 희소하고 잡음이 많으며 불균일한 이미지로만 표현되어 고전적 3D 방법과 학습 기반 3D 방법 모두의 한계를 벗어난다. 우리는 이러한 long-tail 영역을 다루는 것이 3D foundation models의 다음 프런티어 중 하나라고 본다. 희소한 장면으로부터 신뢰할 수 있는 ground-truth 3D supervision을 얻는 것은 어렵지만, 잘 재구성된 인터넷 랜드마크에서 희소 부분집합을 샘플링함으로써 이를 효과적으로 시뮬레이션할 수 있음을 관찰했다. 이를 위해 우리는 깨끗하고 조밀한 depth를 갖는 대규모 3D reconstruction 데이터셋 MegaDepth-X와 함께, long-tail 장면의 카메라 분포를 모사하는 학습 이미지 집합 샘플링 전략을 제안한다. 이러한 구성 요소로 3D foundation models를 파인튜닝하면 극단적인 희소성 조건에서도 견고한 재구성이 가능해지고, 대칭적이고 반복적인 장면에서도 더 신뢰할 수 있는 재구성이 가능해지며, 동시에 표준적이고 조밀한 3D benchmark 데이터셋에 대한 일반화 성능도 유지된다.
+
+주제:  
+
+### 관련 GitHub 분석
+
+# GitHub 분석: lyehe/build_gpu_colmap
+
+> - URL: https://github.com/lyehe/build_gpu_colmap
+> - 분석일: 2026-05-02
+
+## 개요
+
+- **설명**:   
+- **Stars**: ⭐ 57 | Forks: 2
+- **라이선스**: Unlicense
+- **주 언어**: unknown
+
+## 실행 가능 상태: 코드 미공개 (README/asset만 존재)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (0개) | N |
+| 의존성 파일 | N |
+| 모델/체크포인트 | script |
+
+---
+
+## 2604.24994 (2026-05-02)
+
+# 논문 분석: 2604.24994
+
+> - arxiv: https://arxiv.org/abs/2604.24994
+> - papers.cool: https://papers.cool/arxiv/2604.24994
+> - 분석일: 2026-05-02
+
+# Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization | Cool Papers - 몰입형 논문 탐색
+
+## 2604.24994
+
+총계: 1
+
+## #1
+### Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization
+
+[PDF]  
+[Copy]  
+[Kimi1]  
+[REL]
+
+저자:
+- Shrisudhan Govindarajan
+- Daniel Rebain
+- Dor Verbin
+- Kwang Moo Yi
+- Anish Prabhu
+- Andrea Tagliasacchi
+
+우리는 foam 기반 ray tracing의 ray tracing 성능과 현대 rasterization 파이프라인의 효율성을 통합하는 미분 가능한 3D 표현을 소개한다. 기존 foam 표현은 공간의 명시적 체적 분할을 통해 상수 시간 ray traversal을 가능하게 하지만, 잠재적으로 무한히 확장될 수 있는 셀 때문에 효율적인 타일 기반 rasterization이 어렵다. 우리는 이 한계를 해결하기 위해 Voronoi foams를 셀 범위를 제어할 수 있는 bounded power diagrams로 일반화하며, 학습 중 비용이 큰 Delaunay triangulation 없이도 공간적으로 제한된 primitive를 가능하게 한다. 또한 내부와 외부 영역 사이의 경계를 명시적으로 모델링하는 oriented surface formulation을 도입하고, 이 표면 위에 미분 가능한 texture를 직접 임베딩함으로써 geometry와 appearance를 분리한다. 이러한 기여를 통해, 본 표현은 최신 ray tracing 효율성을 유지하면서도 현세대 3DGS에 필적하는 rasterization 성능을 달성하며, 통합된 실시간 미분 가능 rendering을 향한 실용적인 경로를 제공한다.
+
+
+---
+
+## 2408.01437 (2026-05-03)
+
+# 논문 분석: 2408.01437
+
+> - arxiv: https://arxiv.org/abs/2408.01437
+> - papers.cool: https://papers.cool/arxiv/2408.01437
+> - 분석일: 2026-05-03
+
+# Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 | Cool Papers - 몰입형 논문 탐색
+
+## 2408.01437
+
+총계: 1
+
+## #1
+
+# Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링
+
+[PDF3]  
+[Copy]  
+[Kimi6]  
+[REL]
+
+저자:  
+Yang You,  
+Mikaela Angelina Uy,  
+Jiaqi Han,  
+Rahul Thomas,  
+Haotong Zhang,  
+Yi Du,  
+Hansheng Chen,  
+Francis Engelmann,  
+
+### 관련 GitHub 분석
+
+# GitHub 분석: qq456cvb/Img2CAD
+
+> - URL: https://github.com/qq456cvb/Img2CAD
+> - 분석일: 2026-05-03
+
+## 개요
+
+- **설명**:   
+- **Stars**: ⭐ 30 | Forks: 2
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (19개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+
+---
+
+## 2604.14025 (2026-05-03)
+
+# 논문 분석: 2604.14025
+
+> - arxiv: https://arxiv.org/abs/2604.14025
+> - papers.cool: https://papers.cool/arxiv/2604.14025
+> - 분석일: 2026-05-03
+
+Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective | Cool Papers - Immersive Paper Discovery
+
+## 2604.14025
+
+총계: 1
+
+## 
+#1  
+Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective  
+[PDF8]  
+[Copy]  
+[Kimi4]  
+[REL]
+
+저자:  
+Weijie Wang,  
+Qihang Cao,  
+Sensen Gao,  
+Donny Y. Chen,  
+Haofei Xu,  
+Wenjing Bian,  
+Songyou Peng,  
+Tat-Jen Cham,  
+Chuanxia Zheng,  
+
+### 관련 GitHub 분석
+
+# GitHub 분석: microsoft/World-R1
+
+> - URL: https://github.com/microsoft/World-R1
+> - 분석일: 2026-05-03
+
+## 개요
+
+- **설명**: [ICML 2026] World-R1: Reinforcing 3D Constraints for Text-to-Video Generation
+- **Stars**: ⭐ 289 | Forks: 9
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (31개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+
+---
+
+## 2604.22202 (2026-05-03)
+
+# 논문 분석: 2604.22202
+
+> - arxiv: https://arxiv.org/abs/2604.22202
+> - papers.cool: https://papers.cool/arxiv/2604.22202
+> - 분석일: 2026-05-03
+
+# ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild | Cool Papers - 몰입형 논문 탐색
+
+## 2604.22202
+
+총계: 1
+
+## #1
+
+# ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild
+
+[PDF]  
+[복사]  
+[Kimi]  
+[REL]
+
+저자:  
+Hanyu Chen,  
+Ruojin Cai,  
+Steve Marschner,  
+Noah Snavely
+
+대칭 검출은 computer vision의 근본적인 문제이며, 대칭은 다운스트림 작업에서 강력한 사전 정보로 작용한다. 그러나 기존의 단일 이미지 기반 3D 대칭 검출 학습 방법들은 거의 전적으로 객체 중심 또는 synthetic 데이터셋에서 학습 및 평가되었기 때문에, 실제 장면으로 일반화하는 데 실패한다. 또한 monocular 입력에 내재된 스케일 모호성으로 인해 3D 평면의 위치를 추정하는 문제가 well-posed하지 않으므로, 많은 기존 연구는 평면의 방향만 예측한다. 이 논문에서는 이러한 한계를 해결하기 위해, 실제 환경의 단일 RGB 이미지로부터 3D-grounded reflectional symmetry를 검출하는 최초의 프레임워크를 제시하며, architectural landmarks에 초점을 맞춘다. 우리는 두 가지 핵심 혁신을 도입한다. (1) cross-view image matching을 활용하여 SfM reconstruction으로부터 대규모 architectural symmetry 데이터셋인 ArchSym을 자동 구축하는 확장 가능한 데이터 주석 파이프라인, 그리고 이 데이터셋을 기반으로 (2) 예측된 장면 기하에 대해 정의된 signed distance map으로 대칭을 매개변수화함으로써 3D에서 대칭의 위치를 정확히 추정하는 단일 시점 대칭 검출기이다. 우리는 geometry 기반 대안들과 비교하여 대칭 주석 파이프라인을 검증하고, 우리의 대칭 검출기가 새로운 벤치마크에서 state-of-the-art baseline보다 현저히 우수함을 보인다.
+
+주제:

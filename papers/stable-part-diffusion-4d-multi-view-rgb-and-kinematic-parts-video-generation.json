@@ -1,0 +1,18 @@
+{
+  "title": "Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation",
+  "kind": "papers",
+  "body_text": "# Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation\n\n## Outgoing relations\n\n- **authored_by** → Chun-Han Yao _(Person)_\n- **authored_by** → Hao Zhang _(Person)_\n- **authored_by** → Narendra Ahuja _(Person)_\n- **authored_by** → Simon Donné _(Person)_\n- **authored_by** → Varun Jampani _(Person)_\n- **implemented_in** → GitHub 분석: Aero-Ex/ComfyUI-SegviGen _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses_dataset** → Objaverse _(Dataset)_\n- **uses_metric** → mAP _(Metric)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-22 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 5\n- SourceDocument: 3\n- Dataset: 1\n- Metric: 1\n- Repository: 1\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2509.10687/paper.md",
+  "links": [],
+  "body": "# Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation\n\n## Outgoing relations\n\n- **authored_by** → Chun-Han Yao _(Person)_\n- **authored_by** → Hao Zhang _(Person)_\n- **authored_by** → Narendra Ahuja _(Person)_\n- **authored_by** → Simon Donné _(Person)_\n- **authored_by** → Varun Jampani _(Person)_\n- **implemented_in** → GitHub 분석: Aero-Ex/ComfyUI-SegviGen _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n- **uses_dataset** → Objaverse _(Dataset)_\n- **uses_metric** → mAP _(Metric)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-22 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 5\n- SourceDocument: 3\n- Dataset: 1\n- Metric: 1\n- Repository: 1\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2509.10687"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2509-10687:e0f731f037ac",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2509.10687/paper.md",
+    "title": "Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation"
+  }
+}

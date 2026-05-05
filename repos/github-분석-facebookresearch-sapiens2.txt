@@ -1,0 +1,18 @@
+GitHub 분석: facebookresearch/sapiens2
+====================================
+
+# GitHub 분석: facebookresearch/sapiens2
+
+## Outgoing relations
+
+- **released_by** → facebookresearch _(Organization)_
+
+## Incoming relations
+
+- **implemented_in** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_
+- **implemented_in** → Sapiens2 _(Paper)_
+
+## Connected node types
+
+- Paper: 2
+- Organization: 1

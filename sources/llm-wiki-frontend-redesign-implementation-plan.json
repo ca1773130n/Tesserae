@@ -1,0 +1,15 @@
+{
+  "title": "LLM-Wiki Frontend Redesign — Implementation Plan",
+  "kind": "sources",
+  "body_text": "# LLM-Wiki Frontend Redesign — Implementation Plan\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/superpowers/specs/2026-04-27-wiki-frontend-redesign-plan.md",
+  "links": [],
+  "body": "# LLM-Wiki Frontend Redesign — Implementation Plan\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:llm-wiki-frontend-redesign-implementation-plan:73c24c053594",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/superpowers/specs/2026-04-27-wiki-frontend-redesign-plan.md",
+    "title": "LLM-Wiki Frontend Redesign — Implementation Plan"
+  }
+}

@@ -1,0 +1,12 @@
+Precision
+=========
+
+# Precision
+
+## Incoming relations
+
+- **uses_metric** → Codex extraction review (2026-05-01) _(SourceDocument)_
+
+## Connected node types
+
+- SourceDocument: 1

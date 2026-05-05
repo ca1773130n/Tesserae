@@ -1,0 +1,15 @@
+{
+  "title": "facebookresearch",
+  "kind": "entities",
+  "body_text": "# facebookresearch\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: facebookresearch/AINA _(Repository)_\n- **released_by** → GitHub 분석: facebookresearch/EUPE _(Repository)_\n- **released_by** → GitHub 분석: facebookresearch/map-anything _(Repository)_\n- **released_by** → GitHub 분석: facebookresearch/sapiens2 _(Repository)_\n- **released_by** → GitHub 분석: facebookresearch/threadweaver _(Repository)_\n- **released_by** → GitHub 분석: facebookresearch/tribev2 _(Repository)_\n- **released_by** → GitHub 분석: facebookresearch/vjepa2 _(Repository)_\n\n## Connected node types\n\n- Repository: 7",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/papers/2603.22387/repo.md",
+  "links": [],
+  "body": "# facebookresearch\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: facebookresearch/AINA _(Repository)_\n- **released_by** → GitHub 분석: facebookresearch/EUPE _(Repository)_\n- **released_by** → GitHub 분석: facebookresearch/map-anything _(Repository)_\n- **released_by** → GitHub 분석: facebookresearch/sapiens2 _(Repository)_\n- **released_by** → GitHub 분석: facebookresearch/threadweaver _(Repository)_\n- **released_by** → GitHub 분석: facebookresearch/tribev2 _(Repository)_\n- **released_by** → GitHub 분석: facebookresearch/vjepa2 _(Repository)_\n\n## Connected node types\n\n- Repository: 7",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:facebookresearch:a7d851c35a34",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/papers/2603.22387/repo.md",
+    "title": "facebookresearch"
+  }
+}

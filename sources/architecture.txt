@@ -1,0 +1,12 @@
+Architecture
+============
+
+# Architecture
+
+## Outgoing relations
+
+- **uses_metric** → mAP _(Metric)_
+
+## Connected node types
+
+- Metric: 1

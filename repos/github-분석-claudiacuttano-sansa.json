@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: ClaudiaCuttano/SANSA",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: ClaudiaCuttano/SANSA\n\n## Outgoing relations\n\n- **evaluated_on** → COCO _(Benchmark)_\n- **uses_dataset** → ADE20K _(Dataset)_\n\n## Connected node types\n\n- Benchmark: 1\n- Dataset: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/repos/ClaudiaCuttano_SANSA.md",
+  "links": [],
+  "body": "# GitHub 분석: ClaudiaCuttano/SANSA\n\n## Outgoing relations\n\n- **evaluated_on** → COCO _(Benchmark)_\n- **uses_dataset** → ADE20K _(Dataset)_\n\n## Connected node types\n\n- Benchmark: 1\n- Dataset: 1",
+  "frontmatter": {
+    "aliases": [
+      "claudiacuttano/sansa",
+      "https://github.com/ClaudiaCuttano/SANSA"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-claudiacuttano-sansa:ed7c55cb21c2",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/repos/ClaudiaCuttano_SANSA.md",
+    "title": "GitHub 분석: ClaudiaCuttano/SANSA"
+  }
+}

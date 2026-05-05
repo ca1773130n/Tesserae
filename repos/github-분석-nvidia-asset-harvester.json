@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: nvidia/asset-harvester",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: nvidia/asset-harvester\n\n## Outgoing relations\n\n- **released_by** → nvidia _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Organization: 1\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2604.00538/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: nvidia/asset-harvester\n\n## Outgoing relations\n\n- **released_by** → nvidia _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Organization: 1\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/nvidia/asset-harvester",
+      "nvidia/asset-harvester"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-nvidia-asset-harvester:dfd48592c267",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2604.00538/repo.md",
+    "title": "GitHub 분석: nvidia/asset-harvester"
+  }
+}

@@ -1,0 +1,18 @@
+raw.md
+======
+
+# Daily Feed Summary — 2026-04-30
+
+Total: 9 relevant feeds (from 33)
+
+| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |
+|------|------|-------|-----|--------|-------|-----------|-------------|
+| 2026-04-30 | 13:45 | exploring Boston LIDAR point clouds and I keep stumbling on ...... | N/A | https://github.com/taylorallenux/engine-lab | 1 | N/A | [분석](repos/taylorallenux_engine-lab.md) |
+| 2026-04-30 | 22:31 | 3D 网格生成重磅突破！SATO 来了！ • 从点云�...... | N/A | https://github.com/microsoft/World-R1 | 252 | N/A | [분석](repos/microsoft_World-R1.md) |
+| 2026-04-30 | 08:25 | RT ダックビル＠STUDIO DUCKBILL LLC: 夕陽に照らさ...... | https://arxiv.org/pdf/2604.24994 | N/A | N/A | [분석](papers/2604.24994/paper.md) | N/A |
+| 2026-04-30 | 18:07 | RT Marc Mapeke (at ICLR '26): Depth and surface normal model...... | https://arxiv.org/pdf/2603.22387 | https://github.com/facebookresearch/EUPE | 542 | [분석](papers/2603.22387/paper.md) | [분석](papers/2603.22387/repo.md) |
+| 2026-04-30 | 15:00 | Scaling 3D scene data is a long-standing challenge in scene ...... | https://arxiv.org/pdf/2604.01907 | https://github.com/sv-pp/SceneVersepp | 24 | [분석](papers/2604.01907/paper.md) | [분석](papers/2604.01907/repo.md) |
+| 2026-04-30 | 11:27 | SLAM test at the Mall! Insight 9 handles smooth floors and c...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-30 | 09:01 | Usually when you think about 3DGS you imagine a bunch of flo...... | https://arxiv.org/pdf/2604.09429 | N/A | N/A | [분석](papers/2604.09429/paper.md) | N/A |
+| 2026-04-30 | 19:02 | Gaussian splats are really cool tech, but I don’t understa...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-30 | 18:32 | SATO: a new way to generate pro 3D meshes > Generates full m...... | N/A | https://github.com/deepseek-ai/TileKernels | 1347 | N/A | [분석](repos/deepseek-ai_TileKernels.md) |

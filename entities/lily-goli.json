@@ -1,0 +1,15 @@
+{
+  "title": "Lily Goli",
+  "kind": "entities",
+  "body_text": "# Lily Goli\n\n## Incoming relations\n\n- **authored_by** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_\n- **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2411.18650/paper.md",
+  "links": [],
+  "body": "# Lily Goli\n\n## Incoming relations\n\n- **authored_by** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_\n- **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:lily-goli:618356d3fc05",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2411.18650/paper.md",
+    "title": "Lily Goli"
+  }
+}

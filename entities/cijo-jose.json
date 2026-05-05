@@ -1,0 +1,15 @@
+{
+  "title": "Cijo Jose",
+  "kind": "entities",
+  "body_text": "# Cijo Jose\n\n## Incoming relations\n\n- **authored_by** → Efficient Universal Perception Encoder _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2603.22387/paper.md",
+  "links": [],
+  "body": "# Cijo Jose\n\n## Incoming relations\n\n- **authored_by** → Efficient Universal Perception Encoder _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:cijo-jose:a89032e555d4",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2603.22387/paper.md",
+    "title": "Cijo Jose"
+  }
+}

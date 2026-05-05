@@ -1,0 +1,19 @@
+Daily Digest — 2026-05-02
+=========================
+
+# Daily Digest — 2026-05-02
+
+Sources ingested under `data/research/daily/2026-05-02/`.
+
+## Papers and repos
+- [Long-tail Internet photo reconstruction (arXiv:2604.22714)](../papers/long-tail-internet-photo-reconstruction.md) (Paper)
+- [GitHub 분석: BoPeng/ai-marketplace-monitor](../repos/github-분석-bopeng-ai-marketplace-monitor.md) (Repository)
+- [GitHub 분석: ag2ai/ag2studio](../repos/github-분석-ag2ai-ag2studio.md) (Repository)
+- [GitHub 분석: aree6/LiftShift](../repos/github-분석-aree6-liftshift.md) (Repository)
+- [GitHub 분석: lyehe/build_gpu_colmap](../repos/github-분석-lyehe-build-gpu-colmap.md) (Repository)
+- [GitHub 분석: meshsplatting/mesh-splatting](../repos/github-분석-meshsplatting-mesh-splatting.md) (Repository)
+- [Daily Feed Summary — 2026-05-02](../sources/daily-feed-summary-2026-05-02.md) (SourceDocument)
+- [📬 Daily Research Digest — 2026-05-02](../sources/daily-research-digest-2026-05-02.md) (SourceDocument)
+
+## Extracted concepts
+- (none extracted)

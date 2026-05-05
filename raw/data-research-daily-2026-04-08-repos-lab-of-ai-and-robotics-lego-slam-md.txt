@@ -1,0 +1,69 @@
+Lab-of-AI-and-Robotics_LEGO-SLAM.md
+===================================
+
+# GitHub 분석: Lab-of-AI-and-Robotics/LEGO-SLAM
+
+> - URL: https://github.com/Lab-of-AI-and-Robotics/LEGO-SLAM
+> - 분석일: 2026-04-08
+
+## 개요
+
+- **설명**: LEGO-SLAM: Language-Embedded Gaussian Optimization SLAM
+- **Stars**: ⭐ 72 | Forks: 4
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 실행 가능
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (47개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | Y |
+| Docker | N |
+
+## 파일 구조
+
+```
+.DS_Store
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.gitignore
+arguments/__init__.py
+configs/femto.txt
+docs/.DS_Store
+docs/index.html
+download_replica.sh
+download_tum.sh
+gaussian_renderer/__init__.py
+gaussian_renderer/network_gui.py
+lego_slam.py
+LICENSE
+lpipsPyTorch/__init__.py
+Lseg/encode_images_visfeature.py
+Lseg/encode_images.py
+Lseg/segmentation_metric.py
+Lseg/segmentation.py
+Lseg/transforms_midas.py
+Lseg/utils.py
+media/overview.png
+media/readme.gif
+metrics.py
+mp_Loopmanager.py
+mp_Mapper.py
+mp_Tracker.py
+README.md
+render.py
+requirements.txt
+run_encoding.sh
+run_replica.sh
+run_scannet.sh
+run_tum.sh
+saved/cnn_decoder_best.pth
+saved/cnn_encoder_best.pth
+```

@@ -1,0 +1,69 @@
+enix_x509-certificate-exporter.md
+=================================
+
+# GitHub 분석: enix/x509-certificate-exporter
+
+> - URL: https://github.com/enix/x509-certificate-exporter
+> - 분석일: 2026-04-18
+
+## 개요
+
+- **설명**: A Prometheus exporter to monitor x509 certificates expiration in Kubernetes clusters or standalone
+- **Stars**: ⭐ 855 | Forks: 98
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (11개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | Y |
+
+## 파일 구조
+
+```
+.air.toml
+docker-compose.yml
+Dockerfile
+docs/grafana-dashboard.jpg
+.env
+.git/config
+.git/description
+.git/HEAD
+.github/CODEOWNERS
+.github/dependabot.yml
+.github/lib.py
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+go.mod
+go.sum
+hack/air-build-server.sh
+hack/kind.sh
+internal/certificate.go
+internal/collector.go
+internal/exporter.go
+internal/exporter_test.go
+internal/.gitignore
+internal/kubernetes.go
+internal/kubernetes_test.go
+internal/utility.go
+internal/version.go
+LICENSE
+README.md
+.releaserc.json
+test/basic.pem
+test/corrupted.pem
+test/create-k8s-config-for-sa.sh
+test/double.pem
+test/image.jpg
+test/invalid-yaml.conf
+test/k8s-list-only-role.yml
+test/k8s-no-access-role.yml
+test/kind-config.yml
+```

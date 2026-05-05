@@ -1,0 +1,11 @@
+raw.md
+======
+
+# Daily Feed Summary — 2026-04-07
+
+Total: 2 relevant feeds (from 82)
+
+| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |
+|------|------|-------|-----|--------|-------|-----------|-------------|
+| 2026-04-07 | 11:12 | This Youtube might be useful for registration between LiDAR ...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-07 | 12:29 | Rendering Multi-Human and Multi-Object with 3D Gaussian Spla...... | https://arxiv.org/pdf/2604.02996 | N/A | N/A | [분석](papers/2604.02996/paper.md) | N/A |

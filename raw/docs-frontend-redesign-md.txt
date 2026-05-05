@@ -1,0 +1,398 @@
+frontend-redesign.md
+====================
+
+# Frontend redesign — annotated route walkthrough
+
+This document is a guided tour of every visible route on the redesigned LLM-Wiki static site. It complements the high-level model in [`architecture.md`](architecture.md) and the status table in [`feature-map.md`](feature-map.md).
+
+The site lives at `.llm-wiki/site/` after `llm_wiki project compile`. To explore it locally:
+
+```bash
+llm_wiki project serve --port 8765
+# open http://127.0.0.1:8765/
+```
+
+Every route is a static HTML file with two siblings (`<page>.txt`, `<page>.json`) for AI consumers. Site-wide AI exports (`llms.txt`, `llms-full.txt`, `graph.jsonld`, `sitemap.xml`, `rss.xml`, `robots.txt`, `ai-readme.md`, `manifest.json`) are described at the end of this doc.
+
+Status legend: ✅ shipped · ⚠ in-progress.
+
+## Conventions across every page
+
+Every leaf page follows the same anatomy (§3.3 of the design spec):
+
+```
+breadcrumbs
+eyebrow (type · last updated · ≈ reading time)
+TITLE
+right-rail TOC (sticky on desktop, drawer on mobile)
+lead paragraph
+rendered markdown body
+Mentions in the corpus  — bullets with badges + counts
+Related (4-signal ranked) — card grid
+Source provenance       — file path, line excerpt
+Activity                — sparkline, weekly mentions
+AI siblings footer      — links to the .txt and .json
+```
+
+Site-wide chrome:
+
+- **Top bar.** Logo + project name on the left, search trigger + theme toggle on the right.
+- **Left rail** (desktop ≥ 1024 px): hierarchical tree — Home, Recent activity, Sources, Concepts, Entities, Papers, Repos, Topics, Syntheses, Open questions, Timeline, Graph view, About. Counts come from `manifest.json`.
+- **Bottom nav** (mobile): drawer rail collapses; bottom nav surfaces the most-used kinds.
+- **Search palette.** `cmd+k` / `ctrl+k` / `/` — fuzzy match over `search-index.json`, scoped to wiki kinds. Recent pages are persisted in `localStorage`.
+- **Theme.** Light by default; toggle persists `data-theme="dark"` in `localStorage`. Applied before paint to avoid flash.
+
+## Home
+
+### `/` ✅
+
+> _Screenshot: home.png_
+
+The home page is a project pulse. It's driven by the global `pulse` synthesis (`wiki/syntheses/pulse.md`), which is regenerated every compile. The hero is a stat row — sources, concepts, papers, open questions — followed by 1-3 "what's new this week" cards pulled from the most recent `pulse` body. Below the hero, curated entry points link to each kind's index page so a first-time visitor can drill in without having to read the nav.
+
+This is the page to land an LLM agent on first; it ships the highest signal-to-noise summary of the corpus. Cards link to leaf pages, not back to indices.
+
+**Notable interactions.** Stat row clicks scroll to or navigate to the matching kind index. The hero copy is editable — if you handwrite `wiki/overview.md`, the home page picks it up on the next compile.
+
+**Related routes.** [Timeline](#timeline) for the activity log, [Syntheses](#syntheses) for the long form, [Graph](#graph-view) for the spatial view.
+
+## Sources
+
+These are the L1 raw documents — files in `data/`, `docs/`, and the project tree referenced by `.llm-wiki/config.json`. Every source becomes a `SourceDocument` (or `Paper` / `Repository`) node and gets a wiki page projected by `WikiLayerProjector`.
+
+### `/sources/` ✅
+
+> _Screenshot: sources-index.png_
+
+A table of every raw document the corpus knows about. Columns: type badge (Document / Paper / Repository / Project), title, mention count, last updated. The table is zebra-striped, hover shows a 1-line preview, and the type badge is filterable via the search palette (`/ kind:papers`).
+
+This is the agent's index when it needs to enumerate the literal evidence the wiki is built from.
+
+**Related routes.** [Papers](#papers) for the paper-only slice, [Repos](#repos) for repo-only, [Concepts](#concepts) for the extracted-from view.
+
+### `/sources/<slug>.html` ✅
+
+> _Screenshot: source-detail.png_
+
+A single source document, rendered through the stdlib markdown pipeline (`llm_wiki/site/markdown.py`). The body is the original markdown with safe link/image rendering. Below the body:
+
+- **Mentions** — every concept / entity / paper extracted from this source, with edge type badges.
+- **Backlinks** — every other wiki page that links here.
+- **Related** — four-signal ranked (direct link 3.0 + source overlap 4.0 + Adamic-Adar 1.5 + type affinity 1.0).
+- **Source provenance** — original file path + first 12 lines of the raw file as evidence.
+- **Activity** — sparkline of weekly mentions over the last 12 weeks.
+- **AI siblings footer** — `<page>.txt` plain-text view, `<page>.json` structured record.
+
+**Notable interactions.** Auto-linked URLs and arXiv IDs in the body; click-to-copy on code blocks; right-rail TOC tracks scroll.
+
+## Concepts
+
+Concepts are the recurring ideas, terms, algorithms, architectures, and methodologies extracted across the corpus. They cover `Concept`, `TechnicalTerm`, `Algorithm`, `MathematicalConcept`, `MethodologicalConcept`, `ArchitecturePattern`, `TrainingParadigm`, `InferenceStrategy`, `EvaluationProtocol`, `Task`, `Capability`, `ObjectiveFunction`.
+
+### `/concepts/` ✅
+
+> _Screenshot: concepts-index.png_
+
+A facet-filterable card grid. Each card carries the type badge, title, 1-line definition, mention count, and last-updated date. The page supports type filters via tag chips (Algorithm, Architecture, Training paradigm, …) and sorts by mention count by default.
+
+This is where you go to ask "what does this corpus talk about?"
+
+**Related routes.** [Papers](#papers) — concepts are typically introduced in papers, [Topics](#topics) — concepts cluster into topics.
+
+### `/concepts/<slug>.html` ✅
+
+> _Screenshot: concept-detail.png_
+
+A rich concept page with a synthesised definition (or the first paragraph of the most authoritative source if no synthesis is available), a list of all mentions across the corpus, ranked-related neighbours, and the activity sparkline.
+
+The "Mentions in the corpus" section is the load-bearing one for agents — it lists every paper / source / repo that references the concept, with a one-line excerpt for context.
+
+**Notable interactions.** The right-rail TOC tracks `<h2>` / `<h3>` in the body; the related card grid honours the four-signal score so neighbours feel relevant rather than just adjacent.
+
+## Entities
+
+Entities are the named, identifiable things in the corpus: `Model`, `Dataset`, `Benchmark`, `Metric`, `Organization`, `Person`. They're projected from graph nodes and their pages emphasise claims and results over prose.
+
+### `/entities/` ✅
+
+> _Screenshot: entities-index.png_
+
+A type-faceted table. Columns: type badge, name, summary (first sentence of frontmatter `description` if present, else first paragraph of the body), mention count. Filterable by type chip.
+
+### `/entities/<slug>.html` ✅
+
+> _Screenshot: entity-detail.png_
+
+The detail page foregrounds three sections:
+
+- **Claims** — `ContributionClaim`, `PerformanceClaim`, `ComparisonClaim`, `LimitationClaim`, `CausalClaim` edges that touch this entity, with evidence excerpts inline. (Claim nodes themselves don't get their own URLs — they surface as bullets here.)
+- **Reported results** — every `Result` / `evaluated_on` / `reports_result` linked to this entity, listed with metric + score + paper provenance.
+- **Mentions in the corpus** — same shape as concept pages.
+
+This is the right page to land on when an agent needs to answer "what do we know about model X?" or "which datasets is benchmark Y reported on?"
+
+## Papers
+
+Papers are research literature treated as first-class evidence. The redesign moved them out of the generic source pool and gave them a dedicated kind so we can render paper-specific affordances.
+
+### `/papers/` ✅
+
+> _Screenshot: papers-index.png_
+
+A facet-filterable card grid with year, topic, and family chips. Each card: title, authors (first three + "et al."), 1-line abstract excerpt, year badge, mention count. Sorts by year desc by default.
+
+### `/papers/<slug>.html` ✅
+
+> _Screenshot: paper-detail.png_
+
+A paper card layout: title, authors, year, abstract excerpt, then sections for:
+
+- **Contributions** — `ContributionClaim` edges from the paper.
+- **Results** — `reports_result` edges with metric + score.
+- **Comparisons** — `compares_against` edges.
+- **Related concepts** — `introduces` / `extends` / `uses` edges.
+- **Open questions** — `OpenQuestion` linked through the paper.
+
+ArXiv links auto-link via `llm_wiki/site/markdown.py`; the right-rail TOC reflects the section list above.
+
+## Repos
+
+Repos are software projects — `Repository`, `Project`, `CodeProject`. The redesign explicitly does not render per-class / per-function HTML pages; repo pages summarise the project's surface and link out to the source tree.
+
+### `/repos/` ✅
+
+> _Screenshot: repos-index.png_
+
+A card grid with language badges. Each card: name, 1-line README excerpt, primary language(s), star count if known, last-updated.
+
+### `/repos/<slug>.html` ✅
+
+> _Screenshot: repo-detail.png_
+
+The repo page shows:
+
+- **README excerpt** — first ~600 characters of the repo's `README.md` if one is in the corpus.
+- **Dependencies** — out-edges of type `depends_on` / `imports` / `uses` to other repos / models / concepts.
+- **Implements** — `implemented_in` edges from papers (i.e., "this repo implements paper X").
+- **Module overview** — counts of modules / classes / functions, but no per-function links — by design.
+- **Related** — four-signal ranked.
+
+This is the right page for an agent that needs to choose a repo from a family of approaches.
+
+## Topics
+
+Topics group concepts into broader fields: `ResearchField`, `ResearchTopic`, `ProblemArea`, `ApproachFamily`, `Trend`. Topic pages are partly projected from graph nodes, partly synthesised — see [Syntheses](#syntheses) for the field-overview pages that drive a topic's intro.
+
+### `/topics/` ✅
+
+> _Screenshot: topics-index.png_
+
+A card grid keyed by type chip. Each card surfaces the topic name, parent field, and "X papers · Y concepts · Z repos" stats.
+
+### `/topics/<slug>.html` ✅
+
+> _Screenshot: topic-detail.png_
+
+A topic page leads with a synthesis paragraph (when one exists in `wiki/syntheses/topic-<slug>.md`) and lists:
+
+- **Papers in this topic** — table.
+- **Approach families** — sub-topics of type `ApproachFamily`.
+- **Concepts in scope** — chip cloud.
+- **Open questions** — linked `OpenQuestion` nodes.
+- **Related fields** — `belongs_to` / `rising_in` neighbours.
+
+**Related routes.** [Syntheses → topic-…](#syntheses) for the long-form narrative, [Concepts](#concepts) for the constituent atoms.
+
+## Syntheses
+
+Syntheses are the higher-order pages produced by `SynthesisProjector`. Seven kinds (pulse, daily_digest, weekly, topic, comparison, field_overview) cover the temporal and structural cuts of the corpus. Synthesis bodies are deterministic templates today; `LLM_WIKI_SYNTHESIS_LLM=1` is the LLM-upgrade hook (stub).
+
+### `/syntheses/` ✅
+
+> _Screenshot: syntheses-index.png_
+
+The index lists every synthesis grouped by kind, sorted by `generated_at` descending within each group. Each row: kind badge, title, 1-line lead, generated-at timestamp.
+
+### `/syntheses/<slug>.html` ✅
+
+> _Screenshot: synthesis-detail.png_
+
+A synthesis page renders the markdown body as-is. Frontmatter carries `synthesis_kind`, `slug`, `sources`, `inputs`, `generated_at`, `generator`, `content_hash` — the page exposes `synthesis_kind` and `generated_at` in the eyebrow. Below the body:
+
+- **Sources consumed** — the `summarizes` edge targets — one per source the synthesis drew on.
+- **Inputs (graph nodes)** — the `synthesizes` edge targets — every node that fed in.
+- **Related syntheses** — same kind / overlapping inputs.
+
+The `pulse` synthesis is the home page; the daily / weekly syntheses anchor the [Timeline](#timeline) rail.
+
+## Questions
+
+Open questions are extracted from the corpus as `OpenQuestion` nodes — places where a paper, source, or synthesis explicitly flags an unresolved problem.
+
+### `/questions/` ✅
+
+> _Screenshot: questions-index.png_
+
+A list view, one row per open question. Columns: question text, sources that raised it, related concepts, age (since first seen). Sorted by recency by default.
+
+### `/questions/<slug>.html` ✅
+
+> _Screenshot: question-detail.png_
+
+A focused page on a single open question with:
+
+- The verbatim question text.
+- **Raised in** — sources / papers / syntheses where the question appears.
+- **Related concepts** — what the question is about.
+- **Adjacent questions** — same source or shared concepts.
+
+This is the page to land on when an agent is asked "what's still unanswered in this area?"
+
+## Timeline
+
+The timeline page is the activity log: when did the corpus grow, what kinds of nodes were added, how does it look across days and weeks?
+
+### `/timeline/` ✅
+
+> _Screenshot: timeline.png_
+
+The page has three rails:
+
+- **Activity heatmap** — 26-week SVG with month + weekday labels, cells coloured by node-add-count. Each cell links to the day's `digest.md` source page when one exists.
+- **Days** — last 60 dated days, each row showing `<date> · X activity · Y papers`. Where the date has a `digest.md`, the date is a link.
+- **Syntheses rail** — every synthesis sorted by recency, kind badge + title + timestamp.
+
+This is the page to bookmark for the "what's been happening" question.
+
+### `/timeline/<YYYY-MM-DD>.html` ⚠
+
+> _Screenshot: timeline-day.png_
+
+Per-day detail pages — listing every paper / repo / concept / synthesis tied to that calendar day — are an explicit follow-up. Subagent P is wiring the per-day detail emit through `StaticSiteBuilder`. Until that lands, heatmap cells link to the day's `digest.md` source page as an interim. (See `render_timeline` in `llm_wiki/site/pages.py` for the inline TODO.)
+
+## Graph view
+
+### `/graph/` ✅
+
+> _Screenshot: graph.png_
+
+The interactive graph view is a 3D force layout (3d-force-graph + Three.js, vendored as a CDN snapshot in `assets/`) with a 2D fallback. Nodes are colored by `ResearchNodeType`. Edges show their type as a label on hover.
+
+**Notable interactions.**
+
+- Hover a node → tooltip with name, type, mention count.
+- Click a node → navigate to its wiki page.
+- Hover an edge → label showing the relation (`uses` / `extends` / `compares_against` / …).
+- Mouse wheel → cursor-anchored zoom (zooms toward the cursor, not the centre).
+- Drag → orbit (3D) or pan (2D).
+- Toggle 2D/3D in the top-right.
+
+The page-embedded payload is capped at `MAX_GRAPH_NODES = 1500` (see [`pages.py`](../llm_wiki/site/pages.py)). The full graph is always available at `/graph.json` for tooling. Code-graph nodes (`CodeClass`, `CodeFunction`, `Dependency`, …) are filtered out of the visualisation by design.
+
+**Related routes.** Every wiki page links into a focused subgraph view.
+
+## About
+
+### `/about.html` ✅
+
+> _Screenshot: about.png_
+
+A static page explaining the schema (every `ResearchNodeType` and edge whitelist, with one-line descriptions), the build info (commit SHA, generator version, generated-at timestamp), and the AI exports inventory.
+
+This is the right page to ground a new contributor on what types exist and what each is for.
+
+## AI siblings — how every page is also data
+
+LLM-Wiki ships every page in three forms: the human HTML, a plain-text sibling, and a structured JSON sibling. Plus site-wide exports for crawlers and agents.
+
+### Per-page `<page>.txt` ✅
+
+Plain text view of one page — no nav, no styling, no markdown decoration beyond what the body explicitly uses. Right when an agent wants to ingest a single page as context without writing an HTML scraper.
+
+```bash
+curl http://127.0.0.1:8765/concepts/diffusion-model.txt
+```
+
+### Per-page `<page>.json` ✅
+
+A structured record:
+
+```json
+{
+  "title": "...",
+  "kind": "concepts",
+  "body": "raw markdown body",
+  "body_text": "plain-text body",
+  "links": ["..."],
+  "source_path": "data/...",
+  "frontmatter": { ... }
+}
+```
+
+Right when a tool needs typed access — the link list, the frontmatter, the kind tag — without a markdown parser.
+
+### `/llms.txt` ✅
+
+The llmstxt.org short index. A single page listing every kind with the most-relevant entries per kind. Right for the first request an LLM agent makes when discovering the site.
+
+### `/llms-full.txt` ✅
+
+The llmstxt.org long form: every wiki page concatenated. Capped at 5 MB; if the cap is hit, a `[TRUNCATED — see graph.jsonld for the full set]` marker ends the file. Right when an agent has the budget to ingest the whole corpus in one request and a 5 MB context.
+
+### `/graph.json` ✅
+
+The full `ResearchGraph` payload — including code-graph nodes that don't have HTML pages. Right when a tool wants the complete graph for its own analysis (MCP, Cognee, Graphiti consumers all read this).
+
+### `/graph.jsonld` ✅
+
+A schema.org `Dataset` JSON-LD. Wiki-layer nodes only (no code nodes). Right for crawlers that understand structured data — Google Knowledge Graph, search indexers, schema.org-aware aggregators.
+
+### `/search-index.json` ✅
+
+The palette + page-search index. Wiki-layer kinds only. Right when integrating a third-party search UI; the schema is a list of `{kind, title, slug, body, score_hints}` entries.
+
+### `/sitemap.xml` ✅
+
+Every emitted route with `lastmod` derived from frontmatter (`generated_at`, `updated_at`, `published_at`, `date`). Right for search engines.
+
+### `/rss.xml` ✅
+
+Last 30 syntheses sorted newest-first. Right for "subscribe to this wiki" — RSS readers, IFTTT, mailing lists.
+
+### `/robots.txt` ✅
+
+Permissive — crawl + index everything. The wiki is meant to be read by agents.
+
+### `/ai-readme.md` ✅
+
+A machine-readable site map for AI agents that don't speak HTML well. Lists every artifact above with its purpose and a one-line description of when each format is right.
+
+### `/manifest.json` ✅
+
+A sha256 + size record for every emitted file in the site. Used by:
+
+- The compile-twice idempotence test (`tests/test_project_e2e_redesign.py`).
+- Downstream tooling that wants to detect "has this site changed since last visit?" without a full diff.
+- The deploy command, to short-circuit pushes when nothing changed.
+
+## Choosing the right format
+
+| If you are… | Read |
+|---|---|
+| A human first-time visitor | `/` then drill into [Concepts](#concepts) or [Papers](#papers) |
+| A human wanting "what's new" | [Timeline](#timeline) and recent [Syntheses](#syntheses) |
+| A human wanting structure | [Graph view](#graph-view) |
+| An LLM agent doing one query | `<page>.json` for typed access |
+| An LLM agent doing one query, budget-constrained | `<page>.txt` |
+| An LLM agent ingesting everything | `/llms-full.txt` (≤ 5 MB) or `/graph.jsonld` (uncapped) |
+| A tool building a custom UI | `/search-index.json` + `/graph.json` |
+| A search engine | `/sitemap.xml` + `/graph.jsonld` |
+| A subscriber | `/rss.xml` |
+| A change-detector | `/manifest.json` |
+
+## Related docs
+
+- [Architecture](architecture.md) — the three-layer model, module map, idempotence story.
+- [Feature map](feature-map.md) — every feature with status, source files, and links here.
+- [Quickstart](quickstart.md) — minimum path from `project init` to a browsable site.
+- [Self-dogfood demo](self-dogfood.md) — running LLM-Wiki against its own repo, including this site.

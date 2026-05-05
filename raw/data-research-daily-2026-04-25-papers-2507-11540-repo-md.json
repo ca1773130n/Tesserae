@@ -1,0 +1,8 @@
+{
+  "title": "repo.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: zju3dv/Scal3R\n\n> - URL: https://github.com/zju3dv/Scal3R\n> - 분석일: 2026-04-25\n\n## 개요\n\n- **설명**: [CVPR 2026 (Highlight)] Scal3R: Scalable Test-Time Training for Large-Scale 3D Reconstruction \n- **Stars**: ⭐ 382 | Forks: 22\n- **라이선스**: N/A\n- **주 언어**: Python\n\n## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (27개) | Y |\n| 의존성 파일 | Y |\n| 모델/체크포인트 | script |\n| Docker | N |\n\n## 파일 구조\n\n```\nassets/logo.png\nassets/teaser.gif\nconfigs/base.yaml\ndocs/install.md\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\npyproject.toml\nREADME.md\nrequirements.txt\nscal3r/__init__.py\nscal3r/run.py\nscripts/install.sh\n```",
+  "source_path": "data/research/daily/2026-04-25/papers/2507.11540/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: zju3dv/Scal3R\n\n> - URL: https://github.com/zju3dv/Scal3R\n> - 분석일: 2026-04-25\n\n## 개요\n\n- **설명**: [CVPR 2026 (Highlight)] Scal3R: Scalable Test-Time Training for Large-Scale 3D Reconstruction \n- **Stars**: ⭐ 382 | Forks: 22\n- **라이선스**: N/A\n- **주 언어**: Python\n\n## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (27개) | Y |\n| 의존성 파일 | Y |\n| 모델/체크포인트 | script |\n| Docker | N |\n\n## 파일 구조\n\n```\nassets/logo.png\nassets/teaser.gif\nconfigs/base.yaml\ndocs/install.md\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\npyproject.toml\nREADME.md\nrequirements.txt\nscal3r/__init__.py\nscal3r/run.py\nscripts/install.sh\n```\n"
+}

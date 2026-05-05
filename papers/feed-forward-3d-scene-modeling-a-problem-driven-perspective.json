@@ -1,0 +1,18 @@
+{
+  "title": "Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective",
+  "kind": "papers",
+  "body_text": "# Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective\n\n## Outgoing relations\n\n- **addresses** → World Model _(ResearchTopic)_\n- **authored_by** → Andreas Geiger _(Person)_\n- **authored_by** → Bohan Zhuang _(Person)_\n- **authored_by** → Chuanxia Zheng _(Person)_\n- **authored_by** → Donny Y. Chen _(Person)_\n- **authored_by** → Haofei Xu _(Person)_\n- **authored_by** → Jia-Wang Bian _(Person)_\n- **authored_by** → Jianfei Cai _(Person)_\n- **authored_by** → Qihang Cao _(Person)_\n- **authored_by** → Sensen Gao _(Person)_\n- **authored_by** → Songyou Peng _(Person)_\n- **authored_by** → Tat-Jen Cham _(Person)_\n- **authored_by** → Weijie Wang _(Person)_\n- **authored_by** → Wenjing Bian _(Person)_\n- **implemented_in** → GitHub 분석: microsoft/World-R1 _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-05-03 _(SourceDocument)_\n- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-03 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 13\n- SourceDocument: 4\n- Repository: 1\n- ResearchField: 1\n- ResearchTopic: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/papers/2604.14025/paper.md",
+  "links": [],
+  "body": "# Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective\n\n## Outgoing relations\n\n- **addresses** → World Model _(ResearchTopic)_\n- **authored_by** → Andreas Geiger _(Person)_\n- **authored_by** → Bohan Zhuang _(Person)_\n- **authored_by** → Chuanxia Zheng _(Person)_\n- **authored_by** → Donny Y. Chen _(Person)_\n- **authored_by** → Haofei Xu _(Person)_\n- **authored_by** → Jia-Wang Bian _(Person)_\n- **authored_by** → Jianfei Cai _(Person)_\n- **authored_by** → Qihang Cao _(Person)_\n- **authored_by** → Sensen Gao _(Person)_\n- **authored_by** → Songyou Peng _(Person)_\n- **authored_by** → Tat-Jen Cham _(Person)_\n- **authored_by** → Weijie Wang _(Person)_\n- **authored_by** → Wenjing Bian _(Person)_\n- **implemented_in** → GitHub 분석: microsoft/World-R1 _(Repository)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-05-03 _(SourceDocument)_\n- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-03 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 13\n- SourceDocument: 4\n- Repository: 1\n- ResearchField: 1\n- ResearchTopic: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2604.14025"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2604-14025:49ca47d6aba7",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/papers/2604.14025/paper.md",
+    "title": "Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective"
+  }
+}

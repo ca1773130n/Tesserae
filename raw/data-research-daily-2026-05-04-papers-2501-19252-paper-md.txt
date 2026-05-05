@@ -1,0 +1,116 @@
+paper.md
+========
+
+# 논문 분석: 2501.19252
+
+> - arxiv: https://arxiv.org/abs/2501.19252
+> - papers.cool: https://papers.cool/arxiv/2501.19252
+> - 분석일: 2026-05-04
+
+Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search | Cool Papers - 몰입형 논문 탐색
+
+## 2501.19252
+
+총계: 1
+
+## 
+#1
+
+# Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search
+
+[PDF5]  
+[Copy]  
+[Kimi6]  
+[REL]
+
+저자:
+Yuta Oshima,  
+Masahiro Suzuki,  
+Yutaka Matsuo,  
+Hiroki Furuta
+
+text-to-video diffusion model의 놀라운 발전은 사실적인 비디오 생성을 가능하게 했지만, 생성된 비디오의 내용에는 종종 부자연스러운 움직임이나 변형, 역재생, 정지된 장면이 포함된다. 최근에는 콘텐츠의 우수성을 측정하는 어떤 기준에 기반해 diffusion model의 출력을 유도하는 alignment 문제가 큰 주목을 받고 있다. 프레임 방향을 따라 지각적 품질을 개선할 여지가 크기 때문에, 비디오 생성에서 어떤 metric을 최적화해야 하는지와 이를 어떻게 최적화할지 다루어야 한다. 이 논문에서는 추론 시점에 주어진 alignment reward를 최대화하기 위해 더 나은 diffusion latent를 선택할 수 있는 lookahead estimator 기반 diffusion latent beam search를 제안한다. 이어서 prompt와의 alignment 관점에서 지각적 비디오 품질을 개선하려면, 기존 metric에 가중치를 부여하는 reward calibration이 필요하다는 점을 지적한다. 이는 사람이든 vision language model이든 출력을 평가할 때, 비디오의 자연스러움을 정량화하는 기존의 많은 metric이 항상 이러한 평가와 상관관계를 보이지는 않기 때문이다. 우리는 이 방법이 모델 파라미터 업데이트 없이도 보정된 reward, VLM, 그리고 인간 평가에서 측정된 지각적 품질을 향상시키며, 훨씬 더 효율적인 계산 비용으로 greedy search와 best-of-N sampling보다 더 나은 생성을 출력함을 보인다. 실험은 이 방법이 여러 유능한 생성 모델에 유익함을 보여주며, 실용적인 지침도 제공한다. 즉, denoising step을 늘리기보다 lookahead estimator를 가능하게 하고 search budget을 늘리는 데 추론 시점의 계산 자원을 우선 배분해야 한다.
+
+주제:
+
+Computer Vision and Pattern Recognition
+
+게시: 2025-01-31 16:09:30 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+포함하기 OR:
+
+제외하기:
+
+검색
+
+필터
+
+강조 표시
+
+별표한 논문:
+
+#1  
+Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search
+
+내보내기
+
+Magic Token:
+
+Kimi Language:
+
+中文  
+English
+
+Desc Language:
+
+中文  
+English
+
+저장
+
+버그 제보? 이슈 제출? 다음을 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+계속 진행하기 전에 Disclaimer를 읽어 주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문하세요.
+
+```javascript
+var macros = {
+    'argmin': '\\mathop{\\text{argmin}}',
+    'argmax': '\\mathop{\\text{argmax}}'
+};
+MathJax.Hub.Config({
+    tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']], processEscapes: true},
+    TeX: {equationNumbers: {autoNumber: ['AMS'], useLabelIds: true}, extensions: ['AMSmath.js', 'AMSsymbols.js', 'extpfeil.js'], Macros: macros},
+    'HTML-CSS': {noReflows: false, availableFonts: ['tex'], styles: {'.MathJax_Display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}},
+    'CommonHTML': {noReflows: false, availableFonts: ['tex'], styles: {'.MJXc-display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}},
+    'SVG': {styles: {'.MathJax_SVG_Display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}}
+});
+MathJax.Hub.Queue(function() {
+    document.querySelectorAll('.MathJax').forEach(element => element.classList.add('notranslate'));
+    document.querySelectorAll('a.title-link, p.summary').forEach(element => element.classList.remove('notranslate'));
+    highlightQuery();
+});
+```
+
+```javascript
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement('script');
+  hm.src = 'https://hm.baidu.com/hm.js?606b976365dabacb1f69823d8de064ee';
+  var s = document.getElementsByTagName('script')[0]; 
+  s.parentNode.insertBefore(hm, s);
+})();
+```
+
+```javascript
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+
+gtag('config', 'G-214H31WLDF');
+```

@@ -1,0 +1,114 @@
+paper.md
+========
+
+# 논문 분석: 2604.22202
+
+> - arxiv: https://arxiv.org/abs/2604.22202
+> - papers.cool: https://papers.cool/arxiv/2604.22202
+> - 분석일: 2026-05-03
+
+# ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild | Cool Papers - 몰입형 논문 탐색
+
+## 2604.22202
+
+총계: 1
+
+## #1
+
+# ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild
+
+[PDF]  
+[복사]  
+[Kimi]  
+[REL]
+
+저자:  
+Hanyu Chen,  
+Ruojin Cai,  
+Steve Marschner,  
+Noah Snavely
+
+대칭 검출은 computer vision의 근본적인 문제이며, 대칭은 다운스트림 작업에서 강력한 사전 정보로 작용한다. 그러나 기존의 단일 이미지 기반 3D 대칭 검출 학습 방법들은 거의 전적으로 객체 중심 또는 synthetic 데이터셋에서 학습 및 평가되었기 때문에, 실제 장면으로 일반화하는 데 실패한다. 또한 monocular 입력에 내재된 스케일 모호성으로 인해 3D 평면의 위치를 추정하는 문제가 well-posed하지 않으므로, 많은 기존 연구는 평면의 방향만 예측한다. 이 논문에서는 이러한 한계를 해결하기 위해, 실제 환경의 단일 RGB 이미지로부터 3D-grounded reflectional symmetry를 검출하는 최초의 프레임워크를 제시하며, architectural landmarks에 초점을 맞춘다. 우리는 두 가지 핵심 혁신을 도입한다. (1) cross-view image matching을 활용하여 SfM reconstruction으로부터 대규모 architectural symmetry 데이터셋인 ArchSym을 자동 구축하는 확장 가능한 데이터 주석 파이프라인, 그리고 이 데이터셋을 기반으로 (2) 예측된 장면 기하에 대해 정의된 signed distance map으로 대칭을 매개변수화함으로써 3D에서 대칭의 위치를 정확히 추정하는 단일 시점 대칭 검출기이다. 우리는 geometry 기반 대안들과 비교하여 대칭 주석 파이프라인을 검증하고, 우리의 대칭 검출기가 새로운 벤치마크에서 state-of-the-art baseline보다 현저히 우수함을 보인다.
+
+주제:  
+Computer Vision and Pattern Recognition
+
+출판: 2026-04-24 04:12:03 UTC
+
+kexue.fm이 설계 | kimi.ai로 구동
+
+포함 OR:
+
+제외:
+
+검색
+
+필터
+
+강조 표시
+
+별표한 논문:
+
+#1  
+ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild
+
+내보내기
+
+Magic Token:
+
+Kimi 언어:
+
+中文  
+English
+
+설명 언어:
+
+中文  
+English
+
+저장
+
+버그 제보? 이슈 제출? 다음을 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+계속 진행하기 전에 Disclaimer를 읽어주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문하세요.
+
+```javascript
+var macros = {
+    'argmin': '\\mathop{\\text{argmin}}',
+    'argmax': '\\mathop{\\text{argmax}}'
+};
+MathJax.Hub.Config({
+    tex2jax: {inlineMath: [['$','$'], ['\\(','\\)']], processEscapes: true},
+    TeX: {equationNumbers: {autoNumber: ['AMS'], useLabelIds: true}, extensions: ['AMSmath.js', 'AMSsymbols.js', 'extpfeil.js'], Macros: macros},
+    'HTML-CSS': {noReflows: false, availableFonts: ['tex'], styles: {'.MathJax_Display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}},
+    'CommonHTML': {noReflows: false, availableFonts: ['tex'], styles: {'.MJXc-display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}},
+    'SVG': {styles: {'.MathJax_SVG_Display': {margin: '1em 0em 0.7em;', display: 'inline-block!important;'}}}
+});
+MathJax.Hub.Queue(function() {
+    document.querySelectorAll('.MathJax').forEach(element => element.classList.add('notranslate'));
+    document.querySelectorAll('a.title-link, p.summary').forEach(element => element.classList.remove('notranslate'));
+    highlightQuery();
+});
+```
+
+```javascript
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement('script');
+  hm.src = 'https://hm.baidu.com/hm.js?606b976365dabacb1f69823d8de064ee';
+  var s = document.getElementsByTagName('script')[0];
+  s.parentNode.insertBefore(hm, s);
+})();
+```
+
+```javascript
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+
+gtag('config', 'G-214H31WLDF');
+```

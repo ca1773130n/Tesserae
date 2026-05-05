@@ -1,0 +1,15 @@
+{
+  "title": "📬 Daily Research Digest — 2026-04-24",
+  "kind": "sources",
+  "body_text": "# 📬 Daily Research Digest — 2026-04-24\n\n## Outgoing relations\n\n- **mentioned_in** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_\n- **mentioned_in** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_\n- **mentioned_in** → Image Generators are Generalist Vision Learners _(Paper)_\n- **mentioned_in** → Learning in Deep Factor Graphs with Gaussian Belief Propagation _(Paper)_\n- **mentioned_in** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_\n- **mentioned_in** → Scaling Sequence-to-Sequence Generative Neural Rendering _(Paper)_\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Paper: 6\n- Metric: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-24/digest.md",
+  "links": [],
+  "body": "# 📬 Daily Research Digest — 2026-04-24\n\n## Outgoing relations\n\n- **mentioned_in** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_\n- **mentioned_in** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_\n- **mentioned_in** → Image Generators are Generalist Vision Learners _(Paper)_\n- **mentioned_in** → Learning in Deep Factor Graphs with Gaussian Belief Propagation _(Paper)_\n- **mentioned_in** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_\n- **mentioned_in** → Scaling Sequence-to-Sequence Generative Neural Rendering _(Paper)_\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Paper: 6\n- Metric: 1",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:daily-research-digest-2026-04-24:6fabb2a07663",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-24/digest.md",
+    "title": "📬 Daily Research Digest — 2026-04-24"
+  }
+}

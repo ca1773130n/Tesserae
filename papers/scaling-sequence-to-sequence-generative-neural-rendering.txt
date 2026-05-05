@@ -1,0 +1,35 @@
+Scaling Sequence-to-Sequence Generative Neural Rendering
+========================================================
+
+# Scaling Sequence-to-Sequence Generative Neural Rendering
+
+## Outgoing relations
+
+- **authored_by** → Chi Phung _(Person)_
+- **authored_by** → Haozhe Liu _(Person)_
+- **authored_by** → Jiadong Guo _(Person)_
+- **authored_by** → Juan C. Pérez _(Person)_
+- **authored_by** → Juan-Manuel Pérez-Rúa _(Person)_
+- **authored_by** → Junlin Han _(Person)_
+- **authored_by** → Kam Woh Ng _(Person)_
+- **authored_by** → Shikun Liu _(Person)_
+- **authored_by** → Tao Xiang _(Person)_
+- **authored_by** → Wonbong Jang _(Person)_
+- **authored_by** → Yiannis Douratsos _(Person)_
+- **authored_by** → Zijian Zhou _(Person)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- **uses** → Pre-training _(TrainingParadigm)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-24 _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-24 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 12
+- SourceDocument: 4
+- ResearchField: 1
+- TrainingParadigm: 1

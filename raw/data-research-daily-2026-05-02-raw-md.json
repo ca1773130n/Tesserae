@@ -1,0 +1,8 @@
+{
+  "title": "raw.md",
+  "kind": "raw",
+  "body_text": "# Daily Feed Summary — 2026-05-02\n\nTotal: 3 relevant feeds (from 22)\n\n| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |\n|------|------|-------|-----|--------|-------|-----------|-------------|\n| 2026-05-02 | 01:26 | We are so back...... | https://arxiv.org/pdf/2604.22714 | https://github.com/lyehe/build_gpu_colmap | 57 | [분석](papers/2604.22714/paper.md) | [분석](papers/2604.22714/repo.md) |\n| 2026-05-02 | 11:02 | Lin and Liu et al., \"Vista4DVideo Reshooting with 4D Point C...... | https://arxiv.org/pdf/2604.24994 | N/A | N/A | [분석](papers/2604.24994/paper.md) | N/A |\n| 2026-05-02 | 23:22 | Real-time metric depth estimation using Depth Anything V3 an...... | N/A | https://github.com/ag2ai/ag2studio | 47 | N/A | [분석](repos/ag2ai_ag2studio.md) |",
+  "source_path": "data/research/daily/2026-05-02/raw.md",
+  "links": [],
+  "body": "# Daily Feed Summary — 2026-05-02\n\nTotal: 3 relevant feeds (from 22)\n\n| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |\n|------|------|-------|-----|--------|-------|-----------|-------------|\n| 2026-05-02 | 01:26 | We are so back...... | https://arxiv.org/pdf/2604.22714 | https://github.com/lyehe/build_gpu_colmap | 57 | [분석](papers/2604.22714/paper.md) | [분석](papers/2604.22714/repo.md) |\n| 2026-05-02 | 11:02 | Lin and Liu et al., \"Vista4DVideo Reshooting with 4D Point C...... | https://arxiv.org/pdf/2604.24994 | N/A | N/A | [분석](papers/2604.24994/paper.md) | N/A |\n| 2026-05-02 | 23:22 | Real-time metric depth estimation using Depth Anything V3 an...... | N/A | https://github.com/ag2ai/ag2studio | 47 | N/A | [분석](repos/ag2ai_ag2studio.md) |\n"
+}

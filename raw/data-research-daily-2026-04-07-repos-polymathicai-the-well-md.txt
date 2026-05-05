@@ -1,0 +1,67 @@
+PolymathicAI_the_well.md
+========================
+
+# GitHub 분석: PolymathicAI/the_well
+
+> - URL: https://github.com/PolymathicAI/the_well
+> - 분석일: 2026-04-07
+
+## 개요
+
+- **설명**: A 15TB Collection of Physics Simulation Datasets
+- **Stars**: ⭐ 2544 | Forks: 275
+- **라이선스**: BSD-3-Clause
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (41개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.gitignore
+.pre-commit-config.yaml
+assets/the_well_color_icon.svg
+assets/the_well_logo.png
+CITATION
+datasets/README.md
+docs/api.md
+docs/benchmarks.md
+docs/data_format.md
+docs/datasets_overview.md
+docs/index.md
+LICENSE
+mkdocs.yml
+pyproject.toml
+README.md
+scripts/check_thewell_data.py
+scripts/check_thewell_data.sh
+scripts/check_thewell_formatting.py
+scripts/compute_statistics.py
+scripts/create_all_miniwell.sh
+scripts/create_gif.py
+scripts/create_miniwell.py
+scripts/generate_metadata.py
+scripts/plot_velocity.py
+scripts/plot_velocity.sh
+scripts/README.md
+scripts/remove_trajectory.py
+tests/conftest.py
+tests/test_interface.py
+tests/test_metric.py
+tests/test_miniwell.py
+the_well/__init__.py
+```

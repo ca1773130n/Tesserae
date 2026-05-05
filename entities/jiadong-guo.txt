@@ -1,0 +1,12 @@
+Jiadong Guo
+===========
+
+# Jiadong Guo
+
+## Incoming relations
+
+- **authored_by** → Scaling Sequence-to-Sequence Generative Neural Rendering _(Paper)_
+
+## Connected node types
+
+- Paper: 1

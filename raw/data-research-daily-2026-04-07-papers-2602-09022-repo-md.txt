@@ -1,0 +1,58 @@
+repo.md
+=======
+
+# GitHub 분석: imlixinyang/FlashWorld
+
+> - URL: https://github.com/imlixinyang/FlashWorld
+> - 분석일: 2026-04-07
+
+## 개요
+
+- **설명**: Code for \
+- **Stars**: ⭐ 732 | Forks: 56
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (9개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.gitignore
+app.py
+cli.py
+examples/.DS_Store
+examples/1.json
+examples/2.json
+examples/3.json
+examples/4.json
+examples/5.json
+examples/6.json
+examples/7.json
+examples/8.json
+index.html
+LICENSE
+models/__init__.py
+models/autoencoder_kl_wan.py
+models/reconstruction_model.py
+models/render.py
+models/transformer_wan.py
+quant.py
+README.md
+requirements.txt
+utils.py
+```

@@ -1,0 +1,60 @@
+isaaccorley_terrabit.md
+=======================
+
+# GitHub 분석: isaaccorley/terrabit
+
+> - URL: https://github.com/isaaccorley/terrabit
+> - 분석일: 2026-04-10
+
+## 개요
+
+- **설명**:   
+- **Stars**: ⭐ 22 | Forks: 6
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 체크포인트 미공개 (추론 불가 가능성)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (13개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+biome.json
+bun.lock
+CONTRIBUTING.md
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+index.html
+LICENSE
+Makefile
+mise.toml
+package.json
+README.md
+src/db.ts
+src/export.ts
+src/geocoder.ts
+src/main.ts
+src/maplibre-gl-dev.d.ts
+src/map.ts
+src/presets.ts
+src/scoring-worker.ts
+src/styles.css
+src/tutorial.ts
+src/types.ts
+src/util.ts
+src/vite-env.d.ts
+tsconfig.json
+vite.config.ts
+```

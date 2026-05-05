@@ -1,0 +1,15 @@
+{
+  "title": "Hyun Myung",
+  "kind": "entities",
+  "body_text": "# Hyun Myung\n\n## Incoming relations\n\n- **authored_by** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2604.15612/paper.md",
+  "links": [],
+  "body": "# Hyun Myung\n\n## Incoming relations\n\n- **authored_by** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:hyun-myung:bc03a9d9a9e4",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2604.15612/paper.md",
+    "title": "Hyun Myung"
+  }
+}

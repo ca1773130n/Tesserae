@@ -1,0 +1,64 @@
+apple_ml-4m.md
+==============
+
+# GitHub 분석: apple/ml-4m
+
+> - URL: https://github.com/apple/ml-4m
+> - 분석일: 2026-04-16
+
+## 개요
+
+- **설명**: 4M: Massively Multimodal Masked Modeling
+- **Stars**: ⭐ 1794 | Forks: 109
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (46개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+ACKNOWLEDGEMENTS.md
+assets/4M_demo_sample_darkmode.jpg
+assets/4M_demo_sample_lightmode.jpg
+assets/4M_main_fig_darkmode.png
+assets/4M_main_fig_lightmode.png
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+fourm/demo_4M_sampler.py
+.gitattributes
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE
+LICENSE_WEIGHTS
+notebooks/generation_4M-21.ipynb
+notebooks/generation_4M-7.ipynb
+notebooks/retrieval_4M-21.ipynb
+pyproject.toml
+README_DATA.md
+README_GENERATION.md
+README.md
+README_TOKENIZATION.md
+README_TRAINING.md
+run_generation.py
+run_training_4m_fsdp.py
+run_training_4m.py
+run_training_divae.py
+run_training_vqcontrolnet.py
+run_training_vqvae.py
+save_vq_tokens.py
+train_wordpiece_tokenizer.py
+```

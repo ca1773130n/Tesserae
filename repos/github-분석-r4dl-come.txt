@@ -1,0 +1,12 @@
+GitHub 분석: r4dl/CoMe
+====================
+
+# GitHub 분석: r4dl/CoMe
+
+## Incoming relations
+
+- **implemented_in** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_
+
+## Connected node types
+
+- Paper: 1

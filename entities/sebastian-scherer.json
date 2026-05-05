@@ -1,0 +1,15 @@
+{
+  "title": "Sebastian Scherer",
+  "kind": "entities",
+  "body_text": "# Sebastian Scherer\n\n## Incoming relations\n\n- **authored_by** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2509.23563/paper.md",
+  "links": [],
+  "body": "# Sebastian Scherer\n\n## Incoming relations\n\n- **authored_by** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:sebastian-scherer:7b9c08693f91",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2509.23563/paper.md",
+    "title": "Sebastian Scherer"
+  }
+}

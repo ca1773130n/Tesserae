@@ -1,0 +1,33 @@
+raw.md
+======
+
+# Daily Feed Summary — 2026-04-16
+
+Total: 24 relevant feeds (from 86)
+
+| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |
+|------|------|-------|-----|--------|-------|-----------|-------------|
+| 2026-04-16 | 23:07 | RT MrNeRF: LichtFeld is open source, sota, and pushes the en...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-16 | 18:40 | Seeing how realistic video generation has become, I always i...... | https://arxiv.org/pdf/2509.19296 | https://github.com/nv-tlabs/lyra | 1003 | N/A | [분석](papers/2509.19296/repo.md) |
+| 2026-04-16 | 17:27 | Are all videos worth the same number of tokens? Whether rich...... | N/A | https://github.com/apple/ml-4m | 1794 | N/A | [분석](repos/apple_ml-4m.md) |
+| 2026-04-16 | 23:53 | I just published a Claude Code skill for SparkJS - the 3D Ga...... | N/A | https://github.com/reinehonoka/Voice-Design-Cloner | 97 | N/A | [분석](repos/reinehonoka_Voice-Design-Cloner.md) |
+| 2026-04-16 | 17:31 | "Scal3R: Scalable Test-Time Training for Large-Scale 3D Reco...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-16 | 17:24 | Congrats to @Normanisation for his successful PhD defense ??...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-16 | 16:00 | Today, we released Lyra 2.0, a framework for generating pers...... | https://arxiv.org/pdf/2604.13036 | https://github.com/NVIDIA/OpenShell | 4964 | N/A | [분석](papers/2604.13036/repo.md) |
+| 2026-04-16 | 14:53 | Super excited about what my team's latest model! TIPSv2 is a...... | https://arxiv.org/pdf/2604.09445 | https://github.com/gmberton/vismatch | 813 | N/A | [분석](papers/2604.09445/repo.md) |
+| 2026-04-16 | 13:54 | Spark v2.0が正式リリースだ！ 正式版v2.0は3DGS�...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-16 | 15:57 | Nvidia released Lyra 2.0 on Hugging Face Explorable Generati...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-16 | 15:01 | The authors first note that current VAEs are usually not equ...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-16 | 13:21 | RT MrNeRF: Heads up: there are some changes coming to LichtF...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-16 | 21:16 | Suddenly it feels like a gaming engine should be able to orc...... | https://arxiv.org/pdf/2001.08361 | N/A | N/A | N/A | N/A |
+| 2026-04-16 | 11:16 | PDF-GS: Progressive Distractor Filtering for Robust 3D Gauss...... | https://arxiv.org/pdf/2604.09366 | N/A | N/A | N/A | N/A |
+| 2026-04-16 | 11:39 | I'm putting together a list of top CVPR 2026 papers collecti...... | N/A | https://github.com/roboflow/rf-detr | 6387 | N/A | [분석](repos/roboflow_rf-detr.md) |
+| 2026-04-16 | 10:31 | RT André Araujo: True multimodal AI needs to understand the...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-16 | 08:12 | Remove Background for 3D Gaussian Splatting isn't just a cle...... | https://arxiv.org/pdf/2601.17835 | https://github.com/ReconWorldLab/godot-gaussian-splatting | 143 | N/A | [분석](papers/2601.17835/repo.md) |
+| 2026-04-16 | 14:22 | RT clem ?: Time to follow http://hf.co/tencent!... | N/A | https://github.com/baidu/ernie-image | 154 | N/A | [분석](repos/baidu_ernie-image.md) |
+| 2026-04-16 | 04:25 | Just Implemented headless MCP server that gives Claude direc...... | N/A | https://github.com/mrdoob/three.js | 111957 | N/A | [분석](repos/mrdoob_three.js.md) |
+| 2026-04-16 | 00:43 | Tran and Košecká, "PointSplat: Efficient Geometry-Driven P...... | https://arxiv.org/pdf/2603.22572 | https://github.com/theialab/fullcircle | 88 | N/A | [분석](papers/2603.22572/repo.md) |
+| 2026-04-16 | 13:21 | RT MrNeRF: Heads up: there are some changes coming to LichtF...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-16 | 22:29 | One of the first 3D world models, @theworldlabs, just releas...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-16 | 09:59 | Hice un post ayer sobre el nerf de Claude Opus 4.6, Desde en...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-16 | 17:14 | Incredible technical depth in this thread, kudos to WL and S...... | N/A | https://github.com/jonbarron/gaussid | 9 | N/A | [분석](repos/jonbarron_gaussid.md) |

@@ -1,0 +1,38 @@
+{
+  "title": "Daily Digest — 2026-05-03",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-05-03\n\nSources ingested under `data/research/daily/2026-05-03/`.\n\n## Papers and repos\n- [ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild (arXiv:2604.22202)](../papers/archsym-detecting-3d-grounded-architectural-symmetries-in-the-wild.md) (Paper)\n- [Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective (arXiv:2604.14025)](../papers/feed-forward-3d-scene-modeling-a-problem-driven-perspective.md) (Paper)\n- [Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 (arXiv:2408.01437)](../papers/img2cad-vlm-assisted-conditional-factorization을-통한-이미지로부터의-3-737a56aa.md) (Paper)\n- [GitHub 분석: qq456cvb/Img2CAD](../repos/github-분석-qq456cvb-img2cad.md) (Repository)\n- [Daily Feed Summary — 2026-05-03](../sources/daily-feed-summary-2026-05-03.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-05-03](../sources/daily-research-digest-2026-05-03.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "source_path": "",
+  "links": [
+    "../papers/archsym-detecting-3d-grounded-architectural-symmetries-in-the-wild.md",
+    "../papers/feed-forward-3d-scene-modeling-a-problem-driven-perspective.md",
+    "../papers/img2cad-vlm-assisted-conditional-factorization을-통한-이미지로부터의-3-737a56aa.md",
+    "../repos/github-분석-qq456cvb-img2cad.md",
+    "../sources/daily-feed-summary-2026-05-03.md",
+    "../sources/daily-research-digest-2026-05-03.md"
+  ],
+  "body": "# Daily Digest — 2026-05-03\n\nSources ingested under `data/research/daily/2026-05-03/`.\n\n## Papers and repos\n- [ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild (arXiv:2604.22202)](../papers/archsym-detecting-3d-grounded-architectural-symmetries-in-the-wild.md) (Paper)\n- [Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective (arXiv:2604.14025)](../papers/feed-forward-3d-scene-modeling-a-problem-driven-perspective.md) (Paper)\n- [Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 (arXiv:2408.01437)](../papers/img2cad-vlm-assisted-conditional-factorization을-통한-이미지로부터의-3-737a56aa.md) (Paper)\n- [GitHub 분석: qq456cvb/Img2CAD](../repos/github-분석-qq456cvb-img2cad.md) (Repository)\n- [Daily Feed Summary — 2026-05-03](../sources/daily-feed-summary-2026-05-03.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-05-03](../sources/daily-research-digest-2026-05-03.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "frontmatter": {
+    "content_hash": "sha256-315ec9abaff9b3850b2a2d61d10cb286f5e2834b80af50fec68810b7290aad94",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Paper:arxiv-2408-01437:9c1714e9cecd",
+      "Paper:arxiv-2604-14025:49ca47d6aba7",
+      "Paper:arxiv-2604-22202:b92a65e5c17a",
+      "Repository:github-qq456cvb-img2cad:3c1b4135a0e4",
+      "SourceDocument:daily-feed-summary-2026-05-03:77ec6f60d408",
+      "SourceDocument:daily-research-digest-2026-05-03:99f628a6490d"
+    ],
+    "slug": "daily-2026-05-03",
+    "sources": [
+      "data/research/daily/2026-05-03/digest.md",
+      "data/research/daily/2026-05-03/papers/2408.01437/paper.md",
+      "data/research/daily/2026-05-03/papers/2408.01437/repo.md",
+      "data/research/daily/2026-05-03/papers/2604.14025/paper.md",
+      "data/research/daily/2026-05-03/papers/2604.22202/paper.md",
+      "data/research/daily/2026-05-03/raw.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-05-03"
+  }
+}

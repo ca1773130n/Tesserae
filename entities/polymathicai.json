@@ -1,0 +1,15 @@
+{
+  "title": "polymathicai",
+  "kind": "entities",
+  "body_text": "# polymathicai\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: PolymathicAI/the_well _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/repos/PolymathicAI_the_well.md",
+  "links": [],
+  "body": "# polymathicai\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: PolymathicAI/the_well _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:polymathicai:3c8ed5710401",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/repos/PolymathicAI_the_well.md",
+    "title": "polymathicai"
+  }
+}

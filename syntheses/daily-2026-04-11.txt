@@ -1,0 +1,21 @@
+Daily Digest — 2026-04-11
+=========================
+
+# Daily Digest — 2026-04-11
+
+Sources ingested under `data/research/daily/2026-04-11/`.
+
+## Papers and repos
+- [GitHub 분석: Anil-matcha/Open-Higgsfield-AI](../repos/github-분석-anil-matcha-open-higgsfield-ai.md) (Repository)
+- [GitHub 분석: KAIST-Visual-AI-Group/GrounDiT](../repos/github-분석-kaist-visual-ai-group-groundit.md) (Repository)
+- [GitHub 분석: OpenDriveLab/SimScale](../repos/github-분석-opendrivelab-simscale.md) (Repository)
+- [GitHub 분석: TencentARC/MotionCrafter](../repos/github-분석-tencentarc-motioncrafter.md) (Repository)
+- [GitHub 분석: ahujasid/blender-mcp](../repos/github-분석-ahujasid-blender-mcp.md) (Repository)
+- [GitHub 분석: allenai/molmoact](../repos/github-분석-allenai-molmoact.md) (Repository)
+- [GitHub 분석: lllyasviel/VCC](../repos/github-분석-lllyasviel-vcc.md) (Repository)
+- [GitHub 분석: mutianxu/Kinema4D](../repos/github-분석-mutianxu-kinema4d.md) (Repository)
+- [GitHub 분석: weitong8591/global_edge_prior](../repos/github-분석-weitong8591-global-edge-prior.md) (Repository)
+- [Daily Feed Summary — 2026-04-11](../sources/daily-feed-summary-2026-04-11.md) (SourceDocument)
+
+## Extracted concepts
+- (none extracted)

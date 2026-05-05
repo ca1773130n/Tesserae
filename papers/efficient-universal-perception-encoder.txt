@@ -1,0 +1,37 @@
+Efficient Universal Perception Encoder
+======================================
+
+# Efficient Universal Perception Encoder
+
+## Outgoing relations
+
+- **authored_by** → Chenchen Zhu _(Person)_
+- **authored_by** → Cijo Jose _(Person)_
+- **authored_by** → Marc Szafraniec _(Person)_
+- **authored_by** → Maxime Oquab _(Person)_
+- **authored_by** → Patrick Labatut _(Person)_
+- **authored_by** → Piotr Bojanowski _(Person)_
+- **authored_by** → Raghuraman Krishnamoorthi _(Person)_
+- **authored_by** → Saksham Suri _(Person)_
+- **authored_by** → Vikas Chandra _(Person)_
+- **authored_by** → Wei Wen _(Person)_
+- **authored_by** → Yunyang Xiong _(Person)_
+- **implemented_in** → GitHub 분석: facebookresearch/EUPE _(Repository)_
+- **part_of** → Research Literature _(ResearchField)_
+- **supports_claim** → Open question: 향후 연구를 촉진하기 위해 EUPE 모델 전체 계열과 코드를 공개할 예정이다. _(OpenQuestion)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-30 _(SourceDocument)_
+- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_
+- **mentioned_in** → 주간 논문 분석 — 2026-W15 (2026-04-06 ~ 2026-04-12) _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-30 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 11
+- SourceDocument: 5
+- OpenQuestion: 1
+- Repository: 1
+- ResearchField: 1

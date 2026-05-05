@@ -1,0 +1,12 @@
+Thomas Köhler
+=============
+
+# Thomas Köhler
+
+## Incoming relations
+
+- **authored_by** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_
+
+## Connected node types
+
+- Paper: 1

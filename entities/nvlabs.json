@@ -1,0 +1,15 @@
+{
+  "title": "nvlabs",
+  "kind": "entities",
+  "body_text": "# nvlabs\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: NVlabs/PointWorld _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-06/repos/NVlabs_PointWorld.md",
+  "links": [],
+  "body": "# nvlabs\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: NVlabs/PointWorld _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:nvlabs:5c51264b69a7",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-06/repos/NVlabs_PointWorld.md",
+    "title": "nvlabs"
+  }
+}

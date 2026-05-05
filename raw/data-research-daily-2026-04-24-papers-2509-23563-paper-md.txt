@@ -1,0 +1,84 @@
+paper.md
+========
+
+# 논문 분석: 2509.23563
+
+> - arxiv: https://arxiv.org/abs/2509.23563
+> - papers.cool: https://papers.cool/arxiv/2509.23563
+> - 분석일: 2026-04-24
+
+# RAVEN: Open-Set Semantic Memory와 Behavior Adaptation을 통한 강인한 Aerial Navigation | Cool Papers - 몰입형 논문 탐색
+
+## 2509.23563
+
+총계: 1
+
+## #1
+
+### RAVEN: Open-Set Semantic Memory와 Behavior Adaptation을 통한 강인한 Aerial Navigation
+
+[PDF]  
+[복사]  
+[Kimi1]  
+[REL]
+
+저자:  
+Seungchan Kim,  
+Omar Alama,  
+Dmytro Kurdydyk,  
+John Keller,  
+Nikhil Keetha,  
+Wenshan Wang,  
+Yonatan Bisk,  
+Sebastian Scherer
+
+실외 항공 semantic navigation은 로봇이 목표 물체를 찾기 위해 크고 비정형적인 환경을 탐색할 것을 요구한다. 최근 semantic navigation의 발전은 실내 환경에서 open-set object-goal navigation을 보여주었지만, 이러한 방법은 제한된 공간 범위와 구조화된 배치에 묶여 있어 장거리 실외 탐색에는 적합하지 않다. 실외 semantic navigation 접근법도 존재하지만, 이들은 현재 관측에 기반한 반응형 정책에 의존하여 근시안적인 행동을 유발하거나, 내비게이션을 위해 오프라인에서 scene graph를 미리 계산해 온라인 배치에서의 적응성을 제한한다. 우리는 비정형 실외 환경에서의 항공 semantic navigation을 위한 3D memory 기반 behavior tree 프레임워크 RAVEN을 제시한다. 이 방법은 (1) 공간적으로 일관된 semantic voxel-ray map을 지속 메모리로 사용하여 장기 계획을 가능하게 하고 순수 반응형 행동을 피하며, (2) 단거리 voxel search와 장거리 ray search를 결합해 대규모 환경으로 확장 가능하고, (3) 대형 vision-language model을 활용해 보조 단서를 제안함으로써 실외 목표의 희소성을 완화한다. 이러한 구성 요소들은 behavior tree에 의해 조정되며, 강인한 동작을 위해 행동을 적응적으로 전환한다. 우리는 10개의 photorealistic 실외 시뮬레이션 환경에서 100개의 semantic task를 통해 RAVEN을 평가했으며, 여기에는 단일 객체 탐색, multi-class, multi-instance navigation, 그리고 순차적 작업 변화가 포함된다. 결과는 RAVEN이 시뮬레이션에서 baseline 대비 85.25% 더 우수한 성능을 보였음을 나타내며, 실외 현장 테스트에서 항공 로봇에 배치함으로써 실제 환경 적용 가능성도 입증했다.
+
+주제:  
+Robotics,  
+Artificial Intelligence,  
+Computer Vision and Pattern Recognition,  
+Machine Learning
+
+게시: 2025-09-28 01:43:25 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+포함 OR:
+
+제외:
+
+검색
+
+필터
+
+강조 표시
+
+표시한 논문:
+
+#1  
+RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation
+
+내보내기
+
+Magic Token:
+
+Kimi 언어:
+
+中文  
+English
+
+설명 언어:
+
+中文  
+English
+
+저장
+
+버그 신고 또는 이슈 제출은 다음을 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+계속 진행하기 전에 Disclaimer를 읽어주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문하세요.

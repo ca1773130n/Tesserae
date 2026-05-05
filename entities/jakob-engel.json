@@ -1,0 +1,15 @@
+{
+  "title": "Jakob Engel",
+  "kind": "entities",
+  "body_text": "# Jakob Engel\n\n## Incoming relations\n\n- **authored_by** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_\n- **authored_by** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2503.11806/paper.md",
+  "links": [],
+  "body": "# Jakob Engel\n\n## Incoming relations\n\n- **authored_by** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_\n- **authored_by** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:jakob-engel:4d9af9b89e06",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2503.11806/paper.md",
+    "title": "Jakob Engel"
+  }
+}

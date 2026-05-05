@@ -1,0 +1,15 @@
+{
+  "title": "Daily Feed Summary — 2026-05-02",
+  "kind": "sources",
+  "body_text": "# Daily Feed Summary — 2026-05-02\n\n## Outgoing relations\n\n- **mentioned_in** → Long-tail Internet photo reconstruction _(Paper)_\n- **mentioned_in** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/raw.md",
+  "links": [],
+  "body": "# Daily Feed Summary — 2026-05-02\n\n## Outgoing relations\n\n- **mentioned_in** → Long-tail Internet photo reconstruction _(Paper)_\n- **mentioned_in** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:daily-feed-summary-2026-05-02:6c541c67e3fb",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-02/raw.md",
+    "title": "Daily Feed Summary — 2026-05-02"
+  }
+}

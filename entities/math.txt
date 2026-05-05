@@ -1,0 +1,12 @@
+MATH
+====
+
+# MATH
+
+## Incoming relations
+
+- **evaluated_on** → Codex graph-view review (2026-05-04) _(SourceDocument)_
+
+## Connected node types
+
+- SourceDocument: 1

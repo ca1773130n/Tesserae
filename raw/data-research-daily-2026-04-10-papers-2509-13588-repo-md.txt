@@ -1,0 +1,69 @@
+repo.md
+=======
+
+# GitHub 분석: AISmithLab/CoBRA
+
+> - URL: https://github.com/AISmithLab/CoBRA
+> - 분석일: 2026-04-10
+
+## 개요
+
+- **설명**: [🏆 CHI26 Best Paper] CoBRA: Reproducible control of LLM agent behavior via classic social science experiments
+- **Stars**: ⭐ 78 | Forks: 1
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (31개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+control/api_prompt_experiment.py
+control/base.py
+control/control_README.md
+control/env_config.py
+control/evaluate_metrics.py
+control/experiment_utils.py
+control/__init__.py
+control/prompt_experiment.py
+control/repe_experiment.py
+data/data_README.md
+data_generated/authority_generated_claude.json
+data_generated/authority_generated_claude_with_responses.json
+data_generated/authority_generated_gemini.json
+data_generated/authority_generated_gemini_with_responses.json
+data_generated/authority_generated_gpt4.1.json
+data_generated/authority_generated_gpt4.1_with_responses.json
+data_generated/authority_generated_grok.json
+data_generated/authority_generated_grok_with_responses.json
+data_generated/bandwagon_generated_claude.json
+data_generated/bandwagon_generated_claude_with_responses.json
+data_generated/bandwagon_generated_gemini.json
+data_generated/bandwagon_generated_gemini_with_responses.json
+data_generated/bandwagon_generated_gpt4.1.json
+data_generated/bandwagon_generated_gpt4.1_with_responses.json
+data_generated/bandwagon_generated_grok.json
+data_generated/bandwagon_generated_grok_with_responses.json
+data_generated/confirmation_generated_claude.json
+data_generated/confirmation_generated_claude_with_responses.json
+data_generated/confirmation_generated_gemini.json
+data_generated/confirmation_generated_gemini_with_responses.json
+data_generated/confirmation_generated_gpt4.1.json
+data_generated/confirmation_generated_gpt4.1_with_responses.json
+data_generated/confirmation_generated_grok.json
+data_generated/confirmation_generated_grok_with_responses.json
+data_generated/framing_generated_claude.json
+data_generated/framing_generated_claude_with_responses.json
+data_generated/framing_generated_gemini.json
+data_generated/framing_generated_gemini_with_responses.json
+data_generated/framing_generated_gpt4.1.json
+data_generated/framing_generated_gpt4.1_with_responses.json
+```

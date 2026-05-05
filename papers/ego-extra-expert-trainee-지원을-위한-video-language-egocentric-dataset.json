@@ -1,0 +1,18 @@
+{
+  "title": "Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset",
+  "kind": "papers",
+  "body_text": "# Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset\n\n## Outgoing relations\n\n- **authored_by** → Antonino Furnari _(Person)_\n- **authored_by** → Francesco Ragusa _(Person)_\n- **authored_by** → Giovanni Maria Farinella _(Person)_\n- **authored_by** → Irene D&#039;Ambra _(Person)_\n- **authored_by** → Jakob Engel _(Person)_\n- **authored_by** → James Fort _(Person)_\n- **authored_by** → Michele Mazzamuto _(Person)_\n- **authored_by** → Rosario Forte _(Person)_\n- **implemented_in** → GitHub 분석: facebookresearch/AINA _(Repository)_\n- **implemented_in** → GitHub 분석: facebookresearch/sapiens2 _(Repository)_\n- **part_of** → LLM Reasoning _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-05-05 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-05 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 8\n- Repository: 2\n- SourceDocument: 2\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-05/papers/2512.13238/paper.md",
+  "links": [],
+  "body": "# Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset\n\n## Outgoing relations\n\n- **authored_by** → Antonino Furnari _(Person)_\n- **authored_by** → Francesco Ragusa _(Person)_\n- **authored_by** → Giovanni Maria Farinella _(Person)_\n- **authored_by** → Irene D&#039;Ambra _(Person)_\n- **authored_by** → Jakob Engel _(Person)_\n- **authored_by** → James Fort _(Person)_\n- **authored_by** → Michele Mazzamuto _(Person)_\n- **authored_by** → Rosario Forte _(Person)_\n- **implemented_in** → GitHub 분석: facebookresearch/AINA _(Repository)_\n- **implemented_in** → GitHub 분석: facebookresearch/sapiens2 _(Repository)_\n- **part_of** → LLM Reasoning _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-05-05 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-05 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 8\n- Repository: 2\n- SourceDocument: 2\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2512.13238"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2512-13238:85a4b38cbb7f",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-05/papers/2512.13238/paper.md",
+    "title": "Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset"
+  }
+}

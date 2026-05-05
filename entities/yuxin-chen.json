@@ -1,0 +1,15 @@
+{
+  "title": "Yuxin Chen",
+  "kind": "entities",
+  "body_text": "# Yuxin Chen\n\n## Incoming relations\n\n- **authored_by** → CLAW: Composable Language-Annotated Whole-body Motion Generation _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2604.11251/paper.md",
+  "links": [],
+  "body": "# Yuxin Chen\n\n## Incoming relations\n\n- **authored_by** → CLAW: Composable Language-Annotated Whole-body Motion Generation _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:yuxin-chen:0ef396bfd8e1",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2604.11251/paper.md",
+    "title": "Yuxin Chen"
+  }
+}

@@ -1,0 +1,28 @@
+Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas
+=====================================================================
+
+# Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas
+
+## Outgoing relations
+
+- **addresses** → World Model _(ResearchTopic)_
+- **authored_by** → Christian Rupprecht _(Person)_
+- **authored_by** → Daniel Cremers _(Person)_
+- **authored_by** → Fabian Manhardt _(Person)_
+- **authored_by** → Federico Tombari _(Person)_
+- **authored_by** → Felix Wimbauer _(Person)_
+- **authored_by** → Michael Oechsle _(Person)_
+- **authored_by** → Nikolai Kalischek _(Person)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-05-05 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-05-05 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 7
+- SourceDocument: 2
+- ResearchField: 1
+- ResearchTopic: 1

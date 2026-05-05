@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: PolymathicAI/the_well",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: PolymathicAI/the_well\n\n## Outgoing relations\n\n- **released_by** → polymathicai _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/repos/PolymathicAI_the_well.md",
+  "links": [],
+  "body": "# GitHub 분석: PolymathicAI/the_well\n\n## Outgoing relations\n\n- **released_by** → polymathicai _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/PolymathicAI/the_well",
+      "polymathicai/the_well"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-polymathicai-the-well:0137cbadfcf3",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/repos/PolymathicAI_the_well.md",
+    "title": "GitHub 분석: PolymathicAI/the_well"
+  }
+}

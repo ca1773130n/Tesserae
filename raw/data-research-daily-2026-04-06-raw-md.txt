@@ -1,0 +1,29 @@
+raw.md
+======
+
+# Daily Feed Summary — 2026-04-06
+
+Total: 20 relevant feeds (from 77)
+
+| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |
+|------|------|-------|-----|--------|-------|-----------|-------------|
+| 2026-04-06 | 14:00 | ... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-06 | 10:48 | RT Tommi Pedruzzi: Claude is a money-making machine. You can...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-06 | 01:00 | Ok korean media out here calling me a "talented engineer" lm...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-06 | 03:48 | This 4K video is the result of registration between LiDAR SL...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-06 | 10:48 | RT Tommi Pedruzzi: Claude is a money-making machine. You can...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-06 | 10:20 | I AM QUITTING MY JOB TO GO FULL IN CLAUDE Just asked him to:...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-06 | 10:48 | It blows my mind that I was able to "code" a 3D simulator of...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-06 | 06:28 | THIS GUY AUDITED 926 CLAUDE CODE SESSIONS AND FOUND MOST OF ...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-06 | 14:59 | ? Most “Claude tutorials” are a waste. They teach prompt...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-06 | 08:36 | Stop warping pixels, start warping tokens This CVPR 2026 pap...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-06 | 14:22 | PointWorld scales 3D world models for robotic manipulation h...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-06 | 16:45 | Wow, this tweet went very viral! I wanted share a possibly s...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-06 | 08:30 | ? Anthropic's Claude Code just got a Bloomberg Terminal and ...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-06 | 05:00 | Everyone is talking about Claude in 2026. But almost no one ...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-06 | 07:56 | Robots can now reconstruct 3D scenes in real time from a sin...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-06 | 06:32 | ? this guy built an insane AI job-hunting agent for Claude C...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-06 | 06:31 | Steerable Visual Representations. ? From @jonaruthardt, @gau...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-06 | 04:37 | Made an updated version this weekend Here's how you do it (r...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-06 | 00:43 | Video generation models are evolving into world simulators, ...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-04-06 | 17:49 | AI Native Seams... Finally? #3D ? Excited to share our recen...... | https://arxiv.org/pdf/2304.12210 | N/A | N/A | [분석](papers/2304.12210/paper.md) | N/A |

@@ -1,0 +1,686 @@
+# LLM-Wiki
+
+> Auto-generated wiki layer for AI agents and humans. Browse the same content as HTML at /, or fetch graph.jsonld for the structured view.
+
+## Sources
+
+- [Architecture](sources/architecture.html): - **uses_metric** → mAP _(Metric)_
+- [Architecture (fixture)](sources/architecture-fixture.html)
+- [Codex extraction review (2026-05-01)](sources/codex-extraction-review-2026-05-01.html): - **evaluated_on** → DTU _(Benchmark)_ - **evaluated_on** → Mip-NeRF360 _(Benchmark)_ - **evaluated_on** → Tanks and Temples _(Benchmark)_ - **uses_metric** → Precision _(Metric)_ - **uses_metric** → mAP _(Metric)_
+- [Codex graph-view review (2026-05-04)](sources/codex-graph-view-review-2026-05-04.html): - **evaluated_on** → MATH _(Benchmark)_
+- [Daily Feed Summary — 2026-04-06](sources/daily-feed-summary-2026-04-06.html): - **mentioned_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_ - **mentioned_in** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_ - **mentioned_in** → 자기지도학습 요리책 _(Paper)_
+- [Daily Feed Summary — 2026-04-07](sources/daily-feed-summary-2026-04-07.html)
+- [Daily Feed Summary — 2026-04-08](sources/daily-feed-summary-2026-04-08.html): - **mentioned_in** → Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation _(Paper)_ - **mentioned_in** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_ - **mentioned_in**…
+- [Daily Feed Summary — 2026-04-09](sources/daily-feed-summary-2026-04-09.html): - **mentioned_in** → Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation _(Paper)_ - **mentioned_in** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_ - **mentioned_in**…
+- [Daily Feed Summary — 2026-04-10](sources/daily-feed-summary-2026-04-10.html): - **mentioned_in** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_ - **mentioned_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_
+- [Daily Feed Summary — 2026-04-11](sources/daily-feed-summary-2026-04-11.html): - **mentioned_in** → ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전 _(Paper)_ - **uses_dataset** → Blender _(Dataset)_
+- [Daily Feed Summary — 2026-04-12](sources/daily-feed-summary-2026-04-12.html): - **mentioned_in** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
+- [Daily Feed Summary — 2026-04-13](sources/daily-feed-summary-2026-04-13.html): - **mentioned_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_
+- [Daily Feed Summary — 2026-04-14](sources/daily-feed-summary-2026-04-14.html): - **uses_metric** → mAP _(Metric)_
+- [Daily Feed Summary — 2026-04-15](sources/daily-feed-summary-2026-04-15.html): - **mentioned_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_ - **mentioned_in** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- [Daily Feed Summary — 2026-04-16](sources/daily-feed-summary-2026-04-16.html): - **mentioned_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_ - **mentioned_in** → Geometry-Grounded Gaussian Splatting _(Paper)_ - **mentioned_in** → Lyra 2.0: Explorable Generative 3D Worlds _(Paper)_
+- [Daily Feed Summary — 2026-04-18](sources/daily-feed-summary-2026-04-18.html)
+- [Daily Feed Summary — 2026-04-22](sources/daily-feed-summary-2026-04-22.html): - **mentioned_in** → ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전 _(Paper)_ - **mentioned_in** → All elementary functions from a single binary operator _(Paper)_ - **mentioned_in** → An Outlook into the Future of Egocentric Vision _…
+- [Daily Feed Summary — 2026-04-23](sources/daily-feed-summary-2026-04-23.html): - **mentioned_in** → ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전 _(Paper)_ - **mentioned_in** → CLAW: Composable Language-Annotated Whole-body Motion Generation _(Paper)_ - **mentioned_in** → Cross-Attentive Multiview Fusion of Vis…
+- [Daily Feed Summary — 2026-04-24](sources/daily-feed-summary-2026-04-24.html): - **mentioned_in** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_ - **mentioned_in** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_ - **mentioned_in** → Image Genera…
+- [Daily Feed Summary — 2026-04-25](sources/daily-feed-summary-2026-04-25.html): - **mentioned_in** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_ - **mentioned_in** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_ - **mentioned_in** → Neural Gabor Splatting: Enhan…
+- [Daily Feed Summary — 2026-04-26](sources/daily-feed-summary-2026-04-26.html): - **mentioned_in** → Geometry-Grounded Gaussian Splatting _(Paper)_ - **mentioned_in** → Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras _(Paper)_ - **mentioned_in** → TRiGS: Temporal Rigi…
+- [Daily Feed Summary — 2026-04-27](sources/daily-feed-summary-2026-04-27.html): - **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **mentioned_in** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_ - **mentioned_in** → Distance Field Rasterization for End-…
+- [Daily Feed Summary — 2026-04-28](sources/daily-feed-summary-2026-04-28.html): - **mentioned_in** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_ - **reports_result** → accuracy=90 _(Result)_ - **uses_metric** → Accuracy _(Metric)_
+- [Daily Feed Summary — 2026-04-29](sources/daily-feed-summary-2026-04-29.html): - **mentioned_in** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_ - **mentioned_in** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_ - **mentioned_in** → RAVEN: Resilien…
+- [Daily Feed Summary — 2026-04-30](sources/daily-feed-summary-2026-04-30.html): - **mentioned_in** → Efficient Universal Perception Encoder _(Paper)_ - **mentioned_in** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_ - **mentioned_in** → Power Foam: Unifying Real-Time Differentiable Ray Tr…
+- [Daily Feed Summary — 2026-05-01](sources/daily-feed-summary-2026-05-01.html): - **mentioned_in** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_ - **mentioned_in** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
+- [Daily Feed Summary — 2026-05-02](sources/daily-feed-summary-2026-05-02.html): - **mentioned_in** → Long-tail Internet photo reconstruction _(Paper)_ - **mentioned_in** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
+- [Daily Feed Summary — 2026-05-03](sources/daily-feed-summary-2026-05-03.html): - **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **mentioned_in** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_ - **mentioned_in** → Img2CAD: VLM-Assisted Condi…
+- [Daily Feed Summary — 2026-05-04](sources/daily-feed-summary-2026-05-04.html): - **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **mentioned_in** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_
+- [Daily Feed Summary — 2026-05-05](sources/daily-feed-summary-2026-05-05.html): - **mentioned_in** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_ - **mentioned_in** → Extreme Rotation Estimation in the Wild _(Paper)_ - **mentioned_in** → Stepper: Stepwise Immersive Scene Generation with…
+- [📬 Daily Research Digest — 2026-04-08](sources/daily-research-digest-2026-04-08.html): - **mentioned_in** → Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation _(Paper)_ - **mentioned_in** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_ - **mentioned_in**…
+- [📬 Daily Research Digest — 2026-04-15](sources/daily-research-digest-2026-04-15.html): - **mentioned_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_ - **mentioned_in** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- [📬 Daily Research Digest — 2026-04-18](sources/daily-research-digest-2026-04-18.html): - **uses_metric** → mAP _(Metric)_
+- [📬 Daily Research Digest — 2026-04-22](sources/daily-research-digest-2026-04-22.html): - **mentioned_in** → All elementary functions from a single binary operator _(Paper)_ - **mentioned_in** → An Outlook into the Future of Egocentric Vision _(Paper)_ - **mentioned_in** → Stable Part Diffusion 4D: Multi-View RGB and Kinemati…
+- [📬 Daily Research Digest — 2026-04-23](sources/daily-research-digest-2026-04-23.html): - **mentioned_in** → ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전 _(Paper)_ - **mentioned_in** → CLAW: Composable Language-Annotated Whole-body Motion Generation _(Paper)_ - **mentioned_in** → Cross-Attentive Multiview Fusion of Vis…
+- [📬 Daily Research Digest — 2026-04-24](sources/daily-research-digest-2026-04-24.html): - **mentioned_in** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_ - **mentioned_in** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_ - **mentioned_in** → Image Genera…
+- [📬 Daily Research Digest — 2026-04-25](sources/daily-research-digest-2026-04-25.html): - **mentioned_in** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_ - **mentioned_in** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_ - **mentioned_in** → Neural Gabor Splatting: Enhan…
+- [📬 Daily Research Digest — 2026-04-26](sources/daily-research-digest-2026-04-26.html): - **mentioned_in** → Geometry-Grounded Gaussian Splatting _(Paper)_ - **mentioned_in** → Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras _(Paper)_ - **mentioned_in** → TRiGS: Temporal Rigi…
+- [📬 Daily Research Digest — 2026-04-27](sources/daily-research-digest-2026-04-27.html): - **mentioned_in** → Geometry-Grounded Gaussian Splatting _(Paper)_ - **mentioned_in** → Image Generators are Generalist Vision Learners _(Paper)_ - **mentioned_in** → Sapiens2 _(Paper)_
+- [📬 Daily Research Digest — 2026-04-28](sources/daily-research-digest-2026-04-28.html): - **mentioned_in** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_
+- [📬 Daily Research Digest — 2026-04-29](sources/daily-research-digest-2026-04-29.html): - **mentioned_in** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_ - **mentioned_in** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_ - **mentioned_in** → OmniXtreme: Breaking the Ge…
+- [📬 Daily Research Digest — 2026-04-30](sources/daily-research-digest-2026-04-30.html): - **mentioned_in** → Efficient Universal Perception Encoder _(Paper)_ - **mentioned_in** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_ - **mentioned_in** → Power Foam: Unifying Real-Time Differentiable Ray Tr…
+- [📬 Daily Research Digest — 2026-05-01](sources/daily-research-digest-2026-05-01.html): - **mentioned_in** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_ - **mentioned_in** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
+- [📬 Daily Research Digest — 2026-05-02](sources/daily-research-digest-2026-05-02.html): - **mentioned_in** → Long-tail Internet photo reconstruction _(Paper)_ - **mentioned_in** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
+- [📬 Daily Research Digest — 2026-05-03](sources/daily-research-digest-2026-05-03.html): - **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **mentioned_in** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_ - **mentioned_in** → Img2CAD: VLM-Assisted Condi…
+- [📬 Daily Research Digest — 2026-05-04](sources/daily-research-digest-2026-05-04.html): - **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **mentioned_in** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_
+- [📬 Daily Research Digest — 2026-05-05](sources/daily-research-digest-2026-05-05.html): - **mentioned_in** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_ - **mentioned_in** → Extreme Rotation Estimation in the Wild _(Paper)_ - **mentioned_in** → Stepper: Stepwise Immersive Scene Generation with…
+- [digest](sources/digest.html)
+- [Feature Map](sources/feature-map.html): - **uses_metric** → mAP _(Metric)_
+- [Frontend redesign — annotated route walkthrough](sources/frontend-redesign-annotated-route-walkthrough.html): - **uses_metric** → mAP _(Metric)_
+- [Geometry-Grounded Gaussian Splatting](sources/geometry-grounded-gaussian-splatting.html): - **evaluated_on** → DTU _(Benchmark)_ - **evaluated_on** → Tanks and Temples _(Benchmark)_ - **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **mentioned_in** → Confidence-Based Mesh Extra…
+- [Installation](sources/installation.html)
+- [Karpathy alignment — plan](sources/karpathy-alignment-plan.html)
+- [LLM-Backed Synthesis Prose](sources/llm-backed-synthesis-prose.html)
+- [LLM-Wiki](sources/llm-wiki.html): - **uses_metric** → mAP _(Metric)_
+- [LLM-Wiki Frontend Redesign — Design Spec](sources/llm-wiki-frontend-redesign-design-spec.html)
+- [LLM-Wiki Frontend Redesign — Implementation Plan](sources/llm-wiki-frontend-redesign-implementation-plan.html): - **uses_metric** → mAP _(Metric)_
+- [Publishing Checklist](sources/publishing-checklist.html): - **uses_metric** → mAP _(Metric)_
+- [Quickstart](sources/quickstart.html)
+- [Quickstart (fixture)](sources/quickstart-fixture.html)
+- [Self-dogfood Demo](sources/self-dogfood-demo.html)
+- [Synthesis fixtures](sources/synthesis-fixtures.html)
+- [Weekly Research Digest — 2026-W17](sources/weekly-research-digest-2026-w17.html): - **mentioned_in** → Image Generators are Generalist Vision Learners _(Paper)_
+- [WorldCompass: Reinforcement Learning for Long-Horizon World Models](sources/worldcompass-reinforcement-learning-for-long-horizon-world-models.html): - **documents** → Geometry-Grounded Gaussian Splatting _(ApproachFamily)_ - **evaluated_on** → Mip-NeRF360 _(Benchmark)_ - **mentioned_in** → ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전 _(Paper)_ - **mentioned_in** → All elementary…
+- [주간 논문 분석 — 2026-W15 (2026-04-06 ~ 2026-04-12)](sources/주간-논문-분석-2026-w15-2026-04-06-2026-04-12.html): - **evaluated_on** → ImageNet _(Benchmark)_ - **mentioned_in** → Efficient Universal Perception Encoder _(Paper)_ - **mentioned_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_ - **mentioned_in** → Integrating Symmetry into Differ…
+- [📊 주간 리서치 다이제스트 — 2026-W15](sources/주간-리서치-다이제스트-2026-w15.html): - **mentioned_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_ - **mentioned_in** → Integrating Symmetry into Differentiable Planning with Steerable Convolutions _(Paper)_
+- [📊 주간 리서치 다이제스트 — 2026-W17](sources/주간-리서치-다이제스트-2026-w17.html): - **mentioned_in** → All elementary functions from a single binary operator _(Paper)_ - **mentioned_in** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_ - **mentioned_in** → T(R,O) Grasp:…
+- [파일에서 몇 가지 규칙 위반이 있습니다. 수정하겠습니다:](sources/파일에서-몇-가지-규칙-위반이-있습니다-수정하겠습니다.html)
+
+## Papers
+
+- [All elementary functions from a single binary operator](papers/all-elementary-functions-from-a-single-binary-operator.html): - **authored_by** → Andrzej Odrzywołek _(Person)_ - **implemented_in** → GitHub 분석: heygen-com/hyperframes _(Repository)_ - **part_of** → Research Literature _(ResearchField)_
+- [An Outlook into the Future of Egocentric Vision](papers/an-outlook-into-the-future-of-egocentric-vision.html): - **authored_by** → Antonino Furnari _(Person)_ - **authored_by** → Chiara Plizzari _(Person)_ - **authored_by** → Dima Damen _(Person)_ - **authored_by** → Francesco Ragusa _(Person)_ - **authored_by** → Gabriele Goletto _(Person)_ - **au…
+- [ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전](papers/arc-agi-3-frontier-agentic-intelligence를-위한-새로운-도전.html): - **authored_by** → ARC Prize Foundation _(Person)_ - **implemented_in** → GitHub 분석: GalaxyGeneralRobotics/LATENT _(Repository)_ - **implemented_in** → GitHub 분석: mfranzon/render _(Repository)_ - **part_of** → Research Literature _(Resear…
+- [ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild](papers/archsym-detecting-3d-grounded-architectural-symmetries-in-the-wild.html): - **authored_by** → Hanyu Chen _(Person)_ - **authored_by** → Noah Snavely _(Person)_ - **authored_by** → Ruojin Cai _(Person)_ - **authored_by** → Steve Marschner _(Person)_ - **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)…
+- [CLAW: Composable Language-Annotated Whole-body Motion Generation](papers/claw-composable-language-annotated-whole-body-motion-generation.html): - **authored_by** → Jianuo Cao _(Person)_ - **authored_by** → Masayoshi Tomizuka _(Person)_ - **authored_by** → Yuxin Chen _(Person)_ - **implemented_in** → GitHub 분석: SkalskiP/top-cvpr-2026-papers _(Repository)_ - **part_of** → Research L…
+- [Confidence-Based Mesh Extraction from 3D Gaussians](papers/confidence-based-mesh-extraction-from-3d-gaussians.html): - **authored_by** → Andreas Kurz _(Person)_ - **authored_by** → Felix Windisch _(Person)_ - **authored_by** → Lukas Radl _(Person)_ - **authored_by** → Markus Steinberger _(Person)_ - **authored_by** → Michael Steiner _(Person)_ - **author…
+- [Cross-Attentive Multiview Fusion of Vision-Language Embeddings](papers/cross-attentive-multiview-fusion-of-vision-language-embeddings.html): - **authored_by** → Javier Civera _(Person)_ - **authored_by** → Martin R. Oswald _(Person)_ - **authored_by** → Tomas Berriel Martins _(Person)_ - **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- [Distance Field Rasterization for End-to-End Mesh Reconstruction](papers/distance-field-rasterization-for-end-to-end-mesh-reconstruction.html): - **addresses** → Novel View Synthesis _(Task)_ - **authored_by** → Chumeng Niu _(Person)_ - **authored_by** → Jinkai Cui _(Person)_ - **authored_by** → Juyong Zhang _(Person)_ - **authored_by** → Kaiwen Song _(Person)_ - **evaluated_on**…
+- [Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving](papers/efficient-multi-camera-tokenization-with-triplanes-for-end-to-end-driving.html): - **authored_by** → Boris Ivanovic _(Person)_ - **authored_by** → Cristiano Saltori _(Person)_ - **authored_by** → Marco Pavone _(Person)_ - **authored_by** → Wenjie Luo _(Person)_ - **authored_by** → Yan Wang _(Person)_ - **authored_by**…
+- [Efficient Universal Perception Encoder](papers/efficient-universal-perception-encoder.html): - **authored_by** → Chenchen Zhu _(Person)_ - **authored_by** → Cijo Jose _(Person)_ - **authored_by** → Marc Szafraniec _(Person)_ - **authored_by** → Maxime Oquab _(Person)_ - **authored_by** → Patrick Labatut _(Person)_ - **authored_by*…
+- [Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset](papers/ego-extra-expert-trainee-지원을-위한-video-language-egocentric-dataset.html): - **authored_by** → Antonino Furnari _(Person)_ - **authored_by** → Francesco Ragusa _(Person)_ - **authored_by** → Giovanni Maria Farinella _(Person)_ - **authored_by** → Irene D&#039;Ambra _(Person)_ - **authored_by** → Jakob Engel _(Per…
+- [Extreme Rotation Estimation in the Wild](papers/extreme-rotation-estimation-in-the-wild.html): - **authored_by** → Dotan Ankri _(Person)_ - **authored_by** → Hadar Averbuch-Elor _(Person)_ - **authored_by** → Hana Bezalel _(Person)_ - **authored_by** → Ruojin Cai _(Person)_ - **part_of** → 3D/4D Vision and Reconstruction _(ResearchF…
+- [Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective](papers/feed-forward-3d-scene-modeling-a-problem-driven-perspective.html): - **addresses** → World Model _(ResearchTopic)_ - **authored_by** → Andreas Geiger _(Person)_ - **authored_by** → Bohan Zhuang _(Person)_ - **authored_by** → Chuanxia Zheng _(Person)_ - **authored_by** → Donny Y. Chen _(Person)_ - **author…
+- [Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation](papers/follow-your-emoji-fine-controllable-and-expressive-freestyle-portrait-animation.html): - **implemented_in** → GitHub 분석: KumapowerLIU/AvatarPointillist _(Repository)_ - **part_of** → Research Literature _(ResearchField)_ - **uses** → Stable Diffusion _(Model)_
+- [Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction](papers/free-range-gaussians-non-grid-aligned-generative-3d-gaussian-reconstruction.html): - **authored_by** → Ahan Shabanov _(Person)_ - **authored_by** → Andrea Tagliasacchi _(Person)_ - **authored_by** → Andrea Vedaldi _(Person)_ - **authored_by** → Bo Zhu _(Person)_ - **authored_by** → Christian Richardt _(Person)_ - **autho…
+- [FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성](papers/fullcircle-casual한-360-촬영으로-손쉬운-3d-재구성.html): - **authored_by** → Andrea Tagliasacchi _(Person)_ - **authored_by** → Aysegul Dundar _(Person)_ - **authored_by** → Daniel Rebain _(Person)_ - **authored_by** → Ipek Oztas _(Person)_ - **authored_by** → Kwang Moo Yi _(Person)_ - **authore…
+- [GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow](papers/gaussianflow-slam-monocular-gaussian-splatting-slam-guided-by-gaussianflow.html): - **addresses** → Visual SLAM _(ResearchTopic)_ - **authored_by** → Dong-Uk Seo _(Person)_ - **authored_by** → Eungchang Mason Lee _(Person)_ - **authored_by** → Hyun Myung _(Person)_ - **authored_by** → Jinwoo Jeon _(Person)_ - **belongs_…
+- [Geometry-Grounded Gaussian Splatting](papers/geometry-grounded-gaussian-splatting.html): - **addresses** → Novel View Synthesis _(Task)_ - **addresses** → Shape Reconstruction _(Task)_ - **authored_by** → Baowen Zhang _(Person)_ - **authored_by** → Chenxing Jiang _(Person)_ - **authored_by** → Heng Li _(Person)_ - **authored_b…
+- [Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋](papers/holo360d-파노라마-3d-재구성과-그-이상을-발전시키기-위한-연-96474e5d.html): - **addresses** → Visual SLAM _(ResearchTopic)_ - **authored_by** → Hui Xiong _(Person)_ - **authored_by** → Jing Ou _(Person)_ - **authored_by** → Jinjing Zhu _(Person)_ - **authored_by** → Shuai Zhang _(Person)_ - **authored_by** → Tongy…
+- [Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling](papers/human-in-the-loop-local-corrections-of-3d-scene-layouts-via-infilling.html): - **authored_by** → Armen Avetisyan _(Person)_ - **authored_by** → Christopher Xie _(Person)_ - **authored_by** → Henry Howard-Jenkins _(Person)_ - **authored_by** → Jakob Engel _(Person)_ - **authored_by** → Julian Straub _(Person)_ - **a…
+- [Image Generators are Generalist Vision Learners](papers/image-generators-are-generalist-vision-learners.html): - **authored_by** → Howard Zhou _(Person)_ - **authored_by** → Huizhong Chen _(Person)_ - **authored_by** → Jean-Baptiste Alayrac _(Person)_ - **authored_by** → Jonathan T. Barron _(Person)_ - **authored_by** → Kaiming He _(Person)_ - **au…
+- [Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링](papers/img2cad-vlm-assisted-conditional-factorization을-통한-이미지로부터의-3-737a56aa.html): - **authored_by** → Francis Engelmann _(Person)_ - **authored_by** → Hansheng Chen _(Person)_ - **authored_by** → Haotong Zhang _(Person)_ - **authored_by** → Jiaqi Han _(Person)_ - **authored_by** → Leonidas Guibas _(Person)_ - **authored…
+- [Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search](papers/inference-time-text-to-video-alignment-with-diffusion-latent-beam-search.html): - **authored_by** → Hiroki Furuta _(Person)_ - **authored_by** → Masahiro Suzuki _(Person)_ - **authored_by** → Yuta Oshima _(Person)_ - **authored_by** → Yutaka Matsuo _(Person)_ - **part_of** → 3D/4D Vision and Reconstruction _(ResearchF…
+- [Integrating Symmetry into Differentiable Planning with Steerable Convolutions](papers/integrating-symmetry-into-differentiable-planning-with-steerable-convolutions.html): - **authored_by** → Lawson L. S. Wong _(Person)_ - **authored_by** → Linfeng Zhao _(Person)_ - **authored_by** → Lingzhi Kong _(Person)_ - **authored_by** → Robin Walters _(Person)_ - **authored_by** → Xupeng Zhu _(Person)_ - **implemented…
+- [Learning in Deep Factor Graphs with Gaussian Belief Propagation](papers/learning-in-deep-factor-graphs-with-gaussian-belief-propagation.html): - **authored_by** → Andrew J Davison _(Person)_ - **authored_by** → Mark van der Wilk _(Person)_ - **authored_by** → Seth Nabarro _(Person)_ - **implemented_in** → GitHub 분석: mfranzon/render _(Repository)_ - **part_of** → 3D/4D Vision and…
+- [Lifting Unlabeled Internet-level Data for 3D Scene Understanding](papers/lifting-unlabeled-internet-level-data-for-3d-scene-understanding.html): - **authored_by** → Baoxiong Jia _(Person)_ - **authored_by** → Hongyu Shen _(Person)_ - **authored_by** → Huangyue Yu _(Person)_ - **authored_by** → Jiangyong Huang _(Person)_ - **authored_by** → Junchao He _(Person)_ - **authored_by** →…
+- [Long-tail Internet photo reconstruction](papers/long-tail-internet-photo-reconstruction.html): - **authored_by** → Hadar Averbuch-Elor _(Person)_ - **authored_by** → Noah Snavely _(Person)_ - **authored_by** → Ruojin Cai _(Person)_ - **authored_by** → Yuan Li _(Person)_ - **authored_by** → Yuanbo Xiangli _(Person)_ - **implemented_i…
+- [Lyra 2.0: Explorable Generative 3D Worlds](papers/lyra-2-0-explorable-generative-3d-worlds.html): - **implemented_in** → GitHub 분석: NVIDIA/OpenShell _(Repository)_ - **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- [Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras](papers/match-any-events-zero-shot-motion-robust-feature-matching-across-wide-baselines-dbc18631.html): - **authored_by** → Hang Su _(Person)_ - **authored_by** → Kostas Daniilidis _(Person)_ - **authored_by** → Ruijun Zhang _(Person)_ - **authored_by** → Ziyun Wang _(Person)_ - **part_of** → Research Literature _(ResearchField)_ - **uses**…
+- [Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction](papers/neural-gabor-splatting-enhanced-gaussian-splatting-with-neural-gabor-for-high-fr-847471cb.html): - **authored_by** → Haato Watanabe _(Person)_ - **authored_by** → Nobuyuki Umetani _(Person)_ - **belongs_to_approach_family** → Gaussian Splatting Reconstruction _(ApproachFamily)_ - **evaluated_on** → Mip-NeRF360 _(Benchmark)_ - **part_o…
+- [OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control](papers/omnixtreme-breaking-the-generality-barrier-in-high-dynamic-humanoid-control.html): - **authored_by** → Baoxiong Jia _(Person)_ - **authored_by** → Jiaxin Li _(Person)_ - **authored_by** → Peiyuan Zhi _(Person)_ - **authored_by** → Shaohang Zhu _(Person)_ - **authored_by** → Siyuan Huang _(Person)_ - **authored_by** → Xin…
+- [Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization](papers/power-foam-unifying-real-time-differentiable-ray-tracing-and-rasterization.html): - **authored_by** → Andrea Tagliasacchi _(Person)_ - **authored_by** → Anish Prabhu _(Person)_ - **authored_by** → Daniel Rebain _(Person)_ - **authored_by** → Dor Verbin _(Person)_ - **authored_by** → Kwang Moo Yi _(Person)_ - **authored_…
+- [RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation](papers/raven-resilient-aerial-navigation-via-open-set-semantic-memory-and-behavior-adaptation.html): - **authored_by** → Dmytro Kurdydyk _(Person)_ - **authored_by** → John Keller _(Person)_ - **authored_by** → Nikhil Keetha _(Person)_ - **authored_by** → Omar Alama _(Person)_ - **authored_by** → Sebastian Scherer _(Person)_ - **authored_…
+- [Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습](papers/rays-as-pixels-비디오와-카메라-궤적의-결합-분포-학습.html): - **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_ - **uses** → Video Diffusion _(MethodologicalConcept)_
+- [RoMo: Robust Motion Segmentation Improves Structure from Motion](papers/romo-robust-motion-segmentation-improves-structure-from-motion.html): - **authored_by** → Alec Jacobson _(Person)_ - **authored_by** → Andrea Tagliasacchi _(Person)_ - **authored_by** → David J. Fleet _(Person)_ - **authored_by** → Dmitry Lagun _(Person)_ - **authored_by** → Lily Goli _(Person)_ - **authored…
+- [Sapiens2](papers/sapiens2.html): - **authored_by** → He Wen _(Person)_ - **authored_by** → Julieta Martinez _(Person)_ - **authored_by** → Rawal Khirodkar _(Person)_ - **authored_by** → Shunsuke Saito _(Person)_ - **authored_by** → Su Zhaoen _(Person)_ - **authored_by** →…
+- [Scaling 4D Representations](papers/scaling-4d-representations.html): - **evaluated_on** → ImageNet _(Benchmark)_ - **implemented_in** → GitHub 분석: google-deepmind/representations4d _(Repository)_ - **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- [Scaling Sequence-to-Sequence Generative Neural Rendering](papers/scaling-sequence-to-sequence-generative-neural-rendering.html): - **authored_by** → Chi Phung _(Person)_ - **authored_by** → Haozhe Liu _(Person)_ - **authored_by** → Jiadong Guo _(Person)_ - **authored_by** → Juan C. Pérez _(Person)_ - **authored_by** → Juan-Manuel Pérez-Rúa _(Person)_ - **authored_by…
+- [Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation](papers/stable-part-diffusion-4d-multi-view-rgb-and-kinematic-parts-video-generation.html): - **authored_by** → Chun-Han Yao _(Person)_ - **authored_by** → Hao Zhang _(Person)_ - **authored_by** → Narendra Ahuja _(Person)_ - **authored_by** → Simon Donné _(Person)_ - **authored_by** → Varun Jampani _(Person)_ - **implemented_in**…
+- [Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas](papers/stepper-stepwise-immersive-scene-generation-with-multiview-panoramas.html): - **addresses** → World Model _(ResearchTopic)_ - **authored_by** → Christian Rupprecht _(Person)_ - **authored_by** → Daniel Cremers _(Person)_ - **authored_by** → Fabian Manhardt _(Person)_ - **authored_by** → Federico Tombari _(Person)_…
+- [T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion](papers/t-r-o-grasp-cross-embodiment-dexterous-grasping을-위한-robot-object-spatial-t-e5dccb3a.html): - **authored_by** → Huaicong Fang _(Person)_ - **authored_by** → Lin Shao _(Person)_ - **authored_by** → Tianrui Zhang _(Person)_ - **authored_by** → Xin Fei _(Person)_ - **authored_by** → Zhixuan Xu _(Person)_ - **implemented_in** → GitHu…
+- [Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation](papers/towards-depth-foundation-model-recent-trends-in-vision-based-depth-estimation.html): - **authored_by** → Haotong Lin _(Person)_ - **authored_by** → Haoyu Guo _(Person)_ - **authored_by** → Hongyu Zhou _(Person)_ - **authored_by** → Hujun Bao _(Person)_ - **authored_by** → Jiahao Shao _(Person)_ - **authored_by** → Peishan…
+- [TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting](papers/trigs-temporal-rigid-body-motion-for-scalable-4d-gaussian-splatting.html): - **authored_by** → Jaesik Park _(Person)_ - **authored_by** → Joonsik Nam _(Person)_ - **authored_by** → Joonsoo Kim _(Person)_ - **authored_by** → Kugjin Yun _(Person)_ - **authored_by** → Kyeongbo Kong _(Person)_ - **authored_by** → Luc…
+- [ViBA: Implicit Bundle Adjustment with Geometric and Temporal Consistency for Robust Visual Matching](papers/viba-implicit-bundle-adjustment-with-geometric-and-temporal-consistency-for-robu-4e9b6754.html): - **authored_by** → Hailiang Tang _(Person)_ - **authored_by** → Tisheng Zhang _(Person)_ - **authored_by** → Xiaoji Niu _(Person)_ - **authored_by** → Yan Wang _(Person)_ - **authored_by** → Yuqing Wang _(Person)_ - **part_of** → 3D/4D Vi…
+- [Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여](papers/video4spatial-context-guided-video-generation을-통한-시각-공간-지능을-향하여.html): - **authored_by** → Lingxiao Li _(Person)_ - **authored_by** → Mohammad H. Taghavi _(Person)_ - **authored_by** → Rahul Garg _(Person)_ - **authored_by** → Roshni Cooper _(Person)_ - **authored_by** → Xingang Pan _(Person)_ - **authored_by…
+- [WorldCompass: Reinforcement Learning for Long-Horizon World Models](papers/worldcompass-reinforcement-learning-for-long-horizon-world-models.html): - **addresses** → World Model _(ResearchTopic)_ - **authored_by** → Chenjie Cao _(Person)_ - **authored_by** → Chunchao Guo _(Person)_ - **authored_by** → Haiyu Zhang _(Person)_ - **authored_by** → Haoyuan Wang _(Person)_ - **authored_by**…
+- [자기지도학습 요리책](papers/자기지도학습-요리책.html): - **part_of** → Research Literature _(ResearchField)_ - **uses** → Self-Supervised Learning _(TrainingParadigm)_ - **uses** → Supervised Learning _(TrainingParadigm)_
+
+## Repos
+
+- [GitHub 분석: addyosmani/agent-skills](repos/github-분석-addyosmani-agent-skills.html)
+- [GitHub 분석: Aero-Ex/ComfyUI-SegviGen](repos/github-분석-aero-ex-comfyui-segvigen.html): - **released_by** → aero-ex _(Organization)_
+- [GitHub 분석: affaan-m/everything-claude-code](repos/github-분석-affaan-m-everything-claude-code.html): - **released_by** → affaan-m _(Organization)_
+- [GitHub 분석: ag2ai/ag2studio](repos/github-분석-ag2ai-ag2studio.html): - **released_by** → ag2ai _(Organization)_
+- [GitHub 분석: AHEKOT/ComfyUI_HYWorld2](repos/github-분석-ahekot-comfyui-hyworld2.html)
+- [GitHub 분석: ahujasid/blender-mcp](repos/github-분석-ahujasid-blender-mcp.html): - **uses_dataset** → Blender _(Dataset)_
+- [GitHub 분석: AISmithLab/CoBRA](repos/github-분석-aismithlab-cobra.html)
+- [GitHub 분석: alexbatalov/fallout1-re](repos/github-분석-alexbatalov-fallout1-re.html)
+- [GitHub 분석: allenai/molmoact](repos/github-분석-allenai-molmoact.html): - **released_by** → allenai _(Organization)_
+- [GitHub 분석: AmyangXYZ/reze-studio](repos/github-분석-amyangxyz-reze-studio.html)
+- [GitHub 분석: Anil-matcha/Open-Higgsfield-AI](repos/github-분석-anil-matcha-open-higgsfield-ai.html): - **released_by** → anil-matcha _(Organization)_
+- [GitHub 분석: anthropics/claude-code](repos/github-분석-anthropics-claude-code.html)
+- [GitHub 분석: apinanaivot/IKEA-3D-Model-Download-Button](repos/github-분석-apinanaivot-ikea-3d-model-download-button.html)
+- [GitHub 분석: apple/ml-4m](repos/github-분석-apple-ml-4m.html): - **released_by** → apple _(Organization)_
+- [GitHub 분석: apple/ml-mobileclip](repos/github-분석-apple-ml-mobileclip.html): - **released_by** → apple _(Organization)_
+- [GitHub 분석: aree6/LiftShift](repos/github-분석-aree6-liftshift.html)
+- [GitHub 분석: ArthurBrussee/brush](repos/github-분석-arthurbrussee-brush.html)
+- [GitHub 분석: asherikov/shoggoth](repos/github-분석-asherikov-shoggoth.html)
+- [GitHub 분석: asimovinc/asimov-v1](repos/github-분석-asimovinc-asimov-v1.html)
+- [GitHub 분석: autowarefoundation/autoware](repos/github-분석-autowarefoundation-autoware.html)
+- [GitHub 분석: awesome-opencode/awesome-opencode](repos/github-분석-awesome-opencode-awesome-opencode.html): - **released_by** → awesome-opencode _(Organization)_
+- [GitHub 분석: baidu/ernie-image](repos/github-분석-baidu-ernie-image.html)
+- [GitHub 분석: bernakabadayi/physhead](repos/github-분석-bernakabadayi-physhead.html)
+- [GitHub 분석: Blaizzy/mlx-vlm](repos/github-분석-blaizzy-mlx-vlm.html)
+- [GitHub 분석: BoPeng/ai-marketplace-monitor](repos/github-분석-bopeng-ai-marketplace-monitor.html)
+- [GitHub 분석: cedarconnor/SPAG4d](repos/github-분석-cedarconnor-spag4d.html)
+- [GitHub 분석: ClaudiaCuttano/SANSA](repos/github-분석-claudiacuttano-sansa.html): - **evaluated_on** → COCO _(Benchmark)_ - **uses_dataset** → ADE20K _(Dataset)_
+- [GitHub 분석: colmap/colmap](repos/github-분석-colmap-colmap.html)
+- [GitHub 분석: cvg/resplat](repos/github-분석-cvg-resplat.html): - **implemented_in** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- [GitHub 분석: deepseek-ai/TileKernels](repos/github-분석-deepseek-ai-tilekernels.html): - **released_by** → deepseek-ai _(Organization)_
+- [GitHub 분석: DIYgod/RSSHub](repos/github-분석-diygod-rsshub.html)
+- [GitHub 분석: dqj5182/HACO_RELEASE](repos/github-분석-dqj5182-haco-release.html)
+- [GitHub 분석: edward3862/ImgDecom](repos/github-분석-edward3862-imgdecom.html)
+- [GitHub 분석: elias1518693/jpeg_textures](repos/github-분석-elias1518693-jpeg-textures.html)
+- [GitHub 분석: EnidPinxit/awesome-openclaw-agents](repos/github-분석-enidpinxit-awesome-openclaw-agents.html)
+- [GitHub 분석: enix/x509-certificate-exporter](repos/github-분석-enix-x509-certificate-exporter.html)
+- [GitHub 분석: eth-ait/Gaussian-Garments](repos/github-분석-eth-ait-gaussian-garments.html): - **released_by** → eth-ait _(Organization)_
+- [GitHub 분석: EvolvingLMMs-Lab/SimpleStream](repos/github-분석-evolvinglmms-lab-simplestream.html): - **released_by** → evolvinglmms-lab _(Organization)_
+- [GitHub 분석: Eyeline-Labs/Vista4D](repos/github-분석-eyeline-labs-vista4d.html): - **released_by** → eyeline-labs _(Organization)_
+- [GitHub 분석: facebookresearch/AINA](repos/github-분석-facebookresearch-aina.html): - **released_by** → facebookresearch _(Organization)_
+- [GitHub 분석: facebookresearch/EUPE](repos/github-분석-facebookresearch-eupe.html): - **released_by** → facebookresearch _(Organization)_
+- [GitHub 분석: facebookresearch/map-anything](repos/github-분석-facebookresearch-map-anything.html): - **released_by** → facebookresearch _(Organization)_ - **uses_metric** → mAP _(Metric)_
+- [GitHub 분석: facebookresearch/sapiens2](repos/github-분석-facebookresearch-sapiens2.html): - **released_by** → facebookresearch _(Organization)_
+- [GitHub 분석: facebookresearch/threadweaver](repos/github-분석-facebookresearch-threadweaver.html): - **released_by** → facebookresearch _(Organization)_
+- [GitHub 분석: facebookresearch/tribev2](repos/github-분석-facebookresearch-tribev2.html): - **released_by** → facebookresearch _(Organization)_
+- [GitHub 분석: facebookresearch/vjepa2](repos/github-분석-facebookresearch-vjepa2.html): - **released_by** → facebookresearch _(Organization)_
+- [GitHub 분석: fanegg/Feat2GS](repos/github-분석-fanegg-feat2gs.html)
+- [GitHub 분석: FanJunqiao/M4Human](repos/github-분석-fanjunqiao-m4human.html): - **implemented_in** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_
+- [GitHub 분석: GalaxyGeneralRobotics/LATENT](repos/github-분석-galaxygeneralrobotics-latent.html): - **implemented_in** → ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전 _(Paper)_
+- [GitHub 분석: genforce/JOSH](repos/github-분석-genforce-josh.html)
+- [GitHub 분석: gmberton/vismatch](repos/github-분석-gmberton-vismatch.html)
+- [GitHub 분석: google-deepmind/representations4d](repos/github-분석-google-deepmind-representations4d.html): - **released_by** → google-deepmind _(Organization)_
+- [GitHub 분석: google-research/vision-banana](repos/github-분석-google-research-vision-banana.html): - **released_by** → google-research _(Organization)_
+- [GitHub 분석: h-shiono/MRTKLIB](repos/github-분석-h-shiono-mrtklib.html): - **released_by** → h-shiono _(Organization)_
+- [GitHub 분석: heygen-com/hyperframes](repos/github-분석-heygen-com-hyperframes.html): - **released_by** → heygen-com _(Organization)_
+- [GitHub 분석: HKU-MMLab/Macro](repos/github-분석-hku-mmlab-macro.html): - **released_by** → hku-mmlab _(Organization)_
+- [GitHub 분석: huskydoge/Awesome-Loop-Models](repos/github-분석-huskydoge-awesome-loop-models.html)
+- [GitHub 분석: imlixinyang/FlashWorld](repos/github-분석-imlixinyang-flashworld.html): - **implemented_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+- [GitHub 분석: inspatio/inspatio-world](repos/github-분석-inspatio-inspatio-world.html)
+- [GitHub 분석: isaaccorley/terrabit](repos/github-분석-isaaccorley-terrabit.html): - **uses_metric** → mAP _(Metric)_
+- [GitHub 분석: jendrikseipp/vulture](repos/github-분석-jendrikseipp-vulture.html)
+- [GitHub 분석: jonbarron/gaussid](repos/github-분석-jonbarron-gaussid.html)
+- [GitHub 분석: KAIST-Visual-AI-Group/GrounDiT](repos/github-분석-kaist-visual-ai-group-groundit.html): - **released_by** → kaist-visual-ai-group _(Organization)_
+- [GitHub 분석: KAIST-Visual-AI-Group/MatLat](repos/github-분석-kaist-visual-ai-group-matlat.html): - **released_by** → kaist-visual-ai-group _(Organization)_
+- [GitHub 분석: Kotohibi/3DGS_pipeline_guide](repos/github-분석-kotohibi-3dgs-pipeline-guide.html)
+- [GitHub 분석: KumapowerLIU/AvatarPointillist](repos/github-분석-kumapowerliu-avatarpointillist.html): - **implemented_in** → Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation _(Paper)_
+- [GitHub 분석: Lab-of-AI-and-Robotics/LEGO-SLAM](repos/github-분석-lab-of-ai-and-robotics-lego-slam.html): - **released_by** → lab-of-ai-and-robotics _(Organization)_
+- [GitHub 분석: LeapLabTHU/RvR](repos/github-분석-leaplabthu-rvr.html)
+- [GitHub 분석: LilanOvO/Auto-Resubmit](repos/github-분석-lilanovo-auto-resubmit.html)
+- [GitHub 분석: lllyasviel/VCC](repos/github-분석-lllyasviel-vcc.html)
+- [GitHub 분석: lyehe/build_gpu_colmap](repos/github-분석-lyehe-build-gpu-colmap.html): - **implemented_in** → Long-tail Internet photo reconstruction _(Paper)_
+- [GitHub 분석: m-schuetz/CuRast](repos/github-분석-m-schuetz-curast.html): - **released_by** → m-schuetz _(Organization)_
+- [GitHub 분석: machinestein/Deep-Improvement-Supervision](repos/github-분석-machinestein-deep-improvement-supervision.html): - **implemented_in** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_
+- [GitHub 분석: mandarwagh9/openeyes](repos/github-분석-mandarwagh9-openeyes.html)
+- [GitHub 분석: meshsplatting/mesh-splatting](repos/github-분석-meshsplatting-mesh-splatting.html)
+- [GitHub 분석: mfranzon/render](repos/github-분석-mfranzon-render.html): - **implemented_in** → ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전 _(Paper)_ - **implemented_in** → Learning in Deep Factor Graphs with Gaussian Belief Propagation _(Paper)_
+- [GitHub 분석: microsoft/World-R1](repos/github-분석-microsoft-world-r1.html): - **released_by** → microsoft _(Organization)_
+- [GitHub 분석: mrdoob/three.js](repos/github-분석-mrdoob-three-js.html)
+- [GitHub 분석: mutianxu/Kinema4D](repos/github-분석-mutianxu-kinema4d.html)
+- [GitHub 분석: naver/pow3r](repos/github-분석-naver-pow3r.html)
+- [GitHub 분석: Netflix/void-model](repos/github-분석-netflix-void-model.html)
+- [GitHub 분석: nv-tlabs/lyra](repos/github-분석-nv-tlabs-lyra.html): - **released_by** → nv-tlabs _(Organization)_
+- [GitHub 분석: nvidia/asset-harvester](repos/github-분석-nvidia-asset-harvester.html): - **released_by** → nvidia _(Organization)_
+- [GitHub 분석: NVIDIA/ncore](repos/github-분석-nvidia-ncore.html): - **released_by** → nvidia _(Organization)_
+- [GitHub 분석: NVIDIA/OpenShell](repos/github-분석-nvidia-openshell.html): - **released_by** → nvidia _(Organization)_
+- [GitHub 분석: NVIDIAGameWorks/kaolin](repos/github-분석-nvidiagameworks-kaolin.html)
+- [GitHub 분석: NVlabs/PointWorld](repos/github-분석-nvlabs-pointworld.html): - **released_by** → nvlabs _(Organization)_
+- [GitHub 분석: omerb01/didicm](repos/github-분석-omerb01-didicm.html)
+- [GitHub 분석: openclaw/openclaw](repos/github-분석-openclaw-openclaw.html)
+- [GitHub 분석: OpenDriveLab/SimScale](repos/github-분석-opendrivelab-simscale.html)
+- [GitHub 분석: OpenDriveLab/WorldEngine](repos/github-분석-opendrivelab-worldengine.html)
+- [GitHub 분석: OpsiClear-4DGS/TriGSVanilla](repos/github-분석-opsiclear-4dgs-trigsvanilla.html): - **released_by** → opsiclear-4dgs _(Organization)_
+- [GitHub 분석: Perkins729/OmniXtreme](repos/github-분석-perkins729-omnixtreme.html): - **implemented_in** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_
+- [GitHub 분석: PolymathicAI/the_well](repos/github-분석-polymathicai-the-well.html): - **released_by** → polymathicai _(Organization)_
+- [GitHub 분석: qq456cvb/Img2CAD](repos/github-분석-qq456cvb-img2cad.html): - **implemented_in** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_
+- [GitHub 분석: r4dl/CoMe](repos/github-분석-r4dl-come.html): - **implemented_in** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_
+- [GitHub 분석: ReconWorldLab/godot-gaussian-splatting](repos/github-분석-reconworldlab-godot-gaussian-splatting.html): - **implemented_in** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- [GitHub 분석: reinehonoka/Voice-Design-Cloner](repos/github-분석-reinehonoka-voice-design-cloner.html)
+- [GitHub 분석: Robbyant/lingbot-va](repos/github-분석-robbyant-lingbot-va.html)
+- [GitHub 분석: roboflow/rf-detr](repos/github-분석-roboflow-rf-detr.html): - **evaluated_on** → COCO _(Benchmark)_
+- [GitHub 분석: RPL-CS-UCL/SDS](repos/github-분석-rpl-cs-ucl-sds.html): - **released_by** → rpl-cs-ucl _(Organization)_
+- [GitHub 분석: safishamsi/graphify](repos/github-분석-safishamsi-graphify.html)
+- [GitHub 분석: santifer/career-ops](repos/github-분석-santifer-career-ops.html)
+- [GitHub 분석: Seeed-Projects/reBot-DevArm](repos/github-분석-seeed-projects-rebot-devarm.html): - **released_by** → seeed-projects _(Organization)_
+- [GitHub 분석: SkalskiP/top-cvpr-2026-papers](repos/github-분석-skalskip-top-cvpr-2026-papers.html): - **released_by** → skalskip _(Organization)_
+- [GitHub 분석: SkyworkAI/Matrix-3D](repos/github-분석-skyworkai-matrix-3d.html): - **released_by** → skyworkai _(Organization)_
+- [GitHub 분석: Stereo4d/stereo4d-code](repos/github-분석-stereo4d-stereo4d-code.html)
+- [GitHub 분석: sv-pp/SceneVersepp](repos/github-분석-sv-pp-sceneversepp.html): - **released_by** → sv-pp _(Organization)_
+- [GitHub 분석: TakashiYoshinaga/360-to-RealityScan](repos/github-분석-takashiyoshinaga-360-to-realityscan.html)
+- [GitHub 분석: TakashiYoshinaga/Perspective-Effect-with-Head-Tracking-of-MediaPipe](repos/github-분석-takashiyoshinaga-perspective-effect-with-head-tracking-of-mediapipe.html)
+- [GitHub 분석: taylorallenux/engine-lab](repos/github-분석-taylorallenux-engine-lab.html)
+- [GitHub 분석: team-aprl/MR.ScaleMaster](repos/github-분석-team-aprl-mr-scalemaster.html): - **evaluated_on** → KITTI _(Benchmark)_ - **released_by** → team-aprl _(Organization)_
+- [GitHub 분석: Tencent-Hunyuan/HY-WorldPlay](repos/github-분석-tencent-hunyuan-hy-worldplay.html): - **released_by** → tencent-hunyuan _(Organization)_
+- [GitHub 분석: TencentARC/MotionCrafter](repos/github-분석-tencentarc-motioncrafter.html)
+- [GitHub 분석: theialab/fullcircle](repos/github-분석-theialab-fullcircle.html): - **implemented_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_
+- [GitHub 분석: TheRealMJP/MSAAFilter](repos/github-분석-therealmjp-msaafilter.html)
+- [GitHub 분석: tue-mps/eomt](repos/github-분석-tue-mps-eomt.html): - **released_by** → tue-mps _(Organization)_
+- [GitHub 분석: visinf/INSID3](repos/github-분석-visinf-insid3.html): - **evaluated_on** → COCO _(Benchmark)_
+- [GitHub 분석: weitong8591/global_edge_prior](repos/github-분석-weitong8591-global-edge-prior.html)
+- [GitHub 분석: World-In-World/world-in-world](repos/github-분석-world-in-world-world-in-world.html): - **released_by** → world-in-world _(Organization)_
+- [GitHub 분석: xiquan-li/TinyMU](repos/github-분석-xiquan-li-tinymu.html): - **released_by** → xiquan-li _(Organization)_
+- [GitHub 분석: xyxingx/LumiNet](repos/github-분석-xyxingx-luminet.html)
+- [GitHub 분석: YuqingWang1029/CubiD](repos/github-분석-yuqingwang1029-cubid.html)
+- [GitHub 분석: zju3dv/Scal3R](repos/github-분석-zju3dv-scal3r.html): - **implemented_in** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+- [GitHub 분석: zsh523/UniRecGen](repos/github-분석-zsh523-unirecgen.html)
+- [GitHub 분석: zubair-trabzada/ai-legal-claude](repos/github-분석-zubair-trabzada-ai-legal-claude.html): - **released_by** → zubair-trabzada _(Organization)_
+- [GitHub 분석: ZXP-S-works/EquAct](repos/github-분석-zxp-s-works-equact.html): - **released_by** → zxp-s-works _(Organization)_
+
+## Concepts
+
+- [4D Gaussian Splatting](concepts/4d-gaussian-splatting.html): - **uses** → Dynamic Gaussian Splatting _(ApproachFamily)_ - **uses** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_
+- [Beam Search](concepts/beam-search.html): - **uses** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_
+- [Depth Map](concepts/depth-map.html): - **addresses** → Shape Reconstruction _(Task)_
+- [Fine-tuning](concepts/fine-tuning.html): - **uses** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_ - **uses** → Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras _(Paper)_ - **uses** → WorldCompass: Rein…
+- [Gaussian Splatting](concepts/gaussian-splatting.html): - **uses** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_ - **uses** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_ - **uses** → Gaussian Splatting Reconstruction _(ApproachFamily)_ - **uses** → GaussianFlow SLAM: Mon…
+- [GaussianFlow SLAM](concepts/gaussianflow-slam.html): - **introduces** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_
+- [Multi-View Consistency](concepts/multi-view-consistency.html): - **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- [Novel View Synthesis](concepts/novel-view-synthesis.html): - **addresses** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_ - **addresses** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- [Point Cloud](concepts/point-cloud.html): - **uses** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_
+- [Pre-training](concepts/pre-training.html): - **uses** → Scaling Sequence-to-Sequence Generative Neural Rendering _(Paper)_
+- [Pretraining](concepts/pretraining.html): - **uses** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Reinforcement Learning](concepts/reinforcement-learning.html): - **uses** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+- [SDFRaster](concepts/sdfraster.html): - **introduces** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_
+- [Self-Supervised Learning](concepts/self-supervised-learning.html): - **uses** → 자기지도학습 요리책 _(Paper)_
+- [Shape Reconstruction](concepts/shape-reconstruction.html): - **addresses** → Depth Map _(TechnicalTerm)_ - **addresses** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- [Stochastic Solid](concepts/stochastic-solid.html): - **uses** → Geometry-Grounded Gaussian Splatting _(ApproachFamily)_ - **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- [Supervised Learning](concepts/supervised-learning.html): - **uses** → 자기지도학습 요리책 _(Paper)_
+- [Video Diffusion](concepts/video-diffusion.html): - **uses** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_ - **uses** → Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습 _(Paper)_ - **uses** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Pa…
+- [Volumetric Rendering](concepts/volumetric-rendering.html): - **uses** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_ - **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_
+
+## Entities
+
+- [Accuracy](entities/accuracy.html): - **uses_metric** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_ - **uses_metric** → Daily Feed Summary — 2026-04-28 _(SourceDocument)_ - **uses_metric** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(P…
+- [accuracy=90](entities/accuracy-90.html): 90% accuracy
+- [ADE20K](entities/ade20k.html): - **uses_dataset** → GitHub 분석: ClaudiaCuttano/SANSA _(Repository)_
+- [aero-ex](entities/aero-ex.html): - **released_by** → GitHub 분석: Aero-Ex/ComfyUI-SegviGen _(Repository)_
+- [affaan-m](entities/affaan-m.html): - **released_by** → GitHub 분석: affaan-m/everything-claude-code _(Repository)_
+- [ag2ai](entities/ag2ai.html): - **released_by** → GitHub 분석: ag2ai/ag2studio _(Repository)_
+- [Ahan Shabanov](entities/ahan-shabanov.html): - **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- [Alec Jacobson](entities/alec-jacobson.html): - **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_
+- [allenai](entities/allenai.html): - **released_by** → GitHub 분석: allenai/molmoact _(Repository)_
+- [Andrea Tagliasacchi](entities/andrea-tagliasacchi.html): - **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_ - **authored_by** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_ - **authored_by** → Power Foam: Unifying Real-Time Differenti…
+- [Andrea Vedaldi](entities/andrea-vedaldi.html): - **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- [Andreas Geiger](entities/andreas-geiger.html): - **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_
+- [Andreas Kurz](entities/andreas-kurz.html): - **authored_by** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_
+- [Andrew J Davison](entities/andrew-j-davison.html): - **authored_by** → Learning in Deep Factor Graphs with Gaussian Belief Propagation _(Paper)_
+- [Andrzej Odrzywołek](entities/andrzej-odrzywołek.html): - **authored_by** → All elementary functions from a single binary operator _(Paper)_
+- [anil-matcha](entities/anil-matcha.html): - **released_by** → GitHub 분석: Anil-matcha/Open-Higgsfield-AI _(Repository)_
+- [Anish Prabhu](entities/anish-prabhu.html): - **authored_by** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
+- [Antonino Furnari](entities/antonino-furnari.html): - **authored_by** → An Outlook into the Future of Egocentric Vision _(Paper)_ - **authored_by** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_
+- [apple](entities/apple.html): - **released_by** → GitHub 분석: apple/ml-4m _(Repository)_ - **released_by** → GitHub 분석: apple/ml-mobileclip _(Repository)_
+- [ARC Prize Foundation](entities/arc-prize-foundation.html): - **authored_by** → ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전 _(Paper)_
+- [Armen Avetisyan](entities/armen-avetisyan.html): - **authored_by** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_
+- [ATE](entities/ate.html): - **uses_metric** → ViBA: Implicit Bundle Adjustment with Geometric and Temporal Consistency for Robust Visual Matching _(Paper)_
+- [awesome-opencode](entities/awesome-opencode.html): - **released_by** → GitHub 분석: awesome-opencode/awesome-opencode _(Repository)_
+- [Aysegul Dundar](entities/aysegul-dundar.html): - **authored_by** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_
+- [Baowen Zhang](entities/baowen-zhang.html): - **authored_by** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- [Baoxiong Jia](entities/baoxiong-jia.html): - **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_ - **authored_by** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_
+- [Blender](entities/blender.html): - **uses_dataset** → Daily Feed Summary — 2026-04-11 _(SourceDocument)_ - **uses_dataset** → GitHub 분석: ahujasid/blender-mcp _(Repository)_
+- [Bo Zhu](entities/bo-zhu.html): - **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- [Bohan Zhuang](entities/bohan-zhuang.html): - **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_
+- [Boris Ivanovic](entities/boris-ivanovic.html): - **authored_by** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_
+- [Chenchen Zhu](entities/chenchen-zhu.html): - **authored_by** → Efficient Universal Perception Encoder _(Paper)_
+- [Chenjie Cao](entities/chenjie-cao.html): - **authored_by** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+- [Chenxing Jiang](entities/chenxing-jiang.html): - **authored_by** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- [Chi Phung](entities/chi-phung.html): - **authored_by** → Scaling Sequence-to-Sequence Generative Neural Rendering _(Paper)_
+- [Chiara Plizzari](entities/chiara-plizzari.html): - **authored_by** → An Outlook into the Future of Egocentric Vision _(Paper)_
+- [Christian Richardt](entities/christian-richardt.html): - **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- [Christian Rupprecht](entities/christian-rupprecht.html): - **authored_by** → Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas _(Paper)_
+- [Christopher Xie](entities/christopher-xie.html): - **authored_by** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_
+- [Chuanxia Zheng](entities/chuanxia-zheng.html): - **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_
+- [Chumeng Niu](entities/chumeng-niu.html): - **authored_by** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_
+- [Chun-Han Yao](entities/chun-han-yao.html): - **authored_by** → Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation _(Paper)_
+- [Chunchao Guo](entities/chunchao-guo.html): - **authored_by** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+- [Cijo Jose](entities/cijo-jose.html): - **authored_by** → Efficient Universal Perception Encoder _(Paper)_
+- [CLIP](entities/clip.html): - **uses** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+- [COCO](entities/coco.html): - **evaluated_on** → GitHub 분석: ClaudiaCuttano/SANSA _(Repository)_ - **evaluated_on** → GitHub 분석: roboflow/rf-detr _(Repository)_ - **evaluated_on** → GitHub 분석: visinf/INSID3 _(Repository)_
+- [Cristiano Saltori](entities/cristiano-saltori.html): - **authored_by** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_
+- [Daniel Cremers](entities/daniel-cremers.html): - **authored_by** → Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas _(Paper)_
+- [Daniel Rebain](entities/daniel-rebain.html): - **authored_by** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_ - **authored_by** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
+- [David J. Fleet](entities/david-j-fleet.html): - **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_
+- [deepseek-ai](entities/deepseek-ai.html): - **released_by** → GitHub 분석: deepseek-ai/TileKernels _(Repository)_
+- [Denis Rozumny](entities/denis-rozumny.html): - **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- [Dima Damen](entities/dima-damen.html): - **authored_by** → An Outlook into the Future of Egocentric Vision _(Paper)_
+- [Dmitry Lagun](entities/dmitry-lagun.html): - **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_
+- [Dmytro Kurdydyk](entities/dmytro-kurdydyk.html): - **authored_by** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
+- [Dong-Uk Seo](entities/dong-uk-seo.html): - **authored_by** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_
+- [Donny Y. Chen](entities/donny-y-chen.html): - **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_
+- [Dor Verbin](entities/dor-verbin.html): - **authored_by** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
+- [Dotan Ankri](entities/dotan-ankri.html): - **authored_by** → Extreme Rotation Estimation in the Wild _(Paper)_
+- [DTU](entities/dtu.html): - **evaluated_on** → Codex extraction review (2026-05-01) _(SourceDocument)_ - **evaluated_on** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_ - **evaluated_on** → Geometry-Grounded Gaussian Splatting _(SourceD…
+- [eth-ait](entities/eth-ait.html): - **released_by** → GitHub 분석: eth-ait/Gaussian-Garments _(Repository)_
+- [Ethan Weber](entities/ethan-weber.html): - **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- [Eungchang Mason Lee](entities/eungchang-mason-lee.html): - **authored_by** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_
+- [evolvinglmms-lab](entities/evolvinglmms-lab.html): - **released_by** → GitHub 분석: EvolvingLMMs-Lab/SimpleStream _(Repository)_
+- [eyeline-labs](entities/eyeline-labs.html): - **released_by** → GitHub 분석: Eyeline-Labs/Vista4D _(Repository)_
+- [Fabian Manhardt](entities/fabian-manhardt.html): - **authored_by** → Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas _(Paper)_
+- [facebookresearch](entities/facebookresearch.html): - **released_by** → GitHub 분석: facebookresearch/AINA _(Repository)_ - **released_by** → GitHub 분석: facebookresearch/EUPE _(Repository)_ - **released_by** → GitHub 분석: facebookresearch/map-anything _(Repository)_ - **released_by** → GitHub…
+- [Federico Tombari](entities/federico-tombari.html): - **authored_by** → Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas _(Paper)_
+- [Felix Wimbauer](entities/felix-wimbauer.html): - **authored_by** → Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas _(Paper)_
+- [Felix Windisch](entities/felix-windisch.html): - **authored_by** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_
+- [Francesco Ragusa](entities/francesco-ragusa.html): - **authored_by** → An Outlook into the Future of Egocentric Vision _(Paper)_ - **authored_by** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_
+- [Francis Engelmann](entities/francis-engelmann.html): - **authored_by** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_
+- [Gabriele Goletto](entities/gabriele-goletto.html): - **authored_by** → An Outlook into the Future of Egocentric Vision _(Paper)_
+- [Gael Le Lan](entities/gael-le-lan.html): - **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- [Giovanni Maria Farinella](entities/giovanni-maria-farinella.html): - **authored_by** → An Outlook into the Future of Egocentric Vision _(Paper)_ - **authored_by** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_
+- [google-deepmind](entities/google-deepmind.html): - **released_by** → GitHub 분석: google-deepmind/representations4d _(Repository)_
+- [google-research](entities/google-research.html): - **released_by** → GitHub 분석: google-research/vision-banana _(Repository)_
+- [h-shiono](entities/h-shiono.html): - **released_by** → GitHub 분석: h-shiono/MRTKLIB _(Repository)_
+- [Haato Watanabe](entities/haato-watanabe.html): - **authored_by** → Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction _(Paper)_
+- [Hadar Averbuch-Elor](entities/hadar-averbuch-elor.html): - **authored_by** → Extreme Rotation Estimation in the Wild _(Paper)_ - **authored_by** → Long-tail Internet photo reconstruction _(Paper)_
+- [Hailiang Tang](entities/hailiang-tang.html): - **authored_by** → ViBA: Implicit Bundle Adjustment with Geometric and Temporal Consistency for Robust Visual Matching _(Paper)_
+- [Haiyu Zhang](entities/haiyu-zhang.html): - **authored_by** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+- [Hana Bezalel](entities/hana-bezalel.html): - **authored_by** → Extreme Rotation Estimation in the Wild _(Paper)_
+- [Hang Su](entities/hang-su.html): - **authored_by** → Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras _(Paper)_
+- [Hansheng Chen](entities/hansheng-chen.html): - **authored_by** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_
+- [Hanyu Chen](entities/hanyu-chen.html): - **authored_by** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_
+- [Hao Zhang](entities/hao-zhang.html): - **authored_by** → Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation _(Paper)_
+- [Haofei Xu](entities/haofei-xu.html): - **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_
+- [Haotong Lin](entities/haotong-lin.html): - **authored_by** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+- [Haotong Zhang](entities/haotong-zhang.html): - **authored_by** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_
+- [Haoyu Guo](entities/haoyu-guo.html): - **authored_by** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+- [Haoyuan Wang](entities/haoyuan-wang.html): - **authored_by** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+- [Haozhe Liu](entities/haozhe-liu.html): - **authored_by** → Scaling Sequence-to-Sequence Generative Neural Rendering _(Paper)_
+- [He Wen](entities/he-wen.html): - **authored_by** → Sapiens2 _(Paper)_
+- [Heng Li](entities/heng-li.html): - **authored_by** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- [Hengshuang Zhao](entities/hengshuang-zhao.html): - **authored_by** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+- [Henry Howard-Jenkins](entities/henry-howard-jenkins.html): - **authored_by** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_
+- [heygen-com](entities/heygen-com.html): - **released_by** → GitHub 분석: heygen-com/hyperframes _(Repository)_
+- [Hiroki Furuta](entities/hiroki-furuta.html): - **authored_by** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_
+- [hku-mmlab](entities/hku-mmlab.html): - **released_by** → GitHub 분석: HKU-MMLab/Macro _(Repository)_
+- [Hongyu Shen](entities/hongyu-shen.html): - **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_
+- [Hongyu Zhou](entities/hongyu-zhou.html): - **authored_by** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+- [Howard Zhou](entities/howard-zhou.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Huaicong Fang](entities/huaicong-fang.html): - **authored_by** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_
+- [Huangyue Yu](entities/huangyue-yu.html): - **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_
+- [Hui Xiong](entities/hui-xiong.html): - **authored_by** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_
+- [Huizhong Chen](entities/huizhong-chen.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Hujun Bao](entities/hujun-bao.html): - **authored_by** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+- [Hyun Myung](entities/hyun-myung.html): - **authored_by** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_
+- [ImageNet](entities/imagenet.html): - **evaluated_on** → Scaling 4D Representations _(Paper)_ - **evaluated_on** → 주간 논문 분석 — 2026-W15 (2026-04-06 ~ 2026-04-12) _(SourceDocument)_
+- [Ipek Oztas](entities/ipek-oztas.html): - **authored_by** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_
+- [Irene D&#039;Ambra](entities/irene-d-039-ambra.html): - **authored_by** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_
+- [Jaesik Park](entities/jaesik-park.html): - **authored_by** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_
+- [Jakob Engel](entities/jakob-engel.html): - **authored_by** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_ - **authored_by** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_
+- [James Fort](entities/james-fort.html): - **authored_by** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_
+- [Javier Civera](entities/javier-civera.html): - **authored_by** → Cross-Attentive Multiview Fusion of Vision-Language Embeddings _(Paper)_
+- [Jean-Baptiste Alayrac](entities/jean-baptiste-alayrac.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Jia-Wang Bian](entities/jia-wang-bian.html): - **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_
+- [Jiadong Guo](entities/jiadong-guo.html): - **authored_by** → Scaling Sequence-to-Sequence Generative Neural Rendering _(Paper)_
+- [Jiahao Shao](entities/jiahao-shao.html): - **authored_by** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+- [Jianfei Cai](entities/jianfei-cai.html): - **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_
+- [Jiangyong Huang](entities/jiangyong-huang.html): - **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_
+- [Jianuo Cao](entities/jianuo-cao.html): - **authored_by** → CLAW: Composable Language-Annotated Whole-body Motion Generation _(Paper)_
+- [Jiaqi Han](entities/jiaqi-han.html): - **authored_by** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_
+- [Jiaxin Li](entities/jiaxin-li.html): - **authored_by** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_
+- [Jing Ou](entities/jing-ou.html): - **authored_by** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_
+- [Jinjing Zhu](entities/jinjing-zhu.html): - **authored_by** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_
+- [Jinkai Cui](entities/jinkai-cui.html): - **authored_by** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_
+- [Jinwoo Jeon](entities/jinwoo-jeon.html): - **authored_by** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_
+- [John Keller](entities/john-keller.html): - **authored_by** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
+- [Jonathan T. Barron](entities/jonathan-t-barron.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Joonsik Nam](entities/joonsik-nam.html): - **authored_by** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_
+- [Joonsoo Kim](entities/joonsoo-kim.html): - **authored_by** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_
+- [Juan C. Pérez](entities/juan-c-pérez.html): - **authored_by** → Scaling Sequence-to-Sequence Generative Neural Rendering _(Paper)_
+- [Juan-Manuel Pérez-Rúa](entities/juan-manuel-pérez-rúa.html): - **authored_by** → Scaling Sequence-to-Sequence Generative Neural Rendering _(Paper)_
+- [Julian Straub](entities/julian-straub.html): - **authored_by** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_
+- [Julieta Martinez](entities/julieta-martinez.html): - **authored_by** → Sapiens2 _(Paper)_
+- [Junchao He](entities/junchao-he.html): - **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_
+- [Junfeng Ni](entities/junfeng-ni.html): - **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_
+- [Junlin Han](entities/junlin-han.html): - **authored_by** → Scaling Sequence-to-Sequence Generative Neural Rendering _(Paper)_
+- [Junta Wu](entities/junta-wu.html): - **authored_by** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+- [Juyong Zhang](entities/juyong-zhang.html): - **authored_by** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_
+- [Kaiming He](entities/kaiming-he.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [kaist-visual-ai-group](entities/kaist-visual-ai-group.html): - **released_by** → GitHub 분석: KAIST-Visual-AI-Group/GrounDiT _(Repository)_ - **released_by** → GitHub 분석: KAIST-Visual-AI-Group/MatLat _(Repository)_
+- [Kaiwen Song](entities/kaiwen-song.html): - **authored_by** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_
+- [Kam Woh Ng](entities/kam-woh-ng.html): - **authored_by** → Scaling Sequence-to-Sequence Generative Neural Rendering _(Paper)_
+- [Karen Truong](entities/karen-truong.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [KITTI](entities/kitti.html): - **evaluated_on** → GitHub 분석: team-aprl/MR.ScaleMaster _(Repository)_
+- [Kostas Daniilidis](entities/kostas-daniilidis.html): - **authored_by** → Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras _(Paper)_
+- [Kugjin Yun](entities/kugjin-yun.html): - **authored_by** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_
+- [Kwang Moo Yi](entities/kwang-moo-yi.html): - **authored_by** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_ - **authored_by** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
+- [Kyeongbo Kong](entities/kyeongbo-kong.html): - **authored_by** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_
+- [Kyle Genova](entities/kyle-genova.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [lab-of-ai-and-robotics](entities/lab-of-ai-and-robotics.html): - **released_by** → GitHub 분석: Lab-of-AI-and-Robotics/LEGO-SLAM _(Repository)_
+- [Lawson L. S. Wong](entities/lawson-l-s-wong.html): - **authored_by** → Integrating Symmetry into Differentiable Planning with Steerable Convolutions _(Paper)_
+- [Lei Luo](entities/lei-luo.html): - **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- [Leonidas Guibas](entities/leonidas-guibas.html): - **authored_by** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_
+- [Lily Goli](entities/lily-goli.html): - **authored_by** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_ - **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_
+- [Lin Shao](entities/lin-shao.html): - **authored_by** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_
+- [Linfeng Zhao](entities/linfeng-zhao.html): - **authored_by** → Integrating Symmetry into Differentiable Planning with Steerable Convolutions _(Paper)_
+- [Lingxiao Li](entities/lingxiao-li.html): - **authored_by** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Paper)_
+- [Lingzhi Kong](entities/lingzhi-kong.html): - **authored_by** → Integrating Symmetry into Differentiable Planning with Steerable Convolutions _(Paper)_
+- [Lucas Yunkyu Lee](entities/lucas-yunkyu-lee.html): - **authored_by** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_
+- [Lukas Radl](entities/lukas-radl.html): - **authored_by** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_
+- [m-schuetz](entities/m-schuetz.html): - **released_by** → GitHub 분석: m-schuetz/CuRast _(Repository)_
+- [Mandy Guo](entities/mandy-guo.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [mAP](entities/map.html): - **uses_metric** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **uses_metric** → Architecture _(SourceDocument)_ - **uses_metric** → Codex extraction review (2026-05-01) _(SourceDocument)_ - **uses_metr…
+- [mAP=4](entities/map-4.html): 4 mAP
+- [Marc Szafraniec](entities/marc-szafraniec.html): - **authored_by** → Efficient Universal Perception Encoder _(Paper)_
+- [Marco Pavone](entities/marco-pavone.html): - **authored_by** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_
+- [Marcus Brubaker](entities/marcus-brubaker.html): - **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_
+- [Mark Matthews](entities/mark-matthews.html): - **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_
+- [Mark van der Wilk](entities/mark-van-der-wilk.html): - **authored_by** → Learning in Deep Factor Graphs with Gaussian Belief Propagation _(Paper)_
+- [Markus Steinberger](entities/markus-steinberger.html): - **authored_by** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_
+- [Martin R. Oswald](entities/martin-r-oswald.html): - **authored_by** → Cross-Attentive Multiview Fusion of Vision-Language Embeddings _(Paper)_
+- [Masahiro Suzuki](entities/masahiro-suzuki.html): - **authored_by** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_
+- [Masayoshi Tomizuka](entities/masayoshi-tomizuka.html): - **authored_by** → CLAW: Composable Language-Annotated Whole-body Motion Generation _(Paper)_
+- [MATH](entities/math.html): - **evaluated_on** → Codex graph-view review (2026-05-04) _(SourceDocument)_
+- [Maxime Oquab](entities/maxime-oquab.html): - **authored_by** → Efficient Universal Perception Encoder _(Paper)_
+- [Michael Oechsle](entities/michael-oechsle.html): - **authored_by** → Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas _(Paper)_
+- [Michael Steiner](entities/michael-steiner.html): - **authored_by** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_
+- [Michele Mazzamuto](entities/michele-mazzamuto.html): - **authored_by** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_
+- [microsoft](entities/microsoft.html): - **released_by** → GitHub 분석: microsoft/World-R1 _(Repository)_
+- [Mikaela Angelina Uy](entities/mikaela-angelina-uy.html): - **authored_by** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_
+- [mIoU](entities/miou.html): - **uses_metric** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_ - **uses_metric** → Sapiens2 _(Paper)_ - **uses_metric** → mIoU=24.3 _(Result)_
+- [mIoU=24.3](entities/miou-24-3.html): 24.3 mIoU
+- [Mip-NeRF360](entities/mip-nerf360.html): - **evaluated_on** → Codex extraction review (2026-05-01) _(SourceDocument)_ - **evaluated_on** → Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction _(Paper)_ - **evaluated_on**…
+- [Mohammad H. Taghavi](entities/mohammad-h-taghavi.html): - **authored_by** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Paper)_
+- [Naina Dhingra](entities/naina-dhingra.html): - **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- [Narendra Ahuja](entities/narendra-ahuja.html): - **authored_by** → Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation _(Paper)_
+- [Nikhil Keetha](entities/nikhil-keetha.html): - **authored_by** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
+- [Nikolai Kalischek](entities/nikolai-kalischek.html): - **authored_by** → Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas _(Paper)_
+- [Nithish Kannen](entities/nithish-kannen.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Noah Snavely](entities/noah-snavely.html): - **authored_by** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **authored_by** → Long-tail Internet photo reconstruction _(Paper)_
+- [Nobuyuki Umetani](entities/nobuyuki-umetani.html): - **authored_by** → Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction _(Paper)_
+- [Numair Khan](entities/numair-khan.html): - **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- [nv-tlabs](entities/nv-tlabs.html): - **released_by** → GitHub 분석: nv-tlabs/lyra _(Repository)_
+- [nvidia](entities/nvidia.html): - **released_by** → GitHub 분석: NVIDIA/OpenShell _(Repository)_ - **released_by** → GitHub 분석: NVIDIA/ncore _(Repository)_ - **released_by** → GitHub 분석: nvidia/asset-harvester _(Repository)_
+- [nvlabs](entities/nvlabs.html): - **released_by** → GitHub 분석: NVlabs/PointWorld _(Repository)_
+- [Objaverse](entities/objaverse.html): - **uses_dataset** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_ - **uses_dataset** → Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation _(Paper)_ - **uses_dataset** → W…
+- [Oliver Wang](entities/oliver-wang.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Omar Alama](entities/omar-alama.html): - **authored_by** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
+- [opsiclear-4dgs](entities/opsiclear-4dgs.html): - **released_by** → GitHub 분석: OpsiClear-4DGS/TriGSVanilla _(Repository)_
+- [Patrick Labatut](entities/patrick-labatut.html): - **authored_by** → Efficient Universal Perception Encoder _(Paper)_
+- [Paul Voigtlaender](entities/paul-voigtlaender.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Peishan Yang](entities/peishan-yang.html): - **authored_by** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+- [Peiyuan Zhi](entities/peiyuan-zhi.html): - **authored_by** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_
+- [Peter Hedman](entities/peter-hedman.html): - **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- [Ping Tan](entities/ping-tan.html): - **authored_by** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- [Piotr Bojanowski](entities/piotr-bojanowski.html): - **authored_by** → Efficient Universal Perception Encoder _(Paper)_
+- [polymathicai](entities/polymathicai.html): - **released_by** → GitHub 분석: PolymathicAI/the_well _(Repository)_
+- [Precision](entities/precision.html): - **uses_metric** → Codex extraction review (2026-05-01) _(SourceDocument)_
+- [Qihang Cao](entities/qihang-cao.html): - **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_
+- [Qinglin Yang](entities/qinglin-yang.html): - **authored_by** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+- [Radu Soricut](entities/radu-soricut.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Raghuraman Krishnamoorthi](entities/raghuraman-krishnamoorthi.html): - **authored_by** → Efficient Universal Perception Encoder _(Paper)_
+- [Rahul Garg](entities/rahul-garg.html): - **authored_by** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Paper)_
+- [Rahul Thomas](entities/rahul-thomas.html): - **authored_by** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_
+- [Rawal Khirodkar](entities/rawal-khirodkar.html): - **authored_by** → Sapiens2 _(Paper)_
+- [Richard Newcombe](entities/richard-newcombe.html): - **authored_by** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_
+- [Robin Walters](entities/robin-walters.html): - **authored_by** → Integrating Symmetry into Differentiable Planning with Steerable Convolutions _(Paper)_
+- [Rosario Forte](entities/rosario-forte.html): - **authored_by** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_
+- [Roshni Cooper](entities/roshni-cooper.html): - **authored_by** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Paper)_
+- [rpl-cs-ucl](entities/rpl-cs-ucl.html): - **released_by** → GitHub 분석: RPL-CS-UCL/SDS _(Repository)_
+- [Ruijun Zhang](entities/ruijun-zhang.html): - **authored_by** → Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras _(Paper)_
+- [Ruizhen Hu](entities/ruizhen-hu.html): - **authored_by** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+- [Ruojin Cai](entities/ruojin-cai.html): - **authored_by** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **authored_by** → Extreme Rotation Estimation in the Wild _(Paper)_ - **authored_by** → Long-tail Internet photo reconstruction _(Paper)_
+- [Saining Xie](entities/saining-xie.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Saksham Suri](entities/saksham-suri.html): - **authored_by** → Efficient Universal Perception Encoder _(Paper)_
+- [Sangmin Kim](entities/sangmin-kim.html): - **authored_by** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_
+- [Sara Sabour](entities/sara-sabour.html): - **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_
+- [Saurabh Saxena](entities/saurabh-saxena.html): - **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_
+- [Sebastian Scherer](entities/sebastian-scherer.html): - **authored_by** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
+- [seeed-projects](entities/seeed-projects.html): - **released_by** → GitHub 분석: Seeed-Projects/reBot-DevArm _(Repository)_
+- [Segment Anything](entities/segment-anything.html): - **uses** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Sensen Gao](entities/sensen-gao.html): - **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_
+- [Seth Nabarro](entities/seth-nabarro.html): - **authored_by** → Learning in Deep Factor Graphs with Gaussian Belief Propagation _(Paper)_
+- [Seungchan Kim](entities/seungchan-kim.html): - **authored_by** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
+- [Seunggyu Choi](entities/seunggyu-choi.html): - **authored_by** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_
+- [Shangbang Long](entities/shangbang-long.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Shaofei Wang](entities/shaofei-wang.html): - **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_
+- [Shaohang Zhu](entities/shaohang-zhu.html): - **authored_by** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_
+- [Shaojie Shen](entities/shaojie-shen.html): - **authored_by** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- [ShapeNet](entities/shapenet.html): - **uses_dataset** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_
+- [Sheng Miao](entities/sheng-miao.html): - **authored_by** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+- [Sherry Ben](entities/sherry-ben.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Shikun Liu](entities/shikun-liu.html): - **authored_by** → Scaling Sequence-to-Sequence Generative Neural Rendering _(Paper)_
+- [Shrisudhan Govindarajan](entities/shrisudhan-govindarajan.html): - **authored_by** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
+- [Shuai Zhang](entities/shuai-zhang.html): - **authored_by** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_
+- [Shunsuke Saito](entities/shunsuke-saito.html): - **authored_by** → Sapiens2 _(Paper)_
+- [Shuyang Sun](entities/shuyang-sun.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Sida Peng](entities/sida-peng.html): - **authored_by** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+- [Siddhant Bansal](entities/siddhant-bansal.html): - **authored_by** → An Outlook into the Future of Egocentric Vision _(Paper)_
+- [Simon Donné](entities/simon-donné.html): - **authored_by** → Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation _(Paper)_
+- [Siyuan Huang](entities/siyuan-huang.html): - **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_ - **authored_by** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_
+- [skalskip](entities/skalskip.html): - **released_by** → GitHub 분석: SkalskiP/top-cvpr-2026-papers _(Repository)_
+- [skyworkai](entities/skyworkai.html): - **released_by** → GitHub 분석: SkyworkAI/Matrix-3D _(Repository)_
+- [Song-Chun Zhu](entities/song-chun-zhu.html): - **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_
+- [Songyou Peng](entities/songyou-peng.html): - **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_ - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [SSIM](entities/ssim.html): - **uses_metric** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_ - **uses_metric** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_ - **uses_metric** → WorldCompass: Reinforcement Learning for Long-Horizon World Mo…
+- [Stable Diffusion](entities/stable-diffusion.html): - **uses** → Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation _(Paper)_
+- [Steve Marschner](entities/steve-marschner.html): - **authored_by** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_
+- [Su Zhaoen](entities/su-zhaoen.html): - **authored_by** → Sapiens2 _(Paper)_
+- [Suhas Yogin](entities/suhas-yogin.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Sukju Kang](entities/sukju-kang.html): - **authored_by** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_
+- [Suwoong Yeom](entities/suwoong-yeom.html): - **authored_by** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_
+- [Suya You](entities/suya-you.html): - **authored_by** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_
+- [sv-pp](entities/sv-pp.html): - **released_by** → GitHub 분석: sv-pp/SceneVersepp _(Repository)_
+- [Tanks and Temples](entities/tanks-and-temples.html): - **evaluated_on** → Codex extraction review (2026-05-01) _(SourceDocument)_ - **evaluated_on** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_ - **evaluated_on** → Geometry-Grounded Gaussian Splatting _(SourceD…
+- [Tao Xiang](entities/tao-xiang.html): - **authored_by** → Scaling Sequence-to-Sequence Generative Neural Rendering _(Paper)_
+- [Tat-Jen Cham](entities/tat-jen-cham.html): - **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_
+- [Tatiana Tommasi](entities/tatiana-tommasi.html): - **authored_by** → An Outlook into the Future of Egocentric Vision _(Paper)_
+- [team-aprl](entities/team-aprl.html): - **released_by** → GitHub 분석: team-aprl/MR.ScaleMaster _(Repository)_
+- [tencent-hunyuan](entities/tencent-hunyuan.html): - **released_by** → GitHub 분석: Tencent-Hunyuan/HY-WorldPlay _(Repository)_
+- [Tengfei Wang](entities/tengfei-wang.html): - **authored_by** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+- [Thomas Funkhouser](entities/thomas-funkhouser.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Thomas Köhler](entities/thomas-köhler.html): - **authored_by** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_
+- [Tianrui Zhang](entities/tianrui-zhang.html): - **authored_by** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_
+- [Tisheng Zhang](entities/tisheng-zhang.html): - **authored_by** → ViBA: Implicit Bundle Adjustment with Geometric and Temporal Consistency for Robust Visual Matching _(Paper)_
+- [Tomas Berriel Martins](entities/tomas-berriel-martins.html): - **authored_by** → Cross-Attentive Multiview Fusion of Vision-Language Embeddings _(Paper)_
+- [Tongyan Hua](entities/tongyan-hua.html): - **authored_by** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_
+- [tue-mps](entities/tue-mps.html): - **released_by** → GitHub 분석: tue-mps/eomt _(Repository)_
+- [Valentin Gabeur](entities/valentin-gabeur.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Varun Jampani](entities/varun-jampani.html): - **authored_by** → Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation _(Paper)_
+- [Vasileios Balntas](entities/vasileios-balntas.html): - **authored_by** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_
+- [Vikas Chandra](entities/vikas-chandra.html): - **authored_by** → Efficient Universal Perception Encoder _(Paper)_
+- [Wei Wen](entities/wei-wen.html): - **authored_by** → Efficient Universal Perception Encoder _(Paper)_
+- [Weijie Wang](entities/weijie-wang.html): - **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_
+- [Wenjie Luo](entities/wenjie-luo.html): - **authored_by** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_
+- [Wenjing Bian](entities/wenjing-bian.html): - **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_
+- [Wenlei Zhou](entities/wenlei-zhou.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Wenqiang Sun](entities/wenqiang-sun.html): - **authored_by** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+- [Wenshan Wang](entities/wenshan-wang.html): - **authored_by** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
+- [Wonbong Jang](entities/wonbong-jang.html): - **authored_by** → Scaling Sequence-to-Sequence Generative Neural Rendering _(Paper)_
+- [world-in-world](entities/world-in-world.html): - **released_by** → GitHub 분석: World-In-World/world-in-world _(Repository)_
+- [Wufan Zhao](entities/wufan-zhao.html): - **authored_by** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_
+- [Xiaoji Niu](entities/xiaoji-niu.html): - **authored_by** → ViBA: Implicit Bundle Adjustment with Geometric and Temporal Consistency for Robust Visual Matching _(Paper)_
+- [Xiaowei Zhou](entities/xiaowei-zhou.html): - **authored_by** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+- [Xin Fei](entities/xin-fei.html): - **authored_by** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_
+- [Xingang Pan](entities/xingang-pan.html): - **authored_by** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Paper)_
+- [Xingxing Wang](entities/xingxing-wang.html): - **authored_by** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_
+- [Xingyi He](entities/xingyi-he.html): - **authored_by** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+- [xiquan-li](entities/xiquan-li.html): - **released_by** → GitHub 분석: xiquan-li/TinyMU _(Repository)_
+- [Xuhui Zuo](entities/xuhui-zuo.html): - **authored_by** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+- [Xupeng Zhu](entities/xupeng-zhu.html): - **authored_by** → Integrating Symmetry into Differentiable Planning with Steerable Convolutions _(Paper)_
+- [Yalda Foroutan](entities/yalda-foroutan.html): - **authored_by** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_
+- [Yan Wang](entities/yan-wang.html): - **authored_by** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_ - **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_ - **authored_by** → ViBA: Implicit Bundl…
+- [Yanan Bao](entities/yanan-bao.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Yandong Li](entities/yandong-li.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Yang You](entities/yang-you.html): - **authored_by** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_
+- [Yaowei Zhang](entities/yaowei-zhang.html): - **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_
+- [Yawar Siddiqui](entities/yawar-siddiqui.html): - **authored_by** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_
+- [Yi Du](entities/yi-du.html): - **authored_by** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_
+- [Yiannis Douratsos](entities/yiannis-douratsos.html): - **authored_by** → Scaling Sequence-to-Sequence Generative Neural Rendering _(Paper)_
+- [Yifan Wang](entities/yifan-wang.html): - **authored_by** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+- [Yiming Gu](entities/yiming-gu.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Yinrui Ren](entities/yinrui-ren.html): - **authored_by** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_
+- [Yiwei Zhao](entities/yiwei-zhao.html): - **authored_by** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Paper)_
+- [Yixin Chen](entities/yixin-chen.html): - **authored_by** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_
+- [Yiyi Liao](entities/yiyi-liao.html): - **authored_by** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+- [Yonatan Bisk](entities/yonatan-bisk.html): - **authored_by** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
+- [Yong-Lu Li](entities/yong-lu-li.html): - **authored_by** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_
+- [Yu Ning](entities/yu-ning.html): - **authored_by** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Paper)_
+- [Yuan Dong](entities/yuan-dong.html): - **authored_by** → Sapiens2 _(Paper)_
+- [Yuan Li](entities/yuan-li.html): - **authored_by** → Long-tail Internet photo reconstruction _(Paper)_
+- [Yuanbo Xiangli](entities/yuanbo-xiangli.html): - **authored_by** → Long-tail Internet photo reconstruction _(Paper)_
+- [Yuchen Xiao](entities/yuchen-xiao.html): - **authored_by** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_
+- [Yue Wang](entities/yue-wang.html): - **authored_by** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+- [Yuhan Li](entities/yuhan-li.html): - **authored_by** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_
+- [Yunshen Wang](entities/yunshen-wang.html): - **authored_by** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_
+- [Yunyang Xiong](entities/yunyang-xiong.html): - **authored_by** → Efficient Universal Perception Encoder _(Paper)_
+- [Yuqing Wang](entities/yuqing-wang.html): - **authored_by** → ViBA: Implicit Bundle Adjustment with Geometric and Temporal Consistency for Robust Visual Matching _(Paper)_
+- [Yurong You](entities/yurong-you.html): - **authored_by** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_
+- [Yushi Lan](entities/yushi-lan.html): - **authored_by** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Paper)_
+- [Yuta Oshima](entities/yuta-oshima.html): - **authored_by** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_
+- [Yutaka Matsuo](entities/yutaka-matsuo.html): - **authored_by** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_
+- [Yuxin Chen](entities/yuxin-chen.html): - **authored_by** → CLAW: Composable Language-Annotated Whole-body Motion Generation _(Paper)_
+- [Zehan Wang](entities/zehan-wang.html): - **authored_by** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+- [Zeqi Xiao](entities/zeqi-xiao.html): - **authored_by** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Paper)_
+- [Zhen Xu](entities/zhen-xu.html): - **authored_by** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+- [Zhengqin Li](entities/zhengqin-li.html): - **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- [Zhenwei Wang](entities/zhenwei-wang.html): - **authored_by** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+- [Zhicheng Wang](entities/zhicheng-wang.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
+- [Zhixuan Xu](entities/zhixuan-xu.html): - **authored_by** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_
+- [Zhou Zhao](entities/zhou-zhao.html): - **authored_by** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
+- [Zhuoxiao Li](entities/zhuoxiao-li.html): - **authored_by** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_
+- [Zidong Cao](entities/zidong-cao.html): - **authored_by** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_
+- [Zijian Zhou](entities/zijian-zhou.html): - **authored_by** → Scaling Sequence-to-Sequence Generative Neural Rendering _(Paper)_
+- [Ziyun Wang](entities/ziyun-wang.html): - **authored_by** → Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras _(Paper)_
+- [zubair-trabzada](entities/zubair-trabzada.html): - **released_by** → GitHub 분석: zubair-trabzada/ai-legal-claude _(Repository)_
+- [zxp-s-works](entities/zxp-s-works.html): - **released_by** → GitHub 분석: ZXP-S-works/EquAct _(Repository)_
+
+## Topics
+
+- [3D/4D Vision and Reconstruction](topics/3d-4d-vision-and-reconstruction.html): - **part_of** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **part_of** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_ - **part_of** → Cross-Attentive Multiview Fusion of Vision-Language…
+- [Dynamic Gaussian Splatting](topics/dynamic-gaussian-splatting.html): - **uses** → 4D Gaussian Splatting _(MethodologicalConcept)_
+- [Gaussian Splatting Reconstruction](topics/gaussian-splatting-reconstruction.html): - **uses** → Gaussian Splatting _(MethodologicalConcept)_
+- [Geometry-Grounded Gaussian Splatting](topics/geometry-grounded-gaussian-splatting.html): Registered term referenced in WorldCompass: Reinforcement Learning for Long-Horizon World Models
+- [LLM Reasoning](topics/llm-reasoning.html): - **part_of** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_
+- [Research Literature](topics/research-literature.html): - **part_of** → ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전 _(Paper)_ - **part_of** → All elementary functions from a single binary operator _(Paper)_ - **part_of** → An Outlook into the Future of Egocentric Vision _(Paper)_ - **pa…
+- [Visual SLAM](topics/visual-slam.html): - **addresses** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_ - **addresses** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_
+- [World Model](topics/world-model.html): - **addresses** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_ - **addresses** → Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas _(Paper)_ - **addresses** → WorldCompass: Reinforcement Learni…
+
+## Syntheses
+
+- [Comparison — Gaussian Splatting Reconstruction vs Geometry-Grounded Gaussian Splatting](syntheses/compare-gaussian-splatting-reconstruction-vs-geometry-grounded-gaussian-splatting.html): Both approach families connect to `Novel View Synthesis` (Task).
+- [Daily Digest — 2026-04-06](syntheses/daily-2026-04-06.html): Sources ingested under `data/research/daily/2026-04-06/`.
+- [Daily Digest — 2026-04-07](syntheses/daily-2026-04-07.html): Sources ingested under `data/research/daily/2026-04-07/`.
+- [Daily Digest — 2026-04-08](syntheses/daily-2026-04-08.html): Sources ingested under `data/research/daily/2026-04-08/`.
+- [Daily Digest — 2026-04-09](syntheses/daily-2026-04-09.html): Sources ingested under `data/research/daily/2026-04-09/`.
+- [Daily Digest — 2026-04-10](syntheses/daily-2026-04-10.html): Sources ingested under `data/research/daily/2026-04-10/`.
+- [Daily Digest — 2026-04-11](syntheses/daily-2026-04-11.html): Sources ingested under `data/research/daily/2026-04-11/`.
+- [Daily Digest — 2026-04-12](syntheses/daily-2026-04-12.html): Sources ingested under `data/research/daily/2026-04-12/`.
+- [Daily Digest — 2026-04-13](syntheses/daily-2026-04-13.html): Sources ingested under `data/research/daily/2026-04-13/`.
+- [Daily Digest — 2026-04-14](syntheses/daily-2026-04-14.html): Sources ingested under `data/research/daily/2026-04-14/`.
+- [Daily Digest — 2026-04-15](syntheses/daily-2026-04-15.html): Sources ingested under `data/research/daily/2026-04-15/`.
+- [Daily Digest — 2026-04-16](syntheses/daily-2026-04-16.html): Sources ingested under `data/research/daily/2026-04-16/`.
+- [Daily Digest — 2026-04-18](syntheses/daily-2026-04-18.html): Sources ingested under `data/research/daily/2026-04-18/`.
+- [Daily Digest — 2026-04-22](syntheses/daily-2026-04-22.html): Sources ingested under `data/research/daily/2026-04-22/`.
+- [Daily Digest — 2026-04-23](syntheses/daily-2026-04-23.html): Sources ingested under `data/research/daily/2026-04-23/`.
+- [Daily Digest — 2026-04-24](syntheses/daily-2026-04-24.html): Sources ingested under `data/research/daily/2026-04-24/`.
+- [Daily Digest — 2026-04-25](syntheses/daily-2026-04-25.html): Sources ingested under `data/research/daily/2026-04-25/`.
+- [Daily Digest — 2026-04-26](syntheses/daily-2026-04-26.html): Sources ingested under `data/research/daily/2026-04-26/`.
+- [Daily Digest — 2026-04-27](syntheses/daily-2026-04-27.html): Sources ingested under `data/research/daily/2026-04-27/`.
+- [Daily Digest — 2026-04-28](syntheses/daily-2026-04-28.html): Sources ingested under `data/research/daily/2026-04-28/`.
+- [Daily Digest — 2026-04-29](syntheses/daily-2026-04-29.html): Sources ingested under `data/research/daily/2026-04-29/`.
+- [Daily Digest — 2026-04-30](syntheses/daily-2026-04-30.html): Sources ingested under `data/research/daily/2026-04-30/`.
+- [Daily Digest — 2026-05-01](syntheses/daily-2026-05-01.html): Sources ingested under `data/research/daily/2026-05-01/`.
+- [Daily Digest — 2026-05-02](syntheses/daily-2026-05-02.html): Sources ingested under `data/research/daily/2026-05-02/`.
+- [Daily Digest — 2026-05-03](syntheses/daily-2026-05-03.html): Sources ingested under `data/research/daily/2026-05-03/`.
+- [Daily Digest — 2026-05-04](syntheses/daily-2026-05-04.html): Sources ingested under `data/research/daily/2026-05-04/`.
+- [Daily Digest — 2026-05-05](syntheses/daily-2026-05-05.html): Sources ingested under `data/research/daily/2026-05-05/`.
+- [Field Overview — 3D/4D Vision and Reconstruction](syntheses/field-3d-4d-vision-and-reconstruction.html): Dynamic Gaussian Splatting (ApproachFamily) — 1 contributing paper(s) connect to this thread.
+- [Field Overview — LLM Reasoning](syntheses/field-llm-reasoning.html): No linked topics yet.
+- [Field Overview — Research Literature](syntheses/field-research-literature.html): World Model (ResearchTopic) — 3 contributing paper(s) connect to this thread.
+- [Project Pulse](syntheses/pulse.html): Snapshot of the wiki at the most recent compile.
+- [Topic — Gaussian Splatting Reconstruction](syntheses/topic-gaussian-splatting-reconstruction.html): Type: ApproachFamily.
+- [Topic — World Model](syntheses/topic-world-model.html): Type: ResearchTopic.
+- [Weekly Synthesis — 2026-W15](syntheses/weekly-2026-W15.html): Coverage of `data/research/weekly/2026-W15/`.
+- [Weekly Synthesis — 2026-W17](syntheses/weekly-2026-W17.html): Coverage of `data/research/weekly/2026-W17/`.
+- [Weekly Synthesis — 2026-W18](syntheses/weekly-2026-W18.html): Coverage of `data/research/weekly/2026-W18/`.
+
+## Questions
+
+- [Open question: 그러나 Gaussian primitives로부터 shape를 추출하는 문제는 여전히 해결되지 않은 과제로 남아 있다.](questions/open-question-그러나-gaussian-primitives로부터-shape를-추출하는-문-3296a33a.html): 그러나 Gaussian primitives로부터 shape를 추출하는 문제는 여전히 해결되지 않은 과제로 남아 있다.
+- [Open question: 그러나 Gaussian primitive로부터 형상을 추출하는 문제는 여전히 해결되지 않은 과제로 남아 있다.](questions/open-question-그러나-gaussian-primitive로부터-형상을-추출하는-문-5fb92504.html): 그러나 Gaussian primitive로부터 형상을 추출하는 문제는 여전히 해결되지 않은 과제로 남아 있다.
+- [Open question: 핵심 아키텍처와 학습 전략을 식별함으로써, 본 논문은 강건한 depth foundation models로 나아가는 경로를 조명하고, 향후 연구와 응용에 대한 통찰을 제공하…](questions/open-question-핵심-아키텍처와-학습-전략을-식별함으로써-본-논-ddc644f8.html): 핵심 아키텍처와 학습 전략을 식별함으로써, 본 논문은 강건한 depth foundation models로 나아가는 경로를 조명하고, 향후 연구와 응용에 대한 통찰을 제공하는 것을 목표로 한다.
+- [Open question: 향후 연구를 촉진하기 위해 EUPE 모델 전체 계열과 코드를 공개할 예정이다.](questions/open-question-향후-연구를-촉진하기-위해-eupe-모델-전체-계열과-ac04f2bc.html): 향후 연구를 촉진하기 위해 EUPE 모델 전체 계열과 코드를 공개할 예정이다.

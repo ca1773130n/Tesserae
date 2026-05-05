@@ -1,0 +1,15 @@
+{
+  "title": "eth-ait",
+  "kind": "entities",
+  "body_text": "# eth-ait\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: eth-ait/Gaussian-Garments _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-14/papers/2409.08189/repo.md",
+  "links": [],
+  "body": "# eth-ait\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: eth-ait/Gaussian-Garments _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:eth-ait:38cfac5e3c7a",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-14/papers/2409.08189/repo.md",
+    "title": "eth-ait"
+  }
+}

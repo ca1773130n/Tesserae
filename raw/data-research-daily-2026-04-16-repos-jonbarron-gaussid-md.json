@@ -1,0 +1,8 @@
+{
+  "title": "jonbarron_gaussid.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: jonbarron/gaussid\n\n> - URL: https://github.com/jonbarron/gaussid\n> - 분석일: 2026-04-16\n\n## 개요\n\n- **설명**: Sam Roweis's gaussid.pdf as a markdown file\n- **Stars**: ⭐ 9 | Forks: 1\n- **라이선스**: N/A\n- **주 언어**: unknown\n\n## 실행 가능 상태: 코드 미공개 (README/asset만 존재)\n\n| 항목 | 상태 |\n|------|------|\n| README | N |\n| 소스 코드 (0개) | N |\n| 의존성 파일 | N |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\ngaussid.md\n.git/config\n.git/description\n.git/HEAD\n.git/index\n.git/packed-refs\n.git/shallow\n```",
+  "source_path": "data/research/daily/2026-04-16/repos/jonbarron_gaussid.md",
+  "links": [],
+  "body": "# GitHub 분석: jonbarron/gaussid\n\n> - URL: https://github.com/jonbarron/gaussid\n> - 분석일: 2026-04-16\n\n## 개요\n\n- **설명**: Sam Roweis's gaussid.pdf as a markdown file\n- **Stars**: ⭐ 9 | Forks: 1\n- **라이선스**: N/A\n- **주 언어**: unknown\n\n## 실행 가능 상태: 코드 미공개 (README/asset만 존재)\n\n| 항목 | 상태 |\n|------|------|\n| README | N |\n| 소스 코드 (0개) | N |\n| 의존성 파일 | N |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\ngaussid.md\n.git/config\n.git/description\n.git/HEAD\n.git/index\n.git/packed-refs\n.git/shallow\n```\n"
+}

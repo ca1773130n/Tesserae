@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: ZXP-S-works/EquAct",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: ZXP-S-works/EquAct\n\n## Outgoing relations\n\n- **released_by** → zxp-s-works _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Integrating Symmetry into Differentiable Planning with Steerable Convolutions _(Paper)_\n\n## Connected node types\n\n- Organization: 1\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/papers/2206.03674/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: ZXP-S-works/EquAct\n\n## Outgoing relations\n\n- **released_by** → zxp-s-works _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Integrating Symmetry into Differentiable Planning with Steerable Convolutions _(Paper)_\n\n## Connected node types\n\n- Organization: 1\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/ZXP-S-works/EquAct",
+      "zxp-s-works/equact"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-zxp-s-works-equact:9e1ddb421888",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/papers/2206.03674/repo.md",
+    "title": "GitHub 분석: ZXP-S-works/EquAct"
+  }
+}

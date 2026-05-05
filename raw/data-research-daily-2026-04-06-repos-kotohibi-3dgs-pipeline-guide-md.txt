@@ -1,0 +1,69 @@
+Kotohibi_3DGS_pipeline_guide.md
+===============================
+
+# GitHub 분석: Kotohibi/3DGS_pipeline_guide
+
+> - URL: https://github.com/Kotohibi/3DGS_pipeline_guide
+> - 분석일: 2026-04-06
+
+## 개요
+
+- **설명**:   
+- **Stars**: ⭐ 79 | Forks: 8
+- **라이선스**: CC-BY-4.0
+- **주 언어**: unknown
+
+## 실행 가능 상태: 코드 미공개 (README/asset만 존재)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (0개) | N |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.github/FUNDING.yml
+[EN]Easy&Fast 3D Gaussian Splatting workflow with 360 Camera.md
+[JP]Easy&Fast 3D Gaussian Splatting workflow with 360 Camera.md
+images/ESP_1.png
+images/ESP_2_1.png
+images/ESP_2.png
+images/Extracted_mask.png
+images/Extracted.png
+images/lfs_1.png
+images/lfs_2.png
+images/lfs_3.png
+images/lfs_4.png
+images/lfs_5.png
+images/lfs_result.jpg
+images/metashape_1.png
+images/metashape_2.png
+images/metashape_3_mask.png
+images/metashape_3.png
+images/metashape_4.png
+images/metashape_mask_load_2.png
+images/metashape_mask_load.png
+images/metashape_tie_clean_1.png
+images/metashape_tie_clean_2.png
+images/metashape_tie_clean_3.png
+images/metashape_tie_clean_4.png
+images/MS360CC_2.png
+images/MS360CC_3.png
+images/MS360CC_4.png
+images/MS360CC.png
+images/osmo_1_edit.png
+images/osmo_2_edit.png
+images/postshot_1.png
+images/postshot_2.png
+images/postshot_3.png
+```

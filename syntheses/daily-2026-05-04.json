@@ -1,0 +1,46 @@
+{
+  "title": "Daily Digest — 2026-05-04",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-05-04\n\nSources ingested under `data/research/daily/2026-05-04/`.\n\n## Papers and repos\n- [Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search (arXiv:2501.19252)](../papers/inference-time-text-to-video-alignment-with-diffusion-latent-beam-search.md) (Paper)\n- [GitHub 분석: AmyangXYZ/reze-studio](../repos/github-분석-amyangxyz-reze-studio.md) (Repository)\n- [GitHub 분석: LeapLabTHU/RvR](../repos/github-분석-leaplabthu-rvr.md) (Repository)\n- [GitHub 분석: asimovinc/asimov-v1](../repos/github-분석-asimovinc-asimov-v1.md) (Repository)\n- [GitHub 분석: facebookresearch/tribev2](../repos/github-분석-facebookresearch-tribev2.md) (Repository)\n- [GitHub 분석: huskydoge/Awesome-Loop-Models](../repos/github-분석-huskydoge-awesome-loop-models.md) (Repository)\n- [Daily Feed Summary — 2026-05-04](../sources/daily-feed-summary-2026-05-04.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-05-04](../sources/daily-research-digest-2026-05-04.md) (SourceDocument)\n\n## Extracted concepts\n- Beam Search (InferenceStrategy)\n- Video Diffusion (MethodologicalConcept)",
+  "source_path": "",
+  "links": [
+    "../papers/inference-time-text-to-video-alignment-with-diffusion-latent-beam-search.md",
+    "../repos/github-분석-amyangxyz-reze-studio.md",
+    "../repos/github-분석-leaplabthu-rvr.md",
+    "../repos/github-분석-asimovinc-asimov-v1.md",
+    "../repos/github-분석-facebookresearch-tribev2.md",
+    "../repos/github-분석-huskydoge-awesome-loop-models.md",
+    "../sources/daily-feed-summary-2026-05-04.md",
+    "../sources/daily-research-digest-2026-05-04.md"
+  ],
+  "body": "# Daily Digest — 2026-05-04\n\nSources ingested under `data/research/daily/2026-05-04/`.\n\n## Papers and repos\n- [Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search (arXiv:2501.19252)](../papers/inference-time-text-to-video-alignment-with-diffusion-latent-beam-search.md) (Paper)\n- [GitHub 분석: AmyangXYZ/reze-studio](../repos/github-분석-amyangxyz-reze-studio.md) (Repository)\n- [GitHub 분석: LeapLabTHU/RvR](../repos/github-분석-leaplabthu-rvr.md) (Repository)\n- [GitHub 분석: asimovinc/asimov-v1](../repos/github-분석-asimovinc-asimov-v1.md) (Repository)\n- [GitHub 분석: facebookresearch/tribev2](../repos/github-분석-facebookresearch-tribev2.md) (Repository)\n- [GitHub 분석: huskydoge/Awesome-Loop-Models](../repos/github-분석-huskydoge-awesome-loop-models.md) (Repository)\n- [Daily Feed Summary — 2026-05-04](../sources/daily-feed-summary-2026-05-04.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-05-04](../sources/daily-research-digest-2026-05-04.md) (SourceDocument)\n\n## Extracted concepts\n- Beam Search (InferenceStrategy)\n- Video Diffusion (MethodologicalConcept)",
+  "frontmatter": {
+    "content_hash": "sha256-5f4618ff7ccff405d0082102f90c57163aa2029cee20cf2bc6b52237e62e95e6",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "InferenceStrategy:beam-search:2a553dec871b",
+      "MethodologicalConcept:video-diffusion:72ecb908974b",
+      "Paper:arxiv-2501-19252:f188522141a2",
+      "Repository:github-amyangxyz-reze-studio:2f82916cb96b",
+      "Repository:github-asimovinc-asimov-v1:e2636ce547f1",
+      "Repository:github-facebookresearch-tribev2:a86ed11b9524",
+      "Repository:github-huskydoge-awesome-loop-models:e9cdf4e1a301",
+      "Repository:github-leaplabthu-rvr:b05846130d24",
+      "SourceDocument:daily-feed-summary-2026-05-04:30f0b659ffbb",
+      "SourceDocument:daily-research-digest-2026-05-04:0f9a6b15d1bc"
+    ],
+    "slug": "daily-2026-05-04",
+    "sources": [
+      "data/research/daily/2026-05-04/digest.md",
+      "data/research/daily/2026-05-04/papers/2501.19252/paper.md",
+      "data/research/daily/2026-05-04/raw.md",
+      "data/research/daily/2026-05-04/repos/AmyangXYZ_reze-studio.md",
+      "data/research/daily/2026-05-04/repos/LeapLabTHU_RvR.md",
+      "data/research/daily/2026-05-04/repos/asimovinc_asimov-v1.md",
+      "data/research/daily/2026-05-04/repos/facebookresearch_tribev2.md",
+      "data/research/daily/2026-05-04/repos/huskydoge_Awesome-Loop-Models.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-05-04"
+  }
+}

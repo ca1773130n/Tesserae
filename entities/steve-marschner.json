@@ -1,0 +1,15 @@
+{
+  "title": "Steve Marschner",
+  "kind": "entities",
+  "body_text": "# Steve Marschner\n\n## Incoming relations\n\n- **authored_by** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/papers/2604.22202/paper.md",
+  "links": [],
+  "body": "# Steve Marschner\n\n## Incoming relations\n\n- **authored_by** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:steve-marschner:085b17fa356a",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/papers/2604.22202/paper.md",
+    "title": "Steve Marschner"
+  }
+}

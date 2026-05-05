@@ -1,0 +1,15 @@
+{
+  "title": "google-research",
+  "kind": "entities",
+  "body_text": "# google-research\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: google-research/vision-banana _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/tests/fixtures/wiki_corpus/data/research/daily/2026-04-25/papers/2604.20329/repo.md",
+  "links": [],
+  "body": "# google-research\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: google-research/vision-banana _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:google-research:afdcaa0bed0d",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/tests/fixtures/wiki_corpus/data/research/daily/2026-04-25/papers/2604.20329/repo.md",
+    "title": "google-research"
+  }
+}

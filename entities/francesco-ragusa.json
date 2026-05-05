@@ -1,0 +1,15 @@
+{
+  "title": "Francesco Ragusa",
+  "kind": "entities",
+  "body_text": "# Francesco Ragusa\n\n## Incoming relations\n\n- **authored_by** → An Outlook into the Future of Egocentric Vision _(Paper)_\n- **authored_by** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2308.07123/paper.md",
+  "links": [],
+  "body": "# Francesco Ragusa\n\n## Incoming relations\n\n- **authored_by** → An Outlook into the Future of Egocentric Vision _(Paper)_\n- **authored_by** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:francesco-ragusa:a9943ebe92f5",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2308.07123/paper.md",
+    "title": "Francesco Ragusa"
+  }
+}

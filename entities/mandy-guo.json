@@ -1,0 +1,15 @@
+{
+  "title": "Mandy Guo",
+  "kind": "entities",
+  "body_text": "# Mandy Guo\n\n## Incoming relations\n\n- **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-24/papers/2604.20329/paper.md",
+  "links": [],
+  "body": "# Mandy Guo\n\n## Incoming relations\n\n- **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:mandy-guo:4baef8ce2fca",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-24/papers/2604.20329/paper.md",
+    "title": "Mandy Guo"
+  }
+}

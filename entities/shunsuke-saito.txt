@@ -1,0 +1,12 @@
+Shunsuke Saito
+==============
+
+# Shunsuke Saito
+
+## Incoming relations
+
+- **authored_by** → Sapiens2 _(Paper)_
+
+## Connected node types
+
+- Paper: 1

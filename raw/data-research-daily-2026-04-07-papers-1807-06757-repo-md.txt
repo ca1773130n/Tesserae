@@ -1,0 +1,42 @@
+repo.md
+=======
+
+# GitHub 분석: Seeed-Projects/reBot-DevArm
+
+> - URL: https://github.com/Seeed-Projects/reBot-DevArm
+> - 분석일: 2026-04-07
+
+## 개요
+
+- **설명**: Open Source Robotic Arm for All Developers
+- **Stars**: ⭐ 1853 | Forks: 175
+- **라이선스**: NOASSERTION
+- **주 언어**: unknown
+
+## 실행 가능 상태: 코드 미공개 (README/asset만 존재)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (0개) | N |
+| 의존성 파일 | N |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE
+media/v1.0.png
+README_es.md
+README_Fr.md
+README_JP.md
+README_zh.md
+README.md
+```

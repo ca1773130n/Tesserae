@@ -1,0 +1,15 @@
+{
+  "title": "KITTI",
+  "kind": "entities",
+  "body_text": "# KITTI\n\n## Incoming relations\n\n- **evaluated_on** → GitHub 분석: team-aprl/MR.ScaleMaster _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/repos/team-aprl_MR.ScaleMaster.md",
+  "links": [],
+  "body": "# KITTI\n\n## Incoming relations\n\n- **evaluated_on** → GitHub 분석: team-aprl/MR.ScaleMaster _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Benchmark:kitti:3bf13195cd70",
+    "node_type": "Benchmark",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/repos/team-aprl_MR.ScaleMaster.md",
+    "title": "KITTI"
+  }
+}

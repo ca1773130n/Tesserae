@@ -1,0 +1,22 @@
+Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습
+=====================================
+
+# Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습
+
+## Outgoing relations
+
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- **uses** → Video Diffusion _(MethodologicalConcept)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-30 _(SourceDocument)_
+- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-30 _(SourceDocument)_
+
+## Connected node types
+
+- SourceDocument: 4
+- MethodologicalConcept: 1
+- ResearchField: 1

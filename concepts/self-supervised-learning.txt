@@ -1,0 +1,12 @@
+Self-Supervised Learning
+========================
+
+# Self-Supervised Learning
+
+## Incoming relations
+
+- **uses** → 자기지도학습 요리책 _(Paper)_
+
+## Connected node types
+
+- Paper: 1

@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: sv-pp/SceneVersepp",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: sv-pp/SceneVersepp\n\n## Outgoing relations\n\n- **released_by** → sv-pp _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_\n\n## Connected node types\n\n- Organization: 1\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2604.01907/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: sv-pp/SceneVersepp\n\n## Outgoing relations\n\n- **released_by** → sv-pp _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_\n\n## Connected node types\n\n- Organization: 1\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/sv-pp/SceneVersepp",
+      "sv-pp/sceneversepp"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-sv-pp-sceneversepp:0cdebe8aaa60",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-30/papers/2604.01907/repo.md",
+    "title": "GitHub 분석: sv-pp/SceneVersepp"
+  }
+}

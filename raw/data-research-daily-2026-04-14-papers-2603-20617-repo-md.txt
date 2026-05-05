@@ -1,0 +1,69 @@
+repo.md
+=======
+
+# GitHub 분석: jendrikseipp/vulture
+
+> - URL: https://github.com/jendrikseipp/vulture
+> - 분석일: 2026-04-14
+
+## 개요
+
+- **설명**: Find dead Python code
+- **Stars**: ⭐ 4519 | Forks: 181
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 체크포인트 미공개 (추론 불가 가능성)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (43개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+CHANGELOG.md
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+dev/make-release-notes.py
+dev/release.sh
+.git/config
+.git/description
+.git/HEAD
+.github/dependabot.yml
+.github/PULL_REQUEST_TEMPLATE.md
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE.txt
+MANIFEST.in
+.pre-commit-config.yaml
+.pre-commit-hooks.yaml
+pyproject.toml
+README.md
+requirements.txt
+tests/__init__.py
+tests/test_conditions.py
+tests/test_confidence.py
+tests/test_config.py
+tests/test_encoding.py
+tests/test_errors.py
+tests/test_format_strings.py
+tests/test_ignore.py
+tests/test_imports.py
+tests/test_item.py
+tests/test_make_whitelist.py
+tests/test_noqa.py
+tests/test_reachability.py
+tests/test_report.py
+tests/test_scavenging.py
+tests/test_script.py
+tests/test_size.py
+tests/test_sorting.py
+tests/test_utils.py
+```

@@ -1,0 +1,38 @@
+{
+  "title": "Daily Digest — 2026-04-28",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-04-28\n\nSources ingested under `data/research/daily/2026-04-28/`.\n\n## Papers and repos\n- [Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 (arXiv:2604.22482)](../papers/holo360d-파노라마-3d-재구성과-그-이상을-발전시키기-위한-연-96474e5d.md) (Paper)\n- [GitHub 분석: SkyworkAI/Matrix-3D](../repos/github-분석-skyworkai-matrix-3d.md) (Repository)\n- [GitHub 분석: xiquan-li/TinyMU](../repos/github-분석-xiquan-li-tinymu.md) (Repository)\n- [Daily Feed Summary — 2026-04-28](../sources/daily-feed-summary-2026-04-28.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-04-28](../sources/daily-research-digest-2026-04-28.md) (SourceDocument)\n\n## Extracted concepts\n- Depth Map (TechnicalTerm)\n- Point Cloud (TechnicalTerm)\n- Fine-tuning (TrainingParadigm)",
+  "source_path": "",
+  "links": [
+    "../papers/holo360d-파노라마-3d-재구성과-그-이상을-발전시키기-위한-연-96474e5d.md",
+    "../repos/github-분석-skyworkai-matrix-3d.md",
+    "../repos/github-분석-xiquan-li-tinymu.md",
+    "../sources/daily-feed-summary-2026-04-28.md",
+    "../sources/daily-research-digest-2026-04-28.md"
+  ],
+  "body": "# Daily Digest — 2026-04-28\n\nSources ingested under `data/research/daily/2026-04-28/`.\n\n## Papers and repos\n- [Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 (arXiv:2604.22482)](../papers/holo360d-파노라마-3d-재구성과-그-이상을-발전시키기-위한-연-96474e5d.md) (Paper)\n- [GitHub 분석: SkyworkAI/Matrix-3D](../repos/github-분석-skyworkai-matrix-3d.md) (Repository)\n- [GitHub 분석: xiquan-li/TinyMU](../repos/github-분석-xiquan-li-tinymu.md) (Repository)\n- [Daily Feed Summary — 2026-04-28](../sources/daily-feed-summary-2026-04-28.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-04-28](../sources/daily-research-digest-2026-04-28.md) (SourceDocument)\n\n## Extracted concepts\n- Depth Map (TechnicalTerm)\n- Point Cloud (TechnicalTerm)\n- Fine-tuning (TrainingParadigm)",
+  "frontmatter": {
+    "content_hash": "sha256-0adc8d0da8bdf5c67d5f139af7359cc2d39a35de42f1df50eb3dba2d78a85d87",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Paper:arxiv-2604-22482:89c23a62af15",
+      "Repository:github-skyworkai-matrix-3d:885f361b3b4a",
+      "Repository:github-xiquan-li-tinymu:bec207783ca1",
+      "SourceDocument:daily-feed-summary-2026-04-28:e32b1fd34fb2",
+      "SourceDocument:daily-research-digest-2026-04-28:f594565dd37c",
+      "TechnicalTerm:depth-map:349c240dc3dc",
+      "TechnicalTerm:point-cloud:5e627858ec5a",
+      "TrainingParadigm:fine-tuning:f617b4eb06c6"
+    ],
+    "slug": "daily-2026-04-28",
+    "sources": [
+      "data/research/daily/2026-04-28/digest.md",
+      "data/research/daily/2026-04-28/papers/2604.22482/paper.md",
+      "data/research/daily/2026-04-28/raw.md",
+      "data/research/daily/2026-04-28/repos/SkyworkAI_Matrix-3D.md",
+      "data/research/daily/2026-04-28/repos/xiquan-li_TinyMU.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-04-28"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "title": "Gael Le Lan",
+  "kind": "entities",
+  "body_text": "# Gael Le Lan\n\n## Incoming relations\n\n- **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2604.04874/paper.md",
+  "links": [],
+  "body": "# Gael Le Lan\n\n## Incoming relations\n\n- **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:gael-le-lan:d74f6f61584c",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2604.04874/paper.md",
+    "title": "Gael Le Lan"
+  }
+}

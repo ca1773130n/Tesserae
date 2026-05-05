@@ -1,0 +1,14 @@
+Open question: 향후 연구를 촉진하기 위해 EUPE 모델 전체 계열과 코드를 공개할 예정이다.
+==========================================================
+
+# Open question: 향후 연구를 촉진하기 위해 EUPE 모델 전체 계열과 코드를 공개할 예정이다.
+
+향후 연구를 촉진하기 위해 EUPE 모델 전체 계열과 코드를 공개할 예정이다.
+
+## Incoming relations
+
+- **supports_claim** → Efficient Universal Perception Encoder _(Paper)_
+
+## Connected node types
+
+- Paper: 1

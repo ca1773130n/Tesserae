@@ -1,0 +1,69 @@
+repo.md
+=======
+
+# GitHub 분석: m-schuetz/CuRast
+
+> - URL: https://github.com/m-schuetz/CuRast
+> - 분석일: 2026-04-25
+
+## 개요
+
+- **설명**: Cuda-Based Software Rasterization for Billions of Triangles
+- **Stars**: ⭐ 111 | Forks: 3
+- **라이선스**: NOASSERTION
+- **주 언어**: C++/CUDA
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (26개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+cmake/common.cmake
+CMakeLists.txt
+docs/cover.jpg
+docs/CuRast_arxiv.pdf
+docs/screenshot_lantern_instanced_overview.jpg
+docs/screenshot_venice_closeup.jpg
+docs/stages.png
+example_donaukanal_urania.glb
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+libs/morton.h
+LICENSE.md
+README.md
+src/Benchmarking.h
+src/BitEdit.h
+src/CudaModularProgram.h
+src/CudaVirtualMemory.h
+src/CudaVulkanSharedMemory.h
+src/CuRast.cpp
+src/CuRast.h
+src/CuRast_render.h
+src/CuRastSettings.h
+src/CuRast_vulkanRender.h
+src/CURuntime.h
+src/GLTFLoader.h
+src/ImageLoader.cpp
+src/LargeGlbLoader.h
+src/main.cpp
+src/MappedFile.h
+src/MemoryManager.h
+src/MouseEvents.h
+src/OrbitControls.h
+src/PlyLoader.h
+src/Runtime.h
+src/TextureManager.h
+```

@@ -1,0 +1,29 @@
+{
+  "title": "Daily Digest — 2026-04-09",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-04-09\n\nSources ingested under `data/research/daily/2026-04-09/`.\n\n## Papers and repos\n- [GitHub 분석: ArthurBrussee/brush](../repos/github-분석-arthurbrussee-brush.md) (Repository)\n- [GitHub 분석: apple/ml-mobileclip](../repos/github-분석-apple-ml-mobileclip.md) (Repository)\n- [Daily Feed Summary — 2026-04-09](../sources/daily-feed-summary-2026-04-09.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "source_path": "",
+  "links": [
+    "../repos/github-분석-arthurbrussee-brush.md",
+    "../repos/github-분석-apple-ml-mobileclip.md",
+    "../sources/daily-feed-summary-2026-04-09.md"
+  ],
+  "body": "# Daily Digest — 2026-04-09\n\nSources ingested under `data/research/daily/2026-04-09/`.\n\n## Papers and repos\n- [GitHub 분석: ArthurBrussee/brush](../repos/github-분석-arthurbrussee-brush.md) (Repository)\n- [GitHub 분석: apple/ml-mobileclip](../repos/github-분석-apple-ml-mobileclip.md) (Repository)\n- [Daily Feed Summary — 2026-04-09](../sources/daily-feed-summary-2026-04-09.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "frontmatter": {
+    "content_hash": "sha256-99c9c54b400212ed3397d5a5347041f823041f8d5a961c3d9d7fc263f31efefa",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Repository:github-apple-ml-mobileclip:3a2124454f6d",
+      "Repository:github-arthurbrussee-brush:d349c1cea478",
+      "SourceDocument:daily-feed-summary-2026-04-09:28266be643f4"
+    ],
+    "slug": "daily-2026-04-09",
+    "sources": [
+      "data/research/daily/2026-04-09/papers/2411.14517/repo.md",
+      "data/research/daily/2026-04-09/papers/2412.09548/repo.md",
+      "data/research/daily/2026-04-09/raw.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-04-09"
+  }
+}

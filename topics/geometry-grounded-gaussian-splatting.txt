@@ -1,0 +1,21 @@
+Geometry-Grounded Gaussian Splatting
+====================================
+
+# Geometry-Grounded Gaussian Splatting
+
+Registered term referenced in WorldCompass: Reinforcement Learning for Long-Horizon World Models
+
+## Outgoing relations
+
+- **uses** → Stochastic Solid _(MathematicalConcept)_
+
+## Incoming relations
+
+- **belongs_to_approach_family** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- **documents** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+
+## Connected node types
+
+- MathematicalConcept: 1
+- Paper: 1
+- SourceDocument: 1

@@ -1,0 +1,17 @@
+Daily Digest — 2026-05-03
+=========================
+
+# Daily Digest — 2026-05-03
+
+Sources ingested under `data/research/daily/2026-05-03/`.
+
+## Papers and repos
+- [ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild (arXiv:2604.22202)](../papers/archsym-detecting-3d-grounded-architectural-symmetries-in-the-wild.md) (Paper)
+- [Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective (arXiv:2604.14025)](../papers/feed-forward-3d-scene-modeling-a-problem-driven-perspective.md) (Paper)
+- [Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 (arXiv:2408.01437)](../papers/img2cad-vlm-assisted-conditional-factorization을-통한-이미지로부터의-3-737a56aa.md) (Paper)
+- [GitHub 분석: qq456cvb/Img2CAD](../repos/github-분석-qq456cvb-img2cad.md) (Repository)
+- [Daily Feed Summary — 2026-05-03](../sources/daily-feed-summary-2026-05-03.md) (SourceDocument)
+- [📬 Daily Research Digest — 2026-05-03](../sources/daily-research-digest-2026-05-03.md) (SourceDocument)
+
+## Extracted concepts
+- (none extracted)

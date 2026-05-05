@@ -1,0 +1,15 @@
+{
+  "title": "Daily Feed Summary — 2026-05-03",
+  "kind": "sources",
+  "body_text": "# Daily Feed Summary — 2026-05-03\n\n## Outgoing relations\n\n- **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_\n- **mentioned_in** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_\n- **mentioned_in** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_\n\n## Connected node types\n\n- Paper: 3",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/raw.md",
+  "links": [],
+  "body": "# Daily Feed Summary — 2026-05-03\n\n## Outgoing relations\n\n- **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_\n- **mentioned_in** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_\n- **mentioned_in** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_\n\n## Connected node types\n\n- Paper: 3",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:daily-feed-summary-2026-05-03:77ec6f60d408",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/raw.md",
+    "title": "Daily Feed Summary — 2026-05-03"
+  }
+}

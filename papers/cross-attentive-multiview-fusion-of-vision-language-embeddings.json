@@ -1,0 +1,18 @@
+{
+  "title": "Cross-Attentive Multiview Fusion of Vision-Language Embeddings",
+  "kind": "papers",
+  "body_text": "# Cross-Attentive Multiview Fusion of Vision-Language Embeddings\n\n## Outgoing relations\n\n- **authored_by** → Javier Civera _(Person)_\n- **authored_by** → Martin R. Oswald _(Person)_\n- **authored_by** → Tomas Berriel Martins _(Person)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-23 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-23 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 4\n- Person: 3\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2604.12551/paper.md",
+  "links": [],
+  "body": "# Cross-Attentive Multiview Fusion of Vision-Language Embeddings\n\n## Outgoing relations\n\n- **authored_by** → Javier Civera _(Person)_\n- **authored_by** → Martin R. Oswald _(Person)_\n- **authored_by** → Tomas Berriel Martins _(Person)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_\n- **mentioned_in** → Daily Feed Summary — 2026-04-23 _(SourceDocument)_\n- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-04-23 _(SourceDocument)_\n\n## Connected node types\n\n- SourceDocument: 4\n- Person: 3\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2604.12551"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2604-12551:e438ea9beac9",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-23/papers/2604.12551/paper.md",
+    "title": "Cross-Attentive Multiview Fusion of Vision-Language Embeddings"
+  }
+}

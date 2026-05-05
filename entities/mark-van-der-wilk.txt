@@ -1,0 +1,12 @@
+Mark van der Wilk
+=================
+
+# Mark van der Wilk
+
+## Incoming relations
+
+- **authored_by** → Learning in Deep Factor Graphs with Gaussian Belief Propagation _(Paper)_
+
+## Connected node types
+
+- Paper: 1

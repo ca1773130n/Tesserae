@@ -1,0 +1,12 @@
+GitHub 분석: apple/ml-4m
+======================
+
+# GitHub 분석: apple/ml-4m
+
+## Outgoing relations
+
+- **released_by** → apple _(Organization)_
+
+## Connected node types
+
+- Organization: 1

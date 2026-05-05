@@ -1,0 +1,12 @@
+GitHub 분석: roboflow/rf-detr
+===========================
+
+# GitHub 분석: roboflow/rf-detr
+
+## Outgoing relations
+
+- **evaluated_on** → COCO _(Benchmark)_
+
+## Connected node types
+
+- Benchmark: 1

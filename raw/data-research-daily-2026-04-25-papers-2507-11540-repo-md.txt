@@ -1,0 +1,46 @@
+repo.md
+=======
+
+# GitHub 분석: zju3dv/Scal3R
+
+> - URL: https://github.com/zju3dv/Scal3R
+> - 분석일: 2026-04-25
+
+## 개요
+
+- **설명**: [CVPR 2026 (Highlight)] Scal3R: Scalable Test-Time Training for Large-Scale 3D Reconstruction 
+- **Stars**: ⭐ 382 | Forks: 22
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (27개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+assets/logo.png
+assets/teaser.gif
+configs/base.yaml
+docs/install.md
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+pyproject.toml
+README.md
+requirements.txt
+scal3r/__init__.py
+scal3r/run.py
+scripts/install.sh
+```

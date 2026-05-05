@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: m-schuetz/CuRast",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: m-schuetz/CuRast\n\n## Outgoing relations\n\n- **released_by** → m-schuetz _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_\n\n## Connected node types\n\n- Organization: 1\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2603.24725/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: m-schuetz/CuRast\n\n## Outgoing relations\n\n- **released_by** → m-schuetz _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_\n\n## Connected node types\n\n- Organization: 1\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/m-schuetz/CuRast",
+      "m-schuetz/curast"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-m-schuetz-curast:6cc340b20ca8",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2603.24725/repo.md",
+    "title": "GitHub 분석: m-schuetz/CuRast"
+  }
+}

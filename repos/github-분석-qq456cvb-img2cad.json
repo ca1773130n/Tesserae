@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: qq456cvb/Img2CAD",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: qq456cvb/Img2CAD\n\n## Incoming relations\n\n- **implemented_in** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/papers/2408.01437/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: qq456cvb/Img2CAD\n\n## Incoming relations\n\n- **implemented_in** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/qq456cvb/Img2CAD",
+      "qq456cvb/img2cad"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-qq456cvb-img2cad:3c1b4135a0e4",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-03/papers/2408.01437/repo.md",
+    "title": "GitHub 분석: qq456cvb/Img2CAD"
+  }
+}

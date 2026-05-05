@@ -1,0 +1,12 @@
+GitHub 분석: visinf/INSID3
+========================
+
+# GitHub 분석: visinf/INSID3
+
+## Outgoing relations
+
+- **evaluated_on** → COCO _(Benchmark)_
+
+## Connected node types
+
+- Benchmark: 1

@@ -1,0 +1,14 @@
+Open question: 핵심 아키텍처와 학습 전략을 식별함으로써, 본 논문은 강건한 depth foundation models로 나아가는 경로를 조명하고, 향후 연구와 응용에 대한 통찰을 제공하…
+================================================================================
+
+# Open question: 핵심 아키텍처와 학습 전략을 식별함으로써, 본 논문은 강건한 depth foundation models로 나아가는 경로를 조명하고, 향후 연구와 응용에 대한 통찰을 제공하…
+
+핵심 아키텍처와 학습 전략을 식별함으로써, 본 논문은 강건한 depth foundation models로 나아가는 경로를 조명하고, 향후 연구와 응용에 대한 통찰을 제공하는 것을 목표로 한다.
+
+## Incoming relations
+
+- **supports_claim** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
+
+## Connected node types
+
+- Paper: 1

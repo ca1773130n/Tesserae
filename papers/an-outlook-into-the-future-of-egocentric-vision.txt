@@ -1,0 +1,28 @@
+An Outlook into the Future of Egocentric Vision
+===============================================
+
+# An Outlook into the Future of Egocentric Vision
+
+## Outgoing relations
+
+- **authored_by** → Antonino Furnari _(Person)_
+- **authored_by** → Chiara Plizzari _(Person)_
+- **authored_by** → Dima Damen _(Person)_
+- **authored_by** → Francesco Ragusa _(Person)_
+- **authored_by** → Gabriele Goletto _(Person)_
+- **authored_by** → Giovanni Maria Farinella _(Person)_
+- **authored_by** → Siddhant Bansal _(Person)_
+- **authored_by** → Tatiana Tommasi _(Person)_
+- **part_of** → Research Literature _(ResearchField)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-22 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 8
+- SourceDocument: 3
+- ResearchField: 1

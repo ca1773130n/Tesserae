@@ -1,0 +1,8 @@
+{
+  "title": "repo.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: SkalskiP/top-cvpr-2026-papers\n\n> - URL: https://github.com/SkalskiP/top-cvpr-2026-papers\n> - 분석일: 2026-04-23\n\n## 개요\n\n- **설명**: About This repository is a curated collection of the most exciting and influential CVPR 2026 papers. 🔥 [Paper + Code + Demo]\n- **Stars**: ⭐ 87 | Forks: 1\n- **라이선스**: CC0-1.0\n- **주 언어**: Python\n\n## 실행 가능 상태: 의존성 파일 없음\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (1개) | Y |\n| 의존성 파일 | N |\n| 모델/체크포인트 | script |\n| Docker | N |\n\n## 파일 구조\n\n```\nautomation/data.csv\nautomation/generate.py\nautomation/requirements.txt\nCONTRIBUTING.md\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\nLICENSE\nREADME.md\n```",
+  "source_path": "data/research/daily/2026-04-23/papers/2604.11251/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: SkalskiP/top-cvpr-2026-papers\n\n> - URL: https://github.com/SkalskiP/top-cvpr-2026-papers\n> - 분석일: 2026-04-23\n\n## 개요\n\n- **설명**: About This repository is a curated collection of the most exciting and influential CVPR 2026 papers. 🔥 [Paper + Code + Demo]\n- **Stars**: ⭐ 87 | Forks: 1\n- **라이선스**: CC0-1.0\n- **주 언어**: Python\n\n## 실행 가능 상태: 의존성 파일 없음\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (1개) | Y |\n| 의존성 파일 | N |\n| 모델/체크포인트 | script |\n| Docker | N |\n\n## 파일 구조\n\n```\nautomation/data.csv\nautomation/generate.py\nautomation/requirements.txt\nCONTRIBUTING.md\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\nLICENSE\nREADME.md\n```\n"
+}

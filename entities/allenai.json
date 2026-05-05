@@ -1,0 +1,15 @@
+{
+  "title": "allenai",
+  "kind": "entities",
+  "body_text": "# allenai\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: allenai/molmoact _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/repos/allenai_molmoact.md",
+  "links": [],
+  "body": "# allenai\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: allenai/molmoact _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:allenai:211fe279d37a",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-11/repos/allenai_molmoact.md",
+    "title": "allenai"
+  }
+}

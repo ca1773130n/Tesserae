@@ -1,0 +1,12 @@
+Pretraining
+===========
+
+# Pretraining
+
+## Incoming relations
+
+- **uses** → Image Generators are Generalist Vision Learners _(Paper)_
+
+## Connected node types
+
+- Paper: 1

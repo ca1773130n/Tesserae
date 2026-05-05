@@ -1,0 +1,15 @@
+{
+  "title": "skyworkai",
+  "kind": "entities",
+  "body_text": "# skyworkai\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: SkyworkAI/Matrix-3D _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-28/repos/SkyworkAI_Matrix-3D.md",
+  "links": [],
+  "body": "# skyworkai\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: SkyworkAI/Matrix-3D _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:skyworkai:f15bea18d470",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-28/repos/SkyworkAI_Matrix-3D.md",
+    "title": "skyworkai"
+  }
+}

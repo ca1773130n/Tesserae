@@ -1,0 +1,78 @@
+paper.md
+========
+
+# 논문 분석: 2604.22482
+
+> - arxiv: https://arxiv.org/abs/2604.22482
+> - papers.cool: https://papers.cool/arxiv/2604.22482
+> - 분석일: 2026-04-28
+
+# Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 | Cool Papers - Immersive Paper Discovery
+
+## 2604.22482
+
+총계: 1
+
+## 
+#1
+
+Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋  
+[PDF5]  
+[Copy]  
+[Kimi1]  
+[REL]
+
+저자:  
+Jing Ou,  
+Zidong Cao,  
+Yinrui Ren,  
+Zhuoxiao Li,  
+Jinjing Zhu,  
+Tongyan Hua,  
+Shuai Zhang,  
+Hui Xiong,  
+Wufan Zhao
+
+feed-forward 3D reconstruction 모델은 빠르게 발전해 왔지만, 구면 왜곡 때문에 파노라마에서는 여전히 성능 저하를 보인다. 또한 기존의 파노라마 3D 데이터셋은 대부분 360 카메라를 이산적인 위치에 고정한 채 수집되므로, 궤적이 불연속적이다. 이러한 한계는 특히 multi-view 설정에서 파노라마 feed-forward 3D reconstruction의 발전을 심각하게 저해한다. 본 논문에서는 등록된 point cloud, mesh, 정렬된 camera pose와 짝지어진 109,495장의 파노라마를 포함하는 포괄적 데이터셋 Holo360D를 제시한다. 우리가 아는 한, Holo360D는 정확하게 정렬되고 완성도가 높은 depth map을 갖춘 연속 파노라마 시퀀스를 제공하는 최초의 대규모 데이터셋이다. 원시 데이터는 3D laser scanner와 360 camera를 결합해 먼저 수집한다. 이후 원시 데이터는 online 및 offline SLAM 시스템으로 처리된다. 더 나아가 3D 데이터 품질을 향상시키기 위해, geometry denoising, mesh hole filling, region-specific remeshing을 포함하는 360 데이터셋 전용 후처리 파이프라인을 제안한다. 마지막으로 Holo360D에서 3D reconstruction 모델을 fine-tuning하여 새로운 benchmark를 구축하고, 효과적인 fine-tuning 전략에 대한 핵심 통찰을 제공한다. 실험 결과는 Holo360D가 더 우수한 학습 신호를 제공하며, 파노라마 3D reconstruction 모델의 발전을 위한 포괄적인 benchmark를 제공함을 보여준다. 데이터셋과 코드는 공개될 예정이다.
+
+주제:  
+Computer Vision and Pattern Recognition,  
+Graphics
+
+게시: 2026-04-24 12:03:27 UTC
+
+kexue.fm에서 디자인 | kimi.ai로 구동
+
+포함 OR:  
+제외:
+
+검색  
+필터  
+강조
+
+표시한 논문:
+
+#1  
+Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋
+
+내보내기
+
+Magic Token:
+
+Kimi 언어:  
+中文  
+English
+
+설명 언어:  
+中文  
+English
+
+저장
+
+버그 신고 또는 이슈 제출은 다음을 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+계속 진행하기 전에 Disclaimer를 읽어 주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문하세요.

@@ -1,0 +1,12 @@
+skalskip
+========
+
+# skalskip
+
+## Incoming relations
+
+- **released_by** → GitHub 분석: SkalskiP/top-cvpr-2026-papers _(Repository)_
+
+## Connected node types
+
+- Repository: 1

@@ -1,0 +1,22 @@
+{
+  "title": "2026-04-26",
+  "kind": "timeline_day",
+  "body_text": "Activity for 2026-04-26: 35 item(s) indexed.",
+  "source_path": "",
+  "links": [],
+  "body": "Activity for 2026-04-26",
+  "frontmatter": {
+    "date": "2026-04-26",
+    "activity": 35,
+    "sources": [
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-26/digest.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-26/papers/2601.17835/paper.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-26/papers/2604.00538/paper.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-26/papers/2604.18744/paper.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-26/raw.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-26/repos/OpsiClear-4DGS_TriGSVanilla.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/tests/fixtures/wiki_corpus/data/research/daily/2026-04-26/digest.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/tests/fixtures/wiki_corpus/data/research/daily/2026-04-26/repos/sample-repo.md"
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: FanJunqiao/M4Human",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: FanJunqiao/M4Human\n\n## Incoming relations\n\n- **implemented_in** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2510.12724/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: FanJunqiao/M4Human\n\n## Incoming relations\n\n- **implemented_in** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "fanjunqiao/m4human",
+      "https://github.com/FanJunqiao/M4Human"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-fanjunqiao-m4human:23d97b10c5ec",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-22/papers/2510.12724/repo.md",
+    "title": "GitHub 분석: FanJunqiao/M4Human"
+  }
+}

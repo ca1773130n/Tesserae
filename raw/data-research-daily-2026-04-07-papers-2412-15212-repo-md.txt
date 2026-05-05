@@ -1,0 +1,54 @@
+repo.md
+=======
+
+# GitHub 분석: google-deepmind/representations4d
+
+> - URL: https://github.com/google-deepmind/representations4d
+> - 분석일: 2026-04-07
+
+## 개요
+
+- **설명**:   
+- **Stars**: ⭐ 123 | Forks: 5
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 체크포인트 미공개 (추론 불가 가능성)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (9개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.gitignore
+assets/moog.png
+assets/RVM.png
+assets/scaling_20M_20B.png
+colabs/moog_inference_demo.ipynb
+colabs/rvm_evaluation_demo.ipynb
+colabs/rvm_inference_demo.ipynb
+colabs/rvm_runtime_and_memory.ipynb
+colabs/scaling4d_depth_demo.ipynb
+CONTRIBUTING.md
+LICENSE
+moog/attention.py
+moog/conv.py
+moog/initializers.py
+moog/modules.py
+moog/pos_embeddings.py
+moog/README.md
+pyproject.toml
+README.md
+```

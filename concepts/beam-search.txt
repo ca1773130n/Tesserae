@@ -1,0 +1,12 @@
+Beam Search
+===========
+
+# Beam Search
+
+## Incoming relations
+
+- **uses** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_
+
+## Connected node types
+
+- Paper: 1

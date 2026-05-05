@@ -1,0 +1,12 @@
+Chun-Han Yao
+============
+
+# Chun-Han Yao
+
+## Incoming relations
+
+- **authored_by** → Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation _(Paper)_
+
+## Connected node types
+
+- Paper: 1

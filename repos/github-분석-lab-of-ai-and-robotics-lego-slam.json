@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: Lab-of-AI-and-Robotics/LEGO-SLAM",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: Lab-of-AI-and-Robotics/LEGO-SLAM\n\n## Outgoing relations\n\n- **released_by** → lab-of-ai-and-robotics _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/repos/Lab-of-AI-and-Robotics_LEGO-SLAM.md",
+  "links": [],
+  "body": "# GitHub 분석: Lab-of-AI-and-Robotics/LEGO-SLAM\n\n## Outgoing relations\n\n- **released_by** → lab-of-ai-and-robotics _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/Lab-of-AI-and-Robotics/LEGO-SLAM",
+      "lab-of-ai-and-robotics/lego-slam"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-lab-of-ai-and-robotics-lego-slam:a7428f4b0c17",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/repos/Lab-of-AI-and-Robotics_LEGO-SLAM.md",
+    "title": "GitHub 분석: Lab-of-AI-and-Robotics/LEGO-SLAM"
+  }
+}

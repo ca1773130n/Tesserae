@@ -1,0 +1,19 @@
+sample-repo.md
+==============
+
+# GitHub 분석: genforce/JOSH
+
+> - URL: https://github.com/genforce/JOSH
+> - 분석일: 2026-04-26
+
+## 개요
+
+- **설명**: [ICLR 2026] Joint Optimisation for Scene+Human reconstruction
+  in the wild. Tackles 4D human-scene reconstruction from monocular video.
+- **Stars**: ⭐ 214 | Forks: 6
+- **주 언어**: Python
+
+## 실행 가능 상태
+
+Model checkpoints download via josh_demo.sh. Depends on TRAM and SAM3 for
+preprocessing, and exports rerun .rrd recordings.

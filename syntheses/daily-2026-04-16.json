@@ -1,0 +1,41 @@
+{
+  "title": "Daily Digest — 2026-04-16",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-04-16\n\nSources ingested under `data/research/daily/2026-04-16/`.\n\n## Papers and repos\n- [GitHub 분석: apple/ml-4m](../repos/github-분석-apple-ml-4m.md) (Repository)\n- [GitHub 분석: gmberton/vismatch](../repos/github-분석-gmberton-vismatch.md) (Repository)\n- [GitHub 분석: jonbarron/gaussid](../repos/github-분석-jonbarron-gaussid.md) (Repository)\n- [GitHub 분석: nv-tlabs/lyra](../repos/github-분석-nv-tlabs-lyra.md) (Repository)\n- [GitHub 분석: reinehonoka/Voice-Design-Cloner](../repos/github-분석-reinehonoka-voice-design-cloner.md) (Repository)\n- [GitHub 분석: roboflow/rf-detr](../repos/github-분석-roboflow-rf-detr.md) (Repository)\n- [Daily Feed Summary — 2026-04-16](../sources/daily-feed-summary-2026-04-16.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "source_path": "",
+  "links": [
+    "../repos/github-분석-apple-ml-4m.md",
+    "../repos/github-분석-gmberton-vismatch.md",
+    "../repos/github-분석-jonbarron-gaussid.md",
+    "../repos/github-분석-nv-tlabs-lyra.md",
+    "../repos/github-분석-reinehonoka-voice-design-cloner.md",
+    "../repos/github-분석-roboflow-rf-detr.md",
+    "../sources/daily-feed-summary-2026-04-16.md"
+  ],
+  "body": "# Daily Digest — 2026-04-16\n\nSources ingested under `data/research/daily/2026-04-16/`.\n\n## Papers and repos\n- [GitHub 분석: apple/ml-4m](../repos/github-분석-apple-ml-4m.md) (Repository)\n- [GitHub 분석: gmberton/vismatch](../repos/github-분석-gmberton-vismatch.md) (Repository)\n- [GitHub 분석: jonbarron/gaussid](../repos/github-분석-jonbarron-gaussid.md) (Repository)\n- [GitHub 분석: nv-tlabs/lyra](../repos/github-분석-nv-tlabs-lyra.md) (Repository)\n- [GitHub 분석: reinehonoka/Voice-Design-Cloner](../repos/github-분석-reinehonoka-voice-design-cloner.md) (Repository)\n- [GitHub 분석: roboflow/rf-detr](../repos/github-분석-roboflow-rf-detr.md) (Repository)\n- [Daily Feed Summary — 2026-04-16](../sources/daily-feed-summary-2026-04-16.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "frontmatter": {
+    "content_hash": "sha256-c49acefb79fadbeb267ebe3292dba4b7b17aade6765f430d47a320fdc31ee714",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Repository:github-apple-ml-4m:3fe889d57d99",
+      "Repository:github-gmberton-vismatch:e6544ab36593",
+      "Repository:github-jonbarron-gaussid:02f2381e5eae",
+      "Repository:github-nv-tlabs-lyra:a4b0970f3c90",
+      "Repository:github-reinehonoka-voice-design-cloner:c627de9ed39e",
+      "Repository:github-roboflow-rf-detr:05c3483eded8",
+      "SourceDocument:daily-feed-summary-2026-04-16:9026d5a678ae"
+    ],
+    "slug": "daily-2026-04-16",
+    "sources": [
+      "data/research/daily/2026-04-16/papers/2509.19296/repo.md",
+      "data/research/daily/2026-04-16/papers/2604.09445/repo.md",
+      "data/research/daily/2026-04-16/raw.md",
+      "data/research/daily/2026-04-16/repos/apple_ml-4m.md",
+      "data/research/daily/2026-04-16/repos/jonbarron_gaussid.md",
+      "data/research/daily/2026-04-16/repos/reinehonoka_Voice-Design-Cloner.md",
+      "data/research/daily/2026-04-16/repos/roboflow_rf-detr.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-04-16"
+  }
+}

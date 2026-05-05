@@ -1,0 +1,51 @@
+repo.md
+=======
+
+# GitHub 분석: KAIST-Visual-AI-Group/GrounDiT
+
+> - URL: https://github.com/KAIST-Visual-AI-Group/GrounDiT
+> - 분석일: 2026-04-11
+
+## 개요
+
+- **설명**: [NeurIPS 2024] Official Implementation of GrounDiT
+- **Stars**: ⭐ 59 | Forks: 3
+- **라이선스**: Apache-2.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (9개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+assets/teaser.png
+config.json
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+groundit/attention_processor.py
+groundit/attention.py
+groundit_demo.ipynb
+groundit/global_update_functions.py
+groundit/__init__.py
+groundit/local_update_functions.py
+groundit/pipeline_groundit.py
+groundit/transformer_2d.py
+groundit/utils.py
+LICENSE
+main.py
+README.md
+requirements.txt
+```

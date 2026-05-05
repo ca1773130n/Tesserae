@@ -1,0 +1,65 @@
+repo.md
+=======
+
+# GitHub 분석: facebookresearch/vjepa2
+
+> - URL: https://github.com/facebookresearch/vjepa2
+> - 분석일: 2026-04-12
+
+## 개요
+
+- **설명**: PyTorch code and models for VJEPA2 self-supervised learning from video.
+- **Stars**: ⭐ 3597 | Forks: 425
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (64개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+APACHE-LICENSE
+app/main_distributed.py
+app/main.py
+app/scaffold.py
+assets/architecture_vjepa2_1.jpg
+assets/bars_teaser_tikz-1.png
+assets/flowchart.png
+assets/teaser_screenshot_5dice.png
+assets/vjepa2-abstract-new.png
+assets/vjepa2-ac-abstract-new.png
+CHANGELOG.md
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+evals/main_distributed.py
+evals/main.py
+evals/scaffold.py
+.flake8
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+hubconf.py
+LICENSE
+notebooks/energy_landscape_example.ipynb
+notebooks/franka_example_traj.npz
+notebooks/vjepa2_demo.ipynb
+notebooks/vjepa2_demo.py
+pyproject.toml
+README.md
+requirements-test.txt
+requirements.txt
+setup.py
+tests/__init__.py
+```

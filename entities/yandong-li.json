@@ -1,0 +1,15 @@
+{
+  "title": "Yandong Li",
+  "kind": "entities",
+  "body_text": "# Yandong Li\n\n## Incoming relations\n\n- **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-24/papers/2604.20329/paper.md",
+  "links": [],
+  "body": "# Yandong Li\n\n## Incoming relations\n\n- **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:yandong-li:6cc7b2bad404",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-24/papers/2604.20329/paper.md",
+    "title": "Yandong Li"
+  }
+}

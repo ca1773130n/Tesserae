@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: tue-mps/eomt",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: tue-mps/eomt\n\n## Outgoing relations\n\n- **released_by** → tue-mps _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/papers/2506.04598/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: tue-mps/eomt\n\n## Outgoing relations\n\n- **released_by** → tue-mps _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/tue-mps/eomt",
+      "tue-mps/eomt"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-tue-mps-eomt:676b4ec5d953",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-10/papers/2506.04598/repo.md",
+    "title": "GitHub 분석: tue-mps/eomt"
+  }
+}

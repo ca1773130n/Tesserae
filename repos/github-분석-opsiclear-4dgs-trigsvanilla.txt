@@ -1,0 +1,12 @@
+GitHub 분석: OpsiClear-4DGS/TriGSVanilla
+======================================
+
+# GitHub 분석: OpsiClear-4DGS/TriGSVanilla
+
+## Outgoing relations
+
+- **released_by** → opsiclear-4dgs _(Organization)_
+
+## Connected node types
+
+- Organization: 1

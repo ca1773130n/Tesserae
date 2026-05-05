@@ -1,0 +1,14 @@
+4D Gaussian Splatting
+=====================
+
+# 4D Gaussian Splatting
+
+## Incoming relations
+
+- **uses** → Dynamic Gaussian Splatting _(ApproachFamily)_
+- **uses** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_
+
+## Connected node types
+
+- ApproachFamily: 1
+- Paper: 1

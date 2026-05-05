@@ -1,0 +1,36 @@
+3D/4D Vision and Reconstruction
+===============================
+
+# 3D/4D Vision and Reconstruction
+
+## Incoming relations
+
+- **part_of** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_
+- **part_of** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_
+- **part_of** → Cross-Attentive Multiview Fusion of Vision-Language Embeddings _(Paper)_
+- **part_of** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_
+- **part_of** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_
+- **part_of** → Extreme Rotation Estimation in the Wild _(Paper)_
+- **part_of** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_
+- **part_of** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- **part_of** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_
+- **part_of** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_
+- **part_of** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- **part_of** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_
+- **part_of** → Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling _(Paper)_
+- **part_of** → Image Generators are Generalist Vision Learners _(Paper)_
+- **part_of** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_
+- **part_of** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_
+- **part_of** → Learning in Deep Factor Graphs with Gaussian Belief Propagation _(Paper)_
+- **part_of** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_
+- **part_of** → Long-tail Internet photo reconstruction _(Paper)_
+- **part_of** → Lyra 2.0: Explorable Generative 3D Worlds _(Paper)_
+- **part_of** → Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction _(Paper)_
+- **part_of** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
+- **part_of** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
+- **part_of** → Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습 _(Paper)_
+- **part_of** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_
+
+## Connected node types
+
+- Paper: 35

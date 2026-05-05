@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: apple/ml-4m",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: apple/ml-4m\n\n## Outgoing relations\n\n- **released_by** → apple _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-16/repos/apple_ml-4m.md",
+  "links": [],
+  "body": "# GitHub 분석: apple/ml-4m\n\n## Outgoing relations\n\n- **released_by** → apple _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "frontmatter": {
+    "aliases": [
+      "apple/ml-4m",
+      "https://github.com/apple/ml-4m"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-apple-ml-4m:3fe889d57d99",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-16/repos/apple_ml-4m.md",
+    "title": "GitHub 분석: apple/ml-4m"
+  }
+}

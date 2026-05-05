@@ -1,0 +1,18 @@
+GitHub 분석: Eyeline-Labs/Vista4D
+===============================
+
+# GitHub 분석: Eyeline-Labs/Vista4D
+
+## Outgoing relations
+
+- **released_by** → eyeline-labs _(Organization)_
+
+## Incoming relations
+
+- **implemented_in** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- **implemented_in** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Paper)_
+
+## Connected node types
+
+- Paper: 2
+- Organization: 1

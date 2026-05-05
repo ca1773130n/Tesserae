@@ -1,0 +1,75 @@
+paper.md
+========
+
+# 논문 분석: 2603.24621
+
+> - arxiv: https://arxiv.org/abs/2603.24621
+> - papers.cool: https://papers.cool/arxiv/2603.24621
+> - 분석일: 2026-04-23
+
+## ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전 | Cool Papers - Immersive Paper Discovery
+
+## 2603.24621
+
+총계: 1
+
+## #1
+
+# ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전
+
+[PDF1]  
+[Copy]  
+[Kimi1]  
+[REL]
+
+저자:  
+ARC Prize Foundation
+
+우리는 ARC-AGI-3를 소개한다. 이는 명시적 지시 없이 agent가 탐색하고, 목표를 추론하며, 환경 동역학에 대한 내부 모델을 구축하고, 효과적인 행동 시퀀스를 계획해야 하는 새롭고 추상적인 턴 기반 환경을 통해 agentic intelligence를 연구하기 위한 interactive benchmark이다. 이전 버전인 ARC-AGI-1 및 ARC-AGI-2와 마찬가지로, ARC-AGI-3는 언어와 외부 지식을 피하면서 새로운 과제에서의 유동적 적응 효율성을 평가하는 데 전적으로 초점을 둔다. ARC-AGI-3 환경은 Core Knowledge 사전 지식만 활용하며, 인간 테스트 참가자를 대상으로 한 광범위한 테스트를 통해 난이도가 보정되었다. 우리의 테스트에 따르면 인간은 환경의 100%를 해결할 수 있었던 반면, 2026년 3월 기준 frontier AI systems는 1% 미만의 점수를 기록했다. 본 논문에서는 benchmark 설계, 인간 행동 기준선에 기반한 효율성 중심 채점 프레임워크, 그리고 환경을 구성하고 검증하며 보정하는 데 사용된 방법론을 제시한다.
+
+주제:
+
+Artificial Intelligence
+
+게시: 2026-03-24 21:58:16 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+Include(OR):
+
+Exclude:
+
+Search
+
+Filter
+
+Highlight
+
+Stared Paper(s):
+
+#1  
+ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전
+
+Export
+
+Magic Token:
+
+Kimi Language:
+
+中文  
+English
+
+Desc Language:
+
+中文  
+English
+
+Save
+
+Bug report? Issue submit? Please visit:
+
+Github: https://github.com/bojone/papers.cool
+
+계속하기 전에 Disclaimer를 읽어 주십시오.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문해 확인하십시오.

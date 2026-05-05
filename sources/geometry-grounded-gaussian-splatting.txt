@@ -1,0 +1,37 @@
+Geometry-Grounded Gaussian Splatting
+====================================
+
+# Geometry-Grounded Gaussian Splatting
+
+## Outgoing relations
+
+- **evaluated_on** → DTU _(Benchmark)_
+- **evaluated_on** → Tanks and Temples _(Benchmark)_
+- **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_
+- **mentioned_in** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_
+- **mentioned_in** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_
+- **mentioned_in** → Efficient Universal Perception Encoder _(Paper)_
+- **mentioned_in** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_
+- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- **mentioned_in** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_
+- **mentioned_in** → Image Generators are Generalist Vision Learners _(Paper)_
+- **mentioned_in** → Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 _(Paper)_
+- **mentioned_in** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_
+- **mentioned_in** → Long-tail Internet photo reconstruction _(Paper)_
+- **mentioned_in** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_
+- **mentioned_in** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
+- **mentioned_in** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
+- **mentioned_in** → Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습 _(Paper)_
+- **mentioned_in** → Sapiens2 _(Paper)_
+- **reports_result** → mAP=4 _(Result)_
+- **reports_result** → mIoU=24.3 _(Result)_
+- **uses_metric** → SSIM _(Metric)_
+- **uses_metric** → mAP _(Metric)_
+- **uses_metric** → mIoU _(Metric)_
+
+## Connected node types
+
+- Paper: 16
+- Metric: 3
+- Benchmark: 2
+- Result: 2

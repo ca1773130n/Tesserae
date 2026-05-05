@@ -1,0 +1,8 @@
+{
+  "title": "ahujasid_blender-mcp.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: ahujasid/blender-mcp\n\n> - URL: https://github.com/ahujasid/blender-mcp\n> - 분석일: 2026-04-11\n\n## 개요\n\n- **설명**:   \n- **Stars**: ⭐ 18637 | Forks: 1820\n- **라이선스**: MIT\n- **주 언어**: Python\n\n## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (6개) | Y |\n| 의존성 파일 | Y |\n| 모델/체크포인트 | script |\n| Docker | N |\n\n## 파일 구조\n\n```\naddon.py\nassets/addon-instructions.png\nassets/hammer-icon.png\n.DS_Store\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\nLICENSE\nmain.py\npyproject.toml\n.python-version\nREADME.md\nTERMS_AND_CONDITIONS.md\nuv.lock\n```",
+  "source_path": "data/research/daily/2026-04-11/repos/ahujasid_blender-mcp.md",
+  "links": [],
+  "body": "# GitHub 분석: ahujasid/blender-mcp\n\n> - URL: https://github.com/ahujasid/blender-mcp\n> - 분석일: 2026-04-11\n\n## 개요\n\n- **설명**:   \n- **Stars**: ⭐ 18637 | Forks: 1820\n- **라이선스**: MIT\n- **주 언어**: Python\n\n## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (6개) | Y |\n| 의존성 파일 | Y |\n| 모델/체크포인트 | script |\n| Docker | N |\n\n## 파일 구조\n\n```\naddon.py\nassets/addon-instructions.png\nassets/hammer-icon.png\n.DS_Store\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\nLICENSE\nmain.py\npyproject.toml\n.python-version\nREADME.md\nTERMS_AND_CONDITIONS.md\nuv.lock\n```\n"
+}

@@ -1,0 +1,38 @@
+apinanaivot_IKEA-3D-Model-Download-Button.md
+============================================
+
+# GitHub 분석: apinanaivot/IKEA-3D-Model-Download-Button
+
+> - URL: https://github.com/apinanaivot/IKEA-3D-Model-Download-Button
+> - 분석일: 2026-04-29
+
+## 개요
+
+- **설명**: Adds ability to download models from IKEA website
+- **Stars**: ⭐ 1085 | Forks: 39
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (1개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+ikea-3d-model-downloader.user.js
+README.md
+sample.jpg
+```

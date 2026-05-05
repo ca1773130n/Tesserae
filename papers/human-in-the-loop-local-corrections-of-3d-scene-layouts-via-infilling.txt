@@ -1,0 +1,31 @@
+Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling
+=====================================================================
+
+# Human-in-the-Loop Local Corrections of 3D Scene Layouts via Infilling
+
+## Outgoing relations
+
+- **authored_by** → Armen Avetisyan _(Person)_
+- **authored_by** → Christopher Xie _(Person)_
+- **authored_by** → Henry Howard-Jenkins _(Person)_
+- **authored_by** → Jakob Engel _(Person)_
+- **authored_by** → Julian Straub _(Person)_
+- **authored_by** → Richard Newcombe _(Person)_
+- **authored_by** → Vasileios Balntas _(Person)_
+- **authored_by** → Yawar Siddiqui _(Person)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-23 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-24 _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-23 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-24 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 8
+- SourceDocument: 6
+- ResearchField: 1

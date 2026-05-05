@@ -1,0 +1,13 @@
+kaist-visual-ai-group
+=====================
+
+# kaist-visual-ai-group
+
+## Incoming relations
+
+- **released_by** → GitHub 분석: KAIST-Visual-AI-Group/GrounDiT _(Repository)_
+- **released_by** → GitHub 분석: KAIST-Visual-AI-Group/MatLat _(Repository)_
+
+## Connected node types
+
+- Repository: 2

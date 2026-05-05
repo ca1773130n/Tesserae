@@ -1,0 +1,12 @@
+Wenjing Bian
+============
+
+# Wenjing Bian
+
+## Incoming relations
+
+- **authored_by** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_
+
+## Connected node types
+
+- Paper: 1

@@ -1,0 +1,12 @@
+GitHub 분석: SkyworkAI/Matrix-3D
+==============================
+
+# GitHub 분석: SkyworkAI/Matrix-3D
+
+## Outgoing relations
+
+- **released_by** → skyworkai _(Organization)_
+
+## Connected node types
+
+- Organization: 1

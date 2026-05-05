@@ -1,0 +1,15 @@
+{
+  "title": "파일에서 몇 가지 규칙 위반이 있습니다. 수정하겠습니다:",
+  "kind": "sources",
+  "body_text": "# 파일에서 몇 가지 규칙 위반이 있습니다. 수정하겠습니다:",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-06/digest.md",
+  "links": [],
+  "body": "# 파일에서 몇 가지 규칙 위반이 있습니다. 수정하겠습니다:",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:node:99fe2a74d42e",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-06/digest.md",
+    "title": "파일에서 몇 가지 규칙 위반이 있습니다. 수정하겠습니다:"
+  }
+}

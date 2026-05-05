@@ -1,0 +1,14 @@
+GitHub 분석: team-aprl/MR.ScaleMaster
+===================================
+
+# GitHub 분석: team-aprl/MR.ScaleMaster
+
+## Outgoing relations
+
+- **evaluated_on** → KITTI _(Benchmark)_
+- **released_by** → team-aprl _(Organization)_
+
+## Connected node types
+
+- Benchmark: 1
+- Organization: 1

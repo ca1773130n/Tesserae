@@ -1,0 +1,8 @@
+{
+  "title": "repo.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: naver/pow3r\n\n> - URL: https://github.com/naver/pow3r\n> - 분석일: 2026-04-14\n\n## 개요\n\n- **설명**:   \n- **Stars**: ⭐ 222 | Forks: 18\n- **라이선스**: NOASSERTION\n- **주 언어**: Python\n\n## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (12개) | Y |\n| 의존성 파일 | Y |\n| 모델/체크포인트 | script |\n| Docker | N |\n\n## 파일 구조\n\n```\nassets/examples.jpg\nassets/img1.jpg\nassets/img2.jpg\nassets/overview.jpg\nassets/pow3r_demo.jpg\nassets/pow3r.jpg\ndemo_high_res.py\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.gitmodules\n.git/packed-refs\n.git/shallow\nLICENSE\nNOTICE\npow3r/__init__.py\nREADME.md\nrequirements.txt\n```",
+  "source_path": "data/research/daily/2026-04-14/papers/2312.08568/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: naver/pow3r\n\n> - URL: https://github.com/naver/pow3r\n> - 분석일: 2026-04-14\n\n## 개요\n\n- **설명**:   \n- **Stars**: ⭐ 222 | Forks: 18\n- **라이선스**: NOASSERTION\n- **주 언어**: Python\n\n## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (12개) | Y |\n| 의존성 파일 | Y |\n| 모델/체크포인트 | script |\n| Docker | N |\n\n## 파일 구조\n\n```\nassets/examples.jpg\nassets/img1.jpg\nassets/img2.jpg\nassets/overview.jpg\nassets/pow3r_demo.jpg\nassets/pow3r.jpg\ndemo_high_res.py\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.gitmodules\n.git/packed-refs\n.git/shallow\nLICENSE\nNOTICE\npow3r/__init__.py\nREADME.md\nrequirements.txt\n```\n"
+}

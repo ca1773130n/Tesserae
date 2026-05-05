@@ -1,0 +1,29 @@
+Topic — Gaussian Splatting Reconstruction
+=========================================
+
+# Topic — Gaussian Splatting Reconstruction
+
+Type: ApproachFamily.
+
+## Contributing papers
+- [Confidence-Based Mesh Extraction from 3D Gaussians (arXiv:2603.24725)](../papers/confidence-based-mesh-extraction-from-3d-gaussians.md)
+- [FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 (arXiv:2603.22572)](../papers/fullcircle-casual한-360-촬영으로-손쉬운-3d-재구성.md)
+- [GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow (arXiv:2604.15612)](../papers/gaussianflow-slam-monocular-gaussian-splatting-slam-guided-by-gaussianflow.md)
+- [Geometry-Grounded Gaussian Splatting (arXiv:2601.17835)](../papers/geometry-grounded-gaussian-splatting.md)
+- [Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction (arXiv:2604.15941)](../papers/neural-gabor-splatting-enhanced-gaussian-splatting-with-neural-gabor-for-high-fr-847471cb.md)
+- [Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization (arXiv:2604.24994)](../papers/power-foam-unifying-real-time-differentiable-ray-tracing-and-rasterization.md)
+- [TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting (arXiv:2604.00538)](../papers/trigs-temporal-rigid-body-motion-for-scalable-4d-gaussian-splatting.md)
+
+## Related concepts
+- GaussianFlow SLAM (Algorithm)
+- Multi-View Consistency (EvaluationProtocol)
+- Stochastic Solid (MathematicalConcept)
+- 4D Gaussian Splatting (MethodologicalConcept)
+- Gaussian Splatting (MethodologicalConcept)
+- Volumetric Rendering (MethodologicalConcept)
+- Novel View Synthesis (Task)
+- Shape Reconstruction (Task)
+- Depth Map (TechnicalTerm)
+
+## Related repos
+- (none)

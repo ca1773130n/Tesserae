@@ -1,0 +1,12 @@
+Daily Feed Summary — 2026-04-14
+===============================
+
+# Daily Feed Summary — 2026-04-14
+
+## Outgoing relations
+
+- **uses_metric** → mAP _(Metric)_
+
+## Connected node types
+
+- Metric: 1

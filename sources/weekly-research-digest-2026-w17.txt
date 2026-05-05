@@ -1,0 +1,12 @@
+Weekly Research Digest — 2026-W17
+=================================
+
+# Weekly Research Digest — 2026-W17
+
+## Outgoing relations
+
+- **mentioned_in** → Image Generators are Generalist Vision Learners _(Paper)_
+
+## Connected node types
+
+- Paper: 1

@@ -1,0 +1,15 @@
+{
+  "title": "Synthesis fixtures",
+  "kind": "sources",
+  "body_text": "# Synthesis fixtures",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/tests/fixtures/synthesis/README.md",
+  "links": [],
+  "body": "# Synthesis fixtures",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:synthesis-fixtures:333c625b36c0",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/tests/fixtures/synthesis/README.md",
+    "title": "Synthesis fixtures"
+  }
+}

@@ -1,0 +1,12 @@
+Hana Bezalel
+============
+
+# Hana Bezalel
+
+## Incoming relations
+
+- **authored_by** → Extreme Rotation Estimation in the Wild _(Paper)_
+
+## Connected node types
+
+- Paper: 1

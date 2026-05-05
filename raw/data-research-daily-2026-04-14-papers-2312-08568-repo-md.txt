@@ -1,0 +1,49 @@
+repo.md
+=======
+
+# GitHub 분석: naver/pow3r
+
+> - URL: https://github.com/naver/pow3r
+> - 분석일: 2026-04-14
+
+## 개요
+
+- **설명**:   
+- **Stars**: ⭐ 222 | Forks: 18
+- **라이선스**: NOASSERTION
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (12개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+assets/examples.jpg
+assets/img1.jpg
+assets/img2.jpg
+assets/overview.jpg
+assets/pow3r_demo.jpg
+assets/pow3r.jpg
+demo_high_res.py
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.gitmodules
+.git/packed-refs
+.git/shallow
+LICENSE
+NOTICE
+pow3r/__init__.py
+README.md
+requirements.txt
+```

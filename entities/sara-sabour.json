@@ -1,0 +1,15 @@
+{
+  "title": "Sara Sabour",
+  "kind": "entities",
+  "body_text": "# Sara Sabour\n\n## Incoming relations\n\n- **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2411.18650/paper.md",
+  "links": [],
+  "body": "# Sara Sabour\n\n## Incoming relations\n\n- **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:sara-sabour:99fed6beb951",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-08/papers/2411.18650/paper.md",
+    "title": "Sara Sabour"
+  }
+}

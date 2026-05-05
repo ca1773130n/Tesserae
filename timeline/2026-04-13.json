@@ -1,0 +1,22 @@
+{
+  "title": "2026-04-13",
+  "kind": "timeline_day",
+  "body_text": "Activity for 2026-04-13: 14 item(s) indexed.",
+  "source_path": "",
+  "links": [],
+  "body": "Activity for 2026-04-13",
+  "frontmatter": {
+    "date": "2026-04-13",
+    "activity": 14,
+    "sources": [
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-13/papers/2503.22194/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-13/papers/2509.06950/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-13/raw.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-13/repos/NVIDIA_OpenShell.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-13/repos/OpenDriveLab_WorldEngine.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-13/repos/TheRealMJP_MSAAFilter.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-13/repos/anthropics_claude-code.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-13/repos/colmap_colmap.md"
+    ]
+  }
+}

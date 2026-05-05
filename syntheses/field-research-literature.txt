@@ -1,0 +1,13 @@
+Field Overview — Research Literature
+====================================
+
+# Field Overview — Research Literature
+
+World Model (ResearchTopic) — 3 contributing paper(s) connect to this thread.
+
+## Representative concepts
+- Fine-tuning (TrainingParadigm)
+- Pretraining (TrainingParadigm)
+- Reinforcement Learning (TrainingParadigm)
+- Self-Supervised Learning (TrainingParadigm)
+- Supervised Learning (TrainingParadigm)

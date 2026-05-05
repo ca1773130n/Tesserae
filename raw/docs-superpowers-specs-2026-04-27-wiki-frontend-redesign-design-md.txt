@@ -1,0 +1,374 @@
+2026-04-27-wiki-frontend-redesign-design.md
+===========================================
+
+# LLM-Wiki Frontend Redesign — Design Spec
+
+**Date:** 2026-04-27
+**Owner:** Cameleon X
+**Scope:** Make the generated `.llm-wiki/site/` a real, production-grade LLM Wiki — beautiful, useful, evolving — by combining the best of nashsu/llm_wiki, lucasastorian/llmwiki, and Pratiyush/llm-wiki.
+
+---
+
+## 1. Why this redesign
+
+The current site is a graph dump. It exposes every typed node — including hex-suffixed `CodeClass` / `CodeFunction` pages — without narrative or hierarchy. It feels like a database admin tool, not a wiki. Two problems:
+
+1. **No purpose.** The home page lists "Wiki documents" and "Code graph" panels with bare cards. There is no way for a human (or an agent) to land on the site and quickly understand "what does this project know?"
+2. **Wrong granularity.** Per-function/class nodes are noise in the AI era — humans don't read function-by-function relationships. The user explicitly said: drop micro code structure as a first-class browse target.
+
+The user wants a **document-first, hierarchical knowledge base** that:
+
+- Treats files in `data/` (and project `docs/`) as raw sources.
+- Builds typed wiki pages from them: sources, entities, concepts, papers, repos.
+- Synthesizes higher-order pages on every compile: topics, comparisons, open questions, daily/weekly digests, fields.
+- Renders all of that as a **typography-first static site** with strong navigation, search, graph view, AI siblings, and an evolution log.
+
+## 2. Goals & non-goals
+
+**Goals**
+
+- Replace the current dashboard-style site with a wiki whose **information architecture** mirrors how researchers think (sources → concepts → syntheses → fields).
+- Make every compile **idempotent and evolutionary**: re-running over the same data produces the same site; new data updates digests, indices, and graph cleanly.
+- Keep zero npm/bundler dependency (continue dependency-light static HTML + vanilla JS + a vendored sigma.js).
+- Provide first-class **AI-consumable exports** (llms.txt, llms-full.txt, graph.jsonld, per-page .json siblings).
+- Ship Playwright-free; use the existing pytest harness for HTML structural assertions.
+
+**Non-goals**
+
+- No backend service, no React/Next.js, no database server.
+- No login, no per-user state.
+- No ingestion changes beyond what the synthesis layer requires.
+- No live websocket — the site rebuilds on `project compile`.
+- No removal of the underlying graph schema; we keep code nodes in `graph.json` for MCP/Cognee but **do not give them dedicated routes** in the website.
+
+## 3. Information architecture
+
+### 3.1 Page taxonomy (Karpathy 3-layer mapped to URL routes)
+
+| Route | Purpose | Source |
+|---|---|---|
+| `/` | Hero + project pulse + curated entry points | derived |
+| `/sources/` | Index of raw documents (data/, docs/) | `SourceDocument`, `Paper`, `Repository` |
+| `/sources/<slug>.html` | A single raw document with extracted entities, mentions, backlinks, rendered preview | individual source |
+| `/concepts/` | Index of recurring concepts/terms/algorithms/architectures | `Concept`, `TechnicalTerm`, `Algorithm`, `ArchitecturePattern`, `MethodologicalConcept`, `MathematicalConcept`, `TrainingParadigm`, `InferenceStrategy`, `EvaluationProtocol` |
+| `/concepts/<slug>.html` | Rich concept page: definition, mentions, neighbors, related papers | one node |
+| `/entities/` | Models, datasets, benchmarks, organizations, people | `Model`, `Dataset`, `Benchmark`, `Metric`, `Organization`, `Person` |
+| `/entities/<slug>.html` | Entity page with linked claims/results | one node |
+| `/papers/` | Paper hub with year/topic facets | `Paper` |
+| `/papers/<slug>.html` | Paper card: title, authors, abstract excerpt, claims, related concepts | one node |
+| `/repos/` | Repository hub | `Repository`, `CodeProject` |
+| `/repos/<slug>.html` | Repo summary, README excerpt, dependencies, related papers (no per-function pages) | one node |
+| `/topics/` | Research fields/topics/problem areas | `ResearchField`, `ResearchTopic`, `ProblemArea`, `ApproachFamily`, `Trend` |
+| `/topics/<slug>.html` | A field/topic with synthesis prose + linked concepts/papers | derived synthesis |
+| `/syntheses/` | LLM/heuristic-generated higher-order pages: cross-source summaries, comparisons | derived |
+| `/syntheses/<slug>.html` | A synthesis page (e.g., "3D Reconstruction in 2026-W17") | derived |
+| `/questions/` | Open questions extracted from the corpus | `OpenQuestion` |
+| `/timeline/` | Activity log: weekly/daily digests, recently added/updated | derived from `data/research/daily/*` + `manifest.json` |
+| `/graph/` | Interactive sigma.js graph view (concepts/papers/topics only) | derived |
+| `/about.html` | Schema, purpose, build info | static |
+
+The site keeps a node detail page for **every node in the wiki layer** (sources, concepts, entities, papers, repos, topics, syntheses, questions). It **never** generates HTML for `CodeClass`, `CodeFunction`, `CodeModule`, `Dependency`, `EvidenceSpan`, `SourceFile`, `Claim`, `ContributionClaim`, `PerformanceClaim`, `ComparisonClaim`, `LimitationClaim`, `CausalClaim`. Those types stay in `graph.json` (so MCP/Cognee/Graphiti consumers still see them) and surface inline on the wiki pages — as bullets, badges, neighbor counts, or evidence excerpts — but they have no URL of their own and they do not appear in `search-index.json`. The `nodes/` directory is removed from the rendered output.
+
+### 3.2 Navigation shell
+
+Top bar (sticky): logo + project name + global search (`/`) + theme toggle + GitHub link.
+
+Left rail (collapsible on mobile, persistent ≥1024px): hierarchical tree
+```
+Home
+Recent activity
+Sources              [count]
+Concepts             [count]
+Entities             [count]
+Papers               [count]
+Repos                [count]
+Topics               [count]
+Syntheses            [count]
+Open questions       [count]
+Timeline
+Graph view
+About / schema
+```
+Active route is highlighted; counts come from `manifest.json`.
+
+Command palette (cmd+k / `/`): full-text + fuzzy match over the same `search-index.json`, scoped to the visible page types — no code class noise.
+
+### 3.3 Page anatomy (for any leaf article)
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ breadcrumbs (Sources / 2026-04-27 / digest.md)             │
+│ Title                                                       │
+│ small-caps eyebrow (type · last updated · reading time)    │
+├────────────────────────────────────────────────────────────┤
+│ TOC (sticky right rail desktop, drawer mobile)             │
+│ ───── lead paragraph ─────                                 │
+│ rendered markdown body / synthesis prose                   │
+│                                                             │
+│ Section: Mentions in the corpus                            │
+│   - bullet list with badges + counts                       │
+│ Section: Related (4-signal relevance ranked)               │
+│   - card grid                                              │
+│ Section: Source provenance                                 │
+│   - file path, line excerpt (already implemented)          │
+│ Section: Activity                                          │
+│   - sparkline of weekly mentions                           │
+├────────────────────────────────────────────────────────────┤
+│ AI siblings: [download .txt] [download .json] [view .md]   │
+└────────────────────────────────────────────────────────────┘
+```
+
+Backlinks/related/mentions are **always** present so wiki feel is consistent.
+
+## 4. Hierarchical knowledge synthesis (the "evolves on ingest" requirement)
+
+The user said: "keep updating higher layer's knowledge by writing docs of it, and so on." We deliver this through a deterministic **synthesis pass** that runs at the end of `project compile`, before the static site is rendered.
+
+### 4.1 Synthesis layers
+
+| Layer | Granularity | Trigger | Output node type | Storage |
+|---|---|---|---|---|
+| L0 Raw | One file in `data/` or `docs/` | always | `SourceDocument` / `Paper` / `Repository` | already exists |
+| L1 Atomic | One concept/entity/term mention | always | `Concept` / `TechnicalTerm` / `Algorithm` / etc. | already exists (term rules) |
+| L2 Daily synthesis | One per `data/research/daily/<date>/` folder | when daily folder content changes | `Synthesis` (new node type) with `synthesis_kind="daily_digest"` | `wiki/syntheses/daily-<date>.md` |
+| L2 Weekly synthesis | One per `data/research/weekly/<iso-week>/` | when weekly folder content changes | `Synthesis` with `synthesis_kind="weekly"` | `wiki/syntheses/weekly-<isoweek>.md` |
+| L3 Topic synthesis | One per `ResearchTopic` / `ApproachFamily` cluster with ≥3 papers | when graph changes | `Synthesis` with `synthesis_kind="topic"` | `wiki/syntheses/topic-<slug>.md` |
+| L3 Comparison synthesis | One per pair of `ApproachFamily` competing on the same `Task`/`Benchmark` | when ≥2 families share a task | `Synthesis` with `synthesis_kind="comparison"` | `wiki/syntheses/compare-<a>-vs-<b>.md` |
+| L4 Field overview | One per `ResearchField` | when graph changes | `Synthesis` with `synthesis_kind="field_overview"` | `wiki/syntheses/field-<slug>.md` |
+| L5 Project pulse | One global `Synthesis` rebuilt every compile | always | `Synthesis` with `synthesis_kind="pulse"` | `wiki/syntheses/pulse.md` (drives `/`) |
+
+Each synthesis page is markdown with YAML frontmatter:
+
+```yaml
+---
+synthesis_kind: topic
+slug: 3d-reconstruction
+sources: [...source paths]
+inputs: [...node ids consumed]
+generated_at: 2026-04-27T12:00:00Z
+generator: heuristic-v1
+content_hash: sha256-...
+---
+```
+
+### 4.2 Generator
+
+`SynthesisProjector` (new module `llm_wiki/synthesis.py`):
+
+- Pure-Python, deterministic baseline — no LLM call required for first ship.
+- Pulls from `ResearchGraph` + the `manifest.json` (which already tracks per-file digests).
+- Produces a small, predictable narrative for each synthesis kind from templates (e.g., "X new papers reference Gaussian Splatting this week. Three new concepts emerged: …").
+- Optional LLM upgrade path: if `LLM_WIKI_SYNTHESIS_LLM=1` env is set and an Anthropic SDK is importable, replaces the heuristic with prompted summaries. Out of scope for first ship — leave the hook.
+
+Idempotence: `content_hash` is `sha256(body)` (excluding the volatile `generated_at` timestamp). A synthesis markdown file is only rewritten when the hash would change; the corresponding `Synthesis` node also keeps the hash in metadata so the graph and the wiki layer stay in lock-step. This keeps git diffs tight on every recompile.
+
+### 4.3 Wiki layer storage
+
+We add a new directory under the project workspace:
+
+```
+.llm-wiki/
+  wiki/
+    sources/<slug>.md         (mirrors raw/, with frontmatter + extracted refs)
+    concepts/<slug>.md
+    entities/<slug>.md
+    papers/<slug>.md
+    repos/<slug>.md
+    topics/<slug>.md
+    syntheses/<slug>.md
+    questions/<slug>.md
+    index.md                  (auto-built table of contents)
+    overview.md               (high-level "what this wiki is")
+    log.md                    (chronological compile log)
+```
+
+This is the Karpathy "Layer 2 wiki" that previously did not exist. It is the durable artifact `StaticSiteBuilder` reads from. Obsidian users can open `.llm-wiki/wiki/` directly; the existing `obsidian_vault/` adapter is repointed to project this same structure (with `.obsidian/` on top).
+
+`StaticSiteBuilder` becomes a **renderer** of `wiki/` rather than a direct projector of `graph.json`. Two inputs:
+1. `wiki/` — markdown bodies (parsed via existing markdown_projection helpers, or a new `WikiPageStore`).
+2. `graph.json` — for backlinks, neighbors, graph view, badges.
+
+## 5. Visual design
+
+### 5.1 Design tokens (CSS variables)
+
+```css
+:root {
+  --bg: #fafaf7;
+  --surface: #ffffff;
+  --surface-2: #f3f1ec;
+  --ink: #1f1d1a;
+  --ink-muted: #5b574f;
+  --accent: #b3502b;     /* warm terracotta */
+  --accent-soft: #f4d4c2;
+  --link: #8a3a18;
+  --rule: #e6e2da;
+  --code-bg: #f3f1ec;
+  --good: #2a6f4f;
+  --warn: #c08a1a;
+  --danger: #b03b3b;
+  --shadow: 0 1px 2px rgba(20,18,15,.06);
+  --radius: 6px;
+  --type-serif: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+  --type-sans: "Inter", -apple-system, system-ui, sans-serif;
+  --type-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+[data-theme="dark"] {
+  --bg: #14130f;
+  --surface: #1c1b17;
+  --surface-2: #232118;
+  --ink: #ece7dc;
+  --ink-muted: #a59f90;
+  --accent: #e08555;
+  --accent-soft: #432215;
+  --link: #f0a075;
+  --rule: #2c2a23;
+  --code-bg: #1f1d18;
+  --shadow: 0 1px 2px rgba(0,0,0,.5);
+}
+```
+
+Self-hosted fonts not required; system serif fallback ships fine (we do not depend on a CDN).
+
+### 5.2 Layout grid
+
+- Page max width 1280px; reading column 720px; left rail 240px; right TOC 220px.
+- Mobile (<768px): single column, top nav becomes drawer, TOC moves to a collapsible details element.
+- 8px spacing scale, 1.6 line-height for body, 1.2 for display.
+
+### 5.3 Components
+
+- **Hero pulse** (home): big stat row (sources / concepts / papers / open questions) + 3-card "what's new this week" (sourced from the most recent `pulse` Synthesis node) + project tagline pulled from `wiki/overview.md` (auto-seeded with project name + first 240 chars of corpus summary on first compile, then user-editable).
+- **Card** with type badge, title, 1-line description, "X mentions · last updated".
+- **Tag chip** for facets (year, topic, family, language).
+- **Table** (used for nodes index and source pages): zebra rows, type badge column, hover shows preview.
+- **Activity heatmap**: 26-week SVG grid colored by node-add-count from `manifest.json`.
+- **Sparkline** in concept/entity pages: weekly mention counts last 12 weeks.
+- **Graph view**: sigma.js + graphology (vendored from local CDN snapshot in `assets/`), nodes colored by type, edges thickness = relevance. ForceAtlas2 layout cached as `graph/layout.json` so position is stable across rebuilds.
+- **Command palette**: existing pattern, expanded to scope-by-type quick filters and recent-pages list (stored in `localStorage`).
+- **Code/markdown block**: 14px mono, soft frame, copy button.
+
+### 5.4 Motion & feedback
+
+- Page transitions: 120ms opacity fade only, prefers-reduced-motion respected.
+- Search palette: 80ms scale-in, focus ring on accent.
+- Card hover: subtle 1px translateY + accent border accent.
+- Avoid spinner overuse; static site means most navigation is instant.
+
+## 6. Data flow
+
+```
+data/, docs/, src/
+        │
+        ▼  project compile (existing)
+┌──────────────────────┐
+│ ResearchGraph        │
+│ (graph.json)         │
+└─────────┬────────────┘
+          │
+          ▼  SynthesisProjector  (new)
+┌──────────────────────┐
+│ wiki/  (markdown)    │  ← Karpathy layer 2
+│   sources/           │
+│   concepts/          │
+│   syntheses/         │
+│   …                  │
+└─────────┬────────────┘
+          │
+          ▼  StaticSiteBuilder  (refactored)
+┌──────────────────────┐
+│ site/  (HTML)        │
+│   /sources/, …       │
+│   llms.txt, llms-full.txt │
+│   graph.jsonld       │
+│   sitemap.xml, rss.xml │
+│   per-page .txt/.json │
+└──────────────────────┘
+```
+
+Each step is incrementally re-run; the manifest tracks per-file mtimes and content hashes so rebuilds skip unchanged outputs.
+
+## 7. Module changes
+
+### 7.1 New modules
+
+- `llm_wiki/synthesis.py` — `SynthesisProjector`, deterministic generators per kind, idempotent file writes.
+- `llm_wiki/wiki_store.py` — `WikiPageStore` (load/save markdown with frontmatter, list by kind, slug helpers, content-hash idempotence).
+- `llm_wiki/site/` (package, splitting frontend.py):
+  - `__init__.py` re-exports `StaticSiteBuilder`.
+  - `tokens.py` (CSS variables + the CSS string).
+  - `js.py` (client JS as constants).
+  - `pages.py` (page templates: home, sources, concepts, entities, papers, repos, topics, syntheses, questions, timeline, graph, leaf detail).
+  - `components.py` (cards, tables, badges, breadcrumbs, TOC, sparkline SVG, heatmap SVG).
+  - `exports.py` (llms.txt, llms-full.txt, graph.jsonld, sitemap.xml, rss.xml, per-page .txt/.json).
+  - `search.py` (search-index.json builder).
+  - `relevance.py` (4-signal relevance: direct link, source overlap, Adamic-Adar, type affinity).
+
+### 7.2 Modified modules
+
+- `llm_wiki/research_graph.py`
+  - Add `ResearchNodeType.SYNTHESIS = "Synthesis"` to the enum and `ALLOWED_NODE_TYPES`.
+  - Add edge types `synthesizes` (Synthesis → consumed wiki node) and `summarizes` (Synthesis → SourceDocument). Add both to `ALLOWED_EDGE_TYPES`.
+  - Add a metadata field convention: synthesis nodes carry `metadata = {"synthesis_kind": ..., "content_hash": ..., "generated_at": ..., "input_ids": [...]}`.
+- `llm_wiki/project.py`
+  - `_write_artifacts` calls the new `SynthesisProjector` between graph write and `build_site`.
+  - `build_site` reads `wiki/` plus `graph.json`.
+- `llm_wiki/frontend.py` is split into `llm_wiki/site/`. The shim keeps backward-compatible imports.
+- `llm_wiki/obsidian_adapter.py` — unchanged in this PR. The Obsidian vault keeps its current behavior; wiki/ ↔ vault unification is a follow-up.
+- `llm_wiki/cli.py` — no surface change; `project compile` already triggers everything.
+
+### 7.3 Deleted/hidden behavior
+
+- The existing home cards "Code graph" — replaced by hero pulse + curated entry points.
+- Per-`CodeClass` / `CodeFunction` HTML pages — not generated.
+- `nodes/` directory becomes a **hidden** route: still rendered for graph-linked nodes that have no other home (safety net), but not surfaced in nav. The 4500-page node dump goes away.
+
+## 8. Testing strategy
+
+- **Unit**: each component renderer returns valid HTML containing the asserted markers. (Existing `tests/test_frontend.py` is extended; we keep current asserts as a regression base where they still apply, drop the "Code graph" assertion.)
+- **Synthesis**: golden-test the heuristic outputs for a fixture daily folder; assert `content_hash` is stable across runs.
+- **End-to-end**: a smoke test that runs `ProjectWiki(...).compile()` over `tests/fixtures/sample_data/` and asserts each route exists, each leaf page has breadcrumbs/TOC/related, and `manifest.json` lists the expected files.
+- **Link integrity**: a dedicated test parses every emitted HTML for `href`s and asserts every internal link resolves to a generated file.
+- **Snapshot of search-index.json shape** (no code-function entries).
+- **AI siblings**: for any `path/foo.html`, assert `path/foo.txt` and `path/foo.json` exist; the JSON parses and contains `{type, title, body, links}`.
+- No Playwright; the goal is producible-on-CI with vanilla pytest.
+
+## 9. Performance budget
+
+- Each detail page < 60KB gz HTML, < 30KB shared CSS, < 25KB shared JS, < 60KB sigma.js (graph page only).
+- Cold ingest of `data/research/` (≈300 markdown files) finishes in under 5s on the dev machine; site render in under 2s after that.
+- Search index < 500KB for the dogfood corpus (cap entries to wiki layer types).
+
+## 10. Migration & rollout
+
+- Single PR squashing all changes (the user works on `main` and ships locally).
+- After merge, `project compile --changed-only` regenerates everything; previous site dir is wiped at the start of `write_site` (already in place).
+- README + `docs/architecture.md` updated to describe the new IA and the synthesis layer.
+- Add a `docs/frontend-redesign.md` walkthrough with annotated screenshots once the site is up.
+
+## 11. Risks & mitigations
+
+| Risk | Mitigation |
+|---|---|
+| Heuristic syntheses read as boilerplate | Keep templates terse, prefer numeric facts pulled from the graph; ship the LLM upgrade hook so quality can grow without a refactor. |
+| Graph view performance on big graphs | Filter to wiki-layer node types only (concepts, papers, topics, syntheses, entities); keep code nodes out. Cache `graph/layout.json`. |
+| Link breakage when slugs change | All internal links go through a single `node_href`/`source_href`/`synthesis_href` helper; slug changes update all referrers in one place. Add a link-integrity test (§8). |
+| Re-render thrash blowing up git diffs | Idempotence everywhere: skip writes when content hash matches. Synthesis frontmatter includes `content_hash` to make this trivial. |
+| Splitting `frontend.py` into a package breaks existing imports | The `llm_wiki/site/__init__.py` shim re-exports `StaticSiteBuilder`. `tests/test_frontend.py` is updated in lockstep. |
+| Over-scope creep into LLM synthesis on first ship | First ship: deterministic templates only. LLM hook is a stub guarded by env var. |
+
+## 12. Open decisions (owner: Cameleon X — chosen unilaterally per user instruction)
+
+1. **No code-function HTML pages.** Decided.
+2. **Heuristic syntheses on first ship.** Decided.
+3. **Single warm-tone palette + dark theme.** Decided (terracotta accent, serif body, system fallback fonts).
+4. **Sigma.js vendored locally** (a snapshot in `assets/sigma.min.js`), not loaded from a CDN at render time. Decided.
+5. **Wiki layer lives at `.llm-wiki/wiki/`.** Decided (mirrors Karpathy + Pratiyush).
+
+## 13. What "production-ready" means here
+
+- All routes render with no broken links on the dogfood corpus.
+- Lighthouse-style sanity (manual): 0 console errors, semantic landmarks (`<main>`, `<nav>`, `<aside>`), keyboard reachable, contrast ≥ 4.5:1.
+- Re-running compile twice in a row yields **byte-identical** site output (proves idempotence).
+- Tests green, including the new link-integrity test.
+- README explains the IA in three sentences and points at the live site.

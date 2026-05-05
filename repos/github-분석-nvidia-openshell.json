@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: NVIDIA/OpenShell",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: NVIDIA/OpenShell\n\n## Outgoing relations\n\n- **released_by** → nvidia _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Lyra 2.0: Explorable Generative 3D Worlds _(Paper)_\n\n## Connected node types\n\n- Organization: 1\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-13/repos/NVIDIA_OpenShell.md",
+  "links": [],
+  "body": "# GitHub 분석: NVIDIA/OpenShell\n\n## Outgoing relations\n\n- **released_by** → nvidia _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Lyra 2.0: Explorable Generative 3D Worlds _(Paper)_\n\n## Connected node types\n\n- Organization: 1\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "https://github.com/NVIDIA/OpenShell",
+      "nvidia/openshell"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-nvidia-openshell:a7dfbb55473b",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-13/repos/NVIDIA_OpenShell.md",
+    "title": "GitHub 분석: NVIDIA/OpenShell"
+  }
+}

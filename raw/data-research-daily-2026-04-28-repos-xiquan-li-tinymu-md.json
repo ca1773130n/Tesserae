@@ -1,0 +1,8 @@
+{
+  "title": "xiquan-li_TinyMU.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: xiquan-li/TinyMU\n\n> - URL: https://github.com/xiquan-li/TinyMU\n> - 분석일: 2026-04-28\n\n## 개요\n\n- **설명**: [ICASSP 2026] TinyMU: A Compact Audio Language Model for Music Understanding\n- **Stars**: ⭐ 29 | Forks: 1\n- **라이선스**: N/A\n- **주 언어**: Python\n\n## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (12개) | Y |\n| 의존성 파일 | Y |\n| 모델/체크포인트 | script |\n| Docker | N |\n\n## 파일 구조\n\n```\ndemo.py\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\nREADME.md\nrequirements.txt\nresource/example1.wav\nresource/Logo.png\nresource/MusicSkills-3.5M-stats.png\nscripts/infer.sh\nscripts/train_tinymu.sh\nsrc/inference.py\nsrc/__init__.py\nsrc/train_accelerate.py\nsrc/utils.py\n```",
+  "source_path": "data/research/daily/2026-04-28/repos/xiquan-li_TinyMU.md",
+  "links": [],
+  "body": "# GitHub 분석: xiquan-li/TinyMU\n\n> - URL: https://github.com/xiquan-li/TinyMU\n> - 분석일: 2026-04-28\n\n## 개요\n\n- **설명**: [ICASSP 2026] TinyMU: A Compact Audio Language Model for Music Understanding\n- **Stars**: ⭐ 29 | Forks: 1\n- **라이선스**: N/A\n- **주 언어**: Python\n\n## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (12개) | Y |\n| 의존성 파일 | Y |\n| 모델/체크포인트 | script |\n| Docker | N |\n\n## 파일 구조\n\n```\ndemo.py\n.git/config\n.git/description\n.git/HEAD\n.gitignore\n.git/index\n.git/packed-refs\n.git/shallow\nREADME.md\nrequirements.txt\nresource/example1.wav\nresource/Logo.png\nresource/MusicSkills-3.5M-stats.png\nscripts/infer.sh\nscripts/train_tinymu.sh\nsrc/inference.py\nsrc/__init__.py\nsrc/train_accelerate.py\nsrc/utils.py\n```\n"
+}

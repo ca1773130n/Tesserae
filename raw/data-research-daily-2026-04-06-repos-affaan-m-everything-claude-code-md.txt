@@ -1,0 +1,69 @@
+affaan-m_everything-claude-code.md
+==================================
+
+# GitHub 분석: affaan-m/everything-claude-code
+
+> - URL: https://github.com/affaan-m/everything-claude-code
+> - 분석일: 2026-04-06
+
+## 개요
+
+- **설명**: The agent harness performance optimization system. Skills, instincts, memory, security, and research-first development for Claude Code, Codex, Opencode, Cursor and beyond.
+- **Stars**: ⭐ 141922 | Forks: 21511
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 체크포인트 미공개 (추론 불가 가능성)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (196개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+.claude-plugin/marketplace.json
+.claude-plugin/PLUGIN_SCHEMA_NOTES.md
+.claude-plugin/plugin.json
+.claude-plugin/README.md
+.claude/ecc-tools.json
+.claude/identity.json
+.claude/package-manager.json
+.codebuddy/install.js
+.codebuddy/install.sh
+.codebuddy/README.md
+.codebuddy/README.zh-CN.md
+.codebuddy/uninstall.js
+.codebuddy/uninstall.sh
+.codex-plugin/plugin.json
+.codex-plugin/README.md
+.codex/AGENTS.md
+.codex/config.toml
+.cursor/hooks.json
+.env.example
+.gemini/GEMINI.md
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.github/dependabot.yml
+.github/FUNDING.yml
+.github/PULL_REQUEST_TEMPLATE.md
+.github/release.yml
+.gitignore
+.kiro/install.sh
+.kiro/README.md
+.markdownlint.json
+.mcp.json
+.npmignore
+.opencode/index.ts
+.opencode/MIGRATION.md
+.opencode/opencode.json
+.opencode/package-lock.json
+```

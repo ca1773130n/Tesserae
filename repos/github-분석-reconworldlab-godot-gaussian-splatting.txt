@@ -1,0 +1,12 @@
+GitHub 분석: ReconWorldLab/godot-gaussian-splatting
+=================================================
+
+# GitHub 분석: ReconWorldLab/godot-gaussian-splatting
+
+## Incoming relations
+
+- **implemented_in** → Geometry-Grounded Gaussian Splatting _(Paper)_
+
+## Connected node types
+
+- Paper: 1

@@ -1,0 +1,22 @@
+Daily Digest — 2026-04-30
+=========================
+
+# Daily Digest — 2026-04-30
+
+Sources ingested under `data/research/daily/2026-04-30/`.
+
+## Papers and repos
+- [Efficient Universal Perception Encoder (arXiv:2603.22387)](../papers/efficient-universal-perception-encoder.md) (Paper)
+- [Lifting Unlabeled Internet-level Data for 3D Scene Understanding (arXiv:2604.01907)](../papers/lifting-unlabeled-internet-level-data-for-3d-scene-understanding.md) (Paper)
+- [Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization (arXiv:2604.24994)](../papers/power-foam-unifying-real-time-differentiable-ray-tracing-and-rasterization.md) (Paper)
+- [Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습 (arXiv:2604.09429)](../papers/rays-as-pixels-비디오와-카메라-궤적의-결합-분포-학습.md) (Paper)
+- [GitHub 분석: deepseek-ai/TileKernels](../repos/github-분석-deepseek-ai-tilekernels.md) (Repository)
+- [GitHub 분석: microsoft/World-R1](../repos/github-분석-microsoft-world-r1.md) (Repository)
+- [GitHub 분석: sv-pp/SceneVersepp](../repos/github-분석-sv-pp-sceneversepp.md) (Repository)
+- [GitHub 분석: taylorallenux/engine-lab](../repos/github-분석-taylorallenux-engine-lab.md) (Repository)
+- [Daily Feed Summary — 2026-04-30](../sources/daily-feed-summary-2026-04-30.md) (SourceDocument)
+- [📬 Daily Research Digest — 2026-04-30](../sources/daily-research-digest-2026-04-30.md) (SourceDocument)
+
+## Extracted concepts
+- Gaussian Splatting (MethodologicalConcept)
+- Video Diffusion (MethodologicalConcept)

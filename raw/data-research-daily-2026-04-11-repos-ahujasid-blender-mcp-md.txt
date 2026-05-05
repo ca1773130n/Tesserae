@@ -1,0 +1,47 @@
+ahujasid_blender-mcp.md
+=======================
+
+# GitHub 분석: ahujasid/blender-mcp
+
+> - URL: https://github.com/ahujasid/blender-mcp
+> - 분석일: 2026-04-11
+
+## 개요
+
+- **설명**:   
+- **Stars**: ⭐ 18637 | Forks: 1820
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (6개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+addon.py
+assets/addon-instructions.png
+assets/hammer-icon.png
+.DS_Store
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE
+main.py
+pyproject.toml
+.python-version
+README.md
+TERMS_AND_CONDITIONS.md
+uv.lock
+```

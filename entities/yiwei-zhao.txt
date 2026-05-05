@@ -1,0 +1,12 @@
+Yiwei Zhao
+==========
+
+# Yiwei Zhao
+
+## Incoming relations
+
+- **authored_by** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Paper)_
+
+## Connected node types
+
+- Paper: 1

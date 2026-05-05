@@ -1,0 +1,23 @@
+Extreme Rotation Estimation in the Wild
+=======================================
+
+# Extreme Rotation Estimation in the Wild
+
+## Outgoing relations
+
+- **authored_by** → Dotan Ankri _(Person)_
+- **authored_by** → Hadar Averbuch-Elor _(Person)_
+- **authored_by** → Hana Bezalel _(Person)_
+- **authored_by** → Ruojin Cai _(Person)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-05-05 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-05-05 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 4
+- SourceDocument: 2
+- ResearchField: 1

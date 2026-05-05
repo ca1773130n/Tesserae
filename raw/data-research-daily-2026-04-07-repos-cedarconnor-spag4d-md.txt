@@ -1,0 +1,69 @@
+cedarconnor_SPAG4d.md
+=====================
+
+# GitHub 분석: cedarconnor/SPAG4d
+
+> - URL: https://github.com/cedarconnor/SPAG4d
+> - 분석일: 2026-04-07
+
+## 개요
+
+- **설명**: Convert 360° equirectangular panoramas into viewable 3D Gaussian Splat files.
+- **Stars**: ⭐ 90 | Forks: 10
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (40개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+.claude/settings.local.json
+.git/config
+.git/description
+.git/HEAD
+.git/index
+.git/packed-refs
+.git/shallow
+.gitignore
+.gitmodules
+api.py
+assets/demo.gif
+assets/demo.mp4
+install.bat
+INSTALL.md
+pyproject.toml
+README.md
+requirements-refine.txt
+requirements.txt
+run.bat
+spag4d_refine_design_doc.md
+spag4d/__init__.py
+spag4d/__main__.py
+spag4d/cli.py
+spag4d/core.py
+spag4d/da360_model.py
+spag4d/dap_model.py
+spag4d/depth_blend.py
+spag4d/depth_refiner.py
+spag4d/ply_writer.py
+spag4d/projection.py
+spag4d/scene_analysis.py
+spag4d/scene_filter.py
+spag4d/spag_converter.py
+spag4d/spherical_grid.py
+static/index.html
+TestImage/9_MattSwift.mp4
+TestImage/bell_tower_8k.png
+TestImage/monbachtal_riverbank_primary.jpg
+tests/__init__.py
+tests/chrome_SXBB3cdzYO.mp4
+```

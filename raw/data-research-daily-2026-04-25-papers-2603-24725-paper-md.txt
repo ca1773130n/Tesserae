@@ -1,0 +1,75 @@
+paper.md
+========
+
+# 논문 분석: 2603.24725
+
+> - arxiv: https://arxiv.org/abs/2603.24725
+> - papers.cool: https://papers.cool/arxiv/2603.24725
+> - 분석일: 2026-04-25
+
+# Confidence-Based Mesh Extraction from 3D Gaussians | Cool Papers - Immersive Paper Discovery
+
+## 2603.24725
+
+총계: 1
+
+## #1
+
+### Confidence-Based Mesh Extraction from 3D Gaussians
+
+[PDF4] [Copy] [Kimi] [REL]
+
+저자:
+Lukas Radl,  
+Felix Windisch,  
+Andreas Kurz,  
+Thomas Köhler,  
+Michael Steiner,  
+Markus Steinberger
+
+최근 3D Gaussian Splatting, 3DGS는 명시적 표현과 빠른 소프트웨어 래스터화를 통해 포즈가 주어진 이미지로부터의 mesh 추출을 크게 가속했다. 기하 손실과 기타 사전 정보를 추가함으로써 추출된 표면의 정확도는 향상되었지만, 시점 의존 효과가 풍부한 장면에서는 여전히 mesh 추출이 어렵다. 이로 인해 발생하는 모호성을 해결하기 위해, 기존 연구들은 multi-view 기법, 반복적 mesh 추출, 또는 대규모 사전학습 모델에 의존해 왔으며, 그 대가로 3DGS 고유의 효율성을 희생했다. 본 연구에서는 3DGS에 자기지도 confidence 프레임워크를 도입함으로써 단순하고 효율적인 대안을 제시한다. 이 프레임워크 내에서 학습 가능한 confidence 값은 photometric supervision과 geometric supervision의 균형을 동적으로 조절한다. confidence 기반 공식화를 확장하여, 각 primitive별 color 및 normal 분산에 패널티를 부여하는 손실을 도입하고, 이것이 표면 추출에 주는 이점을 입증한다. 마지막으로, D-SSIM loss의 개별 항을 분리함으로써 개선된 appearance model을 추가한다. 최종적으로 제안하는 방법은 높은 효율성을 유지하면서 unbounded mesh에서 state-of-the-art 성능을 달성한다.
+
+주제:
+Computer Vision and Pattern Recognition,  
+Graphics
+
+게시일: 2026-03-25 18:52:04 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+Include OR:
+
+Exclude:
+
+Search
+
+Filter
+
+Highlight
+
+Stared Paper(s):
+
+#1  
+Confidence-Based Mesh Extraction from 3D Gaussians
+
+Export
+
+Magic Token:
+
+Kimi Language:
+中文  
+English
+
+Desc Language:
+中文  
+English
+
+Save
+
+버그 제보 또는 Issue 제출은 다음을 방문하세요:
+
+Github: https://github.com/bojone/papers.cool
+
+계속 진행하기 전에 Disclaimer를 읽어주세요.
+
+더 흥미로운 기능은 kexue.fm 및 kimi.ai를 방문하세요.

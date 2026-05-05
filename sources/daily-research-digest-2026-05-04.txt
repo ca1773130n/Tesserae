@@ -1,0 +1,13 @@
+📬 Daily Research Digest — 2026-05-04
+====================================
+
+# 📬 Daily Research Digest — 2026-05-04
+
+## Outgoing relations
+
+- **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_
+- **mentioned_in** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_
+
+## Connected node types
+
+- Paper: 2

@@ -1,0 +1,15 @@
+{
+  "title": "Sangmin Kim",
+  "kind": "entities",
+  "body_text": "# Sangmin Kim\n\n## Incoming relations\n\n- **authored_by** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2604.00538/paper.md",
+  "links": [],
+  "body": "# Sangmin Kim\n\n## Incoming relations\n\n- **authored_by** → TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Person:sangmin-kim:661d5759fee0",
+    "node_type": "Person",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-25/papers/2604.00538/paper.md",
+    "title": "Sangmin Kim"
+  }
+}

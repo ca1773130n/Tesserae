@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Session: You are a structured-output adapter for Cognee. — LLM-Wiki</title>
+  <link rel="stylesheet" href="../../assets/style.css">
+</head>
+<body>
+
+<main id="main-content" class="page session-detail">
+  <p><a href="../index.html">← All sessions</a></p>
+  <script type="application/json" id="llmwiki-metadata">{&quot;date&quot;: &quot;2026-04-26&quot;, &quot;harness&quot;: &quot;codex&quot;, &quot;id&quot;: &quot;codex:019dcaa4-2c53-7612-8d2b-4b92b1764dd2&quot;, &quot;kind&quot;: &quot;session&quot;, &quot;model&quot;: &quot;openai&quot;, &quot;project&quot;: &quot;LLM-Wiki&quot;}</script>
+  <section class="panel">
+    <p class="eyebrow">Codex · 2026-04-26 · unknown branch</p>
+    <h1>You are a structured-output adapter for Cognee.</h1>
+    <p class="lead">You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { &quot;description&quot;: &quot;Class for a single class label summary and description.&quot;, &quot;properties&quot;: { &quot;summary&quot;: { &quot;title&quot;: &quot;Summary&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;description&quot;: { &quot;title&quot;: &quot;Description&quot;, &quot;type&quot;: &quot;string&quot; } }, &quot;required&quot;: [ &quot;summary&quot;, &quot;description&quot; ], &quot;title&quot;: &quot;SummarizedContent&quot;, &quot;type&quot;: &quot;object&quot; } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_qwen_embedding_full_bundle/edges.jsonl {&quot;summary&quot;:&quot;A JSONL edge list for a research knowledge graph linking papers, claims, evidence spans, methods, topics, and fields.&quot;,&quot;description&quot;:&quot;This file stores structured graph relationships extracted from AI and vision research content. It mainly connects papers to research fields, claims, supporting evidence, methods, approach families, and to</p>
+    <dl class="meta-grid">
+      <dt>Project</dt><dd>LLM-Wiki</dd>
+      <dt>Model</dt><dd><code>openai</code></dd>
+      <dt>Messages</dt><dd>3</dd>
+      <dt>Tool calls</dt><dd>1</dd>
+      <dt>Tokens</dt><dd>0</dd>
+    </dl>
+  </section>
+  <section class="panel"><h2>Key decisions</h2><p class='muted'>None recorded.</p></section>
+  <section class="panel"><h2>Files touched</h2><ul><li><code>docs/SKILL.md</code></li></ul></section>
+  <section class="panel"><h2>Commands run</h2><ul><li><code>wc -l output/cognee_qwen_embedding_full_bundle/edges.jsonl &amp;&amp; sed -n &#x27;1,120p&#x27; output/cognee_qwen_embedding_full_bundle/edges.jsonl</code></li><li><code>python - &lt;&lt;&#x27;PY&#x27;
+import json,collections,re
+from pathlib import Path
+p=Path(&#x27;output/cognee_qwen_embedding_full_bundle/edges.jsonl&#x27;)
+rel=collections.Counter(); src=collections.Counter(); tgt=collections.Counter(); evid=0; total=0
+for line in p.open():
+    total+=1
+    obj=json.loads(line)
+    rel[obj[&#x27;relationship&#x27;]]+=1
+    src[obj[&#x27;source_id&#x27;].split(&#x27;:&#x27;,1)[0]]+=1
+    tgt[obj[&#x27;target_id&#x27;].split(&#x27;:&#x27;,1)[0]]+=1
+    if obj.get(&#x27;evidence&#x27;): evid+=1
+print(&#x27;total&#x27;, total)
+print(&#x27;with_evidence&#x27;, evid)
+print(&#x27;relationships&#x27;, rel.most_common(12))
+print(&#x27;source_types&#x27;, src.most_common(12))
+print(&#x27;target_types&#x27;, tgt.most_common(12))
+PY</code></li><li><code>python - &lt;&lt;&#x27;PY&#x27;
+import json,collections
+from pathlib import Path
+p=Path(&#x27;output/cognee_qwen_embedding_full_bundle/edges.jsonl&#x27;)
+examples=collections.defaultdict(list)
+for line in p.open():
+    obj=json.loads(line)
+    r=obj[&#x27;relationship&#x27;]
+    if len(examples[r])&lt;3:
+        examples[r].append((obj[&#x27;source_id&#x27;],obj[&#x27;target_id&#x27;]))
+for r in sorted(examples):
+    print(r)
+    for s,t in examples[r]:
+        print(&#x27; &#x27;,s,&#x27;-&gt;&#x27;,t)
+PY</code></li><li><code>python -c &quot;import json,collections,pathlib; p=pathlib.Path(&#x27;output/cognee_qwen_embedding_full_bundle/edges.jsonl&#x27;); rel=collections.Counter(); src=collections.Counter(); tgt=collections.Counter(); evid=0; total=0
+for line in p.open():
+ obj=json.loads(line); total+=1; rel[obj[&#x27;relationship&#x27;]]+=1; src[obj[&#x27;source_id&#x27;].split(&#x27;:&#x27;,1)[0]]+=1; tgt[obj[&#x27;target_id&#x27;].split(&#x27;:&#x27;,1)[0]]+=1; evid += bool(obj.get(&#x27;evidence&#x27;))
+print(&#x27;total&#x27;, total); print(&#x27;with_evidence&#x27;, evid); print(&#x27;relationships&#x27;, rel.most_common(12)); print(&#x27;source_types&#x27;, src.most_common(12)); print(&#x27;target_types&#x27;, tgt.most_common(12))&quot;</code></li><li><code>python -c &quot;import json,collections,pathlib; p=pathlib.Path(&#x27;output/cognee_qwen_embedding_full_bundle/edges.jsonl&#x27;); ex=collections.defaultdict(list)
+for line in p.open():
+ obj=json.loads(line); r=obj[&#x27;relationship&#x27;];
+ if len(ex[r])&lt;3: ex[r].append((obj[&#x27;source_id&#x27;],obj[&#x27;target_id&#x27;]))
+for r in sorted(ex):
+ print(r)
+ for s,t in ex[r]: print(&#x27; &#x27;,s,&#x27;-&gt;&#x27;,t)&quot;</code></li></ul></section>
+  <section class="panel"><h2>Tools used</h2><ul><li>exec_command</li></ul></section>
+  <section class='panel'><h2>Subagent sessions</h2><p class='muted'>No subagent transcripts attached.</p></section>
+  <section class="panel"><h2>Redacted preview</h2><pre>You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { &quot;description&quot;: &quot;Class for a single class label summary and description.&quot;, &quot;properties&quot;: { &quot;summary&quot;: { &quot;title&quot;: &quot;Summary&quot;, &quot;type&quot;: &quot;string&quot; }, &quot;description&quot;: { &quot;title&quot;: &quot;Description&quot;, &quot;type&quot;: &quot;string&quot; } }, &quot;required&quot;: [ &quot;summary&quot;, &quot;description&quot; ], &quot;title&quot;: &quot;SummarizedContent&quot;, &quot;type&quot;: &quot;object&quot; } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_qwen_embedding_full_bundle/edges.jsonl {&quot;summary&quot;:&quot;A JSONL edge list for a research knowledge graph linking papers, claims, evidence spans, methods, topics, and fields.&quot;,&quot;description&quot;:&quot;This file stores structured graph relationships extracted from AI and vision research content. It mainly connects papers to research fields, claims, supporting evidence, methods, approach families, and to</pre></section>
+</main>
+
+</body>
+</html>

@@ -1,0 +1,12 @@
+GitHub 분석: World-In-World/world-in-world
+========================================
+
+# GitHub 분석: World-In-World/world-in-world
+
+## Outgoing relations
+
+- **released_by** → world-in-world _(Organization)_
+
+## Connected node types
+
+- Organization: 1

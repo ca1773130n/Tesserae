@@ -1,0 +1,15 @@
+{
+  "title": "Codex extraction review (2026-05-01)",
+  "kind": "sources",
+  "body_text": "# Codex extraction review (2026-05-01)\n\n## Outgoing relations\n\n- **evaluated_on** → DTU _(Benchmark)_\n- **evaluated_on** → Mip-NeRF360 _(Benchmark)_\n- **evaluated_on** → Tanks and Temples _(Benchmark)_\n- **uses_metric** → Precision _(Metric)_\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Benchmark: 3\n- Metric: 2",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/superpowers/codex-extraction-review.md",
+  "links": [],
+  "body": "# Codex extraction review (2026-05-01)\n\n## Outgoing relations\n\n- **evaluated_on** → DTU _(Benchmark)_\n- **evaluated_on** → Mip-NeRF360 _(Benchmark)_\n- **evaluated_on** → Tanks and Temples _(Benchmark)_\n- **uses_metric** → Precision _(Metric)_\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Benchmark: 3\n- Metric: 2",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:codex-extraction-review-2026-05-01:683d572754b6",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/superpowers/codex-extraction-review.md",
+    "title": "Codex extraction review (2026-05-01)"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "title": "ImageNet",
+  "kind": "entities",
+  "body_text": "# ImageNet\n\n## Incoming relations\n\n- **evaluated_on** → Scaling 4D Representations _(Paper)_\n- **evaluated_on** → 주간 논문 분석 — 2026-W15 (2026-04-06 ~ 2026-04-12) _(SourceDocument)_\n\n## Connected node types\n\n- Paper: 1\n- SourceDocument: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/papers/2412.15212/paper.md",
+  "links": [],
+  "body": "# ImageNet\n\n## Incoming relations\n\n- **evaluated_on** → Scaling 4D Representations _(Paper)_\n- **evaluated_on** → 주간 논문 분석 — 2026-W15 (2026-04-06 ~ 2026-04-12) _(SourceDocument)_\n\n## Connected node types\n\n- Paper: 1\n- SourceDocument: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Benchmark:imagenet:2a790405f211",
+    "node_type": "Benchmark",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/papers/2412.15212/paper.md",
+    "title": "ImageNet"
+  }
+}

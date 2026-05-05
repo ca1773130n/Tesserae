@@ -1,0 +1,17 @@
+Daily Digest — 2026-04-26
+=========================
+
+# Daily Digest — 2026-04-26
+
+Sources ingested under `data/research/daily/2026-04-26/`.
+
+## Papers and repos
+- [Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras (arXiv:2604.18744)](../papers/match-any-events-zero-shot-motion-robust-feature-matching-across-wide-baselines-dbc18631.md) (Paper)
+- [GitHub 분석: OpsiClear-4DGS/TriGSVanilla](../repos/github-분석-opsiclear-4dgs-trigsvanilla.md) (Repository)
+- [GitHub 분석: genforce/JOSH](../repos/github-분석-genforce-josh.md) (Repository)
+- [Daily Feed Summary — 2026-04-26](../sources/daily-feed-summary-2026-04-26.md) (SourceDocument)
+- [Daily Research Digest — 2026-04-26](../sources/daily-research-digest-2026-04-26.md) (SourceDocument)
+- [📬 Daily Research Digest — 2026-04-26](../sources/daily-research-digest-2026-04-26.md) (SourceDocument)
+
+## Extracted concepts
+- Fine-tuning (TrainingParadigm)

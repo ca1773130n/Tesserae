@@ -1,0 +1,57 @@
+Geometry-Grounded Gaussian Splatting
+====================================
+
+# Geometry-Grounded Gaussian Splatting
+
+## Outgoing relations
+
+- **addresses** → Novel View Synthesis _(Task)_
+- **addresses** → Shape Reconstruction _(Task)_
+- **authored_by** → Baowen Zhang _(Person)_
+- **authored_by** → Chenxing Jiang _(Person)_
+- **authored_by** → Heng Li _(Person)_
+- **authored_by** → Ping Tan _(Person)_
+- **authored_by** → Shaojie Shen _(Person)_
+- **belongs_to_approach_family** → Gaussian Splatting Reconstruction _(ApproachFamily)_
+- **belongs_to_approach_family** → Geometry-Grounded Gaussian Splatting _(ApproachFamily)_
+- **implemented_in** → GitHub 분석: Eyeline-Labs/Vista4D _(Repository)_
+- **implemented_in** → GitHub 분석: ReconWorldLab/godot-gaussian-splatting _(Repository)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+- **supports_claim** → Open question: 그러나 Gaussian primitives로부터 shape를 추출하는 문제는 여전히 해결되지 않은 과제로 남아 있다. _(OpenQuestion)_
+- **supports_claim** → Open question: 그러나 Gaussian primitive로부터 형상을 추출하는 문제는 여전히 해결되지 않은 과제로 남아 있다. _(OpenQuestion)_
+- **uses** → Depth Map _(TechnicalTerm)_
+- **uses** → Gaussian Splatting _(MethodologicalConcept)_
+- **uses** → Multi-View Consistency _(EvaluationProtocol)_
+- **uses** → Stochastic Solid _(MathematicalConcept)_
+- **uses** → Volumetric Rendering _(MethodologicalConcept)_
+- **uses_metric** → mAP _(Metric)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-15 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-16 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-23 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-26 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_
+- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_
+- **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-15 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-23 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-26 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-27 _(SourceDocument)_
+
+## Connected node types
+
+- SourceDocument: 12
+- Person: 5
+- ApproachFamily: 2
+- MethodologicalConcept: 2
+- OpenQuestion: 2
+- Repository: 2
+- Task: 2
+- EvaluationProtocol: 1
+- MathematicalConcept: 1
+- Metric: 1
+- ResearchField: 1
+- TechnicalTerm: 1

@@ -1,0 +1,69 @@
+TheRealMJP_MSAAFilter.md
+========================
+
+# GitHub 분석: TheRealMJP/MSAAFilter
+
+> - URL: https://github.com/TheRealMJP/MSAAFilter
+> - 분석일: 2026-04-13
+
+## 개요
+
+- **설명**: MSAA and Temporal AA Sample
+- **Stars**: ⭐ 343 | Forks: 43
+- **라이선스**: MIT
+- **주 언어**: C++/CUDA
+
+## 실행 가능 상태: 의존성 파일 없음
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (18개) | Y |
+| 의존성 파일 | N |
+| 모델/체크포인트 | N |
+| Docker | N |
+
+## 파일 구조
+
+```
+Content/.gitignore
+Externals/d3dcompiler_47.dll
+Externals/.gitignore
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+License.txt
+MSAAFilter/AppPCH.h
+MSAAFilter/AppSettings.cpp
+MSAAFilter/AppSettings.cs
+MSAAFilter/AppSettings.h
+MSAAFilter/AppSettings.hlsl
+MSAAFilter/BackgroundVelocity.hlsl
+MSAAFilter/DepthOnly.hlsl
+MSAAFilter/DepthReduction.hlsl
+MSAAFilter/EVSMConvert.hlsl
+MSAAFilter/EVSM.hlsl
+MSAAFilter/Icon.ico
+MSAAFilter/LuminanceReduction.hlsl
+MSAAFilter/Mesh.hlsl
+MSAAFilter/MeshRenderer.cpp
+MSAAFilter/MeshRenderer.h
+MSAAFilter/MSAAFilter_2015.sln
+MSAAFilter/MSAAFilter_2015.vcxproj
+MSAAFilter/MSAAFilter_2015.vcxproj.filters
+MSAAFilter/MSAAFilter_2019.sln
+MSAAFilter/MSAAFilter_2019.vcxproj
+MSAAFilter/MSAAFilter_2019.vcxproj.filters
+MSAAFilter/MSAAFilter.cpp
+MSAAFilter/MSAAFilter.h
+MSAAFilter/MSAAFilter.rc
+MSAAFilter/MSAAFilter.sln
+MSAAFilter/MSAAFilter.vcxproj
+MSAAFilter/MSAAFilter.vcxproj.filters
+MSAAFilter/PostProcessing.hlsl
+MSAAFilter/PostProcessor.cpp
+```

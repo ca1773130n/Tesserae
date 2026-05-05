@@ -1,0 +1,64 @@
+team-aprl_MR.ScaleMaster.md
+===========================
+
+# GitHub 분석: team-aprl/MR.ScaleMaster
+
+> - URL: https://github.com/team-aprl/MR.ScaleMaster
+> - 분석일: 2026-04-22
+
+## 개요
+
+- **설명**:   
+- **Stars**: ⭐ 64 | Forks: 2
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (18개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+assets/main.gif
+cmake/FindCHOLMOD.cmake
+config/default.yaml
+config/Exp1.yaml
+config/Exp2.yaml
+config/KITTI.yaml
+cores/config.py
+cores/dataloader.py
+cores/inference_thread.py
+cores/__init__.py
+cores/io_utils.py
+cores/main.py
+cores/math_utils.py
+cores/optimizer_worker.py
+cores/retrieval.py
+cores/slam_backend.py
+cores/visualizer.py
+cpp/build.sh
+cpp/CMakeLists.txt
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+main.py
+README.md
+requirements.txt
+scripts/demo_viser_for_mrscalemaster.py
+scripts/do_collaborative_mapping.sh
+scripts/download_checkpoint.sh
+scripts/install_loger.sh
+scripts/run.sh
+scripts/setup.bash
+```

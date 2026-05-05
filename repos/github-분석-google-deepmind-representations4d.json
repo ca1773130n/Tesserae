@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: google-deepmind/representations4d",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: google-deepmind/representations4d\n\n## Outgoing relations\n\n- **released_by** → google-deepmind _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Scaling 4D Representations _(Paper)_\n\n## Connected node types\n\n- Organization: 1\n- Paper: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/papers/2412.15212/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: google-deepmind/representations4d\n\n## Outgoing relations\n\n- **released_by** → google-deepmind _(Organization)_\n\n## Incoming relations\n\n- **implemented_in** → Scaling 4D Representations _(Paper)_\n\n## Connected node types\n\n- Organization: 1\n- Paper: 1",
+  "frontmatter": {
+    "aliases": [
+      "google-deepmind/representations4d",
+      "https://github.com/google-deepmind/representations4d"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-google-deepmind-representations4d:4b9e5606a2f7",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-07/papers/2412.15212/repo.md",
+    "title": "GitHub 분석: google-deepmind/representations4d"
+  }
+}

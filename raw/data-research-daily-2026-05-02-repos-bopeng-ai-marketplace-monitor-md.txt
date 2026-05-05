@@ -1,0 +1,69 @@
+BoPeng_ai-marketplace-monitor.md
+================================
+
+# GitHub 분석: BoPeng/ai-marketplace-monitor
+
+> - URL: https://github.com/BoPeng/ai-marketplace-monitor
+> - 분석일: 2026-05-02
+
+## 개요
+
+- **설명**: Monitor facebook marketplace with AI
+- **Stars**: ⭐ 198 | Forks: 48
+- **라이선스**: AGPL-3.0
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (34개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+.bumpversion.cfg
+CHANGELOG.md
+CITATION.cff
+codecov.yml
+CODE_OF_CONDUCT.md
+conftest.py
+CONTRIBUTING.md
+docs/ai_marketplace_monitor.rst
+docs/AIMM_dark.png
+docs/AIMM_light.png
+docs/AIMM_neutral.png
+docs/configuration-guide.rst
+docs/configuration.rst
+docs/conf.py
+docs/contributing.rst
+docs/example_config.toml
+docs/features.rst
+docs/index.rst
+docs/installation.rst
+docs/license.rst
+docs/linux-installation.md
+docs/minimal_config.toml
+docs/modules.rst
+docs/quickstart.rst
+docs/README.md
+docs/readme.rst
+docs/requirements.txt
+docs/search_in_action.png
+docs/telegram_support_prd.md
+docs/troubleshooting.rst
+docs/usage.rst
+docs/webui.md
+docs/webui_screenshot.png
+.git/config
+.git/description
+.git/HEAD
+.github/CODEOWNERS
+.github/dependabot.yml
+.github/FUNDING.yml
+.github/PULL_REQUEST_TEMPLATE.md
+```

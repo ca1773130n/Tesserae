@@ -1,0 +1,18 @@
+{
+  "title": "Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas",
+  "kind": "papers",
+  "body_text": "# Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas\n\n## Outgoing relations\n\n- **addresses** → World Model _(ResearchTopic)_\n- **authored_by** → Christian Rupprecht _(Person)_\n- **authored_by** → Daniel Cremers _(Person)_\n- **authored_by** → Fabian Manhardt _(Person)_\n- **authored_by** → Federico Tombari _(Person)_\n- **authored_by** → Felix Wimbauer _(Person)_\n- **authored_by** → Michael Oechsle _(Person)_\n- **authored_by** → Nikolai Kalischek _(Person)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-05-05 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-05 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 7\n- SourceDocument: 2\n- ResearchField: 1\n- ResearchTopic: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-05/papers/2603.28980/paper.md",
+  "links": [],
+  "body": "# Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas\n\n## Outgoing relations\n\n- **addresses** → World Model _(ResearchTopic)_\n- **authored_by** → Christian Rupprecht _(Person)_\n- **authored_by** → Daniel Cremers _(Person)_\n- **authored_by** → Fabian Manhardt _(Person)_\n- **authored_by** → Federico Tombari _(Person)_\n- **authored_by** → Felix Wimbauer _(Person)_\n- **authored_by** → Michael Oechsle _(Person)_\n- **authored_by** → Nikolai Kalischek _(Person)_\n- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-05-05 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-05 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 7\n- SourceDocument: 2\n- ResearchField: 1\n- ResearchTopic: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2603.28980"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2603-28980:2f6981d6a09d",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-05/papers/2603.28980/paper.md",
+    "title": "Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas"
+  }
+}

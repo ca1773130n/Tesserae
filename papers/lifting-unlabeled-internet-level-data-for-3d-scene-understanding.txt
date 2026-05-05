@@ -1,0 +1,36 @@
+Lifting Unlabeled Internet-level Data for 3D Scene Understanding
+================================================================
+
+# Lifting Unlabeled Internet-level Data for 3D Scene Understanding
+
+## Outgoing relations
+
+- **authored_by** → Baoxiong Jia _(Person)_
+- **authored_by** → Hongyu Shen _(Person)_
+- **authored_by** → Huangyue Yu _(Person)_
+- **authored_by** → Jiangyong Huang _(Person)_
+- **authored_by** → Junchao He _(Person)_
+- **authored_by** → Junfeng Ni _(Person)_
+- **authored_by** → Shaofei Wang _(Person)_
+- **authored_by** → Siyuan Huang _(Person)_
+- **authored_by** → Song-Chun Zhu _(Person)_
+- **authored_by** → Yan Wang _(Person)_
+- **authored_by** → Yaowei Zhang _(Person)_
+- **authored_by** → Yixin Chen _(Person)_
+- **implemented_in** → GitHub 분석: sv-pp/SceneVersepp _(Repository)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-04-30 _(SourceDocument)_
+- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-29 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-04-30 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 12
+- SourceDocument: 5
+- Repository: 1
+- ResearchField: 1
