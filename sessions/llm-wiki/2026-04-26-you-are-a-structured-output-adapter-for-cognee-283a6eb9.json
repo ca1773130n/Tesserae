@@ -44,7 +44,53 @@
     "redacted_preview": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for KnowledgeGraph: { \"$defs\": { \"Edge\": { \"description\": \"Edge in a knowledge graph.\", \"properties\": { \"source_node_id\": { \"title\": \"Source Node Id\", \"type\": \"string\" }, \"target_node_id\": { \"title\": \"Target Node Id\", \"type\": \"string\" }, \"relationship_name\": { \"title\": \"Relationship Name\", \"type\": \"string\" }, \"properties\": { \"anyOf\": [ { \"type\": \"object\" }, { \"type\": \"null\" } ], \"default\": null, \"description\": \"A dictionary of properties associated with the edge.\", \"title\": \"Properties\" } }, \"required\": [ \"source_node_id\", \"target_node_id\", \"relationship_name\" ], \"title\": \"Edge\", \"type\": \"object\" }, \"Node\": { \"description\": \"Node in a knowledge graph.\", \"properties\": { \"id\": { \"title\": \"Id\", \"type\": \"string\" }, \"name\": { \"title\": \"Name\", \"type\": \"string\" }, \"type\": { \"title\": \"Type\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" }, \"properties\": { \"anyOf\": [ { \"type\": \"object\" }, { \"type\": \"null\" } ], \"default\": null, \"description\": \"A dictionary of properties associated with th",
     "metadata": {
       "config_root": "/Users/neo/.codex_old",
-      "transcript": "/Users/neo/.codex_old/sessions/2026/04/27/rollout-2026-04-27T00-22-24-019dca62-792c-7010-bfe7-131bf3ef6960.jsonl"
+      "transcript": "/Users/neo/.codex_old/sessions/2026/04/27/rollout-2026-04-27T00-22-24-019dca62-792c-7010-bfe7-131bf3ef6960.jsonl",
+      "turns": [
+        {
+          "role": "user",
+          "text": "You are a structured-output adapter for Cognee.\n\nReturn ONLY one valid JSON object. No markdown fences, no commentary.\nThe JSON MUST validate against this Pydantic JSON Schema for KnowledgeGraph:\n{\n  \"$defs\": {\n    \"Edge\": {\n      \"description\": \"Edge in a knowledge graph.\",\n      \"properties\": {\n        \"source_node_id\": {\n          \"title\": \"Source Node Id\",\n          \"type\": \"string\"\n        },\n        \"target_node_id\": {\n          \"title\": \"Target Node Id\",\n          \"type\": \"string\"\n        },\n        \"relationship_name\": {\n          \"title\": \"Relationship Name\",\n          \"type\": \"string\"\n        },\n        \"properties\": {\n          \"anyOf\": [\n            {\n              \"type\": \"object\"\n            },\n            {\n              \"type\": \"null\"\n            }\n          ],\n          \"default\": null,\n          \"description\": \"A dictionary of properties associated with the edge.\",\n          \"title\": \"Properties\"\n        }\n      },\n      \"required\": [\n        \"source_node_id\",\n        \"target_node_id\",\n        \"relationship_name\"\n      ],\n      \"title\": \"Edge\",\n      \"type\": \"object\"\n    },\n    \"Node\": {\n      \"description\": \"Node in a knowledge graph.\",\n      \"properties\": {\n        \"id\": {\n          \"title\": \"Id\",\n          \"type\": \"string\"\n        },\n        \"name\": {\n          \"title\": \"Name\",\n          \"type\": \"string\"\n        },\n        \"type\": {\n          \"title\": \"Type\",\n          \"type\": \"string\"\n        },\n        \"description\": {\n          \"title\": \"Description\",\n          \"type\": \"string\"\n        },\n        \"properties\": {\n          \"anyOf\": [\n            {\n              \"type\": \"object\"\n            },\n            {\n              \"type\": \"null\"\n            }\n          ],\n          \"default\": null,\n          \"description\": \"A dictionary of properties associated with the node.\",\n          \"title\": \"Properties\"\n        }\n      },\n      \"required\": [\n        \"id\",\n        \"name\",\n        \"type\",\n        \"description\"\n      ],\n      \"title\": \"Node\",\n      \"type\": \"object\"\n    }\n  },\n  \"description\": \"Knowledge graph.\",\n  \"properties\": {\n    \"nodes\": {\n      \"items\": {\n        \"$ref\": \"#/$defs/Node\"\n      },\n      \"title\": \"Nodes\",\n      \"type\": \"array\"\n    },\n    \"edges\": {\n      \"items\": {\n        \"$ref\": \"#/$defs/Edge\"\n      },\n      \"title\": \"Edges\",\n      \"type\": \"array\"\n    }\n  },\n  \"title\": \"KnowledgeGraph\",\n  \"type\": \"object\"\n}\n\nSystem instruc…",
+          "timestamp": "2026-04-26T15:22:27.016Z"
+        },
+        {
+          "role": "assistant",
+          "text": "Reading the provided input file and extracting a minimal, schema-valid knowledge graph from its contents.",
+          "timestamp": "2026-04-26T15:22:34.076Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"wc -l output/cognee_codex_full_bundle/edges.jsonl\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"max_output_tokens\":200}",
+          "timestamp": "2026-04-26T15:22:34.077Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"sed -n '1,120p' output/cognee_codex_full_bundle/edges.jsonl\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"max_output_tokens\":6000}",
+          "timestamp": "2026-04-26T15:22:34.077Z"
+        },
+        {
+          "role": "assistant",
+          "text": "Sampling the file structure further to capture recurring entities and relationships before emitting the final graph.",
+          "timestamp": "2026-04-26T15:22:46.080Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"python - <<'PY'\\nimport json, collections\\nfrom itertools import islice\\npath='output/cognee_codex_full_bundle/edges.jsonl'\\nrels=collections.Counter()\\nprefixes=collections.Counter()\\nexamples={}\\nwith open(path) as f:\\n    for line in f:\\n        obj=json.loads(line)\\n        rel=obj['relationship']\\n        rels[rel]+=1\\n        for key in ['source_id','target_id']:\\n            pref=obj[key].split(':',1)[0]\\n            prefixes[pref]+=1\\n        examples.setdefault(rel,obj)\\nprint('RELATIONSHIPS')\\nfor k,v in rels.most_common(20):\\n    print(k,v)\\nprint('\\\\nPREFIXES')\\nfor k,v in prefixes.most_common(20):\\n    print(k,v)\\nprint('\\\\nEXAMPLES')\\nfor k in list(examples)[:12]:\\n    print(k, examples[k])\\nPY\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"max_output_tokens\":4000}",
+          "timestamp": "2026-04-26T15:22:46.103Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"tail -n 40 output/cognee_codex_full_bundle/edges.jsonl\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"max_output_tokens\":5000}",
+          "timestamp": "2026-04-26T15:22:46.432Z"
+        },
+        {
+          "role": "assistant",
+          "text": "{\"nodes\":[{\"id\":\"output/cognee_codex_full_bundle/edges.jsonl\",\"name\":\"output/cognee_codex_full_bundle/edges.jsonl\",\"type\":\"File\",\"description\":\"A JSONL file containing knowledge graph edges about papers, topics, claims, methods, and research fields.\",\"properties\":{\"format\":\"jsonl\"}},{\"id\":\"research-literature\",\"name\":\"research literature\",\"type\":\"Field\",\"description\":\"A research field used as a grouping target for multiple papers in the file.\",\"properties\":null},{\"id\":\"3d-4d-vision-and-reconstruction\",\"name\":\"3D/4D vision and reconstruction\",\"type\":\"Field\",\"description\":\"A research field covering 3D and 4D vision and reconstruction papers.\",\"properties\":null},{\"id\":\"llm-reasoning\",\"name\":\"LLM reasoning\",\"type\":\"Field\",\"description\":\"A research field used to categorize some papers in the file.\",\"properties\":null},{\"id\":\"world-model\",\"name\":\"world model\",\"type\":\"Topic\",\"description\":\"A research topic addressed by multiple papers in the file.\",\"properties\":null},{\"id\":\"gaussian-splatting\",\"name\":\"gaussian splatting\",\"type\":\"Concept\",\"description\":\"A methodological concept referenced by papers and claims in the file.\",\"properties\":null},{\"id\":\"geometry-grounded-gaussian-splatting\",\"name\":\"Geometry Grounded Gaussian Splatting\",\"type\":\"Paper\",\"description\":\"A paper in the file that discusses Gaussian primitives, stochastic solids, and shape reconstruction performance.\",\"properties\":null},{\"id\":\"video-generation-models-are-evolving-into-world-simulators\",\"name\":\"Video generation models are evolving into world simulators\",\"type\":\"Paper\",\"description\":\"A paper or post in the file that addresses world models and efficiency bottlenecks.\",\"properties\":null},{\"id\":\"image-generators-are-generalist-vision-learners\",\"name\":\"Image Generators Are Generalist Vision Learners\",\"type\":\"Paper\",\"description\":\"A paper in the file claiming image generation training yields broad visual representations and strong performance.\",\"properties\":null},{\"id\":\"github-llm-wiki-md-10-1-75\",\"name\":\"github llm wiki md 10 1 75\",\"type\":\"Paper\",\"description\":\"A paper or document entry in the file categorized under LLM reasoning.\",\"properties\":null},{\"id\":\"shape-reconstruction\",\"name\":\"shape reconstruction\",\"type\":\"Task\",\"description\":\"A vision task referenced by claims in the file.\",\"properties\":null},{\"id\":\"public-datasets\",\"name\":\"public datasets\",\"type\":\"Dataset\",\"description\":\"A dataset grouping…",
+          "timestamp": "2026-04-26T15:23:14.245Z"
+        }
+      ]
     },
     "date": "2026-04-26",
     "href": "sessions/llm-wiki/2026-04-26-you-are-a-structured-output-adapter-for-cognee-283a6eb9.html"

@@ -37,7 +37,19 @@
     "redacted_preview": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for Smoke: { \"properties\": { \"ok\": { \"title\": \"Ok\", \"type\": \"boolean\" }, \"tool\": { \"title\": \"Tool\", \"type\": \"string\" } }, \"required\": [ \"ok\", \"tool\" ], \"title\": \"Smoke\", \"type\": \"object\" } System instructions from Cognee: You are a JSON smoke test. Input text: Return ok true and tool codex_oauth. {\"ok\":true,\"tool\":\"codex_oauth\"}",
     "metadata": {
       "config_root": "/Users/neo/.codex_old",
-      "transcript": "/Users/neo/.codex_old/sessions/2026/04/26/rollout-2026-04-26T23-43-09-019dca3e-8a6f-77e0-92d6-2f4f077ac11b.jsonl"
+      "transcript": "/Users/neo/.codex_old/sessions/2026/04/26/rollout-2026-04-26T23-43-09-019dca3e-8a6f-77e0-92d6-2f4f077ac11b.jsonl",
+      "turns": [
+        {
+          "role": "user",
+          "text": "You are a structured-output adapter for Cognee.\n\nReturn ONLY one valid JSON object. No markdown fences, no commentary.\nThe JSON MUST validate against this Pydantic JSON Schema for Smoke:\n{\n  \"properties\": {\n    \"ok\": {\n      \"title\": \"Ok\",\n      \"type\": \"boolean\"\n    },\n    \"tool\": {\n      \"title\": \"Tool\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"ok\",\n    \"tool\"\n  ],\n  \"title\": \"Smoke\",\n  \"type\": \"object\"\n}\n\nSystem instructions from Cognee:\nYou are a JSON smoke test.\n\nInput text:\nReturn ok true and tool codex_oauth.",
+          "timestamp": "2026-04-26T14:43:16.185Z"
+        },
+        {
+          "role": "assistant",
+          "text": "{\"ok\":true,\"tool\":\"codex_oauth\"}",
+          "timestamp": "2026-04-26T14:43:17.624Z"
+        }
+      ]
     },
     "date": "2026-04-26",
     "href": "sessions/llm-wiki/2026-04-26-you-are-a-structured-output-adapter-for-cognee-f058c53a.html"

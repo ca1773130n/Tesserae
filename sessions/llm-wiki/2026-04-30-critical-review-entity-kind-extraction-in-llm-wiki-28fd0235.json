@@ -452,7 +452,267 @@
     "redacted_preview": "# Critical review: entity-kind extraction in LLM-Wiki You are a senior engineer parachuting into this project to review the **entity-kind extraction** pipeline. Be adversarial. Find what's wrong, what's brittle, what's missing, and what we'd embarrass ourselves with in a real production deploy. Don't be polite. Don't praise. Cite files and line numbers. Give concrete fixes, not aspirations. ## Background you should read first - Repo: `/Users/neo/Developer/Projects/LLM-Wiki` (you are already there). - Design spec: `docs/superpowers/specs/2026-04-27-wiki-frontend-redesign-design.md`. - Implementation plan: `docs/superpowers/specs/2026-04-27-wiki-frontend-redesign-plan.md`. - The most recent feature commits are visible via `git log --oneline -25`. ## The entity-kind pipeline at a glance Documents land in `data/`. They flow through: 1. `llm_wiki/project.py::ProjectWiki.compile()` — orchestrates the run, calls the batch extractor. 2. `llm_wiki/batch.py::BatchIngestRunner.run()` — feeds each markdown file to a `ResearchGraphExtractor`. 3. `llm_wiki/research_graph.py::ResearchGraphExtractor.extract_text()` — the heart. Decides what node types appear. Key helpers: - `source_kind_to_node_ty",
     "metadata": {
       "config_root": "/Users/neo/.codex_old",
-      "transcript": "/Users/neo/.codex_old/sessions/2026/05/01/rollout-2026-05-01T06-05-27-019de035-f9d6-7050-bd31-dc57716643c4.jsonl"
+      "transcript": "/Users/neo/.codex_old/sessions/2026/05/01/rollout-2026-05-01T06-05-27-019de035-f9d6-7050-bd31-dc57716643c4.jsonl",
+      "turns": [
+        {
+          "role": "user",
+          "text": "# Critical review: entity-kind extraction in LLM-Wiki\n\nYou are a senior engineer parachuting into this project to review the **entity-kind extraction** pipeline. Be adversarial. Find what's wrong, what's brittle, what's missing, and what we'd embarrass ourselves with in a real production deploy. Don't be polite. Don't praise. Cite files and line numbers. Give concrete fixes, not aspirations.\n\n## Background you should read first\n\n- Repo: `/Users/neo/Developer/Projects/LLM-Wiki` (you are already there).\n- Design spec: `docs/superpowers/specs/2026-04-27-wiki-frontend-redesign-design.md`.\n- Implementation plan: `docs/superpowers/specs/2026-04-27-wiki-frontend-redesign-plan.md`.\n- The most recent feature commits are visible via `git log --oneline -25`.\n\n## The entity-kind pipeline at a glance\n\nDocuments land in `data/`. They flow through:\n\n1. `llm_wiki/project.py::ProjectWiki.compile()` — orchestrates the run, calls the batch extractor.\n2. `llm_wiki/batch.py::BatchIngestRunner.run()` — feeds each markdown file to a `ResearchGraphExtractor`.\n3. `llm_wiki/research_graph.py::ResearchGraphExtractor.extract_text()` — the heart. Decides what node types appear. Key helpers:\n   - `source_kind_to_node_type(source_kind, source_path)` — picks `Paper` / `Repository` / `SourceDocument` from the path.\n   - `_add_document_structure(builder, document, text, ...)` — heading → optional `Concept`.\n   - `_extract_paper_references(builder, document, text, ...)` — body URL → `Paper` node, with `infer_arxiv_reference_title()` filtering noise.\n   - `looks_like_research_title()` / `is_verified_paper_title()` — gates.\n   - `is_public_research_node()` — gates whether a node ever appears on the public website.\n4. `llm_wiki/wiki_projector.py::WikiLayerProjector.project()` — projects each public node into a `wiki/<kind>/<slug>.md` page.\n5. `llm_wiki/synthesis.py::SynthesisProjector.project()` — builds higher-order syntheses, with its own `title_quality` filter.\n6. `llm_wiki/site/search.py` and `pages.py` — render the website. Recent changes filter to public nodes only.\n\n## Live signal you can use\n\n`.llm-wiki/graph.json` is the current corpus run (regenerate with `python3 -m llm_wiki.cli project compile` if missing). Run a Python one-liner to slice it. Reference snapshot:\n\n```\ntotal: 1838\n  CodeFunction             1122   <- code-graph noise, not exposed on website\n  Repository               1…",
+          "timestamp": "2026-04-30T21:05:29.897Z"
+        },
+        {
+          "role": "assistant",
+          "text": "I’ll inspect the extractor, projector, tests, specs, and current graph before writing the review. I won’t regenerate the corpus.",
+          "timestamp": "2026-04-30T21:05:38.971Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"rg -n \\\"def (source_kind_to_node_type|_add_document_structure|_extract_paper_references|looks_like_research_title|is_verified_paper_title|is_public_research_node|relation_for_node_type|prefer_research_node|id_seed)|title_quality|CodeProject|TechnicalTerm|Algorithm|Benchmark|Result|Person|Organization|Repository\\\" llm_wiki tests docs/superpowers/specs/2026-04-27-wiki-frontend-redesign-design.md docs/superpowers/specs/2026-04-27-wiki-frontend-redesign-plan.md\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":30000}",
+          "timestamp": "2026-04-30T21:05:38.971Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"git log --oneline -25\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":12000}",
+          "timestamp": "2026-04-30T21:05:38.971Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"python3 -c \\\"import json,collections; g=json.load(open('.llm-wiki/graph.json')); ns=g.get('nodes',[]); print('nodes',len(ns)); print(collections.Counter(n.get('type') for n in ns).most_common(40)); print('edges',len(g.get('edges',[])))\\\"\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":12000}",
+          "timestamp": "2026-04-30T21:05:39.052Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"rg --files data .llm-wiki/wiki .llm-wiki/site tests llm_wiki | head -300\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":20000}",
+          "timestamp": "2026-04-30T21:05:39.052Z"
+        },
+        {
+          "role": "assistant",
+          "text": "The graph matches the user’s snapshot: most nodes are code-graph artifacts, while several advertised ontology kinds are absent. Next I’m drilling into the exact dispatch rules and pulling bad examples from the corpus.",
+          "timestamp": "2026-04-30T21:05:46.389Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"nl -ba llm_wiki/research_graph.py | sed -n '1,220p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":30000}",
+          "timestamp": "2026-04-30T21:05:46.392Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"nl -ba llm_wiki/research_graph.py | sed -n '300,520p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":30000}",
+          "timestamp": "2026-04-30T21:05:46.393Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"nl -ba llm_wiki/research_graph.py | sed -n '640,820p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":26000}",
+          "timestamp": "2026-04-30T21:05:46.516Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"nl -ba llm_wiki/research_graph.py | sed -n '900,1060p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":26000}",
+          "timestamp": "2026-04-30T21:05:46.516Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"nl -ba llm_wiki/research_graph.py | sed -n '220,310p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":16000}",
+          "timestamp": "2026-04-30T21:05:54.306Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"nl -ba llm_wiki/project.py | sed -n '130,210p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":12000}",
+          "timestamp": "2026-04-30T21:05:54.307Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"nl -ba llm_wiki/batch.py | sed -n '1,110p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":12000}",
+          "timestamp": "2026-04-30T21:05:54.356Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"nl -ba llm_wiki/wiki_projector.py | sed -n '1,180p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":18000}",
+          "timestamp": "2026-04-30T21:05:54.357Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"nl -ba llm_wiki/synthesis.py | sed -n '880,970p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":14000}",
+          "timestamp": "2026-04-30T21:05:54.358Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"python3 -c \\\"import json,collections; g=json.load(open('.llm-wiki/graph.json')); ns=g['nodes'];\\\\nfor n in ns:\\\\n    if n['type']=='Paper': print(n['name'][:160].replace('\\\\n',' '), '|', n.get('source_path'), '|', n.get('metadata',{}).get('arxiv_id'), '|', n.get('metadata',{}).get('title_quality'), '| aliases=', n.get('aliases'))\\\"\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":40000}",
+          "timestamp": "2026-04-30T21:06:06.244Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"python3 -c \\\"import json,collections; g=json.load(open('.llm-wiki/graph.json')); ns=g['nodes'];\\\\nfor t in ['Algorithm','Benchmark','Result','Person','Organization','Metric','Model','Capability','ArchitecturePattern','TrainingParadigm','InferenceStrategy','ContributionClaim','ComparisonClaim','OpenQuestion','Dataset','TechnicalTerm','Concept','MethodologicalConcept','EvaluationProtocol','Task','Repository','CodeProject']:\\\\n    xs=[n for n in ns if n['type']==t]; print('\\\\n##',t,len(xs));\\\\n    for n in xs[:30]: print('-',n['name'][:140], '|', n.get('source_path'), '|', n.get('metadata',{}))\\\"\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":50000}",
+          "timestamp": "2026-04-30T21:06:06.244Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"find data/research -maxdepth 4 -type f | sort | sed -n '1,240p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":26000}",
+          "timestamp": "2026-04-30T21:06:06.333Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"rg -n \\\"arxiv\\\\.org|github\\\\.com|dataset|benchmark|KITTI|TUM|ScanNet|author|저자|organization|OpenAI|NVIDIA|Tencent|algorithm|metric|PSNR|SSIM|LPIPS|result|outperform|leaderboard|COLMAP|SLAM|WorldCompass|DUSt3R|VGGT|MASt3R|repo\\\" data/research -S\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":50000}",
+          "timestamp": "2026-04-30T21:06:06.334Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"python3 - <<'PY'\\nimport json\\ng=json.load(open('.llm-wiki/graph.json'))\\nfor n in g['nodes']:\\n    if n['type']=='Paper':\\n        m=n.get('metadata',{})\\n        print(n['name'][:160].replace('\\\\n',' '),'|',n.get('source_path'),'|',m.get('arxiv_id'),'|',m.get('title_quality'),'| aliases=',n.get('aliases'))\\nPY\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":40000}",
+          "timestamp": "2026-04-30T21:06:20.630Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"python3 - <<'PY'\\nimport json\\ng=json.load(open('.llm-wiki/graph.json'))\\nfor t in ['Algorithm','Benchmark','Result','Person','Organization','Metric','Model','Capability','ArchitecturePattern','TrainingParadigm','InferenceStrategy','ContributionClaim','ComparisonClaim','OpenQuestion','Dataset','TechnicalTerm','Concept','MethodologicalConcept','EvaluationProtocol','Task','Repository','CodeProject']:\\n    xs=[n for n in g['nodes'] if n['type']==t]\\n    print('\\\\n##',t,len(xs))\\n    for n in xs[:40]: print('-',n['name'][:140],'|',n.get('source_path'),'|',n.get('metadata',{}))\\nPY\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":50000}",
+          "timestamp": "2026-04-30T21:06:20.631Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"python3 - <<'PY'\\nimport json, collections\\ng=json.load(open('.llm-wiki/graph.json'))\\nby=collections.defaultdict(list)\\nfor n in g['nodes']:\\n    key=(n['type'], n['name'].lower())\\n    by[key].append(n)\\nfor (typ,name),xs in sorted(by.items()):\\n    if len(xs)>1:\\n        print('DUP exact',typ,name,len(xs),[x['id'] for x in xs])\\n# similar arxiv ids across paper/repo/source metadata\\nar=collections.defaultdict(list)\\nfor n in g['nodes']:\\n    aid=n.get('metadata',{}).get('arxiv_id')\\n    if aid: ar[aid].append(n)\\nfor aid,xs in sorted(ar.items()):\\n    if len(xs)>1:\\n        print('\\\\nARXIV',aid)\\n        for n in xs: print(' ',n['type'],n['name'][:90],n['id'],n.get('source_path'),n.get('metadata',{}).get('title_quality'))\\nPY\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":40000}",
+          "timestamp": "2026-04-30T21:06:20.725Z"
+        },
+        {
+          "role": "assistant",
+          "text": "The live graph already has concrete embarrassments: paper nodes named “```markdown”, “번역 완료…”, and “실제 중국어 논문 분석…”. I’m checking raw files and tests now so the review can tie each failure to a fixable rule.",
+          "timestamp": "2026-04-30T21:06:32.057Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"nl -ba data/research/daily/2026-04-23/papers/2604.11251/paper.md | sed -n '1,80p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":12000}",
+          "timestamp": "2026-04-30T21:06:32.057Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"nl -ba data/research/daily/2026-04-06/papers/2304.12210/paper.md | sed -n '1,80p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":12000}",
+          "timestamp": "2026-04-30T21:06:32.150Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"nl -ba data/research/daily/2026-04-07/papers/2410.17897/paper.md | sed -n '1,80p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":12000}",
+          "timestamp": "2026-04-30T21:06:32.154Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"nl -ba data/research/daily/2026-04-07/papers/2604.02996/paper.md | sed -n '1,90p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":12000}",
+          "timestamp": "2026-04-30T21:06:32.156Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"nl -ba tests/test_research_corpus.py | sed -n '1,320p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":30000}",
+          "timestamp": "2026-04-30T21:06:32.157Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"nl -ba tests/test_extraction_quality.py | sed -n '1,240p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":24000}",
+          "timestamp": "2026-04-30T21:06:32.159Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"nl -ba llm_wiki/code_graph.py | sed -n '1,170p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":18000}",
+          "timestamp": "2026-04-30T21:06:43.647Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"nl -ba llm_wiki/site/search.py | sed -n '1,180p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":16000}",
+          "timestamp": "2026-04-30T21:06:43.647Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"nl -ba llm_wiki/site/pages.py | sed -n '1180,1275p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":14000}",
+          "timestamp": "2026-04-30T21:06:43.750Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"python3 - <<'PY'\\nimport json, collections\\ng=json.load(open('.llm-wiki/graph.json'))\\nfor n in g['nodes']:\\n    if n['type']=='Paper' and n.get('metadata',{}).get('title_quality')=='paper_file' and (n['name'].startswith('```') or '파일' in n['name'] or '확인' in n['name'] or '번역 완료' in n['name']):\\n        print(n['name'], '|', n['source_path'])\\nPY\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":12000}",
+          "timestamp": "2026-04-30T21:06:43.750Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"rg -n \\\"CLAW|2604\\\\.11251|번역 완료|실제 중국어|2604\\\\.02996|Public Datasets|GaussianFlow|KITTI|TUM|benchmark|PSNR|SSIM|LPIPS|authors|저자\\\" .llm-wiki/wiki .llm-wiki/site/search-index.json data/research/daily/2026-04-25/papers/2604.15612/paper.md data/research/daily/2026-04-25/papers/2604.00538/paper.md -S\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":30000}",
+          "timestamp": "2026-04-30T21:06:43.750Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"rg -n \\\"infer_arxiv_reference_title|_is_plausible_arxiv_context_title\\\" -S .\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":12000}",
+          "timestamp": "2026-04-30T21:06:56.072Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"rg -n \\\"source_kind_to_node_type|extract_source_metadata|extract_title|is_public_research_node|relation_for_node_type|DEFAULT_TERM_RULES|title_quality|CodeGraphExtractor|compile\\\\(\\\" tests -S\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":30000}",
+          "timestamp": "2026-04-30T21:06:56.073Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"python3 - <<'PY'\\nimport json, collections\\ng=json.load(open('.llm-wiki/graph.json'))\\n# Count public by type using simplified same rule\\nverified={'paper_file','verified'}\\nc=collections.Counter(); pub=collections.Counter()\\nfor n in g['nodes']:\\n    c[n['type']]+=1\\n    sp=n.get('source_path') or ''\\n    isfeed='/feeds/' in sp.replace('\\\\\\\\','/') and '/data/research/' in sp.replace('\\\\\\\\','/')\\n    ok=not isfeed\\n    if n['type']=='Paper':\\n        q=(n.get('metadata') or {}).get('title_quality') or ''\\n        if q and q not in verified: ok=False\\n    if ok: pub[n['type']]+=1\\nprint('total public',sum(pub.values()))\\nfor t,n in c.most_common(): print(t,n,'public',pub[t])\\nPY\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":12000}",
+          "timestamp": "2026-04-30T21:06:56.174Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"rg -n \\\"## .*Datasets|Dataset|Benchmark|PSNR|SSIM|LPIPS|TUM|KITTI|ScanNet|DTU|RealEstate|CO3D|Mip-NeRF|Tanks|Results|outperform|SOTA|state-of-the-art|저자:|Authors:\\\" data/research/daily/2026-04-25/papers data/research/daily/2026-04-28/papers data/research/daily/2026-04-29/papers data/research/daily/2026-04-30/papers -S\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":40000}",
+          "timestamp": "2026-04-30T21:06:56.175Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"nl -ba llm_wiki/project.py | sed -n '198,285p'\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":14000}",
+          "timestamp": "2026-04-30T21:07:00.787Z"
+        },
+        {
+          "role": "assistant",
+          "text": "I have enough evidence. I’m writing the markdown review now, focused on live graph failures and the concrete extractor changes that would stop them.",
+          "timestamp": "2026-04-30T21:07:03.413Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"test -f docs/superpowers/codex-extraction-review.md && wc -c docs/superpowers/codex-extraction-review.md || true\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":12000}",
+          "timestamp": "2026-04-30T21:07:04.746Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"wc -c docs/superpowers/codex-extraction-review.md\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":12000}",
+          "timestamp": "2026-04-30T21:08:55.296Z"
+        },
+        {
+          "role": "assistant",
+          "text": "Wrote `docs/superpowers/codex-extraction-review.md` (22829 bytes).",
+          "timestamp": "2026-04-30T21:08:57.053Z"
+        }
+      ]
     },
     "date": "2026-04-30",
     "href": "sessions/llm-wiki/2026-04-30-critical-review-entity-kind-extraction-in-llm-wiki-28fd0235.html"

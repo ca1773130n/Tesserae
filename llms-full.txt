@@ -10266,7 +10266,7 @@ Snapshot of the wiki at the most recent compile.
 - CausalClaim: 6
 - Claim: 21
 - CodeClass: 108
-- CodeFunction: 1896
+- CodeFunction: 1931
 - CodeProject: 1
 - ComparisonClaim: 18
 - ContributionClaim: 20

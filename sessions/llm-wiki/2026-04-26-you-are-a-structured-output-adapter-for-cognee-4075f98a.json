@@ -45,7 +45,49 @@
     "redacted_preview": "You are a structured-output adapter for Cognee. Return ONLY one valid JSON object. No markdown fences, no commentary. The JSON MUST validate against this Pydantic JSON Schema for SummarizedContent: { \"description\": \"Class for a single class label summary and description.\", \"properties\": { \"summary\": { \"title\": \"Summary\", \"type\": \"string\" }, \"description\": { \"title\": \"Description\", \"type\": \"string\" } }, \"required\": [ \"summary\", \"description\" ], \"title\": \"SummarizedContent\", \"type\": \"object\" } System instructions from Cognee: You are a top-tier summarization engine. Your task is to summarize text and make it versatile. Be brief and concise, but keep the important information and the subject. Use synonim words where possible in order to change the wording but keep the meaning. Input text: output/cognee_qwen_embedding_full_bundle/edges.jsonl {\"summary\":\"A JSONL edge list for a research knowledge graph linking papers, claims, evidence spans, methods, topics, and fields.\",\"description\":\"This file stores structured graph relationships extracted from AI and vision research content. It mainly connects papers to research fields, claims, supporting evidence, methods, approach families, and to",
     "metadata": {
       "config_root": "/Users/neo/.codex_old",
-      "transcript": "/Users/neo/.codex_old/sessions/2026/04/27/rollout-2026-04-27T01-34-10-019dcaa4-2c53-7612-8d2b-4b92b1764dd2.jsonl"
+      "transcript": "/Users/neo/.codex_old/sessions/2026/04/27/rollout-2026-04-27T01-34-10-019dcaa4-2c53-7612-8d2b-4b92b1764dd2.jsonl",
+      "turns": [
+        {
+          "role": "user",
+          "text": "You are a structured-output adapter for Cognee.\n\nReturn ONLY one valid JSON object. No markdown fences, no commentary.\nThe JSON MUST validate against this Pydantic JSON Schema for SummarizedContent:\n{\n  \"description\": \"Class for a single class label summary and description.\",\n  \"properties\": {\n    \"summary\": {\n      \"title\": \"Summary\",\n      \"type\": \"string\"\n    },\n    \"description\": {\n      \"title\": \"Description\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"summary\",\n    \"description\"\n  ],\n  \"title\": \"SummarizedContent\",\n  \"type\": \"object\"\n}\n\nSystem instructions from Cognee:\nYou are a top-tier summarization engine. Your task is to summarize text and make it versatile.\nBe brief and concise, but keep the important information and the subject.\nUse synonim words where possible in order to change the wording but keep the meaning.\n\n\nInput text:\noutput/cognee_qwen_embedding_full_bundle/edges.jsonl",
+          "timestamp": "2026-04-26T16:34:15.046Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"wc -l output/cognee_qwen_embedding_full_bundle/edges.jsonl && sed -n '1,120p' output/cognee_qwen_embedding_full_bundle/edges.jsonl\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":6000}",
+          "timestamp": "2026-04-26T16:34:19.274Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"python - <<'PY'\\nimport json,collections,re\\nfrom pathlib import Path\\np=Path('output/cognee_qwen_embedding_full_bundle/edges.jsonl')\\nrel=collections.Counter(); src=collections.Counter(); tgt=collections.Counter(); evid=0; total=0\\nfor line in p.open():\\n    total+=1\\n    obj=json.loads(line)\\n    rel[obj['relationship']]+=1\\n    src[obj['source_id'].split(':',1)[0]]+=1\\n    tgt[obj['target_id'].split(':',1)[0]]+=1\\n    if obj.get('evidence'): evid+=1\\nprint('total', total)\\nprint('with_evidence', evid)\\nprint('relationships', rel.most_common(12))\\nprint('source_types', src.most_common(12))\\nprint('target_types', tgt.most_common(12))\\nPY\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":3000}",
+          "timestamp": "2026-04-26T16:34:29.067Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"python - <<'PY'\\nimport json,collections\\nfrom pathlib import Path\\np=Path('output/cognee_qwen_embedding_full_bundle/edges.jsonl')\\nexamples=collections.defaultdict(list)\\nfor line in p.open():\\n    obj=json.loads(line)\\n    r=obj['relationship']\\n    if len(examples[r])<3:\\n        examples[r].append((obj['source_id'],obj['target_id']))\\nfor r in sorted(examples):\\n    print(r)\\n    for s,t in examples[r]:\\n        print(' ',s,'->',t)\\nPY\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":4000}",
+          "timestamp": "2026-04-26T16:34:29.068Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"python -c \\\"import json,collections,pathlib; p=pathlib.Path('output/cognee_qwen_embedding_full_bundle/edges.jsonl'); rel=collections.Counter(); src=collections.Counter(); tgt=collections.Counter(); evid=0; total=0\\nfor line in p.open():\\n obj=json.loads(line); total+=1; rel[obj['relationship']]+=1; src[obj['source_id'].split(':',1)[0]]+=1; tgt[obj['target_id'].split(':',1)[0]]+=1; evid += bool(obj.get('evidence'))\\nprint('total', total); print('with_evidence', evid); print('relationships', rel.most_common(12)); print('source_types', src.most_common(12)); print('target_types', tgt.most_common(12))\\\"\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":3000}",
+          "timestamp": "2026-04-26T16:34:37.382Z"
+        },
+        {
+          "name": "exec_command",
+          "role": "tool",
+          "text": "{\"cmd\":\"python -c \\\"import json,collections,pathlib; p=pathlib.Path('output/cognee_qwen_embedding_full_bundle/edges.jsonl'); ex=collections.defaultdict(list)\\nfor line in p.open():\\n obj=json.loads(line); r=obj['relationship'];\\n if len(ex[r])<3: ex[r].append((obj['source_id'],obj['target_id']))\\nfor r in sorted(ex):\\n print(r)\\n for s,t in ex[r]: print(' ',s,'->',t)\\\"\",\"workdir\":\"/Users/neo/Developer/Projects/LLM-Wiki\",\"yield_time_ms\":1000,\"max_output_tokens\":4000}",
+          "timestamp": "2026-04-26T16:34:37.383Z"
+        },
+        {
+          "role": "assistant",
+          "text": "{\"summary\":\"A JSONL edge list for a research knowledge graph linking papers, claims, evidence spans, methods, topics, and fields.\",\"description\":\"This file stores structured graph relationships extracted from AI and vision research content. It mainly connects papers to research fields, claims, supporting evidence, methods, approach families, and topics such as world models and Gaussian splatting, forming a traceable literature graph.\"}",
+          "timestamp": "2026-04-26T16:34:40.765Z"
+        }
+      ]
     },
     "date": "2026-04-26",
     "href": "sessions/llm-wiki/2026-04-26-you-are-a-structured-output-adapter-for-cognee-4075f98a.html"

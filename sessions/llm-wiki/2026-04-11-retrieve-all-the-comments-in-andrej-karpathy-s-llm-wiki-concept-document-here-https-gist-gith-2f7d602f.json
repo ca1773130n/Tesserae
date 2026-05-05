@@ -60,7 +60,115 @@
     "redacted_preview": "retrieve all the comments in Andrej Karpathy's LLM Wiki concept document here: https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f and then find all github urls. and get the most trending github repos implementing newly or on top of their base project. Artifacts saved. Here is the summary. ## Actions - Fetched all **400 comments** on Karpathy's LLM Wiki gist (4 pages, GitHub API) - Extracted **134 unique GitHub repos** referenced in comment bodies; enriched each with stars/forks/created date via `gh api` - Ranked by stars, filtered to repos **created on/after the gist date (2026-04-04)** = \"newly built on top\" ## Files - `data/comments.json` — all 400 raw comments - `data/repos_meta.json` — 132 repos with metadata (stars, forks, created, desc, lang) ## Top trending repos built on Karpathy's LLM Wiki (created ≥ 2026-04-04) | # | Stars | Repo | Lang | Description | |---|---|---|---|---| | 1 | **41,314★** | [milla-jovovich/mempalace](https://github.com/milla-jovovich/mempalace) | Python | \"Highest-scoring AI memory system ever benchmarked. And it's free.\" | | 2 | 819★ | [Houseofmvps/codesight](https://github.com/Houseofmvps/codesight) | TS | Universal AI context generato",
     "metadata": {
       "config_root": "/Users/neo/.claude-personal1",
-      "transcript": "/Users/neo/.claude-personal1/projects/-Users-neo-Developer-Projects-LLM-Wiki/ce628622-05b9-4c64-a70b-a7ae0f7dfe09.jsonl"
+      "transcript": "/Users/neo/.claude-personal1/projects/-Users-neo-Developer-Projects-LLM-Wiki/ce628622-05b9-4c64-a70b-a7ae0f7dfe09.jsonl",
+      "turns": [
+        {
+          "role": "user",
+          "text": "retrieve all the comments in Andrej Karpathy's LLM Wiki concept document here: https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f and then find all github urls. and get the most trending github repos implementing newly or on top of their base project.",
+          "timestamp": "2026-04-11T16:46:27.940Z"
+        },
+        {
+          "name": "ToolSearch",
+          "role": "tool",
+          "text": "{\"max_results\": 4, \"query\": \"select:mcp__plugin_context-mode_context-mode__ctx_fetch_and_index,mcp__plugin_context-mode_context-mode__ctx_search,mcp__plugin_context-mode_context-mode__ctx_batch_execute,mcp__plugin_context-mode_context-mode__ctx_execute\"}",
+          "timestamp": "2026-04-11T16:46:33.342Z"
+        },
+        {
+          "name": "mcp__plugin_context-mode_context-mode__ctx_fetch_and_index",
+          "role": "tool",
+          "text": "{\"source\": \"karpathy-llm-wiki-comments\", \"url\": \"https://api.github.com/gists/442a6bf555914893e9891c11519de94f/comments?per_page=100\"}",
+          "timestamp": "2026-04-11T16:46:40.304Z"
+        },
+        {
+          "name": "mcp__plugin_context-mode_context-mode__ctx_fetch_and_index",
+          "role": "tool",
+          "text": "{\"source\": \"karpathy-llm-wiki-gist\", \"url\": \"https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f\"}",
+          "timestamp": "2026-04-11T16:46:40.770Z"
+        },
+        {
+          "name": "mcp__plugin_context-mode_context-mode__ctx_execute",
+          "role": "tool",
+          "text": "{\"code\": \"set -e\\nmkdir -p /tmp/llmwiki\\ncd /tmp/llmwiki\\nfor p in 1 2 3 4 5; do\\n  curl -sS \\\"https://api.github.com/gists/442a6bf555914893e9891c11519de94f/comments?per_page=100&page=$p\\\" -o c$p.json\\n  n=$(python3 -c \\\"import json;print(len(json.load(open('c$p.json'))))\\\")\\n  echo \\\"page $p count $n\\\"\\n  [ \\\"$n\\\" = \\\"0\\\" ] && break\\ndone\\npython3 <<'PY'\\nimport json, re, glob, collections\\nall_comments=[]\\nfor f in sorted(glob.glob('c*.json')):\\n    try: all_comments += json.load(open(f))\\n    except: pass\\nprint(\\\"TOTAL_COMMENTS\\\", len(all_comments))\\nurls=[]\\nrx=re.compile(r'https?://github\\\\.com/[^\\\\s\\\\)\\\\]\\\\>\\\\\\\"\\\\'`,]+', re.I)\\nfor c in all_comments:\\n    for u in rx.findall(c.get('body','') or ''):\\n        u=u.rstrip('.,;:)')\\n        urls.append((c['user']['login'], u))\\nprint(\\\"URL_COUNT\\\", len(urls))\\n# dedupe repo roots\\nrepos=set()\\nrxrepo=re.compile(r'github\\\\.com/([^/]+)/([^/#?]+)', re.I)\\nfor _,u in urls:\\n    m=rxrepo.search(u)\\n    if m:\\n        owner,repo=m.group(1),m.group(2)\\n        if owner.lower() in ('karpathy',) and repo.startswith('442a6bf'): continue\\n        if owner.lower() in ('orgs','topics','features','about','pricing','login','sponsors','marketpl…",
+          "timestamp": "2026-04-11T16:46:55.549Z"
+        },
+        {
+          "name": "mcp__plugin_context-mode_context-mode__ctx_execute",
+          "role": "tool",
+          "text": "{\"code\": \"cd /tmp/llmwiki\\npython3 <<'PY'\\nimport json, urllib.request, concurrent.futures, os, re\\nrepos = json.load(open('repos.json'))\\nskip = {'notifications/unsubscribe-auth','your-org/llm-wiki.git','ESJavadex/knowledge-forge.git','swarmclawai/swarmvault**','us/crw'}\\nrepos = [(o,r.rstrip('*').rstrip('.git')) for o,r in repos if f\\\"{o}/{r}\\\" not in skip]\\nrepos = list({(o,r) for o,r in repos})\\n\\n[REDACTED],'')\\ndef fetch(orepo):\\n    o,r=orepo\\n    try:\\n        req=urllib.request.Request(f\\\"https://api.github.com/repos/{o}/{r}\\\")\\n        if [REDACTED], f'token {token}')\\n        req.add_header('User-Agent','script')\\n        with urllib.request.urlopen(req, timeout=10) as resp:\\n            d=json.loads(resp.read())\\n            return {'full':d['full_name'],'stars':d.get('stargazers_count',0),\\n                    'forks':d.get('forks_count',0),'pushed':d.get('pushed_at',''),\\n                    'created':d.get('created_at',''),'desc':(d.get('description') or '')[:160],\\n                    'url':d.get('html_url',''),'lang':d.get('language','')}\\n    except Exception as e:\\n        return {'full':f\\\"{o}/{r}\\\",'error':str(e)[:80]}\\n\\nresults=[]\\nwith concurrent.futures.Thr…",
+          "timestamp": "2026-04-11T16:47:17.833Z"
+        },
+        {
+          "name": "mcp__plugin_context-mode_context-mode__ctx_search",
+          "role": "tool",
+          "text": "{\"limit\": 2, \"queries\": [\"TOP 20 NEW created since 2026-04-04\", \"TOP 10 ALL BY STARS\", \"TOTAL_QUERIED OK ERRORS NEW_SINCE_GIST\"]}",
+          "timestamp": "2026-04-11T16:47:22.574Z"
+        },
+        {
+          "name": "mcp__plugin_context-mode_context-mode__ctx_execute",
+          "role": "tool",
+          "text": "{\"code\": \"cd /tmp/llmwiki\\nwhich gh && gh auth status 2>&1 | head -5\\npython3 <<'PY'\\nimport json\\nmeta=json.load(open('meta.json'))\\nhave={r['full'] for r in meta}\\nrepos=json.load(open('repos.json'))\\nskip={'notifications/unsubscribe-auth','your-org/llm-wiki.git','ESJavadex/knowledge-forge.git','swarmclawai/swarmvault**','us/crw'}\\nmissing=[]\\nfor o,r in repos:\\n    r=r.rstrip('*').rstrip('.git')\\n    full=f\\\"{o}/{r}\\\"\\n    if full in skip or full in have: continue\\n    missing.append(full)\\njson.dump(missing, open('missing.json','w'))\\nprint(\\\"MISSING\\\", len(missing))\\nPY\\n\", \"intent\": \"check gh cli\", \"language\": \"shell\"}",
+          "timestamp": "2026-04-11T16:47:32.300Z"
+        },
+        {
+          "name": "mcp__plugin_context-mode_context-mode__ctx_execute",
+          "role": "tool",
+          "text": "{\"code\": \"cd /tmp/llmwiki\\npython3 <<'PY'\\nimport json, subprocess, concurrent.futures\\nmissing=json.load(open('missing.json'))\\ndef fetch(full):\\n    try:\\n        r=subprocess.run(['gh','api',f'/repos/{full}','--jq','{full:.full_name,stars:.stargazers_count,forks:.forks_count,pushed:.pushed_at,created:.created_at,desc:.description,url:.html_url,lang:.language}'],\\n                         capture_output=True, text=True, timeout=15)\\n        if r.returncode==0:\\n            return json.loads(r.stdout)\\n        return {'full':full,'error':r.stderr.strip()[:80]}\\n    except Exception as e:\\n        return {'full':full,'error':str(e)[:80]}\\n\\nresults=[]\\nwith concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:\\n    for r in ex.map(fetch, missing):\\n        results.append(r)\\n\\nprev=json.load(open('meta.json'))\\nall_=prev+[r for r in results if 'stars' in r]\\nerrs=[r for r in results if 'error' in r]\\njson.dump(all_, open('meta.json','w'))\\nprint(f\\\"fetched {len([r for r in results if 'stars' in r])} new, errors {len(errs)}, total ok {len(all_)}\\\")\\nprint(\\\"Err samples:\\\", errs[:5])\\n\\n# Re-rank\\nall_.sort(key=lambda x:-x['stars'])\\nnew_since=[r for r in all_ if (r.get('creat…",
+          "timestamp": "2026-04-11T16:47:45.028Z"
+        },
+        {
+          "name": "mcp__plugin_context-mode_context-mode__ctx_search",
+          "role": "tool",
+          "text": "{\"limit\": 1, \"queries\": [\"TOP 25 NEW created since gist\", \"TOP 15 ALL BY STARS\", \"fetched new errors total ok\"]}",
+          "timestamp": "2026-04-11T16:47:51.853Z"
+        },
+        {
+          "name": "mcp__plugin_context-mode_context-mode__ctx_execute",
+          "role": "tool",
+          "text": "{\"code\": \"cd /tmp/llmwiki\\npython3 <<'PY'\\nimport json, subprocess, concurrent.futures\\nrepos=json.load(open('repos.json'))\\nmeta=json.load(open('meta.json'))\\nhave={r['full'] for r in meta}\\nskip={'notifications/unsubscribe-auth','your-org/llm-wiki.git'}\\ndef clean(o,r):\\n    if r.endswith('.git'): r=r[:-4]\\n    r=r.rstrip('*')\\n    return o,r\\nmissing=[]\\nfor o,r in repos:\\n    o,r=clean(o,r)\\n    full=f\\\"{o}/{r}\\\"\\n    if full in skip or full in have or o in ('us',): continue\\n    missing.append(full)\\nprint(\\\"MISSING\\\", len(missing))\\n\\ndef fetch(full):\\n    try:\\n        r=subprocess.run(['gh','api',f'/repos/{full}','--jq','{full:.full_name,stars:.stargazers_count,forks:.forks_count,pushed:.pushed_at,created:.created_at,desc:.description,url:.html_url,lang:.language}'],\\n                         capture_output=True, text=True, timeout=15)\\n        if r.returncode==0 and r.stdout.strip():\\n            return json.loads(r.stdout)\\n        return {'full':full,'error':r.stderr.strip()[:100]}\\n    except Exception as e:\\n        return {'full':full,'error':str(e)[:80]}\\n\\nresults=[]\\nwith concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:\\n    for r in ex.map(fetch, missi…",
+          "timestamp": "2026-04-11T16:48:09.271Z"
+        },
+        {
+          "name": "Bash",
+          "role": "tool",
+          "text": "{\"command\": \"mkdir -p /Users/neo/Developer/Projects/LLM-Wiki/data && cp /tmp/llmwiki/all.json /Users/neo/Developer/Projects/LLM-Wiki/data/comments.json && cp /tmp/llmwiki/meta.json /Users/neo/Developer/Projects/LLM-Wiki/data/repos_meta.json && ls /Users/neo/Developer/Projects/LLM-Wiki/data/\", \"description\": \"Save artifacts to project data dir\"}",
+          "timestamp": "2026-04-11T16:48:17.861Z"
+        },
+        {
+          "role": "assistant",
+          "text": "Artifacts saved. Here is the summary.\n\n## Actions\n- Fetched all **400 comments** on Karpathy's LLM Wiki gist (4 pages, GitHub API)\n- Extracted **134 unique GitHub repos** referenced in comment bodies; enriched each with stars/forks/created date via `gh api`\n- Ranked by stars, filtered to repos **created on/after the gist date (2026-04-04)** = \"newly built on top\"\n\n## Files\n- `data/comments.json` — all 400 raw comments\n- `data/repos_meta.json` — 132 repos with metadata (stars, forks, created, desc, lang)\n\n## Top trending repos built on Karpathy's LLM Wiki (created ≥ 2026-04-04)\n\n| # | Stars | Repo | Lang | Description |\n|---|---|---|---|---|\n| 1 | **41,314★** | [milla-jovovich/mempalace](https://github.com/milla-jovovich/mempalace) | Python | \"Highest-scoring AI memory system ever benchmarked. And it's free.\" |\n| 2 | 819★ | [Houseofmvps/codesight](https://github.com/Houseofmvps/codesight) | TS | Universal AI context generator for Claude/Cursor/Copilot |\n| 3 | 468★ | [AgriciDaniel/claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian) | Shell | Claude + Obsidian compounding wiki vault |\n| 4 | 358★ | [xoai/sage-wiki](https://github.com/xoai/sage-wiki) | Go | LLM-compiled personal KB (papers/articles → wiki) |\n| 5 | 347★ | [atomicmemory/llm-wiki-compiler](https://github.com/atomicmemory/llm-wiki-compiler) | TS | Raw sources in, interlinked wiki out |\n| 6 | 289★ | [Ar9av/obsidian-wiki](https://github.com/Ar9av/obsidian-wiki) | Python | Agent framework for Obsidian wiki maintenance |\n| 7 | 231★ | [Astro-Han/karpathy-llm-wiki](https://github.com/Astro-Han/karpathy-llm-wiki) | — | One skill to build a Karpathy-style LLM wiki |\n| 8 | 138★ | [swarmclawai/swarmvault](https://github.com/swarmclawai/swarmvault) | TS | Local-first LLM KB compiler (Claude/Codex/OpenCode) |\n| 9 | 79★ | [Ss1024sS/LLM-wiki](https://github.com/Ss1024sS/LLM-wiki) | Python | Direct implementation of the gist |\n| 10 | 57★ | [Pratiyush/llm-wiki](https://github.com/Pratiyush/llm-wiki) | Python | KB from Claude/Codex/Cursor/Gemini sessions |\n\n**Key finding:** `milla-jovovich/mempalace` is the clear breakout at 41k★ in one week. The next tier (~300–800★) clusters around Obsidian-integrated compilers (`claude-obsidian`, `sage-wiki`, `llm-wiki-compiler`, `obsidian-wiki`), which appears to be the dominant implementation pattern the community is converging on. 64 of the 132 indexed repos were…",
+          "timestamp": "2026-04-11T16:48:37.307Z"
+        },
+        {
+          "role": "user",
+          "text": "<local-command-caveat>Caveat: The messages below were generated by the user while running local commands. DO NOT respond to these messages or otherwise consider them in your response unless the user explicitly asks you to.</local-command-caveat>",
+          "timestamp": "2026-04-11T16:52:57.618Z"
+        },
+        {
+          "role": "user",
+          "text": "<command-name>/plugin</command-name>\n            <command-message>plugin</command-message>\n            <command-args>marketplace add milla-jovovich/mempalace</command-args>",
+          "timestamp": "2026-04-11T16:52:57.618Z"
+        },
+        {
+          "role": "user",
+          "text": "<local-command-stdout>Successfully added marketplace: mempalace</local-command-stdout>",
+          "timestamp": "2026-04-11T16:52:57.618Z"
+        },
+        {
+          "role": "user",
+          "text": "<local-command-caveat>Caveat: The messages below were generated by the user while running local commands. DO NOT respond to these messages or otherwise consider them in your response unless the user explicitly asks you to.</local-command-caveat>",
+          "timestamp": "2026-04-11T16:53:14.375Z"
+        },
+        {
+          "role": "user",
+          "text": "<command-name>/plugin</command-name>\n            <command-message>plugin</command-message>\n            <command-args></command-args>",
+          "timestamp": "2026-04-11T16:53:14.375Z"
+        },
+        {
+          "role": "user",
+          "text": "<local-command-stdout>✓ Installed 1 plugin. Run /reload-plugins to activate.</local-command-stdout>",
+          "timestamp": "2026-04-11T16:53:14.375Z"
+        }
+      ]
     },
     "date": "2026-04-11",
     "href": "sessions/llm-wiki/2026-04-11-retrieve-all-the-comments-in-andrej-karpathy-s-llm-wiki-concept-document-here-https-gist-gith-2f7d602f.html"
