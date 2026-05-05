@@ -42,6 +42,7 @@ llm_wiki project compile --changed-only
   markdown_projection/
   obsidian_vault/
   agent_harness/
+  harness_sessions/
   site/
   cognee_bundle/
 ```
@@ -83,12 +84,33 @@ The frontend is dependency-light and writes:
 
 ```text
 .llm-wiki/site/index.html
+.llm-wiki/site/sessions/index.html
 .llm-wiki/site/graph.json
 .llm-wiki/site/search-index.json
 .llm-wiki/site/llms.txt
 ```
 
-## 4. Lint the wiki
+## 4. Import local agent session history
+
+Session history import is explicit: normal compile/build reads already-normalized sessions but does not scan private Claude Code or Codex transcript stores on its own.
+
+```bash
+# Preview matching Claude Code/Codex sessions for this project:
+llm_wiki project sessions discover
+
+# Normalize and store them under .llm-wiki/harness_sessions/:
+llm_wiki project sessions discover --import
+
+# Confirm the imported set:
+llm_wiki project sessions list
+
+# Rebuild so sessions/index.html and session detail pages are emitted:
+llm_wiki project build-site
+```
+
+Imported sessions appear in the global Sessions section, site search, and the home Browse cards. Session detail pages render user/assistant turns as readable markdown, attach tool-use blocks under the preceding assistant turn, and expose a left turn rail for `#turn-N` navigation. See [`docs/session-history.md`](session-history.md) for privacy notes, import formats, and the current transcript typography map.
+
+## 5. Lint the wiki
 
 ```bash
 llm_wiki project lint
@@ -96,7 +118,7 @@ llm_wiki project lint
 
 Walks the compiled graph + wiki + site and flags orphan papers, stale citations, drift between graph and wiki/, ghost synthesis inputs, and more. Writes `.llm-wiki/lint-report.md` and `.llm-wiki/lint-report.json`. Pass `--fix-trivial` to apply safe auto-fixes (missing `implemented_in` edges, ghost-input pruning) and `--severity error` to only fail the exit code on errors.
 
-## 5. Query the wiki
+## 6. Query the wiki
 
 ```bash
 llm_wiki project query "What is Gaussian Splatting?"
@@ -104,7 +126,7 @@ llm_wiki project query "What is Gaussian Splatting?"
 
 Search-only by default — BM25 over `.llm-wiki/site/search-index.json`, with a 200-char excerpt pulled from the matching `wiki/<kind>/<slug>.md`. Pass `--kind papers` (or `concepts`, `repos`, etc.) to narrow, `--top-k N` to widen, and `--json` for structured output. Add `--llm` (or set `LLM_WIKI_QUERY_LLM=1`) to ask Claude for a synthesized answer with `[node_id]` citations; `--interactive` opens a readline REPL — blank line or EOF exits. `LLM_WIKI_QUERY_DRY_RUN=1` exercises the prompt without an API call.
 
-## 6. Export agent harness files
+## 7. Export agent harness files
 
 ```bash
 llm_wiki project export-agent-harness
@@ -128,7 +150,7 @@ llm_wiki project export-agent-harness \
   --target opencode
 ```
 
-## 7. Export an Obsidian vault
+## 8. Export an Obsidian vault
 
 ```bash
 llm_wiki project export-obsidian
@@ -142,7 +164,7 @@ llm_wiki project export-obsidian --vault "$OBSIDIAN_VAULT_PATH"
 
 The vault includes markdown projections, `.obsidian` defaults, graph coloring, `raw/assets/`, and a Dataview dashboard.
 
-## 8. Configure MCP
+## 9. Configure MCP
 
 ```bash
 llm_wiki project mcp-config --server-name my_project_wiki
@@ -150,7 +172,7 @@ llm_wiki project mcp-config --server-name my_project_wiki
 
 Paste the output under `mcp_servers` in `~/.hermes/config.yaml`, then restart Hermes/gateway.
 
-## 9. Graphiti export / sync
+## 10. Graphiti export / sync
 
 Dependency-free episode export:
 
@@ -173,7 +195,7 @@ llm_wiki project sync-graphiti \
   --neo4j-password '<password>'
 ```
 
-## 10. Deploy to GitHub Pages
+## 11. Deploy to GitHub Pages
 
 Push the compiled site at `.llm-wiki/site/` to the `gh-pages` branch of the project's git origin:
 

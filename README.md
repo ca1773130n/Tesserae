@@ -41,6 +41,7 @@ Optional backends (`kuzu`, `cognee`, `graphiti-core`) install separately so the 
 - [Quickstart](docs/quickstart.md)
 - [Architecture](docs/architecture.md)
 - [Feature map](docs/feature-map.md)
+- [Harness session history](docs/session-history.md)
 - [Self-dogfood demo](docs/self-dogfood.md)
 - [Publishing checklist](docs/publishing-checklist.md)
 
@@ -207,6 +208,7 @@ This creates project-local artifacts under `.llm-wiki/`:
   markdown_projection/
   obsidian_vault/
   agent_harness/
+  harness_sessions/
   site/
   cognee_bundle/
 ```
@@ -217,7 +219,7 @@ Competitive hardening versus MegaMem/Graphiti-style systems:
 - `graphiti_episodes.jsonl` exports those temporal facts as Graphiti-compatible episodes without requiring Graphiti at compile time; `project sync-graphiti` can optionally push them to Graphiti/Neo4j when `graphiti_core` is installed.
 - `obsidian_vault/` is a ready-to-open Obsidian projection with `.obsidian` defaults, graph coloring, attachments under `raw/assets`, and a Dataview dashboard.
 - `agent_harness/` writes shared context and target-specific harness files for Claude Code, Codex, Gemini CLI, Kiro, Cursor, and OpenCode so external coding agents can discover the graph and MCP server.
-- `site/` is a dependency-light static frontend inspired by Pratiyush/llm-wiki: it writes `index.html`, `graph.json`, `search-index.json`, and `llms.txt` so humans and agents can browse research and development nodes together.
+- `site/` is a dependency-light static frontend inspired by Pratiyush/llm-wiki: it writes `index.html`, `graph.json`, `search-index.json`, `llms.txt`, and first-class `sessions/` pages so humans and agents can browse research, development nodes, and imported project-memory transcripts together.
 - `competitive_report.md` records what was absorbed from MegaMem, Graphiti/Zep, MCP graph servers, and agentic RAG systems while preserving LLM-Wiki's controlled ontology/no-API-key differentiators.
 - MCP now exposes temporal tools as well as node tools: `search_facts` and `timeline` join `schema`, `graph_summary`, `search_nodes`, and `node_context`.
 

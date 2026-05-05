@@ -86,6 +86,7 @@ Document-first, hierarchical wiki replaces the old graph dump. See [`docs/fronte
 | Page transitions (120 ms opacity, prefers-reduced-motion) | ✅ | `tokens.py` | |
 | 3D + 2D graph view (hover, edge labels, cursor-anchored zoom) | ✅ | `pages.py::render_graph_view` + `js.py` | 3d-force-graph + Three.js, vendored as a CDN snapshot. |
 | Per-page AI siblings footer | ✅ | `components.py::ai_siblings_footer` | Inline links to the `.txt` and `.json` for the current page. |
+| Harness session history pages | ✅ | [`llm_wiki/harness_sessions.py`](../llm_wiki/harness_sessions.py) + [`llm_wiki/site/sessions.py`](../llm_wiki/site/sessions.py) | Explicit Claude Code/Codex import; `/sessions/` index and detail pages with markdown turns, left turn rail, collapsed tool use, and search entries. |
 
 ### Pipeline + CLI
 
@@ -95,6 +96,7 @@ Document-first, hierarchical wiki replaces the old graph dump. See [`docs/fronte
 | `project build-site` standalone | ✅ | `project.py` + [`llm_wiki/cli.py`](../llm_wiki/cli.py) | Reads `wiki/` + `graph.json`, writes `site/`. |
 | `project serve` local HTTP | ✅ | `cli.py` | Plain stdlib server. |
 | `project deploy` → GitHub Pages | ✅ | [`llm_wiki/deploy.py`](../llm_wiki/deploy.py) | Worktree push to `gh-pages`; optional `--enable-pages` via `gh` CLI. `--build`, `--dry-run`, `--branch`, `--remote`, `--force`. |
+| `project sessions discover/import/list` | ✅ | [`llm_wiki/harness_sessions.py`](../llm_wiki/harness_sessions.py) + `cli.py` | Inbound session history for Claude Code/Codex; discovery is explicit and scoped to the project working directory. |
 | `project watch` rebuild-on-change | ⚠ | [`llm_wiki/cli.py`](../llm_wiki/cli.py) | Subagent R is finishing the polling watcher — `--interval`, `--debounce`, `--once`, `--paths`, `--quiet` arg surface is in place; the rebuild loop body is being landed in this round. |
 
 ## Pre-existing features (carried forward unchanged)
@@ -142,6 +144,7 @@ Document-first, hierarchical wiki replaces the old graph dump. See [`docs/fronte
 - ✅ `llm_wiki project build-site`
 - ✅ `llm_wiki project serve`
 - ✅ `llm_wiki project deploy` (new — GitHub Pages)
+- ✅ `llm_wiki project sessions discover/import/list` (explicit local agent-history import)
 - ⚠ `llm_wiki project watch` (in-progress)
 - ✅ `llm_wiki project export-agent-harness`
 - ✅ `llm_wiki project export-obsidian`
