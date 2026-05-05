@@ -2322,7 +2322,7 @@ section.panel > h3,
   background: transparent;
   padding: 8px 10px;
   font-family: var(--type-serif);
-  font-size: 9px;
+  font-size: 8px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -2332,13 +2332,19 @@ section.panel > h3,
 .session-turn-text li,
 .session-turn-text blockquote,
 .session-turn-text table {
-  font-size: 9px;
+  font-size: 8px;
 }
 .session-turn-text pre {
   font-size: 10px;
   line-height: 1.45;
   padding: 8px;
   margin: 8px 0;
+}
+.session-code-block code.language-bash,
+.session-code-block code.language-sh,
+.session-code-block code.language-shell,
+.session-code-block code.language-zsh {
+  font-size: 11px;
 }
 .session-turn-text code {
   display: inline-flex;
@@ -2475,12 +2481,13 @@ section.panel > h3,
   border-top: 1px solid var(--rule);
   background: color-mix(in srgb, var(--surface) 55%, transparent);
   font-family: var(--type-sans);
+  font-size: 10px;
 }
 .session-tool-details > summary {
   cursor: pointer;
   padding: 7px 10px;
   color: var(--ink-muted);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   user-select: none;
 }
@@ -2507,7 +2514,7 @@ section.panel > h3,
   border-bottom: 1px solid #2f2c25;
   color: #b6b0a0;
   font-family: var(--type-mono);
-  font-size: 9px;
+  font-size: 8px;
 }
 .session-tool-use-header time {
   margin-left: auto;
@@ -2518,7 +2525,7 @@ section.panel > h3,
   border: 0;
   border-radius: 0;
   padding: 8px;
-  font-size: 7px;
+  font-size: 6px;
   line-height: 1.45;
   background: #151515;
   color: #ece7dc;

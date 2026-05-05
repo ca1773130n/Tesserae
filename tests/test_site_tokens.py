@@ -68,9 +68,21 @@ def test_css_session_pages_use_compact_readable_scale():
     assert "--session-tag-fg: #5b3f9a" in CSS
     assert "--session-tag-fg: #ffc29f" in CSS
     assert "font-family: var(--type-serif)" in CSS
-    assert "font-size: 9px" in CSS
-    assert "font-size: 10px" in CSS
-    assert "font-size: 7px" in CSS
+    session_turn_text = CSS.split(".session-turn-text {", 1)[1].split("}", 1)[0]
+    session_turn_prose = CSS.split(".session-turn-text table {", 1)[1].split("}", 1)[0]
+    session_bash_code = CSS.split(".session-code-block code.language-zsh {", 1)[1].split("}", 1)[0]
+    session_tool_details = CSS.split(".session-tool-details {", 1)[1].split("}", 1)[0]
+    session_tool_summary = CSS.split(".session-tool-details > summary {", 1)[1].split("}", 1)[0]
+    session_tool_header = CSS.split(".session-tool-use-header {", 1)[1].split("}", 1)[0]
+    session_tool_text = CSS.split(".session-tool-use-text {", 1)[1].split("}", 1)[0]
+    assert "font-size: 8px" in session_turn_text
+    assert "font-size: 8px" in session_turn_prose
+    assert "font-size: 10px" in CSS.split(".session-turn-text pre {", 1)[1].split("}", 1)[0]
+    assert "font-size: 11px" in session_bash_code
+    assert "font-size: 10px" in session_tool_details
+    assert "font-size: 10px" in session_tool_summary
+    assert "font-size: 8px" in session_tool_header
+    assert "font-size: 6px" in session_tool_text
     assert "line-height: 1.45" in CSS
     assert "background: #151515" in CSS
     assert '[data-theme="light"] .session-code-block' in CSS
