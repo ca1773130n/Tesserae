@@ -36,16 +36,16 @@ CSS: str = r"""
   --good: #2a6f4f;
   --warn: #c08a1a;
   --danger: #b03b3b;
-  --session-path-fg: #245f4a;
-  --session-path-bg: #e7f1eb;
-  --session-path-border: #b8d8c7;
-  --session-tag-fg: #8a3a18;
-  --session-tag-bg: #f8e8dd;
-  --session-tag-border: #edc4ad;
-  --session-code-keyword: #8a3a18;
-  --session-code-string: #2f6f53;
-  --session-code-number: #7557b7;
-  --session-code-comment: #766f63;
+  --session-path-fg: #285f8f;
+  --session-path-bg: #e9f1fa;
+  --session-path-border: #b9cfe7;
+  --session-tag-fg: #5b3f9a;
+  --session-tag-bg: #eee9fb;
+  --session-tag-border: #cfc3f3;
+  --session-code-keyword: #ffb86c;
+  --session-code-string: #9bd8b7;
+  --session-code-number: #c5b6ff;
+  --session-code-comment: #9b948a;
   --shadow: 0 1px 2px rgba(20, 18, 15, .06);
   --radius: 6px;
   --type-serif: "Source Serif 4", "Iowan Old Style", Georgia, serif;
@@ -2321,9 +2321,9 @@ section.panel > h3,
   border-radius: 0;
   background: transparent;
   padding: 8px 10px;
-  font-family: var(--type-sans);
-  font-size: 12px;
-  line-height: 1.35;
+  font-family: var(--type-serif);
+  font-size: 10px;
+  line-height: 1.45;
   overflow-wrap: anywhere;
 }
 .session-turn-text > :first-child { margin-top: 0; }
@@ -2332,7 +2332,7 @@ section.panel > h3,
 .session-turn-text li,
 .session-turn-text blockquote,
 .session-turn-text table {
-  font-size: 12px;
+  font-size: 10px;
 }
 .session-turn-text pre {
   font-size: 9px;
@@ -2368,17 +2368,19 @@ section.panel > h3,
 }
 .session-code-block {
   position: relative;
-  background: color-mix(in srgb, var(--code-bg) 82%, var(--surface));
+  background: #151515;
+  color: #ece7dc;
+  border-color: #2f2c25;
 }
 .session-code-lang {
   position: absolute;
   top: 4px;
   right: 6px;
-  border: 1px solid var(--rule);
+  border: 1px solid #2f2c25;
   border-radius: 999px;
   padding: 0 5px;
-  color: var(--ink-muted);
-  background: var(--surface);
+  color: #b6b0a0;
+  background: #1f1d18;
   font-family: var(--type-mono);
   font-size: 8px;
   text-transform: uppercase;
@@ -2491,18 +2493,19 @@ section.panel > h3,
   padding: 0 10px 10px;
 }
 .session-tool-use {
-  border: 1px solid var(--rule);
+  border: 1px solid #2f2c25;
   border-radius: 5px;
   overflow: hidden;
-  background: var(--code-bg);
+  background: #151515;
+  color: #ece7dc;
 }
 .session-tool-use-header {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 5px 8px;
-  border-bottom: 1px solid var(--rule);
-  color: var(--ink-muted);
+  border-bottom: 1px solid #2f2c25;
+  color: #b6b0a0;
   font-family: var(--type-mono);
   font-size: 9px;
 }
@@ -2510,15 +2513,25 @@ section.panel > h3,
   margin-left: auto;
 }
 .session-tool-use-text {
+  position: relative;
   margin: 0;
   border: 0;
   border-radius: 0;
   padding: 8px;
   font-size: 8px;
   line-height: 1.45;
-  background: transparent;
+  background: #151515;
+  color: #ece7dc;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.session-tool-use-text code {
+  display: block;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
 }
 .session-turn--user .session-turn-role { color: var(--accent); }
 .session-turn--assistant .session-turn-role { color: var(--ink); }
@@ -2670,6 +2683,15 @@ section.panel > h3,
 [data-theme="light"] pre {
   border-color: var(--rule);
   box-shadow: inset 0 1px 0 rgba(20, 18, 15, .03);
+}
+[data-theme="light"] .session-code-block,
+[data-theme="light"] .session-tool-use-text,
+[data-theme="light"] .session-tool-use-text code {
+  background: #151515;
+  color: #ece7dc;
+}
+[data-theme="light"] .session-code-block {
+  border-color: #2f2c25;
 }
 
 /* Subtype chip — readable inactive state on light surfaces, clear

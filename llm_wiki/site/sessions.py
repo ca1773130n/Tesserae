@@ -150,6 +150,7 @@ _CODE_BLOCK_RE = re.compile(r"<pre><code(?: class=\"language-([^\"]+)\")?>(.*?)<
 _CODE_KEYWORD_RE = re.compile(
     r"\b(def|class|return|if|else|elif|for|while|try|except|finally|with|import|from|as|"
     r"const|let|var|function|async|await|new|throw|catch|interface|type|export|"
+    r"true|false|null|True|False|None|"
     r"SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|CREATE|TABLE|JOIN|GROUP|ORDER|BY)\b"
 )
 _CODE_NUMBER_RE = re.compile(r"\b(\d+(?:\.\d+)?)\b")
@@ -202,6 +203,26 @@ def _highlight_code_blocks(rendered: str) -> str:
         return f"<pre class='session-code-block'>{label}<code{lang_attr}>{code}</code></pre>"
 
     return _CODE_BLOCK_RE.sub(repl, rendered)
+
+
+def _guess_code_lang(text: str, tool_name: str = "") -> str:
+    clean = (text or "").strip()
+    lower_name = tool_name.lower()
+    if lower_name in {"bash", "shell", "sh"}:
+        return "sh"
+    if clean.startswith(("{", "[")) and clean.endswith(("}", "]")):
+        return "json"
+    if clean.startswith(("$ ", "llm-wiki", "llm_wiki", "python ", "pytest ", "git ", "npm ", "uv ", "curl ")):
+        return "sh"
+    return "text"
+
+
+def _render_highlighted_pre(text: str, *, lang: str, class_name: str) -> str:
+    escaped = html.escape(text or "")
+    highlighted = _highlight_code_html(escaped, lang)
+    lang_label = f"<span class='session-code-lang'>{html.escape(lang)}</span>" if lang and lang != "text" else ""
+    lang_attr = f" data-lang='{html.escape(lang, quote=True)}'" if lang else ""
+    return f"<pre class='{class_name}'{lang_attr}>{lang_label}<code>{highlighted}</code></pre>"
 
 
 def _decorate_conversation_html(rendered: str) -> str:
@@ -368,6 +389,8 @@ def _render_tool_details(tools: List[Dict[str, object]]) -> str:
         name = str(tool.get("name") or "tool")
         timestamp = str(tool.get("timestamp") or "")
         text = str(tool.get("text") or "")
+        lang = _guess_code_lang(text, name)
+        highlighted_text = _render_highlighted_pre(text, lang=lang, class_name="session-tool-use-text")
         items.append(
             "<article class='session-tool-use'>"
             "<header class='session-tool-use-header'>"
@@ -375,7 +398,7 @@ def _render_tool_details(tools: List[Dict[str, object]]) -> str:
             f"<span>{_esc(name)}</span>"
             f"<time>{_esc(timestamp)}</time>"
             "</header>"
-            f"<pre class='session-tool-use-text'>{_esc(text)}</pre>"
+            f"{highlighted_text}"
             "</article>"
         )
     return (

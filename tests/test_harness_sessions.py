@@ -33,7 +33,7 @@ def sample_session(project_root):
             "turns": [
                 {"role": "user", "timestamp": "2026-05-05T10:00:00Z", "text": "Please ingest Claude Code and Codex sessions from llm_wiki/project.py for #project-memory.\n\n<command-name>/effort</command-name> <command-message>effort</command-message> <command-args></command-args>"},
                 {"role": "assistant", "timestamp": "2026-05-05T10:01:00Z", "text": "I will add **normalized** `project-memory` session pages.\n\n- Render sessions\n- Index turns\n\n```python\ndef build_session():\n    return 42\n```\n\n```sh\nllm-wiki project build-site --project .\n```"},
-                {"role": "tool", "timestamp": "2026-05-05T10:02:00Z", "name": "Bash", "text": "pytest tests/test_harness_sessions.py -q"},
+                {"role": "tool", "timestamp": "2026-05-05T10:02:00Z", "name": "Read", "text": "{\"ok\": true, \"count\": 2}"},
                 {"role": "assistant", "timestamp": "2026-05-05T10:42:00Z", "text": "Implemented session import and static pages. <status>ready</status>"},
             ]
         },
@@ -129,10 +129,13 @@ def test_static_site_renders_harness_sessions_and_search_entries(tmp_path):
     assert "session-tool-details" in detail_html
     assert "Tool use (1)" in detail_html
     assert "session-tool-use-text" in detail_html
-    assert "pytest tests/test_harness_sessions.py -q" in detail_html
+    assert "data-lang='json'" in detail_html
+    assert "session-code-string'>&quot;ok&quot;</span>" in detail_html
+    assert "session-code-keyword'>true</span>" in detail_html
+    assert "session-code-number'>2</span>" in detail_html
     rail_html = detail_html.split("<nav class='session-turn-nav'", 1)[1].split("</nav>", 1)[0]
-    assert "Tool · Bash" not in rail_html
-    assert "pytest tests/test_harness_sessions.py -q" not in rail_html
+    assert "Tool · Read" not in rail_html
+    assert "&quot;ok&quot;" not in rail_html
     assert "Source explorer" not in detail_html
 
     search = json.loads((wiki.paths.site / "search-index.json").read_text(encoding="utf-8"))
