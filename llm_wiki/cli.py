@@ -14,6 +14,7 @@ from .canonicalization import GraphCanonicalizer, ReviewDecision
 from .cognee_adapter import CogneeResearchGraphAdapter
 from .cognee_codex import CogneeCodexPatch
 from .cognee_direct import CogneeDirectImporter
+from .harness_sessions import HarnessSession, HarnessSessionStore
 from .llm_extractor import ClaudeCLIResearchExtractor
 from .markdown_projection import GraphMarkdownProjector
 from .persistence import KuzuResearchGraphStore, SQLiteResearchGraphStore
@@ -273,6 +274,14 @@ def project_main(argv: List[str] | None = None) -> int:
     obsidian_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     obsidian_parser.add_argument("--vault", help="Vault output directory; defaults to .llm-wiki/obsidian_vault")
 
+    sessions_parser = subparsers.add_parser("sessions", help="Manage inbound agent harness session history")
+    sessions_sub = sessions_parser.add_subparsers(dest="sessions_command", required=True)
+    sessions_import = sessions_sub.add_parser("import", help="Import normalized HarnessSession JSON files")
+    sessions_import.add_argument("paths", nargs="+", help="JSON files containing one session object or a list of sessions")
+    sessions_import.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    sessions_list = sessions_sub.add_parser("list", help="List normalized harness sessions for this project")
+    sessions_list.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+
     site_parser = subparsers.add_parser("build-site", help="Build the static frontend site for this project wiki")
     site_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     site_parser.add_argument("--output", help="Site output directory; defaults to .llm-wiki/site")
@@ -424,6 +433,30 @@ def project_main(argv: List[str] | None = None) -> int:
         result = wiki.export_obsidian(vault=args.vault)
         print(f"Exported Obsidian vault: notes={result['notes']} path={result['vault_path']}")
         return 0
+    if args.command == "sessions":
+        wiki = ProjectWiki.load(args.project)
+        store = HarnessSessionStore(wiki.paths.harness_sessions)
+        if args.sessions_command == "import":
+            sessions = []
+            for raw_path in args.paths:
+                payload = json.loads(Path(raw_path).read_text(encoding="utf-8"))
+                items = payload if isinstance(payload, list) else [payload]
+                for item in items:
+                    if not isinstance(item, dict):
+                        raise ValueError(f"Session import item must be an object: {raw_path}")
+                    sessions.append(HarnessSession.from_dict(item))
+            result = store.write_sessions(sessions)
+            print(f"Imported harness sessions: {result['sessions']} path={result['path']}")
+            return 0
+        if args.sessions_command == "list":
+            sessions = store.list_sessions()
+            print(f"Harness sessions: {len(sessions)}")
+            for session in sessions:
+                print(
+                    f"  {session.date}  {session.harness}  {session.project_name}  "
+                    f"{session.title or session.slug}"
+                )
+            return 0
     if args.command == "build-site":
         wiki = ProjectWiki.load(args.project)
         result = wiki.build_site(output=args.output)

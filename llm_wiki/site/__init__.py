@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
+from ..harness_sessions import HarnessSessionStore
 from ..research_graph import ResearchGraph
 from ..wiki_store import WikiPage, WikiPageStore
 from .exports import (
@@ -83,6 +84,7 @@ from .raw_view import (
     render_raw_view,
 )
 from .search import build_search_index
+from .sessions import render_session_detail, render_sessions_index, session_search_entries
 from .tokens import CSS
 
 
@@ -216,6 +218,12 @@ class StaticSiteBuilder:
         # renderers can relativise absolute source paths and mint
         # ``raw/<safe>.html`` hrefs (Issues 1 + 4 in the polish pass).
         project_root = derive_project_root(Path(wiki_root)) if wiki_root else None
+        session_store_root = Path(wiki_root).parent / "harness_sessions" if wiki_root else None
+        harness_sessions = (
+            HarnessSessionStore(session_store_root).list_sessions()
+            if session_store_root is not None
+            else []
+        )
         site_ctx = SiteContext.build(
             graph=graph,
             wiki_pages_by_kind=wiki_pages_by_kind,
@@ -258,6 +266,8 @@ class StaticSiteBuilder:
         search_index = build_search_index(
             graph, wiki_pages_by_kind, project_root=project_root
         )
+        search_index.extend(session_search_entries(harness_sessions))
+        search_index.sort(key=lambda e: (str(e.get("kind", "")), str(e.get("title", "")).lower()))
         search_index_text = json.dumps(search_index, ensure_ascii=False, indent=2) + "\n"
         (out / "search-index.json").write_text(search_index_text, encoding="utf-8")
         _write_gzip_sibling(out / "search-index.json", search_index_text.encode("utf-8"))
@@ -282,6 +292,35 @@ class StaticSiteBuilder:
         (out / "timeline").mkdir(parents=True, exist_ok=True)
         (out / "timeline" / "index.html").write_text(render_timeline(site_ctx), encoding="utf-8")
         _track("timeline/index.html")
+
+        sessions_dir = out / "sessions"
+        sessions_dir.mkdir(parents=True, exist_ok=True)
+        (sessions_dir / "index.html").write_text(
+            render_sessions_index(self.site_title, harness_sessions),
+            encoding="utf-8",
+        )
+        _track("sessions/index.html")
+        for session in harness_sessions:
+            session_dir = sessions_dir / session.safe_project
+            session_dir.mkdir(parents=True, exist_ok=True)
+            session_html = session_dir / f"{session.filename}.html"
+            session_html.write_text(
+                render_session_detail(self.site_title, session),
+                encoding="utf-8",
+            )
+            write_siblings(
+                session_html,
+                {
+                    "title": session.title or session.slug,
+                    "kind": "session",
+                    "body": session.summary or session.redacted_preview,
+                    "body_text": session.summary or session.redacted_preview,
+                    "links": [],
+                    "source_path": session.raw_transcript_path,
+                    "frontmatter": session.to_dict(),
+                },
+            )
+            _track(session.href)
 
         # Per-day timeline detail pages — one per ISO date with at least
         # one node anchored to it. Sorted lexicographically (== ISO chrono)
@@ -532,6 +571,7 @@ class StaticSiteBuilder:
             "page_count": page_count,
             "nodes": len(graph.nodes),
             "edges": len(graph.edges),
+            "sessions": len(harness_sessions),
             "search_entries": len(search_index),
             "html_pages": page_count,
         }

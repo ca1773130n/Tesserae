@@ -90,6 +90,7 @@ class ProjectPaths:
     competitive_report: Path
     graphiti_episodes: Path
     agent_harness: Path
+    harness_sessions: Path
     obsidian_vault: Path
     site: Path
     wiki: Path
@@ -122,6 +123,7 @@ class ProjectWiki:
             competitive_report=self.root / "competitive_report.md",
             graphiti_episodes=self.root / "graphiti_episodes.jsonl",
             agent_harness=self.root / "agent_harness",
+            harness_sessions=self.root / "harness_sessions",
             obsidian_vault=self.root / "obsidian_vault",
             site=self.root / "site",
             wiki=self.root / "wiki",
@@ -134,6 +136,7 @@ class ProjectWiki:
         wiki.paths.markdown_projection.mkdir(parents=True, exist_ok=True)
         wiki.paths.cognee_bundle.mkdir(parents=True, exist_ok=True)
         wiki.paths.agent_harness.mkdir(parents=True, exist_ok=True)
+        wiki.paths.harness_sessions.mkdir(parents=True, exist_ok=True)
         wiki.paths.obsidian_vault.mkdir(parents=True, exist_ok=True)
         wiki.paths.site.mkdir(parents=True, exist_ok=True)
         wiki.paths.wiki.mkdir(parents=True, exist_ok=True)
@@ -176,6 +179,7 @@ class ProjectWiki:
             "competitive_report_path": ".llm-wiki/competitive_report.md",
             "graphiti_episodes_path": ".llm-wiki/graphiti_episodes.jsonl",
             "agent_harness_path": ".llm-wiki/agent_harness",
+            "harness_sessions_path": ".llm-wiki/harness_sessions",
             "obsidian_vault_path": ".llm-wiki/obsidian_vault",
             "site_path": ".llm-wiki/site",
         }
