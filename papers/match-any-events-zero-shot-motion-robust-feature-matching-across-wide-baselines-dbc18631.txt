@@ -9,6 +9,7 @@ Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines
 - **authored_by** → Kostas Daniilidis _(Person)_
 - **authored_by** → Ruijun Zhang _(Person)_
 - **authored_by** → Ziyun Wang _(Person)_
+- **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
 - **part_of** → Research Literature _(ResearchField)_
 - **uses** → Fine-tuning _(TrainingParadigm)_
 
@@ -16,12 +17,14 @@ Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines
 
 - **mentioned_in** → Daily Feed Summary — 2026-04-22 _(SourceDocument)_
 - **mentioned_in** → Daily Feed Summary — 2026-04-26 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-05-06 _(SourceDocument)_
 - **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
 - **mentioned_in** → 📬 Daily Research Digest — 2026-04-26 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-05-06 _(SourceDocument)_
 
 ## Connected node types
 
+- SourceDocument: 6
 - Person: 4
-- SourceDocument: 4
-- ResearchField: 1
+- ResearchField: 2
 - TrainingParadigm: 1

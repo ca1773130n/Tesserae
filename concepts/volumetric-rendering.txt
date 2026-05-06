@@ -7,7 +7,8 @@ Volumetric Rendering
 
 - **uses** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_
 - **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- **uses** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
 
 ## Connected node types
 
-- Paper: 2
+- Paper: 3

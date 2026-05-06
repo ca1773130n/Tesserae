@@ -5,6 +5,7 @@ mAP
 
 ## Incoming relations
 
+- **uses_metric** → <h1 align="center">LLM-Wiki</h1> _(SourceDocument)_
 - **uses_metric** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_
 - **uses_metric** → Architecture _(SourceDocument)_
 - **uses_metric** → Codex extraction review (2026-05-01) _(SourceDocument)_
@@ -21,7 +22,6 @@ mAP
 - **uses_metric** → GitHub 분석: facebookresearch/map-anything _(Repository)_
 - **uses_metric** → GitHub 분석: isaaccorley/terrabit _(Repository)_
 - **uses_metric** → Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 _(Paper)_
-- **uses_metric** → LLM-Wiki _(SourceDocument)_
 - **uses_metric** → LLM-Wiki Frontend Redesign — Implementation Plan _(SourceDocument)_
 - **uses_metric** → Publishing Checklist _(SourceDocument)_
 - **uses_metric** → Quickstart _(SourceDocument)_

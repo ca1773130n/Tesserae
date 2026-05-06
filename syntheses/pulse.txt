@@ -9,7 +9,7 @@ Snapshot of the wiki at the most recent compile.
 - Algorithm: 2
 - ApproachFamily: 3
 - Benchmark: 7
-- CausalClaim: 6
+- CausalClaim: 7
 - Claim: 21
 - CodeClass: 108
 - CodeFunction: 1931
@@ -19,7 +19,7 @@ Snapshot of the wiki at the most recent compile.
 - Dataset: 4
 - Dependency: 95
 - EvaluationProtocol: 1
-- EvidenceSpan: 116
+- EvidenceSpan: 119
 - InferenceStrategy: 1
 - LimitationClaim: 5
 - MathematicalConcept: 1
@@ -27,30 +27,30 @@ Snapshot of the wiki at the most recent compile.
 - Metric: 6
 - Model: 3
 - OpenQuestion: 4
-- Organization: 38
-- Paper: 94
-- PerformanceClaim: 67
-- Person: 290
-- Repository: 127
+- Organization: 39
+- Paper: 95
+- PerformanceClaim: 70
+- Person: 292
+- Repository: 128
 - ResearchField: 3
 - ResearchTopic: 2
 - Result: 3
-- SourceDocument: 71
+- SourceDocument: 73
 - SourceFile: 113
 - Task: 2
 - TechnicalTerm: 2
 - TrainingParadigm: 6
 
 ## Recently added
+- Triangulation of Points Constrained to a Plane (Paper)
+- GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool (Repository)
 - Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas (Paper)
 - GitHub 분석: facebookresearch/AINA (Repository)
 - Extreme Rotation Estimation in the Wild (Paper)
-- Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset (Paper)
-- Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search (Paper)
 
 ## Top fields
-- 3D/4D Vision and Reconstruction — 35 linked artifacts
-- Research Literature — 13 linked artifacts
+- 3D/4D Vision and Reconstruction — 36 linked artifacts
+- Research Literature — 14 linked artifacts
 - LLM Reasoning — 1 linked artifacts
 
 ## Tagline

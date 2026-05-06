@@ -16,9 +16,10 @@ Research Literature
 - **part_of** → Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras _(Paper)_
 - **part_of** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_
 - **part_of** → T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion _(Paper)_
+- **part_of** → Triangulation of Points Constrained to a Plane _(Paper)_
 - **part_of** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
 - **part_of** → 자기지도학습 요리책 _(Paper)_
 
 ## Connected node types
 
-- Paper: 13
+- Paper: 14

@@ -1,0 +1,18 @@
+{
+  "title": "Triangulation of Points Constrained to a Plane",
+  "kind": "papers",
+  "body_text": "# Triangulation of Points Constrained to a Plane\n\n## Outgoing relations\n\n- **authored_by** → Elima Shehu _(Person)_\n- **authored_by** → Petr Hrubý _(Person)_\n- **part_of** → Research Literature _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-05-06 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-06 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 2\n- SourceDocument: 2\n- ResearchField: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-06/papers/2604.27246/paper.md",
+  "links": [],
+  "body": "# Triangulation of Points Constrained to a Plane\n\n## Outgoing relations\n\n- **authored_by** → Elima Shehu _(Person)_\n- **authored_by** → Petr Hrubý _(Person)_\n- **part_of** → Research Literature _(ResearchField)_\n\n## Incoming relations\n\n- **mentioned_in** → Daily Feed Summary — 2026-05-06 _(SourceDocument)_\n- **mentioned_in** → 📬 Daily Research Digest — 2026-05-06 _(SourceDocument)_\n\n## Connected node types\n\n- Person: 2\n- SourceDocument: 2\n- ResearchField: 1",
+  "frontmatter": {
+    "aliases": [
+      "arXiv:2604.27246"
+    ],
+    "kind": "papers",
+    "node_id": "Paper:arxiv-2604-27246:ec5a855f8563",
+    "node_type": "Paper",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-06/papers/2604.27246/paper.md",
+    "title": "Triangulation of Points Constrained to a Plane"
+  }
+}

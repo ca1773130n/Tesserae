@@ -34,6 +34,7 @@
 - [Daily Feed Summary — 2026-05-03](sources/daily-feed-summary-2026-05-03.html): - **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **mentioned_in** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_ - **mentioned_in** → Img2CAD: VLM-Assisted Condi…
 - [Daily Feed Summary — 2026-05-04](sources/daily-feed-summary-2026-05-04.html): - **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **mentioned_in** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_
 - [Daily Feed Summary — 2026-05-05](sources/daily-feed-summary-2026-05-05.html): - **mentioned_in** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_ - **mentioned_in** → Extreme Rotation Estimation in the Wild _(Paper)_ - **mentioned_in** → Stepper: Stepwise Immersive Scene Generation with…
+- [Daily Feed Summary — 2026-05-06](sources/daily-feed-summary-2026-05-06.html): - **mentioned_in** → Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras _(Paper)_ - **mentioned_in** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_ -…
 - [📬 Daily Research Digest — 2026-04-08](sources/daily-research-digest-2026-04-08.html): - **mentioned_in** → Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation _(Paper)_ - **mentioned_in** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_ - **mentioned_in**…
 - [📬 Daily Research Digest — 2026-04-15](sources/daily-research-digest-2026-04-15.html): - **mentioned_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_ - **mentioned_in** → Geometry-Grounded Gaussian Splatting _(Paper)_
 - [📬 Daily Research Digest — 2026-04-18](sources/daily-research-digest-2026-04-18.html): - **uses_metric** → mAP _(Metric)_
@@ -51,15 +52,16 @@
 - [📬 Daily Research Digest — 2026-05-03](sources/daily-research-digest-2026-05-03.html): - **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **mentioned_in** → Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective _(Paper)_ - **mentioned_in** → Img2CAD: VLM-Assisted Condi…
 - [📬 Daily Research Digest — 2026-05-04](sources/daily-research-digest-2026-05-04.html): - **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **mentioned_in** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_
 - [📬 Daily Research Digest — 2026-05-05](sources/daily-research-digest-2026-05-05.html): - **mentioned_in** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_ - **mentioned_in** → Extreme Rotation Estimation in the Wild _(Paper)_ - **mentioned_in** → Stepper: Stepwise Immersive Scene Generation with…
+- [📬 Daily Research Digest — 2026-05-06](sources/daily-research-digest-2026-05-06.html): - **mentioned_in** → Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras _(Paper)_ - **mentioned_in** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_ -…
 - [digest](sources/digest.html)
 - [Feature Map](sources/feature-map.html): - **uses_metric** → mAP _(Metric)_
 - [Frontend redesign — annotated route walkthrough](sources/frontend-redesign-annotated-route-walkthrough.html): - **uses_metric** → mAP _(Metric)_
 - [Geometry-Grounded Gaussian Splatting](sources/geometry-grounded-gaussian-splatting.html): - **evaluated_on** → DTU _(Benchmark)_ - **evaluated_on** → Tanks and Temples _(Benchmark)_ - **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **mentioned_in** → Confidence-Based Mesh Extra…
+- [<h1 align="center">LLM-Wiki</h1>](sources/h1-align-center-llm-wiki-h1.html): - **uses_metric** → mAP _(Metric)_
 - [Harness session history](sources/harness-session-history.html)
 - [Installation](sources/installation.html)
 - [Karpathy alignment — plan](sources/karpathy-alignment-plan.html)
 - [LLM-Backed Synthesis Prose](sources/llm-backed-synthesis-prose.html)
-- [LLM-Wiki](sources/llm-wiki.html): - **uses_metric** → mAP _(Metric)_
 - [LLM-Wiki Frontend Redesign — Design Spec](sources/llm-wiki-frontend-redesign-design-spec.html)
 - [LLM-Wiki Frontend Redesign — Implementation Plan](sources/llm-wiki-frontend-redesign-implementation-plan.html): - **uses_metric** → mAP _(Metric)_
 - [Publishing Checklist](sources/publishing-checklist.html): - **uses_metric** → mAP _(Metric)_
@@ -104,7 +106,7 @@
 - [Lifting Unlabeled Internet-level Data for 3D Scene Understanding](papers/lifting-unlabeled-internet-level-data-for-3d-scene-understanding.html): - **authored_by** → Baoxiong Jia _(Person)_ - **authored_by** → Hongyu Shen _(Person)_ - **authored_by** → Huangyue Yu _(Person)_ - **authored_by** → Jiangyong Huang _(Person)_ - **authored_by** → Junchao He _(Person)_ - **authored_by** →…
 - [Long-tail Internet photo reconstruction](papers/long-tail-internet-photo-reconstruction.html): - **authored_by** → Hadar Averbuch-Elor _(Person)_ - **authored_by** → Noah Snavely _(Person)_ - **authored_by** → Ruojin Cai _(Person)_ - **authored_by** → Yuan Li _(Person)_ - **authored_by** → Yuanbo Xiangli _(Person)_ - **implemented_i…
 - [Lyra 2.0: Explorable Generative 3D Worlds](papers/lyra-2-0-explorable-generative-3d-worlds.html): - **implemented_in** → GitHub 분석: NVIDIA/OpenShell _(Repository)_ - **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
-- [Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras](papers/match-any-events-zero-shot-motion-robust-feature-matching-across-wide-baselines-dbc18631.html): - **authored_by** → Hang Su _(Person)_ - **authored_by** → Kostas Daniilidis _(Person)_ - **authored_by** → Ruijun Zhang _(Person)_ - **authored_by** → Ziyun Wang _(Person)_ - **part_of** → Research Literature _(ResearchField)_ - **uses**…
+- [Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras](papers/match-any-events-zero-shot-motion-robust-feature-matching-across-wide-baselines-dbc18631.html): - **authored_by** → Hang Su _(Person)_ - **authored_by** → Kostas Daniilidis _(Person)_ - **authored_by** → Ruijun Zhang _(Person)_ - **authored_by** → Ziyun Wang _(Person)_ - **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_…
 - [Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction](papers/neural-gabor-splatting-enhanced-gaussian-splatting-with-neural-gabor-for-high-fr-847471cb.html): - **authored_by** → Haato Watanabe _(Person)_ - **authored_by** → Nobuyuki Umetani _(Person)_ - **belongs_to_approach_family** → Gaussian Splatting Reconstruction _(ApproachFamily)_ - **evaluated_on** → Mip-NeRF360 _(Benchmark)_ - **part_o…
 - [OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control](papers/omnixtreme-breaking-the-generality-barrier-in-high-dynamic-humanoid-control.html): - **authored_by** → Baoxiong Jia _(Person)_ - **authored_by** → Jiaxin Li _(Person)_ - **authored_by** → Peiyuan Zhi _(Person)_ - **authored_by** → Shaohang Zhu _(Person)_ - **authored_by** → Siyuan Huang _(Person)_ - **authored_by** → Xin…
 - [Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization](papers/power-foam-unifying-real-time-differentiable-ray-tracing-and-rasterization.html): - **authored_by** → Andrea Tagliasacchi _(Person)_ - **authored_by** → Anish Prabhu _(Person)_ - **authored_by** → Daniel Rebain _(Person)_ - **authored_by** → Dor Verbin _(Person)_ - **authored_by** → Kwang Moo Yi _(Person)_ - **authored_…
@@ -118,6 +120,7 @@
 - [Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas](papers/stepper-stepwise-immersive-scene-generation-with-multiview-panoramas.html): - **addresses** → World Model _(ResearchTopic)_ - **authored_by** → Christian Rupprecht _(Person)_ - **authored_by** → Daniel Cremers _(Person)_ - **authored_by** → Fabian Manhardt _(Person)_ - **authored_by** → Federico Tombari _(Person)_…
 - [T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion](papers/t-r-o-grasp-cross-embodiment-dexterous-grasping을-위한-robot-object-spatial-t-e5dccb3a.html): - **authored_by** → Huaicong Fang _(Person)_ - **authored_by** → Lin Shao _(Person)_ - **authored_by** → Tianrui Zhang _(Person)_ - **authored_by** → Xin Fei _(Person)_ - **authored_by** → Zhixuan Xu _(Person)_ - **implemented_in** → GitHu…
 - [Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation](papers/towards-depth-foundation-model-recent-trends-in-vision-based-depth-estimation.html): - **authored_by** → Haotong Lin _(Person)_ - **authored_by** → Haoyu Guo _(Person)_ - **authored_by** → Hongyu Zhou _(Person)_ - **authored_by** → Hujun Bao _(Person)_ - **authored_by** → Jiahao Shao _(Person)_ - **authored_by** → Peishan…
+- [Triangulation of Points Constrained to a Plane](papers/triangulation-of-points-constrained-to-a-plane.html): - **authored_by** → Elima Shehu _(Person)_ - **authored_by** → Petr Hrubý _(Person)_ - **part_of** → Research Literature _(ResearchField)_
 - [TRiGS: Temporal Rigid-Body Motion for Scalable 4D Gaussian Splatting](papers/trigs-temporal-rigid-body-motion-for-scalable-4d-gaussian-splatting.html): - **authored_by** → Jaesik Park _(Person)_ - **authored_by** → Joonsik Nam _(Person)_ - **authored_by** → Joonsoo Kim _(Person)_ - **authored_by** → Kugjin Yun _(Person)_ - **authored_by** → Kyeongbo Kong _(Person)_ - **authored_by** → Luc…
 - [ViBA: Implicit Bundle Adjustment with Geometric and Temporal Consistency for Robust Visual Matching](papers/viba-implicit-bundle-adjustment-with-geometric-and-temporal-consistency-for-robu-4e9b6754.html): - **authored_by** → Hailiang Tang _(Person)_ - **authored_by** → Tisheng Zhang _(Person)_ - **authored_by** → Xiaoji Niu _(Person)_ - **authored_by** → Yan Wang _(Person)_ - **authored_by** → Yuqing Wang _(Person)_ - **part_of** → 3D/4D Vi…
 - [Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여](papers/video4spatial-context-guided-video-generation을-통한-시각-공간-지능을-향하여.html): - **authored_by** → Lingxiao Li _(Person)_ - **authored_by** → Mohammad H. Taghavi _(Person)_ - **authored_by** → Rahul Garg _(Person)_ - **authored_by** → Roshni Cooper _(Person)_ - **authored_by** → Xingang Pan _(Person)_ - **authored_by…
@@ -132,6 +135,7 @@
 - [GitHub 분석: ag2ai/ag2studio](repos/github-분석-ag2ai-ag2studio.html): - **released_by** → ag2ai _(Organization)_
 - [GitHub 분석: AHEKOT/ComfyUI_HYWorld2](repos/github-분석-ahekot-comfyui-hyworld2.html)
 - [GitHub 분석: ahujasid/blender-mcp](repos/github-분석-ahujasid-blender-mcp.html): - **uses_dataset** → Blender _(Dataset)_
+- [GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool](repos/github-분석-ai-search-guru-getcito-worlds-first-open-source-aio-aeo-or-geo-tool.html): - **released_by** → ai-search-guru _(Organization)_
 - [GitHub 분석: AISmithLab/CoBRA](repos/github-분석-aismithlab-cobra.html)
 - [GitHub 분석: alexbatalov/fallout1-re](repos/github-분석-alexbatalov-fallout1-re.html)
 - [GitHub 분석: allenai/molmoact](repos/github-분석-allenai-molmoact.html): - **released_by** → allenai _(Organization)_
@@ -274,7 +278,7 @@
 - [Stochastic Solid](concepts/stochastic-solid.html): - **uses** → Geometry-Grounded Gaussian Splatting _(ApproachFamily)_ - **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_
 - [Supervised Learning](concepts/supervised-learning.html): - **uses** → 자기지도학습 요리책 _(Paper)_
 - [Video Diffusion](concepts/video-diffusion.html): - **uses** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_ - **uses** → Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습 _(Paper)_ - **uses** → Video4Spatial: Context-Guided Video Generation을 통한 시각-공간 지능을 향하여 _(Pa…
-- [Volumetric Rendering](concepts/volumetric-rendering.html): - **uses** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_ - **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_
+- [Volumetric Rendering](concepts/volumetric-rendering.html): - **uses** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_ - **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_ - **uses** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(P…
 
 ## Entities
 
@@ -285,6 +289,7 @@
 - [affaan-m](entities/affaan-m.html): - **released_by** → GitHub 분석: affaan-m/everything-claude-code _(Repository)_
 - [ag2ai](entities/ag2ai.html): - **released_by** → GitHub 분석: ag2ai/ag2studio _(Repository)_
 - [Ahan Shabanov](entities/ahan-shabanov.html): - **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- [ai-search-guru](entities/ai-search-guru.html): - **released_by** → GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool _(Repository)_
 - [Alec Jacobson](entities/alec-jacobson.html): - **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_
 - [allenai](entities/allenai.html): - **released_by** → GitHub 분석: allenai/molmoact _(Repository)_
 - [Andrea Tagliasacchi](entities/andrea-tagliasacchi.html): - **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_ - **authored_by** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_ - **authored_by** → Power Foam: Unifying Real-Time Differenti…
@@ -337,6 +342,7 @@
 - [Dor Verbin](entities/dor-verbin.html): - **authored_by** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
 - [Dotan Ankri](entities/dotan-ankri.html): - **authored_by** → Extreme Rotation Estimation in the Wild _(Paper)_
 - [DTU](entities/dtu.html): - **evaluated_on** → Codex extraction review (2026-05-01) _(SourceDocument)_ - **evaluated_on** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_ - **evaluated_on** → Geometry-Grounded Gaussian Splatting _(SourceD…
+- [Elima Shehu](entities/elima-shehu.html): - **authored_by** → Triangulation of Points Constrained to a Plane _(Paper)_
 - [eth-ait](entities/eth-ait.html): - **released_by** → GitHub 분석: eth-ait/Gaussian-Garments _(Repository)_
 - [Ethan Weber](entities/ethan-weber.html): - **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
 - [Eungchang Mason Lee](entities/eungchang-mason-lee.html): - **authored_by** → GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow _(Paper)_
@@ -443,7 +449,7 @@
 - [Lukas Radl](entities/lukas-radl.html): - **authored_by** → Confidence-Based Mesh Extraction from 3D Gaussians _(Paper)_
 - [m-schuetz](entities/m-schuetz.html): - **released_by** → GitHub 분석: m-schuetz/CuRast _(Repository)_
 - [Mandy Guo](entities/mandy-guo.html): - **authored_by** → Image Generators are Generalist Vision Learners _(Paper)_
-- [mAP](entities/map.html): - **uses_metric** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **uses_metric** → Architecture _(SourceDocument)_ - **uses_metric** → Codex extraction review (2026-05-01) _(SourceDocument)_ - **uses_metr…
+- [mAP](entities/map.html): - **uses_metric** → <h1 align="center">LLM-Wiki</h1> _(SourceDocument)_ - **uses_metric** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **uses_metric** → Architecture _(SourceDocument)_ - **uses_metric**…
 - [mAP=4](entities/map-4.html): 4 mAP
 - [Marc Szafraniec](entities/marc-szafraniec.html): - **authored_by** → Efficient Universal Perception Encoder _(Paper)_
 - [Marco Pavone](entities/marco-pavone.html): - **authored_by** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_
@@ -485,6 +491,7 @@
 - [Peishan Yang](entities/peishan-yang.html): - **authored_by** → Towards Depth Foundation Model: Recent Trends in Vision-Based Depth Estimation _(Paper)_
 - [Peiyuan Zhi](entities/peiyuan-zhi.html): - **authored_by** → OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control _(Paper)_
 - [Peter Hedman](entities/peter-hedman.html): - **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- [Petr Hrubý](entities/petr-hrubý.html): - **authored_by** → Triangulation of Points Constrained to a Plane _(Paper)_
 - [Ping Tan](entities/ping-tan.html): - **authored_by** → Geometry-Grounded Gaussian Splatting _(Paper)_
 - [Piotr Bojanowski](entities/piotr-bojanowski.html): - **authored_by** → Efficient Universal Perception Encoder _(Paper)_
 - [polymathicai](entities/polymathicai.html): - **released_by** → GitHub 분석: PolymathicAI/the_well _(Repository)_
@@ -669,6 +676,7 @@
 - [Daily Digest — 2026-05-03](syntheses/daily-2026-05-03.html): Sources ingested under `data/research/daily/2026-05-03/`.
 - [Daily Digest — 2026-05-04](syntheses/daily-2026-05-04.html): Sources ingested under `data/research/daily/2026-05-04/`.
 - [Daily Digest — 2026-05-05](syntheses/daily-2026-05-05.html): Sources ingested under `data/research/daily/2026-05-05/`.
+- [Daily Digest — 2026-05-06](syntheses/daily-2026-05-06.html): Sources ingested under `data/research/daily/2026-05-06/`.
 - [Field Overview — 3D/4D Vision and Reconstruction](syntheses/field-3d-4d-vision-and-reconstruction.html): Dynamic Gaussian Splatting (ApproachFamily) — 1 contributing paper(s) connect to this thread.
 - [Field Overview — LLM Reasoning](syntheses/field-llm-reasoning.html): No linked topics yet.
 - [Field Overview — Research Literature](syntheses/field-research-literature.html): World Model (ResearchTopic) — 3 contributing paper(s) connect to this thread.

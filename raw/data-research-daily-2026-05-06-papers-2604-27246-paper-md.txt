@@ -1,0 +1,75 @@
+paper.md
+========
+
+# 논문 분석: 2604.27246
+
+> - arxiv: https://arxiv.org/abs/2604.27246
+> - papers.cool: https://papers.cool/arxiv/2604.27246
+> - 분석일: 2026-05-06
+
+Triangulation of Points Constrained to a Plane | Cool Papers - Immersive Paper Discovery
+
+## 2604.27246
+
+Total: 1
+
+## #1
+
+# Triangulation of Points Constrained to a Plane
+
+[PDF]  
+[Copy]  
+[Kimi]  
+[REL]
+
+Authors:  
+Petr Hrubý,  
+Elima Shehu
+
+고정된 카메라가 서로 다른 평면상의 3차원 점 배치를 관측할 때 발생하는 이미지 튜플의 집합을 연구한다. 우리는 잡음이 있는 이미지 데이터로부터 이러한 배치를 복원하려는 triangulation 문제의 복소 임계점 개수에 대한 공식을 유도한다. 이 공식은 임의 개수의 뷰에 대해 유효하며, 평면 triangulation의 본질적인 대수적 복잡성을 정량화한다. 또한 합성 데이터와 실제 데이터에 대한 수치 실험을 통해 이론적 결과를 검증하고, 평면 입사 제약을 통합하면 비제약 triangulation과 비교해 점 복원이 더 빨라지고 정확도도 향상됨을 보인다.
+
+Subject:  
+Algebraic Geometry
+
+Publish: 2026-04-29 22:38:20 UTC
+
+Designed by kexue.fm | Powered by kimi.ai
+
+Include(OR):
+
+Exclude:
+
+Search
+
+Filter
+
+Highlight
+
+Stared Paper(s):
+
+#1  
+Triangulation of Points Constrained to a Plane
+
+Export
+
+Magic Token:
+
+Kimi Language:
+
+中文  
+English
+
+Desc Language:
+
+中文  
+English
+
+Save
+
+Bug report? Issue submit? Please visit:
+
+Github: https://github.com/bojone/papers.cool
+
+계속 진행하기 전에 Disclaimer를 읽어 주세요.
+
+더 흥미로운 기능을 보려면 kexue.fm 및 kimi.ai를 방문해 주세요.

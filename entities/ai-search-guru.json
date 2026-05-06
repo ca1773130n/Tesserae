@@ -1,0 +1,15 @@
+{
+  "title": "ai-search-guru",
+  "kind": "entities",
+  "body_text": "# ai-search-guru\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-06/repos/ai-search-guru_getcito-worlds-first-open-source-aio-aeo-or-geo-tool.md",
+  "links": [],
+  "body": "# ai-search-guru\n\n## Incoming relations\n\n- **released_by** → GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool _(Repository)_\n\n## Connected node types\n\n- Repository: 1",
+  "frontmatter": {
+    "kind": "entities",
+    "node_id": "Organization:ai-search-guru:c20fb3b7a3db",
+    "node_type": "Organization",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-06/repos/ai-search-guru_getcito-worlds-first-open-source-aio-aeo-or-geo-tool.md",
+    "title": "ai-search-guru"
+  }
+}

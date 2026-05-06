@@ -1,0 +1,72 @@
+digest.md
+=========
+
+# 📬 Daily Research Digest — 2026-05-06
+
+## 🔥 오늘의 하이라이트
+
+### 1. 실시간 품질 타협 없는 3D 표현, Power Foam
+
+![preview](https://pbs.twimg.com/amplify_video_thumb/2049337028928765952/img/JV6swalZtX2dQPh2.jpg)
+
+3D Gaussian Splatting 계열의 속도와 ray tracing 계열의 품질을 한 표현 안에서 함께 노리는 시도라는 점이 핵심입니다. 실시간 rasterization과 ray tracing을 모두 겨냥해, 렌더링 경로를 바꿔도 표현 자체를 다시 설계하지 않아도 되는 가능성을 보여줍니다.
+
+- 📄 논문: [논문 분석](papers/2604.24994/paper.md) | [arxiv](https://arxiv.org/abs/2604.24994)
+- 🔗 [원문](https://x.com/janusch_patas/status/2051397918804881777)
+
+---
+
+### 2. Dual-Pixel을 SfM에 직접 끌어들인 DP-SfM
+
+![preview](https://pbs.twimg.com/media/HHjRcaXXgAUFz6f?format=jpg&name=orig)
+
+Dual-Pixel 신호를 cross-view 정렬과 intensity 기반 최적화에 연결해 scale ambiguity를 줄이려는 접근이 눈에 띕니다. 단안 또는 일반 다중시점 파이프라인에서 약점이던 절대 스케일 추정을 카메라 센서 구조 차원에서 보강한다는 점에서, CV와 3D 재구성의 접점을 잘 보여주는 작업입니다.
+
+- 📄 논문: [논문 분석](papers/2604.18744/paper.md) | [arxiv](https://arxiv.org/abs/2604.18744)
+- 🔗 [원문](https://x.com/ducha_aiki/status/2051637170797007149)
+
+---
+
+### 3. Gaussian Splatting에서 바로 고품질 메시를 뽑아내는 흐름
+
+Gaussian Splatting이 더 이상 novel view synthesis에만 머무르지 않고, 후속 geometry extraction까지 포함하는 방향으로 확장되고 있습니다. 메시 추출 품질이 안정되면 시각화용 표현에서 끝나지 않고, simulation, robotics, CAD 연계까지 이어질 수 있다는 점이 중요합니다.
+
+- 💻 코드: [GitHub 분석](repos/ai-search-guru_getcito-worlds-first-open-source-aio-aeo-or-geo-tool.md) | [repo](https://github.com/ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool) | ⭐ 98
+- 🔗 [원문](https://x.com/tom_doerr/status/2051469452076581351)
+
+---
+
+## 📋 주목할 만한 피드
+
+### ▫️ 평면 제약을 활용한 더 정밀한 삼각측량
+
+![preview](https://pbs.twimg.com/media/HHixEgVWwAIIEGJ?format=jpg&name=orig)
+
+DAv2로 평면 영역을 얻고, 그 제약을 삼각측량에 직접 반영해 정확도를 높이는 접근입니다. 구조적 priors를 기하 최적화에 결합하는 전형적인 Spatial Intelligence 흐름으로 볼 수 있습니다.
+
+- 📄 관련 링크: [논문 분석](papers/2604.27246/paper.md) | [arxiv](https://arxiv.org/abs/2604.27246)
+- 🔗 [원문](https://x.com/zhenjun_zhao/status/2051625129520574664)
+
+### ▫️ Stepper가 보여준 점진적 월드 확장형 3D 생성
+
+파노라마를 한 번에 끝내는 대신, 이동과 관측에 맞춰 세계를 조금씩 넓혀가는 방식이 강조됐습니다. MapAnything과 3D Gaussian Splatting을 결합해 탐색 가능한 공간으로 연결하는 발상은 embodied generation과 spatial memory 쪽에서 의미가 큽니다.
+
+- 🔗 [원문](https://x.com/taziku_co/status/2051430795034935531)
+
+### ▫️ 계단 환경에서 확인된 온보드 RGB-D SLAM 성능
+
+반복 구조와 Z-drift에 취약한 장면에서 실시간 포인트클라우드 매핑을 시연했습니다. 모든 VSLAM과 depth 계산이 온보드에서 수행됐다는 점이, 경량화된 로보틱스 배치 가능성을 보여줍니다.
+
+- 🔗 [원문](https://x.com/LooperRobotics/status/2051633007719584082)
+
+### ▫️ Geometry Foundation Model에 대한 예고
+
+구체 논문이나 코드 링크는 없지만, geometry foundation model을 장기적으로 준비 중이라는 메시지 자체가 의미 있습니다. 2D 인식 중심 foundation model을 넘어 3D 구조와 물리적 일관성까지 다루는 축이 더 강해지고 있음을 시사합니다.
+
+- 🔗 [원문](https://x.com/)
+
+## 📊 오늘의 숫자
+
+- 전체 피드: 25개 → 관련 피드: 7개
+- 논문: 3편 | GitHub: 1개 레포
+- 가장 많은 스타: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool (⭐ 98)

@@ -403,6 +403,12 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>timeline/2026-05-06.html</loc>
+    <lastmod>2024-05-16T00:00:00Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>graph/index.html</loc>
     <lastmod>2024-12-13T00:00:00Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -595,6 +601,12 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>sources/daily-feed-summary-2026-05-06.html</loc>
+    <lastmod>2024-03-03T00:00:00Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>sources/daily-research-digest-2026-04-08.html</loc>
     <lastmod>2024-12-05T00:00:00Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -697,6 +709,12 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>sources/daily-research-digest-2026-05-06.html</loc>
+    <lastmod>2024-05-20T00:00:00Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>sources/digest.html</loc>
     <lastmod>2024-07-15T00:00:00Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -721,6 +739,12 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>sources/h1-align-center-llm-wiki-h1.html</loc>
+    <lastmod>2024-04-24T00:00:00Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>sources/harness-session-history.html</loc>
     <lastmod>2024-08-31T00:00:00Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -741,12 +765,6 @@
   <url>
     <loc>sources/llm-backed-synthesis-prose.html</loc>
     <lastmod>2024-10-03T00:00:00Z</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.6</priority>
-  </url>
-  <url>
-    <loc>sources/llm-wiki.html</loc>
-    <lastmod>2024-09-24T00:00:00Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -993,6 +1011,12 @@
   <url>
     <loc>entities/ahan-shabanov.html</loc>
     <lastmod>2024-04-03T00:00:00Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>entities/ai-search-guru.html</loc>
+    <lastmod>2024-12-17T00:00:00Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -1305,6 +1329,12 @@
   <url>
     <loc>entities/dtu.html</loc>
     <lastmod>2024-11-30T00:00:00Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>entities/elima-shehu.html</loc>
+    <lastmod>2024-11-09T00:00:00Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -2193,6 +2223,12 @@
   <url>
     <loc>entities/peter-hedman.html</loc>
     <lastmod>2024-08-19T00:00:00Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>entities/petr-hrubý.html</loc>
+    <lastmod>2024-02-19T00:00:00Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -3313,6 +3349,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>papers/triangulation-of-points-constrained-to-a-plane.html</loc>
+    <lastmod>2024-01-26T00:00:00Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>papers/trigs-temporal-rigid-body-motion-for-scalable-4d-gaussian-splatting.html</loc>
     <lastmod>2024-10-06T00:00:00Z</lastmod>
     <changefreq>weekly</changefreq>
@@ -3381,6 +3423,12 @@
   <url>
     <loc>repos/github-분석-ahujasid-blender-mcp.html</loc>
     <lastmod>2024-02-19T00:00:00Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>repos/github-분석-ai-search-guru-getcito-worlds-first-open-source-aio-aeo-or-geo-tool.html</loc>
+    <lastmod>2024-08-19T00:00:00Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -4329,6 +4377,12 @@
   <url>
     <loc>syntheses/daily-2026-05-05.html</loc>
     <lastmod>2024-09-10T00:00:00Z</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>syntheses/daily-2026-05-06.html</loc>
+    <lastmod>2024-03-22T00:00:00Z</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -5829,6 +5883,42 @@
   <url>
     <loc>raw/data-research-daily-2026-05-05-raw-md.html</loc>
     <lastmod>2024-01-30T00:00:00Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>raw/data-research-daily-2026-05-06-digest-md.html</loc>
+    <lastmod>2024-10-15T00:00:00Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>raw/data-research-daily-2026-05-06-papers-2604-18744-paper-md.html</loc>
+    <lastmod>2024-11-06T00:00:00Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>raw/data-research-daily-2026-05-06-papers-2604-24994-paper-md.html</loc>
+    <lastmod>2024-07-08T00:00:00Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>raw/data-research-daily-2026-05-06-papers-2604-27246-paper-md.html</loc>
+    <lastmod>2024-06-03T00:00:00Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>raw/data-research-daily-2026-05-06-raw-md.html</loc>
+    <lastmod>2024-01-11T00:00:00Z</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>raw/data-research-daily-2026-05-06-repos-ai-search-guru-getcito-worlds-first-open-source-aio-aeo-or-geo-tool-md.html</loc>
+    <lastmod>2024-04-30T00:00:00Z</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.4</priority>
   </url>

@@ -1,0 +1,15 @@
+{
+  "title": "<h1 align=\"center\">LLM-Wiki</h1>",
+  "kind": "sources",
+  "body_text": "# <h1 align=\"center\">LLM-Wiki</h1>\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/README.md",
+  "links": [],
+  "body": "# <h1 align=\"center\">LLM-Wiki</h1>\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:h1-align-center-llm-wiki-h1:b60a072f7da3",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/README.md",
+    "title": "<h1 align=\"center\">LLM-Wiki</h1>"
+  }
+}

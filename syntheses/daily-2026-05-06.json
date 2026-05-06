@@ -1,0 +1,32 @@
+{
+  "title": "Daily Digest — 2026-05-06",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-05-06\n\nSources ingested under `data/research/daily/2026-05-06/`.\n\n## Papers and repos\n- [Triangulation of Points Constrained to a Plane (arXiv:2604.27246)](../papers/triangulation-of-points-constrained-to-a-plane.md) (Paper)\n- [GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool](../repos/github-분석-ai-search-guru-getcito-worlds-first-open-source-aio-aeo-or-geo-tool.md) (Repository)\n- [Daily Feed Summary — 2026-05-06](../sources/daily-feed-summary-2026-05-06.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-05-06](../sources/daily-research-digest-2026-05-06.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "source_path": "",
+  "links": [
+    "../papers/triangulation-of-points-constrained-to-a-plane.md",
+    "../repos/github-분석-ai-search-guru-getcito-worlds-first-open-source-aio-aeo-or-geo-tool.md",
+    "../sources/daily-feed-summary-2026-05-06.md",
+    "../sources/daily-research-digest-2026-05-06.md"
+  ],
+  "body": "# Daily Digest — 2026-05-06\n\nSources ingested under `data/research/daily/2026-05-06/`.\n\n## Papers and repos\n- [Triangulation of Points Constrained to a Plane (arXiv:2604.27246)](../papers/triangulation-of-points-constrained-to-a-plane.md) (Paper)\n- [GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool](../repos/github-분석-ai-search-guru-getcito-worlds-first-open-source-aio-aeo-or-geo-tool.md) (Repository)\n- [Daily Feed Summary — 2026-05-06](../sources/daily-feed-summary-2026-05-06.md) (SourceDocument)\n- [📬 Daily Research Digest — 2026-05-06](../sources/daily-research-digest-2026-05-06.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "frontmatter": {
+    "content_hash": "sha256-194b929e7708a5edc1a167270a50cb4c02cd2a2ce5e557e7833a49911698716f",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Paper:arxiv-2604-27246:ec5a855f8563",
+      "Repository:github-ai-search-guru-getcito-worlds-first-open-:a2eddd0925d0",
+      "SourceDocument:daily-feed-summary-2026-05-06:d92daae25275",
+      "SourceDocument:daily-research-digest-2026-05-06:bd3bac48d4bc"
+    ],
+    "slug": "daily-2026-05-06",
+    "sources": [
+      "data/research/daily/2026-05-06/digest.md",
+      "data/research/daily/2026-05-06/papers/2604.27246/paper.md",
+      "data/research/daily/2026-05-06/raw.md",
+      "data/research/daily/2026-05-06/repos/ai-search-guru_getcito-worlds-first-open-source-aio-aeo-or-geo-tool.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-05-06"
+  }
+}

@@ -1,10 +1,10 @@
 {
   "title": "Volumetric Rendering",
   "kind": "concepts",
-  "body_text": "# Volumetric Rendering\n\n## Incoming relations\n\n- **uses** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_\n- **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "body_text": "# Volumetric Rendering\n\n## Incoming relations\n\n- **uses** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_\n- **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_\n- **uses** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_\n\n## Connected node types\n\n- Paper: 3",
   "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-04-26/papers/2601.17835/paper.md",
   "links": [],
-  "body": "# Volumetric Rendering\n\n## Incoming relations\n\n- **uses** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_\n- **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_\n\n## Connected node types\n\n- Paper: 2",
+  "body": "# Volumetric Rendering\n\n## Incoming relations\n\n- **uses** → Distance Field Rasterization for End-to-End Mesh Reconstruction _(Paper)_\n- **uses** → Geometry-Grounded Gaussian Splatting _(Paper)_\n- **uses** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_\n\n## Connected node types\n\n- Paper: 3",
   "frontmatter": {
     "aliases": [
       "volumetric",

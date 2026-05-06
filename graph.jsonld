@@ -16,10 +16,10 @@
       "additionalType": "Metric"
     },
     {
-      "@id": "#SourceDocument:llm-wiki:67d449e6e8ec",
+      "@id": "#SourceDocument:h1-align-center-llm-wiki-h1:b60a072f7da3",
       "@type": "CreativeWork",
-      "name": "LLM-Wiki",
-      "url": "sources/llm-wiki.html",
+      "name": "<h1 align=\"center\">LLM-Wiki</h1>",
+      "url": "sources/h1-align-center-llm-wiki-h1.html",
       "additionalType": "SourceDocument"
     },
     {
@@ -6294,7 +6294,8 @@
         }
       ],
       "keywords": [
-        "Gaussian Splatting"
+        "Gaussian Splatting",
+        "Volumetric Rendering"
       ]
     },
     {
@@ -7616,6 +7617,84 @@
       "additionalType": "SourceDocument"
     },
     {
+      "@id": "#SourceDocument:daily-research-digest-2026-05-06:bd3bac48d4bc",
+      "@type": "CreativeWork",
+      "name": "📬 Daily Research Digest — 2026-05-06",
+      "url": "sources/daily-research-digest-2026-05-06.html",
+      "additionalType": "SourceDocument"
+    },
+    {
+      "@id": "#Paper:arxiv-2604-27246:ec5a855f8563",
+      "@type": "ScholarlyArticle",
+      "name": "Triangulation of Points Constrained to a Plane",
+      "alternateName": [
+        "arXiv:2604.27246"
+      ],
+      "url": "papers/triangulation-of-points-constrained-to-a-plane.html",
+      "additionalType": "Paper",
+      "headline": "Triangulation of Points Constrained to a Plane",
+      "identifier": "2604.27246",
+      "sameAs": [
+        "https://arxiv.org/abs/2604.27246"
+      ],
+      "datePublished": "2026-04",
+      "author": [
+        {
+          "@type": "Person",
+          "@id": "#Person:elima-shehu:a3d675db7593",
+          "name": "Elima Shehu"
+        },
+        {
+          "@type": "Person",
+          "@id": "#Person:petr-hrub:6a4e5048c9b4",
+          "name": "Petr Hrubý"
+        }
+      ]
+    },
+    {
+      "@id": "#Person:elima-shehu:a3d675db7593",
+      "@type": "Person",
+      "name": "Elima Shehu",
+      "url": "entities/elima-shehu.html",
+      "additionalType": "Person"
+    },
+    {
+      "@id": "#Person:petr-hrub:6a4e5048c9b4",
+      "@type": "Person",
+      "name": "Petr Hrubý",
+      "url": "entities/petr-hrubý.html",
+      "additionalType": "Person"
+    },
+    {
+      "@id": "#SourceDocument:daily-feed-summary-2026-05-06:d92daae25275",
+      "@type": "CreativeWork",
+      "name": "Daily Feed Summary — 2026-05-06",
+      "url": "sources/daily-feed-summary-2026-05-06.html",
+      "additionalType": "SourceDocument"
+    },
+    {
+      "@id": "#Organization:ai-search-guru:c20fb3b7a3db",
+      "@type": "Organization",
+      "name": "ai-search-guru",
+      "url": "entities/ai-search-guru.html",
+      "additionalType": "Organization"
+    },
+    {
+      "@id": "#Repository:github-ai-search-guru-getcito-worlds-first-open-:a2eddd0925d0",
+      "@type": "SoftwareSourceCode",
+      "name": "GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool",
+      "alternateName": [
+        "ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool",
+        "https://github.com/ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool"
+      ],
+      "url": "repos/github-분석-ai-search-guru-getcito-worlds-first-open-source-aio-aeo-or-geo-tool.html",
+      "additionalType": "Repository",
+      "codeRepository": "https://github.com/ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool",
+      "sameAs": [
+        "https://github.com/ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool"
+      ]
+    },
+    {
       "@id": "#SourceDocument:2026-w15:76b20547149e",
       "@type": "CreativeWork",
       "name": "📊 주간 리서치 다이제스트 — 2026-W15",
@@ -7666,18 +7745,18 @@
         },
         {
           "@type": "Thing",
-          "@id": "#Paper:arxiv-2501-19252:f188522141a2",
-          "name": "Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search"
-        },
-        {
-          "@type": "Thing",
-          "@id": "#Paper:arxiv-2512-13238:85a4b38cbb7f",
-          "name": "Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset"
-        },
-        {
-          "@type": "Thing",
           "@id": "#Paper:arxiv-2603-28980:2f6981d6a09d",
           "name": "Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas"
+        },
+        {
+          "@type": "Thing",
+          "@id": "#Paper:arxiv-2604-27246:ec5a855f8563",
+          "name": "Triangulation of Points Constrained to a Plane"
+        },
+        {
+          "@type": "Thing",
+          "@id": "#Repository:github-ai-search-guru-getcito-worlds-first-open-:a2eddd0925d0",
+          "name": "GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool"
         },
         {
           "@type": "Thing",
@@ -8952,6 +9031,11 @@
         },
         {
           "@type": "Thing",
+          "@id": "#MethodologicalConcept:volumetric-rendering:7527b301d064",
+          "name": "Volumetric Rendering"
+        },
+        {
+          "@type": "Thing",
           "@id": "#Paper:arxiv-2603-22387:f0293d2f76a7",
           "name": "Efficient Universal Perception Encoder"
         },
@@ -9219,6 +9303,37 @@
           "@type": "Thing",
           "@id": "#SourceDocument:daily-research-digest-2026-05-05:5435de4760f4",
           "name": "📬 Daily Research Digest — 2026-05-05"
+        }
+      ]
+    },
+    {
+      "@id": "#Synthesis:daily-2026-05-06:e515cf2a8272",
+      "@type": "Article",
+      "name": "Daily Digest — 2026-05-06",
+      "description": "Digest of 2026-05-06 ingest.",
+      "url": "syntheses/daily-digest-2026-05-06.html",
+      "additionalType": "Synthesis",
+      "articleSection": "daily_digest",
+      "mentions": [
+        {
+          "@type": "Thing",
+          "@id": "#Paper:arxiv-2604-27246:ec5a855f8563",
+          "name": "Triangulation of Points Constrained to a Plane"
+        },
+        {
+          "@type": "Thing",
+          "@id": "#Repository:github-ai-search-guru-getcito-worlds-first-open-:a2eddd0925d0",
+          "name": "GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool"
+        },
+        {
+          "@type": "Thing",
+          "@id": "#SourceDocument:daily-feed-summary-2026-05-06:d92daae25275",
+          "name": "Daily Feed Summary — 2026-05-06"
+        },
+        {
+          "@type": "Thing",
+          "@id": "#SourceDocument:daily-research-digest-2026-05-06:bd3bac48d4bc",
+          "name": "📬 Daily Research Digest — 2026-05-06"
         }
       ]
     },
@@ -9672,5 +9787,5 @@
       ]
     }
   ],
-  "dateModified": "2026-05-05T21:20:15Z"
+  "dateModified": "2026-05-05T22:23:01Z"
 }

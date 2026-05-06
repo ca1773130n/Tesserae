@@ -1,0 +1,12 @@
+GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool
+==============================================================================
+
+# GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool
+
+## Outgoing relations
+
+- **released_by** → ai-search-guru _(Organization)_
+
+## Connected node types
+
+- Organization: 1

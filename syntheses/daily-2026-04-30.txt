@@ -19,4 +19,5 @@ Sources ingested under `data/research/daily/2026-04-30/`.
 
 ## Extracted concepts
 - Gaussian Splatting (MethodologicalConcept)
+- Volumetric Rendering (MethodologicalConcept)
 - Video Diffusion (MethodologicalConcept)

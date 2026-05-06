@@ -25,12 +25,12 @@
 - **part_of** → Lifting Unlabeled Internet-level Data for 3D Scene Understanding _(Paper)_
 - **part_of** → Long-tail Internet photo reconstruction _(Paper)_
 - **part_of** → Lyra 2.0: Explorable Generative 3D Worlds _(Paper)_
+- **part_of** → Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras _(Paper)_
 - **part_of** → Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction _(Paper)_
 - **part_of** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
 - **part_of** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
 - **part_of** → Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습 _(Paper)_
-- **part_of** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_
 
 ## Connected node types
 
-- Paper: 35
+- Paper: 36

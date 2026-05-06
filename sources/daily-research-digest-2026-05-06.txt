@@ -1,0 +1,14 @@
+📬 Daily Research Digest — 2026-05-06
+====================================
+
+# 📬 Daily Research Digest — 2026-05-06
+
+## Outgoing relations
+
+- **mentioned_in** → Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras _(Paper)_
+- **mentioned_in** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
+- **mentioned_in** → Triangulation of Points Constrained to a Plane _(Paper)_
+
+## Connected node types
+
+- Paper: 3

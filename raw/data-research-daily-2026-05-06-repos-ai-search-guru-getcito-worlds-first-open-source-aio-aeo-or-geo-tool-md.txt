@@ -1,0 +1,69 @@
+ai-search-guru_getcito-worlds-first-open-source-aio-aeo-or-geo-tool.md
+======================================================================
+
+# GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool
+
+> - URL: https://github.com/ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool
+> - 분석일: 2026-05-06
+
+## 개요
+
+- **설명**: GetCito the World's First & Only Open Source AI Search Optimization (AIO) / Answer Engine Optimization (AEO) or Generative Engine Optimization (GEO) Tool
+- **Stars**: ⭐ 98 | Forks: 29
+- **라이선스**: MIT
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (45개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+ADD_BRAND_ROUTING_UPDATE.md
+ADD_QUERY_DATABASE_IMPLEMENTATION.md
+ADD_QUERY_MODAL_IMPLEMENTATION.md
+AUTH_CONTEXT_IMPORT_FIX.md
+AUTHENTICATION_SETUP.md
+AZURE_DIRECT_MODE_CHANGES.md
+AZURE_OPENAI_SEARCH_SETUP.md
+BRAND_CONTEXT_IMPLEMENTATION_SUMMARY.md
+BRAND_CONTEXT_TESTING_GUIDE.md
+BRAND_CONTEXT_USAGE.md
+CHATGPT_SEARCH_PROVIDER_IMPLEMENTATION.md
+.claude/settings.local.json
+CLOUD_STORAGE_SOLUTION.md
+CODE_OF_CONDUCT.md
+COMPETITOR_ANALYTICS_INTEGRATION_SUMMARY.md
+CONTRIBUTING.md
+CREDIT_BASED_ROUTING_IMPLEMENTATION.md
+CREDIT_DEDUCTION_IMPLEMENTATION.md
+DOMAIN_ANALYSIS.md
+DOMAIN_ANALYSIS_SYSTEM.md
+DUAL_ANALYTICS_SYSTEM_IMPLEMENTATION.md
+ENHANCED_ANALYTICS_RANKING_SYSTEM.md
+.env.example
+ENV_VARIABLES_SETUP.md
+.eslintrc.json
+firebase.json
+firestore.dev.rules
+firestore.indexes.json
+firestore.rules
+FIRESTORE_SETUP.md
+FIX_SUMMARY.md
+.git/config
+.git/description
+.git/HEAD
+.github/dependabot.yml
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+IMPLEMENTATION_SUMMARY.md
+```

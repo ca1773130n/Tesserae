@@ -1,0 +1,15 @@
+Daily Digest — 2026-05-06
+=========================
+
+# Daily Digest — 2026-05-06
+
+Sources ingested under `data/research/daily/2026-05-06/`.
+
+## Papers and repos
+- [Triangulation of Points Constrained to a Plane (arXiv:2604.27246)](../papers/triangulation-of-points-constrained-to-a-plane.md) (Paper)
+- [GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool](../repos/github-분석-ai-search-guru-getcito-worlds-first-open-source-aio-aeo-or-geo-tool.md) (Repository)
+- [Daily Feed Summary — 2026-05-06](../sources/daily-feed-summary-2026-05-06.md) (SourceDocument)
+- [📬 Daily Research Digest — 2026-05-06](../sources/daily-research-digest-2026-05-06.md) (SourceDocument)
+
+## Extracted concepts
+- (none extracted)

@@ -1,0 +1,12 @@
+<h1 align="center">LLM-Wiki</h1>
+================================
+
+# <h1 align="center">LLM-Wiki</h1>
+
+## Outgoing relations
+
+- **uses_metric** → mAP _(Metric)_
+
+## Connected node types
+
+- Metric: 1

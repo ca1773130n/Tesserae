@@ -1,0 +1,12 @@
+Elima Shehu
+===========
+
+# Elima Shehu
+
+## Incoming relations
+
+- **authored_by** → Triangulation of Points Constrained to a Plane _(Paper)_
+
+## Connected node types
+
+- Paper: 1

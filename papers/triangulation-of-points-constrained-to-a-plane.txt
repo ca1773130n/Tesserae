@@ -1,0 +1,21 @@
+Triangulation of Points Constrained to a Plane
+==============================================
+
+# Triangulation of Points Constrained to a Plane
+
+## Outgoing relations
+
+- **authored_by** → Elima Shehu _(Person)_
+- **authored_by** → Petr Hrubý _(Person)_
+- **part_of** → Research Literature _(ResearchField)_
+
+## Incoming relations
+
+- **mentioned_in** → Daily Feed Summary — 2026-05-06 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-05-06 _(SourceDocument)_
+
+## Connected node types
+
+- Person: 2
+- SourceDocument: 2
+- ResearchField: 1

@@ -3,7 +3,7 @@
     {
       "evidence": null,
       "metadata": {},
-      "source": "SourceDocument:llm-wiki:67d449e6e8ec",
+      "source": "SourceDocument:h1-align-center-llm-wiki-h1:b60a072f7da3",
       "target": "Metric:map:592bcbe13f80",
       "type": "uses_metric"
     },
@@ -407,7 +407,7 @@
       "type": "belongs_to_approach_family"
     },
     {
-      "evidence": "이러한 기여를 통해, 본 표현은 최신 ray tracing 효율성을 유지하면서도 현세대 3DGS에 필적하는 rasterization 성능을 달성하며, 통합된 실시간 미분 가능 rendering을 향한 실용적인 경로를 제공한다.",
+      "evidence": "이러한 기여를 통해, 제안하는 표현은 최첨단 ray tracing 효율성을 유지하면서도 현세대 3DGS와 경쟁 가능한 rasterization 성능을 달성하며, 통합된 실시간 미분 가능 rendering을 향한 실용적인 경로를 제공한다.",
       "metadata": {},
       "source": "ApproachFamily:gaussian-splatting-reconstruction:84097d3185ea",
       "target": "MethodologicalConcept:gaussian-splatting:4f4b246c6522",
@@ -5790,21 +5790,21 @@
       "type": "uses"
     },
     {
-      "evidence": "Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras | Cool Papers - 몰입형 논문 탐색 총계: 1 # Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras [PDF] [Copy] [Kimi] [REL] Ruijun Zhang, Hang Su, Kostas Daniilidis, Ziyun Wang Event camera는 저조도와 빠른 motion에 대한 강인성 덕분에 순간적인 motion estimation에서 최근 유망한 성능을 보여주고 있다.",
+      "evidence": "Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras | Cool Papers - 몰입형 논문 탐색 총계: 1 ## Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras [PDF] [복사] [Kimi1] [REL] Ruijun Zhang, Hang Su, Kostas Daniilidis, Ziyun Wang Event cameras는 저조도와 빠른 움직임에 대한 강인성 덕분에 순간적인 motion estimation에서 최근 유망한 성능을 보여주고 있다.",
       "metadata": {},
       "source": "EvidenceSpan:evidence-match-any-events-zero-shot-motion-robus:1e1b510b072d",
       "target": "Paper:arxiv-2604-18744:d418fd397b58",
       "type": "part_of"
     },
     {
-      "evidence": "Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras | Cool Papers - 몰입형 논문 탐색 총계: 1 # Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras [PDF] [Copy] [Kimi] [REL] Ruijun Zhang, Hang Su, Kostas Daniilidis, Ziyun Wang Event camera는 저조도와 빠른 motion에 대한 강인성 덕분에 순간적인 motion estimation에서 최근 유망한 성능을 보여주고 있다.",
+      "evidence": "Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras | Cool Papers - 몰입형 논문 탐색 총계: 1 ## Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras [PDF] [복사] [Kimi1] [REL] Ruijun Zhang, Hang Su, Kostas Daniilidis, Ziyun Wang Event cameras는 저조도와 빠른 움직임에 대한 강인성 덕분에 순간적인 motion estimation에서 최근 유망한 성능을 보여주고 있다.",
       "metadata": {},
       "source": "Paper:arxiv-2604-18744:d418fd397b58",
       "target": "PerformanceClaim:performance-claim-match-any-events-zero-shot-mot:d0d4f581bc2b",
       "type": "supports_claim"
     },
     {
-      "evidence": "Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras | Cool Papers - 몰입형 논문 탐색 총계: 1 # Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras [PDF] [Copy] [Kimi] [REL] Ruijun Zhang, Hang Su, Kostas Daniilidis, Ziyun Wang Event camera는 저조도와 빠른 motion에 대한 강인성 덕분에 순간적인 motion estimation에서 최근 유망한 성능을 보여주고 있다.",
+      "evidence": "Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras | Cool Papers - 몰입형 논문 탐색 총계: 1 ## Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras [PDF] [복사] [Kimi1] [REL] Ruijun Zhang, Hang Su, Kostas Daniilidis, Ziyun Wang Event cameras는 저조도와 빠른 움직임에 대한 강인성 덕분에 순간적인 motion estimation에서 최근 유망한 성능을 보여주고 있다.",
       "metadata": {},
       "source": "PerformanceClaim:performance-claim-match-any-events-zero-shot-mot:d0d4f581bc2b",
       "target": "EvidenceSpan:evidence-match-any-events-zero-shot-motion-robus:1e1b510b072d",
@@ -7421,7 +7421,7 @@
       "type": "part_of"
     },
     {
-      "evidence": "이러한 기여를 통해, 본 표현은 최신 ray tracing 효율성을 유지하면서도 현세대 3DGS에 필적하는 rasterization 성능을 달성하며, 통합된 실시간 미분 가능 rendering을 향한 실용적인 경로를 제공한다.",
+      "evidence": "이러한 기여를 통해, 제안하는 표현은 최첨단 ray tracing 효율성을 유지하면서도 현세대 3DGS와 경쟁 가능한 rasterization 성능을 달성하며, 통합된 실시간 미분 가능 rendering을 향한 실용적인 경로를 제공한다.",
       "metadata": {},
       "source": "Paper:arxiv-2604-24994:058a2f90e8fc",
       "target": "MethodologicalConcept:gaussian-splatting:4f4b246c6522",
@@ -7463,7 +7463,7 @@
       "type": "mentioned_in"
     },
     {
-      "evidence": "이러한 기여를 통해, 본 표현은 최신 ray tracing 효율성을 유지하면서도 현세대 3DGS에 필적하는 rasterization 성능을 달성하며, 통합된 실시간 미분 가능 rendering을 향한 실용적인 경로를 제공한다.",
+      "evidence": "이러한 기여를 통해, 제안하는 표현은 최첨단 ray tracing 효율성을 유지하면서도 현세대 3DGS와 경쟁 가능한 rasterization 성능을 달성하며, 통합된 실시간 미분 가능 rendering을 향한 실용적인 경로를 제공한다.",
       "metadata": {},
       "source": "Paper:arxiv-2604-24994:058a2f90e8fc",
       "target": "ApproachFamily:gaussian-splatting-reconstruction:84097d3185ea",
@@ -7512,21 +7512,21 @@
       "type": "authored_by"
     },
     {
-      "evidence": "# Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization | Cool Papers - 몰입형 논문 탐색 총계: 1 ### Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization [PDF] [Copy] [Kimi1] [REL] - Shrisudhan Govindarajan - Daniel Rebain - Dor Verbin - Kwang Moo Yi - Anish Prabhu - Andrea Tagliasacchi 우리는 foam 기반 ray tracing의 ray tracing 성능과 현대 rasterization 파이프라인의 효율성을 통합하는 미분 가능한 3D 표현을 소개한다.",
+      "evidence": "# Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization | Cool Papers - 몰입형 논문 탐색 총계: 1 # Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization [PDF] [Copy] [Kimi1] [REL] Shrisudhan Govindarajan, Daniel Rebain, Dor Verbin, Kwang Moo Yi, Anish Prabhu, Andrea Tagliasacchi 우리는 foam 기반 ray tracing의 ray tracing 성능과 현대적 rasterization 파이프라인의 효율성을 통합하는 미분 가능한 3D 표현을 제안한다.",
       "metadata": {},
       "source": "EvidenceSpan:evidence-power-foam-unifying-real-time-different:41d6914bc553",
       "target": "Paper:arxiv-2604-24994:058a2f90e8fc",
       "type": "part_of"
     },
     {
-      "evidence": "# Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization | Cool Papers - 몰입형 논문 탐색 총계: 1 ### Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization [PDF] [Copy] [Kimi1] [REL] - Shrisudhan Govindarajan - Daniel Rebain - Dor Verbin - Kwang Moo Yi - Anish Prabhu - Andrea Tagliasacchi 우리는 foam 기반 ray tracing의 ray tracing 성능과 현대 rasterization 파이프라인의 효율성을 통합하는 미분 가능한 3D 표현을 소개한다.",
+      "evidence": "# Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization | Cool Papers - 몰입형 논문 탐색 총계: 1 # Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization [PDF] [Copy] [Kimi1] [REL] Shrisudhan Govindarajan, Daniel Rebain, Dor Verbin, Kwang Moo Yi, Anish Prabhu, Andrea Tagliasacchi 우리는 foam 기반 ray tracing의 ray tracing 성능과 현대적 rasterization 파이프라인의 효율성을 통합하는 미분 가능한 3D 표현을 제안한다.",
       "metadata": {},
       "source": "Paper:arxiv-2604-24994:058a2f90e8fc",
       "target": "PerformanceClaim:performance-claim-power-foam-unifying-real-time-:da1bdc9d2025",
       "type": "supports_claim"
     },
     {
-      "evidence": "# Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization | Cool Papers - 몰입형 논문 탐색 총계: 1 ### Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization [PDF] [Copy] [Kimi1] [REL] - Shrisudhan Govindarajan - Daniel Rebain - Dor Verbin - Kwang Moo Yi - Anish Prabhu - Andrea Tagliasacchi 우리는 foam 기반 ray tracing의 ray tracing 성능과 현대 rasterization 파이프라인의 효율성을 통합하는 미분 가능한 3D 표현을 소개한다.",
+      "evidence": "# Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization | Cool Papers - 몰입형 논문 탐색 총계: 1 # Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization [PDF] [Copy] [Kimi1] [REL] Shrisudhan Govindarajan, Daniel Rebain, Dor Verbin, Kwang Moo Yi, Anish Prabhu, Andrea Tagliasacchi 우리는 foam 기반 ray tracing의 ray tracing 성능과 현대적 rasterization 파이프라인의 효율성을 통합하는 미분 가능한 3D 표현을 제안한다.",
       "metadata": {},
       "source": "PerformanceClaim:performance-claim-power-foam-unifying-real-time-:da1bdc9d2025",
       "target": "EvidenceSpan:evidence-power-foam-unifying-real-time-different:41d6914bc553",
@@ -8753,6 +8753,195 @@
     {
       "evidence": null,
       "metadata": {},
+      "source": "SourceDocument:daily-research-digest-2026-05-06:bd3bac48d4bc",
+      "target": "Paper:arxiv-2604-24994:058a2f90e8fc",
+      "type": "mentioned_in"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "SourceDocument:daily-research-digest-2026-05-06:bd3bac48d4bc",
+      "target": "Paper:arxiv-2604-18744:d418fd397b58",
+      "type": "mentioned_in"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "SourceDocument:daily-research-digest-2026-05-06:bd3bac48d4bc",
+      "target": "Paper:arxiv-2604-27246:ec5a855f8563",
+      "type": "mentioned_in"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Paper:arxiv-2604-18744:d418fd397b58",
+      "target": "ResearchField:3d-4d-vision-and-reconstruction:4273d84d58f1",
+      "type": "part_of"
+    },
+    {
+      "evidence": "여러 benchmark에 대한 광범위한 실험 결과, 우리 프레임워크는 기존 최고 event feature matching 방법 대비 37.7% 향상을 달성했다.",
+      "metadata": {},
+      "source": "EvidenceSpan:evidence-benchmark-event-feature-matching:da056ffbd23b",
+      "target": "Paper:arxiv-2604-18744:d418fd397b58",
+      "type": "part_of"
+    },
+    {
+      "evidence": "여러 benchmark에 대한 광범위한 실험 결과, 우리 프레임워크는 기존 최고 event feature matching 방법 대비 37.7% 향상을 달성했다.",
+      "metadata": {},
+      "source": "Paper:arxiv-2604-18744:d418fd397b58",
+      "target": "PerformanceClaim:performance-claim-benchmark-event-feature-matchi:2e17586ae21c",
+      "type": "supports_claim"
+    },
+    {
+      "evidence": "여러 benchmark에 대한 광범위한 실험 결과, 우리 프레임워크는 기존 최고 event feature matching 방법 대비 37.7% 향상을 달성했다.",
+      "metadata": {},
+      "source": "PerformanceClaim:performance-claim-benchmark-event-feature-matchi:2e17586ae21c",
+      "target": "EvidenceSpan:evidence-benchmark-event-feature-matching:da056ffbd23b",
+      "type": "evidenced_by"
+    },
+    {
+      "evidence": "이러한 기여를 통해, 제안하는 표현은 최첨단 ray tracing 효율성을 유지하면서도 현세대 3DGS와 경쟁 가능한 rasterization 성능을 달성하며, 통합된 실시간 미분 가능 rendering을 향한 실용적인 경로를 제공한다.",
+      "metadata": {},
+      "source": "EvidenceSpan:evidence-ray-tracing-3dgs-raste:36dfb5263410",
+      "target": "Paper:arxiv-2604-24994:058a2f90e8fc",
+      "type": "part_of"
+    },
+    {
+      "evidence": "이러한 기여를 통해, 제안하는 표현은 최첨단 ray tracing 효율성을 유지하면서도 현세대 3DGS와 경쟁 가능한 rasterization 성능을 달성하며, 통합된 실시간 미분 가능 rendering을 향한 실용적인 경로를 제공한다.",
+      "metadata": {},
+      "source": "Paper:arxiv-2604-24994:058a2f90e8fc",
+      "target": "PerformanceClaim:claim-ray-tracing-3dgs-rasterization:3e83791f79ce",
+      "type": "supports_claim"
+    },
+    {
+      "evidence": "이러한 기여를 통해, 제안하는 표현은 최첨단 ray tracing 효율성을 유지하면서도 현세대 3DGS와 경쟁 가능한 rasterization 성능을 달성하며, 통합된 실시간 미분 가능 rendering을 향한 실용적인 경로를 제공한다.",
+      "metadata": {},
+      "source": "PerformanceClaim:claim-ray-tracing-3dgs-rasterization:3e83791f79ce",
+      "target": "MethodologicalConcept:gaussian-splatting:4f4b246c6522",
+      "type": "uses"
+    },
+    {
+      "evidence": "이러한 기여를 통해, 제안하는 표현은 최첨단 ray tracing 효율성을 유지하면서도 현세대 3DGS와 경쟁 가능한 rasterization 성능을 달성하며, 통합된 실시간 미분 가능 rendering을 향한 실용적인 경로를 제공한다.",
+      "metadata": {},
+      "source": "PerformanceClaim:claim-ray-tracing-3dgs-rasterization:3e83791f79ce",
+      "target": "EvidenceSpan:evidence-ray-tracing-3dgs-raste:36dfb5263410",
+      "type": "evidenced_by"
+    },
+    {
+      "evidence": "이러한 기여를 통해, 제안하는 표현은 최첨단 ray tracing 효율성을 유지하면서도 현세대 3DGS와 경쟁 가능한 rasterization 성능을 달성하며, 통합된 실시간 미분 가능 rendering을 향한 실용적인 경로를 제공한다.",
+      "metadata": {},
+      "source": "PerformanceClaim:claim-ray-tracing-3dgs-rasterization:3e83791f79ce",
+      "target": "Paper:arxiv-2604-24994:058a2f90e8fc",
+      "type": "mentioned_in"
+    },
+    {
+      "evidence": "기존의 foam 표현은 공간의 명시적 volumetric partition을 통해 상수 시간 ray traversal을 가능하게 하지만, 잠재적으로 무한한 cell 때문에 효율적인 tile 기반 rasterization이 어렵다.",
+      "metadata": {},
+      "source": "Paper:arxiv-2604-24994:058a2f90e8fc",
+      "target": "MethodologicalConcept:volumetric-rendering:7527b301d064",
+      "type": "uses"
+    },
+    {
+      "evidence": "기존의 foam 표현은 공간의 명시적 volumetric partition을 통해 상수 시간 ray traversal을 가능하게 하지만, 잠재적으로 무한한 cell 때문에 효율적인 tile 기반 rasterization이 어렵다.",
+      "metadata": {},
+      "source": "EvidenceSpan:evidence-foam-volumetric-partition-ray-traversal:ce4a44a63ed1",
+      "target": "Paper:arxiv-2604-24994:058a2f90e8fc",
+      "type": "part_of"
+    },
+    {
+      "evidence": "기존의 foam 표현은 공간의 명시적 volumetric partition을 통해 상수 시간 ray traversal을 가능하게 하지만, 잠재적으로 무한한 cell 때문에 효율적인 tile 기반 rasterization이 어렵다.",
+      "metadata": {},
+      "source": "Paper:arxiv-2604-24994:058a2f90e8fc",
+      "target": "CausalClaim:claim-foam-volumetric-partition-ray-traversal-ce:574ff22f1936",
+      "type": "supports_claim"
+    },
+    {
+      "evidence": "기존의 foam 표현은 공간의 명시적 volumetric partition을 통해 상수 시간 ray traversal을 가능하게 하지만, 잠재적으로 무한한 cell 때문에 효율적인 tile 기반 rasterization이 어렵다.",
+      "metadata": {},
+      "source": "CausalClaim:claim-foam-volumetric-partition-ray-traversal-ce:574ff22f1936",
+      "target": "MethodologicalConcept:volumetric-rendering:7527b301d064",
+      "type": "uses"
+    },
+    {
+      "evidence": "기존의 foam 표현은 공간의 명시적 volumetric partition을 통해 상수 시간 ray traversal을 가능하게 하지만, 잠재적으로 무한한 cell 때문에 효율적인 tile 기반 rasterization이 어렵다.",
+      "metadata": {},
+      "source": "CausalClaim:claim-foam-volumetric-partition-ray-traversal-ce:574ff22f1936",
+      "target": "EvidenceSpan:evidence-foam-volumetric-partition-ray-traversal:ce4a44a63ed1",
+      "type": "evidenced_by"
+    },
+    {
+      "evidence": "기존의 foam 표현은 공간의 명시적 volumetric partition을 통해 상수 시간 ray traversal을 가능하게 하지만, 잠재적으로 무한한 cell 때문에 효율적인 tile 기반 rasterization이 어렵다.",
+      "metadata": {},
+      "source": "CausalClaim:claim-foam-volumetric-partition-ray-traversal-ce:574ff22f1936",
+      "target": "Paper:arxiv-2604-24994:058a2f90e8fc",
+      "type": "mentioned_in"
+    },
+    {
+      "evidence": "이러한 기여를 통해, 제안하는 표현은 최첨단 ray tracing 효율성을 유지하면서도 현세대 3DGS와 경쟁 가능한 rasterization 성능을 달성하며, 통합된 실시간 미분 가능 rendering을 향한 실용적인 경로를 제공한다.",
+      "metadata": {},
+      "source": "Paper:arxiv-2604-24994:058a2f90e8fc",
+      "target": "PerformanceClaim:performance-claim-ray-tracing-3dgs-rasterization:d7b9d8964301",
+      "type": "supports_claim"
+    },
+    {
+      "evidence": "이러한 기여를 통해, 제안하는 표현은 최첨단 ray tracing 효율성을 유지하면서도 현세대 3DGS와 경쟁 가능한 rasterization 성능을 달성하며, 통합된 실시간 미분 가능 rendering을 향한 실용적인 경로를 제공한다.",
+      "metadata": {},
+      "source": "PerformanceClaim:performance-claim-ray-tracing-3dgs-rasterization:d7b9d8964301",
+      "target": "EvidenceSpan:evidence-ray-tracing-3dgs-raste:36dfb5263410",
+      "type": "evidenced_by"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Paper:arxiv-2604-27246:ec5a855f8563",
+      "target": "ResearchField:research-literature:8be73da23ed0",
+      "type": "part_of"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Paper:arxiv-2604-27246:ec5a855f8563",
+      "target": "Person:elima-shehu:a3d675db7593",
+      "type": "authored_by"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Paper:arxiv-2604-27246:ec5a855f8563",
+      "target": "Person:petr-hrub:6a4e5048c9b4",
+      "type": "authored_by"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "SourceDocument:daily-feed-summary-2026-05-06:d92daae25275",
+      "target": "Paper:arxiv-2604-18744:d418fd397b58",
+      "type": "mentioned_in"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "SourceDocument:daily-feed-summary-2026-05-06:d92daae25275",
+      "target": "Paper:arxiv-2604-27246:ec5a855f8563",
+      "type": "mentioned_in"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "SourceDocument:daily-feed-summary-2026-05-06:d92daae25275",
+      "target": "Paper:arxiv-2604-24994:058a2f90e8fc",
+      "type": "mentioned_in"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Repository:github-ai-search-guru-getcito-worlds-first-open-:a2eddd0925d0",
+      "target": "Organization:ai-search-guru:c20fb3b7a3db",
+      "type": "released_by"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
       "source": "SourceDocument:2026-w15:76b20547149e",
       "target": "Paper:arxiv-2604-02996:14fc0d914a17",
       "type": "mentioned_in"
@@ -9517,21 +9706,21 @@
       "evidence": null,
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
-      "target": "Paper:arxiv-2501-19252:f188522141a2",
-      "type": "synthesizes"
-    },
-    {
-      "evidence": null,
-      "metadata": {},
-      "source": "Synthesis:pulse:6ffe96c09f0f",
-      "target": "Paper:arxiv-2512-13238:85a4b38cbb7f",
-      "type": "synthesizes"
-    },
-    {
-      "evidence": null,
-      "metadata": {},
-      "source": "Synthesis:pulse:6ffe96c09f0f",
       "target": "Paper:arxiv-2603-28980:2f6981d6a09d",
+      "type": "synthesizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "Paper:arxiv-2604-27246:ec5a855f8563",
+      "type": "synthesizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "Repository:github-ai-search-guru-getcito-worlds-first-open-:a2eddd0925d0",
       "type": "synthesizes"
     },
     {
@@ -10203,6 +10392,13 @@
       "evidence": null,
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "Paper:arxiv-2604-27246:ec5a855f8563",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
       "target": "Repository:github-addyosmani-agent-skills:facb512aaab2",
       "type": "summarizes"
     },
@@ -10239,6 +10435,13 @@
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
       "target": "Repository:github-ahujasid-blender-mcp:6228afba619f",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "Repository:github-ai-search-guru-getcito-worlds-first-open-:a2eddd0925d0",
       "type": "summarizes"
     },
     {
@@ -11323,6 +11526,13 @@
       "evidence": null,
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "SourceDocument:daily-feed-summary-2026-05-06:d92daae25275",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
       "target": "SourceDocument:daily-research-digest-2026-04-08:15e09365fdb3",
       "type": "summarizes"
     },
@@ -11456,6 +11666,13 @@
       "evidence": null,
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "SourceDocument:daily-research-digest-2026-05-06:bd3bac48d4bc",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
       "target": "SourceDocument:digest:4ad20ad19eb9",
       "type": "summarizes"
     },
@@ -11478,6 +11695,13 @@
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
       "target": "SourceDocument:geometry-grounded-gaussian-splatting:3edb2e35a848",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "SourceDocument:h1-align-center-llm-wiki-h1:b60a072f7da3",
       "type": "summarizes"
     },
     {
@@ -11520,13 +11744,6 @@
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
       "target": "SourceDocument:llm-wiki-frontend-redesign-implementation-plan:73c24c053594",
-      "type": "summarizes"
-    },
-    {
-      "evidence": null,
-      "metadata": {},
-      "source": "Synthesis:pulse:6ffe96c09f0f",
-      "target": "SourceDocument:llm-wiki:67d449e6e8ec",
       "type": "summarizes"
     },
     {
@@ -14298,6 +14515,13 @@
       "evidence": null,
       "metadata": {},
       "source": "Synthesis:daily-2026-04-30:0e2dd47363e5",
+      "target": "MethodologicalConcept:volumetric-rendering:7527b301d064",
+      "type": "synthesizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-04-30:0e2dd47363e5",
       "target": "Paper:arxiv-2603-22387:f0293d2f76a7",
       "type": "synthesizes"
     },
@@ -14880,6 +15104,62 @@
       "metadata": {},
       "source": "Synthesis:daily-2026-05-05:d8cac75ed48c",
       "target": "SourceDocument:daily-research-digest-2026-05-05:5435de4760f4",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-06:e515cf2a8272",
+      "target": "Paper:arxiv-2604-27246:ec5a855f8563",
+      "type": "synthesizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-06:e515cf2a8272",
+      "target": "Repository:github-ai-search-guru-getcito-worlds-first-open-:a2eddd0925d0",
+      "type": "synthesizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-06:e515cf2a8272",
+      "target": "SourceDocument:daily-feed-summary-2026-05-06:d92daae25275",
+      "type": "synthesizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-06:e515cf2a8272",
+      "target": "SourceDocument:daily-research-digest-2026-05-06:bd3bac48d4bc",
+      "type": "synthesizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-06:e515cf2a8272",
+      "target": "Paper:arxiv-2604-27246:ec5a855f8563",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-06:e515cf2a8272",
+      "target": "Repository:github-ai-search-guru-getcito-worlds-first-open-:a2eddd0925d0",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-06:e515cf2a8272",
+      "target": "SourceDocument:daily-feed-summary-2026-05-06:d92daae25275",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-06:e515cf2a8272",
+      "target": "SourceDocument:daily-research-digest-2026-05-06:bd3bac48d4bc",
       "type": "summarizes"
     },
     {
@@ -15677,6 +15957,13 @@
       "evidence": null,
       "metadata": {},
       "source": "Synthesis:field-3d-4d-vision-and-reconstruction:853e9a0e999f",
+      "target": "Paper:arxiv-2604-18744:d418fd397b58",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:field-3d-4d-vision-and-reconstruction:853e9a0e999f",
       "target": "Paper:arxiv-2604-20329:938595284635",
       "type": "summarizes"
     },
@@ -15875,6 +16162,13 @@
       "source": "Synthesis:field-research-literature:f50377e69d49",
       "target": "Paper:arxiv-2604-20329:938595284635",
       "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:field-research-literature:f50377e69d49",
+      "target": "Paper:arxiv-2604-27246:ec5a855f8563",
+      "type": "summarizes"
     }
   ],
   "nodes": [
@@ -15890,130 +16184,182 @@
     {
       "aliases": [],
       "description": "",
-      "id": "SourceDocument:llm-wiki:67d449e6e8ec",
+      "id": "SourceDocument:h1-align-center-llm-wiki-h1:b60a072f7da3",
       "metadata": {
+        "candidate_paper_titles": [
+          "Install",
+          "Initialize a wiki inside any project",
+          "Compile the graph and site",
+          "Open the site",
+          "Keep exploring"
+        ],
         "github_repo": "ca1773130n/llm-wiki",
         "repo_url": "https://github.com/ca1773130n/LLM-Wiki",
         "sections": [
           {
-            "anchor": "llm-wiki",
-            "level": 1,
-            "text": "LLM-Wiki"
+            "anchor": "what-you-get",
+            "level": 2,
+            "text": "✨ What you get"
           },
           {
-            "anchor": "install",
+            "anchor": "explore-a-real-project-wiki",
+            "level": 3,
+            "text": "Explore a real project wiki"
+          },
+          {
+            "anchor": "keep-research-and-code-in-the-same-memory-system",
+            "level": 3,
+            "text": "Keep research and code in the same memory system"
+          },
+          {
+            "anchor": "import-agent-sessions-as-project-memory",
+            "level": 3,
+            "text": "Import agent sessions as project memory"
+          },
+          {
+            "anchor": "give-agents-structured-access",
+            "level": 3,
+            "text": "Give agents structured access"
+          },
+          {
+            "anchor": "quick-start",
             "level": 2,
-            "text": "Install"
+            "text": "🚀 Quick Start"
+          },
+          {
+            "anchor": "1-install",
+            "level": 3,
+            "text": "1. Install"
+          },
+          {
+            "anchor": "2-initialize-a-wiki-inside-any-project",
+            "level": 3,
+            "text": "2. Initialize a wiki inside any project"
+          },
+          {
+            "anchor": "3-compile-the-graph-and-site",
+            "level": 3,
+            "text": "3. Compile the graph and site"
+          },
+          {
+            "anchor": "4-open-the-site",
+            "level": 3,
+            "text": "4. Open the site"
+          },
+          {
+            "anchor": "5-keep-exploring",
+            "level": 3,
+            "text": "5. Keep exploring"
+          },
+          {
+            "anchor": "query-the-compiled-wiki",
+            "level": 1,
+            "text": "Query the compiled wiki"
+          },
+          {
+            "anchor": "lint-graph-wiki-site-consistency",
+            "level": 1,
+            "text": "Lint graph/wiki/site consistency"
+          },
+          {
+            "anchor": "export-claude-code-codex-gemini-cursor-kiro-opencode-harness-files",
+            "level": 1,
+            "text": "Export Claude Code/Codex/Gemini/Cursor/Kiro/OpenCode harness files"
+          },
+          {
+            "anchor": "export-an-obsidian-vault-projection",
+            "level": 1,
+            "text": "Export an Obsidian vault projection"
+          },
+          {
+            "anchor": "export-graphiti-compatible-temporal-episodes",
+            "level": 1,
+            "text": "Export Graphiti-compatible temporal episodes"
+          },
+          {
+            "anchor": "run-a-local-mcp-server-over-a-compiled-graph",
+            "level": 1,
+            "text": "Run a local MCP server over a compiled graph"
+          },
+          {
+            "anchor": "import-local-agent-sessions",
+            "level": 2,
+            "text": "🧠 Import local agent sessions"
+          },
+          {
+            "anchor": "see-matching-local-claude-code-codex-sessions-for-this-project",
+            "level": 1,
+            "text": "See matching local Claude Code/Codex sessions for this project"
+          },
+          {
+            "anchor": "normalize-and-store-them-under-llm-wiki-harness-sessions",
+            "level": 1,
+            "text": "Normalize and store them under .llm-wiki/harness_sessions/"
+          },
+          {
+            "anchor": "confirm-what-will-be-rendered",
+            "level": 1,
+            "text": "Confirm what will be rendered"
+          },
+          {
+            "anchor": "emit-sessions-index-html-and-session-detail-pages",
+            "level": 1,
+            "text": "Emit sessions/index.html and session detail pages"
+          },
+          {
+            "anchor": "publish-the-wiki",
+            "level": 2,
+            "text": "🌐 Publish the wiki"
+          },
+          {
+            "anchor": "preview-the-gh-pages-commit-without-pushing",
+            "level": 1,
+            "text": "Preview the gh-pages commit without pushing"
+          },
+          {
+            "anchor": "use-a-custom-deploy-branch-or-remote",
+            "level": 1,
+            "text": "Use a custom deploy branch or remote"
+          },
+          {
+            "anchor": "use-a-custom-deploy-message",
+            "level": 1,
+            "text": "Use a custom deploy message"
+          },
+          {
+            "anchor": "allow-deploy-with-a-dirty-working-tree",
+            "level": 1,
+            "text": "Allow deploy with a dirty working tree"
+          },
+          {
+            "anchor": "interfaces-and-exports",
+            "level": 2,
+            "text": "🔌 Interfaces and exports"
+          },
+          {
+            "anchor": "under-the-hood",
+            "level": 2,
+            "text": "🔧 Under the hood"
           },
           {
             "anchor": "documentation",
             "level": 2,
-            "text": "Documentation"
+            "text": "📚 Documentation"
           },
           {
-            "anchor": "deploy-a-demo-site",
+            "anchor": "development",
             "level": 2,
-            "text": "Deploy a demo site"
+            "text": "🧪 Development"
           },
           {
-            "anchor": "a-run-a-local-demo-server",
-            "level": 3,
-            "text": "A. Run a local demo server"
-          },
-          {
-            "anchor": "open-http-127-0-0-1-8765-in-a-browser",
-            "level": 1,
-            "text": "open http://127.0.0.1:8765/ in a browser"
-          },
-          {
-            "anchor": "b-publish-to-github-pages-from-the-cli",
-            "level": 3,
-            "text": "B. Publish to GitHub Pages from the CLI"
-          },
-          {
-            "anchor": "stage-commit-on-gh-pages-locally-but-skip-the-push-preview-the-deploy",
-            "level": 1,
-            "text": "Stage + commit on gh-pages locally, but skip the push (preview the deploy):"
-          },
-          {
-            "anchor": "use-a-different-branch-or-remote",
-            "level": 1,
-            "text": "Use a different branch or remote:"
-          },
-          {
-            "anchor": "custom-commit-message",
-            "level": 1,
-            "text": "Custom commit message:"
-          },
-          {
-            "anchor": "deploy-with-uncommitted-changes-in-your-main-tree-refused-by-default",
-            "level": 1,
-            "text": "Deploy with uncommitted changes in your main tree (refused by default):"
-          },
-          {
-            "anchor": "force-push-the-deploy-branch-refused-for-main-master-regardless",
-            "level": 1,
-            "text": "Force-push the deploy branch (refused for main/master regardless):"
-          },
-          {
-            "anchor": "custom-domain-via-dns-add-this-to-llm-wiki-config-json",
-            "level": 1,
-            "text": "Custom domain via DNS — add this to .llm-wiki/config.json:"
-          },
-          {
-            "anchor": "site-cname-wiki-example-com",
-            "level": 1,
-            "text": "\"site_cname\": \"wiki.example.com\""
-          },
-          {
-            "anchor": "then-re-deploy-a-cname-file-is-written-automatically",
-            "level": 1,
-            "text": "then re-deploy; a CNAME file is written automatically."
-          },
-          {
-            "anchor": "github-workflows-deploy-wiki-yml",
-            "level": 1,
-            "text": ".github/workflows/deploy-wiki.yml"
-          },
-          {
-            "anchor": "current-implementation",
+            "anchor": "contributing",
             "level": 2,
-            "text": "Current implementation"
-          },
-          {
-            "anchor": "recommended-released-wheel",
-            "level": 1,
-            "text": "Recommended — released wheel"
-          },
-          {
-            "anchor": "contributor-checkout-editable-install",
-            "level": 1,
-            "text": "Contributor checkout — editable install"
-          },
-          {
-            "anchor": "live-sync-requires-graphiti-core-plus-a-reachable-neo4j-backend",
-            "level": 1,
-            "text": "Live sync requires graphiti_core plus a reachable Neo4j backend:"
-          },
-          {
-            "anchor": "or-only-selected-agents",
-            "level": 1,
-            "text": "Or only selected agents:"
-          },
-          {
-            "anchor": "write-to-a-real-obsidian-vault-path-instead-of-llm-wiki-obsidian-vault",
-            "level": 1,
-            "text": "Write to a real Obsidian vault path instead of .llm-wiki/obsidian_vault:"
-          },
-          {
-            "anchor": "architecture-direction",
-            "level": 2,
-            "text": "Architecture direction"
+            "text": "🤝 Contributing"
           }
         ],
         "source_kind": "SourceDocument"
       },
-      "name": "LLM-Wiki",
+      "name": "<h1 align=\"center\">LLM-Wiki</h1>",
       "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/README.md",
       "type": "SourceDocument"
     },
@@ -32882,6 +33228,272 @@
     {
       "aliases": [],
       "description": "",
+      "id": "SourceDocument:daily-research-digest-2026-05-06:bd3bac48d4bc",
+      "metadata": {
+        "analysis_date": "2026-05-06",
+        "arxiv_id": "2604.24994",
+        "candidate_paper_titles": [
+          "실시간 품질 타협 없는 3D 표현, Power Foam",
+          "Dual-Pixel을 SfM에 직접 끌어들인 DP-SfM",
+          "Gaussian Splatting에서 바로 고품질 메시를 뽑아내는 흐름"
+        ],
+        "github_repo": "ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool",
+        "repo_url": "https://github.com/ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool",
+        "sections": [
+          {
+            "anchor": "daily-research-digest-2026-05-06",
+            "level": 1,
+            "text": "📬 Daily Research Digest — 2026-05-06"
+          },
+          {
+            "anchor": "오늘의-하이라이트",
+            "level": 2,
+            "text": "🔥 오늘의 하이라이트"
+          },
+          {
+            "anchor": "1-실시간-품질-타협-없는-3d-표현-power-foam",
+            "level": 3,
+            "text": "1. 실시간 품질 타협 없는 3D 표현, Power Foam"
+          },
+          {
+            "anchor": "2-dual-pixel을-sfm에-직접-끌어들인-dp-sfm",
+            "level": 3,
+            "text": "2. Dual-Pixel을 SfM에 직접 끌어들인 DP-SfM"
+          },
+          {
+            "anchor": "3-gaussian-splatting에서-바로-고품질-메시를-뽑아내는-흐름",
+            "level": 3,
+            "text": "3. Gaussian Splatting에서 바로 고품질 메시를 뽑아내는 흐름"
+          },
+          {
+            "anchor": "주목할-만한-피드",
+            "level": 2,
+            "text": "📋 주목할 만한 피드"
+          },
+          {
+            "anchor": "평면-제약을-활용한-더-정밀한-삼각측량",
+            "level": 3,
+            "text": "▫️ 평면 제약을 활용한 더 정밀한 삼각측량"
+          },
+          {
+            "anchor": "stepper가-보여준-점진적-월드-확장형-3d-생성",
+            "level": 3,
+            "text": "▫️ Stepper가 보여준 점진적 월드 확장형 3D 생성"
+          },
+          {
+            "anchor": "계단-환경에서-확인된-온보드-rgb-d-slam-성능",
+            "level": 3,
+            "text": "▫️ 계단 환경에서 확인된 온보드 RGB-D SLAM 성능"
+          },
+          {
+            "anchor": "geometry-foundation-model에-대한-예고",
+            "level": 3,
+            "text": "▫️ Geometry Foundation Model에 대한 예고"
+          },
+          {
+            "anchor": "오늘의-숫자",
+            "level": 2,
+            "text": "📊 오늘의 숫자"
+          }
+        ],
+        "source_kind": "SourceDocument"
+      },
+      "name": "📬 Daily Research Digest — 2026-05-06",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-06/digest.md",
+      "type": "SourceDocument"
+    },
+    {
+      "aliases": [
+        "arXiv:2604.27246"
+      ],
+      "description": "",
+      "id": "Paper:arxiv-2604-27246:ec5a855f8563",
+      "metadata": {
+        "analysis_date": "2026-05-06",
+        "arxiv_id": "2604.27246",
+        "discovered_in": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-06/digest.md",
+        "sections": [
+          {
+            "anchor": "논문-분석-2604-27246",
+            "level": 1,
+            "text": "논문 분석: 2604.27246"
+          },
+          {
+            "anchor": "2604-27246",
+            "level": 2,
+            "text": "2604.27246"
+          },
+          {
+            "anchor": "1",
+            "level": 2,
+            "text": "#1"
+          },
+          {
+            "anchor": "triangulation-of-points-constrained-to-a-plane",
+            "level": 1,
+            "text": "Triangulation of Points Constrained to a Plane"
+          }
+        ],
+        "source_kind": "SourceDocument",
+        "title_quality": "paper_file"
+      },
+      "name": "Triangulation of Points Constrained to a Plane",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-06/papers/2604.27246/paper.md",
+      "type": "Paper"
+    },
+    {
+      "aliases": [],
+      "description": "여러 benchmark에 대한 광범위한 실험 결과, 우리 프레임워크는 기존 최고 event feature matching 방법 대비 37.7% 향상을 달성했다.",
+      "id": "PerformanceClaim:performance-claim-benchmark-event-feature-matchi:2e17586ae21c",
+      "metadata": {},
+      "name": "Performance claim: 여러 benchmark에 대한 광범위한 실험 결과, 우리 프레임워크는 기존 최고 event feature matching 방법 대비 37.7% 향상을 달성했다.",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-06/papers/2604.18744/paper.md",
+      "type": "PerformanceClaim"
+    },
+    {
+      "aliases": [],
+      "description": "여러 benchmark에 대한 광범위한 실험 결과, 우리 프레임워크는 기존 최고 event feature matching 방법 대비 37.7% 향상을 달성했다.",
+      "id": "EvidenceSpan:evidence-benchmark-event-feature-matching:da056ffbd23b",
+      "metadata": {},
+      "name": "Evidence: 여러 benchmark에 대한 광범위한 실험 결과, 우리 프레임워크는 기존 최고 event feature matching 방법…",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-06/papers/2604.18744/paper.md",
+      "type": "EvidenceSpan"
+    },
+    {
+      "aliases": [],
+      "description": "이러한 기여를 통해, 제안하는 표현은 최첨단 ray tracing 효율성을 유지하면서도 현세대 3DGS와 경쟁 가능한 rasterization 성능을 달성하며, 통합된 실시간 미분 가능 rendering을 향한 실용적인 경로를 제공한다.",
+      "id": "EvidenceSpan:evidence-ray-tracing-3dgs-raste:36dfb5263410",
+      "metadata": {},
+      "name": "Evidence: 이러한 기여를 통해, 제안하는 표현은 최첨단 ray tracing 효율성을 유지하면서도 현세대 3DGS와 경쟁 가능한 raste…",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-06/papers/2604.24994/paper.md",
+      "type": "EvidenceSpan"
+    },
+    {
+      "aliases": [],
+      "description": "이러한 기여를 통해, 제안하는 표현은 최첨단 ray tracing 효율성을 유지하면서도 현세대 3DGS와 경쟁 가능한 rasterization 성능을 달성하며, 통합된 실시간 미분 가능 rendering을 향한 실용적인 경로를 제공한다.",
+      "id": "PerformanceClaim:claim-ray-tracing-3dgs-rasterization:3e83791f79ce",
+      "metadata": {},
+      "name": "Claim: 이러한 기여를 통해, 제안하는 표현은 최첨단 ray tracing 효율성을 유지하면서도 현세대 3DGS와 경쟁 가능한 rasterization 성능을 달성하며, 통합된 실…",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-06/papers/2604.24994/paper.md",
+      "type": "PerformanceClaim"
+    },
+    {
+      "aliases": [],
+      "description": "기존의 foam 표현은 공간의 명시적 volumetric partition을 통해 상수 시간 ray traversal을 가능하게 하지만, 잠재적으로 무한한 cell 때문에 효율적인 tile 기반 rasterization이 어렵다.",
+      "id": "EvidenceSpan:evidence-foam-volumetric-partition-ray-traversal:ce4a44a63ed1",
+      "metadata": {},
+      "name": "Evidence: 기존의 foam 표현은 공간의 명시적 volumetric partition을 통해 상수 시간 ray traversal을 가능하게…",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-06/papers/2604.24994/paper.md",
+      "type": "EvidenceSpan"
+    },
+    {
+      "aliases": [],
+      "description": "기존의 foam 표현은 공간의 명시적 volumetric partition을 통해 상수 시간 ray traversal을 가능하게 하지만, 잠재적으로 무한한 cell 때문에 효율적인 tile 기반 rasterization이 어렵다.",
+      "id": "CausalClaim:claim-foam-volumetric-partition-ray-traversal-ce:574ff22f1936",
+      "metadata": {},
+      "name": "Claim: 기존의 foam 표현은 공간의 명시적 volumetric partition을 통해 상수 시간 ray traversal을 가능하게 하지만, 잠재적으로 무한한 cell 때문에…",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-06/papers/2604.24994/paper.md",
+      "type": "CausalClaim"
+    },
+    {
+      "aliases": [],
+      "description": "이러한 기여를 통해, 제안하는 표현은 최첨단 ray tracing 효율성을 유지하면서도 현세대 3DGS와 경쟁 가능한 rasterization 성능을 달성하며, 통합된 실시간 미분 가능 rendering을 향한 실용적인 경로를 제공한다.",
+      "id": "PerformanceClaim:performance-claim-ray-tracing-3dgs-rasterization:d7b9d8964301",
+      "metadata": {},
+      "name": "Performance claim: 이러한 기여를 통해, 제안하는 표현은 최첨단 ray tracing 효율성을 유지하면서도 현세대 3DGS와 경쟁 가능한 rasterization 성능을 달성하며, 통합된 실…",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-06/papers/2604.24994/paper.md",
+      "type": "PerformanceClaim"
+    },
+    {
+      "aliases": [],
+      "description": "",
+      "id": "Person:elima-shehu:a3d675db7593",
+      "metadata": {},
+      "name": "Elima Shehu",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-06/papers/2604.27246/paper.md",
+      "type": "Person"
+    },
+    {
+      "aliases": [],
+      "description": "",
+      "id": "Person:petr-hrub:6a4e5048c9b4",
+      "metadata": {},
+      "name": "Petr Hrubý",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-06/papers/2604.27246/paper.md",
+      "type": "Person"
+    },
+    {
+      "aliases": [],
+      "description": "",
+      "id": "SourceDocument:daily-feed-summary-2026-05-06:d92daae25275",
+      "metadata": {
+        "analysis_date": "2026-05-06",
+        "github_repo": "ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool",
+        "repo_url": "https://github.com/ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool",
+        "sections": [
+          {
+            "anchor": "daily-feed-summary-2026-05-06",
+            "level": 1,
+            "text": "Daily Feed Summary — 2026-05-06"
+          }
+        ],
+        "source_kind": "SourceDocument"
+      },
+      "name": "Daily Feed Summary — 2026-05-06",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-06/raw.md",
+      "type": "SourceDocument"
+    },
+    {
+      "aliases": [],
+      "description": "",
+      "id": "Organization:ai-search-guru:c20fb3b7a3db",
+      "metadata": {},
+      "name": "ai-search-guru",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-06/repos/ai-search-guru_getcito-worlds-first-open-source-aio-aeo-or-geo-tool.md",
+      "type": "Organization"
+    },
+    {
+      "aliases": [
+        "ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool",
+        "https://github.com/ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool"
+      ],
+      "description": "",
+      "id": "Repository:github-ai-search-guru-getcito-worlds-first-open-:a2eddd0925d0",
+      "metadata": {
+        "analysis_date": "2026-05-06",
+        "github_repo": "ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool",
+        "repo_url": "https://github.com/ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool",
+        "sections": [
+          {
+            "anchor": "github-분석-ai-search-guru-getcito-worlds-first-open-source-aio-aeo-or-geo-tool",
+            "level": 1,
+            "text": "GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool"
+          },
+          {
+            "anchor": "개요",
+            "level": 2,
+            "text": "개요"
+          },
+          {
+            "anchor": "실행-가능-상태-모델-다운로드-스크립트-있음-다운로드-후-실행-가능",
+            "level": 2,
+            "text": "실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)"
+          },
+          {
+            "anchor": "파일-구조",
+            "level": 2,
+            "text": "파일 구조"
+          }
+        ],
+        "source_kind": "SourceDocument"
+      },
+      "name": "GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-06/repos/ai-search-guru_getcito-worlds-first-open-source-aio-aeo-or-geo-tool.md",
+      "type": "Repository"
+    },
+    {
+      "aliases": [],
+      "description": "",
       "id": "SourceDocument:2026-w15:76b20547149e",
       "metadata": {
         "arxiv_id": "2604.02996",
@@ -34440,12 +35052,12 @@
       "description": "Top-level snapshot of the wiki at compile time.",
       "id": "Synthesis:pulse:6ffe96c09f0f",
       "metadata": {
-        "content_hash": "sha256-256ee2873fb6805d2a997ff6318e20ef2975e65ce600a885db96680e0eb94366",
+        "content_hash": "sha256-70dd0b0493530c25d8209f938a6e0f5b47766c0354cf18930420cc1a6bf08a43",
         "input_ids": [
           "Paper:arxiv-2411-07096:24b0b33c3698",
-          "Paper:arxiv-2501-19252:f188522141a2",
-          "Paper:arxiv-2512-13238:85a4b38cbb7f",
           "Paper:arxiv-2603-28980:2f6981d6a09d",
+          "Paper:arxiv-2604-27246:ec5a855f8563",
+          "Repository:github-ai-search-guru-getcito-worlds-first-open-:a2eddd0925d0",
           "Repository:github-facebookresearch-aina:1ab1f8fc5164"
         ],
         "synthesis_kind": "pulse"
@@ -34944,10 +35556,11 @@
       "description": "Digest of 2026-04-30 ingest.",
       "id": "Synthesis:daily-2026-04-30:0e2dd47363e5",
       "metadata": {
-        "content_hash": "sha256-83e752762d3e5603559b2bcc5d4e6eb55bd7762400f960ab5b121b31e357a43b",
+        "content_hash": "sha256-e54df5d0c66954e0d9013a3ab43782f4a7b736658bb795e4346a2a0cccf045dd",
         "input_ids": [
           "MethodologicalConcept:gaussian-splatting:4f4b246c6522",
           "MethodologicalConcept:video-diffusion:72ecb908974b",
+          "MethodologicalConcept:volumetric-rendering:7527b301d064",
           "Paper:arxiv-2603-22387:f0293d2f76a7",
           "Paper:arxiv-2604-01907:c33f94f027a1",
           "Paper:arxiv-2604-09429:89f9960e33a5",
@@ -35065,6 +35678,24 @@
         "synthesis_kind": "daily_digest"
       },
       "name": "Daily Digest — 2026-05-05",
+      "source_path": null,
+      "type": "Synthesis"
+    },
+    {
+      "aliases": [],
+      "description": "Digest of 2026-05-06 ingest.",
+      "id": "Synthesis:daily-2026-05-06:e515cf2a8272",
+      "metadata": {
+        "content_hash": "sha256-194b929e7708a5edc1a167270a50cb4c02cd2a2ce5e557e7833a49911698716f",
+        "input_ids": [
+          "Paper:arxiv-2604-27246:ec5a855f8563",
+          "Repository:github-ai-search-guru-getcito-worlds-first-open-:a2eddd0925d0",
+          "SourceDocument:daily-feed-summary-2026-05-06:d92daae25275",
+          "SourceDocument:daily-research-digest-2026-05-06:bd3bac48d4bc"
+        ],
+        "synthesis_kind": "daily_digest"
+      },
+      "name": "Daily Digest — 2026-05-06",
       "source_path": null,
       "type": "Synthesis"
     },

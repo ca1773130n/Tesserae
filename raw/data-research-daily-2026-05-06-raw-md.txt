@@ -1,0 +1,16 @@
+raw.md
+======
+
+# Daily Feed Summary — 2026-05-06
+
+Total: 7 relevant feeds (from 25)
+
+| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |
+|------|------|-------|-----|--------|-------|-----------|-------------|
+| 2026-05-06 | 17:03 | We’ve been working on geometry foundation models for self-...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-05-06 | 12:16 | TIL about "dual pixel cameras". Fun thing 2 -- the only wiki...... | https://arxiv.org/pdf/2604.18744 | N/A | N/A | [분석](papers/2604.18744/paper.md) | N/A |
+| 2026-05-06 | 12:00 | SLAM test on the colored stairs! Insight 9 beats repetitive ...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-05-06 | 11:28 | DP-SfM: Dual-Pixel Structure-from-Motion without Scale Ambig...... | https://arxiv.org/pdf/2604.27246 | N/A | N/A | [분석](papers/2604.27246/paper.md) | N/A |
+| 2026-05-06 | 03:44 | RT ダックビル＠STUDIO DUCKBILL LLC: 由布院「金鱗...... | https://arxiv.org/pdf/2604.24994 | N/A | N/A | [분석](papers/2604.24994/paper.md) | N/A |
+| 2026-05-06 | 22:36 | 段階的に世界を創る。 Stepperはパノラマを一�...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-05-06 | 01:10 | Extracts high-quality 3D meshes from Gaussian splatting http...... | N/A | https://github.com/ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool | 98 | N/A | [분석](repos/ai-search-guru_getcito-worlds-first-open-source-aio-aeo-or-geo-tool.md) |

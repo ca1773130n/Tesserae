@@ -14,6 +14,7 @@ Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization
 - **belongs_to_approach_family** → Gaussian Splatting Reconstruction _(ApproachFamily)_
 - **part_of** → 3D/4D Vision and Reconstruction _(ResearchField)_
 - **uses** → Gaussian Splatting _(MethodologicalConcept)_
+- **uses** → Volumetric Rendering _(MethodologicalConcept)_
 
 ## Incoming relations
 
@@ -21,15 +22,17 @@ Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization
 - **mentioned_in** → Daily Feed Summary — 2026-04-30 _(SourceDocument)_
 - **mentioned_in** → Daily Feed Summary — 2026-05-01 _(SourceDocument)_
 - **mentioned_in** → Daily Feed Summary — 2026-05-02 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-05-06 _(SourceDocument)_
 - **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_
 - **mentioned_in** → 📬 Daily Research Digest — 2026-04-30 _(SourceDocument)_
 - **mentioned_in** → 📬 Daily Research Digest — 2026-05-01 _(SourceDocument)_
 - **mentioned_in** → 📬 Daily Research Digest — 2026-05-02 _(SourceDocument)_
+- **mentioned_in** → 📬 Daily Research Digest — 2026-05-06 _(SourceDocument)_
 
 ## Connected node types
 
-- SourceDocument: 8
+- SourceDocument: 10
 - Person: 6
+- MethodologicalConcept: 2
 - ApproachFamily: 1
-- MethodologicalConcept: 1
 - ResearchField: 1
