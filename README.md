@@ -1,182 +1,125 @@
-# LLM-Wiki
+<h1 align="center">LLM-Wiki</h1>
 
-LLM-Wiki builds a project-local, typed knowledge graph from research notes, documentation, and development code, then projects that graph into markdown, Obsidian, static HTML, MCP tools, agent harnesses, SQLite/Kuzu, Cognee bundles, and Graphiti-style temporal facts.
+<p align="center">
+  <strong>Turn research notes, docs, code, and agent sessions into a typed wiki graph you can browse, search, query, and publish.</strong>
+  <br />
+  <em>A local-first knowledge pipeline for humans, coding agents, and long-lived project memory.</em>
+</p>
 
-The goal is **not** a generic noun-phrase knowledge graph. LLM-Wiki keeps a controlled ontology so the graph can track high-value objects explicitly:
+<p align="center">
+  <a href="#-quick-start"><img src="https://img.shields.io/badge/Quick_Start-blue" alt="Quick Start" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow" alt="License: MIT" /></a>
+  <a href="docs/architecture.md"><img src="https://img.shields.io/badge/Architecture-typed_graph-8A2BE2" alt="Architecture" /></a>
+  <a href="docs/session-history.md"><img src="https://img.shields.io/badge/Sessions-project_memory-38bdf8" alt="Session History" /></a>
+  <a href="docs/quickstart.md"><img src="https://img.shields.io/badge/Docs-quickstart-d4a574" alt="Docs" /></a>
+  <a href="https://ca1773130n.github.io/LLM-Wiki/"><img src="https://img.shields.io/badge/Demo-GitHub_Pages-00c853" alt="Demo" /></a>
+</p>
 
-- research fields/topics/problem areas;
-- papers, repositories, models, datasets, benchmarks, metrics, and results;
-- reusable concepts, mathematical ideas, algorithms, training/inference strategies, and technical terms;
-- contribution/performance/comparison/limitation/causal claims;
-- evidence spans grounding claims in source documents;
-- approach families and trends across time;
-- development-code projects, source files, classes, functions, and dependencies.
+---
 
-Research and development code use different ontology slices, but they share the same durable pipeline:
+> [!TIP]
+> You have papers in one folder, design docs in another, a living codebase, and weeks of Claude/Codex sessions explaining decisions. Where is the map?
+
+LLM-Wiki builds that map. It compiles raw project knowledge into a validated graph, projects it into a readable markdown/wiki layer, and publishes a static site with search, graph navigation, AI-readable exports, and optional local MCP tools.
+
+> **Graphs that stay useful > graphs that merely look impressive.**
+
+LLM-Wiki is not a generic noun-phrase extractor. It uses a controlled ontology so the important objects stay explicit: papers, repositories, models, datasets, benchmarks, metrics, claims, evidence spans, concepts, source files, classes, functions, dependencies, trends, and imported agent sessions.
 
 ```text
-raw sources → validated graph → reproducible projections → human/agent interfaces
+raw sources → validated typed graph → markdown/wiki projection → static site + agent interfaces
 ```
 
-## Install
+---
+
+## ✨ What you get
+
+### Explore a real project wiki
+
+Compile a project into a browsable static site with home, sources, concepts, entities, papers, repos, topics, syntheses, open questions, sessions, timeline, graph view, and AI sibling files.
+
+The site is just files under `.llm-wiki/site/`: easy to serve locally, push to GitHub Pages, copy to an internal server, or hand to another agent.
+
+### Keep research and code in the same memory system
+
+LLM-Wiki has separate ontology slices for research and development code, but one durable pipeline:
+
+- research notes become papers, claims, evidence, topics, concepts, metrics, datasets, models, and trends;
+- docs and repositories become source documents and project pages;
+- code projects add source files, classes, functions, and dependencies;
+- all projections remain reproducible from the graph.
+
+### Import agent sessions as project memory
+
+Claude Code and Codex transcripts can be explicitly discovered, normalized, and rendered into `/sessions/` pages. Session details show summaries, metadata, decisions, touched files, commands, a turn rail, readable markdown turns, and collapsed tool-use blocks.
+
+No surprise scraping: normal builds read already-imported `.llm-wiki/harness_sessions/` records only.
+
+### Give agents structured access
+
+LLM-Wiki writes machine-readable exports alongside the human site:
+
+- `search-index.json`
+- `graph.json`
+- `graph.jsonld`
+- `llms.txt`
+- `llms-full.txt`
+- `manifest.json`
+- per-page `.txt` and `.json` siblings
+- optional MCP stdio server tools such as `search_nodes`, `node_context`, `search_facts`, and `timeline`
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>🧭 Typed knowledge graph</h3>
+      <p>Controlled node and edge vocabularies keep the graph meaningful instead of becoming arbitrary entity soup.</p>
+    </td>
+    <td width="50%" valign="top">
+      <h3>🔍 Search + static site</h3>
+      <p>Generate a dependency-light site with command-palette search, source previews, related pages, graph view, and AI-friendly exports.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>🧠 Session history</h3>
+      <p>Turn local Claude Code/Codex sessions into searchable project memory without silently scanning private transcript stores.</p>
+    </td>
+    <td width="50%" valign="top">
+      <h3>🧩 Agent harnesses</h3>
+      <p>Export context/config for Claude Code, Codex, Gemini, Cursor, Kiro, and OpenCode so agents can consume the wiki.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>🗄️ Storage backends</h3>
+      <p>Use markdown, SQLite, optional Kuzu, Obsidian vaults, Cognee bundles, and Graphiti-style temporal facts.</p>
+    </td>
+    <td width="50%" valign="top">
+      <h3>🔐 Local-first by default</h3>
+      <p>The deterministic path needs no API key. Optional Claude CLI/OAuth and Codex CLI/OAuth adapters fit no-API-key workflows.</p>
+    </td>
+  </tr>
+</table>
+
+---
+
+## 🚀 Quick Start
+
+### 1. Install
 
 ```bash
 pip install llm-wiki
 ```
 
-Then, from any project or vault directory:
+For contributor checkouts:
 
 ```bash
-llm_wiki project init --name my_wiki --source-kind Repository --source .
-llm_wiki project compile
-llm_wiki project build-site
-llm_wiki project serve --port 8765
-```
-
-Optional backends (`kuzu`, `cognee`, `graphiti-core`) install separately so the base wheel stays light. Full details in [`docs/installation.md`](docs/installation.md). For contributors who want an editable checkout, see [Install from source](docs/installation.md#install-from-source-for-contributors).
-
-## Documentation
-
-- [Installation](docs/installation.md)
-- [Quickstart](docs/quickstart.md)
-- [Architecture](docs/architecture.md)
-- [Feature map](docs/feature-map.md)
-- [Harness session history](docs/session-history.md)
-- [Self-dogfood demo](docs/self-dogfood.md)
-- [Publishing checklist](docs/publishing-checklist.md)
-
-## Deploy a demo site
-
-Every compile produces a static site at `.llm-wiki/site/`. There are two ways to make it browsable.
-
-### A. Run a local demo server
-
-```bash
-cd .llm-wiki/site
-python3 -m http.server 8765 --bind 127.0.0.1
-# open http://127.0.0.1:8765/ in a browser
-```
-
-Bind to `0.0.0.0` instead of `127.0.0.1` if you want LAN devices (or a DDNS hostname with router port-forwarding) to reach it. The site is plain static HTML; any web server will do — Caddy, nginx, `serve`, GitHub Codespaces, etc.
-
-### B. Publish to GitHub Pages from the CLI
-
-The `project deploy` command pushes the compiled site to the `gh-pages` branch of your project's git origin and (optionally) enables Pages on the repo. It uses a temporary `git worktree`, so your working tree is never checked out to `gh-pages`.
-
-**Prerequisites**
-
-1. The project directory you ran `project init` in is itself a git repository with a GitHub origin remote. Confirm with `git remote get-url origin`.
-2. You can `git push` to that remote (SSH key or `gh auth login`).
-3. Optional but recommended: install the `gh` CLI so `--enable-pages` can flip the Pages toggle for you.
-
-**One-line deploy**
-
-```bash
-llm_wiki project deploy --build --enable-pages
-```
-
-- `--build` runs `project compile` first so the site is fresh.
-- `--enable-pages` calls `gh api` to enable Pages on `gh-pages` (idempotent; if `gh` isn't installed it prints the manual settings URL).
-
-After the push completes, the site is live at:
-
-```
-https://<github-owner>.github.io/<repo-name>/
-```
-
-GitHub Pages takes ~30–90 s to publish the first time.
-
-**Common variations**
-
-```bash
-# Stage + commit on gh-pages locally, but skip the push (preview the deploy):
-llm_wiki project deploy --dry-run
-
-# Use a different branch or remote:
-llm_wiki project deploy --branch site --remote upstream
-
-# Custom commit message:
-llm_wiki project deploy --message "Refresh wiki for 2026-W17 digest"
-
-# Deploy with uncommitted changes in your main tree (refused by default):
-llm_wiki project deploy --force
-
-# Force-push the deploy branch (refused for main/master regardless):
-llm_wiki project deploy --force-push
-
-# Custom domain via DNS — add this to .llm-wiki/config.json:
-#   "site_cname": "wiki.example.com"
-# then re-deploy; a CNAME file is written automatically.
-```
-
-**What gets pushed**
-
-- Every file under `.llm-wiki/site/` (HTML pages, AI siblings, `assets/`, `graph.json`, `graph.jsonld`, `llms.txt`, `llms-full.txt`, `manifest.json`, `search-index.json`, `sitemap.xml`, `rss.xml`, `robots.txt`, `ai-readme.md`).
-- A `.nojekyll` file at the root so Pages doesn't strip underscore-prefixed asset paths.
-- A `CNAME` file if `site_cname` is set in the project config.
-
-**Re-deploys are incremental.** The `gh-pages` branch advances with one new commit per `project deploy` run; old revisions stay in the branch history.
-
-**Using GitHub Actions instead.** A minimal workflow works too:
-
-```yaml
-# .github/workflows/deploy-wiki.yml
-name: Deploy LLM-Wiki
-on:
-  push:
-    branches: [main]
-permissions:
-  contents: write
-  pages: write
-  id-token: write
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      - run: pip install -e .
-      - run: llm_wiki project compile
-      - run: llm_wiki project deploy --enable-pages --message "${{ github.sha }}"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
-
-**Troubleshooting**
-
-| Symptom | Fix |
-|---|---|
-| `Cowardly refusing: working tree is dirty` | Commit or stash changes, or pass `--force`. |
-| `Site directory is empty — run project compile first` | Run `llm_wiki project compile` (or pass `--build`). |
-| `gh` not found | Install via `brew install gh` / `winget install GitHub.cli`, run `gh auth login`, or skip `--enable-pages` and toggle Pages manually in the repo Settings. |
-| Pages serves a 404 on a known URL | Wait 60 s for the first publish; then check `https://github.com/<owner>/<repo>/actions` for the `pages-build-deployment` workflow status. |
-| Custom domain shows "DNS check failed" | Make sure your DNS has an `A` record (185.199.108–111.153) or a `CNAME` to `<owner>.github.io`. |
-
-## Current implementation
-
-The baseline implementation uses deterministic guardrail extractors and optional CLI/OAuth enrichment. `llm_wiki.research_graph` defines controlled node/edge vocabularies and prevents arbitrary node types such as `software`, `technique`, `domain`, or generic `Entity` from becoming graph schema.
-
-Run tests:
-
-```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest tests/ -q
-```
-
-Install the CLI so shell commands work without `python3 -m`:
-
-```bash
-# Recommended — released wheel
-pip install llm-wiki
-
-# Contributor checkout — editable install
-git clone https://github.com/ca1773130n/LLM-Wiki.git && cd LLM-Wiki
+git clone https://github.com/ca1773130n/LLM-Wiki.git
+cd LLM-Wiki
 pip install -e .
 ```
 
-A convenience installer (`scripts/install.sh`) is bundled for fresh machines that want a project-local `.venv` and `~/.local/bin` wrappers in one step — see [`docs/installation.md`](docs/installation.md#install-from-source-for-contributors).
-
-Initialize a self-contained LLM-Wiki inside any project directory:
+### 2. Initialize a wiki inside any project
 
 ```bash
 cd /path/to/my-project
@@ -185,344 +128,223 @@ llm_wiki project init \
   --source-kind Repository \
   --source README.md \
   --source docs \
-  --source src
-llm_wiki project compile --changed-only
-llm_wiki project mcp-config \
-  --server-name my_project_wiki
+  --source src \
+  --source tests
 ```
 
-`project compile` uses the default `sources` saved in `.llm-wiki/config.json`, writes every durable artifact, and preserves the previous graph when `--changed-only` skips all files. Use `project ingest <paths>` when you want to compile ad-hoc paths without changing the saved source list.
+### 3. Compile the graph and site
 
-This creates project-local artifacts under `.llm-wiki/`:
+```bash
+llm_wiki project compile --changed-only
+llm_wiki project build-site
+```
+
+This writes a project-local wiki workspace:
 
 ```text
 .llm-wiki/
   config.json
   graph.json
-  temporal_facts.jsonl
   manifest.json
   sqlite.db
-  report.md
-  competitive_report.md
+  temporal_facts.jsonl
   graphiti_episodes.jsonl
   markdown_projection/
-  obsidian_vault/
+  wiki/
+  site/
   agent_harness/
   harness_sessions/
-  site/
+  obsidian_vault/
   cognee_bundle/
 ```
 
-Competitive hardening versus MegaMem/Graphiti-style systems:
-
-- `temporal_facts.jsonl` projects every validated edge into a Graphiti-style fact with `valid_from`, `current`, `invalidated_by`, `confidence`, evidence, and source provenance.
-- `graphiti_episodes.jsonl` exports those temporal facts as Graphiti-compatible episodes without requiring Graphiti at compile time; `project sync-graphiti` can optionally push them to Graphiti/Neo4j when `graphiti_core` is installed.
-- `obsidian_vault/` is a ready-to-open Obsidian projection with `.obsidian` defaults, graph coloring, attachments under `raw/assets`, and a Dataview dashboard.
-- `agent_harness/` writes shared context and target-specific harness files for Claude Code, Codex, Gemini CLI, Kiro, Cursor, and OpenCode so external coding agents can discover the graph and MCP server.
-- `site/` is a dependency-light static frontend inspired by Pratiyush/llm-wiki: it writes `index.html`, `graph.json`, `search-index.json`, `llms.txt`, and first-class `sessions/` pages so humans and agents can browse research, development nodes, and imported project-memory transcripts together.
-- `competitive_report.md` records what was absorbed from MegaMem, Graphiti/Zep, MCP graph servers, and agentic RAG systems while preserving LLM-Wiki's controlled ontology/no-API-key differentiators.
-- MCP now exposes temporal tools as well as node tools: `search_facts` and `timeline` join `schema`, `graph_summary`, `search_nodes`, and `node_context`.
-
-Paste the `project mcp-config` output into Hermes `~/.hermes/config.yaml` under `mcp_servers`, then restart Hermes/gateway. The project wiki will be exposed as native MCP tools such as `mcp_my_project_wiki_search_nodes` and `mcp_my_project_wiki_node_context`.
-
-Export or optionally sync project-local temporal facts into Graphiti/Zep-style storage:
+### 4. Open the site
 
 ```bash
-llm_wiki project export-graphiti \
-  --project /path/to/my-project
-llm_wiki project sync-graphiti \
-  --project /path/to/my-project \
-  --dry-run
-# Live sync requires graphiti_core plus a reachable Neo4j backend:
-llm_wiki project sync-graphiti \
-  --project /path/to/my-project \
-  --neo4j-uri bolt://localhost:7687 \
-  --neo4j-user neo4j \
-  --neo4j-password '<password>'
+llm_wiki project serve --port 8765
 ```
 
-`export-graphiti` is dependency-free and writes `.llm-wiki/graphiti_episodes.jsonl`. `sync-graphiti --dry-run` counts the same episodes without importing Graphiti, which is useful for local smoke tests.
+Open:
 
-Export coding-agent harnesses and an Obsidian vault projection:
+```text
+http://127.0.0.1:8765/
+```
+
+### 5. Keep exploring
 
 ```bash
-llm_wiki project export-agent-harness \
-  --project /path/to/my-project
-# Or only selected agents:
-llm_wiki project export-agent-harness \
-  --project /path/to/my-project \
-  --target claude-code \
-  --target cursor \
-  --target opencode
-llm_wiki project export-obsidian \
-  --project /path/to/my-project
-# Write to a real Obsidian vault path instead of .llm-wiki/obsidian_vault:
-llm_wiki project export-obsidian \
-  --project /path/to/my-project \
-  --vault "$OBSIDIAN_VAULT_PATH"
+# Query the compiled wiki
+llm_wiki project query "What are the main abstractions in this project?"
+
+# Lint graph/wiki/site consistency
+llm_wiki project lint
+
+# Export Claude Code/Codex/Gemini/Cursor/Kiro/OpenCode harness files
+llm_wiki project export-agent-harness
+
+# Export an Obsidian vault projection
+llm_wiki project export-obsidian
+
+# Export Graphiti-compatible temporal episodes
+llm_wiki project export-graphiti
+
+# Run a local MCP server over a compiled graph
+llm_wiki_mcp --graph .llm-wiki/graph.json
 ```
 
-The agent harness currently emits:
+---
 
-- Claude Code: `claude/CLAUDE.md`, `claude/.claude/settings.json`
-- Codex: `codex/AGENTS.md`, `codex/mcp.toml`
-- Gemini: `gemini/GEMINI.md`, `gemini/.gemini/settings.json`
-- Kiro: `kiro/.kiro/steering/llm-wiki.md`, `kiro/.kiro/settings/mcp.json`
-- Cursor: `cursor/.cursor/rules/llm-wiki.mdc`, `cursor/.cursor/mcp.json`
-- OpenCode: `opencode/AGENTS.md`, `opencode/opencode.json`
+## 🧠 Import local agent sessions
 
-Build and serve the local frontend:
+Session import is explicit. Preview first, import second, rebuild third:
 
 ```bash
-llm_wiki project build-site \
-  --project /path/to/my-project
-llm_wiki project serve \
-  --project /path/to/my-project \
-  --port 8765
+# See matching local Claude Code/Codex sessions for this project
+llm_wiki project sessions discover
+
+# Normalize and store them under .llm-wiki/harness_sessions/
+llm_wiki project sessions discover --import
+
+# Confirm what will be rendered
+llm_wiki project sessions list
+
+# Emit sessions/index.html and session detail pages
+llm_wiki project build-site
 ```
 
-For development projects, initialize with `--source-kind CodeProject` or `Repository` and include code directories. Code files become graph nodes (`CodeProject`, `SourceFile`, `CodeClass`, `CodeFunction`, `Dependency`) alongside research nodes, while source files remain raw evidence and generated markdown/site outputs remain projections:
+Generated session detail pages include:
+
+- high-level summary and timeline;
+- files, commands, tools, decisions, and errors;
+- collapsed subagent history;
+- user/assistant conversation turns rendered as markdown;
+- collapsed tool-use payloads under the preceding assistant message;
+- a left turn rail with `#turn-N` anchors.
+
+Read the privacy and publishing notes in [`docs/session-history.md`](docs/session-history.md) before publishing transcript-derived pages publicly.
+
+---
+
+## 🌐 Publish the wiki
+
+Every compile produces a static site at `.llm-wiki/site/`. Serve it locally, copy it to any web server, or push it to GitHub Pages:
 
 ```bash
-llm_wiki project init \
-  --project /path/to/my-app \
-  --name my_app_wiki \
-  --source-kind CodeProject \
-  --source README.md \
-  --source docs \
-  --source src
-llm_wiki project compile --project /path/to/my-app
+llm_wiki project deploy --build --enable-pages
 ```
 
-Optional graph/storage packages currently used by the local environment:
+Common deploy options:
 
 ```bash
-python3 -m pip install --user kuzu cognee graphiti-core
+# Preview the gh-pages commit without pushing
+llm_wiki project deploy --dry-run
+
+# Use a custom deploy branch or remote
+llm_wiki project deploy --branch site --remote upstream
+
+# Use a custom deploy message
+llm_wiki project deploy --message "Refresh wiki for release notes"
+
+# Allow deploy with a dirty working tree
+llm_wiki project deploy --force
 ```
 
-Extract a JSON graph from a paper note:
+The default public URL is:
+
+```text
+https://<github-owner>.github.io/<repo-name>/
+```
+
+---
+
+## 🔌 Interfaces and exports
+
+| Interface | Command / Artifact | Use it for |
+|---|---|---|
+| Static site | `.llm-wiki/site/index.html` | Human browsing, search, graph exploration, Pages deploys |
+| Search index | `.llm-wiki/site/search-index.json` | Fast local search and agent retrieval |
+| Graph JSON | `.llm-wiki/graph.json` and `.llm-wiki/site/graph.json` | Authoritative graph payloads |
+| LLM text exports | `llms.txt`, `llms-full.txt`, per-page `.txt` | Context packs for agents |
+| MCP server | `llm_wiki_mcp --graph .llm-wiki/graph.json` | Tool calls from Hermes or other MCP clients |
+| Agent harness | `llm_wiki project export-agent-harness` | Claude Code, Codex, Gemini, Cursor, Kiro, OpenCode setup files |
+| Obsidian | `llm_wiki project export-obsidian` | Open the projection as a vault |
+| Graphiti | `llm_wiki project export-graphiti` / `sync-graphiti` | Temporal fact export/sync |
+| Cognee | `--cognee-output`, `--cognee-add`, `--cognee-codex-cognify` | Cognee bundles and optional no-API-key cognify path |
+
+---
+
+## 🔧 Under the hood
+
+LLM-Wiki is a pipeline, not a dashboard bolted onto a folder.
+
+| Stage | What happens |
+|---|---|
+| Source ingest | Read configured project sources, tolerate malformed text, hash content, and support changed-only runs. |
+| Extraction | Deterministic extractors and optional Claude CLI/OAuth enrichment produce candidate graph facts. |
+| Validation | `ResearchGraph` enforces controlled node types and edge types before anything is persisted. |
+| Canonicalization | Alias handling and review queues help merge near-duplicate concepts safely. |
+| Projection | Wiki markdown, static HTML, search index, graph payloads, AI siblings, Obsidian, Cognee, Graphiti, SQLite, and Kuzu outputs are generated from the graph. |
+| Agent memory | Imported harness sessions and exported harness configs connect the wiki to everyday coding-agent workflows. |
+
+The controlled ontology is the guardrail: it keeps useful distinctions alive instead of flattening everything into generic entities.
+
+---
+
+## 📚 Documentation
+
+- [Quickstart](docs/quickstart.md)
+- [Installation](docs/installation.md)
+- [Architecture](docs/architecture.md)
+- [Feature map](docs/feature-map.md)
+- [Harness session history](docs/session-history.md)
+- [Frontend route walkthrough](docs/frontend-redesign.md)
+- [Self-dogfood demo](docs/self-dogfood.md)
+- [Publishing checklist](docs/publishing-checklist.md)
+
+---
+
+## 🧪 Development
+
+Run focused tests while iterating:
 
 ```bash
-llm_wiki data/research/daily/2026-04-26/papers/2601.17835/paper.md \
-  --source-kind Paper \
-  --pretty \
-  -o output/research_graph_sample.json
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest \
+  tests/test_frontend.py \
+  tests/test_project_cli.py \
+  tests/test_harness_sessions.py \
+  tests/test_site_tokens.py \
+  -q
 ```
 
-Extract multiple notes and add corpus-level trend nodes for concepts that recur across sources:
+Run the full suite:
 
 ```bash
-llm_wiki \
-  data/research/daily/2026-04-25/papers/2604.00538/paper.md \
-  data/research/daily/2026-04-26/papers/2601.17835/paper.md \
-  --source-kind Paper \
-  --trends \
-  --min-trend-sources 2 \
-  --pretty \
-  -o output/research_graph_trends_smoke.json
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest tests/ -q
 ```
 
-Use Claude CLI/OAuth instead of API-key LLM calls for higher-quality candidate extraction. The Claude output is still validated against the controlled node/edge whitelist before it becomes a `ResearchGraph`:
+> [!NOTE]
+> If you add or change docs, run `llm_wiki project compile` before `build-site`; docs are source inputs, not just static files.
 
-```bash
-llm_wiki output/claude_cli_smoke_note.md \
-  --source-kind Paper \
-  --extractor claude-cli \
-  --claude-config-dir /Users/neo/.claude-personal1 \
-  --claude-config-dir /Users/neo/.claude-personal2 \
-  --claude-model sonnet \
-  --pretty \
-  -o output/claude_cli_smoke_graph.json
-```
+---
 
-Canonicalize high-confidence aliases and write a review queue for ambiguous near-duplicates:
+## 🤝 Contributing
 
-```bash
-llm_wiki \
-  data/research/daily/2026-04-25/papers/2604.00538/paper.md \
-  data/research/daily/2026-04-26/papers/2601.17835/paper.md \
-  --source-kind Paper \
-  --trends \
-  --canonicalize \
-  --review-output output/research_graph_review_queue.json \
-  --pretty \
-  -o output/research_graph_canonical_trends_smoke.json
-```
+Contributions are welcome.
 
-Run the full local pipeline: typed graph extraction, trend projection, canonicalization, review queue, markdown projection, and SQLite persistence:
+1. Fork the repository.
+2. Create a branch: `git checkout -b feature/my-change`.
+3. Make the change with tests or docs.
+4. Run the relevant pytest command.
+5. Commit and open a pull request.
 
-```bash
-llm_wiki \
-  data/research/daily/2026-04-25/papers/2604.00538/paper.md \
-  data/research/daily/2026-04-26/papers/2601.17835/paper.md \
-  --source-kind Paper \
-  --trends \
-  --canonicalize \
-  --review-output output/research_graph_review_queue.json \
-  --project-markdown output/markdown_projection \
-  --sqlite-output output/research_graph.sqlite \
-  --pretty \
-  -o output/research_graph_full_pipeline_smoke.json
-```
+Please open an issue first for large changes to ontology, extraction behavior, generated routes, or deploy semantics.
 
-Apply reviewed merge decisions:
+---
 
-```bash
-llm_wiki path/to/papers \
-  --source-kind Paper \
-  --canonicalize \
-  --apply-review-decisions output/review_decisions.json \
-  -o output/research_graph_reviewed.json
-```
+<p align="center">
+  <strong>Stop losing project knowledge in scattered files and forgotten chats. Build the map once, then keep it alive.</strong>
+</p>
 
-Incrementally ingest a corpus in batches. Unchanged files are skipped using content hashes in the manifest; with `--limit`, the runner keeps scanning past skipped files until it processes up to that many changed files:
-
-```bash
-llm_wiki data/research/daily \
-  --source-kind Paper \
-  --batch-manifest output/research_batch_manifest.json \
-  --changed-only \
-  --limit 5 \
-  --trends \
-  --canonicalize \
-  --review-output output/research_batch_review_queue.json \
-  --project-markdown output/batch_markdown_projection \
-  --sqlite-output output/research_batch.sqlite \
-  --pretty \
-  -o output/research_graph_batch_smoke.json
-```
-
-Persist to Kuzu, export a Cognee bundle, write review UX files, and generate a richer markdown report:
-
-```bash
-python3 -m pip install --user kuzu cognee
-llm_wiki data/research/daily \
-  --source-kind Paper \
-  --limit 5 \
-  --trends \
-  --canonicalize \
-  --review-output output/kuzu_review_queue.json \
-  --review-markdown-output output/kuzu_review_queue.md \
-  --review-jsonl-output output/kuzu_review_queue.jsonl \
-  --review-decisions-template output/kuzu_review_decisions.template.json \
-  --project-markdown output/kuzu_markdown_projection \
-  --sqlite-output output/kuzu_research_graph.sqlite \
-  --kuzu-output output/research_graph.kuzu \
-  --cognee-output output/cognee_bundle \
-  --report-output output/research_graph_report.md \
-  --pretty \
-  -o output/research_graph_kuzu_full_smoke.json
-```
-
-Add an exported bundle directly to Cognee without running `cognify`:
-
-```bash
-llm_wiki data/research/daily/2026-04-26/papers/2601.17835/paper.md \
-  --source-kind Paper \
-  --cognee-output output/cognee_direct_data_test_bundle \
-  --cognee-add \
-  --cognee-dataset llm_wiki_data_test \
-  -o output/cognee_direct_data_test_graph.json
-```
-
-`--cognee-cognify` is available, but it may invoke configured LLM/embedding providers, so the default direct path is add-only.
-
-Run Cognee `cognify` through Codex CLI/OAuth instead of API-key LLM calls. This runtime-patches Cognee's LLM client to call `codex exec` via stdin. For smoke-only runs you can use deterministic local embeddings, but for real no-API-key retrieval quality prefer Ollama `qwen3-embedding:0.6b`:
-
-```bash
-ollama serve
-ollama pull qwen3-embedding:0.6b
-llm_wiki data/research/daily/2026-04-26/papers/2601.17835/paper.md \
-  --source-kind Paper \
-  --cognee-output output/cognee_qwen_embedding_sample_bundle \
-  --cognee-codex-cognify \
-  --cognee-codex-model gpt-5.4 \
-  --cognee-codex-timeout 300 \
-  --cognee-embedding-provider ollama \
-  --cognee-ollama-embedding-model qwen3-embedding:0.6b \
-  --cognee-local-embedding-dimensions 1024 \
-  --cognee-system-root output/cognee_qwen_embedding_sample_system \
-  --cognee-data-root output/cognee_qwen_embedding_sample_data \
-  --cognee-dataset llm_wiki_qwen_embedding_sample \
-  -o output/cognee_qwen_embedding_sample_graph.json
-```
-
-Important: keep `--cognee-system-root` isolated when changing embedding dimensions. Previous deterministic runs create 128-dim LanceDB tables; Qwen3 embeddings are 1024-dim, so reusing the same Cognee system root causes LanceDB/Arrow dimension errors.
-
-Expose a compiled ResearchGraph JSON as a local stdio MCP server:
-
-```bash
-python3 -m llm_wiki.mcp_server \
-  --graph output/cognee_qwen_embedding_full_graph.json
-```
-
-The server implements JSON-RPC/MCP `initialize`, `tools/list`, and `tools/call` without requiring the Python MCP SDK. Available tools:
-
-- `schema` — return the controlled node/edge type whitelist
-- `graph_summary` — return node/edge counts and type distributions
-- `search_nodes` — search node names, aliases, descriptions, types, and metadata
-- `node_context` — return a node with incident edges and neighboring nodes
-
-Example Hermes MCP config when the project is not installed as a package:
-
-```yaml
-mcp_servers:
-  llm_wiki:
-    command: "python3"
-    args:
-      - "-m"
-      - "llm_wiki.mcp_server"
-      - "--graph"
-      - "/Users/neo/Developer/Projects/LLM-Wiki/output/cognee_qwen_embedding_full_graph.json"
-    env:
-      PYTHONPATH: "/Users/neo/Developer/Projects/LLM-Wiki"
-```
-
-Restart Hermes/gateway after adding the config so the native MCP client discovers tools such as `mcp_llm_wiki_search_nodes`.
-
-Run a full deterministic corpus ingest without `--limit`:
-
-```bash
-llm_wiki data/research/daily \
-  --source-kind Paper \
-  --trends \
-  --canonicalize \
-  --review-output output/full_corpus_review_queue.json \
-  --review-markdown-output output/full_corpus_review_queue.md \
-  --review-jsonl-output output/full_corpus_review_queue.jsonl \
-  --review-decisions-template output/full_corpus_review_decisions.template.json \
-  --project-markdown output/full_corpus_markdown_projection \
-  --sqlite-output output/full_corpus.sqlite \
-  --kuzu-output output/full_corpus.kuzu \
-  --cognee-output output/full_corpus_cognee \
-  --report-output output/full_corpus_report.md \
-  --batch-manifest output/full_corpus_manifest.json \
-  --pretty \
-  -o output/full_corpus_graph.json
-```
-
-Use cost-aware selective Claude enrichment only for matching paths:
-
-```bash
-llm_wiki data/research/daily \
-  --source-kind Paper \
-  --extractor selective-claude \
-  --claude-include '*/2601.17835/*' \
-  --claude-limit 2 \
-  --claude-config-dir /Users/neo/.claude-personal1 \
-  --claude-config-dir /Users/neo/.claude-personal2 \
-  --trends \
-  --canonicalize \
-  -o output/selective_claude_graph.json
-```
-
-## Architecture direction
-
-This baseline should become the validation and schema layer around Cognee/Claude extraction:
-
-1. Claude extracts a `ResearchKnowledgeGraph` matching this ontology.
-2. The graph is validated against the controlled node/edge vocabularies.
-3. Concepts are canonicalized and merged by alias/definition.
-4. Claims are grounded to `EvidenceSpan` nodes.
-5. Papers/repositories are assigned to `ApproachFamily` candidates for review.
-6. Trends are derived from changes in concept/family/result frequency over time.
+<p align="center">
+  MIT License &copy; LLM-Wiki Contributors
+</p>
