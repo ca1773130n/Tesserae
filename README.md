@@ -106,17 +106,13 @@ pip install llm-wiki
 Inside any project:
 
 ```bash
-llm_wiki project init \
-  --name my_project_wiki \
-  --source-kind Repository \
-  --source README.md \
-  --source docs \
-  --source src
-
+llm_wiki project setup
 llm_wiki project compile
 llm_wiki project build-site
 llm_wiki project serve --port 8765
 ```
+
+The setup wizard is a colored TUI: choose sources, enable companion tools like Understand Anything, and optionally store a refresh command so external graph artifacts update automatically before future compiles.
 
 Open:
 

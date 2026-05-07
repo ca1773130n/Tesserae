@@ -29,13 +29,39 @@ LLM-Wiki can then preserve that artifact alongside the rest of the project memor
 
 ## Current low-friction workflow
 
-Run Understand Anything first:
+The recommended path is the setup wizard:
+
+```bash
+llm_wiki project setup
+```
+
+Choose Understand Anything in the companion-tools step. If you provide a refresh command, LLM-Wiki stores it in `.llm-wiki/config.json` and runs it automatically before future `llm_wiki project compile` calls when auto-refresh is enabled.
+
+For non-interactive automation, use:
+
+```bash
+llm_wiki project setup \
+  --yes \
+  --with-understand-anything \
+  --understand-anything-command '<command that refreshes .understand-anything/knowledge-graph.json>' \
+  --run-understand-anything
+```
+
+You can also force all configured external refresh commands before a compile:
+
+```bash
+llm_wiki project compile --refresh-external-tools
+```
+
+## Manual equivalent
+
+If you prefer explicit config, run Understand Anything first:
 
 ```bash
 /understand
 ```
 
-Then include its graph artifact as one of the LLM-Wiki project sources:
+Then either use `llm_wiki project setup`, or generate a small markdown projection under `.llm-wiki/external/understand-anything.md` and include that projection as the source. The setup wizard does this projection automatically; direct JSON files are kept as raw companion artifacts, not hand-entered source paths.
 
 ```bash
 llm_wiki project init \
@@ -44,7 +70,7 @@ llm_wiki project init \
   --source README.md \
   --source docs \
   --source src \
-  --source .understand-anything/knowledge-graph.json
+  --source .llm-wiki/external/understand-anything.md
 
 llm_wiki project compile
 llm_wiki project build-site

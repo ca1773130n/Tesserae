@@ -21,6 +21,7 @@ from .markdown_projection import GraphMarkdownProjector
 from .persistence import KuzuResearchGraphStore, SQLiteResearchGraphStore
 from .graphiti_adapter import GraphitiSyncUnavailableError
 from .project import CognifyOptions, ProjectWiki, iter_markdown_files
+from .project_setup import apply_setup_plan, build_setup_plan, interactive_setup_plan, refresh_configured_external_tools, render_setup_summary
 from .report import GraphReporter
 from .research_graph import ResearchCorpusAnalyzer, ResearchGraph, ResearchGraphExtractor
 from .review_workflow import ReviewQueueExporter
@@ -178,6 +179,17 @@ def project_main(argv: List[str] | None = None) -> int:
     init_parser.add_argument("--source-kind", default="SourceDocument", help="Default source kind for project ingest")
     init_parser.add_argument("--source", action="append", default=[], help="Default project-relative source path for project compile; repeat for multiple paths")
 
+    setup_parser = subparsers.add_parser("setup", help="Open the colored setup wizard for sources and companion tools")
+    setup_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    setup_parser.add_argument("--name", help="MCP server/config name; defaults to sanitized project directory name")
+    setup_parser.add_argument("--source-kind", default="Repository", help="Default source kind for project compile")
+    setup_parser.add_argument("--source", action="append", default=[], help="Project-relative source path; repeat for multiple paths")
+    setup_parser.add_argument("--with-understand-anything", action="store_true", help="Include .understand-anything/knowledge-graph.json as a companion source")
+    setup_parser.add_argument("--run-understand-anything", action="store_true", help="Run the configured Understand Anything refresh command now and mark it for compile-time auto-refresh")
+    setup_parser.add_argument("--understand-anything-command", help="Shell command that refreshes .understand-anything/knowledge-graph.json")
+    setup_parser.add_argument("--yes", action="store_true", help="Accept detected defaults without interactive prompts")
+    setup_parser.add_argument("--no-color", action="store_true", help="Disable ANSI colors in setup output")
+
     ingest_parser = subparsers.add_parser("ingest", help="Ingest markdown files into the project graph artifacts")
     ingest_parser.add_argument("inputs", nargs="+", help="Project-relative or absolute markdown files/directories")
     ingest_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
@@ -196,6 +208,7 @@ def project_main(argv: List[str] | None = None) -> int:
     compile_parser.add_argument("--min-trend-sources", type=int, default=2, help="Minimum sources needed for Trend nodes")
     compile_parser.add_argument("--include-data", action="store_true", help="Documentation flag: project_root/data is auto-included by default; this flag is a no-op kept for clarity")
     compile_parser.add_argument("--exclude-data", action="store_true", help="Skip the implicit project_root/data auto-include even if data/ exists")
+    compile_parser.add_argument("--refresh-external-tools", action="store_true", help="Run configured external tool refresh commands before compile, even if they are not marked auto_refresh")
     # --- Cognee cognify pass (opt-in, runs after the bundle is written) ----
     compile_parser.add_argument("--cognee-add", action="store_true", help="After compile, add the Cognee bundle to the Cognee dataset (no cognify)")
     compile_parser.add_argument("--cognee-cognify", action="store_true", help="After compile, add the bundle and run Cognee cognify (uses configured LLM/embedding providers)")
@@ -330,6 +343,34 @@ def project_main(argv: List[str] | None = None) -> int:
         print(f"Graph: {wiki.paths.graph}")
         print("Next: python3 -m llm_wiki.cli project ingest <paths>")
         return 0
+    if args.command == "setup":
+        try:
+            if args.yes:
+                plan = build_setup_plan(
+                    args.project,
+                    name=args.name,
+                    source_kind=args.source_kind,
+                    sources=args.source or None,
+                    include_understand_anything=args.with_understand_anything,
+                    run_understand_anything=args.run_understand_anything,
+                    understand_anything_command=args.understand_anything_command,
+                )
+                print(render_setup_summary(plan, color=not args.no_color), end="")
+            else:
+                plan = interactive_setup_plan(args.project, color=not args.no_color)
+            result = apply_setup_plan(plan)
+        except KeyboardInterrupt:
+            print("Setup cancelled.")
+            return 130
+        except Exception as exc:
+            print(f"Setup failed: {exc}", file=sys.stderr)
+            return 2
+        print(f"Initialized project wiki: {result.wiki.root}")
+        print(f"Config: {result.config_path}")
+        if result.ran_tools:
+            print(f"External tools refreshed: {len(result.ran_tools)}")
+        print("Next: llm_wiki project compile && llm_wiki project build-site")
+        return 0
     if args.command == "ingest":
         wiki = ProjectWiki.load(args.project)
         result = wiki.ingest(
@@ -349,6 +390,13 @@ def project_main(argv: List[str] | None = None) -> int:
         return 0
     if args.command == "compile":
         wiki = ProjectWiki.load(args.project)
+        try:
+            refreshed = refresh_configured_external_tools(args.project, only_auto=not args.refresh_external_tools)
+        except Exception as exc:
+            print(f"External tool refresh failed: {exc}", file=sys.stderr)
+            return 2
+        if refreshed:
+            print(f"Refreshed external tools: {len(refreshed)}")
         cognify_mode = (
             "codex_cognify" if args.cognee_codex_cognify
             else "cognify" if args.cognee_cognify
