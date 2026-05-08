@@ -1,0 +1,20 @@
+raw.md
+======
+
+# Daily Feed Summary — 2026-05-07
+
+Total: 11 relevant feeds (from 23)
+
+| Date | Time | Title | PDF | GitHub | Stars | 논문 분석 | GitHub 분석 |
+|------|------|-------|-----|--------|-------|-----------|-------------|
+| 2026-05-07 | 18:08 | a nice thing about the coding robots is being able to resurr...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-05-07 | 15:14 | Remember action recognition? The days of trying to climb on ...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-05-07 | 16:11 | ?New time series generative model just dropped. Paper: https...... | https://arxiv.org/pdf/2604.27443 | N/A | N/A | N/A | N/A |
+| 2026-05-07 | 16:00 | Self-supervised learning unlocked modern vision and NLP by e...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-05-07 | 04:16 | 3D Gaussian Splatting を TSL (Three.js Shader Language) + W...... | N/A | https://github.com/honojs/middleware | 952 | N/A | [분석](repos/honojs_middleware.md) |
+| 2026-05-07 | 04:03 | EONの実装については2025のSIGGRAPHのcourceのスラ...... | https://arxiv.org/pdf/2410.18026 | N/A | N/A | N/A | N/A |
+| 2026-05-07 | 16:31 | Meet LA-Pose. Our latest model taking Wayve another step tow...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-05-07 | 10:48 | LixelStudio 4.0: Engineering-grade data. We systematically u...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-05-07 | 07:06 | World models predict pixels but not geometry. Full 4D predic...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-05-07 | 18:55 | This is what the Bedrock Operator sees on a job site. The ca...... | N/A | N/A | N/A | N/A | N/A |
+| 2026-05-07 | 22:22 | NAS3R [CVPR 2026] From None to All: Self-Supervised 3D Recon...... | N/A | https://github.com/DAVIAN-Robotics/EgoX | 696 | N/A | [분석](repos/DAVIAN-Robotics_EgoX.md) |

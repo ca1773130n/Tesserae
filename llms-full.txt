@@ -35,6 +35,8 @@
 - [Daily Feed Summary — 2026-05-04](sources/daily-feed-summary-2026-05-04.html): - **mentioned_in** → ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild _(Paper)_ - **mentioned_in** → Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search _(Paper)_
 - [Daily Feed Summary — 2026-05-05](sources/daily-feed-summary-2026-05-05.html): - **mentioned_in** → Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset _(Paper)_ - **mentioned_in** → Extreme Rotation Estimation in the Wild _(Paper)_ - **mentioned_in** → Stepper: Stepwise Immersive Scene Generation with…
 - [Daily Feed Summary — 2026-05-06](sources/daily-feed-summary-2026-05-06.html): - **mentioned_in** → Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras _(Paper)_ - **mentioned_in** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_ -…
+- [Daily Feed Summary — 2026-05-07](sources/daily-feed-summary-2026-05-07.html)
+- [Daily Feed Summary — 2026-05-08](sources/daily-feed-summary-2026-05-08.html): - **mentioned_in** → Geometry-Grounded Gaussian Splatting _(Paper)_
 - [📬 Daily Research Digest — 2026-04-08](sources/daily-research-digest-2026-04-08.html): - **mentioned_in** → Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation _(Paper)_ - **mentioned_in** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_ - **mentioned_in**…
 - [📬 Daily Research Digest — 2026-04-15](sources/daily-research-digest-2026-04-15.html): - **mentioned_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_ - **mentioned_in** → Geometry-Grounded Gaussian Splatting _(Paper)_
 - [📬 Daily Research Digest — 2026-04-18](sources/daily-research-digest-2026-04-18.html): - **uses_metric** → mAP _(Metric)_
@@ -69,6 +71,7 @@
 - [Quickstart (fixture)](sources/quickstart-fixture.html)
 - [Self-dogfood Demo](sources/self-dogfood-demo.html)
 - [Synthesis fixtures](sources/synthesis-fixtures.html)
+- [Understand Anything companion workflow](sources/understand-anything-companion-workflow.html): - **uses_metric** → mAP _(Metric)_
 - [Weekly Research Digest — 2026-W17](sources/weekly-research-digest-2026-w17.html): - **mentioned_in** → Image Generators are Generalist Vision Learners _(Paper)_
 - [WorldCompass: Reinforcement Learning for Long-Horizon World Models](sources/worldcompass-reinforcement-learning-for-long-horizon-world-models.html): - **documents** → Geometry-Grounded Gaussian Splatting _(ApproachFamily)_ - **evaluated_on** → Mip-NeRF360 _(Benchmark)_ - **mentioned_in** → ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전 _(Paper)_ - **mentioned_in** → All elementary…
 - [주간 논문 분석 — 2026-W15 (2026-04-06 ~ 2026-04-12)](sources/주간-논문-분석-2026-w15-2026-04-06-2026-04-12.html): - **evaluated_on** → ImageNet _(Benchmark)_ - **mentioned_in** → Efficient Universal Perception Encoder _(Paper)_ - **mentioned_in** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_ - **mentioned_in** → Integrating Symmetry into Differ…
@@ -154,11 +157,14 @@
 - [GitHub 분석: baidu/ernie-image](repos/github-분석-baidu-ernie-image.html)
 - [GitHub 분석: bernakabadayi/physhead](repos/github-분석-bernakabadayi-physhead.html)
 - [GitHub 분석: Blaizzy/mlx-vlm](repos/github-분석-blaizzy-mlx-vlm.html)
+- [GitHub 분석: bolixinyu/LCA](repos/github-분석-bolixinyu-lca.html)
 - [GitHub 분석: BoPeng/ai-marketplace-monitor](repos/github-분석-bopeng-ai-marketplace-monitor.html)
 - [GitHub 분석: cedarconnor/SPAG4d](repos/github-분석-cedarconnor-spag4d.html)
+- [GitHub 분석: CIntellifusion/MultiWorld](repos/github-분석-cintellifusion-multiworld.html)
 - [GitHub 분석: ClaudiaCuttano/SANSA](repos/github-분석-claudiacuttano-sansa.html): - **evaluated_on** → COCO _(Benchmark)_ - **uses_dataset** → ADE20K _(Dataset)_
 - [GitHub 분석: colmap/colmap](repos/github-분석-colmap-colmap.html)
 - [GitHub 분석: cvg/resplat](repos/github-분석-cvg-resplat.html): - **implemented_in** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
+- [GitHub 분석: DAVIAN-Robotics/EgoX](repos/github-분석-davian-robotics-egox.html): - **released_by** → davian-robotics _(Organization)_
 - [GitHub 분석: deepseek-ai/TileKernels](repos/github-분석-deepseek-ai-tilekernels.html): - **released_by** → deepseek-ai _(Organization)_
 - [GitHub 분석: DIYgod/RSSHub](repos/github-분석-diygod-rsshub.html)
 - [GitHub 분석: dqj5182/HACO_RELEASE](repos/github-분석-dqj5182-haco-release.html)
@@ -186,6 +192,7 @@
 - [GitHub 분석: h-shiono/MRTKLIB](repos/github-분석-h-shiono-mrtklib.html): - **released_by** → h-shiono _(Organization)_
 - [GitHub 분석: heygen-com/hyperframes](repos/github-분석-heygen-com-hyperframes.html): - **released_by** → heygen-com _(Organization)_
 - [GitHub 분석: HKU-MMLab/Macro](repos/github-분석-hku-mmlab-macro.html): - **released_by** → hku-mmlab _(Organization)_
+- [GitHub 분석: honojs/middleware](repos/github-분석-honojs-middleware.html)
 - [GitHub 분석: huskydoge/Awesome-Loop-Models](repos/github-분석-huskydoge-awesome-loop-models.html)
 - [GitHub 분석: imlixinyang/FlashWorld](repos/github-분석-imlixinyang-flashworld.html): - **implemented_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(Paper)_
 - [GitHub 분석: inspatio/inspatio-world](repos/github-분석-inspatio-inspatio-world.html)
@@ -209,6 +216,7 @@
 - [GitHub 분석: microsoft/World-R1](repos/github-분석-microsoft-world-r1.html): - **released_by** → microsoft _(Organization)_
 - [GitHub 분석: mrdoob/three.js](repos/github-분석-mrdoob-three-js.html)
 - [GitHub 분석: mutianxu/Kinema4D](repos/github-분석-mutianxu-kinema4d.html)
+- [GitHub 분석: naver/multi-hmr](repos/github-분석-naver-multi-hmr.html)
 - [GitHub 분석: naver/pow3r](repos/github-분석-naver-pow3r.html)
 - [GitHub 분석: Netflix/void-model](repos/github-분석-netflix-void-model.html)
 - [GitHub 분석: nv-tlabs/lyra](repos/github-분석-nv-tlabs-lyra.html): - **released_by** → nv-tlabs _(Organization)_
@@ -331,6 +339,7 @@
 - [Cristiano Saltori](entities/cristiano-saltori.html): - **authored_by** → Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving _(Paper)_
 - [Daniel Cremers](entities/daniel-cremers.html): - **authored_by** → Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas _(Paper)_
 - [Daniel Rebain](entities/daniel-rebain.html): - **authored_by** → FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 _(Paper)_ - **authored_by** → Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization _(Paper)_
+- [davian-robotics](entities/davian-robotics.html): - **released_by** → GitHub 분석: DAVIAN-Robotics/EgoX _(Repository)_
 - [David J. Fleet](entities/david-j-fleet.html): - **authored_by** → RoMo: Robust Motion Segmentation Improves Structure from Motion _(Paper)_
 - [deepseek-ai](entities/deepseek-ai.html): - **released_by** → GitHub 분석: deepseek-ai/TileKernels _(Repository)_
 - [Denis Rozumny](entities/denis-rozumny.html): - **authored_by** → Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction _(Paper)_
@@ -677,6 +686,8 @@
 - [Daily Digest — 2026-05-04](syntheses/daily-2026-05-04.html): Sources ingested under `data/research/daily/2026-05-04/`.
 - [Daily Digest — 2026-05-05](syntheses/daily-2026-05-05.html): Sources ingested under `data/research/daily/2026-05-05/`.
 - [Daily Digest — 2026-05-06](syntheses/daily-2026-05-06.html): Sources ingested under `data/research/daily/2026-05-06/`.
+- [Daily Digest — 2026-05-07](syntheses/daily-2026-05-07.html): Sources ingested under `data/research/daily/2026-05-07/`.
+- [Daily Digest — 2026-05-08](syntheses/daily-2026-05-08.html): Sources ingested under `data/research/daily/2026-05-08/`.
 - [Field Overview — 3D/4D Vision and Reconstruction](syntheses/field-3d-4d-vision-and-reconstruction.html): Dynamic Gaussian Splatting (ApproachFamily) — 1 contributing paper(s) connect to this thread.
 - [Field Overview — LLM Reasoning](syntheses/field-llm-reasoning.html): No linked topics yet.
 - [Field Overview — Research Literature](syntheses/field-research-literature.html): World Model (ResearchTopic) — 3 contributing paper(s) connect to this thread.
@@ -1184,6 +1195,24 @@ _sources/daily-feed-summary-2026-05-06.html_
 
 - Paper: 3
 
+### Daily Feed Summary — 2026-05-07
+_sources/daily-feed-summary-2026-05-07.html_
+
+# Daily Feed Summary — 2026-05-07
+
+### Daily Feed Summary — 2026-05-08
+_sources/daily-feed-summary-2026-05-08.html_
+
+# Daily Feed Summary — 2026-05-08
+
+## Outgoing relations
+
+- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(Paper)_
+
+## Connected node types
+
+- Paper: 1
+
 ### 📬 Daily Research Digest — 2026-04-08
 _sources/daily-research-digest-2026-04-08.html_
 
@@ -1633,6 +1662,19 @@ _sources/self-dogfood-demo.html_
 _sources/synthesis-fixtures.html_
 
 # Synthesis fixtures
+
+### Understand Anything companion workflow
+_sources/understand-anything-companion-workflow.html_
+
+# Understand Anything companion workflow
+
+## Outgoing relations
+
+- **uses_metric** → mAP _(Metric)_
+
+## Connected node types
+
+- Metric: 1
 
 ### Weekly Research Digest — 2026-W17
 _sources/weekly-research-digest-2026-w17.html_
@@ -2326,6 +2368,7 @@ _papers/geometry-grounded-gaussian-splatting.html_
 - **mentioned_in** → Daily Feed Summary — 2026-04-23 _(SourceDocument)_
 - **mentioned_in** → Daily Feed Summary — 2026-04-26 _(SourceDocument)_
 - **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-05-08 _(SourceDocument)_
 - **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_
 - **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
 - **mentioned_in** → 📬 Daily Research Digest — 2026-04-15 _(SourceDocument)_
@@ -2335,7 +2378,7 @@ _papers/geometry-grounded-gaussian-splatting.html_
 
 ## Connected node types
 
-- SourceDocument: 12
+- SourceDocument: 13
 - Person: 5
 - ApproachFamily: 2
 - MethodologicalConcept: 2
@@ -3547,6 +3590,11 @@ _repos/github-분석-blaizzy-mlx-vlm.html_
 
 # GitHub 분석: Blaizzy/mlx-vlm
 
+### GitHub 분석: bolixinyu/LCA
+_repos/github-분석-bolixinyu-lca.html_
+
+# GitHub 분석: bolixinyu/LCA
+
 ### GitHub 분석: BoPeng/ai-marketplace-monitor
 _repos/github-분석-bopeng-ai-marketplace-monitor.html_
 
@@ -3556,6 +3604,11 @@ _repos/github-분석-bopeng-ai-marketplace-monitor.html_
 _repos/github-분석-cedarconnor-spag4d.html_
 
 # GitHub 분석: cedarconnor/SPAG4d
+
+### GitHub 분석: CIntellifusion/MultiWorld
+_repos/github-분석-cintellifusion-multiworld.html_
+
+# GitHub 분석: CIntellifusion/MultiWorld
 
 ### GitHub 분석: ClaudiaCuttano/SANSA
 _repos/github-분석-claudiacuttano-sansa.html_
@@ -3589,6 +3642,19 @@ _repos/github-분석-cvg-resplat.html_
 ## Connected node types
 
 - Paper: 1
+
+### GitHub 분석: DAVIAN-Robotics/EgoX
+_repos/github-분석-davian-robotics-egox.html_
+
+# GitHub 분석: DAVIAN-Robotics/EgoX
+
+## Outgoing relations
+
+- **released_by** → davian-robotics _(Organization)_
+
+## Connected node types
+
+- Organization: 1
 
 ### GitHub 분석: deepseek-ai/TileKernels
 _repos/github-분석-deepseek-ai-tilekernels.html_
@@ -3914,6 +3980,11 @@ _repos/github-분석-hku-mmlab-macro.html_
 
 - Organization: 1
 
+### GitHub 분석: honojs/middleware
+_repos/github-분석-honojs-middleware.html_
+
+# GitHub 분석: honojs/middleware
+
 ### GitHub 분석: huskydoge/Awesome-Loop-Models
 _repos/github-분석-huskydoge-awesome-loop-models.html_
 
@@ -4127,6 +4198,11 @@ _repos/github-분석-mrdoob-three-js.html_
 _repos/github-분석-mutianxu-kinema4d.html_
 
 # GitHub 분석: mutianxu/Kinema4D
+
+### GitHub 분석: naver/multi-hmr
+_repos/github-분석-naver-multi-hmr.html_
+
+# GitHub 분석: naver/multi-hmr
 
 ### GitHub 분석: naver/pow3r
 _repos/github-분석-naver-pow3r.html_
@@ -5551,6 +5627,19 @@ _entities/daniel-rebain.html_
 ## Connected node types
 
 - Paper: 2
+
+### davian-robotics
+_entities/davian-robotics.html_
+
+# davian-robotics
+
+## Incoming relations
+
+- **released_by** → GitHub 분석: DAVIAN-Robotics/EgoX _(Repository)_
+
+## Connected node types
+
+- Repository: 1
 
 ### David J. Fleet
 _entities/david-j-fleet.html_
@@ -7134,12 +7223,12 @@ _entities/map.html_
 - **uses_metric** → RAVEN: Resilient Aerial Navigation via Open-Set Semantic Memory and Behavior Adaptation _(Paper)_
 - **uses_metric** → Sapiens2 _(Paper)_
 - **uses_metric** → Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation _(Paper)_
+- **uses_metric** → Understand Anything companion workflow _(SourceDocument)_
 - **uses_metric** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
-- **uses_metric** → mAP=4 _(Result)_
 
 ## Connected node types
 
-- SourceDocument: 23
+- SourceDocument: 24
 - Paper: 6
 - Repository: 2
 - Result: 1
@@ -10345,6 +10434,37 @@ Sources ingested under `data/research/daily/2026-05-06/`.
 ## Extracted concepts
 - (none extracted)
 
+### Daily Digest — 2026-05-07
+_syntheses/daily-2026-05-07.html_
+
+# Daily Digest — 2026-05-07
+
+Sources ingested under `data/research/daily/2026-05-07/`.
+
+## Papers and repos
+- [GitHub 분석: DAVIAN-Robotics/EgoX](../repos/github-분석-davian-robotics-egox.md) (Repository)
+- [GitHub 분석: honojs/middleware](../repos/github-분석-honojs-middleware.md) (Repository)
+- [Daily Feed Summary — 2026-05-07](../sources/daily-feed-summary-2026-05-07.md) (SourceDocument)
+
+## Extracted concepts
+- (none extracted)
+
+### Daily Digest — 2026-05-08
+_syntheses/daily-2026-05-08.html_
+
+# Daily Digest — 2026-05-08
+
+Sources ingested under `data/research/daily/2026-05-08/`.
+
+## Papers and repos
+- [GitHub 분석: CIntellifusion/MultiWorld](../repos/github-분석-cintellifusion-multiworld.md) (Repository)
+- [GitHub 분석: bolixinyu/LCA](../repos/github-분석-bolixinyu-lca.md) (Repository)
+- [GitHub 분석: naver/multi-hmr](../repos/github-분석-naver-multi-hmr.md) (Repository)
+- [Daily Feed Summary — 2026-05-08](../sources/daily-feed-summary-2026-05-08.md) (SourceDocument)
+
+## Extracted concepts
+- (none extracted)
+
 ### Field Overview — 3D/4D Vision and Reconstruction
 _syntheses/field-3d-4d-vision-and-reconstruction.html_
 
@@ -10416,13 +10536,13 @@ Snapshot of the wiki at the most recent compile.
 - Benchmark: 7
 - CausalClaim: 7
 - Claim: 21
-- CodeClass: 108
-- CodeFunction: 1931
+- CodeClass: 111
+- CodeFunction: 1985
 - CodeProject: 1
 - ComparisonClaim: 18
 - ContributionClaim: 20
 - Dataset: 4
-- Dependency: 95
+- Dependency: 97
 - EvaluationProtocol: 1
 - EvidenceSpan: 119
 - InferenceStrategy: 1
@@ -10432,26 +10552,26 @@ Snapshot of the wiki at the most recent compile.
 - Metric: 6
 - Model: 3
 - OpenQuestion: 4
-- Organization: 39
-- Paper: 95
+- Organization: 40
+- Paper: 100
 - PerformanceClaim: 70
 - Person: 292
-- Repository: 128
+- Repository: 133
 - ResearchField: 3
 - ResearchTopic: 2
 - Result: 3
-- SourceDocument: 73
-- SourceFile: 113
+- SourceDocument: 76
+- SourceFile: 116
 - Task: 2
 - TechnicalTerm: 2
 - TrainingParadigm: 6
 
 ## Recently added
-- Triangulation of Points Constrained to a Plane (Paper)
-- GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool (Repository)
-- Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas (Paper)
-- GitHub 분석: facebookresearch/AINA (Repository)
-- Extreme Rotation Estimation in the Wild (Paper)
+- GitHub 분석: naver/multi-hmr (Repository)
+- GitHub 분석: bolixinyu/LCA (Repository)
+- GitHub 분석: CIntellifusion/MultiWorld (Repository)
+- GitHub 분석: honojs/middleware (Repository)
+- GitHub 분석: DAVIAN-Robotics/EgoX (Repository)
 
 ## Top fields
 - 3D/4D Vision and Reconstruction — 36 linked artifacts

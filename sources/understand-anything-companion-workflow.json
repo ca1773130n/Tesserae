@@ -1,0 +1,15 @@
+{
+  "title": "Understand Anything companion workflow",
+  "kind": "sources",
+  "body_text": "# Understand Anything companion workflow\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/integrations/understand-anything.md",
+  "links": [],
+  "body": "# Understand Anything companion workflow\n\n## Outgoing relations\n\n- **uses_metric** → mAP _(Metric)_\n\n## Connected node types\n\n- Metric: 1",
+  "frontmatter": {
+    "kind": "sources",
+    "node_id": "SourceDocument:understand-anything-companion-workflow:0d02e9c9fa5c",
+    "node_type": "SourceDocument",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/integrations/understand-anything.md",
+    "title": "Understand Anything companion workflow"
+  }
+}

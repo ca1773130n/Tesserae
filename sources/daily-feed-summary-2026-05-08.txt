@@ -1,0 +1,12 @@
+Daily Feed Summary — 2026-05-08
+===============================
+
+# Daily Feed Summary — 2026-05-08
+
+## Outgoing relations
+
+- **mentioned_in** → Geometry-Grounded Gaussian Splatting _(Paper)_
+
+## Connected node types
+
+- Paper: 1

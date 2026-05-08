@@ -1,0 +1,15 @@
+Daily Digest — 2026-05-08
+=========================
+
+# Daily Digest — 2026-05-08
+
+Sources ingested under `data/research/daily/2026-05-08/`.
+
+## Papers and repos
+- [GitHub 분석: CIntellifusion/MultiWorld](../repos/github-분석-cintellifusion-multiworld.md) (Repository)
+- [GitHub 분석: bolixinyu/LCA](../repos/github-분석-bolixinyu-lca.md) (Repository)
+- [GitHub 분석: naver/multi-hmr](../repos/github-분석-naver-multi-hmr.md) (Repository)
+- [Daily Feed Summary — 2026-05-08](../sources/daily-feed-summary-2026-05-08.md) (SourceDocument)
+
+## Extracted concepts
+- (none extracted)

@@ -1,0 +1,14 @@
+Daily Digest — 2026-05-07
+=========================
+
+# Daily Digest — 2026-05-07
+
+Sources ingested under `data/research/daily/2026-05-07/`.
+
+## Papers and repos
+- [GitHub 분석: DAVIAN-Robotics/EgoX](../repos/github-분석-davian-robotics-egox.md) (Repository)
+- [GitHub 분석: honojs/middleware](../repos/github-분석-honojs-middleware.md) (Repository)
+- [Daily Feed Summary — 2026-05-07](../sources/daily-feed-summary-2026-05-07.md) (SourceDocument)
+
+## Extracted concepts
+- (none extracted)

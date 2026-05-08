@@ -34,6 +34,7 @@ Geometry-Grounded Gaussian Splatting
 - **mentioned_in** → Daily Feed Summary — 2026-04-23 _(SourceDocument)_
 - **mentioned_in** → Daily Feed Summary — 2026-04-26 _(SourceDocument)_
 - **mentioned_in** → Daily Feed Summary — 2026-04-27 _(SourceDocument)_
+- **mentioned_in** → Daily Feed Summary — 2026-05-08 _(SourceDocument)_
 - **mentioned_in** → Geometry-Grounded Gaussian Splatting _(SourceDocument)_
 - **mentioned_in** → WorldCompass: Reinforcement Learning for Long-Horizon World Models _(SourceDocument)_
 - **mentioned_in** → 📬 Daily Research Digest — 2026-04-15 _(SourceDocument)_
@@ -43,7 +44,7 @@ Geometry-Grounded Gaussian Splatting
 
 ## Connected node types
 
-- SourceDocument: 12
+- SourceDocument: 13
 - Person: 5
 - ApproachFamily: 2
 - MethodologicalConcept: 2

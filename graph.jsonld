@@ -51,6 +51,13 @@
       "additionalType": "SourceDocument"
     },
     {
+      "@id": "#SourceDocument:understand-anything-companion-workflow:0d02e9c9fa5c",
+      "@type": "CreativeWork",
+      "name": "Understand Anything companion workflow",
+      "url": "sources/understand-anything-companion-workflow.html",
+      "additionalType": "SourceDocument"
+    },
+    {
       "@id": "#SourceDocument:publishing-checklist:e45b6f74910f",
       "@type": "CreativeWork",
       "name": "Publishing Checklist",
@@ -7695,6 +7702,102 @@
       ]
     },
     {
+      "@id": "#SourceDocument:daily-feed-summary-2026-05-07:ebc90d33e09f",
+      "@type": "CreativeWork",
+      "name": "Daily Feed Summary — 2026-05-07",
+      "url": "sources/daily-feed-summary-2026-05-07.html",
+      "additionalType": "SourceDocument"
+    },
+    {
+      "@id": "#Organization:davian-robotics:b12336bae367",
+      "@type": "Organization",
+      "name": "davian-robotics",
+      "url": "entities/davian-robotics.html",
+      "additionalType": "Organization"
+    },
+    {
+      "@id": "#Repository:github-davian-robotics-egox:9b4553672351",
+      "@type": "SoftwareSourceCode",
+      "name": "GitHub 분석: DAVIAN-Robotics/EgoX",
+      "alternateName": [
+        "davian-robotics/egox",
+        "https://github.com/DAVIAN-Robotics/EgoX"
+      ],
+      "url": "repos/github-분석-davian-robotics-egox.html",
+      "additionalType": "Repository",
+      "codeRepository": "https://github.com/DAVIAN-Robotics/EgoX",
+      "sameAs": [
+        "https://github.com/DAVIAN-Robotics/EgoX"
+      ]
+    },
+    {
+      "@id": "#Repository:github-honojs-middleware:a7a511baa3fc",
+      "@type": "SoftwareSourceCode",
+      "name": "GitHub 분석: honojs/middleware",
+      "alternateName": [
+        "honojs/middleware",
+        "https://github.com/honojs/middleware"
+      ],
+      "url": "repos/github-분석-honojs-middleware.html",
+      "additionalType": "Repository",
+      "codeRepository": "https://github.com/honojs/middleware",
+      "sameAs": [
+        "https://github.com/honojs/middleware"
+      ]
+    },
+    {
+      "@id": "#Repository:github-cintellifusion-multiworld:dc2f4000b99e",
+      "@type": "SoftwareSourceCode",
+      "name": "GitHub 분석: CIntellifusion/MultiWorld",
+      "alternateName": [
+        "cintellifusion/multiworld",
+        "https://github.com/CIntellifusion/MultiWorld"
+      ],
+      "url": "repos/github-분석-cintellifusion-multiworld.html",
+      "additionalType": "Repository",
+      "codeRepository": "https://github.com/CIntellifusion/MultiWorld",
+      "sameAs": [
+        "https://github.com/CIntellifusion/MultiWorld"
+      ]
+    },
+    {
+      "@id": "#Repository:github-bolixinyu-lca:8c7eebeca3fb",
+      "@type": "SoftwareSourceCode",
+      "name": "GitHub 분석: bolixinyu/LCA",
+      "alternateName": [
+        "bolixinyu/lca",
+        "https://github.com/bolixinyu/LCA"
+      ],
+      "url": "repos/github-분석-bolixinyu-lca.html",
+      "additionalType": "Repository",
+      "codeRepository": "https://github.com/bolixinyu/LCA",
+      "sameAs": [
+        "https://github.com/bolixinyu/LCA"
+      ]
+    },
+    {
+      "@id": "#SourceDocument:daily-feed-summary-2026-05-08:edf63b77d463",
+      "@type": "CreativeWork",
+      "name": "Daily Feed Summary — 2026-05-08",
+      "url": "sources/daily-feed-summary-2026-05-08.html",
+      "additionalType": "SourceDocument"
+    },
+    {
+      "@id": "#Repository:github-naver-multi-hmr:5a705a090a24",
+      "@type": "SoftwareSourceCode",
+      "name": "GitHub 분석: naver/multi-hmr",
+      "alternateName": [
+        "naver/multi-hmr",
+        "https://github.com/naver/multi-hmr"
+      ],
+      "url": "repos/github-분석-naver-multi-hmr.html",
+      "additionalType": "Repository",
+      "codeRepository": "https://github.com/naver/multi-hmr",
+      "sameAs": [
+        "https://github.com/naver/multi-hmr"
+      ]
+    },
+    {
       "@id": "#SourceDocument:2026-w15:76b20547149e",
       "@type": "CreativeWork",
       "name": "📊 주간 리서치 다이제스트 — 2026-W15",
@@ -7740,28 +7843,28 @@
       "mentions": [
         {
           "@type": "Thing",
-          "@id": "#Paper:arxiv-2411-07096:24b0b33c3698",
-          "name": "Extreme Rotation Estimation in the Wild"
+          "@id": "#Repository:github-bolixinyu-lca:8c7eebeca3fb",
+          "name": "GitHub 분석: bolixinyu/LCA"
         },
         {
           "@type": "Thing",
-          "@id": "#Paper:arxiv-2603-28980:2f6981d6a09d",
-          "name": "Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas"
+          "@id": "#Repository:github-cintellifusion-multiworld:dc2f4000b99e",
+          "name": "GitHub 분석: CIntellifusion/MultiWorld"
         },
         {
           "@type": "Thing",
-          "@id": "#Paper:arxiv-2604-27246:ec5a855f8563",
-          "name": "Triangulation of Points Constrained to a Plane"
+          "@id": "#Repository:github-davian-robotics-egox:9b4553672351",
+          "name": "GitHub 분석: DAVIAN-Robotics/EgoX"
         },
         {
           "@type": "Thing",
-          "@id": "#Repository:github-ai-search-guru-getcito-worlds-first-open-:a2eddd0925d0",
-          "name": "GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool"
+          "@id": "#Repository:github-honojs-middleware:a7a511baa3fc",
+          "name": "GitHub 분석: honojs/middleware"
         },
         {
           "@type": "Thing",
-          "@id": "#Repository:github-facebookresearch-aina:1ab1f8fc5164",
-          "name": "GitHub 분석: facebookresearch/AINA"
+          "@id": "#Repository:github-naver-multi-hmr:5a705a090a24",
+          "name": "GitHub 분석: naver/multi-hmr"
         }
       ]
     },
@@ -9338,6 +9441,63 @@
       ]
     },
     {
+      "@id": "#Synthesis:daily-2026-05-07:d7edf2697dad",
+      "@type": "Article",
+      "name": "Daily Digest — 2026-05-07",
+      "description": "Digest of 2026-05-07 ingest.",
+      "url": "syntheses/daily-digest-2026-05-07.html",
+      "additionalType": "Synthesis",
+      "articleSection": "daily_digest",
+      "mentions": [
+        {
+          "@type": "Thing",
+          "@id": "#Repository:github-davian-robotics-egox:9b4553672351",
+          "name": "GitHub 분석: DAVIAN-Robotics/EgoX"
+        },
+        {
+          "@type": "Thing",
+          "@id": "#Repository:github-honojs-middleware:a7a511baa3fc",
+          "name": "GitHub 분석: honojs/middleware"
+        },
+        {
+          "@type": "Thing",
+          "@id": "#SourceDocument:daily-feed-summary-2026-05-07:ebc90d33e09f",
+          "name": "Daily Feed Summary — 2026-05-07"
+        }
+      ]
+    },
+    {
+      "@id": "#Synthesis:daily-2026-05-08:a3c0c00299c9",
+      "@type": "Article",
+      "name": "Daily Digest — 2026-05-08",
+      "description": "Digest of 2026-05-08 ingest.",
+      "url": "syntheses/daily-digest-2026-05-08.html",
+      "additionalType": "Synthesis",
+      "articleSection": "daily_digest",
+      "mentions": [
+        {
+          "@type": "Thing",
+          "@id": "#Repository:github-bolixinyu-lca:8c7eebeca3fb",
+          "name": "GitHub 분석: bolixinyu/LCA"
+        },
+        {
+          "@type": "Thing",
+          "@id": "#Repository:github-cintellifusion-multiworld:dc2f4000b99e",
+          "name": "GitHub 분석: CIntellifusion/MultiWorld"
+        },
+        {
+          "@type": "Thing",
+          "@id": "#Repository:github-naver-multi-hmr:5a705a090a24",
+          "name": "GitHub 분석: naver/multi-hmr"
+        },
+        {
+          "@type": "Thing",
+          "@id": "#SourceDocument:daily-feed-summary-2026-05-08:edf63b77d463",
+          "name": "Daily Feed Summary — 2026-05-08"
+        }
+      ]
+    },
+    {
       "@id": "#Synthesis:weekly-2026-w15:647fc9c2753d",
       "@type": "Article",
       "name": "Weekly Synthesis — 2026-W15",
@@ -9787,5 +9947,5 @@
       ]
     }
   ],
-  "dateModified": "2026-05-05T22:23:01Z"
+  "dateModified": "2026-05-08T02:03:43Z"
 }

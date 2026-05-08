@@ -1,0 +1,69 @@
+naver_multi-hmr.md
+==================
+
+# GitHub 분석: naver/multi-hmr
+
+> - URL: https://github.com/naver/multi-hmr
+> - 분석일: 2026-05-08
+
+## 개요
+
+- **설명**: Pytorch demo code and models for Multi-HMR
+- **Stars**: ⭐ 409 | Forks: 33
+- **라이선스**: NOASSERTION
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (26개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+app.py
+assets/visu1.gif
+assets/visu2.gif
+blocks/camera_embed.py
+blocks/cross_attn_transformer.py
+blocks/dinov2.py
+blocks/__init__.py
+blocks/smpl_layer.py
+conda.yaml
+datasets/bedlam.py
+datasets/ehf.py
+datasets/threedpw.py
+demo.py
+example_data/170149601_13aa4e4483_c.jpg
+example_data/3692623581_aca6eb02d4_e.jpg
+example_data/3969570423_58eb848b75_c.jpg
+example_data/39742984604_46934fbd50_c.jpg
+example_data/4446582661_b188f82f3c_c.jpg
+example_data/51960182045_d5d6407a3c_c.jpg
+example_data/5850091922_73ba296093_c.jpg
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+LICENSE.txt
+loss.py
+model.py
+multi_hmr_anny/encoder.py
+multi_hmr_anny/hph.py
+multi_hmr_anny/multi_hmr.py
+multi_hmr_anny/pos_embed.py
+NOTICE.txt
+README.md
+requirements.txt
+train.py
+utils/camera.py
+utils/color.py
+```

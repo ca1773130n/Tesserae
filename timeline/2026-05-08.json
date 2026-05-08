@@ -1,0 +1,18 @@
+{
+  "title": "2026-05-08",
+  "kind": "timeline_day",
+  "body_text": "Activity for 2026-05-08: 7 item(s) indexed.",
+  "source_path": "",
+  "links": [],
+  "body": "Activity for 2026-05-08",
+  "frontmatter": {
+    "date": "2026-05-08",
+    "activity": 7,
+    "sources": [
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-08/papers/2504.07943/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-08/papers/2603.19235/repo.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-08/raw.md",
+      "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-08/repos/naver_multi-hmr.md"
+    ]
+  }
+}

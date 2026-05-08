@@ -1,0 +1,12 @@
+Understand Anything companion workflow
+======================================
+
+# Understand Anything companion workflow
+
+## Outgoing relations
+
+- **uses_metric** → mAP _(Metric)_
+
+## Connected node types
+
+- Metric: 1

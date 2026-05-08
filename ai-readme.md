@@ -16,13 +16,13 @@ Every `path/foo.html` is paired with a `path/foo.txt` (plain text) and a `path/f
 
 ## Wiki-layer kinds
 
-- `/sources/` — 71 page(s).
+- `/sources/` — 74 page(s).
 - `/papers/` — 48 page(s).
-- `/repos/` — 128 page(s).
+- `/repos/` — 133 page(s).
 - `/concepts/` — 19 page(s).
-- `/entities/` — 353 page(s).
+- `/entities/` — 354 page(s).
 - `/topics/` — 8 page(s).
-- `/syntheses/` — 37 page(s).
+- `/syntheses/` — 39 page(s).
 - `/questions/` — 4 page(s).
 
 ## What is *not* surfaced

@@ -1,0 +1,8 @@
+{
+  "title": "repo.md",
+  "kind": "raw",
+  "body_text": "# GitHub 분석: bolixinyu/LCA\n\n> - URL: https://github.com/bolixinyu/LCA\n> - 분석일: 2026-05-08\n\n## 개요\n\n- **설명**: Official Implementation of Latent-Condensed Attention (LCA)\n- **Stars**: ⭐ 3 | Forks: 0\n- **라이선스**: N/A\n- **주 언어**: unknown\n\n## 실행 가능 상태: 코드 미공개 (README/asset만 존재)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (0개) | N |\n| 의존성 파일 | N |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\n.git/config\n.git/description\n.git/HEAD\n.git/index\n.git/packed-refs\n.git/shallow\nREADME.md\n```",
+  "source_path": "data/research/daily/2026-05-08/papers/2603.19235/repo.md",
+  "links": [],
+  "body": "# GitHub 분석: bolixinyu/LCA\n\n> - URL: https://github.com/bolixinyu/LCA\n> - 분석일: 2026-05-08\n\n## 개요\n\n- **설명**: Official Implementation of Latent-Condensed Attention (LCA)\n- **Stars**: ⭐ 3 | Forks: 0\n- **라이선스**: N/A\n- **주 언어**: unknown\n\n## 실행 가능 상태: 코드 미공개 (README/asset만 존재)\n\n| 항목 | 상태 |\n|------|------|\n| README | Y |\n| 소스 코드 (0개) | N |\n| 의존성 파일 | N |\n| 모델/체크포인트 | N |\n| Docker | N |\n\n## 파일 구조\n\n```\n.git/config\n.git/description\n.git/HEAD\n.git/index\n.git/packed-refs\n.git/shallow\nREADME.md\n```\n"
+}

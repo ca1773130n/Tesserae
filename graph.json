@@ -31,6 +31,13 @@
     {
       "evidence": null,
       "metadata": {},
+      "source": "SourceDocument:understand-anything-companion-workflow:0d02e9c9fa5c",
+      "target": "Metric:map:592bcbe13f80",
+      "type": "uses_metric"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
       "source": "SourceDocument:publishing-checklist:e45b6f74910f",
       "target": "Metric:map:592bcbe13f80",
       "type": "uses_metric"
@@ -8942,6 +8949,69 @@
     {
       "evidence": null,
       "metadata": {},
+      "source": "SourceDocument:daily-feed-summary-2026-05-07:ebc90d33e09f",
+      "target": "Paper:arxiv-2604-27443:f842ee6c4d35",
+      "type": "mentioned_in"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "SourceDocument:daily-feed-summary-2026-05-07:ebc90d33e09f",
+      "target": "Paper:arxiv-2410-18026:5b0451021340",
+      "type": "mentioned_in"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Repository:github-davian-robotics-egox:9b4553672351",
+      "target": "Organization:davian-robotics:b12336bae367",
+      "type": "released_by"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Paper:arxiv-2504-07943:77ba7daa127a",
+      "target": "Repository:github-cintellifusion-multiworld:dc2f4000b99e",
+      "type": "implemented_in"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Paper:arxiv-2603-19235:8e7933dd223f",
+      "target": "Repository:github-bolixinyu-lca:8c7eebeca3fb",
+      "type": "implemented_in"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "SourceDocument:daily-feed-summary-2026-05-08:edf63b77d463",
+      "target": "Paper:arxiv-2605-04044:3c89fad1cce2",
+      "type": "mentioned_in"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "SourceDocument:daily-feed-summary-2026-05-08:edf63b77d463",
+      "target": "Paper:arxiv-2504-07943:77ba7daa127a",
+      "type": "mentioned_in"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "SourceDocument:daily-feed-summary-2026-05-08:edf63b77d463",
+      "target": "Paper:arxiv-2601-17835:46d524dd9e5e",
+      "type": "mentioned_in"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "SourceDocument:daily-feed-summary-2026-05-08:edf63b77d463",
+      "target": "Paper:arxiv-2603-19235:8e7933dd223f",
+      "type": "mentioned_in"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
       "source": "SourceDocument:2026-w15:76b20547149e",
       "target": "Paper:arxiv-2604-02996:14fc0d914a17",
       "type": "mentioned_in"
@@ -9699,35 +9769,35 @@
       "evidence": null,
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
-      "target": "Paper:arxiv-2411-07096:24b0b33c3698",
+      "target": "Repository:github-bolixinyu-lca:8c7eebeca3fb",
       "type": "synthesizes"
     },
     {
       "evidence": null,
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
-      "target": "Paper:arxiv-2603-28980:2f6981d6a09d",
+      "target": "Repository:github-cintellifusion-multiworld:dc2f4000b99e",
       "type": "synthesizes"
     },
     {
       "evidence": null,
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
-      "target": "Paper:arxiv-2604-27246:ec5a855f8563",
+      "target": "Repository:github-davian-robotics-egox:9b4553672351",
       "type": "synthesizes"
     },
     {
       "evidence": null,
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
-      "target": "Repository:github-ai-search-guru-getcito-worlds-first-open-:a2eddd0925d0",
+      "target": "Repository:github-honojs-middleware:a7a511baa3fc",
       "type": "synthesizes"
     },
     {
       "evidence": null,
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
-      "target": "Repository:github-facebookresearch-aina:1ab1f8fc5164",
+      "target": "Repository:github-naver-multi-hmr:5a705a090a24",
       "type": "synthesizes"
     },
     {
@@ -9825,6 +9895,13 @@
       "evidence": null,
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "Paper:arxiv-2410-18026:5b0451021340",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
       "target": "Paper:arxiv-2411-07096:24b0b33c3698",
       "type": "summarizes"
     },
@@ -9882,6 +9959,13 @@
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
       "target": "Paper:arxiv-2503-22194:bdc236266967",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "Paper:arxiv-2504-07943:77ba7daa127a",
       "type": "summarizes"
     },
     {
@@ -10134,6 +10218,13 @@
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
       "target": "Paper:arxiv-2603-19232:40092a9a007b",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "Paper:arxiv-2603-19235:8e7933dd223f",
       "type": "summarizes"
     },
     {
@@ -10399,6 +10490,20 @@
       "evidence": null,
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "Paper:arxiv-2604-27443:f842ee6c4d35",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "Paper:arxiv-2605-04044:3c89fad1cce2",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
       "target": "Repository:github-addyosmani-agent-skills:facb512aaab2",
       "type": "summarizes"
     },
@@ -10574,6 +10679,13 @@
       "evidence": null,
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "Repository:github-bolixinyu-lca:8c7eebeca3fb",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
       "target": "Repository:github-bopeng-ai-marketplace-monitor:b0dd2fd96fac",
       "type": "summarizes"
     },
@@ -10582,6 +10694,13 @@
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
       "target": "Repository:github-cedarconnor-spag4d:d2a5e238e0d6",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "Repository:github-cintellifusion-multiworld:dc2f4000b99e",
       "type": "summarizes"
     },
     {
@@ -10603,6 +10722,13 @@
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
       "target": "Repository:github-cvg-resplat:fb88d09c6922",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "Repository:github-davian-robotics-egox:9b4553672351",
       "type": "summarizes"
     },
     {
@@ -10798,6 +10924,13 @@
       "evidence": null,
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "Repository:github-honojs-middleware:a7a511baa3fc",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
       "target": "Repository:github-huskydoge-awesome-loop-models:e9cdf4e1a301",
       "type": "summarizes"
     },
@@ -10953,6 +11086,13 @@
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
       "target": "Repository:github-mutianxu-kinema4d:71b6a7da56ce",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "Repository:github-naver-multi-hmr:5a705a090a24",
       "type": "summarizes"
     },
     {
@@ -11533,6 +11673,20 @@
       "evidence": null,
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "SourceDocument:daily-feed-summary-2026-05-07:ebc90d33e09f",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "SourceDocument:daily-feed-summary-2026-05-08:edf63b77d463",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
       "target": "SourceDocument:daily-research-digest-2026-04-08:15e09365fdb3",
       "type": "summarizes"
     },
@@ -11786,6 +11940,13 @@
       "metadata": {},
       "source": "Synthesis:pulse:6ffe96c09f0f",
       "target": "SourceDocument:synthesis-fixtures:333c625b36c0",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:pulse:6ffe96c09f0f",
+      "target": "SourceDocument:understand-anything-companion-workflow:0d02e9c9fa5c",
       "type": "summarizes"
     },
     {
@@ -15160,6 +15321,104 @@
       "metadata": {},
       "source": "Synthesis:daily-2026-05-06:e515cf2a8272",
       "target": "SourceDocument:daily-research-digest-2026-05-06:bd3bac48d4bc",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-07:d7edf2697dad",
+      "target": "Repository:github-davian-robotics-egox:9b4553672351",
+      "type": "synthesizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-07:d7edf2697dad",
+      "target": "Repository:github-honojs-middleware:a7a511baa3fc",
+      "type": "synthesizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-07:d7edf2697dad",
+      "target": "SourceDocument:daily-feed-summary-2026-05-07:ebc90d33e09f",
+      "type": "synthesizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-07:d7edf2697dad",
+      "target": "Repository:github-davian-robotics-egox:9b4553672351",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-07:d7edf2697dad",
+      "target": "Repository:github-honojs-middleware:a7a511baa3fc",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-07:d7edf2697dad",
+      "target": "SourceDocument:daily-feed-summary-2026-05-07:ebc90d33e09f",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-08:a3c0c00299c9",
+      "target": "Repository:github-bolixinyu-lca:8c7eebeca3fb",
+      "type": "synthesizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-08:a3c0c00299c9",
+      "target": "Repository:github-cintellifusion-multiworld:dc2f4000b99e",
+      "type": "synthesizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-08:a3c0c00299c9",
+      "target": "Repository:github-naver-multi-hmr:5a705a090a24",
+      "type": "synthesizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-08:a3c0c00299c9",
+      "target": "SourceDocument:daily-feed-summary-2026-05-08:edf63b77d463",
+      "type": "synthesizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-08:a3c0c00299c9",
+      "target": "Repository:github-bolixinyu-lca:8c7eebeca3fb",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-08:a3c0c00299c9",
+      "target": "Repository:github-cintellifusion-multiworld:dc2f4000b99e",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-08:a3c0c00299c9",
+      "target": "Repository:github-naver-multi-hmr:5a705a090a24",
+      "type": "summarizes"
+    },
+    {
+      "evidence": null,
+      "metadata": {},
+      "source": "Synthesis:daily-2026-05-08:a3c0c00299c9",
+      "target": "SourceDocument:daily-feed-summary-2026-05-08:edf63b77d463",
       "type": "summarizes"
     },
     {
@@ -16186,175 +16445,51 @@
       "description": "",
       "id": "SourceDocument:h1-align-center-llm-wiki-h1:b60a072f7da3",
       "metadata": {
-        "candidate_paper_titles": [
-          "Install",
-          "Initialize a wiki inside any project",
-          "Compile the graph and site",
-          "Open the site",
-          "Keep exploring"
-        ],
-        "github_repo": "ca1773130n/llm-wiki",
-        "repo_url": "https://github.com/ca1773130n/LLM-Wiki",
         "sections": [
           {
-            "anchor": "what-you-get",
+            "anchor": "the-pitch",
             "level": 2,
-            "text": "✨ What you get"
-          },
-          {
-            "anchor": "explore-a-real-project-wiki",
-            "level": 3,
-            "text": "Explore a real project wiki"
-          },
-          {
-            "anchor": "keep-research-and-code-in-the-same-memory-system",
-            "level": 3,
-            "text": "Keep research and code in the same memory system"
-          },
-          {
-            "anchor": "import-agent-sessions-as-project-memory",
-            "level": 3,
-            "text": "Import agent sessions as project memory"
-          },
-          {
-            "anchor": "give-agents-structured-access",
-            "level": 3,
-            "text": "Give agents structured access"
+            "text": "The pitch"
           },
           {
             "anchor": "quick-start",
             "level": 2,
-            "text": "🚀 Quick Start"
+            "text": "Quick start"
           },
           {
-            "anchor": "1-install",
-            "level": 3,
-            "text": "1. Install"
+            "anchor": "what-you-get",
+            "level": 2,
+            "text": "What you get"
           },
           {
-            "anchor": "2-initialize-a-wiki-inside-any-project",
-            "level": 3,
-            "text": "2. Initialize a wiki inside any project"
+            "anchor": "understand-anything-llm-wiki",
+            "level": 2,
+            "text": "Understand Anything + LLM-Wiki"
           },
           {
-            "anchor": "3-compile-the-graph-and-site",
-            "level": 3,
-            "text": "3. Compile the graph and site"
-          },
-          {
-            "anchor": "4-open-the-site",
-            "level": 3,
-            "text": "4. Open the site"
-          },
-          {
-            "anchor": "5-keep-exploring",
-            "level": 3,
-            "text": "5. Keep exploring"
-          },
-          {
-            "anchor": "query-the-compiled-wiki",
-            "level": 1,
-            "text": "Query the compiled wiki"
-          },
-          {
-            "anchor": "lint-graph-wiki-site-consistency",
-            "level": 1,
-            "text": "Lint graph/wiki/site consistency"
-          },
-          {
-            "anchor": "export-claude-code-codex-gemini-cursor-kiro-opencode-harness-files",
-            "level": 1,
-            "text": "Export Claude Code/Codex/Gemini/Cursor/Kiro/OpenCode harness files"
-          },
-          {
-            "anchor": "export-an-obsidian-vault-projection",
-            "level": 1,
-            "text": "Export an Obsidian vault projection"
-          },
-          {
-            "anchor": "export-graphiti-compatible-temporal-episodes",
-            "level": 1,
-            "text": "Export Graphiti-compatible temporal episodes"
-          },
-          {
-            "anchor": "run-a-local-mcp-server-over-a-compiled-graph",
-            "level": 1,
-            "text": "Run a local MCP server over a compiled graph"
+            "anchor": "agent-first-outputs",
+            "level": 2,
+            "text": "Agent-first outputs"
           },
           {
             "anchor": "import-local-agent-sessions",
             "level": 2,
-            "text": "🧠 Import local agent sessions"
+            "text": "Import local agent sessions"
           },
           {
-            "anchor": "see-matching-local-claude-code-codex-sessions-for-this-project",
-            "level": 1,
-            "text": "See matching local Claude Code/Codex sessions for this project"
-          },
-          {
-            "anchor": "normalize-and-store-them-under-llm-wiki-harness-sessions",
-            "level": 1,
-            "text": "Normalize and store them under .llm-wiki/harness_sessions/"
-          },
-          {
-            "anchor": "confirm-what-will-be-rendered",
-            "level": 1,
-            "text": "Confirm what will be rendered"
-          },
-          {
-            "anchor": "emit-sessions-index-html-and-session-detail-pages",
-            "level": 1,
-            "text": "Emit sessions/index.html and session detail pages"
-          },
-          {
-            "anchor": "publish-the-wiki",
+            "anchor": "publish",
             "level": 2,
-            "text": "🌐 Publish the wiki"
+            "text": "Publish"
           },
           {
-            "anchor": "preview-the-gh-pages-commit-without-pushing",
-            "level": 1,
-            "text": "Preview the gh-pages commit without pushing"
-          },
-          {
-            "anchor": "use-a-custom-deploy-branch-or-remote",
-            "level": 1,
-            "text": "Use a custom deploy branch or remote"
-          },
-          {
-            "anchor": "use-a-custom-deploy-message",
-            "level": 1,
-            "text": "Use a custom deploy message"
-          },
-          {
-            "anchor": "allow-deploy-with-a-dirty-working-tree",
-            "level": 1,
-            "text": "Allow deploy with a dirty working tree"
-          },
-          {
-            "anchor": "interfaces-and-exports",
+            "anchor": "how-it-works",
             "level": 2,
-            "text": "🔌 Interfaces and exports"
+            "text": "How it works"
           },
           {
-            "anchor": "under-the-hood",
+            "anchor": "docs",
             "level": 2,
-            "text": "🔧 Under the hood"
-          },
-          {
-            "anchor": "documentation",
-            "level": 2,
-            "text": "📚 Documentation"
-          },
-          {
-            "anchor": "development",
-            "level": 2,
-            "text": "🧪 Development"
-          },
-          {
-            "anchor": "contributing",
-            "level": 2,
-            "text": "🤝 Contributing"
+            "text": "Docs"
           }
         ],
         "source_kind": "SourceDocument"
@@ -16915,6 +17050,51 @@
       },
       "name": "Installation",
       "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/installation.md",
+      "type": "SourceDocument"
+    },
+    {
+      "aliases": [],
+      "description": "",
+      "id": "SourceDocument:understand-anything-companion-workflow:0d02e9c9fa5c",
+      "metadata": {
+        "github_repo": "lum1104/understand-anything",
+        "repo_url": "https://github.com/Lum1104/Understand-Anything",
+        "sections": [
+          {
+            "anchor": "understand-anything-companion-workflow",
+            "level": 1,
+            "text": "Understand Anything companion workflow"
+          },
+          {
+            "anchor": "why-use-both",
+            "level": 2,
+            "text": "Why use both?"
+          },
+          {
+            "anchor": "current-low-friction-workflow",
+            "level": 2,
+            "text": "Current low-friction workflow"
+          },
+          {
+            "anchor": "manual-equivalent",
+            "level": 2,
+            "text": "Manual equivalent"
+          },
+          {
+            "anchor": "possible-future-bridge",
+            "level": 2,
+            "text": "Possible future bridge"
+          },
+          {
+            "anchor": "collaboration-principle",
+            "level": 2,
+            "text": "Collaboration principle"
+          }
+        ],
+        "source_kind": "SourceDocument"
+      },
+      "name": "Understand Anything companion workflow",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/docs/integrations/understand-anything.md",
       "type": "SourceDocument"
     },
     {
@@ -33494,6 +33674,330 @@
     {
       "aliases": [],
       "description": "",
+      "id": "SourceDocument:daily-feed-summary-2026-05-07:ebc90d33e09f",
+      "metadata": {
+        "analysis_date": "2026-05-07",
+        "github_repo": "honojs/middleware",
+        "repo_url": "https://github.com/honojs/middleware",
+        "sections": [
+          {
+            "anchor": "daily-feed-summary-2026-05-07",
+            "level": 1,
+            "text": "Daily Feed Summary — 2026-05-07"
+          }
+        ],
+        "source_kind": "SourceDocument"
+      },
+      "name": "Daily Feed Summary — 2026-05-07",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-07/raw.md",
+      "type": "SourceDocument"
+    },
+    {
+      "aliases": [
+        "arXiv:2604.27443"
+      ],
+      "description": "",
+      "id": "Paper:arxiv-2604-27443:f842ee6c4d35",
+      "metadata": {
+        "arxiv_id": "2604.27443",
+        "discovered_in": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-07/raw.md",
+        "source_kind": "Paper",
+        "title_quality": "arxiv_only"
+      },
+      "name": "arXiv:2604.27443",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-07/raw.md",
+      "type": "Paper"
+    },
+    {
+      "aliases": [
+        "arXiv:2410.18026"
+      ],
+      "description": "",
+      "id": "Paper:arxiv-2410-18026:5b0451021340",
+      "metadata": {
+        "arxiv_id": "2410.18026",
+        "discovered_in": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-07/raw.md",
+        "source_kind": "Paper",
+        "title_quality": "arxiv_only"
+      },
+      "name": "arXiv:2410.18026",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-07/raw.md",
+      "type": "Paper"
+    },
+    {
+      "aliases": [],
+      "description": "",
+      "id": "Organization:davian-robotics:b12336bae367",
+      "metadata": {},
+      "name": "davian-robotics",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-07/repos/DAVIAN-Robotics_EgoX.md",
+      "type": "Organization"
+    },
+    {
+      "aliases": [
+        "davian-robotics/egox",
+        "https://github.com/DAVIAN-Robotics/EgoX"
+      ],
+      "description": "",
+      "id": "Repository:github-davian-robotics-egox:9b4553672351",
+      "metadata": {
+        "analysis_date": "2026-05-07",
+        "github_repo": "davian-robotics/egox",
+        "repo_url": "https://github.com/DAVIAN-Robotics/EgoX",
+        "sections": [
+          {
+            "anchor": "github-분석-davian-robotics-egox",
+            "level": 1,
+            "text": "GitHub 분석: DAVIAN-Robotics/EgoX"
+          },
+          {
+            "anchor": "개요",
+            "level": 2,
+            "text": "개요"
+          },
+          {
+            "anchor": "실행-가능-상태-모델-다운로드-스크립트-있음-다운로드-후-실행-가능",
+            "level": 2,
+            "text": "실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)"
+          },
+          {
+            "anchor": "파일-구조",
+            "level": 2,
+            "text": "파일 구조"
+          }
+        ],
+        "source_kind": "SourceDocument"
+      },
+      "name": "GitHub 분석: DAVIAN-Robotics/EgoX",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-07/repos/DAVIAN-Robotics_EgoX.md",
+      "type": "Repository"
+    },
+    {
+      "aliases": [
+        "honojs/middleware",
+        "https://github.com/honojs/middleware"
+      ],
+      "description": "",
+      "id": "Repository:github-honojs-middleware:a7a511baa3fc",
+      "metadata": {
+        "analysis_date": "2026-05-07",
+        "github_repo": "honojs/middleware",
+        "repo_url": "https://github.com/honojs/middleware",
+        "sections": [
+          {
+            "anchor": "github-분석-honojs-middleware",
+            "level": 1,
+            "text": "GitHub 분석: honojs/middleware"
+          },
+          {
+            "anchor": "개요",
+            "level": 2,
+            "text": "개요"
+          },
+          {
+            "anchor": "실행-가능-상태-모델-다운로드-스크립트-있음-다운로드-후-실행-가능",
+            "level": 2,
+            "text": "실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)"
+          },
+          {
+            "anchor": "파일-구조",
+            "level": 2,
+            "text": "파일 구조"
+          }
+        ],
+        "source_kind": "SourceDocument"
+      },
+      "name": "GitHub 분석: honojs/middleware",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-07/repos/honojs_middleware.md",
+      "type": "Repository"
+    },
+    {
+      "aliases": [
+        "cintellifusion/multiworld",
+        "https://github.com/CIntellifusion/MultiWorld"
+      ],
+      "description": "",
+      "id": "Repository:github-cintellifusion-multiworld:dc2f4000b99e",
+      "metadata": {
+        "analysis_date": "2026-05-08",
+        "arxiv_id": "2504.07943",
+        "github_repo": "cintellifusion/multiworld",
+        "repo_url": "https://github.com/CIntellifusion/MultiWorld",
+        "sections": [
+          {
+            "anchor": "github-분석-cintellifusion-multiworld",
+            "level": 1,
+            "text": "GitHub 분석: CIntellifusion/MultiWorld"
+          },
+          {
+            "anchor": "개요",
+            "level": 2,
+            "text": "개요"
+          },
+          {
+            "anchor": "실행-가능-상태-모델-다운로드-스크립트-있음-다운로드-후-실행-가능",
+            "level": 2,
+            "text": "실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)"
+          },
+          {
+            "anchor": "파일-구조",
+            "level": 2,
+            "text": "파일 구조"
+          }
+        ],
+        "source_kind": "SourceDocument"
+      },
+      "name": "GitHub 분석: CIntellifusion/MultiWorld",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-08/papers/2504.07943/repo.md",
+      "type": "Repository"
+    },
+    {
+      "aliases": [],
+      "description": "",
+      "id": "Paper:arxiv-2504-07943:77ba7daa127a",
+      "metadata": {
+        "arxiv_id": "2504.07943",
+        "discovered_in": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-08/papers/2504.07943/repo.md",
+        "source_kind": "Paper",
+        "title_quality": "arxiv_only"
+      },
+      "name": "arXiv:2504.07943",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-08/papers/2504.07943/repo.md",
+      "type": "Paper"
+    },
+    {
+      "aliases": [
+        "bolixinyu/lca",
+        "https://github.com/bolixinyu/LCA"
+      ],
+      "description": "",
+      "id": "Repository:github-bolixinyu-lca:8c7eebeca3fb",
+      "metadata": {
+        "analysis_date": "2026-05-08",
+        "arxiv_id": "2603.19235",
+        "github_repo": "bolixinyu/lca",
+        "repo_url": "https://github.com/bolixinyu/LCA",
+        "sections": [
+          {
+            "anchor": "github-분석-bolixinyu-lca",
+            "level": 1,
+            "text": "GitHub 분석: bolixinyu/LCA"
+          },
+          {
+            "anchor": "개요",
+            "level": 2,
+            "text": "개요"
+          },
+          {
+            "anchor": "실행-가능-상태-코드-미공개-readme-asset만-존재",
+            "level": 2,
+            "text": "실행 가능 상태: 코드 미공개 (README/asset만 존재)"
+          },
+          {
+            "anchor": "파일-구조",
+            "level": 2,
+            "text": "파일 구조"
+          }
+        ],
+        "source_kind": "SourceDocument"
+      },
+      "name": "GitHub 분석: bolixinyu/LCA",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-08/papers/2603.19235/repo.md",
+      "type": "Repository"
+    },
+    {
+      "aliases": [],
+      "description": "",
+      "id": "Paper:arxiv-2603-19235:8e7933dd223f",
+      "metadata": {
+        "arxiv_id": "2603.19235",
+        "discovered_in": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-08/papers/2603.19235/repo.md",
+        "source_kind": "Paper",
+        "title_quality": "arxiv_only"
+      },
+      "name": "arXiv:2603.19235",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-08/papers/2603.19235/repo.md",
+      "type": "Paper"
+    },
+    {
+      "aliases": [],
+      "description": "",
+      "id": "SourceDocument:daily-feed-summary-2026-05-08:edf63b77d463",
+      "metadata": {
+        "analysis_date": "2026-05-08",
+        "github_repo": "cintellifusion/multiworld",
+        "repo_url": "https://github.com/CIntellifusion/MultiWorld",
+        "sections": [
+          {
+            "anchor": "daily-feed-summary-2026-05-08",
+            "level": 1,
+            "text": "Daily Feed Summary — 2026-05-08"
+          }
+        ],
+        "source_kind": "SourceDocument"
+      },
+      "name": "Daily Feed Summary — 2026-05-08",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-08/raw.md",
+      "type": "SourceDocument"
+    },
+    {
+      "aliases": [
+        "arXiv:2605.04044"
+      ],
+      "description": "",
+      "id": "Paper:arxiv-2605-04044:3c89fad1cce2",
+      "metadata": {
+        "arxiv_id": "2605.04044",
+        "discovered_in": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-08/raw.md",
+        "source_kind": "Paper",
+        "title_quality": "arxiv_only"
+      },
+      "name": "arXiv:2605.04044",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-08/raw.md",
+      "type": "Paper"
+    },
+    {
+      "aliases": [
+        "naver/multi-hmr",
+        "https://github.com/naver/multi-hmr"
+      ],
+      "description": "",
+      "id": "Repository:github-naver-multi-hmr:5a705a090a24",
+      "metadata": {
+        "analysis_date": "2026-05-08",
+        "github_repo": "naver/multi-hmr",
+        "repo_url": "https://github.com/naver/multi-hmr",
+        "sections": [
+          {
+            "anchor": "github-분석-naver-multi-hmr",
+            "level": 1,
+            "text": "GitHub 분석: naver/multi-hmr"
+          },
+          {
+            "anchor": "개요",
+            "level": 2,
+            "text": "개요"
+          },
+          {
+            "anchor": "실행-가능-상태-모델-다운로드-스크립트-있음-다운로드-후-실행-가능",
+            "level": 2,
+            "text": "실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)"
+          },
+          {
+            "anchor": "파일-구조",
+            "level": 2,
+            "text": "파일 구조"
+          }
+        ],
+        "source_kind": "SourceDocument"
+      },
+      "name": "GitHub 분석: naver/multi-hmr",
+      "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-08/repos/naver_multi-hmr.md",
+      "type": "Repository"
+    },
+    {
+      "aliases": [],
+      "description": "",
       "id": "SourceDocument:2026-w15:76b20547149e",
       "metadata": {
         "arxiv_id": "2604.02996",
@@ -35052,13 +35556,13 @@
       "description": "Top-level snapshot of the wiki at compile time.",
       "id": "Synthesis:pulse:6ffe96c09f0f",
       "metadata": {
-        "content_hash": "sha256-70dd0b0493530c25d8209f938a6e0f5b47766c0354cf18930420cc1a6bf08a43",
+        "content_hash": "sha256-ab5ea0ff9e1d002206f15321d8c379a12be452eea21e07aca650a5e4ebc58d94",
         "input_ids": [
-          "Paper:arxiv-2411-07096:24b0b33c3698",
-          "Paper:arxiv-2603-28980:2f6981d6a09d",
-          "Paper:arxiv-2604-27246:ec5a855f8563",
-          "Repository:github-ai-search-guru-getcito-worlds-first-open-:a2eddd0925d0",
-          "Repository:github-facebookresearch-aina:1ab1f8fc5164"
+          "Repository:github-bolixinyu-lca:8c7eebeca3fb",
+          "Repository:github-cintellifusion-multiworld:dc2f4000b99e",
+          "Repository:github-davian-robotics-egox:9b4553672351",
+          "Repository:github-honojs-middleware:a7a511baa3fc",
+          "Repository:github-naver-multi-hmr:5a705a090a24"
         ],
         "synthesis_kind": "pulse"
       },
@@ -35696,6 +36200,41 @@
         "synthesis_kind": "daily_digest"
       },
       "name": "Daily Digest — 2026-05-06",
+      "source_path": null,
+      "type": "Synthesis"
+    },
+    {
+      "aliases": [],
+      "description": "Digest of 2026-05-07 ingest.",
+      "id": "Synthesis:daily-2026-05-07:d7edf2697dad",
+      "metadata": {
+        "content_hash": "sha256-bc2e6d125ea553f7fa1f21713158bfd7066b7d4e911eeeb98d32060cdb438abc",
+        "input_ids": [
+          "Repository:github-davian-robotics-egox:9b4553672351",
+          "Repository:github-honojs-middleware:a7a511baa3fc",
+          "SourceDocument:daily-feed-summary-2026-05-07:ebc90d33e09f"
+        ],
+        "synthesis_kind": "daily_digest"
+      },
+      "name": "Daily Digest — 2026-05-07",
+      "source_path": null,
+      "type": "Synthesis"
+    },
+    {
+      "aliases": [],
+      "description": "Digest of 2026-05-08 ingest.",
+      "id": "Synthesis:daily-2026-05-08:a3c0c00299c9",
+      "metadata": {
+        "content_hash": "sha256-e0111e29b66a018a8a6119a777ae1be911b6228f52983e642e97cb6c57552529",
+        "input_ids": [
+          "Repository:github-bolixinyu-lca:8c7eebeca3fb",
+          "Repository:github-cintellifusion-multiworld:dc2f4000b99e",
+          "Repository:github-naver-multi-hmr:5a705a090a24",
+          "SourceDocument:daily-feed-summary-2026-05-08:edf63b77d463"
+        ],
+        "synthesis_kind": "daily_digest"
+      },
+      "name": "Daily Digest — 2026-05-08",
       "source_path": null,
       "type": "Synthesis"
     },

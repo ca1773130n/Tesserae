@@ -1,0 +1,49 @@
+repo.md
+=======
+
+# GitHub 분석: CIntellifusion/MultiWorld
+
+> - URL: https://github.com/CIntellifusion/MultiWorld
+> - 분석일: 2026-05-08
+
+## 개요
+
+- **설명**: Official Implementation of MultiWorld: Scalable Multi-Agent Multi-View Video World Models
+- **Stars**: ⭐ 193 | Forks: 11
+- **라이선스**: N/A
+- **주 언어**: Python
+
+## 실행 가능 상태: 모델 다운로드 스크립트 있음 (다운로드 후 실행 가능)
+
+| 항목 | 상태 |
+|------|------|
+| README | Y |
+| 소스 코드 (47개) | Y |
+| 의존성 파일 | Y |
+| 모델/체크포인트 | script |
+| Docker | N |
+
+## 파일 구조
+
+```
+assets/main.png
+diffsynth/__init__.py
+.git/config
+.git/description
+.git/HEAD
+.gitignore
+.git/index
+.git/packed-refs
+.git/shallow
+ittakestwo/parallel_inference.py
+preprocess/untar_chunks.sh
+readme.md
+requirements.txt
+robots/parallel_inference.py
+utils/config_utils.py
+utils/import_utils.py
+utils/__init__.py
+utils/lr_utils.py
+utils/tensor_utils.py
+utils/video_utils.py
+```

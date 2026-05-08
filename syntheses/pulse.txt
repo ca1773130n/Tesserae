@@ -11,13 +11,13 @@ Snapshot of the wiki at the most recent compile.
 - Benchmark: 7
 - CausalClaim: 7
 - Claim: 21
-- CodeClass: 108
-- CodeFunction: 1931
+- CodeClass: 111
+- CodeFunction: 1985
 - CodeProject: 1
 - ComparisonClaim: 18
 - ContributionClaim: 20
 - Dataset: 4
-- Dependency: 95
+- Dependency: 97
 - EvaluationProtocol: 1
 - EvidenceSpan: 119
 - InferenceStrategy: 1
@@ -27,26 +27,26 @@ Snapshot of the wiki at the most recent compile.
 - Metric: 6
 - Model: 3
 - OpenQuestion: 4
-- Organization: 39
-- Paper: 95
+- Organization: 40
+- Paper: 100
 - PerformanceClaim: 70
 - Person: 292
-- Repository: 128
+- Repository: 133
 - ResearchField: 3
 - ResearchTopic: 2
 - Result: 3
-- SourceDocument: 73
-- SourceFile: 113
+- SourceDocument: 76
+- SourceFile: 116
 - Task: 2
 - TechnicalTerm: 2
 - TrainingParadigm: 6
 
 ## Recently added
-- Triangulation of Points Constrained to a Plane (Paper)
-- GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool (Repository)
-- Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas (Paper)
-- GitHub 분석: facebookresearch/AINA (Repository)
-- Extreme Rotation Estimation in the Wild (Paper)
+- GitHub 분석: naver/multi-hmr (Repository)
+- GitHub 분석: bolixinyu/LCA (Repository)
+- GitHub 분석: CIntellifusion/MultiWorld (Repository)
+- GitHub 분석: honojs/middleware (Repository)
+- GitHub 분석: DAVIAN-Robotics/EgoX (Repository)
 
 ## Top fields
 - 3D/4D Vision and Reconstruction — 36 linked artifacts

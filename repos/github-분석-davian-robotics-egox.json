@@ -1,0 +1,19 @@
+{
+  "title": "GitHub 분석: DAVIAN-Robotics/EgoX",
+  "kind": "repos",
+  "body_text": "# GitHub 분석: DAVIAN-Robotics/EgoX\n\n## Outgoing relations\n\n- **released_by** → davian-robotics _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-07/repos/DAVIAN-Robotics_EgoX.md",
+  "links": [],
+  "body": "# GitHub 분석: DAVIAN-Robotics/EgoX\n\n## Outgoing relations\n\n- **released_by** → davian-robotics _(Organization)_\n\n## Connected node types\n\n- Organization: 1",
+  "frontmatter": {
+    "aliases": [
+      "davian-robotics/egox",
+      "https://github.com/DAVIAN-Robotics/EgoX"
+    ],
+    "kind": "repos",
+    "node_id": "Repository:github-davian-robotics-egox:9b4553672351",
+    "node_type": "Repository",
+    "source_path": "/Users/neo/Developer/Projects/LLM-Wiki/data/research/daily/2026-05-07/repos/DAVIAN-Robotics_EgoX.md",
+    "title": "GitHub 분석: DAVIAN-Robotics/EgoX"
+  }
+}

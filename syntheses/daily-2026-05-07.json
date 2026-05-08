@@ -1,0 +1,29 @@
+{
+  "title": "Daily Digest — 2026-05-07",
+  "kind": "syntheses",
+  "body_text": "# Daily Digest — 2026-05-07\n\nSources ingested under `data/research/daily/2026-05-07/`.\n\n## Papers and repos\n- [GitHub 분석: DAVIAN-Robotics/EgoX](../repos/github-분석-davian-robotics-egox.md) (Repository)\n- [GitHub 분석: honojs/middleware](../repos/github-분석-honojs-middleware.md) (Repository)\n- [Daily Feed Summary — 2026-05-07](../sources/daily-feed-summary-2026-05-07.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "source_path": "",
+  "links": [
+    "../repos/github-분석-davian-robotics-egox.md",
+    "../repos/github-분석-honojs-middleware.md",
+    "../sources/daily-feed-summary-2026-05-07.md"
+  ],
+  "body": "# Daily Digest — 2026-05-07\n\nSources ingested under `data/research/daily/2026-05-07/`.\n\n## Papers and repos\n- [GitHub 분석: DAVIAN-Robotics/EgoX](../repos/github-분석-davian-robotics-egox.md) (Repository)\n- [GitHub 분석: honojs/middleware](../repos/github-분석-honojs-middleware.md) (Repository)\n- [Daily Feed Summary — 2026-05-07](../sources/daily-feed-summary-2026-05-07.md) (SourceDocument)\n\n## Extracted concepts\n- (none extracted)",
+  "frontmatter": {
+    "content_hash": "sha256-bc2e6d125ea553f7fa1f21713158bfd7066b7d4e911eeeb98d32060cdb438abc",
+    "generator": "heuristic-v1",
+    "inputs": [
+      "Repository:github-davian-robotics-egox:9b4553672351",
+      "Repository:github-honojs-middleware:a7a511baa3fc",
+      "SourceDocument:daily-feed-summary-2026-05-07:ebc90d33e09f"
+    ],
+    "slug": "daily-2026-05-07",
+    "sources": [
+      "data/research/daily/2026-05-07/raw.md",
+      "data/research/daily/2026-05-07/repos/DAVIAN-Robotics_EgoX.md",
+      "data/research/daily/2026-05-07/repos/honojs_middleware.md"
+    ],
+    "synthesis_kind": "daily_digest",
+    "title": "Daily Digest — 2026-05-07"
+  }
+}

@@ -8,7 +8,7 @@
     <language>en</language>
     <copyright>Copyright 2026 LLM-Wiki</copyright>
     <generator>llm-wiki</generator>
-    <lastBuildDate>Tue, 05 May 2026 22:23:01 +0000</lastBuildDate>
+    <lastBuildDate>Fri, 08 May 2026 02:03:43 +0000</lastBuildDate>
     <item>
       <title>Comparison — Gaussian Splatting Reconstruction vs Geometry-Grounded Gaussian Splatting</title>
       <link>syntheses/compare-gaussian-splatting-reconstruction-vs-geometry-grounded-gaussian-splatting.html</link>
@@ -16,7 +16,7 @@
       <description><![CDATA[Both approach families connect to `Novel View Synthesis` (Task). | Family | Papers | Shared target | | --- | --- | --- | | Gaussian Splatting Reconstruction | 7 | Novel View Synthesis | | Geometry-Grounded Gaussian Splatting | 1 | Novel View Synthesis |]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>comparison</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-06</title>
@@ -25,7 +25,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-06/`. ## Papers and repos - [자기지도학습 요리책 (arXiv:2304.12210)](../papers/자기지도학습-요리책.md) (Paper) - [GitHub 분석: DIYgod/RSSHub](../repos/github-분석-diygod-rsshub.md) (Repository) - [GitHub 분석: Kotohibi/3DGS_pipeline_guide](../repos/github-분석-kotohibi-3dgs-pipeline-guide.md) (Repository) - [GitHub 분석: NVlabs/PointWorld](../repos/github-분석-nvlabs-pointworld.md) (Repository) - [GitHub 분석: Seeed-Projects/reBot-DevArm](../repos/github-분석-seeed-projects-rebot-devarm.md) (Repository) - [GitHub 분석: Tencent-Hunyuan/HY-WorldPlay](../repos/github-분석-tencent-hunyuan-hy-worldplay.md) (Repository) - [GitHub 분석: affaan-m/everything-claude-code](../repos/github-분석-affaan-m-everything-claude-code.md) (Repository) - [GitHub 분석: asherikov/shoggoth](../repos/githu…]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-07</title>
@@ -34,7 +34,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-07/`. ## Papers and repos - [FullCircle: Casual한 360° 촬영으로 손쉬운 3D 재구성 (arXiv:2603.22572)](../papers/fullcircle-casual한-360-촬영으로-손쉬운-3d-재구성.md) (Paper) - [Integrating Symmetry into Differentiable Planning with Steerable Convolutions (arXiv:2206.03674)](../papers/integrating-symmetry-into-differentiable-planning-with-steerable-convolutions.md) (Paper) - [Scaling 4D Representations (arXiv:2412.15212)](../papers/scaling-4d-representations.md) (Paper) - [GitHub 분석: EnidPinxit/awesome-openclaw-agents](../repos/github-분석-enidpinxit-awesome-openclaw-agents.md) (Repository) - [GitHub 분석: EvolvingLMMs-Lab/SimpleStream](../repos/github-분석-evolvinglmms-lab-simplestream.md) (Repository) - [GitHub 분석: PolymathicAI/the_well](../repos/github-분석-polymath…]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-08</title>
@@ -43,7 +43,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-08/`. ## Papers and repos - [Follow-Your-Emoji: Fine-Controllable and Expressive Freestyle Portrait Animation (arXiv:2406.01900)](../papers/follow-your-emoji-fine-controllable-and-expressive-freestyle-portrait-animation.md) (Paper) - [Free-Range Gaussians: Non-Grid-Aligned Generative 3D Gaussian Reconstruction (arXiv:2604.04874)](../papers/free-range-gaussians-non-grid-aligned-generative-3d-gaussian-reconstruction.md) (Paper) - [RoMo: Robust Motion Segmentation Improves Structure from Motion (arXiv:2411.18650)](../papers/romo-robust-motion-segmentation-improves-structure-from-motion.md) (Paper) - [ViBA: Implicit Bundle Adjustment with Geometric and Temporal Consistency for Robust Visual Matching (arXiv:2604.03377)](../papers/viba-implici…]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-09</title>
@@ -52,7 +52,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-09/`. ## Papers and repos - [GitHub 분석: ArthurBrussee/brush](../repos/github-분석-arthurbrussee-brush.md) (Repository) - [GitHub 분석: apple/ml-mobileclip](../repos/github-분석-apple-ml-mobileclip.md) (Repository) - [Daily Feed Summary — 2026-04-09](../sources/daily-feed-summary-2026-04-09.md) (SourceDocument) ## Extracted concepts - (none extracted)]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-10</title>
@@ -61,7 +61,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-10/`. ## Papers and repos - [GitHub 분석: AISmithLab/CoBRA](../repos/github-분석-aismithlab-cobra.md) (Repository) - [GitHub 분석: Blaizzy/mlx-vlm](../repos/github-분석-blaizzy-mlx-vlm.md) (Repository) - [GitHub 분석: GalaxyGeneralRobotics/LATENT](../repos/github-분석-galaxygeneralrobotics-latent.md) (Repository) - [GitHub 분석: HKU-MMLab/Macro](../repos/github-분석-hku-mmlab-macro.md) (Repository) - [GitHub 분석: LilanOvO/Auto-Resubmit](../repos/github-분석-lilanovo-auto-resubmit.md) (Repository) - [GitHub 분석: NVIDIAGameWorks/kaolin](../repos/github-분석-nvidiagameworks-kaolin.md) (Repository) - [GitHub 분석: TakashiYoshinaga/Perspective-Effect-with-Head-Tracking-of-MediaPipe](../repos/github-분석-takashiyoshinaga-perspective-effect-with-head-tracking-of-mediapi…]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-11</title>
@@ -70,7 +70,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-11/`. ## Papers and repos - [GitHub 분석: Anil-matcha/Open-Higgsfield-AI](../repos/github-분석-anil-matcha-open-higgsfield-ai.md) (Repository) - [GitHub 분석: KAIST-Visual-AI-Group/GrounDiT](../repos/github-분석-kaist-visual-ai-group-groundit.md) (Repository) - [GitHub 분석: OpenDriveLab/SimScale](../repos/github-분석-opendrivelab-simscale.md) (Repository) - [GitHub 분석: TencentARC/MotionCrafter](../repos/github-분석-tencentarc-motioncrafter.md) (Repository) - [GitHub 분석: ahujasid/blender-mcp](../repos/github-분석-ahujasid-blender-mcp.md) (Repository) - [GitHub 분석: allenai/molmoact](../repos/github-분석-allenai-molmoact.md) (Repository) - [GitHub 분석: lllyasviel/VCC](../repos/github-분석-lllyasviel-vcc.md) (Repository) - [GitHub 분석: mutianxu/Kinema4D](../repo…]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-12</title>
@@ -79,7 +79,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-12/`. ## Papers and repos - [GitHub 분석: Netflix/void-model](../repos/github-분석-netflix-void-model.md) (Repository) - [GitHub 분석: edward3862/ImgDecom](../repos/github-분석-edward3862-imgdecom.md) (Repository) - [GitHub 분석: facebookresearch/vjepa2](../repos/github-분석-facebookresearch-vjepa2.md) (Repository) - [GitHub 분석: omerb01/didicm](../repos/github-분석-omerb01-didicm.md) (Repository) - [Daily Feed Summary — 2026-04-12](../sources/daily-feed-summary-2026-04-12.md) (SourceDocument) ## Extracted concepts - (none extracted)]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-13</title>
@@ -88,7 +88,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-13/`. ## Papers and repos - [GitHub 분석: KAIST-Visual-AI-Group/MatLat](../repos/github-분석-kaist-visual-ai-group-matlat.md) (Repository) - [GitHub 분석: NVIDIA/OpenShell](../repos/github-분석-nvidia-openshell.md) (Repository) - [GitHub 분석: OpenDriveLab/WorldEngine](../repos/github-분석-opendrivelab-worldengine.md) (Repository) - [GitHub 분석: TheRealMJP/MSAAFilter](../repos/github-분석-therealmjp-msaafilter.md) (Repository) - [GitHub 분석: World-In-World/world-in-world](../repos/github-분석-world-in-world-world-in-world.md) (Repository) - [GitHub 분석: anthropics/claude-code](../repos/github-분석-anthropics-claude-code.md) (Repository) - [GitHub 분석: colmap/colmap](../repos/github-분석-colmap-colmap.md) (Repository) - [Daily Feed Summary — 2026-04-13](../sourc…]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-14</title>
@@ -97,7 +97,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-14/`. ## Papers and repos - [GitHub 분석: alexbatalov/fallout1-re](../repos/github-분석-alexbatalov-fallout1-re.md) (Repository) - [GitHub 분석: eth-ait/Gaussian-Garments](../repos/github-분석-eth-ait-gaussian-garments.md) (Repository) - [GitHub 분석: facebookresearch/map-anything](../repos/github-분석-facebookresearch-map-anything.md) (Repository) - [GitHub 분석: jendrikseipp/vulture](../repos/github-분석-jendrikseipp-vulture.md) (Repository) - [GitHub 분석: naver/pow3r](../repos/github-분석-naver-pow3r.md) (Repository) - [Daily Feed Summary — 2026-04-14](../sources/daily-feed-summary-2026-04-14.md) (SourceDocument) ## Extracted concepts - (none extracted)]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-15</title>
@@ -106,7 +106,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-15/`. ## Papers and repos - [Geometry-Grounded Gaussian Splatting (arXiv:2601.17835)](../papers/geometry-grounded-gaussian-splatting.md) (Paper) - [GitHub 분석: ReconWorldLab/godot-gaussian-splatting](../repos/github-분석-reconworldlab-godot-gaussian-splatting.md) (Repository) - [GitHub 분석: YuqingWang1029/CubiD](../repos/github-분석-yuqingwang1029-cubid.md) (Repository) - [GitHub 분석: baidu/ernie-image](../repos/github-분석-baidu-ernie-image.md) (Repository) - [GitHub 분석: fanegg/Feat2GS](../repos/github-분석-fanegg-feat2gs.md) (Repository) - [GitHub 분석: mrdoob/three.js](../repos/github-분석-mrdoob-three-js.md) (Repository) - [Daily Feed Summary — 2026-04-15](../sources/daily-feed-summary-2026-04-15.md) (SourceDocument) - [📬 Daily Research Digest — 20…]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-16</title>
@@ -115,7 +115,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-16/`. ## Papers and repos - [GitHub 분석: apple/ml-4m](../repos/github-분석-apple-ml-4m.md) (Repository) - [GitHub 분석: gmberton/vismatch](../repos/github-분석-gmberton-vismatch.md) (Repository) - [GitHub 분석: jonbarron/gaussid](../repos/github-분석-jonbarron-gaussid.md) (Repository) - [GitHub 분석: nv-tlabs/lyra](../repos/github-분석-nv-tlabs-lyra.md) (Repository) - [GitHub 분석: reinehonoka/Voice-Design-Cloner](../repos/github-분석-reinehonoka-voice-design-cloner.md) (Repository) - [GitHub 분석: roboflow/rf-detr](../repos/github-분석-roboflow-rf-detr.md) (Repository) - [Daily Feed Summary — 2026-04-16](../sources/daily-feed-summary-2026-04-16.md) (SourceDocument) ## Extracted concepts - (none extracted)]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-18</title>
@@ -124,7 +124,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-18/`. ## Papers and repos - [GitHub 분석: Robbyant/lingbot-va](../repos/github-분석-robbyant-lingbot-va.md) (Repository) - [GitHub 분석: enix/x509-certificate-exporter](../repos/github-분석-enix-x509-certificate-exporter.md) (Repository) - [Daily Feed Summary — 2026-04-18](../sources/daily-feed-summary-2026-04-18.md) (SourceDocument) - [📬 Daily Research Digest — 2026-04-18](../sources/daily-research-digest-2026-04-18.md) (SourceDocument) ## Extracted concepts - (none extracted)]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-22</title>
@@ -133,7 +133,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-22/`. ## Papers and repos - [All elementary functions from a single binary operator (arXiv:2603.21852)](../papers/all-elementary-functions-from-a-single-binary-operator.md) (Paper) - [An Outlook into the Future of Egocentric Vision (arXiv:2308.07123)](../papers/an-outlook-into-the-future-of-egocentric-vision.md) (Paper) - [Stable Part Diffusion 4D: Multi-View RGB and Kinematic Parts Video Generation (arXiv:2509.10687)](../papers/stable-part-diffusion-4d-multi-view-rgb-and-kinematic-parts-video-generation.md) (Paper) - [T(R,O) Grasp: Cross-Embodiment Dexterous Grasping을 위한 Robot-Object Spatial Transformation의 효율적 Graph Diffusion (arXiv:2510.12724)](../papers/t-r-o-grasp-cross-embodiment-dexterous-grasping을-위한-robot-object-spatial-t-e5dccb…]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-23</title>
@@ -142,7 +142,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-23/`. ## Papers and repos - [ARC-AGI-3: Frontier Agentic Intelligence를 위한 새로운 도전 (arXiv:2603.24621)](../papers/arc-agi-3-frontier-agentic-intelligence를-위한-새로운-도전.md) (Paper) - [CLAW: Composable Language-Annotated Whole-body Motion Generation (arXiv:2604.11251)](../papers/claw-composable-language-annotated-whole-body-motion-generation.md) (Paper) - [Cross-Attentive Multiview Fusion of Vision-Language Embeddings (arXiv:2604.12551)](../papers/cross-attentive-multiview-fusion-of-vision-language-embeddings.md) (Paper) - [Efficient Multi-Camera Tokenization with Triplanes for End-to-End Driving (arXiv:2506.12251)](../papers/efficient-multi-camera-tokenization-with-triplanes-for-end-to-end-driving.md) (Paper) - [Human-in-the-Loop Local Correcti…]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-24</title>
@@ -151,7 +151,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-24/`. ## Papers and repos - [Learning in Deep Factor Graphs with Gaussian Belief Propagation (arXiv:2311.14649)](../papers/learning-in-deep-factor-graphs-with-gaussian-belief-propagation.md) (Paper) - [Scaling Sequence-to-Sequence Generative Neural Rendering (arXiv:2510.04236)](../papers/scaling-sequence-to-sequence-generative-neural-rendering.md) (Paper) - [Daily Feed Summary — 2026-04-24](../sources/daily-feed-summary-2026-04-24.md) (SourceDocument) - [📬 Daily Research Digest — 2026-04-24](../sources/daily-research-digest-2026-04-24.md) (SourceDocument) ## Extracted concepts - Pre-training (TrainingParadigm)]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-25</title>
@@ -160,7 +160,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-25/`. ## Papers and repos - [Confidence-Based Mesh Extraction from 3D Gaussians (arXiv:2603.24725)](../papers/confidence-based-mesh-extraction-from-3d-gaussians.md) (Paper) - [GaussianFlow SLAM: Monocular Gaussian Splatting SLAM Guided by GaussianFlow (arXiv:2604.15612)](../papers/gaussianflow-slam-monocular-gaussian-splatting-slam-guided-by-gaussianflow.md) (Paper) - [Image Generators are Generalist Vision Learners (arXiv:2604.20329)](../papers/image-generators-are-generalist-vision-learners.md) (Paper) - [Neural Gabor Splatting: Enhanced Gaussian Splatting with Neural Gabor for High-frequency Surface Reconstruction (arXiv:2604.15941)](../papers/neural-gabor-splatting-enhanced-gaussian-splatting-with-neural-gabor-for-high-fr-847471cb.md…]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-26</title>
@@ -169,7 +169,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-26/`. ## Papers and repos - [Match-Any-Events: Zero-Shot Motion-Robust Feature Matching Across Wide Baselines for Event Cameras (arXiv:2604.18744)](../papers/match-any-events-zero-shot-motion-robust-feature-matching-across-wide-baselines-dbc18631.md) (Paper) - [GitHub 분석: OpsiClear-4DGS/TriGSVanilla](../repos/github-분석-opsiclear-4dgs-trigsvanilla.md) (Repository) - [GitHub 분석: genforce/JOSH](../repos/github-분석-genforce-josh.md) (Repository) - [Daily Feed Summary — 2026-04-26](../sources/daily-feed-summary-2026-04-26.md) (SourceDocument) - [Daily Research Digest — 2026-04-26](../sources/daily-research-digest-2026-04-26.md) (SourceDocument) - [📬 Daily Research Digest — 2026-04-26](../sources/daily-research-digest-2026-04-26.md) (SourceDocu…]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-27</title>
@@ -178,7 +178,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-27/`. ## Papers and repos - [Sapiens2 (arXiv:2604.21681)](../papers/sapiens2.md) (Paper) - [GitHub 분석: facebookresearch/sapiens2](../repos/github-분석-facebookresearch-sapiens2.md) (Repository) - [Daily Feed Summary — 2026-04-27](../sources/daily-feed-summary-2026-04-27.md) (SourceDocument) - [📬 Daily Research Digest — 2026-04-27](../sources/daily-research-digest-2026-04-27.md) (SourceDocument) ## Extracted concepts - (none extracted)]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-28</title>
@@ -187,7 +187,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-28/`. ## Papers and repos - [Holo360D: 파노라마 3D 재구성과 그 이상을 발전시키기 위한 연속 궤적을 갖춘 대규모 실제 세계 데이터셋 (arXiv:2604.22482)](../papers/holo360d-파노라마-3d-재구성과-그-이상을-발전시키기-위한-연-96474e5d.md) (Paper) - [GitHub 분석: SkyworkAI/Matrix-3D](../repos/github-분석-skyworkai-matrix-3d.md) (Repository) - [GitHub 분석: xiquan-li/TinyMU](../repos/github-분석-xiquan-li-tinymu.md) (Repository) - [Daily Feed Summary — 2026-04-28](../sources/daily-feed-summary-2026-04-28.md) (SourceDocument) - [📬 Daily Research Digest — 2026-04-28](../sources/daily-research-digest-2026-04-28.md) (SourceDocument) ## Extracted concepts - Depth Map (TechnicalTerm) - Point Cloud (TechnicalTerm) - Fine-tuning (TrainingParadigm)]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-29</title>
@@ -196,7 +196,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-29/`. ## Papers and repos - [Distance Field Rasterization for End-to-End Mesh Reconstruction (arXiv:2604.23537)](../papers/distance-field-rasterization-for-end-to-end-mesh-reconstruction.md) (Paper) - [OmniXtreme: Breaking the Generality Barrier in High-Dynamic Humanoid Control (arXiv:2602.23843)](../papers/omnixtreme-breaking-the-generality-barrier-in-high-dynamic-humanoid-control.md) (Paper) - [GitHub 분석: Perkins729/OmniXtreme](../repos/github-분석-perkins729-omnixtreme.md) (Repository) - [GitHub 분석: apinanaivot/IKEA-3D-Model-Download-Button](../repos/github-분석-apinanaivot-ikea-3d-model-download-button.md) (Repository) - [GitHub 분석: autowarefoundation/autoware](../repos/github-분석-autowarefoundation-autoware.md) (Repository) - [Daily Feed…]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-04-30</title>
@@ -205,7 +205,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-04-30/`. ## Papers and repos - [Efficient Universal Perception Encoder (arXiv:2603.22387)](../papers/efficient-universal-perception-encoder.md) (Paper) - [Lifting Unlabeled Internet-level Data for 3D Scene Understanding (arXiv:2604.01907)](../papers/lifting-unlabeled-internet-level-data-for-3d-scene-understanding.md) (Paper) - [Power Foam: Unifying Real-Time Differentiable Ray Tracing and Rasterization (arXiv:2604.24994)](../papers/power-foam-unifying-real-time-differentiable-ray-tracing-and-rasterization.md) (Paper) - [Rays as Pixels: 비디오와 카메라 궤적의 결합 분포 학습 (arXiv:2604.09429)](../papers/rays-as-pixels-비디오와-카메라-궤적의-결합-분포-학습.md) (Paper) - [GitHub 분석: deepseek-ai/TileKernels](../repos/github-분석-deepseek-ai-tilekernels.md) (Repository) - [GitHu…]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-05-01</title>
@@ -214,7 +214,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-05-01/`. ## Papers and repos - [GitHub 분석: r4dl/CoMe](../repos/github-분석-r4dl-come.md) (Repository) - [Daily Feed Summary — 2026-05-01](../sources/daily-feed-summary-2026-05-01.md) (SourceDocument) - [📬 Daily Research Digest — 2026-05-01](../sources/daily-research-digest-2026-05-01.md) (SourceDocument) ## Extracted concepts - (none extracted)]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-05-02</title>
@@ -223,7 +223,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-05-02/`. ## Papers and repos - [Long-tail Internet photo reconstruction (arXiv:2604.22714)](../papers/long-tail-internet-photo-reconstruction.md) (Paper) - [GitHub 분석: BoPeng/ai-marketplace-monitor](../repos/github-분석-bopeng-ai-marketplace-monitor.md) (Repository) - [GitHub 분석: ag2ai/ag2studio](../repos/github-분석-ag2ai-ag2studio.md) (Repository) - [GitHub 분석: aree6/LiftShift](../repos/github-분석-aree6-liftshift.md) (Repository) - [GitHub 분석: lyehe/build_gpu_colmap](../repos/github-분석-lyehe-build-gpu-colmap.md) (Repository) - [GitHub 분석: meshsplatting/mesh-splatting](../repos/github-분석-meshsplatting-mesh-splatting.md) (Repository) - [Daily Feed Summary — 2026-05-02](../sources/daily-feed-summary-2026-05-02.md) (SourceDocument) - [📬 Daily Rese…]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-05-03</title>
@@ -232,7 +232,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-05-03/`. ## Papers and repos - [ArchSym: Detecting 3D-Grounded Architectural Symmetries in the Wild (arXiv:2604.22202)](../papers/archsym-detecting-3d-grounded-architectural-symmetries-in-the-wild.md) (Paper) - [Feed-Forward 3D Scene Modeling: A Problem-Driven Perspective (arXiv:2604.14025)](../papers/feed-forward-3d-scene-modeling-a-problem-driven-perspective.md) (Paper) - [Img2CAD: VLM-Assisted Conditional Factorization을 통한 이미지로부터의 3D CAD 모델 리버스 엔지니어링 (arXiv:2408.01437)](../papers/img2cad-vlm-assisted-conditional-factorization을-통한-이미지로부터의-3-737a56aa.md) (Paper) - [GitHub 분석: qq456cvb/Img2CAD](../repos/github-분석-qq456cvb-img2cad.md) (Repository) - [Daily Feed Summary — 2026-05-03](../sources/daily-feed-summary-2026-05-03.md) (SourceDocumen…]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-05-04</title>
@@ -241,7 +241,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-05-04/`. ## Papers and repos - [Inference-Time Text-to-Video Alignment with Diffusion Latent Beam Search (arXiv:2501.19252)](../papers/inference-time-text-to-video-alignment-with-diffusion-latent-beam-search.md) (Paper) - [GitHub 분석: AmyangXYZ/reze-studio](../repos/github-분석-amyangxyz-reze-studio.md) (Repository) - [GitHub 분석: LeapLabTHU/RvR](../repos/github-분석-leaplabthu-rvr.md) (Repository) - [GitHub 분석: asimovinc/asimov-v1](../repos/github-분석-asimovinc-asimov-v1.md) (Repository) - [GitHub 분석: facebookresearch/tribev2](../repos/github-분석-facebookresearch-tribev2.md) (Repository) - [GitHub 분석: huskydoge/Awesome-Loop-Models](../repos/github-분석-huskydoge-awesome-loop-models.md) (Repository) - [Daily Feed Summary — 2026-05-04](../sources/dail…]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-05-05</title>
@@ -250,7 +250,7 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-05-05/`. ## Papers and repos - [Ego-EXTRA: EXpert-TRAinee 지원을 위한 video-language Egocentric Dataset (arXiv:2512.13238)](../papers/ego-extra-expert-trainee-지원을-위한-video-language-egocentric-dataset.md) (Paper) - [Extreme Rotation Estimation in the Wild (arXiv:2411.07096)](../papers/extreme-rotation-estimation-in-the-wild.md) (Paper) - [Stepper: Stepwise Immersive Scene Generation with Multiview Panoramas (arXiv:2603.28980)](../papers/stepper-stepwise-immersive-scene-generation-with-multiview-panoramas.md) (Paper) - [GitHub 분석: facebookresearch/AINA](../repos/github-분석-facebookresearch-aina.md) (Repository) - [Daily Feed Summary — 2026-05-05](../sources/daily-feed-summary-2026-05-05.md) (SourceDocument) - [📬 Daily Research Digest — 2026-05-05](…]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
       <title>Daily Digest — 2026-05-06</title>
@@ -259,25 +259,25 @@
       <description><![CDATA[Sources ingested under `data/research/daily/2026-05-06/`. ## Papers and repos - [Triangulation of Points Constrained to a Plane (arXiv:2604.27246)](../papers/triangulation-of-points-constrained-to-a-plane.md) (Paper) - [GitHub 분석: ai-search-guru/getcito-worlds-first-open-source-aio-aeo-or-geo-tool](../repos/github-분석-ai-search-guru-getcito-worlds-first-open-source-aio-aeo-or-geo-tool.md) (Repository) - [Daily Feed Summary — 2026-05-06](../sources/daily-feed-summary-2026-05-06.md) (SourceDocument) - [📬 Daily Research Digest — 2026-05-06](../sources/daily-research-digest-2026-05-06.md) (SourceDocument) ## Extracted concepts - (none extracted)]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
       <category>daily_digest</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
-      <title>Field Overview — 3D/4D Vision and Reconstruction</title>
-      <link>syntheses/field-3d-4d-vision-and-reconstruction.html</link>
-      <guid isPermaLink="false">synthesis:field-3d-4d-vision-and-reconstruction</guid>
-      <description><![CDATA[Dynamic Gaussian Splatting (ApproachFamily) — 1 contributing paper(s) connect to this thread. Gaussian Splatting Reconstruction (ApproachFamily) — 7 contributing paper(s) connect to this thread. Geometry-Grounded Gaussian Splatting (ApproachFamily) — 1 contributing paper(s) connect to this thread. Visual SLAM (ResearchTopic) — 2 contributing paper(s) connect to this thread. World Model (ResearchTopic) — 3 contributing paper(s) connect to this thread. ## Representative concepts - GaussianFlow SLAM (Algorithm) - SDFRaster (Algorithm) - Multi-View Consistency (EvaluationProtocol) - Beam Search (InferenceStrategy) - Stochastic Solid (MathematicalConcept) - 4D Gaussian Splatting (MethodologicalConcept) - Gaussian Splatting (MethodologicalConcept) - Video Diffusion (MethodologicalConcept) - Vol…]]></description>
+      <title>Daily Digest — 2026-05-07</title>
+      <link>syntheses/daily-2026-05-07.html</link>
+      <guid isPermaLink="false">synthesis:daily-2026-05-07</guid>
+      <description><![CDATA[Sources ingested under `data/research/daily/2026-05-07/`. ## Papers and repos - [GitHub 분석: DAVIAN-Robotics/EgoX](../repos/github-분석-davian-robotics-egox.md) (Repository) - [GitHub 분석: honojs/middleware](../repos/github-분석-honojs-middleware.md) (Repository) - [Daily Feed Summary — 2026-05-07](../sources/daily-feed-summary-2026-05-07.md) (SourceDocument) ## Extracted concepts - (none extracted)]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
-      <category>field_overview</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <category>daily_digest</category>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
     <item>
-      <title>Field Overview — LLM Reasoning</title>
-      <link>syntheses/field-llm-reasoning.html</link>
-      <guid isPermaLink="false">synthesis:field-llm-reasoning</guid>
-      <description><![CDATA[No linked topics yet. ## Representative concepts - (none)]]></description>
+      <title>Daily Digest — 2026-05-08</title>
+      <link>syntheses/daily-2026-05-08.html</link>
+      <guid isPermaLink="false">synthesis:daily-2026-05-08</guid>
+      <description><![CDATA[Sources ingested under `data/research/daily/2026-05-08/`. ## Papers and repos - [GitHub 분석: CIntellifusion/MultiWorld](../repos/github-분석-cintellifusion-multiworld.md) (Repository) - [GitHub 분석: bolixinyu/LCA](../repos/github-분석-bolixinyu-lca.md) (Repository) - [GitHub 분석: naver/multi-hmr](../repos/github-분석-naver-multi-hmr.md) (Repository) - [Daily Feed Summary — 2026-05-08](../sources/daily-feed-summary-2026-05-08.md) (SourceDocument) ## Extracted concepts - (none extracted)]]></description>
       <dc:creator>LLM-Wiki</dc:creator>
-      <category>field_overview</category>
-      <pubDate>Tue, 05 May 2026 22:23:01 +0000</pubDate>
+      <category>daily_digest</category>
+      <pubDate>Fri, 08 May 2026 02:03:43 +0000</pubDate>
     </item>
   </channel>
 </rss>
