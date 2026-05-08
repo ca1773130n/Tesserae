@@ -1,15 +1,16 @@
 <h1 align="center">LLM-Wiki</h1>
 
 <p align="center">
-  <strong>Turn your repo, docs, papers, and agent chats into a website + graph that agents can actually use.</strong>
+  <strong>A beautiful setup wizard that turns docs, code, graphs, and agent sessions into a publishable LLM-native wiki.</strong>
   <br />
-  <em>Karpathy's LLM Wiki idea, rebuilt as a typed, publishable, agent-native project memory system.</em>
+  <em>Karpathy's LLM Wiki pattern, upgraded with a website builder, typed graph, session memory, and companion-tool automation.</em>
 </p>
 
 <p align="center">
-  <a href="#quick-start"><img src="https://img.shields.io/badge/Quick_Start-blue" alt="Quick Start" /></a>
+  <a href="#quick-start"><img src="https://img.shields.io/badge/Quick_Start-setup_wizard-blue" alt="Quick Start" /></a>
   <a href="docs/architecture.md"><img src="https://img.shields.io/badge/Graph-2D%2F3D-8A2BE2" alt="2D/3D Graph" /></a>
   <a href="docs/session-history.md"><img src="https://img.shields.io/badge/Sessions-agent_memory-38bdf8" alt="Session History" /></a>
+  <a href="docs/integrations/understand-anything.md"><img src="https://img.shields.io/badge/Companion-Understand_Anything-d4a574" alt="Understand Anything companion workflow" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow" alt="MIT License" /></a>
 </p>
 
@@ -19,81 +20,22 @@
 
 ---
 
-## Why I made this
+## The pitch
 
-Andrej Karpathy's [`llm-wiki.md`](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) is a beautiful idea:
+Karpathy's [`llm-wiki.md`](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) sketched the right primitive:
 
 > raw sources stay immutable, an LLM maintains a persistent markdown wiki, and the wiki compounds over time.
 
-A lot of follow-up projects implement that pattern as folders of markdown plus an agent prompt. That's useful, but I wanted something more developer-native:
+LLM-Wiki turns that pattern into a developer product:
 
-- not just notes, but a typed graph;
-- not just a private folder, but a website you can ship;
-- not just human browsing, but structured context for coding agents;
-- not just documents, but the Claude/Codex sessions where the real project decisions happened.
+- a colored setup wizard instead of a pile of flags;
+- a static wiki website instead of loose markdown only;
+- an interactive 2D / 3D graph instead of a flat folder;
+- local Claude Code / Codex sessions as searchable project memory;
+- agent-facing exports your tools can actually consume;
+- optional companion-tool refresh, starting with Understand Anything.
 
-LLM-Wiki is that missing layer.
-
-It gives your agents a memory system that looks like a wiki, behaves like a graph, and ships like a static site.
-
----
-
-## What you get
-
-### 1. A wiki website builder
-
-Run it on a repo and get a static website under `.llm-wiki/site/`:
-
-- home page
-- source/document pages
-- concepts, entities, papers, repos, topics, syntheses
-- search
-- graph view
-- session history pages
-- `llms.txt`, `llms-full.txt`, JSON siblings, and graph payloads for agents
-
-Serve it locally, publish it to GitHub Pages, or hand the folder to another agent.
-
-### 2. 2D / 3D graph view
-
-LLM-Wiki does not stop at markdown files. It builds a typed knowledge graph and renders it as an interactive website graph:
-
-- switch between 2D and 3D;
-- search nodes;
-- filter by type;
-- browse source, paper, repo, concept, and session relationships;
-- export the same graph as JSON / JSON-LD.
-
-### 3. Session history as project memory
-
-Your important project knowledge is not only in `README.md` and `src/`.
-It is also buried in agent sessions.
-
-LLM-Wiki can explicitly import local Claude Code / Codex sessions and turn them into searchable wiki pages with:
-
-- summaries;
-- decisions;
-- files touched;
-- commands run;
-- readable conversation turns;
-- collapsed tool-use blocks.
-
-No surprise scraping: session import is explicit.
-
-### 4. Agent-first outputs
-
-The website is nice, but agents are the main customer.
-
-LLM-Wiki writes structured artifacts that coding agents can retrieve directly:
-
-| Artifact | Why it matters |
-|---|---|
-| `search-index.json` | fast project search |
-| `graph.json` / `graph.jsonld` | typed relationships |
-| `llms.txt` / `llms-full.txt` | context packs |
-| per-page `.txt` / `.json` | precise page context |
-| MCP server | tool calls like `search_nodes`, `node_context`, `timeline` |
-| agent harness export | Claude Code, Codex, Gemini, Cursor, Kiro, OpenCode setup |
+In short: **give your agents a memory system that looks good, ships easily, and keeps itself wired to your project.**
 
 ---
 
@@ -103,7 +45,7 @@ LLM-Wiki writes structured artifacts that coding agents can retrieve directly:
 pip install llm-wiki
 ```
 
-Inside any project:
+Inside any repo:
 
 ```bash
 llm_wiki project setup
@@ -112,28 +54,106 @@ llm_wiki project build-site
 llm_wiki project serve --port 8765
 ```
 
-The setup wizard is a colored TUI: choose sources, enable companion tools like Understand Anything, and optionally store a refresh command so external graph artifacts update automatically before future compiles.
-
 Open:
 
 ```text
 http://127.0.0.1:8765/
 ```
 
+The setup wizard detects common sources like `README.md`, `docs`, `src`, `data`, and companion artifacts. You choose what to include; LLM-Wiki writes the config.
+
+```text
+◆ LLM-Wiki project setup
+Choose sources and companion tools. Press Enter to accept defaults.
+
+Sources
+  ✓ README.md
+  ✓ docs
+  ✓ src
+  ✓ .llm-wiki/external/understand-anything.md
+
+External tools
+  ◆ Understand Anything → .llm-wiki/external/understand-anything.md
+```
+
 ---
 
-## Import agent sessions
+## What you get
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>✨ Wiki website builder</h3>
+      <p>Generate a polished static site under <code>.llm-wiki/site/</code> with home, source pages, concepts, papers, repos, syntheses, search, graph, and session routes.</p>
+    </td>
+    <td width="50%" valign="top">
+      <h3>🕸️ 2D / 3D graph view</h3>
+      <p>Browse a typed project graph, switch between 2D and 3D, search nodes, filter by type, and publish the same graph as JSON / JSON-LD.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>🧠 Agent session memory</h3>
+      <p>Import Claude Code and Codex sessions into searchable pages with summaries, decisions, files, commands, readable turns, and collapsed tool payloads.</p>
+    </td>
+    <td width="50%" valign="top">
+      <h3>🤝 Companion tools</h3>
+      <p>Use independent tools like Understand Anything without vendoring them. Store refresh commands and compile their generated artifacts into the wiki.</p>
+    </td>
+  </tr>
+</table>
+
+---
+
+## Understand Anything + LLM-Wiki
+
+Understand Anything already does a great job generating a code knowledge graph:
+
+```text
+.understand-anything/knowledge-graph.json
+```
+
+LLM-Wiki does not absorb it. Instead, the setup wizard can treat it as a companion artifact:
+
+1. refresh the external graph if you provide a command;
+2. materialize a readable projection at `.llm-wiki/external/understand-anything.md`;
+3. compile that projection alongside docs, code, research notes, and agent sessions;
+4. publish everything as one agent-native wiki website.
+
+If the refresh command is a shell alias/function, wrap it explicitly:
 
 ```bash
-# Preview matching local Claude Code / Codex sessions
+zsh -ic 'reunderstand'
+```
+
+More: [Understand Anything companion workflow](docs/integrations/understand-anything.md)
+
+---
+
+## Agent-first outputs
+
+The website is the visible layer. The real target is agents.
+
+| Artifact | Use it for |
+|---|---|
+| `search-index.json` | fast local/project search |
+| `graph.json` / `graph.jsonld` | typed relationships |
+| `llms.txt` / `llms-full.txt` | context packs |
+| per-page `.txt` / `.json` | precise retrievable page context |
+| MCP server | `search_nodes`, `node_context`, `timeline`, and friends |
+| agent harness export | Claude Code, Codex, Gemini, Cursor, Kiro, OpenCode setup |
+
+---
+
+## Import local agent sessions
+
+```bash
 llm_wiki project sessions discover
-
-# Import them into .llm-wiki/harness_sessions/
 llm_wiki project sessions discover --import
-
-# Rebuild the website with /sessions/ pages
 llm_wiki project build-site
 ```
+
+Session pages make your agent history part of the project memory instead of leaving it buried in chat logs.
 
 ---
 
@@ -143,25 +163,25 @@ llm_wiki project build-site
 llm_wiki project deploy --build --enable-pages
 ```
 
-The generated site is plain static files, so you can also copy `.llm-wiki/site/` to any web server.
+The generated site is plain static files, so `.llm-wiki/site/` can also be copied to any web server.
 
 ---
 
 ## How it works
 
 ```text
-raw sources
+raw sources + external artifacts + agent sessions
   ↓
-deterministic + optional LLM extraction
+setup wizard + configured refresh commands
   ↓
-validated typed graph
+deterministic / optional LLM extraction
   ↓
-markdown/wiki projection
+validated typed graph + markdown projection
   ↓
 static website + 2D/3D graph + search + agent exports
 ```
 
-The controlled ontology is the important part. It keeps the graph useful instead of turning your project into random entity soup.
+The controlled ontology is the guardrail. It keeps project memory useful instead of turning everything into random entity soup.
 
 ---
 
@@ -178,7 +198,7 @@ The controlled ontology is the important part. It keeps the graph useful instead
 ---
 
 <p align="center">
-  <strong>Give your agents a project memory they can search, cite, update, and ship.</strong>
+  <strong>Stop losing project knowledge in docs, dashboards, and forgotten chats. Compile it into memory your agents can use.</strong>
 </p>
 
 <p align="center">
