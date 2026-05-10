@@ -8,7 +8,7 @@ import json
 import sys
 from collections import Counter
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
 from .batch import BatchIngestRunner
 from .canonicalization import GraphCanonicalizer, ReviewDecision
@@ -111,85 +111,89 @@ def _project_query_handler(args) -> int:
 
 
 def _project_ask_handler(args) -> int:
+    from .query import ask_project
+
     wiki = ProjectWiki.load(args.project)
-    cfg = wiki.config()
-    backend = args.backend
+    try:
+        envelope = ask_project(
+            wiki,
+            args.question,
+            backend=args.backend,
+            top_k=args.top_k,
+            cognee_search_type=args.cognee_search_type,
+            cognee_dataset=args.cognee_dataset,
+        )
+    except RuntimeError as exc:
+        # Backend-specific failures with explicit --backend surface here.
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"ask failed: {exc}", file=sys.stderr)
+        return 2
 
-    # ---- raganything branch ----
-    raganything_cfg = (cfg.get("memory_backends") or {}).get("raganything") or {}
-    raganything_enabled = bool(raganything_cfg.get("enabled"))
-    use_raganything = backend == "raganything" or (backend == "auto" and raganything_enabled)
-    if use_raganything:
-        # Resolve working_dir relative to the project if it's not absolute.
-        wd = raganything_cfg.get("working_dir")
-        if wd and not Path(wd).is_absolute():
-            raganything_cfg = {**raganything_cfg, "working_dir": str(wiki.project_root / wd)}
-        # Force enabled True when the user asked explicitly so the runtime
-        # query bridge doesn't short-circuit on a missing flag.
-        if backend == "raganything" and not raganything_cfg.get("enabled"):
-            raganything_cfg = {**raganything_cfg, "enabled": True}
-        from .raganything_query import query as _raganything_query
+    return _emit_ask_envelope(envelope, json_output=bool(args.json_output))
 
-        try:
-            answer = _raganything_query(args.question, backend_config=raganything_cfg)
-        except Exception as exc:
-            if backend == "raganything":
-                print(f"RAG-Anything ask failed: {exc}", file=sys.stderr)
-                return 2
-            print(f"RAG-Anything ask unavailable; falling back: {exc}", file=sys.stderr)
-            answer = None
 
-        if answer is not None:
-            if args.json_output:
-                print(json.dumps({"backend": "raganything", "question": args.question, "answer": answer}, ensure_ascii=False, indent=2))
-            else:
-                print("RAG-Anything answer:")
-                print(answer)
-            return 0
-        if backend == "raganything":
-            print("RAG-Anything backend returned no answer (likely missing API keys or empty index).", file=sys.stderr)
+def _emit_ask_envelope(envelope: dict, *, json_output: bool) -> int:
+    """Print an ``ask_project`` envelope in human or JSON form.
+
+    Shared by ``project ask`` and the new top-level ``ask`` command so output
+    formatting stays in lockstep with the dispatcher's contract.
+    """
+
+    if json_output:
+        print(json.dumps(envelope, ensure_ascii=False, indent=2))
+        return 0
+
+    backend = envelope.get("backend")
+    if backend == "raganything":
+        answer = envelope.get("answer")
+        if answer is None:
+            note = envelope.get("note") or "no answer"
+            print(f"RAG-Anything backend returned no answer ({note}).", file=sys.stderr)
             return 2
-        # Otherwise fall through to Cognee/wiki under auto mode.
-
-    # ---- cognee branch ----
-    cognee_cfg = cognee_backend_config(cfg)
-    use_cognee = backend == "cognee" or (backend == "auto" and cognee_cfg.get("enabled", False))
-    if use_cognee:
-        from .cognee_query import search_cognee
-
-        dataset = args.cognee_dataset or cognee_cfg.get("dataset")
-        try:
-            results = search_cognee(
-                args.question,
-                dataset=dataset,
-                search_type=args.cognee_search_type,
-                top_k=args.top_k,
-            )
-        except Exception as exc:
-            if backend == "cognee":
-                print(f"Cognee ask failed: {exc}", file=sys.stderr)
-                return 2
-            print(f"Cognee ask unavailable; falling back to compiled wiki query: {exc}", file=sys.stderr)
+        print("RAG-Anything answer:")
+        print(answer)
+        return 0
+    if backend == "cognee":
+        dataset = envelope.get("dataset")
+        results = envelope.get("results") or []
+        print(f"Cognee answer (dataset={dataset or 'default'}):")
+        if results:
+            for idx, result in enumerate(results, start=1):
+                print(f"\n[{idx}] {result}")
         else:
-            if args.json_output:
-                print(json.dumps({"backend": "cognee", "dataset": dataset, "question": args.question, "results": results}, ensure_ascii=False, indent=2))
-            else:
-                print(f"Cognee answer (dataset={dataset or 'default'}):")
-                if results:
-                    for idx, result in enumerate(results, start=1):
-                        print(f"\n[{idx}] {result}")
-                else:
-                    print("No Cognee results returned.")
-            return 0
-
-    result = wiki.query(args.question, top_k=args.top_k, use_llm=False)
-    if args.json_output:
-        payload = result.to_dict()
-        payload["backend"] = "wiki"
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
-    else:
+            print("No Cognee results returned.")
+        return 0
+    if backend == "wiki":
         print("Compiled wiki answer:")
-        _print_query_result(result)
+        from .query import QueryHit, QueryResult
+
+        hits = [
+            QueryHit(
+                title=hit.get("title", ""),
+                kind=hit.get("kind", ""),
+                href=hit.get("href", ""),
+                score=float(hit.get("score") or 0.0),
+                excerpt=hit.get("excerpt", ""),
+                page_path=Path(hit["page_path"]) if hit.get("page_path") else None,
+                node_id=hit.get("node_id"),
+                arxiv_id=hit.get("arxiv_id"),
+            )
+            for hit in envelope.get("hits") or []
+        ]
+        synthetic = QueryResult(
+            question=envelope.get("question", ""),
+            hits=hits,
+            answer=envelope.get("answer"),
+            model=envelope.get("model"),
+            used_llm=bool(envelope.get("used_llm")),
+            fallback_reason=envelope.get("fallback_reason"),
+        )
+        _print_query_result(synthetic)
+        return 0
+
+    print(envelope)
     return 0
 
 
@@ -252,6 +256,232 @@ def _run_query_repl(run_one, *, json_output: bool, use_llm: bool) -> int:
             # Keep the last 6 turns (12 messages).
             if len(history) > 12:
                 history = history[-12:]
+
+
+def _top_level_ask_handler(args) -> int:
+    """Resolve a project via --project/--wiki/active and call the shared ask dispatcher.
+
+    Project resolution order (highest priority first):
+      1. ``--project <path>`` — direct path (no registry lookup).
+      2. ``--wiki <name>`` — look up the registered alias.
+      3. The registry's currently active project.
+    """
+
+    from .mcp_server import ProjectRegistry
+    from .query import ask_project
+
+    project_root: Optional[Path] = None
+    source: str = ""
+
+    if args.project:
+        project_root = Path(args.project).expanduser().resolve()
+        source = f"--project {project_root}"
+    elif args.wiki:
+        registry = ProjectRegistry()
+        data = registry.load()
+        entry = (data.get("projects") or {}).get(args.wiki)
+        if not entry:
+            print(
+                f"No registered project named '{args.wiki}'. "
+                f"Run `llm_wiki wiki list` to see available names, or "
+                f"`llm_wiki wiki register <path> --name {args.wiki}` to register one.",
+                file=sys.stderr,
+            )
+            return 2
+        if entry.get("root"):
+            project_root = Path(entry["root"]).resolve()
+        else:
+            gp = Path(entry["graph_path"]).resolve()
+            project_root = gp.parent.parent if gp.parent.name == ".llm-wiki" else gp.parent
+        source = f"--wiki {args.wiki}"
+    else:
+        registry = ProjectRegistry()
+        data = registry.load()
+        active = data.get("active")
+        if not active:
+            print(
+                "No project specified and no active project in the registry. "
+                "Use `llm_wiki ask --wiki <name>`, `llm_wiki ask --project <path>`, "
+                "or `llm_wiki wiki activate <name>`.",
+                file=sys.stderr,
+            )
+            return 2
+        entry = (data.get("projects") or {}).get(active) or {}
+        if entry.get("root"):
+            project_root = Path(entry["root"]).resolve()
+        elif entry.get("graph_path"):
+            gp = Path(entry["graph_path"]).resolve()
+            project_root = gp.parent.parent if gp.parent.name == ".llm-wiki" else gp.parent
+        if project_root is None:
+            print(
+                f"Active project '{active}' has no recorded root; re-register it.",
+                file=sys.stderr,
+            )
+            return 2
+        source = f"active project '{active}'"
+
+    try:
+        wiki = ProjectWiki.load(project_root)
+    except FileNotFoundError:
+        print(
+            f"No LLM-Wiki project at {project_root} (resolved from {source}). "
+            f"Did you run `llm_wiki project setup` there?",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        envelope = ask_project(
+            wiki,
+            args.question,
+            backend=args.backend,
+            top_k=args.top_k,
+            cognee_search_type=args.cognee_search_type,
+            cognee_dataset=args.cognee_dataset,
+        )
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"ask failed: {exc}", file=sys.stderr)
+        return 2
+
+    return _emit_ask_envelope(envelope, json_output=bool(args.json_output))
+
+
+def _wiki_command_handler(args) -> int:
+    """Manage the persistent multi-project registry from the top-level CLI."""
+
+    from .mcp_server import ProjectRegistry
+
+    registry = ProjectRegistry()
+    sub = args.wiki_command
+
+    if sub == "list":
+        data = registry.list_projects()
+        if getattr(args, "wiki_list_json", False):
+            print(json.dumps(data, ensure_ascii=False, indent=2))
+            return 0
+        active = data.get("active")
+        projects = data.get("projects") or []
+        if not projects:
+            print("No projects registered. Use `llm_wiki wiki register <path> --name <alias>`.")
+            return 0
+        print(f"Active: {active or '(none)'}")
+        for entry in projects:
+            marker = "*" if entry.get("name") == active else " "
+            print(f" {marker} {entry.get('name', ''):<24} {entry.get('root', '')}")
+        return 0
+
+    if sub == "register":
+        try:
+            entry = registry.register(args.path, name=args.name)
+        except Exception as exc:
+            print(f"register failed: {exc}", file=sys.stderr)
+            return 2
+        print(f"Registered '{entry['name']}' -> {entry['root']}")
+        if getattr(args, "activate", False):
+            try:
+                registry.activate(entry["name"])
+            except Exception as exc:
+                print(f"activate failed: {exc}", file=sys.stderr)
+                return 2
+            print(f"Active: {entry['name']}")
+        return 0
+
+    if sub == "activate":
+        try:
+            entry = registry.activate(args.name)
+        except Exception as exc:
+            print(f"activate failed: {exc}", file=sys.stderr)
+            return 2
+        print(f"Active: {entry['name']} -> {entry['root']}")
+        return 0
+
+    if sub == "unregister":
+        try:
+            registry.unregister(args.name)
+        except Exception as exc:
+            print(f"unregister failed: {exc}", file=sys.stderr)
+            return 2
+        print(f"Unregistered: {args.name}")
+        return 0
+
+    print("Usage: llm_wiki wiki {list|register|activate|unregister}", file=sys.stderr)
+    return 2
+
+
+def _build_top_level_ask_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="llm_wiki ask",
+        description=(
+            "Ask a question about a registered LLM-Wiki project. Resolves the project via "
+            "--project, --wiki, or the registry's active project. Dispatches through the same "
+            "backend selector as `project ask` (raganything -> cognee -> wiki)."
+        ),
+    )
+    parser.add_argument("question", help="Natural-language question text.")
+    parser.add_argument("--wiki", help="Registered project name (see `llm_wiki wiki list`).")
+    parser.add_argument("--project", help="Project root path (overrides --wiki).")
+    parser.add_argument(
+        "--backend",
+        choices=["auto", "raganything", "cognee", "wiki"],
+        default="auto",
+        help="Backend to use (default: auto = raganything -> cognee -> wiki).",
+    )
+    parser.add_argument("--top-k", type=int, default=5, help="Maximum results/context items (default: 5).")
+    parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Print the raw JSON envelope instead of the pretty-printed answer.",
+    )
+    parser.add_argument(
+        "--cognee-search-type",
+        default=None,
+        help="Cognee SearchType name when --backend cognee (e.g. INSIGHTS, CHUNKS).",
+    )
+    parser.add_argument(
+        "--cognee-dataset",
+        default=None,
+        help="Override the configured Cognee dataset.",
+    )
+    return parser
+
+
+def _build_top_level_wiki_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="llm_wiki wiki",
+        description="Manage the persistent LLM-Wiki project registry used by `ask` and the MCP server.",
+    )
+    subparsers = parser.add_subparsers(dest="wiki_command", required=True)
+
+    wiki_list = subparsers.add_parser("list", help="List registered projects and show the active one.")
+    wiki_list.add_argument(
+        "--json",
+        dest="wiki_list_json",
+        action="store_true",
+        help="Emit the registry payload as JSON.",
+    )
+
+    wiki_register = subparsers.add_parser(
+        "register",
+        help="Register a project root in the persistent registry.",
+    )
+    wiki_register.add_argument("path", help="Path to the project root containing .llm-wiki/.")
+    wiki_register.add_argument("--name", help="Friendly name (defaults to the sanitized directory name).")
+    wiki_register.add_argument(
+        "--activate",
+        action="store_true",
+        help="Also set the new entry as the active project.",
+    )
+
+    wiki_activate = subparsers.add_parser("activate", help="Set a registered project as the active one.")
+    wiki_activate.add_argument("name")
+
+    wiki_unregister = subparsers.add_parser("unregister", help="Remove a project from the registry.")
+    wiki_unregister.add_argument("name")
+    return parser
 
 
 def project_main(argv: List[str] | None = None) -> int:
@@ -790,6 +1020,14 @@ def main(argv: List[str] | None = None) -> int:
         argv = sys.argv[1:]
     if argv and argv[0] == "project":
         return project_main(argv[1:])
+    if argv and argv[0] == "ask":
+        ask_parser = _build_top_level_ask_parser()
+        ask_args = ask_parser.parse_args(argv[1:])
+        return _top_level_ask_handler(ask_args)
+    if argv and argv[0] == "wiki":
+        wiki_parser = _build_top_level_wiki_parser()
+        wiki_args = wiki_parser.parse_args(argv[1:])
+        return _wiki_command_handler(wiki_args)
     parser = argparse.ArgumentParser(description="Extract a typed research intelligence graph from LLM-Wiki notes.")
     parser.add_argument("paths", nargs="+", help="Markdown file or directory paths to extract")
     parser.add_argument("--source-kind", default="SourceDocument", help="Default source kind: Paper, Repository, ResearchDigest, SourceDocument")

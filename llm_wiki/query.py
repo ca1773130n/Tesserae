@@ -781,10 +781,123 @@ def _xml_escape(value: str) -> str:
     )
 
 
+# ----------------------------------------------------------------- ask dispatcher
+
+
+def ask_project(
+    wiki: Any,
+    question: str,
+    *,
+    backend: str = "auto",
+    top_k: int = 5,
+    cognee_search_type: Optional[str] = None,
+    cognee_dataset: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Run a question against the configured memory backends and return a JSON-serializable envelope.
+
+    Shared by ``llm_wiki project ask``, the new top-level ``llm_wiki ask``,
+    and the MCP ``ask`` tool so all three call sites stay in lockstep.
+
+    Dispatch order under ``backend="auto"``:
+
+    1. raganything (when ``memory_backends.raganything.enabled``)
+    2. cognee (when ``memory_backends.cognee.enabled`` per ``cognee_backend_config``)
+    3. compiled-wiki BM25 search (always available)
+
+    Explicit ``backend="raganything"|"cognee"|"wiki"`` short-circuits the
+    selector and surfaces backend errors instead of silently falling through.
+
+    Returns one of:
+
+    * ``{"backend": "raganything", "question", "answer"}``
+      (or ``{"backend": "raganything", "answer": None, "note": ...}`` when
+      explicit raganything was requested but returned nothing)
+    * ``{"backend": "cognee", "question", "dataset", "results"}``
+    * ``{"backend": "wiki", "question", ...}`` (carries the full
+      ``QueryResult.to_dict()`` payload merged with ``backend`` and ``question``)
+    """
+
+    from .project import cognee_backend_config
+
+    if backend not in {"auto", "raganything", "cognee", "wiki"}:
+        raise ValueError(f"ask_project: unknown backend {backend!r}")
+    cleaned_question = (question or "").strip()
+    if not cleaned_question:
+        raise ValueError("ask_project: question is required")
+
+    cfg = wiki.config()
+
+    # ---- raganything path ----
+    raganything_cfg = (cfg.get("memory_backends") or {}).get("raganything") or {}
+    raganything_enabled = bool(raganything_cfg.get("enabled"))
+    use_raganything = backend == "raganything" or (backend == "auto" and raganything_enabled)
+    if use_raganything:
+        # Resolve working_dir relative to the project root for portability.
+        wd = raganything_cfg.get("working_dir")
+        if wd and not Path(wd).is_absolute():
+            raganything_cfg = {**raganything_cfg, "working_dir": str(wiki.project_root / wd)}
+        if backend == "raganything" and not raganything_cfg.get("enabled"):
+            raganything_cfg = {**raganything_cfg, "enabled": True}
+        from .raganything_query import query as _raganything_query
+
+        try:
+            answer = _raganything_query(cleaned_question, backend_config=raganything_cfg)
+        except Exception as exc:
+            if backend == "raganything":
+                raise RuntimeError(f"raganything ask failed: {exc}") from exc
+            answer = None
+        if answer is not None:
+            return {
+                "backend": "raganything",
+                "question": cleaned_question,
+                "answer": answer,
+            }
+        if backend == "raganything":
+            return {
+                "backend": "raganything",
+                "question": cleaned_question,
+                "answer": None,
+                "note": "no answer (likely missing API keys or empty index)",
+            }
+        # auto: fall through
+
+    # ---- cognee path ----
+    cognee_cfg = cognee_backend_config(cfg)
+    use_cognee = backend == "cognee" or (backend == "auto" and cognee_cfg.get("enabled", False))
+    if use_cognee:
+        from .cognee_query import search_cognee
+
+        dataset = cognee_dataset or cognee_cfg.get("dataset")
+        cognee_kwargs: Dict[str, Any] = {"dataset": dataset, "top_k": top_k}
+        if cognee_search_type:
+            cognee_kwargs["search_type"] = cognee_search_type
+        try:
+            results = search_cognee(cleaned_question, **cognee_kwargs)
+        except Exception as exc:
+            if backend == "cognee":
+                raise RuntimeError(f"cognee ask failed: {exc}") from exc
+            results = None
+        if results is not None:
+            return {
+                "backend": "cognee",
+                "dataset": dataset,
+                "question": cleaned_question,
+                "results": results,
+            }
+
+    # ---- wiki search fallback ----
+    result = wiki.query(cleaned_question, top_k=top_k, use_llm=False)
+    payload = result.to_dict()
+    payload["backend"] = "wiki"
+    payload["question"] = cleaned_question
+    return payload
+
+
 __all__ = [
     "QueryHit",
     "QueryResult",
     "WikiQuery",
+    "ask_project",
     "env_enabled",
     "env_dry_run",
     "llm_truthy",

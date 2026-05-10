@@ -790,71 +790,16 @@ class LLMWikiMCPServer:
     def _mcp_ask(self, args: JSONDict, *, question: str, backend: str, top_k: int) -> JSONDict:
         """Dispatch ``ask`` to raganything, cognee, or compiled-wiki search.
 
-        Mirrors the ``llm_wiki project ask`` CLI handler but returns a JSON
-        payload instead of printing. Errors raised here surface as JSON-RPC
-        errors via :class:`MCPRequestHandler`.
+        Thin adapter around :func:`llm_wiki.query.ask_project` so the MCP
+        ``ask`` tool, the ``llm_wiki project ask`` CLI handler, and the new
+        top-level ``llm_wiki ask`` command share one dispatcher.
         """
-        from .project import ProjectWiki, cognee_backend_config
+        from .project import ProjectWiki
+        from .query import ask_project
 
         project_root = self._resolve_project_root_for_ask(args)
         wiki = ProjectWiki.load(project_root)
-        cfg = wiki.config()
-
-        # ---- raganything path ----
-        raganything_cfg = (cfg.get("memory_backends") or {}).get("raganything") or {}
-        raganything_enabled = bool(raganything_cfg.get("enabled"))
-        use_raganything = backend == "raganything" or (backend == "auto" and raganything_enabled)
-        if use_raganything:
-            wd = raganything_cfg.get("working_dir")
-            if wd and not Path(wd).is_absolute():
-                raganything_cfg = {**raganything_cfg, "working_dir": str(project_root / wd)}
-            if backend == "raganything" and not raganything_cfg.get("enabled"):
-                raganything_cfg = {**raganything_cfg, "enabled": True}
-            from .raganything_query import query as _raganything_query
-
-            try:
-                answer = _raganything_query(question, backend_config=raganything_cfg)
-            except Exception as exc:
-                if backend == "raganything":
-                    raise RuntimeError(f"raganything ask failed: {exc}") from exc
-                answer = None
-            if answer is not None:
-                return {"backend": "raganything", "question": question, "answer": answer}
-            if backend == "raganything":
-                return {
-                    "backend": "raganything",
-                    "question": question,
-                    "answer": None,
-                    "note": "no answer (likely missing API keys or empty index)",
-                }
-            # auto: fall through
-
-        # ---- cognee path ----
-        cognee_cfg = cognee_backend_config(cfg)
-        use_cognee = backend == "cognee" or (backend == "auto" and cognee_cfg.get("enabled", False))
-        if use_cognee:
-            from .cognee_query import search_cognee
-
-            dataset = cognee_cfg.get("dataset")
-            try:
-                results = search_cognee(question, dataset=dataset, top_k=top_k)
-            except Exception as exc:
-                if backend == "cognee":
-                    raise RuntimeError(f"cognee ask failed: {exc}") from exc
-            else:
-                return {
-                    "backend": "cognee",
-                    "dataset": dataset,
-                    "question": question,
-                    "results": results,
-                }
-
-        # ---- wiki search fallback ----
-        result = wiki.query(question, top_k=top_k, use_llm=False)
-        payload = result.to_dict()
-        payload["backend"] = "wiki"
-        payload["question"] = question
-        return payload
+        return ask_project(wiki, question, backend=backend, top_k=top_k)
 
     def node_context(self, graph: ResearchGraph, node_id: Optional[str] = None, node_name: Optional[str] = None, limit: int = 50) -> JSONDict:
         node = self._find_node(graph, node_id=node_id, node_name=node_name)

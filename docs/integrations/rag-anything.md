@@ -116,6 +116,42 @@ llm_wiki project ask "..." --backend wiki
 
 `--backend raganything` calls `llm_wiki.raganything_query.query` directly. A relative `working_dir` in `memory_backends.raganything` is resolved against the project root before the call.
 
+### Top-level `ask` (uses the multi-project registry)
+
+For workflows where you want to ask across multiple registered LLM-Wiki projects without `cd`-ing into each one, the top-level `llm_wiki ask` command resolves the project via the persistent registry shared with the MCP server:
+
+```bash
+# One-time: register your projects (saved to ~/.llm-wiki/registry.json).
+llm_wiki wiki register ~/Developer/Projects/LLM-Wiki --name llm-wiki --activate
+llm_wiki wiki register ~/Developer/Projects/Other --name other
+
+# List registered projects.
+llm_wiki wiki list
+
+# Ask the currently active project.
+llm_wiki ask "How does the parser routing work?"
+
+# Ask a specific registered project (no need to activate it).
+llm_wiki ask "What is the architecture?" --wiki other
+
+# Force a backend or pass a direct path.
+llm_wiki ask "..." --wiki llm-wiki --backend raganything --json
+llm_wiki ask "..." --project /tmp/somewhere
+```
+
+The dispatch logic — `--project > --wiki > active project` — is implemented in `_top_level_ask_handler` and the answer formatting / backend selection is shared with `project ask` and the MCP `ask` tool through `llm_wiki.query.ask_project`. The registry is file-backed (`~/.llm-wiki/registry.json` by default), so it persists across sessions and stays in sync with the MCP server's project list.
+
+### Multi-project registry (`llm_wiki wiki`)
+
+| Command | Purpose |
+| --- | --- |
+| `llm_wiki wiki list [--json]` | Show registered projects and which one is active. |
+| `llm_wiki wiki register <path> [--name <alias>] [--activate]` | Add a project to the registry; alias defaults to the sanitized directory name. |
+| `llm_wiki wiki activate <name>` | Mark an entry as the active project for subsequent `llm_wiki ask` calls without `--wiki`. |
+| `llm_wiki wiki unregister <name>` | Remove an entry; clears the active pointer when it matched. |
+
+These commands operate directly on `llm_wiki.mcp_server.ProjectRegistry` — no MCP roundtrip — so they can be scripted without running the MCP server.
+
 ### Invoking from MCP
 
 The stdio MCP server exposes an `ask` tool with the same backend selector:
