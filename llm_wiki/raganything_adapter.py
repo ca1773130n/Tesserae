@@ -138,7 +138,7 @@ class RagAnythingGraphAdapter:
             node = builder.add_node(
                 path or doc_id,
                 ResearchNodeType.SOURCE_FILE,
-                description=description or None,
+                description=description,
                 source_path=path or None,
                 metadata=metadata,
                 id_seed=f"raganything:{doc_id}",

@@ -79,3 +79,31 @@ def test_merge_raganything_graph_appends_to_existing_graph_and_writes_manifest(t
     assert sync_path.exists()
     written = json.loads(sync_path.read_text(encoding="utf-8"))
     assert written == manifest
+
+
+def test_import_payload_emits_empty_string_description_when_no_text_blocks(tmp_path):
+    payload = {
+        "version": 1,
+        "project": {"name": "demo"},
+        "parser": "docling",
+        "documents": [
+            {
+                "id": "doc-empty",
+                "path": "data/empty.md",
+                "sha256": "00",
+                "parsed_dir": ".llm-wiki/external/raganything/parsed/00",
+                "content_list": [
+                    # No text block — only an image (caption empty), simulating
+                    # a doc whose parsed body is non-textual.
+                    {"type": "image", "page_idx": 0, "img_path": "x.png"}
+                ],
+            }
+        ],
+    }
+
+    adapter = RagAnythingGraphAdapter(tmp_path)
+    graph, _manifest = adapter.import_payload(payload, artifact_rel="manifest.json")
+    sources = [n for n in graph.nodes if n.type == ResearchNodeType.SOURCE_FILE]
+    assert len(sources) == 1
+    # Description must be a string (NOT None) so SQLite's NOT NULL constraint is satisfied.
+    assert isinstance(sources[0].description, str)
