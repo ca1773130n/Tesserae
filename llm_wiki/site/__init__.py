@@ -76,14 +76,17 @@ from .pages import (
 from .raw_view import (
     RAW_ASSETS_DIR,
     RAW_ROUTE_DIR,
+    WikiLinkResolver,
     build_wiki_link_resolver,
     copy_raw_asset,
     derive_project_root,
     is_binary_extension,
+    is_markdown_source_path,
     iter_markdown_binary_assets,
     iter_raw_sources,
     render_raw_view,
 )
+
 from .search import build_search_index
 from .sessions import render_session_detail, render_sessions_index, session_search_entries
 from .tokens import CSS
@@ -454,7 +457,7 @@ class StaticSiteBuilder:
             sources_inventory = iter_raw_sources(seen_paths, project_root)
             linked_asset_paths: list[str] = []
             for _rel_path, _slug, absolute in sources_inventory:
-                if absolute.suffix.lower() in {".md", ".markdown", ".mdx"}:
+                if is_markdown_source_path(absolute):
                     linked_asset_paths.extend(
                         rel for rel, _asset_slug, _asset_path in iter_markdown_binary_assets(absolute, project_root)
                     )
@@ -508,7 +511,7 @@ class StaticSiteBuilder:
                 )
                 _track(f"{RAW_ROUTE_DIR}/{slug}.html")
                 # AI siblings: only useful for text-style sources.
-                if absolute.suffix.lower() in {".md", ".markdown", ".mdx", ".txt"}:
+                if is_markdown_source_path(absolute) or absolute.suffix.lower() == ".txt":
                     try:
                         body_text = absolute.read_text(encoding="utf-8", errors="replace")
                     except OSError:

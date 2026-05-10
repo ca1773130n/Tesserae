@@ -7,13 +7,13 @@
 </p>
 
 <p align="center">
-  <a href="../../README.md">English</a> ·
-  <a href="README.ko.md">한국어</a> ·
-  <a href="README.zh.md">中文</a> ·
-  <a href="README.ja.md">日本語</a> ·
-  <a href="README.ru.md">Русский</a> ·
-  <a href="README.es.md">Español</a> ·
-  <a href="README.fr.md">Français</a>
+  <a href="./README.md">English</a> ·
+  <a href="./README.md.ko">한국어</a> ·
+  <a href="./README.md.zh">中文</a> ·
+  <a href="./README.md.ja">日本語</a> ·
+  <a href="./README.md.ru">Русский</a> ·
+  <a href="./README.md.es">Español</a> ·
+  <a href="./README.md.fr">Français</a>
 </p>
 
 <p align="center">
@@ -21,11 +21,11 @@
   <a href="#cognee--llm-wiki"><img src="https://img.shields.io/badge/Cognee-memory_backend-d4a574" alt="Бэкенд памяти Cognee" /></a>
   <a href="#почему-агенты-используют-это"><img src="https://img.shields.io/badge/agents-MCP%20%7C%20llms.txt%20%7C%20harness-38bdf8" alt="Экспорты для агентов" /></a>
   <a href="#конвейер-памяти"><img src="https://img.shields.io/badge/graph-validated%20ontology-8A2BE2" alt="Проверенный граф" /></a>
-  <a href="../../LICENSE"><img src="https://img.shields.io/github/license/ca1773130n/LLM-Wiki" alt="Лицензия" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/ca1773130n/LLM-Wiki" alt="Лицензия" /></a>
 </p>
 
 <p align="center">
-  <img src="../../docs/assets/wiki-graph-screenshot.png" alt="Статический сайт LLM-Wiki с скомпилированным графом памяти проекта и обозревателем исходного кода" width="100%" />
+  <img src="./docs/assets/wiki-graph-screenshot.png" alt="Статический сайт LLM-Wiki с скомпилированным графом памяти проекта и обозревателем исходного кода" width="100%" />
 </p>
 
 ---
@@ -230,12 +230,12 @@ llm_wiki project compile
 
 | Руководство | Что вы получите |
 |---|---|
-| [Quickstart](../../docs/quickstart.md) | первая компиляция памяти проекта |
-| [Installation](../../docs/installation.md) | варианты установки и wrappers |
-| [Architecture](../../docs/architecture.md) | внутреннее устройство конвейера и модель графа |
-| [Session history](../../docs/session-history.md) | импорт стенограмм Claude/Codex |
-| [Understand Anything companion workflow](../../docs/integrations/understand-anything.md) | обновление и проекция сопутствующего графа |
-| [Publishing checklist](../../docs/publishing-checklist.md) | развертывание сгенерированного статического сайта |
+| [Quickstart](./docs/quickstart.md) | первая компиляция памяти проекта |
+| [Installation](./docs/installation.md) | варианты установки и wrappers |
+| [Architecture](./docs/architecture.md) | внутреннее устройство конвейера и модель графа |
+| [Session history](./docs/session-history.md) | импорт стенограмм Claude/Codex |
+| [Understand Anything companion workflow](./docs/integrations/understand-anything.md) | обновление и проекция сопутствующего графа |
+| [Publishing checklist](./docs/publishing-checklist.md) | развертывание сгенерированного статического сайта |
 
 ---
 

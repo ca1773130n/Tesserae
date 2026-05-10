@@ -7,13 +7,13 @@
 </p>
 
 <p align="center">
-  <a href="../../README.md">English</a> ·
-  <a href="README.ko.md">한국어</a> ·
-  <a href="README.zh.md">中文</a> ·
-  <a href="README.ja.md">日本語</a> ·
-  <a href="README.ru.md">Русский</a> ·
-  <a href="README.es.md">Español</a> ·
-  <a href="README.fr.md">Français</a>
+  <a href="./README.md">English</a> ·
+  <a href="./README.md.ko">한국어</a> ·
+  <a href="./README.md.zh">中文</a> ·
+  <a href="./README.md.ja">日本語</a> ·
+  <a href="./README.md.ru">Русский</a> ·
+  <a href="./README.md.es">Español</a> ·
+  <a href="./README.md.fr">Français</a>
 </p>
 
 <p align="center">
@@ -21,11 +21,11 @@
   <a href="#cognee--llm-wiki"><img src="https://img.shields.io/badge/Cognee-memory_backend-d4a574" alt="Cognee 记忆后端" /></a>
   <a href="#智能体为什么使用它"><img src="https://img.shields.io/badge/agents-MCP%20%7C%20llms.txt%20%7C%20harness-38bdf8" alt="智能体导出" /></a>
   <a href="#记忆流水线"><img src="https://img.shields.io/badge/graph-validated%20ontology-8A2BE2" alt="已验证图" /></a>
-  <a href="../../LICENSE"><img src="https://img.shields.io/github/license/ca1773130n/LLM-Wiki" alt="许可证" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/ca1773130n/LLM-Wiki" alt="许可证" /></a>
 </p>
 
 <p align="center">
-  <img src="../../docs/assets/wiki-graph-screenshot.png" alt="LLM-Wiki 静态站点，展示已编译的项目记忆图和源码浏览器" width="100%" />
+  <img src="./docs/assets/wiki-graph-screenshot.png" alt="LLM-Wiki 静态站点，展示已编译的项目记忆图和源码浏览器" width="100%" />
 </p>
 
 ---
@@ -230,12 +230,12 @@ llm_wiki project compile
 
 | 指南 | 你将获得 |
 |---|---|
-| [Quickstart](../../docs/quickstart.md) | 第一次项目记忆编译 |
-| [Installation](../../docs/installation.md) | 安装选项和 wrappers |
-| [Architecture](../../docs/architecture.md) | 流水线内部机制和图模型 |
-| [Session history](../../docs/session-history.md) | Claude/Codex 转录导入 |
-| [Understand Anything companion workflow](../../docs/integrations/understand-anything.md) | 配套图刷新和投影 |
-| [Publishing checklist](../../docs/publishing-checklist.md) | 部署生成的静态站点 |
+| [Quickstart](./docs/quickstart.md) | 第一次项目记忆编译 |
+| [Installation](./docs/installation.md) | 安装选项和 wrappers |
+| [Architecture](./docs/architecture.md) | 流水线内部机制和图模型 |
+| [Session history](./docs/session-history.md) | Claude/Codex 转录导入 |
+| [Understand Anything companion workflow](./docs/integrations/understand-anything.md) | 配套图刷新和投影 |
+| [Publishing checklist](./docs/publishing-checklist.md) | 部署生成的静态站点 |
 
 ---
 

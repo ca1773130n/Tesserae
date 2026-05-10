@@ -7,13 +7,13 @@
 </p>
 
 <p align="center">
-  <a href="../../README.md">English</a> ·
-  <a href="README.ko.md">한국어</a> ·
-  <a href="README.zh.md">中文</a> ·
-  <a href="README.ja.md">日本語</a> ·
-  <a href="README.ru.md">Русский</a> ·
-  <a href="README.es.md">Español</a> ·
-  <a href="README.fr.md">Français</a>
+  <a href="./README.md">English</a> ·
+  <a href="./README.md.ko">한국어</a> ·
+  <a href="./README.md.zh">中文</a> ·
+  <a href="./README.md.ja">日本語</a> ·
+  <a href="./README.md.ru">Русский</a> ·
+  <a href="./README.md.es">Español</a> ·
+  <a href="./README.md.fr">Français</a>
 </p>
 
 <p align="center">
@@ -21,11 +21,11 @@
   <a href="#cognee--llm-wiki"><img src="https://img.shields.io/badge/Cognee-memory_backend-d4a574" alt="Cognee 메모리 백엔드" /></a>
   <a href="#에이전트가-사용하는-이유"><img src="https://img.shields.io/badge/agents-MCP%20%7C%20llms.txt%20%7C%20harness-38bdf8" alt="에이전트 내보내기" /></a>
   <a href="#메모리-파이프라인"><img src="https://img.shields.io/badge/graph-validated%20ontology-8A2BE2" alt="검증된 그래프" /></a>
-  <a href="../../LICENSE"><img src="https://img.shields.io/github/license/ca1773130n/LLM-Wiki" alt="라이선스" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/ca1773130n/LLM-Wiki" alt="라이선스" /></a>
 </p>
 
 <p align="center">
-  <img src="../../docs/assets/wiki-graph-screenshot.png" alt="컴파일된 프로젝트 메모리 그래프와 소스 탐색기를 보여주는 LLM-Wiki 정적 사이트" width="100%" />
+  <img src="./docs/assets/wiki-graph-screenshot.png" alt="컴파일된 프로젝트 메모리 그래프와 소스 탐색기를 보여주는 LLM-Wiki 정적 사이트" width="100%" />
 </p>
 
 ---
@@ -230,12 +230,12 @@ llm_wiki project compile
 
 | 가이드 | 얻을 수 있는 것 |
 |---|---|
-| [빠른 시작](../../docs/quickstart.md) | 첫 프로젝트 메모리 컴파일 |
-| [설치](../../docs/installation.md) | 설치 옵션과 래퍼 |
-| [아키텍처](../../docs/architecture.md) | 파이프라인 내부 구조와 그래프 모델 |
-| [세션 기록](../../docs/session-history.md) | Claude/Codex 기록 가져오기 |
-| [Understand Anything 보조 워크플로](../../docs/integrations/understand-anything.md) | 보조 그래프 새로고침과 프로젝션 |
-| [게시 체크리스트](../../docs/publishing-checklist.md) | 생성된 정적 사이트 배포 |
+| [빠른 시작](./docs/quickstart.md) | 첫 프로젝트 메모리 컴파일 |
+| [설치](./docs/installation.md) | 설치 옵션과 래퍼 |
+| [아키텍처](./docs/architecture.md) | 파이프라인 내부 구조와 그래프 모델 |
+| [세션 기록](./docs/session-history.md) | Claude/Codex 기록 가져오기 |
+| [Understand Anything 보조 워크플로](./docs/integrations/understand-anything.md) | 보조 그래프 새로고침과 프로젝션 |
+| [게시 체크리스트](./docs/publishing-checklist.md) | 생성된 정적 사이트 배포 |
 
 ---
 

@@ -19,8 +19,29 @@ from pathlib import Path
 from llm_wiki.site.raw_view import (
     _unique_heading_anchors,
     _wrap_tables_in_scroll,
+    is_markdown_source_path,
     render_raw_view,
 )
+
+
+def test_raw_view_renders_root_readme_language_files_as_markdown(tmp_path: Path) -> None:
+    """Root ``README.md.<lang>`` files should render like GitHub README docs."""
+    md = tmp_path / "README.md.ko"
+    md.write_text("# 한국어 README\n\n- 하나\n- 둘\n", encoding="utf-8")
+
+    assert is_markdown_source_path(md)
+
+    out = render_raw_view(
+        site_title="LLM-Wiki",
+        project_relative_path="README.md.ko",
+        absolute_path=md,
+    )
+
+    assert '<section class="markdown-body raw-markdown">' in out
+    assert "<h1" in out
+    assert "한국어 README" in out
+    assert "<li>하나</li>" in out
+    assert "<pre class=\"raw-text\">" not in out
 
 
 def test_raw_view_renders_toc_when_body_has_headings(tmp_path: Path) -> None:

@@ -7,13 +7,13 @@
 </p>
 
 <p align="center">
-  <a href="../../README.md">English</a> ·
-  <a href="README.ko.md">한국어</a> ·
-  <a href="README.zh.md">中文</a> ·
-  <a href="README.ja.md">日本語</a> ·
-  <a href="README.ru.md">Русский</a> ·
-  <a href="README.es.md">Español</a> ·
-  <a href="README.fr.md">Français</a>
+  <a href="./README.md">English</a> ·
+  <a href="./README.md.ko">한국어</a> ·
+  <a href="./README.md.zh">中文</a> ·
+  <a href="./README.md.ja">日本語</a> ·
+  <a href="./README.md.ru">Русский</a> ·
+  <a href="./README.md.es">Español</a> ·
+  <a href="./README.md.fr">Français</a>
 </p>
 
 <p align="center">
@@ -21,11 +21,11 @@
   <a href="#cognee--llm-wiki"><img src="https://img.shields.io/badge/Cognee-memory_backend-d4a574" alt="Cognee メモリバックエンド" /></a>
   <a href="#エージェントが使う理由"><img src="https://img.shields.io/badge/agents-MCP%20%7C%20llms.txt%20%7C%20harness-38bdf8" alt="エージェント向けエクスポート" /></a>
   <a href="#メモリパイプライン"><img src="https://img.shields.io/badge/graph-validated%20ontology-8A2BE2" alt="検証済みグラフ" /></a>
-  <a href="../../LICENSE"><img src="https://img.shields.io/github/license/ca1773130n/LLM-Wiki" alt="ライセンス" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/ca1773130n/LLM-Wiki" alt="ライセンス" /></a>
 </p>
 
 <p align="center">
-  <img src="../../docs/assets/wiki-graph-screenshot.png" alt="コンパイル済みプロジェクトメモリグラフとソースエクスプローラーを表示する LLM-Wiki 静的サイト" width="100%" />
+  <img src="./docs/assets/wiki-graph-screenshot.png" alt="コンパイル済みプロジェクトメモリグラフとソースエクスプローラーを表示する LLM-Wiki 静的サイト" width="100%" />
 </p>
 
 ---
@@ -230,12 +230,12 @@ llm_wiki project compile
 
 | ガイド | 得られるもの |
 |---|---|
-| [クイックスタート](../../docs/quickstart.md) | 最初のプロジェクトメモリコンパイル |
-| [インストール](../../docs/installation.md) | インストールオプションとラッパー |
-| [アーキテクチャ](../../docs/architecture.md) | パイプライン内部とグラフモデル |
-| [セッション履歴](../../docs/session-history.md) | Claude/Codex トランスクリプトのインポート |
-| [Understand Anything 補助ワークフロー](../../docs/integrations/understand-anything.md) | 補助グラフの更新とプロジェクション |
-| [公開チェックリスト](../../docs/publishing-checklist.md) | 生成された静的サイトのデプロイ |
+| [クイックスタート](./docs/quickstart.md) | 最初のプロジェクトメモリコンパイル |
+| [インストール](./docs/installation.md) | インストールオプションとラッパー |
+| [アーキテクチャ](./docs/architecture.md) | パイプライン内部とグラフモデル |
+| [セッション履歴](./docs/session-history.md) | Claude/Codex トランスクリプトのインポート |
+| [Understand Anything 補助ワークフロー](./docs/integrations/understand-anything.md) | 補助グラフの更新とプロジェクション |
+| [公開チェックリスト](./docs/publishing-checklist.md) | 生成された静的サイトのデプロイ |
 
 ---
 

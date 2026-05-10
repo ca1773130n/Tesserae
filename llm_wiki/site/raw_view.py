@@ -73,6 +73,7 @@ __all__ = [
     "iter_markdown_binary_assets",
     "copy_raw_asset",
     "is_binary_extension",
+    "is_markdown_source_path",
     "WikiLinkResolver",
     "build_wiki_link_resolver",
 ]
@@ -107,6 +108,19 @@ _HTML_URL_ATTR_RE = re.compile(
 def is_binary_extension(suffix: str) -> bool:
     """Return ``True`` for extensions we copy alongside as binary assets."""
     return suffix.lower() in _BINARY_EXTS
+
+
+def is_markdown_source_path(path: object) -> bool:
+    """Return ``True`` for Markdown files, including root ``README.md.<lang>``.
+
+    GitHub renders localized README companions named like ``README.md.ko`` as
+    Markdown when linked from the repository root. Treat those files as Markdown
+    in the generated raw viewer too; otherwise their raw pages degrade into
+    plain ``<pre>`` text because ``Path.suffix`` is just ``.ko``.
+    """
+    p = Path(str(path))
+    name = p.name.lower()
+    return p.suffix.lower() in _MARKDOWN_EXTS or name.startswith("readme.md.")
 
 
 # ---------------------------------------------------------------------------
@@ -923,7 +937,7 @@ def render_raw_view(
     except (TypeError, ValueError):
         project_root = None
 
-    if suffix in _MARKDOWN_EXTS:
+    if is_markdown_source_path(absolute_path):
         body_html = _render_markdown_body(
             absolute_path,
             project_root=project_root,
