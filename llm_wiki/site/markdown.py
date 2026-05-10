@@ -365,9 +365,13 @@ def render_markdown(
                 i += 1
             if i < n:
                 i += 1  # consume closing fence
-            code_html = html.escape("\n".join(buf))
-            cls = f' class="language-{html.escape(lang, quote=True)}"' if lang else ""
-            out.append(f"<pre><code{cls}>{code_html}</code></pre>")
+            code_text = "\n".join(buf)
+            code_html = html.escape(code_text)
+            if lang.lower() == "mermaid":
+                out.append(f'<div class="mermaid" data-mermaid-source="fence">{code_html}</div>')
+            else:
+                cls = f' class="language-{html.escape(lang, quote=True)}"' if lang else ""
+                out.append(f"<pre><code{cls}>{code_html}</code></pre>")
             continue
 
         # raw HTML block (GitHub README subset)

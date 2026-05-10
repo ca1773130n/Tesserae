@@ -22,6 +22,7 @@ from llm_wiki.site.js import (
     JS_BUNDLE_GRAPH,
     JS_DOC_TREE,
     JS_GRAPH,
+    JS_MERMAID_RENDER,
     JS_SEARCH_PALETTE,
     JS_SESSION_TURN_SCROLLSPY,
     JS_THEME_TOGGLE,
@@ -56,6 +57,13 @@ def test_bundle_updates_aria_label_on_theme_toggle():
 # ---------------------------------------------------------------------------
 # Search palette
 # ---------------------------------------------------------------------------
+
+def test_bundle_renders_mermaid_diagrams():
+    assert "cdn.jsdelivr.net/npm/mermaid" in JS_MERMAID_RENDER
+    assert "document.querySelectorAll('.mermaid')" in JS_MERMAID_RENDER
+    assert "mermaid.run" in JS_MERMAID_RENDER
+    assert JS_MERMAID_RENDER in JS_BUNDLE_BASE
+
 
 def test_bundle_fetches_search_index_json():
     assert "search-index.json" in JS_BUNDLE

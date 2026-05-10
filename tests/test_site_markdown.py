@@ -26,6 +26,24 @@ def test_markdown_preserves_safe_readme_html_blocks() -> None:
     assert '&lt;p' not in html
 
 
+def test_mermaid_fence_renders_as_diagram_container() -> None:
+    html, _ = render_markdown(
+        '```mermaid\n'
+        'flowchart TB\n'
+        '  A["Raw project sources<br/>README · docs"]\n'
+        '  A --> B\n'
+        '```\n'
+    )
+
+    assert '<div class="mermaid" data-mermaid-source="fence">' in html
+    assert '<pre><code class="language-mermaid"' not in html
+    assert 'flowchart TB' in html
+    # Mermaid labels need literal <br/> text after browser entity decoding, not
+    # raw HTML tags that the parser would turn into real <br> nodes.
+    assert '&lt;br/&gt;' in html
+    assert '<br/>' not in html
+
+
 def test_markdown_strips_unsafe_raw_html() -> None:
     html, _ = render_markdown('<script>alert(1)</script>\n\n<a href="javascript:alert(1)">bad</a>')
 

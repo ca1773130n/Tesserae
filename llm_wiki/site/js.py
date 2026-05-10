@@ -3847,8 +3847,46 @@ JS_SESSION_TURN_SCROLLSPY = r"""
 """
 
 
+# ---------------------------------------------------------------------------
+# Mermaid diagrams
+# ---------------------------------------------------------------------------
+JS_MERMAID_RENDER = r"""
+(function(){
+  function renderMermaid(){
+    var blocks = document.querySelectorAll('.mermaid');
+    if (!blocks.length) return;
+    for (var i = 0; i < blocks.length; i++) {
+      blocks[i].setAttribute('data-processed', 'false');
+    }
+    import('https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs')
+      .then(function(mod){
+        var mermaid = mod.default || mod;
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: 'strict',
+          theme: (document.documentElement.getAttribute('data-theme') === 'dark') ? 'dark' : 'default'
+        });
+        return mermaid.run({ nodes: blocks });
+      })
+      .catch(function(err){
+        document.documentElement.setAttribute('data-mermaid-error', '');
+        try { console.warn('Mermaid render failed', err); } catch (_) {}
+      });
+  }
+  function scheduleMermaid(){
+    try { window.setTimeout(renderMermaid, 0); } catch (_) { renderMermaid(); }
+  }
+  if (document.readyState === 'complete') {
+    scheduleMermaid();
+  } else {
+    window.addEventListener('load', scheduleMermaid, { once: true });
+  }
+})();
+"""
+
+
 # ``JS_BUNDLE_BASE`` is what every page loads (theme toggle, rail/TOC drawer,
-# search palette, subtype chip filter, doc-tree filter, TOC scrollspy).
+# search palette, subtype chip filter, doc-tree filter, TOC scrollspy, Mermaid diagrams).
 # ``JS_BUNDLE_GRAPH`` is the heavier graph renderer that we only ship on the
 # graph route — see ``llm_wiki.site.__init__`` (writes both ``assets/app.js``
 # and ``assets/graph.js``) and ``render_graph_view`` in ``pages.py`` (injects
@@ -3861,6 +3899,7 @@ JS_BUNDLE_BASE = (
     + "\n" + JS_DOC_TREE
     + "\n" + JS_TOC_SCROLLSPY
     + "\n" + JS_SESSION_TURN_SCROLLSPY
+    + "\n" + JS_MERMAID_RENDER
 )
 
 JS_BUNDLE_GRAPH = JS_GRAPH
@@ -3881,6 +3920,7 @@ __all__ = [
     "JS_DOC_TREE",
     "JS_TOC_SCROLLSPY",
     "JS_SESSION_TURN_SCROLLSPY",
+    "JS_MERMAID_RENDER",
     "JS_GRAPH",
     "JS_BUNDLE",
     "JS_BUNDLE_BASE",

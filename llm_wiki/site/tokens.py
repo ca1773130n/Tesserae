@@ -215,6 +215,28 @@ pre {
   line-height: 1.55;
 }
 pre code { background: transparent; padding: 0; border-radius: 0; }
+.mermaid {
+  margin: var(--space-5) 0;
+  padding: var(--space-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--panel) 92%, var(--accent) 8%);
+  overflow-x: auto;
+  text-align: center;
+  font-family: var(--type-mono);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.mermaid svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+[data-mermaid-error] .mermaid {
+  text-align: left;
+  white-space: pre;
+}
 
 hr {
   border: 0;

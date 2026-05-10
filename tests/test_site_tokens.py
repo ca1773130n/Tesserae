@@ -35,6 +35,15 @@ def test_css_defines_stat_row_grid():
     assert "flex-direction: column" in CSS
 
 
+def test_css_styles_mermaid_diagram_blocks():
+    assert ".mermaid {" in CSS
+    mermaid = CSS.split(".mermaid {", 1)[1].split("}", 1)[0]
+    assert "overflow-x: auto" in mermaid
+    assert "text-align: center" in mermaid
+    assert ".mermaid svg" in CSS
+    assert "[data-mermaid-error] .mermaid" in CSS
+
+
 def test_css_session_pages_use_compact_readable_scale():
     assert ".session-page" in CSS
     assert ".session-page .stats" in CSS
