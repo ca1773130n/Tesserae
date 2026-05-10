@@ -78,7 +78,7 @@
 <div class="table-scroll"><table class="md-table"><thead><tr><th>If you only have...</th><th>Your agent still has to...</th><th>LLM-Wiki gives it...</th></tr></thead><tbody><tr><td>A README</td><td>rediscover architecture and decisions</td><td>typed project memory + source provenance</td></tr><tr><td>A docs site</td><td>search pages like a human</td><td>MCP tools, <code>llms.txt</code>, JSON graph, per-page context</td></tr><tr><td>A vector DB</td><td>guess relationships from chunks</td><td>validated nodes, edges, aliases, claims, evidence</td></tr><tr><td>A graph visualizer</td><td>admire a picture</td><td>portable graph artifacts that retrieval systems can use</td></tr><tr><td>Chat history</td><td>forget previous work</td><td>imported agent sessions as durable memory</td></tr></tbody></table></div>
 <hr>
 <h2 id="memory-pipeline">Memory pipeline</h2>
-<pre><code class="language-mermaid">flowchart TB
+<div class="mermaid" data-mermaid-source="fence">flowchart TB
   A[&quot;Raw project sources&lt;br/&gt;README · docs · code · research notes&quot;]
   B[&quot;Agent sessions&lt;br/&gt;Claude Code · Codex · subagents&quot;]
   C[&quot;Companion artifacts&lt;br/&gt;Understand Anything · external graphs&quot;]
@@ -94,17 +94,17 @@
   D --&gt; E
   E --&gt; F
   E --&gt; G
-  E --&gt; H</code></pre>
+  E --&gt; H</div>
 <hr>
 <h2 id="cognee-llm-wiki">Cognee + LLM-Wiki</h2>
 <p><strong>LLM-Wiki compiles memory. Cognee retrieves it.</strong></p>
 <p>Cognee is powerful as an AI memory backend: graph + vector retrieval, semantic memory, and ontology-aware hooks. But raw repo/docs ingestion can still become noisy if the memory going in is unconstrained.</p>
 <p>LLM-Wiki acts as the build step before Cognee:</p>
 <div class="table-scroll"><table class="md-table"><thead><tr><th>Layer</th><th>LLM-Wiki role</th><th>Cognee role</th></tr></thead><tbody><tr><td>Source capture</td><td>tracks docs, code, research, sessions, companion artifacts</td><td>can ingest many data types</td></tr><tr><td>Structure</td><td>validates node/edge types, aliases, evidence, provenance</td><td>stores and retrieves semantic memory</td></tr><tr><td>Runtime</td><td>exports clean Cognee bundles or Codex/OAuth cognify flows</td><td>serves hybrid graph/vector memory to agents</td></tr><tr><td>Safety</td><td>keeps deterministic/local-first paths available</td><td>adds richer memory retrieval when desired</td></tr></tbody></table></div>
-<pre><code class="language-mermaid">flowchart LR
+<div class="mermaid" data-mermaid-source="fence">flowchart LR
   A[&quot;Messy project context&quot;] --&gt; B[&quot;LLM-Wiki&lt;br/&gt;validated memory graph&quot;]
   B --&gt; C[&quot;Cognee&lt;br/&gt;hybrid graph + vector retrieval&quot;]
-  C --&gt; D[&quot;Coding agents&lt;br/&gt;ask better questions with durable context&quot;]</code></pre>
+  C --&gt; D[&quot;Coding agents&lt;br/&gt;ask better questions with durable context&quot;]</div>
 <p>Use Cognee when you want the compiled memory to become a live retrieval substrate for agents. Use LLM-Wiki when you want to control, validate, export, and inspect that memory before it becomes runtime context.</p>
 <hr>
 <h2 id="quick-start">Quick start</h2>

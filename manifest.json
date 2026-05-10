@@ -13,8 +13,8 @@
     },
     {
       "path": "assets/app.js",
-      "sha256": "1aaea049885631c0e1c01066369088732df29f310eef9fc5fe5410b94effb6a6",
-      "size": 34867
+      "sha256": "81af67bba7bd3931881dc3052bad606bde21d2fad1fd830d43f5b6b0a7df1052",
+      "size": 35980
     },
     {
       "path": "assets/graph-d1e86f79e3.js",
@@ -28,8 +28,8 @@
     },
     {
       "path": "assets/style.css",
-      "sha256": "6e2693e010f36eb2acd566e051acd19fb70f593ae914bd0e2367f59c8e3664bc",
-      "size": 92102
+      "sha256": "19e1d6cff06a173ec4f801e9bf62648debd1b959a1a0bde4122d40746a261a67",
+      "size": 92584
     },
     {
       "path": "concepts/4d-gaussian-splatting.html",
@@ -5928,17 +5928,17 @@
     },
     {
       "path": "graph.json",
-      "sha256": "05e7cbc287e5f5a5002e255b9c0e1c5a36546b490be96829f3d599be821dfd54",
+      "sha256": "ad0e543d018d6585f137b086d923b907d46e448529a9c4064f64ed6ef2772c78",
       "size": 1554760
     },
     {
       "path": "graph.json.gz",
-      "sha256": "d0dead536d0d6426d583c1e0d339d3326fb6799aeff3fdb8796eb26874e433aa",
+      "sha256": "e2a91cc77f99f9e50545c4e7964b7e3b053e113ee0824fb4d249a4dd2ffc3eea",
       "size": 161293
     },
     {
       "path": "graph.jsonld",
-      "sha256": "11d66400624c2c20d516feeee37041702bca8f2fb7e468e26f614956bbf6c864",
+      "sha256": "77329fc7ffb0f66bc7e616181b88f6637c5136a6a70011c6b7ae374167acf7fc",
       "size": 339166
     },
     {
@@ -5948,7 +5948,7 @@
     },
     {
       "path": "llms-full.txt",
-      "sha256": "ab58a7a2a94560d39a506c7a919ce20a1c5779499ac4cfcae9293bd8ef94cb27",
+      "sha256": "78a519514bb882dbf6cd888596d6066d6949badffebfcefedfdce8b9edd8de05",
       "size": 411612
     },
     {
@@ -6598,8 +6598,8 @@
     },
     {
       "path": "papers/t-r-o-grasp-cross-embodiment-dexterous-grasping을-위한-robot-object-spatial-t-e5dccb3a.html",
-      "sha256": "5d3496f394faf9752f26e33beb094160a2ee4ff8fe91d2d0b6a324947f63c98a",
-      "size": 151170
+      "sha256": "48bfcfbf9cfdb42debbfe64b047f6db109d11d93527e91cc0baab6299c11eed1",
+      "size": 151193
     },
     {
       "path": "papers/t-r-o-grasp-cross-embodiment-dexterous-grasping을-위한-robot-object-spatial-t-e5dccb3a.json",
@@ -10853,8 +10853,8 @@
     },
     {
       "path": "raw/docs-i18n-readme-es-md.html",
-      "sha256": "186903b3995656975c5c4b40713e36e6e67f52711f31d66e7a9aaf84dd055e5d",
-      "size": 156557
+      "sha256": "98b3cb5dae06e3d6c28e939e50dc1dea084e26a698089f81d8c6b10a6e233ede",
+      "size": 156569
     },
     {
       "path": "raw/docs-i18n-readme-es-md.json",
@@ -10868,8 +10868,8 @@
     },
     {
       "path": "raw/docs-i18n-readme-fr-md.html",
-      "sha256": "bd391b1bc751ffa3da578bfcc4f22688c2aa323ea913bbc093909cee5339e3d1",
-      "size": 156636
+      "sha256": "37517d02d8b53dacc111217dd217628b5d0b3e9847838a11962b97ec1cf368c4",
+      "size": 156648
     },
     {
       "path": "raw/docs-i18n-readme-fr-md.json",
@@ -10883,8 +10883,8 @@
     },
     {
       "path": "raw/docs-i18n-readme-ja-md.html",
-      "sha256": "bc25615c9ee59bc71d7f9bd345165a112dff7f8b761967cfee6f409eec4accd4",
-      "size": 157709
+      "sha256": "8528d569f71b9b9b284a4d0e41a2d930762e6cd7c9267184ab33d41bea7f9d88",
+      "size": 157721
     },
     {
       "path": "raw/docs-i18n-readme-ja-md.json",
@@ -10898,8 +10898,8 @@
     },
     {
       "path": "raw/docs-i18n-readme-ko-md.html",
-      "sha256": "661f90dac9eacb4fd62373c059f023aa5ca178db4541747d948d5e5a614e2720",
-      "size": 156178
+      "sha256": "6791fee7316f7b9c9659d77923357a8ccac3d0c6d224a40a7a1942d12c136794",
+      "size": 156190
     },
     {
       "path": "raw/docs-i18n-readme-ko-md.json",
@@ -10913,8 +10913,8 @@
     },
     {
       "path": "raw/docs-i18n-readme-ru-md.html",
-      "sha256": "bacc76c2c01a9f36ff514227f6a957f4cc49678851044374b1e48cca15339f35",
-      "size": 159605
+      "sha256": "7dd7a12a670d3d654cda59bae45badf2c99bd2bc8c02a44ceb35b1bfb79710ac",
+      "size": 159617
     },
     {
       "path": "raw/docs-i18n-readme-ru-md.json",
@@ -10928,8 +10928,8 @@
     },
     {
       "path": "raw/docs-i18n-readme-zh-md.html",
-      "sha256": "0b1fb1627239794392fcf48591aff766fc29ce88b2f5d4efbd54fc0d7093377f",
-      "size": 154843
+      "sha256": "b0b33254d4b437c91be60ef97729984aaa8e7d62217b5fe3bccbc5d5cd00bdb6",
+      "size": 154855
     },
     {
       "path": "raw/docs-i18n-readme-zh-md.json",
@@ -11318,12 +11318,12 @@
     },
     {
       "path": "raw/llm-wiki-site-js-py.html",
-      "sha256": "5ea2e1bae36387a362a4f1ca80ab87e4ab57cd974cc4f0ebcb7d76097f7195cc",
+      "sha256": "42dc06d63e28548c8a495239d2df926fc636a9fea04db62c70f81fe871b1d109",
       "size": 142963
     },
     {
       "path": "raw/llm-wiki-site-markdown-py.html",
-      "sha256": "d82b153769e4ff9c1cefbfabb7dbb4a66c27dfe73939584bb739d2f4feefeae0",
+      "sha256": "796935f893e27da1558e9ffa8dec13f245c07ddcc154dd9e783df962d8f811e8",
       "size": 142992
     },
     {
@@ -11353,7 +11353,7 @@
     },
     {
       "path": "raw/llm-wiki-site-tokens-py.html",
-      "sha256": "41610565db21dcd246987432cfa174f3382e9ad6a2585c132dbeb63d67caccaa",
+      "sha256": "f954365f5f9e00a25ee1581e117a8f55940d6e5df006ec86e88461223b2beadc",
       "size": 142982
     },
     {
@@ -11398,8 +11398,8 @@
     },
     {
       "path": "raw/readme-md.html",
-      "sha256": "28db6e9a84f34be854a07c387e9feb1d1c7086dc2c47a8c482576370608a3184",
-      "size": 154933
+      "sha256": "a4a8cc2681aaa36b61d05fe6a6cfa832ca96ba656b508168bef17099638fd69f",
+      "size": 154945
     },
     {
       "path": "raw/readme-md.json",
@@ -11783,12 +11783,12 @@
     },
     {
       "path": "raw/tests-test-site-js-py.html",
-      "sha256": "d58065b297f5a018e905eb89fd2ed78fe6d2ceccae79dc2a21570b3e94e1b5fd",
+      "sha256": "fe3fdcf9430491e7e0c9fa4c540ca9a45a90a37aa2b74e7a454dc5ed92b0556a",
       "size": 142996
     },
     {
       "path": "raw/tests-test-site-markdown-py.html",
-      "sha256": "a1399e2ff330de9703358ec4df194bad74e6f7a6aa619776889e7b9491c7160b",
+      "sha256": "a1aa3cbe731fc62e1cf8068e5e515c2f2097fc089f7a30b6e9d550b317804109",
       "size": 143025
     },
     {
@@ -11818,7 +11818,7 @@
     },
     {
       "path": "raw/tests-test-site-tokens-py.html",
-      "sha256": "51c0306a4c9cab05661b4599fbe673da6a640e422910d9d7804518b3ab7e6547",
+      "sha256": "d6bfbc764306f5d6d79064db2ca04a2a6b1ff02e4d1ffe7a4135010e5d739f2c",
       "size": 143016
     },
     {
@@ -13928,18 +13928,18 @@
     },
     {
       "path": "rss.xml",
-      "sha256": "30f5b0817e7dd8d45b1d83b958a61d69ff71609bc3a6a5db7a40f09fdeb4b3f7",
+      "sha256": "de76ab25e8ee677f6f59b2436647c55d1e50f7f8c97c4507268fb5cd93e19ca9",
       "size": 33660
     },
     {
       "path": "search-index.json",
-      "sha256": "7269b21a8b1a38f363795bf3c94de48af2c36dd2c47ff24835221b0f66e97190",
+      "sha256": "1780e2f66e12a9da7ba1fb6918934bd58952ae2b6566749249056cf01c88e310",
       "size": 839244
     },
     {
       "path": "search-index.json.gz",
-      "sha256": "99e5fe9b69896d2881430aaeb77d5e40817d9074c30f423b71f53578256023fe",
-      "size": 96121
+      "sha256": "c033478d926a57fa25a1c15cddb7016aa9d12fd18e8d5e0768a23c278c851ffb",
+      "size": 95930
     },
     {
       "path": "sessions/index.html",
@@ -16213,17 +16213,17 @@
     },
     {
       "path": "syntheses/pulse.html",
-      "sha256": "90b8264a31270c787d2816355b444144c99fddc5a65dcc5de4b255ac4819f8db",
+      "sha256": "16f19d0a07a5163b39d90d38de2526d0b3ebd1add3a9b3e54ad10ebd92d15bac",
       "size": 149708
     },
     {
       "path": "syntheses/pulse.json",
-      "sha256": "01e45286253050da8c38d529d8f6729fc5262bc4bf1348acb17a8c0f9bd2c590",
+      "sha256": "ae5bfb9b67b503f645799e548f0c99636a91065c0325b01096bc1ed68ea35b69",
       "size": 26054
     },
     {
       "path": "syntheses/pulse.txt",
-      "sha256": "2886c2d88e65d747656816494870d19dacfb83c40667647dd095919974a9d24d",
+      "sha256": "4de3e746b41d3a35288b5c71c3502dd0374d7bfe1c2c597dbeb134abd0b3802f",
       "size": 1271
     },
     {

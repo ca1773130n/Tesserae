@@ -37406,7 +37406,7 @@
       "description": "Top-level snapshot of the wiki at compile time.",
       "id": "Synthesis:pulse:6ffe96c09f0f",
       "metadata": {
-        "content_hash": "sha256-865a357b0343f71838c421ff3254ede7fa16f8baac92765e95f8d18f895e2d2d",
+        "content_hash": "sha256-bbd1fb222604024c219c5137d3ad1c12d5eed0085d2f0504e1db268338e7170d",
         "input_ids": [
           "Paper:arxiv-2505-20295:aa977a72ab3f",
           "Paper:arxiv-2605-04527:c0faca348771",

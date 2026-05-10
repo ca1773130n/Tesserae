@@ -79,7 +79,7 @@
 <div class="table-scroll"><table class="md-table"><thead><tr><th>もし持っているものが...</th><th>エージェントはまだ...</th><th>LLM-Wiki が与えるもの...</th></tr></thead><tbody><tr><td>README</td><td>アーキテクチャと意思決定を再発見する必要があります</td><td>型付きプロジェクトメモリ + ソース来歴</td></tr><tr><td>ドキュメントサイト</td><td>人間のようにページを探す必要があります</td><td>MCP ツール、<code>llms.txt</code>、JSON グラフ、ページごとのコンテキスト</td></tr><tr><td>ベクター DB</td><td>チャンクから関係を推測する必要があります</td><td>検証済みノード、エッジ、エイリアス、主張、証拠</td></tr><tr><td>グラフ可視化ツール</td><td>図を眺めるだけです</td><td>検索システムが使えるポータブルなグラフアーティファクト</td></tr><tr><td>チャット履歴</td><td>過去の作業を忘れてしまいます</td><td>インポートされたエージェントセッションを永続的なメモリとして保存</td></tr></tbody></table></div>
 <hr>
 <h2 id="section-3">メモリパイプライン</h2>
-<pre><code class="language-mermaid">flowchart TB
+<div class="mermaid" data-mermaid-source="fence">flowchart TB
   A[&quot;Raw project sources&lt;br/&gt;README · docs · code · research notes&quot;]
   B[&quot;Agent sessions&lt;br/&gt;Claude Code · Codex · subagents&quot;]
   C[&quot;Companion artifacts&lt;br/&gt;Understand Anything · external graphs&quot;]
@@ -95,17 +95,17 @@
   D --&gt; E
   E --&gt; F
   E --&gt; G
-  E --&gt; H</code></pre>
+  E --&gt; H</div>
 <hr>
 <h2 id="cognee-llm-wiki">Cognee + LLM-Wiki</h2>
 <p><strong>LLM-Wiki はメモリをコンパイルします。Cognee はそれを検索します。</strong></p>
 <p>Cognee は AI メモリバックエンドとして強力です。グラフ + ベクター検索、セマンティックメモリ、オントロジーを意識したフックを備えています。しかし、取り込むメモリに制約がなければ、生のリポジトリ/ドキュメント取り込みは依然としてノイズが多くなり得ます。</p>
 <p>LLM-Wiki は Cognee の前段のビルドステップとして機能します:</p>
 <div class="table-scroll"><table class="md-table"><thead><tr><th>レイヤー</th><th>LLM-Wiki の役割</th><th>Cognee の役割</th></tr></thead><tbody><tr><td>ソース取得</td><td>ドキュメント、コード、調査、セッション、補助アーティファクトを追跡</td><td>多様なデータ型を取り込める</td></tr><tr><td>構造</td><td>ノード/エッジ型、エイリアス、証拠、来歴を検証</td><td>セマンティックメモリを保存・検索</td></tr><tr><td>ランタイム</td><td>クリーンな Cognee バンドル、または Codex/OAuth cognify フローをエクスポート</td><td>ハイブリッドなグラフ/ベクターメモリをエージェントに提供</td></tr><tr><td>安全性</td><td>決定論的でローカルファーストな経路を維持</td><td>必要に応じてより豊かなメモリ検索を追加</td></tr></tbody></table></div>
-<pre><code class="language-mermaid">flowchart LR
+<div class="mermaid" data-mermaid-source="fence">flowchart LR
   A[&quot;Messy project context&quot;] --&gt; B[&quot;LLM-Wiki&lt;br/&gt;validated memory graph&quot;]
   B --&gt; C[&quot;Cognee&lt;br/&gt;hybrid graph + vector retrieval&quot;]
-  C --&gt; D[&quot;Coding agents&lt;br/&gt;ask better questions with durable context&quot;]</code></pre>
+  C --&gt; D[&quot;Coding agents&lt;br/&gt;ask better questions with durable context&quot;]</div>
 <p>コンパイル済みメモリをエージェントのためのライブ検索基盤にしたい場合は Cognee を使ってください。そのメモリがランタイムコンテキストになる前に、制御、検証、エクスポート、検査したい場合は LLM-Wiki を使ってください。</p>
 <hr>
 <h2 id="section-4">クイックスタート</h2>

@@ -79,7 +79,7 @@
 <div class="table-scroll"><table class="md-table"><thead><tr><th>如果你只有...</th><th>你的智能体仍然必须...</th><th>LLM-Wiki 为它提供...</th></tr></thead><tbody><tr><td>一个 README</td><td>重新发现架构和决策</td><td>类型化项目记忆 + 源头溯源</td></tr><tr><td>一个文档站点</td><td>像人类一样搜索页面</td><td>MCP 工具、<code>llms.txt</code>、JSON 图、逐页上下文</td></tr><tr><td>一个向量数据库</td><td>根据 chunks 猜测关系</td><td>已验证节点、边、别名、claims、证据</td></tr><tr><td>一个图可视化器</td><td>欣赏一张图片</td><td>检索系统可使用的可移植图工件</td></tr><tr><td>聊天历史</td><td>忘记之前的工作</td><td>作为持久记忆导入的智能体会话</td></tr></tbody></table></div>
 <hr>
 <h2 id="section-3">记忆流水线</h2>
-<pre><code class="language-mermaid">flowchart TB
+<div class="mermaid" data-mermaid-source="fence">flowchart TB
   A[&quot;Raw project sources&lt;br/&gt;README · docs · code · research notes&quot;]
   B[&quot;Agent sessions&lt;br/&gt;Claude Code · Codex · subagents&quot;]
   C[&quot;Companion artifacts&lt;br/&gt;Understand Anything · external graphs&quot;]
@@ -95,17 +95,17 @@
   D --&gt; E
   E --&gt; F
   E --&gt; G
-  E --&gt; H</code></pre>
+  E --&gt; H</div>
 <hr>
 <h2 id="cognee-llm-wiki">Cognee + LLM-Wiki</h2>
 <p><strong>LLM-Wiki 编译记忆。Cognee 检索它。</strong></p>
 <p>Cognee 是强大的 AI 记忆后端：图 + 向量检索、语义记忆以及具备本体感知能力的 hooks。但如果进入其中的记忆不受约束，原始仓库/文档摄取仍然可能变得嘈杂。</p>
 <p>LLM-Wiki 充当 Cognee 之前的构建步骤：</p>
 <div class="table-scroll"><table class="md-table"><thead><tr><th>层</th><th>LLM-Wiki 角色</th><th>Cognee 角色</th></tr></thead><tbody><tr><td>来源捕获</td><td>跟踪文档、代码、研究、会话和配套工件</td><td>可摄取多种数据类型</td></tr><tr><td>结构</td><td>验证节点/边类型、别名、证据和来源</td><td>存储并检索语义记忆</td></tr><tr><td>运行时</td><td>导出干净的 Cognee bundle 或 Codex/OAuth cognify 流程</td><td>为智能体提供混合图/向量记忆</td></tr><tr><td>安全性</td><td>保留确定性、本地优先的路径</td><td>在需要时增加更丰富的记忆检索</td></tr></tbody></table></div>
-<pre><code class="language-mermaid">flowchart LR
+<div class="mermaid" data-mermaid-source="fence">flowchart LR
   A[&quot;Messy project context&quot;] --&gt; B[&quot;LLM-Wiki&lt;br/&gt;validated memory graph&quot;]
   B --&gt; C[&quot;Cognee&lt;br/&gt;hybrid graph + vector retrieval&quot;]
-  C --&gt; D[&quot;Coding agents&lt;br/&gt;ask better questions with durable context&quot;]</code></pre>
+  C --&gt; D[&quot;Coding agents&lt;br/&gt;ask better questions with durable context&quot;]</div>
 <p>当你希望已编译记忆成为智能体的实时检索底座时，使用 Cognee。当你希望在记忆成为运行时上下文之前控制、验证、导出并检查它时，使用 LLM-Wiki。</p>
 <hr>
 <h2 id="section-4">快速开始</h2>

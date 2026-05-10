@@ -79,7 +79,7 @@
 <div class="table-scroll"><table class="md-table"><thead><tr><th>Si vous n’avez que...</th><th>Votre agent doit encore...</th><th>LLM-Wiki lui donne...</th></tr></thead><tbody><tr><td>Un README</td><td>redécouvrir l’architecture et les décisions</td><td>mémoire de projet typée + provenance des sources</td></tr><tr><td>Un site de documentation</td><td>rechercher dans les pages comme un humain</td><td>outils MCP, <code>llms.txt</code>, graphe JSON, contexte par page</td></tr><tr><td>Une base vectorielle</td><td>deviner les relations à partir de fragments</td><td>nœuds, arêtes, alias, assertions et preuves validés</td></tr><tr><td>Un visualiseur de graphe</td><td>admirer une image</td><td>artefacts de graphe portables utilisables par les systèmes de récupération</td></tr><tr><td>Historique de chat</td><td>oublier le travail précédent</td><td>sessions d’agents importées comme mémoire durable</td></tr></tbody></table></div>
 <hr>
 <h2 id="pipeline-de-m-moire">Pipeline de mémoire</h2>
-<pre><code class="language-mermaid">flowchart TB
+<div class="mermaid" data-mermaid-source="fence">flowchart TB
   A[&quot;Raw project sources&lt;br/&gt;README · docs · code · research notes&quot;]
   B[&quot;Agent sessions&lt;br/&gt;Claude Code · Codex · subagents&quot;]
   C[&quot;Companion artifacts&lt;br/&gt;Understand Anything · external graphs&quot;]
@@ -95,17 +95,17 @@
   D --&gt; E
   E --&gt; F
   E --&gt; G
-  E --&gt; H</code></pre>
+  E --&gt; H</div>
 <hr>
 <h2 id="cognee-llm-wiki">Cognee + LLM-Wiki</h2>
 <p><strong>LLM-Wiki compile la mémoire. Cognee la récupère.</strong></p>
 <p>Cognee est puissant comme backend de mémoire IA : récupération graphe + vecteur, mémoire sémantique et hooks tenant compte de l’ontologie. Mais l’ingestion brute de dépôt/documentation peut tout de même devenir bruitée si la mémoire entrante n’est pas contrainte.</p>
 <p>LLM-Wiki agit comme l’étape de build avant Cognee :</p>
 <div class="table-scroll"><table class="md-table"><thead><tr><th>Couche</th><th>Rôle de LLM-Wiki</th><th>Rôle de Cognee</th></tr></thead><tbody><tr><td>Capture des sources</td><td>suit la documentation, le code, la recherche, les sessions et les artefacts complémentaires</td><td>peut ingérer de nombreux types de données</td></tr><tr><td>Structure</td><td>valide les types de nœuds/arêtes, les alias, les preuves et la provenance</td><td>stocke et récupère la mémoire sémantique</td></tr><tr><td>Runtime</td><td>exporte des bundles Cognee propres ou des flux cognify Codex/OAuth</td><td>sert une mémoire hybride graphe/vectorielle aux agents</td></tr><tr><td>Sécurité</td><td>garde disponibles des chemins déterministes/local-first</td><td>ajoute une récupération de mémoire plus riche si souhaité</td></tr></tbody></table></div>
-<pre><code class="language-mermaid">flowchart LR
+<div class="mermaid" data-mermaid-source="fence">flowchart LR
   A[&quot;Messy project context&quot;] --&gt; B[&quot;LLM-Wiki&lt;br/&gt;validated memory graph&quot;]
   B --&gt; C[&quot;Cognee&lt;br/&gt;hybrid graph + vector retrieval&quot;]
-  C --&gt; D[&quot;Coding agents&lt;br/&gt;ask better questions with durable context&quot;]</code></pre>
+  C --&gt; D[&quot;Coding agents&lt;br/&gt;ask better questions with durable context&quot;]</div>
 <p>Utilisez Cognee lorsque vous voulez que la mémoire compilée devienne un substrat de récupération vivant pour les agents. Utilisez LLM-Wiki lorsque vous voulez contrôler, valider, exporter et inspecter cette mémoire avant qu’elle ne devienne contexte d’exécution.</p>
 <hr>
 <h2 id="d-marrage-rapide">Démarrage rapide</h2>

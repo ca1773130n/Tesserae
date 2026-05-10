@@ -955,3 +955,36 @@
     init();
   }
 })();
+
+
+(function(){
+  function renderMermaid(){
+    var blocks = document.querySelectorAll('.mermaid');
+    if (!blocks.length) return;
+    for (var i = 0; i < blocks.length; i++) {
+      blocks[i].setAttribute('data-processed', 'false');
+    }
+    import('https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs')
+      .then(function(mod){
+        var mermaid = mod.default || mod;
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: 'strict',
+          theme: (document.documentElement.getAttribute('data-theme') === 'dark') ? 'dark' : 'default'
+        });
+        return mermaid.run({ nodes: blocks });
+      })
+      .catch(function(err){
+        document.documentElement.setAttribute('data-mermaid-error', '');
+        try { console.warn('Mermaid render failed', err); } catch (_) {}
+      });
+  }
+  function scheduleMermaid(){
+    try { window.setTimeout(renderMermaid, 0); } catch (_) { renderMermaid(); }
+  }
+  if (document.readyState === 'complete') {
+    scheduleMermaid();
+  } else {
+    window.addEventListener('load', scheduleMermaid, { once: true });
+  }
+})();

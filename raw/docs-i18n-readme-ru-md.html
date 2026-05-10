@@ -79,7 +79,7 @@
 <div class="table-scroll"><table class="md-table"><thead><tr><th>Если у вас есть только...</th><th>Вашему агенту все равно нужно...</th><th>LLM-Wiki дает ему...</th></tr></thead><tbody><tr><td>README</td><td>заново находить архитектуру и решения</td><td>типизированную память проекта + происхождение источников</td></tr><tr><td>Сайт документации</td><td>искать по страницам как человек</td><td>инструменты MCP, <code>llms.txt</code>, JSON-граф, контекст для каждой страницы</td></tr><tr><td>Векторная БД</td><td>угадывать связи по chunks</td><td>проверенные узлы, ребра, aliases, claims и evidence</td></tr><tr><td>Визуализатор графа</td><td>любоваться картинкой</td><td>переносимые графовые артефакты, которые могут использовать retrieval-системы</td></tr><tr><td>История чата</td><td>забывать предыдущую работу</td><td>импортированные сеансы агентов как долговременную память</td></tr></tbody></table></div>
 <hr>
 <h2 id="section-3">Конвейер памяти</h2>
-<pre><code class="language-mermaid">flowchart TB
+<div class="mermaid" data-mermaid-source="fence">flowchart TB
   A[&quot;Raw project sources&lt;br/&gt;README · docs · code · research notes&quot;]
   B[&quot;Agent sessions&lt;br/&gt;Claude Code · Codex · subagents&quot;]
   C[&quot;Companion artifacts&lt;br/&gt;Understand Anything · external graphs&quot;]
@@ -95,17 +95,17 @@
   D --&gt; E
   E --&gt; F
   E --&gt; G
-  E --&gt; H</code></pre>
+  E --&gt; H</div>
 <hr>
 <h2 id="cognee-llm-wiki">Cognee + LLM-Wiki</h2>
 <p><strong>LLM-Wiki компилирует память. Cognee извлекает ее.</strong></p>
 <p>Cognee силен как бэкенд AI-памяти: граф + векторный retrieval, семантическая память и ontology-aware hooks. Но сырая загрузка репозитория/документации все равно может стать шумной, если входящая память ничем не ограничена.</p>
 <p>LLM-Wiki выступает шагом сборки перед Cognee:</p>
 <div class="table-scroll"><table class="md-table"><thead><tr><th>Слой</th><th>Роль LLM-Wiki</th><th>Роль Cognee</th></tr></thead><tbody><tr><td>Захват источников</td><td>отслеживает документацию, код, исследования, сеансы и сопутствующие артефакты</td><td>может ingest много типов данных</td></tr><tr><td>Структура</td><td>проверяет типы узлов/ребер, aliases, evidence и provenance</td><td>хранит и извлекает семантическую память</td></tr><tr><td>Runtime</td><td>экспортирует чистые Cognee bundles или Codex/OAuth cognify flows</td><td>предоставляет агентам гибридную graph/vector память</td></tr><tr><td>Безопасность</td><td>сохраняет доступными детерминированные и local-first пути</td><td>добавляет более богатый retrieval памяти, когда это нужно</td></tr></tbody></table></div>
-<pre><code class="language-mermaid">flowchart LR
+<div class="mermaid" data-mermaid-source="fence">flowchart LR
   A[&quot;Messy project context&quot;] --&gt; B[&quot;LLM-Wiki&lt;br/&gt;validated memory graph&quot;]
   B --&gt; C[&quot;Cognee&lt;br/&gt;hybrid graph + vector retrieval&quot;]
-  C --&gt; D[&quot;Coding agents&lt;br/&gt;ask better questions with durable context&quot;]</code></pre>
+  C --&gt; D[&quot;Coding agents&lt;br/&gt;ask better questions with durable context&quot;]</div>
 <p>Используйте Cognee, когда хотите, чтобы скомпилированная память стала живой retrieval-основой для агентов. Используйте LLM-Wiki, когда хотите контролировать, проверять, экспортировать и инспектировать эту память до того, как она станет runtime-контекстом.</p>
 <hr>
 <h2 id="section-4">Быстрый старт</h2>
