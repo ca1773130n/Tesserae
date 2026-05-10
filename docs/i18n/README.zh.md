@@ -126,17 +126,30 @@ pip install llm-wiki
 
 llm_wiki project setup
 llm_wiki project compile
+llm_wiki project ask "Which files implement Mermaid rendering?"
 llm_wiki project build-site
 llm_wiki project serve --port 8765
 ```
 
-打开：
+如果想同时使用 Understand Anything 和 Cognee，只需设置一次:
+
+```bash
+llm_wiki project setup \
+  --with-understand-anything \
+  --install-understand-anything \
+  --understand-anything-platform codex \
+  --run-cognee \
+  --install-cognee
+llm_wiki project compile
+```
+
+打开:
 
 ```text
 http://127.0.0.1:8765/
 ```
 
-设置向导会检测常见来源，例如 `README.md`、`docs`、`src`、`data` 和配套工件。你选择哪些内容成为记忆；LLM-Wiki 会写入项目配置。
+设置向导会检测 `README.md`、`docs`、`src`、`data` 和配套工件等常见来源。选择 Understand Anything 后，LLM-Wiki 会按需安装配套技能并保存托管刷新包装器，因此 `project compile` 可以刷新 `.understand-anything/knowledge-graph.json`，用户不需要知道 UA 安装在哪里，也不需要手动输入 `/understand`。Cognee 作为默认问答后端启用；运行时 cognify 通过 `--run-cognee` 显式开启。
 
 ```text
 ◆ LLM-Wiki project setup
@@ -150,6 +163,9 @@ Sources
 
 External tools
   ◆ Understand Anything → .llm-wiki/external/understand-anything.md
+
+Memory backends
+  ◆ Cognee → my_project_memory (codex_cognify, manual cognify)
 ```
 
 ---
@@ -171,25 +187,30 @@ External tools
 
 ## 配套工具，而非锁定
 
-LLM-Wiki 被设计为位于工具之间，而不是取代它们。
+LLM-Wiki 设计为位于工具之间，而不是替代它们。
 
 | 工具 | 关系 |
 |---|---|
 | Understand Anything | 独立代码图工件 → Markdown 投影 → 已编译记忆 |
 | Cognee | 用于混合图/向量检索的记忆后端 |
-| Graphiti-style systems | 时间 episode/fact 导出路径 |
-| Obsidian / markdown | 可读投影，而非唯一事实来源 |
-| Claude Code / Codex | 既是会话记忆的来源，也是已编译上下文的消费者 |
+| Graphiti 风格系统 | 时间序列 episode/fact 导出路径 |
+| Obsidian / markdown | 可读投影，而不是唯一真相来源 |
+| Claude Code / Codex | 既是会话记忆来源，也是已编译上下文的消费者 |
 
-如果你的刷新命令是 shell alias/function，请显式包装它：
+使用托管设置路径时，LLM-Wiki 会安装配套技能、保存刷新包装器，并可一次性启用 Cognee 运行时记忆:
 
 ```bash
 llm_wiki project setup \
   --yes \
   --with-understand-anything \
-  --understand-anything-command "zsh -ic 'reunderstand'" \
-  --run-understand-anything
+  --install-understand-anything \
+  --understand-anything-platform codex \
+  --run-cognee \
+  --install-cognee
+llm_wiki project compile
 ```
+
+编译时，LLM-Wiki 会在 UA 图缺失或过期时运行 `project refresh-understand-anything`，生成 `.llm-wiki/external/understand-anything.md`，写出 `.llm-wiki/cognee_bundle/`，并在已配置时以 best-effort 方式刷新 Cognee 运行时记忆。用户不需要知道 UA 或 Cognee 安装在哪里。
 
 ---
 

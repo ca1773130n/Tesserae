@@ -126,8 +126,21 @@ pip install llm-wiki
 
 llm_wiki project setup
 llm_wiki project compile
+llm_wiki project ask "Which files implement Mermaid rendering?"
 llm_wiki project build-site
 llm_wiki project serve --port 8765
+```
+
+Understand Anything と Cognee を両方使う場合は、一度だけ次を実行します:
+
+```bash
+llm_wiki project setup \
+  --with-understand-anything \
+  --install-understand-anything \
+  --understand-anything-platform codex \
+  --run-cognee \
+  --install-cognee
+llm_wiki project compile
 ```
 
 開く:
@@ -136,7 +149,7 @@ llm_wiki project serve --port 8765
 http://127.0.0.1:8765/
 ```
 
-セットアップウィザードは、`README.md`、`docs`、`src`、`data`、補助アーティファクトなどの一般的なソースを検出します。何をメモリにするかを選ぶと、LLM-Wiki がプロジェクト設定を書き込みます。
+セットアップウィザードは `README.md`、`docs`、`src`、`data`、補助アーティファクトなどの一般的なソースを検出します。Understand Anything を選ぶと、LLM-Wiki は要求に応じて補助スキルをインストールし、管理された refresh ラッパーを保存します。そのため `project compile` は、UA のインストール場所や `/understand` スラッシュコマンドをユーザーが知らなくても `.understand-anything/knowledge-graph.json` を更新できます。Cognee は既定の質問バックエンドとして有効になり、ランタイム cognify は `--run-cognee` で明示的に有効化します。
 
 ```text
 ◆ LLM-Wiki project setup
@@ -150,6 +163,9 @@ Sources
 
 External tools
   ◆ Understand Anything → .llm-wiki/external/understand-anything.md
+
+Memory backends
+  ◆ Cognee → my_project_memory (codex_cognify, manual cognify)
 ```
 
 ---
@@ -171,25 +187,30 @@ External tools
 
 ## 補助ツールであり、ロックインではない
 
-LLM-Wiki はツールを置き換えるのではなく、ツールの間に位置するように設計されています。
+LLM-Wiki はツールを置き換えるのではなく、ツールの間に位置するよう設計されています。
 
 | ツール | 関係 |
 |---|---|
 | Understand Anything | 独立したコードグラフアーティファクト → Markdown プロジェクション → コンパイル済みメモリ |
 | Cognee | ハイブリッドなグラフ/ベクター検索のためのメモリバックエンド |
-| Graphiti 風システム | 時系列エピソード/ファクトのエクスポート経路 |
+| Graphiti スタイルのシステム | 時系列エピソード/ファクトのエクスポート経路 |
 | Obsidian / markdown | 読みやすいプロジェクションであり、唯一の真実の源ではない |
-| Claude Code / Codex | セッションメモリのソースであり、コンパイル済みコンテキストの利用者でもある |
+| Claude Code / Codex | セッションメモリのソースであり、コンパイル済みコンテキストの利用者 |
 
-更新コマンドがシェルのエイリアス/関数である場合は、明示的にラップしてください:
+管理されたセットアップを使うと、LLM-Wiki が補助スキルをインストールし、refresh ラッパーを保存し、Cognee ランタイムメモリまで一度に有効化できます:
 
 ```bash
 llm_wiki project setup \
   --yes \
   --with-understand-anything \
-  --understand-anything-command "zsh -ic 'reunderstand'" \
-  --run-understand-anything
+  --install-understand-anything \
+  --understand-anything-platform codex \
+  --run-cognee \
+  --install-cognee
+llm_wiki project compile
 ```
+
+コンパイル時、LLM-Wiki は UA グラフが存在しない、または古い場合に `project refresh-understand-anything` を実行し、`.llm-wiki/external/understand-anything.md` を生成し、`.llm-wiki/cognee_bundle/` を書き出し、設定されていれば Cognee ランタイムメモリも best-effort で更新します。ユーザーは UA や Cognee のインストール場所を知る必要がありません。
 
 ---
 

@@ -45,6 +45,7 @@ llm_wiki project setup \
   --with-understand-anything \
   --install-understand-anything \
   --understand-anything-platform codex
+llm_wiki project compile
 ```
 
 The stored command is LLM-Wiki-owned, not something the user has to invent:
@@ -53,31 +54,44 @@ The stored command is LLM-Wiki-owned, not something the user has to invent:
 llm_wiki project refresh-understand-anything --platform codex
 ```
 
-You can also force all configured external refresh commands before a compile:
+During compile, LLM-Wiki:
+
+1. checks whether `.understand-anything/knowledge-graph.json` exists and matches the current git commit when metadata is available;
+2. runs the configured agent platform (`codex`, `opencode`, or `claude`) only when the graph is missing/stale or refresh is forced;
+3. verifies the graph was written;
+4. materializes `.llm-wiki/external/understand-anything.md`;
+5. continues the normal memory compile.
+
+You can force all configured external refresh commands before a compile:
 
 ```bash
 llm_wiki project compile --refresh-external-tools
 ```
 
+Need Cognee too? Add the runtime memory flags in the same setup command:
+
+```bash
+llm_wiki project setup \
+  --yes \
+  --with-understand-anything \
+  --install-understand-anything \
+  --understand-anything-platform codex \
+  --run-cognee \
+  --install-cognee
+```
+
 ## Manual equivalent
 
-If you prefer explicit config, run Understand Anything first:
+The managed setup path is preferred. If you intentionally want to use UA outside LLM-Wiki, run Understand Anything first inside your agent environment:
 
 ```bash
 /understand
 ```
 
-Then either use `llm_wiki project setup`, or generate a small markdown projection under `.llm-wiki/external/understand-anything.md` and include that projection as the source. The setup wizard does this projection automatically; direct JSON files are kept as raw companion artifacts, not hand-entered source paths.
+Then run `llm_wiki project setup --with-understand-anything` so LLM-Wiki records the markdown projection source. Direct JSON files are kept as raw companion artifacts, not hand-entered source paths.
 
 ```bash
-llm_wiki project init \
-  --name my_project_wiki \
-  --source-kind Repository \
-  --source README.md \
-  --source docs \
-  --source src \
-  --source .llm-wiki/external/understand-anything.md
-
+llm_wiki project setup --with-understand-anything
 llm_wiki project compile
 llm_wiki project build-site
 ```

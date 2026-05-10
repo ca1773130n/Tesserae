@@ -2,29 +2,45 @@
 
 This page shows the shortest path from an existing project directory to a browsable LLM-Wiki.
 
-## 1. Initialize a project wiki
+## 1. Run the setup wizard
 
 From the project you want to index:
 
 ```bash
 cd /path/to/my-project
-llm_wiki project init \
-  --name my_project_wiki \
-  --source-kind Repository \
-  --source README.md \
-  --source docs \
-  --source src \
-  --source tests
+llm_wiki project setup
 ```
 
-This creates `.llm-wiki/config.json` and records the default sources that future `compile` runs should use.
+The wizard detects common sources such as `README.md`, `docs`, `src`, `lib`, `app`, `packages`, and `data`, then writes `.llm-wiki/config.json`. It also configures the default Cognee backend so `project ask` can try Cognee and fall back to compiled wiki search.
 
-For code-heavy projects, `Repository` or `CodeProject` is preferred. For paper/note corpora, use `Paper` or `SourceDocument`.
+For a fully automated setup with Understand Anything and Cognee runtime memory enabled:
+
+```bash
+llm_wiki project setup \
+  --yes \
+  --with-understand-anything \
+  --install-understand-anything \
+  --understand-anything-platform codex \
+  --run-cognee \
+  --install-cognee
+```
+
+What that does:
+
+| Flag | Effect |
+|---|---|
+| `--with-understand-anything` | Adds the UA graph projection as a source. |
+| `--install-understand-anything` | Installs/updates the UA companion skills. |
+| `--understand-anything-platform codex` | Uses Codex to run LLM-Wiki's managed UA refresh wrapper. |
+| `--run-cognee` | Runs best-effort Cognee runtime cognify during compile. |
+| `--install-cognee` | Installs Cognee with the current Python if missing. |
+
+Users do not need to know the UA install path or type `/understand`; `project compile` runs `project refresh-understand-anything` when the UA graph is missing or stale.
 
 ## 2. Compile the graph and projections
 
 ```bash
-llm_wiki project compile --changed-only
+llm_wiki project compile
 ```
 
 `project compile` writes the durable artifacts:
@@ -47,7 +63,7 @@ llm_wiki project compile --changed-only
   cognee_bundle/
 ```
 
-The `--changed-only` flag uses `.llm-wiki/manifest.json` content hashes to skip unchanged markdown files while preserving the previous graph when no files changed.
+Use `--changed-only` after the first run to skip unchanged markdown files while preserving the previous graph when no files changed. If Understand Anything is enabled, compile first refreshes/materializes `.llm-wiki/external/understand-anything.md`; if Cognee runtime is enabled, it also updates Cognee best-effort after writing `.llm-wiki/cognee_bundle/`.
 
 ## 3. Build and serve the static frontend
 

@@ -31,14 +31,27 @@ pip install --upgrade llm-wiki
 
 ## Optional integrations
 
-The default wheel is intentionally light. Pull in optional backends only when you need them:
+The default wheel is intentionally light. The setup wizard can install the heavier companion/runtime pieces only when you ask for them:
+
+```bash
+# Understand Anything companion graph + Cognee runtime memory
+llm_wiki project setup \
+  --with-understand-anything \
+  --install-understand-anything \
+  --understand-anything-platform codex \
+  --run-cognee \
+  --install-cognee
+```
+
+Manual package installs are still available for advanced workflows:
 
 ```bash
 pip install kuzu cognee graphiti-core
 ```
 
 - `kuzu` — Kuzu graph persistence.
-- `cognee` — direct Cognee import / cognify workflows.
+- `cognee` — runtime Cognee add/cognify workflows; setup stores `{python} -m pip install cognee` and retries once if Cognee is missing.
+- Understand Anything — installed via the upstream installer when `--install-understand-anything` is selected; LLM-Wiki stores a managed refresh wrapper instead of asking users to invent a shell command.
 - `graphiti-core` — live Graphiti/Neo4j sync. `export-graphiti` and `sync-graphiti --dry-run` work without it.
 
 The Anthropic-backed synthesis path uses an extras marker:

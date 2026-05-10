@@ -12,6 +12,7 @@ __pycache__/
 
 # Local graph/database outputs
 .llm-wiki/
+.understand-anything/
 *.sqlite
 *.kuzu/
 *.duckdb

@@ -126,8 +126,21 @@ pip install llm-wiki
 
 llm_wiki project setup
 llm_wiki project compile
+llm_wiki project ask "Which files implement Mermaid rendering?"
 llm_wiki project build-site
 llm_wiki project serve --port 8765
+```
+
+Чтобы использовать Understand Anything и Cognee вместе, настройте их один раз:
+
+```bash
+llm_wiki project setup \
+  --with-understand-anything \
+  --install-understand-anything \
+  --understand-anything-platform codex \
+  --run-cognee \
+  --install-cognee
+llm_wiki project compile
 ```
 
 Откройте:
@@ -136,7 +149,7 @@ llm_wiki project serve --port 8765
 http://127.0.0.1:8765/
 ```
 
-Мастер настройки обнаруживает распространенные источники, такие как `README.md`, `docs`, `src`, `data`, и сопутствующие артефакты. Вы выбираете, что станет памятью; LLM-Wiki записывает конфигурацию проекта.
+Мастер setup обнаруживает типичные источники вроде `README.md`, `docs`, `src`, `data` и сопутствующие артефакты. Если выбрать Understand Anything, LLM-Wiki по запросу устанавливает companion skills и сохраняет управляемый refresh-wrapper, поэтому `project compile` может обновлять `.understand-anything/knowledge-graph.json` без знания пользователем пути установки UA или slash-команды `/understand`. Cognee включается как backend вопросов по умолчанию; runtime cognify явно включается через `--run-cognee`.
 
 ```text
 ◆ LLM-Wiki project setup
@@ -150,6 +163,9 @@ Sources
 
 External tools
   ◆ Understand Anything → .llm-wiki/external/understand-anything.md
+
+Memory backends
+  ◆ Cognee → my_project_memory (codex_cognify, manual cognify)
 ```
 
 ---
@@ -171,25 +187,30 @@ External tools
 
 ## Сопутствующие инструменты, а не lock-in
 
-LLM-Wiki спроектирован так, чтобы находиться между инструментами, а не заменять их.
+LLM-Wiki спроектирован как слой между инструментами, а не как их замена.
 
-| Инструмент | Отношение |
+| Инструмент | Связь |
 |---|---|
 | Understand Anything | независимый артефакт кодового графа → Markdown-проекция → скомпилированная память |
-| Cognee | бэкенд памяти для гибридного graph/vector retrieval |
-| Graphiti-style systems | путь экспорта temporal episodes/facts |
+| Cognee | backend памяти для гибридного graph/vector retrieval |
+| Graphiti-подобные системы | путь экспорта временных episodes/facts |
 | Obsidian / markdown | читаемая проекция, а не единственный источник истины |
-| Claude Code / Codex | одновременно источники памяти сеансов и потребители скомпилированного контекста |
+| Claude Code / Codex | источники session memory и потребители скомпилированного контекста |
 
-Если ваша команда обновления — shell alias/function, оберните ее явно:
+Используйте управляемый setup: LLM-Wiki установит companion skills, сохранит refresh-wrapper и может включить runtime memory Cognee одной командой:
 
 ```bash
 llm_wiki project setup \
   --yes \
   --with-understand-anything \
-  --understand-anything-command "zsh -ic 'reunderstand'" \
-  --run-understand-anything
+  --install-understand-anything \
+  --understand-anything-platform codex \
+  --run-cognee \
+  --install-cognee
+llm_wiki project compile
 ```
+
+Во время компиляции LLM-Wiki запускает `project refresh-understand-anything`, если граф UA отсутствует или устарел, материализует `.llm-wiki/external/understand-anything.md`, записывает `.llm-wiki/cognee_bundle/` и при наличии настройки best-effort обновляет runtime memory Cognee. Пользователю не нужно знать, где установлены UA или Cognee.
 
 ---
 

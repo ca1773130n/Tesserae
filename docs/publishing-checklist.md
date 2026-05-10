@@ -18,22 +18,27 @@ Use this checklist before presenting LLM-Wiki publicly.
 ```bash
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest tests/ -q
 ./scripts/install.sh --help
-llm_wiki project init --help
+llm_wiki project setup --help
 llm_wiki project compile --help
 ```
 
 ## Self-dogfood
 
 ```bash
-llm_wiki project init \
+llm_wiki project setup \
+  --yes \
   --name llm_wiki_self \
-  --source-kind Repository \
   --source README.md \
   --source docs \
   --source llm_wiki \
   --source tests \
-  --source scripts
-llm_wiki project compile --changed-only
+  --source scripts \
+  --with-understand-anything \
+  --install-understand-anything \
+  --understand-anything-platform codex \
+  --run-cognee \
+  --install-cognee
+llm_wiki project compile
 llm_wiki project sessions list
 llm_wiki project build-site
 llm_wiki project serve --port 8765

@@ -1,6 +1,6 @@
 # Self-dogfood Demo
 
-This project can index itself. The self-dogfood flow proves that LLM-Wiki can be installed, initialized inside its own repository, ingest its own docs/source/tests/scripts, compile graph artifacts, and build the static web frontend.
+This project can index itself. The self-dogfood flow proves that LLM-Wiki can be installed, set up inside its own repository, ingest its own docs/source/tests/scripts, optionally refresh Understand Anything and Cognee, compile graph artifacts, and build the static web frontend.
 
 ## Commands
 
@@ -11,18 +11,23 @@ From the repository root:
 ./scripts/install.sh --dir "$PWD"
 export PATH="$HOME/.local/bin:$PATH"
 
-# Initialize this repository as an LLM-Wiki project.
-llm_wiki project init \
+# Set up this repository as an LLM-Wiki project.
+llm_wiki project setup \
+  --yes \
   --name llm_wiki_self \
-  --source-kind Repository \
   --source README.md \
   --source docs \
   --source llm_wiki \
   --source tests \
-  --source scripts
+  --source scripts \
+  --with-understand-anything \
+  --install-understand-anything \
+  --understand-anything-platform codex \
+  --run-cognee \
+  --install-cognee
 
-# Ingest/compile the configured sources.
-llm_wiki project compile --changed-only
+# Compile the configured sources.
+llm_wiki project compile
 
 # Rebuild the static frontend explicitly.
 llm_wiki project build-site
@@ -71,7 +76,7 @@ Verified on `2026-04-27 11:11:23 KST` from the LLM-Wiki repository itself.
 
 ```text
 install command: ./scripts/install.sh --dir /Users/neo/Developer/Projects/LLM-Wiki --skip-shell-config
-init command:    llm_wiki project init --name llm_wiki_self --source-kind Repository --source README.md --source docs --source llm_wiki --source tests --source scripts
+setup command:   llm_wiki project setup --yes --name llm_wiki_self --source README.md --source docs --source llm_wiki --source tests --source scripts --with-understand-anything --install-understand-anything --understand-anything-platform codex --run-cognee --install-cognee
 ingest command:  llm_wiki project ingest README.md docs --changed-only
 compile command: llm_wiki project compile
 site command:    llm_wiki project build-site

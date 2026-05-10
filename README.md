@@ -122,15 +122,13 @@ Ask through the configured memory backend:
 llm_wiki project ask "Where is Mermaid rendering implemented?"
 ```
 
-`project ask` uses Cognee automatically when the project config enables it, and falls back to the compiled wiki search if Cognee is unavailable. To let compile auto-refresh Cognee's runtime memory, opt in explicitly:
+`project ask` uses Cognee automatically when the project config enables it, and falls back to compiled wiki search if Cognee is unavailable. To make Cognee a live runtime memory backend during compile, opt in once:
 
 ```bash
-llm_wiki project setup --run-cognee
-# install Cognee immediately without enabling compile-time cognify:
-llm_wiki project setup --install-cognee
-# or one-off:
-llm_wiki project compile --cognee-codex-cognify --cognee-dataset my_project_memory
+llm_wiki project setup --run-cognee --install-cognee
 ```
+
+Normal compile still writes `.llm-wiki/cognee_bundle/`; runtime Cognee cognify stays explicit and best-effort so missing providers or paid API settings do not break the local wiki build.
 
 ---
 
@@ -139,11 +137,23 @@ llm_wiki project compile --cognee-codex-cognify --cognee-dataset my_project_memo
 ```bash
 pip install llm-wiki
 
-llm_wiki project setup          # Cognee backend is enabled in config by default
-llm_wiki project compile        # always writes .llm-wiki/cognee_bundle/
+llm_wiki project setup
+llm_wiki project compile
 llm_wiki project ask "Which files implement Mermaid rendering?"
 llm_wiki project build-site
 llm_wiki project serve --port 8765
+```
+
+Want both companion code graphs and runtime memory retrieval?
+
+```bash
+llm_wiki project setup \
+  --with-understand-anything \
+  --install-understand-anything \
+  --understand-anything-platform codex \
+  --run-cognee \
+  --install-cognee
+llm_wiki project compile
 ```
 
 Open:
@@ -152,7 +162,7 @@ Open:
 http://127.0.0.1:8765/
 ```
 
-The setup wizard detects common sources like `README.md`, `docs`, `src`, `data`, and companion artifacts. You choose what becomes memory; LLM-Wiki writes the project config. If you select Understand Anything and its graph is not present yet, setup installs/updates the Understand Anything plugin for the selected agent platform by default. Cognee is enabled as the default question backend, but automatic Cognee cognify is opt-in so a normal compile never silently spends API-key/provider budget.
+The setup wizard detects common sources like `README.md`, `docs`, `src`, `data`, and companion artifacts. If you select Understand Anything, LLM-Wiki installs the companion skills when requested and stores a managed refresh wrapper, so `project compile` can refresh `.understand-anything/knowledge-graph.json` without users knowing UA install paths or slash commands. Cognee is enabled as the default question backend; runtime cognify is opt-in with `--run-cognee`.
 
 ```text
 ◆ LLM-Wiki project setup

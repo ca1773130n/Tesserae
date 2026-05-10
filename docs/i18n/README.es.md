@@ -126,8 +126,21 @@ pip install llm-wiki
 
 llm_wiki project setup
 llm_wiki project compile
+llm_wiki project ask "Which files implement Mermaid rendering?"
 llm_wiki project build-site
 llm_wiki project serve --port 8765
+```
+
+Si quieres usar Understand Anything y Cognee juntos, configúralos una vez:
+
+```bash
+llm_wiki project setup \
+  --with-understand-anything \
+  --install-understand-anything \
+  --understand-anything-platform codex \
+  --run-cognee \
+  --install-cognee
+llm_wiki project compile
 ```
 
 Abre:
@@ -136,7 +149,7 @@ Abre:
 http://127.0.0.1:8765/
 ```
 
-El asistente de configuración detecta fuentes comunes como `README.md`, `docs`, `src`, `data` y artefactos complementarios. Tú eliges qué se convierte en memoria; LLM-Wiki escribe la configuración del proyecto.
+El asistente de setup detecta fuentes comunes como `README.md`, `docs`, `src`, `data` y artefactos complementarios. Si seleccionas Understand Anything, LLM-Wiki instala las skills complementarias cuando lo pides y guarda un wrapper de refresh gestionado, de modo que `project compile` puede actualizar `.understand-anything/knowledge-graph.json` sin que el usuario sepa dónde está instalado UA ni cómo invocar `/understand`. Cognee queda habilitado como backend de preguntas por defecto; el cognify en runtime se activa explícitamente con `--run-cognee`.
 
 ```text
 ◆ LLM-Wiki project setup
@@ -150,6 +163,9 @@ Sources
 
 External tools
   ◆ Understand Anything → .llm-wiki/external/understand-anything.md
+
+Memory backends
+  ◆ Cognee → my_project_memory (codex_cognify, manual cognify)
 ```
 
 ---
@@ -178,18 +194,23 @@ LLM-Wiki está diseñado para situarse entre herramientas, no para reemplazarlas
 | Understand Anything | artefacto independiente de grafo de código → proyección Markdown → memoria compilada |
 | Cognee | backend de memoria para recuperación híbrida grafo/vectorial |
 | Sistemas estilo Graphiti | ruta de exportación de episodios/hechos temporales |
-| Obsidian / Markdown | proyección legible, no la única fuente de verdad |
-| Claude Code / Codex | tanto fuente de memoria de sesión como consumidores del contexto compilado |
+| Obsidian / markdown | proyección legible, no la única fuente de verdad |
+| Claude Code / Codex | fuente de memoria de sesiones y consumidores del contexto compilado |
 
-Si tu comando de actualización es un alias o función de shell, envuélvelo explícitamente:
+Usa el setup gestionado: LLM-Wiki instala las skills complementarias, guarda el wrapper de refresh y puede activar la memoria runtime de Cognee en un solo comando:
 
 ```bash
 llm_wiki project setup \
   --yes \
   --with-understand-anything \
-  --understand-anything-command "zsh -ic 'reunderstand'" \
-  --run-understand-anything
+  --install-understand-anything \
+  --understand-anything-platform codex \
+  --run-cognee \
+  --install-cognee
+llm_wiki project compile
 ```
+
+Durante la compilación, LLM-Wiki ejecuta `project refresh-understand-anything` cuando el grafo de UA falta o está obsoleto, materializa `.llm-wiki/external/understand-anything.md`, escribe `.llm-wiki/cognee_bundle/` y, si está configurado, refresca la memoria runtime de Cognee en modo best-effort. El usuario no necesita saber dónde están instalados UA o Cognee.
 
 ---
 
