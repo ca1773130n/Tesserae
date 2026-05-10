@@ -24,6 +24,7 @@ from .project import CognifyOptions, ProjectWiki, cognify_options_from_config, c
 from .project_setup import apply_setup_plan, build_setup_plan, interactive_setup_plan, refresh_configured_external_tools, render_setup_summary
 from .report import GraphReporter
 from .understand_anything_refresh import refresh_understand_anything
+from .raganything_refresh import main as _raganything_refresh_main
 from .research_graph import ResearchCorpusAnalyzer, ResearchGraph, ResearchGraphExtractor
 from .review_workflow import ReviewQueueExporter
 from .selective_extractor import SelectiveClaudeResearchExtractor
@@ -236,6 +237,13 @@ def project_main(argv: List[str] | None = None) -> int:
     setup_parser.add_argument("--install-understand-anything", action="store_true", help="Install/update Understand Anything during setup when selected")
     setup_parser.add_argument("--skip-install-understand-anything", action="store_true", help="Do not auto-install Understand Anything even when selected")
     setup_parser.add_argument("--understand-anything-platform", default="codex", help="Understand Anything installer platform id (default: codex)")
+    setup_parser.add_argument("--with-raganything", action="store_true", help="Enable RAG-Anything multimodal ingestion + memory backend")
+    setup_parser.add_argument("--skip-raganything", action="store_true", help="Disable RAG-Anything even if previously configured")
+    setup_parser.add_argument("--install-raganything", action="store_true", help="Auto-install raganything during setup")
+    setup_parser.add_argument("--skip-install-raganything", action="store_true", help="Do not auto-install raganything")
+    setup_parser.add_argument("--raganything-parser", choices=["mineru", "docling", "paddleocr"], default="mineru", help="Parser backend for RAG-Anything (default: mineru)")
+    setup_parser.add_argument("--raganything-extras", default="all", help="pip extras to use when installing raganything (default: all)")
+    setup_parser.add_argument("--run-raganything", action="store_true", help="Auto-refresh RAG-Anything on every compile")
     setup_parser.add_argument("--no-cognee", action="store_true", help="Do not enable Cognee as the default project memory backend")
     setup_parser.add_argument("--install-cognee", action="store_true", help="Install Cognee during setup and allow compile to auto-install if missing")
     setup_parser.add_argument("--skip-install-cognee", action="store_true", help="Do not auto-install Cognee even when --run-cognee is selected")
@@ -284,6 +292,17 @@ def project_main(argv: List[str] | None = None) -> int:
     ua_refresh_parser.add_argument("--full", action="store_true", help="Force /understand --full")
     ua_refresh_parser.add_argument("--force", action="store_true", help="Run even if the existing graph appears current")
     ua_refresh_parser.add_argument("--timeout", type=int, help="Optional timeout in seconds")
+
+    refresh_raga_parser = subparsers.add_parser(
+        "refresh-raganything",
+        help="Run the managed RAG-Anything refresh wrapper",
+    )
+    refresh_raga_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    refresh_raga_parser.add_argument("--parser", default="mineru", choices=["mineru", "docling", "paddleocr"])
+    refresh_raga_parser.add_argument("--parse-method", default="auto", choices=["auto", "ocr", "txt"])
+    refresh_raga_parser.add_argument("--root", action="append", dest="roots", help="Restrict to this root (repeatable)")
+    refresh_raga_parser.add_argument("--force", action="store_true")
+    refresh_raga_parser.add_argument("--full", action="store_true")
 
     lint_parser = subparsers.add_parser(
         "lint",
@@ -430,6 +449,11 @@ def project_main(argv: List[str] | None = None) -> int:
                     cognee_mode=args.cognee_mode,
                     cognee_auto_cognify=args.run_cognee,
                     install_cognee=(False if args.skip_install_cognee else True if args.install_cognee else None),
+                    include_raganything=(False if args.skip_raganything else args.with_raganything),
+                    install_raganything=(False if args.skip_install_raganything else args.install_raganything),
+                    raganything_parser=args.raganything_parser,
+                    raganything_extras=args.raganything_extras,
+                    run_raganything=args.run_raganything,
                 )
                 print(render_setup_summary(plan, color=not args.no_color), end="")
             else:
@@ -539,6 +563,15 @@ def project_main(argv: List[str] | None = None) -> int:
             force=args.force,
             timeout=args.timeout,
         )
+    if args.command == "refresh-raganything":
+        forwarded = ["--project", args.project, "--parser", args.parser, "--parse-method", args.parse_method]
+        for r in (args.roots or []):
+            forwarded += ["--root", r]
+        if args.force:
+            forwarded.append("--force")
+        if args.full:
+            forwarded.append("--full")
+        return _raganything_refresh_main(forwarded)
     if args.command == "lint":
         wiki = ProjectWiki.load(args.project)
         report = wiki.lint(fix_trivial=args.fix_trivial, severity_floor=args.severity)
