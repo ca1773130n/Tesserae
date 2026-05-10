@@ -8,9 +8,11 @@ adapter has a stable artifact to import during compile.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -86,3 +88,54 @@ def discover_sources(project: Path, *, roots: Iterable[str] | None = None) -> li
             if path.suffix.lower() in _SUPPORTED_EXT:
                 candidates.append(path)
     return sorted(candidates)
+
+
+def _sha256_path(path: Path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def write_manifest(
+    project: Path,
+    *,
+    documents: Sequence[dict],
+    parser: str,
+    parser_version: str = "",
+    git_commit: str | None = None,
+) -> Path:
+    project = Path(project).resolve()
+    out_dir = project / RAGA_ROOT
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    serialized: list[dict] = []
+    for doc in documents:
+        path = Path(doc["path"]).resolve()
+        rel = str(path.relative_to(project)).replace("\\", "/") if path.is_relative_to(project) else str(path)
+        sha = _sha256_path(path)
+        serialized.append({
+            "id": f"doc-{sha[:16]}",
+            "path": rel,
+            "sha256": sha,
+            "parsed_dir": str((out_dir / "parsed" / sha).relative_to(project)).replace("\\", "/"),
+            "content_list": list(doc.get("content_list") or []),
+        })
+
+    manifest = {
+        "version": 1,
+        "project": {"name": project.name, "root": "."},
+        "parser": parser,
+        "parser_version": parser_version,
+        "git_commit": git_commit or "",
+        "documents": serialized,
+    }
+    manifest_path = out_dir / MANIFEST_NAME
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    meta = {
+        "gitCommitHash": git_commit or "",
+        "parser": parser,
+        "parser_version": parser_version,
+        "document_count": len(serialized),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    (out_dir / META_NAME).write_text(json.dumps(meta, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return manifest_path

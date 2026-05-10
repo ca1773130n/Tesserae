@@ -44,3 +44,37 @@ def test_discover_sources_returns_non_code_files_only(tmp_path):
 
     sources = sorted(str(p.relative_to(tmp_path)) for p in discover_sources(tmp_path, roots=["docs", "data"]))
     assert sources == ["data/img.png", "data/notes.docx", "data/paper.pdf", "docs/spec.md"]
+
+
+def test_write_manifest_serializes_documents_with_sha256(tmp_path):
+    from llm_wiki.raganything_refresh import write_manifest
+
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"%PDF-1.4 hello")
+    documents = [
+        {
+            "path": pdf,
+            "content_list": [
+                {"type": "text", "page_idx": 0, "text": "Hello"},
+                {"type": "image", "page_idx": 0, "img_path": "x.png"},
+            ],
+        }
+    ]
+    manifest_path = write_manifest(
+        tmp_path,
+        documents=documents,
+        parser="mineru",
+        parser_version="2.0",
+        git_commit="abc123",
+    )
+
+    assert manifest_path.exists()
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert payload["version"] == 1
+    assert payload["parser"] == "mineru"
+    assert payload["git_commit"] == "abc123"
+    assert payload["documents"][0]["path"] == "doc.pdf"
+    assert len(payload["documents"][0]["sha256"]) == 64
+    meta = json.loads((tmp_path / ".llm-wiki" / "external" / "raganything" / "meta.json").read_text())
+    assert meta["gitCommitHash"] == "abc123"
+    assert meta["parser"] == "mineru"
