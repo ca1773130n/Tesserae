@@ -110,7 +110,7 @@ def build_setup_plan(
     cognee_auto_cognify: bool = False,
     install_cognee: Optional[bool] = None,
     include_raganything: bool = False,
-    install_raganything: bool = False,
+    install_raganything: bool | None = None,
     raganything_parser: str = "mineru",
     raganything_extras: str = "all",
     run_raganything: bool = False,
@@ -157,6 +157,16 @@ def build_setup_plan(
         memory_backends["cognee"] = cognee
 
     if include_raganything:
+        if install_raganything is None:
+            try:
+                import raganything as _probe  # noqa: F401
+                _raganything_installed = True
+            except Exception:
+                _raganything_installed = False
+            should_install_raganything = not _raganything_installed
+        else:
+            should_install_raganything = bool(install_raganything)
+
         backend = default_raganything_backend_config(name or sanitize_server_name(root.name))
         backend["enabled"] = True
         backend["parser"] = raganything_parser
@@ -165,7 +175,7 @@ def build_setup_plan(
             if raganything_extras
             else "{python} -m pip install raganything"
         )
-        if install_raganything:
+        if should_install_raganything:
             backend["install"]["auto_install"] = True
             backend["install"]["command"] = install_command
         memory_backends["raganything"] = backend
@@ -189,7 +199,7 @@ def build_setup_plan(
                 "managed_refresh": True,
                 "install": {
                     "enabled": True,
-                    "auto_install": bool(install_raganything),
+                    "auto_install": bool(should_install_raganything),
                     "command": install_command,
                 },
                 "enabled": True,
@@ -238,12 +248,30 @@ def render_setup_summary(plan: SetupPlan, *, color: bool = True) -> str:
         lines.append(f"  {_paint('·', DIM, color)} none selected")
     lines.append("")
     lines.append(_paint("Memory backends", BOLD, color))
-    cognee = (plan.memory_backends or {}).get("cognee")
+    backends = plan.memory_backends or {}
+    cognee = backends.get("cognee")
     if cognee and cognee.get("enabled", True):
         auto = "auto-cognify" if cognee.get("auto_cognify") else "manual cognify"
         lines.append(f"  {_paint('◆', CYAN, color)} Cognee → {cognee.get('dataset')} ({cognee.get('mode')}, {auto})")
     else:
         lines.append(f"  {_paint('·', DIM, color)} Cognee bundle only")
+    for backend_id, backend in backends.items():
+        if backend_id == "cognee":
+            continue
+        if not isinstance(backend, dict):
+            continue
+        if backend_id == "raganything":
+            display_name = "RAG-Anything"
+            parser = backend.get("parser") or "mineru"
+            query_mode = backend.get("query_mode") or "hybrid"
+            enabled = "enabled" if backend.get("enabled", True) else "disabled"
+            lines.append(
+                f"  {_paint('◆', CYAN, color)} {display_name} → {parser} ({query_mode}, runtime backend {enabled})"
+            )
+        else:
+            display_name = backend.get("name") or backend_id
+            enabled = "enabled" if backend.get("enabled", True) else "disabled"
+            lines.append(f"  {_paint('◆', CYAN, color)} {display_name} ({enabled})")
     return "\n".join(lines) + "\n"
 
 

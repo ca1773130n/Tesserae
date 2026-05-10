@@ -39,6 +39,35 @@ def test_cli_setup_passes_raganything_flags_to_plan(tmp_path, monkeypatch):
     assert captured["run_raganything"] is True
 
 
+def test_cli_with_raganything_alone_passes_none_for_install(tmp_path, monkeypatch):
+    from llm_wiki import cli
+
+    captured = {}
+
+    def fake_build(root, **kwargs):
+        captured.update(kwargs)
+        from llm_wiki.project_setup import SetupPlan
+        from pathlib import Path
+        return SetupPlan(project_root=Path(root), name="demo", sources=["README.md"])
+
+    monkeypatch.setattr(cli, "build_setup_plan", fake_build)
+    monkeypatch.setattr(cli, "apply_setup_plan", lambda *a, **kw: SimpleNamespace(
+        wiki=SimpleNamespace(root=Path(str(tmp_path))),
+        config_path=Path(str(tmp_path)) / ".llm-wiki" / "config.json",
+        ran_tools=[],
+    ))
+
+    rc = cli.main([
+        "project", "setup", "--yes",
+        "--with-raganything",
+        "--project", str(tmp_path),
+    ])
+    assert rc == 0
+    # When neither --install-raganything nor --skip-install-raganything is passed,
+    # CLI should forward None so build_setup_plan can decide.
+    assert captured["install_raganything"] is None
+
+
 def test_cli_refresh_raganything_invokes_refresh_main(monkeypatch):
     from llm_wiki import cli
     captured = {}
