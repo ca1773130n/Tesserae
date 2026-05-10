@@ -11,7 +11,7 @@ from datetime import date
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence
 
-from .project import ProjectWiki, CognifyOptions, default_cognee_backend_config, sanitize_server_name
+from .project import ProjectWiki, CognifyOptions, default_cognee_backend_config, default_raganything_backend_config, sanitize_server_name
 
 
 RESET = "\033[0m"
@@ -109,6 +109,11 @@ def build_setup_plan(
     cognee_mode: str = "codex_cognify",
     cognee_auto_cognify: bool = False,
     install_cognee: Optional[bool] = None,
+    include_raganything: bool = False,
+    install_raganything: bool = False,
+    raganything_parser: str = "mineru",
+    raganything_extras: str = "all",
+    run_raganything: bool = False,
 ) -> SetupPlan:
     root = Path(project_root).resolve()
     source_list = [str(source) for source in sources] if sources is not None else discover_default_sources(root)
@@ -143,13 +148,53 @@ def build_setup_plan(
             }
         )
 
-    memory_backends = {}
+    memory_backends: dict = {}
     if enable_cognee:
         cognee = default_cognee_backend_config(name or sanitize_server_name(root.name))
         cognee["mode"] = cognee_mode
         cognee["auto_cognify"] = bool(cognee_auto_cognify)
         cognee["install"]["auto_install"] = bool(install_cognee) if install_cognee is not None else bool(cognee_auto_cognify)
         memory_backends["cognee"] = cognee
+
+    if include_raganything:
+        backend = default_raganything_backend_config(name or sanitize_server_name(root.name))
+        backend["enabled"] = True
+        backend["parser"] = raganything_parser
+        install_command = (
+            "{python} -m pip install 'raganything[" + raganything_extras + "]'"
+            if raganything_extras
+            else "{python} -m pip install raganything"
+        )
+        if install_raganything:
+            backend["install"]["auto_install"] = True
+            backend["install"]["command"] = install_command
+        memory_backends["raganything"] = backend
+
+        refresh_command = (
+            "{python} -m llm_wiki.raganything_refresh "
+            "--project {project} "
+            f"--parser {shlex.quote(raganything_parser)}"
+        )
+        external_tools.append(
+            {
+                "id": "raganything",
+                "name": "RAG-Anything",
+                "artifact": ".llm-wiki/external/raganything/manifest.json",
+                "source": ".llm-wiki/external/raganything/manifest.json",
+                "refresh_command": refresh_command,
+                "auto_refresh": bool(run_raganything),
+                "sync_mode": "native_graph",
+                "parser": raganything_parser,
+                "extras": raganything_extras,
+                "managed_refresh": True,
+                "install": {
+                    "enabled": True,
+                    "auto_install": bool(install_raganything),
+                    "command": install_command,
+                },
+                "enabled": True,
+            }
+        )
 
     return SetupPlan(
         project_root=root,
