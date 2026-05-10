@@ -106,27 +106,35 @@ llm_wiki project sessions discover --import
 llm_wiki project build-site
 ```
 
-## 가능한 미래 브리지
+## 네이티브 그래프 동기화
 
-향후 선택적 브리지는 Understand Anything의 그래프 스키마를 LLM-Wiki의 typed graph ontology로 더 직접 매핑할 수 있습니다.
+LLM-Wiki는 읽기 쉬운 markdown projection을 계속 유지하면서, 설정된 도구가 `sync_mode: native_graph`를 사용할 때 compile 중 UA 그래프도 네이티브로 가져옵니다.
 
-가능한 매핑:
+네이티브 어댑터는 `.understand-anything/knowledge-graph.json`을 읽고, UA 노드/에지를 LLM-Wiki의 제어된 온톨로지로 매핑한 뒤 sync manifest를 씁니다:
+
+```text
+.llm-wiki/external/understand-anything-sync.json
+```
+
+현재 매핑:
 
 | Understand Anything | LLM-Wiki 방향 |
 |---|---|
-| `project` | 저장소/프로젝트 메타데이터 |
-| `nodes[type=file]` | 소스/문서/파일 노드 |
-| `nodes[type=function]` | 함수/코드 심볼 노드 |
-| `nodes[type=class]` | 클래스/코드 심볼 노드 |
-| `nodes[type=module]` | 모듈/패키지 노드 |
-| `nodes[type=concept]` | 개념 노드 |
-| `edges[type=imports]` | import/의존성 엣지 |
-| `edges[type=contains]` | 포함 관계 엣지 |
-| `edges[type=calls]` | 호출/참조 엣지 |
-| `layers[]` | 아키텍처 그룹화 메타데이터 |
-| `tour[]` | 온보딩/종합 페이지 |
+| `project` | repository/project metadata |
+| `nodes[type=file]` | `SourceFile` nodes |
+| `nodes[type=function]` / `method` | `CodeFunction` nodes |
+| `nodes[type=class]` / `component` | `CodeClass` nodes |
+| `nodes[type=module]` / `package` | `CodeModule` nodes |
+| `nodes[type=concept]` / `topic` | canonical `Concept` nodes |
+| `nodes[type=feature]` / `capability` | `Capability` nodes |
+| `edges[type=imports]` | `imports` edges |
+| `edges[type=contains]` | `contains` edges |
+| `edges[type=calls]` | `calls` edges |
+| unknown edge types | `ua_edge_type` metadata가 있는 `shares_concept_with` |
 
-두 프로젝트가 안정적인 교환 계약에 동의하지 않는 한 이 브리지는 선택적이고 외부적인 것으로 유지하세요.
+Concept synchronization은 무작정 중복 생성하지 않고 canonicalize합니다. UA가 `Mermaid Rendering`을 내보내고 LLM-Wiki에 이미 `Mermaid rendering`이 있으면, compile은 하나의 concept node만 유지하고 `metadata.external_refs`에 UA provenance를 추가합니다.
+
+LLM-Wiki는 memory compiler로 남고, UA는 독립적인 companion graph generator로 남습니다.
 
 ## 협업 원칙
 

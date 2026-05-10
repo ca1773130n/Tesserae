@@ -41,6 +41,7 @@ from .persistence import SQLiteResearchGraphStore
 from .report import GraphReporter
 from .research_graph import ResearchCorpusAnalyzer, ResearchEdge, ResearchGraph, ResearchGraphExtractor, ResearchNode, ResearchNodeType, link_paper_repo_pairs, prefer_research_node
 from .temporal import TemporalFactProjector, render_competitive_report
+from .understand_anything_adapter import merge_understand_anything_graph
 from .wiki_projector import partition_graph
 
 
@@ -305,6 +306,8 @@ class ProjectWiki:
         if kind in {"CodeProject", "Repository", "Project"}:
             code_graph = CodeGraphExtractor(self.project_root).extract_paths(code_inputs)
             graph = merge_graphs([graph, code_graph])
+        cfg = self.config()
+        graph = self._merge_configured_understand_anything_graph(graph, cfg)
         # ``--changed-only`` is supposed to be incremental: re-extract only the
         # files whose content hash changed, but keep the rest of the prior
         # corpus. The manifest stores only ``{path: sha256}``, so without this
@@ -353,6 +356,32 @@ class ProjectWiki:
             "site_path": str(self.paths.site),
             "mcp_server_name": cfg.get("name", sanitize_server_name(self.project_root.name)),
         }
+
+    def _merge_configured_understand_anything_graph(self, graph: ResearchGraph, cfg: dict) -> ResearchGraph:
+        """Merge configured Understand Anything graph artifacts natively.
+
+        The markdown projection remains a human-readable companion source, but
+        native graph sync preserves UA node ids, edges, and concept provenance.
+        """
+        for tool in cfg.get("external_tools", []) or []:
+            if not isinstance(tool, dict):
+                continue
+            if tool.get("id") != "understand-anything" or tool.get("enabled", True) is False:
+                continue
+            sync_mode = str(tool.get("sync_mode") or "native_graph")
+            if sync_mode not in {"native_graph", "both"}:
+                continue
+            artifact = self.project_root / str(tool.get("artifact") or ".understand-anything/knowledge-graph.json")
+            if not artifact.exists():
+                continue
+            manifest = self.root / "external" / "understand-anything-sync.json"
+            graph, _sync = merge_understand_anything_graph(
+                graph,
+                project_root=self.project_root,
+                artifact=artifact,
+                sync_manifest_path=manifest,
+            )
+        return graph
 
     def _ingest_via_loader(
         self,

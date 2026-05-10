@@ -106,27 +106,35 @@ llm_wiki project sessions discover --import
 llm_wiki project build-site
 ```
 
-## Posible puente futuro
+## Sincronización nativa de grafos
 
-Un puente opcional futuro podría mapear el schema de grafo de Understand Anything a la typed graph ontology de LLM-Wiki de forma más directa.
+LLM-Wiki mantiene la markdown projection para legibilidad y también importa el grafo de UA de forma nativa durante compile cuando la herramienta configurada usa `sync_mode: native_graph`.
 
-Mapeo probable:
+El adaptador nativo lee `.understand-anything/knowledge-graph.json`, mapea nodos/aristas de UA a la ontology controlada de LLM-Wiki y escribe un sync manifest:
 
-| Understand Anything | dirección de LLM-Wiki |
+```text
+.llm-wiki/external/understand-anything-sync.json
+```
+
+Mapeo actual:
+
+| Understand Anything | Dirección de LLM-Wiki |
 |---|---|
-| `project` | metadatos de repositorio/proyecto |
-| `nodes[type=file]` | nodos de fuente/documento/archivo |
-| `nodes[type=function]` | nodos de función/símbolo de código |
-| `nodes[type=class]` | nodos de clase/símbolo de código |
-| `nodes[type=module]` | nodos de módulo/paquete |
-| `nodes[type=concept]` | nodos de concepto |
-| `edges[type=imports]` | aristas de importaciones/dependencias |
-| `edges[type=contains]` | aristas de contención |
-| `edges[type=calls]` | aristas de llamada/referencia |
-| `layers[]` | metadatos de agrupación de arquitectura |
-| `tour[]` | páginas de onboarding/síntesis |
+| `project` | repository/project metadata |
+| `nodes[type=file]` | `SourceFile` nodes |
+| `nodes[type=function]` / `method` | `CodeFunction` nodes |
+| `nodes[type=class]` / `component` | `CodeClass` nodes |
+| `nodes[type=module]` / `package` | `CodeModule` nodes |
+| `nodes[type=concept]` / `topic` | canonical `Concept` nodes |
+| `nodes[type=feature]` / `capability` | `Capability` nodes |
+| `edges[type=imports]` | `imports` edges |
+| `edges[type=contains]` | `contains` edges |
+| `edges[type=calls]` | `calls` edges |
+| unknown edge types | `shares_concept_with` con metadata `ua_edge_type` |
 
-Mantén este puente opcional y externo salvo que ambos proyectos acuerden un contrato de intercambio estable.
+Concept synchronization se canonicaliza en vez de duplicarse a ciegas. Si UA emite `Mermaid Rendering` y LLM-Wiki ya tiene `Mermaid rendering`, compile conserva un único concept node y añade provenance de UA en `metadata.external_refs`.
+
+LLM-Wiki sigue siendo el memory compiler; UA sigue siendo un companion graph generator independiente.
 
 ## Principio de colaboración
 

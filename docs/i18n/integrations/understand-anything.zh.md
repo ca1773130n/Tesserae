@@ -106,27 +106,35 @@ llm_wiki project sessions discover --import
 llm_wiki project build-site
 ```
 
-## 可能的未来桥接
+## 原生图同步
 
-未来可选的桥接可以更直接地把 Understand Anything 的图谱 schema 映射到 LLM-Wiki 的 typed graph ontology。
+LLM-Wiki 仍然保留便于阅读的 markdown projection，同时当配置的工具使用 `sync_mode: native_graph` 时，会在 compile 期间原生导入 UA 图。
 
-可能的映射：
+原生适配器读取 `.understand-anything/knowledge-graph.json`，把 UA 节点/边映射到 LLM-Wiki 的受控 ontology，并写入同步 manifest：
+
+```text
+.llm-wiki/external/understand-anything-sync.json
+```
+
+当前映射：
 
 | Understand Anything | LLM-Wiki 方向 |
 |---|---|
-| `project` | 仓库/项目元数据 |
-| `nodes[type=file]` | 源/文档/文件节点 |
-| `nodes[type=function]` | 函数/代码符号节点 |
-| `nodes[type=class]` | 类/代码符号节点 |
-| `nodes[type=module]` | 模块/包节点 |
-| `nodes[type=concept]` | 概念节点 |
-| `edges[type=imports]` | import/依赖边 |
-| `edges[type=contains]` | 包含边 |
-| `edges[type=calls]` | 调用/引用边 |
-| `layers[]` | 架构分组元数据 |
-| `tour[]` | 入门/综合页面 |
+| `project` | repository/project metadata |
+| `nodes[type=file]` | `SourceFile` nodes |
+| `nodes[type=function]` / `method` | `CodeFunction` nodes |
+| `nodes[type=class]` / `component` | `CodeClass` nodes |
+| `nodes[type=module]` / `package` | `CodeModule` nodes |
+| `nodes[type=concept]` / `topic` | canonical `Concept` nodes |
+| `nodes[type=feature]` / `capability` | `Capability` nodes |
+| `edges[type=imports]` | `imports` edges |
+| `edges[type=contains]` | `contains` edges |
+| `edges[type=calls]` | `calls` edges |
+| unknown edge types | 带有 `ua_edge_type` metadata 的 `shares_concept_with` |
 
-除非两个项目都同意稳定的交换契约，否则请保持该桥接为可选且外部的。
+Concept synchronization 会做 canonicalization，而不是盲目创建重复节点。如果 UA 输出 `Mermaid Rendering`，而 LLM-Wiki 已有 `Mermaid rendering`，compile 会保留一个 concept node，并在 `metadata.external_refs` 下添加 UA provenance。
+
+LLM-Wiki 仍然是 memory compiler；UA 仍然是独立的 companion graph generator。
 
 ## 协作原则
 

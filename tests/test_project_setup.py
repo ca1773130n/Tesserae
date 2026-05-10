@@ -21,6 +21,8 @@ def test_setup_plan_detects_common_sources_and_understand_anything(tmp_path):
     assert plan.external_tools[0]["artifact"] == ".understand-anything/knowledge-graph.json"
     assert plan.external_tools[0]["source"] == ".llm-wiki/external/understand-anything.md"
     assert plan.external_tools[0]["auto_refresh"] is True
+    assert plan.external_tools[0]["sync_mode"] == "native_graph"
+    assert plan.external_tools[0]["preserve_markdown_projection"] is True
     assert plan.external_tools[0]["managed_refresh"] is True
     assert "llm_wiki.understand_anything_refresh" in plan.external_tools[0]["refresh_command"]
 
@@ -63,6 +65,8 @@ def test_setup_command_yes_writes_config_with_external_tool_metadata(tmp_path, c
     assert cfg["external_tools"][0]["id"] == "understand-anything"
     assert cfg["external_tools"][0]["install"]["enabled"] is True
     assert cfg["external_tools"][0]["auto_refresh"] is True
+    assert cfg["external_tools"][0]["sync_mode"] == "native_graph"
+    assert cfg["external_tools"][0]["preserve_markdown_projection"] is True
     assert cfg["external_tools"][0]["managed_refresh"] is True
     assert "llm_wiki.understand_anything_refresh" in cfg["external_tools"][0]["refresh_command"]
     assert "install.sh" in cfg["external_tools"][0]["install"]["command"]

@@ -130,6 +130,8 @@ def build_setup_plan(
                 "source": projection,
                 "refresh_command": refresh_command,
                 "auto_refresh": True,
+                "sync_mode": "native_graph",
+                "preserve_markdown_projection": True,
                 "managed_refresh": understand_anything_command is None,
                 "enabled": True,
                 "install": {

@@ -106,27 +106,35 @@ llm_wiki project sessions discover --import
 llm_wiki project build-site
 ```
 
-## 将来あり得るブリッジ
+## ネイティブグラフ同期
 
-将来の任意ブリッジでは、Understand Anything のグラフ schema を LLM-Wiki の typed graph ontology により直接マッピングできる可能性があります。
+LLM-Wiki は読みやすい markdown projection を維持しつつ、設定されたツールが `sync_mode: native_graph` を使う場合は compile 中に UA グラフもネイティブに取り込みます。
 
-想定されるマッピング:
+ネイティブアダプターは `.understand-anything/knowledge-graph.json` を読み込み、UA のノード/エッジを LLM-Wiki の制御された ontology にマッピングし、sync manifest を書き込みます:
+
+```text
+.llm-wiki/external/understand-anything-sync.json
+```
+
+現在のマッピング:
 
 | Understand Anything | LLM-Wiki の方向性 |
 |---|---|
-| `project` | リポジトリ/プロジェクトメタデータ |
-| `nodes[type=file]` | ソース/ドキュメント/ファイルノード |
-| `nodes[type=function]` | 関数/コードシンボルノード |
-| `nodes[type=class]` | クラス/コードシンボルノード |
-| `nodes[type=module]` | モジュール/パッケージノード |
-| `nodes[type=concept]` | 概念ノード |
-| `edges[type=imports]` | import/依存関係エッジ |
-| `edges[type=contains]` | 包含エッジ |
-| `edges[type=calls]` | 呼び出し/参照エッジ |
-| `layers[]` | アーキテクチャのグループ化メタデータ |
-| `tour[]` | オンボーディング/総合ページ |
+| `project` | repository/project metadata |
+| `nodes[type=file]` | `SourceFile` nodes |
+| `nodes[type=function]` / `method` | `CodeFunction` nodes |
+| `nodes[type=class]` / `component` | `CodeClass` nodes |
+| `nodes[type=module]` / `package` | `CodeModule` nodes |
+| `nodes[type=concept]` / `topic` | canonical `Concept` nodes |
+| `nodes[type=feature]` / `capability` | `Capability` nodes |
+| `edges[type=imports]` | `imports` edges |
+| `edges[type=contains]` | `contains` edges |
+| `edges[type=calls]` | `calls` edges |
+| unknown edge types | `ua_edge_type` metadata 付きの `shares_concept_with` |
 
-両プロジェクトが安定した交換契約に合意しない限り、このブリッジは任意かつ外部のものとして維持してください。
+Concept synchronization は重複を無条件に作るのではなく canonicalize します。UA が `Mermaid Rendering` を出力し、LLM-Wiki にすでに `Mermaid rendering` がある場合、compile は 1 つの concept node を保持し、`metadata.external_refs` に UA provenance を追加します。
+
+LLM-Wiki は memory compiler のままで、UA は独立した companion graph generator のままです。
 
 ## 協業の原則
 

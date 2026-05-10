@@ -106,27 +106,35 @@ llm_wiki project sessions discover --import
 llm_wiki project build-site
 ```
 
-## Возможный будущий мост
+## Нативная синхронизация графа
 
-Будущий необязательный мост мог бы более напрямую сопоставлять схему графа Understand Anything с typed graph ontology в LLM-Wiki.
+LLM-Wiki по-прежнему сохраняет markdown projection для читаемости, но также нативно импортирует граф UA во время compile, когда настроенный инструмент использует `sync_mode: native_graph`.
 
-Вероятное сопоставление:
+Нативный адаптер читает `.understand-anything/knowledge-graph.json`, сопоставляет узлы/ребра UA с контролируемой ontology LLM-Wiki и записывает sync manifest:
 
-| Understand Anything | направление LLM-Wiki |
+```text
+.llm-wiki/external/understand-anything-sync.json
+```
+
+Текущее сопоставление:
+
+| Understand Anything | Направление LLM-Wiki |
 |---|---|
-| `project` | метаданные репозитория/проекта |
-| `nodes[type=file]` | узлы исходников/документов/файлов |
-| `nodes[type=function]` | узлы функций/символов кода |
-| `nodes[type=class]` | узлы классов/символов кода |
-| `nodes[type=module]` | узлы модулей/пакетов |
-| `nodes[type=concept]` | узлы концепций |
-| `edges[type=imports]` | ребра импортов/зависимостей |
-| `edges[type=contains]` | ребра включения |
-| `edges[type=calls]` | ребра вызовов/ссылок |
-| `layers[]` | метаданные архитектурной группировки |
-| `tour[]` | страницы онбординга/синтеза |
+| `project` | repository/project metadata |
+| `nodes[type=file]` | `SourceFile` nodes |
+| `nodes[type=function]` / `method` | `CodeFunction` nodes |
+| `nodes[type=class]` / `component` | `CodeClass` nodes |
+| `nodes[type=module]` / `package` | `CodeModule` nodes |
+| `nodes[type=concept]` / `topic` | canonical `Concept` nodes |
+| `nodes[type=feature]` / `capability` | `Capability` nodes |
+| `edges[type=imports]` | `imports` edges |
+| `edges[type=contains]` | `contains` edges |
+| `edges[type=calls]` | `calls` edges |
+| unknown edge types | `shares_concept_with` с metadata `ua_edge_type` |
 
-Сохраняйте этот мост необязательным и внешним, если оба проекта не договорятся о стабильном контракте обмена.
+Concept synchronization выполняет canonicalization, а не создает дубликаты вслепую. Если UA выдает `Mermaid Rendering`, а в LLM-Wiki уже есть `Mermaid rendering`, compile сохраняет один concept node и добавляет UA provenance в `metadata.external_refs`.
+
+LLM-Wiki остается memory compiler; UA остается независимым companion graph generator.
 
 ## Принцип сотрудничества
 
