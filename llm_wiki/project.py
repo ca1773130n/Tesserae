@@ -871,6 +871,22 @@ def default_cognee_backend_config(name: str = "llm_wiki") -> dict:
     }
 
 
+def default_raganything_backend_config(name: str = "llm_wiki") -> dict:
+    # ``name`` is unused for now; kept for symmetry with default_cognee_backend_config.
+    return {
+        "enabled": False,
+        "working_dir": ".llm-wiki/external/raganything/working_dir",
+        "parser": "mineru",
+        "parse_method": "auto",
+        "query_mode": "hybrid",
+        "vlm_enhanced": True,
+        "install": {
+            "command": "{python} -m pip install 'raganything[all]'",
+            "auto_install": False,
+        },
+    }
+
+
 def cognee_backend_config(config: dict) -> dict:
     defaults = default_cognee_backend_config(str(config.get("name") or "llm_wiki"))
     backends = config.get("memory_backends")
