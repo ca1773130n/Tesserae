@@ -111,16 +111,14 @@ def is_binary_extension(suffix: str) -> bool:
 
 
 def is_markdown_source_path(path: object) -> bool:
-    """Return ``True`` for Markdown files, including root ``README.md.<lang>``.
+    """Return ``True`` for Markdown files.
 
-    GitHub renders localized README companions named like ``README.md.ko`` as
-    Markdown when linked from the repository root. Treat those files as Markdown
-    in the generated raw viewer too; otherwise their raw pages degrade into
-    plain ``<pre>`` text because ``Path.suffix`` is just ``.ko``.
+    Localized root READMEs should use GitHub-rendered names such as
+    ``README.ko.md`` (``{original_filename_without_ext}.{lang}.md``), so the
+    ordinary ``.md`` suffix check covers them.
     """
     p = Path(str(path))
-    name = p.name.lower()
-    return p.suffix.lower() in _MARKDOWN_EXTS or name.startswith("readme.md.")
+    return p.suffix.lower() in _MARKDOWN_EXTS
 
 
 # ---------------------------------------------------------------------------

@@ -25,15 +25,15 @@ from llm_wiki.site.raw_view import (
 
 
 def test_raw_view_renders_root_readme_language_files_as_markdown(tmp_path: Path) -> None:
-    """Root ``README.md.<lang>`` files should render like GitHub README docs."""
-    md = tmp_path / "README.md.ko"
+    """Root ``README.<lang>.md`` files should render like GitHub README docs."""
+    md = tmp_path / "README.ko.md"
     md.write_text("# 한국어 README\n\n- 하나\n- 둘\n", encoding="utf-8")
 
     assert is_markdown_source_path(md)
 
     out = render_raw_view(
         site_title="LLM-Wiki",
-        project_relative_path="README.md.ko",
+        project_relative_path="README.ko.md",
         absolute_path=md,
     )
 

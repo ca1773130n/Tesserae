@@ -307,11 +307,11 @@ def test_builder_copies_raw_markdown_embedded_image_assets(tmp_path: Path) -> No
     asset = project / "docs" / "assets" / "demo.png"
     asset.parent.mkdir(parents=True)
     asset.write_bytes(b"fake png bytes")
-    linked_doc = project / "README.md.ko"
+    linked_doc = project / "README.ko.md"
     linked_doc.write_text("# 한국어 README\n\n- 하나\n", encoding="utf-8")
     readme.write_text(
         '<h1 align="center">Demo</h1>\n\n'
-        '<p align="center"><a href="./README.md.ko">한국어</a></p>\n\n'
+        '<p align="center"><a href="./README.ko.md">한국어</a></p>\n\n'
         '<p align="center"><img src="docs/assets/demo.png" alt="Demo graph" /></p>\n',
         encoding="utf-8",
     )
@@ -331,11 +331,11 @@ def test_builder_copies_raw_markdown_embedded_image_assets(tmp_path: Path) -> No
 
     raw = (site_root / "raw" / "readme-md.html").read_text(encoding="utf-8")
     assert '../raw-assets/docs-assets-demo-png.png' in raw
-    assert '../raw/readme-md-ko.html' in raw
+    assert '../raw/readme-ko-md.html' in raw
     assert 'src="docs/assets/demo.png"' not in raw
-    assert 'href="./README.md.ko"' not in raw
+    assert 'href="./README.ko.md"' not in raw
     assert (site_root / "raw-assets" / "docs-assets-demo-png.png").exists()
-    localized_raw = site_root / "raw" / "readme-md-ko.html"
+    localized_raw = site_root / "raw" / "readme-ko-md.html"
     assert localized_raw.exists()
     localized = localized_raw.read_text(encoding="utf-8")
     assert '<section class="markdown-body raw-markdown">' in localized
