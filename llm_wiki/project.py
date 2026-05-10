@@ -906,6 +906,16 @@ def default_raganything_backend_config(name: str = "llm_wiki") -> dict:
         "parse_method": "auto",
         "query_mode": "hybrid",
         "vlm_enhanced": True,
+        "llm": {
+            "provider": "codex",
+            "model": "gpt-5.4",
+            "timeout": 300,
+            "claude_config_dir": None,
+        },
+        "embedding": {
+            "provider": "deterministic",
+            "dim": 768,
+        },
         "install": {
             "command": "{python} -m pip install 'raganything[all]>=1.3.0' docling",
             "auto_install": False,

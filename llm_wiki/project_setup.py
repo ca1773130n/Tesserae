@@ -114,6 +114,11 @@ def build_setup_plan(
     raganything_parser: str = "mineru",
     raganything_extras: str = "all",
     run_raganything: bool = False,
+    raganything_llm_provider: str = "codex",
+    raganything_llm_model: Optional[str] = None,
+    raganything_claude_config_dir: Optional[str] = None,
+    raganything_embedding_provider: str = "deterministic",
+    raganything_embedding_dim: int = 768,
 ) -> SetupPlan:
     root = Path(project_root).resolve()
     source_list = [str(source) for source in sources] if sources is not None else discover_default_sources(root)
@@ -188,6 +193,17 @@ def build_setup_plan(
         backend = default_raganything_backend_config(name or sanitize_server_name(root.name))
         backend["enabled"] = True
         backend["parser"] = raganything_parser
+        backend["llm"] = {
+            "provider": raganything_llm_provider,
+            "model": raganything_llm_model
+            or ("gpt-5.4" if raganything_llm_provider == "codex" else None),
+            "timeout": 300,
+            "claude_config_dir": raganything_claude_config_dir,
+        }
+        backend["embedding"] = {
+            "provider": raganything_embedding_provider,
+            "dim": int(raganything_embedding_dim),
+        }
         install_command = (
             "{python} -m pip install 'raganything[" + raganything_extras + "]>=1.3.0' docling"
             if raganything_extras
@@ -218,6 +234,8 @@ def build_setup_plan(
                 "parser": raganything_parser,
                 "extras": raganything_extras,
                 "managed_refresh": True,
+                "llm": dict(backend["llm"]),
+                "embedding": dict(backend["embedding"]),
                 "install": {
                     "enabled": True,
                     "auto_install": bool(should_install_raganything),

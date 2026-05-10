@@ -18,12 +18,15 @@ def _load_raganything(cfg: dict):
         from raganything import RAGAnything, RAGAnythingConfig
     except Exception as exc:
         raise RuntimeError("raganything is not installed") from exc
+    from .raganything_llm import build_runtime_funcs
+
     config = RAGAnythingConfig(
         working_dir=str(cfg["working_dir"]),
         parser=cfg.get("parser", "mineru"),
         parse_method=cfg.get("parse_method", "auto"),
     )
-    return RAGAnything(config=config)
+    funcs = build_runtime_funcs(cfg)
+    return RAGAnything(config=config, **funcs)
 
 
 def query(question: str, *, backend_config: dict) -> Optional[str]:

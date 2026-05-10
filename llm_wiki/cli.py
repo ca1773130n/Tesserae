@@ -512,6 +512,34 @@ def project_main(argv: List[str] | None = None) -> int:
     setup_parser.add_argument("--raganything-parser", choices=["mineru", "docling", "paddleocr"], default="mineru", help="Parser backend for RAG-Anything (default: mineru)")
     setup_parser.add_argument("--raganything-extras", default="all", help="pip extras to use when installing raganything (default: all)")
     setup_parser.add_argument("--run-raganything", action="store_true", help="Auto-refresh RAG-Anything on every compile")
+    setup_parser.add_argument(
+        "--raganything-llm-provider",
+        choices=["codex", "claude"],
+        default="codex",
+        help="LLM provider for raganything runtime queries (default: codex; uses OAuth CLI, no API key)",
+    )
+    setup_parser.add_argument(
+        "--raganything-llm-model",
+        default=None,
+        help="LLM model name (default: gpt-5.4 for codex; leave unset for claude default)",
+    )
+    setup_parser.add_argument(
+        "--raganything-claude-config-dir",
+        default=None,
+        help="CLAUDE_CONFIG_DIR for raganything when provider=claude (supports multi-account setups like ~/.claude-personal2)",
+    )
+    setup_parser.add_argument(
+        "--raganything-embedding",
+        choices=["deterministic", "ollama"],
+        default="deterministic",
+        help="Embedding provider for raganything (default: deterministic, no external deps)",
+    )
+    setup_parser.add_argument(
+        "--raganything-embedding-dim",
+        type=int,
+        default=768,
+        help="Embedding dimensionality (default: 768)",
+    )
     setup_parser.add_argument("--no-cognee", action="store_true", help="Do not enable Cognee as the default project memory backend")
     setup_parser.add_argument("--install-cognee", action="store_true", help="Install Cognee during setup and allow compile to auto-install if missing")
     setup_parser.add_argument("--skip-install-cognee", action="store_true", help="Do not auto-install Cognee even when --run-cognee is selected")
@@ -722,6 +750,11 @@ def project_main(argv: List[str] | None = None) -> int:
                     raganything_parser=args.raganything_parser,
                     raganything_extras=args.raganything_extras,
                     run_raganything=args.run_raganything,
+                    raganything_llm_provider=args.raganything_llm_provider,
+                    raganything_llm_model=args.raganything_llm_model,
+                    raganything_claude_config_dir=args.raganything_claude_config_dir,
+                    raganything_embedding_provider=args.raganything_embedding,
+                    raganything_embedding_dim=args.raganything_embedding_dim,
                 )
                 print(render_setup_summary(plan, color=not args.no_color), end="")
             else:

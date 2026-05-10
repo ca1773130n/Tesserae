@@ -102,6 +102,26 @@ Provenance is preserved on each node:
 
 `memory_backends.raganything` (default produced by `default_raganything_backend_config`) coexists with Cognee. `project ask` tries backends in priority order; per-project priority can be set via `memory_backends.priority`. RAG-Anything is opt-in (default `enabled: false`); the setup flag `--with-raganything` flips it on.
 
+### LLM provider (no API key needed)
+
+RAG-Anything's runtime backend needs an LLM to answer queries. LLM-Wiki defaults to its existing OAuth-based CLI integrations — no API key required:
+
+| Provider | How it authenticates | Setup flag |
+|---|---|---|
+| `codex` (default) | `codex` CLI OAuth (you logged in once with `codex login`) | `--raganything-llm-provider codex` |
+| `claude` | `claude -p` CLI; respects `CLAUDE_CONFIG_DIR` for multi-account setups | `--raganything-llm-provider claude --raganything-claude-config-dir ~/.claude-personal2` |
+
+For multi-account Claude setups (e.g., `~/.claude-personal1`, `~/.claude-personal2`), pass `--raganything-claude-config-dir <path>` at setup. The runtime backend will export `CLAUDE_CONFIG_DIR=<path>` before each invocation so the chosen account's auth is used without touching your default `~/.claude`.
+
+### Embeddings
+
+| Provider | When to use |
+|---|---|
+| `deterministic` (default) | No external deps. Hash-based; low semantic quality but enough for LightRAG to construct an index. Good baseline for proving the integration works. |
+| `ollama` | Local Ollama running with an embedding model (e.g., `nomic-embed-text`). Pass `--raganything-embedding ollama`; the backend defaults to `http://localhost:11434`. |
+
+Direct OpenAI embedding support is not wired through these flags in v1 — users with OpenAI keys can set `OPENAI_API_KEY` and override `memory_backends.raganything.embedding.provider` directly in `.llm-wiki/config.json` (RAGAnything will pick up the env var via LightRAG's defaults).
+
 ### Invoking from the CLI
 
 ```bash

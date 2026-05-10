@@ -106,3 +106,40 @@ def test_build_setup_plan_disables_raganything_on_python_below_3_10(tmp_path, mo
     assert raga["install"]["auto_install"] is False
     assert "Python 3.10" in (raga.get("python_warning") or "")
     assert plan.memory_backends["raganything"]["enabled"] is False
+
+
+def test_build_setup_plan_persists_raganything_llm_and_embedding(tmp_path, monkeypatch):
+    _force_modern_python(monkeypatch)
+    plan = build_setup_plan(
+        tmp_path,
+        name="demo",
+        sources=["README.md"],
+        include_raganything=True,
+        raganything_llm_provider="claude",
+        raganything_llm_model="claude-opus-4-7",
+        raganything_claude_config_dir="/tmp/claude-personal2",
+        raganything_embedding_provider="deterministic",
+        raganything_embedding_dim=512,
+    )
+    raga_backend = plan.memory_backends["raganything"]
+    assert raga_backend["llm"]["provider"] == "claude"
+    assert raga_backend["llm"]["model"] == "claude-opus-4-7"
+    assert raga_backend["llm"]["claude_config_dir"] == "/tmp/claude-personal2"
+    assert raga_backend["embedding"]["provider"] == "deterministic"
+    assert raga_backend["embedding"]["dim"] == 512
+
+
+def test_build_setup_plan_defaults_codex_provider_and_deterministic_embedding(tmp_path, monkeypatch):
+    _force_modern_python(monkeypatch)
+    plan = build_setup_plan(
+        tmp_path,
+        name="demo",
+        sources=["README.md"],
+        include_raganything=True,
+    )
+    raga_backend = plan.memory_backends["raganything"]
+    assert raga_backend["llm"]["provider"] == "codex"
+    assert raga_backend["llm"]["model"] == "gpt-5.4"
+    assert raga_backend["llm"]["claude_config_dir"] is None
+    assert raga_backend["embedding"]["provider"] == "deterministic"
+    assert raga_backend["embedding"]["dim"] == 768
