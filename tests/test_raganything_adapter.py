@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from llm_wiki.raganything_adapter import RagAnythingGraphAdapter, merge_raganything_graph
 from llm_wiki.research_graph import ResearchGraph, ResearchNode, ResearchNodeType
 
 
@@ -29,8 +30,6 @@ def _payload():
 
 
 def test_import_payload_creates_source_file_with_multimodal_blocks(tmp_path):
-    from llm_wiki.raganything_adapter import RagAnythingGraphAdapter
-
     adapter = RagAnythingGraphAdapter(tmp_path)
     graph, manifest = adapter.import_payload(
         _payload(),
@@ -53,8 +52,6 @@ def test_import_payload_creates_source_file_with_multimodal_blocks(tmp_path):
 
 
 def test_import_artifact_reads_file_and_records_sha256(tmp_path):
-    from llm_wiki.raganything_adapter import RagAnythingGraphAdapter
-
     artifact = tmp_path / ".llm-wiki" / "external" / "raganything" / "manifest.json"
     artifact.parent.mkdir(parents=True)
     artifact.write_text(json.dumps(_payload()), encoding="utf-8")
@@ -66,8 +63,6 @@ def test_import_artifact_reads_file_and_records_sha256(tmp_path):
 
 
 def test_merge_raganything_graph_appends_to_existing_graph_and_writes_manifest(tmp_path):
-    from llm_wiki.raganything_adapter import merge_raganything_graph
-
     artifact = tmp_path / ".llm-wiki" / "external" / "raganything" / "manifest.json"
     artifact.parent.mkdir(parents=True)
     artifact.write_text(json.dumps(_payload()), encoding="utf-8")

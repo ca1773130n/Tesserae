@@ -19,12 +19,10 @@ from .research_graph import (
     ResearchGraphBuilder,
     ResearchNode,
     ResearchNodeType,
-    normalize_display_name,
-    stable_id,
 )
 
 
-_BLOCK_TYPES = ("text", "image", "table", "equation")
+_MULTIMODAL_BLOCK_TYPES = ("image", "table", "equation")
 
 
 @dataclass(frozen=True)
@@ -123,7 +121,7 @@ class RagAnythingGraphAdapter:
             content_list = doc.get("content_list") if isinstance(doc.get("content_list"), list) else []
             blocks = [
                 _block_summary(b) for b in content_list
-                if isinstance(b, dict) and str(b.get("type") or "").lower() in _BLOCK_TYPES and str(b.get("type")).lower() != "text"
+                if isinstance(b, dict) and str(b.get("type") or "").lower() in _MULTIMODAL_BLOCK_TYPES
             ]
             description = _collect_text(content_list)
             metadata = {
@@ -185,6 +183,6 @@ def merge_raganything_graph(
         if not path.is_absolute():
             path = Path(project_root) / path
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(result.manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        path.write_text(json.dumps(result.manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     return merged, result.manifest
