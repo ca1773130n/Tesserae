@@ -26,6 +26,8 @@ dependencies = [
 
 [project.optional-dependencies]
 synthesis-llm = ["anthropic>=0.40"]
+raganything = ["raganything>=1.0"]
+raganything-all = ["raganything[all]>=1.0"]
 
 [project.scripts]
 llm_wiki = "llm_wiki.cli:main"
