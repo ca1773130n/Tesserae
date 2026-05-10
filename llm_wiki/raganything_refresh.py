@@ -116,6 +116,35 @@ def pick_parser_for_path(
     return default_parser
 
 
+_TEXT_NATIVE_EXTS = {".md", ".markdown", ".txt", ".rst"}
+
+
+def _parse_text_native(path: Path) -> list[dict]:
+    """Read a text/markdown file as one content_list entry. No parser required."""
+    text = Path(path).read_text(encoding="utf-8", errors="replace")
+    return [{"type": "text", "page_idx": 0, "text": text}]
+
+
+def _parse_with_docling(path: Path) -> list[dict]:
+    """Use the docling DocumentConverter directly to extract a markdown body.
+
+    Imported lazily so this module loads without docling installed. If docling
+    isn't importable, raises RuntimeError; the caller folds that into a
+    per-doc error in the result list.
+    """
+    try:
+        from docling.document_converter import DocumentConverter
+    except Exception as exc:
+        raise RuntimeError("docling is not installed; run `pip install docling`.") from exc
+    converter = DocumentConverter()
+    result = converter.convert(str(path))
+    document = getattr(result, "document", None)
+    if document is None:
+        raise RuntimeError("docling returned no document")
+    markdown = document.export_to_markdown()
+    return [{"type": "text", "page_idx": 0, "text": markdown}]
+
+
 def _pick_construction_parser(routing: Sequence[tuple[Path, str]], *, default: str) -> str:
     """Choose RAGAnything's construction-time parser based on the actual routing.
 
@@ -123,6 +152,10 @@ def _pick_construction_parser(routing: Sequence[tuple[Path, str]], *, default: s
     `RAGAnything.__init__` tries to initialize a heavy parser (e.g. mineru)
     whose models aren't downloaded yet, killing every per-doc call before
     per-call `parser=` overrides can run.
+
+    NOTE: Currently unused — the compile-time `parse_documents` no longer
+    instantiates RAGAnything. Reserved for a future RAGAnything-backed
+    parse path that would invoke this helper at construction time.
     """
     if not routing:
         return default
@@ -276,78 +309,71 @@ def parse_documents(
     text_parser: str = DEFAULT_TEXT_PARSER,
     office_parser: str = DEFAULT_OFFICE_PARSER,
 ) -> list[dict]:
-    """Parse the given source files with RAG-Anything and return per-doc content lists.
+    """Parse the given source files and return per-doc content lists.
 
-    Imported lazily so the refresh module can be loaded without `raganything` installed.
+    The compile path uses parsers directly (native read for text files,
+    docling for everything else) — RAG-Anything's full pipeline is reserved
+    for the runtime query backend at `raganything_query.py` because that
+    pipeline requires LLM/embedding/vision callables we don't have at compile
+    time.
+
+    The ``parse_method``, ``working_dir``, and ``llm_funcs`` kwargs are
+    accepted for signature stability but are no longer used here. Only
+    ``text_parser`` / ``office_parser`` (via ``pick_parser_for_path``) and the
+    routing distribution still influence behavior.
     """
-    try:
-        import asyncio
-        from raganything import RAGAnything, RAGAnythingConfig
-    except Exception as exc:  # pragma: no cover - depends on env
-        raise RuntimeError(
-            "raganything is not installed. Run `pip install 'raganything[all]>=1.3.0'` or use --install-raganything."
-        ) from exc
-
-    # Resolve per-source parser BEFORE we instantiate RAGAnything so we can pre-flight.
     routing = [
         (src, pick_parser_for_path(src, default_parser=parser, text_parser=text_parser, office_parser=office_parser))
         for src in sources
     ]
-    needed_parsers = sorted({p for _, p in routing})
+    # Pre-flight only the parsers that will actually be invoked. Native text
+    # parsing has no package dep so we exclude it.
+    needed_parsers = sorted({
+        p
+        for src, p in routing
+        if Path(src).suffix.lower() not in _TEXT_NATIVE_EXTS
+    })
+    if needed_parsers:
+        _verify_parsers_or_raise(rag=None, parsers=needed_parsers)
 
-    working_dir = Path(working_dir or (project / RAGA_ROOT / "working_dir")).resolve()
-    working_dir.mkdir(parents=True, exist_ok=True)
     parsed_root = (project / RAGA_ROOT / "parsed").resolve()
     parsed_root.mkdir(parents=True, exist_ok=True)
 
-    # Construction-time parser: pick the most common parser from the routing so
-    # RAGAnything's LightRAG init aligns with the bulk of the corpus.
-    # Heavier parsers (mineru) failing to initialize because of missing model
-    # weights would otherwise brick the entire run before any per-call
-    # parser= override can take effect. Per-call overrides still apply to
-    # individual sources whose picked parser differs.
-    construction_parser = _pick_construction_parser(routing, default=parser)
+    results: list[dict] = []
+    for src, picked_parser in routing:
+        sha = _sha256_path(src)
+        out_dir = parsed_root / sha
+        out_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            if src.suffix.lower() in _TEXT_NATIVE_EXTS:
+                content_list = _parse_text_native(src)
+            elif picked_parser == "docling":
+                content_list = _parse_with_docling(src)
+            else:
+                # mineru / paddleocr — fall through to docling for now since
+                # the upstream RAGAnything pipeline requires LLM funcs we don't
+                # have. Users who need MinerU's specific OCR strengths can
+                # invoke mineru directly and feed the parsed output in via a
+                # future "import-existing-content_list" path; out of scope
+                # here.
+                content_list = _parse_with_docling(src)
+        except Exception as exc:  # noqa: BLE001
+            results.append({"path": src, "content_list": [], "error": str(exc)})
+            print(f"raganything: failed to parse {src}: {exc}", file=sys.stderr)
+            continue
+        # Persist the per-doc content_list to disk (kept for parity with
+        # upstream raganything's parsed/<sha>/ layout and so the manifest
+        # has a stable sidecar artifact).
+        try:
+            (out_dir / "content_list.json").write_text(
+                json.dumps(content_list, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"raganything: failed to persist content_list for {src}: {exc}", file=sys.stderr)
+        results.append({"path": src, "content_list": content_list})
 
-    config = RAGAnythingConfig(working_dir=str(working_dir), parser=construction_parser, parse_method=parse_method)
-    funcs = llm_funcs or {}
-    rag = RAGAnything(
-        config=config,
-        llm_model_func=funcs.get("llm_model_func"),
-        vision_model_func=funcs.get("vision_model_func"),
-        embedding_func=funcs.get("embedding_func"),
-    )
-
-    # Pre-flight: bail once with a clear message instead of cascading per-file failures.
-    _verify_parsers_or_raise(rag, needed_parsers)
-
-    async def run() -> list[dict]:
-        results: list[dict] = []
-        for src, picked_parser in routing:
-            sha = _sha256_path(src)
-            out_dir = parsed_root / sha
-            out_dir.mkdir(parents=True, exist_ok=True)
-            try:
-                await rag.process_document_complete(
-                    file_path=str(src),
-                    output_dir=str(out_dir),
-                    parse_method=parse_method,
-                    parser=picked_parser,
-                )
-            except Exception as exc:  # noqa: BLE001
-                print(f"raganything: failed to parse {src}: {exc}", file=sys.stderr)
-                results.append({"path": src, "content_list": [], "error": str(exc)})
-                continue
-            content_list_path = out_dir / "content_list.json"
-            content_list = []
-            if content_list_path.exists():
-                try:
-                    content_list = json.loads(content_list_path.read_text(encoding="utf-8"))
-                except Exception:
-                    content_list = []
-            results.append({"path": src, "content_list": content_list})
-        return results
-
-    return asyncio.run(run())
+    return results
 
 
 def refresh_raganything(

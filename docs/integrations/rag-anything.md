@@ -63,6 +63,15 @@ python -m llm_wiki.raganything_refresh --project . --parser mineru
 llm_wiki project compile
 ```
 
+## Compile-time vs runtime
+
+LLM-Wiki splits the integration cleanly:
+
+- **Compile-time parsing** (`refresh-raganything` and `compile`): runs parsers directly — native read for `.md/.txt/.rst`, `docling.DocumentConverter` for everything else. RAG-Anything's full pipeline is *not* invoked here, so no LLM/embedding/vision keys are needed for compile to succeed.
+- **Runtime queries** (`project ask`): `raganything_query.py` instantiates `RAGAnything` with the project's configured LLM/embedding/vision functions and runs `aquery` against LightRAG's store. This path requires API keys.
+
+The split means `compile` is fast, deterministic, and key-free; only retrieval-time operations cost LLM tokens.
+
 ## Native graph synchronization
 
 LLM-Wiki imports the parsed manifest natively during compile when the configured tool uses `sync_mode: native_graph`.
@@ -118,13 +127,14 @@ LLM-Wiki also picks `RAGAnything`'s construction-time parser from the actual rou
 
 ### Parser packages
 
-`raganything[all]` does NOT bundle every parser. Install the ones you actually use:
+The compile-time parse path uses `docling.DocumentConverter` directly for every non-text source; install it once and you're covered:
 
 | Parser | Install command |
 |---|---|
-| `docling` (default for text/Office) | bundled when you run `--with-raganything --install-raganything` (or `pip install docling` standalone) |
-| `mineru` (default for PDF/images) | `pip install 'mineru[core]'` + first-run model download (~GBs) |
+| `docling` (compile-time default for everything except native text) | bundled when you run `--with-raganything --install-raganything` (or `pip install docling` standalone) |
 | `paddleocr` (optional OCR alternative) | `pip install 'raganything[paddleocr]>=1.3.0'` and `pip install paddlepaddle` (platform-specific wheel) |
+
+> Note: `mineru` is currently **not invoked at compile-time**. The compile path bypasses RAG-Anything's full pipeline (which would require LLM/embedding/vision callables) and routes every non-text source through docling directly. MinerU support is reserved for a future direct-import path that ingests an externally-produced `content_list.json`.
 
 When a configured parser is missing, `refresh-raganything` bails fast — listing every missing parser in a single error with the right install command — instead of cascading per-file failures.
 

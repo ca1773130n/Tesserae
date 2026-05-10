@@ -283,3 +283,73 @@ def test_pick_construction_parser_breaks_ties_by_parser_id():
     ]
     # Tied counts: alphabetic by parser id.
     assert _pick_construction_parser(routing, default="paddleocr") == "docling"
+
+
+def test_parse_text_native_emits_single_text_block(tmp_path):
+    from llm_wiki.raganything_refresh import _parse_text_native
+    md = tmp_path / "doc.md"
+    md.write_text("# Title\n\nSome content.\n", encoding="utf-8")
+    result = _parse_text_native(md)
+    assert result == [{"type": "text", "page_idx": 0, "text": "# Title\n\nSome content.\n"}]
+
+
+def test_parse_documents_uses_native_for_markdown(tmp_path):
+    from llm_wiki.raganything_refresh import parse_documents
+    md = tmp_path / "doc.md"
+    md.write_text("# Hello\n", encoding="utf-8")
+    out = parse_documents(tmp_path, sources=[md], parser="mineru")
+    assert len(out) == 1
+    assert out[0]["path"] == md
+    assert out[0]["content_list"] == [{"type": "text", "page_idx": 0, "text": "# Hello\n"}]
+    # And the per-doc content_list.json was written to disk.
+    sha = __import__("hashlib").sha256(md.read_bytes()).hexdigest()
+    sidecar = tmp_path / ".llm-wiki" / "external" / "raganything" / "parsed" / sha / "content_list.json"
+    assert sidecar.exists()
+
+
+def test_parse_documents_routes_pdf_through_docling(tmp_path, monkeypatch):
+    import llm_wiki.raganything_refresh as mod
+    pdf = tmp_path / "x.pdf"
+    pdf.write_bytes(b"%PDF-1.4 placeholder")
+
+    captured: list = []
+
+    def fake_docling(path):
+        captured.append(path)
+        return [{"type": "text", "page_idx": 0, "text": "fake-pdf-body"}]
+
+    monkeypatch.setattr(mod, "_parse_with_docling", fake_docling)
+    monkeypatch.setattr(mod, "_parser_is_importable", lambda parser: True)
+
+    result = mod.parse_documents(tmp_path, sources=[pdf], parser="mineru")
+    assert captured == [pdf]
+    assert result[0]["content_list"][0]["text"] == "fake-pdf-body"
+
+
+def test_parse_documents_records_per_doc_error_on_docling_failure(tmp_path, monkeypatch):
+    import llm_wiki.raganything_refresh as mod
+    pdf = tmp_path / "x.pdf"
+    pdf.write_bytes(b"%PDF-1.4 placeholder")
+
+    def fake_docling(path):
+        raise RuntimeError("simulated docling failure")
+
+    monkeypatch.setattr(mod, "_parse_with_docling", fake_docling)
+    monkeypatch.setattr(mod, "_parser_is_importable", lambda parser: True)
+    out = mod.parse_documents(tmp_path, sources=[pdf], parser="mineru")
+    assert out[0]["error"] == "simulated docling failure"
+    assert out[0]["content_list"] == []
+
+
+def test_parse_documents_skips_preflight_when_only_text_sources(tmp_path, monkeypatch):
+    """Native text parsing has no package dep — pre-flight shouldn't gate it."""
+    import llm_wiki.raganything_refresh as mod
+    md = tmp_path / "a.md"
+    md.write_text("# t", encoding="utf-8")
+
+    # Force every parser to be 'missing' — should still succeed because no
+    # parser is actually needed.
+    monkeypatch.setattr(mod, "_parser_is_importable", lambda parser: False)
+    out = mod.parse_documents(tmp_path, sources=[md], parser="mineru")
+    assert out[0]["content_list"][0]["type"] == "text"
+    assert "error" not in out[0]
