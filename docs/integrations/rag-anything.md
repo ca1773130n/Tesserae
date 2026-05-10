@@ -98,6 +98,20 @@ Provenance is preserved on each node:
 - **MinerU model weights** are downloaded on first parse and cached (~GBs). Subsequent runs reuse the cache.
 - **OpenAI-compatible LLM/embedding/vision keys** for the runtime memory backend (`OPENAI_API_KEY`, `OPENAI_BASE_URL`). Parser-only mode does not require keys.
 
+## Parser routing
+
+LLM-Wiki auto-routes sources to the right parser per file extension:
+
+| Extension | Parser | Reason |
+|---|---|---|
+| `.md`, `.markdown`, `.txt`, `.rst` | `docling` | Lightweight; no MinerU model download. |
+| `.doc`, `.docx`, `.ppt`, `.pptx`, `.xls`, `.xlsx` | `docling` | Better Office structure preservation per upstream. |
+| `.pdf`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tiff`, `.webp` | configured default (`--raganything-parser`, default `mineru`) | OCR + table extraction. |
+
+Override per-bucket with `--text-parser` and `--office-parser` on `refresh-raganything`. The configured default still applies to PDFs and images.
+
+Before the parse loop runs, LLM-Wiki calls `RAGAnything.check_parser_installation()` for each parser actually needed by the discovered sources and bails fast with an install hint when one is missing — no more cascading per-file errors.
+
 ## Collaboration principle
 
 LLM-Wiki remains the memory compiler. RAG-Anything remains an independent companion: a multimodal parser + LightRAG retrieval engine.

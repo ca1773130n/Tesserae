@@ -84,7 +84,78 @@ _SUPPORTED_EXT = {
     ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".webp",
 }
 
+_TEXT_EXTS = {".md", ".markdown", ".txt", ".rst"}
+_OFFICE_EXTS = {".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx"}
+# Anything else under _SUPPORTED_EXT (PDF + images) routes through the default parser.
+
+DEFAULT_TEXT_PARSER = "docling"
+DEFAULT_OFFICE_PARSER = "docling"
+
 _EXCLUDED_DIRS = {".git", ".venv", "node_modules", ".llm-wiki", ".understand-anything", ".pytest_cache", "__pycache__", "output", "dist", "build"}
+
+
+def pick_parser_for_path(
+    path: Path,
+    *,
+    default_parser: str,
+    text_parser: str = DEFAULT_TEXT_PARSER,
+    office_parser: str = DEFAULT_OFFICE_PARSER,
+) -> str:
+    """Choose the right parser for a single source file.
+
+    Markdown/text routes to a lightweight parser that doesn't need MinerU;
+    Office docs route to docling (better structure preservation per upstream);
+    everything else (PDF, images) routes to the user's configured default.
+    """
+    ext = Path(path).suffix.lower()
+    if ext in _TEXT_EXTS:
+        return text_parser
+    if ext in _OFFICE_EXTS:
+        return office_parser
+    return default_parser
+
+
+def _install_hint_for(parser: str) -> str:
+    if parser == "mineru":
+        return (
+            "Run `pip install 'mineru[core]'` and verify with `mineru --version`. "
+            "MinerU downloads model weights (~GBs) on first parse; "
+            "trigger the download with `mineru -p <any.pdf> -o /tmp/mineru-bootstrap -m auto`."
+        )
+    if parser == "docling":
+        return "Run `pip install 'raganything[all]>=1.3.0'` (Docling ships with the [all] extras)."
+    if parser == "paddleocr":
+        return (
+            "Run `pip install 'raganything[paddleocr]>=1.3.0'` AND `pip install paddlepaddle` "
+            "(see https://www.paddlepaddle.org.cn/install/quick for the right wheel for your platform)."
+        )
+    return f"See https://github.com/HKUDS/RAG-Anything for installation instructions for parser '{parser}'."
+
+
+def _verify_parsers_or_raise(rag, parsers: Iterable[str]) -> None:
+    """Run RAGAnything.check_parser_installation() per parser, raising on first failure."""
+    seen: set[str] = set()
+    for parser in parsers:
+        if parser in seen:
+            continue
+        seen.add(parser)
+        ok = False
+        try:
+            ok = bool(rag.check_parser_installation(parser_name=parser))
+        except TypeError:
+            # Older raganything: check_parser_installation() takes no args and only
+            # checks the parser configured at construction time. Skip with a warning.
+            try:
+                ok = bool(rag.check_parser_installation())
+            except Exception:
+                ok = False
+        except Exception:
+            ok = False
+        if not ok:
+            hint = _install_hint_for(parser)
+            raise RuntimeError(
+                f"RAG-Anything parser '{parser}' is not properly installed. {hint}"
+            )
 
 
 def discover_sources(project: Path, *, roots: Iterable[str] | None = None) -> list[Path]:
@@ -161,6 +232,8 @@ def parse_documents(
     parse_method: str = "auto",
     working_dir: Path | None = None,
     llm_funcs: dict | None = None,
+    text_parser: str = DEFAULT_TEXT_PARSER,
+    office_parser: str = DEFAULT_OFFICE_PARSER,
 ) -> list[dict]:
     """Parse the given source files with RAG-Anything and return per-doc content lists.
 
@@ -171,8 +244,15 @@ def parse_documents(
         from raganything import RAGAnything, RAGAnythingConfig
     except Exception as exc:  # pragma: no cover - depends on env
         raise RuntimeError(
-            "raganything is not installed. Run `pip install 'raganything[all]'` or use --install-raganything."
+            "raganything is not installed. Run `pip install 'raganything[all]>=1.3.0'` or use --install-raganything."
         ) from exc
+
+    # Resolve per-source parser BEFORE we instantiate RAGAnything so we can pre-flight.
+    routing = [
+        (src, pick_parser_for_path(src, default_parser=parser, text_parser=text_parser, office_parser=office_parser))
+        for src in sources
+    ]
+    needed_parsers = sorted({p for _, p in routing})
 
     working_dir = Path(working_dir or (project / RAGA_ROOT / "working_dir")).resolve()
     working_dir.mkdir(parents=True, exist_ok=True)
@@ -188,9 +268,12 @@ def parse_documents(
         embedding_func=funcs.get("embedding_func"),
     )
 
+    # Pre-flight: bail once with a clear message instead of cascading per-file failures.
+    _verify_parsers_or_raise(rag, needed_parsers)
+
     async def run() -> list[dict]:
         results: list[dict] = []
-        for src in sources:
+        for src, picked_parser in routing:
             sha = _sha256_path(src)
             out_dir = parsed_root / sha
             out_dir.mkdir(parents=True, exist_ok=True)
@@ -199,7 +282,7 @@ def parse_documents(
                     file_path=str(src),
                     output_dir=str(out_dir),
                     parse_method=parse_method,
-                    parser=parser,
+                    parser=picked_parser,
                 )
             except Exception as exc:  # noqa: BLE001
                 print(f"raganything: failed to parse {src}: {exc}", file=sys.stderr)
@@ -227,6 +310,8 @@ def refresh_raganything(
     force: bool = False,
     full: bool = False,
     llm_funcs: dict | None = None,
+    text_parser: str = DEFAULT_TEXT_PARSER,
+    office_parser: str = DEFAULT_OFFICE_PARSER,
 ) -> int:
     root = Path(project).resolve()
     if not root.exists() or not root.is_dir():
@@ -266,6 +351,8 @@ def refresh_raganything(
             parse_method=parse_method,
             working_dir=None,
             llm_funcs=llm_funcs,
+            text_parser=text_parser,
+            office_parser=office_parser,
         )
     except RuntimeError as exc:
         print(f"RAG-Anything: {exc}", file=sys.stderr)
@@ -299,6 +386,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser_.add_argument("--root", action="append", dest="roots", help="Restrict discovery to this root (repeatable)")
     parser_.add_argument("--force", action="store_true")
     parser_.add_argument("--full", action="store_true", help="Purge parsed/ and working_dir/ before refresh")
+    parser_.add_argument(
+        "--text-parser",
+        default=DEFAULT_TEXT_PARSER,
+        choices=["mineru", "docling", "paddleocr"],
+        help="Parser for .md/.markdown/.txt/.rst sources (default: docling, no MinerU model download).",
+    )
+    parser_.add_argument(
+        "--office-parser",
+        default=DEFAULT_OFFICE_PARSER,
+        choices=["mineru", "docling", "paddleocr"],
+        help="Parser for Office documents (.doc/.docx/.ppt/.pptx/.xls/.xlsx). Default: docling.",
+    )
     args = parser_.parse_args(list(argv) if argv is not None else None)
     return refresh_raganything(
         args.project,
@@ -307,6 +406,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         roots=args.roots,
         force=args.force,
         full=args.full,
+        text_parser=args.text_parser,
+        office_parser=args.office_parser,
     )
 
 

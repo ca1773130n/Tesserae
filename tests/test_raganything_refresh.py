@@ -98,7 +98,7 @@ def test_refresh_runs_parse_documents_and_writes_manifest(tmp_path, monkeypatch)
 
     fake_called = {}
 
-    def fake_parse(project, *, sources, parser, parse_method, working_dir, llm_funcs):
+    def fake_parse(project, *, sources, parser, parse_method, working_dir, llm_funcs, **kwargs):
         fake_called["sources"] = sorted(str(s.relative_to(project)) for s in sources)
         fake_called["parser"] = parser
         return [
@@ -129,7 +129,7 @@ def test_refresh_returns_5_when_every_source_fails(tmp_path, monkeypatch):
     (tmp_path / "data" / "a.pdf").write_bytes(b"%PDF-1.4")
     (tmp_path / "data" / "b.pdf").write_bytes(b"%PDF-1.4")
 
-    def fake_parse(project, *, sources, parser, parse_method, working_dir, llm_funcs):
+    def fake_parse(project, *, sources, parser, parse_method, working_dir, llm_funcs, **kwargs):
         return [{"path": s, "content_list": [], "error": "boom"} for s in sources]
 
     monkeypatch.setattr(mod, "parse_documents", fake_parse)
@@ -163,3 +163,75 @@ def test_refresh_returns_6_when_python_too_old(tmp_path, monkeypatch, capsys):
     assert rc == 6
     err = capsys.readouterr().err
     assert "Python 3.10+" in err
+
+
+def test_pick_parser_for_path_routes_text_to_text_parser():
+    from llm_wiki.raganything_refresh import pick_parser_for_path
+    from pathlib import Path
+    assert pick_parser_for_path(Path("a.md"), default_parser="mineru") == "docling"
+    assert pick_parser_for_path(Path("a.txt"), default_parser="mineru") == "docling"
+    assert pick_parser_for_path(Path("a.rst"), default_parser="mineru") == "docling"
+
+
+def test_pick_parser_for_path_routes_office_to_office_parser():
+    from llm_wiki.raganything_refresh import pick_parser_for_path
+    from pathlib import Path
+    assert pick_parser_for_path(Path("a.docx"), default_parser="mineru") == "docling"
+    assert pick_parser_for_path(Path("a.pptx"), default_parser="mineru") == "docling"
+
+
+def test_pick_parser_for_path_falls_through_for_pdf_and_images():
+    from llm_wiki.raganything_refresh import pick_parser_for_path
+    from pathlib import Path
+    assert pick_parser_for_path(Path("a.pdf"), default_parser="mineru") == "mineru"
+    assert pick_parser_for_path(Path("a.png"), default_parser="mineru") == "mineru"
+    assert pick_parser_for_path(Path("a.pdf"), default_parser="docling") == "docling"
+
+
+def test_pick_parser_for_path_honors_custom_overrides():
+    from llm_wiki.raganything_refresh import pick_parser_for_path
+    from pathlib import Path
+    assert pick_parser_for_path(Path("a.md"), default_parser="mineru", text_parser="paddleocr") == "paddleocr"
+    assert pick_parser_for_path(Path("a.docx"), default_parser="mineru", office_parser="mineru") == "mineru"
+
+
+def test_install_hint_for_known_parsers():
+    from llm_wiki.raganything_refresh import _install_hint_for
+    assert "mineru[core]" in _install_hint_for("mineru")
+    assert "raganything[all]" in _install_hint_for("docling")
+    assert "paddleocr" in _install_hint_for("paddleocr")
+
+
+def test_verify_parsers_or_raise_passes_when_all_ok():
+    from llm_wiki.raganything_refresh import _verify_parsers_or_raise
+
+    class FakeRag:
+        def check_parser_installation(self, parser_name=None):
+            return True
+
+    _verify_parsers_or_raise(FakeRag(), ["mineru", "docling"])  # should not raise
+
+
+def test_verify_parsers_or_raise_raises_with_actionable_hint():
+    from llm_wiki.raganything_refresh import _verify_parsers_or_raise
+    import pytest
+
+    class FakeRag:
+        def check_parser_installation(self, parser_name=None):
+            return parser_name != "mineru"
+
+    with pytest.raises(RuntimeError) as exc:
+        _verify_parsers_or_raise(FakeRag(), ["mineru"])
+    msg = str(exc.value)
+    assert "mineru" in msg
+    assert "mineru[core]" in msg  # hint included
+
+
+def test_verify_parsers_handles_old_api_without_parser_name_kwarg():
+    from llm_wiki.raganything_refresh import _verify_parsers_or_raise
+
+    class OldRag:
+        def check_parser_installation(self):
+            return True
+
+    _verify_parsers_or_raise(OldRag(), ["mineru"])  # should not raise (legacy fallback)
