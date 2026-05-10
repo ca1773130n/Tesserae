@@ -37,11 +37,15 @@ pip install --upgrade llm-wiki
 The default wheel is intentionally light. The setup wizard can install the heavier companion/runtime pieces only when you ask for them:
 
 ```bash
-# Understand Anything companion graph + Cognee runtime memory
+# Understand Anything companion graph + RAG-Anything multimodal + Cognee runtime memory
 llm_wiki project setup \
   --with-understand-anything \
   --install-understand-anything \
   --understand-anything-platform codex \
+  --with-raganything \
+  --install-raganything \
+  --raganything-parser mineru \
+  --run-raganything \
   --run-cognee \
   --install-cognee
 ```
@@ -55,6 +59,7 @@ pip install kuzu cognee graphiti-core
 - `kuzu` — Kuzu graph persistence.
 - `cognee` — runtime Cognee add/cognify workflows; setup stores `{python} -m pip install cognee` and retries once if Cognee is missing.
 - Understand Anything — installed via the upstream installer when `--install-understand-anything` is selected; LLM-Wiki stores a managed refresh wrapper instead of asking users to invent a shell command.
+- RAG-Anything — installed via `pip install 'raganything[all]'` when `--install-raganything` is selected; LLM-Wiki stores a managed refresh wrapper for multimodal parser runs.
 - `graphiti-core` — live Graphiti/Neo4j sync. `export-graphiti` and `sync-graphiti --dry-run` work without it.
 
 The Anthropic-backed synthesis path uses an extras marker:
@@ -62,6 +67,14 @@ The Anthropic-backed synthesis path uses an extras marker:
 ```bash
 pip install "llm-wiki[synthesis-llm]"
 ```
+
+For the multimodal RAG-Anything stack with all parsers preinstalled:
+
+```bash
+pip install 'llm-wiki[raganything-all]'
+```
+
+> **System prerequisite:** parsing `.doc/.docx/.ppt/.pptx/.xls/.xlsx` requires LibreOffice on the host. Install it via your platform's package manager (e.g., `brew install --cask libreoffice`, `apt-get install libreoffice`); RAG-Anything skips Office documents with a warning when LibreOffice is missing.
 
 ## Install from source (for contributors)
 

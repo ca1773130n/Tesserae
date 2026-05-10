@@ -24,6 +24,10 @@ llm_wiki project setup \
   --with-understand-anything \
   --install-understand-anything \
   --understand-anything-platform codex \
+  --with-raganything \
+  --install-raganything \
+  --raganything-parser mineru \
+  --run-raganything \
   --run-cognee \
   --install-cognee
 ```
@@ -35,6 +39,10 @@ What that does:
 | `--with-understand-anything` | Adds the UA graph projection as a source. |
 | `--install-understand-anything` | Installs/updates the UA companion skills. |
 | `--understand-anything-platform codex` | Uses Codex to run LLM-Wiki's managed UA refresh wrapper. |
+| `--with-raganything` | Enable multimodal ingestion via RAG-Anything. |
+| `--install-raganything` | Install raganything[all] during setup. |
+| `--raganything-parser` | Parser choice: mineru (default), docling, paddleocr. |
+| `--run-raganything` | Auto-refresh RAG-Anything on every compile. |
 | `--run-cognee` | Runs best-effort Cognee runtime cognify during compile. |
 | `--install-cognee` | Installs Cognee with the current Python if missing. |
 

@@ -15,6 +15,7 @@ Use this checklist before presenting LLM-Wiki publicly.
 - [ ] Session-history docs explain explicit import, privacy review, generated routes, and transcript typography.
 - [ ] Self-dogfood demo has been run and documented.
 - [ ] Generated artifacts are reproducible and either ignored or intentionally published.
+- [ ] RAG-Anything index refreshed (if enabled)
 
 ## Verification
 
@@ -39,6 +40,10 @@ llm_wiki project setup \
   --with-understand-anything \
   --install-understand-anything \
   --understand-anything-platform codex \
+  --with-raganything \
+  --install-raganything \
+  --raganything-parser mineru \
+  --run-raganything \
   --run-cognee \
   --install-cognee
 llm_wiki project compile
