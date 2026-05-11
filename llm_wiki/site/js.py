@@ -1496,11 +1496,13 @@ JS_GRAPH = r"""
     var VARIANT_FONT       = { default: 22, edge: 7, neighbor: 28, hover: 36, focused: 44 };
     var VARIANT_OPACITY    = { default: 0.85, edge: 0.78, neighbor: 0.92, hover: 1.0, focused: 1.0 };
     var VARIANT_RENDER_ORDER = { default: 100, edge: 1, neighbor: 998, hover: 999, focused: 999 };
-    // Per-variant pill alpha (dark theme). Light theme inverts the base
-    // color but reuses these alphas so the visual weight matches.
-    // EXACT spec values per Issue 2: default/edge=0.5, neighbor=0.6, hover=0.65, focused=0.78.
-    // ``edge: 0`` → no background pill on edge labels. White text only.
-    var VARIANT_PILL_ALPHA = { default: 0.5, edge: 0, neighbor: 0.6, hover: 0.65, focused: 0.78 };
+    // All label pills transparent — user spec. Text-only labels everywhere.
+    // Keep the keys so downstream variant lookups don't go undefined.
+    var VARIANT_PILL_ALPHA = { default: 0, edge: 0, neighbor: 0, hover: 0, focused: 0 };
+    // Variants that count as "highlighted" labels and should tint yellow.
+    // Hoisted to outer scope so both the 3D sprite factory (makeLabel) and
+    // the 2D ``nodeCanvasObject`` path share one definition.
+    var HIGHLIGHT_VARIANTS = { hover: 1, focused: 1, neighbor: 1 };
     var labelSpriteCache = new Map();
     function makeLabel(text, opts){
       if (!THREE || !text) return null;
@@ -1569,16 +1571,21 @@ JS_GRAPH = r"""
       ctx.font = (variant === 'focused' ? '700 ' : '600 ') + fontPx + 'px "Inter", system-ui, sans-serif';
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'center';
-      // Issue 1 + 2 — text is PURE WHITE rgb(255, 255, 255) on dark theme
-      // for EVERY variant (default, edge, neighbor, hover, focused). On
-      // light theme it inverts to rgb(20, 20, 20) — but only when there
-      // is a pill behind. Edge labels render with NO pill and stay white
-      // on both themes (the canvas has its own dark webgl background).
-      // NO gray. NO color stroke. NO border. The pill alpha + font size
-      // are the only visual differentiators between variants.
+      // Text color per variant + theme. Pills are transparent across the
+      // board (VARIANT_PILL_ALPHA = all zeros), so text contrast is the
+      // only legibility lever:
+      //   dark theme:  normal = white, highlighted (hover/focused/neighbor)
+      //                = gold rgb(255, 215, 0). Pure yellow looks washed-out
+      //                on most monitors and bleeds into the canvas; gold
+      //                reads cleaner.
+      //   light theme: normal = near-black rgb(20, 20, 20),
+      //                highlighted = amber rgb(255, 143, 0) so hover/focused
+      //                still pops without going neon.
+      // Edge labels have no hover/focused/neighbor variant, so they fall
+      // through to the default branch (white on dark, near-black on light).
       var textFill;
-      if (variant === 'edge') {
-        textFill = 'rgb(255, 255, 255)';
+      if (HIGHLIGHT_VARIANTS[variant]) {
+        textFill = (theme === 'light') ? 'rgb(255, 143, 0)' : 'rgb(255, 215, 0)';
       } else if (theme === 'light') {
         textFill = 'rgb(20, 20, 20)';
       } else {
@@ -2432,34 +2439,43 @@ JS_GRAPH = r"""
             var pillX = n.x - pillW / 2;
             var pillY = n.y + 7;
             var pillR = 4 / globalScale;
-            // ``pillAlpha === 0`` skips the pill entirely (e.g. edge
-            // labels). Otherwise scale by importance for default labels
-            // so hubs read clearly and leaves fade gracefully.
-            var basePillAlpha = (typeof VARIANT_PILL_ALPHA[variant] === 'number') ? VARIANT_PILL_ALPHA[variant] : 0.5;
+            // ``pillAlpha === 0`` skips the pill entirely. VARIANT_PILL_ALPHA
+            // is now all zeros (user spec: no background behind labels), so
+            // this branch never fires in practice — but the guard stays in
+            // case the alpha table is restored.
+            var basePillAlpha = (typeof VARIANT_PILL_ALPHA[variant] === 'number') ? VARIANT_PILL_ALPHA[variant] : 0;
             var pillAlpha = basePillAlpha * impAlpha;
-            // Issue 1 + 2 — pill is rgba(0,0,0, pillAlpha) on dark theme
-            // and a fixed rgba(255,255,255,0.85) on light theme. NO border.
-            ctx.fillStyle = (theme === 'light')
-              ? 'rgba(255,255,255,' + (0.85 * impAlpha).toFixed(3) + ')'
-              : 'rgba(0,0,0,' + pillAlpha.toFixed(3) + ')';
-            ctx.beginPath();
-            ctx.moveTo(pillX + pillR, pillY);
-            ctx.lineTo(pillX + pillW - pillR, pillY);
-            ctx.quadraticCurveTo(pillX + pillW, pillY, pillX + pillW, pillY + pillR);
-            ctx.lineTo(pillX + pillW, pillY + pillH - pillR);
-            ctx.quadraticCurveTo(pillX + pillW, pillY + pillH, pillX + pillW - pillR, pillY + pillH);
-            ctx.lineTo(pillX + pillR, pillY + pillH);
-            ctx.quadraticCurveTo(pillX, pillY + pillH, pillX, pillY + pillH - pillR);
-            ctx.lineTo(pillX, pillY + pillR);
-            ctx.quadraticCurveTo(pillX, pillY, pillX + pillR, pillY);
-            ctx.closePath();
-            ctx.fill();
-            // Issue 1 + 2 — text is PURE WHITE on dark theme, dark on
-            // light. Multiply by ``impAlpha`` so default labels for
-            // low-degree leaves fade into the background.
-            ctx.fillStyle = (theme === 'light')
-              ? 'rgba(20, 20, 20,' + impAlpha.toFixed(3) + ')'
-              : 'rgba(255, 255, 255,' + impAlpha.toFixed(3) + ')';
+            if (pillAlpha > 0) {
+              ctx.fillStyle = (theme === 'light')
+                ? 'rgba(255,255,255,' + (0.85 * impAlpha).toFixed(3) + ')'
+                : 'rgba(0,0,0,' + pillAlpha.toFixed(3) + ')';
+              ctx.beginPath();
+              ctx.moveTo(pillX + pillR, pillY);
+              ctx.lineTo(pillX + pillW - pillR, pillY);
+              ctx.quadraticCurveTo(pillX + pillW, pillY, pillX + pillW, pillY + pillR);
+              ctx.lineTo(pillX + pillW, pillY + pillH - pillR);
+              ctx.quadraticCurveTo(pillX + pillW, pillY + pillH, pillX + pillW - pillR, pillY + pillH);
+              ctx.lineTo(pillX + pillR, pillY + pillH);
+              ctx.quadraticCurveTo(pillX, pillY + pillH, pillX, pillY + pillH - pillR);
+              ctx.lineTo(pillX, pillY + pillR);
+              ctx.quadraticCurveTo(pillX, pillY, pillX + pillR, pillY);
+              ctx.closePath();
+              ctx.fill();
+            }
+            // Text color mirrors the 3D sprite path:
+            //   highlighted (hover/focused/neighbor): gold on dark
+            //     (rgb(255, 215, 0)), amber on light (rgb(255, 143, 0)).
+            //   default: white on dark, near-black on light. impAlpha
+            //     fades low-degree leaves so hubs stand out.
+            if (HIGHLIGHT_VARIANTS[variant]) {
+              ctx.fillStyle = (theme === 'light')
+                ? 'rgba(255, 143, 0,' + impAlpha.toFixed(3) + ')'
+                : 'rgba(255, 215, 0,' + impAlpha.toFixed(3) + ')';
+            } else {
+              ctx.fillStyle = (theme === 'light')
+                ? 'rgba(20, 20, 20,' + impAlpha.toFixed(3) + ')'
+                : 'rgba(255, 255, 255,' + impAlpha.toFixed(3) + ')';
+            }
             ctx.fillText(label, n.x, pillY + pillH / 2);
           });
           inst.linkCanvasObjectMode(function(){ return 'after'; });

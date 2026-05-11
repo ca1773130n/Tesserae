@@ -552,32 +552,27 @@ def test_graph_focused_node_label_scales_up_with_outline():
     assert "if (e.key === 'Enter' && focusedNode && focusedNode.href)" in JS_BUNDLE_GRAPH
 
 
-def test_graph_label_pills_are_dark_with_no_accent_border():
-    """Issue 1 + Issue 2 — every label variant renders a pure BLACK pill
-    on dark theme (or rgba(255,255,255,0.85) on light) with PURE WHITE
-    text rgb(255, 255, 255) (or rgb(20, 20, 20) on light). NO color
-    border. NO text stroke. NO gray.
-
-    Per-variant pill alpha (dark theme):
-      default = 0.5, edge = 0.5, neighbor = 0.6, hover = 0.65,
-      focused = 0.78.
+def test_graph_label_pills_are_transparent_with_no_accent_border():
+    """User spec — every label variant renders WITHOUT a background pill
+    (alpha 0 across the board). Text is the only visual; highlighted
+    variants (hover/focused/neighbor) tint gold on dark and amber on
+    light, every other variant is white on dark / near-black on light.
+    NO color border. NO text stroke. NO gray.
     """
     # Per-variant pill alpha table (the source of truth).
     assert "VARIANT_PILL_ALPHA" in JS_BUNDLE_GRAPH
-    # Edge labels render with NO background pill (alpha 0) — text only.
-    assert "{ default: 0.5, edge: 0, neighbor: 0.6, hover: 0.65, focused: 0.78 }" in JS_BUNDLE_GRAPH
+    # Every variant is transparent — no background pill anywhere.
+    assert (
+        "var VARIANT_PILL_ALPHA = { default: 0, edge: 0, neighbor: 0, hover: 0, focused: 0 }"
+        in JS_BUNDLE_GRAPH
+    )
     # Pill is rendered for EVERY variant (not gated on hasPill any more).
     assert "var hasPill = variant === 'focused'" not in JS_BUNDLE_GRAPH
-    # Pill fill is theme-driven: black-on-dark with per-variant alpha,
-    # FIXED rgba(255,255,255,0.85) on light theme (no per-variant alpha).
-    assert "'rgba(0,0,0,' + pillAlpha + ')'" in JS_BUNDLE_GRAPH
-    assert "'rgba(255,255,255,0.85)'" in JS_BUNDLE_GRAPH
     # Issue 1 — NO accent stroke / NO color border on the pill any more.
     # The previous round used ``ctx.strokeStyle = accent`` to paint the
     # focused-pill border; that's gone.
     assert "ctx.strokeStyle = accent" not in JS_BUNDLE_GRAPH
-    # Issue 1 + 2 — text is PURE WHITE on dark, PURE DARK on light.
-    # NO gray. The light-gray rgba(220,225,235,0.85) text fill is gone.
+    # Default text is PURE WHITE on dark, PURE DARK on light. NO gray.
     assert "'rgb(255, 255, 255)'" in JS_BUNDLE_GRAPH
     assert "'rgb(20, 20, 20)'" in JS_BUNDLE_GRAPH
     assert "rgba(220,225,235,0.85)" not in JS_BUNDLE_GRAPH
@@ -588,13 +583,36 @@ def test_graph_label_pills_are_dark_with_no_accent_border():
     assert "isNeighborLabel" in JS_BUNDLE_GRAPH
     assert "isDefaultLabel" in JS_BUNDLE_GRAPH
     assert "isEdgeLabel" in JS_BUNDLE_GRAPH
-    # Default / edge labels keep depth testing on so peers can occlude
-    # them (Issue 1); hover / neighbor / focused turn it off so they
-    # always sit on top.
-    assert "var depthTest = (variant === 'default' || variant === 'edge')" in JS_BUNDLE_GRAPH
     # Per-variant text opacity table (kept for back-compat — text colors
     # are now pure rgb regardless of variant alpha).
     assert "{ default: 0.85, edge: 0.78, neighbor: 0.92, hover: 1.0, focused: 1.0 }" in JS_BUNDLE_GRAPH
+
+
+def test_graph_label_pill_alpha_is_zero_for_every_variant():
+    """User spec: no pill behind any label, every variant transparent."""
+    assert (
+        "var VARIANT_PILL_ALPHA = { default: 0, edge: 0, neighbor: 0, hover: 0, focused: 0 }"
+        in JS_BUNDLE_GRAPH
+    )
+    # The 2D path gates the pill draw on ``pillAlpha > 0`` so the now-zero
+    # alpha actually skips the rect/fill calls rather than emitting an
+    # invisible-but-still-rendered shape.
+    assert "if (pillAlpha > 0) {" in JS_BUNDLE_GRAPH
+
+
+def test_graph_highlighted_labels_use_gold_text():
+    """User spec: hovered/focused/selected/neighbor labels render in
+    yellow (gold on dark, amber on light). The same HIGHLIGHT_VARIANTS
+    table drives both the 3D sprite factory and the 2D canvas path."""
+    # Shared variant table at module scope.
+    assert "var HIGHLIGHT_VARIANTS = { hover: 1, focused: 1, neighbor: 1 }" in JS_BUNDLE_GRAPH
+    # Dark theme highlight color — gold, not pure yellow.
+    assert "'rgb(255, 215, 0)'" in JS_BUNDLE_GRAPH
+    # Light theme highlight color — amber so it pops on white.
+    assert "'rgb(255, 143, 0)'" in JS_BUNDLE_GRAPH
+    # 2D path uses the same color values, with importance-alpha applied.
+    assert "'rgba(255, 215, 0,'" in JS_BUNDLE_GRAPH
+    assert "'rgba(255, 143, 0,'" in JS_BUNDLE_GRAPH
 
 
 def test_graph_fullscreen_button_and_listener_present():
