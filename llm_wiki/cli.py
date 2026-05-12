@@ -1018,15 +1018,19 @@ def project_main(argv: List[str] | None = None) -> int:
             print(f"Frontend site ready: {wiki.paths.site} at {url}")
             return 0
         from functools import partial
-        import http.server
         import socketserver
-        handler = partial(http.server.SimpleHTTPRequestHandler, directory=str(wiki.paths.site))
+        from .serve import build_ask_aware_handler
+
+        handler_cls = build_ask_aware_handler(project_root=Path(args.project).resolve())
+        handler = partial(handler_cls, directory=str(wiki.paths.site))
+
         class ReusableTCPServer(socketserver.TCPServer):
             allow_reuse_address = True
 
         try:
             with ReusableTCPServer((args.host, args.port), handler) as httpd:
                 print(f"Serving frontend site: {wiki.paths.site} at {url}")
+                print(f"  ask endpoint: {url}api/ask (POST)")
                 httpd.serve_forever()
         except OSError as exc:
             print(f"Could not serve frontend site at {url}: {exc}", file=sys.stderr)

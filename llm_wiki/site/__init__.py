@@ -44,6 +44,7 @@ from .exports import (
     render_sitemap_xml,
     write_siblings,
 )
+from .ask_widget import ask_widget_css, ask_widget_js
 from .js import JS_BUNDLE_BASE, JS_BUNDLE_GRAPH
 from .pages import (
     ROUTE_FOR_KIND,
@@ -252,8 +253,28 @@ class StaticSiteBuilder:
         # ``pages.py``. Splitting the bundle keeps non-graph pages well under
         # 30 KB of JS even on the dogfood corpus.
         (out / "assets").mkdir(parents=True, exist_ok=True)
-        (out / "assets" / "style.css").write_text(CSS, encoding="utf-8")
+        # Append the per-page ask widget CSS to the global stylesheet so
+        # every detail page picks up the .ask-widget / .ask-form / etc.
+        # rules without an extra <link> request. The widget JS still ships
+        # as its own hashed bundle (see below) since it's a JS island that
+        # should only load on detail routes.
+        _full_css = CSS + "\n\n/* per-page ask widget (Bet B3) */\n" + ask_widget_css()
+        (out / "assets" / "style.css").write_text(_full_css, encoding="utf-8")
         (out / "assets" / "app.js").write_text(JS_BUNDLE_BASE, encoding="utf-8")
+
+        # Content-hashed filename for the ask-widget JS island so cache
+        # layers (Cloudflare / service workers / mobile browsers) can never
+        # serve a stale version. The same hash is computed in
+        # ``llm_wiki.site.pages._detail_page`` when wiring the
+        # ``<script defer>`` tag into the page head, so the tag and the
+        # file on disk always match without explicit plumbing through
+        # SiteContext.
+        _ask_widget_source = ask_widget_js()
+        ask_widget_hash = hashlib.sha256(_ask_widget_source.encode("utf-8")).hexdigest()[:10]
+        ask_widget_filename = f"ask-widget-{ask_widget_hash}.js"
+        (out / "assets" / ask_widget_filename).write_text(_ask_widget_source, encoding="utf-8")
+        # Keep an unhashed alias so old bookmarks / tests still resolve.
+        (out / "assets" / "ask-widget.js").write_text(_ask_widget_source, encoding="utf-8")
         # Content-hashed filename for the graph bundle so aggressive caches
         # (Cloudflare, service workers, mobile browsers) can never serve a
         # stale version. ``?v=`` query strings were silently ignored on

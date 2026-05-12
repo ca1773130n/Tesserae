@@ -30,6 +30,7 @@ from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 from ..research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType, is_public_research_node
 from ..wiki_store import WikiPage
+from .ask_widget import ask_widget_js
 from .raw_view import (
     RAW_ASSETS_DIR,
     _wrap_tables_in_scroll,
@@ -1181,6 +1182,59 @@ def _provenance_html(
 # ---------------------------------------------------------------------------
 
 
+# Map ``kind_route`` (sources / concepts / entities / papers / repos /
+# topics / syntheses / questions) to the singular ``node_kind`` we emit on
+# the widget's ``data-node-kind`` attribute. The backend doesn't currently
+# scope by kind, but emitting it keeps the per-page envelope honest and
+# unlocks future subgraph-scoping in ``ask_project`` without an HTML
+# rebuild.
+_ASK_WIDGET_KIND_MAP = {
+    "sources": "source",
+    "concepts": "concept",
+    "entities": "entity",
+    "papers": "paper",
+    "repos": "repo",
+    "topics": "topic",
+    "syntheses": "synthesis",
+    "questions": "question",
+}
+
+
+def _render_ask_widget_html(
+    page: WikiPage,
+    kind_route: str,
+    *,
+    node: Optional[ResearchNode] = None,
+) -> str:
+    """Render the mount point for the per-page ask widget.
+
+    The JS island in ``ask_widget.py`` looks for ``[data-ask-widget]`` and
+    reads ``data-node-id`` / ``data-node-kind`` / ``data-node-name`` off
+    the element. ``node_id`` falls back to the wiki frontmatter's
+    ``node_id`` (set by the wiki projector) and finally to ``page.slug``
+    so the widget always has a stable identifier to send back.
+    """
+    fm = page.frontmatter or {}
+    node_id = ""
+    if isinstance(fm, dict):
+        fm_node_id = fm.get("node_id")
+        if isinstance(fm_node_id, str) and fm_node_id.strip():
+            node_id = fm_node_id.strip()
+    if not node_id and node is not None:
+        node_id = node.id
+    if not node_id:
+        node_id = page.slug
+    node_kind = _ASK_WIDGET_KIND_MAP.get(kind_route, kind_route.rstrip("s") or kind_route)
+    node_name = page.title or page.slug
+    return (
+        '<section class="ask-widget" data-ask-widget '
+        f'data-node-id="{_esc(node_id)}" '
+        f'data-node-kind="{_esc(node_kind)}" '
+        f'data-node-name="{_esc(node_name)}">'
+        "</section>"
+    )
+
+
 def _detail_page(
     *,
     ctx: SiteContext,
@@ -1279,6 +1333,20 @@ def _detail_page(
     sibling_path = page_href(kind_route, page.slug)
     siblings_html = ai_siblings_footer(sibling_path)
 
+    # Per-page ask widget (Bet B3). Sits at the bottom of every detail
+    # page's article body. The JS island health-checks /api/ask/health on
+    # load; with ``llm_wiki project serve`` running, readers can ask
+    # scoped questions about the current node. On any other host (file://,
+    # GitHub Pages, S3) the widget collapses to a one-line static footer.
+    ask_widget_html = _render_ask_widget_html(page, kind_route, node=node)
+
+    # Content-hashed filename for the ask-widget asset so caches can never
+    # serve a stale version. Same pattern as ``graph-<hash>.js``: the
+    # StaticSiteBuilder writes the file under the same name.
+    ask_js_hash = hashlib.sha256(ask_widget_js().encode("utf-8")).hexdigest()[:10]
+    ask_js_filename = f"ask-widget-{ask_js_hash}.js"
+    ask_head = f'<script defer src="../assets/{ask_js_filename}"></script>\n'
+
     body = f"""{eyebrow}
 <h1>{_esc(title)}</h1>
 {metadata_html}
@@ -1289,6 +1357,7 @@ def _detail_page(
 <section id="cross-refs" class="cross-refs-section"><h2>Cross-references in raw data</h2>{cross_refs_html}</section>
 <section id="provenance" class="provenance"><h2>Source provenance</h2>{provenance}</section>
 <section id="activity" class="activity"><h2>Activity</h2>{sparkline}</section>
+{ask_widget_html}
 """
     current_source_path = (
         relativize_source_path(str(src_value), ctx.project_root)
@@ -1297,7 +1366,7 @@ def _detail_page(
     ) or str(src_value or "")
     return page_shell(
         title=title,
-        head="",
+        head=ask_head,
         body=body,
         depth=1,
         active=active,

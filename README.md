@@ -83,7 +83,7 @@ Daily-use commands. Run `llm_wiki <subcommand> --help` for full flags.
 | `llm_wiki project setup` | Interactive wizard. Writes `.llm-wiki/config.json`. Accepts `--with-understand-anything`, `--with-raganything`, `--run-cognee`, etc. |
 | `llm_wiki project compile` | Reads configured sources, runs companion refreshes, writes all artifacts under `.llm-wiki/`. Use `--changed-only` for incremental rebuilds. |
 | `llm_wiki project build-site` | Builds the static frontend at `.llm-wiki/site/`. |
-| `llm_wiki project serve --port 8765` | Serves the static site locally. |
+| `llm_wiki project serve --port 8765` | Serves the static site locally and exposes `/api/ask` so every detail page's inline ask widget can route questions to `ask_project`. On any other host (file://, GitHub Pages, S3) the widget gracefully collapses to a one-line static footer. |
 | `llm_wiki project refresh-understand-anything` | Runs LLM-Wiki's managed Understand Anything refresh wrapper. |
 | `llm_wiki project refresh-raganything --parser mineru` | Re-parses non-code sources (PDFs, Office, images) via RAG-Anything. |
 | `llm_wiki project ask "<question>"` | Asks the configured backend (`auto`/`raganything`/`cognee`/`wiki`). |

@@ -227,6 +227,14 @@ The compile-time parse path uses `docling.DocumentConverter` directly for every 
 
 When a configured parser is missing, `refresh-raganything` bails fast — listing every missing parser in a single error with the right install command — instead of cascading per-file failures.
 
+### Per-page ask widget
+
+Every detail page (concept, paper, repo, synthesis, entity, topic, question, source) includes an inline "ask about this page" widget. It POSTs to `/api/ask` on the local `llm_wiki project serve` instance, which calls `llm_wiki.query.ask_project` and renders the answer inline. The widget prepends the current page's node name to the user's question as a natural-language context hint (e.g. `` About `<NodeName>`: <question> ``); a future PR can wire real subgraph scoping into `ask_project` itself.
+
+The widget detects backend availability via `/api/ask/health` on load. When the wiki is served statically (GitHub Pages, `file://`, S3, any plain static host) the widget collapses to a one-line note pointing readers at `llm_wiki project serve` for local interactive use. No requests fail and nothing blocks page rendering — the widget is a deferred JS island, separate from the heavier graph bundle.
+
+Pair this with the multi-project registry (`llm_wiki wiki register`) and you can ask any registered project's wiki from any of its detail pages.
+
 ## Collaboration principle
 
 LLM-Wiki remains the memory compiler. RAG-Anything remains an independent companion: a multimodal parser + LightRAG retrieval engine.
