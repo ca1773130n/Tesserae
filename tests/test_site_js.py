@@ -601,18 +601,83 @@ def test_graph_label_pill_alpha_is_zero_for_every_variant():
 
 
 def test_graph_highlighted_labels_use_gold_text():
-    """User spec: hovered/focused/selected/neighbor labels render in
-    yellow (gold on dark, amber on light). The same HIGHLIGHT_VARIANTS
-    table drives both the 3D sprite factory and the 2D canvas path."""
-    # Shared variant table at module scope.
-    assert "var HIGHLIGHT_VARIANTS = { hover: 1, focused: 1, neighbor: 1 }" in JS_BUNDLE_GRAPH
-    # Dark theme highlight color — gold, not pure yellow.
-    assert "'rgb(255, 215, 0)'" in JS_BUNDLE_GRAPH
-    # Light theme highlight color — amber so it pops on white.
-    assert "'rgb(255, 143, 0)'" in JS_BUNDLE_GRAPH
-    # 2D path uses the same color values, with importance-alpha applied.
-    assert "'rgba(255, 215, 0,'" in JS_BUNDLE_GRAPH
-    assert "'rgba(255, 143, 0,'" in JS_BUNDLE_GRAPH
+    """User spec: yellow is reserved for the user's interaction TARGET
+    (hover/focused). Neighbors stay white as context — they are not the
+    target, so tinting them yellow collapsed the visual hierarchy. The
+    same HIGHLIGHT_VARIANTS table drives both render paths."""
+    # Shared variant table at module scope — neighbor is OUT.
+    assert "var HIGHLIGHT_VARIANTS = { hover: 1, focused: 1 }" in JS_BUNDLE_GRAPH
+    # New spec yellow: rgb(250, 204, 21) (gold-yellow / amber-yellow,
+    # legible on dark canvas; the previous rgb(255, 215, 0) bled into
+    # bright node spheres).
+    assert "'rgb(250, 204, 21)'" in JS_BUNDLE_GRAPH
+    # Light theme highlight — burnt amber for legibility on white.
+    assert "'rgb(180, 83, 9)'" in JS_BUNDLE_GRAPH
+    # The previous gold value is GONE everywhere (was both 3D and 2D).
+    assert "rgb(255, 215, 0)" not in JS_BUNDLE_GRAPH
+    assert "rgba(255, 215, 0" not in JS_BUNDLE_GRAPH
+
+
+def test_graph_default_labels_render_at_full_opacity():
+    """Visibility-as-importance: low-importance labels are CULLED, not
+    faded. When a default label IS visible it renders at material
+    opacity 1.0 with pure white text — no alpha modulation tied to
+    degree. The earlier ``impAlpha`` modulation produced gray-looking
+    labels on dark canvas and is gone for good."""
+    # The 3D sprite material opacity is pinned to 1.0 for every variant.
+    assert "applySpriteOpacity(child, 1.0)" in JS_BUNDLE_GRAPH
+    # The combined alpha formula (distAlpha * 0.6 + impAlpha * 0.6) is
+    # eliminated everywhere.
+    assert "distAlpha * 0.6 + impAlpha * 0.6" not in JS_BUNDLE_GRAPH
+    # No remaining ``impAlpha`` symbol in the bundle (the variable, the
+    # rgba-with-importance string templates, all gone).
+    assert "impAlpha" not in JS_BUNDLE_GRAPH
+    # The cull helper is wired in and named consistently.
+    assert "function computeImportanceCutoff(camDistance)" in JS_BUNDLE_GRAPH
+    # 3D path consults it and gates on ``defaultPassesCull``.
+    assert "defaultPassesCull" in JS_BUNDLE_GRAPH
+    # 2D path early-returns when the node fails the synthetic-distance cull.
+    assert "syntheticCamDist" in JS_BUNDLE_GRAPH
+
+
+def test_graph_focused_neighbor_labels_stay_white():
+    """Neighbors are context, not target. They keep the default white
+    text fill — the yellow tint is reserved for hover and focused so the
+    visual hierarchy survives a focused-with-many-neighbors layout."""
+    # Source-of-truth table excludes neighbor.
+    assert "var HIGHLIGHT_VARIANTS = { hover: 1, focused: 1 }" in JS_BUNDLE_GRAPH
+    # Neighbor variant must NOT appear in the highlight table even as a
+    # parenthetical / comment-style override anywhere.
+    assert "HIGHLIGHT_VARIANTS = { hover: 1, focused: 1, neighbor: 1 }" not in JS_BUNDLE_GRAPH
+
+
+def test_graph_highlight_labels_have_glow_shadow():
+    """Hover gets a 6px canvas-shadow glow, focused gets 10px. Defaults
+    get a subtle 2px drop-shadow so white-on-bright-sphere stays
+    readable; the glow is the only legibility separator now that pills
+    are transparent across the board."""
+    # Glow color in the spec yellow.
+    assert "rgba(250, 204, 21," in JS_BUNDLE_GRAPH
+    # Both blur magnitudes show up (focused 10, hover 6).
+    assert "shadowBlur" in JS_BUNDLE_GRAPH
+    assert "isFocused ? 10 : 6" in JS_BUNDLE_GRAPH or "isFocusedLocal ? 10 : 6" in JS_BUNDLE_GRAPH
+    # Subtle default drop-shadow present on dark theme.
+    assert "rgba(0, 0, 0, 0.7)" in JS_BUNDLE_GRAPH
+
+
+def test_graph_variant_scale_and_weight_ladder():
+    """Hover scales to 1.1×, focused to 1.2× — composed with camera
+    distance, not replacing it. Font weight ladder: 500 default,
+    600 hover, 700 focused."""
+    # 3D sprite per-frame composition multiplies camScale by the bump.
+    assert "camScale * 1.1" in JS_BUNDLE_GRAPH
+    assert "camScale * 1.2" in JS_BUNDLE_GRAPH
+    # 2D path multiplies the base font size by the scale bump.
+    assert "isFocusedLocal ? 1.2 : (variant === 'hover' ? 1.1 : 1.0)" in JS_BUNDLE_GRAPH
+    # Font weight ladder appears in BOTH the makeLabel canvas factory
+    # and the 2D nodeCanvasObject path.
+    assert "isFocused ? 700 : (variant === 'hover' ? 600 : 500)" in JS_BUNDLE_GRAPH
+    assert "isFocusedLocal ? 700 : (variant === 'hover' ? 600 : 500)" in JS_BUNDLE_GRAPH
 
 
 def test_graph_fullscreen_button_and_listener_present():

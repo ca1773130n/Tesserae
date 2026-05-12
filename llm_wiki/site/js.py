@@ -1495,6 +1495,10 @@ JS_GRAPH = r"""
     // small so edge labels never compete with node names visually.
     var VARIANT_FONT       = { default: 22, edge: 7, neighbor: 28, hover: 36, focused: 44 };
     var VARIANT_OPACITY    = { default: 0.85, edge: 0.78, neighbor: 0.92, hover: 1.0, focused: 1.0 };
+    // Render-order ladder (low → high): edge → default → neighbor →
+    // hover/focused. Hover and focused share renderOrder 999 because
+    // per-frame visibility logic ensures only one variant is ever
+    // visible per node — they never compete on z within the same group.
     var VARIANT_RENDER_ORDER = { default: 100, edge: 1, neighbor: 998, hover: 999, focused: 999 };
     // All label pills transparent — user spec. Text-only labels everywhere.
     // Keep the keys so downstream variant lookups don't go undefined.
@@ -1502,7 +1506,13 @@ JS_GRAPH = r"""
     // Variants that count as "highlighted" labels and should tint yellow.
     // Hoisted to outer scope so both the 3D sprite factory (makeLabel) and
     // the 2D ``nodeCanvasObject`` path share one definition.
-    var HIGHLIGHT_VARIANTS = { hover: 1, focused: 1, neighbor: 1 };
+    //
+    // Yellow is reserved for the user's interaction target (hover/focused).
+    // Neighbors stay white — they're context, not target. Tinting neighbors
+    // yellow collapsed the hierarchy and made the graph look "active
+    // everywhere"; the spec restricts the highlight color to the one
+    // node the user is acting on.
+    var HIGHLIGHT_VARIANTS = { hover: 1, focused: 1 };
     var labelSpriteCache = new Map();
     function makeLabel(text, opts){
       if (!THREE || !text) return null;
@@ -1567,33 +1577,63 @@ JS_GRAPH = r"""
         ctx.fill();
       }
       // No stroke: the user explicitly said NO text border, NO outline,
-      // NO color border on any variant.
-      ctx.font = (variant === 'focused' ? '700 ' : '600 ') + fontPx + 'px "Inter", system-ui, sans-serif';
+      // NO color border on any variant. Typography is the only legibility
+      // lever — see the variant table at top-of-file for the full spec.
+      //
+      // Font weight ladder: 500 default/edge/neighbor, 600 hover, 700
+      // focused. Pre-baking the weight here means the canvas texture
+      // carries the right glyph weight for the variant; sprite cloning
+      // can't restyle text after rasterisation.
+      var isHighlight = !!HIGHLIGHT_VARIANTS[variant];
+      var isFocused  = (variant === 'focused');
+      var fontWeight = isFocused ? 700 : (variant === 'hover' ? 600 : 500);
+      ctx.font = fontWeight + ' ' + fontPx + 'px "Inter", system-ui, sans-serif';
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'center';
-      // Text color per variant + theme. Pills are transparent across the
-      // board (VARIANT_PILL_ALPHA = all zeros), so text contrast is the
-      // only legibility lever:
-      //   dark theme:  normal = white, highlighted (hover/focused/neighbor)
-      //                = gold rgb(255, 215, 0). Pure yellow looks washed-out
-      //                on most monitors and bleeds into the canvas; gold
-      //                reads cleaner.
-      //   light theme: normal = near-black rgb(20, 20, 20),
-      //                highlighted = amber rgb(255, 143, 0) so hover/focused
-      //                still pops without going neon.
-      // Edge labels have no hover/focused/neighbor variant, so they fall
-      // through to the default branch (white on dark, near-black on light).
+      // Text color per variant + theme. Default labels render at FULL
+      // opacity white (or near-black on light theme) — opacity-as-
+      // importance is gone; low-importance labels are CULLED via
+      // ``sprite.visible``, not faded. Hover + focused tint to the gold
+      // yellow `rgb(250, 204, 21)` (legible on both theme backgrounds
+      // when paired with the shadow below). Edge labels render at a
+      // constant 85% alpha so they read as secondary chrome without
+      // competing with node names.
       var textFill;
-      if (HIGHLIGHT_VARIANTS[variant]) {
-        textFill = (theme === 'light') ? 'rgb(255, 143, 0)' : 'rgb(255, 215, 0)';
+      if (isHighlight) {
+        textFill = (theme === 'light') ? 'rgb(180, 83, 9)' : 'rgb(250, 204, 21)';
+      } else if (variant === 'edge') {
+        textFill = (theme === 'light') ? 'rgba(20, 20, 20, 0.85)' : 'rgba(255, 255, 255, 0.85)';
       } else if (theme === 'light') {
         textFill = 'rgb(20, 20, 20)';
       } else {
         textFill = 'rgb(255, 255, 255)';
       }
+      // Glow on highlighted variants; subtle drop-shadow on defaults so
+      // labels stay readable when they overlap bright node spheres.
+      // The shadow is reset after fillText so subsequent draws on this
+      // canvas (none today, but harness against regressions) don't pick
+      // up the blur.
+      if (isHighlight) {
+        var glowAlpha = isFocused ? 0.7 : 0.5;
+        ctx.shadowColor = (theme === 'light')
+          ? 'rgba(180, 83, 9, 0.7)'
+          : 'rgba(250, 204, 21, ' + glowAlpha + ')';
+        ctx.shadowBlur = isFocused ? 10 : 6;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      } else {
+        ctx.shadowColor = (theme === 'light') ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)';
+        ctx.shadowBlur = 2;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 1;
+      }
       ctx.fillStyle = textFill;
       var textY = padY + lineH / 2;
       ctx.fillText(text, w / 2, textY);
+      ctx.shadowColor = 'rgba(0, 0, 0, 0)';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
       var tex = new THREE.CanvasTexture(canvas);
       tex.minFilter = THREE.LinearFilter;
       // Node labels (default / hover / neighbor / focused) all turn off
@@ -1695,6 +1735,23 @@ JS_GRAPH = r"""
       if (!sprite || !sprite.material) return;
       sprite.material.opacity = opacity;
       sprite.material.transparent = true;
+    }
+
+    // Visibility-as-importance threshold. Default labels are CULLED (not
+    // faded) when their importance falls below this cutoff at the current
+    // camera distance — closer camera → lower threshold (more labels
+    // shown), farther → higher (only hubs shown). Returns a value in the
+    // same [0, 1] range as ``degreeImportanceAlpha`` so the two can be
+    // compared directly.
+    //
+    // Default camera distance for ForceGraph sits in roughly [80, 600]:
+    //   - d <  80 → cutoff ≈ 0 (show everything)
+    //   - d ~ 340 → cutoff ≈ 0.18 (mid hubs only)
+    //   - d > 600 → cutoff ≈ 1.0 (top hubs only)
+    // Cubic ease so far-zoom culls aggressively and near-zoom is generous.
+    function computeImportanceCutoff(camDistance){
+      var t = Math.max(0, Math.min(1, (camDistance - 80) / 520));
+      return Math.pow(t, 2.5);
     }
 
     // ---- Cursor-anchored zoom (Issue 5 — v15 canonical algorithm) -----
@@ -2283,14 +2340,26 @@ JS_GRAPH = r"""
               // explicitly wants the focus set readable when zoomed way
               // out — they should be visibly larger than calm defaults.
               var camScale = 1.0;
+              var camDist = 320; // Sentinel — used by importance-cutoff
+                                 // when Graph.camera/controls aren't ready.
               try {
                 var cam = Graph && Graph.camera && Graph.camera();
                 var ctrls = Graph && Graph.controls && Graph.controls();
                 if (cam && ctrls && ctrls.target) {
                   var dist = cam.position.distanceTo(ctrls.target);
+                  camDist = dist;
                   camScale = Math.max(1.0, Math.min(20.0, dist / 60));
                 }
               } catch (_) {}
+              // Visibility-as-importance: low-importance labels are CULLED
+              // (not faded) when their normalised importance falls below
+              // the camera-distance-driven cutoff. Hover / focused /
+              // focused-neighbor always override the cull. Defaults that
+              // pass the cull render at FULL opacity — the spec wants
+              // pure white text, never a low-alpha gray ghost.
+              var nodeImportance = degreeImportanceAlpha(node);
+              var importanceCutoff = computeImportanceCutoff(camDist);
+              var defaultPassesCull = nodeImportance >= importanceCutoff;
               for (var i = 0; i < group.children.length; i++) {
                 var child = group.children[i];
                 if (!child) continue;
@@ -2298,8 +2367,14 @@ JS_GRAPH = r"""
                 if (ud.isFocusedLabel) {
                   child.visible = isFocused;
                   child.position.set(0, labelY, 0);
-                  if (isFocused) child.scale.multiplyScalar(camScale / (child.userData.__lastScale || 1));
-                  child.userData.__lastScale = camScale;
+                  // Compose: undo prior frame's scale (camScale * variant)
+                  // then apply this frame's. ``__lastScale`` tracks the
+                  // combined multiplier so per-frame mutations don't drift.
+                  if (isFocused) {
+                    var focScale = camScale * 1.2; // focused: 1.2× variant bump
+                    child.scale.multiplyScalar(focScale / (child.userData.__lastScale || 1));
+                    child.userData.__lastScale = focScale;
+                  }
                   applySpriteOpacity(child, 1.0);
                 } else if (ud.isNeighborGlow) {
                   child.visible = !!isFocusedNeighbor;
@@ -2307,6 +2382,8 @@ JS_GRAPH = r"""
                 } else if (ud.isNeighborLabel) {
                   // Show the neighbor label when the node is a 1-hop neighbor
                   // of the focused node and is NOT itself focused or hovered.
+                  // Neighbors are CONTEXT (white, weight 500) — not the
+                  // user's target, so no scale/weight bump.
                   child.visible = !!isFocusedNeighbor && !isHovered;
                   child.position.set(0, labelY, 0);
                   if (isFocusedNeighbor) child.scale.multiplyScalar(camScale / (child.userData.__lastScale || 1));
@@ -2317,20 +2394,24 @@ JS_GRAPH = r"""
                   // and is NOT focused (focus wins on the same node).
                   child.visible = isHovered;
                   child.position.set(0, labelY, 0);
-                  if (isHovered) child.scale.multiplyScalar(camScale / (child.userData.__lastScale || 1));
-                  child.userData.__lastScale = camScale;
+                  if (isHovered) {
+                    var hovScale = camScale * 1.1; // hover: 1.1× variant bump
+                    child.scale.multiplyScalar(hovScale / (child.userData.__lastScale || 1));
+                    child.userData.__lastScale = hovScale;
+                  }
                   applySpriteOpacity(child, 1.0);
                 } else if (ud.isDefaultLabel || ud.isLabel) {
-                  // Default label — visible whenever no larger variant
-                  // is active. Importance (degree) drives opacity so
-                  // hubs read clearly and leaves fade into the canvas.
-                  // Camera-distance is folded in as a multiplier so
-                  // far-away labels also calm down.
-                  child.visible = !isFocused && !isFocusedNeighbor && !isHovered;
+                  // Default label — binary cull. Visible iff the node's
+                  // importance clears the camera-distance cutoff AND no
+                  // larger variant is active for this node. When visible,
+                  // material opacity is pinned to 1.0 (pure white text).
+                  // No opacity-as-importance modulation anywhere.
+                  var alwaysShow = isHovered || isFocused || isFocusedNeighbor;
+                  child.visible = !alwaysShow && defaultPassesCull;
                   child.position.set(0, labelY, 0);
-                  var distAlpha = cameraDistanceOpacity(coords.x, coords.y, coords.z);
-                  var impAlpha = degreeImportanceAlpha(node);
-                  applySpriteOpacity(child, Math.min(1.0, distAlpha * 0.6 + impAlpha * 0.6));
+                  child.scale.multiplyScalar(camScale / (child.userData.__lastScale || 1));
+                  child.userData.__lastScale = camScale;
+                  applySpriteOpacity(child, 1.0);
                 }
               }
               return true;
@@ -2400,35 +2481,54 @@ JS_GRAPH = r"""
             else if (isHovered) variant = 'hover';
             else if (isFocusedNeighbor) variant = 'neighbor';
             else variant = 'default';
-            var impAlpha = (variant === 'default')
-              ? degreeImportanceAlpha(n)
-              : 1.0;
             var label = nodeLabelText(n);
+            // Visibility-as-importance: default labels are CULLED when
+            // the node's normalised importance falls below the zoom-
+            // driven cutoff. Hover / focused / focused-neighbor always
+            // render regardless of importance. When visible, default
+            // labels render at FULL white (no alpha fade); the previous
+            // importance-driven opacity modulation made low-degree nodes
+            // look gray and is gone for good.
+            //
+            // ``globalScale`` for 2D is roughly 1.0 at the default zoom
+            // and grows on zoom-in. We invert it to a 3D-camera-distance
+            // analogue so ``computeImportanceCutoff`` works uniformly
+            // across both render paths: zoomed in (large globalScale) →
+            // small synthetic distance → low cutoff → more labels shown.
+            var alwaysShow = isHovered || isFocused || isFocusedNeighbor;
+            if (!alwaysShow) {
+              var syntheticCamDist = 320 / Math.max(0.1, globalScale);
+              var importanceCutoff2D = computeImportanceCutoff(syntheticCamDist);
+              if (degreeImportanceAlpha(n) < importanceCutoff2D) return;
+            }
+            // Font weight ladder: 500 default/neighbor, 600 hover, 700
+            // focused. Scale bump: 1.0 / 1.1 / 1.2 for the user's
+            // interaction target (hover / focused respectively).
+            var isHighlight = !!HIGHLIGHT_VARIANTS[variant];
+            var isFocusedLocal = (variant === 'focused');
+            var fontWeight = isFocusedLocal ? 700 : (variant === 'hover' ? 600 : 500);
+            var scaleBump  = isFocusedLocal ? 1.2 : (variant === 'hover' ? 1.1 : 1.0);
             // 2D uses its own default-font base (smaller than the 3D
             // sprite base of 22 — at canvas zoom ~1, 22px floods the
-            // canvas with text). Importance scaling is stronger:
-            // hubs ~24px, leaves get hidden via the visibility floor.
-            // Other variants (focused/hover/neighbor) keep their
-            // canonical 3D sprite size so they pop above the importance
-            // ladder.
+            // canvas with text). Other variants keep their canonical
+            // 3D sprite size so they pop above the default ladder.
             var baseFont;
             if (variant === 'default') baseFont = 10;
             else baseFont = VARIANT_FONT[variant] || 11;
             var fontSize;
             if (variant === 'default') {
-              // Steeper curve: 0.4 floor (drops to ~4px on leaves at
-              // globalScale 1, hidden by the visibility floor below) up
-              // to 2.4× ceiling on hubs (~24px on top-degree nodes).
-              var impScale = 0.4 + degreeImportanceScale(n) * 2.0;
+              // Hub-vs-leaf size differentiation now comes from the
+              // pre-cull importance scaling. Leaves are culled outright;
+              // visible-but-not-hub labels get a mild bump up to 2× on
+              // top hubs. NO ``/ globalScale`` divide-in-fontSize trick —
+              // ForceGraph already scales the canvas, so dividing once
+              // here doubles up and produces wildly large hubs.
+              var impScale = 0.7 + degreeImportanceScale(n) * 1.3; // [0.7, 2.0]
               fontSize = (baseFont * impScale) / globalScale;
-              // Skip labels that would render smaller than ~6 CSS px on
-              // screen — leaves and small mid-degree nodes drop out at
-              // every zoom so the canvas is dominated by hub names.
-              if (fontSize * globalScale < 6) return;
             } else {
-              fontSize = baseFont / globalScale;
+              fontSize = (baseFont * scaleBump) / globalScale;
             }
-            ctx.font = (variant === 'focused' ? '700 ' : '600 ') + fontSize + 'px Inter, system-ui, sans-serif';
+            ctx.font = fontWeight + ' ' + fontSize + 'px Inter, system-ui, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             var textW = ctx.measureText(label).width;
@@ -2440,14 +2540,14 @@ JS_GRAPH = r"""
             var pillY = n.y + 7;
             var pillR = 4 / globalScale;
             // ``pillAlpha === 0`` skips the pill entirely. VARIANT_PILL_ALPHA
-            // is now all zeros (user spec: no background behind labels), so
-            // this branch never fires in practice — but the guard stays in
-            // case the alpha table is restored.
+            // is all zeros (user spec: no background behind labels), so
+            // this branch never fires in practice — kept as a guard in
+            // case the alpha table is ever restored.
             var basePillAlpha = (typeof VARIANT_PILL_ALPHA[variant] === 'number') ? VARIANT_PILL_ALPHA[variant] : 0;
-            var pillAlpha = basePillAlpha * impAlpha;
+            var pillAlpha = basePillAlpha;
             if (pillAlpha > 0) {
               ctx.fillStyle = (theme === 'light')
-                ? 'rgba(255,255,255,' + (0.85 * impAlpha).toFixed(3) + ')'
+                ? 'rgba(255,255,255,0.85)'
                 : 'rgba(0,0,0,' + pillAlpha.toFixed(3) + ')';
               ctx.beginPath();
               ctx.moveTo(pillX + pillR, pillY);
@@ -2462,21 +2562,37 @@ JS_GRAPH = r"""
               ctx.closePath();
               ctx.fill();
             }
-            // Text color mirrors the 3D sprite path:
-            //   highlighted (hover/focused/neighbor): gold on dark
-            //     (rgb(255, 215, 0)), amber on light (rgb(255, 143, 0)).
-            //   default: white on dark, near-black on light. impAlpha
-            //     fades low-degree leaves so hubs stand out.
-            if (HIGHLIGHT_VARIANTS[variant]) {
-              ctx.fillStyle = (theme === 'light')
-                ? 'rgba(255, 143, 0,' + impAlpha.toFixed(3) + ')'
-                : 'rgba(255, 215, 0,' + impAlpha.toFixed(3) + ')';
+            // Text color: highlighted (hover/focused) → gold yellow on
+            // dark, amber on light. Neighbors stay WHITE (they're
+            // context, not the user's interaction target). Default text
+            // is pure white on dark / near-black on light at full
+            // opacity — no alpha modulation, ever.
+            var textColor;
+            if (isHighlight) {
+              textColor = (theme === 'light') ? 'rgb(180, 83, 9)' : 'rgb(250, 204, 21)';
+            } else if (theme === 'light') {
+              textColor = 'rgb(20, 20, 20)';
             } else {
-              ctx.fillStyle = (theme === 'light')
-                ? 'rgba(20, 20, 20,' + impAlpha.toFixed(3) + ')'
-                : 'rgba(255, 255, 255,' + impAlpha.toFixed(3) + ')';
+              textColor = 'rgb(255, 255, 255)';
             }
+            // Highlight glow doubles as the hierarchy signal: hover gets
+            // a 6px blur, focused a 10px blur. Defaults / neighbors get
+            // a subtle 2px drop-shadow so white text stays readable when
+            // it overlaps bright node spheres.
+            if (isHighlight) {
+              ctx.shadowColor = (theme === 'light')
+                ? 'rgba(180, 83, 9, 0.7)'
+                : 'rgba(250, 204, 21, ' + (isFocusedLocal ? 0.7 : 0.5) + ')';
+              ctx.shadowBlur  = isFocusedLocal ? 10 : 6;
+            } else {
+              ctx.shadowColor = (theme === 'light') ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.7)';
+              ctx.shadowBlur  = 2;
+            }
+            ctx.fillStyle = textColor;
             ctx.fillText(label, n.x, pillY + pillH / 2);
+            // Reset shadow so the next call's draw isn't affected.
+            ctx.shadowColor = 'rgba(0, 0, 0, 0)';
+            ctx.shadowBlur  = 0;
           });
           inst.linkCanvasObjectMode(function(){ return 'after'; });
           inst.linkCanvasObject(function(l, ctx, globalScale){
