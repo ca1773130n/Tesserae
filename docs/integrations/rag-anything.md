@@ -98,6 +98,8 @@ Provenance is preserved on each node:
 {"system": "rag-anything", "id": "doc-<sha256>", "type": "document", "artifact": ".llm-wiki/external/raganything/manifest.json"}
 ```
 
+Note: the interactive graph view hides `sources`-group nodes by default to focus on concepts and entities — projected raganything SourceDocuments stay in `graph.json` (MCP, Cognee, search, per-page wiki views still see them), they just don't flood the canvas. Set `graph_view.show_sources = true` in `.llm-wiki/config.json` to restore the dense view.
+
 ## Runtime memory backend
 
 `memory_backends.raganything` (default produced by `default_raganything_backend_config`) coexists with Cognee. `project ask` tries backends in priority order; per-project priority can be set via `memory_backends.priority`. RAG-Anything is opt-in (default `enabled: false`); the setup flag `--with-raganything` flips it on.

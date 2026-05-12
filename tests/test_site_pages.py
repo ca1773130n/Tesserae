@@ -1314,7 +1314,12 @@ def test_build_graph_payload_filters_translation_sibling_edges() -> None:
             ResearchEdge(source=canonical.id, target=concept.id, type="documents"),
         ],
     )
-    ctx = SiteContext.build(graph=graph, wiki_pages_by_kind={})
+    # Opt back into the dense view so the SourceDocument nodes survive
+    # the default ``hide sources`` filter — the assertion under test is
+    # about translation-sibling edge filtering specifically.
+    ctx = SiteContext.build(
+        graph=graph, wiki_pages_by_kind={}, show_sources=True
+    )
 
     payload = build_graph_payload(ctx)
     nodes = payload["nodes"]
@@ -1344,6 +1349,187 @@ def test_build_graph_payload_filters_translation_sibling_edges() -> None:
     # The full graph still has all three edges — we only filter on
     # the visual payload.
     assert len(ctx.graph.edges) == 3
+
+
+def test_build_graph_payload_hides_source_nodes_by_default() -> None:
+    """Default behavior: ``sources``-group nodes never reach the visual
+    payload. The dense raganything cloud floods the canvas and obscures
+    the concept layer; users get the concept-only view unless they
+    explicitly flip ``graph_view.show_sources`` in their config.
+
+    Underlying ``ctx.graph`` is untouched — the SourceDocument node is
+    still present for MCP, Cognee, search, and per-page wiki views.
+    """
+    from llm_wiki.research_graph import ResearchEdge
+    from llm_wiki.site.pages import build_graph_payload
+
+    source = ResearchNode(
+        id="SourceDocument:whitepaper",
+        name="docs/whitepaper.pdf",
+        type=ResearchNodeType.SOURCE_DOCUMENT,
+        source_path="docs/whitepaper.pdf",
+    )
+    concept = ResearchNode(
+        id="Concept:scaling-laws",
+        name="Scaling laws",
+        type=ResearchNodeType.CONCEPT,
+    )
+    graph = ResearchGraph(
+        nodes=[source, concept],
+        edges=[
+            ResearchEdge(source=source.id, target=concept.id, type="contains"),
+        ],
+    )
+    # Default cfg — show_sources omitted, so the filter engages.
+    ctx = SiteContext.build(graph=graph, wiki_pages_by_kind={})
+
+    payload = build_graph_payload(ctx)
+    node_ids = {n["id"] for n in payload["nodes"]}
+
+    assert source.id not in node_ids, (
+        "SourceDocument node leaked into the visual payload despite "
+        "default-hide policy: " + repr(payload["nodes"])
+    )
+    assert concept.id in node_ids, (
+        "Concept node was incorrectly dropped from the visual payload"
+    )
+    # The contains edge must NOT survive — one endpoint is hidden.
+    assert payload["links"] == [], (
+        f"edges incident to hidden source nodes leaked: {payload['links']!r}"
+    )
+    # Underlying graph still has every node + edge — only the visual
+    # payload drops them.
+    assert len(ctx.graph.nodes) == 2
+    assert len(ctx.graph.edges) == 1
+
+
+def test_build_graph_payload_includes_sources_when_show_sources_true() -> None:
+    """Opt-in: ``graph_view.show_sources = true`` restores the dense view.
+
+    Same fixture as the default-hide test, but with the config knob
+    flipped on — the SourceDocument node AND its incident edge appear
+    in the visual payload.
+    """
+    from llm_wiki.research_graph import ResearchEdge
+    from llm_wiki.site.pages import build_graph_payload
+
+    source = ResearchNode(
+        id="SourceDocument:whitepaper",
+        name="docs/whitepaper.pdf",
+        type=ResearchNodeType.SOURCE_DOCUMENT,
+        source_path="docs/whitepaper.pdf",
+    )
+    concept = ResearchNode(
+        id="Concept:scaling-laws",
+        name="Scaling laws",
+        type=ResearchNodeType.CONCEPT,
+    )
+    graph = ResearchGraph(
+        nodes=[source, concept],
+        edges=[
+            ResearchEdge(source=source.id, target=concept.id, type="contains"),
+        ],
+    )
+    ctx = SiteContext.build(
+        graph=graph, wiki_pages_by_kind={}, show_sources=True
+    )
+
+    payload = build_graph_payload(ctx)
+    node_ids = {n["id"] for n in payload["nodes"]}
+
+    assert source.id in node_ids
+    assert concept.id in node_ids
+    assert any(
+        e["source"] == source.id and e["target"] == concept.id
+        for e in payload["links"]
+    ), f"contains edge missing when show_sources=True: {payload['links']!r}"
+
+
+def test_build_graph_payload_drops_edges_incident_to_hidden_sources() -> None:
+    """When ``sources`` are hidden, every edge incident to a dropped
+    source node is filtered too — we never ship dangling edges. The
+    concept-to-concept edge survives because both endpoints survive."""
+    from llm_wiki.research_graph import ResearchEdge
+    from llm_wiki.site.pages import build_graph_payload
+
+    source_a = ResearchNode(
+        id="SourceDocument:a",
+        name="A.md",
+        type=ResearchNodeType.SOURCE_DOCUMENT,
+        source_path="A.md",
+    )
+    concept_x = ResearchNode(
+        id="Concept:x",
+        name="ConceptX",
+        type=ResearchNodeType.CONCEPT,
+    )
+    concept_y = ResearchNode(
+        id="Concept:y",
+        name="ConceptY",
+        type=ResearchNodeType.CONCEPT,
+    )
+    graph = ResearchGraph(
+        nodes=[source_a, concept_x, concept_y],
+        edges=[
+            ResearchEdge(source=source_a.id, target=concept_x.id, type="contains"),
+            ResearchEdge(source=source_a.id, target=concept_y.id, type="contains"),
+            ResearchEdge(
+                source=concept_x.id, target=concept_y.id,
+                type="shares_concept_with",
+            ),
+        ],
+    )
+    ctx = SiteContext.build(graph=graph, wiki_pages_by_kind={})
+
+    payload = build_graph_payload(ctx)
+    node_ids = {n["id"] for n in payload["nodes"]}
+    edge_pairs = {(e["source"], e["target"]) for e in payload["links"]}
+
+    # Source is gone, both concepts survive.
+    assert source_a.id not in node_ids
+    assert concept_x.id in node_ids
+    assert concept_y.id in node_ids
+
+    # Both contains edges are gone.
+    assert (source_a.id, concept_x.id) not in edge_pairs
+    assert (source_a.id, concept_y.id) not in edge_pairs
+
+    # The concept↔concept edge survives — both endpoints are visible.
+    assert (concept_x.id, concept_y.id) in edge_pairs
+
+
+def test_build_graph_payload_legend_drops_zero_source_pill() -> None:
+    """The graph-view legend never ships a ``0 Sources`` chip. When sources
+    are hidden the chip is omitted; a small "Sources hidden" note
+    explains the absence so users aren't left wondering."""
+    from llm_wiki.research_graph import ResearchEdge
+    from llm_wiki.site.pages import render_graph_view
+
+    source = ResearchNode(
+        id="SourceDocument:whitepaper",
+        name="docs/whitepaper.pdf",
+        type=ResearchNodeType.SOURCE_DOCUMENT,
+        source_path="docs/whitepaper.pdf",
+    )
+    concept = ResearchNode(
+        id="Concept:scaling-laws",
+        name="Scaling laws",
+        type=ResearchNodeType.CONCEPT,
+    )
+    graph = ResearchGraph(
+        nodes=[source, concept],
+        edges=[ResearchEdge(source=source.id, target=concept.id, type="contains")],
+    )
+    ctx = SiteContext.build(graph=graph, wiki_pages_by_kind={})
+
+    out = render_graph_view(ctx)
+
+    # No ``data-group="sources"`` chip in the legend.
+    assert 'data-group="sources"' not in out, (
+        "graph legend still ships a sources chip even though sources are hidden"
+    )
+    # The "Sources hidden" note appears so the absence is explained.
+    assert "Sources hidden" in out
 
 
 def test_detail_page_keeps_sticky_toc_aside_for_long_articles(

@@ -589,8 +589,20 @@ class ProjectWiki:
         # ``llm_wiki_self``) — that string is for MCP server identifiers, not
         # for humans reading the rendered HTML.
         site_title = cfg.get("site_title") or "LLM-Wiki"
+        # The visual graph view hides ``sources``-group nodes by default
+        # (the 1000+ raganything-projected SourceDocument cloud floods the
+        # canvas and obscures the concept layer). Power users can restore
+        # the dense view via ``graph_view.show_sources = true`` in
+        # ``.llm-wiki/config.json``. Only the visual payload is affected —
+        # ``graph.json``, MCP, search, and per-page wiki views still see
+        # every source.
+        graph_view_cfg = cfg.get("graph_view") if isinstance(cfg.get("graph_view"), dict) else {}
+        show_sources = bool(graph_view_cfg.get("show_sources", False))
         self.paths.wiki.mkdir(parents=True, exist_ok=True)
-        return StaticSiteBuilder(site_title=site_title).write_site(graph, self.paths.wiki, target)
+        return StaticSiteBuilder(
+            site_title=site_title,
+            show_sources=show_sources,
+        ).write_site(graph, self.paths.wiki, target)
 
     def query(
         self,

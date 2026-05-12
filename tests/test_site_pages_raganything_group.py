@@ -39,9 +39,16 @@ def _raganything_source_node() -> ResearchNode:
 def test_build_graph_payload_groups_raganything_nodes_as_sources():
     """A SOURCE_DOCUMENT node with raganything metadata is visible in the
     payload, sits in the ``sources`` group, and carries its ``parser``
-    provenance flag."""
+    provenance flag.
+
+    The default visual-payload filter hides every ``sources`` node, so this
+    test opts back in via ``show_sources=True`` to exercise the legacy
+    routing rather than the visibility gate.
+    """
     graph = ResearchGraph(nodes=[_raganything_source_node()], edges=[])
-    ctx = SiteContext.build(graph=graph, wiki_pages_by_kind={})
+    ctx = SiteContext.build(
+        graph=graph, wiki_pages_by_kind={}, show_sources=True
+    )
 
     payload = build_graph_payload(ctx)
 
@@ -59,7 +66,11 @@ def test_build_graph_payload_groups_raganything_nodes_as_sources():
 
 def test_build_graph_payload_omits_parser_metadata_for_native_nodes():
     """Nodes without a ``parser`` flag in their metadata don't get one
-    spuriously added by the payload assembly."""
+    spuriously added by the payload assembly.
+
+    Uses ``show_sources=True`` so the native SourceDocument node survives
+    the default visual-payload filter.
+    """
     graph = ResearchGraph(
         nodes=[
             ResearchNode(
@@ -73,7 +84,9 @@ def test_build_graph_payload_omits_parser_metadata_for_native_nodes():
         ],
         edges=[],
     )
-    ctx = SiteContext.build(graph=graph, wiki_pages_by_kind={})
+    ctx = SiteContext.build(
+        graph=graph, wiki_pages_by_kind={}, show_sources=True
+    )
     payload = build_graph_payload(ctx)
     assert payload["nodes"]
     node = payload["nodes"][0]

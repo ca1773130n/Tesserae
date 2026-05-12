@@ -163,6 +163,13 @@ class StaticSiteBuilder:
     """Render a static LLM-Wiki site from a graph + markdown wiki layer."""
 
     site_title: str = "LLM-Wiki"
+    # When False (default), the interactive graph view hides every node
+    # in the ``sources`` group plus every incident edge. Underlying
+    # ``graph.json`` + MCP + per-page wiki views are unaffected. Driven
+    # by ``graph_view.show_sources`` in ``.llm-wiki/config.json``;
+    # :meth:`llm_wiki.project.ProjectWiki.build_site` reads the flag and
+    # forwards it here.
+    show_sources: bool = False
 
     # ------------------------------------------------------------------ public
 
@@ -234,6 +241,7 @@ class StaticSiteBuilder:
             site_title=self.site_title,
             project_root=project_root,
             session_count=len(harness_sessions),
+            show_sources=self.show_sources,
         )
 
         # ------------------------------------------------------ static assets

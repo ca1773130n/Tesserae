@@ -299,6 +299,13 @@ class SiteContext:
     # :func:`components.doc_tree` from the left rail.
     doc_tree: Mapping[str, object] = field(default_factory=dict)
     session_count: int = 0
+    # When False (the default), ``build_graph_payload`` drops every node
+    # whose group resolves to one of ``_GRAPH_HIDDEN_GROUPS`` (today:
+    # ``sources``) and every edge incident to such a node. The underlying
+    # ``graph.json`` + MCP + per-page wiki views are unaffected; this flag
+    # only gates the visual ``payload-core.json`` / ``payload-rest.json``.
+    # Set via the ``graph_view.show_sources`` knob in ``.llm-wiki/config.json``.
+    show_sources: bool = False
 
     def get_auto_linker(self) -> AutoLinker:
         """Return the cached :class:`AutoLinker`, building it lazily.
@@ -322,6 +329,7 @@ class SiteContext:
         site_title: str = "LLM-Wiki",
         project_root: Optional[Path] = None,
         session_count: int = 0,
+        show_sources: bool = False,
     ) -> "SiteContext":
         nodes_by_id = {n.id: n for n in graph.nodes}
         outgoing: Dict[str, List[ResearchEdge]] = defaultdict(list)
@@ -434,6 +442,7 @@ class SiteContext:
             project_root=project_root,
             doc_tree=doc_tree,
             session_count=session_count,
+            show_sources=show_sources,
         )
         # Build the auto-link table eagerly — it's a one-time scan over
         # the graph and amortises over every detail-page render. Stash via
@@ -2172,6 +2181,39 @@ _GRAPH_HIDDEN_TYPES: frozenset[str] = frozenset({"Person"})
 _GRAPH_HIDDEN_EDGE_TYPES: frozenset[str] = frozenset({"authored_by"})
 
 
+# Visual-payload group filter. Every node whose group resolves to one of
+# these names is dropped before reaching ``payload-core.json`` /
+# ``payload-rest.json``, alongside every edge incident to it. The
+# underlying ``ResearchGraph`` (and therefore MCP, Cognee, search, and
+# the per-page wiki views) still sees them — this is strictly a visual
+# decluttering filter. ``sources`` is the only entry today because
+# raganything-projected SourceDocument nodes flood the canvas at 1000+
+# per project; the concept/entity layer is what users actually want to
+# explore in the 3D view.
+#
+# Override per project via ``graph_view.show_sources = true`` in
+# ``.llm-wiki/config.json`` (default is hide). ``SiteContext.show_sources``
+# carries the resolved flag down to :func:`build_graph_payload`.
+_GRAPH_HIDDEN_GROUPS: frozenset[str] = frozenset({"sources"})
+
+
+def _is_hidden_group_node(node: ResearchNode) -> bool:
+    """Return ``True`` when ``node``'s group lives in ``_GRAPH_HIDDEN_GROUPS``.
+
+    The visual graph view hides documents/sources entirely. The underlying
+    ``ResearchGraph`` + MCP API + per-page wiki views still see them; this
+    predicate only gates what reaches ``payload-core.json`` /
+    ``payload-rest.json`` via :func:`build_graph_payload`.
+
+    Uses the same kind→group mapping (``_kind_for_node_type``) the visual
+    payload itself relies on, so a node's classification here cannot drift
+    from its classification in the payload.
+    """
+    kind = _kind_for_node_type(node.type)
+    group = kind or "other"
+    return group in _GRAPH_HIDDEN_GROUPS
+
+
 # ---------------------------------------------------------------------------
 # Translation-sibling detection
 # ---------------------------------------------------------------------------
@@ -2277,10 +2319,26 @@ def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
     # outside that set stays in graph.json for MCP consumers but never
     # surfaces in the on-page interactive view. Issue 5 also drops nodes
     # whose ``type`` lives in ``_GRAPH_HIDDEN_TYPES`` (Person, today).
-    visible_nodes: List[ResearchNode] = [
-        n for n in ctx.graph.nodes
-        if n.type.value in WIKI_LAYER_TYPES and n.type.value not in _GRAPH_HIDDEN_TYPES
-    ]
+    #
+    # Group-level filter: when ``ctx.show_sources`` is False (the default)
+    # every node whose group is in ``_GRAPH_HIDDEN_GROUPS`` is dropped
+    # before it reaches the payload — and the edge loop below drops every
+    # edge incident to a dropped node. This is what hides the 1000+
+    # SourceDocument cloud from the visual view while leaving the
+    # underlying graph untouched. Flip ``graph_view.show_sources = true``
+    # in ``.llm-wiki/config.json`` to restore the dense view.
+    hide_groups = not ctx.show_sources
+    hidden_node_ids: set[str] = set()
+    visible_nodes: List[ResearchNode] = []
+    for n in ctx.graph.nodes:
+        if n.type.value not in WIKI_LAYER_TYPES:
+            continue
+        if n.type.value in _GRAPH_HIDDEN_TYPES:
+            continue
+        if hide_groups and _is_hidden_group_node(n):
+            hidden_node_ids.add(n.id)
+            continue
+        visible_nodes.append(n)
     visible_ids = {n.id for n in visible_nodes}
 
     # Compute degree on the wiki-layer subgraph so we can:
@@ -2478,14 +2536,33 @@ def render_graph_view(ctx: SiteContext) -> str:
         "questions": "#c08a1a",
         "other": "#64748b",
     }
+    # When ``sources`` are hidden by the payload filter, ``type_counts``
+    # naturally lacks an entry for them — but if a stale entry ever
+    # appears with count 0 (defensive), drop it so the legend never ships
+    # a "0 Sources" pill that looks like a broken stat.
+    legend_groups = [
+        (group, count)
+        for group, count in sorted(type_counts.items(), key=lambda kv: kv[0])
+        if count > 0
+    ]
     legend_items = "".join(
         f'<button type="button" class="graph-legend-chip" data-group="{_esc(group)}">'
         f'<span class="graph-legend-dot" style="background:{palette.get(group, "#64748b")}"></span>'
         f'<span class="graph-legend-label">{_esc(group)}</span>'
         f'<span class="graph-legend-count">{count}</span>'
         f'</button>'
-        for group, count in sorted(type_counts.items(), key=lambda kv: kv[0])
+        for group, count in legend_groups
     )
+    # Surface a subtle note when the sources group is suppressed by config
+    # so users understand why the dense source cloud isn't here. Hidden
+    # entirely (no badge) when ``show_sources`` is True.
+    if not ctx.show_sources:
+        legend_items += (
+            '<span class="graph-legend-note" role="note" '
+            'title="Toggle via graph_view.show_sources in .llm-wiki/config.json">'
+            'Sources hidden &mdash; concepts only'
+            '</span>'
+        )
 
     # F-5 — restore the floating focus-detail overlay (NOT the right-rail
     # variant — a small bottom-right panel inside ``.graph-canvas-wrapper``
