@@ -1,0 +1,100 @@
+# Build and deploy the LLM-Wiki dogfood demo to GitHub Pages.
+#
+# Compiles LLM-Wiki against its own source tree using the default
+# deterministic extractor (no LLM calls, no API keys required), builds
+# the static site, and publishes .llm-wiki/site/ to GitHub Pages.
+#
+# Manual dispatch (workflow_dispatch) is reserved for future LLM-enabled
+# rebuilds; the push path is fully offline.
+name: build-demo
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Compile dogfood wiki
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install LLM-Wiki (editable, synthesis-llm extras)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[synthesis-llm]"
+
+      - name: Setup project (no Cognee, no RAG-Anything)
+        # `setup --yes` writes .llm-wiki/config.json non-interactively.
+        # Every companion tool that would need network or LLM credentials
+        # is disabled so the default compile path is fully offline.
+        run: |
+          python -m llm_wiki project setup \
+            --yes \
+            --no-color \
+            --source-kind Repository \
+            --source . \
+            --no-cognee \
+            --skip-raganything \
+            --skip-install-cognee \
+            --skip-install-raganything \
+            --skip-install-understand-anything
+
+      - name: Compile (deterministic extractor, no LLM calls)
+        # The default ResearchGraphExtractor is fully deterministic: it
+        # builds the typed graph from filesystem walks + heuristics, with
+        # zero outbound network or LLM calls. See llm_wiki/research_graph.py.
+        run: python -m llm_wiki project compile
+
+      - name: Build static site
+        run: python -m llm_wiki project build-site
+
+      - name: Add a no-Jekyll marker and a banner file
+        # GitHub Pages defaults to Jekyll processing; .nojekyll opts out so
+        # files prefixed with `_` (none today, but possible for assets) ship.
+        # The banner is a tiny notice so visitors land knowing the demo is
+        # the dogfood compile of this repo's own source.
+        run: |
+          touch .llm-wiki/site/.nojekyll
+          cat > .llm-wiki/site/DEMO.txt <<'TXT'
+          This GitHub Pages deploy is LLM-Wiki compiled against its own source.
+          The compile uses the default deterministic extractor (no LLM, no API
+          keys). To compile your own project, see the project README.
+          TXT
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .llm-wiki/site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

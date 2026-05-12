@@ -9,7 +9,42 @@
   <a href="./README.fr.md">Français</a>
 </p>
 
+> Compile your sources into a typed wiki agents can read.
+
+<!-- TODO: replace <configure-github-pages-and-update-this-link> with the real
+GitHub Pages URL once the maintainer enables Pages for this repo. The
+.github/workflows/build-demo.yml workflow publishes .llm-wiki/site/ on every
+push to main. -->
+
+[Live demo](https://<configure-github-pages-and-update-this-link>) · [Docs](docs/) · [MCP setup](docs/integrations/)
+
 LLM-Wiki is a project-memory compiler. Point it at a directory containing markdown, source files, and (optionally) PDFs/Office docs/images, and it extracts a typed knowledge graph, writes a queryable wiki, and emits portable artifacts: a markdown projection, a Cognee-ready bundle, an agent harness, and an MCP server you can wire into Claude Code, Codex, or any MCP client. It is a build step for project context, not a hosted service.
+
+## How it compares
+
+A flat comparison against the four closest open-source alternatives. No softening:
+
+| Feature | LLM-Wiki | Quartz | Logseq | Cognee | Foam |
+|---|---|---|---|---|---|
+| Static HTML output | yes | yes | partial (export) | no | partial (publish) |
+| Built-in graph view | yes | yes | yes | yes (separate UI) | yes (VSCode) |
+| Typed node schema | yes (41 types) | no | partial (tags) | yes | no |
+| Concept extraction from sources | yes (LLM) | no | no | yes | no |
+| Multimodal ingestion (PDF/image) | yes (via RAG-Anything) | no | partial (embeds) | yes | no |
+| Code-graph ingestion | yes | no | no | partial | no |
+| MCP server | yes | no | no | yes | no |
+| Multi-project registry | yes | no | yes (graphs) | partial | no |
+| Works without API key (OAuth) | yes | n/a | n/a | no | n/a |
+| Multi-language i18n docs | yes | partial | yes | partial | partial |
+| Deterministic byte-identical compile | yes | yes | n/a | no | n/a |
+| Per-page ask widget (proposed B3) | not yet | no | no | no | no |
+| Live edit | no | partial | yes | n/a | yes |
+| Mobile-first reading | no | yes | yes | n/a | n/a |
+| Real-time collaboration | no | no | yes (DB beta) | no | no |
+
+LLM-Wiki picks compile-from-source over live editing. If you want to edit notes
+in a UI, use Logseq or Obsidian. If you want a build tool for your knowledge
+graph, this is the project.
 
 ## When to use this (and when not to)
 
