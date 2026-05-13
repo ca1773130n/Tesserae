@@ -1182,18 +1182,238 @@ def looks_like_filename_or_path(name: str) -> bool:
     return False
 
 
-def filter_filename_shaped_concepts(graph: ResearchGraph) -> ResearchGraph:
-    """Return ``graph`` with filename-shaped conceptish nodes (and incident
-    edges) removed.
+# ---------------------------------------------------------------------------
+# Heading / sentence / i18n-duplicate predicates (Bug B follow-up to Bug A).
+#
+# A live audit of a typical compile showed 48% of conceptish nodes were not
+# real concepts: translated section headings from i18n READMEs, numbered
+# list items, F-N review-finding prefixes, whole sentences, and stop-word
+# leaders. The two predicates below extend the post-merge chokepoint so
+# those are dropped before they hit the visual graph.
+# ---------------------------------------------------------------------------
 
-    See :func:`looks_like_filename_or_path` for the predicate. Only nodes
-    whose type is in the concept layer are affected — a ``SourceDocument``
-    named ``README.md`` is the right shape and is preserved.
+
+# Words that almost always signal a section heading or imperative
+# instruction rather than a concept.
+_HEADING_LEADERS: FrozenSet[str] = frozenset({
+    "what", "why", "when", "where", "which", "how",
+    "the", "a", "an", "this", "that", "these", "those",
+    "some", "any", "all", "each", "every",
+})
+
+# Common English verbs whose presence inside a multi-word phrase strongly
+# indicates a sentence. Listed in lowercase; we lowercase the candidate
+# name before checking.
+_SENTENCE_VERBS: FrozenSet[str] = frozenset({
+    "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "having",
+    "do", "does", "did", "doing",
+    "will", "would", "shall", "should", "may", "might", "must",
+    "can", "could", "ought",
+})
+
+# Imperative verb forms common in instructional headings.
+_IMPERATIVE_PREFIXES: FrozenSet[str] = frozenset({
+    "ensure", "install", "configure", "set", "use", "run",
+    "create", "add", "remove", "enable", "disable", "build",
+    "compile", "deploy", "publish", "rebuild", "verify", "check",
+    "open", "close", "start", "stop",
+})
+
+# Internal review-finding shape: "F-1 ...", "F-12 ...", etc.
+_FINDING_PREFIX_RE = re.compile(r"^[A-Z]-\d+\b")
+
+# Numbered list item: "1 Run setup", "11 Deploy", but NOT "4D Gaussian".
+# The trailing whitespace requirement distinguishes "1 X" from "1X" or "4D".
+_NUMBERED_LIST_RE = re.compile(r"^\d+\s")
+
+# Sentence-ending punctuation that should never appear in a concept name.
+# Note: a bare period (``.``) is NOT included here so that version numbers
+# like ``Llama 3.1`` survive. Instead, ``_SENTENCE_PERIOD_RE`` matches only
+# a period followed by whitespace or end-of-string — the "sentence-end" shape.
+_SENTENCE_PUNCT_RE = re.compile(r"[,;!?]|\.\.\.|—|–")
+
+# Period followed by whitespace or end-of-string is a sentence ending.
+# ``Llama 3.1`` (period + digit) is preserved; ``See you.`` is rejected.
+_SENTENCE_PERIOD_RE = re.compile(r"\.(\s|$)")
+
+# CJK ranges. A name that is ONLY CJK chars (no Latin) of length <=4 is
+# almost always a single-word translated heading (``상태``, ``通信``,
+# ``インテグレーション``). Real concepts in non-Latin scripts in this
+# corpus tend to be longer phrases or paired with a Latin gloss.
+_CJK_RE = re.compile(r"[가-힣ぁ-ヿ一-龥]")
+
+
+def looks_like_heading_or_sentence(name: str) -> bool:
+    """Return ``True`` if ``name`` reads as a section heading, a numbered
+    list item, an imperative instruction, or a whole sentence rather than
+    a concept token.
+
+    Conservative by design: false negatives are preferred to false
+    positives. Single-word names (``RLHF``, ``SLAM``, ``GPT-4o``) and
+    short multi-word concept phrases (``Depth Map``, ``4D Gaussian
+    Splatting``, ``Self-Supervised Learning``) MUST survive.
+
+    Positive cases (returns ``True``):
+        ``What you get after compile`` (stop-word leader),
+        ``Ensure the shell command is installed`` (imperative + verb),
+        ``1 Ejecuta el asistente`` (numbered list),
+        ``F-7 Repositories are extracted`` (review-finding prefix),
+        ``인테그레이션``/``インテグレーション`` (short CJK heading),
+        a 60+ character clause (very long).
+
+    Negative cases (returns ``False``):
+        ``Self-Supervised Learning``, ``4D Gaussian Splatting``,
+        ``GPT-4o``, ``RLHF``, ``Depth Map``, ``Llama 3.1``.
+    """
+    if not name:
+        return False
+    s = name.strip()
+    if not s:
+        return False
+
+    # Very long names are almost always sentences. 60 chars is the cutoff
+    # observed empirically — the longest real concept in this corpus is
+    # ``Geometry-Grounded Gaussian Splatting`` at 36 chars.
+    if len(s) > 60:
+        return True
+
+    # Internal review-finding prefix like ``F-1``, ``F-12``.
+    if _FINDING_PREFIX_RE.match(s):
+        return True
+
+    # Numbered list item like ``1 Run setup``, ``11 Deploy``. Distinguished
+    # from dimensional prefixes (``4D Gaussian``, ``8K Resolution``) by the
+    # requirement of whitespace immediately after the digits.
+    if _NUMBERED_LIST_RE.match(s):
+        return True
+
+    # Sentence-ending punctuation inside the name (excluding bare periods —
+    # see ``_SENTENCE_PERIOD_RE`` below for the version-number-safe period
+    # rule).
+    if _SENTENCE_PUNCT_RE.search(s):
+        return True
+    if _SENTENCE_PERIOD_RE.search(s):
+        return True
+
+    # Newlines never belong in a concept name.
+    if "\n" in s:
+        return True
+
+    # Pure-CJK headings (no Latin letters): drop. The corpus is predominantly
+    # English research prose; CJK strings without any Latin gloss are
+    # localized section headings (``상태``, ``通信``, ``インテグレーション``,
+    # ``ステータス``) rather than concepts. Longer CJK terms that ARE real
+    # research concepts (e.g. ``形態素解析``) in Japanese-NLP papers tend
+    # to be paired with a Latin gloss in this corpus and so contain Latin
+    # letters; they're preserved.
+    has_cjk = bool(_CJK_RE.search(s))
+    has_latin = bool(re.search(r"[A-Za-z]", s))
+    if has_cjk and not has_latin:
+        return True
+
+    # Multi-word checks below; bail for single-word inputs (acronyms,
+    # single technical terms) early.
+    tokens = s.split()
+    if len(tokens) < 2:
+        return False
+
+    leading = tokens[0].lower()
+
+    # Stop-word leaders like ``What you get after compile``.
+    if leading in _HEADING_LEADERS:
+        return True
+
+    # Imperative-prefixed instructions like ``Ensure the shell command...``.
+    if leading in _IMPERATIVE_PREFIXES and len(tokens) >= 3:
+        return True
+
+    # Sentence shape: presence of any tense-bearing verb (case-insensitive,
+    # exact-token match — so ``Visual SLAM`` won't false-match ``is`` inside
+    # ``Visual``).
+    lowered_tokens = {tok.lower().strip(".,;:!?") for tok in tokens}
+    if lowered_tokens & _SENTENCE_VERBS:
+        return True
+
+    return False
+
+
+# Localized translation file suffix. Limited to the language codes the
+# project actually ships translations for (see ``docs/i18n/``); we don't
+# match arbitrary two-letter suffixes because real filenames like
+# ``arxiv.pl.md`` (Polish) or domain-specific names could collide.
+_I18N_LANG_RE = re.compile(
+    r"\.(ko|zh|ja|ru|es|fr|de|it|pt|nl|pl|tr)\.md$",
+    re.IGNORECASE,
+)
+
+
+def source_path_looks_like_i18n_duplicate(path: Optional[str]) -> bool:
+    """Return ``True`` if ``path`` is a localized translation of a canonical
+    English document. Concepts extracted from i18n docs duplicate those
+    already extracted from the canonical English source, multiplied by the
+    number of supported languages.
+
+    Positive cases (returns ``True``):
+        ``README.ko.md``,
+        ``docs/i18n/integrations/rag-anything.fr.md``,
+        ``docs/quickstart.zh.md``.
+
+    Negative cases (returns ``False``):
+        ``README.md``,
+        ``docs/quickstart.md``,
+        ``data/research/weekly/2026-W17/digest.md``,
+        ``docs/internal/notes.md`` (``internal`` != ``i18n``).
+    """
+    if not path:
+        return False
+    p = path.replace("\\", "/")
+    if _I18N_LANG_RE.search(p):
+        return True
+    # Path includes an ``i18n/`` directory segment (segment-exact, so
+    # ``docs/internal/`` is not falsely matched).
+    segments = p.lower().split("/")
+    if "i18n" in segments:
+        return True
+    return False
+
+
+def _is_dropped_concept_node(node: ResearchNode) -> bool:
+    """Predicate for the unified post-merge filter. Returns ``True`` if
+    ``node`` is a concept-layer node whose name OR source path looks like
+    noise (filename, heading, sentence, numbered list, i18n duplicate)."""
+    if node.type not in _CONCEPTISH_TYPES_FOR_FILTER:
+        return False
+    if looks_like_filename_or_path(node.name):
+        return True
+    if looks_like_heading_or_sentence(node.name):
+        return True
+    if source_path_looks_like_i18n_duplicate(node.source_path):
+        return True
+    return False
+
+
+def filter_filename_shaped_concepts(graph: ResearchGraph) -> ResearchGraph:
+    """Return ``graph`` with noisy conceptish nodes (and incident edges)
+    removed.
+
+    Drops concept-layer nodes whose name matches any of:
+      * :func:`looks_like_filename_or_path` — filenames / paths
+      * :func:`looks_like_heading_or_sentence` — headings, numbered lists,
+        sentence shapes, short CJK-only headings, F-N review prefixes
+      * :func:`source_path_looks_like_i18n_duplicate` — concepts that
+        originated from a localized translation file (the canonical
+        English source has already produced them)
+
+    Only concept-layer types are affected — a ``SourceDocument`` named
+    ``README.ko.md`` is the right shape and is preserved. Edges incident
+    to dropped nodes are also removed. Drop count is emitted to stderr at
+    INFO level.
     """
     kept_nodes: List[ResearchNode] = []
     dropped_ids: Set[str] = set()
     for node in graph.nodes:
-        if node.type in _CONCEPTISH_TYPES_FOR_FILTER and looks_like_filename_or_path(node.name):
+        if _is_dropped_concept_node(node):
             dropped_ids.add(node.id)
             continue
         kept_nodes.append(node)
@@ -1203,6 +1423,11 @@ def filter_filename_shaped_concepts(graph: ResearchGraph) -> ResearchGraph:
         edge for edge in graph.edges
         if edge.source not in dropped_ids and edge.target not in dropped_ids
     ]
+    import logging
+    logging.getLogger(__name__).info(
+        "concept-noise filter dropped %d conceptish nodes (and incident edges)",
+        len(dropped_ids),
+    )
     return ResearchGraph(nodes=kept_nodes, edges=kept_edges)
 
 

@@ -25,6 +25,7 @@ from .research_graph import (
     extract_title,
     filter_filename_shaped_concepts,
     source_kind_to_node_type,
+    source_path_looks_like_i18n_duplicate,
 )
 
 
@@ -209,6 +210,12 @@ class ClaudeCLIResearchExtractor:
         return self.extract_text(file_path.read_text(encoding="utf-8", errors="replace"), str(file_path), source_kind)
 
     def extract_text(self, text: str, source_path: Optional[str] = None, source_kind: str = "SourceDocument") -> ResearchGraph:
+        # Belt-and-suspenders: skip localized i18n duplicates at the extractor
+        # level so we don't spend LLM tokens producing concepts that the
+        # post-merge filter would just drop. The canonical English source
+        # has already produced (or will produce) the same concepts.
+        if source_path_looks_like_i18n_duplicate(source_path):
+            return ResearchGraph(nodes=[], edges=[])
         prompt = build_research_extraction_prompt(text=text, source_path=source_path, source_kind=source_kind)
         last_error: Optional[Exception] = None
         for config_dir in self.config_dirs:
