@@ -1,6 +1,10 @@
 # LLM-Wiki
 
 <p align="center">
+  <img src="docs/assets/llm-wiki-graph-view.png" alt="LLM-Wiki graph view showing concepts, papers, repos, syntheses, and entities clustered around a focused node" width="100%" />
+</p>
+
+<p align="center">
   <a href="./README.ko.md">한국어</a> ·
   <a href="./README.zh.md">中文</a> ·
   <a href="./README.ja.md">日本語</a> ·
