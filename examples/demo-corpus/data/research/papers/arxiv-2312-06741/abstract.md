@@ -1,0 +1,24 @@
+---
+type: Paper
+arxiv: "2312.06741"
+arxiv_url: https://arxiv.org/abs/2312.06741
+title: "Gaussian Splatting SLAM"
+authors:
+  - "Hidenobu Matsuki"
+  - "Riku Murai"
+  - "Paul H. J. Kelly"
+  - "Andrew J. Davison"
+date: 2023-12-11
+sub_topic: Visual SLAM and MVS
+license: CC0 (arXiv abstract)
+methods: [GaussianSplatting, SLAM, StructureFromMotion, NovelViewSynthesis]
+datasets: []
+metrics: [PSNR, SSIM, LPIPS]
+oss_repo: muskie82/MonoGS
+---
+
+# Gaussian Splatting SLAM
+
+> Verbatim CC0 abstract mirrored from arXiv. No editorial changes.
+
+We present the first application of 3D Gaussian Splatting in monocular SLAM, the most fundamental but the hardest setup for Visual SLAM. Our method, which runs live at 3fps, utilises Gaussians as the only 3D representation, unifying the required representation for accurate, efficient tracking, mapping, and high-quality rendering. Designed for challenging monocular settings, our approach is seamlessly extendable to RGB-D SLAM when an external depth sensor is available. Several innovations are required to continuously reconstruct 3D scenes with high fidelity from a live camera. First, to move beyond the original 3DGS algorithm, which requires accurate poses from an offline Structure from Motion (SfM) system, we formulate camera tracking for 3DGS using direct optimisation against the 3D Gaussians, and show that this enables fast and robust tracking with a wide basin of convergence. Second, by utilising the explicit nature of the Gaussians, we introduce geometric verification and regularisation to handle the ambiguities occurring in incremental 3D dense reconstruction. Finally, we introduce a full SLAM system which not only achieves state-of-the-art results in novel view synthesis and trajectory estimation but also reconstruction of tiny and even transparent objects.

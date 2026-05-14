@@ -3,6 +3,10 @@ data/
 evals/
 output/
 
+# But: the demo corpus under examples/ IS checked in.
+!examples/demo-corpus/data/
+!examples/demo-corpus/data/**
+
 # Python caches
 __pycache__/
 *.py[cod]
