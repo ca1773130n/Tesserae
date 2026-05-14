@@ -83,7 +83,7 @@ Permissive licenses (MIT / Apache-2.0 / BSD) allow README redistribution with at
 | `ashawkey/stable-dreamfusion` | Apache-2.0 | https://github.com/ashawkey/stable-dreamfusion | Widely used open reimplementation of DreamFusion (paper: 2209.14988). |
 | `dreamgaussian/dreamgaussian` | MIT | https://github.com/dreamgaussian/dreamgaussian | DreamGaussian reference implementation (Tang et al., 2309.16653). |
 | `VAST-AI-Research/TripoSR` | MIT | https://github.com/VAST-AI-Research/TripoSR | TripoSR reference implementation (Tochilkin et al., 2403.02151). |
-| `hustvl/4DGaussians` | MIT | https://github.com/hustvl/4DGaussians | 4D Gaussian Splatting reference (Wu et al., 2310.08528). |
+| `hustvl/4DGaussians` | Apache-2.0 | https://github.com/hustvl/4DGaussians | 4D Gaussian Splatting reference (Wu et al., 2310.08528). |
 
 **Additional OSS repos referenced from paper frontmatter (not all of these will have READMEs mirrored — listed here for full audit):**
 
