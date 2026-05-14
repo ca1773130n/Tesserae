@@ -59,12 +59,27 @@ jobs:
         # `setup --yes` writes .llm-wiki/config.json non-interactively.
         # Every companion tool that would need network or LLM credentials
         # is disabled so the default compile path is fully offline.
+        #
+        # `--source` is repeatable (action="append" in llm_wiki/cli.py).
+        # We pass the repo root AND the demo corpus tree so the deploy
+        # contains both the LLM-Wiki dogfood (`.`) and the 3D-reconstruction
+        # showcase corpus (50 papers, 12 repos, 6 daily digests, 2 weekly
+        # syntheses, 3 open questions) seeded under examples/demo-corpus/data/.
+        #
+        # The .agent-sessions/ transcripts under examples/demo-corpus/
+        # are intentionally NOT passed as a source: the harness session
+        # importer (llm_wiki/harness_sessions.py) only ingests native
+        # Claude Code / Codex JSONL formats, not the synthetic showcase
+        # format. The five transcripts ship as file-tree artifacts in the
+        # corpus for visitors who clone the repo; they do not project into
+        # the /sessions/ index on the deployed site.
         run: |
           python -m llm_wiki project setup \
             --yes \
             --no-color \
             --source-kind Repository \
             --source . \
+            --source examples/demo-corpus/data \
             --no-cognee \
             --skip-raganything \
             --skip-install-cognee \
