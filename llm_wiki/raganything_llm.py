@@ -194,14 +194,18 @@ def make_sentence_transformers_embedding_func(
     except Exception:
         EmbeddingFunc = None  # type: ignore[assignment]
 
-    # Lazy-load the model so importing this module doesn't pay the cost.
-    _model_holder: dict = {}
+    # Eager-load the model. Lazy-loading races under concurrent inserts —
+    # multiple workers trying to materialize the same model from PyTorch's
+    # meta-tensor state at once triggers
+    # "Cannot copy out of meta tensor; no data! Please use ...to_empty()".
+    # Loading once on the calling thread sidesteps that entirely; workers
+    # then call .encode() on a fully-materialized model with no init lock
+    # contention.
+    from sentence_transformers import SentenceTransformer  # type: ignore
+    _model_instance = SentenceTransformer(model)
 
     def _model():
-        if "m" not in _model_holder:
-            from sentence_transformers import SentenceTransformer  # type: ignore
-            _model_holder["m"] = SentenceTransformer(model)
-        return _model_holder["m"]
+        return _model_instance
 
     async def embed(texts: List[str]):
         """Return numpy.ndarray of shape (len(texts), dim).

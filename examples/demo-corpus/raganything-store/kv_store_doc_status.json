@@ -1,0 +1,1475 @@
+{
+  "doc-21872029f2f74d4a8d748cb5926862f7": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-21872029f2f74d4a8d748cb5926862f7"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: VAST-AI-Research/TripoSR\ncanonical_paper: arxiv-2403-02151\n---\n\n# About VAST-AI-Research/TripoSR\n\nThe official release of *TripoSR: Fast 3D Object Reconstruction from a Single Image* (Tochilkin et al., VAST AI Research & St...",
+    "content_length": 760,
+    "created_at": "2026-05-15T19:46:37.373565+00:00",
+    "updated_at": "2026-05-15T19:48:30.303489+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/vast-ai-research-triposr/about.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874397,
+      "processing_end_time": 1778874510
+    }
+  },
+  "doc-efee674c2ffd20246abfb52e90ffa964": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-efee674c2ffd20246abfb52e90ffa964"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2103.14024\"\narxiv_url: https://arxiv.org/abs/2103.14024\ntitle: \"PlenOctrees for Real-time Rendering of Neural Radiance Fields\"\nauthors:\n  - \"Alex Yu\"\n  - \"Ruilong Li\"\n  - \"Matthew Tancik\"\n  - \"Hao Li\"\n  - \"Ren Ng\"\n  - \"Angjoo ...",
+    "content_length": 2197,
+    "created_at": "2026-05-15T19:46:37.373440+00:00",
+    "updated_at": "2026-05-15T19:48:14.934341+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2103-14024/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874397,
+      "processing_end_time": 1778874494
+    }
+  },
+  "doc-66ed01dbc31011eafae7c28b8ced18bd": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-66ed01dbc31011eafae7c28b8ced18bd"
+    ],
+    "content_summary": "---\ntype: OpenQuestion\ntitle: \"How robust is multi-view consistency under fast camera motion?\"\nsub_topics: [3D Gaussian Splatting, Visual SLAM and MVS]\npapers_surfaced_in:\n  - arxiv-2308-04079\n  - arxiv-2108-10869\n  - arxiv-2312-06741\n  - arxiv-2311-...",
+    "content_length": 2923,
+    "created_at": "2026-05-15T19:46:37.373527+00:00",
+    "updated_at": "2026-05-15T19:48:15.500565+00:00",
+    "file_path": "examples/demo-corpus/data/research/questions/multi-view-consistency.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874397,
+      "processing_end_time": 1778874495
+    }
+  },
+  "doc-70d178184c9f1536624d203b71055b64": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-b3dc42246e28acdc27923c03fab11c12",
+      "chunk-5bb0a18f713e04fc8443e094f65e4d3f"
+    ],
+    "content_summary": "---\ntype: Synthesis\nperiod: weekly\niso_week: 2026-W18\ncovers_daily:\n  - daily/2026-04-30\n  - daily/2026-05-05\npapers_anchored:\n  - arxiv-2209-14988\n  - arxiv-2211-10440\n  - arxiv-2303-11328\n  - arxiv-2305-16213\n  - arxiv-2306-17843\n  - arxiv-2309-166...",
+    "content_length": 5593,
+    "created_at": "2026-05-15T19:46:37.373569+00:00",
+    "updated_at": "2026-05-15T19:48:40.931456+00:00",
+    "file_path": "examples/demo-corpus/data/research/weekly/2026-W18/synthesis.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874397,
+      "processing_end_time": 1778874520
+    }
+  },
+  "doc-68602df8e274dd1b95ba52de8b3d8bb4": {
+    "status": "processed",
+    "chunks_count": 3,
+    "chunks_list": [
+      "chunk-c813fde1299cbc52bb51e88942b07033",
+      "chunk-e519888baab63d10a462c579c81bb3e3",
+      "chunk-627ca88fd03d8564307be09b989be23c"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: dreamgaussian/dreamgaussian\ngithub: https://github.com/dreamgaussian/dreamgaussian\nlicense: \"MIT\"\nmirrored_at: 2026-05-15\ncanonical_paper: arxiv-2309-16653\ncanonical_paper_url: https://arxiv.org/abs/2309.16653\n---\n\n# dreamg...",
+    "content_length": 8329,
+    "created_at": "2026-05-15T19:46:37.373541+00:00",
+    "updated_at": "2026-05-15T19:50:05.945579+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/dreamgaussian-dreamgaussian/readme.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874495,
+      "processing_end_time": 1778874605
+    }
+  },
+  "doc-c8af96ec09c34cba6b3e20e9e006eedc": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-c8af96ec09c34cba6b3e20e9e006eedc"
+    ],
+    "content_summary": "---\ntype: OpenQuestion\ntitle: \"Does dynamic reconstruction work at minute-scale capture in the wild?\"\nsub_topics: [Dynamic and 4D Reconstruction, 3D Gaussian Splatting]\npapers_surfaced_in:\n  - arxiv-2011-12948\n  - arxiv-2106-13228\n  - arxiv-2105-0646...",
+    "content_length": 2904,
+    "created_at": "2026-05-15T19:46:37.373523+00:00",
+    "updated_at": "2026-05-15T19:50:06.891145+00:00",
+    "file_path": "examples/demo-corpus/data/research/questions/dynamic-reconstruction-scale.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874495,
+      "processing_end_time": 1778874606
+    }
+  },
+  "doc-c0c63708e1adea212beb7d6e83516771": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-c0c63708e1adea212beb7d6e83516771"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2211.10440\"\narxiv_url: https://arxiv.org/abs/2211.10440\ntitle: \"Magic3D: High-Resolution Text-to-3D Content Creation\"\nauthors:\n  - \"Chen-Hsuan Lin\"\n  - \"Jun Gao\"\n  - \"Luming Tang\"\n  - \"Towaki Takikawa\"\n  - \"Xiaohui Zeng\"\n  - \"...",
+    "content_length": 2448,
+    "created_at": "2026-05-15T19:46:37.373467+00:00",
+    "updated_at": "2026-05-15T19:50:25.493431+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2211-10440/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874510,
+      "processing_end_time": 1778874625
+    }
+  },
+  "doc-4b8d422b0944627b01e7c77ba8f039d8": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-4b8d422b0944627b01e7c77ba8f039d8"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2312.00109\"\narxiv_url: https://arxiv.org/abs/2312.00109\ntitle: \"Scaffold-GS: Structured 3D Gaussians for View-Adaptive Rendering\"\nauthors:\n  - \"Tao Lu\"\n  - \"Mulin Yu\"\n  - \"Linning Xu\"\n  - \"Yuanbo Xiangli\"\n  - \"Limin Wang\"\n  - ...",
+    "content_length": 2204,
+    "created_at": "2026-05-15T19:46:37.373499+00:00",
+    "updated_at": "2026-05-15T19:50:45.518666+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2312-00109/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874520,
+      "processing_end_time": 1778874645
+    }
+  },
+  "doc-eeca9db1414daed89ce6cb97dc521320": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-eeca9db1414daed89ce6cb97dc521320"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: hustvl/4DGaussians\ncanonical_paper: arxiv-2310-08528\n---\n\n# About hustvl/4DGaussians\n\nThe official implementation of *4D Gaussian Splatting for Real-Time Dynamic Scene Rendering* (Wu et al., 2023). See [the paper page](../....",
+    "content_length": 773,
+    "created_at": "2026-05-15T19:46:37.373546+00:00",
+    "updated_at": "2026-05-15T19:51:02.539627+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/hustvl-4dgaussians/about.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874606,
+      "processing_end_time": 1778874662
+    }
+  },
+  "doc-135c075dc7391afb1b0d603462e342e7": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-135c075dc7391afb1b0d603462e342e7"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2301.10241\"\narxiv_url: https://arxiv.org/abs/2301.10241\ntitle: \"K-Planes: Explicit Radiance Fields in Space, Time, and Appearance\"\nauthors:\n  - \"Sara Fridovich-Keil\"\n  - \"Giacomo Meanti\"\n  - \"Frederik Warburg\"\n  - \"Benjamin Re...",
+    "content_length": 2367,
+    "created_at": "2026-05-15T19:46:37.373469+00:00",
+    "updated_at": "2026-05-15T19:51:48.249623+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2301-10241/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874606,
+      "processing_end_time": 1778874708
+    }
+  },
+  "doc-e7f48440bc6fda3db02b120c1e8bca82": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-e7f48440bc6fda3db02b120c1e8bca82"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: bmild/nerf\ncanonical_paper: arxiv-2003-08934\n---\n\n# About bmild/nerf\n\nThe original Tensorflow reference implementation of *NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis* (Mildenhall et al., 2020). S...",
+    "content_length": 770,
+    "created_at": "2026-05-15T19:46:37.373532+00:00",
+    "updated_at": "2026-05-15T19:51:14.575177+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/bmild-nerf/about.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874625,
+      "processing_end_time": 1778874674
+    }
+  },
+  "doc-1a8a7270af8c939590a0f9c7697a5b90": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-1a8a7270af8c939590a0f9c7697a5b90"
+    ],
+    "content_summary": "---\ntype: ResearchDigest\ndate: 2026-04-25\nperiod: daily\npapers_covered:\n  - arxiv-2308-04079\n  - arxiv-2311-12775\n  - arxiv-2403-17888\n  - arxiv-2312-00109\n  - arxiv-2312-02121\nsub_topics: [3D Gaussian Splatting, Mesh and Surface Reconstruction]\n---\n...",
+    "content_length": 2462,
+    "created_at": "2026-05-15T19:46:37.373415+00:00",
+    "updated_at": "2026-05-15T19:51:47.150077+00:00",
+    "file_path": "examples/demo-corpus/data/research/daily/2026-04-25/digest.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874645,
+      "processing_end_time": 1778874707
+    }
+  },
+  "doc-137c1bc42e741b7a6e96b6ddc476e477": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-137c1bc42e741b7a6e96b6ddc476e477"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2106.10689\"\narxiv_url: https://arxiv.org/abs/2106.10689\ntitle: \"NeuS: Learning Neural Implicit Surfaces by Volume Rendering for Multi-view Reconstruction\"\nauthors:\n  - \"Peng Wang\"\n  - \"Lingjie Liu\"\n  - \"Yuan Liu\"\n  - \"Christia...",
+    "content_length": 2426,
+    "created_at": "2026-05-15T19:46:37.373447+00:00",
+    "updated_at": "2026-05-15T19:52:37.470441+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2106-10689/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874662,
+      "processing_end_time": 1778874757
+    }
+  },
+  "doc-cbe78430d0376f4d6a3d05234413a4a0": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-cbe78430d0376f4d6a3d05234413a4a0"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2305.16213\"\narxiv_url: https://arxiv.org/abs/2305.16213\ntitle: \"ProlificDreamer: High-Fidelity and Diverse Text-to-3D Generation with Variational Score Distillation\"\nauthors:\n  - \"Zhengyi Wang\"\n  - \"Cheng Lu\"\n  - \"Yikai Wang\"\n...",
+    "content_length": 2543,
+    "created_at": "2026-05-15T19:46:37.373478+00:00",
+    "updated_at": "2026-05-15T19:52:42.696482+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2305-16213/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874674,
+      "processing_end_time": 1778874762
+    }
+  },
+  "doc-8e84795d808a30ea730dabef6dcde2d3": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-8e84795d808a30ea730dabef6dcde2d3"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2402.07207\"\narxiv_url: https://arxiv.org/abs/2402.07207\ntitle: \"GALA3D: Towards Text-to-3D Complex Scene Generation via Layout-guided Generative Gaussian Splatting\"\nauthors:\n  - \"Xiaoyu Zhou\"\n  - \"Xingjian Ran\"\n  - \"Yajiao Xio...",
+    "content_length": 2430,
+    "created_at": "2026-05-15T19:46:37.373513+00:00",
+    "updated_at": "2026-05-15T19:53:47.185155+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2402-07207/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874707,
+      "processing_end_time": 1778874827
+    }
+  },
+  "doc-65491bb40aaff28e47124705eb1fff58": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-65491bb40aaff28e47124705eb1fff58"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2104.10078\"\narxiv_url: https://arxiv.org/abs/2104.10078\ntitle: \"UNISURF: Unifying Neural Implicit Surfaces and Radiance Fields for Multi-View Reconstruction\"\nauthors:\n  - \"Michael Oechsle\"\n  - \"Songyou Peng\"\n  - \"Andreas Geige...",
+    "content_length": 2414,
+    "created_at": "2026-05-15T19:46:37.373444+00:00",
+    "updated_at": "2026-05-15T19:54:23.117452+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2104-10078/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874708,
+      "processing_end_time": 1778874863
+    }
+  },
+  "doc-867c76176d07b59a58df29a1d1a8eb9d": {
+    "status": "processed",
+    "chunks_count": 3,
+    "chunks_list": [
+      "chunk-95e7570668ab2add22a107c42e84d859",
+      "chunk-02c51c541bd8838daa93cb2a36760941",
+      "chunk-333901bdf7c8210583cee57303d02eb3"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: sxyu/svox2\ngithub: https://github.com/sxyu/svox2\nlicense: \"BSD-2-Clause\"\nmirrored_at: 2026-05-15\ncanonical_paper: arxiv-2112-05131\ncanonical_paper_url: https://arxiv.org/abs/2112.05131\n---\n\n# sxyu/svox2\n\n> README mirrored f...",
+    "content_length": 8716,
+    "created_at": "2026-05-15T19:46:37.373560+00:00",
+    "updated_at": "2026-05-15T19:54:47.744075+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/sxyu-svox2/readme.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874757,
+      "processing_end_time": 1778874887
+    }
+  },
+  "doc-501dafee6515bd66912047d0b36d43f9": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-501dafee6515bd66912047d0b36d43f9"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2008.02268\"\narxiv_url: https://arxiv.org/abs/2008.02268\ntitle: \"NeRF in the Wild: Neural Radiance Fields for Unconstrained Photo Collections\"\nauthors:\n  - \"Ricardo Martin-Brualla\"\n  - \"Noha Radwan\"\n  - \"Mehdi S. M. Sajjadi\"\n  ...",
+    "content_length": 2398,
+    "created_at": "2026-05-15T19:46:37.373434+00:00",
+    "updated_at": "2026-05-15T19:55:03.683482+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2008-02268/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874762,
+      "processing_end_time": 1778874903
+    }
+  },
+  "doc-e121a6c015eb471a5abd27b987476ced": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-e121a6c015eb471a5abd27b987476ced"
+    ],
+    "content_summary": "---\ntype: ResearchDigest\ndate: 2026-04-20\nperiod: daily\npapers_covered:\n  - arxiv-2002-10099\n  - arxiv-2104-10078\n  - arxiv-2106-10689\n  - arxiv-2106-12052\n  - arxiv-2206-00665\n  - arxiv-2104-06405\nsub_topics: [Mesh and Surface Reconstruction, Neural...",
+    "content_length": 2322,
+    "created_at": "2026-05-15T19:46:37.373413+00:00",
+    "updated_at": "2026-05-15T19:56:39.405510+00:00",
+    "file_path": "examples/demo-corpus/data/research/daily/2026-04-20/digest.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874827,
+      "processing_end_time": 1778874999
+    }
+  },
+  "doc-04bb470635e9fad06846df2cc6d62642": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-32b6f8bef5969e289e4fe3c770fb5f73",
+      "chunk-a4716f0532d6b5d940a3893a269cfdc9"
+    ],
+    "content_summary": "---\ntype: Synthesis\nperiod: weekly\niso_week: 2026-W17\ncovers_daily:\n  - daily/2026-04-20\n  - daily/2026-04-25\n  - daily/2026-04-30\npapers_anchored:\n  - arxiv-2308-04079\n  - arxiv-2311-12775\n  - arxiv-2403-17888\n  - arxiv-2312-00109\n  - arxiv-2106-106...",
+    "content_length": 5480,
+    "created_at": "2026-05-15T19:46:37.373568+00:00",
+    "updated_at": "2026-05-15T19:56:53.312069+00:00",
+    "file_path": "examples/demo-corpus/data/research/weekly/2026-W17/synthesis.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874863,
+      "processing_end_time": 1778875013
+    }
+  },
+  "doc-9d220499711c1162411863777d237e45": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-9d220499711c1162411863777d237e45"
+    ],
+    "content_summary": "---\ntype: OpenQuestion\ntitle: \"Feed-forward reconstruction vs per-scene optimisation: where does each win?\"\nsub_topics: [Generative 3D Representations, 3D Gaussian Splatting, Diffusion-based 3D Generation]\npapers_surfaced_in:\n  - arxiv-2311-04400\n  -...",
+    "content_length": 3070,
+    "created_at": "2026-05-15T19:46:37.373525+00:00",
+    "updated_at": "2026-05-15T19:56:53.088575+00:00",
+    "file_path": "examples/demo-corpus/data/research/questions/inference-cost-vs-fidelity.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874887,
+      "processing_end_time": 1778875013
+    }
+  },
+  "doc-8cacafa4eafbc069d9db4073799e3374": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-bc465068a32c3c5f3d12d7446a5843df",
+      "chunk-9c7d76e53023a8dbf570b925a45a1d01"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: VAST-AI-Research/TripoSR\ngithub: https://github.com/VAST-AI-Research/TripoSR\nlicense: \"MIT\"\nmirrored_at: 2026-05-15\ncanonical_paper: arxiv-2403-02151\ncanonical_paper_url: https://arxiv.org/abs/2403.02151\n---\n\n# VAST-AI-Rese...",
+    "content_length": 4848,
+    "created_at": "2026-05-15T19:46:37.373566+00:00",
+    "updated_at": "2026-05-15T19:57:15.375933+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/vast-ai-research-triposr/readme.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874903,
+      "processing_end_time": 1778875035
+    }
+  },
+  "doc-77b518713f90adb54fa0bd6ae785bcff": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-77b518713f90adb54fa0bd6ae785bcff"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"1812.04605\"\narxiv_url: https://arxiv.org/abs/1812.04605\ntitle: \"DeepV2D: Video to Depth with Differentiable Structure from Motion\"\nauthors:\n  - \"Zachary Teed\"\n  - \"Jia Deng\"\ndate: 2018-12-11\nsub_topic: Visual SLAM and MVS\nlice...",
+    "content_length": 2282,
+    "created_at": "2026-05-15T19:46:37.373425+00:00",
+    "updated_at": "2026-05-15T19:57:59.482087+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-1812-04605/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778874999,
+      "processing_end_time": 1778875079
+    }
+  },
+  "doc-c5ec848be5aa6ee5cc0be08acd6f5935": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-c5ec848be5aa6ee5cc0be08acd6f5935"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"1607.02565\"\narxiv_url: https://arxiv.org/abs/1607.02565\ntitle: \"Direct Sparse Odometry\"\nauthors:\n  - \"Jakob Engel\"\n  - \"Vladlen Koltun\"\n  - \"Daniel Cremers\"\ndate: 2016-07-09\nsub_topic: Visual SLAM and MVS\nlicense: \"CC-BY-4.0 (...",
+    "content_length": 2364,
+    "created_at": "2026-05-15T19:46:37.373422+00:00",
+    "updated_at": "2026-05-15T19:58:06.749222+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-1607-02565/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875013,
+      "processing_end_time": 1778875086
+    }
+  },
+  "doc-26c994414b7985eeccba7c9a66fd05d3": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-26c994414b7985eeccba7c9a66fd05d3"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2403.14627\"\narxiv_url: https://arxiv.org/abs/2403.14627\ntitle: \"MVSplat: Efficient 3D Gaussian Splatting from Sparse Multi-View Images\"\nauthors:\n  - \"Yuedong Chen\"\n  - \"Haofei Xu\"\n  - \"Chuanxia Zheng\"\n  - \"Bohan Zhuang\"\n  - \"M...",
+    "content_length": 2361,
+    "created_at": "2026-05-15T19:46:37.373516+00:00",
+    "updated_at": "2026-05-15T19:58:43.117982+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2403-14627/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875013,
+      "processing_end_time": 1778875123
+    }
+  },
+  "doc-c9fd8d6d633ccb294d8ac229c312a9a7": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-c9fd8d6d633ccb294d8ac229c312a9a7"
+    ],
+    "content_summary": "---\ntype: ResearchDigest\ndate: 2026-05-05\nperiod: daily\npapers_covered:\n  - arxiv-2209-14988\n  - arxiv-2211-10440\n  - arxiv-2303-11328\n  - arxiv-2305-16213\n  - arxiv-2306-17843\n  - arxiv-2309-16653\nsub_topics: [Diffusion-based 3D Generation, 3D Gauss...",
+    "content_length": 2561,
+    "created_at": "2026-05-15T19:46:37.373418+00:00",
+    "updated_at": "2026-05-15T19:59:00.196489+00:00",
+    "file_path": "examples/demo-corpus/data/research/daily/2026-05-05/digest.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875035,
+      "processing_end_time": 1778875140
+    }
+  },
+  "doc-24800bbb3bf5dc8182a3f3b86a0d5dad": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-24800bbb3bf5dc8182a3f3b86a0d5dad"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2103.13415\"\narxiv_url: https://arxiv.org/abs/2103.13415\ntitle: \"Mip-NeRF: A Multiscale Representation for Anti-Aliasing Neural Radiance Fields\"\nauthors:\n  - \"Jonathan T. Barron\"\n  - \"Ben Mildenhall\"\n  - \"Matthew Tancik\"\n  - \"P...",
+    "content_length": 2435,
+    "created_at": "2026-05-15T19:46:37.373438+00:00",
+    "updated_at": "2026-05-15T19:59:42.815192+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2103-13415/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875079,
+      "processing_end_time": 1778875182
+    }
+  },
+  "doc-2c91a60b726aa8161d334939e44ec72e": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-2c91a60b726aa8161d334939e44ec72e"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: Totoro97/NeuS\ncanonical_paper: arxiv-2106-10689\n---\n\n# About Totoro97/NeuS\n\nThe official implementation of *NeuS: Learning Neural Implicit Surfaces by Volume Rendering for Multi-view Reconstruction* (Wang et al., 2021). See...",
+    "content_length": 800,
+    "created_at": "2026-05-15T19:46:37.373562+00:00",
+    "updated_at": "2026-05-15T19:59:03.764822+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/totoro97-neus/about.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875086,
+      "processing_end_time": 1778875143
+    }
+  },
+  "doc-71173d9786b13b28dc182e4c921d912b": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-71173d9786b13b28dc182e4c921d912b"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2201.05989\"\narxiv_url: https://arxiv.org/abs/2201.05989\ntitle: \"Instant Neural Graphics Primitives with a Multiresolution Hash Encoding\"\nauthors:\n  - \"Thomas Müller\"\n  - \"Alex Evans\"\n  - \"Christoph Schied\"\n  - \"Alexander Kelle...",
+    "content_length": 2451,
+    "created_at": "2026-05-15T19:46:37.373461+00:00",
+    "updated_at": "2026-05-15T20:00:04.343932+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2201-05989/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875123,
+      "processing_end_time": 1778875204
+    }
+  },
+  "doc-179a41f27c8e25c365ff0d8b13bddc43": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-179a41f27c8e25c365ff0d8b13bddc43"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2209.14988\"\narxiv_url: https://arxiv.org/abs/2209.14988\ntitle: \"DreamFusion: Text-to-3D using 2D Diffusion\"\nauthors:\n  - \"Ben Poole\"\n  - \"Ajay Jain\"\n  - \"Jonathan T. Barron\"\n  - \"Ben Mildenhall\"\ndate: 2022-09-29\nsub_topic: Dif...",
+    "content_length": 2402,
+    "created_at": "2026-05-15T19:46:37.373465+00:00",
+    "updated_at": "2026-05-15T20:00:35.399207+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2209-14988/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875140,
+      "processing_end_time": 1778875235
+    }
+  },
+  "doc-0baf845c234eac590adb7912cde85960": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-0baf845c234eac590adb7912cde85960"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2304.14377\"\narxiv_url: https://arxiv.org/abs/2304.14377\ntitle: \"Co-SLAM: Joint Coordinate and Sparse Parametric Encodings for Neural Real-Time SLAM\"\nauthors:\n  - \"Hengyi Wang\"\n  - \"Jingwen Wang\"\n  - \"Lourdes Agapito\"\ndate: 202...",
+    "content_length": 2289,
+    "created_at": "2026-05-15T19:46:37.373476+00:00",
+    "updated_at": "2026-05-15T20:00:34.957859+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2304-14377/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875143,
+      "processing_end_time": 1778875234
+    }
+  },
+  "doc-11ccc947afd3d6b02019a4d324bd68d3": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-11ccc947afd3d6b02019a4d324bd68d3"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2306.17843\"\narxiv_url: https://arxiv.org/abs/2306.17843\ntitle: \"Magic123: One Image to High-Quality 3D Object Generation Using Both 2D and 3D Diffusion Priors\"\nauthors:\n  - \"Guocheng Qian\"\n  - \"Jinjie Mai\"\n  - \"Abdullah Hamdi\"...",
+    "content_length": 2571,
+    "created_at": "2026-05-15T19:46:37.373479+00:00",
+    "updated_at": "2026-05-15T20:03:06.836166+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2306-17843/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875183,
+      "processing_end_time": 1778875386
+    }
+  },
+  "doc-e871ba692ecdc2269f6f148bf3849940": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-e871ba692ecdc2269f6f148bf3849940"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2106.13228\"\narxiv_url: https://arxiv.org/abs/2106.13228\ntitle: \"HyperNeRF: A Higher-Dimensional Representation for Topologically Varying Neural Radiance Fields\"\nauthors:\n  - \"Keunhong Park\"\n  - \"Utkarsh Sinha\"\n  - \"Peter Hedma...",
+    "content_length": 2511,
+    "created_at": "2026-05-15T19:46:37.373452+00:00",
+    "updated_at": "2026-05-15T20:02:57.634750+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2106-13228/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875204,
+      "processing_end_time": 1778875377
+    }
+  },
+  "doc-c28736df1db6d66409e1a30cd3b303ae": {
+    "status": "processed",
+    "chunks_count": 3,
+    "chunks_list": [
+      "chunk-0d057f3bc5fa56c4a6477fe9f9195f8b",
+      "chunk-d1cb4f77562fea889c9e32a8c9b6b118",
+      "chunk-4cab660adb0c0033bdf9b7cb3ec02bfd"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: cvlab-columbia/zero123\ngithub: https://github.com/cvlab-columbia/zero123\nlicense: \"MIT\"\nmirrored_at: 2026-05-15\ncanonical_paper: arxiv-2303-11328\ncanonical_paper_url: https://arxiv.org/abs/2303.11328\n---\n\n# cvlab-columbia/z...",
+    "content_length": 8957,
+    "created_at": "2026-05-15T19:46:37.373537+00:00",
+    "updated_at": "2026-05-15T20:04:04.062529+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/cvlab-columbia-zero123/readme.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875235,
+      "processing_end_time": 1778875444
+    }
+  },
+  "doc-e0d74cdc251a67f0e5f45c520fffe59f": {
+    "status": "processed",
+    "chunks_count": 5,
+    "chunks_list": [
+      "chunk-41e2a18164d88d58975577aab63d7325",
+      "chunk-0904dcd328c5d8ef13d24665f942dc54",
+      "chunk-f03bfcd22d34d1827ec44d4dfcce42df",
+      "chunk-4ace087a61df1fdd6d045f0f39a3166c",
+      "chunk-eadedf8ea91fdbae049617371c868a2e"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: graphdeco-inria/gaussian-splatting\ngithub: https://github.com/graphdeco-inria/gaussian-splatting\nlicense: \"Gaussian-Splatting License (research-only, non-commercial)\"\nmirrored_at: 2026-05-15\ncanonical_paper: arxiv-2308-0407...",
+    "content_length": 20567,
+    "created_at": "2026-05-15T19:46:37.373545+00:00",
+    "updated_at": "2026-05-15T20:05:13.833474+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/graphdeco-inria-gaussian-splatting/readme.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875235,
+      "processing_end_time": 1778875513
+    }
+  },
+  "doc-f0561cfd70b96f995d3cdeb043981668": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-f0561cfd70b96f995d3cdeb043981668"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2112.05131\"\narxiv_url: https://arxiv.org/abs/2112.05131\ntitle: \"Plenoxels: Radiance Fields without Neural Networks\"\nauthors:\n  - \"Alex Yu\"\n  - \"Sara Fridovich-Keil\"\n  - \"Matthew Tancik\"\n  - \"Qinhong Chen\"\n  - \"Benjamin Recht\"\n...",
+    "content_length": 2494,
+    "created_at": "2026-05-15T19:46:37.373457+00:00",
+    "updated_at": "2026-05-15T20:05:02.151780+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2112-05131/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875377,
+      "processing_end_time": 1778875502
+    }
+  },
+  "doc-f98a94c0a3f79ba956d93735db4362c0": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-f98a94c0a3f79ba956d93735db4362c0"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: ashawkey/stable-dreamfusion\ncanonical_paper: arxiv-2209-14988\n---\n\n# About ashawkey/stable-dreamfusion\n\nThe widely used open reimplementation of *DreamFusion: Text-to-3D using 2D Diffusion* (Poole et al., 2022) by Jiaxiang ...",
+    "content_length": 809,
+    "created_at": "2026-05-15T19:46:37.373529+00:00",
+    "updated_at": "2026-05-15T20:04:46.940423+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/ashawkey-stable-dreamfusion/about.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875386,
+      "processing_end_time": 1778875486
+    }
+  },
+  "doc-b4a36dbf1bfe982e8516ef5fb0a1dd0e": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-b4a36dbf1bfe982e8516ef5fb0a1dd0e"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2403.16292\"\narxiv_url: https://arxiv.org/abs/2403.16292\ntitle: \"latentSplat: Autoencoding Variational Gaussians for Fast Generalizable 3D Reconstruction\"\nauthors:\n  - \"Christopher Wewer\"\n  - \"Kevin Raj\"\n  - \"Eddy Ilg\"\n  - \"Ber...",
+    "content_length": 2392,
+    "created_at": "2026-05-15T19:46:37.373518+00:00",
+    "updated_at": "2026-05-15T20:05:36.031898+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2403-16292/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875444,
+      "processing_end_time": 1778875536
+    }
+  },
+  "doc-dea341f1a2c850107557c2c2de09ba69": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-dea341f1a2c850107557c2c2de09ba69"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2112.12130\"\narxiv_url: https://arxiv.org/abs/2112.12130\ntitle: \"NICE-SLAM: Neural Implicit Scalable Encoding for SLAM\"\nauthors:\n  - \"Zihan Zhu\"\n  - \"Songyou Peng\"\n  - \"Viktor Larsson\"\n  - \"Weiwei Xu\"\n  - \"Hujun Bao\"\n  - \"Zhaop...",
+    "content_length": 2493,
+    "created_at": "2026-05-15T19:46:37.373459+00:00",
+    "updated_at": "2026-05-15T20:07:06.135639+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2112-12130/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875487,
+      "processing_end_time": 1778875626
+    }
+  },
+  "doc-0a914c77868426e1f8d5848af2165c17": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-0a914c77868426e1f8d5848af2165c17"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2304.04278\"\narxiv_url: https://arxiv.org/abs/2304.04278\ntitle: \"Point-SLAM: Dense Neural Point Cloud-based SLAM\"\nauthors:\n  - \"Erik Sandström\"\n  - \"Yue Li\"\n  - \"Luc Van Gool\"\n  - \"Martin R. Oswald\"\ndate: 2023-04-09\nsub_topic: ...",
+    "content_length": 2354,
+    "created_at": "2026-05-15T19:46:37.373474+00:00",
+    "updated_at": "2026-05-15T20:07:01.096115+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2304-04278/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875502,
+      "processing_end_time": 1778875621
+    }
+  },
+  "doc-39dac1db0f50be2348ba37c8912fe321": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-39dac1db0f50be2348ba37c8912fe321"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2206.00665\"\narxiv_url: https://arxiv.org/abs/2206.00665\ntitle: \"MonoSDF: Exploring Monocular Geometric Cues for Neural Implicit Surface Reconstruction\"\nauthors:\n  - \"Zehao Yu\"\n  - \"Songyou Peng\"\n  - \"Michael Niemeyer\"\n  - \"Tor...",
+    "content_length": 2443,
+    "created_at": "2026-05-15T19:46:37.373463+00:00",
+    "updated_at": "2026-05-15T20:07:42.360451+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2206-00665/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875513,
+      "processing_end_time": 1778875662
+    }
+  },
+  "doc-7801ca45c7d643564f04c967025dc122": {
+    "status": "processed",
+    "chunks_count": 4,
+    "chunks_list": [
+      "chunk-cee14ff0001178656f392a3bf199e70c",
+      "chunk-b0ea2d1fff273acbdf62338200407400",
+      "chunk-6fbd6ef7fa46c0ba5c1daac3eb1cafc5",
+      "chunk-89b96bffec912e64ed752226976c3822"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: ashawkey/stable-dreamfusion\ngithub: https://github.com/ashawkey/stable-dreamfusion\nlicense: \"Apache-2.0\"\nmirrored_at: 2026-05-15\ncanonical_paper: arxiv-2209-14988\ncanonical_paper_url: https://arxiv.org/abs/2209.14988\n---\n\n#...",
+    "content_length": 15982,
+    "created_at": "2026-05-15T19:46:37.373530+00:00",
+    "updated_at": "2026-05-15T20:07:42.834238+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/ashawkey-stable-dreamfusion/readme.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875536,
+      "processing_end_time": 1778875662
+    }
+  },
+  "doc-faebadc81c39822f071629969e8b6a2b": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-faebadc81c39822f071629969e8b6a2b"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2311.04400\"\narxiv_url: https://arxiv.org/abs/2311.04400\ntitle: \"LRM: Large Reconstruction Model for Single Image to 3D\"\nauthors:\n  - \"Yicong Hong\"\n  - \"Kai Zhang\"\n  - \"Jiuxiang Gu\"\n  - \"Sai Bi\"\n  - \"Yang Zhou\"\n  - \"Difan Liu\"\n...",
+    "content_length": 2402,
+    "created_at": "2026-05-15T19:46:37.373486+00:00",
+    "updated_at": "2026-05-15T20:09:03.200828+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2311-04400/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875621,
+      "processing_end_time": 1778875743
+    }
+  },
+  "doc-252e33536ee596bbdc69a5c1521289c2": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-252e33536ee596bbdc69a5c1521289c2"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2104.06405\"\narxiv_url: https://arxiv.org/abs/2104.06405\ntitle: \"BARF: Bundle-Adjusting Neural Radiance Fields\"\nauthors:\n  - \"Chen-Hsuan Lin\"\n  - \"Wei-Chiu Ma\"\n  - \"Antonio Torralba\"\n  - \"Simon Lucey\"\ndate: 2021-04-13\nsub_topic...",
+    "content_length": 2320,
+    "created_at": "2026-05-15T19:46:37.373442+00:00",
+    "updated_at": "2026-05-15T20:09:15.819913+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2104-06405/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875626,
+      "processing_end_time": 1778875755
+    }
+  },
+  "doc-22bc14784620637c470939b2097cd200": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-22bc14784620637c470939b2097cd200"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2311.06214\"\narxiv_url: https://arxiv.org/abs/2311.06214\ntitle: \"Instant3D: Fast Text-to-3D with Sparse-View Generation and Large Reconstruction Model\"\nauthors:\n  - \"Jiahao Li\"\n  - \"Hao Tan\"\n  - \"Kai Zhang\"\n  - \"Zexiang Xu\"\n  -...",
+    "content_length": 2644,
+    "created_at": "2026-05-15T19:46:37.373488+00:00",
+    "updated_at": "2026-05-15T20:11:46.272438+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2311-06214/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875662,
+      "processing_end_time": 1778875906
+    }
+  },
+  "doc-d0dff9058b6eb6ab9730d5170f51b92d": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-d0dff9058b6eb6ab9730d5170f51b92d"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2111.12077\"\narxiv_url: https://arxiv.org/abs/2111.12077\ntitle: \"Mip-NeRF 360: Unbounded Anti-Aliased Neural Radiance Fields\"\nauthors:\n  - \"Jonathan T. Barron\"\n  - \"Ben Mildenhall\"\n  - \"Dor Verbin\"\n  - \"Pratul P. Srinivasan\"\n  ...",
+    "content_length": 2464,
+    "created_at": "2026-05-15T19:46:37.373456+00:00",
+    "updated_at": "2026-05-15T20:09:15.582558+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2111-12077/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875662,
+      "processing_end_time": 1778875755
+    }
+  },
+  "doc-d81fdba1f24c6b674084889fda5183d4": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-d81fdba1f24c6b674084889fda5183d4"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2401.04099\"\narxiv_url: https://arxiv.org/abs/2401.04099\ntitle: \"AGG: Amortized Generative 3D Gaussians for Single Image to 3D\"\nauthors:\n  - \"Dejia Xu\"\n  - \"Ye Yuan\"\n  - \"Morteza Mardani\"\n  - \"Sifei Liu\"\n  - \"Jiaming Song\"\n  - ...",
+    "content_length": 2272,
+    "created_at": "2026-05-15T19:46:37.373507+00:00",
+    "updated_at": "2026-05-15T20:11:47.234190+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2401-04099/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875743,
+      "processing_end_time": 1778875907
+    }
+  },
+  "doc-ae55891f39c7638498f51d575820bc69": {
+    "status": "processed",
+    "chunks_count": 4,
+    "chunks_list": [
+      "chunk-758b48d0e0102138cc11ccffdb5fff60",
+      "chunk-e94987ca7ac98962142f83ef53476d0b",
+      "chunk-5d8dc07a758da2f544255725b8c6e1a2",
+      "chunk-0d7c1d8ea46e8d39c693dee7fccbb8f2"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: hustvl/4DGaussians\ngithub: https://github.com/hustvl/4DGaussians\nlicense: \"Apache-2.0\"\nmirrored_at: 2026-05-15\ncanonical_paper: arxiv-2310-08528\ncanonical_paper_url: https://arxiv.org/abs/2310.08528\n---\n\n# hustvl/4DGaussian...",
+    "content_length": 13124,
+    "created_at": "2026-05-15T19:46:37.373548+00:00",
+    "updated_at": "2026-05-15T20:12:19.607400+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/hustvl-4dgaussians/readme.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875755,
+      "processing_end_time": 1778875939
+    }
+  },
+  "doc-e0eea83c50adbc2bba8e169fafb1efca": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-e0eea83c50adbc2bba8e169fafb1efca"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: Totoro97/NeuS\ngithub: https://github.com/Totoro97/NeuS\nlicense: \"MIT\"\nmirrored_at: 2026-05-15\ncanonical_paper: arxiv-2106-10689\ncanonical_paper_url: https://arxiv.org/abs/2106.10689\n---\n\n# Totoro97/NeuS\n\n> README mirrored f...",
+    "content_length": 3528,
+    "created_at": "2026-05-15T19:46:37.373563+00:00",
+    "updated_at": "2026-05-15T20:12:17.858975+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/totoro97-neus/readme.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875755,
+      "processing_end_time": 1778875937
+    }
+  },
+  "doc-ed61775b026776e3df7ec95d66d9c8df": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-ed61775b026776e3df7ec95d66d9c8df"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2003.08934\"\narxiv_url: https://arxiv.org/abs/2003.08934\ntitle: \"NeRF: Representing Scenes as Neural Radiance Fields for View Synthesis\"\nauthors:\n  - \"Ben Mildenhall\"\n  - \"Pratul P. Srinivasan\"\n  - \"Matthew Tancik\"\n  - \"Jonatha...",
+    "content_length": 2474,
+    "created_at": "2026-05-15T19:46:37.373431+00:00",
+    "updated_at": "2026-05-15T20:14:03.404324+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2003-08934/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875906,
+      "processing_end_time": 1778876043
+    }
+  },
+  "doc-7d4bb138a75a3adf4eebfac8bdf1be29": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-7d4bb138a75a3adf4eebfac8bdf1be29"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2303.11328\"\narxiv_url: https://arxiv.org/abs/2303.11328\ntitle: \"Zero-1-to-3: Zero-shot One Image to 3D Object\"\nauthors:\n  - \"Ruoshi Liu\"\n  - \"Rundi Wu\"\n  - \"Basile Van Hoorick\"\n  - \"Pavel Tokmakov\"\n  - \"Sergey Zakharov\"\n  - \"C...",
+    "content_length": 2490,
+    "created_at": "2026-05-15T19:46:37.373472+00:00",
+    "updated_at": "2026-05-15T20:14:02.361898+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2303-11328/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875907,
+      "processing_end_time": 1778876042
+    }
+  },
+  "doc-d445282e0f2225e2a32ef51280563a09": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-d445282e0f2225e2a32ef51280563a09"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2308.04079\"\narxiv_url: https://arxiv.org/abs/2308.04079\ntitle: \"3D Gaussian Splatting for Real-Time Radiance Field Rendering\"\nauthors:\n  - \"Bernhard Kerbl\"\n  - \"Georgios Kopanas\"\n  - \"Thomas Leimkühler\"\n  - \"George Drettakis\"\n...",
+    "content_length": 2439,
+    "created_at": "2026-05-15T19:46:37.373481+00:00",
+    "updated_at": "2026-05-15T20:13:34.903653+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2308-04079/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875938,
+      "processing_end_time": 1778876014
+    }
+  },
+  "doc-2fd2757a4334bd3990412235a6cbd419": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-2fd2757a4334bd3990412235a6cbd419"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2311.13384\"\narxiv_url: https://arxiv.org/abs/2311.13384\ntitle: \"LucidDreamer: Domain-free Generation of 3D Gaussian Splatting Scenes\"\nauthors:\n  - \"Jaeyoung Chung\"\n  - \"Suyoung Lee\"\n  - \"Hyeongjin Nam\"\n  - \"Jaerin Lee\"\n  - \"Ky...",
+    "content_length": 2294,
+    "created_at": "2026-05-15T19:46:37.373494+00:00",
+    "updated_at": "2026-05-15T20:14:03.196410+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2311-13384/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778875939,
+      "processing_end_time": 1778876043
+    }
+  },
+  "doc-c5c7f1e459e9c1753c0a4eb10eae7e1d": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-c5c7f1e459e9c1753c0a4eb10eae7e1d"
+    ],
+    "content_summary": "---\ntype: ResearchDigest\ndate: 2026-04-30\nperiod: daily\npapers_covered:\n  - arxiv-2108-10869\n  - arxiv-2112-12130\n  - arxiv-2304-04278\n  - arxiv-2304-14377\n  - arxiv-2311-11700\n  - arxiv-2312-06741\nsub_topics: [Visual SLAM and MVS, 3D Gaussian Splatt...",
+    "content_length": 2431,
+    "created_at": "2026-05-15T19:46:37.373417+00:00",
+    "updated_at": "2026-05-15T20:15:39.259221+00:00",
+    "file_path": "examples/demo-corpus/data/research/daily/2026-04-30/digest.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876015,
+      "processing_end_time": 1778876139
+    }
+  },
+  "doc-3243555eac5ed46cea7fe8cead1666bc": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-3243555eac5ed46cea7fe8cead1666bc"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2312.02121\"\narxiv_url: https://arxiv.org/abs/2312.02121\ntitle: \"Mathematical Supplement for the gsplat Library\"\nauthors:\n  - \"Vickie Ye\"\n  - \"Angjoo Kanazawa\"\ndate: 2023-12-04\nsub_topic: 3D Gaussian Splatting\nmethods: [Gaussia...",
+    "content_length": 2112,
+    "created_at": "2026-05-15T19:46:37.373501+00:00",
+    "updated_at": "2026-05-15T20:15:52.304441+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2312-02121/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876042,
+      "processing_end_time": 1778876152
+    }
+  },
+  "doc-27c8a391c236226d67322607a99b2e56": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-27c8a391c236226d67322607a99b2e56"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2302.12249\"\narxiv_url: https://arxiv.org/abs/2302.12249\ntitle: \"MERF: Memory-Efficient Radiance Fields for Real-time View Synthesis in Unbounded Scenes\"\nauthors:\n  - \"Christian Reiser\"\n  - \"Richard Szeliski\"\n  - \"Dor Verbin\"\n ...",
+    "content_length": 2505,
+    "created_at": "2026-05-15T19:46:37.373470+00:00",
+    "updated_at": "2026-05-15T20:15:57.049260+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2302-12249/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876043,
+      "processing_end_time": 1778876157
+    }
+  },
+  "doc-640801c18546ebea4632cd80bbad0951": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-640801c18546ebea4632cd80bbad0951"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2011.12948\"\narxiv_url: https://arxiv.org/abs/2011.12948\ntitle: \"Nerfies: Deformable Neural Radiance Fields\"\nauthors:\n  - \"Keunhong Park\"\n  - \"Utkarsh Sinha\"\n  - \"Jonathan T. Barron\"\n  - \"Sofien Bouaziz\"\n  - \"Dan B Goldman\"\n  -...",
+    "content_length": 2401,
+    "created_at": "2026-05-15T19:46:37.373436+00:00",
+    "updated_at": "2026-05-15T20:15:57.975170+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2011-12948/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876043,
+      "processing_end_time": 1778876157
+    }
+  },
+  "doc-add2de44399af98e378bc92e1b3f3d85": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-add2de44399af98e378bc92e1b3f3d85"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2404.06109\"\narxiv_url: https://arxiv.org/abs/2404.06109\ntitle: \"Revising Densification in Gaussian Splatting\"\nauthors:\n  - \"Samuel Rota Bulò\"\n  - \"Lorenzo Porzi\"\n  - \"Peter Kontschieder\"\ndate: 2024-04-09\nsub_topic: 3D Gaussian...",
+    "content_length": 2287,
+    "created_at": "2026-05-15T19:46:37.373521+00:00",
+    "updated_at": "2026-05-15T20:17:20.823647+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2404-06109/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876139,
+      "processing_end_time": 1778876240
+    }
+  },
+  "doc-eaaf691c43304c4a589967639d84b94f": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-eaaf691c43304c4a589967639d84b94f"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: sxyu/svox2\ncanonical_paper: arxiv-2112-05131\n---\n\n# About sxyu/svox2\n\nThe reference implementation of *Plenoxels: Radiance Fields without Neural Networks* (Yu et al., 2021), distributed as the `svox2` library. See [the pape...",
+    "content_length": 718,
+    "created_at": "2026-05-15T19:46:37.373559+00:00",
+    "updated_at": "2026-05-15T20:17:05.991715+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/sxyu-svox2/about.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876152,
+      "processing_end_time": 1778876225
+    }
+  },
+  "doc-61a153082bbdd12d0fece3ecc8442ad9": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-61a153082bbdd12d0fece3ecc8442ad9"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2105.06468\"\narxiv_url: https://arxiv.org/abs/2105.06468\ntitle: \"Dynamic View Synthesis from Dynamic Monocular Video\"\nauthors:\n  - \"Chen Gao\"\n  - \"Ayush Saraf\"\n  - \"Johannes Kopf\"\n  - \"Jia-Bin Huang\"\ndate: 2021-05-13\nsub_topic:...",
+    "content_length": 2325,
+    "created_at": "2026-05-15T19:46:37.373445+00:00",
+    "updated_at": "2026-05-15T20:18:31.772203+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2105-06468/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876157,
+      "processing_end_time": 1778876311
+    }
+  },
+  "doc-d585a450d31daf1370ab99c3ececfb44": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-d585a450d31daf1370ab99c3ececfb44"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: dreamgaussian/dreamgaussian\ncanonical_paper: arxiv-2309-16653\n---\n\n# About dreamgaussian/dreamgaussian\n\nThe official implementation of *DreamGaussian: Generative Gaussian Splatting for Efficient 3D Content Creation* (Tang e...",
+    "content_length": 790,
+    "created_at": "2026-05-15T19:46:37.373539+00:00",
+    "updated_at": "2026-05-15T20:16:57.637248+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/dreamgaussian-dreamgaussian/about.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876158,
+      "processing_end_time": 1778876217
+    }
+  },
+  "doc-5a20b3ebc3dcc9adfa50adfa770ad6d2": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-5a20b3ebc3dcc9adfa50adfa770ad6d2"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2312.06741\"\narxiv_url: https://arxiv.org/abs/2312.06741\ntitle: \"Gaussian Splatting SLAM\"\nauthors:\n  - \"Hidenobu Matsuki\"\n  - \"Riku Murai\"\n  - \"Paul H. J. Kelly\"\n  - \"Andrew J. Davison\"\ndate: 2023-12-11\nsub_topic: Visual SLAM a...",
+    "content_length": 2322,
+    "created_at": "2026-05-15T19:46:37.373505+00:00",
+    "updated_at": "2026-05-15T20:19:28.770522+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2312-06741/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876217,
+      "processing_end_time": 1778876368
+    }
+  },
+  "doc-a3cbcbb17496b10f5be0214a50b95a7f": {
+    "status": "processed",
+    "chunks_count": 6,
+    "chunks_list": [
+      "chunk-eea3b682e8bd992578c8df7af80e379d",
+      "chunk-e7155c5c4414366947e20975f11efaef",
+      "chunk-5b9702cfd82aaa0f9d50ba7409bbecf8",
+      "chunk-0096ef684fc11385dab039c4985ae213",
+      "chunk-67aca36ec8eb49d9f01fa3055f69d8fd",
+      "chunk-5d77e66aa7cc152f532934b3e4405857"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: NVlabs/instant-ngp\ngithub: https://github.com/NVlabs/instant-ngp\nlicense: \"NVIDIA Source Code License-NC (non-commercial research)\"\nmirrored_at: 2026-05-15\ncanonical_paper: arxiv-2201-05989\ncanonical_paper_url: https://arxi...",
+    "content_length": 21734,
+    "created_at": "2026-05-15T19:46:37.373554+00:00",
+    "updated_at": "2026-05-15T20:22:03.061199+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/nvlabs-instant-ngp/readme.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876226,
+      "processing_end_time": 1778876523
+    }
+  },
+  "doc-337678cf3778b51b05ee538a88446921": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-f175249759ca8a973f8918ff16dfac34",
+      "chunk-bfb5c9e689ffa78ae20907ec96c23e19"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: nerfstudio-project/gsplat\ngithub: https://github.com/nerfstudio-project/gsplat\nlicense: \"Apache-2.0\"\nmirrored_at: 2026-05-15\ncanonical_paper: arxiv-2312-02121\ncanonical_paper_url: https://arxiv.org/abs/2312.02121\n---\n\n# ner...",
+    "content_length": 5688,
+    "created_at": "2026-05-15T19:46:37.373551+00:00",
+    "updated_at": "2026-05-15T20:20:30.268921+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/nerfstudio-project-gsplat/readme.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876240,
+      "processing_end_time": 1778876430
+    }
+  },
+  "doc-e8d7bbefe39a52948bd9d7195856ac2b": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-e8d7bbefe39a52948bd9d7195856ac2b"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2309.16653\"\narxiv_url: https://arxiv.org/abs/2309.16653\ntitle: \"DreamGaussian: Generative Gaussian Splatting for Efficient 3D Content Creation\"\nauthors:\n  - \"Jiaxiang Tang\"\n  - \"Jiawei Ren\"\n  - \"Hang Zhou\"\n  - \"Ziwei Liu\"\n  - ...",
+    "content_length": 2287,
+    "created_at": "2026-05-15T19:46:37.373483+00:00",
+    "updated_at": "2026-05-15T20:21:23.583154+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2309-16653/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876312,
+      "processing_end_time": 1778876483
+    }
+  },
+  "doc-50e33da257497d62c9963654a61913d2": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-50e33da257497d62c9963654a61913d2"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: nerfstudio-project/gsplat\ncanonical_paper: arxiv-2312-02121\n---\n\n# About nerfstudio-project/gsplat\n\nThe open, permissive CUDA library for **Gaussian splatting** maintained by the Nerfstudio team, accompanied by the mathemat...",
+    "content_length": 783,
+    "created_at": "2026-05-15T19:46:37.373549+00:00",
+    "updated_at": "2026-05-15T20:21:08.873002+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/nerfstudio-project-gsplat/about.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876369,
+      "processing_end_time": 1778876468
+    }
+  },
+  "doc-f6fcd8824908a999c0b58a88cfc0f735": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-f6fcd8824908a999c0b58a88cfc0f735"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2002.10099\"\narxiv_url: https://arxiv.org/abs/2002.10099\ntitle: \"Implicit Geometric Regularization for Learning Shapes\"\nauthors:\n  - \"Amos Gropp\"\n  - \"Lior Yariv\"\n  - \"Niv Haim\"\n  - \"Matan Atzmon\"\n  - \"Yaron Lipman\"\ndate: 2020-...",
+    "content_length": 2267,
+    "created_at": "2026-05-15T19:46:37.373429+00:00",
+    "updated_at": "2026-05-15T20:22:36.746023+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2002-10099/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876430,
+      "processing_end_time": 1778876556
+    }
+  },
+  "doc-6ec02429fab7e72a6a23d2a0f735836e": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-6ec02429fab7e72a6a23d2a0f735836e"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2403.17888\"\narxiv_url: https://arxiv.org/abs/2403.17888\ntitle: \"2D Gaussian Splatting for Geometrically Accurate Radiance Fields\"\nauthors:\n  - \"Binbin Huang\"\n  - \"Zehao Yu\"\n  - \"Anpei Chen\"\n  - \"Andreas Geiger\"\n  - \"Shenghua G...",
+    "content_length": 2338,
+    "created_at": "2026-05-15T19:46:37.373520+00:00",
+    "updated_at": "2026-05-15T20:23:09.178846+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2403-17888/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876469,
+      "processing_end_time": 1778876589
+    }
+  },
+  "doc-cb7662ca60286f5c929b6bb92d667dfd": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-cb7662ca60286f5c929b6bb92d667dfd"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2310.08528\"\narxiv_url: https://arxiv.org/abs/2310.08528\ntitle: \"4D Gaussian Splatting for Real-Time Dynamic Scene Rendering\"\nauthors:\n  - \"Guanjun Wu\"\n  - \"Taoran Yi\"\n  - \"Jiemin Fang\"\n  - \"Lingxi Xie\"\n  - \"Xiaopeng Zhang\"\n  -...",
+    "content_length": 2449,
+    "created_at": "2026-05-15T19:46:37.373484+00:00",
+    "updated_at": "2026-05-15T20:24:20.226368+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2310-08528/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876483,
+      "processing_end_time": 1778876660
+    }
+  },
+  "doc-ec770f62777c513047108cb79ba7aa75": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-ec770f62777c513047108cb79ba7aa75"
+    ],
+    "content_summary": "---\ntype: ResearchDigest\ndate: 2026-04-15\nperiod: daily\npapers_covered:\n  - arxiv-2103-13415\n  - arxiv-2103-14024\n  - arxiv-2112-05131\n  - arxiv-2201-05989\n  - arxiv-2111-12077\nsub_topics: [Neural Radiance Fields]\n---\n\n# Daily digest — 2026-04-15\n\nTo...",
+    "content_length": 2187,
+    "created_at": "2026-05-15T19:46:37.373409+00:00",
+    "updated_at": "2026-05-15T20:23:27.433199+00:00",
+    "file_path": "examples/demo-corpus/data/research/daily/2026-04-15/digest.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876523,
+      "processing_end_time": 1778876607
+    }
+  },
+  "doc-55e21566e6ed876de35e80af4ee1d302": {
+    "status": "processed",
+    "chunks_count": 3,
+    "chunks_list": [
+      "chunk-833bec7f18854880457df56d1a16dbb7",
+      "chunk-589b580dce9f23cba1db6f4f68a4ae77",
+      "chunk-5160cf1bfca5ef8dc4dd9f099386ea9e"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: princeton-vl/DROID-SLAM\ngithub: https://github.com/princeton-vl/DROID-SLAM\nlicense: \"BSD-3-Clause\"\nmirrored_at: 2026-05-15\ncanonical_paper: arxiv-2108-10869\ncanonical_paper_url: https://arxiv.org/abs/2108.10869\n---\n\n# princ...",
+    "content_length": 8505,
+    "created_at": "2026-05-15T19:46:37.373557+00:00",
+    "updated_at": "2026-05-15T20:24:30.498458+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/princeton-vl-droid-slam/readme.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876557,
+      "processing_end_time": 1778876670
+    }
+  },
+  "doc-1ce2165eaaf1422a9b02235e41e20e20": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-1ce2165eaaf1422a9b02235e41e20e20"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: NVlabs/instant-ngp\ncanonical_paper: arxiv-2201-05989\n---\n\n# About NVlabs/instant-ngp\n\nNVIDIA's reference implementation of *Instant Neural Graphics Primitives with a Multiresolution Hash Encoding* (Müller et al., 2022). See...",
+    "content_length": 807,
+    "created_at": "2026-05-15T19:46:37.373553+00:00",
+    "updated_at": "2026-05-15T20:25:01.582856+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/nvlabs-instant-ngp/about.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876589,
+      "processing_end_time": 1778876701
+    }
+  },
+  "doc-a57ecf4979daf463711507fe01462548": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-a57ecf4979daf463711507fe01462548"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: princeton-vl/DROID-SLAM\ncanonical_paper: arxiv-2108-10869\n---\n\n# About princeton-vl/DROID-SLAM\n\nThe official PyTorch implementation of *DROID-SLAM: Deep Visual SLAM for Monocular, Stereo, and RGB-D Cameras* (Teed & Deng, 20...",
+    "content_length": 865,
+    "created_at": "2026-05-15T19:46:37.373556+00:00",
+    "updated_at": "2026-05-15T20:25:02.118748+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/princeton-vl-droid-slam/about.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876607,
+      "processing_end_time": 1778876702
+    }
+  },
+  "doc-7411808cb359d1b718d660e9dbd2a39e": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-7411808cb359d1b718d660e9dbd2a39e"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2108.10869\"\narxiv_url: https://arxiv.org/abs/2108.10869\ntitle: \"DROID-SLAM: Deep Visual SLAM for Monocular, Stereo, and RGB-D Cameras\"\nauthors:\n  - \"Zachary Teed\"\n  - \"Jia Deng\"\ndate: 2021-08-24\nsub_topic: Visual SLAM and MVS\n...",
+    "content_length": 2301,
+    "created_at": "2026-05-15T19:46:37.373454+00:00",
+    "updated_at": "2026-05-15T20:26:02.589163+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2108-10869/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876660,
+      "processing_end_time": 1778876762
+    }
+  },
+  "doc-bb1234ddae6b39821bcc34ebe785c813": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-bb1234ddae6b39821bcc34ebe785c813"
+    ],
+    "content_summary": "---\ntype: ResearchDigest\ndate: 2026-04-10\nperiod: daily\npapers_covered:\n  - arxiv-2003-08934\n  - arxiv-2008-02268\n  - arxiv-2011-12948\n  - arxiv-1607-02565\n  - arxiv-1812-04605\nsub_topics: [Neural Radiance Fields, Visual SLAM and MVS, Dynamic and 4D ...",
+    "content_length": 2271,
+    "created_at": "2026-05-15T19:46:37.373390+00:00",
+    "updated_at": "2026-05-15T20:25:55.778690+00:00",
+    "file_path": "examples/demo-corpus/data/research/daily/2026-04-10/digest.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876670,
+      "processing_end_time": 1778876755
+    }
+  },
+  "doc-62f6aaf4d349907fedafca12c9a53bdb": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-62f6aaf4d349907fedafca12c9a53bdb"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2106.12052\"\narxiv_url: https://arxiv.org/abs/2106.12052\ntitle: \"Volume Rendering of Neural Implicit Surfaces\"\nauthors:\n  - \"Lior Yariv\"\n  - \"Jiatao Gu\"\n  - \"Yoni Kasten\"\n  - \"Yaron Lipman\"\ndate: 2021-06-22\nsub_topic: Mesh and ...",
+    "content_length": 2264,
+    "created_at": "2026-05-15T19:46:37.373449+00:00",
+    "updated_at": "2026-05-15T20:27:16.861623+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2106-12052/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876701,
+      "processing_end_time": 1778876836
+    }
+  },
+  "doc-c76c39f593d0f7cf762ef607bb98a3db": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-c76c39f593d0f7cf762ef607bb98a3db"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2311.12775\"\narxiv_url: https://arxiv.org/abs/2311.12775\ntitle: \"SuGaR: Surface-Aligned Gaussian Splatting for Efficient 3D Mesh Reconstruction and High-Quality Mesh Rendering\"\nauthors:\n  - \"Antoine Guédon\"\n  - \"Vincent Lepetit...",
+    "content_length": 2283,
+    "created_at": "2026-05-15T19:46:37.373492+00:00",
+    "updated_at": "2026-05-15T20:26:13.738793+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2311-12775/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876702,
+      "processing_end_time": 1778876773
+    }
+  },
+  "doc-ef4e01183cb872fcf6e3325fde57a921": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-ef4e01183cb872fcf6e3325fde57a921"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2311.11700\"\narxiv_url: https://arxiv.org/abs/2311.11700\ntitle: \"GS-SLAM: Dense Visual SLAM with 3D Gaussian Splatting\"\nauthors:\n  - \"Chi Yan\"\n  - \"Delin Qu\"\n  - \"Dan Xu\"\n  - \"Bin Zhao\"\n  - \"Zhigang Wang\"\n  - \"Dong Wang\"\n  - \"X...",
+    "content_length": 2505,
+    "created_at": "2026-05-15T19:46:37.373490+00:00",
+    "updated_at": "2026-05-15T20:28:14.487937+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2311-11700/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876756,
+      "processing_end_time": 1778876894
+    }
+  },
+  "doc-da7ad32a7899b18880ae81f4444362ce": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-da7ad32a7899b18880ae81f4444362ce"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2403.02151\"\narxiv_url: https://arxiv.org/abs/2403.02151\ntitle: \"TripoSR: Fast 3D Object Reconstruction from a Single Image\"\nauthors:\n  - \"Dmitry Tochilkin\"\n  - \"David Pankratz\"\n  - \"Zexiang Liu\"\n  - \"Zixuan Huang\"\n  - \"Adam Le...",
+    "content_length": 2505,
+    "created_at": "2026-05-15T19:46:37.373515+00:00",
+    "updated_at": "2026-05-15T20:28:15.415169+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2403-02151/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876762,
+      "processing_end_time": 1778876895
+    }
+  },
+  "doc-bd6fe493ce2da43136bddecfa2bf2010": {
+    "status": "processed",
+    "chunks_count": 2,
+    "chunks_list": [
+      "chunk-ee99e1fe0369d50218c77432ff216939",
+      "chunk-45d73dd21f95946d74e1b943beb1d384"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: bmild/nerf\ngithub: https://github.com/bmild/nerf\nlicense: \"MIT\"\nmirrored_at: 2026-05-15\ncanonical_paper: arxiv-2003-08934\ncanonical_paper_url: https://arxiv.org/abs/2003.08934\n---\n\n# bmild/nerf\n\n> README mirrored from the u...",
+    "content_length": 6709,
+    "created_at": "2026-05-15T19:46:37.373534+00:00",
+    "updated_at": "2026-05-15T20:28:22.898186+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/bmild-nerf/readme.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876773,
+      "processing_end_time": 1778876902
+    }
+  },
+  "doc-44c8d46282ec234e9b7dfd7ddc08a05b": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-44c8d46282ec234e9b7dfd7ddc08a05b"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2312.03203\"\narxiv_url: https://arxiv.org/abs/2312.03203\ntitle: \"Feature 3DGS: Supercharging 3D Gaussian Splatting to Enable Distilled Feature Fields\"\nauthors:\n  - \"Shijie Zhou\"\n  - \"Haoran Chang\"\n  - \"Sicheng Jiang\"\n  - \"Zhiwe...",
+    "content_length": 2585,
+    "created_at": "2026-05-15T19:46:37.373503+00:00",
+    "updated_at": "2026-05-15T20:28:45.664562+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2312-03203/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876837,
+      "processing_end_time": 1778876925
+    }
+  },
+  "doc-a77bbc3a5c1fbf4a8a4029857b6fa01b": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-a77bbc3a5c1fbf4a8a4029857b6fa01b"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: graphdeco-inria/gaussian-splatting\ncanonical_paper: arxiv-2308-04079\n---\n\n# About graphdeco-inria/gaussian-splatting\n\nThe official implementation of *3D Gaussian Splatting for Real-Time Radiance Field Rendering* (Kerbl et a...",
+    "content_length": 965,
+    "created_at": "2026-05-15T19:46:37.373542+00:00",
+    "updated_at": "2026-05-15T20:29:26.755952+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/graphdeco-inria-gaussian-splatting/about.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876895,
+      "processing_end_time": 1778876966
+    }
+  },
+  "doc-393d4b1d50fb3d20d718f84708cec66c": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-393d4b1d50fb3d20d718f84708cec66c"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2402.03307\"\narxiv_url: https://arxiv.org/abs/2402.03307\ntitle: \"4D-Rotor Gaussian Splatting: Towards Efficient Novel View Synthesis for Dynamic Scenes\"\nauthors:\n  - \"Yuanxing Duan\"\n  - \"Fangyin Wei\"\n  - \"Qiyu Dai\"\n  - \"Yuhang ...",
+    "content_length": 2460,
+    "created_at": "2026-05-15T19:46:37.373509+00:00",
+    "updated_at": "2026-05-15T20:29:48.319517+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2402-03307/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876895,
+      "processing_end_time": 1778876988
+    }
+  },
+  "doc-2dd7bc6ade0fccf24f57100e1dd5adb7": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-2dd7bc6ade0fccf24f57100e1dd5adb7"
+    ],
+    "content_summary": "---\ntype: Paper\narxiv: \"2402.05054\"\narxiv_url: https://arxiv.org/abs/2402.05054\ntitle: \"LGM: Large Multi-View Gaussian Model for High-Resolution 3D Content Creation\"\nauthors:\n  - \"Jiaxiang Tang\"\n  - \"Zhaoxi Chen\"\n  - \"Xiaokang Chen\"\n  - \"Tengfei Wang...",
+    "content_length": 2320,
+    "created_at": "2026-05-15T19:46:37.373511+00:00",
+    "updated_at": "2026-05-15T20:30:20.873425+00:00",
+    "file_path": "examples/demo-corpus/data/research/papers/arxiv-2402-05054/paper.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876903,
+      "processing_end_time": 1778877020
+    }
+  },
+  "doc-c47e36db5dfb4966f1d4d610b06ac6bc": {
+    "status": "processed",
+    "chunks_count": 1,
+    "chunks_list": [
+      "chunk-c47e36db5dfb4966f1d4d610b06ac6bc"
+    ],
+    "content_summary": "---\ntype: Repository\nrepo: cvlab-columbia/zero123\ncanonical_paper: arxiv-2303-11328\n---\n\n# About cvlab-columbia/zero123\n\nThe official release of *Zero-1-to-3: Zero-shot One Image to 3D Object* (Liu et al., 2023). See [the paper page](../../papers/arx...",
+    "content_length": 735,
+    "created_at": "2026-05-15T19:46:37.373535+00:00",
+    "updated_at": "2026-05-15T20:30:02.432126+00:00",
+    "file_path": "examples/demo-corpus/data/research/repos/cvlab-columbia-zero123/about.md",
+    "track_id": "insert_20260516_044637_f1b0e8a5",
+    "metadata": {
+      "processing_start_time": 1778876925,
+      "processing_end_time": 1778877002
+    }
+  }
+}
