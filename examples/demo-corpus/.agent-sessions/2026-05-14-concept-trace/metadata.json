@@ -2,7 +2,7 @@
   "session_id": "2026-05-14-concept-trace",
   "title": "Concept trace — Multi-View Consistency across the corpus",
   "started_at": "2026-05-14T10:31:05Z",
-  "ended_at": "2026-05-14T10:36:10Z",
+  "ended_at": "2026-05-14T10:50:20Z",
   "user": "demo-researcher",
   "agent": "claude-opus-4-7",
   "project": "llm-wiki-demo-corpus",
@@ -16,13 +16,17 @@
     "arxiv-2403-17888",
     "arxiv-2403-14627",
     "arxiv-2311-11700",
-    "arxiv-2404-06109"
+    "arxiv-2404-06109",
+    "arxiv-1607-02565",
+    "arxiv-1812-04605",
+    "arxiv-2104-10078"
   ],
   "questions_referenced": ["multi-view-consistency"],
   "artifacts_created": [],
   "stumbles": [
-    "search_nodes with type=Concept returned 0 results for 'multi-view consistency' because the corpus tracks the topic as an OpenQuestion rather than a Concept node; recovered by dropping the type filter and broadening the search."
+    "search_nodes with type=Concept returned 0 results for 'multi-view consistency' because the corpus tracks the topic as an OpenQuestion rather than a Concept node; recovered by dropping the type filter and broadening the search.",
+    "Initial timeline started at 2020 (NeRF); the researcher redirected to include the classical MVS literature, so the timeline was extended back to COLMAP MVS (2016) and DeepV2D (2018)."
   ],
-  "turn_count": 16,
-  "summary": "Traced 'Multi-View Consistency' through the corpus as a five-stage timeline anchored to NeRF (2020), NeuS (2021), DROID-SLAM (2021), 3DGS / MonoGS (2023), and 2DGS / MVSplat (2024). Used search_facts + timeline tools to pull predicate-level evidence (evaluated_on, introduces_property, raises_question). Surfaced the fast-motion robustness gap as the open question that connects the splatting and SLAM branches."
+  "turn_count": 35,
+  "summary": "Traced 'Multi-View Consistency' through the corpus as a five-stage timeline anchored to NeRF (2020), NeuS (2021), DROID-SLAM (2021), 3DGS / MonoGS (2023), and 2DGS / MVSplat (2024). The researcher redirected the scope to include the pre-NeRF MVS era, so the agent broadened to COLMAP MVS (2016), DeepV2D (2018), and UNISURF (2021), then compared definitions across papers and concluded there is no single corpus-wide definition: three distinct operationalisations (photometric reprojection, geometric depth consistency, shared-surface topology) are bundled under one name, and they are not equivalent."
 }

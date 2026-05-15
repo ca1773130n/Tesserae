@@ -2,7 +2,7 @@
   "session_id": "2026-05-12-weekly-digest",
   "title": "Weekly Gaussian Splatting digest — W19",
   "started_at": "2026-05-12T09:14:22Z",
-  "ended_at": "2026-05-12T09:26:10Z",
+  "ended_at": "2026-05-12T09:36:05Z",
   "user": "demo-researcher",
   "agent": "claude-opus-4-7",
   "project": "llm-wiki-demo-corpus",
@@ -13,15 +13,19 @@
     "arxiv-2403-14627",
     "arxiv-2403-16292",
     "arxiv-2403-17888",
-    "arxiv-2402-05054"
+    "arxiv-2402-05054",
+    "arxiv-2312-06741",
+    "arxiv-2311-11700",
+    "arxiv-2108-10869"
   ],
   "questions_referenced": ["multi-view-consistency"],
   "artifacts_created": [
     "examples/demo-corpus/data/research/weekly/2026-W19/synthesis.md"
   ],
   "stumbles": [
-    "wiki_page on guessed Synthesis node id 'Synthesis:weekly-2026-w18' returned 'not found'; recovered by searching the syntheses kind to find the correct id 'Synthesis:weekly-2026-W18'."
+    "wiki_page on guessed Synthesis node id 'Synthesis:weekly-2026-w18' returned 'not found'; recovered by searching the syntheses kind to find the correct id 'Synthesis:weekly-2026-W18'.",
+    "Initial framing recycled LGM (a W18 paper) and missed surfacing the open question; the researcher pushed back, the agent dropped LGM, pulled the SLAM trio (MonoGS, GS-SLAM) tighter, and surfaced multi-view-consistency under fast motion as the W19 open question before writing the final synthesis."
   ],
-  "turn_count": 24,
-  "summary": "Compiled W19 digest by searching the corpus for recent Gaussian Splatting papers, reading four paper bodies (Revising Densification, MVSplat, latentSplat, 2DGS) and pulling MVSplat neighbours via node_context. Drafted a ~500-word synthesis anchored to six papers. Surfaced 'multi-view consistency under fast motion' as the recurring open question that feed-forward GS does not escape."
+  "turn_count": 38,
+  "summary": "Compiled W19 digest. First pass recycled LGM and missed surfacing an open question; the researcher pushed back twice. Agent dropped LGM, re-read the Splatting-SLAM trio (MonoGS, GS-SLAM, with DROID-SLAM as the tracking reference they all miss), surfaced multi-view-consistency under fast motion as the named open question, then wrote the corrected synthesis. Final digest anchors seven papers and reframes the W19 story around GS as a SLAM map representation rather than the feed-forward-vs-LGM angle the W18 digest already covered."
 }

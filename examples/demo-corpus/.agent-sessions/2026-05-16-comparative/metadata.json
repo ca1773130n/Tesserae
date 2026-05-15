@@ -2,7 +2,7 @@
   "session_id": "2026-05-16-comparative",
   "title": "Head-to-head: 3D Gaussian Splatting vs Instant-NGP",
   "started_at": "2026-05-16T16:45:03Z",
-  "ended_at": "2026-05-16T16:50:40Z",
+  "ended_at": "2026-05-16T17:01:50Z",
   "user": "demo-researcher",
   "agent": "claude-opus-4-7",
   "project": "llm-wiki-demo-corpus",
@@ -25,6 +25,6 @@
   "stumbles": [
     "wiki_page call with both node_id AND a `name` argument naming 'Nerfacto' returned 'node not found'; the agent recognised the mistake (mixed call shape + Nerfacto is not a separate corpus node) and proceeded with the data already gathered."
   ],
-  "turn_count": 19,
-  "summary": "Compared 3DGS and Instant-NGP head-to-head on Mip-NeRF 360 outdoor average. Pulled both wiki pages, used search_facts for the shared numeric metrics (PSNR/SSIM/FPS/train time), and used node_context to enumerate variants on each side. Returned an 8-row comparison matrix plus a one-paragraph 'use this when' guidance: 3DGS for sharp interactive rendering on benign captures; Instant-NGP for non-radiance tasks, faster initial convergence, or fixed memory."
+  "turn_count": 33,
+  "summary": "Compared 3DGS and Instant-NGP head-to-head on Mip-NeRF 360 outdoor average. Initial matrix listed PSNR/SSIM/FPS/train time but no VRAM column; the researcher asked for training memory, and the agent pulled per-scene primitive counts and peak VRAM facts to land on a concrete 24 GB consumer-card recommendation: Instant-NGP fits any scene at ~3 GB peak, 3DGS-vanilla sits at the OOM edge on the largest Mip-NeRF 360 outdoor scenes (~22 GB peak on garden), and the Bulo revised-densification config gives a comfortable margin on all scenes."
 }

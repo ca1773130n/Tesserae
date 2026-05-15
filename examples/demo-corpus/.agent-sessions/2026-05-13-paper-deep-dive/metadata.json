@@ -2,11 +2,11 @@
   "session_id": "2026-05-13-paper-deep-dive",
   "title": "3D Gaussian Splatting end-to-end lineage explainer",
   "started_at": "2026-05-13T14:02:11Z",
-  "ended_at": "2026-05-13T14:19:40Z",
+  "ended_at": "2026-05-13T14:30:25Z",
   "user": "demo-researcher",
   "agent": "claude-opus-4-7",
   "project": "llm-wiki-demo-corpus",
-  "tools_used": ["wiki_page", "node_context"],
+  "tools_used": ["wiki_page", "node_context", "search_facts", "raw_source"],
   "papers_cited": [
     "arxiv-2308-04079",
     "arxiv-2003-08934",
@@ -21,6 +21,6 @@
   "questions_referenced": [],
   "artifacts_created": [],
   "stumbles": [],
-  "turn_count": 22,
-  "summary": "Walked the 3D Gaussian Splatting dependency graph from the Kerbl 2023 anchor in both directions. Read NeRF as the only upstream prerequisite, then six direct extensions (SuGaR, 2DGS, Scaffold-GS, MonoGS, 4DGS, gsplat math supplement) plus the Bulo revision paper. Returned a lineage explainer organised by geometry / structure / SLAM / dynamic branches. Clean happy-path session — no stumbles."
+  "turn_count": 35,
+  "summary": "Walked the 3D Gaussian Splatting dependency graph from the Kerbl 2023 anchor in both directions. Read NeRF as the only upstream prerequisite, then six direct extensions (SuGaR, 2DGS, Scaffold-GS, MonoGS, 4DGS, gsplat math supplement) plus the Bulo revision paper. Returned a lineage explainer organised by geometry / structure / SLAM / dynamic branches. The researcher then asked a clarifying technical question about adaptive density control, and a follow-up about SH-coefficient inheritance on clone; agent re-pulled the gsplat math supplement and derived the early-window SH-decorrelation effect that explains why Bulo's variance criterion fires harder than mean-magnitude on the same scene."
 }

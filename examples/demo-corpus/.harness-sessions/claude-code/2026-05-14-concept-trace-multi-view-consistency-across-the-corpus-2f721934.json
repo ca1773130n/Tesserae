@@ -1,11 +1,11 @@
 {
   "agent_label": "Claude Code",
   "commands_run": [],
-  "ended_at": "2026-05-14T10:36:10Z",
+  "ended_at": "2026-05-14T10:50:20Z",
   "files_touched": [],
   "harness": "claude-code",
   "id": "claude-code:2026-05-14-concept-trace:2026-05-14-concept-trace",
-  "message_count": 5,
+  "message_count": 11,
   "metadata": {
     "agent": "claude-opus-4-7",
     "config_root": "examples/demo-corpus/.agent-sessions",
@@ -19,16 +19,20 @@
       "arxiv-2403-17888",
       "arxiv-2403-14627",
       "arxiv-2311-11700",
-      "arxiv-2404-06109"
+      "arxiv-2404-06109",
+      "arxiv-1607-02565",
+      "arxiv-1812-04605",
+      "arxiv-2104-10078"
     ],
     "questions_referenced": [
       "multi-view-consistency"
     ],
     "stumbles": [
-      "search_nodes with type=Concept returned 0 results for 'multi-view consistency' because the corpus tracks the topic as an OpenQuestion rather than a Concept node; recovered by dropping the type filter and broadening the search."
+      "search_nodes with type=Concept returned 0 results for 'multi-view consistency' because the corpus tracks the topic as an OpenQuestion rather than a Concept node; recovered by dropping the type filter and broadening the search.",
+      "Initial timeline started at 2020 (NeRF); the researcher redirected to include the classical MVS literature, so the timeline was extended back to COLMAP MVS (2016) and DeepV2D (2018)."
     ],
     "transcript": "/Users/neo/Developer/Projects/LLM-Wiki/examples/demo-corpus/.agent-sessions/2026-05-14-concept-trace/transcript.jsonl",
-    "turn_count": 16,
+    "turn_count": 35,
     "turns": [
       {
         "role": "user",
@@ -90,6 +94,72 @@
         "role": "assistant",
         "text": "_thinking_: I have enough anchors to draw a five-stage timeline. Compose it.\n\nConcept-evolution timeline for 'Multi-View Consistency' across the corpus:\n\n  1. 2020-03 - NeRF (arxiv-2003-08934)\n     Establishes photometric multi-view consistency as the implicit optimisation signal. Per-scene loss, no other supervision.\n\n  2. 2021-06 - NeuS (arxiv-2106-10689)\n     Lifts the property from 'pixel agreement' to 'view-consistent SDF zero level set'. Geometry is the *thing* that should be consistent, not just radiance.\n\n  3. 2021-08 - DROID-SLAM (arxiv-2108-10869)\n     Operationalises the property under aggressive motion: deep bundle adjustment on learned features remains the most robust pose engine on EuRoC / TartanAir.\n\n  4. 2023-08 / 2023-12 - 3DGS (arxiv-2308-04079) and MonoGS (arxiv-2312-06741)\n     Splatting takes over view synthesis and SLAM but evaluates only on quasi-static / well-behaved trajectories. The property is assumed, not stress-tested.\n\n  5. 2024-03 - 2DGS (arxiv-2403-17888) and MVSplat (arxiv-2403-14627)\n     Two opposing moves on the same gap. 2DGS bakes view-consistency into the primitive geometry (oriented disk). MVSplat raises the question explicitly: feed-forward prediction inherits the consistency gap from sparse views.\n\nOpen question: the gap is the fast-motion regime. None of the splatting-SLAM papers report numbers on EuRoC/TartanAir, and no feed-forward GS method has been stress-tested against multi-view-inconsistent inputs. See questions/multi-view-consistency.md.",
         "timestamp": "2026-05-14T10:36:10Z"
+      },
+      {
+        "role": "user",
+        "text": "You're tracing this through GS papers, but 'multi-view consistency' is a term that predates GS by more than a decade — classical MVS used it constantly. Search the pre-NeRF era and the early NeRF era too. I want to see if the splatting authors are using the same definition the MVS people were using.",
+        "timestamp": "2026-05-14T10:38:30Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: Fair. The corpus has at least DeepV2D (arxiv-1812-04605) and MVS-Texturing-era work from 2016 — let me search for the MVS lineage. There should also be UNISURF (2021) and NeuS (2021) which sit at the implicit-surface / radiance-field boundary.\n\nRight — the classical MVS literature owns the term. Broadening the search.",
+        "timestamp": "2026-05-14T10:38:58Z"
+      },
+      {
+        "name": "search_nodes",
+        "role": "tool",
+        "text": "{\"limit\": 10, \"query\": \"multi-view stereo consistency\"}",
+        "timestamp": "2026-05-14T10:39:12Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-1607-02565\"}",
+        "timestamp": "2026-05-14T10:39:55Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2106-10689\"}",
+        "timestamp": "2026-05-14T10:41:00Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-1812-04605\"}",
+        "timestamp": "2026-05-14T10:42:15Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: Three distinct operationalisations are emerging: (1) COLMAP-style photometric+geometric pair check (depth/intensity reprojection), (2) DeepV2D-style differentiable photometric warping loss, (3) NeuS-style 'shared SDF surface' which is by-construction consistency. NeRF sits closer to (2) — the implicit photometric loss across views. 3DGS+MonoGS inherit (2) but never operationalise it as a check; they assume per-scene optimisation will produce it. Let me extend the timeline backward.\n\nI have three pre-GS anchors now. COLMAP MVS (2016) operationalises the term explicitly as a per-pair pixel check. DeepV2D (2018) makes that check differentiable as a photometric warping loss. NeuS (2021) reframes it as a geometric property of a shared SDF. That's the lineage the GS papers walked into.",
+        "timestamp": "2026-05-14T10:43:40Z"
+      },
+      {
+        "role": "user",
+        "text": "Good. So is there a single definition the corpus agrees on, or are these all incompatible operationalizations of different things people happen to call by the same name?",
+        "timestamp": "2026-05-14T10:46:20Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: They're not the same. Three genuinely distinct definitions: (a) photometric reprojection consistency (COLMAP, DeepV2D, NeRF photometric loss), (b) geometric reprojection / depth consistency (COLMAP's forward-backward check, DROID-SLAM bundle adjustment residual), (c) surface consistency / shared zero level set (NeuS, UNISURF, 2DGS's view-consistent disk argument). 3DGS optimises (a) implicitly and silently fails on (b) and (c) — that's why SuGaR and 2DGS exist as patches. Let me pull UNISURF to confirm the surface-consistency thread.\n\nThey're not the same. There are at least three distinct things people call 'multi-view consistency'. Let me confirm against one more paper.",
+        "timestamp": "2026-05-14T10:46:48Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2104-10078\"}",
+        "timestamp": "2026-05-14T10:47:00Z"
+      },
+      {
+        "name": "search_facts",
+        "role": "tool",
+        "text": "{\"limit\": 8, \"query\": \"multi-view consistency photometric geometric surface\"}",
+        "timestamp": "2026-05-14T10:48:00Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: Now the answer is clean: three operationalisations, no agreement. Final timeline should start at 2016 (COLMAP) and end 2024 (2DGS / MVSplat), grouped by which definition each paper picks up.\n\nNo, there's no single corpus-wide definition. Three distinct operationalisations:\n\n  **(1) Photometric reprojection consistency** — the *radiance* at a 3D point matches across all views.\n     - COLMAP MVS (2016, arxiv-1607-02565): explicit per-pixel NCC + forward-backward depth check.\n     - DeepV2D (2018, arxiv-1812-04605): differentiable photometric warping loss across video frames.\n     - NeRF (2020, arxiv-2003-08934): implicit — the per-scene photometric loss IS the consistency objective. No explicit check.\n     - 3DGS (2023, arxiv-2308-04079): inherits NeRF's photometric loss; no explicit check; assumed to hold after convergence.\n\n  **(2) Geometric / depth consistency** — the *depth* at a 3D point matches across all views (a stronger property than (1) — radiance can match while depth doesn't, e.g. specular surfaces).\n     - COLMAP MVS: forward-backward depth reprojection error in pixels.\n     - DROID-SLAM (2021, arxiv-2108-10869): deep bundle adjustment residual on learned correlation features — the production version of (2) under aggressive motion.\n\n  **(3) Surface / topology consistency** — there is a *single shared surface* every view refers to; consistency is by construction, not measured.\n     - NeuS (2021, arxiv-2106-10689), UNISURF (2021, arxiv-2104-10078): shared SDF zero level set.\n     - 2DGS (2024, arxiv-2403-17888): same idea at primitive level — each primitive is a single oriented disk, the same plane seen from every camera.\n\nThe definitions are not equivalent. (3) implies (2) which implies (1); the converses are false. A scene can be photometrically consistent (1) on a specular surface while being geometrically inconsistent (2), because radiance equality doesn't pin down depth. A method that achieves (1) without checking (2) or (3) can produce a multi-view-consistent *render* over a geometrically wrong *scene* — that's the gap the 3DGS-as-SLAM-map papers fall into. The open question (multi-view-consistency under fast motion) is really three questions: which definition matters for which downstream task, and whether per-scene splat optimisation can hit (2) or (3) without explicit supervision.",
+        "timestamp": "2026-05-14T10:50:20Z"
       }
     ],
     "user": "demo-researcher"
@@ -98,12 +168,12 @@
   "project_name": "LLM-Wiki",
   "project_root": "",
   "raw_transcript_path": "examples/demo-corpus/.agent-sessions/2026-05-14-concept-trace/transcript.jsonl",
-  "redacted_preview": "Traced 'Multi-View Consistency' through the corpus as a five-stage timeline anchored to NeRF (2020), NeuS (2021), DROID-SLAM (2021), 3DGS / MonoGS (2023), and 2DGS / MVSplat (2024). Used search_facts + timeline tools to pull predicate-level evidence (evaluated_on, introduces_property, raises_question). Surfaced the fast-motion robustness gap as the open question that connects the splatting and SLAM branches.",
+  "redacted_preview": "Traced 'Multi-View Consistency' through the corpus as a five-stage timeline anchored to NeRF (2020), NeuS (2021), DROID-SLAM (2021), 3DGS / MonoGS (2023), and 2DGS / MVSplat (2024). The researcher redirected the scope to include the pre-NeRF MVS era, so the agent broadened to COLMAP MVS (2016), DeepV2D (2018), and UNISURF (2021), then compared definitions across papers and concluded there is no single corpus-wide definition: three distinct operationalisations (photometric reprojection, geometric depth consistency, shared-surface topology) are bundled under one name, and they are not equivalent.",
   "slug": "concept-trace-multi-view-consistency-across-the-corpus",
   "started_at": "2026-05-14T10:31:05Z",
-  "summary": "Traced 'Multi-View Consistency' through the corpus as a five-stage timeline anchored to NeRF (2020), NeuS (2021), DROID-SLAM (2021), 3DGS / MonoGS (2023), and 2DGS / MVSplat (2024). Used search_facts + timeline tools to pull predicate-level evidence (evaluated_on, introduces_property, raises_question). Surfaced the fast-motion robustness gap as the open question that connects the splatting and SLAM branches.",
+  "summary": "Traced 'Multi-View Consistency' through the corpus as a five-stage timeline anchored to NeRF (2020), NeuS (2021), DROID-SLAM (2021), 3DGS / MonoGS (2023), and 2DGS / MVSplat (2024). The researcher redirected the scope to include the pre-NeRF MVS era, so the agent broadened to COLMAP MVS (2016), DeepV2D (2018), and UNISURF (2021), then compared definitions across papers and concluded there is no single corpus-wide definition: three distinct operationalisations (photometric reprojection, geometric depth consistency, shared-surface topology) are bundled under one name, and they are not equivalent.",
   "title": "Concept trace — Multi-View Consistency across the corpus",
-  "tool_call_count": 6,
+  "tool_call_count": 12,
   "tools_used": [
     "node_context",
     "search_facts",

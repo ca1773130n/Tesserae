@@ -2,11 +2,11 @@
   "session_id": "2026-05-15-open-question",
   "title": "Investigate feed-forward vs per-scene reconstruction open question",
   "started_at": "2026-05-15T11:08:14Z",
-  "ended_at": "2026-05-15T11:15:30Z",
+  "ended_at": "2026-05-15T11:26:50Z",
   "user": "demo-researcher",
   "agent": "claude-opus-4-7",
   "project": "llm-wiki-demo-corpus",
-  "tools_used": ["raw_source", "search_nodes", "wiki_page", "ask", "lint_report"],
+  "tools_used": ["raw_source", "search_nodes", "wiki_page", "ask", "lint_report", "node_context"],
   "papers_cited": [
     "arxiv-2311-04400",
     "arxiv-2311-06214",
@@ -18,8 +18,9 @@
   "questions_referenced": ["inference-cost-vs-fidelity"],
   "artifacts_created": [],
   "stumbles": [
-    "lint_report tool call returned exists=false because the demo corpus has not been linted yet; the agent skipped that source of evidence and continued with what `ask` had already returned."
+    "lint_report tool call returned exists=false because the demo corpus has not been linted yet; the agent skipped that source of evidence and continued with what `ask` had already returned.",
+    "First pass silently dropped Instant3D from the feed-forward family on a wrong assumption it was a text-to-3D paper out of scope; the researcher caught it and the agent re-fetched the body, classified Instant3D's diffusion stage as feed-forward (sampling a generative prior, not optimising a per-scene loss), and re-ranked the family."
   ],
-  "turn_count": 19,
-  "summary": "Investigated the inference-cost-vs-fidelity open question. Read the existing question doc via raw_source, enumerated the LRM-family papers (LRM, LGM, TripoSR) plus the SDS-on-splats family (DreamGaussian, AGG), and used the `ask` tool for a synthesis pass. Extended the question with a concrete four-axis experiment design (held-out PSNR, Chamfer/F-score, wall-clock, amortised GPU-hours) stratified across input categories to expose the thin-structure failure mode."
+  "turn_count": 31,
+  "summary": "Investigated the inference-cost-vs-fidelity open question. Read the existing question doc, enumerated the LRM-family and SDS-on-splats families, and used `ask` for a synthesis pass. The researcher then pointed out that Instant3D had been dropped without reading, so the agent re-fetched it and re-ranked the feed-forward family with a discussion of whether the diffusion sampler counts as per-scene optimisation. The researcher then demanded a single-architecture ablation rather than a cross-paper benchmark; agent designed a concrete LGM-as-warm-start ablation with three arms (frozen feed-forward, warm-start + N-step fine-tune sweep, per-scene from scratch) on a fixed 25-scene set."
 }

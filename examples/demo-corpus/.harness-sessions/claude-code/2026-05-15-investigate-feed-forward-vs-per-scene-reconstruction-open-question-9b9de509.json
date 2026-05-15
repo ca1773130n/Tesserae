@@ -1,11 +1,11 @@
 {
   "agent_label": "Claude Code",
   "commands_run": [],
-  "ended_at": "2026-05-15T11:15:30Z",
+  "ended_at": "2026-05-15T11:26:50Z",
   "files_touched": [],
   "harness": "claude-code",
   "id": "claude-code:2026-05-15-open-question:2026-05-15-open-question",
-  "message_count": 3,
+  "message_count": 9,
   "metadata": {
     "agent": "claude-opus-4-7",
     "config_root": "examples/demo-corpus/.agent-sessions",
@@ -22,10 +22,11 @@
       "inference-cost-vs-fidelity"
     ],
     "stumbles": [
-      "lint_report tool call returned exists=false because the demo corpus has not been linted yet; the agent skipped that source of evidence and continued with what `ask` had already returned."
+      "lint_report tool call returned exists=false because the demo corpus has not been linted yet; the agent skipped that source of evidence and continued with what `ask` had already returned.",
+      "First pass silently dropped Instant3D from the feed-forward family on a wrong assumption it was a text-to-3D paper out of scope; the researcher caught it and the agent re-fetched the body, classified Instant3D's diffusion stage as feed-forward (sampling a generative prior, not optimising a per-scene loss), and re-ranked the family."
     ],
     "transcript": "/Users/neo/Developer/Projects/LLM-Wiki/examples/demo-corpus/.agent-sessions/2026-05-15-open-question/transcript.jsonl",
-    "turn_count": 19,
+    "turn_count": 31,
     "turns": [
       {
         "role": "user",
@@ -89,6 +90,54 @@
         "role": "assistant",
         "text": "_thinking_: No lint report yet. Move on. The answer plus the existing question doc is enough to propose an experiment design.\n\nLint report doesn't exist yet for this build. Here is what I have:\n\n**What the corpus already says**\n- The open question doc (`questions/inference-cost-vs-fidelity.md`) calls out the four-axis gap: fidelity / geometric accuracy / wall-clock / GPU-hour amortised cost. No paper provides all four.\n- The feed-forward family is LRM (arxiv-2311-04400) -> Instant3D (arxiv-2311-06214) -> LGM (arxiv-2402-05054) -> TripoSR (arxiv-2403-02151). All three I read fit in ~0.5-5s/asset.\n- The per-scene SDS-on-splats family is DreamGaussian (arxiv-2309-16653) and AGG (arxiv-2401-04099, which is itself an amortised hybrid). DreamGaussian is ~2 minutes/asset.\n\n**New evidence the `ask` synthesis pulled together**\n- Feed-forward methods are bandwidth-limited on thin structures because Objaverse under-represents them.\n- Per-scene SDS hallucinates back-side geometry where the critic has weak supervision.\n- The break-even at >10k assets favours feed-forward; below that, DreamGaussian wins.\n\n**Proposed experiment to resolve the question** (extending the existing doc):\n  Inputs:  100 single images sampled stratified across (synthetic / GSO / in-the-wild) and (thin / blocky / organic) categories.\n  Methods: LRM, LGM, TripoSR (feed-forward) and DreamGaussian, AGG (per-scene/amortised).\n  Metrics:\n    (a) Held-out-view PSNR / SSIM / LPIPS on the 50 GSO captures (ground truth available).\n    (b) Chamfer + F-score against GSO meshes.\n    (c) Wall-clock inference on a single A100, single asset.\n    (d) Amortised GPU-hours per asset across 100, 1k, 10k, 100k asset volumes.\n  Stratify (a)+(b) by category to expose the thin-structure failure mode the synthesis predicts.\n\nIf any of {a, b, c, d} is missing the comparison can be made (this corpus has roughly enough data to estimate three out of four). I'd extend the open-question doc with this design rather than rewrite it.",
         "timestamp": "2026-05-15T11:15:30Z"
+      },
+      {
+        "role": "user",
+        "text": "You searched for the LRM family and the search returned Instant3D too, but you never opened it. Pull it in. Where does it actually sit on the spectrum — is it really feed-forward, or is the diffusion stage hiding a per-scene optimisation in disguise?",
+        "timestamp": "2026-05-15T11:17:50Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: Right — I have Instant3D in the search results from turn 5 and silently dropped it because I assumed it was a text-to-3D paper not a single-image reconstructor. But the user's question is sharper: Instant3D's pipeline is multi-view-diffusion -> LRM-style reconstructor. The diffusion stage is a forward sampler; the reconstructor is feed-forward. So end-to-end it's two feed-forward passes but the diffusion sampler internally iterates. Whether that counts as 'feed-forward' depends on whether you count diffusion sampling as optimisation. Let me read the body.\n\nFair catch — I dropped it on a wrong assumption. Reading it now.",
+        "timestamp": "2026-05-15T11:18:18Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2311-06214\"}",
+        "timestamp": "2026-05-15T11:18:30Z"
+      },
+      {
+        "name": "node_context",
+        "role": "tool",
+        "text": "{\"limit\": 12, \"node_id\": \"Paper:arxiv-2311-06214\"}",
+        "timestamp": "2026-05-15T11:19:45Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: Instant3D belongs in the feed-forward column unambiguously. The 25-step DDIM is a sampler not per-scene optimisation against a photometric loss. LGM actually extends Instant3D (uses its 4-view diffusion output as input). Re-ranking: LRM (single-image -> triplane) -> Instant3D (text -> 4-view diffusion -> LRM-style triplane) -> LGM (uses Instant3D-style 4-view -> Gaussian field). All three are feed-forward. TripoSR is single-image -> triplane, same lineage as LRM. AGG sits between the two camps as an amortised hybrid.\n\nRe-ranked family:\n\n  Pure feed-forward (single forward pass over network, no photometric loss at inference time):\n    1. LRM (arxiv-2311-04400) - single image -> triplane in ~5s.\n    2. TripoSR (arxiv-2403-02151) - LRM at production quality, ~0.5s.\n    3. Instant3D (arxiv-2311-06214) - text -> 4-view diffusion -> LRM-style triplane, ~20s end-to-end. The diffusion sampler IS iterative (25 DDIM steps) but it's not optimising a scene-specific loss; it's sampling a generative prior. That's the distinction.\n    4. LGM (arxiv-2402-05054) - uses Instant3D's 4-view output as input, emits a Gaussian field at higher resolution in ~5s.\n\n  Amortised hybrid:\n    5. AGG (arxiv-2401-04099) - amortised single-image Gaussian generation; sits between feed-forward (training-time only) and per-scene (lightweight fine-tune at inference).\n\n  Per-scene SDS-on-splats:\n    6. DreamGaussian (arxiv-2309-16653) - SDS loop on 3D Gaussians, ~2 min/asset.\n\nYour distinction-question lands cleanly: Instant3D's diffusion stage is iterative but is not per-scene optimisation, because the iteration is over a fixed generative prior, not a scene-specific photometric residual. The asset cost flips at higher complexity though — if you have to re-run the diffusion sampler for every prompt, the amortised cost is closer to per-scene than the LRM-only numbers suggest.",
+        "timestamp": "2026-05-15T11:21:00Z"
+      },
+      {
+        "role": "user",
+        "text": "OK. Now design the actual experiment that would answer this question. Not 'benchmark the five papers against each other' — they all use different training sets. I want a single ablation where the only changed variable is feed-forward vs per-scene on the same model class. What does that look like?",
+        "timestamp": "2026-05-15T11:24:10Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: The cleanest ablation isolates the training procedure, not the architecture. LRM and DreamGaussian have different architectures (transformer triplane vs Gaussian-soup SDS), different priors, different training sets — comparing them measures everything but the variable in question. The real ablation is: take ONE architecture (say, a Gaussian-field decoder) and run it three ways on the same scene set: (a) pure feed-forward with frozen weights, (b) feed-forward warm-start followed by N iterations of per-scene fine-tuning on the test view photometric loss, (c) per-scene from scratch (random init or SfM-init Gaussian soup). Sweep N. The crossover point is the answer.\n\nSingle-architecture ablation. Anything else conflates the training distribution, the architecture, and the procedure.",
+        "timestamp": "2026-05-15T11:24:42Z"
+      },
+      {
+        "name": "raw_source",
+        "role": "tool",
+        "text": "{\"source_path\": \"data/research/questions/inference-cost-vs-fidelity.md\"}",
+        "timestamp": "2026-05-15T11:25:00Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: Concrete proposal. Use LGM as the fixed architecture (it's a Gaussian-field decoder, has public weights, and accepts 4-view input which is the natural input format). Three arms: (A) frozen LGM forward pass only, (B) LGM forward pass + N iterations of per-scene photometric optimisation of the predicted Gaussians, sweeping N in {0, 50, 200, 1000, 5000} steps, (C) per-scene from SfM-init Gaussian soup with no LGM warm-start, run to convergence (~30k steps for 3DGS recipe). Same test scenes (say 20 GSO captures with held-out views + Mip-NeRF 360 indoor for unbounded). Measure held-out PSNR/SSIM/LPIPS as a function of N. Plot the curve. The N at which arm B catches arm C tells you the warm-start value of feed-forward; the asymptote of B vs the value of A tells you how much per-scene fine-tuning adds; the slope between is the cost-fidelity exchange rate.\n\nConcrete design — extending the open-question doc:\n\n**Fixed architecture.** Use LGM (arxiv-2402-05054) — Gaussian-field decoder, public weights, accepts 4-view input. Same network in all three arms.\n\n**Same scene set.** 20 GSO captures (ground-truth mesh available for Chamfer) + 5 unbounded indoor scenes from Mip-NeRF 360. ~25 scenes. All evaluated on the same held-out viewpoints.\n\n**Three arms, only the procedure varies:**\n  - Arm A: pure feed-forward. Run LGM once, freeze, render held-out views.\n  - Arm B: warm-start + per-scene fine-tune. Run LGM once to get initial Gaussian set, then optimise photometric loss on the input views for N iterations. Sweep N in {0, 50, 200, 1000, 5000}. The N=0 setting recovers Arm A.\n  - Arm C: per-scene from scratch. Discard LGM. SfM-seed a Gaussian soup as in original 3DGS. Optimise to convergence (~30k steps).\n\n**Single metric of interest.** Held-out-view PSNR as a function of total wall-clock seconds (arm A: ~5s, arm B: 5s + N*~0.04s, arm C: ~40 min). Plot the Pareto frontier.\n\n**What the curve answers.**\n  - The N at which Arm B's PSNR equals Arm C's converged PSNR = the warm-start value of feed-forward, in 'iterations saved'.\n  - The gap between Arm A and Arm C at convergence = the irreducible feed-forward fidelity penalty for this architecture class.\n  - The slope of Arm B between N=200 and N=1000 = the marginal cost-fidelity exchange rate at the working point.\n  - Stratify by scene type (object-centric GSO vs unbounded Mip-NeRF 360) to expose the in-distribution / out-of-distribution gap LRM-family methods are known to have.\n\n**What this doesn't answer.** Cross-architecture comparison (LGM vs LRM vs TripoSR vs DreamGaussian). The ablation deliberately fixes the architecture to isolate the training-procedure variable. The cross-architecture question is a separate experiment.\n\nI'd add this as a 'proposed resolution' section to questions/inference-cost-vs-fidelity.md.",
+        "timestamp": "2026-05-15T11:26:50Z"
       }
     ],
     "user": "demo-researcher"
@@ -97,15 +146,16 @@
   "project_name": "LLM-Wiki",
   "project_root": "",
   "raw_transcript_path": "examples/demo-corpus/.agent-sessions/2026-05-15-open-question/transcript.jsonl",
-  "redacted_preview": "Investigated the inference-cost-vs-fidelity open question. Read the existing question doc via raw_source, enumerated the LRM-family papers (LRM, LGM, TripoSR) plus the SDS-on-splats family (DreamGaussian, AGG), and used the `ask` tool for a synthesis pass. Extended the question with a concrete four-axis experiment design (held-out PSNR, Chamfer/F-score, wall-clock, amortised GPU-hours) stratified across input categories to expose the thin-structure failure mode.",
+  "redacted_preview": "Investigated the inference-cost-vs-fidelity open question. Read the existing question doc, enumerated the LRM-family and SDS-on-splats families, and used `ask` for a synthesis pass. The researcher then pointed out that Instant3D had been dropped without reading, so the agent re-fetched it and re-ranked the feed-forward family with a discussion of whether the diffusion sampler counts as per-scene optimisation. The researcher then demanded a single-architecture ablation rather than a cross-paper benchmark; agent designed a concrete LGM-as-warm-start ablation with three arms (frozen feed-forward, warm-start + N-step fine-tune sweep, per-scene from scratch) on a fixed 25-scene set.",
   "slug": "investigate-feed-forward-vs-per-scene-reconstruction-open-question",
   "started_at": "2026-05-15T11:08:14Z",
-  "summary": "Investigated the inference-cost-vs-fidelity open question. Read the existing question doc via raw_source, enumerated the LRM-family papers (LRM, LGM, TripoSR) plus the SDS-on-splats family (DreamGaussian, AGG), and used the `ask` tool for a synthesis pass. Extended the question with a concrete four-axis experiment design (held-out PSNR, Chamfer/F-score, wall-clock, amortised GPU-hours) stratified across input categories to expose the thin-structure failure mode.",
+  "summary": "Investigated the inference-cost-vs-fidelity open question. Read the existing question doc, enumerated the LRM-family and SDS-on-splats families, and used `ask` for a synthesis pass. The researcher then pointed out that Instant3D had been dropped without reading, so the agent re-fetched it and re-ranked the feed-forward family with a discussion of whether the diffusion sampler counts as per-scene optimisation. The researcher then demanded a single-architecture ablation rather than a cross-paper benchmark; agent designed a concrete LGM-as-warm-start ablation with three arms (frozen feed-forward, warm-start + N-step fine-tune sweep, per-scene from scratch) on a fixed 25-scene set.",
   "title": "Investigate feed-forward vs per-scene reconstruction open question",
-  "tool_call_count": 8,
+  "tool_call_count": 11,
   "tools_used": [
     "ask",
     "lint_report",
+    "node_context",
     "raw_source",
     "search_nodes",
     "wiki_page"

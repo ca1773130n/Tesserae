@@ -1,11 +1,11 @@
 {
   "agent_label": "Claude Code",
   "commands_run": [],
-  "ended_at": "2026-05-13T14:19:40Z",
+  "ended_at": "2026-05-13T14:30:25Z",
   "files_touched": [],
   "harness": "claude-code",
   "id": "claude-code:2026-05-13-paper-deep-dive:2026-05-13-paper-deep-dive",
-  "message_count": 4,
+  "message_count": 11,
   "metadata": {
     "agent": "claude-opus-4-7",
     "config_root": "examples/demo-corpus/.agent-sessions",
@@ -24,7 +24,7 @@
     "questions_referenced": [],
     "stumbles": [],
     "transcript": "/Users/neo/Developer/Projects/LLM-Wiki/examples/demo-corpus/.agent-sessions/2026-05-13-paper-deep-dive/transcript.jsonl",
-    "turn_count": 22,
+    "turn_count": 35,
     "turns": [
       {
         "role": "user",
@@ -99,6 +99,59 @@
         "role": "assistant",
         "text": "_thinking_: Eight papers in hand plus NeRF prerequisite. Lay them out as a dependency tree: NeRF -> 3DGS -> {SuGaR, 2DGS, Scaffold-GS, MonoGS, 4DGS, Revising, gsplat-impl}.\n\nHere is the end-to-end lineage:\n\n  Prerequisite\n    NeRF (Mildenhall 2020, arxiv-2003-08934)\n        - establishes the differentiable volume-rendering paradigm and per-scene photometric optimisation that 3DGS replaces with primitives.\n\n  Anchor\n    3D Gaussian Splatting (Kerbl 2023, arxiv-2308-04079)\n        - swaps NeRF's ray-marched MLP for a tile-rasterised cloud of anisotropic 3D Gaussians seeded from SfM. >=30 FPS at 1080p.\n\n  Implementation reference\n    gsplat math supplement (Ye 2023, arxiv-2312-02121)\n        - derives the closed-form forward / backward of the tile rasteriser; canonical reference for any GS gradient question.\n\n  Geometry branch\n    SuGaR (Guedon 2023, arxiv-2311-12775) -> mesh from a regularised Gaussian field.\n    2D Gaussian Splatting (Huang 2024, arxiv-2403-17888) -> view-consistent geometry by construction.\n\n  Structure branch\n    Scaffold-GS (Lu 2023, arxiv-2312-00109) -> anchor-based replacement for the free soup.\n    Revising Densification (Bulo 2024, arxiv-2404-06109) -> corrects the clone/split/prune schedule downstream methods inherit.\n\n  SLAM branch\n    Gaussian Splatting SLAM / MonoGS (Matsuki 2023, arxiv-2312-06741) -> 3DGS as the sole map representation under live monocular capture.\n\n  Dynamic branch\n    4D Gaussian Splatting (Wu 2023, arxiv-2310-08528) -> deformation field attached to each canonical Gaussian.\n\nRead in that order, the original paper plus the seven downstream nodes cover the representation, its math, its surface story, its structure story, its SLAM story, and its dynamic story. If you want code to run alongside the reading, the `graphdeco-inria/gaussian-splatting` repo is the reference and `nerfstudio-project/gsplat` is the cleaner library implementation.",
         "timestamp": "2026-05-13T14:19:40Z"
+      },
+      {
+        "role": "user",
+        "text": "Walk me through adaptive density control properly. The Kerbl paper just says 'gradient-based split and clone' — what's actually in the gradient they threshold on? Position only, or the full parameter set?",
+        "timestamp": "2026-05-13T14:21:50Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: The original 3DGS paper thresholds on the per-Gaussian view-space position-gradient magnitude averaged over the last N iterations. Above the threshold and small primitive: clone. Above threshold and large primitive: split. The gsplat math supplement has the exact backward derivation — let me grab it to be precise rather than from memory.\n\nPosition-gradient only, but it's the gradient of the photometric loss w.r.t. the 2D screen-space projected mean — not 3D position directly. The gsplat supplement has the clean derivation; let me pull it.",
+        "timestamp": "2026-05-13T14:22:18Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2312-02121\"}",
+        "timestamp": "2026-05-13T14:22:30Z"
+      },
+      {
+        "name": "search_facts",
+        "role": "tool",
+        "text": "{\"limit\": 5, \"query\": \"adaptive density control clone split threshold\"}",
+        "timestamp": "2026-05-13T14:23:50Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: Good. The exact mechanism is: per-Gaussian, take the gradient of the rendered colour loss w.r.t. the 2D projected mean (post-projection, screen-space), L2-norm it, average over the last 100 iterations. If that scalar exceeds tau_pos AND the primitive's max scale axis is below tau_scale, clone (duplicate and shrink). If it exceeds tau_pos AND the scale exceeds tau_scale, split (replace with two smaller children). Bulo's revision changes the *gradient summary statistic* from mean-magnitude to variance-across-views.\n\nHere's what's actually in the criterion:\n\n  - Forward pass renders the tile-based splatter; backward pass returns dL/d(mu_i) where mu_i is the *screen-space* 2D projected mean of Gaussian i (not the 3D mean directly).\n  - Per Gaussian, the L2 norm of that screen-space gradient is accumulated and averaged over the last 100 training iterations. One scalar per primitive.\n  - Decision rule (Kerbl Section 5.2):\n      * scalar > tau_pos AND max_scale_axis < tau_scale -> CLONE. Duplicate the primitive in-place, shrink each child along the chosen scale axis. Intuition: 'this region is under-reconstructed but the primitive isn't too big — add coverage.'\n      * scalar > tau_pos AND max_scale_axis >= tau_scale -> SPLIT. Replace with two smaller primitives along the dominant axis. Intuition: 'this region is under-reconstructed AND the primitive is too big — refine resolution.'\n      * scalar <= tau_pos -> no action.\n  - Pruning is independent: opacity < tau_alpha or excessive size triggers removal.\n  - The pathology Bulo (arxiv-2404-06109) attacks: averaging the L2 norm hides multi-view disagreement. A Gaussian that's perfect for one camera but wrong for another gets a low mean magnitude (cancellation) and is never split, even though it should be. The Bulo replacement is the per-view *variance* of the same gradient instead of its mean.",
+        "timestamp": "2026-05-13T14:24:40Z"
+      },
+      {
+        "role": "user",
+        "text": "OK. And how does that interact with the SH color encoding when a Gaussian is cloned? The 3-channel coefficients up to some degree — what happens to them on duplication?",
+        "timestamp": "2026-05-13T14:27:10Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: On clone, both children inherit the parent's full SH coefficient vector verbatim — Kerbl's recipe is the cheapest valid initialisation. The subsequent gradient steps differentiate them. The gsplat supplement spells out the SH gradient backward pass; let me re-check whether there's an explicit clone-time SH handling rule.\n\nBoth children inherit the parent's SH coefficients verbatim at clone time. Let me confirm against the gsplat supplement's backward pass.",
+        "timestamp": "2026-05-13T14:27:35Z"
+      },
+      {
+        "name": "raw_source",
+        "role": "tool",
+        "text": "{\"source_path\": \"data/research/papers/arxiv-2312-02121/paper.md\"}",
+        "timestamp": "2026-05-13T14:27:50Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: Confirmed. SH coefficients are copied unchanged on clone. The interaction with the screen-space-gradient criterion is subtle: both children start with identical SH but their screen-space projections diverge immediately if their 3D means are perturbed (Kerbl perturbs each child along the dominant scale axis by a small fraction of the scale). After the next forward pass each child sees a slightly different rendered colour at its pixel set, so dL/df_i diverges, and the SH vectors decorrelate within a few optimisation steps. This is also why the original densification under-densifies view-inconsistent regions: identical SH on both children means the cloned pair *initially* renders the same view-dependent colour everywhere, so the first-step gradient that should diverge them in colour space is suppressed.\n\nConcretely:\n\n  - At clone time both children inherit the full SH vector (degree-d, 3 channels, (d+1)^2 coefficients per channel — so 48 floats for degree 3) verbatim. No re-init, no perturbation in colour space.\n  - The only perturbation is positional: Kerbl shifts each child's 3D mean along the dominant scale axis by a small fraction of the parent's scale, and halves the scale on that axis. The projected screen positions of the two children therefore diverge by one or two pixels after re-projection.\n  - From the next forward pass onward, the two children contribute to slightly different pixels' rendered colour. Their backward gradients df_i diverge, and within ~50-100 steps the SH vectors have decorrelated.\n  - Subtle interaction with the densification criterion: because both children start with the *same* SH vector, the very first post-clone step has nearly identical view-dependent radiance from both, so the immediate dL/d(mu_i) gradient that distinguishes them is dominated by purely positional disagreement. View-inconsistent radiance disagreement (the exact failure mode Bulo's variance criterion targets) only contributes to the gradient after the SH coefficients have decorrelated. The original criterion measures the *mean* gradient over 100 iterations — long enough for the SH to decorrelate, but the cancellation in early steps still washes out the signal Bulo wants to pick up.\n\nThat's the mechanical reason Bulo's variance-of-gradient criterion fires more aggressively than mean-magnitude on the same scene: it never averages over the early-window cancellation.",
+        "timestamp": "2026-05-13T14:28:55Z"
+      },
+      {
+        "role": "assistant",
+        "text": "Lineage tree stands: NeRF -> 3DGS -> {SuGaR, 2DGS, Scaffold-GS, MonoGS, 4DGS, Revising Densification, gsplat math supplement}. The mechanics drill-down ties the Bulo correction back to the original criterion via the SH-decorrelation latency in the early post-clone window — useful to know if you ever need to re-tune the densification thresholds or compare against the revised schedule.",
+        "timestamp": "2026-05-13T14:30:25Z"
       }
     ],
     "user": "demo-researcher"
@@ -107,14 +160,16 @@
   "project_name": "LLM-Wiki",
   "project_root": "",
   "raw_transcript_path": "examples/demo-corpus/.agent-sessions/2026-05-13-paper-deep-dive/transcript.jsonl",
-  "redacted_preview": "Walked the 3D Gaussian Splatting dependency graph from the Kerbl 2023 anchor in both directions. Read NeRF as the only upstream prerequisite, then six direct extensions (SuGaR, 2DGS, Scaffold-GS, MonoGS, 4DGS, gsplat math supplement) plus the Bulo revision paper. Returned a lineage explainer organised by geometry / structure / SLAM / dynamic branches. Clean happy-path session — no stumbles.",
+  "redacted_preview": "Walked the 3D Gaussian Splatting dependency graph from the Kerbl 2023 anchor in both directions. Read NeRF as the only upstream prerequisite, then six direct extensions (SuGaR, 2DGS, Scaffold-GS, MonoGS, 4DGS, gsplat math supplement) plus the Bulo revision paper. Returned a lineage explainer organised by geometry / structure / SLAM / dynamic branches. The researcher then asked a clarifying technical question about adaptive density control, and a follow-up about SH-coefficient inheritance on clone; agent re-pulled the gsplat math supplement and derived the early-window SH-decorrelation effect that explains why Bulo's variance criterion fires harder than mean-magnitude on the same scene.",
   "slug": "3d-gaussian-splatting-end-to-end-lineage-explainer",
   "started_at": "2026-05-13T14:02:11Z",
-  "summary": "Walked the 3D Gaussian Splatting dependency graph from the Kerbl 2023 anchor in both directions. Read NeRF as the only upstream prerequisite, then six direct extensions (SuGaR, 2DGS, Scaffold-GS, MonoGS, 4DGS, gsplat math supplement) plus the Bulo revision paper. Returned a lineage explainer organised by geometry / structure / SLAM / dynamic branches. Clean happy-path session — no stumbles.",
+  "summary": "Walked the 3D Gaussian Splatting dependency graph from the Kerbl 2023 anchor in both directions. Read NeRF as the only upstream prerequisite, then six direct extensions (SuGaR, 2DGS, Scaffold-GS, MonoGS, 4DGS, gsplat math supplement) plus the Bulo revision paper. Returned a lineage explainer organised by geometry / structure / SLAM / dynamic branches. The researcher then asked a clarifying technical question about adaptive density control, and a follow-up about SH-coefficient inheritance on clone; agent re-pulled the gsplat math supplement and derived the early-window SH-decorrelation effect that explains why Bulo's variance criterion fires harder than mean-magnitude on the same scene.",
   "title": "3D Gaussian Splatting end-to-end lineage explainer",
-  "tool_call_count": 9,
+  "tool_call_count": 12,
   "tools_used": [
     "node_context",
+    "raw_source",
+    "search_facts",
     "wiki_page"
   ]
 }
