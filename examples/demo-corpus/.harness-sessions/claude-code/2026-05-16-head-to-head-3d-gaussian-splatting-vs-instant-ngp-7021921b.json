@@ -1,0 +1,118 @@
+{
+  "agent_label": "Claude Code",
+  "commands_run": [],
+  "ended_at": "2026-05-16T16:50:40Z",
+  "files_touched": [],
+  "harness": "claude-code",
+  "id": "claude-code:2026-05-16-comparative:2026-05-16-comparative",
+  "message_count": 5,
+  "metadata": {
+    "agent": "claude-opus-4-7",
+    "config_root": "examples/demo-corpus/.agent-sessions",
+    "demo": true,
+    "papers_cited": [
+      "arxiv-2308-04079",
+      "arxiv-2201-05989",
+      "arxiv-2311-12775",
+      "arxiv-2403-17888",
+      "arxiv-2312-00109",
+      "arxiv-2404-06109",
+      "arxiv-2312-02121",
+      "arxiv-2211-10440",
+      "arxiv-2206-00665",
+      "arxiv-2003-08934",
+      "arxiv-2112-05131"
+    ],
+    "questions_referenced": [],
+    "stumbles": [
+      "wiki_page call with both node_id AND a `name` argument naming 'Nerfacto' returned 'node not found'; the agent recognised the mistake (mixed call shape + Nerfacto is not a separate corpus node) and proceeded with the data already gathered."
+    ],
+    "transcript": "/Users/neo/Developer/Projects/LLM-Wiki/examples/demo-corpus/.agent-sessions/2026-05-16-comparative/transcript.jsonl",
+    "turn_count": 19,
+    "turns": [
+      {
+        "role": "user",
+        "text": "Compare 3D Gaussian Splatting and Instant-NGP. Same task, same data — where does each win?",
+        "timestamp": "2026-05-16T16:45:03Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: Pull both pages, then numeric facts (PSNR/SSIM/FPS/train time), then neighbours for variants.\n\nI'll pull both paper bodies, then search the temporal-fact layer for the shared metrics, then expand neighbours for the variants of each.",
+        "timestamp": "2026-05-16T16:45:27Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2308-04079\"}",
+        "timestamp": "2026-05-16T16:45:34Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2201-05989\"}",
+        "timestamp": "2026-05-16T16:46:00Z"
+      },
+      {
+        "name": "search_facts",
+        "role": "tool",
+        "text": "{\"limit\": 12, \"query\": \"PSNR Mip-NeRF 360 Gaussian Splatting Instant-NGP\"}",
+        "timestamp": "2026-05-16T16:46:45Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: Numbers are populated. Pull variants now.\n\nNumbers look good. Let me pull each method's neighbours to find variants worth listing.",
+        "timestamp": "2026-05-16T16:47:10Z"
+      },
+      {
+        "name": "node_context",
+        "role": "tool",
+        "text": "{\"limit\": 15, \"node_id\": \"Paper:arxiv-2308-04079\"}",
+        "timestamp": "2026-05-16T16:47:15Z"
+      },
+      {
+        "name": "node_context",
+        "role": "tool",
+        "text": "{\"limit\": 15, \"node_id\": \"Paper:arxiv-2201-05989\"}",
+        "timestamp": "2026-05-16T16:47:50Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"name\": \"Nerfacto\", \"node_id\": \"Paper:arxiv-2201-05989\"}",
+        "timestamp": "2026-05-16T16:48:30Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: I confused the call by passing both id and name. The corpus doesn't have a separate Nerfacto node anyway. Move on with what I have.\n\nI sent a bad call (mixed node_id and name; also Nerfacto isn't a separate node in this corpus). I have enough data already.",
+        "timestamp": "2026-05-16T16:48:48Z"
+      },
+      {
+        "name": "search_facts",
+        "role": "tool",
+        "text": "{\"current_only\": false, \"limit\": 5, \"query\": \"Instant-NGP hash encoding SDF\"}",
+        "timestamp": "2026-05-16T16:49:10Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: Compose the head-to-head matrix and close with one-paragraph guidance.\n\nHead-to-head on Mip-NeRF 360 (outdoor average):\n\n  | Axis                          | 3D Gaussian Splatting (arxiv-2308-04079)   | Instant-NGP (arxiv-2201-05989)                |\n  |-------------------------------|---------------------------------------------|------------------------------------------------|\n  | PSNR                          | 27.21 dB                                   | 25.59 dB                                       |\n  | SSIM                          | 0.815                                      | 0.671                                          |\n  | FPS @ 1080p                   | >=134 (RTX A6000)                          | ~10 (RTX 3090)                                 |\n  | Train time to converged       | ~41 min                                    | ~5 min (plateaus around 10 min)                |\n  | Representation                | Anisotropic 3D Gaussians (explicit)        | Multi-resolution hash grid + tiny MLP (implicit)|\n  | Task scope                    | Radiance field only; mesh via SuGaR/2DGS   | Radiance field, SDF, gigapixel image, volume   |\n  | Memory at runtime             | Grows with primitive count (~1-4 GB)       | Fixed-size hash table (~50-500 MB)             |\n  | Closest variants in corpus    | SuGaR, 2DGS, Scaffold-GS, Revising-Densification, MonoGS | Magic3D (text-to-3D backbone), MonoSDF (surface) |\n\n**One-paragraph guidance.** 3DGS wins when the deliverable is a visibly-sharp novel-view render at interactive rates, the capture is a benign 100-image orbit, and you can spend 30-60 min of training per scene. Instant-NGP wins when you need (a) a task other than radiance field (it's the same code for SDF, gigapixel images, neural volumes), (b) faster initial convergence (5 minutes to usable quality vs 40 to converged), or (c) a fixed-memory footprint (the hash table size doesn't depend on scene complexity). The PSNR gap (1.6 dB) is real but smaller than the FPS gap (~13x); for offline rendering Instant-NGP is closer than the headline numbers suggest. For SLAM and mesh extraction, both have been superseded by their respective downstream variants (MonoGS for 3DGS, NeuS-on-hashgrid for Instant-NGP).",
+        "timestamp": "2026-05-16T16:50:40Z"
+      }
+    ],
+    "user": "demo-researcher"
+  },
+  "model": "claude-opus-4-7",
+  "project_name": "LLM-Wiki",
+  "project_root": "",
+  "raw_transcript_path": "examples/demo-corpus/.agent-sessions/2026-05-16-comparative/transcript.jsonl",
+  "redacted_preview": "Compared 3DGS and Instant-NGP head-to-head on Mip-NeRF 360 outdoor average. Pulled both wiki pages, used search_facts for the shared numeric metrics (PSNR/SSIM/FPS/train time), and used node_context to enumerate variants on each side. Returned an 8-row comparison matrix plus a one-paragraph 'use this when' guidance: 3DGS for sharp interactive rendering on benign captures; Instant-NGP for non-radiance tasks, faster initial convergence, or fixed memory.",
+  "slug": "head-to-head-3d-gaussian-splatting-vs-instant-ngp",
+  "started_at": "2026-05-16T16:45:03Z",
+  "summary": "Compared 3DGS and Instant-NGP head-to-head on Mip-NeRF 360 outdoor average. Pulled both wiki pages, used search_facts for the shared numeric metrics (PSNR/SSIM/FPS/train time), and used node_context to enumerate variants on each side. Returned an 8-row comparison matrix plus a one-paragraph 'use this when' guidance: 3DGS for sharp interactive rendering on benign captures; Instant-NGP for non-radiance tasks, faster initial convergence, or fixed memory.",
+  "title": "Head-to-head: 3D Gaussian Splatting vs Instant-NGP",
+  "tool_call_count": 7,
+  "tools_used": [
+    "node_context",
+    "search_facts",
+    "wiki_page"
+  ]
+}

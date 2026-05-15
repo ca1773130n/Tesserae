@@ -1,0 +1,113 @@
+{
+  "agent_label": "Claude Code",
+  "commands_run": [],
+  "ended_at": "2026-05-15T11:15:30Z",
+  "files_touched": [],
+  "harness": "claude-code",
+  "id": "claude-code:2026-05-15-open-question:2026-05-15-open-question",
+  "message_count": 3,
+  "metadata": {
+    "agent": "claude-opus-4-7",
+    "config_root": "examples/demo-corpus/.agent-sessions",
+    "demo": true,
+    "papers_cited": [
+      "arxiv-2311-04400",
+      "arxiv-2311-06214",
+      "arxiv-2402-05054",
+      "arxiv-2403-02151",
+      "arxiv-2309-16653",
+      "arxiv-2401-04099"
+    ],
+    "questions_referenced": [
+      "inference-cost-vs-fidelity"
+    ],
+    "stumbles": [
+      "lint_report tool call returned exists=false because the demo corpus has not been linted yet; the agent skipped that source of evidence and continued with what `ask` had already returned."
+    ],
+    "transcript": "/Users/neo/Developer/Projects/LLM-Wiki/examples/demo-corpus/.agent-sessions/2026-05-15-open-question/transcript.jsonl",
+    "turn_count": 19,
+    "turns": [
+      {
+        "role": "user",
+        "text": "We have an open question about feed-forward vs per-scene reconstruction. What does the corpus say?",
+        "timestamp": "2026-05-15T11:08:14Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: Read the existing question doc, then enumerate the LRM-family papers, then use the ask tool for a synthesis pass.\n\nLet me read the open-question doc first, then enumerate the feed-forward family, then run a synthesis question through `ask`.",
+        "timestamp": "2026-05-15T11:08:42Z"
+      },
+      {
+        "name": "raw_source",
+        "role": "tool",
+        "text": "{\"source_path\": \"data/research/questions/inference-cost-vs-fidelity.md\"}",
+        "timestamp": "2026-05-15T11:08:48Z"
+      },
+      {
+        "name": "search_nodes",
+        "role": "tool",
+        "text": "{\"limit\": 8, \"query\": \"Large Reconstruction Model feed-forward\", \"type\": \"Paper\"}",
+        "timestamp": "2026-05-15T11:09:30Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2311-04400\"}",
+        "timestamp": "2026-05-15T11:10:10Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2402-05054\"}",
+        "timestamp": "2026-05-15T11:11:00Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2403-02151\"}",
+        "timestamp": "2026-05-15T11:11:45Z"
+      },
+      {
+        "name": "search_nodes",
+        "role": "tool",
+        "text": "{\"limit\": 5, \"query\": \"DreamGaussian SDS on splats\", \"type\": \"Paper\"}",
+        "timestamp": "2026-05-15T11:12:40Z"
+      },
+      {
+        "name": "ask",
+        "role": "tool",
+        "text": "{\"backend\": \"auto\", \"question\": \"On the same input image, how does feed-forward 3D reconstruction (LRM/LGM/TripoSR) compare to per-scene SDS-on-splats (DreamGaussian) in fidelity, geometric accuracy, and wall-clock cost?\", \"top_k\": 8}",
+        "timestamp": "2026-05-15T11:13:30Z"
+      },
+      {
+        "name": "lint_report",
+        "role": "tool",
+        "text": "{}",
+        "timestamp": "2026-05-15T11:15:00Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: No lint report yet. Move on. The answer plus the existing question doc is enough to propose an experiment design.\n\nLint report doesn't exist yet for this build. Here is what I have:\n\n**What the corpus already says**\n- The open question doc (`questions/inference-cost-vs-fidelity.md`) calls out the four-axis gap: fidelity / geometric accuracy / wall-clock / GPU-hour amortised cost. No paper provides all four.\n- The feed-forward family is LRM (arxiv-2311-04400) -> Instant3D (arxiv-2311-06214) -> LGM (arxiv-2402-05054) -> TripoSR (arxiv-2403-02151). All three I read fit in ~0.5-5s/asset.\n- The per-scene SDS-on-splats family is DreamGaussian (arxiv-2309-16653) and AGG (arxiv-2401-04099, which is itself an amortised hybrid). DreamGaussian is ~2 minutes/asset.\n\n**New evidence the `ask` synthesis pulled together**\n- Feed-forward methods are bandwidth-limited on thin structures because Objaverse under-represents them.\n- Per-scene SDS hallucinates back-side geometry where the critic has weak supervision.\n- The break-even at >10k assets favours feed-forward; below that, DreamGaussian wins.\n\n**Proposed experiment to resolve the question** (extending the existing doc):\n  Inputs:  100 single images sampled stratified across (synthetic / GSO / in-the-wild) and (thin / blocky / organic) categories.\n  Methods: LRM, LGM, TripoSR (feed-forward) and DreamGaussian, AGG (per-scene/amortised).\n  Metrics:\n    (a) Held-out-view PSNR / SSIM / LPIPS on the 50 GSO captures (ground truth available).\n    (b) Chamfer + F-score against GSO meshes.\n    (c) Wall-clock inference on a single A100, single asset.\n    (d) Amortised GPU-hours per asset across 100, 1k, 10k, 100k asset volumes.\n  Stratify (a)+(b) by category to expose the thin-structure failure mode the synthesis predicts.\n\nIf any of {a, b, c, d} is missing the comparison can be made (this corpus has roughly enough data to estimate three out of four). I'd extend the open-question doc with this design rather than rewrite it.",
+        "timestamp": "2026-05-15T11:15:30Z"
+      }
+    ],
+    "user": "demo-researcher"
+  },
+  "model": "claude-opus-4-7",
+  "project_name": "LLM-Wiki",
+  "project_root": "",
+  "raw_transcript_path": "examples/demo-corpus/.agent-sessions/2026-05-15-open-question/transcript.jsonl",
+  "redacted_preview": "Investigated the inference-cost-vs-fidelity open question. Read the existing question doc via raw_source, enumerated the LRM-family papers (LRM, LGM, TripoSR) plus the SDS-on-splats family (DreamGaussian, AGG), and used the `ask` tool for a synthesis pass. Extended the question with a concrete four-axis experiment design (held-out PSNR, Chamfer/F-score, wall-clock, amortised GPU-hours) stratified across input categories to expose the thin-structure failure mode.",
+  "slug": "investigate-feed-forward-vs-per-scene-reconstruction-open-question",
+  "started_at": "2026-05-15T11:08:14Z",
+  "summary": "Investigated the inference-cost-vs-fidelity open question. Read the existing question doc via raw_source, enumerated the LRM-family papers (LRM, LGM, TripoSR) plus the SDS-on-splats family (DreamGaussian, AGG), and used the `ask` tool for a synthesis pass. Extended the question with a concrete four-axis experiment design (held-out PSNR, Chamfer/F-score, wall-clock, amortised GPU-hours) stratified across input categories to expose the thin-structure failure mode.",
+  "title": "Investigate feed-forward vs per-scene reconstruction open question",
+  "tool_call_count": 8,
+  "tools_used": [
+    "ask",
+    "lint_report",
+    "raw_source",
+    "search_nodes",
+    "wiki_page"
+  ]
+}

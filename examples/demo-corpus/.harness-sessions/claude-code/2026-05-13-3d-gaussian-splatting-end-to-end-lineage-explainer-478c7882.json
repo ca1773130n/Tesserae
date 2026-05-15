@@ -1,0 +1,120 @@
+{
+  "agent_label": "Claude Code",
+  "commands_run": [],
+  "ended_at": "2026-05-13T14:19:40Z",
+  "files_touched": [],
+  "harness": "claude-code",
+  "id": "claude-code:2026-05-13-paper-deep-dive:2026-05-13-paper-deep-dive",
+  "message_count": 4,
+  "metadata": {
+    "agent": "claude-opus-4-7",
+    "config_root": "examples/demo-corpus/.agent-sessions",
+    "demo": true,
+    "papers_cited": [
+      "arxiv-2308-04079",
+      "arxiv-2003-08934",
+      "arxiv-2311-12775",
+      "arxiv-2403-17888",
+      "arxiv-2312-06741",
+      "arxiv-2310-08528",
+      "arxiv-2312-02121",
+      "arxiv-2312-00109",
+      "arxiv-2404-06109"
+    ],
+    "questions_referenced": [],
+    "stumbles": [],
+    "transcript": "/Users/neo/Developer/Projects/LLM-Wiki/examples/demo-corpus/.agent-sessions/2026-05-13-paper-deep-dive/transcript.jsonl",
+    "turn_count": 22,
+    "turns": [
+      {
+        "role": "user",
+        "text": "I want to understand 3D Gaussian Splatting end to end. Start with the Kerbl 2023 paper.",
+        "timestamp": "2026-05-13T14:02:11Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: Pull the canonical 3DGS page, then walk the dependency graph backward to NeRF/MVS prerequisites and forward to follow-ons.\n\nI'll pull the canonical 3DGS paper, then trace its prerequisites and direct successors via the graph.",
+        "timestamp": "2026-05-13T14:02:38Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2308-04079\"}",
+        "timestamp": "2026-05-13T14:02:44Z"
+      },
+      {
+        "name": "node_context",
+        "role": "tool",
+        "text": "{\"limit\": 30, \"node_id\": \"Paper:arxiv-2308-04079\"}",
+        "timestamp": "2026-05-13T14:05:30Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: Two directions: backward to NeRF/SfM, forward through SuGaR/2DGS/Scaffold-GS/MonoGS/4DGS/Revising. Read NeRF first to establish the prerequisite.\n\nClean dependency graph. NeRF is the only upstream paper edge. Let me read it next.",
+        "timestamp": "2026-05-13T14:06:05Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2003-08934\"}",
+        "timestamp": "2026-05-13T14:06:11Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2311-12775\"}",
+        "timestamp": "2026-05-13T14:09:02Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2403-17888\"}",
+        "timestamp": "2026-05-13T14:11:20Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2312-06741\"}",
+        "timestamp": "2026-05-13T14:13:00Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2310-08528\"}",
+        "timestamp": "2026-05-13T14:14:30Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2312-02121\"}",
+        "timestamp": "2026-05-13T14:15:55Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2312-00109\"}",
+        "timestamp": "2026-05-13T14:17:20Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: Eight papers in hand plus NeRF prerequisite. Lay them out as a dependency tree: NeRF -> 3DGS -> {SuGaR, 2DGS, Scaffold-GS, MonoGS, 4DGS, Revising, gsplat-impl}.\n\nHere is the end-to-end lineage:\n\n  Prerequisite\n    NeRF (Mildenhall 2020, arxiv-2003-08934)\n        - establishes the differentiable volume-rendering paradigm and per-scene photometric optimisation that 3DGS replaces with primitives.\n\n  Anchor\n    3D Gaussian Splatting (Kerbl 2023, arxiv-2308-04079)\n        - swaps NeRF's ray-marched MLP for a tile-rasterised cloud of anisotropic 3D Gaussians seeded from SfM. >=30 FPS at 1080p.\n\n  Implementation reference\n    gsplat math supplement (Ye 2023, arxiv-2312-02121)\n        - derives the closed-form forward / backward of the tile rasteriser; canonical reference for any GS gradient question.\n\n  Geometry branch\n    SuGaR (Guedon 2023, arxiv-2311-12775) -> mesh from a regularised Gaussian field.\n    2D Gaussian Splatting (Huang 2024, arxiv-2403-17888) -> view-consistent geometry by construction.\n\n  Structure branch\n    Scaffold-GS (Lu 2023, arxiv-2312-00109) -> anchor-based replacement for the free soup.\n    Revising Densification (Bulo 2024, arxiv-2404-06109) -> corrects the clone/split/prune schedule downstream methods inherit.\n\n  SLAM branch\n    Gaussian Splatting SLAM / MonoGS (Matsuki 2023, arxiv-2312-06741) -> 3DGS as the sole map representation under live monocular capture.\n\n  Dynamic branch\n    4D Gaussian Splatting (Wu 2023, arxiv-2310-08528) -> deformation field attached to each canonical Gaussian.\n\nRead in that order, the original paper plus the seven downstream nodes cover the representation, its math, its surface story, its structure story, its SLAM story, and its dynamic story. If you want code to run alongside the reading, the `graphdeco-inria/gaussian-splatting` repo is the reference and `nerfstudio-project/gsplat` is the cleaner library implementation.",
+        "timestamp": "2026-05-13T14:19:40Z"
+      }
+    ],
+    "user": "demo-researcher"
+  },
+  "model": "claude-opus-4-7",
+  "project_name": "LLM-Wiki",
+  "project_root": "",
+  "raw_transcript_path": "examples/demo-corpus/.agent-sessions/2026-05-13-paper-deep-dive/transcript.jsonl",
+  "redacted_preview": "Walked the 3D Gaussian Splatting dependency graph from the Kerbl 2023 anchor in both directions. Read NeRF as the only upstream prerequisite, then six direct extensions (SuGaR, 2DGS, Scaffold-GS, MonoGS, 4DGS, gsplat math supplement) plus the Bulo revision paper. Returned a lineage explainer organised by geometry / structure / SLAM / dynamic branches. Clean happy-path session — no stumbles.",
+  "slug": "3d-gaussian-splatting-end-to-end-lineage-explainer",
+  "started_at": "2026-05-13T14:02:11Z",
+  "summary": "Walked the 3D Gaussian Splatting dependency graph from the Kerbl 2023 anchor in both directions. Read NeRF as the only upstream prerequisite, then six direct extensions (SuGaR, 2DGS, Scaffold-GS, MonoGS, 4DGS, gsplat math supplement) plus the Bulo revision paper. Returned a lineage explainer organised by geometry / structure / SLAM / dynamic branches. Clean happy-path session — no stumbles.",
+  "title": "3D Gaussian Splatting end-to-end lineage explainer",
+  "tool_call_count": 9,
+  "tools_used": [
+    "node_context",
+    "wiki_page"
+  ]
+}

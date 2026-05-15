@@ -70,9 +70,11 @@ jobs:
         # are intentionally NOT passed as a source: the harness session
         # importer (llm_wiki/harness_sessions.py) only ingests native
         # Claude Code / Codex JSONL formats, not the synthetic showcase
-        # format. The five transcripts ship as file-tree artifacts in the
-        # corpus for visitors who clone the repo; they do not project into
-        # the /sessions/ index on the deployed site.
+        # format. Instead, those five transcripts are pre-converted to
+        # harness-native HarnessSession JSON under
+        # examples/demo-corpus/.harness-sessions/ and seeded into the
+        # harness session store by the "Seed demo agent sessions" step
+        # below, so the build-site step renders them under /sessions/.
         run: |
           python -m llm_wiki project setup \
             --yes \
@@ -91,6 +93,22 @@ jobs:
         # builds the typed graph from filesystem walks + heuristics, with
         # zero outbound network or LLM calls. See llm_wiki/research_graph.py.
         run: python -m llm_wiki project compile
+
+      - name: Seed demo agent sessions
+        # Copy pre-converted demo session JSON into the harness session
+        # store so the build-site step treats them as real sessions
+        # discovered during compile. The source JSONL transcripts live
+        # under examples/demo-corpus/.agent-sessions/ (showcase content);
+        # the harness-native JSON files under
+        # examples/demo-corpus/.harness-sessions/<harness>/ are derived
+        # artifacts produced by examples/demo-corpus/scripts/convert_sessions.py
+        # and committed to the repo. HarnessSessionStore.list_sessions()
+        # globs ``<root>/*/*.json`` so the per-harness subdirectory is
+        # preserved (e.g. .llm-wiki/harness_sessions/claude-code/*.json).
+        run: |
+          mkdir -p .llm-wiki/harness_sessions
+          cp -r examples/demo-corpus/.harness-sessions/* .llm-wiki/harness_sessions/
+          find .llm-wiki/harness_sessions -type f -name '*.json' | sort
 
       - name: Build static site
         run: python -m llm_wiki project build-site

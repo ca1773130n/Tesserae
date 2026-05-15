@@ -1,0 +1,135 @@
+{
+  "agent_label": "Claude Code",
+  "commands_run": [],
+  "ended_at": "2026-05-12T09:26:10Z",
+  "files_touched": [
+    "examples/demo-corpus/data/research/weekly/2026-W19/synthesis.md"
+  ],
+  "harness": "claude-code",
+  "id": "claude-code:2026-05-12-weekly-digest:2026-05-12-weekly-digest",
+  "message_count": 6,
+  "metadata": {
+    "agent": "claude-opus-4-7",
+    "config_root": "examples/demo-corpus/.agent-sessions",
+    "demo": true,
+    "papers_cited": [
+      "arxiv-2308-04079",
+      "arxiv-2404-06109",
+      "arxiv-2403-14627",
+      "arxiv-2403-16292",
+      "arxiv-2403-17888",
+      "arxiv-2402-05054"
+    ],
+    "questions_referenced": [
+      "multi-view-consistency"
+    ],
+    "stumbles": [
+      "wiki_page on guessed Synthesis node id 'Synthesis:weekly-2026-w18' returned 'not found'; recovered by searching the syntheses kind to find the correct id 'Synthesis:weekly-2026-W18'."
+    ],
+    "transcript": "/Users/neo/Developer/Projects/LLM-Wiki/examples/demo-corpus/.agent-sessions/2026-05-12-weekly-digest/transcript.jsonl",
+    "turn_count": 24,
+    "turns": [
+      {
+        "role": "user",
+        "text": "Compile this week's research digest on Gaussian Splatting. Use the papers from W18 onward.",
+        "timestamp": "2026-05-12T09:14:22Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: W18 synthesis already exists. I should pull GS papers added or re-touched since then and draft a W19 digest.\n\nI'll start by checking what's already covered in the W18 synthesis so I don't duplicate it, then search for recent Gaussian Splatting papers.",
+        "timestamp": "2026-05-12T09:14:48Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Synthesis:weekly-2026-w18\"}",
+        "timestamp": "2026-05-12T09:14:55Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: Synthesis node id guess was wrong. Search for it instead.\n\nThe synthesis node id wasn't what I guessed. Let me search for it.",
+        "timestamp": "2026-05-12T09:15:10Z"
+      },
+      {
+        "name": "search_nodes",
+        "role": "tool",
+        "text": "{\"kind\": \"syntheses\", \"limit\": 5, \"query\": \"weekly synthesis W18\"}",
+        "timestamp": "2026-05-12T09:15:14Z"
+      },
+      {
+        "name": "search_nodes",
+        "role": "tool",
+        "text": "{\"limit\": 12, \"query\": \"Gaussian Splatting\", \"type\": \"Paper\"}",
+        "timestamp": "2026-05-12T09:15:22Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: W18 already covered Scaffold-GS lineage; the corrective + sparse-view branch is the freshest material. Pull bodies for Revising Densification, MVSplat, latentSplat, plus 2DGS for the geometry angle.\n\nEight matches. W18 already covered the SDS / LRM lines, so the genuinely fresh material is the corrective and feed-forward-from-sparse-views branch. Reading four bodies.",
+        "timestamp": "2026-05-12T09:15:42Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2404-06109\"}",
+        "timestamp": "2026-05-12T09:15:48Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2403-14627\"}",
+        "timestamp": "2026-05-12T09:18:02Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2403-16292\"}",
+        "timestamp": "2026-05-12T09:20:48Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"Paper:arxiv-2403-17888\"}",
+        "timestamp": "2026-05-12T09:22:31Z"
+      },
+      {
+        "name": "node_context",
+        "role": "tool",
+        "text": "{\"limit\": 20, \"node_id\": \"Paper:arxiv-2403-14627\"}",
+        "timestamp": "2026-05-12T09:24:10Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: Good — MVSplat edges back to LGM and the multi-view-consistency question. That's the through-line: feed-forward GS still inherits the same multi-view robustness gap.\n\nMVSplat and latentSplat are the headline. Both replace per-scene optimisation with a feed-forward predictor, and both still hit the same multi-view-consistency open question MonoGS does. That's the digest spine.",
+        "timestamp": "2026-05-12T09:25:40Z"
+      },
+      {
+        "name": "Write",
+        "role": "tool",
+        "text": "{\"content\": \"---\\ntype: Synthesis\\nperiod: weekly\\niso_week: 2026-W19\\ncovers_daily:\\n  - daily/2026-05-05\\npapers_anchored:\\n  - arxiv-2308-04079\\n  - arxiv-2404-06109\\n  - arxiv-2403-14627\\n  - arxiv-2403-16292\\n  - arxiv-2403-17888\\n  - arxiv-2402-05054\\ntrend: \\\"Feed-forward Gaussian prediction inherits the multi-view-consistency gap\\\"\\nsub_topics: [3D Gaussian Splatting, Generative 3D Representations]\\n---\\n\\n# Weekly synthesis — 2026-W19\\n\\nW18 closed on the SDS-vs-feed-forward fork. W19's reading sharpens the\\nfeed-forward side: two of this week's Gaussian Splatting arrivals replace\\nper-scene optimisation with a single network forward pass over a sparse\\nview set, and a third paper is the corrective on the original 3DGS\\ndensification schedule that everything downstream still inherits.\\n\\n## The feed-forward Gaussian branch\\n\\n[MVSplat](../../papers/arxiv-2403-14627/paper.md) (Chen et al., 2024)\\nand [latentSplat](../../papers/arxiv-2403-16292/paper.md) (Wewer et al.,\\n2024) both consume a handful of posed views and directly emit a 3D\\nGaussian field. MVSplat uses a plane-sweep cost volume and per-pixel\\ndepth unprojection; latentSplat frames the predictor as a VAE over\\nG…",
+        "timestamp": "2026-05-12T09:25:48Z"
+      },
+      {
+        "role": "assistant",
+        "text": "W19 digest drafted. Anchors six papers (3DGS base + four W19 arrivals + LGM for the cross-reference) and surfaces multi-view-consistency under fast motion as the through-line gap.",
+        "timestamp": "2026-05-12T09:26:10Z"
+      }
+    ],
+    "user": "demo-researcher"
+  },
+  "model": "claude-opus-4-7",
+  "project_name": "LLM-Wiki",
+  "project_root": "",
+  "raw_transcript_path": "examples/demo-corpus/.agent-sessions/2026-05-12-weekly-digest/transcript.jsonl",
+  "redacted_preview": "Compiled W19 digest by searching the corpus for recent Gaussian Splatting papers, reading four paper bodies (Revising Densification, MVSplat, latentSplat, 2DGS) and pulling MVSplat neighbours via node_context. Drafted a ~500-word synthesis anchored to six papers. Surfaced 'multi-view consistency under fast motion' as the recurring open question that feed-forward GS does not escape.",
+  "slug": "weekly-gaussian-splatting-digest-w19",
+  "started_at": "2026-05-12T09:14:22Z",
+  "summary": "Compiled W19 digest by searching the corpus for recent Gaussian Splatting papers, reading four paper bodies (Revising Densification, MVSplat, latentSplat, 2DGS) and pulling MVSplat neighbours via node_context. Drafted a ~500-word synthesis anchored to six papers. Surfaced 'multi-view consistency under fast motion' as the recurring open question that feed-forward GS does not escape.",
+  "title": "Weekly Gaussian Splatting digest — W19",
+  "tool_call_count": 9,
+  "tools_used": [
+    "Write",
+    "node_context",
+    "search_nodes",
+    "wiki_page"
+  ]
+}

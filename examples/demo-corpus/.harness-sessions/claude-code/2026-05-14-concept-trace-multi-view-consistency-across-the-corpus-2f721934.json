@@ -1,0 +1,114 @@
+{
+  "agent_label": "Claude Code",
+  "commands_run": [],
+  "ended_at": "2026-05-14T10:36:10Z",
+  "files_touched": [],
+  "harness": "claude-code",
+  "id": "claude-code:2026-05-14-concept-trace:2026-05-14-concept-trace",
+  "message_count": 5,
+  "metadata": {
+    "agent": "claude-opus-4-7",
+    "config_root": "examples/demo-corpus/.agent-sessions",
+    "demo": true,
+    "papers_cited": [
+      "arxiv-2003-08934",
+      "arxiv-2106-10689",
+      "arxiv-2108-10869",
+      "arxiv-2308-04079",
+      "arxiv-2312-06741",
+      "arxiv-2403-17888",
+      "arxiv-2403-14627",
+      "arxiv-2311-11700",
+      "arxiv-2404-06109"
+    ],
+    "questions_referenced": [
+      "multi-view-consistency"
+    ],
+    "stumbles": [
+      "search_nodes with type=Concept returned 0 results for 'multi-view consistency' because the corpus tracks the topic as an OpenQuestion rather than a Concept node; recovered by dropping the type filter and broadening the search."
+    ],
+    "transcript": "/Users/neo/Developer/Projects/LLM-Wiki/examples/demo-corpus/.agent-sessions/2026-05-14-concept-trace/transcript.jsonl",
+    "turn_count": 16,
+    "turns": [
+      {
+        "role": "user",
+        "text": "Trace 'Multi-View Consistency' as a concept across the corpus.",
+        "timestamp": "2026-05-14T10:31:05Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: Concept node first, then pull edges, then facts.\n\nI'll look up the concept node, expand its neighbours, and then pull temporal facts that mention it.",
+        "timestamp": "2026-05-14T10:31:30Z"
+      },
+      {
+        "name": "search_nodes",
+        "role": "tool",
+        "text": "{\"limit\": 5, \"query\": \"multi-view consistency\", \"type\": \"Concept\"}",
+        "timestamp": "2026-05-14T10:31:36Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: No exact Concept match. The corpus may model it as the OpenQuestion instead. Re-search across types.\n\nNo Concept node for that exact name. Let me broaden the search.",
+        "timestamp": "2026-05-14T10:31:55Z"
+      },
+      {
+        "name": "search_nodes",
+        "role": "tool",
+        "text": "{\"limit\": 10, \"query\": \"multi-view consistency\"}",
+        "timestamp": "2026-05-14T10:32:01Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: The corpus tracks the concept through (a) the OpenQuestion node and (b) explicit fact assertions. Pull the OpenQuestion neighbours and search facts.\n\nThe concept lives as an OpenQuestion plus a related Concept (Multi-View Stereo). I'll trace via the question's neighbours and a fact search.",
+        "timestamp": "2026-05-14T10:32:20Z"
+      },
+      {
+        "name": "node_context",
+        "role": "tool",
+        "text": "{\"limit\": 30, \"node_id\": \"OpenQuestion:multi-view-consistency\"}",
+        "timestamp": "2026-05-14T10:32:28Z"
+      },
+      {
+        "name": "search_facts",
+        "role": "tool",
+        "text": "{\"limit\": 12, \"query\": \"multi-view consistency\"}",
+        "timestamp": "2026-05-14T10:33:00Z"
+      },
+      {
+        "name": "timeline",
+        "role": "tool",
+        "text": "{\"limit\": 20, \"query\": \"multi-view consistency\"}",
+        "timestamp": "2026-05-14T10:33:45Z"
+      },
+      {
+        "name": "wiki_page",
+        "role": "tool",
+        "text": "{\"node_id\": \"OpenQuestion:multi-view-consistency\"}",
+        "timestamp": "2026-05-14T10:34:30Z"
+      },
+      {
+        "role": "assistant",
+        "text": "_thinking_: I have enough anchors to draw a five-stage timeline. Compose it.\n\nConcept-evolution timeline for 'Multi-View Consistency' across the corpus:\n\n  1. 2020-03 - NeRF (arxiv-2003-08934)\n     Establishes photometric multi-view consistency as the implicit optimisation signal. Per-scene loss, no other supervision.\n\n  2. 2021-06 - NeuS (arxiv-2106-10689)\n     Lifts the property from 'pixel agreement' to 'view-consistent SDF zero level set'. Geometry is the *thing* that should be consistent, not just radiance.\n\n  3. 2021-08 - DROID-SLAM (arxiv-2108-10869)\n     Operationalises the property under aggressive motion: deep bundle adjustment on learned features remains the most robust pose engine on EuRoC / TartanAir.\n\n  4. 2023-08 / 2023-12 - 3DGS (arxiv-2308-04079) and MonoGS (arxiv-2312-06741)\n     Splatting takes over view synthesis and SLAM but evaluates only on quasi-static / well-behaved trajectories. The property is assumed, not stress-tested.\n\n  5. 2024-03 - 2DGS (arxiv-2403-17888) and MVSplat (arxiv-2403-14627)\n     Two opposing moves on the same gap. 2DGS bakes view-consistency into the primitive geometry (oriented disk). MVSplat raises the question explicitly: feed-forward prediction inherits the consistency gap from sparse views.\n\nOpen question: the gap is the fast-motion regime. None of the splatting-SLAM papers report numbers on EuRoC/TartanAir, and no feed-forward GS method has been stress-tested against multi-view-inconsistent inputs. See questions/multi-view-consistency.md.",
+        "timestamp": "2026-05-14T10:36:10Z"
+      }
+    ],
+    "user": "demo-researcher"
+  },
+  "model": "claude-opus-4-7",
+  "project_name": "LLM-Wiki",
+  "project_root": "",
+  "raw_transcript_path": "examples/demo-corpus/.agent-sessions/2026-05-14-concept-trace/transcript.jsonl",
+  "redacted_preview": "Traced 'Multi-View Consistency' through the corpus as a five-stage timeline anchored to NeRF (2020), NeuS (2021), DROID-SLAM (2021), 3DGS / MonoGS (2023), and 2DGS / MVSplat (2024). Used search_facts + timeline tools to pull predicate-level evidence (evaluated_on, introduces_property, raises_question). Surfaced the fast-motion robustness gap as the open question that connects the splatting and SLAM branches.",
+  "slug": "concept-trace-multi-view-consistency-across-the-corpus",
+  "started_at": "2026-05-14T10:31:05Z",
+  "summary": "Traced 'Multi-View Consistency' through the corpus as a five-stage timeline anchored to NeRF (2020), NeuS (2021), DROID-SLAM (2021), 3DGS / MonoGS (2023), and 2DGS / MVSplat (2024). Used search_facts + timeline tools to pull predicate-level evidence (evaluated_on, introduces_property, raises_question). Surfaced the fast-motion robustness gap as the open question that connects the splatting and SLAM branches.",
+  "title": "Concept trace — Multi-View Consistency across the corpus",
+  "tool_call_count": 6,
+  "tools_used": [
+    "node_context",
+    "search_facts",
+    "search_nodes",
+    "timeline",
+    "wiki_page"
+  ]
+}
