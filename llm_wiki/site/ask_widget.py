@@ -1,5 +1,27 @@
 """Per-page ask-box JS island and CSS for the static wiki.
 
+Two operating modes:
+
+* **Live mode** — when ``/api/ask/health`` responds OK (``llm_wiki project
+  serve`` is fronting the site). The widget renders an input + submit
+  button and POSTs free-form questions to ``/api/ask``.
+
+* **Static mode** — when the health-check fails (GitHub Pages, file://,
+  any plain static host). Two sub-cases:
+
+  - If a non-empty ``DEMO_QA`` list is baked into the bundle, the widget
+    renders a "Try a demo question" panel with click-to-expand answers.
+    The list is pre-rendered against the seeded LightRAG store so a
+    visitor on the github.io demo still gets real RAG retrieval, just
+    canned to a fixed question set.
+  - Otherwise the widget collapses to the original one-line footer
+    pointing readers at ``llm_wiki project serve``.
+
+The ``DEMO_QA`` payload is substituted into the JS source at build time
+by :func:`ask_widget_js`. Both the StaticSiteBuilder and the per-page
+renderer call ``ask_widget_js`` with the *same* payload so the content
+hash on the asset filename matches.
+
 Bet B3 from ``docs/superpowers/specs/2026-05-13-competitive-positioning-research.md``.
 
 Every detail page (concept / paper / repo / synthesis / entity / topic /
@@ -39,7 +61,11 @@ so no untrusted markup ever gets parsed as HTML.
 from __future__ import annotations
 
 
-_ASK_WIDGET_JS = r"""(function(){
+_ASK_WIDGET_JS_TEMPLATE = r"""(function(){
+  // Baked-in demo Q&A payload, substituted at build time. Empty array
+  // when no qa-cache.json was found at compile.
+  var DEMO_QA = __DEMO_QA_PAYLOAD__;
+
   var root = document.querySelector('[data-ask-widget]');
   if (!root) return;
   var nodeId = root.getAttribute('data-node-id') || '';
@@ -47,14 +73,22 @@ _ASK_WIDGET_JS = r"""(function(){
   var nodeName = root.getAttribute('data-node-name') || '';
 
   // Health-check the backend endpoint at /api/ask/health. If unreachable,
-  // collapse the widget into a one-line static footer.
+  // fall back to the static demo panel (or the one-liner if no demo data).
   try {
     fetch('/api/ask/health', { method: 'GET' })
       .then(function(r){ return r.ok ? r.json() : Promise.reject(); })
       .then(function(){ renderWidget(); })
-      .catch(function(){ renderDegraded(); });
+      .catch(function(){ renderStaticFallback(); });
   } catch (err) {
-    renderDegraded();
+    renderStaticFallback();
+  }
+
+  function renderStaticFallback(){
+    if (Array.isArray(DEMO_QA) && DEMO_QA.length > 0) {
+      renderDemoPanel();
+    } else {
+      renderDegraded();
+    }
   }
 
   function clear(node){
@@ -80,6 +114,45 @@ _ASK_WIDGET_JS = r"""(function(){
     p.appendChild(el('code', null, 'llm_wiki project serve'));
     p.appendChild(document.createTextNode(' to ask questions about this page.'));
     root.appendChild(p);
+  }
+
+  function renderDemoPanel(){
+    clear(root);
+    var hdr = el('div', { 'class': 'ask-demo-header' });
+    hdr.appendChild(el('span', { 'class': 'ask-demo-eyebrow' }, 'Live RAG demo'));
+    hdr.appendChild(el('span', { 'class': 'ask-demo-hint' },
+      'Pre-rendered answers against the seeded LightRAG store. ' +
+      'Run llm_wiki project serve locally for free-form questions.'));
+    root.appendChild(hdr);
+
+    var list = el('ul', { 'class': 'ask-demo-list' });
+    DEMO_QA.forEach(function(qa){
+      if (!qa || !qa.question || !qa.answer) return;
+      var li = el('li', { 'class': 'ask-demo-item' });
+      var btn = el('button', {
+        type: 'button', 'class': 'ask-demo-question', 'aria-expanded': 'false'
+      });
+      btn.appendChild(el('span', { 'class': 'ask-demo-chevron', 'aria-hidden': 'true' }, '▸'));
+      btn.appendChild(document.createTextNode(' ' + String(qa.question)));
+      var ans = el('div', { 'class': 'ask-demo-answer', hidden: '' });
+      appendLinkified(ans, String(qa.answer));
+      btn.addEventListener('click', function(){
+        var open = !ans.hidden;
+        if (open) {
+          ans.hidden = true;
+          btn.setAttribute('aria-expanded', 'false');
+          btn.firstChild.textContent = '▸';
+        } else {
+          ans.hidden = false;
+          btn.setAttribute('aria-expanded', 'true');
+          btn.firstChild.textContent = '▾';
+        }
+      });
+      li.appendChild(btn);
+      li.appendChild(ans);
+      list.appendChild(li);
+    });
+    root.appendChild(list);
   }
 
   function renderWidget(){
@@ -288,12 +361,145 @@ _ASK_WIDGET_CSS = """\
 .ask-answer-list { margin: 0; padding-left: 1.3rem; }
 .ask-answer-list li { margin: 0.25rem 0; }
 .ask-answer-empty { color: var(--muted, #9ca3af); font-size: 0.9rem; margin: 0; }
+
+.ask-demo-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin-bottom: 0.85rem;
+}
+.ask-demo-eyebrow {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: rgba(250, 204, 21, 0.85);
+    font-weight: 700;
+}
+.ask-demo-hint {
+    font-size: 0.78rem;
+    color: var(--muted, #9ca3af);
+    line-height: 1.4;
+}
+.ask-demo-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+.ask-demo-item {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.02);
+    overflow: hidden;
+}
+[data-theme="light"] .ask-demo-item {
+    border-color: rgba(0, 0, 0, 0.08);
+    background: rgba(0, 0, 0, 0.015);
+}
+.ask-demo-question {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 0.6rem 0.85rem;
+    font: inherit;
+    font-size: 0.92rem;
+    display: flex;
+    align-items: baseline;
+    gap: 0.1rem;
+}
+.ask-demo-question:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+[data-theme="light"] .ask-demo-question:hover {
+    background: rgba(0, 0, 0, 0.03);
+}
+.ask-demo-chevron {
+    display: inline-block;
+    width: 1em;
+    color: rgba(250, 204, 21, 0.9);
+    flex-shrink: 0;
+}
+.ask-demo-answer {
+    padding: 0.1rem 1rem 0.85rem 2rem;
+    font-size: 0.9rem;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    color: var(--muted-strong, #d1d5db);
+}
+[data-theme="light"] .ask-demo-answer {
+    color: rgba(0, 0, 0, 0.75);
+}
 """
 
 
-def ask_widget_js() -> str:
-    """Return the JS source for the per-page ask widget."""
-    return _ASK_WIDGET_JS
+import json as _json
+from pathlib import Path as _Path
+
+
+def _load_demo_qa(project_root: _Path | str | None) -> list[dict]:
+    """Return the demo Q&A payload baked into the widget, or [] if none.
+
+    Looked up in this order:
+      1. ``<project_root>/.llm-wiki/external/raganything/qa-cache.json``
+         (the CI-restored location; matches the working_dir convention)
+      2. ``<project_root>/examples/demo-corpus/qa-cache.json``
+         (the dev-repo location; used by local builds against the
+         dogfood checkout)
+
+    Returns a list of ``{id, question, answer}`` dicts. Anything that
+    doesn't validate is silently dropped — the widget tolerates an
+    empty list by falling back to the original degraded one-liner.
+    """
+    if not project_root:
+        return []
+    root = _Path(project_root)
+    candidates = [
+        root / ".llm-wiki" / "external" / "raganything" / "qa-cache.json",
+        root / "examples" / "demo-corpus" / "qa-cache.json",
+    ]
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            data = _json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(data, list):
+            continue
+        out: list[dict] = []
+        for entry in data:
+            if not isinstance(entry, dict):
+                continue
+            q = entry.get("question")
+            a = entry.get("answer")
+            qid = entry.get("id")
+            if not (isinstance(q, str) and isinstance(a, str) and q.strip() and a.strip()):
+                continue
+            out.append({
+                "id": str(qid) if qid else "",
+                "question": q.strip(),
+                "answer": a.strip(),
+            })
+        if out:
+            return out
+    return []
+
+
+def ask_widget_js(demo_qa: list[dict] | None = None) -> str:
+    """Return the JS source for the per-page ask widget.
+
+    ``demo_qa`` is a list of ``{id, question, answer}`` dicts that gets
+    inlined as a JSON literal in place of the ``__DEMO_QA_PAYLOAD__``
+    sentinel. Pass ``None`` (or an empty list) to ship the widget
+    without a static demo panel — the degraded one-liner is restored.
+    """
+    payload = _json.dumps(demo_qa or [], ensure_ascii=False)
+    return _ASK_WIDGET_JS_TEMPLATE.replace("__DEMO_QA_PAYLOAD__", payload)
 
 
 def ask_widget_css() -> str:
@@ -301,4 +507,4 @@ def ask_widget_css() -> str:
     return _ASK_WIDGET_CSS
 
 
-__all__ = ["ask_widget_js", "ask_widget_css"]
+__all__ = ["ask_widget_js", "ask_widget_css", "_load_demo_qa"]

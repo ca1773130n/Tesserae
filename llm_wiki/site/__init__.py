@@ -279,7 +279,7 @@ class StaticSiteBuilder:
         # ``<script defer>`` tag into the page head, so the tag and the
         # file on disk always match without explicit plumbing through
         # SiteContext.
-        _ask_widget_source = ask_widget_js()
+        _ask_widget_source = ask_widget_js(list(site_ctx.demo_qa))
         ask_widget_hash = hashlib.sha256(_ask_widget_source.encode("utf-8")).hexdigest()[:10]
         ask_widget_filename = f"ask-widget-{ask_widget_hash}.js"
         (out / "assets" / ask_widget_filename).write_text(_ask_widget_source, encoding="utf-8")

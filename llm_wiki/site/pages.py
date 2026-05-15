@@ -30,7 +30,7 @@ from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 from ..research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType, is_public_research_node
 from ..wiki_store import WikiPage
-from .ask_widget import ask_widget_js
+from .ask_widget import _load_demo_qa, ask_widget_js
 from .raw_view import (
     RAW_ASSETS_DIR,
     _wrap_tables_in_scroll,
@@ -307,6 +307,13 @@ class SiteContext:
     # only gates the visual ``payload-core.json`` / ``payload-rest.json``.
     # Set via the ``graph_view.show_sources`` knob in ``.llm-wiki/config.json``.
     show_sources: bool = False
+    # Pre-rendered demo Q&A baked into the ask-widget bundle so the live
+    # GH Pages deploy can show real RAG retrieval without a backend. Empty
+    # list = widget falls back to the original "host with llm_wiki serve"
+    # one-liner in degraded mode. Populated by :meth:`build` from
+    # ``.llm-wiki/external/raganything/qa-cache.json`` (CI-restored) or
+    # ``examples/demo-corpus/qa-cache.json`` (dev checkout).
+    demo_qa: Sequence[dict] = field(default_factory=tuple)
 
     def get_auto_linker(self) -> AutoLinker:
         """Return the cached :class:`AutoLinker`, building it lazily.
@@ -444,6 +451,7 @@ class SiteContext:
             doc_tree=doc_tree,
             session_count=session_count,
             show_sources=show_sources,
+            demo_qa=tuple(_load_demo_qa(project_root)),
         )
         # Build the auto-link table eagerly — it's a one-time scan over
         # the graph and amortises over every detail-page render. Stash via
@@ -1354,7 +1362,9 @@ def _detail_page(
     # Content-hashed filename for the ask-widget asset so caches can never
     # serve a stale version. Same pattern as ``graph-<hash>.js``: the
     # StaticSiteBuilder writes the file under the same name.
-    ask_js_hash = hashlib.sha256(ask_widget_js().encode("utf-8")).hexdigest()[:10]
+    ask_js_hash = hashlib.sha256(
+        ask_widget_js(list(ctx.demo_qa)).encode("utf-8")
+    ).hexdigest()[:10]
     ask_js_filename = f"ask-widget-{ask_js_hash}.js"
     ask_head = f'<script defer src="../assets/{ask_js_filename}"></script>\n'
 
