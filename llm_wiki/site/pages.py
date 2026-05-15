@@ -923,13 +923,24 @@ def _build_breadcrumbs(trail: Sequence[Tuple[str, str]], depth: int) -> str:
 
 
 def _nav_counts(ctx: SiteContext) -> Dict[str, int]:
-    counts = {
-        kind: max(
-            len(ctx.wiki_pages_by_kind.get(kind, [])),
-            len(ctx.nodes_by_kind.get(kind, [])),
-        )
-        for kind in ROUTE_FOR_KIND
-    }
+    """Counts shown in the navigation bar.
+
+    Must match the number of rows users see when they click into the
+    corresponding /<kind>/ index page. The earlier implementation used
+    ``max(wiki_pages, graph_nodes)`` which over-counted by every node
+    filtered later through ``is_public_research_node`` — most loudly the
+    Person nodes hidden from the entities index, which made the header
+    say "Entities [313]" while the page contained 31 rows.
+
+    `_index_rows` is the single source of truth for what appears on an
+    index page; reuse it here so header and page counts agree by
+    construction.
+    """
+    counts: Dict[str, int] = {}
+    for kind in ROUTE_FOR_KIND:
+        pages = ctx.wiki_pages_by_kind.get(kind, [])
+        nodes = ctx.nodes_by_kind.get(kind, [])
+        counts[kind] = len(_index_rows(ctx, pages, nodes, kind))
     counts["sessions"] = ctx.session_count
     return counts
 
