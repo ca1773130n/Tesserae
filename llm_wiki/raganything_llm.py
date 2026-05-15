@@ -170,6 +170,68 @@ def make_ollama_embedding_func(
     return EmbeddingFunc(embedding_dim=dim, max_token_size=8192, func=embed)
 
 
+def make_sentence_transformers_embedding_func(
+    *,
+    dim: int,
+    model: str = "all-MiniLM-L6-v2",
+):
+    """Local semantic embeddings via `sentence-transformers`.
+
+    No API keys, no daemon. The model downloads on first use into the
+    default HuggingFace cache (~/.cache/huggingface/), ~90 MB for the
+    default ``all-MiniLM-L6-v2`` (384-dim). This is the recommended
+    provider for raganything's runtime when API keys aren't available
+    — retrieval quality is genuinely semantic, unlike the deterministic
+    hash-based fallback.
+
+    Native model dim is 384 for ``all-MiniLM-L6-v2``. If a caller asks
+    for a different ``dim``, we pad with zeros or truncate so LightRAG's
+    fixed-dim store stays consistent — but for best results pick a
+    ``dim`` that matches the model.
+    """
+    try:
+        from lightrag.utils import EmbeddingFunc  # type: ignore
+    except Exception:
+        EmbeddingFunc = None  # type: ignore[assignment]
+
+    # Lazy-load the model so importing this module doesn't pay the cost.
+    _model_holder: dict = {}
+
+    def _model():
+        if "m" not in _model_holder:
+            from sentence_transformers import SentenceTransformer  # type: ignore
+            _model_holder["m"] = SentenceTransformer(model)
+        return _model_holder["m"]
+
+    async def embed(texts: List[str]):
+        """Return numpy.ndarray of shape (len(texts), dim).
+
+        LightRAG's internals call ``.size`` on the result, so a plain list
+        of lists won't work — must be ndarray. We use it as the canonical
+        output type.
+        """
+        import numpy as np  # local import keeps module load cheap
+
+        def encode():
+            mdl = _model()
+            arr = mdl.encode(list(texts), show_progress_bar=False, convert_to_numpy=True)
+            # Right-pad or truncate per row to match the requested dim
+            n, native = arr.shape
+            if native == dim:
+                return arr.astype(np.float32, copy=False)
+            if native < dim:
+                padded = np.zeros((n, dim), dtype=np.float32)
+                padded[:, :native] = arr
+                return padded
+            return arr[:, :dim].astype(np.float32, copy=False)
+
+        return await asyncio.to_thread(encode)
+
+    if EmbeddingFunc is None:
+        return embed
+    return EmbeddingFunc(embedding_dim=dim, max_token_size=8192, func=embed)
+
+
 def make_embedding_func(*, provider: str, dim: int = 768, **opts):
     if provider == "deterministic":
         return make_deterministic_embedding_func(dim=dim)
@@ -178,6 +240,11 @@ def make_embedding_func(*, provider: str, dim: int = 768, **opts):
             dim=dim,
             model=opts.get("model") or "nomic-embed-text",
             endpoint=opts.get("endpoint") or "http://localhost:11434",
+        )
+    if provider in ("sentence-transformers", "st", "local"):
+        return make_sentence_transformers_embedding_func(
+            dim=dim,
+            model=opts.get("model") or "all-MiniLM-L6-v2",
         )
     raise ValueError(f"Unsupported raganything embedding provider: {provider!r}")
 

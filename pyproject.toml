@@ -28,6 +28,7 @@ dependencies = [
 synthesis-llm = ["anthropic>=0.40"]
 raganything = ["raganything>=1.3.0"]
 raganything-all = ["raganything[all]>=1.3.0"]
+raganything-semantic = ["raganything[all]>=1.3.0", "sentence-transformers>=3.0"]
 
 [project.scripts]
 llm_wiki = "llm_wiki.cli:main"
