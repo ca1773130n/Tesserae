@@ -15,6 +15,10 @@
 
 > Compile your sources into a typed wiki agents can read.
 
+<p align="center">
+  <img src="docs/screencasts/showcase.gif" alt="Three-step screencast: llm_wiki project setup -> compile -> ask, recorded against the 135-doc demo corpus" width="100%" />
+</p>
+
 <!-- TODO: replace https://ca1773130n.github.io/LLM-Wiki with the real
 GitHub Pages URL once the maintainer enables Pages for this repo. The
 .github/workflows/build-demo.yml workflow publishes .llm-wiki/site/ on every
@@ -90,6 +94,31 @@ llm_wiki project build-site && llm_wiki project serve --port 8765
 ```
 
 The setup wizard detects common sources (`README.md`, `docs/`, `src/`, `data/`) and writes `.llm-wiki/config.json`. LLM-calling features default to the `codex` CLI over OAuth, so no API keys are required for the common path. See [docs/quickstart.md](docs/quickstart.md) and [docs/installation.md](docs/installation.md) for the longer version.
+
+### Walkthrough
+
+Each step in the Quickstart, recorded against the bundled 135-doc demo corpus
+(`examples/demo-corpus/data/research/`). Rebuild any of these GIFs with
+`vhs docs/screencasts/<name>.tape` — the tape files document what they
+recorded and the workspace they assume.
+
+<details>
+<summary><strong>1. Setup</strong> — point at a research directory, get a project wiki scaffold</summary>
+<br/>
+<img src="docs/screencasts/setup.gif" alt="llm_wiki project setup --source ./research running non-interactively and writing .llm-wiki/" width="100%" />
+</details>
+
+<details>
+<summary><strong>2. Compile + build site</strong> — deterministic, no LLM calls</summary>
+<br/>
+<img src="docs/screencasts/compile.gif" alt="llm_wiki project compile followed by llm_wiki project build-site, emitting graph.json and the static site tree" width="100%" />
+</details>
+
+<details>
+<summary><strong>3. Ask</strong> — query the compiled wiki from the CLI</summary>
+<br/>
+<img src="docs/screencasts/ask.gif" alt="llm_wiki project ask --backend wiki returning top-3 hits with score, kind, and outbound relations" width="100%" />
+</details>
 
 ## What you get after compile
 
