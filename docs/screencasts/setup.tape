@@ -12,7 +12,7 @@ Output "docs/screencasts/setup.gif"
 
 Set FontSize 14
 Set Width 1100
-Set Height 620
+Set Height 440
 Set Theme "Catppuccin Mocha"
 Set TypingSpeed 50ms
 
@@ -21,7 +21,7 @@ Enter
 Sleep 200ms
 Type "cd /tmp/llm-wiki-demo-rec/myproject && clear"
 Enter
-Sleep 600ms
+Sleep 500ms
 
 Type "# A research notes directory we want to wiki-ify"
 Sleep 500ms

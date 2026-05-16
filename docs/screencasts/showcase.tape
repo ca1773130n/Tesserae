@@ -1,4 +1,4 @@
-# Combined showcase: setup -> compile -> ask, in one short clip.
+# Combined showcase: setup -> compile -> ask, in one scrolling clip.
 # Renders to docs/screencasts/showcase.gif. Run with: vhs docs/screencasts/showcase.tape
 #
 # Uses the same /tmp/llm-wiki-demo-rec workspace as the per-feature tapes.
@@ -10,7 +10,7 @@ Output "docs/screencasts/showcase.gif"
 
 Set FontSize 14
 Set Width 1100
-Set Height 720
+Set Height 460
 Set Theme "Catppuccin Mocha"
 Set TypingSpeed 40ms
 
@@ -23,38 +23,30 @@ Sleep 500ms
 
 # --- Setup -------------------------------------------------------------
 Type "# 1) Point LLM-Wiki at a research notes directory"
-Sleep 400ms
+Sleep 350ms
 Enter
 
 Type@30ms "llm_wiki project setup --yes --no-color --source ./research --no-cognee --skip-raganything --skip-install-cognee --skip-install-raganything --skip-install-understand-anything"
-Sleep 300ms
+Sleep 250ms
 Enter
-Sleep 3500ms
-
-Type "clear"
-Enter
-Sleep 200ms
+Sleep 3s
 
 # --- Compile -----------------------------------------------------------
 Type "# 2) Compile the typed knowledge graph + build the static site"
-Sleep 500ms
+Sleep 400ms
 Enter
 
 Type@30ms "llm_wiki project compile && llm_wiki project build-site"
-Sleep 300ms
+Sleep 250ms
 Enter
-Sleep 10s
-
-Type "clear"
-Enter
-Sleep 200ms
+Sleep 8s
 
 # --- Ask ---------------------------------------------------------------
 Type "# 3) Ask the compiled wiki a question"
-Sleep 500ms
+Sleep 400ms
 Enter
 
 Type@30ms `llm_wiki project ask --backend wiki --top-k 3 "What is 3D Gaussian Splatting?"`
-Sleep 300ms
+Sleep 250ms
 Enter
 Sleep 4500ms

@@ -7,7 +7,7 @@ Output "docs/screencasts/compile.gif"
 
 Set FontSize 14
 Set Width 1100
-Set Height 600
+Set Height 360
 Set Theme "Catppuccin Mocha"
 Set TypingSpeed 50ms
 

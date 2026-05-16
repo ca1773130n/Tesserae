@@ -24,7 +24,7 @@ GitHub Pages URL once the maintainer enables Pages for this repo. The
 .github/workflows/build-demo.yml workflow publishes .llm-wiki/site/ on every
 push to main. -->
 
-[Live demo](https://ca1773130n.github.io/LLM-Wiki) · [Docs](docs/) · [MCP setup](docs/integrations/)
+[Live demo](https://ca1773130n.github.io/LLM-Wiki) · [Docs](docs/) · [MCP setup](#mcp)
 
 LLM-Wiki is a project-memory compiler. Point it at a directory containing markdown, source files, and (optionally) PDFs/Office docs/images, and it extracts a typed knowledge graph, writes a queryable wiki, and emits portable artifacts: a markdown projection, a Cognee-ready bundle, an agent harness, and an MCP server you can wire into Claude Code, Codex, or any MCP client. It is a build step for project context, not a hosted service.
 

@@ -7,7 +7,7 @@ Output "docs/screencasts/ask.gif"
 
 Set FontSize 14
 Set Width 1100
-Set Height 720
+Set Height 480
 Set Theme "Catppuccin Mocha"
 Set TypingSpeed 50ms
 
@@ -26,10 +26,6 @@ Type@30ms `llm_wiki project ask --backend wiki --top-k 3 "What is 3D Gaussian Sp
 Sleep 400ms
 Enter
 Sleep 5s
-
-Type "clear"
-Enter
-Sleep 200ms
 
 Type "# Structural query — which repos implement Gaussian Splatting?"
 Sleep 700ms
