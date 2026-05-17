@@ -8,7 +8,7 @@ LLM-Wiki is published on PyPI and exposes shell commands so users do not have to
 ## Install from PyPI (recommended)
 
 ```bash
-pip install llm-wiki
+pip install llm-research-wiki
 ```
 
 That's it. `pip` registers three console scripts on your `PATH`:
@@ -23,13 +23,13 @@ The canonical command in docs is `llm_wiki`; `llm-wiki` (with a dash) is an alia
 
 > **pipx is fine too.** If you prefer to keep CLI tools in their own isolated venvs:
 > ```bash
-> pipx install llm-wiki
+> pipx install llm-research-wiki
 > ```
 
 ## Upgrade
 
 ```bash
-pip install --upgrade llm-wiki
+pip install --upgrade llm-research-wiki
 ```
 
 ## Optional integrations
@@ -65,13 +65,13 @@ pip install kuzu cognee graphiti-core
 The Anthropic-backed synthesis path uses an extras marker:
 
 ```bash
-pip install "llm-wiki[synthesis-llm]"
+pip install "llm-research-wiki[synthesis-llm]"
 ```
 
 For the multimodal RAG-Anything stack with all parsers preinstalled:
 
 ```bash
-pip install 'llm-wiki[raganything-all]'
+pip install 'llm-research-wiki[raganything-all]'
 ```
 
 > **System prerequisite:** parsing `.doc/.docx/.ppt/.pptx/.xls/.xlsx` requires LibreOffice on the host. Install it via your platform's package manager (e.g., `brew install --cask libreoffice`, `apt-get install libreoffice`); RAG-Anything skips Office documents with a warning when LibreOffice is missing.

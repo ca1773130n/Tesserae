@@ -8,7 +8,7 @@ LLM-Wiki は PyPI で公開されており、ユーザーが `python3 -m llm_wik
 ## PyPI からインストール（推奨）
 
 ```bash
-pip install llm-wiki
+pip install llm-research-wiki
 ```
 
 これだけです。`pip` は `PATH` に 3 つのコンソールスクリプトを登録します。
@@ -23,13 +23,13 @@ llm_wiki_mcp --help
 
 > **pipx でも問題ありません。** CLI ツールをそれぞれ独立した venv に置きたい場合:
 > ```bash
-> pipx install llm-wiki
+> pipx install llm-research-wiki
 > ```
 
 ## アップグレード
 
 ```bash
-pip install --upgrade llm-wiki
+pip install --upgrade llm-research-wiki
 ```
 
 ## 任意の統合
@@ -60,7 +60,7 @@ pip install kuzu cognee graphiti-core
 Anthropic ベースの合成パスは extras マーカーを使います。
 
 ```bash
-pip install "llm-wiki[synthesis-llm]"
+pip install "llm-research-wiki[synthesis-llm]"
 ```
 
 ## ソースからインストール（コントリビューター向け）

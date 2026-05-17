@@ -152,7 +152,7 @@ sodass die signalstärksten Contributors im Prompt landen, wenn ein Plan mehr ha
 ## Wie du ihn aktivierst
 
 ```sh
-pip install llm-wiki[synthesis-llm]
+pip install llm-research-wiki[synthesis-llm]
 export LLM_WIKI_SYNTHESIS_LLM=1
 export ANTHROPIC_API_KEY=sk-...
 python -m llm_wiki.cli project compile

@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "llm-wiki"
+name = "llm-research-wiki"
 version = "0.1.0"
 description = "Typed LLM wiki graph pipeline for research and development projects"
 readme = "README.md"

@@ -85,7 +85,7 @@ This is an evolving research/agent-tooling project. Known limitations:
 Requires Python 3.9+. RAG-Anything needs Python 3.10+ if you enable it.
 
 ```bash
-pip install llm-wiki
+pip install llm-research-wiki
 
 cd /path/to/my-project
 llm_wiki project setup

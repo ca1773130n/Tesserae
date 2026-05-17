@@ -8,7 +8,7 @@ LLM-Wiki опубликован в PyPI и предоставляет shell-ко
 ## Установка из PyPI (рекомендуется)
 
 ```bash
-pip install llm-wiki
+pip install llm-research-wiki
 ```
 
 Готово. `pip` зарегистрирует три консольных скрипта в вашем `PATH`:
@@ -23,13 +23,13 @@ llm_wiki_mcp --help
 
 > **pipx тоже подходит.** Если вы предпочитаете держать CLI-инструменты в отдельных изолированных venv:
 > ```bash
-> pipx install llm-wiki
+> pipx install llm-research-wiki
 > ```
 
 ## Обновление
 
 ```bash
-pip install --upgrade llm-wiki
+pip install --upgrade llm-research-wiki
 ```
 
 ## Необязательные интеграции
@@ -60,7 +60,7 @@ pip install kuzu cognee graphiti-core
 Путь синтеза на базе Anthropic использует маркер extras:
 
 ```bash
-pip install "llm-wiki[synthesis-llm]"
+pip install "llm-research-wiki[synthesis-llm]"
 ```
 
 ## Установка из исходного кода (для контрибьюторов)

@@ -135,7 +135,7 @@ El bloque EDITORIAL ANGLE es el cuerpo heurístico determinista: al modelo se le
 ## Cómo habilitarlo
 
 ```sh
-pip install llm-wiki[synthesis-llm]
+pip install llm-research-wiki[synthesis-llm]
 export LLM_WIKI_SYNTHESIS_LLM=1
 export ANTHROPIC_API_KEY=sk-...
 python -m llm_wiki.cli project compile

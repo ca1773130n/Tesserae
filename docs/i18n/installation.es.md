@@ -8,7 +8,7 @@ LLM-Wiki se publica en PyPI y expone comandos de shell para que los usuarios no 
 ## Instalar desde PyPI (recomendado)
 
 ```bash
-pip install llm-wiki
+pip install llm-research-wiki
 ```
 
 Eso es todo. `pip` registra tres scripts de consola en tu `PATH`:
@@ -23,13 +23,13 @@ El comando canónico en la documentación es `llm_wiki`; `llm-wiki` (con guion) 
 
 > **pipx también sirve.** Si prefieres mantener las herramientas CLI en venvs aislados:
 > ```bash
-> pipx install llm-wiki
+> pipx install llm-research-wiki
 > ```
 
 ## Actualizar
 
 ```bash
-pip install --upgrade llm-wiki
+pip install --upgrade llm-research-wiki
 ```
 
 ## Integraciones opcionales
@@ -60,7 +60,7 @@ pip install kuzu cognee graphiti-core
 La ruta de síntesis respaldada por Anthropic usa un marcador extras:
 
 ```bash
-pip install "llm-wiki[synthesis-llm]"
+pip install "llm-research-wiki[synthesis-llm]"
 ```
 
 ## Instalar desde el código fuente (para contribuidores)

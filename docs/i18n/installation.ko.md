@@ -8,7 +8,7 @@ LLM-Wiki는 PyPI에 게시되어 있으며, 사용자가 `python3 -m llm_wiki.cl
 ## PyPI에서 설치(권장)
 
 ```bash
-pip install llm-wiki
+pip install llm-research-wiki
 ```
 
 끝입니다. `pip`가 `PATH`에 세 개의 콘솔 스크립트를 등록합니다.
@@ -23,13 +23,13 @@ llm_wiki_mcp --help
 
 > **pipx도 괜찮습니다.** CLI 도구를 각각 격리된 venv에 두고 싶다면:
 > ```bash
-> pipx install llm-wiki
+> pipx install llm-research-wiki
 > ```
 
 ## 업그레이드
 
 ```bash
-pip install --upgrade llm-wiki
+pip install --upgrade llm-research-wiki
 ```
 
 ## 선택적 통합
@@ -60,7 +60,7 @@ pip install kuzu cognee graphiti-core
 Anthropic 기반 합성 경로는 extras 마커를 사용합니다.
 
 ```bash
-pip install "llm-wiki[synthesis-llm]"
+pip install "llm-research-wiki[synthesis-llm]"
 ```
 
 ## 소스에서 설치(기여자용)
