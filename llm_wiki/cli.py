@@ -694,6 +694,16 @@ def project_main(argv: List[str] | None = None) -> int:
     compile_parser.add_argument("--min-trend-sources", type=int, default=2, help="Minimum sources needed for Trend nodes")
     compile_parser.add_argument("--include-data", action="store_true", help="Documentation flag: project_root/data is auto-included by default; this flag is a no-op kept for clarity")
     compile_parser.add_argument("--exclude-data", action="store_true", help="Skip the implicit project_root/data auto-include even if data/ exists")
+    compile_parser.add_argument(
+        "--no-vault-pull",
+        action="store_true",
+        help=(
+            "Skip the Obsidian vault overlay step. By default, when a vault and a prior "
+            "vault_snapshot.json both exist, compile reads user edits out of the vault "
+            "and applies them on top of the typed graph. Pass this to bypass — useful "
+            "for recovery, or when you intentionally want the source markdown to win."
+        ),
+    )
     compile_parser.add_argument("--refresh-external-tools", action="store_true", help="Run configured external tool refresh commands before compile, even if they are not marked auto_refresh")
     # --- Cognee cognify pass (opt-in, runs after the bundle is written) ----
     compile_parser.add_argument("--cognee-add", action="store_true", help="After compile, add the Cognee bundle to the Cognee dataset (no cognify)")
@@ -978,6 +988,7 @@ def project_main(argv: List[str] | None = None) -> int:
             min_trend_sources=args.min_trend_sources,
             exclude_data=args.exclude_data,
             cognify=cognify_options if (cognify_options and cognify_options.is_active) else None,
+            vault_pull=not args.no_vault_pull,
         )
         print(
             "Compiled project wiki: "

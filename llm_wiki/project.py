@@ -124,6 +124,12 @@ class ProjectPaths:
     obsidian_vault: Path
     site: Path
     wiki: Path
+    # Bidirectional Obsidian sync (Tier 1a, see docs/integrations/obsidian-sync.md):
+    # vault_snapshot records what the projector last wrote per node, so the
+    # next compile can diff the vault against it and surface user edits.
+    # diverged_fields is the per-compile audit log of those diffs.
+    vault_snapshot: Path
+    diverged_fields: Path
 
 
 class ProjectWiki:
@@ -157,6 +163,8 @@ class ProjectWiki:
             obsidian_vault=self.root / "obsidian_vault",
             site=self.root / "site",
             wiki=self.root / "wiki",
+            vault_snapshot=self.root / "vault_snapshot.json",
+            diverged_fields=self.root / "diverged-fields.md",
         )
 
     @classmethod
@@ -240,6 +248,7 @@ class ProjectWiki:
         cognify: Optional[CognifyOptions] = None,
         loader: Optional[SourceLoader] = None,
         store: Optional[GraphStore] = None,
+        vault_pull: bool = True,
     ) -> dict:
         """Run the substrate-discovery + extraction pipeline for this project.
 
@@ -349,7 +358,7 @@ class ProjectWiki:
         # entries; we don't want those duplicating SourceDocument pages in
         # the visual graph. See ``filter_filename_shaped_concepts``.
         graph = filter_filename_shaped_concepts(graph)
-        self._write_artifacts(graph, cognify=cognify, store=store)
+        self._write_artifacts(graph, cognify=cognify, store=store, vault_pull=vault_pull)
         return {
             "project_root": str(self.project_root),
             "wiki_root": str(self.root),
@@ -478,6 +487,7 @@ class ProjectWiki:
         cognify: Optional[CognifyOptions] = None,
         loader: Optional[SourceLoader] = None,
         store: Optional[GraphStore] = None,
+        vault_pull: bool = True,
     ) -> dict:
         """Compile every configured source into the .llm-wiki artifacts.
 
@@ -517,6 +527,7 @@ class ProjectWiki:
             cognify=cognify,
             loader=loader,
             store=store,
+            vault_pull=vault_pull,
         )
 
     def lint(self, fix_trivial: bool = False, severity_floor: str = "info") -> LintReport:
@@ -690,13 +701,67 @@ class ProjectWiki:
             dry_run=dry_run,
         )
 
+    def _apply_vault_overlay(self, graph: ResearchGraph) -> ResearchGraph:
+        """Read user edits out of the Obsidian vault and apply them onto the graph.
+
+        Tier 1a of the bidirectional sync feature
+        (docs/integrations/obsidian-sync.md). Three guards keep this safe:
+
+        1. If the vault directory doesn't exist, return the graph unchanged.
+        2. If no vault_snapshot.json exists yet, return the graph unchanged
+           (first-ever run with this feature; the snapshot we write at the
+           end of this compile becomes the baseline for the next one).
+        3. Always emit a diverged-fields.md report so the operator can see
+           what was applied even when overrides come back empty.
+        """
+        from .vault_pull import (
+            apply_overrides,
+            compute_overrides,
+            write_diverged_fields_report,
+        )
+        from .vault_snapshot import read_snapshot
+
+        if not self.paths.obsidian_vault.exists():
+            return graph
+        snapshot = read_snapshot(self.paths.vault_snapshot)
+        if snapshot is None:
+            return graph
+
+        node_by_id = {node.id: node for node in graph.nodes}
+        overrides = compute_overrides(self.paths.obsidian_vault, snapshot, node_by_id)
+        write_diverged_fields_report(overrides, self.paths.diverged_fields)
+        if not overrides:
+            return graph
+        print(
+            f"[llm-wiki] vault overlay: applying {len(overrides)} user-edited "
+            f"field(s) from {self.paths.obsidian_vault.name}/ "
+            f"(see {self.paths.diverged_fields.relative_to(self.project_root)})",
+            flush=True,
+        )
+        return apply_overrides(graph, overrides)
+
     def _write_artifacts(
         self,
         graph: ResearchGraph,
         cognify: Optional[CognifyOptions] = None,
         store: Optional[GraphStore] = None,
+        vault_pull: bool = True,
     ) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
+
+        # Bidirectional Obsidian sync (Tier 1a). If the user has been editing
+        # the projected Obsidian vault, harvest those edits and overlay them
+        # on the extracted graph BEFORE we project anything new — otherwise
+        # every projector (wiki/, markdown_projection/, obsidian_vault/) would
+        # immediately stomp on the user's changes.
+        #
+        # Skipped on the first-ever compile-with-this-feature because no
+        # vault_snapshot.json exists yet; the snapshot we write at the end of
+        # this compile becomes the baseline for the next one. This is the
+        # "free pass" the design doc relies on instead of a confirmation prompt.
+        if vault_pull:
+            graph = self._apply_vault_overlay(graph)
+
         # The wiki/site layers are generated projections. Clean them before each
         # compile so nodes that are newly filtered out (e.g. noisy social feed
         # captures) do not survive as stale public pages.
@@ -786,6 +851,13 @@ class ProjectWiki:
         self.build_site()
         self.paths.competitive_report.write_text(render_competitive_report(), encoding="utf-8")
         self._append_build_history(research_graph, code_graph)
+
+        # Tier 1a tail: write the snapshot capturing what we just projected
+        # so the next compile can diff the vault against it. Always written
+        # (even when vault_pull was disabled) — disabling the overlay only
+        # bypasses reading; we still want a fresh baseline for the next run.
+        from .vault_snapshot import write_snapshot
+        write_snapshot(graph.nodes, self.paths.vault_snapshot)
 
     def _run_cognify_best_effort(self, options: "CognifyOptions") -> None:
         try:

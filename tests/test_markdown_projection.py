@@ -34,12 +34,14 @@ def test_markdown_projector_writes_human_readable_projection(tmp_path):
     assert index_path in written
 
     concept = concept_path.read_text(encoding="utf-8")
+    assert "node_id: MethodologicalConcept:gs:test" in concept
     assert "title: Gaussian Splatting" in concept
     assert "type: MethodologicalConcept" in concept
     assert "aliases: [3DGS]" in concept
     assert "[[paper-a]]" in concept
 
     paper = paper_path.read_text(encoding="utf-8")
+    assert "node_id: Paper:p:test" in paper
     assert "arxiv_id: 2601.00001" in paper
     assert "uses → [[gaussian-splatting]]" in paper
     assert "supports_claim" in paper

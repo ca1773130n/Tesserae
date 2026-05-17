@@ -176,7 +176,17 @@ def render_node_page(
     build a vault-wide ``_bridges.md`` index without re-scanning.
     """
     # ------- Frontmatter -------
-    lines: List[str] = ["---", f"title: {node.name}", f"type: {node.type.value}"]
+    # `node_id` is the first frontmatter key so the vault_pull overlay reader
+    # (see docs/integrations/obsidian-sync.md) can identify which graph node a
+    # vault file represents without falling back to slug-reverse-lookup. The
+    # value is the canonical node id from the typed graph and is stable
+    # across recompiles.
+    lines: List[str] = [
+        "---",
+        f"node_id: {node.id}",
+        f"title: {node.name}",
+        f"type: {node.type.value}",
+    ]
     if node.aliases:
         lines.append("aliases: [" + ", ".join(node.aliases) + "]")
     if node.source_path:
@@ -230,11 +240,14 @@ def render_node_page(
     if callout:
         kind, label = callout
         lines.append(f"> [!{kind}] {label}")
+        # Empty callouts render fine in Obsidian (just the label tag). We
+        # deliberately don't emit a `> _<TypeName>_` fallback line — that
+        # would round-trip as a fake "description override" in the vault
+        # overlay reader because the snapshot would have description=""
+        # while the vault file would have the fallback string.
         if node.description:
             for desc_line in node.description.splitlines():
                 lines.append(f"> {desc_line}" if desc_line else ">")
-        else:
-            lines.append(f"> _{node.type.value}_")
         lines.append("")
     elif node.description:
         lines.extend([node.description, ""])
