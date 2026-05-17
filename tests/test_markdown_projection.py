@@ -68,3 +68,50 @@ def test_markdown_projector_handles_very_long_titles(tmp_path):
 
     assert any(path.name.endswith(".md") for path in written)
     assert all(len(path.name.encode("utf-8")) <= 190 for path in written if path.name != "index.md")
+
+
+def test_user_notes_block_is_emitted_empty_by_default(tmp_path):
+    """Fresh projection always ships the start/end markers so the user has somewhere to type."""
+    GraphMarkdownProjector().write_projection(sample_graph(), tmp_path)
+    page = (tmp_path / "papers" / "paper-a.md").read_text(encoding="utf-8")
+    assert "<!-- user-notes:start -->" in page
+    assert "<!-- user-notes:end -->" in page
+
+
+def test_user_notes_block_preserves_content_on_re_projection(tmp_path):
+    """The whole point of the append zone: content between markers survives recompile."""
+    projector = GraphMarkdownProjector()
+    projector.write_projection(sample_graph(), tmp_path)
+    page_path = tmp_path / "papers" / "paper-a.md"
+
+    # User edits the file, dropping notes inside the append zone.
+    original = page_path.read_text(encoding="utf-8")
+    edited = original.replace(
+        "<!-- user-notes:start -->\n\n<!-- user-notes:end -->",
+        "<!-- user-notes:start -->\n\nMy private notes about [[gaussian-splatting]].\n\n<!-- user-notes:end -->",
+    )
+    page_path.write_text(edited, encoding="utf-8")
+
+    # Re-project — should preserve the user notes verbatim.
+    projector.write_projection(sample_graph(), tmp_path)
+    after = page_path.read_text(encoding="utf-8")
+    assert "My private notes about [[gaussian-splatting]]." in after
+
+
+def test_user_link_edges_are_filtered_from_rendered_edge_sections(tmp_path):
+    """Vault-authored user_link edges live in the graph but don't double-render on the page."""
+    paper = ResearchNode(id="Paper:p", name="Paper", type=ResearchNodeType.PAPER)
+    method = ResearchNode(id="MethodologicalConcept:m", name="Method", type=ResearchNodeType.METHODOLOGICAL_CONCEPT)
+    graph = ResearchGraph(
+        nodes=[paper, method],
+        edges=[
+            ResearchEdge(source=paper.id, target=method.id, type="uses"),
+            ResearchEdge(source=paper.id, target=method.id, type="user_link"),
+        ],
+    )
+    GraphMarkdownProjector().write_projection(graph, tmp_path)
+    page = (tmp_path / "papers" / "paper.md").read_text(encoding="utf-8")
+    # The ontology edge renders normally.
+    assert "uses → [[method]]" in page
+    # The user_link edge stays out of the rendered ## Outgoing section.
+    assert "user_link" not in page

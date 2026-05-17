@@ -29,12 +29,14 @@ relying on PyYAML's broader interpretation.
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
-from .research_graph import ResearchGraph, ResearchNode
+from .markdown_projection import USER_NOTES_END, USER_NOTES_START, slugify
+from .research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
 from .vault_snapshot import NodeSnapshot
 
 
@@ -67,6 +69,27 @@ class VaultOverride:
     field: str
     vault_value: Any
     snapshot_value: Any
+
+
+@dataclass(frozen=True)
+class VaultUserLinkChange:
+    """An add/remove for a ``user_link`` edge driven by vault wikilinks.
+
+    Separate from :class:`VaultOverride` because it operates on edges, not
+    on node fields. ``target_node_id`` is ``None`` when the user's slug
+    doesn't resolve to a known graph node — :func:`apply_user_link_changes`
+    will create a :class:`~llm_wiki.research_graph.ResearchNodeType.STUB`
+    tombstone node to anchor the link.
+    """
+
+    source_node_id: str
+    target_slug: str
+    target_node_id: Optional[str]
+    action: str  # "add" | "remove"
+
+
+_WIKILINK_RE = re.compile(r"\[\[([^|\]\n]+?)(?:\|[^\]\n]+)?\]\]")
+"""Match ``[[slug]]`` and ``[[slug|display text]]``, capturing the slug."""
 
 
 # ---------------------------------------------------------------- Parsing
@@ -212,6 +235,41 @@ def _split_body(text: str) -> str:
     return parts[2].lstrip("\n") if len(parts) >= 3 else text
 
 
+def extract_user_notes_block(body: str) -> str:
+    """Return the inner content between the user-notes markers, or empty string.
+
+    The append zone is `<!-- user-notes:start --> ... <!-- user-notes:end -->`
+    (see :data:`llm_wiki.markdown_projection.USER_NOTES_START`). Anything
+    outside those markers is projector-owned and is NOT user-editable in
+    the "vault wins" sense.
+    """
+    start = body.find(USER_NOTES_START)
+    if start == -1:
+        return ""
+    end = body.find(USER_NOTES_END, start)
+    if end == -1:
+        return ""
+    return body[start + len(USER_NOTES_START):end].strip("\n").strip()
+
+
+def extract_wikilink_slugs(text: str) -> List[str]:
+    """Return every ``[[slug]]`` (or ``[[slug|alias]]``) inside ``text``, deduped + ordered.
+
+    Tolerant of Unicode slugs, alias syntax, and inline placement (a single
+    paragraph can hold several links). Anchors and embeds aren't parsed —
+    ``[[note#heading]]`` returns ``"note#heading"`` verbatim and falls
+    through to slug-lookup as-is, which lets us surface broken-anchor
+    references too.
+    """
+    seen: List[str] = []
+    for match in _WIKILINK_RE.finditer(text):
+        slug = match.group(1).strip()
+        if not slug or slug in seen:
+            continue
+        seen.append(slug)
+    return seen
+
+
 # ---------------------------------------------------------------- Overlay
 
 
@@ -293,6 +351,127 @@ def _diff_node(
             )
 
 
+def compute_user_link_changes(
+    vault_dir: Path,
+    graph: ResearchGraph,
+    slug_by_id: Mapping[str, str],
+) -> List[VaultUserLinkChange]:
+    """Diff wikilinks in vault user-notes blocks against existing user_link edges.
+
+    Returns a list of add/remove records the caller can apply via
+    :func:`apply_user_link_changes`. The diff is symmetric: a link the
+    user typed but the graph doesn't have yet → ``add``; an edge the
+    graph has but the user has since deleted from notes → ``remove``.
+    """
+    if not vault_dir.is_dir():
+        return []
+    id_by_slug = {slug: nid for nid, slug in slug_by_id.items()}
+
+    vault_links: set[tuple[str, str]] = set()  # (source_node_id, target_slug)
+    for path in sorted(vault_dir.rglob("*.md")):
+        if any(part.startswith(".") for part in path.relative_to(vault_dir).parts):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        frontmatter = parse_frontmatter(text)
+        if not frontmatter or "node_id" not in frontmatter:
+            continue
+        source_id = str(frontmatter["node_id"])
+        notes = extract_user_notes_block(_split_body(text))
+        if not notes:
+            continue
+        for slug in extract_wikilink_slugs(notes):
+            vault_links.add((source_id, slug))
+
+    graph_links: set[tuple[str, str]] = set()  # (source_node_id, target_slug)
+    for edge in graph.edges:
+        if edge.type != "user_link":
+            continue
+        target_slug = slug_by_id.get(edge.target)
+        if target_slug is None:
+            # Edge points at a node we don't have a slug for (shouldn't
+            # happen in practice — slug_by_id covers all nodes — but be
+            # defensive so a corrupt graph doesn't crash the diff).
+            continue
+        graph_links.add((edge.source, target_slug))
+
+    changes: List[VaultUserLinkChange] = []
+    for source_id, slug in sorted(vault_links - graph_links):
+        changes.append(VaultUserLinkChange(
+            source_node_id=source_id,
+            target_slug=slug,
+            target_node_id=id_by_slug.get(slug),
+            action="add",
+        ))
+    for source_id, slug in sorted(graph_links - vault_links):
+        changes.append(VaultUserLinkChange(
+            source_node_id=source_id,
+            target_slug=slug,
+            target_node_id=id_by_slug.get(slug),
+            action="remove",
+        ))
+    return changes
+
+
+def apply_user_link_changes(
+    graph: ResearchGraph,
+    changes: Sequence[VaultUserLinkChange],
+) -> ResearchGraph:
+    """Apply add/remove records to the graph, minting :class:`STUB` nodes as needed.
+
+    Stub nodes carry ``metadata['vault_slug']`` so the next compile's slug
+    map can resolve back to them and recognize the link as still-current.
+    The node ``id`` is ``Stub:<slug>`` for deterministic re-resolution.
+    """
+    if not changes:
+        return graph
+    nodes_by_id = {node.id: node for node in graph.nodes}
+    edges: List[ResearchEdge] = list(graph.edges)
+
+    for change in changes:
+        if change.action == "remove":
+            target_id = change.target_node_id
+            edges = [
+                e for e in edges
+                if not (
+                    e.type == "user_link"
+                    and e.source == change.source_node_id
+                    and (target_id is None or e.target == target_id)
+                )
+            ]
+            continue
+        # action == "add"
+        target_id = change.target_node_id
+        if target_id is None:
+            target_id = f"Stub:{change.target_slug}"
+            if target_id not in nodes_by_id:
+                nodes_by_id[target_id] = ResearchNode(
+                    id=target_id,
+                    name=change.target_slug,
+                    type=ResearchNodeType.STUB,
+                    metadata={
+                        "vault_slug": change.target_slug,
+                        "created_by": "vault_pull",
+                    },
+                )
+        # Idempotency: don't duplicate an edge that already exists.
+        already_present = any(
+            e.type == "user_link"
+            and e.source == change.source_node_id
+            and e.target == target_id
+            for e in edges
+        )
+        if not already_present:
+            edges.append(ResearchEdge(
+                source=change.source_node_id,
+                target=target_id,
+                type="user_link",
+            ))
+    return ResearchGraph(nodes=list(nodes_by_id.values()), edges=edges)
+
+
 def apply_overrides(graph: ResearchGraph, overrides: Sequence[VaultOverride]) -> ResearchGraph:
     """Return a new :class:`ResearchGraph` with overrides applied.
 
@@ -322,7 +501,11 @@ def apply_overrides(graph: ResearchGraph, overrides: Sequence[VaultOverride]) ->
     return ResearchGraph(nodes=list(nodes_by_id.values()), edges=list(graph.edges))
 
 
-def write_diverged_fields_report(overrides: Sequence[VaultOverride], path: Path) -> None:
+def write_diverged_fields_report(
+    overrides: Sequence[VaultOverride],
+    path: Path,
+    user_link_changes: Sequence[VaultUserLinkChange] = (),
+) -> None:
     """Render the per-compile audit log of vault-vs-snapshot divergences.
 
     Emitted as a separate ``.llm-wiki/diverged-fields.md`` (not folded into
@@ -339,34 +522,64 @@ def write_diverged_fields_report(overrides: Sequence[VaultOverride], path: Path)
         "> informational, not errors.",
         "",
     ]
-    if not overrides:
+    if not overrides and not user_link_changes:
         lines.append("_No divergences detected._")
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return
 
-    by_node: Dict[str, List[VaultOverride]] = defaultdict(list)
-    for override in overrides:
-        by_node[override.node_id].append(override)
-
-    lines.append(f"Detected **{len(overrides)} override(s)** across **{len(by_node)} node(s)**.")
-    lines.append("")
-    for node_id in sorted(by_node):
-        lines.append(f"## `{node_id}`")
+    if overrides:
+        by_node: Dict[str, List[VaultOverride]] = defaultdict(list)
+        for override in overrides:
+            by_node[override.node_id].append(override)
+        lines.append(
+            f"## Field overrides — {len(overrides)} across {len(by_node)} node(s)"
+        )
         lines.append("")
-        for override in by_node[node_id]:
-            lines.append(f"### `{override.field}`")
+        for node_id in sorted(by_node):
+            lines.append(f"### `{node_id}`")
             lines.append("")
-            lines.append(f"- snapshot value: `{override.snapshot_value!r}`")
-            lines.append(f"- vault value: `{override.vault_value!r}`")
+            for override in by_node[node_id]:
+                lines.append(f"- **{override.field}**")
+                lines.append(f"  - snapshot value: `{override.snapshot_value!r}`")
+                lines.append(f"  - vault value: `{override.vault_value!r}`")
             lines.append("")
+
+    if user_link_changes:
+        adds = [c for c in user_link_changes if c.action == "add"]
+        removes = [c for c in user_link_changes if c.action == "remove"]
+        stubs = [c for c in adds if c.target_node_id is None]
+        lines.append(
+            f"## User-link edges — {len(adds)} added, {len(removes)} removed"
+        )
+        if stubs:
+            lines.append(
+                f"_{len(stubs)} of the added link(s) target unknown slugs and minted a `Stub` tombstone node._"
+            )
+        lines.append("")
+        for change in adds:
+            tag = "Stub" if change.target_node_id is None else "ok"
+            lines.append(
+                f"- +`{change.source_node_id}` → `[[{change.target_slug}]]` ({tag})"
+            )
+        for change in removes:
+            lines.append(
+                f"- −`{change.source_node_id}` ↛ `[[{change.target_slug}]]`"
+            )
+        lines.append("")
+
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 
 __all__ = [
     "VaultOverride",
+    "VaultUserLinkChange",
     "apply_overrides",
+    "apply_user_link_changes",
     "compute_overrides",
+    "compute_user_link_changes",
     "extract_description",
+    "extract_user_notes_block",
+    "extract_wikilink_slugs",
     "parse_frontmatter",
     "write_diverged_fields_report",
 ]

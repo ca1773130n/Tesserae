@@ -704,41 +704,74 @@ class ProjectWiki:
     def _apply_vault_overlay(self, graph: ResearchGraph) -> ResearchGraph:
         """Read user edits out of the Obsidian vault and apply them onto the graph.
 
-        Tier 1a of the bidirectional sync feature
-        (docs/integrations/obsidian-sync.md). Three guards keep this safe:
+        Tier 1a + 1b of the bidirectional sync feature
+        (docs/integrations/obsidian-sync.md). Two diff streams:
 
-        1. If the vault directory doesn't exist, return the graph unchanged.
-        2. If no vault_snapshot.json exists yet, return the graph unchanged
-           (first-ever run with this feature; the snapshot we write at the
-           end of this compile becomes the baseline for the next one).
-        3. Always emit a diverged-fields.md report so the operator can see
-           what was applied even when overrides come back empty.
+        1. **Frontmatter / description overrides** — computed against
+           ``vault_snapshot.json``. Returns ``[]`` when the snapshot is
+           missing (first-ever feature-enabled compile; the snapshot we
+           write at the end of THIS compile becomes the next baseline).
+        2. **user_link edges** — every ``[[wikilink]]`` inside a
+           ``<!-- user-notes:start -->`` block becomes a ``user_link``
+           edge. The diff is against the current graph's existing
+           user_link edges, so removing a wikilink also removes the edge.
+           This stream runs even on the first compile (no snapshot
+           needed) because the graph itself is the baseline.
+
+        Always emits ``.llm-wiki/diverged-fields.md`` so the operator can
+        audit what was applied, even when both streams come back empty.
         """
+        from .markdown_projection import unique_slugs
         from .vault_pull import (
             apply_overrides,
+            apply_user_link_changes,
             compute_overrides,
+            compute_user_link_changes,
             write_diverged_fields_report,
         )
         from .vault_snapshot import read_snapshot
 
         if not self.paths.obsidian_vault.exists():
             return graph
-        snapshot = read_snapshot(self.paths.vault_snapshot)
-        if snapshot is None:
-            return graph
 
         node_by_id = {node.id: node for node in graph.nodes}
-        overrides = compute_overrides(self.paths.obsidian_vault, snapshot, node_by_id)
-        write_diverged_fields_report(overrides, self.paths.diverged_fields)
-        if not overrides:
-            return graph
-        print(
-            f"[llm-wiki] vault overlay: applying {len(overrides)} user-edited "
-            f"field(s) from {self.paths.obsidian_vault.name}/ "
-            f"(see {self.paths.diverged_fields.relative_to(self.project_root)})",
-            flush=True,
+        slug_by_id = unique_slugs(graph.nodes)
+
+        snapshot = read_snapshot(self.paths.vault_snapshot)
+        overrides = (
+            compute_overrides(self.paths.obsidian_vault, snapshot, node_by_id)
+            if snapshot is not None
+            else []
         )
-        return apply_overrides(graph, overrides)
+        user_link_changes = compute_user_link_changes(
+            self.paths.obsidian_vault, graph, slug_by_id
+        )
+        write_diverged_fields_report(
+            overrides, self.paths.diverged_fields, user_link_changes
+        )
+
+        if not overrides and not user_link_changes:
+            return graph
+
+        if overrides:
+            print(
+                f"[llm-wiki] vault overlay: applying {len(overrides)} field "
+                f"override(s) from {self.paths.obsidian_vault.name}/",
+                flush=True,
+            )
+        if user_link_changes:
+            adds = sum(1 for c in user_link_changes if c.action == "add")
+            removes = sum(1 for c in user_link_changes if c.action == "remove")
+            print(
+                f"[llm-wiki] vault overlay: {adds} user_link add(s), "
+                f"{removes} remove(s) "
+                f"(see {self.paths.diverged_fields.relative_to(self.project_root)})",
+                flush=True,
+            )
+
+        graph = apply_overrides(graph, overrides)
+        graph = apply_user_link_changes(graph, user_link_changes)
+        return graph
 
     def _write_artifacts(
         self,

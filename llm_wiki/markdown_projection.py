@@ -102,6 +102,35 @@ def truncate_slug(slug: str, max_bytes: int = 180) -> str:
     return f"{prefix}{suffix}"
 
 
+USER_NOTES_START = "<!-- user-notes:start -->"
+USER_NOTES_END = "<!-- user-notes:end -->"
+
+
+def extract_user_notes(path: Path) -> str:
+    """Return whatever the user wrote between ``USER_NOTES_START`` and ``USER_NOTES_END``.
+
+    Returns an empty string when the file is missing, has no user-notes
+    block, or the block markers are malformed. The promise of the
+    append zone is "the projector never touches what you put here", so
+    this function is the read side of that promise — write_projection
+    splices the result back into the next projection.
+    """
+    if not path.is_file():
+        return ""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    start = text.find(USER_NOTES_START)
+    if start == -1:
+        return ""
+    end = text.find(USER_NOTES_END, start)
+    if end == -1:
+        return ""
+    inner = text[start + len(USER_NOTES_START):end]
+    return inner.strip("\n")
+
+
 class GraphMarkdownProjector:
     def write_projection(self, graph: ResearchGraph, output_dir: str | Path) -> List[Path]:
         root = Path(output_dir)
@@ -117,16 +146,27 @@ class GraphMarkdownProjector:
         written: List[Path] = []
         cross_vault_index: Dict[str, List[str]] = defaultdict(list)  # node_slug → URIs
         for node in graph.nodes:
+            # Skip Stub tombstones — the whole UX point of a Stub is that the
+            # user's [[unknown-slug]] wikilink stays visually unresolved in
+            # Obsidian, so they immediately see their link is broken. The Stub
+            # still lives in graph.nodes for query reachability via MCP and
+            # the static site (where it's hidden by is_public_research_node).
+            if node.type == ResearchNodeType.STUB:
+                continue
             rel_dir = directory_for_node(node)
             slug = slug_by_id[node.id]
             path = root / rel_dir / f"{slug}.md"
             path.parent.mkdir(parents=True, exist_ok=True)
+            # Read any existing user-notes BEFORE we overwrite the file so
+            # the append zone genuinely survives recompile.
+            existing_user_notes = extract_user_notes(path)
             body, uris = render_node_page(
                 node,
                 slug_by_id,
                 node_by_id,
                 outgoing[node.id],
                 incoming[node.id],
+                user_notes=existing_user_notes,
             )
             path.write_text(body, encoding="utf-8")
             if uris:
@@ -168,13 +208,26 @@ def render_node_page(
     node_by_id: Dict[str, ResearchNode],
     outgoing: Sequence[ResearchEdge],
     incoming: Sequence[ResearchEdge],
+    user_notes: str = "",
 ) -> tuple[str, List[str]]:
     """Render a node's wiki page. Returns ``(body, cross_vault_uris)``.
 
     ``cross_vault_uris`` is the deduped list of every ``wiki://`` URI found
     in the node's description or string-typed metadata, so the caller can
     build a vault-wide ``_bridges.md`` index without re-scanning.
+
+    ``user_notes`` is the previously-saved content of the user-notes append
+    zone (see :func:`extract_user_notes`). The caller passes whatever was
+    between the markers in the existing on-disk file, and this function
+    splices it back into the new projection so it survives recompile.
     """
+    # Vault-authored ``user_link`` edges live in graph.edges for query
+    # reachability, but the projector skips them in the rendered Outgoing /
+    # Incoming sections — they're already visible to the human reader as
+    # `[[wikilinks]]` inside the user-notes block, and double-listing them
+    # would conflate ontology edges with user annotations.
+    outgoing = [edge for edge in outgoing if edge.type != "user_link"]
+    incoming = [edge for edge in incoming if edge.type != "user_link"]
     # ------- Frontmatter -------
     # `node_id` is the first frontmatter key so the vault_pull overlay reader
     # (see docs/integrations/obsidian-sync.md) can identify which graph node a
@@ -284,6 +337,20 @@ def render_node_page(
         "```",
         "",
     ])
+
+    # User-notes append zone. The projector NEVER overwrites whatever the
+    # user puts between these markers. On a fresh page the inner content is
+    # empty; on subsequent compiles, :func:`extract_user_notes` reads the
+    # existing file and the caller passes it back through ``user_notes``.
+    # Wikilinks the user writes here become ``user_link`` graph edges via
+    # :mod:`llm_wiki.vault_pull`.
+    lines.append(USER_NOTES_START)
+    lines.append("")
+    if user_notes:
+        lines.append(user_notes)
+        lines.append("")
+    lines.append(USER_NOTES_END)
+    lines.append("")
 
     return "\n".join(lines).rstrip() + "\n", cross_vault_uris
 

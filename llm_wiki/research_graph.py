@@ -72,6 +72,13 @@ class ResearchNodeType(str, Enum):
     # Synthesis layer (higher-order, generated)
     SYNTHESIS = "Synthesis"
 
+    # Vault tombstones (Tier 1b — bidirectional Obsidian sync). Created by
+    # llm_wiki.vault_pull when a user's `[[wikilink]]` inside the user-notes
+    # block points at a slug that doesn't resolve to a known graph node.
+    # Kept in graph.json so the link survives but hidden from every public
+    # surface (search, MCP, site, indexes) — see is_public_research_node.
+    STUB = "Stub"
+
 
 ALLOWED_NODE_TYPES: Set[str] = {item.value for item in ResearchNodeType}
 
@@ -147,6 +154,11 @@ ALLOWED_EDGE_TYPES: Set[str] = {
     "documents",
     "synthesizes",
     "summarizes",
+    # Vault-authored link (Tier 1b — bidirectional Obsidian sync). Emitted
+    # by vault_pull for every `[[wikilink]]` it finds inside a user-notes
+    # block. Carries no ontology semantics; used for graph reachability so
+    # MCP / dataview queries can still traverse them.
+    "user_link",
 }
 
 
@@ -1080,6 +1092,11 @@ def is_social_feed_source_path(source_path: Optional[str]) -> bool:
 # rows of biblio noise, drowning out the typed-entity narrative.
 PRIVATE_PUBLIC_RESEARCH_TYPES: Set[str] = {
     ResearchNodeType.PERSON.value,
+    # Vault-only tombstones for user-authored wikilinks that point at
+    # unknown slugs. They live in the graph so the link survives, but
+    # nothing public ever surfaces them — they're effectively a TODO
+    # marker the operator can see in diverged-fields.md.
+    ResearchNodeType.STUB.value,
 }
 
 
