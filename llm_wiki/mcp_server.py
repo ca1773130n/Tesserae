@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from collections import Counter
@@ -229,6 +230,33 @@ def _project_root_for_graph_path(graph_path: str | Path) -> Optional[Path]:
     if p.parent.name == ".llm-wiki":
         return p.parent.parent
     return None
+
+
+from contextlib import contextmanager
+
+
+@contextmanager
+def _claude_config_dir_override(value: Optional[str]):
+    """Temporarily set CLAUDE_CONFIG_DIR for the wrapped block.
+
+    The raganything LLM adapter reads CLAUDE_CONFIG_DIR at call time, so
+    setting it here lets MCP clients target a multi-account Claude setup
+    (e.g. ``~/.claude-personal2``) for a single `ask` invocation without
+    leaking the change to other tools or future calls. ``None`` is a no-op
+    so callers don't have to branch.
+    """
+    if not value:
+        yield
+        return
+    previous = os.environ.get("CLAUDE_CONFIG_DIR")
+    os.environ["CLAUDE_CONFIG_DIR"] = value
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("CLAUDE_CONFIG_DIR", None)
+        else:
+            os.environ["CLAUDE_CONFIG_DIR"] = previous
 
 
 def _extract_internal_links(body: str) -> List[JSONDict]:
@@ -470,6 +498,14 @@ class LLMWikiMCPServer:
                             "items": {"type": "string"},
                             "description": "When scope='all-registered', optionally restrict to this list of registered alias names.",
                         },
+                        "claude_config_dir": {
+                            "type": "string",
+                            "description": (
+                                "Override CLAUDE_CONFIG_DIR for this call. Lets MCP clients "
+                                "target a multi-account Claude setup (e.g. ~/.claude-personal2). "
+                                "Mirrors the CLI's --raganything-claude-config-dir."
+                            ),
+                        },
                     },
                     "required": ["question"],
                     "additionalProperties": False,
@@ -514,6 +550,342 @@ class LLMWikiMCPServer:
                 },
             },
         ]
+
+    # ------------------------------------------------------------------ Resources
+    #
+    # MCP Resources are read-only context that clients can fetch by URI without
+    # invoking a tool. Modern clients (Claude Code, Cursor) auto-load resources
+    # the user picks from a palette, so exposing the schema, the latest lint
+    # report, and individual wiki pages here means callers don't have to spend
+    # tool turns on what amounts to "read this file".
+    #
+    # URI scheme: ``llm-wiki://<category>/...``. Static resources live under
+    # ``graph/*``; project-relative artifacts live under ``lint-report``,
+    # ``wiki/<kind>/<slug>``, and ``raw/<source-path>``.
+    #
+    # The latter three are exposed as resource templates (URI patterns) rather
+    # than enumerated, because enumerating every wiki page on every list call
+    # would balloon the response.
+
+    _RESOURCE_TEMPLATES = (
+        {
+            "uriTemplate": "llm-wiki://graph/summary",
+            "name": "Active project — graph summary",
+            "description": (
+                "JSON summary of the currently active LLM-Wiki project's typed graph: "
+                "node and edge counts plus type distributions. Cheaper than calling the "
+                "graph_summary tool when you just need orientation."
+            ),
+            "mimeType": "application/json",
+        },
+        {
+            "uriTemplate": "llm-wiki://graph/schema",
+            "name": "Graph schema",
+            "description": (
+                "JSON listing of the controlled node types, edge types, and wiki kinds "
+                "LLM-Wiki recognises. Same payload as the schema tool but loadable "
+                "without a tool call."
+            ),
+            "mimeType": "application/json",
+        },
+        {
+            "uriTemplate": "llm-wiki://lint-report",
+            "name": "Active project — latest lint report",
+            "description": (
+                "The markdown lint report from the most recent `llm_wiki project compile`. "
+                "Capped at 64 KB."
+            ),
+            "mimeType": "text/markdown",
+        },
+        {
+            "uriTemplate": "llm-wiki://wiki/{kind}/{slug}",
+            "name": "Wiki page",
+            "description": (
+                "Compiled wiki page body for a typed node, addressed by wiki kind "
+                "(papers, concepts, entities, topics, questions, syntheses, sources, "
+                "repos) and slug. Returns the markdown projection."
+            ),
+            "mimeType": "text/markdown",
+        },
+        {
+            "uriTemplate": "llm-wiki://raw/{source_path}",
+            "name": "Raw source",
+            "description": (
+                "Raw markdown for a source path the typed graph references. Capped at "
+                "16 KB. Matches the raw_source tool but loadable as a resource."
+            ),
+            "mimeType": "text/markdown",
+        },
+    )
+
+    def list_resources(self) -> List[JSONDict]:
+        """Concrete (non-templated) resources for ``resources/list``.
+
+        We only enumerate the two static URIs here — schema is project-agnostic
+        and summary keys off the active project. Wiki pages and raw sources are
+        exposed via :meth:`list_resource_templates` so clients can construct
+        URIs on demand instead of paging through hundreds of nodes.
+        """
+        return [
+            {
+                "uri": "llm-wiki://graph/schema",
+                "name": "Graph schema",
+                "description": "Controlled node/edge/kind vocabulary.",
+                "mimeType": "application/json",
+            },
+            {
+                "uri": "llm-wiki://graph/summary",
+                "name": "Active project — graph summary",
+                "description": "Node and edge counts for the active project.",
+                "mimeType": "application/json",
+            },
+            {
+                "uri": "llm-wiki://lint-report",
+                "name": "Active project — lint report",
+                "description": "Latest compile-time lint findings.",
+                "mimeType": "text/markdown",
+            },
+        ]
+
+    def list_resource_templates(self) -> List[JSONDict]:
+        """Resource templates for ``resources/templates/list``."""
+        return list(self._RESOURCE_TEMPLATES)
+
+    def read_resource(self, uri: str) -> JSONDict:
+        """Read a resource by URI. Returns a contents-list shaped per MCP spec."""
+        parsed = self._parse_resource_uri(uri)
+        if parsed is None:
+            raise ValueError(
+                f"Unsupported resource URI: {uri!r}. "
+                f"Expected llm-wiki://graph/{{schema,summary}}, "
+                f"llm-wiki://lint-report, llm-wiki://wiki/<kind>/<slug>, or "
+                f"llm-wiki://raw/<source-path>."
+            )
+        category, rest = parsed
+        if category == "graph" and rest == ("schema",):
+            payload = self.call_tool("schema")
+            return self._resource_text(uri, "application/json", json.dumps(payload, ensure_ascii=False, indent=2))
+        if category == "graph" and rest == ("summary",):
+            payload = self.call_tool("graph_summary")
+            return self._resource_text(uri, "application/json", json.dumps(payload, ensure_ascii=False, indent=2))
+        if category == "lint-report" and not rest:
+            payload = self.call_tool("lint_report")
+            text = str(payload.get("body") or payload.get("text") or "")
+            return self._resource_text(uri, "text/markdown", text)
+        if category == "wiki" and len(rest) == 2:
+            kind, slug = rest
+            payload = self.call_tool("wiki_page", {"name": slug})
+            body = str(payload.get("body") or "")
+            if not body:
+                # wiki_page accepts node_id or name; try kind+slug as a node id
+                payload = self.call_tool("wiki_page", {"node_id": f"{kind}:{slug}"})
+                body = str(payload.get("body") or "")
+            return self._resource_text(uri, "text/markdown", body)
+        if category == "raw" and rest:
+            source_path = "/".join(rest)
+            payload = self.call_tool("raw_source", {"source_path": source_path})
+            text = str(payload.get("body") or payload.get("text") or "")
+            return self._resource_text(uri, "text/markdown", text)
+        raise ValueError(f"Resource URI does not match any handler: {uri!r}")
+
+    @staticmethod
+    def _parse_resource_uri(uri: str) -> Optional[Tuple[str, Tuple[str, ...]]]:
+        prefix = "llm-wiki://"
+        if not uri.startswith(prefix):
+            return None
+        rest = uri[len(prefix):].strip("/")
+        if not rest:
+            return None
+        parts = rest.split("/")
+        return parts[0], tuple(parts[1:])
+
+    @staticmethod
+    def _resource_text(uri: str, mime: str, text: str) -> JSONDict:
+        return {"contents": [{"uri": uri, "mimeType": mime, "text": text}]}
+
+    # ------------------------------------------------------------------ Prompts
+    #
+    # MCP Prompts are templated user messages that an MCP client surfaces as
+    # one-click templates (e.g. Claude Code's `/` palette). Each entry below
+    # tells the model exactly which LLM-Wiki tools/resources to chain to
+    # answer a recurring research question, so the user doesn't have to
+    # rewrite the same orchestration prompt every time.
+
+    _PROMPTS = (
+        {
+            "name": "summarize-paper",
+            "description": (
+                "Produce a concise, cite-everything summary of a paper in the wiki — "
+                "key contribution, method sketch, headline results, and limitations. "
+                "Chains node_context + wiki_page + raw_source tools."
+            ),
+            "arguments": [
+                {
+                    "name": "slug",
+                    "description": "Wiki slug or exact node name of the paper (e.g. 'arxiv-2308-04079' or '3D Gaussian Splatting...').",
+                    "required": True,
+                },
+            ],
+        },
+        {
+            "name": "find-related-work",
+            "description": (
+                "Given a topic or concept, surface the most related papers/repos in the "
+                "corpus and explain why each is relevant. Uses search_nodes + node_context."
+            ),
+            "arguments": [
+                {
+                    "name": "topic",
+                    "description": "Topic, concept slug, or free-text descriptor.",
+                    "required": True,
+                },
+                {
+                    "name": "limit",
+                    "description": "Maximum related items to return (default 8).",
+                    "required": False,
+                },
+            ],
+        },
+        {
+            "name": "compare-approaches",
+            "description": (
+                "Side-by-side comparison of two approaches (architectures, methods, or "
+                "frameworks): goals, mechanisms, headline results, where they diverge. "
+                "Uses node_context on both nodes and search_facts for performance claims."
+            ),
+            "arguments": [
+                {"name": "a", "description": "First approach slug or name.", "required": True},
+                {"name": "b", "description": "Second approach slug or name.", "required": True},
+            ],
+        },
+        {
+            "name": "gap-analysis",
+            "description": (
+                "Identify gaps in the corpus for a topic — open questions, missing "
+                "benchmarks, under-explored sub-areas. Combines search_facts and the "
+                "OpenQuestion node type."
+            ),
+            "arguments": [
+                {
+                    "name": "topic",
+                    "description": "Topic to analyse. Omit for a corpus-wide gap scan.",
+                    "required": False,
+                },
+            ],
+        },
+        {
+            "name": "triage-open-questions",
+            "description": (
+                "List every OpenQuestion node in the active project, group by topic, and "
+                "propose a priority order based on dependency and recency. Pure "
+                "search_nodes + node_context, no LLM needed for retrieval."
+            ),
+            "arguments": [],
+        },
+    )
+
+    def list_prompts(self) -> List[JSONDict]:
+        return [dict(p) for p in self._PROMPTS]
+
+    def get_prompt(self, name: str, arguments: Optional[JSONDict] = None) -> JSONDict:
+        """Render a prompt to its MCP ``messages`` payload.
+
+        The model the client routes to receives the rendered user message and
+        can chain LLM-Wiki tools to fulfil it. We deliberately keep the prompt
+        text concrete and tool-aware so models don't waste turns rediscovering
+        the available surface.
+        """
+        args = arguments or {}
+        if name == "summarize-paper":
+            slug = str(args.get("slug") or "").strip()
+            if not slug:
+                raise ValueError("summarize-paper requires argument 'slug'")
+            text = (
+                f"Summarize the paper at wiki slug `{slug}` from the active LLM-Wiki "
+                f"project. Steps:\n"
+                f"1. Call `node_context` with name=`{slug}` to load the paper node, its "
+                f"incident edges, and immediate neighbours.\n"
+                f"2. Call `wiki_page` with name=`{slug}` for the projected page body.\n"
+                f"3. If the body references a `source_path`, optionally call `raw_source` "
+                f"for the original markdown.\n"
+                f"Return a structured summary: (a) headline contribution, (b) method "
+                f"sketch, (c) headline results with metric+dataset, (d) limitations / "
+                f"open questions raised, (e) the 3 most relevant connected nodes from "
+                f"the corpus. Cite every claim with the node slug it came from."
+            )
+            return self._prompt_messages("Summarize a paper from the active wiki.", text)
+        if name == "find-related-work":
+            topic = str(args.get("topic") or "").strip()
+            limit = int(args.get("limit") or 8)
+            if not topic:
+                raise ValueError("find-related-work requires argument 'topic'")
+            text = (
+                f"Find work in the active LLM-Wiki project related to `{topic}`. Steps:\n"
+                f"1. Call `search_nodes` with query=`{topic}` limit={limit + 4} and "
+                f"narrow to kinds papers,repos,concepts.\n"
+                f"2. For the top {limit} candidates, call `node_context` to inspect "
+                f"their relations.\n"
+                f"3. Return a ranked list with for each item: slug, type, a one-sentence "
+                f"justification of relevance, and the connecting edge(s) to `{topic}`."
+            )
+            return self._prompt_messages("Find related work for a topic.", text)
+        if name == "compare-approaches":
+            a = str(args.get("a") or "").strip()
+            b = str(args.get("b") or "").strip()
+            if not (a and b):
+                raise ValueError("compare-approaches requires arguments 'a' and 'b'")
+            text = (
+                f"Compare approaches `{a}` and `{b}` using the active LLM-Wiki project. Steps:\n"
+                f"1. Call `node_context` for both nodes.\n"
+                f"2. Call `search_facts` with query=`{a}` and again with query=`{b}` to "
+                f"pull headline performance / contribution claims.\n"
+                f"3. Return a side-by-side table with columns: goal, mechanism / how it "
+                f"works, headline result, known limitations, where they diverge.\n"
+                f"4. End with a one-paragraph synthesis on when to pick `{a}` vs `{b}`. "
+                f"Cite every cell."
+            )
+            return self._prompt_messages("Compare two approaches side-by-side.", text)
+        if name == "gap-analysis":
+            topic = str(args.get("topic") or "").strip()
+            scoped = f" scoped to `{topic}`" if topic else " across the entire corpus"
+            text = (
+                f"Run a gap analysis{scoped} against the active LLM-Wiki project. Steps:\n"
+                f"1. Call `search_nodes` with type=OpenQuestion"
+                + (f" and query=`{topic}`" if topic else "")
+                + ".\n"
+                f"2. Call `search_facts` "
+                + (f"with query=`{topic}` " if topic else "")
+                + "to surface limitation/contribution claims.\n"
+                f"3. Group findings into: open questions still unresolved, "
+                f"under-evidenced claims, missing benchmarks/datasets, papers cited but "
+                f"not present.\n"
+                f"4. Propose 3 concrete next steps the maintainer could take to close "
+                f"the largest gap."
+            )
+            return self._prompt_messages("Surface gaps in the corpus.", text)
+        if name == "triage-open-questions":
+            text = (
+                "Triage every OpenQuestion node in the active LLM-Wiki project. Steps:\n"
+                "1. Call `search_nodes` with type=OpenQuestion limit=100.\n"
+                "2. For each, call `node_context` to see what it connects to.\n"
+                "3. Group by topic/research field.\n"
+                "4. Return a prioritised list with: slug, one-line restatement of the "
+                "question, who/what it blocks (from incoming edges), and a "
+                "priority score (high/med/low) with reasoning. No prose summary."
+            )
+            return self._prompt_messages("Triage open questions in the corpus.", text)
+        raise ValueError(f"Unknown prompt: {name}")
+
+    @staticmethod
+    def _prompt_messages(description: str, text: str) -> JSONDict:
+        return {
+            "description": description,
+            "messages": [
+                {"role": "user", "content": {"type": "text", "text": text}},
+            ],
+        }
+
+    # --------------------------------------------------------------- Tool dispatch
 
     def call_tool(self, name: str, arguments: Optional[JSONDict] = None) -> JSONDict:
         args = arguments or {}
@@ -581,14 +953,17 @@ class LLMWikiMCPServer:
             scope = str(args.get("scope") or "current")
             if scope not in {"current", "all-registered"}:
                 raise ValueError(f"ask: unknown scope {scope!r}")
-            if scope == "all-registered":
-                return self._mcp_ask_all_registered(
-                    question=question,
-                    backend=backend,
-                    top_k=top_k,
-                    scope_aliases=_coerce_str_list(args.get("scope_aliases")),
-                )
-            return self._mcp_ask(args, question=question, backend=backend, top_k=top_k)
+            claude_config_dir = args.get("claude_config_dir")
+            claude_config_dir = str(claude_config_dir).strip() if claude_config_dir else None
+            with _claude_config_dir_override(claude_config_dir):
+                if scope == "all-registered":
+                    return self._mcp_ask_all_registered(
+                        question=question,
+                        backend=backend,
+                        top_k=top_k,
+                        scope_aliases=_coerce_str_list(args.get("scope_aliases")),
+                    )
+                return self._mcp_ask(args, question=question, backend=backend, top_k=top_k)
         if name == "list_projects":
             return self.registry.list_projects()
         if name == "register_project":
@@ -909,15 +1284,31 @@ class LLMWikiMCPServer:
         raw_path = args.get("graph_path")
         if raw_path:
             graph_path = Path(str(raw_path))
+            if not graph_path.is_file():
+                raise ValueError(
+                    f"graph_path does not exist or is not a file: {graph_path}. "
+                    f"Compile the project first (`llm_wiki project compile`) or "
+                    f"point at a different .llm-wiki/graph.json."
+                )
             return load_graph(graph_path), _project_root_for_graph_path(graph_path)
         project = args.get("project")
         if project:
             resolved = self.registry.resolve_graph_path(str(project))
             if resolved is None:
                 raise ValueError(f"Unknown project: {project}. Use list_projects or register_project.")
+            if not Path(resolved).is_file():
+                raise ValueError(
+                    f"Registered project {project!r} points at a missing graph file: "
+                    f"{resolved}. Recompile the project or unregister and re-register it."
+                )
             return load_graph(resolved), _project_root_for_graph_path(resolved)
         active = self.registry.active_graph_path()
         if active is not None:
+            if not Path(active).is_file():
+                raise ValueError(
+                    f"Active project's graph file is missing: {active}. "
+                    f"Recompile, activate a different project, or unregister the stale entry."
+                )
             return load_graph(active), _project_root_for_graph_path(active)
         if self.graph_store is not None:
             return _materialize_graph(self.graph_store), None
@@ -958,7 +1349,11 @@ class MCPRequestHandler:
                     request_id,
                     {
                         "protocolVersion": "2024-11-05",
-                        "capabilities": {"tools": {"listChanged": False}},
+                        "capabilities": {
+                            "tools": {"listChanged": False},
+                            "resources": {"listChanged": False, "subscribe": False},
+                            "prompts": {"listChanged": False},
+                        },
                         "serverInfo": {"name": "llm-wiki", "version": "0.1.0"},
                     },
                 )
@@ -973,6 +1368,25 @@ class MCPRequestHandler:
                     request_id,
                     {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, indent=2)}], "isError": False},
                 )
+            if method == "resources/list":
+                return self._result(request_id, {"resources": self.server.list_resources()})
+            if method == "resources/templates/list":
+                return self._result(request_id, {"resourceTemplates": self.server.list_resource_templates()})
+            if method == "resources/read":
+                params = message.get("params") or {}
+                uri = params.get("uri")
+                if not uri:
+                    return self._error(request_id, -32602, "resources/read requires 'uri'")
+                return self._result(request_id, self.server.read_resource(str(uri)))
+            if method == "prompts/list":
+                return self._result(request_id, {"prompts": self.server.list_prompts()})
+            if method == "prompts/get":
+                params = message.get("params") or {}
+                prompt_name = params.get("name")
+                arguments = params.get("arguments") or {}
+                if not prompt_name:
+                    return self._error(request_id, -32602, "prompts/get requires 'name'")
+                return self._result(request_id, self.server.get_prompt(str(prompt_name), arguments))
             return self._error(request_id, -32601, f"Method not found: {method}")
         except Exception as exc:  # MCP tools should surface errors as JSON-RPC errors.
             return self._error(request_id, -32000, str(exc))

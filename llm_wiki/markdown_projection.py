@@ -3,6 +3,10 @@
 Markdown is a human-readable projection, not the source of truth. The graph JSON
 and future graph DB stay authoritative; these pages make concepts and papers easy
 to inspect in Obsidian/VS Code.
+
+Obsidian-specific enrichments (callouts per node type, dataview-queryable
+frontmatter, cross-vault bridge metadata) are layered on top of the plain
+markdown so a non-Obsidian reader still gets a clean, readable page.
 """
 
 from __future__ import annotations
@@ -13,6 +17,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, Iterable, List, Sequence
 
+from .cross_project import find_wiki_uris_in_text, parse_wiki_uri
 from .research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
 
 
@@ -53,6 +58,26 @@ CLAIM_TYPES = {
 }
 
 
+# Obsidian callout type per node category. Empty string means no callout
+# (we leave the description as plain prose for those types — wrapping a
+# 5-paragraph paper abstract in a callout makes the page unreadable).
+_CALLOUT_BY_NODE_TYPE: Dict[ResearchNodeType, tuple[str, str]] = {
+    ResearchNodeType.PAPER: ("quote", "Paper"),
+    ResearchNodeType.REPOSITORY: ("info", "Repository"),
+    ResearchNodeType.SOURCE_DOCUMENT: ("abstract", "Source document"),
+    # Claim flavours — the assertion lands inside the callout so visual
+    # weight matches semantic weight.
+    ResearchNodeType.CLAIM: ("note", "Claim"),
+    ResearchNodeType.CONTRIBUTION_CLAIM: ("success", "Contribution"),
+    ResearchNodeType.PERFORMANCE_CLAIM: ("info", "Performance claim"),
+    ResearchNodeType.COMPARISON_CLAIM: ("info", "Comparison"),
+    ResearchNodeType.LIMITATION_CLAIM: ("warning", "Limitation"),
+    ResearchNodeType.CAUSAL_CLAIM: ("important", "Causal claim"),
+    ResearchNodeType.OPEN_QUESTION: ("question", "Open question"),
+    ResearchNodeType.EVIDENCE_SPAN: ("example", "Evidence"),
+}
+
+
 def slugify(name: str) -> str:
     slug = re.sub(r"[^a-z0-9가-힣]+", "-", name.lower()).strip("-") or "untitled"
     return truncate_slug(slug)
@@ -90,16 +115,31 @@ class GraphMarkdownProjector:
             incoming[edge.target].append(edge)
 
         written: List[Path] = []
+        cross_vault_index: Dict[str, List[str]] = defaultdict(list)  # node_slug → URIs
         for node in graph.nodes:
             rel_dir = directory_for_node(node)
-            path = root / rel_dir / f"{slug_by_id[node.id]}.md"
+            slug = slug_by_id[node.id]
+            path = root / rel_dir / f"{slug}.md"
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(render_node_page(node, slug_by_id, node_by_id, outgoing[node.id], incoming[node.id]), encoding="utf-8")
+            body, uris = render_node_page(
+                node,
+                slug_by_id,
+                node_by_id,
+                outgoing[node.id],
+                incoming[node.id],
+            )
+            path.write_text(body, encoding="utf-8")
+            if uris:
+                cross_vault_index[slug] = uris
             written.append(path)
 
         index_path = root / "index.md"
         index_path.write_text(render_index(graph.nodes, slug_by_id), encoding="utf-8")
         written.append(index_path)
+
+        bridges_path = root / "_bridges.md"
+        bridges_path.write_text(render_bridges(cross_vault_index), encoding="utf-8")
+        written.append(bridges_path)
         return written
 
 
@@ -128,24 +168,130 @@ def render_node_page(
     node_by_id: Dict[str, ResearchNode],
     outgoing: Sequence[ResearchEdge],
     incoming: Sequence[ResearchEdge],
-) -> str:
-    lines = ["---", f"title: {node.name}", f"type: {node.type.value}"]
+) -> tuple[str, List[str]]:
+    """Render a node's wiki page. Returns ``(body, cross_vault_uris)``.
+
+    ``cross_vault_uris`` is the deduped list of every ``wiki://`` URI found
+    in the node's description or string-typed metadata, so the caller can
+    build a vault-wide ``_bridges.md`` index without re-scanning.
+    """
+    # ------- Frontmatter -------
+    lines: List[str] = ["---", f"title: {node.name}", f"type: {node.type.value}"]
     if node.aliases:
         lines.append("aliases: [" + ", ".join(node.aliases) + "]")
     if node.source_path:
         lines.append(f"source_path: {node.source_path}")
+
+    # Obsidian/dataview-friendly edge maps. Two nested dicts keyed by edge
+    # type, each value is a list of neighbour slugs. Lets dataview do queries
+    # like `WHERE this.edges_out.uses` to find nodes with a `uses` outgoing
+    # edge, or `WHERE contains(this.edges_in.contributes_to, "nerf")`.
+    edges_out_by_type: Dict[str, List[str]] = defaultdict(list)
+    edges_in_by_type: Dict[str, List[str]] = defaultdict(list)
+    for edge in outgoing:
+        if edge.target in slug_by_id:
+            edges_out_by_type[edge.type].append(slug_by_id[edge.target])
+    for edge in incoming:
+        if edge.source in slug_by_id:
+            edges_in_by_type[edge.type].append(slug_by_id[edge.source])
+    if edges_out_by_type:
+        lines.append("edges_out:")
+        for etype in sorted(edges_out_by_type):
+            slugs = sorted(set(edges_out_by_type[etype]))
+            lines.append(f"  {etype}: [{', '.join(slugs)}]")
+    if edges_in_by_type:
+        lines.append("edges_in:")
+        for etype in sorted(edges_in_by_type):
+            slugs = sorted(set(edges_in_by_type[etype]))
+            lines.append(f"  {etype}: [{', '.join(slugs)}]")
+
+    # Cross-vault wiki:// URIs found in description and string metadata. Surface
+    # them as frontmatter so a downstream tool (or human dataview query) can
+    # find every page that bridges to another vault.
+    cross_vault_uris = _collect_wiki_uris(node)
+    if cross_vault_uris:
+        lines.append(
+            "cross_vault: [" + ", ".join(cross_vault_uris) + "]"
+        )
+
     for key in sorted(node.metadata):
         value = node.metadata[key]
         if isinstance(value, (str, int, float, bool)):
             lines.append(f"{key}: {value}")
-    lines.extend(["---", "", f"# {node.name}", ""])
-    if node.description:
+    lines.extend(["---", ""])
+
+    # ------- Body -------
+    lines.extend([f"# {node.name}", ""])
+
+    # Obsidian callout chip above the description — gives the page a visual
+    # type-tag matching the 41-type schema. Plain markdown reader sees a
+    # blockquote with the type label, which is also useful prose.
+    callout = _CALLOUT_BY_NODE_TYPE.get(node.type)
+    if callout:
+        kind, label = callout
+        lines.append(f"> [!{kind}] {label}")
+        if node.description:
+            for desc_line in node.description.splitlines():
+                lines.append(f"> {desc_line}" if desc_line else ">")
+        else:
+            lines.append(f"> _{node.type.value}_")
+        lines.append("")
+    elif node.description:
         lines.extend([node.description, ""])
+
     if node.aliases:
         lines.extend(["## Aliases", "", ", ".join(node.aliases), ""])
+
     lines.extend(render_edge_section("Outgoing", outgoing, slug_by_id, node_by_id, target_side=True))
     lines.extend(render_edge_section("Incoming", incoming, slug_by_id, node_by_id, target_side=False))
-    return "\n".join(lines).rstrip() + "\n"
+
+    if cross_vault_uris:
+        lines.extend(["## Cross-vault references", ""])
+        for uri in cross_vault_uris:
+            parsed = parse_wiki_uri(uri)
+            if parsed:
+                alias, kind, slug = parsed
+                lines.append(f"- `{uri}` — _{alias}_ / {kind} / `{slug}`")
+            else:
+                lines.append(f"- `{uri}`")
+        lines.append("")
+
+    # Dataview block: list every other note in the vault that links to this
+    # one. Cheap on small vaults; clients without dataview just see the
+    # ```dataview block as a literal code fence which is fine.
+    lines.extend([
+        "## Related (dataview)",
+        "",
+        "```dataview",
+        "LIST",
+        'FROM "papers" OR "concepts" OR "claims"',
+        f'WHERE contains(file.outlinks, this.file.link) AND file.name != this.file.name',
+        "SORT file.name",
+        "LIMIT 25",
+        "```",
+        "",
+    ])
+
+    return "\n".join(lines).rstrip() + "\n", cross_vault_uris
+
+
+def _collect_wiki_uris(node: ResearchNode) -> List[str]:
+    """Find every ``wiki://`` URI mentioned in the node, deduped + ordered."""
+    seen: List[str] = []
+    def add_from(text: str) -> None:
+        for uri in find_wiki_uris_in_text(text):
+            if uri not in seen:
+                seen.append(uri)
+    if node.description:
+        add_from(node.description)
+    for value in node.metadata.values():
+        if isinstance(value, str):
+            add_from(value)
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, str):
+                    add_from(item)
+    return seen
 
 
 def render_edge_section(title: str, edges: Sequence[ResearchEdge], slug_by_id: Dict[str, str], node_by_id: Dict[str, ResearchNode], target_side: bool) -> List[str]:
@@ -181,5 +327,41 @@ def render_index(nodes: Sequence[ResearchNode], slug_by_id: Dict[str, str]) -> s
             lines.append(f"- [[{slug_by_id[node.id]}]] — {node.type.value}")
         if not groups.get(section):
             lines.append("_None._")
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_bridges(index: Dict[str, List[str]]) -> str:
+    """Vault-level cross-vault index. Empty when no node bridges out.
+
+    Grouped by the alias each ``wiki://`` URI points at so a reader can see
+    every outbound dependency on another LLM-Wiki vault at a glance. Pages
+    with broken or unregistered aliases still show up — the resolution layer
+    is the caller's problem.
+    """
+    header = [
+        "# Cross-vault bridges",
+        "",
+        "> Every `wiki://<alias>/<kind>/<slug>` URI mentioned across this vault, "
+        "grouped by destination alias. Update the registry with "
+        "`llm_wiki project register-project` to make any of these resolvable.",
+        "",
+    ]
+    if not index:
+        header.extend(["_No outbound cross-vault references in this vault._", ""])
+        return "\n".join(header).rstrip() + "\n"
+
+    by_alias: Dict[str, List[tuple[str, str]]] = defaultdict(list)
+    for source_slug, uris in index.items():
+        for uri in uris:
+            parsed = parse_wiki_uri(uri)
+            alias = parsed[0] if parsed else "_unparseable_"
+            by_alias[alias].append((source_slug, uri))
+
+    lines = list(header)
+    for alias in sorted(by_alias):
+        lines.extend([f"## `{alias}`", ""])
+        for source_slug, uri in sorted(by_alias[alias]):
+            lines.append(f"- [[{source_slug}]] → `{uri}`")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
