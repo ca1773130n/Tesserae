@@ -15,7 +15,7 @@ import hashlib
 import re
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, Iterable, List, Sequence
+from typing import Dict, Iterable, List, Optional, Sequence
 
 from .cross_project import find_wiki_uris_in_text, parse_wiki_uri
 from .research_graph import (
@@ -150,6 +150,18 @@ class GraphMarkdownProjector:
             incoming[edge.target].append(edge)
 
         owners = canonical_slug_owners(slug_by_id)
+        # The set of node ids that actually produce a vault page. Edges
+        # whose other end is NOT in this set must not emit a ``[[slug]]``
+        # wikilink — otherwise the vault is littered with dangling links
+        # to private types (Person, Stub) or to collision-loser ids that
+        # got redirected to a canonical sibling under a different slug.
+        linkable_node_ids: set[str] = {
+            node.id
+            for node in graph.nodes
+            if node.type != ResearchNodeType.STUB
+            and is_public_research_node(node)
+            and node.id in owners
+        }
         written: List[Path] = []
         cross_vault_index: Dict[str, List[str]] = defaultdict(list)  # node_slug → URIs
         for node in graph.nodes:
@@ -189,6 +201,7 @@ class GraphMarkdownProjector:
                 outgoing[node.id],
                 incoming[node.id],
                 user_notes=existing_user_notes,
+                linkable_node_ids=linkable_node_ids,
             )
             path.write_text(body, encoding="utf-8")
             if uris:
@@ -196,7 +209,10 @@ class GraphMarkdownProjector:
             written.append(path)
 
         index_path = root / "index.md"
-        index_path.write_text(render_index(graph.nodes, slug_by_id), encoding="utf-8")
+        index_path.write_text(
+            render_index(graph.nodes, slug_by_id, linkable_node_ids=linkable_node_ids),
+            encoding="utf-8",
+        )
         written.append(index_path)
 
         bridges_path = root / "_bridges.md"
@@ -266,11 +282,24 @@ def unique_slugs(nodes: Sequence[ResearchNode]) -> Dict[str, str]:
 
     slugs: Dict[str, str] = {}
     for slug, candidates in by_slug.items():
-        # Canonical = highest type priority, then deterministic id tiebreak.
+        # Canonical = highest priority by (public, type_priority, id).
+        # ``is_public_research_node`` MUST be the primary key: if a Person
+        # and a Metric collide on slug ``ssim``, the Metric has to win —
+        # otherwise ``write_projection`` skips writing any page at all
+        # (the Person fails the public filter, the Metric fails the
+        # owner check) and every other page that links to ``[[ssim]]``
+        # becomes a dangling wikilink.
         canonical = (
             candidates[0]
             if len(candidates) == 1
-            else max(candidates, key=lambda n: (_TYPE_PRIORITY.get(n.type, 0), n.id))
+            else max(
+                candidates,
+                key=lambda n: (
+                    1 if is_public_research_node(n) else 0,
+                    _TYPE_PRIORITY.get(n.type, 0),
+                    n.id,
+                ),
+            )
         )
         # EVERY node in the group maps to the canonical's slug — so edges
         # pointing at a dropped dupe still resolve to a real wikilink.
@@ -327,6 +356,7 @@ def render_node_page(
     outgoing: Sequence[ResearchEdge],
     incoming: Sequence[ResearchEdge],
     user_notes: str = "",
+    linkable_node_ids: Optional[set[str]] = None,
 ) -> tuple[str, List[str]]:
     """Render a node's wiki page. Returns ``(body, cross_vault_uris)``.
 
@@ -346,6 +376,16 @@ def render_node_page(
     # would conflate ontology edges with user annotations.
     outgoing = [edge for edge in outgoing if edge.type != "user_link"]
     incoming = [edge for edge in incoming if edge.type != "user_link"]
+    # Drop edges whose other end won't have a vault page — those would
+    # render as ``[[slug]]`` wikilinks that resolve to nothing, leaving
+    # dangling links all over Obsidian. ``linkable_node_ids`` is the set
+    # of node ids that ``write_projection`` will actually write a file
+    # for (public, non-Stub, slug-canonical). When the caller didn't
+    # supply the set, fall back to the legacy behaviour for backward
+    # compatibility with tests that call ``render_node_page`` directly.
+    if linkable_node_ids is not None:
+        outgoing = [edge for edge in outgoing if edge.target in linkable_node_ids]
+        incoming = [edge for edge in incoming if edge.source in linkable_node_ids]
     # ------- Frontmatter -------
     # `node_id` is the first frontmatter key so the vault_pull overlay reader
     # (see docs/integrations/obsidian-sync.md) can identify which graph node a
@@ -514,7 +554,15 @@ def render_edge_section(title: str, edges: Sequence[ResearchEdge], slug_by_id: D
     return lines
 
 
-def render_index(nodes: Sequence[ResearchNode], slug_by_id: Dict[str, str]) -> str:
+def render_index(
+    nodes: Sequence[ResearchNode],
+    slug_by_id: Dict[str, str],
+    linkable_node_ids: Optional[set[str]] = None,
+) -> str:
+    # Same dangling-link guard as ``render_node_page``: index only lists
+    # nodes that actually have a vault page on disk.
+    if linkable_node_ids is not None:
+        nodes = [n for n in nodes if n.id in linkable_node_ids]
     groups = defaultdict(list)
     for node in nodes:
         groups[directory_for_node(node)].append(node)

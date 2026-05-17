@@ -399,6 +399,23 @@ def _init_cross_type_priority() -> None:
     }
 
 
+def merge_cross_type_duplicates(
+    nodes: List[ResearchNode],
+    edges: List[ResearchEdge],
+) -> Tuple[List[ResearchNode], List[ResearchEdge]]:
+    """Public alias of :func:`_merge_cross_type_duplicates`.
+
+    Exposed so post-merge consumers (notably :func:`llm_wiki.project.merge_graphs`)
+    can re-run the same-name cross-type collapse after cross-extractor
+    merging. Without that, same-named nodes that were minted by different
+    files (and therefore by different ``ResearchGraphBuilder`` instances)
+    survive into the final graph as ghost duplicates of the canonical
+    Paper / Repository, leaving dangling ``[[slug-N]]`` wikilinks in the
+    vault projection.
+    """
+    return _merge_cross_type_duplicates(nodes, edges)
+
+
 def _merge_cross_type_duplicates(
     nodes: List[ResearchNode],
     edges: List[ResearchEdge],
