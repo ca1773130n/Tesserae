@@ -34,11 +34,16 @@ from ..ports import Source
 DEFAULT_EXTENSIONS: Tuple[str, ...] = (".md", ".txt", ".py", ".rst")
 
 
-# Generated / build / dependency directories that the walker should NEVER
-# descend into when discovering source markdown. These names mirror the
+# Generated / build / dependency / translation directories that the walker
+# should NEVER descend into when discovering source markdown. Mirrors the
 # common .gitignore conventions plus LLM-Wiki's own output dir. A user with
 # an unusual layout can still pass these explicitly as a source root —
 # the filter only applies during recursive descent under a normal root.
+#
+# `i18n` is included because translations are derived from source docs, not
+# source themselves; otherwise every heading appears once per supported
+# language and the Concept layer fills with "Examples" / "Quickstart" /
+# "2) Paste it into your MCP client" duplicates in Korean, Chinese, etc.
 _EXCLUDED_TOPLEVEL_DIRS = frozenset({
     "output",
     "build",
@@ -52,6 +57,7 @@ _EXCLUDED_TOPLEVEL_DIRS = frozenset({
     ".mypy_cache",
     ".ruff_cache",
     "data-gym-cache",
+    "i18n",
 })
 
 
