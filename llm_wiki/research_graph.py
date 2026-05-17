@@ -666,7 +666,11 @@ class ResearchGraphExtractor:
                 builder.add_edge(document, "mentioned_in", paper)
 
     def _add_evidence(self, builder: ResearchGraphBuilder, paper: ResearchNode, evidence: str, source_path: Optional[str]) -> ResearchNode:
-        name = "Evidence: " + truncate(evidence, 72)
+        # Strip leading markdown-heading markers from the evidence text BEFORE
+        # building the name — otherwise `'Evidence: # TRiGS: ...'` and
+        # `'Evidence: TRiGS: ...'` become distinct nodes for the same span.
+        cleaned = re.sub(r"^#+\s*", "", evidence.lstrip())
+        name = "Evidence: " + truncate(cleaned, 72)
         span = builder.add_node(name, ResearchNodeType.EVIDENCE_SPAN, description=evidence, source_path=source_path)
         builder.add_edge(span, "part_of", paper, evidence=evidence)
         return span
@@ -2407,6 +2411,43 @@ def normalize_display_name(name: str) -> str:
     text = re.sub(r"\s+", " ", name.strip())
     if not text:
         return "Unnamed"
+
+    # ---------------- extractor-noise stripping ----------------
+    #
+    # Names arriving here often carry artifacts of how they were sourced:
+    # YAML list entries with literal quote chars, markdown headings whose
+    # ``#`` survived sloppy parsing, emoji prefixes from social-feed
+    # content, trailing stray ``]`` from regex over-capture. Without these
+    # strips the same logical entity ends up as multiple nodes (``Suya You``
+    # vs ``"Suya You"``, ``Evidence: TRiGS...`` vs ``Evidence: # TRiGS...``,
+    # ``Daily Research Digest`` vs ``📬 Daily Research Digest``) and the
+    # vault accumulates ``<slug>.md``+``<slug>-2.md`` siblings.
+
+    # Strip leading ``#`` chars (markdown heading marker that leaked through).
+    while text.startswith("#"):
+        text = text.lstrip("#").lstrip()
+
+    # Strip leading emoji / symbol chars + whitespace until we hit something
+    # alphanumeric or a leading bracket/paren. Catches ``📬 ...``, ``✨ ...``,
+    # ``→ ...``, etc. without disturbing ``(Note) ...`` style prefixes.
+    while text and not (text[0].isalnum() or text[0] in "[(\""):
+        text = text[1:].lstrip()
+
+    # Strip a single layer of surrounding straight or curly quotes — the
+    # extractor often inherits these from YAML author lists.
+    if len(text) >= 2:
+        for opener, closer in (('"', '"'), ("'", "'"), ("“", "”"), ("‘", "’")):
+            if text.startswith(opener) and text.endswith(closer):
+                text = text[1:-1].strip()
+                break
+    # Trailing stray ``]`` / ``)`` / ``}`` left over from unbalanced regex captures.
+    while text and text[-1] in "]})":
+        text = text[:-1].rstrip()
+
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return "Unnamed"
+
     # Preserve common all-caps acronyms; otherwise title-case only all-lower labels.
     if text.islower() and " " in text and re.fullmatch(r"[a-z0-9 ]+", text):
         return text.title()
