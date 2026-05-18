@@ -14,6 +14,7 @@ page falls back to the heuristic body for that page only.
 
 from __future__ import annotations
 
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -397,18 +398,27 @@ class SynthesisProjector:
         if llm_state["enabled"]:
             synthesizer = llm_state["synthesizer"]
             llm_model = llm_state["model"]
-            for plan in plans:
-                request = self._build_llm_request(plan, ctx)
-                response = synthesizer.synthesize(request)
-                if response is None:
-                    continue
-                plan.body = response.body
-                plan.llm_metadata = {
-                    "generator": f"llm-{llm_model}",
-                    "llm_model": response.model,
-                    "llm_cache_id": response.cache_id,
-                    "llm_citations": list(response.citations),
+            plan_requests = [(plan, self._build_llm_request(plan, ctx)) for plan in plans]
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(int(os.environ.get("TESSERAE_SYNTHESIS_WORKERS", "4")), max(1, len(plan_requests)))) as executor:
+                future_to_plan = {
+                    executor.submit(synthesizer.synthesize, request): plan
+                    for plan, request in plan_requests
                 }
+                for future in concurrent.futures.as_completed(future_to_plan):
+                    plan = future_to_plan[future]
+                    try:
+                        response = future.result()
+                    except Exception:  # noqa: BLE001
+                        continue
+                    if response is None:
+                        continue
+                    plan.body = response.body
+                    plan.llm_metadata = {
+                        "generator": f"llm-{llm_model}",
+                        "llm_model": response.model,
+                        "llm_cache_id": response.cache_id,
+                        "llm_citations": list(response.citations),
+                    }
 
         new_nodes: List[ResearchNode] = list(graph.nodes)
         new_edges: List[ResearchEdge] = list(graph.edges)

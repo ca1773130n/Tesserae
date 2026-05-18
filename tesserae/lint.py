@@ -140,6 +140,9 @@ _MD_LINK_RE = re.compile(r"\[([^\]]+)\]\((papers|concepts|entities|topics|repos|
 _HTML_HREF_RE = re.compile(r'href="([^"#?][^"#?]*?)"')
 
 _FRONTMATTER_DELIM = "---"
+_FRONTMATTER_END_RE = re.compile(
+    r"(^|\n)" + re.escape(_FRONTMATTER_DELIM) + r"(\n|\r\n|$)", re.MULTILINE
+)
 
 
 class WikiLinter:
@@ -174,11 +177,14 @@ class WikiLinter:
         nodes_by_id = {node["id"]: node for node in graph.get("nodes", [])}
         edges = list(graph.get("edges", []))
 
+        wiki_md_paths = list(sorted(self.wiki_dir.rglob("*.md"))) if self.wiki_dir.exists() else []
+        site_html_paths = list(sorted(self.site_dir.rglob("*.html"))) if self.site_dir.exists() else []
+
         findings: List[LintFinding] = []
         findings.extend(self._check_orphan_papers(nodes_by_id, edges))
         findings.extend(self._check_missing_implemented_in(nodes_by_id, edges))
-        findings.extend(self._check_stale_citations())
-        findings.extend(self._check_dangling_wiki_links())
+        findings.extend(self._check_stale_citations(wiki_md_paths))
+        findings.extend(self._check_dangling_wiki_links(site_html_paths))
         findings.extend(self._check_drift(nodes_by_id))
         findings.extend(self._check_contradicting_claims(nodes_by_id))
         findings.extend(self._check_low_title_quality(nodes_by_id))
@@ -303,11 +309,9 @@ class WikiLinter:
                 auto_fixable=True,
             )
 
-    def _check_stale_citations(self) -> Iterable[LintFinding]:
+    def _check_stale_citations(self, wiki_md_paths: List[Path]) -> Iterable[LintFinding]:
         """Markdown links in wiki bodies pointing at non-existent pages."""
-        if not self.wiki_dir.exists():
-            return
-        for md_path in sorted(self.wiki_dir.rglob("*.md")):
+        for md_path in wiki_md_paths:
             try:
                 text = md_path.read_text(encoding="utf-8")
             except OSError:
@@ -330,11 +334,9 @@ class WikiLinter:
                     ),
                 )
 
-    def _check_dangling_wiki_links(self) -> Iterable[LintFinding]:
+    def _check_dangling_wiki_links(self, site_html_paths: List[Path]) -> Iterable[LintFinding]:
         """`<a href="...">` references inside generated HTML pointing nowhere."""
-        if not self.site_dir.exists():
-            return
-        for html_path in sorted(self.site_dir.rglob("*.html")):
+        for html_path in site_html_paths:
             try:
                 text = html_path.read_text(encoding="utf-8")
             except OSError:
@@ -929,7 +931,7 @@ def _split_frontmatter(text: str) -> Tuple[Dict[str, object], str]:
         rest = rest[1:]
     elif rest.startswith("\r\n"):
         rest = rest[2:]
-    end_match = re.search(r"(^|\n)" + re.escape(_FRONTMATTER_DELIM) + r"(\n|\r\n|$)", rest)
+    end_match = _FRONTMATTER_END_RE.search(rest)
     if not end_match:
         return {}, text
     fm_text = rest[: end_match.start()]

@@ -9,6 +9,7 @@ controlled ontology and no-API-key local workflow.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
@@ -89,7 +90,10 @@ class TemporalFactProjector:
         facts = self.project(graph)
         output = Path(path)
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text("".join(json.dumps(fact.model_dump(), ensure_ascii=False, sort_keys=True) + "\n" for fact in facts), encoding="utf-8")
+        tmp = output.with_suffix(".tmp")
+        with tmp.open("w", encoding="utf-8") as f:
+            f.writelines(json.dumps(fact.model_dump(), ensure_ascii=False, sort_keys=True) + "\n" for fact in facts)
+        os.replace(tmp, output)
         return facts
 
     def _fact_from_edge(self, subject: ResearchNode, predicate: str, obj: ResearchNode, evidence: Optional[str], metadata: Dict[str, object]) -> TemporalFact:

@@ -58,7 +58,7 @@ class CognifyOptions:
 
     mode: str = "off"  # off | add | cognify | codex_cognify
     dataset: str = "tesserae_research_graph"
-    codex_model: str = "gpt-5.4"
+    codex_model: str = "gpt-4o"
     codex_timeout: int = 300
     embedding_provider: str = "deterministic"  # deterministic | ollama
     ollama_embedding_model: str = "qwen3-embedding:0.6b"
@@ -79,7 +79,7 @@ class CognifyOptions:
         return cls(
             mode=str(data.get("mode") or "off"),
             dataset=str(data.get("dataset") or "tesserae_research_graph"),
-            codex_model=str(data.get("codex_model") or "gpt-5.4"),
+            codex_model=str(data.get("codex_model") or "gpt-4o"),
             codex_timeout=int(data.get("codex_timeout") or 300),
             embedding_provider=str(data.get("embedding_provider") or "deterministic"),
             ollama_embedding_model=str(data.get("ollama_embedding_model") or "qwen3-embedding:0.6b"),
@@ -506,23 +506,25 @@ class ProjectWiki:
         graphs: List[ResearchGraph] = []
         processed = 0
         skipped = 0
-        for source in loader.discover():
-            digest = sha256_text(source.content)
-            key = f"source:{source.id}"
-            if changed_only and manifest.get(key, {}).get("sha256") == digest:
-                skipped += 1
-                continue
-            if limit is not None and processed >= limit:
-                break
-            graph = extractor.extract_text(
-                source.content,
-                source_path=source.path or source.id,
-                source_kind=source_kind,
-            )
-            graphs.append(graph)
-            processed += 1
-            manifest[key] = {"sha256": digest, "source_kind": source_kind}
-        self._write_manifest(manifest)
+        try:
+            for source in loader.discover():
+                digest = sha256_text(source.content)
+                key = f"source:{source.id}"
+                if changed_only and manifest.get(key, {}).get("sha256") == digest:
+                    skipped += 1
+                    continue
+                if limit is not None and processed >= limit:
+                    break
+                graph = extractor.extract_text(
+                    source.content,
+                    source_path=source.path or source.id,
+                    source_kind=source_kind,
+                )
+                graphs.append(graph)
+                processed += 1
+                manifest[key] = {"sha256": digest, "source_kind": source_kind}
+        finally:
+            self._write_manifest(manifest)
         return graphs, processed, skipped
 
     def _load_manifest(self) -> dict:
@@ -534,10 +536,12 @@ class ProjectWiki:
 
     def _write_manifest(self, manifest: dict) -> None:
         self.paths.manifest.parent.mkdir(parents=True, exist_ok=True)
-        self.paths.manifest.write_text(
+        tmp = self.paths.manifest.with_suffix(".tmp")
+        tmp.write_text(
             json.dumps({"files": manifest}, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
+        tmp.rename(self.paths.manifest)
 
     def compile(
         self,
@@ -795,9 +799,7 @@ class ProjectWiki:
         before_node_count = len(graph.nodes)
         before_edge_count = len(graph.edges)
         graph = self._apply_vault_overlay(graph)
-        new_stubs = sum(
-            1 for n in graph.nodes if n.type == ResearchNodeType.STUB
-        ) - sum(1 for n in graph.nodes[:before_node_count] if n.type == ResearchNodeType.STUB)
+        new_stubs = sum(1 for n in graph.nodes[before_node_count:] if n.type == ResearchNodeType.STUB)
 
         # Re-project: markdown + the obsidian vault itself. Cognee bundle,
         # site, harness, etc. are intentionally NOT touched here — those are
@@ -847,6 +849,7 @@ class ProjectWiki:
         """
         from .markdown_projection import unique_slugs
         from .vault_pull import (
+            _load_vault_files,
             apply_overrides,
             apply_user_link_changes,
             compute_overrides,
@@ -862,14 +865,15 @@ class ProjectWiki:
         node_by_id = {node.id: node for node in graph.nodes}
         slug_by_id = unique_slugs(graph.nodes)
 
+        vault_files = _load_vault_files(vault_path)
         snapshot = read_snapshot(self.paths.vault_snapshot)
         overrides = (
-            compute_overrides(vault_path, snapshot, node_by_id)
+            compute_overrides(vault_path, snapshot, node_by_id, vault_files=vault_files)
             if snapshot is not None
             else []
         )
         user_link_changes = compute_user_link_changes(
-            vault_path, graph, slug_by_id
+            vault_path, graph, slug_by_id, vault_files=vault_files
         )
         write_diverged_fields_report(
             overrides, self.paths.diverged_fields, user_link_changes
@@ -962,8 +966,13 @@ class ProjectWiki:
         #                            should not bloat agent-facing artifacts.
         research_graph, code_graph = partition_graph(graph)
 
-        self.paths.graph.write_text(research_graph.to_json(indent=2) + "\n", encoding="utf-8")
-        self.paths.code_graph.write_text(code_graph.to_json(indent=2) + "\n", encoding="utf-8")
+        for target, content in (
+            (self.paths.graph, research_graph.to_json(indent=2) + "\n"),
+            (self.paths.code_graph, code_graph.to_json(indent=2) + "\n"),
+        ):
+            tmp = target.with_suffix(".tmp")
+            tmp.write_text(content, encoding="utf-8")
+            tmp.rename(target)
 
         cfg = self.config() if self.paths.config.exists() else {}
         include_combined = bool(
@@ -972,7 +981,9 @@ class ProjectWiki:
             or os.environ.get("TESSERAE_INCLUDE_COMBINED_GRAPH")
         )
         if include_combined:
-            self.paths.combined_graph.write_text(graph.to_json(indent=2) + "\n", encoding="utf-8")
+            tmp = self.paths.combined_graph.with_suffix(".tmp")
+            tmp.write_text(graph.to_json(indent=2) + "\n", encoding="utf-8")
+            tmp.rename(self.paths.combined_graph)
         elif self.paths.combined_graph.exists():
             # Don't let a stale combined graph survive a config flip.
             self.paths.combined_graph.unlink()

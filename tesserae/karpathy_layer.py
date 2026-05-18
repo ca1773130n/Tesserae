@@ -26,6 +26,7 @@ All four files are content-stable across recompiles (``index.md`` and
 from __future__ import annotations
 
 import json
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -355,7 +356,7 @@ class KarpathyLayerWriter:
             text = build_history_path.read_text(encoding="utf-8")
         except OSError:
             return "# Log\n\n(no build history yet)\n"
-        rows: List[Dict[str, object]] = []
+        rows: deque[Dict[str, object]] = deque(maxlen=200)
         for line in text.splitlines():
             line = line.strip()
             if not line:
@@ -364,7 +365,6 @@ class KarpathyLayerWriter:
                 rows.append(json.loads(line))
             except json.JSONDecodeError:
                 continue
-        rows.sort(key=lambda r: str(r.get("built_at", "")))
         lines: List[str] = []
         lines.append("# Log")
         lines.append("")
@@ -377,7 +377,7 @@ class KarpathyLayerWriter:
         lines.append("")
         lines.append("| Built at | Research nodes | Research edges | Code nodes | Code edges |")
         lines.append("|---|---:|---:|---:|---:|")
-        for row in rows[-200:]:  # cap so the file doesn't grow without bound
+        for row in rows:
             built_at = row.get("built_at") or row.get("timestamp") or ""
             r_nodes = row.get("research_nodes") or row.get("nodes") or 0
             r_edges = row.get("research_edges") or row.get("edges") or 0

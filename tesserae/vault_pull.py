@@ -35,7 +35,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
 
-from .markdown_projection import USER_NOTES_END, USER_NOTES_START, slugify
+from .markdown_projection import USER_NOTES_END, USER_NOTES_START
 from .research_graph import (
     ResearchEdge,
     ResearchGraph,
@@ -279,10 +279,32 @@ def extract_wikilink_slugs(text: str) -> List[str]:
 # ---------------------------------------------------------------- Overlay
 
 
+def _load_vault_files(vault_dir: Path) -> List[tuple]:
+    """Walk vault_dir once, returning (path, text, frontmatter) for node files.
+
+    Only files with a ``node_id`` key in their frontmatter are included.
+    Dot-directories (.obsidian etc.) are skipped.
+    """
+    result: List[tuple] = []
+    for path in sorted(vault_dir.rglob("*.md")):
+        if any(part.startswith(".") for part in path.relative_to(vault_dir).parts):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        fm = parse_frontmatter(text)
+        if not fm or "node_id" not in fm:
+            continue
+        result.append((path, text, fm))
+    return result
+
+
 def compute_overrides(
     vault_dir: Path,
     snapshot: Mapping[str, NodeSnapshot],
     node_by_id: Mapping[str, ResearchNode],
+    vault_files: Optional[List[tuple]] = None,
 ) -> List[VaultOverride]:
     """Walk the vault and emit a VaultOverride per detected user edit.
 
@@ -290,21 +312,15 @@ def compute_overrides(
     index / dashboard / user-authored notes). Files whose ``node_id``
     doesn't appear in the snapshot are also skipped — they were added
     by a recent recompile and have no baseline yet.
+
+    Pass ``vault_files`` (from :func:`_load_vault_files`) to reuse an
+    already-walked file list and avoid a second filesystem scan.
     """
     if not vault_dir.is_dir():
         return []
+    files = vault_files if vault_files is not None else _load_vault_files(vault_dir)
     overrides: List[VaultOverride] = []
-    for path in sorted(vault_dir.rglob("*.md")):
-        # Skip the .obsidian config tree and any other dot-directory.
-        if any(part.startswith(".") for part in path.relative_to(vault_dir).parts):
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        frontmatter = parse_frontmatter(text)
-        if not frontmatter or "node_id" not in frontmatter:
-            continue
+    for path, text, frontmatter in files:
         node_id = str(frontmatter["node_id"])
         snap = snapshot.get(node_id)
         if snap is None:
@@ -361,6 +377,7 @@ def compute_user_link_changes(
     vault_dir: Path,
     graph: ResearchGraph,
     slug_by_id: Mapping[str, str],
+    vault_files: Optional[List[tuple]] = None,
 ) -> List[VaultUserLinkChange]:
     """Diff wikilinks in vault user-notes blocks against existing user_link edges.
 
@@ -368,22 +385,17 @@ def compute_user_link_changes(
     :func:`apply_user_link_changes`. The diff is symmetric: a link the
     user typed but the graph doesn't have yet → ``add``; an edge the
     graph has but the user has since deleted from notes → ``remove``.
+
+    Pass ``vault_files`` (from :func:`_load_vault_files`) to reuse an
+    already-walked file list and avoid a second filesystem scan.
     """
     if not vault_dir.is_dir():
         return []
     id_by_slug = {slug: nid for nid, slug in slug_by_id.items()}
 
+    files = vault_files if vault_files is not None else _load_vault_files(vault_dir)
     vault_links: set[tuple[str, str]] = set()  # (source_node_id, target_slug)
-    for path in sorted(vault_dir.rglob("*.md")):
-        if any(part.startswith(".") for part in path.relative_to(vault_dir).parts):
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        frontmatter = parse_frontmatter(text)
-        if not frontmatter or "node_id" not in frontmatter:
-            continue
+    for _path, text, frontmatter in files:
         source_id = str(frontmatter["node_id"])
         notes = extract_user_notes_block(_split_body(text))
         if not notes:
@@ -436,17 +448,34 @@ def apply_user_link_changes(
     nodes_by_id = {node.id: node for node in graph.nodes}
     edges: List[ResearchEdge] = list(graph.edges)
 
+    # Collect all removes up front for a single-pass filter.
+    remove_keys: set = {
+        (c.source_node_id, c.target_node_id)
+        for c in changes
+        if c.action == "remove" and c.target_node_id is not None
+    }
+    remove_sources_wild: set = {
+        c.source_node_id
+        for c in changes
+        if c.action == "remove" and c.target_node_id is None
+    }
+    if remove_keys or remove_sources_wild:
+        edges = [
+            e for e in edges
+            if not (
+                e.type == "user_link"
+                and (
+                    e.source in remove_sources_wild
+                    or (e.source, e.target) in remove_keys
+                )
+            )
+        ]
+
+    # Build O(1) membership set for idempotency checks on adds.
+    existing_user_links: set = {(e.source, e.target) for e in edges if e.type == "user_link"}
+
     for change in changes:
         if change.action == "remove":
-            target_id = change.target_node_id
-            edges = [
-                e for e in edges
-                if not (
-                    e.type == "user_link"
-                    and e.source == change.source_node_id
-                    and (target_id is None or e.target == target_id)
-                )
-            ]
             continue
         # action == "add"
         target_id = change.target_node_id
@@ -463,18 +492,14 @@ def apply_user_link_changes(
                     },
                 )
         # Idempotency: don't duplicate an edge that already exists.
-        already_present = any(
-            e.type == "user_link"
-            and e.source == change.source_node_id
-            and e.target == target_id
-            for e in edges
-        )
+        already_present = (change.source_node_id, target_id) in existing_user_links
         if not already_present:
             edges.append(ResearchEdge(
                 source=change.source_node_id,
                 target=target_id,
                 type="user_link",
             ))
+            existing_user_links.add((change.source_node_id, target_id))
     return ResearchGraph(nodes=list(nodes_by_id.values()), edges=edges)
 
 

@@ -38,6 +38,7 @@ case-insensitive substring match.
 
 from __future__ import annotations
 
+import functools
 import math
 import re
 from datetime import datetime, timezone
@@ -259,6 +260,45 @@ _BM25_K1 = 1.2
 _BM25_B = 0.75
 
 
+def bm25_score_tokens(
+    q_tokens: List[str],
+    entry: Mapping[str, object],
+    avg_doc_len: float,
+    counts: Optional[Dict[str, int]] = None,
+) -> float:
+    """BM25-lite score with pre-tokenized query and optional pre-computed counts.
+
+    Accepts pre-tokenized ``q_tokens`` to avoid re-tokenizing the same query
+    for every entry in a search loop. ``counts`` may be passed to skip
+    rebuilding the per-entry term-frequency dict (supply ``entry.counts`` when
+    calling from WikiQuery.search).
+    """
+
+    if not q_tokens:
+        return 0.0
+    tokens = entry.get("tokens") or []
+    if not isinstance(tokens, (list, tuple)):
+        return 0.0
+    dl = float(entry.get("len") or len(tokens) or 1)
+    avg = float(avg_doc_len or 1.0)
+
+    if counts is None:
+        counts = {}
+        for tok in tokens:
+            if not isinstance(tok, str):
+                continue
+            counts[tok] = counts.get(tok, 0) + 1
+
+    total = 0.0
+    norm = _BM25_K1 * (1.0 - _BM25_B + _BM25_B * dl / avg)
+    for q in q_tokens:
+        tf = counts.get(q)
+        if not tf:
+            continue
+        total += tf / (tf + norm)
+    return total
+
+
 def bm25_score(
     query: str,
     entry: Mapping[str, object],
@@ -275,29 +315,7 @@ def bm25_score(
     is ``entry["len"]``, and ``b=0.75``, ``k1=1.2``.
     """
 
-    q_tokens = tokenize(query)
-    if not q_tokens:
-        return 0.0
-    tokens = entry.get("tokens") or []
-    if not isinstance(tokens, (list, tuple)):
-        return 0.0
-    dl = float(entry.get("len") or len(tokens) or 1)
-    avg = float(avg_doc_len or 1.0)
-
-    counts: Dict[str, int] = {}
-    for tok in tokens:
-        if not isinstance(tok, str):
-            continue
-        counts[tok] = counts.get(tok, 0) + 1
-
-    total = 0.0
-    norm = _BM25_K1 * (1.0 - _BM25_B + _BM25_B * dl / avg)
-    for q in q_tokens:
-        tf = counts.get(q)
-        if not tf:
-            continue
-        total += tf / (tf + norm)
-    return total
+    return bm25_score_tokens(tokenize(query), entry, avg_doc_len)
 
 
 # ---------------------------------------------------------------- recency
@@ -558,6 +576,7 @@ def _enrich(entry: Dict[str, object], text: str, created_ts: Optional[float]) ->
     return entry
 
 
+@functools.lru_cache(maxsize=1024)
 def _read_source_body(source_path: str, project_root: Optional[Path]) -> str:
     """Return the frontmatter-stripped body of a markdown ``source_path``.
 

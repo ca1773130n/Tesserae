@@ -201,7 +201,7 @@ class ClaudeCLIResearchExtractor:
         timeout: int = 180,
     ) -> None:
         self.runner = runner or run_claude_cli
-        self.config_dirs = list(config_dirs or ["/Users/neo/.claude-personal1", "/Users/neo/.claude-personal2"])
+        self.config_dirs = list(config_dirs or [str(Path.home() / ".claude")])
         self.model = model
         self.timeout = timeout
 
@@ -225,7 +225,9 @@ class ClaudeCLIResearchExtractor:
                 graph = graph_from_llm_payload(payload, source_path=source_path, source_kind=source_kind)
                 ensure_source_metadata(graph, text, source_path, source_kind)
                 return graph
-            except Exception as exc:  # Try fallback auth dirs for CLI/auth/config failures and malformed output.
+            except Exception as exc:  # Try fallback auth dirs for CLI/auth/config failures.
+                if isinstance(exc, GraphJSONValidationError):
+                    raise
                 last_error = exc
         raise GraphJSONValidationError(f"Claude CLI extraction failed: {last_error}")
 

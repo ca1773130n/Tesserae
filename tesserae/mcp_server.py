@@ -117,7 +117,9 @@ class ProjectRegistry:
 
     def save(self, data: JSONDict) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        tmp.rename(self.path)
 
     def register(self, path: str | Path, name: Optional[str] = None) -> JSONDict:
         graph_path, project_root = _discover_graph_and_root(Path(path).expanduser())
@@ -371,6 +373,7 @@ class LLMWikiMCPServer:
         self.default_graph_path = Path(default_graph_path) if default_graph_path else None
         self.registry = ProjectRegistry(registry_path)
         self.graph_store = graph_store
+        self._graph_cache: Dict[Path, Tuple[float, ResearchGraph]] = {}
 
     def list_tools(self) -> List[JSONDict]:
         graph_path_prop = {"type": "string", "description": "Path to a ResearchGraph JSON file. Defaults to active project, then server --graph."}
@@ -1062,11 +1065,9 @@ class LLMWikiMCPServer:
         terms = [term.casefold() for term in query.split() if term.strip()]
         type_filter = {str(item) for item in types or []}
         kind_filter = {str(item).lower() for item in kinds or []}
+        public_nodes = [n for n in graph.nodes if not is_code_graph_node(n)]
         scored = []
-        for index, node in enumerate(graph.nodes):
-            # Code-graph nodes never surface via MCP search.
-            if is_code_graph_node(node):
-                continue
+        for index, node in enumerate(public_nodes):
             if type_filter and node.type.value not in type_filter:
                 continue
             if kind_filter:
@@ -1342,45 +1343,54 @@ class LLMWikiMCPServer:
                     f"Compile the project first (`tesserae project compile`) or "
                     f"point at a different .tesserae/graph.json."
                 )
-            return load_graph(graph_path), _project_root_for_graph_path(graph_path)
+            return self._load_graph_cached(graph_path), _project_root_for_graph_path(graph_path)
         project = args.get("project")
         if project:
             resolved = self.registry.resolve_graph_path(str(project))
             if resolved is None:
                 raise ValueError(f"Unknown project: {project}. Use list_projects or register_project.")
-            if not Path(resolved).is_file():
+            resolved_path = Path(resolved)
+            if not resolved_path.is_file():
                 raise ValueError(
                     f"Registered project {project!r} points at a missing graph file: "
                     f"{resolved}. Recompile the project or unregister and re-register it."
                 )
-            return load_graph(resolved), _project_root_for_graph_path(resolved)
+            return self._load_graph_cached(resolved_path), _project_root_for_graph_path(resolved_path)
         active = self.registry.active_graph_path()
         if active is not None:
-            if not Path(active).is_file():
+            active_path = Path(active)
+            if not active_path.is_file():
                 raise ValueError(
                     f"Active project's graph file is missing: {active}. "
                     f"Recompile, activate a different project, or unregister the stale entry."
                 )
-            return load_graph(active), _project_root_for_graph_path(active)
+            return self._load_graph_cached(active_path), _project_root_for_graph_path(active_path)
         if self.graph_store is not None:
             return _materialize_graph(self.graph_store), None
         if self.default_graph_path:
-            return load_graph(self.default_graph_path), _project_root_for_graph_path(self.default_graph_path)
+            return self._load_graph_cached(self.default_graph_path), _project_root_for_graph_path(self.default_graph_path)
         raise ValueError(
             "No graph specified. Pass graph_path, project, activate a project, "
             "start the MCP server with --graph, or pass --graph-store-url."
         )
 
+    def _load_graph_cached(self, graph_path: Path) -> ResearchGraph:
+        """Load graph.json, returning a cached copy when mtime is unchanged."""
+        mtime = graph_path.stat().st_mtime
+        cached = self._graph_cache.get(graph_path)
+        if cached and cached[0] == mtime:
+            return cached[1]
+        graph = load_graph(graph_path)
+        self._graph_cache[graph_path] = (mtime, graph)
+        return graph
+
     def _find_node(self, graph: ResearchGraph, node_id: Optional[str], node_name: Optional[str]) -> Optional[ResearchNode]:
+        id_index = {n.id: n for n in graph.nodes}
+        name_index = {n.name.casefold(): n for n in graph.nodes}
         if node_id:
-            for node in graph.nodes:
-                if node.id == node_id:
-                    return node
+            return id_index.get(node_id)
         if node_name:
-            wanted = str(node_name).casefold()
-            for node in graph.nodes:
-                if node.name.casefold() == wanted:
-                    return node
+            return name_index.get(str(node_name).casefold())
         return None
 
 

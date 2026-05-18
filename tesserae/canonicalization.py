@@ -124,27 +124,45 @@ class GraphCanonicalizer:
     def _build_review_items(self, nodes: Sequence[ResearchNode]) -> List[ReviewItem]:
         items: List[ReviewItem] = []
         comparable = [node for node in nodes if node.type in CANONICALIZABLE_TYPES]
-        for i, left in enumerate(comparable):
-            for right in comparable[i + 1 :]:
-                if left.type != right.type:
-                    continue
-                score = name_similarity(left.name, right.name)
-                if score < self.similarity_threshold:
-                    continue
-                if normalize_key(left.name) == normalize_key(right.name):
-                    continue
-                items.append(
-                    ReviewItem(
-                        id=stable_review_id(left.id, right.id, "similar_name"),
-                        left_node_id=left.id,
-                        right_node_id=right.id,
-                        left_name=left.name,
-                        right_name=right.name,
-                        node_type=left.type.value,
-                        reason="similar_name",
-                        score=round(score, 4),
-                    )
+
+        # Build inverted index: token -> list of (index, node) for O(1) candidate lookup.
+        token_to_indices: Dict[str, List[int]] = {}
+        for idx, node in enumerate(comparable):
+            for word in node.name.lower().split():
+                if len(word) >= 3:
+                    token_to_indices.setdefault(word, []).append(idx)
+
+        # Restrict comparisons to pairs sharing at least one significant token.
+        candidate_pairs: set = set()
+        for indices in token_to_indices.values():
+            for a in range(len(indices)):
+                for b in range(a + 1, len(indices)):
+                    i, j = indices[a], indices[b]
+                    if i > j:
+                        i, j = j, i
+                    candidate_pairs.add((i, j))
+
+        for i, j in candidate_pairs:
+            left, right = comparable[i], comparable[j]
+            if left.type != right.type:
+                continue
+            score = name_similarity(left.name, right.name)
+            if score < self.similarity_threshold:
+                continue
+            if normalize_key(left.name) == normalize_key(right.name):
+                continue
+            items.append(
+                ReviewItem(
+                    id=stable_review_id(left.id, right.id, "similar_name"),
+                    left_node_id=left.id,
+                    right_node_id=right.id,
+                    left_name=left.name,
+                    right_name=right.name,
+                    node_type=left.type.value,
+                    reason="similar_name",
+                    score=round(score, 4),
                 )
+            )
         return sorted(items, key=lambda item: (-item.score, item.left_name, item.right_name))
 
 

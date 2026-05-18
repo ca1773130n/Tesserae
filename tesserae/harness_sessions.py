@@ -92,8 +92,7 @@ class HarnessSession:
 
 def safe_slug(value: str) -> str:
     text = "".join(ch.lower() if ch.isalnum() else "-" for ch in str(value)).strip("-")
-    while "--" in text:
-        text = text.replace("--", "-")
+    text = re.sub(r"-{2,}", "-", text)
     return text or "session"
 
 
@@ -274,21 +273,129 @@ def _parse_jsonl(path: Path) -> List[Mapping[str, object]]:
     return rows
 
 
+@dataclass
+class _ClaudeRowsResult:
+    project_match: bool
+    session_id: str
+    timestamps: List[str]
+    title: str
+    preview: str
+    tools: List[str]
+    commands: List[str]
+    files: List[str]
+    message_count: int
+    branch: str
+    model: str
+
+
+def _parse_claude_rows(rows: Sequence[Mapping[str, object]], project: Path) -> _ClaudeRowsResult:
+    """Single pass over a Claude JSONL transcript accumulating all session fields."""
+    project = project.resolve()
+    project_match = False
+    session_id = ""
+    timestamps: List[str] = []
+    message_texts: List[str] = []
+    tools: List[str] = []
+    commands: List[str] = []
+    files: List[str] = []
+    message_count = 0
+    branch = ""
+    model = ""
+
+    for row in rows:
+        if not project_match:
+            if _path_value_matches_project(row.get("cwd"), project):
+                project_match = True
+            else:
+                payload_v = row.get("payload")
+                if isinstance(payload_v, dict):
+                    if _jsonish_contains_project_context(payload_v, project):
+                        project_match = True
+                    elif payload_v.get("type") == "function_call" and _jsonish_contains_project_context(payload_v.get("arguments"), project):
+                        project_match = True
+                if not project_match:
+                    att_v = row.get("attachment")
+                    if isinstance(att_v, dict) and _jsonish_contains_project_context(att_v, project):
+                        project_match = True
+
+        if not session_id:
+            v = row.get("sessionId")
+            if isinstance(v, str) and v:
+                session_id = v
+
+        ts = row.get("timestamp")
+        if isinstance(ts, str):
+            timestamps.append(ts)
+
+        if not branch:
+            v = row.get("gitBranch")
+            if isinstance(v, str) and v:
+                branch = v
+
+        row_type = row.get("type")
+        if row_type in {"user", "assistant"}:
+            message_count += 1
+
+        msg = row.get("message")
+        if isinstance(msg, dict):
+            if not model:
+                v = msg.get("model") or msg.get("model_slug")
+                if isinstance(v, str):
+                    model = v
+            content = msg.get("content")
+            if row_type in {"user", "assistant"}:
+                text = _content_to_text(content)
+                if text:
+                    message_texts.append(text)
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "tool_use":
+                        tools.append(str(item.get("name") or "tool"))
+                        _collect_activity_from_value(item.get("input"), project, commands, files)
+
+        attachment = row.get("attachment")
+        if isinstance(attachment, dict):
+            command = attachment.get("command")
+            if isinstance(command, str) and command.strip():
+                commands.append(command.strip())
+            atype = attachment.get("type")
+            if isinstance(atype, str) and atype and atype not in {"hook_success", "hook_additional_context"}:
+                tools.append(atype)
+            _collect_activity_from_value(attachment, project, commands, files)
+        _collect_activity_from_value(row, project, commands, files)
+
+    title, preview = _title_and_preview(message_texts)
+    return _ClaudeRowsResult(
+        project_match=project_match,
+        session_id=session_id,
+        timestamps=timestamps,
+        title=title,
+        preview=preview,
+        tools=tools,
+        commands=commands,
+        files=files,
+        message_count=message_count,
+        branch=branch,
+        model=model,
+    )
+
+
 def _parse_claude_session(project: Path, root: Path, path: Path) -> Optional[HarnessSession]:
     rows = _parse_jsonl(path)
     if not rows:
         return None
-    if not _rows_match_project(rows, project):
+    parsed = _parse_claude_rows(rows, project)
+    if not parsed.project_match:
         return None
-    session_id = _first_str(rows, "sessionId") or path.stem
-    timestamps = [v for row in rows if isinstance((v := row.get("timestamp")), str)]
+    session_id = parsed.session_id or path.stem
+    timestamps = parsed.timestamps
     started_at = min(timestamps) if timestamps else ""
     ended_at = max(timestamps) if timestamps else ""
-    title, preview = _title_and_preview_from_claude(rows)
-    tools, commands, files = _claude_activity(rows, project)
-    message_count = sum(1 for row in rows if row.get("type") in {"user", "assistant"})
-    branch = _first_str(rows, "gitBranch")
-    model = _first_message_model(rows)
+    title, preview = parsed.title, parsed.preview
+    tools, commands, files = parsed.tools, parsed.commands, parsed.files
+    message_count = parsed.message_count
+    branch = parsed.branch
+    model = parsed.model
     slug = safe_slug(title or session_id)
     subagents = _claude_subagent_summaries(project, root, path, session_id)
     metadata: Dict[str, object] = {"config_root": str(root), "transcript": str(path), "turns": _claude_turns(rows)}
@@ -468,19 +575,21 @@ def _first_message_model(rows: Sequence[Mapping[str, object]]) -> str:
     return ""
 
 
+_REDACT_PATTERNS = (
+    re.compile(r"(?i)(api[_-]?key|token|secret|password|passwd|authorization|bearer)\s*[:=]\s*[^\s,;]+"),
+    re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+\-/=]+"),
+    re.compile(r"sk-[A-Za-z0-9]{12,}"),
+    re.compile(r"ghp_[A-Za-z0-9]{20,}"),
+    re.compile(r"xox[baprs]-[A-Za-z0-9-]+"),
+)
+
+
 def _redact_text(text: str) -> str:
     if not text:
         return ""
-    patterns = [
-        r"(?i)(api[_-]?key|token|secret|password|passwd|authorization|bearer)\s*[:=]\s*[^\s,;]+",
-        r"(?i)bearer\s+[A-Za-z0-9._~+\-/=]+",
-        r"sk-[A-Za-z0-9]{12,}",
-        r"ghp_[A-Za-z0-9]{20,}",
-        r"xox[baprs]-[A-Za-z0-9-]+",
-    ]
     redacted = text
-    for pattern in patterns:
-        redacted = re.sub(pattern, "[REDACTED]", redacted)
+    for pattern in _REDACT_PATTERNS:
+        redacted = pattern.sub("[REDACTED]", redacted)
     return redacted
 
 

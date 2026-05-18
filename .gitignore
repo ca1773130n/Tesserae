@@ -29,3 +29,41 @@ __pycache__/
 .hermes/
 .tesserae/external/raganything/working_dir/
 .tesserae/external/raganything/parsed/
+
+# pytest temp directories — created when tmp_path_factory points at the repo
+pytest-of-*/
+node-compile-cache/
+
+# Local IDE / AI-assistant configs — per-developer, do not commit
+.agents/
+.aider.conf.yml
+.aider*
+.avante/
+.claude/
+.clinerules
+.codecompanion/
+.codex/
+.continue/
+.cursor/
+.gemini/
+.harness-sync/
+.opencode/
+.playwright-mcp/
+.roo/
+.zed/
+
+# Per-developer agent system prompts and convention overlays
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+CONVENTIONS.md
+SYNC-CHANGELOG.md
+config.toml
+opencode.json
+data-gym-cache/
+
+# uv lockfiles can vary by lockfile version + platform — keep out of tree
+uv-*.lock
+
+# grd evolve / autopilot planning artifacts — per-developer state
+.planning/

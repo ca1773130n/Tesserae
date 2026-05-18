@@ -191,10 +191,10 @@ class WatchLoop:
     # ------------------------------------------------------------------
     # Compile dispatch
     # ------------------------------------------------------------------
-    def _trigger(self, changed: Sequence[Path]) -> None:
+    def _trigger(self, changed: Sequence[Path]) -> bool:
         if self._on_change_override is not None:
             self._on_change_override(list(changed))
-            return
+            return True
         # Lazy import: keeps unit tests for diff/snapshot free of project deps
         from .project import ProjectWiki
 
@@ -205,7 +205,7 @@ class WatchLoop:
         except Exception:
             self._emit(f"{_RED}rebuild failed:{_RESET}")
             self._emit(traceback.format_exc())
-            return
+            return False
         elapsed = time.time() - start
         rels = self._format_changes(changed, self.project_root)
         nodes = result.get("node_count", "?")
@@ -213,6 +213,7 @@ class WatchLoop:
         self._emit(
             f"rebuild: {len(changed)} changed ({rels}) -> nodes={nodes} edges={edges}  ({elapsed:.2f}s)"
         )
+        return True
 
     # ------------------------------------------------------------------
     # Main loop
@@ -250,8 +251,10 @@ class WatchLoop:
                 final_added, final_modified, final_removed = self.diff(previous, stable)
                 final_changed = list(_combine(final_added, final_modified, final_removed))
                 if final_changed:
-                    self._trigger(final_changed)
-                previous = stable
+                    if self._trigger(final_changed):
+                        previous = stable
+                else:
+                    previous = stable
         except KeyboardInterrupt:
             self._emit(f"{_DIM}watch stopped after {self._cycles} cycles{_RESET}")
 
@@ -264,8 +267,8 @@ class WatchLoop:
             self._emit("no changes")
             self._save_cache(current)
             return
-        self._trigger(changed)
-        self._save_cache(current)
+        if self._trigger(changed):
+            self._save_cache(current)
 
 
 def _combine(added: Iterable[Path], modified: Iterable[Path], removed: Iterable[Path]) -> Iterable[Path]:

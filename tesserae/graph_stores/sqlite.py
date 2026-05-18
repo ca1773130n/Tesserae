@@ -58,60 +58,66 @@ class SqliteGraphStore:
     # ------------------------------------------------------------------ #
 
     def upsert_node(self, node: ResearchNode) -> str:
-        """Insert or replace a node, keyed on its canonical ``id``.
+        """Insert or replace a node, keyed on its canonical ``id``."""
+        self.upsert_many_nodes([node])
+        return node.id
 
-        Returns the canonical node id (always ``node.id`` for SQLite,
-        since standalone mode does not perform server-side
-        canonicalization — the extractor is expected to assign stable
-        ids upstream).
-        """
+    def upsert_many_nodes(self, nodes: List[ResearchNode]) -> None:
+        """Insert or replace a batch of nodes in a single connection."""
+        rows = [
+            (
+                node.id,
+                node.name,
+                node.type.value,
+                json.dumps(node.aliases, ensure_ascii=False),
+                node.description,
+                node.source_path,
+                json.dumps(node.metadata, ensure_ascii=False, sort_keys=True),
+            )
+            for node in nodes
+        ]
         with self._connect() as con:
-            self._ensure_schema(con)
-            con.execute(
+            con.executemany(
                 """
                 insert or replace into nodes
                 (id, name, type, aliases_json, description, source_path, metadata_json)
                 values (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    node.id,
-                    node.name,
-                    node.type.value,
-                    json.dumps(node.aliases, ensure_ascii=False),
-                    node.description,
-                    node.source_path,
-                    json.dumps(node.metadata, ensure_ascii=False, sort_keys=True),
-                ),
+                rows,
             )
             con.commit()
-        return node.id
 
     def upsert_edge(self, edge: ResearchEdge) -> None:
         """Insert or replace an edge, idempotent on ``(source, target, type)``."""
-        edge_id = f"{edge.source}|{edge.type}|{edge.target}"
+        self.upsert_many_edges([edge])
+
+    def upsert_many_edges(self, edges: List[ResearchEdge]) -> None:
+        """Insert or replace a batch of edges in a single connection."""
+        rows = [
+            (
+                f"{edge.source}|{edge.type}|{edge.target}",
+                edge.source,
+                edge.target,
+                edge.type,
+                edge.evidence,
+                json.dumps(edge.metadata, ensure_ascii=False, sort_keys=True),
+            )
+            for edge in edges
+        ]
         with self._connect() as con:
-            self._ensure_schema(con)
-            con.execute(
+            con.executemany(
                 """
                 insert or replace into edges
                 (id, source, target, type, evidence, metadata_json)
                 values (?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    edge_id,
-                    edge.source,
-                    edge.target,
-                    edge.type,
-                    edge.evidence,
-                    json.dumps(edge.metadata, ensure_ascii=False, sort_keys=True),
-                ),
+                rows,
             )
             con.commit()
 
     def get_node(self, node_id: str) -> Optional[ResearchNode]:
         """Fetch a single node by id, or ``None`` if absent."""
         with self._connect() as con:
-            self._ensure_schema(con)
             row = con.execute(
                 "select id, name, type, aliases_json, description, source_path, metadata_json"
                 " from nodes where id = ?",
@@ -133,7 +139,6 @@ class SqliteGraphStore:
         """
         del owner_user_id  # unused for SQLite
         with self._connect() as con:
-            self._ensure_schema(con)
             if node_type is None:
                 cursor = con.execute(
                     "select id, name, type, aliases_json, description, source_path, metadata_json"
@@ -166,7 +171,6 @@ class SqliteGraphStore:
         edges: List[ResearchEdge] = []
 
         with self._connect() as con:
-            self._ensure_schema(con)
             # BFS up to ``depth`` hops, expanding from the current frontier
             # each round. Set-based so duplicate seeds don't double-fetch.
             for _ in range(depth):

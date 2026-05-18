@@ -15,6 +15,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import hashlib
 import importlib
 import json
@@ -62,16 +63,22 @@ def _stored_commit(project: Path) -> str | None:
     return None
 
 
-def _artifact_is_current(project: Path) -> bool:
+_UNSET: object = object()
+
+
+def _artifact_is_current(project: Path, *, precomputed_head: object = _UNSET) -> bool:
     """Return True when the existing manifest is up-to-date with the project's git HEAD.
 
     For non-git projects (where ``_git_head`` returns None) the manifest is treated as
     current once it exists; the user must pass ``--force`` or ``--full`` to refresh.
+
+    Pass ``precomputed_head`` to reuse an already-fetched HEAD value and avoid a
+    second subprocess call.
     """
     manifest = project / RAGA_ROOT / MANIFEST_NAME
     if not manifest.exists():
         return False
-    head = _git_head(project)
+    head = _git_head(project) if precomputed_head is _UNSET else precomputed_head
     if not head:
         return True
     stored = _stored_commit(project)
@@ -285,7 +292,9 @@ def write_manifest(
         "documents": serialized,
     }
     manifest_path = out_dir / MANIFEST_NAME
-    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp_manifest = manifest_path.with_suffix(".json.tmp")
+    tmp_manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp_manifest, manifest_path)
 
     meta = {
         "gitCommitHash": git_commit or "",
@@ -294,7 +303,10 @@ def write_manifest(
         "document_count": len(serialized),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
-    (out_dir / META_NAME).write_text(json.dumps(meta, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    meta_path = out_dir / META_NAME
+    tmp_meta = meta_path.with_suffix(".json.tmp")
+    tmp_meta.write_text(json.dumps(meta, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp_meta, meta_path)
     return manifest_path
 
 
@@ -339,8 +351,8 @@ def parse_documents(
     parsed_root = (project / RAGA_ROOT / "parsed").resolve()
     parsed_root.mkdir(parents=True, exist_ok=True)
 
-    results: list[dict] = []
-    for src, picked_parser in routing:
+    def _parse_one(src_and_parser: tuple) -> dict:
+        src, picked_parser = src_and_parser
         sha = _sha256_path(src)
         out_dir = parsed_root / sha
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -352,18 +364,12 @@ def parse_documents(
             else:
                 # mineru / paddleocr — fall through to docling for now since
                 # the upstream RAGAnything pipeline requires LLM funcs we don't
-                # have. Users who need MinerU's specific OCR strengths can
-                # invoke mineru directly and feed the parsed output in via a
-                # future "import-existing-content_list" path; out of scope
-                # here.
+                # have.
                 content_list = _parse_with_docling(src)
         except Exception as exc:  # noqa: BLE001
-            results.append({"path": src, "content_list": [], "error": str(exc)})
             print(f"raganything: failed to parse {src}: {exc}", file=sys.stderr)
-            continue
-        # Persist the per-doc content_list to disk (kept for parity with
-        # upstream raganything's parsed/<sha>/ layout and so the manifest
-        # has a stable sidecar artifact).
+            return {"path": src, "content_list": [], "error": str(exc)}
+        # Persist the per-doc content_list to disk.
         try:
             (out_dir / "content_list.json").write_text(
                 json.dumps(content_list, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -371,7 +377,13 @@ def parse_documents(
             )
         except Exception as exc:  # noqa: BLE001
             print(f"raganything: failed to persist content_list for {src}: {exc}", file=sys.stderr)
-        results.append({"path": src, "content_list": content_list})
+        return {"path": src, "content_list": content_list}
+
+    results: list[dict] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(routing))) as executor:
+        futures = {executor.submit(_parse_one, pair): pair for pair in routing}
+        for future in concurrent.futures.as_completed(futures):
+            results.append(future.result())
 
     return results
 
@@ -401,7 +413,9 @@ def refresh_raganything(
         )
         return 6
 
-    if not force and not full and _artifact_is_current(root):
+    git_commit = _git_head(root)
+
+    if not force and not full and _artifact_is_current(root, precomputed_head=git_commit):
         print("RAG-Anything manifest is already current; skipping refresh.")
         return 0
 
@@ -415,7 +429,7 @@ def refresh_raganything(
     sources = discover_sources(root, roots=roots)
     if not sources:
         print("RAG-Anything: no parseable sources found; writing empty manifest.")
-        write_manifest(root, documents=[], parser=parser, git_commit=_git_head(root))
+        write_manifest(root, documents=[], parser=parser, git_commit=git_commit)
         return 0
 
     try:
@@ -448,7 +462,7 @@ def refresh_raganything(
         root,
         documents=successful,
         parser=parser,
-        git_commit=_git_head(root) or "",
+        git_commit=git_commit or "",
     )
     return 0
 

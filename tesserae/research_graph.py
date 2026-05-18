@@ -7,6 +7,7 @@ used in tests and as a guardrail around future Claude/Cognee extraction.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import html
 import json
@@ -2816,6 +2817,7 @@ def normalize_display_name(name: str) -> str:
     return text
 
 
+@functools.lru_cache(maxsize=4096)
 def stable_id(node_type: str, name: str) -> str:
     digest = hashlib.sha1(f"{node_type}:{name.lower()}".encode("utf-8")).hexdigest()[:12]
     slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:48] or "node"

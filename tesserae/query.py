@@ -37,12 +37,13 @@ import json
 import os
 import re
 import sys
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 from .research_graph import ResearchNodeType
-from .site.search import bm25_score, average_doc_len
+from .site.search import bm25_score, bm25_score_tokens, average_doc_len, tokenize
 
 
 # ----------------------------------------------------------------- data shapes
@@ -60,6 +61,7 @@ class QueryHit:
     page_path: Optional[Path]
     node_id: Optional[str]
     arxiv_id: Optional[str] = None
+    page_text: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -258,6 +260,7 @@ class _IndexEntry:
     raw: Mapping[str, Any]
     tokens: List[str]
     length: int
+    counts: Dict[str, int] = field(default_factory=dict)
 
 
 class WikiQuery:
@@ -284,18 +287,33 @@ class WikiQuery:
         self.top_k = max(1, int(top_k))
         self.kind_filter = kind_filter or None
         self._entries: Optional[List[_IndexEntry]] = None
+        self._index_mtime: Optional[float] = None
         self._avg_len: float = 1.0
+        self._system_blocks_cache: Optional[List[Dict]] = None
+        self._client: Any = None
+        self._client_api_key: Optional[str] = None
 
     # ------------------------------------------------------------------ search
 
     def _load_index(self) -> List[_IndexEntry]:
         if self._entries is not None:
-            return self._entries
+            try:
+                current_mtime = self.search_index_path.stat().st_mtime
+            except OSError:
+                current_mtime = None
+            if current_mtime == self._index_mtime:
+                return self._entries
+            self._entries = None
         if not self.search_index_path.exists():
             self._entries = []
             self._avg_len = 1.0
             return self._entries
-        raw = json.loads(self.search_index_path.read_text(encoding="utf-8"))
+        try:
+            raw = json.loads(self.search_index_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, ValueError):
+            self._entries = []
+            self._avg_len = 1.0
+            return self._entries
         if not isinstance(raw, list):
             self._entries = []
             self._avg_len = 1.0
@@ -310,15 +328,21 @@ class WikiQuery:
             length = item.get("len")
             if not isinstance(length, int):
                 length = len(tokens)
+            clean_tokens = [str(t) for t in tokens if isinstance(t, str)]
             entries.append(
                 _IndexEntry(
                     raw=item,
-                    tokens=[str(t) for t in tokens if isinstance(t, str)],
+                    tokens=clean_tokens,
                     length=int(length),
+                    counts=dict(Counter(clean_tokens)),
                 )
             )
         self._entries = entries
         self._avg_len = average_doc_len([e.raw for e in entries])
+        try:
+            self._index_mtime = self.search_index_path.stat().st_mtime
+        except OSError:
+            self._index_mtime = None
         return entries
 
     def search(self, question: str) -> List[QueryHit]:
@@ -332,12 +356,13 @@ class WikiQuery:
         entries = self._load_index()
         if not entries:
             return []
+        q_tokens = tokenize(question)
         scored: List[tuple[float, _IndexEntry]] = []
         for entry in entries:
             kind = str(entry.raw.get("kind") or "")
             if self.kind_filter and kind != self.kind_filter:
                 continue
-            score = bm25_score(question, entry.raw, self._avg_len)
+            score = bm25_score_tokens(q_tokens, entry.raw, self._avg_len, entry.counts)
             if score <= 0:
                 continue
             scored.append((score, entry))
@@ -358,8 +383,14 @@ class WikiQuery:
         node_id = str(node_id_raw) if node_id_raw is not None else None
 
         page_path = self._page_path_for(raw)
-        excerpt = self._excerpt_for(page_path, fallback=str(raw.get("summary") or ""))
-        arxiv = self._arxiv_for(raw, page_path)
+        page_text: Optional[str] = None
+        if page_path is not None:
+            try:
+                page_text = page_path.read_text(encoding="utf-8")
+            except OSError:
+                page_text = None
+        excerpt = self._excerpt_for(page_path, fallback=str(raw.get("summary") or ""), text=page_text)
+        arxiv = self._arxiv_for(raw, page_path, text=page_text)
         return QueryHit(
             title=title,
             kind=kind,
@@ -369,6 +400,7 @@ class WikiQuery:
             page_path=page_path,
             node_id=node_id,
             arxiv_id=arxiv,
+            page_text=page_text,
         )
 
     def _page_path_for(self, raw: Mapping[str, Any]) -> Optional[Path]:
@@ -384,27 +416,29 @@ class WikiQuery:
             return candidate
         return None
 
-    def _excerpt_for(self, page_path: Optional[Path], *, fallback: str) -> str:
+    def _excerpt_for(self, page_path: Optional[Path], *, fallback: str, text: Optional[str] = None) -> str:
         if page_path is None:
             return _trim(fallback, 200)
-        try:
-            text = page_path.read_text(encoding="utf-8")
-        except OSError:
-            return _trim(fallback, 200)
+        if text is None:
+            try:
+                text = page_path.read_text(encoding="utf-8")
+            except OSError:
+                return _trim(fallback, 200)
         body = _strip_frontmatter(text)
         para = _first_paragraph(body)
         if not para:
             para = fallback
         return _trim(para, 200)
 
-    def _arxiv_for(self, raw: Mapping[str, Any], page_path: Optional[Path]) -> Optional[str]:
+    def _arxiv_for(self, raw: Mapping[str, Any], page_path: Optional[Path], *, text: Optional[str] = None) -> Optional[str]:
         # Prefer a frontmatter ``arxiv_id`` if the page has one; otherwise
         # try the heuristic of ``papers:<id>`` slugs.
         if page_path is not None:
-            try:
-                text = page_path.read_text(encoding="utf-8")
-            except OSError:
-                text = ""
+            if text is None:
+                try:
+                    text = page_path.read_text(encoding="utf-8")
+                except OSError:
+                    text = ""
             fm = _parse_frontmatter(text)
             arxiv = fm.get("arxiv_id") or fm.get("arxiv") or fm.get("arxiv_url")
             if isinstance(arxiv, str) and arxiv.strip():
@@ -494,6 +528,8 @@ class WikiQuery:
         client: Any
         if _CLIENT_FACTORY is not None:
             client = _CLIENT_FACTORY(api_key=key, timeout=30.0)
+        elif self._client is not None and self._client_api_key == key:
+            client = self._client
         else:
             try:
                 import anthropic  # type: ignore[import-not-found]
@@ -508,6 +544,8 @@ class WikiQuery:
                 )
             try:
                 client = anthropic.Anthropic(api_key=key, timeout=30.0)
+                self._client = client
+                self._client_api_key = key
             except Exception as exc:  # noqa: BLE001 — we want a safety net
                 _log_once(
                     f"client-init:{type(exc).__name__}",
@@ -590,6 +628,8 @@ class WikiQuery:
     # --------------------------------------------------------- prompt helpers
 
     def _system_blocks(self) -> List[Dict[str, Any]]:
+        if self._system_blocks_cache is not None:
+            return self._system_blocks_cache
         overview = _DEFAULT_OVERVIEW
         if self.overview_path.exists():
             try:
@@ -599,13 +639,14 @@ class WikiQuery:
             except OSError:
                 pass
         text = _SYSTEM_PREAMBLE_HEADER + overview + "\n" + _ontology_recap()
-        return [
+        self._system_blocks_cache = [
             {
                 "type": "text",
                 "text": text,
                 "cache_control": {"type": "ephemeral"},
             }
         ]
+        return self._system_blocks_cache
 
 
 # ---------------------------------------------------------- prompt formatting
@@ -636,7 +677,9 @@ def _build_user_message(question: str, hits: Sequence[QueryHit]) -> str:
         return "\n".join(parts)
     for hit in hits:
         body = ""
-        if hit.page_path is not None:
+        if hit.page_text is not None:
+            body = _strip_frontmatter(hit.page_text).strip()
+        elif hit.page_path is not None:
             try:
                 raw = hit.page_path.read_text(encoding="utf-8")
             except OSError:

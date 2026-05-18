@@ -23,6 +23,7 @@ import json
 import os
 import re
 import sys
+import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
@@ -417,6 +418,8 @@ class LlmSynthesizer:
         self.dry_run = bool(dry_run)
         self.max_tokens = int(max_tokens)
         self._client: Any = None
+        self._rate_limit_cls: Any = None
+        self._status_cls: Any = None
 
         if self.dry_run:
             return
@@ -435,6 +438,12 @@ class LlmSynthesizer:
             ) from exc
 
         self._client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
+        try:
+            self._rate_limit_cls = anthropic.RateLimitError
+            self._status_cls = anthropic.APIStatusError
+        except AttributeError:
+            self._rate_limit_cls = None
+            self._status_cls = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -444,10 +453,7 @@ class LlmSynthesizer:
         """Return an LLM-generated body, or ``None`` on any failure."""
 
         if req.kind not in _VALID_KINDS:
-            _log_once(
-                f"invalid-kind:{req.kind}",
-                f"LLM synthesis skipped (unknown kind {req.kind!r})",
-            )
+            self._log_failure(req.kind, ValueError(f"unknown kind {req.kind!r}"))
             return None
 
         # Build prompt up front so dry-run shape-checks match the real path.
@@ -497,15 +503,28 @@ class LlmSynthesizer:
         # ``_build_prompt`` already wrapped the system block with
         # ``cache_control: ephemeral`` — second and subsequent pages in a
         # run hit the cache. The user message is per-kind and NOT cached.
-        try:
-            response = self._client.messages.create(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                system=prompt["system"],
-                messages=prompt["messages"],
-            )
-        except Exception as exc:  # noqa: BLE001 — we want the safety net
-            self._log_failure(req.kind, exc)
+        for attempt in range(3):
+            try:
+                response = self._client.messages.create(
+                    model=self.model,
+                    max_tokens=self.max_tokens,
+                    system=prompt["system"],
+                    messages=prompt["messages"],
+                )
+                break
+            except Exception as exc:  # noqa: BLE001
+                transient = False
+                if self._rate_limit_cls is not None and isinstance(exc, self._rate_limit_cls):
+                    transient = True
+                elif self._status_cls is not None and isinstance(exc, self._status_cls):
+                    transient = getattr(exc, "status_code", None) in {429, 529}
+                if transient and attempt < 2:
+                    delay = getattr(exc, "retry_after", None) or (2 ** attempt)
+                    time.sleep(delay)
+                    continue
+                self._log_failure(req.kind, exc)
+                return None
+        else:
             return None
 
         body_text = self._extract_text(response)

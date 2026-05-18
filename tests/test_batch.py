@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from tesserae.batch import BatchIngestRunner, sha256_text
 from tesserae.research_graph import ResearchGraph, ResearchNode, ResearchNodeType
@@ -10,7 +11,13 @@ class CountingExtractor:
 
     def extract_file(self, path, source_kind="SourceDocument"):
         self.calls.append(str(path))
-        return ResearchGraph(nodes=[ResearchNode(id=f"Paper:{path.stem}:test", name=path.stem, type=ResearchNodeType.PAPER)], edges=[])
+        p = Path(path)
+        return ResearchGraph(nodes=[ResearchNode(id=f"Paper:{p.stem}:test", name=p.stem, type=ResearchNodeType.PAPER)], edges=[])
+
+    def extract_text(self, content, source_path, source_kind="SourceDocument"):
+        self.calls.append(source_path)
+        p = Path(source_path)
+        return ResearchGraph(nodes=[ResearchNode(id=f"Paper:{p.stem}:test", name=p.stem, type=ResearchNodeType.PAPER)], edges=[])
 
 
 def test_sha256_text_is_stable():

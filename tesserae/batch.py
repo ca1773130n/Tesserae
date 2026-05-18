@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Protocol, Sequence
+from typing import Dict, Iterable, List, Optional, Protocol
 
 from .research_graph import ResearchGraph, link_paper_repo_pairs, prefer_research_node
 
 
 class ExtractorLike(Protocol):
     def extract_file(self, path: str | Path, source_kind: str = "SourceDocument") -> ResearchGraph: ...
+    def extract_text(self, content: str, source_path: Optional[str], source_kind: str = "SourceDocument") -> ResearchGraph: ...
 
 
 @dataclass
@@ -54,23 +57,26 @@ class BatchIngestRunner:
         processed = 0
         skipped = 0
 
-        for path in paths:
-            file_path = Path(path)
-            digest = sha256_text(read_markdown_text(file_path))
-            key = str(file_path)
-            if changed_only and manifest.get(key, {}).get("sha256") == digest:
-                skipped += 1
-                skipped_paths.append(key)
-                continue
-            if limit is not None and processed >= limit:
-                break
-            graph = self.extractor.extract_file(file_path, source_kind=source_kind)
-            graphs.append(graph)
-            processed += 1
-            processed_paths.append(key)
-            manifest[key] = {"sha256": digest, "source_kind": source_kind}
-
-        self._write_manifest(manifest)
+        try:
+            for path in paths:
+                file_path = Path(path)
+                content = read_markdown_text(file_path)
+                digest = sha256_text(content)
+                key = str(file_path)
+                if changed_only and manifest.get(key, {}).get("sha256") == digest:
+                    skipped += 1
+                    skipped_paths.append(key)
+                    continue
+                if limit is not None and processed >= limit:
+                    break
+                graph = self.extractor.extract_text(content, str(file_path), source_kind)
+                graphs.append(graph)
+                processed += 1
+                processed_paths.append(key)
+                manifest[key] = {"sha256": digest, "source_kind": source_kind}
+                self._write_manifest(manifest)
+        finally:
+            self._write_manifest(manifest)
         return BatchIngestResult(
             graph=merge_graphs(graphs),
             graphs=graphs,
@@ -84,13 +90,19 @@ class BatchIngestRunner:
     def _load_manifest(self) -> Dict[str, Dict[str, object]]:
         if not self.manifest_path.exists():
             return {}
-        payload = json.loads(self.manifest_path.read_text(encoding="utf-8"))
+        try:
+            payload = json.loads(self.manifest_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, ValueError) as exc:
+            print(f"warning: corrupt manifest {self.manifest_path}: {exc}; starting fresh", file=sys.stderr)
+            return {}
         files = payload.get("files", payload if isinstance(payload, dict) else {})
         return files if isinstance(files, dict) else {}
 
     def _write_manifest(self, manifest: Dict[str, Dict[str, object]]) -> None:
         self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        self.manifest_path.write_text(json.dumps({"files": manifest}, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        tmp = self.manifest_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"files": manifest}, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        os.replace(tmp, self.manifest_path)
 
 
 def merge_graphs(graphs: Iterable[ResearchGraph]) -> ResearchGraph:

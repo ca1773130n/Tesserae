@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Dict, FrozenSet, Iterable, List, Optional, Set, Tuple
 
 from .research_graph import ResearchNodeType
 
@@ -220,10 +220,17 @@ def _default_entries() -> Tuple[TermEntry, ...]:
 @dataclass(frozen=True)
 class TermRegistry:
     entries: Tuple[TermEntry, ...]
+    _index: Dict[str, "TermEntry"] = field(default_factory=dict, repr=False, compare=False, hash=False)
 
     def __post_init__(self) -> None:
         for entry in self.entries:
             _validate_entry(entry)
+        index: Dict[str, "TermEntry"] = {}
+        for entry in self.entries:
+            index[entry.canonical_name.lower()] = entry
+            for alias in entry.aliases:
+                index[alias.lower()] = entry
+        object.__setattr__(self, "_index", index)
 
     @classmethod
     def default(cls) -> "TermRegistry":
@@ -249,13 +256,7 @@ class TermRegistry:
 
     def lookup(self, name: str) -> Optional[TermEntry]:
         """Case-insensitive lookup against canonical names and aliases."""
-        lowered = name.strip().lower()
-        for entry in self.entries:
-            if entry.canonical_name.lower() == lowered:
-                return entry
-            if any(alias.lower() == lowered for alias in entry.aliases):
-                return entry
-        return None
+        return self._index.get(name.strip().lower())
 
 
 # ---------------------------------------------------------------------------
