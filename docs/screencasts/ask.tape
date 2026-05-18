@@ -5,18 +5,21 @@
 
 Output "docs/screencasts/ask.gif"
 
+Set Shell "zsh"
 Set FontSize 14
 Set Width 1100
 Set Height 480
 Set Theme "Catppuccin Mocha"
 Set TypingSpeed 50ms
 
-Type "source /tmp/tesserae-demo-rec/venv/bin/activate"
+Hide
+Type "source /tmp/tesserae-rec/init.zsh && export PATH=/tmp/tesserae-demo-rec/venv/bin:$PATH && cd /tmp/tesserae-demo-rec/myproject"
+Enter
+Sleep 500ms
+Type "clear"
 Enter
 Sleep 200ms
-Type "cd /tmp/tesserae-demo-rec/myproject && clear"
-Enter
-Sleep 600ms
+Show
 
 Type "# Ask the compiled wiki a question — deterministic graph lookup"
 Sleep 700ms

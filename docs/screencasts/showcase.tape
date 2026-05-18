@@ -16,18 +16,21 @@
 
 Output "docs/screencasts/showcase.gif"
 
+Set Shell "zsh"
 Set FontSize 14
 Set Width 1100
 Set Height 460
 Set Theme "Catppuccin Mocha"
 Set TypingSpeed 35ms
 
-Type "source /tmp/tesserae-demo-rec/venv/bin/activate"
+Hide
+Type "source /tmp/tesserae-rec/init.zsh && export PATH=/tmp/tesserae-demo-rec/venv/bin:$PATH && cd /tmp/tesserae-demo-rec/myproject"
 Enter
-Sleep 300ms
-Type "cd /tmp/tesserae-demo-rec/myproject"
+Sleep 500ms
+Type "clear"
 Enter
-Sleep 400ms
+Sleep 200ms
+Show
 
 # --- Setup -------------------------------------------------------------
 Type "# 1) Set up — Cognee, RAG-Anything, Understand-Anything all configured"

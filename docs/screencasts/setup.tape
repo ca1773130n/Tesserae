@@ -10,18 +10,21 @@
 
 Output "docs/screencasts/setup.gif"
 
+Set Shell "zsh"
 Set FontSize 14
 Set Width 1100
 Set Height 440
 Set Theme "Catppuccin Mocha"
 Set TypingSpeed 50ms
 
-Type "source /tmp/tesserae-demo-rec/venv/bin/activate"
-Enter
-Sleep 200ms
-Type "cd /tmp/tesserae-demo-rec/myproject && clear"
+Hide
+Type "source /tmp/tesserae-rec/init.zsh && export PATH=/tmp/tesserae-demo-rec/venv/bin:$PATH && cd /tmp/tesserae-demo-rec/myproject"
 Enter
 Sleep 500ms
+Type "clear"
+Enter
+Sleep 200ms
+Show
 
 Type "# A research notes directory we want to wiki-ify"
 Sleep 500ms
