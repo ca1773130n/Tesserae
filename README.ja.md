@@ -123,6 +123,7 @@ tesserae project build-site && tesserae project serve --port 8765
 
 すべてのインテグレーションはオプトインです。素の Markdown/コードプロジェクトで Tesserae を使うのに必須ではありません。
 
+- **セッショングラフ** — プロジェクトに関する Claude Code / Codex の会話をグラフのファーストクラスノード（Insight / Decision / Question / TODO / Hypothesis / Takeaway）に変換し、登場したドキュメントにリンクします。`tesserae sessions discover --import` を一度実行すれば、その後の `tesserae project compile` ごとに新しいセッションがインポートされます。構造的パスは無料、LLM パスは `claude` CLI にサインインしていれば自動実行されます — **API キー不要**。[docs/integrations/sessions.md](docs/integrations/sessions.md) を参照。
 - **Understand Anything** — 別プロジェクト（[Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything)）で、`.understand-anything/knowledge-graph.json` にコード知識グラフを書き出します。`--with-understand-anything` で有効化。Tesserae が管理リフレッシュラッパーを保存するため、`project compile` がグラフを最新に保ちます。[docs/integrations/understand-anything.md](docs/integrations/understand-anything.md) を参照。
 - **RAG-Anything** — マルチモーダル取り込み（[HKUDS/RAG-Anything](https://github.com/HKUDS/RAG-Anything)）で、MinerU/Docling/PaddleOCR を介して PDF、Office 文書、画像を処理します。`--with-raganything` で有効化。ランタイムの質問バックエンド（LightRAG）としても動作します。Python 3.10 以上が必要。[docs/integrations/rag-anything.md](docs/integrations/rag-anything.md) を参照。
 - **Cognee** — グラフ+ベクトルのメモリバックエンド。`--run-cognee --install-cognee` で有効化。通常の compile は常に `.tesserae/cognee_bundle/` を書き出し、ランタイムの `cognify` パスは best-effort で、明示的に有効化したときのみ実行されます。
