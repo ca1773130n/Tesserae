@@ -19,7 +19,7 @@ Tesserae のセッショングラフは、プロジェクトに関する Claude 
 # このプロジェクトのセッションを `.tesserae/harness_sessions/` にインポートします。cwd でフィルタリングするため、このプロジェクト内で実行されたセッションのみがインポートされます。
 tesserae sessions discover --import
 
-# コンパイル。構造的パスは無料で実行され、LLM パスは `ANTHROPIC_API_KEY` が設定されている場合に実行されます。
+# コンパイル。構造的パスは無料で実行されます。`claude` CLI にサインインしていれば LLM パスが自動実行されます — API キー不要。
 tesserae project compile
 ```
 
@@ -51,7 +51,7 @@ tesserae project compile --sessions-llm=false
 }
 ```
 
-CLI フラグは設定を上書きします。`llm_enabled = "auto"`(デフォルト)はバックエンドが設定されている場合にのみ LLM パスを実行します。バックエンドがない場合は、構造的パスのみが実行されます(エラーなし、アウトバウンド呼び出しなし)。
+CLI フラグは設定を上書きします。`llm_enabled = "auto"`(デフォルト)は `claude` CLI にサインインしているか `ANTHROPIC_API_KEY` が設定されているときに LLM パスを実行します。どちらもない場合は構造的パスのみが実行されます(エラーなし、アウトバウンド呼び出しなし)。
 
 ## クエリ
 
@@ -69,7 +69,7 @@ tesserae project ask "what did we decide about extractor dedup?"
 
 ## プライバシー
 
-* `ANTHROPIC_API_KEY` なし(または `--sessions-llm=false`)では、アウトバウンドネットワーク呼び出しはゼロです。構造的パスのみが実行されます。
+* `claude` CLI 未サインイン かつ `ANTHROPIC_API_KEY` 未設定(または `--sessions-llm=false`)では、アウトバウンドネットワーク呼び出しはゼロです。構造的パスのみが実行されます。
 * LLM パスが実行されると、まだキャッシュされていないセッションの**完全な正規化された会話ターン**が送信されます。トランスクリプトファイル自体はディスクに残り、LLM の JSON 出力のみがグラフとセッションごとのキャッシュに永続化されます。
 * キャッシュファイルは `.tesserae/session_findings/<session_id>.findings.json` に `content_hash` と `project_root_hash` の両方とともに存在します。プロジェクト間でコピーされたキャッシュファイルは読み取り時に拒否されます — プロジェクト間の再生はありません。
 * セッションは読み込み後 `session_matches_project` でフィルタリングされるため、`cwd` が兄弟プロジェクトのトランスクリプトはこのプロジェクトのグラフにノードを生成しません。

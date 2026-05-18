@@ -19,7 +19,7 @@ Dos pasadas por sesión:
 # Importa las sesiones de este proyecto a `.tesserae/harness_sessions/`. Filtra por cwd, por lo que solo se importan las sesiones que se ejecutaron dentro de este proyecto.
 tesserae sessions discover --import
 
-# Compila. La pasada estructural se ejecuta gratis; la pasada LLM se ejecuta cuando se establece `ANTHROPIC_API_KEY`.
+# Compila. La pasada estructural se ejecuta gratis; la pasada LLM se ejecuta automáticamente cuando la CLI `claude` está autenticada — sin claves de API.
 tesserae project compile
 ```
 
@@ -51,7 +51,7 @@ tesserae project compile --sessions-llm=false
 }
 ```
 
-Las banderas CLI anulan la configuración. `llm_enabled = "auto"` (predeterminado) ejecuta la pasada LLM solo cuando se configura un backend; sin uno, solo se ejecuta la pasada estructural (sin error, sin llamadas salientes).
+Las banderas CLI anulan la configuración. `llm_enabled = "auto"` (predeterminado) ejecuta la pasada LLM cuando la CLI `claude` está autenticada o cuando se establece `ANTHROPIC_API_KEY`; sin ninguno, solo se ejecuta la pasada estructural (sin error, sin llamadas salientes).
 
 ## Consulta
 
@@ -69,7 +69,7 @@ tesserae project ask "what did we decide about extractor dedup?"
 
 ## Privacidad
 
-* Sin `ANTHROPIC_API_KEY` (o con `--sessions-llm=false`), no hay llamadas de red salientes. Solo se ejecuta la pasada estructural.
+* Sin la CLI `claude` autenticada Y sin `ANTHROPIC_API_KEY` (o con `--sessions-llm=false`), no hay llamadas de red salientes. Solo se ejecuta la pasada estructural.
 * Cuando se ejecuta la pasada LLM, se envían los **turnos de conversación normalizados completos** para las sesiones aún no en caché. El archivo de transcripción en sí permanece en disco; solo la salida JSON del LLM se persiste en el grafo y la caché por sesión.
 * Los archivos de caché viven en `.tesserae/session_findings/<session_id>.findings.json` con un `content_hash` y un `project_root_hash`. Un archivo de caché copiado entre proyectos se rechaza al leer — sin reproducción entre proyectos.
 * Las sesiones se filtran a través de `session_matches_project` después de cargar, por lo que una transcripción cuyo `cwd` era un proyecto hermano nunca produce nodos en el grafo de este proyecto.

@@ -111,7 +111,15 @@ def test_compile_with_structural_pass_mints_session_and_decisions(tmp_path: Path
             "Keep raw transcripts off-graph",
         ],
     )
-    wiki.compile(vault_pull=False)  # default = sessions.enabled True
+    # Pin to llm_enabled="false" so the test asserts the STRUCTURAL pass
+    # in isolation regardless of whether the dev machine has the `claude`
+    # CLI signed in. Without this pin, the auto-detected LLM backend
+    # would run a real subprocess and add LLM-extracted findings to the
+    # graph, breaking the count assertion below.
+    wiki.compile(
+        session_options=SessionExtractionOptions(enabled=True, llm_enabled="false"),
+        vault_pull=False,
+    )
     graph = _graph(wiki)
 
     sessions = [n for n in graph["nodes"] if n["type"] == "Session"]

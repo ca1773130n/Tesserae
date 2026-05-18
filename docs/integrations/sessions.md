@@ -11,16 +11,25 @@ Tesserae's session graph turns your Claude Code / Codex conversations about a pr
 The pipeline is two passes per session:
 
 1. **Structural** (always-on, no LLM). Reads the normalised `HarnessSession` records that `tesserae sessions discover --import` writes to `.tesserae/harness_sessions/`. For each session it mints a `Session` envelope node, emits `discussed_in` edges from every doc the agent opened, and turns the existing `decisions` field into `SessionDecision` nodes.
-2. **LLM** (opt-in, runs when `ANTHROPIC_API_KEY` is configured). Sends the normalised transcript turns (the `metadata["turns"]` field — not the raw transcript file) to Claude with a JSON-only finding schema. Returns six kinds of findings, each citing back to specific turns and specific doc node IDs in the current graph. Cached by content_hash + project_root_hash so unchanged sessions skip the call on the next compile.
+2. **LLM** (opt-in, **no API key required**). Sends the normalised transcript turns (the `metadata["turns"]` field — not the raw transcript file) to Claude with a JSON-only finding schema. Returns six kinds of findings, each citing back to specific turns and specific doc node IDs in the current graph. Cached by content_hash + project_root_hash so unchanged sessions skip the call on the next compile.
+
+   Backend resolution matches the rest of Tesserae's "common path uses no API keys" promise:
+   1. **`claude` CLI over OAuth** (preferred) — if the `claude` binary is on PATH and signed in (`claude /login`), Tesserae shells out to it the same way the existing `ClaudeCLIResearchExtractor` does. Multi-account users can pin a specific config dir via `CLAUDE_CONFIG_DIR`.
+   2. **`ANTHROPIC_API_KEY`** (fallback) — used only if the CLI isn't available, e.g. headless servers and CI.
+   3. Neither configured → no LLM pass. The structural pass still runs.
 
 ## Setup
 
 ```bash
+# One-time: sign into Claude via the CLI (skip if already signed in).
+claude /login
+
 # One-time: import sessions for this project into .tesserae/harness_sessions/.
 # Filters by cwd so only sessions that ran inside this project are imported.
 tesserae sessions discover --import
 
-# Compile. Structural pass runs free; LLM pass runs when ANTHROPIC_API_KEY is set.
+# Compile. Structural pass runs free. LLM pass runs automatically when the
+# `claude` CLI is signed in — no API keys, no env vars to set.
 tesserae project compile
 ```
 
@@ -52,7 +61,7 @@ tesserae project compile --sessions-llm=false
 }
 ```
 
-CLI flags override config. `llm_enabled = "auto"` (default) runs the LLM pass only when a backend is configured; without one, only the structural pass runs (no error, no outbound calls).
+CLI flags override config. `llm_enabled = "auto"` (default) runs the LLM pass when the `claude` CLI is signed in OR when `ANTHROPIC_API_KEY` is set; without either, only the structural pass runs (no error, no outbound calls).
 
 ## Query
 
@@ -70,8 +79,8 @@ tesserae project ask "what did we decide about extractor dedup?"
 
 ## Privacy
 
-* Without `ANTHROPIC_API_KEY` (or with `--sessions-llm=false`), there are zero outbound network calls. Only the structural pass runs.
-* When the LLM pass runs, the **full normalised transcript turns** for not-yet-cached sessions are sent. The transcript file itself stays on disk; only the LLM's JSON output is persisted to the graph and the per-session cache.
+* With no signed-in `claude` CLI AND no `ANTHROPIC_API_KEY` (or with `--sessions-llm=false`), there are zero outbound network calls. Only the structural pass runs.
+* When the LLM pass runs, the **full normalised transcript turns** for not-yet-cached sessions are sent to Claude. The transcript file itself stays on disk; only the LLM's JSON output is persisted to the graph and the per-session cache. The CLI path routes through your existing OAuth session — no new auth surface, no API key handling.
 * Cache files live at `.tesserae/session_findings/<session_id>.findings.json` with both a `content_hash` and a `project_root_hash`. A cache file copied between projects is rejected on read — no cross-project replay.
 * Sessions are filtered through `session_matches_project` after loading, so a transcript whose `cwd` was a sibling project never produces nodes in this project's graph.
 
@@ -93,7 +102,7 @@ User notes inside the `<!-- user-notes:start -->` … `<!-- user-notes:end -->` 
 ## Troubleshooting
 
 * **No Session nodes appear after compile.** Did you run `tesserae sessions discover --import` first? The compile path only consumes `.tesserae/harness_sessions/`; it does NOT scan `~/.claude/projects/` automatically (that scan can take minutes on machines with thousands of historical sessions).
-* **LLM cost concerns.** The cache means each session is sent to the LLM at most once per content-hash. Long sessions chunk at `max_turns_per_chunk` (default 30) with 5-turn overlap. To bound total cost, lower `max_turns_per_chunk`, lower `include_doc_id_context`, or set `--sessions-llm=false`.
+* **LLM cost concerns.** The CLI path costs nothing — it runs under your existing Claude OAuth quota. Cost only applies on the `ANTHROPIC_API_KEY` fallback. The cache means each session is sent to the LLM at most once per content-hash. Long sessions chunk at `max_turns_per_chunk` (default 30) with 5-turn overlap. To bound any usage, lower `max_turns_per_chunk`, lower `include_doc_id_context`, or set `--sessions-llm=false`.
 * **A finding cites a node ID that doesn't exist.** The orchestrator validates every cited reference against the live doc graph and silently drops unknowns. If you see the warning in logs, the LLM hallucinated a citation — the surviving references are still trustworthy.
 
 ## Spec

@@ -19,7 +19,7 @@ Zwei Durchgänge pro Sitzung:
 # Importiere die Sitzungen dieses Projekts in `.tesserae/harness_sessions/`. Filtert nach cwd, sodass nur Sitzungen, die innerhalb dieses Projekts liefen, importiert werden.
 tesserae sessions discover --import
 
-# Kompiliere. Der strukturelle Durchgang läuft kostenlos; der LLM-Durchgang läuft, wenn `ANTHROPIC_API_KEY` gesetzt ist.
+# Kompiliere. Der strukturelle Durchgang läuft kostenlos; der LLM-Durchgang läuft automatisch, wenn die `claude` CLI angemeldet ist — kein API-Schlüssel nötig.
 tesserae project compile
 ```
 
@@ -51,7 +51,7 @@ tesserae project compile --sessions-llm=false
 }
 ```
 
-CLI-Flags überschreiben die Konfiguration. `llm_enabled = "auto"` (Standard) führt den LLM-Durchgang nur aus, wenn ein Backend konfiguriert ist; ohne eines läuft nur der strukturelle Durchgang (kein Fehler, keine ausgehenden Aufrufe).
+CLI-Flags überschreiben die Konfiguration. `llm_enabled = "auto"` (Standard) führt den LLM-Durchgang aus, wenn die `claude` CLI angemeldet ist oder `ANTHROPIC_API_KEY` gesetzt ist; ohne beides läuft nur der strukturelle Durchgang (kein Fehler, keine ausgehenden Aufrufe).
 
 ## Abfrage
 
@@ -69,7 +69,7 @@ tesserae project ask "what did we decide about extractor dedup?"
 
 ## Datenschutz
 
-* Ohne `ANTHROPIC_API_KEY` (oder mit `--sessions-llm=false`) gibt es null ausgehende Netzwerkaufrufe. Nur der strukturelle Durchgang läuft.
+* Ohne angemeldete `claude` CLI UND ohne `ANTHROPIC_API_KEY` (oder mit `--sessions-llm=false`) gibt es null ausgehende Netzwerkaufrufe. Nur der strukturelle Durchgang läuft.
 * Wenn der LLM-Durchgang läuft, werden die **vollständigen normalisierten Gesprächs-Turns** für noch nicht zwischengespeicherte Sitzungen gesendet. Die Transkriptdatei selbst bleibt auf der Festplatte; nur die JSON-Ausgabe des LLM wird im Graphen und im Pro-Sitzung-Cache persistiert.
 * Cache-Dateien leben in `.tesserae/session_findings/<session_id>.findings.json` mit sowohl einem `content_hash` als auch einem `project_root_hash`. Eine zwischen Projekten kopierte Cache-Datei wird beim Lesen abgelehnt — keine projektübergreifende Wiederholung.
 * Sitzungen werden nach dem Laden durch `session_matches_project` gefiltert, sodass ein Transkript, dessen `cwd` ein Schwesterprojekt war, niemals Knoten im Graphen dieses Projekts produziert.

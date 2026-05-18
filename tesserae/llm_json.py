@@ -258,19 +258,165 @@ def _extract_text(response: Any) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Claude CLI implementation (OAuth — preferred default, no API key needed)
+# ---------------------------------------------------------------------------
+
+
+class ClaudeCLIJsonClient:
+    """LLMJsonClient backed by the ``claude`` CLI subprocess over OAuth.
+
+    Mirrors the pattern in :mod:`tesserae.llm_extractor.run_claude_cli` so
+    we reuse the same auth path the existing extractor uses: spawn
+    ``claude -p`` with ``CLAUDE_CONFIG_DIR`` pointing at one of the
+    configured multi-account dirs, write the prompt to stdin, read the
+    response from stdout. No API key required — this is the canonical
+    Tesserae default per README ("LLM-calling features default to the
+    `codex` CLI over OAuth, so no API keys are required for the common
+    path"; the same pattern applies to the Claude CLI).
+    """
+
+    def __init__(
+        self,
+        model: str = "sonnet",
+        config_dirs: Optional[List[str]] = None,
+        timeout: int = 180,
+    ) -> None:
+        import os as _os
+        from pathlib import Path as _Path
+
+        self.model = model
+        # Honor CLAUDE_CONFIG_DIR if set; otherwise default to ~/.claude.
+        if config_dirs:
+            self.config_dirs = list(config_dirs)
+        elif _os.environ.get("CLAUDE_CONFIG_DIR"):
+            self.config_dirs = [_os.environ["CLAUDE_CONFIG_DIR"]]
+        else:
+            self.config_dirs = [str(_Path.home() / ".claude")]
+        self.timeout = int(timeout)
+
+    def complete_json(
+        self,
+        *,
+        system: str,
+        user: str,
+        schema_name: str,
+        cache_key: Optional[str] = None,
+        max_retries: int = 2,
+    ) -> Optional[Union[dict, list]]:
+        import os as _os
+        import subprocess as _subprocess
+
+        # Stitch system + user into a single prompt for the CLI's -p flag.
+        # The CLI doesn't expose a separate system slot, so we prefix the
+        # JSON-only contract to the user message.
+        prompt = (
+            f"{system.strip()}\n\n"
+            f"Respond with valid JSON only — no Markdown fences, no prose, "
+            f"no trailing commas. Schema name: {schema_name}.\n\n"
+            f"{user}"
+        )
+
+        last_error: Optional[Exception] = None
+        for config_dir in self.config_dirs:
+            for attempt in range(max_retries + 1):
+                try:
+                    env = _os.environ.copy()
+                    env["CLAUDE_CONFIG_DIR"] = config_dir
+                    cmd = [
+                        "claude",
+                        "-p",
+                        "--output-format", "text",
+                        "--max-turns", "1",
+                    ]
+                    if self.model:
+                        cmd.extend(["--model", self.model])
+                    proc = _subprocess.run(
+                        cmd,
+                        input=prompt,
+                        text=True,
+                        capture_output=True,
+                        env=env,
+                        timeout=self.timeout,
+                        check=False,
+                    )
+                    if proc.returncode != 0:
+                        raise RuntimeError(
+                            f"claude exited {proc.returncode}: "
+                            f"{proc.stderr.strip() or proc.stdout.strip()}"
+                        )
+                    return parse_json_tolerant(proc.stdout)
+                except Exception as exc:  # noqa: BLE001
+                    last_error = exc
+                    # Don't retry on the same config_dir; fall through to
+                    # the next one. Auth/network issues are best handled
+                    # by switching accounts, not by hammering one.
+                    break
+        if last_error is not None:
+            logger.warning(
+                "ClaudeCLIJsonClient.complete_json failed (schema=%s): %s",
+                schema_name,
+                last_error,
+            )
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
 
 
-def build_default_json_client(model: Optional[str] = None) -> Optional[LLMJsonClient]:
-    """Construct an :class:`AnthropicLLMJsonClient` when credentials are present.
+def _claude_cli_available() -> bool:
+    """Return True when the ``claude`` binary is on PATH AND at least one
+    config dir looks credentialed (has ``settings.json`` or ``projects/``)."""
+    import os as _os
+    import shutil as _shutil
+    from pathlib import Path as _Path
 
-    Returns ``None`` when ``ANTHROPIC_API_KEY`` is unset AND no test
-    client factory has been injected — keeps the session-graph LLM
-    pass strictly opt-in.
+    if not _shutil.which("claude"):
+        return False
+    candidate = _os.environ.get("CLAUDE_CONFIG_DIR") or str(_Path.home() / ".claude")
+    cdir = _Path(candidate)
+    if not cdir.exists():
+        return False
+    return any(
+        (cdir / marker).exists()
+        for marker in ("settings.json", "settings.local.json", "projects", "history.jsonl")
+    )
+
+
+def build_default_json_client(model: Optional[str] = None) -> Optional[LLMJsonClient]:
+    """Return the best-available JSON-completion client.
+
+    Resolution order matches the README's "common path uses no API keys"
+    promise:
+
+    1. **Test factory** (``set_client_factory``) — for hermetic tests.
+    2. **Claude CLI over OAuth** — preferred default. Requires only the
+       ``claude`` binary on PATH plus a credentialed
+       ``CLAUDE_CONFIG_DIR`` (defaults to ``~/.claude``). Zero API keys.
+    3. **Anthropic SDK** with ``ANTHROPIC_API_KEY`` — fallback for
+       environments where the CLI isn't available (CI runners, headless
+       servers). Opt-in via the env var.
+    4. ``None`` — caller falls back to the structural-only path.
     """
     import os
 
-    if _CLIENT_FACTORY is None and not os.environ.get("ANTHROPIC_API_KEY"):
-        return None
-    return AnthropicLLMJsonClient(model=model or "claude-sonnet-4-6")
+    # Test seam wins.
+    if _CLIENT_FACTORY is not None:
+        return AnthropicLLMJsonClient(model=model or "claude-sonnet-4-6")
+
+    # Canonical: claude CLI over OAuth.
+    if _claude_cli_available():
+        return ClaudeCLIJsonClient(model=model or "sonnet")
+
+    # Fallback: API key. Returns None if the anthropic SDK isn't installed
+    # (e.g. base install without `tesserae[synthesis-llm]`) — that's a
+    # silent no-op rather than a crash because the structural-only path
+    # remains useful with zero LLM access.
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        try:
+            return AnthropicLLMJsonClient(model=model or "claude-sonnet-4-6")
+        except RuntimeError:
+            return None
+
+    return None

@@ -178,27 +178,68 @@ def test_client_gives_up_after_max_retries(fake_client_factory):
 
 
 def test_build_default_returns_none_without_credentials(monkeypatch):
+    """No `claude` CLI + no API key → None. Caller falls back to structural-only."""
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    set_client_factory(None)  # also clear any test factory
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    set_client_factory(None)
+    # Force `which claude` to miss by clearing PATH.
+    monkeypatch.setenv("PATH", "/nonexistent-bin-only-dir")
     assert build_default_json_client() is None
 
 
-def test_build_default_returns_client_when_api_key_set(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    # Inject a fake factory so we don't actually try to import anthropic.
-    set_client_factory(lambda api_key=None, timeout=None: _FakeAnthropic([]))
+def test_build_default_prefers_claude_cli_over_api_key(monkeypatch, tmp_path):
+    """When the `claude` CLI is available, it wins over an API key —
+    matches the README's "no API keys required for the common path"
+    promise."""
+    from tesserae.llm_json import ClaudeCLIJsonClient
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "would-also-work-but-we-prefer-oauth")
+    set_client_factory(None)
+    # Fake CLAUDE_CONFIG_DIR with a settings.json marker so
+    # `_claude_cli_available()` is satisfied for the credential half.
+    fake_config = tmp_path / "fake-claude"
+    fake_config.mkdir()
+    (fake_config / "settings.json").write_text("{}")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(fake_config))
+    # Fake a `claude` binary on PATH.
+    fake_bin_dir = tmp_path / "bin"
+    fake_bin_dir.mkdir()
+    fake_claude = fake_bin_dir / "claude"
+    fake_claude.write_text("#!/bin/sh\necho '{}'\n")
+    fake_claude.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fake_bin_dir}:{os.environ.get('PATH','')}")
+
+    client = build_default_json_client()
+    assert isinstance(client, ClaudeCLIJsonClient), (
+        "CLI must win over API key when both are available"
+    )
+
+
+def test_build_default_falls_back_to_api_key(monkeypatch):
+    """When no CLI is available but ANTHROPIC_API_KEY is set, the API
+    client is used (fallback path for headless / CI environments).
+
+    Skips when the ``anthropic`` SDK isn't installed — in that case the
+    factory correctly returns None (silent no-op) rather than crashing,
+    and there's no fallback client to assert isinstance against.
+    """
     try:
-        client = build_default_json_client()
-        assert client is not None
-        assert isinstance(client, AnthropicLLMJsonClient)
-    finally:
-        set_client_factory(None)
+        import anthropic  # noqa: F401
+    except ImportError:
+        pytest.skip("anthropic SDK not installed; fallback path returns None")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.setenv("PATH", "/nonexistent-bin-only-dir")
+    set_client_factory(None)
+    client = build_default_json_client()
+    assert isinstance(client, AnthropicLLMJsonClient)
 
 
-def test_build_default_returns_client_when_factory_set_without_api_key(monkeypatch):
-    """Test factory alone is enough to construct a client even when
-    ANTHROPIC_API_KEY is unset — keeps tests hermetic."""
+def test_build_default_returns_client_when_factory_set_without_credentials(monkeypatch):
+    """Test factory wins over everything — keeps tests hermetic."""
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.setenv("PATH", "/nonexistent-bin-only-dir")
     set_client_factory(lambda api_key=None, timeout=None: _FakeAnthropic([]))
     try:
         assert build_default_json_client() is not None

@@ -19,7 +19,7 @@ Deux passes par session :
 # Importez les sessions de ce projet dans `.tesserae/harness_sessions/`. Filtre par cwd, donc seules les sessions exécutées dans ce projet sont importées.
 tesserae sessions discover --import
 
-# Compilez. La passe structurelle s'exécute gratuitement ; la passe LLM s'exécute lorsque `ANTHROPIC_API_KEY` est défini.
+# Compilez. La passe structurelle s'exécute gratuitement ; la passe LLM s'exécute automatiquement lorsque la CLI `claude` est connectée — pas de clé API.
 tesserae project compile
 ```
 
@@ -51,7 +51,7 @@ tesserae project compile --sessions-llm=false
 }
 ```
 
-Les drapeaux CLI remplacent la configuration. `llm_enabled = "auto"` (par défaut) exécute la passe LLM uniquement lorsqu'un backend est configuré ; sans un, seule la passe structurelle s'exécute (pas d'erreur, pas d'appels sortants).
+Les drapeaux CLI remplacent la configuration. `llm_enabled = "auto"` (par défaut) exécute la passe LLM lorsque la CLI `claude` est connectée ou que `ANTHROPIC_API_KEY` est défini ; sans aucun, seule la passe structurelle s'exécute (pas d'erreur, pas d'appels sortants).
 
 ## Requête
 
@@ -69,7 +69,7 @@ tesserae project ask "what did we decide about extractor dedup?"
 
 ## Confidentialité
 
-* Sans `ANTHROPIC_API_KEY` (ou avec `--sessions-llm=false`), il n'y a aucun appel réseau sortant. Seule la passe structurelle s'exécute.
+* Sans CLI `claude` connectée ET sans `ANTHROPIC_API_KEY` (ou avec `--sessions-llm=false`), il n'y a aucun appel réseau sortant. Seule la passe structurelle s'exécute.
 * Lorsque la passe LLM s'exécute, les **tours de conversation normalisés complets** pour les sessions pas encore en cache sont envoyés. Le fichier de transcription lui-même reste sur disque ; seule la sortie JSON du LLM est persistée dans le graphe et le cache par session.
 * Les fichiers de cache résident dans `.tesserae/session_findings/<session_id>.findings.json` avec un `content_hash` et un `project_root_hash`. Un fichier de cache copié entre projets est rejeté à la lecture — pas de relecture entre projets.
 * Les sessions sont filtrées via `session_matches_project` après chargement, donc une transcription dont le `cwd` était un projet frère ne produit jamais de nœuds dans le graphe de ce projet.
