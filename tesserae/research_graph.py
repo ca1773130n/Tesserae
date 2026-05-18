@@ -80,8 +80,37 @@ class ResearchNodeType(str, Enum):
     # surface (search, MCP, site, indexes) — see is_public_research_node.
     STUB = "Stub"
 
+    # Session graph — captures local agent/user conversation history as
+    # first-class graph nodes so the next compile can query "what did we
+    # decide / conclude / ask about this paper?". See the spec at
+    # docs/superpowers/specs/2026-05-19-session-graph-extractor-design.md.
+    # ``Session`` carries the harness-session envelope (private, no vault
+    # page); the six ``Session<Kind>`` types are the structured findings
+    # extracted from the transcript and ARE public.
+    SESSION = "Session"
+    SESSION_INSIGHT = "SessionInsight"
+    SESSION_DECISION = "SessionDecision"
+    SESSION_QUESTION = "SessionQuestion"
+    SESSION_TODO = "SessionTODO"
+    SESSION_HYPOTHESIS = "SessionHypothesis"
+    SESSION_TAKEAWAY = "SessionTakeaway"
+
 
 ALLOWED_NODE_TYPES: Set[str] = {item.value for item in ResearchNodeType}
+
+
+# The six structured-finding types. Used by the same-type aggressive
+# dedup pass to skip these (two same-text findings from two different
+# sessions are legitimately separate provenance — see Phase 1 of the
+# session-graph plan).
+SESSION_FINDING_TYPES: Set[ResearchNodeType] = {
+    ResearchNodeType.SESSION_INSIGHT,
+    ResearchNodeType.SESSION_DECISION,
+    ResearchNodeType.SESSION_QUESTION,
+    ResearchNodeType.SESSION_TODO,
+    ResearchNodeType.SESSION_HYPOTHESIS,
+    ResearchNodeType.SESSION_TAKEAWAY,
+}
 
 
 class TitleQuality(str, Enum):
@@ -160,6 +189,18 @@ ALLOWED_EDGE_TYPES: Set[str] = {
     # block. Carries no ontology semantics; used for graph reachability so
     # MCP / dataview queries can still traverse them.
     "user_link",
+    # Session graph edges (see ResearchNodeType.SESSION docstring above).
+    # ``derived_from_session`` connects each Session<Kind> finding back to
+    # its parent Session node. ``discussed_in`` is emitted from any doc
+    # node (Paper / Repository / Concept) to a Session node when the
+    # session touched that doc's source_path. ``references`` is emitted
+    # from a Session<Kind> finding to a doc node it cites. ``supersedes``
+    # is emitted when the LLM identifies a later finding that refines an
+    # earlier one in the same project.
+    "derived_from_session",
+    "discussed_in",
+    "references",
+    "supersedes",
 }
 
 
@@ -478,6 +519,14 @@ def _merge_same_type_aliased_duplicates(
     """
     by_dedup_key: Dict[Tuple["ResearchNodeType", str], List[ResearchNode]] = {}
     for node in nodes:
+        # Session findings are explicitly NOT collapsed by aggressive
+        # same-name dedup. Two ``SessionInsight`` nodes with identical
+        # body text but different ``metadata.session_id`` are legitimately
+        # separate provenance — merging them loses the link back to which
+        # session produced each one. The session-graph plan (Phase 1)
+        # codifies this invariant.
+        if node.type in SESSION_FINDING_TYPES:
+            continue
         key = _aggressive_dedup_key(node.name or "")
         if not key:
             continue
@@ -1464,6 +1513,12 @@ PRIVATE_PUBLIC_RESEARCH_TYPES: Set[str] = {
     # nothing public ever surfaces them — they're effectively a TODO
     # marker the operator can see in diverged-fields.md.
     ResearchNodeType.STUB.value,
+    # Session envelopes carry per-session activity metadata (started_at,
+    # files_touched, tools_used). They're queryable in MCP and serve as
+    # the parent of every Session<Kind> finding, but the *findings*
+    # themselves are the user-facing surface — the Session envelope
+    # doesn't deserve its own vault page.
+    ResearchNodeType.SESSION.value,
 }
 
 

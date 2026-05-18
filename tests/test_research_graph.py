@@ -89,3 +89,115 @@ def test_graph_serializes_to_json_compatible_dict():
     assert payload["nodes"]
     assert payload["edges"]
     assert payload["nodes"][0]["type"] in ALLOWED_NODE_TYPES
+
+
+# ---------------------------------------------------------------------------
+# Session graph schema additions — Phase 1 of the session-graph plan
+# (docs/superpowers/plans/2026-05-19-session-graph-extractor-plan.md).
+# ---------------------------------------------------------------------------
+
+
+def test_session_node_types_in_allowed_set_and_roundtrip():
+    """Seven new session node types parse round-trip via the enum + appear
+    in ``ALLOWED_NODE_TYPES``. Edge types: the four new session-graph
+    edge labels (``derived_from_session``, ``discussed_in``,
+    ``references``, ``supersedes``) are in ``ALLOWED_EDGE_TYPES``."""
+    new_node_types = {
+        "Session",
+        "SessionInsight",
+        "SessionDecision",
+        "SessionQuestion",
+        "SessionTODO",
+        "SessionHypothesis",
+        "SessionTakeaway",
+    }
+    for value in new_node_types:
+        assert value in ALLOWED_NODE_TYPES, f"{value} missing from ALLOWED_NODE_TYPES"
+        # round-trip
+        assert ResearchNodeType(value).value == value
+
+    for edge_type in ("derived_from_session", "discussed_in", "references", "supersedes"):
+        assert edge_type in ALLOWED_EDGE_TYPES
+
+
+def test_is_public_research_node_session_visibility():
+    """The Session envelope is private (no vault page); the six finding
+    types are public (each gets its own vault page)."""
+    from tesserae.research_graph import ResearchNode, is_public_research_node
+
+    private = ResearchNode(
+        id="Session:abc",
+        name="2026-05-19 weekly digest",
+        type=ResearchNodeType.SESSION,
+    )
+    assert is_public_research_node(private) is False
+
+    for kind in (
+        ResearchNodeType.SESSION_INSIGHT,
+        ResearchNodeType.SESSION_DECISION,
+        ResearchNodeType.SESSION_QUESTION,
+        ResearchNodeType.SESSION_TODO,
+        ResearchNodeType.SESSION_HYPOTHESIS,
+        ResearchNodeType.SESSION_TAKEAWAY,
+    ):
+        public = ResearchNode(
+            id=f"{kind.value}:abc",
+            name="Atomic writes prevent crash corruption",
+            type=kind,
+        )
+        assert is_public_research_node(public) is True, (
+            f"{kind.value} should be public"
+        )
+
+
+def test_session_findings_skip_aggressive_same_type_dedup():
+    """Two ``SessionDecision`` nodes with identical normalized names but
+    different ``metadata.session_id`` are legitimately separate provenance.
+    The aggressive same-type dedup pass must NOT collapse them — that
+    would lose the "which session produced this" link.
+
+    Regression guard for the codex-flagged risk in plan v2 Phase 1.
+    """
+    from tesserae.research_graph import (
+        ResearchEdge,
+        ResearchNode,
+        merge_same_type_aliased_duplicates,
+    )
+
+    a = ResearchNode(
+        id="SessionDecision:session-A:dec:abc12345",
+        name="Cache findings by content hash",
+        type=ResearchNodeType.SESSION_DECISION,
+        metadata={"session_id": "session-A"},
+    )
+    b = ResearchNode(
+        id="SessionDecision:session-B:dec:def67890",
+        name="Cache findings by content hash",
+        type=ResearchNodeType.SESSION_DECISION,
+        metadata={"session_id": "session-B"},
+    )
+
+    nodes, edges = merge_same_type_aliased_duplicates([a, b], [])
+    assert len(nodes) == 2, (
+        "session findings with identical text from different sessions "
+        "must survive aggressive same-type dedup"
+    )
+    surviving_ids = {n.id for n in nodes}
+    assert a.id in surviving_ids
+    assert b.id in surviving_ids
+    assert edges == []  # nothing to merge
+
+    # Sanity check: a same-named MethodologicalConcept pair WOULD collapse,
+    # proving the test isn't trivially passing.
+    c = ResearchNode(
+        id="MethodologicalConcept:foo",
+        name="Pre-Training",
+        type=ResearchNodeType.METHODOLOGICAL_CONCEPT,
+    )
+    d = ResearchNode(
+        id="MethodologicalConcept:bar",
+        name="pretraining",
+        type=ResearchNodeType.METHODOLOGICAL_CONCEPT,
+    )
+    nodes, _ = merge_same_type_aliased_duplicates([c, d], [])
+    assert len(nodes) == 1, "non-session same-type pair should collapse"
