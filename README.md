@@ -96,6 +96,25 @@ tesserae project build-site && tesserae project serve --port 8765
 
 The setup wizard detects common sources (`README.md`, `docs/`, `src/`, `data/`) and writes `.tesserae/config.json`. LLM-calling features default to the `codex` CLI over OAuth, so no API keys are required for the common path. See [docs/quickstart.md](docs/quickstart.md) and [docs/installation.md](docs/installation.md) for the longer version.
 
+> [!tip]
+> **`tesserae: command not found` after install?** `pip` dropped the binary somewhere your shell doesn't search. Most reliable fix on **any platform** is [`pipx`](https://pipx.pypa.io/) — it puts CLI tools in isolated venvs and auto-manages your `PATH`:
+>
+> ```bash
+> # macOS — `brew install pipx`
+> # Ubuntu / Debian — `sudo apt install pipx`
+> # other — `python3 -m pip install --user pipx`
+> pipx ensurepath          # adds ~/.local/bin to PATH; open a new shell after
+> pipx install tesserae
+> ```
+>
+> **Ubuntu 23.04+** gotchas you'll likely hit with plain `pip install tesserae`:
+>
+> | Error | Cause | Fix |
+> |---|---|---|
+> | `error: externally-managed-environment` | PEP 668 — system Python is locked | Use `pipx` (above), or `pip install --user --break-system-packages tesserae` (ugly), or a venv |
+> | `tesserae: command not found` after `pip install --user …` | `~/.local/bin` isn't on `PATH` | `echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.bashrc && source ~/.bashrc` |
+> | `ModuleNotFoundError: pydantic` on Ubuntu 20.04 | system `python3` is 3.8, tesserae needs ≥3.9 | `sudo apt install python3.11 python3.11-venv` then `python3.11 -m pip install --user tesserae` |
+
 ### Walkthrough
 
 Each step in the Quickstart, recorded against the bundled 135-doc demo corpus

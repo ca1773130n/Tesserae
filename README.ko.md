@@ -59,6 +59,26 @@ tesserae project build-site && tesserae project serve --port 8765
 
 설정 마법사는 일반적인 소스(`README.md`, `docs/`, `src/`, `data/`)를 감지하고 `.tesserae/config.json`을 작성합니다. LLM 호출 기능은 기본적으로 OAuth 기반의 `codex` CLI를 사용하므로 일반적인 경로에서는 API 키가 필요 없습니다. 더 자세한 내용은 [docs/quickstart.md](docs/quickstart.md)와 [docs/installation.md](docs/installation.md)를 참고하세요.
 
+> [!tip]
+> **설치 후 `tesserae: command not found`가 뜨나요?** `pip`가 바이너리를 셸이 찾지 않는 곳에 두었습니다. **모든 플랫폼**에서 가장 확실한 해결책은 [`pipx`](https://pipx.pypa.io/)입니다 — CLI 도구를 격리된 venv에 설치하고 `PATH`를 자동으로 관리합니다:
+>
+> ```bash
+> # macOS — `brew install pipx`
+> # Ubuntu / Debian — `sudo apt install pipx`
+> # 기타 — `python3 -m pip install --user pipx`
+> pipx ensurepath          # ~/.local/bin을 PATH에 추가합니다. 이후 새 셸을 여세요
+> pipx install tesserae
+> ```
+>
+> **Ubuntu 23.04+** 에서 그냥 `pip install tesserae`를 쓸 때 흔히 만나는 문제:
+>
+> | 에러 | 원인 | 해결책 |
+> |---|---|---|
+> | `error: externally-managed-environment` | PEP 668 — 시스템 Python이 잠겨 있음 | `pipx` 사용(위), 또는 `pip install --user --break-system-packages tesserae`(지저분), 또는 venv |
+> | `pip install --user …` 후 `tesserae: command not found` | `~/.local/bin`이 `PATH`에 없음 | `echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.bashrc && source ~/.bashrc` |
+> | Ubuntu 20.04에서 `ModuleNotFoundError: pydantic` | 시스템 `python3`가 3.8, tesserae는 3.9 이상 필요 | `sudo apt install python3.11 python3.11-venv` 후 `python3.11 -m pip install --user tesserae` |
+
+
 ## 컴파일 후 얻는 것
 
 ```text

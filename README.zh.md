@@ -59,6 +59,26 @@ tesserae project build-site && tesserae project serve --port 8765
 
 setup 向导会检测常见来源（`README.md`、`docs/`、`src/`、`data/`），并写入 `.tesserae/config.json`。涉及 LLM 调用的功能默认使用基于 OAuth 的 `codex` CLI，因此常规路径无需 API key。更详细的内容见 [docs/quickstart.md](docs/quickstart.md) 和 [docs/installation.md](docs/installation.md)。
 
+> [!tip]
+> **安装后 `tesserae: command not found`?** `pip` 把二进制文件放在了 shell 不搜索的位置。**任何平台**上最可靠的方法是 [`pipx`](https://pipx.pypa.io/) — 它把 CLI 工具安装到隔离的 venv 中并自动管理 `PATH`:
+>
+> ```bash
+> # macOS — `brew install pipx`
+> # Ubuntu / Debian — `sudo apt install pipx`
+> # 其他 — `python3 -m pip install --user pipx`
+> pipx ensurepath          # 将 ~/.local/bin 加入 PATH;之后请打开新 shell
+> pipx install tesserae
+> ```
+>
+> **Ubuntu 23.04+** 使用普通 `pip install tesserae` 时常遇到的问题:
+>
+> | 错误 | 原因 | 解决方法 |
+> |---|---|---|
+> | `error: externally-managed-environment` | PEP 668 — 系统 Python 被锁定 | 使用 `pipx`(如上),或 `pip install --user --break-system-packages tesserae`(不优雅),或 venv |
+> | `pip install --user …` 后 `tesserae: command not found` | `~/.local/bin` 不在 `PATH` 中 | `echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.bashrc && source ~/.bashrc` |
+> | Ubuntu 20.04 上 `ModuleNotFoundError: pydantic` | 系统 `python3` 是 3.8,tesserae 需要 ≥3.9 | `sudo apt install python3.11 python3.11-venv` 然后 `python3.11 -m pip install --user tesserae` |
+
+
 ## 编译后你会得到什么
 
 ```text

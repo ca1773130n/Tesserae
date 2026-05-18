@@ -59,6 +59,26 @@ tesserae project build-site && tesserae project serve --port 8765
 
 セットアップウィザードは一般的なソース（`README.md`、`docs/`、`src/`、`data/`）を検出し、`.tesserae/config.json` を書き出します。LLM 呼び出し系の機能は OAuth ベースの `codex` CLI をデフォルトで使うため、通常経路では API キーは不要です。詳細は [docs/quickstart.md](docs/quickstart.md) と [docs/installation.md](docs/installation.md) を参照してください。
 
+> [!tip]
+> **インストール後に `tesserae: command not found` が出る場合?** `pip` がバイナリをシェルが探さない場所に配置しています。**どのプラットフォーム** でも最も確実な解決策は [`pipx`](https://pipx.pypa.io/) です — CLI ツールを独立した venv にインストールし、`PATH` を自動管理します:
+>
+> ```bash
+> # macOS — `brew install pipx`
+> # Ubuntu / Debian — `sudo apt install pipx`
+> # その他 — `python3 -m pip install --user pipx`
+> pipx ensurepath          # ~/.local/bin を PATH に追加します。その後新しいシェルを開いてください
+> pipx install tesserae
+> ```
+>
+> **Ubuntu 23.04+** で素の `pip install tesserae` を使うとよく遭遇する問題:
+>
+> | エラー | 原因 | 解決策 |
+> |---|---|---|
+> | `error: externally-managed-environment` | PEP 668 — システム Python がロックされている | `pipx` を使う(上記)、もしくは `pip install --user --break-system-packages tesserae`(汚い)、または venv |
+> | `pip install --user …` 後の `tesserae: command not found` | `~/.local/bin` が `PATH` に含まれていない | `echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.bashrc && source ~/.bashrc` |
+> | Ubuntu 20.04 での `ModuleNotFoundError: pydantic` | システムの `python3` が 3.8、tesserae は 3.9 以上が必要 | `sudo apt install python3.11 python3.11-venv` 後に `python3.11 -m pip install --user tesserae` |
+
+
 ## コンパイル後に得られるもの
 
 ```text

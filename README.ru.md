@@ -59,6 +59,26 @@ tesserae project build-site && tesserae project serve --port 8765
 
 Мастер настройки определяет типичные источники (`README.md`, `docs/`, `src/`, `data/`) и пишет `.tesserae/config.json`. Возможности, требующие LLM, по умолчанию используют `codex` CLI через OAuth, поэтому в обычном сценарии API-ключи не нужны. Полные версии — в [docs/quickstart.md](docs/quickstart.md) и [docs/installation.md](docs/installation.md).
 
+> [!tip]
+> **`tesserae: command not found` после установки?** `pip` положил бинарник туда, где ваш шелл его не ищет. Самое надёжное решение на **любой платформе** — [`pipx`](https://pipx.pypa.io/) — он ставит CLI-инструменты в изолированные venv и автоматически управляет `PATH`:
+>
+> ```bash
+> # macOS — `brew install pipx`
+> # Ubuntu / Debian — `sudo apt install pipx`
+> # другое — `python3 -m pip install --user pipx`
+> pipx ensurepath          # добавляет ~/.local/bin в PATH; откройте новый шелл после
+> pipx install tesserae
+> ```
+>
+> **Ubuntu 23.04+** — типичные проблемы при простом `pip install tesserae`:
+>
+> | Ошибка | Причина | Решение |
+> |---|---|---|
+> | `error: externally-managed-environment` | PEP 668 — системный Python заблокирован | Используйте `pipx` (выше), либо `pip install --user --break-system-packages tesserae` (некрасиво), либо venv |
+> | `tesserae: command not found` после `pip install --user …` | `~/.local/bin` не в `PATH` | `echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.bashrc && source ~/.bashrc` |
+> | `ModuleNotFoundError: pydantic` на Ubuntu 20.04 | системный `python3` — 3.8, tesserae нужен ≥3.9 | `sudo apt install python3.11 python3.11-venv` затем `python3.11 -m pip install --user tesserae` |
+
+
 ## Что вы получаете после compile
 
 ```text

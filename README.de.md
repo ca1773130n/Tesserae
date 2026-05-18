@@ -96,6 +96,26 @@ tesserae project build-site && tesserae project serve --port 8765
 
 Der Setup-Wizard erkennt gängige Quellen (`README.md`, `docs/`, `src/`, `data/`) und schreibt `.tesserae/config.json`. LLM-aufrufende Features verwenden standardmäßig das `codex`-CLI über OAuth, sodass für den üblichen Pfad keine API-Keys nötig sind. Die ausführlichere Variante findest du in [docs/quickstart.md](docs/quickstart.md) und [docs/installation.md](docs/installation.md).
 
+> [!tip]
+> **`tesserae: command not found` nach der Installation?** `pip` legt das Binary möglicherweise an einem Ort ab, den deine Shell nicht durchsucht. Der zuverlässigste Fix auf **jeder Plattform** ist [`pipx`](https://pipx.pypa.io/) — es installiert CLI-Tools in isolierten venvs und verwaltet deinen `PATH` automatisch:
+>
+> ```bash
+> # macOS — `brew install pipx`
+> # Ubuntu / Debian — `sudo apt install pipx`
+> # andere — `python3 -m pip install --user pipx`
+> pipx ensurepath          # fügt ~/.local/bin zum PATH hinzu; danach neue Shell öffnen
+> pipx install tesserae
+> ```
+>
+> **Ubuntu 23.04+** typische Probleme bei einfachem `pip install tesserae`:
+>
+> | Fehler | Ursache | Lösung |
+> |---|---|---|
+> | `error: externally-managed-environment` | PEP 668 — System-Python ist gesperrt | `pipx` (oben) verwenden, oder `pip install --user --break-system-packages tesserae` (hässlich), oder ein venv |
+> | `tesserae: command not found` nach `pip install --user …` | `~/.local/bin` ist nicht im `PATH` | `echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.bashrc && source ~/.bashrc` |
+> | `ModuleNotFoundError: pydantic` auf Ubuntu 20.04 | System-`python3` ist 3.8, tesserae braucht ≥3.9 | `sudo apt install python3.11 python3.11-venv` dann `python3.11 -m pip install --user tesserae` |
+
+
 ### Walkthrough
 
 Jeder Schritt aus dem Quickstart, aufgenommen gegen den mitgelieferten 135-Dokumente-Demo-Korpus
