@@ -604,6 +604,69 @@ class LLMWikiMCPServer:
                     "additionalProperties": False,
                 },
             },
+            # Session-graph queries (see docs/superpowers/specs/
+            # 2026-05-19-session-graph-extractor-design.md). Surfaces the
+            # Session envelopes + their derived findings so an agent can
+            # answer "what did we work on yesterday?" and "what did we
+            # decide about this paper?" without scanning the full graph.
+            {
+                "name": "list_sessions",
+                "description": (
+                    "List Session nodes for the active project. Returns the "
+                    "lightweight envelope per session (id, started_at, title, "
+                    "files_touched, finding counts). Use find_session_findings "
+                    "to pull the structured Insight / Decision / Question / "
+                    "TODO / Hypothesis / Takeaway nodes for one session."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "since": {
+                            "type": "string",
+                            "description": "ISO date or datetime; only sessions started after this are returned.",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 200,
+                            "description": "Maximum number of sessions to return (default 20, newest first).",
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "find_session_findings",
+                "description": (
+                    "Return Session<Kind> findings related to a specific node. "
+                    "The node is matched as either the source or the target of "
+                    "`discussed_in` / `references` edges. Optionally filter to "
+                    "specific finding kinds (insight, decision, question, todo, "
+                    "hypothesis, takeaway)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "node_id": {
+                            "type": "string",
+                            "description": "Exact node id (e.g. Paper:arxiv-…) to look up findings for.",
+                        },
+                        "kinds": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "insight", "decision", "question",
+                                    "todo", "hypothesis", "takeaway",
+                                ],
+                            },
+                            "description": "Optional whitelist of finding kinds to include.",
+                        },
+                    },
+                    "required": ["node_id"],
+                    "additionalProperties": False,
+                },
+            },
         ]
 
     # ------------------------------------------------------------------ Resources
@@ -1036,7 +1099,159 @@ class LLMWikiMCPServer:
             if not project:
                 raise ValueError("unregister_project requires 'name'")
             return self.registry.unregister(str(project))
+        if name == "list_sessions":
+            graph = self._load_requested_graph(args)
+            return self._mcp_list_sessions(
+                graph,
+                since=args.get("since"),
+                limit=int(args.get("limit") or 20),
+            )
+        if name == "find_session_findings":
+            node_id = args.get("node_id")
+            if not node_id:
+                raise ValueError("find_session_findings requires 'node_id'")
+            graph = self._load_requested_graph(args)
+            return self._mcp_find_session_findings(
+                graph,
+                node_id=str(node_id),
+                kinds=args.get("kinds"),
+            )
         raise ValueError(f"Unknown Tesserae MCP tool: {name}")
+
+    # ------------------------------------------------------------------
+    # Session-graph tool implementations
+    # ------------------------------------------------------------------
+
+    _SESSION_FINDING_TYPES = {
+        "SessionInsight",
+        "SessionDecision",
+        "SessionQuestion",
+        "SessionTODO",
+        "SessionHypothesis",
+        "SessionTakeaway",
+    }
+    _KIND_TO_TYPE = {
+        "insight": "SessionInsight",
+        "decision": "SessionDecision",
+        "question": "SessionQuestion",
+        "todo": "SessionTODO",
+        "hypothesis": "SessionHypothesis",
+        "takeaway": "SessionTakeaway",
+    }
+
+    def _mcp_list_sessions(
+        self,
+        graph: ResearchGraph,
+        *,
+        since: Optional[str] = None,
+        limit: int = 20,
+    ) -> JSONDict:
+        """Return Session envelopes for the resolved graph."""
+        sessions = [n for n in graph.nodes if n.type.value == "Session"]
+        if since:
+            sessions = [
+                s for s in sessions
+                if str((s.metadata or {}).get("started_at") or "") >= since
+            ]
+        # Newest-first.
+        sessions.sort(
+            key=lambda n: str((n.metadata or {}).get("started_at") or ""),
+            reverse=True,
+        )
+
+        # Pre-compute finding counts per session_id so each envelope can
+        # advertise how many findings of each kind it produced.
+        counts_by_session: Dict[str, Dict[str, int]] = {}
+        for node in graph.nodes:
+            if node.type.value not in self._SESSION_FINDING_TYPES:
+                continue
+            sid = str((node.metadata or {}).get("session_id") or "")
+            if not sid:
+                continue
+            bucket = counts_by_session.setdefault(sid, {})
+            bucket[node.type.value] = bucket.get(node.type.value, 0) + 1
+
+        items: List[JSONDict] = []
+        for session in sessions[: max(1, int(limit))]:
+            meta = session.metadata or {}
+            sid = str(meta.get("session_id") or "")
+            items.append(
+                {
+                    "node_id": session.id,
+                    "session_id": sid,
+                    "started_at": meta.get("started_at"),
+                    "ended_at": meta.get("ended_at"),
+                    "title": meta.get("title") or session.name,
+                    "harness": meta.get("harness"),
+                    "model": meta.get("model"),
+                    "files_touched_count": len(meta.get("files_touched") or []),
+                    "finding_counts": counts_by_session.get(sid, {}),
+                }
+            )
+        return {"sessions": items, "total": len(sessions)}
+
+    def _mcp_find_session_findings(
+        self,
+        graph: ResearchGraph,
+        *,
+        node_id: str,
+        kinds: Optional[List[str]] = None,
+    ) -> JSONDict:
+        """Return findings connected to ``node_id`` via discussed_in/references."""
+        kind_filter: Optional[set] = None
+        if kinds:
+            kind_filter = {
+                self._KIND_TO_TYPE[k]
+                for k in kinds
+                if k in self._KIND_TO_TYPE
+            }
+
+        # Walk edges to find the Session(s) the node was discussed in AND
+        # the findings that directly reference the node.
+        session_ids: set = set()
+        direct_finding_ids: set = set()
+        for edge in graph.edges:
+            if edge.type == "discussed_in" and edge.source == node_id:
+                session_ids.add(edge.target)
+            if edge.type == "references" and edge.target == node_id:
+                direct_finding_ids.add(edge.source)
+
+        nodes_by_id = {n.id: n for n in graph.nodes}
+
+        # Findings = direct references PLUS every finding derived from a
+        # session that discussed the node (broader recall).
+        finding_ids: set = set(direct_finding_ids)
+        for edge in graph.edges:
+            if edge.type != "derived_from_session":
+                continue
+            if edge.target in session_ids:
+                finding_ids.add(edge.source)
+
+        out: List[JSONDict] = []
+        for fid in finding_ids:
+            node = nodes_by_id.get(fid)
+            if node is None:
+                continue
+            type_name = node.type.value
+            if type_name not in self._SESSION_FINDING_TYPES:
+                continue
+            if kind_filter is not None and type_name not in kind_filter:
+                continue
+            meta = node.metadata or {}
+            out.append(
+                {
+                    "node_id": node.id,
+                    "kind": type_name,
+                    "body": node.name,
+                    "session_id": meta.get("session_id"),
+                    "turn_ids": meta.get("turn_ids") or [],
+                    "extractor": meta.get("extractor"),
+                    "directly_references_node": fid in direct_finding_ids,
+                }
+            )
+        # Deterministic ordering: by kind then body.
+        out.sort(key=lambda d: (d["kind"], d["body"]))
+        return {"node_id": node_id, "findings": out, "total": len(out)}
 
     def graph_summary(self, graph: ResearchGraph) -> JSONDict:
         # Code-graph nodes live in code-graph.json; never count them in the
