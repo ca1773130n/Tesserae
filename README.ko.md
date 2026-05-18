@@ -148,7 +148,7 @@ MCP 서버도 같은 레지스트리를 읽으므로, MCP 클라이언트는 등
 일반적인 경로에서는 API 키가 필요 없습니다:
 
 - **Codex CLI**(기본)를 OAuth로 사용합니다. `--raganything-llm-provider codex`가 기본이며, Cognee `codex_cognify` 모드는 Cognee의 LLM 클라이언트를 Codex CLI로 패치합니다.
-- **Claude Code CLI**를 OAuth로 사용합니다. RAG-Anything 런타임 질의에는 `--raganything-llm-provider claude`를 설정하세요. 멀티 계정 설정은 `--raganything-claude-config-dir ~/.claude-personal2`를 사용합니다(Tesserae가 호출 전에 `CLAUDE_CONFIG_DIR`을 export 합니다).
+- **Claude Code CLI**를 OAuth로 사용합니다. RAG-Anything 런타임 질의에는 `--raganything-llm-provider claude`를 설정하세요. 멀티 계정 설정은 `--raganything-claude-config-dir ~/.claude`를 사용합니다(Tesserae가 호출 전에 `CLAUDE_CONFIG_DIR`을 export 합니다).
 - **임베딩**은 기본적으로 인프로세스 결정적 공급자를 사용합니다. `--cognee-embedding-provider ollama --cognee-ollama-embedding-model qwen3-embedding:0.6b`로 Ollama에 연결하거나, OpenAI 호환 엔드포인트를 연결할 수 있습니다 — 두 방법 모두 통합 문서에 설명되어 있습니다.
 
 `ANTHROPIC_API_KEY`나 `OPENAI_API_KEY`를 설정하면 해당 경로에서 인식되지만, 필수는 아닙니다.

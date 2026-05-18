@@ -20,11 +20,6 @@
   <img src="docs/screencasts/showcase.gif" alt="Three-step screencast: tesserae project setup -> compile -> ask, recorded against the 135-doc demo corpus" width="100%" />
 </p>
 
-<!-- TODO: replace https://ca1773130n.github.io/Tesserae with the real
-GitHub Pages URL once the maintainer enables Pages for this repo. The
-.github/workflows/build-demo.yml workflow publishes .tesserae/site/ on every
-push to main. -->
-
 [Live demo](https://ca1773130n.github.io/Tesserae) · [Docs](docs/) · [MCP setup](docs/integrations/mcp.md) · [Obsidian export](docs/integrations/obsidian.md)
 
 Tesserae is a project-memory compiler. Point it at a directory containing markdown, source files, and (optionally) PDFs/Office docs/images, and it extracts a typed knowledge graph, writes a queryable wiki, and emits portable artifacts: a markdown projection, a Cognee-ready bundle, an agent harness, and an MCP server you can wire into Claude Code, Codex, or any MCP client. It is a build step for project context, not a hosted service.
@@ -242,7 +237,7 @@ The aggregated JSON shape is `{"scope": "all-registered", "question": ..., "by_p
 The common path uses no API keys:
 
 - **Codex CLI** (default) over OAuth. `--raganything-llm-provider codex` is the default; Cognee `codex_cognify` mode patches Cognee's LLM client to the Codex CLI.
-- **Claude Code CLI** over OAuth. Set `--raganything-llm-provider claude` for RAG-Anything runtime queries. Multi-account setups use `--raganything-claude-config-dir ~/.claude-personal2` (Tesserae exports `CLAUDE_CONFIG_DIR` before each call).
+- **Claude Code CLI** over OAuth. Set `--raganything-llm-provider claude` for RAG-Anything runtime queries. Multi-account setups use `--raganything-claude-config-dir ~/.claude` (Tesserae exports `CLAUDE_CONFIG_DIR` before each call).
 - **Embeddings** default to a deterministic in-process provider. Switch to Ollama with `--cognee-embedding-provider ollama --cognee-ollama-embedding-model qwen3-embedding:0.6b`, or wire OpenAI-compatible endpoints — both documented in the integration pages.
 
 If you set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` they will be picked up by the corresponding paths, but they are not required.

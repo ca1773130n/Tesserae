@@ -148,7 +148,7 @@ Le serveur MCP lit le même registry, donc les clients MCP peuvent appeler `list
 Le chemin courant ne demande pas de clé API :
 
 - **Codex CLI** (par défaut) via OAuth. `--raganything-llm-provider codex` est la valeur par défaut ; le mode `codex_cognify` de Cognee patche le client LLM de Cognee vers la CLI Codex.
-- **Claude Code CLI** via OAuth. Pour les requêtes runtime de RAG-Anything, positionnez `--raganything-llm-provider claude`. Les configurations multi-comptes utilisent `--raganything-claude-config-dir ~/.claude-personal2` (Tesserae exporte `CLAUDE_CONFIG_DIR` avant chaque appel).
+- **Claude Code CLI** via OAuth. Pour les requêtes runtime de RAG-Anything, positionnez `--raganything-llm-provider claude`. Les configurations multi-comptes utilisent `--raganything-claude-config-dir ~/.claude` (Tesserae exporte `CLAUDE_CONFIG_DIR` avant chaque appel).
 - **Embeddings** : provider déterministe en-process par défaut. Passez à Ollama via `--cognee-embedding-provider ollama --cognee-ollama-embedding-model qwen3-embedding:0.6b`, ou branchez des endpoints compatibles OpenAI — les deux sont documentés dans les pages d’intégration.
 
 Si vous définissez `ANTHROPIC_API_KEY` ou `OPENAI_API_KEY`, les chemins correspondants les utilisent, mais ils ne sont pas requis.

@@ -20,11 +20,6 @@
   <img src="docs/screencasts/showcase.gif" alt="Three-step screencast: tesserae project setup -> compile -> ask, recorded against the 135-doc demo corpus" width="100%" />
 </p>
 
-<!-- TODO: replace https://ca1773130n.github.io/Tesserae with the real
-GitHub Pages URL once the maintainer enables Pages for this repo. The
-.github/workflows/build-demo.yml workflow publishes .tesserae/site/ on every
-push to main. -->
-
 [Live-Demo](https://ca1773130n.github.io/Tesserae) · [Dokumentation](docs/) · [MCP-Setup](docs/i18n/integrations/mcp.de.md) · [Obsidian-Export](docs/i18n/integrations/obsidian.de.md)
 
 Tesserae ist ein Compiler für Projektgedächtnis. Richte ihn auf ein Verzeichnis mit Markdown, Quelldateien und (optional) PDFs/Office-Dokumenten/Bildern, und er extrahiert einen typisierten Knowledge Graph, schreibt ein abfragbares Wiki und erzeugt portierbare Artefakte: eine Markdown-Projektion, ein Cognee-fertiges Bundle, ein Agent-Harness sowie einen MCP-Server, den du in Claude Code, Codex oder jeden MCP-Client einbinden kannst. Es ist ein Build-Schritt für Projektkontext, kein Hosted Service.
@@ -243,7 +238,7 @@ Die aggregierte JSON-Form ist `{"scope": "all-registered", "question": ..., "by_
 Der übliche Pfad nutzt keine API-Keys:
 
 - **Codex CLI** (Default) über OAuth. `--raganything-llm-provider codex` ist der Default; der Cognee-`codex_cognify`-Modus patcht den LLM-Client von Cognee auf das Codex-CLI.
-- **Claude Code CLI** über OAuth. Setze `--raganything-llm-provider claude` für RAG-Anything-Runtime-Queries. Multi-Account-Setups verwenden `--raganything-claude-config-dir ~/.claude-personal2` (Tesserae exportiert `CLAUDE_CONFIG_DIR` vor jedem Aufruf).
+- **Claude Code CLI** über OAuth. Setze `--raganything-llm-provider claude` für RAG-Anything-Runtime-Queries. Multi-Account-Setups verwenden `--raganything-claude-config-dir ~/.claude` (Tesserae exportiert `CLAUDE_CONFIG_DIR` vor jedem Aufruf).
 - **Embeddings** verwenden standardmäßig einen deterministischen In-Process-Provider. Wechsle zu Ollama mit `--cognee-embedding-provider ollama --cognee-ollama-embedding-model qwen3-embedding:0.6b` oder verdrahte OpenAI-kompatible Endpoints — beides in den Integrations-Seiten dokumentiert.
 
 Wenn du `ANTHROPIC_API_KEY` oder `OPENAI_API_KEY` setzt, werden sie von den entsprechenden Pfaden aufgegriffen, sie sind aber nicht erforderlich.
