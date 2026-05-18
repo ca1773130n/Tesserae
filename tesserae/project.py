@@ -1219,14 +1219,21 @@ def merge_graphs(graphs: Iterable[ResearchGraph]) -> ResearchGraph:
             nodes[node.id] = prefer_research_node(existing, node) if existing else node
         for edge in graph.edges:
             edges[(edge.source, edge.type, edge.target)] = edge
-    # Run the same-name cross-type collapse a second time across the merged
-    # universe. ``ResearchGraphBuilder.build()`` already runs it per
-    # extractor, but a Paper and an ApproachFamily / SourceDocument of the
-    # same name often come from *different* files (different builders), so
-    # the duplicates only become co-resident here.
-    from .research_graph import merge_cross_type_duplicates
-    merged_nodes, merged_edges = merge_cross_type_duplicates(
+    # Re-run BOTH dedup passes across the merged universe.
+    # ``ResearchGraphBuilder.build()`` already runs them per extractor, but
+    # two same-typed concepts spelt differently (``pre-training`` vs
+    # ``pretraining``) — or a Paper + a same-named ApproachFamily — often
+    # come from *different* files (different builders), so the duplicates
+    # only become co-resident here.
+    from .research_graph import (
+        merge_cross_type_duplicates,
+        merge_same_type_aliased_duplicates,
+    )
+    same_type_nodes, same_type_edges = merge_same_type_aliased_duplicates(
         list(nodes.values()), list(edges.values())
+    )
+    merged_nodes, merged_edges = merge_cross_type_duplicates(
+        same_type_nodes, same_type_edges
     )
     merged = ResearchGraph(nodes=merged_nodes, edges=merged_edges)
     return link_paper_repo_pairs(merged)

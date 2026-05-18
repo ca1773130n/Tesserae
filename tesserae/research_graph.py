@@ -325,9 +325,13 @@ class ResearchGraphBuilder:
         # incident edges. Avoids the graph carrying 2-3 dupes of every
         # paper-shaped entity. Skips groups that share a single type
         # (already handled by stable_id dedup in add_node).
-        merged_nodes, merged_edges = _merge_cross_type_duplicates(
+        same_type_nodes, same_type_edges = _merge_same_type_aliased_duplicates(
             list(self._nodes.values()),
             list(self._edges.values()),
+        )
+        merged_nodes, merged_edges = _merge_cross_type_duplicates(
+            same_type_nodes,
+            same_type_edges,
         )
         # Keep source artifacts last so convenience maps keyed by display name
         # prefer the concrete Paper/Repository over an identically named
@@ -414,6 +418,139 @@ def merge_cross_type_duplicates(
     vault projection.
     """
     return _merge_cross_type_duplicates(nodes, edges)
+
+
+def merge_same_type_aliased_duplicates(
+    nodes: List[ResearchNode],
+    edges: List[ResearchEdge],
+) -> Tuple[List[ResearchNode], List[ResearchEdge]]:
+    """Public alias of :func:`_merge_same_type_aliased_duplicates`.
+
+    Same rationale as :func:`merge_cross_type_duplicates`, but for the
+    morally-equivalent-name same-type case (e.g. ``pre-training`` vs
+    ``pretraining`` as two distinct MethodologicalConcept nodes).
+    """
+    return _merge_same_type_aliased_duplicates(nodes, edges)
+
+
+def _aggressive_dedup_key(name: str) -> str:
+    """Return a lossy hash key for "are these the same concept?" comparisons.
+
+    Lowercases and strips every non-alphanumeric character, so the
+    following all collide on the same key:
+
+      * ``pre-training`` / ``pretraining`` / ``Pre-Training`` / ``Pre Training``
+      * ``GPT-4`` / ``gpt-4`` / ``GPT 4`` / ``GPT4``
+      * ``F1`` / ``F-1`` / ``F.1``
+      * ``Multi-Head Attention`` / ``MultiHead Attention``
+
+    Intentionally lossy: do NOT use this as a display name. It only
+    exists to decide whether two display names refer to the same
+    logical entity. Empty result indicates the name was pure
+    punctuation/whitespace and shouldn't drive dedup.
+    """
+    return re.sub(r"[^a-z0-9]", "", (name or "").casefold())
+
+
+def _merge_same_type_aliased_duplicates(
+    nodes: List[ResearchNode],
+    edges: List[ResearchEdge],
+) -> Tuple[List[ResearchNode], List[ResearchEdge]]:
+    """Collapse nodes of the same type whose names match under
+    :func:`_aggressive_dedup_key`.
+
+    The default :func:`stable_id` only collapses on the EXACT canonical
+    name, so cosmetically different but semantically identical concepts
+    (``pre-training`` vs ``pretraining``, ``Multi-Head Attention`` vs
+    ``Multi Head Attention``) accumulate as distinct nodes — and from
+    the user's perspective look like extractor noise.
+
+    For each ``(type, dedup_key)`` group with more than one node, pick
+    a canonical winner (longest display name, tiebreak on lower id for
+    determinism) and rewrite every loser's edges onto the canonical.
+    Loser names go onto the canonical's ``aliases`` list so vault
+    search by the variant spelling still surfaces the canonical page.
+
+    Pure ``stable_id`` collapse (same name same type) is handled by
+    ``ResearchGraphBuilder.add_node`` and we skip groups of size 1
+    here.
+    """
+    by_dedup_key: Dict[Tuple["ResearchNodeType", str], List[ResearchNode]] = {}
+    for node in nodes:
+        key = _aggressive_dedup_key(node.name or "")
+        if not key:
+            continue
+        by_dedup_key.setdefault((node.type, key), []).append(node)
+
+    redirect: Dict[str, str] = {}
+    aliases_to_add: Dict[str, List[str]] = {}
+
+    for group in by_dedup_key.values():
+        if len(group) < 2:
+            continue
+        # Prefer the longest display name (usually the most descriptive
+        # / well-punctuated variant — ``Pre-Training`` over ``pretraining``
+        # is wash, but ``Multi-Head Attention`` clearly beats ``MHA``).
+        canonical = max(group, key=lambda n: (len(n.name or ""), n.id))
+        for loser in group:
+            if loser.id == canonical.id:
+                continue
+            redirect[loser.id] = canonical.id
+            if loser.name and loser.name != canonical.name:
+                aliases_to_add.setdefault(canonical.id, []).append(loser.name)
+            for a in loser.aliases or []:
+                if a and a != canonical.name:
+                    aliases_to_add.setdefault(canonical.id, []).append(a)
+
+    if not redirect:
+        return nodes, edges
+
+    new_nodes: List[ResearchNode] = []
+    for node in nodes:
+        if node.id in redirect:
+            continue
+        extras = aliases_to_add.get(node.id)
+        if extras:
+            merged_aliases = list(node.aliases or [])
+            for a in extras:
+                if a not in merged_aliases:
+                    merged_aliases.append(a)
+            node = ResearchNode(
+                id=node.id,
+                name=node.name,
+                type=node.type,
+                aliases=merged_aliases,
+                description=node.description,
+                source_path=node.source_path,
+                metadata=node.metadata,
+            )
+        new_nodes.append(node)
+
+    new_edges: List[ResearchEdge] = []
+    seen_edge_keys: set = set()
+    for edge in edges:
+        src = redirect.get(edge.source, edge.source)
+        tgt = redirect.get(edge.target, edge.target)
+        if src == tgt:
+            continue  # self-loop created by the merge — drop
+        key = (src, edge.type, tgt)
+        if key in seen_edge_keys:
+            continue
+        seen_edge_keys.add(key)
+        if src is edge.source and tgt is edge.target:
+            new_edges.append(edge)
+        else:
+            new_edges.append(
+                ResearchEdge(
+                    source=src,
+                    target=tgt,
+                    type=edge.type,
+                    evidence=edge.evidence,
+                    metadata=edge.metadata,
+                )
+            )
+
+    return new_nodes, new_edges
 
 
 def _merge_cross_type_duplicates(
@@ -690,19 +827,16 @@ class ResearchGraphExtractor:
                     id_seed=f"arXiv:{repo_arxiv}",
                 )
                 builder.add_edge(paper_placeholder, "implemented_in", paper)
-            # The repository owner is often the releasing Organization. We
-            # only mint Organization nodes for owners that look organizational
-            # (multi-segment names, contains hyphen, or appears in a small
-            # known list of research orgs).
-            owner = owner_repo.split("/", 1)[0]
-            if _looks_like_organization_owner(owner):
-                org = builder.add_node(
-                    owner,
-                    ResearchNodeType.ORGANIZATION,
-                    aliases=[],
-                    source_path=source_path,
-                )
-                builder.add_edge(paper, "released_by", org)
+            # GitHub-owner Organization extraction is intentionally
+            # disabled. The heuristic in ``_looks_like_organization_owner``
+            # produced too many false positives on personal accounts
+            # (``affaan-m``, ``h-shiono``, ``anil-matcha``) and even on
+            # legit orgs the resulting nodes carried no descriptive
+            # signal beyond the slug. Organizations now come from one
+            # authoritative source only: the ``organizations:`` field
+            # in a paper or repository's YAML frontmatter, which is
+            # extractor-promoted into ``frontmatter_organizations``
+            # metadata downstream.
         else:
             if candidate_paper_titles:
                 paper_metadata["candidate_paper_titles"] = candidate_paper_titles
