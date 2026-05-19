@@ -1,6 +1,6 @@
 {
   "name": "tesserae",
-  "description": "Slash commands, hooks, skill, and MCP auto-registration for the Tesserae project-memory compiler.",
+  "description": "MCP auto-registration for the Tesserae project-memory compiler. Subsequent releases will add slash commands, hooks, and a skill.",
   "version": "0.1.0",
   "author": {
     "name": "Tesserae Contributors"
