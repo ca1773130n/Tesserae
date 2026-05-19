@@ -325,14 +325,37 @@ def _read_cache(path: Path) -> Optional[dict]:
 
 
 def _write_cache(path: Path, payload: dict) -> None:
-    """Atomic write via tmp + rename, matching the project-wide pattern."""
+    """Atomic write via tmp + rename, matching the project-wide pattern.
+
+    The tmp name carries pid + a short random suffix so two concurrent
+    compiles (e.g. the SessionEnd hook running a background compile
+    while the user manually runs /tesserae:refresh) don't collide on
+    the same `.tmp` file, race on `rename`, and crash one of them with
+    FileNotFoundError. Worst case both writers finish: last rename wins,
+    and the payload is identical anyway because the cache key is a
+    content hash.
+    """
+    import os as _os
+    import secrets as _secrets
+
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(
-        json.dumps(payload, sort_keys=True, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
+    tmp = path.with_suffix(
+        path.suffix + f".tmp.{_os.getpid()}.{_secrets.token_hex(4)}"
     )
-    tmp.rename(path)
+    try:
+        tmp.write_text(
+            json.dumps(payload, sort_keys=True, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        tmp.rename(path)
+    finally:
+        # If rename failed for any reason, clean up the tmp file so the
+        # cache dir doesn't accumulate stale .tmp.NNNN.XXXX detritus.
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
 
 def _finding_from_dict(d: dict) -> Finding:
