@@ -10,7 +10,7 @@ Tesserae ships a [Claude Code](https://docs.claude.com/en/docs/claude-code) plug
 
 ```bash
 # In a Claude Code session, from a local checkout
-/plugin install /path/to/Tesserae/plugin/
+/plugin install /path/to/Tesserae/
 ```
 
 Pre-req: `tesserae` already installed (`pip install tesserae` or `pipx install tesserae`). If installing via pipx, make sure `~/.local/bin` is on the PATH Claude Code inherits at launch.
@@ -22,7 +22,7 @@ Pre-req: `tesserae` already installed (`pip install tesserae` or `pipx install t
 * **`using-tesserae` skill** — auto-loads when you ask about the typed graph, past-session recall, wiki/vault content, or any tesserae workflow. Teaches the agent which MCP tool to use vs which slash command to suggest.
 * **4 hooks** — `SessionStart` prints a graph summary; `SessionEnd` backgrounds an import+compile so this conversation's insights become graph nodes for the next session; `PostToolUse` (opt-in) does an incremental recompile on docs/ edits; `PreToolUse` gates large-graph compiles via a confirmation dialog.
 
-Full details, the complete command/hook tables, and per-project opt-out instructions are in the plugin's own [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/plugin/README.md).
+Full details, the complete command/hook tables, and per-project opt-out instructions are in the plugin's own [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md).
 
 ## Why a plugin AND an MCP server?
 

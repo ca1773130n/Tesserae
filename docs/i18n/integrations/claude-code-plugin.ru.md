@@ -10,7 +10,7 @@ Tesserae поставляется с плагином [Claude Code](https://docs
 
 ```bash
 # Требование: `tesserae` уже установлен (`pip install tesserae` или `pipx install tesserae`).
-/plugin install /path/to/Tesserae/plugin/
+/plugin install /path/to/Tesserae/
 ```
 
 Требование: `tesserae` уже установлен (`pip install tesserae` или `pipx install tesserae`). При установке через pipx убедитесь, что `~/.local/bin` находится в PATH, который Claude Code наследует при запуске.
@@ -22,7 +22,7 @@ Tesserae поставляется с плагином [Claude Code](https://docs
 * **Навык `using-tesserae`** — автозагрузка при запросах о типизированном графе, воспоминаниях из прошлых сессий, контенте wiki/vault или любых рабочих процессах tesserae. Учит агента, какой инструмент MCP использовать vs какую слэш-команду предложить.
 * **4 хука** — `SessionStart` печатает сводку графа; `SessionEnd` фоново выполняет import+compile, чтобы инсайты этого разговора стали узлами графа для следующей сессии; `PostToolUse` (опционально) — инкрементальная перекомпиляция при правках в docs/; `PreToolUse` шлюзует компиляцию большого графа диалогом подтверждения.
 
-Полные детали, полные таблицы команд/хуков и инструкции по отказу для каждого проекта находятся в собственном [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/plugin/README.md) плагина.
+Полные детали, полные таблицы команд/хуков и инструкции по отказу для каждого проекта находятся в собственном [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md) плагина.
 
 ## Зачем плагин И сервер MCP?
 

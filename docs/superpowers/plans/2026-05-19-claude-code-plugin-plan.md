@@ -4,7 +4,7 @@
 
 **Changelog**
 
-- v1 → v2 (this revision): integrated Codex's review. Five corrections:
+- v1 → v2 (post-codex review of v1): integrated Codex's review. Five corrections:
   layout is "plugin root" not "everything under `.claude-plugin/`";
   slash-command frontmatter is `argument-hint` / `allowed-tools` (kebab),
   not `arguments` / `allowed_tools`; commands are markdown prompts with
@@ -13,6 +13,16 @@
   shape uses top-level server-name objects per the plugin-dev guide.
   Added a Phase 0 validation spike to de-risk the schema assumptions
   before building seven commands on top of them.
+- v2 → v3 (post-install validation): the marketplace install resolved
+  the plugin root by name rather than the configured subdir, picking
+  the `tesserae/` Python package by mistake and missing every
+  command. Moved every plugin asset from `plugin/<x>` to repo root
+  `<x>/` so it mirrors HarnessSync's working marketplace layout.
+  Install command shortened from `/plugin install /path/to/Tesserae/plugin/`
+  to `/plugin install /path/to/Tesserae/`. The phase-by-phase body
+  below still references the old `plugin/` paths as a historical
+  record of what was built and when; the current on-disk layout
+  has everything one directory up.
 
 ## Plugin root location
 
@@ -33,8 +43,8 @@ plugin/                              # the plugin root
 └── README.md
 ```
 
-Users install via `/plugin install /path/to/Tesserae/plugin/` (local
-dev) or `/plugin install https://github.com/ca1773130n/Tesserae plugin/`
+Users install via `/plugin install /path/to/Tesserae/` (local
+dev) or `/plugin install https://github.com/ca1773130n/Tesserae`
 (remote).
 
 Seven phases (Phase 0 added). Each ends with `bash -n` syntax checks
@@ -62,7 +72,7 @@ manifest typo here than across nine commands and four hooks.
 
 **Verification**
 
-- `/plugin install /path/to/Tesserae/plugin/` — confirm plugin appears in
+- `/plugin install /path/to/Tesserae/` — confirm plugin appears in
   `/plugin list` and no schema-validation errors at install.
 - Restart a Claude Code session — confirm `/tmp/tesserae-plugin-spike-ran`
   exists (session-start hook fired) and `/tesserae:ping` works.

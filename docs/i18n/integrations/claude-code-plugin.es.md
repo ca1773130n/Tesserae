@@ -10,7 +10,7 @@ Tesserae incluye un plugin de [Claude Code](https://docs.claude.com/en/docs/clau
 
 ```bash
 # Requisito previo: `tesserae` ya instalado (`pip install tesserae` o `pipx install tesserae`).
-/plugin install /path/to/Tesserae/plugin/
+/plugin install /path/to/Tesserae/
 ```
 
 Requisito previo: `tesserae` ya instalado (`pip install tesserae` o `pipx install tesserae`). Si instalas con pipx, asegúrate de que `~/.local/bin` esté en el PATH que Claude Code hereda al lanzarse.
@@ -22,7 +22,7 @@ Requisito previo: `tesserae` ya instalado (`pip install tesserae` o `pipx instal
 * **Habilidad `using-tesserae`** — se carga automáticamente cuando preguntas sobre el grafo tipado, recuperación de sesiones pasadas, contenido wiki/vault, o cualquier flujo de trabajo tesserae. Enseña al agente qué herramienta MCP usar vs qué comando slash sugerir.
 * **4 hooks** — `SessionStart` imprime un resumen del grafo; `SessionEnd` ejecuta en segundo plano import+compile para que las ideas de esta conversación se conviertan en nodos del grafo para la próxima sesión; `PostToolUse` (opt-in) hace recompilación incremental en ediciones de docs/; `PreToolUse` controla compilaciones de grafos grandes mediante un diálogo de confirmación.
 
-Detalles completos, tablas completas de comandos/hooks e instrucciones de opt-out por proyecto están en el propio [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/plugin/README.md) del plugin.
+Detalles completos, tablas completas de comandos/hooks e instrucciones de opt-out por proyecto están en el propio [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md) del plugin.
 
 ## ¿Por qué un plugin Y un servidor MCP?
 

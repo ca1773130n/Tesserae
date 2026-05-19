@@ -10,7 +10,7 @@ Tesserae는 [Claude Code](https://docs.claude.com/en/docs/claude-code) 플러그
 
 ```bash
 # 사전 조건: `tesserae`가 이미 설치되어 있어야 합니다(`pip install tesserae` 또는 `pipx install tesserae`).
-/plugin install /path/to/Tesserae/plugin/
+/plugin install /path/to/Tesserae/
 ```
 
 사전 조건: `tesserae`가 이미 설치되어 있어야 합니다(`pip install tesserae` 또는 `pipx install tesserae`). pipx로 설치하는 경우, `~/.local/bin`이 Claude Code가 시작 시 상속받는 PATH에 있는지 확인하세요.
@@ -22,7 +22,7 @@ Tesserae는 [Claude Code](https://docs.claude.com/en/docs/claude-code) 플러그
 * **`using-tesserae` 스킬** — 사용자가 타입드 그래프, 과거 세션 회수, 위키/볼트 콘텐츠, 또는 tesserae 워크플로우에 대해 질문할 때 자동 로드됩니다. 에이전트에게 어떤 MCP 도구를 사용할지 vs 어떤 슬래시 명령을 제안할지 가르쳐줍니다.
 * **훅 4개** — `SessionStart`는 그래프 요약을 출력; `SessionEnd`는 이번 대화의 인사이트가 다음 세션의 그래프 노드가 되도록 백그라운드 import+compile; `PostToolUse`(선택)는 docs/ 편집 시 증분 재컴파일; `PreToolUse`는 큰 그래프 컴파일을 확인 대화상자로 게이팅.
 
-전체 세부 정보, 명령/훅 표, 프로젝트별 opt-out 설정은 플러그인 자체의 [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/plugin/README.md)에 있습니다.
+전체 세부 정보, 명령/훅 표, 프로젝트별 opt-out 설정은 플러그인 자체의 [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md)에 있습니다.
 
 ## 왜 플러그인과 MCP 서버 모두?
 

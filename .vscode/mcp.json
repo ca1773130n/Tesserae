@@ -1,0 +1,14 @@
+{
+  "servers": {
+    "ouroboros": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "ouroboros-ai[mcp,claude]",
+        "ouroboros",
+        "mcp",
+        "serve"
+      ]
+    }
+  }
+}

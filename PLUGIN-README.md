@@ -8,7 +8,7 @@ Requires `tesserae` already installed (`pip install tesserae` or `pipx install t
 
 ```bash
 # In a Claude Code session, from a local checkout
-/plugin install /path/to/Tesserae/plugin/
+/plugin install /path/to/Tesserae/
 ```
 
 For the remote-install form against this repo, check `/plugin install --help` in your version of Claude Code — the URL+subpath syntax has shifted between releases.

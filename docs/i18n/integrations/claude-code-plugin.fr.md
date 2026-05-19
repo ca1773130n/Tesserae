@@ -10,7 +10,7 @@ Tesserae fournit un plugin [Claude Code](https://docs.claude.com/en/docs/claude-
 
 ```bash
 # Prérequis : `tesserae` déjà installé (`pip install tesserae` ou `pipx install tesserae`).
-/plugin install /path/to/Tesserae/plugin/
+/plugin install /path/to/Tesserae/
 ```
 
 Prérequis : `tesserae` déjà installé (`pip install tesserae` ou `pipx install tesserae`). En cas d'installation via pipx, assurez-vous que `~/.local/bin` est dans le PATH que Claude Code hérite au lancement.
@@ -22,7 +22,7 @@ Prérequis : `tesserae` déjà installé (`pip install tesserae` ou `pipx instal
 * **Compétence `using-tesserae`** — se charge automatiquement lorsque vous posez des questions sur le graphe typé, le rappel de sessions passées, le contenu wiki/vault, ou tout workflow tesserae. Apprend à l'agent quel outil MCP utiliser vs quelle commande slash suggérer.
 * **4 hooks** — `SessionStart` imprime un résumé du graphe ; `SessionEnd` exécute en arrière-plan import+compile pour que les insights de cette conversation deviennent des nœuds du graphe pour la prochaine session ; `PostToolUse` (opt-in) fait une recompilation incrémentielle sur les éditions de docs/ ; `PreToolUse` filtre les compilations de grands graphes via un dialogue de confirmation.
 
-Les détails complets, les tableaux complets des commandes/hooks et les instructions d'opt-out par projet se trouvent dans le propre [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/plugin/README.md) du plugin.
+Les détails complets, les tableaux complets des commandes/hooks et les instructions d'opt-out par projet se trouvent dans le propre [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md) du plugin.
 
 ## Pourquoi un plugin ET un serveur MCP ?
 

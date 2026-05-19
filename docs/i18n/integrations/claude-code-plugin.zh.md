@@ -10,7 +10,7 @@ Tesserae 提供了一个 [Claude Code](https://docs.claude.com/en/docs/claude-co
 
 ```bash
 # 前提:已安装 `tesserae`(`pip install tesserae` 或 `pipx install tesserae`)。如通过 pipx 安装,确保 `~/.
-/plugin install /path/to/Tesserae/plugin/
+/plugin install /path/to/Tesserae/
 ```
 
 前提:已安装 `tesserae`(`pip install tesserae` 或 `pipx install tesserae`)。如通过 pipx 安装,确保 `~/.local/bin` 在 Claude Code 启动时继承的 PATH 中。
@@ -22,7 +22,7 @@ Tesserae 提供了一个 [Claude Code](https://docs.claude.com/en/docs/claude-co
 * **`using-tesserae` 技能** —— 当你询问类型化图谱、过去会话回忆、wiki/vault 内容或任何 tesserae 工作流时自动加载。教会代理使用哪个 MCP 工具 vs 建议哪个斜杠命令。
 * **4 个 hook** —— `SessionStart` 打印图谱摘要;`SessionEnd` 后台执行 import+compile,使本次对话的洞察成为下次会话的图谱节点;`PostToolUse`(可选)在 docs/ 编辑时增量重编译;`PreToolUse` 通过确认对话框对大图谱编译进行门控。
 
-完整细节、完整的命令/hook 表以及每个项目的 opt-out 说明在插件自己的 [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/plugin/README.md) 中。
+完整细节、完整的命令/hook 表以及每个项目的 opt-out 说明在插件自己的 [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md) 中。
 
 ## 为什么同时需要插件和 MCP 服务器?
 
