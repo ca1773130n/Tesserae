@@ -45,21 +45,17 @@ fi
 
 # Per-session confirmation lock — once the user has approved a large
 # compile in this session, don't ask again.
-session_id=$(echo "$hook_input" | jq -r '.session_id // "default"' 2>/dev/null)
-confirm_lock="${project_root}/.tesserae/.confirmed-compile-${session_id}.lock"
-if [[ -f "$confirm_lock" ]]; then
-  echo '{"permissionDecision": "allow"}'
-  exit 0
-fi
-
 if (( nodes > 5000 )); then
-  # Drop the lock optimistically — the next attempt this session
-  # auto-allows. The user is making the decision once.
-  touch "$confirm_lock" 2>/dev/null || true
+  # NB: we do NOT pre-touch a confirmation lock here. Doing so would
+  # mean a user who DECLINES the dialog has the next compile silently
+  # auto-allowed. Claude Code doesn't surface a post-decision callback
+  # we can hook into to write the lock only on accept, so we always
+  # ask — the cost is one extra prompt per large compile, the benefit
+  # is consistent behaviour with the user's stated preference.
   cat <<JSON
 {
   "permissionDecision": "ask",
-  "permissionDecisionReason": "Tesserae graph has ${nodes} nodes; project compile will take several minutes."
+  "systemMessage": "Tesserae graph has ${nodes} nodes; project compile will take several minutes. Proceed?"
 }
 JSON
   exit 0

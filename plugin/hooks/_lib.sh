@@ -16,7 +16,12 @@ find_tesserae() {
     command -v tesserae
     return 0
   fi
+  local project_root
+  project_root=$(resolve_project_root 2>/dev/null || echo "$PWD")
+  # Probe project-local venvs first, then user-wide locations.
   for candidate in \
+    "${project_root}/.venv/bin/tesserae" \
+    "${project_root}/venv/bin/tesserae" \
     "$HOME/.local/bin/tesserae" \
     "$HOME/Library/Python/3.13/bin/tesserae" \
     "$HOME/Library/Python/3.12/bin/tesserae" \
