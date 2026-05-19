@@ -39,11 +39,11 @@ The Tesserae plugin gives you two distinct surfaces:
 | Interactive project setup | Suggest `/tesserae:setup` — do not auto-invoke |
 | Build/preview the static site | `/tesserae:build-site && /tesserae:serve` |
 
-**Rule of thumb**: read = MCP, write = slash command. The MCP tools are pure queries against the already-compiled graph; the slash commands run extraction / writes / network calls and should be the user's choice to initiate.
+**Rule of thumb**: read = MCP, write = slash command. Most MCP tools are graph queries against the already-compiled state; a few registry tools (`activate_project`, `register_project`, `unregister_project`) mutate the multi-project registry, but they don't run extraction or writes against any project's graph. The slash commands are the ones that run extraction, network calls, and file writes — those should always be the user's choice to initiate.
 
 ## Node type cheat sheet
 
-41 types, grouped. Helps decode MCP responses without guessing what a returned `type` field means.
+Grouped by category. Helps decode MCP responses without guessing what a returned `type` field means.
 
 **Research artifacts**
 `Paper`, `Repository`, `SourceDocument`, `Project`, `Model`, `Dataset`, `Benchmark`, `Metric`, `Result`, `Organization`
@@ -64,10 +64,10 @@ The Tesserae plugin gives you two distinct surfaces:
 `Synthesis`
 
 **Session graph** (private envelope + six finding kinds)
-`Session` (envelope — no vault page; queryable via MCP only), `SessionInsight`, `SessionDecision`, `SessionQuestion`, `SessionTODO`, `SessionHypothesis`, `SessionTakeaway`
+`Session` (envelope — private, no vault page, queryable via MCP only), `SessionInsight`, `SessionDecision`, `SessionQuestion`, `SessionTODO`, `SessionHypothesis`, `SessionTakeaway`
 
 **Private** (in the graph for query reachability; no vault page)
-`Person`, `Stub`, `Session`
+`Person`, `Stub`
 
 ## Common recipes
 
@@ -94,7 +94,7 @@ Suggest `/tesserae:status` — shows last-compile timestamp + per-kind counts in
 
 ### Hooks already running in the background
 
-The plugin's `SessionStart` hook prints a one-liner with the graph counts at the start of every session. The `SessionEnd` hook backgrounds a refresh after the conversation closes — so by the next session, this conversation's insights are already graph nodes. The user does not need to manually run `/tesserae:refresh` after every chat.
+The plugin's `SessionStart` hook prints a one-liner with the graph counts at the start of every session. The `SessionEnd` hook backgrounds a `sessions discover --import` + `project compile` (not a full refresh — vault-sync is intentionally skipped at session-close so it doesn't race with an Obsidian client that may already be syncing). So by the next session, this conversation's insights are already graph nodes; the user only needs `/tesserae:refresh` explicitly if they want the vault projection updated in the same pass.
 
 ## Anti-patterns
 
