@@ -99,10 +99,24 @@ class BatchIngestRunner:
         return files if isinstance(files, dict) else {}
 
     def _write_manifest(self, manifest: Dict[str, Dict[str, object]]) -> None:
+        # PID + random suffix so concurrent writers don't collide on a
+        # shared `<x>.tmp` and crash one of them with FileNotFoundError
+        # on os.replace (same class of bug fixed in
+        # tesserae/session_graph.py::_write_cache).
+        import secrets
         self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.manifest_path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"files": manifest}, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        os.replace(tmp, self.manifest_path)
+        tmp = self.manifest_path.with_suffix(
+            f".tmp.{os.getpid()}.{secrets.token_hex(4)}"
+        )
+        try:
+            tmp.write_text(json.dumps({"files": manifest}, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            os.replace(tmp, self.manifest_path)
+        finally:
+            if tmp.exists():
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
 
 
 def merge_graphs(graphs: Iterable[ResearchGraph]) -> ResearchGraph:
