@@ -21,6 +21,24 @@ tesserae_bin=$(find_tesserae) || {
   exit 0
 }
 
+# Skip if another tesserae compile/import is already running for THIS
+# project — otherwise every session close stacks another heavy compile
+# on top of the in-flight one and starves the box. Match on the
+# project_root path so a different Tesserae project's compile doesn't
+# block this one.
+if pgrep -f "tesserae project (compile|sessions discover).*${project_root}" >/dev/null 2>&1 \
+   || pgrep -f "${project_root}.*tesserae project (compile|sessions discover)" >/dev/null 2>&1; then
+  log_to ".session-end-hook.log" "skipped: a tesserae compile/import is already running for ${project_root}"
+  exit 0
+fi
+# Broader fallback: if ANY tesserae compile is grinding (e.g. spawned
+# without an explicit cwd arg), still skip — concurrent compiles on the
+# same .tesserae/ collide.
+if pgrep -f "tesserae project compile" >/dev/null 2>&1; then
+  log_to ".session-end-hook.log" "skipped: another tesserae project compile is already running"
+  exit 0
+fi
+
 # Background the import+compile. Use `setsid` (Linux) or `nohup`
 # (macOS) to detach from the session's process group — without this,
 # Claude Code reaps the backgrounded process when SessionEnd
