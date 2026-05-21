@@ -75,6 +75,10 @@ class HybridSearchResult:
     backend: str
     weights: Dict[str, float]
     scored: List[ScoredNode]
+    # Total number of candidates that survived the candidate-generation gate
+    # *before* being sliced to ``top_k``. Callers (e.g. the MCP server) need
+    # this to report an accurate ``total_matches`` rather than the page size.
+    total_matches: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +158,22 @@ class SentenceTransformersBackend:
         return [list(map(float, vec)) for vec in vectors]
 
 
+# Module-scope cache so repeated MCP `search_nodes` calls don't reload a
+# multi-hundred-MB ``SentenceTransformer`` model every query. Keyed by the
+# ``prefer`` argument so swapping resolver preferences mid-process still
+# works as intended.
+_BACKEND_CACHE: Dict[str, "EmbeddingBackend"] = {}
+
+
+def reset_embedding_backend() -> None:
+    """Drop the cached embedding backend(s).
+
+    Intended for tests that want to assert backend construction behaviour
+    or that monkey-patch the underlying SDK between cases.
+    """
+    _BACKEND_CACHE.clear()
+
+
 def active_embedding_backend(prefer: str = "auto") -> EmbeddingBackend:
     """Resolve the best embedding backend that is actually importable.
 
@@ -161,14 +181,26 @@ def active_embedding_backend(prefer: str = "auto") -> EmbeddingBackend:
     ``hash``. ``auto`` tries the semantic backend first and silently falls
     back to the hash bucket when the optional dep is missing so the function
     *always* returns a usable backend.
+
+    The resolved backend is memoised at module scope — constructing a
+    ``SentenceTransformer`` is expensive (multi-hundred-MB model load) and
+    happens on the hot path of every default-mode ``search_nodes`` call.
+    Use :func:`reset_embedding_backend` to clear the cache in tests.
     """
+    cached = _BACKEND_CACHE.get(prefer)
+    if cached is not None:
+        return cached
     if prefer in ("auto", "sentence-transformers", "st"):
         try:
-            return SentenceTransformersBackend()
+            backend: EmbeddingBackend = SentenceTransformersBackend()
+            _BACKEND_CACHE[prefer] = backend
+            return backend
         except Exception:  # pragma: no cover - depends on optional dep
             if prefer != "auto":
                 raise
-    return HashEmbeddingBackend()
+    backend = HashEmbeddingBackend()
+    _BACKEND_CACHE[prefer] = backend
+    return backend
 
 
 # ---------------------------------------------------------------------------
@@ -391,13 +423,19 @@ def hybrid_search(
         kind filtering done by the caller).
     """
     nodes = list(candidate_filter) if candidate_filter is not None else list(graph.nodes)
+    # Build the reported weights dict by merging the override on top of the
+    # defaults (see selected_weights below for the main-path rationale).
+    reported_weights: Dict[str, float] = dict(DEFAULT_WEIGHTS)
+    if weights:
+        reported_weights.update(weights)
     if not nodes:
         return HybridSearchResult(
             query=query,
             mode=mode,
             backend=(backend.name if backend else "n/a"),
-            weights=dict(weights or DEFAULT_WEIGHTS),
+            weights=reported_weights,
             scored=[],
+            total_matches=0,
         )
 
     # No query → preserve ordering, score 0 across the board.
@@ -410,11 +448,18 @@ def hybrid_search(
             query=query,
             mode=mode,
             backend=(backend.name if backend else "n/a"),
-            weights=dict(weights or DEFAULT_WEIGHTS),
+            weights=reported_weights,
             scored=scored,
+            total_matches=len(nodes),
         )
 
-    selected_weights: Dict[str, float] = dict(weights or DEFAULT_WEIGHTS)
+    # Merge any caller override on top of DEFAULT_WEIGHTS so a partial dict
+    # like ``{"embedding": 0}`` disables *only* the embedding lane instead of
+    # silently zeroing BM25 and lexical too (which would empty the hybrid
+    # candidate gate and return zero results).
+    selected_weights: Dict[str, float] = dict(DEFAULT_WEIGHTS)
+    if weights:
+        selected_weights.update(weights)
     if mode == "bm25":
         selected_weights = {"bm25": 1.0, "lexical": 0.0, "embedding": 0.0}
     elif mode in ("lexical", "legacy"):
@@ -466,6 +511,10 @@ def hybrid_search(
         ((fused[idx], idx) for idx in range(len(nodes)) if _is_candidate(idx)),
         key=lambda pair: (-pair[0], pair[1]),
     )
+    # ``total_matches`` reflects every candidate that survived the
+    # candidate-generation gate *before* paging — callers depend on this to
+    # display "X of N matches" without re-running the search.
+    total_matches = len(indexed)
     bounded = max(1, min(int(top_k), len(nodes)))
     scored: List[ScoredNode] = []
     for fused_score, idx in indexed[:bounded]:
@@ -484,4 +533,5 @@ def hybrid_search(
         backend=backend_name,
         weights=selected_weights,
         scored=scored,
+        total_matches=total_matches,
     )

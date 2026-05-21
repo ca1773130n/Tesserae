@@ -1513,7 +1513,10 @@ class LLMWikiMCPServer:
             "mode": result.mode,
             "backend": result.backend,
             "weights": result.weights,
-            "total_matches": len(nodes_out),
+            # Use the pre-slice candidate count surfaced by the retriever so
+            # paged queries (limit < total) still report the true match count
+            # rather than just the page size — matches the legacy contract.
+            "total_matches": int(result.total_matches),
             "nodes": nodes_out,
         }
 

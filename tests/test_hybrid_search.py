@@ -12,6 +12,7 @@ from tesserae.retrieval.hybrid import (
     HashEmbeddingBackend,
     active_embedding_backend,
     hybrid_search,
+    reset_embedding_backend,
 )
 
 
@@ -278,3 +279,79 @@ def test_active_backend_resolver_returns_something(tmp_path):
     sample = backend.embed(["hello world"])
     assert len(sample) == 1
     assert all(isinstance(x, float) for x in sample[0])
+
+
+# ---------------------------------------------------------------------------
+# Codex review fixes (3xP2) — regression tests
+# ---------------------------------------------------------------------------
+
+
+def test_partial_weight_override_only_disables_named_lane():
+    """A caller passing ``weights={"embedding": 0}`` should disable *only*
+    embeddings — BM25 and lexical must retain their defaults so the hybrid
+    candidate-generation gate still has lexical evidence to admit results.
+
+    Regression for codex P2: previously ``selected_weights`` was initialized
+    from the override dict directly, so omitted lanes silently got weight 0
+    and the gate found no candidates → empty results.
+    """
+    graph = _eight_node_graph()
+    result = hybrid_search(
+        graph,
+        "gaussian splatting",
+        top_k=5,
+        backend=HashEmbeddingBackend(),
+        weights={"embedding": 0},
+    )
+    # Must return real results — BM25 + lexical still active.
+    assert len(result.scored) >= 1
+    top_ids = [item.node.id for item in result.scored]
+    assert "MethodologicalConcept:gaussian-splatting" in top_ids
+    # The merged weights must show the override applied on top of defaults.
+    assert result.weights["embedding"] == 0
+    assert result.weights["bm25"] > 0
+    assert result.weights["lexical"] > 0
+
+
+def test_total_matches_reports_pre_slice_candidate_count(tmp_path):
+    """``total_matches`` must reflect every candidate that survived the
+    candidate-generation gate, not just the page size returned to the caller.
+
+    Regression for codex P2: the MCP server previously set
+    ``total_matches = len(nodes_out)`` (the limit-bounded slice), which hid
+    the real match count from clients implementing pagination.
+    """
+    server = _server_with_fixture(tmp_path)
+    # "splatting" hits both Paper:dual-splat and MethodologicalConcept:
+    # gaussian-splatting (plus the PerformanceClaim that mentions DualSplat
+    # via the description). Cap the page below that count.
+    full = server.call_tool("search_nodes", {"q": "splatting", "limit": 100})
+    expected_total = full["total_matches"]
+    assert expected_total >= 2, "fixture must produce >=2 splatting matches"
+
+    paged = server.call_tool("search_nodes", {"q": "splatting", "limit": 1})
+    assert len(paged["nodes"]) == 1  # page size honoured
+    assert paged["total_matches"] == expected_total  # but total is unbounded
+
+
+def test_active_embedding_backend_is_cached_across_calls():
+    """``active_embedding_backend()`` must memoise its result so the
+    expensive ``SentenceTransformer`` model load only happens once per
+    process. ``reset_embedding_backend()`` should clear the cache for tests.
+
+    Regression for codex P2: previously each default-mode ``search_nodes``
+    call constructed a fresh backend, reloading hundreds of MB of weights.
+    """
+    reset_embedding_backend()
+    first = active_embedding_backend()
+    second = active_embedding_backend()
+    assert first is second  # identity, not just equality
+
+    # The reset helper must drop the cache so tests that swap deps work.
+    reset_embedding_backend()
+    third = active_embedding_backend()
+    assert third is not first  # post-reset yields a fresh instance
+    # And the fresh resolution is itself memoised.
+    assert active_embedding_backend() is third
+    # Restore cache hygiene for any later tests in the suite.
+    reset_embedding_backend()
