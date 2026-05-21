@@ -18,6 +18,12 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .ports import GraphStore
+from .retrieval.hybrid import (
+    DEFAULT_WEIGHTS as _HYBRID_DEFAULT_WEIGHTS,
+    ScoredNode as _HybridScoredNode,
+    active_embedding_backend as _active_embedding_backend,
+    hybrid_search as _hybrid_search,
+)
 from .research_graph import (
     ALLOWED_EDGE_TYPES,
     ALLOWED_NODE_TYPES,
@@ -425,9 +431,29 @@ class LLMWikiMCPServer:
                             "description": "Wiki kind filter: papers, concepts, entities, topics, questions, syntheses, sources, repos.",
                         },
                         "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10},
+                        "mode": {
+                            "type": "string",
+                            "enum": ["hybrid", "bm25", "lexical", "embedding", "legacy"],
+                            "default": "hybrid",
+                            "description": (
+                                "Retrieval mode. 'hybrid' (default) fuses BM25 + lexical + "
+                                "embedding lanes via reciprocal-rank-fusion. 'legacy' preserves "
+                                "the original substring matcher for backwards compatibility."
+                            ),
+                        },
+                        "weights": {
+                            "type": "object",
+                            "description": "Optional per-lane weight overrides (keys: bm25, lexical, embedding).",
+                            "additionalProperties": {"type": "number"},
+                        },
                     },
                     "additionalProperties": False,
                 },
+            },
+            {
+                "name": "embedding_status",
+                "description": "Report the active embedding backend powering hybrid search.",
+                "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
             },
             {
                 "name": "node_context",
@@ -1085,13 +1111,22 @@ class LLMWikiMCPServer:
             types_arg = args.get("types")
             type_filter = _coerce_str_list(type_arg) + _coerce_str_list(types_arg)
             kind_filter = _coerce_str_list(args.get("kind"))
+            mode = str(args.get("mode") or "hybrid")
+            weights_arg = args.get("weights")
+            weights = None
+            if isinstance(weights_arg, dict):
+                weights = {str(k): float(v) for k, v in weights_arg.items()}
             return self.search_nodes(
                 self._load_requested_graph(args),
                 query=query,
                 types=type_filter or None,
                 kinds=kind_filter or None,
                 limit=int(args.get("limit", 10)),
+                mode=mode,
+                weights=weights,
             )
+        if name == "embedding_status":
+            return self.embedding_status()
         if name == "node_context":
             return self.node_context(
                 self._load_requested_graph(args),
@@ -1397,35 +1432,110 @@ class LLMWikiMCPServer:
         types: Optional[Iterable[str]] = None,
         kinds: Optional[Iterable[str]] = None,
         limit: int = 10,
+        mode: str = "hybrid",
+        weights: Optional[Dict[str, float]] = None,
     ) -> JSONDict:
-        terms = [term.casefold() for term in query.split() if term.strip()]
+        """Search public ResearchGraph nodes.
+
+        ``mode`` selects the retrieval strategy:
+
+        * ``hybrid`` (default) — BM25 + lexical + embedding fused via RRF.
+        * ``bm25`` / ``lexical`` / ``embedding`` — single-lane variants.
+        * ``legacy`` — original casefolded substring matcher; preserved
+          bit-for-bit so older callers and tests keep working.
+
+        The return shape (``query``, ``total_matches``, ``nodes``) is
+        unchanged; ``mode`` is appended so clients can confirm what ran.
+        """
         type_filter = {str(item) for item in types or []}
         kind_filter = {str(item).lower() for item in kinds or []}
         public_nodes = [n for n in graph.nodes if not is_code_graph_node(n)]
-        scored = []
-        for index, node in enumerate(public_nodes):
+        candidates: List[ResearchNode] = []
+        for node in public_nodes:
             if type_filter and node.type.value not in type_filter:
                 continue
             if kind_filter:
                 node_kind = kind_for_node(node)
                 if node_kind is None or node_kind not in kind_filter:
                     continue
-            haystack_parts = [
-                node.id,
-                node.name,
-                node.type.value,
-                node.description,
-                " ".join(node.aliases),
-                json.dumps(node.metadata, ensure_ascii=False),
-            ]
-            haystack = " ".join(haystack_parts).casefold()
-            score = sum(1 for term in terms if term in haystack)
-            if not terms or score > 0:
-                scored.append((score, index, node))
-        scored.sort(key=lambda item: (-item[0], item[1]))
-        matches = [node_to_dict(node) for score, _index, node in scored if score > 0 or not terms]
+            candidates.append(node)
+
         bounded_limit = max(1, min(limit, 100))
-        return {"query": query, "total_matches": len(matches), "nodes": matches[:bounded_limit]}
+
+        if mode == "legacy":
+            terms = [term.casefold() for term in query.split() if term.strip()]
+            scored: List[Tuple[int, int, ResearchNode]] = []
+            for index, node in enumerate(candidates):
+                haystack_parts = [
+                    node.id,
+                    node.name,
+                    node.type.value,
+                    node.description,
+                    " ".join(node.aliases),
+                    json.dumps(node.metadata, ensure_ascii=False),
+                ]
+                haystack = " ".join(haystack_parts).casefold()
+                score = sum(1 for term in terms if term in haystack)
+                if not terms or score > 0:
+                    scored.append((score, index, node))
+            scored.sort(key=lambda item: (-item[0], item[1]))
+            matches = [
+                node_to_dict(node)
+                for score, _index, node in scored
+                if score > 0 or not terms
+            ]
+            return {
+                "query": query,
+                "mode": "legacy",
+                "total_matches": len(matches),
+                "nodes": matches[:bounded_limit],
+            }
+
+        result = _hybrid_search(
+            graph,
+            query=query,
+            top_k=bounded_limit,
+            weights=weights,
+            mode=mode,
+            candidate_filter=candidates,
+        )
+        nodes_out: List[JSONDict] = []
+        for item in result.scored:
+            payload = node_to_dict(item.node)
+            payload["_retrieval"] = {
+                "score": item.score,
+                "per_lane": item.per_lane,
+                "ranks": item.ranks,
+            }
+            nodes_out.append(payload)
+        return {
+            "query": query,
+            "mode": result.mode,
+            "backend": result.backend,
+            "weights": result.weights,
+            "total_matches": len(nodes_out),
+            "nodes": nodes_out,
+        }
+
+    def embedding_status(self) -> JSONDict:
+        """Report the active embedding backend used by hybrid search."""
+        try:
+            backend = _active_embedding_backend()
+            return {
+                "available": True,
+                "backend": backend.name,
+                "dim": int(getattr(backend, "dim", 0)),
+                "default_weights": dict(_HYBRID_DEFAULT_WEIGHTS),
+                "modes": ["hybrid", "bm25", "lexical", "embedding", "legacy"],
+            }
+        except Exception as exc:  # pragma: no cover - defensive
+            return {
+                "available": False,
+                "backend": None,
+                "error": str(exc),
+                "default_weights": dict(_HYBRID_DEFAULT_WEIGHTS),
+                "modes": ["hybrid", "bm25", "lexical", "embedding", "legacy"],
+            }
 
     # ------------------------------------------------------------------ wiki / raw / lint
 
