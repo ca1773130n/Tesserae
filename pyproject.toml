@@ -22,6 +22,12 @@ classifiers = [
 ]
 dependencies = [
   "pydantic>=2",
+  # ``networkx`` powers Louvain community detection in
+  # :mod:`tesserae.community_summaries`. Pure-Python, zero transitive
+  # dependencies (~18 MB on disk) — small enough that pinning it in the
+  # base install keeps the production code path identical to the tested
+  # code path and avoids a Louvain reimplementation in the fallback.
+  "networkx>=3.0",
 ]
 
 [project.optional-dependencies]

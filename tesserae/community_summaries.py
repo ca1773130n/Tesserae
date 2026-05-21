@@ -25,7 +25,6 @@ import json
 import logging
 import os
 import secrets
-from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
@@ -45,7 +44,16 @@ logger = logging.getLogger(__name__)
 
 
 def detect_communities(graph: ResearchGraph) -> List[List[str]]:
-    """Return non-singleton node-id clusters from the undirected projection."""
+    """Return non-singleton node-id clusters from the undirected projection.
+
+    Uses ``networkx.community.louvain_communities`` (pinned in
+    ``pyproject.toml``) with a fixed ``seed`` so cluster cache ids stay
+    deterministic across runs. The previous label-propagation fallback was
+    removed in favour of a single tested code path: it collapsed the
+    two-triangle-with-a-bridge fixture into one cluster on minimal installs,
+    diverging from the production behaviour asserted by
+    ``test_detect_communities_returns_two_clusters``.
+    """
     nodes = [n.id for n in graph.nodes]
     if not nodes:
         return []
@@ -58,54 +66,18 @@ def detect_communities(graph: ResearchGraph) -> List[List[str]]:
             continue
         adj[edge.source].add(edge.target)
         adj[edge.target].add(edge.source)
-    try:
-        import networkx as nx  # type: ignore[import-not-found]
 
-        g = nx.Graph()
-        g.add_nodes_from(nodes)
-        for src, neighbours in adj.items():
-            for dst in neighbours:
-                if src < dst:
-                    g.add_edge(src, dst)
-        # ``seed`` keeps Louvain deterministic so cache ids stay stable.
-        clusters = nx.community.louvain_communities(g, seed=0)
-        return [sorted(c) for c in clusters if len(c) > 1]
-    except ImportError:  # pragma: no cover — exercised on minimal installs
-        return _label_propagation(nodes, adj)
+    import networkx as nx
 
-
-def _label_propagation(
-    nodes: Sequence[str],
-    adj: Mapping[str, Set[str]],
-    *,
-    max_iter: int = 30,
-) -> List[List[str]]:
-    """Deterministic synchronous label-propagation fallback."""
-    labels: Dict[str, str] = {nid: nid for nid in nodes}
-    ordered = sorted(nodes)
-    for _ in range(max_iter):
-        changed = False
-        new_labels = dict(labels)
-        for nid in ordered:
-            neigh = adj.get(nid) or set()
-            if not neigh:
-                continue
-            counts: Dict[str, int] = defaultdict(int)
-            for n in neigh:
-                counts[labels[n]] += 1
-            best = max(counts.values())
-            winners = sorted(l for l, c in counts.items() if c == best)
-            chosen = winners[0]
-            if chosen != labels[nid]:
-                new_labels[nid] = chosen
-                changed = True
-        labels = new_labels
-        if not changed:
-            break
-    groups: Dict[str, List[str]] = defaultdict(list)
-    for nid, lab in labels.items():
-        groups[lab].append(nid)
-    return [sorted(g) for g in groups.values() if len(g) > 1]
+    g = nx.Graph()
+    g.add_nodes_from(nodes)
+    for src, neighbours in adj.items():
+        for dst in neighbours:
+            if src < dst:
+                g.add_edge(src, dst)
+    # ``seed`` keeps Louvain deterministic so cache ids stay stable.
+    clusters = nx.community.louvain_communities(g, seed=0)
+    return [sorted(c) for c in clusters if len(c) > 1]
 
 
 # ---------------------------------------------------------------------------
