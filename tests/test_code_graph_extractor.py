@@ -180,3 +180,136 @@ def test_cli_project_ingest_code_writes_default_output(tmp_path):
     assert "CodeMethod" in types
     edge_types = {edge["type"] for edge in payload["edges"]}
     assert {"contains", "imports", "declared_in"}.issubset(edge_types)
+
+
+# ---------------------------------------------------------------------------
+# Regression: codex review (PR #2)
+# ---------------------------------------------------------------------------
+
+
+def test_same_named_symbols_across_files_stay_distinct(tmp_path):
+    """P1 regression: two modules each defining ``def main()`` and
+    ``class Config`` must mint two CodeFunction / two CodeClass nodes,
+    and the per-file ``contains`` / ``declared_in`` edges must NOT be
+    cross-rewired through the research-graph's aggressive same-type
+    dedup (which previously keyed on display name only and collapsed
+    the second module's symbols into the first).
+    """
+
+    project = tmp_path / "dup_demo"
+    pkg = project / "dup_pkg"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    (pkg / "a.py").write_text(
+        "class Config:\n"
+        "    pass\n"
+        "\n"
+        "def main():\n"
+        "    return Config()\n",
+        encoding="utf-8",
+    )
+    (pkg / "b.py").write_text(
+        "class Config:\n"
+        "    pass\n"
+        "\n"
+        "def main():\n"
+        "    return Config()\n",
+        encoding="utf-8",
+    )
+
+    graph = CodeGraphExtractor(project).extract().graph
+
+    # Two distinct CodeFunction nodes named "main" — one per module.
+    main_fns = [
+        n
+        for n in graph.nodes
+        if n.type == ResearchNodeType.CODE_FUNCTION and n.name == "main"
+    ]
+    assert len(main_fns) == 2, [n.id for n in main_fns]
+
+    # Two distinct CodeClass nodes named "Config" — one per module.
+    cfg_classes = [
+        n
+        for n in graph.nodes
+        if n.type == ResearchNodeType.CODE_CLASS and n.name == "Config"
+    ]
+    assert len(cfg_classes) == 2, [n.id for n in cfg_classes]
+
+    # Each module's ``contains`` edge to its own ``main`` must survive
+    # (the dedup pass used to collapse the two ``main`` nodes into one
+    # and rewrite both modules' edges onto a single survivor).
+    by_id = {n.id: n for n in graph.nodes}
+    contains_targets_by_module: dict[str, set[str]] = {}
+    for edge in graph.edges:
+        if edge.type != "contains":
+            continue
+        src = by_id.get(edge.source)
+        tgt = by_id.get(edge.target)
+        if src is None or tgt is None:
+            continue
+        if src.type != ResearchNodeType.CODE_MODULE:
+            continue
+        contains_targets_by_module.setdefault(src.name, set()).add(tgt.id)
+
+    a_targets = contains_targets_by_module["dup_pkg.a"]
+    b_targets = contains_targets_by_module["dup_pkg.b"]
+    # Each module owns its own main / Config nodes; no shared id.
+    assert a_targets.isdisjoint(b_targets), (a_targets & b_targets)
+
+    # And each module's ``main`` calls its module-local ``Config``,
+    # NOT the other module's — sanity-check the call edges weren't
+    # cross-rewired either. The extractor stamps ``source_path`` with
+    # the relative file path, so we discriminate by that.
+    main_a = next(n for n in main_fns if n.source_path == "dup_pkg/a.py")
+    main_b = next(n for n in main_fns if n.source_path == "dup_pkg/b.py")
+    cfg_a = next(n for n in cfg_classes if n.source_path == "dup_pkg/a.py")
+    cfg_b = next(n for n in cfg_classes if n.source_path == "dup_pkg/b.py")
+    call_edges = {(e.source, e.type, e.target) for e in graph.edges if e.type == "calls"}
+    assert (main_a.id, "calls", cfg_a.id) in call_edges
+    assert (main_b.id, "calls", cfg_b.id) in call_edges
+    # And there must be no cross-module call leak.
+    assert (main_a.id, "calls", cfg_b.id) not in call_edges
+    assert (main_b.id, "calls", cfg_a.id) not in call_edges
+
+
+def test_top_level_function_pass_skips_methods_with_same_name(tmp_path):
+    """P2 regression: when a module defines both ``def foo()`` at the
+    top level and ``class A: def foo(self): bar()`` as a method, the
+    top-level call-scan pass used to walk every ``FunctionDef`` in the
+    tree (including nested methods), then re-attribute the method's
+    body to the top-level ``foo`` because ``file_syms.functions["foo"]``
+    happened to exist. The correct behaviour: only ``A.foo`` calls
+    ``bar``; ``foo`` does not.
+    """
+
+    project = tmp_path / "nested_demo"
+    pkg = project / "nested_pkg"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").write_text("", encoding="utf-8")
+    (pkg / "shadow.py").write_text(
+        "def bar():\n"
+        "    return 1\n"
+        "\n"
+        "def foo():\n"
+        "    return 0\n"
+        "\n"
+        "class A:\n"
+        "    def foo(self):\n"
+        "        return bar()\n",
+        encoding="utf-8",
+    )
+
+    graph = CodeGraphExtractor(project).extract().graph
+    by_name = {n.name: n for n in graph.nodes}
+    foo_fn = by_name["foo"]
+    a_foo = by_name["A.foo"]
+    bar_fn = by_name["bar"]
+    assert foo_fn.type == ResearchNodeType.CODE_FUNCTION
+    assert a_foo.type == ResearchNodeType.CODE_METHOD
+    assert bar_fn.type == ResearchNodeType.CODE_FUNCTION
+
+    call_edges = {(e.source, e.type, e.target) for e in graph.edges if e.type == "calls"}
+    # The method correctly calls bar.
+    assert (a_foo.id, "calls", bar_fn.id) in call_edges
+    # The top-level foo must NOT — it has an empty body that returns 0.
+    assert (foo_fn.id, "calls", bar_fn.id) not in call_edges

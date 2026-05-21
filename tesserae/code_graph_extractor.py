@@ -267,7 +267,16 @@ class CodeGraphExtractor:
         tree: ast.Module,
         symbol_index: "_SymbolIndex",
     ) -> None:
-        for parent in ast.walk(tree):
+        # Iterate ``tree.body`` (module-level statements only) instead of
+        # ``ast.walk(tree)``. ``ast.walk`` also yields every ``FunctionDef``
+        # nested inside class bodies, which would cause this loop to scan
+        # method bodies a second time as if they were top-level functions
+        # — and when a module-level ``def foo()`` shares its name with a
+        # method ``A.foo``, ``file_syms.functions.get("foo")`` would
+        # mis-attribute every call inside ``A.foo`` to the top-level
+        # ``foo``. Module-level traversal is sufficient: nested methods
+        # are already handled by the ``ClassDef`` branch below.
+        for parent in tree.body:
             if isinstance(parent, ast.ClassDef):
                 for child in parent.body:
                     if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):

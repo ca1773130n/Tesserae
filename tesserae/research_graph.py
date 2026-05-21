@@ -120,6 +120,25 @@ SESSION_FINDING_TYPES: Set[ResearchNodeType] = {
     ResearchNodeType.SESSION_TAKEAWAY,
 }
 
+# Code-graph symbol types. The aggressive same-type dedup pass keys on
+# the casefolded, punctuation-stripped display name — which is wrong
+# for code symbols: a project routinely has two modules each defining
+# ``main()`` or ``Config``, and collapsing them by display name would
+# fuse genuinely distinct symbols (and rewrite their edges onto a
+# single winner) even though :mod:`tesserae.code_graph_extractor`
+# already mints module-qualified ``id_seed``s that keep them as
+# separate nodes. The extractor preserves a short, human-readable
+# display name (``helper`` rather than ``demo_pkg.greet.helper``) for
+# vault / UI ergonomics, so this set carries the "do not collapse by
+# display name" invariant on the graph-builder side instead.
+CODE_SYMBOL_TYPES: Set[ResearchNodeType] = {
+    ResearchNodeType.CODE_FILE,
+    ResearchNodeType.CODE_MODULE,
+    ResearchNodeType.CODE_CLASS,
+    ResearchNodeType.CODE_FUNCTION,
+    ResearchNodeType.CODE_METHOD,
+}
+
 
 class TitleQuality(str, Enum):
     """Quality tier for a Paper node's display title.
@@ -541,6 +560,17 @@ def _merge_same_type_aliased_duplicates(
         # session produced each one. The session-graph plan (Phase 1)
         # codifies this invariant.
         if node.type in SESSION_FINDING_TYPES:
+            continue
+        # Code-graph symbols (CodeFile/CodeModule/CodeClass/CodeFunction/
+        # CodeMethod) are likewise NOT collapsed by aggressive same-name
+        # dedup. Two modules each defining ``def main()`` or ``class
+        # Config`` are legitimately distinct nodes — the
+        # :mod:`tesserae.code_graph_extractor` already disambiguates
+        # them via module-qualified ``id_seed``s; merging them here
+        # would silently re-fuse the very symbols the extractor went to
+        # the trouble of separating, and rewrite both files' edges onto
+        # a single survivor.
+        if node.type in CODE_SYMBOL_TYPES:
             continue
         key = _aggressive_dedup_key(node.name or "")
         if not key:
