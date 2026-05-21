@@ -9,6 +9,7 @@ import pytest
 
 from tesserae.research_graph import ResearchGraph, ResearchNode, ResearchNodeType
 from tesserae.schema_drift import (
+    HostTypeReport,
     _cluster_cache_key,
     analyze_schema_drift,
     cluster_nodes_by_jaccard,
@@ -202,3 +203,129 @@ def test_render_report_handles_empty_input():
     text = render_report([])
     assert "## Suggested enum additions" in text
     assert "_No candidate sub-types" in text
+
+
+# --- Regression tests for codex P2 / P3 -------------------------------------
+
+
+def test_llm_failure_does_not_cache_empty_proposals(tmp_path: Path):
+    """P2: a transient LLM failure (None payload) must NOT be cached.
+
+    Otherwise the next run sees an empty `proposals` list, treats it as a
+    cache hit, and never retries until a human deletes the cache file.
+    """
+    graph = _build_two_cluster_graph()
+    tesserae_dir = tmp_path / ".tesserae"
+    tesserae_dir.mkdir()
+
+    # First run: backend fails for BOTH clusters (returns None twice).
+    failing_llm = _ScriptedLLM([None, None])
+    _path1, reports1 = analyze_schema_drift(
+        graph,
+        tesserae_dir=tesserae_dir,
+        llm=failing_llm,
+        min_volume=5,
+        top_k_clusters=5,
+        min_cluster_size=3,
+    )
+    assert len(failing_llm.calls) == 2
+    # Reports render, but no proposals landed.
+    for _cluster, props in reports1[0].clusters:
+        assert props == []
+
+    # Cache file must either not exist or contain no entries — otherwise
+    # the next run will short-circuit and skip the LLM forever.
+    cache_path = tesserae_dir / "schema_drift_cache" / "SourceDocument.json"
+    if cache_path.exists():
+        import json as _json
+
+        cached = _json.loads(cache_path.read_text(encoding="utf-8"))
+        assert cached == {}, (
+            f"failed LLM call must not write cache entries; got {cached!r}"
+        )
+
+    # Second run: backend recovers — LLM IS called again for both clusters.
+    good_llm = _ScriptedLLM(
+        [
+            {
+                "sub_types": [
+                    {
+                        "name": "PaperSection",
+                        "description": "Paper subsection.",
+                        "examples": ["p0", "p1", "p2"],
+                    }
+                ]
+            },
+            {
+                "sub_types": [
+                    {
+                        "name": "CodeSnippet",
+                        "description": "Code excerpt.",
+                        "examples": ["c0", "c1", "c2"],
+                    }
+                ]
+            },
+        ]
+    )
+    _path2, reports2 = analyze_schema_drift(
+        graph,
+        tesserae_dir=tesserae_dir,
+        llm=good_llm,
+        min_volume=5,
+        top_k_clusters=5,
+        min_cluster_size=3,
+    )
+    assert len(good_llm.calls) == 2, (
+        "second run must retry both clusters — the failed cache was not persisted"
+    )
+    proposed = sorted(
+        prop["name"] for r in reports2 for _c, props in r.clusters for prop in props
+    )
+    assert proposed == ["CodeSnippet", "PaperSection"]
+    # Now the cache IS written.
+    assert cache_path.exists()
+
+
+def test_report_uses_actual_min_cluster_size(tmp_path: Path):
+    """P3: the 'no clusters found' message must reflect the actual threshold.
+
+    A graph with >= min_volume members but no token-cohesive clusters
+    triggers the empty branch. The message should say `>= 2`, not the
+    hard-coded `>= 5`.
+    """
+    # 5 totally-unrelated names — Jaccard never crosses threshold.
+    graph = ResearchGraph(
+        nodes=[
+            _node("a", "Alpha"),
+            _node("b", "Bravo"),
+            _node("c", "Charlie"),
+            _node("d", "Delta"),
+            _node("e", "Echo"),
+        ],
+        edges=[],
+    )
+    tesserae_dir = tmp_path / ".tesserae"
+    tesserae_dir.mkdir()
+    llm = _ScriptedLLM([])  # any call raises
+
+    report_path, _reports = analyze_schema_drift(
+        graph,
+        tesserae_dir=tesserae_dir,
+        llm=llm,
+        min_volume=5,
+        top_k_clusters=5,
+        min_cluster_size=2,
+    )
+    content = report_path.read_text(encoding="utf-8")
+    assert "_No clusters of size >= 2 found" in content
+    assert "size >= 5" not in content, (
+        "report must interpolate the actual min_cluster_size, not the default"
+    )
+
+
+def test_render_report_interpolates_custom_min_cluster_size():
+    """Direct unit test on render_report — no clusters, custom threshold."""
+    rpt = HostTypeReport(host_type="SourceDocument", member_count=20)
+    text = render_report([rpt], min_cluster_size=7)
+    assert "_No clusters of size >= 7 found" in text
+    assert ">= 5" not in text

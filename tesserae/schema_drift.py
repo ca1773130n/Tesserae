@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import random
 import re
@@ -38,6 +39,9 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .llm_json import LLMJsonClient
 from .research_graph import ResearchGraph, ResearchNode, ResearchNodeType
+
+
+_LOG = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +252,19 @@ def propose_subtypes_for_cluster(
         schema_name="schema-drift-subtypes-v1",
         cache_key=f"schema-drift:{host_type}",
     )
+    if payload is None:
+        # Transient LLM failure (backend error / unparseable JSON). Do NOT
+        # cache the empty result — otherwise the next run treats this cluster
+        # as "already processed" and skips the LLM forever until a human
+        # deletes the cache file. Return [] so this run still renders.
+        _LOG.warning(
+            "schema-drift: LLM returned no payload for %s cluster %s "
+            "(size=%d); skipping cache write so the next run retries.",
+            host_type,
+            key[:12],
+            len(cluster),
+        )
+        return []
     proposals = _coerce_proposals(payload, valid_ids)
     cache[key] = {
         "host_type": host_type,
@@ -269,8 +286,17 @@ class HostTypeReport:
     clusters: List[Tuple[List[ResearchNode], List[dict]]] = field(default_factory=list)
 
 
-def render_report(reports: Sequence[HostTypeReport]) -> str:
-    """Render the human-readable schema-drift markdown report."""
+def render_report(
+    reports: Sequence[HostTypeReport],
+    *,
+    min_cluster_size: int = 5,
+) -> str:
+    """Render the human-readable schema-drift markdown report.
+
+    ``min_cluster_size`` is interpolated into the "no clusters found"
+    message so the report stays truthful when callers pass a non-default
+    threshold (or when a host gets filtered out for other reasons).
+    """
     lines: List[str] = [
         "# Schema-Drift Report",
         "",
@@ -285,7 +311,9 @@ def render_report(reports: Sequence[HostTypeReport]) -> str:
         lines.append(f"## {report.host_type} ({report.member_count} members)")
         lines.append("")
         if not report.clusters:
-            lines.append("_No clusters of size >= 5 found; skipping._")
+            lines.append(
+                f"_No clusters of size >= {min_cluster_size} found; skipping._"
+            )
             lines.append("")
             continue
         for cluster_idx, (cluster, proposals) in enumerate(report.clusters, start=1):
@@ -388,5 +416,8 @@ def analyze_schema_drift(
         reports.append(report)
 
     report_path = tesserae_dir / "schema-drift.md"
-    _atomic_write(report_path, render_report(reports) + "\n")
+    _atomic_write(
+        report_path,
+        render_report(reports, min_cluster_size=min_cluster_size) + "\n",
+    )
     return report_path, reports
