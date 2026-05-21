@@ -906,6 +906,25 @@ def project_main(argv: List[str] | None = None) -> int:
     compile_parser.add_argument("--cognee-system-root", help="Optional isolated Cognee system root directory")
     compile_parser.add_argument("--cognee-data-root", help="Optional isolated Cognee data root directory")
 
+    schema_drift_parser = subparsers.add_parser(
+        "schema-drift",
+        help="EDC-style pass that proposes ResearchNodeType sub-types from clustered host-type nodes.",
+    )
+    schema_drift_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    schema_drift_parser.add_argument(
+        "--host-type",
+        action="append",
+        default=[],
+        help=(
+            "ResearchNodeType to analyze (enum value, e.g. 'SourceDocument'). "
+            "Repeat to analyze multiple. Default: SourceDocument."
+        ),
+    )
+    schema_drift_parser.add_argument("--min-volume", type=int, default=10, help="Skip host types with fewer than this many members (default: 10)")
+    schema_drift_parser.add_argument("--top-k", type=int, default=5, help="Take only the top-K clusters per host type (default: 5)")
+    schema_drift_parser.add_argument("--min-cluster-size", type=int, default=5, help="Drop clusters smaller than this size (default: 5)")
+    schema_drift_parser.add_argument("--jaccard-threshold", type=float, default=0.34, help="Jaccard similarity threshold for clustering (default: 0.34)")
+
     ua_refresh_parser = subparsers.add_parser("refresh-understand-anything", help="Run Tesserae's managed Understand Anything refresh")
     ua_refresh_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     ua_refresh_parser.add_argument("--platform", default="codex", help="Agent platform to use: codex, opencode, or claude")
@@ -1279,6 +1298,47 @@ def project_main(argv: List[str] | None = None) -> int:
             f"nodes={result['node_count']} edges={result['edge_count']}"
         )
         print(f"Graph: {result['graph_path']}")
+        return 0
+    if args.command == "schema-drift":
+        wiki = ProjectWiki.load(args.project)
+        if not wiki.paths.graph.exists():
+            print("error: no compiled graph yet — run `project compile` first.", file=sys.stderr)
+            return 2
+        from .research_graph import ResearchNodeType as _ResearchNodeType
+        from .schema_drift import analyze_schema_drift
+        from .llm_json import build_default_json_client
+        host_args = args.host_type or ["SourceDocument"]
+        try:
+            host_types = [_ResearchNodeType(value) for value in host_args]
+        except ValueError as exc:
+            print(f"error: unknown --host-type: {exc}", file=sys.stderr)
+            return 2
+        llm = build_default_json_client()
+        if llm is None:
+            print(
+                "error: no LLM backend configured (claude CLI or ANTHROPIC_API_KEY required).",
+                file=sys.stderr,
+            )
+            return 2
+        graph = _load_graph_file(wiki.paths.graph)
+        report_path, reports = analyze_schema_drift(
+            graph,
+            tesserae_dir=wiki.root,
+            llm=llm,
+            host_types=host_types,
+            min_volume=args.min_volume,
+            top_k_clusters=args.top_k,
+            min_cluster_size=args.min_cluster_size,
+            jaccard_threshold=args.jaccard_threshold,
+        )
+        candidate_count = sum(
+            len(proposals) for r in reports for _cluster, proposals in r.clusters
+        )
+        print(
+            f"{len(reports)} type families analyzed; "
+            f"{candidate_count} candidate subtypes proposed; "
+            f"report at {report_path}"
+        )
         return 0
     if args.command == "refresh-understand-anything":
         return refresh_understand_anything(
