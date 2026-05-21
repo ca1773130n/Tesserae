@@ -628,7 +628,20 @@ class ProjectWiki:
         session_slice = extractor.extract()
         if not session_slice.nodes and not session_slice.edges:
             return graph
-        return merge_graphs([graph, session_slice])
+        merged = merge_graphs([graph, session_slice])
+
+        # Opt-in post-pass: A-MEM-style superseded_by edges between
+        # near-duplicate session findings. Guarded by an env flag so
+        # the default compile path stays free of extra LLM traffic.
+        from .memory.supersede import run_supersede_pass, supersede_pass_enabled
+
+        if supersede_pass_enabled() and json_client is not None:
+            cache_dir = self.paths.root / "supersede_cache"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            merged = run_supersede_pass(
+                merged, json_client=json_client, cache_dir=cache_dir
+            )
+        return merged
 
     def _merge_community_summaries(self, graph: ResearchGraph, cfg: dict) -> ResearchGraph:
         """Mint COMMUNITY_SUMMARY nodes + ``summarizes`` edges (opt-in).
