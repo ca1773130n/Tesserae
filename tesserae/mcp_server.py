@@ -15,7 +15,7 @@ import re
 import sys
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from .ports import GraphStore
 from .research_graph import (
@@ -27,6 +27,7 @@ from .research_graph import (
     ResearchNodeType,
     is_public_research_node,
 )
+from .retrieval.ppr import personalized_pagerank
 from .temporal import TemporalFactProjector, search_facts, timeline
 from .wiki_projector import is_code_graph_node, kind_for_node
 from .wiki_store import WikiPageStore
@@ -667,6 +668,67 @@ class LLMWikiMCPServer:
                     "additionalProperties": False,
                 },
             },
+            # HippoRAG-style multi-hop seed expansion. See
+            # tesserae/retrieval/ppr.py and feature B of
+            # /tmp/tesserae-innovation/SYNTHESIS.md. Given one or more
+            # seed nodes (typically the entity hits for a query), runs
+            # Personalized PageRank over the typed graph so callers can
+            # union the result with vector / BM25 hits.
+            {
+                "name": "graph_ppr",
+                "description": (
+                    "Run Personalized PageRank seeded at one or more nodes "
+                    "and return the top-K most relevant nodes. Useful for "
+                    "multi-hop relevance — e.g. seeded at a SessionInsight, "
+                    "it surfaces related Insights, Decisions, and Sessions "
+                    "that aren't immediate 1-hop neighbours."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
+                        "seed_node_id": {
+                            "oneOf": [
+                                {"type": "string"},
+                                {"type": "array", "items": {"type": "string"}},
+                            ],
+                            "description": (
+                                "One node id or a list of node ids to use as "
+                                "PPR teleport seeds."
+                            ),
+                        },
+                        "top_k": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 200,
+                            "default": 20,
+                        },
+                        "alpha": {
+                            "type": "number",
+                            "minimum": 0.0,
+                            "maximum": 1.0,
+                            "default": 0.15,
+                            "description": "Teleport probability (default 0.15 — classic PageRank).",
+                        },
+                        "directed": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Treat edges as directed. Default is undirected (better for relevance).",
+                        },
+                        "edge_type_weights": {
+                            "type": "object",
+                            "additionalProperties": {"type": "number"},
+                            "description": (
+                                "Optional per-edge-type weight overrides; "
+                                "defaults upweight session-finding edges."
+                            ),
+                        },
+                    },
+                    "required": ["seed_node_id"],
+                    "additionalProperties": False,
+                },
+            },
         ]
 
     # ------------------------------------------------------------------ Resources
@@ -1116,7 +1178,60 @@ class LLMWikiMCPServer:
                 node_id=str(node_id),
                 kinds=args.get("kinds"),
             )
+        if name == "graph_ppr":
+            seed = args.get("seed_node_id")
+            if seed is None or (isinstance(seed, (list, tuple)) and not seed):
+                raise ValueError("graph_ppr requires 'seed_node_id'")
+            seed_ids = _coerce_str_list(seed) if not isinstance(seed, str) else [seed]
+            graph = self._load_requested_graph(args)
+            edge_weights = args.get("edge_type_weights") or None
+            return self._mcp_graph_ppr(
+                graph,
+                seed_ids=seed_ids,
+                top_k=int(args.get("top_k") or 20),
+                alpha=float(args.get("alpha") or 0.15),
+                directed=bool(args.get("directed") or False),
+                edge_type_weights=edge_weights,
+            )
         raise ValueError(f"Unknown Tesserae MCP tool: {name}")
+
+    def _mcp_graph_ppr(
+        self,
+        graph: ResearchGraph,
+        *,
+        seed_ids: Sequence[str],
+        top_k: int = 20,
+        alpha: float = 0.15,
+        directed: bool = False,
+        edge_type_weights: Optional[Dict[str, float]] = None,
+    ) -> JSONDict:
+        """Run PPR and decorate results with node name/type for the agent."""
+        ranked = personalized_pagerank(
+            graph,
+            seed_ids=seed_ids,
+            alpha=alpha,
+            top_k=top_k,
+            edge_type_weights=edge_type_weights,
+            directed=directed,
+        )
+        index = {node.id: node for node in graph.nodes}
+        results: List[JSONDict] = []
+        for node_id, score in ranked:
+            node = index.get(node_id)
+            if node is None:
+                continue
+            results.append({
+                "node_id": node.id,
+                "name": node.name,
+                "type": node.type.value,
+                "score": float(score),
+            })
+        return {
+            "seed_ids": list(seed_ids),
+            "alpha": alpha,
+            "directed": directed,
+            "results": results,
+        }
 
     # ------------------------------------------------------------------
     # Session-graph tool implementations
