@@ -46,6 +46,28 @@ from .understand_anything_adapter import merge_understand_anything_graph
 from .wiki_projector import partition_graph
 
 
+# ---------------------------------------------------------------------------
+# Community-summaries test seam
+# ---------------------------------------------------------------------------
+#
+# ``_merge_community_summaries`` resolves its LLMJsonClient through this
+# slot when present, falling back to ``build_default_json_client``. Tests
+# call :func:`set_community_summaries_test_client` to inject a scripted
+# client so they don't depend on a live LLM. Production code never calls
+# the setter.
+_COMMUNITY_SUMMARIES_TEST_CLIENT: Optional[object] = None
+
+
+def set_community_summaries_test_client(client: Optional[object]) -> None:
+    """Inject a fake LLMJsonClient for community-summary tests."""
+    global _COMMUNITY_SUMMARIES_TEST_CLIENT
+    _COMMUNITY_SUMMARIES_TEST_CLIENT = client
+
+
+def _get_community_summaries_test_client() -> Optional[object]:
+    return _COMMUNITY_SUMMARIES_TEST_CLIENT
+
+
 @dataclass(frozen=True)
 class CognifyOptions:
     """Optional Cognee/Codex cognify pass run after the bundle is written.
@@ -165,6 +187,12 @@ class ProjectPaths:
     # supplied so existing call sites that construct ProjectPaths directly
     # (test_vault_watch.py and friends) don't need a positional update.
     session_findings: Path = Path(".tesserae/session_findings")
+    # Community-summary cache (post-compile pass; opt-in via
+    # ``TESSERAE_COMMUNITY_SUMMARIES=true``). One JSON file per detected
+    # community keyed on the sorted-member content hash — re-runs with
+    # the same membership skip the LLM call. See
+    # ``tesserae.community_summaries``.
+    community_summaries: Path = Path(".tesserae/community_summaries")
 
 
 class ProjectWiki:
@@ -201,6 +229,7 @@ class ProjectWiki:
             vault_snapshot=self.root / "vault_snapshot.json",
             diverged_fields=self.root / "diverged-fields.md",
             session_findings=self.root / "session_findings",
+            community_summaries=self.root / "community_summaries",
         )
         # In-memory override of the Obsidian vault location, set by
         # obsidian-sync --vault for the duration of a single CLI call.
@@ -465,6 +494,14 @@ class ProjectWiki:
         # is the only thing Phase 3 wires in; the LLM pass arrives in
         # Phase 5 of the session-graph plan.
         graph = self._merge_session_graph(graph, cfg, override=session_options)
+        # Community-summary pass (Microsoft GraphRAG playbook applied to
+        # the typed graph). Opt-in via ``TESSERAE_COMMUNITY_SUMMARIES=true``
+        # so quiet ``project compile`` runs stay free of incremental LLM
+        # cost. Runs AFTER merge/dedup so cluster membership reflects the
+        # canonical graph and BEFORE ``_write_artifacts`` so the new
+        # COMMUNITY_SUMMARY nodes flow through vault projection,
+        # graph.json persistence, MCP, and site builds in one pass.
+        graph = self._merge_community_summaries(graph, cfg)
         self._write_artifacts(graph, cognify=cognify, store=store, vault_pull=vault_pull)
         return {
             "project_root": str(self.project_root),
@@ -592,6 +629,47 @@ class ProjectWiki:
         if not session_slice.nodes and not session_slice.edges:
             return graph
         return merge_graphs([graph, session_slice])
+
+    def _merge_community_summaries(self, graph: ResearchGraph, cfg: dict) -> ResearchGraph:
+        """Mint COMMUNITY_SUMMARY nodes + ``summarizes`` edges (opt-in).
+
+        Skipped unless ``TESSERAE_COMMUNITY_SUMMARIES=true`` (or
+        ``community_summaries.enabled`` in config). When enabled, runs
+        Louvain/label-propagation over the undirected projection of
+        ``graph`` and asks the default LLMJsonClient for a per-cluster
+        title/description/tags triple. Per-cluster results cache under
+        ``self.paths.community_summaries/`` so membership-stable re-runs
+        skip the LLM.
+        """
+        from .community_summaries import compile_community_summaries, is_enabled_via_env
+
+        community_cfg = cfg.get("community_summaries") if isinstance(cfg.get("community_summaries"), dict) else {}
+        if not (is_enabled_via_env() or bool(community_cfg.get("enabled"))):
+            return graph
+        json_client = _get_community_summaries_test_client()
+        if json_client is None:
+            from .llm_json import build_default_json_client
+            json_client = build_default_json_client(
+                model=community_cfg.get("model") if isinstance(community_cfg.get("model"), str) else None
+            )
+        if json_client is None:
+            print("[tesserae] community summaries: no LLM client available; skipping.", flush=True)
+            return graph
+        slice_graph = compile_community_summaries(
+            graph,
+            cache_dir=self.paths.community_summaries,
+            json_client=json_client,
+            min_size=int(community_cfg.get("min_size") or 3),
+            max_communities=int(community_cfg.get("max_communities") or 50),
+        )
+        if not slice_graph.nodes:
+            return graph
+        print(
+            f"[tesserae] community summaries: minted {len(slice_graph.nodes)} "
+            f"COMMUNITY_SUMMARY node(s) with {len(slice_graph.edges)} edge(s).",
+            flush=True,
+        )
+        return merge_graphs([graph, slice_graph])
 
     def _merge_configured_raganything_graph(self, graph: ResearchGraph, cfg: dict) -> ResearchGraph:
         """Merge configured RAG-Anything manifest artifacts natively."""

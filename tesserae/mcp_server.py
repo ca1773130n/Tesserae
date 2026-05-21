@@ -755,6 +755,28 @@ class LLMWikiMCPServer:
                     "additionalProperties": False,
                 },
             },
+            # Community summaries (post-compile pass; opt-in via
+            # ``TESSERAE_COMMUNITY_SUMMARIES=true``). GraphRAG-style global
+            # themes view: each entry bundles a cluster title, description,
+            # tags, and member node IDs.
+            {
+                "name": "list_communities",
+                "description": (
+                    "List COMMUNITY_SUMMARY nodes minted by the post-compile pass, "
+                    "ranked by member count. Use node_context on the returned "
+                    "community_id to walk `summarizes` edges back to members."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
+                        "min_size": {"type": "integer", "minimum": 2, "default": 3},
+                        "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 20},
+                    },
+                    "additionalProperties": False,
+                },
+            },
         ]
 
     # ------------------------------------------------------------------ Resources
@@ -1234,6 +1256,13 @@ class LLMWikiMCPServer:
                 directed=bool(args.get("directed") or False),
                 edge_type_weights=edge_weights,
             )
+        if name == "list_communities":
+            graph = self._load_requested_graph(args)
+            return self._mcp_list_communities(
+                graph,
+                min_size=int(args.get("min_size") or 3),
+                limit=int(args.get("limit") or 20),
+            )
         raise ValueError(f"Unknown Tesserae MCP tool: {name}")
 
     def _mcp_graph_ppr(
@@ -1408,6 +1437,31 @@ class LLMWikiMCPServer:
         # Deterministic ordering: by kind then body.
         out.sort(key=lambda d: (d["kind"], d["body"]))
         return {"node_id": node_id, "findings": out, "total": len(out)}
+
+    def _mcp_list_communities(
+        self, graph: ResearchGraph, *, min_size: int = 3, limit: int = 20,
+    ) -> JSONDict:
+        """Return COMMUNITY_SUMMARY nodes ranked by member count."""
+        items: List[JSONDict] = []
+        for node in graph.nodes:
+            if node.type.value != "CommunitySummary":
+                continue
+            meta = node.metadata or {}
+            member_ids = list(meta.get("member_ids") or [])
+            count = int(meta.get("member_count") or len(member_ids))
+            if count < max(2, int(min_size)):
+                continue
+            items.append({
+                "community_id": node.id,
+                "title": node.name,
+                "description": node.description,
+                "tags": list(meta.get("tags") or []),
+                "member_count": count,
+                "member_ids": member_ids,
+            })
+        items.sort(key=lambda d: (-int(d["member_count"]), d["community_id"]))
+        items = items[: max(1, int(limit))]
+        return {"communities": items, "total": len(items)}
 
     def graph_summary(self, graph: ResearchGraph) -> JSONDict:
         # Code-graph nodes live in code-graph.json; never count them in the

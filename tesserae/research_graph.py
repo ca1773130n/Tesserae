@@ -103,6 +103,13 @@ class ResearchNodeType(str, Enum):
     SESSION_HYPOTHESIS = "SessionHypothesis"
     SESSION_TAKEAWAY = "SessionTakeaway"
 
+    # Community-summary layer (post-compile pass). Each node summarizes
+    # a Louvain / label-propagation cluster of structurally connected
+    # nodes; outgoing ``summarizes`` edges point at members. Opt-in via
+    # ``TESSERAE_COMMUNITY_SUMMARIES=true`` (see
+    # ``tesserae.community_summaries``). Public — gets a vault page.
+    COMMUNITY_SUMMARY = "CommunitySummary"
+
 
 ALLOWED_NODE_TYPES: Set[str] = {item.value for item in ResearchNodeType}
 

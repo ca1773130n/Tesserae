@@ -113,6 +113,9 @@ _KIND_FOR_TYPE: Mapping[ResearchNodeType, str] = {
     ResearchNodeType.TREND: "topics",
     ResearchNodeType.OPEN_QUESTION: "questions",
     ResearchNodeType.SYNTHESIS: "syntheses",
+    # Community summaries — opt-in post-compile pass surfaces a vault
+    # page per detected cluster (Louvain/label-propagation).
+    ResearchNodeType.COMMUNITY_SUMMARY: "communities",
 }
 
 

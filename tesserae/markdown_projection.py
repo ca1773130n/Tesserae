@@ -90,6 +90,9 @@ _CALLOUT_BY_NODE_TYPE: Dict[ResearchNodeType, tuple[str, str]] = {
     ResearchNodeType.SESSION_TODO: ("todo", "TODO"),
     ResearchNodeType.SESSION_HYPOTHESIS: ("example", "Hypothesis"),
     ResearchNodeType.SESSION_TAKEAWAY: ("summary", "Takeaway"),
+    # Community summaries — distinctive callout so the cluster page is
+    # visually separable from the per-node syntheses around it.
+    ResearchNodeType.COMMUNITY_SUMMARY: ("abstract", "Community"),
 }
 
 
@@ -245,6 +248,12 @@ def directory_for_node(node: ResearchNode) -> str:
         if sid:
             return f"sessions/{slugify(str(sid))}"
         return "sessions"
+    # Community summaries — post-compile cluster pages with wikilinks to
+    # their members in the body. Bucketed under ``communities/`` to keep
+    # them discoverable in Obsidian as a sibling of ``papers/``,
+    # ``concepts/``, etc.
+    if node.type == ResearchNodeType.COMMUNITY_SUMMARY:
+        return "communities"
     return "concepts"
 
 
