@@ -44,9 +44,14 @@ from .wiki_store import WikiPage, WikiPageStore
 CODE_GRAPH_TYPES: FrozenSet[ResearchNodeType] = frozenset({
     ResearchNodeType.CODE_PROJECT,
     ResearchNodeType.SOURCE_FILE,
+    # Feature A / impl-code-graph (`tesserae project ingest-code`): new
+    # CodeFile/CodeMethod variants live alongside the older SourceFile/
+    # CodeFunction nodes. Both ontology slices are private code-graph.
+    ResearchNodeType.CODE_FILE,
     ResearchNodeType.CODE_MODULE,
     ResearchNodeType.CODE_CLASS,
     ResearchNodeType.CODE_FUNCTION,
+    ResearchNodeType.CODE_METHOD,
     ResearchNodeType.DEPENDENCY,
 })
 

@@ -41,9 +41,17 @@ class ResearchNodeType(str, Enum):
     PERSON = "Person"
     CODE_PROJECT = "CodeProject"
     SOURCE_FILE = "SourceFile"
+    # Code-graph ingest (`tesserae project ingest-code`): mints a typed
+    # symbol graph from Python source via the stdlib `ast` module. See
+    # tesserae/code_graph_extractor.py for the producer. CODE_FILE is the
+    # path-level node, CODE_MODULE is its importable dotted name, and
+    # CODE_METHOD is a function declared inside a class (CODE_FUNCTION
+    # remains the module-level / standalone function variant).
+    CODE_FILE = "CodeFile"
     CODE_MODULE = "CodeModule"
     CODE_CLASS = "CodeClass"
     CODE_FUNCTION = "CodeFunction"
+    CODE_METHOD = "CodeMethod"
     DEPENDENCY = "Dependency"
 
     # Concept layer
@@ -201,6 +209,13 @@ ALLOWED_EDGE_TYPES: Set[str] = {
     "discussed_in",
     "references",
     "supersedes",
+    # Code-graph ingest edges (see CODE_FILE/CODE_METHOD docstring above).
+    # ``inherits_from`` links a CodeClass to a base CodeClass (or DEPENDENCY
+    # when the base is imported but not locally defined). ``declared_in``
+    # points a CodeClass/CodeFunction/CodeMethod at its CodeFile, the
+    # path-anchored counterpart to ``defines``/``contains``.
+    "inherits_from",
+    "declared_in",
 }
 
 
