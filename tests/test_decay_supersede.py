@@ -273,6 +273,127 @@ def test_fresh_insights_excludes_superseded(tmp_path: Path, three_insights):
     assert scores == sorted(scores, reverse=True)
 
 
+def test_structural_decisions_inherit_session_timestamps(now: datetime):
+    """Structural SessionDecisions must NOT score as freshly minted.
+
+    Regression for codex P2 on PR #6: the structural extractor used to
+    leave ``first_seen_at`` / ``last_accessed_at`` unset, so
+    ``compute_decay_score`` fell back to 1.0 and old decisions from
+    30-day-old sessions crowded out fresh LLM-extracted findings.
+    """
+    from tesserae.harness_sessions import HarnessSession
+    from tesserae.session_graph_path_index import DocPathIndex
+    from tesserae.session_graph_structural import extract_structural
+
+    started = (now - timedelta(days=30)).isoformat()
+    project_root = "/tmp/decay-fixture-project"
+    session = HarnessSession(
+        id="sess-old",
+        harness="claude",
+        agent_label="claude",
+        slug="sess-old",
+        project_name="decay-fixture",
+        project_root=project_root,
+        started_at=started,
+        ended_at=started,
+        title="old session",
+        decisions=("Adopt the 14-day half-life",),
+    )
+
+    graph = extract_structural(
+        sessions=[session],
+        path_index=DocPathIndex(project_root=Path(project_root)),
+        project_root=project_root,
+    )
+
+    decisions = [
+        n for n in graph.nodes if n.type == ResearchNodeType.SESSION_DECISION
+    ]
+    assert len(decisions) == 1
+    meta = decisions[0].metadata or {}
+    assert meta.get("first_seen_at") == started
+    assert meta.get("last_accessed_at") == started
+
+    score = compute_decay_score(decisions[0], now)
+    # 30 days at a 14-day half-life ≈ 0.226 — explicitly NOT 1.0.
+    assert score < 0.5
+    assert score > 0.1
+
+
+def test_fresh_insights_ranks_structural_decision_by_age(
+    tmp_path: Path, now: datetime
+):
+    """End-to-end: fresh insight > 30-day-old structural decision > stale insight.
+
+    Goes through ``extract_structural`` to verify the timestamp-stamping
+    fix flows into the MCP ``fresh_insights`` ranking.
+    """
+    from tesserae.harness_sessions import HarnessSession
+    from tesserae.mcp_server import LLMWikiMCPServer
+    from tesserae.session_graph_path_index import DocPathIndex
+    from tesserae.session_graph_structural import extract_structural
+
+    started = (now - timedelta(days=30)).isoformat()
+    project_root = "/tmp/decay-fresh-ranking"
+    session = HarnessSession(
+        id="sess-structural",
+        harness="claude",
+        agent_label="claude",
+        slug="sess-structural",
+        project_name="decay-fresh",
+        project_root=project_root,
+        started_at=started,
+        ended_at=started,
+        title="structural session",
+        decisions=("Use PID+random tmp suffix for atomic writes",),
+    )
+
+    structural_graph = extract_structural(
+        sessions=[session],
+        path_index=DocPathIndex(project_root=Path(project_root)),
+        project_root=project_root,
+    )
+
+    fresh_insight = _insight(
+        id="fresh-llm",
+        body="Wrap session-graph cache writes in flock",
+        first_seen_at=now.isoformat(),
+    )
+    stale_insight = _insight(
+        id="stale-llm",
+        body="Old guidance about manifest writes",
+        first_seen_at=(now - timedelta(days=60)).isoformat(),
+    )
+
+    nodes = list(structural_graph.nodes) + [fresh_insight, stale_insight]
+    graph = ResearchGraph(nodes=nodes, edges=list(structural_graph.edges))
+
+    graph_path = tmp_path / "graph.json"
+    graph_path.write_text(graph.to_json(), encoding="utf-8")
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    payload = server.call_tool("fresh_insights", {"limit": 3})
+    findings = payload["findings"]
+    bodies = [f["body"] for f in findings]
+    scores = [f["decay_score"] for f in findings]
+
+    # Ranking: fresh insight first, structural decision middle, stale last.
+    assert bodies[0] == fresh_insight.name
+    assert bodies[1] == "Use PID+random tmp suffix for atomic writes"
+    assert bodies[2] == stale_insight.name
+
+    # The structural decision must NOT be ranked as 1.0/fresh.
+    structural_score = next(
+        f["decay_score"] for f in findings
+        if f["kind"] == "SessionDecision"
+    )
+    assert structural_score < 0.5
+    assert structural_score > 0.1
+
+    # Sanity: scores strictly descending.
+    assert scores == sorted(scores, reverse=True)
+
+
 def test_fresh_insights_kind_filter(tmp_path: Path, three_insights):
     from tesserae.mcp_server import LLMWikiMCPServer
 
