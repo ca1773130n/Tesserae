@@ -92,6 +92,14 @@ def extract_structural(
 
         # Structural SessionDecisions from the field
         # ``discover_harness_sessions`` already populates.
+        #
+        # Stamp memory-decay timestamps from the parent Session so these
+        # nodes age correctly under ``tesserae.memory.decay``. Without
+        # this, structural decisions from year-old sessions would score
+        # 1.0 (treated as freshly minted) and crowd genuinely fresh
+        # findings out of ``fresh_insights``. Mirrors the LLM extractor
+        # in ``session_graph.py``.
+        session_anchor_ts = _session_anchor_timestamp(session)
         for decision_text in session.decisions or []:
             text = (decision_text or "").strip()
             if not text:
@@ -99,14 +107,19 @@ def extract_structural(
             decision_id_seed = (
                 f"session:{session.id}:decision:{_short_hash(text)}"
             )
+            decision_metadata: dict = {
+                "session_id": session.id,
+                "extractor": "session-structural",
+            }
+            if session_anchor_ts:
+                decision_metadata["first_seen_at"] = session_anchor_ts
+                decision_metadata["last_accessed_at"] = session_anchor_ts
+                decision_metadata["access_count"] = 0
             builder.add_node(
                 name=text,
                 node_type=ResearchNodeType.SESSION_DECISION,
                 id_seed=decision_id_seed,
-                metadata={
-                    "session_id": session.id,
-                    "extractor": "session-structural",
-                },
+                metadata=decision_metadata,
             )
             decision_node = ResearchNode(
                 id=stable_id(
@@ -122,6 +135,21 @@ def extract_structural(
 
 def _short_hash(text: str) -> str:
     return hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+
+
+def _session_anchor_timestamp(session: HarnessSession) -> str | None:
+    """Pick the best timestamp to anchor decay for a session's children.
+
+    Prefers ``started_at`` (when the session began producing the
+    decisions); falls back to ``ended_at``. Returns ``None`` only when
+    both are missing — in which case the caller omits decay metadata
+    rather than minting a misleading "now" anchor for a historical
+    session.
+    """
+    for candidate in (session.started_at, session.ended_at):
+        if candidate and str(candidate).strip():
+            return str(candidate)
+    return None
 
 
 def _session_display_name(session: HarnessSession) -> str:

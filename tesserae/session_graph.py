@@ -21,6 +21,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
@@ -248,11 +249,26 @@ class SessionGraphExtractor:
             finding_id_seed = (
                 f"session:{session_id_str}:{f.kind}:{_short_hash(f.body)}"
             )
+            # Memory metadata (A-MEM / MemoryBank style) — drives
+            # tesserae.memory.decay.compute_decay_score. Initial values
+            # treat the finding as newly minted; future surfaces will
+            # bump access_count on read.
+            now_iso = datetime.now(timezone.utc).isoformat()
+            session_started_at = str(
+                (session_node.metadata or {}).get("started_at") or now_iso
+            )
             finding_metadata: Dict[str, object] = {
                 "session_id": session_id_str,
                 "extractor": "session-llm",
                 "turn_ids": list(f.turn_ids),
                 "content_hash": _short_hash(f.body),
+                # Anchor the decay clock at the session's start_time so
+                # importing a year-old session backdates its findings
+                # correctly. Falls back to "now" when start_time is
+                # missing.
+                "first_seen_at": session_started_at,
+                "last_accessed_at": session_started_at,
+                "access_count": 0,
             }
             if self.model:
                 finding_metadata["llm_model"] = self.model

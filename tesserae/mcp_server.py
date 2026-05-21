@@ -777,6 +777,42 @@ class LLMWikiMCPServer:
                     "additionalProperties": False,
                 },
             },
+            # A-MEM / MemoryBank-inspired freshness ranking. Returns
+            # session findings ordered by ``compute_decay_score`` so the
+            # caller can ask "what's still hot in this project's memory?"
+            # without scanning the full graph. Skips findings that have
+            # been superseded by a newer near-duplicate.
+            {
+                "name": "fresh_insights",
+                "description": (
+                    "Return session findings ranked by Ebbinghaus-style "
+                    "decay score (newest + most-accessed first). Filters "
+                    "out findings superseded by a newer near-duplicate. "
+                    "Optionally restrict to a single finding kind."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
+                        "limit": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 200,
+                            "description": "Maximum findings to return (default 10).",
+                        },
+                        "kind": {
+                            "type": "string",
+                            "enum": [
+                                "insight", "decision", "question",
+                                "todo", "hypothesis", "takeaway",
+                            ],
+                            "description": "Restrict to one finding kind.",
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+            },
         ]
 
     # ------------------------------------------------------------------ Resources
@@ -1263,6 +1299,13 @@ class LLMWikiMCPServer:
                 min_size=int(args.get("min_size") or 3),
                 limit=int(args.get("limit") or 20),
             )
+        if name == "fresh_insights":
+            graph = self._load_requested_graph(args)
+            return self._mcp_fresh_insights(
+                graph,
+                limit=int(args.get("limit") or 10),
+                kind=(str(args.get("kind")).strip() if args.get("kind") else None),
+            )
         raise ValueError(f"Unknown Tesserae MCP tool: {name}")
 
     def _mcp_graph_ppr(
@@ -1462,6 +1505,72 @@ class LLMWikiMCPServer:
         items.sort(key=lambda d: (-int(d["member_count"]), d["community_id"]))
         items = items[: max(1, int(limit))]
         return {"communities": items, "total": len(items)}
+
+    def _mcp_fresh_insights(
+        self,
+        graph: ResearchGraph,
+        *,
+        limit: int = 10,
+        kind: Optional[str] = None,
+    ) -> JSONDict:
+        """Top session findings by decay_score, excluding superseded ones.
+
+        ``kind`` is one of the short lowercase aliases used by other
+        session-graph tools (``insight``, ``decision``, ...). The Node
+        type filter normalises that to the matching ``Session<Kind>``
+        enum value.
+        """
+        from datetime import datetime, timezone
+
+        from .memory.decay import compute_decay_score
+
+        kind_filter: Optional[str] = None
+        if kind:
+            kind_filter = self._KIND_TO_TYPE.get(kind.lower())
+            if kind_filter is None:
+                raise ValueError(f"fresh_insights: unknown kind {kind!r}")
+
+        # Any node with an OUTGOING `supersedes` edge is the WINNER —
+        # keep it. Filter out the LOSER: any node that is the target of
+        # such an edge (i.e. has been superseded). This matches the
+        # canonical orientation chosen by tesserae.memory.supersede.
+        superseded_ids: set = {
+            edge.target for edge in graph.edges if edge.type == "supersedes"
+        }
+
+        now = datetime.now(timezone.utc)
+        scored: List[Tuple[float, ResearchNode]] = []
+        for node in graph.nodes:
+            type_name = node.type.value
+            if type_name not in self._SESSION_FINDING_TYPES:
+                continue
+            if kind_filter is not None and type_name != kind_filter:
+                continue
+            if node.id in superseded_ids:
+                continue
+            score = compute_decay_score(node, now)
+            scored.append((score, node))
+
+        # Highest score first; ties broken by node id for determinism.
+        scored.sort(key=lambda t: (-t[0], t[1].id))
+
+        capped = max(1, min(int(limit), 200))
+        out: List[JSONDict] = []
+        for score, node in scored[:capped]:
+            meta = node.metadata or {}
+            out.append(
+                {
+                    "node_id": node.id,
+                    "kind": node.type.value,
+                    "body": node.name,
+                    "session_id": meta.get("session_id"),
+                    "first_seen_at": meta.get("first_seen_at"),
+                    "last_accessed_at": meta.get("last_accessed_at"),
+                    "access_count": meta.get("access_count") or 0,
+                    "decay_score": round(score, 4),
+                }
+            )
+        return {"findings": out, "total": len(scored)}
 
     def graph_summary(self, graph: ResearchGraph) -> JSONDict:
         # Code-graph nodes live in code-graph.json; never count them in the
