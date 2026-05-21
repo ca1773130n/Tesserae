@@ -865,6 +865,31 @@ def project_main(argv: List[str] | None = None) -> int:
     ingest_parser.add_argument("--trends", action="store_true", help="Add corpus-level Trend nodes")
     ingest_parser.add_argument("--min-trend-sources", type=int, default=2, help="Minimum sources needed for Trend nodes")
 
+    ingest_code_parser = subparsers.add_parser(
+        "ingest-code",
+        help="Mint a typed code graph from Python source via the stdlib ast module",
+    )
+    ingest_code_parser.add_argument(
+        "paths",
+        nargs="*",
+        help="Project-relative or absolute paths to walk; defaults to the project root",
+    )
+    ingest_code_parser.add_argument(
+        "--project",
+        default=".",
+        help="Project root directory; defaults to current working directory",
+    )
+    ingest_code_parser.add_argument(
+        "--output",
+        help="Override output path; defaults to <project>/.tesserae/code-graph.json",
+    )
+    ingest_code_parser.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        help="Additional directory basename to skip (repeatable). Adds to the built-in exclude set",
+    )
+
     compile_parser = subparsers.add_parser("compile", help="Compile configured project sources into all .tesserae artifacts")
     compile_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     compile_parser.add_argument("--source-kind", help="Override configured source kind")
@@ -1193,6 +1218,24 @@ def project_main(argv: List[str] | None = None) -> int:
             f"nodes={result['node_count']} edges={result['edge_count']}"
         )
         print(f"Graph: {result['graph_path']}")
+        return 0
+    if args.command == "ingest-code":
+        # Defer the import so the rest of the CLI does not pay the cost
+        # of pulling in ast / pathlib walkers when they're not needed.
+        from .code_graph_extractor import CodeGraphExtractor, DEFAULT_EXCLUDES, write_code_graph
+
+        project_root = Path(args.project).resolve()
+        excludes = set(DEFAULT_EXCLUDES) | set(args.exclude or [])
+        extractor = CodeGraphExtractor(project_root, excludes=excludes)
+        result = extractor.extract(args.paths or None)
+        output = Path(args.output) if args.output else (project_root / ".tesserae" / "code-graph.json")
+        write_code_graph(result.graph, output)
+        print(
+            "Ingested code graph: "
+            f"processed={result.processed_files} skipped_dirs={result.skipped_dirs} "
+            f"nodes={result.nodes} edges={result.edges}"
+        )
+        print(f"Graph: {output}")
         return 0
     if args.command == "compile":
         wiki = ProjectWiki.load(args.project)

@@ -41,9 +41,17 @@ class ResearchNodeType(str, Enum):
     PERSON = "Person"
     CODE_PROJECT = "CodeProject"
     SOURCE_FILE = "SourceFile"
+    # Code-graph ingest (`tesserae project ingest-code`): mints a typed
+    # symbol graph from Python source via the stdlib `ast` module. See
+    # tesserae/code_graph_extractor.py for the producer. CODE_FILE is the
+    # path-level node, CODE_MODULE is its importable dotted name, and
+    # CODE_METHOD is a function declared inside a class (CODE_FUNCTION
+    # remains the module-level / standalone function variant).
+    CODE_FILE = "CodeFile"
     CODE_MODULE = "CodeModule"
     CODE_CLASS = "CodeClass"
     CODE_FUNCTION = "CodeFunction"
+    CODE_METHOD = "CodeMethod"
     DEPENDENCY = "Dependency"
 
     # Concept layer
@@ -110,6 +118,25 @@ SESSION_FINDING_TYPES: Set[ResearchNodeType] = {
     ResearchNodeType.SESSION_TODO,
     ResearchNodeType.SESSION_HYPOTHESIS,
     ResearchNodeType.SESSION_TAKEAWAY,
+}
+
+# Code-graph symbol types. The aggressive same-type dedup pass keys on
+# the casefolded, punctuation-stripped display name — which is wrong
+# for code symbols: a project routinely has two modules each defining
+# ``main()`` or ``Config``, and collapsing them by display name would
+# fuse genuinely distinct symbols (and rewrite their edges onto a
+# single winner) even though :mod:`tesserae.code_graph_extractor`
+# already mints module-qualified ``id_seed``s that keep them as
+# separate nodes. The extractor preserves a short, human-readable
+# display name (``helper`` rather than ``demo_pkg.greet.helper``) for
+# vault / UI ergonomics, so this set carries the "do not collapse by
+# display name" invariant on the graph-builder side instead.
+CODE_SYMBOL_TYPES: Set[ResearchNodeType] = {
+    ResearchNodeType.CODE_FILE,
+    ResearchNodeType.CODE_MODULE,
+    ResearchNodeType.CODE_CLASS,
+    ResearchNodeType.CODE_FUNCTION,
+    ResearchNodeType.CODE_METHOD,
 }
 
 
@@ -201,6 +228,13 @@ ALLOWED_EDGE_TYPES: Set[str] = {
     "discussed_in",
     "references",
     "supersedes",
+    # Code-graph ingest edges (see CODE_FILE/CODE_METHOD docstring above).
+    # ``inherits_from`` links a CodeClass to a base CodeClass (or DEPENDENCY
+    # when the base is imported but not locally defined). ``declared_in``
+    # points a CodeClass/CodeFunction/CodeMethod at its CodeFile, the
+    # path-anchored counterpart to ``defines``/``contains``.
+    "inherits_from",
+    "declared_in",
 }
 
 
@@ -526,6 +560,17 @@ def _merge_same_type_aliased_duplicates(
         # session produced each one. The session-graph plan (Phase 1)
         # codifies this invariant.
         if node.type in SESSION_FINDING_TYPES:
+            continue
+        # Code-graph symbols (CodeFile/CodeModule/CodeClass/CodeFunction/
+        # CodeMethod) are likewise NOT collapsed by aggressive same-name
+        # dedup. Two modules each defining ``def main()`` or ``class
+        # Config`` are legitimately distinct nodes — the
+        # :mod:`tesserae.code_graph_extractor` already disambiguates
+        # them via module-qualified ``id_seed``s; merging them here
+        # would silently re-fuse the very symbols the extractor went to
+        # the trouble of separating, and rewrite both files' edges onto
+        # a single survivor.
+        if node.type in CODE_SYMBOL_TYPES:
             continue
         key = _aggressive_dedup_key(node.name or "")
         if not key:
