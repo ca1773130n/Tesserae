@@ -170,8 +170,12 @@ def personalized_pagerank(
         if delta < tol:
             break
 
+    # Filter out non-positive scores so disconnected components don't
+    # pollute results when the seed's component is smaller than ``top_k``.
+    # A score of 0.0 means PPR mass never reached that node — it isn't a
+    # "relevant" result, just filler that would happen to fit in the slice.
     ranked = sorted(
-        ((node_ids[i], rank[i]) for i in range(n)),
+        ((node_ids[i], rank[i]) for i in range(n) if rank[i] > 0.0),
         key=lambda item: item[1],
         reverse=True,
     )

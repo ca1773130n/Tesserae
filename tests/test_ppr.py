@@ -67,10 +67,14 @@ def test_connected_nodes_outrank_disconnected_paper() -> None:
     graph = _make_graph()
     ranked = personalized_pagerank(graph, seed_ids=["insight_a"], top_k=10)
     by_id = {node_id: score for node_id, score in ranked}
-    # Every reachable node should beat the disconnected Paper.
+    # The disconnected ``paper`` node must not appear at all — PPR mass
+    # never reached it. (See ``test_top_k_excludes_unreachable_zero_score_nodes``
+    # for the explicit regression on this behavior.)
+    assert "paper" not in by_id, f"disconnected paper leaked into results: {by_id}"
+    # Every reachable node should have positive score.
     for connected in ("insight_a", "session", "decision", "insight_b"):
-        assert by_id[connected] > by_id["paper"], (
-            f"{connected} did not outrank disconnected paper: {by_id}"
+        assert by_id.get(connected, 0.0) > 0.0, (
+            f"{connected} missing or zero in results: {by_id}"
         )
 
 
@@ -101,6 +105,27 @@ def test_top_k_truncates_results() -> None:
     graph = _make_graph()
     ranked = personalized_pagerank(graph, seed_ids=["insight_a"], top_k=2)
     assert len(ranked) == 2
+
+
+def test_top_k_excludes_unreachable_zero_score_nodes() -> None:
+    """Regression for codex P2: when ``top_k`` exceeds the seed's connected
+    component, the disconnected ``paper`` node would be returned with a
+    score of 0.0. PPR must only return nodes that actually received mass.
+    """
+    graph = _make_graph()
+    # top_k (10) > seed-component size (4: insight_a, session, insight_b,
+    # decision); the orphan ``paper`` is unreachable and must be excluded.
+    ranked = personalized_pagerank(graph, seed_ids=["insight_a"], top_k=10)
+    node_ids_returned = {node_id for node_id, _score in ranked}
+    assert "paper" not in node_ids_returned, (
+        f"unreachable disconnected node leaked into results: {ranked}"
+    )
+    assert all(score > 0.0 for _node_id, score in ranked), (
+        f"zero-score node returned: {ranked}"
+    )
+    # Reachable component size is 4; we must return exactly those 4 even
+    # though ``top_k`` was 10.
+    assert len(ranked) == 4
 
 
 # -- MCP tool wiring ---------------------------------------------------------
@@ -151,3 +176,66 @@ def test_graph_ppr_mcp_call_accepts_list_seeds(tmp_path) -> None:
     )
     assert sorted(payload["seed_ids"]) == ["decision", "insight_a"]
     assert len(payload["results"]) == 3
+
+
+def test_graph_ppr_mcp_schema_excludes_zero_alpha() -> None:
+    """Regression for codex P3: schema must declare ``alpha > 0`` so MCP
+    clients can't pass ``alpha: 0`` past the contract."""
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    tools = LLMWikiMCPServer().list_tools()
+    ppr_tool = next(tool for tool in tools if tool["name"] == "graph_ppr")
+    alpha_schema = ppr_tool["inputSchema"]["properties"]["alpha"]
+    assert alpha_schema.get("exclusiveMinimum") == 0.0, (
+        f"alpha schema must use exclusiveMinimum=0 (not inclusive minimum=0): "
+        f"{alpha_schema}"
+    )
+    # And inclusive ``minimum: 0`` must be gone so the contract is unambiguous.
+    assert "minimum" not in alpha_schema or alpha_schema["minimum"] > 0
+
+
+def test_graph_ppr_mcp_call_preserves_explicit_alpha(tmp_path) -> None:
+    """Regression for codex P3: an explicit ``alpha=0.05`` must not be
+    silently swapped for the 0.15 default by ``alpha or 0.15``."""
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    graph_path = _write_graph_json(tmp_path, _make_graph())
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+    payload_low = server.call_tool(
+        "graph_ppr",
+        {"seed_node_id": "insight_a", "top_k": 5, "alpha": 0.05},
+    )
+    payload_default = server.call_tool(
+        "graph_ppr",
+        {"seed_node_id": "insight_a", "top_k": 5},
+    )
+    # With a much smaller teleport probability the walk wanders further from
+    # the seed, so the seed's own score must be strictly lower than it is
+    # under the default alpha=0.15. If alpha were silently overridden the
+    # two payloads would be identical.
+    seed_low = next(
+        item["score"] for item in payload_low["results"]
+        if item["node_id"] == "insight_a"
+    )
+    seed_default = next(
+        item["score"] for item in payload_default["results"]
+        if item["node_id"] == "insight_a"
+    )
+    assert seed_low < seed_default, (
+        f"explicit alpha=0.05 appears to have been overridden: "
+        f"seed_low={seed_low}, seed_default={seed_default}"
+    )
+
+
+def test_graph_ppr_mcp_call_rejects_zero_alpha(tmp_path) -> None:
+    """Regression for codex P3: ``alpha=0`` must be rejected end-to-end,
+    not silently coerced to the default."""
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    graph_path = _write_graph_json(tmp_path, _make_graph())
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+    with pytest.raises(ValueError, match="alpha"):
+        server.call_tool(
+            "graph_ppr",
+            {"seed_node_id": "insight_a", "top_k": 5, "alpha": 0},
+        )

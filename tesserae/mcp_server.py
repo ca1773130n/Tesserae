@@ -706,10 +706,10 @@ class LLMWikiMCPServer:
                         },
                         "alpha": {
                             "type": "number",
-                            "minimum": 0.0,
+                            "exclusiveMinimum": 0.0,
                             "maximum": 1.0,
                             "default": 0.15,
-                            "description": "Teleport probability (default 0.15 — classic PageRank).",
+                            "description": "Teleport probability in (0, 1] (default 0.15 — classic PageRank).",
                         },
                         "directed": {
                             "type": "boolean",
@@ -1185,11 +1185,17 @@ class LLMWikiMCPServer:
             seed_ids = _coerce_str_list(seed) if not isinstance(seed, str) else [seed]
             graph = self._load_requested_graph(args)
             edge_weights = args.get("edge_type_weights") or None
+            # Preserve an explicit alpha (even a tiny one like 0.05) rather
+            # than collapsing it via ``or 0.15``. ``alpha=0`` is rejected
+            # downstream by ``personalized_pagerank`` and by the schema's
+            # ``exclusiveMinimum: 0``.
+            alpha_arg = args.get("alpha")
+            alpha = 0.15 if alpha_arg is None else float(alpha_arg)
             return self._mcp_graph_ppr(
                 graph,
                 seed_ids=seed_ids,
                 top_k=int(args.get("top_k") or 20),
-                alpha=float(args.get("alpha") or 0.15),
+                alpha=alpha,
                 directed=bool(args.get("directed") or False),
                 edge_type_weights=edge_weights,
             )
