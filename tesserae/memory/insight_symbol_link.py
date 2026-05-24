@@ -60,13 +60,51 @@ DISCUSSES_EDGE = "discusses"
 """Edge kind minted by this pass. Listed in :data:`ALLOWED_EDGE_TYPES`."""
 
 
-# CodeFunction / CodeClass / CodeMethod are the symbol granularities we
-# link findings to. CodeFile and CodeModule are intentionally excluded:
-# bare filenames and dotted module paths show up in finding text far
-# more often as "this happened in X" framing than as a discussion of
-# the file/module as a thing; linking them would dominate the signal.
+# Symbol granularities we link findings to.
+#
+# Included: CodeFunction / CodeClass / CodeMethod plus the broader
+# CodeGraph-adapter additions (CodeInterface, CodeTrait, CodeStruct,
+# CodeEnum, CodeEnumMember, CodeTypeAlias, CodeVariable, CodeConstant,
+# CodeRoute, CodeComponent, CodeField, CodeNamespace, CodeSymbol).
+#
+# Excluded:
+#   * CodeFile / CodeModule — bare filenames and dotted module paths
+#     appear in finding text as "this happened in X" framing far more
+#     than as discussions of the file/module itself; linking them would
+#     dominate signal.
+#   * CodeParameter — function-parameter names like ``request``,
+#     ``response``, ``data`` are dense noise and almost never the
+#     subject of a session insight.
 LINKABLE_CODE_SYMBOL_TYPES: frozenset = frozenset(
-    {"CodeFunction", "CodeClass", "CodeMethod"}
+    {
+        # original Python-AST extractor types
+        "CodeFunction",
+        "CodeClass",
+        "CodeMethod",
+        # CodeGraph-adapter additions
+        "CodeInterface",
+        "CodeTrait",
+        "CodeStruct",
+        "CodeEnum",
+        "CodeEnumMember",
+        "CodeTypeAlias",
+        "CodeVariable",
+        "CodeConstant",
+        "CodeRoute",
+        "CodeComponent",
+        "CodeField",
+        "CodeNamespace",
+        "CodeSymbol",  # generic fallback for any kind not mapped above
+    }
+)
+
+# Types whose `name` may be stored as a dotted qualified form
+# (``Owner.member``) and SHOULD ALSO be indexed under their bare
+# tail (``member``). CodeGraph stores methods, fields, and enum
+# members this way. Functions, classes, traits, etc. typically use
+# their bare name already.
+_DOTTED_TAIL_TYPES: frozenset = frozenset(
+    {"CodeMethod", "CodeField", "CodeEnumMember"}
 )
 
 
@@ -170,12 +208,11 @@ def build_symbol_index(
         if not name:
             continue
         index.setdefault(name, []).append(node)
-        # CodeMethod names are stored as ``Class.method`` (see
-        # ``CodeGraphExtractor._emit_class``). Also key the bare method
-        # name so a finding that just says ``\`foo\`\`` resolves to the
-        # method when no module-level ``foo`` exists. Doesn't shadow the
-        # qualified form — both keys live in the index.
-        if node_type == "CodeMethod" and "." in name:
+        # Some types are stored as dotted qualified forms (``Owner.member``).
+        # Also key the bare tail so a finding that just says ``\`member\`\``
+        # resolves to it when no other top-level ``member`` exists. Doesn't
+        # shadow the qualified form — both keys live in the index.
+        if node_type in _DOTTED_TAIL_TYPES and "." in name:
             bare = name.rsplit(".", 1)[-1]
             if bare and bare != name:
                 index.setdefault(bare, []).append(node)
