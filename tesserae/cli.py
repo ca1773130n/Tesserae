@@ -977,6 +977,19 @@ def project_main(argv: List[str] | None = None) -> int:
     schema_drift_parser.add_argument("--min-cluster-size", type=int, default=5, help="Drop clusters smaller than this size (default: 5)")
     schema_drift_parser.add_argument("--jaccard-threshold", type=float, default=0.34, help="Jaccard similarity threshold for clustering (default: 0.34)")
 
+    research_parser = subparsers.add_parser(
+        "research",
+        help="Agentic research loop (dzhng-style): plan → search → reflect → synthesize. Mints OpenQuestion / SessionHypothesis nodes against the compiled graph.",
+    )
+    research_parser.add_argument("query", help="Research query to investigate")
+    research_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    research_parser.add_argument("--breadth", type=int, default=3, help="Sub-questions per level (default: 3)")
+    research_parser.add_argument("--depth", type=int, default=2, help="Maximum follow-up depth beyond the root (default: 2)")
+    research_parser.add_argument("--max-iters", type=int, default=6, help="Hard cap on (search + reflect) iterations (default: 6)")
+    research_parser.add_argument("--top-k", type=int, default=5, help="Top-K graph evidence nodes per sub-question (default: 5)")
+    research_parser.add_argument("--output", help="Report output path; defaults to .tesserae/research/<slug>.md")
+    research_parser.add_argument("--no-web", action="store_true", help="Disable web search even if a backend is configured (v1 default — web stays off)")
+
     ua_refresh_parser = subparsers.add_parser("refresh-understand-anything", help="Run Tesserae's managed Understand Anything refresh")
     ua_refresh_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     ua_refresh_parser.add_argument("--platform", default="codex", help="Agent platform to use: codex, opencode, or claude")
@@ -1439,6 +1452,52 @@ def project_main(argv: List[str] | None = None) -> int:
             f"{len(reports)} type families analyzed; "
             f"{candidate_count} candidate subtypes proposed; "
             f"report at {report_path}"
+        )
+        return 0
+    if args.command == "research":
+        from .llm_json import build_default_json_client
+        from .mcp_server import LLMWikiMCPServer
+        from .research_mode import GraphSearchBackend, ResearchSession
+
+        wiki = ProjectWiki.load(args.project)
+        if not wiki.paths.graph.exists():
+            print("error: no compiled graph yet — run `project compile` first.", file=sys.stderr)
+            return 2
+        llm = build_default_json_client()
+        if llm is None:
+            print(
+                "error: no LLM backend configured (claude CLI or ANTHROPIC_API_KEY required).",
+                file=sys.stderr,
+            )
+            return 2
+        graph = _load_graph_file(wiki.paths.graph)
+        server = LLMWikiMCPServer(default_graph_path=wiki.paths.graph)
+        backend = GraphSearchBackend(server=server, graph=graph)
+        output_path = Path(args.output) if args.output else None
+        output_dir = output_path.parent if output_path else (wiki.root / "research")
+        # punt: web disabled by default in v1 — wiring a stdlib DuckDuckGo
+        # scraper is finicky to test deterministically and adds zero value
+        # without a real BeautifulSoup-style HTML parser. --no-web is a
+        # forward-compat knob for the day a WebFetcher backend ships.
+        session = ResearchSession(
+            query=args.query,
+            llm=llm,
+            search=backend,
+            output_dir=output_dir,
+            breadth=args.breadth,
+            depth=args.depth,
+            max_iters=args.max_iters,
+            top_k_evidence=args.top_k,
+            web=None,
+        )
+        report = session.run()
+        final_path = output_path or report.report_path
+        if output_path and output_path != report.report_path:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(report.report_text.rstrip() + "\n", encoding="utf-8")
+        print(
+            f"report={final_path} questions={report.questions} "
+            f"hypotheses={report.hypotheses} sources={report.sources} edges={report.edges}"
         )
         return 0
     if args.command == "refresh-understand-anything":
