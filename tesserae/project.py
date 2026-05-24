@@ -690,7 +690,7 @@ class ProjectWiki:
             graph,
             cache_dir=self.paths.community_summaries,
             json_client=json_client,
-            min_size=int(community_cfg.get("min_size") or 3),
+            min_size=int(community_cfg.get("min_size") or 5),
             max_communities=int(community_cfg.get("max_communities") or 50),
         )
         if not slice_graph.nodes:
