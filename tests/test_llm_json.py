@@ -312,6 +312,71 @@ def test_cli_not_logged_in_case_insensitive(
     assert any("claude /login" in r.getMessage() for r in caplog.records)
 
 
+def test_cli_not_logged_in_falls_through_to_next_config_dir(
+    monkeypatch, caplog, reset_login_warning
+):
+    """Codex PR #17 P2 fix — when one config_dir is logged out but a
+    later one is logged in, we should USE the logged-in one instead
+    of returning None on first failure.
+    """
+    call_log = []
+    valid_json = '{"ok": true}'
+
+    def fake_run(*args, **kwargs):
+        env = kwargs.get("env") or {}
+        config_dir = env.get("CLAUDE_CONFIG_DIR", "")
+        call_log.append(config_dir)
+        if "stale" in config_dir:
+            return _make_completed_process(
+                returncode=1, stderr="Not logged in · Please run /login\n"
+            )
+        return _make_completed_process(returncode=0, stdout=valid_json)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    client = ClaudeCLIJsonClient(
+        config_dirs=["/tmp/stale-config", "/tmp/fresh-config"]
+    )
+    with caplog.at_level("WARNING", logger="tesserae.llm_json"):
+        result = client.complete_json(
+            system="x", user="y", schema_name="z", max_retries=0,
+        )
+    assert result == {"ok": True}, (
+        f"expected fresh config to succeed; got {result!r}"
+    )
+    assert call_log == ["/tmp/stale-config", "/tmp/fresh-config"], (
+        f"expected fallback to fresh config_dir; call_log={call_log}"
+    )
+    # No login warning — overall result was success, not skip.
+    assert not any("claude /login" in r.getMessage() for r in caplog.records), (
+        "login hint must NOT fire when a later config_dir succeeded"
+    )
+
+
+def test_cli_not_logged_in_logs_only_when_all_dirs_fail(
+    monkeypatch, caplog, reset_login_warning
+):
+    """If EVERY config_dir reports not-logged-in → emit the hint once.
+    Mention the count of tried dirs so the user knows it wasn't a
+    single-profile glitch."""
+    fake_proc = _make_completed_process(
+        returncode=1, stderr="Not logged in\n"
+    )
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: fake_proc)
+    client = ClaudeCLIJsonClient(
+        config_dirs=["/tmp/c1", "/tmp/c2", "/tmp/c3"]
+    )
+    with caplog.at_level("WARNING", logger="tesserae.llm_json"):
+        assert client.complete_json(
+            system="x", user="y", schema_name="z", max_retries=0,
+        ) is None
+    hints = [r.getMessage() for r in caplog.records if "claude /login" in r.getMessage()]
+    assert len(hints) == 1, f"expected exactly one login hint; got {len(hints)}"
+    # The hint should mention that we tried all 3 dirs.
+    assert "3 config dirs" in hints[0], (
+        f"expected count of dirs in hint; got: {hints[0]}"
+    )
+
+
 def test_cli_genuine_error_still_logs_failure(
     monkeypatch, caplog, reset_login_warning
 ):
