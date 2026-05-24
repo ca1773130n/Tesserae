@@ -87,3 +87,39 @@ def test_claude_cli_research_extractor_uses_runner_and_validates_output():
     assert "Return ONLY one valid JSON object" in calls[0]["prompt"]
     assert "Entity" in calls[0]["prompt"] and "software" in calls[0]["prompt"]
     assert any(node.name == "Evidence-Grounded Claim Extraction" for node in graph.nodes)
+
+
+def test_run_claude_cli_pops_env_for_default_config_dir(monkeypatch):
+    """Codex PR #19 P2 fix — when config_dir is ~/.claude (the default),
+    `run_claude_cli` must NOT export CLAUDE_CONFIG_DIR (the CLI's quirk:
+    explicitly setting it to the default breaks auth lookup). Other
+    dirs continue to receive the explicit env.
+    """
+    import subprocess as _subprocess
+    from pathlib import Path
+    from tesserae import llm_extractor
+
+    seen_envs = []
+
+    class FakeCompleted:
+        returncode = 0
+        stdout = '{"nodes": [], "edges": []}'
+        stderr = ""
+
+    def fake_run(cmd, **kwargs):
+        seen_envs.append(dict(kwargs.get("env") or {}))
+        return FakeCompleted()
+
+    monkeypatch.setattr(_subprocess, "run", fake_run)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/should/be/popped")
+
+    # Default dir → env popped.
+    default = str(Path.home() / ".claude")
+    llm_extractor.run_claude_cli("prompt", default, "sonnet", 10)
+    assert "CLAUDE_CONFIG_DIR" not in seen_envs[-1], (
+        f"expected env popped for default dir; got {seen_envs[-1].get('CLAUDE_CONFIG_DIR')!r}"
+    )
+
+    # Non-default dir → env explicitly set.
+    llm_extractor.run_claude_cli("prompt", "/tmp/.claude-personal1", "sonnet", 10)
+    assert seen_envs[-1].get("CLAUDE_CONFIG_DIR") == "/tmp/.claude-personal1"

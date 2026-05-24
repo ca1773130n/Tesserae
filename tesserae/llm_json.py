@@ -450,20 +450,35 @@ class ClaudeCLIJsonClient:
 
 def _claude_cli_available() -> bool:
     """Return True when the ``claude`` binary is on PATH AND at least one
-    config dir looks credentialed (has ``settings.json`` or ``projects/``)."""
+    candidate config dir looks credentialed.
+
+    Candidate dirs mirror ClaudeCLIJsonClient.__init__ resolution:
+    CLAUDE_CONFIG_DIR if set, else every ``~/.claude*`` dir at $HOME,
+    falling back to ``~/.claude``. This way a user who only has
+    ``~/.claude-personal1`` (no ``~/.claude``) still gets the CLI
+    client built — pre-fix, the gate said unavailable and the caller
+    silently dropped to no-LLM mode.
+    """
     import os as _os
     import shutil as _shutil
     from pathlib import Path as _Path
 
     if not _shutil.which("claude"):
         return False
-    candidate = _os.environ.get("CLAUDE_CONFIG_DIR") or str(_Path.home() / ".claude")
-    cdir = _Path(candidate)
-    if not cdir.exists():
-        return False
+    env_dir = _os.environ.get("CLAUDE_CONFIG_DIR")
+    if env_dir:
+        candidates = [_Path(env_dir)]
+    else:
+        home = _Path.home()
+        discovered = sorted(
+            p for p in home.glob(".claude*")
+            if p.is_dir() and not p.name.endswith((".bak", ".old"))
+        )
+        candidates = discovered or [home / ".claude"]
+    markers = ("settings.json", "settings.local.json", "projects", "history.jsonl")
     return any(
-        (cdir / marker).exists()
-        for marker in ("settings.json", "settings.local.json", "projects", "history.jsonl")
+        cdir.exists() and any((cdir / m).exists() for m in markers)
+        for cdir in candidates
     )
 
 

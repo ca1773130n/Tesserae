@@ -429,6 +429,43 @@ def test_cli_env_beats_autodiscovery(monkeypatch, tmp_path):
     assert client.config_dirs == [str(fake_home / ".claude-personal1")]
 
 
+def test_claude_cli_available_uses_autodiscovery(monkeypatch, tmp_path):
+    """Codex PR #19 P2 fix — `_claude_cli_available` must use the same
+    autodiscovery as the constructor. Pre-fix: only checked the env or
+    ~/.claude, so a user with only ~/.claude-personal1 silently got
+    None from build_default_json_client.
+    """
+    import shutil as _shutil
+    from tesserae import llm_json
+
+    fake_home = tmp_path / "home"
+    profile = fake_home / ".claude-personal1"
+    profile.mkdir(parents=True)
+    # Marker file proving "logged in" looking.
+    (profile / "settings.json").write_text("{}", encoding="utf-8")
+    # No ~/.claude at all → pre-fix would have returned False.
+
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
+    monkeypatch.setattr(_shutil, "which", lambda name: "/fake/bin/claude")
+    assert llm_json._claude_cli_available() is True
+
+
+def test_claude_cli_available_returns_false_when_no_credentialed_dirs(
+    monkeypatch, tmp_path
+):
+    """Empty $HOME with no claude bin marker → False (no auth)."""
+    import shutil as _shutil
+    from tesserae import llm_json
+
+    fake_home = tmp_path / "home"
+    (fake_home / ".claude").mkdir(parents=True)  # exists but no markers
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
+    monkeypatch.setattr(_shutil, "which", lambda name: "/fake/bin/claude")
+    assert llm_json._claude_cli_available() is False
+
+
 def test_cli_autodiscovery_falls_back_when_no_dirs_exist(monkeypatch, tmp_path):
     """No ~/.claude* dirs at all → fall back to [~/.claude] so older
     single-config-dir setups still work (the fallback dir need not exist;

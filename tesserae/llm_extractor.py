@@ -290,7 +290,15 @@ Document:
 
 def run_claude_cli(prompt: str, config_dir: str, model: str, timeout: int) -> str:
     env = os.environ.copy()
-    env["CLAUDE_CONFIG_DIR"] = config_dir
+    # Same Claude CLI quirk workaround as ClaudeCLIJsonClient: setting
+    # CLAUDE_CONFIG_DIR explicitly to the canonical default ~/.claude
+    # breaks the CLI's auth-lookup chain. Pop the env in that case so
+    # the CLI's native discovery works.
+    default_claude_dir = str(Path.home() / ".claude")
+    if config_dir == default_claude_dir:
+        env.pop("CLAUDE_CONFIG_DIR", None)
+    else:
+        env["CLAUDE_CONFIG_DIR"] = config_dir
     cmd = ["claude", "-p", "--output-format", "text", "--max-turns", "1"]
     if model:
         cmd.extend(["--model", model])
