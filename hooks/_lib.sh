@@ -84,6 +84,12 @@ read_plugin_setting() {
     # an always-fresh code-graph.json without per-project setup. Set
     # ``sync_code_on_start: false`` in tesserae.local.md to disable.
     sync_code_on_start) default_value="true" ;;
+    # PostToolUse(Edit|Write|MultiEdit) re-runs ``tesserae project
+    # sync-code`` after every edit, debounced to once every 30s.
+    # Default on so the typed code-graph keeps tracking CodeGraph
+    # updates in near-real-time. Opt-out via
+    # ``sync_code_on_edit: false`` in tesserae.local.md.
+    sync_code_on_edit) default_value="true" ;;
     posttooluse_edit) default_value="false" ;;
     *) default_value="false" ;;
   esac
