@@ -354,6 +354,55 @@ def test_plan_falls_back_when_planner_returns_no_subqueries(tmp_path: Path):
     assert report.questions == 1
 
 
+def test_run_persists_slice_into_graph_path(tmp_path: Path):
+    """Codex PR #16 P2 fix — the minted Question/Hypothesis/SourceDoc
+    slice must be merged into the supplied graph.json so subsequent
+    compiles can recover the research thread."""
+    session, _llm, _search, _web = _make_run(tmp_path, depth=0)
+    graph_path = tmp_path / "graph.json"
+    # Pre-existing graph with one node so we can verify the merge is
+    # additive (didn't blow away prior content).
+    prior = ResearchGraph(
+        nodes=[
+            ResearchNode(
+                id="Paper:pre-existing",
+                name="pre-existing",
+                type=ResearchNodeType.PAPER,
+            ),
+        ],
+        edges=[],
+    )
+    graph_path.write_text(prior.to_json(indent=2) + "\n", encoding="utf-8")
+
+    session.graph_path = graph_path
+    report = session.run()
+    assert report.merged_into == graph_path
+
+    # Re-load graph_path — must contain BOTH the prior node AND the
+    # minted research nodes (Question + at least one Hypothesis).
+    merged_payload = json.loads(graph_path.read_text(encoding="utf-8"))
+    ids = {n["id"] for n in merged_payload["nodes"]}
+    assert "Paper:pre-existing" in ids, "merge clobbered prior content"
+    types = {n["type"] for n in merged_payload["nodes"]}
+    assert "OpenQuestion" in types or "Question" in types, (
+        f"expected research-minted Question node in merged graph; types={types}"
+    )
+    # references / derived_from edges from the slice should also be present.
+    edge_types = {e["type"] for e in merged_payload["edges"]}
+    assert "references" in edge_types or "derived_from" in edge_types, (
+        f"expected research-minted edges in merged graph; edge_types={edge_types}"
+    )
+
+
+def test_run_does_not_persist_when_graph_path_unset(tmp_path: Path):
+    """Default behaviour: report-only run leaves no graph.json side effect."""
+    session, _llm, _search, _web = _make_run(tmp_path, depth=0)
+    # graph_path not set → no merge.
+    report = session.run()
+    assert report.merged_into is None
+    assert not (tmp_path / "graph.json").exists()
+
+
 def test_graph_search_backend_uses_mcp_server_signature():
     """Smoke: GraphSearchBackend correctly unpacks the MCP server's response."""
 

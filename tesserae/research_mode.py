@@ -141,6 +141,9 @@ class ResearchReport:
     hypotheses: int
     sources: int
     edges: int
+    # Filled when ResearchSession.graph_path was supplied — the path the
+    # research slice was merged into. None means "report-only run".
+    merged_into: Optional[Path] = None
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +249,28 @@ def _slugify(text: str, limit: int = 48) -> str:
     return (slug[:limit] or "query").rstrip("-")
 
 
+def _merge_into_graph(graph_path: Path, slice_: ResearchGraph) -> Path:
+    """Fold the research slice into ``graph_path`` so MCP/compile see it.
+
+    Returns the path that was written (= ``graph_path``). Empty slice
+    is a no-op (still returns the path for reporting purposes).
+    Deferred import of ``load_graph_file`` / ``merge_graphs`` avoids
+    a research_mode → project → research_mode cycle.
+    """
+    if not slice_.nodes and not slice_.edges:
+        return graph_path
+    from .project import load_graph_file, merge_graphs
+
+    prior = (
+        load_graph_file(graph_path)
+        if graph_path.exists()
+        else ResearchGraph()
+    )
+    merged = merge_graphs([prior, slice_])
+    _atomic_write(graph_path, merged.to_json(indent=2) + "\n")
+    return graph_path
+
+
 # ---------------------------------------------------------------------------
 # The session
 # ---------------------------------------------------------------------------
@@ -264,6 +289,14 @@ class ResearchSession:
     max_iters: int = 6
     top_k_evidence: int = 5
     web: Optional[WebFetcher] = None
+    # When set, the minted graph slice (Question/Hypothesis/SourceDoc nodes
+    # + derived_from/references edges) is merged into this graph.json file
+    # so subsequent ``tesserae project compile``/MCP ``ask`` calls can
+    # surface the research thread. None → report-only, slice discarded
+    # (codex PR #16 P2 flagged this default as a bug; CLI now always
+    # supplies the project's live graph_path so the default doesn't bite
+    # production runs).
+    graph_path: Optional[Path] = None
 
     # Filled by run().
     subquestions: List[SubQuestion] = field(default_factory=list)
@@ -429,6 +462,21 @@ class ResearchSession:
         _atomic_write(report_path, report_text.rstrip() + "\n")
         graph = self.builder.build()
         edge_count = len(graph.edges)
+        # 5) persist — codex PR #16 P2 fix. Without this merge step the
+        # research thread is markdown-only: subsequent compiles/MCP
+        # searches can't recover any of the Question/Hypothesis/
+        # SourceDoc nodes the loop minted. Only runs when caller passed
+        # a graph_path (default behaviour is unchanged for callers that
+        # explicitly want report-only).
+        merged_into = None
+        if self.graph_path is not None:
+            try:
+                merged_into = _merge_into_graph(self.graph_path, graph)
+            except Exception as exc:  # noqa: BLE001 — never block report return
+                _LOG.warning(
+                    "research-mode: merge into %s failed: %s; report still written",
+                    self.graph_path, exc,
+                )
         return ResearchReport(
             report_path=report_path,
             report_text=report_text,
@@ -436,6 +484,7 @@ class ResearchSession:
             hypotheses=len(self.hypothesis_nodes),
             sources=len(self.source_nodes),
             edges=edge_count,
+            merged_into=merged_into,
         )
 
     # ------------------------------------------------------------------
