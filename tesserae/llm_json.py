@@ -40,6 +40,19 @@ logger = logging.getLogger(__name__)
 # calls this instead of importing the real Anthropic SDK.
 _CLIENT_FACTORY: Optional[Callable[..., Any]] = None
 
+# One-shot guard so that a Claude-CLI "Not logged in" failure only
+# emits a single user-facing warning per process. A compile typically
+# issues many ``complete_json`` calls; without this guard every one of
+# them would re-log the same "run `claude /login`" hint and drown the
+# SessionEnd hook output.
+_LOGGED_LOGIN_WARNING: bool = False
+
+
+def _reset_login_warning_for_tests() -> None:
+    """Reset the one-shot login warning flag. Test-only helper."""
+    global _LOGGED_LOGIN_WARNING
+    _LOGGED_LOGIN_WARNING = False
+
 
 def set_client_factory(factory: Optional[Callable[..., Any]]) -> None:
     """Inject a fake Anthropic client for tests."""
@@ -340,9 +353,26 @@ class ClaudeCLIJsonClient:
                         check=False,
                     )
                     if proc.returncode != 0:
+                        stderr_text = (proc.stderr or "").strip()
+                        stdout_text = (proc.stdout or "").strip()
+                        # Detect the canonical "Not logged in" message from
+                        # the Claude CLI. Substring + case-insensitive so
+                        # we're robust to minor phrasing drift (e.g.
+                        # "Not logged in · Please run /login").
+                        combined = f"{stderr_text}\n{stdout_text}".lower()
+                        if "not logged in" in combined:
+                            global _LOGGED_LOGIN_WARNING
+                            if not _LOGGED_LOGIN_WARNING:
+                                _LOGGED_LOGIN_WARNING = True
+                                logger.warning(
+                                    "[tesserae] LLM-backed extraction skipped: "
+                                    "Claude CLI not logged in. Run `claude /login` "
+                                    "to re-auth, then re-compile."
+                                )
+                            return None
                         raise RuntimeError(
                             f"claude exited {proc.returncode}: "
-                            f"{proc.stderr.strip() or proc.stdout.strip()}"
+                            f"{stderr_text or stdout_text}"
                         )
                     return parse_json_tolerant(proc.stdout)
                 except Exception as exc:  # noqa: BLE001

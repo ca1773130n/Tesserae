@@ -11,6 +11,7 @@ import pytest
 from tesserae import llm_json
 from tesserae.llm_json import (
     AnthropicLLMJsonClient,
+    ClaudeCLIJsonClient,
     build_default_json_client,
     parse_json_tolerant,
     set_client_factory,
@@ -233,6 +234,107 @@ def test_build_default_falls_back_to_api_key(monkeypatch):
     set_client_factory(None)
     client = build_default_json_client()
     assert isinstance(client, AnthropicLLMJsonClient)
+
+
+# ---------------------------------------------------------------------------
+# ClaudeCLIJsonClient "Not logged in" graceful degradation
+# ---------------------------------------------------------------------------
+
+
+def _make_completed_process(returncode: int, stderr: str = "", stdout: str = ""):
+    """Build a minimal CompletedProcess-like stand-in for subprocess.run."""
+    import subprocess as _subprocess
+
+    return _subprocess.CompletedProcess(
+        args=["claude"], returncode=returncode, stdout=stdout, stderr=stderr,
+    )
+
+
+@pytest.fixture
+def reset_login_warning():
+    """Reset the module-level one-shot login warning flag around each test."""
+    llm_json._reset_login_warning_for_tests()
+    yield
+    llm_json._reset_login_warning_for_tests()
+
+
+def test_cli_not_logged_in_returns_none(monkeypatch, caplog, reset_login_warning):
+    """A 'Not logged in' stderr → complete_json returns None, does NOT raise."""
+    fake_proc = _make_completed_process(
+        returncode=1, stderr="Not logged in · Please run /login\n"
+    )
+    monkeypatch.setattr(
+        "subprocess.run", lambda *a, **kw: fake_proc,
+    )
+    client = ClaudeCLIJsonClient(config_dirs=["/tmp/fake-claude-config"])
+    with caplog.at_level("WARNING", logger="tesserae.llm_json"):
+        result = client.complete_json(
+            system="x", user="y", schema_name="finding-v1",
+        )
+    assert result is None
+    # The fix hint must appear in the logs.
+    assert any("claude /login" in rec.getMessage() for rec in caplog.records), (
+        f"expected `claude /login` hint in logs, got: {[r.getMessage() for r in caplog.records]}"
+    )
+
+
+def test_cli_not_logged_in_logs_once_across_calls(
+    monkeypatch, caplog, reset_login_warning
+):
+    """Two consecutive 'Not logged in' calls log the hint exactly once."""
+    fake_proc = _make_completed_process(
+        returncode=1, stderr="Not logged in · Please run /login\n"
+    )
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: fake_proc)
+    client = ClaudeCLIJsonClient(config_dirs=["/tmp/fake-claude-config"])
+    with caplog.at_level("WARNING", logger="tesserae.llm_json"):
+        assert client.complete_json(system="x", user="y", schema_name="z") is None
+        assert client.complete_json(system="x", user="y", schema_name="z") is None
+    login_hint_count = sum(
+        1 for r in caplog.records if "claude /login" in r.getMessage()
+    )
+    assert login_hint_count == 1, (
+        f"expected exactly one `claude /login` warning across two calls, got {login_hint_count}"
+    )
+
+
+def test_cli_not_logged_in_case_insensitive(
+    monkeypatch, caplog, reset_login_warning
+):
+    """Detection is case-insensitive — robust to phrasing drift."""
+    fake_proc = _make_completed_process(
+        returncode=2, stderr="ERROR: NOT LOGGED IN. run /login first."
+    )
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: fake_proc)
+    client = ClaudeCLIJsonClient(config_dirs=["/tmp/fake-claude-config"])
+    with caplog.at_level("WARNING", logger="tesserae.llm_json"):
+        assert client.complete_json(system="x", user="y", schema_name="z") is None
+    assert any("claude /login" in r.getMessage() for r in caplog.records)
+
+
+def test_cli_genuine_error_still_logs_failure(
+    monkeypatch, caplog, reset_login_warning
+):
+    """A non-login error must NOT be silently swallowed — the existing
+    'ClaudeCLIJsonClient.complete_json failed' warning still fires, and
+    the login-specific hint does NOT appear."""
+    fake_proc = _make_completed_process(
+        returncode=1, stderr="rate limit exceeded; try again in 60s"
+    )
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: fake_proc)
+    client = ClaudeCLIJsonClient(config_dirs=["/tmp/fake-claude-config"])
+    with caplog.at_level("WARNING", logger="tesserae.llm_json"):
+        result = client.complete_json(
+            system="x", user="y", schema_name="z", max_retries=0,
+        )
+    assert result is None  # ClaudeCLIJsonClient already returns None on errors
+    messages = [r.getMessage() for r in caplog.records]
+    assert any("complete_json failed" in m for m in messages), (
+        f"expected the existing failure warning, got: {messages}"
+    )
+    assert not any("claude /login" in m for m in messages), (
+        "non-login errors must NOT emit the login hint"
+    )
 
 
 def test_build_default_returns_client_when_factory_set_without_credentials(monkeypatch):
