@@ -53,6 +53,23 @@ CODE_GRAPH_TYPES: FrozenSet[ResearchNodeType] = frozenset({
     ResearchNodeType.CODE_FUNCTION,
     ResearchNodeType.CODE_METHOD,
     ResearchNodeType.DEPENDENCY,
+    # Option-C / CodeGraph-adapter additions (`tesserae project sync-code`).
+    # Same private-layer treatment — these never appear in the public
+    # research graph or wiki site; they live in ``code-graph.json``.
+    ResearchNodeType.CODE_INTERFACE,
+    ResearchNodeType.CODE_TRAIT,
+    ResearchNodeType.CODE_STRUCT,
+    ResearchNodeType.CODE_ENUM,
+    ResearchNodeType.CODE_ENUM_MEMBER,
+    ResearchNodeType.CODE_TYPE_ALIAS,
+    ResearchNodeType.CODE_VARIABLE,
+    ResearchNodeType.CODE_CONSTANT,
+    ResearchNodeType.CODE_ROUTE,
+    ResearchNodeType.CODE_COMPONENT,
+    ResearchNodeType.CODE_FIELD,
+    ResearchNodeType.CODE_PARAMETER,
+    ResearchNodeType.CODE_NAMESPACE,
+    ResearchNodeType.CODE_SYMBOL,
 })
 
 

@@ -890,6 +890,33 @@ def project_main(argv: List[str] | None = None) -> int:
         help="Additional directory basename to skip (repeatable). Adds to the built-in exclude set",
     )
 
+    # Option-C / CodeGraph adapter. Separate subcommand (not a flag on
+    # ingest-code) because the producer is fundamentally different —
+    # we delegate extraction to colbymchenry/codegraph's 21-language
+    # tree-sitter pipeline and only translate its SQLite store here.
+    sync_code_parser = subparsers.add_parser(
+        "sync-code",
+        help="Translate a colbymchenry/codegraph SQLite store into .tesserae/code-graph.json",
+    )
+    sync_code_parser.add_argument(
+        "--project",
+        default=".",
+        help="Project root directory; defaults to current working directory",
+    )
+    sync_code_parser.add_argument(
+        "--db",
+        help="Path to the CodeGraph SQLite database; defaults to <project>/.codegraph/codegraph.db",
+    )
+    sync_code_parser.add_argument(
+        "--output",
+        help="Override output path; defaults to <project>/.tesserae/code-graph.json",
+    )
+    sync_code_parser.add_argument(
+        "--auto-sync",
+        action="store_true",
+        help="Run `codegraph sync <project>` first if the binary is on PATH; skip silently otherwise",
+    )
+
     compile_parser = subparsers.add_parser("compile", help="Compile configured project sources into all .tesserae artifacts")
     compile_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     compile_parser.add_argument("--source-kind", help="Override configured source kind")
@@ -1253,6 +1280,37 @@ def project_main(argv: List[str] | None = None) -> int:
             "Ingested code graph: "
             f"processed={result.processed_files} skipped_dirs={result.skipped_dirs} "
             f"nodes={result.nodes} edges={result.edges}"
+        )
+        print(f"Graph: {output}")
+        return 0
+    if args.command == "sync-code":
+        from .code_graph_adapter import (
+            CodeGraphAdapter,
+            _default_codegraph_db,
+            _run_codegraph_sync,
+            write_code_graph_from_codegraph,
+        )
+
+        project_root = Path(args.project).resolve()
+        db_path = Path(args.db).resolve() if args.db else _default_codegraph_db(project_root)
+        if args.auto_sync:
+            _run_codegraph_sync(project_root)
+        adapter = CodeGraphAdapter(db_path, project_root=project_root)
+        if not adapter.available():
+            print(
+                f"CodeGraph database not found at {db_path}.\n"
+                "Install CodeGraph and initialize it in this project:\n"
+                f"  npx @colbymchenry/codegraph init -i {project_root}\n"
+                "Then re-run `tesserae project sync-code` (optionally with --auto-sync).",
+                file=sys.stderr,
+            )
+            return 2
+        output = Path(args.output) if args.output else (project_root / ".tesserae" / "code-graph.json")
+        result = write_code_graph_from_codegraph(db_path, output, project_root=project_root)
+        print(
+            "Synced code graph from CodeGraph: "
+            f"nodes={result.nodes} edges={result.edges} "
+            f"files={result.processed_files} languages={result.languages}"
         )
         print(f"Graph: {output}")
         return 0
