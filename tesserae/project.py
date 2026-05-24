@@ -675,7 +675,16 @@ class ProjectWiki:
         from .community_summaries import compile_community_summaries, is_enabled_via_env
 
         community_cfg = cfg.get("community_summaries") if isinstance(cfg.get("community_summaries"), dict) else {}
-        if not (is_enabled_via_env() or bool(community_cfg.get("enabled"))):
+        # Both gates default to True (post-PR #14 env flip and the project-config
+        # ``enabled`` key has always defaulted to True when unset). Use AND so
+        # either side can opt out independently: project owners can set
+        # ``community_summaries.enabled: false`` in tesserae.toml without
+        # needing to also unset TESSERAE_COMMUNITY_SUMMARIES, and vice versa.
+        # Codex PR #14 P2 fix — previously OR allowed env-default to override
+        # an explicit config opt-out.
+        env_enabled = is_enabled_via_env()
+        cfg_enabled = bool(community_cfg.get("enabled", True))
+        if not (env_enabled and cfg_enabled):
             return graph
         json_client = _get_community_summaries_test_client()
         if json_client is None:
