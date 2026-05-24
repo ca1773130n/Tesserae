@@ -71,4 +71,73 @@ if [[ "$days_old" != "?" ]] && (( days_old > 7 )); then
   echo "  ⚠ last compile was ${days_old} days ago — consider /tesserae:refresh"
 fi
 
+# --------------------------------------------------------------------
+# Live sync-code: background ``tesserae project sync-code`` when the
+# CodeGraph SQLite is newer than our derived code-graph.json. This
+# delivers the "keeps updating" story for the polyglot code graph
+# without forcing the user to remember to re-run sync-code manually.
+# CodeGraph's MCP server already auto-watches files; this hook just
+# closes the loop on the Tesserae side.
+#
+# Skip silently if:
+#   - opted out via ``sync_code_on_start: false``
+#   - the project doesn't use CodeGraph (no .codegraph/codegraph.db)
+#   - code-graph.json is already at-or-newer than the DB
+#   - tesserae binary isn't on PATH
+#   - another sync-code is already running (concurrent re-entry guard)
+# --------------------------------------------------------------------
+if [[ "$(read_plugin_setting sync_code_on_start)" == "true" ]]; then
+  codegraph_db="${project_root}/.codegraph/codegraph.db"
+  code_graph_json="${tdir}/code-graph.json"
+
+  if [[ -f "$codegraph_db" ]]; then
+    needs_sync=false
+    if [[ ! -f "$code_graph_json" ]]; then
+      needs_sync=true
+    else
+      # Portable mtime comparison: BSD `stat -f %m` (macOS) vs GNU
+      # `stat -c %Y` (Linux). Fall back to ``[[ A -nt B ]]`` if neither
+      # stat flavour responds — POSIX-y enough for ext4/apfs.
+      db_mtime=""
+      json_mtime=""
+      if db_mtime=$(stat -f '%m' "$codegraph_db" 2>/dev/null) \
+         && json_mtime=$(stat -f '%m' "$code_graph_json" 2>/dev/null); then
+        :
+      elif db_mtime=$(stat -c '%Y' "$codegraph_db" 2>/dev/null) \
+           && json_mtime=$(stat -c '%Y' "$code_graph_json" 2>/dev/null); then
+        :
+      else
+        db_mtime=""
+      fi
+      if [[ -n "$db_mtime" && -n "$json_mtime" ]]; then
+        (( db_mtime > json_mtime )) && needs_sync=true
+      elif [[ "$codegraph_db" -nt "$code_graph_json" ]]; then
+        needs_sync=true
+      fi
+    fi
+
+    if $needs_sync; then
+      tesserae_bin=$(find_tesserae 2>/dev/null) || tesserae_bin=""
+      if [[ -z "$tesserae_bin" ]]; then
+        log_to ".session-start-hook.log" "sync-code skipped: tesserae binary not found"
+      elif pgrep -f "tesserae project sync-code.*${project_root}" >/dev/null 2>&1 \
+           || pgrep -f "${project_root}.*tesserae project sync-code" >/dev/null 2>&1; then
+        log_to ".session-start-hook.log" "sync-code skipped: another sync-code is already running for ${project_root}"
+      else
+        log_file="${tdir}/.session-start-hook.log"
+        cmd="echo \"==== \$(date -u +%FT%TZ) — session-start sync-code starting ====\"; \"$tesserae_bin\" project sync-code 2>&1 || echo \"(sync-code failed)\"; echo \"==== \$(date -u +%FT%TZ) — done ====\""
+        if command -v setsid >/dev/null 2>&1; then
+          setsid sh -c "$cmd" >> "$log_file" 2>&1 < /dev/null &
+        elif command -v nohup >/dev/null 2>&1; then
+          nohup sh -c "$cmd" >> "$log_file" 2>&1 < /dev/null &
+        else
+          sh -c "$cmd" >> "$log_file" 2>&1 < /dev/null &
+        fi
+        disown 2>/dev/null || true
+        echo "  ⟳ syncing code-graph from CodeGraph (background)"
+      fi
+    fi
+  fi
+fi
+
 exit 0
