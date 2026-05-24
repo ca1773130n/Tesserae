@@ -242,6 +242,17 @@ ALLOWED_EDGE_TYPES: Set[str] = {
     # path-anchored counterpart to ``defines``/``contains``.
     "inherits_from",
     "declared_in",
+    # Feature H — SessionFinding ↔ CodeSymbol linker. Emitted by the
+    # opt-in ``tesserae.memory.insight_symbol_link`` post-compile pass
+    # (``TESSERAE_INSIGHT_SYMBOL_LINK=true``). Source is a Session<Kind>
+    # finding (Insight / Decision / Hypothesis / Todo / Question /
+    # Takeaway); target is a code-graph symbol node (CodeFunction /
+    # CodeClass / CodeMethod) whose name appears verbatim — as a
+    # backticked identifier or a dotted ``Class.method`` path — in the
+    # finding body. Mints one edge per matched symbol; ambiguous matches
+    # (same name across multiple files) fan out to every candidate so
+    # downstream surfaces can disambiguate.
+    "discusses",
 }
 
 

@@ -641,6 +641,24 @@ class ProjectWiki:
             merged = run_supersede_pass(
                 merged, json_client=json_client, cache_dir=cache_dir
             )
+
+        # Opt-in post-pass: feature H — link each session finding to the
+        # code symbols (CodeFunction / CodeClass / CodeMethod) it
+        # mentions, by scanning finding bodies for backticked
+        # identifiers and dotted ``Class.method`` paths and resolving
+        # them against ``.tesserae/code-graph.json`` (produced by
+        # ``tesserae project ingest-code``). Guarded by env flag so the
+        # default compile path doesn't depend on the code graph
+        # existing. Purely additive: mints only ``discusses`` edges.
+        from .memory.insight_symbol_link import (
+            insight_symbol_link_enabled,
+            run_insight_symbol_link_pass,
+        )
+
+        if insight_symbol_link_enabled():
+            merged = run_insight_symbol_link_pass(
+                merged, code_graph_path=self.paths.code_graph
+            )
         return merged
 
     def _merge_community_summaries(self, graph: ResearchGraph, cfg: dict) -> ResearchGraph:
