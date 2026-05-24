@@ -1,7 +1,7 @@
 {
   "name": "tesserae",
   "description": "Slash commands, hooks, a skill, and MCP auto-registration for the Tesserae project-memory compiler. Drive the full tesserae workflow from inside a Claude Code session.",
-  "version": "0.1.0",
+  "version": "0.3.1",
   "author": {
     "name": "Tesserae Contributors"
   },
