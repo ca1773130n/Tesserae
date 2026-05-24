@@ -20,7 +20,7 @@
   <img src="docs/screencasts/showcase.gif" alt="Three-step screencast: tesserae project setup -> compile -> ask, recorded against the 135-doc demo corpus" width="100%" />
 </p>
 
-[Live demo](https://ca1773130n.github.io/Tesserae) · [Docs](docs/) · [v0.2.0 release notes](docs/release-notes/v0.2.0.md) · [MCP setup](docs/integrations/mcp.md) · [Obsidian export](docs/integrations/obsidian.md)
+[Live demo](https://ca1773130n.github.io/Tesserae) · [Docs](docs/) · [v0.3.0 release notes](docs/release-notes/v0.3.0.md) · [v0.2.0 release notes](docs/release-notes/v0.2.0.md) · [MCP setup](docs/integrations/mcp.md) · [Obsidian export](docs/integrations/obsidian.md)
 
 Tesserae is a project-memory compiler. Point it at a directory containing markdown, source files, and (optionally) PDFs/Office docs/images, and it extracts a typed knowledge graph, writes a queryable wiki, and emits portable artifacts: a markdown projection, a Cognee-ready bundle, an agent harness, and an MCP server you can wire into Claude Code, Codex, or any MCP client. It is a build step for project context, not a hosted service.
 
