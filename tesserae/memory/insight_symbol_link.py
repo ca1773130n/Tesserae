@@ -6,7 +6,7 @@ mostly stop at "this session touched this file", losing the symbol-level
 grounding that lets a future agent jump from a year-old decision
 straight to the function it was about.
 
-Pass shape (opt-in via ``TESSERAE_INSIGHT_SYMBOL_LINK=true``):
+Pass shape (default-on; opt-out via ``TESSERAE_INSIGHT_SYMBOL_LINK=false``):
 
 1. Load the project's code graph from ``.tesserae/code-graph.json``
    (produced by ``tesserae project ingest-code``). Missing file => skip
@@ -148,17 +148,28 @@ _BARE_IDENT = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\b")
 
 
 # ---------------------------------------------------------------------------
-# Env flag — mirrors ``supersede_pass_enabled``
+# Env flag — default-on, opt-out via TESSERAE_INSIGHT_SYMBOL_LINK=false
 # ---------------------------------------------------------------------------
 
 
 def insight_symbol_link_enabled() -> bool:
-    """Read the opt-in env flag.
+    """Decide whether to run the insight↔symbol link pass.
 
-    ``TESSERAE_INSIGHT_SYMBOL_LINK`` accepts the usual truthy spellings.
+    Default-on (post-v0.3.0). Unlike the LLM-backed passes
+    (community summaries, supersedes) this is pure-Python text
+    scanning + an in-memory index lookup, so it's cheap enough to
+    run unconditionally. When no code graph exists at
+    ``.tesserae/code-graph.json`` the pass no-ops cleanly, so
+    projects without CodeGraph pay nothing.
+
+    To opt out explicitly, set ``TESSERAE_INSIGHT_SYMBOL_LINK`` to
+    one of: ``false``, ``0``, ``no``, ``off``. Unset / any other
+    value means enabled.
     """
     raw = (os.environ.get("TESSERAE_INSIGHT_SYMBOL_LINK") or "").strip().lower()
-    return raw in {"1", "true", "yes", "on"}
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
