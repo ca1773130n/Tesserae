@@ -14,8 +14,8 @@ applied to the typed ``ResearchGraph``:
 4. Mint a :class:`ResearchNode` of type ``COMMUNITY_SUMMARY`` plus a
    ``summarizes`` edge per member.
 
-Opt-in via ``TESSERAE_COMMUNITY_SUMMARIES=true`` (wired by
-:meth:`tesserae.project.ProjectWiki._merge_community_summaries`).
+Default-on; opt-out via ``TESSERAE_COMMUNITY_SUMMARIES=false`` (wired
+by :meth:`tesserae.project.ProjectWiki._merge_community_summaries`).
 """
 
 from __future__ import annotations
@@ -272,7 +272,22 @@ def compile_community_summaries(
 
 
 def is_enabled_via_env(env: Optional[Mapping[str, str]] = None) -> bool:
-    """Return True when ``TESSERAE_COMMUNITY_SUMMARIES`` is set to a truthy value."""
+    """Decide whether to run the community-summary pass.
+
+    Default-on (post-v0.3.0). Unlike the pure-Python passes
+    (e.g. insight-symbol-link) this calls the LLM once per cluster,
+    so we soften the default-on cost at the wiring layer by bumping
+    ``min_size`` from 3 to 5 — only meaningfully-sized clusters get
+    summarized unless the project config opts back into a lower
+    threshold.
+
+    To opt out explicitly, set ``TESSERAE_COMMUNITY_SUMMARIES`` to
+    one of: ``false``, ``0``, ``no``, ``off`` (case-insensitive,
+    whitespace-trimmed). Unset / empty / whitespace / any other
+    value means enabled.
+    """
     env = env if env is not None else os.environ
     value = (env.get("TESSERAE_COMMUNITY_SUMMARIES") or "").strip().lower()
-    return value in {"1", "true", "yes", "on"}
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return True

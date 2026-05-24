@@ -242,22 +242,37 @@ def test_compile_drops_cluster_when_llm_returns_invalid_payload(tmp_path: Path) 
 
 
 # ---------------------------------------------------------------------------
-# Env opt-in
+# Env opt-out (default-on; mirrors PR #13 / insight-symbol-link)
 # ---------------------------------------------------------------------------
 
 
+def test_env_unset_defaults_on() -> None:
+    # Default-on: env var unset → enabled.
+    assert is_enabled_via_env({}) is True
+
+
 @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on", "On"])
-def test_env_truthy_values_opt_in(value: str) -> None:
+def test_env_truthy_values_stay_enabled(value: str) -> None:
+    # Explicit truthy spellings → enabled.
     assert is_enabled_via_env({"TESSERAE_COMMUNITY_SUMMARIES": value}) is True
 
 
-@pytest.mark.parametrize("value", ["", "0", "false", "no", "off", "maybe"])
-def test_env_falsey_values_stay_off(value: str) -> None:
+@pytest.mark.parametrize("value", ["0", "false", "FALSE", "no", "NO", "off", "Off"])
+def test_env_explicit_opt_out_disables(value: str) -> None:
+    # Only the four canonical opt-out spellings disable the pass.
     assert is_enabled_via_env({"TESSERAE_COMMUNITY_SUMMARIES": value}) is False
 
 
-def test_env_unset_stays_off() -> None:
-    assert is_enabled_via_env({}) is False
+@pytest.mark.parametrize("value", ["", "   ", "\t", "\n  "])
+def test_env_empty_and_whitespace_default_on(value: str) -> None:
+    # Empty / whitespace → default (enabled).
+    assert is_enabled_via_env({"TESSERAE_COMMUNITY_SUMMARIES": value}) is True
+
+
+@pytest.mark.parametrize("value", ["maybe", "kinda", "disable", "enable", "garbage"])
+def test_env_unknown_values_default_on(value: str) -> None:
+    # Conservative: only explicit opt-out spellings disable.
+    assert is_enabled_via_env({"TESSERAE_COMMUNITY_SUMMARIES": value}) is True
 
 
 # ---------------------------------------------------------------------------
