@@ -1489,15 +1489,42 @@ def project_main(argv: List[str] | None = None) -> int:
             max_iters=args.max_iters,
             top_k_evidence=args.top_k,
             web=None,
+            # codex PR #16 P2 fix — merge the minted research slice
+            # (Question/Hypothesis/SourceDoc nodes + derived_from/
+            # references edges) into the project's live graph.json so
+            # subsequent compiles / MCP ``ask`` calls can recover the
+            # research thread.
+            graph_path=wiki.paths.graph,
         )
+        # codex PR #16 P3 fix — when --output is a custom path, write
+        # ONLY there. Previously session.run() wrote the slug-named
+        # report into output_dir AND the CLI wrote the custom path,
+        # leaving a stale extra file (especially visible for relative
+        # outputs like --output report.md which spilled the slug copy
+        # into the current working directory).
+        if output_path is not None:
+            session.output_dir = output_path.parent
+            # Replace the in-session slug-based filename with the
+            # caller-chosen one by routing the slug through a temp
+            # rename after run() — simpler: run() writes to its own
+            # path, then we move it to output_path and ensure no
+            # duplicate at the slug path remains.
         report = session.run()
-        final_path = output_path or report.report_path
-        if output_path and output_path != report.report_path:
+        final_path = report.report_path
+        if output_path is not None and output_path != report.report_path:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(report.report_text.rstrip() + "\n", encoding="utf-8")
+            # Remove the slug-named duplicate the session just wrote.
+            try:
+                report.report_path.unlink()
+            except OSError:
+                pass
+            final_path = output_path
+        merged_note = f" merged_into={report.merged_into}" if report.merged_into else ""
         print(
             f"report={final_path} questions={report.questions} "
             f"hypotheses={report.hypotheses} sources={report.sources} edges={report.edges}"
+            f"{merged_note}"
         )
         return 0
     if args.command == "refresh-understand-anything":
