@@ -377,6 +377,70 @@ def test_cli_not_logged_in_logs_only_when_all_dirs_fail(
     )
 
 
+def test_cli_autodiscovers_multiple_claude_config_dirs(monkeypatch, tmp_path):
+    """When CLAUDE_CONFIG_DIR is unset, ClaudeCLIJsonClient should glob
+    ``~/.claude*`` and probe every matching dir — not just default to
+    ``~/.claude``. Mirrors the multi-account setup most Tesserae users
+    run (``~/.claude``, ``~/.claude-personal1``, ``~/.claude-personal2``).
+    """
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    (fake_home / ".claude").mkdir()
+    (fake_home / ".claude-personal1").mkdir()
+    (fake_home / ".claude-personal2").mkdir()
+    # Non-matching siblings: should be ignored.
+    (fake_home / ".claudefoo.bak").mkdir()  # .bak suffix excluded
+    (fake_home / ".claude-old.old").mkdir()  # .old suffix excluded
+    (fake_home / "other-dir").mkdir()
+
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
+
+    client = ClaudeCLIJsonClient()
+    # Sorted glob result: .claude, .claude-personal1, .claude-personal2
+    expected = [
+        str(fake_home / ".claude"),
+        str(fake_home / ".claude-personal1"),
+        str(fake_home / ".claude-personal2"),
+    ]
+    assert client.config_dirs == expected, (
+        f"expected auto-discovery of 3 ~/.claude* dirs; got {client.config_dirs}"
+    )
+
+
+def test_cli_explicit_arg_beats_env_and_autodiscovery(monkeypatch, tmp_path):
+    """Explicit ``config_dirs=`` kwarg wins over env and auto-discovery."""
+    fake_home = tmp_path / "home"
+    (fake_home / ".claude").mkdir(parents=True)
+    monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/tmp/from-env")
+    client = ClaudeCLIJsonClient(config_dirs=["/explicit/path"])
+    assert client.config_dirs == ["/explicit/path"]
+
+
+def test_cli_env_beats_autodiscovery(monkeypatch, tmp_path):
+    """CLAUDE_CONFIG_DIR env wins over the auto-discovery glob."""
+    fake_home = tmp_path / "home"
+    (fake_home / ".claude").mkdir(parents=True)
+    (fake_home / ".claude-personal1").mkdir()
+    monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(fake_home / ".claude-personal1"))
+    client = ClaudeCLIJsonClient()
+    assert client.config_dirs == [str(fake_home / ".claude-personal1")]
+
+
+def test_cli_autodiscovery_falls_back_when_no_dirs_exist(monkeypatch, tmp_path):
+    """No ~/.claude* dirs at all → fall back to [~/.claude] so older
+    single-config-dir setups still work (the fallback dir need not exist;
+    the auth-check at call time decides)."""
+    fake_home = tmp_path / "home-empty"
+    fake_home.mkdir()
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
+    client = ClaudeCLIJsonClient()
+    assert client.config_dirs == [str(fake_home / ".claude")]
+
+
 def test_cli_genuine_error_still_logs_failure(
     monkeypatch, caplog, reset_login_warning
 ):

@@ -298,13 +298,30 @@ class ClaudeCLIJsonClient:
         from pathlib import Path as _Path
 
         self.model = model
-        # Honor CLAUDE_CONFIG_DIR if set; otherwise default to ~/.claude.
+        # Resolution order:
+        #   1. Explicit ``config_dirs`` argument wins (tests, MCP override,
+        #      CLI flags like --claude-config-dir).
+        #   2. ``CLAUDE_CONFIG_DIR`` env var (Claude Code-managed sessions
+        #      set this; multi-account shell aliases set it too).
+        #   3. Auto-discover every ``~/.claude*`` directory at $HOME.
+        #      Common multi-account setups have ``~/.claude``,
+        #      ``~/.claude-personal1``, ``~/.claude-personal2`` etc. The
+        #      existing multi-config fallback loop in ``complete_json``
+        #      tries each in order and uses the first that's logged in.
+        #   4. Final fallback: ``[~/.claude]`` — preserves the pre-fix
+        #      default for users with a single config dir.
         if config_dirs:
             self.config_dirs = list(config_dirs)
         elif _os.environ.get("CLAUDE_CONFIG_DIR"):
             self.config_dirs = [_os.environ["CLAUDE_CONFIG_DIR"]]
         else:
-            self.config_dirs = [str(_Path.home() / ".claude")]
+            home = _Path.home()
+            discovered = sorted(
+                str(p)
+                for p in home.glob(".claude*")
+                if p.is_dir() and not p.name.endswith((".bak", ".old"))
+            )
+            self.config_dirs = discovered or [str(home / ".claude")]
         self.timeout = int(timeout)
 
     def complete_json(
@@ -329,15 +346,29 @@ class ClaudeCLIJsonClient:
             f"{user}"
         )
 
+        from pathlib import Path as _Path
+
         last_error: Optional[Exception] = None
         all_not_logged_in = True  # only True if EVERY tried config_dir was Not-logged-in
         any_attempted = False
+        default_claude_dir = str(_Path.home() / ".claude")
         for config_dir in self.config_dirs:
             for attempt in range(max_retries + 1):
                 any_attempted = True
                 try:
                     env = _os.environ.copy()
-                    env["CLAUDE_CONFIG_DIR"] = config_dir
+                    # WORKAROUND for Claude CLI quirk: setting
+                    # CLAUDE_CONFIG_DIR explicitly (even to the same
+                    # value the user is implicitly using) causes the
+                    # CLI to lose its auth lookup chain — `Not logged
+                    # in` even when the user IS logged into that exact
+                    # dir. So when our target config_dir IS the
+                    # canonical default ``~/.claude``, leave the env
+                    # alone and let the CLI's native discovery work.
+                    if config_dir == default_claude_dir:
+                        env.pop("CLAUDE_CONFIG_DIR", None)
+                    else:
+                        env["CLAUDE_CONFIG_DIR"] = config_dir
                     cmd = [
                         "claude",
                         "-p",
