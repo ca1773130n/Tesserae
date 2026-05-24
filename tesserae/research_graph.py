@@ -53,6 +53,30 @@ class ResearchNodeType(str, Enum):
     CODE_FUNCTION = "CodeFunction"
     CODE_METHOD = "CodeMethod"
     DEPENDENCY = "Dependency"
+    # Option-C / CodeGraph adapter (`tesserae project sync-code`): the
+    # colbymchenry/codegraph SQLite store carries 22 generic NodeKind
+    # values across 21 languages; the additions below map the kinds
+    # that don't fit the original Python-only A-feature set. See
+    # tesserae/code_graph_adapter.py for the producer and the
+    # mapping table. Each carries ``metadata["codegraph_kind"]`` so
+    # downstream surfaces can disambiguate without re-querying the DB.
+    CODE_INTERFACE = "CodeInterface"
+    CODE_TRAIT = "CodeTrait"
+    CODE_STRUCT = "CodeStruct"
+    CODE_ENUM = "CodeEnum"
+    CODE_ENUM_MEMBER = "CodeEnumMember"
+    CODE_TYPE_ALIAS = "CodeTypeAlias"
+    CODE_VARIABLE = "CodeVariable"
+    CODE_CONSTANT = "CodeConstant"
+    CODE_ROUTE = "CodeRoute"
+    CODE_COMPONENT = "CodeComponent"
+    CODE_FIELD = "CodeField"
+    CODE_PARAMETER = "CodeParameter"
+    CODE_NAMESPACE = "CodeNamespace"
+    # Generic fallback for any CodeGraph NodeKind we don't have a
+    # dedicated variant for (or for future schema additions). The raw
+    # CodeGraph kind is preserved in ``metadata["codegraph_kind"]``.
+    CODE_SYMBOL = "CodeSymbol"
 
     # Concept layer
     CONCEPT = "Concept"
@@ -144,6 +168,23 @@ CODE_SYMBOL_TYPES: Set[ResearchNodeType] = {
     ResearchNodeType.CODE_CLASS,
     ResearchNodeType.CODE_FUNCTION,
     ResearchNodeType.CODE_METHOD,
+    # CodeGraph-adapter additions (see ResearchNodeType docstring above).
+    # Every CODE_* variant lives here so same-name collisions across
+    # files are preserved instead of fused by the aggressive dedup pass.
+    ResearchNodeType.CODE_INTERFACE,
+    ResearchNodeType.CODE_TRAIT,
+    ResearchNodeType.CODE_STRUCT,
+    ResearchNodeType.CODE_ENUM,
+    ResearchNodeType.CODE_ENUM_MEMBER,
+    ResearchNodeType.CODE_TYPE_ALIAS,
+    ResearchNodeType.CODE_VARIABLE,
+    ResearchNodeType.CODE_CONSTANT,
+    ResearchNodeType.CODE_ROUTE,
+    ResearchNodeType.CODE_COMPONENT,
+    ResearchNodeType.CODE_FIELD,
+    ResearchNodeType.CODE_PARAMETER,
+    ResearchNodeType.CODE_NAMESPACE,
+    ResearchNodeType.CODE_SYMBOL,
 }
 
 
@@ -253,6 +294,18 @@ ALLOWED_EDGE_TYPES: Set[str] = {
     # (same name across multiple files) fan out to every candidate so
     # downstream surfaces can disambiguate.
     "discusses",
+    # Option-C / CodeGraph adapter (`tesserae project sync-code`). The
+    # adapter preserves CodeGraph's 12 EdgeKinds; ``contains``,
+    # ``calls``, ``imports``, ``references`` already exist above, and
+    # ``extends`` is rewritten to the existing ``inherits_from`` to
+    # keep feature H stable. The eight below are new.
+    "implements",
+    "exports",
+    "instantiates",
+    "overrides",
+    "decorates",
+    "type_of",
+    "returns",
 }
 
 

@@ -267,3 +267,108 @@ def test_skips_non_finding_nodes(code_graph_path: Path):
     graph = ResearchGraph(nodes=[paper], edges=[])
     out = run_insight_symbol_link_pass(graph, code_graph_path=code_graph_path)
     assert _discusses_edges_from(out, paper.id) == []
+
+
+# ---------------------------------------------------------------------------
+# CodeGraph-adapter expanded types (codex PR #10 P2 fix)
+# ---------------------------------------------------------------------------
+
+
+def _codegraph_payload() -> Dict[str, Any]:
+    """Realistic code-graph slice covering the new CodeGraph-derived
+    node types so we exercise the expanded LINKABLE_CODE_SYMBOL_TYPES.
+    """
+    return {
+        "nodes": [
+            # Rust trait + struct
+            {"id": "CodeTrait:Cacheable", "name": "Cacheable", "type": "CodeTrait", "metadata": {}},
+            {"id": "CodeStruct:Buffer", "name": "Buffer", "type": "CodeStruct", "metadata": {}},
+            # TS interface + type alias
+            {"id": "CodeInterface:HttpClient", "name": "HttpClient", "type": "CodeInterface", "metadata": {}},
+            {"id": "CodeTypeAlias:UserId", "name": "UserId", "type": "CodeTypeAlias", "metadata": {}},
+            # Enum + EnumMember (dotted form)
+            {"id": "CodeEnum:Color", "name": "Color", "type": "CodeEnum", "metadata": {}},
+            {"id": "CodeEnumMember:Color.Red", "name": "Color.Red", "type": "CodeEnumMember", "metadata": {}},
+            # Class with field (dotted)
+            {"id": "CodeClass:Account", "name": "Account", "type": "CodeClass", "metadata": {}},
+            {"id": "CodeField:Account.balance", "name": "Account.balance", "type": "CodeField", "metadata": {}},
+            # Framework route + component
+            {"id": "CodeRoute:LoginRoute", "name": "LoginRoute", "type": "CodeRoute", "metadata": {}},
+            {"id": "CodeComponent:UserCard", "name": "UserCard", "type": "CodeComponent", "metadata": {}},
+            # Generic fallback
+            {"id": "CodeSymbol:RetryPolicy", "name": "RetryPolicy", "type": "CodeSymbol", "metadata": {}},
+            # NOT linkable: file/module/parameter (excluded by spec)
+            {"id": "CodeFile:lib.rs", "name": "lib.rs", "type": "CodeFile", "metadata": {}},
+            {"id": "CodeModule:lib", "name": "lib", "type": "CodeModule", "metadata": {}},
+            {"id": "CodeParameter:request", "name": "request", "type": "CodeParameter", "metadata": {}},
+        ],
+        "edges": [],
+    }
+
+
+def test_expanded_linkable_types_indexed():
+    """All new CodeGraph-derived symbol types are indexed; File/Module/Parameter are not."""
+    index = build_symbol_index(_codegraph_payload()["nodes"])
+    # New types — must be present
+    for expected in [
+        "Cacheable", "Buffer", "HttpClient", "UserId", "Color",
+        "Color.Red", "Account", "Account.balance", "LoginRoute",
+        "UserCard", "RetryPolicy",
+    ]:
+        assert expected in index, f"expected {expected!r} in symbol index"
+    # Excluded types — must NOT be present
+    for excluded in ["lib.rs", "lib", "request"]:
+        assert excluded not in index, f"{excluded!r} should not be linkable"
+
+
+def test_dotted_tail_indexed_for_field_and_enum_member():
+    """CodeField + CodeEnumMember (like CodeMethod) get a bare-tail alias."""
+    index = build_symbol_index(_codegraph_payload()["nodes"])
+    # Dotted forms
+    assert "Account.balance" in index
+    assert "Color.Red" in index
+    # Bare tails (added because Field/EnumMember are in _DOTTED_TAIL_TYPES)
+    assert "balance" in index
+    assert "Red" in index
+    # Bare tail resolves back to the dotted node
+    assert any(n["id"] == "CodeField:Account.balance" for n in index["balance"])
+    assert any(n["id"] == "CodeEnumMember:Color.Red" for n in index["Red"])
+
+
+def test_pass_links_findings_to_new_codegraph_types(tmp_path: Path):
+    """End-to-end: a finding mentioning new types via backticks gets discusses edges."""
+    code_graph_path = tmp_path / "code-graph.json"
+    code_graph_path.write_text(json.dumps(_codegraph_payload()), encoding="utf-8")
+    findings = [
+        _insight("c1", "Refactored `Cacheable` to use the new `HttpClient`"),
+        _decision("c2", "Use `Color.Red` instead of the legacy `RetryPolicy`"),
+        _insight("c3", "The `LoginRoute` should delegate to `UserCard`"),
+    ]
+    graph = ResearchGraph(nodes=list(findings), edges=[])
+    out = run_insight_symbol_link_pass(graph, code_graph_path=code_graph_path)
+    discusses = [e for e in out.edges if e.type == DISCUSSES_EDGE]
+    targets = {(e.source, e.target) for e in discusses}
+    expected_pairs = {
+        (findings[0].id, "CodeTrait:Cacheable"),
+        (findings[0].id, "CodeInterface:HttpClient"),
+        (findings[1].id, "CodeEnumMember:Color.Red"),
+        (findings[1].id, "CodeSymbol:RetryPolicy"),
+        (findings[2].id, "CodeRoute:LoginRoute"),
+        (findings[2].id, "CodeComponent:UserCard"),
+    }
+    missing = expected_pairs - targets
+    assert not missing, f"missing discusses edges: {missing}"
+
+
+def test_pass_does_not_link_to_files_modules_or_parameters(tmp_path: Path):
+    """An insight that backticks the file/module/parameter name produces no edge."""
+    code_graph_path = tmp_path / "code-graph.json"
+    code_graph_path.write_text(json.dumps(_codegraph_payload()), encoding="utf-8")
+    insight = _insight("c4", "The bug is in `lib.rs` module `lib`, parameter `request`")
+    graph = ResearchGraph(nodes=[insight], edges=[])
+    out = run_insight_symbol_link_pass(graph, code_graph_path=code_graph_path)
+    discusses = [e for e in out.edges if e.type == DISCUSSES_EDGE and e.source == insight.id]
+    assert discusses == [], (
+        "CodeFile / CodeModule / CodeParameter must not be linked — got: "
+        f"{[(e.target) for e in discusses]}"
+    )
