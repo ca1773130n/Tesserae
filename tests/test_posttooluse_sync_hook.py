@@ -72,11 +72,28 @@ def _run_hook(env: dict, cwd: Path) -> subprocess.CompletedProcess:
     )
 
 
-def _wait_for_invocation(log: Path, timeout: float = 3.0) -> bool:
-    """Sync-code is backgrounded; poll briefly for the stub to record."""
+def _wait_for_invocation(log: Path, timeout: float = 6.0) -> bool:
+    """Sync-code is backgrounded; poll briefly for the stub to record.
+
+    Timeout bumped post codex PR #15 P2 fix: the backgrounded subshell
+    now sleeps 2s before calling sync-code (to let CodeGraph's chokidar
+    watcher catch up), so the stub fires at ~t=2 instead of t=0.
+    """
     deadline = time.time() + timeout
     while time.time() < deadline:
         if log.exists() and log.read_text(encoding="utf-8").strip():
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def _wait_for_path(path: Path, timeout: float = 6.0) -> bool:
+    """Poll for a file to appear (used for the debounce touch-file
+    which is now written inside the backgrounded subshell, post-sync).
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if path.exists():
             return True
         time.sleep(0.05)
     return False
@@ -110,8 +127,9 @@ def test_triggered_when_no_prior_sync(fake_project):
     assert "--project" in log_content, log_content
     assert str(proj) in log_content, log_content
 
-    # Touch-file must be written so the next edit gets debounced.
-    assert touch.exists(), "debounce touch-file was not written"
+    # Touch-file is now written inside the backgrounded subshell AFTER
+    # sync-code completes (codex PR #15 P2 fix). Poll for it.
+    assert _wait_for_path(touch), "debounce touch-file was not written post-sync"
 
 
 def test_debounced_when_recent_sync(fake_project):

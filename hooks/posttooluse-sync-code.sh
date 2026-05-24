@@ -83,7 +83,13 @@ fi
 # (Linux) / nohup (macOS) detach from the session's process group
 # so Claude Code can't reap us when SessionEnd fires.
 log_file="${tdir}/.posttooluse-sync-hook.log"
-cmd="echo \"==== \$(date -u +%FT%TZ) — posttooluse sync-code starting ====\"; \"$tesserae_bin\" project sync-code --project \"$project_root\" 2>&1 || echo \"(sync-code failed)\"; echo \"==== \$(date -u +%FT%TZ) — done ====\""
+# Codex PR #15 P2 fix — CodeGraph's chokidar file watcher is debounced
+# at ~100–300ms; if we dispatch sync-code immediately, the SQLite may
+# still hold pre-edit state. Sleep 2s inside the backgrounded subshell
+# to give the watcher time to catch up, THEN sync, THEN touch the
+# debounce marker. This way the marker reflects "we actually finished
+# a sync of the post-edit DB", not "we dispatched and moved on".
+cmd="sleep 2; echo \"==== \$(date -u +%FT%TZ) — posttooluse sync-code starting ====\"; if \"$tesserae_bin\" project sync-code --project \"$project_root\" 2>&1; then : > \"$touch_file\" 2>/dev/null || true; touch \"$touch_file\" 2>/dev/null || true; else echo \"(sync-code failed; debounce marker NOT updated so next edit retries)\"; fi; echo \"==== \$(date -u +%FT%TZ) — done ====\""
 if command -v setsid >/dev/null 2>&1; then
   setsid sh -c "$cmd" >> "$log_file" 2>&1 < /dev/null &
 elif command -v nohup >/dev/null 2>&1; then
@@ -92,10 +98,5 @@ else
   sh -c "$cmd" >> "$log_file" 2>&1 < /dev/null &
 fi
 disown 2>/dev/null || true
-
-# Touch the debounce marker AFTER dispatching, so a failed dispatch
-# leaves the previous timestamp in place and the next edit retries.
-: > "$touch_file" 2>/dev/null || true
-touch "$touch_file" 2>/dev/null || true
 
 exit 0
