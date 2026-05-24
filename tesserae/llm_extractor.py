@@ -201,7 +201,22 @@ class ClaudeCLIResearchExtractor:
         timeout: int = 180,
     ) -> None:
         self.runner = runner or run_claude_cli
-        self.config_dirs = list(config_dirs or [str(Path.home() / ".claude")])
+        # Mirror ClaudeCLIJsonClient resolution order: explicit arg →
+        # CLAUDE_CONFIG_DIR env → auto-discover ~/.claude* dirs →
+        # final fallback to [~/.claude]. The fallback loop in
+        # extract_text tries each in order on auth failure.
+        if config_dirs:
+            self.config_dirs = list(config_dirs)
+        elif os.environ.get("CLAUDE_CONFIG_DIR"):
+            self.config_dirs = [os.environ["CLAUDE_CONFIG_DIR"]]
+        else:
+            home = Path.home()
+            discovered = sorted(
+                str(p)
+                for p in home.glob(".claude*")
+                if p.is_dir() and not p.name.endswith((".bak", ".old"))
+            )
+            self.config_dirs = discovered or [str(home / ".claude")]
         self.model = model
         self.timeout = timeout
 
@@ -275,7 +290,15 @@ Document:
 
 def run_claude_cli(prompt: str, config_dir: str, model: str, timeout: int) -> str:
     env = os.environ.copy()
-    env["CLAUDE_CONFIG_DIR"] = config_dir
+    # Same Claude CLI quirk workaround as ClaudeCLIJsonClient: setting
+    # CLAUDE_CONFIG_DIR explicitly to the canonical default ~/.claude
+    # breaks the CLI's auth-lookup chain. Pop the env in that case so
+    # the CLI's native discovery works.
+    default_claude_dir = str(Path.home() / ".claude")
+    if config_dir == default_claude_dir:
+        env.pop("CLAUDE_CONFIG_DIR", None)
+    else:
+        env["CLAUDE_CONFIG_DIR"] = config_dir
     cmd = ["claude", "-p", "--output-format", "text", "--max-turns", "1"]
     if model:
         cmd.extend(["--model", model])

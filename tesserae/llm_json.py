@@ -298,13 +298,30 @@ class ClaudeCLIJsonClient:
         from pathlib import Path as _Path
 
         self.model = model
-        # Honor CLAUDE_CONFIG_DIR if set; otherwise default to ~/.claude.
+        # Resolution order:
+        #   1. Explicit ``config_dirs`` argument wins (tests, MCP override,
+        #      CLI flags like --claude-config-dir).
+        #   2. ``CLAUDE_CONFIG_DIR`` env var (Claude Code-managed sessions
+        #      set this; multi-account shell aliases set it too).
+        #   3. Auto-discover every ``~/.claude*`` directory at $HOME.
+        #      Common multi-account setups have ``~/.claude``,
+        #      ``~/.claude-personal1``, ``~/.claude-personal2`` etc. The
+        #      existing multi-config fallback loop in ``complete_json``
+        #      tries each in order and uses the first that's logged in.
+        #   4. Final fallback: ``[~/.claude]`` — preserves the pre-fix
+        #      default for users with a single config dir.
         if config_dirs:
             self.config_dirs = list(config_dirs)
         elif _os.environ.get("CLAUDE_CONFIG_DIR"):
             self.config_dirs = [_os.environ["CLAUDE_CONFIG_DIR"]]
         else:
-            self.config_dirs = [str(_Path.home() / ".claude")]
+            home = _Path.home()
+            discovered = sorted(
+                str(p)
+                for p in home.glob(".claude*")
+                if p.is_dir() and not p.name.endswith((".bak", ".old"))
+            )
+            self.config_dirs = discovered or [str(home / ".claude")]
         self.timeout = int(timeout)
 
     def complete_json(
@@ -329,15 +346,29 @@ class ClaudeCLIJsonClient:
             f"{user}"
         )
 
+        from pathlib import Path as _Path
+
         last_error: Optional[Exception] = None
         all_not_logged_in = True  # only True if EVERY tried config_dir was Not-logged-in
         any_attempted = False
+        default_claude_dir = str(_Path.home() / ".claude")
         for config_dir in self.config_dirs:
             for attempt in range(max_retries + 1):
                 any_attempted = True
                 try:
                     env = _os.environ.copy()
-                    env["CLAUDE_CONFIG_DIR"] = config_dir
+                    # WORKAROUND for Claude CLI quirk: setting
+                    # CLAUDE_CONFIG_DIR explicitly (even to the same
+                    # value the user is implicitly using) causes the
+                    # CLI to lose its auth lookup chain — `Not logged
+                    # in` even when the user IS logged into that exact
+                    # dir. So when our target config_dir IS the
+                    # canonical default ``~/.claude``, leave the env
+                    # alone and let the CLI's native discovery work.
+                    if config_dir == default_claude_dir:
+                        env.pop("CLAUDE_CONFIG_DIR", None)
+                    else:
+                        env["CLAUDE_CONFIG_DIR"] = config_dir
                     cmd = [
                         "claude",
                         "-p",
@@ -419,20 +450,35 @@ class ClaudeCLIJsonClient:
 
 def _claude_cli_available() -> bool:
     """Return True when the ``claude`` binary is on PATH AND at least one
-    config dir looks credentialed (has ``settings.json`` or ``projects/``)."""
+    candidate config dir looks credentialed.
+
+    Candidate dirs mirror ClaudeCLIJsonClient.__init__ resolution:
+    CLAUDE_CONFIG_DIR if set, else every ``~/.claude*`` dir at $HOME,
+    falling back to ``~/.claude``. This way a user who only has
+    ``~/.claude-personal1`` (no ``~/.claude``) still gets the CLI
+    client built — pre-fix, the gate said unavailable and the caller
+    silently dropped to no-LLM mode.
+    """
     import os as _os
     import shutil as _shutil
     from pathlib import Path as _Path
 
     if not _shutil.which("claude"):
         return False
-    candidate = _os.environ.get("CLAUDE_CONFIG_DIR") or str(_Path.home() / ".claude")
-    cdir = _Path(candidate)
-    if not cdir.exists():
-        return False
+    env_dir = _os.environ.get("CLAUDE_CONFIG_DIR")
+    if env_dir:
+        candidates = [_Path(env_dir)]
+    else:
+        home = _Path.home()
+        discovered = sorted(
+            p for p in home.glob(".claude*")
+            if p.is_dir() and not p.name.endswith((".bak", ".old"))
+        )
+        candidates = discovered or [home / ".claude"]
+    markers = ("settings.json", "settings.local.json", "projects", "history.jsonl")
     return any(
-        (cdir / marker).exists()
-        for marker in ("settings.json", "settings.local.json", "projects", "history.jsonl")
+        cdir.exists() and any((cdir / m).exists() for m in markers)
+        for cdir in candidates
     )
 
 

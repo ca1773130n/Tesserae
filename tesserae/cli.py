@@ -1868,16 +1868,21 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument("--report-output", help="Write a markdown summary report for the final graph")
     args = parser.parse_args(argv)
 
+    # ``config_dirs=None`` makes ClaudeCLIResearchExtractor /
+    # ClaudeCLIJsonClient auto-discover ``~/.claude*`` dirs (the
+    # existing multi-config fallback then picks the first that's
+    # logged in). Pre-fix code hardcoded the previous maintainer's
+    # personal paths here, which only worked on one machine.
     if args.extractor == "claude-cli":
         extractor = ClaudeCLIResearchExtractor(
-            config_dirs=args.claude_config_dir or ["/Users/neo/.claude-personal1", "/Users/neo/.claude-personal2"],
+            config_dirs=args.claude_config_dir or None,
             model=args.claude_model,
             timeout=args.claude_timeout,
         )
     elif args.extractor == "selective-claude":
         deterministic = ResearchGraphExtractor()
         claude = ClaudeCLIResearchExtractor(
-            config_dirs=args.claude_config_dir or ["/Users/neo/.claude-personal1", "/Users/neo/.claude-personal2"],
+            config_dirs=args.claude_config_dir or None,
             model=args.claude_model,
             timeout=args.claude_timeout,
         )
