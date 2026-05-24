@@ -40,6 +40,19 @@ logger = logging.getLogger(__name__)
 # calls this instead of importing the real Anthropic SDK.
 _CLIENT_FACTORY: Optional[Callable[..., Any]] = None
 
+# One-shot guard so that a Claude-CLI "Not logged in" failure only
+# emits a single user-facing warning per process. A compile typically
+# issues many ``complete_json`` calls; without this guard every one of
+# them would re-log the same "run `claude /login`" hint and drown the
+# SessionEnd hook output.
+_LOGGED_LOGIN_WARNING: bool = False
+
+
+def _reset_login_warning_for_tests() -> None:
+    """Reset the one-shot login warning flag. Test-only helper."""
+    global _LOGGED_LOGIN_WARNING
+    _LOGGED_LOGIN_WARNING = False
+
 
 def set_client_factory(factory: Optional[Callable[..., Any]]) -> None:
     """Inject a fake Anthropic client for tests."""
@@ -317,8 +330,11 @@ class ClaudeCLIJsonClient:
         )
 
         last_error: Optional[Exception] = None
+        all_not_logged_in = True  # only True if EVERY tried config_dir was Not-logged-in
+        any_attempted = False
         for config_dir in self.config_dirs:
             for attempt in range(max_retries + 1):
+                any_attempted = True
                 try:
                     env = _os.environ.copy()
                     env["CLAUDE_CONFIG_DIR"] = config_dir
@@ -340,9 +356,30 @@ class ClaudeCLIJsonClient:
                         check=False,
                     )
                     if proc.returncode != 0:
+                        stderr_text = (proc.stderr or "").strip()
+                        stdout_text = (proc.stdout or "").strip()
+                        # Detect the canonical "Not logged in" message from
+                        # the Claude CLI. Substring + case-insensitive so
+                        # we're robust to minor phrasing drift (e.g.
+                        # "Not logged in · Please run /login").
+                        combined = f"{stderr_text}\n{stdout_text}".lower()
+                        if "not logged in" in combined:
+                            # Continue to the next config_dir — a later
+                            # configured profile may be logged in. Only
+                            # emit the actionable warning AFTER every
+                            # profile has been tried (codex PR #17 P2 fix).
+                            last_error = RuntimeError(
+                                f"claude exited {proc.returncode}: {stderr_text or stdout_text}"
+                            )
+                            break  # skip to next config_dir
+                        # Non-auth failure on this profile resets the
+                        # "all_not_logged_in" tracker so we surface the
+                        # generic warning at the end instead of the
+                        # login-specific one.
+                        all_not_logged_in = False
                         raise RuntimeError(
                             f"claude exited {proc.returncode}: "
-                            f"{proc.stderr.strip() or proc.stdout.strip()}"
+                            f"{stderr_text or stdout_text}"
                         )
                     return parse_json_tolerant(proc.stdout)
                 except Exception as exc:  # noqa: BLE001
@@ -351,6 +388,21 @@ class ClaudeCLIJsonClient:
                     # the next one. Auth/network issues are best handled
                     # by switching accounts, not by hammering one.
                     break
+        # All profiles exhausted. If every one failed with "Not logged in",
+        # emit the actionable once-per-process auth warning. Otherwise emit
+        # the generic warning so genuine errors stay visible.
+        if any_attempted and all_not_logged_in and last_error is not None:
+            global _LOGGED_LOGIN_WARNING
+            if not _LOGGED_LOGIN_WARNING:
+                _LOGGED_LOGIN_WARNING = True
+                logger.warning(
+                    "[tesserae] LLM-backed extraction skipped: "
+                    "Claude CLI not logged in (tried %d config %s). "
+                    "Run `claude /login` to re-auth, then re-compile.",
+                    len(self.config_dirs),
+                    "dir" if len(self.config_dirs) == 1 else "dirs",
+                )
+            return None
         if last_error is not None:
             logger.warning(
                 "ClaudeCLIJsonClient.complete_json failed (schema=%s): %s",
