@@ -229,13 +229,28 @@ def test_ambiguous_same_name_symbol_fans_out_to_all_candidates(tmp_path: Path):
 # ---------------------------------------------------------------------------
 
 
-def test_env_flag_default_off_and_truthy_spellings(monkeypatch: pytest.MonkeyPatch):
+def test_env_flag_default_on_and_falsy_opt_out(monkeypatch: pytest.MonkeyPatch):
+    # Default-on: unset env → enabled.
     monkeypatch.delenv("TESSERAE_INSIGHT_SYMBOL_LINK", raising=False)
-    assert not insight_symbol_link_enabled()
+    assert insight_symbol_link_enabled()
+    # Explicit truthy spellings → enabled.
     monkeypatch.setenv("TESSERAE_INSIGHT_SYMBOL_LINK", "true")
     assert insight_symbol_link_enabled()
-    monkeypatch.setenv("TESSERAE_INSIGHT_SYMBOL_LINK", "0")
-    assert not insight_symbol_link_enabled()
+    monkeypatch.setenv("TESSERAE_INSIGHT_SYMBOL_LINK", "1")
+    assert insight_symbol_link_enabled()
+    # Explicit opt-out spellings → disabled.
+    for falsy in ("0", "false", "no", "off"):
+        monkeypatch.setenv("TESSERAE_INSIGHT_SYMBOL_LINK", falsy)
+        assert not insight_symbol_link_enabled(), f"{falsy!r} should disable"
+    # Empty / whitespace → default (enabled).
+    monkeypatch.setenv("TESSERAE_INSIGHT_SYMBOL_LINK", "")
+    assert insight_symbol_link_enabled()
+    monkeypatch.setenv("TESSERAE_INSIGHT_SYMBOL_LINK", "   ")
+    assert insight_symbol_link_enabled()
+    # Garbage values → default (enabled) — conservative: only explicit
+    # opt-out spellings disable.
+    monkeypatch.setenv("TESSERAE_INSIGHT_SYMBOL_LINK", "maybe")
+    assert insight_symbol_link_enabled()
 
 
 def test_build_symbol_index_keys_method_by_bare_and_qualified_name():
