@@ -194,3 +194,36 @@ def test_sync_code_triggered_when_json_missing(fake_project):
     assert _wait_for_invocation(fake_project["invocation_log"]), (
         "stubbed tesserae was never called for initial sync"
     )
+
+
+def test_sync_code_passes_project_when_run_from_subdir(fake_project):
+    """codex PR #11 P2 fix: backgrounded CLI must receive --project so it
+    doesn't fall back to CWD when Claude opens a session in a subdir.
+    """
+    proj = fake_project["project"]
+    codegraph_dir = proj / ".codegraph"
+    codegraph_dir.mkdir()
+    db = codegraph_dir / "codegraph.db"
+    code_graph_json = proj / ".tesserae" / "code-graph.json"
+
+    code_graph_json.write_text("{}\n", encoding="utf-8")
+    old = time.time() - 60
+    os.utime(code_graph_json, (old, old))
+    db.write_text("fake sqlite\n", encoding="utf-8")
+
+    # Invoke the hook from a SUBDIRECTORY of the project.
+    subdir = proj / "tesserae" / "memory"
+    subdir.mkdir(parents=True)
+    env = dict(fake_project["env"])
+    env["PWD"] = str(subdir)
+
+    result = _run_hook(env, subdir)
+    assert result.returncode == 0
+    assert "syncing code-graph" in result.stdout, result.stdout
+    assert _wait_for_invocation(fake_project["invocation_log"])
+    log_content = fake_project["invocation_log"].read_text(encoding="utf-8")
+    # Must contain --project pointing at the actual project root, not the subdir.
+    assert "--project" in log_content, log_content
+    assert str(proj) in log_content, (
+        f"expected --project {proj} in invocation; got: {log_content}"
+    )

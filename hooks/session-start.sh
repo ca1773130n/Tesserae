@@ -125,7 +125,10 @@ if [[ "$(read_plugin_setting sync_code_on_start)" == "true" ]]; then
         log_to ".session-start-hook.log" "sync-code skipped: another sync-code is already running for ${project_root}"
       else
         log_file="${tdir}/.session-start-hook.log"
-        cmd="echo \"==== \$(date -u +%FT%TZ) — session-start sync-code starting ====\"; \"$tesserae_bin\" project sync-code 2>&1 || echo \"(sync-code failed)\"; echo \"==== \$(date -u +%FT%TZ) — done ====\""
+        # Pass --project explicitly so the spawned CLI uses the
+        # resolved project root rather than $PWD — required when
+        # Claude opens a session in a subdirectory of the project.
+        cmd="echo \"==== \$(date -u +%FT%TZ) — session-start sync-code starting ====\"; \"$tesserae_bin\" project sync-code --project \"$project_root\" 2>&1 || echo \"(sync-code failed)\"; echo \"==== \$(date -u +%FT%TZ) — done ====\""
         if command -v setsid >/dev/null 2>&1; then
           setsid sh -c "$cmd" >> "$log_file" 2>&1 < /dev/null &
         elif command -v nohup >/dev/null 2>&1; then
