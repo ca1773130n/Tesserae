@@ -18,6 +18,17 @@ __pycache__/
 dist/
 build/
 
+# pip transient scratch dirs that leak into cwd when a pip run is
+# interrupted or TMPDIR resolves here. Normally auto-deleted under
+# $TMPDIR; ignored so an interrupted install never clutters git.
+pip-build-tracker-*/
+pip-ephem-wheel-cache-*/
+pip-install-*/
+pip-unpack-*/
+pip-build-env-*/
+pip-metadata-*/
+pip-modern-metadata-*/
+
 # Local graph/database outputs
 .tesserae/
 .understand-anything/
