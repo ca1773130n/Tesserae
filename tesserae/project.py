@@ -193,6 +193,14 @@ class ProjectPaths:
     # the same membership skip the LLM call. See
     # ``tesserae.community_summaries``.
     community_summaries: Path = Path(".tesserae/community_summaries")
+    # Extraction-feedback loop (docs/superpowers/specs/2026-05-26-...). Human
+    # corrections captured during vault overlay / review-apply are appended to
+    # ``extraction_feedback`` (JSONL, deduped). ``tesserae evolve`` distills them
+    # into ``extraction_guidance`` (human-curatable markdown), caching each
+    # cluster's LLM-phrased bullet under ``extraction_guidance_cache``.
+    extraction_feedback: Path = Path(".tesserae/extraction-feedback.jsonl")
+    extraction_guidance: Path = Path(".tesserae/extraction-guidance.md")
+    extraction_guidance_cache: Path = Path(".tesserae/extraction_guidance_cache")
 
 
 class ProjectWiki:
@@ -230,6 +238,9 @@ class ProjectWiki:
             diverged_fields=self.root / "diverged-fields.md",
             session_findings=self.root / "session_findings",
             community_summaries=self.root / "community_summaries",
+            extraction_feedback=self.root / "extraction-feedback.jsonl",
+            extraction_guidance=self.root / "extraction-guidance.md",
+            extraction_guidance_cache=self.root / "extraction_guidance_cache",
         )
         # In-memory override of the Obsidian vault location, set by
         # obsidian-sync --vault for the duration of a single CLI call.
@@ -378,6 +389,8 @@ class ProjectWiki:
         store: Optional[GraphStore] = None,
         vault_pull: bool = True,
         session_options: Optional[SessionExtractionOptions] = None,
+        use_extraction_feedback: bool = False,
+        doc_extractor: Optional[object] = None,
     ) -> dict:
         """Run the substrate-discovery + extraction pipeline for this project.
 
@@ -399,7 +412,21 @@ class ProjectWiki:
         cfg = self.config()
         kind = source_kind or cfg.get("source_kind", "SourceDocument")
         input_paths = [resolve_project_input(self.project_root, item) for item in inputs]
-        extractor = ResearchGraphExtractor()
+
+        # Extraction-feedback guidance (feature G). Collection of feedback
+        # events is unconditional; only *injection* into prompts is gated by
+        # ``use_extraction_feedback``. When the flag is off, both slices stay
+        # "" so every extractor prompt is byte-identical to the legacy path.
+        doc_guidance, session_guidance = self._load_extraction_guidance(
+            use_extraction_feedback
+        )
+
+        # ``doc_extractor`` is an injection seam for tests; the default
+        # deterministic extractor ignores guidance, but a Claude/Selective
+        # extractor will pick up ``doc_guidance`` via its ``guidance`` attr.
+        extractor = doc_extractor if doc_extractor is not None else ResearchGraphExtractor()
+        if doc_guidance and hasattr(extractor, "guidance"):
+            extractor.guidance = doc_guidance
         code_inputs: List[Path] = list(input_paths)
         markdown_source_kind = "SourceDocument" if kind in {"CodeProject", "Repository", "Project"} else kind
 
@@ -493,7 +520,9 @@ class ProjectWiki:
         # historical conversations into the doc graph. The structural pass
         # is the only thing Phase 3 wires in; the LLM pass arrives in
         # Phase 5 of the session-graph plan.
-        graph = self._merge_session_graph(graph, cfg, override=session_options)
+        graph = self._merge_session_graph(
+            graph, cfg, override=session_options, guidance=session_guidance
+        )
         # Community-summary pass (Microsoft GraphRAG playbook applied to
         # the typed graph). Opt-in via ``TESSERAE_COMMUNITY_SUMMARIES=true``
         # so quiet ``project compile`` runs stay free of incremental LLM
@@ -550,6 +579,7 @@ class ProjectWiki:
         graph: ResearchGraph,
         cfg: dict,
         override: Optional[SessionExtractionOptions] = None,
+        guidance: str = "",
     ) -> ResearchGraph:
         """Merge the session graph extractor's slice into the doc graph.
 
@@ -624,6 +654,7 @@ class ProjectWiki:
             max_turns_per_chunk=opts.max_turns_per_chunk,
             include_doc_id_context=opts.include_doc_id_context,
             model=opts.model,
+            guidance=guidance,
         )
         session_slice = extractor.extract()
         if not session_slice.nodes and not session_slice.edges:
@@ -803,6 +834,8 @@ class ProjectWiki:
         store: Optional[GraphStore] = None,
         vault_pull: bool = True,
         session_options: Optional[SessionExtractionOptions] = None,
+        use_extraction_feedback: bool = False,
+        doc_extractor: Optional[object] = None,
     ) -> dict:
         """Compile every configured source into the .tesserae artifacts.
 
@@ -844,6 +877,8 @@ class ProjectWiki:
             store=store,
             vault_pull=vault_pull,
             session_options=session_options,
+            use_extraction_feedback=use_extraction_feedback,
+            doc_extractor=doc_extractor,
         )
 
     def lint(self, fix_trivial: bool = False, severity_floor: str = "info") -> LintReport:
@@ -1128,6 +1163,18 @@ class ProjectWiki:
             overrides, self.paths.diverged_fields, user_link_changes
         )
 
+        # Extraction-feedback collection (UNCONDITIONAL — see spec flag boundary).
+        # Capture node_type / source_path AT EVENT TIME from the current graph;
+        # never cluster on node_id, which renames/merges after projection.
+        from .extraction_feedback import events_from_vault_overlay, append_events
+        node_types = {n.id: n.type.value for n in graph.nodes}
+        source_paths = {n.id: (n.source_path or "") for n in graph.nodes}
+        events = events_from_vault_overlay(
+            overrides, user_link_changes, node_types, source_paths
+        )
+        if events:
+            append_events(self.paths.extraction_feedback, events)
+
         if not overrides and not user_link_changes:
             return graph
 
@@ -1150,6 +1197,80 @@ class ProjectWiki:
         graph = apply_overrides(graph, overrides)
         graph = apply_user_link_changes(graph, user_link_changes)
         return graph
+
+    def _load_extraction_guidance(self, enabled: bool) -> tuple[str, str]:
+        """Load + slice ``.tesserae/extraction-guidance.md`` for this compile.
+
+        Returns ``(doc_guidance, session_guidance)`` as newline-joined bullet
+        texts ready to drop into the two extractor prompts. Returns ``("", "")``
+        when the flag is off, no guidance file exists, or it has no bullets —
+        which keeps every prompt byte-identical to the legacy path.
+
+        v1 routing is EXTRACTOR-LEVEL only: we inject *all* bullets whose
+        ``extractor`` matches (``doc_graph`` vs ``session_findings``),
+        regardless of ``node_type``. The doc extractor emits many node types
+        in one call, so per-node-type slicing at this boundary is impractical;
+        node-type correctness is already enforced at write-time by
+        ``extraction_feedback._route()`` (and again when guidance is distilled
+        per ``(extractor, node_type, field, source)`` cluster). We therefore
+        pass ``node_types`` = the full set present for that extractor.
+        """
+        if not enabled:
+            return "", ""
+        path = self.paths.extraction_guidance
+        if not path.exists():
+            return "", ""
+        from .guidance_markdown import parse_guidance, slice_guidance
+
+        bullets = parse_guidance(path.read_text(encoding="utf-8"))
+        if not bullets:
+            return "", ""
+
+        def _join(extractor: str) -> str:
+            node_types = {b.node_type for b in bullets if b.extractor == extractor}
+            sliced = slice_guidance(bullets, extractor=extractor, node_types=node_types)
+            return "\n".join(f"- {b.text}" for b in sliced)
+
+        return _join("doc_graph"), _join("session_findings")
+
+    def evolve(self, json_client=None) -> dict:
+        """Distill collected feedback into extraction-guidance.md.
+
+        Reads the append-only feedback corpus, clusters + LLM-phrases each
+        cluster (cached, with a deterministic fallback when no LLM is
+        reachable), and writes the human-curatable guidance markdown. Returns
+        a small summary dict for the CLI to print.
+        """
+        from .extraction_feedback import read_events
+        from .extraction_guidance import build_guidance, cache_hash_ledger
+        from .guidance_markdown import parse_guidance, render_guidance
+        events = read_events(self.paths.extraction_feedback)
+
+        # Preserve human curation: parse the CURRENT guidance file (user edits +
+        # what survived prior deletions) and snapshot the "ever generated"
+        # ledger (one cache file per cluster_hash ever phrased) BEFORE building
+        # — so a brand-new cluster phrased this run is not mistaken for a
+        # previously-deleted one. ``build_guidance`` then KEEPs existing bullets,
+        # SKIPs user-deleted ones, and ADDs only genuinely-new clusters.
+        existing = (
+            parse_guidance(self.paths.extraction_guidance.read_text(encoding="utf-8"))
+            if self.paths.extraction_guidance.exists()
+            else []
+        )
+        ever_generated = cache_hash_ledger(self.paths.extraction_guidance_cache)
+
+        bullets = build_guidance(
+            events,
+            cache_dir=self.paths.extraction_guidance_cache,
+            json_client=json_client,
+            existing=existing,
+            ever_generated=ever_generated,
+        )
+        self.paths.extraction_guidance.parent.mkdir(parents=True, exist_ok=True)
+        self.paths.extraction_guidance.write_text(
+            render_guidance(bullets), encoding="utf-8")
+        return {"events": len(events), "bullets": len(bullets),
+                "guidance_path": str(self.paths.extraction_guidance)}
 
     def _write_artifacts(
         self,

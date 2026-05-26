@@ -937,6 +937,15 @@ def project_main(argv: List[str] | None = None) -> int:
         ),
     )
     compile_parser.add_argument("--refresh-external-tools", action="store_true", help="Run configured external tool refresh commands before compile, even if they are not marked auto_refresh")
+    compile_parser.add_argument(
+        "--use-extraction-feedback",
+        action="store_true",
+        help=(
+            "Inject distilled human-correction guidance (from .tesserae/extraction-guidance.md, "
+            "produced by `tesserae evolve`) into the LLM extractor prompts. Collection of "
+            "feedback events is always on; only this injection is gated by the flag."
+        ),
+    )
     # --- Session graph extractor (Phase 3 wires only the structural pass; LLM in Phase 5) ----
     session_group = compile_parser.add_mutually_exclusive_group()
     session_group.add_argument("--sessions", dest="sessions_enabled", action="store_true", default=None, help="Force session graph extraction on (default if .tesserae/harness_sessions/ exists)")
@@ -976,6 +985,12 @@ def project_main(argv: List[str] | None = None) -> int:
     schema_drift_parser.add_argument("--top-k", type=int, default=5, help="Take only the top-K clusters per host type (default: 5)")
     schema_drift_parser.add_argument("--min-cluster-size", type=int, default=5, help="Drop clusters smaller than this size (default: 5)")
     schema_drift_parser.add_argument("--jaccard-threshold", type=float, default=0.34, help="Jaccard similarity threshold for clustering (default: 0.34)")
+
+    evolve_parser = subparsers.add_parser(
+        "evolve",
+        help="Distill collected human-correction feedback into .tesserae/extraction-guidance.md.",
+    )
+    evolve_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
 
     research_parser = subparsers.add_parser(
         "research",
@@ -1405,6 +1420,7 @@ def project_main(argv: List[str] | None = None) -> int:
             cognify=cognify_options if (cognify_options and cognify_options.is_active) else None,
             vault_pull=not args.no_vault_pull,
             session_options=session_override,
+            use_extraction_feedback=bool(getattr(args, "use_extraction_feedback", False)),
         )
         print(
             "Compiled project wiki: "
@@ -1452,6 +1468,18 @@ def project_main(argv: List[str] | None = None) -> int:
             f"{len(reports)} type families analyzed; "
             f"{candidate_count} candidate subtypes proposed; "
             f"report at {report_path}"
+        )
+        return 0
+    if args.command == "evolve":
+        from .llm_json import build_default_json_client
+        wiki = ProjectWiki.load(args.project)
+        # An LLM phrases each cluster; when none is reachable evolve degrades
+        # gracefully to deterministic-templated bullets rather than erroring.
+        llm = build_default_json_client()
+        summary = wiki.evolve(json_client=llm)
+        print(
+            f"events={summary['events']} bullets={summary['bullets']} "
+            f"guidance at {summary['guidance_path']}"
         )
         return 0
     if args.command == "research":

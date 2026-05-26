@@ -168,6 +168,7 @@ def extract_with_llm(
     max_turns_per_chunk: int = 30,
     overlap: int = 5,
     cache_key: Optional[str] = None,
+    guidance: str = "",
 ) -> List[Finding]:
     """Run the LLM extraction pass over a single session's transcript.
 
@@ -188,6 +189,13 @@ def extract_with_llm(
         return []
 
     known_doc_ids = {nid for nid, _ in doc_id_context}
+    system_prompt = _PROMPT_SYSTEM
+    if guidance:
+        system_prompt = (
+            _PROMPT_SYSTEM
+            + "\n\n## Project-specific extraction guidance "
+            "(learned from prior human corrections)\n" + guidance
+        )
     chunks = _chunk_turns(
         transcript_turns,
         max_turns_per_chunk=max_turns_per_chunk,
@@ -201,7 +209,7 @@ def extract_with_llm(
             doc_id_context=doc_id_context,
         )
         response = client.complete_json(
-            system=_PROMPT_SYSTEM,
+            system=system_prompt,
             user=user,
             schema_name="session-finding-v1",
             cache_key=cache_key,

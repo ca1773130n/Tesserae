@@ -33,6 +33,17 @@ class SelectiveClaudeResearchExtractor:
         self.claude_limit = claude_limit
         self.claude_calls = 0
 
+    @property
+    def guidance(self) -> str:
+        return getattr(self.claude, "guidance", "")
+
+    @guidance.setter
+    def guidance(self, value: str) -> None:
+        # Forward extraction-feedback guidance to the Claude sub-extractor;
+        # the deterministic baseline ignores guidance entirely.
+        if hasattr(self.claude, "guidance"):
+            self.claude.guidance = value
+
     def extract_file(self, path: str | Path, source_kind: str = "SourceDocument") -> ResearchGraph:
         file_path = Path(path)
         if self._should_use_claude(file_path):

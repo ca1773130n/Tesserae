@@ -199,8 +199,13 @@ class ClaudeCLIResearchExtractor:
         config_dirs: Optional[Sequence[str]] = None,
         model: str = "sonnet",
         timeout: int = 180,
+        guidance: str = "",
     ) -> None:
         self.runner = runner or run_claude_cli
+        # Default extraction-feedback guidance injected into every prompt
+        # unless an explicit ``guidance=`` is passed to extract_text/extract_file.
+        # Empty by default so the off-flag path stays byte-identical.
+        self.guidance = guidance
         # Mirror ClaudeCLIJsonClient resolution order: explicit arg →
         # CLAUDE_CONFIG_DIR env → auto-discover ~/.claude* dirs →
         # final fallback to [~/.claude]. The fallback loop in
@@ -220,18 +225,24 @@ class ClaudeCLIResearchExtractor:
         self.model = model
         self.timeout = timeout
 
-    def extract_file(self, path: str | Path, source_kind: str = "SourceDocument") -> ResearchGraph:
+    def extract_file(self, path: str | Path, source_kind: str = "SourceDocument", guidance: Optional[str] = None) -> ResearchGraph:
         file_path = Path(path)
-        return self.extract_text(file_path.read_text(encoding="utf-8", errors="replace"), str(file_path), source_kind)
+        return self.extract_text(file_path.read_text(encoding="utf-8", errors="replace"), str(file_path), source_kind, guidance=guidance)
 
-    def extract_text(self, text: str, source_path: Optional[str] = None, source_kind: str = "SourceDocument") -> ResearchGraph:
+    def extract_text(self, text: str, source_path: Optional[str] = None, source_kind: str = "SourceDocument", guidance: Optional[str] = None) -> ResearchGraph:
+        # ``guidance=None`` (the default) falls back to the instance-level
+        # ``self.guidance`` set at construction; an explicit string (incl. "")
+        # overrides it. This lets the compile path inject sliced guidance via
+        # the constructor while keeping the explicit-arg call sites unchanged.
+        if guidance is None:
+            guidance = self.guidance
         # Belt-and-suspenders: skip localized i18n duplicates at the extractor
         # level so we don't spend LLM tokens producing concepts that the
         # post-merge filter would just drop. The canonical English source
         # has already produced (or will produce) the same concepts.
         if source_path_looks_like_i18n_duplicate(source_path):
             return ResearchGraph(nodes=[], edges=[])
-        prompt = build_research_extraction_prompt(text=text, source_path=source_path, source_kind=source_kind)
+        prompt = build_research_extraction_prompt(text=text, source_path=source_path, source_kind=source_kind, guidance=guidance)
         last_error: Optional[Exception] = None
         for config_dir in self.config_dirs:
             try:
@@ -247,9 +258,9 @@ class ClaudeCLIResearchExtractor:
         raise GraphJSONValidationError(f"Claude CLI extraction failed: {last_error}")
 
 
-def build_research_extraction_prompt(text: str, source_path: Optional[str], source_kind: str) -> str:
+def build_research_extraction_prompt(text: str, source_path: Optional[str], source_kind: str, guidance: str = "") -> str:
     title = extract_title(text, source_path)
-    return f"""You are extracting a typed research intelligence graph for Tesserae.
+    prompt = f"""You are extracting a typed research intelligence graph for Tesserae.
 
 Return ONLY one valid JSON object. No markdown fences, no commentary.
 
@@ -286,6 +297,12 @@ Source path: {source_path or ''}
 Document:
 {text}
 """
+    if guidance:
+        prompt += (
+            "\n\n## Project-specific extraction guidance "
+            "(learned from prior human corrections)\n" + guidance
+        )
+    return prompt
 
 
 def run_claude_cli(prompt: str, config_dir: str, model: str, timeout: int) -> str:
