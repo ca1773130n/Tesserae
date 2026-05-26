@@ -69,6 +69,9 @@ class SessionGraphExtractor:
     max_turns_per_chunk: int = 30
     include_doc_id_context: int = 200
     model: Optional[str] = None
+    # Extraction-feedback guidance (session_findings slice) injected into the
+    # LLM system prompt. Empty by default → byte-identical off-flag behavior.
+    guidance: str = ""
 
     def extract(self) -> ResearchGraph:
         """Return the merged structural + LLM slice for the project."""
@@ -197,6 +200,7 @@ class SessionGraphExtractor:
             self.json_client,
             max_turns_per_chunk=self.max_turns_per_chunk,
             cache_key=f"sessions-v{CACHE_SCHEMA_VERSION}",
+            guidance=self.guidance,
         )
         _write_cache(
             cache_path,

@@ -199,8 +199,13 @@ class ClaudeCLIResearchExtractor:
         config_dirs: Optional[Sequence[str]] = None,
         model: str = "sonnet",
         timeout: int = 180,
+        guidance: str = "",
     ) -> None:
         self.runner = runner or run_claude_cli
+        # Default extraction-feedback guidance injected into every prompt
+        # unless an explicit ``guidance=`` is passed to extract_text/extract_file.
+        # Empty by default so the off-flag path stays byte-identical.
+        self.guidance = guidance
         # Mirror ClaudeCLIJsonClient resolution order: explicit arg →
         # CLAUDE_CONFIG_DIR env → auto-discover ~/.claude* dirs →
         # final fallback to [~/.claude]. The fallback loop in
@@ -220,11 +225,17 @@ class ClaudeCLIResearchExtractor:
         self.model = model
         self.timeout = timeout
 
-    def extract_file(self, path: str | Path, source_kind: str = "SourceDocument", guidance: str = "") -> ResearchGraph:
+    def extract_file(self, path: str | Path, source_kind: str = "SourceDocument", guidance: Optional[str] = None) -> ResearchGraph:
         file_path = Path(path)
         return self.extract_text(file_path.read_text(encoding="utf-8", errors="replace"), str(file_path), source_kind, guidance=guidance)
 
-    def extract_text(self, text: str, source_path: Optional[str] = None, source_kind: str = "SourceDocument", guidance: str = "") -> ResearchGraph:
+    def extract_text(self, text: str, source_path: Optional[str] = None, source_kind: str = "SourceDocument", guidance: Optional[str] = None) -> ResearchGraph:
+        # ``guidance=None`` (the default) falls back to the instance-level
+        # ``self.guidance`` set at construction; an explicit string (incl. "")
+        # overrides it. This lets the compile path inject sliced guidance via
+        # the constructor while keeping the explicit-arg call sites unchanged.
+        if guidance is None:
+            guidance = self.guidance
         # Belt-and-suspenders: skip localized i18n duplicates at the extractor
         # level so we don't spend LLM tokens producing concepts that the
         # post-merge filter would just drop. The canonical English source

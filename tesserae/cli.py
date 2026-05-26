@@ -1420,6 +1420,7 @@ def project_main(argv: List[str] | None = None) -> int:
             cognify=cognify_options if (cognify_options and cognify_options.is_active) else None,
             vault_pull=not args.no_vault_pull,
             session_options=session_override,
+            use_extraction_feedback=bool(getattr(args, "use_extraction_feedback", False)),
         )
         print(
             "Compiled project wiki: "
