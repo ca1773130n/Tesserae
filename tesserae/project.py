@@ -193,6 +193,14 @@ class ProjectPaths:
     # the same membership skip the LLM call. See
     # ``tesserae.community_summaries``.
     community_summaries: Path = Path(".tesserae/community_summaries")
+    # Extraction-feedback loop (docs/superpowers/specs/2026-05-26-...). Human
+    # corrections captured during vault overlay / review-apply are appended to
+    # ``extraction_feedback`` (JSONL, deduped). ``tesserae evolve`` distills them
+    # into ``extraction_guidance`` (human-curatable markdown), caching each
+    # cluster's LLM-phrased bullet under ``extraction_guidance_cache``.
+    extraction_feedback: Path = Path(".tesserae/extraction-feedback.jsonl")
+    extraction_guidance: Path = Path(".tesserae/extraction-guidance.md")
+    extraction_guidance_cache: Path = Path(".tesserae/extraction_guidance_cache")
 
 
 class ProjectWiki:
@@ -230,6 +238,9 @@ class ProjectWiki:
             diverged_fields=self.root / "diverged-fields.md",
             session_findings=self.root / "session_findings",
             community_summaries=self.root / "community_summaries",
+            extraction_feedback=self.root / "extraction-feedback.jsonl",
+            extraction_guidance=self.root / "extraction-guidance.md",
+            extraction_guidance_cache=self.root / "extraction_guidance_cache",
         )
         # In-memory override of the Obsidian vault location, set by
         # obsidian-sync --vault for the duration of a single CLI call.
@@ -1127,6 +1138,18 @@ class ProjectWiki:
         write_diverged_fields_report(
             overrides, self.paths.diverged_fields, user_link_changes
         )
+
+        # Extraction-feedback collection (UNCONDITIONAL — see spec flag boundary).
+        # Capture node_type / source_path AT EVENT TIME from the current graph;
+        # never cluster on node_id, which renames/merges after projection.
+        from .extraction_feedback import events_from_vault_overlay, append_events
+        node_types = {n.id: n.type.value for n in graph.nodes}
+        source_paths = {n.id: (n.source_path or "") for n in graph.nodes}
+        events = events_from_vault_overlay(
+            overrides, user_link_changes, node_types, source_paths
+        )
+        if events:
+            append_events(self.paths.extraction_feedback, events)
 
         if not overrides and not user_link_changes:
             return graph
