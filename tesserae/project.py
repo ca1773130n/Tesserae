@@ -1174,6 +1174,29 @@ class ProjectWiki:
         graph = apply_user_link_changes(graph, user_link_changes)
         return graph
 
+    def evolve(self, json_client=None) -> dict:
+        """Distill collected feedback into extraction-guidance.md.
+
+        Reads the append-only feedback corpus, clusters + LLM-phrases each
+        cluster (cached, with a deterministic fallback when no LLM is
+        reachable), and writes the human-curatable guidance markdown. Returns
+        a small summary dict for the CLI to print.
+        """
+        from .extraction_feedback import read_events
+        from .extraction_guidance import build_guidance
+        from .guidance_markdown import render_guidance
+        events = read_events(self.paths.extraction_feedback)
+        bullets = build_guidance(
+            events,
+            cache_dir=self.paths.extraction_guidance_cache,
+            json_client=json_client,
+        )
+        self.paths.extraction_guidance.parent.mkdir(parents=True, exist_ok=True)
+        self.paths.extraction_guidance.write_text(
+            render_guidance(bullets), encoding="utf-8")
+        return {"events": len(events), "bullets": len(bullets),
+                "guidance_path": str(self.paths.extraction_guidance)}
+
     def _write_artifacts(
         self,
         graph: ResearchGraph,
