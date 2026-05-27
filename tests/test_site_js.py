@@ -1010,8 +1010,10 @@ def test_graph_f2_legend_rebuilds_after_rest_merge_from_union():
     merge_idx = JS_BUNDLE_GRAPH.index("__graphMergeRestPayload")
     rebuild_after_merge = JS_BUNDLE_GRAPH.index("rebuildLegend()", merge_idx)
     assert rebuild_after_merge > merge_idx
-    # Hidden-group state preserved across the rebuild.
-    assert "if (hiddenGroups.has(group)) chip.classList.add('is-off')" in JS_BUNDLE_GRAPH
+    # Hidden-family state preserved across the rebuild. Graph View v1 keys
+    # the legend on family (spec §B); the chip factory carries the is-off
+    # restore.
+    assert "if (hiddenGroups.has(family)) chip.classList.add('is-off')" in JS_BUNDLE_GRAPH
 
 
 def test_graph_f3_orbit_target_is_cluster_centroid_consistently():
@@ -1238,6 +1240,54 @@ def test_graph_highlighted_labels_still_use_gold_text_under_force_dark():
     the GRAPH_FORCE_DARK gate — even when the site theme is light the
     graph stays dark and the highlight stays gold."""
     assert "'rgb(250, 204, 21)'" in JS_BUNDLE_GRAPH
+
+
+# ---------------------------------------------------------------------------
+# Graph View v1 — Task 2: family colour + importance size + family legend
+# ---------------------------------------------------------------------------
+
+def test_graph_node_color_keyed_on_family_with_8_family_palette():
+    """Spec §B — nodes are coloured by their precomputed ``family`` via an
+    8-family palette (+ bridges/other fallback), not by 36 raw types."""
+    # The 8-family palette is present with all family keys.
+    for fam in ("taxonomy", "sources", "code", "concepts", "claims",
+                "synthesis", "sessions", "actors", "other"):
+        assert "    " + fam + ":" in JS_BUNDLE_GRAPH or (fam + ":") in JS_BUNDLE_GRAPH, fam
+    assert "var FAMILY_COLORS" in JS_BUNDLE_GRAPH
+    assert "var FAMILY_HSL" in JS_BUNDLE_GRAPH
+    # nodeColorVariant reads the family (via familyOf) — not n.group — for colour.
+    assert "function familyOf(n)" in JS_BUNDLE_GRAPH
+    assert "var family = familyOf(n);" in JS_BUNDLE_GRAPH
+    assert "FAMILY_HSL[family]" in JS_BUNDLE_GRAPH
+
+
+def test_graph_node_color_has_importance_lightness_tier():
+    """Spec §B — within a family, high-importance nodes brighten and leaves
+    desaturate; CommunitySummary is pinned bright."""
+    assert "n.importance" in JS_BUNDLE_GRAPH
+    assert "if (n && n.type === 'CommunitySummary') tier = Math.max(tier, 0.85);" in JS_BUNDLE_GRAPH
+
+
+def test_graph_node_size_uses_importance_clamp_log2_formula():
+    """Spec §A — node sphere size = clamp(2.5, 12, 2 + log2(importance+1)*1.8)."""
+    assert "function nodeSizeFor(n)" in JS_BUNDLE_GRAPH
+    # The exact spec formula shape: 2 + log2(importance+1) * 1.8, clamped.
+    assert "Math.log(imp + 1) / Math.LN2) * 1.8" in JS_BUNDLE_GRAPH
+    assert "Math.max(2.5, Math.min(12, v))" in JS_BUNDLE_GRAPH
+    # nodeVal accessor delegates to nodeSizeFor.
+    assert "var base = nodeSizeFor(n);" in JS_BUNDLE_GRAPH
+
+
+def test_graph_legend_renders_families_not_raw_types():
+    """Spec §B — the legend lists the 8 families (with human labels), and the
+    chip toggle dims a whole family via ``familyOf``."""
+    assert "var FAMILY_LABELS" in JS_BUNDLE_GRAPH
+    assert "function makeLegendChip(family)" in JS_BUNDLE_GRAPH
+    # Legend counts key on familyOf, not n.group.
+    assert "var fam = familyOf(n);" in JS_BUNDLE_GRAPH
+    assert "typeCounts[fam]" in JS_BUNDLE_GRAPH
+    # Stable family render order.
+    assert "var FAMILY_ORDER = ['taxonomy','sources','code'" in JS_BUNDLE_GRAPH
 
 
 # ---------------------------------------------------------------------------
