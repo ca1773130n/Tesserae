@@ -7,7 +7,7 @@ name = "tesserae"
 version = "0.4.0"
 description = "Typed LLM wiki graph pipeline for research and development projects"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = "MIT"
 authors = [
   { name = "Tesserae Contributors" }
@@ -28,6 +28,9 @@ dependencies = [
   # base install keeps the production code path identical to the tested
   # code path and avoids a Louvain reimplementation in the fallback.
   "networkx>=3.0",
+  # ``rich`` powers the setup wizard UI (panels, prompts, tables) and any
+  # other terminal output that benefits from styling. Pure-Python, ~1 MB.
+  "rich>=13",
 ]
 
 [project.optional-dependencies]
