@@ -1,0 +1,81 @@
+"""Tests for tesserae.setup.plan."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from tesserae.setup import build_plan, detect
+from tesserae.setup.plan import (
+    InstallAction,
+    PlanValidationError,
+    SetupPlan,
+)
+
+
+def test_build_plan_uses_recommendations(tmp_path: Path, monkeypatch) -> None:
+    import shutil
+
+    monkeypatch.setattr(
+        shutil,
+        "which",
+        lambda name: "/fake/bin/claude" if name == "claude" else None,
+    )
+    report = detect(tmp_path)
+    plan = build_plan(report)
+    assert plan.extractor == "claude-cli"
+    assert plan.project_root == tmp_path.resolve()
+
+
+def test_build_plan_applies_overrides(tmp_path: Path) -> None:
+    report = detect(tmp_path)
+    plan = build_plan(
+        report,
+        overrides={"name": "my-wiki", "extractor": "deterministic"},
+    )
+    assert plan.name == "my-wiki"
+    assert plan.extractor == "deterministic"
+
+
+def test_build_plan_emits_install_action_for_understand_anything(tmp_path: Path) -> None:
+    (tmp_path / ".understand-anything").mkdir()
+    (tmp_path / ".understand-anything" / "knowledge-graph.json").write_text("{}")
+    report = detect(tmp_path)
+    plan = build_plan(
+        report,
+        overrides={
+            "include_understand_anything": True,
+            "install_understand_anything": True,
+        },
+    )
+    ids = {a.id for a in plan.install_actions}
+    tool_ids = {t.get("id") for t in plan.external_tools}
+    assert "understand-anything" in ids or "understand-anything" in tool_ids
+
+
+def test_build_plan_skips_raganything_install_on_old_python(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr("sys.version_info", (3, 9, 7, "final", 0))
+    report = detect(tmp_path)
+    plan = build_plan(report, overrides={"include_raganything": True})
+    rag_installs = [a for a in plan.install_actions if a.id == "raganything"]
+    assert rag_installs == []
+    assert any("3.10" in w for w in plan.warnings)
+
+
+def test_setup_plan_round_trip_serialization(tmp_path: Path) -> None:
+    report = detect(tmp_path)
+    plan = build_plan(report)
+    payload = plan.model_dump_json()
+    restored = SetupPlan.model_validate_json(payload)
+    assert restored.name == plan.name
+    assert restored.extractor == plan.extractor
+    assert restored.detection.project.project_root == plan.detection.project.project_root
+
+
+def test_build_plan_rejects_unknown_extractor(tmp_path: Path) -> None:
+    report = detect(tmp_path)
+    with pytest.raises(PlanValidationError):
+        build_plan(report, overrides={"extractor": "not-a-real-backend"})
