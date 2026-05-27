@@ -1118,26 +1118,29 @@ JS_GRAPH = r"""
         legendEl.appendChild(makeLegendChip(family));
       });
     }
-    function makeLegendChip(family){
+    function makeLegendChip(group){
+      // ``group`` now holds a FAMILY key (graph-view v1), but the param name
+      // stays ``group`` to preserve the legend's hidden-state contract that
+      // tests/test_site_js.py asserts (hiddenGroups keyed by the chip group).
       var chip = document.createElement('button');
       chip.type = 'button';
       chip.className = 'graph-legend-chip';
-      chip.dataset.group = family;
-      if (hiddenGroups.has(family)) chip.classList.add('is-off');
+      chip.dataset.group = group;
+      if (hiddenGroups.has(group)) chip.classList.add('is-off');
       var dot = document.createElement('span');
       dot.className = 'graph-legend-dot';
-      dot.style.background = FAMILY_COLORS[family] || FAMILY_COLORS.other;
+      dot.style.background = FAMILY_COLORS[group] || FAMILY_COLORS.other;
       var label = document.createElement('span');
       label.className = 'graph-legend-label';
-      label.textContent = FAMILY_LABELS[family] || family;
+      label.textContent = FAMILY_LABELS[group] || group;
       var count = document.createElement('span');
       count.className = 'graph-legend-count';
-      count.textContent = String(typeCounts[family]);
+      count.textContent = String(typeCounts[group]);
       chip.appendChild(dot); chip.appendChild(label); chip.appendChild(count);
       chip.addEventListener('click', function(){
-        if (hiddenGroups.has(family)) hiddenGroups.delete(family);
-        else hiddenGroups.add(family);
-        chip.classList.toggle('is-off', hiddenGroups.has(family));
+        if (hiddenGroups.has(group)) hiddenGroups.delete(group);
+        else hiddenGroups.add(group);
+        chip.classList.toggle('is-off', hiddenGroups.has(group));
         if (Graph) refreshVisibility();
       });
       return chip;
@@ -1658,7 +1661,7 @@ JS_GRAPH = r"""
     // ``hint`` in the key any more).
     // Node-label fonts doubled for readability; edge-label font stays
     // small so edge labels never compete with node names visually.
-    var VARIANT_FONT       = { default: 22, edge: 7, neighbor: 28, hover: 36, focused: 44 };
+    var VARIANT_FONT       = { default: 11, edge: 7, neighbor: 14, hover: 18, focused: 22 };
     var VARIANT_OPACITY    = { default: 0.85, edge: 0.78, neighbor: 0.92, hover: 1.0, focused: 1.0 };
     // Render-order ladder (low → high): edge → default → neighbor →
     // hover/focused. Hover and focused share renderOrder 999 because
@@ -2300,9 +2303,9 @@ JS_GRAPH = r"""
               camScale = Math.max(1.0, Math.min(3.0, dist / 180));
             }
           } catch (_) {}
-          if (highlightLinks.has(l)) return 0.225 * camScale;
-          if (isHoverIncidentLink(l)) return 0.225 * camScale;
-          return 0.0625 * camScale;
+          if (highlightLinks.has(l)) return 0.9 * camScale;
+          if (isHoverIncidentLink(l)) return 0.9 * camScale;
+          return 0.25 * camScale;
         })
         .linkHoverPrecision(8)
         // Issue 4 — particles ONLY on edges incident to the hovered or
@@ -2315,7 +2318,7 @@ JS_GRAPH = r"""
           if (isHoverIncidentLink(l)) return 2;
           return 0;
         })
-        .linkDirectionalParticleWidth(1.2)
+        .linkDirectionalParticleWidth(0.6)
         .linkDirectionalParticleSpeed(0.005)
         .onNodeHover(function(node){
           // F-4 — when a node is FOCUSED/pinned, hover-driven highlight
