@@ -110,6 +110,10 @@ def build_plan(
     install_understand_anything = bool(
         overrides.pop("install_understand_anything", include_understand_anything)
     )
+    custom_understand_anything_command = overrides.pop(
+        "understand_anything_command", None
+    )
+    run_understand_anything = bool(overrides.pop("run_understand_anything", False))
 
     include_raganything = bool(overrides.pop("include_raganything", False))
     raganything_extras = str(overrides.pop("raganything_extras", "all"))
@@ -147,19 +151,23 @@ def build_plan(
         projection = ".tesserae/external/understand-anything.md"
         if projection not in sources:
             sources.append(projection)
+        refresh_command = (
+            custom_understand_anything_command
+            if custom_understand_anything_command
+            else _understand_anything_refresh_command(understand_anything_platform)
+        )
+        managed_refresh = custom_understand_anything_command is None
         external_tools.append(
             {
                 "id": "understand-anything",
                 "name": "Understand Anything",
                 "artifact": ".understand-anything/knowledge-graph.json",
                 "source": projection,
-                "refresh_command": _understand_anything_refresh_command(
-                    understand_anything_platform
-                ),
+                "refresh_command": refresh_command,
                 "auto_refresh": True,
                 "sync_mode": "native_graph",
                 "preserve_markdown_projection": True,
-                "managed_refresh": True,
+                "managed_refresh": managed_refresh,
                 "enabled": True,
                 "install": {
                     "enabled": True,
@@ -182,6 +190,14 @@ def build_plan(
                     command=_understand_anything_install_command(
                         understand_anything_platform
                     ),
+                )
+            )
+        if run_understand_anything:
+            run_actions.append(
+                RunAction(
+                    id="understand-anything",
+                    description="Refresh Understand Anything knowledge graph",
+                    command=refresh_command,
                 )
             )
 

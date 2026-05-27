@@ -31,19 +31,25 @@ def test_setup_installs_cognee_when_requested(tmp_path, monkeypatch, capsys):
     project = tmp_path / "demo"
     project.mkdir()
     (project / "README.md").write_text("# Demo\n", encoding="utf-8")
-    calls = []
 
-    def fake_install(self, options):
-        calls.append(options)
-        return {"status": "installed", "command": options.install_command}
+    import subprocess
 
-    monkeypatch.setattr(ProjectWiki, "_install_cognee", fake_install)
+    seen: list[str] = []
+    original_run = subprocess.run
+
+    def fake_run(cmd, *rest, **kwargs):
+        if isinstance(cmd, str) and "pip install cognee" in cmd:
+            seen.append(cmd)
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="ok", stderr="")
+        return original_run(cmd, *rest, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
 
     assert main(["project", "setup", "--project", str(project), "--yes", "--install-cognee", "--no-color"]) == 0
 
-    assert calls
-    assert calls[0].auto_install is True
-    assert "Cognee installed/updated" in capsys.readouterr().out
+    assert seen, "cognee installer should have been invoked"
+    out = capsys.readouterr().out
+    assert "[installed] cognee" in out
 
 
 def test_compile_uses_configured_cognee_when_auto_cognify_enabled(tmp_path, monkeypatch):

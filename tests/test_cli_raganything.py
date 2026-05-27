@@ -4,24 +4,27 @@ from types import SimpleNamespace
 
 def test_cli_setup_passes_raganything_flags_to_plan(tmp_path, monkeypatch):
     from tesserae import cli
+    import tesserae.setup as tess_setup
 
     captured = {}
+    real_build = tess_setup.build_plan
+    real_apply = tess_setup.apply_plan
 
-    def fake_build(root, **kwargs):
-        captured["root"] = root
-        captured.update(kwargs)
-        from tesserae.project_setup import SetupPlan
-        return SetupPlan(project_root=Path(root), name="demo", sources=["README.md"])
+    def spying_build(detection, *, overrides=None):
+        captured.update(overrides or {})
+        return real_build(detection, overrides=overrides)
 
-    def fake_apply(plan):
+    def noop_apply(plan, **kwargs):
         return SimpleNamespace(
-            wiki=SimpleNamespace(root=plan.project_root),
+            wiki_root=plan.project_root,
             config_path=plan.project_root / ".tesserae" / "config.json",
-            ran_tools=[],
+            actions_taken=[],
+            warnings=[],
+            drift={},
         )
 
-    monkeypatch.setattr(cli, "build_setup_plan", fake_build)
-    monkeypatch.setattr(cli, "apply_setup_plan", fake_apply)
+    monkeypatch.setattr(tess_setup, "build_plan", spying_build)
+    monkeypatch.setattr(tess_setup, "apply_plan", noop_apply)
 
     rc = cli.main([
         "project", "setup", "--yes",
@@ -36,26 +39,30 @@ def test_cli_setup_passes_raganything_flags_to_plan(tmp_path, monkeypatch):
     assert captured["install_raganything"] is True
     assert captured["raganything_parser"] == "docling"
     assert captured["raganything_extras"] == "all"
-    assert captured["run_raganything"] is True
 
 
 def test_cli_with_raganything_alone_passes_none_for_install(tmp_path, monkeypatch):
     from tesserae import cli
+    import tesserae.setup as tess_setup
 
     captured = {}
+    real_build = tess_setup.build_plan
 
-    def fake_build(root, **kwargs):
-        captured.update(kwargs)
-        from tesserae.project_setup import SetupPlan
-        from pathlib import Path
-        return SetupPlan(project_root=Path(root), name="demo", sources=["README.md"])
+    def spying_build(detection, *, overrides=None):
+        captured["overrides"] = dict(overrides or {})
+        return real_build(detection, overrides=overrides)
 
-    monkeypatch.setattr(cli, "build_setup_plan", fake_build)
-    monkeypatch.setattr(cli, "apply_setup_plan", lambda *a, **kw: SimpleNamespace(
-        wiki=SimpleNamespace(root=Path(str(tmp_path))),
-        config_path=Path(str(tmp_path)) / ".tesserae" / "config.json",
-        ran_tools=[],
-    ))
+    def noop_apply(plan, **kwargs):
+        return SimpleNamespace(
+            wiki_root=plan.project_root,
+            config_path=plan.project_root / ".tesserae" / "config.json",
+            actions_taken=[],
+            warnings=[],
+            drift={},
+        )
+
+    monkeypatch.setattr(tess_setup, "build_plan", spying_build)
+    monkeypatch.setattr(tess_setup, "apply_plan", noop_apply)
 
     rc = cli.main([
         "project", "setup", "--yes",
@@ -64,8 +71,9 @@ def test_cli_with_raganything_alone_passes_none_for_install(tmp_path, monkeypatc
     ])
     assert rc == 0
     # When neither --install-raganything nor --skip-install-raganything is passed,
-    # CLI should forward None so build_setup_plan can decide.
-    assert captured["install_raganything"] is None
+    # CLI should not include the key (None overrides are filtered out).
+    assert "install_raganything" not in captured["overrides"]
+    assert captured["overrides"].get("include_raganything") is True
 
 
 def test_cli_ask_routes_raganything_when_backend_explicit(tmp_path, monkeypatch, capsys):

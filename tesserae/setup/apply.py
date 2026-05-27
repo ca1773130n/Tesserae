@@ -30,10 +30,15 @@ class SetupResult(BaseModel):
 
 
 def _expand_command(command: str, project_root: Path) -> str:
-    return command.format(
-        python=shlex.quote(sys.executable),
-        project=shlex.quote(str(project_root)),
-    )
+    try:
+        return command.format(
+            python=shlex.quote(sys.executable),
+            project=shlex.quote(str(project_root)),
+        )
+    except Exception:
+        # Custom commands may contain literal `{` (e.g. Python f-string fragments).
+        # If formatting can't resolve placeholders, return the command unchanged.
+        return command
 
 
 def _run_action(

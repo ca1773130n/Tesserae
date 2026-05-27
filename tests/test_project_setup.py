@@ -80,13 +80,21 @@ def test_setup_installs_understand_anything_when_requested(tmp_path, monkeypatch
     project = tmp_path / "demo"
     project.mkdir()
     (project / "README.md").write_text("# Demo\n", encoding="utf-8")
-    calls = []
 
-    def fake_run_tool_configs(project_root, tools, *, only_auto=True, fail_fast=True, run_installers=False):
-        calls.append((project_root, tools, only_auto, fail_fast, run_installers))
-        return [{"id": "understand-anything", "status": "installed", "command": tools[0]["install"]["command"]}]
+    # Patch the new pipeline's subprocess.run so the curl|bash installer
+    # doesn't actually execute.
+    import subprocess
 
-    monkeypatch.setattr("tesserae.project_setup.run_tool_configs", fake_run_tool_configs)
+    seen: list[str] = []
+    original_run = subprocess.run
+
+    def fake_run(cmd, *rest, **kwargs):
+        if isinstance(cmd, str) and "install.sh" in cmd:
+            seen.append(cmd)
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="ok", stderr="")
+        return original_run(cmd, *rest, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
 
     assert main([
         "project",
@@ -99,11 +107,9 @@ def test_setup_installs_understand_anything_when_requested(tmp_path, monkeypatch
         "--no-color",
     ]) == 0
 
-    assert calls
-    tools = calls[0][1]
-    assert tools[0]["install"]["enabled"] is True
-    assert "install.sh" in tools[0]["install"]["command"]
-    assert "Understand Anything installed/updated" in capsys.readouterr().out
+    assert seen, "install.sh installer should have been invoked"
+    out = capsys.readouterr().out
+    assert "[installed] understand-anything" in out
 
 
 def test_setup_persists_config_even_when_initial_external_refresh_fails(tmp_path, capsys):
@@ -130,7 +136,7 @@ def test_setup_persists_config_even_when_initial_external_refresh_fails(tmp_path
     assert cfg["external_tools"][0]["auto_refresh"] is True
     assert (project / ".tesserae" / "external" / "understand-anything.md").exists()
     out = capsys.readouterr().out
-    assert "External tool" in out and "warnings" in out
+    assert "[failed] understand-anything" in out
     assert "definitely_missing_understand_command" in out
 
 

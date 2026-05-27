@@ -1235,6 +1235,8 @@ def project_main(argv: List[str] | None = None) -> int:
                     "sources": args.source or None,
                     "include_understand_anything": args.with_understand_anything,
                     "understand_anything_platform": args.understand_anything_platform,
+                    "understand_anything_command": args.understand_anything_command,
+                    "run_understand_anything": args.run_understand_anything,
                     "install_understand_anything": (
                         False if args.skip_install_understand_anything
                         else True if args.install_understand_anything

@@ -104,10 +104,20 @@ def render_review(plan: SetupPlan) -> str:
     if plan.codex_model:
         table.add_row("codex_model", plan.codex_model)
     table.add_row("sources", ", ".join(plan.sources) or "(none)")
+
+    tool_names = {
+        str(t.get("id")): str(t.get("name") or t.get("id"))
+        for t in plan.external_tools
+    }
+    for tool in plan.external_tools:
+        name = tool.get("name") or tool.get("id")
+        table.add_row(f"companion: {name}", str(tool.get("source") or tool.get("artifact") or ""))
     for action in plan.install_actions:
-        table.add_row(f"install: {action.id}", action.command)
+        label = tool_names.get(action.id, action.id)
+        table.add_row(f"install: {label}", action.command)
     for action in plan.run_actions:
-        table.add_row(f"run: {action.id}", action.command)
+        label = tool_names.get(action.id, action.id)
+        table.add_row(f"run: {label}", action.command)
     for warning in plan.warnings:
         table.add_row("[yellow]warning[/yellow]", warning)
     console.print(table)
