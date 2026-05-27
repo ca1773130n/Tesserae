@@ -1410,14 +1410,70 @@ class LLMWikiMCPServer:
                 "rendered_summary": render_review(plan),
             }
         if name == "tesserae_setup_apply":
-            from .setup import SetupPlan, apply_plan
+            from .setup import SetupPlan, apply_plan, build_plan, detect
 
             plan_payload = args.get("plan")
             if not isinstance(plan_payload, dict):
                 raise ValueError("tesserae_setup_apply requires 'plan' as an object")
-            plan = SetupPlan.model_validate(plan_payload)
+            inbound = SetupPlan.model_validate(plan_payload)
+
+            # SECURITY: An MCP caller controls the inbound plan body. If we
+            # executed `inbound.install_actions[].command` directly, any client
+            # with MCP access could inject arbitrary shell commands. Instead,
+            # we extract only the *intent* fields the caller is allowed to
+            # influence (booleans + enum choices), then regenerate the action
+            # lists server-side via build_plan. Free-form command strings (like
+            # `understand_anything_command`) are dropped — that escape hatch is
+            # only honored on the local CLI path.
+            _MCP_SAFE_INTENT_KEYS = {
+                "name",
+                "source_kind",
+                "sources",
+                "extractor",
+                "claude_config_dir",
+                "claude_model",
+                "codex_model",
+                "include_understand_anything",
+                "install_understand_anything",
+                "run_understand_anything",
+                "understand_anything_platform",
+                "include_raganything",
+                "install_raganything",
+                "raganything_parser",
+                "raganything_extras",
+                "enable_cognee",
+                "install_cognee",
+                "cognee_mode",
+                "cognee_auto_cognify",
+            }
+            _ALLOWED_UA_PLATFORMS = {"codex", "claude", "opencode", "gemini"}
+            _ALLOWED_RAG_PARSERS = {"mineru", "docling", "paddleocr"}
+
+            safe_intent: dict = {}
+            for key, value in (inbound.intent or {}).items():
+                if key not in _MCP_SAFE_INTENT_KEYS:
+                    continue
+                safe_intent[key] = value
+            # Always honor the inbound top-level intent fields too — they're
+            # the user's chosen settings even if `intent` wasn't recorded.
+            for key in ("name", "source_kind", "sources", "extractor",
+                        "claude_config_dir", "claude_model", "codex_model"):
+                safe_intent.setdefault(key, getattr(inbound, key))
+
+            # Bounded-value validation: enum strings must be in their allowlist.
+            ua_platform = safe_intent.get("understand_anything_platform")
+            if ua_platform and ua_platform not in _ALLOWED_UA_PLATFORMS:
+                safe_intent.pop("understand_anything_platform", None)
+            rag_parser = safe_intent.get("raganything_parser")
+            if rag_parser and rag_parser not in _ALLOWED_RAG_PARSERS:
+                safe_intent.pop("raganything_parser", None)
+
+            project_root = str(inbound.project_root)
+            report = detect(project_root)
+            regenerated = build_plan(report, overrides=safe_intent)
+
             result = apply_plan(
-                plan,
+                regenerated,
                 confirm_install_actions=bool(args.get("confirm_install_actions", False)),
                 confirm_run_actions=bool(args.get("confirm_run_actions", False)),
                 drift_policy=args.get("drift_policy", "warn"),

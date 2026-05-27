@@ -54,6 +54,12 @@ class SetupPlan(BaseModel):
     install_actions: list[InstallAction] = Field(default_factory=list)
     run_actions: list[RunAction] = Field(default_factory=list)
 
+    # Captures the override dict that build_plan consumed. Trusted callers
+    # (the CLI wizard) ignore this; the MCP apply path uses it to *regenerate*
+    # action lists server-side instead of trusting caller-supplied command
+    # strings (defense against MCP arbitrary-command-execution).
+    intent: dict[str, Any] = Field(default_factory=dict)
+
     detection: DetectionReport
     warnings: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
@@ -96,6 +102,9 @@ def build_plan(
     """Build a SetupPlan from a DetectionReport with optional field overrides."""
 
     overrides = dict(overrides or {})
+    recorded_intent: dict[str, Any] = {
+        k: v for k, v in overrides.items() if v is not None
+    }
     root = Path(overrides.pop("project_root", detection.project.project_root))
 
     include_understand_anything = bool(
@@ -275,6 +284,7 @@ def build_plan(
             memory_backends=memory_backends,
             install_actions=install_actions,
             run_actions=run_actions,
+            intent=recorded_intent,
             detection=detection,
             warnings=warnings,
         )

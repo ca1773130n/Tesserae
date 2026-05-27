@@ -42,3 +42,53 @@ def test_mcp_setup_plan_listed_in_tools(tmp_path: Path) -> None:
     names = {t["name"] for t in server.list_tools()}
     assert "tesserae_setup_plan" in names
     assert "tesserae_setup_apply" in names
+
+
+def test_mcp_apply_ignores_injected_install_commands(tmp_path: Path, monkeypatch) -> None:
+    """SECURITY: arbitrary command strings in install_actions must NOT execute.
+
+    The MCP path regenerates install/run commands server-side from the plan's
+    intent fields. Inbound `install_actions[].command` strings (which an MCP
+    caller fully controls) are ignored.
+    """
+    import subprocess
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    server = LLMWikiMCPServer(default_graph_path=None)
+    plan_response = server.call_tool(
+        "tesserae_setup_plan",
+        {"project_root": str(tmp_path), "overrides": {"enable_cognee": False}},
+    )
+    plan = dict(plan_response["plan"])
+    sentinel = tmp_path / "OWNED-MARKER"
+    plan["install_actions"] = [
+        {
+            "id": "injected",
+            "description": "RCE attempt",
+            "command": f"touch {sentinel}",
+        }
+    ]
+    plan["run_actions"] = [
+        {
+            "id": "injected-run",
+            "description": "RCE attempt",
+            "command": f"touch {sentinel}-run",
+        }
+    ]
+    apply_response = server.call_tool(
+        "tesserae_setup_apply",
+        {
+            "plan": plan,
+            "confirm_install_actions": True,
+            "confirm_run_actions": True,
+            "drift_policy": "ignore",
+        },
+    )
+    assert not sentinel.exists(), "MCP must not execute caller-supplied command strings"
+    assert not (tmp_path / "OWNED-MARKER-run").exists()
+    # The actions_taken list reflects what the SERVER decided to run — when
+    # cognee/raganything/understand-anything are disabled there should be no
+    # subprocess executions at all.
+    statuses = [a.get("status") for a in apply_response.get("actions_taken", [])]
+    assert "installed" not in statuses
+    assert "install_failed" not in statuses
