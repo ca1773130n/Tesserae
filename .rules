@@ -1,8 +1,10 @@
 <!-- Managed by HarnessSync -->
 # Project Rules (synced from Claude Code)
 
-<!-- [harness-sync:start source=CLAUDE.md line=1-97] -->
+<!-- [harness-sync:start source=CLAUDE.md line=1-158] -->
 # [Project rules from CLAUDE.md]
+
+@AGENTS.md
 
 # context-mode — MANDATORY routing rules
 
@@ -85,6 +87,65 @@ component layout, graph rendering, GIF screencasts, billboard placement.
   via `browser_evaluate`) and compare against what the user asked for. If it
   doesn't match, iterate before responding.
 
+## CodeGraph — code intelligence over an indexed symbol graph
+
+This project has a CodeGraph MCP server. The index lives in `.codegraph/` at the
+project root — a SQLite knowledge graph of every symbol, edge, and file in the
+workspace. Reads are sub-millisecond; the file watcher keeps it ~1s behind disk.
+Consult it BEFORE writing or editing code, not during.
+
+If `.codegraph/` is missing, run `codegraph init` once then `codegraph index` to
+build it. Check readiness with `codegraph_status` (pass `projectPath` if the MCP
+server reports "No CodeGraph project is loaded").
+
+### Tool selection by intent
+
+- **"What is the symbol named X?"** → `codegraph_search`
+- **"What's the deal with this feature / area?"** → `codegraph_context` (PRIMARY — composes search + node + callers + callees in one call)
+- **"What calls this?"** → `codegraph_callers`
+- **"What does this call?"** → `codegraph_callees`
+- **"What would changing this break?"** → `codegraph_impact`
+- **"Show me this symbol's source / signature / docstring."** → `codegraph_node`
+- **"Survey several related symbols in an area."** → `codegraph_explore` (ONE capped call; prefer over many node/Read)
+- **"What's in directory X?"** → `codegraph_files`
+- **"Is the index ready?"** → `codegraph_status`
+
+### Common chains
+
+- **Onboarding / "how does X work?"** → `codegraph_context` first, then `codegraph_explore` on the surfaced symbols. Only fall back to Read/Grep for details CodeGraph didn't cover.
+- **Refactor planning** → `codegraph_search` → `codegraph_callers` → `codegraph_impact`. Do NOT walk callers manually.
+- **Debugging a regression** → `codegraph_context` → `codegraph_callers` to find the entry points that exercise the symbol.
+
+Answer directly using 2–3 CodeGraph calls — do NOT delegate the lookup to a
+sub-agent that just re-runs grep + read. CodeGraph IS the pre-built search
+index; repeating the work elsewhere costs more for the same answer.
+
+## agentmemory — persistent cross-session memory MCP
+
+The `@agentmemory/agentmemory` MCP server runs locally:
+
+- REST API: `http://localhost:3111`
+- Viewer:   `http://localhost:3113`
+- Streams:  `ws://localhost:3112`
+- iii console: `/Users/neo/.local/bin/iii-console -p <port>`
+
+Use agentmemory for **durable, cross-session, cross-agent** facts — decisions
+about the project, user-confirmed preferences, recurring constraints, named
+artifacts with future obligations. Recall before answering questions that
+reference prior sessions, plans, or outcomes the conversation does not already
+carry.
+
+- **DO** save: confirmed decisions, user role/expertise, project-scoped
+  conventions discovered through conversation, dated commitments.
+- **DO NOT** save: ephemeral task state (use TodoWrite), in-flight plans (use a
+  plan), or anything derivable from `git log` / current code.
+- If the local server is unreachable, fall back to the file-based memory at
+  `~/.claude-personal1/.../memory/` and tell the user the MCP is down — don't
+  silently lose the write.
+
+Treat both memory layers as **claims about a point in time**: before acting on a
+recalled fact, verify it against the current code / git state.
+
 ## Process Hygiene
 
 These rules cover bug fixes in long-running scripts, dev servers, seeders,
@@ -103,5 +164,5 @@ background workers — anything that loads source once and keeps running.
 <!-- [harness-sync:end] -->
 
 ---
-*Last synced by HarnessSync: 2026-05-19 15:43:02 UTC*
+*Last synced by HarnessSync: 2026-05-27 13:56:45 UTC*
 <!-- End HarnessSync managed content -->

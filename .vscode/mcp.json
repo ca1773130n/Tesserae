@@ -1,14 +1,42 @@
 {
   "servers": {
-    "ouroboros": {
-      "command": "uvx",
+    "codegraph": {
+      "command": "codegraph",
       "args": [
-        "--from",
-        "ouroboros-ai[mcp,claude]",
-        "ouroboros",
-        "mcp",
-        "serve"
+        "serve",
+        "--mcp"
       ]
+    },
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ]
+    },
+    "github": {},
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest"
+      ]
+    },
+    "greptile": {},
+    "context-mode": {
+      "command": "node",
+      "args": [
+        "/Users/neo/.claude-personal1/plugins/cache/context-mode/context-mode/1.0.21/start.mjs"
+      ]
+    },
+    "mempalace": {
+      "command": "python3",
+      "args": [
+        "-m",
+        "mempalace.mcp_server"
+      ]
+    },
+    "tesserae": {
+      "command": "tesserae_mcp"
     }
   }
 }

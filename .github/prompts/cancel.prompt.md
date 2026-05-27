@@ -1,6 +1,8 @@
 ---
-description: "Cancel stuck or orphaned executions"
-aliases: [kill, abort]
+description: Cancel an active background Codex job in this repository
+argument-hint: '[job-id]'
+disable-model-invocation: true
+allowed-tools: Bash(node:*)
 ---
 
-Read the file at `${CLAUDE_PLUGIN_ROOT}/skills/cancel/SKILL.md` using the Read tool and follow its instructions exactly.
+!`node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs" cancel "[user-provided arguments]"`
