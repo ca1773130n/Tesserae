@@ -1217,63 +1217,84 @@ def project_main(argv: List[str] | None = None) -> int:
         print("Next: python3 -m tesserae.cli project ingest <paths>")
         return 0
     if args.command == "setup":
+        from .setup import (
+            WizardNotInteractive,
+            apply_plan,
+            build_plan,
+            detect,
+            render_review,
+            run_wizard,
+        )
+
         try:
+            report = detect(args.project)
             if args.yes:
-                plan = build_setup_plan(
-                    args.project,
-                    name=args.name,
-                    source_kind=args.source_kind,
-                    sources=args.source or None,
-                    include_understand_anything=args.with_understand_anything,
-                    run_understand_anything=args.run_understand_anything,
-                    understand_anything_command=args.understand_anything_command,
-                    install_understand_anything=(False if args.skip_install_understand_anything else True if args.install_understand_anything else None),
-                    understand_anything_platform=args.understand_anything_platform,
-                    enable_cognee=not args.no_cognee,
-                    cognee_mode=args.cognee_mode,
-                    cognee_auto_cognify=args.run_cognee,
-                    install_cognee=(False if args.skip_install_cognee else True if args.install_cognee else None),
-                    include_raganything=(False if args.skip_raganything else args.with_raganything),
-                    install_raganything=(False if args.skip_install_raganything else True if args.install_raganything else None),
-                    raganything_parser=args.raganything_parser,
-                    raganything_extras=args.raganything_extras,
-                    run_raganything=args.run_raganything,
-                    raganything_llm_provider=args.raganything_llm_provider,
-                    raganything_llm_model=args.raganything_llm_model,
-                    raganything_claude_config_dir=args.raganything_claude_config_dir,
-                    raganything_embedding_provider=args.raganything_embedding,
-                    raganything_embedding_dim=args.raganything_embedding_dim,
-                )
-                print(render_setup_summary(plan, color=not args.no_color), end="")
+                yes_overrides: dict = {
+                    "name": args.name,
+                    "source_kind": args.source_kind,
+                    "sources": args.source or None,
+                    "include_understand_anything": args.with_understand_anything,
+                    "understand_anything_platform": args.understand_anything_platform,
+                    "install_understand_anything": (
+                        False if args.skip_install_understand_anything
+                        else True if args.install_understand_anything
+                        else None
+                    ),
+                    "include_raganything": (
+                        False if args.skip_raganything else args.with_raganything
+                    ),
+                    "install_raganything": (
+                        False if args.skip_install_raganything
+                        else True if args.install_raganything
+                        else None
+                    ),
+                    "raganything_extras": args.raganything_extras,
+                    "raganything_parser": args.raganything_parser,
+                    "enable_cognee": not args.no_cognee,
+                    "cognee_mode": args.cognee_mode,
+                    "cognee_auto_cognify": args.run_cognee,
+                    "install_cognee": (
+                        False if args.skip_install_cognee
+                        else True if args.install_cognee
+                        else None
+                    ),
+                }
+                yes_overrides = {
+                    k: v for k, v in yes_overrides.items() if v is not None
+                }
+                plan = build_plan(report, overrides=yes_overrides)
+                print(render_review(plan), end="")
             else:
-                plan = interactive_setup_plan(args.project, color=not args.no_color)
-            result = apply_setup_plan(plan)
+                try:
+                    plan = run_wizard(report)
+                except WizardNotInteractive:
+                    print(
+                        "tesserae setup: stdin is not a TTY. Re-run from a real "
+                        "terminal, or pass --yes to use detected defaults.",
+                        file=sys.stderr,
+                    )
+                    return 2
+            result = apply_plan(
+                plan,
+                confirm_install_actions=True,
+                confirm_run_actions=True,
+            )
         except KeyboardInterrupt:
             print("Setup cancelled.")
             return 130
         except Exception as exc:
             print(f"Setup failed: {exc}", file=sys.stderr)
             return 2
-        print(f"Initialized project wiki: {result.wiki.root}")
+        print(f"Initialized project wiki: {result.wiki_root}")
         print(f"Config: {result.config_path}")
-        if result.ran_tools:
-            failures = [row for row in result.ran_tools if row.get("status") in {"failed", "install_failed"}]
-            installed = [row for row in result.ran_tools if row.get("status") == "installed"]
-            installed_ids = {row.get("id") for row in installed}
-            if "understand-anything" in installed_ids:
-                print("Understand Anything installed/updated.")
-            if "cognee" in installed_ids:
-                print("Cognee installed/updated.")
-            if "raganything" in installed_ids:
-                print("RAG-Anything (raganything + docling) installed/updated.")
-            if failures:
-                print("External tool install/refresh had warnings; setup was saved anyway.")
-                for failure in failures:
-                    detail = (failure.get("stderr") or failure.get("stdout") or "").strip().splitlines()
-                    tail = f": {detail[-1]}" if detail else ""
-                    print(f"  - {failure.get('id')}: {failure.get('command')} exited {failure.get('returncode')}{tail}")
-            else:
-                print(f"External tools refreshed: {len(result.ran_tools)}")
+        if result.actions_taken:
+            for row in result.actions_taken:
+                status = row.get("status") or "?"
+                detail = row.get("command") or row.get("description") or ""
+                print(f"  [{status}] {row.get('id')}: {detail}")
+        if result.warnings:
+            for w in result.warnings:
+                print(f"warning: {w}", file=sys.stderr)
         print("Next: tesserae project compile && tesserae project build-site")
         return 0
     if args.command == "ingest":

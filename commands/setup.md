@@ -1,13 +1,17 @@
 ---
-description: Print instructions for running the interactive Tesserae setup wizard (must be in a terminal — not slash-runnable).
+description: Run Tesserae setup — detect environment, propose a plan, apply with confirmation.
 argument-hint: ""
 allowed-tools:
-  - "Bash($CLAUDE_PLUGIN_ROOT/scripts/tesserae-setup-help.sh:*)"
-disable-model-invocation: true
+  - "mcp__tesserae__tesserae_setup_plan"
+  - "mcp__tesserae__tesserae_setup_apply"
 ---
 
-The Tesserae setup wizard is interactive — it prompts for wiki name, sources, and companion-tool selections, then writes `.tesserae/config.json`. Claude Code slash commands run in a non-interactive shell with no stdin attached, so the wizard's first `input()` call hits EOF immediately and aborts.
+Run `tesserae_setup_plan` for the current working directory. Show the
+`rendered_summary` to the user verbatim. Then ask:
 
-Run it from a real terminal instead — the helper script prints the exact `cd` + command for your current working directory:
+1. Should I install the flagged dependencies? (sets `confirm_install_actions`)
+2. Should I run the post-setup refresh commands? (sets `confirm_run_actions`)
 
-!`${CLAUDE_PLUGIN_ROOT}/scripts/tesserae-setup-help.sh`
+Call `tesserae_setup_apply` with the appropriate flags. Report
+`actions_taken` and `warnings`. If `drift` is non-empty, surface it before
+applying.
