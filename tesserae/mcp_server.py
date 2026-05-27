@@ -843,6 +843,59 @@ class LLMWikiMCPServer:
                     "additionalProperties": False,
                 },
             },
+            {
+                "name": "tesserae_setup_plan",
+                "description": (
+                    "Detect the environment and propose a Tesserae setup plan as JSON. "
+                    "Read-only: does not touch .tesserae/. Returns {plan, rendered_summary}. "
+                    "Pass `overrides` to pre-set any SetupPlan field."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "project_root": {
+                            "type": "string",
+                            "description": "Project root path; defaults to '.'.",
+                        },
+                        "overrides": {
+                            "type": "object",
+                            "description": (
+                                "Optional field overrides applied to build_plan() — any "
+                                "SetupPlan field plus include_understand_anything, "
+                                "include_raganything, enable_cognee, install_* flags."
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "tesserae_setup_apply",
+                "description": (
+                    "Apply a SetupPlan (from tesserae_setup_plan, possibly mutated): "
+                    "writes .tesserae/config.json and runs gated install/run actions. "
+                    "Pass confirm_install_actions=True to install dependencies, "
+                    "confirm_run_actions=True to execute refresh commands."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "required": ["plan"],
+                    "properties": {
+                        "plan": {
+                            "type": "object",
+                            "description": "SetupPlan JSON returned by tesserae_setup_plan.",
+                        },
+                        "confirm_install_actions": {"type": "boolean", "default": False},
+                        "confirm_run_actions": {"type": "boolean", "default": False},
+                        "drift_policy": {
+                            "type": "string",
+                            "enum": ["warn", "abort", "ignore"],
+                            "default": "warn",
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+            },
         ]
 
     # ------------------------------------------------------------------ Resources
@@ -1344,6 +1397,38 @@ class LLMWikiMCPServer:
                 limit=int(args.get("limit") or 10),
                 kind=(str(args.get("kind")).strip() if args.get("kind") else None),
             )
+        if name == "tesserae_setup_plan":
+            from .setup import build_plan, detect
+            from .setup.wizard import render_review
+
+            project_root = args.get("project_root") or "."
+            overrides = args.get("overrides") or None
+            report = detect(project_root)
+            plan = build_plan(report, overrides=overrides)
+            return {
+                "plan": json.loads(plan.model_dump_json()),
+                "rendered_summary": render_review(plan),
+            }
+        if name == "tesserae_setup_apply":
+            from .setup import SetupPlan, apply_plan
+
+            plan_payload = args.get("plan")
+            if not isinstance(plan_payload, dict):
+                raise ValueError("tesserae_setup_apply requires 'plan' as an object")
+            plan = SetupPlan.model_validate(plan_payload)
+            result = apply_plan(
+                plan,
+                confirm_install_actions=bool(args.get("confirm_install_actions", False)),
+                confirm_run_actions=bool(args.get("confirm_run_actions", False)),
+                drift_policy=args.get("drift_policy", "warn"),
+            )
+            return {
+                "config_path": str(result.config_path),
+                "actions_taken": result.actions_taken,
+                "warnings": result.warnings,
+                "drift": result.drift,
+                "wiki_root": str(result.wiki_root),
+            }
         raise ValueError(f"Unknown Tesserae MCP tool: {name}")
 
     def _mcp_graph_ppr(
