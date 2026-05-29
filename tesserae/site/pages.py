@@ -2390,7 +2390,17 @@ def _is_hidden_group_node(node: ResearchNode) -> bool:
     Uses the same kind→group mapping (``_kind_for_node_type``) the visual
     payload itself relies on, so a node's classification here cannot drift
     from its classification in the payload.
+
+    Codex PR #21 P2 fix: ``SOURCE_FILE`` is a code-graph node type (see
+    the comment at the SOURCE_FILE/SOURCE_DOCUMENT branch in
+    ``_kind_for_node_type``) but its kind maps to the ``sources`` group
+    for visual coherence. Without this carve-out the default
+    ``show_sources=False`` would strip every file node + its incident
+    ``contains``/``declared_in`` edges out of the code graph, leaving
+    code-ingested projects with floating functions and no files.
     """
+    if node.type == ResearchNodeType.SOURCE_FILE:
+        return False
     kind = _kind_for_node_type(node.type)
     group = kind or "other"
     return group in _GRAPH_HIDDEN_GROUPS

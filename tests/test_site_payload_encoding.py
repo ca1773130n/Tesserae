@@ -15,6 +15,7 @@ from tesserae.research_graph import ResearchGraphBuilder, ResearchNodeType
 from tesserae.site.pages import (
     SiteContext,
     _family_for_node_type,
+    _is_hidden_group_node,
     build_graph_payload,
 )
 
@@ -98,3 +99,38 @@ def test_member_count_only_on_community_summary():
     by_name = _payload_by_name(b.build())
     assert "member_count" not in by_name["Solo Paper"]
     assert "member_count" not in by_name["Solo Concept"]
+
+
+def test_source_file_node_survives_default_show_sources_false():
+    """Regression — codex PR #21 P2.
+
+    ``SOURCE_FILE`` is a code-graph node type even though its family/kind
+    maps to ``"sources"`` for visual coherence. Default
+    ``show_sources=False`` MUST NOT strip it — otherwise code-ingested
+    projects render with floating functions and no parent file nodes.
+    """
+    # The only ``sources``-group hide-by-default today is SOURCE_DOCUMENT;
+    # SOURCE_FILE is a code-graph type that previously got swept up by the
+    # shared "sources" kind label. Carve-out keeps it visible.
+    b = ResearchGraphBuilder()
+    doc_node = b.add_node("Hide Me Doc", ResearchNodeType.SOURCE_DOCUMENT)
+    file_node = b.add_node("keep_me.py", ResearchNodeType.SOURCE_FILE)
+    fn_node = b.add_node("keep_me_fn", ResearchNodeType.CODE_FUNCTION)
+    b.add_edge(file_node, "contains", fn_node)
+    graph = b.build()
+
+    assert _is_hidden_group_node(doc_node) is True
+    assert _is_hidden_group_node(file_node) is False
+
+    # Default-knob payload: SOURCE_FILE survives, SOURCE_DOCUMENT does not.
+    ctx = SiteContext.build(graph=graph, wiki_pages_by_kind={})  # show_sources defaults False
+    payload = build_graph_payload(ctx)
+    names = {n["name"] for n in payload["nodes"]}
+    assert "keep_me.py" in names
+    assert "keep_me_fn" in names
+    assert "Hide Me Doc" not in names
+
+    # The incident ``contains`` edge must survive too.
+    by_name = {n["name"]: n["id"] for n in payload["nodes"]}
+    edge_pairs = {(e["source"], e["target"]) for e in payload["links"]}
+    assert (by_name["keep_me.py"], by_name["keep_me_fn"]) in edge_pairs
