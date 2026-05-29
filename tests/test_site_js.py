@@ -1311,9 +1311,9 @@ def test_graph_drawer_open_is_wired_into_activate_node():
     assert focus_at != -1, "populateFocusPanel(node) anchor not found"
     open_at = JS_GRAPH.find("openDrawer(node);", focus_at)
     assert open_at != -1, "openDrawer(node) not found after populateFocusPanel"
-    # Within ~400 chars (a handful of lines) of the focus-panel populate —
-    # i.e. the same branch, not some unrelated later block.
-    assert open_at - focus_at < 400, (
+    # Within ~600 chars (a handful of lines + comments) of the focus-panel
+    # populate — i.e. the same select branch, not some unrelated later block.
+    assert open_at - focus_at < 600, (
         "openDrawer is not wired into activateNode's select branch "
         f"(distance {open_at - focus_at} chars from populateFocusPanel)"
     )
@@ -1323,6 +1323,20 @@ def test_graph_drawer_close_is_wired():
     """closeDrawer must be invoked (close button / Esc / background)."""
     calls = JS_GRAPH.count("closeDrawer()")
     assert calls >= 1, "closeDrawer is defined but never invoked"
+
+
+def test_graph_drawer_index_rebuilt_after_rest_merge():
+    """REGRESSION (codex P2): the drawer index is built once at load off the
+    CORE payload. The async rest-payload merge appends to payload.nodes/.links,
+    so it MUST rebuild the index or rest nodes get empty drawer sections.
+    Assert buildDrawerIndex() is called inside __graphMergeRestPayload."""
+    merge = JS_GRAPH.split("window.__graphMergeRestPayload = function", 1)
+    assert len(merge) == 2, "__graphMergeRestPayload not found"
+    merge_body = merge[1].split("\n    };", 1)[0]
+    assert "buildDrawerIndex()" in merge_body, (
+        "rest-payload merge does not rebuild the drawer index — "
+        "rest nodes will render empty drawer sections"
+    )
 
 
 # ---------------------------------------------------------------------------

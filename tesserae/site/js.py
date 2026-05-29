@@ -4279,6 +4279,12 @@ JS_GRAPH = r"""
       if (Graph && Graph.graphData) {
         try { Graph.graphData({ nodes: payload.nodes, links: payload.links }); } catch (_) {}
       }
+      // codex P2 — the drawer index is built once at load off the CORE
+      // payload. The rest merge just appended to payload.nodes/.links, so
+      // without this rebuild the drawer would render empty/partial sections
+      // for any rest node (or core node whose incident edges arrived in the
+      // rest payload). Rebuild now that the union is in place.
+      try { buildDrawerIndex(); } catch (_) {}
       // F-2 — rebuild the legend from the union (core + rest) so the
       // type counts and chips reflect the WHOLE graph, not just the
       // core subgraph that startGraph saw. ``hiddenGroups`` is preserved
