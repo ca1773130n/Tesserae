@@ -1268,3 +1268,114 @@ def test_bundle_parses_with_node_if_available():
     assert proc.returncode == 0, (
         "node --check rejected JS_BUNDLE:\n" + proc.stderr
     )
+
+
+# ---------------------------------------------------------------------------
+# v1.1 node-detail drawer — wiring + section render functions
+#
+# These guard against the defect found during UI verification (2026-05-29):
+# the drawer (Tasks 4/5) shipped as fully-formed functions in ``js.py`` but
+# ``openDrawer`` was never *called* — clicking a node only populated the
+# legacy focus panel, so the entire drawer was unreachable dead code. The
+# original drawer commits added ZERO tests, which is how it slipped through.
+# Assertions here check the call WIRING, not merely that the symbols exist.
+# ---------------------------------------------------------------------------
+
+def test_graph_drawer_functions_defined():
+    """The drawer scaffold (Task 4) + typed sections (Task 5) exist."""
+    assert "function openDrawer(node)" in JS_GRAPH
+    assert "function closeDrawer(" in JS_GRAPH
+    assert "function buildDrawerIndex(" in JS_GRAPH
+    # Typed section renderers (spec §D).
+    for fn in (
+        "renderWhyItMatters",
+        "renderEvidence",
+        "renderRelated",
+        "renderSessionMemory",
+        "renderCodeSection",
+        "renderCommunity",
+    ):
+        assert fn in JS_GRAPH, f"missing drawer section renderer: {fn}"
+    # Per-section item cap (spec §D — max 5 items each).
+    assert "DRAWER_SECTION_MAX = 5" in JS_GRAPH
+
+
+def test_graph_drawer_index_built_at_load():
+    """``buildDrawerIndex`` must actually run once at load, not just exist."""
+    calls = JS_GRAPH.count("buildDrawerIndex(")
+    defs = JS_GRAPH.count("function buildDrawerIndex(")
+    assert calls - defs >= 1, "buildDrawerIndex is defined but never invoked"
+
+
+def test_graph_drawer_open_is_wired_into_activate_node():
+    """REGRESSION: openDrawer must be CALLED from the node-activation path.
+
+    Defined-but-never-called was the exact bug UI verification caught.
+    """
+    calls = JS_GRAPH.count("openDrawer(node);")
+    assert calls >= 1, "openDrawer is defined but never called — drawer is dead code"
+    # The invocation must live next to the focus-panel populate in the
+    # node-select branch. Proximity to ``populateFocusPanel(node);`` is a more
+    # robust anchor than slicing on the next function's indentation (codex P3):
+    # both calls are in the same select branch, so they must be close together.
+    focus_at = JS_GRAPH.find("populateFocusPanel(node);")
+    assert focus_at != -1, "populateFocusPanel(node) anchor not found"
+    open_at = JS_GRAPH.find("openDrawer(node);", focus_at)
+    assert open_at != -1, "openDrawer(node) not found after populateFocusPanel"
+    # Within ~600 chars (a handful of lines + comments) of the focus-panel
+    # populate — i.e. the same select branch, not some unrelated later block.
+    assert open_at - focus_at < 600, (
+        "openDrawer is not wired into activateNode's select branch "
+        f"(distance {open_at - focus_at} chars from populateFocusPanel)"
+    )
+
+
+def test_graph_drawer_close_is_wired():
+    """closeDrawer must be invoked (close button / Esc / background)."""
+    calls = JS_GRAPH.count("closeDrawer()")
+    assert calls >= 1, "closeDrawer is defined but never invoked"
+
+
+def test_graph_drawer_index_rebuilt_after_rest_merge():
+    """REGRESSION (codex P2): the drawer index is built once at load off the
+    CORE payload. The async rest-payload merge appends to payload.nodes/.links,
+    so it MUST rebuild the index or rest nodes get empty drawer sections.
+    Assert buildDrawerIndex() is called inside __graphMergeRestPayload."""
+    merge = JS_GRAPH.split("window.__graphMergeRestPayload = function", 1)
+    assert len(merge) == 2, "__graphMergeRestPayload not found"
+    merge_body = merge[1].split("\n    };", 1)[0]
+    assert "buildDrawerIndex()" in merge_body, (
+        "rest-payload merge does not rebuild the drawer index — "
+        "rest nodes will render empty drawer sections"
+    )
+
+
+# ---------------------------------------------------------------------------
+# v1.1 edge-class partition (spec §C)
+#
+# REGRESSION: the "structural vs semantic edge styling" commit touched only
+# conftest.py — zero lines of js.py — so ``edgeClassOf`` and the SEMANTIC set
+# never existed, which crashed the drawer (renderWhyItMatters → ReferenceError)
+# at runtime. These assertions check the helper EXISTS and is actually
+# referenced by both the link styling and the drawer.
+# ---------------------------------------------------------------------------
+
+def test_graph_edge_class_helper_defined():
+    assert "function edgeClassOf(" in JS_GRAPH, "edgeClassOf missing — drawer crashes"
+    assert "SEMANTIC_EDGE_TYPES" in JS_GRAPH
+    # A representative semantic + structural type from spec §C.
+    assert "summarizes:" in JS_GRAPH or "summarizes" in JS_GRAPH
+    # The helper must be CALLED, not merely defined.
+    calls = JS_GRAPH.count("edgeClassOf(")
+    defs = JS_GRAPH.count("function edgeClassOf(")
+    assert calls - defs >= 1, "edgeClassOf is defined but never called"
+
+
+def test_graph_semantic_edges_styled_distinctly():
+    """Semantic edges get a distinct 3D colour + width vs the structural base,
+    WITHOUT disturbing the pinned hover/incident magnitudes."""
+    assert "EDGE_SEMANTIC_COLOR_3D" in JS_GRAPH
+    assert "EDGE_SEMANTIC_WIDTH_MULT" in JS_GRAPH
+    # The structural base magnitudes the other guardrail tests pin must remain.
+    assert "return 0.25 * camScale;" in JS_GRAPH
+    assert "if (highlightLinks.has(l)) return 0.9 * camScale;" in JS_GRAPH

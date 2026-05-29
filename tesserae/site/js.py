@@ -961,6 +961,83 @@ JS_GRAPH = r"""
       a.degree += 1; b.degree += 1;
     });
 
+    // ----------------------------------------------------------------
+    // Graph View v1 — node-detail drawer index maps (spec §E).
+    // Built once at load (and rebuilt after the rest-payload merge) so the
+    // drawer computes its content at click-time WITHOUT shipping any
+    // per-node drawer blob in the payload. Small + instant even at
+    // ~2470 nodes / ~6515 edges.
+    //   nodeById            — id -> node
+    //   incidentLinksByNode — id -> [links touching the node]
+    //   incomingByType      — id -> { edgeType -> [links pointing AT it] }
+    //   outgoingByType      — id -> { edgeType -> [links FROM it] }
+    // ----------------------------------------------------------------
+    var nodeById = new Map();
+    var incidentLinksByNode = new Map();
+    var incomingByType = new Map();
+    var outgoingByType = new Map();
+    function _linkEndId(end){ return (typeof end === 'object' && end) ? end.id : end; }
+
+    // ----------------------------------------------------------------
+    // Graph View v1 — edge class partition (spec §C).
+    // structural = schema / containment / provenance / code mechanics /
+    //   measured fact (faint, thin). semantic = interpretive / argumentative
+    //   / topical / narrative / human-authored association (brighter,
+    //   thicker). Any edge type not listed falls back to structural
+    //   (conservative default). ``edgeClassOf`` is used by the node-detail
+    //   drawer (Why-it-matters + Related grouping) and the link styling.
+    // ----------------------------------------------------------------
+    var SEMANTIC_EDGE_TYPES = {
+      introduces: 1, uses: 1, extends: 1, improves_on: 1, compares_against: 1,
+      criticizes: 1, addresses: 1, optimizes_for: 1,
+      belongs_to_approach_family: 1, shares_concept_with: 1, derived_from: 1,
+      supports_claim: 1, contradicts_claim: 1, attributes_improvement_to: 1,
+      has_limitation: 1, evidenced_by: 1, rising_in: 1, declining_in: 1,
+      emerged_after: 1, synthesizes: 1, summarizes: 1, user_link: 1,
+      discussed_in: 1, references: 1, supersedes: 1, discusses: 1
+    };
+    function edgeClassOf(link){
+      var t = (link && (link.type || link.relation)) || '';
+      return SEMANTIC_EDGE_TYPES[t] ? 'semantic' : 'structural';
+    }
+    // Class styling (spec §C): structural stays the faint slate default;
+    // semantic edges read a touch brighter (indigo) and slightly thicker so
+    // the typed-edge "moat" is legible without turning the overview into a
+    // glowing knot. Applied ONLY to the non-incident 3D default branch — the
+    // hover/focus/highlight magnitudes that ``tests/test_site_js`` pins stay
+    // exactly as-is and always dominate this base styling.
+    var EDGE_SEMANTIC_COLOR_3D = 'rgba(129,140,248,0.34)';
+    var EDGE_SEMANTIC_WIDTH_MULT = 1.6;
+
+    function buildDrawerIndex(){
+      nodeById = new Map();
+      incidentLinksByNode = new Map();
+      incomingByType = new Map();
+      outgoingByType = new Map();
+      payload.nodes.forEach(function(n){
+        nodeById.set(n.id, n);
+        incidentLinksByNode.set(n.id, []);
+        incomingByType.set(n.id, {});
+        outgoingByType.set(n.id, {});
+      });
+      payload.links.forEach(function(l){
+        var s = _linkEndId(l.source);
+        var t = _linkEndId(l.target);
+        var et = (l.type || l.relation || 'related');
+        if (incidentLinksByNode.has(s)) incidentLinksByNode.get(s).push(l);
+        if (incidentLinksByNode.has(t)) incidentLinksByNode.get(t).push(l);
+        if (outgoingByType.has(s)) {
+          var o = outgoingByType.get(s);
+          (o[et] = o[et] || []).push(l);
+        }
+        if (incomingByType.has(t)) {
+          var inc = incomingByType.get(t);
+          (inc[et] = inc[et] || []).push(l);
+        }
+      });
+    }
+    buildDrawerIndex();
+
     // Compute a high-value cutoff for overview labels. The graph can have
     // hundreds of nodes; showing the top half as labels turns 2D into a hairball.
     var vals = payload.nodes.map(function(n){ return Math.max(1, n.val || n.degree || 1); }).slice().sort(function(a,b){ return a - b; });
@@ -1931,6 +2008,30 @@ JS_GRAPH = r"""
       return Math.pow(t, 2.5);
     }
 
+    // Graph View v1 — density label gate (spec §F). At 2.4k nodes the
+    // overview MUST stay sparse, so default labels are HIDDEN until the user
+    // zooms in or focuses — with three always-on carve-outs:
+    //   1. the selected/focused node,
+    //   2. the hovered node,
+    //   3. top-importance hubs (normalised importance >= LABEL_TOP_IMPORTANCE),
+    // which stay legible at every zoom so the map always has anchors.
+    // Otherwise a node passes only when its (degree-normalised) importance
+    // clears the camera-distance ``cutoff`` (zoom in → lower cutoff → more
+    // labels). ``cutoff`` is supplied by the caller (already computed via
+    // ``computeImportanceCutoff`` at the current camera distance) so the gate
+    // and the cull agree on one cutoff per frame.
+    var LABEL_TOP_IMPORTANCE = 0.82;
+    function passesLabelGate(n, cutoff){
+      if (!n) return false;
+      if (n === focusedNode) return true;
+      if (n === hoverNode) return true;
+      if (pinnedNode && nodeIdOf(pinnedNode) === nodeIdOf(n)) return true;
+      var imp = degreeImportanceAlpha(n);
+      if (imp >= LABEL_TOP_IMPORTANCE) return true;
+      var c = (typeof cutoff === 'number') ? cutoff : computeImportanceCutoff(320);
+      return imp >= c;
+    }
+
     // ---- Cursor-anchored zoom (Issue 5 — v15 canonical algorithm) -----
     // The canonical THREE ``zoomToCursor`` algorithm (which previous
     // rounds got wrong by using a single ``lerpVectors`` of camera and
@@ -2281,6 +2382,9 @@ JS_GRAPH = r"""
           if (highlightLinks.has(l)) return hot;
           if (isHoverIncidentLink(l)) return hot;
           if (hasFocusFilter()) return dim;
+          // spec §C — semantic edges read a touch brighter than the
+          // structural slate default (3D only; 2D keeps its flat webbing).
+          if (mode !== '2d' && edgeClassOf(l) === 'semantic') return EDGE_SEMANTIC_COLOR_3D;
           return light;
         })
         // 3D returns world-space units (sub-pixel works because the
@@ -2305,6 +2409,9 @@ JS_GRAPH = r"""
           } catch (_) {}
           if (highlightLinks.has(l)) return 0.9 * camScale;
           if (isHoverIncidentLink(l)) return 0.9 * camScale;
+          // spec §C — semantic edges slightly thicker than the structural
+          // base so the typed-edge distinction is visible at rest.
+          if (edgeClassOf(l) === 'semantic') return 0.25 * camScale * EDGE_SEMANTIC_WIDTH_MULT;
           return 0.25 * camScale;
         })
         .linkHoverPrecision(8)
@@ -2374,6 +2481,7 @@ JS_GRAPH = r"""
           autoOrbitEnabled = false;
           applyHighlight(null);
           clearInfoPanel();
+          closeDrawer();
         });
 
       // Right-click anywhere on the canvas → unselect. Mirrors the
@@ -2545,7 +2653,11 @@ JS_GRAPH = r"""
               // pure white text, never a low-alpha gray ghost.
               var nodeImportance = degreeImportanceAlpha(node);
               var importanceCutoff = computeImportanceCutoff(camDist);
-              var defaultPassesCull = nodeImportance >= importanceCutoff;
+              // Spec §F density gate: the selected / hovered / top-importance
+              // carve-outs and the camera-distance cutoff are unified in
+              // passesLabelGate so the 2.4k-node overview stays sparse while
+              // always keeping anchors visible.
+              var defaultPassesCull = passesLabelGate(node, importanceCutoff);
               for (var i = 0; i < group.children.length; i++) {
                 var child = group.children[i];
                 if (!child) continue;
@@ -2898,6 +3010,10 @@ JS_GRAPH = r"""
         }
       } catch (_) {}
       try { inst.cooldownTicks(120); } catch (_) {}
+      // Spec §F — settle fast on the 2.4k-node corpus: a higher velocity
+      // decay damps node motion sooner so the layout cools to a stable frame
+      // quickly instead of churning (and re-triggering onEngineStop).
+      try { if (inst.d3VelocityDecay) inst.d3VelocityDecay(0.45); } catch (_) {}
 
       try {
         // Auto-fit fires exactly once: the first onEngineStop after the
@@ -3110,6 +3226,424 @@ JS_GRAPH = r"""
     });
     container.addEventListener('mouseleave', hideTooltip);
 
+    // ================================================================
+    // Graph View v1 — node-detail drawer (spec §D / §E).
+    // A right-side narrative surface that opens on node SELECT (click).
+    // It reads everything it needs from the client-side index maps built
+    // in ``buildDrawerIndex`` — no per-node payload blobs. The drawer is
+    // built lazily (``ensureDrawer``) and its CSS is injected once
+    // (``injectDrawerStyles``). All text uses textContent / createElement —
+    // never innerHTML — so corpus strings can never inject markup.
+    // ================================================================
+    var DRAWER_SECTION_MAX = 5; // spec §D — max items per section.
+    var _drawerEl = null;
+    var _drawerHeaderEl = null;
+    var _drawerBodyEl = null;
+    var _drawerStylesInjected = false;
+
+    function injectDrawerStyles(){
+      if (_drawerStylesInjected) return;
+      _drawerStylesInjected = true;
+      var css = ''
+        + '.graph-drawer{position:absolute;top:0;right:0;bottom:0;width:340px;'
+        + 'max-width:86vw;z-index:40;display:flex;flex-direction:column;'
+        + 'background:rgba(8,12,22,0.96);color:#e6eaf2;'
+        + 'border-left:1px solid rgba(148,163,184,0.18);'
+        + 'box-shadow:-12px 0 32px rgba(0,0,0,0.45);'
+        + 'transform:translateX(102%);transition:transform 180ms ease;'
+        + 'font:13px/1.5 Inter,system-ui,sans-serif;overflow:hidden;}'
+        + '.graph-drawer.is-open{transform:translateX(0);}'
+        + '.graph-drawer[hidden]{display:none;}'
+        + '.graph-drawer-header{padding:16px 18px 12px;'
+        + 'border-bottom:1px solid rgba(148,163,184,0.16);}'
+        + '.graph-drawer-kicker{font-size:11px;letter-spacing:.06em;'
+        + 'text-transform:uppercase;color:#94a3b8;display:flex;gap:8px;'
+        + 'align-items:center;flex-wrap:wrap;}'
+        + '.graph-drawer-title{margin:6px 0 0;font-size:17px;font-weight:650;'
+        + 'color:#f4f6fb;}'
+        + '.graph-drawer-importance{color:#cbd5e1;}'
+        + '.graph-drawer-source{margin-top:8px;display:inline-block;'
+        + 'font-size:11px;padding:2px 8px;border-radius:999px;'
+        + 'background:rgba(129,140,248,0.16);color:#c7d2fe;}'
+        + '.graph-drawer-body{padding:14px 18px 22px;overflow-y:auto;flex:1;}'
+        + '.graph-drawer-lede{color:#cbd5e1;margin:0 0 14px;}'
+        + '.graph-drawer-section{margin:0 0 16px;}'
+        + '.graph-drawer-section h4{margin:0 0 6px;font-size:11px;'
+        + 'letter-spacing:.05em;text-transform:uppercase;color:#8b95a7;}'
+        + '.graph-drawer-chip{display:inline-flex;align-items:center;gap:6px;'
+        + 'margin:0 6px 6px 0;padding:3px 9px;border-radius:8px;font-size:12px;'
+        + 'background:rgba(148,163,184,0.12);color:#dbe3f0;cursor:pointer;'
+        + 'border:1px solid rgba(148,163,184,0.14);}'
+        + '.graph-drawer-chip.is-semantic{background:rgba(129,140,248,0.18);'
+        + 'border-color:rgba(129,140,248,0.28);color:#c7d2fe;}'
+        + '.graph-drawer-close{position:absolute;top:12px;right:14px;'
+        + 'background:none;border:none;color:#94a3b8;font-size:20px;'
+        + 'line-height:1;cursor:pointer;}'
+        + '.graph-drawer-close:hover{color:#e6eaf2;}'
+        + '.graph-drawer-grouplabel{color:#8b95a7;font-size:11px;'
+        + 'margin:2px 0 4px;}';
+      var style = document.createElement('style');
+      style.setAttribute('data-graph-drawer-styles', '');
+      style.textContent = css;
+      document.head.appendChild(style);
+    }
+
+    function ensureDrawer(){
+      if (_drawerEl) return _drawerEl;
+      injectDrawerStyles();
+      var host = wrapper || container;
+      var drawer = document.getElementById('graph-drawer');
+      if (!drawer) {
+        drawer = document.createElement('aside');
+        drawer.id = 'graph-drawer';
+        drawer.className = 'graph-drawer';
+        drawer.setAttribute('aria-label', 'Node details');
+        drawer.setAttribute('role', 'complementary');
+        drawer.hidden = true;
+        var closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'graph-drawer-close';
+        closeBtn.setAttribute('aria-label', 'Close details');
+        closeBtn.textContent = '×';
+        closeBtn.addEventListener('click', function(){ closeDrawer(); });
+        var header = document.createElement('div');
+        header.id = 'graph-drawer-header';
+        header.className = 'graph-drawer-header';
+        var body = document.createElement('div');
+        body.id = 'graph-drawer-body';
+        body.className = 'graph-drawer-body';
+        drawer.appendChild(closeBtn);
+        drawer.appendChild(header);
+        drawer.appendChild(body);
+        if (host && host.appendChild) host.appendChild(drawer);
+      }
+      _drawerEl = drawer;
+      _drawerHeaderEl = drawer.querySelector('#graph-drawer-header')
+        || document.getElementById('graph-drawer-header');
+      _drawerBodyEl = drawer.querySelector('#graph-drawer-body')
+        || document.getElementById('graph-drawer-body');
+      return drawer;
+    }
+
+    function _clearEl(el){
+      if (!el) return;
+      while (el.firstChild) el.removeChild(el.firstChild);
+    }
+
+    // Body lede fallback ladder (spec §D):
+    //   abstract -> description -> evidence -> metadata_summary -> name[:240]
+    function drawerLede(n){
+      if (!n) return '';
+      var txt = n.abstract
+        || n.description
+        || n.evidence
+        || n.metadata_summary
+        || (n.name || n.id || '');
+      txt = String(txt);
+      return txt.length > 240 ? txt.slice(0, 240) + '…' : txt;
+    }
+
+    function renderDrawerHeader(n){
+      ensureDrawer();
+      _clearEl(_drawerHeaderEl);
+      if (!n) return;
+      var fam = familyOf(n);
+      var kicker = document.createElement('div');
+      kicker.className = 'graph-drawer-kicker';
+      var famSpan = document.createElement('span');
+      famSpan.textContent = FAMILY_LABELS[fam] || fam;
+      famSpan.style.color = FAMILY_COLORS[fam] || FAMILY_COLORS.other;
+      kicker.appendChild(famSpan);
+      if (n.type) {
+        var typeSpan = document.createElement('span');
+        typeSpan.textContent = '· ' + n.type;
+        kicker.appendChild(typeSpan);
+      }
+      var imp = (typeof n.importance === 'number') ? n.importance : null;
+      if (imp !== null) {
+        var impSpan = document.createElement('span');
+        impSpan.className = 'graph-drawer-importance';
+        impSpan.textContent = '· importance ' + imp;
+        kicker.appendChild(impSpan);
+      }
+      var title = document.createElement('h3');
+      title.className = 'graph-drawer-title';
+      title.textContent = n.name || n.id || '';
+      _drawerHeaderEl.appendChild(kicker);
+      _drawerHeaderEl.appendChild(title);
+      var src = n.source_path;
+      if (src) {
+        var pill = document.createElement('span');
+        pill.className = 'graph-drawer-source';
+        pill.textContent = src;
+        _drawerHeaderEl.appendChild(pill);
+      }
+    }
+
+    function openDrawer(node){
+      if (!node) return;
+      ensureDrawer();
+      renderDrawerHeader(node);
+      _clearEl(_drawerBodyEl);
+      var lede = drawerLede(node);
+      if (lede) {
+        var p = document.createElement('p');
+        p.className = 'graph-drawer-lede';
+        p.textContent = lede;
+        _drawerBodyEl.appendChild(p);
+      }
+      renderDrawerSections(node);
+      _drawerEl.hidden = false;
+      try { requestAnimationFrame(function(){ _drawerEl.classList.add('is-open'); }); }
+      catch (_) { _drawerEl.classList.add('is-open'); }
+    }
+
+    function closeDrawer(){
+      if (!_drawerEl) return;
+      _drawerEl.classList.remove('is-open');
+      _drawerEl.hidden = true;
+    }
+
+    // Section host — Task 5 fills this with the typed sections. Defined here
+    // as a self-contained shell so Task 4's openDrawer works standalone.
+    function renderDrawerSections(node){
+      if (!node || !_drawerBodyEl) return;
+      _renderDrawerSectionsImpl(node);
+    }
+    // ----------------------------------------------------------------
+    // Task 5 — typed drawer sections (spec §D). Each section renders ONLY
+    // when it has content, caps at DRAWER_SECTION_MAX (5) items, and uses
+    // grouped chips — never a raw 46-edge dump. Chips are clickable and
+    // re-focus the neighbour node.
+    // ----------------------------------------------------------------
+    function _otherEnd(link, nodeId){
+      var s = _linkEndId(link.source);
+      var t = _linkEndId(link.target);
+      var otherId = (s === nodeId) ? t : s;
+      return nodeById.get(otherId) || null;
+    }
+    function _humanType(t){
+      return String(t || 'related').replace(/_/g, ' ');
+    }
+    function _makeSectionEl(title){
+      var sec = document.createElement('div');
+      sec.className = 'graph-drawer-section';
+      var h = document.createElement('h4');
+      h.textContent = title;
+      sec.appendChild(h);
+      return sec;
+    }
+    function _makeNodeChip(node, semantic){
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'graph-drawer-chip' + (semantic ? ' is-semantic' : '');
+      chip.textContent = node.name || node.id || '';
+      chip.addEventListener('click', function(){ activateNode(node); });
+      return chip;
+    }
+    function _appendIfNonEmpty(sec, addedCount){
+      if (addedCount > 0) _drawerBodyEl.appendChild(sec);
+    }
+
+    // Why it matters — importance explanation + top incident SEMANTIC edges.
+    function renderWhyItMatters(node){
+      var sec = _makeSectionEl('Why it matters');
+      var added = 0;
+      var imp = (typeof node.importance === 'number') ? node.importance : null;
+      if (imp !== null) {
+        var p = document.createElement('p');
+        p.className = 'graph-drawer-grouplabel';
+        var why = (node.type === 'CommunitySummary')
+          ? ('Summarises ' + (node.member_count || imp) + ' members.')
+          : ('Importance ' + imp + ' (connectivity / fan-in).');
+        p.textContent = why;
+        sec.appendChild(p);
+        added += 1;
+      }
+      var incident = incidentLinksByNode.get(node.id) || [];
+      var semantic = incident.filter(function(l){ return edgeClassOf(l) === 'semantic'; });
+      var n = 0;
+      for (var i = 0; i < semantic.length && n < DRAWER_SECTION_MAX; i++) {
+        var other = _otherEnd(semantic[i], node.id);
+        if (!other) continue;
+        sec.appendChild(_makeNodeChip(other, true));
+        n += 1; added += 1;
+      }
+      _appendIfNonEmpty(sec, added);
+    }
+
+    // Evidence / context — EvidenceSpan, claims, source document, path.
+    function renderEvidence(node){
+      var sec = _makeSectionEl('Evidence & context');
+      var added = 0;
+      if (node.evidence) {
+        var p = document.createElement('p');
+        p.className = 'graph-drawer-lede';
+        var ev = String(node.evidence);
+        p.textContent = ev.length > 240 ? ev.slice(0, 240) + '…' : ev;
+        sec.appendChild(p);
+        added += 1;
+      }
+      var incident = incidentLinksByNode.get(node.id) || [];
+      var n = 0;
+      for (var i = 0; i < incident.length && n < DRAWER_SECTION_MAX; i++) {
+        var other = _otherEnd(incident[i], node.id);
+        if (!other) continue;
+        var fam = familyOf(other);
+        var t = other.type || '';
+        var isEvidence = (fam === 'claims') || t === 'EvidenceSpan'
+          || t === 'SourceDocument';
+        if (!isEvidence) continue;
+        sec.appendChild(_makeNodeChip(other, false));
+        n += 1; added += 1;
+      }
+      _appendIfNonEmpty(sec, added);
+    }
+
+    // Related — top neighbours grouped by edge class + type.
+    function groupRelated(node){
+      var incident = incidentLinksByNode.get(node.id) || [];
+      var groups = {}; // key "class:type" -> { cls, type, items: [] }
+      for (var i = 0; i < incident.length; i++) {
+        var l = incident[i];
+        var other = _otherEnd(l, node.id);
+        if (!other) continue;
+        var cls = edgeClassOf(l);
+        var type = l.type || l.relation || 'related';
+        var key = cls + ':' + type;
+        if (!groups[key]) groups[key] = { cls: cls, type: type, items: [] };
+        if (groups[key].items.length < DRAWER_SECTION_MAX) {
+          groups[key].items.push(other);
+        }
+      }
+      return groups;
+    }
+    function renderRelated(node){
+      var sec = _makeSectionEl('Related');
+      var groups = groupRelated(node);
+      var keys = Object.keys(groups);
+      // Semantic groups first (more narrative value), then structural.
+      keys.sort(function(a, b){
+        var ca = groups[a].cls === 'semantic' ? 0 : 1;
+        var cb = groups[b].cls === 'semantic' ? 0 : 1;
+        return ca - cb;
+      });
+      var added = 0;
+      for (var k = 0; k < keys.length; k++) {
+        var g = groups[keys[k]];
+        var lbl = document.createElement('div');
+        lbl.className = 'graph-drawer-grouplabel';
+        lbl.textContent = _humanType(g.type) + ' (' + g.cls + ')';
+        sec.appendChild(lbl);
+        var items = g.items.slice(0, DRAWER_SECTION_MAX);
+        for (var j = 0; j < items.length; j++) {
+          sec.appendChild(_makeNodeChip(items[j], g.cls === 'semantic'));
+        }
+        added += 1;
+      }
+      _appendIfNonEmpty(sec, added);
+    }
+
+    // Session memory — incident discussed_in / references / discusses /
+    // supersedes edges.
+    function renderSessionMemory(node){
+      var SESSION_TYPES = { discussed_in: 1, references: 1, discusses: 1, supersedes: 1 };
+      var sec = _makeSectionEl('Session memory');
+      var incident = incidentLinksByNode.get(node.id) || [];
+      var added = 0, n = 0;
+      for (var i = 0; i < incident.length && n < DRAWER_SECTION_MAX; i++) {
+        var l = incident[i];
+        var type = l.type || l.relation || '';
+        if (!SESSION_TYPES[type]) continue;
+        var other = _otherEnd(l, node.id);
+        if (!other) continue;
+        sec.appendChild(_makeNodeChip(other, true));
+        n += 1; added += 1;
+      }
+      _appendIfNonEmpty(sec, added);
+    }
+
+    // Code — file / module / path + callers + callees (code nodes only).
+    function renderCodeSection(node){
+      if (familyOf(node) !== 'code') return;
+      var sec = _makeSectionEl('Code');
+      var added = 0;
+      if (node.source_path) {
+        var lbl = document.createElement('div');
+        lbl.className = 'graph-drawer-grouplabel';
+        lbl.textContent = node.source_path;
+        sec.appendChild(lbl);
+        added += 1;
+      }
+      var inc = incomingByType.get(node.id) || {};
+      var out = outgoingByType.get(node.id) || {};
+      var callers = inc['calls'] || [];
+      var callees = out['calls'] || [];
+      if (callers.length) {
+        var cl = document.createElement('div');
+        cl.className = 'graph-drawer-grouplabel';
+        cl.textContent = 'Callers';
+        sec.appendChild(cl);
+        for (var i = 0; i < callers.length && i < DRAWER_SECTION_MAX; i++) {
+          var caller = _otherEnd(callers[i], node.id);
+          if (caller) { sec.appendChild(_makeNodeChip(caller, false)); added += 1; }
+        }
+      }
+      if (callees.length) {
+        var cle = document.createElement('div');
+        cle.className = 'graph-drawer-grouplabel';
+        cle.textContent = 'Callees';
+        sec.appendChild(cle);
+        for (var j = 0; j < callees.length && j < DRAWER_SECTION_MAX; j++) {
+          var callee = _otherEnd(callees[j], node.id);
+          if (callee) { sec.appendChild(_makeNodeChip(callee, false)); added += 1; }
+        }
+      }
+      _appendIfNonEmpty(sec, added);
+    }
+
+    // Community — summarised members (CommunitySummary) OR parent summaries
+    // (for members reached via an incoming ``summarizes`` edge).
+    function renderCommunity(node){
+      var sec = _makeSectionEl('Community');
+      var added = 0;
+      var out = outgoingByType.get(node.id) || {};
+      var inc = incomingByType.get(node.id) || {};
+      if (node.type === 'CommunitySummary') {
+        var members = out['summarizes'] || [];
+        var head = document.createElement('div');
+        head.className = 'graph-drawer-grouplabel';
+        head.textContent = 'Members (' + members.length + ')';
+        sec.appendChild(head);
+        for (var i = 0; i < members.length && i < DRAWER_SECTION_MAX; i++) {
+          var m = _otherEnd(members[i], node.id);
+          if (m) { sec.appendChild(_makeNodeChip(m, true)); added += 1; }
+        }
+      } else {
+        var parents = inc['summarizes'] || [];
+        if (parents.length) {
+          var ph = document.createElement('div');
+          ph.className = 'graph-drawer-grouplabel';
+          ph.textContent = 'Summarised by';
+          sec.appendChild(ph);
+          for (var p = 0; p < parents.length && p < DRAWER_SECTION_MAX; p++) {
+            var parent = _otherEnd(parents[p], node.id);
+            if (parent) { sec.appendChild(_makeNodeChip(parent, true)); added += 1; }
+          }
+        }
+      }
+      _appendIfNonEmpty(sec, added);
+    }
+
+    function _renderDrawerSectionsImpl(node){
+      renderWhyItMatters(node);
+      renderEvidence(node);
+      renderRelated(node);
+      renderSessionMemory(node);
+      if (familyOf(node) === 'code') renderCodeSection(node);
+      renderCommunity(node);
+    }
+
     function activateNode(node, evt){
       if (!node) return;
       if (isDimmedNode(node)) return;
@@ -3136,6 +3670,12 @@ JS_GRAPH = r"""
         // its purpose for this node.
         hideTooltip();
         populateFocusPanel(node);
+        // v1.1 — the typed node-detail drawer is the narrative surface for a
+        // selected node (spec §D). Task 4 built openDrawer + the client-side
+        // index but never wired the call site, so the drawer was unreachable
+        // dead code. Open it on select; closeDrawer() is already wired to the
+        // drawer close button + Esc/background unfocus.
+        openDrawer(node);
         focusOnNode(node);
         return;
       }
@@ -3593,6 +4133,7 @@ JS_GRAPH = r"""
         autoOrbitEnabled = false;
         applyHighlight(null);
         clearInfoPanel();
+        closeDrawer();
       });
     }
 
@@ -3699,6 +4240,7 @@ JS_GRAPH = r"""
         autoOrbitEnabled = false;
         applyHighlight(null);
         clearInfoPanel();
+        closeDrawer();
         dayFilter = null;
         if (searchEl) { searchEl.value = ''; searchQuery = ''; }
         refreshVisibility();
@@ -3737,6 +4279,12 @@ JS_GRAPH = r"""
       if (Graph && Graph.graphData) {
         try { Graph.graphData({ nodes: payload.nodes, links: payload.links }); } catch (_) {}
       }
+      // codex P2 — the drawer index is built once at load off the CORE
+      // payload. The rest merge just appended to payload.nodes/.links, so
+      // without this rebuild the drawer would render empty/partial sections
+      // for any rest node (or core node whose incident edges arrived in the
+      // rest payload). Rebuild now that the union is in place.
+      try { buildDrawerIndex(); } catch (_) {}
       // F-2 — rebuild the legend from the union (core + rest) so the
       // type counts and chips reflect the WHOLE graph, not just the
       // core subgraph that startGraph saw. ``hiddenGroups`` is preserved
