@@ -272,22 +272,33 @@ def test_graph_edges_are_visible_lines_not_only_particles():
     # Issue 4 — edges thinner everywhere; widths now scale by camera
     # distance so they grow when zoomed out and shrink when zoomed in.
     # Defaults: 0.25, incident: 0.9. Multiplied by ``camScale``.
+    #
+    # NOTE: this is the **3D** (world-space) width ladder. The **2D**
+    # (pixel-space) branch legitimately uses flat pixel widths — sub-pixel
+    # world-space values render invisible in 2D, so 2D hot edges are ~2.0 px
+    # and the default is ~0.6 px (see the ``mode === '2d'`` branch in
+    # ``linkWidth``). A blanket forbid of ``return 2.0;`` was wrong: it banned
+    # the legitimate 2D pixel width and failed on main itself. Assert the 3D
+    # ladder is camScale-driven (no flat 3D width) instead.
     assert "function isHoverIncidentLink" in JS_GRAPH
     assert "if (highlightLinks.has(l)) return 0.9 * camScale;" in JS_GRAPH
     assert "if (isHoverIncidentLink(l)) return 0.9 * camScale;" in JS_GRAPH
     assert "return 0.25 * camScale;" in JS_GRAPH
-    # Forbid the previous round's thicker widths.
-    assert "if (highlightLinks.has(l)) return 2.0;" not in JS_GRAPH
+    # The 3D default width must be camScale-multiplied, never a flat constant.
+    assert "return 0.25;" not in JS_GRAPH
     assert "if (isHoverIncidentLink(l)) return 0.75;" not in JS_GRAPH
     assert "line.setAttribute('stroke-width', '0.24');" in JS_GRAPH
     assert "el.setAttribute('stroke-width', hot ? '0.85' : '0.28');" in JS_GRAPH
     assert "if (inst.linkThreeObjectExtend) inst.linkThreeObjectExtend(true);" in JS_GRAPH
-    # The linkColor function branches on hover-incident too. It picks a
-    # base from the focus/hover ladder; the dim transition is a snap
-    # (the per-frame opacity lerp was removed in F-12 — re-poking the
-    # accessors every frame hung the page on the 388-node corpus).
-    assert "if (highlightLinks.has(l)) return EDGE_COLOR_HOT;" in JS_GRAPH
-    assert "if (isHoverIncidentLink(l)) return EDGE_COLOR_HOT;" in JS_GRAPH
+    # The linkColor accessor branches on hover-incident too. It was refactored
+    # to pick a mode-aware local ``hot``/``light``/``dim`` (2D needs more
+    # saturated alpha than 3D's translucent webbing) and ``return hot;`` —
+    # so the old ``return EDGE_COLOR_HOT;`` substring no longer appears.
+    # ``EDGE_COLOR_HOT`` itself still exists as the 3D hot value (the
+    # rgba(250,204,21,0.85) literal is already asserted above); here we assert
+    # the accessor returns the ``hot`` local for highlight + hover-incident.
+    assert "if (highlightLinks.has(l)) return hot;" in JS_GRAPH
+    assert "if (isHoverIncidentLink(l)) return hot;" in JS_GRAPH
 
 
 def test_graph_dimmed_labels_are_hidden_with_dimmed_nodes_and_edges():
