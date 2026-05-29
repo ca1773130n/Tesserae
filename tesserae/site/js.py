@@ -797,6 +797,59 @@ JS_GRAPH = r"""
     external:  '#a78bfa',
     other:     '#6b7280'
   };
+  // Graph View v1 — 8-family colour scheme (spec §B). Nodes are coloured by
+  // their precomputed ``family`` (taxonomy/sources/code/concepts/claims/
+  // synthesis/sessions/actors) instead of one of 36 raw types. Cross-project
+  // bridges keep their distinct violet. Any family not listed → neutral gray.
+  // Tailwind-500/400 anchors, matched to HypePaper's category-dot palette.
+  var FAMILY_COLORS = {
+    taxonomy:  '#f472b6', // pink-400
+    sources:   '#3b82f6', // blue-500
+    code:      '#22d3ee', // cyan-400
+    concepts:  '#8b5cf6', // violet-500
+    claims:    '#f59e0b', // amber-500
+    synthesis: '#10b981', // emerald-500
+    sessions:  '#fb7185', // rose-400
+    actors:    '#94a3b8', // slate-400
+    external:  '#a78bfa', // bridge violet (B2)
+    other:     '#6b7280'  // neutral gray fallback
+  };
+  // HSL anchors per family — drive the per-node lightness/sat wobble +
+  // importance tier in ``nodeColorVariant`` (spec §B "brighten focused /
+  // selected / CommunitySummary / high-importance; desaturate low-degree").
+  var FAMILY_HSL = {
+    taxonomy:  { h: 329, s: 86, l: 70 },
+    sources:   { h: 217, s: 91, l: 60 },
+    code:      { h: 188, s: 86, l: 53 },
+    concepts:  { h: 258, s: 90, l: 66 },
+    claims:    { h: 38,  s: 92, l: 50 },
+    synthesis: { h: 160, s: 84, l: 39 },
+    sessions:  { h: 351, s: 95, l: 71 },
+    actors:    { h: 215, s: 20, l: 65 },
+    external:  { h: 254, s: 95, l: 75 },
+    other:     { h: 220, s: 9,  l: 50 }
+  };
+  // Human-readable family labels for the legend (spec §B — legend renders
+  // families, not 36 types).
+  var FAMILY_LABELS = {
+    taxonomy:  'Taxonomy',
+    sources:   'Sources',
+    code:      'Code',
+    concepts:  'Concepts',
+    claims:    'Claims',
+    synthesis: 'Synthesis',
+    sessions:  'Sessions',
+    actors:    'Actors',
+    external:  'Bridges',
+    other:     'Other'
+  };
+  function familyOf(n){
+    // Bridge nodes (B2) carry group="external" but no family; keep them
+    // violet. Otherwise read the precomputed ``family`` scalar (spec §B),
+    // falling back to "other" for any node missing one (older payloads).
+    if (n && n.group === 'external') return 'external';
+    return (n && n.family) || 'other';
+  }
   // Default edge: off-white at 0.18 alpha (HypePaper uses
   // rgba(255,255,255,0.18) over the deep-dark canvas; ours matches so the
   // webbing recedes evenly). Hot (hovered/focused incident): yellow at
@@ -844,13 +897,35 @@ JS_GRAPH = r"""
   }
 
   function nodeColorVariant(n){
-    var group = (n && n.group) || 'other';
-    var base = GROUP_HSL[group] || GROUP_HSL.other;
-    var h = hashString((n && (n.id || n.name)) || group);
+    // Graph View v1 — colour by FAMILY (spec §B), with a within-family
+    // lightness/saturation TIER: high-importance nodes (and CommunitySummary)
+    // brighten + saturate; low-importance leaves desaturate + dim. A small
+    // deterministic per-node hue/sat wobble keeps siblings from rendering as
+    // one flat swatch while the family hue still reads at a glance.
+    var family = familyOf(n);
+    var base = FAMILY_HSL[family] || FAMILY_HSL.other;
+    var h = hashString((n && (n.id || n.name)) || family);
+    // Importance tier in [-1, 1]: +1 = top hub / CommunitySummary, -1 = leaf.
+    var imp = (n && typeof n.importance === 'number') ? n.importance : 0;
+    var tier = Math.min(1, Math.log(imp + 1) / Math.log(33)); // log33 ~ imp 32 -> 1
+    if (n && n.type === 'CommunitySummary') tier = Math.max(tier, 0.85);
+    var lightTier = (tier - 0.35) * 16;   // brighten hubs, dim leaves (±)
+    var satTier   = (tier - 0.35) * 14;
     var hue = (base.h + ((h % 19) - 9) + 360) % 360;
-    var sat = Math.max(42, Math.min(98, base.s + (((h >>> 5) % 13) - 6)));
-    var light = Math.max(48, Math.min(82, base.l + (((h >>> 9) % 17) - 8)));
+    var sat = Math.max(28, Math.min(98, base.s + (((h >>> 5) % 13) - 6) + satTier));
+    var light = Math.max(40, Math.min(84, base.l + (((h >>> 9) % 13) - 6) + lightTier));
     return 'hsl(' + hue + ' ' + sat + '% ' + light + '%)';
+  }
+
+  // Graph View v1 — node sphere size from the single ``importance`` metric
+  // (spec §A). One global render formula keeps "why is this big" explainable:
+  // clamp(2.5, 12, 2 + log2(importance + 1) * 1.8). Older payloads without an
+  // ``importance`` scalar fall back to the degree-derived ``val``.
+  function nodeSizeFor(n){
+    var imp = (n && typeof n.importance === 'number') ? n.importance : null;
+    if (imp === null) return Math.max(1, (n && n.val) || 1);
+    var v = 2 + (Math.log(imp + 1) / Math.LN2) * 1.8;
+    return Math.max(2.5, Math.min(12, v));
   }
 
   function ready(fn){
@@ -1019,36 +1094,56 @@ JS_GRAPH = r"""
     // is preserved across rebuilds via the ``hiddenGroups`` set.
     function rebuildLegend(){
       if (!legendEl) return;
+      // Graph View v1 — legend renders the 8 FAMILIES (+ bridges/other),
+      // not 36 raw types (spec §B). ``hiddenGroups`` now holds family keys;
+      // toggling a chip dims every node in that family.
       typeCounts = {};
       payload.nodes.forEach(function(n){
-        var g = n.group || 'other';
-        typeCounts[g] = (typeCounts[g] || 0) + 1;
+        var fam = familyOf(n);
+        typeCounts[fam] = (typeCounts[fam] || 0) + 1;
       });
       while (legendEl.firstChild) legendEl.removeChild(legendEl.firstChild);
-      Object.keys(typeCounts).sort().forEach(function(group){
-        var chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'graph-legend-chip';
-        chip.dataset.group = group;
-        if (hiddenGroups.has(group)) chip.classList.add('is-off');
-        var dot = document.createElement('span');
-        dot.className = 'graph-legend-dot';
-        dot.style.background = GROUP_COLORS[group] || GROUP_COLORS.other;
-        var label = document.createElement('span');
-        label.className = 'graph-legend-label';
-        label.textContent = group;
-        var count = document.createElement('span');
-        count.className = 'graph-legend-count';
-        count.textContent = String(typeCounts[group]);
-        chip.appendChild(dot); chip.appendChild(label); chip.appendChild(count);
-        chip.addEventListener('click', function(){
-          if (hiddenGroups.has(group)) hiddenGroups.delete(group);
-          else hiddenGroups.add(group);
-          chip.classList.toggle('is-off', hiddenGroups.has(group));
-          if (Graph) refreshVisibility();
-        });
-        legendEl.appendChild(chip);
+      // Stable family order so the legend doesn't reshuffle between the
+      // core + rest payload merges.
+      var FAMILY_ORDER = ['taxonomy','sources','code','concepts','claims','synthesis','sessions','actors','external','other'];
+      var seen = {};
+      FAMILY_ORDER.forEach(function(family){
+        if (!(family in typeCounts)) return;
+        seen[family] = true;
+        legendEl.appendChild(makeLegendChip(family));
       });
+      // Any unexpected family key (future-proofing) appended alphabetically.
+      Object.keys(typeCounts).sort().forEach(function(family){
+        if (seen[family]) return;
+        legendEl.appendChild(makeLegendChip(family));
+      });
+    }
+    function makeLegendChip(group){
+      // ``group`` now holds a FAMILY key (graph-view v1), but the param name
+      // stays ``group`` to preserve the legend's hidden-state contract that
+      // tests/test_site_js.py asserts (hiddenGroups keyed by the chip group).
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'graph-legend-chip';
+      chip.dataset.group = group;
+      if (hiddenGroups.has(group)) chip.classList.add('is-off');
+      var dot = document.createElement('span');
+      dot.className = 'graph-legend-dot';
+      dot.style.background = FAMILY_COLORS[group] || FAMILY_COLORS.other;
+      var label = document.createElement('span');
+      label.className = 'graph-legend-label';
+      label.textContent = FAMILY_LABELS[group] || group;
+      var count = document.createElement('span');
+      count.className = 'graph-legend-count';
+      count.textContent = String(typeCounts[group]);
+      chip.appendChild(dot); chip.appendChild(label); chip.appendChild(count);
+      chip.addEventListener('click', function(){
+        if (hiddenGroups.has(group)) hiddenGroups.delete(group);
+        else hiddenGroups.add(group);
+        chip.classList.toggle('is-off', hiddenGroups.has(group));
+        if (Graph) refreshVisibility();
+      });
+      return chip;
     }
     rebuildLegend();
     // B2 — set initial toolbar-toggle visibility based on the core
@@ -1378,12 +1473,14 @@ JS_GRAPH = r"""
       // / ``isDimmedNode`` instead, so non-matching nodes stay clickable
       // and the user can still see their context.
       if (!node) return false;
-      var g = node.group || 'other';
-      if (hiddenGroups.has(g)) return false;
+      // Graph View v1 — legend chips toggle FAMILIES; ``hiddenGroups`` now
+      // holds family keys, so visibility keys off ``familyOf`` too.
+      var fam = familyOf(node);
+      if (hiddenGroups.has(fam)) return false;
       // B2 — bridge filter composes with the existing chip filter and
       // day filter; either one returning false hides the node and its
       // incident edges (linkVisibility checks both endpoints).
-      if (!showCrossProjectBridges && g === 'external') return false;
+      if (!showCrossProjectBridges && node.group === 'external') return false;
       if (dayFilter) {
         var created = node.metadata && node.metadata.created;
         if (!created || String(created).slice(0, 10) !== dayFilter) return false;
@@ -1564,7 +1661,7 @@ JS_GRAPH = r"""
     // ``hint`` in the key any more).
     // Node-label fonts doubled for readability; edge-label font stays
     // small so edge labels never compete with node names visually.
-    var VARIANT_FONT       = { default: 22, edge: 7, neighbor: 28, hover: 36, focused: 44 };
+    var VARIANT_FONT       = { default: 11, edge: 7, neighbor: 14, hover: 18, focused: 22 };
     var VARIANT_OPACITY    = { default: 0.85, edge: 0.78, neighbor: 0.92, hover: 1.0, focused: 1.0 };
     // Render-order ladder (low → high): edge → default → neighbor →
     // hover/focused. Hover and focused share renderOrder 999 because
@@ -2149,9 +2246,13 @@ JS_GRAPH = r"""
         .nodeId('id')
         .nodeLabel(function(n){ return ''; })
         .nodeVal(function(n){
+          // Graph View v1 — sphere size encodes the single ``importance``
+          // metric (spec §A): clamp(2.5, 12, 2 + log2(importance+1)*1.8).
+          // Falls back to the degree-based ``val`` for older payloads that
+          // predate the importance scalar.
+          var base = nodeSizeFor(n);
           // Issue 2 — hovered node grows to 1.25x its normal val so the
           // sphere itself becomes a visible cue independent of the label.
-          var base = Math.max(1, n.val || 1);
           if (hoverNode === n) return base * 1.25;
           return base;
         })
@@ -2202,9 +2303,9 @@ JS_GRAPH = r"""
               camScale = Math.max(1.0, Math.min(3.0, dist / 180));
             }
           } catch (_) {}
-          if (highlightLinks.has(l)) return 0.225 * camScale;
-          if (isHoverIncidentLink(l)) return 0.225 * camScale;
-          return 0.0625 * camScale;
+          if (highlightLinks.has(l)) return 0.9 * camScale;
+          if (isHoverIncidentLink(l)) return 0.9 * camScale;
+          return 0.25 * camScale;
         })
         .linkHoverPrecision(8)
         // Issue 4 — particles ONLY on edges incident to the hovered or
@@ -2217,7 +2318,7 @@ JS_GRAPH = r"""
           if (isHoverIncidentLink(l)) return 2;
           return 0;
         })
-        .linkDirectionalParticleWidth(1.2)
+        .linkDirectionalParticleWidth(0.6)
         .linkDirectionalParticleSpeed(0.005)
         .onNodeHover(function(node){
           // F-4 — when a node is FOCUSED/pinned, hover-driven highlight

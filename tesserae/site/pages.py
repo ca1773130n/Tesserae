@@ -2287,6 +2287,98 @@ _GRAPH_HIDDEN_EDGE_TYPES: frozenset[str] = frozenset({"authored_by"})
 _GRAPH_HIDDEN_GROUPS: frozenset[str] = frozenset({"sources"})
 
 
+# Graph View v1 — node FAMILY map (spec §B). The interactive view colours
+# nodes by one of 8 families (plus a neutral "other" fallback) instead of 36
+# raw types. The family→types map below is the single source of truth and is
+# mirrored by ``FAMILY_COLORS`` in ``js.py``. Any ``ResearchNodeType.value``
+# not listed here degrades gracefully to ``"other"`` (neutral gray) so new
+# node types never break the legend or the colour scheme. ``Stub`` is hidden
+# upstream (WIKI_LAYER filter) and intentionally absent.
+_FAMILY_BY_TYPE: Dict[str, str] = {}
+for _family, _types in {
+    "taxonomy": ("ResearchField", "ResearchTopic", "ProblemArea", "ApproachFamily", "Trend"),
+    "sources": ("SourceDocument", "Paper", "Repository", "Project", "Model", "Dataset", "Benchmark", "Metric", "Result"),
+    "code": (
+        "CodeProject", "SourceFile", "CodeFile", "CodeModule", "CodeClass", "CodeFunction",
+        "CodeMethod", "CodeInterface", "CodeTrait", "CodeStruct", "CodeEnum", "CodeEnumMember",
+        "CodeTypeAlias", "CodeVariable", "CodeConstant", "CodeRoute", "CodeComponent", "CodeField",
+        "CodeParameter", "CodeNamespace", "CodeSymbol", "Dependency",
+    ),
+    "concepts": (
+        "Concept", "TechnicalTerm", "MathematicalConcept", "MethodologicalConcept", "Algorithm",
+        "ObjectiveFunction", "ArchitecturePattern", "TrainingParadigm", "InferenceStrategy",
+        "EvaluationProtocol", "Task", "Capability",
+    ),
+    "claims": (
+        "Claim", "ContributionClaim", "PerformanceClaim", "ComparisonClaim", "LimitationClaim",
+        "CausalClaim", "OpenQuestion", "EvidenceSpan",
+    ),
+    "synthesis": ("Synthesis", "CommunitySummary"),
+    "sessions": (
+        "Session", "SessionInsight", "SessionDecision", "SessionQuestion", "SessionTODO",
+        "SessionHypothesis", "SessionTakeaway",
+    ),
+    "actors": ("Person", "Organization"),
+}.items():
+    for _t in _types:
+        _FAMILY_BY_TYPE[_t] = _family
+del _family, _types, _t
+
+
+def _family_for_node_type(node_type: ResearchNodeType) -> str:
+    """Map a :class:`ResearchNodeType` to one of the 8 graph families.
+
+    Unknown / unmapped types fall back to ``"other"`` (neutral gray) so the
+    colour scheme degrades gracefully as the schema grows (spec §B).
+    """
+    return _FAMILY_BY_TYPE.get(node_type.value, "other")
+
+
+# Graph View v1 — the interactive view surfaces more families than the
+# SEO/search wiki layer (``WIKI_LAYER_TYPES``): the spec's colour map +
+# node-detail drawer cover Code (cyan), Sessions (rose) and CommunitySummary
+# (emerald) nodes, which ``WIKI_LAYER_TYPES`` intentionally omits because they
+# don't get their own HTML page. We extend the allow-list HERE (visual payload
+# only) so those families render in the graph + drawer without changing the
+# search index, sitemap, or JSON-LD exports (which stay keyed on
+# ``WIKI_LAYER_TYPES``). Sources stay gated behind ``show_sources`` via the
+# separate group filter.
+_GRAPH_VIEW_EXTRA_TYPES: frozenset[str] = frozenset(
+    {
+        # Synthesis family — CommunitySummary anchors the Community drawer section.
+        "CommunitySummary",
+        # Code family — callers/callees power the Code drawer section.
+        "CodeProject", "SourceFile", "CodeFile", "CodeModule", "CodeClass",
+        "CodeFunction", "CodeMethod", "CodeInterface", "CodeTrait", "CodeStruct",
+        "CodeEnum", "CodeEnumMember", "CodeTypeAlias", "CodeVariable",
+        "CodeConstant", "CodeRoute", "CodeComponent", "CodeField",
+        "CodeParameter", "CodeNamespace", "CodeSymbol", "Dependency",
+        # Sessions family — session memory drawer section.
+        "Session", "SessionInsight", "SessionDecision", "SessionQuestion",
+        "SessionTODO", "SessionHypothesis", "SessionTakeaway",
+    }
+)
+_GRAPH_VIEW_TYPES: frozenset[str] = WIKI_LAYER_TYPES | _GRAPH_VIEW_EXTRA_TYPES
+
+
+# Code-symbol node types whose ``importance`` is fan-in (incoming calls /
+# references / imports / declared_in), per spec §A. Mirrors
+# ``research_graph.CODE_SYMBOL_TYPES`` but keyed on the string value so the
+# serializer stays decoupled from the enum-set import.
+_CODE_FAMILY = "code"
+# Edge types that count as code fan-in for the importance signal.
+_CODE_FANIN_EDGE_TYPES: frozenset[str] = frozenset(
+    {"calls", "references", "imports", "declared_in"}
+)
+# Session-finding node types whose importance is ``decay_score`` when present.
+_SESSION_FINDING_TYPE_VALUES: frozenset[str] = frozenset(
+    {
+        "SessionInsight", "SessionDecision", "SessionQuestion",
+        "SessionTODO", "SessionHypothesis", "SessionTakeaway",
+    }
+)
+
+
 def _is_hidden_group_node(node: ResearchNode) -> bool:
     """Return ``True`` when ``node``'s group lives in ``_GRAPH_HIDDEN_GROUPS``.
 
@@ -2298,7 +2390,17 @@ def _is_hidden_group_node(node: ResearchNode) -> bool:
     Uses the same kind→group mapping (``_kind_for_node_type``) the visual
     payload itself relies on, so a node's classification here cannot drift
     from its classification in the payload.
+
+    Codex PR #21 P2 fix: ``SOURCE_FILE`` is a code-graph node type (see
+    the comment at the SOURCE_FILE/SOURCE_DOCUMENT branch in
+    ``_kind_for_node_type``) but its kind maps to the ``sources`` group
+    for visual coherence. Without this carve-out the default
+    ``show_sources=False`` would strip every file node + its incident
+    ``contains``/``declared_in`` edges out of the code graph, leaving
+    code-ingested projects with floating functions and no files.
     """
+    if node.type == ResearchNodeType.SOURCE_FILE:
+        return False
     kind = _kind_for_node_type(node.type)
     group = kind or "other"
     return group in _GRAPH_HIDDEN_GROUPS
@@ -2421,7 +2523,10 @@ def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
     hidden_node_ids: set[str] = set()
     visible_nodes: List[ResearchNode] = []
     for n in ctx.graph.nodes:
-        if n.type.value not in WIKI_LAYER_TYPES:
+        # Graph View v1 — visual allow-list extends WIKI_LAYER with the Code,
+        # Sessions and CommunitySummary families the spec colour-codes + the
+        # drawer surfaces. Search / SEO / JSON-LD stay on WIKI_LAYER_TYPES.
+        if n.type.value not in _GRAPH_VIEW_TYPES:
             continue
         if n.type.value in _GRAPH_HIDDEN_TYPES:
             continue
@@ -2448,6 +2553,11 @@ def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
 
     degree: Dict[str, int] = {nid: 0 for nid in visible_ids}
     in_degree: Dict[str, int] = {nid: 0 for nid in visible_ids}
+    # Graph View v1 — typed counters that feed the per-type ``importance``
+    # signal (spec §A): code fan-in (incoming calls/references/imports/
+    # declared_in) and CommunitySummary member count (outgoing ``summarizes``).
+    code_fanin: Dict[str, int] = {nid: 0 for nid in visible_ids}
+    summarizes_out: Dict[str, int] = {nid: 0 for nid in visible_ids}
     visible_edges: List[ResearchEdge] = []
     for e in ctx.graph.edges:
         if e.type in _GRAPH_HIDDEN_EDGE_TYPES:
@@ -2468,6 +2578,10 @@ def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
             degree[e.source] = degree.get(e.source, 0) + 1
             degree[e.target] = degree.get(e.target, 0) + 1
             in_degree[e.target] = in_degree.get(e.target, 0) + 1
+            if e.type in _CODE_FANIN_EDGE_TYPES:
+                code_fanin[e.target] = code_fanin.get(e.target, 0) + 1
+            if e.type == "summarizes":
+                summarizes_out[e.source] = summarizes_out.get(e.source, 0) + 1
 
     # Cap at MAX_GRAPH_NODES, dropping low-degree nodes first. Stable on
     # ties by node id so the build stays byte-identical across runs.
@@ -2505,6 +2619,32 @@ def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
         in_deg = in_degree.get(n.id, 0)
         capped_in = min(in_deg, 200)
         val = round(2 + (capped_in ** 0.92) * 1.4, 2)
+        # Graph View v1 — family + per-type importance signal (spec §A/§B).
+        family = _family_for_node_type(n.type)
+        type_value = n.type.value
+        node_meta_full = n.metadata or {}
+        member_count: Optional[int] = None
+        if type_value == "CommunitySummary":
+            # member count = outgoing ``summarizes`` edges.
+            importance_raw = summarizes_out.get(n.id, 0)
+            member_count = importance_raw
+        elif family == _CODE_FAMILY:
+            # code symbols → fan-in (incoming calls/references/imports/declared_in),
+            # falling back to weighted degree when there is no typed fan-in.
+            importance_raw = code_fanin.get(n.id, 0) or deg
+        elif type_value in _SESSION_FINDING_TYPE_VALUES:
+            # session findings → ``decay_score`` when present, else weighted degree.
+            decay = node_meta_full.get("decay_score")
+            try:
+                importance_raw = float(decay) if decay is not None else float(deg)
+            except (TypeError, ValueError):
+                importance_raw = float(deg)
+        else:
+            importance_raw = deg
+        # ``importance`` is always positive so the JS size formula
+        # ``clamp(2.5,12, 2 + log2(importance+1)*1.8)`` reads cleanly even for
+        # an isolated node (importance 0 → nodeVal 2.5 floor).
+        importance = round(float(max(importance_raw, 0)), 3)
         description = (n.description or "").strip()
         # Bug B: surface the ``parser`` provenance flag (raganything /
         # cognee / etc.) on each node so the front-end legend and any
@@ -2520,19 +2660,34 @@ def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
         external_system = node_meta.get("external_system")
         if external_system:
             payload_meta["external_system"] = external_system
-        nodes_payload.append({
+        # Graph View v1 — surface the source path (drawer "source/path pill")
+        # and a metadata summary fallback for the drawer body ladder, when
+        # present. Kept small to respect the payload byte budget.
+        src_path = (n.source_path or "").strip()
+        if src_path:
+            payload_meta["source_path"] = src_path
+        meta_summary = node_meta_full.get("summary")
+        if isinstance(meta_summary, str) and meta_summary.strip():
+            payload_meta["summary"] = meta_summary.strip()[:400]
+        node_entry: Dict[str, object] = {
             "id": n.id,
             "name": n.name,
             "type": n.type.value,
             "kind": kind,
             "group": group,
+            # Graph View v1 — 8-family colour key + single importance metric.
+            "family": family,
+            "importance": importance,
             "href": href,
             "val": val,
             "degree": deg,
             "in_degree": in_deg,
             "description": description[:400],  # JS clips to 200 chars itself
             "metadata": payload_meta,
-        })
+        }
+        if member_count is not None:
+            node_entry["member_count"] = member_count
+        nodes_payload.append(node_entry)
 
     links_payload: List[Dict[str, object]] = []
     for e in visible_edges:
