@@ -1303,12 +1303,19 @@ def test_graph_drawer_open_is_wired_into_activate_node():
     """
     calls = JS_GRAPH.count("openDrawer(node);")
     assert calls >= 1, "openDrawer is defined but never called — drawer is dead code"
-    # The invocation must live inside activateNode's select branch.
-    body = JS_GRAPH.split("function activateNode(node, evt){", 1)
-    assert len(body) == 2, "activateNode not found"
-    activate_body = body[1].split("\n    function ", 1)[0]
-    assert "openDrawer(node);" in activate_body, (
-        "openDrawer call is not wired into activateNode"
+    # The invocation must live next to the focus-panel populate in the
+    # node-select branch. Proximity to ``populateFocusPanel(node);`` is a more
+    # robust anchor than slicing on the next function's indentation (codex P3):
+    # both calls are in the same select branch, so they must be close together.
+    focus_at = JS_GRAPH.find("populateFocusPanel(node);")
+    assert focus_at != -1, "populateFocusPanel(node) anchor not found"
+    open_at = JS_GRAPH.find("openDrawer(node);", focus_at)
+    assert open_at != -1, "openDrawer(node) not found after populateFocusPanel"
+    # Within ~400 chars (a handful of lines) of the focus-panel populate —
+    # i.e. the same branch, not some unrelated later block.
+    assert open_at - focus_at < 400, (
+        "openDrawer is not wired into activateNode's select branch "
+        f"(distance {open_at - focus_at} chars from populateFocusPanel)"
     )
 
 
