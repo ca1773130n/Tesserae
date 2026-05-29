@@ -1976,6 +1976,30 @@ JS_GRAPH = r"""
       return Math.pow(t, 2.5);
     }
 
+    // Graph View v1 — density label gate (spec §F). At 2.4k nodes the
+    // overview MUST stay sparse, so default labels are HIDDEN until the user
+    // zooms in or focuses — with three always-on carve-outs:
+    //   1. the selected/focused node,
+    //   2. the hovered node,
+    //   3. top-importance hubs (normalised importance >= LABEL_TOP_IMPORTANCE),
+    // which stay legible at every zoom so the map always has anchors.
+    // Otherwise a node passes only when its (degree-normalised) importance
+    // clears the camera-distance ``cutoff`` (zoom in → lower cutoff → more
+    // labels). ``cutoff`` is supplied by the caller (already computed via
+    // ``computeImportanceCutoff`` at the current camera distance) so the gate
+    // and the cull agree on one cutoff per frame.
+    var LABEL_TOP_IMPORTANCE = 0.82;
+    function passesLabelGate(n, cutoff){
+      if (!n) return false;
+      if (n === focusedNode) return true;
+      if (n === hoverNode) return true;
+      if (pinnedNode && nodeIdOf(pinnedNode) === nodeIdOf(n)) return true;
+      var imp = degreeImportanceAlpha(n);
+      if (imp >= LABEL_TOP_IMPORTANCE) return true;
+      var c = (typeof cutoff === 'number') ? cutoff : computeImportanceCutoff(320);
+      return imp >= c;
+    }
+
     // ---- Cursor-anchored zoom (Issue 5 — v15 canonical algorithm) -----
     // The canonical THREE ``zoomToCursor`` algorithm (which previous
     // rounds got wrong by using a single ``lerpVectors`` of camera and
@@ -2590,7 +2614,11 @@ JS_GRAPH = r"""
               // pure white text, never a low-alpha gray ghost.
               var nodeImportance = degreeImportanceAlpha(node);
               var importanceCutoff = computeImportanceCutoff(camDist);
-              var defaultPassesCull = nodeImportance >= importanceCutoff;
+              // Spec §F density gate: the selected / hovered / top-importance
+              // carve-outs and the camera-distance cutoff are unified in
+              // passesLabelGate so the 2.4k-node overview stays sparse while
+              // always keeping anchors visible.
+              var defaultPassesCull = passesLabelGate(node, importanceCutoff);
               for (var i = 0; i < group.children.length; i++) {
                 var child = group.children[i];
                 if (!child) continue;
@@ -2943,6 +2971,10 @@ JS_GRAPH = r"""
         }
       } catch (_) {}
       try { inst.cooldownTicks(120); } catch (_) {}
+      // Spec §F — settle fast on the 2.4k-node corpus: a higher velocity
+      // decay damps node motion sooner so the layout cools to a stable frame
+      // quickly instead of churning (and re-triggering onEngineStop).
+      try { if (inst.d3VelocityDecay) inst.d3VelocityDecay(0.45); } catch (_) {}
 
       try {
         // Auto-fit fires exactly once: the first onEngineStop after the
