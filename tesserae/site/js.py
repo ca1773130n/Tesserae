@@ -961,6 +961,51 @@ JS_GRAPH = r"""
       a.degree += 1; b.degree += 1;
     });
 
+    // ----------------------------------------------------------------
+    // Graph View v1 — node-detail drawer index maps (spec §E).
+    // Built once at load (and rebuilt after the rest-payload merge) so the
+    // drawer computes its content at click-time WITHOUT shipping any
+    // per-node drawer blob in the payload. Small + instant even at
+    // ~2470 nodes / ~6515 edges.
+    //   nodeById            — id -> node
+    //   incidentLinksByNode — id -> [links touching the node]
+    //   incomingByType      — id -> { edgeType -> [links pointing AT it] }
+    //   outgoingByType      — id -> { edgeType -> [links FROM it] }
+    // ----------------------------------------------------------------
+    var nodeById = new Map();
+    var incidentLinksByNode = new Map();
+    var incomingByType = new Map();
+    var outgoingByType = new Map();
+    function _linkEndId(end){ return (typeof end === 'object' && end) ? end.id : end; }
+    function buildDrawerIndex(){
+      nodeById = new Map();
+      incidentLinksByNode = new Map();
+      incomingByType = new Map();
+      outgoingByType = new Map();
+      payload.nodes.forEach(function(n){
+        nodeById.set(n.id, n);
+        incidentLinksByNode.set(n.id, []);
+        incomingByType.set(n.id, {});
+        outgoingByType.set(n.id, {});
+      });
+      payload.links.forEach(function(l){
+        var s = _linkEndId(l.source);
+        var t = _linkEndId(l.target);
+        var et = (l.type || l.relation || 'related');
+        if (incidentLinksByNode.has(s)) incidentLinksByNode.get(s).push(l);
+        if (incidentLinksByNode.has(t)) incidentLinksByNode.get(t).push(l);
+        if (outgoingByType.has(s)) {
+          var o = outgoingByType.get(s);
+          (o[et] = o[et] || []).push(l);
+        }
+        if (incomingByType.has(t)) {
+          var inc = incomingByType.get(t);
+          (inc[et] = inc[et] || []).push(l);
+        }
+      });
+    }
+    buildDrawerIndex();
+
     // Compute a high-value cutoff for overview labels. The graph can have
     // hundreds of nodes; showing the top half as labels turns 2D into a hairball.
     var vals = payload.nodes.map(function(n){ return Math.max(1, n.val || n.degree || 1); }).slice().sort(function(a,b){ return a - b; });
@@ -3109,6 +3154,193 @@ JS_GRAPH = r"""
       }
     });
     container.addEventListener('mouseleave', hideTooltip);
+
+    // ================================================================
+    // Graph View v1 — node-detail drawer (spec §D / §E).
+    // A right-side narrative surface that opens on node SELECT (click).
+    // It reads everything it needs from the client-side index maps built
+    // in ``buildDrawerIndex`` — no per-node payload blobs. The drawer is
+    // built lazily (``ensureDrawer``) and its CSS is injected once
+    // (``injectDrawerStyles``). All text uses textContent / createElement —
+    // never innerHTML — so corpus strings can never inject markup.
+    // ================================================================
+    var DRAWER_SECTION_MAX = 5; // spec §D — max items per section.
+    var _drawerEl = null;
+    var _drawerHeaderEl = null;
+    var _drawerBodyEl = null;
+    var _drawerStylesInjected = false;
+
+    function injectDrawerStyles(){
+      if (_drawerStylesInjected) return;
+      _drawerStylesInjected = true;
+      var css = ''
+        + '.graph-drawer{position:absolute;top:0;right:0;bottom:0;width:340px;'
+        + 'max-width:86vw;z-index:40;display:flex;flex-direction:column;'
+        + 'background:rgba(8,12,22,0.96);color:#e6eaf2;'
+        + 'border-left:1px solid rgba(148,163,184,0.18);'
+        + 'box-shadow:-12px 0 32px rgba(0,0,0,0.45);'
+        + 'transform:translateX(102%);transition:transform 180ms ease;'
+        + 'font:13px/1.5 Inter,system-ui,sans-serif;overflow:hidden;}'
+        + '.graph-drawer.is-open{transform:translateX(0);}'
+        + '.graph-drawer[hidden]{display:none;}'
+        + '.graph-drawer-header{padding:16px 18px 12px;'
+        + 'border-bottom:1px solid rgba(148,163,184,0.16);}'
+        + '.graph-drawer-kicker{font-size:11px;letter-spacing:.06em;'
+        + 'text-transform:uppercase;color:#94a3b8;display:flex;gap:8px;'
+        + 'align-items:center;flex-wrap:wrap;}'
+        + '.graph-drawer-title{margin:6px 0 0;font-size:17px;font-weight:650;'
+        + 'color:#f4f6fb;}'
+        + '.graph-drawer-importance{color:#cbd5e1;}'
+        + '.graph-drawer-source{margin-top:8px;display:inline-block;'
+        + 'font-size:11px;padding:2px 8px;border-radius:999px;'
+        + 'background:rgba(129,140,248,0.16);color:#c7d2fe;}'
+        + '.graph-drawer-body{padding:14px 18px 22px;overflow-y:auto;flex:1;}'
+        + '.graph-drawer-lede{color:#cbd5e1;margin:0 0 14px;}'
+        + '.graph-drawer-section{margin:0 0 16px;}'
+        + '.graph-drawer-section h4{margin:0 0 6px;font-size:11px;'
+        + 'letter-spacing:.05em;text-transform:uppercase;color:#8b95a7;}'
+        + '.graph-drawer-chip{display:inline-flex;align-items:center;gap:6px;'
+        + 'margin:0 6px 6px 0;padding:3px 9px;border-radius:8px;font-size:12px;'
+        + 'background:rgba(148,163,184,0.12);color:#dbe3f0;cursor:pointer;'
+        + 'border:1px solid rgba(148,163,184,0.14);}'
+        + '.graph-drawer-chip.is-semantic{background:rgba(129,140,248,0.18);'
+        + 'border-color:rgba(129,140,248,0.28);color:#c7d2fe;}'
+        + '.graph-drawer-close{position:absolute;top:12px;right:14px;'
+        + 'background:none;border:none;color:#94a3b8;font-size:20px;'
+        + 'line-height:1;cursor:pointer;}'
+        + '.graph-drawer-close:hover{color:#e6eaf2;}'
+        + '.graph-drawer-grouplabel{color:#8b95a7;font-size:11px;'
+        + 'margin:2px 0 4px;}';
+      var style = document.createElement('style');
+      style.setAttribute('data-graph-drawer-styles', '');
+      style.textContent = css;
+      document.head.appendChild(style);
+    }
+
+    function ensureDrawer(){
+      if (_drawerEl) return _drawerEl;
+      injectDrawerStyles();
+      var host = wrapper || container;
+      var drawer = document.getElementById('graph-drawer');
+      if (!drawer) {
+        drawer = document.createElement('aside');
+        drawer.id = 'graph-drawer';
+        drawer.className = 'graph-drawer';
+        drawer.setAttribute('aria-label', 'Node details');
+        drawer.setAttribute('role', 'complementary');
+        drawer.hidden = true;
+        var closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'graph-drawer-close';
+        closeBtn.setAttribute('aria-label', 'Close details');
+        closeBtn.textContent = '×';
+        closeBtn.addEventListener('click', function(){ closeDrawer(); });
+        var header = document.createElement('div');
+        header.id = 'graph-drawer-header';
+        header.className = 'graph-drawer-header';
+        var body = document.createElement('div');
+        body.id = 'graph-drawer-body';
+        body.className = 'graph-drawer-body';
+        drawer.appendChild(closeBtn);
+        drawer.appendChild(header);
+        drawer.appendChild(body);
+        if (host && host.appendChild) host.appendChild(drawer);
+      }
+      _drawerEl = drawer;
+      _drawerHeaderEl = drawer.querySelector('#graph-drawer-header')
+        || document.getElementById('graph-drawer-header');
+      _drawerBodyEl = drawer.querySelector('#graph-drawer-body')
+        || document.getElementById('graph-drawer-body');
+      return drawer;
+    }
+
+    function _clearEl(el){
+      if (!el) return;
+      while (el.firstChild) el.removeChild(el.firstChild);
+    }
+
+    // Body lede fallback ladder (spec §D):
+    //   abstract -> description -> evidence -> metadata_summary -> name[:240]
+    function drawerLede(n){
+      if (!n) return '';
+      var txt = n.abstract
+        || n.description
+        || n.evidence
+        || n.metadata_summary
+        || (n.name || n.id || '');
+      txt = String(txt);
+      return txt.length > 240 ? txt.slice(0, 240) + '…' : txt;
+    }
+
+    function renderDrawerHeader(n){
+      ensureDrawer();
+      _clearEl(_drawerHeaderEl);
+      if (!n) return;
+      var fam = familyOf(n);
+      var kicker = document.createElement('div');
+      kicker.className = 'graph-drawer-kicker';
+      var famSpan = document.createElement('span');
+      famSpan.textContent = FAMILY_LABELS[fam] || fam;
+      famSpan.style.color = FAMILY_COLORS[fam] || FAMILY_COLORS.other;
+      kicker.appendChild(famSpan);
+      if (n.type) {
+        var typeSpan = document.createElement('span');
+        typeSpan.textContent = '· ' + n.type;
+        kicker.appendChild(typeSpan);
+      }
+      var imp = (typeof n.importance === 'number') ? n.importance : null;
+      if (imp !== null) {
+        var impSpan = document.createElement('span');
+        impSpan.className = 'graph-drawer-importance';
+        impSpan.textContent = '· importance ' + imp;
+        kicker.appendChild(impSpan);
+      }
+      var title = document.createElement('h3');
+      title.className = 'graph-drawer-title';
+      title.textContent = n.name || n.id || '';
+      _drawerHeaderEl.appendChild(kicker);
+      _drawerHeaderEl.appendChild(title);
+      var src = n.source_path;
+      if (src) {
+        var pill = document.createElement('span');
+        pill.className = 'graph-drawer-source';
+        pill.textContent = src;
+        _drawerHeaderEl.appendChild(pill);
+      }
+    }
+
+    function openDrawer(node){
+      if (!node) return;
+      ensureDrawer();
+      renderDrawerHeader(node);
+      _clearEl(_drawerBodyEl);
+      var lede = drawerLede(node);
+      if (lede) {
+        var p = document.createElement('p');
+        p.className = 'graph-drawer-lede';
+        p.textContent = lede;
+        _drawerBodyEl.appendChild(p);
+      }
+      renderDrawerSections(node);
+      _drawerEl.hidden = false;
+      try { requestAnimationFrame(function(){ _drawerEl.classList.add('is-open'); }); }
+      catch (_) { _drawerEl.classList.add('is-open'); }
+    }
+
+    function closeDrawer(){
+      if (!_drawerEl) return;
+      _drawerEl.classList.remove('is-open');
+      _drawerEl.hidden = true;
+    }
+
+    // Section host — Task 5 fills this with the typed sections. Defined here
+    // as a self-contained shell so Task 4's openDrawer works standalone.
+    function renderDrawerSections(node){
+      if (!node || !_drawerBodyEl) return;
+      _renderDrawerSectionsImpl(node);
+    }
+    // Placeholder implementation (replaced by the typed sections in Task 5).
+    function _renderDrawerSectionsImpl(node){ /* typed sections added in Task 5 */ }
 
     function activateNode(node, evt){
       if (!node) return;
