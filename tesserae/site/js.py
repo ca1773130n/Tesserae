@@ -3339,8 +3339,239 @@ JS_GRAPH = r"""
       if (!node || !_drawerBodyEl) return;
       _renderDrawerSectionsImpl(node);
     }
-    // Placeholder implementation (replaced by the typed sections in Task 5).
-    function _renderDrawerSectionsImpl(node){ /* typed sections added in Task 5 */ }
+    // ----------------------------------------------------------------
+    // Task 5 — typed drawer sections (spec §D). Each section renders ONLY
+    // when it has content, caps at DRAWER_SECTION_MAX (5) items, and uses
+    // grouped chips — never a raw 46-edge dump. Chips are clickable and
+    // re-focus the neighbour node.
+    // ----------------------------------------------------------------
+    function _otherEnd(link, nodeId){
+      var s = _linkEndId(link.source);
+      var t = _linkEndId(link.target);
+      var otherId = (s === nodeId) ? t : s;
+      return nodeById.get(otherId) || null;
+    }
+    function _humanType(t){
+      return String(t || 'related').replace(/_/g, ' ');
+    }
+    function _makeSectionEl(title){
+      var sec = document.createElement('div');
+      sec.className = 'graph-drawer-section';
+      var h = document.createElement('h4');
+      h.textContent = title;
+      sec.appendChild(h);
+      return sec;
+    }
+    function _makeNodeChip(node, semantic){
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'graph-drawer-chip' + (semantic ? ' is-semantic' : '');
+      chip.textContent = node.name || node.id || '';
+      chip.addEventListener('click', function(){ activateNode(node); });
+      return chip;
+    }
+    function _appendIfNonEmpty(sec, addedCount){
+      if (addedCount > 0) _drawerBodyEl.appendChild(sec);
+    }
+
+    // Why it matters — importance explanation + top incident SEMANTIC edges.
+    function renderWhyItMatters(node){
+      var sec = _makeSectionEl('Why it matters');
+      var added = 0;
+      var imp = (typeof node.importance === 'number') ? node.importance : null;
+      if (imp !== null) {
+        var p = document.createElement('p');
+        p.className = 'graph-drawer-grouplabel';
+        var why = (node.type === 'CommunitySummary')
+          ? ('Summarises ' + (node.member_count || imp) + ' members.')
+          : ('Importance ' + imp + ' (connectivity / fan-in).');
+        p.textContent = why;
+        sec.appendChild(p);
+        added += 1;
+      }
+      var incident = incidentLinksByNode.get(node.id) || [];
+      var semantic = incident.filter(function(l){ return edgeClassOf(l) === 'semantic'; });
+      var n = 0;
+      for (var i = 0; i < semantic.length && n < DRAWER_SECTION_MAX; i++) {
+        var other = _otherEnd(semantic[i], node.id);
+        if (!other) continue;
+        sec.appendChild(_makeNodeChip(other, true));
+        n += 1; added += 1;
+      }
+      _appendIfNonEmpty(sec, added);
+    }
+
+    // Evidence / context — EvidenceSpan, claims, source document, path.
+    function renderEvidence(node){
+      var sec = _makeSectionEl('Evidence & context');
+      var added = 0;
+      if (node.evidence) {
+        var p = document.createElement('p');
+        p.className = 'graph-drawer-lede';
+        var ev = String(node.evidence);
+        p.textContent = ev.length > 240 ? ev.slice(0, 240) + '…' : ev;
+        sec.appendChild(p);
+        added += 1;
+      }
+      var incident = incidentLinksByNode.get(node.id) || [];
+      var n = 0;
+      for (var i = 0; i < incident.length && n < DRAWER_SECTION_MAX; i++) {
+        var other = _otherEnd(incident[i], node.id);
+        if (!other) continue;
+        var fam = familyOf(other);
+        var t = other.type || '';
+        var isEvidence = (fam === 'claims') || t === 'EvidenceSpan'
+          || t === 'SourceDocument';
+        if (!isEvidence) continue;
+        sec.appendChild(_makeNodeChip(other, false));
+        n += 1; added += 1;
+      }
+      _appendIfNonEmpty(sec, added);
+    }
+
+    // Related — top neighbours grouped by edge class + type.
+    function groupRelated(node){
+      var incident = incidentLinksByNode.get(node.id) || [];
+      var groups = {}; // key "class:type" -> { cls, type, items: [] }
+      for (var i = 0; i < incident.length; i++) {
+        var l = incident[i];
+        var other = _otherEnd(l, node.id);
+        if (!other) continue;
+        var cls = edgeClassOf(l);
+        var type = l.type || l.relation || 'related';
+        var key = cls + ':' + type;
+        if (!groups[key]) groups[key] = { cls: cls, type: type, items: [] };
+        if (groups[key].items.length < DRAWER_SECTION_MAX) {
+          groups[key].items.push(other);
+        }
+      }
+      return groups;
+    }
+    function renderRelated(node){
+      var sec = _makeSectionEl('Related');
+      var groups = groupRelated(node);
+      var keys = Object.keys(groups);
+      // Semantic groups first (more narrative value), then structural.
+      keys.sort(function(a, b){
+        var ca = groups[a].cls === 'semantic' ? 0 : 1;
+        var cb = groups[b].cls === 'semantic' ? 0 : 1;
+        return ca - cb;
+      });
+      var added = 0;
+      for (var k = 0; k < keys.length; k++) {
+        var g = groups[keys[k]];
+        var lbl = document.createElement('div');
+        lbl.className = 'graph-drawer-grouplabel';
+        lbl.textContent = _humanType(g.type) + ' (' + g.cls + ')';
+        sec.appendChild(lbl);
+        var items = g.items.slice(0, DRAWER_SECTION_MAX);
+        for (var j = 0; j < items.length; j++) {
+          sec.appendChild(_makeNodeChip(items[j], g.cls === 'semantic'));
+        }
+        added += 1;
+      }
+      _appendIfNonEmpty(sec, added);
+    }
+
+    // Session memory — incident discussed_in / references / discusses /
+    // supersedes edges.
+    function renderSessionMemory(node){
+      var SESSION_TYPES = { discussed_in: 1, references: 1, discusses: 1, supersedes: 1 };
+      var sec = _makeSectionEl('Session memory');
+      var incident = incidentLinksByNode.get(node.id) || [];
+      var added = 0, n = 0;
+      for (var i = 0; i < incident.length && n < DRAWER_SECTION_MAX; i++) {
+        var l = incident[i];
+        var type = l.type || l.relation || '';
+        if (!SESSION_TYPES[type]) continue;
+        var other = _otherEnd(l, node.id);
+        if (!other) continue;
+        sec.appendChild(_makeNodeChip(other, true));
+        n += 1; added += 1;
+      }
+      _appendIfNonEmpty(sec, added);
+    }
+
+    // Code — file / module / path + callers + callees (code nodes only).
+    function renderCodeSection(node){
+      if (familyOf(node) !== 'code') return;
+      var sec = _makeSectionEl('Code');
+      var added = 0;
+      if (node.source_path) {
+        var lbl = document.createElement('div');
+        lbl.className = 'graph-drawer-grouplabel';
+        lbl.textContent = node.source_path;
+        sec.appendChild(lbl);
+        added += 1;
+      }
+      var inc = incomingByType.get(node.id) || {};
+      var out = outgoingByType.get(node.id) || {};
+      var callers = inc['calls'] || [];
+      var callees = out['calls'] || [];
+      if (callers.length) {
+        var cl = document.createElement('div');
+        cl.className = 'graph-drawer-grouplabel';
+        cl.textContent = 'Callers';
+        sec.appendChild(cl);
+        for (var i = 0; i < callers.length && i < DRAWER_SECTION_MAX; i++) {
+          var caller = _otherEnd(callers[i], node.id);
+          if (caller) { sec.appendChild(_makeNodeChip(caller, false)); added += 1; }
+        }
+      }
+      if (callees.length) {
+        var cle = document.createElement('div');
+        cle.className = 'graph-drawer-grouplabel';
+        cle.textContent = 'Callees';
+        sec.appendChild(cle);
+        for (var j = 0; j < callees.length && j < DRAWER_SECTION_MAX; j++) {
+          var callee = _otherEnd(callees[j], node.id);
+          if (callee) { sec.appendChild(_makeNodeChip(callee, false)); added += 1; }
+        }
+      }
+      _appendIfNonEmpty(sec, added);
+    }
+
+    // Community — summarised members (CommunitySummary) OR parent summaries
+    // (for members reached via an incoming ``summarizes`` edge).
+    function renderCommunity(node){
+      var sec = _makeSectionEl('Community');
+      var added = 0;
+      var out = outgoingByType.get(node.id) || {};
+      var inc = incomingByType.get(node.id) || {};
+      if (node.type === 'CommunitySummary') {
+        var members = out['summarizes'] || [];
+        var head = document.createElement('div');
+        head.className = 'graph-drawer-grouplabel';
+        head.textContent = 'Members (' + members.length + ')';
+        sec.appendChild(head);
+        for (var i = 0; i < members.length && i < DRAWER_SECTION_MAX; i++) {
+          var m = _otherEnd(members[i], node.id);
+          if (m) { sec.appendChild(_makeNodeChip(m, true)); added += 1; }
+        }
+      } else {
+        var parents = inc['summarizes'] || [];
+        if (parents.length) {
+          var ph = document.createElement('div');
+          ph.className = 'graph-drawer-grouplabel';
+          ph.textContent = 'Summarised by';
+          sec.appendChild(ph);
+          for (var p = 0; p < parents.length && p < DRAWER_SECTION_MAX; p++) {
+            var parent = _otherEnd(parents[p], node.id);
+            if (parent) { sec.appendChild(_makeNodeChip(parent, true)); added += 1; }
+          }
+        }
+      }
+      _appendIfNonEmpty(sec, added);
+    }
+
+    function _renderDrawerSectionsImpl(node){
+      renderWhyItMatters(node);
+      renderEvidence(node);
+      renderRelated(node);
+      renderSessionMemory(node);
+      if (familyOf(node) === 'code') renderCodeSection(node);
+      renderCommunity(node);
+    }
 
     function activateNode(node, evt){
       if (!node) return;
