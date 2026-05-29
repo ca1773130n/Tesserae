@@ -977,6 +977,38 @@ JS_GRAPH = r"""
     var incomingByType = new Map();
     var outgoingByType = new Map();
     function _linkEndId(end){ return (typeof end === 'object' && end) ? end.id : end; }
+
+    // ----------------------------------------------------------------
+    // Graph View v1 — edge class partition (spec §C).
+    // structural = schema / containment / provenance / code mechanics /
+    //   measured fact (faint, thin). semantic = interpretive / argumentative
+    //   / topical / narrative / human-authored association (brighter,
+    //   thicker). Any edge type not listed falls back to structural
+    //   (conservative default). ``edgeClassOf`` is used by the node-detail
+    //   drawer (Why-it-matters + Related grouping) and the link styling.
+    // ----------------------------------------------------------------
+    var SEMANTIC_EDGE_TYPES = {
+      introduces: 1, uses: 1, extends: 1, improves_on: 1, compares_against: 1,
+      criticizes: 1, addresses: 1, optimizes_for: 1,
+      belongs_to_approach_family: 1, shares_concept_with: 1, derived_from: 1,
+      supports_claim: 1, contradicts_claim: 1, attributes_improvement_to: 1,
+      has_limitation: 1, evidenced_by: 1, rising_in: 1, declining_in: 1,
+      emerged_after: 1, synthesizes: 1, summarizes: 1, user_link: 1,
+      discussed_in: 1, references: 1, supersedes: 1, discusses: 1
+    };
+    function edgeClassOf(link){
+      var t = (link && (link.type || link.relation)) || '';
+      return SEMANTIC_EDGE_TYPES[t] ? 'semantic' : 'structural';
+    }
+    // Class styling (spec §C): structural stays the faint slate default;
+    // semantic edges read a touch brighter (indigo) and slightly thicker so
+    // the typed-edge "moat" is legible without turning the overview into a
+    // glowing knot. Applied ONLY to the non-incident 3D default branch — the
+    // hover/focus/highlight magnitudes that ``tests/test_site_js`` pins stay
+    // exactly as-is and always dominate this base styling.
+    var EDGE_SEMANTIC_COLOR_3D = 'rgba(129,140,248,0.34)';
+    var EDGE_SEMANTIC_WIDTH_MULT = 1.6;
+
     function buildDrawerIndex(){
       nodeById = new Map();
       incidentLinksByNode = new Map();
@@ -2350,6 +2382,9 @@ JS_GRAPH = r"""
           if (highlightLinks.has(l)) return hot;
           if (isHoverIncidentLink(l)) return hot;
           if (hasFocusFilter()) return dim;
+          // spec §C — semantic edges read a touch brighter than the
+          // structural slate default (3D only; 2D keeps its flat webbing).
+          if (mode !== '2d' && edgeClassOf(l) === 'semantic') return EDGE_SEMANTIC_COLOR_3D;
           return light;
         })
         // 3D returns world-space units (sub-pixel works because the
@@ -2374,6 +2409,9 @@ JS_GRAPH = r"""
           } catch (_) {}
           if (highlightLinks.has(l)) return 0.9 * camScale;
           if (isHoverIncidentLink(l)) return 0.9 * camScale;
+          // spec §C — semantic edges slightly thicker than the structural
+          // base so the typed-edge distinction is visible at rest.
+          if (edgeClassOf(l) === 'semantic') return 0.25 * camScale * EDGE_SEMANTIC_WIDTH_MULT;
           return 0.25 * camScale;
         })
         .linkHoverPrecision(8)
@@ -2443,6 +2481,7 @@ JS_GRAPH = r"""
           autoOrbitEnabled = false;
           applyHighlight(null);
           clearInfoPanel();
+          closeDrawer();
         });
 
       // Right-click anywhere on the canvas → unselect. Mirrors the
@@ -3631,6 +3670,12 @@ JS_GRAPH = r"""
         // its purpose for this node.
         hideTooltip();
         populateFocusPanel(node);
+        // v1.1 — the typed node-detail drawer is the narrative surface for a
+        // selected node (spec §D). Task 4 built openDrawer + the client-side
+        // index but never wired the call site, so the drawer was unreachable
+        // dead code. Open it on select; closeDrawer() is already wired to the
+        // drawer close button + Esc/background unfocus.
+        openDrawer(node);
         focusOnNode(node);
         return;
       }
@@ -4088,6 +4133,7 @@ JS_GRAPH = r"""
         autoOrbitEnabled = false;
         applyHighlight(null);
         clearInfoPanel();
+        closeDrawer();
       });
     }
 
@@ -4194,6 +4240,7 @@ JS_GRAPH = r"""
         autoOrbitEnabled = false;
         applyHighlight(null);
         clearInfoPanel();
+        closeDrawer();
         dayFilter = null;
         if (searchEl) { searchEl.value = ''; searchQuery = ''; }
         refreshVisibility();
