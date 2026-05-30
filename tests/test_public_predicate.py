@@ -30,6 +30,8 @@ from tesserae.wiki_projector import (
     CODE_GRAPH_TYPES,
     is_assertion_node,
     is_code_graph_node,
+    is_private_research_node,
+    is_session_finding_node,
     kind_for_node,
 )
 
@@ -75,7 +77,9 @@ PUBLIC_TYPE_CASES = [
     (ResearchNodeType.BENCHMARK, "entities"),
     (ResearchNodeType.METRIC, "entities"),
     (ResearchNodeType.ORGANIZATION, "entities"),
-    (ResearchNodeType.PERSON, "entities"),
+    # NB: PERSON was here, but it is now a private-research type (paper-author
+    # biblio noise would flood /entities/). It is covered by
+    # PRIVATE_RESEARCH_CASES / test_private_research_types below instead.
     (ResearchNodeType.RESEARCH_FIELD, "topics"),
     (ResearchNodeType.RESEARCH_TOPIC, "topics"),
     (ResearchNodeType.PROBLEM_AREA, "topics"),
@@ -164,6 +168,59 @@ def test_evidence_span_is_always_private() -> None:
     assert kind_for_node(node) is None
 
 
+# -------------------------------------------------- private-research (4th bucket)
+
+# Research-layer types that are otherwise public-shaped but intentionally
+# suppressed from the public projection for noise/relevance reasons (the
+# fourth classification bucket, distinct from code-graph + assertion-layer).
+PRIVATE_RESEARCH_CASES = [
+    ResearchNodeType.PERSON,   # paper-author biblio noise
+    ResearchNodeType.STUB,     # vault-only wikilink tombstones
+    ResearchNodeType.SESSION,  # session envelopes (findings are the surface)
+]
+
+
+@pytest.mark.parametrize("node_type", PRIVATE_RESEARCH_CASES)
+def test_private_research_types_are_suppressed(node_type: ResearchNodeType) -> None:
+    """Person/Stub/Session get no public wiki kind, and are flagged by the
+    first-class ``is_private_research_node`` predicate — NOT by being
+    misclassified as code-graph or assertion-layer."""
+    node = _node(node_type)
+    assert kind_for_node(node) is None
+    assert is_private_research_node(node)
+    assert not is_code_graph_node(node)
+    assert not is_assertion_node(node)
+    assert not is_session_finding_node(node)
+
+
+# ------------------------------------------------- session findings (5th bucket)
+
+# Session findings are PUBLIC project-memory, but surfaced on the dedicated
+# /sessions/ route rather than one of the eight wiki kinds — so kind_for_node
+# is None yet they are emphatically not private.
+SESSION_FINDING_CASES = [
+    ResearchNodeType.SESSION_INSIGHT,
+    ResearchNodeType.SESSION_DECISION,
+    ResearchNodeType.SESSION_QUESTION,
+    ResearchNodeType.SESSION_TODO,
+    ResearchNodeType.SESSION_HYPOTHESIS,
+    ResearchNodeType.SESSION_TAKEAWAY,
+]
+
+
+@pytest.mark.parametrize("node_type", SESSION_FINDING_CASES)
+def test_session_findings_are_their_own_bucket(node_type: ResearchNodeType) -> None:
+    """Session findings have no wiki kind (they live on /sessions/) but are
+    flagged by ``is_session_finding_node`` — not private, not code, not
+    assertion."""
+    node = _node(node_type)
+    assert kind_for_node(node) is None
+    assert is_session_finding_node(node)
+    assert not is_private_research_node(node)
+    assert not is_code_graph_node(node)
+    assert not is_assertion_node(node)
+
+
 # ---------------------------------------------------------- paper title quality
 
 
@@ -231,9 +288,16 @@ def test_non_feed_source_document_is_public() -> None:
 def test_every_node_type_classifies() -> None:
     """Every value in :class:`ResearchNodeType` lands in exactly one bucket.
 
-    Public buckets are ``sources``/``concepts``/``entities``/``papers``/
-    ``repos``/``topics``/``syntheses``/``questions``. Private buckets are
-    code-graph and assertion-layer; nothing falls through unclassified.
+    The partition is FIVE explicit categories:
+      * public wiki projection (``kind_for_node`` returns one of the eight
+        wiki kinds), OR
+      * session findings (public, but on the dedicated /sessions/ route — no
+        wiki kind), OR
+      * private-research / suppressed (Person / Stub / Session envelope), OR
+      * code-graph layer, OR
+      * assertion layer.
+    Nothing may fall through unclassified — a new type with no home here is a
+    bug, not a silent drop.
     """
     seen = set()
     for node_type in ResearchNodeType:
@@ -242,11 +306,15 @@ def test_every_node_type_classifies() -> None:
         if kind is not None:
             seen.add(node_type)
             continue
-        # Either code-graph or assertion-layer, otherwise we have an
-        # un-classified type the predicate dropped silently.
-        assert is_code_graph_node(node) or is_assertion_node(node), (
-            f"{node_type.value} is neither public nor explicitly private"
-        )
+        # No wiki kind → must land in exactly one explicit non-wiki bucket,
+        # otherwise we have an un-classified type the predicate dropped
+        # silently.
+        assert (
+            is_session_finding_node(node)
+            or is_private_research_node(node)
+            or is_code_graph_node(node)
+            or is_assertion_node(node)
+        ), f"{node_type.value} is neither public nor explicitly private"
         seen.add(node_type)
     # Sanity: covered every enum value.
     assert seen == set(ResearchNodeType)

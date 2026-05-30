@@ -161,12 +161,19 @@ def test_render_graph_jsonld_parses_and_excludes_code_class(ctx: ExportContext):
     assert "Evidence: bar" not in titles
     assert "NeRF" in titles
 
+    # Person nodes are private by default (PRIVATE_PUBLIC_RESEARCH_TYPES in
+    # research_graph.py) — author names from bibliographic Authors: blocks
+    # would otherwise flood the public projection with biblio noise. So a
+    # Person like "Karen Koto" must NOT appear in the wiki-layer JSON-LD,
+    # even though it stays in graph.json for MCP/Cognee. (Organizations are
+    # still public.)
+    assert "Karen Koto" not in titles
+
     # @type mapping spot-check.
     types_by_name = {part["name"]: part["@type"] for part in parts}
     assert types_by_name["NeRF"] == "ScholarlyArticle"
     assert types_by_name["nerfstudio"] == "SoftwareSourceCode"
     assert types_by_name["Gaussian Splatting"] == "DefinedTerm"
-    assert types_by_name["Karen Koto"] == "Person"
     assert types_by_name["OpenAI"] == "Organization"
 
     # additionalType keeps the original ResearchNodeType for fidelity.
