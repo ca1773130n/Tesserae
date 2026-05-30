@@ -923,13 +923,16 @@ JS_GRAPH = r"""
 
   // Graph View v1 — node sphere size from the single ``importance`` metric
   // (spec §A). One global render formula keeps "why is this big" explainable:
-  // clamp(2.5, 12, 2 + log2(importance + 1) * 1.8). Older payloads without an
-  // ``importance`` scalar fall back to the degree-derived ``val``.
+  // clamp(2.2, 20, 2 + log2(importance + 1) * 2.6). Widened from the original
+  // 2.5..12 / *1.8 so hubs visibly DOMINATE the long tail (the reference graph
+  // reads because a few high-importance nodes are clearly larger, not because
+  // everything is near-uniform). Leaves dip slightly smaller, hubs grow ~1.7x.
+  // Older payloads without an ``importance`` scalar fall back to degree ``val``.
   function nodeSizeFor(n){
     var imp = (n && typeof n.importance === 'number') ? n.importance : null;
     if (imp === null) return Math.max(1, (n && n.val) || 1);
-    var v = 2 + (Math.log(imp + 1) / Math.LN2) * 1.8;
-    return Math.max(2.5, Math.min(12, v));
+    var v = 2 + (Math.log(imp + 1) / Math.LN2) * 2.6;
+    return Math.max(2.2, Math.min(20, v));
   }
 
   function ready(fn){
