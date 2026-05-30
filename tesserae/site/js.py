@@ -855,7 +855,7 @@ JS_GRAPH = r"""
   // webbing recedes evenly). Hot (hovered/focused incident): yellow at
   // 0.85 alpha — same gold-amber the focus label uses. Dim: very low
   // alpha so dimmed edges are essentially invisible.
-  var EDGE_COLOR_LIGHT = 'rgba(255,255,255,0.18)';
+  var EDGE_COLOR_LIGHT = 'rgba(255,255,255,0.10)';
   var EDGE_COLOR_DIM   = 'rgba(255,255,255,0.025)';
   var EDGE_COLOR_HOT   = 'rgba(250,204,21,0.85)';
   var THREE_URL = 'https://esm.sh/three@0.169.0';
@@ -2518,7 +2518,7 @@ JS_GRAPH = r"""
 
       try { if (inst.nodeOpacity) inst.nodeOpacity(0.95); } catch (_) {}
       // F-6 — edge alpha is encoded entirely in the rgba strings
-      // (EDGE_COLOR_LIGHT is rgba(255,255,255,0.18); EDGE_COLOR_HOT is
+      // (EDGE_COLOR_LIGHT is rgba(255,255,255,0.10); EDGE_COLOR_HOT is
       // rgba(250,204,21,0.85); EDGE_COLOR_DIM is rgba(255,255,255,0.025)).
       // ``linkOpacity`` is a scalar multiplier on the per-link material —
       // setting it to anything below 1.0 multiplies the rgba alpha and
