@@ -913,7 +913,11 @@ JS_GRAPH = r"""
     var satTier   = (tier - 0.35) * 14;
     var hue = (base.h + ((h % 19) - 9) + 360) % 360;
     var sat = Math.max(28, Math.min(98, base.s + (((h >>> 5) % 13) - 6) + satTier));
-    var light = Math.max(40, Math.min(84, base.l + (((h >>> 9) % 13) - 6) + lightTier));
+    // Per-node lightness wobble widened to ~±8% (HypePaper recipe) so
+    // adjacent same-family siblings don't read as one flat block. Still
+    // deterministic (hashed off the node id) and clamped, so a node's
+    // colour is stable across re-renders.
+    var light = Math.max(40, Math.min(84, base.l + (((h >>> 9) % 17) - 8) + lightTier));
     return 'hsl(' + hue + ' ' + sat + '% ' + light + '%)';
   }
 
@@ -2251,7 +2255,13 @@ JS_GRAPH = r"""
       var aspect = (container.clientWidth || 1) / Math.max(1, container.clientHeight || 1);
       var fitHeightDistance = sphere.radius / Math.sin(fov / 2);
       var fitWidthDistance = fitHeightDistance / Math.max(0.45, aspect);
-      var distance = Math.max(fitHeightDistance, fitWidthDistance, 160) * 1.04;
+      // Composed opening framing (HypePaper recipe): pull the camera back
+      // past the tight fill-fit so the graph opens with breathing room —
+      // dense core centred, periphery visible — instead of cropped to the
+      // bounding sphere. 1.25x of the FOV-fit distance reads composed
+      // without dumping the graph small. (HypePaper's ~2.4x is measured
+      // off the raw layout radius, not the FOV-fit distance used here.)
+      var distance = Math.max(fitHeightDistance, fitWidthDistance, 160) * 1.25;
       var center = sphere.center;
       try {
         if (controls && controls.target && controls.target.set) {
@@ -2559,6 +2569,56 @@ JS_GRAPH = r"""
             group.userData.nodeId = n.id;
             var radius = Math.sqrt(n.val || 1);
             var theme = (document.documentElement.getAttribute('data-theme') === 'light') ? 'light' : 'dark';
+            // Additive family-tinted halo glow (HypePaper recipe). A
+            // translucent, additive-blended sphere sits behind the built-in
+            // node sphere so prominent nodes glow and the scene gains depth.
+            // The halo is tinted with the node's OWN family colour
+            // (FAMILY_COLORS[familyOf(n)]) and scaled by importance: high-
+            // importance hubs get a bigger, slightly brighter halo; the long
+            // tail stays quiet. depthWrite:false + a no-op raycast keep it
+            // purely decorative — it never captures pointer events and never
+            // occludes labels or the focus/hover state machine.
+            try {
+              var haloColor = FAMILY_COLORS[familyOf(n)] || FAMILY_COLORS.other;
+              var haloSphereR = nodeSizeFor(n);
+              var haloImp = (n && typeof n.importance === 'number')
+                ? n.importance
+                : (n && typeof n.val === 'number' ? n.val : (n && n.degree ? n.degree : 0));
+              var haloT = Math.max(0, Math.min(1, haloImp / 8));
+              // TWO-layer additive glow so nodes read as luminous orbs (the
+              // HypePaper look) rather than flat dots — visible even at the
+              // full-graph overview scale, not just zoomed in.
+              //   inner: tight, bright core glow hugging the sphere
+              //   outer: soft, wide aura that bleeds into the dark canvas and
+              //          makes the dense core nebula-glow.
+              // Both additive + depthWrite:false; importance scales size +
+              // brightness so hubs dominate and the long tail stays calm.
+              // No-op raycast keeps them decorative (no pointer capture).
+              var haloInnerGeom = new THREE.SphereGeometry(haloSphereR * (1.35 + haloT * 0.45), 16, 16);
+              var haloInner = new THREE.Mesh(haloInnerGeom, new THREE.MeshBasicMaterial({
+                color: haloColor,
+                transparent: true,
+                opacity: 0.45 + haloT * 0.25,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+              }));
+              haloInner.renderOrder = 49;
+              haloInner.raycast = function(){};
+              haloInner.userData.isHalo = true;
+              group.add(haloInner);
+              var haloOuterGeom = new THREE.SphereGeometry(haloSphereR * (2.4 + haloT * 1.6), 16, 16);
+              var haloOuter = new THREE.Mesh(haloOuterGeom, new THREE.MeshBasicMaterial({
+                color: haloColor,
+                transparent: true,
+                opacity: 0.14 + haloT * 0.12,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+              }));
+              haloOuter.renderOrder = 48;
+              haloOuter.raycast = function(){};
+              haloOuter.userData.isHalo = true;
+              group.add(haloOuter);
+            } catch (_) {}
             // Issue 1 — every label variant the node may need. Per-frame
             // visibility toggling in nodePositionUpdate picks exactly one.
             //   default  : 11px translucent text, NO pill (the user
