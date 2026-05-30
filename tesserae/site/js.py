@@ -1553,6 +1553,69 @@ JS_GRAPH = r"""
     // composing cleanly with the existing ``hiddenGroups`` chip filter.
     var showCrossProjectBridges = true;
 
+    // Focused-subgraph model (the HypePaper "explore one node's neighborhood"
+    // idea). The graph has ~2.4k nodes; rendering them all is an illegible
+    // hairball. Instead:
+    //   * DEFAULT (no selection): show only the top-importance CORE so the
+    //     opening view is a calm, readable constellation, not a blob.
+    //   * SELECTED (pinnedNode set, e.g. via click or search): show ONLY that
+    //     node + its k-hop neighborhood, hiding everything else — the focused
+    //     subgraph. Reset (Esc / Reset button clears pinnedNode) returns to
+    //     the core overview.
+    // ``_overviewCoreIds`` is computed once from the payload (top N by the
+    // same importance/val signal that drives node size). ``_focusSubgraphIds``
+    // is recomputed whenever the pinned node changes.
+    var OVERVIEW_CORE_MAX = 110;   // nodes shown at rest (no selection)
+    var FOCUS_HOPS = 1;            // neighborhood radius around a pinned node
+    var _overviewCoreIds = null;   // Set<id> | null (lazy)
+    var _focusSubgraphIds = null;  // Set<id> | null — rebuilt on pin change
+    var _focusSubgraphFor = null;  // id the current _focusSubgraphIds was built for
+
+    function overviewCoreIds(){
+      if (_overviewCoreIds) return _overviewCoreIds;
+      var arr = (payload && payload.nodes) ? payload.nodes.slice() : [];
+      arr.sort(function(a, b){ return nodeSizeFor(b) - nodeSizeFor(a); });
+      var s = new Set();
+      for (var i = 0; i < arr.length && i < OVERVIEW_CORE_MAX; i++) s.add(arr[i].id);
+      _overviewCoreIds = s;
+      return s;
+    }
+
+    // BFS out to FOCUS_HOPS from a pinned node over ``node.neighbors``.
+    function focusSubgraphIds(node){
+      if (!node) return null;
+      if (_focusSubgraphFor === node.id && _focusSubgraphIds) return _focusSubgraphIds;
+      var seen = new Set([node.id]);
+      var frontier = [node];
+      for (var h = 0; h < FOCUS_HOPS; h++) {
+        var next = [];
+        for (var i = 0; i < frontier.length; i++) {
+          var cur = frontier[i];
+          if (cur && cur.neighbors && cur.neighbors.forEach) {
+            cur.neighbors.forEach(function(nb){
+              if (nb && !seen.has(nb.id)) { seen.add(nb.id); next.push(nb); }
+            });
+          }
+        }
+        frontier = next;
+      }
+      _focusSubgraphFor = node.id;
+      _focusSubgraphIds = seen;
+      return seen;
+    }
+
+    // The active subgraph restriction, or null when the full graph applies.
+    // A pinned node isolates its neighborhood; otherwise the overview core.
+    // When a search is active we return null (no hard restriction) so the
+    // soft-dim search path can surface a match anywhere — keeping the
+    // searchQuery check OUT of isVisible (F-8 invariant: search dims, not
+    // hides).
+    function activeVisibleIds(){
+      if (searchQuery) return null;
+      if (pinnedNode) return focusSubgraphIds(pinnedNode);
+      return overviewCoreIds();
+    }
+
     function isVisible(node){
       // F-8 — visibility is now a HARD filter only. Type-chip toggles and
       // the day-filter literally hide non-matching nodes; they're meant
@@ -1573,6 +1636,14 @@ JS_GRAPH = r"""
         var created = node.metadata && node.metadata.created;
         if (!created || String(created).slice(0, 10) !== dayFilter) return false;
       }
+      // Focused-subgraph restriction (the core of the HypePaper-style UX).
+      // ``activeVisibleIds`` returns the pinned node's neighborhood, the
+      // top-importance overview core at rest, or null when a search is active
+      // (search uses the soft-dim path instead — that check lives in
+      // activeVisibleIds, NOT here, so isVisible stays search-agnostic per the
+      // F-8 invariant).
+      var allow = activeVisibleIds();
+      if (allow && !allow.has(node.id)) return false;
       return true;
     }
 
