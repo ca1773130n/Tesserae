@@ -2255,7 +2255,13 @@ JS_GRAPH = r"""
       var aspect = (container.clientWidth || 1) / Math.max(1, container.clientHeight || 1);
       var fitHeightDistance = sphere.radius / Math.sin(fov / 2);
       var fitWidthDistance = fitHeightDistance / Math.max(0.45, aspect);
-      var distance = Math.max(fitHeightDistance, fitWidthDistance, 160) * 1.04;
+      // Composed opening framing (HypePaper recipe): pull the camera back
+      // past the tight fill-fit so the graph opens with breathing room —
+      // dense core centred, periphery visible — instead of cropped to the
+      // bounding sphere. 1.25x of the FOV-fit distance reads composed
+      // without dumping the graph small. (HypePaper's ~2.4x is measured
+      // off the raw layout radius, not the FOV-fit distance used here.)
+      var distance = Math.max(fitHeightDistance, fitWidthDistance, 160) * 1.25;
       var center = sphere.center;
       try {
         if (controls && controls.target && controls.target.set) {
