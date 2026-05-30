@@ -264,7 +264,7 @@ def test_graph_edges_are_visible_lines_not_only_particles():
     # background — same gold-amber the focus label uses). The previous
     # round used 0.5/0.5 which read as "too lit" under the new #060A14
     # backdrop. Forbid the prior light-blue overlay.
-    assert "rgba(255,255,255,0.18)" in JS_GRAPH
+    assert "rgba(255,255,255,0.10)" in JS_GRAPH
     assert "rgba(250,204,21,0.85)" in JS_GRAPH
     assert "rgba(191,219,254,0.34)" not in JS_GRAPH
     # F-6 — linkOpacity is now pinned to 1.0 (alpha lives in the rgba).
