@@ -2585,19 +2585,39 @@ JS_GRAPH = r"""
                 ? n.importance
                 : (n && typeof n.val === 'number' ? n.val : (n && n.degree ? n.degree : 0));
               var haloT = Math.max(0, Math.min(1, haloImp / 8));
-              var haloGeom = new THREE.SphereGeometry(haloSphereR * (1.55 + haloT * 0.55), 16, 16);
-              var haloMat = new THREE.MeshBasicMaterial({
+              // TWO-layer additive glow so nodes read as luminous orbs (the
+              // HypePaper look) rather than flat dots — visible even at the
+              // full-graph overview scale, not just zoomed in.
+              //   inner: tight, bright core glow hugging the sphere
+              //   outer: soft, wide aura that bleeds into the dark canvas and
+              //          makes the dense core nebula-glow.
+              // Both additive + depthWrite:false; importance scales size +
+              // brightness so hubs dominate and the long tail stays calm.
+              // No-op raycast keeps them decorative (no pointer capture).
+              var haloInnerGeom = new THREE.SphereGeometry(haloSphereR * (1.35 + haloT * 0.45), 16, 16);
+              var haloInner = new THREE.Mesh(haloInnerGeom, new THREE.MeshBasicMaterial({
                 color: haloColor,
                 transparent: true,
-                opacity: 0.22 + haloT * 0.07,
+                opacity: 0.45 + haloT * 0.25,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
-              });
-              var halo = new THREE.Mesh(haloGeom, haloMat);
-              halo.renderOrder = 50;
-              halo.raycast = function(){};
-              halo.userData.isHalo = true;
-              group.add(halo);
+              }));
+              haloInner.renderOrder = 49;
+              haloInner.raycast = function(){};
+              haloInner.userData.isHalo = true;
+              group.add(haloInner);
+              var haloOuterGeom = new THREE.SphereGeometry(haloSphereR * (2.4 + haloT * 1.6), 16, 16);
+              var haloOuter = new THREE.Mesh(haloOuterGeom, new THREE.MeshBasicMaterial({
+                color: haloColor,
+                transparent: true,
+                opacity: 0.14 + haloT * 0.12,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+              }));
+              haloOuter.renderOrder = 48;
+              haloOuter.raycast = function(){};
+              haloOuter.userData.isHalo = true;
+              group.add(haloOuter);
             } catch (_) {}
             // Issue 1 — every label variant the node may need. Per-frame
             // visibility toggling in nodePositionUpdate picks exactly one.
