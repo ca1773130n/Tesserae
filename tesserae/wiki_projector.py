@@ -23,7 +23,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, FrozenSet, Iterable, List, Mapping, Optional, Sequence, Tuple
 
-from .research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType, is_public_research_node
+from .research_graph import (
+    PRIVATE_PUBLIC_RESEARCH_TYPES,
+    SESSION_FINDING_TYPES,
+    ResearchEdge,
+    ResearchGraph,
+    ResearchNode,
+    ResearchNodeType,
+    is_public_research_node,
+)
 from .wiki_store import WikiPage, WikiPageStore
 
 
@@ -279,6 +287,41 @@ def is_code_graph_node(node: ResearchNode) -> bool:
 def is_assertion_node(node: ResearchNode) -> bool:
     """True iff ``node`` is a claim/evidence node (private, but research-layer)."""
     return node.type in ASSERTION_LAYER_TYPES
+
+
+def is_private_research_node(node: ResearchNode) -> bool:
+    """True iff ``node`` is a research-layer type intentionally suppressed
+    from the public projection — the FOURTH classification bucket.
+
+    These are neither code-graph mechanics nor assertion-layer inlining:
+    they are otherwise public-shaped research types (``Person``, ``Stub``,
+    ``Session``) that we deliberately keep out of the public wiki/site for
+    noise / relevance reasons (see ``PRIVATE_PUBLIC_RESEARCH_TYPES`` and the
+    ``is_public_research_node`` docstring in ``research_graph.py``). They
+    still live in ``graph.json`` for MCP/Cognee consumers.
+
+    NB: this is a *type-level* bucket. ``is_public_research_node`` applies
+    additional *per-node* gates (paper title quality, social-feed source
+    paths) that are not captured here — a Paper can be private without its
+    type being in this set. The classification invariant only needs the
+    type-level partition to be total, so those per-node cases are out of
+    scope for this predicate.
+    """
+    return node.type.value in PRIVATE_PUBLIC_RESEARCH_TYPES
+
+
+def is_session_finding_node(node: ResearchNode) -> bool:
+    """True iff ``node`` is a session finding — the FIFTH classification bucket.
+
+    ``SessionInsight`` / ``SessionDecision`` / ``SessionQuestion`` /
+    ``SessionTODO`` / ``SessionHypothesis`` / ``SessionTakeaway`` are public
+    project-memory surfaced on the dedicated ``/sessions/`` route (see
+    ``_SESSION_FINDING_TYPE_VALUES`` in ``site/pages.py``), NOT on one of the
+    eight wiki kinds — so ``kind_for_node`` correctly returns ``None`` for
+    them, but they are emphatically not private. They get their own bucket so
+    the classification invariant stays total and honest.
+    """
+    return node.type in SESSION_FINDING_TYPES
 
 
 def kind_for_node(node: ResearchNode) -> Optional[str]:
