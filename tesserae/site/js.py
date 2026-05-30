@@ -913,7 +913,11 @@ JS_GRAPH = r"""
     var satTier   = (tier - 0.35) * 14;
     var hue = (base.h + ((h % 19) - 9) + 360) % 360;
     var sat = Math.max(28, Math.min(98, base.s + (((h >>> 5) % 13) - 6) + satTier));
-    var light = Math.max(40, Math.min(84, base.l + (((h >>> 9) % 13) - 6) + lightTier));
+    // Per-node lightness wobble widened to ~±8% (HypePaper recipe) so
+    // adjacent same-family siblings don't read as one flat block. Still
+    // deterministic (hashed off the node id) and clamped, so a node's
+    // colour is stable across re-renders.
+    var light = Math.max(40, Math.min(84, base.l + (((h >>> 9) % 17) - 8) + lightTier));
     return 'hsl(' + hue + ' ' + sat + '% ' + light + '%)';
   }
 
