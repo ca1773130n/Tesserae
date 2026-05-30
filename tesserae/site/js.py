@@ -2559,6 +2559,36 @@ JS_GRAPH = r"""
             group.userData.nodeId = n.id;
             var radius = Math.sqrt(n.val || 1);
             var theme = (document.documentElement.getAttribute('data-theme') === 'light') ? 'light' : 'dark';
+            // Additive family-tinted halo glow (HypePaper recipe). A
+            // translucent, additive-blended sphere sits behind the built-in
+            // node sphere so prominent nodes glow and the scene gains depth.
+            // The halo is tinted with the node's OWN family colour
+            // (FAMILY_COLORS[familyOf(n)]) and scaled by importance: high-
+            // importance hubs get a bigger, slightly brighter halo; the long
+            // tail stays quiet. depthWrite:false + a no-op raycast keep it
+            // purely decorative — it never captures pointer events and never
+            // occludes labels or the focus/hover state machine.
+            try {
+              var haloColor = FAMILY_COLORS[familyOf(n)] || FAMILY_COLORS.other;
+              var haloSphereR = nodeSizeFor(n);
+              var haloImp = (n && typeof n.importance === 'number')
+                ? n.importance
+                : (n && typeof n.val === 'number' ? n.val : (n && n.degree ? n.degree : 0));
+              var haloT = Math.max(0, Math.min(1, haloImp / 8));
+              var haloGeom = new THREE.SphereGeometry(haloSphereR * (1.55 + haloT * 0.55), 16, 16);
+              var haloMat = new THREE.MeshBasicMaterial({
+                color: haloColor,
+                transparent: true,
+                opacity: 0.22 + haloT * 0.07,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+              });
+              var halo = new THREE.Mesh(haloGeom, haloMat);
+              halo.renderOrder = 50;
+              halo.raycast = function(){};
+              halo.userData.isHalo = true;
+              group.add(halo);
+            } catch (_) {}
             // Issue 1 — every label variant the node may need. Per-frame
             // visibility toggling in nodePositionUpdate picks exactly one.
             //   default  : 11px translucent text, NO pill (the user
