@@ -912,7 +912,11 @@ JS_GRAPH = r"""
     var lightTier = (tier - 0.35) * 16;   // brighten hubs, dim leaves (±)
     var satTier   = (tier - 0.35) * 14;
     var hue = (base.h + ((h % 19) - 9) + 360) % 360;
-    var sat = Math.max(28, Math.min(98, base.s + (((h >>> 5) % 13) - 6) + satTier));
+    // Saturation discipline (audit): cap resting saturation at 80 (was 98)
+    // so most nodes sit mid-saturation and read as classification, not
+    // decoration; the importance ``satTier`` still lifts hubs toward the cap
+    // while the long tail stays calm. Focus/hover use their own brighter path.
+    var sat = Math.max(28, Math.min(80, base.s + (((h >>> 5) % 13) - 6) + satTier));
     // Per-node lightness wobble widened to ~±8% (HypePaper recipe) so
     // adjacent same-family siblings don't read as one flat block. Still
     // deterministic (hashed off the node id) and clamped, so a node's
