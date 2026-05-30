@@ -1764,6 +1764,23 @@ body.palette-open { overflow: hidden; }
   }
 }
 .graph-page .graph-canvas canvas { display: block; width: 100% !important; height: 100% !important; }
+/* Depth vignette — the WebGL canvas paints opaque #060A14, so any
+   background gradient behind it is invisible. This overlay sits ON TOP
+   of the canvas (pointer-events:none so it never eats clicks/drags) and
+   darkens the corners toward the frame, lifting the glowing node core so
+   the scene reads with real depth instead of a flat panel. Mirrors the
+   nebula-framed look of the reference graph. Sits below the toolbar /
+   legend / focus panel (those are higher in the stacking context). */
+.graph-page .graph-canvas::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 1;
+  background:
+    radial-gradient(ellipse 75% 75% at 50% 46%, transparent 52%, rgba(2, 4, 12, 0.55) 100%);
+}
 /* Fullscreen mode (Issue 4). The wrapper covers the viewport; the
    toolbar sits on top, the legend bottom-left. The focus detail panel
    (``#graph-focus-panel``) is positioned absolutely inside the wrapper
