@@ -2563,6 +2563,33 @@ JS_GRAPH = r"""
 
       // Mode-specific labels.
       if (mode === '3d' && THREE) {
+        // Soft radial-gradient glow texture, built once and tinted per node
+        // via SpriteMaterial.color. A camera-facing Sprite with this texture
+        // + AdditiveBlending gives a true soft-bloom falloff (bright core →
+        // transparent edge) using ONLY the already-loaded THREE — no
+        // postprocessing pass, no second three.js instance, nothing to fetch.
+        // This is what makes nodes read as luminous orbs / the dense core
+        // nebula-glow, robustly.
+        var _glowTex = null;
+        function getGlowTexture(){
+          if (_glowTex) return _glowTex;
+          var size = 128;
+          var cv = document.createElement('canvas');
+          cv.width = cv.height = size;
+          var g = cv.getContext('2d');
+          var c = size / 2;
+          var grad = g.createRadialGradient(c, c, 0, c, c, c);
+          grad.addColorStop(0.0, 'rgba(255,255,255,1)');
+          grad.addColorStop(0.18, 'rgba(255,255,255,0.85)');
+          grad.addColorStop(0.45, 'rgba(255,255,255,0.32)');
+          grad.addColorStop(0.75, 'rgba(255,255,255,0.08)');
+          grad.addColorStop(1.0, 'rgba(255,255,255,0)');
+          g.fillStyle = grad;
+          g.fillRect(0, 0, size, size);
+          _glowTex = new THREE.CanvasTexture(cv);
+          _glowTex.minFilter = THREE.LinearFilter;
+          return _glowTex;
+        }
         try {
           // nodeThreeObject returns a THREE.Group containing:
           //   - a base label sprite (visible when ``showAlways`` or ``isHover``)
@@ -2576,14 +2603,15 @@ JS_GRAPH = r"""
             group.userData.nodeId = n.id;
             var radius = Math.sqrt(n.val || 1);
             var theme = (document.documentElement.getAttribute('data-theme') === 'light') ? 'light' : 'dark';
-            // Additive family-tinted halo glow (HypePaper recipe). A
-            // translucent, additive-blended sphere sits behind the built-in
-            // node sphere so prominent nodes glow and the scene gains depth.
-            // The halo is tinted with the node's OWN family colour
-            // (FAMILY_COLORS[familyOf(n)]) and scaled by importance: high-
-            // importance hubs get a bigger, slightly brighter halo; the long
-            // tail stays quiet. depthWrite:false + a no-op raycast keep it
-            // purely decorative — it never captures pointer events and never
+            // Soft additive glow sprite (real bloom-feel). A camera-facing
+            // Sprite textured with the radial-gradient glow (bright core →
+            // transparent edge) + AdditiveBlending makes each node read as a
+            // luminous orb and the dense core nebula-glow — without a
+            // postprocessing pass (which needs a 2nd three.js instance and an
+            // esm.sh addon that proved unreliable). Tinted with the node's own
+            // family colour, sized + brightened by importance so hubs dominate
+            // and the long tail stays calm. depthWrite:false + no-op raycast
+            // keep it decorative: never captures pointer events, never
             // occludes labels or the focus/hover state machine.
             try {
               var haloColor = FAMILY_COLORS[familyOf(n)] || FAMILY_COLORS.other;
@@ -2592,39 +2620,23 @@ JS_GRAPH = r"""
                 ? n.importance
                 : (n && typeof n.val === 'number' ? n.val : (n && n.degree ? n.degree : 0));
               var haloT = Math.max(0, Math.min(1, haloImp / 8));
-              // TWO-layer additive glow so nodes read as luminous orbs (the
-              // HypePaper look) rather than flat dots — visible even at the
-              // full-graph overview scale, not just zoomed in.
-              //   inner: tight, bright core glow hugging the sphere
-              //   outer: soft, wide aura that bleeds into the dark canvas and
-              //          makes the dense core nebula-glow.
-              // Both additive + depthWrite:false; importance scales size +
-              // brightness so hubs dominate and the long tail stays calm.
-              // No-op raycast keeps them decorative (no pointer capture).
-              var haloInnerGeom = new THREE.SphereGeometry(haloSphereR * (1.35 + haloT * 0.45), 16, 16);
-              var haloInner = new THREE.Mesh(haloInnerGeom, new THREE.MeshBasicMaterial({
+              var glowSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+                map: getGlowTexture(),
                 color: haloColor,
                 transparent: true,
-                opacity: 0.45 + haloT * 0.25,
+                opacity: 0.55 + haloT * 0.35,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
+                depthTest: false,
               }));
-              haloInner.renderOrder = 49;
-              haloInner.raycast = function(){};
-              haloInner.userData.isHalo = true;
-              group.add(haloInner);
-              var haloOuterGeom = new THREE.SphereGeometry(haloSphereR * (2.4 + haloT * 1.6), 16, 16);
-              var haloOuter = new THREE.Mesh(haloOuterGeom, new THREE.MeshBasicMaterial({
-                color: haloColor,
-                transparent: true,
-                opacity: 0.14 + haloT * 0.12,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-              }));
-              haloOuter.renderOrder = 48;
-              haloOuter.raycast = function(){};
-              haloOuter.userData.isHalo = true;
-              group.add(haloOuter);
+              // Sprite spans the glow well past the sphere so the soft edge
+              // bleeds into the canvas. ~6x leaf radius up to ~10x for hubs.
+              var glowSize = haloSphereR * (6.0 + haloT * 4.0);
+              glowSprite.scale.set(glowSize, glowSize, 1);
+              glowSprite.renderOrder = 48;
+              glowSprite.raycast = function(){};
+              glowSprite.userData.isHalo = true;
+              group.add(glowSprite);
             } catch (_) {}
             // Issue 1 — every label variant the node may need. Per-frame
             // visibility toggling in nodePositionUpdate picks exactly one.
