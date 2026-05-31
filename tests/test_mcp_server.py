@@ -68,8 +68,16 @@ def test_search_nodes_matches_name_alias_description_and_type(tmp_path):
 
     result = server.call_tool("search_nodes", {"query": "3dgs shape", "types": ["MethodologicalConcept", "PerformanceClaim"], "limit": 5})
 
-    names = [node["name"] for node in result["nodes"]]
-    assert names == ["Gaussian Splatting", "Best shape reconstruction claim"]
+    # The query matches across the requested fields: "3dgs" hits Gaussian
+    # Splatting's *alias* ("3DGS") and "shape" hits the claim's name +
+    # description. Both must be returned, and the type filter must exclude the
+    # Paper. We assert membership + count rather than a specific order: the
+    # default hybrid (BM25 + lexical + embedding via RRF) legitimately ranks
+    # the claim and the concept differently than any single lane would, and the
+    # relative order of two equally-one-term-matching nodes is not a stable
+    # contract. (Use mode="legacy" if a deterministic substring order is needed.)
+    names = {node["name"] for node in result["nodes"]}
+    assert names == {"Gaussian Splatting", "Best shape reconstruction claim"}
     assert result["total_matches"] == 2
 
 
