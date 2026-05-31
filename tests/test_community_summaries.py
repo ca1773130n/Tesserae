@@ -206,9 +206,16 @@ def test_rerun_with_same_membership_skips_llm(tmp_path: Path) -> None:
     assert second.calls == [], "cache miss: LLM was re-invoked"
     # Same set of community ids minted both times — membership is stable.
     assert {n.id for n in slice_first.nodes} == {n.id for n in slice_second.nodes}
-    # And every node from the cached run reports cache_hit=True.
+    # The cached run produces byte-identical node metadata to the first run:
+    # COMMUNITY_SUMMARY nodes are persisted into site/graph.json, which §13
+    # requires to be stable across re-compiles, so no per-run provenance (such
+    # as a cache-hit flag) may leak into the node. The stronger
+    # ``second.calls == []`` assertion above already proves the cache served
+    # every cluster without re-invoking the LLM.
+    meta_first = {n.id: n.metadata for n in slice_first.nodes}
     for node in slice_second.nodes:
-        assert node.metadata.get("cache_hit") is True
+        assert node.metadata == meta_first[node.id]
+        assert "cache_hit" not in node.metadata
 
 
 def test_compile_returns_empty_when_no_cluster_meets_min_size() -> None:

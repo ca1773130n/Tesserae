@@ -203,11 +203,9 @@ def compile_community_summaries(
         if not members:
             continue
         summary: Optional[Tuple[str, str, List[str]]] = None
-        cache_hit = False
         if cached and isinstance(cached, dict):
             payload = cached.get("summary")
             summary = _validate_summary(payload) if payload else None
-            cache_hit = summary is not None
         if summary is None:
             if json_client is None:
                 logger.debug("community_summaries: no LLM; skipping %s", cid)
@@ -249,10 +247,16 @@ def compile_community_summaries(
                 description=description,
                 aliases=[],
                 metadata={
+                    # NOTE: only membership-stable, content-derived fields may
+                    # live here — COMMUNITY_SUMMARY nodes flow into
+                    # ``.tesserae/site/graph.json``, which §13 requires to be
+                    # byte-identical across re-compiles of an unchanged corpus.
+                    # Build-provenance that differs between runs (e.g. whether
+                    # this run was an LLM call or a cache hit) must NOT be
+                    # persisted here or it breaks ``test_compile_is_byte_idempotent``.
                     "member_ids": list(member_ids),
                     "member_count": len(member_ids),
                     "tags": tags,
-                    "cache_hit": cache_hit,
                     "extractor": "community_summaries.compile_community_summaries",
                 },
             )
