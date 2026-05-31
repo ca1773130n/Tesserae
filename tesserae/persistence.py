@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import shutil
 import sqlite3
@@ -9,6 +10,36 @@ from pathlib import Path
 from typing import List
 
 from .research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
+
+
+def _kuzu_encode(obj) -> str:
+    """Base64-encode a JSON payload for storage in a Kuzu STRING column.
+
+    Kuzu 0.16.0 re-parses STRING values that look like JSON/list/struct and
+    re-serialises them in its own (lossy) format on read — e.g. the stored
+    ``["3DGS"]`` comes back as ``[3DGS]`` and ``{"k": "v"}`` as ``{k: v}``,
+    silently corrupting aliases and metadata so ``json.loads`` later raises.
+    Base64's alphabet (``A-Za-z0-9+/=``) contains no brackets/braces/quotes
+    for Kuzu to mis-handle, so the round-trip is lossless. See
+    ``test_kuzu_store_writes_nodes_edges_and_can_count``.
+    """
+    raw = json.dumps(obj, ensure_ascii=False, sort_keys=True)
+    return base64.b64encode(raw.encode("utf-8")).decode("ascii")
+
+
+def _kuzu_decode(value, default):
+    """Inverse of :func:`_kuzu_encode`, tolerant of legacy/empty values."""
+    if not value:
+        return default
+    try:
+        raw = base64.b64decode(value.encode("ascii")).decode("utf-8")
+    except (ValueError, AttributeError):
+        # Pre-base64 databases stored plain JSON; fall back so old files read.
+        raw = value
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return default
 
 
 class SQLiteResearchGraphStore:
@@ -153,10 +184,11 @@ class KuzuResearchGraphStore:
                     "id": node.id,
                     "name": node.name,
                     "type": node.type.value,
-                    "aliases_json": json.dumps(node.aliases, ensure_ascii=False),
+                    # Base64 so Kuzu 0.16.0 doesn't re-parse/mangle the JSON.
+                    "aliases_json": _kuzu_encode(node.aliases),
                     "description": node.description,
                     "source_path": node.source_path or "",
-                    "metadata_json": json.dumps(node.metadata, ensure_ascii=False, sort_keys=True),
+                    "metadata_json": _kuzu_encode(node.metadata),
                 },
             )
         for edge in graph.edges:
@@ -170,7 +202,7 @@ class KuzuResearchGraphStore:
                     "target": edge.target,
                     "type": edge.type,
                     "evidence": edge.evidence or "",
-                    "metadata_json": json.dumps(edge.metadata, ensure_ascii=False, sort_keys=True),
+                    "metadata_json": _kuzu_encode(edge.metadata),
                 },
             )
 
@@ -187,10 +219,10 @@ class KuzuResearchGraphStore:
                     id=row[0],
                     name=row[1],
                     type=ResearchNodeType(row[2]),
-                    aliases=json.loads(row[3] or "[]"),
+                    aliases=_kuzu_decode(row[3], []),
                     description=row[4] or "",
                     source_path=row[5] or None,
-                    metadata=json.loads(row[6] or "{}"),
+                    metadata=_kuzu_decode(row[6], {}),
                 )
             )
         edges = []
@@ -203,7 +235,7 @@ class KuzuResearchGraphStore:
                     target=row[1],
                     type=row[2],
                     evidence=row[3] or None,
-                    metadata=json.loads(row[4] or "{}"),
+                    metadata=_kuzu_decode(row[4], {}),
                 )
             )
         return ResearchGraph(nodes=nodes, edges=edges)
