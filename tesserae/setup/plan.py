@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shlex
 from datetime import datetime, timezone
 from pathlib import Path
@@ -88,7 +89,33 @@ def _raganything_refresh_command(parser: str = "mineru") -> str:
     )
 
 
+_RAGANYTHING_EXTRA_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _validate_raganything_extras(extras: str) -> str:
+    """Validate a comma-separated pip ``extras`` spec for safe shell interpolation.
+
+    ``extras`` reaches us from caller-supplied overrides (including the MCP
+    ``tesserae_setup_apply`` path) and is interpolated into a pip command that
+    ``setup/apply.py`` runs with ``shell=True``. Each token must therefore be a
+    bare extra name (PEP 508 extras are ``[A-Za-z0-9_-]`` after normalisation);
+    anything else (quotes, spaces, ``;``, ``]``, ``$()`` …) could break out of
+    the ``raganything[...]`` bracket and inject arbitrary shell. Reject rather
+    than sanitise so a malformed/hostile value fails loudly instead of silently
+    installing the wrong thing.
+    """
+    tokens = [t.strip() for t in extras.split(",") if t.strip()]
+    bad = [t for t in tokens if not _RAGANYTHING_EXTRA_RE.match(t)]
+    if bad:
+        raise PlanValidationError(
+            f"invalid raganything extras {bad!r}: each extra must match "
+            f"[A-Za-z0-9_-]+ (got {extras!r})"
+        )
+    return ",".join(tokens)
+
+
 def _raganything_install_command(extras: str = "all") -> str:
+    extras = _validate_raganything_extras(extras)
     if extras:
         return f"{{python}} -m pip install 'raganything[{extras}]>=1.3.0' docling"
     return "{python} -m pip install 'raganything>=1.3.0' docling"
