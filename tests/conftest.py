@@ -47,3 +47,27 @@ def wiki_sample_graph() -> ResearchGraph:
         for md_path in sorted(root.rglob("*.md")):
             graphs.append(extractor.extract_file(md_path, source_kind=_source_kind_for(md_path)))
     return merge_graphs(graphs)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_global_registry(tmp_path_factory, monkeypatch):
+    """Stop tests from reading the developer's global project registry.
+
+    ``ProjectRegistry(None)`` falls back to ``DEFAULT_REGISTRY_PATH`` —
+    ``~/.tesserae/registry.json`` — which on a developer machine may carry an
+    ``active`` project pointing at an unrelated graph. ``LLMWikiMCPServer``
+    resolves that active project *before* its ``default_graph_path`` argument,
+    so an unrelated active project silently shadows the per-test graph and
+    research-graph tools (``graph_summary``/``search_nodes``/…) report zero
+    matching nodes.
+
+    CI passes only because it has no such registry. Point the default at a
+    fresh, non-existent path so every test starts from an empty registry,
+    matching CI and any clean checkout. Tests that need a populated registry
+    create their own under ``tmp_path`` and pass ``registry_path`` explicitly,
+    so they are unaffected.
+    """
+    isolated = tmp_path_factory.mktemp("registry") / "registry.json"
+    monkeypatch.setattr(
+        "tesserae.mcp_server.DEFAULT_REGISTRY_PATH", isolated, raising=True
+    )
