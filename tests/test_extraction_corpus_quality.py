@@ -46,12 +46,20 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_ROOT = REPO_ROOT / "data" / "research"
 DAILY_ROOT = DATA_ROOT / "daily"
 
-# Curated subset: most-recent 30 daily folders. Keeps the test run bounded as
-# the corpus grows. We sort lexicographically because folder names are ISO
-# dates (``YYYY-MM-DD``).
-CURATED_DAYS: List[Path] = (
-    sorted(DAILY_ROOT.glob("*")) if DAILY_ROOT.exists() else []
-)[-30:]
+# Curated subset: the most-recent 30 daily folders PLUS every daily folder a
+# named fixture below lives in. Keeps the run bounded as the corpus grows while
+# guaranteeing the known-bad / known-good papers the assertions reference stay
+# in scope — otherwise corpus growth silently pushes a fixture's day out of the
+# last-30 window and the test fails with "no Paper extracted from corpus" even
+# though the file is still on disk. The set is filled in below, after the
+# fixture paths are declared, then re-sorted lexicographically (ISO dates).
+def _curated_days() -> List[Path]:
+    if not DAILY_ROOT.exists():
+        return []
+    days = sorted(DAILY_ROOT.glob("*"))
+    recent = days[-30:]
+    pinned = {p for p in days if p.name in _FIXTURE_DAY_NAMES}
+    return sorted(set(recent) | pinned)
 
 
 def _source_kind_for(path: Path) -> str:
@@ -167,6 +175,32 @@ REPO_PAIR_FIXTURE_CANDIDATES: Tuple[Path, ...] = (
     DATA_ROOT / "daily/2026-04-24/papers/2509.23563/repo.md",
     DATA_ROOT / "daily/2026-04-29/papers/2509.23563/repo.md",
 )
+
+
+def _fixture_day_name(fixture: Path) -> str:
+    """Return the ``daily/<DAY>`` folder name for a ``daily/<DAY>/papers/<id>/<f>`` path."""
+    # <DATA_ROOT>/daily/<DAY>/papers/<arxiv>/<file>  → parents[2] is <DAY>.
+    return fixture.parents[2].name
+
+
+# Daily folders that a named fixture references. ``_curated_days`` pins these
+# into the extraction window so corpus growth can't silently push a fixture's
+# day past the last-30 cutoff (which surfaced as spurious "no Paper extracted
+# from corpus" failures once the corpus grew beyond 30 days).
+_FIXTURE_DAY_NAMES: frozenset[str] = frozenset(
+    _fixture_day_name(p)
+    for p in (
+        *BAD_TITLE_FIXTURES.values(),
+        MISSING_TITLE_FIXTURE,
+        AUTHORS_FIXTURE,
+        EVAL_ENTITIES_FIXTURE_15941,
+        EVAL_ENTITIES_FIXTURE_23537,
+        *REPO_PAIR_FIXTURE_CANDIDATES,
+    )
+)
+
+# Resolved now that both the recency window and the fixture days are known.
+CURATED_DAYS: List[Path] = _curated_days()
 
 
 def _first_existing(paths) -> Path | None:
