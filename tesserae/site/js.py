@@ -778,6 +778,14 @@ JS_GRAPH = r"""
   // graph widget is theme-locked. Background hex is HypePaper's #060A14.
   var GRAPH_FORCE_DARK = true;
   var GRAPH_BG_COLOR = '#060A14';
+  // Cluster-driven hue map (HypePaper parity): node id -> hue in [0,360).
+  // Populated once per graph load (see ``computeClusterHues`` inside
+  // startGraph) by connected-component clustering + golden-angle hue
+  // assignment. ``nodeColorVariant`` reads this so the graph colours by
+  // STRUCTURE (which constellation a node belongs to) rather than only by
+  // type — distinct colour families per cluster instead of a uniform wash.
+  // Null until computed; nodeColorVariant falls back to the family hue.
+  var clusterHueById = null;
   // Palette ported from HypePaper's CitationGraph.vue category dots:
   // purple-500 / blue-500 / cyan-400 / amber-400 / emerald-400 / pink-400
   // / gray-400 / gray-500. Concepts are the "seed" purple (matches the
@@ -911,7 +919,14 @@ JS_GRAPH = r"""
     if (n && n.type === 'CommunitySummary') tier = Math.max(tier, 0.85);
     var lightTier = (tier - 0.35) * 16;   // brighten hubs, dim leaves (±)
     var satTier   = (tier - 0.35) * 14;
-    var hue = (base.h + ((h % 19) - 9) + 360) % 360;
+    // Hue: cluster-driven (HypePaper parity) when the cluster map is
+    // populated — nodes in the same connected-component share a golden-angle
+    // hue so the graph reads as distinct colour constellations. The small
+    // id-hashed jitter keeps same-cluster siblings from being a flat block.
+    // Falls back to the family hue before the cluster map is computed.
+    var clusterHue = (clusterHueById && n && clusterHueById[n.id] != null) ? clusterHueById[n.id] : null;
+    var hueBase = (clusterHue != null) ? clusterHue : base.h;
+    var hue = (hueBase + ((h % 13) - 6) + 360) % 360;
     // Saturation discipline (audit): cap resting saturation at 80 (was 98)
     // so most nodes sit mid-saturation and read as classification, not
     // decoration; the importance ``satTier`` still lifts hubs toward the cap
@@ -1048,6 +1063,67 @@ JS_GRAPH = r"""
       });
     }
     buildDrawerIndex();
+
+    // ---- Cluster hue assignment (HypePaper parity) ----------------------
+    // Tesserae runs server-side Louvain community detection (the
+    // ``community_summaries`` compile pass), emitting CommunitySummary nodes
+    // joined to members by ``summarizes`` edges. We colour each node by its
+    // community with a golden-angle (137.508°) hue per community, so distinct
+    // topic-constellations get maximally-separated colours.
+    //
+    // IMPORTANT data reality (measured on the live corpus): the research graph
+    // is hub-and-spoke — there is ONE catch-all community that "summarizes"
+    // ~58% of all nodes, plus many genuine small topic-communities (~5 nodes
+    // each). Colouring by the catch-all would flatten most of the graph into a
+    // single hue (worse than the per-family scheme). So we (a) IGNORE any
+    // community larger than ``COMM_MAX_FRAC`` of the graph (no cluster signal),
+    // and (b) assign each node to its SMALLEST remaining community (the most
+    // specific topic). Nodes left with no small community keep ``null`` here
+    // and ``nodeColorVariant`` falls back to their per-family hue — so the
+    // result is "family colours, but real topic-clusters pop out in their own
+    // distinct hue", which is what reads as structure.
+    (function computeClusterHues(){
+      var N = payload.nodes.length;
+      var isCS = {};
+      payload.nodes.forEach(function(n){
+        if (n && (n.type === 'CommunitySummary' || (typeof n.id === 'string' && n.id.indexOf('CommunitySummary:') === 0))) isCS[n.id] = true;
+      });
+      // member id -> [community ids]; community id -> raw member count.
+      var cands = {}, rawSize = {};
+      payload.links.forEach(function(l){
+        if ((l.type || l.relation) !== 'summarizes') return;
+        var s = _linkEndId(l.source), t = _linkEndId(l.target);
+        var member = isCS[s] ? t : s;
+        var comm = isCS[s] ? s : t;
+        if (member == null || comm == null) return;
+        (cands[member] = cands[member] || []).push(comm);
+        rawSize[comm] = (rawSize[comm] || 0) + 1;
+      });
+      // Drop catch-all communities with no real clustering signal.
+      var COMM_MAX_FRAC = 0.25;
+      var cap = Math.max(8, Math.floor(N * COMM_MAX_FRAC));
+      // Assign each member to its smallest surviving community (most specific).
+      var commOf = {};
+      Object.keys(cands).forEach(function(member){
+        var list = cands[member], best = null, bestSize = Infinity;
+        for (var i = 0; i < list.length; i++) {
+          var c = list[i];
+          if (rawSize[c] <= cap && rawSize[c] < bestSize) { bestSize = rawSize[c]; best = c; }
+        }
+        if (best != null) commOf[member] = best;
+      });
+      // Rank surviving communities by member count (desc) → biggest real
+      // topic-cluster gets the first golden-angle slot, etc.
+      var sizes = {};
+      Object.keys(commOf).forEach(function(id){ var c = commOf[id]; sizes[c] = (sizes[c] || 0) + 1; });
+      var order = Object.keys(sizes).sort(function(a, b){ return sizes[b] - sizes[a]; });
+      var hueOf = {};
+      order.forEach(function(comm, slot){ hueOf[comm] = Math.round((slot * 137.508) % 360); });
+      var map = {};
+      Object.keys(commOf).forEach(function(id){ map[id] = hueOf[commOf[id]]; });
+      // Leaves map to no hue → nodeColorVariant uses the family hue.
+      clusterHueById = map;
+    })();
 
     // Compute a high-value cutoff for overview labels. The graph can have
     // hundreds of nodes; showing the top half as labels turns 2D into a hairball.
@@ -1587,7 +1663,7 @@ JS_GRAPH = r"""
     // ``_overviewCoreIds`` is computed once from the payload (top N by the
     // same importance/val signal that drives node size). ``_focusSubgraphIds``
     // is recomputed whenever the pinned node changes.
-    var OVERVIEW_CORE_MAX = 110;   // nodes shown at rest (no selection)
+    var OVERVIEW_CORE_MAX = 70;    // nodes shown at rest (no selection)
     var FOCUS_HOPS = 1;            // neighborhood radius around a pinned node
     var _overviewCoreIds = null;   // Set<id> | null (lazy)
     var _focusSubgraphIds = null;  // Set<id> | null — rebuilt on pin change
