@@ -2803,14 +2803,18 @@ JS_GRAPH = r"""
                 map: getGlowTexture(),
                 color: haloColor,
                 transparent: true,
-                opacity: 0.55 + haloT * 0.35,
+                // Restrained glow: leaves stay dim (0.28) so they don't smear
+                // into a uniform nebula; hubs brighten toward 0.6. The earlier
+                // 0.55–0.90 washed the whole field and buried small nodes.
+                opacity: 0.28 + haloT * 0.32,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
                 depthTest: false,
               }));
-              // Sprite spans the glow well past the sphere so the soft edge
-              // bleeds into the canvas. ~6x leaf radius up to ~10x for hubs.
-              var glowSize = haloSphereR * (6.0 + haloT * 4.0);
+              // Tighter halo: ~3.2x leaf radius up to ~5.5x for hubs, so the
+              // glow reads as a soft rim on each node rather than overlapping
+              // blooms that merge the graph into one bright blob.
+              var glowSize = haloSphereR * (3.2 + haloT * 2.3);
               glowSprite.scale.set(glowSize, glowSize, 1);
               glowSprite.renderOrder = 48;
               glowSprite.raycast = function(){};
@@ -3245,7 +3249,15 @@ JS_GRAPH = r"""
                 return -(380 + t * 520);
               });
             } else {
-              charge.strength(-170);
+              // 3D: degree-scaled repulsion so hubs claim breathing room and
+              // the at-rest core spreads into a legible constellation instead
+              // of a tight ball (HypePaper's open layout). Leaves ~-220,
+              // top hubs ~-520.
+              charge.strength(function(n){
+                var d = (n && n.degree) || 0;
+                var t = Math.sqrt(Math.min(1, d / Math.max(1, maxDegree)));
+                return -(220 + t * 300);
+              });
             }
           }
           var link = inst.d3Force('link');
@@ -3264,7 +3276,16 @@ JS_GRAPH = r"""
                 return 70 + k * 70;
               });
             } else {
-              link.distance(48);
+              // 3D: longer rest length spreads connected clusters apart so the
+              // composition reads as distinct constellations, not one dense
+              // core. Hub-incident links stretch further than leaf links.
+              link.distance(function(l){
+                var s = typeof l.source === 'object' ? l.source : byId.get(l.source);
+                var t = typeof l.target === 'object' ? l.target : byId.get(l.target);
+                var hub = Math.max((s && s.degree) || 0, (t && t.degree) || 0);
+                var k = Math.sqrt(Math.min(1, hub / Math.max(1, maxDegree)));
+                return 60 + k * 70;
+              });
             }
           }
         }
