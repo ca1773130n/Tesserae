@@ -1948,7 +1948,7 @@ JS_GRAPH = r"""
     // ``hint`` in the key any more).
     // Node-label fonts doubled for readability; edge-label font stays
     // small so edge labels never compete with node names visually.
-    var VARIANT_FONT       = { default: 20, edge: 11, neighbor: 23, hover: 28, focused: 32 };
+    var VARIANT_FONT       = { default: 13, edge: 10, neighbor: 15, hover: 17, focused: 19 };
     var VARIANT_OPACITY    = { default: 0.85, edge: 0.78, neighbor: 0.92, hover: 1.0, focused: 1.0 };
     // Render-order ladder (low → high): edge → default → neighbor →
     // hover/focused. Hover and focused share renderOrder 999 because
@@ -2121,7 +2121,7 @@ JS_GRAPH = r"""
       // World-space on-screen label size. This (not just the canvas font px) is
       // the dominant lever for "labels too small to read" — bumped 0.10 -> 0.17
       // so at-rest names are comfortably legible at the default camera distance.
-      var spriteScale = 0.30;
+      var spriteScale = 0.16;
       sprite.scale.set(w * spriteScale, h * spriteScale, 1);
       sprite.renderOrder = VARIANT_RENDER_ORDER[variant] || 1;
       var ud = { variant: variant };
