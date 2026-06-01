@@ -865,7 +865,7 @@ JS_GRAPH = r"""
   // alpha so dimmed edges are essentially invisible.
   var EDGE_COLOR_LIGHT = 'rgba(255,255,255,0.5)';
   var EDGE_COLOR_DIM   = 'rgba(255,255,255,0.06)';
-  var EDGE_COLOR_HOT   = 'rgba(250,204,21,0.85)';
+  var EDGE_COLOR_HOT   = 'rgba(250,204,21,0.5)';
   var THREE_URL = 'https://esm.sh/three@0.169.0';
 
   // HSL anchors aligned with HypePaper's category dots. These drive the
@@ -1936,7 +1936,7 @@ JS_GRAPH = r"""
     // ``hint`` in the key any more).
     // Node-label fonts doubled for readability; edge-label font stays
     // small so edge labels never compete with node names visually.
-    var VARIANT_FONT       = { default: 16, edge: 9, neighbor: 19, hover: 24, focused: 28 };
+    var VARIANT_FONT       = { default: 20, edge: 11, neighbor: 23, hover: 28, focused: 32 };
     var VARIANT_OPACITY    = { default: 0.85, edge: 0.78, neighbor: 0.92, hover: 1.0, focused: 1.0 };
     // Render-order ladder (low → high): edge → default → neighbor →
     // hover/focused. Hover and focused share renderOrder 999 because
@@ -2106,7 +2106,10 @@ JS_GRAPH = r"""
         opacity: 1.0
       });
       var sprite = new THREE.Sprite(mat);
-      var spriteScale = 0.10;
+      // World-space on-screen label size. This (not just the canvas font px) is
+      // the dominant lever for "labels too small to read" — bumped 0.10 -> 0.17
+      // so at-rest names are comfortably legible at the default camera distance.
+      var spriteScale = 0.17;
       sprite.scale.set(w * spriteScale, h * spriteScale, 1);
       sprite.renderOrder = VARIANT_RENDER_ORDER[variant] || 1;
       var ud = { variant: variant };
@@ -2584,7 +2587,7 @@ JS_GRAPH = r"""
           // 2D needs more saturated alpha because pixel-thin lines lose
           // visibility when their alpha is halved for 3D's translucent
           // webbing aesthetic.
-          var hot = mode === '2d' ? 'rgba(250,204,21,0.95)' : EDGE_COLOR_HOT;
+          var hot = mode === '2d' ? 'rgba(250,204,21,0.5)' : EDGE_COLOR_HOT;
           var light = mode === '2d' ? 'rgba(180,176,168,0.55)' : EDGE_COLOR_LIGHT;
           var dim = mode === '2d' ? 'rgba(120,116,108,0.10)' : EDGE_COLOR_DIM;
           if (highlightLinks.has(l)) return hot;
@@ -2639,7 +2642,7 @@ JS_GRAPH = r"""
           if (isHoverIncidentLink(l)) return 2;
           return 0;
         })
-        .linkDirectionalParticleWidth(0.6)
+        .linkDirectionalParticleWidth(1.4)
         .linkDirectionalParticleSpeed(0.005)
         .onNodeHover(function(node){
           // F-4 — when a node is FOCUSED/pinned, hover-driven highlight
@@ -2825,10 +2828,10 @@ JS_GRAPH = r"""
                 map: getGlowTexture(),
                 color: haloColor,
                 transparent: true,
-                // Restrained glow: leaves stay dim (0.28) so they don't smear
-                // into a uniform nebula; hubs brighten toward 0.6. The earlier
-                // 0.55–0.90 washed the whole field and buried small nodes.
-                opacity: 0.28 + haloT * 0.32,
+                // Glow capped at 25% (user spec) — a faint rim, never a wash.
+                // Hubs get a touch more within that ceiling (0.18 leaf → 0.25
+                // hub) so importance still reads without the field blooming.
+                opacity: 0.18 + haloT * 0.07,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
                 depthTest: false,
