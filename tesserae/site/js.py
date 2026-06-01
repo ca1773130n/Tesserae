@@ -3369,14 +3369,19 @@ JS_GRAPH = r"""
           if (hasInitialFit) return;
           if (pinnedNode || pinnedLink) return;
           scheduleCenteredFit();
-          // Start the cinematic at-rest spin a moment after the fit settles,
-          // so it begins from the framed view rather than fighting the fly-in.
-          if (!userInteracted && !focusedNode) {
-            try { window.setTimeout(function(){
-              if (!userInteracted && !focusedNode) restSpinActive = true;
-            }, 1200); } catch (_) {}
-          }
         });
+        // Start the cinematic at-rest spin on a fixed timer after init (NOT
+        // gated on onEngineStop — that early-returns once hasInitialFit is set,
+        // which was silently preventing the spin from ever turning on). The
+        // loop's own guards (userInteracted / focusedNode / pinned) keep it
+        // from fighting any real interaction; 3.5s lets the layout fit first.
+        try {
+          window.setTimeout(function(){
+            if (!userInteracted && !focusedNode && !pinnedNode && !pinnedLink) {
+              restSpinActive = true;
+            }
+          }, 3500);
+        } catch (_) {}
       } catch (_) {}
 
       // Bug 5 — auto-orbit hook. ``onEngineTick`` fires per render frame
@@ -3449,7 +3454,7 @@ JS_GRAPH = r"""
           var restAngle = null;
           (function restSpinLoop(){
             try {
-              if (restSpinActive && !userInteracted && !focusedNode && mode === '3d') {
+              if (restSpinActive && !userInteracted && !focusedNode && !pinnedNode && !pinnedLink && mode === '3d') {
                 var cam = inst.camera && inst.camera();
                 var ctr = inst.controls && inst.controls();
                 if (cam && ctr && ctr.target) {
