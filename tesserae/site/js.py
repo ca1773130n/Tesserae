@@ -863,8 +863,8 @@ JS_GRAPH = r"""
   // webbing recedes evenly). Hot (hovered/focused incident): yellow at
   // 0.85 alpha — same gold-amber the focus label uses. Dim: very low
   // alpha so dimmed edges are essentially invisible.
-  var EDGE_COLOR_LIGHT = 'rgba(255,255,255,0.10)';
-  var EDGE_COLOR_DIM   = 'rgba(255,255,255,0.025)';
+  var EDGE_COLOR_LIGHT = 'rgba(255,255,255,0.5)';
+  var EDGE_COLOR_DIM   = 'rgba(255,255,255,0.06)';
   var EDGE_COLOR_HOT   = 'rgba(250,204,21,0.85)';
   var THREE_URL = 'https://esm.sh/three@0.169.0';
 
@@ -1918,16 +1918,19 @@ JS_GRAPH = r"""
     // ``hint`` in the key any more).
     // Node-label fonts doubled for readability; edge-label font stays
     // small so edge labels never compete with node names visually.
-    var VARIANT_FONT       = { default: 11, edge: 7, neighbor: 14, hover: 18, focused: 22 };
+    var VARIANT_FONT       = { default: 16, edge: 9, neighbor: 19, hover: 24, focused: 28 };
     var VARIANT_OPACITY    = { default: 0.85, edge: 0.78, neighbor: 0.92, hover: 1.0, focused: 1.0 };
     // Render-order ladder (low → high): edge → default → neighbor →
     // hover/focused. Hover and focused share renderOrder 999 because
     // per-frame visibility logic ensures only one variant is ever
     // visible per node — they never compete on z within the same group.
     var VARIANT_RENDER_ORDER = { default: 100, edge: 1, neighbor: 998, hover: 999, focused: 999 };
-    // All label pills transparent — user spec. Text-only labels everywhere.
-    // Keep the keys so downstream variant lookups don't go undefined.
-    var VARIANT_PILL_ALPHA = { default: 0, edge: 0, neighbor: 0, hover: 0, focused: 0 };
+    // HypePaper parity — every label sits on a translucent black pill so the
+    // white text stays legible over bright node spheres and the busy edge
+    // webbing. Base is rgba(0,0,0,0.5) (user spec); hover/focused darken
+    // slightly so the interaction target reads as foremost. Edge labels keep a
+    // light pill too so they don't disappear into the canvas.
+    var VARIANT_PILL_ALPHA = { default: 0.5, edge: 0.5, neighbor: 0.55, hover: 0.65, focused: 0.72 };
     // Variants that count as "highlighted" labels and should tint yellow.
     // Hoisted to outer scope so both the 3D sprite factory (makeLabel) and
     // the 2D ``nodeCanvasObject`` path share one definition.
@@ -2580,8 +2583,11 @@ JS_GRAPH = r"""
         .linkWidth(function(l){
           if (isDimmedLink(l)) return mode === '2d' ? 0.05 : 0.001;
           if (mode === '2d') {
-            if (highlightLinks.has(l)) return 2.0;
-            if (isHoverIncidentLink(l)) return 2.0;
+            // Selected / touring / hover-incident edges are THINNER than the
+            // resting webbing (user spec) — the colour + particles carry the
+            // emphasis, so the line itself stays delicate rather than fat.
+            if (highlightLinks.has(l)) return 0.4;
+            if (isHoverIncidentLink(l)) return 0.4;
             return 0.6;
           }
           // 3D: camera-distance-aware width.
@@ -2594,8 +2600,11 @@ JS_GRAPH = r"""
               camScale = Math.max(1.0, Math.min(3.0, dist / 180));
             }
           } catch (_) {}
-          if (highlightLinks.has(l)) return 0.9 * camScale;
-          if (isHoverIncidentLink(l)) return 0.9 * camScale;
+          // Selected / touring / hover edges go THINNER than the resting base
+          // (user spec): emphasis comes from the hot yellow colour + flowing
+          // particles, not line weight.
+          if (highlightLinks.has(l)) return 0.15 * camScale;
+          if (isHoverIncidentLink(l)) return 0.15 * camScale;
           // spec §C — semantic edges slightly thicker than the structural
           // base so the typed-edge distinction is visible at rest.
           if (edgeClassOf(l) === 'semantic') return 0.25 * camScale * EDGE_SEMANTIC_WIDTH_MULT;
