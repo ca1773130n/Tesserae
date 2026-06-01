@@ -863,9 +863,14 @@ JS_GRAPH = r"""
   // webbing recedes evenly). Hot (hovered/focused incident): yellow at
   // 0.85 alpha — same gold-amber the focus label uses. Dim: very low
   // alpha so dimmed edges are essentially invisible.
-  var EDGE_COLOR_LIGHT = 'rgba(255,255,255,0.5)';
-  var EDGE_COLOR_DIM   = 'rgba(255,255,255,0.06)';
-  var EDGE_COLOR_HOT   = 'rgba(250,204,21,0.5)';
+  // Base webbing matches HypePaper's recessed rgba(255,255,255,0.18): visible
+  // but quiet, so the graph reads as a constellation, not a bright wire mesh.
+  // (Was 0.5 — codex flagged that as the #1 thing making the view cluttered.)
+  var EDGE_COLOR_LIGHT = 'rgba(255,255,255,0.18)';
+  var EDGE_COLOR_DIM   = 'rgba(255,255,255,0.04)';
+  // Incident/selected edges brighten to amber (HypePaper's rgba(250,204,21,0.75))
+  // so focus reads as emphasis. Width also goes UP, not down — see linkWidth.
+  var EDGE_COLOR_HOT   = 'rgba(250,204,21,0.75)';
   var THREE_URL = 'https://esm.sh/three@0.169.0';
 
   // HSL anchors aligned with HypePaper's category dots. These drive the
@@ -2594,7 +2599,7 @@ JS_GRAPH = r"""
           // 2D needs more saturated alpha because pixel-thin lines lose
           // visibility when their alpha is halved for 3D's translucent
           // webbing aesthetic.
-          var hot = mode === '2d' ? 'rgba(250,204,21,0.5)' : EDGE_COLOR_HOT;
+          var hot = mode === '2d' ? 'rgba(250,204,21,0.85)' : EDGE_COLOR_HOT;
           var light = mode === '2d' ? 'rgba(180,176,168,0.55)' : EDGE_COLOR_LIGHT;
           var dim = mode === '2d' ? 'rgba(120,116,108,0.10)' : EDGE_COLOR_DIM;
           if (highlightLinks.has(l)) return hot;
@@ -2611,11 +2616,12 @@ JS_GRAPH = r"""
         .linkWidth(function(l){
           if (isDimmedLink(l)) return mode === '2d' ? 0.05 : 0.001;
           if (mode === '2d') {
-            // Selected / touring / hover-incident edges are THINNER than the
-            // resting webbing (user spec) — the colour + particles carry the
-            // emphasis, so the line itself stays delicate rather than fat.
-            if (highlightLinks.has(l)) return 0.4;
-            if (isHoverIncidentLink(l)) return 0.4;
+            // Selected / touring / hover-incident edges read BRIGHTER and a
+            // touch THICKER than the resting webbing so focus clarifies the
+            // graph (HypePaper behaviour) — emphasis = brighter amber + more
+            // weight + particles, not a thinner line.
+            if (highlightLinks.has(l)) return 1.4;
+            if (isHoverIncidentLink(l)) return 1.4;
             return 0.6;
           }
           // 3D: camera-distance-aware width.
@@ -2628,11 +2634,11 @@ JS_GRAPH = r"""
               camScale = Math.max(1.0, Math.min(3.0, dist / 180));
             }
           } catch (_) {}
-          // Selected / touring / hover edges go THINNER than the resting base
-          // (user spec): emphasis comes from the hot yellow colour + flowing
-          // particles, not line weight.
-          if (highlightLinks.has(l)) return 0.15 * camScale;
-          if (isHoverIncidentLink(l)) return 0.15 * camScale;
+          // Selected / touring / hover edges read BRIGHTER + THICKER than the
+          // resting base so focus clarifies the structure (HypePaper). Emphasis
+          // = amber colour + more weight + particles, not a vanishing line.
+          if (highlightLinks.has(l)) return 0.6 * camScale;
+          if (isHoverIncidentLink(l)) return 0.6 * camScale;
           // spec §C — semantic edges slightly thicker than the structural
           // base so the typed-edge distinction is visible at rest.
           if (edgeClassOf(l) === 'semantic') return 0.25 * camScale * EDGE_SEMANTIC_WIDTH_MULT;
@@ -2835,10 +2841,10 @@ JS_GRAPH = r"""
                 map: getGlowTexture(),
                 color: haloColor,
                 transparent: true,
-                // Glow capped at 25% (user spec) — a faint rim, never a wash.
-                // Hubs get a touch more within that ceiling (0.18 leaf → 0.25
-                // hub) so importance still reads without the field blooming.
-                opacity: 0.18 + haloT * 0.07,
+                // Dimmer glow (codex): colored additive halos on every node
+                // were creating muddy colour-fog. ~0.08 leaf → ~0.12 hub keeps
+                // a faint premium rim without the field blooming into haze.
+                opacity: 0.08 + haloT * 0.04,
                 blending: THREE.AdditiveBlending,
                 depthWrite: false,
                 depthTest: false,
@@ -2846,7 +2852,7 @@ JS_GRAPH = r"""
               // Tighter halo: ~3.2x leaf radius up to ~5.5x for hubs, so the
               // glow reads as a soft rim on each node rather than overlapping
               // blooms that merge the graph into one bright blob.
-              var glowSize = haloSphereR * (3.2 + haloT * 2.3);
+              var glowSize = haloSphereR * (2.2 + haloT * 1.6);
               glowSprite.scale.set(glowSize, glowSize, 1);
               glowSprite.renderOrder = 48;
               glowSprite.raycast = function(){};
