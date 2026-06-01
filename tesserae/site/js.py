@@ -972,7 +972,12 @@ JS_GRAPH = r"""
 
     var byId = new Map();
     payload.nodes.forEach(function(n){
-      n.color = n.color || nodeColorVariant(n);
+      // NOTE: n.color is intentionally NOT set here. It is assigned after
+      // computeClusterHues() runs below, otherwise the cluster-driven hue
+      // would be computed against an empty clusterHueById and frozen onto
+      // n.color before the clusters exist (codex review P1). Degree/neighbors
+      // are also populated by the link pass below, which the importance tier
+      // in nodeColorVariant depends on — another reason to colour late.
       n.neighbors = new Set();
       n.edges = [];
       n.degree = 0;
@@ -1082,7 +1087,7 @@ JS_GRAPH = r"""
     // and ``nodeColorVariant`` falls back to their per-family hue — so the
     // result is "family colours, but real topic-clusters pop out in their own
     // distinct hue", which is what reads as structure.
-    (function computeClusterHues(){
+    function computeClusterHues(){
       var N = payload.nodes.length;
       var isCS = {};
       payload.nodes.forEach(function(n){
@@ -1123,7 +1128,14 @@ JS_GRAPH = r"""
       Object.keys(commOf).forEach(function(id){ map[id] = hueOf[commOf[id]]; });
       // Leaves map to no hue → nodeColorVariant uses the family hue.
       clusterHueById = map;
-    })();
+    }
+    computeClusterHues();
+
+    // Colour every node NOW — after clusterHueById is populated and after the
+    // link pass set degree/neighbors — so nodeColorVariant sees the real
+    // cluster hue + importance tier. (Was assigned prematurely at node-init,
+    // which froze the family hue before clusters existed — codex review P1.)
+    payload.nodes.forEach(function(n){ n.color = nodeColorVariant(n); });
 
     // Compute a high-value cutoff for overview labels. The graph can have
     // hundreds of nodes; showing the top half as labels turns 2D into a hairball.
@@ -1140,10 +1152,14 @@ JS_GRAPH = r"""
     // and isolated leaves fade into the background. Floors at 1 so the
     // division below can't divide by zero on an empty graph.
     var maxDegree = 1;
-    for (var __i = 0; __i < payload.nodes.length; __i++) {
-      var __d = (payload.nodes[__i] && payload.nodes[__i].degree) || 0;
-      if (__d > maxDegree) maxDegree = __d;
+    function recomputeMaxDegree(){
+      maxDegree = 1;
+      for (var __i = 0; __i < payload.nodes.length; __i++) {
+        var __d = (payload.nodes[__i] && payload.nodes[__i].degree) || 0;
+        if (__d > maxDegree) maxDegree = __d;
+      }
     }
+    recomputeMaxDegree();
 
     // Default-label opacity = importance(degree) × camera-distance.
     // Range clamped to [0.06, 1.0]. With nothing focused/hovered, this
@@ -1175,7 +1191,8 @@ JS_GRAPH = r"""
     // user hovers / focuses it. The graph then reads as a few legible anchors
     // in a quiet field, not a wall of text.
     var MAX_PERSISTENT_LABELS = 26;
-    var labelTopKIds = (function(){
+    var labelTopKIds = {};
+    function recomputeLabelTopK(){
       var ranked = payload.nodes.slice().sort(function(a, b){
         return ((b && b.degree) || 0) - ((a && a.degree) || 0);
       });
@@ -1183,8 +1200,9 @@ JS_GRAPH = r"""
       for (var i = 0; i < ranked.length && i < MAX_PERSISTENT_LABELS; i++) {
         if (ranked[i] && ranked[i].id != null) set[ranked[i].id] = true;
       }
-      return set;
-    })();
+      labelTopKIds = set;
+    }
+    recomputeLabelTopK();
     function isLabelTopK(n){
       return !!(n && n.id != null && labelTopKIds[n.id]);
     }
@@ -2793,7 +2811,11 @@ JS_GRAPH = r"""
             // keep it decorative: never captures pointer events, never
             // occludes labels or the focus/hover state machine.
             try {
-              var haloColor = FAMILY_COLORS[familyOf(n)] || FAMILY_COLORS.other;
+              // Halo tint = the node's OWN rendered colour (cluster hue when
+              // it has one, else family hue), so the glow rim matches the
+              // sphere instead of diverging to a family colour while the
+              // sphere is community-coloured (codex review P2).
+              var haloColor = (n && n.color) || FAMILY_COLORS[familyOf(n)] || FAMILY_COLORS.other;
               var haloSphereR = nodeSizeFor(n);
               var haloImp = (n && typeof n.importance === 'number')
                 ? n.importance
@@ -4541,7 +4563,9 @@ JS_GRAPH = r"""
       var newLinks = Array.isArray(rest.links) ? rest.links : (rest.edges || []);
       newNodes.forEach(function(n){
         if (byId.has(n.id)) return;
-        n.color = n.color || nodeColorVariant(n);
+        // Colour assigned AFTER the merge recomputes clusters/degree below —
+        // not here — so rest nodes get the same cluster-hue + importance
+        // treatment as core nodes instead of a stale family hue (codex P2).
         n.neighbors = new Set();
         n.edges = [];
         n.degree = 0;
@@ -4557,8 +4581,21 @@ JS_GRAPH = r"""
         a.degree += 1; b.degree += 1;
         payload.links.push(l);
       });
+      // codex P2 — recompute everything derived from the node/link union so the
+      // rest payload doesn't leave the overview core-biased and stale:
+      //   * clusters (rest nodes + their summarizes edges can form/extend
+      //     communities), * maxDegree (rest links raised degrees),
+      //   * top-K label anchors (a rest node may now outrank a core node).
+      // Then recolour ALL nodes against the refreshed cluster map + degrees.
+      try { computeClusterHues(); } catch (_) {}
+      try { recomputeMaxDegree(); } catch (_) {}
+      try { recomputeLabelTopK(); } catch (_) {}
+      payload.nodes.forEach(function(n){ n.color = nodeColorVariant(n); });
       if (Graph && Graph.graphData) {
         try { Graph.graphData({ nodes: payload.nodes, links: payload.links }); } catch (_) {}
+        // Re-poke the colour accessor so already-mounted core nodes repaint
+        // with any hue that shifted when the rest payload extended a cluster.
+        try { if (Graph.nodeColor) Graph.nodeColor(Graph.nodeColor()); } catch (_) {}
       }
       // codex P2 — the drawer index is built once at load off the CORE
       // payload. The rest merge just appended to payload.nodes/.links, so
