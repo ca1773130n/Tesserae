@@ -2932,6 +2932,15 @@ JS_GRAPH = r"""
                   camScale = Math.max(1.0, Math.min(20.0, dist / 60));
                 }
               } catch (_) {}
+              // GLOBAL label size multiplier. The per-frame scale below is the
+              // REAL on-screen label size (it overwrites the creation-time
+              // sprite scale every frame via __lastScale normalisation), so
+              // THIS is the knob that actually makes labels bigger — tweaking
+              // spriteScale/font alone did nothing because this clobbers it.
+              // 2.6× makes resting labels comfortably readable; bump higher if
+              // still small.
+              var LABEL_SIZE_MULT = 2.6;
+              camScale = camScale * LABEL_SIZE_MULT;
               // Visibility-as-importance: low-importance labels are CULLED
               // (not faded) when their normalised importance falls below
               // the camera-distance-driven cutoff. Hover / focused /
