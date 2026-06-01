@@ -4596,6 +4596,11 @@ JS_GRAPH = r"""
         // Re-poke the colour accessor so already-mounted core nodes repaint
         // with any hue that shifted when the rest payload extended a cluster.
         try { if (Graph.nodeColor) Graph.nodeColor(Graph.nodeColor()); } catch (_) {}
+        // The 3D halo sprite bakes n.color into its SpriteMaterial inside
+        // nodeThreeObject, so re-poking nodeColor alone would repaint the
+        // sphere but leave a stale halo tint. Re-poke nodeThreeObject too so
+        // halos rebuild against the refreshed n.color (codex re-review P2).
+        try { if (Graph.nodeThreeObject) Graph.nodeThreeObject(Graph.nodeThreeObject()); } catch (_) {}
       }
       // codex P2 — the drawer index is built once at load off the CORE
       // payload. The rest merge just appended to payload.nodes/.links, so
