@@ -2841,18 +2841,22 @@ JS_GRAPH = r"""
                 map: getGlowTexture(),
                 color: haloColor,
                 transparent: true,
-                // Dimmer glow (codex): colored additive halos on every node
-                // were creating muddy colour-fog. ~0.08 leaf → ~0.12 hub keeps
-                // a faint premium rim without the field blooming into haze.
-                opacity: 0.08 + haloT * 0.04,
-                blending: THREE.AdditiveBlending,
+                // CRITICAL FIX (verified by screenshot): the glow used
+                // AdditiveBlending + depthTest:false, so every node's halo drew
+                // OVER everything regardless of depth and SUMMED — at ~70
+                // visible nodes the halos stacked into a solid yellow wall that
+                // filled the whole canvas. No opacity value fixes additive
+                // stacking. Switch to NormalBlending + depthTest:true so a halo
+                // is just a faint local rim that occludes normally and can't
+                // accumulate into fog.
+                opacity: 0.22 + haloT * 0.18,
+                blending: THREE.NormalBlending,
                 depthWrite: false,
-                depthTest: false,
+                depthTest: true,
               }));
-              // Tighter halo: ~3.2x leaf radius up to ~5.5x for hubs, so the
-              // glow reads as a soft rim on each node rather than overlapping
-              // blooms that merge the graph into one bright blob.
-              var glowSize = haloSphereR * (2.2 + haloT * 1.6);
+              // Tight rim: ~1.6x leaf radius up to ~2.4x for hubs — close to the
+              // sphere so it reads as a soft edge, never a screen-filling bloom.
+              var glowSize = haloSphereR * (1.6 + haloT * 0.8);
               glowSprite.scale.set(glowSize, glowSize, 1);
               glowSprite.renderOrder = 48;
               glowSprite.raycast = function(){};
