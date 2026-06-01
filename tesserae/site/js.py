@@ -1091,6 +1091,28 @@ JS_GRAPH = r"""
       return Math.sqrt(Math.min(1.0, d / Math.max(1, maxDegree)));
     }
 
+    // HARD label cap (HypePaper parity). The old gate was a THRESHOLD
+    // (importance >= cutoff), so at the 2.4k-node overview hundreds of nodes
+    // cleared it at once and their labels overlapped into white noise. Instead
+    // pick a fixed top-K set ONCE by degree and only ever show persistent
+    // labels for those — every other node stays an unlabelled dot until the
+    // user hovers / focuses it. The graph then reads as a few legible anchors
+    // in a quiet field, not a wall of text.
+    var MAX_PERSISTENT_LABELS = 26;
+    var labelTopKIds = (function(){
+      var ranked = payload.nodes.slice().sort(function(a, b){
+        return ((b && b.degree) || 0) - ((a && a.degree) || 0);
+      });
+      var set = {};
+      for (var i = 0; i < ranked.length && i < MAX_PERSISTENT_LABELS; i++) {
+        if (ranked[i] && ranked[i].id != null) set[ranked[i].id] = true;
+      }
+      return set;
+    })();
+    function isLabelTopK(n){
+      return !!(n && n.id != null && labelTopKIds[n.id]);
+    }
+
     // F-5 — floating focus-detail panel: a small bottom-right overlay
     // inside the canvas wrapper that pins the currently-focused node's
     // full details (title, type, degree, description, Open page link).
@@ -2105,13 +2127,14 @@ JS_GRAPH = r"""
     var LABEL_TOP_IMPORTANCE = 0.82;
     function passesLabelGate(n, cutoff){
       if (!n) return false;
+      // Always-on carve-outs: the user's current interaction targets.
       if (n === focusedNode) return true;
       if (n === hoverNode) return true;
       if (pinnedNode && nodeIdOf(pinnedNode) === nodeIdOf(n)) return true;
-      var imp = degreeImportanceAlpha(n);
-      if (imp >= LABEL_TOP_IMPORTANCE) return true;
-      var c = (typeof cutoff === 'number') ? cutoff : computeImportanceCutoff(320);
-      return imp >= c;
+      // Default (at-rest) labels: HARD top-K cap only — no threshold/cutoff
+      // expansion, which is what flooded the overview with overlapping text.
+      // Unlabelled nodes still reveal their label on hover/focus.
+      return isLabelTopK(n);
     }
 
     // ---- Cursor-anchored zoom (Issue 5 — v15 canonical algorithm) -----
@@ -2945,9 +2968,11 @@ JS_GRAPH = r"""
             // small synthetic distance → low cutoff → more labels shown.
             var alwaysShow = isHovered || isFocused || isFocusedNeighbor;
             if (!alwaysShow) {
-              var syntheticCamDist = 320 / Math.max(0.1, globalScale);
-              var importanceCutoff2D = computeImportanceCutoff(syntheticCamDist);
-              if (degreeImportanceAlpha(n) < importanceCutoff2D) return;
+              // Same HARD top-K cap as the 3D path — only the highest-degree
+              // anchors carry a persistent label; the rest stay unlabelled
+              // until hovered/focused. Prevents the flat layout from rendering
+              // every node's name into an overlapping wall of pills.
+              if (!isLabelTopK(n)) return;
             }
             // Font weight ladder: 500 default/neighbor, 600 hover, 700
             // focused. Scale bump: 1.0 / 1.1 / 1.2 for the user's
