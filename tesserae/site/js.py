@@ -2980,8 +2980,14 @@ JS_GRAPH = r"""
                   // user's target, so no scale/weight bump.
                   child.visible = !!isFocusedNeighbor && !isHovered;
                   child.position.set(0, labelY, 0);
-                  if (isFocusedNeighbor) child.scale.multiplyScalar(camScale / (child.userData.__lastScale || 1));
-                  child.userData.__lastScale = camScale;
+                  // Only record __lastScale when we actually applied the scale,
+                  // else a hidden neighbor records camScale*MULT without
+                  // physically scaling and later shows at a stale base size
+                  // (codex P2). Matches the hover/focused guard pattern.
+                  if (isFocusedNeighbor) {
+                    child.scale.multiplyScalar(camScale / (child.userData.__lastScale || 1));
+                    child.userData.__lastScale = camScale;
+                  }
                   applySpriteOpacity(child, 1.0);
                 } else if (ud.isHoverLabel) {
                   // Hover label only shows when the node is being mouse-hovered
