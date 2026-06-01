@@ -931,7 +931,7 @@ JS_GRAPH = r"""
     // so most nodes sit mid-saturation and read as classification, not
     // decoration; the importance ``satTier`` still lifts hubs toward the cap
     // while the long tail stays calm. Focus/hover use their own brighter path.
-    var sat = Math.max(28, Math.min(80, base.s + (((h >>> 5) % 13) - 6) + satTier));
+    var sat = Math.max(26, Math.min(62, base.s + (((h >>> 5) % 13) - 6) + satTier));
     // Per-node lightness wobble widened to ~±8% (HypePaper recipe) so
     // adjacent same-family siblings don't read as one flat block. Still
     // deterministic (hashed off the node id) and clamped, so a node's
@@ -1190,11 +1190,18 @@ JS_GRAPH = r"""
     // labels for those — every other node stays an unlabelled dot until the
     // user hovers / focuses it. The graph then reads as a few legible anchors
     // in a quiet field, not a wall of text.
-    var MAX_PERSISTENT_LABELS = 26;
+    var MAX_PERSISTENT_LABELS = 16;
     var labelTopKIds = {};
     function recomputeLabelTopK(){
+      // Rank by importance (falls back to degree) — importance is the curated
+      // signal that keeps the at-rest label set sparse + meaningful rather than
+      // surfacing generic high-degree hubs (codex polish #5).
+      var rankVal = function(n){
+        if (n && typeof n.importance === 'number') return n.importance;
+        return (n && n.degree) || 0;
+      };
       var ranked = payload.nodes.slice().sort(function(a, b){
-        return ((b && b.degree) || 0) - ((a && a.degree) || 0);
+        return rankVal(b) - rankVal(a);
       });
       var set = {};
       for (var i = 0; i < ranked.length && i < MAX_PERSISTENT_LABELS; i++) {
@@ -2720,7 +2727,7 @@ JS_GRAPH = r"""
         }
       } catch (_) {}
 
-      try { if (inst.nodeOpacity) inst.nodeOpacity(0.95); } catch (_) {}
+      try { if (inst.nodeOpacity) inst.nodeOpacity(1.0); } catch (_) {}
       // F-6 — edge alpha is encoded entirely in the rgba strings
       // (EDGE_COLOR_LIGHT is rgba(255,255,255,0.10); EDGE_COLOR_HOT is
       // rgba(250,204,21,0.85); EDGE_COLOR_DIM is rgba(255,255,255,0.025)).
@@ -3296,7 +3303,7 @@ JS_GRAPH = r"""
               charge.strength(function(n){
                 var d = (n && n.degree) || 0;
                 var t = Math.sqrt(Math.min(1, d / Math.max(1, maxDegree)));
-                return -(220 + t * 300);
+                return -(320 + t * 360);
               });
             }
           }
@@ -3324,7 +3331,7 @@ JS_GRAPH = r"""
                 var t = typeof l.target === 'object' ? l.target : byId.get(l.target);
                 var hub = Math.max((s && s.degree) || 0, (t && t.degree) || 0);
                 var k = Math.sqrt(Math.min(1, hub / Math.max(1, maxDegree)));
-                return 60 + k * 70;
+                return 85 + k * 90;
               });
             }
           }
