@@ -870,7 +870,7 @@ JS_GRAPH = r"""
   var EDGE_COLOR_DIM   = 'rgba(255,255,255,0.04)';
   // Incident/selected edges brighten to amber (HypePaper's rgba(250,204,21,0.75))
   // so focus reads as emphasis. Width also goes UP, not down — see linkWidth.
-  var EDGE_COLOR_HOT   = 'rgba(250,204,21,0.75)';
+  var EDGE_COLOR_HOT   = 'rgba(250,204,21,0.42)';
   var THREE_URL = 'https://esm.sh/three@0.169.0';
 
   // HSL anchors aligned with HypePaper's category dots. These drive the
@@ -2599,7 +2599,7 @@ JS_GRAPH = r"""
           // 2D needs more saturated alpha because pixel-thin lines lose
           // visibility when their alpha is halved for 3D's translucent
           // webbing aesthetic.
-          var hot = mode === '2d' ? 'rgba(250,204,21,0.85)' : EDGE_COLOR_HOT;
+          var hot = mode === '2d' ? 'rgba(250,204,21,0.55)' : EDGE_COLOR_HOT;
           var light = mode === '2d' ? 'rgba(180,176,168,0.55)' : EDGE_COLOR_LIGHT;
           var dim = mode === '2d' ? 'rgba(120,116,108,0.10)' : EDGE_COLOR_DIM;
           if (highlightLinks.has(l)) return hot;
@@ -3410,15 +3410,43 @@ JS_GRAPH = r"""
       // while orbiting manually; they just take camera control.
       try {
         var _controls = inst.controls && inst.controls();
-        if (_controls && _controls.addEventListener) {
-          _controls.addEventListener('start', function(){
-            autoOrbitEnabled = false;
-            lastTickMs = 0;
-            // F-1 — manual orbit/pan/zoom counts as taking camera control.
-            userInteracted = true;
-            // Issue 6 — manual mouse-drag (orbit/pan) interrupts auto-browse.
-            if (autoBrowseActive) stopAutoBrowse();
-          });
+        if (_controls) {
+          // HypePaper parity — gently auto-rotate the WHOLE graph at rest so
+          // the opening view feels alive (cinematic slow spin), using
+          // OrbitControls' built-in autoRotate. Stops the instant the user
+          // touches the camera (the 'start' handler below), and never fights
+          // the focus-orbit (that path sets userInteracted + drives the camera
+          // itself). Requires controls.update() each frame — driven by the
+          // existing per-tick loop / 3d-force-graph's own RAF.
+          try {
+            _controls.autoRotate = true;
+            _controls.autoRotateSpeed = 0.5; // ~ slow, HypePaper-like drift
+          } catch (_) {}
+          if (_controls.addEventListener) {
+            _controls.addEventListener('start', function(){
+              autoOrbitEnabled = false;
+              lastTickMs = 0;
+              // First camera gesture ends the cinematic auto-rotate for good.
+              try { _controls.autoRotate = false; } catch (_) {}
+              // F-1 — manual orbit/pan/zoom counts as taking camera control.
+              userInteracted = true;
+              // Issue 6 — manual mouse-drag (orbit/pan) interrupts auto-browse.
+              if (autoBrowseActive) stopAutoBrowse();
+            });
+          }
+          // OrbitControls.autoRotate only advances when controls.update() is
+          // called every frame. The engine's onEngineTick stops once the
+          // layout cools, so drive a dedicated RAF that keeps update() running
+          // while autoRotate is on. It self-terminates the moment autoRotate
+          // is cleared (first user gesture) so it costs nothing afterward.
+          (function spinLoop(){
+            try {
+              if (_controls && _controls.autoRotate) {
+                if (_controls.update) _controls.update();
+                requestAnimationFrame(spinLoop);
+              }
+            } catch (_) {}
+          })();
         }
       } catch (_) {}
 
