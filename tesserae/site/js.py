@@ -1403,6 +1403,10 @@ JS_GRAPH = r"""
     // ----------------------------------------------------------------
     var focusedNode = null;
     var autoOrbitEnabled = true;
+    // Cinematic at-rest spin of the whole graph (HypePaper parity). Turned on
+    // once the initial layout settles + fits (in onEngineStop), turned off
+    // permanently on the first user gesture or when a node is focused.
+    var restSpinActive = false;
     var orbitAngle = 0;
     var orbitRadius = 220;
     var lastTickMs = 0;
@@ -3365,6 +3369,13 @@ JS_GRAPH = r"""
           if (hasInitialFit) return;
           if (pinnedNode || pinnedLink) return;
           scheduleCenteredFit();
+          // Start the cinematic at-rest spin a moment after the fit settles,
+          // so it begins from the framed view rather than fighting the fly-in.
+          if (!userInteracted && !focusedNode) {
+            try { window.setTimeout(function(){
+              if (!userInteracted && !focusedNode) restSpinActive = true;
+            }, 1200); } catch (_) {}
+          }
         });
       } catch (_) {}
 
@@ -3411,41 +3422,52 @@ JS_GRAPH = r"""
       try {
         var _controls = inst.controls && inst.controls();
         if (_controls) {
-          // HypePaper parity — gently auto-rotate the WHOLE graph at rest so
-          // the opening view feels alive (cinematic slow spin), using
-          // OrbitControls' built-in autoRotate. Stops the instant the user
-          // touches the camera (the 'start' handler below), and never fights
-          // the focus-orbit (that path sets userInteracted + drives the camera
-          // itself). Requires controls.update() each frame — driven by the
-          // existing per-tick loop / 3d-force-graph's own RAF.
-          try {
-            _controls.autoRotate = true;
-            _controls.autoRotateSpeed = 0.5; // ~ slow, HypePaper-like drift
-          } catch (_) {}
           if (_controls.addEventListener) {
             _controls.addEventListener('start', function(){
               autoOrbitEnabled = false;
               lastTickMs = 0;
               // First camera gesture ends the cinematic auto-rotate for good.
-              try { _controls.autoRotate = false; } catch (_) {}
+              restSpinActive = false;
               // F-1 — manual orbit/pan/zoom counts as taking camera control.
               userInteracted = true;
               // Issue 6 — manual mouse-drag (orbit/pan) interrupts auto-browse.
               if (autoBrowseActive) stopAutoBrowse();
             });
           }
-          // OrbitControls.autoRotate only advances when controls.update() is
-          // called every frame. The engine's onEngineTick stops once the
-          // layout cools, so drive a dedicated RAF that keeps update() running
-          // while autoRotate is on. It self-terminates the moment autoRotate
-          // is cleared (first user gesture) so it costs nothing afterward.
-          (function spinLoop(){
+          // HypePaper parity — gently auto-rotate the WHOLE graph at rest so the
+          // opening view feels alive. We DON'T use OrbitControls.autoRotate
+          // (it needs update()/damping plumbing and fights our cameraPosition
+          // tweens). Instead we orbit the camera ourselves around the current
+          // controls.target each frame, reusing the same math as the focus
+          // orbit. Self-terminates on first user gesture (restSpinActive flag)
+          // or when a node is focused (the focus-orbit takes over).
+          // Persistent RAF: it runs for the page lifetime but only MOVES the
+          // camera while restSpinActive (set true after the initial fit) and
+          // no node is focused / no user gesture has happened. ``restAngle``
+          // resets whenever the spin (re)starts so it picks up the current
+          // camera azimuth and doesn't jump.
+          var restAngle = null;
+          (function restSpinLoop(){
             try {
-              if (_controls && _controls.autoRotate) {
-                if (_controls.update) _controls.update();
-                requestAnimationFrame(spinLoop);
+              if (restSpinActive && !userInteracted && !focusedNode && mode === '3d') {
+                var cam = inst.camera && inst.camera();
+                var ctr = inst.controls && inst.controls();
+                if (cam && ctr && ctr.target) {
+                  var tx = ctr.target.x, ty = ctr.target.y, tz = ctr.target.z;
+                  var dx = cam.position.x - tx, dz = cam.position.z - tz;
+                  var rad = Math.sqrt(dx * dx + dz * dz);
+                  if (restAngle === null) restAngle = Math.atan2(dx, dz);
+                  restAngle += 0.0016; // ~0.1 rad/s — slow cinematic drift
+                  cam.position.x = tx + Math.sin(restAngle) * rad;
+                  cam.position.z = tz + Math.cos(restAngle) * rad;
+                  cam.lookAt(tx, ty, tz);
+                  if (ctr.update) ctr.update();
+                }
+              } else {
+                restAngle = null; // reset so a later (re)start has no jump
               }
             } catch (_) {}
+            requestAnimationFrame(restSpinLoop);
           })();
         }
       } catch (_) {}
@@ -3544,6 +3566,7 @@ JS_GRAPH = r"""
       } catch (_) {}
 
       Graph = inst;
+      try { window.__graph = inst; } catch (_) {}
       sizeGraphToContainer(inst);
       installGraphResize(inst);
       if (mode === '3d') {
