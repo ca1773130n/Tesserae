@@ -4676,26 +4676,31 @@ JS_GRAPH = r"""
     var waited = 0;
     var interval = setInterval(function(){
       waited += 100;
-      if (window.ForceGraph3D && window.ForceGraph) {
+      // 3D renderer is the requirement. The 2D ``window.ForceGraph`` is no
+      // longer vendored, so we only gate on ForceGraph3D (the 2D toggle
+      // degrades to the SVG fallback if ever picked without the lib).
+      if (window.ForceGraph3D) {
         clearInterval(interval);
-        import(THREE_URL).then(function(mod){
+        // THREE is attached to ``window`` by the vendored ESM import in the
+        // page head (no CDN). Fall back to the bundle's own THREE if present.
+        try {
+          var mod = window.THREE;
           THREE = mod && (mod.default || mod);
           if (THREE && !THREE.Sprite && THREE.default) THREE = THREE.default;
-        }).catch(function(err){
-          console.warn('graph: three import failed', err);
-        }).then(function(){
-          try {
-            buildGraph('3d');
-            window.__graphCoreLoaded = true;
-            if (btn3D) btn3D.classList.add('is-active');
-          } catch (err) {
-            console.error('graph: init failed', err);
-            renderFallback('Graph init failed: ' + (err && err.message ? err.message : err));
-          }
-        });
+        } catch (err) {
+          console.warn('graph: window.THREE unavailable', err);
+        }
+        try {
+          buildGraph('3d');
+          window.__graphCoreLoaded = true;
+          if (btn3D) btn3D.classList.add('is-active');
+        } catch (err) {
+          console.error('graph: init failed', err);
+          renderFallback('Graph init failed: ' + (err && err.message ? err.message : err));
+        }
       } else if (waited > 6000) {
         clearInterval(interval);
-        renderFallback('Could not load 3d-force-graph from the CDN. Showing static fallback.');
+        renderFallback('Could not load the 3D graph renderer. Showing static fallback.');
       }
     }, 100);
     }

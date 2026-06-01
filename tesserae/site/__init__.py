@@ -299,6 +299,21 @@ class StaticSiteBuilder:
         # resolve. The hashed filename is what the site actually loads.
         (out / "assets" / "graph.js").write_text(JS_BUNDLE_GRAPH, encoding="utf-8")
 
+        # Vendored 3D libraries — copied verbatim into ``assets/vendor/`` so the
+        # graph renders WITHOUT any CDN (esm.sh) round-trip. The graph page
+        # loads ``3d-force-graph.min.js`` (UMD → window.ForceGraph3D) and
+        # ``three.module.min.js`` (ESM → window.THREE) from here. Keeps the
+        # graph working fully offline / behind strict CSP, which the esm.sh
+        # path did not.
+        _vendor_src = Path(__file__).resolve().parent / "vendor"
+        if _vendor_src.is_dir():
+            _vendor_out = out / "assets" / "vendor"
+            _vendor_out.mkdir(parents=True, exist_ok=True)
+            for _vf in sorted(_vendor_src.glob("*.js")):
+                (_vendor_out / _vf.name).write_text(
+                    _vf.read_text(encoding="utf-8"), encoding="utf-8"
+                )
+
         # ------------------------------------------------- graph + search idx
         graph_payload = graph.model_dump()
         graph_json_text = (
