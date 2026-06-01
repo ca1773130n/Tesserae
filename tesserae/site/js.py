@@ -2121,7 +2121,7 @@ JS_GRAPH = r"""
       // World-space on-screen label size. This (not just the canvas font px) is
       // the dominant lever for "labels too small to read" — bumped 0.10 -> 0.17
       // so at-rest names are comfortably legible at the default camera distance.
-      var spriteScale = 0.17;
+      var spriteScale = 0.30;
       sprite.scale.set(w * spriteScale, h * spriteScale, 1);
       sprite.renderOrder = VARIANT_RENDER_ORDER[variant] || 1;
       var ud = { variant: variant };
@@ -2849,7 +2849,7 @@ JS_GRAPH = r"""
                 // stacking. Switch to NormalBlending + depthTest:true so a halo
                 // is just a faint local rim that occludes normally and can't
                 // accumulate into fog.
-                opacity: 0.22 + haloT * 0.18,
+                opacity: 0.14 + haloT * 0.10,
                 blending: THREE.NormalBlending,
                 depthWrite: false,
                 depthTest: true,
@@ -2946,17 +2946,20 @@ JS_GRAPH = r"""
                 if (cam && ctrls && ctrls.target) {
                   var dist = cam.position.distanceTo(ctrls.target);
                   camDist = dist;
-                  camScale = Math.max(1.0, Math.min(20.0, dist / 60));
+                  // SCREENSHOT-VERIFIED FIX: this was min(20, dist/60), and the
+                  // label scale below = camScale * LABEL_SIZE_MULT, so far-out
+                  // labels hit 20*2.6 = 52x and became viewport-filling
+                  // billboards (the giant "Vision" text covering the canvas).
+                  // Clamp the distance term to a TIGHT [1.0, 2.2] so labels stay
+                  // legible at any zoom but can never balloon. The multiplier is
+                  // folded in here so the final scale is bounded ~[1.5, 3.3].
+                  camScale = Math.max(1.0, Math.min(2.2, dist / 220));
                 }
               } catch (_) {}
-              // GLOBAL label size multiplier. The per-frame scale below is the
-              // REAL on-screen label size (it overwrites the creation-time
-              // sprite scale every frame via __lastScale normalisation), so
-              // THIS is the knob that actually makes labels bigger — tweaking
-              // spriteScale/font alone did nothing because this clobbers it.
-              // 2.6× makes resting labels comfortably readable; bump higher if
-              // still small.
-              var LABEL_SIZE_MULT = 2.6;
+              // Modest global readability multiplier on the (now tightly
+              // clamped) distance scale. Final on-screen label scale is
+              // bounded ~1.5x–3.3x — readable, never billboard-sized.
+              var LABEL_SIZE_MULT = 1.5;
               camScale = camScale * LABEL_SIZE_MULT;
               // Visibility-as-importance: low-importance labels are CULLED
               // (not faded) when their normalised importance falls below
