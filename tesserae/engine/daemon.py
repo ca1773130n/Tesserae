@@ -27,6 +27,7 @@ import logging
 import os
 import signal
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -66,12 +67,20 @@ class Daemon:
         debounce: float = 1.0,
         queue_timeout: float = 1.0,
         join_timeout: float = 5.0,
+        watch_interval: float = 2.0,
+        vault_poll_interval: float = 1.5,
+        enable_watch: bool = True,
+        enable_vault: bool = True,
         run_pipeline: Optional[Callable[[List[Path]], None]] = None,
     ) -> None:
         self.project_root = Path(project_root).resolve()
         self.debounce = debounce
         self._queue_timeout = queue_timeout
         self._join_timeout = join_timeout
+        self._watch_interval = watch_interval
+        self._vault_poll_interval = vault_poll_interval
+        self._enable_watch = enable_watch
+        self._enable_vault = enable_vault
         self._pidfile = self.project_root / ".tesserae" / self.PIDFILE_NAME
         self._stop_event = threading.Event()
         self._threads: List[threading.Thread] = []
@@ -186,8 +195,124 @@ class Daemon:
     # ----- trigger-source hook (Plan 02 overrides body) --------------------
 
     def _start_sources(self, loop: asyncio.AbstractEventLoop) -> None:
-        """No-op hook. Plan 02 fills this with poller threads via ``enqueue``."""
-        pass
+        """Spawn trigger-source daemon threads (WatchLoop + VaultWatcher).
+
+        Each source runs its poll body in a ``daemon=True`` thread gated by the
+        shared ``stop_event`` (NO bare ``while True`` / ``KeyboardInterrupt``
+        death) and pushes ``TriggerEvent``s onto the queue via the
+        ``call_soon_threadsafe`` bridge. The watcher modules (``watch.py`` /
+        ``vault_watch.py``) are reused, NOT rewritten — only their owning loop
+        is replaced here. Every thread target wraps its body in a logged
+        ``try/except`` so a poller dies LOUDLY without killing the daemon.
+        """
+        if self._enable_watch:
+            self._start_watch_source(loop)
+        if self._enable_vault:
+            self._start_vault_source(loop)
+
+    # ----- watch source ----------------------------------------------------
+
+    def _start_watch_source(self, loop: asyncio.AbstractEventLoop) -> None:
+        from ..watch import WatchLoop
+
+        def on_change(paths) -> None:
+            # Guard: drop late events fired during shutdown.
+            if self._stop_event.is_set():
+                return
+            self._loop.call_soon_threadsafe(
+                self._queue.put_nowait,
+                TriggerEvent(
+                    source="watch",
+                    changed_paths=list(paths),
+                    changed_only=True,
+                ),
+            )
+
+        wl = WatchLoop(
+            self.project_root,
+            interval=self._watch_interval,
+            on_change=on_change,
+            quiet=True,
+        )
+        t = threading.Thread(
+            target=self._run_watch_source,
+            args=(wl,),
+            daemon=True,
+            name="watch-source",
+        )
+        t.start()
+        self._threads.append(t)
+
+    def _run_watch_source(self, wl) -> None:
+        """Poll body for the WatchLoop source (replaces ``WatchLoop.run``).
+
+        Reuses ``snapshot`` / ``diff`` / ``_combine`` / ``_trigger`` (which
+        fires ``on_change`` -> enqueue). The owning loop is gated by
+        ``stop_event`` instead of ``while True`` + ``KeyboardInterrupt``.
+        """
+        from ..watch import _combine
+
+        try:
+            previous = wl.snapshot()
+            while not self._stop_event.is_set():
+                time.sleep(wl.interval)
+                if self._stop_event.is_set():
+                    break
+                current = wl.snapshot()
+                added, modified, removed = wl.diff(previous, current)
+                changed = list(_combine(added, modified, removed))
+                if changed:
+                    wl._trigger(changed)  # noqa: SLF001 - fires on_change -> enqueue
+                previous = current
+        except Exception:  # noqa: BLE001 - daemon survives a dead source
+            logger.exception("watch-source thread died")
+
+    # ----- vault source ----------------------------------------------------
+
+    def _start_vault_source(self, loop: asyncio.AbstractEventLoop) -> None:
+        from ..vault_watch import VaultWatcher
+
+        try:
+            from ..project import ProjectWiki
+
+            wiki = ProjectWiki.load(self.project_root)
+        except Exception:  # noqa: BLE001 - vault not ready: skip, don't crash
+            logger.warning(
+                "vault source unavailable (project/vault not ready); skipping",
+                exc_info=True,
+            )
+            return
+
+        watcher = VaultWatcher(wiki, poll_interval=self._vault_poll_interval)
+        t = threading.Thread(
+            target=self._run_vault_source,
+            args=(watcher,),
+            daemon=True,
+            name="vault-source",
+        )
+        t.start()
+        self._threads.append(t)
+
+    def _run_vault_source(self, watcher) -> None:
+        """Poll body for the VaultWatcher source (mirrors cli.py:629-657).
+
+        Drives ``VaultWatcher._tick`` in a ``stop_event``-gated loop. ``_tick``
+        already debounce-sleeps internally, so the outer loop's single
+        ``time.sleep`` is sufficient (02-RESEARCH Pitfall 4 — no extra sleep).
+        """
+        try:
+            while not self._stop_event.is_set():
+                time.sleep(watcher.poll_interval)
+                if self._stop_event.is_set():
+                    break
+                changed = watcher._tick()  # noqa: SLF001 - graceful-stop reuse
+                if changed:
+                    self._loop.call_soon_threadsafe(
+                        self._queue.put_nowait,
+                        TriggerEvent(source="vault_watch", changed_only=True),
+                    )
+        except Exception:  # noqa: BLE001 - daemon survives a dead source
+            logger.exception("vault-source thread died")
 
     # ----- pidfile ---------------------------------------------------------
 
