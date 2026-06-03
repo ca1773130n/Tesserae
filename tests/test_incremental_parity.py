@@ -310,3 +310,80 @@ def test_provenance_timestamps_absent_from_graph_json(tmp_path: Path) -> None:
     assert "last_updated_at" not in graph_text, (
         "graph.json leaked the provenance field last_updated_at"
     )
+
+
+# --------------------------------------------------------------------------- #
+# SUBTRACTIVE-edit parity (Codex B1/B2): incremental must DROP nodes/edges that
+# a changed (or deleted) file stops asserting, matching a full compile. The
+# additive K=1/5/21 cases above never exercise removal — these do.
+# --------------------------------------------------------------------------- #
+
+
+_STUB_PAPER = (
+    "# 논문 분석: stub\n\n"
+    "# Synthetic Paper STUB\n\n"
+    "This file no longer references the shared field or any authors.\n"
+)
+
+
+def test_incremental_equals_full_after_content_reduction(tmp_path: Path) -> None:
+    """Rewriting a paper to DROP its authors + shared-field references must
+    remove the now-unasserted authored_by / field edges (their endpoints
+    survive via other papers) — byte-identical to a full compile. Guards Codex
+    B1 (stale edges linger) on a CONTENT-reducing edit.
+    """
+    root = tmp_path / "project"
+    papers = _build_corpus(root, n_papers=30)
+    wiki = _seed_wiki(root)
+    wiki.compile()  # seed
+
+    # Subtractive edit: paper 0 stops asserting its authors + the shared field.
+    # Those Person/ResearchField nodes survive (owned by papers 1..29), but the
+    # edges FROM paper 0 to them must disappear.
+    papers[0].write_text(_STUB_PAPER, encoding="utf-8")
+
+    wiki.compile(changed_only=True, changed_paths=[papers[0]])
+    incr_tree = _hash_tree(wiki.root, exclude=PARITY_EXCLUDE)
+
+    wiki.compile()  # full recompile, same root, identical on-disk corpus
+    full_tree = _hash_tree(wiki.root, exclude=PARITY_EXCLUDE)
+
+    assert incr_tree == full_tree, (
+        "SUBTRACTIVE PARITY FAILED (content reduction): incremental kept stale "
+        "nodes/edges that a full compile dropped.\n"
+        f"Differing files:{_diff_keys(full_tree, incr_tree)}"
+    )
+
+
+def test_incremental_equals_full_after_file_deletion(tmp_path: Path) -> None:
+    """Deleting a paper file entirely must remove its source node and all its
+    incident edges on the incremental path — byte-identical to a full compile
+    of the smaller corpus. Strongest guard for Codex B1 (orphaned incident
+    edges) + node removal + deleted-changed_path handling.
+    """
+    root = tmp_path / "project"
+    papers = _build_corpus(root, n_papers=30)
+    wiki = _seed_wiki(root)
+    wiki.compile()  # seed
+    seed_ids = _node_ids(wiki)
+
+    deleted = papers[0]
+    deleted.unlink()  # the file is gone; its changed_path no longer exists
+
+    wiki.compile(changed_only=True, changed_paths=[deleted])
+    incr_tree = _hash_tree(wiki.root, exclude=PARITY_EXCLUDE)
+    incr_ids = _node_ids(wiki)
+
+    # Shared cross-file concepts (field/authors owned by the other 29 papers)
+    # must survive the deletion.
+    field_ids = {nid for nid in seed_ids if nid.startswith("ResearchField:")}
+    assert field_ids <= incr_ids, "shared field wrongly dropped by a single-file deletion"
+
+    wiki.compile()  # full recompile of the 29-paper corpus, same root
+    full_tree = _hash_tree(wiki.root, exclude=PARITY_EXCLUDE)
+
+    assert incr_tree == full_tree, (
+        "SUBTRACTIVE PARITY FAILED (file deletion): incremental left a dangling "
+        "source node / incident edges that a full compile dropped.\n"
+        f"Differing files:{_diff_keys(full_tree, incr_tree)}"
+    )
