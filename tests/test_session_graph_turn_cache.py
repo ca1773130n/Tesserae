@@ -1,21 +1,33 @@
-"""Per-turn LLM cache tests (SESS-02) — measure the (N-1)/N hit ratio.
+"""Per-CHUNK LLM cache tests (SESS-02, Codex #2) — chunk-level incrementality.
 
-The v2 cache in :class:`SessionGraphExtractor` keys findings per turn on
-``(session_id, turn_index, turn_content_hash)`` and stores them at
-``.tesserae/session_findings/<safe_id>/turn-<N>.json``. The point of this
-suite is to *measure* the cache-hit ratio: appending one turn to an
-N-turn session must trigger exactly one LLM extract call, not N.
+The v3 cache in :class:`SessionGraphExtractor` partitions a session's
+normalised turns into stable, NON-overlapping chunks of
+``max_turns_per_chunk`` aligned to the ORIGINAL transcript indices
+(chunk k = turns[k*size:(k+1)*size]) and keys each chunk's findings on
+``(session_id, chunk_index, chunk_content_hash)`` + project_root_hash +
+schema version, stored at
+``.tesserae/session_findings/<safe_id>/chunk-<K>.json``.
 
-We monkeypatch ``tesserae.session_graph.extract_with_llm`` with a wrapper
-that (1) increments a call counter and (2) returns a deterministic
-Finding whose body embeds the turn text — so both the miss-count and the
-merged-findings set are exact. No pytest-asyncio, no sleeps.
+Why chunk-level (not per-turn)? The real extractor produces findings that
+span multiple turns WITHIN a chunk. The old per-turn cache extracted one
+turn at a time, which (a) renumbered every turn to id 0 and (b) made
+cross-turn findings impossible — so "incremental == whole-session" was
+false for any non-trivial extractor. These tests use a REALISTIC
+multi-turn extractor stub that:
+  * actually emits a cross-turn finding (referencing two turn indices in
+    the same chunk), and
+  * uses ORIGINAL transcript indices in the turn_ids it returns,
+and assert the incremental path is byte-identical (kind, body, ORIGINAL
+turn_ids) to a single whole-session extraction over the same chunking,
+while re-extracting only the affected chunk on append.
+
+No pytest-asyncio, no sleeps.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Sequence, Tuple
+from typing import List, Sequence
 
 import pytest
 
@@ -26,12 +38,21 @@ from tesserae.session_graph import SessionGraphExtractor
 from tesserae.session_graph_llm import Finding
 
 
-class _CountingExtract:
-    """Drop-in replacement for ``extract_with_llm`` that counts calls.
+class _RealisticExtract:
+    """A realistic multi-turn extractor stub that counts chunk extractions.
 
-    Returns one deterministic Finding per call whose body embeds the
-    extracted turn's text, so the merged-findings set is exact and the
-    call count directly equals the number of cache-miss (delta) turns.
+    For each chunk it receives (a list of turns enumerated from 0, exactly
+    like the real ``extract_with_llm``), it emits:
+      * one per-turn "insight" Finding whose body embeds the turn text and
+        whose turn_ids reference that turn's CHUNK-LOCAL index, and
+      * one cross-turn "takeaway" Finding spanning the chunk's first and
+        last turn (when the chunk has >= 2 turns) — chunk-local indices
+        [0, len-1].
+
+    Returning chunk-local turn_ids mirrors the real extractor (which
+    enumerates the passed chunk from 0). The orchestrator is responsible
+    for remapping those back to ORIGINAL transcript indices via the chunk
+    offset, so the test asserts the orchestrator did that correctly.
     """
 
     def __init__(self) -> None:
@@ -47,12 +68,29 @@ class _CountingExtract:
         **kwargs,
     ) -> List[Finding]:
         self.calls += 1
-        self.turn_counts.append(len(transcript_turns))
+        n = len(transcript_turns)
+        self.turn_counts.append(n)
         out: List[Finding] = []
-        for turn in transcript_turns:
+        for j, turn in enumerate(transcript_turns):
             text = str(turn.get("text") or "")
             out.append(
-                Finding(kind="insight", body=f"insight::{text}", turn_ids=[], references=[])
+                Finding(
+                    kind="insight",
+                    body=f"insight::{text}",
+                    turn_ids=[j],  # chunk-local; orchestrator remaps to original
+                    references=[],
+                )
+            )
+        if n >= 2:
+            first = str(transcript_turns[0].get("text") or "")
+            last = str(transcript_turns[-1].get("text") or "")
+            out.append(
+                Finding(
+                    kind="takeaway",
+                    body=f"cross::{first}->{last}",
+                    turn_ids=[0, n - 1],  # cross-turn, chunk-local
+                    references=[],
+                )
             )
         return out
 
@@ -96,7 +134,13 @@ def _doc_graph() -> ResearchGraph:
     )
 
 
-def _make_extractor(project_root: Path, cache_dir: Path, session: HarnessSession):
+def _make_extractor(
+    project_root: Path,
+    cache_dir: Path,
+    session: HarnessSession,
+    *,
+    max_turns_per_chunk: int = 10,
+):
     project_root.mkdir(parents=True, exist_ok=True)
     cache_dir.mkdir(parents=True, exist_ok=True)
     return SessionGraphExtractor(
@@ -107,121 +151,266 @@ def _make_extractor(project_root: Path, cache_dir: Path, session: HarnessSession
         # A non-None client is required for the LLM pass to run; the
         # monkeypatched extract_with_llm ignores it entirely.
         json_client=object(),
+        max_turns_per_chunk=max_turns_per_chunk,
     )
+
+
+_FINDING_TYPES = {
+    ResearchNodeType.SESSION_INSIGHT,
+    ResearchNodeType.SESSION_DECISION,
+    ResearchNodeType.SESSION_QUESTION,
+    ResearchNodeType.SESSION_TODO,
+    ResearchNodeType.SESSION_HYPOTHESIS,
+    ResearchNodeType.SESSION_TAKEAWAY,
+}
 
 
 def _finding_pairs(graph: ResearchGraph) -> set:
     """The (kind, body) set of finding nodes minted into the graph."""
-    finding_types = {
-        ResearchNodeType.SESSION_INSIGHT,
-        ResearchNodeType.SESSION_DECISION,
-        ResearchNodeType.SESSION_QUESTION,
-        ResearchNodeType.SESSION_TODO,
-        ResearchNodeType.SESSION_HYPOTHESIS,
-        ResearchNodeType.SESSION_TAKEAWAY,
-    }
-    return {(n.type, n.name) for n in graph.nodes if n.type in finding_types}
+    return {(n.type, n.name) for n in graph.nodes if n.type in _FINDING_TYPES}
 
 
-def test_cold_extract_calls_llm_per_turn(tmp_path: Path, monkeypatch):
-    counter = _CountingExtract()
+def _finding_records(graph: ResearchGraph) -> set:
+    """(type, body, tuple(original turn_ids)) for every finding node.
+
+    turn_ids come from the node metadata the orchestrator mints, so this
+    asserts the ORIGINAL (remapped) indices, not chunk-local ones.
+    """
+    out = set()
+    for n in graph.nodes:
+        if n.type not in _FINDING_TYPES:
+            continue
+        tids = tuple((n.metadata or {}).get("turn_ids") or [])
+        out.add((n.type, n.name, tids))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Cold extract + chunking
+# ---------------------------------------------------------------------------
+
+
+def test_cold_extract_calls_llm_per_chunk(tmp_path: Path, monkeypatch):
+    counter = _RealisticExtract()
     monkeypatch.setattr(sg, "extract_with_llm", counter)
 
     project_root = tmp_path / "project"
     cache_dir = tmp_path / ".tesserae" / "session_findings"
-    session = _session(_turns(20), project_root)
-    extractor = _make_extractor(project_root, cache_dir, session)
+    # 25 turns, chunk size 10 → 3 chunks of [10, 10, 5].
+    session = _session(_turns(25), project_root)
+    extractor = _make_extractor(project_root, cache_dir, session, max_turns_per_chunk=10)
 
     extractor.extract()
 
-    assert counter.calls == 20, "cold extract must call the LLM once per turn"
-    # Every call extracts a single-turn chunk (chunk of size 1).
-    assert all(c == 1 for c in counter.turn_counts)
+    assert counter.calls == 3, "cold extract must call the LLM once per chunk"
+    assert counter.turn_counts == [10, 10, 5]
     safe_dir = cache_dir / sg._safe(session.id)
-    turn_files = sorted(safe_dir.glob("turn-*.json"))
-    assert len(turn_files) == 20, "one cache file per turn"
+    chunk_files = sorted(safe_dir.glob("chunk-*.json"))
+    assert len(chunk_files) == 3, "one cache file per chunk"
 
 
-def test_append_one_turn_extracts_delta_only(tmp_path: Path, monkeypatch):
-    """SESS-02 criterion: append 1 turn → exactly 1 LLM extract (hit 19/20)."""
-    counter = _CountingExtract()
+def test_correct_original_turn_ids(tmp_path: Path, monkeypatch):
+    """Findings must reference ORIGINAL transcript indices, never renumbered-from-0."""
+    counter = _RealisticExtract()
+    monkeypatch.setattr(sg, "extract_with_llm", counter)
+
+    project_root = tmp_path / "project"
+    cache_dir = tmp_path / ".tesserae" / "session_findings"
+    # 12 turns, chunk size 10 → chunks [0..9] and [10..11].
+    session = _session(_turns(12), project_root)
+    extractor = _make_extractor(project_root, cache_dir, session, max_turns_per_chunk=10)
+    graph = extractor.extract()
+
+    recs = _finding_records(graph)
+
+    # The cross-turn takeaway in chunk-1 spans original turns 10 and 11,
+    # NOT chunk-local 0 and 1.
+    cross_second = (
+        ResearchNodeType.SESSION_TAKEAWAY,
+        "cross::turn-text-10->turn-text-11",
+        (10, 11),
+    )
+    assert cross_second in recs, "second chunk's cross-turn finding must use original ids 10,11"
+
+    # The cross-turn takeaway in chunk-0 spans original turns 0 and 9.
+    cross_first = (
+        ResearchNodeType.SESSION_TAKEAWAY,
+        "cross::turn-text-0->turn-text-9",
+        (0, 9),
+    )
+    assert cross_first in recs
+
+    # A per-turn insight from chunk-1 must carry its ORIGINAL index (e.g. 10),
+    # never 0.
+    insight_10 = (ResearchNodeType.SESSION_INSIGHT, "insight::turn-text-10", (10,))
+    assert insight_10 in recs
+
+    # Sanity: no finding sourced from a non-first chunk should claim turn_id 0
+    # unless it genuinely is original turn 0.
+    for ntype, body, tids in recs:
+        if body == "insight::turn-text-10":
+            assert tids == (10,), "renumbering bug: chunk-local id leaked"
+
+
+# ---------------------------------------------------------------------------
+# Incrementality
+# ---------------------------------------------------------------------------
+
+
+def test_append_one_turn_reextracts_only_affected_chunk(tmp_path: Path, monkeypatch):
+    """Append 1 turn → exactly 1 chunk re-extracts (the last/changed one)."""
+    counter = _RealisticExtract()
     monkeypatch.setattr(sg, "extract_with_llm", counter)
 
     project_root = tmp_path / "project"
     cache_dir = tmp_path / ".tesserae" / "session_findings"
 
-    # Pre-seed the cache with the first 19 turns.
+    # Pre-seed: 19 turns, chunk size 10 → chunks [10, 9].
     base_turns = _turns(19)
     seed = _session(list(base_turns), project_root)
-    _make_extractor(project_root, cache_dir, seed).extract()
-    assert counter.calls == 19
+    _make_extractor(project_root, cache_dir, seed, max_turns_per_chunk=10).extract()
+    assert counter.calls == 2, "cold: 2 chunks for 19 turns @ size 10"
 
-    # Append a 20th turn and extract the full 20.
+    # Append a 20th turn → chunk 0 (turns 0..9) unchanged, chunk 1 (9→10
+    # turns) changed. Only chunk 1 re-extracts.
     counter.calls = 0
     counter.turn_counts.clear()
     full_turns = _turns(20)
     appended = _session(full_turns, project_root)
-    _make_extractor(project_root, cache_dir, appended).extract()
+    _make_extractor(project_root, cache_dir, appended, max_turns_per_chunk=10).extract()
 
-    assert counter.calls == 1, "only the appended turn must re-extract"
-    n = 20
-    hit_ratio = (n - counter.calls) / n
-    assert hit_ratio >= 0.95, f"hit ratio {hit_ratio} below 0.95 target"
+    assert counter.calls == 1, "append must re-extract only the affected (last) chunk"
+    chunks = 2
+    hit_ratio = (chunks - counter.calls) / chunks
+    assert hit_ratio == pytest.approx(0.5), f"chunk hit ratio {hit_ratio} != 1/2"
 
 
-def test_changed_turn_reextracted(tmp_path: Path, monkeypatch):
-    """Mutating one turn's text re-extracts only that turn (content-keyed)."""
-    counter = _CountingExtract()
+def test_middle_turn_mutation_invalidates_downstream_chunks(tmp_path: Path, monkeypatch):
+    """Mutating a chunk-0 turn re-extracts only chunk 0 (downstream hashes hold).
+
+    With non-overlapping chunks aligned to fixed index ranges, mutating a
+    turn in chunk 0 changes ONLY chunk 0's content hash (chunk 1's turn
+    range is untouched). Inserting/removing turns is what shifts downstream
+    chunks; in-place mutation is local to its own chunk.
+    """
+    counter = _RealisticExtract()
     monkeypatch.setattr(sg, "extract_with_llm", counter)
 
     project_root = tmp_path / "project"
     cache_dir = tmp_path / ".tesserae" / "session_findings"
 
-    base_turns = _turns(20)
-    _make_extractor(project_root, cache_dir, _session(list(base_turns), project_root)).extract()
-    assert counter.calls == 20
+    base_turns = _turns(20)  # chunks [0..9], [10..19]
+    _make_extractor(
+        project_root, cache_dir, _session(list(base_turns), project_root),
+        max_turns_per_chunk=10,
+    ).extract()
+    assert counter.calls == 2
 
     counter.calls = 0
     counter.turn_counts.clear()
     mutated = _turns(20)
     mutated[5] = {**mutated[5], "text": "COMPLETELY-DIFFERENT-TEXT"}
-    _make_extractor(project_root, cache_dir, _session(mutated, project_root)).extract()
+    _make_extractor(
+        project_root, cache_dir, _session(mutated, project_root),
+        max_turns_per_chunk=10,
+    ).extract()
 
-    assert counter.calls == 1, "only the mutated turn must re-extract"
+    assert counter.calls == 1, "in-place mutation re-extracts only its own chunk"
 
 
-def test_merge_equivalence(tmp_path: Path, monkeypatch):
-    """Per-turn (chunk-of-1) findings equal a single whole-session extract."""
-    counter = _CountingExtract()
+def test_inserted_turn_shifts_downstream_chunks(tmp_path: Path, monkeypatch):
+    """Inserting a middle turn re-extracts its chunk AND all downstream chunks."""
+    counter = _RealisticExtract()
     monkeypatch.setattr(sg, "extract_with_llm", counter)
 
-    turns = _turns(5)
+    project_root = tmp_path / "project"
+    cache_dir = tmp_path / ".tesserae" / "session_findings"
 
-    # Per-turn extraction (chunk of size 1 each).
+    base_turns = _turns(30)  # chunks [0..9], [10..19], [20..29]
+    _make_extractor(
+        project_root, cache_dir, _session(list(base_turns), project_root),
+        max_turns_per_chunk=10,
+    ).extract()
+    assert counter.calls == 3
+
+    counter.calls = 0
+    counter.turn_counts.clear()
+    # Insert a new turn at index 5 → chunk 0 changes, and every turn after
+    # shifts by one, so chunks 1 and 2 also change. 31 turns → 4 chunks
+    # [10,10,10,1]; chunk 0's content changed and chunks 1..3 are all new
+    # content ranges → all 4 extract.
+    inserted = _turns(30)
+    inserted.insert(5, {"role": "user", "text": "INSERTED-TURN", "timestamp": "2026-05-19T10:99:00Z"})
+    _make_extractor(
+        project_root, cache_dir, _session(inserted, project_root),
+        max_turns_per_chunk=10,
+    ).extract()
+
+    # All 4 chunks of the now-31-turn session re-extract: chunk boundaries
+    # shifted so no chunk's content hash matches the cached 3-chunk layout.
+    assert counter.calls == 4, "insert shifts all downstream chunk contents"
+
+
+# ---------------------------------------------------------------------------
+# Merge equivalence (the core Codex #2 guarantee)
+# ---------------------------------------------------------------------------
+
+
+def test_merge_equivalence_with_cross_turn_findings(tmp_path: Path, monkeypatch):
+    """Incremental (chunked) findings == a single whole-session extraction.
+
+    Byte-identical means same (kind, body, ORIGINAL turn_ids) for every
+    finding — INCLUDING the cross-turn takeaways that the old per-turn
+    cache could never produce. This is the guarantee the per-turn cache
+    violated: a trivial single-turn mock cannot satisfy it.
+    """
+    counter = _RealisticExtract()
+    monkeypatch.setattr(sg, "extract_with_llm", counter)
+
+    # 25 turns, chunk size 10 → 3 chunks. Pre-seed only the first 24 turns
+    # so the incremental run reuses 2 cached chunks and re-extracts 1.
     pr_a = tmp_path / "proj-a"
     cache_a = tmp_path / "cache-a"
-    graph_a = _make_extractor(pr_a, cache_a, _session(list(turns), pr_a)).extract()
-    per_turn = _finding_pairs(graph_a)
 
-    # Whole-session extraction: a single extract over all 5 turns. The
-    # deterministic stub emits the same per-turn Finding bodies, so the
-    # set of (kind, body) findings must be identical.
+    seed_turns = _turns(24)
+    _make_extractor(
+        pr_a, cache_a, _session(list(seed_turns), pr_a, id="sess-a"),
+        max_turns_per_chunk=10,
+    ).extract()
+    seed_calls = counter.calls
+    assert seed_calls == 3  # [10,10,4]
+
+    # Grow to 25 turns → chunk 0,1 cached (unchanged), chunk 2 (4→5) misses.
+    counter.calls = 0
+    full_turns = _turns(25)
+    graph_inc = _make_extractor(
+        pr_a, cache_a, _session(list(full_turns), pr_a, id="sess-a"),
+        max_turns_per_chunk=10,
+    ).extract()
+    assert counter.calls == 1, "incremental: only the grown last chunk re-extracts"
+    chunks = 3
+    hit_ratio = (chunks - counter.calls) / chunks
+    assert hit_ratio == pytest.approx(2 / 3), f"chunk hit ratio {hit_ratio} != 2/3"
+
+    inc_records = _finding_records(graph_inc)
+
+    # Whole-session, cold cache, identical chunking — no reuse.
     pr_b = tmp_path / "proj-b"
     cache_b = tmp_path / "cache-b"
+    counter.calls = 0
+    graph_whole = _make_extractor(
+        pr_b, cache_b, _session(list(full_turns), pr_b, id="sess-a"),
+        max_turns_per_chunk=10,
+    ).extract()
+    assert counter.calls == 3, "whole-session cold: all 3 chunks extract"
+    whole_records = _finding_records(graph_whole)
 
-    def _whole_session(session, transcript_turns, doc_id_context, client, **kwargs):
-        out: List[Finding] = []
-        for turn in transcript_turns:
-            out.append(
-                Finding(kind="insight", body=f"insight::{turn.get('text')}", turn_ids=[], references=[])
-            )
-        return out
+    assert inc_records == whole_records, (
+        "incremental chunked extraction must be byte-identical (kind, body, "
+        "ORIGINAL turn_ids) to a single whole-session extraction"
+    )
 
-    monkeypatch.setattr(sg, "extract_with_llm", _whole_session)
-    # Force a single whole-session call by giving max_turns_per_chunk >= len.
-    extractor_b = _make_extractor(pr_b, cache_b, _session(list(turns), pr_b))
-    extractor_b.max_turns_per_chunk = 100
-    graph_b = extractor_b.extract()
-    whole = _finding_pairs(graph_b)
-
-    assert per_turn == whole, "per-turn merge must equal whole-session findings"
+    # And the guarantee specifically covers cross-turn findings.
+    cross = {r for r in whole_records if r[0] == ResearchNodeType.SESSION_TAKEAWAY}
+    assert cross, "stub must actually produce cross-turn findings"
+    assert cross <= inc_records, "cross-turn findings must survive the incremental path"

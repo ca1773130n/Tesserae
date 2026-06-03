@@ -119,34 +119,35 @@ def _mutate_turns(session: HarnessSession, turns: List[dict]) -> HarnessSession:
 
 
 def test_cache_hit_skips_llm_call(tmp_path: Path):
-    # Per-turn cache (v2): a cold 3-turn extract calls the LLM once per turn.
+    # Per-chunk cache (v3): a cold 3-turn extract @ default chunk size 30
+    # is a single chunk → one LLM call.
     session = _session(turns=3)
     client = _ScriptedClient([_scripted_finding_response() for _ in range(3)])
     extractor = _make_extractor(tmp_path, [session], client=client)
 
-    # First call → all 3 turns miss → 3 LLM calls.
+    # First call → the single chunk misses → 1 LLM call.
     extractor.extract()
-    assert client.calls == 3
+    assert client.calls == 1
 
-    # Second call (fresh extractor instance, same content) → all turns hit.
+    # Second call (fresh extractor instance, same content) → the chunk hits.
     client2 = _ScriptedClient([_scripted_finding_response() for _ in range(3)])
     extractor2 = _make_extractor(
         tmp_path, [session], client=client2,
         project_root=extractor.project_root,
     )
     extractor2.extract()
-    assert client2.calls == 0, "second extract should hit the per-turn cache"
+    assert client2.calls == 0, "second extract should hit the per-chunk cache"
 
 
 def test_content_hash_change_invalidates_cache(tmp_path: Path):
-    # Changing a TURN's text (not just title) invalidates that turn's cache.
+    # Changing a TURN's text (not just title) invalidates the chunk it lives in.
     session = _session(turns=3)
     client = _ScriptedClient([_scripted_finding_response() for _ in range(3)])
     extractor = _make_extractor(tmp_path, [session], client=client)
     extractor.extract()
-    assert client.calls == 3
+    assert client.calls == 1
 
-    # Mutate one turn's text → exactly one turn re-extracts (content-keyed).
+    # Mutate one turn's text → the single chunk re-extracts (content-keyed).
     new_turns = [{"role": "user", "text": f"q{i}"} for i in range(3)]
     new_turns[1] = {"role": "user", "text": "CHANGED"}
     changed = _mutate_turns(session, new_turns)
@@ -156,7 +157,7 @@ def test_content_hash_change_invalidates_cache(tmp_path: Path):
         project_root=extractor.project_root,
     )
     extractor2.extract()
-    assert client2.calls == 1, "only the mutated turn must re-extract"
+    assert client2.calls == 1, "the mutated turn's chunk must re-extract"
 
 
 def test_project_root_hash_mismatch_rejects_cache(tmp_path: Path):
@@ -170,7 +171,7 @@ def test_project_root_hash_mismatch_rejects_cache(tmp_path: Path):
         tmp_path, [session], client=client_a, project_root=project_a
     )
     extractor_a.extract()
-    assert client_a.calls == 3
+    assert client_a.calls == 1
 
     # Simulate someone copying project-a's per-session cache DIR into
     # project-b's cache dir (e.g. by `cp -R` of the .tesserae/ dir).
@@ -188,7 +189,7 @@ def test_project_root_hash_mismatch_rejects_cache(tmp_path: Path):
         tmp_path, [session], client=client_b, project_root=project_b
     )
     extractor_b.extract()
-    assert client_b.calls == 3, (
+    assert client_b.calls == 1, (
         "cache from a different project_root must be rejected (no replay)"
     )
 
@@ -201,8 +202,8 @@ def test_stale_cache_pruned_on_extract(tmp_path: Path):
     # Plant a stale per-session cache DIR from a long-gone session id.
     stale_dir = extractor.cache_dir / "sess-old"
     stale_dir.mkdir(parents=True, exist_ok=True)
-    stale_path = stale_dir / "turn-0.json"
-    stale_path.write_text(json.dumps({"schema_version": 2}), encoding="utf-8")
+    stale_path = stale_dir / "chunk-0.json"
+    stale_path.write_text(json.dumps({"schema_version": 3}), encoding="utf-8")
     assert stale_path.exists()
 
     extractor.extract()
