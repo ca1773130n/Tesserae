@@ -8,7 +8,7 @@ serves graph queries back to consumers. Implementations include
 
 from __future__ import annotations
 
-from typing import Iterator, List, Optional, Protocol, Union, runtime_checkable
+from typing import Iterator, List, Optional, Protocol, Set, Union, runtime_checkable
 from uuid import UUID
 
 from ..research_graph import ResearchEdge, ResearchGraph, ResearchNode
@@ -44,4 +44,18 @@ class GraphStore(Protocol):
 
     def find_canonical(self, name: str, node_type: str) -> Optional[ResearchNode]:
         """Look up a canonical node by display name and type, for canonicalization."""
+        ...
+
+    def delete_node(self, node_id: str) -> bool:
+        """Delete a single node by id. Returns True if a row was removed."""
+        ...
+
+    def delete_nodes_by_source(self, source_paths: Set[str]) -> Set[str]:
+        """Delete nodes whose provenance set becomes EMPTY after removing ``source_paths``.
+
+        Nodes still referenced by an unchanged source_path are kept
+        (cross-file concepts survive). Returns the SET of deleted node ids
+        (so the caller can drop exactly those from the in-memory graph —
+        NOT a count).
+        """
         ...

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterator, List, Optional, Union
+from typing import Iterator, List, Optional, Set, Union
 from uuid import UUID
 
 import pytest
@@ -93,6 +93,8 @@ _GRAPH_STORE_METHODS = (
     "iterate_nodes",
     "query_subgraph",
     "find_canonical",
+    "delete_node",
+    "delete_nodes_by_source",
 )
 
 
@@ -121,6 +123,12 @@ def _build_graph_store_class(skip: Optional[str] = None) -> type:
     def find_canonical(self, name: str, node_type: str) -> Optional[ResearchNode]:
         return None
 
+    def delete_node(self, node_id: str) -> bool:
+        return False
+
+    def delete_nodes_by_source(self, source_paths: Set[str]) -> Set[str]:
+        return set()
+
     methods = {
         "upsert_node": upsert_node,
         "upsert_edge": upsert_edge,
@@ -128,6 +136,8 @@ def _build_graph_store_class(skip: Optional[str] = None) -> type:
         "iterate_nodes": iterate_nodes,
         "query_subgraph": query_subgraph,
         "find_canonical": find_canonical,
+        "delete_node": delete_node,
+        "delete_nodes_by_source": delete_nodes_by_source,
     }
     namespace: dict = {}
     for name, fn in methods.items():

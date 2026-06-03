@@ -14,10 +14,10 @@ import os
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace as dataclasses_replace
 from datetime import date
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from .agent_harness import AgentHarnessAdapter, SUPPORTED_AGENT_HARNESSES
 from .batch import BatchIngestRunner, sha256_text
@@ -394,6 +394,7 @@ class ProjectWiki:
         session_options: Optional[SessionExtractionOptions] = None,
         use_extraction_feedback: bool = False,
         doc_extractor: Optional[object] = None,
+        changed_paths: Optional[List[Path]] = None,
     ) -> dict:
         """Run the substrate-discovery + extraction pipeline for this project.
 
@@ -433,6 +434,57 @@ class ProjectWiki:
         code_inputs: List[Path] = list(input_paths)
         markdown_source_kind = "SourceDocument" if kind in {"CodeProject", "Repository", "Project"} else kind
 
+        # ------------------------------------------------------------ B3 / B4
+        # Decide UP FRONT whether a provenance-driven incremental compile is
+        # admissible. The precondition check must happen BEFORE we touch the
+        # extractor batch AND before any ``SqliteGraphStore(...)`` constructor
+        # runs (its ``create table if not exists`` would mint an empty
+        # node_provenance sidecar and make an old/no-sidecar DB look
+        # provenance-ready — Codex B3). When the incremental flag is OFF, or
+        # the sidecar is missing / does not cover the prior graph, we degrade
+        # to a TRUE full recompile: re-extract the WHOLE corpus with
+        # changed_only=False, so the default path is byte-identical to a
+        # from-scratch compile (Codex B4) — never a prior+delta merge.
+        incremental_active = False
+        prior_graph_for_diff: Optional[ResearchGraph] = None
+        if changed_only and self.paths.graph.exists():
+            incremental_enabled = bool(cfg.get("incremental_compile", False))
+            if incremental_enabled:
+                # EXPERIMENTAL — incremental compile is byte-parity-correct for
+                # additive/modify/content-reduction/file-deletion edits, but a
+                # Codex re-review found remaining divergence sources (surviving-
+                # node payload reconciliation, provenance coverage for non-
+                # extraction graph producers, full-compile provenance reconcile).
+                # It is OFF by default and gated behind this flag until the
+                # follow-up phase closes those. Do not enable in production yet.
+                logger.warning(
+                    "incremental_compile is ENABLED but EXPERIMENTAL: byte-parity "
+                    "with a full compile is not guaranteed for all edit shapes "
+                    "(known gaps tracked for a follow-up phase). The default "
+                    "(flag off) full recompile is the safe path."
+                )
+                _prior = _strip_generated_layer(load_graph_file(self.paths.graph))
+                if _prior.nodes or _prior.edges:
+                    if store is not None:
+                        # Injected store: trust its provenance surface +
+                        # coverage of the prior graph (no schema-creation risk
+                        # from our side).
+                        incremental_active = self._provenance_ready(
+                            store, [n.id for n in _prior.nodes]
+                        )
+                    else:
+                        # Default SQLite path: inspect the on-disk db WITHOUT
+                        # constructing the schema-creating store.
+                        incremental_active = self._sqlite_provenance_ready(
+                            self.paths.sqlite, [n.id for n in _prior.nodes]
+                        )
+                    if incremental_active:
+                        prior_graph_for_diff = _prior
+        # Effective changed-only for the EXTRACTION batch: only re-extract a
+        # subset when an incremental compile is genuinely active. Otherwise
+        # re-extract everything (true full recompile, Codex B4).
+        effective_changed_only = changed_only and incremental_active
+
         if loader is None:
             # Default path: filesystem walk via the legacy ``BatchIngestRunner``,
             # which preserves the changed-only manifest schema (keyed on file
@@ -449,7 +501,7 @@ class ProjectWiki:
             batch = BatchIngestRunner(extractor=extractor, manifest_path=self.paths.manifest).run(
                 markdown_files,
                 source_kind=markdown_source_kind,
-                changed_only=changed_only,
+                changed_only=effective_changed_only,
                 limit=limit,
             )
             graphs = batch.graphs or [batch.graph]
@@ -466,10 +518,17 @@ class ProjectWiki:
                 loader=loader,
                 extractor=extractor,
                 source_kind=markdown_source_kind,
-                changed_only=changed_only,
+                changed_only=effective_changed_only,
                 limit=limit,
             )
             base_graph = merge_graphs(graphs) if graphs else ResearchGraph()
+
+        # Per-file extraction graphs from THIS run, the authoritative source of
+        # provenance (Codex B2). On a full compile they cover the whole corpus;
+        # on an active incremental compile they cover only the re-extracted
+        # changed files. ``compute_extraction_provenance`` attributes each
+        # node/edge to the file whose extraction actually produced it.
+        extracted_graphs: List[ResearchGraph] = list(graphs)
 
         graph = ResearchCorpusAnalyzer().summarize_trends(graphs, min_sources=min_trend_sources) if trends else base_graph
         if kind in {"CodeProject", "Repository", "Project"}:
@@ -478,38 +537,96 @@ class ProjectWiki:
         cfg = self.config()
         graph = self._merge_configured_understand_anything_graph(graph, cfg)
         graph = self._merge_configured_raganything_graph(graph, cfg)
-        # ``--changed-only`` is supposed to be incremental: re-extract only the
-        # files whose content hash changed, but keep the rest of the prior
-        # corpus. The manifest stores only ``{path: sha256}``, so without this
-        # merge step the result is the *delta only* — a fresh full compile of
-        # 2400 nodes drops to 1700 after a 21-file edit. Fix: load the prior
-        # graph, evict nodes whose ``source_path`` was just re-extracted (the
-        # new extractor disagrees with the cached fragments otherwise), then
-        # merge with the freshly-extracted batch.
-        if changed_only and self.paths.graph.exists():
-            prior_graph = load_graph_file(self.paths.graph)
-            if prior_graph.nodes or prior_graph.edges:
-                # Strip projector-generated nodes (Synthesis + their edges) from
-                # the prior graph; ``SynthesisProjector`` regenerates them in
-                # ``_write_artifacts``. Without this, every changed-only run
-                # would inflate the synthesis layer.
-                prior_graph = _strip_generated_layer(prior_graph)
-                if processed == 0 and not graph.nodes:
-                    graph = prior_graph
+        # Provenance-driven incremental differ (Codex B1/B2/B3/B4). Only runs
+        # when an incremental compile is genuinely admissible — decided up
+        # front in ``incremental_active`` (flag on + sidecar present + covers
+        # the prior graph). The batch above re-extracted ONLY the changed files
+        # in this case; we now tombstone what those files solely owned (nodes
+        # AND edges) and merge the survivors with the fresh extraction.
+        #
+        # When the incremental flag is OFF or the preconditions failed,
+        # ``effective_changed_only`` was forced False, the batch re-extracted
+        # the WHOLE corpus, and ``incremental_active`` is False — so we skip
+        # this block entirely and ``graph`` already equals a from-scratch full
+        # compile (Codex B4). No prior+delta merge, no partial graph.
+        if incremental_active and prior_graph_for_diff is not None:
+            prior_graph = prior_graph_for_diff
+            # A DELETED changed_path no longer exists on disk, so the batch
+            # never re-extracts it: ``processed == 0`` and the fresh ``graph``
+            # is empty even though the corpus genuinely shrank. That is NOT the
+            # idempotent no-op case — we must still tombstone what the deleted
+            # file solely owned. Detect deletions explicitly so the no-op branch
+            # only fires when nothing changed AND nothing was removed.
+            deleted_changed = bool(
+                changed_paths is not None
+                and any(not Path(p).exists() for p in changed_paths)
+            )
+            if processed == 0 and not graph.nodes and not deleted_changed:
+                # Nothing actually changed this run: the prior graph IS the
+                # corpus. (Empty incremental run — byte-idempotent no-op.)
+                graph = prior_graph
+            else:
+                # Effective changed-file set: trust the caller's explicit
+                # ``changed_paths`` over the manifest re-scan when provided
+                # (04-RESEARCH.md Pitfall 3). Otherwise fall back to the
+                # manifest-derived processed-paths set.
+                if changed_paths is not None:
+                    changed_set = {str(Path(p).resolve()) for p in changed_paths}
                 else:
-                    re_extracted = {str(Path(p).resolve()) for p in (batch.processed_paths if loader is None else [])}
-                    if re_extracted:
+                    changed_set = {
+                        str(Path(p).resolve())
+                        for p in (batch.processed_paths if loader is None else [])
+                    }
+                inc_store = store if store is not None else SqliteGraphStore(self.paths.sqlite)
+                # Tombstone NODES whose provenance set became empty after
+                # removing the changed files (cross-file nodes co-owned by an
+                # unchanged file survive — no 2400->1700 collapse), then EDGES
+                # whose only asserting file changed and stopped emitting them
+                # even though both endpoints survive (Codex B1 stale edge).
+                removed_ids, removed_edges = inc_store.delete_nodes_by_source_with_edges(
+                    changed_set
+                )
+                kept_nodes = [n for n in prior_graph.nodes if n.id not in removed_ids]
+                # Re-point stale ``source_path`` scalars on surviving cross-file
+                # nodes (Phase-4 subtractive gate). A shared author/field node
+                # survives because an UNCHANGED file still asserts it, but the
+                # prior node we keep may carry a ``source_path`` pointing at the
+                # now-changed file that originally won attribution. A full
+                # compile re-derives ``source_path`` from the lowest sorted-path
+                # surviving owner (``prefer_research_node`` keeps the first-merged
+                # one, and ``iter_markdown_files`` is sorted). We reproduce that
+                # exact choice from the post-tombstone provenance sidecar so the
+                # incremental node scalars match a full compile byte-for-byte.
+                if hasattr(inc_store, "surviving_source_paths"):
+                    # Only nodes the changed files STOPPED asserting are stale.
+                    # If the fresh extraction still emits the node (additive
+                    # edit, or the changed file still mentions it), the merge
+                    # below carries the correct fresh ``source_path`` — leave it.
+                    fresh_node_ids = {n.id for n in graph.nodes}
+                    stale_ids = {
+                        n.id
+                        for n in kept_nodes
+                        if n.id not in fresh_node_ids
+                        and n.source_path
+                        and str(Path(n.source_path).resolve()) in changed_set
+                    }
+                    canonical = inc_store.surviving_source_paths(stale_ids)
+                    if canonical:
                         kept_nodes = [
-                            n for n in prior_graph.nodes
-                            if not (n.source_path and str(Path(n.source_path).resolve()) in re_extracted)
+                            dataclasses_replace(n, source_path=canonical[n.id])
+                            if n.id in canonical
+                            else n
+                            for n in kept_nodes
                         ]
-                        kept_ids = {n.id for n in kept_nodes}
-                        kept_edges = [
-                            e for e in prior_graph.edges
-                            if e.source in kept_ids and e.target in kept_ids
-                        ]
-                        prior_graph = ResearchGraph(nodes=kept_nodes, edges=kept_edges)
-                    graph = merge_graphs([prior_graph, graph])
+                kept_ids = {n.id for n in kept_nodes}
+                kept_edges = [
+                    e for e in prior_graph.edges
+                    if e.source in kept_ids
+                    and e.target in kept_ids
+                    and (e.source, e.type, e.target) not in removed_edges
+                ]
+                prior_kept = ResearchGraph(nodes=kept_nodes, edges=kept_edges)
+                graph = merge_graphs([prior_kept, graph])
         # Bug A guard: after every merge — native FS extractor, code graph,
         # Understand-Anything, RAG-Anything, prior incremental graph — strip
         # any concept-layer node whose name is a filename or path. UA in
@@ -526,6 +643,18 @@ class ProjectWiki:
         graph = self._merge_session_graph(
             graph, cfg, override=session_options, guidance=session_guidance
         )
+        # Canonicalize the merged graph BEFORE the community-summary pass.
+        # ``merge_graphs`` re-runs the same-type/cross-type dedup and edge
+        # redirection over the whole node universe, so an incremental compile
+        # (prior-graph nodes + freshly re-extracted changed files, assembled in
+        # a different order than a full compile) converges on the SAME canonical
+        # node ids AND the SAME redirected edge set as a full compile. Without
+        # this, Louvain runs over a transient graph whose author/edge surface
+        # ids differ between the two arms and mints a different partition
+        # (e.g. 3 vs 2 COMMUNITY_SUMMARY nodes) — the CMP-03 community-drift
+        # bug. It is an idempotent no-op for a full compile (the graph is
+        # already canonical), so byte-idempotence is preserved.
+        graph = merge_graphs([graph])
         # Community-summary pass (Microsoft GraphRAG playbook applied to
         # the typed graph). Opt-in via ``TESSERAE_COMMUNITY_SUMMARIES=true``
         # so quiet ``project compile`` runs stay free of incremental LLM
@@ -534,7 +663,20 @@ class ProjectWiki:
         # COMMUNITY_SUMMARY nodes flow through vault projection,
         # graph.json persistence, MCP, and site builds in one pass.
         graph = self._merge_community_summaries(graph, cfg)
-        self._write_artifacts(graph, cognify=cognify, store=store, vault_pull=vault_pull)
+        # Extraction-derived provenance for the files extracted THIS run
+        # (Codex B2). On a full / true-full-recompile this covers the whole
+        # corpus; on an active incremental run only the re-extracted changed
+        # files. ``_write_artifacts`` records these rows (preserving
+        # first_seen_at) and then reconciles the sidecar against the final
+        # graph (Codex M5), so stale rows for dropped nodes/edges are purged.
+        extraction_prov = compute_extraction_provenance(extracted_graphs)
+        self._write_artifacts(
+            graph,
+            cognify=cognify,
+            store=store,
+            vault_pull=vault_pull,
+            extraction_prov=extraction_prov,
+        )
         return {
             "project_root": str(self.project_root),
             "wiki_root": str(self.root),
@@ -877,6 +1019,7 @@ class ProjectWiki:
         session_options: Optional[SessionExtractionOptions] = None,
         use_extraction_feedback: bool = False,
         doc_extractor: Optional[object] = None,
+        changed_paths: Optional[List[Path]] = None,
     ) -> dict:
         """Compile every configured source into the .tesserae artifacts.
 
@@ -920,6 +1063,7 @@ class ProjectWiki:
             session_options=session_options,
             use_extraction_feedback=use_extraction_feedback,
             doc_extractor=doc_extractor,
+            changed_paths=changed_paths,
         )
 
     def lint(self, fix_trivial: bool = False, severity_floor: str = "info") -> LintReport:
@@ -980,7 +1124,70 @@ class ProjectWiki:
         graph = load_graph_file(self.paths.graph)
         target = Path(vault) if vault else self.effective_obsidian_vault()
         name = cfg.get("name") or sanitize_server_name(self.project_root.name)
-        return ObsidianVaultAdapter(vault_name=name).write_vault(graph, target)
+        result = ObsidianVaultAdapter(vault_name=name).write_vault(graph, target)
+        self._prune_orphaned_vault_pages(graph, target)
+        return result
+
+    @staticmethod
+    def _prune_orphaned_vault_pages(graph: ResearchGraph, vault: Path) -> None:
+        """Delete projected vault pages a rename / deletion left orphaned.
+
+        The Obsidian vault is bidirectional, so unlike ``wiki/`` and ``site/``
+        we never ``rmtree`` it — user-authored notes must survive. But the
+        projector keys each generated page on the node's CURRENT canonical slug
+        (``directory_for_node``/``unique_slugs``). When a node is renamed (its
+        slug changes) or removed entirely, the projector simply stops writing
+        the old path; the stale ``.md`` lingers on disk.
+
+        That orphan is not harmless: it still carries the old ``title:`` in its
+        frontmatter, so the next compile's vault overlay
+        (:meth:`_apply_vault_overlay`) reads it, sees ``title != snapshot``, and
+        mints a phantom ``name`` override that resurrects the pre-rename name —
+        an incremental compile (which renamed the node) and a subsequent full
+        compile then diverge on every artifact downstream of that name
+        (synthesis pulse target, community partition, projections). See the
+        Phase-4 subtractive-parity gate.
+
+        A page is an orphan iff it carries a ``node_id:`` frontmatter key (i.e.
+        it is projector-generated, not a hand-written user note) AND that node
+        no longer projects to this exact path. User notes (no ``node_id:``) and
+        the structural files (``index.md``, ``_bridges.md``, ``README.md``,
+        ``_meta/``, ``.obsidian/``) are left untouched. SQLite/graph.json are
+        never affected.
+        """
+        if not vault.exists():
+            return
+        from .markdown_projection import (
+            directory_for_node,
+            unique_slugs,
+        )
+        from .research_graph import is_public_research_node
+
+        slug_by_id = unique_slugs(graph.nodes)
+        # The canonical (current) projected path for every node that owns a
+        # page. Matches the projector's own path computation so a freshly
+        # written page is never mistaken for an orphan.
+        canonical_paths: set[Path] = set()
+        for node in graph.nodes:
+            if node.type == ResearchNodeType.STUB or not is_public_research_node(node):
+                continue
+            slug = slug_by_id.get(node.id)
+            if slug is None:
+                continue
+            canonical_paths.add(
+                (vault / directory_for_node(node) / f"{slug}.md").resolve()
+            )
+        for md in vault.rglob("*.md"):
+            try:
+                head = md.read_text(encoding="utf-8")[:512]
+            except OSError:
+                continue
+            # Only projector-generated pages carry a ``node_id:`` frontmatter
+            # key (written first by ``render_node_page``); user notes never do.
+            if "\nnode_id:" not in ("\n" + head):
+                continue
+            if md.resolve() not in canonical_paths:
+                md.unlink(missing_ok=True)
 
     def build_site(self, output: Optional[str | Path] = None) -> dict:
         cfg = self.config()
@@ -1313,12 +1520,153 @@ class ProjectWiki:
         return {"events": len(events), "bullets": len(bullets),
                 "guidance_path": str(self.paths.extraction_guidance)}
 
+    @staticmethod
+    def _has_provenance_table(store: Optional[GraphStore]) -> bool:
+        """True when ``store`` is backed by a SQLite db carrying the
+        ``node_provenance`` sidecar (Plan 01). Non-SQLite stores degrade to
+        False so the caller takes the safe full-recompile fallback."""
+        if store is None:
+            return False
+        if not hasattr(store, "delete_nodes_by_source") or not hasattr(store, "record_provenance_many"):
+            return False
+        db_path = getattr(store, "path", None)
+        if db_path is None or not Path(db_path).exists():
+            return False
+        try:
+            import sqlite3
+
+            with sqlite3.connect(str(db_path)) as con:
+                row = con.execute(
+                    "select name from sqlite_master where type='table' and name='node_provenance'"
+                ).fetchone()
+            return row is not None
+        except Exception:  # noqa: BLE001 - missing table => safe fallback
+            return False
+
+    @staticmethod
+    def _provenance_ready(store: object, prior_node_ids: List[str]) -> bool:
+        """True when an INJECTED ``store`` exposes the provenance surface AND
+        its sidecar covers every prior-graph node id (Codex B3).
+
+        Coverage matters: a store with the table but missing rows for some
+        prior nodes would leave those nodes un-tombstoned, so the caller must
+        fall back to a full recompile rather than emit a stale partial graph.
+        """
+        if not hasattr(store, "delete_nodes_by_source") or not hasattr(
+            store, "record_provenance_many"
+        ):
+            return False
+        if not hasattr(store, "has_node_provenance_rows") or not store.has_node_provenance_rows():
+            return False
+        if hasattr(store, "provenance_covers_nodes"):
+            return bool(store.provenance_covers_nodes(prior_node_ids))
+        return True
+
+    @staticmethod
+    def _sqlite_provenance_ready(db_path: Path, prior_node_ids: List[str]) -> bool:
+        """True when the on-disk SQLite db at ``db_path`` carries a NON-EMPTY
+        ``node_provenance`` sidecar that covers every prior-graph node id —
+        checked WITHOUT constructing the schema-creating ``SqliteGraphStore``
+        (Codex B3: that constructor would create an empty table and make an
+        old/no-sidecar DB falsely look provenance-ready).
+        """
+        if db_path is None or not Path(db_path).exists():
+            return False
+        try:
+            import sqlite3
+
+            with sqlite3.connect(str(db_path)) as con:
+                has_table = con.execute(
+                    "select name from sqlite_master where type='table' and name='node_provenance'"
+                ).fetchone()
+                if has_table is None:
+                    return False
+                row = con.execute("select 1 from node_provenance limit 1").fetchone()
+                if row is None:
+                    return False  # existing but EMPTY sidecar — not ready.
+                covered = {
+                    r[0]
+                    for r in con.execute(
+                        "select distinct node_id from node_provenance"
+                    ).fetchall()
+                }
+        except Exception:  # noqa: BLE001 - any error => safe full recompile
+            return False
+        return all(nid in covered for nid in dict.fromkeys(prior_node_ids))
+
+    @staticmethod
+    def _record_provenance(
+        store: object,
+        graph: ResearchGraph,
+        extraction_prov: Optional[
+            Tuple[List[Tuple[str, str, str]], List[Tuple[str, str, str, str, str]]]
+        ],
+    ) -> None:
+        """Record extraction-derived node + edge provenance, then reconcile.
+
+        ``extraction_prov`` carries the rows produced by the files actually
+        extracted this run (the WHOLE corpus on a full compile, only the
+        changed files on an incremental one). When absent (legacy callers /
+        tests that build the graph by hand) we fall back to deriving rows from
+        the final graph's own ``source_path`` scalars.
+
+        After upserting (first_seen_at preserved), we prune any sidecar row
+        whose node/edge is absent from the final ``graph`` (Codex M5): rows for
+        sources that no longer contribute — a node a changed file solely owned
+        and then dropped, a stale cross-file edge — must not survive as false
+        keepers. All SQLite-only; graph.json is never touched.
+        """
+        if not hasattr(store, "record_provenance_many"):
+            return
+        if extraction_prov is None:
+            node_rows, edge_rows = compute_extraction_provenance([graph])
+        else:
+            node_rows, edge_rows = extraction_prov
+        # Projector-generated nodes/edges (SYNTHESIS, COMMUNITY_SUMMARY and
+        # their ``synthesizes``/``summarizes`` edges) are minted AFTER
+        # extraction, so the per-file extraction graphs never carry them. They
+        # are regenerated every compile (``_strip_generated_layer``), so they
+        # need no real file provenance — but the sidecar invariant is "every
+        # final-graph node/edge has at least one provenance row". Record ONLY
+        # these generated rows under "__synthesis__" (NOT every uncovered node:
+        # in an incremental run unchanged-file nodes are uncovered here yet
+        # already carry real rows in the sidecar, so a blanket fallback would
+        # diverge from a full compile and re-introduce over-attribution).
+        node_rows = list(node_rows)
+        edge_rows = list(edge_rows)
+        generated_node_ids = {
+            n.id
+            for n in graph.nodes
+            if n.type in {ResearchNodeType.SYNTHESIS, ResearchNodeType.COMMUNITY_SUMMARY}
+        }
+        for node_id in sorted(generated_node_ids):
+            det_ts = "det:" + sha256_text(f"{node_id}|__synthesis__")[:16]
+            node_rows.append((node_id, "__synthesis__", det_ts))
+        for edge in graph.edges:
+            if (
+                edge.source in generated_node_ids
+                or edge.target in generated_node_ids
+                or edge.type in {"synthesizes", "summarizes"}
+            ):
+                det_ts = "det:" + sha256_text(
+                    f"{edge.source}|{edge.type}|{edge.target}|__synthesis__"
+                )[:16]
+                edge_rows.append((edge.source, edge.type, edge.target, "__synthesis__", det_ts))
+        store.record_provenance_many(node_rows)
+        if hasattr(store, "record_edge_provenance_many"):
+            store.record_edge_provenance_many(edge_rows)
+        if hasattr(store, "prune_provenance_to_graph"):
+            store.prune_provenance_to_graph(graph)
+
     def _write_artifacts(
         self,
         graph: ResearchGraph,
         cognify: Optional[CognifyOptions] = None,
         store: Optional[GraphStore] = None,
         vault_pull: bool = True,
+        extraction_prov: Optional[
+            Tuple[List[Tuple[str, str, str]], List[Tuple[str, str, str, str, str]]]
+        ] = None,
     ) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
 
@@ -1346,6 +1694,16 @@ class ProjectWiki:
         wiki_store = WikiPageStore(self.paths.wiki)
         WikiLayerProjector(wiki_store).project(graph)
         graph, _written = SynthesisProjector(wiki_store, manifest_path=self.paths.manifest).project(graph)
+        # Canonicalize node/edge order ONCE here so every downstream artifact
+        # (graph.json via ``to_json``, the cognee bundle, temporal facts,
+        # Graphiti episodes, markdown/obsidian projections, the provenance
+        # sidecar) derives from the SAME content-derived order. A full compile
+        # builds the graph in insertion order; an incremental compile appends
+        # re-extracted changed-file nodes after the prior corpus. Without this,
+        # the two arms carry identical node/edge SETS but different LIST order,
+        # so the projections diverge byte-wise even when the graph is logically
+        # equal (CMP-03). Idempotent no-op for an already-canonical graph.
+        graph = graph.canonicalized()
         # Karpathy schema layer: purpose / schema / index / log files at the
         # top of the wiki dir. ``purpose.md`` is seeded once and preserved on
         # later compiles so user edits survive; the others regenerate.
@@ -1410,15 +1768,49 @@ class ProjectWiki:
             # rather than upserting row-by-row, which is the expected behavior
             # for the standalone CLI flow.
             SQLiteResearchGraphStore(self.paths.sqlite).write_graph(graph, replace=True)
+            # Provenance sidecar (Plan 01) lives in the same ``sqlite.db`` via
+            # the hexagonal :class:`SqliteGraphStore` (idempotent
+            # ``create table if not exists`` schema — coexists with the legacy
+            # research-graph table). Recorded on EVERY default compile (full +
+            # incremental) so the incremental differ has a populated sidecar to
+            # diff against. Deterministic timestamps; SQLite-only; graph.json
+            # is untouched. See the injected-store branch for the same rows.
+            prov_store = SqliteGraphStore(self.paths.sqlite)
+            prov_store.upsert_many_nodes(graph.nodes)
+            prov_store.upsert_many_edges(graph.edges)
+            self._record_provenance(prov_store, graph, extraction_prov)
         else:
             # Injected store path: drive the union graph through the
             # :class:`GraphStore` port. The Postgres adapter (HypePaper-side)
             # and any test-double share this code path.
-            for node in graph.nodes:
-                store.upsert_node(node)
-            for edge in graph.edges:
-                store.upsert_edge(edge)
+            #
+            # Bulk upsert (04-RESEARCH.md Pattern 3) — fixes the
+            # connection-per-call throughput problem. Fall back to per-row
+            # upserts for stores that don't expose the bulk surface.
+            if hasattr(store, "upsert_many_nodes"):
+                store.upsert_many_nodes(graph.nodes)
+            else:
+                for node in graph.nodes:
+                    store.upsert_node(node)
+            if hasattr(store, "upsert_many_edges"):
+                store.upsert_many_edges(graph.edges)
+            else:
+                for edge in graph.edges:
+                    store.upsert_edge(edge)
+            # Record node + edge provenance on EVERY compile (full +
+            # incremental). Derived from PER-FILE extraction output (Codex B2),
+            # NOT graph adjacency: each node/edge is attributed to the file
+            # whose extraction actually produced it, so a single-file change
+            # tombstones exactly what that file solely owned. Deterministic
+            # content-derived timestamps (never datetime.now(), 04-RESEARCH
+            # Pitfall 1); SQLite-only, never in graph.json.
+            self._record_provenance(store, graph, extraction_prov)
         GraphMarkdownProjector().write_projection(graph, self.paths.markdown_projection)
+        # markdown_projection/ is a one-way projection (no user notes), but like
+        # the Obsidian vault it is NOT rmtree'd, so a rename / deletion leaves a
+        # stale per-node page behind. Prune those orphans so an incremental and
+        # a full compile project byte-identical trees (Phase-4 subtractive gate).
+        self._prune_orphaned_vault_pages(graph, self.paths.markdown_projection)
         CogneeResearchGraphAdapter().write_bundle(graph, self.paths.cognee_bundle)
         if cognify and cognify.is_active:
             self._run_cognify_best_effort(cognify)
@@ -1630,6 +2022,66 @@ def cognify_options_from_config(config: dict) -> Optional[CognifyOptions]:
         return None
     options = CognifyOptions.from_mapping(cognee)
     return options if options.is_active else None
+
+
+def _provenance_source_for(graph: ResearchGraph) -> str:
+    """The canonical source_path that THIS per-file extraction graph belongs to.
+
+    A single file's extraction produces nodes that all carry the same
+    ``source_path`` (the file). We pick the first non-empty one as the file's
+    identity; generated/sourceless slices fall back to ``"__synthesis__"`` so
+    they reconcile consistently (Open Question 3).
+    """
+    for node in graph.nodes:
+        if node.source_path:
+            return node.source_path
+    return "__synthesis__"
+
+
+def compute_extraction_provenance(
+    graphs: Iterable[ResearchGraph],
+) -> Tuple[List[Tuple[str, str, str]], List[Tuple[str, str, str, str, str]]]:
+    """Derive node + edge provenance from PER-FILE extraction output (Codex B2).
+
+    The authoritative answer to "which file produced this node/edge" is the
+    per-file extraction graph — NOT the merged graph's adjacency. The previous
+    adjacency model symmetrically attributed every adjacent node's source to a
+    node, so a node from ``a.md`` gained provenance from ``b.md`` via an
+    unrelated neighbour and a change to ``a.md`` could never tombstone it.
+
+    Here, every node id and edge triple a file's standalone extraction emits is
+    attributed to THAT file's ``source_path``. A cross-file concept (a
+    ``ResearchField`` cited by every paper) is independently emitted by each
+    paper's extraction, so it accrues one row per contributing file and
+    survives any single-file change — without the over-attribution.
+
+    Returns ``(node_rows, edge_rows)`` where
+    ``node_rows = [(node_id, source_path, det_ts), ...]`` and
+    ``edge_rows = [(source, type, target, source_path, det_ts), ...]``, each
+    sorted canonically. Deterministic timestamps (never ``datetime.now()``):
+    ``det:`` + a sha256 of the row key so the sidecar is byte-stable.
+    """
+    node_sources: Dict[str, Set[str]] = {}
+    edge_sources: Dict[Tuple[str, str, str], Set[str]] = {}
+    for graph in graphs:
+        src = _provenance_source_for(graph)
+        for node in graph.nodes:
+            node_sources.setdefault(node.id, set()).add(node.source_path or src)
+        for edge in graph.edges:
+            key = (edge.source, edge.type, edge.target)
+            edge_sources.setdefault(key, set()).add(src)
+    node_rows: List[Tuple[str, str, str]] = []
+    for node_id in sorted(node_sources):
+        for source_path in sorted(node_sources[node_id] or {"__synthesis__"}):
+            det_ts = "det:" + sha256_text(f"{node_id}|{source_path}")[:16]
+            node_rows.append((node_id, source_path, det_ts))
+    edge_rows: List[Tuple[str, str, str, str, str]] = []
+    for key in sorted(edge_sources):
+        source, etype, target = key
+        for source_path in sorted(edge_sources[key] or {"__synthesis__"}):
+            det_ts = "det:" + sha256_text(f"{source}|{etype}|{target}|{source_path}")[:16]
+            edge_rows.append((source, etype, target, source_path, det_ts))
+    return node_rows, edge_rows
 
 
 def merge_graphs(graphs: Iterable[ResearchGraph]) -> ResearchGraph:

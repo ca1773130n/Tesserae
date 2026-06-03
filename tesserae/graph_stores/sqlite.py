@@ -30,7 +30,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
-from typing import Iterator, List, Optional, Set, Union
+from typing import Dict, Iterable, Iterator, List, Optional, Set, Tuple, Union
 from uuid import UUID
 
 from ..research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
@@ -230,6 +230,448 @@ class SqliteGraphStore:
         return _row_to_node(row)
 
     # ------------------------------------------------------------------ #
+    # Provenance sidecar + delete surface (CMP-02)                        #
+    # ------------------------------------------------------------------ #
+
+    def record_provenance(self, node_id: str, source_path: str, *, timestamp: str) -> None:
+        """Upsert one provenance row, preserving ``first_seen_at``.
+
+        ``timestamp`` is a REQUIRED caller-supplied ISO-8601 string — this
+        method NEVER calls ``datetime.now()``. The caller derives it from
+        content/source-date so two compiles produce identical provenance
+        (04-RESEARCH.md Pitfall 1: timestamps must stay deterministic and
+        out of graph.json). On conflict the existing ``first_seen_at`` is
+        kept and only ``last_updated_at`` advances.
+        """
+        with self._connect() as con:
+            con.execute(
+                """
+                insert into node_provenance
+                    (node_id, source_path, first_seen_at, last_updated_at)
+                values (?, ?, ?, ?)
+                on conflict(node_id, source_path) do update set
+                    last_updated_at = excluded.last_updated_at
+                """,
+                (node_id, source_path, timestamp, timestamp),
+            )
+            con.commit()
+
+    def record_provenance_many(self, rows: Iterable[Tuple[str, str, str]]) -> None:
+        """Bulk upsert provenance rows ``(node_id, source_path, timestamp)``.
+
+        Throughput path for full compiles. Same deterministic-timestamp and
+        first-seen-preservation semantics as :meth:`record_provenance`.
+        """
+        params = [
+            (node_id, source_path, timestamp, timestamp)
+            for node_id, source_path, timestamp in rows
+        ]
+        if not params:
+            return
+        with self._connect() as con:
+            con.executemany(
+                """
+                insert into node_provenance
+                    (node_id, source_path, first_seen_at, last_updated_at)
+                values (?, ?, ?, ?)
+                on conflict(node_id, source_path) do update set
+                    last_updated_at = excluded.last_updated_at
+                """,
+                params,
+            )
+            con.commit()
+
+    def record_edge_provenance_many(self, rows: Iterable[Tuple[str, str, str, str, str]]) -> None:
+        """Bulk upsert edge provenance rows ``(source, type, target, source_path, timestamp)``.
+
+        Mirrors :meth:`record_provenance_many` (deterministic caller-supplied
+        timestamp, ``first_seen_at`` preserved on conflict). SQLite-only —
+        never enters graph.json. Edge provenance lets the incremental differ
+        tombstone an edge whose only asserting file changed and stopped
+        asserting it, even when both endpoints survive (Codex B1).
+        """
+        params = [
+            (source, etype, target, source_path, timestamp, timestamp)
+            for source, etype, target, source_path, timestamp in rows
+        ]
+        if not params:
+            return
+        with self._connect() as con:
+            con.executemany(
+                """
+                insert into edge_provenance
+                    (source, type, target, source_path, first_seen_at, last_updated_at)
+                values (?, ?, ?, ?, ?, ?)
+                on conflict(source, type, target, source_path) do update set
+                    last_updated_at = excluded.last_updated_at
+                """,
+                params,
+            )
+            con.commit()
+
+    def reconcile_provenance(
+        self,
+        node_rows: Iterable[Tuple[str, str, str]],
+        edge_rows: Iterable[Tuple[str, str, str, str, str]],
+    ) -> None:
+        """Transactionally replace the provenance sidecar with the freshly
+        computed (node + edge) row set, PRESERVING ``first_seen_at`` for rows
+        that survive (Codex M5).
+
+        Rows absent from the new set are DELETED — without this, sources that
+        no longer contribute linger as false "keepers" and defeat tombstoning.
+        Retained rows keep their original ``first_seen_at`` (only
+        ``last_updated_at`` advances), so the sidecar stays byte-stable across
+        recompiles of an unchanged corpus. Deterministic caller-supplied
+        timestamps only; never ``datetime.now()``.
+        """
+        node_params = [
+            (node_id, source_path, timestamp)
+            for node_id, source_path, timestamp in node_rows
+        ]
+        edge_params = [
+            (source, etype, target, source_path, timestamp)
+            for source, etype, target, source_path, timestamp in edge_rows
+        ]
+        node_keys = {(n[0], n[1]) for n in node_params}
+        edge_keys = {(e[0], e[1], e[2], e[3]) for e in edge_params}
+        with self._connect() as con:
+            # Upsert the new set (first_seen_at preserved on conflict).
+            if node_params:
+                con.executemany(
+                    """
+                    insert into node_provenance
+                        (node_id, source_path, first_seen_at, last_updated_at)
+                    values (?, ?, ?, ?)
+                    on conflict(node_id, source_path) do update set
+                        last_updated_at = excluded.last_updated_at
+                    """,
+                    [(nid, sp, ts, ts) for nid, sp, ts in node_params],
+                )
+            if edge_params:
+                con.executemany(
+                    """
+                    insert into edge_provenance
+                        (source, type, target, source_path, first_seen_at, last_updated_at)
+                    values (?, ?, ?, ?, ?, ?)
+                    on conflict(source, type, target, source_path) do update set
+                        last_updated_at = excluded.last_updated_at
+                    """,
+                    [(s, t, tg, sp, ts, ts) for s, t, tg, sp, ts in edge_params],
+                )
+            # Delete rows absent from the new set.
+            for (node_id, source_path) in [
+                row
+                for row in con.execute(
+                    "select node_id, source_path from node_provenance"
+                ).fetchall()
+                if (row[0], row[1]) not in node_keys
+            ]:
+                con.execute(
+                    "delete from node_provenance where node_id = ? and source_path = ?",
+                    (node_id, source_path),
+                )
+            for (source, etype, target, source_path) in [
+                row
+                for row in con.execute(
+                    "select source, type, target, source_path from edge_provenance"
+                ).fetchall()
+                if (row[0], row[1], row[2], row[3]) not in edge_keys
+            ]:
+                con.execute(
+                    "delete from edge_provenance"
+                    " where source = ? and type = ? and target = ? and source_path = ?",
+                    (source, etype, target, source_path),
+                )
+            con.commit()
+
+    def prune_provenance_to_graph(self, graph: "ResearchGraph") -> None:
+        """Delete provenance rows whose node/edge is absent from ``graph``,
+        PRESERVING ``first_seen_at`` for retained rows (Codex M5 reconcile).
+
+        Each compile, provenance must be reconciled so rows for sources that no
+        longer contribute (a node a file solely owned and then dropped, a stale
+        cross-file edge) do not persist as false "keepers" that defeat future
+        tombstoning. Membership is by node id and edge triple — both arms (full
+        + incremental) converge on the same final graph, so the surviving
+        sidecar is identical. Retained rows are untouched (first_seen_at and
+        last_updated_at preserved), so an unchanged-corpus recompile is a no-op.
+        """
+        live_nodes = {node.id for node in graph.nodes}
+        live_edges = {(edge.source, edge.type, edge.target) for edge in graph.edges}
+        with self._connect() as con:
+            stale_nodes = [
+                (row[0], row[1])
+                for row in con.execute(
+                    "select node_id, source_path from node_provenance"
+                ).fetchall()
+                if row[0] not in live_nodes
+            ]
+            for node_id, source_path in stale_nodes:
+                con.execute(
+                    "delete from node_provenance where node_id = ? and source_path = ?",
+                    (node_id, source_path),
+                )
+            stale_edges = [
+                (row[0], row[1], row[2], row[3])
+                for row in con.execute(
+                    "select source, type, target, source_path from edge_provenance"
+                ).fetchall()
+                if (row[0], row[1], row[2]) not in live_edges
+            ]
+            for source, etype, target, source_path in stale_edges:
+                con.execute(
+                    "delete from edge_provenance"
+                    " where source = ? and type = ? and target = ? and source_path = ?",
+                    (source, etype, target, source_path),
+                )
+            con.commit()
+
+    def has_node_provenance_rows(self) -> bool:
+        """True when the ``node_provenance`` table has at least one row.
+
+        Coverage precheck for the incremental differ (Codex B3): an EXISTING
+        but EMPTY sidecar must not be mistaken for a provenance-ready DB.
+        """
+        try:
+            with self._connect() as con:
+                row = con.execute(
+                    "select 1 from node_provenance limit 1"
+                ).fetchone()
+            return row is not None
+        except sqlite3.Error:
+            return False
+
+    def provenance_covers_nodes(self, node_ids: Iterable[str]) -> bool:
+        """True when EVERY id in ``node_ids`` has at least one provenance row.
+
+        The differ trusts the sidecar only if it covers the prior graph; a
+        partially-populated sidecar (old DB, interrupted compile) would leave
+        uncovered nodes un-tombstoned, so the caller must fall back to a full
+        recompile (Codex B3).
+        """
+        ids = list(dict.fromkeys(node_ids))
+        if not ids:
+            return True
+        try:
+            with self._connect() as con:
+                covered = {
+                    row[0]
+                    for row in con.execute(
+                        "select distinct node_id from node_provenance"
+                    ).fetchall()
+                }
+        except sqlite3.Error:
+            return False
+        return all(nid in covered for nid in ids)
+
+    def delete_node(self, node_id: str) -> bool:
+        """Delete a single node, its provenance, and all incident edges + edge
+        provenance, in one transaction. Returns True if a node row was removed.
+
+        Incident-edge cascade (Codex M6): deleting a node without its incident
+        edges leaves dangling edges in ``edges`` / ``edge_provenance`` whose
+        endpoint no longer exists.
+        """
+        with self._connect() as con:
+            cursor = con.execute("delete from nodes where id = ?", (node_id,))
+            con.execute("delete from node_provenance where node_id = ?", (node_id,))
+            con.execute(
+                "delete from edges where source = ? or target = ?",
+                (node_id, node_id),
+            )
+            con.execute(
+                "delete from edge_provenance where source = ? or target = ?",
+                (node_id, node_id),
+            )
+            con.commit()
+            return cursor.rowcount > 0
+
+    def delete_nodes_by_source(self, source_paths: Set[str]) -> Set[str]:
+        """Tombstone nodes whose provenance set becomes EMPTY after removing ``source_paths``.
+
+        Candidates are nodes touched by any changed source_path. A candidate
+        is KEPT (survives) if it still has a provenance row under some
+        unchanged source_path — the 2400->1700 anti-collapse guarantee for
+        cross-file concept nodes. The returned set is exactly the node ids
+        removed from both ``nodes`` and ``node_provenance`` (NOT a count);
+        the caller drops precisely these from the in-memory graph.
+
+        Empty ``source_paths`` is a no-op (returns ``set()``) — empty SQL
+        ``IN`` clauses are invalid.
+        """
+        if not source_paths:
+            return set()
+
+        changed = list(source_paths)
+        changed_ph = ",".join("?" for _ in changed)
+        with self._connect() as con:
+            candidates = {
+                row[0]
+                for row in con.execute(
+                    f"select distinct node_id from node_provenance"
+                    f" where source_path in ({changed_ph})",
+                    changed,
+                ).fetchall()
+            }
+            if not candidates:
+                # Still purge provenance rows for the changed sources.
+                con.execute(
+                    f"delete from node_provenance where source_path in ({changed_ph})",
+                    changed,
+                )
+                con.commit()
+                return set()
+
+            keepers = {
+                row[0]
+                for row in con.execute(
+                    f"select distinct node_id from node_provenance"
+                    f" where source_path not in ({changed_ph})",
+                    changed,
+                ).fetchall()
+            }
+            to_delete = candidates - keepers
+
+            if to_delete:
+                del_ph = ",".join("?" for _ in to_delete)
+                del_ids = list(to_delete)
+                con.execute(f"delete from nodes where id in ({del_ph})", del_ids)
+                con.execute(
+                    f"delete from node_provenance where node_id in ({del_ph})", del_ids
+                )
+                # Incident-edge cascade (Codex M6): a tombstoned node's
+                # incident edges + their edge provenance must go too, or the
+                # injected-store path leaves dangling edges.
+                con.execute(
+                    f"delete from edges where source in ({del_ph}) or target in ({del_ph})",
+                    del_ids + del_ids,
+                )
+                con.execute(
+                    f"delete from edge_provenance"
+                    f" where source in ({del_ph}) or target in ({del_ph})",
+                    del_ids + del_ids,
+                )
+            # Purge all provenance rows referencing the changed sources.
+            con.execute(
+                f"delete from node_provenance where source_path in ({changed_ph})",
+                changed,
+            )
+            con.commit()
+        return to_delete
+
+    def delete_edges_by_source(self, source_paths: Set[str]) -> Set[Tuple[str, str, str]]:
+        """Tombstone edges whose provenance set becomes EMPTY after removing
+        ``source_paths`` (Codex B1).
+
+        An edge survives if some UNCHANGED file still asserts it. The returned
+        set is exactly the edge triples ``(source, type, target)`` removed from
+        both ``edges`` and ``edge_provenance`` — the caller drops precisely
+        these from the in-memory graph so a stale cross-file edge no longer
+        lingers when the asserting file stops emitting it.
+
+        Empty ``source_paths`` is a no-op (returns ``set()``).
+        """
+        if not source_paths:
+            return set()
+
+        changed = list(source_paths)
+        changed_ph = ",".join("?" for _ in changed)
+        with self._connect() as con:
+            candidates = {
+                (row[0], row[1], row[2])
+                for row in con.execute(
+                    f"select distinct source, type, target from edge_provenance"
+                    f" where source_path in ({changed_ph})",
+                    changed,
+                ).fetchall()
+            }
+            if not candidates:
+                con.execute(
+                    f"delete from edge_provenance where source_path in ({changed_ph})",
+                    changed,
+                )
+                con.commit()
+                return set()
+
+            keepers = {
+                (row[0], row[1], row[2])
+                for row in con.execute(
+                    f"select distinct source, type, target from edge_provenance"
+                    f" where source_path not in ({changed_ph})",
+                    changed,
+                ).fetchall()
+            }
+            to_delete = candidates - keepers
+
+            for source, etype, target in to_delete:
+                con.execute(
+                    "delete from edges where source = ? and type = ? and target = ?",
+                    (source, etype, target),
+                )
+                con.execute(
+                    "delete from edge_provenance"
+                    " where source = ? and type = ? and target = ?",
+                    (source, etype, target),
+                )
+            con.execute(
+                f"delete from edge_provenance where source_path in ({changed_ph})",
+                changed,
+            )
+            con.commit()
+        return to_delete
+
+    def delete_nodes_by_source_with_edges(
+        self, source_paths: Set[str]
+    ) -> Tuple[Set[str], Set[Tuple[str, str, str]]]:
+        """Convenience: tombstone nodes then edges by changed source in ONE
+        logical differ step. Returns ``(removed_node_ids, removed_edge_keys)``.
+
+        Order matters: node tombstoning cascades incident edges first, then
+        edge tombstoning handles edges whose endpoints SURVIVED but whose only
+        asserting file changed (the stale-cross-file-edge case, Codex B1).
+        """
+        removed_nodes = self.delete_nodes_by_source(source_paths)
+        removed_edges = self.delete_edges_by_source(source_paths)
+        return removed_nodes, removed_edges
+
+    def surviving_source_paths(self, node_ids: Set[str]) -> Dict[str, str]:
+        """Return ``{node_id: canonical source_path}`` for the given surviving nodes.
+
+        A cross-file node (a shared author / field) survives a subtractive edit
+        because some UNCHANGED file still asserts it — but the prior graph node
+        we keep may carry a ``source_path`` that pointed at the now-changed file
+        (the file that originally won attribution). That scalar is stale: a full
+        compile re-derives ``source_path`` from the FIRST file (in deterministic
+        sorted-path order) that still extracts the node, via ``prefer_research_node``
+        keeping the earliest-merged owner. We reproduce that exact choice here by
+        returning the LEXICOGRAPHICALLY SMALLEST surviving provenance
+        ``source_path`` per node — ``iter_markdown_files`` yields files in sorted
+        order, so first-seen == min path. The caller re-points only nodes whose
+        kept ``source_path`` belonged to a changed file, so an incremental and a
+        full compile converge on byte-identical node scalars (Phase-4 subtractive
+        gate). Call AFTER tombstoning so changed-file rows are already purged.
+
+        Empty ``node_ids`` is a no-op (returns ``{}``).
+        """
+        if not node_ids:
+            return {}
+        ids = list(node_ids)
+        out: Dict[str, str] = {}
+        with self._connect() as con:
+            for start in range(0, len(ids), 500):
+                chunk = ids[start : start + 500]
+                ph = ",".join("?" for _ in chunk)
+                for node_id, src in con.execute(
+                    f"select node_id, min(source_path) from node_provenance"
+                    f" where node_id in ({ph}) group by node_id",
+                    chunk,
+                ).fetchall():
+                    if src is not None:
+                        out[node_id] = src
+        return out
+
+    # ------------------------------------------------------------------ #
     # Internals                                                           #
     # ------------------------------------------------------------------ #
 
@@ -275,6 +717,41 @@ class SqliteGraphStore:
         con.execute("create index if not exists idx_edges_type on edges(type)")
         con.execute("create index if not exists idx_edges_source on edges(source)")
         con.execute("create index if not exists idx_edges_target on edges(target)")
+        con.execute(
+            """
+            create table if not exists node_provenance (
+                node_id         text not null,
+                source_path     text not null,
+                first_seen_at   text not null,
+                last_updated_at text not null,
+                primary key (node_id, source_path)
+            )
+            """
+        )
+        con.execute(
+            "create index if not exists idx_provenance_source on node_provenance(source_path)"
+        )
+        # Edge provenance sidecar (Codex B1). An edge between two surviving
+        # nodes whose ASSERTING file changed must be tombstoned when no
+        # remaining file asserts it — node-only provenance can't express that.
+        # SQLite-only; never enters graph.json. Keyed on the canonical edge
+        # triple (source, type, target) + the asserting source_path.
+        con.execute(
+            """
+            create table if not exists edge_provenance (
+                source          text not null,
+                type            text not null,
+                target          text not null,
+                source_path     text not null,
+                first_seen_at   text not null,
+                last_updated_at text not null,
+                primary key (source, type, target, source_path)
+            )
+            """
+        )
+        con.execute(
+            "create index if not exists idx_edge_provenance_source on edge_provenance(source_path)"
+        )
 
 
 def _row_to_node(row: tuple) -> ResearchNode:

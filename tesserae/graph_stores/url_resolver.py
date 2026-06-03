@@ -9,23 +9,94 @@ For Postgres URLs, this resolver lazy-imports HypePaper's
 ``PostgresGraphStore`` and HypePaper's ``AsyncSessionLocal`` and returns
 a ``_PostgresGraphStoreSession`` wrapper that satisfies the synchronous
 :class:`GraphStore` Protocol by opening a fresh ``AsyncSession`` per
-method call. This avoids binding a single SQLAlchemy session to the
-lifetime of the MCP process (sessions don't survive across the multiple
-``asyncio.run`` event loops the sync facade creates) while keeping the
-MCP server itself fully sync (stdio JSON-RPC).
+method call, while keeping the MCP server itself fully sync (stdio
+JSON-RPC).
+
+Async work is dispatched onto a single, persistent background event loop
+(see :class:`_AsyncRuntime` / :func:`_runtime`) running on a daemon
+thread for the lifetime of the process. Coroutines are submitted with
+``asyncio.run_coroutine_threadsafe(...).result()``. This replaces the
+former ``asyncio.run``-per-call pattern (CMP-04): a fresh loop is no
+longer spun up and torn down on every method, so the asyncpg connection
+pool created by ``AsyncSessionLocal`` stays warm across streaming
+incremental upserts. Each ``AsyncSession`` is still opened and closed
+per call, so transaction semantics are unchanged — only the loop driving
+the coroutines is now long-lived and shared.
 """
 
 from __future__ import annotations
 
 import asyncio
+import threading
 from pathlib import Path
-from typing import Iterator, List, Optional, Union
+from typing import Iterator, List, Optional, Set, Union
 from urllib.parse import urlparse
 from uuid import UUID
 
 from .sqlite import SqliteGraphStore
 from ..ports import GraphStore
 from ..research_graph import ResearchEdge, ResearchGraph, ResearchNode
+
+
+class _AsyncRuntime:
+    """A persistent asyncio event loop running on a daemon thread.
+
+    Created lazily (never at import time, per 04-RESEARCH.md Pitfall 5) so
+    we never clobber an already-running loop in the importing process. The
+    loop is driven by ``run_forever`` on a dedicated daemon thread; sync
+    callers submit coroutines via :meth:`run` and block on the result.
+    """
+
+    def __init__(self) -> None:
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(
+            target=self._loop.run_forever,
+            name="url-resolver-loop",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def run(self, coro):
+        """Submit *coro* to the background loop and block for its result."""
+        return asyncio.run_coroutine_threadsafe(coro, self._loop).result()
+
+    def close(self) -> None:
+        """Stop the loop, join the daemon thread, and close the loop."""
+        self._loop.call_soon_threadsafe(self._loop.stop)
+        self._thread.join(timeout=5)
+        self._loop.close()
+
+
+_runtime_singleton: Optional[_AsyncRuntime] = None
+_runtime_lock = threading.Lock()
+
+
+def _runtime() -> _AsyncRuntime:
+    """Return the process-wide :class:`_AsyncRuntime`, creating it once.
+
+    Construction is guarded by a lock so concurrent first-callers share a
+    single persistent loop (and thus a single warm connection pool).
+    """
+    global _runtime_singleton
+    if _runtime_singleton is None:
+        with _runtime_lock:
+            if _runtime_singleton is None:
+                _runtime_singleton = _AsyncRuntime()
+    return _runtime_singleton
+
+
+def shutdown_runtime() -> None:
+    """Tear down the persistent runtime and clear the singleton.
+
+    Primarily for tests / clean process teardown. After calling this, the
+    next :func:`_runtime` call constructs a fresh runtime.
+    """
+    global _runtime_singleton
+    with _runtime_lock:
+        runtime = _runtime_singleton
+        _runtime_singleton = None
+    if runtime is not None:
+        runtime.close()
 
 
 def resolve_graph_store(
@@ -78,22 +149,21 @@ class _PostgresGraphStoreSession:
     ``PostgresGraphStore``.
 
     The MCP server is sync (stdio + JSON-RPC), but HypePaper's adapter
-    is async-first and uses a per-request ``AsyncSession``. We can't
-    reuse a single SQLAlchemy session across calls because the sync
-    facade on ``PostgresGraphStore`` spins up a fresh ``asyncio.run``
-    event loop per operation, and SQLAlchemy async sessions are bound
-    to the loop they were created on. So this wrapper:
+    is async-first and uses a per-request ``AsyncSession``. Every public
+    method dispatches its coroutine onto the shared persistent background
+    loop via ``_runtime().run(...)`` (CMP-04) — no ``asyncio.run`` is
+    created per call. Because the loop is long-lived, the asyncpg
+    connection pool behind ``AsyncSessionLocal`` stays warm across calls,
+    which matters for streaming incremental upserts. Each call still:
 
     1. Opens a fresh ``AsyncSession`` from ``AsyncSessionLocal``.
     2. Constructs ``PostgresGraphStore(db, owner_user_id=...)`` against it.
     3. Awaits the requested async method.
     4. Commits + closes the session.
 
-    All inside a single ``asyncio.run`` per public method call. This is
-    fine for the MCP server's read-mostly tool workload; the cost of a
-    new asyncpg connection per tool call is acceptable for an
-    interactive Claude Code MCP session and avoids the worse problem of
-    leaking connections across iterations of the JSON-RPC loop.
+    So transaction/session semantics are identical to before; only the
+    event loop driving the coroutines is now persistent and shared rather
+    than spun up and torn down per operation.
     """
 
     def __init__(
@@ -120,13 +190,13 @@ class _PostgresGraphStoreSession:
     # GraphStore Protocol implementations ---------------------------------
 
     def upsert_node(self, node: ResearchNode) -> str:
-        return asyncio.run(self._run(lambda store: store.aupsert_node(node)))
+        return _runtime().run(self._run(lambda store: store.aupsert_node(node)))
 
     def upsert_edge(self, edge: ResearchEdge) -> None:
-        asyncio.run(self._run(lambda store: store.aupsert_edge(edge)))
+        _runtime().run(self._run(lambda store: store.aupsert_edge(edge)))
 
     def get_node(self, node_id: str) -> Optional[ResearchNode]:
-        return asyncio.run(self._run(lambda store: store.aget_node(node_id)))
+        return _runtime().run(self._run(lambda store: store.aget_node(node_id)))
 
     def iterate_nodes(
         self,
@@ -139,17 +209,52 @@ class _PostgresGraphStoreSession:
                 async for n in store.aiterate_nodes(node_type, owner_user_id)
             ]
 
-        return iter(asyncio.run(self._run(_collect)))
+        return iter(_runtime().run(self._run(_collect)))
 
     def query_subgraph(self, seeds: List[str], depth: int = 1) -> ResearchGraph:
-        return asyncio.run(
+        return _runtime().run(
             self._run(lambda store: store.aquery_subgraph(seeds, depth))
         )
 
     def find_canonical(self, name: str, node_type: str) -> Optional[ResearchNode]:
-        return asyncio.run(
+        return _runtime().run(
             self._run(lambda store: store.afind_canonical(name, node_type))
         )
 
+    def delete_node(self, node_id: str) -> bool:
+        """Delete a single node (and its incident edges/provenance). Returns
+        ``True`` if a node row was removed.
 
-__all__ = ["resolve_graph_store"]
+        Bridges to the async Postgres layer's ``adelete_node`` via the
+        persistent runtime, in the same per-session style as the other
+        methods. Matches :meth:`SqliteGraphStore.delete_node`: incident
+        edges are removed in the same operation (M6 consistency) and the
+        boolean reflects whether a node actually existed.
+        """
+        return _runtime().run(
+            self._run(lambda store: store.adelete_node(node_id))
+        )
+
+    def delete_nodes_by_source(self, source_paths: Set[str]) -> Set[str]:
+        """Delete nodes whose provenance set becomes EMPTY after removing
+        ``source_paths`` and return the SET of deleted node ids.
+
+        Mirrors :meth:`SqliteGraphStore.delete_nodes_by_source`: a node that
+        is still referenced by an unchanged ``source_path`` survives
+        (cross-file concepts are preserved); only nodes left with no
+        provenance are removed, along with their incident edges (M6
+        consistency). Empty ``source_paths`` is a no-op returning
+        ``set()`` (an empty SQL ``IN`` clause is invalid), so we short-
+        circuit before dispatching to the async layer. The async layer is
+        expected to return an iterable of the deleted node ids, which we
+        normalise to a ``set``.
+        """
+        if not source_paths:
+            return set()
+        deleted = _runtime().run(
+            self._run(lambda store: store.adelete_nodes_by_source(source_paths))
+        )
+        return set(deleted)
+
+
+__all__ = ["resolve_graph_store", "shutdown_runtime"]
