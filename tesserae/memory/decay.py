@@ -27,6 +27,16 @@ Pure function, no I/O — safe to call from any compile-time pass or MCP
 tool. The dict-shaped ``node`` accepted here is intentionally loose
 (both real ``ResearchNode`` and plain dicts work) so we don't drag the
 research_graph import into call sites that only need a score.
+
+Determinism contract (Phase-5 KB-01 / 05-RESEARCH Pitfall 1)
+------------------------------------------------------------
+``compute_decay_score`` takes an EXPLICIT ``now`` and NEVER calls
+``datetime.now()``. Pass a FIXED compile reference timestamp at compile time
+so two identical-second compiles produce identical decay scores; the
+orchestration plan (05-03) supplies that fixed ``now``. The resulting
+``decay_score`` is persisted in the ``node_memory`` sidecar ONLY (see
+:mod:`tesserae.memory.store`) — never in ``graph.json``, which must stay
+byte-identical across compiles.
 """
 
 from __future__ import annotations
