@@ -368,6 +368,76 @@ def _nodes_of_type(graph: ResearchGraph, host_type: ResearchNodeType) -> List[Re
     return [n for n in graph.nodes if n.type == host_type]
 
 
+def apply_schema_drift(
+    graph: ResearchGraph,
+    proposals: Sequence[dict],
+) -> ResearchGraph:
+    """Rename ``node.type`` for APPROVED schema-drift proposals only.
+
+    ``proposals`` are proposal dicts shaped like those produced inside
+    :class:`HostTypeReport` clusters (``{"name", "description", "examples"}``).
+    For the apply path each proposal additionally carries:
+
+      * an explicit ``approved`` key — destructive type changes are opt-in
+        (Pitfall 4); a missing or falsy ``approved`` means NOT approved and the
+        proposal is skipped.
+      * the target node ids — taken from ``examples`` (the member node ids the
+        proposal applies to) or an explicit ``node_ids`` / ``ids`` list.
+      * the new type — ``proposed_type`` (preferred) or ``name``; it must be a
+        real :class:`ResearchNodeType` enum value (matched by enum value or
+        name). Proposals naming an unknown type are skipped + logged.
+
+    Pure + deterministic: returns a NEW :class:`ResearchGraph` with renamed node
+    types (edges unchanged). An empty list — or one with no approved, resolvable
+    proposals — returns ``graph`` unchanged (byte-identical no-op).
+
+    The compile-time wiring + the ``TESSERAE_SCHEMA_DRIFT_APPLY`` env gate live
+    in ``project.py`` (plan 05-03); this function only provides the transform.
+    """
+    if not proposals:
+        return graph
+
+    # Build id -> new ResearchNodeType from approved, resolvable proposals.
+    valid_by_value = {t.value: t for t in ResearchNodeType}
+    valid_by_name = {t.name: t for t in ResearchNodeType}
+    retype: Dict[str, ResearchNodeType] = {}
+    skipped = 0
+    for prop in proposals:
+        if not isinstance(prop, dict) or not prop.get("approved"):
+            continue
+        raw_type = prop.get("proposed_type") or prop.get("name")
+        if not raw_type:
+            skipped += 1
+            continue
+        new_type = valid_by_value.get(str(raw_type)) or valid_by_name.get(str(raw_type))
+        if new_type is None:
+            _LOG.warning(
+                "apply_schema_drift: proposed type %r is not a ResearchNodeType "
+                "enum value; skipping.",
+                raw_type,
+            )
+            skipped += 1
+            continue
+        ids = prop.get("node_ids") or prop.get("ids") or prop.get("examples") or []
+        for node_id in ids:
+            retype[str(node_id)] = new_type
+
+    if not retype:
+        return graph
+
+    from dataclasses import replace
+
+    new_nodes: List[ResearchNode] = []
+    for node in graph.nodes:
+        target = retype.get(node.id)
+        if target is not None and target != node.type:
+            new_nodes.append(replace(node, type=target))
+        else:
+            new_nodes.append(node)
+
+    return ResearchGraph(nodes=new_nodes, edges=list(graph.edges))
+
+
 def analyze_schema_drift(
     graph: ResearchGraph,
     *,
