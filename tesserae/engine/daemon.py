@@ -276,7 +276,17 @@ class Daemon:
         from ..project import ProjectWiki
 
         wiki = ProjectWiki.load(self.project_root)
-        steps = [("compile", lambda: wiki.compile(changed_only=bool(paths)))]
+        # Forward the coalesced changed-path set into compile (CMP-04) instead
+        # of dropping it — the provenance-driven differ trusts this explicit set
+        # over the manifest re-scan.
+        steps = [
+            (
+                "compile",
+                lambda: wiki.compile(
+                    changed_only=bool(paths), changed_paths=paths or None
+                ),
+            )
+        ]
         try:
             results = Pipeline(steps).run()
         except Exception as exc:  # noqa: BLE001 - daemon must survive
