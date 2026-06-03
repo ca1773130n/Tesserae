@@ -11,6 +11,7 @@ Postgres adapter introduced in Phase 1b.
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 from tesserae.graph_stores import SqliteGraphStore
@@ -194,3 +195,66 @@ def test_sqlite_graph_store_shares_schema_with_legacy_store(tmp_path: Path) -> N
     assert node is not None
     assert node.name == "LegacyNode"
     assert node.type == ResearchNodeType.PAPER
+
+
+# --------------------------------------------------------------------------- #
+# node_provenance sidecar + delete semantics (CMP-02)                          #
+# --------------------------------------------------------------------------- #
+
+
+def test_delete_nodes_by_source_keeps_cross_file_node(tmp_path: Path) -> None:
+    """A node owned by two source files survives deletion of just one source.
+
+    This is the 2400->1700 anti-collapse guarantee at the unit level: a
+    cross-file concept node referenced by an unchanged file must NOT be
+    tombstoned when one of its sources is re-extracted.
+    """
+    store = SqliteGraphStore(tmp_path / "graph.sqlite")
+    store.upsert_node(_make_node("c:attention", "Attention"))
+    store.record_provenance("c:attention", "a.md", timestamp="2026-01-01T00:00:00Z")
+    store.record_provenance("c:attention", "b.md", timestamp="2026-01-01T00:00:00Z")
+
+    deleted = store.delete_nodes_by_source({"a.md"})
+
+    assert deleted == set()
+    assert store.get_node("c:attention") is not None
+
+
+def test_delete_nodes_by_source_removes_orphaned_node(tmp_path: Path) -> None:
+    """A node whose only source is deleted is tombstoned and returned."""
+    store = SqliteGraphStore(tmp_path / "graph.sqlite")
+    store.upsert_node(_make_node("c:solo", "Solo"))
+    store.record_provenance("c:solo", "a.md", timestamp="2026-01-01T00:00:00Z")
+
+    deleted = store.delete_nodes_by_source({"a.md"})
+
+    assert deleted == {"c:solo"}
+    assert store.get_node("c:solo") is None
+
+
+def test_record_provenance_is_deterministic_first_seen(tmp_path: Path) -> None:
+    """Re-recording preserves ``first_seen_at`` and advances ``last_updated_at``."""
+    store = SqliteGraphStore(tmp_path / "graph.sqlite")
+    store.record_provenance("n", "f", timestamp="T1")
+    store.record_provenance("n", "f", timestamp="T2")
+
+    with sqlite3.connect(store.path) as con:
+        first_seen, last_updated = con.execute(
+            "select first_seen_at, last_updated_at from node_provenance"
+            " where node_id = ? and source_path = ?",
+            ("n", "f"),
+        ).fetchone()
+    assert first_seen == "T1"
+    assert last_updated == "T2"
+
+
+def test_delete_nodes_by_source_empty_set_is_noop(tmp_path: Path) -> None:
+    """An empty changed-source set returns ``set()`` and raises nothing."""
+    store = SqliteGraphStore(tmp_path / "graph.sqlite")
+    assert store.delete_nodes_by_source(set()) == set()
+
+
+def test_store_still_satisfies_protocol(tmp_path: Path) -> None:
+    """The extended adapter still satisfies the runtime-checkable protocol."""
+    store = SqliteGraphStore(tmp_path / "graph.sqlite")
+    assert isinstance(store, GraphStore)
