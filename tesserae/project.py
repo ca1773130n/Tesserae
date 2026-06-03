@@ -1658,6 +1658,178 @@ class ProjectWiki:
         if hasattr(store, "prune_provenance_to_graph"):
             store.prune_provenance_to_graph(graph)
 
+    def _compile_reference_timestamp(self, graph: ResearchGraph) -> "datetime":
+        """A FIXED, content-derived decay reference instant (never now()).
+
+        Decay must be byte-stable across identical-source compiles, so the
+        reference timestamp cannot be wall-clock ``datetime.now()`` (05-RESEARCH
+        Pitfall 1). We anchor on the LATEST ``last_accessed_at`` /
+        ``first_seen_at`` present in node metadata — a deterministic function of
+        the source corpus. When no node carries a parseable timestamp we fall
+        back to a fixed UTC epoch so the value is still deterministic.
+        """
+        from datetime import datetime, timezone
+
+        from .memory.decay import _parse_ts
+
+        latest: Optional[datetime] = None
+        for node in graph.nodes:
+            meta = getattr(node, "metadata", None) or {}
+            if not isinstance(meta, dict):
+                continue
+            for key in ("last_accessed_at", "first_seen_at"):
+                ts = _parse_ts(meta.get(key))
+                if ts is not None and (latest is None or ts > latest):
+                    latest = ts
+        if latest is not None:
+            return latest
+        return datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+    def _run_memory_passes(
+        self,
+        graph: ResearchGraph,
+        json_client: Optional["LLMJsonClient"],
+    ) -> Tuple[ResearchGraph, List["NodeMemoryRow"]]:
+        """Run the Phase-5 self-improvement passes at the compile choke point.
+
+        Order (05-RESEARCH "Compile Pass Order"): restore MCP-accumulated access
+        state -> [schema-drift apply if opted-in] -> contradiction resolution
+        (mints ``resolved_by`` edges into graph.json) -> recurring-insight
+        reinforcement -> compute decay -> stage node_memory rows. Returns the
+        (possibly edge-augmented) graph plus the staged rows; the caller writes
+        graph.json from the returned graph and persists the rows to the
+        node_memory sidecar AFTER the sqlite write.
+
+        Mutable scalars (decay_score / access_count / confidence / superseded)
+        go to node_memory ONLY. The only graph.json delta from a fresh project
+        is the deterministic ``resolved_by`` / ``supersedes`` edges.
+        """
+        from .memory.contradiction import run_contradiction_resolution
+        from .memory.decay import compute_decay_score
+        from .memory.reinforce import compute_recurring_confidence
+        from .memory.store import NodeMemoryRow, read_memory
+
+        # The LLM-arbitrated passes (contradiction, schema-drift) need a client.
+        # Callers that already built one (e.g. via session extraction) pass it
+        # in; otherwise build a best-effort default — None when no backend /
+        # credentials, which keeps those passes no-ops (structural state still
+        # persists). Content-keyed disk caches keep warm reruns byte-stable.
+        if json_client is None:
+            try:
+                from .llm_json import build_default_json_client
+
+                json_client = build_default_json_client()
+            except Exception:  # pragma: no cover — defensive
+                json_client = None
+
+        # (1) Single FIXED reference timestamp for ALL decay computations.
+        reference_dt = self._compile_reference_timestamp(graph)
+        reference_iso = reference_dt.isoformat()
+
+        # (2) Restore MCP-accumulated access state into in-memory node metadata
+        # BEFORE scoring, so decay reflects reads recorded since the last
+        # compile. This mutates node.metadata only — those keys are excluded
+        # from to_json, so graph.json is untouched.
+        prior: Dict[str, "NodeMemoryRow"] = {}
+        try:
+            prior = read_memory(self.paths.sqlite)
+        except Exception:  # pragma: no cover — defensive; missing/locked db
+            logger.exception("phase5: read_memory failed; treating as empty")
+            prior = {}
+        for node in graph.nodes:
+            row = prior.get(node.id)
+            if row is None:
+                continue
+            meta = getattr(node, "metadata", None)
+            if not isinstance(meta, dict):
+                continue
+            if row.access_count:
+                meta["access_count"] = row.access_count
+            if row.last_accessed_at:
+                meta["last_accessed_at"] = row.last_accessed_at
+
+        # (3) Schema-drift apply — OPT-IN, destructive (Pitfall 4). Default
+        # (env unset/falsy) => skipped entirely, graph.json byte-identical.
+        if os.environ.get("TESSERAE_SCHEMA_DRIFT_APPLY", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        } and json_client is not None:
+            try:
+                from .schema_drift import analyze_schema_drift, apply_schema_drift
+
+                _report_path, host_reports = analyze_schema_drift(
+                    graph, tesserae_dir=self.paths.root, llm=json_client
+                )
+                approved: List[dict] = []
+                for report in host_reports:
+                    for prop in getattr(report, "proposals", []) or []:
+                        as_dict = prop if isinstance(prop, dict) else getattr(prop, "__dict__", {})
+                        if as_dict.get("approved"):
+                            approved.append(as_dict)
+                if approved:
+                    before = len(approved)
+                    graph = apply_schema_drift(graph, approved)
+                    logger.info(
+                        "phase5 schema-drift apply: applied %d approved proposal(s)",
+                        before,
+                    )
+            except Exception:  # pragma: no cover — defensive
+                logger.exception("phase5 schema-drift apply failed; continuing")
+
+        # (4) Contradiction resolution (KB-04): mints deterministic
+        # ``resolved_by`` edges into graph.json; conf_map -> node_memory.
+        conf_map: Dict[str, str] = {}
+        if json_client is not None:
+            try:
+                graph, conf_map = run_contradiction_resolution(
+                    graph,
+                    llm=json_client,
+                    cache_dir=self.paths.root / "contradiction_cache",
+                )
+            except Exception:  # pragma: no cover — defensive
+                logger.exception("phase5 contradiction resolution failed")
+                conf_map = {}
+
+        # (5) Recurring-insight reinforcement (KB-05): confidence -> node_memory
+        # (NEVER graph.json). Reinforced "high" wins over contradiction's map.
+        try:
+            recur = compute_recurring_confidence(graph)
+        except Exception:  # pragma: no cover — defensive
+            logger.exception("phase5 reinforcement failed")
+            recur = {}
+        confidence_by_id: Dict[str, str] = dict(conf_map)
+        confidence_by_id.update(recur)
+
+        # (6) Superseded targets — a node pointed AT by a ``supersedes`` edge is
+        # obsolete. Flag drives the MCP fresh-insights filter; node_memory only.
+        superseded_ids: Set[str] = {
+            e.target for e in graph.edges if e.type == "supersedes"
+        }
+
+        # (7) Stage one NodeMemoryRow per node: deterministic decay at the fixed
+        # reference, carrying forward MCP access state from ``prior``.
+        rows: List["NodeMemoryRow"] = []
+        for node in graph.nodes:
+            prev = prior.get(node.id)
+            try:
+                decay_score = compute_decay_score(node, reference_dt)
+            except Exception:  # pragma: no cover — defensive
+                decay_score = 1.0
+            rows.append(
+                NodeMemoryRow(
+                    node_id=node.id,
+                    decay_score=decay_score,
+                    access_count=(prev.access_count if prev else 0),
+                    last_accessed_at=(prev.last_accessed_at if prev else None),
+                    confidence=confidence_by_id.get(node.id),
+                    superseded=(node.id in superseded_ids),
+                    updated_at=reference_iso,
+                )
+            )
+        return graph, rows
+
     def _write_artifacts(
         self,
         graph: ResearchGraph,
@@ -1667,6 +1839,7 @@ class ProjectWiki:
         extraction_prov: Optional[
             Tuple[List[Tuple[str, str, str]], List[Tuple[str, str, str, str, str]]]
         ] = None,
+        json_client: Optional["LLMJsonClient"] = None,
     ) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
 
@@ -1704,6 +1877,30 @@ class ProjectWiki:
         # so the projections diverge byte-wise even when the graph is logically
         # equal (CMP-03). Idempotent no-op for an already-canonical graph.
         graph = graph.canonicalized()
+
+        # ------------------------------------------------------------ Phase 5
+        # Self-improvement passes (KB-01/03/04/05/06). Node ids are now final
+        # (canonicalized above) but graph.json has NOT been written yet — the
+        # right choke point to (a) mint the deterministic graph.json edges
+        # (resolved_by / supersedes already present) and (b) compute the
+        # mutable memory state that goes EXCLUSIVELY to the node_memory sidecar
+        # (decay_score / access_count / confidence / superseded). graph.json
+        # must stay byte-identical across identical-source compiles, so NOTHING
+        # below writes a mutable scalar into the node serialization — decay and
+        # confidence land in node_memory only; resolved_by edges are
+        # deterministic (content-keyed warm cache). 05-RESEARCH "Compile Pass
+        # Order"; Pitfalls 1 (fixed reference timestamp), 2 (sidecar-only),
+        # 4 (schema-drift apply is opt-in/destructive).
+        #
+        # The whole block is best-effort: a missing/locked sidecar db or an
+        # absent LLM client must degrade gracefully and never fail a compile.
+        memory_rows: List["NodeMemoryRow"] = []
+        try:
+            graph, memory_rows = self._run_memory_passes(graph, json_client)
+        except Exception:  # pragma: no cover — defensive; never fail compile
+            logger.exception("phase5 memory passes failed; continuing")
+            memory_rows = []
+
         # Karpathy schema layer: purpose / schema / index / log files at the
         # top of the wiki dir. ``purpose.md`` is seeded once and preserved on
         # later compiles so user edits survive; the others regenerate.
@@ -1805,6 +2002,18 @@ class ProjectWiki:
             # content-derived timestamps (never datetime.now(), 04-RESEARCH
             # Pitfall 1); SQLite-only, never in graph.json.
             self._record_provenance(store, graph, extraction_prov)
+        # Phase 5 (KB-01/04/05): persist mutable memory state to the
+        # node_memory sidecar AFTER graph.json + sqlite writes, so node ids are
+        # final. decay_score / access_count / last_accessed_at / confidence /
+        # superseded live HERE ONLY — never in graph.json. Best-effort: a
+        # locked/missing sidecar must not fail the compile.
+        if memory_rows:
+            try:
+                from .memory.store import write_memory
+
+                write_memory(self.paths.sqlite, memory_rows)
+            except Exception:  # pragma: no cover — defensive
+                logger.exception("phase5 write_memory failed; continuing")
         GraphMarkdownProjector().write_projection(graph, self.paths.markdown_projection)
         # markdown_projection/ is a one-way projection (no user notes), but like
         # the Obsidian vault it is NOT rmtree'd, so a rename / deletion leaves a
