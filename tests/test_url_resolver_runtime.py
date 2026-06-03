@@ -16,7 +16,12 @@ from pathlib import Path
 import pytest
 
 import tesserae.graph_stores.url_resolver as url_resolver
-from tesserae.graph_stores.url_resolver import _runtime, shutdown_runtime
+from tesserae.graph_stores.url_resolver import (
+    _PostgresGraphStoreSession,
+    _runtime,
+    shutdown_runtime,
+)
+from tesserae.ports.graph_store import GraphStore
 
 
 @pytest.fixture(autouse=True)
@@ -64,3 +69,50 @@ def test_shutdown_runtime_allows_recreate():
 
 async def _echo(value):
     return value
+
+
+# --- Protocol conformance (codex M7) ------------------------------------ #
+#
+# Phase 4 added delete_node / delete_nodes_by_source to the runtime-checkable
+# GraphStore protocol. The synchronous Postgres wrapper returned by
+# resolve_graph_store("postgres://...") must keep satisfying that protocol.
+# Constructing it needs no live DB (the async session is opened lazily,
+# per-call), so isinstance against the runtime_checkable protocol is enough.
+
+
+def test_postgres_session_satisfies_graphstore_protocol():
+    session = _PostgresGraphStoreSession(owner_user_id=None)
+    assert isinstance(session, GraphStore), (
+        "M7 regression: _PostgresGraphStoreSession no longer satisfies the "
+        "GraphStore protocol (missing delete_node / delete_nodes_by_source?)"
+    )
+
+
+def test_postgres_session_defines_delete_methods():
+    for name in ("delete_node", "delete_nodes_by_source"):
+        attr = getattr(_PostgresGraphStoreSession, name, None)
+        assert callable(attr), f"_PostgresGraphStoreSession missing {name}"
+
+
+def test_postgres_session_has_full_graphstore_surface():
+    # Every method named on the GraphStore protocol must be present.
+    for name in (
+        "upsert_node",
+        "upsert_edge",
+        "get_node",
+        "iterate_nodes",
+        "query_subgraph",
+        "find_canonical",
+        "delete_node",
+        "delete_nodes_by_source",
+    ):
+        assert hasattr(_PostgresGraphStoreSession, name), (
+            f"_PostgresGraphStoreSession missing GraphStore method {name}"
+        )
+
+
+def test_delete_nodes_by_source_empty_is_noop_without_db():
+    # Empty source set short-circuits before any async dispatch, so it must
+    # return an empty set even with no live Postgres / runtime.
+    session = _PostgresGraphStoreSession(owner_user_id=None)
+    assert session.delete_nodes_by_source(set()) == set()

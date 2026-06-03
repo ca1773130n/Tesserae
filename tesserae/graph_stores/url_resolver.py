@@ -29,7 +29,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from pathlib import Path
-from typing import Iterator, List, Optional, Union
+from typing import Iterator, List, Optional, Set, Union
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -220,6 +220,41 @@ class _PostgresGraphStoreSession:
         return _runtime().run(
             self._run(lambda store: store.afind_canonical(name, node_type))
         )
+
+    def delete_node(self, node_id: str) -> bool:
+        """Delete a single node (and its incident edges/provenance). Returns
+        ``True`` if a node row was removed.
+
+        Bridges to the async Postgres layer's ``adelete_node`` via the
+        persistent runtime, in the same per-session style as the other
+        methods. Matches :meth:`SqliteGraphStore.delete_node`: incident
+        edges are removed in the same operation (M6 consistency) and the
+        boolean reflects whether a node actually existed.
+        """
+        return _runtime().run(
+            self._run(lambda store: store.adelete_node(node_id))
+        )
+
+    def delete_nodes_by_source(self, source_paths: Set[str]) -> Set[str]:
+        """Delete nodes whose provenance set becomes EMPTY after removing
+        ``source_paths`` and return the SET of deleted node ids.
+
+        Mirrors :meth:`SqliteGraphStore.delete_nodes_by_source`: a node that
+        is still referenced by an unchanged ``source_path`` survives
+        (cross-file concepts are preserved); only nodes left with no
+        provenance are removed, along with their incident edges (M6
+        consistency). Empty ``source_paths`` is a no-op returning
+        ``set()`` (an empty SQL ``IN`` clause is invalid), so we short-
+        circuit before dispatching to the async layer. The async layer is
+        expected to return an iterable of the deleted node ids, which we
+        normalise to a ``set``.
+        """
+        if not source_paths:
+            return set()
+        deleted = _runtime().run(
+            self._run(lambda store: store.adelete_nodes_by_source(source_paths))
+        )
+        return set(deleted)
 
 
 __all__ = ["resolve_graph_store", "shutdown_runtime"]
