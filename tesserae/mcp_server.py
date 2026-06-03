@@ -15,7 +15,7 @@ import re
 import sys
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from .ports import GraphStore
 from .retrieval.hybrid import (
@@ -457,6 +457,15 @@ class LLMWikiMCPServer:
                             "description": "Optional per-lane weight overrides (keys: bm25, lexical, embedding).",
                             "additionalProperties": {"type": "number"},
                         },
+                        "include_superseded": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "When true, include nodes superseded by a newer "
+                                "near-duplicate (the loser of a `supersedes` edge). "
+                                "Default false suppresses them."
+                            ),
+                        },
                     },
                     "additionalProperties": False,
                 },
@@ -477,6 +486,15 @@ class LLMWikiMCPServer:
                         "node_id": {"type": "string", "description": "Exact node id to inspect."},
                         "name": {"type": "string", "description": "Exact case-insensitive node name if node_id is omitted."},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
+                        "include_superseded": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "When true, include superseded neighbour nodes and "
+                                "edges incident to them. Default false suppresses "
+                                "both the superseded neighbours and their edges."
+                            ),
+                        },
                     },
                     "additionalProperties": False,
                 },
@@ -849,6 +867,14 @@ class LLMWikiMCPServer:
                                 "todo", "hypothesis", "takeaway",
                             ],
                             "description": "Restrict to one finding kind.",
+                        },
+                        "include_superseded": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "When true, include findings superseded by a newer "
+                                "near-duplicate. Default false suppresses them."
+                            ),
                         },
                     },
                     "additionalProperties": False,
@@ -1412,6 +1438,7 @@ class LLMWikiMCPServer:
                 project_root=project_root,
                 limit=int(args.get("limit") or 10),
                 kind=(str(args.get("kind")).strip() if args.get("kind") else None),
+                include_superseded=bool(args.get("include_superseded", False)),
             )
         if name == "tesserae_setup_plan":
             from .setup import build_plan, detect
@@ -1789,6 +1816,7 @@ class LLMWikiMCPServer:
         project_root: Optional[Path] = None,
         limit: int = 10,
         kind: Optional[str] = None,
+        include_superseded: bool = False,
     ) -> JSONDict:
         """Top session findings by decay_score, excluding superseded ones.
 
@@ -1809,10 +1837,17 @@ class LLMWikiMCPServer:
 
         # Any node with an OUTGOING `supersedes` edge is the WINNER —
         # keep it. Filter out the LOSER: any node that is the target of
-        # such an edge (i.e. has been superseded). This matches the
-        # canonical orientation chosen by tesserae.memory.supersede and
-        # is shared with search_nodes/node_context via the helper.
-        superseded_ids: set = _superseded_ids(graph)
+        # such an edge (i.e. has been superseded) unless include_superseded.
+        # This matches the canonical orientation chosen by
+        # tesserae.memory.supersede and is shared with
+        # search_nodes/node_context via the helper.
+        superseded_ids: set = set() if include_superseded else _superseded_ids(graph)
+
+        # KB-02 byte-idempotence: access state (access_count/last_accessed_at/
+        # decay) lives ONLY in the node_memory sidecar, never on
+        # node.metadata. Read it directly so scoring + output do not depend on
+        # the compile stamping memory fields into graph.json.
+        memory_rows = self._read_node_memory(project_root)
 
         now = datetime.now(timezone.utc)
         scored: List[Tuple[float, ResearchNode]] = []
@@ -1824,7 +1859,9 @@ class LLMWikiMCPServer:
                 continue
             if node.id in superseded_ids:
                 continue
-            score = compute_decay_score(node, now)
+            score = compute_decay_score(
+                self._decay_view(node, memory_rows.get(node.id)), now
+            )
             scored.append((score, node))
 
         # Highest score first; ties broken by node id for determinism.
@@ -1836,6 +1873,7 @@ class LLMWikiMCPServer:
             # KB-02: these are the nodes the agent actually surfaced.
             self._bump_node_access(project_root, node.id)
             meta = node.metadata or {}
+            row = memory_rows.get(node.id)
             out.append(
                 {
                     "node_id": node.id,
@@ -1843,12 +1881,52 @@ class LLMWikiMCPServer:
                     "body": node.name,
                     "session_id": meta.get("session_id"),
                     "first_seen_at": meta.get("first_seen_at"),
-                    "last_accessed_at": meta.get("last_accessed_at"),
-                    "access_count": meta.get("access_count") or 0,
+                    "last_accessed_at": (
+                        row.last_accessed_at if row is not None else None
+                    ),
+                    "access_count": row.access_count if row is not None else 0,
                     "decay_score": round(score, 4),
                 }
             )
         return {"findings": out, "total": len(scored)}
+
+    @staticmethod
+    def _decay_view(node: ResearchNode, row: Optional[Any]) -> Mapping[str, Any]:
+        """Metadata view for decay scoring with sidecar access state overlaid.
+
+        ``first_seen_at`` stays compile-owned (read from ``node.metadata``);
+        ``last_accessed_at`` / ``access_count`` are read from the node_memory
+        sidecar row when present so scoring never depends on access fields
+        being stamped into ``graph.json`` (KB-02 byte-idempotence).
+        """
+        meta = dict(node.metadata or {})
+        if row is not None:
+            meta["last_accessed_at"] = row.last_accessed_at
+            meta["access_count"] = row.access_count
+        else:
+            # No sidecar row: ignore any stale access fields on metadata so the
+            # node scores as freshly minted from first_seen_at alone.
+            meta.pop("last_accessed_at", None)
+            meta.pop("access_count", None)
+        return meta
+
+    def _read_node_memory(self, project_root: Optional[Path]) -> Dict[str, Any]:
+        """Return ``{node_id: NodeMemoryRow}`` from the sidecar, or ``{}``.
+
+        Degrades to an empty mapping when the project root or sidecar db is
+        unavailable — a read must never fail because the memory layer is.
+        """
+        if project_root is None:
+            return {}
+        try:
+            from .memory.store import read_memory as _read_memory
+
+            db_path = project_root / ".tesserae" / "sqlite.db"
+            if not db_path.exists():
+                return {}
+            return _read_memory(db_path)
+        except Exception:
+            return {}
 
     def graph_summary(self, graph: ResearchGraph) -> JSONDict:
         # Code-graph nodes live in code-graph.json; never count them in the
@@ -2205,9 +2283,21 @@ class LLMWikiMCPServer:
         if not node:
             raise ValueError("Node not found; provide an exact node_id or node name")
         bounded_limit = max(1, min(limit, 200))
-        suppressed = _superseded_ids(graph)
+        suppressed = set() if include_superseded else _superseded_ids(graph)
         node_by_id = {candidate.id: candidate for candidate in graph.nodes}
-        incident_edges = [edge for edge in graph.edges if edge.source == node.id or edge.target == node.id][:bounded_limit]
+        # Incident edges whose OTHER endpoint is suppressed are dropped along
+        # with the suppressed neighbour itself — otherwise an edge would leak a
+        # reference to a node we deliberately filtered out (consistent with
+        # node suppression). The requested node is always kept even if it is
+        # itself suppressed (the caller asked for it by id/name). Filter BEFORE
+        # capping so the limit applies to surfaced edges, not dropped ones.
+        incident_edges = [
+            edge
+            for edge in graph.edges
+            if (edge.source == node.id or edge.target == node.id)
+            and (edge.target if edge.source == node.id else edge.source)
+            not in suppressed
+        ][:bounded_limit]
         neighbor_ids = []
         for edge in incident_edges:
             other_id = edge.target if edge.source == node.id else edge.source
@@ -2219,11 +2309,10 @@ class LLMWikiMCPServer:
         neighbors = [
             node_to_dict(node_by_id[neighbor_id])
             for neighbor_id in neighbor_ids
-            if neighbor_id in node_by_id
-            and (include_superseded or neighbor_id not in suppressed)
+            if neighbor_id in node_by_id and neighbor_id not in suppressed
         ]
         node_payload = node_to_dict(node)
-        node_payload["superseded"] = node.id in suppressed
+        node_payload["superseded"] = node.id in _superseded_ids(graph)
         # KB-02: record that an agent actually read this node.
         self._bump_node_access(project_root, node.id)
         return {"node": node_payload, "edges": [edge_to_dict(edge) for edge in incident_edges], "neighbors": neighbors}
