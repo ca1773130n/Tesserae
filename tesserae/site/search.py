@@ -506,13 +506,12 @@ def _wiki_created_ts(page: WikiPage) -> Optional[float]:
             ts = _coerce_ts(fm.get(key))
             if ts is not None:
                 return ts
-    # Fall back to the on-disk mtime; harmless if the path is None / missing.
-    path = getattr(page, "path", None)
-    if path is not None:
-        try:
-            return float(path.stat().st_mtime)
-        except (OSError, AttributeError):
-            return None
+    # No content date in the frontmatter → ``None``. We deliberately do NOT
+    # fall back to ``path.stat().st_mtime``: the wiki page is re-rendered on
+    # every compile, so its mtime tracks wall-clock time and would leak a
+    # build-time value into the search index's ``created_ts`` — breaking
+    # byte-idempotence across recompiles. ``None`` is deterministic, and
+    # ``recency_factor`` already treats it as "unknown / not fresh".
     return None
 
 

@@ -112,41 +112,52 @@ def _make_extractor(
     )
 
 
+def _mutate_turns(session: HarnessSession, turns: List[dict]) -> HarnessSession:
+    d = session.to_dict()
+    d["metadata"] = {**(d.get("metadata") or {}), "turns": turns}
+    return HarnessSession.from_dict(d)
+
+
 def test_cache_hit_skips_llm_call(tmp_path: Path):
-    session = _session()
-    client = _ScriptedClient([_scripted_finding_response()])
+    # Per-chunk cache (v3): a cold 3-turn extract @ default chunk size 30
+    # is a single chunk → one LLM call.
+    session = _session(turns=3)
+    client = _ScriptedClient([_scripted_finding_response() for _ in range(3)])
     extractor = _make_extractor(tmp_path, [session], client=client)
 
-    # First call → miss → LLM hit.
+    # First call → the single chunk misses → 1 LLM call.
     extractor.extract()
     assert client.calls == 1
 
-    # Second call (fresh extractor instance, same client) → cache hit.
-    client2 = _ScriptedClient([_scripted_finding_response()])
+    # Second call (fresh extractor instance, same content) → the chunk hits.
+    client2 = _ScriptedClient([_scripted_finding_response() for _ in range(3)])
     extractor2 = _make_extractor(
         tmp_path, [session], client=client2,
         project_root=extractor.project_root,
     )
     extractor2.extract()
-    assert client2.calls == 0, "second extract should hit the cache, not call LLM"
+    assert client2.calls == 0, "second extract should hit the per-chunk cache"
 
 
 def test_content_hash_change_invalidates_cache(tmp_path: Path):
-    session = _session()
-    client = _ScriptedClient([_scripted_finding_response()])
+    # Changing a TURN's text (not just title) invalidates the chunk it lives in.
+    session = _session(turns=3)
+    client = _ScriptedClient([_scripted_finding_response() for _ in range(3)])
     extractor = _make_extractor(tmp_path, [session], client=client)
     extractor.extract()
     assert client.calls == 1
 
-    # Change the session's content (different title, different metadata hash).
-    changed = HarnessSession.from_dict({**session.to_dict(), "title": "T2"})
-    client2 = _ScriptedClient([_scripted_finding_response()])
+    # Mutate one turn's text → the single chunk re-extracts (content-keyed).
+    new_turns = [{"role": "user", "text": f"q{i}"} for i in range(3)]
+    new_turns[1] = {"role": "user", "text": "CHANGED"}
+    changed = _mutate_turns(session, new_turns)
+    client2 = _ScriptedClient([_scripted_finding_response() for _ in range(3)])
     extractor2 = _make_extractor(
         tmp_path, [changed], client=client2,
         project_root=extractor.project_root,
     )
     extractor2.extract()
-    assert client2.calls == 1, "changed content_hash must invalidate the cache"
+    assert client2.calls == 1, "the mutated turn's chunk must re-extract"
 
 
 def test_project_root_hash_mismatch_rejects_cache(tmp_path: Path):
@@ -155,23 +166,25 @@ def test_project_root_hash_mismatch_rejects_cache(tmp_path: Path):
     project_a = tmp_path / "project-a"
     project_b = tmp_path / "project-b"
 
-    client_a = _ScriptedClient([_scripted_finding_response()])
+    client_a = _ScriptedClient([_scripted_finding_response() for _ in range(3)])
     extractor_a = _make_extractor(
         tmp_path, [session], client=client_a, project_root=project_a
     )
     extractor_a.extract()
     assert client_a.calls == 1
 
-    # Simulate someone copying project-a's cache file into project-b's
-    # cache dir (e.g. by `cp -R` of the .tesserae/ dir between projects).
-    cache_file = next((project_a / ".tesserae/session_findings").glob("*.findings.json"))
+    # Simulate someone copying project-a's per-session cache DIR into
+    # project-b's cache dir (e.g. by `cp -R` of the .tesserae/ dir).
+    import shutil
+
+    src_dir = next((project_a / ".tesserae/session_findings").iterdir())
     target_cache = project_b / ".tesserae/session_findings"
     target_cache.mkdir(parents=True, exist_ok=True)
-    (target_cache / cache_file.name).write_bytes(cache_file.read_bytes())
+    shutil.copytree(src_dir, target_cache / src_dir.name)
 
     # Now run extractor in project-b. The cached project_root_hash points
-    # at project-a, so we must reject the cache and re-extract.
-    client_b = _ScriptedClient([_scripted_finding_response()])
+    # at project-a, so every turn must reject the cache and re-extract.
+    client_b = _ScriptedClient([_scripted_finding_response() for _ in range(3)])
     extractor_b = _make_extractor(
         tmp_path, [session], client=client_b, project_root=project_b
     )
@@ -186,13 +199,15 @@ def test_stale_cache_pruned_on_extract(tmp_path: Path):
     session = _session(id="sess-current")
     extractor = _make_extractor(tmp_path, [session], client=_ScriptedClient([]))
 
-    # Plant a stale cache file from a long-gone session id.
-    stale_path = extractor.cache_dir / "sess-old.findings.json"
-    stale_path.write_text(json.dumps({"schema_version": 1}), encoding="utf-8")
+    # Plant a stale per-session cache DIR from a long-gone session id.
+    stale_dir = extractor.cache_dir / "sess-old"
+    stale_dir.mkdir(parents=True, exist_ok=True)
+    stale_path = stale_dir / "chunk-0.json"
+    stale_path.write_text(json.dumps({"schema_version": 3}), encoding="utf-8")
     assert stale_path.exists()
 
     extractor.extract()
-    assert not stale_path.exists(), "stale cache file should be pruned"
+    assert not stale_dir.exists(), "stale cache dir should be pruned"
 
 
 def test_no_client_returns_structural_only(tmp_path: Path):

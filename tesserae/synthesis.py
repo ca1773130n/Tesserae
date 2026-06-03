@@ -44,6 +44,76 @@ DEFAULT_LLM_MODEL = "claude-sonnet-4-6"
 _DAILY_RE = re.compile(r"data/research/daily/(\d{4}-\d{2}-\d{2})/")
 _WEEKLY_RE = re.compile(r"data/research/weekly/(\d{4}-W\d{2})/")
 
+# Fixed fallback when the graph carries no content date at all. Stable and
+# clearly bogus — never ``datetime.now()`` — so a fresh/empty corpus still
+# compiles byte-idempotently.
+_EPOCH_BUILD_ISO = "1970-01-01T00:00:00Z"
+
+# Metadata keys, in preference order, that hold a content date we can hash a
+# deterministic build stamp out of. ``analysis_date`` (the daily/weekly source
+# capture date) is the dominant one; the rest are defensive.
+_CONTENT_DATE_KEYS = (
+    "analysis_date",
+    "published_at",
+    "updated_at",
+    "created_at",
+    "date",
+)
+
+
+def _content_build_iso(graph: ResearchGraph) -> str:
+    """Derive a DETERMINISTIC build timestamp from the graph's content.
+
+    Returns the latest content date found across node metadata, normalised to
+    an ISO-8601 ``...Z`` string. This is stable across recompiles of unchanged
+    sources (unlike ``datetime.now()``), so the synthesis history ledger — and
+    everything downstream of it (``dateModified``, RSS ``lastBuildDate`` /
+    ``pubDate``) — stays byte-idempotent.
+
+    When the graph carries no recognisable content date, falls back to
+    :data:`_EPOCH_BUILD_ISO`. Never reads the wall clock.
+    """
+
+    latest: str = ""
+    for node in graph.nodes:
+        metadata = getattr(node, "metadata", None)
+        if not isinstance(metadata, dict):
+            continue
+        for key in _CONTENT_DATE_KEYS:
+            raw = metadata.get(key)
+            if not isinstance(raw, str):
+                continue
+            iso = _normalise_content_date(raw)
+            if iso and iso > latest:
+                latest = iso
+    return latest or _EPOCH_BUILD_ISO
+
+
+def _normalise_content_date(value: str) -> Optional[str]:
+    """Normalise a content-date string to ``YYYY-MM-DDTHH:MM:SSZ``.
+
+    Accepts a bare ``YYYY-MM-DD`` (midnight UTC assumed) or a full ISO-8601
+    timestamp. Returns ``None`` for anything unparseable so it is ignored
+    rather than corrupting the max. Lexical ordering of the returned strings
+    matches chronological ordering, so callers can ``max()`` on the raw text.
+    """
+
+    text = value.strip()
+    if not text:
+        return None
+    cleaned = text.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(cleaned)
+    except ValueError:
+        # Bare date (``YYYY-MM-DD``) — promote to midnight UTC.
+        try:
+            dt = datetime.fromisoformat(text + "T00:00:00+00:00")
+        except ValueError:
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
 
 _SOURCE_TYPES = {
     ResearchNodeType.SOURCE_DOCUMENT,
@@ -364,7 +434,16 @@ class SynthesisProjector:
 
     def project(self, graph: ResearchGraph) -> Tuple[ResearchGraph, List[WikiPage]]:
         ctx = _GraphContext(graph)
-        generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # ``generated_at`` must be DETERMINISTIC across recompiles of unchanged
+        # sources: it flows into the append-only history ledger and from there
+        # into the site's ``dateModified`` / RSS ``lastBuildDate`` / ``pubDate``
+        # fields. A wall-clock ``datetime.now()`` here makes two consecutive
+        # compiles that straddle a 1-second boundary emit different bytes.
+        # Instead we derive the stamp from the graph's CONTENT — the latest
+        # content date already present in the graph — which is stable as long
+        # as the inputs are unchanged. When no content date exists we fall back
+        # to a FIXED epoch constant, never ``now()``.
+        generated_at = _content_build_iso(graph)
         plans: List[_PagePlan] = []
 
         plans.append(self._plan_pulse(ctx))

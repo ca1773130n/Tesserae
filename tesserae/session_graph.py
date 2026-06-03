@@ -6,12 +6,34 @@ finding extraction (:mod:`tesserae.session_graph_llm`) into a single
 :class:`ResearchGraph` slice that
 :func:`tesserae.project.merge_graphs` can fold into the doc graph.
 
-Caching: every session's LLM-extracted findings are persisted to
-``.tesserae/session_findings/<session_id>.findings.json`` with a
-content_hash AND a project_root_hash envelope. On the next compile we
-skip the LLM call when both hashes match. The project_root_hash
-prevents cross-project cache replay if a user copies a vault between
-checkouts.
+Caching (per-CHUNK, SESS-02): each session's LLM-extracted findings are
+persisted PER CHUNK to
+``.tesserae/session_findings/<session_id>/chunk-<K>.json`` with a
+chunk_content_hash AND a project_root_hash envelope. Turns are
+partitioned into stable, NON-overlapping chunks of
+``max_turns_per_chunk`` aligned to the ORIGINAL transcript indices
+(chunk k = turns[k*size : (k+1)*size]). On the next compile we skip the
+LLM call for every chunk whose content hash is unchanged and only
+re-extract the chunks that changed.
+
+Why chunk-level instead of per-turn? The extractor (:func:`extract_with_llm`)
+produces findings that can span multiple turns WITHIN a chunk. Extracting
+one turn at a time would (a) renumber each turn's id to 0 and (b) make
+cross-turn findings impossible — so the "incremental == whole-session"
+merge guarantee would be false for the real extractor. Caching at the
+extractor's natural chunk granularity preserves cross-turn findings AND
+the original turn ids (we pass each chunk's ORIGINAL transcript index as
+an offset and remap returned ``turn_ids`` back to original indices),
+while still skipping unchanged chunks.
+
+Incrementality: appending a turn invalidates only the LAST (now-changed)
+chunk; an inserted/mutated middle turn invalidates that chunk and every
+downstream chunk (their content hashes shift). A 20-turn session with
+``max_turns_per_chunk=10`` that grew by one turn re-extracts exactly 1 of
+its 2 chunks (chunk hit ratio 1/2). The project_root_hash prevents
+cross-project cache replay if a user copies a vault between checkouts.
+The cache stays content-keyed (not wall-clock-keyed) to preserve the
+deterministic byte-identical compile guarantee.
 """
 
 from __future__ import annotations
@@ -42,7 +64,7 @@ from .session_graph_structural import extract_structural
 logger = logging.getLogger(__name__)
 
 
-CACHE_SCHEMA_VERSION = 1
+CACHE_SCHEMA_VERSION = 3
 
 
 # Map from Finding.kind (lowercase string) to ResearchNodeType.
@@ -173,54 +195,93 @@ class SessionGraphExtractor:
         session: HarnessSession,
         doc_id_context: List[Tuple[str, str]],
     ) -> List[Finding]:
-        """Cache-aware LLM extraction for one session."""
-        content_hash = _session_content_hash(session)
-        project_root_hash = _project_root_hash(self.project_root)
-        cache_path = self.cache_dir / f"{_safe(session.id)}.findings.json"
+        """Per-CHUNK, cache-aware LLM extraction for one session.
 
-        # Cache hit?
-        if cache_path.exists():
-            cached = _read_cache(cache_path)
-            if (
-                cached
-                and cached.get("schema_version") == CACHE_SCHEMA_VERSION
-                and cached.get("content_hash") == content_hash
-                and cached.get("project_root_hash") == project_root_hash
-            ):
-                return [_finding_from_dict(d) for d in cached.get("findings") or []]
+        Partitions the session's normalised turns into stable,
+        non-overlapping chunks of ``max_turns_per_chunk`` aligned to the
+        ORIGINAL transcript indices (chunk k = turns[k*size:(k+1)*size]).
+        A chunk whose content hash matches its cached envelope loads from
+        disk (hit); a chunk that changed is re-extracted (miss). Each
+        chunk is extracted with its turns carrying their ORIGINAL indices
+        — ``extract_with_llm`` renders turn_ids from 0 within the chunk it
+        receives, so we remap the returned ``turn_ids`` back to original
+        transcript indices (chunk-local + offset). This preserves
+        cross-turn findings (they span turns within a chunk) AND the real
+        turn ids, so the concatenation over chunks is byte-identical to a
+        whole-session extraction over the same non-overlapping chunking.
 
-        # Cache miss → extract.
+        Only changed chunks hit the LLM: appending one turn re-extracts
+        just the last chunk (hit ratio (chunks-1)/chunks); an inserted or
+        mutated middle turn re-extracts that chunk and all downstream
+        chunks (their content hashes shift).
+        """
         turns = _normalised_turns(session)
         if not turns:
             return []
-        findings = extract_with_llm(
-            session,
-            turns,
-            doc_id_context,
-            self.json_client,
-            max_turns_per_chunk=self.max_turns_per_chunk,
-            cache_key=f"sessions-v{CACHE_SCHEMA_VERSION}",
-            guidance=self.guidance,
-        )
-        _write_cache(
-            cache_path,
-            {
-                "schema_version": CACHE_SCHEMA_VERSION,
-                "content_hash": content_hash,
-                "project_root_hash": project_root_hash,
-                "session_id": session.id,
-                "findings": [
-                    {
-                        "kind": f.kind,
-                        "body": f.body,
-                        "turn_ids": f.turn_ids,
-                        "references": f.references,
-                    }
-                    for f in findings
-                ],
-            },
-        )
-        return findings
+        project_root_hash = _project_root_hash(self.project_root)
+        size = max(1, int(self.max_turns_per_chunk))
+
+        all_findings: List[Finding] = []
+        for chunk_index, start in enumerate(range(0, len(turns), size)):
+            chunk = turns[start : start + size]
+            cpath = _chunk_cache_path(self.cache_dir, session.id, chunk_index)
+            chash = _chunk_content_hash(chunk)
+
+            # Cache hit?
+            if cpath.exists():
+                cached = _read_cache(cpath)
+                if (
+                    cached
+                    and cached.get("schema_version") == CACHE_SCHEMA_VERSION
+                    and cached.get("chunk_hash") == chash
+                    and cached.get("project_root_hash") == project_root_hash
+                ):
+                    all_findings.extend(
+                        _finding_from_dict(d) for d in cached.get("findings") or []
+                    )
+                    continue
+
+            # Cache miss → extract this chunk. Pass max_turns_per_chunk >=
+            # len(chunk) so extract_with_llm treats the chunk as a single
+            # window (no internal re-chunking) — the chunking decision is
+            # ours so it stays aligned to original indices.
+            raw_findings = extract_with_llm(
+                session,
+                chunk,
+                doc_id_context,
+                self.json_client,
+                max_turns_per_chunk=max(size, len(chunk)),
+                overlap=0,
+                cache_key=f"sessions-v{CACHE_SCHEMA_VERSION}",
+                guidance=self.guidance,
+            )
+            # Remap chunk-local turn_ids (0-based within the chunk) back to
+            # ORIGINAL transcript indices. extract_with_llm enumerates the
+            # passed chunk from 0, so finding turn_id j → original start+j.
+            findings = [_offset_turn_ids(f, start) for f in raw_findings]
+            _write_cache(
+                cpath,
+                {
+                    "schema_version": CACHE_SCHEMA_VERSION,
+                    "chunk_hash": chash,
+                    "project_root_hash": project_root_hash,
+                    "chunk_index": chunk_index,
+                    "turn_start": start,
+                    "session_id": session.id,
+                    "findings": [
+                        {
+                            "kind": f.kind,
+                            "body": f.body,
+                            "turn_ids": f.turn_ids,
+                            "references": f.references,
+                        }
+                        for f in findings
+                    ],
+                },
+            )
+            all_findings.extend(findings)
+
+        return all_findings
 
     def _mint_findings(
         self,
@@ -298,15 +359,30 @@ class SessionGraphExtractor:
     # ------------------------------------------------------------------
 
     def _prune_stale_caches(self, live_ids: Set[str]) -> None:
+        """Remove per-session cache dirs for ids no longer in the live set.
+
+        The v3 layout stores each session's per-chunk findings under
+        ``cache_dir/<safe_id>/chunk-<K>.json``, so we garbage-collect by
+        directory keyed on ``_safe(id)``. Defensive against OSError so a
+        permission hiccup never aborts a compile.
+        """
         if not self.cache_dir.exists():
             return
-        for path in self.cache_dir.glob("*.findings.json"):
-            sid = path.stem.rsplit(".", 1)[0]  # strip ".findings"
-            if sid not in live_ids:
-                try:
-                    path.unlink()
-                except OSError:
-                    pass
+        live_safe = {_safe(sid) for sid in live_ids}
+        for child in self.cache_dir.iterdir():
+            if not child.is_dir():
+                continue
+            if child.name in live_safe:
+                continue
+            try:
+                for f in child.iterdir():
+                    try:
+                        f.unlink()
+                    except OSError:
+                        pass
+                child.rmdir()
+            except OSError:
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -318,6 +394,42 @@ def _session_content_hash(session: HarnessSession) -> str:
     """Stable hash over the session's normalised payload."""
     payload = json.dumps(session.to_dict(), sort_keys=True, ensure_ascii=False)
     return "sha256-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _chunk_content_hash(chunk: List[dict]) -> str:
+    """Stable, content-keyed hash over a chunk of normalised turns.
+
+    Hashing the canonical JSON (sorted keys) keeps the key deterministic
+    and format-agnostic — it depends only on the chunk's turns' role +
+    text, not on any Codex turn_id — so the byte-identical compile
+    guarantee holds across reimports. Including all turns in the chunk
+    means a mutation to ANY turn in the chunk shifts the hash and forces
+    a re-extract, which is exactly the invalidation semantics we want
+    (cross-turn findings can change when any constituent turn changes).
+    """
+    payload = json.dumps(chunk, sort_keys=True, ensure_ascii=False)
+    return "sha256-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _chunk_cache_path(cache_dir: Path, session_id: str, chunk_index: int) -> Path:
+    """Path to one chunk's cache file: ``<cache_dir>/<safe_id>/chunk-<K>.json``."""
+    return cache_dir / _safe(session_id) / f"chunk-{chunk_index}.json"
+
+
+def _offset_turn_ids(finding: Finding, offset: int) -> Finding:
+    """Remap a finding's chunk-local turn_ids to original transcript indices.
+
+    ``extract_with_llm`` enumerates the chunk it receives from 0, so a
+    finding referencing chunk-local turn ``j`` actually refers to original
+    transcript turn ``offset + j``. Negative or non-int ids are passed
+    through unchanged (defensive — validation already coerced to int).
+    """
+    return Finding(
+        kind=finding.kind,
+        body=finding.body,
+        turn_ids=[offset + t for t in finding.turn_ids],
+        references=list(finding.references),
+    )
 
 
 def _project_root_hash(project_root: Path | str) -> str:

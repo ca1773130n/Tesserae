@@ -1602,7 +1602,7 @@ def render_home(ctx: SiteContext) -> str:
         first = overview_pages[0].body.strip().splitlines()[0]
         tagline = first[2:].strip() if first.startswith("# ") else first
     else:
-        tagline = "A self-indexing knowledge base built from your sources."
+        tagline = "A context engine — turns your sources and sessions into evolving knowledge your agents can use."
 
     counts = _nav_counts(ctx)
 
@@ -1685,7 +1685,7 @@ def render_home(ctx: SiteContext) -> str:
     home_toc_html = toc(home_toc_entries)
 
     body = f"""<section class="hero" aria-label="Project pulse">
-  <p class="eyebrow">{_esc(ctx.site_title)} · self-indexing knowledge base</p>
+  <p class="eyebrow">{_esc(ctx.site_title)} · context engine</p>
   <h1>{_esc(ctx.site_title)}</h1>
   <p class="lead">{_esc(tagline)}</p>
 </section>
