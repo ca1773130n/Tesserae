@@ -40,6 +40,40 @@ def _seed_project(project_root: Path, *, incremental: bool) -> ProjectWiki:
     return wiki
 
 
+def test_default_config_does_not_enable_incremental(tmp_path: Path) -> None:
+    """DESCOPE GUARD: incremental compile is EXPERIMENTAL and must stay OFF by
+    default. A freshly-initialised project's config must NOT enable it, and a
+    changed_only compile on a default project must equal a full compile (the
+    safe path). If a future change flips the default ON, this fails loudly.
+    """
+    project_root = tmp_path / "project"
+    project_root.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(WIKI_CORPUS_ROOT / "data", project_root / "data")
+    shutil.copytree(WIKI_CORPUS_ROOT / "docs", project_root / "docs")
+    wiki = ProjectWiki.init(project_root, name="default_cfg_test")
+
+    cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+    assert not cfg.get("incremental_compile", False), (
+        "incremental_compile must be OFF in the default project config "
+        "(experimental; byte-parity incomplete until the follow-up phase)"
+    )
+
+    wiki.compile()  # seed (default config → full compile)
+    seed_count = _node_count(wiki)
+    assert seed_count > 0, "seed full compile produced no nodes"
+    # A changed_only compile with the default (flag-off) config must fall back
+    # to a full recompile — no incremental divergence / collapse.
+    next(iter((project_root / "docs").glob("*.md"))).write_text(
+        "# Edited\n\nDefault-config changed_only must still full-recompile.\n",
+        encoding="utf-8",
+    )
+    wiki.compile(changed_only=True, changed_paths=None)
+    assert _node_count(wiki) >= seed_count, (
+        "default (flag-off) changed_only compile collapsed the graph instead of "
+        "falling back to a full recompile"
+    )
+
+
 def _node_count(wiki: ProjectWiki) -> int:
     payload = json.loads(wiki.paths.graph.read_text(encoding="utf-8"))
     return len(payload.get("nodes", []))
