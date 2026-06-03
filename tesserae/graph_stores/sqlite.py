@@ -30,7 +30,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
-from typing import Iterator, List, Optional, Set, Union
+from typing import Iterable, Iterator, List, Optional, Set, Tuple, Union
 from uuid import UUID
 
 from ..research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
@@ -230,6 +230,127 @@ class SqliteGraphStore:
         return _row_to_node(row)
 
     # ------------------------------------------------------------------ #
+    # Provenance sidecar + delete surface (CMP-02)                        #
+    # ------------------------------------------------------------------ #
+
+    def record_provenance(self, node_id: str, source_path: str, *, timestamp: str) -> None:
+        """Upsert one provenance row, preserving ``first_seen_at``.
+
+        ``timestamp`` is a REQUIRED caller-supplied ISO-8601 string — this
+        method NEVER calls ``datetime.now()``. The caller derives it from
+        content/source-date so two compiles produce identical provenance
+        (04-RESEARCH.md Pitfall 1: timestamps must stay deterministic and
+        out of graph.json). On conflict the existing ``first_seen_at`` is
+        kept and only ``last_updated_at`` advances.
+        """
+        with self._connect() as con:
+            con.execute(
+                """
+                insert into node_provenance
+                    (node_id, source_path, first_seen_at, last_updated_at)
+                values (?, ?, ?, ?)
+                on conflict(node_id, source_path) do update set
+                    last_updated_at = excluded.last_updated_at
+                """,
+                (node_id, source_path, timestamp, timestamp),
+            )
+            con.commit()
+
+    def record_provenance_many(self, rows: Iterable[Tuple[str, str, str]]) -> None:
+        """Bulk upsert provenance rows ``(node_id, source_path, timestamp)``.
+
+        Throughput path for full compiles. Same deterministic-timestamp and
+        first-seen-preservation semantics as :meth:`record_provenance`.
+        """
+        params = [
+            (node_id, source_path, timestamp, timestamp)
+            for node_id, source_path, timestamp in rows
+        ]
+        if not params:
+            return
+        with self._connect() as con:
+            con.executemany(
+                """
+                insert into node_provenance
+                    (node_id, source_path, first_seen_at, last_updated_at)
+                values (?, ?, ?, ?)
+                on conflict(node_id, source_path) do update set
+                    last_updated_at = excluded.last_updated_at
+                """,
+                params,
+            )
+            con.commit()
+
+    def delete_node(self, node_id: str) -> bool:
+        """Delete a single node and its provenance rows. Returns True if a node row was removed."""
+        with self._connect() as con:
+            cursor = con.execute("delete from nodes where id = ?", (node_id,))
+            con.execute("delete from node_provenance where node_id = ?", (node_id,))
+            con.commit()
+            return cursor.rowcount > 0
+
+    def delete_nodes_by_source(self, source_paths: Set[str]) -> Set[str]:
+        """Tombstone nodes whose provenance set becomes EMPTY after removing ``source_paths``.
+
+        Candidates are nodes touched by any changed source_path. A candidate
+        is KEPT (survives) if it still has a provenance row under some
+        unchanged source_path — the 2400->1700 anti-collapse guarantee for
+        cross-file concept nodes. The returned set is exactly the node ids
+        removed from both ``nodes`` and ``node_provenance`` (NOT a count);
+        the caller drops precisely these from the in-memory graph.
+
+        Empty ``source_paths`` is a no-op (returns ``set()``) — empty SQL
+        ``IN`` clauses are invalid.
+        """
+        if not source_paths:
+            return set()
+
+        changed = list(source_paths)
+        changed_ph = ",".join("?" for _ in changed)
+        with self._connect() as con:
+            candidates = {
+                row[0]
+                for row in con.execute(
+                    f"select distinct node_id from node_provenance"
+                    f" where source_path in ({changed_ph})",
+                    changed,
+                ).fetchall()
+            }
+            if not candidates:
+                # Still purge provenance rows for the changed sources.
+                con.execute(
+                    f"delete from node_provenance where source_path in ({changed_ph})",
+                    changed,
+                )
+                con.commit()
+                return set()
+
+            keepers = {
+                row[0]
+                for row in con.execute(
+                    f"select distinct node_id from node_provenance"
+                    f" where source_path not in ({changed_ph})",
+                    changed,
+                ).fetchall()
+            }
+            to_delete = candidates - keepers
+
+            if to_delete:
+                del_ph = ",".join("?" for _ in to_delete)
+                del_ids = list(to_delete)
+                con.execute(f"delete from nodes where id in ({del_ph})", del_ids)
+                con.execute(
+                    f"delete from node_provenance where node_id in ({del_ph})", del_ids
+                )
+            # Purge all provenance rows referencing the changed sources.
+            con.execute(
+                f"delete from node_provenance where source_path in ({changed_ph})",
+                changed,
+            )
+            con.commit()
+        return to_delete
+
+    # ------------------------------------------------------------------ #
     # Internals                                                           #
     # ------------------------------------------------------------------ #
 
@@ -275,6 +396,20 @@ class SqliteGraphStore:
         con.execute("create index if not exists idx_edges_type on edges(type)")
         con.execute("create index if not exists idx_edges_source on edges(source)")
         con.execute("create index if not exists idx_edges_target on edges(target)")
+        con.execute(
+            """
+            create table if not exists node_provenance (
+                node_id         text not null,
+                source_path     text not null,
+                first_seen_at   text not null,
+                last_updated_at text not null,
+                primary key (node_id, source_path)
+            )
+            """
+        )
+        con.execute(
+            "create index if not exists idx_provenance_source on node_provenance(source_path)"
+        )
 
 
 def _row_to_node(row: tuple) -> ResearchNode:
