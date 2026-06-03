@@ -1470,14 +1470,58 @@ class ProjectWiki:
             # rather than upserting row-by-row, which is the expected behavior
             # for the standalone CLI flow.
             SQLiteResearchGraphStore(self.paths.sqlite).write_graph(graph, replace=True)
+            # Provenance sidecar (Plan 01) lives in the same ``sqlite.db`` via
+            # the hexagonal :class:`SqliteGraphStore` (idempotent
+            # ``create table if not exists`` schema — coexists with the legacy
+            # research-graph table). Recorded on EVERY default compile (full +
+            # incremental) so the incremental differ has a populated sidecar to
+            # diff against. Deterministic timestamps; SQLite-only; graph.json
+            # is untouched. See the injected-store branch for the same rows.
+            prov_store = SqliteGraphStore(self.paths.sqlite)
+            prov_store.upsert_many_nodes(graph.nodes)
+            prov_store.upsert_many_edges(graph.edges)
+            prov_rows = []
+            for node in graph.nodes:
+                src = node.source_path or "__synthesis__"
+                det_ts = "det:" + sha256_text(f"{node.id}|{src}")[:16]
+                prov_rows.append((node.id, src, det_ts))
+            prov_store.record_provenance_many(prov_rows)
         else:
             # Injected store path: drive the union graph through the
             # :class:`GraphStore` port. The Postgres adapter (HypePaper-side)
             # and any test-double share this code path.
-            for node in graph.nodes:
-                store.upsert_node(node)
-            for edge in graph.edges:
-                store.upsert_edge(edge)
+            #
+            # Bulk upsert (04-RESEARCH.md Pattern 3) — fixes the
+            # connection-per-call throughput problem. Fall back to per-row
+            # upserts for stores that don't expose the bulk surface.
+            if hasattr(store, "upsert_many_nodes"):
+                store.upsert_many_nodes(graph.nodes)
+            else:
+                for node in graph.nodes:
+                    store.upsert_node(node)
+            if hasattr(store, "upsert_many_edges"):
+                store.upsert_many_edges(graph.edges)
+            else:
+                for edge in graph.edges:
+                    store.upsert_edge(edge)
+            # Record per-node provenance on EVERY compile (full + incremental),
+            # NOT only inside the changed_only branch — the 04-04 parity test
+            # seeds via a FULL compile, so an empty node_provenance table after
+            # a full compile would silently mask the cross-file collapse bug.
+            # Deterministic content/source-derived timestamps (CRITICAL,
+            # 04-RESEARCH.md Pitfall 1): never datetime.now(); derived from a
+            # stable sha256 of (node id | source_path) so the sidecar is
+            # byte-stable across recompiles. Generated/synthesis nodes (no real
+            # source_path) are recorded under "__synthesis__" so they are
+            # consistently regenerated (Open Question 3). Provenance is
+            # SQLite-only and never enters graph.json.
+            if hasattr(store, "record_provenance_many"):
+                prov_rows = []
+                for node in graph.nodes:
+                    src = node.source_path or "__synthesis__"
+                    det_ts = "det:" + sha256_text(f"{node.id}|{src}")[:16]
+                    prov_rows.append((node.id, src, det_ts))
+                store.record_provenance_many(prov_rows)
         GraphMarkdownProjector().write_projection(graph, self.paths.markdown_projection)
         CogneeResearchGraphAdapter().write_bundle(graph, self.paths.cognee_bundle)
         if cognify and cognify.is_active:
