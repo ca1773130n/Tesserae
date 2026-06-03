@@ -6,12 +6,17 @@ finding extraction (:mod:`tesserae.session_graph_llm`) into a single
 :class:`ResearchGraph` slice that
 :func:`tesserae.project.merge_graphs` can fold into the doc graph.
 
-Caching: every session's LLM-extracted findings are persisted to
-``.tesserae/session_findings/<session_id>.findings.json`` with a
-content_hash AND a project_root_hash envelope. On the next compile we
-skip the LLM call when both hashes match. The project_root_hash
-prevents cross-project cache replay if a user copies a vault between
-checkouts.
+Caching (per-turn, SESS-02): each session's LLM-extracted findings are
+persisted PER TURN to
+``.tesserae/session_findings/<session_id>/turn-<N>.json`` with a
+turn_content_hash AND a project_root_hash envelope. On the next compile
+we skip the LLM call for every turn whose content hash is unchanged and
+only extract the appended/mutated delta turns — so a 20-turn session
+that grew by one turn re-extracts exactly 1 turn (hit ratio 19/20)
+instead of the whole session. The project_root_hash prevents
+cross-project cache replay if a user copies a vault between checkouts.
+The cache stays content-keyed (not wall-clock-keyed) to preserve the
+deterministic byte-identical compile guarantee.
 """
 
 from __future__ import annotations
@@ -42,7 +47,7 @@ from .session_graph_structural import extract_structural
 logger = logging.getLogger(__name__)
 
 
-CACHE_SCHEMA_VERSION = 1
+CACHE_SCHEMA_VERSION = 2
 
 
 # Map from Finding.kind (lowercase string) to ResearchNodeType.
@@ -173,54 +178,70 @@ class SessionGraphExtractor:
         session: HarnessSession,
         doc_id_context: List[Tuple[str, str]],
     ) -> List[Finding]:
-        """Cache-aware LLM extraction for one session."""
-        content_hash = _session_content_hash(session)
-        project_root_hash = _project_root_hash(self.project_root)
-        cache_path = self.cache_dir / f"{_safe(session.id)}.findings.json"
+        """Per-turn, cache-aware LLM extraction for one session.
 
-        # Cache hit?
-        if cache_path.exists():
-            cached = _read_cache(cache_path)
-            if (
-                cached
-                and cached.get("schema_version") == CACHE_SCHEMA_VERSION
-                and cached.get("content_hash") == content_hash
-                and cached.get("project_root_hash") == project_root_hash
-            ):
-                return [_finding_from_dict(d) for d in cached.get("findings") or []]
-
-        # Cache miss → extract.
+        Iterates turns in order; a turn whose content hash matches its
+        cached envelope loads from disk (hit), an appended/mutated turn
+        is extracted as a single-turn chunk (miss). Only the delta turns
+        hit the LLM, so appending one turn to an N-turn session costs one
+        extract call (hit ratio (N-1)/N) instead of a full re-run.
+        """
         turns = _normalised_turns(session)
         if not turns:
             return []
-        findings = extract_with_llm(
-            session,
-            turns,
-            doc_id_context,
-            self.json_client,
-            max_turns_per_chunk=self.max_turns_per_chunk,
-            cache_key=f"sessions-v{CACHE_SCHEMA_VERSION}",
-            guidance=self.guidance,
-        )
-        _write_cache(
-            cache_path,
-            {
-                "schema_version": CACHE_SCHEMA_VERSION,
-                "content_hash": content_hash,
-                "project_root_hash": project_root_hash,
-                "session_id": session.id,
-                "findings": [
-                    {
-                        "kind": f.kind,
-                        "body": f.body,
-                        "turn_ids": f.turn_ids,
-                        "references": f.references,
-                    }
-                    for f in findings
-                ],
-            },
-        )
-        return findings
+        project_root_hash = _project_root_hash(self.project_root)
+
+        all_findings: List[Finding] = []
+        for i, turn in enumerate(turns):
+            tpath = _turn_cache_path(self.cache_dir, session.id, i)
+            thash = _turn_content_hash(turn)
+
+            # Cache hit?
+            if tpath.exists():
+                cached = _read_cache(tpath)
+                if (
+                    cached
+                    and cached.get("schema_version") == CACHE_SCHEMA_VERSION
+                    and cached.get("turn_hash") == thash
+                    and cached.get("project_root_hash") == project_root_hash
+                ):
+                    all_findings.extend(
+                        _finding_from_dict(d) for d in cached.get("findings") or []
+                    )
+                    continue
+
+            # Cache miss → extract only this single-turn delta.
+            findings = extract_with_llm(
+                session,
+                [turn],
+                doc_id_context,
+                self.json_client,
+                max_turns_per_chunk=self.max_turns_per_chunk,
+                cache_key=f"sessions-v{CACHE_SCHEMA_VERSION}",
+                guidance=self.guidance,
+            )
+            _write_cache(
+                tpath,
+                {
+                    "schema_version": CACHE_SCHEMA_VERSION,
+                    "turn_hash": thash,
+                    "project_root_hash": project_root_hash,
+                    "turn_index": i,
+                    "session_id": session.id,
+                    "findings": [
+                        {
+                            "kind": f.kind,
+                            "body": f.body,
+                            "turn_ids": f.turn_ids,
+                            "references": f.references,
+                        }
+                        for f in findings
+                    ],
+                },
+            )
+            all_findings.extend(findings)
+
+        return all_findings
 
     def _mint_findings(
         self,
@@ -298,15 +319,30 @@ class SessionGraphExtractor:
     # ------------------------------------------------------------------
 
     def _prune_stale_caches(self, live_ids: Set[str]) -> None:
+        """Remove per-session cache dirs for ids no longer in the live set.
+
+        The v2 layout stores each session's per-turn findings under
+        ``cache_dir/<safe_id>/turn-<N>.json``, so we garbage-collect by
+        directory keyed on ``_safe(id)``. Defensive against OSError so a
+        permission hiccup never aborts a compile.
+        """
         if not self.cache_dir.exists():
             return
-        for path in self.cache_dir.glob("*.findings.json"):
-            sid = path.stem.rsplit(".", 1)[0]  # strip ".findings"
-            if sid not in live_ids:
-                try:
-                    path.unlink()
-                except OSError:
-                    pass
+        live_safe = {_safe(sid) for sid in live_ids}
+        for child in self.cache_dir.iterdir():
+            if not child.is_dir():
+                continue
+            if child.name in live_safe:
+                continue
+            try:
+                for f in child.iterdir():
+                    try:
+                        f.unlink()
+                    except OSError:
+                        pass
+                child.rmdir()
+            except OSError:
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -318,6 +354,23 @@ def _session_content_hash(session: HarnessSession) -> str:
     """Stable hash over the session's normalised payload."""
     payload = json.dumps(session.to_dict(), sort_keys=True, ensure_ascii=False)
     return "sha256-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _turn_content_hash(turn: dict) -> str:
+    """Stable, content-keyed hash over a normalised {role, text} turn.
+
+    Hashing the canonical JSON (sorted keys) keeps the key deterministic
+    and format-agnostic — it does not depend on a Codex turn_id, only on
+    the turn's role + text — so the byte-identical compile guarantee
+    holds across reimports.
+    """
+    payload = json.dumps(turn, sort_keys=True, ensure_ascii=False)
+    return "sha256-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _turn_cache_path(cache_dir: Path, session_id: str, turn_index: int) -> Path:
+    """Path to one turn's cache file: ``<cache_dir>/<safe_id>/turn-<N>.json``."""
+    return cache_dir / _safe(session_id) / f"turn-{turn_index}.json"
 
 
 def _project_root_hash(project_root: Path | str) -> str:
