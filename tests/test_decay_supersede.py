@@ -225,12 +225,16 @@ def test_supersede_pass_distinct_verdict_skips_edge(
 
 
 def test_supersede_env_flag(monkeypatch: pytest.MonkeyPatch):
+    # KB-03: the pass is DEFAULT-ON. Unset env => enabled.
     monkeypatch.delenv("TESSERAE_SUPERSEDE_PASS", raising=False)
-    assert not supersede_pass_enabled()
+    assert supersede_pass_enabled()
+    # Explicit truthy keeps it enabled.
     monkeypatch.setenv("TESSERAE_SUPERSEDE_PASS", "true")
     assert supersede_pass_enabled()
-    monkeypatch.setenv("TESSERAE_SUPERSEDE_PASS", "0")
-    assert not supersede_pass_enabled()
+    # Opt-OUT: the falsy spellings disable it.
+    for falsy in ("0", "false", "no", "off"):
+        monkeypatch.setenv("TESSERAE_SUPERSEDE_PASS", falsy)
+        assert not supersede_pass_enabled()
 
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@
 Inspired by Graphiti's superseded-edge pattern and A-MEM's Zettelkasten
 note-evolution loop (see ``/tmp/tesserae-innovation/03-memory.md``).
 
-Pass shape (opt-in via ``TESSERAE_SUPERSEDE_PASS=true``):
+Pass shape (default-on, opt-out via ``TESSERAE_SUPERSEDE_PASS=false``):
 
 1. Group session-finding nodes by ``ResearchNodeType`` (insights with
    insights, decisions with decisions, ...).
@@ -60,12 +60,18 @@ _TOKEN_SPLIT_CHARS = " \t\n\r\f\v.,;:!?()[]{}\"'`/\\|<>@#$%^&*+=~"
 
 
 def supersede_pass_enabled() -> bool:
-    """Read the opt-in env flag.
+    """Read the opt-OUT env flag — the pass is DEFAULT-ON (KB-03).
 
-    ``TESSERAE_SUPERSEDE_PASS`` accepts the usual truthy spellings.
+    ``TESSERAE_SUPERSEDE_PASS`` disables the pass only when set to one of
+    the falsy spellings ``{"0", "false", "no", "off"}``. An unset or any
+    other value leaves the pass enabled, so a plain ``project compile``
+    runs supersede arbitration by default. Disk-cached, content-keyed
+    LLM verdicts keep reruns byte-idempotent (05-RESEARCH Pitfall 5).
     """
     raw = (os.environ.get("TESSERAE_SUPERSEDE_PASS") or "").strip().lower()
-    return raw in {"1", "true", "yes", "on"}
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
