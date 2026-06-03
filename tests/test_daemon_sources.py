@@ -176,6 +176,82 @@ def test_vault_source_exception_is_logged_not_fatal(
     assert any(r.exc_info is not None for r in caplog.records)
 
 
+# ----------------------- enqueue into a closed loop is safe (codex #6)
+
+
+def test_enqueue_into_closed_loop_is_handled_not_fatal(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A source enqueuing after the loop is closed must not crash the thread.
+
+    codex #6: ``enqueue()`` routes through ``call_soon_threadsafe`` which raises
+    ``RuntimeError`` once the loop is closed. The bridge must catch it (log at
+    DEBUG, no traceback) so a late source stops quietly instead of dying.
+    """
+    d = Daemon(tmp_path)
+    loop = asyncio.new_event_loop()
+    d._loop = loop
+    d._queue = asyncio.Queue()
+    loop.close()  # simulate shutdown having already closed the loop
+
+    with caplog.at_level(logging.DEBUG, logger="tesserae.daemon"):
+        # Must NOT raise even though the loop is closed.
+        d.enqueue(TriggerEvent(source="watch", changed_paths=[tmp_path / "a.md"]))
+
+    assert any(
+        "after loop closed" in r.getMessage() and r.name == "tesserae.daemon"
+        for r in caplog.records
+    ), "late enqueue should be logged, not crash"
+
+
+def test_source_loops_use_stop_event_wait_for_prompt_shutdown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Source loops wake on stop_event, never sleeping out a long interval.
+
+    codex #6: the poll loops must use ``stop_event.wait(interval)`` (which a
+    stop unblocks immediately) instead of ``time.sleep(interval)`` (which would
+    block the full interval). We give a huge interval and assert the loop body
+    returns promptly once stop_event is set from another thread — proving no
+    real multi-second sleep gates shutdown.
+    """
+    # Hard guard: if any source loop falls back to time.sleep, fail loudly
+    # rather than block the suite for the (huge) interval.
+    def _boom_sleep(*_a, **_k):
+        raise AssertionError("source loop used time.sleep instead of stop_event.wait")
+
+    monkeypatch.setattr(time, "sleep", _boom_sleep)
+
+    d, loop = _make_daemon_with_loop(tmp_path)
+
+    class _Watcher:
+        # 1000s: if the loop really slept this, the test would hang.
+        poll_interval = 1000.0
+
+        def _tick(self):  # pragma: no cover - never reached after stop
+            return False
+
+    # Set stop AFTER a brief delay from a helper thread so the loop is parked in
+    # wait() when the stop arrives.
+    def _stopper():
+        d._stop_event.wait(0.05)  # let the source-loop enter its wait()
+        d._stop_event.set()
+
+    # Pre-arm: start the stopper, then run the (blocking) source body inline.
+    stopper = threading.Thread(target=_stopper, name="stopper", daemon=True)
+    start = time.monotonic()
+    stopper.start()
+    try:
+        d._run_vault_source(_Watcher())  # returns promptly when stop trips
+    finally:
+        elapsed = time.monotonic() - start
+        d._stop_event.set()
+        stopper.join(timeout=2.0)
+        loop.close()
+
+    assert elapsed < 2.0, f"shutdown not prompt: blocked {elapsed:.2f}s"
+
+
 # ------------------------------------- 3. no orphaned threads after stop
 
 
@@ -186,7 +262,9 @@ def test_no_orphaned_threads_after_stop(
     # No-op sleep so the watch poll loop spins fast and re-checks stop_event.
     monkeypatch.setattr(time, "sleep", lambda *_a, **_k: None)
 
-    d, loop = _make_daemon_with_loop(tmp_path, enable_vault=False)
+    d, loop = _make_daemon_with_loop(
+        tmp_path, enable_vault=False, enable_session_tail=False
+    )
 
     class _QuietWatchLoop:
         interval = 0.0

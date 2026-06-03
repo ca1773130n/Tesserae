@@ -27,7 +27,6 @@ import logging
 import os
 import signal
 import threading
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -95,9 +94,21 @@ class Daemon:
     # ----- thread -> loop bridge -------------------------------------------
 
     def enqueue(self, event: TriggerEvent) -> None:
-        """Thread-safe bridge for poller threads (Plan 02) to feed the loop."""
-        if self._loop is not None and self._queue is not None and not self._stop_event.is_set():
+        """Thread-safe bridge for poller threads (Plan 02) to feed the loop.
+
+        ALL source-thread enqueues route through here. If shutdown has already
+        closed/stopped the loop, ``call_soon_threadsafe`` raises ``RuntimeError``
+        ("Event loop is closed" / loop not running); we catch it and log quietly
+        so a late source stops cleanly instead of dying with an unhandled
+        traceback (codex #6).
+        """
+        if self._loop is None or self._queue is None or self._stop_event.is_set():
+            return
+        try:
             self._loop.call_soon_threadsafe(self._queue.put_nowait, event)
+        except RuntimeError:
+            # Loop closed/stopped mid-shutdown: drop the late event quietly.
+            logger.debug("enqueue after loop closed; dropping %s event", event.source)
 
     # ----- lifecycle -------------------------------------------------------
 
@@ -148,7 +159,14 @@ class Daemon:
         # (the test seam pre-loads a burst before driving the drain directly).
         if self._queue is None:
             self._queue = asyncio.Queue()
+        # Coalescing state lives OUTSIDE the cancellable debounce task so a
+        # shutdown that cancels the in-flight debounce never drops the work
+        # (codex #1). ``pending_paths`` is the union of every changed path that
+        # has not yet been consumed by a *completed* run; ``run_pending`` marks
+        # that at least one trigger is owed a pipeline run.
         pending: Optional[asyncio.Task] = None
+        pending_paths: List[Path] = []
+        run_pending = False
         try:
             while not self._stop_event.is_set():
                 try:
@@ -162,18 +180,40 @@ class Daemon:
                 while not self._queue.empty():
                     events.append(self._queue.get_nowait())
                 # Cancel any in-flight debounce so the burst coalesces to one run.
+                # Cancelling does NOT drop the paths: they stay in pending_paths
+                # and the freshly-scheduled debounce carries the full union.
                 if pending is not None and not pending.done():
                     pending.cancel()
-                merged = [p for e in events for p in e.changed_paths]
-                pending = asyncio.create_task(self._debounce_and_run(merged))
+                pending_paths.extend(p for e in events for p in e.changed_paths)
+                run_pending = True
+
+                def _consume() -> None:
+                    # Called by the debounce task SYNCHRONOUSLY after the pipeline
+                    # actually ran (never reached if the debounce was cancelled
+                    # during its sleep). Clearing here — not in a done-callback —
+                    # avoids a shutdown race where the task is done() but its
+                    # callback hasn't fired yet, which would trigger a spurious
+                    # second final run.
+                    nonlocal run_pending
+                    pending_paths.clear()
+                    run_pending = False
+
+                pending = asyncio.create_task(
+                    self._debounce_and_run(list(pending_paths), on_consumed=_consume)
+                )
         finally:
+            # Graceful drain: pull in any events that landed after the last
+            # loop iteration so the FINAL run sees the full union of paths.
+            while self._queue is not None and not self._queue.empty():
+                ev = self._queue.get_nowait()
+                pending_paths.extend(ev.changed_paths)
+                run_pending = True
+            # If a debounce was in flight, cancel it (we run one final coalesced
+            # pass immediately rather than waiting out its debounce sleep) and
+            # absorb its result so no "never retrieved" warning leaks.
             if pending is not None:
                 if not pending.done():
                     pending.cancel()
-                # Retrieve the task result/exception so neither a CancelledError
-                # nor a swallowed pipeline exception leaks an "never retrieved"
-                # warning. The pipeline wrapper already logs-and-returns, so a
-                # completed task here is benign.
                 try:
                     await pending
                 except asyncio.CancelledError:
@@ -181,6 +221,16 @@ class Daemon:
                 except Exception as exc:  # noqa: BLE001 - daemon survives
                     logger.error(
                         "pipeline raised outside StepResult (daemon survives): %s", exc
+                    )
+            # Run exactly ONE final coalesced pipeline for the queued+pending
+            # triggers that never got their run. A failure here must still let
+            # the daemon exit cleanly (exception survival).
+            if run_pending:
+                try:
+                    self._run_pipeline(list(pending_paths))
+                except Exception as exc:  # noqa: BLE001 - daemon survives
+                    logger.error(
+                        "final-drain pipeline raised (daemon exits cleanly): %s", exc
                     )
 
     async def _drain_once(self) -> None:
@@ -203,9 +253,20 @@ class Daemon:
         merged = [p for e in events for p in e.changed_paths]
         await self._debounce_and_run(merged)
 
-    async def _debounce_and_run(self, paths: List[Path]) -> None:
+    async def _debounce_and_run(
+        self, paths: List[Path], on_consumed: Optional[Callable[[], None]] = None
+    ) -> None:
         await asyncio.sleep(self.debounce)
-        self._run_pipeline(paths)
+        try:
+            self._run_pipeline(paths)
+        finally:
+            # Mark these paths consumed once the pipeline was ATTEMPTED — even if
+            # it raised, the run happened, so it must not be retried in the final
+            # drain (preserves exception-survival). If the debounce was cancelled
+            # during the sleep above we never reach here, so the paths survive
+            # into the next / final coalesced run (codex #1).
+            if on_consumed is not None:
+                on_consumed()
 
     def _run_pipeline(self, paths: List[Path]) -> None:
         if self._run_pipeline_override is not None:
@@ -253,16 +314,16 @@ class Daemon:
         from ..watch import WatchLoop
 
         def on_change(paths) -> None:
-            # Guard: drop late events fired during shutdown.
+            # Guard: drop late events fired during shutdown. Route through the
+            # enqueue() bridge so a closing loop never crashes the thread.
             if self._stop_event.is_set():
                 return
-            self._loop.call_soon_threadsafe(
-                self._queue.put_nowait,
+            self.enqueue(
                 TriggerEvent(
                     source="watch",
                     changed_paths=list(paths),
                     changed_only=True,
-                ),
+                )
             )
 
         wl = WatchLoop(
@@ -292,13 +353,16 @@ class Daemon:
         try:
             previous = wl.snapshot()
             while not self._stop_event.is_set():
-                time.sleep(wl.interval)
-                if self._stop_event.is_set():
+                # stop_event.wait() so a stopping daemon wakes promptly instead
+                # of sleeping out the full interval (codex #6).
+                if self._stop_event.wait(wl.interval):
                     break
                 current = wl.snapshot()
                 added, modified, removed = wl.diff(previous, current)
                 changed = list(_combine(added, modified, removed))
-                if changed:
+                # Re-check stop_event before triggering so a stop between the
+                # wait and the enqueue does not push into a closing loop.
+                if changed and not self._stop_event.is_set():
                     wl._trigger(changed)  # noqa: SLF001 - fires on_change -> enqueue
                 previous = current
         except Exception:  # noqa: BLE001 - daemon survives a dead source
@@ -339,14 +403,15 @@ class Daemon:
         """
         try:
             while not self._stop_event.is_set():
-                time.sleep(watcher.poll_interval)
-                if self._stop_event.is_set():
+                # stop_event.wait() wakes promptly on shutdown (codex #6).
+                if self._stop_event.wait(watcher.poll_interval):
                     break
                 changed = watcher._tick()  # noqa: SLF001 - graceful-stop reuse
-                if changed:
-                    self._loop.call_soon_threadsafe(
-                        self._queue.put_nowait,
-                        TriggerEvent(source="vault_watch", changed_only=True),
+                # Re-check stop_event immediately after _tick(): if shutdown
+                # raced in, do not enqueue into a closing loop.
+                if changed and not self._stop_event.is_set():
+                    self.enqueue(
+                        TriggerEvent(source="vault_watch", changed_only=True)
                     )
         except Exception:  # noqa: BLE001 - daemon survives a dead source
             logger.exception("vault-source thread died")
@@ -366,16 +431,16 @@ class Daemon:
         from .session_tail import SessionTailer
 
         def on_new_turns(path, turns) -> None:
-            # Guard: drop late callbacks fired during shutdown.
+            # Guard: drop late callbacks fired during shutdown. Route through
+            # the enqueue() bridge so a closing loop never crashes the thread.
             if self._stop_event.is_set():
                 return
-            self._loop.call_soon_threadsafe(
-                self._queue.put_nowait,
+            self.enqueue(
                 TriggerEvent(
                     source="session_tail",
                     changed_paths=[path],
                     changed_only=True,
-                ),
+                )
             )
 
         try:
@@ -413,7 +478,12 @@ class Daemon:
         """
         try:
             while not self._stop_event.is_set():
-                time.sleep(tailer.poll_interval)
+                # stop_event.wait() wakes promptly on shutdown (codex #6). The
+                # tailer enqueues via on_new_turns -> enqueue(), which already
+                # guards a closing loop; re-check stop_event before ticking so a
+                # stop between wait and tick skips the (enqueuing) tick body.
+                if self._stop_event.wait(tailer.poll_interval):
+                    break
                 if self._stop_event.is_set():
                     break
                 tailer.tick()

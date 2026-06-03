@@ -126,6 +126,78 @@ def test_shutdown_sets_stop_and_removes_pidfile(tmp_path):
     assert alive == [], f"orphaned poller threads: {alive}"
 
 
+def test_final_trigger_before_shutdown_runs_exactly_once(tmp_path):
+    """A trigger enqueued just before shutdown gets ONE final coalesced run.
+
+    codex #1: on SIGTERM during the debounce window the daemon must drain the
+    queued trigger and run exactly one final pipeline (paths included) instead
+    of cancelling the work. We use a NON-zero debounce so the debounce task is
+    still sleeping when stop_event trips — the final-drain path (not the normal
+    debounce completion) is what must fire the run.
+    """
+    calls = []
+    # Debounce long enough that it never elapses during the test; the final
+    # drain must short-circuit it and run immediately.
+    d = Daemon(tmp_path, debounce=30.0, queue_timeout=0.01, run_pipeline=calls.append)
+    loop = _new_loop()
+    d._loop = loop
+    try:
+        async def scenario():
+            d._stop_event.clear()
+            d._queue = asyncio.Queue()
+            # Enqueue the trigger, then trip shutdown while the debounce sleeps.
+            d._queue.put_nowait(
+                TriggerEvent(source="t", changed_paths=[Path("late.md")])
+            )
+
+            async def stopper():
+                # Let the drain loop pick up the event and start its debounce,
+                # then request shutdown mid-debounce.
+                for _ in range(5):
+                    await asyncio.sleep(0)
+                d._stop_event.set()
+
+            st = asyncio.create_task(stopper())
+            await d._drain_loop()
+            await st
+
+        loop.run_until_complete(scenario())
+    finally:
+        loop.close()
+
+    assert len(calls) == 1, f"expected exactly 1 final run, got {len(calls)}"
+    assert calls[0] == [Path("late.md")], "final run must include the queued path"
+
+
+def test_final_drain_pipeline_exception_still_exits_clean(tmp_path):
+    """A failing FINAL-drain run must not propagate — the daemon exits cleanly."""
+    def boom(_paths):
+        raise RuntimeError("final-drain boom")
+
+    d = Daemon(tmp_path, debounce=30.0, queue_timeout=0.01, run_pipeline=boom)
+    loop = _new_loop()
+    d._loop = loop
+    try:
+        async def scenario():
+            d._stop_event.clear()
+            d._queue = asyncio.Queue()
+            d._queue.put_nowait(TriggerEvent(source="t", changed_paths=[Path("z.md")]))
+
+            async def stopper():
+                for _ in range(5):
+                    await asyncio.sleep(0)
+                d._stop_event.set()
+
+            st = asyncio.create_task(stopper())
+            # Must NOT raise out of the drain loop.
+            await d._drain_loop()
+            await st
+
+        loop.run_until_complete(scenario())
+    finally:
+        loop.close()
+
+
 def test_stale_pidfile_is_overwritten(tmp_path, monkeypatch):
     """A pidfile whose PID is dead (ProcessLookupError) is overwritten."""
     d = Daemon(tmp_path)
