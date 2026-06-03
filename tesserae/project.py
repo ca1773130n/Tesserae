@@ -394,6 +394,7 @@ class ProjectWiki:
         session_options: Optional[SessionExtractionOptions] = None,
         use_extraction_feedback: bool = False,
         doc_extractor: Optional[object] = None,
+        changed_paths: Optional[List[Path]] = None,
     ) -> dict:
         """Run the substrate-discovery + extraction pipeline for this project.
 
@@ -492,24 +493,58 @@ class ProjectWiki:
                 # Strip projector-generated nodes (Synthesis + their edges) from
                 # the prior graph; ``SynthesisProjector`` regenerates them in
                 # ``_write_artifacts``. Without this, every changed-only run
-                # would inflate the synthesis layer.
+                # would inflate the synthesis layer. (04-RESEARCH.md Pitfall 4)
                 prior_graph = _strip_generated_layer(prior_graph)
                 if processed == 0 and not graph.nodes:
                     graph = prior_graph
                 else:
-                    re_extracted = {str(Path(p).resolve()) for p in (batch.processed_paths if loader is None else [])}
-                    if re_extracted:
-                        kept_nodes = [
-                            n for n in prior_graph.nodes
-                            if not (n.source_path and str(Path(n.source_path).resolve()) in re_extracted)
-                        ]
+                    # Effective changed-file set: trust the caller's explicit
+                    # ``changed_paths`` over the manifest re-scan when provided
+                    # (04-RESEARCH.md Pitfall 3). Otherwise fall back to the
+                    # manifest-derived processed-paths set.
+                    if changed_paths is not None:
+                        changed_set = {str(Path(p).resolve()) for p in changed_paths}
+                    else:
+                        changed_set = {
+                            str(Path(p).resolve())
+                            for p in (batch.processed_paths if loader is None else [])
+                        }
+                    incremental_enabled = bool(cfg.get("incremental_compile", False))
+                    inc_store = store if store is not None else SqliteGraphStore(self.paths.sqlite)
+                    has_provenance = (
+                        incremental_enabled
+                        and changed_set
+                        and self._has_provenance_table(inc_store)
+                    )
+                    if has_provenance:
+                        # Provenance-driven differ (04-RESEARCH.md Option B,
+                        # Pattern 1). ``delete_nodes_by_source`` mutates the
+                        # SQLite sidecar AND returns the Set[str] of node ids
+                        # whose provenance set became EMPTY after removing the
+                        # changed files. A node co-owned by an unchanged file
+                        # keeps a provenance row and is therefore NOT tombstoned
+                        # — eliminating the 2400->1700 cross-file collapse.
+                        removed_ids = inc_store.delete_nodes_by_source(changed_set)
+                        kept_nodes = [n for n in prior_graph.nodes if n.id not in removed_ids]
                         kept_ids = {n.id for n in kept_nodes}
                         kept_edges = [
                             e for e in prior_graph.edges
                             if e.source in kept_ids and e.target in kept_ids
                         ]
-                        prior_graph = ResearchGraph(nodes=kept_nodes, edges=kept_edges)
-                    graph = merge_graphs([prior_graph, graph])
+                        prior_kept = ResearchGraph(nodes=kept_nodes, edges=kept_edges)
+                        graph = merge_graphs([prior_kept, graph])
+                    else:
+                        # SAFE fallback (04-RESEARCH.md anti-pattern "silent
+                        # downgrade"): feature flag OFF or no provenance table.
+                        # Do NOT run the broken evict-by-source_path path and do
+                        # NOT emit a partial graph. Recompile the whole corpus
+                        # by merging the full prior graph with the fresh batch so
+                        # the result equals a full compile.
+                        logger.warning(
+                            "incremental_compile disabled or no provenance table; "
+                            "falling back to full recompile (changed_only ignored)"
+                        )
+                        graph = merge_graphs([prior_graph, graph])
         # Bug A guard: after every merge — native FS extractor, code graph,
         # Understand-Anything, RAG-Anything, prior incremental graph — strip
         # any concept-layer node whose name is a filename or path. UA in
@@ -877,6 +912,7 @@ class ProjectWiki:
         session_options: Optional[SessionExtractionOptions] = None,
         use_extraction_feedback: bool = False,
         doc_extractor: Optional[object] = None,
+        changed_paths: Optional[List[Path]] = None,
     ) -> dict:
         """Compile every configured source into the .tesserae artifacts.
 
@@ -920,6 +956,7 @@ class ProjectWiki:
             session_options=session_options,
             use_extraction_feedback=use_extraction_feedback,
             doc_extractor=doc_extractor,
+            changed_paths=changed_paths,
         )
 
     def lint(self, fix_trivial: bool = False, severity_floor: str = "info") -> LintReport:
@@ -1312,6 +1349,29 @@ class ProjectWiki:
             render_guidance(bullets), encoding="utf-8")
         return {"events": len(events), "bullets": len(bullets),
                 "guidance_path": str(self.paths.extraction_guidance)}
+
+    @staticmethod
+    def _has_provenance_table(store: Optional[GraphStore]) -> bool:
+        """True when ``store`` is backed by a SQLite db carrying the
+        ``node_provenance`` sidecar (Plan 01). Non-SQLite stores degrade to
+        False so the caller takes the safe full-recompile fallback."""
+        if store is None:
+            return False
+        if not hasattr(store, "delete_nodes_by_source") or not hasattr(store, "record_provenance_many"):
+            return False
+        db_path = getattr(store, "path", None)
+        if db_path is None or not Path(db_path).exists():
+            return False
+        try:
+            import sqlite3
+
+            with sqlite3.connect(str(db_path)) as con:
+                row = con.execute(
+                    "select name from sqlite_master where type='table' and name='node_provenance'"
+                ).fetchone()
+            return row is not None
+        except Exception:  # noqa: BLE001 - missing table => safe fallback
+            return False
 
     def _write_artifacts(
         self,
