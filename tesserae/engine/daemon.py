@@ -97,21 +97,32 @@ class Daemon:
 
     # ----- lifecycle -------------------------------------------------------
 
-    def run(self) -> int:
-        """Write pidfile, own the loop until shutdown, clean up unconditionally."""
+    def run(self, *, once: bool = False) -> int:
+        """Write pidfile, own the loop until shutdown, clean up unconditionally.
+
+        ``once=True`` is the deterministic, CI-friendly mode: NO poller threads,
+        NO signal handlers, NO long-running loop. It enqueues a single manual
+        ``TriggerEvent`` and runs exactly ONE bounded drain (``_drain_once``)
+        that drives exactly one ``_run_pipeline`` call, then returns 0. This is
+        the proxy for the SIGTERM-exit-0 success criterion and lets the CLI be
+        tested without a real long-running process.
+        """
         self._write_pidfile()
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         self._loop = loop
         try:
-            for sig in (signal.SIGTERM, signal.SIGINT):
-                try:
-                    loop.add_signal_handler(sig, self._handle_signal)
-                except NotImplementedError:
-                    # Windows / non-main-thread: signals unavailable here.
-                    logger.warning("add_signal_handler unavailable for %s; skipping", sig)
-            self._start_sources(loop)
-            loop.run_until_complete(self._drain_loop())
+            if once:
+                loop.run_until_complete(self._drain_once())
+            else:
+                for sig in (signal.SIGTERM, signal.SIGINT):
+                    try:
+                        loop.add_signal_handler(sig, self._handle_signal)
+                    except NotImplementedError:
+                        # Windows / non-main-thread: signals unavailable here.
+                        logger.warning("add_signal_handler unavailable for %s; skipping", sig)
+                self._start_sources(loop)
+                loop.run_until_complete(self._drain_loop())
         finally:
             self._stop_event.set()
             for t in self._threads:
@@ -167,6 +178,26 @@ class Daemon:
                     logger.error(
                         "pipeline raised outside StepResult (daemon survives): %s", exc
                     )
+
+    async def _drain_once(self) -> None:
+        """Single bounded drain for ``run(once=True)`` — exactly one pipeline run.
+
+        Enqueue ONE manual ``TriggerEvent``, drain the (singleton) burst, merge
+        its paths, and run ``_debounce_and_run`` to completion (awaiting the
+        configured debounce sleep). Exactly one ``_run_pipeline`` call happens;
+        no poller threads, no signals, no unbounded loop. ``run``'s finally
+        block then removes the pidfile and returns 0.
+        """
+        if self._queue is None:
+            self._queue = asyncio.Queue()
+        self._queue.put_nowait(
+            TriggerEvent(source="manual", changed_paths=[], changed_only=False)
+        )
+        events = []
+        while not self._queue.empty():
+            events.append(self._queue.get_nowait())
+        merged = [p for e in events for p in e.changed_paths]
+        await self._debounce_and_run(merged)
 
     async def _debounce_and_run(self, paths: List[Path]) -> None:
         await asyncio.sleep(self.debounce)
