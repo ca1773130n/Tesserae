@@ -30,7 +30,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
-from typing import Iterable, Iterator, List, Optional, Set, Tuple, Union
+from typing import Dict, Iterable, Iterator, List, Optional, Set, Tuple, Union
 from uuid import UUID
 
 from ..research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
@@ -634,6 +634,42 @@ class SqliteGraphStore:
         removed_nodes = self.delete_nodes_by_source(source_paths)
         removed_edges = self.delete_edges_by_source(source_paths)
         return removed_nodes, removed_edges
+
+    def surviving_source_paths(self, node_ids: Set[str]) -> Dict[str, str]:
+        """Return ``{node_id: canonical source_path}`` for the given surviving nodes.
+
+        A cross-file node (a shared author / field) survives a subtractive edit
+        because some UNCHANGED file still asserts it — but the prior graph node
+        we keep may carry a ``source_path`` that pointed at the now-changed file
+        (the file that originally won attribution). That scalar is stale: a full
+        compile re-derives ``source_path`` from the FIRST file (in deterministic
+        sorted-path order) that still extracts the node, via ``prefer_research_node``
+        keeping the earliest-merged owner. We reproduce that exact choice here by
+        returning the LEXICOGRAPHICALLY SMALLEST surviving provenance
+        ``source_path`` per node — ``iter_markdown_files`` yields files in sorted
+        order, so first-seen == min path. The caller re-points only nodes whose
+        kept ``source_path`` belonged to a changed file, so an incremental and a
+        full compile converge on byte-identical node scalars (Phase-4 subtractive
+        gate). Call AFTER tombstoning so changed-file rows are already purged.
+
+        Empty ``node_ids`` is a no-op (returns ``{}``).
+        """
+        if not node_ids:
+            return {}
+        ids = list(node_ids)
+        out: Dict[str, str] = {}
+        with self._connect() as con:
+            for start in range(0, len(ids), 500):
+                chunk = ids[start : start + 500]
+                ph = ",".join("?" for _ in chunk)
+                for node_id, src in con.execute(
+                    f"select node_id, min(source_path) from node_provenance"
+                    f" where node_id in ({ph}) group by node_id",
+                    chunk,
+                ).fetchall():
+                    if src is not None:
+                        out[node_id] = src
+        return out
 
     # ------------------------------------------------------------------ #
     # Internals                                                           #

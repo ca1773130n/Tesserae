@@ -14,7 +14,7 @@ import os
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace as dataclasses_replace
 from datetime import date
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple
@@ -538,7 +538,17 @@ class ProjectWiki:
         # compile (Codex B4). No prior+delta merge, no partial graph.
         if incremental_active and prior_graph_for_diff is not None:
             prior_graph = prior_graph_for_diff
-            if processed == 0 and not graph.nodes:
+            # A DELETED changed_path no longer exists on disk, so the batch
+            # never re-extracts it: ``processed == 0`` and the fresh ``graph``
+            # is empty even though the corpus genuinely shrank. That is NOT the
+            # idempotent no-op case — we must still tombstone what the deleted
+            # file solely owned. Detect deletions explicitly so the no-op branch
+            # only fires when nothing changed AND nothing was removed.
+            deleted_changed = bool(
+                changed_paths is not None
+                and any(not Path(p).exists() for p in changed_paths)
+            )
+            if processed == 0 and not graph.nodes and not deleted_changed:
                 # Nothing actually changed this run: the prior graph IS the
                 # corpus. (Empty incremental run — byte-idempotent no-op.)
                 graph = prior_graph
@@ -564,6 +574,37 @@ class ProjectWiki:
                     changed_set
                 )
                 kept_nodes = [n for n in prior_graph.nodes if n.id not in removed_ids]
+                # Re-point stale ``source_path`` scalars on surviving cross-file
+                # nodes (Phase-4 subtractive gate). A shared author/field node
+                # survives because an UNCHANGED file still asserts it, but the
+                # prior node we keep may carry a ``source_path`` pointing at the
+                # now-changed file that originally won attribution. A full
+                # compile re-derives ``source_path`` from the lowest sorted-path
+                # surviving owner (``prefer_research_node`` keeps the first-merged
+                # one, and ``iter_markdown_files`` is sorted). We reproduce that
+                # exact choice from the post-tombstone provenance sidecar so the
+                # incremental node scalars match a full compile byte-for-byte.
+                if hasattr(inc_store, "surviving_source_paths"):
+                    # Only nodes the changed files STOPPED asserting are stale.
+                    # If the fresh extraction still emits the node (additive
+                    # edit, or the changed file still mentions it), the merge
+                    # below carries the correct fresh ``source_path`` — leave it.
+                    fresh_node_ids = {n.id for n in graph.nodes}
+                    stale_ids = {
+                        n.id
+                        for n in kept_nodes
+                        if n.id not in fresh_node_ids
+                        and n.source_path
+                        and str(Path(n.source_path).resolve()) in changed_set
+                    }
+                    canonical = inc_store.surviving_source_paths(stale_ids)
+                    if canonical:
+                        kept_nodes = [
+                            dataclasses_replace(n, source_path=canonical[n.id])
+                            if n.id in canonical
+                            else n
+                            for n in kept_nodes
+                        ]
                 kept_ids = {n.id for n in kept_nodes}
                 kept_edges = [
                     e for e in prior_graph.edges
@@ -1070,7 +1111,70 @@ class ProjectWiki:
         graph = load_graph_file(self.paths.graph)
         target = Path(vault) if vault else self.effective_obsidian_vault()
         name = cfg.get("name") or sanitize_server_name(self.project_root.name)
-        return ObsidianVaultAdapter(vault_name=name).write_vault(graph, target)
+        result = ObsidianVaultAdapter(vault_name=name).write_vault(graph, target)
+        self._prune_orphaned_vault_pages(graph, target)
+        return result
+
+    @staticmethod
+    def _prune_orphaned_vault_pages(graph: ResearchGraph, vault: Path) -> None:
+        """Delete projected vault pages a rename / deletion left orphaned.
+
+        The Obsidian vault is bidirectional, so unlike ``wiki/`` and ``site/``
+        we never ``rmtree`` it — user-authored notes must survive. But the
+        projector keys each generated page on the node's CURRENT canonical slug
+        (``directory_for_node``/``unique_slugs``). When a node is renamed (its
+        slug changes) or removed entirely, the projector simply stops writing
+        the old path; the stale ``.md`` lingers on disk.
+
+        That orphan is not harmless: it still carries the old ``title:`` in its
+        frontmatter, so the next compile's vault overlay
+        (:meth:`_apply_vault_overlay`) reads it, sees ``title != snapshot``, and
+        mints a phantom ``name`` override that resurrects the pre-rename name —
+        an incremental compile (which renamed the node) and a subsequent full
+        compile then diverge on every artifact downstream of that name
+        (synthesis pulse target, community partition, projections). See the
+        Phase-4 subtractive-parity gate.
+
+        A page is an orphan iff it carries a ``node_id:`` frontmatter key (i.e.
+        it is projector-generated, not a hand-written user note) AND that node
+        no longer projects to this exact path. User notes (no ``node_id:``) and
+        the structural files (``index.md``, ``_bridges.md``, ``README.md``,
+        ``_meta/``, ``.obsidian/``) are left untouched. SQLite/graph.json are
+        never affected.
+        """
+        if not vault.exists():
+            return
+        from .markdown_projection import (
+            directory_for_node,
+            unique_slugs,
+        )
+        from .research_graph import is_public_research_node
+
+        slug_by_id = unique_slugs(graph.nodes)
+        # The canonical (current) projected path for every node that owns a
+        # page. Matches the projector's own path computation so a freshly
+        # written page is never mistaken for an orphan.
+        canonical_paths: set[Path] = set()
+        for node in graph.nodes:
+            if node.type == ResearchNodeType.STUB or not is_public_research_node(node):
+                continue
+            slug = slug_by_id.get(node.id)
+            if slug is None:
+                continue
+            canonical_paths.add(
+                (vault / directory_for_node(node) / f"{slug}.md").resolve()
+            )
+        for md in vault.rglob("*.md"):
+            try:
+                head = md.read_text(encoding="utf-8")[:512]
+            except OSError:
+                continue
+            # Only projector-generated pages carry a ``node_id:`` frontmatter
+            # key (written first by ``render_node_page``); user notes never do.
+            if "\nnode_id:" not in ("\n" + head):
+                continue
+            if md.resolve() not in canonical_paths:
+                md.unlink(missing_ok=True)
 
     def build_site(self, output: Optional[str | Path] = None) -> dict:
         cfg = self.config()
@@ -1689,6 +1793,11 @@ class ProjectWiki:
             # Pitfall 1); SQLite-only, never in graph.json.
             self._record_provenance(store, graph, extraction_prov)
         GraphMarkdownProjector().write_projection(graph, self.paths.markdown_projection)
+        # markdown_projection/ is a one-way projection (no user notes), but like
+        # the Obsidian vault it is NOT rmtree'd, so a rename / deletion leaves a
+        # stale per-node page behind. Prune those orphans so an incremental and
+        # a full compile project byte-identical trees (Phase-4 subtractive gate).
+        self._prune_orphaned_vault_pages(graph, self.paths.markdown_projection)
         CogneeResearchGraphAdapter().write_bundle(graph, self.paths.cognee_bundle)
         if cognify and cognify.is_active:
             self._run_cognify_best_effort(cognify)
