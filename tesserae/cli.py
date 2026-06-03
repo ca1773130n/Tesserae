@@ -8,7 +8,7 @@ import json
 import sys
 from collections import Counter
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Callable, Dict, Iterable, List, Optional
 
 from .batch import BatchIngestRunner
 from .canonicalization import GraphCanonicalizer, ReviewDecision
@@ -1210,13 +1210,22 @@ def project_main(argv: List[str] | None = None) -> int:
     watch_parser.add_argument("--quiet", action="store_true", help="Suppress the banner and per-cycle progress output")
 
     args = parser.parse_args(argv)
-    if args.command == "init":
-        wiki = ProjectWiki.init(args.project, name=args.name, source_kind=args.source_kind, sources=args.source)
-        print(f"Initialized project wiki: {wiki.root}")
-        print(f"Graph: {wiki.paths.graph}")
-        print("Next: python3 -m tesserae.cli project ingest <paths>")
-        return 0
-    if args.command == "setup":
+    handler = _COMMANDS.get(args.command)
+    if handler is None:
+        raise ValueError(f"Unknown project command: {args.command}")
+    return handler(args)
+
+
+def _handle_init(args: argparse.Namespace) -> int:
+    wiki = ProjectWiki.init(args.project, name=args.name, source_kind=args.source_kind, sources=args.source)
+    print(f"Initialized project wiki: {wiki.root}")
+    print(f"Graph: {wiki.paths.graph}")
+    print("Next: python3 -m tesserae.cli project ingest <paths>")
+    return 0
+
+
+def _handle_setup(args: argparse.Namespace) -> int:
+    if True:
         from .setup import (
             WizardNotInteractive,
             apply_plan,
@@ -1299,7 +1308,10 @@ def project_main(argv: List[str] | None = None) -> int:
                 print(f"warning: {w}", file=sys.stderr)
         print("Next: tesserae project compile && tesserae project build-site")
         return 0
-    if args.command == "ingest":
+
+
+def _handle_ingest(args: argparse.Namespace) -> int:
+    if True:
         wiki = ProjectWiki.load(args.project)
         result = wiki.ingest(
             args.inputs,
@@ -1316,7 +1328,10 @@ def project_main(argv: List[str] | None = None) -> int:
         )
         print(f"Graph: {result['graph_path']}")
         return 0
-    if args.command == "ingest-code":
+
+
+def _handle_ingest_code(args: argparse.Namespace) -> int:
+    if True:
         # Defer the import so the rest of the CLI does not pay the cost
         # of pulling in ast / pathlib walkers when they're not needed.
         from .code_graph_extractor import CodeGraphExtractor, DEFAULT_EXCLUDES, write_code_graph
@@ -1334,7 +1349,10 @@ def project_main(argv: List[str] | None = None) -> int:
         )
         print(f"Graph: {output}")
         return 0
-    if args.command == "sync-code":
+
+
+def _handle_sync_code(args: argparse.Namespace) -> int:
+    if True:
         from .code_graph_adapter import (
             CodeGraphAdapter,
             _default_codegraph_db,
@@ -1365,7 +1383,10 @@ def project_main(argv: List[str] | None = None) -> int:
         )
         print(f"Graph: {output}")
         return 0
-    if args.command == "compile":
+
+
+def _handle_compile(args: argparse.Namespace) -> int:
+    if True:
         wiki = ProjectWiki.load(args.project)
         try:
             refreshed = refresh_configured_external_tools(args.project, only_auto=not args.refresh_external_tools, fail_fast=False)
@@ -1452,7 +1473,10 @@ def project_main(argv: List[str] | None = None) -> int:
         )
         print(f"Graph: {result['graph_path']}")
         return 0
-    if args.command == "schema-drift":
+
+
+def _handle_schema_drift(args: argparse.Namespace) -> int:
+    if True:
         wiki = ProjectWiki.load(args.project)
         if not wiki.paths.graph.exists():
             print("error: no compiled graph yet — run `project compile` first.", file=sys.stderr)
@@ -1493,7 +1517,10 @@ def project_main(argv: List[str] | None = None) -> int:
             f"report at {report_path}"
         )
         return 0
-    if args.command == "evolve":
+
+
+def _handle_evolve(args: argparse.Namespace) -> int:
+    if True:
         from .llm_json import build_default_json_client
         wiki = ProjectWiki.load(args.project)
         # An LLM phrases each cluster; when none is reachable evolve degrades
@@ -1505,7 +1532,10 @@ def project_main(argv: List[str] | None = None) -> int:
             f"guidance at {summary['guidance_path']}"
         )
         return 0
-    if args.command == "research":
+
+
+def _handle_research(args: argparse.Namespace) -> int:
+    if True:
         from .llm_json import build_default_json_client
         from .mcp_server import LLMWikiMCPServer
         from .research_mode import GraphSearchBackend, ResearchSession
@@ -1578,15 +1608,20 @@ def project_main(argv: List[str] | None = None) -> int:
             f"{merged_note}"
         )
         return 0
-    if args.command == "refresh-understand-anything":
-        return refresh_understand_anything(
-            args.project,
-            platform=args.platform,
-            full=args.full,
-            force=args.force,
-            timeout=args.timeout,
-        )
-    if args.command == "obsidian-sync":
+
+
+def _handle_refresh_understand_anything(args: argparse.Namespace) -> int:
+    return refresh_understand_anything(
+        args.project,
+        platform=args.platform,
+        full=args.full,
+        force=args.force,
+        timeout=args.timeout,
+    )
+
+
+def _handle_obsidian_sync(args: argparse.Namespace) -> int:
+    if True:
         wiki = ProjectWiki.load(args.project)
         if args.dry_run and args.watch:
             print("error: --dry-run and --watch are mutually exclusive", file=sys.stderr)
@@ -1678,7 +1713,9 @@ def project_main(argv: List[str] | None = None) -> int:
         )
         return 0
 
-    if args.command == "refresh-raganything":
+
+def _handle_refresh_raganything(args: argparse.Namespace) -> int:
+    if True:
         forwarded = ["--project", args.project, "--parser", args.parser, "--parse-method", args.parse_method]
         for r in (args.roots or []):
             forwarded += ["--root", r]
@@ -1687,7 +1724,10 @@ def project_main(argv: List[str] | None = None) -> int:
         if args.full:
             forwarded.append("--full")
         return _raganything_refresh_main(forwarded)
-    if args.command == "lint":
+
+
+def _handle_lint(args: argparse.Namespace) -> int:
+    if True:
         wiki = ProjectWiki.load(args.project)
         report = wiki.lint(fix_trivial=args.fix_trivial, severity_floor=args.severity)
         if args.lint_json:
@@ -1705,20 +1745,32 @@ def project_main(argv: List[str] | None = None) -> int:
         if floor == "info" and report.findings:
             return 1
         return 0
-    if args.command == "query":
-        return _project_query_handler(args)
-    if args.command == "ask":
-        return _project_ask_handler(args)
-    if args.command == "mcp-config":
-        wiki = ProjectWiki.load(args.project)
-        print(wiki.render_mcp_config(server_name=args.server_name, pythonpath=args.pythonpath), end="")
-        return 0
-    if args.command == "export-graphiti":
+
+
+def _handle_query(args: argparse.Namespace) -> int:
+    return _project_query_handler(args)
+
+
+def _handle_ask(args: argparse.Namespace) -> int:
+    return _project_ask_handler(args)
+
+
+def _handle_mcp_config(args: argparse.Namespace) -> int:
+    wiki = ProjectWiki.load(args.project)
+    print(wiki.render_mcp_config(server_name=args.server_name, pythonpath=args.pythonpath), end="")
+    return 0
+
+
+def _handle_export_graphiti(args: argparse.Namespace) -> int:
+    if True:
         wiki = ProjectWiki.load(args.project)
         result = wiki.export_graphiti(group_id=args.group_id, output=args.output)
         print(f"Exported Graphiti episodes: episodes={result['episodes']} path={result['path']} group_id={result['group_id']}")
         return 0
-    if args.command == "sync-graphiti":
+
+
+def _handle_sync_graphiti(args: argparse.Namespace) -> int:
+    if True:
         wiki = ProjectWiki.load(args.project)
         try:
             result = wiki.sync_graphiti(
@@ -1734,17 +1786,24 @@ def project_main(argv: List[str] | None = None) -> int:
         prefix = "Graphiti dry-run" if result.get("dry_run") else "Synced Graphiti"
         print(f"{prefix}: episodes={result['episodes']} group_id={result['group_id']}")
         return 0
-    if args.command == "export-agent-harness":
-        wiki = ProjectWiki.load(args.project)
-        result = wiki.export_agent_harness(targets=args.target or None, output=args.output)
-        print(f"Exported agent harness: files={result['files']} path={result['path']} targets={','.join(result['targets'])}")
-        return 0
-    if args.command == "export-obsidian":
-        wiki = ProjectWiki.load(args.project)
-        result = wiki.export_obsidian(vault=args.vault)
-        print(f"Exported Obsidian vault: notes={result['notes']} path={result['vault_path']}")
-        return 0
-    if args.command == "sessions":
+
+
+def _handle_export_agent_harness(args: argparse.Namespace) -> int:
+    wiki = ProjectWiki.load(args.project)
+    result = wiki.export_agent_harness(targets=args.target or None, output=args.output)
+    print(f"Exported agent harness: files={result['files']} path={result['path']} targets={','.join(result['targets'])}")
+    return 0
+
+
+def _handle_export_obsidian(args: argparse.Namespace) -> int:
+    wiki = ProjectWiki.load(args.project)
+    result = wiki.export_obsidian(vault=args.vault)
+    print(f"Exported Obsidian vault: notes={result['notes']} path={result['vault_path']}")
+    return 0
+
+
+def _handle_sessions(args: argparse.Namespace) -> int:
+    if True:
         wiki = ProjectWiki.load(args.project)
         store = HarnessSessionStore(wiki.paths.harness_sessions)
         if args.sessions_command == "import":
@@ -1796,12 +1855,18 @@ def project_main(argv: List[str] | None = None) -> int:
                     f"{session.title or session.slug}"
                 )
             return 0
-    if args.command == "build-site":
-        wiki = ProjectWiki.load(args.project)
-        result = wiki.build_site(output=args.output)
-        print(f"Built frontend site: nodes={result['nodes']} edges={result['edges']} path={result['site_path']}")
-        return 0
-    if args.command == "deploy":
+    raise ValueError(f"Unknown project command: {args.command}")
+
+
+def _handle_build_site(args: argparse.Namespace) -> int:
+    wiki = ProjectWiki.load(args.project)
+    result = wiki.build_site(output=args.output)
+    print(f"Built frontend site: nodes={result['nodes']} edges={result['edges']} path={result['site_path']}")
+    return 0
+
+
+def _handle_deploy(args: argparse.Namespace) -> int:
+    if True:
         wiki = ProjectWiki.load(args.project)
         if args.build:
             wiki.compile()
@@ -1823,7 +1888,10 @@ def project_main(argv: List[str] | None = None) -> int:
         print(f"  files: {result['files_uploaded']}")
         print(f"  sha: {result['commit_sha']}")
         return 0
-    if args.command == "serve":
+
+
+def _handle_serve(args: argparse.Namespace) -> int:
+    if True:
         wiki = ProjectWiki.load(args.project)
         url = f"http://{args.host}:{args.port}/"
         if args.dry_run:
@@ -1848,7 +1916,10 @@ def project_main(argv: List[str] | None = None) -> int:
             print(f"Could not serve frontend site at {url}: {exc}", file=sys.stderr)
             return 2
         return 0
-    if args.command == "watch":
+
+
+def _handle_watch(args: argparse.Namespace) -> int:
+    if True:
         from .watch import WatchLoop
 
         watch_paths = args.paths or None
@@ -1861,7 +1932,35 @@ def project_main(argv: List[str] | None = None) -> int:
         )
         loop.run(once=args.once)
         return 0
-    raise ValueError(f"Unknown project command: {args.command}")
+
+
+_COMMANDS: Dict[str, Callable[[argparse.Namespace], int]] = {
+    "init": _handle_init,
+    "setup": _handle_setup,
+    "ingest": _handle_ingest,
+    "ingest-code": _handle_ingest_code,
+    "sync-code": _handle_sync_code,
+    "compile": _handle_compile,
+    "schema-drift": _handle_schema_drift,
+    "evolve": _handle_evolve,
+    "research": _handle_research,
+    "refresh-understand-anything": _handle_refresh_understand_anything,
+    "obsidian-sync": _handle_obsidian_sync,
+    "refresh-raganything": _handle_refresh_raganything,
+    "lint": _handle_lint,
+    "query": _handle_query,
+    "ask": _handle_ask,
+    "mcp-config": _handle_mcp_config,
+    "export-graphiti": _handle_export_graphiti,
+    "sync-graphiti": _handle_sync_graphiti,
+    "export-agent-harness": _handle_export_agent_harness,
+    "export-obsidian": _handle_export_obsidian,
+    "sessions": _handle_sessions,
+    "build-site": _handle_build_site,
+    "deploy": _handle_deploy,
+    "serve": _handle_serve,
+    "watch": _handle_watch,
+}
 
 
 def main(argv: List[str] | None = None) -> int:
