@@ -106,9 +106,13 @@ def detect_contradicting_pairs(
 ) -> List[Tuple[ResearchNode, ResearchNode]]:
     """Return ``(left, right)`` contradicting claim pairs, deterministically.
 
-    ``left`` carries ``outperforms``; ``right`` carries ``is outperformed
-    by``; they share a topic and come from different sources. Ordered by
-    ``(left.id, right.id)`` so the pass is byte-stable.
+    Roles are assigned by the CLAIM MARKERS, NOT by id sort order: ``left``
+    is whichever node carries ``outperforms``; ``right`` is whichever
+    carries ``is outperformed by``. We compare every UNORDERED pair, so a
+    contradiction is detected regardless of how the two node ids sort
+    (codex MAJOR 2). They must share a topic and come from different
+    sources. The output list is sorted by ``(left.id, right.id)`` so the
+    pass stays byte-stable.
     """
     candidates = sorted(
         (n for n in graph.nodes if _kind(n) in _CLAIM_KINDS),
@@ -116,16 +120,29 @@ def detect_contradicting_pairs(
     )
     pairs: List[Tuple[ResearchNode, ResearchNode]] = []
     seen: Set[Tuple[str, str]] = set()
-    for i, left in enumerate(candidates):
-        left_text = _node_text(left)
-        if _LEFT_MARKER not in left_text.lower():
-            continue
-        for right in candidates[i + 1 :]:
-            if left.source_path and left.source_path == right.source_path:
+    for i, first in enumerate(candidates):
+        first_text = first_lower = None  # lazy
+        for second in candidates[i + 1 :]:
+            if first.source_path and first.source_path == second.source_path:
                 continue
-            right_text = _node_text(right)
-            if _RIGHT_MARKER not in right_text.lower():
+            if first_text is None:
+                first_text = _node_text(first)
+                first_lower = first_text.lower()
+            second_text = _node_text(second)
+            second_lower = second_text.lower()
+
+            # Assign left/right by marker, independent of id ordering. The
+            # contradicting pair needs one ``outperforms`` claim and one
+            # ``is outperformed by`` claim.
+            if _LEFT_MARKER in first_lower and _RIGHT_MARKER in second_lower:
+                left, right = first, second
+                left_text, right_text = first_text, second_text
+            elif _LEFT_MARKER in second_lower and _RIGHT_MARKER in first_lower:
+                left, right = second, first
+                left_text, right_text = second_text, first_text
+            else:
                 continue
+
             if not _share_topic(left_text, right_text):
                 continue
             key = tuple(sorted([left.id, right.id]))
@@ -133,6 +150,7 @@ def detect_contradicting_pairs(
                 continue
             seen.add(key)
             pairs.append((left, right))
+    pairs.sort(key=lambda pr: (pr[0].id, pr[1].id))
     return pairs
 
 
@@ -141,50 +159,96 @@ def detect_contradicting_pairs(
 # ---------------------------------------------------------------------------
 
 
+# Role verdicts: who wins the contradiction, expressed relative to the
+# (left, right) ROLES — NOT to concrete node ids. ``left_wins`` => the
+# ``outperforms`` claim wins; ``right_wins`` => the ``is outperformed by``
+# claim wins; ``distinct`` => no resolution.
+_LEFT_WINS = "left_wins"
+_RIGHT_WINS = "right_wins"
+_DISTINCT = "distinct"
+_VALID_ROLE_VERDICTS = {_LEFT_WINS, _RIGHT_WINS, _DISTINCT}
+
+
 @dataclass(frozen=True)
 class ContradictionVerdict:
     """LLM arbitration outcome for a contradicting pair.
 
-    ``winner_id`` / ``loser_id`` are node ids drawn from the pair.
+    ``role`` is one of ``left_wins`` / ``right_wins`` / ``distinct`` and is
+    stored content-keyed (codex MAJOR 1) so identical claim content reuses
+    the cached verdict under ANY node ids. ``winner_id`` / ``loser_id`` are
+    the concrete ids resolved from ``role`` for the current pair (empty
+    when ``role == "distinct"``).
     """
 
-    winner_id: str
-    loser_id: str
+    role: str
+    winner_id: str = ""
+    loser_id: str = ""
     rationale: str = ""
+
+    def is_resolved(self) -> bool:
+        return self.role in {_LEFT_WINS, _RIGHT_WINS}
+
+    @classmethod
+    def from_role(
+        cls,
+        role: str,
+        left: ResearchNode,
+        right: ResearchNode,
+        rationale: str = "",
+    ) -> "ContradictionVerdict":
+        if role == _LEFT_WINS:
+            return cls(role, left.id, right.id, rationale)
+        if role == _RIGHT_WINS:
+            return cls(role, right.id, left.id, rationale)
+        return cls(_DISTINCT, "", "", rationale)
+
+
+def _normalize(text: str) -> str:
+    """Whitespace/case-normalised claim content for the cache key."""
+    return " ".join((text or "").split()).strip().lower()
 
 
 def _content_hash(left: ResearchNode, right: ResearchNode) -> str:
-    """Content-keyed cache hash (Pitfall 5): hashes the claims' CONTENT,
-    not their ids, so identical claims reuse one cached verdict."""
-    raw = f"{left.name}::{right.name}::{(left.description or '')[:100]}"
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+    """Order-independent, content-keyed cache hash (codex MAJOR 1).
+
+    Hashes the sha256 of the SORTED pair of normalised
+    ``name + description`` blobs, so the SAME claim content reminted under
+    DIFFERENT node ids lands on the SAME cache file. We sort the two sides
+    so id/argument order never changes the key; the stored ``role`` is then
+    re-anchored to the live (left, right) roles by the caller.
+    """
+    left_blob = _normalize(f"{left.name} {left.description or ''}")
+    right_blob = _normalize(f"{right.name} {right.description or ''}")
+    a, b = sorted([left_blob, right_blob])
+    raw = f"{a}::{b}".encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:16]
 
 
 def _read_cached_verdict(
-    path: Path, valid_ids: Set[str]
+    path: Path, left: ResearchNode, right: ResearchNode
 ) -> Optional[ContradictionVerdict]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
-    winner = str(payload.get("winner_id") or "")
-    loser = str(payload.get("loser_id") or "")
-    if winner not in valid_ids or loser not in valid_ids or winner == loser:
+    role = str(payload.get("role") or "")
+    if role not in _VALID_ROLE_VERDICTS:
         return None
-    return ContradictionVerdict(
-        winner_id=winner,
-        loser_id=loser,
-        rationale=str(payload.get("rationale") or ""),
+    return ContradictionVerdict.from_role(
+        role, left, right, rationale=str(payload.get("rationale") or "")
     )
 
 
-def _write_cached_verdict(path: Path, verdict: ContradictionVerdict) -> None:
-    """Atomic write with PID+random suffix (matches supersede._write_cache)."""
+def _write_cached_verdict(path: Path, role: str, rationale: str) -> None:
+    """Atomic write with PID+random suffix (matches supersede._write_cache).
+
+    Persists the ROLE verdict, NOT concrete ids — so the cache file is
+    valid for any node ids carrying the same claim content.
+    """
     payload = {
-        "schema_version": 1,
-        "winner_id": verdict.winner_id,
-        "loser_id": verdict.loser_id,
-        "rationale": verdict.rationale,
+        "schema_version": 2,
+        "role": role,
+        "rationale": rationale,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + f".tmp.{os.getpid()}.{secrets.token_hex(4)}")
@@ -221,7 +285,12 @@ _USER_TEMPLATE = (
 def _ask_llm(
     client: LLMJsonClient, left: ResearchNode, right: ResearchNode
 ) -> Optional[ContradictionVerdict]:
-    """Call the JSON-constrained client. ``None`` on any failure."""
+    """Call the JSON-constrained client. ``None`` on any failure.
+
+    The wire protocol still returns concrete ``winner_id`` / ``loser_id``;
+    we immediately collapse that to the content-keyed ROLE so the cache
+    (and downstream determinism) never depends on the concrete ids.
+    """
     valid = {left.id, right.id}
     try:
         response = client.complete_json(
@@ -247,10 +316,9 @@ def _ask_llm(
     loser = str(response.get("loser_id") or "").strip()
     if winner not in valid or loser not in valid or winner == loser:
         return None
-    return ContradictionVerdict(
-        winner_id=winner,
-        loser_id=loser,
-        rationale=str(response.get("rationale") or ""),
+    role = _LEFT_WINS if winner == left.id else _RIGHT_WINS
+    return ContradictionVerdict.from_role(
+        role, left, right, rationale=str(response.get("rationale") or "")
     )
 
 
@@ -287,17 +355,18 @@ def run_contradiction_resolution(
     }
     minted = 0
     for left, right in pairs:
-        valid = {left.id, right.id}
         cache_file = cache_path_dir / f"{_content_hash(left, right)}.json"
         verdict: Optional[ContradictionVerdict] = None
         if cache_file.exists():
-            verdict = _read_cached_verdict(cache_file, valid)
+            verdict = _read_cached_verdict(cache_file, left, right)
         if verdict is None:
             verdict = _ask_llm(llm, left, right)
             if verdict is None:
                 continue
-            _write_cached_verdict(cache_file, verdict)
+            _write_cached_verdict(cache_file, verdict.role, verdict.rationale)
 
+        if not verdict.is_resolved():
+            continue
         edge_key = (verdict.loser_id, RESOLVED_BY_EDGE, verdict.winner_id)
         confidence[verdict.winner_id] = "high"
         confidence[verdict.loser_id] = "low"

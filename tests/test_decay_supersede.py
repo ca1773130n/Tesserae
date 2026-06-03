@@ -204,6 +204,52 @@ def test_supersede_pass_mints_edge_for_near_duplicate(
     assert [e.type for e in graph_two.edges].count(SUPERSEDE_EDGE) == 1
 
 
+def test_supersede_warm_cache_hits_under_reminted_node_ids(
+    tmp_path: Path, three_insights
+):
+    """codex MAJOR 1: the supersede warm cache is CONTENT-keyed, so the same
+    finding content reminted under DIFFERENT node ids hits the cache with
+    ZERO LLM calls and yields the same edge orientation (newer supersedes
+    older near-duplicate)."""
+    cache_dir = tmp_path / "supersede_cache"
+    fresh, _old, dup = three_insights
+
+    # Cold run with the original ids. dup.id < fresh.id, so the pass passes
+    # (a=dup, b=fresh); "fresh obsoletes dup" => verdict "b_obsoletes_a".
+    assert dup.id < fresh.id
+    cold = _ScriptedClient([{"verdict": "b_obsoletes_a", "rationale": "sharper."}])
+    graph = ResearchGraph(nodes=list(three_insights), edges=[])
+    out = run_supersede_pass(graph, json_client=cold, cache_dir=cache_dir)
+    assert cold.calls == 1
+    e1 = [e for e in out.edges if e.type == SUPERSEDE_EDGE][0]
+    assert (e1.source, e1.target) == (fresh.id, dup.id)
+
+    # Remint: SAME bodies, DIFFERENT ids. Keep the same first_seen_at so the
+    # content (name/description) is byte-identical to the cold run.
+    re_fresh = ResearchNode(
+        id="SessionInsight:zzz-fresh-renamed",
+        name=fresh.name,
+        type=ResearchNodeType.SESSION_INSIGHT,
+        metadata=dict(fresh.metadata or {}),
+    )
+    re_dup = ResearchNode(
+        id="SessionInsight:aaa-dup-renamed",
+        name=dup.name,
+        type=ResearchNodeType.SESSION_INSIGHT,
+        metadata=dict(dup.metadata or {}),
+    )
+    warm = _ScriptedClient([])  # would yield None if the LLM were hit
+    graph2 = ResearchGraph(nodes=[re_fresh, re_dup], edges=[])
+    out2 = run_supersede_pass(graph2, json_client=warm, cache_dir=cache_dir)
+    assert warm.calls == 0, "reminted ids must still hit the warm cache"
+    edges2 = [e for e in out2.edges if e.type == SUPERSEDE_EDGE]
+    assert len(edges2) == 1
+    # Orientation tracks CONTENT: the "fresh" body supersedes the "dup" body,
+    # regardless of which renamed id sorts first.
+    assert edges2[0].source == re_fresh.id
+    assert edges2[0].target == re_dup.id
+
+
 def test_supersede_pass_no_client_is_no_op(tmp_path: Path, three_insights):
     graph = ResearchGraph(nodes=list(three_insights), edges=[])
     out = run_supersede_pass(
