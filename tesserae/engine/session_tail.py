@@ -53,6 +53,29 @@ logger = logging.getLogger("tesserae.session_tail")
 OnNewTurns = Callable[[Path, List[dict]], None]
 
 
+def _dir_changed_since(directory: Path, floor: float) -> bool:
+    """Return True if ``directory``'s mtime is at/after ``floor``.
+
+    ``floor == 0`` admits everything (first full scan). A missing/unstattable
+    dir is treated as changed so we don't silently drop it.
+    """
+    if floor <= 0:
+        return True
+    try:
+        return directory.stat().st_mtime >= floor
+    except OSError:
+        return True
+
+
+def _file_signature(path: Path) -> "tuple[int, float]":
+    """Return ``(size, mtime)`` for change-detection, ``(0, 0.0)`` if missing."""
+    try:
+        st = path.stat()
+        return int(st.st_size), float(st.st_mtime)
+    except OSError:
+        return (0, 0.0)
+
+
 class SessionTailer:
     """Seek-based, partial-line-safe tailer; writes the store, then enqueues."""
 
@@ -79,10 +102,18 @@ class SessionTailer:
         }
         # Enumerated in-scope transcript files (path -> harness "claude"|"codex").
         self._known: Dict[Path, str] = {}
-        # Cached per-file project-match decision for Codex peeks (avoid re-peek).
-        self._codex_match: Dict[Path, bool] = {}
+        # Negative-match re-peek state (Codex #4): for a Codex rollout that did
+        # NOT yet match the project, remember the (size, mtime) we peeked at.
+        # When the file grows or its mtime advances, RE-PEEK — its project
+        # signal (session_meta/cwd row) may have landed after the first peek.
+        # Positive matches are promoted to ``_known`` and never re-peeked.
+        self._codex_unmatched: Dict[Path, "tuple[int, float]"] = {}
         self._reenum_interval = 60.0
         self._last_enum = 0.0
+        # Bounded Codex discovery (Codex #3): only scan date dirs whose mtime is
+        # at/after this floor (recent dirs). Seeded to scan everything once on
+        # construction; subsequent ticks skip cold history.
+        self._codex_dir_floor = 0.0
         self._enumerate()
 
     # ------------------------------------------------------------------ #
@@ -90,7 +121,17 @@ class SessionTailer:
     # ------------------------------------------------------------------ #
 
     def _enumerate(self) -> None:
-        """Refresh the in-scope file set, scoped to the project slug dir."""
+        """Refresh the in-scope file set, scoped to the project slug dir.
+
+        Bounded by design (Codex #3): the Claude side is slug-scoped and the
+        Codex side scans ONLY recent/changed date dirs plus re-peeks already
+        tracked still-growing rollouts — never an rglob of the whole history.
+        """
+        # First enumeration scans the full history once; afterwards only date
+        # dirs touched recently are visited. We capture the *previous* floor
+        # for this pass, then advance the floor for the next tick.
+        prev_floor = self._codex_dir_floor
+        scan_started = time.time()
         self._last_enum = time.monotonic()
         slug = _claude_project_dir(self.project_root)
         for root in self._watch_roots:
@@ -106,15 +147,86 @@ class SessionTailer:
             # Codex: dated rollout files filtered to this project's cwd.
             sessions_dir = root / "sessions"
             if sessions_dir.exists():
-                for path in sessions_dir.rglob("rollout-*.jsonl"):
-                    if path in self._known or path in self._codex_match:
-                        if self._codex_match.get(path):
-                            self._known.setdefault(path, "codex")
-                        continue
-                    matched = self._codex_file_matches(path)
-                    self._codex_match[path] = matched
-                    if matched:
-                        self._known[path] = "codex"
+                self._enumerate_codex(sessions_dir, prev_floor)
+        # Re-peek already-tracked unmatched rollouts that have grown/changed —
+        # their project signal may have landed after the first peek (Codex #4).
+        self._repeek_unmatched()
+        # Advance the floor: next pass only revisits date dirs touched since the
+        # start of THIS scan (steady-state work is bounded by recent activity).
+        self._codex_dir_floor = scan_started
+
+    def _enumerate_codex(self, sessions_dir: Path, floor: float) -> None:
+        """Scan ONLY date dirs whose mtime is at/after ``floor``.
+
+        The Codex layout is ``<sessions>/YYYY/MM/DD/rollout-*.jsonl``. Instead of
+        ``rglob`` over the whole tree every tick, we walk the shallow date
+        hierarchy and skip any DAY directory that has not changed since the last
+        scan, so steady-state cost is bounded by today's activity regardless of
+        total history size (Codex #3).
+        """
+        for day_dir in self._recent_day_dirs(sessions_dir, floor):
+            for path in day_dir.glob("rollout-*.jsonl"):
+                if path in self._known:
+                    continue
+                self._consider_codex_file(path)
+
+    @staticmethod
+    def _recent_day_dirs(sessions_dir: Path, floor: float) -> List[Path]:
+        """Yield ``YYYY/MM/DD`` leaf dirs whose mtime is >= ``floor``.
+
+        Each level is pruned by mtime so untouched years/months are never
+        descended into. ``floor == 0`` (first scan) admits everything.
+        """
+        days: List[Path] = []
+        try:
+            year_dirs = [d for d in sessions_dir.iterdir() if d.is_dir()]
+        except OSError:
+            return days
+        for year in year_dirs:
+            if not _dir_changed_since(year, floor):
+                continue
+            try:
+                month_dirs = [d for d in year.iterdir() if d.is_dir()]
+            except OSError:
+                continue
+            for month in month_dirs:
+                if not _dir_changed_since(month, floor):
+                    continue
+                try:
+                    day_dirs = [d for d in month.iterdir() if d.is_dir()]
+                except OSError:
+                    continue
+                for day in day_dirs:
+                    if _dir_changed_since(day, floor):
+                        days.append(day)
+        return days
+
+    def _consider_codex_file(self, path: Path) -> None:
+        """Peek a candidate rollout; promote to known on match, else track it."""
+        if self._codex_file_matches(path):
+            self._known[path] = "codex"
+            self._codex_unmatched.pop(path, None)
+        else:
+            self._codex_unmatched[path] = _file_signature(path)
+
+    def _repeek_unmatched(self) -> None:
+        """Re-peek tracked unmatched rollouts that have grown/changed (Codex #4).
+
+        Never permanently blacklists a still-growing file: a rollout seen before
+        its ``session_meta``/cwd row landed is re-peeked once its bytes change.
+        """
+        for path in list(self._codex_unmatched):
+            if path in self._known:
+                self._codex_unmatched.pop(path, None)
+                continue
+            sig = _file_signature(path)
+            if sig == (0, 0.0):
+                # File vanished — drop it so we don't re-stat forever.
+                self._codex_unmatched.pop(path, None)
+                continue
+            if sig == self._codex_unmatched[path]:
+                continue  # unchanged since last peek — skip the re-read
+            self._consider_codex_file(path)
 
     def _codex_file_matches(self, path: Path) -> bool:
         """Cheap first-lines peek: does this Codex rollout target our project?"""
@@ -213,8 +325,12 @@ class SessionTailer:
 
         # CRITICAL ORDERING: persist session + offset BEFORE the callback so the
         # debounced compile reads correct state regardless of changed_paths drop.
-        self.sessions_db.upsert(session, jsonl_path=path, last_offset=new_offset)
-        self.sessions_db.set_offset(path, new_offset)
+        # ATOMICITY (Codex #5): the session row and its resume offset are written
+        # in ONE transaction so a crash between them can't leave a stale offset
+        # that re-emits already-ingested turns on restart.
+        self.sessions_db.upsert_with_offset(
+            session, jsonl_path=path, last_offset=new_offset
+        )
         self._offsets[path] = new_offset
         if new_turns:
             self.on_new_turns(path, new_turns)

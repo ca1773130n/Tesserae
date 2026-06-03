@@ -237,6 +237,112 @@ def test_store_written_before_enqueue(tmp_path, fmt):
     assert captured.get("stored_at_callback") is True
 
 
+def _codex_day_dir(tmp_path: Path, y: str, m: str, d: str) -> Path:
+    dd = _codex_root(tmp_path) / "sessions" / y / m / d
+    dd.mkdir(parents=True, exist_ok=True)
+    return dd
+
+
+def _set_mtime(path: Path, when: float) -> None:
+    """Set mtime on a path AND every dir up to the sessions root."""
+    import os
+    os.utime(path, (when, when))
+
+
+def test_codex_discovery_skips_old_date_dirs(tmp_path):
+    """Bounded discovery (#3): after the floor advances, a rollout dropped into
+    an OLD (unchanged) date dir is NOT peeked, while a recent dir still is."""
+    project = tmp_path / "demo-project"
+    project.mkdir(exist_ok=True)
+    roots = [_claude_root(tmp_path), _codex_root(tmp_path)]
+
+    # An old date dir, stamped far in the past (dir + all ancestors).
+    old_day = _codex_day_dir(tmp_path, "2020", "01", "01")
+    sessions_root = _codex_root(tmp_path) / "sessions"
+    import os, time as _t
+    old_ts = _t.time() - 365 * 24 * 3600
+    for p in [old_day, old_day.parent, old_day.parent.parent, sessions_root]:
+        os.utime(p, (old_ts, old_ts))
+
+    sink: list = []
+    tailer, db = _make_tailer(project, roots, tmp_path, sink)
+    # Construction did the first FULL scan (floor=0) and advanced the floor.
+
+    # Record which files get peeked on the next enumerate.
+    peeked: list = []
+    orig_peek = SessionTailer._peek_rows
+
+    def spy(path, limit):
+        peeked.append(Path(path))
+        return orig_peek(path, limit)
+    tailer._peek_rows = spy  # type: ignore[assignment]
+
+    # Drop a NEW matching rollout into the OLD dir WITHOUT bumping its mtime.
+    old_roll = old_day / "rollout-2020-01-01T00-00-00-old.jsonl"
+    old_roll.write_text(
+        "\n".join([_codex_meta_line(project),
+                   _codex_line("user", "old turn", "2020-01-01T00:00:00Z")]) + "\n",
+        encoding="utf-8",
+    )
+    os.utime(old_roll, (old_ts, old_ts))
+    os.utime(old_day, (old_ts, old_ts))  # keep dir mtime old
+
+    # Drop a matching rollout into a RECENT dir (mtime = now).
+    new_day = _codex_day_dir(tmp_path, "2026", "05", "05")
+    new_roll = new_day / "rollout-2026-05-05T11-00-00-new.jsonl"
+    new_roll.write_text(
+        "\n".join([_codex_meta_line(project),
+                   _codex_line("user", "new turn", "2026-05-05T11:00:00Z")]) + "\n",
+        encoding="utf-8",
+    )
+
+    tailer._enumerate()
+
+    # The old dir was below the floor → its rollout was never opened.
+    assert old_roll not in peeked
+    # The recent dir was at/after the floor → its rollout WAS opened + known.
+    assert new_roll in tailer._known
+
+
+def test_codex_negative_match_repeek(tmp_path):
+    """Negative-match re-peek (#4): a rollout missing its project signal on the
+    first peek is picked up on a later enumerate once the signal lands."""
+    project = tmp_path / "demo-project"
+    project.mkdir(exist_ok=True)
+    roots = [_claude_root(tmp_path), _codex_root(tmp_path)]
+
+    day = _codex_day_dir(tmp_path, "2026", "05", "05")
+    roll = day / "rollout-2026-05-05T11-00-00-abc.jsonl"
+    # First write: NO session_meta/cwd row yet → does not match the project.
+    roll.write_text(
+        _codex_line("user", "premature turn", "2026-05-05T11:00:00Z") + "\n",
+        encoding="utf-8",
+    )
+
+    sink: list = []
+    tailer, db = _make_tailer(project, roots, tmp_path, sink)
+
+    # Not matched yet — but tracked for re-peek, NOT permanently blacklisted.
+    assert roll not in tailer._known
+    assert roll in tailer._codex_unmatched
+
+    # The project signal lands later (session_meta with our cwd), file GROWS.
+    import os, time as _t
+    _append(roll, _codex_meta_line(project) + "\n")
+    # Bump mtime so the change is detectable even on coarse-grained clocks.
+    later = _t.time() + 1
+    os.utime(roll, (later, later))
+
+    # A later enumerate re-peeks the grown file and promotes it.
+    tailer._enumerate()
+    assert roll in tailer._known
+    assert roll not in tailer._codex_unmatched
+
+    tailer.tick()
+    all_texts = [t for _, turns in sink for t in _text_turns(turns)]
+    assert "premature turn" in all_texts
+
+
 def test_scopes_to_project_slug(tmp_path):
     """Claude-only: an unrelated project slug under the same root is ignored."""
     project, path, roots, header, mk = _setup(tmp_path, "claude")

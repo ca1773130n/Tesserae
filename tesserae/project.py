@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -44,6 +45,8 @@ from .temporal import TemporalFactProjector, render_competitive_report
 from .raganything_adapter import merge_raganything_graph
 from .understand_anything_adapter import merge_understand_anything_graph
 from .wiki_projector import partition_graph
+
+logger = logging.getLogger("tesserae.project")
 
 
 # ---------------------------------------------------------------------------
@@ -636,10 +639,28 @@ class ProjectWiki:
             from .harness_sessions_db import HarnessSessionsDB
 
             try:
-                cached = HarnessSessionsDB(live_db_path).list_for_project(
-                    self.project_root
+                db = HarnessSessionsDB(live_db_path)
+                cached = db.list_for_project(self.project_root)
+                # Distinguish a legitimately EMPTY db (quiet legacy-glob
+                # fallback, back-compat) from a real READ ERROR. An empty
+                # store is normal before the first session lands; a corrupt
+                # or locked db must NOT silently degrade compile to stale
+                # context — log it loudly so the regression is visible
+                # (Codex #7).
+                if not cached and db.count_sessions() == 0:
+                    logger.debug(
+                        "live sessions db %s is empty; falling back to "
+                        "legacy harness_sessions glob store",
+                        live_db_path,
+                    )
+            except Exception:  # noqa: BLE001 - corrupt/locked db: fall back loudly
+                logger.warning(
+                    "failed to read live sessions db %s; falling back to "
+                    "legacy harness_sessions glob store (compile may use "
+                    "stale session context)",
+                    live_db_path,
+                    exc_info=True,
                 )
-            except Exception:  # noqa: BLE001 - corrupt/locked DB: fall back
                 cached = []
             in_project = [
                 s for s in cached

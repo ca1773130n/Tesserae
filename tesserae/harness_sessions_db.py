@@ -52,6 +52,36 @@ class HarnessSessionsDB:
         last_offset: int = 0,
     ) -> None:
         """Insert or replace one session row keyed on ``session.id`` (O(1))."""
+        with self._connect() as con:
+            self._upsert_session(con, session, jsonl_path, last_offset)
+            con.commit()
+
+    def upsert_with_offset(
+        self,
+        session: HarnessSession,
+        jsonl_path: str | Path,
+        last_offset: int,
+    ) -> None:
+        """Atomically write the session row AND advance the tail offset.
+
+        ``upsert`` + ``set_offset`` as two separate transactions can be torn
+        apart by a crash, leaving the session stored but the resume offset
+        stale (re-emitting already-ingested turns on restart). This method
+        commits both writes in ONE transaction so the persisted session and
+        the offset it was derived from can never disagree (Codex #5).
+        """
+        with self._connect() as con:
+            self._upsert_session(con, session, jsonl_path, last_offset)
+            self._set_offset(con, jsonl_path, last_offset)
+            con.commit()
+
+    @staticmethod
+    def _upsert_session(
+        con: sqlite3.Connection,
+        session: HarnessSession,
+        jsonl_path: str | Path | None,
+        last_offset: int,
+    ) -> None:
         session_json = json.dumps(
             session.to_dict(), ensure_ascii=False, sort_keys=True
         )
@@ -64,17 +94,15 @@ class HarnessSessionsDB:
             int(last_offset),
             datetime.now(timezone.utc).isoformat(),
         )
-        with self._connect() as con:
-            con.execute(
-                """
-                insert or replace into sessions
-                (id, harness, project_root, session_json, source_jsonl_path,
-                 last_turn_offset, updated_at)
-                values (?, ?, ?, ?, ?, ?, ?)
-                """,
-                row,
-            )
-            con.commit()
+        con.execute(
+            """
+            insert or replace into sessions
+            (id, harness, project_root, session_json, source_jsonl_path,
+             last_turn_offset, updated_at)
+            values (?, ?, ?, ?, ?, ?, ?)
+            """,
+            row,
+        )
 
     def list_for_project(self, project_root: str | Path) -> List[HarnessSession]:
         """Return sessions for ``project_root``, read via SELECT (no FS glob).
@@ -110,6 +138,15 @@ class HarnessSessionsDB:
         sessions.sort(key=lambda s: (s.started_at or "", s.harness, s.slug), reverse=True)
         return sessions
 
+    def count_sessions(self) -> int:
+        """Return the total number of stored session rows.
+
+        Lets callers distinguish a *legitimately empty* DB (quiet legacy-glob
+        fallback) from a *read error* (which must be logged loudly) — Codex #7.
+        """
+        with self._connect() as con:
+            return int(con.execute("select count(*) from sessions").fetchone()[0])
+
     # ------------------------------------------------------------------ #
     # Tail offsets (restart-resume)                                       #
     # ------------------------------------------------------------------ #
@@ -126,15 +163,21 @@ class HarnessSessionsDB:
     def set_offset(self, jsonl_path: str | Path, offset: int) -> None:
         """Persist the byte offset for ``jsonl_path`` (INSERT OR REPLACE)."""
         with self._connect() as con:
-            con.execute(
-                """
-                insert or replace into tail_offsets
-                (jsonl_path, last_turn_offset, updated_at)
-                values (?, ?, ?)
-                """,
-                (str(jsonl_path), int(offset), datetime.now(timezone.utc).isoformat()),
-            )
+            self._set_offset(con, jsonl_path, offset)
             con.commit()
+
+    @staticmethod
+    def _set_offset(
+        con: sqlite3.Connection, jsonl_path: str | Path, offset: int
+    ) -> None:
+        con.execute(
+            """
+            insert or replace into tail_offsets
+            (jsonl_path, last_turn_offset, updated_at)
+            values (?, ?, ?)
+            """,
+            (str(jsonl_path), int(offset), datetime.now(timezone.utc).isoformat()),
+        )
 
     def all_offsets(self) -> Dict[str, int]:
         """Return ``{jsonl_path: offset}`` for seeding the tailer on startup."""
@@ -148,8 +191,15 @@ class HarnessSessionsDB:
     # Internals                                                           #
     # ------------------------------------------------------------------ #
 
+    # Block up to this long when another writer holds the lock instead of
+    # raising ``OperationalError: database is locked`` immediately. Lets the
+    # compile path and concurrent tailer writes coexist (Codex #7 lock case).
+    _BUSY_TIMEOUT_S = 5.0
+
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.path)
+        con = sqlite3.connect(self.path, timeout=self._BUSY_TIMEOUT_S)
+        con.execute("pragma busy_timeout = %d" % int(self._BUSY_TIMEOUT_S * 1000))
+        return con
 
     @staticmethod
     def _ensure_schema(con: sqlite3.Connection) -> None:
