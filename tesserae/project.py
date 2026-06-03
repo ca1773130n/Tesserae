@@ -17,6 +17,7 @@ import sys
 from dataclasses import dataclass, field, replace as dataclasses_replace
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from .agent_harness import AgentHarnessAdapter, SUPPORTED_AGENT_HARNESSES
@@ -47,6 +48,16 @@ from .understand_anything_adapter import merge_understand_anything_graph
 from .wiki_projector import partition_graph
 
 logger = logging.getLogger("tesserae.project")
+
+
+def _env_truthy(name: str) -> bool:
+    """True when env var ``name`` is set to a documented truthy value.
+
+    Used to gate opt-in, destructive / credential-dependent compile passes
+    (schema-drift apply, ambient-LLM passes) so the default compile stays
+    deterministic and credential-free.
+    """
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 # ---------------------------------------------------------------------------
@@ -1709,12 +1720,19 @@ class ProjectWiki:
         from .memory.reinforce import compute_recurring_confidence
         from .memory.store import NodeMemoryRow, read_memory
 
-        # The LLM-arbitrated passes (contradiction, schema-drift) need a client.
-        # Callers that already built one (e.g. via session extraction) pass it
-        # in; otherwise build a best-effort default — None when no backend /
-        # credentials, which keeps those passes no-ops (structural state still
-        # persists). Content-keyed disk caches keep warm reruns byte-stable.
-        if json_client is None:
+        # The LLM-arbitrated passes (contradiction, schema-drift) MUTATE
+        # graph.json (resolved_by / supersedes edges) and depend on ambient
+        # credentials, so we do NOT silently build a default client here:
+        # building one inside compile makes ordinary, credential-free compiles
+        # depend on a configured LLM backend and can trigger a surprise COLD
+        # arbitration call. Instead the LLM passes run ONLY when the caller
+        # hands us an explicit ``json_client`` (e.g. via session extraction) OR
+        # the documented ``TESSERAE_ENABLE_LLM_PASSES`` env gate is set — in
+        # which case we build the best-effort default. Otherwise they are
+        # skipped entirely and the default path stays deterministic and
+        # credential-free. Either way graph.json is byte-idempotent (the
+        # content-keyed disk caches keep warm LLM reruns byte-stable).
+        if json_client is None and _env_truthy("TESSERAE_ENABLE_LLM_PASSES"):
             try:
                 from .llm_json import build_default_json_client
 
@@ -1726,48 +1744,42 @@ class ProjectWiki:
         reference_dt = self._compile_reference_timestamp(graph)
         reference_iso = reference_dt.isoformat()
 
-        # (2) Restore MCP-accumulated access state into in-memory node metadata
-        # BEFORE scoring, so decay reflects reads recorded since the last
-        # compile. This mutates node.metadata only — those keys are excluded
-        # from to_json, so graph.json is untouched.
+        # (2) Load MCP-accumulated access state from the node_memory sidecar so
+        # decay reflects reads recorded since the last compile. CRITICAL: we do
+        # NOT stamp these sidecar fields (access_count / last_accessed_at) onto
+        # ``node.metadata`` — ``ResearchNode.model_dump`` serializes the ENTIRE
+        # metadata dict into graph.json, so mutating it would leak wall-clock
+        # sidecar state into graph.json and break byte-idempotence (a read bump
+        # would change the NEXT compile's bytes). The access state is fed to the
+        # decay computation in step (7) via a COPIED metadata view; graph node
+        # metadata is never touched. (05-RESEARCH Pitfall 2: sidecar-only.)
         prior: Dict[str, "NodeMemoryRow"] = {}
         try:
             prior = read_memory(self.paths.sqlite)
         except Exception:  # pragma: no cover — defensive; missing/locked db
             logger.exception("phase5: read_memory failed; treating as empty")
             prior = {}
-        for node in graph.nodes:
-            row = prior.get(node.id)
-            if row is None:
-                continue
-            meta = getattr(node, "metadata", None)
-            if not isinstance(meta, dict):
-                continue
-            if row.access_count:
-                meta["access_count"] = row.access_count
-            if row.last_accessed_at:
-                meta["last_accessed_at"] = row.last_accessed_at
 
         # (3) Schema-drift apply — OPT-IN, destructive (Pitfall 4). Default
         # (env unset/falsy) => skipped entirely, graph.json byte-identical.
-        if os.environ.get("TESSERAE_SCHEMA_DRIFT_APPLY", "").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-            "on",
-        } and json_client is not None:
+        if _env_truthy("TESSERAE_SCHEMA_DRIFT_APPLY") and json_client is not None:
             try:
                 from .schema_drift import analyze_schema_drift, apply_schema_drift
 
                 _report_path, host_reports = analyze_schema_drift(
                     graph, tesserae_dir=self.paths.root, llm=json_client
                 )
+                # ``HostTypeReport`` stores proposals inside ``clusters`` as
+                # ``(cluster_nodes, proposals)`` tuples (schema_drift.py) — there
+                # is no ``report.proposals`` attribute, so iterating that would
+                # silently apply nothing. Flatten the per-cluster proposal lists.
                 approved: List[dict] = []
                 for report in host_reports:
-                    for prop in getattr(report, "proposals", []) or []:
-                        as_dict = prop if isinstance(prop, dict) else getattr(prop, "__dict__", {})
-                        if as_dict.get("approved"):
-                            approved.append(as_dict)
+                    for _cluster, proposals in getattr(report, "clusters", []) or []:
+                        for prop in proposals or []:
+                            as_dict = prop if isinstance(prop, dict) else getattr(prop, "__dict__", {})
+                            if as_dict.get("approved"):
+                                approved.append(as_dict)
                 if approved:
                     before = len(approved)
                     graph = apply_schema_drift(graph, approved)
@@ -1809,12 +1821,25 @@ class ProjectWiki:
         }
 
         # (7) Stage one NodeMemoryRow per node: deterministic decay at the fixed
-        # reference, carrying forward MCP access state from ``prior``.
+        # reference, carrying forward MCP access state from ``prior``. The MCP
+        # access fields (access_count / last_accessed_at) are fed to the decay
+        # computation via a COPIED metadata view — NEVER stamped back onto
+        # ``node.metadata`` — so graph.json carries no sidecar/memory state and
+        # stays byte-identical even after an MCP read bumps the sidecar.
         rows: List["NodeMemoryRow"] = []
         for node in graph.nodes:
             prev = prior.get(node.id)
             try:
-                decay_score = compute_decay_score(node, reference_dt)
+                decay_node = node
+                if prev is not None:
+                    base_meta = getattr(node, "metadata", None)
+                    merged_meta = dict(base_meta) if isinstance(base_meta, dict) else {}
+                    if prev.access_count:
+                        merged_meta["access_count"] = prev.access_count
+                    if prev.last_accessed_at:
+                        merged_meta["last_accessed_at"] = prev.last_accessed_at
+                    decay_node = SimpleNamespace(metadata=merged_meta)
+                decay_score = compute_decay_score(decay_node, reference_dt)
             except Exception:  # pragma: no cover — defensive
                 decay_score = 1.0
             rows.append(
