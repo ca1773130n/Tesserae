@@ -120,7 +120,10 @@ class Daemon:
     # ----- drain loop ------------------------------------------------------
 
     async def _drain_loop(self) -> None:
-        self._queue = asyncio.Queue()
+        # Create the queue inside the running loop unless one was pre-installed
+        # (the test seam pre-loads a burst before driving the drain directly).
+        if self._queue is None:
+            self._queue = asyncio.Queue()
         pending: Optional[asyncio.Task] = None
         try:
             while not self._stop_event.is_set():
@@ -140,12 +143,21 @@ class Daemon:
                 merged = [p for e in events for p in e.changed_paths]
                 pending = asyncio.create_task(self._debounce_and_run(merged))
         finally:
-            if pending is not None and not pending.done():
-                pending.cancel()
+            if pending is not None:
+                if not pending.done():
+                    pending.cancel()
+                # Retrieve the task result/exception so neither a CancelledError
+                # nor a swallowed pipeline exception leaks an "never retrieved"
+                # warning. The pipeline wrapper already logs-and-returns, so a
+                # completed task here is benign.
                 try:
                     await pending
                 except asyncio.CancelledError:
                     pass
+                except Exception as exc:  # noqa: BLE001 - daemon survives
+                    logger.error(
+                        "pipeline raised outside StepResult (daemon survives): %s", exc
+                    )
 
     async def _debounce_and_run(self, paths: List[Path]) -> None:
         await asyncio.sleep(self.debounce)
