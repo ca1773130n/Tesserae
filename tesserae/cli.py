@@ -1209,6 +1209,14 @@ def project_main(argv: List[str] | None = None) -> int:
     watch_parser.add_argument("--paths", action="append", default=[], help="Additional directory to watch; repeat for multiple paths")
     watch_parser.add_argument("--quiet", action="store_true", help="Suppress the banner and per-cycle progress output")
 
+    refresh_parser = subparsers.add_parser(
+        "refresh",
+        help="Import new sessions, compile, sync vault (in-process pipeline).",
+    )
+    refresh_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    refresh_parser.add_argument("--changed-only", action="store_true", default=False, help="Opt-in incremental compile (skip unchanged files); default is a full compile")
+    refresh_parser.add_argument("--skip-sessions", action="store_true", default=False, help="Opt-in skip of the slow harness-session discovery scan")
+
     args = parser.parse_args(argv)
     handler = _COMMANDS.get(args.command)
     if handler is None:
@@ -1714,6 +1722,55 @@ def _handle_obsidian_sync(args: argparse.Namespace) -> int:
         return 0
 
 
+def _handle_refresh(args: argparse.Namespace) -> int:
+    """Run the refresh chain (sessions-import -> compile -> obsidian-sync) in-process.
+
+    This is success criterion #1 of ENG-01: the refresh sequence is CODE routed
+    through ``Pipeline`` rather than the prose chain in the using-tesserae skill.
+
+    Ordering (Pitfall #2): sessions-import MUST precede compile — ``compile``
+    reads ``.tesserae/harness_sessions/`` and silently skips session extraction
+    if the import has not run. Vault guard (Pitfall #3): the ``.is_dir()`` check
+    turns "no vault configured" into a graceful ok-skip, not a crash. Default
+    (Pitfall #6): ``changed_only`` defaults to False (a full compile).
+    """
+    from .engine.pipeline import Pipeline
+    from .harness_sessions import discover_harness_sessions, HarnessSessionStore
+
+    wiki = ProjectWiki.load(args.project)
+
+    def step_sessions_import():
+        sessions = discover_harness_sessions(wiki.project_root)
+        store = HarnessSessionStore(wiki.paths.harness_sessions)
+        return store.write_sessions(sessions)  # {"sessions": n, "path": ...}
+
+    def step_compile():
+        return wiki.compile(changed_only=args.changed_only)
+
+    def step_obsidian_sync():
+        vault = wiki.effective_obsidian_vault()
+        if not vault.is_dir():
+            return {"skipped": "no vault configured"}  # ok, not a failure
+        r = wiki.reproject_after_vault_change()
+        return {
+            "overrides_applied": r.overrides_applied,
+            "user_link_changes_applied": r.user_link_changes_applied,
+            "stubs_minted": r.stubs_minted,
+        }
+
+    steps = []
+    if not args.skip_sessions:
+        steps.append(("sessions-import", step_sessions_import))
+    steps += [("compile", step_compile), ("obsidian-sync", step_obsidian_sync)]
+
+    results = Pipeline(steps).run()
+
+    for r in results:
+        status = "ok" if r.ok else f"FAILED: {r.error}"
+        print(f"  {r.name}: {status}")
+    return 0 if all(r.ok for r in results) else 2
+
+
 def _handle_refresh_raganything(args: argparse.Namespace) -> int:
     if True:
         forwarded = ["--project", args.project, "--parser", args.parser, "--parse-method", args.parse_method]
@@ -1960,6 +2017,7 @@ _COMMANDS: Dict[str, Callable[[argparse.Namespace], int]] = {
     "deploy": _handle_deploy,
     "serve": _handle_serve,
     "watch": _handle_watch,
+    "refresh": _handle_refresh,
 }
 
 
