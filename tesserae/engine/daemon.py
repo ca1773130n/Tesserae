@@ -69,8 +69,10 @@ class Daemon:
         join_timeout: float = 5.0,
         watch_interval: float = 2.0,
         vault_poll_interval: float = 1.5,
+        session_poll_interval: float = 1.0,
         enable_watch: bool = True,
         enable_vault: bool = True,
+        enable_session_tail: bool = True,
         run_pipeline: Optional[Callable[[List[Path]], None]] = None,
     ) -> None:
         self.project_root = Path(project_root).resolve()
@@ -79,8 +81,10 @@ class Daemon:
         self._join_timeout = join_timeout
         self._watch_interval = watch_interval
         self._vault_poll_interval = vault_poll_interval
+        self._session_poll_interval = session_poll_interval
         self._enable_watch = enable_watch
         self._enable_vault = enable_vault
+        self._enable_session_tail = enable_session_tail
         self._pidfile = self.project_root / ".tesserae" / self.PIDFILE_NAME
         self._stop_event = threading.Event()
         self._threads: List[threading.Thread] = []
@@ -240,6 +244,8 @@ class Daemon:
             self._start_watch_source(loop)
         if self._enable_vault:
             self._start_vault_source(loop)
+        if self._enable_session_tail:
+            self._start_session_source(loop)
 
     # ----- watch source ----------------------------------------------------
 
@@ -344,6 +350,75 @@ class Daemon:
                     )
         except Exception:  # noqa: BLE001 - daemon survives a dead source
             logger.exception("vault-source thread died")
+
+    # ----- session-tail source --------------------------------------------
+
+    def _start_session_source(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Third trigger source: live transcript tailer (mirrors watch/vault).
+
+        Mirrors :meth:`_start_vault_source`'s "not ready -> skip, don't crash"
+        contract — if the tailer/store cannot be built the daemon keeps running
+        without a session source. The tailer writes the live
+        ``HarnessSessionsDB`` BEFORE the callback enqueues, so the debounced
+        compile reads correct state (store-before-enqueue, 03-RESEARCH).
+        """
+        from ..harness_sessions_db import HarnessSessionsDB
+        from .session_tail import SessionTailer
+
+        def on_new_turns(path, turns) -> None:
+            # Guard: drop late callbacks fired during shutdown.
+            if self._stop_event.is_set():
+                return
+            self._loop.call_soon_threadsafe(
+                self._queue.put_nowait,
+                TriggerEvent(
+                    source="session_tail",
+                    changed_paths=[path],
+                    changed_only=True,
+                ),
+            )
+
+        try:
+            db = HarnessSessionsDB(
+                self.project_root / ".tesserae" / "harness_sessions.db"
+            )
+            tailer = SessionTailer(
+                project_root=self.project_root,
+                sessions_db=db,
+                poll_interval=self._session_poll_interval,
+                on_new_turns=on_new_turns,
+            )
+        except Exception:  # noqa: BLE001 - tailer not ready: skip, don't crash
+            logger.warning(
+                "session-tail source unavailable (store/tailer not ready); skipping",
+                exc_info=True,
+            )
+            return
+
+        t = threading.Thread(
+            target=self._run_session_source,
+            args=(tailer,),
+            daemon=True,
+            name="session-tail",
+        )
+        t.start()
+        self._threads.append(t)
+
+    def _run_session_source(self, tailer) -> None:
+        """Poll body for the SessionTailer source (mirrors ``_run_vault_source``).
+
+        Drives ``tailer.tick()`` in a ``stop_event``-gated loop. The whole body
+        is wrapped in a logged ``try/except`` so a dead source dies LOUDLY
+        without killing the daemon (KNOWHOW anti-pattern: no silent thread death).
+        """
+        try:
+            while not self._stop_event.is_set():
+                time.sleep(tailer.poll_interval)
+                if self._stop_event.is_set():
+                    break
+                tailer.tick()
+        except Exception:  # noqa: BLE001 - daemon survives a dead source
+            logger.exception("session-tail thread died")
 
     # ----- pidfile ---------------------------------------------------------
 

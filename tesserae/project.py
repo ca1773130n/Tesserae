@@ -626,14 +626,34 @@ class ProjectWiki:
         # its own — that scan is multi-minute on a machine with
         # thousands of historical sessions and would silently re-add
         # multi-minute latency to every ``project compile``.
-        if not self.paths.harness_sessions.exists():
-            return graph
-        store = HarnessSessionStore(self.paths.harness_sessions)
-        cached = store.list_sessions()
-        in_project: List[HarnessSession] = [
-            s for s in cached
-            if session_matches_project(s, self.project_root)
-        ]
+        # Prefer the live SQLite store (SESS-03): the daemon's SessionTailer
+        # upserts sessions there per turn. Fall back to the legacy
+        # ``.tesserae/harness_sessions/`` glob store for back-compat (the
+        # ``sessions discover --import`` path) when the DB is absent/empty.
+        in_project: List[HarnessSession] = []
+        live_db_path = self.project_root / ".tesserae" / "harness_sessions.db"
+        if live_db_path.exists():
+            from .harness_sessions_db import HarnessSessionsDB
+
+            try:
+                cached = HarnessSessionsDB(live_db_path).list_for_project(
+                    self.project_root
+                )
+            except Exception:  # noqa: BLE001 - corrupt/locked DB: fall back
+                cached = []
+            in_project = [
+                s for s in cached
+                if session_matches_project(s, self.project_root)
+            ]
+        if not in_project:
+            if not self.paths.harness_sessions.exists():
+                return graph
+            store = HarnessSessionStore(self.paths.harness_sessions)
+            cached = store.list_sessions()
+            in_project = [
+                s for s in cached
+                if session_matches_project(s, self.project_root)
+            ]
         if not in_project:
             return graph
 
