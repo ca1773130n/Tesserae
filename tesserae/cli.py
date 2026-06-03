@@ -1209,6 +1209,16 @@ def project_main(argv: List[str] | None = None) -> int:
     watch_parser.add_argument("--paths", action="append", default=[], help="Additional directory to watch; repeat for multiple paths")
     watch_parser.add_argument("--quiet", action="store_true", help="Suppress the banner and per-cycle progress output")
 
+    engine_parser = subparsers.add_parser(
+        "engine",
+        aliases=["daemon"],
+        help="Run the supervised refresh daemon: watch sources, coalesce bursts, auto-recompile.",
+    )
+    engine_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    engine_parser.add_argument("--interval", type=float, default=2.0, help="Polling interval in seconds (default: 2)")
+    engine_parser.add_argument("--debounce", type=float, default=1.0, help="Quiet window after a burst of edits before rebuilding (default: 1.0)")
+    engine_parser.add_argument("--once", action="store_true", help="Run a single drain cycle then exit (deterministic; no long-running loop)")
+
     refresh_parser = subparsers.add_parser(
         "refresh",
         help="Import new sessions, compile, sync vault (in-process pipeline).",
@@ -1991,6 +2001,25 @@ def _handle_watch(args: argparse.Namespace) -> int:
         return 0
 
 
+def _handle_engine(args: argparse.Namespace) -> int:
+    """Start the supervised refresh daemon (alias: ``daemon``).
+
+    Thin wrapper: construct the Phase-2 ``Daemon`` (which drives the Phase-1
+    ``Pipeline``) and call ``.run(once=...)``. Does NOT re-implement the
+    ingest/compile/project chain — the Daemon owns the Pipeline.
+    """
+    from .engine.daemon import Daemon
+    import logging
+
+    logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    daemon = Daemon(
+        Path(args.project).resolve(),
+        debounce=args.debounce,
+        watch_interval=args.interval,
+    )
+    return daemon.run(once=args.once)
+
+
 _COMMANDS: Dict[str, Callable[[argparse.Namespace], int]] = {
     "init": _handle_init,
     "setup": _handle_setup,
@@ -2018,6 +2047,8 @@ _COMMANDS: Dict[str, Callable[[argparse.Namespace], int]] = {
     "serve": _handle_serve,
     "watch": _handle_watch,
     "refresh": _handle_refresh,
+    "engine": _handle_engine,
+    "daemon": _handle_engine,  # alias
 }
 
 
