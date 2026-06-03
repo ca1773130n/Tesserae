@@ -186,7 +186,7 @@ class WikiLinter:
         findings.extend(self._check_stale_citations(wiki_md_paths))
         findings.extend(self._check_dangling_wiki_links(site_html_paths))
         findings.extend(self._check_drift(nodes_by_id))
-        findings.extend(self._check_contradicting_claims(nodes_by_id))
+        findings.extend(self._check_contradicting_claims(nodes_by_id, edges))
         findings.extend(self._check_low_title_quality(nodes_by_id))
         findings.extend(self._check_synthesis_ghost_inputs(nodes_by_id))
         findings.extend(self._check_suggested_merges(nodes_by_id))
@@ -442,7 +442,7 @@ class WikiLinter:
             )
 
     def _check_contradicting_claims(
-        self, nodes_by_id: Dict[str, dict]
+        self, nodes_by_id: Dict[str, dict], edges: List[dict] | None = None
     ) -> Iterable[LintFinding]:
         """Pairs of performance/comparison claims with opposite directional language.
 
@@ -452,7 +452,25 @@ class WikiLinter:
         ``is outperformed by`` and they share at least one trigram of
         ``model+benchmark`` content. Tolerating false negatives is fine — the
         check is a sanity probe, not an oracle.
+
+        KB-04: when the opt-in ``memory.contradiction`` pass has minted a
+        ``resolved_by`` edge between a flagged pair (in either direction), the
+        contradiction is considered RESOLVED and demoted to ``severity=info``
+        ("resolved by <winner>"). Unresolved pairs are RAISED to
+        ``severity=warning`` (formerly always ``info``). The winning claim is
+        the ``resolved_by`` edge's ``target``.
         """
+        # Map of unordered claim-pair -> winning (target) node id, from any
+        # ``resolved_by`` edge between two flagged claims.
+        resolved_winner: Dict[Tuple[str, str], str] = {}
+        for edge in edges or []:
+            if edge.get("type") != "resolved_by":
+                continue
+            src = edge.get("source")
+            tgt = edge.get("target")
+            if not isinstance(src, str) or not isinstance(tgt, str):
+                continue
+            resolved_winner[tuple(sorted([src, tgt]))] = tgt
         candidates = [
             (nid, node)
             for nid, node in nodes_by_id.items()
@@ -478,16 +496,31 @@ class WikiLinter:
                 if pair in seen:
                     continue
                 seen.add(pair)
-                yield LintFinding(
-                    severity="info",
-                    code="CONTRADICTING_CLAIMS",
-                    message=(
-                        f"Two claims appear to contradict each other: "
-                        f"{left.get('name')!r} vs {right.get('name')!r}."
-                    ),
-                    node_id=left_id,
-                    suggested_fix="Manually review both source documents and reconcile.",
-                )
+                winner_id = resolved_winner.get(pair)
+                if winner_id is not None:
+                    winner_name = (nodes_by_id.get(winner_id) or {}).get("name")
+                    yield LintFinding(
+                        severity="info",
+                        code="CONTRADICTING_CLAIMS",
+                        message=(
+                            f"Two claims contradicted each other; resolved by "
+                            f"{winner_name!r}: {left.get('name')!r} vs "
+                            f"{right.get('name')!r}."
+                        ),
+                        node_id=left_id,
+                        suggested_fix="Resolution recorded via resolved_by edge.",
+                    )
+                else:
+                    yield LintFinding(
+                        severity="warning",
+                        code="CONTRADICTING_CLAIMS",
+                        message=(
+                            f"Two claims appear to contradict each other: "
+                            f"{left.get('name')!r} vs {right.get('name')!r}."
+                        ),
+                        node_id=left_id,
+                        suggested_fix="Manually review both source documents and reconcile.",
+                    )
 
     def _check_low_title_quality(
         self, nodes_by_id: Dict[str, dict]

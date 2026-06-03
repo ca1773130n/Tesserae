@@ -306,6 +306,13 @@ ALLOWED_EDGE_TYPES: Set[str] = {
     "decorates",
     "type_of",
     "returns",
+    # KB-04 contradiction RESOLUTION (memory.contradiction). Minted by the
+    # opt-in ``run_contradiction_resolution`` pass when an LLM arbitrates a
+    # detected contradicting-claims pair: ``source`` is the loser claim,
+    # ``target`` is the winning claim that resolves it. lint's
+    # ``CONTRADICTING_CLAIMS`` probe demotes a pair to ``info`` once a
+    # ``resolved_by`` edge exists between them (else raises to ``warning``).
+    "resolved_by",
 }
 
 
