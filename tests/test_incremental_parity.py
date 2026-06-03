@@ -56,12 +56,18 @@ except ImportError:  # fallback when tests/ is importable as a package
 
 # Byte-compare everything EXCEPT the provenance sidecar (SQLite ``.db`` — the
 # deterministic provenance timestamps live only here, intentionally outside the
-# canonical artifact) and the two append-only history ledgers (one line per
-# build / per rewrite by design).
+# canonical artifact) and the append-only history ledgers (one line per
+# build / per rewrite by design). ``log.md`` is the human-readable rendering of
+# ``.build-history.jsonl`` (one timestamped table row per compile, derived
+# straight from that ledger via ``KarpathyLayerWriter._render_log``); both arms
+# share ONE root, so the full-recompile arm legitimately carries one extra build
+# row. It belongs with the ledgers it projects, not with the canonical graph
+# artifacts the parity assertion guards.
 PARITY_EXCLUDE = {
     "sqlite.db",
     ".build-history.jsonl",
     ".history.jsonl",
+    "log.md",
 }
 
 WIKI_CORPUS_ROOT = Path(__file__).parent / "fixtures" / "wiki_corpus"

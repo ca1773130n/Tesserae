@@ -17,7 +17,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from .agent_harness import AgentHarnessAdapter, SUPPORTED_AGENT_HARNESSES
 from .batch import BatchIngestRunner, sha256_text
@@ -561,6 +561,18 @@ class ProjectWiki:
         graph = self._merge_session_graph(
             graph, cfg, override=session_options, guidance=session_guidance
         )
+        # Canonicalize the merged graph BEFORE the community-summary pass.
+        # ``merge_graphs`` re-runs the same-type/cross-type dedup and edge
+        # redirection over the whole node universe, so an incremental compile
+        # (prior-graph nodes + freshly re-extracted changed files, assembled in
+        # a different order than a full compile) converges on the SAME canonical
+        # node ids AND the SAME redirected edge set as a full compile. Without
+        # this, Louvain runs over a transient graph whose author/edge surface
+        # ids differ between the two arms and mints a different partition
+        # (e.g. 3 vs 2 COMMUNITY_SUMMARY nodes) — the CMP-03 community-drift
+        # bug. It is an idempotent no-op for a full compile (the graph is
+        # already canonical), so byte-idempotence is preserved.
+        graph = merge_graphs([graph])
         # Community-summary pass (Microsoft GraphRAG playbook applied to
         # the typed graph). Opt-in via ``TESSERAE_COMMUNITY_SUMMARIES=true``
         # so quiet ``project compile`` runs stay free of incremental LLM
@@ -1406,6 +1418,16 @@ class ProjectWiki:
         wiki_store = WikiPageStore(self.paths.wiki)
         WikiLayerProjector(wiki_store).project(graph)
         graph, _written = SynthesisProjector(wiki_store, manifest_path=self.paths.manifest).project(graph)
+        # Canonicalize node/edge order ONCE here so every downstream artifact
+        # (graph.json via ``to_json``, the cognee bundle, temporal facts,
+        # Graphiti episodes, markdown/obsidian projections, the provenance
+        # sidecar) derives from the SAME content-derived order. A full compile
+        # builds the graph in insertion order; an incremental compile appends
+        # re-extracted changed-file nodes after the prior corpus. Without this,
+        # the two arms carry identical node/edge SETS but different LIST order,
+        # so the projections diverge byte-wise even when the graph is logically
+        # equal (CMP-03). Idempotent no-op for an already-canonical graph.
+        graph = graph.canonicalized()
         # Karpathy schema layer: purpose / schema / index / log files at the
         # top of the wiki dir. ``purpose.md`` is seeded once and preserved on
         # later compiles so user edits survive; the others regenerate.
@@ -1480,12 +1502,10 @@ class ProjectWiki:
             prov_store = SqliteGraphStore(self.paths.sqlite)
             prov_store.upsert_many_nodes(graph.nodes)
             prov_store.upsert_many_edges(graph.edges)
-            prov_rows = []
-            for node in graph.nodes:
-                src = node.source_path or "__synthesis__"
-                det_ts = "det:" + sha256_text(f"{node.id}|{src}")[:16]
-                prov_rows.append((node.id, src, det_ts))
-            prov_store.record_provenance_many(prov_rows)
+            # Multi-source provenance (see ``compute_provenance_rows``): a
+            # cross-file node is recorded under EVERY contributing file so a
+            # single-file change cannot tombstone it. graph.json is untouched.
+            prov_store.record_provenance_many(compute_provenance_rows(graph))
         else:
             # Injected store path: drive the union graph through the
             # :class:`GraphStore` port. The Postgres adapter (HypePaper-side)
@@ -1508,6 +1528,10 @@ class ProjectWiki:
             # NOT only inside the changed_only branch — the 04-04 parity test
             # seeds via a FULL compile, so an empty node_provenance table after
             # a full compile would silently mask the cross-file collapse bug.
+            # Multi-source provenance (see ``compute_provenance_rows``): a node
+            # is recorded under EVERY contributing file (its own source_path
+            # plus the source_path of every edge-adjacent node), so a cross-file
+            # concept authored across many files survives a single-file change.
             # Deterministic content/source-derived timestamps (CRITICAL,
             # 04-RESEARCH.md Pitfall 1): never datetime.now(); derived from a
             # stable sha256 of (node id | source_path) so the sidecar is
@@ -1516,12 +1540,7 @@ class ProjectWiki:
             # consistently regenerated (Open Question 3). Provenance is
             # SQLite-only and never enters graph.json.
             if hasattr(store, "record_provenance_many"):
-                prov_rows = []
-                for node in graph.nodes:
-                    src = node.source_path or "__synthesis__"
-                    det_ts = "det:" + sha256_text(f"{node.id}|{src}")[:16]
-                    prov_rows.append((node.id, src, det_ts))
-                store.record_provenance_many(prov_rows)
+                store.record_provenance_many(compute_provenance_rows(graph))
         GraphMarkdownProjector().write_projection(graph, self.paths.markdown_projection)
         CogneeResearchGraphAdapter().write_bundle(graph, self.paths.cognee_bundle)
         if cognify and cognify.is_active:
@@ -1734,6 +1753,55 @@ def cognify_options_from_config(config: dict) -> Optional[CognifyOptions]:
         return None
     options = CognifyOptions.from_mapping(cognee)
     return options if options.is_active else None
+
+
+def compute_provenance_rows(graph: ResearchGraph) -> List[Tuple[str, str, str]]:
+    """Build ``(node_id, source_path, deterministic_ts)`` provenance rows.
+
+    A node is owned by EVERY source file that contributes to it, not just the
+    single scalar ``node.source_path`` that survived the merge/dedup. A
+    cross-file concept (a ``ResearchField`` cited by every paper, a ``Person``
+    authored across many papers) is collapsed by the alias/cross-type merge
+    into one canonical node carrying a SINGLE ``source_path`` — so recording
+    provenance only under that scalar would make the node look like it belongs
+    to one file. When that one file changes, ``delete_nodes_by_source`` would
+    then tombstone the node (and the incremental differ would drop every edge
+    from the UNCHANGED files to it) — the 2400->1700 cross-file collapse, and
+    the CMP-03 byte-parity divergence (missing ``authored_by`` edges + a
+    drifted Louvain partition).
+
+    Fix: a node's provenance source set is its own ``source_path`` UNION the
+    ``source_path`` of every node it is directly connected to by an edge (in
+    either direction). So a Person authored by 20 papers gets a provenance row
+    per authoring paper and survives any single-paper change. Nodes with no
+    real source (synthesis/generated) fall back to ``"__synthesis__"``.
+
+    Deterministic timestamps (never ``datetime.now()``): ``det:`` + a sha256
+    of ``node_id|source_path`` so the sidecar is byte-stable across recompiles.
+    Order is canonical (sorted) so any consumer iterating the rows is stable.
+    """
+    by_id = {node.id: node for node in graph.nodes}
+    sources: Dict[str, Set[str]] = {}
+    for node in graph.nodes:
+        bucket = sources.setdefault(node.id, set())
+        if node.source_path:
+            bucket.add(node.source_path)
+    for edge in graph.edges:
+        src_node = by_id.get(edge.source)
+        tgt_node = by_id.get(edge.target)
+        if src_node is None or tgt_node is None:
+            continue
+        if tgt_node.source_path and edge.source in sources:
+            sources[edge.source].add(tgt_node.source_path)
+        if src_node.source_path and edge.target in sources:
+            sources[edge.target].add(src_node.source_path)
+    rows: List[Tuple[str, str, str]] = []
+    for node_id in sorted(sources):
+        paths = sources[node_id] or {"__synthesis__"}
+        for src in sorted(paths):
+            det_ts = "det:" + sha256_text(f"{node_id}|{src}")[:16]
+            rows.append((node_id, src, det_ts))
+    return rows
 
 
 def merge_graphs(graphs: Iterable[ResearchGraph]) -> ResearchGraph:

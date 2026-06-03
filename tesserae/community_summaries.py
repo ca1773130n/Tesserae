@@ -54,28 +54,32 @@ def detect_communities(graph: ResearchGraph) -> List[List[str]]:
     diverging from the production behaviour asserted by
     ``test_detect_communities_returns_two_clusters``.
     """
-    nodes = [n.id for n in graph.nodes]
+    # Canonical, order-independent input. Louvain with a fixed seed is still
+    # sensitive to node/edge INSERTION ORDER, so an incremental compile (whose
+    # graph is assembled in a different order than a full compile) would mint a
+    # different partition for the SAME node set. Sorting the node ids and edges
+    # before construction makes the partition depend only on the graph's content
+    # — identical for full vs incremental (CMP-03 community parity).
+    nodes = sorted(n.id for n in graph.nodes)
     if not nodes:
         return []
-    adj: Dict[str, Set[str]] = {nid: set() for nid in nodes}
     node_set = set(nodes)
+    edge_pairs: Set[Tuple[str, str]] = set()
     for edge in graph.edges:
         if edge.source == edge.target:
             continue
         if edge.source not in node_set or edge.target not in node_set:
             continue
-        adj[edge.source].add(edge.target)
-        adj[edge.target].add(edge.source)
+        lo, hi = (edge.source, edge.target) if edge.source < edge.target else (edge.target, edge.source)
+        edge_pairs.add((lo, hi))
 
     import networkx as nx
 
     g = nx.Graph()
     g.add_nodes_from(nodes)
-    for src, neighbours in adj.items():
-        for dst in neighbours:
-            if src < dst:
-                g.add_edge(src, dst)
-    # ``seed`` keeps Louvain deterministic so cache ids stay stable.
+    g.add_edges_from(sorted(edge_pairs))
+    # ``seed`` + canonical insertion order keep Louvain deterministic so cache
+    # ids stay stable across full and incremental compiles.
     clusters = nx.community.louvain_communities(g, seed=0)
     return [sorted(c) for c in clusters if len(c) > 1]
 

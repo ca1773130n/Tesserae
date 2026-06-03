@@ -393,9 +393,20 @@ class ResearchGraph:
     edges: List[ResearchEdge] = field(default_factory=list)
 
     def model_dump(self) -> Dict[str, object]:
+        # Canonical, content-derived ordering so the serialized graph is
+        # byte-identical regardless of how the in-memory node/edge lists were
+        # assembled. A full compile builds them in insertion order; an
+        # incremental compile APPENDS re-extracted changed-file nodes after the
+        # prior corpus. Both must converge here — the sort is a stable no-op for
+        # a full compile (CMP-03 byte-parity) and normalizes the incremental
+        # merge so its bytes match. Nodes key on ``id``; edges on
+        # ``(source, type, target)`` — the same tuple that keys edge identity in
+        # ``ResearchGraphBuilder._edges``.
+        nodes = sorted(self.nodes, key=lambda node: node.id)
+        edges = sorted(self.edges, key=lambda edge: (edge.source, edge.type, edge.target))
         return {
-            "nodes": [node.model_dump() for node in self.nodes],
-            "edges": [edge.model_dump() for edge in self.edges],
+            "nodes": [node.model_dump() for node in nodes],
+            "edges": [edge.model_dump() for edge in edges],
         }
 
     def to_json(self, **kwargs: object) -> str:
@@ -403,6 +414,23 @@ class ResearchGraph:
 
     def has_edge_type(self, edge_type: str) -> bool:
         return any(edge.type == edge_type for edge in self.edges)
+
+    def canonicalized(self) -> "ResearchGraph":
+        """Return a copy with nodes/edges in canonical, content-derived order.
+
+        Nodes sort by ``id``; edges by ``(source, type, target)`` — the same
+        keys ``model_dump`` uses for graph.json. Applying this to the in-memory
+        graph BEFORE the downstream projectors (cognee bundle, temporal facts,
+        Graphiti episodes, markdown projection) run makes every artifact derive
+        from one canonical order, so an incremental compile (whose graph is
+        assembled in a different order than a full compile) produces
+        byte-identical projections. Idempotent no-op for an already-canonical
+        full compile (CMP-03 byte-parity / byte-idempotence).
+        """
+        return ResearchGraph(
+            nodes=sorted(self.nodes, key=lambda node: node.id),
+            edges=sorted(self.edges, key=lambda edge: (edge.source, edge.type, edge.target)),
+        )
 
 
 class ResearchGraphBuilder:
