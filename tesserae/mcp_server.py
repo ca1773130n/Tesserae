@@ -293,6 +293,17 @@ def _project_root_for_graph_path(graph_path: str | Path) -> Optional[Path]:
     return None
 
 
+def _superseded_ids(graph: "ResearchGraph") -> set:
+    """Ids of nodes that have been SUPERSEDED (the losers).
+
+    A node is superseded when it is the *target* of a ``supersedes`` edge
+    (the source being the winner). This orientation matches the canonical
+    choice in ``tesserae.memory.supersede`` and the ``fresh_insights``
+    consumer, so all three MCP read paths suppress the same set.
+    """
+    return {edge.target for edge in graph.edges if edge.type == "supersedes"}
+
+
 from contextlib import contextmanager
 
 
@@ -1265,15 +1276,19 @@ class LLMWikiMCPServer:
                 limit=int(args.get("limit", 10)),
                 mode=mode,
                 weights=weights,
+                include_superseded=bool(args.get("include_superseded", False)),
             )
         if name == "embedding_status":
             return self.embedding_status()
         if name == "node_context":
+            graph, project_root = self._load_requested_graph_with_root(args)
             return self.node_context(
-                self._load_requested_graph(args),
+                graph,
+                project_root,
                 node_id=args.get("node_id"),
                 node_name=args.get("name"),
                 limit=int(args.get("limit", 50)),
+                include_superseded=bool(args.get("include_superseded", False)),
             )
         if name == "search_facts":
             facts = TemporalFactProjector().project(self._load_requested_graph(args))
@@ -1391,9 +1406,10 @@ class LLMWikiMCPServer:
                 limit=int(args.get("limit") or 20),
             )
         if name == "fresh_insights":
-            graph = self._load_requested_graph(args)
+            graph, project_root = self._load_requested_graph_with_root(args)
             return self._mcp_fresh_insights(
                 graph,
+                project_root=project_root,
                 limit=int(args.get("limit") or 10),
                 kind=(str(args.get("kind")).strip() if args.get("kind") else None),
             )
@@ -1770,6 +1786,7 @@ class LLMWikiMCPServer:
         self,
         graph: ResearchGraph,
         *,
+        project_root: Optional[Path] = None,
         limit: int = 10,
         kind: Optional[str] = None,
     ) -> JSONDict:
@@ -1793,10 +1810,9 @@ class LLMWikiMCPServer:
         # Any node with an OUTGOING `supersedes` edge is the WINNER —
         # keep it. Filter out the LOSER: any node that is the target of
         # such an edge (i.e. has been superseded). This matches the
-        # canonical orientation chosen by tesserae.memory.supersede.
-        superseded_ids: set = {
-            edge.target for edge in graph.edges if edge.type == "supersedes"
-        }
+        # canonical orientation chosen by tesserae.memory.supersede and
+        # is shared with search_nodes/node_context via the helper.
+        superseded_ids: set = _superseded_ids(graph)
 
         now = datetime.now(timezone.utc)
         scored: List[Tuple[float, ResearchNode]] = []
@@ -1817,6 +1833,8 @@ class LLMWikiMCPServer:
         capped = max(1, min(int(limit), 200))
         out: List[JSONDict] = []
         for score, node in scored[:capped]:
+            # KB-02: these are the nodes the agent actually surfaced.
+            self._bump_node_access(project_root, node.id)
             meta = node.metadata or {}
             out.append(
                 {
@@ -1857,6 +1875,7 @@ class LLMWikiMCPServer:
         limit: int = 10,
         mode: str = "hybrid",
         weights: Optional[Dict[str, float]] = None,
+        include_superseded: bool = False,
     ) -> JSONDict:
         """Search public ResearchGraph nodes.
 
@@ -1872,9 +1891,12 @@ class LLMWikiMCPServer:
         """
         type_filter = {str(item) for item in types or []}
         kind_filter = {str(item).lower() for item in kinds or []}
+        suppressed = set() if include_superseded else _superseded_ids(graph)
         public_nodes = [n for n in graph.nodes if not is_code_graph_node(n)]
         candidates: List[ResearchNode] = []
         for node in public_nodes:
+            if node.id in suppressed:
+                continue
             if type_filter and node.type.value not in type_filter:
                 continue
             if kind_filter:
@@ -2178,11 +2200,12 @@ class LLMWikiMCPServer:
             "by_project": by_project,
         }
 
-    def node_context(self, graph: ResearchGraph, node_id: Optional[str] = None, node_name: Optional[str] = None, limit: int = 50) -> JSONDict:
+    def node_context(self, graph: ResearchGraph, project_root: Optional[Path] = None, node_id: Optional[str] = None, node_name: Optional[str] = None, limit: int = 50, include_superseded: bool = False) -> JSONDict:
         node = self._find_node(graph, node_id=node_id, node_name=node_name)
         if not node:
             raise ValueError("Node not found; provide an exact node_id or node name")
         bounded_limit = max(1, min(limit, 200))
+        suppressed = _superseded_ids(graph)
         node_by_id = {candidate.id: candidate for candidate in graph.nodes}
         incident_edges = [edge for edge in graph.edges if edge.source == node.id or edge.target == node.id][:bounded_limit]
         neighbor_ids = []
@@ -2190,8 +2213,42 @@ class LLMWikiMCPServer:
             other_id = edge.target if edge.source == node.id else edge.source
             if other_id not in neighbor_ids:
                 neighbor_ids.append(other_id)
-        neighbors = [node_to_dict(node_by_id[neighbor_id]) for neighbor_id in neighbor_ids if neighbor_id in node_by_id]
-        return {"node": node_to_dict(node), "edges": [edge_to_dict(edge) for edge in incident_edges], "neighbors": neighbors}
+        # The requested node is ALWAYS returned (the caller asked for it by
+        # id/name); flag it when superseded. Neighbours are filtered unless
+        # include_superseded, matching search_nodes/fresh_insights.
+        neighbors = [
+            node_to_dict(node_by_id[neighbor_id])
+            for neighbor_id in neighbor_ids
+            if neighbor_id in node_by_id
+            and (include_superseded or neighbor_id not in suppressed)
+        ]
+        node_payload = node_to_dict(node)
+        node_payload["superseded"] = node.id in suppressed
+        # KB-02: record that an agent actually read this node.
+        self._bump_node_access(project_root, node.id)
+        return {"node": node_payload, "edges": [edge_to_dict(edge) for edge in incident_edges], "neighbors": neighbors}
+
+    def _bump_node_access(self, project_root: Optional[Path], node_id: str) -> None:
+        """Atomically bump access_count/last_accessed_at for a read node.
+
+        Delegates to the SQLite sidecar accessor (05-01); writes node_memory
+        only, never graph.json. Degrades silently when the project root or
+        sidecar db cannot be resolved — a read must never fail because the
+        memory layer is unavailable.
+        """
+        if project_root is None:
+            return
+        try:
+            from datetime import datetime, timezone
+
+            from .memory.store import bump_access as _bump_access
+
+            db_path = project_root / ".tesserae" / "sqlite.db"
+            now = datetime.now(timezone.utc).isoformat()
+            _bump_access(db_path, node_id, now)
+        except Exception:
+            # Best-effort signal; never propagate sidecar failures to a read.
+            pass
 
     def _load_requested_graph(self, args: JSONDict) -> ResearchGraph:
         graph, _root = self._load_requested_graph_with_root(args)
