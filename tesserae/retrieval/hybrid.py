@@ -559,8 +559,16 @@ def hybrid_search(
         lane_scores["lexical"] = _lexical_scores(query, texts)
     else:
         lane_scores["lexical"] = [0.0] * len(nodes)
-    if selected_weights.get("embedding", 0.0) > 0:
+    # Resolve the embedding backend once and reuse it for both the lane scores
+    # and the candidate gate. Resolve only when the embedding lane is active OR
+    # we're in hybrid mode (the only case where the gate consults backend
+    # identity) — pure bm25/lexical single-lane queries never touch embeddings,
+    # so we leave ``embed_backend = backend`` (possibly None) and do NOT call
+    # ``active_embedding_backend()``, which would emit the fail-loud warning.
+    embed_backend = backend
+    if selected_weights.get("embedding", 0.0) > 0 or mode == "hybrid":
         embed_backend = backend or active_embedding_backend()
+    if selected_weights.get("embedding", 0.0) > 0:
         lane_scores["embedding"] = _embedding_scores(query, texts, embed_backend)
         backend_name = embed_backend.name
     else:
@@ -569,16 +577,28 @@ def hybrid_search(
 
     fused, ranks = _fuse(lane_scores, selected_weights, len(nodes))
 
-    # Candidate-generation gate: a doc must have *some* lexical evidence (BM25
-    # or lexical lane) before it can surface in hybrid mode. The embedding
-    # lane acts as a re-ranker, never as a candidate generator on its own —
-    # otherwise an opaque hash-bucket cosine can drag in unrelated nodes for
-    # rare-token queries (e.g. CodeFunction names that no public node shares).
-    # In single-lane modes (bm25 / lexical / embedding) the active lane *is*
-    # the gate, which is the obvious user expectation.
+    # Candidate-generation gate (RETR-02): backend-quality dependent.
+    #
+    # In hybrid mode the rule depends on the active embedding backend:
+    #   - HASH stub (no semantics): require lexical evidence (BM25 or lexical
+    #     lane) — the embedding lane is a re-ranker only. An opaque hash-bucket
+    #     cosine has no real semantics and would drag in unrelated nodes for
+    #     rare-token queries (e.g. CodeFunction names no public node shares).
+    #   - REAL backend (model2vec / sentence-transformers): the embedding lane
+    #     MAY surface a node on its own (RETR-02 candidate generation), since a
+    #     semantic hit without lexical overlap is exactly the paraphrase case we
+    #     want to admit.
+    # In single-lane modes (bm25 / lexical / embedding) the active lane *is* the
+    # gate, which is the obvious user expectation.
     if mode == "hybrid":
+        _hash_backend = isinstance(embed_backend, HashEmbeddingBackend)
+
         def _is_candidate(idx: int) -> bool:
-            return lane_scores["bm25"][idx] > 0 or lane_scores["lexical"][idx] > 0
+            lexical_hit = (
+                lane_scores["bm25"][idx] > 0 or lane_scores["lexical"][idx] > 0
+            )
+            embed_hit = lane_scores["embedding"][idx] > 0
+            return lexical_hit or (not _hash_backend and embed_hit)
     else:
         active = [lane for lane, w in selected_weights.items() if w > 0]
         def _is_candidate(idx: int) -> bool:
