@@ -361,8 +361,14 @@ def test_structural_decisions_inherit_session_timestamps(now: datetime):
     ]
     assert len(decisions) == 1
     meta = decisions[0].metadata or {}
+    # Only the DETERMINISTIC decay anchor (``first_seen_at``, derived from the
+    # session's own ``started_at``) lives on the graph node. Mutable memory
+    # state (``last_accessed_at`` / ``access_count``) is sidecar-only and must
+    # NOT be stamped onto node.metadata (Phase-5 byte-idempotence BLOCKER), so
+    # decay backdates from ``first_seen_at`` alone here.
     assert meta.get("first_seen_at") == started
-    assert meta.get("last_accessed_at") == started
+    assert "last_accessed_at" not in meta
+    assert "access_count" not in meta
 
     score = compute_decay_score(decisions[0], now)
     # 30 days at a 14-day half-life ≈ 0.226 — explicitly NOT 1.0.

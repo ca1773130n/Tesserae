@@ -406,6 +406,7 @@ class ProjectWiki:
         use_extraction_feedback: bool = False,
         doc_extractor: Optional[object] = None,
         changed_paths: Optional[List[Path]] = None,
+        llm_passes_client: Optional["LLMJsonClient"] = None,
     ) -> dict:
         """Run the substrate-discovery + extraction pipeline for this project.
 
@@ -427,6 +428,24 @@ class ProjectWiki:
         cfg = self.config()
         kind = source_kind or cfg.get("source_kind", "SourceDocument")
         input_paths = [resolve_project_input(self.project_root, item) for item in inputs]
+
+        # ------------------------------------------------------------ Phase 5
+        # SINGLE gate for the LLM graph-mutating passes (KB-03 / KB-04
+        # consistency). Both the session ``supersede`` pass and the
+        # ``contradiction`` / schema-drift passes are graph-mutating and
+        # credential-dependent, so they must run TOGETHER or NOT AT ALL — never
+        # one without the other. Resolve ONE compile-level client here, gated by
+        # a single explicit opt-in: an injected ``llm_passes_client`` OR the
+        # documented ``TESSERAE_ENABLE_LLM_PASSES`` env var. When the gate is
+        # OFF (the default) the client is ``None`` and NEITHER supersede NOR
+        # contradiction runs, so the default compile is deterministic,
+        # credential-free, and byte-idempotent. When ON, the SAME client is
+        # threaded into both passes; their content-keyed disk caches keep warm
+        # reruns byte-stable. (This decouples the graph-mutating passes from the
+        # session FINDING-extraction client, which stays gated by
+        # ``sessions.llm_enabled`` — that one only feeds extraction prompts and
+        # never mutates graph.json edges.)
+        llm_passes_client = self._resolve_llm_passes_client(llm_passes_client)
 
         # Extraction-feedback guidance (feature G). Collection of feedback
         # events is unconditional; only *injection* into prompts is gated by
@@ -652,7 +671,11 @@ class ProjectWiki:
         # is the only thing Phase 3 wires in; the LLM pass arrives in
         # Phase 5 of the session-graph plan.
         graph = self._merge_session_graph(
-            graph, cfg, override=session_options, guidance=session_guidance
+            graph,
+            cfg,
+            override=session_options,
+            guidance=session_guidance,
+            llm_passes_client=llm_passes_client,
         )
         # Canonicalize the merged graph BEFORE the community-summary pass.
         # ``merge_graphs`` re-runs the same-type/cross-type dedup and edge
@@ -687,6 +710,7 @@ class ProjectWiki:
             store=store,
             vault_pull=vault_pull,
             extraction_prov=extraction_prov,
+            json_client=llm_passes_client,
         )
         return {
             "project_root": str(self.project_root),
@@ -736,6 +760,7 @@ class ProjectWiki:
         cfg: dict,
         override: Optional[SessionExtractionOptions] = None,
         guidance: str = "",
+        llm_passes_client: Optional["LLMJsonClient"] = None,
     ) -> ResearchGraph:
         """Merge the session graph extractor's slice into the doc graph.
 
@@ -855,16 +880,21 @@ class ProjectWiki:
             return graph
         merged = merge_graphs([graph, session_slice])
 
-        # Opt-in post-pass: A-MEM-style superseded_by edges between
-        # near-duplicate session findings. Guarded by an env flag so
-        # the default compile path stays free of extra LLM traffic.
+        # A-MEM-style ``superseded_by`` edges between near-duplicate session
+        # findings. This is a graph-MUTATING LLM pass, so it is gated by the
+        # SAME compile-level client as contradiction/schema-drift
+        # (``llm_passes_client``) — NOT the session finding-extraction client.
+        # That keeps supersede and contradiction consistent (KB-03/KB-04): when
+        # the gate is off (default) NEITHER runs; when on, BOTH run with the
+        # same client. ``supersede_pass_enabled`` still allows an explicit
+        # opt-OUT via ``TESSERAE_SUPERSEDE_PASS=false`` even when the gate is on.
         from .memory.supersede import run_supersede_pass, supersede_pass_enabled
 
-        if supersede_pass_enabled() and json_client is not None:
+        if llm_passes_client is not None and supersede_pass_enabled():
             cache_dir = self.paths.root / "supersede_cache"
             cache_dir.mkdir(parents=True, exist_ok=True)
             merged = run_supersede_pass(
-                merged, json_client=json_client, cache_dir=cache_dir
+                merged, json_client=llm_passes_client, cache_dir=cache_dir
             )
 
         # Opt-in post-pass: feature H — link each session finding to the
@@ -1031,6 +1061,7 @@ class ProjectWiki:
         use_extraction_feedback: bool = False,
         doc_extractor: Optional[object] = None,
         changed_paths: Optional[List[Path]] = None,
+        llm_passes_client: Optional["LLMJsonClient"] = None,
     ) -> dict:
         """Compile every configured source into the .tesserae artifacts.
 
@@ -1075,6 +1106,7 @@ class ProjectWiki:
             use_extraction_feedback=use_extraction_feedback,
             doc_extractor=doc_extractor,
             changed_paths=changed_paths,
+            llm_passes_client=llm_passes_client,
         )
 
     def lint(self, fix_trivial: bool = False, severity_floor: str = "info") -> LintReport:
@@ -1668,6 +1700,34 @@ class ProjectWiki:
             store.record_edge_provenance_many(edge_rows)
         if hasattr(store, "prune_provenance_to_graph"):
             store.prune_provenance_to_graph(graph)
+
+    def _resolve_llm_passes_client(
+        self, explicit: Optional["LLMJsonClient"]
+    ) -> Optional["LLMJsonClient"]:
+        """Resolve the ONE client that gates the LLM graph-mutating passes.
+
+        Single opt-in (KB-03/KB-04 consistency): an explicit client wins; else
+        we build the best-effort default ONLY when ``TESSERAE_ENABLE_LLM_PASSES``
+        is truthy. Otherwise return ``None`` — the default compile then runs
+        NEITHER the session ``supersede`` pass NOR the ``contradiction`` /
+        schema-drift passes, staying deterministic, credential-free, and
+        byte-idempotent. This is the SAME gate ``_run_memory_passes`` documents,
+        lifted to the compile level so supersede and contradiction can never
+        disagree about whether the LLM ran.
+        """
+        if explicit is not None:
+            return explicit
+        if _env_truthy("TESSERAE_ENABLE_LLM_PASSES"):
+            try:
+                from .llm_json import build_default_json_client
+
+                return build_default_json_client()
+            except Exception:  # pragma: no cover — defensive
+                logger.exception(
+                    "phase5: build_default_json_client failed; LLM passes off"
+                )
+                return None
+        return None
 
     def _compile_reference_timestamp(self, graph: ResearchGraph) -> "datetime":
         """A FIXED, content-derived decay reference instant (never now()).
