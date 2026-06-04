@@ -6,6 +6,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import Optional, Protocol, Sequence
 
+from .guidance_filter import apply_guidance_filter
 from .research_graph import ResearchGraph
 
 
@@ -32,24 +33,37 @@ class SelectiveClaudeResearchExtractor:
         self.include_patterns = list(include_patterns)
         self.claude_limit = claude_limit
         self.claude_calls = 0
+        self._guidance = ""
 
     @property
     def guidance(self) -> str:
-        return getattr(self.claude, "guidance", "")
+        return getattr(self.claude, "guidance", "") or self._guidance
 
     @guidance.setter
     def guidance(self, value: str) -> None:
-        # Forward extraction-feedback guidance to the Claude sub-extractor;
-        # the deterministic baseline ignores guidance entirely.
+        # Forward extraction-feedback guidance to the Claude sub-extractor for
+        # prompt-shaping. The deterministic baseline can't re-prompt, so we also
+        # retain the guidance text here and apply it as a STRUCTURAL post-filter
+        # (apply_guidance_filter) to the deterministic extract output.
+        self._guidance = value or ""
         if hasattr(self.claude, "guidance"):
             self.claude.guidance = value
+
+    def _guidance_bullets(self) -> list[str]:
+        """Split the forwarded guidance string into individual bullet lines."""
+        if not self._guidance:
+            return []
+        return [ln for ln in self._guidance.splitlines() if ln.strip()]
 
     def extract_file(self, path: str | Path, source_kind: str = "SourceDocument") -> ResearchGraph:
         file_path = Path(path)
         if self._should_use_claude(file_path):
             self.claude_calls += 1
             return self.claude.extract_file(file_path, source_kind=source_kind)
-        return self.deterministic.extract_file(file_path, source_kind=source_kind)
+        result = self.deterministic.extract_file(file_path, source_kind=source_kind)
+        # The deterministic baseline can't be re-prompted, so honor structural
+        # guidance via a pure post-filter. No guidance => byte-identical no-op.
+        return apply_guidance_filter(result, self._guidance_bullets())
 
     def _should_use_claude(self, path: Path) -> bool:
         if not self.include_patterns:

@@ -126,6 +126,15 @@ def first_string(*values: object) -> Optional[str]:
 
 
 def infer_confidence(subject: ResearchNode, obj: ResearchNode, evidence: Optional[str]) -> str:
+    # KB-05: honour a node_memory-sourced confidence override. The orchestrator
+    # (05-03) copies node_memory.confidence onto node.metadata['confidence'] at
+    # read-back; when present it wins over the heuristic regardless of caller.
+    # When absent the path below is byte-identical to the original heuristic.
+    override = first_string(
+        subject.metadata.get("confidence"), obj.metadata.get("confidence")
+    )
+    if override:
+        return override
     if subject.type in CLAIM_TYPES or obj.type in CLAIM_TYPES:
         return "medium" if evidence else "low"
     return "high" if evidence else "medium"

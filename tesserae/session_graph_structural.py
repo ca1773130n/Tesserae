@@ -111,10 +111,14 @@ def extract_structural(
                 "session_id": session.id,
                 "extractor": "session-structural",
             }
+            # Deterministic decay anchor ONLY. ``access_count`` /
+            # ``last_accessed_at`` are mutable sidecar state and must NEVER be
+            # stamped onto node.metadata — ``ResearchNode.model_dump``
+            # serializes the whole metadata dict into graph.json, so they would
+            # leak wall-clock state and break byte-idempotence. They live
+            # exclusively in the ``node_memory`` sidecar.
             if session_anchor_ts:
                 decision_metadata["first_seen_at"] = session_anchor_ts
-                decision_metadata["last_accessed_at"] = session_anchor_ts
-                decision_metadata["access_count"] = 0
             builder.add_node(
                 name=text,
                 node_type=ResearchNodeType.SESSION_DECISION,

@@ -173,8 +173,8 @@ def test_drift_graph_to_wiki_and_back(tmp_path: Path) -> None:
     assert len(reverse) == 1
 
 
-def test_contradicting_claims_pair_emits_one_info(tmp_path: Path) -> None:
-    graph = {
+def _contradicting_pair_graph(extra_edges: list | None = None) -> dict:
+    return {
         "nodes": [
             {
                 "id": "claim-a",
@@ -195,13 +195,31 @@ def test_contradicting_claims_pair_emits_one_info(tmp_path: Path) -> None:
                 "metadata": {},
             },
         ],
-        "edges": [],
+        "edges": list(extra_edges or []),
     }
+
+
+def test_contradicting_claims_unresolved_pair_emits_one_warning(tmp_path: Path) -> None:
+    # KB-04: an unresolved contradiction (no resolved_by edge) is now RAISED
+    # from info to warning.
+    project = _scaffold(tmp_path, graph=_contradicting_pair_graph())
+    report = WikiLinter(project).run()
+    matches = [f for f in report.findings if f.code == "CONTRADICTING_CLAIMS"]
+    assert len(matches) == 1
+    assert matches[0].severity == "warning"
+
+
+def test_contradicting_claims_resolved_pair_demoted_to_info(tmp_path: Path) -> None:
+    # KB-04: a resolved_by edge between the pair demotes severity back to info.
+    graph = _contradicting_pair_graph(
+        extra_edges=[{"source": "claim-b", "target": "claim-a", "type": "resolved_by"}]
+    )
     project = _scaffold(tmp_path, graph=graph)
     report = WikiLinter(project).run()
     matches = [f for f in report.findings if f.code == "CONTRADICTING_CLAIMS"]
     assert len(matches) == 1
     assert matches[0].severity == "info"
+    assert "resolved by" in matches[0].message.lower()
 
 
 def test_low_title_quality_flagged_as_info(tmp_path: Path) -> None:

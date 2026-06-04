@@ -672,6 +672,102 @@ class SqliteGraphStore:
         return out
 
     # ------------------------------------------------------------------ #
+    # node_memory sidecar (Phase-5 KB-01)                                 #
+    # ------------------------------------------------------------------ #
+
+    def read_node_memory(self) -> Dict[str, dict]:
+        """Return ``{node_id: {decay_score, access_count, last_accessed_at,
+        confidence, superseded}}`` for every row in ``node_memory``.
+
+        The single read surface for all mutable memory state. ``superseded``
+        is returned as a Python ``bool`` (stored as 0/1 INTEGER).
+        """
+        out: Dict[str, dict] = {}
+        with self._connect() as con:
+            for node_id, decay_score, access_count, last_accessed_at, confidence, superseded in con.execute(
+                "select node_id, decay_score, access_count, last_accessed_at,"
+                " confidence, superseded from node_memory"
+            ).fetchall():
+                out[node_id] = {
+                    "decay_score": decay_score,
+                    "access_count": access_count,
+                    "last_accessed_at": last_accessed_at,
+                    "confidence": confidence,
+                    "superseded": bool(superseded),
+                }
+        return out
+
+    def write_node_memory_many(
+        self,
+        rows: Iterable[Tuple[str, float, int, Optional[str], Optional[str], int, str]],
+    ) -> None:
+        """Bulk upsert compile-owned memory columns, keyed on ``node_id``.
+
+        Each row is ``(node_id, decay_score, access_count, last_accessed_at,
+        confidence, superseded, updated_at)``. The compile OWNS
+        ``decay_score`` / ``confidence`` / ``superseded`` / ``updated_at`` and
+        overwrites them on conflict. It does NOT own MCP-accumulated reads, so
+        on conflict the existing ``access_count`` / ``last_accessed_at`` are
+        PRESERVED — never clobbered by the access_count carried in ``rows``
+        (which is only used for the first INSERT of a brand-new node).
+        """
+        params = list(rows)
+        if not params:
+            return
+        with self._connect() as con:
+            con.executemany(
+                """
+                insert into node_memory
+                    (node_id, decay_score, access_count, last_accessed_at,
+                     confidence, superseded, updated_at)
+                values (?, ?, ?, ?, ?, ?, ?)
+                on conflict(node_id) do update set
+                    decay_score = excluded.decay_score,
+                    confidence  = excluded.confidence,
+                    superseded  = excluded.superseded,
+                    updated_at  = excluded.updated_at
+                """,
+                params,
+            )
+            con.commit()
+
+    def bump_access(self, node_id: str, accessed_at: str) -> None:
+        """ATOMIC access bump for ``node_id`` (Phase-5 KB-02).
+
+        Increments ``access_count`` and stamps ``last_accessed_at`` in ONE SQL
+        statement (``access_count = access_count + 1``) — never read-modify-write
+        (05-RESEARCH Pitfall 3), so concurrent MCP reads don't lose increments.
+        Creates the row at count 1 on first access.
+        """
+        with self._connect() as con:
+            con.execute(
+                """
+                insert into node_memory
+                    (node_id, access_count, last_accessed_at, updated_at)
+                values (?, 1, ?, ?)
+                on conflict(node_id) do update set
+                    access_count     = access_count + 1,
+                    last_accessed_at = excluded.last_accessed_at,
+                    updated_at       = excluded.updated_at
+                """,
+                (node_id, accessed_at, accessed_at),
+            )
+            con.commit()
+
+    def has_node_memory_rows(self) -> bool:
+        """True when ``node_memory`` has at least one row.
+
+        Mirrors :meth:`has_node_provenance_rows` — an EXISTING but EMPTY
+        sidecar must not be mistaken for a populated memory store.
+        """
+        try:
+            with self._connect() as con:
+                row = con.execute("select 1 from node_memory limit 1").fetchone()
+            return row is not None
+        except sqlite3.Error:
+            return False
+
+    # ------------------------------------------------------------------ #
     # Internals                                                           #
     # ------------------------------------------------------------------ #
 
@@ -751,6 +847,24 @@ class SqliteGraphStore:
         )
         con.execute(
             "create index if not exists idx_edge_provenance_source on edge_provenance(source_path)"
+        )
+        # node_memory sidecar (Phase-5 KB-01). The single home for ALL mutable
+        # memory state — decay_score, access_count, last_accessed_at,
+        # confidence, superseded. Mirrors the node_provenance discipline:
+        # CREATE TABLE IF NOT EXISTS, SQLite-only, NEVER serialized into
+        # graph.json (which must stay byte-identical across compiles).
+        con.execute(
+            """
+            create table if not exists node_memory (
+                node_id          text primary key,
+                decay_score      real default 1.0,
+                access_count     integer default 0,
+                last_accessed_at text,
+                confidence       text,
+                superseded       integer default 0,
+                updated_at       text
+            )
+            """
         )
 
 

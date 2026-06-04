@@ -17,6 +17,7 @@ import sys
 from dataclasses import dataclass, field, replace as dataclasses_replace
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from .agent_harness import AgentHarnessAdapter, SUPPORTED_AGENT_HARNESSES
@@ -47,6 +48,16 @@ from .understand_anything_adapter import merge_understand_anything_graph
 from .wiki_projector import partition_graph
 
 logger = logging.getLogger("tesserae.project")
+
+
+def _env_truthy(name: str) -> bool:
+    """True when env var ``name`` is set to a documented truthy value.
+
+    Used to gate opt-in, destructive / credential-dependent compile passes
+    (schema-drift apply, ambient-LLM passes) so the default compile stays
+    deterministic and credential-free.
+    """
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 # ---------------------------------------------------------------------------
@@ -395,6 +406,7 @@ class ProjectWiki:
         use_extraction_feedback: bool = False,
         doc_extractor: Optional[object] = None,
         changed_paths: Optional[List[Path]] = None,
+        llm_passes_client: Optional["LLMJsonClient"] = None,
     ) -> dict:
         """Run the substrate-discovery + extraction pipeline for this project.
 
@@ -416,6 +428,24 @@ class ProjectWiki:
         cfg = self.config()
         kind = source_kind or cfg.get("source_kind", "SourceDocument")
         input_paths = [resolve_project_input(self.project_root, item) for item in inputs]
+
+        # ------------------------------------------------------------ Phase 5
+        # SINGLE gate for the LLM graph-mutating passes (KB-03 / KB-04
+        # consistency). Both the session ``supersede`` pass and the
+        # ``contradiction`` / schema-drift passes are graph-mutating and
+        # credential-dependent, so they must run TOGETHER or NOT AT ALL — never
+        # one without the other. Resolve ONE compile-level client here, gated by
+        # a single explicit opt-in: an injected ``llm_passes_client`` OR the
+        # documented ``TESSERAE_ENABLE_LLM_PASSES`` env var. When the gate is
+        # OFF (the default) the client is ``None`` and NEITHER supersede NOR
+        # contradiction runs, so the default compile is deterministic,
+        # credential-free, and byte-idempotent. When ON, the SAME client is
+        # threaded into both passes; their content-keyed disk caches keep warm
+        # reruns byte-stable. (This decouples the graph-mutating passes from the
+        # session FINDING-extraction client, which stays gated by
+        # ``sessions.llm_enabled`` — that one only feeds extraction prompts and
+        # never mutates graph.json edges.)
+        llm_passes_client = self._resolve_llm_passes_client(llm_passes_client)
 
         # Extraction-feedback guidance (feature G). Collection of feedback
         # events is unconditional; only *injection* into prompts is gated by
@@ -641,7 +671,11 @@ class ProjectWiki:
         # is the only thing Phase 3 wires in; the LLM pass arrives in
         # Phase 5 of the session-graph plan.
         graph = self._merge_session_graph(
-            graph, cfg, override=session_options, guidance=session_guidance
+            graph,
+            cfg,
+            override=session_options,
+            guidance=session_guidance,
+            llm_passes_client=llm_passes_client,
         )
         # Canonicalize the merged graph BEFORE the community-summary pass.
         # ``merge_graphs`` re-runs the same-type/cross-type dedup and edge
@@ -676,6 +710,7 @@ class ProjectWiki:
             store=store,
             vault_pull=vault_pull,
             extraction_prov=extraction_prov,
+            json_client=llm_passes_client,
         )
         return {
             "project_root": str(self.project_root),
@@ -725,6 +760,7 @@ class ProjectWiki:
         cfg: dict,
         override: Optional[SessionExtractionOptions] = None,
         guidance: str = "",
+        llm_passes_client: Optional["LLMJsonClient"] = None,
     ) -> ResearchGraph:
         """Merge the session graph extractor's slice into the doc graph.
 
@@ -844,16 +880,21 @@ class ProjectWiki:
             return graph
         merged = merge_graphs([graph, session_slice])
 
-        # Opt-in post-pass: A-MEM-style superseded_by edges between
-        # near-duplicate session findings. Guarded by an env flag so
-        # the default compile path stays free of extra LLM traffic.
+        # A-MEM-style ``superseded_by`` edges between near-duplicate session
+        # findings. This is a graph-MUTATING LLM pass, so it is gated by the
+        # SAME compile-level client as contradiction/schema-drift
+        # (``llm_passes_client``) — NOT the session finding-extraction client.
+        # That keeps supersede and contradiction consistent (KB-03/KB-04): when
+        # the gate is off (default) NEITHER runs; when on, BOTH run with the
+        # same client. ``supersede_pass_enabled`` still allows an explicit
+        # opt-OUT via ``TESSERAE_SUPERSEDE_PASS=false`` even when the gate is on.
         from .memory.supersede import run_supersede_pass, supersede_pass_enabled
 
-        if supersede_pass_enabled() and json_client is not None:
+        if llm_passes_client is not None and supersede_pass_enabled():
             cache_dir = self.paths.root / "supersede_cache"
             cache_dir.mkdir(parents=True, exist_ok=True)
             merged = run_supersede_pass(
-                merged, json_client=json_client, cache_dir=cache_dir
+                merged, json_client=llm_passes_client, cache_dir=cache_dir
             )
 
         # Opt-in post-pass: feature H — link each session finding to the
@@ -1020,6 +1061,7 @@ class ProjectWiki:
         use_extraction_feedback: bool = False,
         doc_extractor: Optional[object] = None,
         changed_paths: Optional[List[Path]] = None,
+        llm_passes_client: Optional["LLMJsonClient"] = None,
     ) -> dict:
         """Compile every configured source into the .tesserae artifacts.
 
@@ -1064,6 +1106,7 @@ class ProjectWiki:
             use_extraction_feedback=use_extraction_feedback,
             doc_extractor=doc_extractor,
             changed_paths=changed_paths,
+            llm_passes_client=llm_passes_client,
         )
 
     def lint(self, fix_trivial: bool = False, severity_floor: str = "info") -> LintReport:
@@ -1658,6 +1701,220 @@ class ProjectWiki:
         if hasattr(store, "prune_provenance_to_graph"):
             store.prune_provenance_to_graph(graph)
 
+    def _resolve_llm_passes_client(
+        self, explicit: Optional["LLMJsonClient"]
+    ) -> Optional["LLMJsonClient"]:
+        """Resolve the ONE client that gates the LLM graph-mutating passes.
+
+        Single opt-in (KB-03/KB-04 consistency): an explicit client wins; else
+        we build the best-effort default ONLY when ``TESSERAE_ENABLE_LLM_PASSES``
+        is truthy. Otherwise return ``None`` — the default compile then runs
+        NEITHER the session ``supersede`` pass NOR the ``contradiction`` /
+        schema-drift passes, staying deterministic, credential-free, and
+        byte-idempotent. This is the SAME gate ``_run_memory_passes`` documents,
+        lifted to the compile level so supersede and contradiction can never
+        disagree about whether the LLM ran.
+        """
+        if explicit is not None:
+            return explicit
+        if _env_truthy("TESSERAE_ENABLE_LLM_PASSES"):
+            try:
+                from .llm_json import build_default_json_client
+
+                return build_default_json_client()
+            except Exception:  # pragma: no cover — defensive
+                logger.exception(
+                    "phase5: build_default_json_client failed; LLM passes off"
+                )
+                return None
+        return None
+
+    def _compile_reference_timestamp(self, graph: ResearchGraph) -> "datetime":
+        """A FIXED, content-derived decay reference instant (never now()).
+
+        Decay must be byte-stable across identical-source compiles, so the
+        reference timestamp cannot be wall-clock ``datetime.now()`` (05-RESEARCH
+        Pitfall 1). We anchor on the LATEST ``last_accessed_at`` /
+        ``first_seen_at`` present in node metadata — a deterministic function of
+        the source corpus. When no node carries a parseable timestamp we fall
+        back to a fixed UTC epoch so the value is still deterministic.
+        """
+        from datetime import datetime, timezone
+
+        from .memory.decay import _parse_ts
+
+        latest: Optional[datetime] = None
+        for node in graph.nodes:
+            meta = getattr(node, "metadata", None) or {}
+            if not isinstance(meta, dict):
+                continue
+            for key in ("last_accessed_at", "first_seen_at"):
+                ts = _parse_ts(meta.get(key))
+                if ts is not None and (latest is None or ts > latest):
+                    latest = ts
+        if latest is not None:
+            return latest
+        return datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+    def _run_memory_passes(
+        self,
+        graph: ResearchGraph,
+        json_client: Optional["LLMJsonClient"],
+    ) -> Tuple[ResearchGraph, List["NodeMemoryRow"]]:
+        """Run the Phase-5 self-improvement passes at the compile choke point.
+
+        Order (05-RESEARCH "Compile Pass Order"): restore MCP-accumulated access
+        state -> [schema-drift apply if opted-in] -> contradiction resolution
+        (mints ``resolved_by`` edges into graph.json) -> recurring-insight
+        reinforcement -> compute decay -> stage node_memory rows. Returns the
+        (possibly edge-augmented) graph plus the staged rows; the caller writes
+        graph.json from the returned graph and persists the rows to the
+        node_memory sidecar AFTER the sqlite write.
+
+        Mutable scalars (decay_score / access_count / confidence / superseded)
+        go to node_memory ONLY. The only graph.json delta from a fresh project
+        is the deterministic ``resolved_by`` / ``supersedes`` edges.
+        """
+        from .memory.contradiction import run_contradiction_resolution
+        from .memory.decay import compute_decay_score
+        from .memory.reinforce import compute_recurring_confidence
+        from .memory.store import NodeMemoryRow, read_memory
+
+        # The LLM-arbitrated passes (contradiction, schema-drift) MUTATE
+        # graph.json (resolved_by / supersedes edges) and depend on ambient
+        # credentials, so we do NOT silently build a default client here:
+        # building one inside compile makes ordinary, credential-free compiles
+        # depend on a configured LLM backend and can trigger a surprise COLD
+        # arbitration call. Instead the LLM passes run ONLY when the caller
+        # hands us an explicit ``json_client`` (e.g. via session extraction) OR
+        # the documented ``TESSERAE_ENABLE_LLM_PASSES`` env gate is set — in
+        # which case we build the best-effort default. Otherwise they are
+        # skipped entirely and the default path stays deterministic and
+        # credential-free. Either way graph.json is byte-idempotent (the
+        # content-keyed disk caches keep warm LLM reruns byte-stable).
+        if json_client is None and _env_truthy("TESSERAE_ENABLE_LLM_PASSES"):
+            try:
+                from .llm_json import build_default_json_client
+
+                json_client = build_default_json_client()
+            except Exception:  # pragma: no cover — defensive
+                json_client = None
+
+        # (1) Single FIXED reference timestamp for ALL decay computations.
+        reference_dt = self._compile_reference_timestamp(graph)
+        reference_iso = reference_dt.isoformat()
+
+        # (2) Load MCP-accumulated access state from the node_memory sidecar so
+        # decay reflects reads recorded since the last compile. CRITICAL: we do
+        # NOT stamp these sidecar fields (access_count / last_accessed_at) onto
+        # ``node.metadata`` — ``ResearchNode.model_dump`` serializes the ENTIRE
+        # metadata dict into graph.json, so mutating it would leak wall-clock
+        # sidecar state into graph.json and break byte-idempotence (a read bump
+        # would change the NEXT compile's bytes). The access state is fed to the
+        # decay computation in step (7) via a COPIED metadata view; graph node
+        # metadata is never touched. (05-RESEARCH Pitfall 2: sidecar-only.)
+        prior: Dict[str, "NodeMemoryRow"] = {}
+        try:
+            prior = read_memory(self.paths.sqlite)
+        except Exception:  # pragma: no cover — defensive; missing/locked db
+            logger.exception("phase5: read_memory failed; treating as empty")
+            prior = {}
+
+        # (3) Schema-drift apply — OPT-IN, destructive (Pitfall 4). Default
+        # (env unset/falsy) => skipped entirely, graph.json byte-identical.
+        if _env_truthy("TESSERAE_SCHEMA_DRIFT_APPLY") and json_client is not None:
+            try:
+                from .schema_drift import analyze_schema_drift, apply_schema_drift
+
+                _report_path, host_reports = analyze_schema_drift(
+                    graph, tesserae_dir=self.paths.root, llm=json_client
+                )
+                # ``HostTypeReport`` stores proposals inside ``clusters`` as
+                # ``(cluster_nodes, proposals)`` tuples (schema_drift.py) — there
+                # is no ``report.proposals`` attribute, so iterating that would
+                # silently apply nothing. Flatten the per-cluster proposal lists.
+                approved: List[dict] = []
+                for report in host_reports:
+                    for _cluster, proposals in getattr(report, "clusters", []) or []:
+                        for prop in proposals or []:
+                            as_dict = prop if isinstance(prop, dict) else getattr(prop, "__dict__", {})
+                            if as_dict.get("approved"):
+                                approved.append(as_dict)
+                if approved:
+                    before = len(approved)
+                    graph = apply_schema_drift(graph, approved)
+                    logger.info(
+                        "phase5 schema-drift apply: applied %d approved proposal(s)",
+                        before,
+                    )
+            except Exception:  # pragma: no cover — defensive
+                logger.exception("phase5 schema-drift apply failed; continuing")
+
+        # (4) Contradiction resolution (KB-04): mints deterministic
+        # ``resolved_by`` edges into graph.json; conf_map -> node_memory.
+        conf_map: Dict[str, str] = {}
+        if json_client is not None:
+            try:
+                graph, conf_map = run_contradiction_resolution(
+                    graph,
+                    llm=json_client,
+                    cache_dir=self.paths.root / "contradiction_cache",
+                )
+            except Exception:  # pragma: no cover — defensive
+                logger.exception("phase5 contradiction resolution failed")
+                conf_map = {}
+
+        # (5) Recurring-insight reinforcement (KB-05): confidence -> node_memory
+        # (NEVER graph.json). Reinforced "high" wins over contradiction's map.
+        try:
+            recur = compute_recurring_confidence(graph)
+        except Exception:  # pragma: no cover — defensive
+            logger.exception("phase5 reinforcement failed")
+            recur = {}
+        confidence_by_id: Dict[str, str] = dict(conf_map)
+        confidence_by_id.update(recur)
+
+        # (6) Superseded targets — a node pointed AT by a ``supersedes`` edge is
+        # obsolete. Flag drives the MCP fresh-insights filter; node_memory only.
+        superseded_ids: Set[str] = {
+            e.target for e in graph.edges if e.type == "supersedes"
+        }
+
+        # (7) Stage one NodeMemoryRow per node: deterministic decay at the fixed
+        # reference, carrying forward MCP access state from ``prior``. The MCP
+        # access fields (access_count / last_accessed_at) are fed to the decay
+        # computation via a COPIED metadata view — NEVER stamped back onto
+        # ``node.metadata`` — so graph.json carries no sidecar/memory state and
+        # stays byte-identical even after an MCP read bumps the sidecar.
+        rows: List["NodeMemoryRow"] = []
+        for node in graph.nodes:
+            prev = prior.get(node.id)
+            try:
+                decay_node = node
+                if prev is not None:
+                    base_meta = getattr(node, "metadata", None)
+                    merged_meta = dict(base_meta) if isinstance(base_meta, dict) else {}
+                    if prev.access_count:
+                        merged_meta["access_count"] = prev.access_count
+                    if prev.last_accessed_at:
+                        merged_meta["last_accessed_at"] = prev.last_accessed_at
+                    decay_node = SimpleNamespace(metadata=merged_meta)
+                decay_score = compute_decay_score(decay_node, reference_dt)
+            except Exception:  # pragma: no cover — defensive
+                decay_score = 1.0
+            rows.append(
+                NodeMemoryRow(
+                    node_id=node.id,
+                    decay_score=decay_score,
+                    access_count=(prev.access_count if prev else 0),
+                    last_accessed_at=(prev.last_accessed_at if prev else None),
+                    confidence=confidence_by_id.get(node.id),
+                    superseded=(node.id in superseded_ids),
+                    updated_at=reference_iso,
+                )
+            )
+        return graph, rows
+
     def _write_artifacts(
         self,
         graph: ResearchGraph,
@@ -1667,6 +1924,7 @@ class ProjectWiki:
         extraction_prov: Optional[
             Tuple[List[Tuple[str, str, str]], List[Tuple[str, str, str, str, str]]]
         ] = None,
+        json_client: Optional["LLMJsonClient"] = None,
     ) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
 
@@ -1704,6 +1962,30 @@ class ProjectWiki:
         # so the projections diverge byte-wise even when the graph is logically
         # equal (CMP-03). Idempotent no-op for an already-canonical graph.
         graph = graph.canonicalized()
+
+        # ------------------------------------------------------------ Phase 5
+        # Self-improvement passes (KB-01/03/04/05/06). Node ids are now final
+        # (canonicalized above) but graph.json has NOT been written yet — the
+        # right choke point to (a) mint the deterministic graph.json edges
+        # (resolved_by / supersedes already present) and (b) compute the
+        # mutable memory state that goes EXCLUSIVELY to the node_memory sidecar
+        # (decay_score / access_count / confidence / superseded). graph.json
+        # must stay byte-identical across identical-source compiles, so NOTHING
+        # below writes a mutable scalar into the node serialization — decay and
+        # confidence land in node_memory only; resolved_by edges are
+        # deterministic (content-keyed warm cache). 05-RESEARCH "Compile Pass
+        # Order"; Pitfalls 1 (fixed reference timestamp), 2 (sidecar-only),
+        # 4 (schema-drift apply is opt-in/destructive).
+        #
+        # The whole block is best-effort: a missing/locked sidecar db or an
+        # absent LLM client must degrade gracefully and never fail a compile.
+        memory_rows: List["NodeMemoryRow"] = []
+        try:
+            graph, memory_rows = self._run_memory_passes(graph, json_client)
+        except Exception:  # pragma: no cover — defensive; never fail compile
+            logger.exception("phase5 memory passes failed; continuing")
+            memory_rows = []
+
         # Karpathy schema layer: purpose / schema / index / log files at the
         # top of the wiki dir. ``purpose.md`` is seeded once and preserved on
         # later compiles so user edits survive; the others regenerate.
@@ -1805,6 +2087,18 @@ class ProjectWiki:
             # content-derived timestamps (never datetime.now(), 04-RESEARCH
             # Pitfall 1); SQLite-only, never in graph.json.
             self._record_provenance(store, graph, extraction_prov)
+        # Phase 5 (KB-01/04/05): persist mutable memory state to the
+        # node_memory sidecar AFTER graph.json + sqlite writes, so node ids are
+        # final. decay_score / access_count / last_accessed_at / confidence /
+        # superseded live HERE ONLY — never in graph.json. Best-effort: a
+        # locked/missing sidecar must not fail the compile.
+        if memory_rows:
+            try:
+                from .memory.store import write_memory
+
+                write_memory(self.paths.sqlite, memory_rows)
+            except Exception:  # pragma: no cover — defensive
+                logger.exception("phase5 write_memory failed; continuing")
         GraphMarkdownProjector().write_projection(graph, self.paths.markdown_projection)
         # markdown_projection/ is a one-way projection (no user notes), but like
         # the Obsidian vault it is NOT rmtree'd, so a rename / deletion leaves a

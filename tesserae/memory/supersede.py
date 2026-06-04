@@ -3,7 +3,7 @@
 Inspired by Graphiti's superseded-edge pattern and A-MEM's Zettelkasten
 note-evolution loop (see ``/tmp/tesserae-innovation/03-memory.md``).
 
-Pass shape (opt-in via ``TESSERAE_SUPERSEDE_PASS=true``):
+Pass shape (default-on, opt-out via ``TESSERAE_SUPERSEDE_PASS=false``):
 
 1. Group session-finding nodes by ``ResearchNodeType`` (insights with
    insights, decisions with decisions, ...).
@@ -60,12 +60,18 @@ _TOKEN_SPLIT_CHARS = " \t\n\r\f\v.,;:!?()[]{}\"'`/\\|<>@#$%^&*+=~"
 
 
 def supersede_pass_enabled() -> bool:
-    """Read the opt-in env flag.
+    """Read the opt-OUT env flag — the pass is DEFAULT-ON (KB-03).
 
-    ``TESSERAE_SUPERSEDE_PASS`` accepts the usual truthy spellings.
+    ``TESSERAE_SUPERSEDE_PASS`` disables the pass only when set to one of
+    the falsy spellings ``{"0", "false", "no", "off"}``. An unset or any
+    other value leaves the pass enabled, so a plain ``project compile``
+    runs supersede arbitration by default. Disk-cached, content-keyed
+    LLM verdicts keep reruns byte-idempotent (05-RESEARCH Pitfall 5).
     """
     raw = (os.environ.get("TESSERAE_SUPERSEDE_PASS") or "").strip().lower()
-    return raw in {"1", "true", "yes", "on"}
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -121,23 +127,78 @@ class SupersedeJudgement:
 _VALID_VERDICTS = {"a_obsoletes_b", "b_obsoletes_a", "distinct"}
 
 
+def _normalize(text: str) -> str:
+    """Whitespace/case-normalised content for the cache key."""
+    return " ".join((text or "").split()).strip().lower()
+
+
+def _node_blob(node: ResearchNode) -> str:
+    return _normalize(f"{node.name} {node.description or ''}")
+
+
 def _pair_hash(a: ResearchNode, b: ResearchNode) -> str:
-    """Order-independent stable hash for caching a pair's verdict."""
-    left, right = sorted([a.id, b.id])
-    raw = f"{left}::{right}".encode("utf-8")
-    return hashlib.sha1(raw).hexdigest()[:16]
+    """Order-independent, CONTENT-keyed hash for caching a pair's verdict
+    (codex MAJOR 1).
+
+    Keys on the sha256 of the SORTED pair of normalised
+    ``name + description`` blobs, NOT node ids. So the same finding content
+    reminted under different node ids hits the SAME warm cache file, and
+    the cached ROLE verdict (``a_obsoletes_b`` is re-anchored to whichever
+    side the caller passes as ``a``). We canonicalise the stored role to
+    the SORTED-blob orientation so the file is independent of argument
+    order; the caller maps it back to the live (a, b) roles.
+    """
+    blob_a, blob_b = _node_blob(a), _node_blob(b)
+    lo, hi = sorted([blob_a, blob_b])
+    raw = f"{lo}::{hi}".encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:16]
 
 
-def _read_cached_judgement(path: Path) -> Optional[SupersedeJudgement]:
+# Cache verdict orientation is anchored to the SORTED-blob pair (lo, hi),
+# independent of the live argument order. ``lo_obsoletes_hi`` /
+# ``hi_obsoletes_lo`` / ``distinct``.
+_LO_OBSOLETES_HI = "lo_obsoletes_hi"
+_HI_OBSOLETES_LO = "hi_obsoletes_lo"
+_CACHE_VERDICTS = {_LO_OBSOLETES_HI, _HI_OBSOLETES_LO, "distinct"}
+
+
+def _verdict_to_cache_role(a: ResearchNode, b: ResearchNode, verdict: str) -> str:
+    """Map a live ``a_obsoletes_b``/``b_obsoletes_a`` verdict to the
+    sorted-blob orientation stored on disk."""
+    if verdict == "distinct":
+        return "distinct"
+    blob_a, blob_b = _node_blob(a), _node_blob(b)
+    a_is_lo = blob_a <= blob_b
+    # winner = the obsoleter.
+    a_wins = verdict == "a_obsoletes_b"
+    winner_is_lo = a_wins == a_is_lo
+    return _LO_OBSOLETES_HI if winner_is_lo else _HI_OBSOLETES_LO
+
+
+def _cache_role_to_verdict(a: ResearchNode, b: ResearchNode, role: str) -> str:
+    """Inverse of :func:`_verdict_to_cache_role` for the live (a, b)."""
+    if role == "distinct":
+        return "distinct"
+    blob_a, blob_b = _node_blob(a), _node_blob(b)
+    a_is_lo = blob_a <= blob_b
+    lo_wins = role == _LO_OBSOLETES_HI
+    a_wins = lo_wins == a_is_lo
+    return "a_obsoletes_b" if a_wins else "b_obsoletes_a"
+
+
+def _read_cached_judgement(
+    path: Path, a: ResearchNode, b: ResearchNode
+) -> Optional[SupersedeJudgement]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
-    verdict = str(payload.get("verdict") or "")
-    if verdict not in _VALID_VERDICTS:
+    role = str(payload.get("verdict") or "")
+    if role not in _CACHE_VERDICTS:
         return None
     return SupersedeJudgement(
-        verdict=verdict, rationale=str(payload.get("rationale") or "")
+        verdict=_cache_role_to_verdict(a, b, role),
+        rationale=str(payload.get("rationale") or ""),
     )
 
 
@@ -146,13 +207,15 @@ def _write_cached_judgement(
     pair: Tuple[ResearchNode, ResearchNode],
     judgement: SupersedeJudgement,
 ) -> None:
-    """Atomic write with PID+random suffix (matches session_graph._write_cache)."""
+    """Atomic write with PID+random suffix (matches session_graph._write_cache).
+
+    Stores the ROLE verdict in the sorted-blob orientation (codex MAJOR
+    1) — never concrete ids — so reminted ids hit the same warm cache.
+    """
     a, b = pair
     payload = {
-        "schema_version": 1,
-        "a_id": a.id,
-        "b_id": b.id,
-        "verdict": judgement.verdict,
+        "schema_version": 2,
+        "verdict": _verdict_to_cache_role(a, b, judgement.verdict),
         "rationale": judgement.rationale,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -279,7 +342,7 @@ def run_supersede_pass(
             cache_path = cache_dir / f"{_pair_hash(a, b)}.json"
             judgement: Optional[SupersedeJudgement] = None
             if cache_path.exists():
-                judgement = _read_cached_judgement(cache_path)
+                judgement = _read_cached_judgement(cache_path, a, b)
             if judgement is None:
                 judgement = _ask_llm(json_client, a, b)
                 if judgement is None:
