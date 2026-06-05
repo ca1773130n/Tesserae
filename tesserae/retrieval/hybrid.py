@@ -48,6 +48,20 @@ from ..research_graph import ResearchGraph, ResearchNode
 RRF_K = 60  # standard reciprocal-rank-fusion damping constant
 DEFAULT_WEIGHTS: Dict[str, float] = {"bm25": 1.0, "lexical": 1.0, "embedding": 1.0}
 EMBED_DIM = 128  # used by the hash-bucket backend
+
+# Minimum cosine for an embedding-ONLY candidate admission on the real-backend
+# path (RETR-02). Real distilled vectors (model2vec / sentence-transformers) are
+# virtually never orthogonal to a query, so raw cosine is strictly positive for
+# nearly every node. A bare ``> 0`` gate would therefore admit ~the whole graph
+# as candidates, ballooning ``total_matches`` ("X of N matches") to ≈ graph size
+# on every real-backend query — a precision/reporting regression. We require a
+# floor so only genuinely related nodes (paraphrases/synonyms, high cosine) are
+# admitted on semantic evidence alone, while keeping the RRF top-k ranking
+# untouched. 0.30 is a conservative default: well below the cosine of a true
+# paraphrase/synonym hit (typically ≥ 0.5 for distilled sentence models) yet far
+# above the low-but-nonzero background cosine of unrelated nodes. The hash stub
+# still requires lexical evidence and is unaffected by this floor.
+EMBED_CANDIDATE_MIN_COSINE = 0.30
 _TOKEN_RE = re.compile(r"[\w]+", re.UNICODE)
 
 
@@ -158,6 +172,46 @@ class SentenceTransformersBackend:
         return [list(map(float, vec)) for vec in vectors]
 
 
+class Model2VecBackend:
+    """Static distilled embedding via model2vec — offline, ~8 MB, no torch.
+
+    Loaded lazily (the heavy ``from model2vec import StaticModel`` stays inside
+    ``__init__``, never at module import time). Encoding is a deterministic
+    token-lookup + mean — no neural inference — so results are stable across
+    runs, which matters for byte-idempotence of anything derived from them.
+    """
+
+    def __init__(self, model_name: str = "minishlab/potion-base-8M") -> None:
+        from model2vec import StaticModel  # type: ignore
+
+        self._model = StaticModel.from_pretrained(model_name)
+        self.name = f"model2vec:{model_name}"
+        self.dim = int(getattr(self._model, "dim", 0)) or len(
+            self._encode(["x"])[0]
+        )
+
+    def _encode(self, texts: List[str]) -> List[List[float]]:
+        # Some model2vec versions accept ``normalize=`` in ``encode``; older
+        # ones don't. Prefer the native path (cosine == dot, matching the other
+        # backends' L2-normalised contract); fall back to a manual L2-normalise.
+        try:
+            vectors = self._model.encode(texts, normalize=True)
+        except TypeError:
+            raw = self._model.encode(texts)
+            vectors = []
+            for vec in raw:
+                floats = [float(v) for v in vec]
+                norm = math.sqrt(sum(v * v for v in floats))
+                if norm > 0:
+                    floats = [v / norm for v in floats]
+                vectors.append(floats)
+            return vectors
+        return [list(map(float, vec)) for vec in vectors]
+
+    def embed(self, texts: Sequence[str]) -> List[List[float]]:
+        return self._encode(list(texts))
+
+
 # Module-scope cache so repeated MCP `search_nodes` calls don't reload a
 # multi-hundred-MB ``SentenceTransformer`` model every query. Keyed by the
 # ``prefer`` argument so swapping resolver preferences mid-process still
@@ -177,30 +231,67 @@ def reset_embedding_backend() -> None:
 def active_embedding_backend(prefer: str = "auto") -> EmbeddingBackend:
     """Resolve the best embedding backend that is actually importable.
 
-    ``prefer`` may be ``auto`` (default), ``sentence-transformers`` or
-    ``hash``. ``auto`` tries the semantic backend first and silently falls
-    back to the hash bucket when the optional dep is missing so the function
-    *always* returns a usable backend.
+    ``prefer`` may be ``auto`` (default), ``model2vec``/``m2v``,
+    ``sentence-transformers``/``st`` or ``hash``.
 
-    The resolved backend is memoised at module scope — constructing a
-    ``SentenceTransformer`` is expensive (multi-hundred-MB model load) and
-    happens on the hot path of every default-mode ``search_nodes`` call.
-    Use :func:`reset_embedding_backend` to clear the cache in tests.
+    Resolution order on the ``auto`` path is **model2vec → sentence-transformers
+    → hash stub**. model2vec is tried first: it is lighter (~8 MB static model),
+    offline, and needs no torch. If neither real backend is importable, ``auto``
+    does NOT silently degrade — it emits a loud :class:`UserWarning` naming
+    ``tesserae[semantic]`` and only then returns the non-semantic
+    :class:`HashEmbeddingBackend`. An EXPLICIT non-``auto`` preference that fails
+    to construct is re-raised (fail-loud) rather than swallowed.
+
+    The resolved backend is memoised at module scope — constructing a real
+    model is expensive (and we never want to reload per query). The warning
+    therefore fires only on a cache miss, i.e. effectively once per ``prefer``
+    key per process. Use :func:`reset_embedding_backend` to clear the cache in
+    tests.
     """
     cached = _BACKEND_CACHE.get(prefer)
     if cached is not None:
         return cached
+    # model2vec first — lighter, offline, no torch.
+    if prefer in ("auto", "model2vec", "m2v"):
+        try:
+            backend: EmbeddingBackend = Model2VecBackend()
+            _BACKEND_CACHE[prefer] = backend
+            return backend
+        except Exception:  # optional dep / offline first-use download
+            if prefer != "auto":
+                raise
+    # sentence-transformers second (heavier; stays opt-in).
     if prefer in ("auto", "sentence-transformers", "st"):
         try:
-            backend: EmbeddingBackend = SentenceTransformersBackend()
+            backend = SentenceTransformersBackend()
             _BACKEND_CACHE[prefer] = backend
             return backend
         except Exception:  # pragma: no cover - depends on optional dep
             if prefer != "auto":
                 raise
+    if prefer == "hash":
+        backend = HashEmbeddingBackend()
+        _BACKEND_CACHE[prefer] = backend
+        return backend
+    # No real backend on the auto path: FAIL LOUD, then degrade.
+    import warnings
+
+    warnings.warn(
+        "No semantic embedding backend available (model2vec or "
+        "sentence-transformers). Hybrid/embedding retrieval is running on "
+        "the non-semantic hash-bucket stub. Install `tesserae[semantic]` "
+        "for real semantic retrieval.",
+        UserWarning,
+        stacklevel=2,
+    )
     backend = HashEmbeddingBackend()
     _BACKEND_CACHE[prefer] = backend
     return backend
+
+
+def backend_is_semantic(backend: "EmbeddingBackend") -> bool:
+    """True when ``backend`` is a real semantic backend (not the hash stub)."""
+    return not isinstance(backend, HashEmbeddingBackend)
 
 
 # ---------------------------------------------------------------------------
@@ -482,8 +573,16 @@ def hybrid_search(
         lane_scores["lexical"] = _lexical_scores(query, texts)
     else:
         lane_scores["lexical"] = [0.0] * len(nodes)
-    if selected_weights.get("embedding", 0.0) > 0:
+    # Resolve the embedding backend once and reuse it for both the lane scores
+    # and the candidate gate. Resolve only when the embedding lane is active OR
+    # we're in hybrid mode (the only case where the gate consults backend
+    # identity) — pure bm25/lexical single-lane queries never touch embeddings,
+    # so we leave ``embed_backend = backend`` (possibly None) and do NOT call
+    # ``active_embedding_backend()``, which would emit the fail-loud warning.
+    embed_backend = backend
+    if selected_weights.get("embedding", 0.0) > 0 or mode == "hybrid":
         embed_backend = backend or active_embedding_backend()
+    if selected_weights.get("embedding", 0.0) > 0:
         lane_scores["embedding"] = _embedding_scores(query, texts, embed_backend)
         backend_name = embed_backend.name
     else:
@@ -492,16 +591,34 @@ def hybrid_search(
 
     fused, ranks = _fuse(lane_scores, selected_weights, len(nodes))
 
-    # Candidate-generation gate: a doc must have *some* lexical evidence (BM25
-    # or lexical lane) before it can surface in hybrid mode. The embedding
-    # lane acts as a re-ranker, never as a candidate generator on its own —
-    # otherwise an opaque hash-bucket cosine can drag in unrelated nodes for
-    # rare-token queries (e.g. CodeFunction names that no public node shares).
-    # In single-lane modes (bm25 / lexical / embedding) the active lane *is*
-    # the gate, which is the obvious user expectation.
+    # Candidate-generation gate (RETR-02): backend-quality dependent.
+    #
+    # In hybrid mode the rule depends on the active embedding backend:
+    #   - HASH stub (no semantics): require lexical evidence (BM25 or lexical
+    #     lane) — the embedding lane is a re-ranker only. An opaque hash-bucket
+    #     cosine has no real semantics and would drag in unrelated nodes for
+    #     rare-token queries (e.g. CodeFunction names no public node shares).
+    #   - REAL backend (model2vec / sentence-transformers): the embedding lane
+    #     MAY surface a node on its own (RETR-02 candidate generation), since a
+    #     semantic hit without lexical overlap is exactly the paraphrase case we
+    #     want to admit.
+    # In single-lane modes (bm25 / lexical / embedding) the active lane *is* the
+    # gate, which is the obvious user expectation.
     if mode == "hybrid":
+        _hash_backend = isinstance(embed_backend, HashEmbeddingBackend)
+
         def _is_candidate(idx: int) -> bool:
-            return lane_scores["bm25"][idx] > 0 or lane_scores["lexical"][idx] > 0
+            lexical_hit = (
+                lane_scores["bm25"][idx] > 0 or lane_scores["lexical"][idx] > 0
+            )
+            # Embedding-only admission on the real-backend path requires a
+            # cosine FLOOR, not just ``> 0``: real vectors are ~never orthogonal
+            # to a query, so ``> 0`` would admit nearly every node and inflate
+            # ``total_matches``. A genuine paraphrase/synonym hit clears the
+            # floor; unrelated low-cosine nodes do not. (RETR-02 intent — admit
+            # semantic hits — is preserved; only the threshold tightens.)
+            embed_hit = lane_scores["embedding"][idx] >= EMBED_CANDIDATE_MIN_COSINE
+            return lexical_hit or (not _hash_backend and embed_hit)
     else:
         active = [lane for lane, w in selected_weights.items() if w > 0]
         def _is_candidate(idx: int) -> bool:

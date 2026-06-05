@@ -22,6 +22,7 @@ from .retrieval.hybrid import (
     DEFAULT_WEIGHTS as _HYBRID_DEFAULT_WEIGHTS,
     ScoredNode as _HybridScoredNode,
     active_embedding_backend as _active_embedding_backend,
+    backend_is_semantic as _backend_is_semantic,
     hybrid_search as _hybrid_search,
 )
 from .research_graph import (
@@ -2050,6 +2051,7 @@ class LLMWikiMCPServer:
             return {
                 "available": True,
                 "backend": backend.name,
+                "semantic": bool(_backend_is_semantic(backend)),
                 "dim": int(getattr(backend, "dim", 0)),
                 "default_weights": dict(_HYBRID_DEFAULT_WEIGHTS),
                 "modes": ["hybrid", "bm25", "lexical", "embedding", "legacy"],
@@ -2058,6 +2060,7 @@ class LLMWikiMCPServer:
             return {
                 "available": False,
                 "backend": None,
+                "semantic": False,
                 "error": str(exc),
                 "default_weights": dict(_HYBRID_DEFAULT_WEIGHTS),
                 "modes": ["hybrid", "bm25", "lexical", "embedding", "legacy"],
