@@ -36,6 +36,7 @@ from tesserae.research_graph import (
 )
 from tesserae.retrieval import hybrid
 from tesserae.retrieval.hybrid import (
+    EMBED_CANDIDATE_MIN_COSINE,
     HashEmbeddingBackend,
     active_embedding_backend,
     backend_is_semantic,
@@ -176,6 +177,48 @@ class _StubSemanticBackend:
         return out
 
 
+class _LowCosineBackend:
+    """Deterministic non-hash backend modelling a REAL distilled model's habit
+    of returning a SMALL-but-nonzero cosine for unrelated nodes (~0.05–0.1) and
+    a HIGH cosine (~0.8+) for the on-topic node — the case the CI hash/concept
+    stubs cannot exhibit (they emit exact 0.0 for off-axis tokens, masking the
+    missing cosine floor).
+
+    Construction: a fixed 3-D unit query vector ``q``. Each node text is mapped
+    to either the on-topic vector (cosine ≈ 0.97 with ``q``) when it carries a
+    sentinel token, or a near-orthogonal vector (cosine ≈ 0.07 with ``q``) for
+    everything else. The query embeds to ``q`` itself (cosine 1.0). No exact
+    zeros anywhere — exactly what defeats a bare ``> 0`` gate.
+    """
+
+    name = "low-cosine:test"
+    dim = 3
+
+    # Unit query direction.
+    _Q = (1.0, 0.0, 0.0)
+    # On-topic node: cos(q, .) = 0.95 / sqrt(0.95**2 + 0.31**2) ≈ 0.95.
+    _ON_TOPIC = (0.95, 0.31, 0.0)
+    # Unrelated node: cos(q, .) ≈ 0.07 (small but strictly nonzero).
+    _UNRELATED = (0.07, 0.997, 0.0)
+    # Marker placed in exactly one node's text; absent from the query tokens so
+    # the on-topic node has NO lexical (BM25/lexical) overlap with the query.
+    _SENTINEL = "zzonsentinel"
+
+    def embed(self, texts):
+        out = []
+        for i, t in enumerate(texts):
+            text = (t or "").casefold()
+            # texts[0] is always the query in ``_embedding_scores``; it carries
+            # no sentinel, so it maps to the query direction (cosine 1.0 wself).
+            if i == 0:
+                out.append(list(self._Q))
+            elif self._SENTINEL in text:
+                out.append(list(self._ON_TOPIC))
+            else:
+                out.append(list(self._UNRELATED))
+        return out
+
+
 class _FakeModel2Vec:
     """A non-hash fake standing in for ``Model2VecBackend`` on the auto path."""
 
@@ -280,6 +323,72 @@ def test_real_backend_lifts_candidate_gate():
     hash_ids = {s.node.id for s in hash_result.scored}
     assert rrf not in hash_ids, "hash gate must reject the embedding-only rrf hit"
     assert set(stub_ids) > hash_ids or rrf not in hash_ids
+
+
+def test_embedding_candidate_gate_has_cosine_floor():
+    """Review MAJOR: an embedding-only candidate is admitted on the real-backend
+    path ONLY when its cosine clears ``EMBED_CANDIDATE_MIN_COSINE``.
+
+    With a backend that returns SMALL-but-nonzero cosine for unrelated nodes
+    (~0.07) and HIGH cosine (~0.95) for one on-topic node, the bare ``> 0`` gate
+    would admit EVERY node (inflating ``total_matches`` to graph size). With the
+    floor:
+      * the on-topic node (high cosine, no lexical overlap) IS admitted, so the
+        RETR-02 paraphrase intent is preserved;
+      * the unrelated low-cosine nodes are NOT admitted as embedding-only
+        candidates, so ``total_matches`` stays bounded.
+
+    This test FAILS under a ``> 0`` gate (all 8 nodes admitted, on-topic present
+    but unrelated nodes also present) and PASSES with the floor.
+    """
+    graph = _eight_node_graph()
+    # Plant the backend sentinel in exactly one node's text so the backend maps
+    # it to its high-cosine on-topic vector. The sentinel is a nonsense token
+    # that appears in NO other node and is NOT in the query, so this node has
+    # zero lexical overlap with the query — it can only survive via the
+    # embedding lane, which the floor must still admit (high cosine).
+    on_topic_id = "MethodologicalConcept:rrf"
+    import dataclasses
+
+    graph.nodes = [
+        dataclasses.replace(
+            n, description=(n.description or "") + " " + _LowCosineBackend._SENTINEL
+        )
+        if n.id == on_topic_id
+        else n
+        for n in graph.nodes
+    ]
+
+    # Query tokens appear in NO node's text (pure embedding-driven retrieval).
+    query = "qqxnonlexicalquery"
+
+    result = hybrid_search(
+        graph, query, top_k=8, backend=_LowCosineBackend(), mode="hybrid"
+    )
+    ids = {s.node.id for s in result.scored}
+
+    # On-topic node IS admitted via the embedding lane alone (RETR-02 intent).
+    assert on_topic_id in ids, "high-cosine on-topic node must clear the floor"
+    on_topic = next(s for s in result.scored if s.node.id == on_topic_id)
+    assert on_topic.per_lane["embedding"] >= EMBED_CANDIDATE_MIN_COSINE
+    assert on_topic.per_lane["bm25"] == 0
+    assert on_topic.per_lane["lexical"] == 0
+
+    # Unrelated low-cosine nodes (cosine ~0.07, well below the floor, no lexical
+    # hit) are NOT admitted — so total_matches stays bounded rather than ≈ N.
+    unrelated_ids = {
+        n.id for n in graph.nodes if n.id != on_topic_id
+    }
+    admitted_unrelated = ids & unrelated_ids
+    assert not admitted_unrelated, (
+        "low-cosine unrelated nodes must NOT be admitted as embedding-only "
+        f"candidates; got {sorted(admitted_unrelated)}"
+    )
+    # total_matches must reflect the gate, not the whole graph.
+    assert result.total_matches == 1, (
+        "only the on-topic node should survive the floored candidate gate; "
+        f"total_matches={result.total_matches} (graph has {len(graph.nodes)} nodes)"
+    )
 
 
 # ---------------------------------------------------------------------------

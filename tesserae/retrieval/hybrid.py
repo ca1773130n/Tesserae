@@ -48,6 +48,20 @@ from ..research_graph import ResearchGraph, ResearchNode
 RRF_K = 60  # standard reciprocal-rank-fusion damping constant
 DEFAULT_WEIGHTS: Dict[str, float] = {"bm25": 1.0, "lexical": 1.0, "embedding": 1.0}
 EMBED_DIM = 128  # used by the hash-bucket backend
+
+# Minimum cosine for an embedding-ONLY candidate admission on the real-backend
+# path (RETR-02). Real distilled vectors (model2vec / sentence-transformers) are
+# virtually never orthogonal to a query, so raw cosine is strictly positive for
+# nearly every node. A bare ``> 0`` gate would therefore admit ~the whole graph
+# as candidates, ballooning ``total_matches`` ("X of N matches") to ≈ graph size
+# on every real-backend query — a precision/reporting regression. We require a
+# floor so only genuinely related nodes (paraphrases/synonyms, high cosine) are
+# admitted on semantic evidence alone, while keeping the RRF top-k ranking
+# untouched. 0.30 is a conservative default: well below the cosine of a true
+# paraphrase/synonym hit (typically ≥ 0.5 for distilled sentence models) yet far
+# above the low-but-nonzero background cosine of unrelated nodes. The hash stub
+# still requires lexical evidence and is unaffected by this floor.
+EMBED_CANDIDATE_MIN_COSINE = 0.30
 _TOKEN_RE = re.compile(r"[\w]+", re.UNICODE)
 
 
@@ -597,7 +611,13 @@ def hybrid_search(
             lexical_hit = (
                 lane_scores["bm25"][idx] > 0 or lane_scores["lexical"][idx] > 0
             )
-            embed_hit = lane_scores["embedding"][idx] > 0
+            # Embedding-only admission on the real-backend path requires a
+            # cosine FLOOR, not just ``> 0``: real vectors are ~never orthogonal
+            # to a query, so ``> 0`` would admit nearly every node and inflate
+            # ``total_matches``. A genuine paraphrase/synonym hit clears the
+            # floor; unrelated low-cosine nodes do not. (RETR-02 intent — admit
+            # semantic hits — is preserved; only the threshold tightens.)
+            embed_hit = lane_scores["embedding"][idx] >= EMBED_CANDIDATE_MIN_COSINE
             return lexical_hit or (not _hash_backend and embed_hit)
     else:
         active = [lane for lane, w in selected_weights.items() if w > 0]
