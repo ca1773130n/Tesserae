@@ -1035,16 +1035,17 @@ class ProjectWiki:
         merged = merge_graphs([graph, session_slice])
 
         # A-MEM-style ``superseded_by`` edges between near-duplicate session
-        # findings. This is a graph-MUTATING LLM pass, so it is gated by the
-        # SAME compile-level client as contradiction/schema-drift
-        # (``llm_passes_client``) — NOT the session finding-extraction client.
-        # That keeps supersede and contradiction consistent (KB-03/KB-04): when
-        # the gate is off (default) NEITHER runs; when on, BOTH run with the
-        # same client. ``supersede_pass_enabled`` still allows an explicit
-        # opt-OUT via ``TESSERAE_SUPERSEDE_PASS=false`` even when the gate is on.
+        # findings. As of Plan 01 the supersede pass is DEFAULT-ON with a
+        # deterministic, credential-free verdict, so it runs whenever
+        # ``supersede_pass_enabled()`` is true (the default) — NO longer gated on
+        # ``llm_passes_client``. On the default path json_client is None and the
+        # verdict is deterministic; an explicit client overrides the verdict.
+        # ``supersede_pass_enabled`` still honours an explicit opt-OUT via
+        # ``TESSERAE_SUPERSEDE_PASS=false``. Contradiction/schema-drift passes
+        # remain gated on ``llm_passes_client`` separately.
         from .memory.supersede import run_supersede_pass, supersede_pass_enabled
 
-        if llm_passes_client is not None and supersede_pass_enabled():
+        if supersede_pass_enabled():
             cache_dir = self.paths.root / "supersede_cache"
             cache_dir.mkdir(parents=True, exist_ok=True)
             merged = run_supersede_pass(
@@ -2219,7 +2220,12 @@ class ProjectWiki:
             logger.exception("phase5 reinforcement failed")
             recur = {}
         confidence_by_id: Dict[str, str] = dict(conf_map)
-        confidence_by_id.update(recur)
+        # ``recur`` carries NUMERIC scores (0->1); store them as deterministic
+        # text ("0.5"/"0.75"/"1") so the SQLite round-trip and the temporal
+        # projector emit byte-identical values. Reinforced numeric wins over the
+        # contradiction map. NEVER stamped onto node.metadata / graph.json.
+        for nid, score in recur.items():
+            confidence_by_id[nid] = f"{float(score):.2f}".rstrip("0").rstrip(".")
 
         # (6) Superseded targets — a node pointed AT by a ``supersedes`` edge is
         # obsolete. Flag drives the MCP fresh-insights filter; node_memory only.
@@ -2470,7 +2476,10 @@ class ProjectWiki:
             self._run_cognify_best_effort(cognify)
         report = GraphReporter().render_markdown(GraphReporter().summarize(graph))
         self.paths.report.write_text(report, encoding="utf-8")
-        TemporalFactProjector().write_jsonl(graph, self.paths.temporal_facts)
+        mem_by_id = {r.node_id: r for r in memory_rows}
+        TemporalFactProjector().write_jsonl(
+            graph, self.paths.temporal_facts, memory_by_id=mem_by_id
+        )
         self.export_graphiti()
         self.export_agent_harness()
         self.export_obsidian()
