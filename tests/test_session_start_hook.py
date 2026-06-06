@@ -84,8 +84,13 @@ def _run_hook(env: dict, cwd: Path) -> subprocess.CompletedProcess:
     )
 
 
-def _wait_for_invocation(log: Path, timeout: float = 3.0) -> bool:
-    """Sync-code is backgrounded; poll briefly for the stub to record."""
+def _wait_for_invocation(log: Path, timeout: float = 15.0) -> bool:
+    """Sync-code is backgrounded; poll for the stub to record.
+
+    The poll returns as soon as the log lands, so the generous ceiling only
+    slows genuine failures — 3.0s was missed under full-suite load (the
+    backgrounded fork+exec of the stub can take seconds on a saturated box).
+    """
     deadline = time.time() + timeout
     while time.time() < deadline:
         if log.exists() and log.read_text(encoding="utf-8").strip():
