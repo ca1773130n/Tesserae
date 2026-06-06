@@ -1880,6 +1880,13 @@ class ProjectWiki:
         deterministic ``det:`` rows; ``_record_provenance`` filters them to the
         FINAL graph so canonicalization/dedup drops never leave over-coverage.
         """
+        # ``_producer_prov`` is reset per compile() (~1232), but producers also
+        # run via direct ingest()/_merge_session_graph()/_write_artifacts() calls
+        # (e.g. in tests) that bypass that reset. Initialise defensively so the
+        # record path tolerates any entry point — mirrors the guarded
+        # ``getattr(self, "_producer_prov", {})`` in _collect_producer_provenance.
+        if not hasattr(self, "_producer_prov"):
+            self._producer_prov = {}
         before_node_ids = {n.id for n in before.nodes}
         before_edge_keys = {(e.source, e.type, e.target) for e in before.edges}
         minted_nodes = [n.id for n in after.nodes if n.id not in before_node_ids]
