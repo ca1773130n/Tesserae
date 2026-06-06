@@ -4,7 +4,10 @@ The legacy ``temporal.infer_confidence`` is a 4-line string heuristic that
 ignores how often an insight recurs across sessions. This pass turns
 cross-session *frequency* into a confidence signal: a session finding (or
 its near-duplicate cluster) that surfaces in ``>= threshold`` DISTINCT
-sessions is reinforced to confidence ``"high"``.
+sessions is reinforced to a NUMERIC confidence in ``(0, 1]`` derived from
+the distinct-session count via
+``min(1.0, (count - 1) / (2 * threshold - 2))`` (threshold=3 → 3 sessions
+0.5, 4 → 0.75, 5+ → 1.0, capped).
 
 Clustering of near-duplicates is two-fold and deterministic:
 
@@ -14,9 +17,9 @@ Clustering of near-duplicates is two-fold and deterministic:
    independently-emitted restatements of the same insight cluster together.
 
 The surviving / canonical node id of a reinforced cluster (the smallest id
-for stability) carries the ``"high"`` confidence. The orchestrator (05-03)
-writes ``{node_id: confidence}`` into ``node_memory``; downstream
-``infer_confidence`` reads it back as an override.
+for stability) carries the numeric confidence. The orchestrator writes
+``{node_id: confidence}`` (formatted as text) into ``node_memory``; the
+temporal projector reads it back per-compile via ``memory_by_id``.
 
 Pure + deterministic: no ``datetime.now()`` / RNG, threshold configurable,
 output ordering irrelevant (a dict keyed on node id).
@@ -74,11 +77,16 @@ class _UnionFind:
 
 def compute_recurring_confidence(
     graph: ResearchGraph, *, threshold: int = 3
-) -> Dict[str, str]:
+) -> Dict[str, float]:
     """Reinforce insights recurring across ``>= threshold`` distinct sessions.
 
-    Returns ``{canonical_node_id: "high"}`` for each qualifying cluster;
-    nodes that do not qualify are omitted. Pure / deterministic.
+    Returns ``{canonical_node_id: score}`` for each qualifying cluster, where
+    ``score = min(1.0, (count - 1) / (2 * threshold - 2))`` is a numeric
+    confidence in ``(0, 1]`` derived purely from the distinct-session count
+    (threshold=3 → 3 sessions 0.5, 4 → 0.75, 5+ → 1.0, capped). Nodes that do
+    not qualify are omitted. Pure / deterministic — content-derived from the
+    corpus, NO ``datetime.now()`` / cumulative counters (re-derived each
+    compile).
     """
     finding_values = {t.value for t in SESSION_FINDING_TYPES}
     findings: List[ResearchNode] = sorted(
@@ -119,10 +127,15 @@ def compute_recurring_confidence(
             continue
         sessions_by_root.setdefault(root, set()).add(sid)
 
-    reinforced: Dict[str, str] = {}
+    reinforced: Dict[str, float] = {}
     for root, sessions in sessions_by_root.items():
-        if len(sessions) >= threshold:
-            reinforced[root] = "high"
+        count = len(sessions)
+        if count >= threshold:
+            # Numeric, content-derived score in (0, 1]: 3 sessions -> 0.5,
+            # 4 -> 0.75, 5+ -> 1.0 (capped). Re-derived from the distinct-
+            # session count every compile; NO datetime.now() / accumulation.
+            score = min(1.0, (count - 1) / (2 * threshold - 2))
+            reinforced[root] = score
 
     if reinforced:
         logger.info(
