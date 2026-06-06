@@ -856,9 +856,12 @@ class LLMWikiMCPServer:
                         },
                         "budget": {
                             "type": "integer",
-                            "minimum": 1,
+                            "minimum": 0,
                             "default": 32000,
-                            "description": "Character budget for the compiled body.",
+                            "description": (
+                                "Character budget for the compiled body. "
+                                "Use 0 for uncapped (no character limit)."
+                            ),
                         },
                         "synthesize": {
                             "type": "boolean",
@@ -1490,7 +1493,12 @@ class LLMWikiMCPServer:
             query = str(args.get("query") or "")
             seeds = _coerce_str_list(args.get("seeds"))
             depth = int(args.get("depth") or 2)
-            budget = int(args.get("budget") or 32_000)
+            # Preserve an explicit budget=0 (uncapped, per core compile_context
+            # semantics where ``budget <= 0`` means no cap). ``... or 32_000``
+            # would coerce 0 -> 32000, making the documented uncapped mode
+            # unreachable via MCP. Only default when budget is absent/None.
+            budget_arg = args.get("budget")
+            budget = 32_000 if budget_arg is None else int(budget_arg)
             synthesize = bool(args.get("synthesize") or False)
             bundle = compile_context(
                 graph,
@@ -2389,21 +2397,29 @@ class LLMWikiMCPServer:
             # by the focal node (instead of the unordered 1-hop walk). This can
             # surface multi-hop nodes the strict 1-hop path cannot. Suppression
             # and self-exclusion filtering still apply, matching the default
-            # path. Edges are restricted to those incident to the PPR-selected
-            # neighbours so the returned edges stay consistent with neighbors.
+            # path.
+            #
+            # Request top_k = limit + 1 so that excluding the focal node itself
+            # (PPR always ranks its own seed highly) still leaves up to ``limit``
+            # neighbours — otherwise limit=1 routinely returns zero neighbours.
+            # Self-exclusion / suppression filtering happens BEFORE the cap, and
+            # returned edges are derived from the FULL edge list over the
+            # selected neighbour set (not the pre-capped ``incident_edges``), so
+            # edges for selected neighbours are never lost to an earlier cap.
             ppr_ranked = personalized_pagerank(
-                graph, seed_ids=[node.id], top_k=bounded_limit, alpha=0.15
+                graph, seed_ids=[node.id], top_k=bounded_limit + 1, alpha=0.15
             )
             ppr_neighbor_ids = [
                 nid
                 for nid, _score in ppr_ranked
                 if nid != node.id and nid in node_by_id and nid not in suppressed
-            ]
+            ][:bounded_limit]
             ppr_neighbor_set = set(ppr_neighbor_ids)
             incident_edges = [
                 edge
-                for edge in incident_edges
-                if (edge.target if edge.source == node.id else edge.source)
+                for edge in graph.edges
+                if (edge.source == node.id or edge.target == node.id)
+                and (edge.target if edge.source == node.id else edge.source)
                 in ppr_neighbor_set
             ]
             neighbors = [

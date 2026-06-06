@@ -168,6 +168,66 @@ def test_node_context_default_unchanged(tmp_path):
     assert neighbor_ids == {"Method:hop1", "Claim:hop1b"}
 
 
+def test_compile_context_budget_zero_is_uncapped(tmp_path):
+    """MCP budget=0 must pass through as uncapped (codex major).
+
+    The handler previously coerced 0 -> 32000 via ``... or 32_000``, so the
+    documented uncapped mode (core treats ``budget <= 0`` as no cap) was
+    unreachable via MCP. budget=0 must now match the uncapped core semantics:
+    every reachable node is selected.
+    """
+    graph_path, _node_ids = _multihop_graph_path(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    uncapped = server.call_tool(
+        "compile_context",
+        {"seeds": ["Paper:focal"], "query": "focal paper method",
+         "depth": 3, "budget": 0},
+    )
+    tiny = server.call_tool(
+        "compile_context",
+        {"seeds": ["Paper:focal"], "query": "focal paper method",
+         "depth": 3, "budget": 50},
+    )
+    # Uncapped selects strictly more than a tiny cap, proving 0 != 32000-default
+    # and != a small budget.
+    assert len(uncapped["selected_node_ids"]) > len(tiny["selected_node_ids"])
+    # The schema documents 0 = uncapped (minimum lowered from 1 to 0).
+    by_name = {t["name"]: t for t in server.list_tools()}
+    budget_schema = by_name["compile_context"]["inputSchema"]["properties"]["budget"]
+    assert budget_schema["minimum"] == 0
+
+
+def test_node_context_use_ppr_limit_one_returns_neighbor_and_edge(tmp_path):
+    """use_ppr=True with limit=1 returns one neighbor WITH its edge (codex minor).
+
+    The handler requested top_k=limit then filtered out the focal node, so
+    limit=1 routinely yielded zero neighbours; it also capped incident edges
+    before applying the PPR neighbour set, losing edges. After the fix, top_k is
+    limit+1, self-exclusion happens before the cap, and edges derive from the
+    selected neighbour set over the full edge list.
+    """
+    graph_path, _node_ids = _multihop_graph_path(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    ppr = server.call_tool(
+        "node_context",
+        {"node_id": "Paper:focal", "use_ppr": True, "limit": 1},
+    )
+    assert len(ppr["neighbors"]) == 1
+    neighbor_id = ppr["neighbors"][0]["id"]
+    assert neighbor_id != "Paper:focal"
+    # The neighbour's incident edge to the focal node is returned.
+    assert len(ppr["edges"]) >= 1
+    edge_endpoints = {
+        (e["source"], e["target"]) for e in ppr["edges"]
+    }
+    assert any(
+        neighbor_id in pair and "Paper:focal" in pair
+        for pair in edge_endpoints
+    )
+
+
 def test_compile_context_tool_in_listing():
     tools = LLMWikiMCPServer().list_tools()
     by_name = {t["name"]: t for t in tools}
