@@ -1,5 +1,8 @@
 # Tesserae → Context Engine — Phased Roadmap
 
+<!-- translations:start -->
+<p align="center"><a href="i18n/context-engine-roadmap.ko.md">한국어</a> · <a href="i18n/context-engine-roadmap.zh.md">中文</a> · <a href="i18n/context-engine-roadmap.ja.md">日本語</a> · <a href="i18n/context-engine-roadmap.ru.md">Русский</a> · <a href="i18n/context-engine-roadmap.es.md">Español</a> · <a href="i18n/context-engine-roadmap.fr.md">Français</a> · <a href="../i18n/context-engine-roadmap.de.md">Deutsch</a></p>
+<!-- translations:end -->
 Derived from [`context-engine-audit.md`](./context-engine-audit.md). Turns the
 7-step build order into sequenced phases with dependencies, concrete scope,
 and acceptance criteria.

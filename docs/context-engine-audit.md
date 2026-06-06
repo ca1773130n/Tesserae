@@ -1,5 +1,8 @@
 # Tesserae as a Context Engine — Gap Analysis
 
+<!-- translations:start -->
+<p align="center"><a href="i18n/context-engine-audit.ko.md">한국어</a> · <a href="i18n/context-engine-audit.zh.md">中文</a> · <a href="i18n/context-engine-audit.ja.md">日本語</a> · <a href="i18n/context-engine-audit.ru.md">Русский</a> · <a href="i18n/context-engine-audit.es.md">Español</a> · <a href="i18n/context-engine-audit.fr.md">Français</a> · <a href="../i18n/context-engine-audit.de.md">Deutsch</a></p>
+<!-- translations:end -->
 > **Mission (2026-06-02):** Tesserae is a *context engine* — it generates
 > agent-ready context by reconstructing a **self-improving** knowledge base via
 > three pillars: **(1) session monitoring**, **(2) autonomous proactive
