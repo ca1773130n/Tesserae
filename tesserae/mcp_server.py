@@ -9,6 +9,7 @@ clients need for initialization, tool discovery, and tool calls.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
 import re
@@ -815,6 +816,54 @@ class LLMWikiMCPServer:
                     "additionalProperties": False,
                 },
             },
+            {
+                "name": "compile_context",
+                "description": (
+                    "Compile a tailored, cited context doc for a query or seed "
+                    "nodes. Deterministic unless synthesize=true."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
+                        "query": {
+                            "type": "string",
+                            "description": (
+                                "Natural-language query to seed hybrid retrieval. "
+                                "Optional if 'seeds' is provided."
+                            ),
+                        },
+                        "seeds": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Explicit seed node ids to anchor the context.",
+                        },
+                        "depth": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10,
+                            "default": 2,
+                            "description": "Neighborhood / ranking depth.",
+                        },
+                        "budget": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "default": 32000,
+                            "description": "Character budget for the compiled body.",
+                        },
+                        "synthesize": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "When true, run an LLM synthesis pass over the "
+                                "selected nodes. Default false is fully deterministic."
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+            },
             # Community summaries (post-compile pass; opt-in via
             # ``TESSERAE_COMMUNITY_SUMMARIES=true``). GraphRAG-style global
             # themes view: each entry bundles a cluster title, description,
@@ -1425,6 +1474,31 @@ class LLMWikiMCPServer:
                 directed=bool(args.get("directed") or False),
                 edge_type_weights=edge_weights,
             )
+        if name == "compile_context":
+            from .context_compiler import compile_context
+
+            graph, project_root = self._load_requested_graph_with_root(args)
+            query = str(args.get("query") or "")
+            seeds = _coerce_str_list(args.get("seeds"))
+            depth = int(args.get("depth") or 2)
+            budget = int(args.get("budget") or 32_000)
+            synthesize = bool(args.get("synthesize") or False)
+            bundle = compile_context(
+                graph,
+                project_root,
+                query=query,
+                seeds=seeds,
+                depth=depth,
+                budget=budget,
+                synthesize=synthesize,
+            )
+            return {
+                "body": bundle.body,
+                "citations": [dataclasses.asdict(c) for c in bundle.citations],
+                "selected_node_ids": bundle.selected_nodes,
+                "char_budget_used": bundle.char_budget_used,
+                "synthesized": bundle.synthesized,
+            }
         if name == "list_communities":
             graph = self._load_requested_graph(args)
             return self._mcp_list_communities(
