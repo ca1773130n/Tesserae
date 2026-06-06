@@ -16,6 +16,7 @@ from tesserae.research_graph import (
 )
 from tesserae.site.exports import (
     ExportContext,
+    slice_export_context_for_topic,
     render_ai_readme,
     render_graph_jsonld,
     render_llms_full_txt,
@@ -25,7 +26,7 @@ from tesserae.site.exports import (
     render_sitemap_xml,
     write_siblings,
 )
-from tesserae.wiki_store import WikiPage
+from tesserae.wiki_store import WikiPage, _canonical_slug
 
 
 # ---------------------------------------------------------------- fixtures
@@ -480,3 +481,106 @@ def test_export_artifacts_are_byte_idempotent(ctx: ExportContext):
     assert rss_a == rss_b
     assert sm_a == sm_b
     assert jl_a == jl_b
+
+
+# ------------------------------------------------- topic slicing (07-04, CTX-03)
+
+
+@pytest.fixture
+def topic_ctx(tmp_path: Path) -> ExportContext:
+    """An ExportContext whose page slugs align with graph node names so the
+    (kind, slug) -> node_id map resolves every page to a real node id."""
+    builder = ResearchGraphBuilder()
+    gs = builder.add_node("Gaussian Splatting", ResearchNodeType.METHODOLOGICAL_CONCEPT,
+                          description="Point-based rendering.")
+    attn = builder.add_node("Self Attention", ResearchNodeType.METHODOLOGICAL_CONCEPT,
+                            description="Attention mechanism.")
+    nerf = builder.add_node("NeRF", ResearchNodeType.PAPER, description="Neural radiance fields.")
+    graph = builder.build()
+
+    def page(kind: str, slug: str, title: str) -> WikiPage:
+        return WikiPage(
+            kind=kind, slug=slug, title=title,
+            body=f"# {title}\n\nBody for {title}.\n",
+            path=tmp_path / kind / f"{slug}.md",
+            frontmatter={"title": title, "summary": f"Summary for {title}."},
+        )
+
+    pages = {
+        "concepts": [page("concepts", "gaussian-splatting", "Gaussian Splatting"),
+                     page("concepts", "self-attention", "Self Attention")],
+        "papers": [page("papers", "nerf", "NeRF")],
+    }
+    ctx = ExportContext(site_title="Topic Test", graph=graph, wiki_pages_by_kind=pages)
+    # stash node ids on the fixture for the tests
+    ctx_ids = {"gs": gs.id, "attn": attn.id, "nerf": nerf.id}
+    return ctx, ctx_ids  # type: ignore[return-value]
+
+
+def test_topic_slice_is_subset(topic_ctx):
+    ctx, ids = topic_ctx
+    full_count = sum(len(p) for p in ctx.wiki_pages_by_kind.values())
+    sliced = slice_export_context_for_topic(ctx, {ids["gs"], ids["nerf"]})
+    sliced_count = sum(len(p) for p in sliced.wiki_pages_by_kind.values())
+    # every sliced page is present in the original (same object identity ok)
+    for kind, pages in sliced.wiki_pages_by_kind.items():
+        for p in pages:
+            assert p in ctx.wiki_pages_by_kind.get(kind, [])
+    assert sliced_count < full_count  # proper subset (self-attention dropped)
+    assert sliced_count == 2
+
+
+def test_topic_scoped_llms_txt_subset(topic_ctx):
+    ctx, ids = topic_ctx
+    full = render_llms_txt(ctx.site_title, ctx)
+    sliced = slice_export_context_for_topic(ctx, {ids["gs"]})
+    scoped = render_llms_txt(ctx.site_title, sliced)
+    # every page line in the scoped output appears in the full output
+    for line in scoped.splitlines():
+        if line.startswith("- ["):
+            assert line in full
+    assert "Gaussian Splatting" in scoped
+    assert "Self Attention" not in scoped
+    assert "NeRF" not in scoped
+    assert len(scoped) < len(full)
+
+
+def test_topic_slice_retains_non_latin_page(tmp_path: Path):
+    """A non-Latin node name must keep its page in the slice (codex major).
+
+    The export ``_slug`` helper collapses a non-Latin name like "한글 개념" to the
+    literal "node", which does NOT match the on-disk page slug (a sha1 hash from
+    ``_canonical_slug``). Before the fix the page was silently dropped from the
+    topic-scoped slice; now matching uses the canonical slug.
+    """
+    builder = ResearchGraphBuilder()
+    name = "한글 개념"  # non-Latin -> _slug() yields "node", canonical yields a hash
+    node = builder.add_node(name, ResearchNodeType.METHODOLOGICAL_CONCEPT,
+                            description="A Korean-named concept.")
+    graph = builder.build()
+
+    canonical = _canonical_slug(name)
+    assert canonical != "node"  # the two slug fns disagree -> the bug surface
+    page = WikiPage(
+        kind="concepts", slug=canonical, title=name,
+        body=f"# {name}\n\nBody.\n",
+        path=tmp_path / "concepts" / f"{canonical}.md",
+        frontmatter={"title": name},
+    )
+    ctx = ExportContext(
+        site_title="Non-Latin", graph=graph,
+        wiki_pages_by_kind={"concepts": [page]},
+    )
+    sliced = slice_export_context_for_topic(ctx, {node.id})
+    kept = [p for pages in sliced.wiki_pages_by_kind.values() for p in pages]
+    assert page in kept  # would be empty before the fix
+    assert name in render_llms_txt(ctx.site_title, sliced)
+
+
+def test_empty_node_ids_yields_empty_slice(topic_ctx):
+    ctx, _ids = topic_ctx
+    sliced = slice_export_context_for_topic(ctx, set())
+    assert sliced.wiki_pages_by_kind == {}
+    # render still produces a valid (header-only) llms.txt
+    out = render_llms_txt(ctx.site_title, sliced)
+    assert ctx.site_title in out

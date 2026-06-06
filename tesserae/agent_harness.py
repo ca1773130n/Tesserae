@@ -30,6 +30,7 @@ class AgentHarnessAdapter:
         mcp_command: str = "python3",
         mcp_args: Optional[Sequence[str]] = None,
         targets: Optional[Iterable[str]] = None,
+        topic: Optional[str] = None,
     ) -> List[Path]:
         selected = list(targets or SUPPORTED_AGENT_HARNESSES)
         unknown = sorted(set(selected) - set(SUPPORTED_AGENT_HARNESSES))
@@ -39,7 +40,13 @@ class AgentHarnessAdapter:
         root = Path(output_dir)
         root.mkdir(parents=True, exist_ok=True)
         args = list(mcp_args or ["-m", "tesserae.mcp_server", "--graph", ".tesserae/graph.json"])
-        summary = render_harness_context(self.project_name, graph, mcp_command, args)
+        # The harness lives under the project's ``.tesserae/`` artifacts dir, so the
+        # project root is the parent of ``output_dir`` (best-effort; topic scoping
+        # falls back to ``node.description`` when this isn't a real project root).
+        project_root = root.parent if topic else None
+        summary = render_harness_context(
+            self.project_name, graph, mcp_command, args, topic=topic, project_root=project_root
+        )
         manifest = {
             "project_name": self.project_name,
             "supported_targets": SUPPORTED_AGENT_HARNESSES,
@@ -64,8 +71,31 @@ class AgentHarnessAdapter:
         return written
 
 
-def render_harness_context(project_name: str, graph: ResearchGraph, mcp_command: str, mcp_args: Sequence[str]) -> str:
-    top_nodes = sorted(graph.nodes, key=node_sort_key)[:12]
+def render_harness_context(
+    project_name: str,
+    graph: ResearchGraph,
+    mcp_command: str,
+    mcp_args: Sequence[str],
+    topic: Optional[str] = None,
+    project_root: Optional[Path] = None,
+) -> str:
+    if topic:
+        from .context_compiler import compile_context
+
+        node_index = {n.id: n for n in graph.nodes}
+        bundle = compile_context(
+            graph,
+            str(project_root) if project_root is not None else None,
+            query=topic,
+            depth=2,
+            budget=8_000,
+        )
+        # PITFALL 6: preserve PPR/compile_context rank order — do NOT re-sort.
+        top_nodes = [node_index[nid] for nid in bundle.selected_nodes if nid in node_index]
+        if not top_nodes:  # topic matched nothing -> graceful static fallback
+            top_nodes = sorted(graph.nodes, key=node_sort_key)[:12]
+    else:
+        top_nodes = sorted(graph.nodes, key=node_sort_key)[:12]
     lines = [
         f"# Tesserae Harness: {project_name}",
         "",

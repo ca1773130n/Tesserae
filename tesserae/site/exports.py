@@ -14,17 +14,19 @@ exports — the wiki layer is the user-facing surface.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
 from xml.sax.saxutils import escape as xml_escape
 
 from ..research_graph import ResearchGraph, ResearchNode, ResearchNodeType
-from ..wiki_store import WikiPage
+from ..wiki_projector import kind_for_node
+from ..wiki_store import WikiPage, _canonical_slug
 from .search import is_wiki_layer
 
 
@@ -50,6 +52,38 @@ class ExportContext:
     wiki_pages_by_kind: Mapping[str, Sequence[WikiPage]] = field(default_factory=dict)
     routes: Sequence[Tuple[str, Optional[datetime]]] = field(default_factory=tuple)
     synthesis_history: Sequence[Mapping[str, str]] = field(default_factory=tuple)
+
+
+def slice_export_context_for_topic(ctx: ExportContext, node_ids: Set[str]) -> ExportContext:
+    """Return a new :class:`ExportContext` whose ``wiki_pages_by_kind`` is filtered
+    to only the pages backed by a node id in ``node_ids`` (a topic's subgraph).
+
+    ``WikiPage`` carries no node id, so we reconstruct a ``(kind, slug) -> node_id``
+    map from ``ctx.graph`` using :func:`kind_for_node` (the public wiki kind) and the
+    canonical ``_canonical_slug`` from :mod:`tesserae.wiki_store` — the SAME slug
+    function ``WikiPageStore`` uses to name pages on disk — then keep only pages
+    whose ``(kind, slug)`` maps into ``node_ids``. The export ``_slug`` helper is
+    NOT used here: it lacks the 96-byte truncation and the sha1 fallback for
+    non-Latin names, so long / non-Latin nodes would mismatch their real page
+    slug and get silently dropped from the topic slice. ``ExportContext`` is
+    frozen — we rebuild via ``dataclasses.replace``.
+
+    ``render_llms_txt`` / ``render_llms_full_txt`` consume the result unchanged,
+    emitting a topic-scoped slice that is a strict subset of the full output.
+    """
+    by_key: Dict[Tuple[str, str], str] = {}
+    for node in ctx.graph.nodes:
+        kind = kind_for_node(node)
+        if kind is None:
+            continue
+        by_key[(kind, _canonical_slug(node.name))] = node.id
+
+    filtered: Dict[str, List[WikiPage]] = {}
+    for kind, pages in ctx.wiki_pages_by_kind.items():
+        kept = [p for p in pages if by_key.get((kind, p.slug)) in node_ids]
+        if kept:
+            filtered[kind] = kept
+    return dataclasses.replace(ctx, wiki_pages_by_kind=filtered)
 
 
 # --------------------------------------------------------------- helpers
@@ -1008,6 +1042,7 @@ def write_siblings(html_path: Path, page_record: Mapping[str, object]) -> None:
 
 __all__ = [
     "ExportContext",
+    "slice_export_context_for_topic",
     "render_llms_txt",
     "render_llms_full_txt",
     "render_graph_jsonld",

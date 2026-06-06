@@ -1227,6 +1227,18 @@ def project_main(argv: List[str] | None = None) -> int:
     refresh_parser.add_argument("--changed-only", action="store_true", default=False, help="Opt-in incremental compile (skip unchanged files); default is a full compile")
     refresh_parser.add_argument("--skip-sessions", action="store_true", default=False, help="Opt-in skip of the slow harness-session discovery scan")
 
+    context_parser = subparsers.add_parser(
+        "context",
+        help="Compile a cited context doc for a query",
+    )
+    context_parser.add_argument("query", nargs="?", default="", help="Query text to seed the context doc")
+    context_parser.add_argument("--seeds", nargs="*", help="Explicit seed node IDs")
+    context_parser.add_argument("--depth", type=int, default=2, help="PPR expansion depth (default: 2)")
+    context_parser.add_argument("--budget", type=int, default=32_000, help="Character budget for the doc body (default: 32000; <=0 = uncapped)")
+    context_parser.add_argument("--synthesize", action="store_true", help="Add an LLM-synthesized summary (requires an LLM backend)")
+    context_parser.add_argument("--output", "-o", help="Write the doc to a file instead of stdout")
+    context_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+
     args = parser.parse_args(argv)
     handler = _COMMANDS.get(args.command)
     if handler is None:
@@ -1822,6 +1834,34 @@ def _handle_ask(args: argparse.Namespace) -> int:
     return _project_ask_handler(args)
 
 
+def _handle_context(args: argparse.Namespace) -> int:
+    from .context_compiler import compile_context
+
+    wiki = ProjectWiki.load(args.project)
+    if not wiki.paths.graph.exists():
+        print("error: no compiled graph yet — run `project compile` first.", file=sys.stderr)
+        return 2
+    graph = _load_graph_file(wiki.paths.graph)
+    bundle = compile_context(
+        graph,
+        str(wiki.project_root),
+        query=args.query,
+        seeds=args.seeds,
+        depth=args.depth,
+        budget=args.budget,
+        synthesize=args.synthesize,
+    )
+    if args.output:
+        Path(args.output).write_text(bundle.body, encoding="utf-8")
+        print(
+            f"Written to {args.output} "
+            f"({bundle.char_budget_used} chars, {len(bundle.citations)} citations)"
+        )
+    else:
+        print(bundle.body)
+    return 0
+
+
 def _handle_mcp_config(args: argparse.Namespace) -> int:
     wiki = ProjectWiki.load(args.project)
     print(wiki.render_mcp_config(server_name=args.server_name, pythonpath=args.pythonpath), end="")
@@ -2035,6 +2075,7 @@ _COMMANDS: Dict[str, Callable[[argparse.Namespace], int]] = {
     "refresh-raganything": _handle_refresh_raganything,
     "lint": _handle_lint,
     "query": _handle_query,
+    "context": _handle_context,
     "ask": _handle_ask,
     "mcp-config": _handle_mcp_config,
     "export-graphiti": _handle_export_graphiti,

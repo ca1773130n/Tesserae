@@ -9,6 +9,7 @@ clients need for initialization, tool discovery, and tool calls.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
 import re
@@ -496,6 +497,14 @@ class LLMWikiMCPServer:
                                 "both the superseded neighbours and their edges."
                             ),
                         },
+                        "use_ppr": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "Rank neighbors via personalized PageRank seeded "
+                                "by this node instead of a 1-hop walk."
+                            ),
+                        },
                     },
                     "additionalProperties": False,
                 },
@@ -812,6 +821,57 @@ class LLMWikiMCPServer:
                         },
                     },
                     "required": ["seed_node_id"],
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "compile_context",
+                "description": (
+                    "Compile a tailored, cited context doc for a query or seed "
+                    "nodes. Deterministic unless synthesize=true."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
+                        "query": {
+                            "type": "string",
+                            "description": (
+                                "Natural-language query to seed hybrid retrieval. "
+                                "Optional if 'seeds' is provided."
+                            ),
+                        },
+                        "seeds": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Explicit seed node ids to anchor the context.",
+                        },
+                        "depth": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 10,
+                            "default": 2,
+                            "description": "Neighborhood / ranking depth.",
+                        },
+                        "budget": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "default": 32000,
+                            "description": (
+                                "Character budget for the compiled body. "
+                                "Use 0 for uncapped (no character limit)."
+                            ),
+                        },
+                        "synthesize": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "When true, run an LLM synthesis pass over the "
+                                "selected nodes. Default false is fully deterministic."
+                            ),
+                        },
+                    },
                     "additionalProperties": False,
                 },
             },
@@ -1316,6 +1376,7 @@ class LLMWikiMCPServer:
                 node_name=args.get("name"),
                 limit=int(args.get("limit", 50)),
                 include_superseded=bool(args.get("include_superseded", False)),
+                use_ppr=bool(args.get("use_ppr") or False),
             )
         if name == "search_facts":
             facts = TemporalFactProjector().project(self._load_requested_graph(args))
@@ -1425,6 +1486,36 @@ class LLMWikiMCPServer:
                 directed=bool(args.get("directed") or False),
                 edge_type_weights=edge_weights,
             )
+        if name == "compile_context":
+            from .context_compiler import compile_context
+
+            graph, project_root = self._load_requested_graph_with_root(args)
+            query = str(args.get("query") or "")
+            seeds = _coerce_str_list(args.get("seeds"))
+            depth = int(args.get("depth") or 2)
+            # Preserve an explicit budget=0 (uncapped, per core compile_context
+            # semantics where ``budget <= 0`` means no cap). ``... or 32_000``
+            # would coerce 0 -> 32000, making the documented uncapped mode
+            # unreachable via MCP. Only default when budget is absent/None.
+            budget_arg = args.get("budget")
+            budget = 32_000 if budget_arg is None else int(budget_arg)
+            synthesize = bool(args.get("synthesize") or False)
+            bundle = compile_context(
+                graph,
+                project_root,
+                query=query,
+                seeds=seeds,
+                depth=depth,
+                budget=budget,
+                synthesize=synthesize,
+            )
+            return {
+                "body": bundle.body,
+                "citations": [dataclasses.asdict(c) for c in bundle.citations],
+                "selected_node_ids": bundle.selected_nodes,
+                "char_budget_used": bundle.char_budget_used,
+                "synthesized": bundle.synthesized,
+            }
         if name == "list_communities":
             graph = self._load_requested_graph(args)
             return self._mcp_list_communities(
@@ -2281,7 +2372,7 @@ class LLMWikiMCPServer:
             "by_project": by_project,
         }
 
-    def node_context(self, graph: ResearchGraph, project_root: Optional[Path] = None, node_id: Optional[str] = None, node_name: Optional[str] = None, limit: int = 50, include_superseded: bool = False) -> JSONDict:
+    def node_context(self, graph: ResearchGraph, project_root: Optional[Path] = None, node_id: Optional[str] = None, node_name: Optional[str] = None, limit: int = 50, include_superseded: bool = False, use_ppr: bool = False) -> JSONDict:
         node = self._find_node(graph, node_id=node_id, node_name=node_name)
         if not node:
             raise ValueError("Node not found; provide an exact node_id or node name")
@@ -2301,6 +2392,44 @@ class LLMWikiMCPServer:
             and (edge.target if edge.source == node.id else edge.source)
             not in suppressed
         ][:bounded_limit]
+        if use_ppr:
+            # CTX-03: rank the neighbourhood via Personalized PageRank seeded
+            # by the focal node (instead of the unordered 1-hop walk). This can
+            # surface multi-hop nodes the strict 1-hop path cannot. Suppression
+            # and self-exclusion filtering still apply, matching the default
+            # path.
+            #
+            # Over-fetch the FULL PPR ranking (``top_k = node count``) rather than
+            # ``limit + 1``: excluding the focal node AND any suppressed neighbours
+            # happens BEFORE the cap, so a high-ranked superseded neighbour can no
+            # longer consume one of the slots and leave fewer than ``limit`` live
+            # neighbours when more live neighbours exist. Returned edges are
+            # derived from the FULL edge list over the selected neighbour set (not
+            # the pre-capped ``incident_edges``), so edges for selected neighbours
+            # are never lost to an earlier cap.
+            ppr_ranked = personalized_pagerank(
+                graph, seed_ids=[node.id], top_k=max(1, len(graph.nodes)), alpha=0.15
+            )
+            ppr_neighbor_ids = [
+                nid
+                for nid, _score in ppr_ranked
+                if nid != node.id and nid in node_by_id and nid not in suppressed
+            ][:bounded_limit]
+            ppr_neighbor_set = set(ppr_neighbor_ids)
+            incident_edges = [
+                edge
+                for edge in graph.edges
+                if (edge.source == node.id or edge.target == node.id)
+                and (edge.target if edge.source == node.id else edge.source)
+                in ppr_neighbor_set
+            ]
+            neighbors = [
+                node_to_dict(node_by_id[nid]) for nid in ppr_neighbor_ids
+            ]
+            node_payload = node_to_dict(node)
+            node_payload["superseded"] = node.id in _superseded_ids(graph)
+            self._bump_node_access(project_root, node.id)
+            return {"node": node_payload, "edges": [edge_to_dict(edge) for edge in incident_edges], "neighbors": neighbors}
         neighbor_ids = []
         for edge in incident_edges:
             other_id = edge.target if edge.source == node.id else edge.source
