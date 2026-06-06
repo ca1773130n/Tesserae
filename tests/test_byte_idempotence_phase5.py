@@ -398,25 +398,25 @@ def _compile_with_claims(
     return json.loads(_graph_path(wiki).read_text(encoding="utf-8"))
 
 
-def test_default_compile_runs_no_llm_passes(tmp_path: Path) -> None:
-    """Gate OFF (default): NEITHER supersede NOR contradiction runs.
+def test_default_compile_runs_supersede_but_not_contradiction(tmp_path: Path) -> None:
+    """Default path (Phase 5.1): supersede runs default-on, contradiction stays gated.
 
-    No client is passed and ``TESSERAE_ENABLE_LLM_PASSES`` is unset, so the
-    compile mints no ``supersedes`` / ``resolved_by`` edges and never builds or
-    calls an LLM client. (The contradiction candidate pair IS present in the
-    graph — proven by the gate-ON test below — so the absence of a resolved_by
-    edge here is the gate working, not a missing pair.)
+    As of Plan 05.1-01/02 the supersede pass is DEFAULT-ON with a deterministic,
+    credential-free verdict, so a default compile (no client, gate unset) DOES
+    mint ``supersedes`` edges. The contradiction pass remains gated on an LLM
+    client, so ``resolved_by`` must still be absent. (The contradiction candidate
+    pair IS present in the graph — proven by the gate-ON test below.)
     """
     project_root = tmp_path / "project"
     wiki = _seed_project(project_root)
     graph = _compile_with_claims(wiki)
 
     edge_types = {e["type"] for e in graph["edges"]}
-    assert "supersedes" not in edge_types, "supersede ran with the gate OFF"
-    assert "resolved_by" not in edge_types, "contradiction ran with the gate OFF"
+    assert "supersedes" in edge_types, "supersede should run default-on (Phase 5.1)"
+    assert "resolved_by" not in edge_types, "contradiction ran without an LLM client"
 
     # The contradiction candidate pair must be present (so the gate, not a
-    # missing pair, is what suppressed the edge).
+    # missing pair, is what suppressed the resolved_by edge).
     claim_ids = {n["id"] for n in graph["nodes"] if n["type"] == "PerformanceClaim"}
     assert {"PerformanceClaim:a", "PerformanceClaim:b"} <= claim_ids
 

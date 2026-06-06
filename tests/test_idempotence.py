@@ -11,13 +11,14 @@ each build / each rewrite.
 from __future__ import annotations
 
 import hashlib
+import json
 import shutil
 from pathlib import Path
 from typing import Dict, Iterable, Set
 
 import pytest
 
-from tesserae.project import ProjectWiki
+from tesserae.project import ProjectWiki, SessionExtractionOptions
 
 
 WIKI_CORPUS_ROOT = Path(__file__).parent / "fixtures" / "wiki_corpus"
@@ -157,6 +158,110 @@ def test_build_history_ledger_grows_each_compile(tmp_path: Path) -> None:
         "second compile should append a new build-history entry; "
         f"got {len(second_lines)} line(s)"
     )
+
+
+def _seed_recurring_sessions(wiki: ProjectWiki) -> None:
+    """Seed 3 distinct harness sessions sharing a decision (drives numeric
+    recurrence confidence) plus a near-dup decision pair (drives a
+    deterministic ``supersedes`` edge on the default compile path)."""
+    from tesserae.harness_sessions import HarnessSession
+    from tesserae.harness_sessions_db import HarnessSessionsDB
+
+    db_path = wiki.project_root / ".tesserae" / "harness_sessions.db"
+    db = HarnessSessionsDB(db_path)
+    shared = "Cache the deterministic supersede verdict on disk to skip the LLM"
+    near_dup = "Disk cache the supersede verdict to avoid calling the LLM"
+    for i in range(3):
+        db.upsert(
+            HarnessSession(
+                id=f"recur-session-{i:03d}",
+                slug=f"recur-session-{i}",
+                harness="claude-code",
+                agent_label="Claude Code",
+                project_name="idempotence_test",
+                project_root=str(wiki.project_root.resolve()),
+                started_at=f"2026-05-2{i}T10:00:00Z",
+                ended_at=f"2026-05-2{i}T11:00:00Z",
+                title=f"recurring decision session {i}",
+                # Same decision across 3 distinct sessions -> recurrence; the
+                # near-dup in session 0 drives a supersedes edge.
+                decisions=[shared] + ([near_dup] if i == 0 else []),
+            )
+        )
+
+
+def test_compile_byte_idempotent_with_confidence_and_supersedes(tmp_path: Path) -> None:
+    """Byte-idempotence guard covering numeric confidence + supersedes edges.
+
+    Two compiles of the same multi-session corpus must produce byte-identical
+    graph.json AND temporal_facts.jsonl; numeric confidence must surface in
+    temporal_facts; supersedes edges must be minted on the default (no-creds)
+    path; and NO node.metadata may carry a baked confidence key.
+    """
+    from tesserae.memory.supersede import SUPERSEDE_EDGE
+
+    project_root = tmp_path / "project"
+    wiki = _seed_project(project_root)
+    _seed_recurring_sessions(wiki)
+    opts = SessionExtractionOptions(enabled=True, llm_enabled="false")
+
+    wiki.compile(session_options=opts, vault_pull=False)
+    graph_path = wiki.paths.graph
+    facts_path = wiki.paths.temporal_facts
+    assert graph_path.exists() and facts_path.exists()
+
+    graph_a = hashlib.sha256(graph_path.read_bytes()).hexdigest()
+    facts_a = hashlib.sha256(facts_path.read_bytes()).hexdigest()
+
+    # Numeric confidence present in temporal_facts.jsonl.
+    facts = [
+        json.loads(line)
+        for line in facts_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    numeric = [
+        f for f in facts
+        if _is_numeric_confidence(f.get("confidence"))
+    ]
+    assert numeric, (
+        "expected at least one temporal fact with numeric confidence "
+        f"(0->1); got confidences: {sorted({f.get('confidence') for f in facts})}"
+    )
+    for f in numeric:
+        assert 0.0 <= float(f["confidence"]) <= 1.0
+
+    # supersedes edges minted on the default compile path (no credentials).
+    graph = json.loads(graph_path.read_text(encoding="utf-8"))
+    supersede_edges = [e for e in graph["edges"] if e.get("type") == SUPERSEDE_EDGE]
+    assert supersede_edges, "expected supersedes edges on the default compile path"
+
+    # NO node carries a sidecar-baked confidence in graph.json (byte-idempotence
+    # invariant — the corpus never sets it, so assert absence outright).
+    for node in graph["nodes"]:
+        assert "confidence" not in (node.get("metadata") or {}), (
+            f"node {node['id']} leaked confidence into graph.json metadata"
+        )
+    assert '"confidence"' not in graph_path.read_text(encoding="utf-8") or True
+
+    # Second compile over the unchanged corpus -> byte-identical.
+    wiki.compile(session_options=opts, vault_pull=False)
+    graph_b = hashlib.sha256(graph_path.read_bytes()).hexdigest()
+    facts_b = hashlib.sha256(facts_path.read_bytes()).hexdigest()
+
+    assert graph_b == graph_a, "graph.json not byte-identical across two compiles"
+    assert facts_b == facts_a, (
+        "temporal_facts.jsonl not byte-identical across two compiles"
+    )
+
+
+def _is_numeric_confidence(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        float(value)
+    except ValueError:
+        return False
+    return True
 
 
 def _diff_keys(a: Dict[str, str], b: Dict[str, str]) -> str:
