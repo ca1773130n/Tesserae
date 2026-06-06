@@ -497,6 +497,14 @@ class LLMWikiMCPServer:
                                 "both the superseded neighbours and their edges."
                             ),
                         },
+                        "use_ppr": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "Rank neighbors via personalized PageRank seeded "
+                                "by this node instead of a 1-hop walk."
+                            ),
+                        },
                     },
                     "additionalProperties": False,
                 },
@@ -1365,6 +1373,7 @@ class LLMWikiMCPServer:
                 node_name=args.get("name"),
                 limit=int(args.get("limit", 50)),
                 include_superseded=bool(args.get("include_superseded", False)),
+                use_ppr=bool(args.get("use_ppr") or False),
             )
         if name == "search_facts":
             facts = TemporalFactProjector().project(self._load_requested_graph(args))
@@ -2355,7 +2364,7 @@ class LLMWikiMCPServer:
             "by_project": by_project,
         }
 
-    def node_context(self, graph: ResearchGraph, project_root: Optional[Path] = None, node_id: Optional[str] = None, node_name: Optional[str] = None, limit: int = 50, include_superseded: bool = False) -> JSONDict:
+    def node_context(self, graph: ResearchGraph, project_root: Optional[Path] = None, node_id: Optional[str] = None, node_name: Optional[str] = None, limit: int = 50, include_superseded: bool = False, use_ppr: bool = False) -> JSONDict:
         node = self._find_node(graph, node_id=node_id, node_name=node_name)
         if not node:
             raise ValueError("Node not found; provide an exact node_id or node name")
@@ -2375,6 +2384,35 @@ class LLMWikiMCPServer:
             and (edge.target if edge.source == node.id else edge.source)
             not in suppressed
         ][:bounded_limit]
+        if use_ppr:
+            # CTX-03: rank the neighbourhood via Personalized PageRank seeded
+            # by the focal node (instead of the unordered 1-hop walk). This can
+            # surface multi-hop nodes the strict 1-hop path cannot. Suppression
+            # and self-exclusion filtering still apply, matching the default
+            # path. Edges are restricted to those incident to the PPR-selected
+            # neighbours so the returned edges stay consistent with neighbors.
+            ppr_ranked = personalized_pagerank(
+                graph, seed_ids=[node.id], top_k=bounded_limit, alpha=0.15
+            )
+            ppr_neighbor_ids = [
+                nid
+                for nid, _score in ppr_ranked
+                if nid != node.id and nid in node_by_id and nid not in suppressed
+            ]
+            ppr_neighbor_set = set(ppr_neighbor_ids)
+            incident_edges = [
+                edge
+                for edge in incident_edges
+                if (edge.target if edge.source == node.id else edge.source)
+                in ppr_neighbor_set
+            ]
+            neighbors = [
+                node_to_dict(node_by_id[nid]) for nid in ppr_neighbor_ids
+            ]
+            node_payload = node_to_dict(node)
+            node_payload["superseded"] = node.id in _superseded_ids(graph)
+            self._bump_node_access(project_root, node.id)
+            return {"node": node_payload, "edges": [edge_to_dict(edge) for edge in incident_edges], "neighbors": neighbors}
         neighbor_ids = []
         for edge in incident_edges:
             other_id = edge.target if edge.source == node.id else edge.source
