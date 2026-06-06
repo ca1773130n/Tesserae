@@ -387,3 +387,163 @@ def test_incremental_equals_full_after_file_deletion(tmp_path: Path) -> None:
         "source node / incident edges that a full compile dropped.\n"
         f"Differing files:{_diff_keys(full_tree, incr_tree)}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# HARD-EDIT-SHAPE parity (Plan 04.1-04): the decisive proof that incremental ==
+# full byte-for-byte across every edit shape, not just additive/reduction/
+# deletion. Three new cases exercise the paths the earlier gates never touched:
+#   EC-1 file RENAME           (delete old path + add new path, same content)
+#   EC-2 alias-identity change (edit the merge-winning source so the canonical
+#                               alias winner flips — exercises Plan 03 re-extract)
+#   EC-3 both-endpoints-move   (an edge whose BOTH endpoints' sources change AND
+#                               the edge-asserting file changes — edge tombstone
+#                               + re-extraction must reconverge on the full graph)
+# Every case uses a FROM-SCRATCH full compile of the post-edit corpus as the
+# oracle; we never hand-write an expected graph.json.
+# --------------------------------------------------------------------------- #
+
+
+def test_incremental_equals_full_after_rename(tmp_path: Path) -> None:
+    """Renaming a paper file (delete old path + add new path with identical
+    content) must yield incremental output byte-identical to a full compile of
+    the renamed corpus. Critically, the shared ResearchField that the renamed
+    paper co-owns must NOT be tombstoned — it is re-emitted under the new path
+    (and remains owned by the other papers regardless).
+    """
+    root = tmp_path / "project"
+    papers = _build_corpus(root, n_papers=30)
+    wiki = _seed_wiki(root)
+    wiki.compile()  # seed
+    seed_ids = _node_ids(wiki)
+    field_ids = {nid for nid in seed_ids if nid.startswith("ResearchField:")}
+    assert field_ids, "expected a cross-file ResearchField concept in the corpus"
+
+    old_path = papers[0]
+    content = old_path.read_text(encoding="utf-8")
+    new_path = old_path.parent / "paper_renamed.md"
+    old_path.unlink()
+    new_path.write_text(content, encoding="utf-8")
+
+    # Rename == one deleted path + one added path in the same incremental run.
+    wiki.compile(changed_only=True, changed_paths=[old_path, new_path])
+    incr_tree = _hash_tree(wiki.root, exclude=PARITY_EXCLUDE)
+    incr_ids = _node_ids(wiki)
+
+    # The shared cross-file field must survive the rename (anti-collapse).
+    assert field_ids <= incr_ids, (
+        "RENAME PARITY: shared ResearchField was wrongly tombstoned when its "
+        "co-owning paper was renamed (delete old + add new path)"
+    )
+
+    wiki.compile()  # full recompile of the renamed corpus, same root
+    full_tree = _hash_tree(wiki.root, exclude=PARITY_EXCLUDE)
+
+    assert incr_tree == full_tree, (
+        "RENAME PARITY FAILED: incremental compile after a file rename is NOT "
+        "byte-identical to a full compile of the renamed corpus.\n"
+        f"Differing files:{_diff_keys(full_tree, incr_tree)}"
+    )
+
+
+# A pair of papers that collide on a single dedup key under different surface
+# forms. The canonicalizer picks one as canonical; when the winner's source is
+# edited to stop asserting that form, the canonical identity must flip to the
+# survivor — and incremental must reconverge on what a full compile produces.
+_ALIAS_FIELD_LONG = "Compositional Generalization in Sequence Models"
+_ALIAS_FIELD_SHORT = "Compositional Generalization"
+
+
+def _alias_paper(idx: int, field: str) -> str:
+    arxiv = f"2605.4{idx:04d}"
+    return (
+        f"# 논문 분석: {arxiv}\n\n"
+        f"> - arxiv: https://arxiv.org/abs/{arxiv}\n"
+        f"> - 분석일: 2026-05-01\n\n"
+        f"# Alias Paper {idx:03d}\n\n"
+        f"저자: {_SHARED_AUTHORS[idx % 3]}.\n\n"
+        f"This paper advances {field} using the Transformer model.\n"
+    )
+
+
+def test_incremental_equals_full_after_alias_identity_change(tmp_path: Path) -> None:
+    """Editing the merge-WINNING source so the canonical alias winner changes
+    must yield incremental == full byte-for-byte. paper_a asserts the SHORT
+    surface form, paper_b asserts the LONG form (canonical by length). Editing
+    paper_b to drop the long form flips the canonical identity to paper_a's
+    form; incremental re-extraction (Plan 03) must reconverge on the full graph.
+    """
+    root = tmp_path / "project"
+    papers = _build_corpus(root, n_papers=8)
+    wiki = _seed_wiki(root)
+
+    papers_root = root / "data" / "research" / "daily" / "2026-05-01" / "papers"
+    a_dir = papers_root / "2605.40000"
+    b_dir = papers_root / "2605.40001"
+    a_dir.mkdir(parents=True, exist_ok=True)
+    b_dir.mkdir(parents=True, exist_ok=True)
+    paper_a = a_dir / "paper.md"
+    paper_b = b_dir / "paper.md"
+    paper_a.write_text(_alias_paper(0, _ALIAS_FIELD_SHORT), encoding="utf-8")
+    paper_b.write_text(_alias_paper(1, _ALIAS_FIELD_LONG), encoding="utf-8")
+
+    wiki.compile()  # seed with both surface forms present
+
+    # Edit the (long-form) winner to assert ONLY the short form, flipping which
+    # fragment owns the canonical identity.
+    paper_b.write_text(_alias_paper(1, _ALIAS_FIELD_SHORT), encoding="utf-8")
+
+    wiki.compile(changed_only=True, changed_paths=[paper_b])
+    incr_tree = _hash_tree(wiki.root, exclude=PARITY_EXCLUDE)
+
+    wiki.compile()  # full recompile of the post-edit corpus, same root
+    full_tree = _hash_tree(wiki.root, exclude=PARITY_EXCLUDE)
+
+    assert incr_tree == full_tree, (
+        "ALIAS-IDENTITY PARITY FAILED: incremental compile after the merge-"
+        "winning source changed is NOT byte-identical to a full compile.\n"
+        f"Differing files:{_diff_keys(full_tree, incr_tree)}"
+    )
+
+
+def test_incremental_equals_full_after_both_endpoint_move(tmp_path: Path) -> None:
+    """An edge whose BOTH endpoint sources are edited AND whose asserting file is
+    edited must be re-derived to match a full compile byte-for-byte. We mutate
+    two endpoint papers (changing their source) plus a third paper that co-cites
+    the same shared field/authors (the edge-evidence carrier), all in one
+    incremental run. The edge tombstone + re-extraction (Plans 01/03) must
+    reconverge on the full graph.
+    """
+    root = tmp_path / "project"
+    papers = _build_corpus(root, n_papers=30)
+    wiki = _seed_wiki(root)
+    wiki.compile()  # seed
+    seed_ids = _node_ids(wiki)
+    field_ids = {nid for nid in seed_ids if nid.startswith("ResearchField:")}
+    assert field_ids, "expected a cross-file ResearchField concept"
+
+    # Three interlocking edits: two endpoint-source papers + a third that
+    # re-asserts the shared field/author edges (both edge endpoints "move").
+    _mutate(papers[0], "endpoint-A-moved")
+    _mutate(papers[1], "endpoint-B-moved")
+    _mutate(papers[2], "edge-evidence-moved")
+    changed = [papers[0], papers[1], papers[2]]
+
+    wiki.compile(changed_only=True, changed_paths=changed)
+    incr_tree = _hash_tree(wiki.root, exclude=PARITY_EXCLUDE)
+    incr_ids = _node_ids(wiki)
+
+    # Endpoints must survive; the cross-file field must not collapse.
+    assert field_ids <= incr_ids, (
+        "BOTH-ENDPOINT-MOVE PARITY: cross-file field collapsed when both edge "
+        "endpoints' sources changed"
+    )
+
+    wiki.compile()  # full recompile, same root
+    full_tree = _hash_tree(wiki.root, exclude=PARITY_EXCLUDE)
+
+    assert incr_tree == full_tree, (
+        "BOTH-ENDPOINT-MOVE PARITY FAILED: incremental compile after both edge "
+        "endpoints' sources moved is NOT byte-identical to a full compile.\n"
+        f"Differing files:{_diff_keys(full_tree, incr_tree)}"
+    )
