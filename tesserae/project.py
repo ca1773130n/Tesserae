@@ -480,18 +480,20 @@ class ProjectWiki:
         if changed_only and self.paths.graph.exists():
             incremental_enabled = bool(cfg.get("incremental_compile", False))
             if incremental_enabled:
-                # EXPERIMENTAL — incremental compile is byte-parity-correct for
-                # additive/modify/content-reduction/file-deletion edits, but a
-                # Codex re-review found remaining divergence sources (surviving-
-                # node payload reconciliation, provenance coverage for non-
-                # extraction graph producers, full-compile provenance reconcile).
-                # It is OFF by default and gated behind this flag until the
-                # follow-up phase closes those. Do not enable in production yet.
-                logger.warning(
-                    "incremental_compile is ENABLED but EXPERIMENTAL: byte-parity "
-                    "with a full compile is not guaranteed for all edit shapes "
-                    "(known gaps tracked for a follow-up phase). The default "
-                    "(flag off) full recompile is the safe path."
+                # Byte-parity with a full compile is now PROVEN by the
+                # strengthened parity gate (tests/test_incremental_parity.py):
+                # additive K=1/5/21, content-reduction, file-deletion, file
+                # RENAME, alias-identity change, and both-endpoints-move all
+                # produce a graph.json + site tree byte-identical to a
+                # from-scratch full compile, with byte-idempotence preserved.
+                # All 7 Phase-4 blockers are closed. The flag stays opt-in
+                # (default False) so the safest default remains a full recompile;
+                # enabling it is byte-clean for every tested edit shape.
+                logger.info(
+                    "incremental_compile is ENABLED. Byte-parity with a full "
+                    "compile is proven by the strengthened parity gate "
+                    "(rename + alias-identity + both-endpoints-move on top of "
+                    "additive/reduction/deletion)."
                 )
                 _prior = _strip_generated_layer(load_graph_file(self.paths.graph))
                 if _prior.nodes or _prior.edges:
