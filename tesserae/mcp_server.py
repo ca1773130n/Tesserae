@@ -2399,15 +2399,16 @@ class LLMWikiMCPServer:
             # and self-exclusion filtering still apply, matching the default
             # path.
             #
-            # Request top_k = limit + 1 so that excluding the focal node itself
-            # (PPR always ranks its own seed highly) still leaves up to ``limit``
-            # neighbours — otherwise limit=1 routinely returns zero neighbours.
-            # Self-exclusion / suppression filtering happens BEFORE the cap, and
-            # returned edges are derived from the FULL edge list over the
-            # selected neighbour set (not the pre-capped ``incident_edges``), so
-            # edges for selected neighbours are never lost to an earlier cap.
+            # Over-fetch the FULL PPR ranking (``top_k = node count``) rather than
+            # ``limit + 1``: excluding the focal node AND any suppressed neighbours
+            # happens BEFORE the cap, so a high-ranked superseded neighbour can no
+            # longer consume one of the slots and leave fewer than ``limit`` live
+            # neighbours when more live neighbours exist. Returned edges are
+            # derived from the FULL edge list over the selected neighbour set (not
+            # the pre-capped ``incident_edges``), so edges for selected neighbours
+            # are never lost to an earlier cap.
             ppr_ranked = personalized_pagerank(
-                graph, seed_ids=[node.id], top_k=bounded_limit + 1, alpha=0.15
+                graph, seed_ids=[node.id], top_k=max(1, len(graph.nodes)), alpha=0.15
             )
             ppr_neighbor_ids = [
                 nid

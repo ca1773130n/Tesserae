@@ -228,6 +228,63 @@ def test_node_context_use_ppr_limit_one_returns_neighbor_and_edge(tmp_path):
     )
 
 
+def test_node_context_use_ppr_fills_limit_past_suppressed(tmp_path):
+    """A high-ranked superseded neighbour must not steal a live slot (codex minor).
+
+    Topology: focal links to two live neighbours and one superseded neighbour
+    (``Method:dead``, superseded by ``Method:winner``). With limit=2 and
+    use_ppr=True, the OLD logic fetched top_k=limit+1=3 then filtered self +
+    suppressed, so the superseded neighbour could occupy one of the 3 slots and
+    leave only 1 live neighbour. After the fix (over-fetch, filter before cap),
+    use_ppr returns 2 LIVE neighbours.
+    """
+    focal = ResearchNode(
+        id="Paper:focal", name="Focal Paper",
+        type=ResearchNodeType.PAPER, description="Focal.",
+    )
+    live1 = ResearchNode(
+        id="Claim:live1", name="Live One",
+        type=ResearchNodeType.PERFORMANCE_CLAIM, description="Live neighbour 1.",
+    )
+    live2 = ResearchNode(
+        id="Claim:live2", name="Live Two",
+        type=ResearchNodeType.PERFORMANCE_CLAIM, description="Live neighbour 2.",
+    )
+    dead = ResearchNode(
+        id="Method:dead", name="Dead Method",
+        type=ResearchNodeType.METHODOLOGICAL_CONCEPT, description="Superseded.",
+    )
+    winner = ResearchNode(
+        id="Method:winner", name="Winner Method",
+        type=ResearchNodeType.METHODOLOGICAL_CONCEPT, description="Supersedes dead.",
+    )
+    graph = ResearchGraph(
+        nodes=[focal, live1, live2, dead, winner],
+        edges=[
+            ResearchEdge(source=focal.id, target=live1.id, type="supports_claim", evidence="a"),
+            ResearchEdge(source=focal.id, target=live2.id, type="supports_claim", evidence="b"),
+            # dead is strongly tied to focal so it ranks high in PPR.
+            ResearchEdge(source=focal.id, target=dead.id, type="uses", evidence="c"),
+            ResearchEdge(source=dead.id, target=focal.id, type="references", evidence="c2"),
+            # winner supersedes dead -> dead is suppressed.
+            ResearchEdge(source=winner.id, target=dead.id, type="supersedes", evidence="d"),
+        ],
+    )
+    graph_path = tmp_path / "graph.json"
+    graph_path.write_text(graph.to_json(indent=2), encoding="utf-8")
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    ppr = server.call_tool(
+        "node_context",
+        {"node_id": "Paper:focal", "use_ppr": True, "limit": 2},
+    )
+    ppr_ids = {n["id"] for n in ppr["neighbors"]}
+    assert "Method:dead" not in ppr_ids
+    # Two LIVE neighbours returned (not under-filled by the suppressed one).
+    assert len(ppr["neighbors"]) == 2
+    assert ppr_ids == {"Claim:live1", "Claim:live2"}
+
+
 def test_compile_context_tool_in_listing():
     tools = LLMWikiMCPServer().list_tools()
     by_name = {t["name"]: t for t in tools}
