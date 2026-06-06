@@ -174,7 +174,10 @@ def test_bundle_uses_scalar_node_and_link_opacity():
     ``nodeColor`` / ``linkColor`` accessors (which DO accept functions)
     and ``nodeVisibility`` / ``linkVisibility`` for binary on/off.
     """
-    assert "inst.nodeOpacity(0.95)" in JS_GRAPH
+    # nodeOpacity pinned to a full-opacity scalar — the HypePaper polish pass
+    # (a410df7b47) raised it from 0.95 to 1.0 so the luminous additive-glow
+    # nodes read at full strength; alpha modulation now lives in nodeColor.
+    assert "inst.nodeOpacity(1.0)" in JS_GRAPH
     # F-6 — linkOpacity is pinned to 1.0 because the per-link rgba already
     # encodes the alpha (0.5 default, 0.05 dim, 0.5 hot). The previous
     # 0.35 scalar double-multiplied the alpha and washed edges out far
@@ -281,8 +284,11 @@ def test_graph_edges_are_visible_lines_not_only_particles():
     # the legitimate 2D pixel width and failed on main itself. Assert the 3D
     # ladder is camScale-driven (no flat 3D width) instead.
     assert "function isHoverIncidentLink" in JS_GRAPH
-    assert "if (highlightLinks.has(l)) return 0.9 * camScale;" in JS_GRAPH
-    assert "if (isHoverIncidentLink(l)) return 0.9 * camScale;" in JS_GRAPH
+    # HypePaper dimmer-edge pass (cee6bd1745) dropped the 3D incident width
+    # from 0.9 to 0.6 * camScale so resting/hot edges recede further under the
+    # new luminous-node glow. Base stays 0.25 * camScale.
+    assert "if (highlightLinks.has(l)) return 0.6 * camScale;" in JS_GRAPH
+    assert "if (isHoverIncidentLink(l)) return 0.6 * camScale;" in JS_GRAPH
     assert "return 0.25 * camScale;" in JS_GRAPH
     # The 3D default width must be camScale-multiplied, never a flat constant.
     assert "return 0.25;" not in JS_GRAPH
@@ -341,7 +347,10 @@ def test_graph_node_colors_vary_within_type_family():
     assert "var GROUP_HSL" in JS_GRAPH
     assert "function hashString" in JS_GRAPH
     assert "function nodeColorVariant" in JS_GRAPH
-    assert "n.color = n.color || nodeColorVariant(n);" in JS_GRAPH
+    # Cluster-hue fix (4890be90fd / f0fa31ff35) recolors UNCONDITIONALLY so the
+    # rest-merge recolor actually re-applies the community hue; the old
+    # ``n.color || `` short-circuit froze the first colour and is gone.
+    assert "n.color = nodeColorVariant(n);" in JS_GRAPH
     assert "return 'hsl(' + hue + ' ' + sat + '% ' + light + '%)'" in JS_GRAPH
 
 
@@ -541,12 +550,11 @@ def test_graph_focused_node_label_scales_up_with_outline():
     assert "function makeLabel(" in JS_BUNDLE_GRAPH
     assert "variant: 'focused'" in JS_BUNDLE_GRAPH
     assert "isFocusedLabel" in JS_BUNDLE_GRAPH
-    # Issue 2 — hover drops to 18px (down from 22) and focused drops to
-    # 22px (down from 26) because the pill itself is the focus
-    # indicator, so the font no longer has to do all the work.
-    # Edge label font dropped from 10 to 7 per user request — much
-    # smaller, white, no pill behind.
-    assert "{ default: 11, edge: 7, neighbor: 14, hover: 18, focused: 22 }" in JS_BUNDLE_GRAPH
+    # Label font ladder was retuned by the screenshot-verified "tame label
+    # font ladder + base scale" pass (9a06e45501): the previous
+    # 11/7/14/18/22 ladder turned labels into screen-filling billboards
+    # when zoomed, so the ladder was tightened to the current values below.
+    assert "{ default: 13, edge: 10, neighbor: 15, hover: 17, focused: 19 }" in JS_BUNDLE_GRAPH
     # Issue 1 — explicit "NO text stroke. NO outline. NO border." on
     # every variant. F-12 deleted the previously-zeroed VARIANT_STROKE
     # table outright (nothing read it); the regression guard against the
@@ -566,17 +574,18 @@ def test_graph_focused_node_label_scales_up_with_outline():
 
 
 def test_graph_label_pills_are_transparent_with_no_accent_border():
-    """User spec — every label variant renders WITHOUT a background pill
-    (alpha 0 across the board). Text is the only visual; highlighted
-    variants (hover/focused/neighbor) tint gold on dark and amber on
-    light, every other variant is white on dark / near-black on light.
-    NO color border. NO text stroke. NO gray.
+    """The earlier transparent-pill design (6ab47da9aa) was REVERSED by the
+    screenshot-verified "readable labels w/ black pills" pass (a8423e63ea):
+    labels over the deep-dark/glowing-node canvas were unreadable without a
+    backing pill, so each variant now carries a semi-opaque BLACK pill (alpha
+    rises with prominence). There is still NO color border and NO text stroke
+    on the pill — the pill is a flat translucent-black rect.
     """
     # Per-variant pill alpha table (the source of truth).
     assert "VARIANT_PILL_ALPHA" in JS_BUNDLE_GRAPH
-    # Every variant is transparent — no background pill anywhere.
+    # Restored black pills — alpha climbs from default to focused.
     assert (
-        "var VARIANT_PILL_ALPHA = { default: 0, edge: 0, neighbor: 0, hover: 0, focused: 0 }"
+        "var VARIANT_PILL_ALPHA = { default: 0.5, edge: 0.5, neighbor: 0.55, hover: 0.65, focused: 0.72 }"
         in JS_BUNDLE_GRAPH
     )
     # Pill is rendered for EVERY variant (not gated on hasPill any more).
@@ -602,13 +611,14 @@ def test_graph_label_pills_are_transparent_with_no_accent_border():
 
 
 def test_graph_label_pill_alpha_is_zero_for_every_variant():
-    """User spec: no pill behind any label, every variant transparent."""
+    """Black pills restored (a8423e63ea) — each variant has a non-zero pill
+    alpha for label readability over the dark canvas."""
     assert (
-        "var VARIANT_PILL_ALPHA = { default: 0, edge: 0, neighbor: 0, hover: 0, focused: 0 }"
+        "var VARIANT_PILL_ALPHA = { default: 0.5, edge: 0.5, neighbor: 0.55, hover: 0.65, focused: 0.72 }"
         in JS_BUNDLE_GRAPH
     )
-    # The 2D path gates the pill draw on ``pillAlpha > 0`` so the now-zero
-    # alpha actually skips the rect/fill calls rather than emitting an
+    # The 2D path still gates the pill draw on ``pillAlpha > 0`` so a variant
+    # whose alpha is ever zeroed skips the rect/fill rather than emitting an
     # invisible-but-still-rendered shape.
     assert "if (pillAlpha > 0) {" in JS_BUNDLE_GRAPH
 
@@ -649,8 +659,12 @@ def test_graph_default_labels_render_at_full_opacity():
     assert "function computeImportanceCutoff(camDistance)" in JS_BUNDLE_GRAPH
     # 3D path consults it and gates on ``defaultPassesCull``.
     assert "defaultPassesCull" in JS_BUNDLE_GRAPH
-    # 2D path early-returns when the node fails the synthetic-distance cull.
-    assert "syntheticCamDist" in JS_BUNDLE_GRAPH
+    # 2D path early-returns when a non-highlighted node fails the cull. The
+    # synthetic-distance cull was replaced by the HARD top-K cap
+    # (10bcf91039 "hard top-K label cap to kill overview label spam"): only
+    # the highest-degree anchors carry a persistent label, the rest stay
+    # unlabelled until hovered/focused — still cull-not-fade.
+    assert "if (!isLabelTopK(n)) return;" in JS_BUNDLE_GRAPH
 
 
 def test_graph_focused_neighbor_labels_stay_white():
@@ -868,12 +882,14 @@ def test_graph_theme_toggle_invalidates_label_cache():
 
 
 def test_graph_hover_grows_node_and_thickens_incident_edges():
-    """Issue 2 + Issue 4 — hovered node sphere grows to ``val * 1.25``
-    and incident edges thicken to 0.9 (from the calmer 0.25 baseline)."""
+    """Issue 2 + Issue 4 — hovered node sphere grows to ``val * 1.25`` and
+    incident edges thicken above the 0.25 resting baseline. The HypePaper
+    dimmer-edge pass (cee6bd1745) lowered the 3D incident width from 0.9 to
+    0.6 * camScale so emphasis still reads but edges recede further."""
     # nodeVal accessor multiplies the base by 1.25 when hovered.
     assert "if (hoverNode === n) return base * 1.25" in JS_BUNDLE_GRAPH
-    # Hover-incident link width = 0.9 (Issue 4 — thinner overall).
-    assert "if (isHoverIncidentLink(l)) return 0.9" in JS_BUNDLE_GRAPH
+    # Hover-incident 3D link width = 0.6 * camScale (thicker than the 0.25 base).
+    assert "if (isHoverIncidentLink(l)) return 0.6 * camScale;" in JS_BUNDLE_GRAPH
     # Hover handler re-pokes the accessors so the change is visible
     # immediately (without waiting for the next sim tick).
     assert "Graph.nodeVal(Graph.nodeVal())" in JS_BUNDLE_GRAPH
@@ -884,12 +900,14 @@ def test_graph_particles_only_on_incident_edges_pure_yellow_smaller():
     """Issue 4 — particles render PURE YELLOW (Material yellow 500) only
     on edges incident to the hovered or focused node. Default state
     (nothing focused, nothing hovered): ZERO particles on every edge —
-    the canvas reads as calm. Width drops from 2.5 to 1.5 (smaller)."""
+    the canvas reads as calm."""
     # Pure yellow particles (Material yellow 500). Not white.
     assert "'rgb(255, 235, 59)'" in JS_BUNDLE_GRAPH
     assert "linkDirectionalParticleColor" in JS_BUNDLE_GRAPH
-    # Smaller particle width — dropped to 0.6 per user request.
-    assert "linkDirectionalParticleWidth(0.6)" in JS_BUNDLE_GRAPH
+    # Particle width raised to 1.4 by the "larger particles" pass
+    # (e784c3de70) so the incident-edge flow reads clearly against the
+    # recessed resting webbing.
+    assert "linkDirectionalParticleWidth(1.4)" in JS_BUNDLE_GRAPH
     # Speed is now a constant 0.005 (no per-link speed bump on focus).
     assert "linkDirectionalParticleSpeed(0.005)" in JS_BUNDLE_GRAPH
     # Particles are 2 on incident edges (focus or hover), 0 otherwise.
@@ -1237,9 +1255,10 @@ def test_graph_palette_uses_hypepaper_category_colors():
 
 def test_graph_label_pill_alpha_is_zero_still_holds_under_force_dark():
     """The GRAPH_FORCE_DARK refactor must not regress the pill-alpha
-    contract — every variant stays at alpha 0 regardless of theme."""
+    contract — the restored black-pill table (a8423e63ea) stays intact
+    regardless of theme."""
     assert (
-        "var VARIANT_PILL_ALPHA = { default: 0, edge: 0, neighbor: 0, hover: 0, focused: 0 }"
+        "var VARIANT_PILL_ALPHA = { default: 0.5, edge: 0.5, neighbor: 0.55, hover: 0.65, focused: 0.72 }"
         in JS_BUNDLE_GRAPH
     )
 
@@ -1378,4 +1397,5 @@ def test_graph_semantic_edges_styled_distinctly():
     assert "EDGE_SEMANTIC_WIDTH_MULT" in JS_GRAPH
     # The structural base magnitudes the other guardrail tests pin must remain.
     assert "return 0.25 * camScale;" in JS_GRAPH
-    assert "if (highlightLinks.has(l)) return 0.9 * camScale;" in JS_GRAPH
+    # HypePaper dimmer-edge pass (cee6bd1745) — incident width is 0.6 * camScale.
+    assert "if (highlightLinks.has(l)) return 0.6 * camScale;" in JS_GRAPH
