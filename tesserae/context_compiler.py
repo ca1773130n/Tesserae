@@ -86,6 +86,32 @@ def _fetch_body(node: ResearchNode, store: Optional[WikiPageStore]) -> str:
     return node.description or f"_{node.type.value} node: {node.name}_"
 
 
+_TRUNCATION_MARKER = "\n…[truncated]"
+
+
+def _truncate_to_budget(body: str, budget: int) -> str:
+    """Truncate ``body`` to ``<= budget`` chars at a word/newline boundary.
+
+    Appends :data:`_TRUNCATION_MARKER` so the cut is visible to the agent, and
+    guarantees the returned string (marker included) never exceeds ``budget``.
+    Deterministic — no wall-clock — so byte-idempotence holds. When ``budget`` is
+    too small to fit even the marker, fall back to a hard char slice (the marker
+    would itself overflow), preserving the ``<= budget`` invariant.
+    """
+    if len(body) <= budget:
+        return body
+    keep = budget - len(_TRUNCATION_MARKER)
+    if keep <= 0:
+        # No room for the marker — hard slice to honour the budget.
+        return body[:budget]
+    head = body[:keep]
+    # Prefer the last newline, then the last space, to land on a clean boundary.
+    cut = max(head.rfind("\n"), head.rfind(" "))
+    if cut > 0:
+        head = head[:cut]
+    return head + _TRUNCATION_MARKER
+
+
 def _neighborhood_within_depth(
     graph: ResearchGraph, seed_ids: Sequence[str], depth: int
 ) -> Set[str]:
@@ -169,11 +195,19 @@ def compile_context(
     # surface nodes only reachable in 2+ hops. We precompute the seed
     # neighbourhood up to ``depth`` hops (BFS over the undirected edge set) and
     # keep only PPR results that fall inside it.
+    #
+    # The depth filter must run BEFORE the ``top_k`` cap, not after — otherwise
+    # out-of-depth high-PPR nodes consume the window and valid in-depth nodes get
+    # dropped. We request the FULL PPR ranking (``top_k = node count``), filter to
+    # the in-depth set, THEN cap, so the cap is filled from in-depth nodes only.
     in_neighborhood = _neighborhood_within_depth(graph, seed_ids, max(0, depth))
-    ranked = personalized_pagerank(
-        graph, seed_ids, alpha=0.15, top_k=max(1, depth) * 10
+    cap = max(1, depth) * 10
+    full_ranked = personalized_pagerank(
+        graph, seed_ids, alpha=0.15, top_k=max(1, len(graph.nodes))
     )
-    ranked = [(nid, score) for nid, score in ranked if nid in in_neighborhood]
+    ranked = [
+        (nid, score) for nid, score in full_ranked if nid in in_neighborhood
+    ][:cap]
     if not ranked:  # PITFALL 1: disconnected seeds -> fall back to seed order.
         ranked = [(sid, 0.0) for sid in seed_ids]
     ranked_nodes = [nid for nid, _ in ranked]
@@ -196,7 +230,7 @@ def compile_context(
             # selectable node, truncating its body to fit. Subsequent overflows
             # stop the walk as before.
             if not selected:
-                truncated = body[:budget] if budget > 0 else body
+                truncated = _truncate_to_budget(body, budget) if budget > 0 else body
                 selected.append((node, truncated))
                 chars_used += len(truncated)
             break

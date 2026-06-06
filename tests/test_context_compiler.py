@@ -220,6 +220,91 @@ def test_depth_bounds_hop_distance() -> None:
     assert again.ranked_nodes == shallow.ranked_nodes
 
 
+def _depth_window_graph() -> ResearchGraph:
+    """Seed with one in-depth (1-hop) neighbour + many out-of-depth high-PPR nodes.
+
+    Topology:
+        seed --references--> indepth                 (1 hop from seed)
+        hubN --references--> seed  (12 hub nodes, each also cross-linked to a
+                                    dense ``core`` clique so they accrue high PPR
+                                    mass) -- all are 1 hop, BUT we put them OUTSIDE
+                                    the depth window by routing through ``mid``.
+
+    To force the underfill we instead make the high-PPR nodes reachable only at
+    2 hops while the legitimate in-depth node sits at 1 hop. PPR over the full
+    graph ranks the densely-connected 2-hop cluster above the lone 1-hop node;
+    with depth=1 and the OLD (cap-before-filter) logic those out-of-depth nodes
+    consume the top_k window and ``indepth`` is dropped.
+    """
+    nodes: List[ResearchNode] = [
+        ResearchNode(
+            id="seed",
+            name="Gaussian Splatting",
+            type=ResearchNodeType.METHODOLOGICAL_CONCEPT,
+            description="Seed about gaussian splatting. " * 8,
+        ),
+        ResearchNode(
+            id="indepth",
+            name="Neural Radiance Fields",
+            type=ResearchNodeType.PAPER,
+            description="One hop from the seed; must survive depth=1. " * 8,
+        ),
+        ResearchNode(
+            id="mid",
+            name="Bridge Node",
+            type=ResearchNodeType.CONCEPT,
+            description="A bridge one hop from the seed into the dense cluster. " * 8,
+        ),
+    ]
+    edges = [
+        ResearchEdge(source="seed", target="indepth", type="references"),
+        ResearchEdge(source="seed", target="mid", type="references"),
+    ]
+    # Dense 2-hop cluster behind ``mid``: many mutually-connected hubs that
+    # accrue high PPR mass and are exactly 2 hops from the seed.
+    hub_ids = [f"hub{i}" for i in range(15)]
+    for hid in hub_ids:
+        nodes.append(
+            ResearchNode(
+                id=hid,
+                name=f"Hub {hid}",
+                type=ResearchNodeType.CONCEPT,
+                description=f"Densely connected hub {hid}. " * 8,
+            )
+        )
+        edges.append(ResearchEdge(source="mid", target=hid, type="references"))
+    # Cross-link the hubs into a clique so they hold high PPR mass.
+    for i, a in enumerate(hub_ids):
+        for b in hub_ids[i + 1 :]:
+            edges.append(ResearchEdge(source=a, target=b, type="references"))
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def test_depth_filter_runs_before_top_k_cap() -> None:
+    """In-depth nodes survive the cap even amid many out-of-depth high-PPR nodes.
+
+    With depth=1 only ``seed``, ``indepth`` and ``mid`` are in-window. The dense
+    2-hop hub cluster ranks higher in full-graph PPR; the OLD logic (cap BEFORE
+    depth filter) let those hubs consume the top_k window, dropping ``indepth``.
+    The fix filters to the depth set BEFORE capping, so ``indepth`` is kept.
+    """
+    graph = _depth_window_graph()
+    shallow = compile_context(
+        graph, project_root=None, query="", seeds=["seed"],
+        depth=1, budget=0, backend=_backend(),
+    )
+    # In-depth nodes must be present; out-of-depth hubs must NOT leak in.
+    assert "indepth" in shallow.ranked_nodes
+    assert "indepth" in shallow.selected_nodes
+    assert all(not nid.startswith("hub") for nid in shallow.ranked_nodes)
+    # Determinism preserved.
+    again = compile_context(
+        graph, project_root=None, query="", seeds=["seed"],
+        depth=1, budget=0, backend=_backend(),
+    )
+    assert again.ranked_nodes == shallow.ranked_nodes
+
+
 def test_first_body_over_budget_still_returns_one_node() -> None:
     """A budget smaller than the first body returns 1 truncated cited node, not zero."""
     graph = _connected_graph()
@@ -230,9 +315,38 @@ def test_first_body_over_budget_still_returns_one_node() -> None:
     # Without the fix this would select ZERO nodes (first body overflows).
     assert len(bundle.selected_nodes) == 1
     assert len(bundle.citations) == 1
-    # Budget pressure is reported: the truncated body fills the budget.
-    assert bundle.char_budget_used == 10
+    # Budget pressure is reported: the truncated body never exceeds the budget.
+    assert bundle.char_budget_used <= 10
     assert "## Citations" in bundle.body
+
+
+def test_first_body_truncation_has_word_boundary_marker() -> None:
+    """Over-budget first body truncates at a boundary + appends a marker (codex nit).
+
+    With a budget large enough to fit the marker, the truncated body must end
+    with the marker and stay within budget; the cut lands on a word/newline
+    boundary (no mid-word slice).
+    """
+    graph = _connected_graph()
+    budget = 120
+    bundle = compile_context(
+        graph, project_root=None, query="gaussian splatting",
+        budget=budget, backend=_backend(),
+    )
+    assert len(bundle.selected_nodes) == 1
+    # The selected body fits the budget AND carries the truncation marker.
+    assert bundle.char_budget_used <= budget
+    assert "…[truncated]" in bundle.body
+    # The body section before the marker did not slice through a word: the char
+    # immediately before the marker is whitespace-trimmed (boundary cut).
+    section = bundle.body.split("…[truncated]")[0]
+    assert not section.endswith(" ")  # cut on the boundary, trailing space removed
+    # Determinism preserved across runs.
+    again = compile_context(
+        graph, project_root=None, query="gaussian splatting",
+        budget=budget, backend=_backend(),
+    )
+    assert again.body == bundle.body
 
 
 def test_synthesize_without_key_falls_back(monkeypatch) -> None:
