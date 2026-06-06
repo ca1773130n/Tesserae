@@ -21,7 +21,7 @@ from types import SimpleNamespace
 from typing import Dict, Iterable, List, Mapping, Optional, Set, Tuple
 
 from .agent_harness import AgentHarnessAdapter, SUPPORTED_AGENT_HARNESSES
-from .batch import BatchIngestRunner, sha256_text
+from .batch import BatchIngestRunner, read_markdown_text, sha256_text
 from .code_graph import CodeGraphExtractor
 from .cognee_adapter import CogneeResearchGraphAdapter
 from .cognee_codex import CogneeCodexPatch
@@ -525,7 +525,13 @@ class ProjectWiki:
                         prior_graph_for_diff = _prior
         # Effective changed-only for the EXTRACTION batch: only re-extract a
         # subset when an incremental compile is genuinely active. Otherwise
-        # re-extract everything (true full recompile, Codex B4).
+        # re-extract everything (true full recompile, Codex B4) — UNLESS the
+        # corpus is byte-for-byte unchanged, which is the idempotent no-op case
+        # handled separately below. The experimental provenance differ (gated on
+        # ``incremental_active``) is the ONLY path allowed to re-extract a
+        # *subset*; a plain ``changed_only`` rerun either no-ops (nothing
+        # changed) or falls back to a full recompile (something changed), so it
+        # never produces a partial graph.json.
         effective_changed_only = changed_only and incremental_active
 
         if loader is None:
@@ -541,16 +547,67 @@ class ProjectWiki:
                         continue
                     seen_md.add(resolved)
                     markdown_files.append(md)
-            batch = BatchIngestRunner(extractor=extractor, manifest_path=self.paths.manifest).run(
-                markdown_files,
-                source_kind=markdown_source_kind,
-                changed_only=effective_changed_only,
-                limit=limit,
-            )
-            graphs = batch.graphs or [batch.graph]
-            processed = batch.processed
-            skipped = batch.skipped
-            base_graph = batch.graph
+
+            # Idempotent no-op short-circuit (changed-only). When the caller asks
+            # for ``changed_only`` and EVERY candidate markdown file is unchanged
+            # versus the manifest (same sha256), there is nothing to re-extract:
+            # the existing ``graph.json`` already IS the full corpus. Re-running
+            # a full recompile here would be wasted work and — more importantly —
+            # would report ``processed_files`` for files that did not change,
+            # defeating ``--changed-only``. We detect this BEFORE the batch so a
+            # genuine no-op reports ``processed=0, skipped=N`` and reuses the
+            # prior graph. This is distinct from the experimental provenance
+            # differ (``incremental_active``): it never re-extracts a subset, it
+            # only skips the whole batch when nothing changed at all. If ANY file
+            # changed, we fall through to the full recompile below (Codex B4).
+            #
+            # SUBTRACTIVE guard: matching shas for the surviving candidates is
+            # NOT enough — a DELETED (or renamed-away) file leaves a manifest
+            # entry behind (``BatchIngestRunner`` merges, never prunes) while the
+            # prior ``graph.json`` still carries its source node + incident
+            # edges. Reusing that graph would resurrect the deleted file's nodes
+            # (test_incremental_parity deletion gate). The no-op therefore also
+            # requires the manifest's tracked-path set to be IDENTICAL to the
+            # current candidate set; any extra manifest entry means the corpus
+            # shrank or shifted, and we fall through to the full recompile —
+            # the always-correct path.
+            noop_skip = False
+            if (
+                changed_only
+                and not incremental_active
+                and markdown_files
+                and self.paths.graph.exists()
+            ):
+                manifest_files = self._load_manifest()
+                candidate_keys = {str(md) for md in markdown_files}
+                if set(manifest_files.keys()) == candidate_keys and all(
+                    manifest_files.get(str(md), {}).get("sha256")
+                    == sha256_text(read_markdown_text(md))
+                    for md in markdown_files
+                ):
+                    noop_skip = True
+
+            if noop_skip:
+                # Nothing changed: the prior graph.json is the corpus. Re-derive
+                # the union graph from disk and report a pure skip. Downstream
+                # artifact writes are byte-idempotent, so re-emitting them from
+                # the prior graph leaves graph.json / vault / site unchanged.
+                base_graph = _strip_generated_layer(load_graph_file(self.paths.graph))
+                graphs = []
+                processed = 0
+                skipped = len(markdown_files)
+                batch = None
+            else:
+                batch = BatchIngestRunner(extractor=extractor, manifest_path=self.paths.manifest).run(
+                    markdown_files,
+                    source_kind=markdown_source_kind,
+                    changed_only=effective_changed_only,
+                    limit=limit,
+                )
+                graphs = batch.graphs or [batch.graph]
+                processed = batch.processed
+                skipped = batch.skipped
+                base_graph = batch.graph
         else:
             # Injected loader path: ``Source`` records carry their own content,
             # so we extract from text and bookkeep changed-only against a
@@ -2108,6 +2165,7 @@ class ProjectWiki:
         self,
         graph: ResearchGraph,
         json_client: Optional["LLMJsonClient"],
+        store: Optional[GraphStore] = None,
     ) -> Tuple[ResearchGraph, List["NodeMemoryRow"]]:
         """Run the Phase-5 self-improvement passes at the compile choke point.
 
@@ -2161,12 +2219,20 @@ class ProjectWiki:
         # would change the NEXT compile's bytes). The access state is fed to the
         # decay computation in step (7) via a COPIED metadata view; graph node
         # metadata is never touched. (05-RESEARCH Pitfall 2: sidecar-only.)
+        # The node_memory sidecar lives in the DEFAULT ``sqlite.db``. When an
+        # alternate ``store`` is injected (HypePaper Postgres adapter, test
+        # doubles), that store owns persistence and the default SQLite path must
+        # stay UNTOUCHED — ``read_memory`` opens a ``SqliteGraphStore`` whose
+        # ``CREATE TABLE IF NOT EXISTS`` would otherwise mint ``sqlite.db`` on
+        # disk, breaking the injected-store contract. Skip the sidecar read in
+        # that case and treat prior access state as empty.
         prior: Dict[str, "NodeMemoryRow"] = {}
-        try:
-            prior = read_memory(self.paths.sqlite)
-        except Exception:  # pragma: no cover — defensive; missing/locked db
-            logger.exception("phase5: read_memory failed; treating as empty")
-            prior = {}
+        if store is None:
+            try:
+                prior = read_memory(self.paths.sqlite)
+            except Exception:  # pragma: no cover — defensive; missing/locked db
+                logger.exception("phase5: read_memory failed; treating as empty")
+                prior = {}
 
         # (3) Schema-drift apply — OPT-IN, destructive (Pitfall 4). Default
         # (env unset/falsy) => skipped entirely, graph.json byte-identical.
@@ -2335,7 +2401,7 @@ class ProjectWiki:
         # absent LLM client must degrade gracefully and never fail a compile.
         memory_rows: List["NodeMemoryRow"] = []
         try:
-            graph, memory_rows = self._run_memory_passes(graph, json_client)
+            graph, memory_rows = self._run_memory_passes(graph, json_client, store=store)
         except Exception:  # pragma: no cover — defensive; never fail compile
             logger.exception("phase5 memory passes failed; continuing")
             memory_rows = []
@@ -2458,7 +2524,12 @@ class ProjectWiki:
         # final. decay_score / access_count / last_accessed_at / confidence /
         # superseded live HERE ONLY — never in graph.json. Best-effort: a
         # locked/missing sidecar must not fail the compile.
-        if memory_rows:
+        #
+        # Sidecar lives in the DEFAULT ``sqlite.db``. When an alternate ``store``
+        # is injected it owns persistence and the default SQLite path must stay
+        # untouched (same contract as the ``read_memory`` skip in
+        # ``_run_memory_passes``), so skip the sidecar write entirely.
+        if memory_rows and store is None:
             try:
                 from .memory.store import write_memory
 
