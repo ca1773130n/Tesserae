@@ -18,7 +18,7 @@ from dataclasses import dataclass, field, replace as dataclasses_replace
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Set, Tuple
 
 from .agent_harness import AgentHarnessAdapter, SUPPORTED_AGENT_HARNESSES
 from .batch import BatchIngestRunner, sha256_text
@@ -571,10 +571,19 @@ class ProjectWiki:
         graph = ResearchCorpusAnalyzer().summarize_trends(graphs, min_sources=min_trend_sources) if trends else base_graph
         if kind in {"CodeProject", "Repository", "Project"}:
             code_graph = CodeGraphExtractor(self.project_root).extract_paths(code_inputs)
+            _before_code = graph
             graph = merge_graphs([graph, code_graph])
+            # Codex #6: code-graph re-derives its nodes/edges from the repo every
+            # compile, so they carry no extraction-file provenance. Attribute the
+            # ids it minted this compile to "__code_graph__".
+            self._record_producer_provenance("__code_graph__", _before_code, graph)
         cfg = self.config()
+        _before_ua = graph
         graph = self._merge_configured_understand_anything_graph(graph, cfg)
+        self._record_producer_provenance("__understand_anything__", _before_ua, graph)
+        _before_rag = graph
         graph = self._merge_configured_raganything_graph(graph, cfg)
+        self._record_producer_provenance("__raganything__", _before_rag, graph)
         # Provenance-driven incremental differ (Codex B1/B2/B3/B4). Only runs
         # when an incremental compile is genuinely admissible — decided up
         # front in ``incremental_active`` (flag on + sidecar present + covers
@@ -678,6 +687,7 @@ class ProjectWiki:
         # historical conversations into the doc graph. The structural pass
         # is the only thing Phase 3 wires in; the LLM pass arrives in
         # Phase 5 of the session-graph plan.
+        _before_session = graph
         graph = self._merge_session_graph(
             graph,
             cfg,
@@ -685,6 +695,10 @@ class ProjectWiki:
             guidance=session_guidance,
             llm_passes_client=llm_passes_client,
         )
+        # Codex #6: session graph re-derives Session/SessionDecision nodes +
+        # discussed_in/derived_from_session edges from the harness transcripts
+        # every compile. Attribute the minted ids to "__session_graph__".
+        self._record_producer_provenance("__session_graph__", _before_session, graph)
         # Canonicalize the merged graph BEFORE the community-summary pass.
         # ``merge_graphs`` re-runs the same-type/cross-type dedup and edge
         # redirection over the whole node universe, so an incremental compile
@@ -1422,7 +1436,7 @@ class ProjectWiki:
         m = re.search(r"Field overrides — (\d+) across \d+ node\(s\)", text)
         return int(m.group(1)) if m else 0
 
-    def _apply_vault_overlay(self, graph: ResearchGraph) -> ResearchGraph:
+    def _apply_vault_overlay(self, graph: ResearchGraph) -> ResearchGraph:  # noqa: C901
         """Read user edits out of the Obsidian vault and apply them onto the graph.
 
         Tier 1a + 1b of the bidirectional sync feature
@@ -1461,6 +1475,20 @@ class ProjectWiki:
         slug_by_id = unique_slugs(graph.nodes)
 
         vault_files = _load_vault_files(vault_path)
+        # Codex #4: orphan-prune ordering. Filter out vault pages whose
+        # ``node_id`` frontmatter no longer maps to a LIVE graph node BEFORE
+        # compute_overrides / compute_user_link_changes — otherwise an orphan
+        # page could emit a node_id override (or a user_link edge) and mutate
+        # the graph before its deletion. Pages with no node_id are non-node
+        # pages (index/dashboard) and are kept; ``_load_vault_files`` already
+        # only returns files carrying a ``node_id`` key, so the ``is None`` arm
+        # is a defensive no-op for that loader.
+        live_ids = set(node_by_id.keys())
+        vault_files = [
+            f
+            for f in vault_files
+            if (nid := _vault_file_node_id(f)) is None or nid in live_ids
+        ]
         snapshot = read_snapshot(self.paths.vault_snapshot)
         overrides = (
             compute_overrides(vault_path, snapshot, node_by_id, vault_files=vault_files)
@@ -1505,8 +1533,14 @@ class ProjectWiki:
                 flush=True,
             )
 
+        _before_overlay = graph
         graph = apply_overrides(graph, overrides)
         graph = apply_user_link_changes(graph, user_link_changes)
+        # Codex #6: the vault overlay mints ``user_link`` edges from the user's
+        # wikilinks every compile (overrides mutate existing nodes in place and
+        # add no new ids). Attribute the edges it introduced to
+        # "__vault_overlay__" so they carry a deterministic sidecar row.
+        self._record_producer_provenance("__vault_overlay__", _before_overlay, graph)
         return graph
 
     def _load_extraction_guidance(self, enabled: bool) -> tuple[str, str]:
@@ -2509,6 +2543,24 @@ def cognify_options_from_config(config: dict) -> Optional[CognifyOptions]:
         return None
     options = CognifyOptions.from_mapping(cognee)
     return options if options.is_active else None
+
+
+def _vault_file_node_id(vault_file: object) -> Optional[str]:
+    """Extract the ``node_id`` frontmatter key from a ``_load_vault_files`` entry.
+
+    ``_load_vault_files`` yields ``(path, text, frontmatter)`` tuples for pages
+    that carry a ``node_id`` key (Codex #4 orphan filter reads it). Returns the
+    stringified ``node_id`` or ``None`` for any shape lacking one (defensive —
+    a non-node page that somehow reaches here is kept by the caller).
+    """
+    try:
+        frontmatter = vault_file[2]
+    except (TypeError, IndexError, KeyError):
+        return None
+    if not isinstance(frontmatter, Mapping):
+        return None
+    node_id = frontmatter.get("node_id")
+    return None if node_id is None else str(node_id)
 
 
 def _provenance_source_for(graph: ResearchGraph) -> str:
