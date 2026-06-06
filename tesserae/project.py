@@ -480,20 +480,23 @@ class ProjectWiki:
         if changed_only and self.paths.graph.exists():
             incremental_enabled = bool(cfg.get("incremental_compile", False))
             if incremental_enabled:
-                # Byte-parity with a full compile is now PROVEN by the
-                # strengthened parity gate (tests/test_incremental_parity.py):
-                # additive K=1/5/21, content-reduction, file-deletion, file
-                # RENAME, alias-identity change, and both-endpoints-move all
-                # produce a graph.json + site tree byte-identical to a
-                # from-scratch full compile, with byte-idempotence preserved.
-                # All 7 Phase-4 blockers are closed. The flag stays opt-in
-                # (default False) so the safest default remains a full recompile;
-                # enabling it is byte-clean for every tested edit shape.
-                logger.info(
-                    "incremental_compile is ENABLED. Byte-parity with a full "
-                    "compile is proven by the strengthened parity gate "
-                    "(rename + alias-identity + both-endpoints-move on top of "
-                    "additive/reduction/deletion)."
+                # EXPERIMENTAL — incremental is byte-identical to a full compile
+                # for the parity-gated edit shapes (additive K=1/5/21,
+                # content-reduction, file-deletion, RENAME, alias-identity change,
+                # both-endpoints-move), but a Codex re-review found remaining
+                # divergence for MULTI-OWNER payload (re-extraction only re-runs
+                # the canonical co-owner, not the union), producer-layer removal
+                # (producer-owned nodes aren't tombstoned on incremental), the
+                # over-cap fallback (not a true full compile), and untracked
+                # post-pass edges. Tracked in 04.1-FOLLOWUP. The flag stays OFF
+                # by default (full recompile = correct); do not enable in
+                # production until those close.
+                logger.warning(
+                    "incremental_compile is ENABLED but EXPERIMENTAL: byte-parity "
+                    "with a full compile holds for the parity-gated edit shapes, "
+                    "but known gaps remain (multi-owner payload, producer-layer "
+                    "removal, over-cap fallback). The default (flag off) full "
+                    "recompile is the safe, supported path."
                 )
                 _prior = _strip_generated_layer(load_graph_file(self.paths.graph))
                 if _prior.nodes or _prior.edges:
