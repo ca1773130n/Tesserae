@@ -27,10 +27,10 @@ must not perturb byte-idempotence).
 
 from __future__ import annotations
 
-import os
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Set
 
 from .research_graph import ResearchGraph, ResearchNode
 from .retrieval.hybrid import hybrid_search
@@ -86,6 +86,34 @@ def _fetch_body(node: ResearchNode, store: Optional[WikiPageStore]) -> str:
     return node.description or f"_{node.type.value} node: {node.name}_"
 
 
+def _neighborhood_within_depth(
+    graph: ResearchGraph, seed_ids: Sequence[str], depth: int
+) -> Set[str]:
+    """Return the set of node ids reachable from any seed in ``<= depth`` hops.
+
+    BFS over the UNDIRECTED edge set (each edge traversable both ways, matching
+    ``personalized_pagerank``'s default ``directed=False``). ``depth <= 0``
+    collapses to just the seeds themselves. The returned set always contains the
+    valid seeds so PPR seeded on them never runs over an empty subgraph.
+    """
+    adjacency: Dict[str, Set[str]] = {}
+    for edge in graph.edges:
+        adjacency.setdefault(edge.source, set()).add(edge.target)
+        adjacency.setdefault(edge.target, set()).add(edge.source)
+
+    reachable: Set[str] = set(seed_ids)
+    frontier: deque[tuple] = deque((sid, 0) for sid in seed_ids)
+    while frontier:
+        node_id, dist = frontier.popleft()
+        if dist >= depth:
+            continue
+        for neighbor in adjacency.get(node_id, ()):  # noqa: SIM118
+            if neighbor not in reachable:
+                reachable.add(neighbor)
+                frontier.append((neighbor, dist + 1))
+    return reachable
+
+
 def compile_context(
     graph: ResearchGraph,
     project_root: Optional[str] = None,
@@ -135,10 +163,17 @@ def compile_context(
             char_budget_total=budget,
         )
 
-    # --- Step 2: PPR expansion (with seed-order fallback) --------------------
+    # --- Step 2: PPR expansion, bounded to the depth-hop neighbourhood -------
+    # ``depth`` must bound hop-distance, not just scale ``top_k``: PPR runs over
+    # the FULL connected component, so without this filter a depth=1 request can
+    # surface nodes only reachable in 2+ hops. We precompute the seed
+    # neighbourhood up to ``depth`` hops (BFS over the undirected edge set) and
+    # keep only PPR results that fall inside it.
+    in_neighborhood = _neighborhood_within_depth(graph, seed_ids, max(0, depth))
     ranked = personalized_pagerank(
         graph, seed_ids, alpha=0.15, top_k=max(1, depth) * 10
     )
+    ranked = [(nid, score) for nid, score in ranked if nid in in_neighborhood]
     if not ranked:  # PITFALL 1: disconnected seeds -> fall back to seed order.
         ranked = [(sid, 0.0) for sid in seed_ids]
     ranked_nodes = [nid for nid, _ in ranked]
@@ -156,6 +191,14 @@ def compile_context(
             continue
         body = _fetch_body(node, store)
         if budget > 0 and chars_used + len(body) > budget:
+            # A valid query must never yield an empty bundle just because the
+            # first ranked body overflows the budget: always include the FIRST
+            # selectable node, truncating its body to fit. Subsequent overflows
+            # stop the walk as before.
+            if not selected:
+                truncated = body[:budget] if budget > 0 else body
+                selected.append((node, truncated))
+                chars_used += len(truncated)
             break
         selected.append((node, body))
         chars_used += len(body)
@@ -183,28 +226,38 @@ def compile_context(
     body_text = "".join(sections)
 
     # --- Step 5: optional, gated LLM synthesis ------------------------------
+    # PITFALL 4 — degrade, NEVER raise. ANY missing SDK / missing key / API
+    # failure falls back to the deterministic ``body_text`` assembled above. The
+    # module docstring promises graceful fallback, so synthesis is purely
+    # additive: when it works we prepend the synthesized body; otherwise the
+    # deterministic bundle stands unchanged.
     synthesized = False
     if synthesize:
-        if not os.environ.get("ANTHROPIC_API_KEY"):  # PITFALL 4
-            raise ValueError("synthesize=true requires ANTHROPIC_API_KEY")
-        from .llm_synthesis import LlmSynthesisClient, LlmSynthesisRequest
+        try:
+            from .llm_synthesis import LlmSynthesisRequest, LlmSynthesizer
 
-        req = LlmSynthesisRequest(
-            kind="ContextSummary",
-            title=query or "Context Summary",
-            inputs=[
-                {
-                    "id": c.node_id,
-                    "name": c.node_name,
-                    "description": node.description,
-                }
-                for (node, _b), c in zip(selected, citations)
-            ],
-        )
-        resp = LlmSynthesisClient(max_tokens=1200).synthesize(req)
-        if resp:
-            body_text = resp.body + "\n\n---\n" + body_text
-            synthesized = True
+            req = LlmSynthesisRequest(
+                # ``topic`` is the VALID synthesis kind for a narrative context
+                # summary over a set of related nodes (see _VALID_KINDS).
+                kind="topic",
+                title=query or "Context Summary",
+                inputs=[
+                    {
+                        "id": c.node_id,
+                        "name": c.node_name,
+                        "description": node.description,
+                    }
+                    for (node, _b), c in zip(selected, citations)
+                ],
+            )
+            resp = LlmSynthesizer(max_tokens=1200).synthesize(req)
+            if resp:
+                body_text = resp.body + "\n\n---\n" + body_text
+                synthesized = True
+        except Exception:
+            # Missing anthropic SDK, missing API key, network/API error — keep
+            # the deterministic assembly. Synthesis is best-effort only.
+            synthesized = False
 
     return ContextBundle(
         query=query,

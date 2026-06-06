@@ -168,6 +168,90 @@ def test_explicit_seeds() -> None:
     assert bundle.citations
 
 
+def _two_hop_graph() -> ResearchGraph:
+    """A->B->C chain: ``C`` is only reachable from ``A`` in 2 hops."""
+    nodes = [
+        ResearchNode(
+            id="a",
+            name="Gaussian Splatting",
+            type=ResearchNodeType.METHODOLOGICAL_CONCEPT,
+            description="Seed node A about gaussian splatting. " * 8,
+        ),
+        ResearchNode(
+            id="b",
+            name="Neural Radiance Fields",
+            type=ResearchNodeType.PAPER,
+            description="One hop from A. " * 8,
+        ),
+        ResearchNode(
+            id="c",
+            name="Two Hop Only",
+            type=ResearchNodeType.CONCEPT,
+            description="Two hops from A; unreachable at depth 1. " * 8,
+        ),
+    ]
+    edges = [
+        ResearchEdge(source="a", target="b", type="references"),
+        ResearchEdge(source="b", target="c", type="references"),
+    ]
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def test_depth_bounds_hop_distance() -> None:
+    """depth must bound hop-distance, not just scale top_k (codex major)."""
+    graph = _two_hop_graph()
+    shallow = compile_context(
+        graph, project_root=None, query="", seeds=["a"],
+        depth=1, budget=0, backend=_backend(),
+    )
+    deep = compile_context(
+        graph, project_root=None, query="", seeds=["a"],
+        depth=2, budget=0, backend=_backend(),
+    )
+    # Node "c" is only reachable from "a" in 2 hops.
+    assert "c" not in shallow.ranked_nodes
+    assert "c" not in shallow.selected_nodes
+    assert "c" in deep.ranked_nodes
+    # Determinism preserved.
+    again = compile_context(
+        graph, project_root=None, query="", seeds=["a"],
+        depth=1, budget=0, backend=_backend(),
+    )
+    assert again.ranked_nodes == shallow.ranked_nodes
+
+
+def test_first_body_over_budget_still_returns_one_node() -> None:
+    """A budget smaller than the first body returns 1 truncated cited node, not zero."""
+    graph = _connected_graph()
+    bundle = compile_context(
+        graph, project_root=None, query="gaussian splatting",
+        budget=10, backend=_backend(),
+    )
+    # Without the fix this would select ZERO nodes (first body overflows).
+    assert len(bundle.selected_nodes) == 1
+    assert len(bundle.citations) == 1
+    # Budget pressure is reported: the truncated body fills the budget.
+    assert bundle.char_budget_used == 10
+    assert "## Citations" in bundle.body
+
+
+def test_synthesize_without_key_falls_back(monkeypatch) -> None:
+    """synthesize=True with NO API key returns the deterministic body (no raise)."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    graph = _connected_graph()
+    det = compile_context(
+        graph, project_root=None, query="gaussian splatting",
+        budget=8000, synthesize=False, backend=_backend(),
+    )
+    syn = compile_context(
+        graph, project_root=None, query="gaussian splatting",
+        budget=8000, synthesize=True, backend=_backend(),
+    )
+    # No exception, synthesis disabled, deterministic body preserved.
+    assert syn.synthesized is False
+    assert syn.body == det.body
+
+
 def test_empty_query_no_seeds_is_valid() -> None:
     graph = _connected_graph()
     bundle = compile_context(graph, project_root=None, query="", backend=_backend())
