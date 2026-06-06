@@ -296,6 +296,15 @@ def test_deterministic_verdict_is_pure_and_stable():
     b3 = _node("SessionInsight:b", "roughly the same length namer", sid="s")
     assert _deterministic_verdict(a3, b3).verdict == "a_obsoletes_b"
 
+    # Codex blocker regression: session id is DECISIVE in BOTH directions. When
+    # ``a`` is the NEWER session (sid_a > sid_b) but ``b`` has the longer name,
+    # the newer finding (a) must obsolete the older (b) — session id must NOT
+    # fall through to name length and let the OLDER finding win (which would
+    # suppress the current finding under default-on supersede).
+    a4 = _node("SessionInsight:a", "short", sid="sess-9")  # newer session
+    b4 = _node("SessionInsight:b", "a much longer older-session name", sid="sess-1")
+    assert _deterministic_verdict(a4, b4).verdict == "a_obsoletes_b"
+
 
 def test_supersede_default_path_byte_idempotent(tmp_path: Path, three_insights):
     """Two clientless runs over identical graphs mint an identical sorted set

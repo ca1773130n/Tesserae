@@ -306,15 +306,20 @@ def _deterministic_verdict(a: ResearchNode, b: ResearchNode) -> SupersedeJudgeme
     over the same graph yield byte-identical verdicts.
 
     Rule order:
-      1. both have session_id and ``sid_b > sid_a`` → ``b_obsoletes_a``
-         (later session id wins).
+      1. both have session_id and they DIFFER → the LATER session id wins,
+         DECISIVELY in both directions (never fall through to name length —
+         the newer finding must obsolete the older one regardless of name).
       2. ``len(b.name) > len(a.name) * 1.1`` → ``b_obsoletes_a``
-         (more specific / longer name wins).
+         (more specific / longer name wins) — only when session ids tie/absent.
       3. else → ``a_obsoletes_b`` (stable smaller-id fallback).
     """
     sid_a, sid_b = _session_id(a), _session_id(b)
-    if sid_a and sid_b and sid_b > sid_a:
-        return SupersedeJudgement(verdict="b_obsoletes_a", rationale="newer session id")
+    if sid_a and sid_b and sid_a != sid_b:
+        # Later session id wins, decisively (Codex blocker: the older case
+        # must NOT fall through to name length and let an older finding win).
+        if sid_b > sid_a:
+            return SupersedeJudgement(verdict="b_obsoletes_a", rationale="newer session id")
+        return SupersedeJudgement(verdict="a_obsoletes_b", rationale="newer session id")
     if len(b.name) > len(a.name) * 1.1:
         return SupersedeJudgement(
             verdict="b_obsoletes_a", rationale="more specific name"

@@ -134,7 +134,10 @@ def compute_recurring_confidence(
             # Numeric, content-derived score in (0, 1]: 3 sessions -> 0.5,
             # 4 -> 0.75, 5+ -> 1.0 (capped). Re-derived from the distinct-
             # session count every compile; NO datetime.now() / accumulation.
-            score = min(1.0, (count - 1) / (2 * threshold - 2))
+            # ``max(1, ...)`` guards a degenerate ``threshold<=1`` config
+            # against division by zero (Codex minor).
+            denom = max(1, 2 * threshold - 2)
+            score = min(1.0, (count - 1) / denom)
             reinforced[root] = score
 
     if reinforced:

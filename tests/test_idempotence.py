@@ -241,7 +241,6 @@ def test_compile_byte_idempotent_with_confidence_and_supersedes(tmp_path: Path) 
         assert "confidence" not in (node.get("metadata") or {}), (
             f"node {node['id']} leaked confidence into graph.json metadata"
         )
-    assert '"confidence"' not in graph_path.read_text(encoding="utf-8") or True
 
     # Second compile over the unchanged corpus -> byte-identical.
     wiki.compile(session_options=opts, vault_pull=False)
