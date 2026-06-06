@@ -43,10 +43,11 @@ def test_three_session_recurrence_reinforces_high() -> None:
     graph = ResearchGraph(nodes=nodes, edges=[])
 
     out = compute_recurring_confidence(graph)
-    # Canonical (smallest id) carries "high".
+    # Canonical (smallest id) carries the numeric recurrence confidence.
+    # KB-05: 3 distinct sessions → min(1.0, (3-1)/(2*3-2)) = 0.5.
     canonical = min(n.id for n in nodes)
-    assert out.get(canonical) == "high"
-    assert set(out.values()) == {"high"}
+    assert out.get(canonical) == 0.5
+    assert set(out.values()) == {0.5}
 
 
 def test_two_session_recurrence_does_not_reinforce() -> None:
@@ -90,7 +91,8 @@ def test_supersedes_chain_clusters_across_sessions() -> None:
 
     out = compute_recurring_confidence(graph)
     canonical = min(n.id for n in (a, b, c))
-    assert out.get(canonical) == "high"
+    # 3 sessions linked via supersedes → numeric 0.5 (KB-05 scheme).
+    assert out.get(canonical) == 0.5
 
 
 def ResearchEdge_supersedes(source: str, target: str):

@@ -12,7 +12,7 @@ import json
 import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from .research_graph import ResearchGraph, ResearchNode, ResearchNodeType, stable_id
 
@@ -43,6 +43,8 @@ class TemporalFact:
     valid_to: Optional[str] = None
     current: bool = True
     invalidated_by: List[str] = field(default_factory=list)
+    # May hold a numeric-as-text value ("0.75") for reinforced nodes sourced
+    # from node_memory, or a label ("high"/"medium"/"low") otherwise.
     confidence: str = "medium"
     provenance: Dict[str, object] = field(default_factory=dict)
     metadata: Dict[str, object] = field(default_factory=dict)
@@ -54,7 +56,12 @@ class TemporalFact:
 class TemporalFactProjector:
     """Project validated ResearchGraph edges into temporal, provenance-rich facts."""
 
-    def project(self, graph: ResearchGraph) -> List[TemporalFact]:
+    def project(
+        self,
+        graph: ResearchGraph,
+        *,
+        memory_by_id: Optional[Dict[str, Any]] = None,
+    ) -> List[TemporalFact]:
         nodes = {node.id: node for node in graph.nodes}
         facts: List[TemporalFact] = []
         edge_to_fact_id: Dict[tuple, str] = {}
@@ -63,7 +70,10 @@ class TemporalFactProjector:
             obj = nodes.get(edge.target)
             if not subject or not obj:
                 continue
-            fact = self._fact_from_edge(subject, edge.type, obj, edge.evidence, edge.metadata)
+            fact = self._fact_from_edge(
+                subject, edge.type, obj, edge.evidence, edge.metadata,
+                memory_by_id=memory_by_id,
+            )
             facts.append(fact)
             edge_to_fact_id[(fact.subject_id, fact.predicate, fact.object_id)] = fact.id
 
@@ -86,8 +96,14 @@ class TemporalFactProjector:
                 updated.append(fact)
         return updated
 
-    def write_jsonl(self, graph: ResearchGraph, path: str | Path) -> List[TemporalFact]:
-        facts = self.project(graph)
+    def write_jsonl(
+        self,
+        graph: ResearchGraph,
+        path: str | Path,
+        *,
+        memory_by_id: Optional[Dict[str, Any]] = None,
+    ) -> List[TemporalFact]:
+        facts = self.project(graph, memory_by_id=memory_by_id)
         output = Path(path)
         output.parent.mkdir(parents=True, exist_ok=True)
         tmp = output.with_suffix(".tmp")
@@ -96,10 +112,33 @@ class TemporalFactProjector:
         os.replace(tmp, output)
         return facts
 
-    def _fact_from_edge(self, subject: ResearchNode, predicate: str, obj: ResearchNode, evidence: Optional[str], metadata: Dict[str, object]) -> TemporalFact:
+    def _fact_from_edge(self, subject: ResearchNode, predicate: str, obj: ResearchNode, evidence: Optional[str], metadata: Dict[str, object], *, memory_by_id: Optional[Dict[str, Any]] = None) -> TemporalFact:
         valid_from = first_string(subject.metadata.get("analysis_date"), obj.metadata.get("analysis_date"), metadata.get("analysis_date"))
         source_path = first_string(subject.source_path, obj.source_path, metadata.get("source_path"))
-        confidence = first_string(metadata.get("confidence"), subject.metadata.get("confidence"), obj.metadata.get("confidence")) or infer_confidence(subject, obj, evidence)
+        # Consult the per-compile node_memory sidecar FIRST for a (numeric)
+        # confidence. NodeMemoryRow.confidence is stored as text in SQLite
+        # ("0.75") but format defensively for both str and float.
+        # CRITICAL byte-idempotence: NEVER write mem_conf back onto
+        # node.metadata — ResearchNode.model_dump() serialises metadata into
+        # graph.json, and stamping confidence there reintroduces the 4x-broken
+        # blind spot. The graph object MUST stay unmutated here.
+        mem_conf = None
+        if memory_by_id:
+            for nid in (subject.id, obj.id):
+                row = memory_by_id.get(nid)
+                raw = getattr(row, "confidence", None) if row else None
+                if raw is not None and str(raw) != "":
+                    mem_conf = (
+                        f"{float(raw):.2f}".rstrip("0").rstrip(".")
+                        if isinstance(raw, (int, float))
+                        else str(raw)
+                    )
+                    break
+        confidence = (
+            mem_conf
+            or first_string(metadata.get("confidence"), subject.metadata.get("confidence"), obj.metadata.get("confidence"))
+            or infer_confidence(subject, obj, evidence)
+        )
         fact_id = stable_id("TemporalFact", f"{subject.id}|{predicate}|{obj.id}|{evidence or ''}")
         return TemporalFact(
             id=fact_id,
@@ -126,10 +165,11 @@ def first_string(*values: object) -> Optional[str]:
 
 
 def infer_confidence(subject: ResearchNode, obj: ResearchNode, evidence: Optional[str]) -> str:
-    # KB-05: honour a node_memory-sourced confidence override. The orchestrator
-    # (05-03) copies node_memory.confidence onto node.metadata['confidence'] at
-    # read-back; when present it wins over the heuristic regardless of caller.
-    # When absent the path below is byte-identical to the original heuristic.
+    # KB-05: infer_confidence still honours a metadata-level confidence override
+    # as the TEXTUAL fallback (when present it wins over the heuristic regardless
+    # of caller). The numeric node_memory path now flows through _fact_from_edge's
+    # memory_by_id arg and is NEVER stamped onto node.metadata (byte-idempotence).
+    # When no override is present the path below is byte-identical to the original.
     override = first_string(
         subject.metadata.get("confidence"), obj.metadata.get("confidence")
     )

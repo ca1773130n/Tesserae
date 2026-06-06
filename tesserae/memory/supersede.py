@@ -285,6 +285,48 @@ def _ask_llm(
 # ---------------------------------------------------------------------------
 
 
+def _session_id(node: ResearchNode) -> str:
+    """Content-derived session id string for deterministic arbitration.
+
+    Reads ``session_id`` from node metadata; ``""`` when absent. Kept
+    self-contained (reinforce.py has its own copy — no cross-module import)
+    so the supersede pass has no hidden dependencies.
+    """
+    sid = node.metadata.get("session_id") if node.metadata else None
+    return str(sid) if sid else ""
+
+
+def _deterministic_verdict(a: ResearchNode, b: ResearchNode) -> SupersedeJudgement:
+    """Credential-free arbitration for a near-dup pair (KB-03).
+
+    Callers pass the canonicalised ``a.id < b.id`` pair from
+    :func:`_candidate_pairs`, so ``a`` is the smaller-id node. Pure function:
+    reads ONLY immutable content fields (session-id metadata string, name
+    length, id ordering) — no ``datetime.now()``, no RNG, no I/O — so two runs
+    over the same graph yield byte-identical verdicts.
+
+    Rule order:
+      1. both have session_id and they DIFFER → the LATER session id wins,
+         DECISIVELY in both directions (never fall through to name length —
+         the newer finding must obsolete the older one regardless of name).
+      2. ``len(b.name) > len(a.name) * 1.1`` → ``b_obsoletes_a``
+         (more specific / longer name wins) — only when session ids tie/absent.
+      3. else → ``a_obsoletes_b`` (stable smaller-id fallback).
+    """
+    sid_a, sid_b = _session_id(a), _session_id(b)
+    if sid_a and sid_b and sid_a != sid_b:
+        # Later session id wins, decisively (Codex blocker: the older case
+        # must NOT fall through to name length and let an older finding win).
+        if sid_b > sid_a:
+            return SupersedeJudgement(verdict="b_obsoletes_a", rationale="newer session id")
+        return SupersedeJudgement(verdict="a_obsoletes_b", rationale="newer session id")
+    if len(b.name) > len(a.name) * 1.1:
+        return SupersedeJudgement(
+            verdict="b_obsoletes_a", rationale="more specific name"
+        )
+    return SupersedeJudgement(verdict="a_obsoletes_b", rationale="stable id ordering")
+
+
 def _finding_groups(
     nodes: Sequence[ResearchNode],
 ) -> Dict[str, List[ResearchNode]]:
@@ -298,6 +340,10 @@ def _finding_groups(
     return groups
 
 
+# NOTE (Phase 5.1): candidate generation stays Jaccard-only. Model2Vec
+# embedding-based candidate enrichment (retrieval/hybrid.active_embedding_backend,
+# backend_is_semantic) is DEFERRED to Phase 6+ — Jaccard is deterministic
+# and byte-idempotent; embedding candidates add a model-version dependency.
 def _candidate_pairs(
     nodes: Sequence[ResearchNode], threshold: float
 ) -> List[Tuple[ResearchNode, ResearchNode, float]]:
@@ -315,19 +361,20 @@ def _candidate_pairs(
 def run_supersede_pass(
     graph: ResearchGraph,
     *,
-    json_client: Optional[LLMJsonClient],
+    json_client: Optional[LLMJsonClient] = None,
     cache_dir: Path,
     similarity_threshold: float = 0.55,
 ) -> ResearchGraph:
     """Mint ``supersedes`` edges; returns the mutated graph.
 
-    The pass is a no-op when ``json_client`` is ``None`` (we still need
-    a backend to render the obsolete/distinct judgement). All existing
-    nodes and edges are preserved; new edges are appended in-place.
+    DEFAULT-ON (KB-03): with no ``json_client`` the pass mints
+    deterministic, content-derived, byte-idempotent edges via
+    :func:`_deterministic_verdict`. When a ``json_client`` IS present the
+    LLM verdict (content-keyed disk cache → ``_ask_llm``) takes precedence
+    and OVERRIDES the deterministic fallback; the deterministic verdict is
+    used only when the LLM is unavailable or returns no valid verdict. All
+    existing nodes and edges are preserved; new edges are appended in-place.
     """
-    if json_client is None:
-        return graph
-
     groups = _finding_groups(graph.nodes)
     if not groups:
         return graph
@@ -339,15 +386,21 @@ def run_supersede_pass(
     for kind, nodes in groups.items():
         pairs = _candidate_pairs(nodes, similarity_threshold)
         for a, b, sim in pairs:
-            cache_path = cache_dir / f"{_pair_hash(a, b)}.json"
             judgement: Optional[SupersedeJudgement] = None
-            if cache_path.exists():
-                judgement = _read_cached_judgement(cache_path, a, b)
-            if judgement is None:
-                judgement = _ask_llm(json_client, a, b)
+            if json_client is not None:
+                # LLM path — content-keyed disk cache (unchanged semantics).
+                # Only touch the filesystem when a client is actually present.
+                cache_path = cache_dir / f"{_pair_hash(a, b)}.json"
+                if cache_path.exists():
+                    judgement = _read_cached_judgement(cache_path, a, b)
                 if judgement is None:
-                    continue
-                _write_cached_judgement(cache_path, (a, b), judgement)
+                    judgement = _ask_llm(json_client, a, b)
+                    if judgement is not None:
+                        _write_cached_judgement(cache_path, (a, b), judgement)
+            # LLM unavailable/failed → deterministic fallback (DEFAULT path).
+            # Never cached to disk: recomputed cheaply and purely.
+            if judgement is None:
+                judgement = _deterministic_verdict(a, b)
 
             if not judgement.is_supersede():
                 continue

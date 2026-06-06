@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import Any, List, Optional, Union
 
+import pytest
+
 from tesserae.memory.contradiction import (
     detect_contradicting_pairs,
     run_contradiction_resolution,
@@ -254,7 +256,8 @@ def test_recurring_insight_across_three_sessions_is_high():
         ]
     )
     conf = compute_recurring_confidence(graph, threshold=3)
-    assert set(conf.values()) == {"high"}
+    # KB-05: numeric scheme — 3 distinct sessions -> 0.5.
+    assert all(v == pytest.approx(0.5) for v in conf.values())
     assert len(conf) >= 1  # the canonical surviving node reinforced
 
 
@@ -292,11 +295,64 @@ def test_supersedes_chain_clusters_distinct_sessions():
         ],
     )
     conf = compute_recurring_confidence(graph, threshold=3)
-    assert "high" in conf.values()
+    # 3 distinct sessions clustered via supersedes chain -> 0.5.
+    assert pytest.approx(0.5) in conf.values()
 
 
 def test_recurring_empty_graph():
     assert compute_recurring_confidence(ResearchGraph()) == {}
+
+
+def test_compute_recurring_confidence_is_numeric_and_monotonic():
+    """KB-05: numeric confidence rises with cross-session frequency.
+
+    3 distinct sessions -> 0.5, 4 -> 0.75, 5+ -> 1.0 (capped), deterministic.
+    """
+    name = "Reuse the deterministic supersede verdict to skip the LLM"
+
+    def _graph(n_sessions: int) -> ResearchGraph:
+        return ResearchGraph(
+            nodes=[
+                _insight(f"n{i}", name, f"sess{i}") for i in range(n_sessions)
+            ]
+        )
+
+    three = compute_recurring_confidence(_graph(3), threshold=3)
+    four = compute_recurring_confidence(_graph(4), threshold=3)
+    five = compute_recurring_confidence(_graph(5), threshold=3)
+    six = compute_recurring_confidence(_graph(6), threshold=3)
+
+    assert all(isinstance(v, float) for v in three.values())
+    assert all(v == pytest.approx(0.5) for v in three.values()) and three
+    assert all(v == pytest.approx(0.75) for v in four.values()) and four
+    assert all(v == pytest.approx(1.0) for v in five.values()) and five
+    # 6 sessions stays capped at 1.0 (monotonic, non-increasing past cap).
+    assert all(v == pytest.approx(1.0) for v in six.values()) and six
+
+
+def test_temporal_fact_confidence_from_memory_by_id():
+    """The sidecar (memory_by_id) wins over the heuristic and never mutates the graph."""
+    from tesserae.temporal import TemporalFactProjector
+
+    subj = _node("subj", ResearchNodeType.SESSION_INSIGHT)
+    obj = _node("obj", ResearchNodeType.SESSION_INSIGHT)
+    graph = ResearchGraph(
+        nodes=[subj, obj],
+        edges=[ResearchEdge(source="subj", target="obj", type="shares_concept_with")],
+    )
+
+    class _Row:
+        confidence = "0.75"
+
+    facts = TemporalFactProjector().project(
+        graph, memory_by_id={"subj": _Row()}
+    )
+    assert len(facts) == 1
+    assert facts[0].confidence == "0.75"  # sidecar wins over heuristic
+
+    # CRITICAL byte-idempotence: graph nodes must NOT have gained a confidence key.
+    for node in graph.nodes:
+        assert "confidence" not in node.metadata
 
 
 # ---------------------------------------------------------------------------
@@ -319,7 +375,9 @@ def test_infer_confidence_heuristic_unchanged_without_override():
 
 
 def test_infer_confidence_honours_node_memory_override():
-    # Orchestrator (05-03) stamps node_memory.confidence onto node metadata.
+    # infer_confidence still honours a metadata-level confidence override as the
+    # TEXTUAL fallback (the numeric node_memory path now flows through
+    # _fact_from_edge's memory_by_id arg and is never stamped onto metadata).
     subj = _node("s", ResearchNodeType.PERFORMANCE_CLAIM, confidence="high")
     obj = _node("o", ResearchNodeType.PAPER)
     # Without evidence the heuristic would say "low"; override wins.
