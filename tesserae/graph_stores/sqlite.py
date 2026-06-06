@@ -465,6 +465,37 @@ class SqliteGraphStore:
             return False
         return all(nid in covered for nid in ids)
 
+    def provenance_covers_edges(
+        self, edge_triples: Iterable[Tuple[str, str, str]]
+    ) -> bool:
+        """True when EVERY ``(source, type, target)`` triple has at least one
+        ``edge_provenance`` row.
+
+        Edge analog of :meth:`provenance_covers_nodes` (major #5): the Plan-02
+        readiness gate asks whether the sidecar's ``edge_provenance`` covers the
+        prior graph's edge triples before trusting the differ to tombstone
+        edges; an uncovered triple (old DB, interrupted compile) forces a full
+        recompile rather than leaving a stale cross-file edge un-tombstoned.
+
+        Empty input is vacuously covered (returns ``True``). On any SQLite error
+        the sidecar is treated as untrustworthy (returns ``False``), matching
+        the conservative fall-back in :meth:`provenance_covers_nodes`.
+        """
+        triples = list(dict.fromkeys(edge_triples))
+        if not triples:
+            return True
+        try:
+            with self._connect() as con:
+                covered = {
+                    (row[0], row[1], row[2])
+                    for row in con.execute(
+                        "select distinct source, type, target from edge_provenance"
+                    ).fetchall()
+                }
+        except sqlite3.Error:
+            return False
+        return all(t in covered for t in triples)
+
     def delete_node(self, node_id: str) -> bool:
         """Delete a single node, its provenance, and all incident edges + edge
         provenance, in one transaction. Returns True if a node row was removed.
