@@ -169,6 +169,19 @@ EVAL_ENTITIES_FIXTURE_23537: Path = (
     DATA_ROOT / "daily/2026-04-29/papers/2604.23537/paper.md"
 )
 
+# Numeric-result fixture. 2604.21681's abstract reports concrete metric gains
+# ("+4 mAP" on pose, "+24.3 mIoU" on body-part segmentation), so it is the
+# corpus anchor that guarantees ``ResearchNodeType.RESULT`` nodes get minted.
+# The named fixtures above (15941 / 23537) only carry comparative *qualitative*
+# claims — they emit PerformanceClaim nodes but no numeric Result — so without
+# pinning this day the ``result_ids`` assertion silently depends on whatever
+# happens to fall inside the sliding last-30-days window. Corpus growth had
+# already pushed the only numeric-result paper out of that window, flipping the
+# test red even though the extractor was working correctly.
+EVAL_ENTITIES_FIXTURE_21681: Path = (
+    DATA_ROOT / "daily/2026-04-27/papers/2604.21681/paper.md"
+)
+
 # Multiple daily folders re-ingest the same arxiv id; we accept any of them.
 REPO_PAIR_FIXTURE_CANDIDATES: Tuple[Path, ...] = (
     DATA_ROOT / "daily/2026-04-23/papers/2509.23563/repo.md",
@@ -195,6 +208,7 @@ _FIXTURE_DAY_NAMES: frozenset[str] = frozenset(
         AUTHORS_FIXTURE,
         EVAL_ENTITIES_FIXTURE_15941,
         EVAL_ENTITIES_FIXTURE_23537,
+        EVAL_ENTITIES_FIXTURE_21681,
         *REPO_PAIR_FIXTURE_CANDIDATES,
     )
 )
@@ -339,6 +353,10 @@ def test_benchmarks_and_datasets_extracted_for_known_papers(
         pytest.skip(f"fixture missing: {EVAL_ENTITIES_FIXTURE_15941}")
     if not EVAL_ENTITIES_FIXTURE_23537.exists():
         pytest.skip(f"fixture missing: {EVAL_ENTITIES_FIXTURE_23537}")
+    # The numeric-Result assertion below is anchored on this fixture; if it is
+    # absent (minimal CI sandbox) skip rather than fail spuriously.
+    if not EVAL_ENTITIES_FIXTURE_21681.exists():
+        pytest.skip(f"fixture missing: {EVAL_ENTITIES_FIXTURE_21681}")
 
     benchmark_names = {
         node.name.lower()
