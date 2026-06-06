@@ -21,6 +21,8 @@ import pytest
 from tesserae.memory.decay import compute_decay_score
 from tesserae.memory.supersede import (
     SUPERSEDE_EDGE,
+    SupersedeJudgement,
+    _deterministic_verdict,
     jaccard,
     run_supersede_pass,
     supersede_pass_enabled,
@@ -250,12 +252,96 @@ def test_supersede_warm_cache_hits_under_reminted_node_ids(
     assert edges2[0].target == re_dup.id
 
 
-def test_supersede_pass_no_client_is_no_op(tmp_path: Path, three_insights):
+def test_supersede_pass_no_client_mints_deterministic_edges(
+    tmp_path: Path, three_insights
+):
+    """KB-03 default-on: with no LLM client the pass STILL mints a
+    deterministic supersedes edge for the near-dup pair (inverted from the
+    old no-op assertion)."""
     graph = ResearchGraph(nodes=list(three_insights), edges=[])
     out = run_supersede_pass(
         graph, json_client=None, cache_dir=tmp_path / "cache"
     )
-    assert out.edges == [], "no LLM client → no edges minted"
+    sup = [e for e in out.edges if e.type == SUPERSEDE_EDGE]
+    assert sup, "no client → deterministic supersedes edge minted"
+    # No cache file should be written on the deterministic (clientless) path.
+    assert not list((tmp_path / "cache").glob("*.json"))
+
+
+def test_deterministic_verdict_is_pure_and_stable():
+    """``_deterministic_verdict`` is a pure function: identical output across
+    calls, and the three documented rule branches resolve as specified."""
+    def _node(id_: str, name: str, sid: str = "") -> ResearchNode:
+        meta = {"session_id": sid} if sid else {}
+        return ResearchNode(
+            id=id_, name=name, type=ResearchNodeType.SESSION_INSIGHT, metadata=meta
+        )
+
+    # Branch 1: both session ids set, sid_b > sid_a → b_obsoletes_a.
+    a1 = _node("SessionInsight:a", "Same short name", sid="sess-1")
+    b1 = _node("SessionInsight:b", "Same short name", sid="sess-2")
+    v1 = _deterministic_verdict(a1, b1)
+    v1_again = _deterministic_verdict(a1, b1)
+    assert isinstance(v1, SupersedeJudgement)
+    assert (v1.verdict, v1.rationale) == (v1_again.verdict, v1_again.rationale)
+    assert v1.verdict == "b_obsoletes_a"
+
+    # Branch 2: equal sids, len(b.name) > len(a.name)*1.1 → b_obsoletes_a.
+    a2 = _node("SessionInsight:a", "short", sid="s")
+    b2 = _node("SessionInsight:b", "a much longer and more specific name", sid="s")
+    assert _deterministic_verdict(a2, b2).verdict == "b_obsoletes_a"
+
+    # Branch 3: equal sids, equal-ish names → a_obsoletes_b (stable fallback).
+    a3 = _node("SessionInsight:a", "roughly the same length name", sid="s")
+    b3 = _node("SessionInsight:b", "roughly the same length namer", sid="s")
+    assert _deterministic_verdict(a3, b3).verdict == "a_obsoletes_b"
+
+
+def test_supersede_default_path_byte_idempotent(tmp_path: Path, three_insights):
+    """Two clientless runs over identical graphs mint an identical sorted set
+    of (source, type, target) supersedes tuples — content-derived, byte-idempotent."""
+    def _run() -> set:
+        graph = ResearchGraph(nodes=list(three_insights), edges=[])
+        out = run_supersede_pass(
+            graph, json_client=None, cache_dir=tmp_path / "cache"
+        )
+        return {
+            (e.source, e.type, e.target)
+            for e in out.edges
+            if e.type == SUPERSEDE_EDGE
+        }
+
+    first = _run()
+    second = _run()
+    assert first, "deterministic path must mint at least one edge"
+    assert first == second, "supersedes edge set must be byte-identical across runs"
+
+
+def test_supersede_llm_verdict_overrides_deterministic(
+    tmp_path: Path, three_insights
+):
+    """When a client is present its valid verdict OVERRIDES the deterministic
+    fallback. The deterministic rule picks dup->fresh (a_obsoletes_b, a=dup);
+    the LLM returns the OPPOSITE (b_obsoletes_a → fresh supersedes dup)."""
+    fresh, _old, dup = three_insights
+    assert dup.id < fresh.id  # a=dup, b=fresh in _candidate_pairs
+
+    # Sanity: deterministic verdict would be a_obsoletes_b (dup supersedes fresh).
+    assert _deterministic_verdict(dup, fresh).verdict == "a_obsoletes_b"
+
+    graph = ResearchGraph(nodes=list(three_insights), edges=[])
+    client = _ScriptedClient(
+        [{"verdict": "b_obsoletes_a", "rationale": "LLM says fresh wins."}]
+    )
+    out = run_supersede_pass(
+        graph, json_client=client, cache_dir=tmp_path / "cache"
+    )
+    assert client.calls == 1
+    sup = [e for e in out.edges if e.type == SUPERSEDE_EDGE]
+    assert len(sup) == 1
+    # LLM verdict (fresh supersedes dup) overrides deterministic (dup wins).
+    assert sup[0].source == fresh.id
+    assert sup[0].target == dup.id
 
 
 def test_supersede_pass_distinct_verdict_skips_edge(
