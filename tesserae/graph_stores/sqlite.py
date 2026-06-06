@@ -465,6 +465,37 @@ class SqliteGraphStore:
             return False
         return all(nid in covered for nid in ids)
 
+    def provenance_covers_edges(
+        self, edge_triples: Iterable[Tuple[str, str, str]]
+    ) -> bool:
+        """True when EVERY ``(source, type, target)`` triple has at least one
+        ``edge_provenance`` row.
+
+        Edge analog of :meth:`provenance_covers_nodes` (major #5): the Plan-02
+        readiness gate asks whether the sidecar's ``edge_provenance`` covers the
+        prior graph's edge triples before trusting the differ to tombstone
+        edges; an uncovered triple (old DB, interrupted compile) forces a full
+        recompile rather than leaving a stale cross-file edge un-tombstoned.
+
+        Empty input is vacuously covered (returns ``True``). On any SQLite error
+        the sidecar is treated as untrustworthy (returns ``False``), matching
+        the conservative fall-back in :meth:`provenance_covers_nodes`.
+        """
+        triples = list(dict.fromkeys(edge_triples))
+        if not triples:
+            return True
+        try:
+            with self._connect() as con:
+                covered = {
+                    (row[0], row[1], row[2])
+                    for row in con.execute(
+                        "select distinct source, type, target from edge_provenance"
+                    ).fetchall()
+                }
+        except sqlite3.Error:
+            return False
+        return all(t in covered for t in triples)
+
     def delete_node(self, node_id: str) -> bool:
         """Delete a single node, its provenance, and all incident edges + edge
         provenance, in one transaction. Returns True if a node row was removed.
@@ -502,62 +533,79 @@ class SqliteGraphStore:
         """
         if not source_paths:
             return set()
+        with self._connect() as con:
+            to_delete = self._delete_nodes_by_source_txn(con, source_paths)
+            con.commit()
+        return to_delete
+
+    def _delete_nodes_by_source_txn(
+        self, con: sqlite3.Connection, source_paths: Set[str]
+    ) -> Set[str]:
+        """Pure-DB node tombstoning on an OPEN connection — does NOT commit.
+
+        Atomic-tombstone helper (blocker #7): ``delete_nodes_by_source`` (one
+        commit) and ``delete_nodes_by_source_with_edges`` (one combined commit)
+        both reuse this body so node + edge tombstones land in a single
+        transaction and no concurrent reader observes a node tombstone before
+        its edge tombstone. Caller is responsible for committing.
+
+        Returns the set of node ids removed from ``nodes`` / ``node_provenance``.
+        """
+        if not source_paths:
+            return set()
 
         changed = list(source_paths)
         changed_ph = ",".join("?" for _ in changed)
-        with self._connect() as con:
-            candidates = {
-                row[0]
-                for row in con.execute(
-                    f"select distinct node_id from node_provenance"
-                    f" where source_path in ({changed_ph})",
-                    changed,
-                ).fetchall()
-            }
-            if not candidates:
-                # Still purge provenance rows for the changed sources.
-                con.execute(
-                    f"delete from node_provenance where source_path in ({changed_ph})",
-                    changed,
-                )
-                con.commit()
-                return set()
-
-            keepers = {
-                row[0]
-                for row in con.execute(
-                    f"select distinct node_id from node_provenance"
-                    f" where source_path not in ({changed_ph})",
-                    changed,
-                ).fetchall()
-            }
-            to_delete = candidates - keepers
-
-            if to_delete:
-                del_ph = ",".join("?" for _ in to_delete)
-                del_ids = list(to_delete)
-                con.execute(f"delete from nodes where id in ({del_ph})", del_ids)
-                con.execute(
-                    f"delete from node_provenance where node_id in ({del_ph})", del_ids
-                )
-                # Incident-edge cascade (Codex M6): a tombstoned node's
-                # incident edges + their edge provenance must go too, or the
-                # injected-store path leaves dangling edges.
-                con.execute(
-                    f"delete from edges where source in ({del_ph}) or target in ({del_ph})",
-                    del_ids + del_ids,
-                )
-                con.execute(
-                    f"delete from edge_provenance"
-                    f" where source in ({del_ph}) or target in ({del_ph})",
-                    del_ids + del_ids,
-                )
-            # Purge all provenance rows referencing the changed sources.
+        candidates = {
+            row[0]
+            for row in con.execute(
+                f"select distinct node_id from node_provenance"
+                f" where source_path in ({changed_ph})",
+                changed,
+            ).fetchall()
+        }
+        if not candidates:
+            # Still purge provenance rows for the changed sources.
             con.execute(
                 f"delete from node_provenance where source_path in ({changed_ph})",
                 changed,
             )
-            con.commit()
+            return set()
+
+        keepers = {
+            row[0]
+            for row in con.execute(
+                f"select distinct node_id from node_provenance"
+                f" where source_path not in ({changed_ph})",
+                changed,
+            ).fetchall()
+        }
+        to_delete = candidates - keepers
+
+        if to_delete:
+            del_ph = ",".join("?" for _ in to_delete)
+            del_ids = list(to_delete)
+            con.execute(f"delete from nodes where id in ({del_ph})", del_ids)
+            con.execute(
+                f"delete from node_provenance where node_id in ({del_ph})", del_ids
+            )
+            # Incident-edge cascade (Codex M6): a tombstoned node's
+            # incident edges + their edge provenance must go too, or the
+            # injected-store path leaves dangling edges.
+            con.execute(
+                f"delete from edges where source in ({del_ph}) or target in ({del_ph})",
+                del_ids + del_ids,
+            )
+            con.execute(
+                f"delete from edge_provenance"
+                f" where source in ({del_ph}) or target in ({del_ph})",
+                del_ids + del_ids,
+            )
+        # Purge all provenance rows referencing the changed sources.
+        con.execute(
+            f"delete from node_provenance where source_path in ({changed_ph})",
+            changed,
+        )
         return to_delete
 
     def delete_edges_by_source(self, source_paths: Set[str]) -> Set[Tuple[str, str, str]]:
@@ -574,65 +622,85 @@ class SqliteGraphStore:
         """
         if not source_paths:
             return set()
+        with self._connect() as con:
+            to_delete = self._delete_edges_by_source_txn(con, source_paths)
+            con.commit()
+        return to_delete
+
+    def _delete_edges_by_source_txn(
+        self, con: sqlite3.Connection, source_paths: Set[str]
+    ) -> Set[Tuple[str, str, str]]:
+        """Pure-DB edge tombstoning on an OPEN connection — does NOT commit.
+
+        Atomic-tombstone helper (blocker #7): shared by
+        ``delete_edges_by_source`` (one commit) and
+        ``delete_nodes_by_source_with_edges`` (one combined commit). Caller
+        commits. Returns the removed ``(source, type, target)`` triples.
+        """
+        if not source_paths:
+            return set()
 
         changed = list(source_paths)
         changed_ph = ",".join("?" for _ in changed)
-        with self._connect() as con:
-            candidates = {
-                (row[0], row[1], row[2])
-                for row in con.execute(
-                    f"select distinct source, type, target from edge_provenance"
-                    f" where source_path in ({changed_ph})",
-                    changed,
-                ).fetchall()
-            }
-            if not candidates:
-                con.execute(
-                    f"delete from edge_provenance where source_path in ({changed_ph})",
-                    changed,
-                )
-                con.commit()
-                return set()
-
-            keepers = {
-                (row[0], row[1], row[2])
-                for row in con.execute(
-                    f"select distinct source, type, target from edge_provenance"
-                    f" where source_path not in ({changed_ph})",
-                    changed,
-                ).fetchall()
-            }
-            to_delete = candidates - keepers
-
-            for source, etype, target in to_delete:
-                con.execute(
-                    "delete from edges where source = ? and type = ? and target = ?",
-                    (source, etype, target),
-                )
-                con.execute(
-                    "delete from edge_provenance"
-                    " where source = ? and type = ? and target = ?",
-                    (source, etype, target),
-                )
+        candidates = {
+            (row[0], row[1], row[2])
+            for row in con.execute(
+                f"select distinct source, type, target from edge_provenance"
+                f" where source_path in ({changed_ph})",
+                changed,
+            ).fetchall()
+        }
+        if not candidates:
             con.execute(
                 f"delete from edge_provenance where source_path in ({changed_ph})",
                 changed,
             )
-            con.commit()
+            return set()
+
+        keepers = {
+            (row[0], row[1], row[2])
+            for row in con.execute(
+                f"select distinct source, type, target from edge_provenance"
+                f" where source_path not in ({changed_ph})",
+                changed,
+            ).fetchall()
+        }
+        to_delete = candidates - keepers
+
+        for source, etype, target in to_delete:
+            con.execute(
+                "delete from edges where source = ? and type = ? and target = ?",
+                (source, etype, target),
+            )
+            con.execute(
+                "delete from edge_provenance"
+                " where source = ? and type = ? and target = ?",
+                (source, etype, target),
+            )
+        con.execute(
+            f"delete from edge_provenance where source_path in ({changed_ph})",
+            changed,
+        )
         return to_delete
 
     def delete_nodes_by_source_with_edges(
         self, source_paths: Set[str]
     ) -> Tuple[Set[str], Set[Tuple[str, str, str]]]:
         """Convenience: tombstone nodes then edges by changed source in ONE
-        logical differ step. Returns ``(removed_node_ids, removed_edge_keys)``.
+        atomic differ step. Returns ``(removed_node_ids, removed_edge_keys)``.
+
+        Single-transaction (blocker #7): node + edge tombstones share ONE
+        connection and ONE ``con.commit()`` so a concurrent daemon reader never
+        observes a node tombstone before its edge tombstone (atomic-read EC-4).
 
         Order matters: node tombstoning cascades incident edges first, then
         edge tombstoning handles edges whose endpoints SURVIVED but whose only
         asserting file changed (the stale-cross-file-edge case, Codex B1).
         """
-        removed_nodes = self.delete_nodes_by_source(source_paths)
-        removed_edges = self.delete_edges_by_source(source_paths)
+        with self._connect() as con:
+            removed_nodes = self._delete_nodes_by_source_txn(con, source_paths)
+            removed_edges = self._delete_edges_by_source_txn(con, source_paths)
+            con.commit()
         return removed_nodes, removed_edges
 
     def surviving_source_paths(self, node_ids: Set[str]) -> Dict[str, str]:

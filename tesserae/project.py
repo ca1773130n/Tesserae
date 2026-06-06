@@ -18,7 +18,7 @@ from dataclasses import dataclass, field, replace as dataclasses_replace
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Set, Tuple
 
 from .agent_harness import AgentHarnessAdapter, SUPPORTED_AGENT_HARNESSES
 from .batch import BatchIngestRunner, sha256_text
@@ -480,33 +480,46 @@ class ProjectWiki:
         if changed_only and self.paths.graph.exists():
             incremental_enabled = bool(cfg.get("incremental_compile", False))
             if incremental_enabled:
-                # EXPERIMENTAL — incremental compile is byte-parity-correct for
-                # additive/modify/content-reduction/file-deletion edits, but a
-                # Codex re-review found remaining divergence sources (surviving-
-                # node payload reconciliation, provenance coverage for non-
-                # extraction graph producers, full-compile provenance reconcile).
-                # It is OFF by default and gated behind this flag until the
-                # follow-up phase closes those. Do not enable in production yet.
+                # EXPERIMENTAL — incremental is byte-identical to a full compile
+                # for the parity-gated edit shapes (additive K=1/5/21,
+                # content-reduction, file-deletion, RENAME, alias-identity change,
+                # both-endpoints-move), but a Codex re-review found remaining
+                # divergence for MULTI-OWNER payload (re-extraction only re-runs
+                # the canonical co-owner, not the union), producer-layer removal
+                # (producer-owned nodes aren't tombstoned on incremental), the
+                # over-cap fallback (not a true full compile), and untracked
+                # post-pass edges. Tracked in 04.1-FOLLOWUP. The flag stays OFF
+                # by default (full recompile = correct); do not enable in
+                # production until those close.
                 logger.warning(
                     "incremental_compile is ENABLED but EXPERIMENTAL: byte-parity "
-                    "with a full compile is not guaranteed for all edit shapes "
-                    "(known gaps tracked for a follow-up phase). The default "
-                    "(flag off) full recompile is the safe path."
+                    "with a full compile holds for the parity-gated edit shapes, "
+                    "but known gaps remain (multi-owner payload, producer-layer "
+                    "removal, over-cap fallback). The default (flag off) full "
+                    "recompile is the safe, supported path."
                 )
                 _prior = _strip_generated_layer(load_graph_file(self.paths.graph))
                 if _prior.nodes or _prior.edges:
+                    _prior_edge_triples = {
+                        (e.source, e.type, e.target) for e in _prior.edges
+                    }
                     if store is not None:
                         # Injected store: trust its provenance surface +
                         # coverage of the prior graph (no schema-creation risk
-                        # from our side).
+                        # from our side). Edge coverage required (Codex #5).
                         incremental_active = self._provenance_ready(
-                            store, [n.id for n in _prior.nodes]
+                            store,
+                            [n.id for n in _prior.nodes],
+                            prior_edge_triples=_prior_edge_triples,
                         )
                     else:
                         # Default SQLite path: inspect the on-disk db WITHOUT
-                        # constructing the schema-creating store.
+                        # constructing the schema-creating store. Edge coverage
+                        # required (Codex #2).
                         incremental_active = self._sqlite_provenance_ready(
-                            self.paths.sqlite, [n.id for n in _prior.nodes]
+                            self.paths.sqlite,
+                            [n.id for n in _prior.nodes],
+                            prior_edge_triples=_prior_edge_triples,
                         )
                     if incremental_active:
                         prior_graph_for_diff = _prior
@@ -563,10 +576,19 @@ class ProjectWiki:
         graph = ResearchCorpusAnalyzer().summarize_trends(graphs, min_sources=min_trend_sources) if trends else base_graph
         if kind in {"CodeProject", "Repository", "Project"}:
             code_graph = CodeGraphExtractor(self.project_root).extract_paths(code_inputs)
+            _before_code = graph
             graph = merge_graphs([graph, code_graph])
+            # Codex #6: code-graph re-derives its nodes/edges from the repo every
+            # compile, so they carry no extraction-file provenance. Attribute the
+            # ids it minted this compile to "__code_graph__".
+            self._record_producer_provenance("__code_graph__", _before_code, graph)
         cfg = self.config()
+        _before_ua = graph
         graph = self._merge_configured_understand_anything_graph(graph, cfg)
+        self._record_producer_provenance("__understand_anything__", _before_ua, graph)
+        _before_rag = graph
         graph = self._merge_configured_raganything_graph(graph, cfg)
+        self._record_producer_provenance("__raganything__", _before_rag, graph)
         # Provenance-driven incremental differ (Codex B1/B2/B3/B4). Only runs
         # when an incremental compile is genuinely admissible — decided up
         # front in ``incremental_active`` (flag on + sidecar present + covers
@@ -627,6 +649,25 @@ class ProjectWiki:
                 # one, and ``iter_markdown_files`` is sorted). We reproduce that
                 # exact choice from the post-tombstone provenance sidecar so the
                 # incremental node scalars match a full compile byte-for-byte.
+                # Blocker #3 (Plan 03): surviving-owner RE-EXTRACTION. A
+                # cross-file node survives the subtractive edit because an
+                # UNCHANGED co-owner file still asserts it — but the prior node
+                # we kept carries the PRIOR merged payload (name / aliases /
+                # description / metadata), and surviving cross-file EDGES keep
+                # their prior evidence. When the changed file is the one that
+                # WON attribution (e.g. it carried the title-case alias that
+                # ``prefer_research_node`` chose), the kept payload diverges
+                # from a full compile of the post-edit corpus. Re-pointing
+                # ``source_path`` alone (below) is not enough. We RE-EXTRACT
+                # the surviving co-owner files and re-merge through the exact
+                # ``merge_graphs`` / ``prefer_research_node`` /
+                # ``_merge_same_type_aliased_duplicates`` code a full compile
+                # uses, so the canonical winner — and its edge evidence — is
+                # re-derived byte-identically. (04.1-RESEARCH.md
+                # Recommendation 1; fragment store explicitly rejected.)
+                reextract_graph: Optional[ResearchGraph] = None
+                stale_ids: Set[str] = set()
+                full_fallback = False
                 if hasattr(inc_store, "surviving_source_paths"):
                     # Only nodes the changed files STOPPED asserting are stale.
                     # If the fresh extraction still emits the node (additive
@@ -641,6 +682,26 @@ class ProjectWiki:
                         and str(Path(n.source_path).resolve()) in changed_set
                     }
                     canonical = inc_store.surviving_source_paths(stale_ids)
+                    # EXCLUDE producer-owned nodes (Plan 02 contract): a node
+                    # whose only surviving provenance source is a ``__``-prefixed
+                    # producer sentinel (``__code_graph__`` / ``__session_graph__``
+                    # / ``__understand_anything__`` / ``__raganything__`` /
+                    # ``__vault_overlay__``) is regenerated by its producer every
+                    # compile — there is no markdown file to re-extract it from.
+                    # ``min(source_path)`` returns a real path over a ``__``
+                    # sentinel when both exist (``/`` < ``_``), so a ``__`` value
+                    # here means the node has NO surviving file owner.
+                    producer_only = {
+                        nid
+                        for nid, src in canonical.items()
+                        if src.startswith("__")
+                    }
+                    stale_ids -= producer_only
+                    canonical = {
+                        nid: src
+                        for nid, src in canonical.items()
+                        if nid not in producer_only
+                    }
                     if canonical:
                         kept_nodes = [
                             dataclasses_replace(n, source_path=canonical[n.id])
@@ -648,15 +709,97 @@ class ProjectWiki:
                             else n
                             for n in kept_nodes
                         ]
-                kept_ids = {n.id for n in kept_nodes}
-                kept_edges = [
-                    e for e in prior_graph.edges
-                    if e.source in kept_ids
-                    and e.target in kept_ids
-                    and (e.source, e.type, e.target) not in removed_edges
-                ]
-                prior_kept = ResearchGraph(nodes=kept_nodes, edges=kept_edges)
-                graph = merge_graphs([prior_kept, graph])
+                    # Surviving co-owner FILES to re-extract: the canonical
+                    # winner file per stale node (a real markdown path that
+                    # still exists on disk). The merge re-runs the dedup rule,
+                    # so the canonical-path set is sufficient — the changed
+                    # file's contribution is already in the fresh ``graph``.
+                    co_owner_files = sorted(
+                        {
+                            src
+                            for src in canonical.values()
+                            if not src.startswith("__") and Path(src).exists()
+                        }
+                    )
+                    if co_owner_files:
+                        # Safety CAP: bound re-extraction cost for dense-sharing
+                        # corpora. Over the cap we cannot cheaply re-derive the
+                        # surviving payload, so we fall back to a FULL compile
+                        # of the whole corpus (still byte-identical, just not
+                        # incremental). (04.1-RESEARCH.md Scaling concern.)
+                        reextract_cap = int(cfg.get("incremental_reextract_cap", 50))
+                        if len(co_owner_files) > reextract_cap:
+                            logger.warning(
+                                "incremental re-extraction would touch %d surviving "
+                                "co-owner files (> cap %d); falling back to a full "
+                                "compile for byte-parity.",
+                                len(co_owner_files),
+                                reextract_cap,
+                            )
+                            re_batch = BatchIngestRunner(
+                                extractor=extractor,
+                                manifest_path=self.paths.manifest,
+                            ).run(
+                                markdown_files if loader is None else [],
+                                source_kind=markdown_source_kind,
+                                changed_only=False,
+                                limit=limit,
+                            )
+                            full_graphs = re_batch.graphs or [re_batch.graph]
+                            graph = (
+                                ResearchCorpusAnalyzer().summarize_trends(
+                                    full_graphs, min_sources=min_trend_sources
+                                )
+                                if trends
+                                else re_batch.graph
+                            )
+                            # Re-derived the whole corpus: skip the prior+delta
+                            # merge entirely (the full graph IS the result).
+                            full_fallback = True
+                        else:
+                            # Re-extract ONLY the surviving co-owner files via
+                            # the deterministic runner (changed_only=False so it
+                            # re-runs even though their sha256 is unchanged; the
+                            # manifest write is idempotent). No wall-clock, no
+                            # new sidecar table.
+                            re_batch = BatchIngestRunner(
+                                extractor=extractor,
+                                manifest_path=self.paths.manifest,
+                            ).run(
+                                [Path(p) for p in co_owner_files],
+                                source_kind=markdown_source_kind,
+                                changed_only=False,
+                            )
+                            reextract_graph = (
+                                merge_graphs(re_batch.graphs)
+                                if re_batch.graphs
+                                else re_batch.graph
+                            )
+                if full_fallback:
+                    # Full-compile fallback already replaced ``graph``.
+                    pass
+                else:
+                    # Replace ONLY the stale nodes/edges. Drop the stale prior
+                    # nodes (their payload is re-derived by re-extraction), keep
+                    # every other survivor, and feed the re-extracted co-owner
+                    # fragments through the NORMAL merge so the canonical winner
+                    # + edge evidence is re-derived exactly as a full compile.
+                    # Extra non-stale nodes a co-owner re-extraction emits merge
+                    # normally and must not corrupt other nodes (Pitfall 2).
+                    kept_nodes = [n for n in kept_nodes if n.id not in stale_ids]
+                    kept_ids = {n.id for n in kept_nodes}
+                    kept_edges = [
+                        e for e in prior_graph.edges
+                        if e.source in kept_ids
+                        and e.target in kept_ids
+                        and (e.source, e.type, e.target) not in removed_edges
+                    ]
+                    prior_kept_graph = ResearchGraph(nodes=kept_nodes, edges=kept_edges)
+                    merge_inputs = [prior_kept_graph]
+                    if reextract_graph is not None:
+                        merge_inputs.append(reextract_graph)
+                    merge_inputs.append(graph)
+                    graph = merge_graphs(merge_inputs)
         # Bug A guard: after every merge — native FS extractor, code graph,
         # Understand-Anything, RAG-Anything, prior incremental graph — strip
         # any concept-layer node whose name is a filename or path. UA in
@@ -670,6 +813,7 @@ class ProjectWiki:
         # historical conversations into the doc graph. The structural pass
         # is the only thing Phase 3 wires in; the LLM pass arrives in
         # Phase 5 of the session-graph plan.
+        _before_session = graph
         graph = self._merge_session_graph(
             graph,
             cfg,
@@ -677,6 +821,10 @@ class ProjectWiki:
             guidance=session_guidance,
             llm_passes_client=llm_passes_client,
         )
+        # Codex #6: session graph re-derives Session/SessionDecision nodes +
+        # discussed_in/derived_from_session edges from the harness transcripts
+        # every compile. Attribute the minted ids to "__session_graph__".
+        self._record_producer_provenance("__session_graph__", _before_session, graph)
         # Canonicalize the merged graph BEFORE the community-summary pass.
         # ``merge_graphs`` re-runs the same-type/cross-type dedup and edge
         # redirection over the whole node universe, so an incremental compile
@@ -711,6 +859,12 @@ class ProjectWiki:
             vault_pull=vault_pull,
             extraction_prov=extraction_prov,
             json_client=llm_passes_client,
+            # Reconcile the FULL provenance row-set only when this was a full
+            # compile (Codex #1). ``incremental_active`` is True only when the
+            # incremental differ actually ran (flag on + sidecar covers prior
+            # graph); otherwise the batch re-extracted the whole corpus, so the
+            # row-set is authoritative and safe to reconcile.
+            full_compile=not incremental_active,
         )
         return {
             "project_root": str(self.project_root),
@@ -1073,6 +1227,12 @@ class ProjectWiki:
         (e.g. for projects that store unrelated binaries under ``data/``).
         """
         cfg = self.config()
+        # Per-compile producer provenance accumulator (Codex #6). Each of the 5
+        # non-extraction producers records the node ids + edges it minted THIS
+        # compile here; ``_record_provenance`` turns them into deterministic
+        # ``__<producer>__`` sidecar rows. Reset every compile so a producer that
+        # stops contributing leaves no stale rows. Sidecar-only — NEVER graph.json.
+        self._producer_prov: Dict[str, Dict[str, object]] = {}
         sources = list(cfg.get("sources") or ["."])
         # Auto-include the project-root ``data/`` directory if it exists and
         # isn't already part of the configured sources. ``iter_markdown_files``
@@ -1402,7 +1562,7 @@ class ProjectWiki:
         m = re.search(r"Field overrides — (\d+) across \d+ node\(s\)", text)
         return int(m.group(1)) if m else 0
 
-    def _apply_vault_overlay(self, graph: ResearchGraph) -> ResearchGraph:
+    def _apply_vault_overlay(self, graph: ResearchGraph) -> ResearchGraph:  # noqa: C901
         """Read user edits out of the Obsidian vault and apply them onto the graph.
 
         Tier 1a + 1b of the bidirectional sync feature
@@ -1441,6 +1601,20 @@ class ProjectWiki:
         slug_by_id = unique_slugs(graph.nodes)
 
         vault_files = _load_vault_files(vault_path)
+        # Codex #4: orphan-prune ordering. Filter out vault pages whose
+        # ``node_id`` frontmatter no longer maps to a LIVE graph node BEFORE
+        # compute_overrides / compute_user_link_changes — otherwise an orphan
+        # page could emit a node_id override (or a user_link edge) and mutate
+        # the graph before its deletion. Pages with no node_id are non-node
+        # pages (index/dashboard) and are kept; ``_load_vault_files`` already
+        # only returns files carrying a ``node_id`` key, so the ``is None`` arm
+        # is a defensive no-op for that loader.
+        live_ids = set(node_by_id.keys())
+        vault_files = [
+            f
+            for f in vault_files
+            if (nid := _vault_file_node_id(f)) is None or nid in live_ids
+        ]
         snapshot = read_snapshot(self.paths.vault_snapshot)
         overrides = (
             compute_overrides(vault_path, snapshot, node_by_id, vault_files=vault_files)
@@ -1485,8 +1659,14 @@ class ProjectWiki:
                 flush=True,
             )
 
+        _before_overlay = graph
         graph = apply_overrides(graph, overrides)
         graph = apply_user_link_changes(graph, user_link_changes)
+        # Codex #6: the vault overlay mints ``user_link`` edges from the user's
+        # wikilinks every compile (overrides mutate existing nodes in place and
+        # add no new ids). Attribute the edges it introduced to
+        # "__vault_overlay__" so they carry a deterministic sidecar row.
+        self._record_producer_provenance("__vault_overlay__", _before_overlay, graph)
         return graph
 
     def _load_extraction_guidance(self, enabled: bool) -> tuple[str, str]:
@@ -1587,31 +1767,64 @@ class ProjectWiki:
             return False
 
     @staticmethod
-    def _provenance_ready(store: object, prior_node_ids: List[str]) -> bool:
-        """True when an INJECTED ``store`` exposes the provenance surface AND
-        its sidecar covers every prior-graph node id (Codex B3).
+    def _provenance_ready(
+        store: object,
+        prior_node_ids: List[str],
+        prior_edge_triples: Optional[Iterable[Tuple[str, str, str]]] = None,
+    ) -> bool:
+        """True when an INJECTED ``store`` exposes the FULL edge-aware provenance
+        surface AND its sidecar covers every prior-graph node id and edge triple
+        (Codex B3 + #5).
 
         Coverage matters: a store with the table but missing rows for some
-        prior nodes would leave those nodes un-tombstoned, so the caller must
+        prior nodes/edges would leave those un-tombstoned, so the caller must
         fall back to a full recompile rather than emit a stale partial graph.
+
+        The injected store must expose the complete edge-aware surface the
+        incremental differ relies on — node deletion, edge-aware deletion,
+        node + edge provenance recording, and edge coverage. A node-only store
+        (missing ``record_edge_provenance_many`` / ``provenance_covers_edges`` /
+        ``delete_nodes_by_source_with_edges``) cannot tombstone stale edges, so
+        it is NOT incremental-ready.
         """
-        if not hasattr(store, "delete_nodes_by_source") or not hasattr(
-            store, "record_provenance_many"
-        ):
-            return False
+        required = (
+            "delete_nodes_by_source",
+            "record_provenance_many",
+            "delete_nodes_by_source_with_edges",
+            "record_edge_provenance_many",
+            "provenance_covers_edges",
+        )
+        for method in required:
+            if not hasattr(store, method):
+                return False
         if not hasattr(store, "has_node_provenance_rows") or not store.has_node_provenance_rows():
             return False
         if hasattr(store, "provenance_covers_nodes"):
-            return bool(store.provenance_covers_nodes(prior_node_ids))
+            if not bool(store.provenance_covers_nodes(prior_node_ids)):
+                return False
+        if prior_edge_triples and not store.provenance_covers_edges(prior_edge_triples):
+            return False
         return True
 
     @staticmethod
-    def _sqlite_provenance_ready(db_path: Path, prior_node_ids: List[str]) -> bool:
+    def _sqlite_provenance_ready(
+        db_path: Path,
+        prior_node_ids: List[str],
+        prior_edge_triples: Optional[Iterable[Tuple[str, str, str]]] = None,
+    ) -> bool:
         """True when the on-disk SQLite db at ``db_path`` carries a NON-EMPTY
-        ``node_provenance`` sidecar that covers every prior-graph node id —
-        checked WITHOUT constructing the schema-creating ``SqliteGraphStore``
-        (Codex B3: that constructor would create an empty table and make an
-        old/no-sidecar DB falsely look provenance-ready).
+        ``node_provenance`` sidecar that covers every prior-graph node id AND an
+        ``edge_provenance`` sidecar covering every prior-graph edge triple
+        (Codex #2/#5) — checked WITHOUT constructing the schema-creating
+        ``SqliteGraphStore`` (Codex B3: that constructor would create an empty
+        table and make an old/no-sidecar DB falsely look provenance-ready).
+
+        Edge coverage is required because the incremental differ tombstones
+        stale edges via the ``edge_provenance`` sidecar; if that sidecar does
+        not cover the prior edges (e.g. an older DB written before edge
+        provenance, or a producer that minted edges without provenance), the
+        differ could leave stale edges and diverge from a full compile — so we
+        fall back to a safe full recompile.
         """
         if db_path is None or not Path(db_path).exists():
             return False
@@ -1633,9 +1846,92 @@ class ProjectWiki:
                         "select distinct node_id from node_provenance"
                     ).fetchall()
                 }
+                if not all(nid in covered for nid in dict.fromkeys(prior_node_ids)):
+                    return False
+                if prior_edge_triples:
+                    has_edge_table = con.execute(
+                        "select name from sqlite_master where type='table' "
+                        "and name='edge_provenance'"
+                    ).fetchone()
+                    if has_edge_table is None:
+                        return False
+                    edge_covered = {
+                        (r[0], r[1], r[2])
+                        for r in con.execute(
+                            "select source, type, target from edge_provenance"
+                        ).fetchall()
+                    }
+                    if not set(prior_edge_triples).issubset(edge_covered):
+                        return False
         except Exception:  # noqa: BLE001 - any error => safe full recompile
             return False
-        return all(nid in covered for nid in dict.fromkeys(prior_node_ids))
+        return True
+
+    def _record_producer_provenance(
+        self,
+        source_label: str,
+        before: ResearchGraph,
+        after: ResearchGraph,
+    ) -> None:
+        """Capture the node ids + edges a producer minted THIS compile (Codex #6).
+
+        Diffs ``after`` against ``before`` (the graph as it entered the producer)
+        and stashes the NEW node ids and NEW edge triples under ``source_label``
+        in ``self._producer_prov``. Only ids the producer actually introduced are
+        recorded — never a blanket fallback for every uncovered node (Pitfall
+        1/2). ``_collect_producer_provenance`` later turns these into
+        deterministic ``det:`` rows; ``_record_provenance`` filters them to the
+        FINAL graph so canonicalization/dedup drops never leave over-coverage.
+        """
+        # ``_producer_prov`` is reset per compile() (~1232), but producers also
+        # run via direct ingest()/_merge_session_graph()/_write_artifacts() calls
+        # (e.g. in tests) that bypass that reset. Initialise defensively so the
+        # record path tolerates any entry point — mirrors the guarded
+        # ``getattr(self, "_producer_prov", {})`` in _collect_producer_provenance.
+        if not hasattr(self, "_producer_prov"):
+            self._producer_prov = {}
+        before_node_ids = {n.id for n in before.nodes}
+        before_edge_keys = {(e.source, e.type, e.target) for e in before.edges}
+        minted_nodes = [n.id for n in after.nodes if n.id not in before_node_ids]
+        minted_edges = [
+            (e.source, e.type, e.target)
+            for e in after.edges
+            if (e.source, e.type, e.target) not in before_edge_keys
+        ]
+        if not minted_nodes and not minted_edges:
+            return
+        bucket = self._producer_prov.setdefault(
+            source_label, {"nodes": set(), "edges": set()}
+        )
+        bucket["nodes"].update(minted_nodes)  # type: ignore[union-attr]
+        bucket["edges"].update(minted_edges)  # type: ignore[union-attr]
+
+    def _collect_producer_provenance(
+        self,
+    ) -> Tuple[
+        List[Tuple[str, str, str]], List[Tuple[str, str, str, str, str]]
+    ]:
+        """Flatten ``self._producer_prov`` into deterministic provenance rows.
+
+        Node rows: ``(node_id, source_label, "det:"+sha256(node_id|label)[:16])``.
+        Edge rows: ``(source, type, target, source_label, det_ts)``.
+        Deterministic content-derived timestamps only (never wall-clock) so the
+        sidecar stays byte-stable. Returns empty lists when no producer ran.
+        """
+        node_rows: List[Tuple[str, str, str]] = []
+        edge_rows: List[Tuple[str, str, str, str, str]] = []
+        prov = getattr(self, "_producer_prov", {}) or {}
+        for source_label in sorted(prov):
+            bucket = prov[source_label]
+            for node_id in sorted(bucket.get("nodes", set())):  # type: ignore[union-attr]
+                det_ts = "det:" + sha256_text(f"{node_id}|{source_label}")[:16]
+                node_rows.append((node_id, source_label, det_ts))
+            for (src, etype, tgt) in sorted(bucket.get("edges", set())):  # type: ignore[union-attr]
+                det_ts = "det:" + sha256_text(
+                    f"{src}|{etype}|{tgt}|{source_label}"
+                )[:16]
+                edge_rows.append((src, etype, tgt, source_label, det_ts))
+        return node_rows, edge_rows
 
     @staticmethod
     def _record_provenance(
@@ -1644,6 +1940,10 @@ class ProjectWiki:
         extraction_prov: Optional[
             Tuple[List[Tuple[str, str, str]], List[Tuple[str, str, str, str, str]]]
         ],
+        producer_prov: Optional[
+            Tuple[List[Tuple[str, str, str]], List[Tuple[str, str, str, str, str]]]
+        ] = None,
+        full_compile: bool = True,
     ) -> None:
         """Record extraction-derived node + edge provenance, then reconcile.
 
@@ -1653,11 +1953,31 @@ class ProjectWiki:
         tests that build the graph by hand) we fall back to deriving rows from
         the final graph's own ``source_path`` scalars.
 
-        After upserting (first_seen_at preserved), we prune any sidecar row
-        whose node/edge is absent from the final ``graph`` (Codex M5): rows for
-        sources that no longer contribute — a node a changed file solely owned
-        and then dropped, a stale cross-file edge — must not survive as false
-        keepers. All SQLite-only; graph.json is never touched.
+        ``producer_prov`` carries the deterministic ``__producer__`` rows for
+        the non-extraction graph producers (session-graph, code-graph,
+        understand-anything, raganything, vault-overlay) — see
+        :meth:`_record_producer_provenance`. Each producer re-derives its
+        nodes/edges from a STABLE source every compile, so they would otherwise
+        carry NO provenance row and permanently force the readiness gate to
+        fall back to a full recompile (Codex #6).
+
+        ``full_compile`` selects the persistence strategy (Codex #1):
+
+        * **Full compile** — ``extraction_prov`` covers the WHOLE corpus, so
+          the full row-set is authoritative. We call
+          ``store.reconcile_provenance(node_rows, edge_rows)`` which REPLACES
+          the exact provenance row-set (preserving ``first_seen_at``, deleting
+          any row absent from the fresh set). This kills the M5 false-keeper:
+          a stale ``(node, b.md)`` row from a previous compile where b.md
+          contributed is removed even though the node is still LIVE (owned by
+          another file).
+        * **Incremental compile** — ``extraction_prov`` covers ONLY the changed
+          files. Reconcile would wrongly delete every unchanged-file row, so we
+          keep the additive path: ``record_provenance_many`` +
+          ``record_edge_provenance_many`` + ``prune_provenance_to_graph``
+          (which only drops rows whose node/edge left the final graph).
+
+        All SQLite-only; graph.json is never touched.
         """
         if not hasattr(store, "record_provenance_many"):
             return
@@ -1695,11 +2015,38 @@ class ProjectWiki:
                     f"{edge.source}|{edge.type}|{edge.target}|__synthesis__"
                 )[:16]
                 edge_rows.append((edge.source, edge.type, edge.target, "__synthesis__", det_ts))
-        store.record_provenance_many(node_rows)
-        if hasattr(store, "record_edge_provenance_many"):
-            store.record_edge_provenance_many(edge_rows)
-        if hasattr(store, "prune_provenance_to_graph"):
-            store.prune_provenance_to_graph(graph)
+        # Producer-minted rows (Codex #6): the 5 non-extraction producers record
+        # deterministic ``__<producer>__`` rows for ONLY the ids they minted this
+        # compile. Filter to ids/edges still present in the FINAL graph so a
+        # producer node later dropped by canonicalization/dedup never leaves an
+        # over-coverage row (Pitfall 1/2: never a blanket fallback). Plan 03's
+        # incremental differ can recognise producer-owned nodes as those whose
+        # only sidecar source starts with ``"__"`` — these are regenerated by
+        # their producer every compile and must NOT be tombstoned as stale
+        # surviving cross-file nodes.
+        if producer_prov is not None:
+            final_node_ids = {n.id for n in graph.nodes}
+            final_edge_keys = {(e.source, e.type, e.target) for e in graph.edges}
+            prod_node_rows, prod_edge_rows = producer_prov
+            for row in prod_node_rows:
+                if row[0] in final_node_ids:
+                    node_rows.append(row)
+            for row in prod_edge_rows:
+                if (row[0], row[1], row[2]) in final_edge_keys:
+                    edge_rows.append(row)
+        if full_compile and hasattr(store, "reconcile_provenance"):
+            # Full compile: the fresh row-set is authoritative for the WHOLE
+            # corpus — replace exactly (first_seen_at preserved, stale source
+            # rows for still-live nodes deleted). Reconcile must NEVER run on an
+            # incremental compile (Pitfall 4): there ``extraction_prov`` covers
+            # only the changed files, so it would delete every unchanged-file row.
+            store.reconcile_provenance(node_rows, edge_rows)
+        else:
+            store.record_provenance_many(node_rows)
+            if hasattr(store, "record_edge_provenance_many"):
+                store.record_edge_provenance_many(edge_rows)
+            if hasattr(store, "prune_provenance_to_graph"):
+                store.prune_provenance_to_graph(graph)
 
     def _resolve_llm_passes_client(
         self, explicit: Optional["LLMJsonClient"]
@@ -1925,6 +2272,7 @@ class ProjectWiki:
             Tuple[List[Tuple[str, str, str]], List[Tuple[str, str, str, str, str]]]
         ] = None,
         json_client: Optional["LLMJsonClient"] = None,
+        full_compile: bool = True,
     ) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
 
@@ -2060,7 +2408,13 @@ class ProjectWiki:
             prov_store = SqliteGraphStore(self.paths.sqlite)
             prov_store.upsert_many_nodes(graph.nodes)
             prov_store.upsert_many_edges(graph.edges)
-            self._record_provenance(prov_store, graph, extraction_prov)
+            self._record_provenance(
+                prov_store,
+                graph,
+                extraction_prov,
+                producer_prov=self._collect_producer_provenance(),
+                full_compile=full_compile,
+            )
         else:
             # Injected store path: drive the union graph through the
             # :class:`GraphStore` port. The Postgres adapter (HypePaper-side)
@@ -2086,7 +2440,13 @@ class ProjectWiki:
             # tombstones exactly what that file solely owned. Deterministic
             # content-derived timestamps (never datetime.now(), 04-RESEARCH
             # Pitfall 1); SQLite-only, never in graph.json.
-            self._record_provenance(store, graph, extraction_prov)
+            self._record_provenance(
+                store,
+                graph,
+                extraction_prov,
+                producer_prov=self._collect_producer_provenance(),
+                full_compile=full_compile,
+            )
         # Phase 5 (KB-01/04/05): persist mutable memory state to the
         # node_memory sidecar AFTER graph.json + sqlite writes, so node ids are
         # final. decay_score / access_count / last_accessed_at / confidence /
@@ -2316,6 +2676,24 @@ def cognify_options_from_config(config: dict) -> Optional[CognifyOptions]:
         return None
     options = CognifyOptions.from_mapping(cognee)
     return options if options.is_active else None
+
+
+def _vault_file_node_id(vault_file: object) -> Optional[str]:
+    """Extract the ``node_id`` frontmatter key from a ``_load_vault_files`` entry.
+
+    ``_load_vault_files`` yields ``(path, text, frontmatter)`` tuples for pages
+    that carry a ``node_id`` key (Codex #4 orphan filter reads it). Returns the
+    stringified ``node_id`` or ``None`` for any shape lacking one (defensive —
+    a non-node page that somehow reaches here is kept by the caller).
+    """
+    try:
+        frontmatter = vault_file[2]
+    except (TypeError, IndexError, KeyError):
+        return None
+    if not isinstance(frontmatter, Mapping):
+        return None
+    node_id = frontmatter.get("node_id")
+    return None if node_id is None else str(node_id)
 
 
 def _provenance_source_for(graph: ResearchGraph) -> str:
