@@ -26,7 +26,7 @@ from xml.sax.saxutils import escape as xml_escape
 
 from ..research_graph import ResearchGraph, ResearchNode, ResearchNodeType
 from ..wiki_projector import kind_for_node
-from ..wiki_store import WikiPage
+from ..wiki_store import WikiPage, _canonical_slug
 from .search import is_wiki_layer
 
 
@@ -60,8 +60,13 @@ def slice_export_context_for_topic(ctx: ExportContext, node_ids: Set[str]) -> Ex
 
     ``WikiPage`` carries no node id, so we reconstruct a ``(kind, slug) -> node_id``
     map from ``ctx.graph`` using :func:`kind_for_node` (the public wiki kind) and the
-    export ``_slug`` helper, then keep only pages whose ``(kind, slug)`` maps into
-    ``node_ids``. ``ExportContext`` is frozen — we rebuild via ``dataclasses.replace``.
+    canonical ``_canonical_slug`` from :mod:`tesserae.wiki_store` — the SAME slug
+    function ``WikiPageStore`` uses to name pages on disk — then keep only pages
+    whose ``(kind, slug)`` maps into ``node_ids``. The export ``_slug`` helper is
+    NOT used here: it lacks the 96-byte truncation and the sha1 fallback for
+    non-Latin names, so long / non-Latin nodes would mismatch their real page
+    slug and get silently dropped from the topic slice. ``ExportContext`` is
+    frozen — we rebuild via ``dataclasses.replace``.
 
     ``render_llms_txt`` / ``render_llms_full_txt`` consume the result unchanged,
     emitting a topic-scoped slice that is a strict subset of the full output.
@@ -71,7 +76,7 @@ def slice_export_context_for_topic(ctx: ExportContext, node_ids: Set[str]) -> Ex
         kind = kind_for_node(node)
         if kind is None:
             continue
-        by_key[(kind, _slug(node.name))] = node.id
+        by_key[(kind, _canonical_slug(node.name))] = node.id
 
     filtered: Dict[str, List[WikiPage]] = {}
     for kind, pages in ctx.wiki_pages_by_kind.items():
