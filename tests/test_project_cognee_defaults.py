@@ -1,6 +1,7 @@
 import json
 
-from tesserae.cli import main, project_main
+import tesserae.cli as cli
+from tesserae.cli import main
 from tesserae.project import ProjectWiki, cognify_options_from_config
 from tesserae.project_setup import build_setup_plan, apply_setup_plan
 
@@ -47,10 +48,15 @@ def test_setup_installs_cognee_when_requested(tmp_path, monkeypatch, capsys):
 
     # TODO(redesign-task-8): migrate when flag→config key lands. `--install-cognee`
     # / `--no-color` live ONLY on the legacy setup wizard; `tesserae init --yes`
-    # hard-codes cognee install OFF, so the legacy `project_main` setup path keeps
-    # serving this "installer was invoked" assertion until Task 8.
-    # TODO(redesign-task-7): setup-wizard-only flags — rewrite against _handle_setup namespace when project_main is deleted
-    assert project_main(["setup", "--project", str(project), "--yes", "--install-cognee", "--no-color"]) == 0
+    # hard-codes cognee install OFF. We drive the unchanged `_handle_setup` with the
+    # namespace those flags produced (cognee enabled + install requested).
+    args = cli._build_init_parser().parse_args(["--project", str(project), "--yes"])
+    cli._backfill_setup_defaults(args)
+    args.no_cognee = False
+    args.install_cognee = True
+    args.skip_install_cognee = False
+    args.no_color = True
+    assert cli._handle_setup(args) == 0
 
     assert seen, "cognee installer should have been invoked"
     out = capsys.readouterr().out

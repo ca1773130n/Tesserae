@@ -1,7 +1,27 @@
 import json
 
-from tesserae.cli import main, project_main
+import tesserae.cli as cli
+from tesserae.cli import main
 from tesserae.project_setup import build_setup_plan, render_setup_summary, expand_tool_command
+
+
+def _run_setup(*, project, name=None, overrides=None):
+    """Invoke the setup wizard exactly as `tesserae init --yes` does internally.
+
+    Builds the canonical Namespace from the 8-flag init parser plus
+    `_backfill_setup_defaults` (every dest `_handle_setup` reads, all optional
+    integrations OFF), then applies the setup-wizard-only opt-ins the old
+    `project setup` flags used to set. This replaces the removed `project_main`
+    surface while exercising the identical `_handle_setup` behavior.
+    """
+    init_argv = ["--project", str(project), "--yes"]
+    if name is not None:
+        init_argv += ["--name", name]
+    args = cli._build_init_parser().parse_args(init_argv)
+    cli._backfill_setup_defaults(args)
+    for key, value in (overrides or {}).items():
+        setattr(args, key, value)
+    return cli._handle_setup(args)
 
 
 def test_setup_plan_detects_common_sources_and_understand_anything(tmp_path):
@@ -48,20 +68,15 @@ def test_setup_command_yes_writes_config_with_external_tool_metadata(tmp_path, c
     (ua / "knowledge-graph.json").write_text('{"nodes": [], "edges": []}\n', encoding="utf-8")
 
     # TODO(redesign-task-8): migrate when flag→config key lands. The setup-wizard-only
-    # flags below (--with/--install/--run/--skip-install-understand-anything, --no-color,
-    # --name, --understand-anything-command) are NOT surfaced on `tesserae init`; its
-    # --yes hard-codes integrations OFF and color auto. The legacy project_main setup
-    # path keeps serving these flag→config-and-side-effect assertions until Task 8.
-    # TODO(redesign-task-7): setup-wizard-only flags — rewrite against _handle_setup namespace when project_main is deleted
-    code = project_main([
-        "setup",
-        "--project",
-        str(project),
-        "--yes",
-        "--with-understand-anything",
-        "--name",
-        "demo_wiki",
-    ])
+    # opt-ins applied below (with/install/run/skip-install-understand-anything, no-color,
+    # name, understand-anything-command) are NOT surfaced on `tesserae init`; its
+    # --yes hard-codes integrations OFF and color auto. We drive `_handle_setup` with
+    # the same namespace those flags produced until Task 8 lands the flag→config keys.
+    code = _run_setup(
+        project=project,
+        name="demo_wiki",
+        overrides={"with_understand_anything": True, "no_color": True},
+    )
 
     assert code == 0
     cfg = json.loads((project / ".tesserae" / "config.json").read_text(encoding="utf-8"))
@@ -102,20 +117,19 @@ def test_setup_installs_understand_anything_when_requested(tmp_path, monkeypatch
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     # TODO(redesign-task-8): migrate when flag→config key lands. The setup-wizard-only
-    # flags below (--with/--install/--run/--skip-install-understand-anything, --no-color,
-    # --name, --understand-anything-command) are NOT surfaced on `tesserae init`; its
-    # --yes hard-codes integrations OFF and color auto. The legacy project_main setup
-    # path keeps serving these flag→config-and-side-effect assertions until Task 8.
-    # TODO(redesign-task-7): setup-wizard-only flags — rewrite against _handle_setup namespace when project_main is deleted
-    assert project_main([
-        "setup",
-        "--project",
-        str(project),
-        "--yes",
-        "--with-understand-anything",
-        "--install-understand-anything",
-        "--no-color",
-    ]) == 0
+    # opt-ins applied below (with/install/run/skip-install-understand-anything, no-color,
+    # name, understand-anything-command) are NOT surfaced on `tesserae init`; its
+    # --yes hard-codes integrations OFF and color auto. We drive `_handle_setup` with
+    # the same namespace those flags produced until Task 8 lands the flag→config keys.
+    assert _run_setup(
+        project=project,
+        overrides={
+            "with_understand_anything": True,
+            "install_understand_anything": True,
+            "skip_install_understand_anything": False,
+            "no_color": True,
+        },
+    ) == 0
 
     assert seen, "install.sh installer should have been invoked"
     out = capsys.readouterr().out
@@ -128,23 +142,20 @@ def test_setup_persists_config_even_when_initial_external_refresh_fails(tmp_path
     (project / "README.md").write_text("# Demo\n", encoding="utf-8")
 
     # TODO(redesign-task-8): migrate when flag→config key lands. The setup-wizard-only
-    # flags below (--with/--install/--run/--skip-install-understand-anything, --no-color,
-    # --name, --understand-anything-command) are NOT surfaced on `tesserae init`; its
-    # --yes hard-codes integrations OFF and color auto. The legacy project_main setup
-    # path keeps serving these flag→config-and-side-effect assertions until Task 8.
-    # TODO(redesign-task-7): setup-wizard-only flags — rewrite against _handle_setup namespace when project_main is deleted
-    assert project_main([
-        "setup",
-        "--project",
-        str(project),
-        "--yes",
-        "--with-understand-anything",
-        "--understand-anything-command",
-        "definitely_missing_understand_command",
-        "--run-understand-anything",
-        "--skip-install-understand-anything",
-        "--no-color",
-    ]) == 0
+    # opt-ins applied below (with/install/run/skip-install-understand-anything, no-color,
+    # name, understand-anything-command) are NOT surfaced on `tesserae init`; its
+    # --yes hard-codes integrations OFF and color auto. We drive `_handle_setup` with
+    # the same namespace those flags produced until Task 8 lands the flag→config keys.
+    assert _run_setup(
+        project=project,
+        overrides={
+            "with_understand_anything": True,
+            "understand_anything_command": "definitely_missing_understand_command",
+            "run_understand_anything": True,
+            "skip_install_understand_anything": True,
+            "no_color": True,
+        },
+    ) == 0
 
     cfg = json.loads((project / ".tesserae" / "config.json").read_text(encoding="utf-8"))
     assert cfg["external_tools"][0]["refresh_command"] == "definitely_missing_understand_command"
@@ -162,23 +173,20 @@ def test_compile_auto_refreshes_configured_external_tools(tmp_path, capsys):
     command = "python3 -c \"from pathlib import Path; p=Path('.understand-anything'); p.mkdir(exist_ok=True); (p/'knowledge-graph.json').write_text('{\\\"nodes\\\": [], \\\"edges\\\": []}\\n')\""
 
     # TODO(redesign-task-8): migrate when flag→config key lands. The setup-wizard-only
-    # flags below (--with/--install/--run/--skip-install-understand-anything, --no-color,
-    # --name, --understand-anything-command) are NOT surfaced on `tesserae init`; its
-    # --yes hard-codes integrations OFF and color auto. The legacy project_main setup
-    # path keeps serving these flag→config-and-side-effect assertions until Task 8.
-    # TODO(redesign-task-7): setup-wizard-only flags — rewrite against _handle_setup namespace when project_main is deleted
-    assert project_main([
-        "setup",
-        "--project",
-        str(project),
-        "--yes",
-        "--with-understand-anything",
-        "--understand-anything-command",
-        command,
-        "--run-understand-anything",
-        "--skip-install-understand-anything",
-        "--no-color",
-    ]) == 0
+    # opt-ins applied below (with/install/run/skip-install-understand-anything, no-color,
+    # name, understand-anything-command) are NOT surfaced on `tesserae init`; its
+    # --yes hard-codes integrations OFF and color auto. We drive `_handle_setup` with
+    # the same namespace those flags produced until Task 8 lands the flag→config keys.
+    assert _run_setup(
+        project=project,
+        overrides={
+            "with_understand_anything": True,
+            "understand_anything_command": command,
+            "run_understand_anything": True,
+            "skip_install_understand_anything": True,
+            "no_color": True,
+        },
+    ) == 0
     (project / ".understand-anything" / "knowledge-graph.json").unlink()
 
     assert main(["compile", "--project", str(project), "--limit", "1"]) == 0
@@ -193,23 +201,20 @@ def test_compile_warns_and_continues_when_auto_refresh_command_is_missing(tmp_pa
     (project / "README.md").write_text("# Demo\nGaussian Splatting supports novel view synthesis.\n", encoding="utf-8")
 
     # TODO(redesign-task-8): migrate when flag→config key lands. The setup-wizard-only
-    # flags below (--with/--install/--run/--skip-install-understand-anything, --no-color,
-    # --name, --understand-anything-command) are NOT surfaced on `tesserae init`; its
-    # --yes hard-codes integrations OFF and color auto. The legacy project_main setup
-    # path keeps serving these flag→config-and-side-effect assertions until Task 8.
-    # TODO(redesign-task-7): setup-wizard-only flags — rewrite against _handle_setup namespace when project_main is deleted
-    assert project_main([
-        "setup",
-        "--project",
-        str(project),
-        "--yes",
-        "--with-understand-anything",
-        "--understand-anything-command",
-        "definitely_missing_understand_command",
-        "--run-understand-anything",
-        "--skip-install-understand-anything",
-        "--no-color",
-    ]) == 0
+    # opt-ins applied below (with/install/run/skip-install-understand-anything, no-color,
+    # name, understand-anything-command) are NOT surfaced on `tesserae init`; its
+    # --yes hard-codes integrations OFF and color auto. We drive `_handle_setup` with
+    # the same namespace those flags produced until Task 8 lands the flag→config keys.
+    assert _run_setup(
+        project=project,
+        overrides={
+            "with_understand_anything": True,
+            "understand_anything_command": "definitely_missing_understand_command",
+            "run_understand_anything": True,
+            "skip_install_understand_anything": True,
+            "no_color": True,
+        },
+    ) == 0
 
     assert main(["compile", "--project", str(project), "--limit", "1"]) == 0
 

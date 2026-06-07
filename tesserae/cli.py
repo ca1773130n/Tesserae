@@ -61,9 +61,9 @@ def load_review_decisions(path: Path) -> List[ReviewDecision]:
 
 
 def _project_query_handler(args) -> int:
-    """Handle ``project query`` (one-shot or interactive REPL).
+    """Handle the ``query`` command (one-shot or interactive REPL).
 
-    Lives outside ``project_main`` so the parser-vs-handler block ordering can
+    A standalone handler so the parser-vs-handler block ordering can
     stay in lockstep without inflating the dispatch ladder. Tolerant of
     missing arguments: an interactive session falls back to the REPL when
     ``question`` is empty, and one-shot prints a friendly error when the
@@ -726,72 +726,6 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _build_top_level_wiki_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="tesserae wiki",
-        description="Manage the persistent Tesserae project registry used by `ask` and the MCP server.",
-    )
-    subparsers = parser.add_subparsers(dest="wiki_command", required=True)
-
-    wiki_list = subparsers.add_parser("list", help="List registered projects and show the active one.")
-    wiki_list.add_argument(
-        "--json",
-        dest="wiki_list_json",
-        action="store_true",
-        help="Emit the registry payload as JSON.",
-    )
-
-    wiki_register = subparsers.add_parser(
-        "register",
-        help="Register a project root in the persistent registry.",
-    )
-    wiki_register.add_argument("path", help="Path to the project root containing .tesserae/.")
-    wiki_register.add_argument("--name", help="Friendly name (defaults to the sanitized directory name).")
-    wiki_register.add_argument(
-        "--activate",
-        action="store_true",
-        help="Also set the new entry as the active project.",
-    )
-
-    wiki_activate = subparsers.add_parser("activate", help="Set a registered project as the active one.")
-    wiki_activate.add_argument("name")
-
-    wiki_unregister = subparsers.add_parser("unregister", help="Remove a project from the registry.")
-    wiki_unregister.add_argument("name")
-
-    wiki_set_root = subparsers.add_parser(
-        "obsidian-set-root",
-        help="Set the registry-wide Obsidian vault root. Each registered project then projects into <root>/<alias>/.",
-    )
-    wiki_set_root.add_argument("path", nargs="?", help="Absolute path; omit and pass --clear to unset.")
-    wiki_set_root.add_argument("--clear", action="store_true", help="Remove the configured vault root.")
-
-    wiki_watch_all = subparsers.add_parser(
-        "obsidian-sync-all",
-        help="Run an obsidian-sync --watch loop for every registered project (one thread per project).",
-    )
-    wiki_watch_all.add_argument(
-        "--poll-interval", type=float, default=1.5,
-        help="Per-watcher poll interval in seconds (default: 1.5).",
-    )
-    wiki_watch_all.add_argument(
-        "--prune-orphans",
-        action="store_true",
-        help="Prune stale projected pages in every project's vault before starting watchers.",
-    )
-    wiki_watch_all.add_argument(
-        "--force-prune-with-notes",
-        action="store_true",
-        help="With --prune-orphans, also delete orphans with user-notes content.",
-    )
-    wiki_watch_all.add_argument(
-        "--no-watch",
-        action="store_true",
-        help="Run prune-only (requires --prune-orphans); skip the watch phase.",
-    )
-    return parser
-
-
 def _add_llm_client_args(parser: argparse.ArgumentParser, persisted: bool = False) -> None:
     """Attach the synthesis-LLM backend flags (claude | codex).
 
@@ -838,501 +772,6 @@ def _apply_llm_cli_env(args: argparse.Namespace) -> None:
         os.environ["CLAUDE_CONFIG_DIR"] = claude_dirs[0]
     if getattr(args, "codex_home", None):
         os.environ["CODEX_HOME"] = args.codex_home
-
-
-def project_main(argv: List[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Manage a per-project .tesserae workspace.")
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    init_parser = subparsers.add_parser("init", help="Initialize .tesserae in a project directory")
-    init_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    init_parser.add_argument("--name", help="MCP server/config name; defaults to sanitized project directory name")
-    init_parser.add_argument("--source-kind", default="SourceDocument", help="Default source kind for project ingest")
-    init_parser.add_argument("--source", action="append", default=[], help="Default project-relative source path for project compile; repeat for multiple paths")
-    _add_llm_client_args(init_parser, persisted=True)
-
-    setup_parser = subparsers.add_parser("setup", help="Open the colored setup wizard for sources and companion tools")
-    setup_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    setup_parser.add_argument("--name", help="MCP server/config name; defaults to sanitized project directory name")
-    setup_parser.add_argument("--source-kind", default="Repository", help="Default source kind for project compile")
-    setup_parser.add_argument("--source", action="append", default=[], help="Project-relative source path; repeat for multiple paths")
-    setup_parser.add_argument("--with-understand-anything", action="store_true", help="Include .understand-anything/knowledge-graph.json as a companion source")
-    setup_parser.add_argument("--run-understand-anything", action="store_true", help="Run the configured Understand Anything refresh command now and mark it for compile-time auto-refresh")
-    setup_parser.add_argument("--understand-anything-command", help="Shell command that refreshes .understand-anything/knowledge-graph.json")
-    setup_parser.add_argument("--install-understand-anything", action="store_true", help="Install/update Understand Anything during setup when selected")
-    setup_parser.add_argument("--skip-install-understand-anything", action="store_true", help="Do not auto-install Understand Anything even when selected")
-    setup_parser.add_argument("--understand-anything-platform", default="codex", help="Understand Anything installer platform id (default: codex)")
-    setup_parser.add_argument("--with-raganything", action="store_true", help="Enable RAG-Anything multimodal ingestion + memory backend")
-    setup_parser.add_argument("--skip-raganything", action="store_true", help="Disable RAG-Anything even if previously configured")
-    setup_parser.add_argument("--install-raganything", action="store_true", help="Auto-install raganything during setup")
-    setup_parser.add_argument("--skip-install-raganything", action="store_true", help="Do not auto-install raganything")
-    setup_parser.add_argument("--raganything-parser", choices=["mineru", "docling", "paddleocr"], default="mineru", help="Parser backend for RAG-Anything (default: mineru)")
-    setup_parser.add_argument("--raganything-extras", default="all", help="pip extras to use when installing raganything (default: all)")
-    setup_parser.add_argument("--run-raganything", action="store_true", help="Auto-refresh RAG-Anything on every compile")
-    setup_parser.add_argument(
-        "--raganything-llm-provider",
-        choices=["codex", "claude"],
-        default="codex",
-        help="LLM provider for raganything runtime queries (default: codex; uses OAuth CLI, no API key)",
-    )
-    setup_parser.add_argument(
-        "--raganything-llm-model",
-        default=None,
-        help="LLM model name (default: gpt-5.4 for codex; leave unset for claude default)",
-    )
-    setup_parser.add_argument(
-        "--raganything-claude-config-dir",
-        default=None,
-        help="CLAUDE_CONFIG_DIR for raganything when provider=claude (supports multi-account setups like ~/.claude-personal2)",
-    )
-    setup_parser.add_argument(
-        "--raganything-embedding",
-        choices=["deterministic", "ollama"],
-        default="deterministic",
-        help="Embedding provider for raganything (default: deterministic, no external deps)",
-    )
-    setup_parser.add_argument(
-        "--raganything-embedding-dim",
-        type=int,
-        default=768,
-        help="Embedding dimensionality (default: 768)",
-    )
-    setup_parser.add_argument("--no-cognee", action="store_true", help="Do not enable Cognee as the default project memory backend")
-    setup_parser.add_argument("--install-cognee", action="store_true", help="Install Cognee during setup and allow compile to auto-install if missing")
-    setup_parser.add_argument("--skip-install-cognee", action="store_true", help="Do not auto-install Cognee even when --run-cognee is selected")
-    setup_parser.add_argument("--cognee-mode", choices=["add", "cognify", "codex_cognify"], default="codex_cognify", help="Cognee mode saved in project config (default: codex_cognify)")
-    setup_parser.add_argument("--run-cognee", action="store_true", help="Auto-add/cognify Cognee on every project compile using the saved safe config")
-    setup_parser.add_argument("--yes", action="store_true", help="Accept detected defaults without interactive prompts")
-    setup_parser.add_argument("--no-color", action="store_true", help="Disable ANSI colors in setup output")
-
-    ingest_parser = subparsers.add_parser("ingest", help="Ingest markdown files into the project graph artifacts")
-    ingest_parser.add_argument("inputs", nargs="+", help="Project-relative or absolute markdown files/directories")
-    ingest_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    ingest_parser.add_argument("--source-kind", help="Override configured source kind")
-    ingest_parser.add_argument("--changed-only", action="store_true", help="Skip unchanged files using .tesserae/manifest.json")
-    ingest_parser.add_argument("--limit", type=int, help="Maximum number of changed files to process")
-    ingest_parser.add_argument("--trends", action="store_true", help="Add corpus-level Trend nodes")
-    ingest_parser.add_argument("--min-trend-sources", type=int, default=2, help="Minimum sources needed for Trend nodes")
-
-    ingest_code_parser = subparsers.add_parser(
-        "ingest-code",
-        help="Mint a typed code graph from Python source via the stdlib ast module",
-    )
-    ingest_code_parser.add_argument(
-        "paths",
-        nargs="*",
-        help="Project-relative or absolute paths to walk; defaults to the project root",
-    )
-    ingest_code_parser.add_argument(
-        "--project",
-        default=".",
-        help="Project root directory; defaults to current working directory",
-    )
-    ingest_code_parser.add_argument(
-        "--output",
-        help="Override output path; defaults to <project>/.tesserae/code-graph.json",
-    )
-    ingest_code_parser.add_argument(
-        "--exclude",
-        action="append",
-        default=[],
-        help="Additional directory basename to skip (repeatable). Adds to the built-in exclude set",
-    )
-
-    # Option-C / CodeGraph adapter. Separate subcommand (not a flag on
-    # ingest-code) because the producer is fundamentally different —
-    # we delegate extraction to colbymchenry/codegraph's 21-language
-    # tree-sitter pipeline and only translate its SQLite store here.
-    sync_code_parser = subparsers.add_parser(
-        "sync-code",
-        help="Translate a colbymchenry/codegraph SQLite store into .tesserae/code-graph.json",
-    )
-    sync_code_parser.add_argument(
-        "--project",
-        default=".",
-        help="Project root directory; defaults to current working directory",
-    )
-    sync_code_parser.add_argument(
-        "--db",
-        help="Path to the CodeGraph SQLite database; defaults to <project>/.codegraph/codegraph.db",
-    )
-    sync_code_parser.add_argument(
-        "--output",
-        help="Override output path; defaults to <project>/.tesserae/code-graph.json",
-    )
-    sync_code_parser.add_argument(
-        "--auto-sync",
-        action="store_true",
-        help="Run `codegraph sync <project>` first if the binary is on PATH; skip silently otherwise",
-    )
-
-    compile_parser = subparsers.add_parser("compile", help="Compile configured project sources into all .tesserae artifacts")
-    _add_llm_client_args(compile_parser)
-    compile_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    compile_parser.add_argument("--source-kind", help="Override configured source kind")
-    compile_parser.add_argument("--changed-only", action="store_true", help="Skip unchanged files using .tesserae/manifest.json")
-    compile_parser.add_argument("--limit", type=int, help="Maximum number of changed files to process")
-    compile_parser.add_argument("--trends", action="store_true", help="Add corpus-level Trend nodes")
-    compile_parser.add_argument("--min-trend-sources", type=int, default=2, help="Minimum sources needed for Trend nodes")
-    compile_parser.add_argument("--include-data", action="store_true", help="Documentation flag: project_root/data is auto-included by default; this flag is a no-op kept for clarity")
-    compile_parser.add_argument("--exclude-data", action="store_true", help="Skip the implicit project_root/data auto-include even if data/ exists")
-    compile_parser.add_argument(
-        "--no-vault-pull",
-        action="store_true",
-        help=(
-            "Skip the Obsidian vault overlay step. By default, when a vault and a prior "
-            "vault_snapshot.json both exist, compile reads user edits out of the vault "
-            "and applies them on top of the typed graph. Pass this to bypass — useful "
-            "for recovery, or when you intentionally want the source markdown to win."
-        ),
-    )
-    compile_parser.add_argument("--refresh-external-tools", action="store_true", help="Run configured external tool refresh commands before compile, even if they are not marked auto_refresh")
-    compile_parser.add_argument(
-        "--use-extraction-feedback",
-        action="store_true",
-        help=(
-            "Inject distilled human-correction guidance (from .tesserae/extraction-guidance.md, "
-            "produced by `tesserae evolve`) into the LLM extractor prompts. Collection of "
-            "feedback events is always on; only this injection is gated by the flag."
-        ),
-    )
-    # --- Session graph extractor (Phase 3 wires only the structural pass; LLM in Phase 5) ----
-    session_group = compile_parser.add_mutually_exclusive_group()
-    session_group.add_argument("--sessions", dest="sessions_enabled", action="store_true", default=None, help="Force session graph extraction on (default if .tesserae/harness_sessions/ exists)")
-    session_group.add_argument("--no-sessions", dest="sessions_enabled", action="store_false", default=None, help="Skip session graph extraction entirely")
-    compile_parser.add_argument("--sessions-llm", choices=["auto", "true", "false"], default=None, help="LLM extraction mode (default 'auto' — runs when an LLM backend is configured). Honored once Phase 5 lands.")
-    compile_parser.add_argument("--sessions-model", default=None, help="Override the LLM model used for session extraction (Phase 5)")
-    # --- Cognee cognify pass (opt-in, runs after the bundle is written) ----
-    compile_parser.add_argument("--cognee-add", action="store_true", help="After compile, add the Cognee bundle to the Cognee dataset (no cognify)")
-    compile_parser.add_argument("--cognee-cognify", action="store_true", help="After compile, add the bundle and run Cognee cognify (uses configured LLM/embedding providers)")
-    compile_parser.add_argument("--cognee-codex-cognify", action="store_true", help="After compile, run Cognee cognify with Cognee's LLM client patched to Codex CLI/OAuth")
-    compile_parser.add_argument("--cognee-codex-model", default="gpt-5.4", help="Codex CLI model for --cognee-codex-cognify")
-    compile_parser.add_argument("--cognee-codex-timeout", type=int, default=300, help="Timeout per Codex CLI structured call")
-    compile_parser.add_argument("--cognee-local-embedding-dimensions", type=int, default=128, help="Embedding dimensions for --cognee-codex-cognify; qwen3-embedding:0.6b uses 1024")
-    compile_parser.add_argument("--cognee-embedding-provider", choices=["deterministic", "ollama"], default="deterministic", help="Embedding provider for cognify")
-    compile_parser.add_argument("--cognee-ollama-embedding-model", default="qwen3-embedding:0.6b", help="Ollama embedding model when --cognee-embedding-provider=ollama")
-    compile_parser.add_argument("--cognee-ollama-embedding-endpoint", default="http://127.0.0.1:11434/api/embed", help="Ollama /api/embed endpoint for Cognee embeddings")
-    compile_parser.add_argument("--cognee-ollama-embedding-timeout", type=int, default=120, help="Ollama embedding request timeout in seconds")
-    compile_parser.add_argument("--cognee-dataset", default="tesserae_research_graph", help="Cognee dataset name")
-    compile_parser.add_argument("--cognee-system-root", help="Optional isolated Cognee system root directory")
-    compile_parser.add_argument("--cognee-data-root", help="Optional isolated Cognee data root directory")
-
-    schema_drift_parser = subparsers.add_parser(
-        "schema-drift",
-        help="EDC-style pass that proposes ResearchNodeType sub-types from clustered host-type nodes.",
-    )
-    schema_drift_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    schema_drift_parser.add_argument(
-        "--host-type",
-        action="append",
-        default=[],
-        help=(
-            "ResearchNodeType to analyze (enum value, e.g. 'SourceDocument'). "
-            "Repeat to analyze multiple. Default: SourceDocument."
-        ),
-    )
-    schema_drift_parser.add_argument("--min-volume", type=int, default=10, help="Skip host types with fewer than this many members (default: 10)")
-    schema_drift_parser.add_argument("--top-k", type=int, default=5, help="Take only the top-K clusters per host type (default: 5)")
-    schema_drift_parser.add_argument("--min-cluster-size", type=int, default=5, help="Drop clusters smaller than this size (default: 5)")
-    schema_drift_parser.add_argument("--jaccard-threshold", type=float, default=0.34, help="Jaccard similarity threshold for clustering (default: 0.34)")
-
-    evolve_parser = subparsers.add_parser(
-        "evolve",
-        help="Distill collected human-correction feedback into .tesserae/extraction-guidance.md.",
-    )
-    evolve_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-
-    research_parser = subparsers.add_parser(
-        "research",
-        help="Agentic research loop (dzhng-style): plan → search → reflect → synthesize. Mints OpenQuestion / SessionHypothesis nodes against the compiled graph.",
-    )
-    research_parser.add_argument("query", help="Research query to investigate")
-    research_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    research_parser.add_argument("--breadth", type=int, default=3, help="Sub-questions per level (default: 3)")
-    research_parser.add_argument("--depth", type=int, default=2, help="Maximum follow-up depth beyond the root (default: 2)")
-    research_parser.add_argument("--max-iters", type=int, default=6, help="Hard cap on (search + reflect) iterations (default: 6)")
-    research_parser.add_argument("--top-k", type=int, default=5, help="Top-K graph evidence nodes per sub-question (default: 5)")
-    research_parser.add_argument("--output", help="Report output path; defaults to .tesserae/research/<slug>.md")
-    research_parser.add_argument("--no-web", action="store_true", help="Disable web search even if a backend is configured (v1 default — web stays off)")
-
-    ua_refresh_parser = subparsers.add_parser("refresh-understand-anything", help="Run Tesserae's managed Understand Anything refresh")
-    ua_refresh_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    ua_refresh_parser.add_argument("--platform", default="codex", help="Agent platform to use: codex, opencode, or claude")
-    ua_refresh_parser.add_argument("--full", action="store_true", help="Force /understand --full")
-    ua_refresh_parser.add_argument("--force", action="store_true", help="Run even if the existing graph appears current")
-    ua_refresh_parser.add_argument("--timeout", type=int, help="Optional timeout in seconds")
-
-    obsidian_sync_parser = subparsers.add_parser(
-        "obsidian-sync",
-        help="Apply vault edits onto the typed graph and re-project. Pass --watch for live mode.",
-    )
-    obsidian_sync_parser.add_argument("--project", default=".", help="Project root; defaults to cwd")
-    obsidian_sync_parser.add_argument(
-        "--watch",
-        action="store_true",
-        help=(
-            "Run a long-lived poll loop that re-applies the overlay every time "
-            "the vault changes. Press Ctrl-C to stop."
-        ),
-    )
-    obsidian_sync_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help=(
-            "Compute the overlay diff and write .tesserae/diverged-fields.md, "
-            "but DON'T apply changes to the graph or re-project. Useful for "
-            "previewing what a compile would do."
-        ),
-    )
-    obsidian_sync_parser.add_argument(
-        "--poll-interval",
-        type=float,
-        default=1.5,
-        help="Watch-mode poll interval in seconds (default: 1.5).",
-    )
-    obsidian_sync_parser.add_argument(
-        "--vault",
-        type=str,
-        default=None,
-        help=(
-            "Override the configured Obsidian vault directory for this call. "
-            "Resolution order at runtime is --vault > config.obsidian.vault_path > "
-            ".tesserae/obsidian_vault/. Use `project setup --obsidian-vault PATH` "
-            "to make the override persistent."
-        ),
-    )
-    obsidian_sync_parser.add_argument(
-        "--persist-vault",
-        action="store_true",
-        help=(
-            "When passed with --vault, writes the path to .tesserae/config.json under "
-            "obsidian.vault_path so future commands (`project compile`, "
-            "`project obsidian-sync` without --vault) use it automatically."
-        ),
-    )
-    obsidian_sync_parser.add_argument(
-        "--prune-orphans",
-        action="store_true",
-        help=(
-            "Delete projected pages in the vault whose node_id no longer exists "
-            "in the current graph. Useful after the source set shrinks "
-            "(exclusions, deleted directories) — the projector only overwrites, "
-            "never deletes. Files with user-notes content are kept by default; "
-            "pass --force-prune-with-notes to delete those too."
-        ),
-    )
-    obsidian_sync_parser.add_argument(
-        "--force-prune-with-notes",
-        action="store_true",
-        help="With --prune-orphans, also delete orphan pages that have user-notes content.",
-    )
-
-    refresh_raga_parser = subparsers.add_parser(
-        "refresh-raganything",
-        help="Run the managed RAG-Anything refresh wrapper",
-    )
-    refresh_raga_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    refresh_raga_parser.add_argument("--parser", default="mineru", choices=["mineru", "docling", "paddleocr"])
-    refresh_raga_parser.add_argument("--parse-method", default="auto", choices=["auto", "ocr", "txt"])
-    refresh_raga_parser.add_argument("--root", action="append", dest="roots", help="Restrict to this root (repeatable)")
-    refresh_raga_parser.add_argument("--force", action="store_true")
-    refresh_raga_parser.add_argument("--full", action="store_true")
-
-    lint_parser = subparsers.add_parser(
-        "lint",
-        help="Lint the compiled wiki: orphan papers, stale citations, drift, ghost synthesis inputs, and more.",
-    )
-    lint_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    lint_parser.add_argument(
-        "--fix-trivial",
-        action="store_true",
-        help="Apply safe auto-fixes (add missing implemented_in edges; prune ghost synthesis inputs)",
-    )
-    lint_parser.add_argument(
-        "--severity",
-        choices=["info", "warning", "error"],
-        default="warning",
-        help="Severity floor for the exit code (default: warning). Findings below the floor are still reported.",
-    )
-    lint_parser.add_argument(
-        "--json",
-        dest="lint_json",
-        action="store_true",
-        help="Print the JSON report to stdout instead of the markdown summary.",
-    )
-
-    query_parser = subparsers.add_parser(
-        "query",
-        help="Search the compiled wiki and (optionally) ask the LLM for a synthesized answer with citations.",
-    )
-    query_parser.add_argument("question", nargs="?", default=None, help="Question text; omit to use --interactive")
-    query_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    query_parser.add_argument("--top-k", type=int, default=8, help="Maximum number of search hits to return / feed to the LLM (default: 8)")
-    query_parser.add_argument("--kind", help="Restrict hits to a single wiki kind (e.g. papers, concepts, repos)")
-    query_parser.add_argument("--llm", action="store_true", help="Force the LLM path on, even if TESSERAE_QUERY_LLM is unset")
-    query_parser.add_argument("--no-llm", action="store_true", help="Force the LLM path off, even if TESSERAE_QUERY_LLM=1")
-    query_parser.add_argument("--model", default="claude-sonnet-4-6", help="Anthropic model id for --llm (default: claude-sonnet-4-6)")
-    query_parser.add_argument("--json", dest="json_output", action="store_true", help="Print the structured QueryResult as JSON")
-    query_parser.add_argument("--interactive", action="store_true", help="Drop into a REPL with readline history; blank line or EOF exits")
-
-    ask_parser = subparsers.add_parser("ask", help="Ask the configured project memory backend; uses RAG-Anything or Cognee when enabled")
-    ask_parser.add_argument("question", help="Question text")
-    ask_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    ask_parser.add_argument("--backend", choices=["auto", "raganything", "cognee", "wiki"], default="auto", help="Question backend (default: auto; tries RAG-Anything, then Cognee, then wiki query)")
-    ask_parser.add_argument("--top-k", type=int, default=8, help="Maximum results/context items")
-    ask_parser.add_argument("--cognee-search-type", default="INSIGHTS", help="Cognee SearchType name, e.g. INSIGHTS, CHUNKS, SUMMARIES, GRAPH_COMPLETION")
-    ask_parser.add_argument("--cognee-dataset", help="Override configured Cognee dataset")
-    ask_parser.add_argument("--json", dest="json_output", action="store_true", help="Print backend/result JSON")
-
-    mcp_parser = subparsers.add_parser("mcp-config", help="Print a Hermes mcp_servers config snippet for this project")
-    mcp_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    mcp_parser.add_argument("--server-name", help="MCP server name in Hermes config")
-    mcp_parser.add_argument("--pythonpath", help="PYTHONPATH pointing at the Tesserae checkout")
-
-    export_graphiti_parser = subparsers.add_parser("export-graphiti", help="Export project graph as dependency-free Graphiti episode JSONL")
-    export_graphiti_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    export_graphiti_parser.add_argument("--group-id", help="Graphiti group_id; defaults to project wiki name")
-    export_graphiti_parser.add_argument("--output", help="Episode JSONL output path; defaults to .tesserae/graphiti_episodes.jsonl")
-
-    sync_graphiti_parser = subparsers.add_parser("sync-graphiti", help="Sync project graph episodes into Graphiti/Neo4j")
-    sync_graphiti_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    sync_graphiti_parser.add_argument("--group-id", help="Graphiti group_id; defaults to project wiki name")
-    sync_graphiti_parser.add_argument("--neo4j-uri", default="bolt://localhost:7687", help="Neo4j URI for Graphiti")
-    sync_graphiti_parser.add_argument("--neo4j-user", default="neo4j", help="Neo4j username")
-    sync_graphiti_parser.add_argument("--neo4j-password", default="password", help="Neo4j password")
-    sync_graphiti_parser.add_argument("--dry-run", action="store_true", help="Count episodes without requiring Graphiti or Neo4j")
-
-    harness_parser = subparsers.add_parser("export-agent-harness", help="Export context/config harnesses for coding agents")
-    harness_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    harness_parser.add_argument("--target", action="append", default=[], help="Agent target to export; repeat for multiple targets. Defaults to all supported targets")
-    harness_parser.add_argument("--output", help="Harness output directory; defaults to .tesserae/agent_harness")
-
-    obsidian_parser = subparsers.add_parser("export-obsidian", help="Export the compiled graph as an Obsidian vault")
-    obsidian_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    obsidian_parser.add_argument("--vault", help="Vault output directory; defaults to .tesserae/obsidian_vault")
-
-    sessions_parser = subparsers.add_parser("sessions", help="Manage inbound agent harness session history")
-    sessions_sub = sessions_parser.add_subparsers(dest="sessions_command", required=True)
-    sessions_import = sessions_sub.add_parser("import", help="Import normalized HarnessSession JSON files")
-    sessions_import.add_argument("paths", nargs="+", help="JSON files containing one session object or a list of sessions")
-    sessions_import.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    sessions_discover = sessions_sub.add_parser("discover", help="Discover local Claude Code/Codex sessions scoped to this project")
-    sessions_discover.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    sessions_discover.add_argument("--root", action="append", default=[], help="Harness config root to scan; repeat for multiple roots. Defaults to auto-detected Claude/Codex config roots under HOME")
-    sessions_discover.add_argument("--harness", action="append", default=[], choices=["claude-code", "codex"], help="Harness to scan; repeat for multiple harnesses. Defaults to both")
-    sessions_discover.add_argument("--import", dest="import_sessions", action="store_true", help="Import discovered normalized sessions into .tesserae/harness_sessions")
-    sessions_list = sessions_sub.add_parser("list", help="List normalized harness sessions for this project")
-    sessions_list.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-
-    site_parser = subparsers.add_parser("build-site", help="Build the static frontend site for this project wiki")
-    site_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    site_parser.add_argument("--output", help="Site output directory; defaults to .tesserae/site")
-
-    deploy_parser = subparsers.add_parser(
-        "deploy",
-        help="Deploy the compiled site to the GitHub Pages branch of the project's git origin. Optionally rebuilds first and turns Pages on via the gh CLI.",
-    )
-    deploy_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    deploy_parser.add_argument("--branch", default="gh-pages", help="Branch to push the site to (default: gh-pages)")
-    deploy_parser.add_argument("--remote", default="origin", help="Git remote to push to (default: origin)")
-    deploy_parser.add_argument("--message", help="Commit message for the deploy commit")
-    deploy_parser.add_argument("--dry-run", action="store_true", help="Stage and commit but skip the final git push")
-    deploy_parser.add_argument("--build", action="store_true", help="Run project compile before deploying so the site is fresh")
-    deploy_parser.add_argument("--enable-pages", action="store_true", help="Enable GitHub Pages on the repo via the gh CLI (idempotent)")
-    deploy_parser.add_argument("--force", action="store_true", help="Allow deploying even when the project working tree is dirty")
-    deploy_parser.add_argument("--force-push", action="store_true", help="Use git push --force; refused for protected branches")
-
-    serve_parser = subparsers.add_parser("serve", help="Serve the static frontend site")
-    serve_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    serve_parser.add_argument("--host", default="127.0.0.1", help="Host to bind")
-    serve_parser.add_argument("--port", type=int, default=8765, help="Port to bind")
-    serve_parser.add_argument("--dry-run", action="store_true", help="Print the site URL without starting a server")
-
-    watch_parser = subparsers.add_parser(
-        "watch",
-        help="Auto-recompile when files change. Pairs with python3 -m http.server in another terminal.",
-    )
-    watch_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    watch_parser.add_argument("--interval", type=float, default=2.0, help="Polling interval in seconds (default: 2)")
-    watch_parser.add_argument("--debounce", type=float, default=1.0, help="Quiet window after a burst of edits before rebuilding (default: 1.0)")
-    watch_parser.add_argument("--once", action="store_true", help="Snapshot once, rebuild only if anything changed since the last run, exit")
-    watch_parser.add_argument("--paths", action="append", default=[], help="Additional directory to watch; repeat for multiple paths")
-    watch_parser.add_argument("--quiet", action="store_true", help="Suppress the banner and per-cycle progress output")
-
-    engine_parser = subparsers.add_parser(
-        "engine",
-        aliases=["daemon"],
-        help="Run the supervised refresh daemon: watch sources, coalesce bursts, auto-recompile.",
-    )
-    engine_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    engine_parser.add_argument("--interval", type=float, default=2.0, help="Polling interval in seconds (default: 2)")
-    engine_parser.add_argument("--debounce", type=float, default=1.0, help="Quiet window after a burst of edits before rebuilding (default: 1.0)")
-    engine_parser.add_argument("--once", action="store_true", help="Run a single drain cycle then exit (deterministic; no long-running loop)")
-
-    refresh_parser = subparsers.add_parser(
-        "refresh",
-        help="Import new sessions, compile, sync vault (in-process pipeline).",
-    )
-    refresh_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    refresh_parser.add_argument("--changed-only", action="store_true", default=False, help="Opt-in incremental compile (skip unchanged files); default is a full compile")
-    refresh_parser.add_argument("--skip-sessions", action="store_true", default=False, help="Opt-in skip of the slow harness-session discovery scan")
-
-    context_parser = subparsers.add_parser(
-        "context",
-        help="Compile a cited context doc for a query",
-    )
-    context_parser.add_argument("query", nargs="?", default="", help="Query text to seed the context doc")
-    context_parser.add_argument("--seeds", nargs="*", help="Explicit seed node IDs")
-    context_parser.add_argument("--depth", type=int, default=2, help="PPR expansion depth (default: 2)")
-    context_parser.add_argument("--budget", type=int, default=32_000, help="Character budget for the doc body (default: 32000; <=0 = uncapped)")
-    context_parser.add_argument("--synthesize", action="store_true", help="Add an LLM-synthesized summary (requires an LLM backend)")
-    context_parser.add_argument("--output", "-o", help="Write the doc to a file instead of stdout")
-    context_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-
-    args = parser.parse_args(argv)
-    handler = _COMMANDS.get(args.command)
-    if handler is None:
-        raise ValueError(f"Unknown project command: {args.command}")
-    return handler(args)
-
-
-def _build_llm_defaults_parser() -> argparse.ArgumentParser:
-    """Top-level ``tesserae llm-defaults`` — MACHINE-WIDE, not per-project.
-
-    Writes ``~/.tesserae/config.json``; deliberately NOT under the
-    ``project`` namespace because it configures every project on the box.
-    """
-    parser = argparse.ArgumentParser(
-        prog="tesserae llm-defaults",
-        description=(
-            "Set machine-wide LLM backend defaults (~/.tesserae/config.json) "
-            "for ALL projects. Multi-account safe: pins Tesserae's codex/claude "
-            "account without exporting CODEX_HOME/CLAUDE_CONFIG_DIR."
-        ),
-    )
-    parser.add_argument(
-        "--llm-provider",
-        choices=["claude", "codex"],
-        default=None,
-        help="Default CLI backend for the synthesis/insights LLM client on this machine",
-    )
-    parser.add_argument(
-        "--claude-config-dir",
-        action="append",
-        default=[],
-        help="Default Claude CLI config directory; repeat for fallback accounts",
-    )
-    parser.add_argument(
-        "--codex-home",
-        default=None,
-        help="Default Codex CLI home (e.g. ~/.codex-personal1)",
-    )
-    parser.add_argument(
-        "--show",
-        action="store_true",
-        help="Print the effective machine-wide defaults and exit",
-    )
-    return parser
 
 
 def _handle_llm_defaults(args: argparse.Namespace) -> int:
@@ -2200,39 +1639,6 @@ def _handle_engine(args: argparse.Namespace) -> int:
     return daemon.run(once=args.once)
 
 
-_COMMANDS: Dict[str, Callable[[argparse.Namespace], int]] = {
-    "init": _handle_init,
-    "setup": _handle_setup,
-    "ingest": _handle_ingest,
-    "ingest-code": _handle_ingest_code,
-    "sync-code": _handle_sync_code,
-    "compile": _handle_compile_legacy,
-    "schema-drift": _handle_schema_drift,
-    "evolve": _handle_evolve,
-    "research": _handle_research,
-    "refresh-understand-anything": _handle_refresh_understand_anything,
-    "obsidian-sync": _handle_obsidian_sync,
-    "refresh-raganything": _handle_refresh_raganything,
-    "lint": _handle_lint,
-    "query": _handle_query,
-    "context": _handle_context,
-    "ask": _handle_ask,
-    "mcp-config": _handle_mcp_config,
-    "export-graphiti": _handle_export_graphiti,
-    "sync-graphiti": _handle_sync_graphiti,
-    "export-agent-harness": _handle_export_agent_harness,
-    "export-obsidian": _handle_export_obsidian,
-    "sessions": _handle_sessions,
-    "build-site": _handle_build_site,
-    "deploy": _handle_deploy,
-    "serve": _handle_serve_legacy,
-    "watch": _handle_watch,
-    "refresh": _handle_refresh,
-    "engine": _handle_engine,
-    "daemon": _handle_engine,  # alias
-}
-
-
 def main(argv: List[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
@@ -2273,12 +1679,11 @@ def main(argv: List[str] | None = None) -> int:
 
 
 # ---------------------------------------------------------------------------
-# New flat-verb tree (redesign task 3): standalone parser builders + routers.
+# Flat-verb tree (redesign task 3): standalone parser builders + routers.
 #
-# Each builder returns a fresh argparse.ArgumentParser carrying the SAME flags
-# the legacy `project <cmd>` subparser had (copied verbatim — a later task diets
-# them). project_main's subparsers are left untouched, so the old surface keeps
-# working; flag duplication here is intentional and temporary.
+# Each builder returns a fresh argparse.ArgumentParser carrying the flags the
+# now-removed legacy `project <cmd>` subparser used to expose (copied here when
+# the old surface was retired in task 7).
 # ---------------------------------------------------------------------------
 
 
@@ -2457,13 +1862,12 @@ def _handle_compile_paths_ingest(args: argparse.Namespace) -> int:
         args.trends = False
     if not hasattr(args, "min_trend_sources"):
         args.min_trend_sources = 2
-    return _COMMANDS["ingest"](args)
+    return _handle_ingest(args)
 
 
 def _handle_compile(args: argparse.Namespace) -> int:
     """New-tree compile wrapper. With explicit paths → ad-hoc ingest-only;
-    otherwise → the full legacy compile. project_main keeps calling the legacy
-    function directly via ``_COMMANDS``."""
+    otherwise → the full legacy compile via ``_handle_compile_legacy``."""
     if getattr(args, "paths", None):
         return _handle_compile_paths_ingest(args)
     return _handle_compile_legacy(args)
@@ -2472,12 +1876,12 @@ def _handle_compile(args: argparse.Namespace) -> int:
 def _serve_build_site(args: argparse.Namespace) -> int:
     """Invoke the legacy build-site handler with a backfilled namespace."""
     build_args = argparse.Namespace(project=args.project, output=None)
-    return _COMMANDS["build-site"](build_args)
+    return _handle_build_site(build_args)
 
 
 def _handle_serve(args: argparse.Namespace) -> int:
     """New-tree serve wrapper: auto-build the site when missing/stale, then
-    delegate to the legacy serve handler (untouched, still used by project_main).
+    delegate to the legacy serve handler (``_handle_serve_legacy``).
     """
     try:
         wiki = ProjectWiki.load(args.project)
@@ -2640,7 +2044,7 @@ def _route_init(rest: List[str]) -> int:
 # then dispatches to module-level handler names (resolved at CALL time so
 # `monkeypatch.setattr(cli, "_handle_…", …)` is honored). Wrappers that route
 # a NEW command to an OLD handler backfill EVERY attribute the old handler
-# reads, using the old parser's defaults (read from project_main verbatim).
+# reads, using the defaults the now-removed legacy parser used to supply.
 # ---------------------------------------------------------------------------
 
 
@@ -2729,7 +2133,7 @@ def _build_vault_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="vault_command", required=True)
 
     def _add_obsidian_sync_args(p: argparse.ArgumentParser) -> None:
-        # verbatim from project_main's obsidian-sync parser
+        # verbatim from the legacy obsidian-sync parser (now removed)
         p.add_argument("--project", default=".", help="Project root; defaults to cwd")
         p.add_argument("--watch", action="store_true", help="Run a long-lived poll loop that re-applies the overlay every time the vault changes. Press Ctrl-C to stop.")
         p.add_argument("--dry-run", action="store_true", help="Compute the overlay diff and write .tesserae/diverged-fields.md, but DON'T apply changes to the graph or re-project. Useful for previewing what a compile would do.")
@@ -3073,8 +2477,8 @@ def _route_lab(rest: List[str]) -> int:
 def _build_extract_parser() -> argparse.ArgumentParser:
     """The preserved bare-extraction parser, surfaced as `tesserae extract`.
 
-    Flags copied verbatim from `_extraction_main` (the kuzu/cognee/canonicalize
-    flags live HERE, not on `compile`).
+    Flags copied verbatim from the legacy bare-extraction main (now removed; the
+    kuzu/cognee/canonicalize flags live HERE, not on `compile`).
     """
     parser = argparse.ArgumentParser(
         prog="tesserae extract",
@@ -3123,7 +2527,8 @@ def _build_extract_parser() -> argparse.ArgumentParser:
 
 
 def _handle_extract(args: argparse.Namespace) -> int:
-    """Body lifted verbatim from `_extraction_main` (sans its own parse_args)."""
+    """Body lifted verbatim from the legacy bare-extraction main (now removed;
+    sans its own parse_args)."""
     if args.extractor == "claude-cli":
         extractor = ClaudeCLIResearchExtractor(
             config_dirs=args.claude_config_dir or None,
@@ -3340,166 +2745,6 @@ def _dispatch_command(command: str, rest: List[str]) -> int:
     if router is not None:
         return router(rest)
     raise NotImplementedError(f"tesserae {command}: wired in a later task")
-
-
-def _extraction_main(argv: List[str] | None = None) -> int:
-    """Legacy bare-extraction parser, preserved for a later task to wrap as
-    `tesserae extract`. No longer reachable from ``main()``.
-    """
-    if argv is None:
-        argv = sys.argv[1:]
-    parser = argparse.ArgumentParser(description="Extract a typed research intelligence graph from Tesserae notes.")
-    parser.add_argument("paths", nargs="+", help="Markdown file or directory paths to extract")
-    parser.add_argument("--source-kind", default="SourceDocument", help="Default source kind: Paper, Repository, ResearchDigest, SourceDocument")
-    parser.add_argument("--output", "-o", help="Write JSON graph to this path instead of stdout")
-    parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON")
-    parser.add_argument("--trends", action="store_true", help="Add corpus-level Trend nodes for concepts repeated across sources")
-    parser.add_argument("--min-trend-sources", type=int, default=2, help="Minimum distinct sources required to create a Trend node")
-    parser.add_argument("--extractor", choices=["deterministic", "claude-cli", "selective-claude"], default="deterministic", help="Extractor backend to use")
-    parser.add_argument("--claude-config-dir", action="append", default=[], help="CLAUDE_CONFIG_DIR to try for Claude-backed extractors; repeat for fallbacks")
-    parser.add_argument("--claude-model", default="sonnet", help="Claude CLI model alias for Claude-backed extractors")
-    parser.add_argument("--claude-timeout", type=int, default=180, help="Claude CLI timeout in seconds")
-    parser.add_argument("--claude-include", action="append", default=[], help="Glob pattern selecting files for --extractor selective-claude; repeat for multiple subsets")
-    parser.add_argument("--claude-limit", type=int, help="Maximum number of files to send to Claude in --extractor selective-claude")
-    parser.add_argument("--canonicalize", action="store_true", help="Merge high-confidence aliases and produce review candidates for ambiguous duplicates")
-    parser.add_argument("--review-output", help="Write canonicalization review queue JSON to this path")
-    parser.add_argument("--review-markdown-output", help="Write a human-readable markdown review queue")
-    parser.add_argument("--review-jsonl-output", help="Write review queue items as JSONL")
-    parser.add_argument("--review-decisions-template", help="Write a starter review decisions JSON template")
-    parser.add_argument("--apply-review-decisions", help="Apply review decisions JSON after canonicalization; implies --canonicalize")
-    parser.add_argument("--project-markdown", help="Write a human-readable markdown projection of the final graph to this directory")
-    parser.add_argument("--sqlite-output", help="Persist the final graph to a local SQLite database")
-    parser.add_argument("--kuzu-output", help="Persist the final graph to a local Kuzu database")
-    parser.add_argument("--cognee-output", help="Write a Cognee-friendly JSONL export bundle to this directory")
-    parser.add_argument("--cognee-add", action="store_true", help="Add the generated --cognee-output bundle to Cognee without running cognify")
-    parser.add_argument("--cognee-cognify", action="store_true", help="After --cognee-add, run Cognee cognify for the dataset; may invoke configured LLM/embedding providers")
-    parser.add_argument("--cognee-codex-cognify", action="store_true", help="Run Cognee cognify with Cognee's LLM client patched to Codex CLI/OAuth")
-    parser.add_argument("--cognee-codex-model", default="gpt-5.4", help="Codex CLI model for --cognee-codex-cognify")
-    parser.add_argument("--cognee-codex-timeout", type=int, default=300, help="Timeout per Codex CLI structured call")
-    parser.add_argument("--cognee-local-embedding-dimensions", type=int, default=128, help="Embedding dimensions for --cognee-codex-cognify; qwen3-embedding:0.6b uses 1024")
-    parser.add_argument("--cognee-embedding-provider", choices=["deterministic", "ollama"], default="deterministic", help="Embedding provider for --cognee-codex-cognify")
-    parser.add_argument("--cognee-ollama-embedding-model", default="qwen3-embedding:0.6b", help="Ollama embedding model for --cognee-embedding-provider ollama")
-    parser.add_argument("--cognee-ollama-embedding-endpoint", default="http://127.0.0.1:11434/api/embed", help="Ollama /api/embed endpoint for Cognee embeddings")
-    parser.add_argument("--cognee-ollama-embedding-timeout", type=int, default=120, help="Ollama embedding request timeout in seconds")
-    parser.add_argument("--cognee-dataset", default="tesserae_research_graph", help="Cognee dataset name for --cognee-add")
-    parser.add_argument("--cognee-system-root", help="Optional isolated Cognee system root directory, useful when changing vector dimensions")
-    parser.add_argument("--cognee-data-root", help="Optional isolated Cognee data root directory")
-    parser.add_argument("--batch-manifest", help="Track file hashes for incremental changed-only batch ingestion")
-    parser.add_argument("--changed-only", action="store_true", help="When used with --batch-manifest, skip files whose content hash is unchanged")
-    parser.add_argument("--limit", type=int, help="Maximum number of files to process in this run")
-    parser.add_argument("--report-output", help="Write a markdown summary report for the final graph")
-    args = parser.parse_args(argv)
-
-    # ``config_dirs=None`` makes ClaudeCLIResearchExtractor /
-    # ClaudeCLIJsonClient auto-discover ``~/.claude*`` dirs (the
-    # existing multi-config fallback then picks the first that's
-    # logged in). Pre-fix code hardcoded the previous maintainer's
-    # personal paths here, which only worked on one machine.
-    if args.extractor == "claude-cli":
-        extractor = ClaudeCLIResearchExtractor(
-            config_dirs=args.claude_config_dir or None,
-            model=args.claude_model,
-            timeout=args.claude_timeout,
-        )
-    elif args.extractor == "selective-claude":
-        deterministic = ResearchGraphExtractor()
-        claude = ClaudeCLIResearchExtractor(
-            config_dirs=args.claude_config_dir or None,
-            model=args.claude_model,
-            timeout=args.claude_timeout,
-        )
-        extractor = SelectiveClaudeResearchExtractor(
-            deterministic=deterministic,
-            claude=claude,
-            include_patterns=args.claude_include,
-            claude_limit=args.claude_limit,
-        )
-    else:
-        extractor = ResearchGraphExtractor()
-    graphs = []
-    markdown_files = []
-    for raw_path in args.paths:
-        markdown_files.extend(iter_markdown_files(Path(raw_path)))
-    if args.batch_manifest:
-        batch = BatchIngestRunner(extractor=extractor, manifest_path=Path(args.batch_manifest)).run(
-            markdown_files,
-            source_kind=args.source_kind,
-            changed_only=args.changed_only,
-            limit=args.limit,
-        )
-        graphs = batch.graphs or [batch.graph]
-    else:
-        if args.limit is not None:
-            markdown_files = markdown_files[: args.limit]
-        for md in markdown_files:
-            graphs.append(extractor.extract_file(md, source_kind=args.source_kind))
-
-    graph = merge_graphs(graphs)
-    if args.trends:
-        graph = ResearchCorpusAnalyzer().summarize_trends(graphs, min_sources=args.min_trend_sources)
-    if args.canonicalize or args.review_output or args.apply_review_decisions or args.review_markdown_output or args.review_jsonl_output or args.review_decisions_template:
-        canonicalization = GraphCanonicalizer().canonicalize(graph)
-        graph = canonicalization.graph
-        if args.apply_review_decisions:
-            decisions = load_review_decisions(Path(args.apply_review_decisions))
-            graph = canonicalization.review_queue().apply_decisions(graph, decisions)
-        review_queue = canonicalization.review_queue()
-        if args.review_output:
-            review_payload = review_queue.model_dump()
-            Path(args.review_output).parent.mkdir(parents=True, exist_ok=True)
-            Path(args.review_output).write_text(json.dumps(review_payload, ensure_ascii=False, indent=2 if args.pretty else None) + "\n", encoding="utf-8")
-        if args.review_markdown_output or args.review_jsonl_output or args.review_decisions_template:
-            ReviewQueueExporter().write_files(
-                review_queue,
-                markdown_path=args.review_markdown_output,
-                jsonl_path=args.review_jsonl_output,
-                decision_template_path=args.review_decisions_template,
-            )
-    if args.project_markdown:
-        GraphMarkdownProjector().write_projection(graph, Path(args.project_markdown))
-    if args.sqlite_output:
-        SQLiteResearchGraphStore(Path(args.sqlite_output)).write_graph(graph, replace=True)
-    if args.kuzu_output:
-        KuzuResearchGraphStore(Path(args.kuzu_output)).write_graph(graph, replace=True)
-    if args.cognee_output:
-        CogneeResearchGraphAdapter().write_bundle(graph, Path(args.cognee_output))
-        if args.cognee_codex_cognify:
-            with CogneeCodexPatch(
-                model=args.cognee_codex_model,
-                timeout=args.cognee_codex_timeout,
-                deterministic_embeddings=args.cognee_embedding_provider == "deterministic",
-                ollama_embeddings=args.cognee_embedding_provider == "ollama",
-                ollama_model=args.cognee_ollama_embedding_model,
-                ollama_endpoint=args.cognee_ollama_embedding_endpoint,
-                ollama_timeout=args.cognee_ollama_embedding_timeout,
-                embedding_dimensions=args.cognee_local_embedding_dimensions,
-            ):
-                asyncio.run(CogneeDirectImporter().add_bundle(
-                    Path(args.cognee_output),
-                    dataset_name=args.cognee_dataset,
-                    cognify=True,
-                    system_root=args.cognee_system_root,
-                    data_root=args.cognee_data_root,
-                ))
-        elif args.cognee_add or args.cognee_cognify:
-            asyncio.run(CogneeDirectImporter().add_bundle(
-                Path(args.cognee_output),
-                dataset_name=args.cognee_dataset,
-                cognify=args.cognee_cognify,
-                system_root=args.cognee_system_root,
-                data_root=args.cognee_data_root,
-            ))
-    if args.report_output:
-        report = GraphReporter().render_markdown(GraphReporter().summarize(graph))
-        Path(args.report_output).parent.mkdir(parents=True, exist_ok=True)
-        Path(args.report_output).write_text(report, encoding="utf-8")
-    payload = graph.to_json(indent=2 if args.pretty else None)
-    if args.output:
-        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-        Path(args.output).write_text(payload + "\n", encoding="utf-8")
-    else:
-        print(payload)
-    return 0
 
 
 if __name__ == "__main__":

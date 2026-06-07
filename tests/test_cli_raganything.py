@@ -26,20 +26,19 @@ def test_cli_setup_passes_raganything_flags_to_plan(tmp_path, monkeypatch):
     monkeypatch.setattr(tess_setup, "build_plan", spying_build)
     monkeypatch.setattr(tess_setup, "apply_plan", noop_apply)
 
-    # TODO(redesign-task-8): migrate when flag→config key lands. These
-    # `--with-raganything`/`--install-raganything`/`--raganything-*`/`--run-raganything`
-    # flags live ONLY on the legacy setup wizard; `tesserae init` does not surface
-    # them (its `--yes` hard-codes raganything OFF), so the legacy `project_main`
-    # setup path keeps serving this flag→override-plumbing assertion until Task 8.
-    # TODO(redesign-task-7): setup-wizard-only flags — rewrite against _handle_setup namespace when project_main is deleted
-    rc = cli.project_main([
-        "setup", "--yes",
-        "--project", str(tmp_path),
-        "--with-raganything", "--install-raganything",
-        "--raganything-parser", "docling",
-        "--raganything-extras", "all",
-        "--run-raganything",
-    ])
+    # TODO(redesign-task-8): migrate when flag→config key lands. These raganything
+    # opt-ins live ONLY on the legacy setup wizard; `tesserae init` does not surface
+    # them (its `--yes` hard-codes raganything OFF). We drive the unchanged
+    # `_handle_setup` with the namespace those flags produced until Task 8.
+    args = cli._build_init_parser().parse_args(["--yes", "--project", str(tmp_path)])
+    cli._backfill_setup_defaults(args)
+    args.with_raganything = True
+    args.skip_raganything = False
+    args.install_raganything = True
+    args.skip_install_raganything = False
+    args.raganything_parser = "docling"
+    args.raganything_extras = "all"
+    rc = cli._handle_setup(args)
     assert rc == 0
     assert captured["include_raganything"] is True
     assert captured["install_raganything"] is True
@@ -71,14 +70,17 @@ def test_cli_with_raganything_alone_passes_none_for_install(tmp_path, monkeypatc
     monkeypatch.setattr(tess_setup, "apply_plan", noop_apply)
 
     # TODO(redesign-task-8): migrate when flag→config key lands. `--with-raganything`
-    # is a legacy setup-wizard-only flag absent from `tesserae init`; the legacy
-    # `project_main` setup path keeps serving this override-filtering assertion.
-    # TODO(redesign-task-7): setup-wizard-only flags — rewrite against _handle_setup namespace when project_main is deleted
-    rc = cli.project_main([
-        "setup", "--yes",
-        "--with-raganything",
-        "--project", str(tmp_path),
-    ])
+    # is a legacy setup-wizard-only flag absent from `tesserae init`; we drive the
+    # unchanged `_handle_setup` with the namespace that lone flag produced.
+    # Neither --install-raganything nor --skip-install-raganything was passed, so
+    # both install dests are off → `_handle_setup` emits None (filtered out).
+    args = cli._build_init_parser().parse_args(["--yes", "--project", str(tmp_path)])
+    cli._backfill_setup_defaults(args)
+    args.with_raganything = True
+    args.skip_raganything = False
+    args.install_raganything = False
+    args.skip_install_raganything = False
+    rc = cli._handle_setup(args)
     assert rc == 0
     # When neither --install-raganything nor --skip-install-raganything is passed,
     # CLI should not include the key (None overrides are filtered out).

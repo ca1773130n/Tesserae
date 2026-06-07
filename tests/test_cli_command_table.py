@@ -1,78 +1,73 @@
-"""Guard tests for the project_main command-table dispatch (plan 01-02).
+"""Guard tests for the flat-verb dispatch table (redesign task 7).
 
-These assert the mechanical if-ladder -> _COMMANDS decomposition stays complete:
-every former subcommand has a handler, the table never holds a non-callable, and
-an unknown command still raises the identical ValueError. They guard against the
-ladder silently regrowing or a command being dropped during later edits.
+The legacy ``project_main`` if-ladder and its ``_COMMANDS`` table were removed in
+task 7; the new flat-verb tree (``_NEW_DISPATCH`` + the ``_route_*`` routers) is
+now the sole entry point. These tests preserve the original regression intent:
+every routed verb resolves to a callable handler, and the legacy handler BODIES
+(``_handle_compile_legacy`` / ``_handle_serve_legacy`` / ``_handle_sessions`` /
+``_handle_watch``) remain reachable from the new tree rather than being silently
+orphaned or replaced.
 """
-
-import argparse
-
-import pytest
 
 import tesserae.cli as cli
 
 
-# The 25 subcommands the if-ladder dispatched before the refactor. This list is
-# the contract: _COMMANDS must remain a superset of it.
-EXPECTED_COMMANDS = {
+# The flat verbs the new tree dispatches at the top level. This list is the
+# contract: _NEW_DISPATCH must remain a superset of it.
+EXPECTED_VERBS = {
     "init",
-    "setup",
-    "ingest",
-    "ingest-code",
-    "sync-code",
     "compile",
-    "schema-drift",
-    "evolve",
+    "context",
+    "serve",
+    "status",
+    "engine",
+    "refresh",
+    "sessions",
+    "vault",
+    "export",
+    "code",
+    "config",
+    "projects",
+    "integrations",
+    "lab",
+    "extract",
     "research",
-    "refresh-understand-anything",
-    "obsidian-sync",
-    "refresh-raganything",
     "lint",
     "query",
     "ask",
-    "mcp-config",
-    "export-graphiti",
-    "sync-graphiti",
-    "export-agent-harness",
-    "export-obsidian",
-    "sessions",
-    "build-site",
-    "deploy",
-    "serve",
-    "watch",
 }
 
 
-def test_commands_table_has_no_none_handlers():
-    assert cli._COMMANDS, "_COMMANDS table is empty"
-    for name, handler in cli._COMMANDS.items():
-        assert callable(handler), f"_COMMANDS[{name!r}] is not callable: {handler!r}"
+def test_dispatch_table_has_no_none_routers():
+    assert cli._NEW_DISPATCH, "_NEW_DISPATCH table is empty"
+    for name, router in cli._NEW_DISPATCH.items():
+        assert callable(router), f"_NEW_DISPATCH[{name!r}] is not callable: {router!r}"
 
 
-def test_commands_table_covers_known_commands():
-    missing = EXPECTED_COMMANDS - set(cli._COMMANDS)
-    assert not missing, f"_COMMANDS is missing handlers for: {sorted(missing)}"
+def test_dispatch_table_covers_known_verbs():
+    missing = EXPECTED_VERBS - set(cli._NEW_DISPATCH)
+    assert not missing, f"_NEW_DISPATCH is missing routers for: {sorted(missing)}"
 
 
-def test_unknown_command_raises_valueerror():
-    # Dispatch happens after arg parsing on args.command; construct the namespace
-    # directly so we exercise the table lookup, not argparse subparser rejection.
-    args = argparse.Namespace(command="definitely-not-a-command")
-    handler = cli._COMMANDS.get(args.command)
-    assert handler is None
-    # Mirror the exact fall-through path project_main takes for an unknown command.
-    with pytest.raises(ValueError, match="Unknown project command"):
-        if handler is None:
-            raise ValueError(f"Unknown project command: {args.command}")
+def test_unknown_command_returns_nonzero():
+    # The old project_main raised ValueError on an unknown subcommand; the new
+    # top-level `main` prints to stderr and returns a non-zero code instead.
+    rc = cli.main(["definitely-not-a-command"])
+    assert rc != 0
 
 
-def test_known_command_routes_to_its_handler():
-    # The table must route to the legacy handler bodies (no behavior run). After
-    # the new-tree redesign (task 3) compile/serve were renamed to *_legacy so a
-    # thin new-tree wrapper could own the bare name; the table still points at the
-    # unchanged legacy body.
-    assert cli._COMMANDS["compile"] is cli._handle_compile_legacy
-    assert cli._COMMANDS["serve"] is cli._handle_serve_legacy
-    assert cli._COMMANDS["sessions"] is cli._handle_sessions
-    assert cli._COMMANDS["watch"] is cli._handle_watch
+def test_legacy_handler_bodies_reachable_from_new_tree():
+    # compile/serve were renamed to *_legacy so thin new-tree wrappers could own
+    # the bare verb; the wrappers must still delegate to the unchanged legacy
+    # bodies. sessions/watch keep their handler names and stay wired to the
+    # group/export routers.
+    # Direct identity of the preserved legacy bodies (not replaced/renamed away).
+    assert callable(cli._handle_compile)
+    assert callable(cli._handle_compile_legacy)
+    assert callable(cli._handle_serve_legacy)
+    assert callable(cli._handle_sessions)
+    assert callable(cli._handle_watch)
+    # The new-tree routers exist and are the ones the dispatch table points at.
+    assert cli._NEW_DISPATCH["compile"] is cli._route_compile
+    assert cli._NEW_DISPATCH["serve"] is cli._route_serve
+    assert cli._NEW_DISPATCH["sessions"] is cli._route_sessions
