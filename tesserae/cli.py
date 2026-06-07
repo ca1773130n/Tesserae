@@ -2538,8 +2538,103 @@ def _route_ask(rest: List[str]) -> int:
     return _top_level_ask_handler(ask_parser.parse_args(rest))
 
 
+def _build_init_parser() -> argparse.ArgumentParser:
+    """The dieted `tesserae init` parser: EXACTLY 8 flags.
+
+    `tesserae init` runs the setup wizard by default; `--yes` accepts detected
+    defaults non-interactively; `--bare` skips the wizard entirely and writes a
+    minimal workspace (the old `project init`). The ~21 other legacy `setup`
+    flags (``--source-kind`` and the integration toggles) become wizard prompts
+    and/or documented config.json keys — they are NOT surfaced here. The legacy
+    `project init` / `project setup` parsers keep their own full flag sets.
+    """
+    parser = argparse.ArgumentParser(
+        prog="tesserae init",
+        description="Set up .tesserae (wizard by default; --yes non-interactive; --bare skips the wizard).",
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--name", help="MCP server/config name; defaults to sanitized project directory name")
+    parser.add_argument("--source", action="append", default=[], help="Project-relative source path; repeat for multiple paths")
+    parser.add_argument("--yes", action="store_true", help="Accept detected defaults non-interactively (all optional integrations OFF)")
+    parser.add_argument("--bare", action="store_true", help="Skip the wizard; write a minimal workspace (the old `project init`)")
+    _add_llm_client_args(parser, persisted=True)
+    return parser
+
+
+def _backfill_setup_defaults(args: argparse.Namespace) -> None:
+    """Fill the namespace with every attr the legacy `_handle_setup` reads.
+
+    `_handle_init_v2` delegates to the unchanged `_handle_setup`, whose ``--yes``
+    branch reads ~21 attrs that the dieted init parser no longer defines. We
+    ``setdefault`` each one with the legacy `setup_parser` default, EXCEPT the
+    integration toggles, which take the NEW ``--yes`` defaults: every optional
+    integration (cognee, raganything, understand-anything) lands OFF. Color is
+    auto-disabled when stdout is not a TTY.
+    """
+    d = args.__dict__
+    # Legacy setup defaults (verbatim from the `setup_parser.add_argument` calls).
+    d.setdefault("source_kind", "Repository")
+    d.setdefault("understand_anything_command", None)
+    d.setdefault("understand_anything_platform", "codex")
+    d.setdefault("raganything_parser", "mineru")
+    d.setdefault("raganything_extras", "all")
+    d.setdefault("cognee_mode", "codex_cognify")
+    # --yes default: cognee OFF (this is exactly what CI's `--no-cognee` encoded).
+    d.setdefault("no_cognee", True)
+    # --yes default: raganything OFF (CI's `--skip-raganything`; never `--with-raganything`).
+    d.setdefault("with_raganything", False)
+    d.setdefault("skip_raganything", True)
+    # --yes default: understand-anything OFF (never `--with-understand-anything`).
+    d.setdefault("with_understand_anything", False)
+    # --yes default: no companion-tool installs/runs (CI's `--skip-install-*`,
+    # never `--install-*`/`--run-*`). These keep the wizard from shelling out.
+    d.setdefault("install_understand_anything", False)
+    d.setdefault("skip_install_understand_anything", True)
+    d.setdefault("run_understand_anything", False)
+    d.setdefault("install_raganything", False)
+    d.setdefault("skip_install_raganything", True)
+    d.setdefault("install_cognee", False)
+    d.setdefault("skip_install_cognee", True)
+    d.setdefault("run_cognee", False)
+    # --yes default: color auto-disabled when stdout is not an interactive TTY.
+    d.setdefault("no_color", not sys.stdout.isatty())
+
+
+def _backfill_bare_init_defaults(args: argparse.Namespace) -> None:
+    """Fill the namespace with attrs the legacy `_handle_init` reads.
+
+    `_handle_init` reads ``args.source_kind`` (and ``args.source`` /
+    ``args.name`` / the LLM attrs, which the dieted init parser already
+    supplies). Only ``source_kind`` is missing from the diet — backfill it with
+    the legacy `project init` default.
+    """
+    args.__dict__.setdefault("source_kind", "SourceDocument")
+
+
+def _handle_init_v2(args: argparse.Namespace) -> int:
+    """Dispatch wrapper for the dieted `tesserae init`.
+
+    `--bare` → the legacy `project init` workspace writer. Otherwise the legacy
+    `project setup` wizard (which honors ``--yes``). Both legacy handlers are
+    unchanged; we only backfill the namespace they expect. The module-level
+    names ``_handle_init`` / ``_handle_setup`` are resolved at call time so
+    ``monkeypatch.setattr(cli, "_handle_setup", …)`` is honored.
+    """
+    if args.bare:
+        _backfill_bare_init_defaults(args)
+        return _handle_init(args)
+    _backfill_setup_defaults(args)
+    return _handle_setup(args)
+
+
+def _route_init(rest: List[str]) -> int:
+    args = _build_init_parser().parse_args(rest)
+    return _handle_init_v2(args)
+
+
 _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "ask": _route_ask,
+    "init": _route_init,
     "compile": _route_compile,
     "context": _route_context,
     "serve": _route_serve,

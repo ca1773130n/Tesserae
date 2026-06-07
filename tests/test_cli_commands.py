@@ -185,3 +185,75 @@ def test_status_survives_corrupt_graph_json(tmp_path, capsys):
     assert rc == 0
     out = capsys.readouterr().out
     assert "corrupt" in out and "Traceback" not in out
+
+
+# ---------------------------------------------------------------------------
+# Task 4: `tesserae init` — wizard default, --yes non-interactive, --bare.
+# ---------------------------------------------------------------------------
+
+
+def test_init_bare_creates_workspace(tmp_path):
+    import tesserae.cli as cli
+
+    rc = cli.main(["init", "--bare", "--project", str(tmp_path), "--name", "t"])
+    assert rc == 0
+    assert (tmp_path / ".tesserae" / "config.json").exists()
+
+
+def test_init_yes_runs_setup_noninteractive(tmp_path, monkeypatch):
+    import tesserae.cli as cli
+
+    called = {}
+
+    def _stub(args):
+        called["yes"] = args.yes
+        return 0
+
+    monkeypatch.setattr(cli, "_handle_setup", _stub)
+    rc = cli.main(["init", "--yes", "--project", str(tmp_path)])
+    assert rc == 0
+    assert called["yes"] is True
+
+
+def test_init_keeps_llm_flags(tmp_path):
+    import json
+
+    import tesserae.cli as cli
+
+    rc = cli.main([
+        "init", "--bare", "--project", str(tmp_path),
+        "--llm-provider", "codex", "--codex-home", "/h/.codex-personal1",
+    ])
+    assert rc == 0
+    cfg = json.loads((tmp_path / ".tesserae" / "config.json").read_text())
+    assert cfg["llm_provider"] == "codex"
+
+
+def test_init_has_exactly_eight_flags():
+    import tesserae.cli as cli
+
+    parser = cli._build_init_parser()
+    flags = [a for a in parser._actions if a.option_strings and "-h" not in a.option_strings]
+    dests = sorted(a.dest for a in flags)
+    assert dests == sorted([
+        "project", "name", "source", "yes", "bare",
+        "llm_provider", "claude_config_dir", "codex_home",
+    ]), dests
+
+
+def test_init_yes_defaults_disable_optional_integrations(tmp_path, monkeypatch):
+    """--yes must encode what CI's --no-cognee/--skip-* flags meant."""
+    import tesserae.cli as cli
+
+    seen = {}
+
+    def _stub(args):
+        seen.update(vars(args))
+        return 0
+
+    monkeypatch.setattr(cli, "_handle_setup", _stub)
+    assert cli.main(["init", "--yes", "--project", str(tmp_path)]) == 0
+    # exact attr names come from the legacy setup parser dests — assert the
+    # integration toggles landed OFF (adjust names to the real dests found
+    # in Step 3, but the OFF semantics are non-negotiable)
+    assert seen.get("no_cognee") is True or seen.get("enable_cognee") is False or seen.get("cognee") is False
