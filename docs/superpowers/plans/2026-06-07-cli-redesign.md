@@ -715,7 +715,7 @@ For each call: `project_main(["compile", ...])` / `main(["project", "compile", .
 - [ ] **Step 3: Run the full suite**
 
 Run: `.venv/bin/pytest tests/ -q --tb=line`
-Expected: 0 failed (legacy paths still exist at this point, so both old stubs-not-yet-active and new tree work).
+Expected: 0 failed. NOTE: from Task 1 onward, top-level `main(["project"…])`/`main(["wiki"…])`/`main(["llm-defaults"…])` calls hit the stubs (exit 2) while direct `project_main([...])` calls keep working until Task 7 deletes them — this task migrates BOTH shapes, and this is the first full-suite-green checkpoint since Task 1. Tasks 1–5 verify with their named test files only.
 
 - [ ] **Step 4: Commit**
 
