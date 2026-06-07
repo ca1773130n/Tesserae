@@ -147,16 +147,52 @@ Obsidian 本身不会原生跟随 `wiki://` URI —— 它们会被渲染成内�
 
 ## 刷新工作流
 
-Obsidian vault 是类型化图谱的 **只读导出**。在 Obsidian 中的编辑不会回流到 `.tesserae/graph.json`。要纳入新的源或修正：
+要从源文件纳入新的源或修正：
 
 ```bash
-# Edit source files under your project's source dirs (NOT the vault), then:
+# 编辑项目源目录下的源文件，然后：
 tesserae project compile
-tesserae project export-obsidian --vault ~/Documents/tesserae-vault
 ```
 
-Obsidian 会热重载磁盘上变更的文件。如果你在 vault 里添加了一些并非从图谱投影出来的 markdown 笔记（例如你自己的个人批注），它们会被保留 —— 导出只覆盖它自己拥有的文件：`papers/`、`concepts/`、`claims/` 下的页面，以及 `index.md`、`_bridges.md`、`_meta/dashboard.md` 和 `README.md`。
+`compile` 会自动重新投影 vault —— 你不再需要单独运行导出步骤。（若只想在不做完整重编译的情况下做一次性重新投影，`tesserae project export-obsidian --vault <路径>` 仍然可用。）Obsidian 会热重载磁盘上变更的文件。
+
+如果你在 vault 里添加了一些并非从图谱投影出来的 markdown 笔记（例如你自己的个人批注），它们会被保留 —— 投影器只覆盖它自己拥有的文件：`papers/`、`concepts/`、`claims/` 下的页面，以及 `index.md`、`_bridges.md`、`_meta/dashboard.md` 和 `README.md`。手写页面（没有 `node_id:` frontmatter 的文件）以及每个投影页面上专用的用户笔记块（`<!-- user-notes:start -->` … `<!-- user-notes:end -->`）在重编译之间会被保留。
+
+### 在 Obsidian 中的编辑会回流（双向同步）
+
+自 v0.5.0 起，vault **不再是单向导出**。它现在是 *双向投影*：类型化图谱仍是事实来源，但 `project compile` 现在会在重新投影**之前**，把你在 Obsidian 中的编辑从 vault 读回并叠加到图谱上。在 Obsidian 中编辑某个节点的 `title`、`aliases`、描述 callout 或任意非系统 frontmatter 标量，重编译后改动会被保留 —— 并传播到静态站点、MCP 以及其他所有投影。
+
+```bash
+tesserae project compile
+# [tesserae] vault overlay: applying 3 field override(s) from obsidian_vault/
+```
+
+叠加层会采集的内容（*vault 优先* 字段）：
+
+- `title` → 节点 `name`
+- `aliases` → 节点别名
+- 正文描述 callout（或首段）→ 节点 `description`
+- 每个非保留 frontmatter 标量 → `metadata.<key>`（保留/系统键 `node_id`、`title`、`type`、`aliases`、`source_path`、`edges_out`、`edges_in`、`cross_vault` 永远不会被当作用户覆盖）
+
+每次叠加运行都会写出一份 `.tesserae/diverged-fields.md` 报告（`## Field overrides — N across M node(s)`），方便你审计究竟回流了什么。你在用户笔记块里添加的 wikilink 会变成 `user_link` 边。传入 `tesserae project compile --no-vault-pull` 可在一次运行中绕过叠加 —— 在恢复时、或当你有意让源 markdown 取胜时很有用。
+
+启用该功能后的首次编译会获得一次“免责通行”：由于尚无 `vault_snapshot.json` 基线，不会采集任何内容；运行结束时写出的快照会成为下次编译 diff 的基线。
+
+作为专门的实时工作流，`tesserae project obsidian-sync` 会在不做完整重编译的情况下重新应用叠加并重新投影：
+
+```bash
+# 在不改动图谱的前提下，预览一次编译会回流哪些内容。
+tesserae project obsidian-sync --dry-run
+
+# 监视 vault 并实时往返编辑（按 Ctrl-C 停止）。
+tesserae project obsidian-sync --watch
+
+# 在重命名/删除节点后，删除被留下的孤立投影页面。
+tesserae project obsidian-sync --prune-orphans
+```
+
+完整的逐字段归属矩阵与设计原理见 [obsidian-sync.md](obsidian-sync.md)。
 
 ## 何时用它、何时用静态站点
 
-编译产出的 HTML 站点（`tesserae project build-site` → `.tesserae/site/`）适合 **分享** —— 推到 GitHub Pages、S3 或任意静态主机。Obsidian vault 则适合在本地配合 Dataview 和 Obsidian 图谱视图 **阅读和查询**。两者都从同一个图谱投影出来，因此永远不会发生漂移。
+编译产出的 HTML 站点（`tesserae project build-site` → `.tesserae/site/`）是用于 **分享** 的单向只读导出 —— 推到 GitHub Pages、S3 或任意静态主机。Obsidian vault 则适合在本地配合 Dataview 和 Obsidian 图谱视图 **阅读、查询和编辑**：它是唯一一个编辑会回流到图谱的投影（见上文双向同步一节）。两者都从同一个图谱投影出来，因此永远不会发生漂移 —— 你在 Obsidian 中所做的修正会在下次编译时传播到站点。

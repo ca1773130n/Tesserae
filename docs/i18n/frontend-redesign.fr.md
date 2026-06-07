@@ -284,11 +284,11 @@ La page comporte trois rails :
 
 C’est la page à mettre en favori pour la question « qu’est-ce qui s’est passé récemment ? »
 
-### `/timeline/<YYYY-MM-DD>.html` ⚠
+### `/timeline/<YYYY-MM-DD>.html` ✅
 
 > _Screenshot: timeline-day.png_
 
-Les pages de détail par jour — listant chaque paper / repo / concept / synthesis lié à ce jour calendaire — sont un follow-up explicite. Subagent P câble l’émission du détail par jour via `StaticSiteBuilder`. En attendant, les cellules heatmap pointent vers la page source `digest.md` du jour comme solution provisoire. (Voir `render_timeline` dans `tesserae/site/pages.py` pour le TODO inline.)
+Les pages de détail par jour — listant chaque paper / repo / concept / synthesis lié à ce jour calendaire — sont désormais livrées. `render_timeline_day` (`tesserae/site/pages.py`) est émis pour chaque jour daté via `StaticSiteBuilder` (`tesserae/site/__init__.py`), et chaque page est enregistrée dans `manifest.json` comme une route `timeline_day`. Les cellules heatmap pointent directement vers la page du jour (ne se rabattant sur la page source `digest.md` du jour que lorsqu’aucune route par jour n’existe).
 
 ## Graph view
 

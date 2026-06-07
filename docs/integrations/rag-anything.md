@@ -223,7 +223,7 @@ Tesserae auto-routes sources to the right parser per file extension:
 | `.doc`, `.docx`, `.ppt`, `.pptx`, `.xls`, `.xlsx` | `docling` | Better Office structure preservation per upstream. |
 | `.pdf`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tiff`, `.webp` | configured default (`--raganything-parser`, default `mineru`) | OCR + table extraction. |
 
-Override per-bucket with `--text-parser` and `--office-parser` on `refresh-raganything`. The configured default still applies to PDFs and images.
+The managed `tesserae project refresh-raganything` wrapper exposes `--parser` (the configured default for PDFs/images), `--parse-method {auto,ocr,txt}`, `--root` (repeatable, restrict to a subtree), `--force`, and `--full`. Per-bucket text/office routing is fixed (both default to `docling`). To override the text or office parser explicitly, call the underlying module directly — `python -m tesserae.raganything_refresh --text-parser <p> --office-parser <p>` — which exposes those two extra flags. The configured default still applies to PDFs and images.
 
 Before the parse loop runs, Tesserae probes whether each required parser's Python package is importable (`importlib.import_module(...)`) and bails fast with a single aggregated error listing every missing parser and its install command. We deliberately don't use upstream `RAGAnything.check_parser_installation()` because it only inspects the parser configured on the instance and folds in model-weight readiness checks that don't fit a pre-flight stage.
 

@@ -11,15 +11,14 @@ Tesserae は PyPI で公開されており、ユーザーが `python3 -m tessera
 pip install tesserae
 ```
 
-これだけです。`pip` は `PATH` に 3 つのコンソールスクリプトを登録します。
+これだけです。`pip` は `PATH` に 2 つのコンソールスクリプトを登録します。
 
 ```bash
-tesserae --help
 tesserae --help
 tesserae_mcp --help
 ```
 
-ドキュメントでの正式なコマンドは `tesserae` です。`tesserae`（ダッシュ付き）はエイリアスです。`tesserae_mcp` は MCP サーバーを起動します。
+ドキュメントでの正式なコマンドは `tesserae` です。`tesserae_mcp` は MCP サーバーを起動します（オンデマンドの `compile_context` ツールを提供するようになりました — クイックスタートを参照）。
 
 > **pipx でも問題ありません。** CLI ツールをそれぞれ独立した venv に置きたい場合:
 > ```bash
@@ -62,6 +61,14 @@ Anthropic ベースの合成パスは extras マーカーを使います。
 ```bash
 pip install "tesserae[synthesis-llm]"
 ```
+
+実際のセマンティック埋め込み（v0.5.0 以降のデフォルト検索レーン）は `semantic` extra で提供されます。
+
+```bash
+pip install "tesserae[semantic]"
+```
+
+これは `model2vec` をインストールし、軽量・オフライン・torch 不要の静的モデル（約 8 MB の `potion-base-8M`、初回使用時に一度ダウンロード）を取得します。これがないと、ハイブリッド／埋め込み検索は非セマンティックなハッシュバケットのスタブにフォールバックし、目立つ警告を出します。そのため、`project ask`、`project context`、または MCP `compile_context` ツールを使う場合は、この extra のインストールを推奨します。
 
 ## ソースからインストール（コントリビューター向け）
 

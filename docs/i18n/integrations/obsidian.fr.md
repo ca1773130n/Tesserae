@@ -147,16 +147,52 @@ Obsidian lui-même ne suit pas nativement les URI `wiki://` — elles s'affichen
 
 ## Workflow de rafraîchissement
 
-Le vault Obsidian est un **export en lecture seule** du graphe typé. Les modifications faites dans Obsidian ne remontent pas vers `.tesserae/graph.json`. Pour intégrer de nouvelles sources ou des corrections :
+Pour intégrer de nouvelles sources ou des corrections depuis vos fichiers source :
 
 ```bash
-# Edit source files under your project's source dirs (NOT the vault), then:
+# Éditez les fichiers source dans les répertoires de sources du projet, puis :
 tesserae project compile
-tesserae project export-obsidian --vault ~/Documents/tesserae-vault
 ```
 
-Obsidian rechargera à chaud les fichiers modifiés sur disque. Si vous avez ajouté dans le vault des notes markdown qui ne sont pas projetées depuis le graphe (par ex. vos propres annotations personnelles), elles survivent — l'export n'écrase que les fichiers qu'il possède sous `papers/`, `concepts/`, `claims/`, ainsi que `index.md`, `_bridges.md`, `_meta/dashboard.md` et `README.md`.
+`compile` reprojette désormais le vault automatiquement — vous n'avez plus à exécuter une étape d'export séparée. (`tesserae project export-obsidian --vault <chemin>` existe toujours pour une reprojection ponctuelle sans recompilation complète.) Obsidian recharge à chaud les fichiers modifiés sur disque.
+
+Si vous avez ajouté dans le vault des notes markdown qui ne sont pas projetées depuis le graphe (par ex. vos propres annotations personnelles), elles survivent — le projecteur n'écrase que les fichiers qu'il possède sous `papers/`, `concepts/`, `claims/`, ainsi que `index.md`, `_bridges.md`, `_meta/dashboard.md` et `README.md`. Les pages écrites à la main (sans la clé de frontmatter `node_id:`) et le bloc de notes utilisateur dédié (`<!-- user-notes:start -->` … `<!-- user-notes:end -->`) de chaque page projetée sont préservés d'une recompilation à l'autre.
+
+### Les modifications dans Obsidian remontent vers le graphe (synchronisation bidirectionnelle)
+
+Depuis la v0.5.0, le vault **n'est plus un export à sens unique**. C'est désormais une *projection bidirectionnelle* : le graphe typé reste la source de vérité, mais `project compile` relit maintenant vos modifications depuis le vault et les superpose sur le graphe **avant** de reprojeter. Modifiez le `title`, les `aliases`, le callout de description ou tout scalaire de frontmatter hors-système d'un nœud dans Obsidian, recompilez, et le changement survit — et se propage au site statique, à MCP et à toutes les autres projections.
+
+```bash
+tesserae project compile
+# [tesserae] vault overlay: applying 3 field override(s) from obsidian_vault/
+```
+
+Ce que la superposition récolte (les champs où *le vault gagne*) :
+
+- `title` → `name` du nœud
+- `aliases` → alias du nœud
+- le callout de description du corps (ou le premier paragraphe) → `description` du nœud
+- chaque scalaire de frontmatter non réservé → `metadata.<key>` (les clés réservées/système `node_id`, `title`, `type`, `aliases`, `source_path`, `edges_out`, `edges_in`, `cross_vault` ne sont jamais traitées comme des overrides utilisateur)
+
+Chaque passage de la superposition écrit un rapport `.tesserae/diverged-fields.md` (`## Field overrides — N across M node(s)`) pour que vous puissiez auditer exactement ce qui a été remonté. Les wikilinks que vous ajoutez dans le bloc de notes utilisateur deviennent des arêtes `user_link`. Passez `tesserae project compile --no-vault-pull` pour contourner la superposition sur un passage — utile en cas de récupération, ou quand vous voulez intentionnellement que le markdown source l'emporte.
+
+La première compilation après l'activation de cette fonctionnalité obtient un « laissez-passer » : sans ligne de base `vault_snapshot.json` pour l'instant, rien n'est récolté ; le snapshot écrit à la fin devient la ligne de base pour le diff de la compilation suivante.
+
+Pour un workflow live dédié, `tesserae project obsidian-sync` réapplique la superposition et reprojette sans recompilation complète :
+
+```bash
+# Prévisualisez ce qu'une compilation remonterait, sans muter le graphe.
+tesserae project obsidian-sync --dry-run
+
+# Surveillez le vault et faites l'aller-retour des modifications en direct (Ctrl-C pour arrêter).
+tesserae project obsidian-sync --watch
+
+# Après un renommage/suppression de nœuds, supprimez les pages projetées orphelines.
+tesserae project obsidian-sync --prune-orphans
+```
+
+Voir [obsidian-sync.md](obsidian-sync.md) pour la matrice complète de propriété par champ et la justification de conception.
 
 ## Quand l'utiliser vs. le site statique
 
-Le site HTML compilé (`tesserae project build-site` → `.tesserae/site/`) est fait pour le partage — déployez-le sur GitHub Pages, S3, ou n'importe quel hébergeur statique. Le vault Obsidian est fait pour **lire et interroger** localement avec Dataview et la vue graphe d'Obsidian. Les deux projettent depuis le même graphe, ils ne dérivent donc jamais.
+Le site HTML compilé (`tesserae project build-site` → `.tesserae/site/`) est un export à sens unique en lecture seule, fait pour le partage — déployez-le sur GitHub Pages, S3, ou n'importe quel hébergeur statique. Le vault Obsidian est fait pour **lire, interroger et éditer** localement avec Dataview et la vue graphe d'Obsidian : c'est la seule projection dont les modifications remontent vers le graphe (voir la section synchronisation bidirectionnelle ci-dessus). Les deux projettent depuis le même graphe, ils ne dérivent donc jamais — et les corrections que vous faites dans Obsidian se propagent au site à la compilation suivante.

@@ -147,16 +147,52 @@ Obsidian en sí no sigue las URIs `wiki://` de forma nativa — se renderizan co
 
 ## Flujo de refresco
 
-El vault de Obsidian es una **exportación de solo lectura** del grafo tipado. Las ediciones en Obsidian no vuelven a `.tesserae/graph.json`. Para incorporar nuevas fuentes o correcciones:
+Para incorporar nuevas fuentes o correcciones desde tus archivos fuente:
 
 ```bash
-# Edit source files under your project's source dirs (NOT the vault), then:
+# Edita los archivos fuente bajo los directorios de fuentes del proyecto, luego:
 tesserae project compile
-tesserae project export-obsidian --vault ~/Documents/tesserae-vault
 ```
 
-Obsidian recargará en caliente los archivos cambiados en disco. Si has añadido notas markdown dentro del vault que no están proyectadas desde el grafo (por ejemplo, tus anotaciones personales), sobrevivirán — la exportación solo sobrescribe los archivos que le pertenecen bajo `papers/`, `concepts/`, `claims/`, además de `index.md`, `_bridges.md`, `_meta/dashboard.md` y `README.md`.
+`compile` reproyecta el vault automáticamente — ya no tienes que ejecutar un paso de exportación aparte. (`tesserae project export-obsidian --vault <ruta>` sigue existiendo para una reproyección puntual sin una recompilación completa.) Obsidian recarga en caliente los archivos cambiados en disco.
+
+Si has añadido notas markdown dentro del vault que no están proyectadas desde el grafo (por ejemplo, tus anotaciones personales), sobrevivirán — el proyector solo sobrescribe los archivos que le pertenecen bajo `papers/`, `concepts/`, `claims/`, además de `index.md`, `_bridges.md`, `_meta/dashboard.md` y `README.md`. Las páginas escritas a mano (sin la clave de frontmatter `node_id:`) y el bloque dedicado de notas de usuario (`<!-- user-notes:start -->` … `<!-- user-notes:end -->`) en cada página proyectada se conservan entre recompilaciones.
+
+### Las ediciones en Obsidian vuelven al grafo (sincronización bidireccional)
+
+A partir de v0.5.0, el vault **ya no es una exportación unidireccional**. Ahora es una *proyección bidireccional*: el grafo tipado sigue siendo la fuente de verdad, pero `project compile` ahora vuelve a leer tus ediciones desde el vault y las superpone sobre el grafo **antes** de reproyectar. Edita el `title`, los `aliases`, el callout de descripción o cualquier escalar de frontmatter no del sistema de un nodo en Obsidian, recompila, y el cambio sobrevive — y se propaga al sitio estático, a MCP y a todas las demás proyecciones.
+
+```bash
+tesserae project compile
+# [tesserae] vault overlay: applying 3 field override(s) from obsidian_vault/
+```
+
+Lo que recoge la superposición (los campos donde *gana el vault*):
+
+- `title` → `name` del nodo
+- `aliases` → alias del nodo
+- el callout de descripción del cuerpo (o el primer párrafo) → `description` del nodo
+- cada escalar de frontmatter no reservado → `metadata.<key>` (las claves reservadas/del sistema `node_id`, `title`, `type`, `aliases`, `source_path`, `edges_out`, `edges_in`, `cross_vault` nunca se tratan como overrides del usuario)
+
+Cada ejecución de la superposición escribe un informe `.tesserae/diverged-fields.md` (`## Field overrides — N across M node(s)`) para que puedas auditar exactamente qué se recuperó. Los wikilinks que añadas dentro del bloque de notas de usuario se convierten en aristas `user_link`. Pasa `tesserae project compile --no-vault-pull` para omitir la superposición en una ejecución — útil para recuperación, o cuando quieras intencionadamente que gane el markdown fuente.
+
+La primera compilación tras habilitar esta función obtiene un «pase libre»: sin una línea base `vault_snapshot.json` todavía, no se recoge nada; el snapshot escrito al final se convierte en la línea base para el diff de la siguiente compilación.
+
+Para un flujo en vivo dedicado, `tesserae project obsidian-sync` vuelve a aplicar la superposición y reproyecta sin una recompilación completa:
+
+```bash
+# Previsualiza lo que una compilación recuperaría, sin mutar el grafo.
+tesserae project obsidian-sync --dry-run
+
+# Observa el vault y haz round-trip de las ediciones en vivo (Ctrl-C para parar).
+tesserae project obsidian-sync --watch
+
+# Tras renombrar/eliminar nodos, borra las páginas proyectadas que queden huérfanas.
+tesserae project obsidian-sync --prune-orphans
+```
+
+Consulta [obsidian-sync.md](obsidian-sync.md) para la matriz completa de propiedad por campo y la justificación del diseño.
 
 ## Cuándo usar esto frente al sitio estático
 
-El sitio HTML compilado (`tesserae project build-site` → `.tesserae/site/`) es para compartir — publícalo en GitHub Pages, S3 o cualquier host estático. El vault de Obsidian es para **leer y consultar** localmente con Dataview y la vista de grafo de Obsidian. Ambos proyectan desde el mismo grafo, así que nunca divergen.
+El sitio HTML compilado (`tesserae project build-site` → `.tesserae/site/`) es una exportación unidireccional de solo lectura para compartir — publícalo en GitHub Pages, S3 o cualquier host estático. El vault de Obsidian es para **leer, consultar y editar** localmente con Dataview y la vista de grafo de Obsidian: es la única proyección cuyas ediciones vuelven al grafo (consulta la sección de sincronización bidireccional más arriba). Ambos proyectan desde el mismo grafo, así que nunca divergen — y las correcciones que hagas en Obsidian se propagan al sitio en la siguiente compilación.

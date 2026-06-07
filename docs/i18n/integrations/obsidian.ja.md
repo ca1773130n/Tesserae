@@ -147,16 +147,52 @@ Obsidian 自体は `wiki://` URI をネイティブにたどりません — イ
 
 ## 更新ワークフロー
 
-Obsidian ヴォルトは型付きグラフの**読み取り専用エクスポート**です。Obsidian での編集は `.tesserae/graph.json` には反映されません。新しいソースや修正を取り込むには:
+ソースファイルから新しいソースや修正を取り込むには:
 
 ```bash
-# Edit source files under your project's source dirs (NOT the vault), then:
+# プロジェクトのソースディレクトリ配下のソースファイルを編集してから:
 tesserae project compile
-tesserae project export-obsidian --vault ~/Documents/tesserae-vault
 ```
 
-Obsidian はディスク上で変更されたファイルをホットリロードします。ヴォルト内にグラフから射影されない markdown メモ（例: 個人的な注釈）を追加してあれば、それらは残ります — エクスポートは自身が所有するファイル（`papers/`、`concepts/`、`claims/` 配下、および `index.md`、`_bridges.md`、`_meta/dashboard.md`、`README.md`）のみを上書きします。
+`compile` がヴォルトを自動的に再射影します — 別途エクスポート手順を実行する必要はもうありません。（フルの再コンパイルなしで一度きりの再射影だけを行いたい場合は `tesserae project export-obsidian --vault <パス>` も引き続き使えます。）Obsidian はディスク上で変更されたファイルをホットリロードします。
+
+ヴォルト内にグラフから射影されない markdown メモ（例: 個人的な注釈）を追加してあれば、それらは残ります — プロジェクターは自身が所有するファイル（`papers/`、`concepts/`、`claims/` 配下、および `index.md`、`_bridges.md`、`_meta/dashboard.md`、`README.md`）のみを上書きします。手書きのページ（`node_id:` フロントマターのないファイル）と、各射影ページにある専用のユーザーノートブロック（`<!-- user-notes:start -->` … `<!-- user-notes:end -->`）は再コンパイルをまたいで保持されます。
+
+### Obsidian での編集はグラフへ反映されます（双方向同期）
+
+v0.5.0 以降、ヴォルトはもはや**一方向のエクスポートではありません**。いまや*双方向の射影*です: 型付きグラフが依然として真実の源ですが、`project compile` は再射影する**前に**、Obsidian での編集をヴォルトから読み戻してグラフにオーバーレイします。Obsidian でノードの `title`、`aliases`、説明コールアウト、あるいは任意の非システム・フロントマター・スカラーを編集して再コンパイルすると、その変更は残り — 静的サイト、MCP、その他すべての射影へ伝播します。
+
+```bash
+tesserae project compile
+# [tesserae] vault overlay: applying 3 field override(s) from obsidian_vault/
+```
+
+オーバーレイが取り込む対象（*ヴォルト優先*のフィールド）:
+
+- `title` → ノードの `name`
+- `aliases` → ノードのエイリアス
+- 本文の説明コールアウト（またはその最初の段落）→ ノードの `description`
+- 予約されていないすべてのフロントマター・スカラー → `metadata.<key>`（予約／システムキー `node_id`、`title`、`type`、`aliases`、`source_path`、`edges_out`、`edges_in`、`cross_vault` がユーザーオーバーライドとして扱われることはありません）
+
+オーバーレイの実行ごとに `.tesserae/diverged-fields.md` レポート（`## Field overrides — N across M node(s)`）が書き出されるため、何が反映されたかを正確に監査できます。ユーザーノートブロック内に追加した wikilink は `user_link` エッジになります。1 回の実行でオーバーレイをバイパスするには `tesserae project compile --no-vault-pull` を渡します — 復旧時や、意図的にソース markdown を優先させたいときに便利です。
+
+この機能を有効化した後の初回コンパイルは「フリーパス」になります: まだ `vault_snapshot.json` のベースラインが存在しないため何も取り込まれず、最後に書き出されるスナップショットが次回コンパイルの diff のベースラインになります。
+
+専用のライブワークフローとして、`tesserae project obsidian-sync` はフルの再コンパイルなしにオーバーレイを再適用して再射影します:
+
+```bash
+# グラフを変更せずに、コンパイルが何を読み戻すかをプレビューします。
+tesserae project obsidian-sync --dry-run
+
+# ヴォルトを監視し、編集をリアルタイムでラウンドトリップします（Ctrl-C で停止）。
+tesserae project obsidian-sync --watch
+
+# ノードのリネーム／削除後、孤立した射影ページを削除します。
+tesserae project obsidian-sync --prune-orphans
+```
+
+フィールドごとの所有権マトリクスと設計の根拠の全体は [obsidian-sync.md](obsidian-sync.md) を参照してください。
 
 ## 静的サイトとの使い分け
 
-コンパイル済みの HTML サイト（`tesserae project build-site` → `.tesserae/site/`）は共有のためのものです — GitHub Pages、S3、任意の静的ホストへプッシュしてください。Obsidian ヴォルトは Dataview と Obsidian のグラフビューを使って**ローカルで読んでクエリする**ためのものです。両者は同じグラフから射影されるため、ドリフトすることはありません。
+コンパイル済みの HTML サイト（`tesserae project build-site` → `.tesserae/site/`）は共有のための一方向・読み取り専用のエクスポートです — GitHub Pages、S3、任意の静的ホストへプッシュしてください。Obsidian ヴォルトは Dataview と Obsidian のグラフビューを使って**ローカルで読み、クエリし、編集する**ためのものです: 編集がグラフへ反映される唯一の射影です（上記の双方向同期セクションを参照）。両者は同じグラフから射影されるため、ドリフトすることはなく — Obsidian で加えた修正は次回のコンパイルでサイトへ伝播します。

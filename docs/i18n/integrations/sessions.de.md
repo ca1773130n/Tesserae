@@ -13,6 +13,15 @@ Zwei Durchgänge pro Sitzung:
 1. **Strukturell** (immer aktiv, kein LLM). Liest die normalisierten `HarnessSession`-Datensätze, die `tesserae sessions discover --import` in `.tesserae/harness_sessions/` schreibt. Für jede Sitzung wird ein `Session`-Umschlag-Knoten geprägt, `discussed_in`-Kanten von jedem Dokument emittiert, das der Agent geöffnet hat, und das vorhandene `decisions`-Feld in `SessionDecision`-Knoten umgewandelt.
 2. **LLM** (opt-in, läuft wenn `ANTHROPIC_API_KEY` konfiguriert ist). Sendet die normalisierten Gesprächs-Turns (das `metadata["turns"]`-Feld — nicht die rohe Transkriptdatei) an Claude mit einem JSON-only Findings-Schema. Gibt sechs Arten von Findings zurück, jedes zitiert zurück zu bestimmten Turns und bestimmten Dok-Knoten-IDs im aktuellen Graphen. Zwischengespeichert nach content_hash + project_root_hash, sodass unveränderte Sitzungen den Aufruf bei der nächsten Kompilierung überspringen.
 
+## Zwei Wege, Sessions einzuspeisen: Batch vs. Live
+
+Die obige Pipeline ist dieselbe, egal wie die Sessions ankommen. Was sich unterscheidet, ist *wann* sie entdeckt und kompiliert werden:
+
+- **Batch (manuell).** Führe `tesserae project sessions discover --import` und danach `tesserae project compile` selbst aus. Am besten für einmalige Nachträge oder CI. Der Rest dieser Seite geht diesen Weg.
+- **Live (kontinuierlich).** Lass die Engine das Projekt beobachten und neu kompilieren, während die Arbeit geschieht, damit der Graph frisch bleibt, ohne dass du daran denken musst, etwas auszuführen:
+  - **Supervisor-Daemon** — `tesserae project engine` (Alias `tesserae project daemon`) führt eine Single-Owner-asyncio-Schleife aus, die die konfigurierten Quellen beobachtet, einen Schwung von Edits zu genau einem `Pipeline.run()` zusammenfasst und automatisch neu kompiliert. Übergib `--once` für einen deterministischen Einzeldurchlauf oder `--interval` / `--debounce`, um das Zusammenfassen zu justieren. `tesserae project refresh` führt dieselbe import → compile → vault-sync-Kette einmal in-process aus.
+  - **Claude-Code-Plugin-Hooks** — mit installiertem [Plugin](claude-code-plugin.de.md) führt der `SessionEnd`-Hook beim Ende eines Gesprächs im Hintergrund import + compile aus, sodass die Erkenntnisse *dieser* Session zu Graph-Knoten für die *nächste* werden. Der `SessionStart`-Hook druckt beim Einstieg die aktuelle Graph-Zusammenfassung. Das kommt dem Erfassen von Sessions „während sie geschehen" am nächsten — ganz ohne manuellen discover/compile-Schritt.
+
 ## Einrichtung
 
 ```bash

@@ -4,11 +4,11 @@
 <p align="center"><a href="../../integrations/obsidian-sync.md">English</a> · <a href="obsidian-sync.zh.md">中文</a> · <a href="obsidian-sync.ja.md">日本語</a> · <a href="obsidian-sync.ru.md">Русский</a> · <a href="obsidian-sync.es.md">Español</a> · <a href="obsidian-sync.fr.md">Français</a> · <a href="obsidian-sync.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-> **상태: 제안됨 (2026-05-17).** 이 문서는 설계 명세이며 아직 구현된 기능이 아닙니다. Tesserae가 사용자가 Obsidian에서 투영된 위키 페이지를 편집하고, 그 편집이 다음 `project compile`에서도 살아남도록 하는 방법을 설명합니다. 구현은 이 설계가 확정되어야 진행됩니다.
+> **상태: 출시됨 (Tier 1, v0.5.0).** 아래에서 설명하는 오버레이 리더, 사용자 노트 추가 영역, 감시 모드, 고아 페이지 정리는 `tesserae project obsidian-sync` 뒤에서 실제로 동작합니다. 이 페이지는 설계 근거이자 사용자 가이드를 겸합니다. 멀티 vault 페더레이션(Tier 3)은 여전히 범위 밖입니다.
 
-오늘날의 [Obsidian export](obsidian.ko.md)는 엄격히 단방향입니다. `.tesserae/graph.json`의 타입 그래프가 vault로 투영되며, `project compile`은 투영된 파일을 덮어씁니다. 사용자들은 그 반대 방향도 요청해 왔습니다 — Obsidian에서 설명을 편집하고, 재컴파일 후에도 그것이 살아남는 것을요.
+이전의 [Obsidian export](obsidian.ko.md)는 엄격히 단방향이었습니다. `.tesserae/graph.json`의 타입 그래프가 vault로 투영되며, `project compile`은 투영된 파일을 덮어씁니다. `obsidian-sync`는 반대 방향을 추가합니다 — Obsidian에서 설명을 편집하면 재컴파일 후에도 살아남습니다.
 
-이 문서는 데이터 모델의 일관성을 해치지 않으면서 그것이 어떻게 작동할지를 명확히 정리합니다.
+이 문서는 데이터 모델의 일관성을 해치지 않으면서 그것이 어떻게 작동하는지를 명확히 정리합니다.
 
 ## 전략적 전환, 분명히 명시하기
 
@@ -98,30 +98,48 @@ Tesserae는 동기화 서버, 인증 레이어, 충돌 해결 데몬, 호스팅 
 
 다섯 가지 모두 오버레이 모델과 호환됩니다. Tesserae가 vault를 변경 스트림이 아닌 디스크상의 파일로 보기 때문입니다.
 
-## CLI 인터페이스 (제안)
+## CLI 인터페이스
+
+`tesserae project obsidian-sync`는 vault 편집을 타입 그래프에 적용하고 재투영합니다:
 
 ```bash
-# Pull-only sync (Tier 1a): overlay reader runs as part of compile by default.
-tesserae project compile                  # always pulls vault overrides if vault exists
+# 오버레이를 한 번 적용: 사용자 편집을 풀하고 vault로 재투영.
+tesserae project obsidian-sync
 
-# Inspect what would change before letting compile apply
+# 먼저 무엇이 바뀔지 검사. .tesserae/diverged-fields.md를 작성하고
+# 적용하거나 재투영하지 않음.
 tesserae project obsidian-sync --dry-run
 
-# Skip the pull for a single compile (recovery mode)
-tesserae project compile --no-vault-pull
+# 이번 호출에 특정 vault 지정 (해석 순서:
+# --vault > config.obsidian.vault_path > .tesserae/obsidian_vault/).
+tesserae project obsidian-sync --vault ~/Documents/tesserae-vault
 
-# Long-running watch (Tier 2)
-tesserae project obsidian-sync --watch --vault ~/Documents/tesserae-vault
+# 그 vault 경로를 이후 명령의 기본값으로 설정.
+tesserae project obsidian-sync --vault ~/Documents/tesserae-vault --persist-vault
+
+# 장기 실행 감시: vault가 바뀔 때마다 오버레이를 재적용.
+# Ctrl-C로 중지; --poll-interval로 폴링 간격 조정 (기본 1.5초).
+tesserae project obsidian-sync --watch --poll-interval 1.5
+
+# 소스 노드가 더 이상 존재하지 않는 투영 페이지 삭제 (투영기는
+# 덮어쓰기만 하고 삭제는 안 함). 사용자 노트가 있는 페이지는
+# --force-prune-with-notes도 함께 전달하지 않는 한 유지됨.
+tesserae project obsidian-sync --prune-orphans
+tesserae project obsidian-sync --prune-orphans --force-prune-with-notes
 ```
 
-## 단계화
+`/tesserae:obsidian-sync` 슬래시 명령이 이것을 감싸며, `tesserae project refresh`
+(및 `/tesserae:refresh` 매크로)는 import → compile → sync 체인의 마지막 단계로
+오버레이를 실행합니다.
 
-| Tier | 범위 | 공수 |
+## 전달 현황
+
+| Tier | 범위 | 상태 |
 |---|---|---|
-| **1a** | 오버레이 리더: vault 순회, `vault_overrides.json` 생성, 컴파일 시 적용. Lint가 발산을 보고. | 약 3일 |
-| **1b** | 사용자 노트 추가 영역: 투영기는 `<!-- user-notes:start --> ... <!-- user-notes:end -->` 블록을 절대 건드리지 않음. | 약 1일 |
-| **2** | 감시 모드: 장기 실행 `obsidian-sync --watch`가 파일시스템 이벤트에 따라 오버레이를 재실행하고, 적용 전에 프롬프트를 표시. | 약 1주 |
-| **3** | 멀티 vault 페더레이션: 그래프가 vault별 출처를 저장하고, 동기화된 vault 간 동시 편집을 지원. | 약 1개월, 실제 사용 사례 나올 때까지 보류 |
+| **1a** | 오버레이 리더: vault 순회, `vault_overrides.json` 생성, 동기화 시 적용. 발산은 `.tesserae/diverged-fields.md`에 기록. | 출시됨 |
+| **1b** | 사용자 노트 추가 영역: 투영기는 `<!-- user-notes:start --> ... <!-- user-notes:end -->` 블록을 절대 건드리지 않음. | 출시됨 |
+| **2** | 감시 모드: 장기 실행 `obsidian-sync --watch`가 vault 변경에 따라 폴링 루프로 오버레이를 재실행. | 출시됨 |
+| **3** | 멀티 vault 페더레이션: 그래프가 vault별 출처를 저장하고, 동기화된 vault 간 동시 편집을 지원. | 실제 사용 사례 나올 때까지 보류 |
 
 ## 비목표 (명시적으로)
 
@@ -130,11 +148,11 @@ tesserae project obsidian-sync --watch --vault ~/Documents/tesserae-vault
 - 모든 필드를 왕복시키도록 추출기를 다시 작성하는 일 — 소스 markdown은 오버라이드 테이블 밖의 모든 것에 대해 정규로 유지됨.
 - 정적 HTML 사이트의 동기화 (`build-site`는 투영 전용으로 유지).
 
-## 구현 전 미결정 사항
+## 확정된 결정 사항
 
-다음 항목들은 제안된 기본값을 가지지만, 코드가 들어가기 전에 최종 점검이 필요합니다:
+다음은 설계 시점의 미결정 사항이었습니다. 출시된 Tier 1–2 구현이 다음과 같이 정리했습니다:
 
-1. **Lint 리포트 형태.** 발산된 필드는 별도의 `.tesserae/diverged-fields.md` 파일로 노출되어야 하나, 아니면 기존 `lint-report.md`의 새 섹션으로 들어가야 하나? 제안: git에서 diff할 수 있도록 전용 파일.
+1. **Lint 리포트 형태.** 발산된 필드는 `lint-report.md`의 한 섹션이 아니라 전용 `.tesserae/diverged-fields.md` 파일(`--dry-run` 및 매 적용 시 작성)로 노출되어 git에서 diff할 수 있습니다.
 2. **Tombstone 노드 타입.** `Stub`을 실제 스키마 타입으로 추가할지, 아니면 `_kind: stub` 식별자를 가진 `OpenQuestion`에 얹을지? 제안: `Stub`이라는 이름의 실제 타입, 공개 인덱스에서는 숨김.
 3. **컴파일 시 pull의 기본값.** 기본 ON, 기본 OFF? 제안: 설정된 경로에 vault가 존재할 때 ON, 사용자가 의도적으로 옵트인하도록 처음 활성화될 때 일회성 확인 프롬프트 표시.
 4. **diff를 위한 "이전 투영"은 무엇으로 정의하나?** `.tesserae/vault_snapshot.json`에 저장된 스냅샷, 아니면 매 컴파일마다 즉석에서 재투영? 제안: 스냅샷, 매 컴파일 끝에 기록. 더 저렴하고 추출기의 비결정성이 오버레이로 새는 것을 막음.
@@ -142,6 +160,4 @@ tesserae project obsidian-sync --watch --vault ~/Documents/tesserae-vault
 
 ## 이것이 `obsidian.md`에는 어떻게 드러나나
 
-사용자 대상 가이드는 "vault를 읽고 쿼리할 수 있다"에 계속 초점을 둡니다. 구현이 완료되면 끝부분의 짧은 "양방향 동기화" 섹션이 한 줄 요약과 함께 여기로 링크할 것입니다: "Obsidian에서 필드를 편집하면 재컴파일 후에도 살아남습니다. 전체 모델은 [obsidian-sync.md](obsidian-sync.md)를 참조."
-
-그때까지는 `obsidian.md`의 기존 읽기 전용 면책 조항이 유지됩니다 — 이 설계는 로드맵이지 출시된 기능이 아닙니다.
+사용자 대상 가이드는 "vault를 읽고 쿼리할 수 있다"에 계속 초점을 두고, 한 줄 요약과 함께 왕복 동작을 위해 여기로 링크합니다: "Obsidian에서 필드를 편집하면 재컴파일 후에도 살아남습니다. 전체 모델은 [obsidian-sync.md](obsidian-sync.md)를 참조."

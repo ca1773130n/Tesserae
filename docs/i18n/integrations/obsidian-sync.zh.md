@@ -4,11 +4,11 @@
 <p align="center"><a href="../../integrations/obsidian-sync.md">English</a> · <a href="obsidian-sync.ko.md">한국어</a> · <a href="obsidian-sync.ja.md">日本語</a> · <a href="obsidian-sync.ru.md">Русский</a> · <a href="obsidian-sync.es.md">Español</a> · <a href="obsidian-sync.fr.md">Français</a> · <a href="obsidian-sync.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-> **状态：提案（2026-05-17）。** 本文是一份设计规范，尚未落地为功能。它描述了 Tesserae 在未来如何允许用户在 Obsidian 中编辑投影出的 wiki 页面，并让这些编辑在下一次 `project compile` 之后依然存活。是否实现，取决于该设计能否定稿。
+> **状态：已交付（Tier 1，v0.5.0）。** 下面描述的覆盖层读取器、用户笔记追加区、watch 模式和孤儿页面清理，都已在 `tesserae project obsidian-sync` 背后实际运行。本页既是设计依据也是用户指南。多 vault 联邦（Tier 3）仍在范围之外。
 
-目前 [Obsidian 导出](obsidian.md)是严格单向的：`.tesserae/graph.json` 中的类型化图谱投影到 vault，而 `project compile` 会覆盖所有投影出的文件。用户们提出了反向的诉求 —— 在 Obsidian 中修改一段描述后，希望它能在重编译中存活下来。
+[Obsidian 导出](obsidian.md)过去是严格单向的：`.tesserae/graph.json` 中的类型化图谱投影到 vault，而 `project compile` 会覆盖所有投影出的文件。`obsidian-sync` 加上了反方向 —— 在 Obsidian 中修改一段描述，它就能在重编译中存活下来。
 
-本文档说明在不让数据模型陷入不一致的前提下，这件事该怎么做。
+本文档说明在不让数据模型陷入不一致的前提下，这件事是怎么做到的。
 
 ## 战略转变，说清楚
 
@@ -98,30 +98,47 @@ Tesserae **不会**构建同步服务器、鉴权层、冲突解决守护进程�
 
 这五种方案都与覆盖层模型兼容，因为 Tesserae 把 vault 视为磁盘上的文件，而不是一连串变更事件。
 
-## CLI 表面（提案）
+## CLI 表面
+
+`tesserae project obsidian-sync` 把 vault 编辑应用到类型化图谱上并重新投影：
 
 ```bash
-# Pull-only sync (Tier 1a): overlay reader runs as part of compile by default.
-tesserae project compile                  # always pulls vault overrides if vault exists
+# 应用一次覆盖层：拉取用户编辑，重新投影到 vault。
+tesserae project obsidian-sync
 
-# Inspect what would change before letting compile apply
+# 先检查会改什么。写出 .tesserae/diverged-fields.md，
+# 不应用也不重新投影。
 tesserae project obsidian-sync --dry-run
 
-# Skip the pull for a single compile (recovery mode)
-tesserae project compile --no-vault-pull
+# 为本次调用指定某个 vault（解析顺序：
+# --vault > config.obsidian.vault_path > .tesserae/obsidian_vault/）。
+tesserae project obsidian-sync --vault ~/Documents/tesserae-vault
 
-# Long-running watch (Tier 2)
-tesserae project obsidian-sync --watch --vault ~/Documents/tesserae-vault
+# 把该 vault 路径设为后续命令的默认值。
+tesserae project obsidian-sync --vault ~/Documents/tesserae-vault --persist-vault
+
+# 长驻 watch：每当 vault 变化就重新应用覆盖层。
+# Ctrl-C 停止；用 --poll-interval 调节轮询节奏（默认 1.5 秒）。
+tesserae project obsidian-sync --watch --poll-interval 1.5
+
+# 删除其源节点已不存在的投影页面（投影器只覆盖，
+# 从不删除）。除非同时传 --force-prune-with-notes，
+# 否则带用户笔记的页面会被保留。
+tesserae project obsidian-sync --prune-orphans
+tesserae project obsidian-sync --prune-orphans --force-prune-with-notes
 ```
 
-## 分期实施
+`/tesserae:obsidian-sync` 斜杠命令封装了它，而 `tesserae project refresh`
+（以及 `/tesserae:refresh` 宏）在其 import → compile → sync 链的最后一步运行覆盖层。
 
-| 阶段 | 范围 | 工作量 |
+## 交付状态
+
+| 阶段 | 范围 | 状态 |
 |---|---|---|
-| **1a** | 覆盖层读取器：遍历 vault、构建 `vault_overrides.json`、在编译时应用。Lint 报告列出分歧。 | 约 3 天 |
-| **1b** | 用户笔记追加区：投影器从不触碰 `<!-- user-notes:start --> ... <!-- user-notes:end -->` 块。 | 约 1 天 |
-| **2** | watch 模式：长驻 `obsidian-sync --watch`，在文件系统事件触发时重跑覆盖层，应用前先确认。 | 约 1 周 |
-| **3** | 多 vault 联邦：图谱记录每个 vault 的来源信息，支持跨多个已同步 vault 的并发编辑。 | 约 1 个月，留待出现真实用例后再做 |
+| **1a** | 覆盖层读取器：遍历 vault、构建 `vault_overrides.json`、在同步时应用。分歧写入 `.tesserae/diverged-fields.md`。 | 已交付 |
+| **1b** | 用户笔记追加区：投影器从不触碰 `<!-- user-notes:start --> ... <!-- user-notes:end -->` 块。 | 已交付 |
+| **2** | watch 模式：长驻 `obsidian-sync --watch` 随 vault 变化在轮询循环中重跑覆盖层。 | 已交付 |
+| **3** | 多 vault 联邦：图谱记录每个 vault 的来源信息，支持跨多个已同步 vault 的并发编辑。 | 留待出现真实用例后再做 |
 
 ## 非目标（明确声明）
 
@@ -130,11 +147,11 @@ tesserae project obsidian-sync --watch --vault ~/Documents/tesserae-vault
 - 重写提取器以让每个字段都能回环 —— 在覆盖表之外的一切，源 markdown 仍是规范来源。
 - 静态 HTML 站点的同步（`build-site` 仍是单向投影）。
 
-## 实施前待决的问题
+## 已确定的决策
 
-下列事项各有提案默认值，但在落地代码前值得再做一次最终评估：
+下列事项在设计阶段是待决问题；已交付的 Tier 1–2 实现按如下方式给出了结论：
 
-1. **Lint 报告形态。** 分歧字段是单独输出为 `.tesserae/diverged-fields.md`，还是作为现有 `lint-report.md` 中的一节？提案：单独文件，便于在 git 中做 diff。
+1. **Lint 报告形态。** 分歧字段作为专用文件 `.tesserae/diverged-fields.md`（由 `--dry-run` 以及每次应用时写出）单独输出，而非作为 `lint-report.md` 的一节，以便在 git 中做 diff。
 2. **墓碑节点类型。** 是把 `Stub` 加为真正的 schema 类型，还是搭车 `OpenQuestion` 加上 `_kind: stub` 区分符？提案：作为真正类型，命名为 `Stub`，对公开索引隐藏。
 3. **编译时拉取的默认值。** 默认开启还是默认关闭？提案：当配置路径下存在 vault 时默认开启，并在首次激活时一次性提示用户确认，让用户明确选择启用。
 4. **diff 所对照的"上次投影"如何定义？** 存为 `.tesserae/vault_snapshot.json` 快照，还是每次编译时即时重新投影？提案：使用快照，在每次编译结束时写入。更便宜，且避免让提取器的非确定性渗入覆盖层。
@@ -142,6 +159,4 @@ tesserae project obsidian-sync --watch --vault ~/Documents/tesserae-vault
 
 ## 这在 `obsidian.md` 中的呈现方式
 
-面向用户的指南依旧聚焦于"你可以阅读和查询 vault"。等实现落地后，在文末追加一节简短的"双向同步"，链接到这里，并附一句话总结："在 Obsidian 中修改字段，它们会在重编译时存活。完整模型见 [obsidian-sync.md](obsidian-sync.md)。"
-
-在此之前，`obsidian.md` 中现有的"只读"免责声明保持不变 —— 本设计是路线图，而不是已交付的功能。
+面向用户的指南依旧聚焦于"你可以阅读和查询 vault"，然后用一句话总结链接到这里讲述往返的故事："在 Obsidian 中修改字段，它们会在重编译时存活。完整模型见 [obsidian-sync.md](obsidian-sync.md)。"

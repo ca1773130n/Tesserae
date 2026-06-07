@@ -13,6 +13,15 @@ hash-stabile Bodies) intakt bleibt.
 Diese Seite behandelt, wann du ihn aktivierst, was er kostet, welche Daten deine
 Maschine verlassen und wie du den Output inspizierst.
 
+> **Geltungsbereich.** Dies ist Synthese *zur Compile-Zeit*: Sie (über)schreibt
+> bei jedem Compile die dauerhaften Wiki-Seiten (pulse, daily digest, weekly,
+> topic, comparison, field overview). Sie ist verschieden vom *On-Demand*-
+> Kontext-Compiler (`compile_context` / das MCP-Tool `compile_context`), der zur
+> Anfragezeit für eine bestimmte Query via personalized PageRank über den Graph
+> und ein Zeichen-Budget ein citation-begrenztes Bundle zusammenstellt. Beide
+> Pfade geben Graph-Fakten mit Citations wieder; nur der Synthese-Pfad hier führt
+> ein LLM aus, und nur er persistiert Markdown-Seiten.
+
 ## Was er tut
 
 Beide Pfade konsumieren dieselben `_PagePlan`-Inputs (Node-IDs, Namen, Typen,

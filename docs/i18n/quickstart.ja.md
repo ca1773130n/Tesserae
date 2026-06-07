@@ -68,6 +68,8 @@ tesserae project compile
 
 初回実行後は `--changed-only` を使うと、変更されていない markdown ファイルをスキップしつつ、ファイル変更がない場合に以前の graph を保持できます。Understand Anything が有効な場合、compile は最初に `.tesserae/external/understand-anything.md` を refresh/materialize します。Cognee runtime が有効な場合は、`.tesserae/cognee_bundle/` の書き込み後に Cognee も best-effort で更新します。
 
+> **ワンショットのパイプライン。** `tesserae project refresh` はループ全体を in-process で実行します。つまり、新しい agent session を import し、compile し、vault を sync する一連の処理を 1 つのコマンドで行います。opt-in の増分 compile には `--changed-only`、遅い harness-session 探索スキャンを省くには `--skip-sessions` を渡してください。
+
 ## 3. 静的 frontend をビルドして配信
 
 ```bash
@@ -96,6 +98,16 @@ tesserae project watch
 
 `project watch` は 2 秒ごとに polling し、1 秒 debounce してから `compile --changed-only` を実行します。cron 風の rebuild には `--once`（snapshots vs `.tesserae/.watch-cache.json`）、custom watch dirs の追加には `--paths <dir>`、cadence の調整には `--interval` / `--debounce` を使います。
 <!-- END: subagent-r-watch -->
+
+### refresh daemon を実行する
+
+ソースを監視し、編集のバーストをまとめ、自動で recompile して、知識ベースを自律的に常に最新へ保つ常駐エンジンが欲しい場合は、supervised daemon を起動します。
+
+```bash
+tesserae project engine
+```
+
+`project engine`（別名 `project daemon`）は長時間稼働する supervisor です。2 秒ごとに polling し、各 rebuild の前に 1 秒の静止ウィンドウを待ちます。cadence は `--interval` と `--debounce` で調整し、別のプロジェクトを対象にするには `--project`、単一の決定的な drain サイクルを実行して終了するには（cron や CI に便利）`--once` を渡します。これは `project watch` のハンズオフ版です。起動したままにしておけば、あなたや agent が作業する間も graph、vault、site が最新に保たれます。
 
 表示されるすべての route（home、sources、concepts、entities、papers、repos、topics、syntheses、questions、timeline、graph、さらに AI siblings）の注釈付き tour は [`docs/frontend-redesign.md`](frontend-redesign.ja.md) を参照してください。
 
@@ -145,7 +157,19 @@ tesserae project query "What is Gaussian Splatting?"
 
 デフォルトは search-only です。`.tesserae/site/search-index.json` 上の BM25 と、マッチした `wiki/<kind>/<slug>.md` からの 200 文字 excerpt を使います。絞り込むには `--kind papers`（または `concepts`、`repos` など）、広げるには `--top-k N`、構造化出力には `--json` を渡します。`[node_id]` citations 付きの合成回答を Claude に求めるには `--llm` を追加（または `TESSERAE_QUERY_LLM=1` を設定）します。`--interactive` は readline REPL を開き、空行または EOF で終了します。`TESSERAE_QUERY_DRY_RUN=1` は API 呼び出しなしで prompt を試します。
 
-## 7. Agent harness ファイルを export
+## 7. agent 向け context をオンデマンドで compile する
+
+v0.5.0 の目玉は On-Demand Context Compiler です。compile 済みの graph に対して、query にスコープを絞った 1 つの引用付き context ドキュメントを要求し、agent の context window に合わせてサイズを調整します。
+
+```bash
+tesserae project context "session import はどう動きますか？"
+```
+
+query に一致するノードから Personalized PageRank を seed として開始し（明示的に seed するには `--seeds <node_id>` を使用）、近傍を拡張し（`--depth`、デフォルト 2）、文字数 `--budget`（デフォルト 32000、`<= 0` で無制限）で上限を設けた引用付きドキュメントを組み立てます。その上に LLM が書いた要約を追加するには `--synthesize`（LLM バックエンドが必要）、ドキュメントを stdout ではなくファイルに書き出すには `-o/--output <file>` を使います。
+
+同じ compiler は MCP 経由で `compile_context` ツールとして agent に公開されるため、コーディング agent は手動 export なしで、会話の途中に budget で制限された必要十分なプロジェクト context を取得できます。
+
+## 8. Agent harness ファイルを export
 
 ```bash
 tesserae project export-agent-harness
@@ -169,7 +193,7 @@ tesserae project export-agent-harness \
   --target opencode
 ```
 
-## 8. Obsidian vault を export
+## 9. Obsidian vault を export
 
 ```bash
 tesserae project export-obsidian
@@ -183,7 +207,7 @@ tesserae project export-obsidian --vault "$OBSIDIAN_VAULT_PATH"
 
 Vault には markdown projections、`.obsidian` defaults、graph coloring、`raw/assets/`、Dataview dashboard が含まれます。
 
-## 9. MCP を設定
+## 10. MCP を設定
 
 ```bash
 tesserae project mcp-config --server-name my_project_wiki
@@ -191,7 +215,7 @@ tesserae project mcp-config --server-name my_project_wiki
 
 出力を `~/.hermes/config.yaml` の `mcp_servers` の下に貼り付け、Hermes/gateway を再起動します。
 
-## 10. Graphiti export / sync
+## 11. Graphiti export / sync
 
 依存関係なしの episode export:
 
@@ -214,7 +238,7 @@ tesserae project sync-graphiti \
   --neo4j-password '<password>'
 ```
 
-## 11. GitHub Pages にデプロイ
+## 12. GitHub Pages にデプロイ
 
 `.tesserae/site/` の compiled site をプロジェクト git origin の `gh-pages` branch に push します。
 

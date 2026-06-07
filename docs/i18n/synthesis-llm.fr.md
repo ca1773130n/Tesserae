@@ -7,6 +7,8 @@ Tesserae fournit deux chemins de synthèse. Le chemin par défaut est une heuris
 
 Cette page explique quand l’activer, combien cela coûte, quelles données quittent votre machine et comment inspecter la sortie.
 
+> **Portée.** Il s’agit de synthèse *au moment de la compilation* : elle (ré)écrit les pages wiki permanentes (pulse, daily digest, weekly, topic, comparison, field overview) à chaque compilation. Elle est distincte du compilateur de contexte *à la demande* (`compile_context` / l’outil MCP `compile_context`), qui, au moment de la requête, assemble pour une requête donnée un bundle à citations bornées via personalized PageRank sur le graphe et un budget de caractères. Les deux chemins reformulent des faits du graphe avec des citations, mais seul le chemin de synthèse ici exécute un LLM, et seul lui persiste des pages Markdown.
+
 ## Ce que cela fait
 
 Les deux chemins consomment les mêmes entrées `_PagePlan` (node ids, noms, types, descriptions, source paths). La différence se trouve dans le corps.

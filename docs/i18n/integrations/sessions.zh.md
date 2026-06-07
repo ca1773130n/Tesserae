@@ -13,6 +13,15 @@ Tesserae 的会话图谱将关于项目的 Claude Code / Codex 对话转换为�
 1. **结构化**(始终运行,无 LLM)。读取 `tesserae sessions discover --import` 写入 `.tesserae/harness_sessions/` 的规范化 `HarnessSession` 记录。为每个会话铸造一个 `Session` 信封节点,为代理打开的每个文档发出 `discussed_in` 边,并将现有 `decisions` 字段转换为 `SessionDecision` 节点。
 2. **LLM**(可选,配置 `ANTHROPIC_API_KEY` 时运行)。将规范化的对话回合(`metadata["turns"]` 字段 — 不是原始转录文件)发送到 Claude,使用仅 JSON 的发现模式。返回六种发现,每种引用回特定回合和当前图谱中的特定文档节点 ID。通过 content_hash + project_root_hash 缓存,因此未更改的会话在下次编译时跳过调用。
 
+## 喂入会话的两种方式:批处理 vs 实时
+
+无论会话如何到达,上述流程都相同。不同的是它们*何时*被发现和编译:
+
+- **批处理(手动)。** 自己运行 `tesserae project sessions discover --import`,然后运行 `tesserae project compile`。最适合一次性回填或 CI。本页其余部分走的就是这条路径。
+- **实时(连续)。** 让引擎监视项目并在工作发生时重编译,这样图谱保持新鲜而无需记得手动运行任何东西:
+  - **监督守护进程** — `tesserae project engine`(别名 `tesserae project daemon`)运行一个单一所有者的 asyncio 循环,监视配置的源,将一连串编辑合并为一次 `Pipeline.run()`,并自动重编译。传 `--once` 做一次确定性的单次排空,或用 `--interval` / `--debounce` 调节合并。`tesserae project refresh` 在进程内运行同样的 import → compile → vault-sync 链一次。
+  - **Claude Code 插件 hook** — 安装[插件](claude-code-plugin.zh.md)后,`SessionEnd` hook 在对话结束时后台执行 import + compile,使*本次*会话的洞察成为*下次*会话的图谱节点。`SessionStart` hook 在进入时打印当前图谱摘要。这是最接近"实时"捕获会话的方式 —— 完全无需手动 discover/compile 步骤。
+
 ## 设置
 
 ```bash

@@ -7,6 +7,8 @@ Tesserae incluye dos rutas de síntesis. La predeterminada es una heurística de
 
 Esta página explica cuándo habilitarla, cuánto cuesta, qué datos salen de tu máquina y cómo inspeccionar el resultado.
 
+> **Alcance.** Esto es síntesis *en tiempo de compilación*: (re)escribe las páginas wiki permanentes (pulse, daily digest, weekly, topic, comparison, field overview) en cada compilación. Es distinta del compilador de contexto *bajo demanda* (`compile_context` / la herramienta MCP `compile_context`), que en tiempo de solicitud ensambla un bundle con citations acotadas para una consulta específica mediante personalized PageRank sobre el grafo y un presupuesto de caracteres. Ambos caminos reformulan hechos del grafo con citations, pero solo el camino de síntesis de aquí ejecuta un LLM, y solo él persiste páginas Markdown.
+
 ## Qué hace
 
 Ambas rutas consumen las mismas entradas `_PagePlan` (node ids, nombres, types, descriptions, source paths). La diferencia está en el cuerpo.

@@ -3,7 +3,9 @@
 <!-- translations:end -->
 ＃ 建筑学
 
-Tesserae 将源材料目录转换为受控的、类型化的知识图，并通过持久的 Markdown wiki 层将图转换为静态的、人工智能友好的网站。 2026 年 4 月的重新设计围绕 Karpathy 三层模型重新组织了系统：原始证据保持原始状态，类型图控制本体，Markdown wiki 层位于图和任何渲染输出之间。静态站点现在是该 wiki 层的“渲染器”，而不是图的直接转储，以 [`tesserae/research_graph.py`](../../tesserae/research_graph.py) 中的受控本体作为模式。
+Tesserae 是一个**上下文引擎**。它从你的项目重建一个自我改进的知识库，并将其作为可直接使用的上下文交给智能体。它运行在三大支柱之上：(1) **会话监控** —— 观察实时智能体/工作会话，在事件发生时捕获发现；(2) **自主、主动的知识摄取** —— 流水线 + 监督循环持续拉取并重新提取知识，主动改进知识库而非等待指令；(3) **按需文档/上下文** —— 从同一知识库编译出的用户请求产物。类型化图、Markdown 库（vault）和静态站点都是知识库的*投影*；引擎是保持它们新鲜并喂给智能体的循环。
+
+在底层，Tesserae 将源材料目录转换为受控的、类型化的知识图，并通过持久的 Markdown wiki 层将图转换为静态的、人工智能友好的网站。 2026 年 4 月的重新设计围绕 Karpathy 三层模型重新组织了投影侧：原始证据保持原始状态，类型图控制本体，Markdown wiki 层位于图和任何渲染输出之间。静态站点是该 wiki 层的“渲染器”，而不是图的直接转储，以 [`tesserae/research_graph.py`](../../tesserae/research_graph.py) 中的受控本体作为模式。**v0.5.0** 里程碑（2026 年 6 月）增加了驱动全部三大支柱的引擎主干 —— 参见下文的*引擎主干*和*按需上下文编译器*。
 
 ## Karpathy 三层模型
 
@@ -65,6 +67,39 @@ data/, docs/, src/                                    (L1 raw)
 
 每一步都是渐进的。图形提取器使用 `manifest.json` 内容哈希来跳过未更改的源文件。当主体哈希与磁盘上已有的哈希匹配时，`WikiPageStore.write_page` 返回 `False`（并跳过写入）。 `StaticSiteBuilder` 擦除并重写了 `.tesserae/site/`，但其输出是确定性的 - 请参阅下面的“幂等性故事”。
 
+## 上下文编译器数据流
+
+按需上下文编译器（[`tesserae/context_compiler.py`](../../tesserae/context_compiler.py)）是支柱 3 的标志性路径。给定一个查询和/或显式种子节点 id，`compile_context` 直接从图构建一份量身定制的、**带引用的** Markdown 包并在内存中返回 —— 它不会向 `.tesserae/` 写入任何内容。
+
+```
+query / seeds
+     │
+     ▼  1. 种子解析
+        显式种子（仅当存在于图中时保留）+ hybrid_search() 命中，去重，稳定顺序
+     │
+     ▼  2. PPR 扩展
+        retrieval.ppr.personalized_pagerank 对深度受限的 k 跳邻域排名；
+        若结果为空（种子不连通）→ 回退到种子顺序（包永不为空）
+     │
+     ▼  3. 预算受限的选择
+        沿 PPR 顺序遍历，包含每个节点的引用正文，直到下一段正文将超出
+        `budget` 字符（budget <= 0 = 不限；在词边界处插入超预算标记）
+     │
+     ▼  4. 带引用的 Markdown 组装
+        每个选中节点一节 + 末尾的 `## Citations` 块。
+        正文优先采用投影的 wiki 页面（当存在 store 与公共 wiki 类型时），
+        否则用节点描述，再否则用最小桩。无 LLM 的正文不嵌入任何挂钟
+        时间戳 → 对相同的 (graph, query, seeds, depth, budget) 字节相同。
+     │
+     ▼  5. 可选的 LLM 综合  （仅当 synthesize=true 且设置了 ANTHROPIC_API_KEY 时）
+     ▼
+   ContextBundle { query, seeds_used, ranked_nodes, selected_nodes,
+                   citations[ContextCitation], body, synthesized,
+                   char_budget_used, char_budget_total }
+```
+
+默认值：`depth=2`、`budget=32000`。确定性组装（步骤 1–4）是契约；LLM 综合纯属附加。同一流水线支撑 `project context` CLI 命令、`compile_context` MCP 工具，以及主题范围的导出切片（`slice_export_context_for_topic`、主题范围的 `llms.txt`）。
+
 ## 模块图
 
 ### Wiki + 综合（L2）
@@ -103,9 +138,55 @@ data/, docs/, src/                                    (L1 raw)
 
 |模块|责任|
 |---|---|
-| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`：驱动提取→图表→wiki层→站点。拥有`ProjectPaths`（`config`、`graph`、`manifest`、`wiki`、`site`等）。 |
-| [`tesserae/cli.py`](../../tesserae/cli.py) |所有 `tesserae project …` 子命令，包括 `compile`、`build-site`、`serve`、`watch`、`deploy`。 |
+| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`：驱动提取→图表→内存遍历→wiki层→站点。拥有`ProjectPaths`（`config`、`graph`、`manifest`、`wiki`、`site`等）。预先决定是否符合基于来源（provenance）的增量编译条件（由 `incremental_compile` 控制，默认 OFF）。 |
+| [`tesserae/cli.py`](../../tesserae/cli.py) |所有 `tesserae project …` 子命令，包括 `compile`、`refresh`、`context`、`build-site`、`serve`、`watch`、`engine`/`daemon`、`deploy`。 |
 | [`tesserae/deploy.py`](../../tesserae/deploy.py) | `project deploy`：通过工作树将 `.tesserae/site/` 推送到 `gh-pages` 分支，可以选择通过 `gh` 启用页面。 |
+
+### 引擎主干 (v0.5.0 —— 支柱 1 & 2)
+
+引擎主干是驱动会话监控与自主重新摄取的进程内循环。同一个 `Pipeline.run()` 是 CLI、监督守护进程以及（之后的）MCP 服务器都调用的单一刷新路径。
+
+| 模块 | 职责 |
+|---|---|
+| [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | `Pipeline`：顺序步骤运行器。把散文式刷新链（摄取 → 编译 → 投影/发布）固化为一个可导入对象，返回结构化的 `List[StepResult]` 而非打印后退出，使每个调用方自行决定如何呈现结果。`run()` 对每步捕获 `Exception`（放过 `KeyboardInterrupt`/`SystemExit`），并在首次失败处停止。 |
+| [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | `Daemon`：单一所有者的 asyncio 监督器。监视源目录、Obsidian 库以及 harness 会话目录；通过取消并重新调度的去抖，将一批 `TriggerEvent` 合并为恰好一次 `Pipeline.run()`。复用现有的 `watch.py` / `vault_watch.py` 监视器（不重写它们），写入 pidfile，并在执行中异常下存活。通过 `project engine` / `project daemon`（`--interval`、`--debounce`、`--once`）暴露。 |
+| [`tesserae/watch.py`](../../tesserae/watch.py), [`tesserae/vault_watch.py`](../../tesserae/vault_watch.py) | 独立的 `project watch` 命令与守护进程的源/库通道共同复用的轮询监视器。 |
+
+### 自我改进内存 (v0.5.0 —— 支柱 2)
+
+阶段 5 激活了持久的自我改进。每节点的可变状态存放在 `node_memory` SQLite 边车（位于 `.tesserae/sqlite.db` 内部），与不可变的 `node_provenance.first_seen_at` 首见时间戳（阶段 4 边车）分离。编译会对图驱动一组确定性遍历。
+
+| 模块 | 职责 |
+|---|---|
+| [`tesserae/memory/store.py`](../../tesserae/memory/store.py) | `NodeMemoryRow` + 对 `node_memory` 表的与存储无关的访问器（`read_memory`、`write_memory`、`bump_access`）—— `decay_score`、`last_accessed_at`、`confidence`、`superseded`。没有调用点内嵌原始 SQL。 |
+| [`tesserae/memory/decay.py`](../../tesserae/memory/decay.py) | `compute_decay_score`：艾宾浩斯式新鲜度评分（最新 + 最常访问优先），用于对会话发现排名。 |
+| [`tesserae/memory/supersede.py`](../../tesserae/memory/supersede.py) | `run_supersede_pass`（**默认开启**）：确定性裁决，将较旧的近重复洞见标记为被较新者取代，并添加 `supersedes` 边。 |
+| [`tesserae/memory/insight_symbol_link.py`](../../tesserae/memory/insight_symbol_link.py) | `run_insight_symbol_link_pass`：通过 `discusses` 边将会话洞见连接到它们论及的代码符号。 |
+| [`tesserae/memory/reinforce.py`](../../tesserae/memory/reinforce.py), [`tesserae/memory/contradiction.py`](../../tesserae/memory/contradiction.py) | 针对同一边车的访问强化与矛盾检测助手。 |
+
+复现置信度在输出中是数值化的：时间投影从 `NodeMemoryRow.confidence`（SQLite 中为文本，经 `temporal.py` 呈现）为每个事实的 `confidence` 打标，仅当无存储值时才回退到 `infer_confidence`。
+
+### 检索 (v0.5.0 —— 支柱 2 & 3)
+
+| 模块 | 职责 |
+|---|---|
+| [`tesserae/retrieval/hybrid.py`](../../tesserae/retrieval/hybrid.py) | `hybrid_search`：本地优先的混合检索器，通过倒数排名融合（RRF，k=60）融合三条通道 —— Okapi BM25（k1=1.5、b=0.75）、大小写无关的词法/FTS 式子串匹配，以及一条可插拔的嵌入通道。完全确定性。 |
+| [`tesserae/retrieval/ppr.py`](../../tesserae/retrieval/ppr.py) | `personalized_pagerank`：对图执行 HippoRAG-2 式（arXiv:2502.14802）个性化 PageRank，用于多跳种子扩展 —— 表面化离种子数跳但连接良好的节点，而不仅是 1 跳邻域。 |
+| 嵌入后端 (阶段 6, Track B) | 混合嵌入通道的默认后端是一个无需额外依赖的确定性哈希桶伪嵌入；当安装了可选依赖时，优先使用 `sentence-transformers`（`all-MiniLM-L6-v2`）并惰性加载。`embedding_status` MCP 工具报告当前活动的后端。 |
+
+### 按需上下文编译器 (v0.5.0 —— 支柱 3 标志)
+
+| 模块 | 职责 |
+|---|---|
+| [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | `compile_context`：支柱 3 的标志性功能。直接从图为查询/种子集编译一份量身定制的、**带引用的**上下文包 —— 参见下文*上下文编译器数据流*。返回内存中的 `ContextBundle`（含 `ContextCitation`）；不向磁盘写入任何内容。通过 `project context` CLI 命令和 `compile_context` MCP 工具暴露。 |
+
+### 持久化端口 + 图存储
+
+| 模块 | 职责 |
+|---|---|
+| [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | `GraphStore` 协议：`upsert_node`/`upsert_edge`、`get_node`、`iterate_nodes`、`query_subgraph`、`find_canonical`，以及阶段 4 的删除面 —— `delete_node` 和 `delete_nodes_by_source`（删除在移除给定源路径后来源集变空的节点，因此跨文件概念得以存活）。 |
+| [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | `SqliteGraphStore`：独立的后端存储；拥有 `node_provenance` 和 `node_memory` 边车表。 |
+| [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | 将存储 URL（`sqlite:///…`、`hypepaper-postgres://…`）解析到正确的 `GraphStore`，让 MCP 服务器在运行时指向任意后端存储。 |
 
 ### 外部适配器（本轮不变）
 
@@ -116,7 +197,7 @@ data/, docs/, src/                                    (L1 raw)
 | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) |入站 Claude 代码/Codex 会话发现、标准化、`.tesserae/harness_sessions/` 下的存储以及经过编辑的降价摘要。 |
 | [`tesserae/graphiti_adapter.py`](../../tesserae/graphiti_adapter.py) |时间事实 JSONL + 可选的实时 Graphiti 同步。 |
 | [`tesserae/cognee_adapter.py`](../../tesserae/cognee_adapter.py) | Cognee 节点/边缘 JSONL 捆绑和直接添加/认知路径。 |
-| [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | MCP stdio 服务器公开 `schema`、`graph_summary`、`search_nodes`、`node_context`、`search_facts`、`timeline`。 |
+| [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | MCP stdio 服务器。检索/图：`schema`、`graph_summary`、`search_nodes`、`node_context`（含 `use_ppr`）、`search_facts`、`timeline`、`graph_ppr`、`wiki_page`、`raw_source`、`lint_report`。上下文引擎（v0.5.0）：`compile_context`（按需上下文编译器）、`embedding_status`、`fresh_insights`（按衰减排名的会话发现）、`list_communities`、`find_session_findings`、`find_code_symbol_mentions`。此外还有 `ask`、多项目注册表工具（`list_projects`、`register_project`、`activate_project`、`unregister_project`、`list_sessions`）以及 `tesserae_setup_plan` / `tesserae_setup_apply`。 |
 
 ## 项目工作区布局
 
@@ -125,8 +206,9 @@ data/, docs/, src/                                    (L1 raw)
   config.json                 project name, source kind, source list
   graph.json                  validated ResearchGraph (incl. Synthesis nodes)
   manifest.json               per-source content hashes (input dedup)
-  sqlite.db                   SQLite graph store
-  temporal_facts.jsonl        Graphiti-style temporal projection
+  sqlite.db                   SQLite graph store；同时拥有 node_provenance（首见，阶段 4）
+                              与 node_memory（衰减 / 置信度 / 被取代，阶段 5）边车表
+  temporal_facts.jsonl        Graphiti-style temporal projection（数值化复现置信度）
   graphiti_episodes.jsonl     dependency-free Graphiti episode export
   report.md                   graph quality / summary
   competitive_report.md       comparison vs. MegaMem / Graphiti / others
@@ -225,6 +307,11 @@ site/
 ## 测试策略
 
 - **单位** — `tests/test_wiki_store.py`、`tests/test_synthesis.py`、`tests/test_site_components.py`、`tests/test_site_pages.py`、`tests/test_site_exports.py`、`tests/test_relevance.py`。
+- **引擎主干** — `tests/test_pipeline.py`、`tests/test_refresh_pipeline.py`、`tests/test_daemon_core.py`、`tests/test_daemon_sources.py`、`tests/test_cli_engine.py`。
+- **自我改进内存** — `tests/test_memory_sidecar.py`、`tests/test_decay_supersede.py`、`tests/test_supersede_suppression.py`、`tests/test_mcp_supersede_suppression.py`、`tests/test_memory_contradiction_reinforce.py`。
+- **检索 + 嵌入** — `tests/test_hybrid_search.py`、`tests/test_ppr.py`、`tests/test_real_embeddings_phase6.py`。
+- **上下文编译器** — `tests/test_context_compiler.py`（形态、引用完整性、确定性、预算、PPR 回退）、`tests/test_cli_context.py`、`tests/test_mcp_server_context.py`。
+- **增量编译（实验性）** — `tests/test_incremental_compile.py`、`tests/test_incremental_parity.py`、`tests/test_provenance_readiness.py`、`tests/test_sqlite_provenance.py`。
 - **幂等性** — `tests/test_project_e2e_redesign.py` 编译两次并断言 `wiki/` 和 `site/` 中的差异为零。
 - **链接完整性** — `tests/test_frontend.py` 解析每个发出的 HTML 的 href，并断言每个内部链接解析为生成的文件。 `nodes/codeclass-*.html`没有生产。
 - **AI 兄弟** — 对于每个 `path/foo.html`，测试套件断言 `path/foo.txt` 和 `path/foo.json` 存在； JSON 解析并包含 `{title, kind, body, links}`。

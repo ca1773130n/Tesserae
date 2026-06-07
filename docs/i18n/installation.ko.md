@@ -11,15 +11,14 @@ Tesserae는 PyPI에 게시되어 있으며, 사용자가 `python3 -m tesserae.cl
 pip install tesserae
 ```
 
-끝입니다. `pip`가 `PATH`에 세 개의 콘솔 스크립트를 등록합니다.
+끝입니다. `pip`가 `PATH`에 두 개의 콘솔 스크립트를 등록합니다.
 
 ```bash
-tesserae --help
 tesserae --help
 tesserae_mcp --help
 ```
 
-문서에서 사용하는 표준 명령은 `tesserae`입니다. `tesserae`(대시 포함)는 별칭입니다. `tesserae_mcp`는 MCP 서버를 시작합니다.
+문서에서 사용하는 표준 명령은 `tesserae`입니다. `tesserae_mcp`는 MCP 서버를 시작합니다(이제 온디맨드 `compile_context` 도구를 제공합니다 — 퀵스타트 참고).
 
 > **pipx도 괜찮습니다.** CLI 도구를 각각 격리된 venv에 두고 싶다면:
 > ```bash
@@ -62,6 +61,14 @@ Anthropic 기반 합성 경로는 extras 마커를 사용합니다.
 ```bash
 pip install "tesserae[synthesis-llm]"
 ```
+
+실제 시맨틱 임베딩(v0.5.0부터 기본 검색 경로)은 `semantic` extra로 제공됩니다.
+
+```bash
+pip install "tesserae[semantic]"
+```
+
+이는 `model2vec`를 설치하고, 가볍고 오프라인에서 동작하며 torch가 필요 없는 정적 모델(약 8 MB `potion-base-8M`, 최초 사용 시 한 번 다운로드)을 내려받습니다. 이 extra가 없으면 하이브리드/임베딩 검색이 비시맨틱 해시 버킷 스텁으로 대체되며 큰 경고를 출력합니다. 따라서 `project ask`, `project context` 또는 MCP `compile_context` 도구를 사용하는 경우 이 extra 설치를 권장합니다.
 
 ## 소스에서 설치(기여자용)
 

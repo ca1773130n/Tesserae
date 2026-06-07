@@ -284,11 +284,11 @@ arXiv 링크는 `tesserae/site/markdown.py`를 통해 자동 링크됩니다. �
 
 “최근 무슨 일이 있었나” 질문을 위해 북마크할 페이지입니다.
 
-### `/timeline/<YYYY-MM-DD>.html` ⚠
+### `/timeline/<YYYY-MM-DD>.html` ✅
 
 > _스크린샷: timeline-day.png_
 
-일별 상세 페이지 — 해당 달력 날짜에 연결된 모든 논문 / 저장소 / 개념 / 종합을 나열 — 는 명시적인 후속 작업입니다. Subagent P가 `StaticSiteBuilder`를 통해 일별 상세 emit을 연결하고 있습니다. 그 전까지 히트맵 셀은 임시로 해당 날짜의 `digest.md` 소스 페이지로 연결됩니다. (인라인 TODO는 `tesserae/site/pages.py`의 `render_timeline`을 참고하세요.)
+일별 상세 페이지 — 해당 달력 날짜에 연결된 모든 논문 / 저장소 / 개념 / 종합을 나열 — 가 이제 출시되었습니다. `render_timeline_day`(`tesserae/site/pages.py`)가 `StaticSiteBuilder`(`tesserae/site/__init__.py`)를 통해 날짜별로 emit되며, 각 페이지는 `manifest.json`에 `timeline_day` 라우트로 기록됩니다. 히트맵 셀은 해당 일별 페이지로 직접 연결됩니다(일별 라우트가 없는 경우에만 해당 날짜의 `digest.md` 소스 페이지로 폴백합니다).
 
 ## 그래프 보기
 

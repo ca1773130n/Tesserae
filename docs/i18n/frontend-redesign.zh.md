@@ -284,11 +284,11 @@ Timeline 页面是活动日志：语料何时增长、添加了哪些类型的 n
 
 这是适合为“最近发生了什么”问题收藏的页面。
 
-### `/timeline/<YYYY-MM-DD>.html` ⚠
+### `/timeline/<YYYY-MM-DD>.html` ✅
 
 > _截图：timeline-day.png_
 
-每日详情页 — 列出与该日历日相关的所有 paper / repo / concept / synthesis — 是明确的后续工作。Subagent P 正在通过 `StaticSiteBuilder` 接入每日详情输出。在完成之前，heatmap cells 会临时链接到当天的 `digest.md` source page。（内联 TODO 见 `tesserae/site/pages.py` 中的 `render_timeline`。）
+每日详情页 — 列出与该日历日相关的所有 paper / repo / concept / synthesis — 现已上线。`render_timeline_day`（`tesserae/site/pages.py`）通过 `StaticSiteBuilder`（`tesserae/site/__init__.py`）按日期逐日 emit，每个页面都作为 `timeline_day` 路由记录在 `manifest.json` 中。heatmap cells 直接链接到对应的每日页面（仅当不存在每日路由时才回退到当天的 `digest.md` source page）。
 
 ## Graph view
 

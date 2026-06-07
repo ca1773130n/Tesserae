@@ -19,11 +19,45 @@
 ## Проверка
 
 ```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest tests/ -q
+.venv/bin/pytest tests/ -x          # ПРЕРВАТЬ при любом сбое — никогда не выпускайте красную сборку
 ./scripts/install.sh --help
 tesserae project setup --help
 tesserae project compile --help
+tesserae project context --help     # Компилятор контекста по запросу
 ```
+
+### Smoke-сборка демо (совпадает с CI-задачей `build-demo`)
+
+И релизный поток, и CI компилируют Tesserae по его собственному дереву исходников
+с детерминированным экстрактором (без вызовов LLM, без API-ключей) и собирают сайт:
+
+```bash
+.venv/bin/python -m tesserae project setup --yes --no-color --source . \
+  --no-cognee --skip-raganything --skip-install-cognee \
+  --skip-install-raganything --skip-install-understand-anything
+.venv/bin/python -m tesserae project compile
+.venv/bin/python -m tesserae project build-site
+```
+
+## Релизный поток
+
+Управляется навыком `release` (`.claude/skills/release/SKILL.md`). Последний тег — `v0.5.0`.
+
+- [ ] На `main`, рабочее дерево чистое, выполнить `git pull --ff-only origin main`.
+- [ ] Тесты + smoke-сборка демо (выше) проходят.
+- [ ] Поднять `version = "X.Y.Z"` в `pyproject.toml` (синхронизировать `package.json`, если есть); закоммитить `release: vX.Y.Z` с однопараграфным changelog из `git log v<prev>..HEAD`.
+- [ ] Тег `git tag -a vX.Y.Z -m "vX.Y.Z"`; запушить сначала коммит, затем тег.
+- [ ] Дождаться зелёного CI (`gh run watch <run-id>`) — не выпускать GitHub-релиз на красной сборке.
+- [ ] Опубликовать GitHub-релиз. Публикация в PyPI — опционально (когда будет готово).
+
+### GitHub Pages
+
+Воркфлоу `build-demo` (push в `main`) всегда загружает скомпилированный dogfood-сайт как
+инспектируемый артефакт воркфлоу и **также** деплоит его в GitHub Pages, когда Pages
+включён. Шаги Pages помечены `continue-on-error`: дефолтный `GITHUB_TOKEN` не может
+*создать* сайт Pages, поэтому самый первый деплой требует однократного ручного
+переключения в **Settings → Pages → Source: GitHub Actions**. Пока этот тумблер не включён,
+сборка всё равно остаётся зелёной, а артефакт всё равно создаётся.
 
 ## Self-dogfood
 

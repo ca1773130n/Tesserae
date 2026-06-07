@@ -10,9 +10,25 @@ Tesserae 可以导入本地 AI-agent transcript，并在静态站点的 `session
 - `export-agent-harness` 是面向 Claude Code、Codex、Gemini、Cursor、Kiro、OpenCode 等工具的出站上下文。
 - `project sessions ...` 是入站历史：它会为当前项目规范化既有 Claude Code/Codex 会话，将其存储在 `.tesserae/harness_sessions/` 下，并让 `project build-site` 发布会话索引/详情页。
 
+## 两条入口：批量导入与实时监控
+
+会话采集不再只有批量方式。进入同一个规范化存储有两条路径：
+
+- **批量导入** —— `project sessions discover/import` 按需扫描 transcript root，一次性写入。本页下文说明该流程。
+- **实时监控** —— supervisor daemon（`project engine`，别名 `project daemon`）运行 `SessionTailer`，监视*本项目自身的* Claude Code 和 Codex transcript，并在新 turn 落地时即时采集。每个 tick 都会 seek 到按文件持久化的 byte offset，仅读取新增的 byte，并在 enqueue 去抖后的重新编译**之前**将完整 turn 写入 SQLite `HarnessSessionsDB`（`.tesserae/sqlite.db`），因此编译始终读到一致状态。tailer 的范围被限制为项目自身的会话（Claude `projects/<slug>/*.jsonl`；Codex 按 cwd 过滤），重启后从已存 offset 恢复，不会重放 turn。
+
+运行实时循环：
+
+```bash
+tesserae project engine        # 监视源、合并突发、自动重新编译
+tesserae project engine --once # 单次 drain 周期后退出（确定性）
+```
+
+`tesserae project refresh` 在 in-process 中一次性运行同样的 ingest → compile → project 流水线，而不启动长驻 watcher（用 `--skip-sessions` 跳过 harness 会话 discovery 扫描）。
+
 ## 隐私模型
 
-会话导入是显式操作。普通的 `project compile` 或 `project build-site` 会读取 `.tesserae/harness_sessions/` 中已经规范化的会话，但不会意外抓取私有 harness transcript 目录。
+两条采集路径都是显式的。实时 tailer 仅在你保持 `project engine`/`daemon` 运行期间工作，批量 discovery 仅在 `--import` 时写入。普通的 `project compile` 或 `project build-site` 会读取 `.tesserae/harness_sessions/` 中已规范化的会话以及 `.tesserae/sqlite.db` 中的实时记录，但不会自行意外抓取私有 harness transcript 目录。
 
 导入的会话记录是本地项目产物。发布公开站点前请先检查它们，尤其当 transcript 可能包含密钥、私有路径、客户数据或未发布代码时。
 
@@ -62,6 +78,8 @@ tesserae project sessions list
     <session>.json
     <session>.md
 ```
+
+实时监控的会话还会记录在 SQLite `HarnessSessionsDB`（`.tesserae/sqlite.db`）中，其中也持久化了 tailer 恢复所用的按文件 read offset。`project sessions list` 报告合并后的视图。
 
 ## 构建静态会话页面
 

@@ -58,19 +58,53 @@ tesserae project mcp-config
 
 ### Tools — 모델이 호출하는 도구
 
+모든 tool은 선택적 `graph_path` 또는 `project`(레지스트리 별칭)를 받아 하나의 서버가 호출마다 등록된 어떤 vault든 해석할 수 있습니다. 생략 시 활성 프로젝트로 폴백합니다.
+
+**그래프 쿼리 및 검색**
+
 | Tool | 용도 |
 |---|---|
 | `schema` | 통제된 node, edge, wiki-kind 어휘 |
 | `graph_summary` | 활성 프로젝트의 노드 및 엣지 개수와 타입 분포 |
-| `search_nodes` | 쿼리, 타입, kind로 그래프 노드를 필터링하여 점수 기반 상위 N개 반환 |
-| `node_context` | 노드 + 인접 엣지 + 이웃 노드 |
-| `search_facts` | 그래프에서 투영된 시간적 사실(Graphiti 스타일) |
+| `search_nodes` | 공개 그래프 노드를 `query`, `type`/`types`, `kind`, `limit`, 하이브리드 `mode`/`weights`로 필터링. `include_superseded`로 폐기된 노드도 노출 |
+| `node_context` | 노드 + 인접 엣지 + 이웃 노드. `use_ppr`는 1-홉 탐색 대신 개인화 PageRank로 이웃을 랭킹하며 `include_superseded`, `limit`로 결과를 한정 |
+| `embedding_status` | 하이브리드 검색을 구동하는 활성 임베딩 백엔드 보고 |
+| `search_facts` | 그래프에서 투영된 시간적 사실(Graphiti 스타일); `current_only`로 현재 사실만 필터 |
 | `timeline` | 종단적 관점을 위해 `valid_from` 기준으로 정렬된 사실 |
-| `wiki_page` | 노드에 대해 컴파일된 markdown 페이지 본문 |
+| `graph_ppr` | 하나 이상의 `seed_node_id`에서 시드된 개인화 PageRank로 가장 관련성 높은 top-K 노드 반환; `alpha`, `directed`, `edge_type_weights` 조정 가능 |
+| `wiki_page` | 노드에 대해 컴파일된 markdown 페이지 본문과 참조하는 내부 링크 |
 | `raw_source` | 원본 소스 markdown (16 KB로 제한) |
-| `lint_report` | 가장 최근의 컴파일 시점 lint 결과 |
-| `ask` | 구성된 메모리 백엔드(raganything, cognee, 또는 컴파일된 위키)를 통한 자연어 Q&A |
+| `lint_report` | 가장 최근의 컴파일 시점 lint 결과 (64 KB로 제한) |
+
+**온디맨드 컨텍스트 컴파일러** (Phase 7)
+
+| Tool | 용도 |
+|---|---|
+| `compile_context` | `query` 또는 명시적 `seeds`에 대해 맞춤형 **인용 포함** 컨텍스트 문서를 컴파일. 깊이 제한 서브그래프(`depth`, 1–10, 기본 2)를 탐색하고 PPR로 랭킹한 뒤 문자 `budget`(기본 32000; `0`이면 무제한)를 채움. 기본은 결정론적이며 `synthesize: true`면 LLM이 작성한 서사형 "topic" 슬라이스를 생성. `body`, `citations`, `selected_node_ids`, `char_budget_used` 반환 |
+| `list_communities` | 후처리 패스가 생성한 `COMMUNITY_SUMMARY` 노드를 멤버 수 기준으로 나열(`min_size`, `limit`); `node_context`로 `summarizes` 엣지를 따라 멤버로 회귀 |
+| `fresh_insights` | 에빙하우스 스타일 감쇠 점수(최신 + 최다 접근 우선)로 랭킹된 세션 발견; 폐기된 근사 중복은 제외. 선택적 `kind`, `limit`, `include_superseded` |
+
+**세션 메모리** ([sessions.md](sessions.md) 참조)
+
+| Tool | 용도 |
+|---|---|
+| `list_sessions` | 활성 프로젝트의 세션 엔벨로프(id, started_at, title, files_touched, 발견 개수); `since`, `limit` |
+| `find_session_findings` | `discussed_in` / `references`를 통해 `node_id`에 연결된 모든 세션 발견. `kinds`(insight / decision / question / todo / hypothesis / takeaway)로 필터 가능 |
+| `find_code_symbol_mentions` | 세션 발견을 그것이 언급하는 `CodeFunction`/`CodeClass`/`CodeMethod` 심볼로 확장(옵트인 insight↔symbol 연결 패스의 `discusses` 엣지 사용) |
+
+**Q&A 및 레지스트리**
+
+| Tool | 용도 |
+|---|---|
+| `ask` | 구성된 메모리 백엔드(raganything, cognee, 또는 컴파일된 위키)를 통한 자연어 Q&A. `backend`, `top_k`; `scope`/`scope_aliases`로 다중 vault 팬아웃; 다중 계정 라우팅용 `claude_config_dir` |
 | `list_projects` / `register_project` / `activate_project` / `unregister_project` | 다중 프로젝트 레지스트리 제어 |
+
+**가이드 설정**
+
+| Tool | 용도 |
+|---|---|
+| `tesserae_setup_plan` | 환경을 감지하고 설정 계획을 JSON으로 제안. 읽기 전용 — `.tesserae/`를 절대 건드리지 않음 |
+| `tesserae_setup_apply` | (수정 가능한) 계획 적용: `.tesserae/config.json` 작성 및 게이트된 설치/실행 액션 수행. `confirm_install_actions` / `confirm_run_actions`로 게이트 |
 
 ### Resources — 모델 컨텍스트에 자동 로드
 

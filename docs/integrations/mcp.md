@@ -56,21 +56,53 @@ Restart the client after editing. The next session will connect and discover the
 
 ## 3) What the client sees
 
-### Tools — invoked by the model
+Every tool accepts an optional `graph_path` or `project` (registry alias) so a single server can resolve any registered vault per call. Defaults fall back to the active project.
+
+**Graph query & retrieval**
 
 | Tool | Purpose |
 |---|---|
 | `schema` | Controlled node, edge, and wiki-kind vocabulary |
 | `graph_summary` | Node + edge counts and type distributions for the active project |
-| `search_nodes` | Filter graph nodes by query, type, kind, with score-ranked top-N |
-| `node_context` | A node + its incident edges + neighbouring nodes |
-| `search_facts` | Temporal facts projected from the graph (Graphiti-style) |
+| `search_nodes` | Filter public graph nodes by `query`, `type`/`types`, `kind`, `limit`, hybrid `mode`/`weights`; `include_superseded` to surface retired nodes |
+| `node_context` | A node + its incident edges + neighbouring nodes. `use_ppr` ranks neighbours by personalized PageRank instead of a 1-hop walk; `include_superseded` and `limit` bound the result |
+| `embedding_status` | Report the active embedding backend powering hybrid search |
+| `search_facts` | Temporal facts projected from the graph (Graphiti-style); `current_only` filters to live facts |
 | `timeline` | Facts ordered by `valid_from` for a longitudinal view |
-| `wiki_page` | The compiled markdown page body for a node |
+| `graph_ppr` | Personalized PageRank seeded at one or more `seed_node_id`s; returns the top-K most relevant nodes with tunable `alpha`, `directed`, `edge_type_weights` |
+| `wiki_page` | The compiled markdown page body for a node, plus the internal links it references |
 | `raw_source` | The original source markdown (capped at 16 KB) |
-| `lint_report` | The latest compile-time lint findings |
-| `ask` | Natural-language Q&A via the configured memory backend (raganything, cognee, or compiled wiki) |
+| `lint_report` | The latest compile-time lint findings (capped at 64 KB) |
+
+**On-demand context compiler** (Phase 7)
+
+| Tool | Purpose |
+|---|---|
+| `compile_context` | Compile a tailored, **cited** context doc for a `query` or explicit `seeds`. Walks a depth-bounded subgraph (`depth`, 1–10, default 2), ranks with PPR, and fills a character `budget` (default 32000; pass `0` for uncapped). Deterministic by default; set `synthesize: true` for an LLM-written narrative "topic" slice. Returns `body`, `citations`, `selected_node_ids`, and `char_budget_used` |
+| `list_communities` | List `COMMUNITY_SUMMARY` nodes minted by the post-compile pass, ranked by member count (`min_size`, `limit`); walk `summarizes` edges back to members via `node_context` |
+| `fresh_insights` | Session findings ranked by Ebbinghaus-style decay score (newest + most-accessed first); filters out superseded near-duplicates. Optional `kind`, `limit`, `include_superseded` |
+
+**Session memory** (see [sessions.md](sessions.md))
+
+| Tool | Purpose |
+|---|---|
+| `list_sessions` | Session envelopes (id, started_at, title, files_touched, finding counts) for the active project; `since`, `limit` |
+| `find_session_findings` | Every Session-derived finding linked to `node_id` via `discussed_in` / `references`, optionally filtered to `kinds` (insight / decision / question / todo / hypothesis / takeaway) |
+| `find_code_symbol_mentions` | Expand a session finding into the `CodeFunction`/`CodeClass`/`CodeMethod` symbols it mentions, via `discusses` edges from the opt-in insight↔symbol link pass |
+
+**Q&A & registry**
+
+| Tool | Purpose |
+|---|---|
+| `ask` | Natural-language Q&A via the configured memory backend (raganything, cognee, or compiled wiki). `backend`, `top_k`; cross-vault fan-out via `scope`/`scope_aliases`; `claude_config_dir` for multi-account routing |
 | `list_projects` / `register_project` / `activate_project` / `unregister_project` | Multi-project registry control |
+
+**Guided setup**
+
+| Tool | Purpose |
+|---|---|
+| `tesserae_setup_plan` | Detect the environment and propose a setup plan as JSON. Read-only — never touches `.tesserae/` |
+| `tesserae_setup_apply` | Apply a (possibly edited) plan: write `.tesserae/config.json` and run gated install/run actions. Gated behind `confirm_install_actions` / `confirm_run_actions` |
 
 ### Resources — auto-loaded into the model's context
 

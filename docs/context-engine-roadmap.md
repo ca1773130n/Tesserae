@@ -11,6 +11,16 @@ and acceptance criteria.
 knowledge autonomously, self-improves its base, and serves on-demand,
 agent-ready context — replacing today's manual batch-compile CLI.
 
+> **Status as of v0.5.0 (2026-06-06):** Phases 0–6 have **shipped**. The engine
+> spine (P0 pipeline orchestrator, P1 supervisor daemon, P2 live session
+> monitor) is in `tesserae/engine/`; P3 incremental-compile infrastructure
+> landed but stays **flag-OFF / experimental**; P4 self-improvement persists via
+> the `node_memory` sidecar (numeric recurrence confidence, supersede
+> default-on); P5 real default embeddings shipped (Track B); and **P6 — the
+> On-Demand Context Compiler — is the v0.5.0 headline feature**. Phase 7 (unify
+> serve + watch + deploy + lifecycle tests) remains **open**. Per-phase status
+> is noted inline below. See the [v0.5.0 release notes](./release-notes/v0.5.0.md).
+
 ## Dependency shape
 
 ```
@@ -31,10 +41,13 @@ parallel once P1 lands. P7 converges them.
 
 ---
 
-## Phase 0 — Pipeline orchestrator (de-risking foundation)
+## Phase 0 — Pipeline orchestrator (de-risking foundation) ✅ Shipped v0.5.0
 
 **Goal:** Move the refresh pipeline out of slash-command markdown into a
 first-class in-process orchestrator that the daemon, CLI, and MCP all call.
+
+> **Shipped in v0.5.0** as `tesserae/engine/pipeline.py` (part of the engine
+> spine, merged in Phases 1–3 of the engine work).
 
 - **Why now:** Every later phase needs one shared code path for
   `ingest → compile → project → publish`. Today that sequence only exists as
@@ -51,10 +64,12 @@ first-class in-process orchestrator that the daemon, CLI, and MCP all call.
 - **Risk:** Low. Pure refactor; existing tests guard behavior.
 - **Audit findings closed:** "refresh lives in a skill," "cli god-dispatcher."
 
-## Phase 1 — Supervisor daemon (the engine loop)
+## Phase 1 — Supervisor daemon (the engine loop) ✅ Shipped v0.5.0
 
 **Goal:** A supervised long-running process that owns one event loop and drives
 `Pipeline` on triggers, with real lifecycle handling.
+
+> **Shipped in v0.5.0** as `tesserae/engine/daemon.py` (engine spine, Phases 1–3).
 
 - **Why now:** This is the spine. The audit's single biggest gap. Everything
   "continuous/autonomous" hangs off it.
@@ -73,10 +88,13 @@ first-class in-process orchestrator that the daemon, CLI, and MCP all call.
 - **Audit findings closed:** "no daemon," "continuous = sleep poller," watcher
   `KeyboardInterrupt` death, no signal handling.
 
-## Phase 2 — Live session monitor (Pillar 1)
+## Phase 2 — Live session monitor (Pillar 1) ✅ Shipped v0.5.0
 
 **Goal:** Tail live harness transcripts and ingest turns as sessions run,
 replacing post-hoc `sessions discover --import`.
+
+> **Shipped in v0.5.0** as `tesserae/engine/session_tail.py` (engine spine,
+> Phases 1–3).
 
 - **Why now:** Needs P1's loop to feed. Delivers the "session monitoring"
   pillar.
@@ -93,10 +111,18 @@ replacing post-hoc `sessions discover --import`.
 - **Audit findings closed:** post-hoc session scan, whole-session cache
   invalidation, flat glob store.
 
-## Phase 3 — Incremental / streaming compile through the GraphStore port
+## Phase 3 — Incremental / streaming compile through the GraphStore port ⚙️ Infrastructure shipped v0.5.0 (flag-OFF / experimental)
 
 **Goal:** Replace the fragile `changed_only` graph-eviction patch with a
 designed incremental layer flowing through `ports/graph_store.py`.
+
+> **Infrastructure shipped in v0.5.0** (provenance sidecar, `GraphStore` delete
+> surface, persistent `url_resolver` async runtime), but the `incremental_compile`
+> feature flag **stays OFF / experimental** — Codex review surfaced
+> multi-owner / producer-lifecycle / cap-fallback gaps. Byte-parity against
+> full-compile is proven for the covered paths; the flag is opt-in until the
+> remaining gaps close. v0.5.0 also fixed two real compile bugs uncovered here:
+> changed-only idempotence and the injected-store contract.
 
 - **Why now:** Continuous ingestion (P2) makes the current
   reload-strip-evict-merge workaround a correctness liability (the documented
@@ -115,10 +141,17 @@ designed incremental layer flowing through `ports/graph_store.py`.
 - **Audit findings closed:** fragile `changed_only`, ports bypassed, asyncio
   per-call, three persistence formats, no per-node freshness.
 
-## Phase 4 — Activate & persist self-improvement (Pillar: self-improving)
+## Phase 4 — Activate & persist self-improvement (Pillar: self-improving) ✅ Shipped v0.5.0
 
 **Goal:** Make the knowledge base actually evolve in place, on by default,
 persisted at compile time.
+
+> **Shipped in v0.5.0** via the `node_memory` sidecar (`tesserae/memory/`):
+> default-on **supersede** with a deterministic verdict (both directions) plus
+> downstream suppression, and **recurring-insight reinforcement** as a **numeric
+> recurrence confidence** surfaced in output (cross-session frequency →
+> `TemporalFactProjector`), replacing the prior coarse string heuristic. Decay,
+> contradiction, and feedback-guidance scaffolding land in the same sidecar.
 
 - **Why now:** Depends on P3's per-node upserts. Closes the most-untested slice.
 - **Scope:** Persist **decay** scores at compile (`memory/decay.py` no longer
@@ -139,10 +172,15 @@ persisted at compile time.
   fixtures.
 - **Audit findings closed:** the entire Pillar-2 table.
 
-## Phase 5 — Real default embeddings (Track B foundation)
+## Phase 5 — Real default embeddings (Track B foundation) ✅ Shipped v0.5.0
 
 **Goal:** Stop shipping a deterministic hash-bucket pseudo-embedding as the
 default "semantic" lane.
+
+> **Shipped in v0.5.0** as Track B: a real default `Model2VecBackend`, a
+> **fail-loud** `active_embedding_backend` (no silent blake2b downgrade), the
+> semantic-backend flag surfaced in `embedding_status`, and a cosine floor that
+> lets the embedding lane admit candidates (not just re-rank).
 
 - **Why now:** P6's context compiler is only as good as retrieval. Independent of
   the daemon — can start as soon as P0 lands.
@@ -156,10 +194,19 @@ default "semantic" lane.
 - **Risk:** Med — dependency weight / offline install. Offer a tiered default.
 - **Audit findings closed:** hash-bucket default, embedding-lane candidate gate.
 
-## Phase 6 — On-demand context compiler (Pillar 3)
+## Phase 6 — On-demand context compiler (Pillar 3) ✅ Shipped v0.5.0 (headline feature)
 
 **Goal:** The headline feature — "give me context on X" → a tailored, cited,
 agent-ready doc.
+
+> **Shipped in v0.5.0 as the headline feature.** A pure `compile_context`
+> pipeline in `tesserae/context_compiler.py` returns an in-memory
+> `ContextBundle` of `ContextCitation`s (query/seeds → PPR + hybrid search →
+> depth-bounded k-hop neighborhood → wiki-body assembly → optional LLM synthesis
+> with graceful fallback → budget control). Exposed as the MCP `compile_context`
+> tool and the `tesserae project context` CLI subcommand; `node_context` now has
+> a `use_ppr` ranked path; topic-scoped `llms.txt` export slices ship via
+> `slice_export_context_for_topic`.
 
 - **Why now:** Depends on P5 (retrieval quality). Benefits from P4 (cleaner
   base). The product's core value proposition.
@@ -179,10 +226,13 @@ agent-ready doc.
   query-scoped synthesis, static harness, unranked `node_context`, whole-corpus
   exports.
 
-## Phase 7 — Unify serve + watch + deploy + lifecycle tests
+## Phase 7 — Unify serve + watch + deploy + lifecycle tests ⏳ Open (post-v0.5.0)
 
 **Goal:** One supervised process serves the site, recompiles on change, and
 publishes continuously; the lifecycle layer gets test coverage.
+
+> **Open as of v0.5.0.** The convergence phase remains the next milestone; the
+> daemon (P1) and the output side (P6) it folds together are now both in place.
 
 - **Why now:** Convergence. Needs P1 (daemon) and the output side (P6) to be
   worth continuously publishing.
@@ -203,16 +253,16 @@ publishes continuously; the lifecycle layer gets test coverage.
 
 ## Sequencing summary
 
-| Phase | Theme | Depends on | Parallelizable with |
-|---|---|---|---|
-| P0 | Pipeline orchestrator | — | — |
-| P1 | Supervisor daemon | P0 | — |
-| P2 | Live session monitor | P1 | P5 |
-| P3 | Incremental compile | P1 | P5 |
-| P4 | Self-improvement persistence | P3 | P5, P6 |
-| P5 | Real embeddings | P0 | P2, P3, P4 |
-| P6 | On-demand context compiler | P5 | P2, P3, P4 |
-| P7 | Unify serve/watch/deploy | P1, P6 | — |
+| Phase | Theme | Depends on | Parallelizable with | Status |
+|---|---|---|---|---|
+| P0 | Pipeline orchestrator | — | — | ✅ Shipped v0.5.0 |
+| P1 | Supervisor daemon | P0 | — | ✅ Shipped v0.5.0 |
+| P2 | Live session monitor | P1 | P5 | ✅ Shipped v0.5.0 |
+| P3 | Incremental compile | P1 | P5 | ⚙️ Infra shipped v0.5.0 (flag-OFF) |
+| P4 | Self-improvement persistence | P3 | P5, P6 | ✅ Shipped v0.5.0 |
+| P5 | Real embeddings | P0 | P2, P3, P4 | ✅ Shipped v0.5.0 |
+| P6 | On-demand context compiler | P5 | P2, P3, P4 | ✅ Shipped v0.5.0 (headline) |
+| P7 | Unify serve/watch/deploy | P1, P6 | — | ⏳ Open |
 
 **Minimum viable engine:** P0 + P1 + P2 + P3 — a running daemon that watches
 live sessions and incrementally compiles. **Differentiated product:** add P5 +

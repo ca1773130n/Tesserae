@@ -68,6 +68,8 @@ tesserae project compile
 
 首次运行后可使用 `--changed-only` 跳过未更改的 markdown 文件，并在没有文件变化时保留之前的 graph。如果启用了 Understand Anything，compile 会先刷新/物化 `.tesserae/external/understand-anything.md`；如果启用了 Cognee runtime，它也会在写入 `.tesserae/cognee_bundle/` 后尽力更新 Cognee。
 
+> **一键流水线。** `tesserae project refresh` 会在进程内运行整个循环——用一条命令导入任何新的 agent session、compile 并 sync vault。可选的增量 compile 传 `--changed-only`，跳过较慢的 harness-session 发现扫描传 `--skip-sessions`。
+
 ## 3. 构建并提供静态 frontend
 
 ```bash
@@ -96,6 +98,16 @@ tesserae project watch
 
 `project watch` 每 2 秒 polling，一次 1 秒 debounce，然后运行 `compile --changed-only`。使用 `--once` 进行 cron 风格 rebuild（snapshots vs `.tesserae/.watch-cache.json`），用 `--paths <dir>` 添加自定义 watch 目录，用 `--interval` / `--debounce` 调整节奏。
 <!-- END: subagent-r-watch -->
+
+### 运行 refresh daemon
+
+如果你想要一个常驻引擎，让它自行监视来源、合并成批的编辑并自动 recompile，从而持续让知识库保持最新，请启动 supervised daemon：
+
+```bash
+tesserae project engine
+```
+
+`project engine`（别名 `project daemon`）是长期运行的 supervisor：它每 2 秒 polling 一次，并在每次 rebuild 前等待 1 秒的静默窗口。用 `--interval` 和 `--debounce` 调整节奏，用 `--project` 指向其他项目，或传 `--once` 运行单次确定性 drain 周期后退出（适合 cron 或 CI）。这是 `project watch` 的无人值守版本：让它一直运行，graph、vault 和 site 就会在你和你的 agent 工作时保持最新。
 
 所有可见 route（home、sources、concepts、entities、papers、repos、topics、syntheses、questions、timeline、graph 以及 AI siblings）的注释导览见 [`docs/frontend-redesign.md`](frontend-redesign.zh.md)。
 
@@ -145,7 +157,19 @@ tesserae project query "What is Gaussian Splatting?"
 
 默认仅搜索：在 `.tesserae/site/search-index.json` 上做 BM25，并从匹配的 `wiki/<kind>/<slug>.md` 抽取 200 字符 excerpt。传入 `--kind papers`（或 `concepts`、`repos` 等）来缩小范围，`--top-k N` 来扩大结果，`--json` 获得结构化输出。添加 `--llm`（或设置 `TESSERAE_QUERY_LLM=1`）可请求 Claude 生成带 `[node_id]` citations 的综合答案；`--interactive` 打开 readline REPL，空行或 EOF 退出。`TESSERAE_QUERY_DRY_RUN=1` 可在不调用 API 的情况下演练 prompt。
 
-## 7. 导出 agent harness 文件
+## 7. 按需编译面向 agent 的 context
+
+v0.5.0 的招牌功能是 On-Demand Context Compiler：向编译后的 graph 请求一份按 query 限定范围的、带引用的 context 文档，并按 agent 的 context window 调整大小。
+
+```bash
+tesserae project context "session import 是如何工作的？"
+```
+
+它从与 query 匹配的节点开始作为 Personalized PageRank 的种子（用 `--seeds <node_id>` 显式指定种子），扩展邻域（`--depth`，默认 2），然后组装一份受字符 `--budget` 限制的带引用文档（默认 32000；传 `<= 0` 表示不限制）。再叠加一份 LLM 撰写的摘要可加 `--synthesize`（需要 LLM 后端），把文档写入磁盘而非 stdout 可用 `-o/--output <file>`。
+
+同一个 compiler 通过 MCP 以 `compile_context` 工具的形式暴露给 agent，因此编码 agent 可以在对话中途拉取恰到好处、受 budget 限制的项目 context，而无需手动导出。
+
+## 8. 导出 agent harness 文件
 
 ```bash
 tesserae project export-agent-harness
@@ -169,7 +193,7 @@ tesserae project export-agent-harness \
   --target opencode
 ```
 
-## 8. 导出 Obsidian vault
+## 9. 导出 Obsidian vault
 
 ```bash
 tesserae project export-obsidian
@@ -183,7 +207,7 @@ tesserae project export-obsidian --vault "$OBSIDIAN_VAULT_PATH"
 
 Vault 包含 markdown projections、`.obsidian` defaults、graph coloring、`raw/assets/` 和 Dataview dashboard。
 
-## 9. 配置 MCP
+## 10. 配置 MCP
 
 ```bash
 tesserae project mcp-config --server-name my_project_wiki
@@ -191,7 +215,7 @@ tesserae project mcp-config --server-name my_project_wiki
 
 将输出粘贴到 `~/.hermes/config.yaml` 的 `mcp_servers` 下，然后重启 Hermes/gateway。
 
-## 10. Graphiti export / sync
+## 11. Graphiti export / sync
 
 无依赖 episode export：
 
@@ -214,7 +238,7 @@ tesserae project sync-graphiti \
   --neo4j-password '<password>'
 ```
 
-## 11. 部署到 GitHub Pages
+## 12. 部署到 GitHub Pages
 
 将 `.tesserae/site/` 中的 compiled site 推送到项目 git origin 的 `gh-pages` 分支：
 

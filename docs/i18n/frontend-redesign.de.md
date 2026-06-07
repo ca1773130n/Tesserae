@@ -284,11 +284,11 @@ Die Seite hat drei Rails:
 
 Das ist die Seite, die man für die „Was ist passiert?“-Frage bookmarkt.
 
-### `/timeline/<YYYY-MM-DD>.html` ⚠
+### `/timeline/<YYYY-MM-DD>.html` ✅
 
 > _Screenshot: timeline-day.png_
 
-Per-Day-Detailseiten — mit jedem Paper / Repo / Concept / jeder Synthese zu diesem Kalendertag — sind ein expliziter Follow-up. Subagent P verdrahtet die Per-Day-Detail-Emission durch `StaticSiteBuilder`. Bis das landet, verlinken Heatmap-Zellen interimsweise auf die Source-Seite `digest.md` des Tages. (Siehe `render_timeline` in `tesserae/site/pages.py` für das Inline-TODO.)
+Per-Day-Detailseiten — mit jedem Paper / Repo / Concept / jeder Synthese zu diesem Kalendertag — sind jetzt ausgeliefert. `render_timeline_day` (`tesserae/site/pages.py`) wird pro datiertem Tag über `StaticSiteBuilder` (`tesserae/site/__init__.py`) emittiert, und jede Seite wird in `manifest.json` als `timeline_day`-Route erfasst. Heatmap-Zellen verlinken direkt auf die Tagesseite (und fallen nur dann auf die Source-Seite `digest.md` des Tages zurück, wenn keine Per-Day-Route existiert).
 
 ## Graph-View
 

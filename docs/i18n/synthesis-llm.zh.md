@@ -7,6 +7,8 @@ Tesserae 提供两条合成路径。默认路径是确定性的启发式方法�
 
 本页说明何时启用它、成本如何、哪些数据会离开你的机器，以及如何检查输出。
 
+> **范围。** 这是*编译期* synthesis：它在每次编译时（重新）撰写常驻的 wiki 页面（pulse、daily digest、weekly、topic、comparison、field overview）。它不同于*按需*上下文编译器（`compile_context` / MCP `compile_context` 工具），后者在请求时针对特定查询，通过图上的 personalized PageRank 和字符预算组装一个引用受限的捆绑包。两条路径都用引用复述图谱事实，但只有这里的 synthesis 路径运行 LLM，也只有它持久化 Markdown 页面。
+
 ## 它做什么
 
 两条路径都消费相同的 `_PagePlan` 输入（node id、名称、type、description、source path）。区别在正文。

@@ -5,6 +5,8 @@
 <!-- translations:end -->
 Этот проект может индексировать сам себя. Поток self-dogfood доказывает, что Tesserae можно установить, настроить внутри собственного репозитория, загрузить собственные docs/source/tests/scripts, при необходимости обновить Understand Anything и Cognee, скомпилировать графовые артефакты и собрать статический веб-фронтенд.
 
+Он также прогоняет цикл самоулучшения. Каждая компиляция заново выводит изменяемое состояние памяти — `decay_score`, `access_count`, `confidence` и флаг `superseded` — в **sidecar-таблицу `node_memory`** внутри `.tesserae/sqlite.db`. Эти скаляры живут *только* в sidecar и никогда в `graph.json`, поэтому повторная dogfood-компиляция byte-identical по графу, тогда как sidecar отслеживает decay и recurrence. Insight, повторяющиеся в `>= 3` различных сессиях, усиливаются числовым confidence в диапазоне `(0, 1]` (3 сессии → `0.5`, 4 → `0.75`, 5+ → `1.0`, с потолком), записываются в sidecar и выводятся MCP-инструментом `fresh_insights`, который по умолчанию скрывает finding, вытесненные (superseded) более новым near-duplicate.
+
 ## Команды
 
 Из корня репозитория:
@@ -13,6 +15,9 @@
 # Убедитесь, что shell-команда установлена.
 ./scripts/install.sh --dir "$PWD"
 export PATH="$HOME/.local/bin:$PATH"
+
+# (необязательно) установите стандартный семантический бэкенд эмбеддингов.
+pip install 'tesserae[semantic]'
 
 # Настройте этот репозиторий как проект Tesserae.
 tesserae project setup \
@@ -59,7 +64,7 @@ self-demo записывает сгенерированные артефакты
 .tesserae/config.json
 .tesserae/graph.json
 .tesserae/manifest.json
-.tesserae/sqlite.db
+.tesserae/sqlite.db          # типизированный граф + sidecar node_memory + живая HarnessSessionsDB
 .tesserae/report.md
 .tesserae/competitive_report.md
 .tesserae/temporal_facts.jsonl
@@ -137,3 +142,5 @@ server: TCP *:56821 LISTEN, serving via --host 0.0.0.0
 - Исследовательский/документационный markdown и графовые узлы разработческого кода могут сосуществовать.
 - Проекции Markdown, Obsidian, frontend, Graphiti, Cognee, SQLite, report и agent-harness создаются из одного графового конвейера.
 - Статический HTML-фронтенд может просматривать граф проекта без шага сборки JavaScript.
+- Цикл самоулучшения работает и сохраняется: decay, счётчики доступа, recurrence confidence и флаги supersede попадают в sidecar `node_memory`, не возмущая `graph.json`.
+- Гибридный поиск использует настоящий семантический бэкенд, если установлен `tesserae[semantic]` (порядок по умолчанию `auto`: model2vec → sentence-transformers → заглушка hash-bucket); без него поиск по эмбеддингам деградирует до несемантической заглушки hash-bucket и выдаёт громкое предупреждение.

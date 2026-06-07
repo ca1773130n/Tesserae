@@ -4,11 +4,11 @@
 <p align="center"><a href="../../integrations/obsidian-sync.md">English</a> · <a href="obsidian-sync.ko.md">한국어</a> · <a href="obsidian-sync.zh.md">中文</a> · <a href="obsidian-sync.ja.md">日本語</a> · <a href="obsidian-sync.ru.md">Русский</a> · <a href="obsidian-sync.es.md">Español</a> · <a href="obsidian-sync.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-> **Statut : Proposé (2026-05-17).** Ce document est une spécification de conception, pas encore une fonctionnalité. Il décrit comment Tesserae pourrait permettre aux utilisateurs de modifier dans Obsidian les pages wiki projetées et faire en sorte que ces modifications survivent au prochain `project compile`. La mise en œuvre est conditionnée à l'adoption de cette conception.
+> **Statut : Livré (Tier 1, v0.5.0).** Le lecteur de surcouches, les zones d'ajout user-notes, le mode watch et le nettoyage des orphelins décrits ci-dessous sont actifs derrière `tesserae project obsidian-sync`. Cette page fait à la fois office de justification de conception et de guide utilisateur. La fédération multi-vaults (Tier 3) reste hors périmètre.
 
-Aujourd'hui, l'[export Obsidian](obsidian.fr.md) est strictement à sens unique : le graphe typé dans `.tesserae/graph.json` est projeté vers le vault, et `project compile` écrase les fichiers projetés. Les utilisateurs ont demandé l'inverse également — modifier une description dans Obsidian et la voir survivre à la recompilation.
+L'[export Obsidian](obsidian.fr.md) était autrefois strictement à sens unique : le graphe typé dans `.tesserae/graph.json` est projeté vers le vault, et `project compile` écrase les fichiers projetés. `obsidian-sync` ajoute le sens inverse — modifiez une description dans Obsidian, et elle survit à la recompilation.
 
-Ce document précise comment cela fonctionnerait sans rendre incohérent le modèle de données.
+Ce document précise comment cela fonctionne sans rendre incohérent le modèle de données.
 
 ## Changement stratégique, énoncé clairement
 
@@ -98,30 +98,48 @@ Tesserae ne construit **pas** de serveur de synchronisation, de couche d'authent
 
 Les cinq sont compatibles avec le modèle de surcouches parce que Tesserae voit le vault comme des fichiers sur disque, pas comme un flux de mutations.
 
-## Surface CLI (proposée)
+## Surface CLI
+
+`tesserae project obsidian-sync` applique les éditions du vault sur le graphe typé et reprojette :
 
 ```bash
-# Pull-only sync (Tier 1a): overlay reader runs as part of compile by default.
-tesserae project compile                  # always pulls vault overrides if vault exists
+# Appliquer la surcouche une fois : récupère les éditions utilisateur, reprojette vers le vault.
+tesserae project obsidian-sync
 
-# Inspect what would change before letting compile apply
+# Inspecte d'abord ce qui changerait. Écrit .tesserae/diverged-fields.md et
+# N'applique PAS et ne reprojette pas.
 tesserae project obsidian-sync --dry-run
 
-# Skip the pull for a single compile (recovery mode)
-tesserae project compile --no-vault-pull
+# Cibler un vault précis pour cet appel (ordre de résolution :
+# --vault > config.obsidian.vault_path > .tesserae/obsidian_vault/).
+tesserae project obsidian-sync --vault ~/Documents/tesserae-vault
 
-# Long-running watch (Tier 2)
-tesserae project obsidian-sync --watch --vault ~/Documents/tesserae-vault
+# Faire de ce chemin de vault la valeur par défaut des futures commandes.
+tesserae project obsidian-sync --vault ~/Documents/tesserae-vault --persist-vault
+
+# Watch long-running : réapplique la surcouche à chaque changement du vault.
+# Ctrl-C pour arrêter ; --poll-interval règle la cadence (par défaut 1,5 s).
+tesserae project obsidian-sync --watch --poll-interval 1.5
+
+# Supprime les pages projetées dont le nœud source n'existe plus (le projecteur
+# ne fait qu'écraser, ne supprime jamais). Les pages avec user-notes sont
+# conservées sauf si vous passez aussi --force-prune-with-notes.
+tesserae project obsidian-sync --prune-orphans
+tesserae project obsidian-sync --prune-orphans --force-prune-with-notes
 ```
 
-## Phasage
+La commande slash `/tesserae:obsidian-sync` l'enveloppe, et `tesserae project refresh`
+(plus la macro `/tesserae:refresh`) exécute la surcouche comme dernière étape de sa
+chaîne import → compile → sync.
 
-| Tier | Périmètre | Effort |
+## État de livraison
+
+| Tier | Périmètre | Statut |
 |---|---|---|
-| **1a** | Lecteur de surcouches : parcourir le vault, construire `vault_overrides.json`, appliquer à la compilation. Le lint signale les divergences. | ~3 jours |
-| **1b** | Zones d'ajout user-notes : le projecteur ne touche jamais aux blocs `<!-- user-notes:start --> ... <!-- user-notes:end -->`. | ~1 jour |
-| **2** | Mode watch : un `obsidian-sync --watch` long-running rejoue la surcouche sur les événements du système de fichiers, demande confirmation avant d'appliquer. | ~1 semaine |
-| **3** | Fédération multi-vaults : le graphe stocke la provenance par vault, prend en charge les éditions concurrentes à travers les vaults synchronisés. | ~1 mois, différé jusqu'à un cas d'usage réel |
+| **1a** | Lecteur de surcouches : parcourir le vault, construire `vault_overrides.json`, appliquer à la synchronisation. Les divergences atterrissent dans `.tesserae/diverged-fields.md`. | Livré |
+| **1b** | Zones d'ajout user-notes : le projecteur ne touche jamais aux blocs `<!-- user-notes:start --> ... <!-- user-notes:end -->`. | Livré |
+| **2** | Mode watch : un `obsidian-sync --watch` long-running rejoue la surcouche dans une boucle de sondage au fil des changements du vault. | Livré |
+| **3** | Fédération multi-vaults : le graphe stocke la provenance par vault, prend en charge les éditions concurrentes à travers les vaults synchronisés. | Différé jusqu'à un cas d'usage réel |
 
 ## Non-objectifs (explicitement)
 
@@ -130,11 +148,11 @@ tesserae project obsidian-sync --watch --vault ~/Documents/tesserae-vault
 - Réécrire l'extracteur pour faire un round-trip de chaque champ — la source markdown reste canonique pour tout ce qui se trouve en dehors de la table de surcharges.
 - La synchronisation du site HTML statique (`build-site` reste exclusivement de la projection).
 
-## Décisions ouvertes avant implémentation
+## Décisions tranchées
 
-Celles-ci ont des valeurs par défaut proposées, mais méritent une dernière revue avant que le code n'atterrisse :
+C'étaient les questions ouvertes au moment de la conception ; l'implémentation livrée de Tier 1–2 les a tranchées ainsi :
 
-1. **Forme du lint report.** Les champs divergents devraient-ils apparaître comme un fichier `.tesserae/diverged-fields.md` séparé, ou comme une nouvelle section dans le `lint-report.md` existant ? Proposé : fichier dédié pour qu'il puisse être diffé en git.
+1. **Forme du lint report.** Les champs divergents apparaissent comme un fichier dédié `.tesserae/diverged-fields.md` (écrit par `--dry-run` et à chaque application) afin de pouvoir être diffé en git, plutôt que comme une section de `lint-report.md`.
 2. **Type de nœud tombstone.** Ajouter `Stub` comme véritable type du schéma, ou se greffer sur `OpenQuestion` avec un discriminant `_kind: stub` ? Proposé : type réel, nommé `Stub`, masqué des index publics.
 3. **Pull-on-compile par défaut.** Activé par défaut ou désactivé par défaut ? Proposé : activé lorsqu'un vault existe au chemin configuré, avec une invite de confirmation unique la première fois qu'il s'active, afin que les utilisateurs y consentent délibérément.
 4. **Ce qui compte comme « la projection précédente » pour faire le diff.** Un snapshot stocké dans `.tesserae/vault_snapshot.json`, ou re-projeter à la volée à chaque compilation ? Proposé : snapshot, écrit à la fin de chaque compilation. Moins coûteux et évite que le non-déterminisme de l'extracteur ne fuite dans la surcouche.
@@ -142,6 +160,4 @@ Celles-ci ont des valeurs par défaut proposées, mais méritent une dernière r
 
 ## Comment cela apparaît dans `obsidian.md`
 
-Le guide destiné aux utilisateurs reste centré sur « vous pouvez lire et interroger le vault ». Une courte section « Synchronisation bidirectionnelle » à la fin renverra ici une fois l'implémentation livrée, avec un résumé d'une ligne : « Modifiez des champs dans Obsidian, ils survivent à la recompilation. Voir [obsidian-sync.md](obsidian-sync.md) pour le modèle complet. »
-
-D'ici là, l'avertissement read-only existant dans `obsidian.md` reste en place — cette conception est une feuille de route, pas une fonctionnalité livrée.
+Le guide destiné aux utilisateurs reste centré sur « vous pouvez lire et interroger le vault », puis renvoie ici pour l'histoire de l'aller-retour avec un résumé d'une ligne : « Modifiez des champs dans Obsidian, ils survivent à la recompilation. Voir [obsidian-sync.md](obsidian-sync.md) pour le modèle complet. »

@@ -13,6 +13,15 @@ Dos pasadas por sesión:
 1. **Estructural** (siempre activa, sin LLM). Lee los registros `HarnessSession` normalizados que `tesserae sessions discover --import` escribe en `.tesserae/harness_sessions/`. Para cada sesión acuña un nodo sobre `Session`, emite aristas `discussed_in` desde cada documento que el agente abrió y convierte el campo `decisions` existente en nodos `SessionDecision`.
 2. **LLM** (opcional, se ejecuta cuando se configura `ANTHROPIC_API_KEY`). Envía los turnos de conversación normalizados (el campo `metadata["turns"]` — no el archivo de transcripción sin procesar) a Claude con un esquema de hallazgos solo JSON. Devuelve seis tipos de hallazgos, cada uno citando turnos específicos e IDs de nodo de documento específicos en el grafo actual. Almacenado en caché por content_hash + project_root_hash, por lo que las sesiones sin cambios omiten la llamada en la siguiente compilación.
 
+## Dos formas de alimentar sesiones: por lotes vs en vivo
+
+El pipeline anterior es el mismo sin importar cómo lleguen las sesiones. Lo que difiere es *cuándo* se descubren y compilan:
+
+- **Por lotes (manual).** Ejecuta `tesserae project sessions discover --import` y luego `tesserae project compile` tú mismo. Ideal para rellenos puntuales o CI. El resto de esta página recorre esta ruta.
+- **En vivo (continuo).** Deja que el motor vigile el proyecto y recompile a medida que ocurre el trabajo, para que el grafo se mantenga fresco sin que recuerdes ejecutar nada:
+  - **Demonio supervisor** — `tesserae project engine` (alias `tesserae project daemon`) ejecuta un bucle asyncio de propietario único que vigila las fuentes configuradas, fusiona una ráfaga de ediciones en un solo `Pipeline.run()` y recompila automáticamente. Pasa `--once` para un drenaje único determinista, o `--interval` / `--debounce` para ajustar la fusión. `tesserae project refresh` ejecuta la misma cadena import → compile → vault-sync una vez, en proceso.
+  - **Hooks del plugin de Claude Code** — con el [plugin](claude-code-plugin.es.md) instalado, el hook `SessionEnd` ejecuta en segundo plano import + compile al terminar una conversación, de modo que las ideas de *esta* sesión se vuelven nodos del grafo para la *siguiente*. El hook `SessionStart` imprime el resumen actual del grafo al entrar. Esto es lo más cercano a capturar sesiones "a medida que ocurren" — sin ningún paso manual de discover/compile.
+
 ## Configuración
 
 ```bash

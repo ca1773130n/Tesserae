@@ -284,11 +284,11 @@ La página tiene tres raíles:
 
 Esta es la página para marcar como favorita para la pregunta "qué ha estado pasando".
 
-### `/timeline/<YYYY-MM-DD>.html` ⚠
+### `/timeline/<YYYY-MM-DD>.html` ✅
 
 > _Screenshot: timeline-day.png_
 
-Las páginas de detalle por día — que listarían cada paper / repo / concept / synthesis vinculado a ese día de calendario — son un follow-up explícito. Subagent P está cableando la emisión del detalle por día mediante `StaticSiteBuilder`. Hasta que eso llegue, las celdas del heatmap enlazan a la página fuente `digest.md` del día como solución interina. (Consulta `render_timeline` en `tesserae/site/pages.py` para el TODO inline.)
+Las páginas de detalle por día — que listan cada paper / repo / concept / synthesis vinculado a ese día de calendario — ya están disponibles. `render_timeline_day` (`tesserae/site/pages.py`) se emite por cada día con fecha mediante `StaticSiteBuilder` (`tesserae/site/__init__.py`), y cada página se registra en `manifest.json` como una ruta `timeline_day`. Las celdas del heatmap enlazan directamente a la página del día (recurriendo a la página fuente `digest.md` del día solo cuando no existe una ruta por día).
 
 ## Graph view
 

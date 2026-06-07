@@ -5,7 +5,60 @@
 <!-- translations:end -->
 이 문서는 Tesserae에 현재 구현된 기능을 상태, 소스 파일, 문서화 위치와 함께 요약합니다.
 
+Tesserae는 세 가지 기둥 위에서 동작하는 **컨텍스트 엔진**입니다. (1) 세션 모니터링, (2) 자율적·능동적 지식 수집, (3) 온디맨드 문서/컨텍스트. 입력된 그래프, 볼트, 정적 사이트는 지식 기반의 프로젝션입니다. 아래 기능들은 어느 기둥을 지원하는지에 따라 묶었으며, **v0.5.0** 마일스톤(2026년 6월)이 엔진 스파인과 기둥 3의 핵심 기능인 온디맨드 컨텍스트 컴파일러를 출시했습니다.
+
 상태 범례: ✅ 출시됨 · ⚠ 진행 중 / 부분 구현.
+
+## 컨텍스트 엔진 — v0.5.0 (2026년 6월)
+
+세 기둥을 구동하는 엔진 스파인. 엔진 스파인 모듈 맵, 자기 개선 메모리 사이드카, 컨텍스트 컴파일러 데이터 흐름은 [`docs/architecture.md`](architecture.ko.md)를 참조하세요.
+
+### 엔진 스파인 (기둥 1 & 2)
+
+| 기능 | 상태 | 소스 | 비고 |
+|---|---|---|---|
+| `Pipeline` — `List[StepResult]`를 반환하는 재사용 가능한 새로고침 체인 | ✅ | [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | CLI, 데몬, MCP가 모두 호출하는 하나의 스텝 러너. 스텝마다 `Exception`을 잡고 첫 실패에서 멈춤. |
+| `Daemon` — 단일 소유자 asyncio 슈퍼바이저 | ✅ | [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | 소스 + 볼트 + 하네스 세션 디렉토리를 감시; 디바운스된 취소-후-재스케줄이 버스트를 하나의 `Pipeline.run()`으로 통합. pidfile; 진행 중 예외에서도 생존. |
+| `project engine` / `project daemon` | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) | `--interval`, `--debounce`, `--once`. `daemon`은 `engine`의 별칭. |
+| `project refresh` — 산문형 체인(수집 → 컴파일 → 프로젝트) | ✅ | `cli.py` + [`tesserae/project.py`](../../tesserae/project.py) | `--changed-only`(옵트인 증분), `--skip-sessions`. |
+| 라이브 세션 모니터 → 발견 | ✅ | `harness_sessions.py` + 세션 그래프 모듈 | 가져온 세션이 그래프에 공급됨; `fresh_insights` / `find_session_findings`가 표면화. |
+
+### 자기 개선 메모리 (기둥 2)
+
+| 기능 | 상태 | 소스 | 비고 |
+|---|---|---|---|
+| `node_memory` SQLite 사이드카 (감쇠 / 신뢰도 / 대체됨) | ✅ | [`tesserae/memory/store.py`](../../tesserae/memory/store.py) | `NodeMemoryRow` + 스토어 비종속 접근자; 가변 상태만. 최초 관측은 별도의 `node_provenance` 사이드카에 위치. |
+| 에빙하우스 감쇠 점수 | ✅ | [`tesserae/memory/decay.py`](../../tesserae/memory/decay.py) | 세션 발견을 최신 + 가장 많이 접근됨 순으로 랭킹(`fresh_insights` 구동). |
+| 대체 패스 (**기본 ON**) | ✅ | [`tesserae/memory/supersede.py`](../../tesserae/memory/supersede.py) | 결정적 판정이 더 오래된 근사 중복 인사이트를 더 새로운 것으로 대체됨 표시; `supersedes` 에지 추가. |
+| 인사이트 → 코드 심볼 연결 | ✅ | [`tesserae/memory/insight_symbol_link.py`](../../tesserae/memory/insight_symbol_link.py) | 세션 인사이트에서 참조 심볼로 가는 `discusses` 에지. |
+| 강화 + 모순 패스 | ✅ | [`tesserae/memory/reinforce.py`](../../tesserae/memory/reinforce.py), [`tesserae/memory/contradiction.py`](../../tesserae/memory/contradiction.py) | 동일 사이드카에 대한 접근 강화 + 모순 감지. |
+| 출력의 수치형 재발 신뢰도 | ✅ | [`tesserae/temporal.py`](../../tesserae/temporal.py) | 시간 사실이 `confidence`를 `NodeMemoryRow.confidence`에서 스탬핑하고, 없으면 `infer_confidence`로 폴백. |
+
+### 검색 + 임베딩 (기둥 2 & 3)
+
+| 기능 | 상태 | 소스 | 비고 |
+|---|---|---|---|
+| 하이브리드 검색기 (BM25 + 어휘 + 임베딩, RRF k=60) | ✅ | [`tesserae/retrieval/hybrid.py`](../../tesserae/retrieval/hybrid.py) | 로컬 우선, 완전히 결정적. |
+| 개인화 PageRank (HippoRAG-2) | ✅ | [`tesserae/retrieval/ppr.py`](../../tesserae/retrieval/ppr.py) | 다중 홉 시드 확장; 깊이 제한 서브그래프. |
+| 실제 기본 임베딩 (Track B, Phase 6) | ✅ | `retrieval/hybrid.py` | 기본 = 결정적 해시 버킷 의사 임베딩(의존성 없음); `sentence-transformers`(`all-MiniLM-L6-v2`)가 설치 시 선호되어 지연 로드. `embedding_status` MCP 도구가 활성 백엔드 보고. |
+
+### 온디맨드 컨텍스트 컴파일러 (기둥 3 — 핵심)
+
+| 기능 | 상태 | 소스 | 비고 |
+|---|---|---|---|
+| `compile_context` — 인용된 인메모리 `ContextBundle` | ✅ | [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | 시드 해석 → PPR 확장 → 예산 제한 선택 → 인용 마크다운 → 선택적 LLM 합성. `synthesize=true`가 아니면 결정적. 디스크에 쓰지 않음. |
+| `project context` CLI | ✅ | `cli.py` | `[query]`, `--seeds`, `--depth`(2), `--budget`(32000; ≤0 = 무제한), `--synthesize`, `--output`. |
+| `compile_context` MCP 도구 | ✅ | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | MCP를 통한 동일 파이프라인; `budget=0`은 무제한. |
+| 주제 범위 내보내기 슬라이스 | ✅ | [`tesserae/site/exports.py`](../../tesserae/site/exports.py) `slice_export_context_for_topic` | 주제 범위 `llms.txt` + `compile_context`를 통한 `render_harness_context`. |
+
+### 증분 컴파일 (Phase 4 — 실험적)
+
+| 기능 | 상태 | 소스 | 비고 |
+|---|---|---|---|
+| 프로비넌스 사이드카 (`node_provenance`, 최초 관측) | ✅ | [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | 변경분 삭제의 기반; 항상 기록됨. |
+| `GraphStore` 삭제 표면 | ✅ | [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | `delete_node`, `delete_nodes_by_source`(프로비넌스 집합이 비는 노드 삭제; 교차 파일 개념은 생존). |
+| `url_resolver` 런타임 스토어 디스패치 | ✅ | [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | `sqlite:///…` / `hypepaper-postgres://…` → `GraphStore`. |
+| `incremental_compile` 플래그 | ⚠ | [`tesserae/project.py`](../../tesserae/project.py) | **기본 OFF / 실험적.** 여러 편집 형태에서 바이트 패리티가 입증되었으나 다중 소유자/프로듀서 수명 주기 격차가 남아 있어 전체 컴파일이 기본으로 유지됨. |
 
 ## 프런트엔드 재설계 — 2026년 4월
 
@@ -100,7 +153,9 @@
 | `project serve` 로컬 HTTP | ✅ | `cli.py` | 순수 stdlib 서버. |
 | `project deploy` → GitHub Pages | ✅ | [`tesserae/deploy.py`](../../tesserae/deploy.py) | `gh-pages`로 worktree push; `gh` CLI를 통한 선택적 `--enable-pages`. `--build`, `--dry-run`, `--branch`, `--remote`, `--force`. |
 | `project sessions discover/import/list` | ✅ | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) + `cli.py` | Claude Code/Codex용 인바운드 세션 기록; 탐색은 명시적이며 프로젝트 작업 디렉터리로 범위가 제한됨. |
-| `project watch` 변경 시 재빌드 | ⚠ | [`tesserae/cli.py`](../../tesserae/cli.py) | Subagent R이 폴링 watcher를 마무리 중 — `--interval`, `--debounce`, `--once`, `--paths`, `--quiet` 인자 표면은 준비됨; 재빌드 루프 본문은 이번 라운드에 반영 중. |
+| `project watch` 변경 시 재빌드 | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) + [`tesserae/watch.py`](../../tesserae/watch.py) | 독립형 폴링 watcher: `--interval`, `--debounce`, `--once`, `--paths`, `--quiet`. 다중 소스 슈퍼바이저는 `project engine`/`daemon`에 있음(컨텍스트 엔진 참조). |
+| `project context` — 인용된 컨텍스트 문서 컴파일 | ✅ | `cli.py` + [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | 기둥 3 핵심; 컨텍스트 엔진 섹션 참조. |
+| `project refresh` / `project engine` / `project daemon` | ✅ | `cli.py` + [`tesserae/engine/`](../../tesserae/engine/) | 산문형 새로고침 체인 + 슈퍼바이저 루프; 컨텍스트 엔진 섹션 참조. |
 
 ## 기존 기능 (변경 없이 유지)
 
@@ -146,9 +201,12 @@
 - ✅ `tesserae project mcp-config`
 - ✅ `tesserae project build-site`
 - ✅ `tesserae project serve`
-- ✅ `tesserae project deploy` (신규 — GitHub Pages)
+- ✅ `tesserae project deploy` (GitHub Pages)
 - ✅ `tesserae project sessions discover/import/list` (명시적 로컬 에이전트 기록 가져오기)
-- ⚠ `tesserae project watch` (진행 중)
+- ✅ `tesserae project watch` (독립형 폴링 watcher)
+- ✅ `tesserae project engine` / `tesserae project daemon` (슈퍼바이저 루프 — v0.5.0)
+- ✅ `tesserae project refresh` (산문형 수집 → 컴파일 → 프로젝트 체인 — v0.5.0)
+- ✅ `tesserae project context` (온디맨드 컨텍스트 컴파일러 — v0.5.0)
 - ✅ `tesserae project export-agent-harness`
 - ✅ `tesserae project export-obsidian`
 - ✅ `tesserae project export-graphiti`
@@ -190,8 +248,10 @@
 ### MCP 서버
 
 - ✅ stdio JSON-RPC 기반 `tesserae_mcp` / `python3 -m tesserae.mcp_server`.
-- ✅ 도구: `schema`, `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`.
-- ✅ 다중 프로젝트 레지스트리.
+- ✅ 검색/그래프 도구: `schema`, `graph_summary`, `search_nodes`, `node_context`(`use_ppr` 포함), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`.
+- ✅ 컨텍스트 엔진 도구 (v0.5.0): `compile_context`, `embedding_status`, `fresh_insights`(감쇠 랭킹), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`, `ask`.
+- ✅ 설정 도구: `tesserae_setup_plan`, `tesserae_setup_apply`.
+- ✅ 다중 프로젝트 레지스트리: `list_projects`, `register_project`, `activate_project`, `unregister_project`, `list_sessions`. `url_resolver`를 통한 스토어 URL 디스패치.
 
 ## 테스트
 
@@ -216,4 +276,9 @@
 - ✅ 사이트 컴포넌트, 페이지, 내보내기, 관련성;
 - ✅ AI 형제 파일 형태(페이지별 `.txt` + `.json`);
 - ✅ end-to-end 두 번 컴파일 멱등성;
+- ✅ 엔진 스파인: 파이프라인, 새로고침 체인, 데몬 코어 + 소스, `project engine` CLI;
+- ✅ 자기 개선 메모리: 사이드카, 감쇠/대체, 대체 억제(MCP 포함), 강화/모순;
+- ✅ 검색 + 임베딩: 하이브리드 검색, PPR, 실제 기본 임베딩(Phase 6);
+- ✅ 컨텍스트 컴파일러: 형태/인용 무결성/결정성/예산/PPR 폴백, `project context` CLI, MCP `compile_context`;
+- ✅ 증분 컴파일(실험적): 디퍼, 패리티 게이트, 프로비넌스 준비성, SQLite 프로비넌스;
 - ✅ 패키지 설치 및 설치 프로그램 계약.

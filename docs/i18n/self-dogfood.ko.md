@@ -5,6 +5,8 @@
 <!-- translations:end -->
 이 프로젝트는 자기 자신을 인덱싱할 수 있습니다. self-dogfood 흐름은 Tesserae를 설치하고, 자체 저장소 안에서 설정하고, 자체 docs/source/tests/scripts를 수집하며, 선택적으로 Understand Anything과 Cognee를 새로고침하고, 그래프 아티팩트를 컴파일하고, 정적 웹 프론트엔드를 빌드할 수 있음을 증명합니다.
 
+또한 자기 개선 루프도 실행합니다. 매 컴파일은 변경 가능한 메모리 상태 — `decay_score`, `access_count`, `confidence`, `superseded` 플래그 — 를 `.tesserae/sqlite.db` 내부의 **`node_memory` 사이드카** 테이블로 다시 도출합니다. 이 스칼라들은 사이드카에**만** 존재하며 `graph.json`에는 절대 들어가지 않으므로, 새로 컴파일해도 그래프는 byte-identical하면서 사이드카는 decay와 recurrence를 추적합니다. `>= 3`개의 서로 다른 세션에 걸쳐 재발하는 insight는 `(0, 1]` 범위의 숫자 confidence로 강화되며(3 세션 → `0.5`, 4 → `0.75`, 5+ → `1.0`, 상한), 사이드카에 기록되고 MCP `fresh_insights` 도구가 노출합니다. 이 도구는 기본적으로 더 새로운 near-duplicate로 대체된(superseded) finding을 숨깁니다.
+
 ## 명령
 
 저장소 루트에서:
@@ -13,6 +15,9 @@
 # shell 명령이 설치되어 있는지 확인합니다.
 ./scripts/install.sh --dir "$PWD"
 export PATH="$HOME/.local/bin:$PATH"
+
+# (선택) 기본 시맨틱 임베딩 백엔드를 설치합니다.
+pip install 'tesserae[semantic]'
 
 # 이 저장소를 Tesserae 프로젝트로 설정합니다.
 tesserae project setup \
@@ -59,7 +64,7 @@ self-demo는 생성된 아티팩트를 다음 위치에 씁니다:
 .tesserae/config.json
 .tesserae/graph.json
 .tesserae/manifest.json
-.tesserae/sqlite.db
+.tesserae/sqlite.db          # 타입 그래프 + node_memory 사이드카 + 라이브 HarnessSessionsDB
 .tesserae/report.md
 .tesserae/competitive_report.md
 .tesserae/temporal_facts.jsonl
@@ -137,3 +142,5 @@ server: TCP *:56821 LISTEN, serving via --host 0.0.0.0
 - 연구/문서 markdown과 개발 코드 그래프 노드가 공존할 수 있습니다.
 - Markdown, Obsidian, frontend, Graphiti, Cognee, SQLite, report, agent-harness 투영이 하나의 그래프 파이프라인에서 생성됩니다.
 - 정적 HTML 프론트엔드는 JavaScript 빌드 단계 없이 프로젝트 그래프를 탐색할 수 있습니다.
+- 자기 개선 루프가 실행되고 영속화됩니다. decay, access count, recurrence confidence, supersede 플래그가 `graph.json`을 건드리지 않고 `node_memory` 사이드카에 기록됩니다.
+- `tesserae[semantic]`이 설치되면 하이브리드 검색이 실제 시맨틱 백엔드를 사용합니다(기본 `auto` 순서: model2vec → sentence-transformers → hash-bucket 스텁). 설치하지 않으면 임베딩 검색은 비-시맨틱 hash-bucket 스텁으로 격하되고 요란한 경고를 냅니다.

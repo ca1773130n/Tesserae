@@ -10,9 +10,25 @@ Tesserae はローカルの AI-agent transcript をインポートし、静的�
 - `export-agent-harness` は Claude Code、Codex、Gemini、Cursor、Kiro、OpenCode などのツール向けの outbound context です。
 - `project sessions ...` は inbound history です。現在のプロジェクトの過去の Claude Code/Codex セッションを正規化し、`.tesserae/harness_sessions/` に保存し、`project build-site` がセッションの index/detail ページを公開できるようにします。
 
+## 2 つの入口: バッチインポートとライブ監視
+
+セッションの取り込みはもはやバッチ専用ではありません。同じ正規化ストアへ入る経路は 2 つあります。
+
+- **バッチインポート** — `project sessions discover/import` は要求に応じて transcript root をスキャンし、一度きりで書き込みます。本ページの以下でこのフローを説明します。
+- **ライブ監視** — supervisor daemon（`project engine`、別名 `project daemon`）が `SessionTailer` を実行し、*このプロジェクト自身の* Claude Code と Codex transcript を監視して、新しい turn が届くたびに取り込みます。各 tick はファイルごとに永続化された byte offset へ seek し、届いた新しい byte だけを読み、debounce された再コンパイルを enqueue する**前に**完全な turn を SQLite `HarnessSessionsDB`（`.tesserae/sqlite.db`）へ保存するため、コンパイルは常に一貫した状態を読みます。tailer はプロジェクト自身のセッションにスコープが限定され（Claude `projects/<slug>/*.jsonl`；Codex は cwd でフィルタ）、再起動後は保存済み offset から再開し、turn を再生しません。
+
+ライブループの実行:
+
+```bash
+tesserae project engine        # ソースを監視し、バーストを統合し、自動再コンパイル
+tesserae project engine --once # 単一の drain サイクル後に終了（決定的）
+```
+
+`tesserae project refresh` は長期 watcher を起動せず、同じ ingest → compile → project パイプラインを in-process で一度実行します（`--skip-sessions` で harness セッションの discovery スキャンをスキップ）。
+
 ## プライバシーモデル
 
-セッションのインポートは明示的です。通常の `project compile` や `project build-site` は `.tesserae/harness_sessions/` にある正規化済みセッションを読みますが、非公開の harness transcript ディレクトリを不意に scrape することはありません。
+どちらの取り込み経路も明示的です。ライブ tailer は `project engine`/`daemon` を起動し続けている間だけ動作し、バッチ discovery は `--import` でのみ書き込みます。通常の `project compile` や `project build-site` は `.tesserae/harness_sessions/` の正規化済みセッションと `.tesserae/sqlite.db` のライブレコードを読みますが、自分から非公開の harness transcript ディレクトリを不意に scrape することはありません。
 
 インポートされたセッションレコードはローカルプロジェクトの成果物です。公開サイトに公開する前に確認してください。transcript に secrets、private paths、customer data、未公開コードが含まれる可能性がある場合は特に重要です。
 
@@ -62,6 +78,8 @@ tesserae project sessions list
     <session>.json
     <session>.md
 ```
+
+ライブ監視されるセッションは SQLite `HarnessSessionsDB`（`.tesserae/sqlite.db`）にも追跡され、ここには tailer が再開に使うファイルごとの read offset も永続化されます。`project sessions list` は統合されたビューを報告します。
 
 ## 静的セッションページをビルド
 

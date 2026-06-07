@@ -4,11 +4,11 @@
 <p align="center"><a href="../../integrations/obsidian-sync.md">English</a> · <a href="obsidian-sync.ko.md">한국어</a> · <a href="obsidian-sync.zh.md">中文</a> · <a href="obsidian-sync.ru.md">Русский</a> · <a href="obsidian-sync.es.md">Español</a> · <a href="obsidian-sync.fr.md">Français</a> · <a href="obsidian-sync.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-> **ステータス: 提案 (2026-05-17)。** このドキュメントは設計仕様であり、まだ実装された機能ではありません。Tesserae が射影された wiki ページをユーザーに Obsidian 上で編集させ、その編集を次の `project compile` 後も保持させる方法を示しています。実装はこの設計が確定することを前提とします。
+> **ステータス: 出荷済み (Tier 1, v0.5.0)。** 以下で説明するオーバーレイリーダー、ユーザーノート追記ゾーン、ウォッチモード、孤立ページの削除は、`tesserae project obsidian-sync` の背後で実際に動作します。本ページは設計の根拠とユーザーガイドを兼ねます。マルチヴォルト連合 (Tier 3) は依然としてスコープ外です。
 
-現在の [Obsidian エクスポート](obsidian.md)は厳密に一方向です: `.tesserae/graph.json` 内の型付きグラフがヴォルトへ射影され、`project compile` が射影されたファイルを上書きします。ユーザーからは逆方向 — Obsidian で説明を編集し、再コンパイル後もそれを残したい — という要望も寄せられています。
+以前の [Obsidian エクスポート](obsidian.md)は厳密に一方向でした: `.tesserae/graph.json` 内の型付きグラフがヴォルトへ射影され、`project compile` が射影されたファイルを上書きします。`obsidian-sync` は逆方向を追加します — Obsidian で説明を編集すると、再コンパイル後もそれが残ります。
 
-このドキュメントは、データモデルを破綻させずにそれをどう実現するかを明文化します。
+このドキュメントは、データモデルを破綻させずにそれがどう動作するかを明文化します。
 
 ## 戦略的な方針転換、率直に
 
@@ -98,30 +98,48 @@ Tesserae は同期サーバー、認証レイヤー、競合解消デーモン�
 
 5 つすべてがオーバーレイモデルと互換です。Tesserae はヴォルトをミューテーションのストリームではなく、ディスク上のファイルとして見るためです。
 
-## CLI 表面（提案）
+## CLI 表面
+
+`tesserae project obsidian-sync` はヴォルトの編集を型付きグラフに適用し、再射影します:
 
 ```bash
-# Pull-only sync (Tier 1a): overlay reader runs as part of compile by default.
-tesserae project compile                  # always pulls vault overrides if vault exists
+# オーバーレイを一度適用: ユーザー編集をプルし、ヴォルトへ再射影。
+tesserae project obsidian-sync
 
-# Inspect what would change before letting compile apply
+# まず何が変わるかを検査。.tesserae/diverged-fields.md を書き出し、
+# 適用も再射影もしない。
 tesserae project obsidian-sync --dry-run
 
-# Skip the pull for a single compile (recovery mode)
-tesserae project compile --no-vault-pull
+# この呼び出しで特定のヴォルトを指定（解決順:
+# --vault > config.obsidian.vault_path > .tesserae/obsidian_vault/）。
+tesserae project obsidian-sync --vault ~/Documents/tesserae-vault
 
-# Long-running watch (Tier 2)
-tesserae project obsidian-sync --watch --vault ~/Documents/tesserae-vault
+# そのヴォルトパスを以後のコマンドの既定値にする。
+tesserae project obsidian-sync --vault ~/Documents/tesserae-vault --persist-vault
+
+# 長時間ウォッチ: ヴォルトが変わるたびにオーバーレイを再適用。
+# Ctrl-C で停止。--poll-interval でポーリング間隔を調整（既定 1.5 秒）。
+tesserae project obsidian-sync --watch --poll-interval 1.5
+
+# ソースノードがもう存在しない射影ページを削除（射影器は
+# 上書きのみで決して削除しない）。ユーザーノートを持つページは
+# --force-prune-with-notes も渡さない限り保持される。
+tesserae project obsidian-sync --prune-orphans
+tesserae project obsidian-sync --prune-orphans --force-prune-with-notes
 ```
 
-## フェーズ分け
+`/tesserae:obsidian-sync` スラッシュコマンドがこれをラップし、`tesserae project refresh`
+（および `/tesserae:refresh` マクロ）は import → compile → sync チェーンの最終ステップとして
+オーバーレイを実行します。
 
-| Tier | スコープ | 工数 |
+## 提供状況
+
+| Tier | スコープ | ステータス |
 |---|---|---|
-| **1a** | オーバーレイリーダー: ヴォルトを巡回し `vault_overrides.json` を構築し、コンパイル時に適用。lint がダイバージェンスを報告。 | 約 3 日 |
-| **1b** | ユーザーノート追記ゾーン: 射影器は `<!-- user-notes:start --> ... <!-- user-notes:end -->` ブロックを決して触らない。 | 約 1 日 |
-| **2** | ウォッチモード: 長時間動作する `obsidian-sync --watch` がファイルシステムイベントでオーバーレイを再実行し、適用前にプロンプトを出す。 | 約 1 週間 |
-| **3** | マルチヴォルト連合: グラフがヴォルトごとの由来情報を保持し、同期されたヴォルト間の同時編集をサポート。 | 約 1 か月、実際のユースケースが現れるまで延期 |
+| **1a** | オーバーレイリーダー: ヴォルトを巡回し `vault_overrides.json` を構築し、同期時に適用。ダイバージェンスは `.tesserae/diverged-fields.md` に記録。 | 出荷済み |
+| **1b** | ユーザーノート追記ゾーン: 射影器は `<!-- user-notes:start --> ... <!-- user-notes:end -->` ブロックを決して触らない。 | 出荷済み |
+| **2** | ウォッチモード: 長時間動作する `obsidian-sync --watch` がヴォルトの変更に応じてポーリングループでオーバーレイを再実行。 | 出荷済み |
+| **3** | マルチヴォルト連合: グラフがヴォルトごとの由来情報を保持し、同期されたヴォルト間の同時編集をサポート。 | 実際のユースケースが現れるまで延期 |
 
 ## 非ゴール（明示的に）
 
@@ -130,11 +148,11 @@ tesserae project obsidian-sync --watch --vault ~/Documents/tesserae-vault
 - すべてのフィールドをラウンドトリップさせるために extractor を書き直すこと — オーバーレイテーブル外のものについては、ソース markdown が引き続き正典である。
 - 静的 HTML サイトの同期（`build-site` は引き続き射影専用）。
 
-## 実装前に決定すべき未解決事項
+## 確定した決定事項
 
-これらには提案デフォルトがありますが、コードが入る前に最終確認の価値があります:
+これらは設計時の未解決事項でした。出荷済みの Tier 1–2 実装は次のように決着させました:
 
-1. **lint レポートの形。** ダイバージしたフィールドは別ファイル `.tesserae/diverged-fields.md` として出すべきか、それとも既存の `lint-report.md` の新セクションとして出すべきか。提案: git で差分を取れるよう専用ファイル。
+1. **lint レポートの形。** ダイバージしたフィールドは `lint-report.md` のセクションではなく、専用ファイル `.tesserae/diverged-fields.md`（`--dry-run` 時および適用のたびに書き出し）として出力され、git で差分を取れます。
 2. **トゥームストーン node の型。** `Stub` を実スキーマ型として追加するか、それとも `OpenQuestion` に `_kind: stub` 識別子を付けて流用するか。提案: 実型、名前は `Stub`、公開インデックスから非表示。
 3. **コンパイル時プルのデフォルト。** デフォルト ON か OFF か。提案: 設定されたパスにヴォルトが存在する場合は ON。初回起動時のみ確認プロンプトを出し、ユーザーが意図的にオプトインできるようにする。
 4. **差分のための「前回の射影」とは何か。** スナップショットを `.tesserae/vault_snapshot.json` に保存するか、それともコンパイルのたびに即時に再射影するか。提案: スナップショット方式で、各コンパイルの終わりに書き出す。安価で、extractor の非決定性がオーバーレイに漏れることを避けられる。
@@ -142,6 +160,4 @@ tesserae project obsidian-sync --watch --vault ~/Documents/tesserae-vault
 
 ## これを `obsidian.md` でどう露出するか
 
-ユーザー向けガイドは「ヴォルトを読んでクエリできる」に焦点を絞り続けます。実装が入り次第、末尾の短い「双方向同期」セクションからここへリンクし、1 行サマリ「Obsidian でフィールドを編集すれば再コンパイル後も残ります。完全なモデルは [obsidian-sync.md](obsidian-sync.md) を参照。」を添えます。
-
-それまでの間、`obsidian.md` の既存の読み取り専用免責はそのまま残ります — この設計はロードマップであり、出荷済みの機能ではありません。
+ユーザー向けガイドは「ヴォルトを読んでクエリできる」に焦点を絞り続け、1 行サマリ「Obsidian でフィールドを編集すれば再コンパイル後も残ります。完全なモデルは [obsidian-sync.md](obsidian-sync.md) を参照。」とともに往復の話のためにここへリンクします。

@@ -3,7 +3,9 @@
 <!-- translations:start -->
 <p align="center"><a href="../architecture.md">English</a> · <a href="architecture.ko.md">한국어</a> · <a href="architecture.zh.md">中文</a> · <a href="architecture.ja.md">日本語</a> · <a href="architecture.ru.md">Русский</a> · <a href="architecture.es.md">Español</a> · <a href="architecture.fr.md">Français</a> · <a href="architecture.de.md">Deutsch</a></p>
 <!-- translations:end -->
-Tesserae transforme un répertoire de matériaux sources en graphe de connaissances contrôlé et typé, puis projette ce graphe à travers une couche wiki markdown durable vers un site web statique adapté à l’IA. La refonte d’avril 2026 a réorganisé le système autour d’un modèle Karpathy à trois couches : les preuves brutes restent brutes, un graphe typé gouverne l’ontologie, et une couche wiki markdown se place entre le graphe et toute sortie rendue. Le site statique est désormais un *moteur de rendu* de cette couche wiki, plutôt qu’un dump direct du graphe, avec l’ontologie contrôlée dans [`tesserae/research_graph.py`](../../tesserae/research_graph.py) comme schéma.
+Tesserae est un **moteur de contexte**. Il reconstruit une base de connaissances auto-améliorante à partir de votre projet et la remet aux agents sous forme de contexte prêt à l’emploi. Il repose sur trois piliers : (1) **surveillance des sessions** — observer les sessions d’agents/de travail en direct et capturer les découvertes au fil de l’eau ; (2) **ingestion de connaissances autonome et proactive** — un pipeline + une boucle superviseur tirent et réextraient le savoir en continu, améliorant la base au lieu d’attendre des instructions ; (3) **docs/contexte à la demande** — des artefacts demandés par l’utilisateur, compilés depuis cette même base. Le graphe typé, le coffre (vault) markdown et le site statique sont des *projections* de la base de connaissances ; le moteur est la boucle qui les garde à jour et alimente les agents.
+
+En dessous, Tesserae transforme un répertoire de matériaux sources en graphe de connaissances contrôlé et typé, puis projette ce graphe à travers une couche wiki markdown durable vers un site web statique adapté à l’IA. La refonte d’avril 2026 a réorganisé le côté projections autour d’un modèle Karpathy à trois couches : les preuves brutes restent brutes, un graphe typé gouverne l’ontologie, et une couche wiki markdown se place entre le graphe et toute sortie rendue. Le site statique est un *moteur de rendu* de cette couche wiki, plutôt qu’un dump direct du graphe, avec l’ontologie contrôlée dans [`tesserae/research_graph.py`](../../tesserae/research_graph.py) comme schéma. Le jalon **v0.5.0** (juin 2026) a ajouté la colonne vertébrale du moteur qui anime les trois piliers — voir *Colonne vertébrale du moteur* et *Compilateur de contexte à la demande* ci-dessous.
 
 ## Le modèle Karpathy à trois couches
 
@@ -65,6 +67,39 @@ data/, docs/, src/                                    (L1 raw)
 
 Chaque étape est incrémentale. L’extracteur de graphe utilise les hashes de contenu de `manifest.json` pour ignorer les fichiers sources inchangés. `WikiPageStore.write_page` renvoie `False` (et saute l’écriture) lorsque le hash du corps correspond à ce qui est déjà sur disque. `StaticSiteBuilder` efface et réécrit `.tesserae/site/`, mais sa sortie est déterministe — voir « Récit d’idempotence » ci-dessous.
 
+## Flux de données du compilateur de contexte
+
+Le compilateur de contexte à la demande ([`tesserae/context_compiler.py`](../../tesserae/context_compiler.py)) est le chemin phare du Pilier 3. À partir d’une requête et/ou d’ids de nœuds-graines explicites, `compile_context` construit un paquet markdown sur mesure et **cité** directement depuis le graphe et le renvoie en mémoire — il n’écrit rien sous `.tesserae/`.
+
+```
+query / seeds
+     │
+     ▼  1. Résolution des graines
+        graines explicites (conservées seulement si présentes dans le graphe) + résultats de hybrid_search(), dédoublonnés, ordre stable
+     │
+     ▼  2. Expansion PPR
+        retrieval.ppr.personalized_pagerank classe le voisinage à k sauts à profondeur bornée ;
+        résultat vide (graines déconnectées) → repli sur l’ordre des graines (le paquet n’est jamais vide)
+     │
+     ▼  3. Sélection bornée par le budget
+        parcourt l’ordre PPR, en incluant le corps cité de chaque nœud jusqu’à ce que le corps
+        suivant dépasse `budget` caractères (budget <= 0 = sans limite ; marqueur de dépassement sur une frontière de mot)
+     │
+     ▼  4. Assemblage du markdown cité
+        une section par nœud sélectionné + un bloc final `## Citations`.
+        Le corps privilégie la page wiki projetée (quand un store et un type wiki public existent),
+        sinon la description du nœud, sinon un stub minimal. Le corps sans LLM n’intègre aucun
+        horodatage d’horloge → identique octet pour octet pour le même (graph, query, seeds, depth, budget).
+     │
+     ▼  5. Synthèse LLM optionnelle  (seulement si synthesize=true ET ANTHROPIC_API_KEY est présent)
+     ▼
+   ContextBundle { query, seeds_used, ranked_nodes, selected_nodes,
+                   citations[ContextCitation], body, synthesized,
+                   char_budget_used, char_budget_total }
+```
+
+Valeurs par défaut : `depth=2`, `budget=32000`. L’assemblage déterministe (étapes 1–4) est le contrat ; la synthèse LLM est purement additive. Le même pipeline soutient la commande CLI `project context`, l’outil MCP `compile_context` et les tranches d’export par sujet (`slice_export_context_for_topic`, `llms.txt` par sujet).
+
 ## Carte des modules
 
 ### Wiki + synthèse (L2)
@@ -103,9 +138,55 @@ Chaque étape est incrémentale. L’extracteur de graphe utilise les hashes de 
 
 | Module | Responsabilité |
 |---|---|
-| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile` : pilote extraction → graph → wiki layer → site. Possède `ProjectPaths` (`config`, `graph`, `manifest`, `wiki`, `site`, etc.). |
-| [`tesserae/cli.py`](../../tesserae/cli.py) | Toutes les sous-commandes `tesserae project …`, dont `compile`, `build-site`, `serve`, `watch`, `deploy`. |
+| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile` : pilote extraction → graph → passes mémoire → wiki layer → site. Possède `ProjectPaths` (`config`, `graph`, `manifest`, `wiki`, `site`, etc.). Décide en amont si une compilation incrémentale fondée sur la provenance est éligible (contrôlée par `incremental_compile`, OFF par défaut). |
+| [`tesserae/cli.py`](../../tesserae/cli.py) | Toutes les sous-commandes `tesserae project …`, dont `compile`, `refresh`, `context`, `build-site`, `serve`, `watch`, `engine`/`daemon`, `deploy`. |
 | [`tesserae/deploy.py`](../../tesserae/deploy.py) | `project deploy` : pousse `.tesserae/site/` vers une branche `gh-pages` via worktree, active éventuellement Pages via `gh`. |
+
+### Colonne vertébrale du moteur (v0.5.0 — piliers 1 & 2)
+
+La colonne vertébrale du moteur est la boucle en-processus qui anime la surveillance des sessions et la réingestion autonome. Le même `Pipeline.run()` est l’unique chemin de rafraîchissement qu’appellent la CLI, le démon superviseur et (plus tard) le serveur MCP.
+
+| Module | Responsabilité |
+|---|---|
+| [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | `Pipeline` : exécuteur d’étapes séquentiel. Codifie la chaîne de rafraîchissement en prose (ingestion → compilation → projection/publication) comme un objet importable qui renvoie un `List[StepResult]` structuré au lieu d’imprimer-et-quitter, afin que chaque appelant décide comment présenter les résultats. `run()` attrape `Exception` par étape (laisse passer `KeyboardInterrupt`/`SystemExit`) et s’arrête au premier échec. |
+| [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | `Daemon` : superviseur asyncio à propriétaire unique. Surveille les répertoires sources, le coffre Obsidian et le répertoire des sessions du harness ; via un debounce annuler-et-replanifier, fusionne une rafale de `TriggerEvent` en exactement un `Pipeline.run()`. Réutilise les observateurs existants `watch.py` / `vault_watch.py` (sans les réécrire), écrit un pidfile et survit aux exceptions en vol. Exposé via `project engine` / `project daemon` (`--interval`, `--debounce`, `--once`). |
+| [`tesserae/watch.py`](../../tesserae/watch.py), [`tesserae/vault_watch.py`](../../tesserae/vault_watch.py) | Observateurs par sondage réutilisés par la commande autonome `project watch` et par les voies sources/coffre du démon. |
+
+### Mémoire d’auto-amélioration (v0.5.0 — pilier 2)
+
+La Phase 5 a activé l’auto-amélioration persistante. L’état mutable par nœud vit dans un sidecar `node_memory` SQLite (à l’intérieur de `.tesserae/sqlite.db`), séparé de l’horodatage immuable de première apparition `node_provenance.first_seen_at` (sidecar de la Phase 4). La compilation exécute un ensemble de passes déterministes sur le graphe.
+
+| Module | Responsabilité |
+|---|---|
+| [`tesserae/memory/store.py`](../../tesserae/memory/store.py) | `NodeMemoryRow` + accesseurs indépendants du store (`read_memory`, `write_memory`, `bump_access`) sur la table `node_memory` — `decay_score`, `last_accessed_at`, `confidence`, `superseded`. Aucun site d’appel n’intègre de SQL brut. |
+| [`tesserae/memory/decay.py`](../../tesserae/memory/decay.py) | `compute_decay_score` : score de fraîcheur à la Ebbinghaus (plus récent + plus consulté en premier) servant à classer les découvertes de session. |
+| [`tesserae/memory/supersede.py`](../../tesserae/memory/supersede.py) | `run_supersede_pass` (**activé par défaut**) : verdict déterministe qui marque un insight quasi-doublon plus ancien comme remplacé par un plus récent, en ajoutant une arête `supersedes`. |
+| [`tesserae/memory/insight_symbol_link.py`](../../tesserae/memory/insight_symbol_link.py) | `run_insight_symbol_link_pass` : relie les insights de session aux symboles de code qu’ils évoquent via des arêtes `discusses`. |
+| [`tesserae/memory/reinforce.py`](../../tesserae/memory/reinforce.py), [`tesserae/memory/contradiction.py`](../../tesserae/memory/contradiction.py) | Aides de renforcement d’accès et de détection de contradictions sur le même sidecar. |
+
+La confiance de récurrence est numérique en sortie : la projection temporelle tamponne la `confidence` de chaque fait depuis `NodeMemoryRow.confidence` (texte dans SQLite, exposé via `temporal.py`), ne se rabattant sur `infer_confidence` que lorsqu’aucune valeur stockée n’existe.
+
+### Récupération (v0.5.0 — piliers 2 & 3)
+
+| Module | Responsabilité |
+|---|---|
+| [`tesserae/retrieval/hybrid.py`](../../tesserae/retrieval/hybrid.py) | `hybrid_search` : récupérateur hybride local-first fusionnant trois voies — Okapi BM25 (k1=1.5, b=0.75), correspondance lexicale/style FTS de sous-chaînes insensible à la casse, et une voie d’embeddings enfichable — via la fusion par rangs réciproques (RRF, k=60). Entièrement déterministe. |
+| [`tesserae/retrieval/ppr.py`](../../tesserae/retrieval/ppr.py) | `personalized_pagerank` : PageRank personnalisé à la HippoRAG-2 (arXiv:2502.14802) sur le graphe pour l’expansion multi-saut des graines — fait remonter des nœuds bien connectés à plusieurs sauts de la graine, pas seulement le voisinage à 1 saut. |
+| Backend d’embeddings (Phase 6, Track B) | Le backend par défaut de la voie d’embeddings de l’hybride est un pseudo-embedding déterministe par seaux de hachage qui ne nécessite aucune dépendance supplémentaire ; `sentence-transformers` (`all-MiniLM-L6-v2`) est préféré et chargé paresseusement quand la dépendance optionnelle est installée. L’outil MCP `embedding_status` indique le backend actif. |
+
+### Compilateur de contexte à la demande (v0.5.0 — phare du Pilier 3)
+
+| Module | Responsabilité |
+|---|---|
+| [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | `compile_context` : la fonctionnalité phare du Pilier 3. Compile un paquet de contexte **cité** sur mesure pour un ensemble de requêtes/graines directement depuis le graphe — voir *Flux de données du compilateur de contexte* ci-dessous. Renvoie un `ContextBundle` en mémoire (avec des `ContextCitation`) ; n’écrit rien sur disque. Exposé via la commande CLI `project context` et l’outil MCP `compile_context`. |
+
+### Ports de persistance + stores de graphe
+
+| Module | Responsabilité |
+|---|---|
+| [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | Protocole `GraphStore` : `upsert_node`/`upsert_edge`, `get_node`, `iterate_nodes`, `query_subgraph`, `find_canonical` et la surface de suppression de la Phase 4 — `delete_node` et `delete_nodes_by_source` (supprime les nœuds dont l’ensemble de provenance devient vide après retrait des chemins sources donnés, de sorte que les concepts inter-fichiers survivent). |
+| [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | `SqliteGraphStore` : store de stockage autonome ; possède les tables sidecar `node_provenance` et `node_memory`. |
+| [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | Résout une URL de store (`sqlite:///…`, `hypepaper-postgres://…`) vers le bon `GraphStore`, permettant au serveur MCP de pointer vers n’importe quel store de stockage à l’exécution. |
 
 ### Adaptateurs externes (inchangés dans ce cycle)
 
@@ -116,7 +197,7 @@ Chaque étape est incrémentale. L’extracteur de graphe utilise les hashes de 
 | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | Découverte des sessions entrantes Claude Code/Codex, normalisation, stockage sous `.tesserae/harness_sessions/`, et résumés markdown expurgés. |
 | [`tesserae/graphiti_adapter.py`](../../tesserae/graphiti_adapter.py) | Temporal-fact JSONL + synchronisation live Graphiti optionnelle. |
 | [`tesserae/cognee_adapter.py`](../../tesserae/cognee_adapter.py) | Bundle JSONL de nœuds/arêtes Cognee et chemin direct add/cognify. |
-| [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | Serveur MCP stdio exposant `schema`, `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`. |
+| [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | Serveur MCP stdio. Récupération/graphe : `schema`, `graph_summary`, `search_nodes`, `node_context` (avec `use_ppr`), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`. Moteur de contexte (v0.5.0) : `compile_context` (le compilateur de contexte à la demande), `embedding_status`, `fresh_insights` (découvertes de session classées par déclin), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`. Plus `ask`, les outils du registre multi-projets (`list_projects`, `register_project`, `activate_project`, `unregister_project`, `list_sessions`) et `tesserae_setup_plan` / `tesserae_setup_apply`. |
 
 ## Layout du workspace projet
 
@@ -125,8 +206,10 @@ Chaque étape est incrémentale. L’extracteur de graphe utilise les hashes de 
   config.json                 project name, source kind, source list
   graph.json                  validated ResearchGraph (incl. Synthesis nodes)
   manifest.json               per-source content hashes (input dedup)
-  sqlite.db                   SQLite graph store
-  temporal_facts.jsonl        Graphiti-style temporal projection
+  sqlite.db                   SQLite graph store; possède aussi les tables sidecar node_provenance
+                              (première apparition, Phase 4) et node_memory (déclin / confiance /
+                              remplacé, Phase 5)
+  temporal_facts.jsonl        Graphiti-style temporal projection (confiance de récurrence numérique)
   graphiti_episodes.jsonl     dependency-free Graphiti episode export
   report.md                   graph quality / summary
   competitive_report.md       comparison vs. MegaMem / Graphiti / others
@@ -225,6 +308,11 @@ Ceci est vérifié par `tests/test_site_pages.py` et le smoke end-to-end dans `t
 ## Stratégie de test
 
 - **Unit** — `tests/test_wiki_store.py`, `tests/test_synthesis.py`, `tests/test_site_components.py`, `tests/test_site_pages.py`, `tests/test_site_exports.py`, `tests/test_relevance.py`.
+- **Colonne vertébrale du moteur** — `tests/test_pipeline.py`, `tests/test_refresh_pipeline.py`, `tests/test_daemon_core.py`, `tests/test_daemon_sources.py`, `tests/test_cli_engine.py`.
+- **Mémoire d’auto-amélioration** — `tests/test_memory_sidecar.py`, `tests/test_decay_supersede.py`, `tests/test_supersede_suppression.py`, `tests/test_mcp_supersede_suppression.py`, `tests/test_memory_contradiction_reinforce.py`.
+- **Récupération + embeddings** — `tests/test_hybrid_search.py`, `tests/test_ppr.py`, `tests/test_real_embeddings_phase6.py`.
+- **Compilateur de contexte** — `tests/test_context_compiler.py` (forme, intégrité des citations, déterminisme, budget, repli PPR), `tests/test_cli_context.py`, `tests/test_mcp_server_context.py`.
+- **Compilation incrémentale (expérimentale)** — `tests/test_incremental_compile.py`, `tests/test_incremental_parity.py`, `tests/test_provenance_readiness.py`, `tests/test_sqlite_provenance.py`.
 - **Idempotence** — `tests/test_project_e2e_redesign.py` compile deux fois et affirme zéro diff dans `wiki/` et `site/`.
 - **Intégrité des liens** — `tests/test_frontend.py` parse chaque HTML émis pour les hrefs et affirme que chaque lien interne se résout vers un fichier généré. Aucun `nodes/codeclass-*.html` n’est produit.
 - **AI siblings** — pour chaque `path/foo.html`, la suite de tests affirme que `path/foo.txt` et `path/foo.json` existent ; le JSON se parse et contient `{title, kind, body, links}`.

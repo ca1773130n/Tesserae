@@ -19,11 +19,45 @@ Utilisez cette checklist avant de présenter Tesserae publiquement.
 ## Vérification
 
 ```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest tests/ -q
+.venv/bin/pytest tests/ -x          # INTERROMPRE à la moindre erreur — ne jamais livrer une build rouge
 ./scripts/install.sh --help
 tesserae project setup --help
 tesserae project compile --help
+tesserae project context --help     # Compilateur de contexte à la demande
 ```
+
+### Smoke de build démo (identique au job CI `build-demo`)
+
+Le flux de release comme la CI compilent Tesserae contre son propre arbre de sources
+avec l’extracteur déterministe (aucun appel LLM, aucune clé API) et construisent le site :
+
+```bash
+.venv/bin/python -m tesserae project setup --yes --no-color --source . \
+  --no-cognee --skip-raganything --skip-install-cognee \
+  --skip-install-raganything --skip-install-understand-anything
+.venv/bin/python -m tesserae project compile
+.venv/bin/python -m tesserae project build-site
+```
+
+## Flux de release
+
+Piloté par la skill `release` (`.claude/skills/release/SKILL.md`). Le tag le plus récent est `v0.5.0`.
+
+- [ ] Sur `main`, arbre de travail propre, exécuter `git pull --ff-only origin main`.
+- [ ] Les tests + le smoke de build démo (ci-dessus) passent.
+- [ ] Monter `version = "X.Y.Z"` dans `pyproject.toml` (répliquer `package.json` s’il existe) ; committer `release: vX.Y.Z` avec un changelog d’un paragraphe issu de `git log v<prev>..HEAD`.
+- [ ] Taguer `git tag -a vX.Y.Z -m "vX.Y.Z"` ; pousser d’abord le commit puis le tag.
+- [ ] Attendre que la CI soit verte (`gh run watch <run-id>`) — ne pas publier la release GitHub sur une build rouge.
+- [ ] Publier la release GitHub. La publication PyPI est optionnelle (quand c’est prêt).
+
+### GitHub Pages
+
+Le workflow `build-demo` (push sur `main`) téléverse toujours le site dogfood compilé en tant
+qu’artefact de workflow inspectable et, **en plus**, le déploie sur GitHub Pages quand Pages est
+activé. Les étapes Pages sont `continue-on-error` : le `GITHUB_TOKEN` par défaut ne peut pas
+*créer* un site Pages, donc le tout premier déploiement nécessite une bascule manuelle unique
+dans **Settings → Pages → Source: GitHub Actions**. Tant que cette bascule n’est pas activée, la
+build reste verte et l’artefact est toujours produit.
 
 ## Self-dogfood
 

@@ -58,19 +58,53 @@ Redémarrez le client après modification. La session suivante se connectera et 
 
 ### Tools — invoqués par le modèle
 
+Chaque outil accepte un `graph_path` ou un `project` (alias du registre) optionnel, de sorte qu'un seul serveur peut résoudre n'importe quel vault enregistré à chaque appel. À défaut, repli sur le projet actif.
+
+**Requêtes sur le graphe et récupération**
+
 | Outil | Rôle |
 |---|---|
 | `schema` | Vocabulaire contrôlé des nœuds, arêtes et wiki-kinds |
 | `graph_summary` | Compteurs de nœuds et d'arêtes ainsi que distributions de types pour le projet actif |
-| `search_nodes` | Filtre les nœuds du graphe par requête, type, kind, avec un top-N classé par score |
-| `node_context` | Un nœud + ses arêtes incidentes + les nœuds voisins |
-| `search_facts` | Faits temporels projetés depuis le graphe (style Graphiti) |
+| `search_nodes` | Filtre les nœuds publics du graphe par `query`, `type`/`types`, `kind`, `limit`, `mode`/`weights` hybrides ; `include_superseded` affiche les nœuds retirés |
+| `node_context` | Un nœud + ses arêtes incidentes + les nœuds voisins. `use_ppr` classe les voisins via un PageRank personnalisé plutôt qu'un parcours à 1 saut ; `include_superseded` et `limit` bornent le résultat |
+| `embedding_status` | Indique le backend d'embeddings actif qui alimente la recherche hybride |
+| `search_facts` | Faits temporels projetés depuis le graphe (style Graphiti) ; `current_only` filtre les faits courants |
 | `timeline` | Faits ordonnés par `valid_from` pour une vue longitudinale |
-| `wiki_page` | Le corps de la page markdown compilée pour un nœud |
+| `graph_ppr` | PageRank personnalisé amorcé sur un ou plusieurs `seed_node_id` ; renvoie les top-K nœuds les plus pertinents avec `alpha`, `directed`, `edge_type_weights` réglables |
+| `wiki_page` | Le corps de la page markdown compilée pour un nœud, plus les liens internes qu'elle référence |
 | `raw_source` | Le markdown source d'origine (plafonné à 16 KB) |
-| `lint_report` | Les derniers résultats de lint produits à la compilation |
-| `ask` | Questions-réponses en langage naturel via le backend de mémoire configuré (raganything, cognee, ou wiki compilé) |
+| `lint_report` | Les derniers résultats de lint produits à la compilation (plafonné à 64 KB) |
+
+**Compilateur de contexte à la demande** (Phase 7)
+
+| Outil | Rôle |
+|---|---|
+| `compile_context` | Compile un document de contexte **avec citations** sur mesure pour une `query` ou des `seeds` explicites. Parcourt un sous-graphe de profondeur bornée (`depth`, 1–10, défaut 2), classe via PPR et remplit un `budget` de caractères (défaut 32000 ; `0` pour illimité). Déterministe par défaut ; avec `synthesize: true`, produit une tranche narrative "topic" rédigée par le LLM. Renvoie `body`, `citations`, `selected_node_ids` et `char_budget_used` |
+| `list_communities` | Liste les nœuds `COMMUNITY_SUMMARY` créés par la passe post-compilation, classés par nombre de membres (`min_size`, `limit`) ; avec `node_context`, suivez les arêtes `summarizes` jusqu'aux membres |
+| `fresh_insights` | Constats de session classés par un score de décroissance à la Ebbinghaus (les plus récents et les plus consultés d'abord) ; écarte ceux remplacés par des quasi-doublons plus récents. `kind`, `limit`, `include_superseded` optionnels |
+
+**Mémoire de session** (voir [sessions.md](sessions.md))
+
+| Outil | Rôle |
+|---|---|
+| `list_sessions` | Enveloppes de session (id, started_at, title, files_touched, compteurs de constats) pour le projet actif ; `since`, `limit` |
+| `find_session_findings` | Tous les constats de session liés à `node_id` via `discussed_in` / `references`, filtrables par `kinds` (insight / decision / question / todo / hypothesis / takeaway) |
+| `find_code_symbol_mentions` | Étend un constat de session aux symboles `CodeFunction`/`CodeClass`/`CodeMethod` qu'il mentionne, via les arêtes `discusses` de la passe optionnelle de liaison insight↔symbole |
+
+**Questions-réponses et registre**
+
+| Outil | Rôle |
+|---|---|
+| `ask` | Questions-réponses en langage naturel via le backend de mémoire configuré (raganything, cognee, ou wiki compilé). `backend`, `top_k` ; diffusion multi-vault via `scope`/`scope_aliases` ; `claude_config_dir` pour le routage multi-comptes |
 | `list_projects` / `register_project` / `activate_project` / `unregister_project` | Contrôle du registre multi-projets |
+
+**Configuration guidée**
+
+| Outil | Rôle |
+|---|---|
+| `tesserae_setup_plan` | Détecte l'environnement et propose un plan de configuration en JSON. Lecture seule — ne touche jamais à `.tesserae/` |
+| `tesserae_setup_apply` | Applique un plan (éventuellement édité) : écrit `.tesserae/config.json` et exécute des actions d'installation/exécution protégées. Conditionné par `confirm_install_actions` / `confirm_run_actions` |
 
 ### Resources — chargées automatiquement dans le contexte du modèle
 

@@ -3,7 +3,9 @@
 <!-- translations:start -->
 <p align="center"><a href="../architecture.md">English</a> · <a href="architecture.ko.md">한국어</a> · <a href="architecture.zh.md">中文</a> · <a href="architecture.ja.md">日本語</a> · <a href="architecture.ru.md">Русский</a> · <a href="architecture.es.md">Español</a> · <a href="architecture.fr.md">Français</a> · <a href="architecture.de.md">Deutsch</a></p>
 <!-- translations:end -->
-Tesserae는 소스 자료의 디렉토리를 제어되고 입력된 지식 그래프로 바꾸고 내구성 있는 마크다운 위키 레이어를 통해 해당 그래프를 정적 AI 친화적인 웹 사이트로 프로젝트합니다. 2026년 4월 재설계에서는 Karpathy 3계층 모델을 중심으로 시스템을 재구성했습니다. 원시 증거는 원시 상태로 유지되고, 입력된 그래프는 온톨로지를 관리하며, 마크다운 위키 계층은 그래프와 렌더링된 출력 사이에 위치합니다. 정적 사이트는 이제 스키마로 [`tesserae/research_graph.py`](../../tesserae/research_graph.py)의 제어된 온톨로지를 사용하여 그래프를 직접 덤프하는 것이 아니라 위키 레이어의 *렌더러*입니다.
+Tesserae는 **컨텍스트 엔진**입니다. 프로젝트로부터 자기 개선형 지식 기반을 재구성하고 이를 에이전트가 바로 사용할 수 있는 컨텍스트로 제공합니다. 세 가지 기둥 위에서 동작합니다. (1) **세션 모니터링** — 라이브 에이전트/작업 세션을 관찰하고 발견 사항을 발생하는 즉시 포착합니다. (2) **자율적·능동적 지식 수집** — 파이프라인 + 슈퍼바이저 루프가 지식을 지속적으로 끌어와 재추출하여, 지시를 기다리지 않고 기반을 계속 개선합니다. (3) **온디맨드 문서/컨텍스트** — 동일한 기반에서 컴파일된 사용자 요청 산출물입니다. 입력된 그래프, 마크다운 볼트, 정적 사이트는 지식 기반의 *프로젝션*이며, 엔진은 이들을 최신 상태로 유지하고 에이전트에 공급하는 루프입니다.
+
+그 아래에서 Tesserae는 소스 자료의 디렉토리를 제어되고 입력된 지식 그래프로 바꾸고 내구성 있는 마크다운 위키 레이어를 통해 해당 그래프를 정적 AI 친화적인 웹 사이트로 프로젝트합니다. 2026년 4월 재설계에서는 프로젝션 측을 Karpathy 3계층 모델을 중심으로 재구성했습니다. 원시 증거는 원시 상태로 유지되고, 입력된 그래프는 온톨로지를 관리하며, 마크다운 위키 계층은 그래프와 렌더링된 출력 사이에 위치합니다. 정적 사이트는 스키마로 [`tesserae/research_graph.py`](../../tesserae/research_graph.py)의 제어된 온톨로지를 사용하여 그래프를 직접 덤프하는 것이 아니라 위키 레이어의 *렌더러*입니다. **v0.5.0** 마일스톤(2026년 6월)은 세 기둥을 모두 구동하는 엔진 스파인을 추가했습니다 — 아래의 *엔진 스파인* 및 *온디맨드 컨텍스트 컴파일러*를 참조하세요.
 
 ## Karpathy 3층 모델
 
@@ -65,6 +67,39 @@ data/, docs/, src/                                    (L1 raw)
 
 모든 단계는 점진적입니다. 그래프 추출기는 `manifest.json` 콘텐츠 해시를 사용하여 변경되지 않은 소스 파일을 건너뜁니다. `WikiPageStore.write_page`는 본문 해시가 이미 디스크에 있는 것과 일치하면 `False`를 반환하고 쓰기를 건너뜁니다. `StaticSiteBuilder`는 `.tesserae/site/`를 지우고 다시 작성하지만 출력은 결정적입니다. 아래 "멱등성 이야기"를 참조하세요.
 
+## 컨텍스트 컴파일러 데이터 흐름
+
+온디맨드 컨텍스트 컴파일러([`tesserae/context_compiler.py`](../../tesserae/context_compiler.py))는 기둥 3의 핵심 경로입니다. 쿼리 및/또는 명시적 시드 노드 ID가 주어지면 `compile_context`는 그래프에서 바로 맞춤형의 **인용된** 마크다운 번들을 만들어 메모리에 반환합니다 — `.tesserae/` 아래에 아무것도 쓰지 않습니다.
+
+```
+query / seeds
+     │
+     ▼  1. 시드 해석
+        명시적 시드(그래프에 존재할 때만 유지) + hybrid_search() 결과, 중복 제거, 안정적 순서
+     │
+     ▼  2. PPR 확장
+        retrieval.ppr.personalized_pagerank가 깊이 제한 k-홉 이웃을 랭킹;
+        결과가 비면(분리된 시드) → 시드 순서로 폴백(번들은 절대 비지 않음)
+     │
+     ▼  3. 예산 제한 선택
+        PPR 순서를 따라가며 각 노드의 인용 본문을 다음 본문이 `budget` 문자를
+        초과하기 직전까지 포함(budget <= 0 = 무제한; 단어 경계에 초과 마커)
+     │
+     ▼  4. 인용 마크다운 조립
+        선택된 노드당 한 섹션 + 끝의 `## Citations` 블록.
+        본문 텍스트는 (store + 공개 위키 종류가 있을 때) 프로젝트된 위키 페이지를 우선하고,
+        없으면 노드 설명, 그것도 없으면 최소 스텁을 사용. LLM 없는 본문은 벽시계
+        타임스탬프를 전혀 넣지 않음 → 동일한 (graph, query, seeds, depth, budget)에 대해 바이트 동일.
+     │
+     ▼  5. 선택적 LLM 합성  (synthesize=true이고 ANTHROPIC_API_KEY가 설정된 경우에만)
+     ▼
+   ContextBundle { query, seeds_used, ranked_nodes, selected_nodes,
+                   citations[ContextCitation], body, synthesized,
+                   char_budget_used, char_budget_total }
+```
+
+기본값: `depth=2`, `budget=32000`. 결정적 조립(1~4단계)이 계약이며, LLM 합성은 순수하게 부가적입니다. 동일한 파이프라인이 `project context` CLI 명령, `compile_context` MCP 도구, 그리고 주제 범위 내보내기 슬라이스(`slice_export_context_for_topic`, 주제 범위 `llms.txt`)를 뒷받침합니다.
+
 ## 모듈 맵
 
 ### 위키 + 합성(L2)
@@ -103,9 +138,55 @@ data/, docs/, src/                                    (L1 raw)
 
 | 모듈 | 책임 |
 |---|---|
-| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`: 추출 → 그래프 → 위키 레이어 → 사이트를 구동합니다. `ProjectPaths`(`config`, `graph`, `manifest`, `wiki`, `site` 등)를 소유합니다. |
-| [`tesserae/cli.py`](../../tesserae/cli.py) | `compile`, `build-site`, `serve`, `watch`, `deploy`를 포함한 모든 `tesserae project …` 하위 명령. |
+| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`: 추출 → 그래프 → 메모리 패스 → 위키 레이어 → 사이트를 구동합니다. `ProjectPaths`(`config`, `graph`, `manifest`, `wiki`, `site` 등)를 소유합니다. 프로비넌스 기반 증분 컴파일이 가능한지(`incremental_compile`로 게이트, 기본 OFF) 사전에 결정합니다. |
+| [`tesserae/cli.py`](../../tesserae/cli.py) | `compile`, `refresh`, `context`, `build-site`, `serve`, `watch`, `engine`/`daemon`, `deploy`를 포함한 모든 `tesserae project …` 하위 명령. |
 | [`tesserae/deploy.py`](../../tesserae/deploy.py) | `project deploy`: 작업 트리를 통해 `.tesserae/site/`를 `gh-pages` 분기에 푸시하고 선택적으로 `gh`를 통해 페이지를 활성화합니다. |
+
+### 엔진 스파인 (v0.5.0 — 기둥 1 & 2)
+
+엔진 스파인은 세션 모니터링과 자율 재수집을 구동하는 인프로세스 루프입니다. 동일한 `Pipeline.run()`이 CLI, 슈퍼바이저 데몬, (추후) MCP 서버가 모두 호출하는 단일 새로고침 경로입니다.
+
+| 모듈 | 책임 |
+|---|---|
+| [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | `Pipeline`: 순차 스텝 러너. 산문형 새로고침 체인(수집 → 컴파일 → 프로젝트/게시)을 import 가능한 객체로 정형화하며, 출력-후-종료 대신 구조화된 `List[StepResult]`를 반환하여 각 호출자가 결과를 어떻게 표면화할지 직접 결정합니다. `run()`은 스텝마다 `Exception`을 잡고(`KeyboardInterrupt`/`SystemExit`는 통과시킴) 첫 실패에서 멈춥니다. |
+| [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | `Daemon`: 단일 소유자 asyncio 슈퍼바이저. 소스 디렉토리, Obsidian 볼트, 하네스 세션 디렉토리를 감시하고, 취소-후-재스케줄 디바운스를 통해 `TriggerEvent` 버스트를 정확히 하나의 `Pipeline.run()`으로 통합합니다. 기존 `watch.py` / `vault_watch.py` 감시기를 재사용(재작성하지 않음)하고, pidfile을 쓰며, 진행 중 예외에서도 살아남습니다. `project engine` / `project daemon`(`--interval`, `--debounce`, `--once`)으로 노출됩니다. |
+| [`tesserae/watch.py`](../../tesserae/watch.py), [`tesserae/vault_watch.py`](../../tesserae/vault_watch.py) | 독립형 `project watch` 명령과 데몬의 소스/볼트 레인이 함께 재사용하는 폴링 감시기. |
+
+### 자기 개선 메모리 (v0.5.0 — 기둥 2)
+
+Phase 5는 영속적 자기 개선을 활성화했습니다. 노드별 가변 상태는 `node_memory` SQLite 사이드카(`.tesserae/sqlite.db` 내부)에 위치하며, 불변의 `node_provenance.first_seen_at` 최초 관측 스탬프(Phase 4 사이드카)와 분리됩니다. 컴파일은 그래프에 대해 일련의 결정적 패스를 구동합니다.
+
+| 모듈 | 책임 |
+|---|---|
+| [`tesserae/memory/store.py`](../../tesserae/memory/store.py) | `NodeMemoryRow` + `node_memory` 테이블에 대한 스토어 비종속 접근자(`read_memory`, `write_memory`, `bump_access`) — `decay_score`, `last_accessed_at`, `confidence`, `superseded`. 어떤 호출 지점도 원시 SQL을 포함하지 않습니다. |
+| [`tesserae/memory/decay.py`](../../tesserae/memory/decay.py) | `compute_decay_score`: 세션 발견을 랭킹하는 데 쓰이는 에빙하우스식 신선도 점수(최신 + 가장 많이 접근됨 우선). |
+| [`tesserae/memory/supersede.py`](../../tesserae/memory/supersede.py) | `run_supersede_pass`(**기본 ON**): 더 오래된 근사 중복 인사이트를 더 새로운 것으로 대체됨 표시하고 `supersedes` 에지를 추가하는 결정적 판정. |
+| [`tesserae/memory/insight_symbol_link.py`](../../tesserae/memory/insight_symbol_link.py) | `run_insight_symbol_link_pass`: 세션 인사이트를 그것이 논하는 코드 심볼에 `discusses` 에지로 연결합니다. |
+| [`tesserae/memory/reinforce.py`](../../tesserae/memory/reinforce.py), [`tesserae/memory/contradiction.py`](../../tesserae/memory/contradiction.py) | 동일한 사이드카에 대한 접근 강화 및 모순 감지 헬퍼. |
+
+재발 신뢰도는 출력에서 수치형입니다. 시간 프로젝션은 각 사실의 `confidence`를 `NodeMemoryRow.confidence`(SQLite의 텍스트, `temporal.py`를 통해 표면화)에서 스탬핑하며, 저장 값이 없을 때만 `infer_confidence`로 폴백합니다.
+
+### 검색 (v0.5.0 — 기둥 2 & 3)
+
+| 모듈 | 책임 |
+|---|---|
+| [`tesserae/retrieval/hybrid.py`](../../tesserae/retrieval/hybrid.py) | `hybrid_search`: 세 레인 — Okapi BM25(k1=1.5, b=0.75), 대소문자 무시 어휘/FTS식 부분 문자열, 플러그형 임베딩 레인 — 을 상호 순위 융합(RRF, k=60)으로 융합하는 로컬 우선 하이브리드 검색기. 완전히 결정적입니다. |
+| [`tesserae/retrieval/ppr.py`](../../tesserae/retrieval/ppr.py) | `personalized_pagerank`: 그래프에 대한 HippoRAG-2식(arXiv:2502.14802) 개인화 PageRank로 다중 홉 시드 확장 — 1홉 이웃만이 아니라 시드에서 여러 홉 떨어져 있어도 잘 연결된 노드를 표면화합니다. |
+| 임베딩 백엔드 (Phase 6, Track B) | 하이브리드 임베딩 레인의 기본 백엔드는 추가 의존성이 필요 없는 결정적 해시 버킷 의사 임베딩입니다. 선택적 의존성이 설치된 경우 `sentence-transformers`(`all-MiniLM-L6-v2`)가 선호되어 지연 로드됩니다. `embedding_status` MCP 도구가 활성 백엔드를 보고합니다. |
+
+### 온디맨드 컨텍스트 컴파일러 (v0.5.0 — 기둥 3 핵심)
+
+| 모듈 | 책임 |
+|---|---|
+| [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | `compile_context`: 기둥 3의 핵심 기능. 쿼리/시드 세트에 대한 맞춤형 **인용된** 컨텍스트 번들을 그래프에서 바로 컴파일합니다 — 아래 *컨텍스트 컴파일러 데이터 흐름* 참조. 인메모리 `ContextBundle`(`ContextCitation` 포함)을 반환하며 디스크에 아무것도 쓰지 않습니다. `project context` CLI 명령과 `compile_context` MCP 도구로 노출됩니다. |
+
+### 영속성 포트 + 그래프 스토어
+
+| 모듈 | 책임 |
+|---|---|
+| [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | `GraphStore` 프로토콜: `upsert_node`/`upsert_edge`, `get_node`, `iterate_nodes`, `query_subgraph`, `find_canonical`, 그리고 Phase 4 삭제 표면 — `delete_node` 및 `delete_nodes_by_source`(주어진 소스 경로를 제거한 뒤 프로비넌스 집합이 비는 노드를 삭제하므로 교차 파일 개념은 살아남음). |
+| [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | `SqliteGraphStore`: 독립형 백킹 스토어; `node_provenance` 및 `node_memory` 사이드카 테이블을 소유합니다. |
+| [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | 스토어 URL(`sqlite:///…`, `hypepaper-postgres://…`)을 올바른 `GraphStore`로 해석하여 MCP 서버가 런타임에 임의의 백킹 스토어를 가리킬 수 있게 합니다. |
 
 ### 외부 어댑터(이번 라운드에서는 변경되지 않음)
 
@@ -116,7 +197,7 @@ data/, docs/, src/                                    (L1 raw)
 | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | 인바운드 Claude 코드/Codex 세션 검색, 정규화, `.tesserae/harness_sessions/` 하의 저장 및 수정된 마크다운 요약. |
 | [`tesserae/graphiti_adapter.py`](../../tesserae/graphiti_adapter.py) | 임시 사실 JSONL + 선택적 라이브 Graphiti 동기화. |
 | [`tesserae/cognee_adapter.py`](../../tesserae/cognee_adapter.py) | Cognee 노드/에지 JSONL 번들 및 직접 추가/인식 경로. |
-| [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | `schema`, `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`를 노출하는 MCP stdio 서버입니다. |
+| [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | MCP stdio 서버. 검색/그래프: `schema`, `graph_summary`, `search_nodes`, `node_context`(`use_ppr` 포함), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`. 컨텍스트 엔진(v0.5.0): `compile_context`(온디맨드 컨텍스트 컴파일러), `embedding_status`, `fresh_insights`(감쇠 랭킹 세션 발견), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`. 그 외 `ask`, 다중 프로젝트 레지스트리 도구(`list_projects`, `register_project`, `activate_project`, `unregister_project`, `list_sessions`), `tesserae_setup_plan` / `tesserae_setup_apply`. |
 
 ## 프로젝트 작업공간 레이아웃
 
@@ -125,8 +206,9 @@ data/, docs/, src/                                    (L1 raw)
   config.json                 project name, source kind, source list
   graph.json                  validated ResearchGraph (incl. Synthesis nodes)
   manifest.json               per-source content hashes (input dedup)
-  sqlite.db                   SQLite graph store
-  temporal_facts.jsonl        Graphiti-style temporal projection
+  sqlite.db                   SQLite graph store; node_provenance(최초 관측, Phase 4)와
+                              node_memory(감쇠 / 신뢰도 / 대체됨, Phase 5) 사이드카 테이블도 소유
+  temporal_facts.jsonl        Graphiti-style temporal projection (수치형 재발 신뢰도)
   graphiti_episodes.jsonl     dependency-free Graphiti episode export
   report.md                   graph quality / summary
   competitive_report.md       comparison vs. MegaMem / Graphiti / others
@@ -225,6 +307,11 @@ site/
 ## 테스트 전략
 
 - **유닛** — `tests/test_wiki_store.py`, `tests/test_synthesis.py`, `tests/test_site_components.py`, `tests/test_site_pages.py`, `tests/test_site_exports.py`, `tests/test_relevance.py`.
+- **엔진 스파인** — `tests/test_pipeline.py`, `tests/test_refresh_pipeline.py`, `tests/test_daemon_core.py`, `tests/test_daemon_sources.py`, `tests/test_cli_engine.py`.
+- **자기 개선 메모리** — `tests/test_memory_sidecar.py`, `tests/test_decay_supersede.py`, `tests/test_supersede_suppression.py`, `tests/test_mcp_supersede_suppression.py`, `tests/test_memory_contradiction_reinforce.py`.
+- **검색 + 임베딩** — `tests/test_hybrid_search.py`, `tests/test_ppr.py`, `tests/test_real_embeddings_phase6.py`.
+- **컨텍스트 컴파일러** — `tests/test_context_compiler.py`(형태, 인용 무결성, 결정성, 예산, PPR 폴백), `tests/test_cli_context.py`, `tests/test_mcp_server_context.py`.
+- **증분 컴파일(실험적)** — `tests/test_incremental_compile.py`, `tests/test_incremental_parity.py`, `tests/test_provenance_readiness.py`, `tests/test_sqlite_provenance.py`.
 - **멱등성** — `tests/test_project_e2e_redesign.py`는 두 번 컴파일하고 `wiki/` 및 `site/`에서 제로 차이를 주장합니다.
 - **링크 무결성** — `tests/test_frontend.py`는 href에 대해 방출된 모든 HTML을 구문 분석하고 모든 내부 링크가 생성된 파일로 확인된다고 주장합니다. `nodes/codeclass-*.html`는 생산되지 않습니다.
 - **AI 형제** — 모든 `path/foo.html`에 대해 테스트 스위트는 `path/foo.txt` 및 `path/foo.json`가 존재한다고 주장합니다. JSON은 `{title, kind, body, links}`를 구문 분석하고 포함합니다.

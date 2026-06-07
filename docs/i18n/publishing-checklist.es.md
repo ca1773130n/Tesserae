@@ -19,11 +19,45 @@ Usa esta lista antes de presentar Tesserae públicamente.
 ## Verificación
 
 ```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest tests/ -q
+.venv/bin/pytest tests/ -x          # ABORTA ante cualquier fallo — nunca publiques una build roja
 ./scripts/install.sh --help
 tesserae project setup --help
 tesserae project compile --help
+tesserae project context --help     # Compilador de contexto bajo demanda
 ```
+
+### Smoke de build de demo (coincide con el job de CI `build-demo`)
+
+Tanto el flujo de release como CI compilan Tesserae contra su propio árbol de
+fuentes con el extractor determinista (sin llamadas a LLM, sin API keys) y construyen el sitio:
+
+```bash
+.venv/bin/python -m tesserae project setup --yes --no-color --source . \
+  --no-cognee --skip-raganything --skip-install-cognee \
+  --skip-install-raganything --skip-install-understand-anything
+.venv/bin/python -m tesserae project compile
+.venv/bin/python -m tesserae project build-site
+```
+
+## Flujo de release
+
+Conducido por la skill `release` (`.claude/skills/release/SKILL.md`). El tag más reciente es `v0.5.0`.
+
+- [ ] En `main`, árbol de trabajo limpio, ejecuta `git pull --ff-only origin main`.
+- [ ] Los tests + el smoke de build de demo (arriba) pasan.
+- [ ] Sube `version = "X.Y.Z"` en `pyproject.toml` (replica `package.json` si existe); commitea `release: vX.Y.Z` con un changelog de un párrafo desde `git log v<prev>..HEAD`.
+- [ ] Etiqueta `git tag -a vX.Y.Z -m "vX.Y.Z"`; empuja primero el commit y luego el tag.
+- [ ] Espera a que CI esté en verde (`gh run watch <run-id>`) — no publiques el release de GitHub sobre una build roja.
+- [ ] Publica el release de GitHub. La publicación en PyPI es opcional (cuando esté lista).
+
+### GitHub Pages
+
+El workflow `build-demo` (push a `main`) siempre sube el sitio dogfood compilado como un
+artefacto de workflow inspeccionable y, **además**, lo despliega a GitHub Pages cuando Pages
+está habilitado. Los pasos de Pages son `continue-on-error`: el `GITHUB_TOKEN` por defecto no
+puede *crear* un sitio Pages, así que el primer despliegue necesita un cambio manual único en
+**Settings → Pages → Source: GitHub Actions**. Hasta que ese interruptor esté activado, la build
+sigue en verde y el artefacto se sigue produciendo.
 
 ## Self-dogfood
 

@@ -10,9 +10,25 @@ Cette fonctionnalité est volontairement séparée de `export-agent-harness` :
 - `export-agent-harness` est un contexte sortant pour des outils comme Claude Code, Codex, Gemini, Cursor, Kiro et OpenCode.
 - `project sessions ...` est un historique entrant : il normalise les sessions Claude Code/Codex précédentes pour le projet courant, les stocke dans `.tesserae/harness_sessions/`, et permet à `project build-site` de publier les pages index/detail des sessions.
 
+## Deux entrées : import par lot et surveillance en direct
+
+L'ingestion de sessions n'est plus uniquement par lot. Deux chemins mènent au même magasin normalisé :
+
+- **Import par lot** — `project sessions discover/import` scanne les racines de transcript à la demande et écrit en une fois. Cette page documente ce flux ci-dessous.
+- **Surveillance en direct** — le supervisor daemon (`project engine`, alias `project daemon`) exécute un `SessionTailer` qui surveille les transcript *du projet lui-même* (Claude Code et Codex) et ingère les nouveaux tours dès qu'ils arrivent. À chaque tick il fait un seek vers un byte offset persisté par fichier, ne lit que les nouveaux octets, et écrit les tours complets dans le SQLite `HarnessSessionsDB` (`.tesserae/sqlite.db`) **avant** d'enfiler une recompilation avec debounce, de sorte que la compilation lit toujours un état cohérent. Le tailer est limité aux propres sessions du projet (Claude `projects/<slug>/*.jsonl` ; Codex filtré par cwd) et, après un redémarrage, reprend depuis les offset stockés sans rejouer les tours.
+
+Lancez la boucle en direct avec :
+
+```bash
+tesserae project engine        # surveiller les sources, fusionner les rafales, recompiler automatiquement
+tesserae project engine --once # un seul cycle de drain puis sortie (déterministe)
+```
+
+`tesserae project refresh` exécute le même pipeline ingest → compile → project une fois, in-process, sans démarrer le watcher de longue durée (passez `--skip-sessions` pour sauter le scan de discovery des sessions harness).
+
 ## Modèle de confidentialité
 
-L'import de sessions est explicite. Un `project compile` ou `project build-site` normal lit les sessions déjà normalisées depuis `.tesserae/harness_sessions/`, mais ne surprise-scrape pas les répertoires privés de transcript harness.
+Les deux chemins d'ingestion sont explicites : le tailer en direct ne tourne que tant que vous gardez `project engine`/`daemon` actif, et le discovery par lot n'écrit qu'avec `--import`. Un `project compile` ou `project build-site` normal lit les sessions déjà normalisées depuis `.tesserae/harness_sessions/` et les enregistrements en direct de `.tesserae/sqlite.db`, mais ne surprise-scrape pas de lui-même les répertoires privés de transcript harness.
 
 Les enregistrements de session importés sont des artefacts locaux du projet. Relisez-les avant de publier un site public, surtout si vos transcript peuvent contenir des secrets, chemins privés, données client ou code non publié.
 
@@ -62,6 +78,8 @@ Les sessions sont stockées sous :
     <session>.json
     <session>.md
 ```
+
+Les sessions surveillées en direct sont en plus suivies dans le SQLite `HarnessSessionsDB` (`.tesserae/sqlite.db`), qui persiste aussi les read offset par fichier depuis lesquels le tailer reprend. `project sessions list` rapporte la vue combinée.
 
 ## Construire les pages statiques de sessions
 

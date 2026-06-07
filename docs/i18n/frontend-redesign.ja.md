@@ -284,11 +284,11 @@ Timeline ページは活動ログです。コーパスはいつ増えたのか�
 
 「最近何が起きているか」という質問のためにブックマークするページです。
 
-### `/timeline/<YYYY-MM-DD>.html` ⚠
+### `/timeline/<YYYY-MM-DD>.html` ✅
 
 > _スクリーンショット: timeline-day.png_
 
-日別詳細ページ — その暦日に紐づくすべての paper / repo / concept / synthesis を列挙するもの — は明示的なフォローアップです。Subagent P が `StaticSiteBuilder` を通じて日別詳細 emit を接続しています。それが入るまで、heatmap cells は暫定的にその日の `digest.md` source page へリンクします。（インライン TODO は `tesserae/site/pages.py` の `render_timeline` を参照してください。）
+日別詳細ページ — その暦日に紐づくすべての paper / repo / concept / synthesis を列挙するもの — が出荷されました。`render_timeline_day`（`tesserae/site/pages.py`）が `StaticSiteBuilder`（`tesserae/site/__init__.py`）を通じて日付ごとに emit され、各ページは `manifest.json` に `timeline_day` ルートとして記録されます。heatmap cells はその日別ページへ直接リンクします（日別ルートが存在しない場合にのみ、その日の `digest.md` source page へフォールバックします）。
 
 ## Graph view
 

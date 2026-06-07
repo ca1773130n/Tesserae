@@ -5,7 +5,60 @@
 <!-- translations:end -->
 本文档汇总了 Tesserae 当前已实现的功能，包括状态、源文件以及文档位置。
 
+Tesserae 是一个运行在三大支柱之上的**上下文引擎**：(1) 会话监控，(2) 自主、主动的知识摄取，(3) 按需文档/上下文。类型化图、库（vault）和静态站点都是知识库的投影。下面的功能按其服务的支柱分组；**v0.5.0** 里程碑（2026 年 6 月）发布了引擎主干以及支柱 3 的标志性功能 —— 按需上下文编译器。
+
 状态图例：✅ 已发布 · ⚠ 进行中 / 部分完成。
+
+## 上下文引擎 —— v0.5.0 (2026 年 6 月)
+
+驱动三大支柱的引擎主干。引擎主干模块映射、自我改进内存边车以及上下文编译器数据流，参见 [`docs/architecture.md`](architecture.zh.md)。
+
+### 引擎主干（支柱 1 & 2）
+
+| 功能 | 状态 | 源 | 备注 |
+|---|---|---|---|
+| `Pipeline` —— 返回 `List[StepResult]` 的可复用刷新链 | ✅ | [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | CLI、守护进程、MCP 都调用的同一个步骤运行器。对每步捕获 `Exception`；首次失败处停止。 |
+| `Daemon` —— 单一所有者 asyncio 监督器 | ✅ | [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | 监视源 + 库 + harness 会话目录；去抖的取消并重新调度将一批合并为一次 `Pipeline.run()`。pidfile；执行中异常下存活。 |
+| `project engine` / `project daemon` | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) | `--interval`、`--debounce`、`--once`。`daemon` 是 `engine` 的别名。 |
+| `project refresh` —— 散文式链（摄取 → 编译 → 投影） | ✅ | `cli.py` + [`tesserae/project.py`](../../tesserae/project.py) | `--changed-only`（选用增量）、`--skip-sessions`。 |
+| 实时会话监控 → 发现 | ✅ | `harness_sessions.py` + 会话图模块 | 导入的会话喂入图；`fresh_insights` / `find_session_findings` 呈现它们。 |
+
+### 自我改进内存（支柱 2）
+
+| 功能 | 状态 | 源 | 备注 |
+|---|---|---|---|
+| `node_memory` SQLite 边车（衰减 / 置信度 / 被取代） | ✅ | [`tesserae/memory/store.py`](../../tesserae/memory/store.py) | `NodeMemoryRow` + 与存储无关的访问器；仅可变状态。首见存放于独立的 `node_provenance` 边车。 |
+| 艾宾浩斯衰减评分 | ✅ | [`tesserae/memory/decay.py`](../../tesserae/memory/decay.py) | 对会话发现按最新 + 最常访问排名（驱动 `fresh_insights`）。 |
+| 取代遍历（**默认开启**） | ✅ | [`tesserae/memory/supersede.py`](../../tesserae/memory/supersede.py) | 确定性裁决将较旧的近重复洞见标记为被较新者取代；添加 `supersedes` 边。 |
+| 洞见 → 代码符号链接 | ✅ | [`tesserae/memory/insight_symbol_link.py`](../../tesserae/memory/insight_symbol_link.py) | 从会话洞见到所引用符号的 `discusses` 边。 |
+| 强化 + 矛盾遍历 | ✅ | [`tesserae/memory/reinforce.py`](../../tesserae/memory/reinforce.py)、[`tesserae/memory/contradiction.py`](../../tesserae/memory/contradiction.py) | 针对同一边车的访问强化 + 矛盾检测。 |
+| 输出中的数值化复现置信度 | ✅ | [`tesserae/temporal.py`](../../tesserae/temporal.py) | 时间事实从 `NodeMemoryRow.confidence` 为 `confidence` 打标，否则回退到 `infer_confidence`。 |
+
+### 检索 + 嵌入（支柱 2 & 3）
+
+| 功能 | 状态 | 源 | 备注 |
+|---|---|---|---|
+| 混合检索器（BM25 + 词法 + 嵌入，RRF k=60） | ✅ | [`tesserae/retrieval/hybrid.py`](../../tesserae/retrieval/hybrid.py) | 本地优先，完全确定性。 |
+| 个性化 PageRank（HippoRAG-2） | ✅ | [`tesserae/retrieval/ppr.py`](../../tesserae/retrieval/ppr.py) | 多跳种子扩展；深度受限子图。 |
+| 真实默认嵌入（Track B，阶段 6） | ✅ | `retrieval/hybrid.py` | 默认 = 确定性哈希桶伪嵌入（无依赖）；安装后优先使用 `sentence-transformers`（`all-MiniLM-L6-v2`）并惰性加载。`embedding_status` MCP 工具报告活动后端。 |
+
+### 按需上下文编译器（支柱 3 —— 标志）
+
+| 功能 | 状态 | 源 | 备注 |
+|---|---|---|---|
+| `compile_context` —— 带引用的内存 `ContextBundle` | ✅ | [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | 种子解析 → PPR 扩展 → 预算受限选择 → 带引用 Markdown → 可选 LLM 综合。除非 `synthesize=true` 否则确定性。不向磁盘写入。 |
+| `project context` CLI | ✅ | `cli.py` | `[query]`、`--seeds`、`--depth`（2）、`--budget`（32000；≤0 = 不限）、`--synthesize`、`--output`。 |
+| `compile_context` MCP 工具 | ✅ | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | 经 MCP 的同一流水线；`budget=0` 为不限。 |
+| 主题范围导出切片 | ✅ | [`tesserae/site/exports.py`](../../tesserae/site/exports.py) `slice_export_context_for_topic` | 主题范围 `llms.txt` + 经 `compile_context` 的 `render_harness_context`。 |
+
+### 增量编译（阶段 4 —— 实验性）
+
+| 功能 | 状态 | 源 | 备注 |
+|---|---|---|---|
+| 来源边车（`node_provenance`，首见） | ✅ | [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | 变更删除的基础；始终记录。 |
+| `GraphStore` 删除面 | ✅ | [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | `delete_node`、`delete_nodes_by_source`（丢弃来源集变空的节点；跨文件概念存活）。 |
+| `url_resolver` 运行时存储分派 | ✅ | [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | `sqlite:///…` / `hypepaper-postgres://…` → `GraphStore`。 |
+| `incremental_compile` 标志 | ⚠ | [`tesserae/project.py`](../../tesserae/project.py) | **默认 OFF / 实验性。** 多种编辑形态已证明字节一致，但仍存在多所有者/生产者生命周期缺口；全量编译仍为默认。 |
 
 ## 前端重设计 — 2026 年 4 月
 
@@ -100,7 +153,9 @@
 | `project serve` 本地 HTTP | ✅ | `cli.py` | 普通 stdlib 服务器。 |
 | `project deploy` → GitHub Pages | ✅ | [`tesserae/deploy.py`](../../tesserae/deploy.py) | worktree push 到 `gh-pages`；可通过 `gh` CLI 选用 `--enable-pages`。`--build`, `--dry-run`, `--branch`, `--remote`, `--force`。 |
 | `project sessions discover/import/list` | ✅ | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) + `cli.py` | Claude Code/Codex 的入站会话历史；发现过程显式且限定在项目工作目录。 |
-| `project watch` 变更时重建 | ⚠ | [`tesserae/cli.py`](../../tesserae/cli.py) | Subagent R 正在完成轮询 watcher — `--interval`, `--debounce`, `--once`, `--paths`, `--quiet` 参数表面已就绪；重建循环主体正在本轮落地。 |
+| `project watch` 变更时重建 | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) + [`tesserae/watch.py`](../../tesserae/watch.py) | 独立轮询 watcher：`--interval`、`--debounce`、`--once`、`--paths`、`--quiet`。多源监督器位于 `project engine`/`daemon`（见上下文引擎）。 |
+| `project context` —— 编译带引用的上下文文档 | ✅ | `cli.py` + [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | 支柱 3 标志；见上下文引擎章节。 |
+| `project refresh` / `project engine` / `project daemon` | ✅ | `cli.py` + [`tesserae/engine/`](../../tesserae/engine/) | 散文式刷新链 + 监督器循环；见上下文引擎章节。 |
 
 ## 既有功能（原样保留）
 
@@ -146,9 +201,12 @@
 - ✅ `tesserae project mcp-config`
 - ✅ `tesserae project build-site`
 - ✅ `tesserae project serve`
-- ✅ `tesserae project deploy`（新增 — GitHub Pages）
+- ✅ `tesserae project deploy`（GitHub Pages）
 - ✅ `tesserae project sessions discover/import/list`（显式本地 agent-history 导入）
-- ⚠ `tesserae project watch`（进行中）
+- ✅ `tesserae project watch`（独立轮询 watcher）
+- ✅ `tesserae project engine` / `tesserae project daemon`（监督器循环 —— v0.5.0）
+- ✅ `tesserae project refresh`（散文式 摄取 → 编译 → 投影 链 —— v0.5.0）
+- ✅ `tesserae project context`（按需上下文编译器 —— v0.5.0）
 - ✅ `tesserae project export-agent-harness`
 - ✅ `tesserae project export-obsidian`
 - ✅ `tesserae project export-graphiti`
@@ -190,8 +248,10 @@
 ### MCP server
 
 - ✅ 基于 stdio JSON-RPC 的 `tesserae_mcp` / `python3 -m tesserae.mcp_server`。
-- ✅ 工具：`schema`, `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`。
-- ✅ 多项目注册表。
+- ✅ 检索/图工具：`schema`、`graph_summary`、`search_nodes`、`node_context`（含 `use_ppr`）、`search_facts`、`timeline`、`graph_ppr`、`wiki_page`、`raw_source`、`lint_report`。
+- ✅ 上下文引擎工具（v0.5.0）：`compile_context`、`embedding_status`、`fresh_insights`（按衰减排名）、`list_communities`、`find_session_findings`、`find_code_symbol_mentions`、`ask`。
+- ✅ 设置工具：`tesserae_setup_plan`、`tesserae_setup_apply`。
+- ✅ 多项目注册表：`list_projects`、`register_project`、`activate_project`、`unregister_project`、`list_sessions`。经 `url_resolver` 的存储 URL 分派。
 
 ## 测试
 
@@ -216,4 +276,9 @@
 - ✅ 站点组件、页面、导出、相关性；
 - ✅ AI 兄弟文件形状（每页 `.txt` + `.json`）；
 - ✅ end-to-end 编译两次幂等性；
+- ✅ 引擎主干：流水线、刷新链、守护进程核心 + 源、`project engine` CLI；
+- ✅ 自我改进内存：边车、衰减/取代、取代抑制（含 MCP）、强化/矛盾；
+- ✅ 检索 + 嵌入：混合检索、PPR、真实默认嵌入（阶段 6）；
+- ✅ 上下文编译器：形态/引用完整性/确定性/预算/PPR 回退、`project context` CLI、MCP `compile_context`；
+- ✅ 增量编译（实验性）：差异器、一致性门、来源就绪性、SQLite 来源；
 - ✅ 包安装和安装器契约。

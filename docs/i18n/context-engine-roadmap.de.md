@@ -12,6 +12,8 @@ Wissen autonom aufnimmt, ihre Basis selbst verbessert und auf Abruf
 agentenfertigen Kontext liefert — und so die heutige manuelle
 Batch-Kompilierungs-CLI ersetzt.
 
+> **Status zum Zeitpunkt von v0.5.0 (2026-06-06):** Die Phasen 0–6 wurden **ausgeliefert**. Das Engine-Rückgrat (P0 Pipeline-Orchestrator, P1 Supervisor-Daemon, P2 Live-Sitzungsmonitor) liegt in `tesserae/engine/`; die Infrastruktur der inkrementellen Kompilierung P3 ist gelandet, bleibt aber **mit Flag OFF/experimentell**; P4 die Selbstverbesserung wird über das `node_memory`-Sidecar persistiert (numerisches Wiederholungs-Vertrauen, Supersede standardmäßig aktiv); P5 echte Standard-Embeddings wurden ausgeliefert (Spur B); und **P6 — der Kontext-Compiler auf Abruf — ist das Hauptfeature von v0.5.0**. Phase 7 (serve + watch + deploy + Lebenszyklustests vereinheitlichen) bleibt **offen**. Der Status je Phase ist unten inline vermerkt. Siehe die [v0.5.0-Release-Notes](release-notes/v0.5.0.de.md).
+
 ## Form der Abhängigkeiten
 
 ```
@@ -32,7 +34,9 @@ laufen, sobald P1 gelandet ist. P7 lässt sie konvergieren.
 
 ---
 
-## Phase 0 — Pipeline-Orchestrator (risikomindernde Grundlage)
+## Phase 0 — Pipeline-Orchestrator (risikomindernde Grundlage) ✅ Ausgeliefert in v0.5.0
+
+> **Ausgeliefert in v0.5.0** — `tesserae/engine/pipeline.py` (Engine-Rückgrat, gemergt in den Phasen 1–3).
 
 **Ziel:** Die refresh-Pipeline aus dem Slash-Command-Markdown in einen
 erstklassigen In-Process-Orchestrator herausholen, den Daemon, CLI und MCP alle
@@ -55,7 +59,9 @@ aufrufen.
 - **Geschlossene Audit-Befunde:** „refresh lebt in einem Skill",
   „cli-Gott-Dispatcher".
 
-## Phase 1 — Supervisor-Daemon (die Engine-Schleife)
+## Phase 1 — Supervisor-Daemon (die Engine-Schleife) ✅ Ausgeliefert in v0.5.0
+
+> **Ausgeliefert in v0.5.0** — `tesserae/engine/daemon.py` (Engine-Rückgrat, Phasen 1–3).
 
 **Ziel:** Ein überwachter langlaufender Prozess, der eine Ereignisschleife
 besitzt und `Pipeline` auf Trigger antreibt, mit echter Lebenszyklusbehandlung.
@@ -79,7 +85,9 @@ besitzt und `Pipeline` auf Trigger antreibt, mit echter Lebenszyklusbehandlung.
 - **Geschlossene Audit-Befunde:** „kein Daemon", „kontinuierlich = sleep-Poller",
   Beobachter-`KeyboardInterrupt`-Tod, keine Signalbehandlung.
 
-## Phase 2 — Live-Sitzungsmonitor (Säule 1)
+## Phase 2 — Live-Sitzungsmonitor (Säule 1) ✅ Ausgeliefert in v0.5.0
+
+> **Ausgeliefert in v0.5.0** — `tesserae/engine/session_tail.py` (Engine-Rückgrat, Phasen 1–3).
 
 **Ziel:** Live-Harness-Transkripte tailen und Züge während laufender Sitzungen
 aufnehmen, das nachträgliche `sessions discover --import` ersetzend.
@@ -101,7 +109,9 @@ aufnehmen, das nachträgliche `sessions discover --import` ersetzend.
 - **Geschlossene Audit-Befunde:** nachträglicher Sitzungs-Scan,
   Ganzsitzungs-Cache-Invalidierung, flacher Glob-Speicher.
 
-## Phase 3 — Inkrementelle/Streaming-Kompilierung durch den GraphStore-Port
+## Phase 3 — Inkrementelle/Streaming-Kompilierung durch den GraphStore-Port ⚙️ Infrastruktur ausgeliefert in v0.5.0 (Flag OFF/experimentell)
+
+> **Infrastruktur ausgeliefert in v0.5.0** (Provenienz-Sidecar, GraphStore-Lösch-Oberfläche, persistente url_resolver-Async-Laufzeit), aber das `incremental_compile`-Flag **bleibt OFF/experimentell** wegen Multi-Owner-/Producer-Lifecycle-/Cap-Fallback-Lücken. Byte-Parität für die abgedeckten Pfade ist bewiesen. v0.5.0 hat zudem zwei echte Compile-Bugs behoben, die hier auftauchten: changed-only-Idempotenz und der Injected-Store-Vertrag.
 
 **Ziel:** Den brüchigen `changed_only`-Graph-Räumungs-Patch durch eine
 entworfene inkrementelle Schicht ersetzen, die durch `ports/graph_store.py`
@@ -128,7 +138,9 @@ fließt.
 - **Geschlossene Audit-Befunde:** brüchiges `changed_only`, umgangene Ports,
   asyncio pro Aufruf, drei Persistenzformate, keine knotenweise Frische.
 
-## Phase 4 — Selbstverbesserung aktivieren & persistieren (Säule: Selbstverbesserung)
+## Phase 4 — Selbstverbesserung aktivieren & persistieren (Säule: Selbstverbesserung) ✅ Ausgeliefert in v0.5.0
+
+> **Ausgeliefert in v0.5.0** über das `node_memory`-Sidecar (`tesserae/memory/`): standardmäßig aktives **Supersede** mit deterministischem Verdikt und nachgelagerter Unterdrückung sowie die in der Ausgabe gezeigte **numerische Wiederholungs-Konfidenz** (sitzungsübergreifende Häufigkeit → `TemporalFactProjector`).
 
 **Ziel:** Die Wissensbasis soll tatsächlich an Ort und Stelle, standardmäßig
 eingeschaltet, zur Kompilierzeit persistiert, evolvieren.
@@ -157,7 +169,9 @@ eingeschaltet, zur Kompilierzeit persistiert, evolvieren.
   Golden-Fixtures schützen.
 - **Geschlossene Audit-Befunde:** die gesamte Tabelle der Säule 2.
 
-## Phase 5 — Echte Standard-Embeddings (Grundlage von Spur B)
+## Phase 5 — Echte Standard-Embeddings (Grundlage von Spur B) ✅ Ausgeliefert in v0.5.0
+
+> **Ausgeliefert in v0.5.0** (Spur B): ein echtes Standard-`Model2VecBackend`, ein **laut fehlschlagendes** `active_embedding_backend` (kein stilles blake2b-Downgrade), das in `embedding_status` gezeigte Semantik-Backend-Flag und eine Kosinus-Untergrenze, die der Embedding-Spur erlaubt, Kandidaten aufzunehmen.
 
 **Ziel:** Aufhören, ein deterministisches Hash-Bucket-Pseudo-Embedding als
 Standard-„Semantik"-Spur auszuliefern.
@@ -178,7 +192,9 @@ Standard-„Semantik"-Spur auszuliefern.
 - **Geschlossene Audit-Befunde:** Hash-Bucket-Voreinstellung, Kandidatentor der
   Embedding-Spur.
 
-## Phase 6 — Kontext-Compiler auf Abruf (Säule 3)
+## Phase 6 — Kontext-Compiler auf Abruf (Säule 3) ✅ Ausgeliefert in v0.5.0 (Hauptfeature)
+
+> **In v0.5.0 als Hauptfeature ausgeliefert.** Die reine `compile_context`-Pipeline in `tesserae/context_compiler.py` liefert ein In-Memory-`ContextBundle` aus `ContextCitation`s (Query/Seeds → PPR + Hybridsuche → tiefenbegrenzte k-Hop-Nachbarschaft → Wiki-Body-Zusammenbau → optionale LLM-Synthese mit anmutigem Fallback → Budgetkontrolle). Bereitgestellt als MCP-Tool `compile_context` und CLI-Subbefehl `tesserae project context`; `node_context` hat nun einen gerankten `use_ppr`-Pfad; themenbezogene `llms.txt`-Export-Slices werden ausgeliefert.
 
 **Ziel:** Das Aushängeschild — „gib mir Kontext zu X" → ein maßgeschneidertes,
 zitiertes, agentenfertiges Dokument.
@@ -204,7 +220,9 @@ zitiertes, agentenfertiges Dokument.
   abfragebegrenzte Synthese, statischer Harness, unrangiertes `node_context`,
   Gesamtkorpus-Exporte.
 
-## Phase 7 — serve + watch + deploy + Lebenszyklustests vereinheitlichen
+## Phase 7 — serve + watch + deploy + Lebenszyklustests vereinheitlichen ⏳ Offen (nach v0.5.0)
+
+> **Offen zum Zeitpunkt von v0.5.0.** Die Konvergenzphase bleibt der nächste Meilenstein; der Daemon (P1) und die Ausgabeseite (P6), die sie zusammenführt, sind nun beide vorhanden.
 
 **Ziel:** Ein überwachter Prozess bedient die Seite, kompiliert bei Änderung neu
 und veröffentlicht kontinuierlich; die Lebenszyklusschicht erhält Testabdeckung.
@@ -231,16 +249,16 @@ und veröffentlicht kontinuierlich; die Lebenszyklusschicht erhält Testabdeckun
 
 ## Sequenzierungs-Zusammenfassung
 
-| Phase | Thema | Hängt ab von | Parallelisierbar mit |
-|---|---|---|---|
-| P0 | Pipeline-Orchestrator | — | — |
-| P1 | Supervisor-Daemon | P0 | — |
-| P2 | Live-Sitzungsmonitor | P1 | P5 |
-| P3 | Inkrementelle Kompilierung | P1 | P5 |
-| P4 | Persistenz der Selbstverbesserung | P3 | P5, P6 |
-| P5 | Echte Embeddings | P0 | P2, P3, P4 |
-| P6 | Kontext-Compiler auf Abruf | P5 | P2, P3, P4 |
-| P7 | serve/watch/deploy vereinheitlichen | P1, P6 | — |
+| Phase | Thema | Hängt ab von | Parallelisierbar mit  Status |
+|---|---|---|------|
+| P0 | Pipeline-Orchestrator | — | —  ✅ Ausgeliefert in v0.5.0 |
+| P1 | Supervisor-Daemon | P0 | —  ✅ Ausgeliefert in v0.5.0 |
+| P2 | Live-Sitzungsmonitor | P1 | P5  ✅ Ausgeliefert in v0.5.0 |
+| P3 | Inkrementelle Kompilierung | P1 | P5  ⚙️ Infrastruktur ausgeliefert in v0.5.0 (Flag OFF/experimentell) |
+| P4 | Persistenz der Selbstverbesserung | P3 | P5, P6  ✅ Ausgeliefert in v0.5.0 |
+| P5 | Echte Embeddings | P0 | P2, P3, P4  ✅ Ausgeliefert in v0.5.0 |
+| P6 | Kontext-Compiler auf Abruf | P5 | P2, P3, P4  ✅ Ausgeliefert in v0.5.0 |
+| P7 | serve/watch/deploy vereinheitlichen | P1, P6 | —  ⏳ Offen (nach v0.5.0) |
 
 **Minimal funktionsfähige Engine:** P0 + P1 + P2 + P3 — ein laufender Daemon,
 der Live-Sitzungen beobachtet und inkrementell kompiliert. **Differenziertes

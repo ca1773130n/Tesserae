@@ -5,7 +5,60 @@
 <!-- translations:end -->
 Este documento resume las funciones implementadas actualmente en Tesserae, con su estado, archivos fuente y dónde están documentadas.
 
+Tesserae es un **motor de contexto** que funciona sobre tres pilares: (1) monitoreo de sesiones, (2) ingesta de conocimiento autónoma y proactiva, y (3) documentos/contexto bajo demanda. El grafo tipado, el almacén (vault) y el sitio estático son proyecciones de la base de conocimiento. Las funciones de abajo se agrupan por el pilar al que sirven; el hito **v0.5.0** (junio de 2026) publicó la columna del motor y la función estrella del Pilar 3, el compilador de contexto bajo demanda.
+
 Leyenda de estado: ✅ publicado · ⚠ en progreso / parcial.
+
+## Motor de contexto — v0.5.0 (junio de 2026)
+
+La columna del motor que impulsa los tres pilares. Véase [`docs/architecture.md`](architecture.es.md) para el mapa de módulos de la columna del motor, el sidecar de memoria de automejora y el flujo de datos del compilador de contexto.
+
+### Columna del motor (pilares 1 & 2)
+
+| Función | Estado | Fuente | Notas |
+|---|---|---|---|
+| `Pipeline` — cadena de actualización reutilizable que devuelve `List[StepResult]` | ✅ | [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | Un único ejecutor de pasos que llaman la CLI, el demonio y MCP. Captura `Exception` por paso; se detiene en el primer fallo. |
+| `Daemon` — supervisor asyncio de único propietario | ✅ | [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | Vigila fuentes + almacén + directorio de sesiones de harness; un debounce de cancelar-y-reprogramar fusiona una ráfaga en un `Pipeline.run()`. pidfile; sobrevive a excepciones en vuelo. |
+| `project engine` / `project daemon` | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) | `--interval`, `--debounce`, `--once`. `daemon` es un alias de `engine`. |
+| `project refresh` — cadena en prosa (ingesta → compilación → proyección) | ✅ | `cli.py` + [`tesserae/project.py`](../../tesserae/project.py) | `--changed-only` (incremental opcional), `--skip-sessions`. |
+| Monitoreo de sesiones en vivo → hallazgos | ✅ | `harness_sessions.py` + módulos de grafo de sesión | Las sesiones importadas alimentan el grafo; `fresh_insights` / `find_session_findings` los sacan a la superficie. |
+
+### Memoria de automejora (pilar 2)
+
+| Función | Estado | Fuente | Notas |
+|---|---|---|---|
+| sidecar `node_memory` SQLite (decaimiento / confianza / reemplazado) | ✅ | [`tesserae/memory/store.py`](../../tesserae/memory/store.py) | `NodeMemoryRow` + accesores independientes del almacén; solo estado mutable. La primera aparición vive en el sidecar `node_provenance` aparte. |
+| Puntuación de decaimiento Ebbinghaus | ✅ | [`tesserae/memory/decay.py`](../../tesserae/memory/decay.py) | Ordena hallazgos de sesión por más nuevo + más accedido (impulsa `fresh_insights`). |
+| Pasada de reemplazo (**activada por defecto**) | ✅ | [`tesserae/memory/supersede.py`](../../tesserae/memory/supersede.py) | Veredicto determinista marca un insight casi-duplicado más antiguo como reemplazado por uno más nuevo; añade arista `supersedes`. |
+| Enlace insight → símbolo de código | ✅ | [`tesserae/memory/insight_symbol_link.py`](../../tesserae/memory/insight_symbol_link.py) | Aristas `discusses` desde insights de sesión a los símbolos referenciados. |
+| Pasadas de refuerzo + contradicción | ✅ | [`tesserae/memory/reinforce.py`](../../tesserae/memory/reinforce.py), [`tesserae/memory/contradiction.py`](../../tesserae/memory/contradiction.py) | Refuerzo de acceso + detección de contradicciones sobre el mismo sidecar. |
+| Confianza de recurrencia numérica en la salida | ✅ | [`tesserae/temporal.py`](../../tesserae/temporal.py) | Los hechos temporales sellan `confidence` desde `NodeMemoryRow.confidence`, si no recurren a `infer_confidence`. |
+
+### Recuperación + embeddings (pilares 2 & 3)
+
+| Función | Estado | Fuente | Notas |
+|---|---|---|---|
+| Recuperador híbrido (BM25 + léxico + embeddings, RRF k=60) | ✅ | [`tesserae/retrieval/hybrid.py`](../../tesserae/retrieval/hybrid.py) | Local-first, totalmente determinista. |
+| PageRank personalizado (HippoRAG-2) | ✅ | [`tesserae/retrieval/ppr.py`](../../tesserae/retrieval/ppr.py) | Expansión multi-salto de semillas; subgrafo con profundidad limitada. |
+| Embeddings reales por defecto (Track B, Fase 6) | ✅ | `retrieval/hybrid.py` | Por defecto = pseudo-embedding determinista por cubos de hash (sin dependencias); `sentence-transformers` (`all-MiniLM-L6-v2`) preferido al instalarse, carga diferida. La herramienta MCP `embedding_status` informa el backend activo. |
+
+### Compilador de contexto bajo demanda (Pilar 3 — estrella)
+
+| Función | Estado | Fuente | Notas |
+|---|---|---|---|
+| `compile_context` — `ContextBundle` en memoria con citas | ✅ | [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | Resolución de semillas → expansión PPR → selección por presupuesto → markdown con citas → síntesis LLM opcional. Determinista salvo `synthesize=true`. No escribe en disco. |
+| CLI `project context` | ✅ | `cli.py` | `[query]`, `--seeds`, `--depth` (2), `--budget` (32000; ≤0 = sin límite), `--synthesize`, `--output`. |
+| Herramienta MCP `compile_context` | ✅ | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | El mismo pipeline vía MCP; `budget=0` = sin límite. |
+| Recortes de exportación por tema | ✅ | [`tesserae/site/exports.py`](../../tesserae/site/exports.py) `slice_export_context_for_topic` | `llms.txt` por tema + `render_harness_context` vía `compile_context`. |
+
+### Compilación incremental (Fase 4 — experimental)
+
+| Función | Estado | Fuente | Notas |
+|---|---|---|---|
+| sidecar de procedencia (`node_provenance`, primera aparición) | ✅ | [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | Base para borrados solo-cambios; siempre se registra. |
+| Superficie de borrado de `GraphStore` | ✅ | [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | `delete_node`, `delete_nodes_by_source` (elimina nodos cuyo conjunto de procedencia queda vacío; los conceptos entre archivos sobreviven). |
+| Despacho de almacén en runtime `url_resolver` | ✅ | [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | `sqlite:///…` / `hypepaper-postgres://…` → `GraphStore`. |
+| Flag `incremental_compile` | ⚠ | [`tesserae/project.py`](../../tesserae/project.py) | **Por defecto OFF / experimental.** Paridad de bytes probada para varias formas de edición, pero quedan brechas de múltiples propietarios/ciclo de vida de productores; la compilación completa sigue siendo la opción por defecto. |
 
 ## Rediseño del frontend — abril de 2026
 
@@ -100,7 +153,9 @@ Una wiki jerárquica centrada en documentos reemplaza el antiguo volcado de graf
 | `project serve` HTTP local | ✅ | `cli.py` | Servidor stdlib simple. |
 | `project deploy` → GitHub Pages | ✅ | [`tesserae/deploy.py`](../../tesserae/deploy.py) | Push de worktree a `gh-pages`; `--enable-pages` opcional vía CLI `gh`. `--build`, `--dry-run`, `--branch`, `--remote`, `--force`. |
 | `project sessions discover/import/list` | ✅ | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) + `cli.py` | Historial de sesiones entrante para Claude Code/Codex; el descubrimiento es explícito y limitado al directorio de trabajo del proyecto. |
-| `project watch` recompila al cambiar | ⚠ | [`tesserae/cli.py`](../../tesserae/cli.py) | Subagent R está terminando el watcher por sondeo — la superficie de argumentos `--interval`, `--debounce`, `--once`, `--paths`, `--quiet` está lista; el cuerpo del bucle de recompilación se está integrando en esta ronda. |
+| `project watch` recompila al cambiar | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) + [`tesserae/watch.py`](../../tesserae/watch.py) | Watcher por sondeo autónomo: `--interval`, `--debounce`, `--once`, `--paths`, `--quiet`. El supervisor multi-fuente vive en `project engine`/`daemon` (véase Motor de contexto). |
+| `project context` — compila un documento de contexto con citas | ✅ | `cli.py` + [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | Estrella del Pilar 3; véase la sección Motor de contexto. |
+| `project refresh` / `project engine` / `project daemon` | ✅ | `cli.py` + [`tesserae/engine/`](../../tesserae/engine/) | Cadena de actualización en prosa + bucle supervisor; véase la sección Motor de contexto. |
 
 ## Funciones preexistentes (conservadas sin cambios)
 
@@ -146,9 +201,12 @@ Una wiki jerárquica centrada en documentos reemplaza el antiguo volcado de graf
 - ✅ `tesserae project mcp-config`
 - ✅ `tesserae project build-site`
 - ✅ `tesserae project serve`
-- ✅ `tesserae project deploy` (nuevo — GitHub Pages)
+- ✅ `tesserae project deploy` (GitHub Pages)
 - ✅ `tesserae project sessions discover/import/list` (importación explícita de historial de agente local)
-- ⚠ `tesserae project watch` (en progreso)
+- ✅ `tesserae project watch` (watcher por sondeo autónomo)
+- ✅ `tesserae project engine` / `tesserae project daemon` (bucle supervisor — v0.5.0)
+- ✅ `tesserae project refresh` (cadena en prosa ingesta → compilación → proyección — v0.5.0)
+- ✅ `tesserae project context` (compilador de contexto bajo demanda — v0.5.0)
 - ✅ `tesserae project export-agent-harness`
 - ✅ `tesserae project export-obsidian`
 - ✅ `tesserae project export-graphiti`
@@ -190,8 +248,10 @@ Archivos de destino generados para:
 ### Servidor MCP
 
 - ✅ `tesserae_mcp` / `python3 -m tesserae.mcp_server` sobre stdio JSON-RPC.
-- ✅ Herramientas: `schema`, `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`.
-- ✅ Registro multiproyecto.
+- ✅ Herramientas de recuperación/grafo: `schema`, `graph_summary`, `search_nodes`, `node_context` (con `use_ppr`), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`.
+- ✅ Herramientas del motor de contexto (v0.5.0): `compile_context`, `embedding_status`, `fresh_insights` (orden por decaimiento), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`, `ask`.
+- ✅ Herramientas de configuración: `tesserae_setup_plan`, `tesserae_setup_apply`.
+- ✅ Registro multiproyecto: `list_projects`, `register_project`, `activate_project`, `unregister_project`, `list_sessions`. Despacho de URL de almacén vía `url_resolver`.
 
 ## Pruebas
 
@@ -216,4 +276,9 @@ La suite actual cubre:
 - ✅ componentes, páginas, exportaciones y relevancia del sitio;
 - ✅ forma de hermanos IA (`.txt` + `.json` por página);
 - ✅ idempotencia end-to-end al compilar dos veces;
+- ✅ columna del motor: pipeline, cadena de actualización, núcleo del demonio + fuentes, CLI `project engine`;
+- ✅ memoria de automejora: sidecar, decaimiento/reemplazo, supresión de reemplazo (incl. MCP), refuerzo/contradicción;
+- ✅ recuperación + embeddings: búsqueda híbrida, PPR, embeddings reales por defecto (Fase 6);
+- ✅ compilador de contexto: forma/integridad de citas/determinismo/presupuesto/repliegue PPR, CLI `project context`, MCP `compile_context`;
+- ✅ compilación incremental (experimental): diferenciador, puertas de paridad, preparación de procedencia, procedencia SQLite;
 - ✅ instalación de paquete y contrato del instalador.

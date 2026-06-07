@@ -76,6 +76,8 @@ tesserae project compile
 
 Nach dem ersten Lauf `--changed-only` nutzen, um unveränderte Markdown-Dateien zu überspringen, während der vorherige Graph erhalten bleibt, wenn keine Dateien geändert wurden. Ist Understand Anything aktiviert, refresht/materialisiert der Compile zuerst `.tesserae/external/understand-anything.md`; ist Cognee-Runtime aktiviert, aktualisiert er außerdem Cognee Best-Effort, nachdem `.tesserae/cognee_bundle/` geschrieben wurde.
 
+> **One-Shot-Pipeline.** `tesserae project refresh` führt die gesamte Schleife in-process aus – es importiert neue Agent-Sessions, compiliert und synchronisiert den Vault in einem einzigen Befehl. Übergib `--changed-only` für den optionalen inkrementellen Compile und `--skip-sessions`, um den langsameren Harness-Session-Discovery-Scan zu überspringen.
+
 ## 3. Statisches Frontend bauen und servieren
 
 ```bash
@@ -104,6 +106,16 @@ tesserae project watch
 
 `project watch` pollt alle 2 s, debounct 1 s und führt `compile --changed-only` aus. Nutze `--once` für Cron-Style-Rebuilds (Snapshots vs `.tesserae/.watch-cache.json`), `--paths <dir>` für zusätzliche Watch-Verzeichnisse und `--interval` / `--debounce`, um die Kadenz zu tunen.
 <!-- END: subagent-r-watch -->
+
+### Den Refresh-Daemon starten
+
+Wenn du eine dauerhaft laufende Engine willst, die deine Quellen selbstständig überwacht, Bearbeitungs-Bursts zusammenfasst und automatisch neu compiliert, um die Wissensbasis aktuell zu halten, starte den überwachten Daemon:
+
+```bash
+tesserae project engine
+```
+
+`project engine` (Alias `project daemon`) ist der langlaufende Supervisor: Er pollt alle 2 s und wartet vor jedem Rebuild ein Ruhefenster von 1 s ab. Stelle die Kadenz mit `--interval` und `--debounce` ein, richte ihn mit `--project` auf ein anderes Projekt aus, oder übergib `--once`, um einen einzelnen deterministischen Drain-Zyklus auszuführen und zu beenden (praktisch für Cron oder CI). Das ist das unbeaufsichtigte Gegenstück zu `project watch`: Lass ihn laufen, und Graph, Vault und Site bleiben aktuell, während du und deine Agents arbeiten.
 
 Für eine annotierte Tour durch jede sichtbare Route — Home, Sources, Concepts, Entities, Papers, Repos, Topics, Syntheses, Questions, Timeline, Graph plus die AI-Siblings — siehe [`docs/frontend-redesign.md`](frontend-redesign.de.md).
 
@@ -153,7 +165,19 @@ tesserae project query "What is Gaussian Splatting?"
 
 Standardmäßig nur Search — BM25 über `.tesserae/site/search-index.json`, mit einem 200-Zeichen-Excerpt aus der passenden `wiki/<kind>/<slug>.md`. Übergib `--kind papers` (oder `concepts`, `repos` etc.) zum Eingrenzen, `--top-k N` zum Verbreitern und `--json` für strukturierten Output. Füge `--llm` hinzu (oder setze `TESSERAE_QUERY_LLM=1`), um Claude um eine synthetisierte Antwort mit `[node_id]`-Zitaten zu bitten; `--interactive` öffnet ein Readline-REPL — leere Zeile oder EOF beendet. `TESSERAE_QUERY_DRY_RUN=1` exerziert den Prompt ohne API-Call.
 
-## 7. Agent-Harness-Dateien exportieren
+## 7. Agent-tauglichen Context bei Bedarf compilieren
+
+Das Highlight von v0.5.0 ist der On-Demand Context Compiler: Fordere vom compilierten Graph ein einzelnes, zitiertes Context-Dokument an, das auf eine Anfrage zugeschnitten und auf das Context-Window eines Agents dimensioniert ist.
+
+```bash
+tesserae project context "Wie funktioniert session import?"
+```
+
+Er nutzt die zur Anfrage passenden Knoten als Seed für Personalized PageRank (mit `--seeds <node_id>` explizit seeden), erweitert die Nachbarschaft (`--depth`, Standard 2) und stellt ein zitiertes Dokument zusammen, das durch ein Zeichen-`--budget` begrenzt ist (Standard 32000; `<= 0` für unbegrenzt). Füge `--synthesize` für eine zusätzlich vom LLM verfasste Zusammenfassung hinzu (erfordert ein LLM-Backend) und `-o/--output <file>`, um das Dokument in eine Datei statt auf stdout zu schreiben.
+
+Derselbe Compiler ist Agents über MCP als Tool `compile_context` zugänglich, sodass ein Coding-Agent mitten im Gespräch genau den passenden, budgetbegrenzten Projekt-Context ziehen kann – ganz ohne manuellen Export.
+
+## 8. Agent-Harness-Dateien exportieren
 
 ```bash
 tesserae project export-agent-harness
@@ -177,7 +201,7 @@ tesserae project export-agent-harness \
   --target opencode
 ```
 
-## 8. Obsidian-Vault exportieren
+## 9. Obsidian-Vault exportieren
 
 ```bash
 tesserae project export-obsidian
@@ -191,7 +215,7 @@ tesserae project export-obsidian --vault "$OBSIDIAN_VAULT_PATH"
 
 Das Vault enthält Markdown-Projektionen, `.obsidian`-Defaults, Graph-Coloring, `raw/assets/` und ein Dataview-Dashboard.
 
-## 9. MCP konfigurieren
+## 10. MCP konfigurieren
 
 ```bash
 tesserae project mcp-config --server-name my_project_wiki
@@ -199,7 +223,7 @@ tesserae project mcp-config --server-name my_project_wiki
 
 Füge die Ausgabe unter `mcp_servers` in `~/.hermes/config.yaml` ein und starte Hermes/Gateway neu.
 
-## 10. Graphiti-Export / -Sync
+## 11. Graphiti-Export / -Sync
 
 Dependency-freier Episode-Export:
 
@@ -222,7 +246,7 @@ tesserae project sync-graphiti \
   --neo4j-password '<password>'
 ```
 
-## 11. Auf GitHub Pages deployen
+## 12. Auf GitHub Pages deployen
 
 Pusht die kompilierte Site unter `.tesserae/site/` auf den `gh-pages`-Branch des git-Origins des Projekts:
 

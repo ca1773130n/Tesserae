@@ -19,11 +19,45 @@ Tesserae を公開する前に、このチェックリストを使用してく�
 ## 検証
 
 ```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest tests/ -q
+.venv/bin/pytest tests/ -x          # 失敗があれば中止 — 赤いビルドは決して出荷しない
 ./scripts/install.sh --help
 tesserae project setup --help
 tesserae project compile --help
+tesserae project context --help     # オンデマンド・コンテキスト・コンパイラ
 ```
+
+### デモビルドのスモークテスト（`build-demo` CI ジョブと同一）
+
+リリースフローと CI はどちらも、決定論的エクストラクタ（LLM 呼び出しなし、API キー
+不要）で Tesserae を自身のソースツリーに対してコンパイルし、サイトをビルドする:
+
+```bash
+.venv/bin/python -m tesserae project setup --yes --no-color --source . \
+  --no-cognee --skip-raganything --skip-install-cognee \
+  --skip-install-raganything --skip-install-understand-anything
+.venv/bin/python -m tesserae project compile
+.venv/bin/python -m tesserae project build-site
+```
+
+## リリースフロー
+
+`release` スキル（`.claude/skills/release/SKILL.md`）が主導する。最新タグは `v0.5.0`。
+
+- [ ] `main` 上で作業ツリーがクリーン、`git pull --ff-only origin main` を実行。
+- [ ] テスト + デモビルドのスモークテスト（上記）が通る。
+- [ ] `pyproject.toml` の `version = "X.Y.Z"` を上げ（`package.json` があれば同期）、`git log v<prev>..HEAD` から作った 1 段落の変更ログとともに `release: vX.Y.Z` をコミット。
+- [ ] `git tag -a vX.Y.Z -m "vX.Y.Z"` でタグ付けし、コミットの後にタグをプッシュ。
+- [ ] CI のグリーンを待つ（`gh run watch <run-id>`）— 赤いビルドで GitHub リリースを切らない。
+- [ ] GitHub リリースを公開する。PyPI 公開は任意（準備ができたとき）。
+
+### GitHub Pages
+
+`build-demo` ワークフロー（`main` への push）は、コンパイル済みの dogfood サイトを常に
+検査可能なワークフローアーティファクトとしてアップロードし、Pages が有効な場合は
+**さらに** GitHub Pages へデプロイする。Pages のステップは `continue-on-error` だ:
+デフォルトの `GITHUB_TOKEN` は Pages サイトを*作成*できないため、初回デプロイには
+**Settings → Pages → Source: GitHub Actions** での 1 度の手動切り替えが必要。その
+トグルをオンにする前でも、ビルドはグリーンのままでアーティファクトは生成され続ける。
 
 ## Self-dogfood
 

@@ -14,6 +14,8 @@ Este documento audita la base de código actual frente a esa misión. Es el
 resultado de una revisión paralela de cuatro vías (ingesta/sesiones,
 automejora, salida/de cara al agente, orquestación/ciclo de vida).
 
+> **Estado a fecha de v0.5.0 (2026-06-06):** Este documento es una **auditoría puntual** (instantánea del 2026-06-02) y se conserva tal cual para el registro. La mayoría de sus hallazgos transversales están ahora **resueltos**: el demonio supervisor y el orquestador de pipeline en proceso que faltaban se entregaron (columna vertebral del motor, `tesserae/engine/`), el seguimiento de sesiones en vivo sustituye el escaneo a posteriori (Pilar 1), las pasadas de automejora están activadas y persistidas mediante el sidecar `node_memory` (supersede por defecto con supresión, confianza de recurrencia numérica — Pilar 2), el embedding por defecto de hash-bucket se reemplaza por un backend real que falla de forma ruidosa (Pilar 3), y **el compilador de contexto bajo demanda del Pilar 3 ya existe** (`compile_context`). Una capa incremental diseñada a través del puerto `GraphStore` aterrizó como infraestructura pero permanece **con el flag OFF/experimental**, y la unificación de serve+watch+deploy (paso 7 del orden de construcción) sigue abierta. Véase el estado por fase en la [hoja de ruta por fases](context-engine-roadmap.es.md) y el resumen de cambios en las [notas de la versión v0.5.0](release-notes/v0.5.0.es.md). Los hallazgos de abajo se dejan sin editar como la instantánea original.
+
 ## Veredicto en una línea
 
 Tesserae hoy es un **compilador CLI por lotes mecánicamente sano y bien

@@ -20,11 +20,45 @@ Nutze diese Checkliste, bevor du Tesserae öffentlich präsentierst.
 ## Verifikation
 
 ```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest tests/ -q
+.venv/bin/pytest tests/ -x          # Bei jedem Fehler ABBRECHEN — niemals einen roten Build ausliefern
 ./scripts/install.sh --help
 tesserae project setup --help
 tesserae project compile --help
+tesserae project context --help     # On-Demand-Kontext-Compiler
 ```
+
+### Demo-Build-Smoke (deckungsgleich mit dem `build-demo`-CI-Job)
+
+Sowohl der Release-Flow als auch die CI kompilieren Tesserae gegen seinen eigenen
+Quellbaum mit dem deterministischen Extraktor (keine LLM-Aufrufe, keine API-Keys) und bauen die Site:
+
+```bash
+.venv/bin/python -m tesserae project setup --yes --no-color --source . \
+  --no-cognee --skip-raganything --skip-install-cognee \
+  --skip-install-raganything --skip-install-understand-anything
+.venv/bin/python -m tesserae project compile
+.venv/bin/python -m tesserae project build-site
+```
+
+## Release-Flow
+
+Gesteuert durch den `release`-Skill (`.claude/skills/release/SKILL.md`). Der neueste Tag ist `v0.5.0`.
+
+- [ ] Auf `main`, Arbeitsbaum sauber, `git pull --ff-only origin main` ausführen.
+- [ ] Tests + Demo-Build-Smoke (oben) bestehen.
+- [ ] `version = "X.Y.Z"` in `pyproject.toml` anheben (`package.json` spiegeln, falls vorhanden); `release: vX.Y.Z` mit einem einparagraphigen Changelog aus `git log v<prev>..HEAD` committen.
+- [ ] Mit `git tag -a vX.Y.Z -m "vX.Y.Z"` taggen; erst den Commit, dann den Tag pushen.
+- [ ] Auf grüne CI warten (`gh run watch <run-id>`) — kein GitHub-Release auf einem roten Build.
+- [ ] GitHub-Release veröffentlichen. PyPI-Veröffentlichung ist optional (wenn bereit).
+
+### GitHub Pages
+
+Der `build-demo`-Workflow (Push auf `main`) lädt die kompilierte Dogfood-Site immer als
+inspizierbares Workflow-Artefakt hoch und deployt sie **zusätzlich** nach GitHub Pages, wenn
+Pages aktiviert ist. Die Pages-Schritte sind `continue-on-error`: das Standard-`GITHUB_TOKEN`
+kann keine Pages-Site *erstellen*, daher braucht der allererste Deploy ein einmaliges manuelles
+Umschalten unter **Settings → Pages → Source: GitHub Actions**. Bis dieser Schalter an ist,
+bleibt der Build grün und das Artefakt wird trotzdem erzeugt.
 
 ## Self-Dogfood
 

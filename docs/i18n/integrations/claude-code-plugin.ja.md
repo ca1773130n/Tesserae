@@ -18,9 +18,9 @@ Tesserae は [Claude Code](https://docs.claude.com/en/docs/claude-code) プラ�
 ## 含まれるもの
 
 * **9 つのスラッシュコマンド** — CLI への 1:1 ラッパー 7 つ(`/tesserae:compile`、`/tesserae:ask`、`/tesserae:sessions-import`、`/tesserae:build-site`、`/tesserae:serve`、`/tesserae:obsidian-sync`、`/tesserae:setup`)+ 2 つのワークフローマクロ(`/tesserae:refresh` は import + compile + obsidian-sync を連鎖、`/tesserae:status` はグラフ数と最終コンパイルを表示)。
-* **`tesserae_mcp` サーバーの自動登録** — エージェントが手動設定編集なしに `ask`、`search_nodes`、`list_sessions`、`find_session_findings` などを `mcp__plugin_tesserae_tesserae__<tool>` として呼び出せます。
+* **`tesserae` サーバーの自動登録** — エージェントが手動設定編集なしに全ツール群を `mcp__plugin_tesserae_tesserae__<tool>` として利用できます:グラフクエリ(`search_nodes`、`node_context`、`graph_ppr`、`search_facts`)、オンデマンドの `compile_context` / `list_communities` / `fresh_insights` コンパイラ、セッションメモリ(`ask`、`list_sessions`、`find_session_findings`、`find_code_symbol_mentions`)、ガイド付きセットアップ(`tesserae_setup_plan` / `tesserae_setup_apply`)。完全な一覧は [mcp.ja.md](mcp.ja.md) を参照。
 * **`using-tesserae` スキル** — 型付きグラフ、過去のセッション想起、wiki/vault コンテンツ、tesserae ワークフローについて質問したときに自動ロードされます。どの MCP ツールを使うか vs どのスラッシュコマンドを提案するかをエージェントに教えます。
-* **4 つのフック** — `SessionStart` はグラフサマリを出力;`SessionEnd` は今回の会話の洞察が次のセッションのグラフノードになるよう import+compile をバックグラウンド実行;`PostToolUse`(オプトイン)は docs/ 編集時に増分再コンパイル;`PreToolUse` は大規模グラフのコンパイルを確認ダイアログでゲート。
+* **5 つのフック** — `SessionStart` はグラフサマリを出力;`SessionEnd` は今回の会話の洞察が次のセッションのグラフノードになるよう import+compile をバックグラウンド実行;2 つの `PostToolUse` フックが `Edit`/`Write`/`MultiEdit` で発火 — 一方は docs/ 編集時のオプトイン増分再コンパイル、もう一方はコードグラフ同期をデバウンス(約 30 秒);`PreToolUse`(`Bash` 対象)は大規模グラフのコンパイルを確認ダイアログでゲート。
 
 完全な詳細、コマンド/フックの完全な表、プロジェクトごとのオプトアウト手順はプラグイン自身の [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md) にあります。
 

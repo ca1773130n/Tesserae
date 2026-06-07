@@ -284,11 +284,11 @@ Sessions — импортированные локальные transcripts AI-ha
 
 Эту страницу стоит добавить в закладки для вопроса "что происходило в последнее время".
 
-### `/timeline/<YYYY-MM-DD>.html` ⚠
+### `/timeline/<YYYY-MM-DD>.html` ✅
 
 > _Screenshot: timeline-day.png_
 
-Детальные страницы по дням — список каждой paper / repo / concept / synthesis, привязанной к этому календарному дню — являются явным follow-up. Subagent P подключает emit дневных деталей через `StaticSiteBuilder`. Пока это не готово, ячейки heatmap ссылаются на страницу источника `digest.md` дня как временное решение. (См. `render_timeline` в `tesserae/site/pages.py` для inline TODO.)
+Детальные страницы по дням — список каждой paper / repo / concept / synthesis, привязанной к этому календарному дню — теперь выпущены. `render_timeline_day` (`tesserae/site/pages.py`) emit'ится по каждому датированному дню через `StaticSiteBuilder` (`tesserae/site/__init__.py`), и каждая страница записывается в `manifest.json` как маршрут `timeline_day`. Ячейки heatmap ссылаются напрямую на страницу дня (откатываясь на страницу источника `digest.md` дня только когда маршрута по дню нет).
 
 ## Graph view
 

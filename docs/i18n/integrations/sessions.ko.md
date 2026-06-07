@@ -13,6 +13,15 @@ Tesserae의 세션 그래프는 프로젝트에 대한 Claude Code / Codex 대�
 1. **구조적** (항상 실행, LLM 미사용). `tesserae sessions discover --import`가 `.tesserae/harness_sessions/`에 쓴 정규화된 `HarnessSession` 레코드를 읽습니다. 각 세션에 대해 `Session` 봉투 노드를 만들고, 에이전트가 연 모든 문서에서 `discussed_in` 엣지를 발행하며, 기존 `decisions` 필드를 `SessionDecision` 노드로 변환합니다.
 2. **LLM** (선택적, `ANTHROPIC_API_KEY` 설정 시 실행). 정규화된 대화 턴(원본 트랜스크립트 파일이 아닌 `metadata["turns"]` 필드)을 JSON 전용 발견 스키마와 함께 Claude로 보냅니다. 6가지 종류의 발견을 반환하며, 각각 특정 턴과 현재 그래프의 특정 doc 노드 ID를 인용합니다. content_hash + project_root_hash로 캐시되므로 변경되지 않은 세션은 다음 컴파일에서 호출을 건너뜁니다.
 
+## 세션을 넣는 두 가지 방법: 배치 vs 라이브
+
+위 파이프라인은 세션이 어떻게 도착하든 동일합니다. 다른 것은 *언제* 발견되고 컴파일되는지입니다:
+
+- **배치(수동).** `tesserae project sessions discover --import`를 실행한 다음 직접 `tesserae project compile`을 실행합니다. 일회성 백필이나 CI에 적합합니다. 이 페이지의 나머지는 이 경로를 다룹니다.
+- **라이브(연속).** 엔진이 프로젝트를 감시하며 작업이 일어나는 대로 재컴파일하도록 하여, 무언가를 실행하는 것을 기억하지 않아도 그래프가 최신 상태를 유지합니다:
+  - **수퍼바이저 데몬** — `tesserae project engine`(별칭 `tesserae project daemon`)은 단일 소유자 asyncio 루프를 실행하여 구성된 소스를 감시하고, 편집 버스트를 하나의 `Pipeline.run()`으로 통합하며 자동 재컴파일합니다. `--once`로 결정론적 단일 드레인을, `--interval` / `--debounce`로 통합을 조정합니다. `tesserae project refresh`는 동일한 import → compile → vault-sync 체인을 인프로세스로 한 번 실행합니다.
+  - **Claude Code 플러그인 훅** — [플러그인](claude-code-plugin.ko.md)이 설치되면 `SessionEnd` 훅이 대화 종료 시 import + compile을 백그라운드로 실행하여 *이번* 세션의 인사이트가 *다음* 세션의 그래프 노드가 됩니다. `SessionStart` 훅은 진입 시 현재 그래프 요약을 출력합니다. 이것이 수동 discover/compile 단계 없이 세션을 "일어나는 대로" 포착하는 것에 가장 가깝습니다.
+
 ## 설정
 
 ```bash

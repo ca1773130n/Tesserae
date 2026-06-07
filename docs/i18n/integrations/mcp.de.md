@@ -58,19 +58,53 @@ Starte den Client nach der Bearbeitung neu. Die nächste Sitzung verbindet sich 
 
 ### Tools — vom Modell aufgerufen
 
+Jedes Tool akzeptiert ein optionales `graph_path` oder `project` (Registry-Alias), sodass ein einzelner Server pro Aufruf jeden registrierten Vault auflösen kann. Fehlt es, wird auf das aktive Projekt zurückgegriffen.
+
+**Graph-Abfragen und Retrieval**
+
 | Tool | Zweck |
 |---|---|
 | `schema` | Kontrolliertes Vokabular für Nodes, Edges und Wiki-Kinds |
 | `graph_summary` | Anzahl von Nodes/Edges und Typverteilungen für das aktive Projekt |
-| `search_nodes` | Filtert Graph-Nodes nach Query, Typ, Kind, mit nach Score sortierten Top-N |
-| `node_context` | Ein Node plus dessen anliegende Edges und Nachbar-Nodes |
-| `search_facts` | Temporale Fakten, projiziert aus dem Graphen (Graphiti-Stil) |
+| `search_nodes` | Filtert öffentliche Graph-Nodes nach `query`, `type`/`types`, `kind`, `limit`, hybriden `mode`/`weights`; `include_superseded` zeigt ausgemusterte Nodes |
+| `node_context` | Ein Node plus dessen anliegende Edges und Nachbar-Nodes. `use_ppr` rankt Nachbarn per personalisiertem PageRank statt eines 1-Hop-Walks; `include_superseded` und `limit` begrenzen das Ergebnis |
+| `embedding_status` | Meldet das aktive Embedding-Backend, das die Hybridsuche antreibt |
+| `search_facts` | Temporale Fakten, projiziert aus dem Graphen (Graphiti-Stil); `current_only` filtert auf aktuelle Fakten |
 | `timeline` | Nach `valid_from` sortierte Fakten für eine longitudinale Sicht |
-| `wiki_page` | Der kompilierte Markdown-Seiteninhalt für einen Node |
+| `graph_ppr` | Personalisierter PageRank, ausgehend von einem oder mehreren `seed_node_id`; liefert die top-K relevantesten Nodes mit einstellbaren `alpha`, `directed`, `edge_type_weights` |
+| `wiki_page` | Der kompilierte Markdown-Seiteninhalt für einen Node plus die internen Links, die er referenziert |
 | `raw_source` | Das ursprüngliche Quell-Markdown (auf 16 KB begrenzt) |
-| `lint_report` | Die zuletzt beim Compile gefundenen Lint-Befunde |
-| `ask` | Natürlichsprachliche Q&A über das konfigurierte Memory-Backend (raganything, cognee oder compiled wiki) |
+| `lint_report` | Die zuletzt beim Compile gefundenen Lint-Befunde (auf 64 KB begrenzt) |
+
+**On-Demand-Kontext-Compiler** (Phase 7)
+
+| Tool | Zweck |
+|---|---|
+| `compile_context` | Kompiliert ein maßgeschneidertes, **zitiertes** Kontextdokument für eine `query` oder explizite `seeds`. Durchläuft einen tiefenbegrenzten Subgraphen (`depth`, 1–10, Standard 2), rankt per PPR und füllt ein Zeichen-`budget` (Standard 32000; `0` für unbegrenzt). Standardmäßig deterministisch; mit `synthesize: true` entsteht ein vom LLM verfasster narrativer "topic"-Ausschnitt. Liefert `body`, `citations`, `selected_node_ids` und `char_budget_used` |
+| `list_communities` | Listet die vom Post-Compile-Pass erzeugten `COMMUNITY_SUMMARY`-Nodes, nach Mitgliederzahl geordnet (`min_size`, `limit`); per `node_context` über `summarizes`-Edges zurück zu den Mitgliedern |
+| `fresh_insights` | Session-Befunde, geordnet nach einem Ebbinghaus-artigen Decay-Score (neueste + meistgenutzte zuerst); filtert von neueren Beinahe-Duplikaten verdrängte Befunde heraus. Optional `kind`, `limit`, `include_superseded` |
+
+**Session-Memory** (siehe [sessions.md](sessions.md))
+
+| Tool | Zweck |
+|---|---|
+| `list_sessions` | Session-Envelopes (id, started_at, title, files_touched, Befundzähler) für das aktive Projekt; `since`, `limit` |
+| `find_session_findings` | Alle Session-Befunde, die über `discussed_in` / `references` mit `node_id` verknüpft sind, optional gefiltert nach `kinds` (insight / decision / question / todo / hypothesis / takeaway) |
+| `find_code_symbol_mentions` | Erweitert einen Session-Befund auf die `CodeFunction`/`CodeClass`/`CodeMethod`-Symbole, die er erwähnt, über `discusses`-Edges aus dem optionalen Insight↔Symbol-Link-Pass |
+
+**Q&A und Registry**
+
+| Tool | Zweck |
+|---|---|
+| `ask` | Natürlichsprachliche Q&A über das konfigurierte Memory-Backend (raganything, cognee oder compiled wiki). `backend`, `top_k`; vault-übergreifender Fan-out über `scope`/`scope_aliases`; `claude_config_dir` für Multi-Account-Routing |
 | `list_projects` / `register_project` / `activate_project` / `unregister_project` | Steuerung der Multi-Projekt-Registry |
+
+**Geführtes Setup**
+
+| Tool | Zweck |
+|---|---|
+| `tesserae_setup_plan` | Erkennt die Umgebung und schlägt einen Setup-Plan als JSON vor. Schreibgeschützt — fasst `.tesserae/` nie an |
+| `tesserae_setup_apply` | Wendet einen (ggf. bearbeiteten) Plan an: schreibt `.tesserae/config.json` und führt abgesicherte Installations-/Ausführungsaktionen aus. Über `confirm_install_actions` / `confirm_run_actions` gesteuert |
 
 ### Resources — automatisch in den Modellkontext geladen
 

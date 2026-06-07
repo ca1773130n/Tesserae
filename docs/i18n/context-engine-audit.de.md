@@ -14,6 +14,8 @@ Dieses Dokument prüft die aktuelle Codebasis an dieser Mission. Es ist das
 Ergebnis einer vierfach parallelen Begutachtung (Aufnahme/Sitzungen,
 Selbstverbesserung, Ausgabe/agentenseitig, Orchestrierung/Lebenszyklus).
 
+> **Status zum Zeitpunkt von v0.5.0 (2026-06-06):** Dieses Dokument ist ein **Stichtags-Audit** (Snapshot vom 2026-06-02) und wird für das Archiv unverändert beibehalten. Die meisten seiner übergreifenden Befunde sind nun **behoben**: der fehlende Supervisor-Daemon und der In-Process-Pipeline-Orchestrator wurden ausgeliefert (Engine-Rückgrat, `tesserae/engine/`), das Live-Tailing von Sitzungen ersetzt den nachträglichen Scan (Säule 1), die Selbstverbesserungs-Pässe sind über das `node_memory`-Sidecar aktiviert und persistiert (Supersede standardmäßig aktiv mit Unterdrückung, numerische Wiederholungs-Konfidenz — Säule 2), das Hash-Bucket-Standard-Embedding wird durch ein echtes, laut fehlschlagendes Backend ersetzt (Säule 3), und **der On-Demand-Kontext-Compiler der Säule 3 existiert nun** (`compile_context`). Eine konzipierte inkrementelle Schicht über den `GraphStore`-Port ist als Infrastruktur gelandet, bleibt aber **mit Flag OFF/experimentell**, und die Vereinheitlichung von serve+watch+deploy (Schritt 7 der Build-Reihenfolge) ist noch offen. Den Status je Phase siehe in der [Phasen-Roadmap](context-engine-roadmap.de.md), die Änderungsübersicht in den [v0.5.0-Release-Notes](release-notes/v0.5.0.de.md). Die Befunde unten bleiben unverändert als ursprünglicher Snapshot.
+
 ## Urteil in einer Zeile
 
 Tesserae ist heute ein **mechanisch gesunder, gut getesteter Batch-CLI-

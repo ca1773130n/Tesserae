@@ -13,6 +13,15 @@ Deux passes par session :
 1. **Structurelle** (toujours active, sans LLM). Lit les enregistrements `HarnessSession` normalisés que `tesserae sessions discover --import` écrit dans `.tesserae/harness_sessions/`. Pour chaque session, frappe un nœud enveloppe `Session`, émet des arêtes `discussed_in` de chaque document que l'agent a ouvert, et transforme le champ `decisions` existant en nœuds `SessionDecision`.
 2. **LLM** (optionnel, s'exécute lorsque `ANTHROPIC_API_KEY` est configuré). Envoie les tours de conversation normalisés (le champ `metadata["turns"]` — pas le fichier de transcription brut) à Claude avec un schéma de résultats JSON-uniquement. Renvoie six types de résultats, chacun citant des tours spécifiques et des IDs de nœud de document spécifiques dans le graphe actuel. Mis en cache par content_hash + project_root_hash, donc les sessions inchangées sautent l'appel à la compilation suivante.
 
+## Deux façons d'alimenter les sessions : par lot vs en direct
+
+Le pipeline ci-dessus est le même quelle que soit la manière dont les sessions arrivent. Ce qui diffère, c'est *quand* elles sont découvertes et compilées :
+
+- **Par lot (manuel).** Exécutez `tesserae project sessions discover --import` puis `tesserae project compile` vous-même. Idéal pour des remplissages ponctuels ou la CI. Le reste de cette page suit cette voie.
+- **En direct (continu).** Laissez le moteur surveiller le projet et recompiler au fil du travail, afin que le graphe reste frais sans que vous ayez à penser à lancer quoi que ce soit :
+  - **Démon superviseur** — `tesserae project engine` (alias `tesserae project daemon`) exécute une boucle asyncio à propriétaire unique qui surveille les sources configurées, fusionne une rafale d'éditions en un seul `Pipeline.run()` et recompile automatiquement. Passez `--once` pour un drainage unique déterministe, ou `--interval` / `--debounce` pour régler la fusion. `tesserae project refresh` exécute la même chaîne import → compile → vault-sync une fois, in-process.
+  - **Hooks du plugin Claude Code** — avec le [plugin](claude-code-plugin.fr.md) installé, le hook `SessionEnd` exécute en arrière-plan import + compile à la fin d'une conversation, de sorte que les insights de *cette* session deviennent des nœuds du graphe pour la *suivante*. Le hook `SessionStart` imprime le résumé actuel du graphe à l'entrée. C'est ce qui se rapproche le plus de la capture des sessions « au fil de leur déroulement » — sans aucune étape manuelle de discover/compile.
+
 ## Configuration
 
 ```bash

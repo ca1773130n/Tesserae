@@ -4,11 +4,11 @@
 <p align="center"><a href="../i18n/integrations/obsidian-sync.ko.md">한국어</a> · <a href="../i18n/integrations/obsidian-sync.zh.md">中文</a> · <a href="../i18n/integrations/obsidian-sync.ja.md">日本語</a> · <a href="../i18n/integrations/obsidian-sync.ru.md">Русский</a> · <a href="../i18n/integrations/obsidian-sync.es.md">Español</a> · <a href="../i18n/integrations/obsidian-sync.fr.md">Français</a> · <a href="../i18n/integrations/obsidian-sync.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-> **Status: Proposed (2026-05-17).** This document is a design spec, not yet a feature. It describes how Tesserae could let users edit projected wiki pages in Obsidian and have those edits survive the next `project compile`. Implementation is gated on this design landing.
+> **Status: Shipped (Tier 1, v0.5.0).** The overlay reader, user-notes append zones, watch mode, and orphan pruning described below are live behind `tesserae project obsidian-sync`. This page doubles as the design rationale and the user guide. Multi-vault federation (Tier 3) remains out of scope.
 
-Today the [Obsidian export](obsidian.md) is strictly one-way: the typed graph in `.tesserae/graph.json` projects to the vault, and `project compile` overwrites projected files. Users have asked for the opposite direction too — edit a description in Obsidian, see it survive recompile.
+The [Obsidian export](obsidian.md) used to be strictly one-way: the typed graph in `.tesserae/graph.json` projects to the vault, and `project compile` overwrites projected files. `obsidian-sync` adds the opposite direction — edit a description in Obsidian, and it survives recompile.
 
-This document spells out how that would work without making the data model incoherent.
+This document spells out how that works without making the data model incoherent.
 
 ## Strategic shift, stated plainly
 
@@ -98,30 +98,48 @@ Tesserae does **not** build a sync server, auth layer, conflict-resolution daemo
 
 All five are compatible with the overlay model because Tesserae sees the vault as files-on-disk, not as a stream of mutations.
 
-## CLI surface (proposed)
+## CLI surface
+
+`tesserae project obsidian-sync` applies vault edits onto the typed graph and re-projects:
 
 ```bash
-# Pull-only sync (Tier 1a): overlay reader runs as part of compile by default.
-tesserae project compile                  # always pulls vault overrides if vault exists
+# Apply the overlay once: pull user edits, re-project to the vault.
+tesserae project obsidian-sync
 
-# Inspect what would change before letting compile apply
+# Inspect what would change first. Writes .tesserae/diverged-fields.md and
+# does NOT apply or re-project.
 tesserae project obsidian-sync --dry-run
 
-# Skip the pull for a single compile (recovery mode)
-tesserae project compile --no-vault-pull
+# Point at a specific vault for this call (resolution order:
+# --vault > config.obsidian.vault_path > .tesserae/obsidian_vault/).
+tesserae project obsidian-sync --vault ~/Documents/tesserae-vault
 
-# Long-running watch (Tier 2)
-tesserae project obsidian-sync --watch --vault ~/Documents/tesserae-vault
+# Make that vault path the default for future commands.
+tesserae project obsidian-sync --vault ~/Documents/tesserae-vault --persist-vault
+
+# Long-running watch: re-apply the overlay every time the vault changes.
+# Ctrl-C to stop; tune the poll cadence with --poll-interval (default 1.5s).
+tesserae project obsidian-sync --watch --poll-interval 1.5
+
+# Delete projected pages whose source node no longer exists (the projector
+# only overwrites, never deletes). Pages with user-notes are kept unless you
+# also pass --force-prune-with-notes.
+tesserae project obsidian-sync --prune-orphans
+tesserae project obsidian-sync --prune-orphans --force-prune-with-notes
 ```
 
-## Phasing
+The `/tesserae:obsidian-sync` slash command wraps this, and `tesserae project refresh`
+(plus the `/tesserae:refresh` macro) runs the overlay as the last step of its
+import → compile → sync chain.
 
-| Tier | Scope | Effort |
+## Delivery status
+
+| Tier | Scope | Status |
 |---|---|---|
-| **1a** | Overlay reader: walk vault, build `vault_overrides.json`, apply at compile. Lint reports divergences. | ~3 days |
-| **1b** | User-notes append zones: projector never touches `<!-- user-notes:start --> ... <!-- user-notes:end -->` blocks. | ~1 day |
-| **2** | Watch mode: long-running `obsidian-sync --watch` re-runs overlay on filesystem events, prompts before applying. | ~1 week |
-| **3** | Multi-vault federation: graph stores per-vault provenance, supports concurrent edits across synced vaults. | ~1 month, deferred until real use case |
+| **1a** | Overlay reader: walk vault, build `vault_overrides.json`, apply at sync. Divergences land in `.tesserae/diverged-fields.md`. | Shipped |
+| **1b** | User-notes append zones: projector never touches `<!-- user-notes:start --> ... <!-- user-notes:end -->` blocks. | Shipped |
+| **2** | Watch mode: long-running `obsidian-sync --watch` re-runs the overlay on a poll loop as the vault changes. | Shipped |
+| **3** | Multi-vault federation: graph stores per-vault provenance, supports concurrent edits across synced vaults. | Deferred until a real use case |
 
 ## Non-goals (explicitly)
 
@@ -130,11 +148,11 @@ tesserae project obsidian-sync --watch --vault ~/Documents/tesserae-vault
 - Rewriting the extractor to round-trip every field — the source markdown stays canonical for everything outside the override table.
 - Sync of the static HTML site (`build-site` remains projection-only).
 
-## Open decisions before implementation
+## Resolved decisions
 
-These have proposed defaults but warrant a final pass before code lands:
+These were the open questions at design time; the shipped Tier 1–2 implementation settled them as follows:
 
-1. **Lint report shape.** Should diverged fields surface as a separate `.tesserae/diverged-fields.md` file, or as a new section in the existing `lint-report.md`? Proposed: dedicated file so it can be diffed in git.
+1. **Lint report shape.** Diverged fields surface as a dedicated `.tesserae/diverged-fields.md` file (written by `--dry-run` and on every apply) so it can be diffed in git, rather than as a section of `lint-report.md`.
 2. **Tombstone node type.** Add `Stub` as a real schema type, or piggyback on `OpenQuestion` with a `_kind: stub` discriminator? Proposed: real type, named `Stub`, hidden from public indexes.
 3. **Pull-on-compile default.** Default ON or default OFF? Proposed: ON when a vault exists at the configured path, with a one-time confirmation prompt the first time it activates so users opt-in deliberately.
 4. **What counts as "the previous projection" for diffing?** Snapshot stored in `.tesserae/vault_snapshot.json`, or re-project on the fly each compile? Proposed: snapshot, written at end of every compile. Cheaper and avoids extractor non-determinism leaking into the overlay.
@@ -142,6 +160,4 @@ These have proposed defaults but warrant a final pass before code lands:
 
 ## How this shows up in `obsidian.md`
 
-The user-facing guide stays focused on "you can read and query the vault". A short "Bidirectional sync" section at the end will link here once implementation lands, with a one-line summary: "Edit fields in Obsidian, they survive recompile. See [obsidian-sync.md](obsidian-sync.md) for the full model."
-
-Until then, the existing read-only disclaimer in `obsidian.md` stays — this design is a roadmap, not a shipped feature.
+The user-facing guide stays focused on "you can read and query the vault", then links here for the round-trip story with a one-line summary: "Edit fields in Obsidian, they survive recompile. See [obsidian-sync.md](obsidian-sync.md) for the full model."

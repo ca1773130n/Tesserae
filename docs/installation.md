@@ -11,15 +11,14 @@ Tesserae is published on PyPI and exposes shell commands so users do not have to
 pip install tesserae
 ```
 
-That's it. `pip` registers three console scripts on your `PATH`:
+That's it. `pip` registers two console scripts on your `PATH`:
 
 ```bash
-tesserae --help
 tesserae --help
 tesserae_mcp --help
 ```
 
-The canonical command in docs is `tesserae`; `tesserae` (with a dash) is an alias. `tesserae_mcp` starts the MCP server.
+The canonical command in docs is `tesserae`. `tesserae_mcp` starts the MCP server (which now exposes the on-demand `compile_context` tool — see the Quickstart).
 
 > **pipx is fine too.** If you prefer to keep CLI tools in their own isolated venvs:
 > ```bash
@@ -67,6 +66,14 @@ The Anthropic-backed synthesis path uses an extras marker:
 ```bash
 pip install "tesserae[synthesis-llm]"
 ```
+
+Real semantic embeddings (the default retrieval lane as of v0.5.0) ship behind the `semantic` extra:
+
+```bash
+pip install "tesserae[semantic]"
+```
+
+This pulls in `model2vec` and downloads a lightweight, offline, torch-free static model (~8 MB `potion-base-8M`, fetched once on first use). Without it, hybrid/embedding retrieval falls back to a non-semantic hash-bucket stub and emits a loud warning, so installing this extra is recommended for anyone using `project ask`, `project context`, or the MCP `compile_context` tool.
 
 For the multimodal RAG-Anything stack with all parsers preinstalled:
 

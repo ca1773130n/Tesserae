@@ -18,9 +18,9 @@ Pre-req: `tesserae` already installed (`pip install tesserae` or `pipx install t
 ## What's shipped
 
 * **9 slash commands** — seven 1:1 wrappers around the CLI (`/tesserae:compile`, `/tesserae:ask`, `/tesserae:sessions-import`, `/tesserae:build-site`, `/tesserae:serve`, `/tesserae:obsidian-sync`, `/tesserae:setup`) plus two workflow macros (`/tesserae:refresh` chains import + compile + obsidian-sync; `/tesserae:status` shows graph counts and last compile).
-* **Auto-MCP-registration** for the `tesserae_mcp` server — agent gets `ask`, `search_nodes`, `list_sessions`, `find_session_findings`, etc. as `mcp__plugin_tesserae_tesserae__<tool>` without manual config edits.
+* **Auto-MCP-registration** for the `tesserae` server — the agent gets the full tool surface as `mcp__plugin_tesserae_tesserae__<tool>` without manual config edits: graph queries (`search_nodes`, `node_context`, `graph_ppr`, `search_facts`), the on-demand `compile_context` / `list_communities` / `fresh_insights` compiler, session memory (`ask`, `list_sessions`, `find_session_findings`, `find_code_symbol_mentions`), and guided `tesserae_setup_plan` / `tesserae_setup_apply`. See [mcp.md](mcp.md) for the complete list.
 * **`using-tesserae` skill** — auto-loads when you ask about the typed graph, past-session recall, wiki/vault content, or any tesserae workflow. Teaches the agent which MCP tool to use vs which slash command to suggest.
-* **4 hooks** — `SessionStart` prints a graph summary; `SessionEnd` backgrounds an import+compile so this conversation's insights become graph nodes for the next session; `PostToolUse` (opt-in) does an incremental recompile on docs/ edits; `PreToolUse` gates large-graph compiles via a confirmation dialog.
+* **5 hooks** — `SessionStart` prints a graph summary; `SessionEnd` backgrounds an import+compile so this conversation's insights become graph nodes for the next session; two `PostToolUse` hooks fire on `Edit`/`Write`/`MultiEdit` — one does an opt-in incremental recompile on docs/ edits, the other debounces (~30s) a code-graph sync; `PreToolUse` (on `Bash`) gates large-graph compiles via a confirmation dialog.
 
 Full details, the complete command/hook tables, and per-project opt-out instructions are in the plugin's own [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md).
 

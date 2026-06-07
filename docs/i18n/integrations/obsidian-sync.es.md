@@ -4,11 +4,11 @@
 <p align="center"><a href="../../integrations/obsidian-sync.md">English</a> · <a href="obsidian-sync.ko.md">한국어</a> · <a href="obsidian-sync.zh.md">中文</a> · <a href="obsidian-sync.ja.md">日本語</a> · <a href="obsidian-sync.ru.md">Русский</a> · <a href="obsidian-sync.fr.md">Français</a> · <a href="obsidian-sync.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-> **Estado: Propuesto (2026-05-17).** Este documento es una especificación de diseño, todavía no una funcionalidad. Describe cómo Tesserae podría permitir que los usuarios editen páginas wiki proyectadas en Obsidian y que esas ediciones sobrevivan al siguiente `project compile`. La implementación queda condicionada a que este diseño aterrice.
+> **Estado: Entregado (Tier 1, v0.5.0).** El lector de overlay, las zonas de agregación de user-notes, el modo watch y la limpieza de huérfanos descritos abajo están vivos tras `tesserae project obsidian-sync`. Esta página sirve a la vez de justificación de diseño y de guía de usuario. La federación multi-vault (Tier 3) sigue fuera de alcance.
 
-Hoy la [exportación a Obsidian](obsidian.md) es estrictamente unidireccional: el grafo tipado en `.tesserae/graph.json` se proyecta al vault, y `project compile` sobrescribe los archivos proyectados. Los usuarios han pedido también la dirección opuesta — editar una descripción en Obsidian y verla sobrevivir a la recompilación.
+La [exportación a Obsidian](obsidian.md) solía ser estrictamente unidireccional: el grafo tipado en `.tesserae/graph.json` se proyecta al vault, y `project compile` sobrescribe los archivos proyectados. `obsidian-sync` añade la dirección opuesta — edita una descripción en Obsidian y sobrevive a la recompilación.
 
-Este documento detalla cómo funcionaría eso sin volver incoherente el modelo de datos.
+Este documento detalla cómo funciona eso sin volver incoherente el modelo de datos.
 
 ## Cambio estratégico, dicho con claridad
 
@@ -98,30 +98,48 @@ Tesserae **no** construye un servidor de sincronización, una capa de autenticac
 
 Los cinco son compatibles con el modelo de overlay porque Tesserae ve el vault como archivos-en-disco, no como un flujo de mutaciones.
 
-## Superficie de CLI (propuesta)
+## Superficie de CLI
+
+`tesserae project obsidian-sync` aplica las ediciones del vault sobre el grafo tipado y reproyecta:
 
 ```bash
-# Pull-only sync (Tier 1a): overlay reader runs as part of compile by default.
-tesserae project compile                  # always pulls vault overrides if vault exists
+# Aplicar el overlay una vez: trae ediciones de usuario, reproyecta al vault.
+tesserae project obsidian-sync
 
-# Inspect what would change before letting compile apply
+# Inspecciona primero qué cambiaría. Escribe .tesserae/diverged-fields.md y
+# NO aplica ni reproyecta.
 tesserae project obsidian-sync --dry-run
 
-# Skip the pull for a single compile (recovery mode)
-tesserae project compile --no-vault-pull
+# Apunta a un vault concreto para esta llamada (orden de resolución:
+# --vault > config.obsidian.vault_path > .tesserae/obsidian_vault/).
+tesserae project obsidian-sync --vault ~/Documents/tesserae-vault
 
-# Long-running watch (Tier 2)
-tesserae project obsidian-sync --watch --vault ~/Documents/tesserae-vault
+# Hacer que esa ruta de vault sea el valor por defecto para futuros comandos.
+tesserae project obsidian-sync --vault ~/Documents/tesserae-vault --persist-vault
+
+# Watch de larga duración: reaplica el overlay cada vez que cambia el vault.
+# Ctrl-C para detener; ajusta la cadencia con --poll-interval (por defecto 1.5 s).
+tesserae project obsidian-sync --watch --poll-interval 1.5
+
+# Elimina páginas proyectadas cuyo nodo fuente ya no existe (el proyector
+# solo sobrescribe, nunca borra). Las páginas con user-notes se conservan
+# salvo que pases también --force-prune-with-notes.
+tesserae project obsidian-sync --prune-orphans
+tesserae project obsidian-sync --prune-orphans --force-prune-with-notes
 ```
 
-## Fases
+El comando slash `/tesserae:obsidian-sync` lo envuelve, y `tesserae project refresh`
+(más la macro `/tesserae:refresh`) ejecuta el overlay como último paso de su
+cadena import → compile → sync.
 
-| Tier | Alcance | Esfuerzo |
+## Estado de entrega
+
+| Tier | Alcance | Estado |
 |---|---|---|
-| **1a** | Lector de overlay: recorre el vault, construye `vault_overrides.json`, lo aplica en la compilación. El lint reporta divergencias. | ~3 días |
-| **1b** | Zonas de agregación de user-notes: el proyector nunca toca los bloques `<!-- user-notes:start --> ... <!-- user-notes:end -->`. | ~1 día |
-| **2** | Modo watch: `obsidian-sync --watch` de larga duración reejecuta el overlay ante eventos del sistema de archivos, pide confirmación antes de aplicar. | ~1 semana |
-| **3** | Federación multi-vault: el grafo guarda procedencia por vault, soporta ediciones concurrentes entre vaults sincronizados. | ~1 mes, aplazado hasta que haya un caso de uso real |
+| **1a** | Lector de overlay: recorre el vault, construye `vault_overrides.json`, lo aplica en la sincronización. Las divergencias van a `.tesserae/diverged-fields.md`. | Entregado |
+| **1b** | Zonas de agregación de user-notes: el proyector nunca toca los bloques `<!-- user-notes:start --> ... <!-- user-notes:end -->`. | Entregado |
+| **2** | Modo watch: `obsidian-sync --watch` de larga duración reejecuta el overlay en un bucle de sondeo a medida que cambia el vault. | Entregado |
+| **3** | Federación multi-vault: el grafo guarda procedencia por vault, soporta ediciones concurrentes entre vaults sincronizados. | Aplazado hasta que haya un caso de uso real |
 
 ## No-objetivos (explícitamente)
 
@@ -130,11 +148,11 @@ tesserae project obsidian-sync --watch --vault ~/Documents/tesserae-vault
 - Reescribir el extractor para hacer round-trip de cada campo — el markdown fuente sigue siendo canónico para todo lo que esté fuera de la tabla de overrides.
 - Sincronización del sitio HTML estático (`build-site` sigue siendo solo proyección).
 
-## Decisiones abiertas antes de implementar
+## Decisiones resueltas
 
-Estas tienen comportamientos por defecto propuestos pero merecen una pasada final antes de que aterrice el código:
+Estas eran las preguntas abiertas en el momento del diseño; la implementación entregada de Tier 1–2 las resolvió así:
 
-1. **Forma del lint report.** ¿Los campos divergentes deberían aparecer como un archivo separado `.tesserae/diverged-fields.md`, o como una nueva sección en el `lint-report.md` existente? Propuesta: archivo dedicado para que se pueda diffear en git.
+1. **Forma del lint report.** Los campos divergentes aparecen como un archivo dedicado `.tesserae/diverged-fields.md` (escrito por `--dry-run` y en cada aplicación) para poder diffearlo en git, en lugar de como una sección de `lint-report.md`.
 2. **Tipo de nodo lápida.** ¿Añadir `Stub` como un tipo real del esquema, o aprovechar `OpenQuestion` con un discriminador `_kind: stub`? Propuesta: tipo real, llamado `Stub`, oculto de los índices públicos.
 3. **Pull-on-compile por defecto.** ¿Por defecto activado o desactivado? Propuesta: activado cuando existe un vault en la ruta configurada, con un prompt de confirmación único la primera vez que se activa para que los usuarios opten deliberadamente.
 4. **¿Qué cuenta como "la proyección anterior" para el diff?** ¿Snapshot guardado en `.tesserae/vault_snapshot.json`, o re-proyectar al vuelo en cada compilación? Propuesta: snapshot, escrito al final de cada compilación. Más barato y evita que el no-determinismo del extractor se filtre al overlay.
@@ -142,6 +160,4 @@ Estas tienen comportamientos por defecto propuestos pero merecen una pasada fina
 
 ## Cómo aparece esto en `obsidian.md`
 
-La guía de cara al usuario sigue centrada en "puedes leer y consultar el vault". Una sección corta "Sincronización bidireccional" al final enlazará aquí en cuanto aterrice la implementación, con un resumen de una línea: "Edita campos en Obsidian, sobreviven a la recompilación. Ver [obsidian-sync.md](obsidian-sync.md) para el modelo completo."
-
-Hasta entonces, el aviso de solo-lectura existente en `obsidian.md` se mantiene — este diseño es una hoja de ruta, no una funcionalidad publicada.
+La guía de cara al usuario sigue centrada en "puedes leer y consultar el vault", y luego enlaza aquí para la historia del ida y vuelta con un resumen de una línea: "Edita campos en Obsidian, sobreviven a la recompilación. Ver [obsidian-sync.md](obsidian-sync.md) para el modelo completo."

@@ -58,19 +58,53 @@ tesserae project mcp-config
 
 ### Tools — モデルから呼び出される
 
+各 tool はオプションの `graph_path` または `project`（レジストリのエイリアス）を受け取るため、1 つのサーバーが呼び出しごとに任意の登録済み vault を解決できます。省略時はアクティブなプロジェクトにフォールバックします。
+
+**グラフのクエリと検索**
+
 | Tool | 用途 |
 |---|---|
 | `schema` | 管理された node、edge、wiki-kind の語彙 |
 | `graph_summary` | アクティブなプロジェクトの node + edge 数と種別分布 |
-| `search_nodes` | グラフ node をクエリ・type・kind でフィルタし、スコア順の上位 N 件を返す |
-| `node_context` | ある node とその接続 edge、隣接 node |
-| `search_facts` | グラフから射影された時系列ファクト（Graphiti スタイル） |
+| `search_nodes` | 公開グラフ node を `query`、`type`/`types`、`kind`、`limit`、ハイブリッド `mode`/`weights` でフィルタ。`include_superseded` で廃止済み node も表示 |
+| `node_context` | ある node とその接続 edge、隣接 node。`use_ppr` は 1-ホップ走査ではなくパーソナライズド PageRank で隣接をランキングし、`include_superseded`・`limit` で結果を制限 |
+| `embedding_status` | ハイブリッド検索を駆動するアクティブな埋め込みバックエンドを報告 |
+| `search_facts` | グラフから射影された時系列ファクト（Graphiti スタイル）。`current_only` で現行ファクトのみ |
 | `timeline` | `valid_from` で順序付けられたファクトの縦断的ビュー |
-| `wiki_page` | ある node に対するコンパイル済み markdown ページ本文 |
+| `graph_ppr` | 1 つ以上の `seed_node_id` をシードとするパーソナライズド PageRank で最も関連性の高い top-K node を返す。`alpha`、`directed`、`edge_type_weights` を調整可能 |
+| `wiki_page` | ある node のコンパイル済み markdown ページ本文と、それが参照する内部リンク |
 | `raw_source` | 元のソース markdown（16 KB を上限としてキャップ） |
-| `lint_report` | 直近のコンパイル時 lint 結果 |
-| `ask` | 設定されたメモリバックエンド（raganything、cognee、またはコンパイル済み wiki）経由の自然言語 Q&A |
+| `lint_report` | 直近のコンパイル時 lint 結果（64 KB を上限としてキャップ） |
+
+**オンデマンドコンテキストコンパイラ**（Phase 7）
+
+| Tool | 用途 |
+|---|---|
+| `compile_context` | `query` または明示的な `seeds` に対して、調整された**引用付き**コンテキスト文書をコンパイル。深さ制限付きサブグラフ（`depth`、1–10、既定 2）を走査し、PPR でランキングして文字 `budget`（既定 32000、`0` で無制限）を埋める。既定は決定論的で、`synthesize: true` で LLM が書く叙述型 "topic" スライスを生成。`body`、`citations`、`selected_node_ids`、`char_budget_used` を返す |
+| `list_communities` | 後コンパイルパスが生成した `COMMUNITY_SUMMARY` node をメンバー数順に列挙（`min_size`、`limit`）。`node_context` で `summarizes` edge をたどってメンバーへ回帰 |
+| `fresh_insights` | エビングハウス式の減衰スコア（新しく・最もアクセスされた順）でランキングされたセッション発見。廃止された近似重複は除外。任意で `kind`、`limit`、`include_superseded` |
+
+**セッションメモリ**（[sessions.md](sessions.md) 参照）
+
+| Tool | 用途 |
+|---|---|
+| `list_sessions` | アクティブなプロジェクトのセッションエンベロープ（id、started_at、title、files_touched、発見数）。`since`、`limit` |
+| `find_session_findings` | `discussed_in` / `references` を介して `node_id` にリンクされた全セッション発見。`kinds`（insight / decision / question / todo / hypothesis / takeaway）でフィルタ可能 |
+| `find_code_symbol_mentions` | セッション発見を、それが言及する `CodeFunction`/`CodeClass`/`CodeMethod` シンボルへ展開（オプトインの insight↔symbol リンクパスが生成する `discusses` edge を使用） |
+
+**Q&A とレジストリ**
+
+| Tool | 用途 |
+|---|---|
+| `ask` | 設定されたメモリバックエンド（raganything、cognee、またはコンパイル済み wiki）経由の自然言語 Q&A。`backend`、`top_k`。`scope`/`scope_aliases` で複数 vault へのファンアウト。多アカウントルーティング用の `claude_config_dir` |
 | `list_projects` / `register_project` / `activate_project` / `unregister_project` | マルチプロジェクトレジストリの制御 |
+
+**ガイド付きセットアップ**
+
+| Tool | 用途 |
+|---|---|
+| `tesserae_setup_plan` | 環境を検出してセットアップ計画を JSON で提案。読み取り専用 — `.tesserae/` には一切触れない |
+| `tesserae_setup_apply` | （編集された可能性のある）計画を適用：`.tesserae/config.json` を書き込み、ゲートされたインストール/実行アクションを行う。`confirm_install_actions` / `confirm_run_actions` でゲート |
 
 ### Resources — モデルのコンテキストへ自動的に読み込まれる
 

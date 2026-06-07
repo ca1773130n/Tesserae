@@ -13,6 +13,15 @@ Tesserae のセッショングラフは、プロジェクトに関する Claude 
 1. **構造的**(常時実行、LLM なし)。`tesserae sessions discover --import` が `.tesserae/harness_sessions/` に書き込んだ正規化された `HarnessSession` レコードを読みます。各セッションについて `Session` エンベロープノードを発行し、エージェントが開いたすべてのドキュメントから `discussed_in` エッジを発行し、既存の `decisions` フィールドを `SessionDecision` ノードに変換します。
 2. **LLM**(オプトイン、`ANTHROPIC_API_KEY` 設定時に実行)。正規化された会話ターン(`metadata["turns"]` フィールド — 生のトランスクリプトファイルではない)を JSON のみの発見スキーマで Claude に送信します。6 種類の発見を返し、それぞれ特定のターンと現在のグラフ内の特定のドキュメントノード ID を引用します。content_hash + project_root_hash でキャッシュされるため、変更されていないセッションは次のコンパイルで呼び出しをスキップします。
 
+## セッションを取り込む二つの方法:バッチ vs ライブ
+
+上記のパイプラインはセッションがどう届くかに関係なく同じです。異なるのは*いつ*発見・コンパイルされるかです:
+
+- **バッチ(手動)。** 自分で `tesserae project sessions discover --import` を実行し、続いて `tesserae project compile` を実行します。一度きりのバックフィルや CI に最適です。本ページの残りはこの経路を辿ります。
+- **ライブ(継続)。** エンジンにプロジェクトを監視させ、作業が発生するたびに再コンパイルさせることで、何かを実行するのを覚えていなくてもグラフを新鮮に保ちます:
+  - **スーパーバイザーデーモン** — `tesserae project engine`(エイリアス `tesserae project daemon`)は単一所有者の asyncio ループを実行し、設定されたソースを監視し、編集のバーストを 1 回の `Pipeline.run()` にまとめ、自動再コンパイルします。`--once` で決定論的な単一ドレイン、`--interval` / `--debounce` でまとめ方を調整します。`tesserae project refresh` は同じ import → compile → vault-sync チェーンをインプロセスで一度実行します。
+  - **Claude Code プラグインフック** — [プラグイン](claude-code-plugin.ja.md)をインストールすると、`SessionEnd` フックが会話終了時に import + compile をバックグラウンド実行し、*今回*のセッションの洞察が*次*のセッションのグラフノードになります。`SessionStart` フックは入室時に現在のグラフサマリを出力します。これが手動の discover/compile ステップなしにセッションを「発生したそばから」捕捉することに最も近い方法です。
+
 ## セットアップ
 
 ```bash

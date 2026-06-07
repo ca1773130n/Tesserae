@@ -58,19 +58,53 @@ tesserae project mcp-config
 
 ### Tools —— 由模型调用
 
+每个 tool 都接受可选的 `graph_path` 或 `project`（注册表别名），因此单个服务器可在每次调用时解析任意已注册的 vault。省略时回退到活动项目。
+
+**图谱查询与检索**
+
 | Tool | 用途 |
 |---|---|
 | `schema` | 受控的 node、edge 和 wiki-kind 词汇表 |
 | `graph_summary` | 当前项目的节点 + 边计数以及类型分布 |
-| `search_nodes` | 按 query、type、kind 过滤图节点，按分数返回 top-N |
-| `node_context` | 一个节点 + 它的相邻边 + 邻居节点 |
-| `search_facts` | 从图谱投影出的时序事实（Graphiti 风格） |
+| `search_nodes` | 按 `query`、`type`/`types`、`kind`、`limit`、混合 `mode`/`weights` 过滤公开图节点；`include_superseded` 可显示已废弃节点 |
+| `node_context` | 一个节点 + 它的相邻边 + 邻居节点。`use_ppr` 用个性化 PageRank 而非 1 跳游走对邻居排序；`include_superseded`、`limit` 限定结果 |
+| `embedding_status` | 报告驱动混合检索的活动嵌入后端 |
+| `search_facts` | 从图谱投影出的时序事实（Graphiti 风格）；`current_only` 仅过滤当前事实 |
 | `timeline` | 按 `valid_from` 排序的事实，用于纵向视图 |
-| `wiki_page` | 节点对应的、已编译的 wiki 页面正文 |
+| `graph_ppr` | 从一个或多个 `seed_node_id` 出发的个性化 PageRank，返回最相关的 top-K 节点；可调 `alpha`、`directed`、`edge_type_weights` |
+| `wiki_page` | 节点对应的、已编译的 wiki 页面正文，以及它引用的内部链接 |
 | `raw_source` | 原始 markdown 源文（上限 16 KB） |
-| `lint_report` | 最近一次编译期的 lint 结果 |
-| `ask` | 通过配置的记忆后端进行自然语言问答（raganything、cognee 或 compiled wiki） |
+| `lint_report` | 最近一次编译期的 lint 结果（上限 64 KB） |
+
+**按需上下文编译器**（Phase 7）
+
+| Tool | 用途 |
+|---|---|
+| `compile_context` | 为 `query` 或显式 `seeds` 编译一份量身定制的**带引用**上下文文档。遍历深度受限的子图（`depth`，1–10，默认 2），用 PPR 排序，并填充字符 `budget`（默认 32000；传 `0` 表示不限）。默认确定性；设 `synthesize: true` 可生成由 LLM 撰写的叙述式 "topic" 切片。返回 `body`、`citations`、`selected_node_ids` 和 `char_budget_used` |
+| `list_communities` | 列出后编译阶段生成的 `COMMUNITY_SUMMARY` 节点，按成员数排序（`min_size`、`limit`）；通过 `node_context` 沿 `summarizes` 边回溯到成员 |
+| `fresh_insights` | 按艾宾浩斯式衰减分数（最新 + 访问最多优先）排序的会话发现；过滤掉被更新近似重复项取代的发现。可选 `kind`、`limit`、`include_superseded` |
+
+**会话记忆**（见 [sessions.md](sessions.md)）
+
+| Tool | 用途 |
+|---|---|
+| `list_sessions` | 活动项目的会话信封（id、started_at、title、files_touched、发现计数）；`since`、`limit` |
+| `find_session_findings` | 通过 `discussed_in` / `references` 关联到 `node_id` 的所有会话发现，可按 `kinds`（insight / decision / question / todo / hypothesis / takeaway）过滤 |
+| `find_code_symbol_mentions` | 将一个会话发现扩展为它提及的 `CodeFunction`/`CodeClass`/`CodeMethod` 符号（使用可选启用的 insight↔symbol 关联阶段生成的 `discusses` 边） |
+
+**问答与注册表**
+
+| Tool | 用途 |
+|---|---|
+| `ask` | 通过配置的记忆后端进行自然语言问答（raganything、cognee 或 compiled wiki）。`backend`、`top_k`；通过 `scope`/`scope_aliases` 跨 vault 扇出；`claude_config_dir` 用于多账户路由 |
 | `list_projects` / `register_project` / `activate_project` / `unregister_project` | 多项目注册表控制 |
+
+**引导式设置**
+
+| Tool | 用途 |
+|---|---|
+| `tesserae_setup_plan` | 检测环境并以 JSON 形式提出设置计划。只读 —— 绝不触碰 `.tesserae/` |
+| `tesserae_setup_apply` | 应用（可能已编辑的）计划：写入 `.tesserae/config.json` 并执行受控的安装/运行动作。受 `confirm_install_actions` / `confirm_run_actions` 限制 |
 
 ### Resources —— 自动加载到模型的上下文
 

@@ -13,6 +13,15 @@ hash-stable bodies) intact.
 This page covers when to enable it, what it costs, what data leaves your
 machine, and how to inspect the output.
 
+> **Scope.** This is *compile-time* synthesis: it (re)writes the standing wiki
+> pages (pulse, daily digest, weekly, topic, comparison, field overview) on
+> every compile. It is distinct from the *on-demand* context compiler
+> (`compile_context` / the MCP `compile_context` tool), which assembles a
+> citation-bounded bundle for a specific query at request time via personalized
+> PageRank over the graph and a character budget. Both restate graph facts with
+> citations; only the synthesis path here runs an LLM, and only it persists
+> Markdown pages.
+
 ## What it does
 
 Both paths consume the same `_PagePlan` inputs (node ids, names, types,

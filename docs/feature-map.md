@@ -5,7 +5,60 @@
 <!-- translations:end -->
 This document summarizes the features currently implemented in Tesserae, with status, source files, and where they're documented.
 
+Tesserae is a **context engine** running on three pillars: (1) session monitoring, (2) autonomous proactive knowledge ingestion, and (3) on-demand docs/context. The typed graph, vault, and static site are projections of the knowledge base. The features below are grouped by which pillar they serve; the **v0.5.0** milestone (June 2026) shipped the engine spine and the headline Pillar-3 feature, the on-demand context compiler.
+
 Status legend: ✅ shipped · ⚠ in-progress / partial.
+
+## Context engine — v0.5.0 (June 2026)
+
+The engine spine that drives the three pillars. See [`docs/architecture.md`](architecture.md) for the engine-spine module map, the self-improvement memory sidecar, and the context-compiler dataflow.
+
+### Engine spine (pillars 1 & 2)
+
+| Feature | Status | Source | Notes |
+|---|---|---|---|
+| `Pipeline` — reusable refresh chain returning `List[StepResult]` | ✅ | [`tesserae/engine/pipeline.py`](../tesserae/engine/pipeline.py) | One step runner the CLI, daemon, and MCP all call. Catches `Exception` per step; stops at first failure. |
+| `Daemon` — single-owner asyncio supervisor | ✅ | [`tesserae/engine/daemon.py`](../tesserae/engine/daemon.py) | Watches sources + vault + harness-session dir; debounced cancel-and-reschedule coalesces a burst into one `Pipeline.run()`. Pidfile; survives in-flight exceptions. |
+| `project engine` / `project daemon` | ✅ | [`tesserae/cli.py`](../tesserae/cli.py) | `--interval`, `--debounce`, `--once`. `daemon` is an alias of `engine`. |
+| `project refresh` — prose chain (ingest → compile → project) | ✅ | `cli.py` + [`tesserae/project.py`](../tesserae/project.py) | `--changed-only` (opt-in incremental), `--skip-sessions`. |
+| Live session monitor → findings | ✅ | `harness_sessions.py` + session-graph modules | Imported sessions feed the graph; `fresh_insights` / `find_session_findings` surface them. |
+
+### Self-improvement memory (pillar 2)
+
+| Feature | Status | Source | Notes |
+|---|---|---|---|
+| `node_memory` SQLite sidecar (decay / confidence / superseded) | ✅ | [`tesserae/memory/store.py`](../tesserae/memory/store.py) | `NodeMemoryRow` + store-agnostic accessors; mutable state only. First-seen lives in the separate `node_provenance` sidecar. |
+| Ebbinghaus decay score | ✅ | [`tesserae/memory/decay.py`](../tesserae/memory/decay.py) | Ranks session findings newest + most-accessed first (drives `fresh_insights`). |
+| Supersede pass (**default-on**) | ✅ | [`tesserae/memory/supersede.py`](../tesserae/memory/supersede.py) | Deterministic verdict marks an older near-duplicate insight superseded by a newer one; adds a `supersedes` edge. |
+| Insight → code-symbol linking | ✅ | [`tesserae/memory/insight_symbol_link.py`](../tesserae/memory/insight_symbol_link.py) | `discusses` edges from session insights to the symbols they reference. |
+| Reinforce + contradiction passes | ✅ | [`tesserae/memory/reinforce.py`](../tesserae/memory/reinforce.py), [`tesserae/memory/contradiction.py`](../tesserae/memory/contradiction.py) | Access reinforcement + contradiction detection over the same sidecar. |
+| Numeric recurrence confidence in output | ✅ | [`tesserae/temporal.py`](../tesserae/temporal.py) | Temporal facts stamp `confidence` from `NodeMemoryRow.confidence`, falling back to `infer_confidence`. |
+
+### Retrieval + embeddings (pillars 2 & 3)
+
+| Feature | Status | Source | Notes |
+|---|---|---|---|
+| Hybrid retriever (BM25 + lexical + embedding, RRF k=60) | ✅ | [`tesserae/retrieval/hybrid.py`](../tesserae/retrieval/hybrid.py) | Local-first, fully deterministic. |
+| Personalized PageRank (HippoRAG-2) | ✅ | [`tesserae/retrieval/ppr.py`](../tesserae/retrieval/ppr.py) | Multi-hop seed expansion; depth-bounded subgraph. |
+| Real default embeddings (Track B, Phase 6) | ✅ | `retrieval/hybrid.py` | Default = deterministic hash-bucket pseudo-embedding (no deps); `sentence-transformers` (`all-MiniLM-L6-v2`) preferred, loaded lazily when installed. `embedding_status` MCP tool reports the active backend. |
+
+### On-demand context compiler (pillar 3 — headline)
+
+| Feature | Status | Source | Notes |
+|---|---|---|---|
+| `compile_context` — cited in-memory `ContextBundle` | ✅ | [`tesserae/context_compiler.py`](../tesserae/context_compiler.py) | Seed resolution → PPR expansion → budget-bound selection → cited markdown → optional LLM synthesis. Deterministic unless `synthesize=true`. Writes nothing to disk. |
+| `project context` CLI | ✅ | `cli.py` | `[query]`, `--seeds`, `--depth` (2), `--budget` (32000; ≤0 = uncapped), `--synthesize`, `--output`. |
+| `compile_context` MCP tool | ✅ | [`tesserae/mcp_server.py`](../tesserae/mcp_server.py) | Same pipeline over MCP; `budget=0` is uncapped. |
+| Topic-scoped export slices | ✅ | [`tesserae/site/exports.py`](../tesserae/site/exports.py) `slice_export_context_for_topic` | Topic-scoped `llms.txt` + `render_harness_context` via `compile_context`. |
+
+### Incremental compile (Phase 4 — experimental)
+
+| Feature | Status | Source | Notes |
+|---|---|---|---|
+| Provenance sidecar (`node_provenance`, first-seen) | ✅ | [`tesserae/graph_stores/sqlite.py`](../tesserae/graph_stores/sqlite.py) | Foundation for changed-only deletes; always recorded. |
+| `GraphStore` delete surface | ✅ | [`tesserae/ports/graph_store.py`](../tesserae/ports/graph_store.py) | `delete_node`, `delete_nodes_by_source` (drops nodes whose provenance set empties; cross-file concepts survive). |
+| `url_resolver` runtime store dispatch | ✅ | [`tesserae/graph_stores/url_resolver.py`](../tesserae/graph_stores/url_resolver.py) | `sqlite:///…` / `hypepaper-postgres://…` → `GraphStore`. |
+| `incremental_compile` flag | ⚠ | [`tesserae/project.py`](../tesserae/project.py) | **Default OFF / experimental.** Byte-parity proven for several edit shapes but multi-owner/producer-lifecycle gaps remain; full compile stays the default. |
 
 ## Frontend redesign — April 2026
 
@@ -100,7 +153,9 @@ Document-first, hierarchical wiki replaces the old graph dump. See [`docs/fronte
 | `project serve` local HTTP | ✅ | `cli.py` | Plain stdlib server. |
 | `project deploy` → GitHub Pages | ✅ | [`tesserae/deploy.py`](../tesserae/deploy.py) | Worktree push to `gh-pages`; optional `--enable-pages` via `gh` CLI. `--build`, `--dry-run`, `--branch`, `--remote`, `--force`. |
 | `project sessions discover/import/list` | ✅ | [`tesserae/harness_sessions.py`](../tesserae/harness_sessions.py) + `cli.py` | Inbound session history for Claude Code/Codex; discovery is explicit and scoped to the project working directory. |
-| `project watch` rebuild-on-change | ⚠ | [`tesserae/cli.py`](../tesserae/cli.py) | Subagent R is finishing the polling watcher — `--interval`, `--debounce`, `--once`, `--paths`, `--quiet` arg surface is in place; the rebuild loop body is being landed in this round. |
+| `project watch` rebuild-on-change | ✅ | [`tesserae/cli.py`](../tesserae/cli.py) + [`tesserae/watch.py`](../tesserae/watch.py) | Standalone polling watcher: `--interval`, `--debounce`, `--once`, `--paths`, `--quiet`. The multi-source supervisor lives under `project engine`/`daemon` (see Context engine). |
+| `project context` — compile a cited context doc | ✅ | `cli.py` + [`tesserae/context_compiler.py`](../tesserae/context_compiler.py) | Pillar-3 headline; see Context engine section. |
+| `project refresh` / `project engine` / `project daemon` | ✅ | `cli.py` + [`tesserae/engine/`](../tesserae/engine/) | Prose refresh chain + supervisor loop; see Context engine section. |
 
 ## Pre-existing features (carried forward unchanged)
 
@@ -146,9 +201,12 @@ Document-first, hierarchical wiki replaces the old graph dump. See [`docs/fronte
 - ✅ `tesserae project mcp-config`
 - ✅ `tesserae project build-site`
 - ✅ `tesserae project serve`
-- ✅ `tesserae project deploy` (new — GitHub Pages)
+- ✅ `tesserae project deploy` (GitHub Pages)
 - ✅ `tesserae project sessions discover/import/list` (explicit local agent-history import)
-- ⚠ `tesserae project watch` (in-progress)
+- ✅ `tesserae project watch` (standalone polling watcher)
+- ✅ `tesserae project engine` / `tesserae project daemon` (supervisor loop — v0.5.0)
+- ✅ `tesserae project refresh` (prose ingest → compile → project chain — v0.5.0)
+- ✅ `tesserae project context` (on-demand context compiler — v0.5.0)
 - ✅ `tesserae project export-agent-harness`
 - ✅ `tesserae project export-obsidian`
 - ✅ `tesserae project export-graphiti`
@@ -190,8 +248,10 @@ Generated target files for:
 ### MCP server
 
 - ✅ `tesserae_mcp` / `python3 -m tesserae.mcp_server` over stdio JSON-RPC.
-- ✅ Tools: `schema`, `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`.
-- ✅ Multi-project registry.
+- ✅ Retrieval/graph tools: `schema`, `graph_summary`, `search_nodes`, `node_context` (with `use_ppr`), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`.
+- ✅ Context-engine tools (v0.5.0): `compile_context`, `embedding_status`, `fresh_insights` (decay-ranked), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`, `ask`.
+- ✅ Setup tools: `tesserae_setup_plan`, `tesserae_setup_apply`.
+- ✅ Multi-project registry: `list_projects`, `register_project`, `activate_project`, `unregister_project`, `list_sessions`. Store URL dispatch via `url_resolver`.
 
 ## Tests
 
@@ -216,4 +276,9 @@ The current suite covers:
 - ✅ site components, pages, exports, relevance;
 - ✅ AI-sibling shape (`.txt` + `.json` per page);
 - ✅ end-to-end compile-twice idempotence;
+- ✅ engine spine: pipeline, refresh chain, daemon core + sources, `project engine` CLI;
+- ✅ self-improvement memory: sidecar, decay/supersede, supersede suppression (incl. MCP), reinforce/contradiction;
+- ✅ retrieval + embeddings: hybrid search, PPR, real default embeddings (Phase 6);
+- ✅ context compiler: shape/citation-integrity/determinism/budget/PPR-fallback, `project context` CLI, MCP `compile_context`;
+- ✅ incremental compile (experimental): differ, parity gates, provenance readiness, SQLite provenance;
 - ✅ package install and installer contract.

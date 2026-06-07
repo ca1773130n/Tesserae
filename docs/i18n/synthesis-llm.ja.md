@@ -7,6 +7,8 @@ Tesserae には 2 つの合成経路があります。デフォルトはネッ�
 
 このページでは、いつ有効にするべきか、どれくらいコストがかかるか、どのデータがマシンの外へ出るか、そして出力をどう検査するかを説明します。
 
+> **スコープ。** これは*コンパイル時* synthesis です。各コンパイルで常設の wiki ページ（pulse、daily digest、weekly、topic、comparison、field overview）を（再）生成します。*オンデマンド*のコンテキストコンパイラ（`compile_context` / MCP `compile_context` ツール）とは別物です。後者はリクエスト時に特定のクエリに対し、グラフ上の personalized PageRank と文字バジェットで citation の範囲を限定したバンドルを組み立てます。どちらの経路も citation 付きでグラフの事実を再陳述しますが、ここの synthesis 経路のみが LLM を実行し、これだけが Markdown ページを永続化します。
+
 ## 何をするか
 
 両方の経路は同じ `_PagePlan` 入力（node id、名前、type、description、source path）を消費します。違いは本文です。

@@ -7,6 +7,8 @@ Dieses Projekt kann sich selbst indexieren. Der Self-Dogfood-Flow beweist, dass 
 
 Derselbe Flow dient gleichzeitig als multimodaler Smoke-Test. Mit `--with-raganything --install-raganything --run-raganything` richtet der Dogfood-Compile RAG-Anything auf das eigene `docs/`-Markdown von Tesserae plus die Bilder unter `docs/assets/` und projekt-level `assets/`. Das validiert die multimodale Pipeline gegen einen echten, projekt-eigenen Nicht-Code-Korpus — abdeckend Screenshots und Diagramme, die die textzentrierten Source-Loader überspringen — ohne ein separates Fixture-Set zu erfinden.
 
+Er übt außerdem die Selbstverbesserungs-Schleife. Jeder Compile leitet den veränderlichen Memory-Zustand — `decay_score`, `access_count`, `confidence` und das `superseded`-Flag — neu in eine **`node_memory`-Sidecar-Tabelle** innerhalb von `.tesserae/sqlite.db` ab. Diese Skalare leben *nur* im Sidecar und niemals in `graph.json`, sodass ein erneuter Dogfood-Compile auf dem Graph byte-identical ist, während der Sidecar Decay und Recurrence verfolgt. Insights, die über `>= 3` verschiedene Sessions wiederkehren, werden mit einem numerischen Confidence in `(0, 1]` verstärkt (3 Sessions → `0.5`, 4 → `0.75`, 5+ → `1.0`, gedeckelt), in den Sidecar geschrieben und vom MCP-Tool `fresh_insights` ausgegeben, das standardmäßig Findings ausblendet, die von einem neueren Near-Duplicate ersetzt (superseded) wurden.
+
 ## Befehle
 
 Aus dem Repository-Root:
@@ -15,6 +17,9 @@ Aus dem Repository-Root:
 # Ensure the shell command is installed.
 ./scripts/install.sh --dir "$PWD"
 export PATH="$HOME/.local/bin:$PATH"
+
+# (optional) den Standard-Semantik-Embedding-Backend installieren.
+pip install 'tesserae[semantic]'
 
 # Set up this repository as an Tesserae project.
 tesserae project setup \
@@ -65,7 +70,7 @@ Schlüssel-Artefakte:
 .tesserae/config.json
 .tesserae/graph.json
 .tesserae/manifest.json
-.tesserae/sqlite.db
+.tesserae/sqlite.db          # typisierter Graph + node_memory-Sidecar + Live-HarnessSessionsDB
 .tesserae/report.md
 .tesserae/competitive_report.md
 .tesserae/temporal_facts.jsonl
@@ -143,3 +148,5 @@ server: TCP *:56821 LISTEN, serving via --host 0.0.0.0
 - Research-/Dokumentations-Markdown und Development-Code-Graph-Knoten können koexistieren.
 - Markdown-, Obsidian-, Frontend-, Graphiti-, Cognee-, SQLite-, Report- und Agent-Harness-Projektionen werden aus einer Graph-Pipeline produziert.
 - Das statische HTML-Frontend kann den Project-Graph ohne JavaScript-Build-Schritt browsen.
+- Die Selbstverbesserungs-Schleife läuft und persistiert: Decay, Access-Counts, Recurrence-Confidence und Supersede-Flags landen im `node_memory`-Sidecar, ohne `graph.json` zu stören.
+- Hybride Retrieval löst ein echtes semantisches Backend auf, wenn `tesserae[semantic]` installiert ist (Standard-`auto`-Reihenfolge: model2vec → sentence-transformers → Hash-Bucket-Stub); ohne es degradiert das Embedding-Retrieval zum nicht-semantischen Hash-Bucket-Stub und gibt eine laute Warnung aus.

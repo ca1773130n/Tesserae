@@ -11,15 +11,14 @@ Tesserae 已发布到 PyPI，并提供 shell 命令，因此用户无需手动�
 pip install tesserae
 ```
 
-就这样。`pip` 会在你的 `PATH` 中注册三个控制台脚本：
+就这样。`pip` 会在你的 `PATH` 中注册两个控制台脚本：
 
 ```bash
-tesserae --help
 tesserae --help
 tesserae_mcp --help
 ```
 
-文档中的规范命令是 `tesserae`；`tesserae`（带短横线）是别名。`tesserae_mcp` 用于启动 MCP 服务器。
+文档中的规范命令是 `tesserae`。`tesserae_mcp` 用于启动 MCP 服务器（现在它提供按需的 `compile_context` 工具——参见快速开始）。
 
 > **也可以使用 pipx。** 如果你希望把 CLI 工具保存在各自隔离的 venv 中：
 > ```bash
@@ -62,6 +61,14 @@ Anthropic 支持的合成路径使用 extras 标记：
 ```bash
 pip install "tesserae[synthesis-llm]"
 ```
+
+真正的语义嵌入（自 v0.5.0 起为默认检索通道）通过 `semantic` extra 提供：
+
+```bash
+pip install "tesserae[semantic]"
+```
+
+它会安装 `model2vec`，并下载一个轻量、可离线、无需 torch 的静态模型（约 8 MB 的 `potion-base-8M`，首次使用时下载一次）。如果没有它，混合/嵌入检索会回退到非语义的哈希桶桩实现，并发出醒目的警告。因此，凡是使用 `project ask`、`project context` 或 MCP `compile_context` 工具的用户，建议安装此 extra。
 
 ## 从源码安装（贡献者）
 

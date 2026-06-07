@@ -18,6 +18,15 @@ The pipeline is two passes per session:
    2. **`ANTHROPIC_API_KEY`** (fallback) — used only if the CLI isn't available, e.g. headless servers and CI.
    3. Neither configured → no LLM pass. The structural pass still runs.
 
+## Two ways to feed sessions in: batch vs. live
+
+The pipeline above is the same no matter how sessions arrive. What differs is *when* they get discovered and compiled:
+
+- **Batch (manual).** Run `tesserae project sessions discover --import` and then `tesserae project compile` yourself. Best for one-shot backfills or CI. This is the path the rest of this page walks through.
+- **Live (continuous).** Let the engine watch the project and recompile as work happens, so the graph stays fresh without you remembering to run anything:
+  - **Supervisor daemon** — `tesserae project engine` (alias `tesserae project daemon`) runs a single-owner asyncio loop that watches the configured sources, coalesces bursts of edits into one `Pipeline.run()`, and auto-recompiles. Pass `--once` for a single deterministic drain, or `--interval` / `--debounce` to tune coalescing. `tesserae project refresh` runs the same import → compile → vault-sync chain once, in-process.
+  - **Claude Code plugin hooks** — with the [plugin](claude-code-plugin.md) installed, the `SessionEnd` hook backgrounds an import + compile when a conversation ends, so *this* session's insights become graph nodes for the *next* one. The `SessionStart` hook prints the current graph summary on the way in. This is the closest thing to capturing sessions "as they happen" — no manual discover/compile step at all.
+
 ## Setup
 
 ```bash

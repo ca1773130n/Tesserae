@@ -12,6 +12,8 @@ ingiere conocimiento de forma autónoma, mejora su base por sí mismo y sirve
 contexto bajo demanda listo para agentes, reemplazando la CLI de
 compilación por lotes manual de hoy.
 
+> **Estado a fecha de v0.5.0 (2026-06-06):** Las fases 0–6 se han **entregado**. La columna vertebral del motor (P0 orquestador de pipeline, P1 demonio supervisor, P2 monitor de sesiones en vivo) está en `tesserae/engine/`; la infraestructura de compilación incremental P3 aterrizó pero permanece **con el flag OFF/experimental**; P4 la automejora persiste mediante el sidecar `node_memory` (confianza de recurrencia numérica, supersede activado por defecto); P5 los embeddings reales por defecto se entregaron (Pista B); y **P6 — el Compilador de Contexto Bajo Demanda — es la función estelar de v0.5.0**. La fase 7 (unificar serve + watch + deploy + tests de ciclo de vida) sigue **abierta**. El estado por fase se anota en línea más abajo. Véanse las [notas de la versión v0.5.0](release-notes/v0.5.0.es.md).
+
 ## Forma de las dependencias
 
 ```
@@ -32,7 +34,9 @@ pueden correr en paralelo una vez aterrice P1. P7 las hace converger.
 
 ---
 
-## Fase 0 — Orquestador de pipeline (cimiento de mitigación de riesgo)
+## Fase 0 — Orquestador de pipeline (cimiento de mitigación de riesgo) ✅ Entregado en v0.5.0
+
+> **Entregado en v0.5.0** — `tesserae/engine/pipeline.py` (columna vertebral del motor, fusionado en las fases 1–3).
 
 **Objetivo:** Sacar el pipeline de refresh del markdown de slash-command a un
 orquestador en proceso de primera clase que llamen el demonio, la CLI y MCP.
@@ -55,7 +59,9 @@ orquestador en proceso de primera clase que llamen el demonio, la CLI y MCP.
 - **Hallazgos de auditoría cerrados:** «refresh vive en un skill»,
   «despachador-dios de cli».
 
-## Fase 1 — Demonio supervisor (el bucle del motor)
+## Fase 1 — Demonio supervisor (el bucle del motor) ✅ Entregado en v0.5.0
+
+> **Entregado en v0.5.0** — `tesserae/engine/daemon.py` (columna vertebral del motor, fases 1–3).
 
 **Objetivo:** Un proceso supervisado de larga duración que posea un bucle de
 eventos y conduzca `Pipeline` ante disparadores, con manejo real del ciclo de
@@ -80,7 +86,9 @@ vida.
 - **Hallazgos de auditoría cerrados:** «sin demonio», «continuo = sondeador
   sleep», muerte del vigilante por `KeyboardInterrupt`, sin manejo de señales.
 
-## Fase 2 — Monitor de sesiones en vivo (Pilar 1)
+## Fase 2 — Monitor de sesiones en vivo (Pilar 1) ✅ Entregado en v0.5.0
+
+> **Entregado en v0.5.0** — `tesserae/engine/session_tail.py` (columna vertebral del motor, fases 1–3).
 
 **Objetivo:** Hacer tail de transcripciones del harness en vivo e ingerir
 turnos mientras corren las sesiones, reemplazando el `sessions discover
@@ -103,7 +111,9 @@ turnos mientras corren las sesiones, reemplazando el `sessions discover
 - **Hallazgos de auditoría cerrados:** escaneo de sesión a posteriori,
   invalidación de caché de sesión entera, almacén glob plano.
 
-## Fase 3 — Compilación incremental/streaming por el puerto GraphStore
+## Fase 3 — Compilación incremental/streaming por el puerto GraphStore ⚙️ Infraestructura entregada en v0.5.0 (flag OFF/experimental)
+
+> **Infraestructura entregada en v0.5.0** (sidecar de procedencia, superficie de borrado de GraphStore, runtime async persistente de url_resolver), pero el flag `incremental_compile` **permanece OFF/experimental** por brechas de multi-propietario/ciclo de vida del productor/cap-fallback. La paridad de bytes para las rutas cubiertas está demostrada. v0.5.0 también corrigió dos bugs reales de compilación hallados aquí: la idempotencia changed-only y el contrato de store inyectado.
 
 **Objetivo:** Reemplazar el frágil parche de desalojo de grafo `changed_only`
 por una capa incremental diseñada que fluya por `ports/graph_store.py`.
@@ -127,7 +137,9 @@ por una capa incremental diseñada que fluya por `ports/graph_store.py`.
 - **Hallazgos de auditoría cerrados:** `changed_only` frágil, puertos eludidos,
   asyncio por llamada, tres formatos de persistencia, sin frescura por nodo.
 
-## Fase 4 — Activar y persistir la automejora (Pilar: automejora)
+## Fase 4 — Activar y persistir la automejora (Pilar: automejora) ✅ Entregado en v0.5.0
+
+> **Entregado en v0.5.0** mediante el sidecar `node_memory` (`tesserae/memory/`): **supersede** activado por defecto con veredicto determinista y supresión aguas abajo, más la **confianza de recurrencia numérica** mostrada en la salida (frecuencia entre sesiones → `TemporalFactProjector`).
 
 **Objetivo:** Hacer que la base de conocimiento realmente evolucione en su
 lugar, encendida por defecto, persistida en tiempo de compilación.
@@ -155,7 +167,9 @@ lugar, encendida por defecto, persistida en tiempo de compilación.
   guardar con fixtures dorados.
 - **Hallazgos de auditoría cerrados:** toda la tabla del Pilar 2.
 
-## Fase 5 — Embeddings reales por defecto (cimiento de la Pista B)
+## Fase 5 — Embeddings reales por defecto (cimiento de la Pista B) ✅ Entregado en v0.5.0
+
+> **Entregado en v0.5.0** (Pista B): un `Model2VecBackend` real por defecto, un `active_embedding_backend` que **falla de forma ruidosa** (sin degradación silenciosa a blake2b), el flag del backend semántico mostrado en `embedding_status`, y un suelo de coseno que permite al carril de embeddings admitir candidatos.
 
 **Objetivo:** Dejar de entregar un pseudo-embedding determinista por cubos hash
 como carril «semántico» por defecto.
@@ -177,7 +191,9 @@ como carril «semántico» por defecto.
 - **Hallazgos de auditoría cerrados:** defecto de cubos hash, compuerta de
   candidatos del carril de embeddings.
 
-## Fase 6 — Compilador de contexto bajo demanda (Pilar 3)
+## Fase 6 — Compilador de contexto bajo demanda (Pilar 3) ✅ Entregado en v0.5.0 (función estelar)
+
+> **Entregado en v0.5.0 como función estelar.** El pipeline puro `compile_context` en `tesserae/context_compiler.py` devuelve un `ContextBundle` en memoria de `ContextCitation`s (consulta/semillas → PPR + búsqueda híbrida → vecindario k-hop acotado en profundidad → ensamblaje de cuerpos wiki → síntesis LLM opcional con fallback elegante → control de presupuesto). Expuesto como la herramienta MCP `compile_context` y el subcomando CLI `tesserae project context`; `node_context` ahora tiene una ruta clasificada `use_ppr`; se entregan slices de exportación `llms.txt` con alcance por tema.
 
 **Objetivo:** La función estrella — «dame contexto sobre X» → un documento a
 medida, citado y listo para agentes.
@@ -203,7 +219,9 @@ medida, citado y listo para agentes.
   no existe», síntesis acotada por consulta, harness estático, `node_context`
   sin ranking, exportaciones de todo el corpus.
 
-## Fase 7 — Unificar serve + watch + deploy + tests de ciclo de vida
+## Fase 7 — Unificar serve + watch + deploy + tests de ciclo de vida ⏳ Abierto (post-v0.5.0)
+
+> **Abierto a fecha de v0.5.0.** La fase de convergencia sigue siendo el próximo hito; el demonio (P1) y el lado de salida (P6) que une ya están ambos en su sitio.
 
 **Objetivo:** Un proceso supervisado sirve el sitio, recompila ante cambios y
 publica de forma continua; la capa de ciclo de vida obtiene cobertura de tests.
@@ -230,16 +248,16 @@ publica de forma continua; la capa de ciclo de vida obtiene cobertura de tests.
 
 ## Resumen de secuenciado
 
-| Fase | Tema | Depende de | Paralelizable con |
-|---|---|---|---|
-| P0 | Orquestador de pipeline | — | — |
-| P1 | Demonio supervisor | P0 | — |
-| P2 | Monitor de sesiones en vivo | P1 | P5 |
-| P3 | Compilación incremental | P1 | P5 |
-| P4 | Persistencia de automejora | P3 | P5, P6 |
-| P5 | Embeddings reales | P0 | P2, P3, P4 |
-| P6 | Compilador de contexto bajo demanda | P5 | P2, P3, P4 |
-| P7 | Unificar serve/watch/deploy | P1, P6 | — |
+| Fase | Tema | Depende de | Paralelizable con  Estado |
+|---|---|---|------|
+| P0 | Orquestador de pipeline | — | —  ✅ Entregado en v0.5.0 |
+| P1 | Demonio supervisor | P0 | —  ✅ Entregado en v0.5.0 |
+| P2 | Monitor de sesiones en vivo | P1 | P5  ✅ Entregado en v0.5.0 |
+| P3 | Compilación incremental | P1 | P5  ⚙️ Infraestructura entregada en v0.5.0 (flag OFF/experimental) |
+| P4 | Persistencia de automejora | P3 | P5, P6  ✅ Entregado en v0.5.0 |
+| P5 | Embeddings reales | P0 | P2, P3, P4  ✅ Entregado en v0.5.0 |
+| P6 | Compilador de contexto bajo demanda | P5 | P2, P3, P4  ✅ Entregado en v0.5.0 |
+| P7 | Unificar serve/watch/deploy | P1, P6 | —  ⏳ Abierto (post-v0.5.0) |
 
 **Motor mínimo viable:** P0 + P1 + P2 + P3 — un demonio en ejecución que vigila
 sesiones en vivo y compila incrementalmente. **Producto diferenciado:** añadir

@@ -11,15 +11,14 @@ Tesserae est publié sur PyPI et expose des commandes shell afin que les utilisa
 pip install tesserae
 ```
 
-C'est tout. `pip` enregistre trois scripts console dans votre `PATH` :
+C'est tout. `pip` enregistre deux scripts console dans votre `PATH` :
 
 ```bash
-tesserae --help
 tesserae --help
 tesserae_mcp --help
 ```
 
-La commande canonique dans la documentation est `tesserae` ; `tesserae` (avec un tiret) est un alias. `tesserae_mcp` démarre le serveur MCP.
+La commande canonique dans la documentation est `tesserae`. `tesserae_mcp` démarre le serveur MCP (qui expose désormais l'outil `compile_context` à la demande — voir le Démarrage rapide).
 
 > **pipx convient aussi.** Si vous préférez garder les outils CLI dans leurs propres venv isolés :
 > ```bash
@@ -62,6 +61,14 @@ Le chemin de synthèse basé sur Anthropic utilise un marqueur extras :
 ```bash
 pip install "tesserae[synthesis-llm]"
 ```
+
+Les véritables embeddings sémantiques (la voie de récupération par défaut depuis la v0.5.0) sont fournis via l'extra `semantic` :
+
+```bash
+pip install "tesserae[semantic]"
+```
+
+Cela installe `model2vec` et télécharge un modèle statique léger, hors ligne et sans torch (environ 8 Mo de `potion-base-8M`, téléchargé une seule fois lors de la première utilisation). Sans lui, la récupération hybride/par embeddings retombe sur un stub non sémantique à seaux de hachage et émet un avertissement bien visible ; l'installation de cet extra est donc recommandée à quiconque utilise `project ask`, `project context` ou l'outil MCP `compile_context`.
 
 ## Installer depuis la source (pour les contributeurs)
 

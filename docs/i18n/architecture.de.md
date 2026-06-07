@@ -3,7 +3,9 @@
 <!-- translations:start -->
 <p align="center"><a href="../architecture.md">English</a> · <a href="architecture.ko.md">한국어</a> · <a href="architecture.zh.md">中文</a> · <a href="architecture.ja.md">日本語</a> · <a href="architecture.ru.md">Русский</a> · <a href="architecture.es.md">Español</a> · <a href="architecture.fr.md">Français</a></p>
 <!-- translations:end -->
-Tesserae verwandelt ein Verzeichnis mit Quellmaterial in einen kontrollierten, typisierten Knowledge Graph und projiziert diesen Graph über eine langlebige Markdown-Wiki-Schicht in eine statische, KI-freundliche Website. Das Redesign vom April 2026 hat das System um ein dreischichtiges Modell nach Karpathy reorganisiert: Rohbelege bleiben roh, ein typisierter Graph regiert die Ontologie, und eine Markdown-Wiki-Schicht sitzt zwischen Graph und gerendertem Output. Die statische Site ist jetzt ein *Renderer* dieser Wiki-Schicht statt einer direkten Ausgabe des Graphen, mit der kontrollierten Ontologie in [`tesserae/research_graph.py`](../tesserae/research_graph.py) als Schema.
+Tesserae ist eine **Kontext-Engine**. Sie rekonstruiert eine sich selbst verbessernde Wissensbasis aus deinem Projekt und übergibt sie Agenten als sofort nutzbaren Kontext. Sie ruht auf drei Säulen: (1) **Sitzungsüberwachung** — Live-Agenten-/Arbeitssitzungen beobachten und Erkenntnisse erfassen, sobald sie entstehen; (2) **autonome, proaktive Wissensaufnahme** — eine Pipeline + Supervisor-Schleife ziehen und re-extrahieren Wissen kontinuierlich und verbessern die Basis, statt auf Anweisungen zu warten; (3) **Dokumente/Kontext auf Abruf** — vom Nutzer angeforderte Artefakte, kompiliert aus derselben Basis. Der typisierte Graph, der Markdown-Vault und die statische Site sind *Projektionen* der Wissensbasis; die Engine ist die Schleife, die sie frisch hält und Agenten speist.
+
+Darunter verwandelt Tesserae ein Verzeichnis mit Quellmaterial in einen kontrollierten, typisierten Knowledge Graph und projiziert diesen Graph über eine langlebige Markdown-Wiki-Schicht in eine statische, KI-freundliche Website. Das Redesign vom April 2026 hat die Projektionsseite um ein dreischichtiges Modell nach Karpathy reorganisiert: Rohbelege bleiben roh, ein typisierter Graph regiert die Ontologie, und eine Markdown-Wiki-Schicht sitzt zwischen Graph und gerendertem Output. Die statische Site ist ein *Renderer* dieser Wiki-Schicht statt einer direkten Ausgabe des Graphen, mit der kontrollierten Ontologie in [`tesserae/research_graph.py`](../tesserae/research_graph.py) als Schema. Der Meilenstein **v0.5.0** (Juni 2026) ergänzte das Engine-Rückgrat, das alle drei Säulen antreibt — siehe *Engine-Rückgrat* und *On-Demand-Kontext-Compiler* unten.
 
 ## Das dreischichtige Karpathy-Modell
 
@@ -65,6 +67,39 @@ data/, docs/, src/                                    (L1 raw)
 
 Jeder Schritt ist inkrementell. Der Graph-Extraktor nutzt die Content-Hashes aus `manifest.json`, um unveränderte Quelldateien zu überspringen. `WikiPageStore.write_page` gibt `False` zurück (und überspringt den Write), wenn der Body-Hash mit dem auf der Festplatte übereinstimmt. `StaticSiteBuilder` löscht und überschreibt `.tesserae/site/`, aber sein Output ist deterministisch — siehe „Idempotenz-Story“ unten.
 
+## Datenfluss des Kontext-Compilers
+
+Der On-Demand-Kontext-Compiler ([`tesserae/context_compiler.py`](../tesserae/context_compiler.py)) ist der Vorzeigepfad von Säule 3. Bei einer Abfrage und/oder expliziten Seed-Knoten-IDs baut `compile_context` ein maßgeschneidertes, **zitiertes** Markdown-Bundle direkt aus dem Graphen und gibt es im Speicher zurück — er schreibt nichts unter `.tesserae/`.
+
+```
+query / seeds
+     │
+     ▼  1. Seed-Auflösung
+        explizite Seeds (nur behalten, wenn im Graphen vorhanden) + hybrid_search()-Treffer, dedupliziert, stabile Reihenfolge
+     │
+     ▼  2. PPR-Expansion
+        retrieval.ppr.personalized_pagerank rankt die tiefenbegrenzte k-Hop-Nachbarschaft;
+        leeres Ergebnis (unverbundene Seeds) → Rückfall auf die Seed-Reihenfolge (Bundle nie leer)
+     │
+     ▼  3. Budgetbegrenzte Auswahl
+        PPR-Reihenfolge durchlaufen, jeden zitierten Knoten-Body aufnehmen, bis der nächste Body
+        `budget` Zeichen überschreiten würde (budget <= 0 = unbegrenzt; Überlaufmarker an Wortgrenze)
+     │
+     ▼  4. Zusammenbau des zitierten Markdowns
+        ein Abschnitt pro ausgewähltem Knoten + ein abschließender `## Citations`-Block.
+        Der Body bevorzugt die projizierte Wiki-Seite (wenn ein Store und ein öffentlicher Wiki-Typ existieren),
+        sonst die Knotenbeschreibung, sonst einen Minimal-Stub. Der Body ohne LLM bettet keinen
+        Wanduhr-Zeitstempel ein → bytegleich für dasselbe (graph, query, seeds, depth, budget).
+     │
+     ▼  5. Optionale LLM-Synthese  (nur wenn synthesize=true UND ANTHROPIC_API_KEY vorhanden ist)
+     ▼
+   ContextBundle { query, seeds_used, ranked_nodes, selected_nodes,
+                   citations[ContextCitation], body, synthesized,
+                   char_budget_used, char_budget_total }
+```
+
+Standardwerte: `depth=2`, `budget=32000`. Der deterministische Zusammenbau (Schritte 1–4) ist der Vertrag; die LLM-Synthese ist rein additiv. Dieselbe Pipeline trägt den CLI-Befehl `project context`, das MCP-Werkzeug `compile_context` und die themenbezogenen Export-Slices (`slice_export_context_for_topic`, themenbezogene `llms.txt`).
+
 ## Modul-Karte
 
 ### Wiki + Synthese (L2)
@@ -103,9 +138,55 @@ Jeder Schritt ist inkrementell. Der Graph-Extraktor nutzt die Content-Hashes aus
 
 | Modul | Verantwortung |
 |---|---|
-| [`tesserae/project.py`](../tesserae/project.py) | `ProjectWiki.compile`: treibt Extraktion → Graph → Wiki-Layer → Site. Besitzt `ProjectPaths` (`config`, `graph`, `manifest`, `wiki`, `site`, etc.). |
-| [`tesserae/cli.py`](../tesserae/cli.py) | Alle `tesserae project …`-Subcommands, inklusive `compile`, `build-site`, `serve`, `watch`, `deploy`. |
+| [`tesserae/project.py`](../tesserae/project.py) | `ProjectWiki.compile`: treibt Extraktion → Graph → Memory-Pässe → Wiki-Layer → Site. Besitzt `ProjectPaths` (`config`, `graph`, `manifest`, `wiki`, `site`, etc.). Entscheidet vorab, ob eine herkunftsbasierte (provenance) inkrementelle Kompilierung infrage kommt (durch `incremental_compile` gesteuert, Standard OFF). |
+| [`tesserae/cli.py`](../tesserae/cli.py) | Alle `tesserae project …`-Subcommands, inklusive `compile`, `refresh`, `context`, `build-site`, `serve`, `watch`, `engine`/`daemon`, `deploy`. |
 | [`tesserae/deploy.py`](../tesserae/deploy.py) | `project deploy`: pusht `.tesserae/site/` auf einen `gh-pages`-Branch via Worktree, aktiviert optional Pages via `gh`. |
+
+### Engine-Rückgrat (v0.5.0 — Säulen 1 & 2)
+
+Das Engine-Rückgrat ist die In-Process-Schleife, die Sitzungsüberwachung und autonome Re-Ingestion antreibt. Dasselbe `Pipeline.run()` ist der einzige Aktualisierungspfad, den CLI, der Supervisor-Daemon und (später) der MCP-Server alle aufrufen.
+
+| Modul | Verantwortung |
+|---|---|
+| [`tesserae/engine/pipeline.py`](../tesserae/engine/pipeline.py) | `Pipeline`: sequenzieller Schrittausführer. Kodifiziert die prosaische Aktualisierungskette (Aufnahme → Kompilierung → Projektion/Veröffentlichung) als importierbares Objekt, das eine strukturierte `List[StepResult]` zurückgibt statt drucken-und-beenden, sodass jeder Aufrufer selbst entscheidet, wie er Ergebnisse darstellt. `run()` fängt `Exception` pro Schritt (lässt `KeyboardInterrupt`/`SystemExit` durch) und stoppt beim ersten Fehler. |
+| [`tesserae/engine/daemon.py`](../tesserae/engine/daemon.py) | `Daemon`: Asyncio-Supervisor mit alleinigem Besitzer. Überwacht Quellverzeichnisse, den Obsidian-Vault und das Harness-Sitzungsverzeichnis; über ein Abbrechen-und-Neuplanen-Debounce fasst er eine Serie von `TriggerEvent`s zu genau einem `Pipeline.run()` zusammen. Verwendet die vorhandenen Watcher `watch.py` / `vault_watch.py` wieder (schreibt sie nicht neu), schreibt eine Pidfile und überlebt Ausnahmen im laufenden Betrieb. Über `project engine` / `project daemon` (`--interval`, `--debounce`, `--once`) verfügbar. |
+| [`tesserae/watch.py`](../tesserae/watch.py), [`tesserae/vault_watch.py`](../tesserae/vault_watch.py) | Polling-Watcher, die sowohl vom eigenständigen Befehl `project watch` als auch von den Quell-/Vault-Spuren des Daemons wiederverwendet werden. |
+
+### Selbstverbesserungs-Speicher (v0.5.0 — Säule 2)
+
+Phase 5 aktivierte die persistente Selbstverbesserung. Der veränderliche Zustand pro Knoten liegt in einem `node_memory`-SQLite-Sidecar (innerhalb von `.tesserae/sqlite.db`), getrennt vom unveränderlichen Erstsichtungs-Stempel `node_provenance.first_seen_at` (Sidecar aus Phase 4). Die Kompilierung treibt eine Reihe deterministischer Pässe über den Graphen.
+
+| Modul | Verantwortung |
+|---|---|
+| [`tesserae/memory/store.py`](../tesserae/memory/store.py) | `NodeMemoryRow` + store-unabhängige Accessoren (`read_memory`, `write_memory`, `bump_access`) über die `node_memory`-Tabelle — `decay_score`, `last_accessed_at`, `confidence`, `superseded`. Keine Aufrufstelle bettet rohes SQL ein. |
+| [`tesserae/memory/decay.py`](../tesserae/memory/decay.py) | `compute_decay_score`: Ebbinghaus-artige Frischescore (neueste + am häufigsten aufgerufene zuerst) zum Ranking von Sitzungsbefunden. |
+| [`tesserae/memory/supersede.py`](../tesserae/memory/supersede.py) | `run_supersede_pass` (**standardmäßig EIN**): deterministisches Urteil, das ein älteres Beinahe-Duplikat-Insight als durch ein neueres ersetzt markiert und eine `supersedes`-Kante hinzufügt. |
+| [`tesserae/memory/insight_symbol_link.py`](../tesserae/memory/insight_symbol_link.py) | `run_insight_symbol_link_pass`: verknüpft Sitzungs-Insights über `discusses`-Kanten mit den Code-Symbolen, die sie behandeln. |
+| [`tesserae/memory/reinforce.py`](../tesserae/memory/reinforce.py), [`tesserae/memory/contradiction.py`](../tesserae/memory/contradiction.py) | Helfer für Zugriffsverstärkung und Widerspruchserkennung über demselben Sidecar. |
+
+Die Wiederkehr-Konfidenz ist in der Ausgabe numerisch: Die zeitliche Projektion stempelt die `confidence` jedes Fakts aus `NodeMemoryRow.confidence` (Text in SQLite, über `temporal.py` bereitgestellt) und greift nur dann auf `infer_confidence` zurück, wenn kein gespeicherter Wert existiert.
+
+### Retrieval (v0.5.0 — Säulen 2 & 3)
+
+| Modul | Verantwortung |
+|---|---|
+| [`tesserae/retrieval/hybrid.py`](../tesserae/retrieval/hybrid.py) | `hybrid_search`: local-first Hybrid-Retriever, der drei Spuren — Okapi BM25 (k1=1.5, b=0.75), case-folding lexikalische/FTS-artige Teilstring-Übereinstimmung und eine einsteckbare Embedding-Spur — per Reciprocal-Rank-Fusion (RRF, k=60) verschmilzt. Vollständig deterministisch. |
+| [`tesserae/retrieval/ppr.py`](../tesserae/retrieval/ppr.py) | `personalized_pagerank`: Personalized PageRank im HippoRAG-2-Stil (arXiv:2502.14802) über den Graphen zur Multi-Hop-Seed-Expansion — bringt gut verbundene Knoten mehrere Hops von der Seed entfernt an die Oberfläche, nicht nur die 1-Hop-Nachbarschaft. |
+| Embedding-Backend (Phase 6, Track B) | Das Standard-Backend der Embedding-Spur des Hybrids ist ein deterministisches Hash-Bucket-Pseudo-Embedding, das keine zusätzlichen Abhängigkeiten braucht; `sentence-transformers` (`all-MiniLM-L6-v2`) wird bevorzugt und lazy geladen, wenn die optionale Abhängigkeit installiert ist. Das MCP-Werkzeug `embedding_status` meldet das aktive Backend. |
+
+### On-Demand-Kontext-Compiler (v0.5.0 — Vorzeigefeature von Säule 3)
+
+| Modul | Verantwortung |
+|---|---|
+| [`tesserae/context_compiler.py`](../tesserae/context_compiler.py) | `compile_context`: das Vorzeigefeature von Säule 3. Kompiliert ein maßgeschneidertes, **zitiertes** Kontext-Bundle für ein Abfrage-/Seed-Set direkt aus dem Graphen — siehe *Datenfluss des Kontext-Compilers* unten. Gibt ein `ContextBundle` im Speicher (mit `ContextCitation`s) zurück; schreibt nichts auf die Festplatte. Über den CLI-Befehl `project context` und das MCP-Werkzeug `compile_context` verfügbar. |
+
+### Persistenz-Ports + Graph-Stores
+
+| Modul | Verantwortung |
+|---|---|
+| [`tesserae/ports/graph_store.py`](../tesserae/ports/graph_store.py) | `GraphStore`-Protokoll: `upsert_node`/`upsert_edge`, `get_node`, `iterate_nodes`, `query_subgraph`, `find_canonical` und die Löschfläche aus Phase 4 — `delete_node` und `delete_nodes_by_source` (löscht Knoten, deren Herkunftsmenge nach Entfernen der angegebenen Quellpfade leer wird, sodass dateiübergreifende Konzepte überleben). |
+| [`tesserae/graph_stores/sqlite.py`](../tesserae/graph_stores/sqlite.py) | `SqliteGraphStore`: eigenständiger Backing-Store; besitzt die Sidecar-Tabellen `node_provenance` und `node_memory`. |
+| [`tesserae/graph_stores/url_resolver.py`](../tesserae/graph_stores/url_resolver.py) | Löst eine Store-URL (`sqlite:///…`, `hypepaper-postgres://…`) zum passenden `GraphStore` auf, sodass der MCP-Server zur Laufzeit auf einen beliebigen Backing-Store zeigen kann. |
 
 ### Externe Adapter (in dieser Runde unverändert)
 
@@ -116,7 +197,7 @@ Jeder Schritt ist inkrementell. Der Graph-Extraktor nutzt die Content-Hashes aus
 | [`tesserae/harness_sessions.py`](../tesserae/harness_sessions.py) | Inbound Discovery, Normalisierung und Storage von Claude-Code-/Codex-Sessions unter `.tesserae/harness_sessions/` plus redigierte Markdown-Zusammenfassungen. |
 | [`tesserae/graphiti_adapter.py`](../tesserae/graphiti_adapter.py) | Temporal-Fact-JSONL + optionaler Live-Sync mit Graphiti. |
 | [`tesserae/cognee_adapter.py`](../tesserae/cognee_adapter.py) | Cognee-Nodes/Edges-JSONL-Bundle und direkter Add-/Cognify-Pfad. |
-| [`tesserae/mcp_server.py`](../tesserae/mcp_server.py) | MCP-Stdio-Server, der `schema`, `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline` exponiert. |
+| [`tesserae/mcp_server.py`](../tesserae/mcp_server.py) | MCP-Stdio-Server. Retrieval/Graph: `schema`, `graph_summary`, `search_nodes`, `node_context` (mit `use_ppr`), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`. Kontext-Engine (v0.5.0): `compile_context` (der On-Demand-Kontext-Compiler), `embedding_status`, `fresh_insights` (nach Decay gerankte Sitzungsbefunde), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`. Dazu `ask`, die Multi-Projekt-Registry-Werkzeuge (`list_projects`, `register_project`, `activate_project`, `unregister_project`, `list_sessions`) sowie `tesserae_setup_plan` / `tesserae_setup_apply`. |
 
 ## Projekt-Workspace-Layout
 
@@ -125,8 +206,10 @@ Jeder Schritt ist inkrementell. Der Graph-Extraktor nutzt die Content-Hashes aus
   config.json                 project name, source kind, source list
   graph.json                  validated ResearchGraph (incl. Synthesis nodes)
   manifest.json               per-source content hashes (input dedup)
-  sqlite.db                   SQLite graph store
-  temporal_facts.jsonl        Graphiti-style temporal projection
+  sqlite.db                   SQLite graph store; besitzt außerdem die Sidecar-Tabellen node_provenance
+                              (Erstsichtung, Phase 4) und node_memory (Decay / Konfidenz /
+                              ersetzt, Phase 5)
+  temporal_facts.jsonl        Graphiti-style temporal projection (numerische Wiederkehr-Konfidenz)
   graphiti_episodes.jsonl     dependency-free Graphiti episode export
   report.md                   graph quality / summary
   competitive_report.md       comparison vs. MegaMem / Graphiti / others
@@ -225,6 +308,11 @@ Das wird durch `tests/test_site_pages.py` und den End-to-End-Smoke in `tests/tes
 ## Test-Strategie
 
 - **Unit** — `tests/test_wiki_store.py`, `tests/test_synthesis.py`, `tests/test_site_components.py`, `tests/test_site_pages.py`, `tests/test_site_exports.py`, `tests/test_relevance.py`.
+- **Engine-Rückgrat** — `tests/test_pipeline.py`, `tests/test_refresh_pipeline.py`, `tests/test_daemon_core.py`, `tests/test_daemon_sources.py`, `tests/test_cli_engine.py`.
+- **Selbstverbesserungs-Speicher** — `tests/test_memory_sidecar.py`, `tests/test_decay_supersede.py`, `tests/test_supersede_suppression.py`, `tests/test_mcp_supersede_suppression.py`, `tests/test_memory_contradiction_reinforce.py`.
+- **Retrieval + Embeddings** — `tests/test_hybrid_search.py`, `tests/test_ppr.py`, `tests/test_real_embeddings_phase6.py`.
+- **Kontext-Compiler** — `tests/test_context_compiler.py` (Form, Zitat-Integrität, Determinismus, Budget, PPR-Rückfall), `tests/test_cli_context.py`, `tests/test_mcp_server_context.py`.
+- **Inkrementelle Kompilierung (experimentell)** — `tests/test_incremental_compile.py`, `tests/test_incremental_parity.py`, `tests/test_provenance_readiness.py`, `tests/test_sqlite_provenance.py`.
 - **Idempotenz** — `tests/test_project_e2e_redesign.py` compilet zweimal und prüft auf null Diffs in `wiki/` und `site/`.
 - **Link-Integrität** — `tests/test_frontend.py` parst jedes emittierte HTML nach hrefs und prüft, dass jeder interne Link auf eine erzeugte Datei zeigt. Es wird kein `nodes/codeclass-*.html` produziert.
 - **AI-Siblings** — für jedes `path/foo.html` prüft die Test-Suite, dass `path/foo.txt` und `path/foo.json` existieren; das JSON parst und enthält `{title, kind, body, links}`.

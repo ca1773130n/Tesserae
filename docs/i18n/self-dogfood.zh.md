@@ -5,6 +5,8 @@
 <!-- translations:end -->
 此项目可以索引自身。self-dogfood 流程证明 Tesserae 可以被安装、在自己的仓库内设置、摄取自己的 docs/source/tests/scripts、可选地刷新 Understand Anything 和 Cognee、编译图谱产物，并构建静态 Web 前端。
 
+它还会运行自我改进循环。每次编译都会把可变的记忆状态 —— `decay_score`、`access_count`、`confidence` 以及 `superseded` 标志 —— 重新导出到 `.tesserae/sqlite.db` 内部的 **`node_memory` sidecar** 表中。这些标量*仅*存在于 sidecar 中，绝不进入 `graph.json`，因此重新进行 dogfood 编译时图谱是 byte-identical 的，而 sidecar 则跟踪 decay 与 recurrence。在 `>= 3` 个不同会话中复现的 insight 会以 `(0, 1]` 范围内的数值 confidence 得到强化（3 个会话 → `0.5`，4 → `0.75`，5+ → `1.0`，封顶），写入 sidecar 并由 MCP `fresh_insights` 工具暴露；该工具默认隐藏被更新的 near-duplicate 取代（superseded）的 finding。
+
 ## 命令
 
 从仓库根目录：
@@ -13,6 +15,9 @@
 # 确保 shell 命令已安装。
 ./scripts/install.sh --dir "$PWD"
 export PATH="$HOME/.local/bin:$PATH"
+
+# （可选）安装默认的语义嵌入后端。
+pip install 'tesserae[semantic]'
 
 # 将此仓库设置为 Tesserae 项目。
 tesserae project setup \
@@ -59,7 +64,7 @@ self-demo 会把生成的产物写入：
 .tesserae/config.json
 .tesserae/graph.json
 .tesserae/manifest.json
-.tesserae/sqlite.db
+.tesserae/sqlite.db          # 类型化图谱 + node_memory sidecar + 实时 HarnessSessionsDB
 .tesserae/report.md
 .tesserae/competitive_report.md
 .tesserae/temporal_facts.jsonl
@@ -137,3 +142,5 @@ server: TCP *:56821 LISTEN, serving via --host 0.0.0.0
 - 研究/文档 markdown 和开发代码图谱节点可以共存。
 - Markdown、Obsidian、frontend、Graphiti、Cognee、SQLite、report 和 agent-harness 投影由同一条图谱流水线生成。
 - 静态 HTML 前端可以在没有 JavaScript 构建步骤的情况下浏览项目图谱。
+- 自我改进循环会运行并持久化：decay、access count、recurrence confidence 和 supersede 标志写入 `node_memory` sidecar，而不会扰动 `graph.json`。
+- 当安装了 `tesserae[semantic]` 时，混合检索会解析到真正的语义后端（默认 `auto` 顺序：model2vec → sentence-transformers → hash-bucket 桩）；未安装时，嵌入检索降级为非语义的 hash-bucket 桩并发出醒目的警告。

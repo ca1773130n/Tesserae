@@ -284,11 +284,11 @@ The page has three rails:
 
 This is the page to bookmark for the "what's been happening" question.
 
-### `/timeline/<YYYY-MM-DD>.html` ⚠
+### `/timeline/<YYYY-MM-DD>.html` ✅
 
 > _Screenshot: timeline-day.png_
 
-Per-day detail pages — listing every paper / repo / concept / synthesis tied to that calendar day — are an explicit follow-up. Subagent P is wiring the per-day detail emit through `StaticSiteBuilder`. Until that lands, heatmap cells link to the day's `digest.md` source page as an interim. (See `render_timeline` in `tesserae/site/pages.py` for the inline TODO.)
+Per-day detail pages — listing every paper / repo / concept / synthesis tied to that calendar day — now ship. `render_timeline_day` (`tesserae/site/pages.py`) is emitted per dated day through `StaticSiteBuilder` (`tesserae/site/__init__.py`), and each page is tracked in `manifest.json` as a `timeline_day` route. Heatmap cells link straight to the day page (falling back to the day's `digest.md` source page only when no per-day route exists).
 
 ## Graph view
 

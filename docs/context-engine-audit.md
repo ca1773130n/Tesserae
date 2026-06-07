@@ -13,6 +13,23 @@ This document audits the current codebase against that mission. It is the
 output of a four-way parallel review (ingestion/sessions, self-improvement,
 output/agent-facing, orchestration/lifecycle).
 
+> **Status as of v0.5.0 (2026-06-06):** This is a **point-in-time audit** (the
+> 2026-06-02 snapshot) and is kept as-is for the record. Most of its
+> cross-cutting findings are now **resolved**: the missing supervisor daemon and
+> in-process pipeline orchestrator shipped (engine spine, `tesserae/engine/`),
+> live session tailing replaces the post-hoc scan (Pillar 1), the
+> self-improvement passes are activated and persisted via the `node_memory`
+> sidecar — supersede default-on with suppression, numeric recurring-insight
+> confidence (Pillar 2), the hash-bucket default embedding is replaced by a
+> real fail-loud backend (Pillar 3), and the **Pillar-3 on-demand context
+> compiler now exists** (`compile_context`). A designed incremental layer
+> through the `GraphStore` port landed as infrastructure but stays
+> **flag-OFF / experimental**, and the serve+watch+deploy unification
+> (build-order step 7) is still open. See the
+> [phased roadmap](./context-engine-roadmap.md) for per-phase status and the
+> [v0.5.0 release notes](./release-notes/v0.5.0.md). Findings below are left
+> unedited as the original snapshot.
+
 ## Verdict in one line
 
 Tesserae today is a **mechanically healthy, well-tested batch CLI compiler**.

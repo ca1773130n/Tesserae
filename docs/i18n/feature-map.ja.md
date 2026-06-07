@@ -5,7 +5,60 @@
 <!-- translations:end -->
 このドキュメントは、Tesserae に現在実装されている機能を、状態、ソースファイル、ドキュメント上の場所とともにまとめたものです。
 
+Tesserae は 3 本の柱の上で動作する**コンテキスト エンジン**です。(1) セッション監視、(2) 自律的・能動的なナレッジ取り込み、(3) オンデマンド ドキュメント/コンテキスト。型付きグラフ、ボールト、静的サイトはナレッジ ベースの投影です。以下の機能は、どの柱に資するかで分類しています。**v0.5.0** マイルストーン（2026 年 6 月）はエンジン スパインと、柱 3 の目玉機能であるオンデマンド コンテキスト コンパイラを出荷しました。
+
 状態凡例: ✅ 出荷済み · ⚠ 進行中 / 部分実装。
+
+## コンテキスト エンジン — v0.5.0 (2026 年 6 月)
+
+3 本の柱を駆動するエンジン スパイン。エンジン スパインのモジュール マップ、自己改善メモリ サイドカー、コンテキスト コンパイラのデータフローについては [`docs/architecture.md`](architecture.ja.md) を参照してください。
+
+### エンジン スパイン（柱 1 & 2）
+
+| 機能 | 状態 | ソース | 備考 |
+|---|---|---|---|
+| `Pipeline` — `List[StepResult]` を返す再利用可能なリフレッシュ チェーン | ✅ | [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | CLI、デーモン、MCP がすべて呼び出す 1 つのステップ ランナー。ステップごとに `Exception` を捕捉し、最初の失敗で停止。 |
+| `Daemon` — 単一所有者の asyncio スーパーバイザー | ✅ | [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | ソース + ボールト + ハーネス セッション ディレクトリを監視; デバウンスされたキャンセル・再スケジュールが一連を 1 回の `Pipeline.run()` にまとめる。pidfile; 実行中の例外でも生存。 |
+| `project engine` / `project daemon` | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) | `--interval`、`--debounce`、`--once`。`daemon` は `engine` のエイリアス。 |
+| `project refresh` — 散文的チェーン（取り込み → コンパイル → 投影） | ✅ | `cli.py` + [`tesserae/project.py`](../../tesserae/project.py) | `--changed-only`（オプトイン増分）、`--skip-sessions`。 |
+| ライブ セッション監視 → 発見 | ✅ | `harness_sessions.py` + セッション グラフ モジュール | 取り込まれたセッションがグラフに供給される; `fresh_insights` / `find_session_findings` が表面化。 |
+
+### 自己改善メモリ（柱 2）
+
+| 機能 | 状態 | ソース | 備考 |
+|---|---|---|---|
+| `node_memory` SQLite サイドカー（減衰 / 信頼度 / 取って代わられた） | ✅ | [`tesserae/memory/store.py`](../../tesserae/memory/store.py) | `NodeMemoryRow` + ストア非依存アクセサ; 可変状態のみ。初回観測は別の `node_provenance` サイドカーに存在。 |
+| エビングハウス減衰スコア | ✅ | [`tesserae/memory/decay.py`](../../tesserae/memory/decay.py) | セッション発見を最新 + 最もアクセスされた順にランク付け（`fresh_insights` を駆動）。 |
+| 取って代わりパス（**既定 ON**） | ✅ | [`tesserae/memory/supersede.py`](../../tesserae/memory/supersede.py) | 決定的判定が古い近似重複インサイトを新しいものに取って代わられたと印付け; `supersedes` エッジを追加。 |
+| インサイト → コード シンボル リンク | ✅ | [`tesserae/memory/insight_symbol_link.py`](../../tesserae/memory/insight_symbol_link.py) | セッション インサイトから参照シンボルへの `discusses` エッジ。 |
+| 強化 + 矛盾パス | ✅ | [`tesserae/memory/reinforce.py`](../../tesserae/memory/reinforce.py)、[`tesserae/memory/contradiction.py`](../../tesserae/memory/contradiction.py) | 同じサイドカーに対するアクセス強化 + 矛盾検出。 |
+| 出力の数値再発信頼度 | ✅ | [`tesserae/temporal.py`](../../tesserae/temporal.py) | 時間事実が `confidence` を `NodeMemoryRow.confidence` からスタンプし、なければ `infer_confidence` にフォールバック。 |
+
+### 検索 + 埋め込み（柱 2 & 3）
+
+| 機能 | 状態 | ソース | 備考 |
+|---|---|---|---|
+| ハイブリッド検索器（BM25 + 語彙 + 埋め込み、RRF k=60） | ✅ | [`tesserae/retrieval/hybrid.py`](../../tesserae/retrieval/hybrid.py) | ローカル優先、完全に決定的。 |
+| パーソナライズド PageRank（HippoRAG-2） | ✅ | [`tesserae/retrieval/ppr.py`](../../tesserae/retrieval/ppr.py) | マルチホップ シード展開; 深さ制限付きサブグラフ。 |
+| 実際の既定埋め込み（Track B、フェーズ 6） | ✅ | `retrieval/hybrid.py` | 既定 = 決定的ハッシュ バケット疑似埋め込み（依存なし）; インストール時は `sentence-transformers`（`all-MiniLM-L6-v2`）を優先し遅延ロード。`embedding_status` MCP ツールがアクティブ バックエンドを報告。 |
+
+### オンデマンド コンテキスト コンパイラ（柱 3 — 目玉）
+
+| 機能 | 状態 | ソース | 備考 |
+|---|---|---|---|
+| `compile_context` — 引用付きメモリ内 `ContextBundle` | ✅ | [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | シード解決 → PPR 展開 → 予算制約付き選択 → 引用付き Markdown → オプションの LLM 合成。`synthesize=true` でない限り決定的。ディスクには書き込まない。 |
+| `project context` CLI | ✅ | `cli.py` | `[query]`、`--seeds`、`--depth`（2）、`--budget`（32000; ≤0 = 無制限）、`--synthesize`、`--output`。 |
+| `compile_context` MCP ツール | ✅ | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | MCP 経由の同じパイプライン; `budget=0` は無制限。 |
+| トピック範囲のエクスポート スライス | ✅ | [`tesserae/site/exports.py`](../../tesserae/site/exports.py) `slice_export_context_for_topic` | トピック範囲の `llms.txt` + `compile_context` 経由の `render_harness_context`。 |
+
+### 増分コンパイル（フェーズ 4 — 実験的）
+
+| 機能 | 状態 | ソース | 備考 |
+|---|---|---|---|
+| 来歴サイドカー（`node_provenance`、初回観測） | ✅ | [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | 変更分削除の基盤; 常に記録。 |
+| `GraphStore` 削除面 | ✅ | [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | `delete_node`、`delete_nodes_by_source`（来歴集合が空になるノードを削除; ファイル横断的な概念は生存）。 |
+| `url_resolver` 実行時ストア ディスパッチ | ✅ | [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | `sqlite:///…` / `hypepaper-postgres://…` → `GraphStore`。 |
+| `incremental_compile` フラグ | ⚠ | [`tesserae/project.py`](../../tesserae/project.py) | **既定 OFF / 実験的。** いくつかの編集形態でバイト一致が実証済みだが、複数所有者/プロデューサー ライフサイクルのギャップが残るため、フル コンパイルが既定のまま。 |
 
 ## フロントエンド再設計 — 2026年4月
 
@@ -100,7 +153,9 @@
 | `project serve` ローカル HTTP | ✅ | `cli.py` | 素の stdlib サーバー。 |
 | `project deploy` → GitHub Pages | ✅ | [`tesserae/deploy.py`](../../tesserae/deploy.py) | `gh-pages` への worktree push。`gh` CLI 経由の任意 `--enable-pages`。`--build`, `--dry-run`, `--branch`, `--remote`, `--force`。 |
 | `project sessions discover/import/list` | ✅ | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) + `cli.py` | Claude Code/Codex 用のインバウンドセッション履歴。発見は明示的で、プロジェクト作業ディレクトリにスコープされる。 |
-| `project watch` 変更時再ビルド | ⚠ | [`tesserae/cli.py`](../../tesserae/cli.py) | Subagent R がポーリング watcher を仕上げ中 — `--interval`, `--debounce`, `--once`, `--paths`, `--quiet` の引数面は準備済み。再ビルドループ本体はこのラウンドで投入中。 |
+| `project watch` 変更時再ビルド | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) + [`tesserae/watch.py`](../../tesserae/watch.py) | スタンドアロンのポーリング watcher: `--interval`、`--debounce`、`--once`、`--paths`、`--quiet`。マルチソース スーパーバイザーは `project engine`/`daemon` にあり（コンテキスト エンジン参照）。 |
+| `project context` — 引用付きコンテキスト ドキュメントをコンパイル | ✅ | `cli.py` + [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | 柱 3 の目玉; コンテキスト エンジンの節を参照。 |
+| `project refresh` / `project engine` / `project daemon` | ✅ | `cli.py` + [`tesserae/engine/`](../../tesserae/engine/) | 散文的リフレッシュ チェーン + スーパーバイザー ループ; コンテキスト エンジンの節を参照。 |
 
 ## 既存機能（変更なしで継続）
 
@@ -146,9 +201,12 @@
 - ✅ `tesserae project mcp-config`
 - ✅ `tesserae project build-site`
 - ✅ `tesserae project serve`
-- ✅ `tesserae project deploy`（新規 — GitHub Pages）
+- ✅ `tesserae project deploy`（GitHub Pages）
 - ✅ `tesserae project sessions discover/import/list`（明示的なローカル agent-history インポート）
-- ⚠ `tesserae project watch`（進行中）
+- ✅ `tesserae project watch`（スタンドアロンのポーリング watcher）
+- ✅ `tesserae project engine` / `tesserae project daemon`（スーパーバイザー ループ — v0.5.0）
+- ✅ `tesserae project refresh`（散文的 取り込み → コンパイル → 投影 チェーン — v0.5.0）
+- ✅ `tesserae project context`（オンデマンド コンテキスト コンパイラ — v0.5.0）
 - ✅ `tesserae project export-agent-harness`
 - ✅ `tesserae project export-obsidian`
 - ✅ `tesserae project export-graphiti`
@@ -190,8 +248,10 @@
 ### MCP サーバー
 
 - ✅ stdio JSON-RPC 上の `tesserae_mcp` / `python3 -m tesserae.mcp_server`。
-- ✅ ツール: `schema`, `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`。
-- ✅ マルチプロジェクトレジストリ。
+- ✅ 検索/グラフ ツール: `schema`、`graph_summary`、`search_nodes`、`node_context`（`use_ppr` 付き）、`search_facts`、`timeline`、`graph_ppr`、`wiki_page`、`raw_source`、`lint_report`。
+- ✅ コンテキスト エンジン ツール（v0.5.0）: `compile_context`、`embedding_status`、`fresh_insights`（減衰ランク付け）、`list_communities`、`find_session_findings`、`find_code_symbol_mentions`、`ask`。
+- ✅ セットアップ ツール: `tesserae_setup_plan`、`tesserae_setup_apply`。
+- ✅ マルチプロジェクト レジストリ: `list_projects`、`register_project`、`activate_project`、`unregister_project`、`list_sessions`。`url_resolver` 経由のストア URL ディスパッチ。
 
 ## テスト
 
@@ -216,4 +276,9 @@
 - ✅ サイトコンポーネント、ページ、エクスポート、関連性;
 - ✅ AI 兄弟ファイル形状（ページごとに `.txt` + `.json`）;
 - ✅ end-to-end compile-twice 冪等性;
+- ✅ エンジン スパイン: パイプライン、リフレッシュ チェーン、デーモン コア + ソース、`project engine` CLI;
+- ✅ 自己改善メモリ: サイドカー、減衰/取って代わり、取って代わり抑制（MCP 含む）、強化/矛盾;
+- ✅ 検索 + 埋め込み: ハイブリッド検索、PPR、実際の既定埋め込み（フェーズ 6）;
+- ✅ コンテキスト コンパイラ: 形状/引用整合性/決定性/予算/PPR フォールバック、`project context` CLI、MCP `compile_context`;
+- ✅ 増分コンパイル（実験的）: ディファー、一致ゲート、来歴準備性、SQLite 来歴;
 - ✅ パッケージインストールとインストーラー契約。

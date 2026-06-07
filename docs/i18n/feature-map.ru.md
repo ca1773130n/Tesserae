@@ -5,7 +5,60 @@
 <!-- translations:end -->
 Этот документ кратко описывает функции, которые сейчас реализованы в Tesserae, с их статусом, исходными файлами и местом в документации.
 
+Tesserae — это **контекстный движок**, работающий на трёх столпах: (1) мониторинг сессий, (2) автономное проактивное усвоение знаний и (3) документы/контекст по запросу. Типизированный граф, хранилище (vault) и статический сайт — проекции базы знаний. Функции ниже сгруппированы по столпу, которому они служат; веха **v0.5.0** (июнь 2026) выпустила хребет движка и флагманскую функцию Столпа 3 — контекстный компилятор по запросу.
+
 Легенда статуса: ✅ поставлено · ⚠ в работе / частично.
+
+## Контекстный движок — v0.5.0 (июнь 2026)
+
+Хребет движка, приводящий в действие три столпа. Карту модулей хребта движка, sidecar памяти самоулучшения и поток данных контекстного компилятора см. в [`docs/architecture.md`](architecture.ru.md).
+
+### Хребет движка (столпы 1 & 2)
+
+| Функция | Статус | Источник | Примечания |
+|---|---|---|---|
+| `Pipeline` — переиспользуемая цепочка обновления, возвращающая `List[StepResult]` | ✅ | [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | Один исполнитель шагов, вызываемый CLI, демоном и MCP. Ловит `Exception` на каждом шаге; останавливается на первом сбое. |
+| `Daemon` — asyncio-супервизор с единственным владельцем | ✅ | [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | Следит за источниками + хранилищем + каталогом сессий harness; дебаунс «отмена-и-перепланирование» сворачивает серию в один `Pipeline.run()`. pidfile; переживает исключения в полёте. |
+| `project engine` / `project daemon` | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) | `--interval`, `--debounce`, `--once`. `daemon` — псевдоним `engine`. |
+| `project refresh` — прозаическая цепочка (усвоение → компиляция → проекция) | ✅ | `cli.py` + [`tesserae/project.py`](../../tesserae/project.py) | `--changed-only` (опциональная инкрементальность), `--skip-sessions`. |
+| Живой мониторинг сессий → находки | ✅ | `harness_sessions.py` + модули графа сессий | Импортированные сессии питают граф; `fresh_insights` / `find_session_findings` выводят их на поверхность. |
+
+### Память самоулучшения (столп 2)
+
+| Функция | Статус | Источник | Примечания |
+|---|---|---|---|
+| sidecar `node_memory` SQLite (затухание / уверенность / вытеснено) | ✅ | [`tesserae/memory/store.py`](../../tesserae/memory/store.py) | `NodeMemoryRow` + независимые от хранилища аксессоры; только изменяемое состояние. Первое появление — в отдельном sidecar `node_provenance`. |
+| Оценка затухания Эббингауза | ✅ | [`tesserae/memory/decay.py`](../../tesserae/memory/decay.py) | Ранжирует находки сессий по новизне + частоте доступа (питает `fresh_insights`). |
+| Проход вытеснения (**по умолчанию ВКЛ**) | ✅ | [`tesserae/memory/supersede.py`](../../tesserae/memory/supersede.py) | Детерминированный вердикт помечает более старый почти-дубликат инсайта как вытесненный более новым; добавляет ребро `supersedes`. |
+| Связь инсайт → кодовый символ | ✅ | [`tesserae/memory/insight_symbol_link.py`](../../tesserae/memory/insight_symbol_link.py) | Рёбра `discusses` от инсайтов сессий к упоминаемым символам. |
+| Проходы подкрепления + противоречий | ✅ | [`tesserae/memory/reinforce.py`](../../tesserae/memory/reinforce.py), [`tesserae/memory/contradiction.py`](../../tesserae/memory/contradiction.py) | Подкрепление доступа + обнаружение противоречий над тем же sidecar. |
+| Числовая уверенность повторяемости в выводе | ✅ | [`tesserae/temporal.py`](../../tesserae/temporal.py) | Временные факты проставляют `confidence` из `NodeMemoryRow.confidence`, иначе откат к `infer_confidence`. |
+
+### Поиск + эмбеддинги (столпы 2 & 3)
+
+| Функция | Статус | Источник | Примечания |
+|---|---|---|---|
+| Гибридный ретривер (BM25 + лексика + эмбеддинги, RRF k=60) | ✅ | [`tesserae/retrieval/hybrid.py`](../../tesserae/retrieval/hybrid.py) | Локально-ориентированный, полностью детерминирован. |
+| Персонализированный PageRank (HippoRAG-2) | ✅ | [`tesserae/retrieval/ppr.py`](../../tesserae/retrieval/ppr.py) | Многопрыжковое расширение семян; подграф с ограничением глубины. |
+| Реальные эмбеддинги по умолчанию (Track B, Фаза 6) | ✅ | `retrieval/hybrid.py` | По умолчанию = детерминированный псевдо-эмбеддинг на хэш-бакетах (без зависимостей); `sentence-transformers` (`all-MiniLM-L6-v2`) предпочтителен при установке, грузится лениво. MCP-инструмент `embedding_status` сообщает активный бэкенд. |
+
+### Контекстный компилятор по запросу (Столп 3 — флагман)
+
+| Функция | Статус | Источник | Примечания |
+|---|---|---|---|
+| `compile_context` — `ContextBundle` в памяти со ссылками | ✅ | [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | Разрешение семян → расширение PPR → выбор с ограничением бюджета → markdown со ссылками → опциональный LLM-синтез. Детерминирован, если не `synthesize=true`. Ничего не пишет на диск. |
+| CLI `project context` | ✅ | `cli.py` | `[query]`, `--seeds`, `--depth` (2), `--budget` (32000; ≤0 = без ограничения), `--synthesize`, `--output`. |
+| MCP-инструмент `compile_context` | ✅ | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | Тот же конвейер через MCP; `budget=0` = без ограничения. |
+| Срезы экспорта в рамках темы | ✅ | [`tesserae/site/exports.py`](../../tesserae/site/exports.py) `slice_export_context_for_topic` | `llms.txt` в рамках темы + `render_harness_context` через `compile_context`. |
+
+### Инкрементальная компиляция (Фаза 4 — экспериментально)
+
+| Функция | Статус | Источник | Примечания |
+|---|---|---|---|
+| sidecar происхождения (`node_provenance`, первое появление) | ✅ | [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | Основа для удаления изменённого; пишется всегда. |
+| Поверхность удаления `GraphStore` | ✅ | [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | `delete_node`, `delete_nodes_by_source` (удаляет узлы, чьё множество происхождения опустевает; межфайловые концепции выживают). |
+| Диспетчеризация хранилища `url_resolver` во время выполнения | ✅ | [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | `sqlite:///…` / `hypepaper-postgres://…` → `GraphStore`. |
+| Флаг `incremental_compile` | ⚠ | [`tesserae/project.py`](../../tesserae/project.py) | **По умолчанию OFF / экспериментально.** Байт-паритет доказан для нескольких форм правок, но остаются пробелы с несколькими владельцами/жизненным циклом продюсеров; полная компиляция остаётся по умолчанию. |
 
 ## Редизайн фронтенда — апрель 2026
 
@@ -100,7 +153,9 @@
 | `project serve` локальный HTTP | ✅ | `cli.py` | Простой stdlib server. |
 | `project deploy` → GitHub Pages | ✅ | [`tesserae/deploy.py`](../../tesserae/deploy.py) | Worktree push в `gh-pages`; опциональный `--enable-pages` через `gh` CLI. `--build`, `--dry-run`, `--branch`, `--remote`, `--force`. |
 | `project sessions discover/import/list` | ✅ | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) + `cli.py` | Входящая история сессий для Claude Code/Codex; обнаружение явное и ограничено рабочим каталогом проекта. |
-| `project watch` rebuild-on-change | ⚠ | [`tesserae/cli.py`](../../tesserae/cli.py) | Subagent R завершает polling watcher — поверхность аргументов `--interval`, `--debounce`, `--once`, `--paths`, `--quiet` готова; тело rebuild loop приземляется в этом раунде. |
+| `project watch` пересборка-при-изменении | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) + [`tesserae/watch.py`](../../tesserae/watch.py) | Автономный опрашивающий watcher: `--interval`, `--debounce`, `--once`, `--paths`, `--quiet`. Многоисточниковый супервизор — в `project engine`/`daemon` (см. Контекстный движок). |
+| `project context` — компиляция документа контекста со ссылками | ✅ | `cli.py` + [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | Флагман Столпа 3; см. раздел Контекстный движок. |
+| `project refresh` / `project engine` / `project daemon` | ✅ | `cli.py` + [`tesserae/engine/`](../../tesserae/engine/) | Прозаическая цепочка обновления + цикл супервизора; см. раздел Контекстный движок. |
 
 ## Ранее существовавшие функции (перенесены без изменений)
 
@@ -146,9 +201,12 @@
 - ✅ `tesserae project mcp-config`
 - ✅ `tesserae project build-site`
 - ✅ `tesserae project serve`
-- ✅ `tesserae project deploy` (новое — GitHub Pages)
+- ✅ `tesserae project deploy` (GitHub Pages)
 - ✅ `tesserae project sessions discover/import/list` (явный импорт локальной agent-history)
-- ⚠ `tesserae project watch` (в работе)
+- ✅ `tesserae project watch` (автономный опрашивающий watcher)
+- ✅ `tesserae project engine` / `tesserae project daemon` (цикл супервизора — v0.5.0)
+- ✅ `tesserae project refresh` (прозаическая цепочка усвоение → компиляция → проекция — v0.5.0)
+- ✅ `tesserae project context` (контекстный компилятор по запросу — v0.5.0)
 - ✅ `tesserae project export-agent-harness`
 - ✅ `tesserae project export-obsidian`
 - ✅ `tesserae project export-graphiti`
@@ -190,8 +248,10 @@
 ### MCP server
 
 - ✅ `tesserae_mcp` / `python3 -m tesserae.mcp_server` поверх stdio JSON-RPC.
-- ✅ Tools: `schema`, `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`.
-- ✅ Multi-project registry.
+- ✅ Инструменты поиска/графа: `schema`, `graph_summary`, `search_nodes`, `node_context` (с `use_ppr`), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`.
+- ✅ Инструменты контекстного движка (v0.5.0): `compile_context`, `embedding_status`, `fresh_insights` (ранжирование по затуханию), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`, `ask`.
+- ✅ Инструменты настройки: `tesserae_setup_plan`, `tesserae_setup_apply`.
+- ✅ Реестр нескольких проектов: `list_projects`, `register_project`, `activate_project`, `unregister_project`, `list_sessions`. Диспетчеризация URL хранилища через `url_resolver`.
 
 ## Тесты
 
@@ -216,4 +276,9 @@
 - ✅ site components, pages, exports, relevance;
 - ✅ форма AI-sibling (`.txt` + `.json` на страницу);
 - ✅ end-to-end compile-twice idempotence;
+- ✅ хребет движка: конвейер, цепочка обновления, ядро демона + источники, CLI `project engine`;
+- ✅ память самоулучшения: sidecar, затухание/вытеснение, подавление вытеснения (вкл. MCP), подкрепление/противоречия;
+- ✅ поиск + эмбеддинги: гибридный поиск, PPR, реальные эмбеддинги по умолчанию (Фаза 6);
+- ✅ контекстный компилятор: форма/целостность ссылок/детерминизм/бюджет/откат PPR, CLI `project context`, MCP `compile_context`;
+- ✅ инкрементальная компиляция (экспериментально): диффер, проверки паритета, готовность происхождения, происхождение SQLite;
 - ✅ package install и installer contract.

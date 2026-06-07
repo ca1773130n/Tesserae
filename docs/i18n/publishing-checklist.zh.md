@@ -19,11 +19,44 @@
 ## 验证
 
 ```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest tests/ -q
+.venv/bin/pytest tests/ -x          # 任何失败都要中止 — 绝不发布红色构建
 ./scripts/install.sh --help
 tesserae project setup --help
 tesserae project compile --help
+tesserae project context --help     # 按需上下文编译器
 ```
+
+### 演示构建冒烟测试（与 `build-demo` CI 作业一致）
+
+发布流程和 CI 都使用确定性提取器（无 LLM 调用，无需 API key）将 Tesserae 针对
+其自身源码树编译，并构建站点：
+
+```bash
+.venv/bin/python -m tesserae project setup --yes --no-color --source . \
+  --no-cognee --skip-raganything --skip-install-cognee \
+  --skip-install-raganything --skip-install-understand-anything
+.venv/bin/python -m tesserae project compile
+.venv/bin/python -m tesserae project build-site
+```
+
+## 发布流程
+
+由 `release` 技能（`.claude/skills/release/SKILL.md`）驱动。最新标签为 `v0.5.0`。
+
+- [ ] 在 `main` 上，工作树干净，执行 `git pull --ff-only origin main`。
+- [ ] 测试 + 演示构建冒烟测试（上面）通过。
+- [ ] 提升 `pyproject.toml` 的 `version = "X.Y.Z"`（若有 `package.json` 也同步），并以从 `git log v<prev>..HEAD` 生成的一段变更日志提交 `release: vX.Y.Z`。
+- [ ] 用 `git tag -a vX.Y.Z -m "vX.Y.Z"` 打标签，先推送提交再推送标签。
+- [ ] 等待 CI 变绿（`gh run watch <run-id>`）—— 不要在红色构建上发布 GitHub release。
+- [ ] 发布 GitHub release。PyPI 发布为可选（准备就绪时）。
+
+### GitHub Pages
+
+`build-demo` 工作流（推送到 `main`）始终将编译后的 dogfood 站点作为可检查的工作流
+产物上传，并在启用 Pages 时**额外**部署到 GitHub Pages。Pages 步骤为
+`continue-on-error`：默认的 `GITHUB_TOKEN` 无法*创建* Pages 站点，因此首次部署需要在
+**Settings → Pages → Source: GitHub Actions** 处手动切换一次。在打开该开关之前，构建
+仍保持绿色，产物也仍会生成。
 
 ## Self-dogfood
 

@@ -5,6 +5,8 @@
 <!-- translations:end -->
 Este proyecto puede indexarse a sí mismo. El flujo self-dogfood demuestra que Tesserae puede instalarse, configurarse dentro de su propio repositorio, ingerir sus propios docs/source/tests/scripts, actualizar opcionalmente Understand Anything y Cognee, compilar artefactos de grafo y construir el frontend web estático.
 
+También ejercita el bucle de auto-mejora. Cada compilación re-deriva el estado de memoria mutable —`decay_score`, `access_count`, `confidence` y el flag `superseded`— a una **tabla sidecar `node_memory`** dentro de `.tesserae/sqlite.db`. Estos escalares viven *solo* en el sidecar y nunca en `graph.json`, de modo que una recompilación dogfood es byte-identical en el grafo mientras el sidecar rastrea decay y recurrence. Los insights que recurren en `>= 3` sesiones distintas se refuerzan con un confidence numérico en `(0, 1]` (3 sesiones → `0.5`, 4 → `0.75`, 5+ → `1.0`, con tope), se escriben en el sidecar y los expone la herramienta MCP `fresh_insights`, que por defecto oculta los findings reemplazados (superseded) por un near-duplicate más reciente.
+
 ## Comandos
 
 Desde la raíz del repositorio:
@@ -13,6 +15,9 @@ Desde la raíz del repositorio:
 # Asegúrate de que el comando de shell esté instalado.
 ./scripts/install.sh --dir "$PWD"
 export PATH="$HOME/.local/bin:$PATH"
+
+# (opcional) instala el backend de embeddings semánticos por defecto.
+pip install 'tesserae[semantic]'
 
 # Configura este repositorio como un proyecto Tesserae.
 tesserae project setup \
@@ -59,7 +64,7 @@ Artefactos clave:
 .tesserae/config.json
 .tesserae/graph.json
 .tesserae/manifest.json
-.tesserae/sqlite.db
+.tesserae/sqlite.db          # grafo tipado + sidecar node_memory + HarnessSessionsDB en vivo
 .tesserae/report.md
 .tesserae/competitive_report.md
 .tesserae/temporal_facts.jsonl
@@ -137,3 +142,5 @@ server: TCP *:56821 LISTEN, serving via --host 0.0.0.0
 - El markdown de investigación/documentación y los nodos de grafo de código de desarrollo pueden coexistir.
 - Las proyecciones Markdown, Obsidian, frontend, Graphiti, Cognee, SQLite, report y agent-harness se producen desde una sola canalización de grafo.
 - El frontend HTML estático puede explorar el grafo del proyecto sin un paso de compilación JavaScript.
+- El bucle de auto-mejora corre y persiste: decay, conteos de acceso, recurrence confidence y flags supersede van al sidecar `node_memory` sin perturbar `graph.json`.
+- La recuperación híbrida resuelve un backend semántico real cuando `tesserae[semantic]` está instalado (orden `auto` por defecto: model2vec → sentence-transformers → stub hash-bucket); sin él, la recuperación por embeddings se degrada al stub hash-bucket no semántico y emite una advertencia ruidosa.

@@ -7,6 +7,8 @@ Tesserae에는 두 가지 합성 경로가 있습니다. 기본값은 네트워�
 
 이 페이지는 이를 언제 활성화해야 하는지, 비용은 얼마인지, 어떤 데이터가 사용자의 머신을 떠나는지, 출력을 어떻게 검사하는지를 설명합니다.
 
+> **범위.** 이것은 *컴파일 타임* synthesis입니다. 매 컴파일마다 표준 wiki 페이지(pulse, daily digest, weekly, topic, comparison, field overview)를 (재)작성합니다. *온디맨드* 컨텍스트 컴파일러(`compile_context` / MCP `compile_context` 도구)와는 구별됩니다. 후자는 요청 시점에 특정 질의에 대해 그래프 위의 personalized PageRank와 문자 예산을 통해 citation 범위가 제한된 번들을 조립합니다. 두 경로 모두 citation과 함께 그래프 사실을 재진술하지만, 여기의 synthesis 경로만 LLM을 실행하고, 이 경로만 Markdown 페이지를 영속화합니다.
+
 ## 수행하는 일
 
 두 경로 모두 동일한 `_PagePlan` 입력(node id, 이름, type, description, source path)을 사용합니다. 차이는 본문입니다.

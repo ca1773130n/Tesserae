@@ -5,6 +5,8 @@
 <!-- translations:end -->
 このプロジェクトは自分自身をインデックスできます。self-dogfood フローは、Tesserae をインストールし、自身のリポジトリ内で設定し、自身の docs/source/tests/scripts を取り込み、任意で Understand Anything と Cognee を更新し、グラフ成果物をコンパイルし、静的 Web フロントエンドをビルドできることを証明します。
 
+さらに自己改善ループも動かします。各コンパイルは可変なメモリ状態 — `decay_score`、`access_count`、`confidence`、`superseded` フラグ — を `.tesserae/sqlite.db` 内部の **`node_memory` サイドカー** テーブルへ再導出します。これらのスカラーはサイドカーに*のみ*存在し、`graph.json` には決して入りません。そのため再 dogfood コンパイルではグラフは byte-identical のまま、サイドカーが decay と recurrence を追跡します。`>= 3` 個の別個のセッションにまたがって再発する insight は `(0, 1]` の数値 confidence で強化され（3 セッション → `0.5`、4 → `0.75`、5+ → `1.0`、上限あり）、サイドカーに書き込まれ、MCP `fresh_insights` ツールが公開します。このツールはデフォルトで、より新しい near-duplicate に置き換えられた（superseded）finding を隠します。
+
 ## コマンド
 
 リポジトリルートから:
@@ -13,6 +15,9 @@
 # shell コマンドがインストールされていることを確認します。
 ./scripts/install.sh --dir "$PWD"
 export PATH="$HOME/.local/bin:$PATH"
+
+# （任意）デフォルトのセマンティック埋め込みバックエンドをインストールします。
+pip install 'tesserae[semantic]'
 
 # このリポジトリを Tesserae プロジェクトとして設定します。
 tesserae project setup \
@@ -59,7 +64,7 @@ self-demo は生成された成果物を次の場所に書き込みます:
 .tesserae/config.json
 .tesserae/graph.json
 .tesserae/manifest.json
-.tesserae/sqlite.db
+.tesserae/sqlite.db          # 型付きグラフ + node_memory サイドカー + ライブ HarnessSessionsDB
 .tesserae/report.md
 .tesserae/competitive_report.md
 .tesserae/temporal_facts.jsonl
@@ -137,3 +142,5 @@ server: TCP *:56821 LISTEN, serving via --host 0.0.0.0
 - 研究/ドキュメント markdown と開発コードのグラフノードが共存できます。
 - Markdown、Obsidian、frontend、Graphiti、Cognee、SQLite、report、agent-harness の投影が 1 つのグラフパイプラインから生成されます。
 - 静的 HTML フロントエンドは、JavaScript ビルド手順なしでプロジェクトグラフを閲覧できます。
+- 自己改善ループが動作し永続化されます。decay、access count、recurrence confidence、supersede フラグが `graph.json` を乱さずに `node_memory` サイドカーへ書き込まれます。
+- `tesserae[semantic]` がインストールされていると、ハイブリッド検索は実際のセマンティックバックエンドを解決します（デフォルト `auto` 順: model2vec → sentence-transformers → hash-bucket スタブ）。未インストールの場合、埋め込み検索は非セマンティックな hash-bucket スタブに格下げされ、目立つ警告を発します。
