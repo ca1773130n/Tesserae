@@ -258,3 +258,85 @@ def test_init_yes_defaults_disable_optional_integrations(tmp_path, monkeypatch):
     assert seen["no_cognee"] is True
     assert seen["skip_raganything"] is True
     assert seen["with_understand_anything"] is False
+
+
+@pytest.mark.parametrize(
+    "argv, handler",
+    [
+        (["sessions", "import"], "_handle_sessions_import"),
+        (["sessions", "discover"], "_handle_sessions_discover"),
+        (["sessions", "list"], "_handle_sessions_list"),
+        (["vault", "sync"], "_handle_vault_sync"),
+        (["vault", "export"], "_handle_vault_export"),
+        (["export", "harness"], "_handle_export_harness"),
+        (["export", "graphiti"], "_handle_export_graphiti_cmd"),
+        (["export", "site"], "_handle_export_site"),
+        (["projects", "list"], "_handle_projects_list"),
+        (["projects", "mcp-config"], "_handle_projects_mcp_config"),
+        (["integrations", "refresh", "raganything"], "_handle_integrations_refresh"),
+        (["lab", "evolve"], "_handle_lab_evolve"),
+        (["lab", "schema-drift"], "_handle_lab_schema_drift"),
+        (["extract", "x.md"], "_handle_extract"),
+        (["code", "ingest"], "_handle_code_ingest"),
+        (["code", "sync"], "_handle_code_sync"),
+        (["research", "some question"], "_handle_research"),
+        (["lint"], "_handle_lint"),
+        (["query", "some question"], "_handle_query"),
+        (["vault", "set-root", "/tmp/v"], "_handle_vault_set_root"),
+        (["vault", "sync-all"], "_handle_vault_sync_all"),
+        (["projects", "register", "/tmp/p"], "_handle_projects_register"),
+    ],
+)
+def test_group_dispatch(argv, handler, monkeypatch):
+    import tesserae.cli as cli
+
+    called = {}
+
+    def _stub(args):
+        called["ok"] = True
+        return 0
+
+    monkeypatch.setattr(cli, handler, _stub)
+    assert cli.main(argv) == 0
+    assert called.get("ok")
+
+
+def test_config_llm_is_old_llm_defaults(monkeypatch, tmp_path):
+    import json
+
+    import tesserae.cli as cli
+    import tesserae.llm_json as lj
+
+    monkeypatch.setattr(lj, "GLOBAL_CONFIG_PATH", tmp_path / "config.json")
+    assert cli.main(["config", "llm", "--llm-provider", "codex"]) == 0
+    assert json.loads((tmp_path / "config.json").read_text())["llm_provider"] == "codex"
+    assert cli.main(["config", "show"]) == 0
+
+
+def test_export_site_deploy_flag(monkeypatch):
+    import tesserae.cli as cli
+
+    seen = {}
+
+    def _stub(args):
+        seen["deploy"] = args.deploy
+        return 0
+
+    monkeypatch.setattr(cli, "_handle_export_site", _stub)
+    assert cli.main(["export", "site", "--deploy"]) == 0
+    assert seen["deploy"] is True
+
+
+def test_group_smokes_run_real_handlers(tmp_path):
+    """Real handlers, real namespaces — catches missing parser attrs."""
+    import tesserae.cli as cli
+
+    assert cli.main(["init", "--bare", "--project", str(tmp_path), "--name", "smoke"]) == 0
+    assert cli.main(["status", "--project", str(tmp_path)]) == 0
+    assert cli.main(["sessions", "list", "--project", str(tmp_path)]) == 0
+    # lint on a freshly-`--bare`-initialized project has an empty graph and no
+    # findings ("wiki is clean"), so the default --severity warning floor
+    # exits 0 — not 1. (Lint only exits non-zero when findings exist.)
+    assert cli.main(["lint", "--project", str(tmp_path)]) == 0
+    assert cli.main(["export", "harness", "--project", str(tmp_path)]) == 0
+    assert cli.main(["vault", "export", "--project", str(tmp_path)]) == 0

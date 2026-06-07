@@ -133,10 +133,16 @@ def test_plain_directory_is_unknown_not_extract_stub(tmp_path, capsys, monkeypat
     assert "unknown command" in err and "tesserae extract" not in err
 
 
-def test_unwired_known_command_prints_clean_line_not_traceback(capsys):
+def test_known_command_prints_clean_line_not_traceback(capsys):
     from tesserae.cli import main
 
-    rc = main(["query"])  # still unwired; compile/context/serve/status/engine/refresh wired in task 3
+    # After task 5 the whole new tree is wired, so there is no longer an
+    # "unwired but known" command. `query` with no question reaches its real
+    # handler, which reports a usage error (exit 2) — still a clean one-line
+    # message, never a traceback. (That clean-error contract is what this
+    # test guards; the previous "not wired up yet" fallback is now dead code
+    # kept only for defense in depth.)
+    rc = main(["query"])
     assert rc == 2
     err = capsys.readouterr().err
-    assert "not wired up yet" in err and "Traceback" not in err
+    assert "Traceback" not in err and err.strip()
