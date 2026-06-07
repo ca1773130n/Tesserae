@@ -321,7 +321,16 @@ class ProjectWiki:
         self._vault_override = resolved
 
     @classmethod
-    def init(cls, project_root: str | Path = ".", name: Optional[str] = None, source_kind: str = "SourceDocument", sources: Optional[Iterable[str | Path]] = None) -> "ProjectWiki":
+    def init(
+        cls,
+        project_root: str | Path = ".",
+        name: Optional[str] = None,
+        source_kind: str = "SourceDocument",
+        sources: Optional[Iterable[str | Path]] = None,
+        llm_provider: Optional[str] = None,
+        llm_claude_config_dirs: Optional[List[str]] = None,
+        llm_codex_home: Optional[str] = None,
+    ) -> "ProjectWiki":
         wiki = cls(project_root)
         wiki.root.mkdir(parents=True, exist_ok=True)
         wiki.paths.markdown_projection.mkdir(parents=True, exist_ok=True)
@@ -377,6 +386,15 @@ class ProjectWiki:
                 "cognee": default_cognee_backend_config(name or sanitize_server_name(wiki.project_root.name)),
             },
         }
+        # Durable LLM backend preference for the synthesis/insights JSON
+        # client ("use codex instead of claude"). Only persisted when set so
+        # existing configs stay byte-identical.
+        if llm_provider:
+            config["llm_provider"] = llm_provider
+        if llm_claude_config_dirs:
+            config["llm_claude_config_dirs"] = [str(d) for d in llm_claude_config_dirs]
+        if llm_codex_home:
+            config["llm_codex_home"] = str(llm_codex_home)
         wiki.paths.config.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return wiki
 
@@ -389,6 +407,28 @@ class ProjectWiki:
 
     def config(self) -> dict:
         return json.loads(self.paths.config.read_text(encoding="utf-8"))
+
+    def _build_json_client(self, model: Optional[str] = None):
+        """Build the synthesis/insights JSON client honoring project config.
+
+        Resolves ``llm_provider`` / ``llm_claude_config_dirs`` /
+        ``llm_codex_home`` from ``config.json`` with env vars (i.e. CLI
+        flags) taking precedence — see
+        :func:`tesserae.llm_json.resolve_llm_client_settings`.
+        """
+        from .llm_json import build_default_json_client, resolve_llm_client_settings
+
+        try:
+            cfg = self.config() if self.paths.config.exists() else {}
+        except Exception:  # pragma: no cover — corrupt config must not crash
+            cfg = {}
+        settings = resolve_llm_client_settings(cfg)
+        return build_default_json_client(
+            model=model,
+            provider=settings["provider"],
+            claude_config_dirs=settings["claude_config_dirs"],
+            codex_home=settings["codex_home"],
+        )
 
     def ingest(
         self,
@@ -1073,7 +1113,7 @@ class ProjectWiki:
         # silent and structural-only.
         json_client = None
         if opts.llm_enabled != "false":
-            json_client = build_default_json_client(model=opts.model)
+            json_client = self._build_json_client(model=opts.model)
         extractor = SessionGraphExtractor(
             project_root=self.project_root,
             cache_dir=self.paths.session_findings,
@@ -2124,9 +2164,7 @@ class ProjectWiki:
             return explicit
         if _env_truthy("TESSERAE_ENABLE_LLM_PASSES"):
             try:
-                from .llm_json import build_default_json_client
-
-                return build_default_json_client()
+                return self._build_json_client()
             except Exception:  # pragma: no cover — defensive
                 logger.exception(
                     "phase5: build_default_json_client failed; LLM passes off"

@@ -792,6 +792,54 @@ def _build_top_level_wiki_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _add_llm_client_args(parser: argparse.ArgumentParser, persisted: bool = False) -> None:
+    """Attach the synthesis-LLM backend flags (claude | codex).
+
+    On ``init`` (``persisted=True``) the values are written into the project
+    ``config.json`` (``llm_provider`` / ``llm_claude_config_dirs`` /
+    ``llm_codex_home``). On ``compile`` they are per-run overrides surfaced
+    as env vars (``TESSERAE_LLM_PROVIDER`` / ``CLAUDE_CONFIG_DIR`` /
+    ``CODEX_HOME``) so every internal client build and extractor sees them.
+    """
+    suffix = " (persisted into config.json)" if persisted else " (this run only; overrides config.json)"
+    parser.add_argument(
+        "--llm-provider",
+        choices=["claude", "codex"],
+        default=None,
+        help="CLI backend for the synthesis/insights LLM client" + suffix,
+    )
+    parser.add_argument(
+        "--claude-config-dir",
+        action="append",
+        default=[],
+        help="Claude CLI config directory (e.g. ~/.claude-personal2); repeat for fallback accounts" + suffix,
+    )
+    parser.add_argument(
+        "--codex-home",
+        default=None,
+        help="Codex CLI home directory (CODEX_HOME, e.g. ~/.codex-personal1)" + suffix,
+    )
+
+
+def _apply_llm_cli_env(args: argparse.Namespace) -> None:
+    """Surface per-run LLM backend flags as env vars.
+
+    Env is the one channel every consumer already honors — the
+    ``build_default_json_client`` factory, both CLI clients, and the
+    extractor subprocesses — so flags set here win over project config
+    (see ``resolve_llm_client_settings`` precedence).
+    """
+    import os
+
+    if getattr(args, "llm_provider", None):
+        os.environ["TESSERAE_LLM_PROVIDER"] = args.llm_provider
+    claude_dirs = getattr(args, "claude_config_dir", None) or []
+    if claude_dirs:
+        os.environ["CLAUDE_CONFIG_DIR"] = claude_dirs[0]
+    if getattr(args, "codex_home", None):
+        os.environ["CODEX_HOME"] = args.codex_home
+
+
 def project_main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Manage a per-project .tesserae workspace.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -801,6 +849,7 @@ def project_main(argv: List[str] | None = None) -> int:
     init_parser.add_argument("--name", help="MCP server/config name; defaults to sanitized project directory name")
     init_parser.add_argument("--source-kind", default="SourceDocument", help="Default source kind for project ingest")
     init_parser.add_argument("--source", action="append", default=[], help="Default project-relative source path for project compile; repeat for multiple paths")
+    _add_llm_client_args(init_parser, persisted=True)
 
     setup_parser = subparsers.add_parser("setup", help="Open the colored setup wizard for sources and companion tools")
     setup_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
@@ -918,6 +967,7 @@ def project_main(argv: List[str] | None = None) -> int:
     )
 
     compile_parser = subparsers.add_parser("compile", help="Compile configured project sources into all .tesserae artifacts")
+    _add_llm_client_args(compile_parser)
     compile_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     compile_parser.add_argument("--source-kind", help="Override configured source kind")
     compile_parser.add_argument("--changed-only", action="store_true", help="Skip unchanged files using .tesserae/manifest.json")
@@ -1247,7 +1297,15 @@ def project_main(argv: List[str] | None = None) -> int:
 
 
 def _handle_init(args: argparse.Namespace) -> int:
-    wiki = ProjectWiki.init(args.project, name=args.name, source_kind=args.source_kind, sources=args.source)
+    wiki = ProjectWiki.init(
+        args.project,
+        name=args.name,
+        source_kind=args.source_kind,
+        sources=args.source,
+        llm_provider=args.llm_provider,
+        llm_claude_config_dirs=args.claude_config_dir or None,
+        llm_codex_home=args.codex_home,
+    )
     print(f"Initialized project wiki: {wiki.root}")
     print(f"Graph: {wiki.paths.graph}")
     print("Next: python3 -m tesserae.cli project ingest <paths>")
@@ -1417,6 +1475,7 @@ def _handle_sync_code(args: argparse.Namespace) -> int:
 
 def _handle_compile(args: argparse.Namespace) -> int:
     if True:
+        _apply_llm_cli_env(args)
         wiki = ProjectWiki.load(args.project)
         try:
             refreshed = refresh_configured_external_tools(args.project, only_auto=not args.refresh_external_tools, fail_fast=False)
