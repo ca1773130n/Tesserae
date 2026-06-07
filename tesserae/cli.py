@@ -997,8 +997,12 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
     if True:
         _apply_llm_cli_env(args)
         wiki = ProjectWiki.load(args.project)
+        # Dieted (non-everyday) compile knobs live under config.json's
+        # `compile_options` block now; each removed flag's old argparse
+        # default is the fallback (see docs spec "Flag diet").
+        opts = wiki._compile_options()
         try:
-            refreshed = refresh_configured_external_tools(args.project, only_auto=not args.refresh_external_tools, fail_fast=False)
+            refreshed = refresh_configured_external_tools(args.project, only_auto=not args.refresh_integrations, fail_fast=False)
         except Exception as exc:
             print(f"External tool refresh failed: {exc}", file=sys.stderr)
             return 2
@@ -1012,34 +1016,40 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                     print(f"  - {failure.get('id')}: {failure.get('command')} exited {failure.get('returncode')}{tail}")
             else:
                 print(f"Refreshed external tools: {len(refreshed)}")
-        explicit_cognee = args.cognee_codex_cognify or args.cognee_cognify or args.cognee_add
+        cognee_codex_cognify = bool(opts.get("cognee_codex_cognify", False))
+        cognee_cognify = bool(opts.get("cognee_cognify", False))
+        cognee_add = bool(opts.get("cognee_add", False))
+        explicit_cognee = cognee_codex_cognify or cognee_cognify or cognee_add
         cognify_mode = (
-            "codex_cognify" if args.cognee_codex_cognify
-            else "cognify" if args.cognee_cognify
-            else "add" if args.cognee_add
+            "codex_cognify" if cognee_codex_cognify
+            else "cognify" if cognee_cognify
+            else "add" if cognee_add
             else "off"
         )
         cognify_options = CognifyOptions(
             mode=cognify_mode,
-            dataset=args.cognee_dataset,
-            codex_model=args.cognee_codex_model,
-            codex_timeout=args.cognee_codex_timeout,
-            embedding_provider=args.cognee_embedding_provider,
-            ollama_embedding_model=args.cognee_ollama_embedding_model,
-            ollama_embedding_endpoint=args.cognee_ollama_embedding_endpoint,
-            ollama_embedding_timeout=args.cognee_ollama_embedding_timeout,
-            local_embedding_dimensions=args.cognee_local_embedding_dimensions,
-            system_root=args.cognee_system_root,
-            data_root=args.cognee_data_root,
+            dataset=opts.get("cognee_dataset", "tesserae_research_graph"),
+            codex_model=opts.get("cognee_codex_model", "gpt-5.4"),
+            codex_timeout=int(opts.get("cognee_codex_timeout", 300)),
+            embedding_provider=opts.get("cognee_embedding_provider", "deterministic"),
+            ollama_embedding_model=opts.get("cognee_ollama_embedding_model", "qwen3-embedding:0.6b"),
+            ollama_embedding_endpoint=opts.get("cognee_ollama_embedding_endpoint", "http://127.0.0.1:11434/api/embed"),
+            ollama_embedding_timeout=int(opts.get("cognee_ollama_embedding_timeout", 120)),
+            local_embedding_dimensions=int(opts.get("cognee_local_embedding_dimensions", 128)),
+            system_root=opts.get("cognee_system_root", None),
+            data_root=opts.get("cognee_data_root", None),
         ) if explicit_cognee else cognify_options_from_config(wiki.config())
-        # Build a SessionExtractionOptions override when any --sessions* CLI
-        # flag was passed. None means "no override — read from config", which
-        # is what _merge_session_graph does by default.
+        # Build a SessionExtractionOptions override when a --sessions/--no-sessions
+        # CLI flag was passed OR a sessions_* compile_option is configured. None
+        # means "no override — read from config", which is what
+        # _merge_session_graph does by default.
+        sessions_llm = opts.get("sessions_llm", None)
+        sessions_model = opts.get("sessions_model", None)
         session_override = None
         if (
             args.sessions_enabled is not None
-            or args.sessions_llm is not None
-            or args.sessions_model is not None
+            or sessions_llm is not None
+            or sessions_model is not None
         ):
             cfg_sessions = wiki.config().get("sessions") if wiki.paths.config.exists() else {}
             base = cfg_sessions if isinstance(cfg_sessions, dict) else {}
@@ -1050,30 +1060,30 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                     else bool(base.get("enabled", True))
                 ),
                 llm_enabled=(
-                    args.sessions_llm
-                    if args.sessions_llm is not None
+                    sessions_llm
+                    if sessions_llm is not None
                     else str(base.get("llm_enabled", "auto")).lower()
                 ),
                 max_turns_per_chunk=int(base.get("max_turns_per_chunk", 30)),
                 max_tokens_per_call=int(base.get("max_tokens_per_call", 30000)),
                 model=(
-                    args.sessions_model
-                    if args.sessions_model is not None
+                    sessions_model
+                    if sessions_model is not None
                     else (base.get("model") or None)
                 ),
                 include_doc_id_context=int(base.get("include_doc_id_context", 200)),
             )
         result = wiki.compile(
-            source_kind=args.source_kind,
+            source_kind=opts.get("source_kind", None),
             changed_only=args.changed_only,
             limit=args.limit,
-            trends=args.trends,
-            min_trend_sources=args.min_trend_sources,
-            exclude_data=args.exclude_data,
+            trends=bool(opts.get("trends", False)),
+            min_trend_sources=int(opts.get("min_trend_sources", 2)),
+            exclude_data=bool(opts.get("exclude_data", False)),
             cognify=cognify_options if (cognify_options and cognify_options.is_active) else None,
-            vault_pull=not args.no_vault_pull,
+            vault_pull=not bool(opts.get("no_vault_pull", False)),
             session_options=session_override,
-            use_extraction_feedback=bool(getattr(args, "use_extraction_feedback", False)),
+            use_extraction_feedback=bool(opts.get("use_extraction_feedback", False)),
         )
         print(
             "Compiled project wiki: "
@@ -1699,51 +1709,20 @@ def _build_compile_parser() -> argparse.ArgumentParser:
     )
     _add_llm_client_args(parser)
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    parser.add_argument("--source-kind", help="Override configured source kind")
     parser.add_argument("--changed-only", action="store_true", help="Skip unchanged files using .tesserae/manifest.json")
     parser.add_argument("--limit", type=int, help="Maximum number of changed files to process")
-    parser.add_argument("--trends", action="store_true", help="Add corpus-level Trend nodes")
-    parser.add_argument("--min-trend-sources", type=int, default=2, help="Minimum sources needed for Trend nodes")
-    parser.add_argument("--include-data", action="store_true", help="Documentation flag: project_root/data is auto-included by default; this flag is a no-op kept for clarity")
-    parser.add_argument("--exclude-data", action="store_true", help="Skip the implicit project_root/data auto-include even if data/ exists")
     parser.add_argument(
-        "--no-vault-pull",
+        "--refresh-integrations",
+        dest="refresh_integrations",
         action="store_true",
-        help=(
-            "Skip the Obsidian vault overlay step. By default, when a vault and a prior "
-            "vault_snapshot.json both exist, compile reads user edits out of the vault "
-            "and applies them on top of the typed graph. Pass this to bypass — useful "
-            "for recovery, or when you intentionally want the source markdown to win."
-        ),
-    )
-    parser.add_argument("--refresh-external-tools", action="store_true", help="Run configured external tool refresh commands before compile, even if they are not marked auto_refresh")
-    parser.add_argument(
-        "--use-extraction-feedback",
-        action="store_true",
-        help=(
-            "Inject distilled human-correction guidance (from .tesserae/extraction-guidance.md, "
-            "produced by `tesserae evolve`) into the LLM extractor prompts. Collection of "
-            "feedback events is always on; only this injection is gated by the flag."
-        ),
+        help="Run configured integration refresh commands before compile, even if they are not marked auto_refresh",
     )
     session_group = parser.add_mutually_exclusive_group()
     session_group.add_argument("--sessions", dest="sessions_enabled", action="store_true", default=None, help="Force session graph extraction on (default if .tesserae/harness_sessions/ exists)")
     session_group.add_argument("--no-sessions", dest="sessions_enabled", action="store_false", default=None, help="Skip session graph extraction entirely")
-    parser.add_argument("--sessions-llm", choices=["auto", "true", "false"], default=None, help="LLM extraction mode (default 'auto' — runs when an LLM backend is configured). Honored once Phase 5 lands.")
-    parser.add_argument("--sessions-model", default=None, help="Override the LLM model used for session extraction (Phase 5)")
-    parser.add_argument("--cognee-add", action="store_true", help="After compile, add the Cognee bundle to the Cognee dataset (no cognify)")
-    parser.add_argument("--cognee-cognify", action="store_true", help="After compile, add the bundle and run Cognee cognify (uses configured LLM/embedding providers)")
-    parser.add_argument("--cognee-codex-cognify", action="store_true", help="After compile, run Cognee cognify with Cognee's LLM client patched to Codex CLI/OAuth")
-    parser.add_argument("--cognee-codex-model", default="gpt-5.4", help="Codex CLI model for --cognee-codex-cognify")
-    parser.add_argument("--cognee-codex-timeout", type=int, default=300, help="Timeout per Codex CLI structured call")
-    parser.add_argument("--cognee-local-embedding-dimensions", type=int, default=128, help="Embedding dimensions for --cognee-codex-cognify; qwen3-embedding:0.6b uses 1024")
-    parser.add_argument("--cognee-embedding-provider", choices=["deterministic", "ollama"], default="deterministic", help="Embedding provider for cognify")
-    parser.add_argument("--cognee-ollama-embedding-model", default="qwen3-embedding:0.6b", help="Ollama embedding model when --cognee-embedding-provider=ollama")
-    parser.add_argument("--cognee-ollama-embedding-endpoint", default="http://127.0.0.1:11434/api/embed", help="Ollama /api/embed endpoint for Cognee embeddings")
-    parser.add_argument("--cognee-ollama-embedding-timeout", type=int, default=120, help="Ollama embedding request timeout in seconds")
-    parser.add_argument("--cognee-dataset", default="tesserae_research_graph", help="Cognee dataset name")
-    parser.add_argument("--cognee-system-root", help="Optional isolated Cognee system root directory")
-    parser.add_argument("--cognee-data-root", help="Optional isolated Cognee data root directory")
+    # Every other former compile flag is now a `compile_options.<dest>` key
+    # in config.json (read in _handle_compile_legacy via wiki._compile_options()).
+    # See docs spec "Flag diet" — the old --help text is the key's doc.
     return parser
 
 
@@ -1851,7 +1830,9 @@ def _handle_compile_paths_ingest(args: argparse.Namespace) -> int:
     ingest handler reads with the old ingest parser's defaults.
     """
     args.inputs = list(args.paths)
-    # belt-and-suspenders: the compile parser already defines these natively
+    # After the Task 8 flag diet the compile parser no longer defines these
+    # (they moved to compile_options); the ad-hoc ingest path keeps the old
+    # `project ingest` argparse defaults rather than reading compile_options.
     if not hasattr(args, "source_kind"):
         args.source_kind = None
     if not hasattr(args, "changed_only"):

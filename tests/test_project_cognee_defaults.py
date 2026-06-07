@@ -93,19 +93,22 @@ def test_compile_uses_configured_cognee_when_auto_cognify_enabled(tmp_path, monk
 
 
 def test_compile_cli_cognee_flags_override_config(tmp_path, monkeypatch):
+    """Task 8 flag diet: the cognee knobs moved from `compile --cognee-*`
+    flags to `compile_options.cognee_*` config keys. Setting them in
+    config.json must still override the memory_backends config block."""
     project = tmp_path / "demo"
     project.mkdir()
     (project / "README.md").write_text("# Demo\nGaussian Splatting supports novel view synthesis.\n", encoding="utf-8")
     wiki = ProjectWiki.init(project, name="demo", source_kind="Repository", sources=["README.md"])
     cfg = wiki.config()
     cfg["memory_backends"] = {"cognee": {"enabled": True, "mode": "add", "auto_cognify": False, "dataset": "configured"}}
+    cfg["compile_options"] = {"cognee_codex_cognify": True, "cognee_dataset": "override_memory"}
     wiki.paths.config.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
     calls = []
     monkeypatch.setattr(ProjectWiki, "_run_cognify", lambda self, options: calls.append(options))
 
     assert main([
         "compile", "--project", str(project), "--limit", "1",
-        "--cognee-codex-cognify", "--cognee-dataset", "override_memory",
     ]) == 0
 
     assert calls

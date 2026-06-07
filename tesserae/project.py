@@ -408,6 +408,21 @@ class ProjectWiki:
     def config(self) -> dict:
         return json.loads(self.paths.config.read_text(encoding="utf-8"))
 
+    def _compile_options(self) -> dict:
+        """Return the ``compile_options`` block from config.json.
+
+        Holds the dieted (non-everyday) compile knobs that used to be CLI
+        flags — each removed flag's old help text becomes the matching
+        ``compile_options.<dest>`` key's documentation. Missing/invalid ⇒
+        empty dict so callers fall back to the old argparse defaults.
+        """
+        try:
+            cfg = self.config() if self.paths.config.exists() else {}
+        except Exception:  # pragma: no cover — corrupt config must not crash
+            cfg = {}
+        opts = cfg.get("compile_options")
+        return dict(opts) if isinstance(opts, dict) else {}
+
     def _build_json_client(self, model: Optional[str] = None):
         """Build the synthesis/insights JSON client honoring project config.
 

@@ -49,14 +49,33 @@ def test_evolve_cli_writes_guidance_markdown(tmp_path: Path, capsys):
     assert "guidance at" in out
 
 
-def test_compile_help_lists_use_extraction_feedback(capsys):
-    # `compile --help` should advertise the new flag.
-    try:
-        cli.main(["compile", "--help"])
-    except SystemExit:
-        pass
-    out = capsys.readouterr().out
-    assert "--use-extraction-feedback" in out
+def test_use_extraction_feedback_is_a_compile_option(tmp_path, monkeypatch):
+    # Task 8 flag diet: `--use-extraction-feedback` is no longer a compile
+    # flag — it moved to the `compile_options.use_extraction_feedback`
+    # config key, read at the same handler point with the old default.
+    import json
+
+    assert cli.main(["init", "--bare", "--project", str(tmp_path), "--name", "fb"]) == 0
+    cfg_path = tmp_path / ".tesserae" / "config.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    cfg["compile_options"] = {"use_extraction_feedback": True}
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+
+    seen = {}
+
+    def _fake_compile(self, **kwargs):
+        seen.update(kwargs)
+        return {
+            "processed_files": 0,
+            "skipped_files": 0,
+            "node_count": 0,
+            "edge_count": 0,
+            "graph_path": str(self.paths.graph),
+        }
+
+    monkeypatch.setattr(cli.ProjectWiki, "compile", _fake_compile)
+    assert cli.main(["compile", "--project", str(tmp_path)]) == 0
+    assert seen["use_extraction_feedback"] is True
 
 
 # ---------------------------------------------------------------------------

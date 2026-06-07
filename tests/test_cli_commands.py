@@ -340,3 +340,216 @@ def test_group_smokes_run_real_handlers(tmp_path):
     assert cli.main(["lint", "--project", str(tmp_path)]) == 0
     assert cli.main(["export", "harness", "--project", str(tmp_path)]) == 0
     assert cli.main(["vault", "export", "--project", str(tmp_path)]) == 0
+
+
+# ---------------------------------------------------------------------------
+# Task 8 — compile flag diet
+# ---------------------------------------------------------------------------
+#
+# `tesserae compile` historically carried ~26 flags. The spec caps the
+# everyday surface at 8; every removed flag becomes a
+# ``compile_options.<dest>`` config-key read at the SAME handler behavior
+# point with the old argparse default as fallback.
+
+
+def _bare_project(tmp_path):
+    """Init a --bare project and return its config.json path."""
+    import json
+
+    import tesserae.cli as cli
+
+    assert cli.main(["init", "--bare", "--project", str(tmp_path), "--name", "diet"]) == 0
+    return tmp_path / ".tesserae" / "config.json"
+
+
+def _set_compile_options(config_path, **opts):
+    """Merge ``opts`` into ``config_options`` in an existing config.json."""
+    import json
+
+    cfg = json.loads(config_path.read_text(encoding="utf-8"))
+    cfg.setdefault("compile_options", {}).update(opts)
+    config_path.write_text(json.dumps(cfg), encoding="utf-8")
+
+
+def test_compile_flag_surface_is_small():
+    import tesserae.cli as cli
+
+    parser = cli._build_compile_parser()
+    flags = [a for a in parser._actions if a.option_strings and "-h" not in a.option_strings]
+    # llm args (3: llm_provider/claude_config_dir/codex_home) + project +
+    # changed_only + limit + refresh_integrations + sessions_enabled (one
+    # dest shared by --sessions/--no-sessions) = 9 dests max.
+    assert len({a.dest for a in flags}) <= 9, sorted({a.dest for a in flags})
+
+
+def test_compile_keeps_exactly_the_dieted_dests():
+    import tesserae.cli as cli
+
+    parser = cli._build_compile_parser()
+    flags = [a for a in parser._actions if a.option_strings and "-h" not in a.option_strings]
+    assert sorted({a.dest for a in flags}) == sorted([
+        "project",
+        "changed_only",
+        "limit",
+        "refresh_integrations",
+        "sessions_enabled",
+        "llm_provider",
+        "claude_config_dir",
+        "codex_home",
+    ])
+
+
+def test_refresh_integrations_renamed_from_external_tools():
+    """The kept flag is `--refresh-integrations` (dest refresh_integrations);
+    the old `--refresh-external-tools` name is gone."""
+    import tesserae.cli as cli
+
+    parser = cli._build_compile_parser()
+    options = {opt for a in parser._actions for opt in a.option_strings}
+    assert "--refresh-integrations" in options
+    assert "--refresh-external-tools" not in options
+
+
+def _patch_compile(monkeypatch, sink):
+    """Patch ProjectWiki.compile to capture kwargs and return a stub result."""
+    import tesserae.cli as cli
+
+    def _fake_compile(self, **kwargs):
+        sink.update(kwargs)
+        return {
+            "processed_files": 0,
+            "skipped_files": 0,
+            "node_count": 0,
+            "edge_count": 0,
+            "graph_path": str(self.paths.graph),
+        }
+
+    monkeypatch.setattr(cli.ProjectWiki, "compile", _fake_compile)
+
+
+def test_compile_options_flow_into_wiki_compile(tmp_path, monkeypatch):
+    """source_kind, trends, min_trend_sources, exclude_data, no_vault_pull,
+    use_extraction_feedback removed flags → wiki.compile() kwargs."""
+    config_path = _bare_project(tmp_path)
+    _set_compile_options(
+        config_path,
+        source_kind="papers",
+        trends=True,
+        min_trend_sources=5,
+        exclude_data=True,
+        no_vault_pull=True,
+        use_extraction_feedback=True,
+    )
+    seen = {}
+    _patch_compile(monkeypatch, seen)
+    import tesserae.cli as cli
+
+    assert cli.main(["compile", "--project", str(tmp_path)]) == 0
+    assert seen["source_kind"] == "papers"
+    assert seen["trends"] is True
+    assert seen["min_trend_sources"] == 5
+    assert seen["exclude_data"] is True
+    assert seen["vault_pull"] is False  # no_vault_pull=True ⇒ vault_pull=False
+    assert seen["use_extraction_feedback"] is True
+
+
+def test_compile_options_defaults_when_unset(tmp_path, monkeypatch):
+    """No compile_options ⇒ old argparse defaults flow through."""
+    _bare_project(tmp_path)
+    seen = {}
+    _patch_compile(monkeypatch, seen)
+    import tesserae.cli as cli
+
+    assert cli.main(["compile", "--project", str(tmp_path)]) == 0
+    assert seen["source_kind"] is None
+    assert seen["trends"] is False
+    assert seen["min_trend_sources"] == 2
+    assert seen["exclude_data"] is False
+    assert seen["vault_pull"] is True
+    assert seen["use_extraction_feedback"] is False
+
+
+def test_session_compile_options_flow_into_session_options(tmp_path, monkeypatch):
+    """sessions_llm + sessions_model removed flags → SessionExtractionOptions."""
+    config_path = _bare_project(tmp_path)
+    _set_compile_options(config_path, sessions_llm="true", sessions_model="claude-x")
+    seen = {}
+    _patch_compile(monkeypatch, seen)
+    import tesserae.cli as cli
+
+    assert cli.main(["compile", "--project", str(tmp_path)]) == 0
+    opts = seen["session_options"]
+    assert opts is not None
+    assert opts.llm_enabled == "true"
+    assert opts.model == "claude-x"
+
+
+def test_cognee_compile_options_flow_into_cognify(tmp_path, monkeypatch):
+    """All cognee_* removed flags → CognifyOptions at the handler point."""
+    config_path = _bare_project(tmp_path)
+    _set_compile_options(
+        config_path,
+        cognee_cognify=True,
+        cognee_dataset="custom_ds",
+        cognee_codex_model="gpt-x",
+        cognee_codex_timeout=999,
+        cognee_local_embedding_dimensions=1024,
+        cognee_embedding_provider="ollama",
+        cognee_ollama_embedding_model="my-embed",
+        cognee_ollama_embedding_endpoint="http://host:1234/api/embed",
+        cognee_ollama_embedding_timeout=42,
+        cognee_system_root="/tmp/sys",
+        cognee_data_root="/tmp/data",
+    )
+    seen = {}
+    _patch_compile(monkeypatch, seen)
+    import tesserae.cli as cli
+
+    assert cli.main(["compile", "--project", str(tmp_path)]) == 0
+    cognify = seen["cognify"]
+    assert cognify is not None
+    assert cognify.mode == "cognify"
+    assert cognify.dataset == "custom_ds"
+    assert cognify.codex_model == "gpt-x"
+    assert cognify.codex_timeout == 999
+    assert cognify.local_embedding_dimensions == 1024
+    assert cognify.embedding_provider == "ollama"
+    assert cognify.ollama_embedding_model == "my-embed"
+    assert cognify.ollama_embedding_endpoint == "http://host:1234/api/embed"
+    assert cognify.ollama_embedding_timeout == 42
+    assert cognify.system_root == "/tmp/sys"
+    assert cognify.data_root == "/tmp/data"
+
+
+def test_cognee_codex_cognify_compile_option(tmp_path, monkeypatch):
+    """cognee_codex_cognify + cognee_add removed flags select cognify mode."""
+    config_path = _bare_project(tmp_path)
+    _set_compile_options(config_path, cognee_codex_cognify=True)
+    seen = {}
+    _patch_compile(monkeypatch, seen)
+    import tesserae.cli as cli
+
+    assert cli.main(["compile", "--project", str(tmp_path)]) == 0
+    assert seen["cognify"] is not None
+    assert seen["cognify"].mode == "codex_cognify"
+
+
+def test_refresh_integrations_reaches_external_tool_refresh(tmp_path, monkeypatch):
+    """The kept (renamed) --refresh-integrations flag still drives
+    refresh_configured_external_tools(only_auto=...)."""
+    config_path = _bare_project(tmp_path)
+    seen = {}
+    _patch_compile(monkeypatch, seen)
+    import tesserae.cli as cli
+
+    def _fake_refresh(project, only_auto=True, fail_fast=False):
+        seen["only_auto"] = only_auto
+        return []
+
+    monkeypatch.setattr(cli, "refresh_configured_external_tools", _fake_refresh)
+
+    assert cli.main(["compile", "--project", str(tmp_path)]) == 0
+    assert seen["only_auto"] is True  # flag absent ⇒ only auto-refresh tools
+
+    assert cli.main(["compile", "--project", str(tmp_path), "--refresh-integrations"]) == 0
+    assert seen["only_auto"] is False  # flag present ⇒ refresh all
