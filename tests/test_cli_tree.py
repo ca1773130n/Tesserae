@@ -136,7 +136,7 @@ def test_plain_directory_is_unknown_not_extract_stub(tmp_path, capsys, monkeypat
 def test_unwired_known_command_prints_clean_line_not_traceback(capsys):
     from tesserae.cli import main
 
-    rc = main(["compile"])  # wired in a later task
+    rc = main(["query"])  # still unwired; compile/context/serve/status/engine/refresh wired in task 3
     assert rc == 2
     err = capsys.readouterr().err
     assert "not wired up yet" in err and "Traceback" not in err

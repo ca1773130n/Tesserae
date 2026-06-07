@@ -1554,7 +1554,7 @@ def _handle_sync_code(args: argparse.Namespace) -> int:
         return 0
 
 
-def _handle_compile(args: argparse.Namespace) -> int:
+def _handle_compile_legacy(args: argparse.Namespace) -> int:
     if True:
         _apply_llm_cli_env(args)
         wiki = ProjectWiki.load(args.project)
@@ -2137,7 +2137,7 @@ def _handle_deploy(args: argparse.Namespace) -> int:
         return 0
 
 
-def _handle_serve(args: argparse.Namespace) -> int:
+def _handle_serve_legacy(args: argparse.Namespace) -> int:
     if True:
         wiki = ProjectWiki.load(args.project)
         url = f"http://{args.host}:{args.port}/"
@@ -2206,7 +2206,7 @@ _COMMANDS: Dict[str, Callable[[argparse.Namespace], int]] = {
     "ingest": _handle_ingest,
     "ingest-code": _handle_ingest_code,
     "sync-code": _handle_sync_code,
-    "compile": _handle_compile,
+    "compile": _handle_compile_legacy,
     "schema-drift": _handle_schema_drift,
     "evolve": _handle_evolve,
     "research": _handle_research,
@@ -2225,7 +2225,7 @@ _COMMANDS: Dict[str, Callable[[argparse.Namespace], int]] = {
     "sessions": _handle_sessions,
     "build-site": _handle_build_site,
     "deploy": _handle_deploy,
-    "serve": _handle_serve,
+    "serve": _handle_serve_legacy,
     "watch": _handle_watch,
     "refresh": _handle_refresh,
     "engine": _handle_engine,
@@ -2272,10 +2272,277 @@ def main(argv: List[str] | None = None) -> int:
         return 2
 
 
+# ---------------------------------------------------------------------------
+# New flat-verb tree (redesign task 3): standalone parser builders + routers.
+#
+# Each builder returns a fresh argparse.ArgumentParser carrying the SAME flags
+# the legacy `project <cmd>` subparser had (copied verbatim — a later task diets
+# them). project_main's subparsers are left untouched, so the old surface keeps
+# working; flag duplication here is intentional and temporary.
+# ---------------------------------------------------------------------------
+
+
+def _build_compile_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae compile",
+        description="Rebuild the knowledge graph (compile [paths] = ad-hoc ingest).",
+    )
+    parser.add_argument(
+        "paths",
+        nargs="*",
+        help="Ad-hoc markdown paths to ingest into the graph (replaces `project ingest`)",
+    )
+    _add_llm_client_args(parser)
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--source-kind", help="Override configured source kind")
+    parser.add_argument("--changed-only", action="store_true", help="Skip unchanged files using .tesserae/manifest.json")
+    parser.add_argument("--limit", type=int, help="Maximum number of changed files to process")
+    parser.add_argument("--trends", action="store_true", help="Add corpus-level Trend nodes")
+    parser.add_argument("--min-trend-sources", type=int, default=2, help="Minimum sources needed for Trend nodes")
+    parser.add_argument("--include-data", action="store_true", help="Documentation flag: project_root/data is auto-included by default; this flag is a no-op kept for clarity")
+    parser.add_argument("--exclude-data", action="store_true", help="Skip the implicit project_root/data auto-include even if data/ exists")
+    parser.add_argument(
+        "--no-vault-pull",
+        action="store_true",
+        help=(
+            "Skip the Obsidian vault overlay step. By default, when a vault and a prior "
+            "vault_snapshot.json both exist, compile reads user edits out of the vault "
+            "and applies them on top of the typed graph. Pass this to bypass — useful "
+            "for recovery, or when you intentionally want the source markdown to win."
+        ),
+    )
+    parser.add_argument("--refresh-external-tools", action="store_true", help="Run configured external tool refresh commands before compile, even if they are not marked auto_refresh")
+    parser.add_argument(
+        "--use-extraction-feedback",
+        action="store_true",
+        help=(
+            "Inject distilled human-correction guidance (from .tesserae/extraction-guidance.md, "
+            "produced by `tesserae evolve`) into the LLM extractor prompts. Collection of "
+            "feedback events is always on; only this injection is gated by the flag."
+        ),
+    )
+    session_group = parser.add_mutually_exclusive_group()
+    session_group.add_argument("--sessions", dest="sessions_enabled", action="store_true", default=None, help="Force session graph extraction on (default if .tesserae/harness_sessions/ exists)")
+    session_group.add_argument("--no-sessions", dest="sessions_enabled", action="store_false", default=None, help="Skip session graph extraction entirely")
+    parser.add_argument("--sessions-llm", choices=["auto", "true", "false"], default=None, help="LLM extraction mode (default 'auto' — runs when an LLM backend is configured). Honored once Phase 5 lands.")
+    parser.add_argument("--sessions-model", default=None, help="Override the LLM model used for session extraction (Phase 5)")
+    parser.add_argument("--cognee-add", action="store_true", help="After compile, add the Cognee bundle to the Cognee dataset (no cognify)")
+    parser.add_argument("--cognee-cognify", action="store_true", help="After compile, add the bundle and run Cognee cognify (uses configured LLM/embedding providers)")
+    parser.add_argument("--cognee-codex-cognify", action="store_true", help="After compile, run Cognee cognify with Cognee's LLM client patched to Codex CLI/OAuth")
+    parser.add_argument("--cognee-codex-model", default="gpt-5.4", help="Codex CLI model for --cognee-codex-cognify")
+    parser.add_argument("--cognee-codex-timeout", type=int, default=300, help="Timeout per Codex CLI structured call")
+    parser.add_argument("--cognee-local-embedding-dimensions", type=int, default=128, help="Embedding dimensions for --cognee-codex-cognify; qwen3-embedding:0.6b uses 1024")
+    parser.add_argument("--cognee-embedding-provider", choices=["deterministic", "ollama"], default="deterministic", help="Embedding provider for cognify")
+    parser.add_argument("--cognee-ollama-embedding-model", default="qwen3-embedding:0.6b", help="Ollama embedding model when --cognee-embedding-provider=ollama")
+    parser.add_argument("--cognee-ollama-embedding-endpoint", default="http://127.0.0.1:11434/api/embed", help="Ollama /api/embed endpoint for Cognee embeddings")
+    parser.add_argument("--cognee-ollama-embedding-timeout", type=int, default=120, help="Ollama embedding request timeout in seconds")
+    parser.add_argument("--cognee-dataset", default="tesserae_research_graph", help="Cognee dataset name")
+    parser.add_argument("--cognee-system-root", help="Optional isolated Cognee system root directory")
+    parser.add_argument("--cognee-data-root", help="Optional isolated Cognee data root directory")
+    return parser
+
+
+def _build_context_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae context",
+        description="Compile a cited context doc for a query.",
+    )
+    parser.add_argument("query", nargs="?", default="", help="Query text to seed the context doc")
+    parser.add_argument("--seeds", nargs="*", help="Explicit seed node IDs")
+    parser.add_argument("--depth", type=int, default=2, help="PPR expansion depth (default: 2)")
+    parser.add_argument("--budget", type=int, default=32_000, help="Character budget for the doc body (default: 32000; <=0 = uncapped)")
+    parser.add_argument("--synthesize", action="store_true", help="Add an LLM-synthesized summary (requires an LLM backend)")
+    parser.add_argument("--output", "-o", help="Write the doc to a file instead of stdout")
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    return parser
+
+
+def _build_serve_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae serve",
+        description="Browse the compiled site (auto-builds if missing/stale).",
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--host", default="127.0.0.1", help="Host to bind")
+    parser.add_argument("--port", type=int, default=8765, help="Port to bind")
+    parser.add_argument("--dry-run", action="store_true", help="Print the site URL without starting a server")
+    parser.add_argument("--no-build", action="store_true", help="Skip the auto-build step even if the site is missing or stale")
+    return parser
+
+
+def _build_engine_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae engine",
+        description="Run the supervised refresh daemon: watch sources, coalesce bursts, auto-recompile.",
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--interval", type=float, default=2.0, help="Polling interval in seconds (default: 2)")
+    parser.add_argument("--debounce", type=float, default=1.0, help="Quiet window after a burst of edits before rebuilding (default: 1.0)")
+    parser.add_argument("--once", action="store_true", help="Run a single drain cycle then exit (deterministic; no long-running loop)")
+    return parser
+
+
+def _build_refresh_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae refresh",
+        description="Import new sessions, compile, sync vault (in-process pipeline).",
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--changed-only", action="store_true", default=False, help="Opt-in incremental compile (skip unchanged files); default is a full compile")
+    parser.add_argument("--skip-sessions", action="store_true", default=False, help="Opt-in skip of the slow harness-session discovery scan")
+    return parser
+
+
+def _build_status_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae status",
+        description="Node/edge counts, last compile, vault state.",
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    return parser
+
+
+def _handle_status(args: argparse.Namespace) -> int:
+    try:
+        wiki = ProjectWiki.load(args.project)
+    except FileNotFoundError:
+        print(
+            "tesserae status: project not initialized — run `tesserae init` first.",
+            file=sys.stderr,
+        )
+        return 2
+    from .research_graph import ResearchGraph  # local, mirrors other handlers
+    graph = (
+        _load_graph_file(wiki.paths.graph) if wiki.paths.graph.exists() else ResearchGraph()
+    )
+    import datetime as _dt
+    compiled = (
+        _dt.datetime.fromtimestamp(wiki.paths.graph.stat().st_mtime).isoformat(timespec="seconds")
+        if wiki.paths.graph.exists() else "never"
+    )
+    print(f"project:       {wiki.project_root}")
+    print(f"nodes:         {len(graph.nodes)}")
+    print(f"edges:         {len(graph.edges)}")
+    print(f"last compile:  {compiled}")
+    print(f"vault:         {wiki.effective_obsidian_vault()}")
+    print(f"site:          {wiki.paths.site}")
+    return 0
+
+
+def _handle_compile_paths_ingest(args: argparse.Namespace) -> int:
+    """Ad-hoc ingest of explicit paths (INGEST-ONLY).
+
+    Reuses the legacy ``ingest`` handler logic for the given paths and RETURNS —
+    it does NOT run a full ``wiki.compile()`` of configured sources afterward
+    (that would overwrite the ad-hoc graph). Backfills the attrs the legacy
+    ingest handler reads with the old ingest parser's defaults.
+    """
+    args.inputs = list(args.paths)
+    if not hasattr(args, "source_kind"):
+        args.source_kind = None
+    if not hasattr(args, "changed_only"):
+        args.changed_only = False
+    if not hasattr(args, "limit"):
+        args.limit = None
+    if not hasattr(args, "trends"):
+        args.trends = False
+    if not hasattr(args, "min_trend_sources"):
+        args.min_trend_sources = 2
+    return _COMMANDS["ingest"](args)
+
+
+def _handle_compile(args: argparse.Namespace) -> int:
+    """New-tree compile wrapper. With explicit paths → ad-hoc ingest-only;
+    otherwise → the full legacy compile. project_main keeps calling the legacy
+    function directly via ``_COMMANDS``."""
+    if getattr(args, "paths", None):
+        return _handle_compile_paths_ingest(args)
+    return _handle_compile_legacy(args)
+
+
+def _serve_build_site(args: argparse.Namespace) -> int:
+    """Invoke the legacy build-site handler with a backfilled namespace."""
+    build_args = argparse.Namespace(project=args.project, output=None)
+    return _COMMANDS["build-site"](build_args)
+
+
+def _handle_serve(args: argparse.Namespace) -> int:
+    """New-tree serve wrapper: auto-build the site when missing/stale, then
+    delegate to the legacy serve handler (untouched, still used by project_main).
+    """
+    try:
+        wiki = ProjectWiki.load(args.project)
+    except FileNotFoundError:
+        print(
+            "tesserae serve: project not initialized — run `tesserae init` first.",
+            file=sys.stderr,
+        )
+        return 2
+    if not getattr(args, "no_build", False):
+        index = wiki.paths.site / "index.html"
+        reason = None
+        if not index.exists():
+            reason = "missing"
+        elif wiki.paths.graph.exists() and wiki.paths.graph.stat().st_mtime > index.stat().st_mtime:
+            reason = "stale"
+        if reason is not None:
+            print(f"building site first ({reason}) …")
+            rc = _serve_build_site(args)
+            if rc != 0:
+                return rc
+    return _handle_serve_legacy(args)
+
+
+def _route_compile(rest: List[str]) -> int:
+    args = _build_compile_parser().parse_args(rest)
+    return _handle_compile(args)
+
+
+def _route_context(rest: List[str]) -> int:
+    args = _build_context_parser().parse_args(rest)
+    return _handle_context(args)
+
+
+def _route_serve(rest: List[str]) -> int:
+    args = _build_serve_parser().parse_args(rest)
+    return _handle_serve(args)
+
+
+def _route_status(rest: List[str]) -> int:
+    args = _build_status_parser().parse_args(rest)
+    return _handle_status(args)
+
+
+def _route_engine(rest: List[str]) -> int:
+    args = _build_engine_parser().parse_args(rest)
+    return _handle_engine(args)
+
+
+def _route_refresh(rest: List[str]) -> int:
+    args = _build_refresh_parser().parse_args(rest)
+    return _handle_refresh(args)
+
+
+def _route_ask(rest: List[str]) -> int:
+    ask_parser = _build_top_level_ask_parser()
+    return _top_level_ask_handler(ask_parser.parse_args(rest))
+
+
+_NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
+    "ask": _route_ask,
+    "compile": _route_compile,
+    "context": _route_context,
+    "serve": _route_serve,
+    "status": _route_status,
+    "engine": _route_engine,
+    "refresh": _route_refresh,
+}
+
+
 def _dispatch_command(command: str, rest: List[str]) -> int:
-    if command == "ask":
-        ask_parser = _build_top_level_ask_parser()
-        return _top_level_ask_handler(ask_parser.parse_args(rest))
+    router = _NEW_DISPATCH.get(command)
+    if router is not None:
+        return router(rest)
     raise NotImplementedError(f"tesserae {command}: wired in a later task")
 
 

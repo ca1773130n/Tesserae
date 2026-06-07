@@ -68,7 +68,11 @@ def test_unknown_command_raises_valueerror():
 
 
 def test_known_command_routes_to_its_handler():
-    # The table must route, e.g., "compile" -> _handle_compile (no behavior run).
-    assert cli._COMMANDS["compile"] is cli._handle_compile
+    # The table must route to the legacy handler bodies (no behavior run). After
+    # the new-tree redesign (task 3) compile/serve were renamed to *_legacy so a
+    # thin new-tree wrapper could own the bare name; the table still points at the
+    # unchanged legacy body.
+    assert cli._COMMANDS["compile"] is cli._handle_compile_legacy
+    assert cli._COMMANDS["serve"] is cli._handle_serve_legacy
     assert cli._COMMANDS["sessions"] is cli._handle_sessions
     assert cli._COMMANDS["watch"] is cli._handle_watch
