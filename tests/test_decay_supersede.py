@@ -471,18 +471,26 @@ def test_structural_decisions_inherit_session_timestamps(now: datetime):
     assert score > 0.1
 
 
-def test_fresh_insights_ranks_structural_decision_by_age(
-    tmp_path: Path, now: datetime
-):
+def test_fresh_insights_ranks_structural_decision_by_age(tmp_path: Path):
     """End-to-end: fresh insight > 30-day-old structural decision > stale insight.
 
     Goes through ``extract_structural`` to verify the timestamp-stamping
     fix flows into the MCP ``fresh_insights`` ranking.
+
+    Anchors on REAL ``datetime.now`` — NOT the pinned ``now`` fixture — because
+    the MCP ``fresh_insights`` path computes decay against the wall clock with
+    no injectable ``now``. With the pinned fixture the "30-day-old" decision
+    silently aged in real time until its score crossed the 0.1 floor
+    (0.5^(47/14) ≈ 0.099 on 2026-06-07) and the test went red on a calendar
+    boundary. Real-now anchoring keeps the decision exactly 30 days old at
+    evaluation time (score ≈ 0.226) forever.
     """
     from tesserae.harness_sessions import HarnessSession
     from tesserae.mcp_server import LLMWikiMCPServer
     from tesserae.session_graph_path_index import DocPathIndex
     from tesserae.session_graph_structural import extract_structural
+
+    now = datetime.now(timezone.utc)
 
     started = (now - timedelta(days=30)).isoformat()
     project_root = "/tmp/decay-fresh-ranking"
