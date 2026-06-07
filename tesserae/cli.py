@@ -2262,7 +2262,14 @@ def main(argv: List[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    return _dispatch_command(argv[0], argv[1:])
+    try:
+        return _dispatch_command(argv[0], argv[1:])
+    except NotImplementedError:
+        print(
+            f"tesserae {argv[0]}: not wired up yet on this branch — coming in a later redesign task.",
+            file=sys.stderr,
+        )
+        return 2
 
 
 def _dispatch_command(command: str, rest: List[str]) -> int:

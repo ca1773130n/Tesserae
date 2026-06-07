@@ -118,7 +118,22 @@ def moved_replacement(argv: list[str]) -> tuple[str, str] | None:
 
 
 def looks_like_extraction_path(token: str) -> bool:
-    """Bare extraction (`tesserae notes/x.md`) → stub to `tesserae extract`."""
+    """Bare extraction (`tesserae notes/x.md`) → stub to `tesserae extract`.
+
+    Fires only for markdown-flavoured tokens: those ending in
+    ``.md``/``.markdown`` (existing or not), or existing directories that
+    contain at least one ``*.md`` file at any depth. Other existing paths
+    (e.g. ``setup.py``, a plain ``docs`` dir) fall through to the normal
+    unknown-command message.
+    """
     from pathlib import Path
 
-    return token.endswith((".md", ".markdown")) or Path(token).exists()
+    if token.endswith((".md", ".markdown")):
+        return True
+    path = Path(token)
+    try:
+        if path.is_dir():
+            return next(path.rglob("*.md"), None) is not None
+    except OSError:
+        return False
+    return False

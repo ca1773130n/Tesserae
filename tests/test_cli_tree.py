@@ -94,3 +94,49 @@ def test_bare_extraction_paths_get_extract_stub(tmp_path, capsys):
     rc = main([str(md)])
     assert rc == 2
     assert "tesserae extract" in capsys.readouterr().err
+
+
+def test_existing_non_markdown_path_is_unknown_not_extract_stub(tmp_path, capsys, monkeypatch):
+    from tesserae.cli import main
+
+    plain = tmp_path / "setup.py"
+    plain.write_text("x = 1")
+    monkeypatch.chdir(tmp_path)
+    rc = main(["setup.py"])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "unknown command" in err and "tesserae extract" not in err
+
+
+def test_markdown_directory_gets_extract_stub(tmp_path, capsys, monkeypatch):
+    from tesserae.cli import main
+
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    (notes / "a.md").write_text("# a")
+    monkeypatch.chdir(tmp_path)
+    rc = main(["notes"])
+    assert rc == 2
+    assert "tesserae extract" in capsys.readouterr().err
+
+
+def test_plain_directory_is_unknown_not_extract_stub(tmp_path, capsys, monkeypatch):
+    from tesserae.cli import main
+
+    d = tmp_path / "docsdir"
+    d.mkdir()
+    (d / "x.txt").write_text("t")
+    monkeypatch.chdir(tmp_path)
+    rc = main(["docsdir"])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "unknown command" in err and "tesserae extract" not in err
+
+
+def test_unwired_known_command_prints_clean_line_not_traceback(capsys):
+    from tesserae.cli import main
+
+    rc = main(["compile"])  # wired in a later task
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "not wired up yet" in err and "Traceback" not in err
