@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tesserae plugin — PreToolUse hook matching Bash. Intercepts agent-
-# initiated `tesserae project compile` calls; when the graph already
+# initiated `tesserae compile` calls; when the graph already
 # has more than 5000 nodes the compile will take minutes, so we surface
 # Claude Code's permission dialog via the JSON-output protocol rather
 # than letting the agent burn time silently.
@@ -19,9 +19,9 @@ fi
 hook_input=$(cat)
 command=$(echo "$hook_input" | jq -r '.tool_input.command // empty' 2>/dev/null)
 
-# Only inspect commands that actually invoke project compile. Anything
+# Only inspect commands that actually invoke compile. Anything
 # else gets the default permission flow.
-if [[ "$command" != *"tesserae project compile"* ]]; then
+if [[ "$command" != *"tesserae compile"* ]]; then
   echo '{"permissionDecision": "allow"}'
   exit 0
 fi
@@ -55,7 +55,7 @@ if (( nodes > 5000 )); then
   cat <<JSON
 {
   "permissionDecision": "ask",
-  "systemMessage": "Tesserae graph has ${nodes} nodes; project compile will take several minutes. Proceed?"
+  "systemMessage": "Tesserae graph has ${nodes} nodes; compile will take several minutes. Proceed?"
 }
 JSON
   exit 0

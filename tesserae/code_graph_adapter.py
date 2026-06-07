@@ -1,6 +1,6 @@
 """CodeGraph (Option C) adapter — read .codegraph/codegraph.db into Tesserae.
 
-Producer for ``tesserae project sync-code``. Reads the SQLite store
+Producer for ``tesserae code sync``. Reads the SQLite store
 written by https://github.com/colbymchenry/codegraph (21-language
 tree-sitter extractor + best-effort resolver) and translates it into the
 typed :class:`ResearchGraph` slice that feature H's

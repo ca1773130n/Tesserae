@@ -55,10 +55,14 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[synthesis-llm]"
 
-      - name: Setup project (no Cognee, no RAG-Anything)
-        # `setup --yes` writes .tesserae/config.json non-interactively.
-        # Every companion tool that would need network or LLM credentials
-        # is disabled so the default compile path is fully offline.
+      - name: Init project (no Cognee, no RAG-Anything)
+        # `init --yes` writes .tesserae/config.json non-interactively. With
+        # `--yes`, all optional integrations (Cognee, RAG-Anything,
+        # Understand-Anything) default OFF and color auto-disables off a TTY,
+        # so the old --no-color/--no-cognee/--skip-install-* flags are no
+        # longer needed — `--yes` encodes them. `--source-kind` is dropped
+        # too: `--yes` backfills source_kind=Repository (see
+        # _backfill_setup_defaults in tesserae/cli.py), preserving behavior.
         #
         # `--source` is repeatable (action="append" in tesserae/cli.py).
         # We pass the repo root AND the demo corpus tree so the deploy
@@ -74,25 +78,18 @@ jobs:
         # harness-native HarnessSession JSON under
         # examples/demo-corpus/.harness-sessions/ and seeded into the
         # harness session store by the "Seed demo agent sessions" step
-        # below, so the build-site step renders them under /sessions/.
+        # below, so the export-site step renders them under /sessions/.
         run: |
-          python -m tesserae project setup \
+          python -m tesserae init \
             --yes \
-            --no-color \
-            --source-kind Repository \
             --source . \
-            --source examples/demo-corpus/data \
-            --no-cognee \
-            --skip-raganything \
-            --skip-install-cognee \
-            --skip-install-raganything \
-            --skip-install-understand-anything
+            --source examples/demo-corpus/data
 
       - name: Compile (deterministic extractor, no LLM calls)
         # The default ResearchGraphExtractor is fully deterministic: it
         # builds the typed graph from filesystem walks + heuristics, with
         # zero outbound network or LLM calls. See tesserae/research_graph.py.
-        run: python -m tesserae project compile
+        run: python -m tesserae compile
 
       - name: Restore seeded RAG-Anything store
         # The 85-doc demo corpus was pre-ingested through LightRAG + Codex
@@ -153,7 +150,7 @@ jobs:
           find .tesserae/harness_sessions -type f -name '*.json' | sort
 
       - name: Build static site
-        run: python -m tesserae project build-site
+        run: python -m tesserae export site
 
       - name: Add a no-Jekyll marker and a banner file
         # GitHub Pages defaults to Jekyll processing; .nojekyll opts out so

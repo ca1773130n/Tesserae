@@ -1354,7 +1354,7 @@ def _detail_page(
 
     # Per-page ask widget (Bet B3). Sits at the bottom of every detail
     # page's article body. The JS island health-checks /api/ask/health on
-    # load; with ``tesserae project serve`` running, readers can ask
+    # load; with ``tesserae serve`` running, readers can ask
     # scoped questions about the current node. On any other host (file://,
     # GitHub Pages, S3) the widget collapses to a one-line static footer.
     ask_widget_html = _render_ask_widget_html(page, kind_route, node=node)
@@ -3101,7 +3101,7 @@ def render_about(ctx: SiteContext) -> str:
     body = f"""<header class="hero">
   <p class="eyebrow">about</p>
   <h1>About this wiki</h1>
-  <p class="lead">A self-indexing knowledge base built from your project's sources, papers, repos, and notes. Every page is generated deterministically by <code>project compile</code>; rerunning produces byte-identical output.</p>
+  <p class="lead">A self-indexing knowledge base built from your project's sources, papers, repos, and notes. Every page is generated deterministically by <code>compile</code>; rerunning produces byte-identical output.</p>
 </header>
 <section class="schema">
   <h2>Schema</h2>

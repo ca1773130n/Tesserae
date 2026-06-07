@@ -649,7 +649,7 @@ def _codex_cli_available() -> bool:
 # Lets a multi-account user pin e.g. ``llm_codex_home`` for ALL projects
 # without exporting the shared ``CODEX_HOME`` env var (which their other
 # codex account workflows contend over). Written by
-# ``tesserae project llm-defaults``.
+# ``tesserae config llm``.
 GLOBAL_CONFIG_PATH = Path.home() / ".tesserae" / "config.json"
 
 

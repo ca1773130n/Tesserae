@@ -32,7 +32,7 @@ tdir="${project_root}/.tesserae"
 
 if [[ ! -d "$tdir" ]]; then
   echo "Tesserae status: no .tesserae/ found at or above ${project_root}" >&2
-  echo "  Run /tesserae:setup or 'tesserae project setup' to initialise this project."
+  echo "  Run /tesserae:setup or 'tesserae init' to initialise this project."
   exit 1
 fi
 

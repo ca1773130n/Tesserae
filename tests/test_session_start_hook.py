@@ -120,7 +120,7 @@ def test_sync_code_triggered_when_db_is_newer(fake_project):
         "stubbed tesserae was never called within the timeout"
     )
     log_content = fake_project["invocation_log"].read_text(encoding="utf-8")
-    assert "project sync-code" in log_content, log_content
+    assert "code sync" in log_content, log_content
 
 
 def test_sync_code_skipped_when_json_is_fresh(fake_project):

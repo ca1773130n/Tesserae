@@ -67,13 +67,13 @@ This is a generated Obsidian vault for an Tesserae project.
 Markdown is a projection, not the source of truth. Re-run:
 
 ```bash
-python3 -m tesserae.cli project compile
+python3 -m tesserae compile
 ```
 
 or:
 
 ```bash
-python3 -m tesserae.cli project export-obsidian --vault /path/to/vault
+python3 -m tesserae vault export --vault /path/to/vault
 ```
 
 Dataview is optional but recommended. The generated dashboard includes Dataview queries and still remains readable without the plugin.

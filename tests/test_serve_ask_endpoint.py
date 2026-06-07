@@ -1,4 +1,4 @@
-"""Tests for the ``/api/ask`` endpoint served by ``tesserae project serve``.
+"""Tests for the ``/api/ask`` endpoint served by ``tesserae serve``.
 
 The handler is built by :func:`tesserae.serve.build_ask_aware_handler`
 and wraps :class:`http.server.SimpleHTTPRequestHandler` with two JSON

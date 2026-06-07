@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tesserae plugin — PostToolUse hook matching Edit | Write | MultiEdit.
 # When the edited file path is under docs/, queue an incremental
-# `tesserae project compile --changed-only`, debounced via a lock
+# `tesserae compile --changed-only`, debounced via a lock
 # file to once per 60 seconds. Disabled by default; opt-in via
 # .claude/tesserae.local.md frontmatter `hooks.posttooluse_edit: true`.
 
@@ -63,7 +63,7 @@ fi
 # session's process group so Claude Code can't reap us when SessionEnd
 # fires. `disown` alone isn't reliably enough for that case.
 log_file="${project_root}/.tesserae/.posttooluse-edit-hook.log"
-cmd="echo \"==== \$(date -u +%FT%TZ) — incremental recompile for ${file_path} ====\"; \"$tesserae_bin\" project compile --changed-only 2>&1 || echo \"(compile --changed-only failed)\"; rm -rf \"$lock_dir\""
+cmd="echo \"==== \$(date -u +%FT%TZ) — incremental recompile for ${file_path} ====\"; \"$tesserae_bin\" compile --changed-only 2>&1 || echo \"(compile --changed-only failed)\"; rm -rf \"$lock_dir\""
 if command -v setsid >/dev/null 2>&1; then
   setsid sh -c "$cmd" >> "$log_file" 2>&1 < /dev/null &
 elif command -v nohup >/dev/null 2>&1; then

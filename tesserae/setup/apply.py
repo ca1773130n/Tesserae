@@ -101,7 +101,7 @@ def _build_config_payload(plan: SetupPlan) -> dict[str, Any]:
         "external_tools": list(plan.external_tools),
         "memory_backends": dict(plan.memory_backends),
         "setup": {
-            "wizard": "tesserae project setup",
+            "wizard": "tesserae init",
             "updated": date.today().isoformat(),
         },
     }

@@ -363,7 +363,7 @@ def _bare_project(tmp_path):
 
 
 def _set_compile_options(config_path, **opts):
-    """Merge ``opts`` into ``config_options`` in an existing config.json."""
+    """Merge ``opts`` into ``compile_options`` in an existing config.json."""
     import json
 
     cfg = json.loads(config_path.read_text(encoding="utf-8"))

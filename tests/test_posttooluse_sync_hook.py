@@ -10,7 +10,7 @@ can observe the interesting branches:
 3. CodeGraph DB present, touch-file >30s old → triggered.
 4. .codegraph/ missing → silent skip, no touch-file.
 5. ``sync_code_on_edit: false`` in tesserae.local.md → silent skip.
-6. Another ``tesserae project sync-code <project_root>`` running →
+6. Another ``tesserae code sync <project_root>`` running →
    skipped by the pgrep re-entry guard.
 """
 
@@ -123,7 +123,7 @@ def test_triggered_when_no_prior_sync(fake_project):
         "stubbed tesserae was never called within timeout"
     )
     log_content = fake_project["invocation_log"].read_text(encoding="utf-8")
-    assert "project sync-code" in log_content, log_content
+    assert "code sync" in log_content, log_content
     assert "--project" in log_content, log_content
     assert str(proj) in log_content, log_content
 
@@ -171,7 +171,7 @@ def test_triggered_when_debounce_window_elapsed(fake_project):
         "stubbed tesserae was never called after debounce expired"
     )
     log_content = fake_project["invocation_log"].read_text(encoding="utf-8")
-    assert "project sync-code" in log_content
+    assert "code sync" in log_content
 
     # Touch-file should be refreshed.
     new_mtime = touch.stat().st_mtime
@@ -243,12 +243,12 @@ def test_skipped_when_concurrent_sync_running(fake_project, tmp_path):
 
     # Spawn a long-sleep process whose argv contains the magic string
     # the hook's pgrep is looking for:
-    #   tesserae project sync-code .* ${project_root}
+    #   tesserae code sync .* ${project_root}
     # We use ``sh -c`` with a fake argv0 + long sleep so pgrep -f finds
     # the full command line.
-    fake_cmd = f"tesserae project sync-code --project {proj} && sleep 30"
+    fake_cmd = f"tesserae code sync --project {proj} && sleep 30"
     bg = subprocess.Popen(
-        ["sh", "-c", f"exec -a 'tesserae project sync-code --project {proj}' sleep 30"],
+        ["sh", "-c", f"exec -a 'tesserae code sync --project {proj}' sleep 30"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
@@ -258,7 +258,7 @@ def test_skipped_when_concurrent_sync_running(fake_project, tmp_path):
 
         # Sanity-check that pgrep -f can actually see our fake.
         probe = subprocess.run(
-            ["pgrep", "-f", f"tesserae project sync-code.*{proj}"],
+            ["pgrep", "-f", f"tesserae code sync.*{proj}"],
             capture_output=True,
             text=True,
         )

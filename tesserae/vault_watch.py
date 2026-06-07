@@ -2,7 +2,7 @@
 
 Tier 2 of the bidirectional Obsidian sync feature
 (docs/integrations/obsidian-sync.md). Where Tier 1a/1b only react when the
-user runs ``tesserae project compile``, this module turns the vault into a
+user runs ``tesserae compile``, this module turns the vault into a
 live editing surface: edit a file in Obsidian, save, see the overlay
 applied + the projection updated within a couple of seconds.
 
@@ -109,11 +109,11 @@ class VaultWatcher:
         vault = self.wiki.effective_obsidian_vault()
         if not vault.is_dir():
             print(f"[tesserae] vault directory does not exist: {vault}", flush=True)
-            print("[tesserae] run `tesserae project compile` first.", flush=True)
+            print("[tesserae] run `tesserae compile` first.", flush=True)
             return
         if not self.wiki.paths.graph.is_file():
             print(f"[tesserae] no graph at {self.wiki.paths.graph}", flush=True)
-            print("[tesserae] run `tesserae project compile` first.", flush=True)
+            print("[tesserae] run `tesserae compile` first.", flush=True)
             return
 
         print(

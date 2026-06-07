@@ -11,7 +11,7 @@ def _run_setup(*, project, name=None, overrides=None):
     Builds the canonical Namespace from the 8-flag init parser plus
     `_backfill_setup_defaults` (every dest `_handle_setup` reads, all optional
     integrations OFF), then applies the setup-wizard-only opt-ins the old
-    `project setup` flags used to set. This replaces the removed `project_main`
+    `init` flags used to set. This replaces the removed `project_main`
     surface while exercising the identical `_handle_setup` behavior.
     """
     init_argv = ["--project", str(project), "--yes"]
@@ -81,7 +81,7 @@ def test_setup_command_yes_writes_config_with_external_tool_metadata(tmp_path, c
     assert code == 0
     cfg = json.loads((project / ".tesserae" / "config.json").read_text(encoding="utf-8"))
     assert cfg["sources"] == ["README.md", ".tesserae/external/understand-anything.md"]
-    assert cfg["setup"]["wizard"] == "tesserae project setup"
+    assert cfg["setup"]["wizard"] == "tesserae init"
     assert cfg["external_tools"][0]["id"] == "understand-anything"
     assert cfg["external_tools"][0]["install"]["enabled"] is True
     assert cfg["external_tools"][0]["auto_refresh"] is True

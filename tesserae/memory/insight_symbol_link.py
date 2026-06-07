@@ -9,7 +9,7 @@ straight to the function it was about.
 Pass shape (default-on; opt-out via ``TESSERAE_INSIGHT_SYMBOL_LINK=false``):
 
 1. Load the project's code graph from ``.tesserae/code-graph.json``
-   (produced by ``tesserae project ingest-code``). Missing file => skip
+   (produced by ``tesserae code ingest``). Missing file => skip
    with a log warning; the pass is purely additive so callers that
    never ran ``ingest-code`` keep working.
 2. Build a ``name -> [code-symbol nodes]`` index over the code graph.
@@ -349,7 +349,7 @@ def run_insight_symbol_link_pass(
     if not code_graph_path.exists():
         logger.warning(
             "insight_symbol_link: %s not found; skipping (run "
-            "`tesserae project ingest-code` to populate it)",
+            "`tesserae code ingest` to populate it)",
             code_graph_path,
         )
         return graph

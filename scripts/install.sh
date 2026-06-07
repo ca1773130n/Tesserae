@@ -36,9 +36,9 @@ Options:
   -h, --help             Show this help
 
 After install:
-  tesserae project init --source-kind Repository --source README.md --source docs --source src
-  tesserae project compile --changed-only
-  tesserae project build-site
+  tesserae init --bare --source-kind Repository --source README.md --source docs --source src
+  tesserae compile --changed-only
+  tesserae export site
 USAGE
 }
 
@@ -158,4 +158,4 @@ if ! command -v "$BIN_DIR/tesserae" >/dev/null 2>&1; then
 fi
 
 log "Installed: $BIN_DIR/tesserae"
-log "Try: tesserae project init --source-kind Repository --source README.md --source docs --source src"
+log "Try: tesserae init --bare --source-kind Repository --source README.md --source docs --source src"

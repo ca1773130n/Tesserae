@@ -1,4 +1,4 @@
-"""HTTP handler factory used by ``tesserae project serve``.
+"""HTTP handler factory used by ``tesserae serve``.
 
 The default ``http.server.SimpleHTTPRequestHandler`` serves the compiled
 static site. This module wraps it with two JSON routes used by the

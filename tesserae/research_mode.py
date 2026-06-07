@@ -291,7 +291,7 @@ class ResearchSession:
     web: Optional[WebFetcher] = None
     # When set, the minted graph slice (Question/Hypothesis/SourceDoc nodes
     # + derived_from/references edges) is merged into this graph.json file
-    # so subsequent ``tesserae project compile``/MCP ``ask`` calls can
+    # so subsequent ``tesserae compile``/MCP ``ask`` calls can
     # surface the research thread. None → report-only, slice discarded
     # (codex PR #16 P2 flagged this default as a bug; CLI now always
     # supplies the project's live graph_path so the default doesn't bite

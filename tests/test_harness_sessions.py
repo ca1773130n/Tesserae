@@ -32,7 +32,7 @@ def sample_session(project_root):
         metadata={
             "turns": [
                 {"role": "user", "timestamp": "2026-05-05T10:00:00Z", "text": "Please ingest Claude Code and Codex sessions from tesserae/project.py for #project-memory.\n\n<command-name>/effort</command-name> <command-message>effort</command-message> <command-args></command-args>"},
-                {"role": "assistant", "timestamp": "2026-05-05T10:01:00Z", "text": "I will add **normalized** `project-memory` session pages.\n\n- Render sessions\n- Index turns\n\n```python\ndef build_session():\n    return 42\n```\n\n```sh\ntesserae project build-site --project .\n```"},
+                {"role": "assistant", "timestamp": "2026-05-05T10:01:00Z", "text": "I will add **normalized** `project-memory` session pages.\n\n- Render sessions\n- Index turns\n\n```python\ndef build_session():\n    return 42\n```\n\n```sh\ntesserae export site --project .\n```"},
                 {"role": "tool", "timestamp": "2026-05-05T10:02:00Z", "name": "Read", "text": "{\"ok\": true, \"count\": 2}"},
                 {"role": "assistant", "timestamp": "2026-05-05T10:42:00Z", "text": "Implemented session import and static pages. <status>ready</status>"},
             ]

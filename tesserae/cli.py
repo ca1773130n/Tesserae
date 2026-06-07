@@ -296,8 +296,8 @@ def _top_level_ask_handler(args) -> int:
         if not entry:
             print(
                 f"No registered project named '{args.wiki}'. "
-                f"Run `tesserae wiki list` to see available names, or "
-                f"`tesserae wiki register <path> --name {args.wiki}` to register one.",
+                f"Run `tesserae projects list` to see available names, or "
+                f"`tesserae projects register <path> --name {args.wiki}` to register one.",
                 file=sys.stderr,
             )
             return 2
@@ -315,7 +315,7 @@ def _top_level_ask_handler(args) -> int:
             print(
                 "No project specified and no active project in the registry. "
                 "Use `tesserae ask --wiki <name>`, `tesserae ask --project <path>`, "
-                "or `tesserae wiki activate <name>`.",
+                "or `tesserae projects activate <name>`.",
                 file=sys.stderr,
             )
             return 2
@@ -338,7 +338,7 @@ def _top_level_ask_handler(args) -> int:
     except FileNotFoundError:
         print(
             f"No Tesserae project at {project_root} (resolved from {source}). "
-            f"Did you run `tesserae project setup` there?",
+            f"Did you run `tesserae init` there?",
             file=sys.stderr,
         )
         return 2
@@ -381,7 +381,7 @@ def _top_level_ask_scope_all_registered(args) -> int:
     all_projects: List[dict] = list(data.get("projects") or [])
     if not all_projects:
         print(
-            "No projects registered. Use `tesserae wiki register <path> --name <alias>` first.",
+            "No projects registered. Use `tesserae projects register <path> --name <alias>` first.",
             file=sys.stderr,
         )
         return 2
@@ -394,7 +394,7 @@ def _top_level_ask_scope_all_registered(args) -> int:
         if missing:
             print(
                 f"Unknown scope alias(es): {sorted(missing)}. "
-                f"Use `tesserae wiki list` to see registered projects.",
+                f"Use `tesserae projects list` to see registered projects.",
                 file=sys.stderr,
             )
             return 2
@@ -474,7 +474,7 @@ def _wiki_command_handler(args) -> int:
         active = data.get("active")
         projects = data.get("projects") or []
         if not projects:
-            print("No projects registered. Use `tesserae wiki register <path> --name <alias>`.")
+            print("No projects registered. Use `tesserae projects register <path> --name <alias>`.")
             return 0
         print(f"Active: {active or '(none)'}")
         for entry in projects:
@@ -551,7 +551,7 @@ def _wiki_command_handler(args) -> int:
         )
 
     print(
-        "Usage: tesserae wiki {list|register|activate|unregister|obsidian-set-root|obsidian-sync-all}",
+        "Usage: tesserae projects {list|register|activate|unregister|obsidian-set-root|obsidian-sync-all}",
         file=sys.stderr,
     )
     return 2
@@ -584,12 +584,12 @@ def _wiki_obsidian_sync_all(
 
     projects = list(registry.iter_registered_projects())
     if not projects:
-        print("No registered projects. Use `tesserae wiki register <path>` first.", file=sys.stderr)
+        print("No registered projects. Use `tesserae projects register <path>` first.", file=sys.stderr)
         return 2
 
     vault_root = registry.get_vault_root()
     if vault_root is None:
-        print("error: no registry vault root. Run `tesserae wiki obsidian-set-root <PATH>` first.", file=sys.stderr)
+        print("error: no registry vault root. Run `tesserae vault set-root <PATH>` first.", file=sys.stderr)
         return 2
 
     if prune_orphans:
@@ -679,7 +679,7 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("question", help="Natural-language question text.")
-    parser.add_argument("--wiki", help="Registered project name (see `tesserae wiki list`).")
+    parser.add_argument("--wiki", help="Registered project name (see `tesserae projects list`).")
     parser.add_argument("--project", help="Project root path (overrides --wiki).")
     parser.add_argument(
         "--backend",
@@ -828,7 +828,7 @@ def _handle_init(args: argparse.Namespace) -> int:
     )
     print(f"Initialized project wiki: {wiki.root}")
     print(f"Graph: {wiki.paths.graph}")
-    print("Next: python3 -m tesserae.cli project ingest <paths>")
+    print("Next: python3 -m tesserae compile <paths>")
     return 0
 
 
@@ -914,7 +914,7 @@ def _handle_setup(args: argparse.Namespace) -> int:
         if result.warnings:
             for w in result.warnings:
                 print(f"warning: {w}", file=sys.stderr)
-        print("Next: tesserae project compile && tesserae project build-site")
+        print("Next: tesserae compile && tesserae export site")
         return 0
 
 
@@ -978,7 +978,7 @@ def _handle_sync_code(args: argparse.Namespace) -> int:
                 f"CodeGraph database not found at {db_path}.\n"
                 "Install CodeGraph and initialize it in this project:\n"
                 f"  npx @colbymchenry/codegraph init -i {project_root}\n"
-                "Then re-run `tesserae project sync-code` (optionally with --auto-sync).",
+                "Then re-run `tesserae code sync` (optionally with --auto-sync).",
                 file=sys.stderr,
             )
             return 2
@@ -1098,7 +1098,7 @@ def _handle_schema_drift(args: argparse.Namespace) -> int:
     if True:
         wiki = ProjectWiki.load(args.project)
         if not wiki.paths.graph.exists():
-            print("error: no compiled graph yet — run `project compile` first.", file=sys.stderr)
+            print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
             return 2
         from .research_graph import ResearchNodeType as _ResearchNodeType
         from .schema_drift import analyze_schema_drift
@@ -1161,7 +1161,7 @@ def _handle_research(args: argparse.Namespace) -> int:
 
         wiki = ProjectWiki.load(args.project)
         if not wiki.paths.graph.exists():
-            print("error: no compiled graph yet — run `project compile` first.", file=sys.stderr)
+            print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
             return 2
         llm = build_default_json_client()
         if llm is None:
@@ -1277,7 +1277,7 @@ def _handle_obsidian_sync(args: argparse.Namespace) -> int:
             )
             from .vault_snapshot import read_snapshot
             if not wiki.paths.graph.is_file():
-                print("error: no compiled graph yet — run `project compile` first.", file=sys.stderr)
+                print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
                 return 2
             graph = _load_graph_file(wiki.paths.graph)
             snap = read_snapshot(wiki.paths.vault_snapshot)
@@ -1428,7 +1428,7 @@ def _handle_context(args: argparse.Namespace) -> int:
 
     wiki = ProjectWiki.load(args.project)
     if not wiki.paths.graph.exists():
-        print("error: no compiled graph yet — run `project compile` first.", file=sys.stderr)
+        print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
         return 2
     graph = _load_graph_file(wiki.paths.graph)
     bundle = compile_context(
@@ -1931,7 +1931,7 @@ def _build_init_parser() -> argparse.ArgumentParser:
     minimal workspace (the old `project init`). The ~21 other legacy `setup`
     flags (``--source-kind`` and the integration toggles) become wizard prompts
     and/or documented config.json keys — they are NOT surfaced here. The legacy
-    `project init` / `project setup` parsers keep their own full flag sets.
+    `project init` / `init` parsers keep their own full flag sets.
     """
     parser = argparse.ArgumentParser(
         prog="tesserae init",
@@ -2001,7 +2001,7 @@ def _handle_init_v2(args: argparse.Namespace) -> int:
     """Dispatch wrapper for the dieted `tesserae init`.
 
     `--bare` → the legacy `project init` workspace writer. Otherwise the legacy
-    `project setup` wizard (which honors ``--yes``). Both legacy handlers are
+    `init` wizard (which honors ``--yes``). Both legacy handlers are
     unchanged; we only backfill the namespace they expect. The module-level
     names ``_handle_init`` / ``_handle_setup`` are resolved at call time so
     ``monkeypatch.setattr(cli, "_handle_setup", …)`` is honored.
@@ -2220,7 +2220,7 @@ def _build_export_parser() -> argparse.ArgumentParser:
     p_site.add_argument("--remote", default="origin", help="Git remote to push to (--deploy; default: origin)")
     p_site.add_argument("--message", help="Commit message for the deploy commit (--deploy)")
     p_site.add_argument("--dry-run", action="store_true", help="Stage and commit but skip the final git push (--deploy)")
-    p_site.add_argument("--build", action="store_true", help="Run project compile before deploying (--deploy)")
+    p_site.add_argument("--build", action="store_true", help="Run compile before deploying (--deploy)")
     p_site.add_argument("--enable-pages", action="store_true", help="Enable GitHub Pages on the repo via the gh CLI (--deploy; idempotent)")
     p_site.add_argument("--force", action="store_true", help="Allow deploying even when the working tree is dirty (--deploy)")
     p_site.add_argument("--force-push", action="store_true", help="Use git push --force; refused for protected branches (--deploy)")
