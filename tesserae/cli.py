@@ -677,6 +677,12 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
             "--project, --wiki, or the registry's active project. Dispatches through the same "
             "backend selector as `project ask` (raganything -> cognee -> wiki)."
         ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae ask \"what did we decide about the compiler?\"\n"
+            "  tesserae ask \"summarize the graph schema\" --scope all-registered\n"
+        ),
     )
     parser.add_argument("question", help="Natural-language question text.")
     parser.add_argument("--wiki", help="Registered project name (see `tesserae projects list`).")
@@ -1701,6 +1707,13 @@ def _build_compile_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae compile",
         description="Rebuild the knowledge graph (compile [paths] = ad-hoc ingest).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae compile\n"
+            "  tesserae compile --changed-only\n"
+            "  tesserae compile notes/idea.md\n"
+        ),
     )
     parser.add_argument(
         "paths",
@@ -1730,6 +1743,12 @@ def _build_context_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae context",
         description="Compile a cited context doc for a query.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae context \"how does compile work?\"\n"
+            "  tesserae context \"how does compile work?\" --budget 4000 --synthesize\n"
+        ),
     )
     parser.add_argument("query", nargs="?", default="", help="Query text to seed the context doc")
     parser.add_argument("--seeds", nargs="*", help="Explicit seed node IDs")
@@ -1745,6 +1764,12 @@ def _build_serve_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae serve",
         description="Browse the compiled site (auto-builds if missing/stale).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae serve\n"
+            "  tesserae serve --port 8765 --no-build\n"
+        ),
     )
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind")
@@ -1758,6 +1783,12 @@ def _build_engine_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae engine",
         description="Run the supervised refresh daemon: watch sources, coalesce bursts, auto-recompile.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae engine --once\n"
+            "  tesserae engine --interval 30\n"
+        ),
     )
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--interval", type=float, default=2.0, help="Polling interval in seconds (default: 2)")
@@ -1770,6 +1801,12 @@ def _build_refresh_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae refresh",
         description="Import new sessions, compile, sync vault (in-process pipeline).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae refresh\n"
+            "  tesserae refresh --changed-only --skip-sessions\n"
+        ),
     )
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--changed-only", action="store_true", default=False, help="Opt-in incremental compile (skip unchanged files); default is a full compile")
@@ -1781,6 +1818,12 @@ def _build_status_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae status",
         description="Node/edge counts, last compile, vault state.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae status\n"
+            "  tesserae status --project ../other-repo\n"
+        ),
     )
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     return parser
@@ -1936,6 +1979,13 @@ def _build_init_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae init",
         description="Set up .tesserae (wizard by default; --yes non-interactive; --bare skips the wizard).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae init --yes --source .\n"
+            "  tesserae init --bare --name myproj\n"
+            "  tesserae init --llm-provider codex\n"
+        ),
     )
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--name", help="MCP server/config name; defaults to sanitized project directory name")
@@ -2049,9 +2099,25 @@ def _build_sessions_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae sessions",
         description="Manage inbound agent harness session history.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae sessions import path/to/session.json\n"
+            "  tesserae sessions discover --harness codex --import\n"
+            "  tesserae sessions list\n"
+        ),
     )
     sub = parser.add_subparsers(dest="sessions_command", required=True)
-    p_import = sub.add_parser("import", help="Import normalized HarnessSession JSON files")
+    p_import = sub.add_parser(
+        "import",
+        help="Import normalized HarnessSession JSON files",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae sessions import path/to/session.json\n"
+            "  tesserae sessions import a.json b.json\n"
+        ),
+    )
     # DEVIATION from the legacy `nargs="+"`: the new tree uses `nargs="*"` so
     # `tesserae sessions import` (no paths) parses to an empty-import no-op
     # instead of an argparse usage error. `_handle_sessions`' import branch
@@ -2110,6 +2176,13 @@ def _build_vault_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae vault",
         description="Obsidian vault projection: sync | sync-all | set-root | export | prune.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae vault sync\n"
+            "  tesserae vault sync --dry-run\n"
+            "  tesserae vault sync --watch\n"
+        ),
     )
     sub = parser.add_subparsers(dest="vault_command", required=True)
 
@@ -2124,7 +2197,17 @@ def _build_vault_parser() -> argparse.ArgumentParser:
         p.add_argument("--prune-orphans", action="store_true", help="Delete projected pages in the vault whose node_id no longer exists in the current graph.")
         p.add_argument("--force-prune-with-notes", action="store_true", help="With --prune-orphans, also delete orphan pages that have user-notes content.")
 
-    p_sync = sub.add_parser("sync", help="Apply vault edits onto the typed graph and re-project. Pass --watch for live mode.")
+    p_sync = sub.add_parser(
+        "sync",
+        help="Apply vault edits onto the typed graph and re-project. Pass --watch for live mode.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae vault sync\n"
+            "  tesserae vault sync --dry-run\n"
+            "  tesserae vault sync --watch\n"
+        ),
+    )
     _add_obsidian_sync_args(p_sync)
     p_sync.set_defaults(_handler="_handle_vault_sync")
 
@@ -2188,6 +2271,13 @@ def _build_export_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae export",
         description="Artifact exports: harness | graphiti | site.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae export site\n"
+            "  tesserae export site --deploy\n"
+            "  tesserae export site --watch\n"
+        ),
     )
     sub = parser.add_subparsers(dest="export_command", required=True)
 
@@ -2210,7 +2300,17 @@ def _build_export_parser() -> argparse.ArgumentParser:
     p_graphiti.set_defaults(_handler="_handle_export_graphiti_cmd")
 
     # site = build-site UNION deploy UNION watch flags + --deploy / --watch routing.
-    p_site = sub.add_parser("site", help="Build the static site; --deploy publishes, --watch rebuilds on change.")
+    p_site = sub.add_parser(
+        "site",
+        help="Build the static site; --deploy publishes, --watch rebuilds on change.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae export site\n"
+            "  tesserae export site --deploy\n"
+            "  tesserae export site --watch\n"
+        ),
+    )
     p_site.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     p_site.add_argument("--output", help="Site output directory; defaults to .tesserae/site")
     p_site.add_argument("--deploy", action="store_true", help="Deploy the compiled site to GitHub Pages (old `project deploy`)")
@@ -2254,6 +2354,13 @@ def _build_code_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae code",
         description="CodeGraph ⇄ project graph: ingest | sync.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae code sync\n"
+            "  tesserae code sync --auto-sync\n"
+            "  tesserae code ingest\n"
+        ),
     )
     sub = parser.add_subparsers(dest="code_command", required=True)
 
@@ -2264,7 +2371,16 @@ def _build_code_parser() -> argparse.ArgumentParser:
     p_ingest.add_argument("--exclude", action="append", default=[], help="Additional directory basename to skip (repeatable). Adds to the built-in exclude set")
     p_ingest.set_defaults(_handler="_handle_code_ingest")
 
-    p_sync = sub.add_parser("sync", help="Translate a colbymchenry/codegraph SQLite store into .tesserae/code-graph.json")
+    p_sync = sub.add_parser(
+        "sync",
+        help="Translate a colbymchenry/codegraph SQLite store into .tesserae/code-graph.json",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae code sync\n"
+            "  tesserae code sync --auto-sync\n"
+        ),
+    )
     p_sync.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     p_sync.add_argument("--db", help="Path to the CodeGraph SQLite database; defaults to <project>/.codegraph/codegraph.db")
     p_sync.add_argument("--output", help="Override output path; defaults to <project>/.tesserae/code-graph.json")
@@ -2298,10 +2414,25 @@ def _build_config_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae config",
         description="Machine-wide LLM defaults (~/.tesserae/config.json): llm | show.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae config llm --llm-provider codex --codex-home ~/.codex-personal1\n"
+            "  tesserae config show\n"
+        ),
     )
     sub = parser.add_subparsers(dest="config_command", required=True)
 
-    p_llm = sub.add_parser("llm", help="Set machine-wide LLM backend defaults for ALL projects.")
+    p_llm = sub.add_parser(
+        "llm",
+        help="Set machine-wide LLM backend defaults for ALL projects.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae config llm --llm-provider codex --codex-home ~/.codex-personal1\n"
+            "  tesserae config llm --llm-provider claude --claude-config-dir ~/.claude-personal2\n"
+        ),
+    )
     p_llm.add_argument("--llm-provider", choices=["claude", "codex"], default=None, help="Default CLI backend for the synthesis/insights LLM client on this machine")
     p_llm.add_argument("--claude-config-dir", action="append", default=[], help="Default Claude CLI config directory; repeat for fallback accounts")
     p_llm.add_argument("--codex-home", default=None, help="Default Codex CLI home (e.g. ~/.codex-personal1)")
@@ -2347,10 +2478,26 @@ def _build_projects_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae projects",
         description="Project registry: register | list | activate | unregister | mcp-config.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae projects register /path/to/project\n"
+            "  tesserae projects list\n"
+            "  tesserae projects activate myproj\n"
+        ),
     )
     sub = parser.add_subparsers(dest="projects_command", required=True)
 
-    p_register = sub.add_parser("register", help="Register a project root in the persistent registry.")
+    p_register = sub.add_parser(
+        "register",
+        help="Register a project root in the persistent registry.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae projects register /path/to/project\n"
+            "  tesserae projects register /path/to/project --name myproj --activate\n"
+        ),
+    )
     p_register.add_argument("path", help="Path to the project root containing .tesserae/.")
     p_register.add_argument("--name", help="Friendly name (defaults to the sanitized directory name).")
     p_register.add_argument("--activate", action="store_true", help="Also set the new entry as the active project.")
@@ -2393,9 +2540,24 @@ def _build_integrations_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae integrations",
         description="Managed integration refreshes: refresh <name>.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae integrations refresh raganything\n"
+            "  tesserae integrations refresh understand-anything\n"
+        ),
     )
     sub = parser.add_subparsers(dest="integrations_command", required=True)
-    p_refresh = sub.add_parser("refresh", help="Run the managed refresh for raganything | understand-anything")
+    p_refresh = sub.add_parser(
+        "refresh",
+        help="Run the managed refresh for raganything | understand-anything",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae integrations refresh raganything\n"
+            "  tesserae integrations refresh understand-anything --full\n"
+        ),
+    )
     p_refresh.add_argument("name", choices=["raganything", "understand-anything"], help="Integration to refresh")
     p_refresh.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     # raganything flags (refresh-raganything parser)
@@ -2431,10 +2593,25 @@ def _build_lab_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae lab",
         description="Experimental LLM ops: evolve | schema-drift.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae lab evolve\n"
+            "  tesserae lab schema-drift\n"
+        ),
     )
     sub = parser.add_subparsers(dest="lab_command", required=True)
 
-    p_evolve = sub.add_parser("evolve", help="Distill collected human-correction feedback into .tesserae/extraction-guidance.md.")
+    p_evolve = sub.add_parser(
+        "evolve",
+        help="Distill collected human-correction feedback into .tesserae/extraction-guidance.md.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae lab evolve\n"
+            "  tesserae lab evolve --project ../other-repo\n"
+        ),
+    )
     p_evolve.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     p_evolve.set_defaults(_handler="_handle_lab_evolve")
 
@@ -2464,6 +2641,12 @@ def _build_extract_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae extract",
         description="Extract a typed research intelligence graph from Tesserae notes.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae extract notes/ --pretty\n"
+            "  tesserae extract notes/idea.md -o graph.json --trends\n"
+        ),
     )
     parser.add_argument("paths", nargs="+", help="Markdown file or directory paths to extract")
     parser.add_argument("--source-kind", default="SourceDocument", help="Default source kind: Paper, Repository, ResearchDigest, SourceDocument")
@@ -2627,6 +2810,12 @@ def _build_research_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae research",
         description="Agentic research loop: plan → search → reflect → synthesize.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae research \"how do agents use the typed graph?\"\n"
+            "  tesserae research \"compiler internals\" --breadth 4 --depth 3\n"
+        ),
     )
     parser.add_argument("query", help="Research query to investigate")
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
@@ -2648,6 +2837,12 @@ def _build_lint_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae lint",
         description="Lint the compiled wiki: orphan papers, stale citations, drift, ghost synthesis inputs, and more.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae lint\n"
+            "  tesserae lint --fix-trivial --severity error\n"
+        ),
     )
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--fix-trivial", action="store_true", help="Apply safe auto-fixes (add missing implemented_in edges; prune ghost synthesis inputs)")
@@ -2665,6 +2860,12 @@ def _build_query_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae query",
         description="Search the compiled wiki and (optionally) ask the LLM for a synthesized answer with citations.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae query \"what cites the compile pipeline?\"\n"
+            "  tesserae query \"open questions\" --llm --top-k 12\n"
+        ),
     )
     parser.add_argument("question", nargs="?", default=None, help="Question text; omit to use --interactive")
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")

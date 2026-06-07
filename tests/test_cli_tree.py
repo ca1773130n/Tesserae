@@ -146,3 +146,18 @@ def test_known_command_prints_clean_line_not_traceback(capsys):
     assert rc == 2
     err = capsys.readouterr().err
     assert "Traceback" not in err and err.strip()
+
+
+def test_every_command_help_has_examples(capsys):
+    import tesserae.cli as cli
+
+    for cmd in (["init"], ["compile"], ["context"], ["ask"], ["serve"],
+                ["status"], ["engine"], ["refresh"], ["research"], ["query"],
+                ["lint"], ["extract"],
+                ["sessions", "import"], ["vault", "sync"], ["export", "site"],
+                ["code", "sync"], ["config", "llm"], ["projects", "register"],
+                ["integrations", "refresh"], ["lab", "evolve"]):
+        with pytest.raises(SystemExit):
+            cli.main([*cmd, "--help"])
+        out = capsys.readouterr().out
+        assert "examples:" in out.lower(), f"{' '.join(cmd)} --help lacks EXAMPLES"
