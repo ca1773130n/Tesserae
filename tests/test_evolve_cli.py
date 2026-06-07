@@ -38,7 +38,7 @@ def test_evolve_cli_writes_guidance_markdown(tmp_path: Path, capsys):
 
     # No LLM client is configured under tmp/test conditions; evolve must still
     # produce deterministic-fallback bullets and exit cleanly.
-    rc = cli.main(["project", "evolve", "--project", str(tmp_path)])
+    rc = cli.main(["lab", "evolve", "--project", str(tmp_path)])
     assert rc == 0
 
     guidance = wiki.paths.extraction_guidance.read_text(encoding="utf-8")
@@ -50,9 +50,9 @@ def test_evolve_cli_writes_guidance_markdown(tmp_path: Path, capsys):
 
 
 def test_compile_help_lists_use_extraction_feedback(capsys):
-    # `project compile --help` should advertise the new flag.
+    # `compile --help` should advertise the new flag.
     try:
-        cli.main(["project", "compile", "--help"])
+        cli.main(["compile", "--help"])
     except SystemExit:
         pass
     out = capsys.readouterr().out

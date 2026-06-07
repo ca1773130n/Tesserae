@@ -71,7 +71,7 @@ def test_top_level_ask_resolves_project_via_wiki_name(tmp_path, monkeypatch, cap
     registry_path = tmp_path / "registry.json"
     monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
 
-    rc = cli.main(["wiki", "register", str(project), "--name", "demo-alias"])
+    rc = cli.main(["projects", "register", str(project), "--name", "demo-alias"])
     assert rc == 0
     assert registry_path.exists()
     capsys.readouterr()
@@ -102,7 +102,7 @@ def test_top_level_ask_uses_active_project_when_no_args(tmp_path, monkeypatch, c
     monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
 
     rc = cli.main(
-        ["wiki", "register", str(project), "--name", "demo-active", "--activate"]
+        ["projects", "register", str(project), "--name", "demo-active", "--activate"]
     )
     assert rc == 0
     capsys.readouterr()
@@ -174,10 +174,10 @@ def test_wiki_list_command(tmp_path, monkeypatch, capsys):
     registry_path = tmp_path / "registry.json"
     monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
 
-    cli.main(["wiki", "register", str(project), "--name", "demo", "--activate"])
+    cli.main(["projects", "register", str(project), "--name", "demo", "--activate"])
     capsys.readouterr()
 
-    rc = cli.main(["wiki", "list"])
+    rc = cli.main(["projects", "list"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "Active: demo" in out
@@ -192,10 +192,10 @@ def test_wiki_list_json(tmp_path, monkeypatch, capsys):
     registry_path = tmp_path / "registry.json"
     monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
 
-    cli.main(["wiki", "register", str(project), "--name", "demo"])
+    cli.main(["projects", "register", str(project), "--name", "demo"])
     capsys.readouterr()
 
-    rc = cli.main(["wiki", "list", "--json"])
+    rc = cli.main(["projects", "list", "--json"])
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["active"] is None
@@ -210,14 +210,14 @@ def test_wiki_unregister_command(tmp_path, monkeypatch, capsys):
     registry_path = tmp_path / "registry.json"
     monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
 
-    cli.main(["wiki", "register", str(project), "--name", "demo"])
+    cli.main(["projects", "register", str(project), "--name", "demo"])
     capsys.readouterr()
 
-    rc = cli.main(["wiki", "unregister", "demo"])
+    rc = cli.main(["projects", "unregister", "demo"])
     assert rc == 0
     capsys.readouterr()
 
-    rc = cli.main(["wiki", "list"])
+    rc = cli.main(["projects", "list"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "No projects registered" in out
@@ -231,10 +231,10 @@ def test_wiki_activate_command(tmp_path, monkeypatch, capsys):
     registry_path = tmp_path / "registry.json"
     monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
 
-    cli.main(["wiki", "register", str(project), "--name", "demo"])
+    cli.main(["projects", "register", str(project), "--name", "demo"])
     capsys.readouterr()
 
-    rc = cli.main(["wiki", "activate", "demo"])
+    rc = cli.main(["projects", "activate", "demo"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "Active: demo" in out

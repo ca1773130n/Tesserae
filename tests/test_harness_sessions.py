@@ -221,8 +221,8 @@ def test_cli_project_sessions_import_filters_other_project_sessions(tmp_path, ca
     session_file = tmp_path / "sessions.json"
     session_file.write_text(json.dumps([focused.to_dict(), foreign.to_dict()]), encoding="utf-8")
 
-    assert main(["project", "sessions", "import", "--project", str(project), str(session_file)]) == 0
-    assert main(["project", "sessions", "list", "--project", str(project)]) == 0
+    assert main(["sessions", "import", "--project", str(project), str(session_file)]) == 0
+    assert main(["sessions", "list", "--project", str(project)]) == 0
 
     captured = capsys.readouterr().out
     assert "Imported harness sessions: 1" in captured

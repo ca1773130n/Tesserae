@@ -1,6 +1,6 @@
 import json
 
-from tesserae.cli import main
+from tesserae.cli import main, project_main
 from tesserae.project import ProjectWiki, cognify_options_from_config
 from tesserae.project_setup import build_setup_plan, apply_setup_plan
 
@@ -45,7 +45,12 @@ def test_setup_installs_cognee_when_requested(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(subprocess, "run", fake_run)
 
-    assert main(["project", "setup", "--project", str(project), "--yes", "--install-cognee", "--no-color"]) == 0
+    # TODO(redesign-task-8): migrate when flag→config key lands. `--install-cognee`
+    # / `--no-color` live ONLY on the legacy setup wizard; `tesserae init --yes`
+    # hard-codes cognee install OFF, so the legacy `project_main` setup path keeps
+    # serving this "installer was invoked" assertion until Task 8.
+    # TODO(redesign-task-7): setup-wizard-only flags — rewrite against _handle_setup namespace when project_main is deleted
+    assert project_main(["setup", "--project", str(project), "--yes", "--install-cognee", "--no-color"]) == 0
 
     assert seen, "cognee installer should have been invoked"
     out = capsys.readouterr().out
@@ -72,7 +77,7 @@ def test_compile_uses_configured_cognee_when_auto_cognify_enabled(tmp_path, monk
     calls = []
     monkeypatch.setattr(ProjectWiki, "_run_cognify", lambda self, options: calls.append(options))
 
-    assert main(["project", "compile", "--project", str(project), "--limit", "1"]) == 0
+    assert main(["compile", "--project", str(project), "--limit", "1"]) == 0
 
     assert calls
     assert calls[0].mode == "add"
@@ -93,7 +98,7 @@ def test_compile_cli_cognee_flags_override_config(tmp_path, monkeypatch):
     monkeypatch.setattr(ProjectWiki, "_run_cognify", lambda self, options: calls.append(options))
 
     assert main([
-        "project", "compile", "--project", str(project), "--limit", "1",
+        "compile", "--project", str(project), "--limit", "1",
         "--cognee-codex-cognify", "--cognee-dataset", "override_memory",
     ]) == 0
 
@@ -147,7 +152,7 @@ def test_configured_cognee_failure_warns_and_compile_continues(tmp_path, monkeyp
 
     monkeypatch.setattr(ProjectWiki, "_run_cognify", fail_cognee)
 
-    assert main(["project", "compile", "--project", str(project), "--limit", "1"]) == 0
+    assert main(["compile", "--project", str(project), "--limit", "1"]) == 0
 
     out = capsys.readouterr().out
     assert "Cognee cognify warning" in out
@@ -177,7 +182,7 @@ def test_configured_cognee_missing_module_installs_then_retries(tmp_path, monkey
     monkeypatch.setattr(ProjectWiki, "_run_cognify", flaky_cognee)
     monkeypatch.setattr(ProjectWiki, "_install_cognee", fake_install)
 
-    assert main(["project", "compile", "--project", str(project), "--limit", "1"]) == 0
+    assert main(["compile", "--project", str(project), "--limit", "1"]) == 0
 
     assert calls == {"cognify": 2, "install": 1}
     out = capsys.readouterr().out
@@ -198,7 +203,7 @@ def test_project_ask_uses_configured_cognee_backend(tmp_path, monkeypatch, capsy
         lambda question, dataset=None, search_type="INSIGHTS", top_k=8: [f"answer for {question} in {dataset}"],
     )
 
-    assert main(["project", "ask", "What renders Mermaid?", "--project", str(project)]) == 0
+    assert main(["ask", "What renders Mermaid?", "--project", str(project)]) == 0
     out = capsys.readouterr().out
     assert "Cognee answer" in out
     assert "answer for What renders Mermaid? in demo_memory" in out

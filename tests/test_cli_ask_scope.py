@@ -43,8 +43,8 @@ def test_top_level_ask_scope_all_registered_iterates_each_project(
     registry_path = tmp_path / "registry.json"
     monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
 
-    cli.main(["wiki", "register", str(p1), "--name", "p1"])
-    cli.main(["wiki", "register", str(p2), "--name", "p2"])
+    cli.main(["projects", "register", str(p1), "--name", "p1"])
+    cli.main(["projects", "register", str(p2), "--name", "p2"])
     capsys.readouterr()
 
     called: list[str] = []
@@ -86,9 +86,9 @@ def test_top_level_ask_scope_aliases_restricts_subset(
     registry_path = tmp_path / "registry.json"
     monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
 
-    cli.main(["wiki", "register", str(p1), "--name", "p1"])
-    cli.main(["wiki", "register", str(p2), "--name", "p2"])
-    cli.main(["wiki", "register", str(p3), "--name", "p3"])
+    cli.main(["projects", "register", str(p1), "--name", "p1"])
+    cli.main(["projects", "register", str(p2), "--name", "p2"])
+    cli.main(["projects", "register", str(p3), "--name", "p3"])
     capsys.readouterr()
 
     called: list[str] = []
@@ -123,8 +123,8 @@ def test_top_level_ask_scope_all_registered_handles_per_project_failure(
     registry_path = tmp_path / "registry.json"
     monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
 
-    cli.main(["wiki", "register", str(p1), "--name", "p1"])
-    cli.main(["wiki", "register", str(p2), "--name", "p2"])
+    cli.main(["projects", "register", str(p1), "--name", "p1"])
+    cli.main(["projects", "register", str(p2), "--name", "p2"])
     capsys.readouterr()
 
     def fake_ask(wiki, question, **kwargs):
@@ -165,7 +165,7 @@ def test_top_level_ask_scope_default_is_current(tmp_path, monkeypatch, capsys):
     p1 = _bootstrap_project(tmp_path, "p1")
     registry_path = tmp_path / "registry.json"
     monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
-    cli.main(["wiki", "register", str(p1), "--name", "p1", "--activate"])
+    cli.main(["projects", "register", str(p1), "--name", "p1", "--activate"])
     capsys.readouterr()
 
     called: list[str] = []

@@ -34,14 +34,14 @@ def test_editable_install_exposes_tesserae_console_command(tmp_path):
 
     assert install.returncode == 0, install.stdout + install.stderr
     result = subprocess.run(
-        [str(tesserae), "project", "init", "--help"],
+        [str(tesserae), "init", "--help"],
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         timeout=20,
     )
     assert result.returncode == 0, result.stderr
-    assert "source-kind" in result.stdout
+    assert "--bare" in result.stdout
 
 
 def test_install_script_has_curl_pipe_bash_contract_and_valid_syntax():

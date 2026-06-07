@@ -392,7 +392,7 @@ def test_cli_lint_returns_warning_exit_code(tmp_path: Path, capsys: pytest.Captu
     project = _scaffold(tmp_path, graph=graph)
     ProjectWiki.init(project, name="demo_lint")
     (project / ".tesserae" / "graph.json").write_text(json.dumps(graph), encoding="utf-8")
-    code = cli_main(["project", "lint", "--project", str(project)])
+    code = cli_main(["lint", "--project", str(project)])
     assert code == 1
 
 
@@ -403,7 +403,7 @@ def test_cli_lint_clean_exits_zero(tmp_path: Path) -> None:
     (project / ".tesserae" / "graph.json").write_text(
         json.dumps({"nodes": [], "edges": []}), encoding="utf-8"
     )
-    code = cli_main(["project", "lint", "--project", str(project)])
+    code = cli_main(["lint", "--project", str(project)])
     assert code == 0
 
 
@@ -415,7 +415,7 @@ def test_cli_lint_json_flag_prints_json(tmp_path: Path, capsys: pytest.CaptureFi
     project = _scaffold(tmp_path, graph=graph)
     ProjectWiki.init(project, name="demo_json")
     (project / ".tesserae" / "graph.json").write_text(json.dumps(graph), encoding="utf-8")
-    cli_main(["project", "lint", "--project", str(project), "--json"])
+    cli_main(["lint", "--project", str(project), "--json"])
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
     assert any(f["code"] == "ORPHAN_PAPER" for f in payload["findings"])
@@ -429,5 +429,5 @@ def test_cli_lint_severity_error_only_fails_on_errors(tmp_path: Path) -> None:
     project = _scaffold(tmp_path, graph=graph)
     ProjectWiki.init(project, name="demo_sev")
     (project / ".tesserae" / "graph.json").write_text(json.dumps(graph), encoding="utf-8")
-    code = cli_main(["project", "lint", "--project", str(project), "--severity", "error"])
+    code = cli_main(["lint", "--project", str(project), "--severity", "error"])
     assert code == 0

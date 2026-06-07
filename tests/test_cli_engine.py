@@ -45,7 +45,7 @@ def test_engine_once_runs_single_drain_exit_zero(tmp_path, monkeypatch):
     monkeypatch.setattr("tesserae.engine.daemon.Daemon", daemon_factory)
 
     rc = cli.main(
-        ["project", "engine", "--once", "--project", str(tmp_path), "--debounce", "0"]
+        ["engine", "--once", "--project", str(tmp_path), "--debounce", "0"]
     )
 
     assert rc == 0
@@ -53,7 +53,8 @@ def test_engine_once_runs_single_drain_exit_zero(tmp_path, monkeypatch):
 
 
 def test_daemon_alias_once_runs_single_drain_exit_zero(tmp_path, monkeypatch):
-    """The `daemon` alias behaves identically to `engine`."""
+    """The old `daemon` alias is gone (redesign); `tesserae engine` is the
+    single entry point and still runs exactly one drain cycle on --once."""
     (tmp_path / ".tesserae").mkdir(parents=True, exist_ok=True)
 
     calls: list = []
@@ -67,7 +68,7 @@ def test_daemon_alias_once_runs_single_drain_exit_zero(tmp_path, monkeypatch):
     monkeypatch.setattr("tesserae.engine.daemon.Daemon", daemon_factory)
 
     rc = cli.main(
-        ["project", "daemon", "--once", "--project", str(tmp_path), "--debounce", "0"]
+        ["engine", "--once", "--project", str(tmp_path), "--debounce", "0"]
     )
 
     assert rc == 0

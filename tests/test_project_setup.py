@@ -1,6 +1,6 @@
 import json
 
-from tesserae.cli import main
+from tesserae.cli import main, project_main
 from tesserae.project_setup import build_setup_plan, render_setup_summary, expand_tool_command
 
 
@@ -47,8 +47,13 @@ def test_setup_command_yes_writes_config_with_external_tool_metadata(tmp_path, c
     ua.mkdir()
     (ua / "knowledge-graph.json").write_text('{"nodes": [], "edges": []}\n', encoding="utf-8")
 
-    code = main([
-        "project",
+    # TODO(redesign-task-8): migrate when flag→config key lands. The setup-wizard-only
+    # flags below (--with/--install/--run/--skip-install-understand-anything, --no-color,
+    # --name, --understand-anything-command) are NOT surfaced on `tesserae init`; its
+    # --yes hard-codes integrations OFF and color auto. The legacy project_main setup
+    # path keeps serving these flag→config-and-side-effect assertions until Task 8.
+    # TODO(redesign-task-7): setup-wizard-only flags — rewrite against _handle_setup namespace when project_main is deleted
+    code = project_main([
         "setup",
         "--project",
         str(project),
@@ -96,8 +101,13 @@ def test_setup_installs_understand_anything_when_requested(tmp_path, monkeypatch
 
     monkeypatch.setattr(subprocess, "run", fake_run)
 
-    assert main([
-        "project",
+    # TODO(redesign-task-8): migrate when flag→config key lands. The setup-wizard-only
+    # flags below (--with/--install/--run/--skip-install-understand-anything, --no-color,
+    # --name, --understand-anything-command) are NOT surfaced on `tesserae init`; its
+    # --yes hard-codes integrations OFF and color auto. The legacy project_main setup
+    # path keeps serving these flag→config-and-side-effect assertions until Task 8.
+    # TODO(redesign-task-7): setup-wizard-only flags — rewrite against _handle_setup namespace when project_main is deleted
+    assert project_main([
         "setup",
         "--project",
         str(project),
@@ -117,8 +127,13 @@ def test_setup_persists_config_even_when_initial_external_refresh_fails(tmp_path
     project.mkdir()
     (project / "README.md").write_text("# Demo\n", encoding="utf-8")
 
-    assert main([
-        "project",
+    # TODO(redesign-task-8): migrate when flag→config key lands. The setup-wizard-only
+    # flags below (--with/--install/--run/--skip-install-understand-anything, --no-color,
+    # --name, --understand-anything-command) are NOT surfaced on `tesserae init`; its
+    # --yes hard-codes integrations OFF and color auto. The legacy project_main setup
+    # path keeps serving these flag→config-and-side-effect assertions until Task 8.
+    # TODO(redesign-task-7): setup-wizard-only flags — rewrite against _handle_setup namespace when project_main is deleted
+    assert project_main([
         "setup",
         "--project",
         str(project),
@@ -146,8 +161,13 @@ def test_compile_auto_refreshes_configured_external_tools(tmp_path, capsys):
     (project / "README.md").write_text("# Demo\nGaussian Splatting supports novel view synthesis.\n", encoding="utf-8")
     command = "python3 -c \"from pathlib import Path; p=Path('.understand-anything'); p.mkdir(exist_ok=True); (p/'knowledge-graph.json').write_text('{\\\"nodes\\\": [], \\\"edges\\\": []}\\n')\""
 
-    assert main([
-        "project",
+    # TODO(redesign-task-8): migrate when flag→config key lands. The setup-wizard-only
+    # flags below (--with/--install/--run/--skip-install-understand-anything, --no-color,
+    # --name, --understand-anything-command) are NOT surfaced on `tesserae init`; its
+    # --yes hard-codes integrations OFF and color auto. The legacy project_main setup
+    # path keeps serving these flag→config-and-side-effect assertions until Task 8.
+    # TODO(redesign-task-7): setup-wizard-only flags — rewrite against _handle_setup namespace when project_main is deleted
+    assert project_main([
         "setup",
         "--project",
         str(project),
@@ -161,7 +181,7 @@ def test_compile_auto_refreshes_configured_external_tools(tmp_path, capsys):
     ]) == 0
     (project / ".understand-anything" / "knowledge-graph.json").unlink()
 
-    assert main(["project", "compile", "--project", str(project), "--limit", "1"]) == 0
+    assert main(["compile", "--project", str(project), "--limit", "1"]) == 0
 
     assert (project / ".understand-anything" / "knowledge-graph.json").exists()
     assert "Refreshed external tools" in capsys.readouterr().out
@@ -172,8 +192,13 @@ def test_compile_warns_and_continues_when_auto_refresh_command_is_missing(tmp_pa
     project.mkdir()
     (project / "README.md").write_text("# Demo\nGaussian Splatting supports novel view synthesis.\n", encoding="utf-8")
 
-    assert main([
-        "project",
+    # TODO(redesign-task-8): migrate when flag→config key lands. The setup-wizard-only
+    # flags below (--with/--install/--run/--skip-install-understand-anything, --no-color,
+    # --name, --understand-anything-command) are NOT surfaced on `tesserae init`; its
+    # --yes hard-codes integrations OFF and color auto. The legacy project_main setup
+    # path keeps serving these flag→config-and-side-effect assertions until Task 8.
+    # TODO(redesign-task-7): setup-wizard-only flags — rewrite against _handle_setup namespace when project_main is deleted
+    assert project_main([
         "setup",
         "--project",
         str(project),
@@ -186,7 +211,7 @@ def test_compile_warns_and_continues_when_auto_refresh_command_is_missing(tmp_pa
         "--no-color",
     ]) == 0
 
-    assert main(["project", "compile", "--project", str(project), "--limit", "1"]) == 0
+    assert main(["compile", "--project", str(project), "--limit", "1"]) == 0
 
     out = capsys.readouterr().out
     assert "External tool" in out and "warnings" in out

@@ -99,7 +99,7 @@ def test_status_uninitialized_project_exits_2(tmp_path, capsys):
 def test_status_initialized_project_reports_counts(tmp_path, capsys):
     import tesserae.cli as cli
 
-    assert cli.project_main(["init", "--project", str(tmp_path)]) == 0
+    assert cli.main(["init", "--bare", "--project", str(tmp_path)]) == 0
     rc = cli.main(["status", "--project", str(tmp_path)])
     assert rc == 0
     out = capsys.readouterr().out
@@ -112,7 +112,7 @@ def test_status_initialized_project_reports_counts(tmp_path, capsys):
 def test_serve_autobuilds_when_missing(tmp_path, monkeypatch, capsys):
     import tesserae.cli as cli
 
-    assert cli.project_main(["init", "--project", str(tmp_path)]) == 0
+    assert cli.main(["init", "--bare", "--project", str(tmp_path)]) == 0
     built = {}
 
     def _build(args):
@@ -131,7 +131,7 @@ def test_serve_autobuilds_when_missing(tmp_path, monkeypatch, capsys):
 def test_serve_autobuilds_when_stale(tmp_path, monkeypatch, capsys):
     import tesserae.cli as cli
 
-    assert cli.project_main(["init", "--project", str(tmp_path)]) == 0
+    assert cli.main(["init", "--bare", "--project", str(tmp_path)]) == 0
     from tesserae.project import ProjectWiki
 
     wiki = ProjectWiki.load(str(tmp_path))
@@ -162,7 +162,7 @@ def test_serve_autobuilds_when_stale(tmp_path, monkeypatch, capsys):
 def test_serve_no_build_flag_skips_autobuild(tmp_path, monkeypatch, capsys):
     import tesserae.cli as cli
 
-    assert cli.project_main(["init", "--project", str(tmp_path)]) == 0
+    assert cli.main(["init", "--bare", "--project", str(tmp_path)]) == 0
     built = {}
 
     def _build(args):
@@ -179,7 +179,7 @@ def test_serve_no_build_flag_skips_autobuild(tmp_path, monkeypatch, capsys):
 def test_status_survives_corrupt_graph_json(tmp_path, capsys):
     import tesserae.cli as cli
 
-    assert cli.project_main(["init", "--project", str(tmp_path)]) == 0
+    assert cli.main(["init", "--bare", "--project", str(tmp_path)]) == 0
     (tmp_path / ".tesserae" / "graph.json").write_text("{truncated", encoding="utf-8")
     rc = cli.main(["status", "--project", str(tmp_path)])
     assert rc == 0

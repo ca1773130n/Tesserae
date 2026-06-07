@@ -92,10 +92,10 @@ def test_build_json_client_defaults_to_claude_without_config(tmp_path: Path, mon
 def test_cli_accepts_llm_provider_flags(command, tmp_path: Path, capsys):
     """The flags must be DEFINED on the parser (invalid choice, not
     unrecognized argument)."""
-    from tesserae.cli import project_main
+    from tesserae.cli import main
 
     with pytest.raises(SystemExit):
-        project_main([command, "--project", str(tmp_path), "--llm-provider", "bogus-provider"])
+        main([command, "--project", str(tmp_path), "--llm-provider", "bogus-provider"])
     err = capsys.readouterr().err
     assert "invalid choice" in err and "bogus-provider" in err, err
     assert "unrecognized arguments" not in err, err
@@ -225,7 +225,7 @@ def test_cli_llm_defaults_writes_global_config(tmp_path: Path, monkeypatch, caps
 
     rc = main(
         [
-            "llm-defaults",
+            "config", "llm",
             "--llm-provider", "codex",
             "--codex-home", "/home/u/.codex-personal1",
         ]
@@ -248,7 +248,7 @@ def test_cli_llm_defaults_merges_existing_keys(tmp_path: Path, monkeypatch):
     )
     monkeypatch.setattr(lj, "GLOBAL_CONFIG_PATH", global_cfg)
 
-    rc = main(["llm-defaults", "--llm-provider", "codex"])
+    rc = main(["config", "llm", "--llm-provider", "codex"])
     assert rc == 0
     saved = json.loads(global_cfg.read_text(encoding="utf-8"))
     assert saved["llm_provider"] == "codex"
@@ -266,7 +266,7 @@ def test_cli_llm_defaults_show_prints_effective_settings(tmp_path: Path, monkeyp
     )
     monkeypatch.setattr(lj, "GLOBAL_CONFIG_PATH", global_cfg)
 
-    rc = main(["llm-defaults", "--show"])
+    rc = main(["config", "show"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "codex" in out and "/x" in out

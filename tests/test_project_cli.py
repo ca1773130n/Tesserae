@@ -99,9 +99,9 @@ def test_cli_project_export_graphiti_writes_episode_jsonl(tmp_path, capsys):
     project.mkdir()
     (project / "note.md").write_text("# CLI Graphiti Note\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")
 
-    assert main(["project", "init", "--project", str(project), "--name", "graphiti_cli", "--source-kind", "Paper", "--source", "note.md"]) == 0
-    assert main(["project", "compile", "--project", str(project)]) == 0
-    assert main(["project", "export-graphiti", "--project", str(project)]) == 0
+    assert main(["init", "--bare", "--project", str(project), "--name", "graphiti_cli", "--source", "note.md"]) == 0
+    assert main(["compile", "--project", str(project)]) == 0
+    assert main(["export", "graphiti", "--project", str(project)]) == 0
 
     captured = capsys.readouterr().out
     assert "Exported Graphiti episodes" in captured
@@ -113,9 +113,9 @@ def test_cli_project_sync_graphiti_dry_run_reports_episode_count(tmp_path, capsy
     project.mkdir()
     (project / "note.md").write_text("# Sync Graphiti Note\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")
 
-    assert main(["project", "init", "--project", str(project), "--name", "graphiti_sync", "--source-kind", "Paper", "--source", "note.md"]) == 0
-    assert main(["project", "compile", "--project", str(project)]) == 0
-    assert main(["project", "sync-graphiti", "--project", str(project), "--dry-run"]) == 0
+    assert main(["init", "--bare", "--project", str(project), "--name", "graphiti_sync", "--source", "note.md"]) == 0
+    assert main(["compile", "--project", str(project)]) == 0
+    assert main(["export", "graphiti", "--sync", "--project", str(project), "--dry-run"]) == 0
 
     captured = capsys.readouterr().out
     assert "Graphiti dry-run" in captured
@@ -143,10 +143,10 @@ def test_cli_project_export_agent_harness_and_obsidian(tmp_path, capsys):
     project.mkdir()
     (project / "note.md").write_text("# CLI Harness Note\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")
 
-    assert main(["project", "init", "--project", str(project), "--name", "harness_cli", "--source-kind", "Paper", "--source", "note.md"]) == 0
-    assert main(["project", "compile", "--project", str(project)]) == 0
-    assert main(["project", "export-agent-harness", "--project", str(project), "--target", "claude-code", "--target", "cursor"]) == 0
-    assert main(["project", "export-obsidian", "--project", str(project)]) == 0
+    assert main(["init", "--bare", "--project", str(project), "--name", "harness_cli", "--source", "note.md"]) == 0
+    assert main(["compile", "--project", str(project)]) == 0
+    assert main(["export", "harness", "--project", str(project), "--target", "claude-code", "--target", "cursor"]) == 0
+    assert main(["vault", "export", "--project", str(project)]) == 0
 
     captured = capsys.readouterr().out
     assert "Exported agent harness" in captured
@@ -190,10 +190,10 @@ def test_cli_project_build_site_and_serve_smoke(tmp_path, capsys):
     project.mkdir()
     (project / "note.md").write_text("# Site Note\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")
 
-    assert main(["project", "init", "--project", str(project), "--name", "site_wiki", "--source-kind", "Paper", "--source", "note.md"]) == 0
-    assert main(["project", "compile", "--project", str(project)]) == 0
-    assert main(["project", "build-site", "--project", str(project)]) == 0
-    assert main(["project", "serve", "--project", str(project), "--dry-run"]) == 0
+    assert main(["init", "--bare", "--project", str(project), "--name", "site_wiki", "--source", "note.md"]) == 0
+    assert main(["compile", "--project", str(project)]) == 0
+    assert main(["export", "site", "--project", str(project)]) == 0
+    assert main(["serve", "--project", str(project), "--dry-run"]) == 0
 
     captured = capsys.readouterr().out
     assert "Built frontend site" in captured
@@ -205,8 +205,8 @@ def test_cli_project_serve_reports_bind_errors_before_claiming_ready(tmp_path, c
     project.mkdir()
     (project / "note.md").write_text("# Busy Port Note\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")
 
-    assert main(["project", "init", "--project", str(project), "--name", "busy_port", "--source-kind", "Paper", "--source", "note.md"]) == 0
-    assert main(["project", "compile", "--project", str(project)]) == 0
+    assert main(["init", "--bare", "--project", str(project), "--name", "busy_port", "--source", "note.md"]) == 0
+    assert main(["compile", "--project", str(project)]) == 0
 
     import socket
 
@@ -215,7 +215,7 @@ def test_cli_project_serve_reports_bind_errors_before_claiming_ready(tmp_path, c
     sock.listen(1)
     port = sock.getsockname()[1]
     try:
-        assert main(["project", "serve", "--project", str(project), "--host", "127.0.0.1", "--port", str(port)]) == 2
+        assert main(["serve", "--project", str(project), "--host", "127.0.0.1", "--port", str(port)]) == 2
     finally:
         sock.close()
 
@@ -230,9 +230,9 @@ def test_cli_project_init_ingest_and_mcp_config_from_working_directory(tmp_path,
     note = project / "note.md"
     note.write_text("# Project Note\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")
 
-    assert main(["project", "init", "--project", str(project), "--name", "demo_wiki", "--source-kind", "Paper"]) == 0
-    assert main(["project", "ingest", "--project", str(project), "note.md"]) == 0
-    assert main(["project", "mcp-config", "--project", str(project), "--server-name", "demo_wiki"]) == 0
+    assert main(["init", "--bare", "--project", str(project), "--name", "demo_wiki"]) == 0
+    assert main(["compile", "--project", str(project), "note.md"]) == 0
+    assert main(["projects", "mcp-config", "--project", str(project), "--server-name", "demo_wiki"]) == 0
 
     captured = capsys.readouterr().out
     assert "Initialized project wiki" in captured
@@ -268,8 +268,8 @@ def test_cli_project_compile_uses_configured_sources(tmp_path, capsys):
     docs.mkdir()
     (docs / "paper.md").write_text("# CLI Compile Paper\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")
 
-    assert main(["project", "init", "--project", str(project), "--name", "compile_wiki", "--source-kind", "Paper", "--source", "docs"]) == 0
-    assert main(["project", "compile", "--project", str(project), "--changed-only"]) == 0
+    assert main(["init", "--bare", "--project", str(project), "--name", "compile_wiki", "--source", "docs"]) == 0
+    assert main(["compile", "--project", str(project), "--changed-only"]) == 0
 
     captured = capsys.readouterr().out
     assert "Compiled project wiki" in captured
@@ -281,7 +281,7 @@ def test_cli_module_can_init_from_current_working_directory(tmp_path):
     project = tmp_path / "cwd-project"
     project.mkdir()
     result = subprocess.run(
-        [sys.executable, "-m", "tesserae.cli", "project", "init", "--name", "cwd_wiki"],
+        [sys.executable, "-m", "tesserae.cli", "init", "--bare", "--name", "cwd_wiki"],
         cwd=project,
         text=True,
         stdout=subprocess.PIPE,
