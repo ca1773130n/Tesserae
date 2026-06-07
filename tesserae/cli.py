@@ -1296,6 +1296,87 @@ def project_main(argv: List[str] | None = None) -> int:
     return handler(args)
 
 
+def _build_llm_defaults_parser() -> argparse.ArgumentParser:
+    """Top-level ``tesserae llm-defaults`` — MACHINE-WIDE, not per-project.
+
+    Writes ``~/.tesserae/config.json``; deliberately NOT under the
+    ``project`` namespace because it configures every project on the box.
+    """
+    parser = argparse.ArgumentParser(
+        prog="tesserae llm-defaults",
+        description=(
+            "Set machine-wide LLM backend defaults (~/.tesserae/config.json) "
+            "for ALL projects. Multi-account safe: pins Tesserae's codex/claude "
+            "account without exporting CODEX_HOME/CLAUDE_CONFIG_DIR."
+        ),
+    )
+    parser.add_argument(
+        "--llm-provider",
+        choices=["claude", "codex"],
+        default=None,
+        help="Default CLI backend for the synthesis/insights LLM client on this machine",
+    )
+    parser.add_argument(
+        "--claude-config-dir",
+        action="append",
+        default=[],
+        help="Default Claude CLI config directory; repeat for fallback accounts",
+    )
+    parser.add_argument(
+        "--codex-home",
+        default=None,
+        help="Default Codex CLI home (e.g. ~/.codex-personal1)",
+    )
+    parser.add_argument(
+        "--show",
+        action="store_true",
+        help="Print the effective machine-wide defaults and exit",
+    )
+    return parser
+
+
+def _handle_llm_defaults(args: argparse.Namespace) -> int:
+    import json as _json
+
+    import tesserae.llm_json as _lj
+
+    path = _lj.GLOBAL_CONFIG_PATH
+    existing = _lj._load_global_llm_config()
+    if args.show:
+        effective = {
+            "llm_provider": existing.get("llm_provider"),
+            "llm_claude_config_dirs": existing.get("llm_claude_config_dirs"),
+            "llm_codex_home": existing.get("llm_codex_home"),
+        }
+        print(f"Machine-wide LLM defaults ({path}):")
+        print(_json.dumps(effective, ensure_ascii=False, indent=2))
+        return 0
+    if not (args.llm_provider or args.claude_config_dir or args.codex_home):
+        print(
+            "Nothing to set — pass --llm-provider/--claude-config-dir/--codex-home, or --show.",
+            file=sys.stderr,
+        )
+        return 2
+    # Merge-preserving write: only the passed keys change, unrelated keys
+    # (and unset llm keys) survive.
+    merged = dict(existing)
+    if args.llm_provider:
+        merged["llm_provider"] = args.llm_provider
+    if args.claude_config_dir:
+        merged["llm_claude_config_dirs"] = list(args.claude_config_dir)
+    if args.codex_home:
+        merged["llm_codex_home"] = args.codex_home
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(_json.dumps(merged, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    print(f"Saved machine-wide LLM defaults to {path}:")
+    for key in ("llm_provider", "llm_claude_config_dirs", "llm_codex_home"):
+        if key in merged:
+            print(f"  {key}: {merged[key]}")
+    return 0
+
+
 def _handle_init(args: argparse.Namespace) -> int:
     wiki = ProjectWiki.init(
         args.project,
@@ -2157,6 +2238,9 @@ def main(argv: List[str] | None = None) -> int:
         argv = sys.argv[1:]
     if argv and argv[0] == "project":
         return project_main(argv[1:])
+    if argv and argv[0] == "llm-defaults":
+        llm_defaults_parser = _build_llm_defaults_parser()
+        return _handle_llm_defaults(llm_defaults_parser.parse_args(argv[1:]))
     if argv and argv[0] == "ask":
         ask_parser = _build_top_level_ask_parser()
         ask_args = ask_parser.parse_args(argv[1:])

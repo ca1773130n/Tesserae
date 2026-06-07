@@ -31,6 +31,7 @@ import json
 import logging
 import re
 import time
+from pathlib import Path
 from typing import Any, Callable, List, Optional, Protocol, Union
 
 logger = logging.getLogger(__name__)
@@ -644,35 +645,70 @@ def _codex_cli_available() -> bool:
     )
 
 
+# Machine-wide LLM client defaults, shared with the project registry dir.
+# Lets a multi-account user pin e.g. ``llm_codex_home`` for ALL projects
+# without exporting the shared ``CODEX_HOME`` env var (which their other
+# codex account workflows contend over). Written by
+# ``tesserae project llm-defaults``.
+GLOBAL_CONFIG_PATH = Path.home() / ".tesserae" / "config.json"
+
+
+def _load_global_llm_config() -> dict:
+    """Best-effort read of the machine-wide config; {} on missing/corrupt."""
+    try:
+        if GLOBAL_CONFIG_PATH.is_file():
+            payload = json.loads(GLOBAL_CONFIG_PATH.read_text(encoding="utf-8"))
+            return payload if isinstance(payload, dict) else {}
+    except Exception:  # noqa: BLE001 — a corrupt global file must never crash
+        logger.warning("ignoring unreadable global config at %s", GLOBAL_CONFIG_PATH)
+    return {}
+
+
 def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     """Resolve provider + config-dir settings for the JSON client.
 
-    Precedence per knob: **env var → project config → None** (built-in
-    default). CLI flags are surfaced as env vars by the handlers, so the
-    effective order is CLI flag > config.json > default.
+    Precedence per knob: **env var → project config → global config →
+    None** (built-in default). CLI flags are surfaced as env vars by the
+    handlers, so the effective order is CLI flag > project ``config.json``
+    > ``~/.tesserae/config.json`` > default.
 
-    Keys read from ``cfg`` (project ``config.json``): ``llm_provider``
-    (``"claude"`` | ``"codex"``), ``llm_claude_config_dirs`` (list or str),
+    Keys read from both config layers: ``llm_provider`` (``"claude"`` |
+    ``"codex"``), ``llm_claude_config_dirs`` (list or str),
     ``llm_codex_home`` (str).
     """
     import os
 
     cfg = cfg or {}
-    provider = os.environ.get("TESSERAE_LLM_PROVIDER") or cfg.get("llm_provider") or None
+    global_cfg = _load_global_llm_config()
+
+    provider = (
+        os.environ.get("TESSERAE_LLM_PROVIDER")
+        or cfg.get("llm_provider")
+        or global_cfg.get("llm_provider")
+        or None
+    )
+
+    def _as_dirs(raw: object) -> Optional[List[str]]:
+        if isinstance(raw, str) and raw:
+            return [raw]
+        if isinstance(raw, list) and raw:
+            return [str(d) for d in raw]
+        return None
 
     env_claude = os.environ.get("CLAUDE_CONFIG_DIR")
-    if env_claude:
-        claude_config_dirs: Optional[List[str]] = [env_claude]
-    else:
-        raw = cfg.get("llm_claude_config_dirs")
-        if isinstance(raw, str):
-            claude_config_dirs = [raw]
-        elif isinstance(raw, list) and raw:
-            claude_config_dirs = [str(d) for d in raw]
-        else:
-            claude_config_dirs = None
+    claude_config_dirs = (
+        [env_claude]
+        if env_claude
+        else _as_dirs(cfg.get("llm_claude_config_dirs"))
+        or _as_dirs(global_cfg.get("llm_claude_config_dirs"))
+    )
 
-    codex_home = os.environ.get("CODEX_HOME") or cfg.get("llm_codex_home") or None
+    codex_home = (
+        os.environ.get("CODEX_HOME")
+        or cfg.get("llm_codex_home")
+        or global_cfg.get("llm_codex_home")
+        or None
+    )
 
     return {
         "provider": provider,

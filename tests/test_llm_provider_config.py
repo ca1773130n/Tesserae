@@ -134,3 +134,139 @@ def test_apply_llm_cli_env_leaves_env_alone_when_flags_absent(monkeypatch):
     assert "TESSERAE_LLM_PROVIDER" not in os.environ
     assert "CLAUDE_CONFIG_DIR" not in os.environ
     assert "CODEX_HOME" not in os.environ
+
+
+# ---------------------------------------------------------------------------
+# Global defaults: ~/.tesserae/config.json (machine-wide, no CODEX_HOME needed)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_settings_falls_back_to_global_config(tmp_path: Path, monkeypatch):
+    import tesserae.llm_json as lj
+
+    _isolate_env(monkeypatch)
+    global_cfg = tmp_path / "global-config.json"
+    global_cfg.write_text(
+        json.dumps(
+            {
+                "llm_provider": "codex",
+                "llm_codex_home": "/global/.codex-personal1",
+                "llm_claude_config_dirs": ["/global/.claude-personal2"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(lj, "GLOBAL_CONFIG_PATH", global_cfg)
+
+    settings = lj.resolve_llm_client_settings({})
+    assert settings["provider"] == "codex"
+    assert settings["codex_home"] == "/global/.codex-personal1"
+    assert settings["claude_config_dirs"] == ["/global/.claude-personal2"]
+
+
+def test_resolve_settings_project_config_beats_global(tmp_path: Path, monkeypatch):
+    import tesserae.llm_json as lj
+
+    _isolate_env(monkeypatch)
+    global_cfg = tmp_path / "global-config.json"
+    global_cfg.write_text(
+        json.dumps({"llm_provider": "claude", "llm_codex_home": "/global/home"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(lj, "GLOBAL_CONFIG_PATH", global_cfg)
+
+    settings = lj.resolve_llm_client_settings(
+        {"llm_provider": "codex", "llm_codex_home": "/project/home"}
+    )
+    assert settings["provider"] == "codex"
+    assert settings["codex_home"] == "/project/home"
+
+
+def test_resolve_settings_missing_or_corrupt_global_is_safe(tmp_path: Path, monkeypatch):
+    import tesserae.llm_json as lj
+
+    _isolate_env(monkeypatch)
+    monkeypatch.setattr(lj, "GLOBAL_CONFIG_PATH", tmp_path / "does-not-exist.json")
+    assert lj.resolve_llm_client_settings({})["provider"] is None
+
+    corrupt = tmp_path / "corrupt.json"
+    corrupt.write_text("{not json", encoding="utf-8")
+    monkeypatch.setattr(lj, "GLOBAL_CONFIG_PATH", corrupt)
+    assert lj.resolve_llm_client_settings({})["provider"] is None
+
+
+def test_build_json_client_uses_global_when_project_silent(tmp_path: Path, monkeypatch):
+    import tesserae.llm_json as lj
+    from tesserae.project import ProjectWiki
+
+    _isolate_env(monkeypatch)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
+    global_cfg = tmp_path / "global-config.json"
+    global_cfg.write_text(
+        json.dumps({"llm_provider": "codex", "llm_codex_home": "/g/.codex-personal1"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(lj, "GLOBAL_CONFIG_PATH", global_cfg)
+
+    wiki = ProjectWiki.init(tmp_path / "proj", name="global-llm")
+    client = wiki._build_json_client()
+    assert isinstance(client, lj.CodexCLIJsonClient)
+    assert client.codex_homes == ["/g/.codex-personal1"]
+
+
+def test_cli_llm_defaults_writes_global_config(tmp_path: Path, monkeypatch, capsys):
+    import tesserae.llm_json as lj
+    from tesserae.cli import main
+
+    _isolate_env(monkeypatch)
+    global_cfg = tmp_path / "tesserae" / "config.json"
+    monkeypatch.setattr(lj, "GLOBAL_CONFIG_PATH", global_cfg)
+
+    rc = main(
+        [
+            "llm-defaults",
+            "--llm-provider", "codex",
+            "--codex-home", "/home/u/.codex-personal1",
+        ]
+    )
+    assert rc == 0
+    saved = json.loads(global_cfg.read_text(encoding="utf-8"))
+    assert saved["llm_provider"] == "codex"
+    assert saved["llm_codex_home"] == "/home/u/.codex-personal1"
+
+
+def test_cli_llm_defaults_merges_existing_keys(tmp_path: Path, monkeypatch):
+    import tesserae.llm_json as lj
+    from tesserae.cli import main
+
+    _isolate_env(monkeypatch)
+    global_cfg = tmp_path / "config.json"
+    global_cfg.write_text(
+        json.dumps({"unrelated_key": "keep-me", "llm_provider": "claude"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(lj, "GLOBAL_CONFIG_PATH", global_cfg)
+
+    rc = main(["llm-defaults", "--llm-provider", "codex"])
+    assert rc == 0
+    saved = json.loads(global_cfg.read_text(encoding="utf-8"))
+    assert saved["llm_provider"] == "codex"
+    assert saved["unrelated_key"] == "keep-me"
+
+
+def test_cli_llm_defaults_show_prints_effective_settings(tmp_path: Path, monkeypatch, capsys):
+    import tesserae.llm_json as lj
+    from tesserae.cli import main
+
+    _isolate_env(monkeypatch)
+    global_cfg = tmp_path / "config.json"
+    global_cfg.write_text(
+        json.dumps({"llm_provider": "codex", "llm_codex_home": "/x"}), encoding="utf-8"
+    )
+    monkeypatch.setattr(lj, "GLOBAL_CONFIG_PATH", global_cfg)
+
+    rc = main(["llm-defaults", "--show"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "codex" in out and "/x" in out
