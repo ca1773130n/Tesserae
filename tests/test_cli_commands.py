@@ -253,7 +253,8 @@ def test_init_yes_defaults_disable_optional_integrations(tmp_path, monkeypatch):
 
     monkeypatch.setattr(cli, "_handle_setup", _stub)
     assert cli.main(["init", "--yes", "--project", str(tmp_path)]) == 0
-    # exact attr names come from the legacy setup parser dests — assert the
-    # integration toggles landed OFF (adjust names to the real dests found
-    # in Step 3, but the OFF semantics are non-negotiable)
-    assert seen.get("no_cognee") is True or seen.get("enable_cognee") is False or seen.get("cognee") is False
+    # exact attr names come from the legacy setup parser dests — the
+    # integration toggles must land OFF (these are the real dests).
+    assert seen["no_cognee"] is True
+    assert seen["skip_raganything"] is True
+    assert seen["with_understand_anything"] is False

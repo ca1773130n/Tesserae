@@ -2561,6 +2561,7 @@ def _build_init_parser() -> argparse.ArgumentParser:
     return parser
 
 
+# keep in sync with _handle_setup's args.* reads
 def _backfill_setup_defaults(args: argparse.Namespace) -> None:
     """Fill the namespace with every attr the legacy `_handle_setup` reads.
 
