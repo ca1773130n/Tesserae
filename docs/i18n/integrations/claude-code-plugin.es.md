@@ -31,7 +31,7 @@ Roles diferentes:
 - **Herramientas MCP** = consultas de grafo de solo lectura que el agente invoca durante una conversación. Siempre activas, baja fricción.
 - **Comandos slash** = acciones de flujo de trabajo que invocas explícitamente (compile, refresh, obsidian-sync). Alto apalancamiento pero debe ser tu decisión.
 
-Puedes usar solo el servidor MCP (edición manual de `claude_desktop_config.json` vía `tesserae project mcp-config`). El plugin simplemente lo empaqueta junto con los comandos slash, la habilidad y los hooks, haciendo que la instalación sea un solo paso.
+Puedes usar solo el servidor MCP (edición manual de `claude_desktop_config.json` vía `tesserae projects mcp-config`). El plugin simplemente lo empaqueta junto con los comandos slash, la habilidad y los hooks, haciendo que la instalación sea un solo paso.
 
 ## Verificar instalación
 

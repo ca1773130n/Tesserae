@@ -37,7 +37,7 @@ pip install --upgrade tesserae
 
 ```bash
 # Understand Anything companion graph + Cognee runtime memory
-tesserae project setup \
+tesserae init \
   --with-understand-anything \
   --install-understand-anything \
   --understand-anything-platform codex \
@@ -54,7 +54,7 @@ pip install kuzu cognee graphiti-core
 - `kuzu` — персистентность графа Kuzu.
 - `cognee` — runtime-процессы Cognee add/cognify; настройка сохраняет `{python} -m pip install cognee` и повторяет один раз, если Cognee отсутствует.
 - Understand Anything — устанавливается через upstream-инсталлятор, когда выбран `--install-understand-anything`; Tesserae сохраняет управляемый refresh wrapper вместо того, чтобы просить пользователей придумывать shell-команду.
-- `graphiti-core` — живая синхронизация Graphiti/Neo4j. `export-graphiti` и `sync-graphiti --dry-run` работают и без него.
+- `graphiti-core` — живая синхронизация Graphiti/Neo4j. `export graphiti` и `export graphiti --sync --dry-run` работают и без него.
 
 Путь синтеза на базе Anthropic использует маркер extras:
 
@@ -68,7 +68,7 @@ pip install "tesserae[synthesis-llm]"
 pip install "tesserae[semantic]"
 ```
 
-Это устанавливает `model2vec` и загружает лёгкую, работающую офлайн статическую модель без torch (около 8 МБ `potion-base-8M`, скачивается один раз при первом использовании). Без неё гибридный/эмбеддинговый поиск откатывается к несемантической заглушке на хеш-бакетах и выводит заметное предупреждение, поэтому установка этого extra рекомендуется всем, кто использует `project ask`, `project context` или MCP-инструмент `compile_context`.
+Это устанавливает `model2vec` и загружает лёгкую, работающую офлайн статическую модель без torch (около 8 МБ `potion-base-8M`, скачивается один раз при первом использовании). Без неё гибридный/эмбеддинговый поиск откатывается к несемантической заглушке на хеш-бакетах и выводит заметное предупреждение, поэтому установка этого extra рекомендуется всем, кто использует `tesserae ask`, `tesserae context` или MCP-инструмент `compile_context`.
 
 ## Установка из исходного кода (для контрибьюторов)
 
@@ -110,7 +110,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ## Проверка установки
 
 ```bash
-tesserae project init --help
-tesserae project compile --help
-tesserae project build-site --help
+tesserae init --help
+tesserae compile --help
+tesserae export site --help
 ```

@@ -140,7 +140,7 @@ EDITORIAL ANGLE ブロックは決定的なヒューリスティック本文で�
 pip install tesserae[synthesis-llm]
 export TESSERAE_SYNTHESIS_LLM=1
 export ANTHROPIC_API_KEY=sk-...
-python -m tesserae.cli project compile
+python -m tesserae.cli compile
 ```
 
 `TESSERAE_SYNTHESIS_MODEL` で model を override できます（デフォルトは `claude-sonnet-4-6`）。Anthropic SDK ≥ 0.40 が必要です。
@@ -191,7 +191,7 @@ env var を unset（または `0` に設定）して再実行します。
 
 ```sh
 unset TESSERAE_SYNTHESIS_LLM
-python -m tesserae.cli project compile
+python -m tesserae.cli compile
 ```
 
 以降の compile は、影響を受けた synthesis pages をヒューリスティック generator で再生成します。page rewrite は `content_hash` によって gated されるため、実際に本文が変わったページだけが書き換えられます。

@@ -5,30 +5,30 @@
 <!-- translations:end -->
 Tesserae может импортировать локальные transcript AI-agent и отображать их как память проекта в разделе `sessions/` статического сайта.
 
-Эта функция намеренно отделена от `export-agent-harness`:
+Эта функция намеренно отделена от `export harness`:
 
-- `export-agent-harness` — исходящий контекст для инструментов вроде Claude Code, Codex, Gemini, Cursor, Kiro и OpenCode.
-- `project sessions ...` — входящая история: она нормализует предыдущие сессии Claude Code/Codex для текущего проекта, сохраняет их в `.tesserae/harness_sessions/` и позволяет `project build-site` публиковать страницы index/detail сессий.
+- `export harness` — исходящий контекст для инструментов вроде Claude Code, Codex, Gemini, Cursor, Kiro и OpenCode.
+- `sessions ...` — входящая история: она нормализует предыдущие сессии Claude Code/Codex для текущего проекта, сохраняет их в `.tesserae/harness_sessions/` и позволяет `export site` публиковать страницы index/detail сессий.
 
 ## Два входа: пакетный импорт и живой мониторинг
 
 Приём сессий больше не только пакетный. В одно и то же нормализованное хранилище ведут два пути:
 
-- **Пакетный импорт** — `project sessions discover/import` сканирует корни transcript по запросу и пишет за один проход. Этот поток описан ниже.
-- **Живой мониторинг** — supervisor daemon (`project engine`, алиас `project daemon`) запускает `SessionTailer`, который наблюдает за *собственными* transcript проекта (Claude Code и Codex) и принимает новые turn по мере их появления. На каждом tick он делает seek к сохранённому пофайловому byte offset, читает только поступившие новые байты и записывает полные turn в SQLite `HarnessSessionsDB` (`.tesserae/sqlite.db`) **до** постановки в очередь debounce-перекомпиляции, поэтому компиляция всегда читает согласованное состояние. Tailer ограничен собственными сессиями проекта (Claude `projects/<slug>/*.jsonl`; Codex фильтруется по cwd) и после перезапуска возобновляется с сохранённых offset, не повторяя turn.
+- **Пакетный импорт** — `sessions discover/import` сканирует корни transcript по запросу и пишет за один проход. Этот поток описан ниже.
+- **Живой мониторинг** — supervisor daemon (`tesserae engine`) запускает `SessionTailer`, который наблюдает за *собственными* transcript проекта (Claude Code и Codex) и принимает новые turn по мере их появления. На каждом tick он делает seek к сохранённому пофайловому byte offset, читает только поступившие новые байты и записывает полные turn в SQLite `HarnessSessionsDB` (`.tesserae/sqlite.db`) **до** постановки в очередь debounce-перекомпиляции, поэтому компиляция всегда читает согласованное состояние. Tailer ограничен собственными сессиями проекта (Claude `projects/<slug>/*.jsonl`; Codex фильтруется по cwd) и после перезапуска возобновляется с сохранённых offset, не повторяя turn.
 
 Запуск живого цикла:
 
 ```bash
-tesserae project engine        # наблюдать источники, объединять всплески, авто-перекомпиляция
-tesserae project engine --once # один цикл drain и выход (детерминированно)
+tesserae engine        # наблюдать источники, объединять всплески, авто-перекомпиляция
+tesserae engine --once # один цикл drain и выход (детерминированно)
 ```
 
-`tesserae project refresh` запускает тот же конвейер ingest → compile → project один раз, in-process, не поднимая долгоживущий watcher (передайте `--skip-sessions`, чтобы пропустить сканирование discovery harness-сессий).
+`tesserae refresh` запускает тот же конвейер ingest → compile → project один раз, in-process, не поднимая долгоживущий watcher (передайте `--skip-sessions`, чтобы пропустить сканирование discovery harness-сессий).
 
 ## Модель приватности
 
-Оба пути приёма явные: живой tailer работает только пока вы держите `project engine`/`daemon` запущенным, а пакетный discovery пишет только с `--import`. Обычный `project compile` или `project build-site` читает уже нормализованные сессии из `.tesserae/harness_sessions/` и живые записи в `.tesserae/sqlite.db`, но сам по себе не выполняет неожиданное scrape приватных каталогов harness transcript.
+Оба пути приёма явные: живой tailer работает только пока вы держите `tesserae engine` запущенным, а пакетный discovery пишет только с `--import`. Обычный `tesserae compile` или `tesserae export site` читает уже нормализованные сессии из `.tesserae/harness_sessions/` и живые записи в `.tesserae/sqlite.db`, но сам по себе не выполняет неожиданное scrape приватных каталогов harness transcript.
 
 Импортированные записи сессий — локальные артефакты проекта. Проверьте их перед публикацией публичного сайта, особенно если transcript могут содержать secrets, приватные пути, данные клиентов или не выпущенный код.
 
@@ -37,13 +37,13 @@ tesserae project engine --once # один цикл drain и выход (дете
 Из корня проекта:
 
 ```bash
-tesserae project sessions discover --import
+tesserae sessions discover --import
 ```
 
 Discovery сканирует локальные корни transcript Claude Code и Codex, относящиеся к рабочей директории текущего проекта. Используйте `--root`, чтобы сканировать конкретный config-каталог, и повторяйте `--harness`, чтобы ограничить discovery:
 
 ```bash
-tesserae project sessions discover \
+tesserae sessions discover \
   --root ~/.claude \
   --root ~/.codex \
   --harness claude-code \
@@ -58,7 +58,7 @@ tesserae project sessions discover \
 Если другой инструмент уже создал нормализованный JSON `HarnessSession`, импортируйте один файл или список файлов:
 
 ```bash
-tesserae project sessions import path/to/session.json path/to/more-sessions.json
+tesserae sessions import path/to/session.json path/to/more-sessions.json
 ```
 
 Каждый вход может содержать один объект сессии или список объектов сессий.
@@ -66,7 +66,7 @@ tesserae project sessions import path/to/session.json path/to/more-sessions.json
 ## Список импортированных сессий
 
 ```bash
-tesserae project sessions list
+tesserae sessions list
 ```
 
 Сессии хранятся здесь:
@@ -79,14 +79,14 @@ tesserae project sessions list
     <session>.md
 ```
 
-Сессии, отслеживаемые в живом режиме, дополнительно учитываются в SQLite `HarnessSessionsDB` (`.tesserae/sqlite.db`), где также сохраняются пофайловые read offset, с которых возобновляется tailer. `project sessions list` показывает объединённое представление.
+Сессии, отслеживаемые в живом режиме, дополнительно учитываются в SQLite `HarnessSessionsDB` (`.tesserae/sqlite.db`), где также сохраняются пофайловые read offset, с которых возобновляется tailer. `sessions list` показывает объединённое представление.
 
 ## Сборка статических страниц сессий
 
 После импорта сессий пересоберите сайт:
 
 ```bash
-tesserae project build-site
+tesserae export site
 ```
 
 Сайт создаёт:
@@ -128,9 +128,9 @@ Markdown разговора рендерится через site markdown render
 
 Перед деплоем публичного сайта с сессиями:
 
-1. Запустите `tesserae project sessions list` и подтвердите ожидаемое количество.
+1. Запустите `tesserae sessions list` и подтвердите ожидаемое количество.
 2. Проверьте `.tesserae/harness_sessions/` на чувствительное содержимое.
-3. Пересоберите через `tesserae project build-site`.
+3. Пересоберите через `tesserae export site`.
 4. Локально откройте `sessions/index.html` и хотя бы одну страницу detail сессии.
 5. Убедитесь, что tool blocks свёрнуты по умолчанию и raw tool payloads допустимы к публикации.
-6. После commit исходного дерева выполните деплой через `tesserae project deploy --build`.
+6. После commit исходного дерева выполните деплой через `tesserae export site --deploy`.

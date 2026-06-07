@@ -12,8 +12,8 @@ Tesserae는 컴파일된 타입 그래프를 MCP를 지원하는 모든 클라�
 
 ```bash
 cd /path/to/your-project
-tesserae project setup    # interactive; or --yes for non-interactive
-tesserae project compile  # deterministic, no LLM calls, no API keys
+tesserae init    # interactive; or --yes for non-interactive
+tesserae compile  # deterministic, no LLM calls, no API keys
 ```
 
 소스가 변경될 때마다 다시 컴파일하세요. 서버는 재시작 없이 다음 tool 호출에서 새 그래프를 자동으로 인식합니다.
@@ -21,7 +21,7 @@ tesserae project compile  # deterministic, no LLM calls, no API keys
 ## 1) 클라이언트 설정 생성
 
 ```bash
-tesserae project mcp-config
+tesserae projects mcp-config
 ```
 
 대략 다음과 같은 JSON 스니펫을 출력합니다:

@@ -5,10 +5,10 @@
 <!-- translations:end -->
 이 문서는 재설계된 Tesserae 정적 사이트에서 보이는 모든 라우트를 안내하는 투어입니다. [`architecture.md`](architecture.ko.md)의 상위 수준 모델과 [`feature-map.md`](feature-map.ko.md)의 상태 표를 보완합니다.
 
-사이트는 `tesserae project compile` 실행 후 `.tesserae/site/`에 생성됩니다. 로컬에서 확인하려면:
+사이트는 `tesserae compile` 실행 후 `.tesserae/site/`에 생성됩니다. 로컬에서 확인하려면:
 
 ```bash
-tesserae project serve --port 8765
+tesserae serve --port 8765
 # open http://127.0.0.1:8765/
 ```
 
@@ -250,7 +250,7 @@ arXiv 링크는 `tesserae/site/markdown.py`를 통해 자동 링크됩니다. �
 
 ## 세션
 
-세션은 로컬 AI 하네스 transcript를 가져와 `.tesserae/harness_sessions/`로 정규화한 뒤 검색 가능한 프로젝트 메모리로 렌더링한 것입니다. 가져오기는 `tesserae project sessions discover --import` 또는 `tesserae project sessions import ...`로 명시적으로 수행합니다. 일반 사이트 빌드는 이미 정규화된 레코드만 소비합니다.
+세션은 로컬 AI 하네스 transcript를 가져와 `.tesserae/harness_sessions/`로 정규화한 뒤 검색 가능한 프로젝트 메모리로 렌더링한 것입니다. 가져오기는 `tesserae sessions discover --import` 또는 `tesserae sessions import ...`로 명시적으로 수행합니다. 일반 사이트 빌드는 이미 정규화된 레코드만 소비합니다.
 
 ### `/sessions/` ✅
 

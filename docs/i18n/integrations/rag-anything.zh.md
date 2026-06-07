@@ -18,25 +18,38 @@
 推荐路径是设置向导：
 
 ```bash
-tesserae project setup
+tesserae init
 ```
 
-对于自动化：
+RAG-Anything 现在是**交互式向导提示**，而不是一组 CLI 标志。向导运行时，请回答
+集成提示：
+
+- 在提示时启用 RAG-Anything；
+- 在询问时安装它（安装 `raganything` + `docling`）；
+- 选择解析器 `mineru`；
+- 在提供时启用安装后的刷新运行。
+
+然后编译：
 
 ```bash
-tesserae project setup \
-  --yes \
-  --with-raganything \
-  --install-raganything \
-  --raganything-parser mineru \
-  --run-raganything
-tesserae project compile
+tesserae compile
+```
+
+对于非交互式自动化（CI），使用默认值运行向导（所有可选集成均关闭），然后在
+`.tesserae/config.json` 中启用 RAG-Anything——向导会将集成配置写入
+`external_tools` / `memory_backends` 键下——并运行受管理的刷新：
+
+```bash
+tesserae init --yes
+# 在 .tesserae/config.json 中启用 raganything（external_tools 键）
+tesserae integrations refresh raganything --parser mineru
+tesserae compile
 ```
 
 Tesserae 存储一个受管理的刷新命令，而不是要求用户自行构造：
 
 ```bash
-tesserae project refresh-raganything --parser mineru
+tesserae integrations refresh raganything --parser mineru
 ```
 
 编译期间，Tesserae 会：
@@ -50,7 +63,7 @@ tesserae project refresh-raganything --parser mineru
 你可以在编译前强制运行所有已配置的外部刷新命令：
 
 ```bash
-tesserae project compile --refresh-external-tools
+tesserae compile --refresh-integrations
 ```
 
 ## 手动等效流程
@@ -58,7 +71,7 @@ tesserae project compile --refresh-external-tools
 ```bash
 pip install 'raganything[all]'
 python -m tesserae.raganything_refresh --project . --parser mineru
-tesserae project compile
+tesserae compile
 ```
 
 ## 原生图同步

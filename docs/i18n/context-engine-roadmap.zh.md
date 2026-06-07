@@ -47,7 +47,7 @@ P7 使二者收敛。
   上帝分发器分解为命令表（机械的，无行为变更）。
 - **交付物：** `Pipeline.run(steps, changed_only=…)`；CLI 委派给它；步骤排序 +
   失败传播的单元测试。
-- **验收：** `tesserae project refresh` 作为代码（而非技能）存在，并在演示
+- **验收：** `tesserae refresh` 作为代码（而非技能）存在，并在演示
   语料上逐字节复现 markdown 链。
 - **风险：** 低。纯重构；现有测试守护行为。
 - **关闭的审计发现：**"refresh 存在于技能中"、"cli 上帝分发器"。
@@ -153,7 +153,7 @@ P7 使二者收敛。
 
 ## 阶段 6 — 按需上下文编译器（支柱 3） ✅ v0.5.0 已发布（头条功能）
 
-> **在 v0.5.0 中作为头条功能发布。** `tesserae/context_compiler.py` 中的纯 `compile_context` 流水线返回由 `ContextCitation` 组成的内存型 `ContextBundle`（查询/种子 → PPR + 混合检索 → 深度受限 k 跳邻域 → 维基正文组装 → 带优雅回退的可选 LLM 合成 → 预算控制）。通过 MCP `compile_context` 工具和 `tesserae project context` CLI 子命令暴露；`node_context` 现具备 `use_ppr` 排序路径；主题范围的 `llms.txt` 导出切片随之发布。
+> **在 v0.5.0 中作为头条功能发布。** `tesserae/context_compiler.py` 中的纯 `compile_context` 流水线返回由 `ContextCitation` 组成的内存型 `ContextBundle`（查询/种子 → PPR + 混合检索 → 深度受限 k 跳邻域 → 维基正文组装 → 带优雅回退的可选 LLM 合成 → 预算控制）。通过 MCP `compile_context` 工具和 `tesserae context` CLI 子命令暴露；`node_context` 现具备 `use_ppr` 排序路径；主题范围的 `llms.txt` 导出切片随之发布。
 
 **目标：** 头条功能 ——"给我关于 X 的上下文"→ 一份量身定制、带引用、面向
 智能体的文档。

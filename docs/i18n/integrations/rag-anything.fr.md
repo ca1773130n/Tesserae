@@ -18,25 +18,41 @@ Les deux se complètent : RAG-Anything apporte la compréhension PDF/Office/imag
 Le chemin recommandé est l'assistant de configuration :
 
 ```bash
-tesserae project setup
+tesserae init
 ```
 
-Pour l'automatisation :
+RAG-Anything est désormais une **invite interactive de l'assistant** plutôt
+qu'un ensemble de flags CLI. Lorsque l'assistant s'exécute, répondez aux
+invites d'intégration :
+
+- activez RAG-Anything lorsqu'on vous le demande ;
+- installez-le lorsqu'on vous le demande (installe `raganything` + `docling`) ;
+- choisissez le parseur `mineru` ;
+- activez l'exécution de rafraîchissement après l'installation lorsqu'elle est proposée.
+
+Puis compilez :
 
 ```bash
-tesserae project setup \
-  --yes \
-  --with-raganything \
-  --install-raganything \
-  --raganything-parser mineru \
-  --run-raganything
-tesserae project compile
+tesserae compile
+```
+
+Pour une automatisation non interactive (CI), exécutez l'assistant avec les
+valeurs par défaut (toutes les intégrations optionnelles DÉSACTIVÉES), puis
+activez RAG-Anything dans `.tesserae/config.json` — l'assistant écrit la
+configuration de l'intégration sous la clé `external_tools` / `memory_backends`
+— et exécutez le rafraîchissement géré :
+
+```bash
+tesserae init --yes
+# activer raganything dans .tesserae/config.json (clé external_tools)
+tesserae integrations refresh raganything --parser mineru
+tesserae compile
 ```
 
 Tesserae stocke une commande de rafraîchissement gérée plutôt que de demander aux utilisateurs d'en inventer une :
 
 ```bash
-tesserae project refresh-raganything --parser mineru
+tesserae integrations refresh raganything --parser mineru
 ```
 
 Pendant la compilation, Tesserae :
@@ -50,7 +66,7 @@ Pendant la compilation, Tesserae :
 Vous pouvez forcer toutes les commandes de rafraîchissement externes configurées avant une compilation :
 
 ```bash
-tesserae project compile --refresh-external-tools
+tesserae compile --refresh-integrations
 ```
 
 ## Équivalent manuel
@@ -58,7 +74,7 @@ tesserae project compile --refresh-external-tools
 ```bash
 pip install 'raganything[all]'
 python -m tesserae.raganything_refresh --project . --parser mineru
-tesserae project compile
+tesserae compile
 ```
 
 ## Synchronisation native du graphe

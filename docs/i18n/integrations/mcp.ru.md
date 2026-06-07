@@ -12,8 +12,8 @@ Tesserae поставляется со stdio-сервером [Model Context Pro
 
 ```bash
 cd /path/to/your-project
-tesserae project setup    # interactive; or --yes for non-interactive
-tesserae project compile  # deterministic, no LLM calls, no API keys
+tesserae init    # interactive; or --yes for non-interactive
+tesserae compile  # deterministic, no LLM calls, no API keys
 ```
 
 Перекомпилируйте при каждом изменении источников. Сервер подхватит новый граф при следующем вызове инструмента без необходимости перезапуска.
@@ -21,7 +21,7 @@ tesserae project compile  # deterministic, no LLM calls, no API keys
 ## 1) Сгенерируйте конфиг клиента
 
 ```bash
-tesserae project mcp-config
+tesserae projects mcp-config
 ```
 
 Выводит JSON-фрагмент, примерно такой:

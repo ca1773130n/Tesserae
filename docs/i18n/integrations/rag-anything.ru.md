@@ -18,25 +18,40 @@
 Рекомендуемый путь — мастер настройки:
 
 ```bash
-tesserae project setup
+tesserae init
 ```
 
-Для автоматизации:
+Теперь RAG-Anything — это **интерактивный запрос мастера**, а не набор
+CLI-флагов. Когда мастер запускается, ответьте на запросы об интеграциях:
+
+- включите RAG-Anything, когда вас спросят;
+- установите его, когда попросят (устанавливает `raganything` + `docling`);
+- выберите парсер `mineru`;
+- включите запуск обновления после установки, когда будет предложено.
+
+Затем выполните компиляцию:
 
 ```bash
-tesserae project setup \
-  --yes \
-  --with-raganything \
-  --install-raganything \
-  --raganything-parser mineru \
-  --run-raganything
-tesserae project compile
+tesserae compile
+```
+
+Для неинтерактивной автоматизации (CI) запустите мастер со значениями по
+умолчанию (все необязательные интеграции ВЫКЛЮЧЕНЫ), затем включите
+RAG-Anything в `.tesserae/config.json` — мастер записывает конфигурацию
+интеграции под ключом `external_tools` / `memory_backends` — и выполните
+управляемое обновление:
+
+```bash
+tesserae init --yes
+# включить raganything в .tesserae/config.json (ключ external_tools)
+tesserae integrations refresh raganything --parser mineru
+tesserae compile
 ```
 
 Tesserae хранит управляемую команду обновления, а не просит пользователей придумывать ее самим:
 
 ```bash
-tesserae project refresh-raganything --parser mineru
+tesserae integrations refresh raganything --parser mineru
 ```
 
 Во время компиляции Tesserae:
@@ -50,7 +65,7 @@ tesserae project refresh-raganything --parser mineru
 Можно принудительно выполнить все настроенные внешние команды обновления перед компиляцией:
 
 ```bash
-tesserae project compile --refresh-external-tools
+tesserae compile --refresh-integrations
 ```
 
 ## Ручной эквивалент
@@ -58,7 +73,7 @@ tesserae project compile --refresh-external-tools
 ```bash
 pip install 'raganything[all]'
 python -m tesserae.raganything_refresh --project . --parser mineru
-tesserae project compile
+tesserae compile
 ```
 
 ## Нативная синхронизация графа

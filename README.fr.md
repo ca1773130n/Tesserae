@@ -58,14 +58,14 @@ Nécessite Python 3.9 ou plus. RAG-Anything nécessite Python 3.10 ou plus si vo
 pip install tesserae          # pour de vrais embeddings, ajoutez [semantic] : pip install "tesserae[semantic]"
 
 cd /path/to/my-project
-tesserae project setup
-tesserae project compile
-tesserae project ask "Where is Mermaid rendering implemented?"
+tesserae init --yes
+tesserae compile
+tesserae ask "Where is Mermaid rendering implemented?"
 
 # Contexte à la demande : compile un document de contexte sur mesure et cité pour une requête.
-tesserae project context "How does the parser handle arXiv IDs?" --budget 32000 -o context.md
+tesserae context "How does the parser handle arXiv IDs?" --budget 32000 -o context.md
 
-tesserae project build-site && tesserae project serve --port 8765
+tesserae serve --port 8765
 ```
 
 L’assistant de setup détecte les sources courantes (`README.md`, `docs/`, `src/`, `data/`) et écrit `.tesserae/config.json`. Les fonctions appelant un LLM utilisent par défaut la CLI `codex` via OAuth, donc aucune clé API n’est nécessaire dans le chemin courant. Versions plus complètes dans [docs/quickstart.md](docs/quickstart.md) et [docs/installation.md](docs/installation.md).
@@ -110,7 +110,7 @@ L’assistant de setup détecte les sources courantes (`README.md`, `docs/`, `sr
   external/               # sorties des outils complémentaires (UA, RAG-Anything)
 ```
 
-Après `project compile`, faites `ls .tesserae/` pour vérifier ce qui a été écrit.
+Après `compile`, faites `ls .tesserae/` pour vérifier ce qui a été écrit.
 
 ## Vue d’ensemble de la CLI
 
@@ -118,19 +118,19 @@ Commandes au quotidien. Lancez `tesserae <subcommand> --help` pour la liste comp
 
 | Commande | Rôle |
 |---|---|
-| `tesserae project setup` | Assistant interactif. Écrit `.tesserae/config.json`. Accepte `--with-understand-anything`, `--with-raganything`, `--run-cognee`, etc. |
-| `tesserae project compile` | Lit les sources configurées, déclenche les refresh des outils complémentaires et écrit tous les artefacts sous `.tesserae/`. `--changed-only` active le rebuild incrémental expérimental (DÉSactivé par défaut). |
-| `tesserae project context "<requête>"` | **Compilateur de Contexte à la Demande.** Compile pour une requête (ou des `--seeds` explicites) un document de contexte sur mesure et cité via une expansion Personalized PageRank (`--depth`, défaut 2) dans un `--budget` (défaut 32000 caractères ; `<=0` = illimité). `--synthesize` ajoute un résumé LLM ; `-o` écrit dans un fichier. |
-| `tesserae project engine` (alias `daemon`) | Exécute le daemon de refresh supervisé : surveille les sources, fusionne les rafales d’éditions (`--debounce`) et recompile automatiquement. `--once` exécute un unique cycle de vidange déterministe. |
-| `tesserae project refresh` | Pipeline in-process en une passe : import des nouvelles sessions, compile, synchronisation du vault. |
-| `tesserae project build-site` | Construit le frontend statique dans `.tesserae/site/`. |
-| `tesserae project serve --port 8765` | Sert le site statique en local. |
-| `tesserae project refresh-understand-anything` | Exécute le wrapper de refresh géré par Tesserae pour Understand Anything. |
-| `tesserae project refresh-raganything --parser mineru` | Re-parse les sources non-code (PDF, Office, images) via RAG-Anything. |
-| `tesserae project ask "<question>"` | Interroge le backend configuré (`auto`/`raganything`/`cognee`/`wiki`). |
-| `tesserae project mcp-config` | Affiche un fragment de configuration de serveur MCP à coller dans Claude Code, Codex ou Hermes. |
-| `tesserae wiki register <path> --name <alias>` | Enregistre un projet dans le registry partagé. |
-| `tesserae wiki list` / `tesserae wiki activate <name>` | Liste les projets enregistrés ; fixe l’actif. |
+| `tesserae init` | Assistant interactif. Écrit `.tesserae/config.json`. Passez `--yes` pour une exécution non interactive qui accepte les valeurs par défaut détectées (toutes les intégrations optionnelles DÉSactivées), ou `--bare` pour sauter l’assistant et écrire un workspace minimal. |
+| `tesserae compile` | Lit les sources configurées, déclenche les refresh des outils complémentaires et écrit tous les artefacts sous `.tesserae/`. `--changed-only` active le rebuild incrémental expérimental (DÉSactivé par défaut). `compile <paths>` fait une ingestion ad-hoc de chemins markdown supplémentaires. |
+| `tesserae context "<requête>"` | **Compilateur de Contexte à la Demande.** Compile pour une requête (ou des `--seeds` explicites) un document de contexte sur mesure et cité via une expansion Personalized PageRank (`--depth`, défaut 2) dans un `--budget` (défaut 32000 caractères ; `<=0` = illimité). `--synthesize` ajoute un résumé LLM ; `-o` écrit dans un fichier. |
+| `tesserae engine` (alias `daemon`) | Exécute le daemon de refresh supervisé : surveille les sources, fusionne les rafales d’éditions (`--debounce`) et recompile automatiquement. `--once` exécute un unique cycle de vidange déterministe. |
+| `tesserae refresh` | Pipeline in-process en une passe : import des nouvelles sessions, compile, synchronisation du vault. |
+| `tesserae export site` | Construit le frontend statique dans `.tesserae/site/`. `--deploy` publie ; `--watch` reconstruit à chaque changement. |
+| `tesserae serve --port 8765` | Sert le site statique en local (le construit automatiquement s’il manque). |
+| `tesserae integrations refresh understand-anything` | Exécute le wrapper de refresh géré par Tesserae pour Understand Anything. |
+| `tesserae integrations refresh raganything --parser mineru` | Re-parse les sources non-code (PDF, Office, images) via RAG-Anything. |
+| `tesserae ask "<question>"` | Interroge le backend configuré (`auto`/`raganything`/`cognee`/`wiki`). |
+| `tesserae projects mcp-config` | Affiche un fragment de configuration de serveur MCP à coller dans Claude Code, Codex ou Hermes. |
+| `tesserae projects register <path> --name <alias>` | Enregistre un projet dans le registry partagé. |
+| `tesserae projects list` / `tesserae projects activate <name>` | Liste les projets enregistrés ; fixe l’actif. |
 | `tesserae ask "<question>" [--wiki <name>]` | Commande ask de premier niveau, qui résout via le registry. |
 
 ## Intégrations
@@ -138,8 +138,8 @@ Commandes au quotidien. Lancez `tesserae <subcommand> --help` pour la liste comp
 Toutes les intégrations sont opt-in. Aucune n’est requise pour utiliser Tesserae sur un projet Markdown/code classique.
 
 - **Plugin Claude Code** — commandes slash (`/tesserae:compile`, `/tesserae:ask "<question>"`, `/tesserae:refresh`, `/tesserae:status`, …), quatre hooks (statut SessionStart / auto-compilation SessionEnd / recompilation incrémentielle PostToolUse opt-in / portail de confirmation PreToolUse pour grands graphes), une compétence `using-tesserae` et auto-enregistrement MCP — le tout en un seul `/plugin install`. Voir [docs/integrations/claude-code-plugin.md](docs/integrations/claude-code-plugin.md).
-- **Graphe de sessions (Pilier 1)** — transforme vos conversations Claude Code / Codex à propos du projet en nœuds de première classe dans le graphe (Insight / Decision / Question / TODO / Hypothesis / Takeaway), liés aux documents qui sont apparus. Exécutez `tesserae project sessions discover --import` une fois, puis chaque `tesserae project compile` importe les nouvelles sessions ; `tesserae project engine` les surveille en direct et les intègre en continu. La passe structurelle est gratuite ; la passe LLM s'exécute automatiquement lorsque la CLI `claude` est connectée — **aucune clé API requise**. Voir [docs/integrations/sessions.md](docs/integrations/sessions.md).
-- **Understand Anything** — projet séparé ([Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything)) qui produit un graphe de connaissances du code dans `.understand-anything/knowledge-graph.json`. Activé par `--with-understand-anything`. Tesserae stocke un wrapper de refresh géré, donc `project compile` maintient le graphe à jour. Voir [docs/integrations/understand-anything.md](docs/integrations/understand-anything.md).
+- **Graphe de sessions (Pilier 1)** — transforme vos conversations Claude Code / Codex à propos du projet en nœuds de première classe dans le graphe (Insight / Decision / Question / TODO / Hypothesis / Takeaway), liés aux documents qui sont apparus. Exécutez `tesserae sessions discover --import` une fois, puis chaque `tesserae compile` importe les nouvelles sessions ; `tesserae engine` les surveille en direct et les intègre en continu. La passe structurelle est gratuite ; la passe LLM s'exécute automatiquement lorsque la CLI `claude` est connectée — **aucune clé API requise**. Voir [docs/integrations/sessions.md](docs/integrations/sessions.md).
+- **Understand Anything** — projet séparé ([Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything)) qui produit un graphe de connaissances du code dans `.understand-anything/knowledge-graph.json`. Activé par `--with-understand-anything`. Tesserae stocke un wrapper de refresh géré, donc `compile` maintient le graphe à jour. Voir [docs/integrations/understand-anything.md](docs/integrations/understand-anything.md).
 - **RAG-Anything** — ingestion multimodale ([HKUDS/RAG-Anything](https://github.com/HKUDS/RAG-Anything)) pour PDF, documents Office et images via MinerU/Docling/PaddleOCR. Activé par `--with-raganything`. Sert aussi de backend de questions runtime (LightRAG). Nécessite Python 3.10+. Voir [docs/integrations/rag-anything.md](docs/integrations/rag-anything.md).
 - **Cognee** — backend mémoire graphe + vecteur. Activé par `--run-cognee --install-cognee`. Le compile normal écrit toujours `.tesserae/cognee_bundle/` ; la passe runtime `cognify` est best-effort et ne s’exécute que si on l’active explicitement.
 
@@ -148,8 +148,8 @@ Toutes les intégrations sont opt-in. Aucune n’est requise pour utiliser Tesse
 Un registry persistant à `~/.tesserae/registry.json` permet à la CLI `ask` de premier niveau et au serveur MCP de résoudre les noms de projet vers leurs racines sans passer `--project` à chaque appel.
 
 ```bash
-tesserae wiki register /path/to/my-project --name myproj
-tesserae wiki activate myproj
+tesserae projects register /path/to/my-project --name myproj
+tesserae projects activate myproj
 tesserae ask "Where is the parser entry point?"
 ```
 
@@ -157,7 +157,7 @@ Le serveur MCP lit le même registry, donc les clients MCP peuvent appeler `list
 
 ## MCP
 
-`tesserae project mcp-config` affiche une entrée de serveur à coller dans Claude Code, Codex ou n’importe quel client compatible MCP. Le serveur expose des outils dont `schema`, `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`, `wiki_page`, `raw_source`, `lint_report`, `ask`, `embedding_status`. Le phare de la v0.5.0 est **`compile_context`** — il renvoie un document de contexte sur mesure et cité pour une requête ou des nœuds-graines (déterministe sauf si `synthesize=true`), adossé à **`graph_ppr`** (Personalized PageRank sur le graphe typé). Les outils de mémoire de sessions et d’auto-amélioration complètent l’ensemble : `list_sessions`, `find_session_findings`, `find_code_symbol_mentions`, `list_communities` et `fresh_insights` (trouvailles de session classées par décroissance à la Ebbinghaus, les quasi-doublons remplacés étant filtrés). Les outils de registry `list_projects` / `register_project` / `activate_project` / `unregister_project` résolvent les noms de projet via le même registry que la CLI.
+`tesserae projects mcp-config` affiche une entrée de serveur à coller dans Claude Code, Codex ou n’importe quel client compatible MCP. Le serveur expose des outils dont `schema`, `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`, `wiki_page`, `raw_source`, `lint_report`, `ask`, `embedding_status`. Le phare de la v0.5.0 est **`compile_context`** — il renvoie un document de contexte sur mesure et cité pour une requête ou des nœuds-graines (déterministe sauf si `synthesize=true`), adossé à **`graph_ppr`** (Personalized PageRank sur le graphe typé). Les outils de mémoire de sessions et d’auto-amélioration complètent l’ensemble : `list_sessions`, `find_session_findings`, `find_code_symbol_mentions`, `list_communities` et `fresh_insights` (trouvailles de session classées par décroissance à la Ebbinghaus, les quasi-doublons remplacés étant filtrés). Les outils de registry `list_projects` / `register_project` / `activate_project` / `unregister_project` résolvent les noms de projet via le même registry que la CLI.
 
 ## Authentification et providers LLM
 

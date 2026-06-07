@@ -18,25 +18,38 @@
 권장 경로는 설정 마법사입니다:
 
 ```bash
-tesserae project setup
+tesserae init
 ```
 
-자동화에는 다음을 사용하세요:
+RAG-Anything은 이제 CLI 플래그 묶음이 아니라 **대화형 마법사 프롬프트**입니다.
+마법사가 실행되면 통합 프롬프트에 답하세요:
+
+- 물어보면 RAG-Anything을 활성화하세요;
+- 물어보면 설치하세요(`raganything` + `docling` 설치);
+- 파서로 `mineru`를 선택하세요;
+- 제안되면 설치 후 새로고침 실행을 활성화하세요.
+
+그런 다음 컴파일합니다:
 
 ```bash
-tesserae project setup \
-  --yes \
-  --with-raganything \
-  --install-raganything \
-  --raganything-parser mineru \
-  --run-raganything
-tesserae project compile
+tesserae compile
+```
+
+비대화형 자동화(CI)에서는 마법사를 기본값(모든 선택적 통합 OFF)으로 실행한 뒤,
+`.tesserae/config.json`에서 RAG-Anything을 활성화하고(마법사는 통합 설정을
+`external_tools` / `memory_backends` 키 아래에 씁니다) 관리형 새로고침을 실행하세요:
+
+```bash
+tesserae init --yes
+# .tesserae/config.json에서 raganything 활성화 (external_tools 키)
+tesserae integrations refresh raganything --parser mineru
+tesserae compile
 ```
 
 Tesserae는 사용자가 직접 만들어내는 명령이 아니라 관리형 새로고침 명령을 저장합니다:
 
 ```bash
-tesserae project refresh-raganything --parser mineru
+tesserae integrations refresh raganything --parser mineru
 ```
 
 컴파일 중 Tesserae는:
@@ -50,7 +63,7 @@ tesserae project refresh-raganything --parser mineru
 컴파일 전에 구성된 모든 외부 새로고침 명령을 강제로 실행할 수 있습니다:
 
 ```bash
-tesserae project compile --refresh-external-tools
+tesserae compile --refresh-integrations
 ```
 
 ## 수동 등가 절차
@@ -58,7 +71,7 @@ tesserae project compile --refresh-external-tools
 ```bash
 pip install 'raganything[all]'
 python -m tesserae.raganything_refresh --project . --parser mineru
-tesserae project compile
+tesserae compile
 ```
 
 ## 네이티브 그래프 동기화

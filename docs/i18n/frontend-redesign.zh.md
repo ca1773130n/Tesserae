@@ -5,10 +5,10 @@
 <!-- translations:end -->
 本文档是对重新设计后的 Tesserae 静态站点中每个可见路由的导览。它补充了 [`architecture.md`](architecture.zh.md) 中的高层模型，以及 [`feature-map.md`](feature-map.zh.md) 中的状态表。
 
-执行 `tesserae project compile` 后，站点位于 `.tesserae/site/`。要在本地浏览：
+执行 `tesserae compile` 后，站点位于 `.tesserae/site/`。要在本地浏览：
 
 ```bash
-tesserae project serve --port 8765
+tesserae serve --port 8765
 # open http://127.0.0.1:8765/
 ```
 
@@ -250,7 +250,7 @@ Open questions 作为 `OpenQuestion` nodes 从语料中抽取 — 即 paper、so
 
 ## Sessions
 
-Sessions 是导入的本地 AI-harness transcripts，会被规范化到 `.tesserae/harness_sessions/`，再渲染为可搜索的项目记忆。导入需要通过 `tesserae project sessions discover --import` 或 `tesserae project sessions import ...` 显式执行；普通站点构建只消费已经规范化的记录。
+Sessions 是导入的本地 AI-harness transcripts，会被规范化到 `.tesserae/harness_sessions/`，再渲染为可搜索的项目记忆。导入需要通过 `tesserae sessions discover --import` 或 `tesserae sessions import ...` 显式执行；普通站点构建只消费已经规范化的记录。
 
 ### `/sessions/` ✅
 

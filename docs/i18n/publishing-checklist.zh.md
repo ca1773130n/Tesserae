@@ -21,9 +21,9 @@
 ```bash
 .venv/bin/pytest tests/ -x          # 任何失败都要中止 — 绝不发布红色构建
 ./scripts/install.sh --help
-tesserae project setup --help
-tesserae project compile --help
-tesserae project context --help     # 按需上下文编译器
+tesserae init --help
+tesserae compile --help
+tesserae context --help     # 按需上下文编译器
 ```
 
 ### 演示构建冒烟测试（与 `build-demo` CI 作业一致）
@@ -32,11 +32,9 @@ tesserae project context --help     # 按需上下文编译器
 其自身源码树编译，并构建站点：
 
 ```bash
-.venv/bin/python -m tesserae project setup --yes --no-color --source . \
-  --no-cognee --skip-raganything --skip-install-cognee \
-  --skip-install-raganything --skip-install-understand-anything
-.venv/bin/python -m tesserae project compile
-.venv/bin/python -m tesserae project build-site
+.venv/bin/python -m tesserae init --yes --source .
+.venv/bin/python -m tesserae compile
+.venv/bin/python -m tesserae export site
 ```
 
 ## 发布流程
@@ -60,25 +58,32 @@ tesserae project context --help     # 按需上下文编译器
 
 ## Self-dogfood
 
+集成选项（Understand Anything、RAG-Anything、cognee）现在是**交互式向导提示**，
+而不是 CLI 标志。运行向导并回答它们：
+
 ```bash
-tesserae project setup \
-  --yes \
+tesserae init \
   --name tesserae_self \
   --source README.md \
   --source docs \
   --source tesserae \
   --source tests \
-  --source scripts \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex \
-  --run-cognee \
-  --install-cognee
-tesserae project compile
-tesserae project sessions list
-tesserae project build-site
-tesserae project serve --port 8765
+  --source scripts
+# 当向导提示时：
+#   - 启用 Understand Anything（平台：codex），安装：是
+#   - 启用 RAG-Anything，安装：是，解析器：mineru，之后运行：是
+#   - 启用 cognee，安装：是
+tesserae compile
+tesserae sessions list
+tesserae export site
+tesserae serve --port 8765
 ```
+
+如需完全非交互式运行，请使用 `tesserae init --yes`（所有集成关闭），然后在
+`.tesserae/config.json` 中启用每个集成——向导会将它们写入 `memory_backends`
+（cognee）和 `external_tools`（Understand Anything、RAG-Anything）键下——并在编译
+前对每个集成运行 `tesserae integrations refresh <name>`。确切的配置键请参阅集成
+文档。
 
 ## 演示要点
 

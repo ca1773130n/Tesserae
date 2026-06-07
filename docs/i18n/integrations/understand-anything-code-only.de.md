@@ -66,8 +66,8 @@ Tesserae regeneriert `.tesserae/external/understand-anything.md` nur, wenn das T
 ### Schritt 3 — Erneut kompilieren + Obsidian-Vault aufräumen
 
 ```bash
-tesserae project compile
-tesserae project obsidian-sync --prune-orphans
+tesserae compile
+tesserae vault sync --prune-orphans
 ```
 
 Der Compile überspringt das UA-Merge und hält den Research-Graphen frei von UA-stämmigen Concepts. Der Prune-Schritt löscht alle verwaisten Seiten im Obsidian-Vault, die auf vom Merge erzeugte node_ids zeigten.
@@ -107,7 +107,7 @@ Die Asymmetrie ärgert — Deaktivieren ist ein Config-Flip, sauberes Reaktivier
 | Schicht | Anliegen | Konfiguriert über |
 |---|---|---|
 | UA-eigener Walker | Welche Dateien UA überhaupt liest | UA-eigene Config (außerhalb des Scopes von Tesserae) |
-| `auto_refresh` am UA-Tool | Ob `tesserae project compile` UA erneut ausführt | `.tesserae/config.json`-external_tools-Eintrag |
+| `auto_refresh` am UA-Tool | Ob `tesserae compile` UA erneut ausführt | `.tesserae/config.json`-external_tools-Eintrag |
 | `enabled` am UA-Tool | Ob Tesserae UA überhaupt berücksichtigt | `.tesserae/config.json`-external_tools-Eintrag |
 | `sync_mode` am UA-Tool | Ob UA-Nodes in den Research-Graphen gemerged werden | `.tesserae/config.json`-external_tools-Eintrag |
 

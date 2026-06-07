@@ -66,8 +66,8 @@ Tesserae regenera `.tesserae/external/understand-anything.md` solo cuando la her
 ### Paso 3 — recompilar + podar el vault de Obsidian
 
 ```bash
-tesserae project compile
-tesserae project obsidian-sync --prune-orphans
+tesserae compile
+tesserae vault sync --prune-orphans
 ```
 
 La compilación omitirá la fusión de UA, dejando el grafo de investigación libre de Concepts provenientes de UA. El paso de poda elimina cualquier página huérfana en el vault de Obsidian que apuntara a node_ids creados por la fusión.
@@ -107,7 +107,7 @@ La asimetría escuece —deshabilitar es un solo cambio de configuración, rehab
 | Capa | Preocupación | Configurada vía |
 |---|---|---|
 | El propio walker de UA | Qué archivos lee UA en primer lugar | configuración de UA (fuera del alcance de Tesserae) |
-| `auto_refresh` en la herramienta UA | Si `tesserae project compile` vuelve a ejecutar UA | entrada de external_tools en `.tesserae/config.json` |
+| `auto_refresh` en la herramienta UA | Si `tesserae compile` vuelve a ejecutar UA | entrada de external_tools en `.tesserae/config.json` |
 | `enabled` en la herramienta UA | Si Tesserae considera UA en absoluto | entrada de external_tools en `.tesserae/config.json` |
 | `sync_mode` en la herramienta UA | Si los nodos de UA se fusionan en el grafo de investigación | entrada de external_tools en `.tesserae/config.json` |
 

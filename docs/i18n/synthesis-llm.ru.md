@@ -140,7 +140,7 @@ sentence or paragraph.
 pip install tesserae[synthesis-llm]
 export TESSERAE_SYNTHESIS_LLM=1
 export ANTHROPIC_API_KEY=sk-...
-python -m tesserae.cli project compile
+python -m tesserae.cli compile
 ```
 
 Model можно переопределить через `TESSERAE_SYNTHESIS_MODEL` (по умолчанию `claude-sonnet-4-6`). Требуется Anthropic SDK ≥ 0.40.
@@ -191,7 +191,7 @@ Unset env var (или установите `0`) и запустите снова
 
 ```sh
 unset TESSERAE_SYNTHESIS_LLM
-python -m tesserae.cli project compile
+python -m tesserae.cli compile
 ```
 
 Последующие compile заново сгенерируют затронутые synthesis pages с эвристическим generator. Поскольку page rewrites gated по `content_hash`, переписаны будут только страницы, у которых body действительно изменился.

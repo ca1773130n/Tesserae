@@ -1,4 +1,4 @@
-# Demonstrates `tesserae project compile` on the demo workspace.
+# Demonstrates `tesserae compile` on the demo workspace.
 # Renders to docs/screencasts/compile.gif. Run with: vhs docs/screencasts/compile.tape
 #
 # Assumes `setup.tape` (or equivalent) has already run in the same workspace.
@@ -25,7 +25,7 @@ Type "# Compile the typed knowledge graph (deterministic, no LLM, no API keys)"
 Sleep 700ms
 Enter
 
-Type@30ms "tesserae project compile"
+Type@30ms "tesserae compile"
 Sleep 400ms
 Enter
 Sleep 7s
@@ -34,7 +34,7 @@ Type "# Then build the static site"
 Sleep 600ms
 Enter
 
-Type@30ms "tesserae project build-site"
+Type@30ms "tesserae export site"
 Sleep 400ms
 Enter
 Sleep 8s

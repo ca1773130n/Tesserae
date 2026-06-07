@@ -12,8 +12,8 @@ Tesserae は [Model Context Protocol](https://modelcontextprotocol.io) の stdio
 
 ```bash
 cd /path/to/your-project
-tesserae project setup    # interactive; or --yes for non-interactive
-tesserae project compile  # deterministic, no LLM calls, no API keys
+tesserae init    # interactive; or --yes for non-interactive
+tesserae compile  # deterministic, no LLM calls, no API keys
 ```
 
 ソースが変わったらいつでも再コンパイルしてください。サーバーは再起動なしで次回の tool 呼び出し時に新しいグラフを読み込みます。
@@ -21,7 +21,7 @@ tesserae project compile  # deterministic, no LLM calls, no API keys
 ## 1) クライアント設定を生成する
 
 ```bash
-tesserae project mcp-config
+tesserae projects mcp-config
 ```
 
 おおよそ次のような JSON スニペットを出力します:

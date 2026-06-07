@@ -19,7 +19,7 @@ Tesserae 是一个运行在三大支柱之上的**上下文引擎**：(1) 会话
 |---|---|---|---|
 | `Pipeline` —— 返回 `List[StepResult]` 的可复用刷新链 | ✅ | [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | CLI、守护进程、MCP 都调用的同一个步骤运行器。对每步捕获 `Exception`；首次失败处停止。 |
 | `Daemon` —— 单一所有者 asyncio 监督器 | ✅ | [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | 监视源 + 库 + harness 会话目录；去抖的取消并重新调度将一批合并为一次 `Pipeline.run()`。pidfile；执行中异常下存活。 |
-| `project engine` / `project daemon` | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) | `--interval`、`--debounce`、`--once`。`daemon` 是 `engine` 的别名。 |
+| `engine` | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) | `--interval`、`--debounce`、`--once`。`daemon` 是 `engine` 的别名。 |
 | `project refresh` —— 散文式链（摄取 → 编译 → 投影） | ✅ | `cli.py` + [`tesserae/project.py`](../../tesserae/project.py) | `--changed-only`（选用增量）、`--skip-sessions`。 |
 | 实时会话监控 → 发现 | ✅ | `harness_sessions.py` + 会话图模块 | 导入的会话喂入图；`fresh_insights` / `find_session_findings` 呈现它们。 |
 
@@ -151,11 +151,11 @@ Tesserae 是一个运行在三大支柱之上的**上下文引擎**：(1) 会话
 | `project compile` 按顺序调用 synthesis + wiki + site | ✅ | [`tesserae/project.py`](../../tesserae/project.py) | 重设计计划第 3 阶段。 |
 | 独立 `project build-site` | ✅ | `project.py` + [`tesserae/cli.py`](../../tesserae/cli.py) | 读取 `wiki/` + `graph.json`，写入 `site/`。 |
 | `project serve` 本地 HTTP | ✅ | `cli.py` | 普通 stdlib 服务器。 |
-| `project deploy` → GitHub Pages | ✅ | [`tesserae/deploy.py`](../../tesserae/deploy.py) | worktree push 到 `gh-pages`；可通过 `gh` CLI 选用 `--enable-pages`。`--build`, `--dry-run`, `--branch`, `--remote`, `--force`。 |
+| `export site --deploy` → GitHub Pages | ✅ | [`tesserae/deploy.py`](../../tesserae/deploy.py) | worktree push 到 `gh-pages`；可通过 `gh` CLI 选用 `--enable-pages`。`--build`, `--dry-run`, `--branch`, `--remote`, `--force`。 |
 | `project sessions discover/import/list` | ✅ | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) + `cli.py` | Claude Code/Codex 的入站会话历史；发现过程显式且限定在项目工作目录。 |
-| `project watch` 变更时重建 | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) + [`tesserae/watch.py`](../../tesserae/watch.py) | 独立轮询 watcher：`--interval`、`--debounce`、`--once`、`--paths`、`--quiet`。多源监督器位于 `project engine`/`daemon`（见上下文引擎）。 |
+| `export site --watch` 变更时重建 | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) + [`tesserae/watch.py`](../../tesserae/watch.py) | 独立轮询 watcher：`--interval`、`--debounce`、`--once`、`--paths`、`--quiet`。多源监督器位于 `project engine`/`daemon`（见上下文引擎）。 |
 | `project context` —— 编译带引用的上下文文档 | ✅ | `cli.py` + [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | 支柱 3 标志；见上下文引擎章节。 |
-| `project refresh` / `project engine` / `project daemon` | ✅ | `cli.py` + [`tesserae/engine/`](../../tesserae/engine/) | 散文式刷新链 + 监督器循环；见上下文引擎章节。 |
+| `project refresh` / `engine` | ✅ | `cli.py` + [`tesserae/engine/`](../../tesserae/engine/) | 散文式刷新链 + 监督器循环；见上下文引擎章节。 |
 
 ## 既有功能（原样保留）
 
@@ -195,22 +195,22 @@ Tesserae 是一个运行在三大支柱之上的**上下文引擎**：(1) 会话
 
 ### 项目本地工作流
 
-- ✅ `tesserae project init`
-- ✅ `tesserae project ingest`
-- ✅ `tesserae project compile`
-- ✅ `tesserae project mcp-config`
-- ✅ `tesserae project build-site`
-- ✅ `tesserae project serve`
-- ✅ `tesserae project deploy`（GitHub Pages）
-- ✅ `tesserae project sessions discover/import/list`（显式本地 agent-history 导入）
-- ✅ `tesserae project watch`（独立轮询 watcher）
-- ✅ `tesserae project engine` / `tesserae project daemon`（监督器循环 —— v0.5.0）
-- ✅ `tesserae project refresh`（散文式 摄取 → 编译 → 投影 链 —— v0.5.0）
-- ✅ `tesserae project context`（按需上下文编译器 —— v0.5.0）
-- ✅ `tesserae project export-agent-harness`
-- ✅ `tesserae project export-obsidian`
-- ✅ `tesserae project export-graphiti`
-- ✅ `tesserae project sync-graphiti`
+- ✅ `tesserae init --bare`
+- ✅ `tesserae compile <paths>`
+- ✅ `tesserae compile`
+- ✅ `tesserae projects mcp-config`
+- ✅ `tesserae export site`
+- ✅ `tesserae serve`
+- ✅ `tesserae export site --deploy`（GitHub Pages）
+- ✅ `tesserae sessions discover/import/list`（显式本地 agent-history 导入）
+- ✅ `tesserae export site --watch`（独立轮询 watcher）
+- ✅ `tesserae engine`（监督器循环 —— v0.5.0）
+- ✅ `tesserae refresh`（散文式 摄取 → 编译 → 投影 链 —— v0.5.0）
+- ✅ `tesserae context`（按需上下文编译器 —— v0.5.0）
+- ✅ `tesserae export harness`
+- ✅ `tesserae vault export`
+- ✅ `tesserae export graphiti`
+- ✅ `tesserae export graphiti --sync`
 
 ### Obsidian
 

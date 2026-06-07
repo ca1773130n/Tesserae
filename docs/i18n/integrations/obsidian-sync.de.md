@@ -4,7 +4,7 @@
 <p align="center"><a href="../../integrations/obsidian-sync.md">English</a> · <a href="obsidian-sync.ko.md">한국어</a> · <a href="obsidian-sync.zh.md">中文</a> · <a href="obsidian-sync.ja.md">日本語</a> · <a href="obsidian-sync.ru.md">Русский</a> · <a href="obsidian-sync.es.md">Español</a> · <a href="obsidian-sync.fr.md">Français</a></p>
 <!-- translations:end -->
 
-> **Status: Ausgeliefert (Tier 1, v0.5.0).** Der unten beschriebene Overlay-Reader, die User-Notes-Append-Zonen, der Watch-Modus und das Aufräumen verwaister Seiten sind hinter `tesserae project obsidian-sync` live. Diese Seite dient zugleich als Design-Begründung und als Nutzerhandbuch. Multi-Vault-Föderation (Tier 3) bleibt außerhalb des Umfangs.
+> **Status: Ausgeliefert (Tier 1, v0.5.0).** Der unten beschriebene Overlay-Reader, die User-Notes-Append-Zonen, der Watch-Modus und das Aufräumen verwaister Seiten sind hinter `tesserae vault sync` live. Diese Seite dient zugleich als Design-Begründung und als Nutzerhandbuch. Multi-Vault-Föderation (Tier 3) bleibt außerhalb des Umfangs.
 
 Der [Obsidian-Export](obsidian.de.md) war früher strikt einseitig: Der typisierte Graph in `.tesserae/graph.json` projiziert in den Vault, und `project compile` überschreibt projizierte Dateien. `obsidian-sync` ergänzt die Gegenrichtung — bearbeite eine Beschreibung in Obsidian, und sie überlebt das Recompile.
 
@@ -100,35 +100,35 @@ Alle fünf sind mit dem Overlay-Modell kompatibel, weil Tesserae den Vault als D
 
 ## CLI-Oberfläche
 
-`tesserae project obsidian-sync` wendet Vault-Edits auf den typisierten Graphen an und projiziert neu:
+`tesserae vault sync` wendet Vault-Edits auf den typisierten Graphen an und projiziert neu:
 
 ```bash
 # Overlay einmal anwenden: Nutzer-Edits einlesen, in den Vault neu projizieren.
-tesserae project obsidian-sync
+tesserae vault sync
 
 # Zuerst prüfen, was sich ändern würde. Schreibt .tesserae/diverged-fields.md und
 # wendet NICHT an und projiziert nicht neu.
-tesserae project obsidian-sync --dry-run
+tesserae vault sync --dry-run
 
 # Für diesen Aufruf einen bestimmten Vault angeben (Auflösungsreihenfolge:
 # --vault > config.obsidian.vault_path > .tesserae/obsidian_vault/).
-tesserae project obsidian-sync --vault ~/Documents/tesserae-vault
+tesserae vault sync --vault ~/Documents/tesserae-vault
 
 # Diesen Vault-Pfad zum Standard für künftige Befehle machen.
-tesserae project obsidian-sync --vault ~/Documents/tesserae-vault --persist-vault
+tesserae vault sync --vault ~/Documents/tesserae-vault --persist-vault
 
 # Langlaufender Watch: Overlay bei jeder Vault-Änderung erneut anwenden.
 # Ctrl-C zum Stoppen; --poll-interval steuert die Abtastrate (Standard 1,5 s).
-tesserae project obsidian-sync --watch --poll-interval 1.5
+tesserae vault sync --watch --poll-interval 1.5
 
 # Projizierte Seiten löschen, deren Quell-Node nicht mehr existiert (der Projector
 # überschreibt nur, löscht nie). Seiten mit User-Notes bleiben erhalten,
 # sofern du nicht zusätzlich --force-prune-with-notes übergibst.
-tesserae project obsidian-sync --prune-orphans
-tesserae project obsidian-sync --prune-orphans --force-prune-with-notes
+tesserae vault sync --prune-orphans
+tesserae vault sync --prune-orphans --force-prune-with-notes
 ```
 
-Der Slash-Befehl `/tesserae:obsidian-sync` umhüllt dies, und `tesserae project refresh`
+Der Slash-Befehl `/tesserae:obsidian-sync` umhüllt dies, und `tesserae refresh`
 (plus das `/tesserae:refresh`-Makro) führt das Overlay als letzten Schritt seiner
 import → compile → sync-Kette aus.
 

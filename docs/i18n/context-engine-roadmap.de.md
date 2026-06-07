@@ -53,7 +53,7 @@ aufrufen.
   (mechanisch, ohne Verhaltensänderung).
 - **Lieferungen:** `Pipeline.run(steps, changed_only=…)`; die CLI delegiert an
   ihn; Unit-Tests für Schrittsequenzierung + Fehlerfortpflanzung.
-- **Abnahme:** `tesserae project refresh` existiert als Code (kein Skill) und
+- **Abnahme:** `tesserae refresh` existiert als Code (kein Skill) und
   reproduziert die Markdown-Kette byte-für-byte auf dem Demo-Korpus.
 - **Risiko:** Niedrig. Reiner Refactor; bestehende Tests schützen das Verhalten.
 - **Geschlossene Audit-Befunde:** „refresh lebt in einem Skill",
@@ -194,7 +194,7 @@ Standard-„Semantik"-Spur auszuliefern.
 
 ## Phase 6 — Kontext-Compiler auf Abruf (Säule 3) ✅ Ausgeliefert in v0.5.0 (Hauptfeature)
 
-> **In v0.5.0 als Hauptfeature ausgeliefert.** Die reine `compile_context`-Pipeline in `tesserae/context_compiler.py` liefert ein In-Memory-`ContextBundle` aus `ContextCitation`s (Query/Seeds → PPR + Hybridsuche → tiefenbegrenzte k-Hop-Nachbarschaft → Wiki-Body-Zusammenbau → optionale LLM-Synthese mit anmutigem Fallback → Budgetkontrolle). Bereitgestellt als MCP-Tool `compile_context` und CLI-Subbefehl `tesserae project context`; `node_context` hat nun einen gerankten `use_ppr`-Pfad; themenbezogene `llms.txt`-Export-Slices werden ausgeliefert.
+> **In v0.5.0 als Hauptfeature ausgeliefert.** Die reine `compile_context`-Pipeline in `tesserae/context_compiler.py` liefert ein In-Memory-`ContextBundle` aus `ContextCitation`s (Query/Seeds → PPR + Hybridsuche → tiefenbegrenzte k-Hop-Nachbarschaft → Wiki-Body-Zusammenbau → optionale LLM-Synthese mit anmutigem Fallback → Budgetkontrolle). Bereitgestellt als MCP-Tool `compile_context` und CLI-Subbefehl `tesserae context`; `node_context` hat nun einen gerankten `use_ppr`-Pfad; themenbezogene `llms.txt`-Export-Slices werden ausgeliefert.
 
 **Ziel:** Das Aushängeschild — „gib mir Kontext zu X" → ein maßgeschneidertes,
 zitiertes, agentenfertiges Dokument.

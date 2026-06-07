@@ -19,7 +19,7 @@ Tesserae는 세 가지 기둥 위에서 동작하는 **컨텍스트 엔진**입�
 |---|---|---|---|
 | `Pipeline` — `List[StepResult]`를 반환하는 재사용 가능한 새로고침 체인 | ✅ | [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | CLI, 데몬, MCP가 모두 호출하는 하나의 스텝 러너. 스텝마다 `Exception`을 잡고 첫 실패에서 멈춤. |
 | `Daemon` — 단일 소유자 asyncio 슈퍼바이저 | ✅ | [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | 소스 + 볼트 + 하네스 세션 디렉토리를 감시; 디바운스된 취소-후-재스케줄이 버스트를 하나의 `Pipeline.run()`으로 통합. pidfile; 진행 중 예외에서도 생존. |
-| `project engine` / `project daemon` | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) | `--interval`, `--debounce`, `--once`. `daemon`은 `engine`의 별칭. |
+| `engine` | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) | `--interval`, `--debounce`, `--once`. `daemon`은 `engine`의 별칭. |
 | `project refresh` — 산문형 체인(수집 → 컴파일 → 프로젝트) | ✅ | `cli.py` + [`tesserae/project.py`](../../tesserae/project.py) | `--changed-only`(옵트인 증분), `--skip-sessions`. |
 | 라이브 세션 모니터 → 발견 | ✅ | `harness_sessions.py` + 세션 그래프 모듈 | 가져온 세션이 그래프에 공급됨; `fresh_insights` / `find_session_findings`가 표면화. |
 
@@ -151,11 +151,11 @@ Tesserae는 세 가지 기둥 위에서 동작하는 **컨텍스트 엔진**입�
 | `project compile`은 synthesis + wiki + site를 순서대로 호출 | ✅ | [`tesserae/project.py`](../../tesserae/project.py) | 재설계 계획의 3단계. |
 | `project build-site` 독립 실행 | ✅ | `project.py` + [`tesserae/cli.py`](../../tesserae/cli.py) | `wiki/` + `graph.json`을 읽고 `site/`를 작성. |
 | `project serve` 로컬 HTTP | ✅ | `cli.py` | 순수 stdlib 서버. |
-| `project deploy` → GitHub Pages | ✅ | [`tesserae/deploy.py`](../../tesserae/deploy.py) | `gh-pages`로 worktree push; `gh` CLI를 통한 선택적 `--enable-pages`. `--build`, `--dry-run`, `--branch`, `--remote`, `--force`. |
+| `export site --deploy` → GitHub Pages | ✅ | [`tesserae/deploy.py`](../../tesserae/deploy.py) | `gh-pages`로 worktree push; `gh` CLI를 통한 선택적 `--enable-pages`. `--build`, `--dry-run`, `--branch`, `--remote`, `--force`. |
 | `project sessions discover/import/list` | ✅ | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) + `cli.py` | Claude Code/Codex용 인바운드 세션 기록; 탐색은 명시적이며 프로젝트 작업 디렉터리로 범위가 제한됨. |
-| `project watch` 변경 시 재빌드 | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) + [`tesserae/watch.py`](../../tesserae/watch.py) | 독립형 폴링 watcher: `--interval`, `--debounce`, `--once`, `--paths`, `--quiet`. 다중 소스 슈퍼바이저는 `project engine`/`daemon`에 있음(컨텍스트 엔진 참조). |
+| `export site --watch` 변경 시 재빌드 | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) + [`tesserae/watch.py`](../../tesserae/watch.py) | 독립형 폴링 watcher: `--interval`, `--debounce`, `--once`, `--paths`, `--quiet`. 다중 소스 슈퍼바이저는 `project engine`/`daemon`에 있음(컨텍스트 엔진 참조). |
 | `project context` — 인용된 컨텍스트 문서 컴파일 | ✅ | `cli.py` + [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | 기둥 3 핵심; 컨텍스트 엔진 섹션 참조. |
-| `project refresh` / `project engine` / `project daemon` | ✅ | `cli.py` + [`tesserae/engine/`](../../tesserae/engine/) | 산문형 새로고침 체인 + 슈퍼바이저 루프; 컨텍스트 엔진 섹션 참조. |
+| `project refresh` / `engine` | ✅ | `cli.py` + [`tesserae/engine/`](../../tesserae/engine/) | 산문형 새로고침 체인 + 슈퍼바이저 루프; 컨텍스트 엔진 섹션 참조. |
 
 ## 기존 기능 (변경 없이 유지)
 
@@ -195,22 +195,22 @@ Tesserae는 세 가지 기둥 위에서 동작하는 **컨텍스트 엔진**입�
 
 ### 프로젝트 로컬 워크플로
 
-- ✅ `tesserae project init`
-- ✅ `tesserae project ingest`
-- ✅ `tesserae project compile`
-- ✅ `tesserae project mcp-config`
-- ✅ `tesserae project build-site`
-- ✅ `tesserae project serve`
-- ✅ `tesserae project deploy` (GitHub Pages)
-- ✅ `tesserae project sessions discover/import/list` (명시적 로컬 에이전트 기록 가져오기)
-- ✅ `tesserae project watch` (독립형 폴링 watcher)
-- ✅ `tesserae project engine` / `tesserae project daemon` (슈퍼바이저 루프 — v0.5.0)
-- ✅ `tesserae project refresh` (산문형 수집 → 컴파일 → 프로젝트 체인 — v0.5.0)
-- ✅ `tesserae project context` (온디맨드 컨텍스트 컴파일러 — v0.5.0)
-- ✅ `tesserae project export-agent-harness`
-- ✅ `tesserae project export-obsidian`
-- ✅ `tesserae project export-graphiti`
-- ✅ `tesserae project sync-graphiti`
+- ✅ `tesserae init --bare`
+- ✅ `tesserae compile <paths>`
+- ✅ `tesserae compile`
+- ✅ `tesserae projects mcp-config`
+- ✅ `tesserae export site`
+- ✅ `tesserae serve`
+- ✅ `tesserae export site --deploy` (GitHub Pages)
+- ✅ `tesserae sessions discover/import/list` (명시적 로컬 에이전트 기록 가져오기)
+- ✅ `tesserae export site --watch` (독립형 폴링 watcher)
+- ✅ `tesserae engine` (슈퍼바이저 루프 — v0.5.0)
+- ✅ `tesserae refresh` (산문형 수집 → 컴파일 → 프로젝트 체인 — v0.5.0)
+- ✅ `tesserae context` (온디맨드 컨텍스트 컴파일러 — v0.5.0)
+- ✅ `tesserae export harness`
+- ✅ `tesserae vault export`
+- ✅ `tesserae export graphiti`
+- ✅ `tesserae export graphiti --sync`
 
 ### Obsidian
 

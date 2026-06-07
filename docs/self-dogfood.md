@@ -31,7 +31,7 @@ export PATH="$HOME/.local/bin:$PATH"
 pip install 'tesserae[semantic]'
 
 # Set up this repository as an Tesserae project.
-tesserae project setup \
+tesserae init \
   --yes \
   --name tesserae_self \
   --source README.md \
@@ -50,13 +50,13 @@ tesserae project setup \
   --install-cognee
 
 # Compile the configured sources.
-tesserae project compile
+tesserae compile
 
 # Rebuild the static frontend explicitly.
-tesserae project build-site
+tesserae export site
 
-# Serve locally.
-tesserae project serve --port 8765
+# Serve locally (auto-builds the site first if needed).
+tesserae serve --port 8765
 ```
 
 Open:
@@ -97,13 +97,23 @@ The generated workspace is intentionally not committed by default. It is reprodu
 
 Verified on `2026-04-27 11:11:23 KST` from the Tesserae repository itself.
 
+Integration opt-ins (Understand Anything, cognee) are **interactive wizard
+prompts** now, not CLI flags. The non-interactive equivalent below runs
+`tesserae init --yes` (integrations OFF), enables the integrations in
+`.tesserae/config.json` (the wizard writes them under the `memory_backends`
+and `external_tools` keys — see the integration docs for the exact keys), then
+refreshes each before compiling.
+
 ```text
 install command: ./scripts/install.sh --dir /Users/neo/Developer/Projects/Tesserae --skip-shell-config
-setup command:   tesserae project setup --yes --name tesserae_self --source README.md --source docs --source tesserae --source tests --source scripts --with-understand-anything --install-understand-anything --understand-anything-platform codex --run-cognee --install-cognee
-ingest command:  tesserae project ingest README.md docs --changed-only
-compile command: tesserae project compile
-site command:    tesserae project build-site
-serve command:   tesserae project serve --host 0.0.0.0 --port 56821
+setup command:   tesserae init --yes --name tesserae_self --source README.md --source docs --source tesserae --source tests --source scripts
+                 # then enable Understand Anything + cognee in .tesserae/config.json and run:
+                 #   tesserae integrations refresh understand-anything
+                 #   tesserae integrations refresh cognee
+ingest command:  tesserae compile README.md docs --changed-only
+compile command: tesserae compile
+site command:    tesserae export site
+serve command:   tesserae serve --host 0.0.0.0 --port 56821
 local URL:       http://127.0.0.1:56821/
 LAN URL:         http://192.168.45.130:56821/
 ```

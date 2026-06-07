@@ -4,7 +4,7 @@
 <p align="center"><a href="../../integrations/sessions.md">English</a> · <a href="sessions.ko.md">한국어</a> · <a href="sessions.zh.md">中文</a> · <a href="sessions.ja.md">日本語</a> · <a href="sessions.ru.md">Русский</a> · <a href="sessions.es.md">Español</a> · <a href="sessions.fr.md">Français</a></p>
 <!-- translations:end -->
 
-Der Sitzungs-Graph von Tesserae verwandelt deine Claude Code / Codex-Konversationen über ein Projekt in erstklassige Knoten im typisierten Wissensgraphen, verknüpft mit den Dokumenten, die zur Sprache kamen. Nach einer Kompilierung kannst du `tesserae project ask "was haben wir über 3D Gaussian Splatting entschieden?"` fragen und konkrete Insight / Decision / Question / TODO / Hypothesis / Takeaway-Knoten mit Provenienz zurück zur Sitzung erhalten, die sie hervorgebracht hat.
+Der Sitzungs-Graph von Tesserae verwandelt deine Claude Code / Codex-Konversationen über ein Projekt in erstklassige Knoten im typisierten Wissensgraphen, verknüpft mit den Dokumenten, die zur Sprache kamen. Nach einer Kompilierung kannst du `tesserae ask "was haben wir über 3D Gaussian Splatting entschieden?"` fragen und konkrete Insight / Decision / Question / TODO / Hypothesis / Takeaway-Knoten mit Provenienz zurück zur Sitzung erhalten, die sie hervorgebracht hat.
 
 ## Funktionsweise
 
@@ -17,9 +17,9 @@ Zwei Durchgänge pro Sitzung:
 
 Die obige Pipeline ist dieselbe, egal wie die Sessions ankommen. Was sich unterscheidet, ist *wann* sie entdeckt und kompiliert werden:
 
-- **Batch (manuell).** Führe `tesserae project sessions discover --import` und danach `tesserae project compile` selbst aus. Am besten für einmalige Nachträge oder CI. Der Rest dieser Seite geht diesen Weg.
+- **Batch (manuell).** Führe `tesserae sessions discover --import` und danach `tesserae compile` selbst aus. Am besten für einmalige Nachträge oder CI. Der Rest dieser Seite geht diesen Weg.
 - **Live (kontinuierlich).** Lass die Engine das Projekt beobachten und neu kompilieren, während die Arbeit geschieht, damit der Graph frisch bleibt, ohne dass du daran denken musst, etwas auszuführen:
-  - **Supervisor-Daemon** — `tesserae project engine` (Alias `tesserae project daemon`) führt eine Single-Owner-asyncio-Schleife aus, die die konfigurierten Quellen beobachtet, einen Schwung von Edits zu genau einem `Pipeline.run()` zusammenfasst und automatisch neu kompiliert. Übergib `--once` für einen deterministischen Einzeldurchlauf oder `--interval` / `--debounce`, um das Zusammenfassen zu justieren. `tesserae project refresh` führt dieselbe import → compile → vault-sync-Kette einmal in-process aus.
+  - **Supervisor-Daemon** — `tesserae engine` führt eine Single-Owner-asyncio-Schleife aus, die die konfigurierten Quellen beobachtet, einen Schwung von Edits zu genau einem `Pipeline.run()` zusammenfasst und automatisch neu kompiliert. Übergib `--once` für einen deterministischen Einzeldurchlauf oder `--interval` / `--debounce`, um das Zusammenfassen zu justieren. `tesserae refresh` führt dieselbe import → compile → vault-sync-Kette einmal in-process aus.
   - **Claude-Code-Plugin-Hooks** — mit installiertem [Plugin](claude-code-plugin.de.md) führt der `SessionEnd`-Hook beim Ende eines Gesprächs im Hintergrund import + compile aus, sodass die Erkenntnisse *dieser* Session zu Graph-Knoten für die *nächste* werden. Der `SessionStart`-Hook druckt beim Einstieg die aktuelle Graph-Zusammenfassung. Das kommt dem Erfassen von Sessions „während sie geschehen" am nächsten — ganz ohne manuellen discover/compile-Schritt.
 
 ## Einrichtung
@@ -29,19 +29,20 @@ Die obige Pipeline ist dieselbe, egal wie die Sessions ankommen. Was sich unters
 tesserae sessions discover --import
 
 # Kompiliere. Der strukturelle Durchgang läuft kostenlos; der LLM-Durchgang läuft automatisch, wenn die `claude` CLI angemeldet ist — kein API-Schlüssel nötig.
-tesserae project compile
+tesserae compile
 ```
 
 Um ohne Sitzungen zu kompilieren (z.B. auf einem Server ohne Harness-Historie):
 
 ```bash
-tesserae project compile --no-sessions
+tesserae compile --no-sessions
 ```
 
 Um strukturell-only zu erzwingen (LLM-Aufruf überspringen, auch wenn ein Schlüssel gesetzt ist):
 
 ```bash
-tesserae project compile --sessions-llm=false
+# Set compile_options.sessions_llm = false in .tesserae/config.json, then:
+tesserae compile
 ```
 
 ## Konfiguration
@@ -73,7 +74,7 @@ Aus der CLI:
 
 ```bash
 tesserae sessions list
-tesserae project ask "what did we decide about extractor dedup?"
+tesserae ask "what did we decide about extractor dedup?"
 ```
 
 ## Datenschutz

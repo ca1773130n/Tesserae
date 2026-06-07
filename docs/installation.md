@@ -37,7 +37,7 @@ The default wheel is intentionally light. The setup wizard can install the heavi
 
 ```bash
 # Understand Anything companion graph + RAG-Anything multimodal + Cognee runtime memory
-tesserae project setup \
+tesserae init \
   --with-understand-anything \
   --install-understand-anything \
   --understand-anything-platform codex \
@@ -59,7 +59,7 @@ pip install kuzu cognee graphiti-core
 - `cognee` — runtime Cognee add/cognify workflows; setup stores `{python} -m pip install cognee` and retries once if Cognee is missing.
 - Understand Anything — installed via the upstream installer when `--install-understand-anything` is selected; Tesserae stores a managed refresh wrapper instead of asking users to invent a shell command.
 - RAG-Anything — installed via `pip install 'raganything[all]'` when `--install-raganything` is selected; Tesserae stores a managed refresh wrapper for multimodal parser runs.
-- `graphiti-core` — live Graphiti/Neo4j sync. `export-graphiti` and `sync-graphiti --dry-run` work without it.
+- `graphiti-core` — live Graphiti/Neo4j sync. `export graphiti` and `export graphiti --sync --dry-run` work without it.
 
 The Anthropic-backed synthesis path uses an extras marker:
 
@@ -73,7 +73,7 @@ Real semantic embeddings (the default retrieval lane as of v0.5.0) ship behind t
 pip install "tesserae[semantic]"
 ```
 
-This pulls in `model2vec` and downloads a lightweight, offline, torch-free static model (~8 MB `potion-base-8M`, fetched once on first use). Without it, hybrid/embedding retrieval falls back to a non-semantic hash-bucket stub and emits a loud warning, so installing this extra is recommended for anyone using `project ask`, `project context`, or the MCP `compile_context` tool.
+This pulls in `model2vec` and downloads a lightweight, offline, torch-free static model (~8 MB `potion-base-8M`, fetched once on first use). Without it, hybrid/embedding retrieval falls back to a non-semantic hash-bucket stub and emits a loud warning, so installing this extra is recommended for anyone using `tesserae ask`, `tesserae context`, or the MCP `compile_context` tool.
 
 For the multimodal RAG-Anything stack with all parsers preinstalled:
 
@@ -123,7 +123,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ## Verify installation
 
 ```bash
-tesserae project init --help
-tesserae project compile --help
-tesserae project build-site --help
+tesserae init --help
+tesserae compile --help
+tesserae export site --help
 ```

@@ -66,8 +66,8 @@ Tesserae は当該ツールが有効な場合にのみ `.tesserae/external/under
 ### Step 3 — 再コンパイルして Obsidian vault を整理する
 
 ```bash
-tesserae project compile
-tesserae project obsidian-sync --prune-orphans
+tesserae compile
+tesserae vault sync --prune-orphans
 ```
 
 このコンパイルでは UA のマージがスキップされ、research graph は UA 由来の Concept から解放されます。prune ステップは、マージ処理が作成した node_id を指していた Obsidian vault 内のオーファンページを削除します。
@@ -107,7 +107,7 @@ UA の code graph は本当に有用です――call/import エッジ、クラ�
 | レイヤー | 関心事 | 設定箇所 |
 |---|---|---|
 | UA 自身のウォーカー | そもそも UA がどのファイルを読むか | UA の config（Tesserae の範囲外） |
-| UA ツールの `auto_refresh` | `tesserae project compile` が UA を再実行するかどうか | `.tesserae/config.json` の external_tools エントリ |
+| UA ツールの `auto_refresh` | `tesserae compile` が UA を再実行するかどうか | `.tesserae/config.json` の external_tools エントリ |
 | UA ツールの `enabled` | Tesserae が UA を考慮するかどうか | `.tesserae/config.json` の external_tools エントリ |
 | UA ツールの `sync_mode` | UA のノードが research graph にマージされるかどうか | `.tesserae/config.json` の external_tools エントリ |
 

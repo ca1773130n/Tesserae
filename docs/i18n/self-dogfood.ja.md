@@ -20,7 +20,7 @@ export PATH="$HOME/.local/bin:$PATH"
 pip install 'tesserae[semantic]'
 
 # このリポジトリを Tesserae プロジェクトとして設定します。
-tesserae project setup \
+tesserae init \
   --yes \
   --name tesserae_self \
   --source README.md \
@@ -35,13 +35,13 @@ tesserae project setup \
   --install-cognee
 
 # 設定済みソースをコンパイルします。
-tesserae project compile
+tesserae compile
 
 # 静的フロントエンドを明示的に再ビルドします。
-tesserae project build-site
+tesserae export site
 
-# ローカルで配信します。
-tesserae project serve --port 8765
+# ローカルで配信します（必要に応じてサイトを先に自動ビルドします）。
+tesserae serve --port 8765
 ```
 
 開く:
@@ -82,13 +82,22 @@ self-demo は生成された成果物を次の場所に書き込みます:
 
 Tesserae リポジトリ自身から `2026-04-27 11:11:23 KST` に検証済みです。
 
+連携のオプトイン（Understand Anything、cognee）は、CLI フラグではなく**対話型
+ウィザードのプロンプト**になりました。以下の非対話的な同等手順は `tesserae init
+--yes`（連携 OFF）を実行し、`.tesserae/config.json` で連携を有効化し（ウィザードは
+`memory_backends` と `external_tools` キーの下に書き込みます — 正確なキーは連携
+ドキュメントを参照）、その後コンパイル前にそれぞれをリフレッシュします。
+
 ```text
 install command: ./scripts/install.sh --dir /Users/neo/Developer/Projects/Tesserae --skip-shell-config
-setup command:   tesserae project setup --yes --name tesserae_self --source README.md --source docs --source tesserae --source tests --source scripts --with-understand-anything --install-understand-anything --understand-anything-platform codex --run-cognee --install-cognee
-ingest command:  tesserae project ingest README.md docs --changed-only
-compile command: tesserae project compile
-site command:    tesserae project build-site
-serve command:   tesserae project serve --host 0.0.0.0 --port 56821
+setup command:   tesserae init --yes --name tesserae_self --source README.md --source docs --source tesserae --source tests --source scripts
+                 # 次に .tesserae/config.json で Understand Anything + cognee を有効化して実行:
+                 #   tesserae integrations refresh understand-anything
+                 #   tesserae integrations refresh cognee
+ingest command:  tesserae compile README.md docs --changed-only
+compile command: tesserae compile
+site command:    tesserae export site
+serve command:   tesserae serve --host 0.0.0.0 --port 56821
 local URL:       http://127.0.0.1:56821/
 LAN URL:         http://192.168.45.130:56821/
 ```

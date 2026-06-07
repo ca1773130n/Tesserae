@@ -12,8 +12,8 @@ El servidor lee desde `.tesserae/graph.json`, por lo que se requiere una compila
 
 ```bash
 cd /path/to/your-project
-tesserae project setup    # interactive; or --yes for non-interactive
-tesserae project compile  # deterministic, no LLM calls, no API keys
+tesserae init    # interactive; or --yes for non-interactive
+tesserae compile  # deterministic, no LLM calls, no API keys
 ```
 
 Recompila siempre que cambien tus fuentes. El servidor recogerá el nuevo grafo en la siguiente llamada a una tool sin necesidad de reiniciar.
@@ -21,7 +21,7 @@ Recompila siempre que cambien tus fuentes. El servidor recogerá el nuevo grafo 
 ## 1) Generar la configuración del cliente
 
 ```bash
-tesserae project mcp-config
+tesserae projects mcp-config
 ```
 
 Imprime un fragmento JSON aproximadamente así:

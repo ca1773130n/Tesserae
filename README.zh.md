@@ -58,14 +58,14 @@ Tesserae 是一个**上下文引擎**。把一个包含 Markdown、源代码以�
 pip install tesserae          # 想要真实 embedding 就加 [semantic]：pip install "tesserae[semantic]"
 
 cd /path/to/my-project
-tesserae project setup
-tesserae project compile
-tesserae project ask "Where is Mermaid rendering implemented?"
+tesserae init --yes
+tesserae compile
+tesserae ask "Where is Mermaid rendering implemented?"
 
 # 按需上下文：为一个查询编译一份带引用的定制上下文文档。
-tesserae project context "How does the parser handle arXiv IDs?" --budget 32000 -o context.md
+tesserae context "How does the parser handle arXiv IDs?" --budget 32000 -o context.md
 
-tesserae project build-site && tesserae project serve --port 8765
+tesserae serve --port 8765
 ```
 
 setup 向导会检测常见来源（`README.md`、`docs/`、`src/`、`data/`），并写入 `.tesserae/config.json`。涉及 LLM 调用的功能默认使用基于 OAuth 的 `codex` CLI，因此常规路径无需 API key。更详细的内容见 [docs/quickstart.md](docs/quickstart.md) 和 [docs/installation.md](docs/installation.md)。
@@ -110,7 +110,7 @@ setup 向导会检测常见来源（`README.md`、`docs/`、`src/`、`data/`）�
   external/               # 配套工具的产物（UA、RAG-Anything）
 ```
 
-`project compile` 之后用 `ls .tesserae/` 即可确认实际生成的内容。
+`compile` 之后用 `ls .tesserae/` 即可确认实际生成的内容。
 
 ## CLI 概览
 
@@ -118,19 +118,19 @@ setup 向导会检测常见来源（`README.md`、`docs/`、`src/`、`data/`）�
 
 | 命令 | 作用 |
 |---|---|
-| `tesserae project setup` | 交互式向导。写出 `.tesserae/config.json`。接受 `--with-understand-anything`、`--with-raganything`、`--run-cognee` 等。 |
-| `tesserae project compile` | 读取已配置的来源，运行配套工具刷新，把所有工件写入 `.tesserae/`。`--changed-only` 启用实验性的增量重建（默认关闭）。 |
-| `tesserae project context "<问题>"` | **按需上下文编译器。** 为查询（或显式 `--seeds`）通过 Personalized PageRank 扩展（`--depth`，默认 2）在 `--budget`（默认 32000 字符；`<=0` = 不限）内编译一份带引用的定制上下文文档。`--synthesize` 追加 LLM 摘要，`-o` 写入文件。 |
-| `tesserae project engine`（别名 `daemon`） | 运行受监督的刷新守护进程：监视来源、合并编辑突发（`--debounce`）并自动重编译。`--once` 运行一个确定性的单次清空周期。 |
-| `tesserae project refresh` | 一次性进程内流水线：导入新会话、编译、同步 vault。 |
-| `tesserae project build-site` | 在 `.tesserae/site/` 构建静态前端。 |
-| `tesserae project serve --port 8765` | 本地提供静态站点。 |
-| `tesserae project refresh-understand-anything` | 运行 Tesserae 托管的 Understand Anything 刷新包装器。 |
-| `tesserae project refresh-raganything --parser mineru` | 通过 RAG-Anything 重新解析非代码来源（PDF、Office、图像）。 |
-| `tesserae project ask "<question>"` | 向已配置的后端（`auto`/`raganything`/`cognee`/`wiki`）提问。 |
-| `tesserae project mcp-config` | 打印可以粘贴到 Claude Code、Codex 或 Hermes 的 MCP 服务器配置片段。 |
-| `tesserae wiki register <path> --name <alias>` | 把项目注册到共享 registry。 |
-| `tesserae wiki list` / `tesserae wiki activate <name>` | 列出已注册项目；设置当前激活项目。 |
+| `tesserae init` | 交互式向导。写出 `.tesserae/config.json`。传入 `--yes` 可非交互地接受检测到的默认值（所有可选集成均关闭），或传入 `--bare` 跳过向导并写出最小工作区。 |
+| `tesserae compile` | 读取已配置的来源，运行配套工具刷新，把所有工件写入 `.tesserae/`。`--changed-only` 启用实验性的增量重建（默认关闭）。`compile <paths>` 会临时摄取额外的 markdown 路径。 |
+| `tesserae context "<问题>"` | **按需上下文编译器。** 为查询（或显式 `--seeds`）通过 Personalized PageRank 扩展（`--depth`，默认 2）在 `--budget`（默认 32000 字符；`<=0` = 不限）内编译一份带引用的定制上下文文档。`--synthesize` 追加 LLM 摘要，`-o` 写入文件。 |
+| `tesserae engine`（别名 `daemon`） | 运行受监督的刷新守护进程：监视来源、合并编辑突发（`--debounce`）并自动重编译。`--once` 运行一个确定性的单次清空周期。 |
+| `tesserae refresh` | 一次性进程内流水线：导入新会话、编译、同步 vault。 |
+| `tesserae export site` | 在 `.tesserae/site/` 构建静态前端。`--deploy` 发布；`--watch` 在变更时重建。 |
+| `tesserae serve --port 8765` | 本地提供静态站点（缺失时自动构建）。 |
+| `tesserae integrations refresh understand-anything` | 运行 Tesserae 托管的 Understand Anything 刷新包装器。 |
+| `tesserae integrations refresh raganything --parser mineru` | 通过 RAG-Anything 重新解析非代码来源（PDF、Office、图像）。 |
+| `tesserae ask "<question>"` | 向已配置的后端（`auto`/`raganything`/`cognee`/`wiki`）提问。 |
+| `tesserae projects mcp-config` | 打印可以粘贴到 Claude Code、Codex 或 Hermes 的 MCP 服务器配置片段。 |
+| `tesserae projects register <path> --name <alias>` | 把项目注册到共享 registry。 |
+| `tesserae projects list` / `tesserae projects activate <name>` | 列出已注册项目；设置当前激活项目。 |
 | `tesserae ask "<question>" [--wiki <name>]` | 通过 registry 解析的顶层 ask 命令。 |
 
 ## 集成
@@ -138,8 +138,8 @@ setup 向导会检测常见来源（`README.md`、`docs/`、`src/`、`data/`）�
 所有集成都是可选的（opt-in）。在普通的 Markdown/代码项目上使用 Tesserae，它们都不是必需的。
 
 - **Claude Code 插件** —— 斜杠命令(`/tesserae:compile`、`/tesserae:ask "<问题>"`、`/tesserae:refresh`、`/tesserae:status` 等)、四个 hook(SessionStart 状态 / SessionEnd 自动编译 / 可选的 PostToolUse 增量重编译 / 大图谱 PreToolUse 确认门控)、`using-tesserae` 技能,以及 MCP 自动注册 —— 全部一次 `/plugin install`。见 [docs/integrations/claude-code-plugin.md](docs/integrations/claude-code-plugin.md)。
-- **会话图谱（支柱 1）** —— 把你关于项目的 Claude Code / Codex 对话变成图谱中的一级节点（Insight / Decision / Question / TODO / Hypothesis / Takeaway），并链接到出现过的文档。运行一次 `tesserae project sessions discover --import`,之后每次 `tesserae project compile` 都会导入新会话；`tesserae project engine` 则实时监视并持续将其纳入。结构化通道免费;`claude` CLI 已登录时 LLM 通道自动运行 —— **无需 API 密钥**。见 [docs/integrations/sessions.md](docs/integrations/sessions.md)。
-- **Understand Anything** —— 一个独立项目（[Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything)），会在 `.understand-anything/knowledge-graph.json` 写出代码知识图谱。用 `--with-understand-anything` 启用。Tesserae 会保存一个托管的刷新包装器，使 `project compile` 始终保持该图谱最新。见 [docs/integrations/understand-anything.md](docs/integrations/understand-anything.md)。
+- **会话图谱（支柱 1）** —— 把你关于项目的 Claude Code / Codex 对话变成图谱中的一级节点（Insight / Decision / Question / TODO / Hypothesis / Takeaway），并链接到出现过的文档。运行一次 `tesserae sessions discover --import`,之后每次 `tesserae compile` 都会导入新会话；`tesserae engine` 则实时监视并持续将其纳入。结构化通道免费;`claude` CLI 已登录时 LLM 通道自动运行 —— **无需 API 密钥**。见 [docs/integrations/sessions.md](docs/integrations/sessions.md)。
+- **Understand Anything** —— 一个独立项目（[Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything)），会在 `.understand-anything/knowledge-graph.json` 写出代码知识图谱。用 `--with-understand-anything` 启用。Tesserae 会保存一个托管的刷新包装器，使 `compile` 始终保持该图谱最新。见 [docs/integrations/understand-anything.md](docs/integrations/understand-anything.md)。
 - **RAG-Anything** —— 多模态摄入（[HKUDS/RAG-Anything](https://github.com/HKUDS/RAG-Anything)），通过 MinerU/Docling/PaddleOCR 处理 PDF、Office 文档和图像。用 `--with-raganything` 启用。也作为运行时问答后端（LightRAG）。需要 Python 3.10 以上。见 [docs/integrations/rag-anything.md](docs/integrations/rag-anything.md)。
 - **Cognee** —— 图+向量记忆后端。用 `--run-cognee --install-cognee` 启用。普通 compile 始终写出 `.tesserae/cognee_bundle/`；运行时 `cognify` pass 是 best-effort，只有在显式启用时才执行。
 
@@ -148,8 +148,8 @@ setup 向导会检测常见来源（`README.md`、`docs/`、`src/`、`data/`）�
 位于 `~/.tesserae/registry.json` 的持久 registry 让顶层 `ask` CLI 和 MCP 服务器无需每次都加 `--project`，就能把项目名解析为实际路径。
 
 ```bash
-tesserae wiki register /path/to/my-project --name myproj
-tesserae wiki activate myproj
+tesserae projects register /path/to/my-project --name myproj
+tesserae projects activate myproj
 tesserae ask "Where is the parser entry point?"
 ```
 
@@ -157,7 +157,7 @@ MCP 服务器读取同一份 registry，所以 MCP 客户端可以对任意已�
 
 ## MCP
 
-`tesserae project mcp-config` 会打印可以粘贴到 Claude Code、Codex 或任何 MCP 兼容客户端的服务器条目。服务器暴露以下工具：`schema`、`graph_summary`、`search_nodes`、`node_context`、`search_facts`、`timeline`、`wiki_page`、`raw_source`、`lint_report`、`ask`、`embedding_status`。v0.5.0 的头号工具是 **`compile_context`** —— 它为查询或种子节点返回一份带引用的定制上下文文档（除非 `synthesize=true`，否则是确定性的），由 **`graph_ppr`**（在类型化图谱上的 Personalized PageRank）支撑。会话记忆与自我改进工具一并补全：`list_sessions`、`find_session_findings`、`find_code_symbol_mentions`、`list_communities`，以及 `fresh_insights`（按 Ebbinghaus 式衰减排序、过滤掉被取代的近重复项的会话发现）。registry 工具 `list_projects` / `register_project` / `activate_project` / `unregister_project` 会使用与 CLI 相同的 registry 解析项目名。
+`tesserae projects mcp-config` 会打印可以粘贴到 Claude Code、Codex 或任何 MCP 兼容客户端的服务器条目。服务器暴露以下工具：`schema`、`graph_summary`、`search_nodes`、`node_context`、`search_facts`、`timeline`、`wiki_page`、`raw_source`、`lint_report`、`ask`、`embedding_status`。v0.5.0 的头号工具是 **`compile_context`** —— 它为查询或种子节点返回一份带引用的定制上下文文档（除非 `synthesize=true`，否则是确定性的），由 **`graph_ppr`**（在类型化图谱上的 Personalized PageRank）支撑。会话记忆与自我改进工具一并补全：`list_sessions`、`find_session_findings`、`find_code_symbol_mentions`、`list_communities`，以及 `fresh_insights`（按 Ebbinghaus 式衰减排序、过滤掉被取代的近重复项的会话发现）。registry 工具 `list_projects` / `register_project` / `activate_project` / `unregister_project` 会使用与 CLI 相同的 registry 解析项目名。
 
 ## 认证与 LLM provider
 

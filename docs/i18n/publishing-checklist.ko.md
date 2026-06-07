@@ -21,9 +21,9 @@ Tesserae를 공개적으로 소개하기 전에 이 체크리스트를 사용하
 ```bash
 .venv/bin/pytest tests/ -x          # 실패가 하나라도 있으면 중단 — 빨간 빌드는 절대 출시하지 않는다
 ./scripts/install.sh --help
-tesserae project setup --help
-tesserae project compile --help
-tesserae project context --help     # 온디맨드 컨텍스트 컴파일러
+tesserae init --help
+tesserae compile --help
+tesserae context --help     # 온디맨드 컨텍스트 컴파일러
 ```
 
 ### 데모 빌드 스모크 (`build-demo` CI 잡과 동일)
@@ -32,11 +32,9 @@ tesserae project context --help     # 온디맨드 컨텍스트 컴파일러
 자체 소스 트리에 대해 컴파일하고 사이트를 빌드한다:
 
 ```bash
-.venv/bin/python -m tesserae project setup --yes --no-color --source . \
-  --no-cognee --skip-raganything --skip-install-cognee \
-  --skip-install-raganything --skip-install-understand-anything
-.venv/bin/python -m tesserae project compile
-.venv/bin/python -m tesserae project build-site
+.venv/bin/python -m tesserae init --yes --source .
+.venv/bin/python -m tesserae compile
+.venv/bin/python -m tesserae export site
 ```
 
 ## 릴리스 흐름
@@ -60,25 +58,32 @@ Pages 단계는 `continue-on-error`다: 기본 `GITHUB_TOKEN`은 Pages 사이트
 
 ## Self-dogfood
 
+통합 옵트인(Understand Anything, RAG-Anything, cognee)은 이제 CLI 플래그가 아니라
+**대화형 마법사 프롬프트**입니다. 마법사를 실행하고 답하세요:
+
 ```bash
-tesserae project setup \
-  --yes \
+tesserae init \
   --name tesserae_self \
   --source README.md \
   --source docs \
   --source tesserae \
   --source tests \
-  --source scripts \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex \
-  --run-cognee \
-  --install-cognee
-tesserae project compile
-tesserae project sessions list
-tesserae project build-site
-tesserae project serve --port 8765
+  --source scripts
+# 마법사가 물어보면:
+#   - Understand Anything 활성화(플랫폼: codex), 설치: 예
+#   - RAG-Anything 활성화, 설치: 예, 파서: mineru, 이후 실행: 예
+#   - cognee 활성화, 설치: 예
+tesserae compile
+tesserae sessions list
+tesserae export site
+tesserae serve --port 8765
 ```
+
+완전한 비대화형 실행에는 `tesserae init --yes`(모든 통합 OFF)를 사용한 뒤,
+`.tesserae/config.json`에서 각 통합을 활성화하고(마법사는 이를 `memory_backends`
+(cognee)와 `external_tools`(Understand Anything, RAG-Anything) 키 아래에 씁니다)
+컴파일하기 전에 각 통합에 대해 `tesserae integrations refresh <name>`을 실행하세요.
+정확한 설정 키는 통합 문서를 참조하세요.
 
 ## 데모 설명 포인트
 

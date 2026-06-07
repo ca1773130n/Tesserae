@@ -18,25 +18,39 @@
 推奨される経路はセットアップウィザードです:
 
 ```bash
-tesserae project setup
+tesserae init
 ```
 
-自動化には次を使います:
+RAG-Anything は、CLI フラグの集合ではなく **対話型ウィザードのプロンプト**に
+なりました。ウィザードの実行時に、連携のプロンプトに答えてください:
+
+- 求められたら RAG-Anything を有効化する;
+- 求められたらインストールする（`raganything` + `docling` をインストール）;
+- パーサーに `mineru` を選ぶ;
+- 提示されたらインストール後のリフレッシュ実行を有効化する。
+
+その後コンパイルします:
 
 ```bash
-tesserae project setup \
-  --yes \
-  --with-raganything \
-  --install-raganything \
-  --raganything-parser mineru \
-  --run-raganything
-tesserae project compile
+tesserae compile
+```
+
+非対話的な自動化（CI）では、ウィザードをデフォルト（すべての任意連携を OFF）で
+実行し、その後 `.tesserae/config.json` で RAG-Anything を有効化し（ウィザードは
+連携設定を `external_tools` / `memory_backends` キーの下に書き込みます）、管理された
+リフレッシュを実行します:
+
+```bash
+tesserae init --yes
+# .tesserae/config.json で raganything を有効化する（external_tools キー）
+tesserae integrations refresh raganything --parser mineru
+tesserae compile
 ```
 
 Tesserae は、ユーザーが自分で考案するのではなく、管理された更新コマンドを保存します:
 
 ```bash
-tesserae project refresh-raganything --parser mineru
+tesserae integrations refresh raganything --parser mineru
 ```
 
 コンパイル中、Tesserae は次を行います:
@@ -50,7 +64,7 @@ tesserae project refresh-raganything --parser mineru
 コンパイル前に、設定済みの外部更新コマンドをすべて強制実行できます:
 
 ```bash
-tesserae project compile --refresh-external-tools
+tesserae compile --refresh-integrations
 ```
 
 ## 手動での同等手順
@@ -58,7 +72,7 @@ tesserae project compile --refresh-external-tools
 ```bash
 pip install 'raganything[all]'
 python -m tesserae.raganything_refresh --project . --parser mineru
-tesserae project compile
+tesserae compile
 ```
 
 ## ネイティブグラフ同期

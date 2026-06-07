@@ -4,7 +4,7 @@
 <p align="center"><a href="../../integrations/sessions.md">English</a> · <a href="sessions.ko.md">한국어</a> · <a href="sessions.zh.md">中文</a> · <a href="sessions.ru.md">Русский</a> · <a href="sessions.es.md">Español</a> · <a href="sessions.fr.md">Français</a> · <a href="sessions.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-Tesserae のセッショングラフは、プロジェクトに関する Claude Code / Codex の会話を型付き知識グラフのファーストクラスノードに変換し、登場したドキュメントにリンクし直します。コンパイル後、`tesserae project ask "3D Gaussian Splatting について何を決めたか?"` と尋ねると、それらを生成したセッションへの出所付きで具体的な Insight / Decision / Question / TODO / Hypothesis / Takeaway ノードが返されます。
+Tesserae のセッショングラフは、プロジェクトに関する Claude Code / Codex の会話を型付き知識グラフのファーストクラスノードに変換し、登場したドキュメントにリンクし直します。コンパイル後、`tesserae ask "3D Gaussian Splatting について何を決めたか?"` と尋ねると、それらを生成したセッションへの出所付きで具体的な Insight / Decision / Question / TODO / Hypothesis / Takeaway ノードが返されます。
 
 ## 仕組み
 
@@ -17,9 +17,9 @@ Tesserae のセッショングラフは、プロジェクトに関する Claude 
 
 上記のパイプラインはセッションがどう届くかに関係なく同じです。異なるのは*いつ*発見・コンパイルされるかです:
 
-- **バッチ(手動)。** 自分で `tesserae project sessions discover --import` を実行し、続いて `tesserae project compile` を実行します。一度きりのバックフィルや CI に最適です。本ページの残りはこの経路を辿ります。
+- **バッチ(手動)。** 自分で `tesserae sessions discover --import` を実行し、続いて `tesserae compile` を実行します。一度きりのバックフィルや CI に最適です。本ページの残りはこの経路を辿ります。
 - **ライブ(継続)。** エンジンにプロジェクトを監視させ、作業が発生するたびに再コンパイルさせることで、何かを実行するのを覚えていなくてもグラフを新鮮に保ちます:
-  - **スーパーバイザーデーモン** — `tesserae project engine`(エイリアス `tesserae project daemon`)は単一所有者の asyncio ループを実行し、設定されたソースを監視し、編集のバーストを 1 回の `Pipeline.run()` にまとめ、自動再コンパイルします。`--once` で決定論的な単一ドレイン、`--interval` / `--debounce` でまとめ方を調整します。`tesserae project refresh` は同じ import → compile → vault-sync チェーンをインプロセスで一度実行します。
+  - **スーパーバイザーデーモン** — `tesserae engine`は単一所有者の asyncio ループを実行し、設定されたソースを監視し、編集のバーストを 1 回の `Pipeline.run()` にまとめ、自動再コンパイルします。`--once` で決定論的な単一ドレイン、`--interval` / `--debounce` でまとめ方を調整します。`tesserae refresh` は同じ import → compile → vault-sync チェーンをインプロセスで一度実行します。
   - **Claude Code プラグインフック** — [プラグイン](claude-code-plugin.ja.md)をインストールすると、`SessionEnd` フックが会話終了時に import + compile をバックグラウンド実行し、*今回*のセッションの洞察が*次*のセッションのグラフノードになります。`SessionStart` フックは入室時に現在のグラフサマリを出力します。これが手動の discover/compile ステップなしにセッションを「発生したそばから」捕捉することに最も近い方法です。
 
 ## セットアップ
@@ -29,19 +29,20 @@ Tesserae のセッショングラフは、プロジェクトに関する Claude 
 tesserae sessions discover --import
 
 # コンパイル。構造的パスは無料で実行されます。`claude` CLI にサインインしていれば LLM パスが自動実行されます — API キー不要。
-tesserae project compile
+tesserae compile
 ```
 
 セッションなしでコンパイルするには(例: ハーネス履歴のないサーバーで):
 
 ```bash
-tesserae project compile --no-sessions
+tesserae compile --no-sessions
 ```
 
 構造的のみを強制するには(キーが設定されていても LLM 呼び出しをスキップ):
 
 ```bash
-tesserae project compile --sessions-llm=false
+# Set compile_options.sessions_llm = false in .tesserae/config.json, then:
+tesserae compile
 ```
 
 ## 設定
@@ -73,7 +74,7 @@ CLI から:
 
 ```bash
 tesserae sessions list
-tesserae project ask "what did we decide about extractor dedup?"
+tesserae ask "what did we decide about extractor dedup?"
 ```
 
 ## プライバシー

@@ -21,9 +21,9 @@
 ```bash
 .venv/bin/pytest tests/ -x          # ПРЕРВАТЬ при любом сбое — никогда не выпускайте красную сборку
 ./scripts/install.sh --help
-tesserae project setup --help
-tesserae project compile --help
-tesserae project context --help     # Компилятор контекста по запросу
+tesserae init --help
+tesserae compile --help
+tesserae context --help     # Компилятор контекста по запросу
 ```
 
 ### Smoke-сборка демо (совпадает с CI-задачей `build-demo`)
@@ -32,11 +32,9 @@ tesserae project context --help     # Компилятор контекста п
 с детерминированным экстрактором (без вызовов LLM, без API-ключей) и собирают сайт:
 
 ```bash
-.venv/bin/python -m tesserae project setup --yes --no-color --source . \
-  --no-cognee --skip-raganything --skip-install-cognee \
-  --skip-install-raganything --skip-install-understand-anything
-.venv/bin/python -m tesserae project compile
-.venv/bin/python -m tesserae project build-site
+.venv/bin/python -m tesserae init --yes --source .
+.venv/bin/python -m tesserae compile
+.venv/bin/python -m tesserae export site
 ```
 
 ## Релизный поток
@@ -61,25 +59,34 @@ tesserae project context --help     # Компилятор контекста п
 
 ## Self-dogfood
 
+Подключения интеграций (Understand Anything, RAG-Anything, cognee) теперь
+являются **интерактивными запросами мастера**, а не CLI-флагами. Запустите
+мастер и ответьте на них:
+
 ```bash
-tesserae project setup \
-  --yes \
+tesserae init \
   --name tesserae_self \
   --source README.md \
   --source docs \
   --source tesserae \
   --source tests \
-  --source scripts \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex \
-  --run-cognee \
-  --install-cognee
-tesserae project compile
-tesserae project sessions list
-tesserae project build-site
-tesserae project serve --port 8765
+  --source scripts
+# когда мастер спросит:
+#   - включите Understand Anything (платформа: codex), установить: да
+#   - включите RAG-Anything, установить: да, парсер: mineru, запустить после: да
+#   - включите cognee, установить: да
+tesserae compile
+tesserae sessions list
+tesserae export site
+tesserae serve --port 8765
 ```
+
+Для полностью неинтерактивного запуска используйте `tesserae init --yes` (все
+интеграции ВЫКЛЮЧЕНЫ), затем включите каждую интеграцию в
+`.tesserae/config.json` — мастер записывает их под ключами `memory_backends`
+(cognee) и `external_tools` (Understand Anything, RAG-Anything) — и выполните
+`tesserae integrations refresh <name>` для каждой перед компиляцией. Точные
+ключи конфигурации см. в документах по интеграциям.
 
 ## Тезисы для демо
 

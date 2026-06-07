@@ -4,7 +4,7 @@
 <p align="center"><a href="../../integrations/sessions.md">English</a> · <a href="sessions.ko.md">한국어</a> · <a href="sessions.ja.md">日本語</a> · <a href="sessions.ru.md">Русский</a> · <a href="sessions.es.md">Español</a> · <a href="sessions.fr.md">Français</a> · <a href="sessions.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-Tesserae 的会话图谱将关于项目的 Claude Code / Codex 对话转换为类型化知识图谱中的一级节点,并链接回讨论中出现的文档。编译后,你可以问 `tesserae project ask "我们对 3D Gaussian Splatting 做了什么决定?"`,并获得具体的 Insight / Decision / Question / TODO / Hypothesis / Takeaway 节点,带有产生它们的会话的来源。
+Tesserae 的会话图谱将关于项目的 Claude Code / Codex 对话转换为类型化知识图谱中的一级节点,并链接回讨论中出现的文档。编译后,你可以问 `tesserae ask "我们对 3D Gaussian Splatting 做了什么决定?"`,并获得具体的 Insight / Decision / Question / TODO / Hypothesis / Takeaway 节点,带有产生它们的会话的来源。
 
 ## 工作原理
 
@@ -17,9 +17,9 @@ Tesserae 的会话图谱将关于项目的 Claude Code / Codex 对话转换为�
 
 无论会话如何到达,上述流程都相同。不同的是它们*何时*被发现和编译:
 
-- **批处理(手动)。** 自己运行 `tesserae project sessions discover --import`,然后运行 `tesserae project compile`。最适合一次性回填或 CI。本页其余部分走的就是这条路径。
+- **批处理(手动)。** 自己运行 `tesserae sessions discover --import`,然后运行 `tesserae compile`。最适合一次性回填或 CI。本页其余部分走的就是这条路径。
 - **实时(连续)。** 让引擎监视项目并在工作发生时重编译,这样图谱保持新鲜而无需记得手动运行任何东西:
-  - **监督守护进程** — `tesserae project engine`(别名 `tesserae project daemon`)运行一个单一所有者的 asyncio 循环,监视配置的源,将一连串编辑合并为一次 `Pipeline.run()`,并自动重编译。传 `--once` 做一次确定性的单次排空,或用 `--interval` / `--debounce` 调节合并。`tesserae project refresh` 在进程内运行同样的 import → compile → vault-sync 链一次。
+  - **监督守护进程** — `tesserae engine`运行一个单一所有者的 asyncio 循环,监视配置的源,将一连串编辑合并为一次 `Pipeline.run()`,并自动重编译。传 `--once` 做一次确定性的单次排空,或用 `--interval` / `--debounce` 调节合并。`tesserae refresh` 在进程内运行同样的 import → compile → vault-sync 链一次。
   - **Claude Code 插件 hook** — 安装[插件](claude-code-plugin.zh.md)后,`SessionEnd` hook 在对话结束时后台执行 import + compile,使*本次*会话的洞察成为*下次*会话的图谱节点。`SessionStart` hook 在进入时打印当前图谱摘要。这是最接近"实时"捕获会话的方式 —— 完全无需手动 discover/compile 步骤。
 
 ## 设置
@@ -29,19 +29,20 @@ Tesserae 的会话图谱将关于项目的 Claude Code / Codex 对话转换为�
 tesserae sessions discover --import
 
 # 编译。结构化通道免费运行;`claude` CLI 已登录时 LLM 通道自动运行 — 无需 API 密钥。
-tesserae project compile
+tesserae compile
 ```
 
 在没有会话的情况下编译(例如,在没有任何工具历史记录的服务器上):
 
 ```bash
-tesserae project compile --no-sessions
+tesserae compile --no-sessions
 ```
 
 强制仅结构化(即使设置了密钥也跳过 LLM 调用):
 
 ```bash
-tesserae project compile --sessions-llm=false
+# Set compile_options.sessions_llm = false in .tesserae/config.json, then:
+tesserae compile
 ```
 
 ## 配置
@@ -73,7 +74,7 @@ CLI 标志覆盖配置。`llm_enabled = "auto"`(默认)在 `claude` CLI 已登�
 
 ```bash
 tesserae sessions list
-tesserae project ask "what did we decide about extractor dedup?"
+tesserae ask "what did we decide about extractor dedup?"
 ```
 
 ## 隐私

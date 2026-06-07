@@ -4,7 +4,7 @@
 <p align="center"><a href="../../integrations/sessions.md">English</a> · <a href="sessions.ko.md">한국어</a> · <a href="sessions.zh.md">中文</a> · <a href="sessions.ja.md">日本語</a> · <a href="sessions.es.md">Español</a> · <a href="sessions.fr.md">Français</a> · <a href="sessions.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-Граф сессий Tesserae превращает ваши разговоры Claude Code / Codex о проекте в первоклассные узлы типизированного графа знаний, связанные с документами, которые упоминались. После компиляции вы можете спросить `tesserae project ask "что мы решили о 3D Gaussian Splatting?"` и получить конкретные узлы Insight / Decision / Question / TODO / Hypothesis / Takeaway с провенансом обратно к сессии, которая их произвела.
+Граф сессий Tesserae превращает ваши разговоры Claude Code / Codex о проекте в первоклассные узлы типизированного графа знаний, связанные с документами, которые упоминались. После компиляции вы можете спросить `tesserae ask "что мы решили о 3D Gaussian Splatting?"` и получить конкретные узлы Insight / Decision / Question / TODO / Hypothesis / Takeaway с провенансом обратно к сессии, которая их произвела.
 
 ## Как это работает
 
@@ -17,9 +17,9 @@
 
 Описанный выше конвейер одинаков независимо от того, как поступают сессии. Различается лишь то, *когда* они обнаруживаются и компилируются:
 
-- **Пакетный (вручную).** Запустите `tesserae project sessions discover --import`, а затем `tesserae project compile` самостоятельно. Лучше всего для разовых дозаливок или CI. Остальная часть этой страницы идёт этим путём.
+- **Пакетный (вручную).** Запустите `tesserae sessions discover --import`, а затем `tesserae compile` самостоятельно. Лучше всего для разовых дозаливок или CI. Остальная часть этой страницы идёт этим путём.
 - **Живой (непрерывный).** Дайте движку наблюдать за проектом и перекомпилировать по мере выполнения работы, чтобы граф оставался свежим без необходимости помнить о запуске чего-либо:
-  - **Демон-супервизор** — `tesserae project engine` (псевдоним `tesserae project daemon`) запускает asyncio-цикл с единственным владельцем, который наблюдает за настроенными источниками, объединяет всплеск правок в один `Pipeline.run()` и автоматически перекомпилирует. Передайте `--once` для детерминированного однократного слива или `--interval` / `--debounce` для настройки объединения. `tesserae project refresh` запускает ту же цепочку import → compile → vault-sync один раз, в процессе.
+  - **Демон-супервизор** — `tesserae engine` запускает asyncio-цикл с единственным владельцем, который наблюдает за настроенными источниками, объединяет всплеск правок в один `Pipeline.run()` и автоматически перекомпилирует. Передайте `--once` для детерминированного однократного слива или `--interval` / `--debounce` для настройки объединения. `tesserae refresh` запускает ту же цепочку import → compile → vault-sync один раз, в процессе.
   - **Хуки плагина Claude Code** — с установленным [плагином](claude-code-plugin.ru.md) хук `SessionEnd` фоново выполняет import + compile при завершении разговора, так что инсайты *этой* сессии становятся узлами графа для *следующей*. Хук `SessionStart` печатает текущую сводку графа на входе. Это самое близкое к захвату сессий «по мере их возникновения» — вообще без ручного шага discover/compile.
 
 ## Настройка
@@ -29,19 +29,20 @@
 tesserae sessions discover --import
 
 # Компиляция. Структурный проход работает бесплатно; проход LLM запускается автоматически, когда вы вошли в `claude` CLI — без ключа API.
-tesserae project compile
+tesserae compile
 ```
 
 Чтобы скомпилировать без сессий (например, на сервере без какой-либо истории harness):
 
 ```bash
-tesserae project compile --no-sessions
+tesserae compile --no-sessions
 ```
 
 Чтобы принудительно использовать только структурный (пропустить вызов LLM, даже когда ключ установлен):
 
 ```bash
-tesserae project compile --sessions-llm=false
+# Set compile_options.sessions_llm = false in .tesserae/config.json, then:
+tesserae compile
 ```
 
 ## Конфигурация
@@ -73,7 +74,7 @@ tesserae project compile --sessions-llm=false
 
 ```bash
 tesserae sessions list
-tesserae project ask "what did we decide about extractor dedup?"
+tesserae ask "what did we decide about extractor dedup?"
 ```
 
 ## Конфиденциальность

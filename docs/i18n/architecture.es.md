@@ -139,8 +139,8 @@ Valores por defecto: `depth=2`, `budget=32000`. El ensamblado determinista (paso
 | Módulo | Responsabilidad |
 |---|---|
 | [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`: conduce extraction → graph → pasadas de memoria → wiki layer → site. Posee `ProjectPaths` (`config`, `graph`, `manifest`, `wiki`, `site`, etc.). Decide por adelantado si una compilación incremental basada en procedencia (provenance) es elegible (controlada por `incremental_compile`, por defecto OFF). |
-| [`tesserae/cli.py`](../../tesserae/cli.py) | Todos los subcomandos `tesserae project …`, incluidos `compile`, `refresh`, `context`, `build-site`, `serve`, `watch`, `engine`/`daemon`, `deploy`. |
-| [`tesserae/deploy.py`](../../tesserae/deploy.py) | `project deploy`: empuja `.tesserae/site/` a una rama `gh-pages` vía worktree, opcionalmente habilita Pages mediante `gh`. |
+| [`tesserae/cli.py`](../../tesserae/cli.py) | Despacho de CLI por verbos planos (~2.732 líneas tras eliminar los grupos de subcomandos heredados `project`/`wiki`). Los verbos —`init`, `compile`, `context`, `ask`, `refresh`, `serve`, `engine`, `export`, `vault`, `code`, `lab`, `config`, `projects`, `integrations`— se declaran como metadatos en [`tesserae/cli_tree.py`](../../tesserae/cli_tree.py) y se cablean desde ese árbol en lugar de registrarse a mano. |
+| [`tesserae/deploy.py`](../../tesserae/deploy.py) | `export site --deploy`: empuja `.tesserae/site/` a una rama `gh-pages` vía worktree, opcionalmente habilita Pages mediante `gh`. |
 
 ### Columna del motor (v0.5.0 — pilares 1 & 2)
 
@@ -149,8 +149,8 @@ La columna del motor es el bucle en proceso que impulsa el monitoreo de sesiones
 | Módulo | Responsabilidad |
 |---|---|
 | [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | `Pipeline`: ejecutor secuencial de pasos. Codifica la cadena de actualización en prosa (ingesta → compilación → proyección/publicación) como un objeto importable que devuelve un `List[StepResult]` estructurado en lugar de imprimir-y-salir, de modo que cada llamador decide cómo presentar los resultados. `run()` captura `Exception` por paso (deja pasar `KeyboardInterrupt`/`SystemExit`) y se detiene en el primer fallo. |
-| [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | `Daemon`: supervisor asyncio de único propietario. Vigila los directorios fuente, el almacén Obsidian y el directorio de sesiones de harness; mediante un debounce de cancelar-y-reprogramar fusiona una ráfaga de `TriggerEvent` en exactamente un `Pipeline.run()`. Reutiliza los observadores existentes `watch.py` / `vault_watch.py` (no los reescribe), escribe un pidfile y sobrevive a excepciones en vuelo. Expuesto como `project engine` / `project daemon` (`--interval`, `--debounce`, `--once`). |
-| [`tesserae/watch.py`](../../tesserae/watch.py), [`tesserae/vault_watch.py`](../../tesserae/vault_watch.py) | Observadores por sondeo reutilizados por el comando autónomo `project watch` y por las líneas de fuente/almacén del demonio. |
+| [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | `Daemon`: supervisor asyncio de único propietario. Vigila los directorios fuente, el almacén Obsidian y el directorio de sesiones de harness; mediante un debounce de cancelar-y-reprogramar fusiona una ráfaga de `TriggerEvent` en exactamente un `Pipeline.run()`. Reutiliza los observadores existentes `watch.py` / `vault_watch.py` (no los reescribe), escribe un pidfile y sobrevive a excepciones en vuelo. Expuesto como `engine` (`--interval`, `--debounce`, `--once`). |
+| [`tesserae/watch.py`](../../tesserae/watch.py), [`tesserae/vault_watch.py`](../../tesserae/vault_watch.py) | Observadores por sondeo reutilizados por el comando autónomo `export site --watch` y por las líneas de fuente/almacén del demonio. |
 
 ### Memoria de automejora (v0.5.0 — pilar 2)
 

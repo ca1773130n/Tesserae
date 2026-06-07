@@ -35,26 +35,26 @@ Luego Tesserae puede conservar ese artefacto junto con el resto de la memoria de
 La ruta recomendada es el asistente de configuración:
 
 ```bash
-tesserae project setup
+tesserae init
 ```
 
-Elige Understand Anything en el paso de herramientas complementarias. Tesserae instala/actualiza las skills complementarias cuando se solicita y escribe un comando de actualización administrado en `.tesserae/config.json`. Las llamadas futuras a `tesserae project compile` ejecutan automáticamente ese wrapper cuando falta el grafo de UA o está obsoleto.
+Elige Understand Anything en el paso de herramientas complementarias. Tesserae instala/actualiza las skills complementarias cuando se solicita y escribe un comando de actualización administrado en `.tesserae/config.json`. Las llamadas futuras a `tesserae compile` ejecutan automáticamente ese wrapper cuando falta el grafo de UA o está obsoleto.
 
 Para automatización no interactiva, usa:
 
 ```bash
-tesserae project setup \
+tesserae init \
   --yes \
   --with-understand-anything \
   --install-understand-anything \
   --understand-anything-platform codex
-tesserae project compile
+tesserae compile
 ```
 
 El comando almacenado pertenece a Tesserae; no es algo que el usuario tenga que inventar:
 
 ```bash
-tesserae project refresh-understand-anything --platform codex
+tesserae integrations refresh understand-anything --platform codex
 ```
 
 Durante la compilación, Tesserae:
@@ -68,13 +68,13 @@ Durante la compilación, Tesserae:
 Puedes forzar todos los comandos externos de actualización configurados antes de compilar:
 
 ```bash
-tesserae project compile --refresh-external-tools
+tesserae compile --refresh-integrations
 ```
 
 ¿También necesitas Cognee? Añade las banderas de memoria en tiempo de ejecución al mismo comando setup:
 
 ```bash
-tesserae project setup \
+tesserae init \
   --yes \
   --with-understand-anything \
   --install-understand-anything \
@@ -91,19 +91,29 @@ Se prefiere la ruta de configuración administrada. Si intencionalmente quieres 
 /understand
 ```
 
-Luego ejecuta `tesserae project setup --with-understand-anything` para que Tesserae registre la fuente de proyección markdown. Los archivos JSON directos se mantienen como artefactos complementarios sin procesar, no como rutas fuente introducidas a mano.
+Luego ejecuta el asistente de configuración y **activa Understand Anything
+cuando se te pregunte** para que Tesserae registre la fuente de proyección
+markdown. Los archivos JSON directos se mantienen como artefactos
+complementarios sin procesar, no como rutas fuente introducidas a mano.
 
 ```bash
-tesserae project setup --with-understand-anything
-tesserae project compile
-tesserae project build-site
+tesserae init
+# activa Understand Anything cuando el asistente lo pregunte
+tesserae compile
+tesserae export site
 ```
+
+Para automatización no interactiva, ejecuta `tesserae init --yes`
+(integraciones DESACTIVADAS), activa Understand Anything en
+`.tesserae/config.json` (el asistente escribe la integración bajo la clave
+`external_tools`), y luego ejecuta `tesserae integrations refresh
+understand-anything` antes de compilar.
 
 Si también quieres memoria local de sesiones de agente:
 
 ```bash
-tesserae project sessions discover --import
-tesserae project build-site
+tesserae sessions discover --import
+tesserae export site
 ```
 
 ## Sincronización nativa de grafos

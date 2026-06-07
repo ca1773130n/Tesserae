@@ -1,4 +1,4 @@
-# Demonstrates `tesserae project setup` from a fresh project directory.
+# Demonstrates `tesserae init` from a fresh project directory.
 # Renders to docs/screencasts/setup.gif. Run with: vhs docs/screencasts/setup.tape
 #
 # Records against /tmp/tesserae-demo-rec/myproject which is a fresh copy of
@@ -38,7 +38,7 @@ Type "# Bootstrap the project: one command, non-interactive"
 Sleep 700ms
 Enter
 
-Type@30ms "tesserae project setup --yes --source ./research --with-understand-anything --with-raganything --skip-install-cognee --skip-install-raganything --skip-install-understand-anything"
+Type@30ms "tesserae init --yes --source ./research"
 Sleep 500ms
 Enter
 Sleep 4s

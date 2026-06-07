@@ -139,8 +139,8 @@ query / seeds
 |モジュール |責任 |
 |---|---|
 | [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`: 抽出 → グラフ → メモリ パス → Wiki レイヤー → サイトを駆動。 `ProjectPaths`（`config`、`graph`、`manifest`、`wiki`、`site`など）所有。来歴（provenance）駆動の増分コンパイルが適格かを事前に判断（`incremental_compile` でゲート、既定 OFF）。 |
-| [`tesserae/cli.py`](../../tesserae/cli.py) | `compile`、`refresh`、`context`、`build-site`、`serve`、`watch`、`engine`/`daemon`、`deploy` を含む、すべての `tesserae project …` サブコマンド。 |
-| [`tesserae/deploy.py`](../../tesserae/deploy.py) | `project deploy`: ワークツリー経由で `.tesserae/site/` を `gh-pages` ブランチにプッシュし、オプションで `gh` 経由でページを有効にします。 |
+| [`tesserae/cli.py`](../../tesserae/cli.py) | フラット動詞の CLI ディスパッチ（レガシーの `project`/`wiki` サブコマンド群を削除した後で約 2,732 行）。動詞 — `init`、`compile`、`context`、`ask`、`refresh`、`serve`、`engine`、`export`、`vault`、`code`、`lab`、`config`、`projects`、`integrations` — は [`tesserae/cli_tree.py`](../../tesserae/cli_tree.py) にメタデータとして宣言され、手動登録ではなくそのツリーから配線されます。 |
+| [`tesserae/deploy.py`](../../tesserae/deploy.py) | `export site --deploy`: ワークツリー経由で `.tesserae/site/` を `gh-pages` ブランチにプッシュし、オプションで `gh` 経由でページを有効にします。 |
 
 ### エンジン スパイン (v0.5.0 — 柱 1 & 2)
 
@@ -149,8 +149,8 @@ query / seeds
 | モジュール | 責務 |
 |---|---|
 | [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | `Pipeline`: 逐次ステップ ランナー。散文的なリフレッシュ チェーン（取り込み → コンパイル → 投影/公開）をインポート可能なオブジェクトとして定式化し、表示して終了する代わりに構造化された `List[StepResult]` を返すため、各呼び出し元が結果の提示方法を自分で決められます。`run()` はステップごとに `Exception` を捕捉し（`KeyboardInterrupt`/`SystemExit` は通す）、最初の失敗で停止します。 |
-| [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | `Daemon`: 単一所有者の asyncio スーパーバイザー。ソース ディレクトリ、Obsidian ボールト、ハーネス セッション ディレクトリを監視し、キャンセル・再スケジュールのデバウンスにより一連の `TriggerEvent` をちょうど 1 回の `Pipeline.run()` にまとめます。既存の `watch.py` / `vault_watch.py` ウォッチャーを再利用（書き換えはしない）し、pidfile を書き、実行中の例外でも生き延びます。`project engine` / `project daemon`（`--interval`、`--debounce`、`--once`）として公開。 |
-| [`tesserae/watch.py`](../../tesserae/watch.py), [`tesserae/vault_watch.py`](../../tesserae/vault_watch.py) | スタンドアロンの `project watch` コマンドとデーモンのソース/ボールト レーンが共通で再利用するポーリング ウォッチャー。 |
+| [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | `Daemon`: 単一所有者の asyncio スーパーバイザー。ソース ディレクトリ、Obsidian ボールト、ハーネス セッション ディレクトリを監視し、キャンセル・再スケジュールのデバウンスにより一連の `TriggerEvent` をちょうど 1 回の `Pipeline.run()` にまとめます。既存の `watch.py` / `vault_watch.py` ウォッチャーを再利用（書き換えはしない）し、pidfile を書き、実行中の例外でも生き延びます。`engine`（`--interval`、`--debounce`、`--once`）として公開。 |
+| [`tesserae/watch.py`](../../tesserae/watch.py), [`tesserae/vault_watch.py`](../../tesserae/vault_watch.py) | スタンドアロンの `export site --watch` コマンドとデーモンのソース/ボールト レーンが共通で再利用するポーリング ウォッチャー。 |
 
 ### 自己改善メモリ (v0.5.0 — 柱 2)
 

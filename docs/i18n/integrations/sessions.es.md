@@ -4,7 +4,7 @@
 <p align="center"><a href="../../integrations/sessions.md">English</a> · <a href="sessions.ko.md">한국어</a> · <a href="sessions.zh.md">中文</a> · <a href="sessions.ja.md">日本語</a> · <a href="sessions.ru.md">Русский</a> · <a href="sessions.fr.md">Français</a> · <a href="sessions.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-El grafo de sesiones de Tesserae convierte tus conversaciones de Claude Code / Codex sobre un proyecto en nodos de primera clase en el grafo de conocimiento tipado, vinculados a los documentos que aparecieron. Después de una compilación, puedes preguntar `tesserae project ask "¿qué decidimos sobre 3D Gaussian Splatting?"` y obtener nodos específicos Insight / Decision / Question / TODO / Hypothesis / Takeaway con procedencia hasta la sesión que los produjo.
+El grafo de sesiones de Tesserae convierte tus conversaciones de Claude Code / Codex sobre un proyecto en nodos de primera clase en el grafo de conocimiento tipado, vinculados a los documentos que aparecieron. Después de una compilación, puedes preguntar `tesserae ask "¿qué decidimos sobre 3D Gaussian Splatting?"` y obtener nodos específicos Insight / Decision / Question / TODO / Hypothesis / Takeaway con procedencia hasta la sesión que los produjo.
 
 ## Cómo funciona
 
@@ -17,9 +17,9 @@ Dos pasadas por sesión:
 
 El pipeline anterior es el mismo sin importar cómo lleguen las sesiones. Lo que difiere es *cuándo* se descubren y compilan:
 
-- **Por lotes (manual).** Ejecuta `tesserae project sessions discover --import` y luego `tesserae project compile` tú mismo. Ideal para rellenos puntuales o CI. El resto de esta página recorre esta ruta.
+- **Por lotes (manual).** Ejecuta `tesserae sessions discover --import` y luego `tesserae compile` tú mismo. Ideal para rellenos puntuales o CI. El resto de esta página recorre esta ruta.
 - **En vivo (continuo).** Deja que el motor vigile el proyecto y recompile a medida que ocurre el trabajo, para que el grafo se mantenga fresco sin que recuerdes ejecutar nada:
-  - **Demonio supervisor** — `tesserae project engine` (alias `tesserae project daemon`) ejecuta un bucle asyncio de propietario único que vigila las fuentes configuradas, fusiona una ráfaga de ediciones en un solo `Pipeline.run()` y recompila automáticamente. Pasa `--once` para un drenaje único determinista, o `--interval` / `--debounce` para ajustar la fusión. `tesserae project refresh` ejecuta la misma cadena import → compile → vault-sync una vez, en proceso.
+  - **Demonio supervisor** — `tesserae engine` ejecuta un bucle asyncio de propietario único que vigila las fuentes configuradas, fusiona una ráfaga de ediciones en un solo `Pipeline.run()` y recompila automáticamente. Pasa `--once` para un drenaje único determinista, o `--interval` / `--debounce` para ajustar la fusión. `tesserae refresh` ejecuta la misma cadena import → compile → vault-sync una vez, en proceso.
   - **Hooks del plugin de Claude Code** — con el [plugin](claude-code-plugin.es.md) instalado, el hook `SessionEnd` ejecuta en segundo plano import + compile al terminar una conversación, de modo que las ideas de *esta* sesión se vuelven nodos del grafo para la *siguiente*. El hook `SessionStart` imprime el resumen actual del grafo al entrar. Esto es lo más cercano a capturar sesiones "a medida que ocurren" — sin ningún paso manual de discover/compile.
 
 ## Configuración
@@ -29,19 +29,20 @@ El pipeline anterior es el mismo sin importar cómo lleguen las sesiones. Lo que
 tesserae sessions discover --import
 
 # Compila. La pasada estructural se ejecuta gratis; la pasada LLM se ejecuta automáticamente cuando la CLI `claude` está autenticada — sin claves de API.
-tesserae project compile
+tesserae compile
 ```
 
 Para compilar sin sesiones (por ejemplo, en un servidor sin historial de harness):
 
 ```bash
-tesserae project compile --no-sessions
+tesserae compile --no-sessions
 ```
 
 Para forzar solo estructural (omitir la llamada LLM incluso cuando se establece una clave):
 
 ```bash
-tesserae project compile --sessions-llm=false
+# Set compile_options.sessions_llm = false in .tesserae/config.json, then:
+tesserae compile
 ```
 
 ## Configuración
@@ -73,7 +74,7 @@ Desde la CLI:
 
 ```bash
 tesserae sessions list
-tesserae project ask "what did we decide about extractor dedup?"
+tesserae ask "what did we decide about extractor dedup?"
 ```
 
 ## Privacidad

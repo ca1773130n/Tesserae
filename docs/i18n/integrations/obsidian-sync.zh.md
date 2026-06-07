@@ -4,7 +4,7 @@
 <p align="center"><a href="../../integrations/obsidian-sync.md">English</a> · <a href="obsidian-sync.ko.md">한국어</a> · <a href="obsidian-sync.ja.md">日本語</a> · <a href="obsidian-sync.ru.md">Русский</a> · <a href="obsidian-sync.es.md">Español</a> · <a href="obsidian-sync.fr.md">Français</a> · <a href="obsidian-sync.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-> **状态：已交付（Tier 1，v0.5.0）。** 下面描述的覆盖层读取器、用户笔记追加区、watch 模式和孤儿页面清理，都已在 `tesserae project obsidian-sync` 背后实际运行。本页既是设计依据也是用户指南。多 vault 联邦（Tier 3）仍在范围之外。
+> **状态：已交付（Tier 1，v0.5.0）。** 下面描述的覆盖层读取器、用户笔记追加区、watch 模式和孤儿页面清理，都已在 `tesserae vault sync` 背后实际运行。本页既是设计依据也是用户指南。多 vault 联邦（Tier 3）仍在范围之外。
 
 [Obsidian 导出](obsidian.md)过去是严格单向的：`.tesserae/graph.json` 中的类型化图谱投影到 vault，而 `project compile` 会覆盖所有投影出的文件。`obsidian-sync` 加上了反方向 —— 在 Obsidian 中修改一段描述，它就能在重编译中存活下来。
 
@@ -100,35 +100,35 @@ Tesserae **不会**构建同步服务器、鉴权层、冲突解决守护进程�
 
 ## CLI 表面
 
-`tesserae project obsidian-sync` 把 vault 编辑应用到类型化图谱上并重新投影：
+`tesserae vault sync` 把 vault 编辑应用到类型化图谱上并重新投影：
 
 ```bash
 # 应用一次覆盖层：拉取用户编辑，重新投影到 vault。
-tesserae project obsidian-sync
+tesserae vault sync
 
 # 先检查会改什么。写出 .tesserae/diverged-fields.md，
 # 不应用也不重新投影。
-tesserae project obsidian-sync --dry-run
+tesserae vault sync --dry-run
 
 # 为本次调用指定某个 vault（解析顺序：
 # --vault > config.obsidian.vault_path > .tesserae/obsidian_vault/）。
-tesserae project obsidian-sync --vault ~/Documents/tesserae-vault
+tesserae vault sync --vault ~/Documents/tesserae-vault
 
 # 把该 vault 路径设为后续命令的默认值。
-tesserae project obsidian-sync --vault ~/Documents/tesserae-vault --persist-vault
+tesserae vault sync --vault ~/Documents/tesserae-vault --persist-vault
 
 # 长驻 watch：每当 vault 变化就重新应用覆盖层。
 # Ctrl-C 停止；用 --poll-interval 调节轮询节奏（默认 1.5 秒）。
-tesserae project obsidian-sync --watch --poll-interval 1.5
+tesserae vault sync --watch --poll-interval 1.5
 
 # 删除其源节点已不存在的投影页面（投影器只覆盖，
 # 从不删除）。除非同时传 --force-prune-with-notes，
 # 否则带用户笔记的页面会被保留。
-tesserae project obsidian-sync --prune-orphans
-tesserae project obsidian-sync --prune-orphans --force-prune-with-notes
+tesserae vault sync --prune-orphans
+tesserae vault sync --prune-orphans --force-prune-with-notes
 ```
 
-`/tesserae:obsidian-sync` 斜杠命令封装了它，而 `tesserae project refresh`
+`/tesserae:obsidian-sync` 斜杠命令封装了它，而 `tesserae refresh`
 （以及 `/tesserae:refresh` 宏）在其 import → compile → sync 链的最后一步运行覆盖层。
 
 ## 交付状态

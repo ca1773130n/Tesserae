@@ -66,8 +66,8 @@ Tesserae 仅在该工具启用时才会重新生成 `.tesserae/external/understa
 ### 第 3 步——重新编译并清理 Obsidian vault
 
 ```bash
-tesserae project compile
-tesserae project obsidian-sync --prune-orphans
+tesserae compile
+tesserae vault sync --prune-orphans
 ```
 
 compile 会跳过 UA 合并,让研究图中不再有来源为 UA 的 Concept。prune 步骤会删除 Obsidian vault 中指向已被合并产生的 node_id 的孤儿页面。
@@ -107,7 +107,7 @@ UA 的代码图本身非常有用——调用/导入边、类层级等等——�
 | 层 | 关注点 | 配置位置 |
 |---|---|---|
 | UA 自身的 walker | UA 一开始读取哪些文件 | UA 的配置(超出 Tesserae 范围) |
-| UA 工具上的 `auto_refresh` | `tesserae project compile` 是否会重跑 UA | `.tesserae/config.json` external_tools 条目 |
+| UA 工具上的 `auto_refresh` | `tesserae compile` 是否会重跑 UA | `.tesserae/config.json` external_tools 条目 |
 | UA 工具上的 `enabled` | Tesserae 是否考虑 UA | `.tesserae/config.json` external_tools 条目 |
 | UA 工具上的 `sync_mode` | UA 的节点是否被合并到研究图中 | `.tesserae/config.json` external_tools 条目 |
 

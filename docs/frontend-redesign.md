@@ -5,10 +5,10 @@
 <!-- translations:end -->
 This document is a guided tour of every visible route on the redesigned Tesserae static site. It complements the high-level model in [`architecture.md`](architecture.md) and the status table in [`feature-map.md`](feature-map.md).
 
-The site lives at `.tesserae/site/` after `tesserae project compile`. To explore it locally:
+The site lives at `.tesserae/site/` after `tesserae compile`. To explore it locally:
 
 ```bash
-tesserae project serve --port 8765
+tesserae serve --port 8765
 # open http://127.0.0.1:8765/
 ```
 
@@ -250,7 +250,7 @@ This is the page to land on when an agent is asked "what's still unanswered in t
 
 ## Sessions
 
-Sessions are imported local AI-harness transcripts, normalized into `.tesserae/harness_sessions/`, then rendered as searchable project memory. Import is explicit via `tesserae project sessions discover --import` or `tesserae project sessions import ...`; normal site builds only consume already-normalized records.
+Sessions are imported local AI-harness transcripts, normalized into `.tesserae/harness_sessions/`, then rendered as searchable project memory. Import is explicit via `tesserae sessions discover --import` or `tesserae sessions import ...`; normal site builds only consume already-normalized records.
 
 ### `/sessions/` ✅
 

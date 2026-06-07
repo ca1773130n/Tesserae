@@ -22,9 +22,9 @@ Use this checklist before presenting Tesserae publicly.
 ```bash
 .venv/bin/pytest tests/ -x          # ABORT on any failure — never ship a red build
 ./scripts/install.sh --help
-tesserae project setup --help
-tesserae project compile --help
-tesserae project context --help     # On-Demand Context Compiler
+tesserae init --help
+tesserae compile --help
+tesserae context --help     # On-Demand Context Compiler
 ```
 
 ### Demo build smoke (matches the `build-demo` CI job)
@@ -33,11 +33,9 @@ The release flow and CI both compile Tesserae against its own source tree with
 the deterministic extractor (no LLM calls, no API keys) and build the site:
 
 ```bash
-.venv/bin/python -m tesserae project setup --yes --no-color --source . \
-  --no-cognee --skip-raganything --skip-install-cognee \
-  --skip-install-raganything --skip-install-understand-anything
-.venv/bin/python -m tesserae project compile
-.venv/bin/python -m tesserae project build-site
+.venv/bin/python -m tesserae init --yes --source .
+.venv/bin/python -m tesserae compile
+.venv/bin/python -m tesserae export site
 ```
 
 ## Release flow
@@ -63,29 +61,33 @@ that toggle is on, the build still stays green and the artifact is still produce
 
 ## Self-dogfood
 
+Integration opt-ins (Understand Anything, RAG-Anything, cognee) are now
+**interactive wizard prompts**, not CLI flags. Run the wizard and answer them:
+
 ```bash
-tesserae project setup \
-  --yes \
+tesserae init \
   --name tesserae_self \
   --source README.md \
   --source docs \
   --source tesserae \
   --source tests \
-  --source scripts \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex \
-  --with-raganything \
-  --install-raganything \
-  --raganything-parser mineru \
-  --run-raganything \
-  --run-cognee \
-  --install-cognee
-tesserae project compile
-tesserae project sessions list
-tesserae project build-site
-tesserae project serve --port 8765
+  --source scripts
+# when the wizard prompts:
+#   - enable Understand Anything (platform: codex), install: yes
+#   - enable RAG-Anything, install: yes, parser: mineru, run after install: yes
+#   - enable cognee, install: yes
+tesserae compile
+tesserae sessions list
+tesserae export site
+tesserae serve --port 8765
 ```
+
+For a fully non-interactive run, use `tesserae init --yes` (all integrations
+OFF), then enable each integration in `.tesserae/config.json` — the wizard
+writes them under the `memory_backends` (cognee) and `external_tools`
+(Understand Anything, RAG-Anything) keys — and run `tesserae integrations
+refresh <name>` for each before compiling. See the integration docs for the
+exact config keys.
 
 ## Demo talking points
 

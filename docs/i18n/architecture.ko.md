@@ -139,8 +139,8 @@ query / seeds
 | 모듈 | 책임 |
 |---|---|
 | [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`: 추출 → 그래프 → 메모리 패스 → 위키 레이어 → 사이트를 구동합니다. `ProjectPaths`(`config`, `graph`, `manifest`, `wiki`, `site` 등)를 소유합니다. 프로비넌스 기반 증분 컴파일이 가능한지(`incremental_compile`로 게이트, 기본 OFF) 사전에 결정합니다. |
-| [`tesserae/cli.py`](../../tesserae/cli.py) | `compile`, `refresh`, `context`, `build-site`, `serve`, `watch`, `engine`/`daemon`, `deploy`를 포함한 모든 `tesserae project …` 하위 명령. |
-| [`tesserae/deploy.py`](../../tesserae/deploy.py) | `project deploy`: 작업 트리를 통해 `.tesserae/site/`를 `gh-pages` 분기에 푸시하고 선택적으로 `gh`를 통해 페이지를 활성화합니다. |
+| [`tesserae/cli.py`](../../tesserae/cli.py) | 플랫 동사 CLI 디스패치(레거시 `project`/`wiki` 하위 명령 그룹 삭제 후 ~2,732줄). 동사 — `init`, `compile`, `context`, `ask`, `refresh`, `serve`, `engine`, `export`, `vault`, `code`, `lab`, `config`, `projects`, `integrations` — 는 [`tesserae/cli_tree.py`](../../tesserae/cli_tree.py)에 메타데이터로 선언되어, 손으로 등록하는 대신 그 트리에서 자동으로 연결됩니다. |
+| [`tesserae/deploy.py`](../../tesserae/deploy.py) | `export site --deploy`: 작업 트리를 통해 `.tesserae/site/`를 `gh-pages` 분기에 푸시하고 선택적으로 `gh`를 통해 페이지를 활성화합니다. |
 
 ### 엔진 스파인 (v0.5.0 — 기둥 1 & 2)
 
@@ -149,8 +149,8 @@ query / seeds
 | 모듈 | 책임 |
 |---|---|
 | [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | `Pipeline`: 순차 스텝 러너. 산문형 새로고침 체인(수집 → 컴파일 → 프로젝트/게시)을 import 가능한 객체로 정형화하며, 출력-후-종료 대신 구조화된 `List[StepResult]`를 반환하여 각 호출자가 결과를 어떻게 표면화할지 직접 결정합니다. `run()`은 스텝마다 `Exception`을 잡고(`KeyboardInterrupt`/`SystemExit`는 통과시킴) 첫 실패에서 멈춥니다. |
-| [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | `Daemon`: 단일 소유자 asyncio 슈퍼바이저. 소스 디렉토리, Obsidian 볼트, 하네스 세션 디렉토리를 감시하고, 취소-후-재스케줄 디바운스를 통해 `TriggerEvent` 버스트를 정확히 하나의 `Pipeline.run()`으로 통합합니다. 기존 `watch.py` / `vault_watch.py` 감시기를 재사용(재작성하지 않음)하고, pidfile을 쓰며, 진행 중 예외에서도 살아남습니다. `project engine` / `project daemon`(`--interval`, `--debounce`, `--once`)으로 노출됩니다. |
-| [`tesserae/watch.py`](../../tesserae/watch.py), [`tesserae/vault_watch.py`](../../tesserae/vault_watch.py) | 독립형 `project watch` 명령과 데몬의 소스/볼트 레인이 함께 재사용하는 폴링 감시기. |
+| [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | `Daemon`: 단일 소유자 asyncio 슈퍼바이저. 소스 디렉토리, Obsidian 볼트, 하네스 세션 디렉토리를 감시하고, 취소-후-재스케줄 디바운스를 통해 `TriggerEvent` 버스트를 정확히 하나의 `Pipeline.run()`으로 통합합니다. 기존 `watch.py` / `vault_watch.py` 감시기를 재사용(재작성하지 않음)하고, pidfile을 쓰며, 진행 중 예외에서도 살아남습니다. `engine`(`--interval`, `--debounce`, `--once`)으로 노출됩니다. |
+| [`tesserae/watch.py`](../../tesserae/watch.py), [`tesserae/vault_watch.py`](../../tesserae/vault_watch.py) | 독립형 `export site --watch` 명령과 데몬의 소스/볼트 레인이 함께 재사용하는 폴링 감시기. |
 
 ### 자기 개선 메모리 (v0.5.0 — 기둥 2)
 
