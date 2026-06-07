@@ -2411,18 +2411,26 @@ def _handle_status(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    from .research_graph import ResearchGraph  # local, mirrors other handlers
-    graph = (
-        _load_graph_file(wiki.paths.graph) if wiki.paths.graph.exists() else ResearchGraph()
-    )
+    graph = None
+    if wiki.paths.graph.exists():
+        try:
+            graph = _load_graph_file(wiki.paths.graph)
+        except (json.JSONDecodeError, OSError, KeyError, ValueError):
+            graph = None  # corrupt/unreadable graph.json — report below, don't crash
+    else:
+        graph = ResearchGraph()
     import datetime as _dt
     compiled = (
         _dt.datetime.fromtimestamp(wiki.paths.graph.stat().st_mtime).isoformat(timespec="seconds")
         if wiki.paths.graph.exists() else "never"
     )
     print(f"project:       {wiki.project_root}")
-    print(f"nodes:         {len(graph.nodes)}")
-    print(f"edges:         {len(graph.edges)}")
+    if graph is None:
+        print("nodes:         corrupt graph.json")
+        print("edges:         corrupt graph.json")
+    else:
+        print(f"nodes:         {len(graph.nodes)}")
+        print(f"edges:         {len(graph.edges)}")
     print(f"last compile:  {compiled}")
     print(f"vault:         {wiki.effective_obsidian_vault()}")
     print(f"site:          {wiki.paths.site}")
@@ -2438,6 +2446,7 @@ def _handle_compile_paths_ingest(args: argparse.Namespace) -> int:
     ingest handler reads with the old ingest parser's defaults.
     """
     args.inputs = list(args.paths)
+    # belt-and-suspenders: the compile parser already defines these natively
     if not hasattr(args, "source_kind"):
         args.source_kind = None
     if not hasattr(args, "changed_only"):
@@ -2483,6 +2492,7 @@ def _handle_serve(args: argparse.Namespace) -> int:
         reason = None
         if not index.exists():
             reason = "missing"
+        # graph.json missing -> no graph -> nothing to rebuild from; serve whatever site exists.
         elif wiki.paths.graph.exists() and wiki.paths.graph.stat().st_mtime > index.stat().st_mtime:
             reason = "stale"
         if reason is not None:

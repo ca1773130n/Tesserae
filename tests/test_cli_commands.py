@@ -174,3 +174,14 @@ def test_serve_no_build_flag_skips_autobuild(tmp_path, monkeypatch, capsys):
     rc = cli.main(["serve", "--project", str(tmp_path), "--no-build", "--dry-run"])
     assert rc == 0
     assert "built" not in built
+
+
+def test_status_survives_corrupt_graph_json(tmp_path, capsys):
+    import tesserae.cli as cli
+
+    assert cli.project_main(["init", "--project", str(tmp_path)]) == 0
+    (tmp_path / ".tesserae" / "graph.json").write_text("{truncated", encoding="utf-8")
+    rc = cli.main(["status", "--project", str(tmp_path)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "corrupt" in out and "Traceback" not in out
