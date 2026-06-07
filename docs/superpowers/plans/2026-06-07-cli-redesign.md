@@ -87,13 +87,19 @@ COMMAND_TREE: list[tuple[str, list[tuple[str, str]]]] = [
     ("AUTOMATION", [
         ("engine", "Refresh daemon: watch sessions/sources, coalesced recompiles"),
         ("refresh", "One-shot: import sessions + compile + sync vault"),
+        ("research", "Autonomous research mode: investigate a query"),
+    ]),
+    ("ANALYSIS", [
+        ("query", "Raw retrieval over the graph (top-k, kind filters)"),
+        ("lint", "Graph lint report (--fix-trivial, --severity, --json)"),
     ]),
     ("GROUPS", [
         ("sessions", "import | discover | list — agent session history"),
-        ("vault", "sync | export | prune — Obsidian projection"),
+        ("vault", "sync | sync-all | set-root | export | prune — Obsidian projection"),
         ("export", "harness | graphiti | site — artifact exports"),
+        ("code", "ingest | sync — CodeGraph ⇄ project graph (hook-invoked)"),
         ("config", "llm | show — machine-wide defaults (~/.tesserae/config.json)"),
-        ("projects", "list | activate | unregister | mcp-config — registry"),
+        ("projects", "register | list | activate | unregister | mcp-config — registry"),
         ("integrations", "refresh raganything|understand-anything"),
         ("extract", "Low-level: extract a typed graph from markdown paths"),
     ]),
@@ -106,39 +112,53 @@ KNOWN_COMMANDS: frozenset[str] = frozenset(
     cmd for _, rows in COMMAND_TREE for cmd, _ in rows
 )
 
-# Old invocation prefix -> replacement hint. Keys are matched against the
-# leading argv tokens (longest match wins). Drives _print_moved_stub().
-MOVED_COMMANDS: dict[str, str] = {
-    "project init": "tesserae init --bare",
-    "project setup": "tesserae init",
-    "project ingest": "tesserae compile <paths>",
-    "project compile": "tesserae compile",
-    "project context": "tesserae context",
-    "project ask": "tesserae ask",
-    "project build-site": "tesserae export site",
-    "project deploy": "tesserae export site --deploy",
-    "project serve": "tesserae serve",
-    "project watch": "tesserae engine",
-    "project engine": "tesserae engine",
-    "project daemon": "tesserae engine",
-    "project refresh": "tesserae refresh",
-    "project sessions": "tesserae sessions",
-    "project obsidian-sync": "tesserae vault sync",
-    "project export-obsidian": "tesserae vault export",
-    "project export-agent-harness": "tesserae export harness",
-    "project export-graphiti": "tesserae export graphiti",
-    "project sync-graphiti": "tesserae export graphiti --sync",
-    "project mcp-config": "tesserae projects mcp-config",
-    "project refresh-raganything": "tesserae integrations refresh raganything",
-    "project refresh-understand-anything": "tesserae integrations refresh understand-anything",
-    "project evolve": "tesserae lab evolve",
-    "project schema-drift": "tesserae lab schema-drift",
-    "project": "tesserae <command> (see tesserae --help)",
-    "wiki list": "tesserae projects list",
-    "wiki activate": "tesserae projects activate",
-    "wiki unregister": "tesserae projects unregister",
-    "wiki": "tesserae projects",
-    "llm-defaults": "tesserae config llm",
+# Old invocation prefix -> replacement hint. Keys are token TUPLES matched
+# against the leading argv tokens, longest prefix first (3, then 2, then 1),
+# so `project sessions import` prints its exact replacement instead of the
+# group fallback. Drives the stub in main().
+MOVED_COMMANDS: dict[tuple[str, ...], str] = {
+    ("project", "init"): "tesserae init --bare",
+    ("project", "setup"): "tesserae init",
+    ("project", "ingest"): "tesserae compile <paths>",
+    ("project", "ingest-code"): "tesserae code ingest",
+    ("project", "sync-code"): "tesserae code sync",
+    ("project", "research"): "tesserae research",
+    ("project", "lint"): "tesserae lint",
+    ("project", "query"): "tesserae query",
+    ("project", "compile"): "tesserae compile",
+    ("project", "context"): "tesserae context",
+    ("project", "ask"): "tesserae ask",
+    ("project", "build-site"): "tesserae export site",
+    ("project", "deploy"): "tesserae export site --deploy",
+    ("project", "serve"): "tesserae serve",
+    ("project", "watch"): "tesserae export site --watch",
+    ("project", "engine"): "tesserae engine",
+    ("project", "daemon"): "tesserae engine",
+    ("project", "refresh"): "tesserae refresh",
+    ("project", "sessions", "import"): "tesserae sessions import",
+    ("project", "sessions", "discover"): "tesserae sessions discover",
+    ("project", "sessions", "list"): "tesserae sessions list",
+    ("project", "sessions"): "tesserae sessions",
+    ("project", "obsidian-sync"): "tesserae vault sync",
+    ("project", "export-obsidian"): "tesserae vault export",
+    ("project", "export-agent-harness"): "tesserae export harness",
+    ("project", "export-graphiti"): "tesserae export graphiti",
+    ("project", "sync-graphiti"): "tesserae export graphiti --sync",
+    ("project", "mcp-config"): "tesserae projects mcp-config",
+    ("project", "refresh-raganything"): "tesserae integrations refresh raganything",
+    ("project", "refresh-understand-anything"): "tesserae integrations refresh understand-anything",
+    ("project", "evolve"): "tesserae lab evolve",
+    ("project", "schema-drift"): "tesserae lab schema-drift",
+    ("project",): "tesserae <command> (see tesserae --help)",
+    ("wiki", "register"): "tesserae projects register",
+    ("wiki", "list"): "tesserae projects list",
+    ("wiki", "activate"): "tesserae projects activate",
+    ("wiki", "unregister"): "tesserae projects unregister",
+    ("wiki", "obsidian-set-root"): "tesserae vault set-root",
+    ("wiki", "obsidian-sync-all"): "tesserae vault sync-all",
+    ("wiki",): "tesserae projects",
+    ("llm-defaults", "--show"): "tesserae config show",
+    ("llm-defaults",): "tesserae config llm",
 }
 
 
@@ -154,13 +174,23 @@ def render_root_help() -> str:
     return "\n".join(lines) + "\n"
 
 
-def moved_replacement(argv: list[str]) -> str | None:
-    """Longest-prefix match of argv against MOVED_COMMANDS; None if no hit."""
-    for take in (2, 1):
-        key = " ".join(argv[:take])
+def moved_replacement(argv: list[str]) -> tuple[str, str] | None:
+    """Longest-prefix match against MOVED_COMMANDS.
+
+    Returns (matched_old_prefix, replacement_hint) or None.
+    """
+    for take in (3, 2, 1):
+        key = tuple(argv[:take])
         if key in MOVED_COMMANDS:
-            return MOVED_COMMANDS[key]
+            return " ".join(key), MOVED_COMMANDS[key]
     return None
+
+
+def looks_like_extraction_path(token: str) -> bool:
+    """Bare extraction (`tesserae notes/x.md`) → stub to `tesserae extract`."""
+    from pathlib import Path
+
+    return token.endswith((".md", ".markdown")) or Path(token).exists()
 ```
 
 - [ ] **Step 4: Rewire `main()` in `tesserae/cli.py`**
@@ -180,12 +210,18 @@ def main(argv: List[str] | None = None) -> int:
         return 0
     moved = moved_replacement(argv)
     if moved is not None:
-        print(
-            f"tesserae {' '.join(argv[:2])} has moved → {moved}",
-            file=sys.stderr,
-        )
+        old_prefix, hint = moved
+        print(f"tesserae {old_prefix} has moved → {hint}", file=sys.stderr)
         return 2
     if argv[0] not in KNOWN_COMMANDS:
+        from .cli_tree import looks_like_extraction_path
+
+        if looks_like_extraction_path(argv[0]):
+            print(
+                "bare extraction has moved → tesserae extract <paths>",
+                file=sys.stderr,
+            )
+            return 2
         print(
             f"tesserae: unknown command {argv[0]!r} — see `tesserae --help`",
             file=sys.stderr,
@@ -236,7 +272,7 @@ git commit -m "feat(cli): grouped root help + command-tree metadata (redesign ta
         (["project", "build-site"], "tesserae export site"),
         (["project", "deploy"], "tesserae export site --deploy"),
         (["project", "serve"], "tesserae serve"),
-        (["project", "watch"], "tesserae engine"),
+        (["project", "watch"], "tesserae export site --watch"),
         (["project", "daemon"], "tesserae engine"),
         (["project", "obsidian-sync"], "tesserae vault sync"),
         (["project", "export-obsidian"], "tesserae vault export"),
@@ -248,11 +284,21 @@ git commit -m "feat(cli): grouped root help + command-tree metadata (redesign ta
         (["project", "refresh-understand-anything"], "tesserae integrations refresh understand-anything"),
         (["project", "evolve"], "tesserae lab evolve"),
         (["project", "schema-drift"], "tesserae lab schema-drift"),
-        (["project", "sessions", "import"], "tesserae sessions"),
+        (["project", "sessions", "import"], "tesserae sessions import"),
+        (["project", "sessions", "discover"], "tesserae sessions discover"),
+        (["project", "ingest-code"], "tesserae code ingest"),
+        (["project", "sync-code", "--auto-sync"], "tesserae code sync"),
+        (["project", "research", "q"], "tesserae research"),
+        (["project", "lint"], "tesserae lint"),
+        (["project", "query", "q"], "tesserae query"),
+        (["wiki", "register"], "tesserae projects register"),
         (["wiki", "list"], "tesserae projects list"),
         (["wiki", "activate"], "tesserae projects activate"),
         (["wiki", "unregister"], "tesserae projects unregister"),
-        (["llm-defaults", "--show"], "tesserae config llm"),
+        (["wiki", "obsidian-set-root"], "tesserae vault set-root"),
+        (["wiki", "obsidian-sync-all"], "tesserae vault sync-all"),
+        (["llm-defaults", "--show"], "tesserae config show"),
+        (["llm-defaults"], "tesserae config llm"),
     ],
 )
 def test_moved_commands_print_one_line_stub(old, hint, capsys):
@@ -263,6 +309,16 @@ def test_moved_commands_print_one_line_stub(old, hint, capsys):
     err = capsys.readouterr().err
     assert err.count("\n") == 1, f"stub must be exactly one line, got: {err!r}"
     assert "has moved" in err and hint in err
+
+
+def test_bare_extraction_paths_get_extract_stub(tmp_path, capsys):
+    from tesserae.cli import main
+
+    md = tmp_path / "note.md"
+    md.write_text("# x")
+    rc = main([str(md)])
+    assert rc == 2
+    assert "tesserae extract" in capsys.readouterr().err
 ```
 
 - [ ] **Step 2: Run, verify it fails**
@@ -338,16 +394,24 @@ Expected: FAIL — `NotImplementedError` from `_dispatch_command`, and `_handle_
 
 - [ ] **Step 3: Implement**
 
-1. In `cli.py`, locate each existing parser block inside `project_main` (compile ~969, context ~1280, serve ~1245, engine ~1262, refresh ~1272) and extract each into a module-level `_build_compile_parser()` / `_build_context_parser()` / … returning a standalone `argparse.ArgumentParser(prog="tesserae <cmd>")` with the SAME flags (flag diet happens in Task 11, not here). Add `paths` positional to compile: `parser.add_argument("paths", nargs="*", help="Ad-hoc markdown paths to ingest before compiling (replaces `project ingest`)")` and in `_handle_compile` prepend: if `args.paths`, call `wiki.ingest(args.paths, source_kind=None, changed_only=False)` before the normal compile (mirror `_handle_ingest`'s call — read it first).
-2. Rename/alias the handlers the tests expect: if the existing handler is e.g. `_handle_project_context`, add `_handle_context = _handle_project_context`. The engine/refresh handlers follow the dispatch-dict names in `_PROJECT_HANDLERS` (~line 2192) — read that dict for exact names.
+1. In `cli.py`, locate each existing parser block inside `project_main` (compile ~969, context ~1280, serve ~1245, engine ~1262, refresh ~1272 — line refs drift, locate with grep) and extract each into a module-level `_build_compile_parser()` / `_build_context_parser()` / … returning a standalone `argparse.ArgumentParser(prog="tesserae <cmd>")` with the SAME flags (flag diet happens in Task 8, not here). Add `paths` positional to compile: `parser.add_argument("paths", nargs="*", help="Ad-hoc markdown paths to ingest into the graph (replaces `project ingest`)")`. **`compile <paths>` has INGEST-ONLY semantics** (spec): when `args.paths` is non-empty, route to the old `_handle_ingest` logic for those paths and RETURN — do NOT run a full recompile afterward (a full `wiki.compile()` of configured sources would overwrite the ad-hoc graph and the paths would disappear).
+2. Rename/alias the handlers the tests expect: if the existing handler is e.g. `_handle_project_context`, add `_handle_context = _handle_project_context`. The dispatch dict is **`_COMMANDS`** (cli.py ~line 2203, NOT `_PROJECT_HANDLERS`) — read it for the exact existing handler names before aliasing.
 3. `_handle_status` is NEW (thin, read-only):
 
 ```python
 def _handle_status(args: argparse.Namespace) -> int:
-    wiki = ProjectWiki.load(args.project)
+    try:
+        wiki = ProjectWiki.load(args.project)
+    except FileNotFoundError:
+        # user error, not a crash: one line, exit 2, no traceback (spec)
+        print(
+            "tesserae status: project not initialized — run `tesserae init` first.",
+            file=sys.stderr,
+        )
+        return 2
     from .research_graph import ResearchGraph  # local, mirrors other handlers
     graph = (
-        load_graph_file(wiki.paths.graph) if wiki.paths.graph.exists() else ResearchGraph()
+        _load_graph_file(wiki.paths.graph) if wiki.paths.graph.exists() else ResearchGraph()
     )
     import datetime as _dt
     compiled = (
@@ -363,7 +427,7 @@ def _handle_status(args: argparse.Namespace) -> int:
     return 0
 ```
 
-(`load_graph_file` is imported in cli.py already — verify with `grep -n load_graph_file tesserae/cli.py`; add the import from `.project` if missing.)
+(cli.py imports the loader as **`_load_graph_file`** — see cli.py:23; use that name, do not re-import.)
 4. Extend `_dispatch_command` with a dict:
 
 ```python
@@ -389,7 +453,7 @@ def _dispatch_command(command: str, rest: List[str]) -> int:
 ```
 
 NOTE: the lambdas must resolve handlers at CALL time (as written) so monkeypatching `cli._handle_compile` in tests takes effect.
-5. `serve` auto-build: in `_handle_serve`, before serving, if the site index (check what `_handle_serve` reads — likely `wiki.paths.site / "index.html"`) is missing, call the build-site handler first and print one line `building site first (missing) …`. Add `--no-build` flag to skip.
+5. `serve` auto-build: in `_handle_serve`, before serving, build the site when it is missing OR STALE — stale means `wiki.paths.graph` mtime is newer than the site index (`wiki.paths.site / "index.html"`; verify the actual index path `_handle_serve` reads). Print one line `building site first (missing|stale) …`. Add `--no-build` to skip. Tests must cover BOTH the missing and the stale case (write graph.json with a newer mtime via `os.utime`).
 
 - [ ] **Step 4: Run, verify pass**
 
@@ -457,7 +521,7 @@ Expected: FAIL with `NotImplementedError: tesserae init`.
 
 - [ ] **Step 3: Implement**
 
-`_build_init_parser()`: flags exactly `--project`, `--name`, `--source` (append), `--source-kind`, `--yes`, `--bare`, plus `_add_llm_client_args(parser, persisted=True)`. Dispatch:
+`_build_init_parser()`: EXACTLY the spec's 8 flags — `--project`, `--name`, `--source` (append), `--yes`, `--bare`, `--llm-provider`, `--claude-config-dir`, `--codex-home` (the last three via `_add_llm_client_args(parser, persisted=True)`). NO `--source-kind` — it becomes a wizard prompt / `config.json` key with today's default. **`--yes` defaults** (spec): all optional integrations OFF (cognee, raganything, understand-anything — replacing CI's `--no-cognee --skip-*` flags) and color auto-off when `not sys.stdout.isatty()` (replacing `--no-color`). Dispatch:
 
 ```python
 def _handle_init_v2(args: argparse.Namespace) -> int:
@@ -467,7 +531,7 @@ def _handle_init_v2(args: argparse.Namespace) -> int:
     return _handle_setup(args)
 ```
 
-`_handle_setup` reads many attrs off `args` (the 29 old flags). Give the namespace defaults so the wizard path works without them: after parsing, backfill `args.__dict__.setdefault(...)` for every attribute `_handle_setup` reads with the SAME defaults the old setup parser declared (enumerate them: `grep -n 'setup_parser.add_argument' tesserae/cli.py` and copy each `dest`/`default`). Put that backfill in one function `_backfill_setup_defaults(args)` directly above `_handle_init_v2` — Task 11 shrinks it when the flags become config keys.
+`_handle_setup` reads many attrs off `args` (the 29 old flags). Give the namespace defaults so the wizard path works without them: after parsing, backfill `args.__dict__.setdefault(...)` for every attribute `_handle_setup` reads — enumerate them with `grep -n 'setup_parser.add_argument' tesserae/cli.py` and copy each `dest`/`default`, EXCEPT the `--yes`-affected ones which take the new defaults (cognee/raganything/UA off, `no_color = not sys.stdout.isatty()`). Put the backfill in one function `_backfill_setup_defaults(args)` directly above `_handle_init_v2`.
 Register `"init": (_build_init_parser, lambda a: _handle_init_v2(a))` in `_COMMAND_DISPATCH`.
 
 - [ ] **Step 4: Run, verify pass**
@@ -484,7 +548,7 @@ git commit -m "feat(cli): tesserae init — wizard default, --yes, --bare (redes
 
 ---
 
-### Task 5: Groups — `sessions`, `vault`, `export`, `config`, `projects`, `integrations`, `lab`, `extract`
+### Task 5: Groups + remaining verbs — `sessions`, `vault`, `export`, `code`, `config`, `projects`, `integrations`, `lab`, `extract`, `research`, `lint`, `query`
 
 **Files:**
 - Modify: `tesserae/cli.py`
@@ -510,6 +574,14 @@ git commit -m "feat(cli): tesserae init — wizard default, --yes, --bare (redes
         (["lab", "evolve"], "_handle_lab_evolve"),
         (["lab", "schema-drift"], "_handle_lab_schema_drift"),
         (["extract", "x.md"], "_handle_extract"),
+        (["code", "ingest"], "_handle_code_ingest"),
+        (["code", "sync"], "_handle_code_sync"),
+        (["research", "some question"], "_handle_research"),
+        (["lint"], "_handle_lint"),
+        (["query", "some question"], "_handle_query"),
+        (["vault", "set-root", "/tmp/v"], "_handle_vault_set_root"),
+        (["vault", "sync-all"], "_handle_vault_sync_all"),
+        (["projects", "register", "/tmp/p"], "_handle_projects_register"),
     ],
 )
 def test_group_dispatch(argv, handler, monkeypatch):
@@ -562,15 +634,18 @@ def _build_sessions_parser() -> argparse.ArgumentParser:
     return parser
 ```
 
-For each group:
-- **sessions**: move the three old sub-parsers (`import`/`discover`/`list`, cli.py ~1214–1226) verbatim; handlers: find the old names in `_PROJECT_HANDLERS` and alias to `_handle_sessions_import` etc.
-- **vault**: `sync` = old `obsidian-sync` parser/handler (~1066); add `prune` as `sync --prune-orphans` preset (its handler calls the sync handler with `prune_orphans=True, prune_only=True`); `export` = old `export-obsidian` (~1210).
-- **export**: `harness` = old `export-agent-harness` (~1205, keep `--target`, `--output`); `graphiti` = old `export-graphiti` (~1192) plus `--sync` flag that routes to the old `sync-graphiti` handler (~1197); `site` = old `build-site` (~1227) plus `--deploy` routing to the old `deploy` handler (~1231). Name the dispatch wrappers `_handle_export_harness`, `_handle_export_graphiti_cmd` (`_cmd` suffix avoids clashing with the existing `_handle_export_graphiti` if names collide — check first), `_handle_export_site`.
-- **config**: `llm` = `_handle_llm_defaults` minus `--show`; `show` = `_handle_llm_defaults` with `args.show=True`. Alias `_handle_config_llm`/`_handle_config_show` wrappers.
-- **projects**: reuse `_build_top_level_wiki_parser`'s sub-parsers (list/activate/unregister, ~736–759) + old `mcp-config` (~1187). Wrappers `_handle_projects_*`.
-- **integrations**: `refresh <name>` with `name` choices `["raganything", "understand-anything"]`, routing to the two old refresh handlers (~1131, ~1058). Wrapper `_handle_integrations_refresh`.
+For each group — CRITICAL RULE for every wrapper that routes one new command to an OLD handler: the new parser must define (or the wrapper must backfill) EVERY attribute the old handler reads off `args`, with the old parser's defaults. Copy the old parser's full `add_argument` set verbatim unless this task says otherwise; thin namespaces that only satisfy the monkeypatched tests are a plan failure.
+
+- **sessions**: move the three old sub-parsers (`import`/`discover`/`list`, cli.py ~1214–1226) verbatim; handlers: find the old names in the `_COMMANDS` dict and alias to `_handle_sessions_import` etc.
+- **vault**: `sync` = old `obsidian-sync` parser/handler (~1066); `prune` = preset wrapper over sync with `prune_orphans=True` (and the rest of sync's attrs backfilled); `export` = old `export-obsidian` (~1210); `set-root` = old `wiki obsidian-set-root` (cli.py ~729 area); `sync-all` = old `wiki obsidian-sync-all` — both moved verbatim with full flags.
+- **export**: `harness` = old `export-agent-harness` (~1205, keep `--target`, `--output`); `graphiti` = old `export-graphiti` (~1192) UNION the old `sync-graphiti` flags (~1197 — Neo4j uri/user/password defaults) so `--sync` can route to the old sync handler with a complete namespace; `site` = old `build-site` (~1227) UNION the old `deploy` flags (~1231 — `branch`, `remote`, `dry_run`, etc.) for `--deploy`, UNION the old `watch` flags (~1252: `--paths`, `--quiet`, `--once`) for `--watch` routing to the old watch handler. Wrappers: `_handle_export_harness`, `_handle_export_graphiti_cmd` (suffix avoids clashing with the existing `_handle_export_graphiti` — check), `_handle_export_site`.
+- **code**: `ingest` = old `ingest-code` (~918), `sync` = old `sync-code` (~947, keep `--auto-sync`, `--db`, `--output`) — verbatim moves; wrappers `_handle_code_ingest`/`_handle_code_sync`.
+- **config**: `llm` = `_handle_llm_defaults` minus `--show`; `show` = `_handle_llm_defaults` with `args.show=True` and the other attrs backfilled (`llm_provider=None`, `claude_config_dir=[]`, `codex_home=None`). Wrappers `_handle_config_llm`/`_handle_config_show`.
+- **projects**: old wiki sub-parsers moved verbatim: `register`, `list`, `activate`, `unregister` (cli.py ~729–759) + old `mcp-config` (~1187). Wrappers `_handle_projects_*`.
+- **integrations**: `refresh <name>` with `name` choices `["raganything", "understand-anything"]`, routing to the two old refresh handlers (~1131, ~1058) with their full flags preserved as options of this subcommand.
 - **lab**: `evolve` (~1040) and `schema-drift` (~1021) parsers/handlers moved verbatim.
-- **extract**: wrap the legacy bare-paths extraction parser (the big parser at the bottom of `main()`, ~2240+) as `_build_extract_parser()` / `_handle_extract` — verbatim flags.
+- **extract**: wrap the legacy bare-paths extraction parser (the big parser at the bottom of `main()`, ~2240+; includes the kuzu/cognee output flags) as `_build_extract_parser()` / `_handle_extract` — verbatim flags.
+- **research / lint / query**: standalone verbs; move the old parsers (~1046, ~1142, ~1165) verbatim; wrappers `_handle_research`/`_handle_lint`/`_handle_query` aliasing the `_COMMANDS` handlers.
 
 Register all in `_COMMAND_DISPATCH`. Group dispatch needs sub-routing — extend the dispatch value to a callable that takes `rest` directly:
 
@@ -584,21 +659,74 @@ def _dispatch_command(command: str, rest: List[str]) -> int:
 
 and make every entry a `def _route_<cmd>(rest)` that parses + calls the right handler (simpler and uniform; refactor Task 3's entries to the same shape).
 
-- [ ] **Step 4: Run, verify pass**
+- [ ] **Step 4: Add one NON-monkeypatched smoke per group** (monkeypatched dispatch tests prove wiring, not that parser defaults satisfy real handlers):
+
+```python
+def test_group_smokes_run_real_handlers(tmp_path):
+    """Real handlers, real namespaces — catches missing parser attrs."""
+    import tesserae.cli as cli
+
+    # init a real project, then run cheap read-only commands against it
+    assert cli.main(["init", "--bare", "--project", str(tmp_path), "--name", "smoke"]) == 0
+    assert cli.main(["status", "--project", str(tmp_path)]) == 0
+    assert cli.main(["sessions", "list", "--project", str(tmp_path)]) == 0
+    assert cli.main(["lint", "--project", str(tmp_path)]) == 0
+    assert cli.main(["export", "harness", "--project", str(tmp_path)]) == 0
+    assert cli.main(["vault", "export", "--project", str(tmp_path)]) == 0
+```
+
+(Adjust expected exit codes if a command legitimately reports "nothing to do" non-zero — assert the ACTUAL contract, and never let one raise an uncaught traceback.)
+
+- [ ] **Step 5: Run, verify pass**
 
 Run: `.venv/bin/python -m pytest tests/test_cli_commands.py tests/test_cli_tree.py -q`
 Expected: all passed.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add tesserae/cli.py tests/test_cli_commands.py
-git commit -m "feat(cli): sessions/vault/export/config/projects/integrations/lab/extract groups (redesign task 5)"
+git commit -m "feat(cli): groups + remaining verbs at top level (redesign task 5)"
 ```
 
 ---
 
-### Task 6: Delete the legacy surface — `project_main`, `wiki`, `llm-defaults` top-level
+### Task 6: Migrate test call sites (~80) — MUST run before Task 7's deletion
+
+**Files:**
+- Modify: every test file matching the enumeration below
+
+- [ ] **Step 1: Enumerate ALL legacy invocation shapes** (not just `project_main`):
+
+```bash
+grep -rn "project_main(" tests/ | cut -d: -f1 | sort -u
+grep -rn 'main(\[\s*"project"' tests/ | cut -d: -f1 | sort -u
+grep -rn 'main(\[\s*"wiki"' tests/ | cut -d: -f1 | sort -u
+grep -rn 'main(\[\s*"llm-defaults"' tests/ | cut -d: -f1 | sort -u
+grep -rn "tesserae.*project " tests/ --include="*.py" -l   # subprocess shells
+```
+
+Known baseline: 59 `main(["project"…])` + 20 wiki/llm-defaults sites on top of the `project_main` callers.
+
+- [ ] **Step 2: Mechanical rewrite per the spec mapping table**
+
+For each call: `project_main(["compile", ...])` / `main(["project", "compile", ...])` → `main(["compile", ...])`; `…["setup", "--yes", ...]` → `main(["init", "--yes", ...])`; `…["build-site"]` → `main(["export", "site"])`; `main(["wiki", "register", ...])` → `main(["projects", "register", ...])`; etc. — every rewrite comes from the spec's mapping table, no judgment calls.
+
+- [ ] **Step 3: Run the full suite**
+
+Run: `.venv/bin/pytest tests/ -q --tb=line`
+Expected: 0 failed (legacy paths still exist at this point, so both old stubs-not-yet-active and new tree work).
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add tests/
+git commit -m "test(cli): migrate all call sites to the new command tree (redesign task 6)"
+```
+
+---
+
+### Task 7: Delete the legacy surface — `project_main`, `wiki`, `llm-defaults` top-level
 
 **Files:**
 - Modify: `tesserae/cli.py`
@@ -606,7 +734,7 @@ git commit -m "feat(cli): sessions/vault/export/config/projects/integrations/lab
 
 - [ ] **Step 1: Confirm every old test caller is migrated FIRST**
 
-Run: `grep -rn "project_main(" tests/ | wc -l` — Task 7 must be done if this is non-zero. If non-zero, STOP and do Task 7 first, then return here. (Order in this plan assumes 7 before 6 is allowed; executor: run Task 7 first if grep is non-zero.)
+Run all five Task 6 Step 1 greps — every one must return 0 hits. If any is non-zero, finish Task 6 first.
 
 - [ ] **Step 2: Delete**
 
@@ -624,35 +752,7 @@ Expected: all passed.
 
 ```bash
 git add tesserae/cli.py
-git commit -m "feat(cli)!: remove legacy project/wiki/llm-defaults surfaces (redesign task 6)"
-```
-
----
-
-### Task 7: Migrate test call sites (~60)
-
-**Files:**
-- Modify: every test file matching `grep -rln "project_main(\|main(\[" tests/`
-
-- [ ] **Step 1: Enumerate**
-
-Run: `grep -rn "project_main(\[" tests/ | cut -d: -f1 | sort -u`
-Known minimum set: `tests/test_project_cli.py`, `tests/test_llm_provider_config.py`, `tests/test_cli_ask_scope.py`, `tests/test_cli_top_level_ask.py`, `tests/test_cli_raganything.py` — plus whatever the grep adds.
-
-- [ ] **Step 2: Mechanical rewrite per the mapping table**
-
-For each call: `project_main(["compile", ...])` → `main(["compile", ...])`; `project_main(["setup", "--yes", ...])` → `main(["init", "--yes", ...])`; `project_main(["build-site"])` → `main(["export", "site"])`; etc. — every rewrite comes from the spec's mapping table, no judgment calls. Import `main` instead of `project_main`.
-
-- [ ] **Step 3: Run the full suite**
-
-Run: `.venv/bin/pytest tests/ -q --tb=line`
-Expected: 0 failed. Any failure here is either a missed call site or a genuine dispatch bug from Tasks 3–5 — fix at the source, never by skipping the test.
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add tests/
-git commit -m "test(cli): migrate all call sites to the new command tree (redesign task 7)"
+git commit -m "feat(cli)!: remove legacy project/wiki/llm-defaults surfaces (redesign task 7)"
 ```
 
 ---
@@ -675,17 +775,15 @@ def test_compile_flag_surface_is_small():
     assert len(flags) <= 9, [a.option_strings for a in flags]
 
 
-def test_removed_compile_flags_become_config_keys(tmp_path):
-    """kuzu/graphiti/cognee knobs come from config.json now."""
-    import json
-
-    from tesserae.project import ProjectWiki
-
-    wiki = ProjectWiki.init(tmp_path, name="t")
-    cfg = json.loads(wiki.paths.config.read_text())
-    cfg["compile_options"] = {"kuzu_output": str(tmp_path / "kuzu")}
-    wiki.paths.config.write_text(json.dumps(cfg))
-    assert ProjectWiki.load(tmp_path)._compile_options()["kuzu_output"] == str(tmp_path / "kuzu")
+def test_removed_compile_flags_become_config_keys(tmp_path, monkeypatch):
+    """Each dieted flag must be READ from config at the handler behavior
+    point — not just storable. Written per-flag during Step 3: for every
+    removed flag, set its `compile_options.<dest>` key in config.json,
+    monkeypatch the function that consumes the value (found while moving
+    the flag), run `main(["compile", "--project", str(tmp_path)])`, and
+    assert the consumer saw the config value rather than the old argparse
+    default. The kuzu/cognee output flags are NOT in scope — they belong
+    to the `extract` parser, not project compile (verify with --help)."""
 ```
 
 - [ ] **Step 2: Run, verify failure**
@@ -695,7 +793,7 @@ Expected: FAIL — compile parser still carries ~26 flags; `_compile_options` do
 
 - [ ] **Step 3: Implement**
 
-1. Enumerate the current compile flags: `sed -n '969,1058p' tesserae/cli.py` (line numbers will have shifted — locate via `grep -n "_build_compile_parser" tesserae/cli.py`). KEEP: `paths`, `--project`, `--changed-only`, `--no-sessions`, `--limit`, `--refresh-external-tools`, `--llm-provider`, `--claude-config-dir`, `--codex-home`. EVERY other flag moves to a `compile_options` dict in `config.json` under its dest name (e.g. `--kuzu-output` → `compile_options.kuzu_output`), with the argparse default as the fallback.
+1. Enumerate the current compile flags FROM THE PARSER, not from memory: `python -c "import tesserae.cli as c; [print(a.option_strings, a.dest, a.default) for a in c._build_compile_parser()._actions]"`. KEEP exactly: `paths`, `--project`, `--changed-only`, `--no-sessions`, `--limit`, `--refresh-integrations` (RENAMED from today's `--refresh-external-tools` — update `_handle_compile`'s read), `--llm-provider`, `--claude-config-dir`, `--codex-home`. EVERY other flag in the printed list moves to a `compile_options` dict in `config.json` under its dest name, with the argparse default as the fallback. (Do NOT assume kuzu/cognee flags are here — those live on the `extract` parser.)
 2. Add to `ProjectWiki`:
 
 ```python
@@ -723,34 +821,45 @@ git commit -m "feat(cli)!: compile/init flag diet — integration knobs move to 
 
 ---
 
-### Task 9: Blast radius — plugin commands, hooks, CI, release skill
+### Task 9: Blast radius — hooks, CI, release skill, plugin commands, runtime strings
 
 **Files:**
-- Modify: every file from `grep -rln "tesserae project \|project_main" .claude-plugin/ .claude/ .github/ scripts/ 2>/dev/null` plus `grep -rln "tesserae project " --include="*.sh" --include="*.yml" --include="*.json" --include="*.md" . | grep -v docs/ | grep -v "\.tesserae/"`
+- Modify: `hooks/session-end.sh` (~line 51), `hooks/posttooluse-sync-code.sh` (~line 92), every other `hooks/*.sh`, `.github/workflows/build-demo.yml` (~line 79), `.claude/skills/release/SKILL.md`, plugin slash-command files in this repo, plus runtime strings in `tesserae/`
 
-- [ ] **Step 1: Enumerate exact call sites**
-
-Run the greps above; list every hit before editing. Known: `.github/workflows/build-demo.yml` (smoke: `project setup --yes … && project compile && project build-site`), `.claude/skills/release/SKILL.md` step 5, plugin slash-command definitions and SessionStart/SessionEnd hook scripts (locate via `grep -rn "tesserae project" ~/.claude-personal2/plugins/cache/ --include="*.md" -l` is OUT of repo scope — only fix what lives in THIS repo; note out-of-repo hits in the final report instead).
-
-- [ ] **Step 2: Rewrite each invocation per the mapping table**
-
-`tesserae project setup --yes --no-color --source . …` → `tesserae init --yes --no-color --source . …` (verify `--no-color`/integration skip flags survive the diet — they're setup-wizard flags, kept as init wizard flags or config keys per Task 8's decision; if a CI flag was dieted, set the equivalent `config.json` key in the workflow's project dir before compile, or use the documented env var).
-`tesserae project compile` → `tesserae compile`. `tesserae project build-site` → `tesserae export site`.
-
-- [ ] **Step 3: Run the CI smoke locally (the release skill's step 5)**
+- [ ] **Step 1: Enumerate exact call sites — repo-wide, hidden files included**
 
 ```bash
-.venv/bin/python -m tesserae init --yes --no-color --source . <surviving-skip-flags>
+rg --hidden --no-ignore -n "tesserae project |tesserae wiki |llm-defaults|project_main" \
+   tesserae/ hooks/ scripts/ .github/ .claude/ .claude-plugin/ tests/ 2>/dev/null | rg -v "\.tesserae/|docs/|\.git/"
+```
+
+Known hits beyond CI/release-skill: `hooks/session-end.sh:51` and `hooks/posttooluse-sync-code.sh:92` shell `tesserae project sync-code`-style commands AND have `pgrep` patterns matching the old strings — both the invocation and the pgrep pattern must change together. Runtime user-facing strings inside `tesserae/` also print old commands (`ask_widget`, deploy error hints, `ProjectWiki.load`'s "run `python3 -m tesserae.cli project init` first" message, setup wizard text) — some are test-asserted; update the tests in the same commit.
+
+- [ ] **Step 2: Rewrite each invocation per the spec mapping table**
+
+CI smoke becomes (no integration flags — Task 4's `--yes` defaults subsume `--no-color`, `--no-cognee` and the `--skip-*` family):
+```yaml
+tesserae init --yes --source .
+tesserae compile
+tesserae export site
+```
+Hooks: `tesserae project sync-code …` → `tesserae code sync …` (and matching pgrep patterns). Release skill step 5 mirrors the CI smoke.
+
+- [ ] **Step 3: Run the CI smoke locally + hook scripts dry**
+
+```bash
+.venv/bin/python -m tesserae init --yes --source .
 .venv/bin/python -m tesserae compile
 .venv/bin/python -m tesserae export site
+bash -n hooks/session-end.sh && bash -n hooks/posttooluse-sync-code.sh
 ```
-Expected: all three exit 0 (same artifacts as the old smoke).
+Expected: smoke exits 0 with the same artifacts as the old flow; `bash -n` parses clean. Re-run the rg from Step 1 → 0 hits outside docs/ (docs are Task 10).
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add .github/ .claude/skills/release/SKILL.md <other hits>
-git commit -m "chore(cli): migrate CI smoke + release skill + in-repo callers to the new tree (redesign task 9)"
+git add hooks/ .github/ .claude/skills/release/SKILL.md tesserae/ tests/
+git commit -m "chore(cli): migrate hooks/CI/release-skill/runtime strings to the new tree (redesign task 9)"
 ```
 
 ---
@@ -790,13 +899,16 @@ git commit -m "docs: migrate all command references to the new CLI tree (redesig
 def test_every_command_help_has_examples(capsys):
     import tesserae.cli as cli
 
-    for cmd in ("init", "compile", "context", "serve", "status", "engine",
-                "refresh", "sessions", "vault", "export", "config",
-                "projects", "integrations", "extract", "lab"):
+    for cmd in (["init"], ["compile"], ["context"], ["ask"], ["serve"],
+                ["status"], ["engine"], ["refresh"], ["research"], ["query"],
+                ["lint"], ["extract"],
+                ["sessions", "import"], ["vault", "sync"], ["export", "site"],
+                ["code", "sync"], ["config", "llm"], ["projects", "register"],
+                ["integrations", "refresh"], ["lab", "evolve"]):
         with pytest.raises(SystemExit):
-            cli.main([cmd, "--help"])
+            cli.main([*cmd, "--help"])
         out = capsys.readouterr().out
-        assert "examples:" in out.lower(), f"{cmd} --help lacks EXAMPLES"
+        assert "examples:" in out.lower(), f"{' '.join(cmd)} --help lacks EXAMPLES"
 ```
 
 - [ ] **Step 2: Run, verify failure** — `.venv/bin/python -m pytest tests/test_cli_tree.py -q -k examples --tb=line` → FAIL.
@@ -833,7 +945,7 @@ Expected: 0 failed (baseline today: 1574 passed, 6 skipped).
 
 - [ ] **Step 2: Live help audit**
 
-Run: `.venv/bin/python -m tesserae` and `.venv/bin/python -m tesserae --help` → grouped help, no extraction parser. Run `for c in init compile context ask serve status engine refresh sessions vault export config projects integrations extract lab; do .venv/bin/python -m tesserae $c --help >/dev/null || echo "BROKEN: $c"; done` → no BROKEN lines.
+Run: `.venv/bin/python -m tesserae` and `.venv/bin/python -m tesserae --help` → grouped help, no extraction parser. Run `for c in init compile context ask serve status engine refresh research query lint sessions vault export code config projects integrations extract lab; do .venv/bin/python -m tesserae $c --help >/dev/null || echo "BROKEN: $c"; done` → no BROKEN lines.
 
 - [ ] **Step 3: Stub audit**
 

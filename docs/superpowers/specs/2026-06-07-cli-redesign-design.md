@@ -35,13 +35,19 @@ EVERYDAY
 AUTOMATION
   engine     Refresh daemon: watch sessions/sources, coalesced recompiles
   refresh    One-shot: import sessions + compile + sync vault
+  research   Autonomous research mode: investigate a query (Pillar 2)
+
+ANALYSIS
+  query      Raw retrieval over the graph (top-k, kind filters)
+  lint       Graph lint report (--fix-trivial, --severity, --json)
 
 GROUPS
   sessions   import | discover | list
-  vault      sync | export | prune        (Obsidian projection)
-  export     harness | graphiti | site    (site: --deploy publishes)
+  vault      sync | sync-all | set-root | export | prune   (Obsidian projection)
+  export     harness | graphiti | site    (site: --deploy publishes, --watch rebuilds on change)
+  code       ingest | sync                (CodeGraph ⇄ project graph; hook-invoked)
   config     llm | show                   (machine-wide ~/.tesserae/config.json)
-  projects   list | activate | unregister | mcp-config   (registry)
+  projects   register | list | activate | unregister | mcp-config   (registry)
   integrations  refresh <name>            (raganything | understand-anything)
   extract    <paths>                      (low-level typed-graph extraction)
 
@@ -59,10 +65,18 @@ parser.
 | `tesserae <paths>` (bare extraction) | `tesserae extract <paths>` |
 | `tesserae ask` | `tesserae ask` (unchanged) |
 | `tesserae wiki list/activate/unregister` | `tesserae projects list/activate/unregister` |
-| `tesserae llm-defaults` | `tesserae config llm` (`--show` → `tesserae config show`) |
+| `tesserae wiki register` | `tesserae projects register` |
+| `tesserae wiki obsidian-set-root` | `tesserae vault set-root` |
+| `tesserae wiki obsidian-sync-all` | `tesserae vault sync-all` |
+| `tesserae llm-defaults` | `tesserae config llm`; `llm-defaults --show` → `tesserae config show` |
 | `project init` | `tesserae init --bare` (no wizard) |
 | `project setup` | `tesserae init` (wizard default; `--yes` accepts defaults) |
-| `project ingest <paths>` | `tesserae compile <paths>` |
+| `project ingest <paths>` | `tesserae compile <paths>` (ingest-only semantics: extracts the given paths into the graph and returns — does NOT trigger a full recompile of configured sources) |
+| `project ingest-code` | `tesserae code ingest` |
+| `project sync-code` | `tesserae code sync` (hook scripts under `hooks/` migrate with it) |
+| `project research <query>` | `tesserae research <query>` |
+| `project lint` | `tesserae lint` |
+| `project query` | `tesserae query` |
 | `project compile` | `tesserae compile` |
 | `project context` | `tesserae context` |
 | `project ask` | `tesserae ask` (project-scoped via cwd, `--project`) |
@@ -70,7 +84,7 @@ parser.
 | `project build-site` | `tesserae export site` |
 | `project deploy` | `tesserae export site --deploy` |
 | `project serve` | `tesserae serve` (auto-build) |
-| `project watch` | error stub → `tesserae engine` (verify semantics at plan time; if watch ≠ engine, fold as `tesserae engine --site-only`) |
+| `project watch` | `tesserae export site --watch` (preserves `WatchLoop` flags: `--paths`, `--quiet`, `--once`) |
 | `project engine` / `project daemon` | `tesserae engine` (alias removed) |
 | `project refresh` | `tesserae refresh` |
 | `project sessions import/discover/list` | `tesserae sessions import/discover/list` |
@@ -89,14 +103,21 @@ parser.
 
 ## Flag diet
 
-- **init**: ≤8 flags (`--yes`, `--bare`, `--project`, `--name`, `--source`,
-  `--llm-provider`, `--claude-config-dir`, `--codex-home`). The other ~21
-  setup flags become wizard prompts and/or documented `config.json` keys
-  (`tesserae init --yes` writes the same defaults they encoded).
+- **init**: EXACTLY these 8 flags (`--yes`, `--bare`, `--project`, `--name`,
+  `--source`, `--llm-provider`, `--claude-config-dir`, `--codex-home`) —
+  `--source-kind` and the ~21 other setup flags become wizard prompts and/or
+  documented `config.json` keys. **`--yes` defaults**: all optional
+  integrations OFF (cognee, raganything, understand-anything — what CI's
+  `--no-cognee --skip-*` flags encode today) and color auto-disabled when
+  stdout is not a TTY (subsumes `--no-color`). CI's smoke therefore becomes
+  `tesserae init --yes --source .` with no integration flags.
 - **compile**: ~8 everyday flags (`--changed-only`, `--no-sessions`,
   `--project`, `--limit`, `--llm-provider`, `--claude-config-dir`,
-  `--codex-home`, `--refresh-integrations`). Kuzu/graphiti/cognee output
-  knobs move to `export`/config keys.
+  `--codex-home`, `--refresh-integrations` — renamed from today's
+  `--refresh-external-tools`). The diet list is derived from the ACTUAL
+  compile parser actions at implementation time (not assumed names);
+  every removed flag becomes a `compile_options.<dest>` config key read at
+  the same handler point with the old argparse default.
 - Rule: every removed flag remains settable via `config.json`; the flag's
   old help text becomes the config key's doc.
 
@@ -105,8 +126,14 @@ parser.
 - `tesserae project <anything>` → exit 2 with exactly one line:
   `tesserae project compile has moved → tesserae compile` (mapping table
   drives the message; unknown subcommand → point at `tesserae --help`).
+- Longest-prefix matching over 3, 2, then 1 argv tokens so 3-token commands
+  (`project sessions import`) print their exact replacement
+  (`tesserae sessions import`), not the group fallback.
+- Bare extraction (`tesserae <path.md>` — first token is not a known
+  command and looks like a path) → one-line stub →
+  `tesserae extract <paths>`.
 - `tesserae wiki …`, `tesserae llm-defaults` → same one-line stub.
-- Stubs live in one table in `cli.py`; no duplicated parser code.
+- Stubs live in one table in `cli_tree.py`; no duplicated parser code.
 
 ## Help/UX standards
 
@@ -119,8 +146,13 @@ parser.
 
 ## Blast radius (must migrate in the same change)
 
-1. Plugin slash commands + SessionStart/End hooks shelling `tesserae project …`
-   (`.claude-plugin/`, hook scripts).
+1. Hook scripts in `hooks/` (`session-end.sh`, `posttooluse-sync-code.sh`,
+   SessionStart) shell `tesserae project …` — including their `pgrep`
+   patterns — plus plugin slash commands (`.claude-plugin/`).
+1b. Runtime user-facing strings inside `tesserae/` that print old commands
+   (`ask_widget`, deploy errors, `ProjectWiki.load`'s init hint, setup
+   wizard text) — swept via `rg --hidden "tesserae project |tesserae wiki |llm-defaults"`
+   over `tesserae/`, `hooks/`, `scripts/`, `tests/`, not just docs.
 2. CI `build-demo` workflow + `.claude/skills/release/SKILL.md` smoke steps.
 3. Docs: quickstart/installation/integrations/README ×8 langs (i18n
    invariant applies to docs/, not this spec dir).
