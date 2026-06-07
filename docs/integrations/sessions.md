@@ -4,7 +4,7 @@
 <p align="center"><a href="../i18n/integrations/sessions.ko.md">한국어</a> · <a href="../i18n/integrations/sessions.zh.md">中文</a> · <a href="../i18n/integrations/sessions.ja.md">日本語</a> · <a href="../i18n/integrations/sessions.ru.md">Русский</a> · <a href="../i18n/integrations/sessions.es.md">Español</a> · <a href="../i18n/integrations/sessions.fr.md">Français</a> · <a href="../i18n/integrations/sessions.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-Tesserae's session graph turns your Claude Code / Codex conversations about a project into first-class nodes in the typed knowledge graph, linked back to the documents that came up. After a compile, you can ask `tesserae project ask "what did we decide about 3D Gaussian Splatting?"` and get back specific Insight / Decision / Question / TODO / Hypothesis / Takeaway nodes with provenance back to the session that produced them.
+Tesserae's session graph turns your Claude Code / Codex conversations about a project into first-class nodes in the typed knowledge graph, linked back to the documents that came up. After a compile, you can ask `tesserae ask "what did we decide about 3D Gaussian Splatting?"` and get back specific Insight / Decision / Question / TODO / Hypothesis / Takeaway nodes with provenance back to the session that produced them.
 
 ## How it works
 
@@ -22,9 +22,9 @@ The pipeline is two passes per session:
 
 The pipeline above is the same no matter how sessions arrive. What differs is *when* they get discovered and compiled:
 
-- **Batch (manual).** Run `tesserae project sessions discover --import` and then `tesserae project compile` yourself. Best for one-shot backfills or CI. This is the path the rest of this page walks through.
+- **Batch (manual).** Run `tesserae sessions discover --import` and then `tesserae compile` yourself. Best for one-shot backfills or CI. This is the path the rest of this page walks through.
 - **Live (continuous).** Let the engine watch the project and recompile as work happens, so the graph stays fresh without you remembering to run anything:
-  - **Supervisor daemon** — `tesserae project engine` (alias `tesserae project daemon`) runs a single-owner asyncio loop that watches the configured sources, coalesces bursts of edits into one `Pipeline.run()`, and auto-recompiles. Pass `--once` for a single deterministic drain, or `--interval` / `--debounce` to tune coalescing. `tesserae project refresh` runs the same import → compile → vault-sync chain once, in-process.
+  - **Supervisor daemon** — `tesserae engine` runs a single-owner asyncio loop that watches the configured sources, coalesces bursts of edits into one `Pipeline.run()`, and auto-recompiles. Pass `--once` for a single deterministic drain, or `--interval` / `--debounce` to tune coalescing. `tesserae refresh` runs the same import → compile → vault-sync chain once, in-process.
   - **Claude Code plugin hooks** — with the [plugin](claude-code-plugin.md) installed, the `SessionEnd` hook backgrounds an import + compile when a conversation ends, so *this* session's insights become graph nodes for the *next* one. The `SessionStart` hook prints the current graph summary on the way in. This is the closest thing to capturing sessions "as they happen" — no manual discover/compile step at all.
 
 ## Setup
@@ -39,19 +39,20 @@ tesserae sessions discover --import
 
 # Compile. Structural pass runs free. LLM pass runs automatically when the
 # `claude` CLI is signed in — no API keys, no env vars to set.
-tesserae project compile
+tesserae compile
 ```
 
 To run compile without sessions (e.g. on a server without any harness history):
 
 ```bash
-tesserae project compile --no-sessions
+tesserae compile --no-sessions
 ```
 
 To force structural-only (skip the LLM call even when a key is set):
 
 ```bash
-tesserae project compile --sessions-llm=false
+# Set compile_options.sessions_llm = false in .tesserae/config.json, then:
+tesserae compile
 ```
 
 ## Configuration
@@ -83,7 +84,7 @@ From the CLI:
 
 ```bash
 tesserae sessions list                # human view, shows per-session finding counts
-tesserae project ask "what did we decide about extractor dedup?"
+tesserae ask "what did we decide about extractor dedup?"
 ```
 
 ## Privacy

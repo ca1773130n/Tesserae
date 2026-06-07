@@ -195,22 +195,22 @@ Document-first, hierarchical wiki replaces the old graph dump. See [`docs/fronte
 
 ### Project-local workflow
 
-- ✅ `tesserae project init`
-- ✅ `tesserae project ingest`
-- ✅ `tesserae project compile`
-- ✅ `tesserae project mcp-config`
-- ✅ `tesserae project build-site`
-- ✅ `tesserae project serve`
-- ✅ `tesserae project deploy` (GitHub Pages)
-- ✅ `tesserae project sessions discover/import/list` (explicit local agent-history import)
-- ✅ `tesserae project watch` (standalone polling watcher)
-- ✅ `tesserae project engine` / `tesserae project daemon` (supervisor loop — v0.5.0)
-- ✅ `tesserae project refresh` (prose ingest → compile → project chain — v0.5.0)
-- ✅ `tesserae project context` (on-demand context compiler — v0.5.0)
-- ✅ `tesserae project export-agent-harness`
-- ✅ `tesserae project export-obsidian`
-- ✅ `tesserae project export-graphiti`
-- ✅ `tesserae project sync-graphiti`
+- ✅ `tesserae init --bare`
+- ✅ `tesserae compile <paths>`
+- ✅ `tesserae compile`
+- ✅ `tesserae projects mcp-config`
+- ✅ `tesserae export site`
+- ✅ `tesserae serve`
+- ✅ `tesserae export site --deploy` (GitHub Pages)
+- ✅ `tesserae sessions discover/import/list` (explicit local agent-history import)
+- ✅ `tesserae export site --watch` (standalone polling watcher)
+- ✅ `tesserae engine` (supervisor loop — v0.5.0)
+- ✅ `tesserae refresh` (prose ingest → compile → project chain — v0.5.0)
+- ✅ `tesserae context` (on-demand context compiler — v0.5.0)
+- ✅ `tesserae export harness`
+- ✅ `tesserae vault export`
+- ✅ `tesserae export graphiti`
+- ✅ `tesserae export graphiti --sync`
 
 ### Obsidian
 

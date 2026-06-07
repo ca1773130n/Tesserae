@@ -35,26 +35,26 @@ Understand Anything 可以写入：
 推荐路径是设置向导：
 
 ```bash
-tesserae project setup
+tesserae init
 ```
 
-在配套工具步骤中选择 Understand Anything。Tesserae 会在请求时安装/更新配套 skills，并把受管理的刷新命令写入 `.tesserae/config.json`。之后调用 `tesserae project compile` 时，如果 UA 图谱缺失或过期，就会自动运行该包装命令。
+在配套工具步骤中选择 Understand Anything。Tesserae 会在请求时安装/更新配套 skills，并把受管理的刷新命令写入 `.tesserae/config.json`。之后调用 `tesserae compile` 时，如果 UA 图谱缺失或过期，就会自动运行该包装命令。
 
 对于非交互式自动化，请使用：
 
 ```bash
-tesserae project setup \
+tesserae init \
   --yes \
   --with-understand-anything \
   --install-understand-anything \
   --understand-anything-platform codex
-tesserae project compile
+tesserae compile
 ```
 
 存储的命令由 Tesserae 管理，不需要用户自行构造：
 
 ```bash
-tesserae project refresh-understand-anything --platform codex
+tesserae integrations refresh understand-anything --platform codex
 ```
 
 编译期间，Tesserae 会：
@@ -68,13 +68,13 @@ tesserae project refresh-understand-anything --platform codex
 你可以在编译前强制运行所有已配置的外部刷新命令：
 
 ```bash
-tesserae project compile --refresh-external-tools
+tesserae compile --refresh-integrations
 ```
 
 也需要 Cognee？在同一 setup 命令中添加运行时记忆标志：
 
 ```bash
-tesserae project setup \
+tesserae init \
   --yes \
   --with-understand-anything \
   --install-understand-anything \
@@ -91,19 +91,26 @@ tesserae project setup \
 /understand
 ```
 
-然后运行 `tesserae project setup --with-understand-anything`，让 Tesserae 记录 markdown 投影源。直接的 JSON 文件会保留为原始配套产物，而不是手动输入的源路径。
+然后运行设置向导并**在提示时启用 Understand Anything**，让 Tesserae 记录
+markdown 投影源。直接的 JSON 文件会保留为原始配套产物，而不是手动输入的源路径。
 
 ```bash
-tesserae project setup --with-understand-anything
-tesserae project compile
-tesserae project build-site
+tesserae init
+# 当向导提示时启用 Understand Anything
+tesserae compile
+tesserae export site
 ```
+
+对于非交互式自动化，运行 `tesserae init --yes`（集成关闭），在
+`.tesserae/config.json` 中启用 Understand Anything（向导会将该集成写入
+`external_tools` 键下），然后在编译前运行 `tesserae integrations refresh
+understand-anything`。
 
 如果你还想要本地智能体会话记忆：
 
 ```bash
-tesserae project sessions discover --import
-tesserae project build-site
+tesserae sessions discover --import
+tesserae export site
 ```
 
 ## 原生图同步

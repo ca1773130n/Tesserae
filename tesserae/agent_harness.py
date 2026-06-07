@@ -132,14 +132,14 @@ def render_harness_context(
     for node in top_nodes:
         lines.append(f"- **{node.name}** (`{node.type.value}`) — {node.description or node.source_path or node.id}")
     if not top_nodes:
-        lines.append("_No nodes yet. Run `python3 -m tesserae.cli project compile` first._")
+        lines.append("_No nodes yet. Run `python3 -m tesserae.cli compile` first._")
     lines.extend([
         "",
         "## Agent instructions",
         "",
         "- Prefer MCP graph queries before grep-style rediscovery.",
         "- Preserve the controlled ontology; do not invent node or edge types outside the Tesserae schema.",
-        "- Keep markdown projection generated; update sources and re-run project compile instead of hand-editing generated pages.",
+        "- Keep markdown projection generated; update sources and re-run compile instead of hand-editing generated pages.",
         "- When adding code, run the project tests before reporting success.",
         "",
     ])

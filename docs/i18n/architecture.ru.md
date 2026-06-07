@@ -139,8 +139,8 @@ query / seeds
 | Модуль | Ответственность |
 |---|---|
 | [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`: управляет extraction → graph → проходы памяти → wiki layer → site. Владеет `ProjectPaths` (`config`, `graph`, `manifest`, `wiki`, `site` и т. д.). Заранее решает, подходит ли инкрементальная компиляция на основе происхождения (provenance) (управляется `incremental_compile`, по умолчанию OFF). |
-| [`tesserae/cli.py`](../../tesserae/cli.py) | Все подкоманды `tesserae project …`, включая `compile`, `refresh`, `context`, `build-site`, `serve`, `watch`, `engine`/`daemon`, `deploy`. |
-| [`tesserae/deploy.py`](../../tesserae/deploy.py) | `project deploy`: отправляет `.tesserae/site/` в ветку `gh-pages` через worktree, опционально включает Pages через `gh`. |
+| [`tesserae/cli.py`](../../tesserae/cli.py) | Плоская диспетчеризация CLI по глаголам (~2 732 строки после удаления устаревших групп подкоманд `project`/`wiki`). Глаголы — `init`, `compile`, `context`, `ask`, `refresh`, `serve`, `engine`, `export`, `vault`, `code`, `lab`, `config`, `projects`, `integrations` — объявлены как метаданные в [`tesserae/cli_tree.py`](../../tesserae/cli_tree.py) и подключаются из этого дерева, а не регистрируются вручную. |
+| [`tesserae/deploy.py`](../../tesserae/deploy.py) | `export site --deploy`: отправляет `.tesserae/site/` в ветку `gh-pages` через worktree, опционально включает Pages через `gh`. |
 
 ### Хребет движка (v0.5.0 — столпы 1 & 2)
 
@@ -149,8 +149,8 @@ query / seeds
 | Модуль | Ответственность |
 |---|---|
 | [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | `Pipeline`: последовательный исполнитель шагов. Кодифицирует прозаическую цепочку обновления (усвоение → компиляция → проекция/публикация) как импортируемый объект, возвращающий структурированный `List[StepResult]` вместо «напечатать-и-выйти», так что каждый вызывающий сам решает, как подать результат. `run()` ловит `Exception` на каждом шаге (пропуская `KeyboardInterrupt`/`SystemExit`) и останавливается на первом сбое. |
-| [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | `Daemon`: asyncio-супервизор с единственным владельцем. Следит за каталогами источников, хранилищем Obsidian и каталогом сессий harness; через дебаунс «отмена-и-перепланирование» сворачивает серию `TriggerEvent` ровно в один `Pipeline.run()`. Повторно использует существующие наблюдатели `watch.py` / `vault_watch.py` (не переписывает их), пишет pidfile и переживает исключения в полёте. Доступен как `project engine` / `project daemon` (`--interval`, `--debounce`, `--once`). |
-| [`tesserae/watch.py`](../../tesserae/watch.py), [`tesserae/vault_watch.py`](../../tesserae/vault_watch.py) | Опрашивающие наблюдатели, повторно используемые автономной командой `project watch` и линиями источников/хранилища демона. |
+| [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | `Daemon`: asyncio-супервизор с единственным владельцем. Следит за каталогами источников, хранилищем Obsidian и каталогом сессий harness; через дебаунс «отмена-и-перепланирование» сворачивает серию `TriggerEvent` ровно в один `Pipeline.run()`. Повторно использует существующие наблюдатели `watch.py` / `vault_watch.py` (не переписывает их), пишет pidfile и переживает исключения в полёте. Доступен как `engine` (`--interval`, `--debounce`, `--once`). |
+| [`tesserae/watch.py`](../../tesserae/watch.py), [`tesserae/vault_watch.py`](../../tesserae/vault_watch.py) | Опрашивающие наблюдатели, повторно используемые автономной командой `export site --watch` и линиями источников/хранилища демона. |
 
 ### Память самоулучшения (v0.5.0 — столп 2)
 

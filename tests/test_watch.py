@@ -223,5 +223,5 @@ def test_cli_project_watch_once_runs(tmp_path, monkeypatch, capsys):
     project = _make_project(tmp_path)
     from tesserae.cli import main
 
-    rc = main(["project", "watch", "--project", str(project), "--once", "--quiet"])
+    rc = main(["export", "site", "--watch", "--project", str(project), "--once", "--quiet"])
     assert rc == 0

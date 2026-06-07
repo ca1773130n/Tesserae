@@ -53,7 +53,7 @@ MCP.
   table de commandes (mécanique, sans changement de comportement).
 - **Livrables :** `Pipeline.run(steps, changed_only=…)` ; la CLI délègue à lui ;
   tests unitaires de séquencement d'étapes + propagation des échecs.
-- **Acceptation :** `tesserae project refresh` existe comme code (pas un skill)
+- **Acceptation :** `tesserae refresh` existe comme code (pas un skill)
   et reproduit la chaîne markdown octet pour octet sur le corpus de démo.
 - **Risque :** Faible. Refactor pur ; les tests existants gardent le
   comportement.
@@ -197,7 +197,7 @@ hachage comme couloir « sémantique » par défaut.
 
 ## Phase 6 — Compilateur de contexte à la demande (Pilier 3) ✅ Livré en v0.5.0 (fonctionnalité phare)
 
-> **Livré en v0.5.0 comme fonctionnalité phare.** Le pipeline pur `compile_context` dans `tesserae/context_compiler.py` renvoie un `ContextBundle` en mémoire de `ContextCitation` (requête/graines → PPR + recherche hybride → voisinage k-sauts borné en profondeur → assemblage des corps wiki → synthèse LLM optionnelle avec repli gracieux → contrôle du budget). Exposé comme l'outil MCP `compile_context` et la sous-commande CLI `tesserae project context` ; `node_context` a désormais un chemin classé `use_ppr` ; des tranches d'export `llms.txt` à portée thématique sont livrées.
+> **Livré en v0.5.0 comme fonctionnalité phare.** Le pipeline pur `compile_context` dans `tesserae/context_compiler.py` renvoie un `ContextBundle` en mémoire de `ContextCitation` (requête/graines → PPR + recherche hybride → voisinage k-sauts borné en profondeur → assemblage des corps wiki → synthèse LLM optionnelle avec repli gracieux → contrôle du budget). Exposé comme l'outil MCP `compile_context` et la sous-commande CLI `tesserae context` ; `node_context` a désormais un chemin classé `use_ppr` ; des tranches d'export `llms.txt` à portée thématique sont livrées.
 
 **Objectif :** La fonctionnalité phare — « donne-moi du contexte sur X » → un
 document sur mesure, cité et prêt pour les agents.

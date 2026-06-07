@@ -19,7 +19,7 @@ Tesserae — это **контекстный движок**, работающи�
 |---|---|---|---|
 | `Pipeline` — переиспользуемая цепочка обновления, возвращающая `List[StepResult]` | ✅ | [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | Один исполнитель шагов, вызываемый CLI, демоном и MCP. Ловит `Exception` на каждом шаге; останавливается на первом сбое. |
 | `Daemon` — asyncio-супервизор с единственным владельцем | ✅ | [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | Следит за источниками + хранилищем + каталогом сессий harness; дебаунс «отмена-и-перепланирование» сворачивает серию в один `Pipeline.run()`. pidfile; переживает исключения в полёте. |
-| `project engine` / `project daemon` | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) | `--interval`, `--debounce`, `--once`. `daemon` — псевдоним `engine`. |
+| `engine` | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) | `--interval`, `--debounce`, `--once`. `daemon` — псевдоним `engine`. |
 | `project refresh` — прозаическая цепочка (усвоение → компиляция → проекция) | ✅ | `cli.py` + [`tesserae/project.py`](../../tesserae/project.py) | `--changed-only` (опциональная инкрементальность), `--skip-sessions`. |
 | Живой мониторинг сессий → находки | ✅ | `harness_sessions.py` + модули графа сессий | Импортированные сессии питают граф; `fresh_insights` / `find_session_findings` выводят их на поверхность. |
 
@@ -151,11 +151,11 @@ Tesserae — это **контекстный движок**, работающи�
 | `project compile` вызывает synthesis + wiki + site по порядку | ✅ | [`tesserae/project.py`](../../tesserae/project.py) | Фаза 3 плана редизайна. |
 | `project build-site` standalone | ✅ | `project.py` + [`tesserae/cli.py`](../../tesserae/cli.py) | Читает `wiki/` + `graph.json`, пишет `site/`. |
 | `project serve` локальный HTTP | ✅ | `cli.py` | Простой stdlib server. |
-| `project deploy` → GitHub Pages | ✅ | [`tesserae/deploy.py`](../../tesserae/deploy.py) | Worktree push в `gh-pages`; опциональный `--enable-pages` через `gh` CLI. `--build`, `--dry-run`, `--branch`, `--remote`, `--force`. |
+| `export site --deploy` → GitHub Pages | ✅ | [`tesserae/deploy.py`](../../tesserae/deploy.py) | Worktree push в `gh-pages`; опциональный `--enable-pages` через `gh` CLI. `--build`, `--dry-run`, `--branch`, `--remote`, `--force`. |
 | `project sessions discover/import/list` | ✅ | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) + `cli.py` | Входящая история сессий для Claude Code/Codex; обнаружение явное и ограничено рабочим каталогом проекта. |
-| `project watch` пересборка-при-изменении | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) + [`tesserae/watch.py`](../../tesserae/watch.py) | Автономный опрашивающий watcher: `--interval`, `--debounce`, `--once`, `--paths`, `--quiet`. Многоисточниковый супервизор — в `project engine`/`daemon` (см. Контекстный движок). |
+| `export site --watch` пересборка-при-изменении | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) + [`tesserae/watch.py`](../../tesserae/watch.py) | Автономный опрашивающий watcher: `--interval`, `--debounce`, `--once`, `--paths`, `--quiet`. Многоисточниковый супервизор — в `project engine`/`daemon` (см. Контекстный движок). |
 | `project context` — компиляция документа контекста со ссылками | ✅ | `cli.py` + [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | Флагман Столпа 3; см. раздел Контекстный движок. |
-| `project refresh` / `project engine` / `project daemon` | ✅ | `cli.py` + [`tesserae/engine/`](../../tesserae/engine/) | Прозаическая цепочка обновления + цикл супервизора; см. раздел Контекстный движок. |
+| `project refresh` / `engine` | ✅ | `cli.py` + [`tesserae/engine/`](../../tesserae/engine/) | Прозаическая цепочка обновления + цикл супервизора; см. раздел Контекстный движок. |
 
 ## Ранее существовавшие функции (перенесены без изменений)
 
@@ -195,22 +195,22 @@ Tesserae — это **контекстный движок**, работающи�
 
 ### Project-local workflow
 
-- ✅ `tesserae project init`
-- ✅ `tesserae project ingest`
-- ✅ `tesserae project compile`
-- ✅ `tesserae project mcp-config`
-- ✅ `tesserae project build-site`
-- ✅ `tesserae project serve`
-- ✅ `tesserae project deploy` (GitHub Pages)
-- ✅ `tesserae project sessions discover/import/list` (явный импорт локальной agent-history)
-- ✅ `tesserae project watch` (автономный опрашивающий watcher)
-- ✅ `tesserae project engine` / `tesserae project daemon` (цикл супервизора — v0.5.0)
-- ✅ `tesserae project refresh` (прозаическая цепочка усвоение → компиляция → проекция — v0.5.0)
-- ✅ `tesserae project context` (контекстный компилятор по запросу — v0.5.0)
-- ✅ `tesserae project export-agent-harness`
-- ✅ `tesserae project export-obsidian`
-- ✅ `tesserae project export-graphiti`
-- ✅ `tesserae project sync-graphiti`
+- ✅ `tesserae init --bare`
+- ✅ `tesserae compile <paths>`
+- ✅ `tesserae compile`
+- ✅ `tesserae projects mcp-config`
+- ✅ `tesserae export site`
+- ✅ `tesserae serve`
+- ✅ `tesserae export site --deploy` (GitHub Pages)
+- ✅ `tesserae sessions discover/import/list` (явный импорт локальной agent-history)
+- ✅ `tesserae export site --watch` (автономный опрашивающий watcher)
+- ✅ `tesserae engine` (цикл супервизора — v0.5.0)
+- ✅ `tesserae refresh` (прозаическая цепочка усвоение → компиляция → проекция — v0.5.0)
+- ✅ `tesserae context` (контекстный компилятор по запросу — v0.5.0)
+- ✅ `tesserae export harness`
+- ✅ `tesserae vault export`
+- ✅ `tesserae export graphiti`
+- ✅ `tesserae export graphiti --sync`
 
 ### Obsidian
 

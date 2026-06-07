@@ -5,20 +5,20 @@
 <!-- translations:end -->
 Tesserae can import local AI-agent transcripts and render them as project memory under the static site's `sessions/` section.
 
-This feature is intentionally separate from `export-agent-harness`:
+This feature is intentionally separate from `export harness`:
 
-- `export-agent-harness` is outbound context for tools such as Claude Code, Codex, Gemini, Cursor, Kiro, and OpenCode.
-- `project sessions ...` is inbound history: it normalizes prior Claude Code/Codex sessions for the current project, stores them under `.tesserae/harness_sessions/`, and lets `project build-site` publish session index/detail pages.
+- `export harness` is outbound context for tools such as Claude Code, Codex, Gemini, Cursor, Kiro, and OpenCode.
+- `sessions ...` is inbound history: it normalizes prior Claude Code/Codex sessions for the current project, stores them under `.tesserae/harness_sessions/`, and lets `export site` publish session index/detail pages.
 
 ## Two ways in: batch import and live monitoring
 
 Session ingestion is no longer batch-only. There are two paths into the same
 normalized store:
 
-- **Batch import** — `project sessions discover/import` scans transcript roots
+- **Batch import** — `sessions discover/import` scans transcript roots
   on demand and writes one-shot. This page documents that flow below.
-- **Live monitoring** — the supervisor daemon (`project engine`, alias
-  `project daemon`) runs a `SessionTailer` that watches *this project's own*
+- **Live monitoring** — the supervisor daemon (`tesserae engine`) runs a
+  `SessionTailer` that watches *this project's own*
   Claude Code and Codex transcripts and ingests new turns as they land. Each
   tick seeks to a persisted per-file byte offset, reads only the new bytes,
   and stores complete turns into the SQLite `HarnessSessionsDB`
@@ -30,19 +30,19 @@ normalized store:
 Run the live loop with:
 
 ```bash
-tesserae project engine        # watch sources, coalesce bursts, auto-recompile
-tesserae project engine --once # single drain cycle then exit (deterministic)
+tesserae engine        # watch sources, coalesce bursts, auto-recompile
+tesserae engine --once # single drain cycle then exit (deterministic)
 ```
 
-`tesserae project refresh` runs the same ingest → compile → project pipeline
+`tesserae refresh` runs the same ingest → compile → project pipeline
 once, in-process, without starting the long-lived watcher (pass
 `--skip-sessions` to skip the harness-session discovery scan).
 
 ## Privacy model
 
 Both ingestion paths are explicit: the live tailer only runs while you keep
-`project engine`/`daemon` alive, and batch discovery only writes with
-`--import`. A normal `project compile` or `project build-site` reads
+`tesserae engine` alive, and batch discovery only writes with
+`--import`. A normal `tesserae compile` or `tesserae export site` reads
 already-normalized sessions from `.tesserae/harness_sessions/` and the live
 records in `.tesserae/sqlite.db`, but it does not surprise-scrape private
 harness transcript directories on its own.
@@ -54,13 +54,13 @@ Imported session records are local project artifacts. Review them before publish
 From the project root:
 
 ```bash
-tesserae project sessions discover --import
+tesserae sessions discover --import
 ```
 
 Discovery scans local Claude Code and Codex transcript roots that belong to the current project working directory. Use `--root` to scan a specific config directory, and repeat `--harness` to limit discovery:
 
 ```bash
-tesserae project sessions discover \
+tesserae sessions discover \
   --root ~/.claude \
   --root ~/.codex \
   --harness claude-code \
@@ -75,7 +75,7 @@ Without `--import`, discovery prints what it found without writing normalized se
 If another tool has already produced normalized `HarnessSession` JSON, import one file or a list of files:
 
 ```bash
-tesserae project sessions import path/to/session.json path/to/more-sessions.json
+tesserae sessions import path/to/session.json path/to/more-sessions.json
 ```
 
 Each input may contain one session object or a list of session objects.
@@ -83,7 +83,7 @@ Each input may contain one session object or a list of session objects.
 ## List imported sessions
 
 ```bash
-tesserae project sessions list
+tesserae sessions list
 ```
 
 Sessions are stored below:
@@ -98,7 +98,7 @@ Sessions are stored below:
 
 Live-monitored sessions are additionally tracked in the SQLite
 `HarnessSessionsDB` (`.tesserae/sqlite.db`), which also persists the per-file
-read offsets the tailer resumes from. `project sessions list` reports the
+read offsets the tailer resumes from. `tesserae sessions list` reports the
 combined view.
 
 ## Build the static session pages
@@ -106,7 +106,7 @@ combined view.
 After importing sessions, rebuild the site:
 
 ```bash
-tesserae project build-site
+tesserae export site
 ```
 
 The site emits:
@@ -148,9 +148,9 @@ Current transcript typography:
 
 Before deploying a public site that includes sessions:
 
-1. Run `tesserae project sessions list` and confirm the count is expected.
+1. Run `tesserae sessions list` and confirm the count is expected.
 2. Inspect `.tesserae/harness_sessions/` for sensitive content.
-3. Rebuild with `tesserae project build-site`.
+3. Rebuild with `tesserae export site`.
 4. Open `sessions/index.html` and at least one session detail page locally.
 5. Confirm tool blocks are collapsed by default and raw tool payloads are acceptable to publish.
-6. Deploy with `tesserae project deploy --build` once the source tree is committed.
+6. Deploy with `tesserae export site --deploy` once the source tree is committed.

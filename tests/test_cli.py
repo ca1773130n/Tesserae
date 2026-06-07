@@ -28,7 +28,7 @@ Gaussian Splatting supports novel view synthesis.
     )
     output = tmp_path / "graph.json"
 
-    assert main([str(tmp_path / "data"), "--source-kind", "Paper", "--trends", "--min-trend-sources", "2", "-o", str(output)]) == 0
+    assert main(["extract", str(tmp_path / "data"), "--source-kind", "Paper", "--trends", "--min-trend-sources", "2", "-o", str(output)]) == 0
 
     payload = output.read_text(encoding="utf-8")
     assert '"type": "Trend"' in payload
@@ -57,6 +57,7 @@ def test_cli_can_select_claude_cli_extractor(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "ClaudeCLIResearchExtractor", FakeClaudeExtractor)
 
     assert main([
+        "extract",
         str(source),
         "--source-kind",
         "Paper",
@@ -99,6 +100,7 @@ def test_cli_can_use_selective_claude_extractor(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "ClaudeCLIResearchExtractor", FakeClaudeExtractor)
 
     assert main([
+        "extract",
         str(tmp_path),
         "--source-kind",
         "Paper",
@@ -129,6 +131,7 @@ Gaussian Splatting, 3DGS, and 3D Gaussian Splatting are discussed for novel view
     review_output = tmp_path / "review.json"
 
     assert main([
+        "extract",
         str(source),
         "--source-kind",
         "Paper",
@@ -195,6 +198,7 @@ def test_cli_can_apply_review_decision_file(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "GraphCanonicalizer", lambda: FakeCanonicalizer())
 
     assert main([
+        "extract",
         str(source),
         "--source-kind",
         "Paper",
@@ -217,6 +221,7 @@ def test_cli_can_write_markdown_projection(tmp_path):
     projection_dir = tmp_path / "projection"
 
     assert main([
+        "extract",
         str(source),
         "--source-kind",
         "Paper",
@@ -238,6 +243,7 @@ def test_cli_can_write_sqlite_graph_store(tmp_path):
     sqlite_output = tmp_path / "graph.sqlite"
 
     assert main([
+        "extract",
         str(source),
         "--source-kind",
         "Paper",
@@ -260,6 +266,7 @@ def test_cli_can_write_kuzu_graph_store(tmp_path):
     kuzu_output = tmp_path / "graph.kuzu"
 
     assert main([
+        "extract",
         str(source),
         "--source-kind",
         "Paper",
@@ -283,6 +290,7 @@ def test_cli_can_write_graph_report(tmp_path):
     report_output = tmp_path / "report.md"
 
     assert main([
+        "extract",
         str(source),
         "--source-kind",
         "Paper",
@@ -308,6 +316,7 @@ def test_cli_can_write_review_human_workflow_files(tmp_path):
     template = tmp_path / "decisions.template.json"
 
     assert main([
+        "extract",
         str(source),
         "--source-kind",
         "Paper",
@@ -336,6 +345,7 @@ def test_cli_can_write_cognee_bundle(tmp_path):
     cognee_output = tmp_path / "cognee"
 
     assert main([
+        "extract",
         str(source),
         "--source-kind",
         "Paper",
@@ -367,6 +377,7 @@ def test_cli_can_add_cognee_bundle_directly(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "CogneeDirectImporter", FakeCogneeDirectImporter)
 
     assert main([
+        "extract",
         str(source),
         "--source-kind",
         "Paper",
@@ -413,6 +424,7 @@ def test_cli_can_cognify_cognee_bundle_with_codex_patch(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "CogneeCodexPatch", FakeCogneeCodexPatch)
 
     assert main([
+        "extract",
         str(source),
         "--source-kind",
         "Paper",
@@ -452,8 +464,8 @@ def test_cli_changed_only_uses_batch_manifest(tmp_path):
     first_output = tmp_path / "first.json"
     second_output = tmp_path / "second.json"
 
-    assert main([str(source), "--source-kind", "Paper", "--batch-manifest", str(manifest), "--changed-only", "-o", str(first_output)]) == 0
-    assert main([str(source), "--source-kind", "Paper", "--batch-manifest", str(manifest), "--changed-only", "-o", str(second_output)]) == 0
+    assert main(["extract", str(source), "--source-kind", "Paper", "--batch-manifest", str(manifest), "--changed-only", "-o", str(first_output)]) == 0
+    assert main(["extract", str(source), "--source-kind", "Paper", "--batch-manifest", str(manifest), "--changed-only", "-o", str(second_output)]) == 0
 
     first = json.loads(first_output.read_text(encoding="utf-8"))
     second = json.loads(second_output.read_text(encoding="utf-8"))
@@ -468,7 +480,7 @@ def test_cli_limit_caps_batch_processing(tmp_path):
         (tmp_path / f"paper{idx}.md").write_text(f"# Paper {idx}\nGaussian Splatting", encoding="utf-8")
     output = tmp_path / "limited.json"
 
-    assert main([str(tmp_path), "--source-kind", "Paper", "--limit", "2", "-o", str(output)]) == 0
+    assert main(["extract", str(tmp_path), "--source-kind", "Paper", "--limit", "2", "-o", str(output)]) == 0
 
     data = json.loads(output.read_text(encoding="utf-8"))
     paper_nodes = [node for node in data["nodes"] if node["type"] == "Paper"]

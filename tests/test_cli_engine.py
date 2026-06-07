@@ -12,15 +12,30 @@ from pathlib import Path
 
 import tesserae.cli as cli
 import tesserae.engine.daemon as daemon_mod
-from tesserae.cli import _COMMANDS, _handle_engine
+from tesserae.cli import _handle_engine
+from tesserae.cli_tree import moved_replacement
 
 
-def test_engine_and_daemon_aliases_dispatch_same_handler():
-    """Both 'engine' and its alias 'daemon' resolve to the same handler."""
-    assert "engine" in _COMMANDS
-    assert "daemon" in _COMMANDS
-    assert _COMMANDS["engine"] is _COMMANDS["daemon"]
-    assert _COMMANDS["engine"] is _handle_engine
+def test_engine_routes_to_handler_and_daemon_redirects_to_engine():
+    """`engine` dispatches to _handle_engine; the old `daemon` alias now
+    redirects to `tesserae engine` (redesign task 7 removed the _COMMANDS alias).
+    """
+    # `engine` is a first-class verb in the new dispatch table, routed via
+    # _route_engine, which calls _handle_engine.
+    assert "engine" in cli._NEW_DISPATCH
+    assert cli._NEW_DISPATCH["engine"] is cli._route_engine
+    # The router resolves to the engine handler (resolved at call time).
+    import inspect
+
+    assert "_handle_engine" in inspect.getsource(cli._route_engine)
+    assert cli._handle_engine is _handle_engine
+    # The legacy `daemon` alias is gone as a top-level dispatch key.
+    assert "daemon" not in cli._NEW_DISPATCH
+    # The old `project daemon` subcommand is redirected to `tesserae engine`
+    # by the moved-command table instead.
+    moved = moved_replacement(["project", "daemon"])
+    assert moved is not None
+    assert moved[1] == "tesserae engine"
 
 
 def test_engine_once_runs_single_drain_exit_zero(tmp_path, monkeypatch):
@@ -45,7 +60,7 @@ def test_engine_once_runs_single_drain_exit_zero(tmp_path, monkeypatch):
     monkeypatch.setattr("tesserae.engine.daemon.Daemon", daemon_factory)
 
     rc = cli.main(
-        ["project", "engine", "--once", "--project", str(tmp_path), "--debounce", "0"]
+        ["engine", "--once", "--project", str(tmp_path), "--debounce", "0"]
     )
 
     assert rc == 0
@@ -53,7 +68,8 @@ def test_engine_once_runs_single_drain_exit_zero(tmp_path, monkeypatch):
 
 
 def test_daemon_alias_once_runs_single_drain_exit_zero(tmp_path, monkeypatch):
-    """The `daemon` alias behaves identically to `engine`."""
+    """The old `daemon` alias is gone (redesign); `tesserae engine` is the
+    single entry point and still runs exactly one drain cycle on --once."""
     (tmp_path / ".tesserae").mkdir(parents=True, exist_ok=True)
 
     calls: list = []
@@ -67,7 +83,7 @@ def test_daemon_alias_once_runs_single_drain_exit_zero(tmp_path, monkeypatch):
     monkeypatch.setattr("tesserae.engine.daemon.Daemon", daemon_factory)
 
     rc = cli.main(
-        ["project", "daemon", "--once", "--project", str(tmp_path), "--debounce", "0"]
+        ["engine", "--once", "--project", str(tmp_path), "--debounce", "0"]
     )
 
     assert rc == 0

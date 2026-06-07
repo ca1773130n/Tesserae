@@ -166,10 +166,10 @@ def test_write_code_graph_atomic_round_trip(tmp_path):
 def test_cli_project_ingest_code_writes_default_output(tmp_path):
     project = _write_fixture(tmp_path)
 
-    # Invoke via project_main directly (avoids subprocess flake on PATH).
-    from tesserae.cli import project_main
+    # Invoke via main directly (avoids subprocess flake on PATH).
+    from tesserae.cli import main
 
-    rc = project_main(["ingest-code", "--project", str(project)])
+    rc = main(["code", "ingest", "--project", str(project)])
     assert rc == 0
 
     out = project / ".tesserae" / "code-graph.json"

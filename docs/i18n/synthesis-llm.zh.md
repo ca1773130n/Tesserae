@@ -140,7 +140,7 @@ EDITORIAL ANGLE 块是确定性的启发式正文。模型被要求改写/重组
 pip install tesserae[synthesis-llm]
 export TESSERAE_SYNTHESIS_LLM=1
 export ANTHROPIC_API_KEY=sk-...
-python -m tesserae.cli project compile
+python -m tesserae.cli compile
 ```
 
 可用 `TESSERAE_SYNTHESIS_MODEL` 覆盖 model（默认 `claude-sonnet-4-6`）。需要 Anthropic SDK ≥ 0.40。
@@ -191,7 +191,7 @@ per page (uncached): ~1300 * $3/1M + ~270 * $15/1M ≈ $0.0080
 
 ```sh
 unset TESSERAE_SYNTHESIS_LLM
-python -m tesserae.cli project compile
+python -m tesserae.cli compile
 ```
 
 后续 compile 会用启发式 generator 重新生成受影响的 synthesis pages。因为 page rewrite 由 `content_hash` gated，只有正文确实变化的页面才会被重写。

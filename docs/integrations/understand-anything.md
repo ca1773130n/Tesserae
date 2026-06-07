@@ -35,26 +35,26 @@ Tesserae can then preserve that artifact alongside the rest of the project memor
 The recommended path is the setup wizard:
 
 ```bash
-tesserae project setup
+tesserae init
 ```
 
-Choose Understand Anything in the companion-tools step. Tesserae installs/updates the companion skills when requested and writes a managed refresh command into `.tesserae/config.json`. Future `tesserae project compile` calls run that wrapper automatically when the UA graph is missing or stale.
+Choose Understand Anything in the companion-tools step. Tesserae installs/updates the companion skills when requested and writes a managed refresh command into `.tesserae/config.json`. Future `tesserae compile` calls run that wrapper automatically when the UA graph is missing or stale.
 
 For non-interactive automation, use:
 
 ```bash
-tesserae project setup \
+tesserae init \
   --yes \
   --with-understand-anything \
   --install-understand-anything \
   --understand-anything-platform codex
-tesserae project compile
+tesserae compile
 ```
 
 The stored command is Tesserae-owned, not something the user has to invent:
 
 ```bash
-tesserae project refresh-understand-anything --platform codex
+tesserae integrations refresh understand-anything --platform codex
 ```
 
 During compile, Tesserae:
@@ -68,13 +68,13 @@ During compile, Tesserae:
 You can force all configured external refresh commands before a compile:
 
 ```bash
-tesserae project compile --refresh-external-tools
+tesserae compile --refresh-integrations
 ```
 
 Need Cognee too? Add the runtime memory flags in the same setup command:
 
 ```bash
-tesserae project setup \
+tesserae init \
   --yes \
   --with-understand-anything \
   --install-understand-anything \
@@ -91,19 +91,27 @@ The managed setup path is preferred. If you intentionally want to use UA outside
 /understand
 ```
 
-Then run `tesserae project setup --with-understand-anything` so Tesserae records the markdown projection source. Direct JSON files are kept as raw companion artifacts, not hand-entered source paths.
+Then run the setup wizard and **enable Understand Anything when prompted** so
+Tesserae records the markdown projection source. Direct JSON files are kept as
+raw companion artifacts, not hand-entered source paths.
 
 ```bash
-tesserae project setup --with-understand-anything
-tesserae project compile
-tesserae project build-site
+tesserae init
+# enable Understand Anything when the wizard prompts
+tesserae compile
+tesserae export site
 ```
+
+For non-interactive automation, run `tesserae init --yes` (integrations OFF),
+enable Understand Anything in `.tesserae/config.json` (the wizard writes the
+integration under the `external_tools` key), then `tesserae integrations
+refresh understand-anything` before compiling.
 
 If you also want local agent-session memory:
 
 ```bash
-tesserae project sessions discover --import
-tesserae project build-site
+tesserae sessions discover --import
+tesserae export site
 ```
 
 ## Native graph synchronization

@@ -33,28 +33,28 @@ cd "$project_root"
 
 # ---- Step 1: import sessions ---------------------------------------------
 echo
-echo "[1/3] tesserae project sessions discover --import"
-if ! tesserae project sessions discover --import; then
-  echo "tesserae-refresh: project sessions discover --import failed; aborting" >&2
+echo "[1/3] tesserae sessions discover --import"
+if ! tesserae sessions discover --import; then
+  echo "tesserae-refresh: sessions discover --import failed; aborting" >&2
   exit 2
 fi
 
 # ---- Step 2: compile (capture output so we can parse the summary) --------
 echo
-echo "[2/3] tesserae project compile"
+echo "[2/3] tesserae compile"
 compile_log=$(mktemp -t tesserae-refresh.XXXXXX)
 trap 'rm -f "$compile_log"' EXIT
-if ! tesserae project compile 2>&1 | tee "$compile_log"; then
-  echo "tesserae-refresh: project compile failed; aborting" >&2
+if ! tesserae compile 2>&1 | tee "$compile_log"; then
+  echo "tesserae-refresh: compile failed; aborting" >&2
   exit 3
 fi
 
 # ---- Step 3: vault sync --------------------------------------------------
 echo
-echo "[3/3] tesserae project obsidian-sync"
+echo "[3/3] tesserae vault sync"
 sync_log=$(mktemp -t tesserae-sync.XXXXXX)
 trap 'rm -f "$compile_log" "$sync_log"' EXIT
-if ! tesserae project obsidian-sync 2>&1 | tee "$sync_log"; then
+if ! tesserae vault sync 2>&1 | tee "$sync_log"; then
   # Vault sync is optional — a project might not configure Obsidian. Log
   # but don't fail the whole refresh.
   echo "tesserae-refresh: obsidian-sync failed (may be unconfigured); continuing." >&2

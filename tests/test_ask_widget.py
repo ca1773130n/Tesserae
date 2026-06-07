@@ -50,7 +50,7 @@ def test_ask_widget_js_degrades_gracefully() -> None:
     """On health-check failure the widget collapses to a static footer."""
     js = ask_widget_js()
     assert "renderDegraded" in js
-    assert "tesserae project serve" in js
+    assert "tesserae serve" in js
 
 
 def test_ask_widget_js_renders_envelope_shapes() -> None:
@@ -222,7 +222,7 @@ def test_ask_widget_concept_uses_frontmatter_node_id(site_ctx: SiteContext) -> N
 def test_static_site_builder_emits_hashed_ask_widget_asset(
     tmp_path: Path, wiki_sample_graph: ResearchGraph
 ) -> None:
-    """``tesserae project build-site`` writes the hashed widget JS bundle."""
+    """``tesserae export site`` writes the hashed widget JS bundle."""
     out = tmp_path / "site"
     builder = StaticSiteBuilder(site_title="Tesserae")
     # Legacy two-arg shape — no wiki layer, only the graph. The asset

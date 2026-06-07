@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tesserae plugin — PostToolUse hook matching Edit | Write | MultiEdit.
-# Re-runs ``tesserae project sync-code`` whenever the user edits any
+# Re-runs ``tesserae code sync`` whenever the user edits any
 # file, debounced to once every 30 seconds. The CodeGraph SQLite is
 # updated continuously by its own MCP server / file watcher; this
 # hook merely closes the loop on the Tesserae side so the typed
@@ -67,8 +67,8 @@ fi
 
 # Concurrent re-entry guard. Mirror session-start.sh's pgrep pattern
 # so two simultaneous syncs for the same project don't pile up.
-if pgrep -f "tesserae project sync-code.*${project_root}" >/dev/null 2>&1 \
-   || pgrep -f "${project_root}.*tesserae project sync-code" >/dev/null 2>&1; then
+if pgrep -f "tesserae code sync.*${project_root}" >/dev/null 2>&1 \
+   || pgrep -f "${project_root}.*tesserae code sync" >/dev/null 2>&1; then
   log_to ".posttooluse-sync-hook.log" "skipped: another sync-code is already running for ${project_root}"
   exit 0
 fi
@@ -89,7 +89,7 @@ log_file="${tdir}/.posttooluse-sync-hook.log"
 # to give the watcher time to catch up, THEN sync, THEN touch the
 # debounce marker. This way the marker reflects "we actually finished
 # a sync of the post-edit DB", not "we dispatched and moved on".
-cmd="sleep 2; echo \"==== \$(date -u +%FT%TZ) — posttooluse sync-code starting ====\"; if \"$tesserae_bin\" project sync-code --project \"$project_root\" 2>&1; then : > \"$touch_file\" 2>/dev/null || true; touch \"$touch_file\" 2>/dev/null || true; else echo \"(sync-code failed; debounce marker NOT updated so next edit retries)\"; fi; echo \"==== \$(date -u +%FT%TZ) — done ====\""
+cmd="sleep 2; echo \"==== \$(date -u +%FT%TZ) — posttooluse sync-code starting ====\"; if \"$tesserae_bin\" code sync --project \"$project_root\" 2>&1; then : > \"$touch_file\" 2>/dev/null || true; touch \"$touch_file\" 2>/dev/null || true; else echo \"(sync-code failed; debounce marker NOT updated so next edit retries)\"; fi; echo \"==== \$(date -u +%FT%TZ) — done ====\""
 if command -v setsid >/dev/null 2>&1; then
   setsid sh -c "$cmd" >> "$log_file" 2>&1 < /dev/null &
 elif command -v nohup >/dev/null 2>&1; then

@@ -87,7 +87,7 @@ class CognifyOptions:
     """Optional Cognee/Codex cognify pass run after the bundle is written.
 
     All fields default to no-op values; the pass is a no-op when ``mode`` is
-    ``"off"``. The CLI ``project compile`` builds this from --cognee-* flags;
+    ``"off"``. The CLI ``compile`` builds this from --cognee-* flags;
     direct callers can construct it explicitly. Defaults mirror the legacy
     ``ingest`` subcommand at ``tesserae.cli.main``.
     """
@@ -270,7 +270,7 @@ class ProjectWiki:
         1. ``_vault_override`` set via :meth:`set_vault_override` (the
            per-call ``--vault`` flag on the CLI).
         2. ``obsidian.vault_path`` in ``.tesserae/config.json``,
-           persisted by ``project setup --obsidian-vault``.
+           persisted by ``init --obsidian-vault``.
         3. Default ``.tesserae/obsidian_vault/`` baked into
            :class:`ProjectPaths`.
 
@@ -291,7 +291,7 @@ class ProjectWiki:
             return p
         # Registry fallback: if the multi-project registry has a `vault_root`
         # AND this project is registered, default to `<vault_root>/<alias>/`.
-        # Lets `tesserae wiki obsidian-set-root <PATH>` configure many
+        # Lets `tesserae vault set-root <PATH>` configure many
         # projects at once without per-project --vault setup. See
         # docs/integrations/obsidian-sync.md.
         try:
@@ -321,7 +321,16 @@ class ProjectWiki:
         self._vault_override = resolved
 
     @classmethod
-    def init(cls, project_root: str | Path = ".", name: Optional[str] = None, source_kind: str = "SourceDocument", sources: Optional[Iterable[str | Path]] = None) -> "ProjectWiki":
+    def init(
+        cls,
+        project_root: str | Path = ".",
+        name: Optional[str] = None,
+        source_kind: str = "SourceDocument",
+        sources: Optional[Iterable[str | Path]] = None,
+        llm_provider: Optional[str] = None,
+        llm_claude_config_dirs: Optional[List[str]] = None,
+        llm_codex_home: Optional[str] = None,
+    ) -> "ProjectWiki":
         wiki = cls(project_root)
         wiki.root.mkdir(parents=True, exist_ok=True)
         wiki.paths.markdown_projection.mkdir(parents=True, exist_ok=True)
@@ -377,6 +386,15 @@ class ProjectWiki:
                 "cognee": default_cognee_backend_config(name or sanitize_server_name(wiki.project_root.name)),
             },
         }
+        # Durable LLM backend preference for the synthesis/insights JSON
+        # client ("use codex instead of claude"). Only persisted when set so
+        # existing configs stay byte-identical.
+        if llm_provider:
+            config["llm_provider"] = llm_provider
+        if llm_claude_config_dirs:
+            config["llm_claude_config_dirs"] = [str(d) for d in llm_claude_config_dirs]
+        if llm_codex_home:
+            config["llm_codex_home"] = str(llm_codex_home)
         wiki.paths.config.write_text(json.dumps(config, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         return wiki
 
@@ -384,11 +402,48 @@ class ProjectWiki:
     def load(cls, project_root: str | Path = ".") -> "ProjectWiki":
         wiki = cls(project_root)
         if not wiki.paths.config.exists():
-            raise FileNotFoundError(f"Project wiki is not initialized: {wiki.root}. Run `python3 -m tesserae.cli project init` first.")
+            raise FileNotFoundError(f"Project wiki is not initialized: {wiki.root}. Run `python3 -m tesserae init --bare` first.")
         return wiki
 
     def config(self) -> dict:
         return json.loads(self.paths.config.read_text(encoding="utf-8"))
+
+    def _compile_options(self) -> dict:
+        """Return the ``compile_options`` block from config.json.
+
+        Holds the dieted (non-everyday) compile knobs that used to be CLI
+        flags — each removed flag's old help text becomes the matching
+        ``compile_options.<dest>`` key's documentation. Missing/invalid ⇒
+        empty dict so callers fall back to the old argparse defaults.
+        """
+        try:
+            cfg = self.config() if self.paths.config.exists() else {}
+        except Exception:  # pragma: no cover — corrupt config must not crash
+            cfg = {}
+        opts = cfg.get("compile_options")
+        return dict(opts) if isinstance(opts, dict) else {}
+
+    def _build_json_client(self, model: Optional[str] = None):
+        """Build the synthesis/insights JSON client honoring project config.
+
+        Resolves ``llm_provider`` / ``llm_claude_config_dirs`` /
+        ``llm_codex_home`` from ``config.json`` with env vars (i.e. CLI
+        flags) taking precedence — see
+        :func:`tesserae.llm_json.resolve_llm_client_settings`.
+        """
+        from .llm_json import build_default_json_client, resolve_llm_client_settings
+
+        try:
+            cfg = self.config() if self.paths.config.exists() else {}
+        except Exception:  # pragma: no cover — corrupt config must not crash
+            cfg = {}
+        settings = resolve_llm_client_settings(cfg)
+        return build_default_json_client(
+            model=model,
+            provider=settings["provider"],
+            claude_config_dirs=settings["claude_config_dirs"],
+            codex_home=settings["codex_home"],
+        )
 
     def ingest(
         self,
@@ -896,7 +951,7 @@ class ProjectWiki:
         graph = merge_graphs([graph])
         # Community-summary pass (Microsoft GraphRAG playbook applied to
         # the typed graph). Opt-in via ``TESSERAE_COMMUNITY_SUMMARIES=true``
-        # so quiet ``project compile`` runs stay free of incremental LLM
+        # so quiet ``compile`` runs stay free of incremental LLM
         # cost. Runs AFTER merge/dedup so cluster membership reflects the
         # canonical graph and BEFORE ``_write_artifacts`` so the new
         # COMMUNITY_SUMMARY nodes flow through vault projection,
@@ -1017,7 +1072,7 @@ class ProjectWiki:
         # NOT scan ``~/.claude/projects/`` or ``~/.codex/sessions/`` on
         # its own — that scan is multi-minute on a machine with
         # thousands of historical sessions and would silently re-add
-        # multi-minute latency to every ``project compile``.
+        # multi-minute latency to every ``compile``.
         # Prefer the live SQLite store (SESS-03): the daemon's SessionTailer
         # upserts sessions there per turn. Fall back to the legacy
         # ``.tesserae/harness_sessions/`` glob store for back-compat (the
@@ -1073,7 +1128,7 @@ class ProjectWiki:
         # silent and structural-only.
         json_client = None
         if opts.llm_enabled != "false":
-            json_client = build_default_json_client(model=opts.model)
+            json_client = self._build_json_client(model=opts.model)
         extractor = SessionGraphExtractor(
             project_root=self.project_root,
             cache_dir=self.paths.session_findings,
@@ -1114,7 +1169,7 @@ class ProjectWiki:
         # mentions, by scanning finding bodies for backticked
         # identifiers and dotted ``Class.method`` paths and resolving
         # them against ``.tesserae/code-graph.json`` (produced by
-        # ``tesserae project ingest-code``). Guarded by env flag so the
+        # ``tesserae code ingest``). Guarded by env flag so the
         # default compile path doesn't depend on the code graph
         # existing. Purely additive: mints only ``discusses`` edges.
         from .memory.insight_symbol_link import (
@@ -1585,7 +1640,7 @@ class ProjectWiki:
 
         if not self.paths.graph.is_file():
             raise RuntimeError(
-                f"No graph at {self.paths.graph}; run `tesserae project compile` first."
+                f"No graph at {self.paths.graph}; run `tesserae compile` first."
             )
         graph = load_graph_file(self.paths.graph)
 
@@ -2124,9 +2179,7 @@ class ProjectWiki:
             return explicit
         if _env_truthy("TESSERAE_ENABLE_LLM_PASSES"):
             try:
-                from .llm_json import build_default_json_client
-
-                return build_default_json_client()
+                return self._build_json_client()
             except Exception:  # pragma: no cover — defensive
                 logger.exception(
                     "phase5: build_default_json_client failed; LLM passes off"

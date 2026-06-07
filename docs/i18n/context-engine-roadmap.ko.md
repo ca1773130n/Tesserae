@@ -49,7 +49,7 @@ P1 슈퍼바이저 데몬 (루프) ───────────────
   시작(기계적, 동작 변경 없음).
 - **산출물:** `Pipeline.run(steps, changed_only=…)`; CLI가 위임; 단계 시퀀싱 +
   실패 전파에 대한 단위 테스트.
-- **수용:** `tesserae project refresh`가 스킬이 아닌 코드로 존재하며 데모
+- **수용:** `tesserae refresh`가 스킬이 아닌 코드로 존재하며 데모
   코퍼스에서 마크다운 체인을 바이트 단위로 재현.
 - **위험:** 낮음. 순수 리팩터; 기존 테스트가 동작을 보호.
 - **닫히는 감사 발견:** "refresh가 스킬에 존재," "cli 갓-디스패처."
@@ -163,7 +163,7 @@ P1 슈퍼바이저 데몬 (루프) ───────────────
 
 ## 단계 6 — 온디맨드 컨텍스트 컴파일러 (기둥 3) ✅ v0.5.0 출시 (헤드라인 기능)
 
-> **v0.5.0에서 헤드라인 기능으로 출시.** `tesserae/context_compiler.py`의 순수 `compile_context` 파이프라인이 `ContextCitation`들의 인메모리 `ContextBundle`을 반환합니다(쿼리/시드 → PPR + 하이브리드 검색 → 깊이 제한 k-홉 이웃 → 위키 본문 조립 → 우아한 폴백을 갖춘 선택적 LLM 합성 → 예산 제어). MCP `compile_context` 도구와 `tesserae project context` CLI 서브커맨드로 노출됩니다. `node_context`에는 이제 `use_ppr` 순위 경로가 있고, 주제 범위 `llms.txt` 익스포트 슬라이스가 제공됩니다.
+> **v0.5.0에서 헤드라인 기능으로 출시.** `tesserae/context_compiler.py`의 순수 `compile_context` 파이프라인이 `ContextCitation`들의 인메모리 `ContextBundle`을 반환합니다(쿼리/시드 → PPR + 하이브리드 검색 → 깊이 제한 k-홉 이웃 → 위키 본문 조립 → 우아한 폴백을 갖춘 선택적 LLM 합성 → 예산 제어). MCP `compile_context` 도구와 `tesserae context` CLI 서브커맨드로 노출됩니다. `node_context`에는 이제 `use_ppr` 순위 경로가 있고, 주제 범위 `llms.txt` 익스포트 슬라이스가 제공됩니다.
 
 **목표:** 헤드라인 기능 — "X에 대한 컨텍스트를 달라" → 맞춤·인용·에이전트용
 문서.

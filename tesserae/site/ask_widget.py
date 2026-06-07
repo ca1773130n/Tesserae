@@ -15,7 +15,7 @@ Two operating modes:
     visitor on the github.io demo still gets real RAG retrieval, just
     canned to a fixed question set.
   - Otherwise the widget collapses to the original one-line footer
-    pointing readers at ``tesserae project serve``.
+    pointing readers at ``tesserae serve``.
 
 The ``DEMO_QA`` payload is substituted into the JS source at build time
 by :func:`ask_widget_js`. Both the StaticSiteBuilder and the per-page
@@ -29,10 +29,10 @@ question / source) mounts a small ``<section class="ask-widget">`` near
 the bottom of the article body. The widget is a tiny JS island that:
 
 * Health-checks ``/api/ask/health`` on load. If the backend is reachable
-  (i.e. the wiki is being served by ``tesserae project serve``) the
+  (i.e. the wiki is being served by ``tesserae serve``) the
   widget renders an input + submit button. If not (file://, GitHub
   Pages, S3, any plain static host) the widget collapses to a one-line
-  static footer pointing readers at ``tesserae project serve``.
+  static footer pointing readers at ``tesserae serve``.
 * POSTs ``{node_id, node_kind, question}`` to ``/api/ask``. The CLI
   ``serve`` handler delegates to :func:`tesserae.query.ask_project` and
   returns the JSON envelope verbatim.
@@ -111,7 +111,7 @@ _ASK_WIDGET_JS_TEMPLATE = r"""(function(){
     clear(root);
     var p = el('p', { 'class': 'ask-degraded' });
     p.appendChild(document.createTextNode('Host this wiki with '));
-    p.appendChild(el('code', null, 'tesserae project serve'));
+    p.appendChild(el('code', null, 'tesserae serve'));
     p.appendChild(document.createTextNode(' to ask questions about this page.'));
     root.appendChild(p);
   }
@@ -122,7 +122,7 @@ _ASK_WIDGET_JS_TEMPLATE = r"""(function(){
     hdr.appendChild(el('span', { 'class': 'ask-demo-eyebrow' }, 'Live RAG demo'));
     hdr.appendChild(el('span', { 'class': 'ask-demo-hint' },
       'Pre-rendered answers against the seeded LightRAG store. ' +
-      'Run tesserae project serve locally for free-form questions.'));
+      'Run tesserae serve locally for free-form questions.'));
     root.appendChild(hdr);
 
     var list = el('ul', { 'class': 'ask-demo-list' });

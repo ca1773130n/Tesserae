@@ -26,14 +26,19 @@ def test_cli_setup_passes_raganything_flags_to_plan(tmp_path, monkeypatch):
     monkeypatch.setattr(tess_setup, "build_plan", spying_build)
     monkeypatch.setattr(tess_setup, "apply_plan", noop_apply)
 
-    rc = cli.main([
-        "project", "setup", "--yes",
-        "--project", str(tmp_path),
-        "--with-raganything", "--install-raganything",
-        "--raganything-parser", "docling",
-        "--raganything-extras", "all",
-        "--run-raganything",
-    ])
+    # TODO(redesign-task-8): migrate when flag→config key lands. These raganything
+    # opt-ins live ONLY on the legacy setup wizard; `tesserae init` does not surface
+    # them (its `--yes` hard-codes raganything OFF). We drive the unchanged
+    # `_handle_setup` with the namespace those flags produced until Task 8.
+    args = cli._build_init_parser().parse_args(["--yes", "--project", str(tmp_path)])
+    cli._backfill_setup_defaults(args)
+    args.with_raganything = True
+    args.skip_raganything = False
+    args.install_raganything = True
+    args.skip_install_raganything = False
+    args.raganything_parser = "docling"
+    args.raganything_extras = "all"
+    rc = cli._handle_setup(args)
     assert rc == 0
     assert captured["include_raganything"] is True
     assert captured["install_raganything"] is True
@@ -64,11 +69,18 @@ def test_cli_with_raganything_alone_passes_none_for_install(tmp_path, monkeypatc
     monkeypatch.setattr(tess_setup, "build_plan", spying_build)
     monkeypatch.setattr(tess_setup, "apply_plan", noop_apply)
 
-    rc = cli.main([
-        "project", "setup", "--yes",
-        "--with-raganything",
-        "--project", str(tmp_path),
-    ])
+    # TODO(redesign-task-8): migrate when flag→config key lands. `--with-raganything`
+    # is a legacy setup-wizard-only flag absent from `tesserae init`; we drive the
+    # unchanged `_handle_setup` with the namespace that lone flag produced.
+    # Neither --install-raganything nor --skip-install-raganything was passed, so
+    # both install dests are off → `_handle_setup` emits None (filtered out).
+    args = cli._build_init_parser().parse_args(["--yes", "--project", str(tmp_path)])
+    cli._backfill_setup_defaults(args)
+    args.with_raganything = True
+    args.skip_raganything = False
+    args.install_raganything = False
+    args.skip_install_raganything = False
+    rc = cli._handle_setup(args)
     assert rc == 0
     # When neither --install-raganything nor --skip-install-raganything is passed,
     # CLI should not include the key (None overrides are filtered out).
@@ -113,7 +125,7 @@ def test_cli_ask_routes_raganything_when_backend_explicit(tmp_path, monkeypatch,
     monkeypatch.setattr(cli, "_raganything_refresh_main", lambda argv: 0, raising=False)
 
     rc = cli.main([
-        "project", "ask", "What does the demo say?",
+        "ask", "What does the demo say?",
         "--backend", "raganything",
         "--project", str(tmp_path),
     ])
@@ -150,7 +162,7 @@ def test_cli_ask_falls_through_when_raganything_returns_none(tmp_path, monkeypat
 
     # The wiki fallback must run; it should not crash even with minimal corpus.
     rc = cli.main([
-        "project", "ask", "anything",
+        "ask", "anything",
         "--backend", "auto",
         "--project", str(tmp_path),
     ])
@@ -170,7 +182,7 @@ def test_cli_refresh_raganything_invokes_refresh_main(monkeypatch):
         return 0
 
     monkeypatch.setattr(cli, "_raganything_refresh_main", fake_refresh_main)
-    rc = cli.main(["project", "refresh-raganything", "--parser", "mineru", "--full"])
+    rc = cli.main(["integrations", "refresh", "raganything", "--parser", "mineru", "--full"])
     assert rc == 0
     assert "--parser" in captured["argv"]
     assert "mineru" in captured["argv"]

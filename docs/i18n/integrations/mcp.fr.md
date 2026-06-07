@@ -12,8 +12,8 @@ Le serveur lit depuis `.tesserae/graph.json`, donc une compilation initiale est 
 
 ```bash
 cd /path/to/your-project
-tesserae project setup    # interactive; or --yes for non-interactive
-tesserae project compile  # deterministic, no LLM calls, no API keys
+tesserae init    # interactive; or --yes for non-interactive
+tesserae compile  # deterministic, no LLM calls, no API keys
 ```
 
 Recompilez chaque fois que vos sources changent. Le serveur prendra en compte le nouveau graphe au prochain appel d'outil, sans nécessiter de redémarrage.
@@ -21,7 +21,7 @@ Recompilez chaque fois que vos sources changent. Le serveur prendra en compte le
 ## 1) Générer la configuration client
 
 ```bash
-tesserae project mcp-config
+tesserae projects mcp-config
 ```
 
 Affiche un fragment JSON ressemblant à :

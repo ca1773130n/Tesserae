@@ -4,7 +4,7 @@
 <p align="center"><a href="../../integrations/obsidian-sync.md">English</a> · <a href="obsidian-sync.ko.md">한국어</a> · <a href="obsidian-sync.zh.md">中文</a> · <a href="obsidian-sync.ru.md">Русский</a> · <a href="obsidian-sync.es.md">Español</a> · <a href="obsidian-sync.fr.md">Français</a> · <a href="obsidian-sync.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-> **ステータス: 出荷済み (Tier 1, v0.5.0)。** 以下で説明するオーバーレイリーダー、ユーザーノート追記ゾーン、ウォッチモード、孤立ページの削除は、`tesserae project obsidian-sync` の背後で実際に動作します。本ページは設計の根拠とユーザーガイドを兼ねます。マルチヴォルト連合 (Tier 3) は依然としてスコープ外です。
+> **ステータス: 出荷済み (Tier 1, v0.5.0)。** 以下で説明するオーバーレイリーダー、ユーザーノート追記ゾーン、ウォッチモード、孤立ページの削除は、`tesserae vault sync` の背後で実際に動作します。本ページは設計の根拠とユーザーガイドを兼ねます。マルチヴォルト連合 (Tier 3) は依然としてスコープ外です。
 
 以前の [Obsidian エクスポート](obsidian.md)は厳密に一方向でした: `.tesserae/graph.json` 内の型付きグラフがヴォルトへ射影され、`project compile` が射影されたファイルを上書きします。`obsidian-sync` は逆方向を追加します — Obsidian で説明を編集すると、再コンパイル後もそれが残ります。
 
@@ -100,35 +100,35 @@ Tesserae は同期サーバー、認証レイヤー、競合解消デーモン�
 
 ## CLI 表面
 
-`tesserae project obsidian-sync` はヴォルトの編集を型付きグラフに適用し、再射影します:
+`tesserae vault sync` はヴォルトの編集を型付きグラフに適用し、再射影します:
 
 ```bash
 # オーバーレイを一度適用: ユーザー編集をプルし、ヴォルトへ再射影。
-tesserae project obsidian-sync
+tesserae vault sync
 
 # まず何が変わるかを検査。.tesserae/diverged-fields.md を書き出し、
 # 適用も再射影もしない。
-tesserae project obsidian-sync --dry-run
+tesserae vault sync --dry-run
 
 # この呼び出しで特定のヴォルトを指定（解決順:
 # --vault > config.obsidian.vault_path > .tesserae/obsidian_vault/）。
-tesserae project obsidian-sync --vault ~/Documents/tesserae-vault
+tesserae vault sync --vault ~/Documents/tesserae-vault
 
 # そのヴォルトパスを以後のコマンドの既定値にする。
-tesserae project obsidian-sync --vault ~/Documents/tesserae-vault --persist-vault
+tesserae vault sync --vault ~/Documents/tesserae-vault --persist-vault
 
 # 長時間ウォッチ: ヴォルトが変わるたびにオーバーレイを再適用。
 # Ctrl-C で停止。--poll-interval でポーリング間隔を調整（既定 1.5 秒）。
-tesserae project obsidian-sync --watch --poll-interval 1.5
+tesserae vault sync --watch --poll-interval 1.5
 
 # ソースノードがもう存在しない射影ページを削除（射影器は
 # 上書きのみで決して削除しない）。ユーザーノートを持つページは
 # --force-prune-with-notes も渡さない限り保持される。
-tesserae project obsidian-sync --prune-orphans
-tesserae project obsidian-sync --prune-orphans --force-prune-with-notes
+tesserae vault sync --prune-orphans
+tesserae vault sync --prune-orphans --force-prune-with-notes
 ```
 
-`/tesserae:obsidian-sync` スラッシュコマンドがこれをラップし、`tesserae project refresh`
+`/tesserae:obsidian-sync` スラッシュコマンドがこれをラップし、`tesserae refresh`
 （および `/tesserae:refresh` マクロ）は import → compile → sync チェーンの最終ステップとして
 オーバーレイを実行します。
 

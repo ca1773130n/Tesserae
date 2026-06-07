@@ -631,7 +631,7 @@ def render_bridges(index: Dict[str, List[str]]) -> str:
         "",
         "> Every `wiki://<alias>/<kind>/<slug>` URI mentioned across this vault, "
         "grouped by destination alias. Update the registry with "
-        "`tesserae project register-project` to make any of these resolvable.",
+        "`tesserae projects register` to make any of these resolvable.",
         "",
     ]
     if not index:

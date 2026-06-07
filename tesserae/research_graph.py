@@ -41,7 +41,7 @@ class ResearchNodeType(str, Enum):
     PERSON = "Person"
     CODE_PROJECT = "CodeProject"
     SOURCE_FILE = "SourceFile"
-    # Code-graph ingest (`tesserae project ingest-code`): mints a typed
+    # Code-graph ingest (`tesserae code ingest`): mints a typed
     # symbol graph from Python source via the stdlib `ast` module. See
     # tesserae/code_graph_extractor.py for the producer. CODE_FILE is the
     # path-level node, CODE_MODULE is its importable dotted name, and
@@ -53,7 +53,7 @@ class ResearchNodeType(str, Enum):
     CODE_FUNCTION = "CodeFunction"
     CODE_METHOD = "CodeMethod"
     DEPENDENCY = "Dependency"
-    # Option-C / CodeGraph adapter (`tesserae project sync-code`): the
+    # Option-C / CodeGraph adapter (`tesserae code sync`): the
     # colbymchenry/codegraph SQLite store carries 22 generic NodeKind
     # values across 21 languages; the additions below map the kinds
     # that don't fit the original Python-only A-feature set. See
@@ -294,7 +294,7 @@ ALLOWED_EDGE_TYPES: Set[str] = {
     # (same name across multiple files) fan out to every candidate so
     # downstream surfaces can disambiguate.
     "discusses",
-    # Option-C / CodeGraph adapter (`tesserae project sync-code`). The
+    # Option-C / CodeGraph adapter (`tesserae code sync`). The
     # adapter preserves CodeGraph's 12 EdgeKinds; ``contains``,
     # ``calls``, ``imports``, ``references`` already exist above, and
     # ``extends`` is rewritten to the existing ``inherits_from`` to

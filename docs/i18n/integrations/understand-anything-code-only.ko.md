@@ -66,8 +66,8 @@ Tesserae는 도구가 활성화되어 있을 때만 `.tesserae/external/understa
 ### 3단계 — 재컴파일 + Obsidian vault 정리
 
 ```bash
-tesserae project compile
-tesserae project obsidian-sync --prune-orphans
+tesserae compile
+tesserae vault sync --prune-orphans
 ```
 
 컴파일은 UA 병합을 건너뛰며, research graph에는 UA에서 유래한 Concept가 남지 않게 됩니다. prune 단계는 병합이 생성했던 node_id를 가리키던 Obsidian vault의 모든 고아 페이지를 삭제합니다.
@@ -107,7 +107,7 @@ UA의 code graph는 문서 헤딩 노이즈에 파묻혀 있지 않을 때라면
 | 레이어 | 관심사 | 설정 위치 |
 |---|---|---|
 | UA 자체 walker | UA가 애초에 어떤 파일을 읽을지 | UA의 설정 (Tesserae 범위 밖) |
-| UA 도구의 `auto_refresh` | `tesserae project compile`이 UA를 재실행할지 여부 | `.tesserae/config.json`의 external_tools 항목 |
+| UA 도구의 `auto_refresh` | `tesserae compile`이 UA를 재실행할지 여부 | `.tesserae/config.json`의 external_tools 항목 |
 | UA 도구의 `enabled` | Tesserae가 UA를 고려할지 여부 자체 | `.tesserae/config.json`의 external_tools 항목 |
 | UA 도구의 `sync_mode` | UA의 노드가 research graph로 병합될지 여부 | `.tesserae/config.json`의 external_tools 항목 |
 

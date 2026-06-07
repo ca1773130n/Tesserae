@@ -19,7 +19,7 @@ La colonne vertébrale du moteur qui anime les trois piliers. Voir [`docs/archit
 |---|---|---|---|
 | `Pipeline` — chaîne de rafraîchissement réutilisable renvoyant `List[StepResult]` | ✅ | [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | Un seul exécuteur d’étapes appelé par la CLI, le démon et MCP. Attrape `Exception` par étape ; s’arrête au premier échec. |
 | `Daemon` — superviseur asyncio à propriétaire unique | ✅ | [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | Surveille sources + coffre + répertoire des sessions du harness ; un debounce annuler-et-replanifier fusionne une rafale en un `Pipeline.run()`. pidfile ; survit aux exceptions en vol. |
-| `project engine` / `project daemon` | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) | `--interval`, `--debounce`, `--once`. `daemon` est un alias de `engine`. |
+| `engine` | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) | `--interval`, `--debounce`, `--once`. `daemon` est un alias de `engine`. |
 | `project refresh` — chaîne en prose (ingestion → compilation → projection) | ✅ | `cli.py` + [`tesserae/project.py`](../../tesserae/project.py) | `--changed-only` (incrémental optionnel), `--skip-sessions`. |
 | Surveillance des sessions en direct → découvertes | ✅ | `harness_sessions.py` + modules du graphe de session | Les sessions importées alimentent le graphe ; `fresh_insights` / `find_session_findings` les font remonter. |
 
@@ -151,11 +151,11 @@ Un wiki hiérarchique centré sur les documents remplace l’ancien dump de grap
 | `project compile` appelle synthesis + wiki + site dans l’ordre | ✅ | [`tesserae/project.py`](../../tesserae/project.py) | Phase 3 du plan de refonte. |
 | `project build-site` autonome | ✅ | `project.py` + [`tesserae/cli.py`](../../tesserae/cli.py) | Lit `wiki/` + `graph.json`, écrit `site/`. |
 | `project serve` HTTP local | ✅ | `cli.py` | Serveur stdlib simple. |
-| `project deploy` → GitHub Pages | ✅ | [`tesserae/deploy.py`](../../tesserae/deploy.py) | Push de worktree vers `gh-pages` ; `--enable-pages` optionnel via CLI `gh`. `--build`, `--dry-run`, `--branch`, `--remote`, `--force`. |
+| `export site --deploy` → GitHub Pages | ✅ | [`tesserae/deploy.py`](../../tesserae/deploy.py) | Push de worktree vers `gh-pages` ; `--enable-pages` optionnel via CLI `gh`. `--build`, `--dry-run`, `--branch`, `--remote`, `--force`. |
 | `project sessions discover/import/list` | ✅ | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) + `cli.py` | Historique de sessions entrant pour Claude Code/Codex ; découverte explicite et bornée au répertoire de travail du projet. |
-| `project watch` rebuild-on-change | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) + [`tesserae/watch.py`](../../tesserae/watch.py) | Watcher par polling autonome : `--interval`, `--debounce`, `--once`, `--paths`, `--quiet`. Le superviseur multi-sources vit dans `project engine`/`daemon` (voir Moteur de contexte). |
+| `export site --watch` rebuild-on-change | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) + [`tesserae/watch.py`](../../tesserae/watch.py) | Watcher par polling autonome : `--interval`, `--debounce`, `--once`, `--paths`, `--quiet`. Le superviseur multi-sources vit dans `project engine`/`daemon` (voir Moteur de contexte). |
 | `project context` — compile un document de contexte cité | ✅ | `cli.py` + [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | Phare du Pilier 3 ; voir la section Moteur de contexte. |
-| `project refresh` / `project engine` / `project daemon` | ✅ | `cli.py` + [`tesserae/engine/`](../../tesserae/engine/) | Chaîne de rafraîchissement en prose + boucle superviseur ; voir la section Moteur de contexte. |
+| `project refresh` / `engine` | ✅ | `cli.py` + [`tesserae/engine/`](../../tesserae/engine/) | Chaîne de rafraîchissement en prose + boucle superviseur ; voir la section Moteur de contexte. |
 
 ## Fonctionnalités préexistantes (conservées inchangées)
 
@@ -195,22 +195,22 @@ Un wiki hiérarchique centré sur les documents remplace l’ancien dump de grap
 
 ### Workflow local de projet
 
-- ✅ `tesserae project init`
-- ✅ `tesserae project ingest`
-- ✅ `tesserae project compile`
-- ✅ `tesserae project mcp-config`
-- ✅ `tesserae project build-site`
-- ✅ `tesserae project serve`
-- ✅ `tesserae project deploy` (GitHub Pages)
-- ✅ `tesserae project sessions discover/import/list` (import explicite d’historique d’agent local)
-- ✅ `tesserae project watch` (watcher par polling autonome)
-- ✅ `tesserae project engine` / `tesserae project daemon` (boucle superviseur — v0.5.0)
-- ✅ `tesserae project refresh` (chaîne en prose ingestion → compilation → projection — v0.5.0)
-- ✅ `tesserae project context` (compilateur de contexte à la demande — v0.5.0)
-- ✅ `tesserae project export-agent-harness`
-- ✅ `tesserae project export-obsidian`
-- ✅ `tesserae project export-graphiti`
-- ✅ `tesserae project sync-graphiti`
+- ✅ `tesserae init --bare`
+- ✅ `tesserae compile <paths>`
+- ✅ `tesserae compile`
+- ✅ `tesserae projects mcp-config`
+- ✅ `tesserae export site`
+- ✅ `tesserae serve`
+- ✅ `tesserae export site --deploy` (GitHub Pages)
+- ✅ `tesserae sessions discover/import/list` (import explicite d’historique d’agent local)
+- ✅ `tesserae export site --watch` (watcher par polling autonome)
+- ✅ `tesserae engine` (boucle superviseur — v0.5.0)
+- ✅ `tesserae refresh` (chaîne en prose ingestion → compilation → projection — v0.5.0)
+- ✅ `tesserae context` (compilateur de contexte à la demande — v0.5.0)
+- ✅ `tesserae export harness`
+- ✅ `tesserae vault export`
+- ✅ `tesserae export graphiti`
+- ✅ `tesserae export graphiti --sync`
 
 ### Obsidian
 

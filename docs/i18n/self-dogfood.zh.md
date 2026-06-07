@@ -20,7 +20,7 @@ export PATH="$HOME/.local/bin:$PATH"
 pip install 'tesserae[semantic]'
 
 # 将此仓库设置为 Tesserae 项目。
-tesserae project setup \
+tesserae init \
   --yes \
   --name tesserae_self \
   --source README.md \
@@ -35,13 +35,13 @@ tesserae project setup \
   --install-cognee
 
 # 编译已配置的源。
-tesserae project compile
+tesserae compile
 
 # 显式重建静态前端。
-tesserae project build-site
+tesserae export site
 
-# 在本地提供服务。
-tesserae project serve --port 8765
+# 在本地提供服务（如有需要会先自动构建站点）。
+tesserae serve --port 8765
 ```
 
 打开：
@@ -82,13 +82,21 @@ self-demo 会把生成的产物写入：
 
 已于 `2026-04-27 11:11:23 KST` 从 Tesserae 仓库自身验证。
 
+集成选项（Understand Anything、cognee）现在是**交互式向导提示**，而不是 CLI
+标志。下面的非交互式等效流程运行 `tesserae init --yes`（集成关闭），在
+`.tesserae/config.json` 中启用集成（向导会将它们写入 `memory_backends` 和
+`external_tools` 键下——确切的键请参阅集成文档），然后在编译前刷新每一个。
+
 ```text
 install command: ./scripts/install.sh --dir /Users/neo/Developer/Projects/Tesserae --skip-shell-config
-setup command:   tesserae project setup --yes --name tesserae_self --source README.md --source docs --source tesserae --source tests --source scripts --with-understand-anything --install-understand-anything --understand-anything-platform codex --run-cognee --install-cognee
-ingest command:  tesserae project ingest README.md docs --changed-only
-compile command: tesserae project compile
-site command:    tesserae project build-site
-serve command:   tesserae project serve --host 0.0.0.0 --port 56821
+setup command:   tesserae init --yes --name tesserae_self --source README.md --source docs --source tesserae --source tests --source scripts
+                 # 然后在 .tesserae/config.json 中启用 Understand Anything + cognee 并运行:
+                 #   tesserae integrations refresh understand-anything
+                 #   tesserae integrations refresh cognee
+ingest command:  tesserae compile README.md docs --changed-only
+compile command: tesserae compile
+site command:    tesserae export site
+serve command:   tesserae serve --host 0.0.0.0 --port 56821
 local URL:       http://127.0.0.1:56821/
 LAN URL:         http://192.168.45.130:56821/
 ```

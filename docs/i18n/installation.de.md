@@ -37,7 +37,7 @@ Das Default-Wheel ist bewusst leicht. Der Setup-Wizard kann die schwereren Compa
 
 ```bash
 # Understand Anything companion graph + RAG-Anything multimodal + Cognee runtime memory
-tesserae project setup \
+tesserae init \
   --with-understand-anything \
   --install-understand-anything \
   --understand-anything-platform codex \
@@ -59,7 +59,7 @@ pip install kuzu cognee graphiti-core
 - `cognee` — Runtime-Cognee-Add/Cognify-Workflows; Setup hinterlegt `{python} -m pip install cognee` und versucht es einmal nach, falls Cognee fehlt.
 - Understand Anything — wird über den Upstream-Installer installiert, wenn `--install-understand-anything` gewählt ist; Tesserae hinterlegt einen verwalteten Refresh-Wrapper, statt von Nutzern zu verlangen, einen Shell-Befehl zu erfinden.
 - RAG-Anything — wird über `pip install 'raganything[all]'` installiert, wenn `--install-raganything` gewählt ist; Tesserae hinterlegt einen verwalteten Refresh-Wrapper für multimodale Parser-Runs.
-- `graphiti-core` — Live-Graphiti/Neo4j-Sync. `export-graphiti` und `sync-graphiti --dry-run` funktionieren auch ohne.
+- `graphiti-core` — Live-Graphiti/Neo4j-Sync. `export graphiti` und `export graphiti --sync --dry-run` funktionieren auch ohne.
 
 Der Anthropic-gestützte Synthese-Pfad nutzt einen Extras-Marker:
 
@@ -73,7 +73,7 @@ Echte semantische Embeddings (seit v0.5.0 die Standard-Retrieval-Lane) liefert d
 pip install "tesserae[semantic]"
 ```
 
-Das installiert `model2vec` und lädt ein leichtgewichtiges, offline-fähiges, torch-freies statisches Modell herunter (rund 8 MB `potion-base-8M`, beim ersten Gebrauch einmalig geladen). Ohne dieses Extra fällt das hybride/Embedding-Retrieval auf einen nicht-semantischen Hash-Bucket-Stub zurück und gibt eine deutliche Warnung aus. Wer `project ask`, `project context` oder das MCP-Tool `compile_context` nutzt, sollte dieses Extra daher installieren.
+Das installiert `model2vec` und lädt ein leichtgewichtiges, offline-fähiges, torch-freies statisches Modell herunter (rund 8 MB `potion-base-8M`, beim ersten Gebrauch einmalig geladen). Ohne dieses Extra fällt das hybride/Embedding-Retrieval auf einen nicht-semantischen Hash-Bucket-Stub zurück und gibt eine deutliche Warnung aus. Wer `tesserae ask`, `tesserae context` oder das MCP-Tool `compile_context` nutzt, sollte dieses Extra daher installieren.
 
 Für den multimodalen RAG-Anything-Stack mit allen Parsern vorinstalliert:
 
@@ -123,7 +123,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ## Installation verifizieren
 
 ```bash
-tesserae project init --help
-tesserae project compile --help
-tesserae project build-site --help
+tesserae init --help
+tesserae compile --help
+tesserae export site --help
 ```

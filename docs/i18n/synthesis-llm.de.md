@@ -164,7 +164,7 @@ sodass die signalstärksten Contributors im Prompt landen, wenn ein Plan mehr ha
 pip install tesserae[synthesis-llm]
 export TESSERAE_SYNTHESIS_LLM=1
 export ANTHROPIC_API_KEY=sk-...
-python -m tesserae.cli project compile
+python -m tesserae.cli compile
 ```
 
 Überschreibe das Modell mit `TESSERAE_SYNTHESIS_MODEL` (Default
@@ -236,7 +236,7 @@ Unset die Env-Var (oder setze sie auf `0`) und führe erneut aus:
 
 ```sh
 unset TESSERAE_SYNTHESIS_LLM
-python -m tesserae.cli project compile
+python -m tesserae.cli compile
 ```
 
 Nachfolgende Compiles erzeugen die betroffenen Synthese-Seiten mit dem

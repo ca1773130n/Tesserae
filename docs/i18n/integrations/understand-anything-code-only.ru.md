@@ -66,8 +66,8 @@ Tesserae регенерирует `.tesserae/external/understand-anything.md` т
 ### Шаг 3 — перекомпилируйте и подрежьте Obsidian vault
 
 ```bash
-tesserae project compile
-tesserae project obsidian-sync --prune-orphans
+tesserae compile
+tesserae vault sync --prune-orphans
 ```
 
 Компиляция пропустит слияние UA, оставив research graph без Concept'ов, источником которых является UA. Шаг prune удаляет любые сиротские страницы в Obsidian vault, которые ссылались на node_id, созданные слиянием.
@@ -107,7 +107,7 @@ Code graph UA по-настоящему полезен — рёбра call/impor
 | Слой | За что отвечает | Конфигурируется через |
 |---|---|---|
 | Собственный walker UA | Какие файлы UA читает в первую очередь | Конфиг UA (вне области Tesserae) |
-| `auto_refresh` на инструменте UA | Перезапускает ли `tesserae project compile` сам UA | запись external_tools в `.tesserae/config.json` |
+| `auto_refresh` на инструменте UA | Перезапускает ли `tesserae compile` сам UA | запись external_tools в `.tesserae/config.json` |
 | `enabled` на инструменте UA | Учитывает ли Tesserae UA вообще | запись external_tools в `.tesserae/config.json` |
 | `sync_mode` на инструменте UA | Сливаются ли узлы UA в research graph | запись external_tools в `.tesserae/config.json` |
 

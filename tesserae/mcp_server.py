@@ -593,7 +593,7 @@ class LLMWikiMCPServer:
                 "description": (
                     "Ask a natural-language question and get an answer from a configured "
                     "memory backend (raganything, cognee, or compiled wiki search). Mirrors "
-                    "`tesserae project ask`. Supports cross-vault fan-out via `scope`."
+                    "`tesserae ask`. Supports cross-vault fan-out via `scope`."
                 ),
                 "inputSchema": {
                     "type": "object",
@@ -1037,7 +1037,7 @@ class LLMWikiMCPServer:
             "uriTemplate": "tesserae://lint-report",
             "name": "Active project — latest lint report",
             "description": (
-                "The markdown lint report from the most recent `tesserae project compile`. "
+                "The markdown lint report from the most recent `tesserae compile`. "
                 "Capped at 64 KB."
             ),
             "mimeType": "text/markdown",
@@ -2306,7 +2306,7 @@ class LLMWikiMCPServer:
         """Dispatch ``ask`` to raganything, cognee, or compiled-wiki search.
 
         Thin adapter around :func:`tesserae.query.ask_project` so the MCP
-        ``ask`` tool, the ``tesserae project ask`` CLI handler, and the new
+        ``ask`` tool, the ``tesserae ask`` CLI handler, and the new
         top-level ``tesserae ask`` command share one dispatcher.
         """
         from .project import ProjectWiki
@@ -2490,7 +2490,7 @@ class LLMWikiMCPServer:
             if not graph_path.is_file():
                 raise ValueError(
                     f"graph_path does not exist or is not a file: {graph_path}. "
-                    f"Compile the project first (`tesserae project compile`) or "
+                    f"Compile the project first (`tesserae compile`) or "
                     f"point at a different .tesserae/graph.json."
                 )
             return self._load_graph_cached(graph_path), _project_root_for_graph_path(graph_path)

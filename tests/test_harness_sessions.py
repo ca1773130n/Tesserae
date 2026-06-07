@@ -32,7 +32,7 @@ def sample_session(project_root):
         metadata={
             "turns": [
                 {"role": "user", "timestamp": "2026-05-05T10:00:00Z", "text": "Please ingest Claude Code and Codex sessions from tesserae/project.py for #project-memory.\n\n<command-name>/effort</command-name> <command-message>effort</command-message> <command-args></command-args>"},
-                {"role": "assistant", "timestamp": "2026-05-05T10:01:00Z", "text": "I will add **normalized** `project-memory` session pages.\n\n- Render sessions\n- Index turns\n\n```python\ndef build_session():\n    return 42\n```\n\n```sh\ntesserae project build-site --project .\n```"},
+                {"role": "assistant", "timestamp": "2026-05-05T10:01:00Z", "text": "I will add **normalized** `project-memory` session pages.\n\n- Render sessions\n- Index turns\n\n```python\ndef build_session():\n    return 42\n```\n\n```sh\ntesserae export site --project .\n```"},
                 {"role": "tool", "timestamp": "2026-05-05T10:02:00Z", "name": "Read", "text": "{\"ok\": true, \"count\": 2}"},
                 {"role": "assistant", "timestamp": "2026-05-05T10:42:00Z", "text": "Implemented session import and static pages. <status>ready</status>"},
             ]
@@ -221,8 +221,8 @@ def test_cli_project_sessions_import_filters_other_project_sessions(tmp_path, ca
     session_file = tmp_path / "sessions.json"
     session_file.write_text(json.dumps([focused.to_dict(), foreign.to_dict()]), encoding="utf-8")
 
-    assert main(["project", "sessions", "import", "--project", str(project), str(session_file)]) == 0
-    assert main(["project", "sessions", "list", "--project", str(project)]) == 0
+    assert main(["sessions", "import", "--project", str(project), str(session_file)]) == 0
+    assert main(["sessions", "list", "--project", str(project)]) == 0
 
     captured = capsys.readouterr().out
     assert "Imported harness sessions: 1" in captured

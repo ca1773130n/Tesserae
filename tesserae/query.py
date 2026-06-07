@@ -838,7 +838,7 @@ def ask_project(
 ) -> Dict[str, Any]:
     """Run a question against the configured memory backends and return a JSON-serializable envelope.
 
-    Shared by ``tesserae project ask``, the new top-level ``tesserae ask``,
+    Shared by ``tesserae ask``, the new top-level ``tesserae ask``,
     and the MCP ``ask`` tool so all three call sites stay in lockstep.
 
     Dispatch order under ``backend="auto"``:

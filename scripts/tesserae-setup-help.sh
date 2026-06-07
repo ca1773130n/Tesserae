@@ -18,7 +18,7 @@ cat <<EOF
   Run this in a real terminal instead:
 
     cd ${PWD}
-    tesserae project setup
+    tesserae init
 
   Once .tesserae/ exists in this project, every other /tesserae:* command
   works inline from your Claude Code session.

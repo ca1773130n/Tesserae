@@ -35,26 +35,26 @@ Tesserae는 그런 다음 해당 아티팩트를 나머지 프로젝트 메모�
 권장 경로는 설정 마법사입니다:
 
 ```bash
-tesserae project setup
+tesserae init
 ```
 
-동반 도구 단계에서 Understand Anything을 선택하세요. Tesserae는 요청 시 동반 skills를 설치/업데이트하고 관리형 새로고침 명령을 `.tesserae/config.json`에 기록합니다. 이후 `tesserae project compile` 호출은 UA 그래프가 없거나 오래된 경우 이 래퍼를 자동으로 실행합니다.
+동반 도구 단계에서 Understand Anything을 선택하세요. Tesserae는 요청 시 동반 skills를 설치/업데이트하고 관리형 새로고침 명령을 `.tesserae/config.json`에 기록합니다. 이후 `tesserae compile` 호출은 UA 그래프가 없거나 오래된 경우 이 래퍼를 자동으로 실행합니다.
 
 비대화형 자동화에는 다음을 사용하세요:
 
 ```bash
-tesserae project setup \
+tesserae init \
   --yes \
   --with-understand-anything \
   --install-understand-anything \
   --understand-anything-platform codex
-tesserae project compile
+tesserae compile
 ```
 
 저장된 명령은 사용자가 직접 만들어야 하는 것이 아니라 Tesserae가 소유합니다:
 
 ```bash
-tesserae project refresh-understand-anything --platform codex
+tesserae integrations refresh understand-anything --platform codex
 ```
 
 컴파일 중 Tesserae는:
@@ -68,13 +68,13 @@ tesserae project refresh-understand-anything --platform codex
 컴파일 전에 구성된 모든 외부 새로고침 명령을 강제로 실행할 수 있습니다:
 
 ```bash
-tesserae project compile --refresh-external-tools
+tesserae compile --refresh-integrations
 ```
 
 Cognee도 필요하신가요? 같은 setup 명령에 런타임 메모리 플래그를 추가하세요:
 
 ```bash
-tesserae project setup \
+tesserae init \
   --yes \
   --with-understand-anything \
   --install-understand-anything \
@@ -91,19 +91,27 @@ tesserae project setup \
 /understand
 ```
 
-그런 다음 `tesserae project setup --with-understand-anything`을 실행하여 Tesserae가 markdown 투영 소스를 기록하게 하세요. 직접 JSON 파일은 수동 입력 소스 경로가 아니라 원시 동반 아티팩트로 유지됩니다.
+그런 다음 설정 마법사를 실행하고 **프롬프트가 나오면 Understand Anything을
+활성화**하여 Tesserae가 markdown 투영 소스를 기록하게 하세요. 직접 JSON 파일은
+수동 입력 소스 경로가 아니라 원시 동반 아티팩트로 유지됩니다.
 
 ```bash
-tesserae project setup --with-understand-anything
-tesserae project compile
-tesserae project build-site
+tesserae init
+# 마법사가 물어보면 Understand Anything 활성화
+tesserae compile
+tesserae export site
 ```
+
+비대화형 자동화에서는 `tesserae init --yes`(통합 OFF)를 실행하고,
+`.tesserae/config.json`에서 Understand Anything을 활성화한 뒤(마법사는 통합을
+`external_tools` 키 아래에 씁니다) 컴파일하기 전에 `tesserae integrations refresh
+understand-anything`을 실행하세요.
 
 로컬 에이전트 세션 메모리도 원한다면:
 
 ```bash
-tesserae project sessions discover --import
-tesserae project build-site
+tesserae sessions discover --import
+tesserae export site
 ```
 
 ## 네이티브 그래프 동기화

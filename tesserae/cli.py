@@ -61,9 +61,9 @@ def load_review_decisions(path: Path) -> List[ReviewDecision]:
 
 
 def _project_query_handler(args) -> int:
-    """Handle ``project query`` (one-shot or interactive REPL).
+    """Handle the ``query`` command (one-shot or interactive REPL).
 
-    Lives outside ``project_main`` so the parser-vs-handler block ordering can
+    A standalone handler so the parser-vs-handler block ordering can
     stay in lockstep without inflating the dispatch ladder. Tolerant of
     missing arguments: an interactive session falls back to the REPL when
     ``question`` is empty, and one-shot prints a friendly error when the
@@ -296,8 +296,8 @@ def _top_level_ask_handler(args) -> int:
         if not entry:
             print(
                 f"No registered project named '{args.wiki}'. "
-                f"Run `tesserae wiki list` to see available names, or "
-                f"`tesserae wiki register <path> --name {args.wiki}` to register one.",
+                f"Run `tesserae projects list` to see available names, or "
+                f"`tesserae projects register <path> --name {args.wiki}` to register one.",
                 file=sys.stderr,
             )
             return 2
@@ -315,7 +315,7 @@ def _top_level_ask_handler(args) -> int:
             print(
                 "No project specified and no active project in the registry. "
                 "Use `tesserae ask --wiki <name>`, `tesserae ask --project <path>`, "
-                "or `tesserae wiki activate <name>`.",
+                "or `tesserae projects activate <name>`.",
                 file=sys.stderr,
             )
             return 2
@@ -338,7 +338,7 @@ def _top_level_ask_handler(args) -> int:
     except FileNotFoundError:
         print(
             f"No Tesserae project at {project_root} (resolved from {source}). "
-            f"Did you run `tesserae project setup` there?",
+            f"Did you run `tesserae init` there?",
             file=sys.stderr,
         )
         return 2
@@ -381,7 +381,7 @@ def _top_level_ask_scope_all_registered(args) -> int:
     all_projects: List[dict] = list(data.get("projects") or [])
     if not all_projects:
         print(
-            "No projects registered. Use `tesserae wiki register <path> --name <alias>` first.",
+            "No projects registered. Use `tesserae projects register <path> --name <alias>` first.",
             file=sys.stderr,
         )
         return 2
@@ -394,7 +394,7 @@ def _top_level_ask_scope_all_registered(args) -> int:
         if missing:
             print(
                 f"Unknown scope alias(es): {sorted(missing)}. "
-                f"Use `tesserae wiki list` to see registered projects.",
+                f"Use `tesserae projects list` to see registered projects.",
                 file=sys.stderr,
             )
             return 2
@@ -474,7 +474,7 @@ def _wiki_command_handler(args) -> int:
         active = data.get("active")
         projects = data.get("projects") or []
         if not projects:
-            print("No projects registered. Use `tesserae wiki register <path> --name <alias>`.")
+            print("No projects registered. Use `tesserae projects register <path> --name <alias>`.")
             return 0
         print(f"Active: {active or '(none)'}")
         for entry in projects:
@@ -551,7 +551,7 @@ def _wiki_command_handler(args) -> int:
         )
 
     print(
-        "Usage: tesserae wiki {list|register|activate|unregister|obsidian-set-root|obsidian-sync-all}",
+        "Usage: tesserae projects {list|register|activate|unregister|obsidian-set-root|obsidian-sync-all}",
         file=sys.stderr,
     )
     return 2
@@ -584,12 +584,12 @@ def _wiki_obsidian_sync_all(
 
     projects = list(registry.iter_registered_projects())
     if not projects:
-        print("No registered projects. Use `tesserae wiki register <path>` first.", file=sys.stderr)
+        print("No registered projects. Use `tesserae projects register <path>` first.", file=sys.stderr)
         return 2
 
     vault_root = registry.get_vault_root()
     if vault_root is None:
-        print("error: no registry vault root. Run `tesserae wiki obsidian-set-root <PATH>` first.", file=sys.stderr)
+        print("error: no registry vault root. Run `tesserae vault set-root <PATH>` first.", file=sys.stderr)
         return 2
 
     if prune_orphans:
@@ -677,9 +677,15 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
             "--project, --wiki, or the registry's active project. Dispatches through the same "
             "backend selector as `project ask` (raganything -> cognee -> wiki)."
         ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae ask \"what did we decide about the compiler?\"\n"
+            "  tesserae ask \"summarize the graph schema\" --scope all-registered\n"
+        ),
     )
     parser.add_argument("question", help="Natural-language question text.")
-    parser.add_argument("--wiki", help="Registered project name (see `tesserae wiki list`).")
+    parser.add_argument("--wiki", help="Registered project name (see `tesserae projects list`).")
     parser.add_argument("--project", help="Project root path (overrides --wiki).")
     parser.add_argument(
         "--backend",
@@ -726,531 +732,109 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _build_top_level_wiki_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="tesserae wiki",
-        description="Manage the persistent Tesserae project registry used by `ask` and the MCP server.",
-    )
-    subparsers = parser.add_subparsers(dest="wiki_command", required=True)
+def _add_llm_client_args(parser: argparse.ArgumentParser, persisted: bool = False) -> None:
+    """Attach the synthesis-LLM backend flags (claude | codex).
 
-    wiki_list = subparsers.add_parser("list", help="List registered projects and show the active one.")
-    wiki_list.add_argument(
-        "--json",
-        dest="wiki_list_json",
-        action="store_true",
-        help="Emit the registry payload as JSON.",
-    )
-
-    wiki_register = subparsers.add_parser(
-        "register",
-        help="Register a project root in the persistent registry.",
-    )
-    wiki_register.add_argument("path", help="Path to the project root containing .tesserae/.")
-    wiki_register.add_argument("--name", help="Friendly name (defaults to the sanitized directory name).")
-    wiki_register.add_argument(
-        "--activate",
-        action="store_true",
-        help="Also set the new entry as the active project.",
-    )
-
-    wiki_activate = subparsers.add_parser("activate", help="Set a registered project as the active one.")
-    wiki_activate.add_argument("name")
-
-    wiki_unregister = subparsers.add_parser("unregister", help="Remove a project from the registry.")
-    wiki_unregister.add_argument("name")
-
-    wiki_set_root = subparsers.add_parser(
-        "obsidian-set-root",
-        help="Set the registry-wide Obsidian vault root. Each registered project then projects into <root>/<alias>/.",
-    )
-    wiki_set_root.add_argument("path", nargs="?", help="Absolute path; omit and pass --clear to unset.")
-    wiki_set_root.add_argument("--clear", action="store_true", help="Remove the configured vault root.")
-
-    wiki_watch_all = subparsers.add_parser(
-        "obsidian-sync-all",
-        help="Run an obsidian-sync --watch loop for every registered project (one thread per project).",
-    )
-    wiki_watch_all.add_argument(
-        "--poll-interval", type=float, default=1.5,
-        help="Per-watcher poll interval in seconds (default: 1.5).",
-    )
-    wiki_watch_all.add_argument(
-        "--prune-orphans",
-        action="store_true",
-        help="Prune stale projected pages in every project's vault before starting watchers.",
-    )
-    wiki_watch_all.add_argument(
-        "--force-prune-with-notes",
-        action="store_true",
-        help="With --prune-orphans, also delete orphans with user-notes content.",
-    )
-    wiki_watch_all.add_argument(
-        "--no-watch",
-        action="store_true",
-        help="Run prune-only (requires --prune-orphans); skip the watch phase.",
-    )
-    return parser
-
-
-def project_main(argv: List[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Manage a per-project .tesserae workspace.")
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    init_parser = subparsers.add_parser("init", help="Initialize .tesserae in a project directory")
-    init_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    init_parser.add_argument("--name", help="MCP server/config name; defaults to sanitized project directory name")
-    init_parser.add_argument("--source-kind", default="SourceDocument", help="Default source kind for project ingest")
-    init_parser.add_argument("--source", action="append", default=[], help="Default project-relative source path for project compile; repeat for multiple paths")
-
-    setup_parser = subparsers.add_parser("setup", help="Open the colored setup wizard for sources and companion tools")
-    setup_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    setup_parser.add_argument("--name", help="MCP server/config name; defaults to sanitized project directory name")
-    setup_parser.add_argument("--source-kind", default="Repository", help="Default source kind for project compile")
-    setup_parser.add_argument("--source", action="append", default=[], help="Project-relative source path; repeat for multiple paths")
-    setup_parser.add_argument("--with-understand-anything", action="store_true", help="Include .understand-anything/knowledge-graph.json as a companion source")
-    setup_parser.add_argument("--run-understand-anything", action="store_true", help="Run the configured Understand Anything refresh command now and mark it for compile-time auto-refresh")
-    setup_parser.add_argument("--understand-anything-command", help="Shell command that refreshes .understand-anything/knowledge-graph.json")
-    setup_parser.add_argument("--install-understand-anything", action="store_true", help="Install/update Understand Anything during setup when selected")
-    setup_parser.add_argument("--skip-install-understand-anything", action="store_true", help="Do not auto-install Understand Anything even when selected")
-    setup_parser.add_argument("--understand-anything-platform", default="codex", help="Understand Anything installer platform id (default: codex)")
-    setup_parser.add_argument("--with-raganything", action="store_true", help="Enable RAG-Anything multimodal ingestion + memory backend")
-    setup_parser.add_argument("--skip-raganything", action="store_true", help="Disable RAG-Anything even if previously configured")
-    setup_parser.add_argument("--install-raganything", action="store_true", help="Auto-install raganything during setup")
-    setup_parser.add_argument("--skip-install-raganything", action="store_true", help="Do not auto-install raganything")
-    setup_parser.add_argument("--raganything-parser", choices=["mineru", "docling", "paddleocr"], default="mineru", help="Parser backend for RAG-Anything (default: mineru)")
-    setup_parser.add_argument("--raganything-extras", default="all", help="pip extras to use when installing raganything (default: all)")
-    setup_parser.add_argument("--run-raganything", action="store_true", help="Auto-refresh RAG-Anything on every compile")
-    setup_parser.add_argument(
-        "--raganything-llm-provider",
-        choices=["codex", "claude"],
-        default="codex",
-        help="LLM provider for raganything runtime queries (default: codex; uses OAuth CLI, no API key)",
-    )
-    setup_parser.add_argument(
-        "--raganything-llm-model",
+    On ``init`` (``persisted=True``) the values are written into the project
+    ``config.json`` (``llm_provider`` / ``llm_claude_config_dirs`` /
+    ``llm_codex_home``). On ``compile`` they are per-run overrides surfaced
+    as env vars (``TESSERAE_LLM_PROVIDER`` / ``CLAUDE_CONFIG_DIR`` /
+    ``CODEX_HOME``) so every internal client build and extractor sees them.
+    """
+    suffix = " (persisted into config.json)" if persisted else " (this run only; overrides config.json)"
+    parser.add_argument(
+        "--llm-provider",
+        choices=["claude", "codex"],
         default=None,
-        help="LLM model name (default: gpt-5.4 for codex; leave unset for claude default)",
+        help="CLI backend for the synthesis/insights LLM client" + suffix,
     )
-    setup_parser.add_argument(
-        "--raganything-claude-config-dir",
-        default=None,
-        help="CLAUDE_CONFIG_DIR for raganything when provider=claude (supports multi-account setups like ~/.claude-personal2)",
-    )
-    setup_parser.add_argument(
-        "--raganything-embedding",
-        choices=["deterministic", "ollama"],
-        default="deterministic",
-        help="Embedding provider for raganything (default: deterministic, no external deps)",
-    )
-    setup_parser.add_argument(
-        "--raganything-embedding-dim",
-        type=int,
-        default=768,
-        help="Embedding dimensionality (default: 768)",
-    )
-    setup_parser.add_argument("--no-cognee", action="store_true", help="Do not enable Cognee as the default project memory backend")
-    setup_parser.add_argument("--install-cognee", action="store_true", help="Install Cognee during setup and allow compile to auto-install if missing")
-    setup_parser.add_argument("--skip-install-cognee", action="store_true", help="Do not auto-install Cognee even when --run-cognee is selected")
-    setup_parser.add_argument("--cognee-mode", choices=["add", "cognify", "codex_cognify"], default="codex_cognify", help="Cognee mode saved in project config (default: codex_cognify)")
-    setup_parser.add_argument("--run-cognee", action="store_true", help="Auto-add/cognify Cognee on every project compile using the saved safe config")
-    setup_parser.add_argument("--yes", action="store_true", help="Accept detected defaults without interactive prompts")
-    setup_parser.add_argument("--no-color", action="store_true", help="Disable ANSI colors in setup output")
-
-    ingest_parser = subparsers.add_parser("ingest", help="Ingest markdown files into the project graph artifacts")
-    ingest_parser.add_argument("inputs", nargs="+", help="Project-relative or absolute markdown files/directories")
-    ingest_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    ingest_parser.add_argument("--source-kind", help="Override configured source kind")
-    ingest_parser.add_argument("--changed-only", action="store_true", help="Skip unchanged files using .tesserae/manifest.json")
-    ingest_parser.add_argument("--limit", type=int, help="Maximum number of changed files to process")
-    ingest_parser.add_argument("--trends", action="store_true", help="Add corpus-level Trend nodes")
-    ingest_parser.add_argument("--min-trend-sources", type=int, default=2, help="Minimum sources needed for Trend nodes")
-
-    ingest_code_parser = subparsers.add_parser(
-        "ingest-code",
-        help="Mint a typed code graph from Python source via the stdlib ast module",
-    )
-    ingest_code_parser.add_argument(
-        "paths",
-        nargs="*",
-        help="Project-relative or absolute paths to walk; defaults to the project root",
-    )
-    ingest_code_parser.add_argument(
-        "--project",
-        default=".",
-        help="Project root directory; defaults to current working directory",
-    )
-    ingest_code_parser.add_argument(
-        "--output",
-        help="Override output path; defaults to <project>/.tesserae/code-graph.json",
-    )
-    ingest_code_parser.add_argument(
-        "--exclude",
+    parser.add_argument(
+        "--claude-config-dir",
         action="append",
         default=[],
-        help="Additional directory basename to skip (repeatable). Adds to the built-in exclude set",
+        help="Claude CLI config directory (e.g. ~/.claude-personal2); repeat for fallback accounts" + suffix,
     )
-
-    # Option-C / CodeGraph adapter. Separate subcommand (not a flag on
-    # ingest-code) because the producer is fundamentally different —
-    # we delegate extraction to colbymchenry/codegraph's 21-language
-    # tree-sitter pipeline and only translate its SQLite store here.
-    sync_code_parser = subparsers.add_parser(
-        "sync-code",
-        help="Translate a colbymchenry/codegraph SQLite store into .tesserae/code-graph.json",
-    )
-    sync_code_parser.add_argument(
-        "--project",
-        default=".",
-        help="Project root directory; defaults to current working directory",
-    )
-    sync_code_parser.add_argument(
-        "--db",
-        help="Path to the CodeGraph SQLite database; defaults to <project>/.codegraph/codegraph.db",
-    )
-    sync_code_parser.add_argument(
-        "--output",
-        help="Override output path; defaults to <project>/.tesserae/code-graph.json",
-    )
-    sync_code_parser.add_argument(
-        "--auto-sync",
-        action="store_true",
-        help="Run `codegraph sync <project>` first if the binary is on PATH; skip silently otherwise",
-    )
-
-    compile_parser = subparsers.add_parser("compile", help="Compile configured project sources into all .tesserae artifacts")
-    compile_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    compile_parser.add_argument("--source-kind", help="Override configured source kind")
-    compile_parser.add_argument("--changed-only", action="store_true", help="Skip unchanged files using .tesserae/manifest.json")
-    compile_parser.add_argument("--limit", type=int, help="Maximum number of changed files to process")
-    compile_parser.add_argument("--trends", action="store_true", help="Add corpus-level Trend nodes")
-    compile_parser.add_argument("--min-trend-sources", type=int, default=2, help="Minimum sources needed for Trend nodes")
-    compile_parser.add_argument("--include-data", action="store_true", help="Documentation flag: project_root/data is auto-included by default; this flag is a no-op kept for clarity")
-    compile_parser.add_argument("--exclude-data", action="store_true", help="Skip the implicit project_root/data auto-include even if data/ exists")
-    compile_parser.add_argument(
-        "--no-vault-pull",
-        action="store_true",
-        help=(
-            "Skip the Obsidian vault overlay step. By default, when a vault and a prior "
-            "vault_snapshot.json both exist, compile reads user edits out of the vault "
-            "and applies them on top of the typed graph. Pass this to bypass — useful "
-            "for recovery, or when you intentionally want the source markdown to win."
-        ),
-    )
-    compile_parser.add_argument("--refresh-external-tools", action="store_true", help="Run configured external tool refresh commands before compile, even if they are not marked auto_refresh")
-    compile_parser.add_argument(
-        "--use-extraction-feedback",
-        action="store_true",
-        help=(
-            "Inject distilled human-correction guidance (from .tesserae/extraction-guidance.md, "
-            "produced by `tesserae evolve`) into the LLM extractor prompts. Collection of "
-            "feedback events is always on; only this injection is gated by the flag."
-        ),
-    )
-    # --- Session graph extractor (Phase 3 wires only the structural pass; LLM in Phase 5) ----
-    session_group = compile_parser.add_mutually_exclusive_group()
-    session_group.add_argument("--sessions", dest="sessions_enabled", action="store_true", default=None, help="Force session graph extraction on (default if .tesserae/harness_sessions/ exists)")
-    session_group.add_argument("--no-sessions", dest="sessions_enabled", action="store_false", default=None, help="Skip session graph extraction entirely")
-    compile_parser.add_argument("--sessions-llm", choices=["auto", "true", "false"], default=None, help="LLM extraction mode (default 'auto' — runs when an LLM backend is configured). Honored once Phase 5 lands.")
-    compile_parser.add_argument("--sessions-model", default=None, help="Override the LLM model used for session extraction (Phase 5)")
-    # --- Cognee cognify pass (opt-in, runs after the bundle is written) ----
-    compile_parser.add_argument("--cognee-add", action="store_true", help="After compile, add the Cognee bundle to the Cognee dataset (no cognify)")
-    compile_parser.add_argument("--cognee-cognify", action="store_true", help="After compile, add the bundle and run Cognee cognify (uses configured LLM/embedding providers)")
-    compile_parser.add_argument("--cognee-codex-cognify", action="store_true", help="After compile, run Cognee cognify with Cognee's LLM client patched to Codex CLI/OAuth")
-    compile_parser.add_argument("--cognee-codex-model", default="gpt-5.4", help="Codex CLI model for --cognee-codex-cognify")
-    compile_parser.add_argument("--cognee-codex-timeout", type=int, default=300, help="Timeout per Codex CLI structured call")
-    compile_parser.add_argument("--cognee-local-embedding-dimensions", type=int, default=128, help="Embedding dimensions for --cognee-codex-cognify; qwen3-embedding:0.6b uses 1024")
-    compile_parser.add_argument("--cognee-embedding-provider", choices=["deterministic", "ollama"], default="deterministic", help="Embedding provider for cognify")
-    compile_parser.add_argument("--cognee-ollama-embedding-model", default="qwen3-embedding:0.6b", help="Ollama embedding model when --cognee-embedding-provider=ollama")
-    compile_parser.add_argument("--cognee-ollama-embedding-endpoint", default="http://127.0.0.1:11434/api/embed", help="Ollama /api/embed endpoint for Cognee embeddings")
-    compile_parser.add_argument("--cognee-ollama-embedding-timeout", type=int, default=120, help="Ollama embedding request timeout in seconds")
-    compile_parser.add_argument("--cognee-dataset", default="tesserae_research_graph", help="Cognee dataset name")
-    compile_parser.add_argument("--cognee-system-root", help="Optional isolated Cognee system root directory")
-    compile_parser.add_argument("--cognee-data-root", help="Optional isolated Cognee data root directory")
-
-    schema_drift_parser = subparsers.add_parser(
-        "schema-drift",
-        help="EDC-style pass that proposes ResearchNodeType sub-types from clustered host-type nodes.",
-    )
-    schema_drift_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    schema_drift_parser.add_argument(
-        "--host-type",
-        action="append",
-        default=[],
-        help=(
-            "ResearchNodeType to analyze (enum value, e.g. 'SourceDocument'). "
-            "Repeat to analyze multiple. Default: SourceDocument."
-        ),
-    )
-    schema_drift_parser.add_argument("--min-volume", type=int, default=10, help="Skip host types with fewer than this many members (default: 10)")
-    schema_drift_parser.add_argument("--top-k", type=int, default=5, help="Take only the top-K clusters per host type (default: 5)")
-    schema_drift_parser.add_argument("--min-cluster-size", type=int, default=5, help="Drop clusters smaller than this size (default: 5)")
-    schema_drift_parser.add_argument("--jaccard-threshold", type=float, default=0.34, help="Jaccard similarity threshold for clustering (default: 0.34)")
-
-    evolve_parser = subparsers.add_parser(
-        "evolve",
-        help="Distill collected human-correction feedback into .tesserae/extraction-guidance.md.",
-    )
-    evolve_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-
-    research_parser = subparsers.add_parser(
-        "research",
-        help="Agentic research loop (dzhng-style): plan → search → reflect → synthesize. Mints OpenQuestion / SessionHypothesis nodes against the compiled graph.",
-    )
-    research_parser.add_argument("query", help="Research query to investigate")
-    research_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    research_parser.add_argument("--breadth", type=int, default=3, help="Sub-questions per level (default: 3)")
-    research_parser.add_argument("--depth", type=int, default=2, help="Maximum follow-up depth beyond the root (default: 2)")
-    research_parser.add_argument("--max-iters", type=int, default=6, help="Hard cap on (search + reflect) iterations (default: 6)")
-    research_parser.add_argument("--top-k", type=int, default=5, help="Top-K graph evidence nodes per sub-question (default: 5)")
-    research_parser.add_argument("--output", help="Report output path; defaults to .tesserae/research/<slug>.md")
-    research_parser.add_argument("--no-web", action="store_true", help="Disable web search even if a backend is configured (v1 default — web stays off)")
-
-    ua_refresh_parser = subparsers.add_parser("refresh-understand-anything", help="Run Tesserae's managed Understand Anything refresh")
-    ua_refresh_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    ua_refresh_parser.add_argument("--platform", default="codex", help="Agent platform to use: codex, opencode, or claude")
-    ua_refresh_parser.add_argument("--full", action="store_true", help="Force /understand --full")
-    ua_refresh_parser.add_argument("--force", action="store_true", help="Run even if the existing graph appears current")
-    ua_refresh_parser.add_argument("--timeout", type=int, help="Optional timeout in seconds")
-
-    obsidian_sync_parser = subparsers.add_parser(
-        "obsidian-sync",
-        help="Apply vault edits onto the typed graph and re-project. Pass --watch for live mode.",
-    )
-    obsidian_sync_parser.add_argument("--project", default=".", help="Project root; defaults to cwd")
-    obsidian_sync_parser.add_argument(
-        "--watch",
-        action="store_true",
-        help=(
-            "Run a long-lived poll loop that re-applies the overlay every time "
-            "the vault changes. Press Ctrl-C to stop."
-        ),
-    )
-    obsidian_sync_parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help=(
-            "Compute the overlay diff and write .tesserae/diverged-fields.md, "
-            "but DON'T apply changes to the graph or re-project. Useful for "
-            "previewing what a compile would do."
-        ),
-    )
-    obsidian_sync_parser.add_argument(
-        "--poll-interval",
-        type=float,
-        default=1.5,
-        help="Watch-mode poll interval in seconds (default: 1.5).",
-    )
-    obsidian_sync_parser.add_argument(
-        "--vault",
-        type=str,
+    parser.add_argument(
+        "--codex-home",
         default=None,
-        help=(
-            "Override the configured Obsidian vault directory for this call. "
-            "Resolution order at runtime is --vault > config.obsidian.vault_path > "
-            ".tesserae/obsidian_vault/. Use `project setup --obsidian-vault PATH` "
-            "to make the override persistent."
-        ),
-    )
-    obsidian_sync_parser.add_argument(
-        "--persist-vault",
-        action="store_true",
-        help=(
-            "When passed with --vault, writes the path to .tesserae/config.json under "
-            "obsidian.vault_path so future commands (`project compile`, "
-            "`project obsidian-sync` without --vault) use it automatically."
-        ),
-    )
-    obsidian_sync_parser.add_argument(
-        "--prune-orphans",
-        action="store_true",
-        help=(
-            "Delete projected pages in the vault whose node_id no longer exists "
-            "in the current graph. Useful after the source set shrinks "
-            "(exclusions, deleted directories) — the projector only overwrites, "
-            "never deletes. Files with user-notes content are kept by default; "
-            "pass --force-prune-with-notes to delete those too."
-        ),
-    )
-    obsidian_sync_parser.add_argument(
-        "--force-prune-with-notes",
-        action="store_true",
-        help="With --prune-orphans, also delete orphan pages that have user-notes content.",
+        help="Codex CLI home directory (CODEX_HOME, e.g. ~/.codex-personal1)" + suffix,
     )
 
-    refresh_raga_parser = subparsers.add_parser(
-        "refresh-raganything",
-        help="Run the managed RAG-Anything refresh wrapper",
-    )
-    refresh_raga_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    refresh_raga_parser.add_argument("--parser", default="mineru", choices=["mineru", "docling", "paddleocr"])
-    refresh_raga_parser.add_argument("--parse-method", default="auto", choices=["auto", "ocr", "txt"])
-    refresh_raga_parser.add_argument("--root", action="append", dest="roots", help="Restrict to this root (repeatable)")
-    refresh_raga_parser.add_argument("--force", action="store_true")
-    refresh_raga_parser.add_argument("--full", action="store_true")
 
-    lint_parser = subparsers.add_parser(
-        "lint",
-        help="Lint the compiled wiki: orphan papers, stale citations, drift, ghost synthesis inputs, and more.",
-    )
-    lint_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    lint_parser.add_argument(
-        "--fix-trivial",
-        action="store_true",
-        help="Apply safe auto-fixes (add missing implemented_in edges; prune ghost synthesis inputs)",
-    )
-    lint_parser.add_argument(
-        "--severity",
-        choices=["info", "warning", "error"],
-        default="warning",
-        help="Severity floor for the exit code (default: warning). Findings below the floor are still reported.",
-    )
-    lint_parser.add_argument(
-        "--json",
-        dest="lint_json",
-        action="store_true",
-        help="Print the JSON report to stdout instead of the markdown summary.",
-    )
+def _apply_llm_cli_env(args: argparse.Namespace) -> None:
+    """Surface per-run LLM backend flags as env vars.
 
-    query_parser = subparsers.add_parser(
-        "query",
-        help="Search the compiled wiki and (optionally) ask the LLM for a synthesized answer with citations.",
-    )
-    query_parser.add_argument("question", nargs="?", default=None, help="Question text; omit to use --interactive")
-    query_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    query_parser.add_argument("--top-k", type=int, default=8, help="Maximum number of search hits to return / feed to the LLM (default: 8)")
-    query_parser.add_argument("--kind", help="Restrict hits to a single wiki kind (e.g. papers, concepts, repos)")
-    query_parser.add_argument("--llm", action="store_true", help="Force the LLM path on, even if TESSERAE_QUERY_LLM is unset")
-    query_parser.add_argument("--no-llm", action="store_true", help="Force the LLM path off, even if TESSERAE_QUERY_LLM=1")
-    query_parser.add_argument("--model", default="claude-sonnet-4-6", help="Anthropic model id for --llm (default: claude-sonnet-4-6)")
-    query_parser.add_argument("--json", dest="json_output", action="store_true", help="Print the structured QueryResult as JSON")
-    query_parser.add_argument("--interactive", action="store_true", help="Drop into a REPL with readline history; blank line or EOF exits")
+    Env is the one channel every consumer already honors — the
+    ``build_default_json_client`` factory, both CLI clients, and the
+    extractor subprocesses — so flags set here win over project config
+    (see ``resolve_llm_client_settings`` precedence).
+    """
+    import os
 
-    ask_parser = subparsers.add_parser("ask", help="Ask the configured project memory backend; uses RAG-Anything or Cognee when enabled")
-    ask_parser.add_argument("question", help="Question text")
-    ask_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    ask_parser.add_argument("--backend", choices=["auto", "raganything", "cognee", "wiki"], default="auto", help="Question backend (default: auto; tries RAG-Anything, then Cognee, then wiki query)")
-    ask_parser.add_argument("--top-k", type=int, default=8, help="Maximum results/context items")
-    ask_parser.add_argument("--cognee-search-type", default="INSIGHTS", help="Cognee SearchType name, e.g. INSIGHTS, CHUNKS, SUMMARIES, GRAPH_COMPLETION")
-    ask_parser.add_argument("--cognee-dataset", help="Override configured Cognee dataset")
-    ask_parser.add_argument("--json", dest="json_output", action="store_true", help="Print backend/result JSON")
+    if getattr(args, "llm_provider", None):
+        os.environ["TESSERAE_LLM_PROVIDER"] = args.llm_provider
+    claude_dirs = getattr(args, "claude_config_dir", None) or []
+    if claude_dirs:
+        os.environ["CLAUDE_CONFIG_DIR"] = claude_dirs[0]
+    if getattr(args, "codex_home", None):
+        os.environ["CODEX_HOME"] = args.codex_home
 
-    mcp_parser = subparsers.add_parser("mcp-config", help="Print a Hermes mcp_servers config snippet for this project")
-    mcp_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    mcp_parser.add_argument("--server-name", help="MCP server name in Hermes config")
-    mcp_parser.add_argument("--pythonpath", help="PYTHONPATH pointing at the Tesserae checkout")
 
-    export_graphiti_parser = subparsers.add_parser("export-graphiti", help="Export project graph as dependency-free Graphiti episode JSONL")
-    export_graphiti_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    export_graphiti_parser.add_argument("--group-id", help="Graphiti group_id; defaults to project wiki name")
-    export_graphiti_parser.add_argument("--output", help="Episode JSONL output path; defaults to .tesserae/graphiti_episodes.jsonl")
+def _handle_llm_defaults(args: argparse.Namespace) -> int:
+    import json as _json
 
-    sync_graphiti_parser = subparsers.add_parser("sync-graphiti", help="Sync project graph episodes into Graphiti/Neo4j")
-    sync_graphiti_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    sync_graphiti_parser.add_argument("--group-id", help="Graphiti group_id; defaults to project wiki name")
-    sync_graphiti_parser.add_argument("--neo4j-uri", default="bolt://localhost:7687", help="Neo4j URI for Graphiti")
-    sync_graphiti_parser.add_argument("--neo4j-user", default="neo4j", help="Neo4j username")
-    sync_graphiti_parser.add_argument("--neo4j-password", default="password", help="Neo4j password")
-    sync_graphiti_parser.add_argument("--dry-run", action="store_true", help="Count episodes without requiring Graphiti or Neo4j")
+    import tesserae.llm_json as _lj
 
-    harness_parser = subparsers.add_parser("export-agent-harness", help="Export context/config harnesses for coding agents")
-    harness_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    harness_parser.add_argument("--target", action="append", default=[], help="Agent target to export; repeat for multiple targets. Defaults to all supported targets")
-    harness_parser.add_argument("--output", help="Harness output directory; defaults to .tesserae/agent_harness")
-
-    obsidian_parser = subparsers.add_parser("export-obsidian", help="Export the compiled graph as an Obsidian vault")
-    obsidian_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    obsidian_parser.add_argument("--vault", help="Vault output directory; defaults to .tesserae/obsidian_vault")
-
-    sessions_parser = subparsers.add_parser("sessions", help="Manage inbound agent harness session history")
-    sessions_sub = sessions_parser.add_subparsers(dest="sessions_command", required=True)
-    sessions_import = sessions_sub.add_parser("import", help="Import normalized HarnessSession JSON files")
-    sessions_import.add_argument("paths", nargs="+", help="JSON files containing one session object or a list of sessions")
-    sessions_import.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    sessions_discover = sessions_sub.add_parser("discover", help="Discover local Claude Code/Codex sessions scoped to this project")
-    sessions_discover.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    sessions_discover.add_argument("--root", action="append", default=[], help="Harness config root to scan; repeat for multiple roots. Defaults to auto-detected Claude/Codex config roots under HOME")
-    sessions_discover.add_argument("--harness", action="append", default=[], choices=["claude-code", "codex"], help="Harness to scan; repeat for multiple harnesses. Defaults to both")
-    sessions_discover.add_argument("--import", dest="import_sessions", action="store_true", help="Import discovered normalized sessions into .tesserae/harness_sessions")
-    sessions_list = sessions_sub.add_parser("list", help="List normalized harness sessions for this project")
-    sessions_list.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-
-    site_parser = subparsers.add_parser("build-site", help="Build the static frontend site for this project wiki")
-    site_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    site_parser.add_argument("--output", help="Site output directory; defaults to .tesserae/site")
-
-    deploy_parser = subparsers.add_parser(
-        "deploy",
-        help="Deploy the compiled site to the GitHub Pages branch of the project's git origin. Optionally rebuilds first and turns Pages on via the gh CLI.",
-    )
-    deploy_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    deploy_parser.add_argument("--branch", default="gh-pages", help="Branch to push the site to (default: gh-pages)")
-    deploy_parser.add_argument("--remote", default="origin", help="Git remote to push to (default: origin)")
-    deploy_parser.add_argument("--message", help="Commit message for the deploy commit")
-    deploy_parser.add_argument("--dry-run", action="store_true", help="Stage and commit but skip the final git push")
-    deploy_parser.add_argument("--build", action="store_true", help="Run project compile before deploying so the site is fresh")
-    deploy_parser.add_argument("--enable-pages", action="store_true", help="Enable GitHub Pages on the repo via the gh CLI (idempotent)")
-    deploy_parser.add_argument("--force", action="store_true", help="Allow deploying even when the project working tree is dirty")
-    deploy_parser.add_argument("--force-push", action="store_true", help="Use git push --force; refused for protected branches")
-
-    serve_parser = subparsers.add_parser("serve", help="Serve the static frontend site")
-    serve_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    serve_parser.add_argument("--host", default="127.0.0.1", help="Host to bind")
-    serve_parser.add_argument("--port", type=int, default=8765, help="Port to bind")
-    serve_parser.add_argument("--dry-run", action="store_true", help="Print the site URL without starting a server")
-
-    watch_parser = subparsers.add_parser(
-        "watch",
-        help="Auto-recompile when files change. Pairs with python3 -m http.server in another terminal.",
-    )
-    watch_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    watch_parser.add_argument("--interval", type=float, default=2.0, help="Polling interval in seconds (default: 2)")
-    watch_parser.add_argument("--debounce", type=float, default=1.0, help="Quiet window after a burst of edits before rebuilding (default: 1.0)")
-    watch_parser.add_argument("--once", action="store_true", help="Snapshot once, rebuild only if anything changed since the last run, exit")
-    watch_parser.add_argument("--paths", action="append", default=[], help="Additional directory to watch; repeat for multiple paths")
-    watch_parser.add_argument("--quiet", action="store_true", help="Suppress the banner and per-cycle progress output")
-
-    engine_parser = subparsers.add_parser(
-        "engine",
-        aliases=["daemon"],
-        help="Run the supervised refresh daemon: watch sources, coalesce bursts, auto-recompile.",
-    )
-    engine_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    engine_parser.add_argument("--interval", type=float, default=2.0, help="Polling interval in seconds (default: 2)")
-    engine_parser.add_argument("--debounce", type=float, default=1.0, help="Quiet window after a burst of edits before rebuilding (default: 1.0)")
-    engine_parser.add_argument("--once", action="store_true", help="Run a single drain cycle then exit (deterministic; no long-running loop)")
-
-    refresh_parser = subparsers.add_parser(
-        "refresh",
-        help="Import new sessions, compile, sync vault (in-process pipeline).",
-    )
-    refresh_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    refresh_parser.add_argument("--changed-only", action="store_true", default=False, help="Opt-in incremental compile (skip unchanged files); default is a full compile")
-    refresh_parser.add_argument("--skip-sessions", action="store_true", default=False, help="Opt-in skip of the slow harness-session discovery scan")
-
-    context_parser = subparsers.add_parser(
-        "context",
-        help="Compile a cited context doc for a query",
-    )
-    context_parser.add_argument("query", nargs="?", default="", help="Query text to seed the context doc")
-    context_parser.add_argument("--seeds", nargs="*", help="Explicit seed node IDs")
-    context_parser.add_argument("--depth", type=int, default=2, help="PPR expansion depth (default: 2)")
-    context_parser.add_argument("--budget", type=int, default=32_000, help="Character budget for the doc body (default: 32000; <=0 = uncapped)")
-    context_parser.add_argument("--synthesize", action="store_true", help="Add an LLM-synthesized summary (requires an LLM backend)")
-    context_parser.add_argument("--output", "-o", help="Write the doc to a file instead of stdout")
-    context_parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-
-    args = parser.parse_args(argv)
-    handler = _COMMANDS.get(args.command)
-    if handler is None:
-        raise ValueError(f"Unknown project command: {args.command}")
-    return handler(args)
+    path = _lj.GLOBAL_CONFIG_PATH
+    existing = _lj._load_global_llm_config()
+    if args.show:
+        effective = {
+            "llm_provider": existing.get("llm_provider"),
+            "llm_claude_config_dirs": existing.get("llm_claude_config_dirs"),
+            "llm_codex_home": existing.get("llm_codex_home"),
+        }
+        print(f"Machine-wide LLM defaults ({path}):")
+        print(_json.dumps(effective, ensure_ascii=False, indent=2))
+        return 0
+    if not (args.llm_provider or args.claude_config_dir or args.codex_home):
+        print(
+            "Nothing to set — pass --llm-provider/--claude-config-dir/--codex-home, or --show.",
+            file=sys.stderr,
+        )
+        return 2
+    # Merge-preserving write: only the passed keys change, unrelated keys
+    # (and unset llm keys) survive.
+    merged = dict(existing)
+    if args.llm_provider:
+        merged["llm_provider"] = args.llm_provider
+    if args.claude_config_dir:
+        merged["llm_claude_config_dirs"] = list(args.claude_config_dir)
+    if args.codex_home:
+        merged["llm_codex_home"] = args.codex_home
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(_json.dumps(merged, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    print(f"Saved machine-wide LLM defaults to {path}:")
+    for key in ("llm_provider", "llm_claude_config_dirs", "llm_codex_home"):
+        if key in merged:
+            print(f"  {key}: {merged[key]}")
+    return 0
 
 
 def _handle_init(args: argparse.Namespace) -> int:
-    wiki = ProjectWiki.init(args.project, name=args.name, source_kind=args.source_kind, sources=args.source)
+    wiki = ProjectWiki.init(
+        args.project,
+        name=args.name,
+        source_kind=args.source_kind,
+        sources=args.source,
+        llm_provider=args.llm_provider,
+        llm_claude_config_dirs=args.claude_config_dir or None,
+        llm_codex_home=args.codex_home,
+    )
     print(f"Initialized project wiki: {wiki.root}")
     print(f"Graph: {wiki.paths.graph}")
-    print("Next: python3 -m tesserae.cli project ingest <paths>")
+    print("Next: python3 -m tesserae compile <paths>")
     return 0
 
 
@@ -1336,7 +920,7 @@ def _handle_setup(args: argparse.Namespace) -> int:
         if result.warnings:
             for w in result.warnings:
                 print(f"warning: {w}", file=sys.stderr)
-        print("Next: tesserae project compile && tesserae project build-site")
+        print("Next: tesserae compile && tesserae export site")
         return 0
 
 
@@ -1400,7 +984,7 @@ def _handle_sync_code(args: argparse.Namespace) -> int:
                 f"CodeGraph database not found at {db_path}.\n"
                 "Install CodeGraph and initialize it in this project:\n"
                 f"  npx @colbymchenry/codegraph init -i {project_root}\n"
-                "Then re-run `tesserae project sync-code` (optionally with --auto-sync).",
+                "Then re-run `tesserae code sync` (optionally with --auto-sync).",
                 file=sys.stderr,
             )
             return 2
@@ -1415,11 +999,16 @@ def _handle_sync_code(args: argparse.Namespace) -> int:
         return 0
 
 
-def _handle_compile(args: argparse.Namespace) -> int:
+def _handle_compile_legacy(args: argparse.Namespace) -> int:
     if True:
+        _apply_llm_cli_env(args)
         wiki = ProjectWiki.load(args.project)
+        # Dieted (non-everyday) compile knobs live under config.json's
+        # `compile_options` block now; each removed flag's old argparse
+        # default is the fallback (see docs spec "Flag diet").
+        opts = wiki._compile_options()
         try:
-            refreshed = refresh_configured_external_tools(args.project, only_auto=not args.refresh_external_tools, fail_fast=False)
+            refreshed = refresh_configured_external_tools(args.project, only_auto=not args.refresh_integrations, fail_fast=False)
         except Exception as exc:
             print(f"External tool refresh failed: {exc}", file=sys.stderr)
             return 2
@@ -1433,34 +1022,40 @@ def _handle_compile(args: argparse.Namespace) -> int:
                     print(f"  - {failure.get('id')}: {failure.get('command')} exited {failure.get('returncode')}{tail}")
             else:
                 print(f"Refreshed external tools: {len(refreshed)}")
-        explicit_cognee = args.cognee_codex_cognify or args.cognee_cognify or args.cognee_add
+        cognee_codex_cognify = bool(opts.get("cognee_codex_cognify", False))
+        cognee_cognify = bool(opts.get("cognee_cognify", False))
+        cognee_add = bool(opts.get("cognee_add", False))
+        explicit_cognee = cognee_codex_cognify or cognee_cognify or cognee_add
         cognify_mode = (
-            "codex_cognify" if args.cognee_codex_cognify
-            else "cognify" if args.cognee_cognify
-            else "add" if args.cognee_add
+            "codex_cognify" if cognee_codex_cognify
+            else "cognify" if cognee_cognify
+            else "add" if cognee_add
             else "off"
         )
         cognify_options = CognifyOptions(
             mode=cognify_mode,
-            dataset=args.cognee_dataset,
-            codex_model=args.cognee_codex_model,
-            codex_timeout=args.cognee_codex_timeout,
-            embedding_provider=args.cognee_embedding_provider,
-            ollama_embedding_model=args.cognee_ollama_embedding_model,
-            ollama_embedding_endpoint=args.cognee_ollama_embedding_endpoint,
-            ollama_embedding_timeout=args.cognee_ollama_embedding_timeout,
-            local_embedding_dimensions=args.cognee_local_embedding_dimensions,
-            system_root=args.cognee_system_root,
-            data_root=args.cognee_data_root,
+            dataset=opts.get("cognee_dataset", "tesserae_research_graph"),
+            codex_model=opts.get("cognee_codex_model", "gpt-5.4"),
+            codex_timeout=int(opts.get("cognee_codex_timeout", 300)),
+            embedding_provider=opts.get("cognee_embedding_provider", "deterministic"),
+            ollama_embedding_model=opts.get("cognee_ollama_embedding_model", "qwen3-embedding:0.6b"),
+            ollama_embedding_endpoint=opts.get("cognee_ollama_embedding_endpoint", "http://127.0.0.1:11434/api/embed"),
+            ollama_embedding_timeout=int(opts.get("cognee_ollama_embedding_timeout", 120)),
+            local_embedding_dimensions=int(opts.get("cognee_local_embedding_dimensions", 128)),
+            system_root=opts.get("cognee_system_root", None),
+            data_root=opts.get("cognee_data_root", None),
         ) if explicit_cognee else cognify_options_from_config(wiki.config())
-        # Build a SessionExtractionOptions override when any --sessions* CLI
-        # flag was passed. None means "no override — read from config", which
-        # is what _merge_session_graph does by default.
+        # Build a SessionExtractionOptions override when a --sessions/--no-sessions
+        # CLI flag was passed OR a sessions_* compile_option is configured. None
+        # means "no override — read from config", which is what
+        # _merge_session_graph does by default.
+        sessions_llm = opts.get("sessions_llm", None)
+        sessions_model = opts.get("sessions_model", None)
         session_override = None
         if (
             args.sessions_enabled is not None
-            or args.sessions_llm is not None
-            or args.sessions_model is not None
+            or sessions_llm is not None
+            or sessions_model is not None
         ):
             cfg_sessions = wiki.config().get("sessions") if wiki.paths.config.exists() else {}
             base = cfg_sessions if isinstance(cfg_sessions, dict) else {}
@@ -1471,30 +1066,30 @@ def _handle_compile(args: argparse.Namespace) -> int:
                     else bool(base.get("enabled", True))
                 ),
                 llm_enabled=(
-                    args.sessions_llm
-                    if args.sessions_llm is not None
+                    sessions_llm
+                    if sessions_llm is not None
                     else str(base.get("llm_enabled", "auto")).lower()
                 ),
                 max_turns_per_chunk=int(base.get("max_turns_per_chunk", 30)),
                 max_tokens_per_call=int(base.get("max_tokens_per_call", 30000)),
                 model=(
-                    args.sessions_model
-                    if args.sessions_model is not None
+                    sessions_model
+                    if sessions_model is not None
                     else (base.get("model") or None)
                 ),
                 include_doc_id_context=int(base.get("include_doc_id_context", 200)),
             )
         result = wiki.compile(
-            source_kind=args.source_kind,
+            source_kind=opts.get("source_kind", None),
             changed_only=args.changed_only,
             limit=args.limit,
-            trends=args.trends,
-            min_trend_sources=args.min_trend_sources,
-            exclude_data=args.exclude_data,
+            trends=bool(opts.get("trends", False)),
+            min_trend_sources=int(opts.get("min_trend_sources", 2)),
+            exclude_data=bool(opts.get("exclude_data", False)),
             cognify=cognify_options if (cognify_options and cognify_options.is_active) else None,
-            vault_pull=not args.no_vault_pull,
+            vault_pull=not bool(opts.get("no_vault_pull", False)),
             session_options=session_override,
-            use_extraction_feedback=bool(getattr(args, "use_extraction_feedback", False)),
+            use_extraction_feedback=bool(opts.get("use_extraction_feedback", False)),
         )
         print(
             "Compiled project wiki: "
@@ -1509,7 +1104,7 @@ def _handle_schema_drift(args: argparse.Namespace) -> int:
     if True:
         wiki = ProjectWiki.load(args.project)
         if not wiki.paths.graph.exists():
-            print("error: no compiled graph yet — run `project compile` first.", file=sys.stderr)
+            print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
             return 2
         from .research_graph import ResearchNodeType as _ResearchNodeType
         from .schema_drift import analyze_schema_drift
@@ -1572,7 +1167,7 @@ def _handle_research(args: argparse.Namespace) -> int:
 
         wiki = ProjectWiki.load(args.project)
         if not wiki.paths.graph.exists():
-            print("error: no compiled graph yet — run `project compile` first.", file=sys.stderr)
+            print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
             return 2
         llm = build_default_json_client()
         if llm is None:
@@ -1688,7 +1283,7 @@ def _handle_obsidian_sync(args: argparse.Namespace) -> int:
             )
             from .vault_snapshot import read_snapshot
             if not wiki.paths.graph.is_file():
-                print("error: no compiled graph yet — run `project compile` first.", file=sys.stderr)
+                print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
                 return 2
             graph = _load_graph_file(wiki.paths.graph)
             snap = read_snapshot(wiki.paths.vault_snapshot)
@@ -1839,7 +1434,7 @@ def _handle_context(args: argparse.Namespace) -> int:
 
     wiki = ProjectWiki.load(args.project)
     if not wiki.paths.graph.exists():
-        print("error: no compiled graph yet — run `project compile` first.", file=sys.stderr)
+        print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
         return 2
     graph = _load_graph_file(wiki.paths.graph)
     bundle = compile_context(
@@ -1997,7 +1592,7 @@ def _handle_deploy(args: argparse.Namespace) -> int:
         return 0
 
 
-def _handle_serve(args: argparse.Namespace) -> int:
+def _handle_serve_legacy(args: argparse.Namespace) -> int:
     if True:
         wiki = ProjectWiki.load(args.project)
         url = f"http://{args.host}:{args.port}/"
@@ -2060,53 +1655,999 @@ def _handle_engine(args: argparse.Namespace) -> int:
     return daemon.run(once=args.once)
 
 
-_COMMANDS: Dict[str, Callable[[argparse.Namespace], int]] = {
-    "init": _handle_init,
-    "setup": _handle_setup,
-    "ingest": _handle_ingest,
-    "ingest-code": _handle_ingest_code,
-    "sync-code": _handle_sync_code,
-    "compile": _handle_compile,
-    "schema-drift": _handle_schema_drift,
-    "evolve": _handle_evolve,
-    "research": _handle_research,
-    "refresh-understand-anything": _handle_refresh_understand_anything,
-    "obsidian-sync": _handle_obsidian_sync,
-    "refresh-raganything": _handle_refresh_raganything,
-    "lint": _handle_lint,
-    "query": _handle_query,
-    "context": _handle_context,
-    "ask": _handle_ask,
-    "mcp-config": _handle_mcp_config,
-    "export-graphiti": _handle_export_graphiti,
-    "sync-graphiti": _handle_sync_graphiti,
-    "export-agent-harness": _handle_export_agent_harness,
-    "export-obsidian": _handle_export_obsidian,
-    "sessions": _handle_sessions,
-    "build-site": _handle_build_site,
-    "deploy": _handle_deploy,
-    "serve": _handle_serve,
-    "watch": _handle_watch,
-    "refresh": _handle_refresh,
-    "engine": _handle_engine,
-    "daemon": _handle_engine,  # alias
-}
-
-
 def main(argv: List[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
-    if argv and argv[0] == "project":
-        return project_main(argv[1:])
-    if argv and argv[0] == "ask":
-        ask_parser = _build_top_level_ask_parser()
-        ask_args = ask_parser.parse_args(argv[1:])
-        return _top_level_ask_handler(ask_args)
-    if argv and argv[0] == "wiki":
-        wiki_parser = _build_top_level_wiki_parser()
-        wiki_args = wiki_parser.parse_args(argv[1:])
-        return _wiki_command_handler(wiki_args)
-    parser = argparse.ArgumentParser(description="Extract a typed research intelligence graph from Tesserae notes.")
+    from .cli_tree import KNOWN_COMMANDS, moved_replacement, render_root_help
+
+    if not argv or argv[0] in ("--help", "-h", "help"):
+        print(render_root_help(), end="")
+        if argv and argv[0] in ("--help", "-h"):
+            raise SystemExit(0)
+        return 0
+    moved = moved_replacement(argv)
+    if moved is not None:
+        old_prefix, hint = moved
+        print(f"tesserae {old_prefix} has moved → {hint}", file=sys.stderr)
+        return 2
+    if argv[0] not in KNOWN_COMMANDS:
+        from .cli_tree import looks_like_extraction_path
+
+        if looks_like_extraction_path(argv[0]):
+            print(
+                "bare extraction has moved → tesserae extract <paths>",
+                file=sys.stderr,
+            )
+            return 2
+        print(
+            f"tesserae: unknown command {argv[0]!r} — see `tesserae --help`",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        return _dispatch_command(argv[0], argv[1:])
+    except NotImplementedError:
+        print(
+            f"tesserae {argv[0]}: not wired up yet on this branch — coming in a later redesign task.",
+            file=sys.stderr,
+        )
+        return 2
+
+
+# ---------------------------------------------------------------------------
+# Flat-verb tree (redesign task 3): standalone parser builders + routers.
+#
+# Each builder returns a fresh argparse.ArgumentParser carrying the flags the
+# now-removed legacy `project <cmd>` subparser used to expose (copied here when
+# the old surface was retired in task 7).
+# ---------------------------------------------------------------------------
+
+
+def _build_compile_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae compile",
+        description="Rebuild the knowledge graph (compile [paths] = ad-hoc ingest).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae compile\n"
+            "  tesserae compile --changed-only\n"
+            "  tesserae compile notes/idea.md\n"
+        ),
+    )
+    parser.add_argument(
+        "paths",
+        nargs="*",
+        help="Ad-hoc markdown paths to ingest into the graph (replaces `project ingest`)",
+    )
+    _add_llm_client_args(parser)
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--changed-only", action="store_true", help="Skip unchanged files using .tesserae/manifest.json")
+    parser.add_argument("--limit", type=int, help="Maximum number of changed files to process")
+    parser.add_argument(
+        "--refresh-integrations",
+        dest="refresh_integrations",
+        action="store_true",
+        help="Run configured integration refresh commands before compile, even if they are not marked auto_refresh",
+    )
+    session_group = parser.add_mutually_exclusive_group()
+    session_group.add_argument("--sessions", dest="sessions_enabled", action="store_true", default=None, help="Force session graph extraction on (default if .tesserae/harness_sessions/ exists)")
+    session_group.add_argument("--no-sessions", dest="sessions_enabled", action="store_false", default=None, help="Skip session graph extraction entirely")
+    # Every other former compile flag is now a `compile_options.<dest>` key
+    # in config.json (read in _handle_compile_legacy via wiki._compile_options()).
+    # See docs spec "Flag diet" — the old --help text is the key's doc.
+    return parser
+
+
+def _build_context_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae context",
+        description="Compile a cited context doc for a query.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae context \"how does compile work?\"\n"
+            "  tesserae context \"how does compile work?\" --budget 4000 --synthesize\n"
+        ),
+    )
+    parser.add_argument("query", nargs="?", default="", help="Query text to seed the context doc")
+    parser.add_argument("--seeds", nargs="*", help="Explicit seed node IDs")
+    parser.add_argument("--depth", type=int, default=2, help="PPR expansion depth (default: 2)")
+    parser.add_argument("--budget", type=int, default=32_000, help="Character budget for the doc body (default: 32000; <=0 = uncapped)")
+    parser.add_argument("--synthesize", action="store_true", help="Add an LLM-synthesized summary (requires an LLM backend)")
+    parser.add_argument("--output", "-o", help="Write the doc to a file instead of stdout")
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    return parser
+
+
+def _build_serve_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae serve",
+        description="Browse the compiled site (auto-builds if missing/stale).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae serve\n"
+            "  tesserae serve --port 8765 --no-build\n"
+        ),
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--host", default="127.0.0.1", help="Host to bind")
+    parser.add_argument("--port", type=int, default=8765, help="Port to bind")
+    parser.add_argument("--dry-run", action="store_true", help="Print the site URL without starting a server")
+    parser.add_argument("--no-build", action="store_true", help="Skip the auto-build step even if the site is missing or stale")
+    return parser
+
+
+def _build_engine_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae engine",
+        description="Run the supervised refresh daemon: watch sources, coalesce bursts, auto-recompile.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae engine --once\n"
+            "  tesserae engine --interval 30\n"
+        ),
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--interval", type=float, default=2.0, help="Polling interval in seconds (default: 2)")
+    parser.add_argument("--debounce", type=float, default=1.0, help="Quiet window after a burst of edits before rebuilding (default: 1.0)")
+    parser.add_argument("--once", action="store_true", help="Run a single drain cycle then exit (deterministic; no long-running loop)")
+    return parser
+
+
+def _build_refresh_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae refresh",
+        description="Import new sessions, compile, sync vault (in-process pipeline).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae refresh\n"
+            "  tesserae refresh --changed-only --skip-sessions\n"
+        ),
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--changed-only", action="store_true", default=False, help="Opt-in incremental compile (skip unchanged files); default is a full compile")
+    parser.add_argument("--skip-sessions", action="store_true", default=False, help="Opt-in skip of the slow harness-session discovery scan")
+    return parser
+
+
+def _build_status_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae status",
+        description="Node/edge counts, last compile, vault state.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae status\n"
+            "  tesserae status --project ../other-repo\n"
+        ),
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    return parser
+
+
+def _handle_status(args: argparse.Namespace) -> int:
+    try:
+        wiki = ProjectWiki.load(args.project)
+    except FileNotFoundError:
+        print(
+            "tesserae status: project not initialized — run `tesserae init` first.",
+            file=sys.stderr,
+        )
+        return 2
+    graph = None
+    if wiki.paths.graph.exists():
+        try:
+            graph = _load_graph_file(wiki.paths.graph)
+        except (json.JSONDecodeError, OSError, KeyError, ValueError):
+            graph = None  # corrupt/unreadable graph.json — report below, don't crash
+    else:
+        graph = ResearchGraph()
+    import datetime as _dt
+    compiled = (
+        _dt.datetime.fromtimestamp(wiki.paths.graph.stat().st_mtime).isoformat(timespec="seconds")
+        if wiki.paths.graph.exists() else "never"
+    )
+    print(f"project:       {wiki.project_root}")
+    if graph is None:
+        print("nodes:         corrupt graph.json")
+        print("edges:         corrupt graph.json")
+    else:
+        print(f"nodes:         {len(graph.nodes)}")
+        print(f"edges:         {len(graph.edges)}")
+    print(f"last compile:  {compiled}")
+    print(f"vault:         {wiki.effective_obsidian_vault()}")
+    print(f"site:          {wiki.paths.site}")
+    return 0
+
+
+def _handle_compile_paths_ingest(args: argparse.Namespace) -> int:
+    """Ad-hoc ingest of explicit paths (INGEST-ONLY).
+
+    Reuses the legacy ``ingest`` handler logic for the given paths and RETURNS —
+    it does NOT run a full ``wiki.compile()`` of configured sources afterward
+    (that would overwrite the ad-hoc graph). Backfills the attrs the legacy
+    ingest handler reads with the old ingest parser's defaults.
+    """
+    args.inputs = list(args.paths)
+    # After the Task 8 flag diet the compile parser no longer defines these
+    # (they moved to compile_options); the ad-hoc ingest path keeps the old
+    # `project ingest` argparse defaults rather than reading compile_options.
+    if not hasattr(args, "source_kind"):
+        args.source_kind = None
+    if not hasattr(args, "changed_only"):
+        args.changed_only = False
+    if not hasattr(args, "limit"):
+        args.limit = None
+    if not hasattr(args, "trends"):
+        args.trends = False
+    if not hasattr(args, "min_trend_sources"):
+        args.min_trend_sources = 2
+    return _handle_ingest(args)
+
+
+def _handle_compile(args: argparse.Namespace) -> int:
+    """New-tree compile wrapper. With explicit paths → ad-hoc ingest-only;
+    otherwise → the full legacy compile via ``_handle_compile_legacy``."""
+    if getattr(args, "paths", None):
+        return _handle_compile_paths_ingest(args)
+    return _handle_compile_legacy(args)
+
+
+def _serve_build_site(args: argparse.Namespace) -> int:
+    """Invoke the legacy build-site handler with a backfilled namespace."""
+    build_args = argparse.Namespace(project=args.project, output=None)
+    return _handle_build_site(build_args)
+
+
+def _handle_serve(args: argparse.Namespace) -> int:
+    """New-tree serve wrapper: auto-build the site when missing/stale, then
+    delegate to the legacy serve handler (``_handle_serve_legacy``).
+    """
+    try:
+        wiki = ProjectWiki.load(args.project)
+    except FileNotFoundError:
+        print(
+            "tesserae serve: project not initialized — run `tesserae init` first.",
+            file=sys.stderr,
+        )
+        return 2
+    if not getattr(args, "no_build", False):
+        index = wiki.paths.site / "index.html"
+        reason = None
+        if not index.exists():
+            reason = "missing"
+        # graph.json missing -> no graph -> nothing to rebuild from; serve whatever site exists.
+        elif wiki.paths.graph.exists() and wiki.paths.graph.stat().st_mtime > index.stat().st_mtime:
+            reason = "stale"
+        if reason is not None:
+            print(f"building site first ({reason}) …")
+            rc = _serve_build_site(args)
+            if rc != 0:
+                return rc
+    return _handle_serve_legacy(args)
+
+
+def _route_compile(rest: List[str]) -> int:
+    args = _build_compile_parser().parse_args(rest)
+    return _handle_compile(args)
+
+
+def _route_context(rest: List[str]) -> int:
+    args = _build_context_parser().parse_args(rest)
+    return _handle_context(args)
+
+
+def _route_serve(rest: List[str]) -> int:
+    args = _build_serve_parser().parse_args(rest)
+    return _handle_serve(args)
+
+
+def _route_status(rest: List[str]) -> int:
+    args = _build_status_parser().parse_args(rest)
+    return _handle_status(args)
+
+
+def _route_engine(rest: List[str]) -> int:
+    args = _build_engine_parser().parse_args(rest)
+    return _handle_engine(args)
+
+
+def _route_refresh(rest: List[str]) -> int:
+    args = _build_refresh_parser().parse_args(rest)
+    return _handle_refresh(args)
+
+
+def _route_ask(rest: List[str]) -> int:
+    ask_parser = _build_top_level_ask_parser()
+    return _top_level_ask_handler(ask_parser.parse_args(rest))
+
+
+def _build_init_parser() -> argparse.ArgumentParser:
+    """The dieted `tesserae init` parser: EXACTLY 8 flags.
+
+    `tesserae init` runs the setup wizard by default; `--yes` accepts detected
+    defaults non-interactively; `--bare` skips the wizard entirely and writes a
+    minimal workspace (the old `project init`). The ~21 other legacy `setup`
+    flags (``--source-kind`` and the integration toggles) become wizard prompts
+    and/or documented config.json keys — they are NOT surfaced here. The legacy
+    `project init` / `init` parsers keep their own full flag sets.
+    """
+    parser = argparse.ArgumentParser(
+        prog="tesserae init",
+        description="Set up .tesserae (wizard by default; --yes non-interactive; --bare skips the wizard).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae init --yes --source .\n"
+            "  tesserae init --bare --name myproj\n"
+            "  tesserae init --llm-provider codex\n"
+        ),
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--name", help="MCP server/config name; defaults to sanitized project directory name")
+    parser.add_argument("--source", action="append", default=[], help="Project-relative source path; repeat for multiple paths")
+    parser.add_argument("--yes", action="store_true", help="Accept detected defaults non-interactively (all optional integrations OFF)")
+    parser.add_argument("--bare", action="store_true", help="Skip the wizard; write a minimal workspace (the old `project init`)")
+    _add_llm_client_args(parser, persisted=True)
+    return parser
+
+
+# keep in sync with _handle_setup's args.* reads
+def _backfill_setup_defaults(args: argparse.Namespace) -> None:
+    """Fill the namespace with every attr the legacy `_handle_setup` reads.
+
+    `_handle_init_v2` delegates to the unchanged `_handle_setup`, whose ``--yes``
+    branch reads ~21 attrs that the dieted init parser no longer defines. We
+    ``setdefault`` each one with the legacy `setup_parser` default, EXCEPT the
+    integration toggles, which take the NEW ``--yes`` defaults: every optional
+    integration (cognee, raganything, understand-anything) lands OFF. Color is
+    auto-disabled when stdout is not a TTY.
+    """
+    d = args.__dict__
+    # Legacy setup defaults (verbatim from the `setup_parser.add_argument` calls).
+    d.setdefault("source_kind", "Repository")
+    d.setdefault("understand_anything_command", None)
+    d.setdefault("understand_anything_platform", "codex")
+    d.setdefault("raganything_parser", "mineru")
+    d.setdefault("raganything_extras", "all")
+    d.setdefault("cognee_mode", "codex_cognify")
+    # --yes default: cognee OFF (this is exactly what CI's `--no-cognee` encoded).
+    d.setdefault("no_cognee", True)
+    # --yes default: raganything OFF (CI's `--skip-raganything`; never `--with-raganything`).
+    d.setdefault("with_raganything", False)
+    d.setdefault("skip_raganything", True)
+    # --yes default: understand-anything OFF (never `--with-understand-anything`).
+    d.setdefault("with_understand_anything", False)
+    # --yes default: no companion-tool installs/runs (CI's `--skip-install-*`,
+    # never `--install-*`/`--run-*`). These keep the wizard from shelling out.
+    d.setdefault("install_understand_anything", False)
+    d.setdefault("skip_install_understand_anything", True)
+    d.setdefault("run_understand_anything", False)
+    d.setdefault("install_raganything", False)
+    d.setdefault("skip_install_raganything", True)
+    d.setdefault("install_cognee", False)
+    d.setdefault("skip_install_cognee", True)
+    d.setdefault("run_cognee", False)
+    # --yes default: color auto-disabled when stdout is not an interactive TTY.
+    d.setdefault("no_color", not sys.stdout.isatty())
+
+
+def _backfill_bare_init_defaults(args: argparse.Namespace) -> None:
+    """Fill the namespace with attrs the legacy `_handle_init` reads.
+
+    `_handle_init` reads ``args.source_kind`` (and ``args.source`` /
+    ``args.name`` / the LLM attrs, which the dieted init parser already
+    supplies). Only ``source_kind`` is missing from the diet — backfill it with
+    the legacy `project init` default.
+    """
+    args.__dict__.setdefault("source_kind", "SourceDocument")
+
+
+def _handle_init_v2(args: argparse.Namespace) -> int:
+    """Dispatch wrapper for the dieted `tesserae init`.
+
+    `--bare` → the legacy `project init` workspace writer. Otherwise the legacy
+    `init` wizard (which honors ``--yes``). Both legacy handlers are
+    unchanged; we only backfill the namespace they expect. The module-level
+    names ``_handle_init`` / ``_handle_setup`` are resolved at call time so
+    ``monkeypatch.setattr(cli, "_handle_setup", …)`` is honored.
+    """
+    if args.bare:
+        _backfill_bare_init_defaults(args)
+        return _handle_init(args)
+    _backfill_setup_defaults(args)
+    return _handle_setup(args)
+
+
+def _route_init(rest: List[str]) -> int:
+    args = _build_init_parser().parse_args(rest)
+    return _handle_init_v2(args)
+
+
+# ---------------------------------------------------------------------------
+# Redesign task 5: group builders + remaining standalone verbs.
+#
+# Each group builder owns a REQUIRED sub-subparser; `_route_<group>` parses
+# then dispatches to module-level handler names (resolved at CALL time so
+# `monkeypatch.setattr(cli, "_handle_…", …)` is honored). Wrappers that route
+# a NEW command to an OLD handler backfill EVERY attribute the old handler
+# reads, using the defaults the now-removed legacy parser used to supply.
+# ---------------------------------------------------------------------------
+
+
+# ----- sessions -------------------------------------------------------------
+def _handle_sessions_import(args: argparse.Namespace) -> int:
+    args.sessions_command = "import"
+    return _handle_sessions(args)
+
+
+def _handle_sessions_discover(args: argparse.Namespace) -> int:
+    args.sessions_command = "discover"
+    return _handle_sessions(args)
+
+
+def _handle_sessions_list(args: argparse.Namespace) -> int:
+    args.sessions_command = "list"
+    return _handle_sessions(args)
+
+
+def _build_sessions_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae sessions",
+        description="Manage inbound agent harness session history.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae sessions import path/to/session.json\n"
+            "  tesserae sessions discover --harness codex --import\n"
+            "  tesserae sessions list\n"
+        ),
+    )
+    sub = parser.add_subparsers(dest="sessions_command", required=True)
+    p_import = sub.add_parser(
+        "import",
+        help="Import normalized HarnessSession JSON files",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae sessions import path/to/session.json\n"
+            "  tesserae sessions import a.json b.json\n"
+        ),
+    )
+    # DEVIATION from the legacy `nargs="+"`: the new tree uses `nargs="*"` so
+    # `tesserae sessions import` (no paths) parses to an empty-import no-op
+    # instead of an argparse usage error. `_handle_sessions`' import branch
+    # iterates an empty list cleanly (writes 0 sessions, exits 0). This is
+    # what the Task-5 `test_group_dispatch` contract requires.
+    p_import.add_argument("paths", nargs="*", default=[], help="JSON files containing one session object or a list of sessions")
+    p_import.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_import.set_defaults(_handler="_handle_sessions_import")
+    p_discover = sub.add_parser("discover", help="Discover local Claude Code/Codex sessions scoped to this project")
+    p_discover.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_discover.add_argument("--root", action="append", default=[], help="Harness config root to scan; repeat for multiple roots. Defaults to auto-detected Claude/Codex config roots under HOME")
+    p_discover.add_argument("--harness", action="append", default=[], choices=["claude-code", "codex"], help="Harness to scan; repeat for multiple harnesses. Defaults to both")
+    p_discover.add_argument("--import", dest="import_sessions", action="store_true", help="Import discovered normalized sessions into .tesserae/harness_sessions")
+    p_discover.set_defaults(_handler="_handle_sessions_discover")
+    p_list = sub.add_parser("list", help="List normalized harness sessions for this project")
+    p_list.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_list.set_defaults(_handler="_handle_sessions_list")
+    return parser
+
+
+def _route_sessions(rest: List[str]) -> int:
+    args = _build_sessions_parser().parse_args(rest)
+    return _resolve_handler(args._handler)(args)
+
+
+# ----- vault ----------------------------------------------------------------
+def _handle_vault_sync(args: argparse.Namespace) -> int:
+    """`vault sync` = old `obsidian-sync`."""
+    return _handle_obsidian_sync(args)
+
+
+def _handle_vault_prune(args: argparse.Namespace) -> int:
+    """`vault prune` = `obsidian-sync --prune-orphans` preset."""
+    args.prune_orphans = True
+    return _handle_obsidian_sync(args)
+
+
+def _handle_vault_export(args: argparse.Namespace) -> int:
+    """`vault export` = old `export-obsidian`."""
+    return _handle_export_obsidian(args)
+
+
+def _handle_vault_set_root(args: argparse.Namespace) -> int:
+    """`vault set-root` = old `wiki obsidian-set-root` (delegates via namespace)."""
+    args.wiki_command = "obsidian-set-root"
+    return _wiki_command_handler(args)
+
+
+def _handle_vault_sync_all(args: argparse.Namespace) -> int:
+    """`vault sync-all` = old `wiki obsidian-sync-all` (delegates via namespace)."""
+    args.wiki_command = "obsidian-sync-all"
+    return _wiki_command_handler(args)
+
+
+def _build_vault_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae vault",
+        description="Obsidian vault projection: sync | sync-all | set-root | export | prune.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae vault sync\n"
+            "  tesserae vault sync --dry-run\n"
+            "  tesserae vault sync --watch\n"
+        ),
+    )
+    sub = parser.add_subparsers(dest="vault_command", required=True)
+
+    def _add_obsidian_sync_args(p: argparse.ArgumentParser) -> None:
+        # verbatim from the legacy obsidian-sync parser (now removed)
+        p.add_argument("--project", default=".", help="Project root; defaults to cwd")
+        p.add_argument("--watch", action="store_true", help="Run a long-lived poll loop that re-applies the overlay every time the vault changes. Press Ctrl-C to stop.")
+        p.add_argument("--dry-run", action="store_true", help="Compute the overlay diff and write .tesserae/diverged-fields.md, but DON'T apply changes to the graph or re-project. Useful for previewing what a compile would do.")
+        p.add_argument("--poll-interval", type=float, default=1.5, help="Watch-mode poll interval in seconds (default: 1.5).")
+        p.add_argument("--vault", type=str, default=None, help="Override the configured Obsidian vault directory for this call.")
+        p.add_argument("--persist-vault", action="store_true", help="When passed with --vault, writes the path to .tesserae/config.json under obsidian.vault_path.")
+        p.add_argument("--prune-orphans", action="store_true", help="Delete projected pages in the vault whose node_id no longer exists in the current graph.")
+        p.add_argument("--force-prune-with-notes", action="store_true", help="With --prune-orphans, also delete orphan pages that have user-notes content.")
+
+    p_sync = sub.add_parser(
+        "sync",
+        help="Apply vault edits onto the typed graph and re-project. Pass --watch for live mode.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae vault sync\n"
+            "  tesserae vault sync --dry-run\n"
+            "  tesserae vault sync --watch\n"
+        ),
+    )
+    _add_obsidian_sync_args(p_sync)
+    p_sync.set_defaults(_handler="_handle_vault_sync")
+
+    # prune = obsidian-sync --prune-orphans preset; rest of sync's attrs backfilled.
+    p_prune = sub.add_parser("prune", help="Delete projected pages whose node_id no longer exists in the graph (preset of `sync --prune-orphans`).")
+    p_prune.add_argument("--project", default=".", help="Project root; defaults to cwd")
+    p_prune.add_argument("--force-prune-with-notes", action="store_true", help="Also delete orphan pages that have user-notes content.")
+    p_prune.set_defaults(
+        _handler="_handle_vault_prune",
+        watch=False, dry_run=False, poll_interval=1.5, vault=None,
+        persist_vault=False, prune_orphans=True,
+    )
+
+    p_export = sub.add_parser("export", help="Export the compiled graph as an Obsidian vault")
+    p_export.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_export.add_argument("--vault", help="Vault output directory; defaults to .tesserae/obsidian_vault")
+    p_export.set_defaults(_handler="_handle_vault_export")
+
+    p_set_root = sub.add_parser("set-root", help="Set the registry-wide Obsidian vault root.")
+    p_set_root.add_argument("path", nargs="?", help="Absolute path; omit and pass --clear to unset.")
+    p_set_root.add_argument("--clear", action="store_true", help="Remove the configured vault root.")
+    p_set_root.set_defaults(_handler="_handle_vault_set_root")
+
+    p_sync_all = sub.add_parser("sync-all", help="Run an obsidian-sync --watch loop for every registered project (one thread per project).")
+    p_sync_all.add_argument("--poll-interval", type=float, default=1.5, help="Per-watcher poll interval in seconds (default: 1.5).")
+    p_sync_all.add_argument("--prune-orphans", action="store_true", help="Prune stale projected pages in every project's vault before starting watchers.")
+    p_sync_all.add_argument("--force-prune-with-notes", action="store_true", help="With --prune-orphans, also delete orphans with user-notes content.")
+    p_sync_all.add_argument("--no-watch", action="store_true", help="Run prune-only (requires --prune-orphans); skip the watch phase.")
+    p_sync_all.set_defaults(_handler="_handle_vault_sync_all")
+    return parser
+
+
+def _route_vault(rest: List[str]) -> int:
+    args = _build_vault_parser().parse_args(rest)
+    return _resolve_handler(args._handler)(args)
+
+
+# ----- export ---------------------------------------------------------------
+def _handle_export_harness(args: argparse.Namespace) -> int:
+    """`export harness` = old `export-agent-harness`."""
+    return _handle_export_agent_harness(args)
+
+
+def _handle_export_graphiti_cmd(args: argparse.Namespace) -> int:
+    """`export graphiti` = old `export-graphiti`; `--sync` → old `sync-graphiti`."""
+    if getattr(args, "sync", False):
+        return _handle_sync_graphiti(args)
+    return _handle_export_graphiti(args)
+
+
+def _handle_export_site(args: argparse.Namespace) -> int:
+    """`export site` = old `build-site`; `--deploy` → old `deploy`, `--watch` → old `watch`."""
+    if getattr(args, "deploy", False):
+        return _handle_deploy(args)
+    if getattr(args, "watch", False):
+        return _handle_watch(args)
+    return _handle_build_site(args)
+
+
+def _build_export_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae export",
+        description="Artifact exports: harness | graphiti | site.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae export site\n"
+            "  tesserae export site --deploy\n"
+            "  tesserae export site --watch\n"
+        ),
+    )
+    sub = parser.add_subparsers(dest="export_command", required=True)
+
+    p_harness = sub.add_parser("harness", help="Export context/config harnesses for coding agents")
+    p_harness.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_harness.add_argument("--target", action="append", default=[], help="Agent target to export; repeat for multiple targets. Defaults to all supported targets")
+    p_harness.add_argument("--output", help="Harness output directory; defaults to .tesserae/agent_harness")
+    p_harness.set_defaults(_handler="_handle_export_harness")
+
+    # graphiti = export-graphiti flags UNION sync-graphiti flags + --sync.
+    p_graphiti = sub.add_parser("graphiti", help="Export project graph as Graphiti episode JSONL; --sync pushes into Neo4j.")
+    p_graphiti.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_graphiti.add_argument("--group-id", help="Graphiti group_id; defaults to project wiki name")
+    p_graphiti.add_argument("--output", help="Episode JSONL output path; defaults to .tesserae/graphiti_episodes.jsonl")
+    p_graphiti.add_argument("--sync", action="store_true", help="Sync episodes into Graphiti/Neo4j instead of writing JSONL")
+    p_graphiti.add_argument("--neo4j-uri", default="bolt://localhost:7687", help="Neo4j URI for Graphiti (--sync)")
+    p_graphiti.add_argument("--neo4j-user", default="neo4j", help="Neo4j username (--sync)")
+    p_graphiti.add_argument("--neo4j-password", default="password", help="Neo4j password (--sync)")
+    p_graphiti.add_argument("--dry-run", action="store_true", help="Count episodes without requiring Graphiti or Neo4j (--sync)")
+    p_graphiti.set_defaults(_handler="_handle_export_graphiti_cmd")
+
+    # site = build-site UNION deploy UNION watch flags + --deploy / --watch routing.
+    p_site = sub.add_parser(
+        "site",
+        help="Build the static site; --deploy publishes, --watch rebuilds on change.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae export site\n"
+            "  tesserae export site --deploy\n"
+            "  tesserae export site --watch\n"
+        ),
+    )
+    p_site.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_site.add_argument("--output", help="Site output directory; defaults to .tesserae/site")
+    p_site.add_argument("--deploy", action="store_true", help="Deploy the compiled site to GitHub Pages (old `project deploy`)")
+    p_site.add_argument("--watch", action="store_true", help="Auto-recompile when files change (old `project watch`)")
+    # deploy flags
+    p_site.add_argument("--branch", default="gh-pages", help="Branch to push the site to (--deploy; default: gh-pages)")
+    p_site.add_argument("--remote", default="origin", help="Git remote to push to (--deploy; default: origin)")
+    p_site.add_argument("--message", help="Commit message for the deploy commit (--deploy)")
+    p_site.add_argument("--dry-run", action="store_true", help="Stage and commit but skip the final git push (--deploy)")
+    p_site.add_argument("--build", action="store_true", help="Run compile before deploying (--deploy)")
+    p_site.add_argument("--enable-pages", action="store_true", help="Enable GitHub Pages on the repo via the gh CLI (--deploy; idempotent)")
+    p_site.add_argument("--force", action="store_true", help="Allow deploying even when the working tree is dirty (--deploy)")
+    p_site.add_argument("--force-push", action="store_true", help="Use git push --force; refused for protected branches (--deploy)")
+    # watch flags
+    p_site.add_argument("--interval", type=float, default=2.0, help="Polling interval in seconds (--watch; default: 2)")
+    p_site.add_argument("--debounce", type=float, default=1.0, help="Quiet window after a burst of edits before rebuilding (--watch; default: 1.0)")
+    p_site.add_argument("--once", action="store_true", help="Snapshot once, rebuild only if anything changed since the last run, exit (--watch)")
+    p_site.add_argument("--paths", action="append", default=[], help="Additional directory to watch; repeat for multiple paths (--watch)")
+    p_site.add_argument("--quiet", action="store_true", help="Suppress the banner and per-cycle progress output (--watch)")
+    p_site.set_defaults(_handler="_handle_export_site")
+    return parser
+
+
+def _route_export(rest: List[str]) -> int:
+    args = _build_export_parser().parse_args(rest)
+    return _resolve_handler(args._handler)(args)
+
+
+# ----- code -----------------------------------------------------------------
+def _handle_code_ingest(args: argparse.Namespace) -> int:
+    """`code ingest` = old `ingest-code`."""
+    return _handle_ingest_code(args)
+
+
+def _handle_code_sync(args: argparse.Namespace) -> int:
+    """`code sync` = old `sync-code`."""
+    return _handle_sync_code(args)
+
+
+def _build_code_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae code",
+        description="CodeGraph ⇄ project graph: ingest | sync.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae code sync\n"
+            "  tesserae code sync --auto-sync\n"
+            "  tesserae code ingest\n"
+        ),
+    )
+    sub = parser.add_subparsers(dest="code_command", required=True)
+
+    p_ingest = sub.add_parser("ingest", help="Mint a typed code graph from Python source via the stdlib ast module")
+    p_ingest.add_argument("paths", nargs="*", help="Project-relative or absolute paths to walk; defaults to the project root")
+    p_ingest.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_ingest.add_argument("--output", help="Override output path; defaults to <project>/.tesserae/code-graph.json")
+    p_ingest.add_argument("--exclude", action="append", default=[], help="Additional directory basename to skip (repeatable). Adds to the built-in exclude set")
+    p_ingest.set_defaults(_handler="_handle_code_ingest")
+
+    p_sync = sub.add_parser(
+        "sync",
+        help="Translate a colbymchenry/codegraph SQLite store into .tesserae/code-graph.json",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae code sync\n"
+            "  tesserae code sync --auto-sync\n"
+        ),
+    )
+    p_sync.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_sync.add_argument("--db", help="Path to the CodeGraph SQLite database; defaults to <project>/.codegraph/codegraph.db")
+    p_sync.add_argument("--output", help="Override output path; defaults to <project>/.tesserae/code-graph.json")
+    p_sync.add_argument("--auto-sync", action="store_true", help="Run `codegraph sync <project>` first if the binary is on PATH; skip silently otherwise")
+    p_sync.set_defaults(_handler="_handle_code_sync")
+    return parser
+
+
+def _route_code(rest: List[str]) -> int:
+    args = _build_code_parser().parse_args(rest)
+    return _resolve_handler(args._handler)(args)
+
+
+# ----- config ---------------------------------------------------------------
+def _handle_config_llm(args: argparse.Namespace) -> int:
+    """`config llm` = old `llm-defaults` minus --show."""
+    args.show = False
+    return _handle_llm_defaults(args)
+
+
+def _handle_config_show(args: argparse.Namespace) -> int:
+    """`config show` = old `llm-defaults --show`."""
+    args.show = True
+    args.llm_provider = None
+    args.claude_config_dir = []
+    args.codex_home = None
+    return _handle_llm_defaults(args)
+
+
+def _build_config_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae config",
+        description="Machine-wide LLM defaults (~/.tesserae/config.json): llm | show.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae config llm --llm-provider codex --codex-home ~/.codex-personal1\n"
+            "  tesserae config show\n"
+        ),
+    )
+    sub = parser.add_subparsers(dest="config_command", required=True)
+
+    p_llm = sub.add_parser(
+        "llm",
+        help="Set machine-wide LLM backend defaults for ALL projects.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae config llm --llm-provider codex --codex-home ~/.codex-personal1\n"
+            "  tesserae config llm --llm-provider claude --claude-config-dir ~/.claude-personal2\n"
+        ),
+    )
+    p_llm.add_argument("--llm-provider", choices=["claude", "codex"], default=None, help="Default CLI backend for the synthesis/insights LLM client on this machine")
+    p_llm.add_argument("--claude-config-dir", action="append", default=[], help="Default Claude CLI config directory; repeat for fallback accounts")
+    p_llm.add_argument("--codex-home", default=None, help="Default Codex CLI home (e.g. ~/.codex-personal1)")
+    p_llm.set_defaults(_handler="_handle_config_llm")
+
+    p_show = sub.add_parser("show", help="Print the effective machine-wide LLM defaults and exit.")
+    p_show.set_defaults(_handler="_handle_config_show")
+    return parser
+
+
+def _route_config(rest: List[str]) -> int:
+    args = _build_config_parser().parse_args(rest)
+    return _resolve_handler(args._handler)(args)
+
+
+# ----- projects -------------------------------------------------------------
+def _handle_projects_register(args: argparse.Namespace) -> int:
+    args.wiki_command = "register"
+    return _wiki_command_handler(args)
+
+
+def _handle_projects_list(args: argparse.Namespace) -> int:
+    args.wiki_command = "list"
+    return _wiki_command_handler(args)
+
+
+def _handle_projects_activate(args: argparse.Namespace) -> int:
+    args.wiki_command = "activate"
+    return _wiki_command_handler(args)
+
+
+def _handle_projects_unregister(args: argparse.Namespace) -> int:
+    args.wiki_command = "unregister"
+    return _wiki_command_handler(args)
+
+
+def _handle_projects_mcp_config(args: argparse.Namespace) -> int:
+    """`projects mcp-config` = old `mcp-config`."""
+    return _handle_mcp_config(args)
+
+
+def _build_projects_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae projects",
+        description="Project registry: register | list | activate | unregister | mcp-config.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae projects register /path/to/project\n"
+            "  tesserae projects list\n"
+            "  tesserae projects activate myproj\n"
+        ),
+    )
+    sub = parser.add_subparsers(dest="projects_command", required=True)
+
+    p_register = sub.add_parser(
+        "register",
+        help="Register a project root in the persistent registry.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae projects register /path/to/project\n"
+            "  tesserae projects register /path/to/project --name myproj --activate\n"
+        ),
+    )
+    p_register.add_argument("path", help="Path to the project root containing .tesserae/.")
+    p_register.add_argument("--name", help="Friendly name (defaults to the sanitized directory name).")
+    p_register.add_argument("--activate", action="store_true", help="Also set the new entry as the active project.")
+    p_register.set_defaults(_handler="_handle_projects_register")
+
+    p_list = sub.add_parser("list", help="List registered projects and show the active one.")
+    p_list.add_argument("--json", dest="wiki_list_json", action="store_true", help="Emit the registry payload as JSON.")
+    p_list.set_defaults(_handler="_handle_projects_list")
+
+    p_activate = sub.add_parser("activate", help="Set a registered project as the active one.")
+    p_activate.add_argument("name")
+    p_activate.set_defaults(_handler="_handle_projects_activate")
+
+    p_unregister = sub.add_parser("unregister", help="Remove a project from the registry.")
+    p_unregister.add_argument("name")
+    p_unregister.set_defaults(_handler="_handle_projects_unregister")
+
+    p_mcp = sub.add_parser("mcp-config", help="Print a Hermes mcp_servers config snippet for this project")
+    p_mcp.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_mcp.add_argument("--server-name", help="MCP server name in Hermes config")
+    p_mcp.add_argument("--pythonpath", help="PYTHONPATH pointing at the Tesserae checkout")
+    p_mcp.set_defaults(_handler="_handle_projects_mcp_config")
+    return parser
+
+
+def _route_projects(rest: List[str]) -> int:
+    args = _build_projects_parser().parse_args(rest)
+    return _resolve_handler(args._handler)(args)
+
+
+# ----- integrations ---------------------------------------------------------
+def _handle_integrations_refresh(args: argparse.Namespace) -> int:
+    """`integrations refresh <name>` routes to the two old refresh handlers."""
+    if args.name == "raganything":
+        return _handle_refresh_raganything(args)
+    return _handle_refresh_understand_anything(args)
+
+
+def _build_integrations_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae integrations",
+        description="Managed integration refreshes: refresh <name>.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae integrations refresh raganything\n"
+            "  tesserae integrations refresh understand-anything\n"
+        ),
+    )
+    sub = parser.add_subparsers(dest="integrations_command", required=True)
+    p_refresh = sub.add_parser(
+        "refresh",
+        help="Run the managed refresh for raganything | understand-anything",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae integrations refresh raganything\n"
+            "  tesserae integrations refresh understand-anything --full\n"
+        ),
+    )
+    p_refresh.add_argument("name", choices=["raganything", "understand-anything"], help="Integration to refresh")
+    p_refresh.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    # raganything flags (refresh-raganything parser)
+    p_refresh.add_argument("--parser", default="mineru", choices=["mineru", "docling", "paddleocr"], help="raganything parser backend")
+    p_refresh.add_argument("--parse-method", default="auto", choices=["auto", "ocr", "txt"], help="raganything parse method")
+    p_refresh.add_argument("--root", action="append", dest="roots", help="Restrict to this root (repeatable; raganything)")
+    p_refresh.add_argument("--full", action="store_true", help="Force a full refresh")
+    p_refresh.add_argument("--force", action="store_true", help="Run even if the existing graph appears current")
+    # understand-anything flags (refresh-understand-anything parser)
+    p_refresh.add_argument("--platform", default="codex", help="Agent platform to use: codex, opencode, or claude (understand-anything)")
+    p_refresh.add_argument("--timeout", type=int, help="Optional timeout in seconds (understand-anything)")
+    p_refresh.set_defaults(_handler="_handle_integrations_refresh")
+    return parser
+
+
+def _route_integrations(rest: List[str]) -> int:
+    args = _build_integrations_parser().parse_args(rest)
+    return _resolve_handler(args._handler)(args)
+
+
+# ----- lab ------------------------------------------------------------------
+def _handle_lab_evolve(args: argparse.Namespace) -> int:
+    """`lab evolve` = old `evolve`."""
+    return _handle_evolve(args)
+
+
+def _handle_lab_schema_drift(args: argparse.Namespace) -> int:
+    """`lab schema-drift` = old `schema-drift`."""
+    return _handle_schema_drift(args)
+
+
+def _build_lab_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae lab",
+        description="Experimental LLM ops: evolve | schema-drift.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae lab evolve\n"
+            "  tesserae lab schema-drift\n"
+        ),
+    )
+    sub = parser.add_subparsers(dest="lab_command", required=True)
+
+    p_evolve = sub.add_parser(
+        "evolve",
+        help="Distill collected human-correction feedback into .tesserae/extraction-guidance.md.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae lab evolve\n"
+            "  tesserae lab evolve --project ../other-repo\n"
+        ),
+    )
+    p_evolve.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_evolve.set_defaults(_handler="_handle_lab_evolve")
+
+    p_drift = sub.add_parser("schema-drift", help="EDC-style pass that proposes ResearchNodeType sub-types from clustered host-type nodes.")
+    p_drift.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_drift.add_argument("--host-type", action="append", default=[], help="ResearchNodeType to analyze (enum value, e.g. 'SourceDocument'). Repeat to analyze multiple. Default: SourceDocument.")
+    p_drift.add_argument("--min-volume", type=int, default=10, help="Skip host types with fewer than this many members (default: 10)")
+    p_drift.add_argument("--top-k", type=int, default=5, help="Take only the top-K clusters per host type (default: 5)")
+    p_drift.add_argument("--min-cluster-size", type=int, default=5, help="Drop clusters smaller than this size (default: 5)")
+    p_drift.add_argument("--jaccard-threshold", type=float, default=0.34, help="Jaccard similarity threshold for clustering (default: 0.34)")
+    p_drift.set_defaults(_handler="_handle_lab_schema_drift")
+    return parser
+
+
+def _route_lab(rest: List[str]) -> int:
+    args = _build_lab_parser().parse_args(rest)
+    return _resolve_handler(args._handler)(args)
+
+
+# ----- extract --------------------------------------------------------------
+def _build_extract_parser() -> argparse.ArgumentParser:
+    """The preserved bare-extraction parser, surfaced as `tesserae extract`.
+
+    Flags copied verbatim from the legacy bare-extraction main (now removed; the
+    kuzu/cognee/canonicalize flags live HERE, not on `compile`).
+    """
+    parser = argparse.ArgumentParser(
+        prog="tesserae extract",
+        description="Extract a typed research intelligence graph from Tesserae notes.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae extract notes/ --pretty\n"
+            "  tesserae extract notes/idea.md -o graph.json --trends\n"
+        ),
+    )
     parser.add_argument("paths", nargs="+", help="Markdown file or directory paths to extract")
     parser.add_argument("--source-kind", default="SourceDocument", help="Default source kind: Paper, Repository, ResearchDigest, SourceDocument")
     parser.add_argument("--output", "-o", help="Write JSON graph to this path instead of stdout")
@@ -2146,13 +2687,12 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument("--changed-only", action="store_true", help="When used with --batch-manifest, skip files whose content hash is unchanged")
     parser.add_argument("--limit", type=int, help="Maximum number of files to process in this run")
     parser.add_argument("--report-output", help="Write a markdown summary report for the final graph")
-    args = parser.parse_args(argv)
+    return parser
 
-    # ``config_dirs=None`` makes ClaudeCLIResearchExtractor /
-    # ClaudeCLIJsonClient auto-discover ``~/.claude*`` dirs (the
-    # existing multi-config fallback then picks the first that's
-    # logged in). Pre-fix code hardcoded the previous maintainer's
-    # personal paths here, which only worked on one machine.
+
+def _handle_extract(args: argparse.Namespace) -> int:
+    """Body lifted verbatim from the legacy bare-extraction main (now removed;
+    sans its own parse_args)."""
     if args.extractor == "claude-cli":
         extractor = ClaudeCLIResearchExtractor(
             config_dirs=args.claude_config_dir or None,
@@ -2258,6 +2798,135 @@ def main(argv: List[str] | None = None) -> int:
     else:
         print(payload)
     return 0
+
+
+def _route_extract(rest: List[str]) -> int:
+    args = _build_extract_parser().parse_args(rest)
+    return _handle_extract(args)
+
+
+# ----- standalone verbs: research / lint / query ----------------------------
+def _build_research_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae research",
+        description="Agentic research loop: plan → search → reflect → synthesize.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae research \"how do agents use the typed graph?\"\n"
+            "  tesserae research \"compiler internals\" --breadth 4 --depth 3\n"
+        ),
+    )
+    parser.add_argument("query", help="Research query to investigate")
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--breadth", type=int, default=3, help="Sub-questions per level (default: 3)")
+    parser.add_argument("--depth", type=int, default=2, help="Maximum follow-up depth beyond the root (default: 2)")
+    parser.add_argument("--max-iters", type=int, default=6, help="Hard cap on (search + reflect) iterations (default: 6)")
+    parser.add_argument("--top-k", type=int, default=5, help="Top-K graph evidence nodes per sub-question (default: 5)")
+    parser.add_argument("--output", help="Report output path; defaults to .tesserae/research/<slug>.md")
+    parser.add_argument("--no-web", action="store_true", help="Disable web search even if a backend is configured (v1 default — web stays off)")
+    return parser
+
+
+def _route_research(rest: List[str]) -> int:
+    args = _build_research_parser().parse_args(rest)
+    return _resolve_handler("_handle_research")(args)
+
+
+def _build_lint_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae lint",
+        description="Lint the compiled wiki: orphan papers, stale citations, drift, ghost synthesis inputs, and more.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae lint\n"
+            "  tesserae lint --fix-trivial --severity error\n"
+        ),
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--fix-trivial", action="store_true", help="Apply safe auto-fixes (add missing implemented_in edges; prune ghost synthesis inputs)")
+    parser.add_argument("--severity", choices=["info", "warning", "error"], default="warning", help="Severity floor for the exit code (default: warning). Findings below the floor are still reported.")
+    parser.add_argument("--json", dest="lint_json", action="store_true", help="Print the JSON report to stdout instead of the markdown summary.")
+    return parser
+
+
+def _route_lint(rest: List[str]) -> int:
+    args = _build_lint_parser().parse_args(rest)
+    return _resolve_handler("_handle_lint")(args)
+
+
+def _build_query_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae query",
+        description="Search the compiled wiki and (optionally) ask the LLM for a synthesized answer with citations.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae query \"what cites the compile pipeline?\"\n"
+            "  tesserae query \"open questions\" --llm --top-k 12\n"
+        ),
+    )
+    parser.add_argument("question", nargs="?", default=None, help="Question text; omit to use --interactive")
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--top-k", type=int, default=8, help="Maximum number of search hits to return / feed to the LLM (default: 8)")
+    parser.add_argument("--kind", help="Restrict hits to a single wiki kind (e.g. papers, concepts, repos)")
+    parser.add_argument("--llm", action="store_true", help="Force the LLM path on, even if TESSERAE_QUERY_LLM is unset")
+    parser.add_argument("--no-llm", action="store_true", help="Force the LLM path off, even if TESSERAE_QUERY_LLM=1")
+    parser.add_argument("--model", default="claude-sonnet-4-6", help="Anthropic model id for --llm (default: claude-sonnet-4-6)")
+    parser.add_argument("--json", dest="json_output", action="store_true", help="Print the structured QueryResult as JSON")
+    parser.add_argument("--interactive", action="store_true", help="Drop into a REPL with readline history; blank line or EOF exits")
+    return parser
+
+
+def _route_query(rest: List[str]) -> int:
+    args = _build_query_parser().parse_args(rest)
+    return _resolve_handler("_handle_query")(args)
+
+
+def _resolve_handler(name: str) -> Callable[[argparse.Namespace], int]:
+    """Resolve a handler by its module-level name at CALL time.
+
+    Routing through this indirection (instead of binding the function object
+    when the dispatch table is built) is what lets tests
+    ``monkeypatch.setattr(cli, "_handle_…", stub)`` intercept the dispatch.
+    """
+    import sys as _sys
+
+    return getattr(_sys.modules[__name__], name)
+
+
+_NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
+    "ask": _route_ask,
+    "init": _route_init,
+    "compile": _route_compile,
+    "context": _route_context,
+    "serve": _route_serve,
+    "status": _route_status,
+    "engine": _route_engine,
+    "refresh": _route_refresh,
+    # task 5: groups
+    "sessions": _route_sessions,
+    "vault": _route_vault,
+    "export": _route_export,
+    "code": _route_code,
+    "config": _route_config,
+    "projects": _route_projects,
+    "integrations": _route_integrations,
+    "lab": _route_lab,
+    "extract": _route_extract,
+    # task 5: standalone verbs
+    "research": _route_research,
+    "lint": _route_lint,
+    "query": _route_query,
+}
+
+
+def _dispatch_command(command: str, rest: List[str]) -> int:
+    router = _NEW_DISPATCH.get(command)
+    if router is not None:
+        return router(rest)
+    raise NotImplementedError(f"tesserae {command}: wired in a later task")
 
 
 if __name__ == "__main__":

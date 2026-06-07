@@ -210,7 +210,7 @@ def render_competitive_report() -> str:
 
 | System | Advantage | Tesserae absorption |
 |---|---|---|
-| MegaMem | Obsidian/project-local graph artifacts plus MCP exposure | `.tesserae/` project workspaces, project compile, Cognee bundle, SQLite, markdown projection, MCP config |
+| MegaMem | Obsidian/project-local graph artifacts plus MCP exposure | `.tesserae/` project workspaces, compile, Cognee bundle, SQLite, markdown projection, MCP config |
 | MegaMem | Sync state and analytics | content-hash manifest, processed/skipped counts, durable report output |
 | Graphiti/Zep | temporal facts with validity and provenance | `temporal_facts.jsonl` projects every validated edge into temporal facts with `valid_from`, `current`, `invalidated_by`, confidence, evidence, and source provenance |
 | Graphiti/Zep | custom entity/edge types | controlled research ontology and edge whitelist, rejecting schema drift instead of generic `Entity` sprawl |

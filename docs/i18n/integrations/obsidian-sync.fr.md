@@ -4,7 +4,7 @@
 <p align="center"><a href="../../integrations/obsidian-sync.md">English</a> · <a href="obsidian-sync.ko.md">한국어</a> · <a href="obsidian-sync.zh.md">中文</a> · <a href="obsidian-sync.ja.md">日本語</a> · <a href="obsidian-sync.ru.md">Русский</a> · <a href="obsidian-sync.es.md">Español</a> · <a href="obsidian-sync.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-> **Statut : Livré (Tier 1, v0.5.0).** Le lecteur de surcouches, les zones d'ajout user-notes, le mode watch et le nettoyage des orphelins décrits ci-dessous sont actifs derrière `tesserae project obsidian-sync`. Cette page fait à la fois office de justification de conception et de guide utilisateur. La fédération multi-vaults (Tier 3) reste hors périmètre.
+> **Statut : Livré (Tier 1, v0.5.0).** Le lecteur de surcouches, les zones d'ajout user-notes, le mode watch et le nettoyage des orphelins décrits ci-dessous sont actifs derrière `tesserae vault sync`. Cette page fait à la fois office de justification de conception et de guide utilisateur. La fédération multi-vaults (Tier 3) reste hors périmètre.
 
 L'[export Obsidian](obsidian.fr.md) était autrefois strictement à sens unique : le graphe typé dans `.tesserae/graph.json` est projeté vers le vault, et `project compile` écrase les fichiers projetés. `obsidian-sync` ajoute le sens inverse — modifiez une description dans Obsidian, et elle survit à la recompilation.
 
@@ -100,35 +100,35 @@ Les cinq sont compatibles avec le modèle de surcouches parce que Tesserae voit 
 
 ## Surface CLI
 
-`tesserae project obsidian-sync` applique les éditions du vault sur le graphe typé et reprojette :
+`tesserae vault sync` applique les éditions du vault sur le graphe typé et reprojette :
 
 ```bash
 # Appliquer la surcouche une fois : récupère les éditions utilisateur, reprojette vers le vault.
-tesserae project obsidian-sync
+tesserae vault sync
 
 # Inspecte d'abord ce qui changerait. Écrit .tesserae/diverged-fields.md et
 # N'applique PAS et ne reprojette pas.
-tesserae project obsidian-sync --dry-run
+tesserae vault sync --dry-run
 
 # Cibler un vault précis pour cet appel (ordre de résolution :
 # --vault > config.obsidian.vault_path > .tesserae/obsidian_vault/).
-tesserae project obsidian-sync --vault ~/Documents/tesserae-vault
+tesserae vault sync --vault ~/Documents/tesserae-vault
 
 # Faire de ce chemin de vault la valeur par défaut des futures commandes.
-tesserae project obsidian-sync --vault ~/Documents/tesserae-vault --persist-vault
+tesserae vault sync --vault ~/Documents/tesserae-vault --persist-vault
 
 # Watch long-running : réapplique la surcouche à chaque changement du vault.
 # Ctrl-C pour arrêter ; --poll-interval règle la cadence (par défaut 1,5 s).
-tesserae project obsidian-sync --watch --poll-interval 1.5
+tesserae vault sync --watch --poll-interval 1.5
 
 # Supprime les pages projetées dont le nœud source n'existe plus (le projecteur
 # ne fait qu'écraser, ne supprime jamais). Les pages avec user-notes sont
 # conservées sauf si vous passez aussi --force-prune-with-notes.
-tesserae project obsidian-sync --prune-orphans
-tesserae project obsidian-sync --prune-orphans --force-prune-with-notes
+tesserae vault sync --prune-orphans
+tesserae vault sync --prune-orphans --force-prune-with-notes
 ```
 
-La commande slash `/tesserae:obsidian-sync` l'enveloppe, et `tesserae project refresh`
+La commande slash `/tesserae:obsidian-sync` l'enveloppe, et `tesserae refresh`
 (plus la macro `/tesserae:refresh`) exécute la surcouche comme dernière étape de sa
 chaîne import → compile → sync.
 

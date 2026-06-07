@@ -35,26 +35,26 @@ Understand Anything は次を書き込めます:
 推奨される経路はセットアップウィザードです:
 
 ```bash
-tesserae project setup
+tesserae init
 ```
 
-連携ツールのステップで Understand Anything を選択します。Tesserae は要求に応じて連携 skills をインストール/更新し、管理された更新コマンドを `.tesserae/config.json` に書き込みます。以降の `tesserae project compile` 呼び出しでは、UA グラフが存在しない、または古い場合に、そのラッパーが自動実行されます。
+連携ツールのステップで Understand Anything を選択します。Tesserae は要求に応じて連携 skills をインストール/更新し、管理された更新コマンドを `.tesserae/config.json` に書き込みます。以降の `tesserae compile` 呼び出しでは、UA グラフが存在しない、または古い場合に、そのラッパーが自動実行されます。
 
 非対話型の自動化には次を使います:
 
 ```bash
-tesserae project setup \
+tesserae init \
   --yes \
   --with-understand-anything \
   --install-understand-anything \
   --understand-anything-platform codex
-tesserae project compile
+tesserae compile
 ```
 
 保存されるコマンドはユーザーが考案するものではなく、Tesserae が所有するものです:
 
 ```bash
-tesserae project refresh-understand-anything --platform codex
+tesserae integrations refresh understand-anything --platform codex
 ```
 
 コンパイル中、Tesserae は次を行います:
@@ -68,13 +68,13 @@ tesserae project refresh-understand-anything --platform codex
 コンパイル前に、設定済みの外部更新コマンドをすべて強制実行できます:
 
 ```bash
-tesserae project compile --refresh-external-tools
+tesserae compile --refresh-integrations
 ```
 
 Cognee も必要ですか？同じ setup コマンドにランタイムメモリのフラグを追加してください:
 
 ```bash
-tesserae project setup \
+tesserae init \
   --yes \
   --with-understand-anything \
   --install-understand-anything \
@@ -91,19 +91,27 @@ tesserae project setup \
 /understand
 ```
 
-次に `tesserae project setup --with-understand-anything` を実行し、Tesserae に markdown 投影ソースを記録させます。直接の JSON ファイルは手入力のソースパスではなく、生の連携成果物として保持されます。
+次にセットアップウィザードを実行し、**プロンプトが表示されたら Understand
+Anything を有効化**して、Tesserae に markdown 投影ソースを記録させます。直接の
+JSON ファイルは手入力のソースパスではなく、生の連携成果物として保持されます。
 
 ```bash
-tesserae project setup --with-understand-anything
-tesserae project compile
-tesserae project build-site
+tesserae init
+# ウィザードが尋ねたら Understand Anything を有効化する
+tesserae compile
+tesserae export site
 ```
+
+非対話的な自動化では、`tesserae init --yes`（連携 OFF）を実行し、
+`.tesserae/config.json` で Understand Anything を有効化し（ウィザードは連携を
+`external_tools` キーの下に書き込みます）、コンパイル前に `tesserae integrations
+refresh understand-anything` を実行します。
 
 ローカルのエージェントセッションメモリも必要な場合:
 
 ```bash
-tesserae project sessions discover --import
-tesserae project build-site
+tesserae sessions discover --import
+tesserae export site
 ```
 
 ## ネイティブグラフ同期

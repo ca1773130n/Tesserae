@@ -31,7 +31,7 @@ Tesserae は [Claude Code](https://docs.claude.com/en/docs/claude-code) プラ�
 - **MCP ツール** = エージェントが会話中に呼び出す読み取り専用のグラフクエリ。常時オン、低摩擦。
 - **スラッシュコマンド** = 明示的に呼び出すワークフローアクション(compile、refresh、obsidian-sync)。レバレッジが高いがあなたの判断であるべき。
 
-MCP サーバーだけを単独で使うこともできます(`tesserae project mcp-config` 経由で手動 `claude_desktop_config.json` 編集)。プラグインは単にそれをスラッシュコマンド、スキル、フックとパッケージ化し、インストールを 1 ステップにします。
+MCP サーバーだけを単独で使うこともできます(`tesserae projects mcp-config` 経由で手動 `claude_desktop_config.json` 編集)。プラグインは単にそれをスラッシュコマンド、スキル、フックとパッケージ化し、インストールを 1 ステップにします。
 
 ## インストール確認
 

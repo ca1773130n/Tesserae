@@ -71,3 +71,14 @@ def _isolate_global_registry(tmp_path_factory, monkeypatch):
     monkeypatch.setattr(
         "tesserae.mcp_server.DEFAULT_REGISTRY_PATH", isolated, raising=True
     )
+    # Same trap, different file: ``~/.tesserae/config.json`` carries the
+    # developer's machine-wide LLM defaults (llm_provider/llm_codex_home).
+    # ``resolve_llm_client_settings`` falls back to it, which would make
+    # provider-selection tests depend on the dev box. Point it at a fresh
+    # non-existent path; tests that need a global config monkeypatch it
+    # explicitly to their own tmp file.
+    monkeypatch.setattr(
+        "tesserae.llm_json.GLOBAL_CONFIG_PATH",
+        tmp_path_factory.mktemp("llm-global") / "config.json",
+        raising=True,
+    )

@@ -31,7 +31,7 @@ Tesserae는 [Claude Code](https://docs.claude.com/en/docs/claude-code) 플러그
 - **MCP 도구** = 대화 중 에이전트가 호출하는 읽기 전용 그래프 쿼리. 항상 켜져 있고 마찰이 적습니다.
 - **슬래시 명령** = 명시적으로 호출하는 워크플로우 작업(compile, refresh, obsidian-sync). 영향력이 크지만 사용자의 결정이어야 합니다.
 
-MCP 서버만 단독으로 사용할 수도 있습니다(`tesserae project mcp-config`를 통한 수동 `claude_desktop_config.json` 편집). 플러그인은 단지 슬래시 명령, 스킬, 훅과 함께 패키징하여 한 단계로 설치할 수 있게 해줍니다.
+MCP 서버만 단독으로 사용할 수도 있습니다(`tesserae projects mcp-config`를 통한 수동 `claude_desktop_config.json` 편집). 플러그인은 단지 슬래시 명령, 스킬, 훅과 함께 패키징하여 한 단계로 설치할 수 있게 해줍니다.
 
 ## 설치 확인
 

@@ -20,7 +20,7 @@ export PATH="$HOME/.local/bin:$PATH"
 pip install 'tesserae[semantic]'
 
 # 이 저장소를 Tesserae 프로젝트로 설정합니다.
-tesserae project setup \
+tesserae init \
   --yes \
   --name tesserae_self \
   --source README.md \
@@ -35,13 +35,13 @@ tesserae project setup \
   --install-cognee
 
 # 구성된 소스를 컴파일합니다.
-tesserae project compile
+tesserae compile
 
 # 정적 프론트엔드를 명시적으로 다시 빌드합니다.
-tesserae project build-site
+tesserae export site
 
-# 로컬에서 제공합니다.
-tesserae project serve --port 8765
+# 로컬에서 제공합니다(필요하면 사이트를 먼저 자동 빌드합니다).
+tesserae serve --port 8765
 ```
 
 열기:
@@ -82,13 +82,22 @@ self-demo는 생성된 아티팩트를 다음 위치에 씁니다:
 
 Tesserae 저장소 자체에서 `2026-04-27 11:11:23 KST`에 검증되었습니다.
 
+통합 옵트인(Understand Anything, cognee)은 이제 CLI 플래그가 아니라 **대화형
+마법사 프롬프트**입니다. 아래 비대화형 동등 절차는 `tesserae init --yes`(통합
+OFF)를 실행하고, `.tesserae/config.json`에서 통합을 활성화한 뒤(마법사는 이를
+`memory_backends`와 `external_tools` 키 아래에 씁니다 — 정확한 키는 통합 문서
+참조) 컴파일 전에 각각을 새로고침합니다.
+
 ```text
 install command: ./scripts/install.sh --dir /Users/neo/Developer/Projects/Tesserae --skip-shell-config
-setup command:   tesserae project setup --yes --name tesserae_self --source README.md --source docs --source tesserae --source tests --source scripts --with-understand-anything --install-understand-anything --understand-anything-platform codex --run-cognee --install-cognee
-ingest command:  tesserae project ingest README.md docs --changed-only
-compile command: tesserae project compile
-site command:    tesserae project build-site
-serve command:   tesserae project serve --host 0.0.0.0 --port 56821
+setup command:   tesserae init --yes --name tesserae_self --source README.md --source docs --source tesserae --source tests --source scripts
+                 # 그런 다음 .tesserae/config.json에서 Understand Anything + cognee를 활성화하고 실행:
+                 #   tesserae integrations refresh understand-anything
+                 #   tesserae integrations refresh cognee
+ingest command:  tesserae compile README.md docs --changed-only
+compile command: tesserae compile
+site command:    tesserae export site
+serve command:   tesserae serve --host 0.0.0.0 --port 56821
 local URL:       http://127.0.0.1:56821/
 LAN URL:         http://192.168.45.130:56821/
 ```

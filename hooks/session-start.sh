@@ -72,7 +72,7 @@ if [[ "$days_old" != "?" ]] && (( days_old > 7 )); then
 fi
 
 # --------------------------------------------------------------------
-# Live sync-code: background ``tesserae project sync-code`` when the
+# Live sync-code: background ``tesserae code sync`` when the
 # CodeGraph SQLite is newer than our derived code-graph.json. This
 # delivers the "keeps updating" story for the polyglot code graph
 # without forcing the user to remember to re-run sync-code manually.
@@ -120,15 +120,15 @@ if [[ "$(read_plugin_setting sync_code_on_start)" == "true" ]]; then
       tesserae_bin=$(find_tesserae 2>/dev/null) || tesserae_bin=""
       if [[ -z "$tesserae_bin" ]]; then
         log_to ".session-start-hook.log" "sync-code skipped: tesserae binary not found"
-      elif pgrep -f "tesserae project sync-code.*${project_root}" >/dev/null 2>&1 \
-           || pgrep -f "${project_root}.*tesserae project sync-code" >/dev/null 2>&1; then
+      elif pgrep -f "tesserae code sync.*${project_root}" >/dev/null 2>&1 \
+           || pgrep -f "${project_root}.*tesserae code sync" >/dev/null 2>&1; then
         log_to ".session-start-hook.log" "sync-code skipped: another sync-code is already running for ${project_root}"
       else
         log_file="${tdir}/.session-start-hook.log"
         # Pass --project explicitly so the spawned CLI uses the
         # resolved project root rather than $PWD — required when
         # Claude opens a session in a subdirectory of the project.
-        cmd="echo \"==== \$(date -u +%FT%TZ) — session-start sync-code starting ====\"; \"$tesserae_bin\" project sync-code --project \"$project_root\" 2>&1 || echo \"(sync-code failed)\"; echo \"==== \$(date -u +%FT%TZ) — done ====\""
+        cmd="echo \"==== \$(date -u +%FT%TZ) — session-start sync-code starting ====\"; \"$tesserae_bin\" code sync --project \"$project_root\" 2>&1 || echo \"(sync-code failed)\"; echo \"==== \$(date -u +%FT%TZ) — done ====\""
         if command -v setsid >/dev/null 2>&1; then
           setsid sh -c "$cmd" >> "$log_file" 2>&1 < /dev/null &
         elif command -v nohup >/dev/null 2>&1; then

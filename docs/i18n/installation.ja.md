@@ -37,7 +37,7 @@ pip install --upgrade tesserae
 
 ```bash
 # Understand Anything companion graph + Cognee runtime memory
-tesserae project setup \
+tesserae init \
   --with-understand-anything \
   --install-understand-anything \
   --understand-anything-platform codex \
@@ -54,7 +54,7 @@ pip install kuzu cognee graphiti-core
 - `kuzu` — Kuzu グラフ永続化。
 - `cognee` — ランタイム Cognee add/cognify ワークフロー。セットアップは `{python} -m pip install cognee` を保存し、Cognee が見つからない場合は一度だけ再試行します。
 - Understand Anything — `--install-understand-anything` が選択された場合、upstream インストーラーでインストールされます。Tesserae はユーザーに shell コマンドを作らせる代わりに、管理された refresh wrapper を保存します。
-- `graphiti-core` — ライブ Graphiti/Neo4j 同期。`export-graphiti` と `sync-graphiti --dry-run` はこれなしでも動作します。
+- `graphiti-core` — ライブ Graphiti/Neo4j 同期。`export graphiti` と `export graphiti --sync --dry-run` はこれなしでも動作します。
 
 Anthropic ベースの合成パスは extras マーカーを使います。
 
@@ -68,7 +68,7 @@ pip install "tesserae[synthesis-llm]"
 pip install "tesserae[semantic]"
 ```
 
-これは `model2vec` をインストールし、軽量・オフライン・torch 不要の静的モデル（約 8 MB の `potion-base-8M`、初回使用時に一度ダウンロード）を取得します。これがないと、ハイブリッド／埋め込み検索は非セマンティックなハッシュバケットのスタブにフォールバックし、目立つ警告を出します。そのため、`project ask`、`project context`、または MCP `compile_context` ツールを使う場合は、この extra のインストールを推奨します。
+これは `model2vec` をインストールし、軽量・オフライン・torch 不要の静的モデル（約 8 MB の `potion-base-8M`、初回使用時に一度ダウンロード）を取得します。これがないと、ハイブリッド／埋め込み検索は非セマンティックなハッシュバケットのスタブにフォールバックし、目立つ警告を出します。そのため、`tesserae ask`、`tesserae context`、または MCP `compile_context` ツールを使う場合は、この extra のインストールを推奨します。
 
 ## ソースからインストール（コントリビューター向け）
 
@@ -110,7 +110,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ## インストールの確認
 
 ```bash
-tesserae project init --help
-tesserae project compile --help
-tesserae project build-site --help
+tesserae init --help
+tesserae compile --help
+tesserae export site --help
 ```

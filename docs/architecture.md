@@ -139,8 +139,8 @@ Defaults: `depth=2`, `budget=32000`. The deterministic assembly (steps 1–4) is
 | Module | Responsibility |
 |---|---|
 | [`tesserae/project.py`](../tesserae/project.py) | `ProjectWiki.compile`: drives extraction → graph → memory passes → wiki layer → site. Owns `ProjectPaths` (`config`, `graph`, `manifest`, `wiki`, `site`, etc.). Decides up front whether a provenance-driven incremental compile is eligible (gated on `incremental_compile`, default OFF). |
-| [`tesserae/cli.py`](../tesserae/cli.py) | All `tesserae project …` subcommands, including `compile`, `refresh`, `context`, `build-site`, `serve`, `watch`, `engine`/`daemon`, `deploy`. |
-| [`tesserae/deploy.py`](../tesserae/deploy.py) | `project deploy`: pushes `.tesserae/site/` to a `gh-pages` branch via worktree, optionally enables Pages via `gh`. |
+| [`tesserae/cli.py`](../tesserae/cli.py) | Flat-verb CLI dispatch (~2,732 lines after the legacy `project`/`wiki` subcommand groups were deleted). Verbs — `init`, `compile`, `context`, `ask`, `refresh`, `serve`, `engine`, `export`, `vault`, `code`, `lab`, `config`, `projects`, `integrations` — are declared as metadata in [`tesserae/cli_tree.py`](../tesserae/cli_tree.py) and wired up from that tree rather than hand-registered. |
+| [`tesserae/deploy.py`](../tesserae/deploy.py) | `export site --deploy`: pushes `.tesserae/site/` to a `gh-pages` branch via worktree, optionally enables Pages via `gh`. |
 
 ### Engine spine (v0.5.0 — pillars 1 & 2)
 
@@ -149,8 +149,8 @@ The engine spine is the in-process loop that drives session monitoring and auton
 | Module | Responsibility |
 |---|---|
 | [`tesserae/engine/pipeline.py`](../tesserae/engine/pipeline.py) | `Pipeline`: a sequential step runner. Codifies the prose refresh chain (ingest → compile → project/publish) as an importable object that returns a structured `List[StepResult]` instead of printing-and-exiting, so every caller decides how to surface outcomes. `run()` catches `Exception` per step (lets `KeyboardInterrupt`/`SystemExit` through) and stops at the first failure. |
-| [`tesserae/engine/daemon.py`](../tesserae/engine/daemon.py) | `Daemon`: single-owner asyncio supervisor. Watches source dirs, the Obsidian vault, and the harness-session dir; coalesces a burst of `TriggerEvent`s into exactly one `Pipeline.run()` via a cancel-and-reschedule debounce. Reuses the existing `watch.py` / `vault_watch.py` watchers (it does not rewrite them), writes a pidfile, and survives in-flight exceptions. Surfaced as `project engine` / `project daemon` (`--interval`, `--debounce`, `--once`). |
-| [`tesserae/watch.py`](../tesserae/watch.py), [`tesserae/vault_watch.py`](../tesserae/vault_watch.py) | Polling watchers reused by both the standalone `project watch` command and the daemon's source/vault lanes. |
+| [`tesserae/engine/daemon.py`](../tesserae/engine/daemon.py) | `Daemon`: single-owner asyncio supervisor. Watches source dirs, the Obsidian vault, and the harness-session dir; coalesces a burst of `TriggerEvent`s into exactly one `Pipeline.run()` via a cancel-and-reschedule debounce. Reuses the existing `watch.py` / `vault_watch.py` watchers (it does not rewrite them), writes a pidfile, and survives in-flight exceptions. Surfaced as `engine` (`--interval`, `--debounce`, `--once`). |
+| [`tesserae/watch.py`](../tesserae/watch.py), [`tesserae/vault_watch.py`](../tesserae/vault_watch.py) | Polling watchers reused by both the standalone `export site --watch` command and the daemon's source/vault lanes. |
 
 ### Self-improvement memory (v0.5.0 — pillar 2)
 

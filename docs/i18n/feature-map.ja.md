@@ -19,7 +19,7 @@ Tesserae は 3 本の柱の上で動作する**コンテキスト エンジン**
 |---|---|---|---|
 | `Pipeline` — `List[StepResult]` を返す再利用可能なリフレッシュ チェーン | ✅ | [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | CLI、デーモン、MCP がすべて呼び出す 1 つのステップ ランナー。ステップごとに `Exception` を捕捉し、最初の失敗で停止。 |
 | `Daemon` — 単一所有者の asyncio スーパーバイザー | ✅ | [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | ソース + ボールト + ハーネス セッション ディレクトリを監視; デバウンスされたキャンセル・再スケジュールが一連を 1 回の `Pipeline.run()` にまとめる。pidfile; 実行中の例外でも生存。 |
-| `project engine` / `project daemon` | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) | `--interval`、`--debounce`、`--once`。`daemon` は `engine` のエイリアス。 |
+| `engine` | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) | `--interval`、`--debounce`、`--once`。`daemon` は `engine` のエイリアス。 |
 | `project refresh` — 散文的チェーン（取り込み → コンパイル → 投影） | ✅ | `cli.py` + [`tesserae/project.py`](../../tesserae/project.py) | `--changed-only`（オプトイン増分）、`--skip-sessions`。 |
 | ライブ セッション監視 → 発見 | ✅ | `harness_sessions.py` + セッション グラフ モジュール | 取り込まれたセッションがグラフに供給される; `fresh_insights` / `find_session_findings` が表面化。 |
 
@@ -151,11 +151,11 @@ Tesserae は 3 本の柱の上で動作する**コンテキスト エンジン**
 | `project compile` は synthesis + wiki + site を順に呼び出す | ✅ | [`tesserae/project.py`](../../tesserae/project.py) | 再設計計画のフェーズ 3。 |
 | `project build-site` 単体実行 | ✅ | `project.py` + [`tesserae/cli.py`](../../tesserae/cli.py) | `wiki/` + `graph.json` を読み、`site/` を書き出す。 |
 | `project serve` ローカル HTTP | ✅ | `cli.py` | 素の stdlib サーバー。 |
-| `project deploy` → GitHub Pages | ✅ | [`tesserae/deploy.py`](../../tesserae/deploy.py) | `gh-pages` への worktree push。`gh` CLI 経由の任意 `--enable-pages`。`--build`, `--dry-run`, `--branch`, `--remote`, `--force`。 |
+| `export site --deploy` → GitHub Pages | ✅ | [`tesserae/deploy.py`](../../tesserae/deploy.py) | `gh-pages` への worktree push。`gh` CLI 経由の任意 `--enable-pages`。`--build`, `--dry-run`, `--branch`, `--remote`, `--force`。 |
 | `project sessions discover/import/list` | ✅ | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) + `cli.py` | Claude Code/Codex 用のインバウンドセッション履歴。発見は明示的で、プロジェクト作業ディレクトリにスコープされる。 |
-| `project watch` 変更時再ビルド | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) + [`tesserae/watch.py`](../../tesserae/watch.py) | スタンドアロンのポーリング watcher: `--interval`、`--debounce`、`--once`、`--paths`、`--quiet`。マルチソース スーパーバイザーは `project engine`/`daemon` にあり（コンテキスト エンジン参照）。 |
+| `export site --watch` 変更時再ビルド | ✅ | [`tesserae/cli.py`](../../tesserae/cli.py) + [`tesserae/watch.py`](../../tesserae/watch.py) | スタンドアロンのポーリング watcher: `--interval`、`--debounce`、`--once`、`--paths`、`--quiet`。マルチソース スーパーバイザーは `project engine`/`daemon` にあり（コンテキスト エンジン参照）。 |
 | `project context` — 引用付きコンテキスト ドキュメントをコンパイル | ✅ | `cli.py` + [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | 柱 3 の目玉; コンテキスト エンジンの節を参照。 |
-| `project refresh` / `project engine` / `project daemon` | ✅ | `cli.py` + [`tesserae/engine/`](../../tesserae/engine/) | 散文的リフレッシュ チェーン + スーパーバイザー ループ; コンテキスト エンジンの節を参照。 |
+| `project refresh` / `engine` | ✅ | `cli.py` + [`tesserae/engine/`](../../tesserae/engine/) | 散文的リフレッシュ チェーン + スーパーバイザー ループ; コンテキスト エンジンの節を参照。 |
 
 ## 既存機能（変更なしで継続）
 
@@ -195,22 +195,22 @@ Tesserae は 3 本の柱の上で動作する**コンテキスト エンジン**
 
 ### プロジェクトローカルワークフロー
 
-- ✅ `tesserae project init`
-- ✅ `tesserae project ingest`
-- ✅ `tesserae project compile`
-- ✅ `tesserae project mcp-config`
-- ✅ `tesserae project build-site`
-- ✅ `tesserae project serve`
-- ✅ `tesserae project deploy`（GitHub Pages）
-- ✅ `tesserae project sessions discover/import/list`（明示的なローカル agent-history インポート）
-- ✅ `tesserae project watch`（スタンドアロンのポーリング watcher）
-- ✅ `tesserae project engine` / `tesserae project daemon`（スーパーバイザー ループ — v0.5.0）
-- ✅ `tesserae project refresh`（散文的 取り込み → コンパイル → 投影 チェーン — v0.5.0）
-- ✅ `tesserae project context`（オンデマンド コンテキスト コンパイラ — v0.5.0）
-- ✅ `tesserae project export-agent-harness`
-- ✅ `tesserae project export-obsidian`
-- ✅ `tesserae project export-graphiti`
-- ✅ `tesserae project sync-graphiti`
+- ✅ `tesserae init --bare`
+- ✅ `tesserae compile <paths>`
+- ✅ `tesserae compile`
+- ✅ `tesserae projects mcp-config`
+- ✅ `tesserae export site`
+- ✅ `tesserae serve`
+- ✅ `tesserae export site --deploy`（GitHub Pages）
+- ✅ `tesserae sessions discover/import/list`（明示的なローカル agent-history インポート）
+- ✅ `tesserae export site --watch`（スタンドアロンのポーリング watcher）
+- ✅ `tesserae engine`（スーパーバイザー ループ — v0.5.0）
+- ✅ `tesserae refresh`（散文的 取り込み → コンパイル → 投影 チェーン — v0.5.0）
+- ✅ `tesserae context`（オンデマンド コンテキスト コンパイラ — v0.5.0）
+- ✅ `tesserae export harness`
+- ✅ `tesserae vault export`
+- ✅ `tesserae export graphiti`
+- ✅ `tesserae export graphiti --sync`
 
 ### Obsidian
 

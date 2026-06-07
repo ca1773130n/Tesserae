@@ -80,7 +80,7 @@ read_plugin_setting() {
   case "$key" in
     session_start|session_end|pretooluse_compile) default_value="true" ;;
     # The CodeGraph adapter ships a fast, idempotent sync — opt-in by
-    # default so projects that use ``tesserae project sync-code`` get
+    # default so projects that use ``tesserae code sync`` get
     # an always-fresh code-graph.json without per-project setup. Set
     # ``sync_code_on_start: false`` in tesserae.local.md to disable.
     sync_code_on_start) default_value="true" ;;

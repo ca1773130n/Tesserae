@@ -33,11 +33,11 @@ Sleep 200ms
 Show
 
 # --- Setup -------------------------------------------------------------
-Type "# 1) Set up — Cognee, RAG-Anything, Understand-Anything all configured"
+Type "# 1) Set up — non-interactive (integrations are wizard prompts; enable later in config)"
 Sleep 300ms
 Enter
 
-Type@25ms "tesserae project setup --yes --source ./research --with-understand-anything --with-raganything --skip-install-cognee --skip-install-raganything --skip-install-understand-anything"
+Type@25ms "tesserae init --yes --source ./research"
 Sleep 200ms
 Enter
 Sleep 3s
@@ -47,7 +47,7 @@ Type "# 2) Compile the typed knowledge graph + build the static site"
 Sleep 300ms
 Enter
 
-Type@25ms "tesserae project compile && tesserae project build-site"
+Type@25ms "tesserae compile && tesserae export site"
 Sleep 200ms
 Enter
 Sleep 7s
@@ -57,17 +57,17 @@ Type "# 3) Ask the compiled wiki — deterministic graph lookup"
 Sleep 300ms
 Enter
 
-Type@25ms `tesserae project ask --backend wiki --top-k 3 "What is 3D Gaussian Splatting?"`
+Type@25ms `tesserae ask --backend wiki --top-k 3 "What is 3D Gaussian Splatting?"`
 Sleep 200ms
 Enter
 Sleep 3500ms
 
-Type@25ms `tesserae project ask --backend wiki --top-k 3 "Which repos implement NeRF?"`
+Type@25ms `tesserae ask --backend wiki --top-k 3 "Which repos implement NeRF?"`
 Sleep 200ms
 Enter
 Sleep 3500ms
 
-Type@25ms `tesserae project ask --backend wiki --top-k 3 "How does DreamFusion generate 3D from text?"`
+Type@25ms `tesserae ask --backend wiki --top-k 3 "How does DreamFusion generate 3D from text?"`
 Sleep 200ms
 Enter
 Sleep 4500ms

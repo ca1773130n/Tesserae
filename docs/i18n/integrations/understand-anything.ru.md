@@ -35,26 +35,26 @@ Understand Anything может записывать:
 Рекомендуемый путь — мастер настройки:
 
 ```bash
-tesserae project setup
+tesserae init
 ```
 
-Выберите Understand Anything на шаге сопутствующих инструментов. Tesserae установит/обновит сопутствующие skills по запросу и запишет управляемую команду обновления в `.tesserae/config.json`. Последующие вызовы `tesserae project compile` будут автоматически запускать эту обертку, когда граф UA отсутствует или устарел.
+Выберите Understand Anything на шаге сопутствующих инструментов. Tesserae установит/обновит сопутствующие skills по запросу и запишет управляемую команду обновления в `.tesserae/config.json`. Последующие вызовы `tesserae compile` будут автоматически запускать эту обертку, когда граф UA отсутствует или устарел.
 
 Для неинтерактивной автоматизации используйте:
 
 ```bash
-tesserae project setup \
+tesserae init \
   --yes \
   --with-understand-anything \
   --install-understand-anything \
   --understand-anything-platform codex
-tesserae project compile
+tesserae compile
 ```
 
 Сохраненная команда принадлежит Tesserae, а не является тем, что пользователь должен придумать сам:
 
 ```bash
-tesserae project refresh-understand-anything --platform codex
+tesserae integrations refresh understand-anything --platform codex
 ```
 
 Во время компиляции Tesserae:
@@ -68,13 +68,13 @@ tesserae project refresh-understand-anything --platform codex
 Можно принудительно выполнить все настроенные внешние команды обновления перед компиляцией:
 
 ```bash
-tesserae project compile --refresh-external-tools
+tesserae compile --refresh-integrations
 ```
 
 Нужен также Cognee? Добавьте флаги runtime-памяти в ту же команду setup:
 
 ```bash
-tesserae project setup \
+tesserae init \
   --yes \
   --with-understand-anything \
   --install-understand-anything \
@@ -91,19 +91,28 @@ tesserae project setup \
 /understand
 ```
 
-Затем выполните `tesserae project setup --with-understand-anything`, чтобы Tesserae записал источник markdown-проекции. Прямые JSON-файлы сохраняются как сырые сопутствующие артефакты, а не как вручную введенные пути источников.
+Затем запустите мастер настройки и **включите Understand Anything по
+соответствующему запросу**, чтобы Tesserae записал источник markdown-проекции.
+Прямые JSON-файлы сохраняются как сырые сопутствующие артефакты, а не как
+вручную введенные пути источников.
 
 ```bash
-tesserae project setup --with-understand-anything
-tesserae project compile
-tesserae project build-site
+tesserae init
+# включите Understand Anything, когда мастер спросит
+tesserae compile
+tesserae export site
 ```
+
+Для неинтерактивной автоматизации выполните `tesserae init --yes` (интеграции
+ВЫКЛЮЧЕНЫ), включите Understand Anything в `.tesserae/config.json` (мастер
+записывает интеграцию под ключом `external_tools`), затем выполните `tesserae
+integrations refresh understand-anything` перед компиляцией.
 
 Если также нужна локальная память агентских сессий:
 
 ```bash
-tesserae project sessions discover --import
-tesserae project build-site
+tesserae sessions discover --import
+tesserae export site
 ```
 
 ## Нативная синхронизация графа

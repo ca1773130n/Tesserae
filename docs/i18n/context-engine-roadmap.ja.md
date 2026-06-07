@@ -50,7 +50,7 @@ P1 が着地すれば並列で進められます。P7 が両者を収束させ�
   （機械的、振る舞い変更なし）。
 - **成果物:** `Pipeline.run(steps, changed_only=…)`；CLI がこれに委譲；ステップ
   順序付け + 失敗伝播のユニットテスト。
-- **受け入れ:** `tesserae project refresh` がスキルではなくコードとして存在し、
+- **受け入れ:** `tesserae refresh` がスキルではなくコードとして存在し、
   デモコーパス上で markdown チェーンをバイト単位で再現する。
 - **リスク:** 低。純粋なリファクタ；既存テストが振る舞いを守る。
 - **クローズされる監査所見:**「refresh がスキルに存在」「cli 神ディスパッチャ」。
@@ -172,7 +172,7 @@ P1 が着地すれば並列で進められます。P7 が両者を収束させ�
 
 ## フェーズ 6 — オンデマンドコンテキストコンパイラ（柱 3） ✅ v0.5.0 出荷（目玉機能）
 
-> **v0.5.0 で目玉機能として出荷。** `tesserae/context_compiler.py` の純粋な `compile_context` パイプラインは、`ContextCitation` のインメモリ `ContextBundle` を返します（クエリ/シード → PPR + ハイブリッド検索 → 深さ制限 k ホップ近傍 → ウィキ本文の組み立て → 優雅なフォールバック付き任意 LLM 合成 → 予算制御）。MCP `compile_context` ツールと `tesserae project context` CLI サブコマンドとして公開。`node_context` には `use_ppr` ランク付けパスが追加され、トピックスコープの `llms.txt` エクスポートスライスが出荷されます。
+> **v0.5.0 で目玉機能として出荷。** `tesserae/context_compiler.py` の純粋な `compile_context` パイプラインは、`ContextCitation` のインメモリ `ContextBundle` を返します（クエリ/シード → PPR + ハイブリッド検索 → 深さ制限 k ホップ近傍 → ウィキ本文の組み立て → 優雅なフォールバック付き任意 LLM 合成 → 予算制御）。MCP `compile_context` ツールと `tesserae context` CLI サブコマンドとして公開。`node_context` には `use_ppr` ランク付けパスが追加され、トピックスコープの `llms.txt` エクスポートスライスが出荷されます。
 
 **ゴール:** 目玉機能 ——「X についてのコンテキストをくれ」→ あつらえの、引用付き、
 エージェント対応のドキュメント。

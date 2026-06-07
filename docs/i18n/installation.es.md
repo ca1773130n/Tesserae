@@ -37,7 +37,7 @@ La wheel predeterminada es deliberadamente ligera. El asistente de configuració
 
 ```bash
 # Understand Anything companion graph + Cognee runtime memory
-tesserae project setup \
+tesserae init \
   --with-understand-anything \
   --install-understand-anything \
   --understand-anything-platform codex \
@@ -54,7 +54,7 @@ pip install kuzu cognee graphiti-core
 - `kuzu` — persistencia de grafos Kuzu.
 - `cognee` — flujos runtime add/cognify de Cognee; la configuración guarda `{python} -m pip install cognee` y reintenta una vez si falta Cognee.
 - Understand Anything — se instala mediante el instalador upstream cuando se selecciona `--install-understand-anything`; Tesserae guarda un wrapper de actualización gestionado en lugar de pedir a los usuarios que inventen un comando shell.
-- `graphiti-core` — sincronización en vivo Graphiti/Neo4j. `export-graphiti` y `sync-graphiti --dry-run` funcionan sin él.
+- `graphiti-core` — sincronización en vivo Graphiti/Neo4j. `export graphiti` y `export graphiti --sync --dry-run` funcionan sin él.
 
 La ruta de síntesis respaldada por Anthropic usa un marcador extras:
 
@@ -68,7 +68,7 @@ Los embeddings semánticos reales (el carril de recuperación predeterminado des
 pip install "tesserae[semantic]"
 ```
 
-Esto instala `model2vec` y descarga un modelo estático ligero, sin conexión y sin torch (unos 8 MB de `potion-base-8M`, descargado una sola vez en el primer uso). Sin él, la recuperación híbrida/por embeddings recurre a un stub no semántico basado en cubos hash y emite una advertencia llamativa, por lo que se recomienda instalar este extra a quien use `project ask`, `project context` o la herramienta MCP `compile_context`.
+Esto instala `model2vec` y descarga un modelo estático ligero, sin conexión y sin torch (unos 8 MB de `potion-base-8M`, descargado una sola vez en el primer uso). Sin él, la recuperación híbrida/por embeddings recurre a un stub no semántico basado en cubos hash y emite una advertencia llamativa, por lo que se recomienda instalar este extra a quien use `tesserae ask`, `tesserae context` o la herramienta MCP `compile_context`.
 
 ## Instalar desde el código fuente (para contribuidores)
 
@@ -110,7 +110,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ## Verificar la instalación
 
 ```bash
-tesserae project init --help
-tesserae project compile --help
-tesserae project build-site --help
+tesserae init --help
+tesserae compile --help
+tesserae export site --help
 ```

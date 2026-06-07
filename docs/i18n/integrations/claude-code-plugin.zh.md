@@ -31,7 +31,7 @@ Tesserae 提供了一个 [Claude Code](https://docs.claude.com/en/docs/claude-co
 - **MCP 工具** = 代理在对话中调用的只读图谱查询。始终开启,低摩擦。
 - **斜杠命令** = 你明确调用的工作流操作(compile、refresh、obsidian-sync)。高杠杆但应该由你决定。
 
-你可以仅使用 MCP 服务器(通过 `tesserae project mcp-config` 手动编辑 `claude_desktop_config.json`)。插件只是将它与斜杠命令、技能和 hook 打包在一起,使安装变为一步。
+你可以仅使用 MCP 服务器(通过 `tesserae projects mcp-config` 手动编辑 `claude_desktop_config.json`)。插件只是将它与斜杠命令、技能和 hook 打包在一起,使安装变为一步。
 
 ## 验证安装
 

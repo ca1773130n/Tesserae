@@ -52,7 +52,7 @@ from .wiki_store import WikiPage, WikiPageStore
 CODE_GRAPH_TYPES: FrozenSet[ResearchNodeType] = frozenset({
     ResearchNodeType.CODE_PROJECT,
     ResearchNodeType.SOURCE_FILE,
-    # Feature A / impl-code-graph (`tesserae project ingest-code`): new
+    # Feature A / impl-code-graph (`tesserae code ingest`): new
     # CodeFile/CodeMethod variants live alongside the older SourceFile/
     # CodeFunction nodes. Both ontology slices are private code-graph.
     ResearchNodeType.CODE_FILE,
@@ -61,7 +61,7 @@ CODE_GRAPH_TYPES: FrozenSet[ResearchNodeType] = frozenset({
     ResearchNodeType.CODE_FUNCTION,
     ResearchNodeType.CODE_METHOD,
     ResearchNodeType.DEPENDENCY,
-    # Option-C / CodeGraph-adapter additions (`tesserae project sync-code`).
+    # Option-C / CodeGraph-adapter additions (`tesserae code sync`).
     # Same private-layer treatment — these never appear in the public
     # research graph or wiki site; they live in ``code-graph.json``.
     ResearchNodeType.CODE_INTERFACE,

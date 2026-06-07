@@ -21,9 +21,9 @@ Tesserae を公開する前に、このチェックリストを使用してく�
 ```bash
 .venv/bin/pytest tests/ -x          # 失敗があれば中止 — 赤いビルドは決して出荷しない
 ./scripts/install.sh --help
-tesserae project setup --help
-tesserae project compile --help
-tesserae project context --help     # オンデマンド・コンテキスト・コンパイラ
+tesserae init --help
+tesserae compile --help
+tesserae context --help     # オンデマンド・コンテキスト・コンパイラ
 ```
 
 ### デモビルドのスモークテスト（`build-demo` CI ジョブと同一）
@@ -32,11 +32,9 @@ tesserae project context --help     # オンデマンド・コンテキスト・
 不要）で Tesserae を自身のソースツリーに対してコンパイルし、サイトをビルドする:
 
 ```bash
-.venv/bin/python -m tesserae project setup --yes --no-color --source . \
-  --no-cognee --skip-raganything --skip-install-cognee \
-  --skip-install-raganything --skip-install-understand-anything
-.venv/bin/python -m tesserae project compile
-.venv/bin/python -m tesserae project build-site
+.venv/bin/python -m tesserae init --yes --source .
+.venv/bin/python -m tesserae compile
+.venv/bin/python -m tesserae export site
 ```
 
 ## リリースフロー
@@ -61,25 +59,32 @@ tesserae project context --help     # オンデマンド・コンテキスト・
 
 ## Self-dogfood
 
+連携のオプトイン（Understand Anything、RAG-Anything、cognee）は、CLI フラグではなく
+**対話型ウィザードのプロンプト**になりました。ウィザードを実行して答えてください:
+
 ```bash
-tesserae project setup \
-  --yes \
+tesserae init \
   --name tesserae_self \
   --source README.md \
   --source docs \
   --source tesserae \
   --source tests \
-  --source scripts \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex \
-  --run-cognee \
-  --install-cognee
-tesserae project compile
-tesserae project sessions list
-tesserae project build-site
-tesserae project serve --port 8765
+  --source scripts
+# ウィザードが尋ねたら:
+#   - Understand Anything を有効化（プラットフォーム: codex）、インストール: はい
+#   - RAG-Anything を有効化、インストール: はい、パーサー: mineru、その後実行: はい
+#   - cognee を有効化、インストール: はい
+tesserae compile
+tesserae sessions list
+tesserae export site
+tesserae serve --port 8765
 ```
+
+完全に非対話的な実行には、`tesserae init --yes`（すべての連携 OFF）を使い、その後
+`.tesserae/config.json` で各連携を有効化し（ウィザードは `memory_backends`（cognee）
+と `external_tools`（Understand Anything、RAG-Anything）キーの下に書き込みます）、
+コンパイル前に各連携に対して `tesserae integrations refresh <name>` を実行します。
+正確な設定キーは連携ドキュメントを参照してください。
 
 ## デモで話すポイント
 

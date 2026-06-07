@@ -5,10 +5,10 @@
 <!-- translations:end -->
 Этот документ — пошаговый обзор всех видимых маршрутов на переработанном статическом сайте Tesserae. Он дополняет высокоуровневую модель в [`architecture.md`](architecture.ru.md) и таблицу статусов в [`feature-map.md`](feature-map.ru.md).
 
-После `tesserae project compile` сайт находится в `.tesserae/site/`. Чтобы открыть его локально:
+После `tesserae compile` сайт находится в `.tesserae/site/`. Чтобы открыть его локально:
 
 ```bash
-tesserae project serve --port 8765
+tesserae serve --port 8765
 # open http://127.0.0.1:8765/
 ```
 
@@ -250,7 +250,7 @@ Open questions извлекаются из корпуса как узлы `OpenQ
 
 ## Sessions
 
-Sessions — импортированные локальные transcripts AI-harness, нормализованные в `.tesserae/harness_sessions/`, затем отрендеренные как поисковая память проекта. Импорт выполняется явно через `tesserae project sessions discover --import` или `tesserae project sessions import ...`; обычные сборки сайта потребляют только уже нормализованные записи.
+Sessions — импортированные локальные transcripts AI-harness, нормализованные в `.tesserae/harness_sessions/`, затем отрендеренные как поисковая память проекта. Импорт выполняется явно через `tesserae sessions discover --import` или `tesserae sessions import ...`; обычные сборки сайта потребляют только уже нормализованные записи.
 
 ### `/sessions/` ✅
 

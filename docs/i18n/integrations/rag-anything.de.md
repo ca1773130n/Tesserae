@@ -18,19 +18,34 @@ Die beiden ergänzen sich: RAG-Anything bringt PDF-/Office-/Bildverständnis mit
 Empfohlen ist der Setup-Wizard:
 
 ```bash
-tesserae project setup
+tesserae init
 ```
 
-Für die Automatisierung:
+RAG-Anything ist jetzt eine **interaktive Wizard-Abfrage** statt einer Reihe
+von CLI-Flags. Wenn der Wizard läuft, beantworte die Integrations-Abfragen:
+
+- aktiviere RAG-Anything, wenn danach gefragt wird;
+- installiere es, wenn gefragt (installiert `raganything` + `docling`);
+- wähle den Parser `mineru`;
+- aktiviere den Refresh-Lauf nach der Installation, wenn angeboten.
+
+Dann kompiliere:
 
 ```bash
-tesserae project setup \
-  --yes \
-  --with-raganything \
-  --install-raganything \
-  --raganything-parser mineru \
-  --run-raganything
-tesserae project compile
+tesserae compile
+```
+
+Für nicht-interaktive Automatisierung (CI) führe den Wizard mit Defaults aus
+(alle optionalen Integrationen AUS), aktiviere RAG-Anything dann in
+`.tesserae/config.json` — der Wizard schreibt die Integrations-Konfiguration
+unter den Schlüssel `external_tools` / `memory_backends` — und führe den
+verwalteten Refresh aus:
+
+```bash
+tesserae init --yes
+# raganything in .tesserae/config.json aktivieren (external_tools-Schlüssel)
+tesserae integrations refresh raganything --parser mineru
+tesserae compile
 ```
 
 Der Setup-Wizard installiert `raganything` und `docling` zusammen. MinerU bleibt opt-in: installiere es nur dann mit `pip install 'mineru[core]'`, wenn du PDFs oder Bilder ingestieren willst.
@@ -38,7 +53,7 @@ Der Setup-Wizard installiert `raganything` und `docling` zusammen. MinerU bleibt
 Tesserae hinterlegt einen verwalteten Refresh-Befehl, statt von Nutzern zu verlangen, sich einen auszudenken:
 
 ```bash
-tesserae project refresh-raganything --parser mineru
+tesserae integrations refresh raganything --parser mineru
 ```
 
 Während des Compiles geht Tesserae so vor:
@@ -52,7 +67,7 @@ Während des Compiles geht Tesserae so vor:
 Du kannst vor einem Compile alle konfigurierten externen Refresh-Befehle erzwingen:
 
 ```bash
-tesserae project compile --refresh-external-tools
+tesserae compile --refresh-integrations
 ```
 
 ## Manuelles Äquivalent
@@ -60,7 +75,7 @@ tesserae project compile --refresh-external-tools
 ```bash
 pip install 'raganything[all]'
 python -m tesserae.raganything_refresh --project . --parser mineru
-tesserae project compile
+tesserae compile
 ```
 
 ## Compile-Zeit vs. Laufzeit
@@ -128,12 +143,12 @@ Direkte OpenAI-Embedding-Unterstützung ist in v1 nicht über diese Flags verdra
 
 ```bash
 # Auto mode: tries RAG-Anything (when enabled), then Cognee, then compiled-wiki search.
-tesserae project ask "What does the integration spec say about parser routing?"
+tesserae ask "What does the integration spec say about parser routing?"
 
 # Force a specific backend.
-tesserae project ask "..." --backend raganything
-tesserae project ask "..." --backend cognee
-tesserae project ask "..." --backend wiki
+tesserae ask "..." --backend raganything
+tesserae ask "..." --backend cognee
+tesserae ask "..." --backend wiki
 ```
 
 `--backend raganything` ruft `tesserae.raganything_query.query` direkt auf. Ein relativer `working_dir` in `memory_backends.raganything` wird vor dem Aufruf gegen die Projekt-Root aufgelöst.
@@ -144,11 +159,11 @@ Für Workflows, in denen du über mehrere registrierte Tesserae-Projekte hinweg 
 
 ```bash
 # One-time: register your projects (saved to ~/.tesserae/registry.json).
-tesserae wiki register ~/Developer/Projects/Tesserae --name tesserae --activate
-tesserae wiki register ~/Developer/Projects/Other --name other
+tesserae projects register ~/Developer/Projects/Tesserae --name tesserae --activate
+tesserae projects register ~/Developer/Projects/Other --name other
 
 # List registered projects.
-tesserae wiki list
+tesserae projects list
 
 # Ask the currently active project.
 tesserae ask "How does the parser routing work?"
@@ -178,14 +193,14 @@ tesserae ask "..." --scope all-registered --scope-aliases research side-projects
 
 Der Handler iteriert die registrierten Projekte in alphabetischer Reihenfolge, ruft für jedes `ask_project` auf und aggregiert die per-Projekt-Envelopes. Ein einzelnes fehlschlagendes Projekt — fehlende Config, RAG-Anything nicht aktiviert, Cognee down — wird im Slot des jeweiligen Alias als `{"error": "..."}` festgehalten und bricht den Rest des Fan-out nie ab. Dasselbe `scope`-Argument akzeptiert auch das MCP-Tool `ask`, sodass MCP-gesteuerte Coding-Agenten denselben Fan-out ohne zusätzliche Verkabelung bekommen.
 
-### Multi-Projekt-Registry (`tesserae wiki`)
+### Multi-Projekt-Registry (`tesserae projects`)
 
 | Befehl | Zweck |
 | --- | --- |
-| `tesserae wiki list [--json]` | Listet registrierte Projekte und zeigt, welches aktiv ist. |
-| `tesserae wiki register <path> [--name <alias>] [--activate]` | Fügt ein Projekt der Registry hinzu; der Alias wird standardmäßig vom bereinigten Verzeichnisnamen abgeleitet. |
-| `tesserae wiki activate <name>` | Markiert einen Eintrag als aktives Projekt für nachfolgende `tesserae ask`-Aufrufe ohne `--wiki`. |
-| `tesserae wiki unregister <name>` | Entfernt einen Eintrag; löscht den Aktiv-Pointer, falls dieser passte. |
+| `tesserae projects list [--json]` | Listet registrierte Projekte und zeigt, welches aktiv ist. |
+| `tesserae projects register <path> [--name <alias>] [--activate]` | Fügt ein Projekt der Registry hinzu; der Alias wird standardmäßig vom bereinigten Verzeichnisnamen abgeleitet. |
+| `tesserae projects activate <name>` | Markiert einen Eintrag als aktives Projekt für nachfolgende `tesserae ask`-Aufrufe ohne `--wiki`. |
+| `tesserae projects unregister <name>` | Entfernt einen Eintrag; löscht den Aktiv-Pointer, falls dieser passte. |
 
 Diese Befehle arbeiten direkt auf `tesserae.mcp_server.ProjectRegistry` — kein MCP-Roundtrip — und lassen sich ohne laufenden MCP-Server skripten.
 
@@ -223,7 +238,7 @@ Tesserae routet Quellen pro Dateiendung automatisch an den passenden Parser:
 | `.doc`, `.docx`, `.ppt`, `.pptx`, `.xls`, `.xlsx` | `docling` | Bessere Erhaltung der Office-Struktur laut Upstream. |
 | `.pdf`, `.png`, `.jpg`, `.jpeg`, `.gif`, `.bmp`, `.tiff`, `.webp` | konfigurierter Default (`--raganything-parser`, default `mineru`) | OCR + Tabellenextraktion. |
 
-Der verwaltete Wrapper `tesserae project refresh-raganything` bietet `--parser` (der konfigurierte Default für PDFs/Bilder), `--parse-method {auto,ocr,txt}`, `--root` (wiederholbar, auf einen Teilbaum beschränken), `--force` und `--full`. Das Routing nach Text-/Office-Bucket ist fest (beide nutzen standardmäßig `docling`). Um den Text- oder Office-Parser explizit zu überschreiben, rufe das zugrunde liegende Modul direkt auf — `python -m tesserae.raganything_refresh --text-parser <p> --office-parser <p>` — das diese beiden zusätzlichen Flags bereitstellt. Der konfigurierte Default gilt weiterhin für PDFs und Bilder.
+Der verwaltete Wrapper `tesserae integrations refresh raganything` bietet `--parser` (der konfigurierte Default für PDFs/Bilder), `--parse-method {auto,ocr,txt}`, `--root` (wiederholbar, auf einen Teilbaum beschränken), `--force` und `--full`. Das Routing nach Text-/Office-Bucket ist fest (beide nutzen standardmäßig `docling`). Um den Text- oder Office-Parser explizit zu überschreiben, rufe das zugrunde liegende Modul direkt auf — `python -m tesserae.raganything_refresh --text-parser <p> --office-parser <p>` — das diese beiden zusätzlichen Flags bereitstellt. Der konfigurierte Default gilt weiterhin für PDFs und Bilder.
 
 Bevor die Parse-Schleife läuft, prüft Tesserae, ob das Python-Paket jedes benötigten Parsers importierbar ist (`importlib.import_module(...)`), und bricht früh mit einem einzigen aggregierten Fehler ab, der jeden fehlenden Parser und seinen Install-Befehl listet. Wir verwenden bewusst nicht das Upstream-`RAGAnything.check_parser_installation()`, weil es nur den auf der Instanz konfigurierten Parser inspiziert und zusätzlich Model-Weight-Readiness-Checks bündelt, die nicht in eine Pre-Flight-Stage passen.
 
@@ -244,11 +259,11 @@ Wenn ein konfigurierter Parser fehlt, bricht `refresh-raganything` früh ab — 
 
 ### Per-Page-Ask-Widget
 
-Jede Detailseite (Concept, Paper, Repo, Synthesis, Entity, Topic, Question, Source) enthält ein Inline-„Ask about this page“-Widget. Es POSTet an `/api/ask` der lokalen `tesserae project serve`-Instanz, ruft `tesserae.query.ask_project` auf und rendert die Antwort inline. Das Widget setzt der Frage des Nutzers den Node-Namen der aktuellen Seite als natürlich-sprachlichen Kontext-Hinweis voran (z. B. `` About `<NodeName>`: <question> ``); ein künftiger PR kann echtes Subgraph-Scoping direkt in `ask_project` einhängen.
+Jede Detailseite (Concept, Paper, Repo, Synthesis, Entity, Topic, Question, Source) enthält ein Inline-„Ask about this page“-Widget. Es POSTet an `/api/ask` der lokalen `tesserae serve`-Instanz, ruft `tesserae.query.ask_project` auf und rendert die Antwort inline. Das Widget setzt der Frage des Nutzers den Node-Namen der aktuellen Seite als natürlich-sprachlichen Kontext-Hinweis voran (z. B. `` About `<NodeName>`: <question> ``); ein künftiger PR kann echtes Subgraph-Scoping direkt in `ask_project` einhängen.
 
-Das Widget erkennt beim Laden die Backend-Verfügbarkeit über `/api/ask/health`. Wenn das Wiki statisch ausgeliefert wird (GitHub Pages, `file://`, S3, beliebiger statischer Host), kollabiert das Widget zu einer einzeiligen Notiz, die Leser zu `tesserae project serve` für die lokale interaktive Nutzung verweist. Keine Requests schlagen fehl, und nichts blockiert das Page-Rendering — das Widget ist eine deferred JS-Insel, getrennt vom schwereren Graph-Bundle.
+Das Widget erkennt beim Laden die Backend-Verfügbarkeit über `/api/ask/health`. Wenn das Wiki statisch ausgeliefert wird (GitHub Pages, `file://`, S3, beliebiger statischer Host), kollabiert das Widget zu einer einzeiligen Notiz, die Leser zu `tesserae serve` für die lokale interaktive Nutzung verweist. Keine Requests schlagen fehl, und nichts blockiert das Page-Rendering — das Widget ist eine deferred JS-Insel, getrennt vom schwereren Graph-Bundle.
 
-In Kombination mit der Multi-Projekt-Registry (`tesserae wiki register`) kannst du das Wiki jedes registrierten Projekts aus jeder seiner Detailseiten heraus befragen.
+In Kombination mit der Multi-Projekt-Registry (`tesserae projects register`) kannst du das Wiki jedes registrierten Projekts aus jeder seiner Detailseiten heraus befragen.
 
 ## Kollaborationsprinzip
 

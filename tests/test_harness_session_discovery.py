@@ -209,7 +209,7 @@ def test_cli_sessions_discover_imports_matching_roots(tmp_path, capsys):
         encoding="utf-8",
     )
 
-    assert main(["project", "sessions", "discover", "--project", str(project), "--root", str(root), "--harness", "codex", "--import"]) == 0
+    assert main(["sessions", "discover", "--project", str(project), "--root", str(root), "--harness", "codex", "--import"]) == 0
 
     out = capsys.readouterr().out
     assert f"Project working directory: {project.resolve()}" in out

@@ -164,7 +164,7 @@ the highest-signal contributors land in the prompt when a plan has more.
 pip install tesserae[synthesis-llm]
 export TESSERAE_SYNTHESIS_LLM=1
 export ANTHROPIC_API_KEY=sk-...
-python -m tesserae.cli project compile
+python -m tesserae.cli compile
 ```
 
 Override the model with `TESSERAE_SYNTHESIS_MODEL` (default
@@ -237,7 +237,7 @@ Unset the env var (or set it to `0`) and re-run:
 
 ```sh
 unset TESSERAE_SYNTHESIS_LLM
-python -m tesserae.cli project compile
+python -m tesserae.cli compile
 ```
 
 Subsequent compiles regenerate the affected synthesis pages with the

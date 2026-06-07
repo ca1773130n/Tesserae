@@ -140,7 +140,7 @@ EDITORIAL ANGLE 블록은 결정적 휴리스틱 본문입니다. 모델은 새�
 pip install tesserae[synthesis-llm]
 export TESSERAE_SYNTHESIS_LLM=1
 export ANTHROPIC_API_KEY=sk-...
-python -m tesserae.cli project compile
+python -m tesserae.cli compile
 ```
 
 `TESSERAE_SYNTHESIS_MODEL`로 model을 override할 수 있습니다(기본값 `claude-sonnet-4-6`). Anthropic SDK ≥ 0.40이 필요합니다.
@@ -191,7 +191,7 @@ env var를 unset하거나 `0`으로 설정한 뒤 다시 실행하세요.
 
 ```sh
 unset TESSERAE_SYNTHESIS_LLM
-python -m tesserae.cli project compile
+python -m tesserae.cli compile
 ```
 
 이후 compile은 영향을 받은 synthesis page를 휴리스틱 generator로 다시 생성합니다. page rewrite는 `content_hash`에 의해 gated되므로 실제로 본문이 바뀐 page만 다시 작성됩니다.

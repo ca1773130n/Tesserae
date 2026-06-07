@@ -1,4 +1,4 @@
-"""AST-driven code-graph extractor for ``tesserae project ingest-code``.
+"""AST-driven code-graph extractor for ``tesserae code ingest``.
 
 Feature A (impl-code-graph) producer. Walks a project repository, parses
 Python via stdlib :mod:`ast`, and mints a typed slice of the existing

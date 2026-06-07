@@ -37,7 +37,7 @@ pip install --upgrade tesserae
 
 ```bash
 # Understand Anything companion graph + Cognee runtime memory
-tesserae project setup \
+tesserae init \
   --with-understand-anything \
   --install-understand-anything \
   --understand-anything-platform codex \
@@ -54,7 +54,7 @@ pip install kuzu cognee graphiti-core
 - `kuzu` — Kuzu 그래프 영속성.
 - `cognee` — 런타임 Cognee add/cognify 워크플로. 설정은 `{python} -m pip install cognee`를 저장하고 Cognee가 없으면 한 번 재시도합니다.
 - Understand Anything — `--install-understand-anything`이 선택되면 upstream 설치 프로그램으로 설치됩니다. Tesserae는 사용자에게 셸 명령을 만들라고 요구하는 대신 관리형 refresh wrapper를 저장합니다.
-- `graphiti-core` — 실시간 Graphiti/Neo4j 동기화. `export-graphiti`와 `sync-graphiti --dry-run`은 이것 없이도 동작합니다.
+- `graphiti-core` — 실시간 Graphiti/Neo4j 동기화. `export graphiti`와 `export graphiti --sync --dry-run`은 이것 없이도 동작합니다.
 
 Anthropic 기반 합성 경로는 extras 마커를 사용합니다.
 
@@ -68,7 +68,7 @@ pip install "tesserae[synthesis-llm]"
 pip install "tesserae[semantic]"
 ```
 
-이는 `model2vec`를 설치하고, 가볍고 오프라인에서 동작하며 torch가 필요 없는 정적 모델(약 8 MB `potion-base-8M`, 최초 사용 시 한 번 다운로드)을 내려받습니다. 이 extra가 없으면 하이브리드/임베딩 검색이 비시맨틱 해시 버킷 스텁으로 대체되며 큰 경고를 출력합니다. 따라서 `project ask`, `project context` 또는 MCP `compile_context` 도구를 사용하는 경우 이 extra 설치를 권장합니다.
+이는 `model2vec`를 설치하고, 가볍고 오프라인에서 동작하며 torch가 필요 없는 정적 모델(약 8 MB `potion-base-8M`, 최초 사용 시 한 번 다운로드)을 내려받습니다. 이 extra가 없으면 하이브리드/임베딩 검색이 비시맨틱 해시 버킷 스텁으로 대체되며 큰 경고를 출력합니다. 따라서 `tesserae ask`, `tesserae context` 또는 MCP `compile_context` 도구를 사용하는 경우 이 extra 설치를 권장합니다.
 
 ## 소스에서 설치(기여자용)
 
@@ -110,7 +110,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ## 설치 확인
 
 ```bash
-tesserae project init --help
-tesserae project compile --help
-tesserae project build-site --help
+tesserae init --help
+tesserae compile --help
+tesserae export site --help
 ```

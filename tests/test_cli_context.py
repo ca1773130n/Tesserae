@@ -1,4 +1,4 @@
-"""CLI tests for `tesserae project context` (CTX-02, Plan 07-03).
+"""CLI tests for `tesserae context` (CTX-02, Plan 07-03).
 
 In-process invocations via ``tesserae.cli.main`` with a compiled tmp project.
 No-LLM path only (no ``--synthesize``) so these are CI-safe without an API key.
@@ -24,10 +24,10 @@ def _compiled_project(tmp_path, capsys) -> Path:
         encoding="utf-8",
     )
     assert main([
-        "project", "init", "--project", str(project),
-        "--name", "ctx_demo", "--source-kind", "Paper", "--source", "note.md",
+        "init", "--bare", "--project", str(project),
+        "--name", "ctx_demo", "--source", "note.md",
     ]) == 0
-    assert main(["project", "compile", "--project", str(project)]) == 0
+    assert main(["compile", "--project", str(project)]) == 0
     capsys.readouterr()  # drain init/compile output
     return project
 
@@ -35,7 +35,7 @@ def _compiled_project(tmp_path, capsys) -> Path:
 def test_context_stdout(tmp_path, capsys):
     project = _compiled_project(tmp_path, capsys)
     rc = main([
-        "project", "context", "Gaussian Splatting", "--project", str(project),
+        "context", "Gaussian Splatting", "--project", str(project),
     ])
     assert rc == 0
     out = capsys.readouterr().out
@@ -46,7 +46,7 @@ def test_context_output_file(tmp_path, capsys):
     project = _compiled_project(tmp_path, capsys)
     out_path = tmp_path / "ctx.md"
     rc = main([
-        "project", "context", "Gaussian Splatting",
+        "context", "Gaussian Splatting",
         "--project", str(project), "--output", str(out_path),
     ])
     assert rc == 0
@@ -59,9 +59,9 @@ def test_context_output_file(tmp_path, capsys):
 
 def test_context_deterministic(tmp_path, capsys):
     project = _compiled_project(tmp_path, capsys)
-    main(["project", "context", "Gaussian Splatting", "--project", str(project)])
+    main(["context", "Gaussian Splatting", "--project", str(project)])
     first = capsys.readouterr().out
-    main(["project", "context", "Gaussian Splatting", "--project", str(project)])
+    main(["context", "Gaussian Splatting", "--project", str(project)])
     second = capsys.readouterr().out
     assert first == second
     assert first.startswith("# Context:")

@@ -6,7 +6,7 @@
 # literal user-typed text including any surrounding quotes. For
 # `/tesserae:ask "what did we decide?"`, $ARGUMENTS becomes the
 # 8-character string `"what did we decide?"` (with quotes), not the
-# 7-word question. `tesserae project ask "$ARGUMENTS"` would then call
+# 7-word question. `tesserae ask "$ARGUMENTS"` would then call
 # the CLI with a *quoted-string* question — confusing the parser.
 #
 # We strip ONE matching pair of double or single quotes if present and
@@ -45,4 +45,4 @@ if [[ -z "$q" ]]; then
   exit 2
 fi
 
-exec tesserae project ask "$q"
+exec tesserae ask "$q"

@@ -52,7 +52,7 @@ orquestador en proceso de primera clase que llamen el demonio, la CLI y MCP.
   de comandos (mecánico, sin cambio de comportamiento).
 - **Entregables:** `Pipeline.run(steps, changed_only=…)`; la CLI delega en él;
   tests unitarios de secuenciado de pasos + propagación de fallos.
-- **Aceptación:** `tesserae project refresh` existe como código (no skill) y
+- **Aceptación:** `tesserae refresh` existe como código (no skill) y
   reproduce la cadena markdown byte a byte sobre el corpus de demo.
 - **Riesgo:** Bajo. Refactor puro; los tests existentes guardan el
   comportamiento.
@@ -193,7 +193,7 @@ como carril «semántico» por defecto.
 
 ## Fase 6 — Compilador de contexto bajo demanda (Pilar 3) ✅ Entregado en v0.5.0 (función estelar)
 
-> **Entregado en v0.5.0 como función estelar.** El pipeline puro `compile_context` en `tesserae/context_compiler.py` devuelve un `ContextBundle` en memoria de `ContextCitation`s (consulta/semillas → PPR + búsqueda híbrida → vecindario k-hop acotado en profundidad → ensamblaje de cuerpos wiki → síntesis LLM opcional con fallback elegante → control de presupuesto). Expuesto como la herramienta MCP `compile_context` y el subcomando CLI `tesserae project context`; `node_context` ahora tiene una ruta clasificada `use_ppr`; se entregan slices de exportación `llms.txt` con alcance por tema.
+> **Entregado en v0.5.0 como función estelar.** El pipeline puro `compile_context` en `tesserae/context_compiler.py` devuelve un `ContextBundle` en memoria de `ContextCitation`s (consulta/semillas → PPR + búsqueda híbrida → vecindario k-hop acotado en profundidad → ensamblaje de cuerpos wiki → síntesis LLM opcional con fallback elegante → control de presupuesto). Expuesto como la herramienta MCP `compile_context` y el subcomando CLI `tesserae context`; `node_context` ahora tiene una ruta clasificada `use_ppr`; se entregan slices de exportación `llms.txt` con alcance por tema.
 
 **Objetivo:** La función estrella — «dame contexto sobre X» → un documento a
 medida, citado y listo para agentes.

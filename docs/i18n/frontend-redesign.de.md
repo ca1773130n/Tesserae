@@ -5,10 +5,10 @@
 <!-- translations:end -->
 Dieses Dokument ist eine geführte Tour durch jede sichtbare Route der neu gestalteten statischen Tesserae-Site. Es ergänzt das High-Level-Modell in [`architecture.md`](architecture.de.md) und die Status-Tabelle in [`feature-map.md`](feature-map.de.md).
 
-Die Site liegt nach `tesserae project compile` unter `.tesserae/site/`. So erkundest du sie lokal:
+Die Site liegt nach `tesserae compile` unter `.tesserae/site/`. So erkundest du sie lokal:
 
 ```bash
-tesserae project serve --port 8765
+tesserae serve --port 8765
 # open http://127.0.0.1:8765/
 ```
 
@@ -250,7 +250,7 @@ Das ist die Seite, auf der man landet, wenn ein Agent gefragt wird „Was ist in
 
 ## Sessions
 
-Sessions sind importierte lokale AI-Harness-Transkripte, normalisiert nach `.tesserae/harness_sessions/` und dann als durchsuchbares Projektgedächtnis gerendert. Der Import ist explizit über `tesserae project sessions discover --import` oder `tesserae project sessions import ...`; normale Site-Builds konsumieren nur bereits normalisierte Records.
+Sessions sind importierte lokale AI-Harness-Transkripte, normalisiert nach `.tesserae/harness_sessions/` und dann als durchsuchbares Projektgedächtnis gerendert. Der Import ist explizit über `tesserae sessions discover --import` oder `tesserae sessions import ...`; normale Site-Builds konsumieren nur bereits normalisierte Records.
 
 ### `/sessions/` ✅
 

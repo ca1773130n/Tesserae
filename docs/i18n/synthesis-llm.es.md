@@ -140,7 +140,7 @@ El bloque EDITORIAL ANGLE es el cuerpo heurístico determinista: al modelo se le
 pip install tesserae[synthesis-llm]
 export TESSERAE_SYNTHESIS_LLM=1
 export ANTHROPIC_API_KEY=sk-...
-python -m tesserae.cli project compile
+python -m tesserae.cli compile
 ```
 
 Puedes sobrescribir el model con `TESSERAE_SYNTHESIS_MODEL` (predeterminado `claude-sonnet-4-6`). Se requiere Anthropic SDK ≥ 0.40.
@@ -191,7 +191,7 @@ Unset la env var (o ponla en `0`) y vuelve a ejecutar:
 
 ```sh
 unset TESSERAE_SYNTHESIS_LLM
-python -m tesserae.cli project compile
+python -m tesserae.cli compile
 ```
 
 Los compiles posteriores regeneran las synthesis pages afectadas con el generator heurístico. Como las page rewrites están gated por `content_hash`, solo se reescriben las páginas cuyo body realmente cambió.

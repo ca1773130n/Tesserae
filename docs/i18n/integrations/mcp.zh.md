@@ -12,8 +12,8 @@ Tesserae 自带一个 [Model Context Protocol](https://modelcontextprotocol.io) 
 
 ```bash
 cd /path/to/your-project
-tesserae project setup    # interactive; or --yes for non-interactive
-tesserae project compile  # deterministic, no LLM calls, no API keys
+tesserae init    # interactive; or --yes for non-interactive
+tesserae compile  # deterministic, no LLM calls, no API keys
 ```
 
 源文件改动后可以随时重新编译。服务器会在下一次工具调用时自动读取新图谱，不需要重启。
@@ -21,7 +21,7 @@ tesserae project compile  # deterministic, no LLM calls, no API keys
 ## 1) 生成客户端配置
 
 ```bash
-tesserae project mcp-config
+tesserae projects mcp-config
 ```
 
 会输出大致如下的 JSON 片段：

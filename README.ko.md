@@ -58,14 +58,14 @@ Python 3.9 이상이 필요합니다. RAG-Anything을 사용하면 Python 3.10 �
 pip install tesserae          # 실제 임베딩을 원하면 [semantic] 추가: pip install "tesserae[semantic]"
 
 cd /path/to/my-project
-tesserae project setup
-tesserae project compile
-tesserae project ask "Where is Mermaid rendering implemented?"
+tesserae init --yes
+tesserae compile
+tesserae ask "Where is Mermaid rendering implemented?"
 
 # 온디맨드 컨텍스트: 쿼리에 대해 인용이 달린 맞춤 컨텍스트 문서를 컴파일합니다.
-tesserae project context "How does the parser handle arXiv IDs?" --budget 32000 -o context.md
+tesserae context "How does the parser handle arXiv IDs?" --budget 32000 -o context.md
 
-tesserae project build-site && tesserae project serve --port 8765
+tesserae serve --port 8765
 ```
 
 설정 마법사는 일반적인 소스(`README.md`, `docs/`, `src/`, `data/`)를 감지하고 `.tesserae/config.json`을 작성합니다. LLM 호출 기능은 기본적으로 OAuth 기반의 `codex` CLI를 사용하므로 일반적인 경로에서는 API 키가 필요 없습니다. 더 자세한 내용은 [docs/quickstart.md](docs/quickstart.md)와 [docs/installation.md](docs/installation.md)를 참고하세요.
@@ -110,7 +110,7 @@ tesserae project build-site && tesserae project serve --port 8765
   external/               # 보조 도구 출력 (UA, RAG-Anything)
 ```
 
-`project compile` 이후 `ls .tesserae/`로 무엇이 생성되었는지 확인하세요.
+`compile` 이후 `ls .tesserae/`로 무엇이 생성되었는지 확인하세요.
 
 ## CLI 개요
 
@@ -118,19 +118,19 @@ tesserae project build-site && tesserae project serve --port 8765
 
 | 명령 | 하는 일 |
 |---|---|
-| `tesserae project setup` | 대화형 마법사. `.tesserae/config.json`을 작성합니다. `--with-understand-anything`, `--with-raganything`, `--run-cognee` 등을 받습니다. |
-| `tesserae project compile` | 설정된 소스를 읽고, 보조 도구 새로고침을 실행하고, `.tesserae/` 아래의 모든 아티팩트를 작성합니다. `--changed-only`는 실험적 증분 재빌드를 켭니다(기본 꺼짐). |
-| `tesserae project context "<질문>"` | **온디맨드 컨텍스트 컴파일러.** 쿼리(또는 명시적 `--seeds`)에 대해 Personalized PageRank 확장(`--depth`, 기본 2)으로 인용이 달린 맞춤 컨텍스트 문서를 `--budget`(기본 32000자; `<=0` = 무제한) 내에서 컴파일합니다. `--synthesize`는 LLM 요약을 추가하고, `-o`는 파일로 씁니다. |
-| `tesserae project engine` (별칭 `daemon`) | 감독형 새로고침 데몬을 실행합니다: 소스를 감시하고, 편집 버스트를 합치며(`--debounce`), 자동 재컴파일합니다. `--once`는 결정론적 단일 드레인 사이클을 실행합니다. |
-| `tesserae project refresh` | 단발 인프로세스 파이프라인: 새 세션 가져오기, 컴파일, 보관소 동기화. |
-| `tesserae project build-site` | 정적 프론트엔드를 `.tesserae/site/`에 빌드합니다. |
-| `tesserae project serve --port 8765` | 정적 사이트를 로컬에서 제공합니다. |
-| `tesserae project refresh-understand-anything` | Tesserae의 관리형 Understand Anything 새로고침 래퍼를 실행합니다. |
-| `tesserae project refresh-raganything --parser mineru` | RAG-Anything으로 비코드 소스(PDF, Office, 이미지)를 다시 파싱합니다. |
-| `tesserae project ask "<question>"` | 설정된 백엔드(`auto`/`raganything`/`cognee`/`wiki`)에 질문합니다. |
-| `tesserae project mcp-config` | Claude Code, Codex 또는 Hermes에 붙여넣을 MCP 서버 설정 스니펫을 출력합니다. |
-| `tesserae wiki register <path> --name <alias>` | 공유 레지스트리에 프로젝트를 등록합니다. |
-| `tesserae wiki list` / `tesserae wiki activate <name>` | 등록된 프로젝트를 나열하고, 활성 프로젝트를 설정합니다. |
+| `tesserae init` | 대화형 마법사. `.tesserae/config.json`을 작성합니다. 비대화형으로 감지된 기본값을 수락하려면 `--yes`(모든 선택적 통합 꺼짐), 마법사를 건너뛰고 최소 워크스페이스를 작성하려면 `--bare`를 전달합니다. |
+| `tesserae compile` | 설정된 소스를 읽고, 보조 도구 새로고침을 실행하고, `.tesserae/` 아래의 모든 아티팩트를 작성합니다. `--changed-only`는 실험적 증분 재빌드를 켭니다(기본 꺼짐). `compile <paths>`는 추가 마크다운 경로를 즉석으로 가져옵니다. |
+| `tesserae context "<질문>"` | **온디맨드 컨텍스트 컴파일러.** 쿼리(또는 명시적 `--seeds`)에 대해 Personalized PageRank 확장(`--depth`, 기본 2)으로 인용이 달린 맞춤 컨텍스트 문서를 `--budget`(기본 32000자; `<=0` = 무제한) 내에서 컴파일합니다. `--synthesize`는 LLM 요약을 추가하고, `-o`는 파일로 씁니다. |
+| `tesserae engine` (별칭 `daemon`) | 감독형 새로고침 데몬을 실행합니다: 소스를 감시하고, 편집 버스트를 합치며(`--debounce`), 자동 재컴파일합니다. `--once`는 결정론적 단일 드레인 사이클을 실행합니다. |
+| `tesserae refresh` | 단발 인프로세스 파이프라인: 새 세션 가져오기, 컴파일, 보관소 동기화. |
+| `tesserae export site` | 정적 프론트엔드를 `.tesserae/site/`에 빌드합니다. `--deploy`는 게시하고, `--watch`는 변경 시 다시 빌드합니다. |
+| `tesserae serve --port 8765` | 정적 사이트를 로컬에서 제공합니다(없으면 자동 빌드). |
+| `tesserae integrations refresh understand-anything` | Tesserae의 관리형 Understand Anything 새로고침 래퍼를 실행합니다. |
+| `tesserae integrations refresh raganything --parser mineru` | RAG-Anything으로 비코드 소스(PDF, Office, 이미지)를 다시 파싱합니다. |
+| `tesserae ask "<question>"` | 설정된 백엔드(`auto`/`raganything`/`cognee`/`wiki`)에 질문합니다. |
+| `tesserae projects mcp-config` | Claude Code, Codex 또는 Hermes에 붙여넣을 MCP 서버 설정 스니펫을 출력합니다. |
+| `tesserae projects register <path> --name <alias>` | 공유 레지스트리에 프로젝트를 등록합니다. |
+| `tesserae projects list` / `tesserae projects activate <name>` | 등록된 프로젝트를 나열하고, 활성 프로젝트를 설정합니다. |
 | `tesserae ask "<question>" [--wiki <name>]` | 레지스트리를 통해 해석하는 최상위 ask 명령입니다. |
 
 ## 통합
@@ -138,8 +138,8 @@ tesserae project build-site && tesserae project serve --port 8765
 모든 통합은 옵트인입니다. 일반 마크다운/코드 프로젝트에서 Tesserae를 사용하는 데 필수는 아닙니다.
 
 - **Claude Code 플러그인** — 슬래시 명령(`/tesserae:compile`, `/tesserae:ask "<질문>"`, `/tesserae:refresh`, `/tesserae:status` 등), 네 개의 훅(SessionStart 상태 / SessionEnd 자동 컴파일 / opt-in PostToolUse 증분 재컴파일 / 큰 그래프용 PreToolUse 확인 게이트), `using-tesserae` 스킬, MCP 자동 등록 — 모두 하나의 `/plugin install`로. [docs/integrations/claude-code-plugin.md](docs/integrations/claude-code-plugin.md) 참조.
-- **세션 그래프 (기둥 1)** — 프로젝트에 대한 Claude Code / Codex 대화를 그래프의 1급 노드(Insight / Decision / Question / TODO / Hypothesis / Takeaway)로 만들어, 등장한 문서에 연결합니다. `tesserae project sessions discover --import`를 한 번 실행한 후, 매 `tesserae project compile`이 새 세션을 가져오며, `tesserae project engine`은 라이브로 감시하여 지속적으로 포함시킵니다. 구조적 패스는 무료, LLM 패스는 `claude` CLI에 로그인되어 있으면 자동 실행됩니다 — **API 키 불필요**. [docs/integrations/sessions.md](docs/integrations/sessions.md) 참조.
-- **Understand Anything** — `.understand-anything/knowledge-graph.json`에 코드 지식 그래프를 생성하는 별도 프로젝트([Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything))입니다. `--with-understand-anything`으로 활성화합니다. Tesserae가 관리형 새로고침 래퍼를 저장하므로 `project compile`이 그래프를 최신 상태로 유지합니다. [docs/integrations/understand-anything.md](docs/integrations/understand-anything.md) 참조.
+- **세션 그래프 (기둥 1)** — 프로젝트에 대한 Claude Code / Codex 대화를 그래프의 1급 노드(Insight / Decision / Question / TODO / Hypothesis / Takeaway)로 만들어, 등장한 문서에 연결합니다. `tesserae sessions discover --import`를 한 번 실행한 후, 매 `tesserae compile`이 새 세션을 가져오며, `tesserae engine`은 라이브로 감시하여 지속적으로 포함시킵니다. 구조적 패스는 무료, LLM 패스는 `claude` CLI에 로그인되어 있으면 자동 실행됩니다 — **API 키 불필요**. [docs/integrations/sessions.md](docs/integrations/sessions.md) 참조.
+- **Understand Anything** — `.understand-anything/knowledge-graph.json`에 코드 지식 그래프를 생성하는 별도 프로젝트([Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything))입니다. `--with-understand-anything`으로 활성화합니다. Tesserae가 관리형 새로고침 래퍼를 저장하므로 `compile`이 그래프를 최신 상태로 유지합니다. [docs/integrations/understand-anything.md](docs/integrations/understand-anything.md) 참조.
 - **RAG-Anything** — MinerU/Docling/PaddleOCR을 통해 PDF, Office 문서, 이미지를 처리하는 멀티모달 수집([HKUDS/RAG-Anything](https://github.com/HKUDS/RAG-Anything))입니다. `--with-raganything`으로 활성화합니다. 런타임 질문 백엔드(LightRAG) 역할도 합니다. Python 3.10 이상이 필요합니다. [docs/integrations/rag-anything.md](docs/integrations/rag-anything.md) 참조.
 - **Cognee** — 그래프+벡터 메모리 백엔드입니다. `--run-cognee --install-cognee`로 활성화합니다. 일반 컴파일은 항상 `.tesserae/cognee_bundle/`을 작성하며, 런타임 `cognify` 패스는 best-effort이고 명시적으로 활성화한 경우에만 실행됩니다.
 
@@ -148,8 +148,8 @@ tesserae project build-site && tesserae project serve --port 8765
 `~/.tesserae/registry.json`에 있는 영구 레지스트리를 통해 최상위 `ask` CLI와 MCP 서버가 호출마다 `--project`를 지정하지 않아도 프로젝트 이름을 루트로 해석할 수 있습니다.
 
 ```bash
-tesserae wiki register /path/to/my-project --name myproj
-tesserae wiki activate myproj
+tesserae projects register /path/to/my-project --name myproj
+tesserae projects activate myproj
 tesserae ask "Where is the parser entry point?"
 ```
 
@@ -157,7 +157,7 @@ MCP 서버도 같은 레지스트리를 읽으므로, MCP 클라이언트는 등
 
 ## MCP
 
-`tesserae project mcp-config`는 Claude Code, Codex 또는 다른 MCP 클라이언트에 붙여넣을 수 있는 서버 항목을 출력합니다. 서버는 `schema`, `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`, `wiki_page`, `raw_source`, `lint_report`, `ask`, `embedding_status` 도구를 노출합니다. v0.5.0 헤드라인은 **`compile_context`** — 쿼리나 시드 노드에 대해 인용이 달린 맞춤 컨텍스트 문서를 반환하며(`synthesize=true`가 아니면 결정론적), **`graph_ppr`**(타입 그래프 위의 Personalized PageRank)가 이를 뒷받침합니다. 세션 메모리 및 자기개선 도구가 더해집니다: `list_sessions`, `find_session_findings`, `find_code_symbol_mentions`, `list_communities`, 그리고 `fresh_insights`(Ebbinghaus식 감쇠로 랭킹되고 대체된 근접 중복은 걸러진 세션 발견). 레지스트리 도구 `list_projects` / `register_project` / `activate_project` / `unregister_project`는 CLI와 동일한 레지스트리를 통해 프로젝트 이름을 해석합니다.
+`tesserae projects mcp-config`는 Claude Code, Codex 또는 다른 MCP 클라이언트에 붙여넣을 수 있는 서버 항목을 출력합니다. 서버는 `schema`, `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`, `wiki_page`, `raw_source`, `lint_report`, `ask`, `embedding_status` 도구를 노출합니다. v0.5.0 헤드라인은 **`compile_context`** — 쿼리나 시드 노드에 대해 인용이 달린 맞춤 컨텍스트 문서를 반환하며(`synthesize=true`가 아니면 결정론적), **`graph_ppr`**(타입 그래프 위의 Personalized PageRank)가 이를 뒷받침합니다. 세션 메모리 및 자기개선 도구가 더해집니다: `list_sessions`, `find_session_findings`, `find_code_symbol_mentions`, `list_communities`, 그리고 `fresh_insights`(Ebbinghaus식 감쇠로 랭킹되고 대체된 근접 중복은 걸러진 세션 발견). 레지스트리 도구 `list_projects` / `register_project` / `activate_project` / `unregister_project`는 CLI와 동일한 레지스트리를 통해 프로젝트 이름을 해석합니다.
 
 ## 인증과 LLM 공급자
 

@@ -58,12 +58,12 @@ class GitHubPagesDeployer:
         if not site_dir.exists() or not site_dir.is_dir():
             raise DeployError(
                 f"Site directory does not exist: {site_dir}. "
-                "Run `tesserae project compile` (or `project deploy --build`) first."
+                "Run `tesserae compile` (or `tesserae export site --deploy --build`) first."
             )
         if not any(site_dir.rglob("*")):
             raise DeployError(
                 f"Site directory is empty: {site_dir}. "
-                "Run `tesserae project compile` (or `project deploy --build`) first."
+                "Run `tesserae compile` (or `tesserae export site --deploy --build`) first."
             )
 
         if not (self.project_root / ".git").exists():

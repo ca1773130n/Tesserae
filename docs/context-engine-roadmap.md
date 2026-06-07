@@ -59,7 +59,7 @@ first-class in-process orchestrator that the daemon, CLI, and MCP all call.
   change).
 - **Deliverables:** `Pipeline.run(steps, changed_only=…)`; CLI delegates to it;
   unit tests for step sequencing + failure propagation.
-- **Acceptance:** `tesserae project refresh` exists as code (not a skill) and
+- **Acceptance:** `tesserae refresh` exists as code (not a skill) and
   reproduces the markdown chain byte-for-byte on the demo corpus.
 - **Risk:** Low. Pure refactor; existing tests guard behavior.
 - **Audit findings closed:** "refresh lives in a skill," "cli god-dispatcher."
@@ -204,7 +204,7 @@ agent-ready doc.
 > `ContextBundle` of `ContextCitation`s (query/seeds → PPR + hybrid search →
 > depth-bounded k-hop neighborhood → wiki-body assembly → optional LLM synthesis
 > with graceful fallback → budget control). Exposed as the MCP `compile_context`
-> tool and the `tesserae project context` CLI subcommand; `node_context` now has
+> tool and the `tesserae context` CLI subcommand; `node_context` now has
 > a `use_ppr` ranked path; topic-scoped `llms.txt` export slices ship via
 > `slice_export_context_for_topic`.
 

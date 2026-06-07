@@ -513,3 +513,290 @@ def test_build_default_returns_client_when_factory_set_without_credentials(monke
         assert build_default_json_client() is not None
     finally:
         set_client_factory(None)
+
+
+# ---------------------------------------------------------------------------
+# CodexCLIJsonClient — `codex exec` OAuth backend (mirror of ClaudeCLIJsonClient)
+# ---------------------------------------------------------------------------
+
+
+class _FakeCodexRun:
+    """Stand-in for subprocess.run capturing the codex invocation.
+
+    Writes ``payload`` to the ``--output-last-message`` tmp path embedded in
+    the command, mimicking the real CLI contract used by cognee_codex.
+    """
+
+    def __init__(self, payload: str = '{"ok": true}', returncode: int = 0, stderr: str = ""):
+        self.payload = payload
+        self.returncode = returncode
+        self.stderr = stderr
+        self.calls = []
+
+    def __call__(self, cmd, **kwargs):
+        import types
+
+        self.calls.append({"cmd": list(cmd), "env": kwargs.get("env"), "input": kwargs.get("input")})
+        if self.returncode == 0 and "--output-last-message" in cmd:
+            out_path = cmd[cmd.index("--output-last-message") + 1]
+            with open(out_path, "w", encoding="utf-8") as handle:
+                handle.write(self.payload)
+        return types.SimpleNamespace(returncode=self.returncode, stdout=self.payload, stderr=self.stderr)
+
+
+def test_codex_client_invokes_codex_exec_and_parses_json(monkeypatch, tmp_path):
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    fake = _FakeCodexRun(payload='{"insights": [1, 2]}')
+    monkeypatch.setattr("subprocess.run", fake)
+    home = tmp_path / "codex-home"
+    home.mkdir()
+
+    client = CodexCLIJsonClient(codex_homes=[str(home)])
+    result = client.complete_json(
+        system="You extract insights.",
+        user="Session text here.",
+        schema_name="insights_v1",
+    )
+
+    assert result == {"insights": [1, 2]}
+    assert len(fake.calls) == 1
+    call = fake.calls[0]
+    # codex exec contract — non-interactive, read-only sandbox, stdin prompt.
+    assert call["cmd"][:2] == ["codex", "exec"]
+    assert "--skip-git-repo-check" in call["cmd"]
+    assert "read-only" in call["cmd"]
+    assert call["cmd"][-1] == "-"
+    assert "--model" in call["cmd"]
+    # default model
+    assert call["cmd"][call["cmd"].index("--model") + 1] == "gpt-5.4"
+    # CODEX_HOME routed to the requested home
+    assert call["env"]["CODEX_HOME"] == str(home)
+    # prompt carries the JSON-only contract pieces
+    assert "You extract insights." in call["input"]
+    assert "Session text here." in call["input"]
+    assert "insights_v1" in call["input"]
+
+
+def test_codex_client_env_home_used_when_no_arg(monkeypatch, tmp_path):
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    env_home = tmp_path / "codex-personal1"
+    env_home.mkdir()
+    monkeypatch.setenv("CODEX_HOME", str(env_home))
+
+    client = CodexCLIJsonClient()
+    assert client.codex_homes == [str(env_home)]
+
+
+def test_codex_client_explicit_homes_beat_env(monkeypatch, tmp_path):
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "env-home"))
+    explicit = str(tmp_path / "explicit-home")
+
+    client = CodexCLIJsonClient(codex_homes=[explicit])
+    assert client.codex_homes == [explicit]
+
+
+def test_codex_client_falls_through_homes_on_failure(monkeypatch, tmp_path):
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        import types
+
+        calls.append(kwargs.get("env", {}).get("CODEX_HOME"))
+        if len(calls) == 1:
+            return types.SimpleNamespace(returncode=1, stdout="", stderr="401 Unauthorized; run codex login")
+        out_path = cmd[cmd.index("--output-last-message") + 1]
+        with open(out_path, "w", encoding="utf-8") as handle:
+            handle.write('{"ok": true}')
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    home_a = tmp_path / "a"
+    home_b = tmp_path / "b"
+    home_a.mkdir()
+    home_b.mkdir()
+
+    client = CodexCLIJsonClient(codex_homes=[str(home_a), str(home_b)])
+    result = client.complete_json(system="s", user="u", schema_name="x")
+
+    assert result == {"ok": True}
+    assert calls == [str(home_a), str(home_b)]
+
+
+def test_codex_client_returns_none_when_all_homes_fail(monkeypatch, tmp_path, caplog):
+    import logging
+
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    def fake_run(cmd, **kwargs):
+        import types
+
+        return types.SimpleNamespace(returncode=1, stdout="", stderr="run codex login first")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    home = tmp_path / "h"
+    home.mkdir()
+
+    client = CodexCLIJsonClient(codex_homes=[str(home)])
+    with caplog.at_level(logging.WARNING):
+        result = client.complete_json(system="s", user="u", schema_name="x")
+
+    assert result is None
+    assert any("codex" in r.getMessage().lower() for r in caplog.records)
+
+
+def test_codex_client_timeout_returns_none(monkeypatch, tmp_path):
+    import subprocess as _subprocess
+
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    def fake_run(cmd, **kwargs):
+        raise _subprocess.TimeoutExpired(cmd=cmd, timeout=1)
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    home = tmp_path / "h"
+    home.mkdir()
+
+    client = CodexCLIJsonClient(codex_homes=[str(home)], timeout=1)
+    assert client.complete_json(system="s", user="u", schema_name="x") is None
+
+
+# ---------------------------------------------------------------------------
+# Factory: provider selection (claude | codex) + availability gates
+# ---------------------------------------------------------------------------
+
+
+def test_codex_cli_available_false_without_binary(monkeypatch):
+    from tesserae.llm_json import _codex_cli_available
+
+    monkeypatch.setenv("PATH", "/nonexistent-bin-only-dir")
+    assert _codex_cli_available() is False
+
+
+def test_codex_cli_available_with_binary_and_credentialed_home(monkeypatch, tmp_path):
+    from tesserae.llm_json import _codex_cli_available
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    codex_bin = bin_dir / "codex"
+    codex_bin.write_text("#!/bin/sh\nexit 0\n")
+    codex_bin.chmod(0o755)
+    home = tmp_path / "codex-home"
+    home.mkdir()
+    (home / "auth.json").write_text("{}")
+
+    monkeypatch.setenv("PATH", str(bin_dir))
+    monkeypatch.setenv("CODEX_HOME", str(home))
+    assert _codex_cli_available() is True
+
+
+def _isolate_factory(monkeypatch):
+    """Common env isolation for build_default_json_client tests."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("TESSERAE_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+
+
+def test_build_default_provider_codex_prefers_codex(monkeypatch):
+    import tesserae.llm_json as lj
+
+    _isolate_factory(monkeypatch)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
+
+    client = lj.build_default_json_client(provider="codex")
+    assert isinstance(client, lj.CodexCLIJsonClient)
+
+
+def test_build_default_env_provider_codex(monkeypatch):
+    import tesserae.llm_json as lj
+
+    _isolate_factory(monkeypatch)
+    monkeypatch.setenv("TESSERAE_LLM_PROVIDER", "codex")
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
+
+    client = lj.build_default_json_client()
+    assert isinstance(client, lj.CodexCLIJsonClient)
+
+
+def test_build_default_order_unchanged_for_claude_default(monkeypatch):
+    import tesserae.llm_json as lj
+
+    _isolate_factory(monkeypatch)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
+
+    client = lj.build_default_json_client()
+    assert isinstance(client, lj.ClaudeCLIJsonClient)
+
+
+def test_build_default_codex_fills_former_none_gap(monkeypatch):
+    import tesserae.llm_json as lj
+
+    _isolate_factory(monkeypatch)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: False)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
+
+    client = lj.build_default_json_client()
+    assert isinstance(client, lj.CodexCLIJsonClient)
+
+
+def test_build_default_provider_codex_falls_back_to_claude(monkeypatch):
+    import tesserae.llm_json as lj
+
+    _isolate_factory(monkeypatch)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: False)
+
+    client = lj.build_default_json_client(provider="codex")
+    assert isinstance(client, lj.ClaudeCLIJsonClient)
+
+
+def test_build_default_passes_codex_home_and_claude_dirs(monkeypatch, tmp_path):
+    import tesserae.llm_json as lj
+
+    _isolate_factory(monkeypatch)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
+
+    codex_home = str(tmp_path / "codex-personal1")
+    codex = lj.build_default_json_client(provider="codex", codex_home=codex_home)
+    assert isinstance(codex, lj.CodexCLIJsonClient)
+    assert codex.codex_homes == [codex_home]
+
+    claude_dir = str(tmp_path / "claude-personal2")
+    claude = lj.build_default_json_client(claude_config_dirs=[claude_dir])
+    assert isinstance(claude, lj.ClaudeCLIJsonClient)
+    assert claude.config_dirs == [claude_dir]
+
+
+def test_resolve_llm_client_settings_precedence(monkeypatch):
+    from tesserae.llm_json import resolve_llm_client_settings
+
+    _isolate_factory(monkeypatch)
+    cfg = {
+        "llm_provider": "codex",
+        "llm_codex_home": "/cfg/codex",
+        "llm_claude_config_dirs": ["/cfg/claude"],
+    }
+    # config-only: cfg values flow through
+    settings = resolve_llm_client_settings(cfg)
+    assert settings["provider"] == "codex"
+    assert settings["codex_home"] == "/cfg/codex"
+    assert settings["claude_config_dirs"] == ["/cfg/claude"]
+
+    # env beats config (CLI flags are surfaced as env by the handlers)
+    monkeypatch.setenv("TESSERAE_LLM_PROVIDER", "claude")
+    monkeypatch.setenv("CODEX_HOME", "/env/codex")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/env/claude")
+    settings = resolve_llm_client_settings(cfg)
+    assert settings["provider"] == "claude"
+    assert settings["codex_home"] == "/env/codex"
+    assert settings["claude_config_dirs"] == ["/env/claude"]

@@ -37,7 +37,7 @@ pip install --upgrade tesserae
 
 ```bash
 # Understand Anything companion graph + Cognee runtime memory
-tesserae project setup \
+tesserae init \
   --with-understand-anything \
   --install-understand-anything \
   --understand-anything-platform codex \
@@ -54,7 +54,7 @@ pip install kuzu cognee graphiti-core
 - `kuzu` — Kuzu 图持久化。
 - `cognee` — 运行时 Cognee add/cognify 工作流；设置会保存 `{python} -m pip install cognee`，如果缺少 Cognee 会重试一次。
 - Understand Anything — 选择 `--install-understand-anything` 时通过上游安装器安装；Tesserae 会保存一个托管的刷新 wrapper，而不是要求用户自己发明 shell 命令。
-- `graphiti-core` — 实时 Graphiti/Neo4j 同步。没有它时，`export-graphiti` 和 `sync-graphiti --dry-run` 仍可工作。
+- `graphiti-core` — 实时 Graphiti/Neo4j 同步。没有它时，`export graphiti` 和 `export graphiti --sync --dry-run` 仍可工作。
 
 Anthropic 支持的合成路径使用 extras 标记：
 
@@ -68,7 +68,7 @@ pip install "tesserae[synthesis-llm]"
 pip install "tesserae[semantic]"
 ```
 
-它会安装 `model2vec`，并下载一个轻量、可离线、无需 torch 的静态模型（约 8 MB 的 `potion-base-8M`，首次使用时下载一次）。如果没有它，混合/嵌入检索会回退到非语义的哈希桶桩实现，并发出醒目的警告。因此，凡是使用 `project ask`、`project context` 或 MCP `compile_context` 工具的用户，建议安装此 extra。
+它会安装 `model2vec`，并下载一个轻量、可离线、无需 torch 的静态模型（约 8 MB 的 `potion-base-8M`，首次使用时下载一次）。如果没有它，混合/嵌入检索会回退到非语义的哈希桶桩实现，并发出醒目的警告。因此，凡是使用 `tesserae ask`、`tesserae context` 或 MCP `compile_context` 工具的用户，建议安装此 extra。
 
 ## 从源码安装（贡献者）
 
@@ -110,7 +110,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ## 验证安装
 
 ```bash
-tesserae project init --help
-tesserae project compile --help
-tesserae project build-site --help
+tesserae init --help
+tesserae compile --help
+tesserae export site --help
 ```

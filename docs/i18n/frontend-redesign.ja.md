@@ -5,10 +5,10 @@
 <!-- translations:end -->
 このドキュメントは、再設計された Tesserae 静的サイトで表示されるすべてのルートを案内するガイドです。[`architecture.md`](architecture.ja.md) の高レベルモデルと、[`feature-map.md`](feature-map.ja.md) のステータス表を補完します。
 
-サイトは `tesserae project compile` の実行後、`.tesserae/site/` に生成されます。ローカルで確認するには:
+サイトは `tesserae compile` の実行後、`.tesserae/site/` に生成されます。ローカルで確認するには:
 
 ```bash
-tesserae project serve --port 8765
+tesserae serve --port 8765
 # open http://127.0.0.1:8765/
 ```
 
@@ -250,7 +250,7 @@ agent が「この領域でまだ未回答のことは何か？」と尋ねら�
 
 ## Sessions
 
-Sessions はインポートされたローカル AI-harness transcripts で、`.tesserae/harness_sessions/` に正規化された後、検索可能なプロジェクトメモリとしてレンダリングされます。インポートは `tesserae project sessions discover --import` または `tesserae project sessions import ...` で明示的に行います。通常のサイトビルドは、すでに正規化済みの records だけを消費します。
+Sessions はインポートされたローカル AI-harness transcripts で、`.tesserae/harness_sessions/` に正規化された後、検索可能なプロジェクトメモリとしてレンダリングされます。インポートは `tesserae sessions discover --import` または `tesserae sessions import ...` で明示的に行います。通常のサイトビルドは、すでに正規化済みの records だけを消費します。
 
 ### `/sessions/` ✅
 

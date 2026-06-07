@@ -12,8 +12,8 @@ Tesserae の Obsidian エクスポートは、コンパイル済みの型付き�
 
 ```bash
 cd /path/to/your-project
-tesserae project setup
-tesserae project compile
+tesserae init
+tesserae compile
 ```
 
 コンパイルすると `.tesserae/graph.json`（信頼できる情報源）と、プレーンな markdown 射影が `.tesserae/markdown_projection/` に生成されます。Obsidian エクスポートはこの射影の上に構築されますが、各ページに Obsidian ネイティブのエンリッチメントを重ねます。
@@ -21,7 +21,7 @@ tesserae project compile
 ## 1) ヴォルトをエクスポートする
 
 ```bash
-tesserae project export-obsidian --vault ~/Documents/tesserae-vault
+tesserae vault export --vault ~/Documents/tesserae-vault
 ```
 
 ディレクトリが存在しない場合は作成されます。再実行すると冪等に上書きされます — 同じグラフが与えられれば markdown 射影は決定論的です。
@@ -151,10 +151,10 @@ Obsidian 自体は `wiki://` URI をネイティブにたどりません — イ
 
 ```bash
 # プロジェクトのソースディレクトリ配下のソースファイルを編集してから:
-tesserae project compile
+tesserae compile
 ```
 
-`compile` がヴォルトを自動的に再射影します — 別途エクスポート手順を実行する必要はもうありません。（フルの再コンパイルなしで一度きりの再射影だけを行いたい場合は `tesserae project export-obsidian --vault <パス>` も引き続き使えます。）Obsidian はディスク上で変更されたファイルをホットリロードします。
+`compile` がヴォルトを自動的に再射影します — 別途エクスポート手順を実行する必要はもうありません。（フルの再コンパイルなしで一度きりの再射影だけを行いたい場合は `tesserae vault export --vault <パス>` も引き続き使えます。）Obsidian はディスク上で変更されたファイルをホットリロードします。
 
 ヴォルト内にグラフから射影されない markdown メモ（例: 個人的な注釈）を追加してあれば、それらは残ります — プロジェクターは自身が所有するファイル（`papers/`、`concepts/`、`claims/` 配下、および `index.md`、`_bridges.md`、`_meta/dashboard.md`、`README.md`）のみを上書きします。手書きのページ（`node_id:` フロントマターのないファイル）と、各射影ページにある専用のユーザーノートブロック（`<!-- user-notes:start -->` … `<!-- user-notes:end -->`）は再コンパイルをまたいで保持されます。
 
@@ -163,7 +163,7 @@ tesserae project compile
 v0.5.0 以降、ヴォルトはもはや**一方向のエクスポートではありません**。いまや*双方向の射影*です: 型付きグラフが依然として真実の源ですが、`project compile` は再射影する**前に**、Obsidian での編集をヴォルトから読み戻してグラフにオーバーレイします。Obsidian でノードの `title`、`aliases`、説明コールアウト、あるいは任意の非システム・フロントマター・スカラーを編集して再コンパイルすると、その変更は残り — 静的サイト、MCP、その他すべての射影へ伝播します。
 
 ```bash
-tesserae project compile
+tesserae compile
 # [tesserae] vault overlay: applying 3 field override(s) from obsidian_vault/
 ```
 
@@ -174,25 +174,25 @@ tesserae project compile
 - 本文の説明コールアウト（またはその最初の段落）→ ノードの `description`
 - 予約されていないすべてのフロントマター・スカラー → `metadata.<key>`（予約／システムキー `node_id`、`title`、`type`、`aliases`、`source_path`、`edges_out`、`edges_in`、`cross_vault` がユーザーオーバーライドとして扱われることはありません）
 
-オーバーレイの実行ごとに `.tesserae/diverged-fields.md` レポート（`## Field overrides — N across M node(s)`）が書き出されるため、何が反映されたかを正確に監査できます。ユーザーノートブロック内に追加した wikilink は `user_link` エッジになります。1 回の実行でオーバーレイをバイパスするには `tesserae project compile --no-vault-pull` を渡します — 復旧時や、意図的にソース markdown を優先させたいときに便利です。
+オーバーレイの実行ごとに `.tesserae/diverged-fields.md` レポート（`## Field overrides — N across M node(s)`）が書き出されるため、何が反映されたかを正確に監査できます。ユーザーノートブロック内に追加した wikilink は `user_link` エッジになります。1 回の実行でオーバーレイをバイパスするには `tesserae compile` (with `compile_options.no_vault_pull = true` in `.tesserae/config.json`) を渡します — 復旧時や、意図的にソース markdown を優先させたいときに便利です。
 
 この機能を有効化した後の初回コンパイルは「フリーパス」になります: まだ `vault_snapshot.json` のベースラインが存在しないため何も取り込まれず、最後に書き出されるスナップショットが次回コンパイルの diff のベースラインになります。
 
-専用のライブワークフローとして、`tesserae project obsidian-sync` はフルの再コンパイルなしにオーバーレイを再適用して再射影します:
+専用のライブワークフローとして、`tesserae vault sync` はフルの再コンパイルなしにオーバーレイを再適用して再射影します:
 
 ```bash
 # グラフを変更せずに、コンパイルが何を読み戻すかをプレビューします。
-tesserae project obsidian-sync --dry-run
+tesserae vault sync --dry-run
 
 # ヴォルトを監視し、編集をリアルタイムでラウンドトリップします（Ctrl-C で停止）。
-tesserae project obsidian-sync --watch
+tesserae vault sync --watch
 
 # ノードのリネーム／削除後、孤立した射影ページを削除します。
-tesserae project obsidian-sync --prune-orphans
+tesserae vault sync --prune-orphans
 ```
 
 フィールドごとの所有権マトリクスと設計の根拠の全体は [obsidian-sync.md](obsidian-sync.md) を参照してください。
 
 ## 静的サイトとの使い分け
 
-コンパイル済みの HTML サイト（`tesserae project build-site` → `.tesserae/site/`）は共有のための一方向・読み取り専用のエクスポートです — GitHub Pages、S3、任意の静的ホストへプッシュしてください。Obsidian ヴォルトは Dataview と Obsidian のグラフビューを使って**ローカルで読み、クエリし、編集する**ためのものです: 編集がグラフへ反映される唯一の射影です（上記の双方向同期セクションを参照）。両者は同じグラフから射影されるため、ドリフトすることはなく — Obsidian で加えた修正は次回のコンパイルでサイトへ伝播します。
+コンパイル済みの HTML サイト（`tesserae export site` → `.tesserae/site/`）は共有のための一方向・読み取り専用のエクスポートです — GitHub Pages、S3、任意の静的ホストへプッシュしてください。Obsidian ヴォルトは Dataview と Obsidian のグラフビューを使って**ローカルで読み、クエリし、編集する**ためのものです: 編集がグラフへ反映される唯一の射影です（上記の双方向同期セクションを参照）。両者は同じグラフから射影されるため、ドリフトすることはなく — Obsidian で加えた修正は次回のコンパイルでサイトへ伝播します。

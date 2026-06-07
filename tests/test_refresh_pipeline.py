@@ -38,8 +38,8 @@ def _seed_project(project_root: Path) -> ProjectWiki:
 
 
 def _run_refresh(project_root: Path, *flags: str) -> int:
-    """Invoke ``project refresh`` through the same entry tests use for the CLI."""
-    return cli.project_main(["refresh", "--project", str(project_root), *flags])
+    """Invoke ``tesserae refresh`` through the same entry tests use for the CLI."""
+    return cli.main(["refresh", "--project", str(project_root), *flags])
 
 
 def test_refresh_runs_steps_in_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

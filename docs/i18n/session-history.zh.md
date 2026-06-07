@@ -5,30 +5,30 @@
 <!-- translations:end -->
 Tesserae 可以导入本地 AI-agent transcript，并在静态站点的 `sessions/` 区域下把它们渲染为项目记忆。
 
-此功能有意与 `export-agent-harness` 分开：
+此功能有意与 `export harness` 分开：
 
-- `export-agent-harness` 是面向 Claude Code、Codex、Gemini、Cursor、Kiro、OpenCode 等工具的出站上下文。
-- `project sessions ...` 是入站历史：它会为当前项目规范化既有 Claude Code/Codex 会话，将其存储在 `.tesserae/harness_sessions/` 下，并让 `project build-site` 发布会话索引/详情页。
+- `export harness` 是面向 Claude Code、Codex、Gemini、Cursor、Kiro、OpenCode 等工具的出站上下文。
+- `sessions ...` 是入站历史：它会为当前项目规范化既有 Claude Code/Codex 会话，将其存储在 `.tesserae/harness_sessions/` 下，并让 `export site` 发布会话索引/详情页。
 
 ## 两条入口：批量导入与实时监控
 
 会话采集不再只有批量方式。进入同一个规范化存储有两条路径：
 
-- **批量导入** —— `project sessions discover/import` 按需扫描 transcript root，一次性写入。本页下文说明该流程。
-- **实时监控** —— supervisor daemon（`project engine`，别名 `project daemon`）运行 `SessionTailer`，监视*本项目自身的* Claude Code 和 Codex transcript，并在新 turn 落地时即时采集。每个 tick 都会 seek 到按文件持久化的 byte offset，仅读取新增的 byte，并在 enqueue 去抖后的重新编译**之前**将完整 turn 写入 SQLite `HarnessSessionsDB`（`.tesserae/sqlite.db`），因此编译始终读到一致状态。tailer 的范围被限制为项目自身的会话（Claude `projects/<slug>/*.jsonl`；Codex 按 cwd 过滤），重启后从已存 offset 恢复，不会重放 turn。
+- **批量导入** —— `sessions discover/import` 按需扫描 transcript root，一次性写入。本页下文说明该流程。
+- **实时监控** —— supervisor daemon（`tesserae engine`）运行 `SessionTailer`，监视*本项目自身的* Claude Code 和 Codex transcript，并在新 turn 落地时即时采集。每个 tick 都会 seek 到按文件持久化的 byte offset，仅读取新增的 byte，并在 enqueue 去抖后的重新编译**之前**将完整 turn 写入 SQLite `HarnessSessionsDB`（`.tesserae/sqlite.db`），因此编译始终读到一致状态。tailer 的范围被限制为项目自身的会话（Claude `projects/<slug>/*.jsonl`；Codex 按 cwd 过滤），重启后从已存 offset 恢复，不会重放 turn。
 
 运行实时循环：
 
 ```bash
-tesserae project engine        # 监视源、合并突发、自动重新编译
-tesserae project engine --once # 单次 drain 周期后退出（确定性）
+tesserae engine        # 监视源、合并突发、自动重新编译
+tesserae engine --once # 单次 drain 周期后退出（确定性）
 ```
 
-`tesserae project refresh` 在 in-process 中一次性运行同样的 ingest → compile → project 流水线，而不启动长驻 watcher（用 `--skip-sessions` 跳过 harness 会话 discovery 扫描）。
+`tesserae refresh` 在 in-process 中一次性运行同样的 ingest → compile → project 流水线，而不启动长驻 watcher（用 `--skip-sessions` 跳过 harness 会话 discovery 扫描）。
 
 ## 隐私模型
 
-两条采集路径都是显式的。实时 tailer 仅在你保持 `project engine`/`daemon` 运行期间工作，批量 discovery 仅在 `--import` 时写入。普通的 `project compile` 或 `project build-site` 会读取 `.tesserae/harness_sessions/` 中已规范化的会话以及 `.tesserae/sqlite.db` 中的实时记录，但不会自行意外抓取私有 harness transcript 目录。
+两条采集路径都是显式的。实时 tailer 仅在你保持 `tesserae engine` 运行期间工作，批量 discovery 仅在 `--import` 时写入。普通的 `tesserae compile` 或 `tesserae export site` 会读取 `.tesserae/harness_sessions/` 中已规范化的会话以及 `.tesserae/sqlite.db` 中的实时记录，但不会自行意外抓取私有 harness transcript 目录。
 
 导入的会话记录是本地项目产物。发布公开站点前请先检查它们，尤其当 transcript 可能包含密钥、私有路径、客户数据或未发布代码时。
 
@@ -37,13 +37,13 @@ tesserae project engine --once # 单次 drain 周期后退出（确定性）
 在项目根目录运行：
 
 ```bash
-tesserae project sessions discover --import
+tesserae sessions discover --import
 ```
 
 Discovery 会扫描属于当前项目工作目录的本地 Claude Code 和 Codex transcript root。使用 `--root` 扫描指定配置目录，并重复 `--harness` 来限制 discovery：
 
 ```bash
-tesserae project sessions discover \
+tesserae sessions discover \
   --root ~/.claude \
   --root ~/.codex \
   --harness claude-code \
@@ -58,7 +58,7 @@ tesserae project sessions discover \
 如果其他工具已经生成了规范化的 `HarnessSession` JSON，可以导入一个文件或一组文件：
 
 ```bash
-tesserae project sessions import path/to/session.json path/to/more-sessions.json
+tesserae sessions import path/to/session.json path/to/more-sessions.json
 ```
 
 每个输入可以包含一个会话对象或会话对象列表。
@@ -66,7 +66,7 @@ tesserae project sessions import path/to/session.json path/to/more-sessions.json
 ## 列出已导入会话
 
 ```bash
-tesserae project sessions list
+tesserae sessions list
 ```
 
 会话存储在：
@@ -79,14 +79,14 @@ tesserae project sessions list
     <session>.md
 ```
 
-实时监控的会话还会记录在 SQLite `HarnessSessionsDB`（`.tesserae/sqlite.db`）中，其中也持久化了 tailer 恢复所用的按文件 read offset。`project sessions list` 报告合并后的视图。
+实时监控的会话还会记录在 SQLite `HarnessSessionsDB`（`.tesserae/sqlite.db`）中，其中也持久化了 tailer 恢复所用的按文件 read offset。`sessions list` 报告合并后的视图。
 
 ## 构建静态会话页面
 
 导入会话后，重新构建站点：
 
 ```bash
-tesserae project build-site
+tesserae export site
 ```
 
 站点会输出：
@@ -128,9 +128,9 @@ tesserae project build-site
 
 部署包含会话的公开站点之前：
 
-1. 运行 `tesserae project sessions list` 并确认数量符合预期。
+1. 运行 `tesserae sessions list` 并确认数量符合预期。
 2. 检查 `.tesserae/harness_sessions/` 是否包含敏感内容。
-3. 使用 `tesserae project build-site` 重新构建。
+3. 使用 `tesserae export site` 重新构建。
 4. 在本地打开 `sessions/index.html` 和至少一个会话详情页。
 5. 确认 tool blocks 默认折叠，并且 raw tool payload 可以发布。
-6. 在 source tree 已提交后，使用 `tesserae project deploy --build` 部署。
+6. 在 source tree 已提交后，使用 `tesserae export site --deploy` 部署。

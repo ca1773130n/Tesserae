@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tesserae plugin — SessionEnd hook.
-# Backgrounds `tesserae sessions discover --import && tesserae project
+# Backgrounds `tesserae sessions discover --import && tesserae
 # compile` so the conversation just-ended becomes graph nodes for the
 # next session. Always exit 0 — never block session close.
 
@@ -26,16 +26,16 @@ tesserae_bin=$(find_tesserae) || {
 # on top of the in-flight one and starves the box. Match on the
 # project_root path so a different Tesserae project's compile doesn't
 # block this one.
-if pgrep -f "tesserae project (compile|sessions discover).*${project_root}" >/dev/null 2>&1 \
-   || pgrep -f "${project_root}.*tesserae project (compile|sessions discover)" >/dev/null 2>&1; then
+if pgrep -f "tesserae (compile|sessions discover).*${project_root}" >/dev/null 2>&1 \
+   || pgrep -f "${project_root}.*tesserae (compile|sessions discover)" >/dev/null 2>&1; then
   log_to ".session-end-hook.log" "skipped: a tesserae compile/import is already running for ${project_root}"
   exit 0
 fi
 # Broader fallback: if ANY tesserae compile is grinding (e.g. spawned
 # without an explicit cwd arg), still skip — concurrent compiles on the
 # same .tesserae/ collide.
-if pgrep -f "tesserae project compile" >/dev/null 2>&1; then
-  log_to ".session-end-hook.log" "skipped: another tesserae project compile is already running"
+if pgrep -f "tesserae compile" >/dev/null 2>&1; then
+  log_to ".session-end-hook.log" "skipped: another tesserae compile is already running"
   exit 0
 fi
 
@@ -48,7 +48,7 @@ log_file="${project_root}/.tesserae/.session-end-hook.log"
 # project root rather than $PWD — required when Claude is started
 # in a subdirectory of the project. (Same fix as session-start.sh
 # for the codex P2 finding on PR #11.)
-cmd="echo \"==== \$(date -u +%FT%TZ) — session-end refresh starting ====\"; \"$tesserae_bin\" project sessions discover --import --project \"$project_root\" 2>&1 || echo \"(project sessions discover --import failed; continuing to compile anyway)\"; \"$tesserae_bin\" project compile --project \"$project_root\" 2>&1 || echo \"(project compile failed)\"; echo \"==== \$(date -u +%FT%TZ) — done ====\""
+cmd="echo \"==== \$(date -u +%FT%TZ) — session-end refresh starting ====\"; \"$tesserae_bin\" sessions discover --import --project \"$project_root\" 2>&1 || echo \"(sessions discover --import failed; continuing to compile anyway)\"; \"$tesserae_bin\" compile --project \"$project_root\" 2>&1 || echo \"(compile failed)\"; echo \"==== \$(date -u +%FT%TZ) — done ====\""
 if command -v setsid >/dev/null 2>&1; then
   setsid sh -c "$cmd" >> "$log_file" 2>&1 < /dev/null &
 elif command -v nohup >/dev/null 2>&1; then

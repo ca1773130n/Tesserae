@@ -139,8 +139,8 @@ query / seeds
 |模块|责任|
 |---|---|
 | [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`：驱动提取→图表→内存遍历→wiki层→站点。拥有`ProjectPaths`（`config`、`graph`、`manifest`、`wiki`、`site`等）。预先决定是否符合基于来源（provenance）的增量编译条件（由 `incremental_compile` 控制，默认 OFF）。 |
-| [`tesserae/cli.py`](../../tesserae/cli.py) |所有 `tesserae project …` 子命令，包括 `compile`、`refresh`、`context`、`build-site`、`serve`、`watch`、`engine`/`daemon`、`deploy`。 |
-| [`tesserae/deploy.py`](../../tesserae/deploy.py) | `project deploy`：通过工作树将 `.tesserae/site/` 推送到 `gh-pages` 分支，可以选择通过 `gh` 启用页面。 |
+| [`tesserae/cli.py`](../../tesserae/cli.py) | 扁平动词式 CLI 调度（删除遗留的 `project`/`wiki` 子命令组后约 2,732 行）。动词 —— `init`、`compile`、`context`、`ask`、`refresh`、`serve`、`engine`、`export`、`vault`、`code`、`lab`、`config`、`projects`、`integrations` —— 在 [`tesserae/cli_tree.py`](../../tesserae/cli_tree.py) 中以元数据声明，并从该树自动接线，而非手动注册。 |
+| [`tesserae/deploy.py`](../../tesserae/deploy.py) | `export site --deploy`：通过工作树将 `.tesserae/site/` 推送到 `gh-pages` 分支，可以选择通过 `gh` 启用页面。 |
 
 ### 引擎主干 (v0.5.0 —— 支柱 1 & 2)
 
@@ -149,8 +149,8 @@ query / seeds
 | 模块 | 职责 |
 |---|---|
 | [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | `Pipeline`：顺序步骤运行器。把散文式刷新链（摄取 → 编译 → 投影/发布）固化为一个可导入对象，返回结构化的 `List[StepResult]` 而非打印后退出，使每个调用方自行决定如何呈现结果。`run()` 对每步捕获 `Exception`（放过 `KeyboardInterrupt`/`SystemExit`），并在首次失败处停止。 |
-| [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | `Daemon`：单一所有者的 asyncio 监督器。监视源目录、Obsidian 库以及 harness 会话目录；通过取消并重新调度的去抖，将一批 `TriggerEvent` 合并为恰好一次 `Pipeline.run()`。复用现有的 `watch.py` / `vault_watch.py` 监视器（不重写它们），写入 pidfile，并在执行中异常下存活。通过 `project engine` / `project daemon`（`--interval`、`--debounce`、`--once`）暴露。 |
-| [`tesserae/watch.py`](../../tesserae/watch.py), [`tesserae/vault_watch.py`](../../tesserae/vault_watch.py) | 独立的 `project watch` 命令与守护进程的源/库通道共同复用的轮询监视器。 |
+| [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | `Daemon`：单一所有者的 asyncio 监督器。监视源目录、Obsidian 库以及 harness 会话目录；通过取消并重新调度的去抖，将一批 `TriggerEvent` 合并为恰好一次 `Pipeline.run()`。复用现有的 `watch.py` / `vault_watch.py` 监视器（不重写它们），写入 pidfile，并在执行中异常下存活。通过 `engine`（`--interval`、`--debounce`、`--once`）暴露。 |
+| [`tesserae/watch.py`](../../tesserae/watch.py), [`tesserae/vault_watch.py`](../../tesserae/vault_watch.py) | 独立的 `export site --watch` 命令与守护进程的源/库通道共同复用的轮询监视器。 |
 
 ### 自我改进内存 (v0.5.0 —— 支柱 2)
 

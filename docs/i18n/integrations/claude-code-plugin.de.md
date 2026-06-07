@@ -31,7 +31,7 @@ Unterschiedliche Rollen:
 - **MCP-Tools** = Read-only-Graph-Abfragen, die der Agent während eines Gesprächs aufruft. Immer an, geringe Reibung.
 - **Slash-Befehle** = Workflow-Aktionen, die du explizit aufrufst (compile, refresh, obsidian-sync). Hoher Hebel, aber sollte deine Entscheidung sein.
 
-Du kannst den MCP-Server allein nutzen (manuelle Bearbeitung von `claude_desktop_config.json` über `tesserae project mcp-config`). Das Plugin verpackt ihn einfach mit den Slash-Befehlen, der Skill und den Hooks, sodass die Installation ein Schritt ist.
+Du kannst den MCP-Server allein nutzen (manuelle Bearbeitung von `claude_desktop_config.json` über `tesserae projects mcp-config`). Das Plugin verpackt ihn einfach mit den Slash-Befehlen, der Skill und den Hooks, sodass die Installation ein Schritt ist.
 
 ## Installation überprüfen
 

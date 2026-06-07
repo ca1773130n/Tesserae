@@ -64,7 +64,7 @@ def supersede_pass_enabled() -> bool:
 
     ``TESSERAE_SUPERSEDE_PASS`` disables the pass only when set to one of
     the falsy spellings ``{"0", "false", "no", "off"}``. An unset or any
-    other value leaves the pass enabled, so a plain ``project compile``
+    other value leaves the pass enabled, so a plain ``compile``
     runs supersede arbitration by default. Disk-cached, content-keyed
     LLM verdicts keep reruns byte-idempotent (05-RESEARCH Pitfall 5).
     """

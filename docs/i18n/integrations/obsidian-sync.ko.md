@@ -4,7 +4,7 @@
 <p align="center"><a href="../../integrations/obsidian-sync.md">English</a> · <a href="obsidian-sync.zh.md">中文</a> · <a href="obsidian-sync.ja.md">日本語</a> · <a href="obsidian-sync.ru.md">Русский</a> · <a href="obsidian-sync.es.md">Español</a> · <a href="obsidian-sync.fr.md">Français</a> · <a href="obsidian-sync.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-> **상태: 출시됨 (Tier 1, v0.5.0).** 아래에서 설명하는 오버레이 리더, 사용자 노트 추가 영역, 감시 모드, 고아 페이지 정리는 `tesserae project obsidian-sync` 뒤에서 실제로 동작합니다. 이 페이지는 설계 근거이자 사용자 가이드를 겸합니다. 멀티 vault 페더레이션(Tier 3)은 여전히 범위 밖입니다.
+> **상태: 출시됨 (Tier 1, v0.5.0).** 아래에서 설명하는 오버레이 리더, 사용자 노트 추가 영역, 감시 모드, 고아 페이지 정리는 `tesserae vault sync` 뒤에서 실제로 동작합니다. 이 페이지는 설계 근거이자 사용자 가이드를 겸합니다. 멀티 vault 페더레이션(Tier 3)은 여전히 범위 밖입니다.
 
 이전의 [Obsidian export](obsidian.ko.md)는 엄격히 단방향이었습니다. `.tesserae/graph.json`의 타입 그래프가 vault로 투영되며, `project compile`은 투영된 파일을 덮어씁니다. `obsidian-sync`는 반대 방향을 추가합니다 — Obsidian에서 설명을 편집하면 재컴파일 후에도 살아남습니다.
 
@@ -100,35 +100,35 @@ Tesserae는 동기화 서버, 인증 레이어, 충돌 해결 데몬, 호스팅 
 
 ## CLI 인터페이스
 
-`tesserae project obsidian-sync`는 vault 편집을 타입 그래프에 적용하고 재투영합니다:
+`tesserae vault sync`는 vault 편집을 타입 그래프에 적용하고 재투영합니다:
 
 ```bash
 # 오버레이를 한 번 적용: 사용자 편집을 풀하고 vault로 재투영.
-tesserae project obsidian-sync
+tesserae vault sync
 
 # 먼저 무엇이 바뀔지 검사. .tesserae/diverged-fields.md를 작성하고
 # 적용하거나 재투영하지 않음.
-tesserae project obsidian-sync --dry-run
+tesserae vault sync --dry-run
 
 # 이번 호출에 특정 vault 지정 (해석 순서:
 # --vault > config.obsidian.vault_path > .tesserae/obsidian_vault/).
-tesserae project obsidian-sync --vault ~/Documents/tesserae-vault
+tesserae vault sync --vault ~/Documents/tesserae-vault
 
 # 그 vault 경로를 이후 명령의 기본값으로 설정.
-tesserae project obsidian-sync --vault ~/Documents/tesserae-vault --persist-vault
+tesserae vault sync --vault ~/Documents/tesserae-vault --persist-vault
 
 # 장기 실행 감시: vault가 바뀔 때마다 오버레이를 재적용.
 # Ctrl-C로 중지; --poll-interval로 폴링 간격 조정 (기본 1.5초).
-tesserae project obsidian-sync --watch --poll-interval 1.5
+tesserae vault sync --watch --poll-interval 1.5
 
 # 소스 노드가 더 이상 존재하지 않는 투영 페이지 삭제 (투영기는
 # 덮어쓰기만 하고 삭제는 안 함). 사용자 노트가 있는 페이지는
 # --force-prune-with-notes도 함께 전달하지 않는 한 유지됨.
-tesserae project obsidian-sync --prune-orphans
-tesserae project obsidian-sync --prune-orphans --force-prune-with-notes
+tesserae vault sync --prune-orphans
+tesserae vault sync --prune-orphans --force-prune-with-notes
 ```
 
-`/tesserae:obsidian-sync` 슬래시 명령이 이것을 감싸며, `tesserae project refresh`
+`/tesserae:obsidian-sync` 슬래시 명령이 이것을 감싸며, `tesserae refresh`
 (및 `/tesserae:refresh` 매크로)는 import → compile → sync 체인의 마지막 단계로
 오버레이를 실행합니다.
 

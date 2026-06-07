@@ -4,7 +4,7 @@
 <p align="center"><a href="../../integrations/obsidian-sync.md">English</a> · <a href="obsidian-sync.ko.md">한국어</a> · <a href="obsidian-sync.zh.md">中文</a> · <a href="obsidian-sync.ja.md">日本語</a> · <a href="obsidian-sync.es.md">Español</a> · <a href="obsidian-sync.fr.md">Français</a> · <a href="obsidian-sync.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-> **Статус: выпущено (Tier 1, v0.5.0).** Описанные ниже overlay reader, зоны добавления user-notes, режим watch и удаление осиротевших страниц работают за `tesserae project obsidian-sync`. Эта страница служит и обоснованием дизайна, и руководством пользователя. Мульти-vault федерация (Tier 3) по-прежнему вне области.
+> **Статус: выпущено (Tier 1, v0.5.0).** Описанные ниже overlay reader, зоны добавления user-notes, режим watch и удаление осиротевших страниц работают за `tesserae vault sync`. Эта страница служит и обоснованием дизайна, и руководством пользователя. Мульти-vault федерация (Tier 3) по-прежнему вне области.
 
 Раньше [экспорт в Obsidian](obsidian.md) был строго односторонним: типизированный граф из `.tesserae/graph.json` проецируется в vault, а `project compile` перезаписывает спроецированные файлы. `obsidian-sync` добавляет обратное направление — отредактируйте описание в Obsidian, и оно переживёт повторную компиляцию.
 
@@ -100,35 +100,35 @@ Tesserae **не** строит сервер синхронизации, слой
 
 ## CLI-интерфейс
 
-`tesserae project obsidian-sync` применяет правки vault к типизированному графу и заново проецирует:
+`tesserae vault sync` применяет правки vault к типизированному графу и заново проецирует:
 
 ```bash
 # Применить оверлей один раз: подтянуть правки пользователя, заново спроецировать в vault.
-tesserae project obsidian-sync
+tesserae vault sync
 
 # Сначала посмотреть, что изменится. Пишет .tesserae/diverged-fields.md и
 # НЕ применяет и не перепроецирует.
-tesserae project obsidian-sync --dry-run
+tesserae vault sync --dry-run
 
 # Указать конкретный vault для этого вызова (порядок разрешения:
 # --vault > config.obsidian.vault_path > .tesserae/obsidian_vault/).
-tesserae project obsidian-sync --vault ~/Documents/tesserae-vault
+tesserae vault sync --vault ~/Documents/tesserae-vault
 
 # Сделать этот путь vault значением по умолчанию для будущих команд.
-tesserae project obsidian-sync --vault ~/Documents/tesserae-vault --persist-vault
+tesserae vault sync --vault ~/Documents/tesserae-vault --persist-vault
 
 # Долгоживущий watch: заново применять оверлей при каждом изменении vault.
 # Ctrl-C для остановки; --poll-interval задаёт частоту опроса (по умолчанию 1.5 с).
-tesserae project obsidian-sync --watch --poll-interval 1.5
+tesserae vault sync --watch --poll-interval 1.5
 
 # Удалить спроецированные страницы, исходный узел которых больше не существует
 # (projector только перезаписывает, никогда не удаляет). Страницы с user-notes
 # сохраняются, если не передать также --force-prune-with-notes.
-tesserae project obsidian-sync --prune-orphans
-tesserae project obsidian-sync --prune-orphans --force-prune-with-notes
+tesserae vault sync --prune-orphans
+tesserae vault sync --prune-orphans --force-prune-with-notes
 ```
 
-Слэш-команда `/tesserae:obsidian-sync` оборачивает это, а `tesserae project refresh`
+Слэш-команда `/tesserae:obsidian-sync` оборачивает это, а `tesserae refresh`
 (и макрос `/tesserae:refresh`) запускает оверлей как последний шаг своей
 цепочки import → compile → sync.
 

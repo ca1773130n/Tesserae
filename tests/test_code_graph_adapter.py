@@ -258,15 +258,15 @@ def test_missing_db_returns_helpful_error(tmp_path: Path, capsys) -> None:
         adapter.read()
     assert "npx @colbymchenry/codegraph init -i" in str(exc.value)
 
-    # CLI seam: `tesserae project sync-code` must exit nonzero with the
+    # CLI seam: `tesserae code sync` must exit nonzero with the
     # same install instructions on the stderr stream.
     proc = subprocess.run(
         [
             sys.executable,
             "-m",
             "tesserae.cli",
-            "project",
-            "sync-code",
+            "code",
+            "sync",
             "--project",
             str(tmp_path),
             "--db",
