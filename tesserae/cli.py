@@ -2236,19 +2236,48 @@ _COMMANDS: Dict[str, Callable[[argparse.Namespace], int]] = {
 def main(argv: List[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
-    if argv and argv[0] == "project":
-        return project_main(argv[1:])
-    if argv and argv[0] == "llm-defaults":
-        llm_defaults_parser = _build_llm_defaults_parser()
-        return _handle_llm_defaults(llm_defaults_parser.parse_args(argv[1:]))
-    if argv and argv[0] == "ask":
+    from .cli_tree import KNOWN_COMMANDS, moved_replacement, render_root_help
+
+    if not argv or argv[0] in ("--help", "-h", "help"):
+        print(render_root_help(), end="")
+        if argv and argv[0] in ("--help", "-h"):
+            raise SystemExit(0)
+        return 0
+    moved = moved_replacement(argv)
+    if moved is not None:
+        old_prefix, hint = moved
+        print(f"tesserae {old_prefix} has moved → {hint}", file=sys.stderr)
+        return 2
+    if argv[0] not in KNOWN_COMMANDS:
+        from .cli_tree import looks_like_extraction_path
+
+        if looks_like_extraction_path(argv[0]):
+            print(
+                "bare extraction has moved → tesserae extract <paths>",
+                file=sys.stderr,
+            )
+            return 2
+        print(
+            f"tesserae: unknown command {argv[0]!r} — see `tesserae --help`",
+            file=sys.stderr,
+        )
+        return 2
+    return _dispatch_command(argv[0], argv[1:])
+
+
+def _dispatch_command(command: str, rest: List[str]) -> int:
+    if command == "ask":
         ask_parser = _build_top_level_ask_parser()
-        ask_args = ask_parser.parse_args(argv[1:])
-        return _top_level_ask_handler(ask_args)
-    if argv and argv[0] == "wiki":
-        wiki_parser = _build_top_level_wiki_parser()
-        wiki_args = wiki_parser.parse_args(argv[1:])
-        return _wiki_command_handler(wiki_args)
+        return _top_level_ask_handler(ask_parser.parse_args(rest))
+    raise NotImplementedError(f"tesserae {command}: wired in a later task")
+
+
+def _extraction_main(argv: List[str] | None = None) -> int:
+    """Legacy bare-extraction parser, preserved for a later task to wrap as
+    `tesserae extract`. No longer reachable from ``main()``.
+    """
+    if argv is None:
+        argv = sys.argv[1:]
     parser = argparse.ArgumentParser(description="Extract a typed research intelligence graph from Tesserae notes.")
     parser.add_argument("paths", nargs="+", help="Markdown file or directory paths to extract")
     parser.add_argument("--source-kind", default="SourceDocument", help="Default source kind: Paper, Repository, ResearchDigest, SourceDocument")
