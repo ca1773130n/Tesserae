@@ -270,3 +270,54 @@ def test_cli_llm_defaults_show_prints_effective_settings(tmp_path: Path, monkeyp
     assert rc == 0
     out = capsys.readouterr().out
     assert "codex" in out and "/x" in out
+
+
+def test_community_summaries_honors_configured_provider(tmp_path, monkeypatch):
+    """The community-summaries pass must build its LLM client through the
+    provider-aware _build_json_client, NOT the bare build_default_json_client
+    (which always defaults to claude regardless of llm_provider=codex)."""
+    from tesserae.project import ProjectWiki
+    from tesserae.research_graph import ResearchGraph, ResearchNode, ResearchNodeType
+
+    wiki = ProjectWiki.init(tmp_path, name="t", llm_provider="codex")
+    seen = {}
+
+    def _recorder(model=None):
+        seen["called"] = True
+        return None  # no client -> pass logs "skipping" and returns the graph
+
+    monkeypatch.setattr(wiki, "_build_json_client", _recorder)
+    graph = ResearchGraph(
+        nodes=[ResearchNode(id="Concept:x", name="x", type=ResearchNodeType.CONCEPT)],
+        edges=[],
+    )
+    wiki._merge_community_summaries(graph, wiki.config())
+    assert seen.get("called") is True, (
+        "community summaries must build its client via _build_json_client "
+        "so llm_provider=codex is honored"
+    )
+
+
+def test_memory_passes_honor_configured_provider(tmp_path, monkeypatch):
+    """The Phase-5 memory-passes LLM gate must also route through the
+    provider-aware _build_json_client."""
+    from tesserae.project import ProjectWiki
+    from tesserae.research_graph import ResearchGraph, ResearchNode, ResearchNodeType
+
+    monkeypatch.setenv("TESSERAE_ENABLE_LLM_PASSES", "1")
+    wiki = ProjectWiki.init(tmp_path, name="t", llm_provider="codex")
+    seen = {}
+
+    def _recorder(model=None):
+        seen["called"] = True
+        return None
+
+    monkeypatch.setattr(wiki, "_build_json_client", _recorder)
+    graph = ResearchGraph(
+        nodes=[ResearchNode(id="Concept:x", name="x", type=ResearchNodeType.CONCEPT)],
+        edges=[],
+    )
+    wiki._run_memory_passes(graph, None)
+    assert seen.get("called") is True, (
+        "memory passes must build their client via _build_json_client"
+    )

@@ -1217,8 +1217,10 @@ class ProjectWiki:
             return graph
         json_client = _get_community_summaries_test_client()
         if json_client is None:
-            from .llm_json import build_default_json_client
-            json_client = build_default_json_client(
+            # Provider-aware: honors llm_provider / llm_codex_home /
+            # llm_claude_config_dirs from project + global config (else this
+            # always defaulted to the Claude CLI, ignoring llm_provider=codex).
+            json_client = self._build_json_client(
                 model=community_cfg.get("model") if isinstance(community_cfg.get("model"), str) else None
             )
         if json_client is None:
@@ -2262,9 +2264,9 @@ class ProjectWiki:
         # content-keyed disk caches keep warm LLM reruns byte-stable).
         if json_client is None and _env_truthy("TESSERAE_ENABLE_LLM_PASSES"):
             try:
-                from .llm_json import build_default_json_client
-
-                json_client = build_default_json_client()
+                # Provider-aware (honors llm_provider=codex), same as the
+                # community-summaries and session-extraction paths.
+                json_client = self._build_json_client()
             except Exception:  # pragma: no cover — defensive
                 json_client = None
 

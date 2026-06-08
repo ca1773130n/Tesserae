@@ -1118,14 +1118,13 @@ def _handle_schema_drift(args: argparse.Namespace) -> int:
             return 2
         from .research_graph import ResearchNodeType as _ResearchNodeType
         from .schema_drift import analyze_schema_drift
-        from .llm_json import build_default_json_client
         host_args = args.host_type or ["SourceDocument"]
         try:
             host_types = [_ResearchNodeType(value) for value in host_args]
         except ValueError as exc:
             print(f"error: unknown --host-type: {exc}", file=sys.stderr)
             return 2
-        llm = build_default_json_client()
+        llm = wiki._build_json_client()
         if llm is None:
             print(
                 "error: no LLM backend configured (claude CLI or ANTHROPIC_API_KEY required).",
@@ -1156,11 +1155,10 @@ def _handle_schema_drift(args: argparse.Namespace) -> int:
 
 def _handle_evolve(args: argparse.Namespace) -> int:
     if True:
-        from .llm_json import build_default_json_client
         wiki = ProjectWiki.load(args.project)
         # An LLM phrases each cluster; when none is reachable evolve degrades
         # gracefully to deterministic-templated bullets rather than erroring.
-        llm = build_default_json_client()
+        llm = wiki._build_json_client()
         summary = wiki.evolve(json_client=llm)
         print(
             f"events={summary['events']} bullets={summary['bullets']} "
@@ -1171,7 +1169,6 @@ def _handle_evolve(args: argparse.Namespace) -> int:
 
 def _handle_research(args: argparse.Namespace) -> int:
     if True:
-        from .llm_json import build_default_json_client
         from .mcp_server import LLMWikiMCPServer
         from .research_mode import GraphSearchBackend, ResearchSession
 
@@ -1179,7 +1176,7 @@ def _handle_research(args: argparse.Namespace) -> int:
         if not wiki.paths.graph.exists():
             print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
             return 2
-        llm = build_default_json_client()
+        llm = wiki._build_json_client()
         if llm is None:
             print(
                 "error: no LLM backend configured (claude CLI or ANTHROPIC_API_KEY required).",
