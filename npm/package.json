@@ -1,0 +1,39 @@
+{
+  "name": "@jokerized/tesserae",
+  "version": "0.6.1",
+  "description": "Node convenience wrapper for Tesserae — a context engine that compiles agent-ready knowledge from your project. Forwards to the Python CLI.",
+  "keywords": [
+    "tesserae",
+    "context-engine",
+    "knowledge-graph",
+    "llm",
+    "agents",
+    "cli",
+    "wrapper"
+  ],
+  "homepage": "https://github.com/ca1773130n/Tesserae#readme",
+  "bugs": {
+    "url": "https://github.com/ca1773130n/Tesserae/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ca1773130n/Tesserae.git",
+    "directory": "npm"
+  },
+  "license": "MIT",
+  "author": "Tesserae Contributors",
+  "type": "commonjs",
+  "bin": {
+    "tesserae": "bin/tesserae.js"
+  },
+  "files": [
+    "bin/tesserae.js",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
