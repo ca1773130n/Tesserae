@@ -1,10 +1,42 @@
 import json
 
 from tesserae.cli import main
-from tesserae.harness_sessions import HarnessSession, HarnessSessionStore
+from tesserae.harness_sessions import (
+    HarnessSession,
+    HarnessSessionStore,
+    _is_boilerplate_preamble,
+    _title_and_preview,
+)
 from tesserae.project import ProjectWiki
 from tesserae.research_graph import ResearchGraph
 from tesserae.site import StaticSiteBuilder
+
+
+def test_title_skips_harness_injected_preamble():
+    # Codex prepends "# AGENTS.md instructions for <path>" to every session;
+    # without skipping it, all sessions collapse to one title and keyword
+    # search returns indistinguishable boilerplate (the bug this guards).
+    texts = [
+        "# AGENTS.md instructions for /Users/x/proj\n## CodeGraph\nThis project...",
+        "You are grd-hypothesizer. Generate ONE ranked hypothesis about 3DGS compression.",
+    ]
+    title, preview = _title_and_preview(texts)
+    assert title.startswith("You are grd-hypothesizer")
+    assert "AGENTS.md instructions" not in title
+    assert preview.startswith("You are grd-hypothesizer")
+
+
+def test_title_preamble_detection_and_fallbacks():
+    assert _is_boilerplate_preamble("# AGENTS.md instructions for /x")
+    assert _is_boilerplate_preamble("# CLAUDE.md instructions for /y")
+    assert _is_boilerplate_preamble("<system-reminder>do X</system-reminder>")
+    assert not _is_boilerplate_preamble("Fix the scheduler rate-limit bug")
+    # all-boilerplate input still yields a non-empty title (graceful fallback)
+    title, _ = _title_and_preview(["# CLAUDE.md instructions for /z"])
+    assert title
+    # a normal first message is preserved unchanged
+    title2, _ = _title_and_preview(["Refactor the retrieval pipeline"])
+    assert title2.startswith("Refactor the retrieval")
 
 
 def sample_session(project_root):

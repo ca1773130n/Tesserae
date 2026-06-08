@@ -670,12 +670,40 @@ def _title_and_preview_from_codex(rows: Sequence[Mapping[str, object]]) -> Tuple
     return _title_and_preview(texts)
 
 
+# Harness-injected preamble that every session shares — must NOT become the
+# title (e.g. Codex prepends "# AGENTS.md instructions for <path>", so all
+# sessions collapsed to one title and keyword search returned indistinguishable
+# boilerplate). Match the AGENTS/CLAUDE/GEMINI .md instruction dump and the
+# common system-context wrappers; skip them when choosing a title/preview.
+_BOILERPLATE_PREAMBLE_RE = re.compile(
+    r"^\s*#?\s*(?:AGENTS|CLAUDE|GEMINI|GRD)\.md\b"
+    r"|^\s*<(?:system-reminder|environment_context|permissions|command-message"
+    r"|command-name|local-command|user-memory-input)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_boilerplate_preamble(text: str) -> bool:
+    stripped = text.lstrip()
+    if not stripped:
+        return True
+    first_line = stripped.splitlines()[0]
+    return bool(_BOILERPLATE_PREAMBLE_RE.match(first_line)) or (
+        ".md instructions for " in first_line.lower()
+    )
+
+
 def _title_and_preview(texts: Sequence[str]) -> Tuple[str, str]:
     if not texts:
         return "", ""
-    first_raw = texts[0].strip()
+    # Prefer the first message that is the user's actual instruction, not the
+    # harness-injected preamble shared across every session. Fall back to the
+    # raw first text only if everything looks like boilerplate.
+    meaningful = [t for t in texts if not _is_boilerplate_preamble(t)]
+    pool = meaningful or list(texts)
+    first_raw = pool[0].strip()
     title = _clean_text(first_raw.splitlines()[0]).strip("# ")[:96]
-    preview = _clean_text("\n\n".join(texts[:4]))[:1200]
+    preview = _clean_text("\n\n".join(pool[:4]))[:1200]
     return title, preview
 
 

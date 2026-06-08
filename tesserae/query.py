@@ -835,6 +835,7 @@ def ask_project(
     top_k: int = 5,
     cognee_search_type: Optional[str] = None,
     cognee_dataset: Optional[str] = None,
+    use_llm: bool = False,
 ) -> Dict[str, Any]:
     """Run a question against the configured memory backends and return a JSON-serializable envelope.
 
@@ -869,6 +870,10 @@ def ask_project(
         raise ValueError("ask_project: question is required")
 
     cfg = wiki.config()
+    # Under backend="auto", remember why a richer backend was skipped so the
+    # wiki fallback can tell the user (vs. silently looking like the only
+    # backend that was ever tried).
+    auto_notes: List[str] = []
 
     # ---- raganything path ----
     raganything_cfg = (cfg.get("memory_backends") or {}).get("raganything") or {}
@@ -888,6 +893,7 @@ def ask_project(
         except Exception as exc:
             if backend == "raganything":
                 raise RuntimeError(f"raganything ask failed: {exc}") from exc
+            auto_notes.append(f"raganything failed: {type(exc).__name__}")
             answer = None
         if answer is not None:
             return {
@@ -919,6 +925,7 @@ def ask_project(
         except Exception as exc:
             if backend == "cognee":
                 raise RuntimeError(f"cognee ask failed: {exc}") from exc
+            auto_notes.append(f"cognee failed: {type(exc).__name__}")
             results = None
         if results is not None:
             return {
@@ -929,10 +936,15 @@ def ask_project(
             }
 
     # ---- wiki search fallback ----
-    result = wiki.query(cleaned_question, top_k=top_k, use_llm=False)
+    # Honor the LLM gate: synthesize when the caller asked (use_llm) or the
+    # TESSERAE_QUERY_LLM env is set. Previously hardcoded False, so the wiki
+    # path could NEVER produce an answer even with a key configured.
+    result = wiki.query(cleaned_question, top_k=top_k, use_llm=use_llm or env_enabled())
     payload = result.to_dict()
     payload["backend"] = "wiki"
     payload["question"] = cleaned_question
+    if auto_notes:
+        payload["auto_notes"] = auto_notes
     return payload
 
 

@@ -122,6 +122,7 @@ def _project_ask_handler(args) -> int:
             top_k=args.top_k,
             cognee_search_type=args.cognee_search_type,
             cognee_dataset=args.cognee_dataset,
+            use_llm=bool(getattr(args, "llm", False)),
         )
     except RuntimeError as exc:
         # Backend-specific failures with explicit --backend surface here.
@@ -166,6 +167,11 @@ def _emit_ask_envelope(envelope: dict, *, json_output: bool) -> int:
             print("No Cognee results returned.")
         return 0
     if backend == "wiki":
+        notes = envelope.get("auto_notes") or []
+        if notes:
+            # auto fell through to wiki because a richer backend errored —
+            # say so, so the user isn't left thinking wiki was the only try.
+            print(f"(auto: {'; '.join(notes)} — fell back to wiki search)", file=sys.stderr)
         print("Compiled wiki answer:")
         from .query import QueryHit, QueryResult
 
@@ -351,6 +357,7 @@ def _top_level_ask_handler(args) -> int:
             top_k=args.top_k,
             cognee_search_type=args.cognee_search_type,
             cognee_dataset=args.cognee_dataset,
+            use_llm=bool(getattr(args, "llm", False)),
         )
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
@@ -694,6 +701,12 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
         help="Backend to use (default: auto = raganything -> cognee -> wiki).",
     )
     parser.add_argument("--top-k", type=int, default=5, help="Maximum results/context items (default: 5).")
+    parser.add_argument(
+        "--llm",
+        action="store_true",
+        help="Synthesize an answer with the LLM (also honored via TESSERAE_QUERY_LLM=1; "
+        "requires ANTHROPIC_API_KEY). Without it, only ranked hits are returned.",
+    )
     parser.add_argument(
         "--json",
         dest="json_output",

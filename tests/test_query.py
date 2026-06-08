@@ -27,9 +27,60 @@ import pytest
 
 from tesserae.query import (
     WikiQuery,
+    ask_project,
     reset_failure_log_for_tests,
     set_client_factory,
 )
+
+
+class _StubResult:
+    def to_dict(self):
+        return {"hits": [], "answer": None, "used_llm": False, "fallback_reason": "LLM disabled"}
+
+
+class _StubWiki:
+    """Minimal ProjectWiki surface for ask_project's wiki-fallback path."""
+
+    def __init__(self, backends=None):
+        self._backends = backends or {}
+        self.last_use_llm = None
+
+    def config(self):
+        return {"memory_backends": self._backends}
+
+    def query(self, question, *, top_k, use_llm):
+        self.last_use_llm = use_llm
+        return _StubResult()
+
+
+def test_ask_project_wiki_fallback_honors_use_llm_param():
+    # Regression: the wiki fallback hardcoded use_llm=False, so ask could
+    # never synthesize. It must now thread the caller's use_llm.
+    wiki = _StubWiki()
+    ask_project(wiki, "q?", backend="auto", use_llm=False)
+    assert wiki.last_use_llm is False
+    ask_project(wiki, "q?", backend="auto", use_llm=True)
+    assert wiki.last_use_llm is True
+
+
+def test_ask_project_wiki_fallback_honors_env_gate(monkeypatch):
+    monkeypatch.setenv("TESSERAE_QUERY_LLM", "1")
+    wiki = _StubWiki()
+    ask_project(wiki, "q?", backend="auto")  # use_llm defaults False, env enables
+    assert wiki.last_use_llm is True
+
+
+def test_ask_project_auto_records_cognee_failure_note(monkeypatch):
+    import tesserae.cognee_query as cq
+
+    def _boom(*a, **k):
+        raise RuntimeError("auth required")
+
+    monkeypatch.setattr(cq, "search_cognee", _boom)
+    wiki = _StubWiki(backends={"cognee": {"enabled": True, "dataset": "d"}})
+    env = ask_project(wiki, "q?", backend="auto")
+    assert env["backend"] == "wiki"
+    assert env.get("auto_notes") and "cognee failed" in env["auto_notes"][0]
 
 
 # ---------------------------------------------------------------------------
