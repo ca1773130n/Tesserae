@@ -462,6 +462,7 @@ class ProjectWiki:
         doc_extractor: Optional[object] = None,
         changed_paths: Optional[List[Path]] = None,
         llm_passes_client: Optional["LLMJsonClient"] = None,
+        progress: Optional["CompileProgress"] = None,
     ) -> dict:
         """Run the substrate-discovery + extraction pipeline for this project.
 
@@ -658,6 +659,7 @@ class ProjectWiki:
                     source_kind=markdown_source_kind,
                     changed_only=effective_changed_only,
                     limit=limit,
+                    progress=progress,
                 )
                 graphs = batch.graphs or [batch.graph]
                 processed = batch.processed
@@ -684,6 +686,11 @@ class ProjectWiki:
         # changed files. ``compute_extraction_provenance`` attributes each
         # node/edge to the file whose extraction actually produced it.
         extracted_graphs: List[ResearchGraph] = list(graphs)
+
+        # Extraction is done; everything below (trends, code graph, memory
+        # passes, community summaries, vault, site) is the "finalize" phase.
+        if progress is not None:
+            progress.finalize("community summaries, vault, site")
 
         graph = ResearchCorpusAnalyzer().summarize_trends(graphs, min_sources=min_trend_sources) if trends else base_graph
         if kind in {"CodeProject", "Repository", "Project"}:
@@ -1329,6 +1336,7 @@ class ProjectWiki:
         doc_extractor: Optional[object] = None,
         changed_paths: Optional[List[Path]] = None,
         llm_passes_client: Optional["LLMJsonClient"] = None,
+        progress: Optional["CompileProgress"] = None,
     ) -> dict:
         """Compile every configured source into the .tesserae artifacts.
 
@@ -1380,6 +1388,7 @@ class ProjectWiki:
             doc_extractor=doc_extractor,
             changed_paths=changed_paths,
             llm_passes_client=llm_passes_client,
+            progress=progress,
         )
 
     def lint(self, fix_trivial: bool = False, severity_floor: str = "info") -> LintReport:

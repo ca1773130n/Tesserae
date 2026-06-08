@@ -1079,23 +1079,33 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                 ),
                 include_doc_id_context=int(base.get("include_doc_id_context", 200)),
             )
-        result = wiki.compile(
-            source_kind=opts.get("source_kind", None),
-            changed_only=args.changed_only,
-            limit=args.limit,
-            trends=bool(opts.get("trends", False)),
-            min_trend_sources=int(opts.get("min_trend_sources", 2)),
-            exclude_data=bool(opts.get("exclude_data", False)),
-            cognify=cognify_options if (cognify_options and cognify_options.is_active) else None,
-            vault_pull=not bool(opts.get("no_vault_pull", False)),
-            session_options=session_override,
-            use_extraction_feedback=bool(opts.get("use_extraction_feedback", False)),
-        )
-        print(
-            "Compiled project wiki: "
-            f"processed={result['processed_files']} skipped={result['skipped_files']} "
-            f"nodes={result['node_count']} edges={result['edge_count']}"
-        )
+        from .compile_progress import NullCompileProgress, make_compile_progress
+
+        # Live codegraph-style progress on an interactive terminal; a no-op
+        # (and the plain summary line below) when piped/CI/MCP/daemon.
+        progress = make_compile_progress()
+        with progress:
+            result = wiki.compile(
+                source_kind=opts.get("source_kind", None),
+                changed_only=args.changed_only,
+                limit=args.limit,
+                trends=bool(opts.get("trends", False)),
+                min_trend_sources=int(opts.get("min_trend_sources", 2)),
+                exclude_data=bool(opts.get("exclude_data", False)),
+                cognify=cognify_options if (cognify_options and cognify_options.is_active) else None,
+                vault_pull=not bool(opts.get("no_vault_pull", False)),
+                session_options=session_override,
+                use_extraction_feedback=bool(opts.get("use_extraction_feedback", False)),
+                progress=progress,
+            )
+            progress.done(nodes=result["node_count"], edges=result["edge_count"])
+        if isinstance(progress, NullCompileProgress):
+            # Non-TTY: keep the stable, script-parseable summary line.
+            print(
+                "Compiled project wiki: "
+                f"processed={result['processed_files']} skipped={result['skipped_files']} "
+                f"nodes={result['node_count']} edges={result['edge_count']}"
+            )
         print(f"Graph: {result['graph_path']}")
         return 0
 

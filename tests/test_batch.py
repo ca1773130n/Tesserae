@@ -84,3 +84,53 @@ def test_batch_runner_handles_non_utf8_markdown_with_replacement(tmp_path):
     assert result.processed == 1
     assert extractor.calls == [str(source)]
     assert manifest.exists()
+
+
+def test_batch_runner_drives_progress_scan_and_advance(tmp_path):
+    """The per-file loop reports scan(total) once and advance() per file."""
+    from tesserae.batch import BatchIngestRunner
+
+    f1 = tmp_path / "a.md"
+    f2 = tmp_path / "b.md"
+    f3 = tmp_path / "c.md"
+    for f in (f1, f2, f3):
+        f.write_text("# x\nGaussian Splatting", encoding="utf-8")
+    manifest = tmp_path / "manifest.json"
+
+    class RecordingProgress:
+        def __init__(self):
+            self.scanned = None
+            self.advances = 0
+            self.extract_done_n = None
+
+        def scan(self, total):
+            self.scanned = total
+
+        def extract_start(self, total):
+            self.started = total
+
+        def advance(self):
+            self.advances += 1
+
+        def extract_done(self, n):
+            self.extract_done_n = n
+
+    prog = RecordingProgress()
+    runner = BatchIngestRunner(extractor=CountingExtractor(), manifest_path=manifest)
+    result = runner.run([f1, f2, f3], source_kind="Paper", progress=prog)
+
+    assert result.processed == 3
+    assert prog.scanned == 3
+    assert prog.advances == 3  # one per file visited (processed or skipped)
+    assert prog.extract_done_n == 3
+
+
+def test_batch_runner_progress_is_optional(tmp_path):
+    """Existing callers that pass no progress still work unchanged."""
+    from tesserae.batch import BatchIngestRunner
+
+    f1 = tmp_path / "a.md"
+    f1.write_text("# x", encoding="utf-8")
+    manifest = tmp_path / "manifest.json"
+    result = BatchIngestRunner(extractor=CountingExtractor(), manifest_path=manifest).run([f1])
+    assert result.processed == 1

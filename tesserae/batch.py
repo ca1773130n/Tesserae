@@ -49,6 +49,7 @@ class BatchIngestRunner:
         source_kind: str = "SourceDocument",
         changed_only: bool = False,
         limit: Optional[int] = None,
+        progress: Optional["CompileProgress"] = None,
     ) -> BatchIngestResult:
         manifest = self._load_manifest()
         graphs: List[ResearchGraph] = []
@@ -57,15 +58,22 @@ class BatchIngestRunner:
         processed = 0
         skipped = 0
 
+        # Materialize so the live progress bar knows the total up front.
+        path_list = [Path(p) for p in paths]
+        if progress is not None:
+            progress.scan(len(path_list))
+            progress.extract_start(len(path_list))
+
         try:
-            for path in paths:
-                file_path = Path(path)
+            for file_path in path_list:
                 content = read_markdown_text(file_path)
                 digest = sha256_text(content)
                 key = str(file_path)
                 if changed_only and manifest.get(key, {}).get("sha256") == digest:
                     skipped += 1
                     skipped_paths.append(key)
+                    if progress is not None:
+                        progress.advance()
                     continue
                 if limit is not None and processed >= limit:
                     break
@@ -75,8 +83,12 @@ class BatchIngestRunner:
                 processed_paths.append(key)
                 manifest[key] = {"sha256": digest, "source_kind": source_kind}
                 self._write_manifest(manifest)
+                if progress is not None:
+                    progress.advance()
         finally:
             self._write_manifest(manifest)
+            if progress is not None:
+                progress.extract_done(processed)
         return BatchIngestResult(
             graph=merge_graphs(graphs),
             graphs=graphs,
