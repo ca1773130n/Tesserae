@@ -553,3 +553,56 @@ def test_refresh_integrations_reaches_external_tool_refresh(tmp_path, monkeypatc
 
     assert cli.main(["compile", "--project", str(tmp_path), "--refresh-integrations"]) == 0
     assert seen["only_auto"] is False  # flag present ⇒ refresh all
+
+
+# --------------------------------------------------------------------------- #
+# `tesserae projects register` auto-inits an uninitialized project dir
+# --------------------------------------------------------------------------- #
+
+
+def test_projects_register_auto_inits_uninitialized_dir(tmp_path, capsys):
+    """Registering an existing dir with no .tesserae/ initializes it first,
+    so register succeeds instead of failing with 'No .tesserae/graph.json'."""
+    import tesserae.cli as cli
+
+    proj = tmp_path / "mpgs"
+    proj.mkdir()  # exists, but NOT a Tesserae project
+
+    rc = cli.main(["projects", "register", str(proj), "--name", "mpgs"])
+    assert rc == 0, capsys.readouterr().err
+    # bare workspace was created
+    assert (proj / ".tesserae" / "config.json").is_file()
+    assert (proj / ".tesserae" / "graph.json").is_file()
+    out = capsys.readouterr().out
+    assert "Registered 'mpgs'" in out
+
+
+def test_projects_register_does_not_create_missing_path(tmp_path, capsys):
+    """A non-existent (typo'd) path must NOT be auto-created — still an error."""
+    import tesserae.cli as cli
+
+    missing = tmp_path / "does-not-exist"
+    rc = cli.main(["projects", "register", str(missing), "--name", "x"])
+    assert rc == 2
+    assert not missing.exists()
+    assert "register failed" in capsys.readouterr().err
+
+
+def test_projects_register_does_not_reinit_existing_project(tmp_path, capsys):
+    """An already-initialized project is registered as-is — config.json is
+    NOT overwritten by a re-init."""
+    import json as _json
+
+    import tesserae.cli as cli
+    from tesserae.project import ProjectWiki
+
+    proj = tmp_path / "already"
+    wiki = ProjectWiki.init(proj, name="already")
+    cfg = _json.loads(wiki.paths.config.read_text())
+    cfg["sentinel"] = "preserve-me"
+    wiki.paths.config.write_text(_json.dumps(cfg))
+
+    rc = cli.main(["projects", "register", str(proj), "--name", "already"])
+    assert rc == 0, capsys.readouterr().err
+    after = _json.loads(wiki.paths.config.read_text())
+    assert after.get("sentinel") == "preserve-me", "register must not re-init/overwrite config"

@@ -2450,6 +2450,25 @@ def _route_config(rest: List[str]) -> int:
 
 # ----- projects -------------------------------------------------------------
 def _handle_projects_register(args: argparse.Namespace) -> int:
+    # Convenience: if the target is an existing directory that isn't a
+    # Tesserae project yet, initialize a bare workspace first so register
+    # "just works" instead of failing with "No .tesserae/graph.json found".
+    # A missing/typo'd path is NOT created (it stays a register error), and
+    # an already-initialized project is left untouched (no config overwrite).
+    candidate = Path(args.path).expanduser()
+    if (
+        candidate.is_dir()
+        and candidate.name != ".tesserae"
+        and not (candidate / ".tesserae" / "graph.json").is_file()
+    ):
+        from .project import ProjectWiki
+
+        ProjectWiki.init(candidate, name=args.name)
+        alias = args.name or candidate.name
+        print(
+            f"{candidate} was not a Tesserae project — initialized .tesserae/ "
+            f"(run `tesserae compile --project {alias}` to populate the graph)."
+        )
     args.wiki_command = "register"
     return _wiki_command_handler(args)
 
