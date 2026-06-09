@@ -16,6 +16,7 @@ from .cognee_adapter import CogneeResearchGraphAdapter
 from .cognee_codex import CogneeCodexPatch
 from .cognee_direct import CogneeDirectImporter
 from .harness_sessions import HarnessSession, HarnessSessionStore, discover_harness_sessions, session_matches_project
+from .ingest.orchestrator import ingest_sources
 from .llm_extractor import ClaudeCLIResearchExtractor
 from .markdown_projection import GraphMarkdownProjector
 from .persistence import KuzuResearchGraphStore, SQLiteResearchGraphStore
@@ -2414,6 +2415,48 @@ def _route_code(rest: List[str]) -> int:
     return _resolve_handler(args._handler)(args)
 
 
+# ----- ingest ---------------------------------------------------------------
+def _build_ingest_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae ingest",
+        description="Ingest a single document file or URL into the knowledge base.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("inputs", nargs="+", help="File path(s) or http(s) URL(s) to ingest")
+    parser.add_argument("--project", default=".", help="Project root directory")
+    parser.add_argument("--title", default=None, help="Title override (useful for URLs)")
+    parser.add_argument("--source-kind", default=None, help="Override source classification")
+    parser.add_argument("--exact", action="store_true", help="Force a full recompile (skip the fast path)")
+    parser.add_argument("--dry-run", action="store_true", help="Fetch + report, write no graph")
+    parser.set_defaults(_handler="_handle_ingest_docs")
+    return parser
+
+
+def _handle_ingest_docs(args: argparse.Namespace) -> int:
+    wiki = ProjectWiki.load(args.project)
+    result = ingest_sources(
+        wiki,
+        args.inputs,
+        source_kind=args.source_kind,
+        title=args.title,
+        exact=args.exact,
+        dry_run=getattr(args, "dry_run", False),
+    )
+    print(
+        f"Ingested ({result['path_taken']}): "
+        f"processed={result['processed_files']} skipped={result['skipped_files']} "
+        f"nodes={result['node_count']} edges={result['edge_count']}"
+    )
+    print(f"Sources: {', '.join(result['sources'])}")
+    print(f"Graph: {result['graph_path']}")
+    return 0
+
+
+def _route_ingest(rest: List[str]) -> int:
+    args = _build_ingest_parser().parse_args(rest)
+    return _resolve_handler(args._handler)(args)
+
+
 # ----- config ---------------------------------------------------------------
 def _handle_config_llm(args: argparse.Namespace) -> int:
     """`config llm` = old `llm-defaults` minus --show."""
@@ -2949,6 +2992,7 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "vault": _route_vault,
     "export": _route_export,
     "code": _route_code,
+    "ingest": _route_ingest,
     "config": _route_config,
     "projects": _route_projects,
     "integrations": _route_integrations,

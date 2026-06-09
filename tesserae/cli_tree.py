@@ -10,6 +10,7 @@ COMMAND_TREE: list[tuple[str, list[tuple[str, str]]]] = [
     ("EVERYDAY", [
         ("init", "Set up .tesserae (wizard by default; --yes non-interactive)"),
         ("compile", "Rebuild the knowledge graph (compile [paths] = ad-hoc ingest)"),
+        ("ingest", "Ingest a document file or URL into the knowledge base"),
         ("context", "Compile agent-ready context for a query"),
         ("ask", "Ask the project memory a question"),
         ("serve", "Browse the compiled site (auto-builds if missing)"),
