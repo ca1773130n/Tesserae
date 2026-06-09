@@ -56,8 +56,11 @@ not building incremental merge from scratch.**
 3. **Phasing:** *Approach B now, Approach C (instant write + background reconcile) next.*
 4. **URL handling model:** *Persist-then-ingest* (fetch → markdown file in the tracked
    corpus → run normal pipeline) rather than a bespoke streaming loader.
-5. **Naming collision:** reclaim `ingest` for documents; **rename the existing code-graph
-   `ingest` to `ingest-code`** (breaking CLI change, called out below).
+5. **No naming collision (verified):** the existing code-graph ingest is the *namespaced*
+   `tesserae code ingest` (a subcommand under `code`, built by `_build_code_parser`).
+   The **top-level `tesserae ingest` is free** — `_NEW_DISPATCH` has no `ingest` key — so the
+   new document command is added as a new top-level route with **no breaking change** and
+   nothing renamed.
 
 ## 4. Architecture overview
 
@@ -92,12 +95,12 @@ tesserae ingest <input>...        # input = local path OR http(s) URL (one or mo
 Output reports: nodes/edges merged, **which path ran** (`incremental` vs
 `full-recompile fallback`), and the persisted source path.
 
-**Breaking CLI change:** the current `ingest` subcommand (Python-AST code graph,
-`help="Mint a typed code graph from Python source…"`) is renamed to **`ingest-code`**.
-Recommended over the alternative (`ingest --code`) for clarity. The spec/plan must:
-- keep the old handler reachable under the new name,
-- update any docs/tests/README references,
-- decide whether to keep `ingest --code` as a deprecated alias for one release.
+**No collision (verified in `tesserae/cli.py`):** the Python-AST code-graph ingest is
+`tesserae code ingest` (registered inside `_build_code_parser`, `_handler="_handle_code_ingest"`).
+The top-level dispatch table `_NEW_DISPATCH` has **no `ingest` key**, so the new document
+command is registered as a new top-level route (`"ingest": _route_ingest`) — purely additive,
+non-breaking. `tesserae code ingest` (code) and `tesserae ingest` (documents) coexist in
+distinct namespaces; nothing is renamed.
 
 ## 6. Components
 
@@ -112,8 +115,9 @@ Recommended over the alternative (`ingest --code`) for clarity. The spec/plan mu
   `fetch_to_source`) → ensure tracked → run the guard → drive compile → report.
   **This is the B→C seam:** v1 calls compile synchronously; v2 splits it into "fast
   approximate write now" + "enqueue reconcile."
-- CLI handler + registered `ingest` subcommand wired to the orchestrator;
-  `ingest-code` rename.
+- CLI: new top-level `ingest` route (`_route_ingest` + `_build_ingest_parser`) added to
+  `_NEW_DISPATCH`, wired to a `_handle_ingest`-style handler that calls the orchestrator.
+  No rename of the existing `tesserae code ingest`.
 
 **Reused as-is:**
 - `FilesystemSourceLoader`; `Project.compile` (incremental path, `changed_only=True`);
@@ -215,8 +219,9 @@ the `compile` command.
   that keeps the base install lean (base is currently only pydantic/networkx/rich). Decide
   in the plan (candidates to evaluate: stdlib `urllib` + a minimal HTML→md, vs `httpx` +
   `markdownify`/`trafilatura`). PDF handling may be deferred or behind the same extra.
-- **R3 — `ingest-code` rename blast radius:** find all references (docs, README, tests,
-  MCP, scripts) before renaming; decide on a one-release deprecated alias.
+- **R3 — resolved (no rename):** top-level `ingest` is free (`_NEW_DISPATCH` has no `ingest`
+  key; the code-graph ingest is the namespaced `tesserae code ingest`). The new command is
+  purely additive — no rename, no deprecation alias, no blast radius.
 - **Q1 — multiple inputs:** confirm `ingest a.md b.md https://…` semantics (treat as a
   batch add → single incremental compile over all new sources).
 - **Q2 — slug collisions:** `data/ingested/<slug>.md` collision policy (suffix with short
