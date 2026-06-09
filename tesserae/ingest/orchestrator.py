@@ -48,10 +48,16 @@ def ingest_sources(
             "graph_path": str(wiki.paths.graph),
         }
 
-    # Phase 1: always full recompile (correct). Phase 2 flips this on exact=False.
-    result = wiki.ingest(resolved, source_kind=source_kind, changed_only=False)
+    if exact:
+        result = wiki.ingest(resolved, source_kind=source_kind, changed_only=False)
+        path_taken = "full-recompile"
+    else:
+        result = wiki.ingest(
+            resolved, source_kind=source_kind, changed_only=True, incremental_override=True
+        )
+        path_taken = "incremental"
     return {
-        "path_taken": "full-recompile",
+        "path_taken": path_taken,
         "sources": resolved,
         "node_count": result["node_count"],
         "edge_count": result["edge_count"],

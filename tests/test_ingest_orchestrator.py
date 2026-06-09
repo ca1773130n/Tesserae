@@ -65,3 +65,21 @@ def test_ingest_dry_run_writes_no_graph_but_fetches(tmp_path, monkeypatch):
     result = ingest_sources(wiki, [str(new)], dry_run=True)
     assert result["path_taken"] == "dry-run"
     assert result["sources"] == [str(new)]
+
+
+def test_ingest_fast_path_uses_incremental_override(tmp_path, monkeypatch):
+    wiki = _seed_project(tmp_path)
+    wiki.compile(changed_only=False)
+    seen = {}
+    real_ingest = wiki.ingest
+    def _spy(inputs, **kw):
+        seen.update(kw)
+        return real_ingest(inputs, **kw)
+    monkeypatch.setattr(wiki, "ingest", _spy)
+
+    (tmp_path / "data" / "f.md").write_text("---\ntype: paper\n---\n# F\n\ncontent\n", encoding="utf-8")
+    result = ingest_sources(wiki, [str(tmp_path / "data" / "f.md")], exact=False)
+
+    assert seen.get("changed_only") is True
+    assert seen.get("incremental_override") is True
+    assert result["path_taken"] == "incremental"
