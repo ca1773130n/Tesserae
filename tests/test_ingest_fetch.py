@@ -3,6 +3,7 @@ import pytest
 from tesserae.ingest.fetch import is_url
 from tesserae.ingest.fetch import _slugify, _render_frontmatter
 from tesserae.ingest.fetch import fetch_to_source
+from tesserae.ingest.fetch import _arxiv_id_from_url
 
 
 class _FakeResponse:
@@ -97,3 +98,19 @@ def test_fetch_missing_extra_raises_actionable_error(tmp_path, monkeypatch):
     monkeypatch.setattr("tesserae.ingest.fetch._load_url_deps", _boom)
     with pytest.raises(ImportError, match=r"pip install tesserae\[ingest-url\]"):
         fetch_to_source("https://example.com/post", tmp_path)
+
+
+def test_arxiv_id_extracted_from_abs_url():
+    assert _arxiv_id_from_url("https://arxiv.org/abs/2401.12345") == "2401.12345"
+    assert _arxiv_id_from_url("https://arxiv.org/abs/2401.12345v2") == "2401.12345"
+    assert _arxiv_id_from_url("https://example.com/post") is None
+
+
+def test_fetch_arxiv_url_records_arxiv_id_in_frontmatter(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "tesserae.ingest.fetch._http_get",
+        _fake_get(_FakeResponse(text="<p>abstract</p>", content_type="text/html")),
+    )
+    path = fetch_to_source("https://arxiv.org/abs/2401.12345", tmp_path / "ing")
+    body = path.read_text(encoding="utf-8")
+    assert "arxiv_id: 2401.12345" in body

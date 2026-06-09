@@ -36,6 +36,14 @@ def _render_frontmatter(meta: Dict[str, str]) -> str:
     return "\n".join(lines) + "\n"
 
 
+_ARXIV_RE = re.compile(r"arxiv\.org/abs/(\d{4}\.\d{4,5})")
+
+
+def _arxiv_id_from_url(url: str) -> Optional[str]:
+    m = _ARXIV_RE.search(url)
+    return m.group(1) if m else None
+
+
 _http_get: Optional[Callable] = None
 _html_to_markdown: Optional[Callable] = None
 
@@ -87,6 +95,10 @@ def fetch_to_source(url: str, dest_dir: Path, *, title: Optional[str] = None) ->
     }
     if title:
         meta["title"] = title
+
+    arxiv_id = _arxiv_id_from_url(url)
+    if arxiv_id:
+        meta["arxiv_id"] = arxiv_id
 
     dest_dir.mkdir(parents=True, exist_ok=True)
     path = dest_dir / f"{_slugify(url)}.md"
