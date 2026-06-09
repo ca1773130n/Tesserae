@@ -463,6 +463,7 @@ class ProjectWiki:
         changed_paths: Optional[List[Path]] = None,
         llm_passes_client: Optional["LLMJsonClient"] = None,
         progress: Optional["CompileProgress"] = None,
+        incremental_override: Optional[bool] = None,
     ) -> dict:
         """Run the substrate-discovery + extraction pipeline for this project.
 
@@ -534,7 +535,11 @@ class ProjectWiki:
         incremental_active = False
         prior_graph_for_diff: Optional[ResearchGraph] = None
         if changed_only and self.paths.graph.exists():
-            incremental_enabled = bool(cfg.get("incremental_compile", False))
+            incremental_enabled = (
+                incremental_override
+                if incremental_override is not None
+                else bool(cfg.get("incremental_compile", False))
+            )
             if incremental_enabled:
                 # EXPERIMENTAL — incremental is byte-identical to a full compile
                 # for the parity-gated edit shapes (additive K=1/5/21,
@@ -1339,6 +1344,7 @@ class ProjectWiki:
         changed_paths: Optional[List[Path]] = None,
         llm_passes_client: Optional["LLMJsonClient"] = None,
         progress: Optional["CompileProgress"] = None,
+        incremental_override: Optional[bool] = None,
     ) -> dict:
         """Compile every configured source into the .tesserae artifacts.
 
@@ -1391,6 +1397,7 @@ class ProjectWiki:
             changed_paths=changed_paths,
             llm_passes_client=llm_passes_client,
             progress=progress,
+            incremental_override=incremental_override,
         )
 
     def lint(self, fix_trivial: bool = False, severity_floor: str = "info") -> LintReport:
