@@ -258,6 +258,89 @@ def reset_login_warning():
     llm_json._reset_login_warning_for_tests()
 
 
+def test_cli_complete_text_returns_prose(monkeypatch):
+    """complete_text returns raw stdout prose (no JSON parse)."""
+    from tesserae.llm_json import ClaudeCLIJsonClient
+
+    fake_proc = _make_completed_process(
+        returncode=0, stdout="We decided to ship. [node:abc]\n"
+    )
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: fake_proc)
+    client = ClaudeCLIJsonClient(config_dirs=["/tmp/fake-claude-config"])
+    out = client.complete_text(system="cite nodes", user="what did we decide?")
+    assert out == "We decided to ship. [node:abc]"
+
+
+def test_cli_complete_text_rotates_past_rate_limited_account(monkeypatch):
+    """A rate-limited account (non-zero exit) is skipped; the next account
+    answers — proving multi-account rotation for prose, not just JSON."""
+    from tesserae.llm_json import ClaudeCLIJsonClient
+
+    seen = []
+
+    def fake_run(cmd, **kw):
+        config_dir = kw.get("env", {}).get("CLAUDE_CONFIG_DIR", "default")
+        seen.append(config_dir)
+        if "personal1" in config_dir:
+            return _make_completed_process(
+                returncode=1, stdout="You've hit your weekly limit · resets tomorrow"
+            )
+        return _make_completed_process(returncode=0, stdout="answer [node:x]")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    client = ClaudeCLIJsonClient(
+        config_dirs=["/home/u/.claude-personal1", "/home/u/.claude-personal2"]
+    )
+    out = client.complete_text(system="s", user="u")
+    assert out == "answer [node:x]"
+    assert any("personal1" in c for c in seen)
+    assert any("personal2" in c for c in seen)
+
+
+def test_composite_falls_through_providers_on_exhaustion():
+    """CompositeCLIClient tries each sub-client until one answers — so a
+    fully rate-limited Claude rotates to Codex (and vice-versa)."""
+    from tesserae.llm_json import CompositeCLIClient
+
+    class _Dead:
+        def complete_text(self, **k):
+            return None
+
+        def complete_json(self, **k):
+            return None
+
+    class _Alive:
+        def complete_text(self, **k):
+            return "from the next provider [node:x]"
+
+        def complete_json(self, **k):
+            return {"ok": 1}
+
+    comp = CompositeCLIClient([_Dead(), _Alive()])
+    assert comp.complete_text(system="s", user="u") == "from the next provider [node:x]"
+    assert comp.complete_json(system="s", user="u", schema_name="z") == {"ok": 1}
+    # all-dead → None, never raises
+    assert CompositeCLIClient([_Dead(), _Dead()]).complete_text(system="s", user="u") is None
+
+
+def test_build_rotating_client_composes_claude_and_codex(monkeypatch, tmp_path):
+    """build_rotating_client returns a composite spanning every available
+    provider so a call only gives up once ALL accounts are exhausted."""
+    import tesserae.llm_json as lj
+    from tesserae.llm_json import CompositeCLIClient
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("TESSERAE_LLM_PROVIDER", raising=False)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "_CLIENT_FACTORY", None, raising=False)
+
+    client = lj.build_rotating_client()
+    assert isinstance(client, CompositeCLIClient)
+    kinds = [type(c).__name__ for c in client.clients]
+    assert "ClaudeCLIJsonClient" in kinds and "CodexCLIJsonClient" in kinds
+
+
 def test_cli_not_logged_in_returns_none(monkeypatch, caplog, reset_login_warning):
     """A 'Not logged in' stderr → complete_json returns None, does NOT raise."""
     fake_proc = _make_completed_process(

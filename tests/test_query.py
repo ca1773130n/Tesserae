@@ -83,6 +83,62 @@ def test_ask_project_auto_records_cognee_failure_note(monkeypatch):
     assert env.get("auto_notes") and "cognee failed" in env["auto_notes"][0]
 
 
+def test_answer_via_cli_synthesizes_without_api_key(tmp_path, monkeypatch):
+    """With no ANTHROPIC_API_KEY, ask synthesizes via the rotating CLI client
+    (claude/codex OAuth) instead of dropping to search-only."""
+    import tesserae.llm_json as lj
+    from tesserae.query import WikiQuery
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    class _FakeCLI:
+        def complete_text(self, *, system, user, max_retries=2):
+            # The system prompt must carry the citation contract.
+            assert "vision banana" in user.lower() or "banana" in user.lower()
+            return "We rely on the [node:concepts/vision-banana] result."
+
+    monkeypatch.setattr(lj, "build_rotating_client", lambda **k: _FakeCLI())
+
+    project = _make_project(tmp_path)
+    result = WikiQuery(project).answer("vision banana", force_llm=True)
+    assert result.used_llm is True
+    assert result.model == "cli-oauth"
+    assert "node:concepts/vision-banana" in result.answer
+
+
+def test_answer_via_cli_none_backend_reports_no_llm(tmp_path, monkeypatch):
+    """When no CLI backend is logged in, ask reports a clear no-backend
+    reason rather than the stale 'ANTHROPIC_API_KEY not set'."""
+    import tesserae.llm_json as lj
+    from tesserae.query import WikiQuery
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setattr(lj, "build_rotating_client", lambda **k: None)
+
+    project = _make_project(tmp_path)
+    result = WikiQuery(project).answer("vision banana", force_llm=True)
+    assert result.used_llm is False
+    assert "claude/codex CLI" in (result.fallback_reason or "")
+
+
+def test_answer_via_cli_uncited_prose_falls_back(tmp_path, monkeypatch):
+    """CLI prose without node citations is treated as ungrounded → search-only."""
+    import tesserae.llm_json as lj
+    from tesserae.query import WikiQuery
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    class _Uncited:
+        def complete_text(self, *, system, user, max_retries=2):
+            return "Bananas are yellow. No citations here."
+
+    monkeypatch.setattr(lj, "build_rotating_client", lambda **k: _Uncited())
+    project = _make_project(tmp_path)
+    result = WikiQuery(project).answer("vision banana", force_llm=True)
+    assert result.used_llm is False
+    assert result.fallback_reason == "model produced no citations"
+
+
 # ---------------------------------------------------------------------------
 # Fake Anthropic SDK surface — just enough for WikiQuery.answer().
 # ---------------------------------------------------------------------------
@@ -457,15 +513,20 @@ def test_answer_api_exception_falls_back_with_log(tmp_path, monkeypatch):
 
 
 def test_answer_missing_api_key_returns_search_only(tmp_path, monkeypatch):
+    import tesserae.llm_json as lj
+
     project = _make_project(tmp_path)
     monkeypatch.setenv("TESSERAE_QUERY_LLM", "1")
-    # No ANTHROPIC_API_KEY, no client factory: the gate must refuse.
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    # No ANTHROPIC_API_KEY, no client factory, AND no logged-in CLI backend:
+    # the gate must refuse with a clear no-backend reason.
     set_client_factory(None)
+    monkeypatch.setattr(lj, "build_rotating_client", lambda **k: None)
 
     result = WikiQuery(project).answer("vision banana")
 
     assert result.used_llm is False
-    assert result.fallback_reason == "ANTHROPIC_API_KEY not set"
+    assert "claude/codex CLI" in (result.fallback_reason or "")
 
 
 # ---------------------------------------------------------------------------

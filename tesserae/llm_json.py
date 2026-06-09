@@ -32,7 +32,7 @@ import logging
 import re
 import time
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Protocol, Union
+from typing import Any, Callable, List, Optional, Protocol, Sequence, Union
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +79,21 @@ class LLMJsonClient(Protocol):
         cache_key: Optional[str] = None,
         max_retries: int = 2,
     ) -> Optional[Union[dict, list]]:
+        ...
+
+    def complete_text(
+        self,
+        *,
+        system: str,
+        user: str,
+        max_retries: int = 2,
+    ) -> Optional[str]:
+        """Return free-text (prose) from an LLM call, or None on any failure.
+
+        The prose counterpart to :meth:`complete_json`; used by synthesis
+        callers (e.g. ``tesserae ask``) so they share the same OAuth /
+        account-rotation path as the JSON extractors.
+        """
         ...
 
 
@@ -203,6 +218,41 @@ class AnthropicLLMJsonClient:
             text = "{" + text
         return parse_json_tolerant(text)
 
+    def complete_text(
+        self,
+        *,
+        system: str,
+        user: str,
+        max_retries: int = 2,
+    ) -> Optional[str]:
+        """Prose completion via the Anthropic SDK; None on unrecoverable error."""
+        attempt = 0
+        while True:
+            try:
+                response = self._client.messages.create(
+                    model=self.model,
+                    max_tokens=self.max_tokens,
+                    system=system.strip(),
+                    messages=[{"role": "user", "content": user}],
+                )
+                break
+            except Exception as exc:  # noqa: BLE001
+                transient = False
+                if self._rate_limit_cls is not None and isinstance(exc, self._rate_limit_cls):
+                    transient = True
+                elif self._status_cls is not None and isinstance(exc, self._status_cls):
+                    transient = getattr(exc, "status_code", None) in {429, 529}
+                if transient and attempt < max_retries:
+                    delay = getattr(exc, "retry_after", None) or (2 ** attempt)
+                    time.sleep(delay)
+                    attempt += 1
+                    continue
+                logger.warning("AnthropicLLMJsonClient.complete_text failed: %s", exc)
+                return None
+        text = _extract_text(response)
+        text = (text or "").strip()
+        return text or None
+
 
 # ---------------------------------------------------------------------------
 # Tolerant JSON parser
@@ -325,28 +375,24 @@ class ClaudeCLIJsonClient:
             self.config_dirs = discovered or [str(home / ".claude")]
         self.timeout = int(timeout)
 
-    def complete_json(
+    def _run_prompt(
         self,
+        prompt: str,
         *,
-        system: str,
-        user: str,
-        schema_name: str,
-        cache_key: Optional[str] = None,
         max_retries: int = 2,
-    ) -> Optional[Union[dict, list]]:
+        error_label: str = "ClaudeCLIJsonClient call failed",
+    ) -> Optional[str]:
+        """Run ``claude -p`` over the rotating ``config_dirs`` and return the
+        raw stdout from the first account that succeeds, else None.
+
+        This is the single rotation loop shared by :meth:`complete_json`
+        (parses the stdout as JSON) and :meth:`complete_text` (returns the
+        prose as-is). Each config_dir is one account; a rate-limited or
+        failing account falls through to the next, so synthesis never gets
+        stuck on a single exhausted account while another has headroom.
+        """
         import os as _os
         import subprocess as _subprocess
-
-        # Stitch system + user into a single prompt for the CLI's -p flag.
-        # The CLI doesn't expose a separate system slot, so we prefix the
-        # JSON-only contract to the user message.
-        prompt = (
-            f"{system.strip()}\n\n"
-            f"Respond with valid JSON only — no Markdown fences, no prose, "
-            f"no trailing commas. Schema name: {schema_name}.\n\n"
-            f"{user}"
-        )
-
         from pathlib import Path as _Path
 
         last_error: Optional[Exception] = None
@@ -404,21 +450,22 @@ class ClaudeCLIJsonClient:
                                 f"claude exited {proc.returncode}: {stderr_text or stdout_text}"
                             )
                             break  # skip to next config_dir
-                        # Non-auth failure on this profile resets the
-                        # "all_not_logged_in" tracker so we surface the
-                        # generic warning at the end instead of the
-                        # login-specific one.
+                        # Non-auth failure on this profile (incl. a rate
+                        # limit — `claude -p` exits non-zero with "You've
+                        # hit your … limit") resets the all_not_logged_in
+                        # tracker; the except below rotates to the next
+                        # account.
                         all_not_logged_in = False
                         raise RuntimeError(
                             f"claude exited {proc.returncode}: "
                             f"{stderr_text or stdout_text}"
                         )
-                    return parse_json_tolerant(proc.stdout)
+                    return proc.stdout
                 except Exception as exc:  # noqa: BLE001
                     last_error = exc
                     # Don't retry on the same config_dir; fall through to
-                    # the next one. Auth/network issues are best handled
-                    # by switching accounts, not by hammering one.
+                    # the next one. Auth/network/rate-limit issues are best
+                    # handled by switching accounts, not hammering one.
                     break
         # All profiles exhausted. If every one failed with "Not logged in",
         # emit the actionable once-per-process auth warning. Otherwise emit
@@ -436,12 +483,54 @@ class ClaudeCLIJsonClient:
                 )
             return None
         if last_error is not None:
-            logger.warning(
-                "ClaudeCLIJsonClient.complete_json failed (schema=%s): %s",
-                schema_name,
-                last_error,
-            )
+            logger.warning("%s: %s", error_label, last_error)
         return None
+
+    def complete_json(
+        self,
+        *,
+        system: str,
+        user: str,
+        schema_name: str,
+        cache_key: Optional[str] = None,
+        max_retries: int = 2,
+    ) -> Optional[Union[dict, list]]:
+        # Stitch system + user into a single prompt for the CLI's -p flag.
+        # The CLI doesn't expose a separate system slot, so we prefix the
+        # JSON-only contract to the user message.
+        prompt = (
+            f"{system.strip()}\n\n"
+            f"Respond with valid JSON only — no Markdown fences, no prose, "
+            f"no trailing commas. Schema name: {schema_name}.\n\n"
+            f"{user}"
+        )
+        raw = self._run_prompt(
+            prompt,
+            max_retries=max_retries,
+            error_label=f"ClaudeCLIJsonClient.complete_json failed (schema={schema_name})",
+        )
+        return parse_json_tolerant(raw) if raw is not None else None
+
+    def complete_text(
+        self,
+        *,
+        system: str,
+        user: str,
+        max_retries: int = 2,
+    ) -> Optional[str]:
+        """Prose completion over the same rotating accounts as complete_json.
+
+        Used by the prose-synthesis callers (``tesserae ask``) so they get
+        the no-API-key OAuth path + multi-account rotation for free.
+        """
+        prompt = f"{system.strip()}\n\n{user}"
+        raw = self._run_prompt(
+            prompt,
+            max_retries=max_retries,
+            error_label="ClaudeCLIJsonClient.complete_text failed",
+        )
+        text = (raw or "").strip()
+        return text or None
 
 
 # ---------------------------------------------------------------------------
@@ -489,28 +578,22 @@ class CodexCLIJsonClient:
             self.codex_homes = discovered or [str(home / ".codex")]
         self.timeout = int(timeout)
 
-    def complete_json(
+    def _run_prompt(
         self,
+        prompt: str,
         *,
-        system: str,
-        user: str,
-        schema_name: str,
-        cache_key: Optional[str] = None,
-        max_retries: int = 2,
-    ) -> Optional[Union[dict, list]]:
+        error_label: str = "CodexCLIJsonClient call failed",
+    ) -> Optional[str]:
+        """Run ``codex exec`` over the rotating ``codex_homes`` and return the
+        final message text from the first account that succeeds, else None.
+
+        Shared by :meth:`complete_json` and :meth:`complete_text`; a
+        rate-limited or failing CODEX_HOME falls through to the next.
+        """
         import os as _os
         import subprocess as _subprocess
         import tempfile as _tempfile
         from pathlib import Path as _Path
-
-        # Same prompt stitching as the Claude CLI client: codex exec has no
-        # separate system slot either, so prefix the JSON-only contract.
-        prompt = (
-            f"{system.strip()}\n\n"
-            f"Respond with valid JSON only — no Markdown fences, no prose, "
-            f"no trailing commas. Schema name: {schema_name}.\n\n"
-            f"{user}"
-        )
 
         last_error: Optional[Exception] = None
         for codex_home in self.codex_homes:
@@ -540,9 +623,9 @@ class CodexCLIJsonClient:
                     check=False,
                 )
                 if proc.returncode != 0:
-                    # Auth or transport failure on this home — try the next
-                    # one. Switching accounts beats hammering one (same
-                    # policy as the Claude CLI client).
+                    # Auth / rate-limit / transport failure on this home —
+                    # try the next one. Switching accounts beats hammering
+                    # one (same policy as the Claude CLI client).
                     last_error = RuntimeError(
                         f"codex exited {proc.returncode}: "
                         f"{(proc.stderr or '').strip() or (proc.stdout or '').strip()}"
@@ -553,7 +636,7 @@ class CodexCLIJsonClient:
                     if output_path.exists()
                     else ""
                 )
-                return parse_json_tolerant(final or proc.stdout or "")
+                return final or proc.stdout or ""
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
                 continue
@@ -564,14 +647,52 @@ class CodexCLIJsonClient:
                     pass
         if last_error is not None:
             logger.warning(
-                "CodexCLIJsonClient.complete_json failed (schema=%s, tried %d "
-                "CODEX_HOME %s): %s — run `codex login` to re-auth.",
-                schema_name,
+                "%s (tried %d CODEX_HOME %s): %s — run `codex login` to re-auth.",
+                error_label,
                 len(self.codex_homes),
                 "dir" if len(self.codex_homes) == 1 else "dirs",
                 last_error,
             )
         return None
+
+    def complete_json(
+        self,
+        *,
+        system: str,
+        user: str,
+        schema_name: str,
+        cache_key: Optional[str] = None,
+        max_retries: int = 2,
+    ) -> Optional[Union[dict, list]]:
+        # Same prompt stitching as the Claude CLI client: codex exec has no
+        # separate system slot either, so prefix the JSON-only contract.
+        prompt = (
+            f"{system.strip()}\n\n"
+            f"Respond with valid JSON only — no Markdown fences, no prose, "
+            f"no trailing commas. Schema name: {schema_name}.\n\n"
+            f"{user}"
+        )
+        raw = self._run_prompt(
+            prompt,
+            error_label=f"CodexCLIJsonClient.complete_json failed (schema={schema_name})",
+        )
+        return parse_json_tolerant(raw or "") if raw is not None else None
+
+    def complete_text(
+        self,
+        *,
+        system: str,
+        user: str,
+        max_retries: int = 2,
+    ) -> Optional[str]:
+        """Prose completion over the same rotating CODEX_HOMEs as complete_json."""
+        prompt = f"{system.strip()}\n\n{user}"
+        raw = self._run_prompt(
+            prompt,
+            error_label="CodexCLIJsonClient.complete_text failed",
+        )
+        text = (raw or "").strip()
+        return text or None
 
 
 # ---------------------------------------------------------------------------
@@ -792,3 +913,88 @@ def build_default_json_client(
         if client is not None:
             return client
     return None
+
+
+class CompositeCLIClient:
+    """Tries an ordered list of clients until one returns a non-None result.
+
+    Each sub-client already rotates across ITS OWN accounts (all
+    ``~/.claude*`` dirs, all ``~/.codex*`` homes); this composite chains
+    across PROVIDERS so a call only gives up once EVERY account on the
+    machine — Claude and Codex — is exhausted. That is the "never get stuck
+    on a rate limit while another account has headroom" guarantee.
+    """
+
+    def __init__(self, clients: Sequence[Any]) -> None:
+        self.clients: List[Any] = [c for c in clients if c is not None]
+
+    def complete_json(self, **kwargs: Any) -> Optional[Union[dict, list]]:
+        for client in self.clients:
+            result = client.complete_json(**kwargs)
+            if result is not None:
+                return result
+        return None
+
+    def complete_text(self, **kwargs: Any) -> Optional[str]:
+        for client in self.clients:
+            result = client.complete_text(**kwargs)
+            if result is not None:
+                return result
+        return None
+
+
+def build_rotating_client(
+    model_claude: str = "sonnet",
+    model_codex: str = "gpt-5.4",
+    provider: Optional[str] = None,
+    claude_config_dirs: Optional[List[str]] = None,
+    codex_home: Optional[str] = None,
+) -> Optional[Any]:
+    """Build a client that rotates across EVERY available account/provider.
+
+    Unlike :func:`build_default_json_client` (which returns the single
+    best-available client), this composes ALL available backends — Claude
+    CLI (rotating its config dirs), Codex CLI (rotating its homes), and the
+    Anthropic SDK if a key is set — in ``provider`` preference order, and
+    falls through provider-to-provider on exhaustion. Returns None only when
+    no backend is usable at all. Used by prose synthesis (``tesserae ask``).
+    """
+    import os
+
+    if _CLIENT_FACTORY is not None:
+        return AnthropicLLMJsonClient(model="claude-sonnet-4-6")
+
+    resolved_provider = (
+        provider or os.environ.get("TESSERAE_LLM_PROVIDER") or "claude"
+    ).strip().lower()
+
+    claude_client = (
+        ClaudeCLIJsonClient(model=model_claude, config_dirs=claude_config_dirs)
+        if _claude_cli_available()
+        else None
+    )
+    codex_client = (
+        CodexCLIJsonClient(
+            model=model_codex,
+            codex_homes=[codex_home] if codex_home else None,
+        )
+        if _codex_cli_available()
+        else None
+    )
+    api_client = None
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        try:
+            api_client = AnthropicLLMJsonClient(model="claude-sonnet-4-6")
+        except RuntimeError:
+            api_client = None
+
+    if resolved_provider == "codex":
+        ordered = [codex_client, claude_client, api_client]
+    else:
+        ordered = [claude_client, api_client, codex_client]
+    available = [c for c in ordered if c is not None]
+    if not available:
+        return None
+    if len(available) == 1:
+        return available[0]
+    return CompositeCLIClient(available)

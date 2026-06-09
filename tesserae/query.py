@@ -516,13 +516,23 @@ class WikiQuery:
         # Resolve API key + client.
         key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         if not key and _CLIENT_FACTORY is None:
+            # No API key: take the OAuth CLI path (claude/codex), rotating
+            # across EVERY account on the machine so a rate-limited account
+            # never blocks synthesis. This is Tesserae's common path — no
+            # API key required.
+            cli_result = self._answer_via_cli(question, hits, history)
+            if cli_result is not None:
+                return cli_result
             return QueryResult(
                 question=question,
                 hits=hits,
                 answer=None,
                 model=None,
                 used_llm=False,
-                fallback_reason="ANTHROPIC_API_KEY not set",
+                fallback_reason=(
+                    "no LLM backend (set ANTHROPIC_API_KEY, or log in to the "
+                    "claude/codex CLI)"
+                ),
             )
 
         client: Any
@@ -621,6 +631,76 @@ class WikiQuery:
             hits=hits,
             answer=body_text.strip() + "\n",
             model=str(model_id),
+            used_llm=True,
+            fallback_reason=None,
+        )
+
+    def _answer_via_cli(
+        self,
+        question: str,
+        hits: List[Any],
+        history: Optional[List[Dict[str, Any]]],
+    ) -> Optional["QueryResult"]:
+        """Synthesize an answer via the claude/codex CLI over OAuth.
+
+        Reuses the same rotating, no-API-key client the JSON extractors use
+        (``build_rotating_client``), so synthesis works without
+        ``ANTHROPIC_API_KEY`` and survives a rate-limited account by rotating
+        to the next one on the machine. Returns None when no CLI backend is
+        usable (caller then reports search-only); returns a search-only
+        ``QueryResult`` when the model answered but without citations.
+        """
+        from .llm_json import build_rotating_client
+
+        client = build_rotating_client()
+        if client is None:
+            return None
+
+        # Flatten the cache-control system blocks into one prompt string —
+        # the CLI has no separate system slot.
+        system_text = "\n\n".join(
+            str(block.get("text", ""))
+            for block in self._system_blocks()
+            if isinstance(block, dict) and block.get("text")
+        )
+        user_message = _build_user_message(question, hits)
+        if history:
+            prior = "\n\n".join(
+                f"{turn.get('role', '')}: {turn.get('content', '')}"
+                for turn in history
+                if turn.get("role") in {"user", "assistant"} and turn.get("content")
+            )
+            if prior:
+                user_message = (
+                    f"Earlier in this conversation:\n{prior}\n\n{user_message}"
+                )
+
+        try:
+            body_text = client.complete_text(system=system_text, user=user_message)
+        except Exception as exc:  # noqa: BLE001 — search-only is the safety net
+            _log_once(
+                f"cli-synth:{type(exc).__name__}",
+                f"CLI synthesis failed ({type(exc).__name__}); search-only result.",
+            )
+            return None
+
+        if not body_text or not body_text.strip():
+            return None
+        if not _NODE_CITATION_RE.search(body_text):
+            # Ungrounded prose — drop to search-only, same as the SDK path.
+            return QueryResult(
+                question=question,
+                hits=hits,
+                answer=None,
+                model=None,
+                used_llm=False,
+                fallback_reason="model produced no citations",
+            )
+        return QueryResult(
+            question=question,
+            hits=hits,
+            answer=body_text.strip() + "\n",
+            model="cli-oauth",
             used_llm=True,
             fallback_reason=None,
         )
