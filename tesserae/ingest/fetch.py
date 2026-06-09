@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import re
-from typing import Dict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Callable, Dict, Optional
 
 
 def is_url(value: str) -> bool:
@@ -32,3 +34,61 @@ def _render_frontmatter(meta: Dict[str, str]) -> str:
         lines.append(f"{key}: {meta[key]}")
     lines.append("---")
     return "\n".join(lines) + "\n"
+
+
+_http_get: Optional[Callable] = None
+_html_to_markdown: Optional[Callable] = None
+
+
+def _load_url_deps() -> None:
+    """Bind _http_get / _html_to_markdown from the optional extra, or raise."""
+    global _http_get, _html_to_markdown
+    if _http_get is not None and _html_to_markdown is not None:
+        return
+    try:
+        import httpx
+        from markdownify import markdownify as _md
+    except ImportError as exc:  # pragma: no cover
+        raise ImportError(
+            "URL ingest requires the optional extra: pip install tesserae[ingest-url]"
+        ) from exc
+    if _http_get is None:
+        _http_get = lambda url, timeout=None, follow_redirects=True, headers=None: httpx.get(
+            url, timeout=timeout, follow_redirects=follow_redirects, headers=headers or {}
+        )
+    if _html_to_markdown is None:
+        _html_to_markdown = lambda html: _md(html)
+
+
+def fetch_to_source(url: str, dest_dir: Path, *, title: Optional[str] = None) -> Path:
+    """Fetch ``url``, convert to markdown, persist under ``dest_dir`` with provenance.
+
+    Returns the written file path. Raises on non-2xx, on a missing [ingest-url] extra,
+    and writes nothing on failure.
+    """
+    if _http_get is None or _html_to_markdown is None:
+        _load_url_deps()
+
+    response = _http_get(url, timeout=30.0, follow_redirects=True, headers={"User-Agent": "tesserae-ingest"})
+    response.raise_for_status()
+    content_type = response.headers.get("content-type", "")
+
+    raw = response.text
+    if "html" in content_type:
+        body = _html_to_markdown(raw)
+    else:
+        body = raw
+
+    sha = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    meta = {
+        "source_url": url,
+        "content_sha256": sha,
+        "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    if title:
+        meta["title"] = title
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    path = dest_dir / f"{_slugify(url)}.md"
+    path.write_text(_render_frontmatter(meta) + "\n" + body.strip() + "\n", encoding="utf-8")
+    return path

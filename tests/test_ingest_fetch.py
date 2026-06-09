@@ -1,5 +1,25 @@
+import pytest
+
 from tesserae.ingest.fetch import is_url
 from tesserae.ingest.fetch import _slugify, _render_frontmatter
+from tesserae.ingest.fetch import fetch_to_source
+
+
+class _FakeResponse:
+    def __init__(self, *, status_code=200, text="", content_type="text/html"):
+        self.status_code = status_code
+        self.text = text
+        self.headers = {"content-type": content_type}
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+
+def _fake_get(response):
+    def _get(url, timeout=None, follow_redirects=True, headers=None):
+        return response
+    return _get
 
 
 def test_is_url_true_for_http_and_https():
@@ -36,3 +56,44 @@ def test_render_frontmatter_emits_sorted_yaml_block():
     assert fm.rstrip().endswith("---")
     assert "source_url: https://x.com" in fm
     assert fm.index("content_sha256") < fm.index("fetched_at") < fm.index("source_url")
+
+
+def test_fetch_html_writes_markdown_file_with_frontmatter(tmp_path, monkeypatch):
+    html = "<html><body><h1>Title</h1><p>Hello world</p></body></html>"
+    monkeypatch.setattr(
+        "tesserae.ingest.fetch._http_get",
+        _fake_get(_FakeResponse(text=html, content_type="text/html")),
+    )
+    dest = tmp_path / "data" / "ingested"
+    path = fetch_to_source("https://example.com/post", dest)
+
+    assert path.parent == dest
+    assert path.suffix == ".md"
+    body = path.read_text(encoding="utf-8")
+    assert body.startswith("---\n")
+    assert "source_url: https://example.com/post" in body
+    assert "content_sha256:" in body
+    assert "fetched_at:" in body
+    assert "Title" in body
+    assert "<h1>" not in body
+
+
+def test_fetch_non_2xx_raises_and_writes_nothing(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "tesserae.ingest.fetch._http_get",
+        _fake_get(_FakeResponse(status_code=404, content_type="text/html")),
+    )
+    dest = tmp_path / "data" / "ingested"
+    with pytest.raises(RuntimeError):
+        fetch_to_source("https://example.com/missing", dest)
+    assert not dest.exists() or not any(dest.iterdir())
+
+
+def test_fetch_missing_extra_raises_actionable_error(tmp_path, monkeypatch):
+    def _boom():
+        raise ImportError("URL ingest requires the optional extra: pip install tesserae[ingest-url]")
+    monkeypatch.setattr("tesserae.ingest.fetch._http_get", None)
+    monkeypatch.setattr("tesserae.ingest.fetch._html_to_markdown", None)
+    monkeypatch.setattr("tesserae.ingest.fetch._load_url_deps", _boom)
+    with pytest.raises(ImportError, match=r"pip install tesserae\[ingest-url\]"):
+        fetch_to_source("https://example.com/post", tmp_path)
