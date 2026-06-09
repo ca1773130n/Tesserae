@@ -33,3 +33,35 @@ def test_ingest_local_file_merges_and_reports(tmp_path):
     assert "graph_path" in result
     graph_text = Path(result["graph_path"]).read_text(encoding="utf-8")
     assert "Diffusion" in graph_text or "diffusion" in graph_text.lower()
+
+
+def test_ingest_url_fetches_persists_and_merges(tmp_path, monkeypatch):
+    wiki = _seed_project(tmp_path)
+    wiki.compile(changed_only=False)
+
+    class _Resp:
+        status_code = 200
+        text = "<h1>Remote</h1><p>Reinforcement learning from human feedback.</p>"
+        headers = {"content-type": "text/html"}
+        def raise_for_status(self): pass
+
+    monkeypatch.setattr(
+        "tesserae.ingest.fetch._http_get",
+        lambda url, timeout=None, follow_redirects=True, headers=None: _Resp(),
+    )
+    result = ingest_sources(wiki, ["https://example.com/rlhf"], exact=True)
+
+    persisted = tmp_path / "data" / "ingested"
+    assert any(persisted.glob("*.md"))
+    assert result["path_taken"] == "full-recompile"
+    assert result["node_count"] > 0
+
+
+def test_ingest_dry_run_writes_no_graph_but_fetches(tmp_path, monkeypatch):
+    wiki = _seed_project(tmp_path)
+    new = tmp_path / "data" / "dry.md"
+    new.write_text("---\ntype: paper\n---\n# Dry\n\ncontent\n", encoding="utf-8")
+
+    result = ingest_sources(wiki, [str(new)], dry_run=True)
+    assert result["path_taken"] == "dry-run"
+    assert result["sources"] == [str(new)]
