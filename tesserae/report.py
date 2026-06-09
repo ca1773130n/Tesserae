@@ -26,10 +26,16 @@ class GraphReporter:
             degree[edge.source] += 1
             degree[edge.target] += 1
         nodes_by_id = {node.id: node for node in graph.nodes}
+        # Filter dangling ids (edge endpoints with no node — e.g. a stale
+        # reference) BEFORE sorting: the sort key dereferences nodes_by_id, so
+        # a post-sort `if` filter is too late and KeyErrors on the dangling id.
+        ranked = sorted(
+            ((node_id, count) for node_id, count in degree.items() if node_id in nodes_by_id),
+            key=lambda item: (-item[1], nodes_by_id[item[0]].name),
+        )
         top_degree_nodes = [
             {"id": node_id, "name": nodes_by_id[node_id].name, "type": nodes_by_id[node_id].type.value, "degree": count}
-            for node_id, count in sorted(degree.items(), key=lambda item: (-item[1], nodes_by_id[item[0]].name))
-            if node_id in nodes_by_id
+            for node_id, count in ranked
         ][:20]
         trends = [
             {"id": node.id, "name": node.name, "source_count": node.metadata.get("source_count", 0)}
