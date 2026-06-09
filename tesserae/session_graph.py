@@ -293,6 +293,17 @@ class SessionGraphExtractor:
         if not findings:
             return
 
+        # Live doc-graph nodes by id. Finding references are filtered against
+        # the doc graph at EXTRACTION time (session_graph_llm: known_doc_ids),
+        # but cached findings replay their stored references on a LATER compile
+        # — and a referenced node whose id has since changed (e.g. a
+        # CodeFunction whose content-hash id shifted when the code changed, or
+        # was removed) leaves the cached reference STALE. Emitting an edge for a
+        # stale id fabricates a wrong-typed pseudo node that dangles into the
+        # graph and KeyErrors downstream. Re-validate here: link to the real
+        # node when it still exists, drop the reference otherwise.
+        live_nodes_by_id = {n.id: n for n in self.doc_graph.nodes}
+
         # Find the structural Session node id so we can edge findings to it.
         session_id_str = session.id
         session_node = next(
@@ -345,14 +356,13 @@ class SessionGraphExtractor:
             )
             # derived_from_session edge
             builder.add_edge(finding_node, "derived_from_session", session_node)
-            # references edges
+            # references edges — only to ids that still exist in the live doc
+            # graph (drops stale cached refs; see live_nodes_by_id note above).
             for ref_id in f.references:
-                pseudo = ResearchNode(
-                    id=ref_id,
-                    name="",
-                    type=ResearchNodeType.SOURCE_DOCUMENT,
-                )
-                builder.add_edge(finding_node, "references", pseudo)
+                target = live_nodes_by_id.get(ref_id)
+                if target is None:
+                    continue
+                builder.add_edge(finding_node, "references", target)
 
     # ------------------------------------------------------------------
     # Cache pruning
