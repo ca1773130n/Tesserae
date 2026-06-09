@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,11 +28,30 @@ def _slugify(value: str) -> str:
     return slug[: _SLUG_MAX - 9].rstrip("-") + "-" + digest
 
 
+# A bare YAML scalar is unsafe if it contains a newline, a colon acting as a
+# mapping indicator (``:`` followed by whitespace or at end of value), a comment
+# indicator (whitespace then ``#``), a quote, or has leading/trailing whitespace.
+# A colon inside a token like ``https://x.com`` is safe and stays unquoted.
+_UNSAFE_SCALAR_RE = re.compile(r"""[\n"']|:(?:\s|$)|(?:^|\s)#""")
+
+
+def _yaml_scalar(value: str) -> str:
+    """Render a string as a YAML scalar, quoting only when it would be unsafe bare.
+
+    Unsafe values (newlines, mapping/comment indicators, quotes, edge whitespace)
+    are emitted as a JSON string — valid, round-trippable YAML. Simple values pass
+    through unquoted so common front-matter (URLs, hashes, timestamps) stays readable.
+    """
+    if value != value.strip() or _UNSAFE_SCALAR_RE.search(value):
+        return json.dumps(value)
+    return value
+
+
 def _render_frontmatter(meta: Dict[str, str]) -> str:
     """Render a deterministic YAML front-matter block (keys sorted)."""
     lines = ["---"]
     for key in sorted(meta):
-        lines.append(f"{key}: {meta[key]}")
+        lines.append(f"{key}: {_yaml_scalar(meta[key])}")
     lines.append("---")
     return "\n".join(lines) + "\n"
 

@@ -59,6 +59,22 @@ def test_render_frontmatter_emits_sorted_yaml_block():
     assert fm.index("content_sha256") < fm.index("fetched_at") < fm.index("source_url")
 
 
+def test_render_frontmatter_escapes_unsafe_values():
+    fm = _render_frontmatter({"title": "Bad: title\ninjected: pwned", "source_url": "https://x.com"})
+    # the malicious value must NOT create a sibling 'injected' key or break the block
+    import re
+    # exactly two '---' fences and exactly the keys we passed, one per line between them
+    body = fm.split("---\n")[1] if fm.startswith("---\n") else fm
+    inner = fm.strip().split("\n")[1:-1]  # lines between the --- fences
+    keys = [ln.split(":", 1)[0].strip() for ln in inner]
+    assert sorted(keys) == ["source_url", "title"], f"unexpected keys leaked: {keys}"
+    # round-trips through a YAML parser without error and preserves the title value
+    import yaml  # PyYAML is a test/dev dep; if unavailable, fall back to the manual check below
+    parsed = yaml.safe_load(fm.strip().strip("-").strip() if False else "\n".join(inner))
+    assert parsed["title"] == "Bad: title\ninjected: pwned"
+    assert parsed["source_url"] == "https://x.com"
+
+
 def test_fetch_html_writes_markdown_file_with_frontmatter(tmp_path, monkeypatch):
     html = "<html><body><h1>Title</h1><p>Hello world</p></body></html>"
     monkeypatch.setattr(
