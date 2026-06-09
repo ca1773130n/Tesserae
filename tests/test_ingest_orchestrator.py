@@ -83,3 +83,24 @@ def test_ingest_fast_path_uses_incremental_override(tmp_path, monkeypatch):
     assert seen.get("changed_only") is True
     assert seen.get("incremental_override") is True
     assert result["path_taken"] == "incremental"
+
+
+def test_ingest_preserves_baseline_and_copies_out_of_corpus(tmp_path):
+    wiki = _seed_project(tmp_path)
+    wiki.compile(changed_only=False)
+    import json
+    before = json.loads(wiki.paths.graph.read_text())
+    baseline_ids = {n["id"] for n in before["nodes"]}
+    assert baseline_ids  # seed produced nodes
+
+    # a file OUTSIDE the project corpus
+    external = tmp_path.parent / "external_paper.md"
+    external.write_text("---\ntype: paper\n---\n# External Topic\n\nbody\n", encoding="utf-8")
+    result = ingest_sources(wiki, [str(external)], exact=True)
+
+    after = json.loads(wiki.paths.graph.read_text())
+    after_ids = {n["id"] for n in after["nodes"]}
+    assert baseline_ids <= after_ids, "ingest must NOT drop baseline nodes"
+    assert len(after_ids) > len(baseline_ids), "the new external doc must be added"
+    # the external file was copied into the tracked corpus
+    assert (tmp_path / "data" / "ingested" / "external_paper.md").exists()

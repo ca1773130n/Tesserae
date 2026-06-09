@@ -6,10 +6,31 @@ compile() call into an instant approximate write + an enqueued reconcile.
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import List, Optional, Sequence
 
 from tesserae.ingest.fetch import fetch_to_source, is_url
+
+
+def _ensure_in_corpus(wiki, path_str: str) -> str:
+    """Return a path INSIDE the project corpus.
+
+    Files already under the project root are used in place (compile() will discover them).
+    Files outside the project root are copied into ``data/ingested/`` so a later full compile
+    reproduces them identically.
+    """
+    root = Path(wiki.project_root).resolve()
+    p = Path(path_str).resolve()
+    try:
+        p.relative_to(root)
+        return str(p)
+    except ValueError:
+        dest_dir = root / "data" / "ingested"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / p.name
+        shutil.copy2(p, dest)
+        return str(dest)
 
 
 def ingest_sources(
@@ -32,10 +53,9 @@ def ingest_sources(
     dest = Path(wiki.project_root) / "data" / "ingested"
     for item in inputs:
         if is_url(item):
-            path = fetch_to_source(item, dest, title=title)
-            resolved.append(str(path))
+            resolved.append(str(fetch_to_source(item, dest, title=title)))
         else:
-            resolved.append(item)
+            resolved.append(_ensure_in_corpus(wiki, item))
 
     if dry_run:
         return {
@@ -48,12 +68,14 @@ def ingest_sources(
             "graph_path": str(wiki.paths.graph),
         }
 
+    # Drive a corpus-wide compile so baseline nodes are preserved. Ingesting a single
+    # explicit file with changed_only=False would drop the rest of the corpus (data loss).
     if exact:
-        result = wiki.ingest(resolved, source_kind=source_kind, changed_only=False)
+        result = wiki.compile(changed_only=False, source_kind=source_kind)
         path_taken = "full-recompile"
     else:
-        result = wiki.ingest(
-            resolved, source_kind=source_kind, changed_only=True, incremental_override=True
+        result = wiki.compile(
+            changed_only=True, incremental_override=True, source_kind=source_kind
         )
         path_taken = "incremental"
     return {
