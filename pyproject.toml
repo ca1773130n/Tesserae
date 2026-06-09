@@ -43,6 +43,7 @@ raganything-semantic = ["raganything[all]>=1.3.0", "sentence-transformers>=3.0"]
 # default semantic lane; without it, hybrid/embedding retrieval degrades to
 # the non-semantic hash-bucket stub and emits a loud UserWarning.
 semantic = ["model2vec>=0.3"]
+ingest-url = ["httpx>=0.24", "markdownify>=0.11"]
 
 [project.scripts]
 tesserae = "tesserae.cli:main"
