@@ -118,6 +118,58 @@ def _mutate_turns(session: HarnessSession, turns: List[dict]) -> HarnessSession:
     return HarnessSession.from_dict(d)
 
 
+def test_stale_cached_reference_dropped_on_replay(tmp_path: Path):
+    """A finding reference that was valid when cached but whose target node has
+    since vanished (e.g. a CodeFunction whose content-hash id changed) must be
+    DROPPED on replay — not fabricated into a dangling pseudo node. That dangle
+    is what KeyError'd the compile when the code graph was present.
+    """
+    root = tmp_path / "project"
+    root.mkdir(parents=True, exist_ok=True)
+    cache_dir = root / ".tesserae" / "session_findings"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    session = HarnessSession.from_dict(
+        {**_session(turns=3).to_dict(), "project_root": str(root.resolve())}
+    )
+
+    # 1) First extract: doc graph HAS Paper:foo → reference is valid → cached.
+    ex1 = SessionGraphExtractor(
+        project_root=root.resolve(),
+        cache_dir=cache_dir,
+        doc_graph=_doc_graph(),  # contains Paper:foo
+        sessions=[session],
+        json_client=_ScriptedClient([_scripted_finding_response()]),
+    )
+    g1 = ex1.extract()
+    assert any(
+        e.type == "references" and e.target == "Paper:foo" for e in g1.edges
+    ), "baseline: the valid reference edge should be present"
+
+    # 2) Replay with the SAME cache (hit, no LLM) but Paper:foo GONE from the
+    #    doc graph — simulating the referenced node's id changing/vanishing.
+    client2 = _ScriptedClient([])  # would return None if (wrongly) called
+    ex2 = SessionGraphExtractor(
+        project_root=root.resolve(),
+        cache_dir=cache_dir,
+        doc_graph=ResearchGraph(nodes=[], edges=[]),  # Paper:foo removed
+        sessions=[session],
+        json_client=client2,
+    )
+    g2 = ex2.extract()
+
+    assert client2.calls == 0, "replay must be a cache hit, not a fresh LLM call"
+    # The stale reference is dropped: no edge to it, and crucially no
+    # fabricated dangling node with that id.
+    assert not any(
+        e.type == "references" and e.target == "Paper:foo" for e in g2.edges
+    ), "stale reference edge must be dropped"
+    assert "Paper:foo" not in {n.id for n in g2.nodes}, (
+        "stale reference must not fabricate a dangling pseudo node"
+    )
+    # The finding itself still exists (only its stale ref was pruned).
+    assert any(n.type == ResearchNodeType.SESSION_INSIGHT for n in g2.nodes)
+
+
 def test_cache_hit_skips_llm_call(tmp_path: Path):
     # Per-chunk cache (v3): a cold 3-turn extract @ default chunk size 30
     # is a single chunk → one LLM call.
