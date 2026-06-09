@@ -15,6 +15,28 @@ def sample_graph():
     )
 
 
+def test_graph_reporter_tolerates_dangling_edge_target():
+    """An edge whose target has no node (e.g. a stale finding reference) must
+    not crash summarize — the sort key dereferences nodes_by_id, so dangling
+    ids have to be filtered BEFORE sorting (regression: compile KeyError'd
+    here on 'CodeFunction:…')."""
+    insight = ResearchNode(
+        id="SessionInsight:x", name="an insight", type=ResearchNodeType.SESSION_INSIGHT
+    )
+    graph = ResearchGraph(
+        nodes=[insight],
+        edges=[
+            ResearchEdge(
+                source=insight.id, target="CodeFunction:gone:deadbeef", type="references"
+            )
+        ],
+    )
+    report = GraphReporter().summarize(graph)  # must not raise KeyError
+    top_ids = {n["id"] for n in report["top_degree_nodes"]}
+    assert "CodeFunction:gone:deadbeef" not in top_ids
+    assert "SessionInsight:x" in top_ids
+
+
 def test_graph_reporter_summarizes_counts_and_top_nodes():
     report = GraphReporter().summarize(sample_graph())
 
