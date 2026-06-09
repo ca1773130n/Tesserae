@@ -14,6 +14,12 @@ def test_ingest_parser_accepts_inputs_and_flags():
     assert args._handler == "_handle_ingest_docs"
 
 
+def test_ingest_defaults_to_fast_path():
+    parser = cli._build_ingest_parser()
+    args = parser.parse_args(["a.md"])
+    assert args.exact is False  # fast path by default; --exact opts into full recompile
+
+
 def test_code_ingest_still_exists_unchanged():
     code_parser = cli._build_code_parser()
     ns = code_parser.parse_args(["ingest", "--project", "."])

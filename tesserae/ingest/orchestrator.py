@@ -39,13 +39,16 @@ def ingest_sources(
     *,
     source_kind: Optional[str] = None,
     title: Optional[str] = None,
-    exact: bool = True,
+    exact: bool = False,
     dry_run: bool = False,
 ) -> dict:
     """Ingest one or more file paths / URLs into ``wiki``'s knowledge base.
 
-    ``exact=True`` forces a full recompile (correct by construction). ``exact=False`` opts
-    the run into the incremental fast path (Phase 2). Returns a report dict with keys:
+    The default (``exact=False``) takes the incremental fast path, with the compile layer
+    automatically falling back to a full recompile when an incremental run is not safe.
+    Passing ``exact=True`` (CLI ``--exact``) forces a full recompile (correct by
+    construction). The fast path is parity-gated by ``tests/test_ingest_parity.py``.
+    Returns a report dict with keys:
     ``path_taken``, ``node_count``, ``edge_count``, ``processed_files``, ``skipped_files``,
     ``graph_path``, ``sources`` (resolved input paths).
     """
