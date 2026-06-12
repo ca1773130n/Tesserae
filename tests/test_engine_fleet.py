@@ -125,19 +125,28 @@ def test_reconcile_starts_new_and_stops_removed_units(tmp_path):
         pidfile=tmp_path / "engine.pid",
         daemon_factory=_recording_factory(built),
     )
-    fleet.reconcile()
-    assert set(fleet._units) == {"alpha"}
-    assert fleet._units["alpha"].thread.is_alive()
+    try:
+        fleet.reconcile()
+        assert set(fleet._units) == {"alpha"}
+        # Fix 1: bounded poll so a freshly-started thread has time to be scheduled.
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and not fleet._units["alpha"].thread.is_alive():
+            time.sleep(0.005)
+        assert fleet._units["alpha"].thread.is_alive()
+        # Fix 3: assert factory was called exactly once for "alpha".
+        assert built == {"alpha": 1}
 
-    # Register beta, drop alpha → reconcile converges.
-    beta = _make_project(tmp_path, "beta")
-    _write_registry(registry, {"beta": beta})
-    fleet.reconcile()
-    assert set(fleet._units) == {"beta"}
-
-    # Cleanup: stop everything.
-    for name in list(fleet._units):
-        fleet._stop_unit(name)
+        # Register beta, drop alpha → reconcile converges.
+        beta = _make_project(tmp_path, "beta")
+        _write_registry(registry, {"beta": beta})
+        fleet.reconcile()
+        assert set(fleet._units) == {"beta"}
+        # Fix 3: assert factory was called once for "beta" (alpha count unchanged).
+        assert built == {"alpha": 1, "beta": 1}
+    finally:
+        # Fix 2: always stop unit threads so they never leak on assertion failure.
+        for name in list(fleet._units):
+            fleet._stop_unit(name)
     assert fleet._units == {}
 
 
@@ -160,6 +169,8 @@ def test_run_loop_stops_all_units_on_request_stop(tmp_path):
     while time.monotonic() < deadline and "alpha" not in fleet._units:
         time.sleep(0.05)
     assert "alpha" in fleet._units
+    # Fix 3: assert factory was called exactly once for "alpha".
+    assert built == {"alpha": 1}
 
     fleet.request_stop()
     runner.join(timeout=10)
