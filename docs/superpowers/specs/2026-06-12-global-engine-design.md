@@ -1,6 +1,6 @@
 # Global Engine (Fleet Daemon) — Design
 
-**Status:** proposed · **Date:** 2026-06-12 · **Author:** session w/ Claude
+**Status:** implemented (vNEXT, feat/global-engine) · **Date:** 2026-06-12 · **Author:** session w/ Claude
 **Implements mission pillar 2** (autonomous, proactive knowledge ingestion) at
 machine scope instead of project scope.
 
