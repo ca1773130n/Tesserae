@@ -29,12 +29,51 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import signal
+import subprocess
 import time
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Protocol, Sequence, Union
+from typing import Any, Callable, List, Mapping, Optional, Protocol, Sequence, Union
 
 logger = logging.getLogger(__name__)
+
+
+def _run_cli(
+    cmd: Sequence[str], prompt: str, env: Mapping[str, str], timeout: float
+) -> subprocess.CompletedProcess:
+    """Run a CLI agent with a timeout that cannot wedge.
+
+    ``subprocess.run(capture_output=True, timeout=...)`` kills only the direct
+    child on timeout, then drains the output pipes with NO timeout. CLI agents
+    like ``codex exec`` / ``claude -p`` spawn their own children which inherit
+    those pipes, so the drain blocks until the orphaned grandchildren exit —
+    observed as compiles sitting at 0% CPU for days. Run the child in its own
+    process group and kill the whole group on timeout instead.
+    """
+    proc = subprocess.Popen(
+        list(cmd),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=dict(env),
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = proc.communicate(input=prompt, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError, AttributeError):
+            proc.kill()
+        try:
+            proc.communicate(timeout=5)
+        except (subprocess.TimeoutExpired, OSError, ValueError):
+            pass
+        raise
+    return subprocess.CompletedProcess(list(cmd), proc.returncode, stdout, stderr)
 
 # Test-only client factory hook. Mirrors the pattern in
 # :mod:`tesserae.llm_synthesis`. When set, ``AnthropicLLMJsonClient``
@@ -424,15 +463,7 @@ class ClaudeCLIJsonClient:
                     ]
                     if self.model:
                         cmd.extend(["--model", self.model])
-                    proc = _subprocess.run(
-                        cmd,
-                        input=prompt,
-                        text=True,
-                        capture_output=True,
-                        env=env,
-                        timeout=self.timeout,
-                        check=False,
-                    )
+                    proc = _run_cli(cmd, prompt=prompt, env=env, timeout=self.timeout)
                     if proc.returncode != 0:
                         stderr_text = (proc.stderr or "").strip()
                         stdout_text = (proc.stdout or "").strip()
@@ -613,15 +644,7 @@ class CodexCLIJsonClient:
                     "--output-last-message", str(output_path),
                     "-",
                 ]
-                proc = _subprocess.run(
-                    cmd,
-                    input=prompt,
-                    text=True,
-                    capture_output=True,
-                    env=env,
-                    timeout=self.timeout,
-                    check=False,
-                )
+                proc = _run_cli(cmd, prompt=prompt, env=env, timeout=self.timeout)
                 if proc.returncode != 0:
                     # Auth / rate-limit / transport failure on this home —
                     # try the next one. Switching accounts beats hammering

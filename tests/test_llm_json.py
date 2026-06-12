@@ -265,7 +265,7 @@ def test_cli_complete_text_returns_prose(monkeypatch):
     fake_proc = _make_completed_process(
         returncode=0, stdout="We decided to ship. [node:abc]\n"
     )
-    monkeypatch.setattr("subprocess.run", lambda *a, **kw: fake_proc)
+    monkeypatch.setattr(llm_json, "_run_cli", lambda *a, **kw: fake_proc)
     client = ClaudeCLIJsonClient(config_dirs=["/tmp/fake-claude-config"])
     out = client.complete_text(system="cite nodes", user="what did we decide?")
     assert out == "We decided to ship. [node:abc]"
@@ -287,7 +287,7 @@ def test_cli_complete_text_rotates_past_rate_limited_account(monkeypatch):
             )
         return _make_completed_process(returncode=0, stdout="answer [node:x]")
 
-    monkeypatch.setattr("subprocess.run", fake_run)
+    monkeypatch.setattr(llm_json, "_run_cli", fake_run)
     client = ClaudeCLIJsonClient(
         config_dirs=["/home/u/.claude-personal1", "/home/u/.claude-personal2"]
     )
@@ -368,7 +368,7 @@ def test_cli_not_logged_in_logs_once_across_calls(
     fake_proc = _make_completed_process(
         returncode=1, stderr="Not logged in · Please run /login\n"
     )
-    monkeypatch.setattr("subprocess.run", lambda *a, **kw: fake_proc)
+    monkeypatch.setattr(llm_json, "_run_cli", lambda *a, **kw: fake_proc)
     client = ClaudeCLIJsonClient(config_dirs=["/tmp/fake-claude-config"])
     with caplog.at_level("WARNING", logger="tesserae.llm_json"):
         assert client.complete_json(system="x", user="y", schema_name="z") is None
@@ -388,7 +388,7 @@ def test_cli_not_logged_in_case_insensitive(
     fake_proc = _make_completed_process(
         returncode=2, stderr="ERROR: NOT LOGGED IN. run /login first."
     )
-    monkeypatch.setattr("subprocess.run", lambda *a, **kw: fake_proc)
+    monkeypatch.setattr(llm_json, "_run_cli", lambda *a, **kw: fake_proc)
     client = ClaudeCLIJsonClient(config_dirs=["/tmp/fake-claude-config"])
     with caplog.at_level("WARNING", logger="tesserae.llm_json"):
         assert client.complete_json(system="x", user="y", schema_name="z") is None
@@ -415,7 +415,7 @@ def test_cli_not_logged_in_falls_through_to_next_config_dir(
             )
         return _make_completed_process(returncode=0, stdout=valid_json)
 
-    monkeypatch.setattr("subprocess.run", fake_run)
+    monkeypatch.setattr(llm_json, "_run_cli", fake_run)
     client = ClaudeCLIJsonClient(
         config_dirs=["/tmp/stale-config", "/tmp/fresh-config"]
     )
@@ -444,7 +444,7 @@ def test_cli_not_logged_in_logs_only_when_all_dirs_fail(
     fake_proc = _make_completed_process(
         returncode=1, stderr="Not logged in\n"
     )
-    monkeypatch.setattr("subprocess.run", lambda *a, **kw: fake_proc)
+    monkeypatch.setattr(llm_json, "_run_cli", lambda *a, **kw: fake_proc)
     client = ClaudeCLIJsonClient(
         config_dirs=["/tmp/c1", "/tmp/c2", "/tmp/c3"]
     )
@@ -570,7 +570,7 @@ def test_cli_genuine_error_still_logs_failure(
     fake_proc = _make_completed_process(
         returncode=1, stderr="rate limit exceeded; try again in 60s"
     )
-    monkeypatch.setattr("subprocess.run", lambda *a, **kw: fake_proc)
+    monkeypatch.setattr(llm_json, "_run_cli", lambda *a, **kw: fake_proc)
     client = ClaudeCLIJsonClient(config_dirs=["/tmp/fake-claude-config"])
     with caplog.at_level("WARNING", logger="tesserae.llm_json"):
         result = client.complete_json(
@@ -619,7 +619,7 @@ class _FakeCodexRun:
     def __call__(self, cmd, **kwargs):
         import types
 
-        self.calls.append({"cmd": list(cmd), "env": kwargs.get("env"), "input": kwargs.get("input")})
+        self.calls.append({"cmd": list(cmd), "env": kwargs.get("env"), "input": kwargs.get("prompt")})
         if self.returncode == 0 and "--output-last-message" in cmd:
             out_path = cmd[cmd.index("--output-last-message") + 1]
             with open(out_path, "w", encoding="utf-8") as handle:
@@ -631,7 +631,7 @@ def test_codex_client_invokes_codex_exec_and_parses_json(monkeypatch, tmp_path):
     from tesserae.llm_json import CodexCLIJsonClient
 
     fake = _FakeCodexRun(payload='{"insights": [1, 2]}')
-    monkeypatch.setattr("subprocess.run", fake)
+    monkeypatch.setattr(llm_json, "_run_cli", fake)
     home = tmp_path / "codex-home"
     home.mkdir()
 
@@ -698,7 +698,7 @@ def test_codex_client_falls_through_homes_on_failure(monkeypatch, tmp_path):
             handle.write('{"ok": true}')
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr("subprocess.run", fake_run)
+    monkeypatch.setattr(llm_json, "_run_cli", fake_run)
     home_a = tmp_path / "a"
     home_b = tmp_path / "b"
     home_a.mkdir()
@@ -721,7 +721,7 @@ def test_codex_client_returns_none_when_all_homes_fail(monkeypatch, tmp_path, ca
 
         return types.SimpleNamespace(returncode=1, stdout="", stderr="run codex login first")
 
-    monkeypatch.setattr("subprocess.run", fake_run)
+    monkeypatch.setattr(llm_json, "_run_cli", fake_run)
     home = tmp_path / "h"
     home.mkdir()
 
@@ -741,7 +741,7 @@ def test_codex_client_timeout_returns_none(monkeypatch, tmp_path):
     def fake_run(cmd, **kwargs):
         raise _subprocess.TimeoutExpired(cmd=cmd, timeout=1)
 
-    monkeypatch.setattr("subprocess.run", fake_run)
+    monkeypatch.setattr(llm_json, "_run_cli", fake_run)
     home = tmp_path / "h"
     home.mkdir()
 
@@ -883,3 +883,34 @@ def test_resolve_llm_client_settings_precedence(monkeypatch):
     assert settings["provider"] == "claude"
     assert settings["codex_home"] == "/env/codex"
     assert settings["claude_config_dirs"] == ["/env/claude"]
+
+
+def test_run_cli_kills_grandchildren_on_timeout():
+    """subprocess.run(capture_output=True, timeout=...) wedges forever when the
+    child spawns grandchildren that inherit the output pipes: on timeout Python
+    kills only the direct child, then drains the pipes with NO timeout, and the
+    drain blocks until the grandchild exits. _run_cli must kill the whole
+    process group and return promptly."""
+    import subprocess
+    import time
+
+    # The backgrounded sleep inherits the stdout pipe and would keep it open
+    # for 30s after the direct child dies.
+    cmd = ["sh", "-c", "sleep 30 & sleep 30"]
+    start = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired):
+        llm_json._run_cli(cmd, prompt="", env=dict(os.environ), timeout=0.5)
+    elapsed = time.monotonic() - start
+    assert elapsed < 10, f"timeout drain blocked for {elapsed:.1f}s — group not killed"
+
+
+def test_run_cli_returns_completed_process_output():
+    result = llm_json._run_cli(
+        ["sh", "-c", "printf out; printf err >&2; exit 3"],
+        prompt="",
+        env=dict(os.environ),
+        timeout=10,
+    )
+    assert result.returncode == 3
+    assert result.stdout == "out"
+    assert result.stderr == "err"
