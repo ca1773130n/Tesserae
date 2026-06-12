@@ -23,6 +23,7 @@ adds the CLI command. A ``run_pipeline=`` injection seam keeps tests determinist
 from __future__ import annotations
 
 import asyncio
+from contextlib import nullcontext
 import logging
 import os
 import signal
@@ -285,8 +286,6 @@ class Daemon:
                 on_consumed()
 
     def _run_pipeline(self, paths: List[Path]) -> None:
-        from contextlib import nullcontext
-
         gate = self._compile_gate if self._compile_gate is not None else nullcontext()
         with gate:
             if self._run_pipeline_override is not None:

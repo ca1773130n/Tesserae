@@ -273,6 +273,7 @@ def test_compile_gate_serializes_pipeline_runs(tmp_path):
         daemons.append(
             Daemon(
                 root,
+                debounce=0.0,
                 enable_watch=False,
                 enable_vault=False,
                 enable_session_tail=False,
