@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from pathlib import Path
 
 from tesserae.engine.fleet import FleetDaemon
@@ -89,3 +91,79 @@ def test_fleet_skips_registered_projects_missing_on_disk(tmp_path):
     )
     assert fleet.run(once=True) == 0
     assert ran == ["alive"]
+
+
+def _recording_factory(ran_units: dict):
+    """Factory building real Daemons with stub pipelines that record liveness."""
+
+    def factory(name, root, fleet):
+        from tesserae.engine.daemon import Daemon
+
+        ran_units[name] = ran_units.get(name, 0) + 1
+        return Daemon(
+            root,
+            queue_timeout=0.05,
+            enable_watch=False,
+            enable_vault=False,
+            enable_session_tail=False,
+            install_signal_handlers=False,
+            compile_gate=fleet.compile_gate,
+            run_pipeline=lambda paths: None,
+        )
+
+    return factory
+
+
+def test_reconcile_starts_new_and_stops_removed_units(tmp_path):
+    registry = tmp_path / "registry.json"
+    alpha = _make_project(tmp_path, "alpha")
+    _write_registry(registry, {"alpha": alpha})
+
+    built: dict = {}
+    fleet = FleetDaemon(
+        registry_path=registry,
+        pidfile=tmp_path / "engine.pid",
+        daemon_factory=_recording_factory(built),
+    )
+    fleet.reconcile()
+    assert set(fleet._units) == {"alpha"}
+    assert fleet._units["alpha"].thread.is_alive()
+
+    # Register beta, drop alpha → reconcile converges.
+    beta = _make_project(tmp_path, "beta")
+    _write_registry(registry, {"beta": beta})
+    fleet.reconcile()
+    assert set(fleet._units) == {"beta"}
+
+    # Cleanup: stop everything.
+    for name in list(fleet._units):
+        fleet._stop_unit(name)
+    assert fleet._units == {}
+
+
+def test_run_loop_stops_all_units_on_request_stop(tmp_path):
+    registry = tmp_path / "registry.json"
+    alpha = _make_project(tmp_path, "alpha")
+    _write_registry(registry, {"alpha": alpha})
+
+    built: dict = {}
+    fleet = FleetDaemon(
+        registry_path=registry,
+        registry_poll=0.1,
+        pidfile=tmp_path / "engine.pid",
+        daemon_factory=_recording_factory(built),
+    )
+    rc_box = {}
+    runner = threading.Thread(target=lambda: rc_box.setdefault("rc", fleet.run()))
+    runner.start()
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and "alpha" not in fleet._units:
+        time.sleep(0.05)
+    assert "alpha" in fleet._units
+
+    fleet.request_stop()
+    runner.join(timeout=10)
+    assert not runner.is_alive()
+    assert rc_box["rc"] == 0
+    assert fleet._units == {}
+    assert not (tmp_path / "engine.pid").exists()
