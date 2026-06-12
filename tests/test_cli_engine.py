@@ -118,3 +118,51 @@ def test_engine_handler_does_not_duplicate_refresh_chain(tmp_path, monkeypatch):
     assert len(constructed) == 1  # exactly one Daemon built (no duplicate chain)
     assert constructed[0][0] == Path(tmp_path).resolve()
     assert run_calls == [True]  # delegated to Daemon.run(once=True), once
+
+
+def test_engine_all_once_runs_fleet_over_registry(tmp_path, monkeypatch, capsys):
+    import json
+
+    from tesserae.cli import main
+    from tesserae.project import ProjectWiki
+
+    # Two real (empty) projects + a registry pointing at them.
+    roots = {}
+    for name in ("alpha", "beta"):
+        root = tmp_path / name
+        root.mkdir()
+        ProjectWiki.init(root, name=name)
+        roots[name] = root
+    registry = tmp_path / "registry.json"
+    registry.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "active": None,
+                "projects": {
+                    n: {"root": str(r), "graph_path": str(r / ".tesserae" / "graph.json")}
+                    for n, r in roots.items()
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TESSERAE_REGISTRY", str(registry))
+    monkeypatch.setenv("TESSERAE_FLEET_PIDFILE", str(tmp_path / "engine.pid"))
+
+    rc = main(["engine", "--all", "--once"])
+
+    assert rc == 0
+    # Once-mode compiled each project: both graphs exist afterwards.
+    for root in roots.values():
+        assert (root / ".tesserae" / "graph.json").exists()
+
+
+def test_engine_all_and_project_are_mutually_exclusive(capsys):
+    import pytest
+
+    from tesserae.cli import main
+
+    with pytest.raises(SystemExit) as exc:
+        main(["engine", "--all", "--project", "/tmp/x"])
+    assert exc.value.code == 2
