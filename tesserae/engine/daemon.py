@@ -160,6 +160,9 @@ class Daemon:
 
         Same effect as a SIGTERM: the drain loop notices the stop event within
         ``queue_timeout`` and exits via the graceful-drain path.
+
+        No effect on ``run(once=True)``, which performs a single bounded drain
+        regardless.
         """
         self._stop_event.set()
 

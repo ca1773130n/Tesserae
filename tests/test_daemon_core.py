@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import os
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -226,11 +227,6 @@ def test_live_pidfile_refuses_start(tmp_path, monkeypatch):
 def test_request_stop_ends_run_loop_from_another_thread(tmp_path):
     """The fleet supervisor stops units via request_stop(); the drain loop
     must notice within ~queue_timeout and run() must return 0."""
-    import threading
-    import time
-
-    from tesserae.engine.daemon import Daemon
-
     (tmp_path / ".tesserae").mkdir(parents=True)
     daemon = Daemon(
         tmp_path,
@@ -244,7 +240,10 @@ def test_request_stop_ends_run_loop_from_another_thread(tmp_path):
     rc_box = {}
     thread = threading.Thread(target=lambda: rc_box.setdefault("rc", daemon.run()))
     thread.start()
-    time.sleep(0.3)  # let the loop start
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and daemon._loop is None:
+        time.sleep(0.01)
+    assert daemon._loop is not None, "daemon loop did not start"
     daemon.request_stop()
     thread.join(timeout=5)
     assert not thread.is_alive(), "drain loop did not stop after request_stop()"
