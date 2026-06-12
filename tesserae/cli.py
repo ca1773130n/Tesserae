@@ -1661,20 +1661,46 @@ def _handle_watch(args: argparse.Namespace) -> int:
 def _handle_engine(args: argparse.Namespace) -> int:
     """Start the supervised refresh daemon (alias: ``daemon``).
 
-    Thin wrapper: construct the Phase-2 ``Daemon`` (which drives the Phase-1
-    ``Pipeline``) and call ``.run(once=...)``. Does NOT re-implement the
-    ingest/compile/project chain — the Daemon owns the Pipeline.
+    ``--all`` switches to fleet mode: one process supervising every project in
+    the registry (see docs/superpowers/specs/2026-06-12-global-engine-design.md).
     """
-    from .engine.daemon import Daemon
     import logging
+    import os
 
     logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    if getattr(args, "all", False):
+        if args.project is not None:
+            print("tesserae engine: --all and --project are mutually exclusive", file=sys.stderr)
+            raise SystemExit(2)
+        from .engine.fleet import FleetDaemon
+
+        registry_env = os.environ.get("TESSERAE_REGISTRY")
+        pidfile_env = os.environ.get("TESSERAE_FLEET_PIDFILE")
+        fleet = FleetDaemon(
+            registry_path=Path(registry_env) if registry_env else None,
+            compile_slots=args.compile_slots,
+            debounce=args.debounce,
+            watch_interval=args.interval,
+            pidfile=Path(pidfile_env) if pidfile_env else None,
+        )
+        try:
+            return fleet.run(once=args.once)
+        except RuntimeError as exc:
+            print(f"tesserae engine: {exc}", file=sys.stderr)
+            return 2
+
+    from .engine.daemon import Daemon
+
     daemon = Daemon(
-        Path(args.project).resolve(),
+        Path(args.project or ".").resolve(),
         debounce=args.debounce,
         watch_interval=args.interval,
     )
-    return daemon.run(once=args.once)
+    try:
+        return daemon.run(once=args.once)
+    except RuntimeError as exc:
+        print(f"tesserae engine: {exc}", file=sys.stderr)
+        return 2
 
 
 def main(argv: List[str] | None = None) -> int:
@@ -1816,12 +1842,26 @@ def _build_engine_parser() -> argparse.ArgumentParser:
             "examples:\n"
             "  tesserae engine --once\n"
             "  tesserae engine --interval 30\n"
+            "  tesserae engine --all --once\n"
+            "  TESSERAE_REGISTRY=~/.tesserae/registry.json tesserae engine --all\n"
+            "  TESSERAE_FLEET_PIDFILE=/run/tesserae-fleet.pid tesserae engine --all\n"
         ),
     )
-    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--project", default=None, help="Project root directory; defaults to current working directory")
     parser.add_argument("--interval", type=float, default=2.0, help="Polling interval in seconds (default: 2)")
     parser.add_argument("--debounce", type=float, default=1.0, help="Quiet window after a burst of edits before rebuilding (default: 1.0)")
     parser.add_argument("--once", action="store_true", help="Run a single drain cycle then exit (deterministic; no long-running loop)")
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Fleet mode: run every project in ~/.tesserae/registry.json from one process.",
+    )
+    parser.add_argument(
+        "--compile-slots",
+        type=int,
+        default=1,
+        help="Fleet mode: max concurrent compiles across all projects (default 1).",
+    )
     return parser
 
 

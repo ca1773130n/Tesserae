@@ -118,3 +118,91 @@ def test_engine_handler_does_not_duplicate_refresh_chain(tmp_path, monkeypatch):
     assert len(constructed) == 1  # exactly one Daemon built (no duplicate chain)
     assert constructed[0][0] == Path(tmp_path).resolve()
     assert run_calls == [True]  # delegated to Daemon.run(once=True), once
+
+
+def test_engine_all_once_runs_fleet_over_registry(tmp_path, monkeypatch, capsys):
+    import json
+
+    from tesserae.cli import main
+    from tesserae.project import ProjectWiki
+
+    # Two real (empty) projects + a registry pointing at them.
+    roots = {}
+    for name in ("alpha", "beta"):
+        root = tmp_path / name
+        root.mkdir()
+        ProjectWiki.init(root, name=name)
+        roots[name] = root
+    registry = tmp_path / "registry.json"
+    registry.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "active": None,
+                "projects": {
+                    n: {"root": str(r), "graph_path": str(r / ".tesserae" / "graph.json")}
+                    for n, r in roots.items()
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TESSERAE_REGISTRY", str(registry))
+    monkeypatch.setenv("TESSERAE_FLEET_PIDFILE", str(tmp_path / "engine.pid"))
+    # ProjectWiki.init already writes graph.json, so existence alone would not
+    # prove the fleet compiled anything — require a rewrite (mtime advance).
+    mtimes_before = {
+        name: (root / ".tesserae" / "graph.json").stat().st_mtime_ns
+        for name, root in roots.items()
+    }
+
+    rc = main(["engine", "--all", "--once", "--debounce", "0"])
+
+    assert rc == 0
+    for name, root in roots.items():
+        graph = root / ".tesserae" / "graph.json"
+        assert graph.exists()
+        assert graph.stat().st_mtime_ns > mtimes_before[name], (
+            f"fleet once-run did not recompile {name}"
+        )
+
+
+def test_engine_all_and_project_are_mutually_exclusive(capsys):
+    import pytest
+
+    from tesserae.cli import main
+
+    with pytest.raises(SystemExit) as exc:
+        main(["engine", "--all", "--project", "/tmp/x"])
+    assert exc.value.code == 2
+
+
+def test_engine_all_rejects_explicit_project_dot(capsys):
+    import pytest
+
+    from tesserae.cli import main
+
+    with pytest.raises(SystemExit) as exc:
+        main(["engine", "--all", "--project", "."])
+    assert exc.value.code == 2
+
+
+def test_engine_all_reports_held_pidfile_cleanly(tmp_path, monkeypatch, capsys):
+    import json
+    import os
+
+    from tesserae.cli import main
+
+    registry = tmp_path / "registry.json"
+    registry.write_text(json.dumps({"version": 1, "active": None, "projects": {}}), encoding="utf-8")
+    pidfile = tmp_path / "engine.pid"
+    pidfile.write_text(str(os.getpid()))  # our own live pid → "already running"
+    monkeypatch.setenv("TESSERAE_REGISTRY", str(registry))
+    monkeypatch.setenv("TESSERAE_FLEET_PIDFILE", str(pidfile))
+
+    rc = main(["engine", "--all", "--once"])
+
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "already running" in captured.err
+    assert "Traceback" not in captured.err

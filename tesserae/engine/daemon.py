@@ -23,6 +23,7 @@ adds the CLI command. A ``run_pipeline=`` injection seam keeps tests determinist
 from __future__ import annotations
 
 import asyncio
+from contextlib import nullcontext
 import logging
 import os
 import signal
@@ -72,6 +73,8 @@ class Daemon:
         enable_watch: bool = True,
         enable_vault: bool = True,
         enable_session_tail: bool = True,
+        install_signal_handlers: bool = True,
+        compile_gate: Optional[threading.Semaphore] = None,
         run_pipeline: Optional[Callable[[List[Path]], None]] = None,
     ) -> None:
         self.project_root = Path(project_root).resolve()
@@ -84,6 +87,8 @@ class Daemon:
         self._enable_watch = enable_watch
         self._enable_vault = enable_vault
         self._enable_session_tail = enable_session_tail
+        self._install_signal_handlers = install_signal_handlers
+        self._compile_gate = compile_gate
         self._pidfile = self.project_root / ".tesserae" / self.PIDFILE_NAME
         self._stop_event = threading.Event()
         self._threads: List[threading.Thread] = []
@@ -130,12 +135,13 @@ class Daemon:
             if once:
                 loop.run_until_complete(self._drain_once())
             else:
-                for sig in (signal.SIGTERM, signal.SIGINT):
-                    try:
-                        loop.add_signal_handler(sig, self._handle_signal)
-                    except NotImplementedError:
-                        # Windows / non-main-thread: signals unavailable here.
-                        logger.warning("add_signal_handler unavailable for %s; skipping", sig)
+                if self._install_signal_handlers:
+                    for sig in (signal.SIGTERM, signal.SIGINT):
+                        try:
+                            loop.add_signal_handler(sig, self._handle_signal)
+                        except NotImplementedError:
+                            # Windows / non-main-thread: signals unavailable here.
+                            logger.warning("add_signal_handler unavailable for %s; skipping", sig)
                 self._start_sources(loop)
                 loop.run_until_complete(self._drain_loop())
         finally:
@@ -150,6 +156,17 @@ class Daemon:
     def _handle_signal(self) -> None:
         """Signal callback: request graceful drain+exit (no abrupt loop.stop)."""
         logger.info("shutdown signal received")
+        self._stop_event.set()
+
+    def request_stop(self) -> None:
+        """Thread-safe external stop (fleet supervisor / tests).
+
+        Same effect as a SIGTERM: the drain loop notices the stop event within
+        ``queue_timeout`` and exits via the graceful-drain path.
+
+        No effect on ``run(once=True)``, which performs a single bounded drain
+        regardless.
+        """
         self._stop_event.set()
 
     # ----- drain loop ------------------------------------------------------
@@ -269,34 +286,36 @@ class Daemon:
                 on_consumed()
 
     def _run_pipeline(self, paths: List[Path]) -> None:
-        if self._run_pipeline_override is not None:
-            self._run_pipeline_override(paths)
-            return
-        from .pipeline import Pipeline
-        from ..project import ProjectWiki
+        gate = self._compile_gate if self._compile_gate is not None else nullcontext()
+        with gate:
+            if self._run_pipeline_override is not None:
+                self._run_pipeline_override(paths)
+                return
+            from .pipeline import Pipeline
+            from ..project import ProjectWiki
 
-        wiki = ProjectWiki.load(self.project_root)
-        # Forward the coalesced changed-path set into compile (CMP-04) instead
-        # of dropping it — the provenance-driven differ trusts this explicit set
-        # over the manifest re-scan.
-        steps = [
-            (
-                "compile",
-                lambda: wiki.compile(
-                    changed_only=bool(paths), changed_paths=paths or None
-                ),
-            )
-        ]
-        try:
-            results = Pipeline(steps).run()
-        except Exception as exc:  # noqa: BLE001 - daemon must survive
-            logger.error("pipeline raised outside StepResult (daemon survives): %s", exc)
-            return
-        for r in results:
-            if r.ok:
-                logger.info("step %s: ok", r.name)
-            else:
-                logger.error("step %s: FAILED: %s", r.name, r.error)
+            wiki = ProjectWiki.load(self.project_root)
+            # Forward the coalesced changed-path set into compile (CMP-04) instead
+            # of dropping it — the provenance-driven differ trusts this explicit set
+            # over the manifest re-scan.
+            steps = [
+                (
+                    "compile",
+                    lambda: wiki.compile(
+                        changed_only=bool(paths), changed_paths=paths or None
+                    ),
+                )
+            ]
+            try:
+                results = Pipeline(steps).run()
+            except Exception as exc:  # noqa: BLE001 - daemon must survive
+                logger.error("pipeline raised outside StepResult (daemon survives): %s", exc)
+                return
+            for r in results:
+                if r.ok:
+                    logger.info("step %s: ok", r.name)
+                else:
+                    logger.error("step %s: FAILED: %s", r.name, r.error)
 
     # ----- trigger-source hook (Plan 02 overrides body) --------------------
 
