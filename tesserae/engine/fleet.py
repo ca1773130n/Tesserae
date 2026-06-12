@@ -88,7 +88,13 @@ class FleetDaemon:
         """Registry entries that exist on disk, name -> resolved root."""
         try:
             data = self._registry.load()
-            entries = list((data.get("projects") or {}).items())
+            projects = data.get("projects", {})
+            if not isinstance(projects, dict):
+                # `or {}` would silently coerce null/[]/""/false to "no
+                # projects" and stop every running unit; a non-dict value is
+                # malformed, not empty.
+                raise TypeError(f"registry 'projects' is {type(projects).__name__}, expected object")
+            entries = list(projects.items())
         except (ValueError, OSError, AttributeError, TypeError) as exc:
             # Corrupt JSON (ValueError), unreadable/racing-deleted (OSError),
             # or well-formed JSON of the wrong shape (AttributeError/TypeError,
@@ -255,6 +261,16 @@ class FleetDaemon:
                             raise RuntimeError(f"fleet engine already running (pid {old_pid})")
                         else:
                             raise RuntimeError(f"fleet engine already running (pid {old_pid})")
+                    if fcntl is None:
+                        # Without a lock backend the unlink+retry reclaim is
+                        # the very race the flock exists to close: two starts
+                        # could both judge the pid stale and the slower one
+                        # would unlink the winner's fresh pidfile.
+                        raise RuntimeError(
+                            f"stale fleet pidfile at {self._pidfile} (pid {old_pid} gone); "
+                            "automatic reclaim needs flock, which is unavailable on this "
+                            "platform — remove the file manually and retry"
+                        )
                     if attempt == 0:
                         logger.warning("stale fleet pidfile (pid %s gone); reclaiming", old_pid)
                         try:

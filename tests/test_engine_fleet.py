@@ -294,6 +294,16 @@ def test_malformed_registry_entries_and_schema_survive(tmp_path):
         )
         fleet.reconcile()
         assert set(fleet._units) == {"alpha"}
+
+        # Falsey non-dict values must be malformed too, not "no projects" —
+        # `or {}` coercion would silently stop every running unit.
+        for bad in (None, [], "", False, 0):
+            registry.write_text(
+                json.dumps({"version": 1, "active": None, "projects": bad}),
+                encoding="utf-8",
+            )
+            fleet.reconcile()
+            assert set(fleet._units) == {"alpha"}, f"units lost on projects={bad!r}"
     finally:
         for name in list(fleet._units):
             fleet._stop_unit(name)
@@ -325,6 +335,40 @@ def test_stale_pidfile_is_reclaimed(tmp_path):
     )
     assert fleet.run(once=True) == 0  # stale pidfile reclaimed, run, released
     assert not pidfile.exists()
+
+
+def test_stale_reclaim_refuses_without_flock_backend(tmp_path, monkeypatch):
+    """On platforms without fcntl the unlink+retry reclaim is unserialized —
+    the fleet must refuse with a clear manual-removal error instead."""
+    import subprocess
+    import sys
+
+    import pytest
+
+    from tesserae.engine import fleet as fleet_mod
+
+    proc = subprocess.run(
+        [sys.executable, "-c", "import os; print(os.getpid())"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    dead_pid = int(proc.stdout.strip())
+
+    registry = tmp_path / "registry.json"
+    _write_registry(registry, {})
+    pidfile = tmp_path / "engine.pid"
+    pidfile.write_text(str(dead_pid))
+
+    monkeypatch.setattr(fleet_mod, "fcntl", None)
+    fleet = FleetDaemon(
+        registry_path=registry,
+        pidfile=pidfile,
+        daemon_factory=_recording_factory({}),
+    )
+    with pytest.raises(RuntimeError, match="remove the file manually"):
+        fleet.run(once=True)
+    assert pidfile.exists(), "must not touch the stale pidfile without a lock backend"
 
 
 def test_remove_pidfile_only_when_owned(tmp_path):
