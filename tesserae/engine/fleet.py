@@ -75,6 +75,7 @@ class FleetDaemon:
         except ValueError as exc:
             # Corrupt registry: keep the current unit set running rather than
             # tearing the fleet down over a transient bad write.
+            # At startup that set is empty: the fleet idles until the registry becomes readable.
             logger.error("registry unreadable (%s); keeping current units", exc)
             return {u.name: u.root for u in self._units.values()}
         desired: Dict[str, Path] = {}
@@ -126,6 +127,8 @@ class FleetDaemon:
         unit.daemon.request_stop()
         if unit.thread is not None:
             unit.thread.join(timeout=10)
+            if unit.thread.is_alive():
+                logger.error("unit %s thread did not stop within 10s; continuing (zombie)", name)
         logger.info("unit %s stopped", name)
 
     # ----- lifecycle ----------------------------------------------------------
@@ -145,13 +148,14 @@ class FleetDaemon:
                     rc = daemon.run(once=True)
                     logger.info("unit %s once-run rc=%d", name, rc)
                 return 0
-            for sig in (signal.SIGTERM, signal.SIGINT):
-                try:
+            try:
+                for sig in (signal.SIGTERM, signal.SIGINT):
                     signal.signal(sig, lambda *_: self.request_stop())
-                except ValueError:
-                    # Not the main thread (tests): caller uses request_stop().
-                    logger.warning("signal handlers unavailable off the main thread")
-                    break
+            except ValueError:
+                # signal.signal only works from the main thread; both signals
+                # fail or succeed together, so one warning covers it. Callers
+                # off the main thread (tests) use request_stop() directly.
+                logger.warning("signal handlers unavailable off the main thread")
             self.reconcile()
             while not self._stop.is_set():
                 self._stop.wait(self._registry_poll)
