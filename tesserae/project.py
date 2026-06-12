@@ -30,6 +30,7 @@ from .deploy import GitHubPagesDeployer
 from .graph_stores import SqliteGraphStore
 from .karpathy_layer import KarpathyLayerWriter
 from .lint import LintReport, WikiLinter
+from .locking import compile_lock
 from .ports import GraphStore, Source, SourceLoader
 from .site import StaticSiteBuilder
 from .source_loaders import FilesystemSourceLoader
@@ -1380,25 +1381,29 @@ class ProjectWiki:
                         break
                 if not already_listed:
                     sources.append("data")
-        return self.ingest(
-            sources,
-            source_kind=source_kind,
-            changed_only=changed_only,
-            limit=limit,
-            trends=trends,
-            min_trend_sources=min_trend_sources,
-            cognify=cognify,
-            loader=loader,
-            store=store,
-            vault_pull=vault_pull,
-            session_options=session_options,
-            use_extraction_feedback=use_extraction_feedback,
-            doc_extractor=doc_extractor,
-            changed_paths=changed_paths,
-            llm_passes_client=llm_passes_client,
-            progress=progress,
-            incremental_override=incremental_override,
-        )
+        # One compile per project at a time: a hook-triggered refresh that
+        # fires mid-compile must fail fast (or opt into waiting) instead of
+        # stacking onto the same .tesserae state.
+        with compile_lock(self.paths.root):
+            return self.ingest(
+                sources,
+                source_kind=source_kind,
+                changed_only=changed_only,
+                limit=limit,
+                trends=trends,
+                min_trend_sources=min_trend_sources,
+                cognify=cognify,
+                loader=loader,
+                store=store,
+                vault_pull=vault_pull,
+                session_options=session_options,
+                use_extraction_feedback=use_extraction_feedback,
+                doc_extractor=doc_extractor,
+                changed_paths=changed_paths,
+                llm_passes_client=llm_passes_client,
+                progress=progress,
+                incremental_override=incremental_override,
+            )
 
     def lint(self, fix_trivial: bool = False, severity_floor: str = "info") -> LintReport:
         """Run :class:`WikiLinter` against this project's compiled artifacts.

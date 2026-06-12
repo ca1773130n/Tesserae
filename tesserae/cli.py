@@ -18,6 +18,7 @@ from .cognee_direct import CogneeDirectImporter
 from .harness_sessions import HarnessSession, HarnessSessionStore, discover_harness_sessions, session_matches_project
 from .ingest.orchestrator import ingest_sources
 from .llm_extractor import ClaudeCLIResearchExtractor
+from .locking import CompileLockHeldError
 from .markdown_projection import GraphMarkdownProjector
 from .persistence import KuzuResearchGraphStore, SQLiteResearchGraphStore
 from .graphiti_adapter import GraphitiSyncUnavailableError
@@ -1715,6 +1716,9 @@ def main(argv: List[str] | None = None) -> int:
             f"tesserae {argv[0]}: not wired up yet on this branch — coming in a later redesign task.",
             file=sys.stderr,
         )
+        return 2
+    except CompileLockHeldError as exc:
+        print(f"tesserae {argv[0]}: {exc}", file=sys.stderr)
         return 2
 
 
