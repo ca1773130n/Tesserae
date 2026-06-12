@@ -18,9 +18,15 @@ import logging
 import os
 import signal
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Iterator, Optional
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover — Windows: pidfile acquire degrades to O_EXCL only
+    fcntl = None  # type: ignore[assignment]
 
 from .daemon import Daemon
 
@@ -82,15 +88,20 @@ class FleetDaemon:
         """Registry entries that exist on disk, name -> resolved root."""
         try:
             data = self._registry.load()
-        except (ValueError, OSError) as exc:
-            # Corrupt (ValueError) or unreadable/racing-deleted (OSError)
-            # registry: keep the current unit set running rather than tearing
-            # the fleet down over a transient bad state.
+            entries = list((data.get("projects") or {}).items())
+        except (ValueError, OSError, AttributeError, TypeError) as exc:
+            # Corrupt JSON (ValueError), unreadable/racing-deleted (OSError),
+            # or well-formed JSON of the wrong shape (AttributeError/TypeError,
+            # e.g. "projects" being a list): keep the current unit set running
+            # rather than tearing the fleet down over a transient bad state.
             # At startup that set is empty: the fleet idles until the registry becomes readable.
             logger.error("registry unreadable (%s); keeping current units, will retry at next poll tick", exc)
             return {u.name: u.root for u in self._units.values()}
         desired: Dict[str, Path] = {}
-        for name, entry in (data.get("projects") or {}).items():
+        for name, entry in entries:
+            if not isinstance(entry, dict):
+                logger.warning("registered project %r has a malformed registry entry; skipping", name)
+                continue
             root = Path(str(entry.get("root") or "")).expanduser()
             if (root / ".tesserae").is_dir():
                 desired[name] = root.resolve()
@@ -185,61 +196,87 @@ class FleetDaemon:
                 self._stop.wait(self._registry_poll)
                 if not self._stop.is_set():
                     self.reconcile()
-            for name in list(self._units):
-                self._stop_unit(name)
             return 0
         finally:
+            # Stop/join all units on EVERY exit path — including reconcile()
+            # raising mid-loop — before releasing the pidfile. Otherwise
+            # non-daemon unit threads would outlive a "stopped" fleet whose
+            # pidfile is already gone.
+            for name in list(self._units):
+                self._stop_unit(name)
             self._remove_pidfile()
 
     # ----- pidfile (atomic acquire; only the owner removes it) ---------------
 
+    @contextmanager
+    def _pidfile_mutex(self) -> Iterator[None]:
+        """Exclusive flock on a sidecar lock file serializing pidfile access.
+
+        Without it, two concurrent starts can both judge the same pidfile
+        stale; the slower one then unlinks the winner's freshly written file
+        and two fleets end up running. The sidecar file is never removed —
+        only its lock matters.
+        """
+        lock_path = self._pidfile.with_name(self._pidfile.name + ".lock")
+        with lock_path.open("a") as handle:
+            if fcntl is not None:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
     def _write_pidfile(self) -> None:
         """Acquire the fleet pidfile atomically.
 
-        ``O_CREAT | O_EXCL`` closes the check-then-write race two concurrent
-        ``engine --all`` starts would otherwise hit: exactly one create wins.
-        A stale file (dead pid) is unlinked and the create retried once; if a
-        live process re-creates it in that window, the second attempt sees it
-        and raises.
+        The whole read/liveness-check/unlink/create sequence runs under the
+        sidecar flock (see :meth:`_pidfile_mutex`), and the create itself uses
+        ``O_CREAT | O_EXCL`` so it stays atomic even where flock is
+        unavailable. A stale file (dead pid) is unlinked and the create
+        retried once; a live owner raises.
         """
         self._pidfile.parent.mkdir(parents=True, exist_ok=True)
-        for attempt in range(2):
-            try:
-                fd = os.open(self._pidfile, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            except FileExistsError:
+        with self._pidfile_mutex():
+            for attempt in range(2):
                 try:
-                    old_pid = int(self._pidfile.read_text().strip())
-                except (ValueError, OSError):
-                    old_pid = None
-                if old_pid is not None:
+                    fd = os.open(self._pidfile, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                except FileExistsError:
                     try:
-                        os.kill(old_pid, 0)
-                    except ProcessLookupError:
-                        pass  # stale — fall through to unlink + retry
-                    except PermissionError:
-                        raise RuntimeError(f"fleet engine already running (pid {old_pid})")
-                    else:
-                        raise RuntimeError(f"fleet engine already running (pid {old_pid})")
-                if attempt == 0:
-                    logger.warning("stale fleet pidfile (pid %s gone); reclaiming", old_pid)
-                    try:
-                        self._pidfile.unlink()
-                    except FileNotFoundError:
-                        pass
-                continue
-            with os.fdopen(fd, "w") as handle:
-                handle.write(str(os.getpid()))
-            return
-        raise RuntimeError(f"could not acquire fleet pidfile at {self._pidfile}")
+                        old_pid = int(self._pidfile.read_text().strip())
+                    except (ValueError, OSError):
+                        old_pid = None
+                    if old_pid is not None:
+                        try:
+                            os.kill(old_pid, 0)
+                        except ProcessLookupError:
+                            pass  # stale — fall through to unlink + retry
+                        except PermissionError:
+                            raise RuntimeError(f"fleet engine already running (pid {old_pid})")
+                        else:
+                            raise RuntimeError(f"fleet engine already running (pid {old_pid})")
+                    if attempt == 0:
+                        logger.warning("stale fleet pidfile (pid %s gone); reclaiming", old_pid)
+                        try:
+                            self._pidfile.unlink()
+                        except FileNotFoundError:
+                            pass
+                    continue
+                with os.fdopen(fd, "w") as handle:
+                    handle.write(str(os.getpid()))
+                return
+            raise RuntimeError(f"could not acquire fleet pidfile at {self._pidfile}")
 
     def _remove_pidfile(self) -> None:
         """Remove the pidfile only if this process still owns it.
 
         An unconditional unlink could delete a replacement pidfile written by
-        a newer fleet that legitimately reclaimed a stale entry.
+        a newer fleet that legitimately reclaimed a stale entry. Runs under
+        the same sidecar flock as acquisition.
         """
         try:
-            if self._pidfile.read_text().strip() == str(os.getpid()):
-                self._pidfile.unlink()
+            with self._pidfile_mutex():
+                if self._pidfile.read_text().strip() == str(os.getpid()):
+                    self._pidfile.unlink()
         except (OSError, ValueError):
             pass

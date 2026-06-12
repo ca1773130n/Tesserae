@@ -215,6 +215,118 @@ def test_run_loop_stops_all_units_on_request_stop(tmp_path):
     assert not (tmp_path / "engine.pid").exists()
 
 
+def test_run_cleans_up_units_when_reconcile_raises(tmp_path, monkeypatch):
+    """A reconcile() crash mid-loop must still stop unit threads and release
+    the pidfile — non-daemon units would otherwise outlive the fleet."""
+    registry = tmp_path / "registry.json"
+    alpha = _make_project(tmp_path, "alpha")
+    _write_registry(registry, {"alpha": alpha})
+
+    built: dict = {}
+    fleet = FleetDaemon(
+        registry_path=registry,
+        registry_poll=0.05,
+        pidfile=tmp_path / "engine.pid",
+        daemon_factory=_recording_factory(built),
+    )
+
+    calls = {"n": 0}
+    real_reconcile = fleet.reconcile
+
+    def flaky_reconcile():
+        calls["n"] += 1
+        real_reconcile()
+        if calls["n"] >= 2:
+            raise RuntimeError("registry exploded")
+
+    monkeypatch.setattr(fleet, "reconcile", flaky_reconcile)
+
+    result: dict = {}
+
+    def _run():
+        try:
+            fleet.run()
+        except RuntimeError as exc:
+            result["exc"] = exc
+
+    runner = threading.Thread(target=_run)
+    runner.start()
+    runner.join(timeout=10)
+    assert not runner.is_alive()
+    assert isinstance(result.get("exc"), RuntimeError)
+    assert fleet._units == {}, "unit threads leaked past a crashing run loop"
+    assert not (tmp_path / "engine.pid").exists()
+
+
+def test_malformed_registry_entries_and_schema_survive(tmp_path):
+    """One bad entry is skipped (others still run); a whole-registry shape
+    error keeps the current unit set instead of crashing the fleet."""
+    registry = tmp_path / "registry.json"
+    alpha = _make_project(tmp_path, "alpha")
+    registry.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "active": None,
+                "projects": {
+                    "bad": "not-a-dict",
+                    "alpha": {"root": str(alpha), "graph_path": str(alpha / ".tesserae" / "graph.json")},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    built: dict = {}
+    fleet = FleetDaemon(
+        registry_path=registry,
+        pidfile=tmp_path / "engine.pid",
+        daemon_factory=_recording_factory(built),
+    )
+    try:
+        fleet.reconcile()
+        assert set(fleet._units) == {"alpha"}
+
+        # "projects" with the wrong shape entirely → keep running units.
+        registry.write_text(
+            json.dumps({"version": 1, "active": None, "projects": ["alpha"]}),
+            encoding="utf-8",
+        )
+        fleet.reconcile()
+        assert set(fleet._units) == {"alpha"}
+    finally:
+        for name in list(fleet._units):
+            fleet._stop_unit(name)
+    assert fleet._units == {}
+
+
+def test_stale_pidfile_is_reclaimed(tmp_path):
+    import subprocess
+    import sys
+
+    # A pid that is guaranteed dead: a child that already exited.
+    proc = subprocess.run(
+        [sys.executable, "-c", "import os; print(os.getpid())"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    dead_pid = int(proc.stdout.strip())
+
+    registry = tmp_path / "registry.json"
+    _write_registry(registry, {})
+    pidfile = tmp_path / "engine.pid"
+    pidfile.write_text(str(dead_pid))
+
+    fleet = FleetDaemon(
+        registry_path=registry,
+        pidfile=pidfile,
+        daemon_factory=_recording_factory({}),
+    )
+    assert fleet.run(once=True) == 0  # stale pidfile reclaimed, run, released
+    assert not pidfile.exists()
+
+
 def test_remove_pidfile_only_when_owned(tmp_path):
     """A fleet must not unlink a pidfile that a newer process re-created."""
     registry = tmp_path / "registry.json"
