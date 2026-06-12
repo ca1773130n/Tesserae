@@ -1,5 +1,6 @@
 import json
 
+from tesserae import harness_sessions
 from tesserae.harness_sessions import discover_harness_roots, discover_harness_sessions
 from tesserae.project import ProjectWiki
 from tesserae.cli import main
@@ -194,6 +195,165 @@ def test_claude_project_directory_without_session_cwd_is_not_enough(tmp_path):
     sessions = discover_harness_sessions(project, [root], harnesses=["claude-code"])
 
     assert sessions == []
+
+
+def test_claude_discovery_skips_foreign_transcripts_without_project_marker(tmp_path, monkeypatch):
+    """Transcripts of other projects that never mention the focused project
+    path must be skipped by a cheap byte scan, not fully JSON-parsed."""
+    project = tmp_path / "focused-project"
+    project.mkdir()
+    root = tmp_path / ".claude-any-account"
+    foreign_dir = root / "projects" / "-tmp-other-project"
+    foreign_dir.mkdir(parents=True)
+    (foreign_dir / "other.jsonl").write_text(
+        json.dumps({"type": "user", "timestamp": "2026-05-05T09:00:00Z", "cwd": "/tmp/other-project", "sessionId": "other", "message": {"role": "user", "content": "Unrelated session"}}) + "\n",
+        encoding="utf-8",
+    )
+    # Moved history: lives under another project's directory but its cwd is
+    # the focused project — must still be discovered.
+    (foreign_dir / "moved.jsonl").write_text(
+        json.dumps({"type": "user", "timestamp": "2026-05-05T10:00:00Z", "cwd": str(project), "sessionId": "moved", "message": {"role": "user", "content": "Moved session"}}) + "\n",
+        encoding="utf-8",
+    )
+
+    parsed_paths = []
+    real_parse = harness_sessions._parse_claude_session
+
+    def counting_parse(proj, scan_root, path):
+        parsed_paths.append(path)
+        return real_parse(proj, scan_root, path)
+
+    monkeypatch.setattr(harness_sessions, "_parse_claude_session", counting_parse)
+
+    sessions = discover_harness_sessions(project, [root], harnesses=["claude-code"])
+
+    assert [session.title for session in sessions] == ["Moved session"]
+    assert all(path.name != "other.jsonl" for path in parsed_paths)
+
+
+def test_codex_discovery_skips_transcripts_without_project_marker(tmp_path, monkeypatch):
+    project = tmp_path / "focused-project"
+    project.mkdir()
+    root = tmp_path / ".codex-any-account"
+    session_dir = root / "sessions" / "2026" / "05" / "05"
+    session_dir.mkdir(parents=True)
+    (session_dir / "rollout-other.jsonl").write_text(
+        json.dumps({"timestamp": "2026-05-05T11:00:00Z", "type": "session_meta", "payload": {"id": "codex-other", "cwd": "/tmp/other-project"}}) + "\n",
+        encoding="utf-8",
+    )
+    (session_dir / "rollout-focused.jsonl").write_text(
+        json.dumps({"timestamp": "2026-05-05T12:00:00Z", "type": "session_meta", "payload": {"id": "codex-focused", "cwd": str(project)}}) + "\n"
+        + json.dumps({"timestamp": "2026-05-05T12:00:01Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Focused session"}]}}) + "\n",
+        encoding="utf-8",
+    )
+
+    parsed_paths = []
+    real_parse = harness_sessions._parse_codex_session
+
+    def counting_parse(proj, scan_root, path):
+        parsed_paths.append(path)
+        return real_parse(proj, scan_root, path)
+
+    monkeypatch.setattr(harness_sessions, "_parse_codex_session", counting_parse)
+
+    sessions = discover_harness_sessions(project, [root], harnesses=["codex"])
+
+    assert [session.title for session in sessions] == ["Focused session"]
+    assert all(path.name != "rollout-other.jsonl" for path in parsed_paths)
+
+
+def test_symlinked_account_roots_are_scanned_once(tmp_path, monkeypatch):
+    """~/.claude is commonly a symlink to the active account dir; the same
+    transcripts must not be parsed twice."""
+    project = tmp_path / "focused-project"
+    project.mkdir()
+    real_root = tmp_path / ".claude-personal1"
+    session_dir = real_root / "projects" / str(project.resolve()).replace("/", "-")
+    session_dir.mkdir(parents=True)
+    (session_dir / "abc.jsonl").write_text(
+        json.dumps({"type": "user", "timestamp": "2026-05-05T10:00:00Z", "cwd": str(project), "sessionId": "abc", "message": {"role": "user", "content": "Only session"}}) + "\n",
+        encoding="utf-8",
+    )
+    link = tmp_path / ".claude"
+    link.symlink_to(real_root)
+
+    parsed_paths = []
+    real_parse = harness_sessions._parse_claude_session
+
+    def counting_parse(proj, scan_root, path):
+        parsed_paths.append(path)
+        return real_parse(proj, scan_root, path)
+
+    monkeypatch.setattr(harness_sessions, "_parse_claude_session", counting_parse)
+
+    sessions = discover_harness_sessions(project, [link, real_root], harnesses=["claude-code"])
+
+    assert len(sessions) == 1
+    assert len(parsed_paths) == 1
+
+
+def test_file_mentions_project_handles_marker_across_chunk_boundary(tmp_path):
+    project = tmp_path / "focused-project"
+    marker_text = str(project)
+    payload = ("x" * 10) + marker_text + ("y" * 10)
+    target = tmp_path / "transcript.jsonl"
+    target.write_text(payload, encoding="utf-8")
+
+    markers = harness_sessions._project_markers(project)
+    # Chunk size smaller than the marker forces the straddle path.
+    assert harness_sessions._file_mentions_project(target, markers, chunk_size=4)
+    assert not harness_sessions._file_mentions_project(tmp_path / "missing.jsonl", markers)
+
+
+def _write_codex_transcript(path, session_id, cwd, title):
+    path.write_text(
+        json.dumps({"timestamp": "2026-05-05T11:00:00Z", "type": "session_meta", "payload": {"id": session_id, "cwd": cwd}}) + "\n"
+        + json.dumps({"timestamp": "2026-05-05T11:00:01Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": title}]}}) + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_marker_scan_results_are_cached_by_mtime(tmp_path, monkeypatch):
+    """Repeat discover runs must not re-read unchanged transcripts; changed
+    files must be re-screened."""
+    import os
+
+    project = tmp_path / "focused-project"
+    project.mkdir()
+    root = tmp_path / ".codex-any-account"
+    session_dir = root / "sessions" / "2026" / "05" / "05"
+    session_dir.mkdir(parents=True)
+    foreign = session_dir / "rollout-other.jsonl"
+    _write_codex_transcript(foreign, "codex-other", "/tmp/other-project", "Unrelated")
+    focused = session_dir / "rollout-focused.jsonl"
+    _write_codex_transcript(focused, "codex-focused", str(project), "Focused session")
+
+    scanned = []
+    real_scan = harness_sessions._file_mentions_project
+
+    def counting_scan(path, markers, chunk_size=8 << 20):
+        scanned.append(path)
+        return real_scan(path, markers, chunk_size)
+
+    monkeypatch.setattr(harness_sessions, "_file_mentions_project", counting_scan)
+
+    first = discover_harness_sessions(project, [root], harnesses=["codex"])
+    assert [s.title for s in first] == ["Focused session"]
+    assert foreign in scanned and focused in scanned
+
+    scanned.clear()
+    second = discover_harness_sessions(project, [root], harnesses=["codex"])
+    assert [s.title for s in second] == ["Focused session"]
+    assert scanned == []
+
+    # The foreign session moves into the project: it must be re-screened and
+    # discovered on the next run.
+    _write_codex_transcript(foreign, "codex-other", str(project), "Now focused")
+    os.utime(foreign, ns=(1, 1))  # force a distinct mtime even on coarse clocks
+    scanned.clear()
+    third = discover_harness_sessions(project, [root], harnesses=["codex"])
+    assert sorted(s.title for s in third) == ["Focused session", "Now focused"]
+    assert scanned == [foreign]
 
 
 def test_cli_sessions_discover_imports_matching_roots(tmp_path, capsys):

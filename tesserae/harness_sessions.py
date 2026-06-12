@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import sqlite3
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
@@ -209,19 +211,31 @@ def discover_harness_sessions(
     scan_roots = [Path(r).expanduser() for r in roots] if roots is not None else discover_harness_roots()
     sessions: List[HarnessSession] = []
     seen: set[str] = set()
-    for root in scan_roots:
-        if not root.exists():
-            continue
-        if _root_supports_claude(root) and "claude-code" in selected:
-            for session in _discover_claude_sessions(project, root):
-                if session.id not in seen:
-                    seen.add(session.id)
-                    sessions.append(session)
-        if _root_supports_codex(root) and "codex" in selected:
-            for session in _discover_codex_sessions(project, root):
-                if session.id not in seen:
-                    seen.add(session.id)
-                    sessions.append(session)
+    seen_roots: set[str] = set()
+    scan_cache = _ScanCache.open(_default_scan_cache_path(), project)
+    try:
+        for root in scan_roots:
+            if not root.exists():
+                continue
+            # ~/.claude is commonly a symlink to the active account directory;
+            # scanning both would parse every transcript twice.
+            root_key = str(root.resolve())
+            if root_key in seen_roots:
+                continue
+            seen_roots.add(root_key)
+            if _root_supports_claude(root) and "claude-code" in selected:
+                for session in _discover_claude_sessions(project, root, scan_cache):
+                    if session.id not in seen:
+                        seen.add(session.id)
+                        sessions.append(session)
+            if _root_supports_codex(root) and "codex" in selected:
+                for session in _discover_codex_sessions(project, root, scan_cache):
+                    if session.id not in seen:
+                        seen.add(session.id)
+                        sessions.append(session)
+    finally:
+        if scan_cache is not None:
+            scan_cache.close()
     sessions.sort(key=lambda s: (s.started_at or "", s.harness, s.slug), reverse=True)
     return sessions
 
@@ -230,28 +244,171 @@ def _is_claude_subagent_transcript(path: Path) -> bool:
     return "subagents" in path.parts
 
 
-def _discover_claude_sessions(project: Path, root: Path) -> List[HarnessSession]:
+def _discover_claude_sessions(
+    project: Path, root: Path, scan_cache: Optional["_ScanCache"] = None
+) -> List[HarnessSession]:
     project_dir = root / "projects" / _claude_project_dir(project)
-    candidates: List[Path] = []
+    candidates: set[Path] = set()
     if project_dir.exists():
-        candidates.extend(p for p in project_dir.rglob("*.jsonl") if not _is_claude_subagent_transcript(p))
+        candidates.update(p for p in project_dir.rglob("*.jsonl") if not _is_claude_subagent_transcript(p))
     projects_root = root / "projects"
     if projects_root.exists():
         # Some account directories may encode paths differently, and history can
         # move between accounts. Scan all project transcripts but keep the
-        # parser's strong cwd/path match before importing anything.
-        candidates.extend(p for p in projects_root.rglob("*.jsonl") if not _is_claude_subagent_transcript(p))
+        # parser's strong cwd/path match before importing anything. A strong
+        # match requires the project path to appear literally in the file, so a
+        # cheap byte scan filters foreign transcripts (often tens of GB across
+        # all projects) before the ~50x more expensive JSON parse.
+        markers = _project_markers(project)
+        candidates.update(
+            p
+            for p in projects_root.rglob("*.jsonl")
+            if p not in candidates
+            and not _is_claude_subagent_transcript(p)
+            and _mentions_project(p, markers, scan_cache)
+        )
     history = root / "history.jsonl"
     if history.exists():
-        candidates.append(history)
-    return [s for p in sorted(set(candidates)) if (s := _parse_claude_session(project, root, p))]
+        candidates.add(history)
+    return [s for p in sorted(candidates) if (s := _parse_claude_session(project, root, p))]
 
 
-def _discover_codex_sessions(project: Path, root: Path) -> List[HarnessSession]:
+def _discover_codex_sessions(
+    project: Path, root: Path, scan_cache: Optional["_ScanCache"] = None
+) -> List[HarnessSession]:
     sessions_dir = root / "sessions"
     if not sessions_dir.exists():
         return []
-    return [s for p in sorted(sessions_dir.rglob("*.jsonl")) if (s := _parse_codex_session(project, root, p))]
+    markers = _project_markers(project)
+    return [
+        s
+        for p in sorted(sessions_dir.rglob("*.jsonl"))
+        if _mentions_project(p, markers, scan_cache) and (s := _parse_codex_session(project, root, p))
+    ]
+
+
+def _mentions_project(path: Path, markers: Tuple[bytes, ...], scan_cache: Optional["_ScanCache"]) -> bool:
+    if scan_cache is not None:
+        return scan_cache.mentions(path, markers)
+    return _file_mentions_project(path, markers)
+
+
+def _project_markers(project: Path) -> Tuple[bytes, ...]:
+    """Byte strings, one of which must appear in any transcript that can pass
+    the strong cwd/workdir project match (literal path or ``~``-prefixed)."""
+    markers = [str(project).encode("utf-8", "surrogateescape")]
+    try:
+        rel = project.relative_to(Path.home())
+        markers.append(("~/" + str(rel)).encode("utf-8", "surrogateescape"))
+    except (ValueError, RuntimeError):
+        pass
+    return tuple(markers)
+
+
+def _default_scan_cache_path() -> Path:
+    override = os.environ.get("TESSERAE_DISCOVERY_CACHE")
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".cache" / "tesserae" / "discovery_scan.sqlite"
+
+
+class _ScanCache:
+    """mtime/size-keyed cache of marker-scan results.
+
+    Screening tens of GB of foreign transcripts is I/O-bound; transcripts are
+    append-only once a session ends, so a (mtime_ns, size) match lets repeat
+    discover runs skip re-reading unchanged files entirely. Entries are scoped
+    by project root because the markers depend on it.
+    """
+
+    def __init__(self, con: sqlite3.Connection, project_key: str) -> None:
+        self._con = con
+        self._project = project_key
+        self._rows: Dict[str, Tuple[int, int, int]] = {}
+        self._updates: Dict[str, Tuple[int, int, int]] = {}
+        self._seen: set[str] = set()
+
+    @classmethod
+    def open(cls, path: Path, project: Path) -> Optional["_ScanCache"]:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            con = sqlite3.connect(path, timeout=5.0)
+            con.execute(
+                "CREATE TABLE IF NOT EXISTS marker_scan ("
+                " project TEXT NOT NULL,"
+                " path TEXT NOT NULL,"
+                " mtime_ns INTEGER NOT NULL,"
+                " size INTEGER NOT NULL,"
+                " hit INTEGER NOT NULL,"
+                " PRIMARY KEY (project, path))"
+            )
+            cache = cls(con, str(project))
+            cache._rows = {
+                row[0]: (row[1], row[2], row[3])
+                for row in con.execute(
+                    "SELECT path, mtime_ns, size, hit FROM marker_scan WHERE project = ?",
+                    (cache._project,),
+                )
+            }
+            return cache
+        except (sqlite3.Error, OSError):
+            return None
+
+    def mentions(self, path: Path, markers: Tuple[bytes, ...]) -> bool:
+        key = str(path)
+        self._seen.add(key)
+        try:
+            stat = path.stat()
+        except OSError:
+            return False
+        cached = self._updates.get(key) or self._rows.get(key)
+        if cached and cached[0] == stat.st_mtime_ns and cached[1] == stat.st_size:
+            return bool(cached[2])
+        result = _file_mentions_project(path, markers)
+        self._updates[key] = (stat.st_mtime_ns, stat.st_size, 1 if result else 0)
+        return result
+
+    def close(self) -> None:
+        try:
+            if self._updates:
+                self._con.executemany(
+                    "INSERT OR REPLACE INTO marker_scan (project, path, mtime_ns, size, hit)"
+                    " VALUES (?, ?, ?, ?, ?)",
+                    [(self._project, k, m, s, h) for k, (m, s, h) in self._updates.items()],
+                )
+            # Prune entries for transcripts deleted from disk; entries merely
+            # outside this run's scan roots are kept.
+            stale = [k for k in self._rows.keys() - self._seen if not Path(k).exists()]
+            if stale:
+                self._con.executemany(
+                    "DELETE FROM marker_scan WHERE project = ? AND path = ?",
+                    [(self._project, k) for k in stale],
+                )
+            self._con.commit()
+        except sqlite3.Error:
+            pass
+        finally:
+            try:
+                self._con.close()
+            except sqlite3.Error:
+                pass
+
+
+def _file_mentions_project(path: Path, markers: Tuple[bytes, ...], chunk_size: int = 8 << 20) -> bool:
+    if not markers:
+        return True
+    overlap = max(len(m) for m in markers) - 1
+    tail = b""
+    try:
+        with path.open("rb") as handle:
+            while chunk := handle.read(chunk_size):
+                window = tail + chunk
+                if any(marker in window for marker in markers):
+                    return True
+                tail = window[-overlap:] if overlap > 0 else b""
+    except OSError:
+        return False
+    return False
 
 
 def _parse_jsonl(path: Path) -> List[Mapping[str, object]]:

@@ -12,6 +12,13 @@ from tesserae.research_graph import ResearchGraph, ResearchGraphExtractor
 WIKI_CORPUS_ROOT = Path(__file__).parent / "fixtures" / "wiki_corpus"
 
 
+@pytest.fixture(autouse=True)
+def _isolated_discovery_scan_cache(tmp_path_factory, monkeypatch):
+    """Keep harness-discovery marker-scan caching out of the user's ~/.cache."""
+    cache_dir = tmp_path_factory.mktemp("discovery-cache")
+    monkeypatch.setenv("TESSERAE_DISCOVERY_CACHE", str(cache_dir / "discovery_scan.sqlite"))
+
+
 def _source_kind_for(path: Path) -> str:
     """Pick the right ResearchGraphExtractor source_kind for a fixture file."""
     parts = path.parts
