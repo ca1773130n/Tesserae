@@ -1679,12 +1679,15 @@ def _handle_engine(args: argparse.Namespace) -> int:
 def main(argv: List[str] | None = None) -> int:
     if argv is None:
         argv = sys.argv[1:]
-    from .cli_tree import KNOWN_COMMANDS, moved_replacement, render_root_help
+    from .cli_tree import KNOWN_COMMANDS, moved_replacement, package_version, render_root_help
 
     if not argv or argv[0] in ("--help", "-h", "help"):
         print(render_root_help(), end="")
         if argv and argv[0] in ("--help", "-h"):
             raise SystemExit(0)
+        return 0
+    if argv[0] in ("--version", "-V", "version"):
+        print(f"tesserae {package_version()}")
         return 0
     moved = moved_replacement(argv)
     if moved is not None:

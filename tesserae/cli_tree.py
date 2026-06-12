@@ -94,8 +94,17 @@ MOVED_COMMANDS: dict[tuple[str, ...], str] = {
 }
 
 
+def package_version() -> str:
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("tesserae")
+    except PackageNotFoundError:
+        return "unknown"
+
+
 def render_root_help() -> str:
-    lines = ["usage: tesserae <command> [options]", ""]
+    lines = [f"tesserae {package_version()} — a context engine", "", "usage: tesserae <command> [options]", ""]
     width = max(len(cmd) for _, rows in COMMAND_TREE for cmd, _ in rows) + 2
     for section, rows in COMMAND_TREE:
         lines.append(section)

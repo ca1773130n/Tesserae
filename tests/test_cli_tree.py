@@ -28,6 +28,28 @@ def test_root_help_flag_matches_bare(capsys):
     assert "EVERYDAY" in capsys.readouterr().out
 
 
+def test_root_help_shows_package_version(capsys):
+    from importlib.metadata import version
+
+    from tesserae.cli import main
+
+    rc = main([])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert f"tesserae {version('tesserae')}" in out.splitlines()[0]
+
+
+def test_version_flag_prints_version(capsys):
+    from importlib.metadata import version
+
+    from tesserae.cli import main
+
+    rc = main(["--version"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert out.strip() == f"tesserae {version('tesserae')}"
+
+
 def test_unknown_command_exits_2_and_points_at_help(capsys):
     from tesserae.cli import main
 
