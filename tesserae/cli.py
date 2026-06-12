@@ -1669,7 +1669,7 @@ def _handle_engine(args: argparse.Namespace) -> int:
 
     logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
     if getattr(args, "all", False):
-        if args.project != ".":  # user passed an explicit --project alongside --all
+        if args.project is not None:
             print("tesserae engine: --all and --project are mutually exclusive", file=sys.stderr)
             raise SystemExit(2)
         from .engine.fleet import FleetDaemon
@@ -1690,7 +1690,7 @@ def _handle_engine(args: argparse.Namespace) -> int:
     from .engine.daemon import Daemon
 
     daemon = Daemon(
-        Path(args.project).resolve(),
+        Path(args.project or ".").resolve(),
         debounce=args.debounce,
         watch_interval=args.interval,
     )
@@ -1845,7 +1845,7 @@ def _build_engine_parser() -> argparse.ArgumentParser:
             "  TESSERAE_FLEET_PIDFILE=/run/tesserae-fleet.pid tesserae engine --all\n"
         ),
     )
-    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--project", default=None, help="Project root directory; defaults to current working directory")
     parser.add_argument("--interval", type=float, default=2.0, help="Polling interval in seconds (default: 2)")
     parser.add_argument("--debounce", type=float, default=1.0, help="Quiet window after a burst of edits before rebuilding (default: 1.0)")
     parser.add_argument("--once", action="store_true", help="Run a single drain cycle then exit (deterministic; no long-running loop)")

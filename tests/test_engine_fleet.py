@@ -81,6 +81,7 @@ def test_fleet_skips_registered_projects_missing_on_disk(tmp_path):
             enable_vault=False,
             enable_session_tail=False,
             install_signal_handlers=False,
+            compile_gate=fleet.compile_gate,
             run_pipeline=lambda paths, name=name: ran.append(name),
         )
 

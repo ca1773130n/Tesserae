@@ -80,7 +80,7 @@ class FleetDaemon:
             # Corrupt registry: keep the current unit set running rather than
             # tearing the fleet down over a transient bad write.
             # At startup that set is empty: the fleet idles until the registry becomes readable.
-            logger.error("registry unreadable (%s); keeping current units", exc)
+            logger.error("registry unreadable (%s); keeping current units, will retry at next poll tick", exc)
             return {u.name: u.root for u in self._units.values()}
         desired: Dict[str, Path] = {}
         for name, entry in (data.get("projects") or {}).items():
@@ -152,6 +152,7 @@ class FleetDaemon:
                     rc = daemon.run(once=True)
                     logger.info("unit %s once-run rc=%d", name, rc)
                 return 0
+            # Fleet uses signal.signal (main-thread only); unit Daemons use loop.add_signal_handler — see daemon.py.
             try:
                 for sig in (signal.SIGTERM, signal.SIGINT):
                     signal.signal(sig, lambda *_: self.request_stop())

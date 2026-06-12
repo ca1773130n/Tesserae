@@ -168,6 +168,16 @@ def test_engine_all_and_project_are_mutually_exclusive(capsys):
     assert exc.value.code == 2
 
 
+def test_engine_all_rejects_explicit_project_dot(capsys):
+    import pytest
+
+    from tesserae.cli import main
+
+    with pytest.raises(SystemExit) as exc:
+        main(["engine", "--all", "--project", "."])
+    assert exc.value.code == 2
+
+
 def test_engine_all_reports_held_pidfile_cleanly(tmp_path, monkeypatch, capsys):
     import json
     import os
