@@ -1681,7 +1681,11 @@ def _handle_engine(args: argparse.Namespace) -> int:
             compile_slots=args.compile_slots,
             pidfile=Path(pidfile_env) if pidfile_env else None,
         )
-        return fleet.run(once=args.once)
+        try:
+            return fleet.run(once=args.once)
+        except RuntimeError as exc:
+            print(f"tesserae engine: {exc}", file=sys.stderr)
+            return 2
 
     from .engine.daemon import Daemon
 
@@ -1690,7 +1694,11 @@ def _handle_engine(args: argparse.Namespace) -> int:
         debounce=args.debounce,
         watch_interval=args.interval,
     )
-    return daemon.run(once=args.once)
+    try:
+        return daemon.run(once=args.once)
+    except RuntimeError as exc:
+        print(f"tesserae engine: {exc}", file=sys.stderr)
+        return 2
 
 
 def main(argv: List[str] | None = None) -> int:

@@ -166,3 +166,24 @@ def test_engine_all_and_project_are_mutually_exclusive(capsys):
     with pytest.raises(SystemExit) as exc:
         main(["engine", "--all", "--project", "/tmp/x"])
     assert exc.value.code == 2
+
+
+def test_engine_all_reports_held_pidfile_cleanly(tmp_path, monkeypatch, capsys):
+    import json
+    import os
+
+    from tesserae.cli import main
+
+    registry = tmp_path / "registry.json"
+    registry.write_text(json.dumps({"version": 1, "active": None, "projects": {}}), encoding="utf-8")
+    pidfile = tmp_path / "engine.pid"
+    pidfile.write_text(str(os.getpid()))  # our own live pid → "already running"
+    monkeypatch.setenv("TESSERAE_REGISTRY", str(registry))
+    monkeypatch.setenv("TESSERAE_FLEET_PIDFILE", str(pidfile))
+
+    rc = main(["engine", "--all", "--once"])
+
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "already running" in captured.err
+    assert "Traceback" not in captured.err

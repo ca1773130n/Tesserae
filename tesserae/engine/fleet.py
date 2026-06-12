@@ -6,6 +6,10 @@ process-level concerns — global pidfile, SIGTERM/SIGINT, registry
 reconciliation, and a shared compile semaphore so concurrent units don't fight
 over the same LLM accounts. Design:
 docs/superpowers/specs/2026-06-12-global-engine-design.md
+
+The ``TESSERAE_REGISTRY`` and ``TESSERAE_FLEET_PIDFILE`` environment overrides
+are mapped by the CLI layer (``tesserae engine --all``); programmatic callers
+pass ``registry_path=`` and ``pidfile=`` explicitly to :class:`FleetDaemon`.
 """
 
 from __future__ import annotations
