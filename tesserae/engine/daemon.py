@@ -73,6 +73,7 @@ class Daemon:
         enable_vault: bool = True,
         enable_session_tail: bool = True,
         install_signal_handlers: bool = True,
+        compile_gate: Optional[threading.Semaphore] = None,
         run_pipeline: Optional[Callable[[List[Path]], None]] = None,
     ) -> None:
         self.project_root = Path(project_root).resolve()
@@ -86,6 +87,7 @@ class Daemon:
         self._enable_vault = enable_vault
         self._enable_session_tail = enable_session_tail
         self._install_signal_handlers = install_signal_handlers
+        self._compile_gate = compile_gate
         self._pidfile = self.project_root / ".tesserae" / self.PIDFILE_NAME
         self._stop_event = threading.Event()
         self._threads: List[threading.Thread] = []
@@ -283,34 +285,38 @@ class Daemon:
                 on_consumed()
 
     def _run_pipeline(self, paths: List[Path]) -> None:
-        if self._run_pipeline_override is not None:
-            self._run_pipeline_override(paths)
-            return
-        from .pipeline import Pipeline
-        from ..project import ProjectWiki
+        from contextlib import nullcontext
 
-        wiki = ProjectWiki.load(self.project_root)
-        # Forward the coalesced changed-path set into compile (CMP-04) instead
-        # of dropping it — the provenance-driven differ trusts this explicit set
-        # over the manifest re-scan.
-        steps = [
-            (
-                "compile",
-                lambda: wiki.compile(
-                    changed_only=bool(paths), changed_paths=paths or None
-                ),
-            )
-        ]
-        try:
-            results = Pipeline(steps).run()
-        except Exception as exc:  # noqa: BLE001 - daemon must survive
-            logger.error("pipeline raised outside StepResult (daemon survives): %s", exc)
-            return
-        for r in results:
-            if r.ok:
-                logger.info("step %s: ok", r.name)
-            else:
-                logger.error("step %s: FAILED: %s", r.name, r.error)
+        gate = self._compile_gate if self._compile_gate is not None else nullcontext()
+        with gate:
+            if self._run_pipeline_override is not None:
+                self._run_pipeline_override(paths)
+                return
+            from .pipeline import Pipeline
+            from ..project import ProjectWiki
+
+            wiki = ProjectWiki.load(self.project_root)
+            # Forward the coalesced changed-path set into compile (CMP-04) instead
+            # of dropping it — the provenance-driven differ trusts this explicit set
+            # over the manifest re-scan.
+            steps = [
+                (
+                    "compile",
+                    lambda: wiki.compile(
+                        changed_only=bool(paths), changed_paths=paths or None
+                    ),
+                )
+            ]
+            try:
+                results = Pipeline(steps).run()
+            except Exception as exc:  # noqa: BLE001 - daemon must survive
+                logger.error("pipeline raised outside StepResult (daemon survives): %s", exc)
+                return
+            for r in results:
+                if r.ok:
+                    logger.info("step %s: ok", r.name)
+                else:
+                    logger.error("step %s: FAILED: %s", r.name, r.error)
 
     # ----- trigger-source hook (Plan 02 overrides body) --------------------
 

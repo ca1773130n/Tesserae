@@ -249,3 +249,42 @@ def test_request_stop_ends_run_loop_from_another_thread(tmp_path):
     assert not thread.is_alive(), "drain loop did not stop after request_stop()"
     assert rc_box["rc"] == 0
     assert not (tmp_path / ".tesserae" / "daemon.pid").exists()
+
+
+def test_compile_gate_serializes_pipeline_runs(tmp_path):
+    """Two daemons sharing one Semaphore(1) must never run pipelines
+    concurrently — the fleet uses this to respect shared LLM rate limits."""
+    gate = threading.Semaphore(1)
+    state = {"active": 0, "max_active": 0}
+    lock = threading.Lock()
+
+    def slow_pipeline(paths):
+        with lock:
+            state["active"] += 1
+            state["max_active"] = max(state["max_active"], state["active"])
+        time.sleep(0.2)
+        with lock:
+            state["active"] -= 1
+
+    daemons = []
+    for name in ("a", "b"):
+        root = tmp_path / name
+        (root / ".tesserae").mkdir(parents=True)
+        daemons.append(
+            Daemon(
+                root,
+                enable_watch=False,
+                enable_vault=False,
+                enable_session_tail=False,
+                install_signal_handlers=False,
+                compile_gate=gate,
+                run_pipeline=slow_pipeline,
+            )
+        )
+    threads = [threading.Thread(target=lambda d=d: d.run(once=True)) for d in daemons]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    assert all(not t.is_alive() for t in threads)
+    assert state["max_active"] == 1, f"pipelines overlapped: {state['max_active']}"
