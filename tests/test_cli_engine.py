@@ -149,13 +149,22 @@ def test_engine_all_once_runs_fleet_over_registry(tmp_path, monkeypatch, capsys)
     )
     monkeypatch.setenv("TESSERAE_REGISTRY", str(registry))
     monkeypatch.setenv("TESSERAE_FLEET_PIDFILE", str(tmp_path / "engine.pid"))
+    # ProjectWiki.init already writes graph.json, so existence alone would not
+    # prove the fleet compiled anything — require a rewrite (mtime advance).
+    mtimes_before = {
+        name: (root / ".tesserae" / "graph.json").stat().st_mtime_ns
+        for name, root in roots.items()
+    }
 
-    rc = main(["engine", "--all", "--once"])
+    rc = main(["engine", "--all", "--once", "--debounce", "0"])
 
     assert rc == 0
-    # Once-mode compiled each project: both graphs exist afterwards.
-    for root in roots.values():
-        assert (root / ".tesserae" / "graph.json").exists()
+    for name, root in roots.items():
+        graph = root / ".tesserae" / "graph.json"
+        assert graph.exists()
+        assert graph.stat().st_mtime_ns > mtimes_before[name], (
+            f"fleet once-run did not recompile {name}"
+        )
 
 
 def test_engine_all_and_project_are_mutually_exclusive(capsys):

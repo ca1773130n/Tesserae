@@ -50,6 +50,8 @@ class FleetDaemon:
         *,
         compile_slots: int = 1,
         registry_poll: float = 10.0,
+        debounce: float = 1.0,
+        watch_interval: float = 2.0,
         pidfile: Optional[Path] = None,
         daemon_factory: Optional[DaemonFactory] = None,
     ) -> None:
@@ -58,6 +60,8 @@ class FleetDaemon:
         self._registry = ProjectRegistry(registry_path)
         self.compile_gate = threading.Semaphore(max(1, int(compile_slots)))
         self._registry_poll = registry_poll
+        self._unit_debounce = debounce
+        self._unit_watch_interval = watch_interval
         self._pidfile = Path(pidfile) if pidfile is not None else DEFAULT_FLEET_PIDFILE
         self._daemon_factory = daemon_factory or self._default_daemon_factory
         self._units: Dict[str, _Unit] = {}
@@ -68,6 +72,8 @@ class FleetDaemon:
     def _default_daemon_factory(self, name: str, root: Path, fleet: "FleetDaemon") -> Daemon:
         return Daemon(
             root,
+            debounce=fleet._unit_debounce,
+            watch_interval=fleet._unit_watch_interval,
             install_signal_handlers=False,
             compile_gate=fleet.compile_gate,
         )
@@ -76,9 +82,10 @@ class FleetDaemon:
         """Registry entries that exist on disk, name -> resolved root."""
         try:
             data = self._registry.load()
-        except ValueError as exc:
-            # Corrupt registry: keep the current unit set running rather than
-            # tearing the fleet down over a transient bad write.
+        except (ValueError, OSError) as exc:
+            # Corrupt (ValueError) or unreadable/racing-deleted (OSError)
+            # registry: keep the current unit set running rather than tearing
+            # the fleet down over a transient bad state.
             # At startup that set is empty: the fleet idles until the registry becomes readable.
             logger.error("registry unreadable (%s); keeping current units, will retry at next poll tick", exc)
             return {u.name: u.root for u in self._units.values()}
@@ -102,9 +109,12 @@ class FleetDaemon:
         for name in list(self._units):
             unit = self._units[name]
             dead = unit.thread is not None and not unit.thread.is_alive()
-            if name not in desired or dead:
+            moved = name in desired and desired[name] != unit.root
+            if name not in desired or dead or moved:
                 if dead and name in desired:
                     logger.warning("unit %s thread died; will restart", name)
+                if moved:
+                    logger.info("unit %s root changed %s -> %s; restarting", name, unit.root, desired[name])
                 self._stop_unit(name)
         for name, root in sorted(desired.items()):
             if name not in self._units:
@@ -119,7 +129,10 @@ class FleetDaemon:
             except Exception as exc:  # noqa: BLE001 — unit dies loudly, fleet survives
                 logger.error("unit %s exited with error: %s", name, exc)
 
-        thread = threading.Thread(target=_run, name=f"tesserae-unit-{name}", daemon=True)
+        # Non-daemon: a unit mid-compile must finish (or be cleanly stopped)
+        # before the interpreter exits — abandoning it could tear down the
+        # thread while it is writing .tesserae artifacts.
+        thread = threading.Thread(target=_run, name=f"tesserae-unit-{name}", daemon=False)
         self._units[name] = _Unit(name=name, root=root, daemon=daemon, thread=thread)
         thread.start()
         logger.info("unit %s started (%s)", name, root)
@@ -130,9 +143,15 @@ class FleetDaemon:
             return
         unit.daemon.request_stop()
         if unit.thread is not None:
-            unit.thread.join(timeout=10)
-            if unit.thread.is_alive():
-                logger.error("unit %s thread did not stop within 10s; continuing (zombie)", name)
+            # Wait as long as it takes: a unit mid-compile finishes its current
+            # pipeline before exiting, and abandoning the thread would let the
+            # process tear it down mid-write. Periodic warnings keep the wait
+            # observable instead of silent.
+            while True:
+                unit.thread.join(timeout=10)
+                if not unit.thread.is_alive():
+                    break
+                logger.warning("unit %s still stopping (compile in progress?); waiting", name)
         logger.info("unit %s stopped", name)
 
     # ----- lifecycle ----------------------------------------------------------
@@ -172,28 +191,55 @@ class FleetDaemon:
         finally:
             self._remove_pidfile()
 
-    # ----- pidfile (same stale-detection recipe as Daemon, fleet-scoped) -----
+    # ----- pidfile (atomic acquire; only the owner removes it) ---------------
 
     def _write_pidfile(self) -> None:
-        if self._pidfile.exists():
-            try:
-                old_pid = int(self._pidfile.read_text().strip())
-            except (ValueError, OSError):
-                old_pid = None
-            if old_pid is not None:
-                try:
-                    os.kill(old_pid, 0)
-                except ProcessLookupError:
-                    logger.warning("stale fleet pidfile (pid %d gone); overwriting", old_pid)
-                except PermissionError:
-                    raise RuntimeError(f"fleet engine already running (pid {old_pid})")
-                else:
-                    raise RuntimeError(f"fleet engine already running (pid {old_pid})")
+        """Acquire the fleet pidfile atomically.
+
+        ``O_CREAT | O_EXCL`` closes the check-then-write race two concurrent
+        ``engine --all`` starts would otherwise hit: exactly one create wins.
+        A stale file (dead pid) is unlinked and the create retried once; if a
+        live process re-creates it in that window, the second attempt sees it
+        and raises.
+        """
         self._pidfile.parent.mkdir(parents=True, exist_ok=True)
-        self._pidfile.write_text(str(os.getpid()))
+        for attempt in range(2):
+            try:
+                fd = os.open(self._pidfile, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            except FileExistsError:
+                try:
+                    old_pid = int(self._pidfile.read_text().strip())
+                except (ValueError, OSError):
+                    old_pid = None
+                if old_pid is not None:
+                    try:
+                        os.kill(old_pid, 0)
+                    except ProcessLookupError:
+                        pass  # stale — fall through to unlink + retry
+                    except PermissionError:
+                        raise RuntimeError(f"fleet engine already running (pid {old_pid})")
+                    else:
+                        raise RuntimeError(f"fleet engine already running (pid {old_pid})")
+                if attempt == 0:
+                    logger.warning("stale fleet pidfile (pid %s gone); reclaiming", old_pid)
+                    try:
+                        self._pidfile.unlink()
+                    except FileNotFoundError:
+                        pass
+                continue
+            with os.fdopen(fd, "w") as handle:
+                handle.write(str(os.getpid()))
+            return
+        raise RuntimeError(f"could not acquire fleet pidfile at {self._pidfile}")
 
     def _remove_pidfile(self) -> None:
+        """Remove the pidfile only if this process still owns it.
+
+        An unconditional unlink could delete a replacement pidfile written by
+        a newer fleet that legitimately reclaimed a stale entry.
+        """
         try:
-            self._pidfile.unlink()
-        except FileNotFoundError:
+            if self._pidfile.read_text().strip() == str(os.getpid()):
+                self._pidfile.unlink()
+        except (OSError, ValueError):
             pass

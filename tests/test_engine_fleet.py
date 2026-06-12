@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -151,6 +152,36 @@ def test_reconcile_starts_new_and_stops_removed_units(tmp_path):
     assert fleet._units == {}
 
 
+def test_reconcile_restarts_unit_when_registry_root_changes(tmp_path):
+    """Same registry name pointing at a new root must restart the unit on the
+    new root — a name-only diff would leave the old daemon running forever."""
+    registry = tmp_path / "registry.json"
+    old_root = _make_project(tmp_path, "alpha-old")
+    new_root = _make_project(tmp_path, "alpha-new")
+    _write_registry(registry, {"alpha": old_root})
+
+    built: dict = {}
+    fleet = FleetDaemon(
+        registry_path=registry,
+        pidfile=tmp_path / "engine.pid",
+        daemon_factory=_recording_factory(built),
+    )
+    try:
+        fleet.reconcile()
+        assert fleet._units["alpha"].root == old_root.resolve()
+        assert built == {"alpha": 1}
+
+        _write_registry(registry, {"alpha": new_root})
+        fleet.reconcile()
+        assert fleet._units["alpha"].root == new_root.resolve()
+        # A fresh daemon was built for the new root.
+        assert built == {"alpha": 2}
+    finally:
+        for name in list(fleet._units):
+            fleet._stop_unit(name)
+    assert fleet._units == {}
+
+
 def test_run_loop_stops_all_units_on_request_stop(tmp_path):
     registry = tmp_path / "registry.json"
     alpha = _make_project(tmp_path, "alpha")
@@ -166,16 +197,37 @@ def test_run_loop_stops_all_units_on_request_stop(tmp_path):
     rc_box = {}
     runner = threading.Thread(target=lambda: rc_box.setdefault("rc", fleet.run()))
     runner.start()
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline and "alpha" not in fleet._units:
-        time.sleep(0.05)
-    assert "alpha" in fleet._units
-    # Fix 3: assert factory was called exactly once for "alpha".
-    assert built == {"alpha": 1}
-
-    fleet.request_stop()
-    runner.join(timeout=10)
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and "alpha" not in fleet._units:
+            time.sleep(0.05)
+        assert "alpha" in fleet._units
+        # Fix 3: assert factory was called exactly once for "alpha".
+        assert built == {"alpha": 1}
+    finally:
+        # Unit threads are non-daemon: stop the fleet even on assertion
+        # failure or pytest would hang at interpreter exit.
+        fleet.request_stop()
+        runner.join(timeout=10)
     assert not runner.is_alive()
     assert rc_box["rc"] == 0
     assert fleet._units == {}
     assert not (tmp_path / "engine.pid").exists()
+
+
+def test_remove_pidfile_only_when_owned(tmp_path):
+    """A fleet must not unlink a pidfile that a newer process re-created."""
+    registry = tmp_path / "registry.json"
+    _write_registry(registry, {})
+    pidfile = tmp_path / "engine.pid"
+    fleet = FleetDaemon(
+        registry_path=registry,
+        pidfile=pidfile,
+        daemon_factory=_recording_factory({}),
+    )
+    pidfile.write_text("999999999")  # someone else's pidfile
+    fleet._remove_pidfile()
+    assert pidfile.exists(), "removed a pidfile owned by another process"
+    pidfile.write_text(str(os.getpid()))
+    fleet._remove_pidfile()
+    assert not pidfile.exists()

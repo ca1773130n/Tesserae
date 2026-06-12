@@ -1679,6 +1679,8 @@ def _handle_engine(args: argparse.Namespace) -> int:
         fleet = FleetDaemon(
             registry_path=Path(registry_env) if registry_env else None,
             compile_slots=args.compile_slots,
+            debounce=args.debounce,
+            watch_interval=args.interval,
             pidfile=Path(pidfile_env) if pidfile_env else None,
         )
         try:
