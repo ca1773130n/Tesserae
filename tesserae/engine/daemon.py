@@ -72,6 +72,7 @@ class Daemon:
         enable_watch: bool = True,
         enable_vault: bool = True,
         enable_session_tail: bool = True,
+        install_signal_handlers: bool = True,
         run_pipeline: Optional[Callable[[List[Path]], None]] = None,
     ) -> None:
         self.project_root = Path(project_root).resolve()
@@ -84,6 +85,7 @@ class Daemon:
         self._enable_watch = enable_watch
         self._enable_vault = enable_vault
         self._enable_session_tail = enable_session_tail
+        self._install_signal_handlers = install_signal_handlers
         self._pidfile = self.project_root / ".tesserae" / self.PIDFILE_NAME
         self._stop_event = threading.Event()
         self._threads: List[threading.Thread] = []
@@ -130,12 +132,13 @@ class Daemon:
             if once:
                 loop.run_until_complete(self._drain_once())
             else:
-                for sig in (signal.SIGTERM, signal.SIGINT):
-                    try:
-                        loop.add_signal_handler(sig, self._handle_signal)
-                    except NotImplementedError:
-                        # Windows / non-main-thread: signals unavailable here.
-                        logger.warning("add_signal_handler unavailable for %s; skipping", sig)
+                if self._install_signal_handlers:
+                    for sig in (signal.SIGTERM, signal.SIGINT):
+                        try:
+                            loop.add_signal_handler(sig, self._handle_signal)
+                        except NotImplementedError:
+                            # Windows / non-main-thread: signals unavailable here.
+                            logger.warning("add_signal_handler unavailable for %s; skipping", sig)
                 self._start_sources(loop)
                 loop.run_until_complete(self._drain_loop())
         finally:
@@ -150,6 +153,14 @@ class Daemon:
     def _handle_signal(self) -> None:
         """Signal callback: request graceful drain+exit (no abrupt loop.stop)."""
         logger.info("shutdown signal received")
+        self._stop_event.set()
+
+    def request_stop(self) -> None:
+        """Thread-safe external stop (fleet supervisor / tests).
+
+        Same effect as a SIGTERM: the drain loop notices the stop event within
+        ``queue_timeout`` and exits via the graceful-drain path.
+        """
         self._stop_event.set()
 
     # ----- drain loop ------------------------------------------------------
