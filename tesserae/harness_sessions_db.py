@@ -188,6 +188,25 @@ class HarnessSessionsDB:
         return {str(path): int(offset) for path, offset in rows}
 
     # ------------------------------------------------------------------ #
+    # Meta (small durable key/value: e.g. the tailer's codex dir floor)   #
+    # ------------------------------------------------------------------ #
+
+    def get_meta(self, key: str) -> "str | None":
+        """Return the persisted meta value for ``key`` (None if absent)."""
+        with self._connect() as con:
+            row = con.execute("select value from meta where key = ?", (key,)).fetchone()
+        return str(row[0]) if row is not None else None
+
+    def set_meta(self, key: str, value: str) -> None:
+        """Persist ``key`` -> ``value`` (INSERT OR REPLACE)."""
+        with self._connect() as con:
+            con.execute(
+                "insert or replace into meta (key, value, updated_at) values (?, ?, ?)",
+                (key, str(value), datetime.now(timezone.utc).isoformat()),
+            )
+            con.commit()
+
+    # ------------------------------------------------------------------ #
     # Internals                                                           #
     # ------------------------------------------------------------------ #
 
@@ -226,6 +245,15 @@ class HarnessSessionsDB:
                 jsonl_path       text primary key,
                 last_turn_offset integer not null default 0,
                 updated_at       text not null
+            )
+            """
+        )
+        con.execute(
+            """
+            create table if not exists meta (
+                key        text primary key,
+                value      text not null,
+                updated_at text not null
             )
             """
         )

@@ -35,6 +35,31 @@ from typing import Callable, List, Optional
 logger = logging.getLogger("tesserae.daemon")
 
 
+def raise_fd_limit(target: int = 8192) -> int:
+    """Raise RLIMIT_NOFILE's soft limit toward ``target``; return the new soft.
+
+    macOS terminals default to a 256-fd soft limit — far too low for an engine
+    that runs full compiles in-process while tailers tick over thousands of
+    transcripts. Hitting the cap surfaces as ``sqlite3.OperationalError:
+    unable to open database file`` storms. Best-effort: never raises.
+    """
+    try:
+        import resource
+    except ImportError:  # pragma: no cover — non-POSIX
+        return -1
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        wanted = target if hard == resource.RLIM_INFINITY else min(hard, target)
+        if soft < wanted:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (wanted, hard))
+            logger.info("raised open-file soft limit %d -> %d", soft, wanted)
+            return wanted
+        return soft
+    except (ValueError, OSError) as exc:  # pragma: no cover — platform quirk
+        logger.warning("could not raise open-file limit: %s", exc)
+        return -1
+
+
 @dataclass
 class TriggerEvent:
     """A single trigger to (eventually) drive one pipeline run.
@@ -288,6 +313,13 @@ class Daemon:
     def _run_pipeline(self, paths: List[Path]) -> None:
         gate = self._compile_gate if self._compile_gate is not None else nullcontext()
         with gate:
+            # Visibility: without this line a long compile looks like a hang —
+            # the only other logs are step results AFTER it finishes.
+            logger.info(
+                "pipeline starting for %s (%d changed paths)",
+                self.project_root.name,
+                len(paths),
+            )
             if self._run_pipeline_override is not None:
                 self._run_pipeline_override(paths)
                 return

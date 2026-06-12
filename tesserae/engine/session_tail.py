@@ -79,6 +79,9 @@ def _file_signature(path: Path) -> "tuple[int, float]":
 class SessionTailer:
     """Seek-based, partial-line-safe tailer; writes the store, then enqueues."""
 
+    _FLOOR_META_KEY = "codex_dir_floor"
+    _FLOOR_LOOKBACK_S = 7 * 86400.0
+
     def __init__(
         self,
         project_root: Path,
@@ -111,10 +114,36 @@ class SessionTailer:
         self._reenum_interval = 60.0
         self._last_enum = 0.0
         # Bounded Codex discovery (Codex #3): only scan date dirs whose mtime is
-        # at/after this floor (recent dirs). Seeded to scan everything once on
-        # construction; subsequent ticks skip cold history.
+        # at/after this floor (recent dirs). The floor is persisted in the
+        # sessions DB so a RESTART does not redo the full cold sweep — only the
+        # first-ever run scans all history. A 7-day lookback below the persisted
+        # value re-peeks recently-touched date dirs (a Codex session resumed
+        # after the previous run may have grown an older rollout).
         self._codex_dir_floor = 0.0
+        persisted_floor = self.sessions_db.get_meta(self._FLOOR_META_KEY)
+        if persisted_floor:
+            try:
+                self._codex_dir_floor = max(0.0, float(persisted_floor) - self._FLOOR_LOOKBACK_S)
+            except ValueError:
+                pass
+        sweep_started = time.monotonic()
+        cold = self._codex_dir_floor == 0.0
+        if cold:
+            logger.info(
+                "session tail (%s): first run — sweeping full session history once "
+                "(this can take a while; restarts resume from a persisted floor)",
+                self.project_root.name,
+            )
         self._enumerate()
+        logger.info(
+            "session tail (%s): %s sweep done in %.1fs — %d in-scope transcripts, "
+            "%d unmatched rollouts tracked",
+            self.project_root.name,
+            "cold" if cold else "warm",
+            time.monotonic() - sweep_started,
+            len(self._known),
+            len(self._codex_unmatched),
+        )
 
     # ------------------------------------------------------------------ #
     # Discovery — project-scoped only (NEVER rglob ~85k files)            #
@@ -154,6 +183,12 @@ class SessionTailer:
         # Advance the floor: next pass only revisits date dirs touched since the
         # start of THIS scan (steady-state work is bounded by recent activity).
         self._codex_dir_floor = scan_started
+        # Persist so a restarted tailer resumes here instead of re-sweeping the
+        # full history. Best-effort: a DB hiccup must not kill the enumerate.
+        try:
+            self.sessions_db.set_meta(self._FLOOR_META_KEY, str(scan_started))
+        except Exception as exc:  # noqa: BLE001 — durable floor is an optimization
+            logger.warning("could not persist codex dir floor: %s", exc)
 
     def _enumerate_codex(self, sessions_dir: Path, floor: float) -> None:
         """Scan ONLY date dirs whose mtime is at/after ``floor``.
@@ -294,11 +329,27 @@ class SessionTailer:
         if time.monotonic() - self._last_enum >= self._reenum_interval:
             self._enumerate()
         # Snapshot to avoid mutation-during-iteration if enumerate runs.
+        # One bad file must not kill the tick — but a systemic failure (e.g.
+        # fd exhaustion breaking every sqlite open) must not print one
+        # traceback PER FILE either: log the first with full traceback and
+        # summarize the rest of this tick.
+        suppressed = 0
+        first_logged = False
         for path, harness in list(self._known.items()):
             try:
                 self._tick_file(path, harness)
-            except Exception:  # noqa: BLE001 - one bad file must not kill the tick
-                logger.exception("session tail failed for %s", path)
+            except Exception:  # noqa: BLE001
+                if first_logged:
+                    suppressed += 1
+                else:
+                    first_logged = True
+                    logger.exception("session tail failed for %s", path)
+        if suppressed:
+            logger.error(
+                "session tail: %d more files failed this tick (first traceback above; "
+                "likely one root cause)",
+                suppressed,
+            )
 
     def _tick_file(self, path: Path, harness: str) -> None:
         offset = self._offsets.get(path)
@@ -348,16 +399,29 @@ class SessionTailer:
                 self._warn_unknown_type(obj)
         return rows
 
-    @staticmethod
-    def _warn_unknown_type(row: dict) -> None:
+    # Benign metadata row types are skipped silently; anything truly new warns
+    # ONCE per process — a per-row warning floods the console on live tailing.
+    _KNOWN_ROW_TYPES = frozenset({
+        "user", "assistant", "system", "summary", "permission-mode",
+        "attachment", "session_meta", "response_item", "event_msg",
+        "turn_context", "compact_boundary",
+        # Claude Code metadata rows (mid-2026 transcript format):
+        "last-prompt", "queue-operation", "mode", "ai-title",
+        "file-history-snapshot", "pr-link",
+    })
+    _warned_row_types: "set[str]" = set()
+
+    @classmethod
+    def _warn_unknown_type(cls, row: dict) -> None:
         rtype = row.get("type")
-        known = {
-            "user", "assistant", "system", "summary", "permission-mode",
-            "attachment", "session_meta", "response_item", "event_msg",
-            "turn_context", "compact_boundary",
-        }
-        if isinstance(rtype, str) and rtype and rtype not in known:
-            logger.warning("unrecognized transcript row type: %s", rtype)
+        if (
+            isinstance(rtype, str)
+            and rtype
+            and rtype not in cls._KNOWN_ROW_TYPES
+            and rtype not in cls._warned_row_types
+        ):
+            cls._warned_row_types.add(rtype)
+            logger.warning("unrecognized transcript row type: %s (warning once)", rtype)
 
     def _root_for(self, path: Path) -> Path:
         """Return the harness config root that owns ``path`` (best-effort)."""

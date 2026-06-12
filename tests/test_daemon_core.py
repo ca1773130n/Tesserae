@@ -289,3 +289,32 @@ def test_compile_gate_serializes_pipeline_runs(tmp_path):
         t.join(timeout=10)
     assert all(not t.is_alive() for t in threads)
     assert state["max_active"] == 1, f"pipelines overlapped: {state['max_active']}"
+
+
+def test_run_pipeline_logs_start(tmp_path, caplog):
+    """A compile can run for hours; the daemon must announce it started."""
+    import logging
+
+    (tmp_path / ".tesserae").mkdir(parents=True)
+    daemon = Daemon(
+        tmp_path,
+        debounce=0.0,
+        enable_watch=False,
+        enable_vault=False,
+        enable_session_tail=False,
+        install_signal_handlers=False,
+        run_pipeline=lambda paths: None,
+    )
+    with caplog.at_level(logging.INFO, logger="tesserae.daemon"):
+        daemon.run(once=True)
+    assert any("pipeline starting" in r.getMessage() for r in caplog.records)
+
+
+def test_raise_fd_limit_returns_nondecreasing_soft_limit():
+    import resource
+
+    from tesserae.engine.daemon import raise_fd_limit
+
+    before_soft, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
+    result = raise_fd_limit(target=before_soft)  # never lowers; idempotent at current
+    assert result >= before_soft

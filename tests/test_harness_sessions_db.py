@@ -219,3 +219,14 @@ def test_compile_warns_loudly_on_db_read_error(tmp_path, caplog):
     assert any("sessions db" in r.getMessage() for r in warnings)
     # exc_info must be attached so the traceback is visible in logs.
     assert any(r.exc_info is not None for r in warnings)
+
+
+def test_meta_roundtrip(tmp_path):
+    from tesserae.harness_sessions_db import HarnessSessionsDB
+
+    db = HarnessSessionsDB(tmp_path / "db.sqlite")
+    assert db.get_meta("codex_dir_floor") is None
+    db.set_meta("codex_dir_floor", "12345.5")
+    assert db.get_meta("codex_dir_floor") == "12345.5"
+    db.set_meta("codex_dir_floor", "9")
+    assert db.get_meta("codex_dir_floor") == "9"

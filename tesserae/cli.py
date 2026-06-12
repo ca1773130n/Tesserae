@@ -1668,6 +1668,12 @@ def _handle_engine(args: argparse.Namespace) -> int:
     import os
 
     logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
+    from .engine.daemon import raise_fd_limit
+
+    # In-process compiles + per-project tailers blow straight through macOS's
+    # default 256-fd soft limit; exhaustion surfaces as sqlite "unable to open
+    # database file" storms (observed with `engine --all`, 5 projects).
+    raise_fd_limit()
     if getattr(args, "all", False):
         if args.project is not None:
             print("tesserae engine: --all and --project are mutually exclusive", file=sys.stderr)

@@ -374,3 +374,143 @@ def test_scopes_to_project_slug(tmp_path):
     assert "unrelated turn" not in all_texts
     stored = db.list_for_project(project)
     assert len(stored) == 1
+
+
+# --------------------------------------------------------------------------- #
+# v0.8.1: row-type warnings, sweep logging, persisted codex floor             #
+# --------------------------------------------------------------------------- #
+
+
+def test_modern_claude_row_types_do_not_warn(tmp_path, caplog):
+    """Newer Claude Code row types (last-prompt, queue-operation, ...) are
+    benign metadata and must not spam warnings on every tailed row."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    path = _claude_transcript_path(tmp_path, project)
+    rows = [
+        json.dumps({"type": t, "sessionId": "abc"})
+        for t in ("last-prompt", "queue-operation", "mode", "ai-title", "file-history-snapshot", "pr-link")
+    ]
+    rows.append(_claude_line(project, "user", "hello", "2026-06-13T10:00:00Z"))
+    _write(path, rows)  # BEFORE construction so the sweep enumerates it
+
+    roots = [_claude_root(tmp_path), _codex_root(tmp_path)]
+    sink: list = []
+    tailer, _ = _make_tailer(project, roots, tmp_path, sink)
+    assert path in tailer._known  # guard: the tick below actually reads it
+
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="tesserae.session_tail"):
+        tailer.tick()
+    assert not [r for r in caplog.records if "unrecognized" in r.getMessage()]
+    # And the real turn still came through alongside the metadata rows.
+    assert any("hello" in t for _, turns in sink for t in _text_turns(turns))
+
+
+def test_unknown_row_type_warns_once_per_type(tmp_path, caplog):
+    project = tmp_path / "proj"
+    project.mkdir()
+    path = _claude_transcript_path(tmp_path, project)
+    _write(
+        path,
+        [
+            json.dumps({"type": "brand-new-thing", "n": 1}),
+            json.dumps({"type": "brand-new-thing", "n": 2}),
+            json.dumps({"type": "brand-new-thing", "n": 3}),
+        ],
+    )  # BEFORE construction so the sweep enumerates it
+
+    roots = [_claude_root(tmp_path), _codex_root(tmp_path)]
+    sink: list = []
+    tailer, _ = _make_tailer(project, roots, tmp_path, sink)
+    assert path in tailer._known
+    SessionTailer._warned_row_types.discard("brand-new-thing")  # test isolation
+
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="tesserae.session_tail"):
+        tailer.tick()
+    hits = [r for r in caplog.records if "unrecognized" in r.getMessage()]
+    assert len(hits) == 1, f"expected one warning per unknown type, got {len(hits)}"
+
+
+def test_initial_sweep_logs_summary(tmp_path, caplog):
+    """The cold-start enumeration must announce itself — a fleet of silent
+    sweeps looks like a hang from the outside."""
+    import logging
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    _claude_transcript_path(tmp_path, project)  # ensure dirs exist
+    roots = [_claude_root(tmp_path), _codex_root(tmp_path)]
+    sink: list = []
+    with caplog.at_level(logging.INFO, logger="tesserae.session_tail"):
+        _make_tailer(project, roots, tmp_path, sink)
+    assert any("sweep" in r.getMessage() for r in caplog.records)
+
+
+def test_codex_floor_persisted_across_restarts(tmp_path):
+    """A restarted tailer must not redo the full cold sweep: the codex date-dir
+    floor is persisted in the sessions DB (with a 7-day re-peek lookback)."""
+    import os
+    import time as _time
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    _claude_transcript_path(tmp_path, project)
+    roots = [_claude_root(tmp_path), _codex_root(tmp_path)]
+
+    # An OLD codex rollout (day dir mtime 30 days ago) matching the project.
+    old_dir = _codex_root(tmp_path) / "sessions" / "2026" / "05" / "01"
+    old_dir.mkdir(parents=True)
+    old_file = old_dir / "rollout-2026-05-01T10-00-00-old.jsonl"
+    old_file.write_text(
+        json.dumps({"timestamp": "2026-05-01T10:00:00Z", "type": "session_meta", "payload": {"id": "old", "cwd": str(project)}}) + "\n",
+        encoding="utf-8",
+    )
+    month_ago = _time.time() - 30 * 86400
+    for d in (old_dir, old_dir.parent, old_dir.parent.parent, _codex_root(tmp_path) / "sessions"):
+        os.utime(d, (month_ago, month_ago))
+
+    sink: list = []
+    tailer1, _ = _make_tailer(project, roots, tmp_path, sink)
+    # First-ever sweep: floor was 0, the old rollout IS discovered.
+    assert old_file in tailer1._known
+
+    tailer2, _ = _make_tailer(project, roots, tmp_path, sink)
+    # Restart: floor restored from the DB → the 30-day-old dir is outside the
+    # 7-day lookback and is NOT re-swept.
+    assert tailer2._codex_dir_floor > 0
+    assert old_file not in tailer2._known
+
+
+def test_tick_failures_are_rate_limited_per_tick(tmp_path, caplog, monkeypatch):
+    """A systemic failure (e.g. fd exhaustion) must log ONE traceback plus a
+    summary count — not one traceback per tracked file."""
+    import logging
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    slug_dir = _claude_root(tmp_path) / "projects" / __import__("tesserae.harness_sessions", fromlist=["x"])._claude_project_dir(project)
+    slug_dir.mkdir(parents=True, exist_ok=True)
+    for i in range(5):
+        (slug_dir / f"s{i}.jsonl").write_text(
+            _claude_line(project, "user", f"hi {i}", "2026-06-13T10:00:00Z") + "\n",
+            encoding="utf-8",
+        )
+    roots = [_claude_root(tmp_path), _codex_root(tmp_path)]
+    sink: list = []
+    tailer, _ = _make_tailer(project, roots, tmp_path, sink)
+
+    def boom(path, harness):
+        raise RuntimeError("unable to open database file")
+
+    monkeypatch.setattr(tailer, "_tick_file", boom)
+    with caplog.at_level(logging.ERROR, logger="tesserae.session_tail"):
+        tailer.tick()
+    tracebacks = [r for r in caplog.records if r.exc_info]
+    summaries = [r for r in caplog.records if "more files failed this tick" in r.getMessage()]
+    assert len(tracebacks) == 1, f"expected one traceback, got {len(tracebacks)}"
+    assert len(summaries) == 1
+    assert "4 more files" in summaries[0].getMessage()
