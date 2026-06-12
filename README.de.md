@@ -1,7 +1,7 @@
 # Tesserae
 
 <p align="center">
-  <img src="docs/assets/tesserae-graph-view.png" alt="Tesserae graph view showing concepts, papers, repos, syntheses, and entities clustered around a focused node" width="100%" />
+  <img src="docs/assets/tesserae-graph-view.png" alt="Tesserae-Graphansicht: Konzepte, Artikel, Repositories, Synthesen und Entitäten, die um einen Fokusknoten gruppiert sind" width="100%" />
 </p>
 
 <p align="center">
@@ -14,264 +14,289 @@
   <a href="./README.fr.md">Français</a>
 </p>
 
-> Eine Kontext-Engine, die eine sich selbst verbessernde Wissensbasis deines Projekts pflegt und auf Abruf agentenfertigen Kontext kompiliert.
+> Eine Kontext-Engine, die eine sich selbst verbessernde Wissensbasis Ihres Projekts pflegt und auf Anfrage agentenbereiten Kontext kompiliert.
 
 <p align="center">
-  <img src="docs/screencasts/showcase.gif" alt="Three-step screencast: tesserae init -> compile -> ask, recorded against the 135-doc demo corpus" width="100%" />
+  <img src="docs/screencasts/showcase.gif" alt="Dreistufiger Screencast: tesserae init -> compile -> ask, aufgezeichnet mit dem Demo-Korpus mit 135 Dokumenten" width="100%" />
 </p>
 
-[Live-Demo](https://ca1773130n.github.io/Tesserae) · [Dokumentation](docs/) · [MCP-Setup](docs/i18n/integrations/mcp.de.md) · [Obsidian-Export](docs/i18n/integrations/obsidian.de.md)
+<p align="center">
+  <a href="https://ca1773130n.github.io/Tesserae">Live-Demo</a> ·
+  <a href="docs/">Dokumentation</a> ·
+  <a href="docs/release-notes/">Release-Notes</a> ·
+  <a href="docs/integrations/mcp.md">MCP-Einrichtung</a> ·
+  <a href="docs/integrations/obsidian.md">Obsidian-Export</a>
+</p>
 
-Tesserae ist eine **Kontext-Engine**. Richte sie auf ein Verzeichnis mit Markdown, Quelldateien und (optional) PDFs/Office-Dokumenten/Bildern, und sie rekonstruiert aus deinem Projekt eine *sich selbst verbessernde* Wissensbasis — einen typisierten Knowledge Graph — und reicht Agenten den Kontext, den sie brauchen. Sie ruht auf drei Säulen:
+## Was es ist
 
-1. **Sitzungs-Monitoring** — beobachtet laufende Agenten-/Arbeitssitzungen und erfasst Entscheidungen, Insights und offene Fragen in dem Moment, in dem sie entstehen, als erstklassige Graph-Knoten.
-2. **Autonome, proaktive Wissensaufnahme** — ein beaufsichtigter Refresh-Daemon fasst Edits zusammen und kompiliert neu, und ein Self-Improvement-Sidecar verstärkt wiederkehrende Befunde und ersetzt (supersede) veraltete, sodass sich die Basis von selbst weiter verbessert.
-3. **Kontext auf Abruf** — das Flaggschiff, der **On-Demand-Kontext-Compiler**, stellt für jede Anfrage oder jeden Seed-Knoten ein maßgeschneidertes, zitiertes Kontext-Dokument zusammen (Personalized-PageRank-Expansion innerhalb eines Zeichen-Budgets), dazu nutzerangeforderte Artefakte.
+Richten Sie Tesserae auf ein Verzeichnis mit Markdown, Quellcode und optional
+PDFs/Office-Dokumenten/Bildern. Es rekonstruiert einen **typisierten Wissensgraphen**
+des Projekts und hält ihn aktuell, damit Agenten immer fundierten, zitierten Kontext haben.
+Drei Säulen:
 
-Der typisierte Graph, das Obsidian-Vault und die statische Site sind *Projektionen* dieser Wissensbasis. Tesserae erzeugt außerdem portierbare Artefakte — eine Markdown-Projektion, ein Cognee-fertiges Bundle, ein Agent-Harness sowie einen MCP-Server, den du in Claude Code, Codex oder jeden MCP-Client einbinden kannst. Es ist ein Build-Schritt und eine lebende Engine für Projektkontext, kein Hosted Service.
+1. **Sitzungsüberwachung** — Ihre Claude Code / Codex-Gespräche über das Projekt
+   werden zu erstklassigen Graphknoten (Entscheidungen, Erkenntnisse, Fragen, TODOs),
+   während sie entstehen.
+2. **Autonome Aufnahme** — eine überwachte Engine beobachtet Quellen und Sitzungen,
+   bündelt Änderungen, kompiliert neu, und ein Self-Improvement-Sidecar verstärkt
+   wiederkehrende Erkenntnisse und ersetzt veraltete.
+3. **Kontext auf Abruf** — der Kontextkompiler erstellt für jede Anfrage oder jeden
+   Seed-Knoten ein maßgeschneidertes, zitiertes Kontextdokument (Personalized PageRank
+   unter einem Zeichenbudget), das direkt in jeden Agenten eingefügt werden kann.
 
-## Wie es sich vergleicht
+Der Graph, der Obsidian-Vault und die statische Website sind *Projektionen* einer
+einzigen Wissensbasis. Alles läuft lokal; es ist ein Build-Schritt plus eine Live-Engine,
+kein gehosteter Dienst.
 
-Ein nüchterner Vergleich gegen die vier nächstliegenden Open-Source-Alternativen. Ohne Beschönigung:
+## Schnellstart
 
-| Feature | Tesserae | Quartz | Logseq | Cognee | Foam |
-|---|---|---|---|---|---|
-| Static HTML output | yes | yes | partial (export) | no | partial (publish) |
-| Built-in graph view | yes | yes | yes | yes (separate UI) | yes (VSCode) |
-| Typed node schema | yes (41 types) | no | partial (tags) | yes | no |
-| Concept extraction from sources | yes (LLM) | no | no | yes | no |
-| Multimodal ingestion (PDF/image) | yes (via RAG-Anything) | no | partial (embeds) | yes | no |
-| Code-graph ingestion | yes | no | no | partial | no |
-| MCP server | yes | no | no | yes | no |
-| On-demand cited context compiler | yes (PPR + budget) | no | no | no | no |
-| Live session monitoring → graph | yes | no | no | no | no |
-| Multi-project registry | yes | no | yes (graphs) | partial | no |
-| Works without API key (OAuth) | yes | n/a | n/a | no | n/a |
-| Multi-language i18n docs | yes | partial | yes | partial | partial |
-| Deterministic byte-identical compile | yes | yes | n/a | no | n/a |
-| Per-page ask widget (proposed B3) | not yet | no | no | no | no |
-| Live edit | no | partial | yes | n/a | yes |
-| Mobile-first reading | no | yes | yes | n/a | n/a |
-| Real-time collaboration | no | no | yes (DB beta) | no | no |
-
-Tesserae entscheidet sich für Compile-from-Source statt Live-Editing. Wenn du Notizen
-in einer UI bearbeiten willst, nimm Logseq oder Obsidian. Wenn du ein Build-Tool für deinen
-Knowledge Graph willst, ist das hier dein Projekt.
-
-## Wann du es einsetzt (und wann nicht)
-
-Einsetzen, wenn:
-
-- Du einen langlebigen, inspizierbaren Knowledge Graph über die textlastigen Quellen eines einzelnen Projekts (Docs, Code, Forschungsnotizen) willst.
-- Du einen lokalen MCP-Server willst, der Fragen geerdet in deinen eigenen Dateien beantwortet.
-- Du ein sauberes Bundle in Cognee einspeisen oder eine Markdown-Projektion in Obsidian öffnen willst, ohne den Glue-Code selbst zu schreiben.
-
-Überspringen, wenn:
-
-- Du nur eine Vektor-Suche über ein kleines Verzeichnis brauchst — `ripgrep` plus eine Embedding-Bibliothek ist einfacher.
-- Du ein Hosted Wiki mit Editing-UI willst. Die statische Site hier ist read-only.
-- Du out-of-the-box präzise semantische Embeddings erwartest. Das Default-RAG-Anything-Embedding ist deterministisch (siehe [Status](#status)).
-- Du einen schlüsselfertigen „Ask anything“-Agenten erwartest. Dies baut das Substrat; du verdrahtest es selbst in den Agenten deiner Wahl.
-
-## Status
-
-Dies ist ein sich entwickelndes Forschungs- und Agent-Tooling-Projekt (aktuell v0.5.0). Bekannte Einschränkungen:
-
-- Die Compile-Zeit skaliert grob linear mit der Korpus-Größe. Erste Compiles über große Markdown-Bäume (tausende Dateien) können Minuten dauern.
-- Das native Retrieval nutzt standardmäßig eine echte semantische Spur: Installiere das Extra `semantic` (`pip install "tesserae[semantic]"`), um `model2vec` (torch-freie statische Vektoren, ~8 MB `potion-base-8M` beim ersten Gebrauch) hereinzuholen. Ohne es degradiert das Hybrid-/Embedding-Retrieval zu einem nicht-semantischen Hash-Bucket-Stub und gibt eine deutliche Warnung aus. Für die Cognee-/RAG-Anything-Backends ist der Embedding-Provider weiterhin standardmäßig `deterministic`; wechsle zu `ollama` (z. B. `qwen3-embedding:0.6b`) oder einem OpenAI-kompatiblen Endpoint für besseren Recall — siehe [docs/integrations/rag-anything.md](docs/integrations/rag-anything.md).
-- Inkrementelles Kompilieren (`--changed-only`) ist ausgeliefert, aber weiterhin experimentell und standardmäßig AUS; vollständige Neukompilierungen bleiben der unterstützte Pfad.
-- Vision-Support für RAG-Anything (Bildinhaltsextraktion) ist noch nicht durchgängig verdrahtet. Bilddateien werden strukturell geparst, aber nicht beschrieben.
-- Cognee-Runtime-Cognify ist Best-Effort: fehlende Provider, kostenpflichtige API-Keys oder Netzwerk-Fehler werden geloggt und übersprungen, statt den Build abzubrechen.
-- Der MCP-Server exponiert ein stabiles Set an Tools, aber das zugrunde liegende Graph-Schema kann noch erweitert werden.
-
-## Quickstart
-
-Erfordert Python 3.9+. RAG-Anything benötigt Python 3.10+, wenn aktiviert.
+Erfordert **Python 3.10+**.
 
 ```bash
-pip install tesserae          # für echte Embeddings [semantic] ergänzen: pip install "tesserae[semantic]"
+pip install tesserae          # fügen Sie [semantic] für echte Embeddings hinzu
+# oder: pipx install tesserae   # sicherste PATH-Installation
+# oder: npx @jokerized/tesserae # Node-Wrapper um dasselbe CLI
 
 cd /path/to/my-project
-tesserae init --yes
-tesserae compile
+tesserae init --yes           # Assistent; --yes akzeptiert erkannte Standardwerte
+tesserae compile              # Wissensgraphen erstellen
 tesserae ask "Where is Mermaid rendering implemented?"
 
-# Kontext auf Abruf: kompiliert ein maßgeschneidertes, zitiertes Kontext-Dokument für eine Anfrage.
+# Maßgeschneidertes, zitiertes Kontextdokument kompilieren:
 tesserae context "How does the parser handle arXiv IDs?" --budget 32000 -o context.md
 
-tesserae serve --port 8765
+tesserae serve --port 8765    # Graph und Wiki lokal durchsuchen
 ```
 
-Der Setup-Wizard erkennt gängige Quellen (`README.md`, `docs/`, `src/`, `data/`) und schreibt `.tesserae/config.json`. LLM-aufrufende Features verwenden standardmäßig das `codex`-CLI über OAuth, sodass für den üblichen Pfad keine API-Keys nötig sind. Die ausführlichere Variante findest du in [docs/quickstart.md](docs/quickstart.md) und [docs/installation.md](docs/installation.md).
-
-> [!tip]
-> **`tesserae: command not found` nach der Installation?** `pip` legt das Binary möglicherweise an einem Ort ab, den deine Shell nicht durchsucht. Der zuverlässigste Fix auf **jeder Plattform** ist [`pipx`](https://pipx.pypa.io/) — es installiert CLI-Tools in isolierten venvs und verwaltet deinen `PATH` automatisch:
->
-> ```bash
-> # macOS — `brew install pipx`
-> # Ubuntu / Debian — `sudo apt install pipx`
-> # andere — `python3 -m pip install --user pipx`
-> pipx ensurepath          # fügt ~/.local/bin zum PATH hinzu; danach neue Shell öffnen
-> pipx install tesserae
-> ```
->
-> **Ubuntu 23.04+** typische Probleme bei einfachem `pip install tesserae`:
->
-> | Fehler | Ursache | Lösung |
-> |---|---|---|
-> | `error: externally-managed-environment` | PEP 668 — System-Python ist gesperrt | `pipx` (oben) verwenden, oder `pip install --user --break-system-packages tesserae` (hässlich), oder ein venv |
-> | `tesserae: command not found` nach `pip install --user …` | `~/.local/bin` ist nicht im `PATH` | `echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.bashrc && source ~/.bashrc` |
-> | `ModuleNotFoundError: pydantic` auf Ubuntu 20.04 | System-`python3` ist 3.8, tesserae braucht ≥3.9 | `sudo apt install python3.11 python3.11-venv` dann `python3.11 -m pip install --user tesserae` |
-
-
-### Walkthrough
-
-Jeder Schritt aus dem Quickstart, aufgenommen gegen den mitgelieferten 135-Dokumente-Demo-Korpus
-(`examples/demo-corpus/data/research/`). Du kannst jedes dieser GIFs mit
-`vhs docs/screencasts/<name>.tape` neu erzeugen — die Tape-Dateien dokumentieren, was sie
-aufgenommen haben und welches Workspace sie voraussetzen.
+LLM-gestützte Funktionen verwenden standardmäßig die `codex` / `claude` CLIs über OAuth —
+**keine API-Schlüssel erforderlich** für den üblichen Pfad. Siehe
+[docs/quickstart.md](docs/quickstart.md) und
+[docs/installation.md](docs/installation.md).
 
 <details>
-<summary><strong>1. Setup</strong> — auf ein Forschungsverzeichnis zeigen, ein Projekt-Wiki-Scaffold bekommen</summary>
-<br/>
-<img src="docs/screencasts/setup.gif" alt="tesserae init --source ./research running non-interactively and writing .tesserae/" width="100%" />
-</details>
+<summary><strong><code>tesserae: command not found</code> nach der Installation? Linux-Probleme?</strong></summary>
 
-<details>
-<summary><strong>2. Compile + Site bauen</strong> — deterministisch, keine LLM-Calls</summary>
-<br/>
-<img src="docs/screencasts/compile.gif" alt="tesserae compile followed by tesserae export site, emitting graph.json and the static site tree" width="100%" />
-</details>
+Die zuverlässigste Lösung auf jeder Plattform ist [`pipx`](https://pipx.pypa.io/):
 
-<details>
-<summary><strong>3. Ask</strong> — das kompilierte Wiki über das CLI abfragen</summary>
-<br/>
-<img src="docs/screencasts/ask.gif" alt="tesserae ask --backend wiki returning top-3 hits with score, kind, and outbound relations" width="100%" />
-</details>
-
-## Was du nach dem Compile bekommst
-
-```text
-.tesserae/
-  config.json
-  graph.json              # typed nodes/edges
-  manifest.json           # source fingerprints (used by --changed-only)
-  sqlite.db               # queryable graph store
-  temporal_facts.jsonl
-  graphiti_episodes.jsonl
-  report.md
-  markdown_projection/    # human-readable wiki pages
-  obsidian_vault/         # ready to drop into Obsidian
-  agent_harness/          # per-agent config (Claude/Codex/Gemini/Cursor/...)
-  harness_sessions/       # imported Claude/Codex session memory
-  cognee_bundle/          # JSONL ready for Cognee ingest
-  site/                   # static site built by build-site
-  external/               # companion-tool outputs (UA, RAG-Anything)
+```bash
+# macOS: brew install pipx · Ubuntu/Debian: sudo apt install pipx
+pipx ensurepath          # fügt ~/.local/bin zum PATH hinzu; danach eine neue Shell öffnen
+pipx install tesserae
 ```
 
-`ls .tesserae/` nach `compile`, um zu prüfen, was gelandet ist.
+Häufige Ubuntu-Probleme mit `pip install tesserae`:
 
-## CLI-Übersicht
+| Fehler | Ursache | Lösung |
+|---|---|---|
+| `error: externally-managed-environment` | PEP 668 — System-Python gesperrt | `pipx` (oben) oder ein venv verwenden |
+| `command not found` nach `pip install --user …` | `~/.local/bin` nicht im `PATH` | `echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.bashrc && source ~/.bashrc` |
+| `ModuleNotFoundError` auf alten Distros | System-`python3` < 3.10 | `sudo apt install python3.11 python3.11-venv`, dann mit `python3.11 -m pip` installieren |
 
-Befehle für den Alltag. Führe `tesserae <subcommand> --help` für alle Flags aus.
+</details>
+
+<details>
+<summary><strong>Walkthrough-GIFs</strong> — jeder Schnellstart-Schritt mit dem mitgelieferten Demo-Korpus mit 135 Dokumenten</summary>
+
+<details>
+<summary>1. Einrichtung — auf ein Forschungsverzeichnis zeigen, ein Projekt-Wiki-Gerüst erhalten</summary>
+<br/>
+<img src="docs/screencasts/setup.gif" alt="tesserae init --source ./research läuft nicht-interaktiv und schreibt .tesserae/" width="100%" />
+</details>
+
+<details>
+<summary>2. Kompilieren + Website erstellen — deterministisch, ohne LLM-Aufrufe</summary>
+<br/>
+<img src="docs/screencasts/compile.gif" alt="tesserae compile gefolgt von tesserae export site, gibt graph.json und den statischen Seitenbaum aus" width="100%" />
+</details>
+
+<details>
+<summary>3. Ask — das kompilierte Wiki vom CLI aus abfragen</summary>
+<br/>
+<img src="docs/screencasts/ask.gif" alt="tesserae ask --backend wiki gibt die Top-3-Treffer mit Score, Typ und ausgehenden Beziehungen zurück" width="100%" />
+</details>
+
+Jedes GIF neu erstellen mit `vhs docs/screencasts/<name>.tape`.
+
+</details>
+
+## Alltagsbefehle
+
+Führen Sie `tesserae --help` für die vollständige gruppierte Liste aus, `tesserae <cmd> --help` für Flags.
 
 | Befehl | Was er tut |
 |---|---|
-| `tesserae init` | Interaktiver Wizard. Schreibt `.tesserae/config.json`. Übergib `--yes` für einen nicht-interaktiven Lauf, der die erkannten Defaults übernimmt (alle optionalen Integrationen AUS), oder `--bare`, um den Wizard zu überspringen und einen minimalen Workspace zu schreiben. |
-| `tesserae compile` | Liest die konfigurierten Quellen, führt Companion-Refreshes aus und schreibt alle Artefakte unter `.tesserae/`. `--changed-only` aktiviert den experimentellen inkrementellen Rebuild (standardmäßig AUS). `compile <paths>` ingestiert zusätzliche Markdown-Pfade ad hoc. |
-| `tesserae context "<anfrage>"` | **On-Demand-Kontext-Compiler.** Kompiliert für eine Anfrage (oder explizite `--seeds`) ein maßgeschneidertes, zitiertes Kontext-Dokument via Personalized-PageRank-Expansion (`--depth`, Default 2) innerhalb eines `--budget` (Default 32000 Zeichen; `<=0` = unbegrenzt). `--synthesize` ergänzt eine LLM-Zusammenfassung; `-o` schreibt in eine Datei. |
-| `tesserae engine` (Alias `daemon`) | Führt den beaufsichtigten Refresh-Daemon aus: beobachtet Quellen, fasst Edit-Bursts zusammen (`--debounce`) und kompiliert automatisch neu. `--once` führt einen einzelnen deterministischen Drain-Zyklus aus. |
-| `tesserae refresh` | Einmalige In-Process-Pipeline: neue Sitzungen importieren, kompilieren, Vault synchronisieren. |
-| `tesserae export site` | Baut das statische Frontend unter `.tesserae/site/`. `--deploy` veröffentlicht; `--watch` baut bei Änderungen neu. |
-| `tesserae serve --port 8765` | Serviert die statische Site lokal (baut automatisch, falls sie fehlt) und exponiert `/api/ask`, damit das Inline-Ask-Widget jeder Detailseite Fragen an `ask_project` routen kann. Auf jedem anderen Host (file://, GitHub Pages, S3) klappt das Widget elegant zu einem einzeiligen statischen Footer zusammen. |
-| `tesserae integrations refresh understand-anything` | Führt den von Tesserae verwalteten Refresh-Wrapper für Understand Anything aus. |
-| `tesserae integrations refresh raganything --parser mineru` | Re-parst Nicht-Code-Quellen (PDFs, Office, Bilder) via RAG-Anything. |
-| `tesserae ask "<question>"` | Fragt das konfigurierte Backend (`auto`/`raganything`/`cognee`/`wiki`). |
-| `tesserae projects mcp-config` | Druckt ein MCP-Server-Config-Snippet, das du in Claude Code, Codex oder Hermes einfügen kannst. |
-| `tesserae projects register <path> --name <alias>` | Registriert ein Projekt in der gemeinsamen Registry. |
-| `tesserae projects list` / `tesserae projects activate <name>` | Listet registrierte Projekte; setzt das aktive. |
-| `tesserae ask "<question>" [--wiki <name>]` | Top-Level-Ask, der über die Registry auflöst. |
+| `tesserae init` | Einrichtungsassistent → `.tesserae/config.json`. `--yes` nicht-interaktiv, `--bare` minimal. |
+| `tesserae compile` | Wissensgraphen und alle Artefakte neu erstellen. `compile <paths>` nimmt zusätzliche Dateien punktuell auf. |
+| `tesserae ingest <file\|url>` | Ein einzelnes Dokument oder eine Webseite in die Wissensbasis einbinden, ohne vollständig neu zu kompilieren (inkrementeller Schnellpfad). |
+| `tesserae context "<query>"` | **Kontextkompiler auf Abruf**: zitiertes Kontextdokument via PPR-Erweiterung unter `--budget`; `--synthesize` fügt eine LLM-Zusammenfassung hinzu. |
+| `tesserae ask "<question>"` | Die kompilierte Wissensbasis abfragen (`--scope all-registered` umfasst alle Projekte). |
+| `tesserae engine` | Überwachter Aktualisierungs-Daemon für das aktuelle Projekt: beobachten, entprellen, neu kompilieren. |
+| `tesserae engine --all` | **Flottenmodus**: ein Prozess hält *alle* registrierten Projekte aktuell — Hot-Reload der Registry, Drosselung mit `--compile-slots`. |
+| `tesserae refresh` | Einmaliger Pipeline-Lauf: neue Sitzungen importieren → kompilieren → Vault synchronisieren. |
+| `tesserae sessions discover --import` | Lokale Claude Code / Codex-Sitzungshistorie für dieses Projekt finden und importieren. |
+| `tesserae export site` | Statische Website erstellen (`--deploy`, `--watch`). |
+| `tesserae serve` | Website lokal mit dem eingebetteten Ask-Widget bereitstellen (`/api/ask`). |
+| `tesserae projects …` | Multi-Projekt-Registry: `register`, `list`, `activate`, `mcp-config`. |
+| `tesserae integrations refresh …` | Begleittools neu starten (Understand-Anything, RAG-Anything). |
 
-## Integrationen
+## Automatisch aktuell halten
 
-Alle Integrationen sind opt-in. Keine ist erforderlich, um Tesserae auf einem reinen Markdown/Code-Projekt einzusetzen.
+Die Engine ist das, was die Wissensbasis *selbstverbessernd* macht, statt sie als
+einmaligen Build zu behandeln:
 
-- **Claude Code Plugin** — Slash-Befehle (`/tesserae:compile`, `/tesserae:ask "<frage>"`, `/tesserae:refresh`, `/tesserae:status`, …), vier Hooks (SessionStart-Status / SessionEnd Auto-Kompilierung / opt-in PostToolUse inkrementelle Neukompilierung / PreToolUse Bestätigung-Gate für große Graphen), eine `using-tesserae` Skill und automatische MCP-Registrierung — alles in einem `/plugin install`. Siehe [docs/integrations/claude-code-plugin.md](docs/integrations/claude-code-plugin.md).
-- **Sitzungs-Graph (Säule 1)** — verwandelt deine Claude Code / Codex-Konversationen über das Projekt in erstklassige Graph-Knoten (Insight / Decision / Question / TODO / Hypothesis / Takeaway), verknüpft mit den Dokumenten, die aufkamen. Führe `tesserae sessions discover --import` einmal aus, dann importiert jeder `tesserae compile` neue Sitzungen; `tesserae engine` beobachtet sie live und bezieht sie kontinuierlich ein. Strukturelle Pass ist kostenlos; LLM-Pass läuft automatisch, wenn die `claude` CLI angemeldet ist — **kein API-Schlüssel erforderlich**. Siehe [docs/integrations/sessions.md](docs/integrations/sessions.md).
-- **Understand Anything** — ein separates Projekt ([Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything)), das einen Code-Knowledge-Graph unter `.understand-anything/knowledge-graph.json` produziert. Aktivieren mit `--with-understand-anything`. Tesserae hinterlegt einen verwalteten Refresh-Wrapper, sodass `compile` den Graph aktuell hält. Siehe [docs/integrations/understand-anything.md](docs/integrations/understand-anything.md).
-- **RAG-Anything** — Multimodale Ingestion ([HKUDS/RAG-Anything](https://github.com/HKUDS/RAG-Anything)) für PDFs, Office-Dokumente und Bilder via MinerU/Docling/PaddleOCR. Aktivieren mit `--with-raganything`. Dient auch als Runtime-Question-Backend (LightRAG). Erfordert Python 3.10+. Siehe [docs/integrations/rag-anything.md](docs/integrations/rag-anything.md).
-- **Cognee** — Graph- und Vector-Memory-Backend. Aktivieren mit `--run-cognee --install-cognee`. Der normale Compile schreibt immer `.tesserae/cognee_bundle/`; der Runtime-`cognify`-Pass ist Best-Effort und läuft nur, wenn explizit aktiviert.
+```bash
+# Ein Projekt: Quellen + Live-Sitzungen beobachten, bei Änderungen neu kompilieren.
+tesserae engine
 
-## Multi-Project-Registry
+# Alle registrierten Projekte, ein Prozess (v0.8.0):
+tesserae engine --all --compile-slots 1
+```
 
-Eine persistente Registry unter `~/.tesserae/registry.json` lässt das Top-Level-`ask`-CLI und den MCP-Server Projektnamen zu Roots auflösen, ohne bei jedem Aufruf `--project` zu setzen.
+Der Flottenmodus gleicht alle 10 s mit `~/.tesserae/registry.json` ab —
+das Registrieren oder Entfernen eines Projekts wirkt sich ohne Neustart aus — und
+serialisiert Kompilierungen über Projekte hinweg, damit gleichzeitige LLM-Extraktion
+nie gemeinsame Account-Ratenlimits überschreitet. Der erste Lauf durchsucht die
+Sitzungshistorie einmalig (im Log vermerkt); Neustarts setzen von einem persistierten
+Ausgangspunkt fort.
+
+## Was Sie nach der Kompilierung erhalten
+
+```text
+.tesserae/
+  graph.json              # typisierte Knoten/Kanten (die Wissensbasis)
+  sqlite.db               # abfragbarer Graphspeicher
+  markdown_projection/    # menschenlesbare Wiki-Seiten
+  obsidian_vault/         # fertig zum Ablegen in Obsidian
+  site/                   # statische Website (Graphansicht + Wiki + Suche)
+  harness_sessions/       # importiertes Claude/Codex-Sitzungsgedächtnis
+  agent_harness/          # Kontextkonfiguration pro Agent (Claude/Codex/Gemini/...)
+  cognee_bundle/          # JSONL bereit für Cognee-Ingest
+  config.json · manifest.json · report.md · …
+```
+
+## MCP-Server
+
+`tesserae projects mcp-config` gibt einen Servereintrag für Claude Code, Codex oder
+jeden MCP-Client aus. Wichtigste Tools:
+
+- **`compile_context`** — maßgeschneidertes, zitiertes Kontextdokument für eine Anfrage oder Seed-Knoten
+  (deterministisch, außer `synthesize=true`), gestützt auf `graph_ppr`.
+- **Graph + Wiki**: `search_nodes`, `node_context`, `graph_summary`,
+  `wiki_page`, `raw_source`, `timeline`, `search_facts`, `lint_report`, `ask`.
+- **Sitzungsgedächtnis**: `list_sessions`, `find_session_findings`,
+  `find_code_symbol_mentions`, `fresh_insights` (nach Aktualitätsabfall gerankt, dedupliziert).
+- **Registry**: `list_projects`, `register_project`, `activate_project`.
+
+## Multi-Projekt
+
+Eine Registry unter `~/.tesserae/registry.json` löst Projektnamen überall auf —
+CLI, MCP und Fleet-Engine:
 
 ```bash
 tesserae projects register /path/to/my-project --name myproj
 tesserae projects activate myproj
-tesserae ask "Where is the parser entry point?"
+tesserae ask "..." --scope all-registered        # alle Projekte umfassen
 ```
 
-Dieselbe Registry liest auch der MCP-Server, sodass MCP-Clients `list_projects`, `activate_project` und `ask` gegen jedes registrierte Wiki aufrufen können.
+Markdown in einem Projekt kann einen Knoten in einem anderen über
+`wiki://<alias>/<kind>/<slug>` verlinken; bei der Kompilierung werden daraus
+Brückenknoten in der Graphansicht. Einzelheiten in der [Dokumentation](docs/).
 
-### Cross-Vault-Linking (`wiki://`-URI-Schema)
+## Integrationen (alle optional)
 
-Source-Markdown in einem registrierten Projekt kann einen Knoten in einem anderen registrierten Projekt über eine stabile URI referenzieren:
+- **Claude Code-Plugin** — Slash-Befehle, Sitzungs-Hooks, Skill und MCP-Auto-Registrierung
+  per `/plugin install`.
+  [docs/integrations/claude-code-plugin.md](docs/integrations/claude-code-plugin.md)
+- **Sitzungsgraph** — Claude Code / Codex-Gespräche → Insight / Decision /
+  Question / TODO-Knoten, verknüpft mit den berührten Dokumenten. Kein API-Schlüssel erforderlich.
+  [docs/integrations/sessions.md](docs/integrations/sessions.md)
+- **Understand-Anything** — Code-Wissensgraph-Ingest.
+  [docs/integrations/understand-anything.md](docs/integrations/understand-anything.md)
+- **RAG-Anything** — multimodaler Ingest (PDF/Office/Bilder via
+  MinerU/Docling) und ein LightRAG-Fragen-Backend.
+  [docs/integrations/rag-anything.md](docs/integrations/rag-anything.md)
+- **Cognee** — Graphen+Vektor-Speicher-Backend; die Kompilierung schreibt immer ein
+  Cognee-bereites Bundle; Runtime-Cognify ist Best-Effort.
+- **Obsidian** — bidirektionale Vault-Synchronisation mit Nutzerbearbeitungs-Overlay.
+  [docs/integrations/obsidian.md](docs/integrations/obsidian.md)
 
-```
-wiki://<alias>/<kind>/<slug>
-```
+## Vergleich
 
-Beispiele:
+<details>
+<summary>Feature-Matrix gegenüber Quartz, Logseq, Cognee, Foam</summary>
 
-- `wiki://research/concepts/rlhf` — das RLHF-Konzept im `research`-Vault.
-- `wiki://other-vault/papers/arxiv-2510-12323` — ein Paper in `other-vault`.
-- `[See RLHF in research](wiki://research/concepts/rlhf)` — funktioniert auch innerhalb eines Markdown-Links.
+| Feature | Tesserae | Quartz | Logseq | Cognee | Foam |
+|---|---|---|---|---|---|
+| Statische HTML-Ausgabe | ja | ja | teilweise (Export) | nein | teilweise (Publish) |
+| Eingebaute Graphansicht | ja | ja | ja | ja (separate UI) | ja (VSCode) |
+| Typisiertes Knotenschema | ja (41 Typen) | nein | teilweise (Tags) | ja | nein |
+| Konzeptextraktion aus Quellen | ja (LLM) | nein | nein | ja | nein |
+| Multimodaler Ingest (PDF/Bild) | ja (via RAG-Anything) | nein | teilweise (Embeds) | ja | nein |
+| Code-Graph-Ingest | ja | nein | nein | teilweise | nein |
+| MCP-Server | ja | nein | nein | ja | nein |
+| Zitierter Kontextkompiler auf Abruf | ja (PPR + Budget) | nein | nein | nein | nein |
+| Live-Sitzungsüberwachung → Graph | ja | nein | nein | nein | nein |
+| Multi-Projekt-Registry | ja | nein | ja (Graphen) | teilweise | nein |
+| Multi-Projekt-Daemon (Flotte) | ja | nein | nein | nein | nein |
+| Ohne API-Schlüssel (OAuth) | ja | n/a | n/a | nein | n/a |
+| Deterministisch byte-identische Kompilierung | ja | ja | n/a | nein | n/a |
+| Live-Bearbeitung | nein | teilweise | ja | n/a | ja |
+| Echtzeit-Zusammenarbeit | nein | nein | ja (DB beta) | nein | nein |
 
-Zur Compile-Zeit werden diese URIs zu *Bridge-Knoten* in der Graph-Ansicht (Group `external`, violett) mit einem Toggle „Cross-project bridges“ in der Toolbar, mit dem du sie ausblenden kannst. Nicht registrierte Aliases werden als Tombstones gerendert; registrierte, aber noch nicht gebaute Links erscheinen als Platzhalter.
+</details>
 
-### Vault-übergreifende Abfragen (`--scope all-registered`)
+Tesserae setzt auf das Kompilieren aus Quellen statt Live-Bearbeitung. Wenn Sie Notizen
+in einer UI bearbeiten möchten, nutzen Sie Logseq oder Obsidian. Wenn Sie ein Build-Tool
+*und eine Live-Engine* für Ihren Wissensgraphen möchten, ist das hier das richtige Projekt.
 
-`tesserae ask` und das MCP-Tool `ask` akzeptieren ein `--scope`-Flag:
+**Verwenden Sie es, wenn** Sie einen dauerhaften, prüfbaren Wissensgraphen über die
+textlastigen Quellen eines Projekts möchten, einen lokalen MCP-Server, der in Ihren
+eigenen Dateien verankert ist, oder saubere Bundles für Cognee/Obsidian, ohne Klebe-Code
+schreiben zu müssen.
 
-```bash
-# Default — just the active/named project.
-tesserae ask "..."
+**Überspringen Sie es, wenn** Sie nur Vektorsuche über ein kleines Verzeichnis benötigen,
+ein gehostetes Wiki mit Bearbeitungs-UI möchten oder einen schlüsselfertigen
+«Frag-alles»-Agenten erwarten — Tesserae baut das Substrat; Sie verbinden es mit dem
+Agenten Ihrer Wahl.
 
-# Fan out across every registered project; aggregate envelopes by alias.
-tesserae ask "..." --scope all-registered
+## Authentifizierung und LLM-Anbieter
 
-# Restrict to a hand-picked subset of registered aliases.
-tesserae ask "..." --scope all-registered --scope-aliases research work
-```
+Der übliche Pfad verwendet **keine API-Schlüssel**:
 
-Die aggregierte JSON-Form ist `{"scope": "all-registered", "question": ..., "by_project": {"<alias>": <envelope>, ...}}`. Per-Projekt-Fehler werden als `{"error": "..."}`-Einträge erfasst; ein einzelnes fehlschlagendes Projekt bricht das Fan-out nie ab.
+- **Codex CLI** (Standard) und **Claude Code CLI** über OAuth mit
+  Multi-Account-Rotation.
+- **Embeddings**: natives hybrides Retrieval nutzt eine Offline-Semantik-Spur ohne torch
+  via `pip install "tesserae[semantic]"` (`model2vec`). Cognee/RAG-Anything-Backends
+  verwenden standardmäßig einen deterministischen Anbieter; wechseln Sie zu Ollama oder
+  einem beliebigen OpenAI-kompatiblen Endpunkt für besseren Recall.
 
-## MCP
+`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` werden verwendet, wenn vorhanden, sind aber nie erforderlich.
 
-`tesserae projects mcp-config` druckt einen Servereintrag, den du in Claude Code, Codex oder jeden MCP-fähigen Client einfügen kannst. Der Server exponiert Tools wie `schema`, `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`, `wiki_page`, `raw_source`, `lint_report`, `ask`, `embedding_status`. Das Flaggschiff von v0.5.0 ist **`compile_context`** — es liefert ein maßgeschneidertes, zitiertes Kontext-Dokument für eine Anfrage oder Seed-Knoten (deterministisch, sofern nicht `synthesize=true`), gestützt auf **`graph_ppr`** (Personalized PageRank über den typisierten Graphen). Tools für Sitzungsgedächtnis und Self-Improvement runden es ab: `list_sessions`, `find_session_findings`, `find_code_symbol_mentions`, `list_communities` und `fresh_insights` (Sitzungs-Befunde nach Ebbinghaus-artigem Decay sortiert, ersetzte Near-Duplicates herausgefiltert). Die Registry-Tools `list_projects` / `register_project` / `activate_project` / `unregister_project` lösen Projektnamen über dieselbe Registry auf wie das CLI.
+## Status und Einschränkungen
 
-## Authentifizierung und LLM-Provider
+Aktuelle Version: siehe [Release-Notes](docs/release-notes/). Bekannte Einschränkungen:
 
-Der übliche Pfad nutzt keine API-Keys:
+- Erstkompilierungen über große Korpora (Tausende von Dateien) dauern Minuten;
+  die Kompilierzeit skaliert annähernd linear. Inkrementelle Kompilierung (`--changed-only`)
+  ist vorhanden, aber experimentell und standardmäßig deaktiviert.
+- Ohne das `semantic`-Extra degradiert hybrides Retrieval auf einen nicht-semantischen
+  Stub (mit deutlicher Warnung).
+- RAG-Anything Vision (Bildbeschreibung) ist noch nicht vollständig End-to-End verdrahtet.
+- Cognee Runtime-Cognify ist Best-Effort: fehlende Anbieter werden protokolliert und
+  übersprungen, nie fatal.
+- Das MCP-Tool-Set ist stabil; das Graphschema kann noch weitere Knotentypen hinzugewinnen.
 
-- **Codex CLI** (Default) über OAuth. `--raganything-llm-provider codex` ist der Default; der Cognee-`codex_cognify`-Modus patcht den LLM-Client von Cognee auf das Codex-CLI.
-- **Claude Code CLI** über OAuth. Setze `--raganything-llm-provider claude` für RAG-Anything-Runtime-Queries. Multi-Account-Setups verwenden `--raganything-claude-config-dir ~/.claude` (Tesserae exportiert `CLAUDE_CONFIG_DIR` vor jedem Aufruf).
-- **Embeddings.** Das native Hybrid-Retrieval nutzt über das Extra `semantic` (`model2vec` / `potion-base-8M`) eine echte, offline-fähige, torch-freie semantische Spur. Für das Cognee-Backend verwenden Embeddings standardmäßig einen deterministischen In-Process-Provider; wechsle zu Ollama mit `--cognee-embedding-provider ollama --cognee-ollama-embedding-model qwen3-embedding:0.6b` oder verdrahte OpenAI-kompatible Endpoints — beides in den Integrations-Seiten dokumentiert.
-
-Wenn du `ANTHROPIC_API_KEY` oder `OPENAI_API_KEY` setzt, werden sie von den entsprechenden Pfaden aufgegriffen, sie sind aber nicht erforderlich.
-
-## Projekt-Layout
+## Projektstruktur
 
 ```text
-tesserae/        # the package (CLI, compiler, MCP server, adapters)
-docs/            # English docs + docs/i18n/ for the six other languages
-ontology/        # node/edge schemas the compiler validates against
-prompts/         # extraction and synthesis prompts
-scripts/         # maintenance scripts
-tests/           # pytest suite
-evals/           # graph quality eval harnesses
-data/            # example research notes used by self-dogfooding
+tesserae/        # das Paket (CLI, Kompiler, Engine, MCP-Server, Adapter)
+docs/            # englische Dokumentation + docs/i18n/ für die sieben anderen Sprachen
+ontology/        # Knoten-/Kantenschemata, gegen die der Kompiler validiert
+prompts/         # Extraktions- und Synthese-Prompts
+tests/           # pytest-Suite
+evals/           # Qualitätsbewertungs-Harnesses für den Graphen
+examples/        # Demo-Korpus für die Screencasts
 ```
 
 ## Lokalisierte Dokumentation
@@ -281,9 +306,10 @@ data/            # example research notes used by self-dogfooding
 [日本語](./README.ja.md) ·
 [Русский](./README.ru.md) ·
 [Español](./README.es.md) ·
-[Français](./README.fr.md)
+[Français](./README.fr.md) ·
+[Deutsch](./README.de.md)
 
-Langform-Dokumentation ist unter `docs/i18n/` und `docs/i18n/integrations/` gespiegelt.
+Ausführliche Dokumentation ist unter `docs/i18n/` verfügbar.
 
 ## Lizenz
 
