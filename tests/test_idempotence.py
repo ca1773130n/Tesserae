@@ -24,6 +24,22 @@ from tesserae.project import ProjectWiki, SessionExtractionOptions
 WIKI_CORPUS_ROOT = Path(__file__).parent / "fixtures" / "wiki_corpus"
 
 
+@pytest.fixture(autouse=True)
+def _deterministic_compile(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the LLM-backed ``community_summaries`` pass off for these
+    byte-idempotence tests.
+
+    Byte-idempotence is a guarantee of the DETERMINISTIC compile. The
+    default-on ``community_summaries`` pass mints a ``CommunitySummary`` node
+    only when a live LLM client succeeds, so on a dev box with codex/claude
+    configured but intermittently available, one compile mints a summary the
+    other skips → ``graph.json`` diverges. CI (no LLM) was always deterministic;
+    this makes local runs match. See the identical guard in
+    ``test_byte_idempotence_phase5``.
+    """
+    monkeypatch.setenv("TESSERAE_COMMUNITY_SUMMARIES", "false")
+
+
 def _hash_tree(root: Path, exclude: Iterable[str] = ()) -> Dict[str, str]:
     """Map every file under ``root`` to ``sha256(content)``.
 
