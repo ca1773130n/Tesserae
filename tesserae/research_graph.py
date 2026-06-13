@@ -134,6 +134,26 @@ class ResearchNodeType(str, Enum):
     # ``tesserae.community_summaries``). Public — gets a vault page.
     COMMUNITY_SUMMARY = "CommunitySummary"
 
+    # AgentRunbook-style distilled-memory layers (opt-in distillation; see
+    # docs/superpowers/specs/2026-06-13-agentrunbook-memory-design.md plus
+    # ``tesserae.session_event`` and ``tesserae.memory.distill``). Ported from
+    # LongMemEval-V2's AgentRunbook method.
+    #
+    # ``Event``   — a per-transition record of one session action + its state
+    #               change (dynamic state tracking); minted during session
+    #               extraction and ordered by ``precedes`` edges.
+    # ``Runbook`` — a distilled reusable procedure for a recurring workflow
+    #               (workflow knowledge); cross-session.
+    # ``Gotcha``  — a distilled recurring failure mode / wrong-here assumption
+    #               (environment gotchas + premise awareness); cross-session.
+    #
+    # All three are queryable in graph.json / MCP / retrieval but are kept
+    # PRIVATE from the wiki/site projection in v1 (vault pages are a planned
+    # fast-follow) — see PRIVATE_PUBLIC_RESEARCH_TYPES.
+    EVENT = "Event"
+    RUNBOOK = "Runbook"
+    GOTCHA = "Gotcha"
+
 
 ALLOWED_NODE_TYPES: Set[str] = {item.value for item in ResearchNodeType}
 
@@ -149,6 +169,16 @@ SESSION_FINDING_TYPES: Set[ResearchNodeType] = {
     ResearchNodeType.SESSION_TODO,
     ResearchNodeType.SESSION_HYPOTHESIS,
     ResearchNodeType.SESSION_TAKEAWAY,
+}
+
+
+# AgentRunbook cross-session distilled-memory node types. ``Event`` is a
+# per-session-transition record (minted during session extraction); the two
+# below are higher-order distillations minted by the post-compile
+# ``tesserae.memory.distill`` pass.
+DISTILLED_MEMORY_TYPES: Set[ResearchNodeType] = {
+    ResearchNodeType.RUNBOOK,
+    ResearchNodeType.GOTCHA,
 }
 
 # Code-graph symbol types. The aggressive same-type dedup pass keys on
@@ -313,6 +343,13 @@ ALLOWED_EDGE_TYPES: Set[str] = {
     # ``CONTRADICTING_CLAIMS`` probe demotes a pair to ``info`` once a
     # ``resolved_by`` edge exists between them (else raises to ``warning``).
     "resolved_by",
+    # AgentRunbook memory layers (``tesserae.session_event`` /
+    # ``tesserae.memory.distill``). ``precedes`` orders consecutive ``Event``
+    # nodes within a session (dynamic state tracking). The existing
+    # ``derived_from`` edge (above) links a distilled ``Runbook``/``Gotcha`` —
+    # and each session finding — back to the Event(s) / findings it was
+    # distilled from.
+    "precedes",
 }
 
 
@@ -1670,6 +1707,12 @@ PRIVATE_PUBLIC_RESEARCH_TYPES: Set[str] = {
     # themselves are the user-facing surface — the Session envelope
     # doesn't deserve its own vault page.
     ResearchNodeType.SESSION.value,
+    # AgentRunbook distilled-memory layers (Event/Runbook/Gotcha). Queryable
+    # in graph.json / MCP / retrieval, but private from the wiki/site
+    # projection in v1 — vault pages are a planned fast-follow.
+    ResearchNodeType.EVENT.value,
+    ResearchNodeType.RUNBOOK.value,
+    ResearchNodeType.GOTCHA.value,
 }
 
 

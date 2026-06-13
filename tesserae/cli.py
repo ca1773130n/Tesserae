@@ -1094,6 +1094,17 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                 ),
                 include_doc_id_context=int(base.get("include_doc_id_context", 200)),
             )
+        # AgentRunbook distillation toggle. The distillation + Event passes
+        # read ``distillation_enabled(cfg)`` (env first, then config). A CLI
+        # --distill / --no-distill sets the env var for this process so it
+        # overrides config for this run; unset leaves config in control.
+        if getattr(args, "distill_enabled", None) is not None:
+            import os as _os
+
+            _os.environ["TESSERAE_RUNBOOK_DISTILLATION"] = (
+                "true" if args.distill_enabled else "false"
+            )
+
         from .compile_progress import NullCompileProgress, make_compile_progress
 
         # Live codegraph-style progress on an interactive terminal; a no-op
@@ -1467,6 +1478,7 @@ def _handle_context(args: argparse.Namespace) -> int:
         depth=args.depth,
         budget=args.budget,
         synthesize=args.synthesize,
+        multi_pool=getattr(args, "multi_pool", False),
     )
     if args.output:
         Path(args.output).write_text(bundle.body, encoding="utf-8")
@@ -1793,6 +1805,9 @@ def _build_compile_parser() -> argparse.ArgumentParser:
     session_group = parser.add_mutually_exclusive_group()
     session_group.add_argument("--sessions", dest="sessions_enabled", action="store_true", default=None, help="Force session graph extraction on (default if .tesserae/harness_sessions/ exists)")
     session_group.add_argument("--no-sessions", dest="sessions_enabled", action="store_false", default=None, help="Skip session graph extraction entirely")
+    distill_group = parser.add_mutually_exclusive_group()
+    distill_group.add_argument("--distill", dest="distill_enabled", action="store_true", default=None, help="Run AgentRunbook distillation (Event/Runbook/Gotcha memory layers); also via config distillation.enabled or TESSERAE_RUNBOOK_DISTILLATION")
+    distill_group.add_argument("--no-distill", dest="distill_enabled", action="store_false", default=None, help="Skip AgentRunbook distillation even if enabled in config")
     # Every other former compile flag is now a `compile_options.<dest>` key
     # in config.json (read in _handle_compile_legacy via wiki._compile_options()).
     # See docs spec "Flag diet" — the old --help text is the key's doc.
@@ -1815,6 +1830,7 @@ def _build_context_parser() -> argparse.ArgumentParser:
     parser.add_argument("--depth", type=int, default=2, help="PPR expansion depth (default: 2)")
     parser.add_argument("--budget", type=int, default=32_000, help="Character budget for the doc body (default: 32000; <=0 = uncapped)")
     parser.add_argument("--synthesize", action="store_true", help="Add an LLM-synthesized summary (requires an LLM backend)")
+    parser.add_argument("--multi-pool", dest="multi_pool", action="store_true", help="AgentRunbook multi-pool retrieval: decompose the query and reserve slots for Runbook/Gotcha/Event memory")
     parser.add_argument("--output", "-o", help="Write the doc to a file instead of stdout")
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     return parser

@@ -970,6 +970,11 @@ class ProjectWiki:
         # COMMUNITY_SUMMARY nodes flow through vault projection,
         # graph.json persistence, MCP, and site builds in one pass.
         graph = self._merge_community_summaries(graph, cfg)
+        # AgentRunbook Runbook/Gotcha distillation (opt-in). Runs after
+        # merge/dedup + community summaries so it clusters the canonical
+        # session findings, and before ``_write_artifacts`` so the minted
+        # distilled-memory nodes flow into graph.json / MCP / retrieval.
+        graph = self._merge_distillation(graph, cfg)
         # Extraction-derived provenance for the files extracted THIS run
         # (Codex B2). On a full / true-full-recompile this covers the whole
         # corpus; on an active incremental run only the re-extracted changed
@@ -1155,6 +1160,32 @@ class ProjectWiki:
             guidance=guidance,
         )
         session_slice = extractor.extract()
+
+        # AgentRunbook Event layer (opt-in, gated by the same distillation
+        # switch). For each session, mint per-transition ``Event`` nodes from
+        # its turns and link this session's findings to them via
+        # ``derived_from``. Additive + byte-idempotent; degrades to a
+        # deterministic no-LLM template when ``json_client`` is None. See
+        # ``tesserae.session_event`` and the AgentRunbook memory spec.
+        from .memory.distill import distillation_enabled
+
+        if distillation_enabled(cfg):
+            from .session_event import extract_events
+
+            findings_by_session: Dict[str, List[ResearchNode]] = {}
+            for _node in session_slice.nodes:
+                _sid = (_node.metadata or {}).get("session_id")
+                if _sid:
+                    findings_by_session.setdefault(str(_sid), []).append(_node)
+            for _session in in_project:
+                _ev_nodes, _ev_edges = extract_events(
+                    _session,
+                    findings=findings_by_session.get(str(_session.id), []),
+                    json_client=json_client,
+                )
+                session_slice.nodes.extend(_ev_nodes)
+                session_slice.edges.extend(_ev_edges)
+
         if not session_slice.nodes and not session_slice.edges:
             return graph
         merged = merge_graphs([graph, session_slice])
@@ -1247,6 +1278,53 @@ class ProjectWiki:
             flush=True,
         )
         return merge_graphs([graph, slice_graph])
+
+    def _merge_distillation(self, graph: ResearchGraph, cfg: dict) -> ResearchGraph:
+        """Mint ``Runbook``/``Gotcha`` distilled-memory nodes (opt-in).
+
+        The cross-session half of the AgentRunbook memory layer: clusters
+        session-finding nodes and mints one ``Runbook`` (procedure) or
+        ``Gotcha`` (failure-mode) node per recurring cluster, with
+        ``derived_from`` edges to its members. Skipped unless
+        ``distillation.enabled`` in config or ``TESSERAE_RUNBOOK_DISTILLATION``
+        is truthy. Unlike community summaries this runs DETERMINISTICALLY with
+        no LLM — an ``LLMJsonClient`` only enriches titles/bodies — so it never
+        skips for lack of a client. See ``tesserae.memory.distill``.
+        """
+        from .memory.distill import (
+            _get_distillation_test_client,
+            distillation_enabled,
+            run_distillation_pass,
+        )
+
+        if not distillation_enabled(cfg):
+            return graph
+        distill_cfg = cfg.get("distillation") if isinstance(cfg.get("distillation"), dict) else {}
+        layers = distill_cfg.get("layers")
+        if not isinstance(layers, (list, tuple)) or not layers:
+            layers = ("runbook", "gotcha")
+        json_client = _get_distillation_test_client()
+        if json_client is None:
+            json_client = self._build_json_client(
+                model=distill_cfg.get("model") if isinstance(distill_cfg.get("model"), str) else None
+            )
+        cache_dir = self.paths.root / "distillation_cache"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        before = len(graph.nodes)
+        merged = run_distillation_pass(
+            graph,
+            json_client=json_client,
+            cache_dir=cache_dir,
+            layers=tuple(str(x) for x in layers),
+            min_cluster_size=int(distill_cfg.get("min_cluster_size") or 2),
+        )
+        minted = len(merged.nodes) - before
+        if minted:
+            print(
+                f"[tesserae] distillation: minted {minted} Runbook/Gotcha node(s).",
+                flush=True,
+            )
+        return merged
 
     def _merge_configured_raganything_graph(self, graph: ResearchGraph, cfg: dict) -> ResearchGraph:
         """Merge configured RAG-Anything manifest artifacts natively."""
