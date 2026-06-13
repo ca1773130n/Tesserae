@@ -1,5 +1,9 @@
 # Web Clipper (Chrome extension)
 
+<!-- translations:start -->
+<p align="center"><a href="../i18n/integrations/chrome-extension.ko.md">한국어</a> · <a href="../i18n/integrations/chrome-extension.zh.md">中文</a> · <a href="../i18n/integrations/chrome-extension.ja.md">日本語</a> · <a href="../i18n/integrations/chrome-extension.ru.md">Русский</a> · <a href="../i18n/integrations/chrome-extension.es.md">Español</a> · <a href="../i18n/integrations/chrome-extension.fr.md">Français</a> · <a href="../i18n/integrations/chrome-extension.de.md">Deutsch</a></p>
+<!-- translations:end -->
+
 Clip any web page — or just the text you selected — straight into your
 Tesserae knowledge base. The clipper POSTs the page to a local `tesserae
 serve` instance, which writes a provenance-stamped markdown file into the
@@ -62,12 +66,12 @@ clip is still ingested — just without the `## TL;DR` section.
 
 ## Install (load unpacked)
 
-> The extension ships in the repo under `extensions/chrome/` (load-unpacked
-> during development; not yet on the Chrome Web Store).
+> The extension ships in the repo under `extension/` (load-unpacked during
+> development; a Chrome Web Store listing is in review).
 
 1. Open `chrome://extensions`.
 2. Toggle **Developer mode** (top-right) on.
-3. Click **Load unpacked** and select the `extensions/chrome/` directory.
+3. Click **Load unpacked** and select the `extension/` directory.
 4. Pin the Tesserae clipper to your toolbar.
 
 The extension talks to `http://localhost:8765` by default; set the port in
@@ -128,16 +132,22 @@ failure) with `{"error": "..."}`.
 ### CORS
 
 Because the clipper is a browser extension hitting `localhost`, the
-endpoint is CORS-enabled:
+endpoint speaks CORS — but only for trusted callers, so an arbitrary
+website you visit cannot POST into your graph:
 
 - `OPTIONS /api/clip` returns the preflight headers.
-- Both the preflight and the `POST` response send:
-  - `Access-Control-Allow-Origin: *`
-  - `Access-Control-Allow-Methods: POST, OPTIONS`
-  - `Access-Control-Allow-Headers: Content-Type`
-
-(`*` is appropriate for a localhost-only dev server; lock it down if you
-expose `serve` beyond your machine.)
+- The server validates the request `Origin` and **reflects only**
+  browser-extension (`chrome-extension://…`) and loopback
+  (`http://localhost`, `http://127.0.0.1`) origins. A foreign website
+  origin is rejected with `403` and never reaches the ingest path.
+- Allowed responses send `Access-Control-Allow-Origin: <that origin>`,
+  `Access-Control-Allow-Methods: POST, OPTIONS`, and
+  `Access-Control-Allow-Headers: Content-Type`.
+- Chrome's **Private Network Access** preflight is honored: when the
+  request carries `Access-Control-Request-Private-Network: true`, the
+  server replies `Access-Control-Allow-Private-Network: true` so a
+  Web-Store extension can reach `localhost`.
+- The request body is capped (5 MB) before it is read.
 
 ---
 
