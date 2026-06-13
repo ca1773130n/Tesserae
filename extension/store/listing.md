@@ -55,6 +55,21 @@ into their knowledge graph.
 - Remote code: none. All scripts are bundled in the package; nothing is fetched
   or eval'd at runtime.
 
+## Remote code use (Privacy practices tab)
+Answer: **No** — "I am not using remote code." All scripts are packaged in the
+extension; nothing is fetched or evaluated from a remote source at runtime. The
+extension's network calls send clip *data* to the user's local server, not code.
+
+## Certification (required to publish)
+Tick all three (they are true for this extension):
+- I do not sell or transfer user data to third parties outside the approved use cases.
+- I do not use or transfer user data for purposes unrelated to the item's single purpose.
+- I do not use or transfer user data to determine creditworthiness or for lending.
+
+Data collected: **Website content** (the page text the user explicitly clips).
+It is sent only to the user's own local server, never to the developer or any
+third party.
+
 ## Data usage disclosures (Privacy practices tab)
 - Does this item collect/use personal data? It reads the content of pages the
   user explicitly chooses to clip and sends it only to the user's own local
