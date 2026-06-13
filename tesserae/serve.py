@@ -137,6 +137,13 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
                 self.send_header("Vary", "Origin")
             self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            # Private Network Access: Chrome gates requests that target a more
+            # private address space (localhost) than the initiator. A Web Store
+            # extension posting to http://localhost trips this, sending a
+            # preflight with `Access-Control-Request-Private-Network: true`. We
+            # must answer with the matching allow header or the POST is blocked.
+            if self.headers.get("Access-Control-Request-Private-Network") == "true":
+                self.send_header("Access-Control-Allow-Private-Network", "true")
             self.send_header("Content-Length", "0")
             self.end_headers()
 

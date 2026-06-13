@@ -224,6 +224,29 @@ def test_serve_clip_options_preflight_returns_cors_headers(tmp_path: Path) -> No
             assert "Content-Type" in allow_headers
 
 
+def test_serve_clip_options_grants_private_network_access(tmp_path: Path) -> None:
+    """A PNA preflight (Access-Control-Request-Private-Network) is answered with
+    the matching allow header, so a Web-Store extension can reach localhost."""
+    project = _bootstrap_project(tmp_path)
+    site_dir = project / ".tesserae" / "site"
+
+    with _running_server(project, site_dir) as (host, port):
+        req = urllib.request.Request(
+            f"http://{host}:{port}/api/clip",
+            headers={
+                "Origin": "chrome-extension://abcdefgh",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Private-Network": "true",
+            },
+            method="OPTIONS",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            assert resp.status in (200, 204)
+            assert (
+                resp.headers.get("Access-Control-Allow-Private-Network") == "true"
+            )
+
+
 def test_serve_clip_rejects_foreign_origin(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
