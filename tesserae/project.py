@@ -1260,9 +1260,20 @@ class ProjectWiki:
             json_client = self._build_json_client(
                 model=community_cfg.get("model") if isinstance(community_cfg.get("model"), str) else None
             )
+        # No LLM client: do NOT skip outright. Run in CACHE-ONLY mode so
+        # previously-minted, membership-stable summaries are re-emitted from
+        # ``self.paths.community_summaries/`` instead of vanishing when the LLM
+        # is momentarily unavailable. ``compile_community_summaries`` re-emits a
+        # cached summary for every unchanged cluster and skips only the clusters
+        # that have no cache entry (those genuinely need an LLM). A re-emitted
+        # node is byte-identical to its original LLM mint (no build-provenance in
+        # node metadata), so recompiles stay stable across LLM-availability flux.
         if json_client is None:
-            print("[tesserae] community summaries: no LLM client available; skipping.", flush=True)
-            return graph
+            print(
+                "[tesserae] community summaries: no LLM client — re-emitting "
+                "cached summaries only.",
+                flush=True,
+            )
         slice_graph = compile_community_summaries(
             graph,
             cache_dir=self.paths.community_summaries,
