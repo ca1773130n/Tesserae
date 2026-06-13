@@ -237,6 +237,16 @@ def _cluster_node_type(members: Sequence[ResearchNode]) -> ResearchNodeType:
     )
 
 
+def _distinct_session_count(members: Sequence[ResearchNode]) -> int:
+    """Number of distinct ``metadata['session_id']`` values across members."""
+    sessions: Set[str] = set()
+    for node in members:
+        sid = (node.metadata or {}).get("session_id")
+        if sid not in (None, ""):
+            sessions.add(str(sid))
+    return len(sessions)
+
+
 def _distilled_id(node_type: ResearchNodeType, member_ids: Sequence[str]) -> str:
     """Stable id = ``<Kind>:<sha of sorted member ids>``. No wall-clock / RNG."""
     h = hashlib.sha256("\n".join(sorted(member_ids)).encode("utf-8")).hexdigest()
@@ -385,6 +395,7 @@ def run_distillation_pass(
     cache_dir: Path,
     layers: Sequence[str] = ("runbook", "gotcha"),
     min_cluster_size: int = 2,
+    min_sessions: int = 2,
 ) -> ResearchGraph:
     """Mint ``Runbook`` / ``Gotcha`` nodes + ``derived_from`` edges in-place.
 
@@ -393,6 +404,14 @@ def run_distillation_pass(
     each cluster of ``>= min_cluster_size`` members as procedure-ish
     (``Runbook``) or pitfall-ish (``Gotcha``), and mints ONE node of that kind
     per qualifying cluster (only the layers named in ``layers``).
+
+    ``Runbook``/``Gotcha`` are *cross-session* memory, so a cluster must also
+    span ``>= min_sessions`` DISTINCT ``metadata["session_id"]`` values
+    (default 2) — otherwise two near-duplicate findings from a single session
+    would mint a "cross-session" distillation. Set ``min_sessions=1`` to also
+    distill within a single session. Each distilled node additionally inherits
+    ``derived_from`` edges to the ``Event`` nodes its member findings derive
+    from, so event provenance propagates upward.
 
     Determinism: the minted node id is a content hash of the SORTED member
     ids; the fallback title/body is composed purely from member content;
@@ -423,10 +442,26 @@ def run_distillation_pass(
     existing_edges: Set[Tuple[str, str, str]] = {
         (e.source, e.type, e.target) for e in graph.edges
     }
+
+    # finding_id -> Event node ids it derives from, so a distilled node can
+    # inherit ``derived_from`` edges to those Events (event provenance flows up).
+    event_ids: Set[str] = {
+        n.id for n in graph.nodes if _kind(n) == ResearchNodeType.EVENT.value
+    }
+    finding_to_events: Dict[str, List[str]] = {}
+    if event_ids:
+        for edge in graph.edges:
+            if edge.type == DERIVED_FROM_EDGE and edge.target in event_ids:
+                finding_to_events.setdefault(edge.source, []).append(edge.target)
+
     minted = 0
 
     for members in clusters:
         if len(members) < max(2, int(min_cluster_size)):
+            continue
+        # Cross-session requirement: a Runbook/Gotcha must span enough DISTINCT
+        # sessions to be genuinely cross-session (default >= 2).
+        if _distinct_session_count(members) < max(1, int(min_sessions)):
             continue
         node_type = _cluster_node_type(members)
         if node_type not in wanted:
@@ -478,6 +513,25 @@ def run_distillation_pass(
                 ResearchEdge(
                     source=distilled_id,
                     target=mid,
+                    type=DERIVED_FROM_EDGE,
+                    metadata={"distilled_id": distilled_id},
+                )
+            )
+            existing_edges.add(edge_key)
+
+        # Propagate Event provenance: link the distilled node to every Event its
+        # member findings derive from (sorted for byte-stable edge ordering).
+        event_targets = sorted(
+            {ev for mid in member_ids for ev in finding_to_events.get(mid, [])}
+        )
+        for ev in event_targets:
+            edge_key = (distilled_id, DERIVED_FROM_EDGE, ev)
+            if edge_key in existing_edges:
+                continue
+            graph.edges.append(
+                ResearchEdge(
+                    source=distilled_id,
+                    target=ev,
                     type=DERIVED_FROM_EDGE,
                     metadata={"distilled_id": distilled_id},
                 )

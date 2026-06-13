@@ -267,10 +267,11 @@ def test_layers_filter_only_mints_requested_kind(tmp_path: Path):
 
 
 def test_supersedes_edge_unions_into_one_cluster(tmp_path: Path):
-    # Two findings with low name overlap but linked by a supersedes edge.
+    # Two findings with low name overlap but linked by a supersedes edge; from
+    # two DISTINCT sessions so the cross-session (min_sessions=2) gate is met.
     nodes = [
-        _finding("x1", "alpha note about config flag handling"),
-        _finding("x2", "beta different wording entirely here now"),
+        _finding("x1", "alpha note about config flag handling", session_id="s1"),
+        _finding("x2", "beta different wording entirely here now", session_id="s2"),
     ]
     graph = ResearchGraph(
         nodes=nodes,
@@ -280,6 +281,53 @@ def test_supersedes_edge_unions_into_one_cluster(tmp_path: Path):
     minted = [n for n in out.nodes if n.id.startswith(("Runbook:", "Gotcha:"))]
     assert len(minted) == 1
     assert set(minted[0].metadata["member_ids"]) == {"x1", "x2"}
+
+
+def test_single_session_cluster_is_not_distilled(tmp_path: Path):
+    """A cluster confined to ONE session is not a cross-session Runbook/Gotcha
+    by default (min_sessions=2) — but min_sessions=1 opts back in."""
+    nodes = [
+        _finding("a1", "deploy step run the database migration first", session_id="s1"),
+        _finding("a2", "deploy step run the database migration again", session_id="s1"),
+    ]
+    graph = ResearchGraph(nodes=nodes, edges=[
+        ResearchEdge(source="a2", target="a1", type="supersedes"),
+    ])
+    out = run_distillation_pass(graph, json_client=None, cache_dir=tmp_path)
+    assert not [n for n in out.nodes if n.id.startswith(("Runbook:", "Gotcha:"))]
+
+    out1 = run_distillation_pass(
+        ResearchGraph(nodes=list(nodes), edges=[
+            ResearchEdge(source="a2", target="a1", type="supersedes"),
+        ]),
+        json_client=None, cache_dir=tmp_path, min_sessions=1,
+    )
+    assert len([n for n in out1.nodes if n.id.startswith(("Runbook:", "Gotcha:"))]) == 1
+
+
+def test_distilled_node_inherits_event_provenance(tmp_path: Path):
+    """A distilled node gets derived_from edges to the Event nodes its member
+    findings derive from (event provenance flows up)."""
+    from tesserae.research_graph import ResearchNodeType
+
+    nodes = [
+        _finding("f1", "deploy step run the database migration first", session_id="s1"),
+        _finding("f2", "deploy step run the database migration again", session_id="s2"),
+        ResearchNode(id="ev1", name="Event 1", type=ResearchNodeType.EVENT,
+                     description="ran migration", metadata={"session_id": "s1"}),
+    ]
+    graph = ResearchGraph(nodes=nodes, edges=[
+        ResearchEdge(source="f2", target="f1", type="supersedes"),
+        ResearchEdge(source="f1", target="ev1", type="derived_from"),
+    ])
+    out = run_distillation_pass(graph, json_client=None, cache_dir=tmp_path)
+    distilled = [n for n in out.nodes if n.id.startswith(("Runbook:", "Gotcha:"))]
+    assert len(distilled) == 1
+    did = distilled[0].id
+    assert any(
+        e.source == did and e.target == "ev1" and e.type == "derived_from"
+        for e in out.edges
+    ), "distilled node must inherit derived_from edge to the Event"
 
 
 # ---------------------------------------------------------------------------

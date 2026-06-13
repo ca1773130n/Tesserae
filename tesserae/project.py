@@ -1328,6 +1328,7 @@ class ProjectWiki:
             cache_dir=cache_dir,
             layers=tuple(str(x) for x in layers),
             min_cluster_size=int(distill_cfg.get("min_cluster_size") or 2),
+            min_sessions=int(distill_cfg.get("min_sessions") or 2),
         )
         minted = len(merged.nodes) - before
         if minted:

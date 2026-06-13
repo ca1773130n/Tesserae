@@ -704,6 +704,15 @@ def _merge_same_type_aliased_duplicates(
         # codifies this invariant.
         if node.type in SESSION_FINDING_TYPES:
             continue
+        # AgentRunbook memory layers are likewise NOT collapsed by aggressive
+        # same-name dedup. ``Event`` nodes are session-scoped (same action in two
+        # sessions → same display name but distinct ``metadata.session_id`` +
+        # content-hashed ids); ``Runbook``/``Gotcha`` are cluster-scoped with
+        # content-hashed ids, and two distinct clusters can yield the same title.
+        # Merging them here would fuse separate provenance — exactly the hazard
+        # the session-finding exemption above guards against.
+        if node.type == ResearchNodeType.EVENT or node.type in DISTILLED_MEMORY_TYPES:
+            continue
         # Code-graph symbols (CodeFile/CodeModule/CodeClass/CodeFunction/
         # CodeMethod) are likewise NOT collapsed by aggressive same-name
         # dedup. Two modules each defining ``def main()`` or ``class

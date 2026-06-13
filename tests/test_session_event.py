@@ -170,14 +170,43 @@ def test_findings_derive_from_events_by_turn_id():
     assert [e for e in edges2 if e.type == DERIVED_FROM_EDGE] == []
 
 
-def test_stub_client_enriches_description():
-    session = _session(_default_turns())
-    stub = _StubClient()
-    nodes, _ = extract_events(session, json_client=stub)
+def test_same_named_events_from_two_sessions_survive_merge():
+    """Aggressive same-name dedup must NOT collapse Event nodes from different
+    sessions: identical turns in two sessions yield same display names but
+    distinct (session-scoped) ids — both must survive merge_graphs()."""
+    from tesserae.project import merge_graphs
+    from tesserae.research_graph import ResearchGraph
 
-    assert stub.calls, "stub client should have been invoked"
-    for n in nodes:
-        assert n.description.startswith("ENRICHED: ")
+    a_nodes, _ = extract_events(_session(_default_turns(), session_id="sA"))
+    b_nodes, _ = extract_events(_session(_default_turns(), session_id="sB"))
+    assert a_nodes and b_nodes
+    # Same display names across sessions, different ids.
+    assert {n.name for n in a_nodes} == {n.name for n in b_nodes}
+    assert {n.id for n in a_nodes}.isdisjoint({n.id for n in b_nodes})
+
+    merged = merge_graphs([
+        ResearchGraph(nodes=a_nodes, edges=[]),
+        ResearchGraph(nodes=b_nodes, edges=[]),
+    ])
+    surviving = {n.id for n in merged.nodes if n.type == ResearchNodeType.EVENT}
+    expected = {n.id for n in a_nodes} | {n.id for n in b_nodes}
+    assert surviving == expected, "events from different sessions must all survive merge"
+
+
+def test_event_description_is_deterministic_regardless_of_client():
+    """Event descriptions are serialized into graph.json, so they must be fully
+    deterministic — a json_client must NOT change the bytes (it is accepted for
+    API symmetry but unused). This is the byte-idempotence guard for the Event
+    layer: an uncached LLM enrichment here would diverge graph.json across two
+    identical compiles."""
+    session = _session(_default_turns())
+    with_client, _ = extract_events(session, json_client=_StubClient())
+    without_client, _ = extract_events(session)
+
+    assert [n.description for n in with_client] == [
+        n.description for n in without_client
+    ], "a client must not alter Event descriptions"
+    assert all(not n.description.startswith("ENRICHED: ") for n in with_client)
 
 
 def test_failing_or_absent_client_degrades_to_template():

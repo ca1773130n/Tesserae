@@ -80,11 +80,12 @@ def extract_events(
     (matched by turn id). This is the "integrated into session-finding nodes"
     requirement.
 
-    ``json_client`` (an optional :class:`~tesserae.llm_json.LLMJsonClient`)
-    ONLY enriches each event's one-line state-change description. On ANY
-    failure, or when absent, a deterministic template from the turn is used.
-    This function never raises and never consults wall-clock / RNG, so a rerun
-    yields byte-identical output.
+    ``json_client`` is accepted for API symmetry with the other memory passes
+    but is currently UNUSED: every Event field — including the ``description``,
+    which is serialized into graph.json — is derived deterministically from the
+    turn, with no LLM, no wall-clock and no RNG, so a rerun over an unchanged
+    session yields byte-identical output. (A future enrichment must be
+    content-keyed and cached, like ``memory.distill``, to preserve that.)
 
     Returns ``([], [])`` for an empty / ``None`` session or no significant
     turns.
@@ -114,7 +115,13 @@ def extract_events(
         # stable, no wall-clock / RNG. ``stable_id`` already sha1's the seed.
         id_seed = f"{session_id}|{turn_id}|{action}"
         node_id = stable_id(ResearchNodeType.EVENT.value, id_seed)
-        description = _state_change_description(turn, actor, action, json_client)
+        # The Event ``description`` is fully DETERMINISTIC (template only). It is
+        # serialized into graph.json, so it must not depend on a non-cached LLM
+        # call: an ambient LLM would otherwise produce different bytes across two
+        # identical compiles (the project's byte-idempotence blind spot). Events
+        # are per-transition and numerous, so a per-event LLM call is also too
+        # costly; the deterministic template is sufficient.
+        description = _template_description(turn, actor, action)
 
         timestamp = str(turn.get("timestamp") or "") or session_started_at
         metadata: Dict[str, object] = {
@@ -237,44 +244,6 @@ def _template_description(turn: Mapping[str, object], actor: str, action: str) -
             return f"{actor} invoked {tool_name}: {detail}"
         return f"{actor} invoked {tool_name}"
     return f"{actor} {truncate(text or action, 120)}"
-
-
-def _state_change_description(
-    turn: Mapping[str, object],
-    actor: str,
-    action: str,
-    json_client: object,
-) -> str:
-    """One-line state-change description; LLM-enriched when possible.
-
-    The deterministic template is always computed first and used as the
-    fallback. The LLM (if any) only *replaces* it with a tighter one-liner; ANY
-    failure — exception, empty/None return — silently keeps the template, so
-    the function is degrade-never-raise and the *fallback* path is byte-stable.
-    """
-    template = _template_description(turn, actor, action)
-    if json_client is None:
-        return template
-    complete_text = getattr(json_client, "complete_text", None)
-    if not callable(complete_text):
-        return template
-    try:
-        result = complete_text(
-            system=(
-                "You summarise one agent-session transition into a single "
-                "terse past-tense clause describing the state change. No "
-                "preamble, no trailing punctuation beyond a period."
-            ),
-            user=template,
-            max_retries=1,
-        )
-    except Exception:  # degrade-never-raise — fall back to the template
-        logger.debug("event enrichment failed; using template", exc_info=True)
-        return template
-    if not isinstance(result, str):
-        return template
-    cleaned = " ".join(result.split()).strip()
-    return cleaned or template
 
 
 # ---------------------------------------------------------------------------
