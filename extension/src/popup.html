@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Clip to Tesserae</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #1b1b1f;
+      --muted: #6b6b76;
+      --line: #e3e3e8;
+      --field: #f6f6f8;
+      --accent: #2e7d5b;
+      --accent-fg: #ffffff;
+      --danger: #b3261e;
+      --chip: #eef3f0;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1a1a1e;
+        --fg: #ececef;
+        --muted: #9a9aa4;
+        --line: #2e2e36;
+        --field: #232329;
+        --accent: #3aa377;
+        --accent-fg: #07120d;
+        --danger: #f2685e;
+        --chip: #25302b;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      width: 340px;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        Helvetica, Arial, sans-serif;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .wrap { padding: 14px 14px 12px; }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .logo {
+      width: 18px; height: 18px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      gap: 2px;
+      flex: none;
+    }
+    .logo span { background: var(--accent); border-radius: 2px; }
+    .logo span:nth-child(2) { opacity: .55; }
+    .logo span:nth-child(3) { opacity: .75; }
+    h1 {
+      font-size: 13px;
+      font-weight: 600;
+      margin: 0;
+      letter-spacing: .2px;
+    }
+    .badge-sel {
+      margin-left: auto;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--accent);
+      background: var(--chip);
+      border-radius: 999px;
+      padding: 2px 8px;
+      display: none;
+    }
+    .title {
+      font-weight: 600;
+      font-size: 13px;
+      margin: 0 0 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    .meta {
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 8px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .preview {
+      background: var(--field);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      color: var(--muted);
+      font-size: 11.5px;
+      max-height: 84px;
+      overflow: hidden;
+      white-space: pre-wrap;
+      margin-bottom: 12px;
+      position: relative;
+    }
+    .preview.empty { font-style: italic; }
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      margin: 0 0 4px;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+    }
+    textarea, input[type="text"] {
+      width: 100%;
+      background: var(--field);
+      color: var(--fg);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px 9px;
+      font: inherit;
+      resize: vertical;
+    }
+    textarea:focus, input[type="text"]:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: -1px;
+      border-color: transparent;
+    }
+    textarea { min-height: 48px; margin-bottom: 10px; }
+    input[type="text"] { margin-bottom: 10px; }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .row label {
+      margin: 0;
+      text-transform: none;
+      letter-spacing: 0;
+      font-weight: 500;
+      color: var(--fg);
+      font-size: 12px;
+    }
+    .actions { display: flex; align-items: center; gap: 8px; }
+    button.clip {
+      flex: 1;
+      background: var(--accent);
+      color: var(--accent-fg);
+      border: none;
+      border-radius: 8px;
+      padding: 9px 12px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button.clip:hover { filter: brightness(1.06); }
+    button.clip:disabled { opacity: .55; cursor: default; }
+    .link {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font: inherit;
+      cursor: pointer;
+      text-decoration: underline;
+      padding: 4px;
+    }
+    .status {
+      margin-top: 10px;
+      font-size: 12px;
+      min-height: 16px;
+    }
+    .status.ok { color: var(--accent); }
+    .status.err { color: var(--danger); }
+    .tldr {
+      margin-top: 8px;
+      background: var(--chip);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+      display: none;
+    }
+    .tldr strong { display: block; font-size: 10px; text-transform: uppercase;
+      letter-spacing: .5px; color: var(--muted); margin-bottom: 2px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+      <h1>Clip to Tesserae</h1>
+      <span class="badge-sel" id="selBadge">selection</span>
+    </header>
+
+    <p class="title" id="title">Reading page…</p>
+    <p class="meta" id="meta"></p>
+    <div class="preview empty" id="preview">Extracting readable content…</div>
+
+    <label for="note">Note</label>
+    <textarea id="note" placeholder="Optional note for this clip…"></textarea>
+
+    <label for="tags">Tags (comma-separated)</label>
+    <input type="text" id="tags" placeholder="research, inbox" />
+
+    <div class="row">
+      <input type="checkbox" id="tldr" />
+      <label for="tldr">Generate TL;DR</label>
+    </div>
+
+    <div class="actions">
+      <button class="clip" id="clipBtn" disabled>Clip</button>
+      <button class="link" id="optionsBtn" title="Settings">Settings</button>
+    </div>
+
+    <div class="status" id="status"></div>
+    <div class="tldr" id="tldrBox"><strong>TL;DR</strong><span id="tldrText"></span></div>
+  </div>
+
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

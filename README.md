@@ -219,6 +219,9 @@ the graph view. See [docs](docs/) for details.
   Cognee-ready bundle, runtime cognify is best-effort.
 - **Obsidian** — bidirectional vault sync with user-edit overlay.
   [docs/integrations/obsidian.md](docs/integrations/obsidian.md)
+- **Web Clipper (Chrome extension)** — one-click clip a page or selection
+  into the corpus via `POST /api/clip` / the MCP `ingest` tool.
+  [docs/integrations/chrome-extension.md](docs/integrations/chrome-extension.md)
 
 ## How it compares
 

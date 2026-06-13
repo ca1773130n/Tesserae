@@ -26,8 +26,15 @@ from __future__ import annotations
 import http.server
 import json
 from pathlib import Path
-from typing import Type
+from typing import Optional, Tuple, Type
 from urllib.parse import urlparse
+
+# Hard ceiling on a clip request body. The extension caps captured content at
+# ~200 KB client-side, but the server must never trust the client: a malicious
+# or buggy caller could otherwise stream an arbitrary ``Content-Length`` into
+# memory. 5 MB leaves generous headroom for legitimate clips while bounding the
+# blast radius of a memory-exhaustion attempt.
+_MAX_CLIP_BYTES = 5 * 1024 * 1024
 
 
 def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTTPRequestHandler]:
@@ -43,6 +50,43 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
     class _AskAwareHandler(http.server.SimpleHTTPRequestHandler):
         # Class attribute so tests can introspect / override.
         project_root: Path = resolved
+
+        # ----------------------------------------------------------- CORS gate
+        def _clip_origin(self) -> Tuple[bool, Optional[str]]:
+            """Decide whether the request may write a clip, and what origin to
+            reflect back.
+
+            The clip endpoint mutates the knowledge graph and can trigger an
+            LLM summarization, so it must not be callable from arbitrary web
+            pages the user happens to visit (CSRF). The policy:
+
+            * No ``Origin`` header -> a non-browser caller (curl, a same-origin
+              widget, the test client). Allow it; CORS reflection is moot.
+            * A browser extension origin (``chrome-extension://`` /
+              ``moz-extension://``) -> the intended caller. Allow + reflect.
+            * An ``http(s)`` origin whose host is loopback -> a local tool /
+              dev page. Allow + reflect.
+            * Anything else (a real website) -> reject.
+
+            Returns ``(allowed, origin_to_reflect)``. ``origin_to_reflect`` is
+            ``None`` when there is nothing to echo (no Origin header).
+            """
+            origin = self.headers.get("Origin")
+            if not origin:
+                return (True, None)
+            if origin.startswith(("chrome-extension://", "moz-extension://")):
+                return (True, origin)
+            try:
+                parsed = urlparse(origin)
+            except ValueError:
+                return (False, None)
+            if parsed.scheme in ("http", "https") and parsed.hostname in (
+                "localhost",
+                "127.0.0.1",
+                "::1",
+            ):
+                return (True, origin)
+            return (False, None)
 
         # -------------------------------------------------------------- GET
         def do_GET(self):  # noqa: N802 — fixed by stdlib API
@@ -75,9 +119,33 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
                 self.close_connection = True
                 return
 
+        # ----------------------------------------------------------- OPTIONS
+        def do_OPTIONS(self):  # noqa: N802 — fixed by stdlib API
+            # CORS preflight for the clip endpoint (browser extension /
+            # bookmarklet posts cross-origin). Reflect only a validated origin
+            # so a real website's preflight fails and its POST is blocked by
+            # the browser before it ever reaches us.
+            allowed, reflect = self._clip_origin()
+            if not allowed:
+                self.send_response(403)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            self.send_response(204)
+            if reflect:
+                self.send_header("Access-Control-Allow-Origin", reflect)
+                self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
         # -------------------------------------------------------------- POST
         def do_POST(self):  # noqa: N802 — fixed by stdlib API
             parsed = urlparse(self.path)
+            if parsed.path == "/api/clip":
+                self._handle_clip()
+                return
             if parsed.path != "/api/ask":
                 self._send_json(404, {"error": "not found"})
                 return
@@ -124,6 +192,88 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
 
             self._send_json(200, envelope)
 
+        # -------------------------------------------------------------- clip
+        def _handle_clip(self):
+            # Reject cross-origin writes from arbitrary websites before doing
+            # any work (parsing, project load, LLM call). ``reflect`` is the
+            # origin to echo on every response below.
+            allowed, reflect = self._clip_origin()
+            if not allowed:
+                self._send_json_cors(403, {"error": "origin not allowed"}, reflect)
+                return
+
+            # Bound the body BEFORE reading it into memory. The extension caps
+            # content client-side, but the server must enforce its own limit.
+            try:
+                length = int(self.headers.get("Content-Length") or "0")
+            except (TypeError, ValueError):
+                self._send_json_cors(400, {"error": "bad Content-Length"}, reflect)
+                return
+            if length > _MAX_CLIP_BYTES:
+                self._send_json_cors(413, {"error": "payload too large"}, reflect)
+                return
+
+            # Read + parse the JSON body exactly like /api/ask does.
+            try:
+                raw = self.rfile.read(length) if length > 0 else b""
+                payload = json.loads(raw.decode("utf-8") or "{}")
+            except Exception as exc:  # pragma: no cover — request shape
+                self._send_json_cors(400, {"error": f"bad request: {exc}"}, reflect)
+                return
+
+            if not isinstance(payload, dict):
+                self._send_json_cors(400, {"error": "expected JSON object"}, reflect)
+                return
+
+            url = (payload.get("url") or "").strip()
+            if not url:
+                self._send_json_cors(400, {"error": "url required"}, reflect)
+                return
+
+            # Selection wins over full content when present and non-empty.
+            selection = payload.get("selection")
+            content = selection if (isinstance(selection, str) and selection.strip()) \
+                else payload.get("content")
+            if not isinstance(content, str) or not content.strip():
+                self._send_json_cors(400, {"error": "content required"}, reflect)
+                return
+
+            title = payload.get("title")
+            note = payload.get("note")
+            tags = payload.get("tags")
+            tldr = payload.get("tldr")
+            tldr = True if tldr is None else bool(tldr)
+
+            # Import inside the handler so importing this module stays cheap
+            # (the static-file path never touches clip/ingest machinery).
+            from .project import ProjectWiki
+            from .clip import ingest_clip
+
+            try:
+                wiki = ProjectWiki.load(type(self).project_root)
+            except FileNotFoundError as exc:
+                self._send_json_cors(409, {"error": f"no project: {exc}"}, reflect)
+                return
+            except Exception as exc:
+                self._send_json_cors(500, {"error": f"clip failed: {exc}"}, reflect)
+                return
+
+            try:
+                report = ingest_clip(
+                    wiki,
+                    content=content,
+                    url=url,
+                    title=title,
+                    note=note,
+                    tags=tags,
+                    tldr=tldr,
+                )
+            except Exception as exc:
+                self._send_json_cors(500, {"error": f"clip failed: {exc}"}, reflect)
+                return
+
+            self._send_json_cors(200, report, reflect)
+
         # ---------------------------------------------------------- helpers
         def _send_json(self, status: int, body: dict) -> None:
             encoded = json.dumps(body, ensure_ascii=False, default=str).encode("utf-8")
@@ -131,6 +281,24 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(encoded)))
             self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def _send_json_cors(
+            self, status: int, body: dict, origin: Optional[str] = None
+        ) -> None:
+            # Identical to _send_json but reflects a *validated* CORS origin so
+            # the clip endpoint works from the extension/a localhost tool while
+            # staying closed to arbitrary websites. ``origin`` is None for
+            # non-browser callers (no Origin header) — nothing to echo.
+            encoded = json.dumps(body, ensure_ascii=False, default=str).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.send_header("Cache-Control", "no-store")
+            if origin:
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
             self.end_headers()
             self.wfile.write(encoded)
 

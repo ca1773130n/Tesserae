@@ -875,6 +875,51 @@ class LLMWikiMCPServer:
                     "additionalProperties": False,
                 },
             },
+            {
+                "name": "ingest",
+                "description": (
+                    "Ingest raw web/text content (e.g. a browser clip) into "
+                    "the active project's knowledge graph"
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
+                        "content": {
+                            "type": "string",
+                            "description": "Raw text/markdown content to ingest.",
+                        },
+                        "url": {
+                            "type": "string",
+                            "description": "Source URL the content was clipped from.",
+                        },
+                        "title": {
+                            "type": "string",
+                            "description": "Optional title for the ingested document.",
+                        },
+                        "note": {
+                            "type": "string",
+                            "description": "Optional user note to attach to the clip.",
+                        },
+                        "tags": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional tags for the ingested document.",
+                        },
+                        "tldr": {
+                            "type": "boolean",
+                            "default": True,
+                            "description": (
+                                "When true (default), best-effort generate a "
+                                "TL;DR summary of the content."
+                            ),
+                        },
+                    },
+                    "required": ["content"],
+                    "additionalProperties": False,
+                },
+            },
             # Community summaries (post-compile pass; opt-in via
             # ``TESSERAE_COMMUNITY_SUMMARIES=true``). GraphRAG-style global
             # themes view: each entry bundles a cluster title, description,
@@ -1516,6 +1561,26 @@ class LLMWikiMCPServer:
                 "char_budget_used": bundle.char_budget_used,
                 "synthesized": bundle.synthesized,
             }
+        if name == "ingest":
+            from .project import ProjectWiki
+            from .clip import ingest_clip
+
+            content = str(args.get("content") or "").strip()
+            if not content:
+                raise ValueError("ingest: 'content' is required and must be non-empty")
+
+            project_root = self._resolve_project_root_for_ask(args)
+            wiki = ProjectWiki.load(project_root)
+            report = ingest_clip(
+                wiki,
+                content=content,
+                url=str(args.get("url") or ""),
+                title=args.get("title"),
+                note=args.get("note"),
+                tags=_coerce_str_list(args.get("tags")) or None,
+                tldr=bool(args.get("tldr", True)),
+            )
+            return report
         if name == "list_communities":
             graph = self._load_requested_graph(args)
             return self._mcp_list_communities(

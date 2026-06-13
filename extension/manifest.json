@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Clip to Tesserae",
+  "version": "0.1.0",
+  "description": "One-click clip of the current page's readable content or selection to a local Tesserae server.",
+  "permissions": ["activeTab", "scripting", "storage", "contextMenus", "notifications"],
+  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "Clip to Tesserae"
+  },
+  "options_page": "src/options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "commands": {
+    "clip-page": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "Clip current page to Tesserae"
+    }
+  }
+}
