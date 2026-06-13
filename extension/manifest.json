@@ -1,8 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Clip to Tesserae",
+  "short_name": "Tesserae Clip",
   "version": "0.1.0",
   "description": "One-click clip of the current page's readable content or selection to a local Tesserae server.",
+  "author": "ca1773130n",
+  "homepage_url": "https://github.com/ca1773130n/Tesserae",
   "permissions": ["activeTab", "scripting", "storage", "contextMenus", "notifications"],
   "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
   "background": {
