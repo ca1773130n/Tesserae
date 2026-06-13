@@ -6,6 +6,10 @@ publish: a Chrome Web Store **developer account** and the **upload** itself
 
 ## 0. Prerequisites (one-time, you)
 
+> Publisher account ID: `4abf11fe-003b-4f3e-8eb9-3e4742b14b07`
+> (account identifier only — NOT an API credential and not the item ID; the
+> Web Store API authenticates with OAuth tokens and targets a per-item ID.)
+
 1. A Google account registered as a **Chrome Web Store developer**
    (https://chrome.google.com/webstore/devconsole) — one-time **$5** fee.
 2. A **privacy policy URL** — host `extension/store/PRIVACY.md` somewhere public
