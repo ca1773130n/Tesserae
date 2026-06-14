@@ -12,8 +12,11 @@ publish: a Chrome Web Store **developer account** and the **upload** itself
 
 1. A Google account registered as a **Chrome Web Store developer**
    (https://chrome.google.com/webstore/devconsole) — one-time **$5** fee.
-2. A **privacy policy URL** — host `extension/store/PRIVACY.md` somewhere public
-   (GitHub Pages, or link the file on GitHub) and note the URL.
+2. A **privacy policy URL**. The policy is committed at `extension/PRIVACY_POLICY.md`,
+   so once pushed to `main` you can paste its public GitHub URL directly into the
+   dashboard's **Privacy practices** tab:
+   `https://github.com/ca1773130n/Tesserae/blob/main/extension/PRIVACY_POLICY.md`
+   (`extension/store/PRIVACY.md` is an identical copy bundled with the listing assets.)
 3. At least **one screenshot** at 1280×800 or 640×400 (see step 1).
 
 ## 1. Build the package
