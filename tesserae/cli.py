@@ -2542,10 +2542,90 @@ def _handle_config_show(args: argparse.Namespace) -> int:
     return _handle_llm_defaults(args)
 
 
+def _handle_config_status(args: argparse.Namespace) -> int:
+    """`config status` — show the RESOLVED LLM backend (with the SOURCE of each
+    setting) and ping it for liveness.
+
+    Answers the two otherwise-invisible questions: *which* backend is actually
+    in effect (env > project config > ~/.tesserae/config.json > default), and
+    *is it alive* — a rate-limited / mis-authed codex account silently makes
+    session extraction produce zero findings."""
+    import os as _os
+
+    from .llm_json import (
+        _load_global_llm_config,
+        build_default_json_client,
+        resolve_llm_client_settings,
+    )
+
+    project_cfg: dict = {}
+    proj = getattr(args, "project", None)
+    if proj:
+        cfgp = Path(proj) / ".tesserae" / "config.json"
+        if cfgp.is_file():
+            try:
+                project_cfg = json.loads(cfgp.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                project_cfg = {}
+    global_cfg = _load_global_llm_config()
+    settings = resolve_llm_client_settings(project_cfg)
+
+    def _source(key: str, env_name: str) -> str:
+        if _os.environ.get(env_name):
+            return f"env {env_name}"
+        if project_cfg.get(key) is not None:
+            return "project .tesserae/config.json"
+        if global_cfg.get(key) is not None:
+            return "~/.tesserae/config.json"
+        return "default"
+
+    provider = settings["provider"]
+    print("Tesserae LLM backend (resolved" + (f" for {proj}" if proj else "") + "):")
+    print(f"  provider   : {provider}   [{_source('llm_provider', 'TESSERAE_LLM_PROVIDER')}]")
+    if provider == "codex":
+        home = settings["codex_home"] or "~/.codex (OS default)"
+        print(f"  codex_home : {home}   [{_source('llm_codex_home', 'CODEX_HOME')}]")
+        effort = settings.get("codex_reasoning_effort") or "medium"
+        print(f"  effort     : {effort}   [{_source('llm_codex_reasoning_effort', 'TESSERAE_CODEX_REASONING_EFFORT')}]")
+    else:
+        dirs = settings["claude_config_dirs"] or ["<CLI default>"]
+        print(f"  claude_dirs: {dirs}   [{_source('llm_claude_config_dirs', 'CLAUDE_CONFIG_DIR')}]")
+
+    if not getattr(args, "ping", True):
+        return 0
+
+    client = build_default_json_client(
+        provider=provider,
+        codex_home=settings["codex_home"],
+        claude_config_dirs=settings["claude_config_dirs"],
+    )
+    if client is None:
+        print("  liveness   : ✗ no client could be built (CLI missing / not configured)")
+        return 1
+    try:
+        resp = client.complete_json(
+            system="Return JSON only.",
+            user='Return {"ok": true} exactly.',
+            schema_name="probe",
+            cache_key="config-status-probe",
+        )
+    except Exception as exc:  # noqa: BLE001 — surface the backend's own error
+        print(f"  liveness   : ✗ FAILED — {type(exc).__name__}: {str(exc)[:200]}")
+        return 1
+    if resp:
+        print("  liveness   : ✓ OK (backend responded)")
+        return 0
+    print(
+        "  liveness   : ✗ FAILED — no response (rate-limited / auth / unsupported "
+        "model). Session extraction will produce zero findings until this is fixed."
+    )
+    return 1
+
+
 def _build_config_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae config",
-        description="Machine-wide LLM defaults (~/.tesserae/config.json): llm | show.",
+        description="LLM backend: llm (set machine-wide defaults) | show | status (resolved view + liveness).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
@@ -2572,6 +2652,21 @@ def _build_config_parser() -> argparse.ArgumentParser:
 
     p_show = sub.add_parser("show", help="Print the effective machine-wide LLM defaults and exit.")
     p_show.set_defaults(_handler="_handle_config_show")
+
+    p_status = sub.add_parser(
+        "status",
+        help="Show the RESOLVED LLM backend (provider + home + source) and ping it for liveness.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae config status                 # resolved backend + live ping\n"
+            "  tesserae config status --project .     # as this project sees it\n"
+            "  tesserae config status --no-ping       # skip the live call\n"
+        ),
+    )
+    p_status.add_argument("--project", default=None, help="Resolve as a specific project sees it (reads its .tesserae/config.json).")
+    p_status.add_argument("--no-ping", dest="ping", action="store_false", default=True, help="Skip the live backend ping (don't spend an LLM call).")
+    p_status.set_defaults(_handler="_handle_config_status")
     return parser
 
 

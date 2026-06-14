@@ -444,6 +444,7 @@ class ProjectWiki:
             provider=settings["provider"],
             claude_config_dirs=settings["claude_config_dirs"],
             codex_home=settings["codex_home"],
+            codex_reasoning_effort=settings.get("codex_reasoning_effort"),
         )
 
     def ingest(
