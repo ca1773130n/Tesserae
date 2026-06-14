@@ -393,6 +393,12 @@ def test_compile_keeps_exactly_the_dieted_dests():
         "limit",
         "refresh_integrations",
         "sessions_enabled",
+        # ``distill_enabled`` is a sanctioned feature toggle (peer of
+        # ``--sessions``): ``--distill`` / ``--no-distill`` flips the opt-in
+        # AgentRunbook distillation passes for this run, overriding the
+        # config.json ``distillation.enabled`` key — so it stays a CLI flag
+        # rather than a pure ``compile_options.*`` config key.
+        "distill_enabled",
         "llm_provider",
         "claude_config_dir",
         "codex_home",

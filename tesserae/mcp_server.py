@@ -871,6 +871,16 @@ class LLMWikiMCPServer:
                                 "selected nodes. Default false is fully deterministic."
                             ),
                         },
+                        "multi_pool": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "AgentRunbook multi-pool retrieval: decompose the "
+                                "query into sub-queries and reserve budget slots for "
+                                "the most relevant Runbook / Gotcha / Event "
+                                "distilled-memory nodes. Default false = single-pool."
+                            ),
+                        },
                     },
                     "additionalProperties": False,
                 },
@@ -1545,6 +1555,7 @@ class LLMWikiMCPServer:
             budget_arg = args.get("budget")
             budget = 32_000 if budget_arg is None else int(budget_arg)
             synthesize = bool(args.get("synthesize") or False)
+            multi_pool = bool(args.get("multi_pool") or False)
             bundle = compile_context(
                 graph,
                 project_root,
@@ -1553,6 +1564,7 @@ class LLMWikiMCPServer:
                 depth=depth,
                 budget=budget,
                 synthesize=synthesize,
+                multi_pool=multi_pool,
             )
             return {
                 "body": bundle.body,

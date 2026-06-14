@@ -21,6 +21,8 @@ import shutil
 from pathlib import Path
 from typing import Any, Iterator, List, Optional, Union
 
+import pytest
+
 from tesserae.memory.store import bump_access, read_memory
 from tesserae.project import ProjectWiki, SessionExtractionOptions
 from tesserae.ports import Source
@@ -35,6 +37,25 @@ _MEMORY_FIELDS = (
     "confidence",
     "superseded",
 )
+
+
+@pytest.fixture(autouse=True)
+def _deterministic_compile(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Scope KB-07 byte-idempotence to the DETERMINISTIC compile projection.
+
+    The byte-idempotence guarantee is for the deterministic (no-LLM) compile —
+    not the opt-in, LLM-backed ``community_summaries`` pass, which is default-on
+    and mints a ``CommunitySummary`` node only when a live LLM client succeeds.
+    A bare ``wiki.compile()`` here would therefore depend on whether the
+    developer happens to have a local LLM backend (codex/claude) configured:
+    if the LLM is intermittently available, compile 1 mints a summary that
+    compile 2 skips (or vice versa), and ``graph.json`` diverges. CI (no LLM)
+    was always deterministic; this makes local runs match by pinning the
+    LLM-backed pass off — exactly the "no-backend compile" this module's
+    docstring assumes, and consistent with the sibling tests that pass
+    ``SessionExtractionOptions(llm_enabled="false")``.
+    """
+    monkeypatch.setenv("TESSERAE_COMMUNITY_SUMMARIES", "false")
 
 
 def _seed_project(project_root: Path) -> ProjectWiki:

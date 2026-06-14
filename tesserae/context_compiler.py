@@ -149,6 +149,7 @@ def compile_context(
     budget: int = 32_000,
     synthesize: bool = False,
     backend=None,
+    multi_pool: bool = False,
 ) -> ContextBundle:
     """Compile a tailored, cited context bundle for ``query`` / ``seeds``.
 
@@ -166,14 +167,25 @@ def compile_context(
                 seed_ids.append(sid)
                 seen.add(sid)
     if query and query.strip():
-        result = hybrid_search(
-            graph, query, top_k=max(1, depth) * 5, backend=backend
-        )
-        for scored in result.scored:
-            nid = scored.node.id
-            if nid not in seen:
-                seed_ids.append(nid)
-                seen.add(nid)
+        # Multi-pool retrieval (AgentRunbook): decompose the question into
+        # sub-queries and union hybrid-search seeds across them. The default
+        # (single-pool) path is byte-identical — ``decompose`` returns
+        # ``[query]`` when ``multi_pool`` is off.
+        if multi_pool:
+            from .retrieval.query_decompose import decompose_query
+
+            subqueries = decompose_query(query, max_subqueries=5) or [query]
+        else:
+            subqueries = [query]
+        for subq in subqueries:
+            result = hybrid_search(
+                graph, subq, top_k=max(1, depth) * 5, backend=backend
+            )
+            for scored in result.scored:
+                nid = scored.node.id
+                if nid not in seen:
+                    seed_ids.append(nid)
+                    seen.add(nid)
 
     # Empty query + no valid seeds -> empty-but-valid bundle.
     if not seed_ids:
@@ -211,6 +223,34 @@ def compile_context(
     if not ranked:  # PITFALL 1: disconnected seeds -> fall back to seed order.
         ranked = [(sid, 0.0) for sid in seed_ids]
     ranked_nodes = [nid for nid, _ in ranked]
+
+    # Multi-pool reservation: guarantee the most relevant distilled-memory node
+    # of each pool (Runbook / Gotcha / Event) in the neighbourhood gets a budget
+    # slot, even when raw findings would otherwise fill the window. We pull the
+    # top in-neighbourhood node of each pool from the FULL PPR ranking (so a
+    # relevant distilled node below the raw cap is still surfaced) and move it to
+    # the front of ``ranked``. Off by default -> default path untouched.
+    if multi_pool:
+        from .research_graph import ResearchNodeType
+
+        _pools = (
+            ResearchNodeType.RUNBOOK,
+            ResearchNodeType.GOTCHA,
+            ResearchNodeType.EVENT,
+        )
+        _in_nb_ranked = [(nid, sc) for nid, sc in full_ranked if nid in in_neighborhood]
+        _reserved: List[tuple] = []
+        _reserved_ids: set = set()
+        for _pool in _pools:
+            for _nid, _sc in _in_nb_ranked:
+                _n = node_index.get(_nid)
+                if _n is not None and _n.type == _pool and _nid not in _reserved_ids:
+                    _reserved.append((_nid, _sc))
+                    _reserved_ids.add(_nid)
+                    break  # one per pool
+        if _reserved:
+            ranked = _reserved + [r for r in ranked if r[0] not in _reserved_ids]
+            ranked_nodes = [nid for nid, _ in ranked]
 
     # --- Step 3: budget-bound selection (deterministic, PPR order) ----------
     store: Optional[WikiPageStore] = None
