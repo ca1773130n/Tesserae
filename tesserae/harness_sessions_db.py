@@ -23,7 +23,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List
 
-from .harness_sessions import HarnessSession, session_matches_project
+from .harness_sessions import (
+    HarnessSession,
+    is_tesserae_internal_session,
+    session_matches_project,
+)
 
 
 class HarnessSessionsDB:
@@ -146,6 +150,26 @@ class HarnessSessionsDB:
         """
         with self._connect() as con:
             return int(con.execute("select count(*) from sessions").fetchone()[0])
+
+    def prune_internal_sessions(self) -> int:
+        """Delete rows that are Tesserae's OWN captured LLM calls (self-capture).
+
+        Retroactive cleanup for DBs polluted before the discovery/tailer filter
+        existed. Returns the number of session rows removed.
+        """
+        to_delete: List[str] = []
+        with self._connect() as con:
+            rows = con.execute("select session_json from sessions").fetchall()
+            for (session_json,) in rows:
+                try:
+                    sess = HarnessSession.from_dict(json.loads(session_json))
+                except (json.JSONDecodeError, TypeError, KeyError):
+                    continue
+                if is_tesserae_internal_session(sess):
+                    to_delete.append(sess.id)
+            for sid in to_delete:
+                con.execute("delete from sessions where id = ?", (sid,))
+        return len(to_delete)
 
     # ------------------------------------------------------------------ #
     # Tail offsets (restart-resume)                                       #

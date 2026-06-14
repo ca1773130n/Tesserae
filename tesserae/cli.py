@@ -2185,6 +2185,32 @@ def _handle_sessions_list(args: argparse.Namespace) -> int:
     return _handle_sessions(args)
 
 
+def _handle_sessions_prune_internal(args: argparse.Namespace) -> int:
+    """Retroactively delete Tesserae's OWN captured LLM calls from the live DB.
+
+    The harness session monitor records every codex/claude CLI invocation —
+    including the ones Tesserae itself runs during compile (extraction,
+    synthesis, …). Before the discovery/tailer filter existed those landed in
+    ``.tesserae/harness_sessions.db`` as if they were user sessions, drowning
+    real work. This prunes them in one pass; the live filter prevents new ones.
+    """
+    wiki = ProjectWiki.load(args.project)
+    live_db_path = wiki.project_root / ".tesserae" / "harness_sessions.db"
+    if not live_db_path.exists():
+        print(f"No live sessions DB at {live_db_path}; nothing to prune.")
+        return 0
+    from .harness_sessions_db import HarnessSessionsDB
+
+    db = HarnessSessionsDB(live_db_path)
+    before = db.count_sessions()
+    removed = db.prune_internal_sessions()
+    print(
+        f"Pruned Tesserae self-captured sessions: removed={removed} "
+        f"remaining={before - removed} db={live_db_path}"
+    )
+    return 0
+
+
 def _build_sessions_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae sessions",
@@ -2225,6 +2251,12 @@ def _build_sessions_parser() -> argparse.ArgumentParser:
     p_list = sub.add_parser("list", help="List normalized harness sessions for this project")
     p_list.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     p_list.set_defaults(_handler="_handle_sessions_list")
+    p_prune = sub.add_parser(
+        "prune-internal",
+        help="Delete Tesserae's OWN captured compile-time LLM calls from the live sessions DB (self-capture cleanup)",
+    )
+    p_prune.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_prune.set_defaults(_handler="_handle_sessions_prune_internal")
     return parser
 
 

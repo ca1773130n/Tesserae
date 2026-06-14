@@ -193,6 +193,64 @@ def _root_supports_codex(root: Path) -> bool:
     return any((root / marker).exists() for marker in ("sessions", "history.jsonl", "config.toml", "auth.json"))
 
 
+# Verbatim opening phrases of Tesserae's OWN LLM system prompts. A discovered
+# "session" that is really one of Tesserae's compile-time codex/claude calls
+# (extraction, synthesis, community summaries, research, distillation, memory
+# arbitration, doc extraction, …) is recorded by the harness like any CLI session
+# and opens with one of these. We must NOT ingest our own LLM calls as user
+# sessions — that is a self-capture feedback loop (the session DB fills with
+# Tesserae's prompts, drowning real work, and the next compile "extracts findings"
+# from Tesserae's own extraction calls).
+#
+# Keep in sync when a new Tesserae system prompt is added — the coverage test
+# ``tests/test_harness_self_capture.py::test_every_system_prompt_is_covered``
+# greps the package for system-prompt constants and fails if one is unlisted.
+_TESSERAE_PROMPT_SIGNATURES: tuple[str, ...] = (
+    "You are an extractor that reads agent/user conversation transcripts",
+    "You are summarizing a community of related typed research-graph nodes",
+    "You are extracting a typed research intelligence graph for Tesserae",
+    "You are an Tesserae synthesis writer",
+    "You are the librarian voice of Tesserae",
+    "You are an ontology engineer assisting the Tesserae knowledge-graph",
+    "You are the lead planner of an agentic research loop",
+    "You are a research subagent. Given a sub-question",
+    "You are the writer of an agentic research report",
+    "You are a structured-output adapter for Cognee",
+    "Summarize the following in 2 sentences as a TL;DR",
+    # JSON-client compile/retrieval prompts (codex/claude exec, also captured):
+    "You distill a cluster of related coding/agent session findings",
+    "You write ONE terse extraction-guidance bullet",
+    "You decide whether one research-session finding obsoletes another",
+    "You arbitrate a contradiction between two research performance claims",
+    "You split a single retrieval question into a short list",
+)
+
+
+def is_tesserae_internal_session(session: HarnessSession) -> bool:
+    """True when a discovered "session" is actually one of Tesserae's OWN
+    compile-time LLM subprocess calls, captured by the harness session monitor.
+
+    Detection is by verbatim system-prompt signature (see
+    :data:`_TESSERAE_PROMPT_SIGNATURES`). Matching is *anchored* — a blob must
+    BEGIN with a signature, not merely contain one — so a real user session that
+    quotes or reviews one of these prompts mid-conversation is NOT flagged. The
+    title is already harness-boilerplate-stripped (see :func:`_title_and_preview`),
+    so a Tesserae call's title/preview opens with its system prompt; the first few
+    raw turns are also checked (anchored) in case a leading boilerplate turn pushed
+    the prompt out of the title. False positives (dropping real work) are worse
+    than false negatives here, so the anchor is deliberate.
+    """
+    blobs = [session.title or "", session.summary or "", session.redacted_preview or ""]
+    turns = (session.metadata or {}).get("turns") if isinstance(session.metadata, dict) else None
+    if isinstance(turns, list):
+        for turn in turns[:3]:
+            if isinstance(turn, Mapping):
+                blobs.append(str(turn.get("text") or ""))
+    return any(
+        blob.lstrip().startswith(_TESSERAE_PROMPT_SIGNATURES) for blob in blobs
+    )
+
+
 def discover_harness_sessions(
     project_root: str | Path,
     roots: Optional[Sequence[str | Path]] = None,
@@ -236,6 +294,9 @@ def discover_harness_sessions(
     finally:
         if scan_cache is not None:
             scan_cache.close()
+    # Drop Tesserae's own compile-time LLM calls captured by the harness — never
+    # ingest our own extraction/synthesis calls as user sessions (self-capture).
+    sessions = [s for s in sessions if not is_tesserae_internal_session(s)]
     sessions.sort(key=lambda s: (s.started_at or "", s.harness, s.slug), reverse=True)
     return sessions
 
