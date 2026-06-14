@@ -2585,6 +2585,8 @@ def _handle_config_status(args: argparse.Namespace) -> int:
     if provider == "codex":
         home = settings["codex_home"] or "~/.codex (OS default)"
         print(f"  codex_home : {home}   [{_source('llm_codex_home', 'CODEX_HOME')}]")
+        effort = settings.get("codex_reasoning_effort") or "medium"
+        print(f"  effort     : {effort}   [{_source('llm_codex_reasoning_effort', 'TESSERAE_CODEX_REASONING_EFFORT')}]")
     else:
         dirs = settings["claude_config_dirs"] or ["<CLI default>"]
         print(f"  claude_dirs: {dirs}   [{_source('llm_claude_config_dirs', 'CLAUDE_CONFIG_DIR')}]")

@@ -584,11 +584,20 @@ class CodexCLIJsonClient:
         model: str = "gpt-5.4",
         codex_homes: Optional[List[str]] = None,
         timeout: int = 180,
+        reasoning_effort: Optional[str] = "medium",
     ) -> None:
         import os as _os
         from pathlib import Path as _Path
 
         self.model = model
+        # Reasoning effort for Tesserae's own codex calls. Defaults to
+        # ``medium`` — structured graph/finding extraction does NOT need the
+        # ``xhigh`` a user may set globally in ``~/.codex/config.toml`` for
+        # interactive work, and xhigh makes a multi-chunk compile many times
+        # slower. Passed as ``-c model_reasoning_effort=<effort>`` so it
+        # overrides config.toml for THIS process only. ``None`` inherits
+        # config.toml.
+        self.reasoning_effort = (str(reasoning_effort).strip() or None) if reasoning_effort else None
         # Resolution order mirrors ClaudeCLIJsonClient.config_dirs:
         #   1. Explicit ``codex_homes`` argument (tests, CLI flags).
         #   2. ``CODEX_HOME`` env var (multi-account setups point it at
@@ -641,6 +650,11 @@ class CodexCLIJsonClient:
                     "--skip-git-repo-check",
                     "--sandbox", "read-only",
                     "--model", self.model,
+                    *(
+                        ["-c", f"model_reasoning_effort={self.reasoning_effort}"]
+                        if self.reasoning_effort
+                        else []
+                    ),
                     "--output-last-message", str(output_path),
                     "-",
                 ]
@@ -854,10 +868,21 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
         or None
     )
 
+    # Reasoning effort for Tesserae's own codex calls. Default ``medium`` —
+    # extraction does not need the ``xhigh`` a user may set globally for
+    # interactive codex, and xhigh makes compiles many times slower.
+    codex_reasoning_effort = (
+        os.environ.get("TESSERAE_CODEX_REASONING_EFFORT")
+        or cfg.get("llm_codex_reasoning_effort")
+        or global_cfg.get("llm_codex_reasoning_effort")
+        or "medium"
+    )
+
     return {
         "provider": provider,
         "claude_config_dirs": claude_config_dirs,
         "codex_home": codex_home,
+        "codex_reasoning_effort": codex_reasoning_effort,
     }
 
 
@@ -866,6 +891,7 @@ def build_default_json_client(
     provider: Optional[str] = None,
     claude_config_dirs: Optional[List[str]] = None,
     codex_home: Optional[str] = None,
+    codex_reasoning_effort: Optional[str] = "medium",
 ) -> Optional[LLMJsonClient]:
     """Return the best-available JSON-completion client.
 
@@ -904,6 +930,7 @@ def build_default_json_client(
             return CodexCLIJsonClient(
                 model=model or "gpt-5.4",
                 codex_homes=[codex_home] if codex_home else None,
+                reasoning_effort=codex_reasoning_effort,
             )
         return None
 
