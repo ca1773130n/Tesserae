@@ -45,6 +45,7 @@ from ..harness_sessions import (
     _parse_codex_session,
     _rows_match_project,
     discover_harness_roots,
+    is_tesserae_internal_session,
 )
 from ..harness_sessions_db import HarnessSessionsDB
 
@@ -370,6 +371,15 @@ class SessionTailer:
         if session is None:
             # File doesn't (yet) match the project — advance offset so we don't
             # re-scan the same complete bytes forever, but emit nothing.
+            self._offsets[path] = new_offset
+            self.sessions_db.set_offset(path, new_offset)
+            return
+
+        if is_tesserae_internal_session(session):
+            # Tesserae's OWN compile-time LLM call (codex/claude exec for
+            # extraction/synthesis/etc.) captured by the monitor — never ingest
+            # it (self-capture feedback loop). Advance the offset so we don't
+            # re-scan, but emit nothing.
             self._offsets[path] = new_offset
             self.sessions_db.set_offset(path, new_offset)
             return
