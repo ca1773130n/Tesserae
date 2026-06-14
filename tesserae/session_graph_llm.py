@@ -169,8 +169,16 @@ def extract_with_llm(
     overlap: int = 5,
     cache_key: Optional[str] = None,
     guidance: str = "",
+    stats: Optional[dict] = None,
 ) -> List[Finding]:
     """Run the LLM extraction pass over a single session's transcript.
+
+    ``stats`` (optional) is a mutable dict the caller can pass to learn whether
+    the LLM calls SUCCEEDED or FAILED — distinguishing "the model returned no
+    findings" from "the model never answered" (rate limit / auth / dead
+    backend). When provided it accumulates ``calls`` (LLM calls attempted) and
+    ``failed`` (calls that returned ``None``). A caller that caches results
+    should NOT cache a chunk whose call failed, or an outage gets baked in.
 
     Returns a list of validated :class:`Finding` objects. Returns an
     empty list when:
@@ -208,6 +216,8 @@ def extract_with_llm(
             transcript_turns=chunk,
             doc_id_context=doc_id_context,
         )
+        if stats is not None:
+            stats["calls"] = stats.get("calls", 0) + 1
         response = client.complete_json(
             system=system_prompt,
             user=user,
@@ -215,6 +225,11 @@ def extract_with_llm(
             cache_key=cache_key,
         )
         if response is None:
+            # FAILED call (no answer): rate-limit / auth / dead backend, not
+            # "no findings". Record it so the caller can avoid caching the
+            # empty result and can warn loudly.
+            if stats is not None:
+                stats["failed"] = stats.get("failed", 0) + 1
             logger.info(
                 "session %s chunk %d/%d: client returned None; skipping chunk",
                 session.id, chunk_idx + 1, len(chunks),

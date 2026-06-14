@@ -96,6 +96,10 @@ class SessionGraphExtractor:
 
     def extract(self) -> ResearchGraph:
         """Return the merged structural + LLM slice for the project."""
+        # LLM-call accounting for the loud-failure surface (set before the
+        # per-session pass increments them).
+        self._llm_calls = 0
+        self._llm_failed = 0
         in_project = [
             s for s in self.sessions
             if session_matches_project(s, self.project_root)
@@ -150,6 +154,21 @@ class SessionGraphExtractor:
 
         # Prune cache files for sessions that no longer exist.
         self._prune_stale_caches({s.id for s in in_project})
+
+        # Loud-failure surface: if the LLM backend was reachable-but-failing
+        # (rate-limited / auth / wrong model), extraction silently produces no
+        # findings. Make that unmissable instead of caching zeros. The failed
+        # chunks were intentionally NOT cached above, so a recompile with a
+        # working backend re-extracts them.
+        if self._llm_failed:
+            msg = (
+                f"[tesserae] ⚠ session extraction: {self._llm_failed}/{self._llm_calls} "
+                f"LLM call(s) FAILED (rate-limit / auth / unavailable backend). "
+                f"Those chunks were NOT cached and yielded no findings. Run "
+                f"`tesserae config status` to check your LLM backend, then recompile."
+            )
+            logger.warning(msg)
+            print(msg, flush=True)
 
         return builder.build()
 
@@ -244,6 +263,7 @@ class SessionGraphExtractor:
             # len(chunk) so extract_with_llm treats the chunk as a single
             # window (no internal re-chunking) — the chunking decision is
             # ours so it stays aligned to original indices.
+            chunk_stats: dict = {}
             raw_findings = extract_with_llm(
                 session,
                 chunk,
@@ -253,7 +273,16 @@ class SessionGraphExtractor:
                 overlap=0,
                 cache_key=f"sessions-v{CACHE_SCHEMA_VERSION}",
                 guidance=self.guidance,
+                stats=chunk_stats,
             )
+            self._llm_calls += chunk_stats.get("calls", 0)
+            # A FAILED LLM call (no answer: rate-limit / auth / dead backend)
+            # must NOT be cached as an empty result — otherwise the outage is
+            # baked in and every later compile reuses zero findings. Skip the
+            # cache write so this chunk is re-extracted once the backend works.
+            if chunk_stats.get("failed", 0):
+                self._llm_failed += chunk_stats["failed"]
+                continue
             # Remap chunk-local turn_ids (0-based within the chunk) back to
             # ORIGINAL transcript indices. extract_with_llm enumerates the
             # passed chunk from 0, so finding turn_id j → original start+j.

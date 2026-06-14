@@ -30,7 +30,7 @@ COMMAND_TREE: list[tuple[str, list[tuple[str, str]]]] = [
         ("vault", "sync | sync-all | set-root | export | prune — Obsidian projection"),
         ("export", "harness | graphiti | site — artifact exports"),
         ("code", "ingest | sync — CodeGraph ⇄ project graph (hook-invoked)"),
-        ("config", "llm | show — machine-wide defaults (~/.tesserae/config.json)"),
+        ("config", "llm | show | status — LLM backend defaults + resolved view & liveness ping"),
         ("projects", "register | list | activate | unregister | mcp-config — registry"),
         ("integrations", "refresh raganything|understand-anything"),
         ("extract", "Low-level: extract a typed graph from markdown paths"),
