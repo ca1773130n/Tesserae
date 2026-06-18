@@ -32,6 +32,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Optional
 
+from . import pidlock
+
 logger = logging.getLogger("tesserae.daemon")
 
 
@@ -555,23 +557,18 @@ class Daemon:
 
     def _write_pidfile(self) -> None:
         if self._pidfile.exists():
-            try:
-                old_pid = int(self._pidfile.read_text().strip())
-            except (ValueError, OSError):
-                # Unreadable/garbage pidfile -- overwrite-safe.
-                old_pid = None
+            owner = pidlock.read_owner(self._pidfile)
+            old_pid = owner.get("pid") if owner else None
+            # Only refuse to start when the recorded process is genuinely
+            # alive: a live PID whose start time no longer matches (PID reuse)
+            # or a dead PID is stale and overwrite-safe. Unknown identity
+            # degrades to a plain liveness check (conservative; see pidlock).
+            if pidlock.owner_is_alive(owner):
+                raise RuntimeError(f"Daemon already running (pid {old_pid})")
             if old_pid is not None:
-                try:
-                    os.kill(old_pid, 0)
-                except ProcessLookupError:
-                    logger.warning("Stale pidfile (pid %d gone); overwriting.", old_pid)
-                except PermissionError:
-                    # Process exists but is owned by someone else -- treat as live.
-                    raise RuntimeError(f"Daemon already running (pid {old_pid})")
-                else:
-                    raise RuntimeError(f"Daemon already running (pid {old_pid})")
+                logger.warning("Stale pidfile (pid %s); overwriting.", old_pid)
         self._pidfile.parent.mkdir(parents=True, exist_ok=True)
-        self._pidfile.write_text(str(os.getpid()))
+        self._pidfile.write_text(pidlock.serialize())
 
     def _remove_pidfile(self) -> None:
         try:

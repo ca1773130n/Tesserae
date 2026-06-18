@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from tesserae.engine import pidlock
 from tesserae.engine.daemon import Daemon, TriggerEvent
 
 
@@ -210,7 +211,7 @@ def test_stale_pidfile_is_overwritten(tmp_path, monkeypatch):
 
     monkeypatch.setattr(os, "kill", fake_kill)
     d._write_pidfile()  # must not raise
-    assert d._pidfile.read_text().strip() == str(os.getpid())
+    assert pidlock.parse(d._pidfile.read_text())["pid"] == os.getpid()
 
 
 def test_live_pidfile_refuses_start(tmp_path, monkeypatch):
