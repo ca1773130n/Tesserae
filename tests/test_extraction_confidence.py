@@ -41,3 +41,22 @@ def test_cache_round_trip_preserves_and_stays_lean():
     d = _finding_to_dict(plain)
     assert d == {"kind": "insight", "body": "b", "turn_ids": [], "references": []}
     assert _finding_from_dict(d) == plain
+
+
+def test_validate_finding_string_revisit_is_one_signal():
+    # A bare string must NOT be iterated char-by-char (codex review).
+    f = _validate_finding(
+        {"kind": "todo", "body": "x", "revisit_signals": "if the API changes"},
+        set(), session_id="s1",
+    )
+    assert f.revisit_signals == ["if the API changes"]
+
+
+def test_cache_from_dict_degrades_on_bad_values():
+    # A malformed/future cache must DEGRADE, not crash compile on a cache hit.
+    f = _finding_from_dict({"kind": "insight", "body": "x", "confidence": "nope",
+                            "revisit_signals": "single"})
+    assert f.confidence is None
+    assert f.revisit_signals == ["single"]
+    over = _finding_from_dict({"kind": "insight", "body": "x", "confidence": 5})
+    assert over.confidence == 1.0  # clamped, never out-of-range into graph.json

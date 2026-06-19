@@ -535,16 +535,39 @@ def _write_cache(path: Path, payload: dict) -> None:
                 pass
 
 
+def _coerce_confidence(raw: object) -> Optional[float]:
+    """Tolerant parse of a cached confidence to ``[0,1]`` or ``None``.
+
+    A malformed/future cache (``"confidence": "nope"`` or ``5``) must DEGRADE,
+    never crash compile on a cache hit — mirrors ``_validate_finding``.
+    """
+    if raw is None:
+        return None
+    try:
+        return max(0.0, min(1.0, float(raw)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_signal_list(raw: object) -> List[str]:
+    """Always a clean list. A bare string becomes one element (never iterated
+    char-by-char into the cache/graph); non-list/str -> []."""
+    if isinstance(raw, str):
+        raw = [raw]
+    elif not isinstance(raw, (list, tuple)):
+        return []
+    return [s for r in raw if (s := str(r or "").strip())]
+
+
 def _finding_from_dict(d: dict) -> Finding:
-    conf = d.get("confidence")
     return Finding(
         kind=str(d.get("kind") or ""),
         body=str(d.get("body") or ""),
         turn_ids=list(d.get("turn_ids") or []),
         references=list(d.get("references") or []),
-        confidence=None if conf is None else float(conf),
+        confidence=_coerce_confidence(d.get("confidence")),
         confidence_rationale=str(d.get("confidence_rationale") or ""),
-        revisit_signals=list(d.get("revisit_signals") or []),
+        revisit_signals=_coerce_signal_list(d.get("revisit_signals")),
     )
 
 

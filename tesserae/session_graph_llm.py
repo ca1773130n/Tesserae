@@ -317,10 +317,12 @@ def _validate_finding(
         except (TypeError, ValueError):
             confidence = None
     confidence_rationale = str(item.get("confidence_rationale") or "").strip()
-    revisit_signals = [
-        s for r in (item.get("revisit_signals") or [])
-        if (s := str(r or "").strip())
-    ]
+    raw_revisit = item.get("revisit_signals")
+    if isinstance(raw_revisit, str):  # a bare string is ONE signal, not chars
+        raw_revisit = [raw_revisit]
+    elif not isinstance(raw_revisit, (list, tuple)):
+        raw_revisit = []
+    revisit_signals = [s for r in raw_revisit if (s := str(r or "").strip())]
     return Finding(
         kind=kind, body=body, turn_ids=turn_ids, references=references,
         confidence=confidence, confidence_rationale=confidence_rationale,
