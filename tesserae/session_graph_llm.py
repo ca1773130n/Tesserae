@@ -39,12 +39,22 @@ ALLOWED_FINDING_KINDS = (
 
 @dataclass
 class Finding:
-    """One structured extraction from a session transcript."""
+    """One structured extraction from a session transcript.
+
+    ``confidence`` / ``confidence_rationale`` / ``revisit_signals`` are extraction
+    QUALITY signals distilled from Jonasb8/memex (ideas only — AGPL, no code
+    copied). They come straight from the (content-keyed cached) LLM output, so
+    like ``body``/``turn_ids`` they are byte-stable across compiles of unchanged
+    sources — NOT mutable post-compile state.
+    """
 
     kind: str
     body: str
     turn_ids: List[int] = field(default_factory=list)
     references: List[str] = field(default_factory=list)
+    confidence: Optional[float] = None
+    confidence_rationale: str = ""
+    revisit_signals: List[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +84,10 @@ Output schema (strictly):
       "kind": "<one of: insight | decision | question | todo | hypothesis | takeaway>",
       "body": "<single-line statement of the finding, <= 240 chars>",
       "turn_ids": [<int>, <int>, ...],
-      "references": ["<doc_node_id>", "<doc_node_id>", ...]
+      "references": ["<doc_node_id>", "<doc_node_id>", ...],
+      "confidence": <float 0.0-1.0>,
+      "confidence_rationale": "<one short clause: WHY this confidence — what in the transcript supports it>",
+      "revisit_signals": ["<condition under which this should be re-checked, e.g. 'if the API changes'>", ...]
     },
     ...
   ]
@@ -84,7 +97,10 @@ Constraints:
 - Return JSON only. No prose, no markdown fences.
 - The "findings" array may be empty if nothing of substance was discussed.
 - Do NOT speculate. If nothing decision-shaped exists, omit the decision rather than inventing one.
-- Each finding body should be self-contained — a reader who hasn't seen the transcript should grasp the point."""
+- Each finding body should be self-contained — a reader who hasn't seen the transcript should grasp the point.
+- "confidence" reflects how well the TRANSCRIPT supports the finding (1.0 = stated explicitly and unambiguously; lower = inferred). Do NOT infer intent or motivation that was not actually stated — lower the confidence instead.
+- "confidence_rationale" justifies the score in one clause. It is a flag for the reader, never a guarantee of truth.
+- "revisit_signals" is optional ([] if none): conditions that would make this finding stale or worth re-checking later."""
 
 
 def _build_user_message(
@@ -292,4 +308,21 @@ def _validate_finding(
             "session %s: dropped %d unknown references on %s finding: %s",
             session_id, len(dropped), kind, dropped[:5],
         )
-    return Finding(kind=kind, body=body, turn_ids=turn_ids, references=references)
+    # Quality signals (optional, tolerant): missing/garbage -> neutral defaults.
+    confidence: Optional[float] = None
+    raw_conf = item.get("confidence")
+    if raw_conf is not None:
+        try:
+            confidence = max(0.0, min(1.0, float(raw_conf)))
+        except (TypeError, ValueError):
+            confidence = None
+    confidence_rationale = str(item.get("confidence_rationale") or "").strip()
+    revisit_signals = [
+        s for r in (item.get("revisit_signals") or [])
+        if (s := str(r or "").strip())
+    ]
+    return Finding(
+        kind=kind, body=body, turn_ids=turn_ids, references=references,
+        confidence=confidence, confidence_rationale=confidence_rationale,
+        revisit_signals=revisit_signals,
+    )

@@ -2055,6 +2055,11 @@ class LLMWikiMCPServer:
                     ),
                     "access_count": row.access_count if row is not None else 0,
                     "decay_score": round(score, 4),
+                    # Extraction quality signals (when the extractor recorded
+                    # them) — a flag for the reader, never a truth guarantee.
+                    **({"confidence": meta["confidence"]} if "confidence" in meta else {}),
+                    **({"confidence_rationale": meta["confidence_rationale"]} if meta.get("confidence_rationale") else {}),
+                    **({"revisit_signals": meta["revisit_signals"]} if meta.get("revisit_signals") else {}),
                 }
             )
         return {"findings": out, "total": len(scored)}
