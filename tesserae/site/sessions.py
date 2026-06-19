@@ -332,6 +332,46 @@ def _shorten(text: str, limit: int = 700) -> str:
     return clean[:limit].rstrip() + "…"
 
 
+# Fast transcript search widget (nicosuave/memex). Plain string (NOT an f-string)
+# so JS/CSS braces need no escaping. Talks to the `tesserae serve` endpoint
+# /api/transcript-search; degrades to a clear message if memex isn't installed.
+_TRANSCRIPT_SEARCH_WIDGET = """
+<section class="panel" id="transcript-search">
+  <h2>Fast transcript search <span class="muted small">· memex</span></h2>
+  <p class="muted small">Full-text search across every indexed Claude/Codex transcript (BM25). Requires <code>tesserae serve</code> + the <code>memex</code> CLI.</p>
+  <input id="mx-q" type="search" placeholder="Search transcripts… e.g. pidfile race" autocomplete="off"
+         style="width:100%;box-sizing:border-box;padding:.6rem .8rem;font-size:1rem;border:1px solid var(--border,#ccc);border-radius:8px;">
+  <p class="muted small" id="mx-status" style="min-height:1.2em;margin:.5rem 0;"></p>
+  <div id="mx-results" style="display:flex;flex-direction:column;gap:.5rem;"></div>
+</section>
+<script>
+(function(){
+  var q=document.getElementById('mx-q'),status=document.getElementById('mx-status'),box=document.getElementById('mx-results'),t=null;
+  function esc(s){var d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML;}
+  function run(){
+    var v=q.value.trim();
+    box.innerHTML='';
+    if(!v){status.textContent='';return;}
+    status.textContent='Searching…';
+    fetch('/api/transcript-search?limit=20&q='+encodeURIComponent(v)).then(function(r){return r.json();}).then(function(d){
+      if(d.available===false){status.textContent=d.error||'memex is not installed.';return;}
+      if(d.error){status.textContent=d.error;return;}
+      var res=d.results||[];
+      status.textContent=res.length?(res.length+' match'+(res.length>1?'es':'')):'No matches.';
+      box.innerHTML=res.map(function(x){
+        var meta=[x.project,x.role,(x.ts||'').slice(0,10),x.score!=null?('score '+Number(x.score).toFixed(1)):''].filter(Boolean).map(esc).join(' · ');
+        return '<article class="panel" style="padding:.6rem .8rem;margin:0;">'
+          +'<div class="muted small">'+meta+'</div>'
+          +'<div style="white-space:pre-wrap;font-size:.9rem;margin-top:.25rem;">'+esc(x.snippet||x.text||'')+'</div></article>';
+      }).join('');
+    }).catch(function(e){status.textContent='Search failed: '+e;});
+  }
+  q.addEventListener('input',function(){clearTimeout(t);t=setTimeout(run,250);});
+})();
+</script>
+"""
+
+
 def render_sessions_index(
     site_title: str,
     sessions: List[HarnessSession],
@@ -375,6 +415,7 @@ def render_sessions_index(
   <p class="muted">{_esc(' · '.join(f'{k}: {v}' for k, v in sorted(harness_counts.items())) or 'No harnesses yet.')}</p>
   <p class="muted">Top tools: {_esc(', '.join(f'{k} {v}' for k, v in tool_counts.most_common(8)) or 'None recorded.')}</p>
 </section>
+{_TRANSCRIPT_SEARCH_WIDGET}
 <section class="panel" id="sessions">
   <div class="table-scroll"><table class="node-table session-table">
     <thead><tr><th>Session</th><th>Agent</th><th>Project</th><th>Date</th><th>Model</th><th>Msgs</th><th>Tools</th><th>Subagents</th></tr></thead>
@@ -393,7 +434,7 @@ def render_sessions_index(
         counts=nav_counts if nav_counts is not None else _session_counts(sessions),
         main_variant="wide",
         breadcrumbs_html=breadcrumbs([("Home", "../index.html"), ("Sessions", "")]),
-        toc_html=toc([(2, "Stats", "stats"), (2, "Sessions", "sessions")]),
+        toc_html=toc([(2, "Stats", "stats"), (2, "Search", "transcript-search"), (2, "Sessions", "sessions")]),
     )
 
 
