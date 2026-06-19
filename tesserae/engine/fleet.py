@@ -28,6 +28,7 @@ try:
 except ImportError:  # pragma: no cover — Windows: pidfile acquire degrades to O_EXCL only
     fcntl = None  # type: ignore[assignment]
 
+from . import pidlock
 from .daemon import Daemon
 
 logger = logging.getLogger("tesserae.fleet")
@@ -248,19 +249,14 @@ class FleetDaemon:
                 try:
                     fd = os.open(self._pidfile, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 except FileExistsError:
-                    try:
-                        old_pid = int(self._pidfile.read_text().strip())
-                    except (ValueError, OSError):
-                        old_pid = None
-                    if old_pid is not None:
-                        try:
-                            os.kill(old_pid, 0)
-                        except ProcessLookupError:
-                            pass  # stale — fall through to unlink + retry
-                        except PermissionError:
-                            raise RuntimeError(f"fleet engine already running (pid {old_pid})")
-                        else:
-                            raise RuntimeError(f"fleet engine already running (pid {old_pid})")
+                    owner = pidlock.read_owner(self._pidfile)
+                    old_pid = owner.get("pid") if owner else None
+                    # A live PID is only the owner if its start time still
+                    # matches what was recorded — a recycled PID is stale (the
+                    # bug this guards against). Unknown identity degrades to a
+                    # plain liveness check (conservative; see pidlock).
+                    if pidlock.owner_is_alive(owner):
+                        raise RuntimeError(f"fleet engine already running (pid {old_pid})")
                     if fcntl is None:
                         # Without a lock backend the unlink+retry reclaim is
                         # the very race the flock exists to close: two starts
@@ -272,14 +268,14 @@ class FleetDaemon:
                             "platform — remove the file manually and retry"
                         )
                     if attempt == 0:
-                        logger.warning("stale fleet pidfile (pid %s gone); reclaiming", old_pid)
+                        logger.warning("stale fleet pidfile (pid %s); reclaiming", old_pid)
                         try:
                             self._pidfile.unlink()
                         except FileNotFoundError:
                             pass
                     continue
                 with os.fdopen(fd, "w") as handle:
-                    handle.write(str(os.getpid()))
+                    handle.write(pidlock.serialize())
                 return
             raise RuntimeError(f"could not acquire fleet pidfile at {self._pidfile}")
 
@@ -292,7 +288,8 @@ class FleetDaemon:
         """
         try:
             with self._pidfile_mutex():
-                if self._pidfile.read_text().strip() == str(os.getpid()):
+                owner = pidlock.read_owner(self._pidfile)
+                if owner and owner.get("pid") == os.getpid():
                     self._pidfile.unlink()
         except (OSError, ValueError):
             pass
