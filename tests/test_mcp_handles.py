@@ -54,8 +54,20 @@ def test_get_handle_tool_reassembles(tmp_path):
             break
         off = out["offset"] + len(out["slice"])
     assert acc == "X" * 9000
-    with pytest.raises(ValueError):
-        server.call_tool("get_handle", {"handle": "missing"})
+    # An unknown/expired handle degrades to a structured miss, never raises.
+    miss = server.call_tool("get_handle", {"handle": "missing"})
+    assert miss["found"] is False and miss["slice"] == "" and "error" in miss
+
+
+def test_get_handle_caps_slice_size():
+    h = _HANDLES.put("Y" * 200_000)
+    out = _HANDLES_call(h, 0, 10_000_000)
+    assert len(out["slice"]) == 50_000 and out["eof"] is False
+
+
+def _HANDLES_call(h, off, lim):
+    from tesserae.mcp_server import _HANDLES
+    return _HANDLES.slice(h, off, lim)
 
 
 def test_compile_context_preview_returns_handle(tmp_path):

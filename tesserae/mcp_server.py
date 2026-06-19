@@ -69,8 +69,15 @@ class _HandleStore:
         self._cap = capacity
         self._items: "OrderedDict[str, str]" = OrderedDict()
 
+    # Hard ceiling on a single slice — the whole point is read-discipline, so
+    # get_handle must never be coaxed into dumping an arbitrarily large chunk
+    # back into context (codex review).
+    MAX_SLICE = 50_000
+
     def put(self, text: str) -> str:
-        hid = "h_" + hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+        # Full SHA-256 hex: content-keyed dedup with a negligible collision
+        # surface (a 64-bit prefix is needless attack surface — codex review).
+        hid = "h_" + hashlib.sha256(text.encode("utf-8")).hexdigest()
         self._items[hid] = text
         self._items.move_to_end(hid)
         while len(self._items) > self._cap:
@@ -82,10 +89,11 @@ class _HandleStore:
         if text is None:
             return None
         self._items.move_to_end(hid)
-        offset = max(0, offset)
-        chunk = text[offset:offset + max(1, limit)]
+        offset = max(0, min(offset, len(text)))
+        limit = max(1, min(int(limit), self.MAX_SLICE))
+        chunk = text[offset:offset + limit]
         end = offset + len(chunk)
-        return {"handle": hid, "offset": offset, "limit": limit,
+        return {"handle": hid, "found": True, "offset": offset, "limit": limit,
                 "total_chars": len(text), "slice": chunk, "eof": end >= len(text)}
 
 
@@ -1637,28 +1645,42 @@ class LLMWikiMCPServer:
                 synthesize=synthesize,
                 multi_pool=multi_pool,
             )
-            result = {
+            preview = int(args.get("preview") or 0)
+            if preview > 0 and len(bundle.body) > preview:
+                handle = _HANDLES.put(bundle.body)
+                return {
+                    "handle": handle,
+                    "preview": bundle.body[:preview],
+                    "total_chars": len(bundle.body),
+                    "truncated": True,
+                    "hint": f"Body truncated. Fetch more with get_handle(handle='{handle}', offset=...).",
+                    "citations": [dataclasses.asdict(c) for c in bundle.citations],
+                    "selected_node_ids": bundle.selected_nodes,
+                    "char_budget_used": bundle.char_budget_used,
+                    "synthesized": bundle.synthesized,
+                }
+            # preview disabled (or body already short): EXACT original shape,
+            # body first — back-compat for byte/order-sensitive callers.
+            return {
+                "body": bundle.body,
                 "citations": [dataclasses.asdict(c) for c in bundle.citations],
                 "selected_node_ids": bundle.selected_nodes,
                 "char_budget_used": bundle.char_budget_used,
                 "synthesized": bundle.synthesized,
             }
-            preview = int(args.get("preview") or 0)
-            if preview > 0 and len(bundle.body) > preview:
-                handle = _HANDLES.put(bundle.body)
-                result["handle"] = handle
-                result["preview"] = bundle.body[:preview]
-                result["total_chars"] = len(bundle.body)
-                result["truncated"] = True
-                result["hint"] = f"Body truncated. Fetch more with get_handle(handle='{handle}', offset=...)."
-            else:
-                result["body"] = bundle.body
-            return result
         if name == "get_handle":
             handle = str(args.get("handle") or "")
-            sliced = _HANDLES.slice(handle, int(args.get("offset") or 0), int(args.get("limit") or 4000))
+            try:
+                offset, limit = int(args.get("offset") or 0), int(args.get("limit") or 4000)
+            except (TypeError, ValueError):
+                offset, limit = 0, 4000
+            sliced = _HANDLES.slice(handle, offset, limit)
             if sliced is None:
-                raise ValueError(f"get_handle: unknown or expired handle '{handle}'")
+                # LRU expiry / unknown handle is EXPECTED, not exceptional —
+                # degrade with guidance instead of raising (codex review).
+                return {"handle": handle, "found": False, "slice": "", "eof": True,
+                        "error": "handle not found (LRU-evicted or never issued); "
+                                 "re-run compile_context with preview>0 for a fresh handle"}
             return sliced
         if name == "ingest":
             from .project import ProjectWiki
