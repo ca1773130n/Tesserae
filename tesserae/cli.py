@@ -2389,10 +2389,31 @@ def _handle_export_site(args: argparse.Namespace) -> int:
     return _handle_build_site(args)
 
 
+def _handle_export_okf(args: argparse.Namespace) -> int:
+    """`export okf` — write/read a Google OKF v0.1 bundle. `--import DIR` reads."""
+    from .okf import read_okf_bundle, write_okf_bundle
+
+    wiki = ProjectWiki.load(args.project)
+    graph_dir = Path(wiki.paths.graph).parent
+    if getattr(args, "import_dir", None):
+        graph = read_okf_bundle(args.import_dir)
+        out = args.output or str(graph_dir / "okf-imported.graph.json")
+        # ponytail: import writes a SEPARATE graph file by default — never
+        # silently clobber the compiled graph.json. Pass --output to override.
+        Path(out).write_text(graph.to_json(), encoding="utf-8")
+        print(f"Imported OKF bundle: nodes={len(graph.nodes)} edges={len(graph.edges)} path={out}")
+        return 0
+    graph = _load_graph_file(wiki.paths.graph)
+    out = args.output or str(graph_dir / "okf")
+    written = write_okf_bundle(graph, out)
+    print(f"Exported OKF v0.1 bundle: files={len(written)} path={out}")
+    return 0
+
+
 def _build_export_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae export",
-        description="Artifact exports: harness | graphiti | site.",
+        description="Artifact exports: harness | graphiti | site | okf.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
@@ -2453,6 +2474,22 @@ def _build_export_parser() -> argparse.ArgumentParser:
     p_site.add_argument("--paths", action="append", default=[], help="Additional directory to watch; repeat for multiple paths (--watch)")
     p_site.add_argument("--quiet", action="store_true", help="Suppress the banner and per-cycle progress output (--watch)")
     p_site.set_defaults(_handler="_handle_export_site")
+
+    p_okf = sub.add_parser(
+        "okf",
+        help="Export the graph as a Google OKF v0.1 bundle; --import reads one back.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae export okf\n"
+            "  tesserae export okf --output ./my-okf\n"
+            "  tesserae export okf --import ./my-okf\n"
+        ),
+    )
+    p_okf.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_okf.add_argument("--output", help="Export: bundle dir (default .tesserae/okf). Import: graph.json path (default .tesserae/okf-imported.graph.json)")
+    p_okf.add_argument("--import", dest="import_dir", metavar="DIR", help="Read an OKF bundle DIR into a graph.json instead of exporting")
+    p_okf.set_defaults(_handler="_handle_export_okf")
     return parser
 
 
