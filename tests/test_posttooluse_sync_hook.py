@@ -173,9 +173,13 @@ def test_triggered_when_debounce_window_elapsed(fake_project):
     log_content = fake_project["invocation_log"].read_text(encoding="utf-8")
     assert "code sync" in log_content
 
-    # Touch-file should be refreshed.
-    new_mtime = touch.stat().st_mtime
-    assert new_mtime > stale + 30, "touch-file mtime was not refreshed"
+    # Touch-file should be refreshed. The backgrounded subshell refreshes it
+    # around when it fires sync-code, which can land just after the invocation
+    # log — poll instead of reading once (ponytail: race, not a code bug).
+    deadline = time.time() + 6.0
+    while time.time() < deadline and touch.stat().st_mtime <= stale + 30:
+        time.sleep(0.05)
+    assert touch.stat().st_mtime > stale + 30, "touch-file mtime was not refreshed"
 
 
 def test_silent_when_codegraph_dir_missing(fake_project):
