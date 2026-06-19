@@ -51,6 +51,47 @@ LINT_REPORT_BYTE_CAP = 64 * 1024
 WIKI_BODY_BYTE_CAP = 64 * 1024
 
 
+import hashlib
+from collections import OrderedDict
+
+
+class _HandleStore:
+    """In-process content-keyed store for large tool payloads (read-discipline).
+
+    A tool can stash a big body and return a short handle + preview; the agent
+    pulls the rest in slices via ``get_handle`` instead of holding it all in
+    context. Content-keyed ids sidestep invalidation: a recompiled/changed body
+    yields a NEW handle, and an old handle keeps returning its own snapshot. LRU
+    cap bounds memory. ponytail: a dict with a cap — no lifetimes, no GC thread.
+    """
+
+    def __init__(self, capacity: int = 64) -> None:
+        self._cap = capacity
+        self._items: "OrderedDict[str, str]" = OrderedDict()
+
+    def put(self, text: str) -> str:
+        hid = "h_" + hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+        self._items[hid] = text
+        self._items.move_to_end(hid)
+        while len(self._items) > self._cap:
+            self._items.popitem(last=False)
+        return hid
+
+    def slice(self, hid: str, offset: int, limit: int) -> Optional[dict]:
+        text = self._items.get(hid)
+        if text is None:
+            return None
+        self._items.move_to_end(hid)
+        offset = max(0, offset)
+        chunk = text[offset:offset + max(1, limit)]
+        end = offset + len(chunk)
+        return {"handle": hid, "offset": offset, "limit": limit,
+                "total_chars": len(text), "slice": chunk, "eof": end >= len(text)}
+
+
+_HANDLES = _HandleStore()
+
+
 _INTERNAL_LINK_RE = re.compile(r"\[\[([^\]\|]+?)(?:\|[^\]]+)?\]\]")
 _MARKDOWN_LINK_RE = re.compile(r"\]\(([^)]+)\)")
 
@@ -881,7 +922,37 @@ class LLMWikiMCPServer:
                                 "distilled-memory nodes. Default false = single-pool."
                             ),
                         },
+                        "preview": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "default": 0,
+                            "description": (
+                                "Read-discipline (memex-style). When > 0, return only "
+                                "the first N chars of the body plus a 'handle' id; fetch "
+                                "the rest in slices with the 'get_handle' tool instead of "
+                                "dumping the whole body into context. 0 = return full body."
+                            ),
+                        },
                     },
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "get_handle",
+                "description": (
+                    "Fetch a slice of a large payload previously returned as a "
+                    "'handle' (e.g. by compile_context with preview>0). Lets an agent "
+                    "page through big results on demand instead of holding the whole "
+                    "thing in context — a programmable read scratchpad."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "handle": {"type": "string", "description": "The handle id returned by a previous tool call."},
+                        "offset": {"type": "integer", "minimum": 0, "default": 0, "description": "Start character offset."},
+                        "limit": {"type": "integer", "minimum": 1, "default": 4000, "description": "Max characters to return in this slice."},
+                    },
+                    "required": ["handle"],
                     "additionalProperties": False,
                 },
             },
@@ -1566,13 +1637,29 @@ class LLMWikiMCPServer:
                 synthesize=synthesize,
                 multi_pool=multi_pool,
             )
-            return {
-                "body": bundle.body,
+            result = {
                 "citations": [dataclasses.asdict(c) for c in bundle.citations],
                 "selected_node_ids": bundle.selected_nodes,
                 "char_budget_used": bundle.char_budget_used,
                 "synthesized": bundle.synthesized,
             }
+            preview = int(args.get("preview") or 0)
+            if preview > 0 and len(bundle.body) > preview:
+                handle = _HANDLES.put(bundle.body)
+                result["handle"] = handle
+                result["preview"] = bundle.body[:preview]
+                result["total_chars"] = len(bundle.body)
+                result["truncated"] = True
+                result["hint"] = f"Body truncated. Fetch more with get_handle(handle='{handle}', offset=...)."
+            else:
+                result["body"] = bundle.body
+            return result
+        if name == "get_handle":
+            handle = str(args.get("handle") or "")
+            sliced = _HANDLES.slice(handle, int(args.get("offset") or 0), int(args.get("limit") or 4000))
+            if sliced is None:
+                raise ValueError(f"get_handle: unknown or expired handle '{handle}'")
+            return sliced
         if name == "ingest":
             from .project import ProjectWiki
             from .clip import ingest_clip
