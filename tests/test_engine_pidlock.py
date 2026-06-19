@@ -42,17 +42,24 @@ def test_dead_pid_is_not_alive():
     assert pidlock.owner_is_alive({"start_time": "x"}) is False  # no pid
 
 
-def test_live_pid_with_matching_identity_is_alive():
-    # Our own process: alive, and its recorded identity matches the live one.
-    payload = {"pid": os.getpid(), "start_time": pidlock.process_start_time(os.getpid())}
+def test_live_pid_with_matching_identity_is_alive(monkeypatch):
+    # Our own (live) process AND the recorded start time matches the live one.
+    # Pin process_start_time so the assertion holds on every platform — including
+    # CI/sandboxes where `ps`/`/proc` are unavailable and it would return None.
+    monkeypatch.setattr(pidlock, "process_start_time", lambda pid: "INCARNATION-A")
+    payload = {"pid": os.getpid(), "start_time": "INCARNATION-A"}
     assert pidlock.owner_is_alive(payload) is True
 
 
-def test_live_pid_with_mismatched_identity_is_stale():
-    """THE bug: a recycled PID is alive but its start time differs -> stale."""
-    if pidlock.process_start_time(os.getpid()) is None:
-        pytest.skip("process start time unavailable on this platform")
-    payload = {"pid": os.getpid(), "start_time": "STALE-FROM-A-PRIOR-INCARNATION"}
+def test_live_pid_with_mismatched_identity_is_stale(monkeypatch):
+    """THE bug: a recycled PID is alive but its start time differs -> stale.
+
+    Deterministic on every platform — the live identity is pinned to a value
+    that differs from what the pidfile recorded, simulating PID reuse without
+    depending on a real second process or on `ps`/`/proc` being available.
+    """
+    monkeypatch.setattr(pidlock, "process_start_time", lambda pid: "INCARNATION-NEW")
+    payload = {"pid": os.getpid(), "start_time": "INCARNATION-OLD"}
     assert pidlock.owner_is_alive(payload) is False
 
 
@@ -62,17 +69,36 @@ def test_legacy_bare_int_live_pid_stays_conservative():
     assert pidlock.owner_is_alive({"pid": os.getpid(), "start_time": None}) is True
 
 
-def test_daemon_reclaims_pidfile_with_reused_pid(tmp_path):
+def test_unreadable_identity_stays_conservative(monkeypatch):
+    # Live PID but we CANNOT read its current start time (None) -> treat as alive
+    # rather than risk a double start. The recorded value is irrelevant here.
+    monkeypatch.setattr(pidlock, "process_start_time", lambda pid: None)
+    assert pidlock.owner_is_alive({"pid": os.getpid(), "start_time": "anything"}) is True
+
+
+def test_daemon_reclaims_pidfile_with_reused_pid(tmp_path, monkeypatch):
     """End-to-end: a pidfile naming our LIVE pid but a STALE identity must be
-    reclaimed (pre-fix this raised "already running")."""
-    if pidlock.process_start_time(os.getpid()) is None:
-        pytest.skip("process start time unavailable on this platform")
+    reclaimed (pre-fix this raised "already running"). Platform-independent."""
+    monkeypatch.setattr(pidlock, "process_start_time", lambda pid: "INCARNATION-NEW")
     d = Daemon(tmp_path)
     d._pidfile.parent.mkdir(parents=True, exist_ok=True)
     d._pidfile.write_text(
-        json.dumps({"pid": os.getpid(), "start_time": "PRIOR-INCARNATION", "cmdline": "old"})
+        json.dumps({"pid": os.getpid(), "start_time": "INCARNATION-OLD", "cmdline": "old"})
     )
     d._write_pidfile()  # must NOT raise — the recorded incarnation is gone
     refreshed = pidlock.parse(d._pidfile.read_text())
     assert refreshed["pid"] == os.getpid()
-    assert refreshed["start_time"] != "PRIOR-INCARNATION"  # rewritten to current
+    assert refreshed["start_time"] == "INCARNATION-NEW"  # rewritten to current
+
+
+@pytest.mark.skipif(
+    pidlock.process_start_time(os.getpid()) is None,
+    reason="process start time unavailable on this platform (ps//proc absent)",
+)
+def test_real_platform_start_time_roundtrips():
+    """Smoke: where the OS exposes start time, serialize() captures a real,
+    non-None token and owner_is_alive confirms our own live process."""
+    payload = pidlock.parse(pidlock.serialize())
+    assert payload["pid"] == os.getpid()
+    assert payload["start_time"] is not None
+    assert pidlock.owner_is_alive(payload) is True
