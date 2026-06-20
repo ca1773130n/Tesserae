@@ -2807,6 +2807,8 @@ def _build_config_parser() -> argparse.ArgumentParser:
     p_setup.add_argument("--reasoning-effort", choices=["low", "medium", "high", "xhigh"], default=None, help="Default codex reasoning effort")
     p_setup.add_argument("--install", action="append", default=[], metavar="NAME", help="Dependency to install (memex, cognee, raganything, understand-anything, or 'all'); repeat")
     p_setup.add_argument("--install-all", action="store_true", help="Install every known optional dependency")
+    p_setup.add_argument("--enable-cognee", action="store_true", help="Enable the cognee cognify pass for ALL projects (writes memory_backends.cognee to the machine-wide config)")
+    p_setup.add_argument("--cognee-mode", choices=["add", "cognify", "codex_cognify"], default="codex_cognify", help="cognee mode when --enable-cognee (default: codex_cognify — uses codex, no extra API key)")
     p_setup.set_defaults(_handler="_handle_config_setup")
 
     p_show = sub.add_parser("show", help="Print the effective machine-wide LLM defaults and exit.")
@@ -2908,7 +2910,8 @@ def _handle_config_setup(args: argparse.Namespace) -> int:
         return 2
 
     wrote_llm = bool(args.llm_provider or args.claude_config_dir or args.codex_home or args.reasoning_effort)
-    if wrote_llm:
+    enable_cognee = bool(getattr(args, "enable_cognee", False))
+    if wrote_llm or enable_cognee:
         merged = _merge_global_llm_config(
             _lj._load_global_llm_config(),
             llm_provider=args.llm_provider,
@@ -2916,19 +2919,31 @@ def _handle_config_setup(args: argparse.Namespace) -> int:
             codex_home=args.codex_home,
             reasoning_effort=args.reasoning_effort,
         )
+        wrote = []
+        if wrote_llm:
+            wrote.append("LLM defaults")
+        if enable_cognee:
+            # Turn cognee on for EVERY project (a project can still override).
+            backends = dict(merged.get("memory_backends") or {})
+            cognee = dict(backends.get("cognee") or {})
+            cognee.update({"enabled": True, "auto_cognify": True, "mode": args.cognee_mode})
+            backends["cognee"] = cognee
+            merged["memory_backends"] = backends
+            wrote.append(f"cognee ({args.cognee_mode}) enabled for all projects")
         _write_global_config(_lj.GLOBAL_CONFIG_PATH, merged)
-        print(f"Saved machine-wide LLM defaults to {_lj.GLOBAL_CONFIG_PATH}.")
+        print(f"Saved machine-wide config to {_lj.GLOBAL_CONFIG_PATH}: {', '.join(wrote)}.")
 
     rc = _install_deps(targets) if targets else 0
 
-    if not wrote_llm and not targets:
+    if not wrote_llm and not enable_cognee and not targets:
         # No-op invocation → show what's configured + available so the user
         # knows what to pass.
         _handle_config_status(argparse.Namespace(project=None, ping=False))
         print()
         _print_dep_status()
         print("\nSet defaults + install with, e.g.:\n"
-              "  tesserae config setup --llm-provider codex --reasoning-effort medium --install all")
+              "  tesserae config setup --llm-provider codex --reasoning-effort medium --install all\n"
+              "  tesserae config setup --enable-cognee --install cognee")
     return rc
 
 

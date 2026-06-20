@@ -2903,16 +2903,38 @@ def default_raganything_backend_config(name: str = "tesserae") -> dict:
     }
 
 
+def _cognee_section(cfg: dict) -> dict:
+    """The ``memory_backends.cognee`` mapping from a config, or ``{}``."""
+    backends = cfg.get("memory_backends") if isinstance(cfg, dict) else None
+    if isinstance(backends, dict) and isinstance(backends.get("cognee"), dict):
+        return dict(backends["cognee"])
+    return {}
+
+
 def cognee_backend_config(config: dict) -> dict:
+    """Resolve the cognee backend config, layering machine-wide over defaults.
+
+    Precedence: built-in defaults < machine-wide ``~/.tesserae/config.json`` <
+    this project's config. The global layer lets ``tesserae config setup
+    --enable-cognee`` turn cognee on for *every* project at once, while a project
+    can still override (disable, or change ``mode``/``dataset``).
+    """
     defaults = default_cognee_backend_config(str(config.get("name") or "tesserae"))
-    backends = config.get("memory_backends")
-    if not isinstance(backends, dict) or "cognee" not in backends:
+    from .llm_json import _load_global_llm_config
+
+    global_cognee = _cognee_section(_load_global_llm_config())
+    project_cognee = _cognee_section(config)
+    if not global_cognee and not project_cognee:
         return defaults
-    configured = dict(backends.get("cognee") or {})
-    merged = {**defaults, **configured}
-    configured_install = configured.get("install")
-    merged["install"] = {**defaults.get("install", {}), **(configured_install or {})}
-    if configured_install is None and configured.get("auto_cognify"):
+
+    merged = {**defaults, **global_cognee, **project_cognee}
+    merged["install"] = {
+        **defaults.get("install", {}),
+        **(global_cognee.get("install") or {}),
+        **(project_cognee.get("install") or {}),
+    }
+    if (global_cognee.get("install") is None and project_cognee.get("install") is None
+            and merged.get("auto_cognify")):
         merged["install"]["auto_install"] = True
     return merged
 
