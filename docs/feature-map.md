@@ -9,6 +9,16 @@ Tesserae is a **context engine** running on three pillars: (1) session monitorin
 
 Status legend: ✅ shipped · ⚠ in-progress / partial.
 
+## Interop, search & setup — v0.10.0 (June 2026)
+
+| Feature | Status | Source | Notes |
+|---|---|---|---|
+| Google **OKF v0.1** import/export | ✅ | [`tesserae/okf.py`](../tesserae/okf.py) | `tesserae export okf [--import DIR]`. Markdown + YAML frontmatter bundle; round-trips Tesserae's own bundles losslessly via an `x_tesserae` namespace, foreign bundles best-effort. |
+| Fast transcript search (memex) | ✅ | [`tesserae/memex_search.py`](../tesserae/memex_search.py) | `nicosuave/memex` BM25 index over Claude/Codex transcripts, wired to the `tesserae serve` sessions dashboard via `GET /api/transcript-search`. Optional + graceful when absent. |
+| Read-discipline handles | ✅ | [`tesserae/mcp_server.py`](../tesserae/mcp_server.py) | `compile_context` `preview=N` returns a bounded preview + a content-keyed handle; `get_handle` pages the rest. Keeps huge payloads out of the agent's context. |
+| Extraction quality signals | ✅ | [`tesserae/session_graph_llm.py`](../tesserae/session_graph_llm.py) | Per-finding `confidence` + `confidence_rationale` + `revisit_signals` (byte-stable; surfaced in `fresh_insights`). |
+| Machine-wide setup + deps | ✅ | [`tesserae/deps.py`](../tesserae/deps.py), `cli.py` | `tesserae config setup` writes global LLM defaults + installs optional deps (memex, cognee, raganything, understand-anything); `tesserae config deps` lists/installs; `tesserae init` offers memex. Per-project config still overrides. |
+
 ## Context engine — v0.5.0 (June 2026)
 
 The engine spine that drives the three pillars. See [`docs/architecture.md`](architecture.md) for the engine-spine module map, the self-improvement memory sidecar, and the context-compiler dataflow.

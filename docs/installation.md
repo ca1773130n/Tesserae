@@ -31,7 +31,26 @@ The canonical command in docs is `tesserae`. `tesserae_mcp` starts the MCP serve
 pip install --upgrade tesserae
 ```
 
-## Optional integrations
+## Machine-wide setup (set once, all projects)
+
+Configure Tesserae once instead of per project, and install the optional
+dependencies from one command:
+
+```bash
+# Global LLM defaults (written to ~/.tesserae/config.json) + install everything
+tesserae config setup --llm-provider codex --reasoning-effort medium --install all
+
+# Just see / manage optional dependencies
+tesserae config deps                     # show what's installed
+tesserae config deps --install memex     # fast transcript search (needs cargo)
+```
+
+Known optional dependencies: **memex** (fast transcript search), **cognee**,
+**raganything**, **understand-anything**. A per-project `.tesserae/config.json`
+still overrides these global defaults (resolution order: env → project → global →
+built-in). `tesserae init` also offers to install memex during an interactive setup.
+
+## Optional integrations (per project)
 
 The default wheel is intentionally light. The setup wizard can install the heavier companion/runtime pieces only when you ask for them:
 

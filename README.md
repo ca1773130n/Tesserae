@@ -136,7 +136,10 @@ Run `tesserae --help` for the full grouped list, `tesserae <cmd> --help` for fla
 | `tesserae refresh` | One-shot pipeline: import new sessions → compile → sync vault. |
 | `tesserae sessions discover --import` | Find and import local Claude Code / Codex session history for this project. |
 | `tesserae export site` | Build the static site (`--deploy`, `--watch`). |
-| `tesserae serve` | Serve the site locally with the inline ask widget (`/api/ask`). |
+| `tesserae export okf` | Export the graph as a [Google **OKF v0.1**](https://github.com/GoogleCloudPlatform/knowledge-catalog) bundle (Markdown + YAML frontmatter); `--import DIR` reads one back (round-trips Tesserae's own bundles losslessly). |
+| `tesserae serve` | Serve the site locally with the inline ask widget (`/api/ask`) and **fast transcript search** (memex) on the sessions dashboard. |
+| `tesserae config setup` | **Machine-wide setup**: set LLM defaults for *all* projects (`--llm-provider`, `--reasoning-effort`) and install optional deps (`--install all`) in one shot. |
+| `tesserae config deps` | List / install optional dependencies (memex, cognee, raganything, understand-anything). |
 | `tesserae projects …` | Multi-project registry: `register`, `list`, `activate`, `mcp-config`. |
 | `tesserae integrations refresh …` | Re-run companion tools (Understand-Anything, RAG-Anything). |
 
@@ -180,11 +183,16 @@ once (it says so in the log); restarts resume from a persisted floor.
 any MCP client. Headline tools:
 
 - **`compile_context`** — tailored, cited context doc for a query or seed nodes
-  (deterministic unless `synthesize=true`), backed by `graph_ppr`.
+  (deterministic unless `synthesize=true`), backed by `graph_ppr`. `preview=N`
+  returns a bounded preview + a handle instead of the full body.
+- **`get_handle`** — page a large payload (e.g. a previewed `compile_context`
+  body) in slices on demand, so the agent isn't forced to hold it all in context.
 - **Graph + wiki**: `search_nodes`, `node_context`, `graph_summary`,
   `wiki_page`, `raw_source`, `timeline`, `search_facts`, `lint_report`, `ask`.
 - **Session memory**: `list_sessions`, `find_session_findings`,
-  `find_code_symbol_mentions`, `fresh_insights` (decay-ranked, deduplicated).
+  `find_code_symbol_mentions`, `fresh_insights` (decay-ranked, deduplicated,
+  now carrying extraction `confidence` + `revisit_signals` when available).
+- **`ingest`** — merge raw web/text content (e.g. a browser clip) into the graph.
 - **Registry**: `list_projects`, `register_project`, `activate_project`.
 
 ## Multi-project

@@ -118,6 +118,24 @@ The site emits:
 
 The generated site links Sessions from the global rail, the home Browse cards, search entries, and each session detail page's breadcrumb trail.
 
+## Fast transcript search (memex)
+
+When you `tesserae serve` the site, the **sessions dashboard** gains a full-text
+search box over every indexed Claude/Codex transcript, backed by
+[`nicosuave/memex`](https://github.com/nicosuave/memex) (BM25). Results show
+`project · role · date · score` plus a matching snippet.
+
+```bash
+cargo install --git https://github.com/nicosuave/memex --locked   # or: tesserae config deps --install memex
+memex index                                                        # build the index once
+tesserae serve                                                     # search box appears on /sessions
+```
+
+It is **optional and graceful**: with no `memex` binary (or index) the box shows
+a clear, actionable message and the rest of the dashboard is unaffected. The
+search endpoint (`GET /api/transcript-search`) is gated to same-origin/loopback
+callers so a visited web page can't probe your local history.
+
 ## Session detail page layout
 
 Session detail pages use the shared static-site shell rather than a standalone transcript dump. They include:

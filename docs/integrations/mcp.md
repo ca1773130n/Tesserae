@@ -78,7 +78,8 @@ Every tool accepts an optional `graph_path` or `project` (registry alias) so a s
 
 | Tool | Purpose |
 |---|---|
-| `compile_context` | Compile a tailored, **cited** context doc for a `query` or explicit `seeds`. Walks a depth-bounded subgraph (`depth`, 1–10, default 2), ranks with PPR, and fills a character `budget` (default 32000; pass `0` for uncapped). Deterministic by default; set `synthesize: true` for an LLM-written narrative "topic" slice. Returns `body`, `citations`, `selected_node_ids`, and `char_budget_used` |
+| `compile_context` | Compile a tailored, **cited** context doc for a `query` or explicit `seeds`. Walks a depth-bounded subgraph (`depth`, 1–10, default 2), ranks with PPR, and fills a character `budget` (default 32000; pass `0` for uncapped). Deterministic by default; set `synthesize: true` for an LLM-written narrative "topic" slice. Returns `body`, `citations`, `selected_node_ids`, and `char_budget_used`. Set `preview: N` to return a bounded preview + a `handle` instead of the full body (memex-style read-discipline) |
+| `get_handle` | Page a large payload previously returned as a `handle` (e.g. `compile_context` with `preview`) in slices (`offset`, `limit`) — fetch more on demand instead of dumping it all into context |
 | `list_communities` | List `COMMUNITY_SUMMARY` nodes minted by the post-compile pass, ranked by member count (`min_size`, `limit`); walk `summarizes` edges back to members via `node_context` |
 | `fresh_insights` | Session findings ranked by Ebbinghaus-style decay score (newest + most-accessed first); filters out superseded near-duplicates. Optional `kind`, `limit`, `include_superseded` |
 
