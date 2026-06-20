@@ -811,30 +811,50 @@ def _handle_llm_defaults(args: argparse.Namespace) -> int:
         print(f"Machine-wide LLM defaults ({path}):")
         print(_json.dumps(effective, ensure_ascii=False, indent=2))
         return 0
-    if not (args.llm_provider or args.claude_config_dir or args.codex_home):
+    reasoning = getattr(args, "reasoning_effort", None)
+    if not (args.llm_provider or args.claude_config_dir or args.codex_home or reasoning):
         print(
-            "Nothing to set — pass --llm-provider/--claude-config-dir/--codex-home, or --show.",
+            "Nothing to set — pass --llm-provider/--claude-config-dir/--codex-home/--reasoning-effort, or --show.",
             file=sys.stderr,
         )
         return 2
-    # Merge-preserving write: only the passed keys change, unrelated keys
-    # (and unset llm keys) survive.
+    merged = _merge_global_llm_config(
+        existing,
+        llm_provider=args.llm_provider,
+        claude_config_dirs=args.claude_config_dir,
+        codex_home=args.codex_home,
+        reasoning_effort=reasoning,
+    )
+    _write_global_config(path, merged)
+    print(f"Saved machine-wide LLM defaults to {path}:")
+    for key in ("llm_provider", "llm_claude_config_dirs", "llm_codex_home", "llm_codex_reasoning_effort"):
+        if key in merged:
+            print(f"  {key}: {merged[key]}")
+    return 0
+
+
+def _merge_global_llm_config(existing: dict, *, llm_provider=None, claude_config_dirs=None,
+                             codex_home=None, reasoning_effort=None) -> dict:
+    """Merge-preserving update of the machine-wide config: only passed keys change."""
     merged = dict(existing)
-    if args.llm_provider:
-        merged["llm_provider"] = args.llm_provider
-    if args.claude_config_dir:
-        merged["llm_claude_config_dirs"] = list(args.claude_config_dir)
-    if args.codex_home:
-        merged["llm_codex_home"] = args.codex_home
+    if llm_provider:
+        merged["llm_provider"] = llm_provider
+    if claude_config_dirs:
+        merged["llm_claude_config_dirs"] = list(claude_config_dirs)
+    if codex_home:
+        merged["llm_codex_home"] = codex_home
+    if reasoning_effort:
+        merged["llm_codex_reasoning_effort"] = reasoning_effort
+    return merged
+
+
+def _write_global_config(path, merged: dict) -> None:
+    import json as _json
+
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(_json.dumps(merged, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     tmp.replace(path)
-    print(f"Saved machine-wide LLM defaults to {path}:")
-    for key in ("llm_provider", "llm_claude_config_dirs", "llm_codex_home"):
-        if key in merged:
-            print(f"  {key}: {merged[key]}")
-    return 0
 
 
 def _handle_init(args: argparse.Namespace) -> int:
@@ -2148,9 +2168,40 @@ def _handle_init_v2(args: argparse.Namespace) -> int:
     """
     if args.bare:
         _backfill_bare_init_defaults(args)
-        return _handle_init(args)
-    _backfill_setup_defaults(args)
-    return _handle_setup(args)
+        rc = _handle_init(args)
+    else:
+        _backfill_setup_defaults(args)
+        rc = _handle_setup(args)
+    if rc == 0:
+        _maybe_offer_memex_install(args)
+    return rc
+
+
+def _maybe_offer_memex_install(args: argparse.Namespace) -> None:
+    """Offer to install memex (fast transcript search) after an interactive init.
+
+    Only prompts in a real interactive session — never under ``--yes``/``--bare``
+    or a non-TTY (those keep optional integrations OFF). No new init flag (the
+    init parser is deliberately dieted); install later via ``config deps``.
+    """
+    if getattr(args, "yes", False) or getattr(args, "bare", False) or not sys.stdin.isatty():
+        return
+    from . import deps
+
+    if deps.DEPS_BY_NAME["memex"].detect():
+        return
+    try:
+        ans = input(
+            "\nInstall memex for fast transcript search on the sessions dashboard? "
+            "(needs the Rust toolchain) [y/N] "
+        ).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
+    if ans in ("y", "yes"):
+        _install_deps(["memex"])
+    else:
+        print("Skipped. Install later with: tesserae config deps --install memex")
 
 
 def _route_init(rest: List[str]) -> int:
@@ -2721,7 +2772,42 @@ def _build_config_parser() -> argparse.ArgumentParser:
     p_llm.add_argument("--llm-provider", choices=["claude", "codex"], default=None, help="Default CLI backend for the synthesis/insights LLM client on this machine")
     p_llm.add_argument("--claude-config-dir", action="append", default=[], help="Default Claude CLI config directory; repeat for fallback accounts")
     p_llm.add_argument("--codex-home", default=None, help="Default Codex CLI home (e.g. ~/.codex-personal1)")
+    p_llm.add_argument("--reasoning-effort", choices=["low", "medium", "high", "xhigh"], default=None, help="Default codex reasoning effort for Tesserae's own LLM calls")
     p_llm.set_defaults(_handler="_handle_config_llm")
+
+    p_deps = sub.add_parser(
+        "deps",
+        help="List optional dependency status (memex, cognee, raganything, …) or install them.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae config deps                 # show what's installed\n"
+            "  tesserae config deps --install memex\n"
+            "  tesserae config deps --all           # install everything\n"
+        ),
+    )
+    p_deps.add_argument("--install", action="append", default=[], metavar="NAME", help="Dependency to install (or 'all'); repeat for several")
+    p_deps.add_argument("--all", action="store_true", help="Install every known optional dependency")
+    p_deps.set_defaults(_handler="_handle_config_deps")
+
+    p_setup = sub.add_parser(
+        "setup",
+        help="Machine-wide setup: set LLM defaults for ALL projects and install optional dependencies in one shot.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae config setup                                  # show current config + deps\n"
+            "  tesserae config setup --llm-provider codex --reasoning-effort medium\n"
+            "  tesserae config setup --llm-provider codex --install all\n"
+        ),
+    )
+    p_setup.add_argument("--llm-provider", choices=["claude", "codex"], default=None, help="Machine-wide default LLM backend")
+    p_setup.add_argument("--claude-config-dir", action="append", default=[], help="Default Claude CLI config dir; repeat for fallbacks")
+    p_setup.add_argument("--codex-home", default=None, help="Default Codex CLI home")
+    p_setup.add_argument("--reasoning-effort", choices=["low", "medium", "high", "xhigh"], default=None, help="Default codex reasoning effort")
+    p_setup.add_argument("--install", action="append", default=[], metavar="NAME", help="Dependency to install (memex, cognee, raganything, understand-anything, or 'all'); repeat")
+    p_setup.add_argument("--install-all", action="store_true", help="Install every known optional dependency")
+    p_setup.set_defaults(_handler="_handle_config_setup")
 
     p_show = sub.add_parser("show", help="Print the effective machine-wide LLM defaults and exit.")
     p_show.set_defaults(_handler="_handle_config_show")
@@ -2741,6 +2827,109 @@ def _build_config_parser() -> argparse.ArgumentParser:
     p_status.add_argument("--no-ping", dest="ping", action="store_false", default=True, help="Skip the live backend ping (don't spend an LLM call).")
     p_status.set_defaults(_handler="_handle_config_status")
     return parser
+
+
+def _print_dep_status() -> None:
+    from . import deps
+
+    print("Optional dependencies:")
+    for d in deps.status():
+        mark = "✓ installed" if d["installed"] else "· not installed"
+        note = f"  ({d['note']})" if d["note"] and not d["installed"] else ""
+        print(f"  {mark:>15}  {d['name']:<20} {d['summary']}{note}")
+
+
+def _resolve_dep_targets(install: List[str], all_flag: bool) -> Tuple[List[str], List[str]]:
+    """Return ``(targets, unknown)``. ``all`` (flag or token) expands to every
+    dep; targets are de-duplicated, order-preserved."""
+    from . import deps
+
+    if all_flag or "all" in (install or []):
+        return list(deps.DEP_NAMES), []
+    targets: List[str] = []
+    for name in install or []:
+        if name not in targets:
+            targets.append(name)
+    unknown = [n for n in targets if n not in deps.DEPS_BY_NAME]
+    return targets, unknown
+
+
+def _install_deps(names: List[str]) -> int:
+    """Install each named dependency once; return 0 only if all succeeded."""
+    from . import deps
+
+    rc = 0
+    seen: set = set()
+    for name in names:
+        if name in seen:  # never run the same installer twice
+            continue
+        seen.add(name)
+        dep = deps.DEPS_BY_NAME.get(name)
+        # Surface the exact command first — important for the deps that run an
+        # unpinned remote install script (understand-anything).
+        if dep is not None:
+            print(f"Installing {name} … ({' '.join(dep.install_cmd)})", flush=True)
+        res = deps.install(name)
+        if res.get("already"):
+            print(f"  {name}: already installed.")
+        elif res["ok"]:
+            print(f"  {name}: installed.")
+        else:
+            print(f"  {name}: FAILED — {res.get('error')}", file=sys.stderr)
+            rc = 1
+    return rc
+
+
+def _handle_config_deps(args: argparse.Namespace) -> int:
+    """`config deps` — list optional dependency status, or install some."""
+    from . import deps
+
+    targets, unknown = _resolve_dep_targets(args.install, getattr(args, "all", False))
+    if not targets:
+        _print_dep_status()
+        return 0
+    if unknown:
+        print(f"Unknown dependency: {', '.join(unknown)} (known: {', '.join(deps.DEP_NAMES)})", file=sys.stderr)
+        return 2
+    return _install_deps(targets)
+
+
+def _handle_config_setup(args: argparse.Namespace) -> int:
+    """`config setup` — one-shot machine-wide setup: LLM defaults + dep installs."""
+    import tesserae.llm_json as _lj
+    from . import deps
+
+    # Resolve + VALIDATE install targets BEFORE writing any config, so a bad
+    # --install never leaves a half-applied setup (config mutated, install
+    # rejected).
+    targets, unknown = _resolve_dep_targets(args.install, args.install_all)
+    if unknown:
+        print(f"Unknown dependency: {', '.join(unknown)} (known: {', '.join(deps.DEP_NAMES)})", file=sys.stderr)
+        return 2
+
+    wrote_llm = bool(args.llm_provider or args.claude_config_dir or args.codex_home or args.reasoning_effort)
+    if wrote_llm:
+        merged = _merge_global_llm_config(
+            _lj._load_global_llm_config(),
+            llm_provider=args.llm_provider,
+            claude_config_dirs=args.claude_config_dir,
+            codex_home=args.codex_home,
+            reasoning_effort=args.reasoning_effort,
+        )
+        _write_global_config(_lj.GLOBAL_CONFIG_PATH, merged)
+        print(f"Saved machine-wide LLM defaults to {_lj.GLOBAL_CONFIG_PATH}.")
+
+    rc = _install_deps(targets) if targets else 0
+
+    if not wrote_llm and not targets:
+        # No-op invocation → show what's configured + available so the user
+        # knows what to pass.
+        _handle_config_status(argparse.Namespace(project=None, ping=False))
+        print()
+        _print_dep_status()
+        print("\nSet defaults + install with, e.g.:\n"
+              "  tesserae config setup --llm-provider codex --reasoning-effort medium --install all")
+    return rc
 
 
 def _route_config(rest: List[str]) -> int:
