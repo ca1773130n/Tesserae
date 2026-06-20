@@ -31,6 +31,10 @@ COGNEE_EMBEDDING_IMPORT_MODULES = [
     "cognee.infrastructure.databases.vector.embeddings",
     "cognee.infrastructure.databases.vector.get_vector_engine",
     "cognee.infrastructure.databases.graph.get_graph_engine",
+    # cognee 1.x: the real call site binds get_embedding_engine by-name at import
+    # time (and the source is @lru_cache'd), so patching only the source module
+    # is bypassed — patch the caller's own reference too.
+    "cognee.infrastructure.databases.vector.create_vector_engine",
 ]
 
 COGNEE_GRAPH_UTIL_IMPORT_MODULES = [
@@ -38,6 +42,62 @@ COGNEE_GRAPH_UTIL_IMPORT_MODULES = [
     "cognee.modules.graph.utils",
     "cognee.tasks.graph.extract_graph_from_data",
 ]
+
+# Where ``get_llm_client`` lives, newest layout first. Cognee 1.x moved it under
+# ``structured_output_framework/litellm_instructor`` (LLMGateway lazily imports it
+# from here at call time, so patching it is enough); 0.1.x had it at the top
+# ``infrastructure.llm`` path. Resolved at runtime so one adapter spans versions.
+COGNEE_GET_LLM_CLIENT_PATHS = [
+    "cognee.infrastructure.llm.structured_output_framework.litellm_instructor.llm.get_llm_client",
+    "cognee.infrastructure.llm.get_llm_client",
+]
+
+# Environment cognee 1.x needs for an unattended, local, no-API-key cognify
+# (set for the duration of the patch, restored on exit):
+#   - ENABLE_BACKEND_ACCESS_CONTROL=false — 1.x defaults to auth-required +
+#     multi-tenant, which blocks an unattended single-user build.
+#   - COGNEE_SKIP_CONNECTION_TEST=true — 1.x probes the embedding endpoint at
+#     startup; we use a local deterministic/Ollama engine, so the probe (against
+#     a non-existent OpenAI endpoint) only times out.
+COGNEE_AUTH_ENV = {
+    "ENABLE_BACKEND_ACCESS_CONTROL": "false",
+    "COGNEE_SKIP_CONNECTION_TEST": "true",
+}
+
+
+def _cognee_major_version() -> int:
+    """Best-effort major version of the installed cognee (1 for unknown/new)."""
+    ver = ""
+    try:
+        import cognee
+        ver = getattr(cognee, "__version__", "") or ""
+    except Exception:  # noqa: BLE001
+        pass
+    if not ver:
+        try:
+            from importlib.metadata import version
+            ver = version("cognee")
+        except Exception:  # noqa: BLE001
+            return 1
+    head = str(ver).split(".")[0]
+    return int(head) if head.isdigit() else 1
+
+
+def _resolve_get_llm_client_module():
+    """Import the module that defines ``get_llm_client``, across cognee versions."""
+    last_err: Optional[Exception] = None
+    for path in COGNEE_GET_LLM_CLIENT_PATHS:
+        try:
+            module = importlib.import_module(path)
+        except Exception as exc:  # noqa: BLE001 — try the next known layout
+            last_err = exc
+            continue
+        if hasattr(module, "get_llm_client"):
+            return module
+    raise CodexCLIError(
+        "could not locate cognee's get_llm_client in any known layout "
+        f"(tried {COGNEE_GET_LLM_CLIENT_PATHS}); last error: {last_err}"
+    )
 
 
 class CodexCLIError(RuntimeError):
@@ -67,7 +127,14 @@ class CodexCLICogneeAdapter:
         self.timeout = timeout
         self.runner = runner or run_codex_cli
 
-    async def acreate_structured_output(self, text_input: str, system_prompt: str, response_model: Type[BaseModel]) -> BaseModel:
+    async def acreate_structured_output(self, text_input: str, system_prompt: str, response_model):
+        # cognee 1.x calls this with a plain ``str`` (and other non-pydantic
+        # types) for free-text outputs like summaries — not only BaseModels.
+        is_model = isinstance(response_model, type) and issubclass(response_model, BaseModel)
+        if not is_model:
+            raw = await self.runner(build_text_prompt(text_input, system_prompt), self.model, self.timeout)
+            text = raw.strip()
+            return text if response_model in (str, None) else text  # best-effort plain text
         prompt = build_structured_prompt(text_input, system_prompt, response_model)
         raw = await self.runner(prompt, self.model, self.timeout)
         payload = extract_json_object(raw)
@@ -75,6 +142,28 @@ class CodexCLICogneeAdapter:
 
     def show_prompt(self, text_input: str, system_prompt: str) -> str:
         return f"System Prompt:\n{system_prompt}\n\nUser Input:\n{text_input}\n"
+
+    # cognee 1.x's LLMInterface also declares audio/image methods. Tesserae only
+    # cognifies text, so these are not exercised — implement them defensively so
+    # the adapter satisfies the interface if cognee ever probes for them.
+    async def create_transcript(self, input: str):
+        raise NotImplementedError("Codex CLI adapter does text-only cognify; audio transcription is unsupported")
+
+    async def transcribe_image(self, input: str):
+        raise NotImplementedError("Codex CLI adapter does text-only cognify; image transcription is unsupported")
+
+
+def build_text_prompt(text_input: str, system_prompt: str) -> str:
+    """Prompt for a plain-text response (cognee passes ``response_model=str``)."""
+    return f"""You are a writing assistant for Cognee. Follow the instructions and
+return ONLY the requested text — no JSON, no markdown fences, no commentary.
+
+System instructions from Cognee:
+{system_prompt}
+
+Input text:
+{text_input}
+"""
 
 
 def build_structured_prompt(text_input: str, system_prompt: str, response_model: Type[BaseModel]) -> str:
@@ -176,6 +265,18 @@ def _strip_markdown_fence(text: str) -> str:
     return "\n".join(lines).strip()
 
 
+class _ApproxTokenizer:
+    """Tokenizer cognee 1.x reads off the embedding engine for chunk sizing.
+
+    cognee calls ``embedding_engine.tokenizer.count_tokens(text)`` to size
+    chunks; an approximate count (~4 chars/token) is plenty for that — we don't
+    need a model-exact tokenizer for a local, no-API-key build.
+    """
+
+    def count_tokens(self, text) -> int:
+        return max(1, len(str(text)) // 4)
+
+
 class DeterministicEmbeddingEngine:
     """Small local embedding engine for no-API-key Cognee smoke runs.
 
@@ -186,12 +287,18 @@ class DeterministicEmbeddingEngine:
 
     def __init__(self, dimensions: int = 128) -> None:
         self.dimensions = dimensions
+        # cognee 1.x reads these off the engine for chunk sizing.
+        self.max_completion_tokens = 8191
+        self.tokenizer = _ApproxTokenizer()
 
     async def embed_text(self, text):
         return [self._embed_one(item) for item in text]
 
     def get_vector_size(self) -> int:
         return self.dimensions
+
+    def get_batch_size(self) -> int:  # required by cognee 1.x EmbeddingEngine
+        return 100
 
     def _embed_one(self, text: str):
         values = []
@@ -231,6 +338,9 @@ class OllamaEmbeddingEngine:
         self.timeout = timeout
         self.query_instruction = query_instruction
         self.embedder = embedder or ollama_embed
+        # cognee 1.x reads these off the engine for chunk sizing.
+        self.max_completion_tokens = 8191
+        self.tokenizer = _ApproxTokenizer()
 
     async def embed_text(self, text):
         return await self.embedder(list(text), self.model, self.endpoint, self.timeout)
@@ -241,6 +351,9 @@ class OllamaEmbeddingEngine:
 
     def get_vector_size(self) -> int:
         return self.dimensions
+
+    def get_batch_size(self) -> int:  # required by cognee 1.x EmbeddingEngine
+        return 100
 
 
 async def ollama_embed(texts: List[str], model: str, endpoint: str, timeout: int) -> List[List[float]]:
@@ -343,7 +456,12 @@ class CogneeCodexPatch:
 
     def __enter__(self):
         ensure_event_loop()
-        import cognee.infrastructure.llm.get_llm_client as llm_module
+        # Disable cognee 1.x's auth/access-control posture for this local build
+        # (restored on exit). setdefault-style: remember the prior value.
+        self._auth_env_prev = {k: os.environ.get(k) for k in COGNEE_AUTH_ENV}
+        os.environ.update(COGNEE_AUTH_ENV)
+
+        llm_module = _resolve_get_llm_client_module()
 
         self._module = llm_module
         self._original = llm_module.get_llm_client
@@ -383,14 +501,40 @@ class CogneeCodexPatch:
                 if hasattr(module, "get_embedding_engine"):
                     self._patched_embedding_refs.append((module, module.get_embedding_engine))
                     module.get_embedding_engine = patched_get_embedding_engine
-        for module_name in COGNEE_GRAPH_UTIL_IMPORT_MODULES:
-            try:
-                module = importlib.import_module(module_name)
-            except Exception:
-                continue
-            if hasattr(module, "retrieve_existing_edges"):
-                self._patched_graph_refs.append((module, module.retrieve_existing_edges))
-                module.retrieve_existing_edges = retrieve_existing_edges_uuid_safe
+            # cognee 1.x @lru_cache's get_embedding_engine and may cache the
+            # vector-engine singleton; clear them so our patched engine is used
+            # even if cognee already built one (e.g. during a connection probe).
+            for orig in (self._original_embedding, *(o for _, o in self._patched_embedding_refs)):
+                cc = getattr(orig, "cache_clear", None)
+                if callable(cc):
+                    try:
+                        cc()
+                    except Exception:  # noqa: BLE001
+                        pass
+            for mod_name in ("cognee.infrastructure.databases.vector.get_vector_engine",
+                             "cognee.infrastructure.databases.vector.create_vector_engine"):
+                try:
+                    mod = importlib.import_module(mod_name)
+                    for attr in ("get_vector_engine", "create_vector_engine"):
+                        fn = getattr(mod, attr, None)
+                        cc = getattr(fn, "cache_clear", None)
+                        if callable(cc):
+                            cc()
+                except Exception:  # noqa: BLE001
+                    pass
+        # The retrieve_existing_edges UUID-dedup shim worked around a bug in
+        # cognee 0.x and takes a ``graph_engine`` arg that 1.x no longer passes
+        # (1.x fixed the bug and changed the signature). Applying it on 1.x
+        # breaks edge processing — so only patch on 0.x.
+        if _cognee_major_version() < 1:
+            for module_name in COGNEE_GRAPH_UTIL_IMPORT_MODULES:
+                try:
+                    module = importlib.import_module(module_name)
+                except Exception:
+                    continue
+                if hasattr(module, "retrieve_existing_edges"):
+                    self._patched_graph_refs.append((module, module.retrieve_existing_edges))
+                    module.retrieve_existing_edges = retrieve_existing_edges_uuid_safe
         return self
 
     def __exit__(self, exc_type, exc, tb):
@@ -404,4 +548,9 @@ class CogneeCodexPatch:
             module.get_embedding_engine = original
         for module, original in self._patched_graph_refs:
             module.retrieve_existing_edges = original
+        for key, prev in getattr(self, "_auth_env_prev", {}).items():
+            if prev is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = prev
         return False
