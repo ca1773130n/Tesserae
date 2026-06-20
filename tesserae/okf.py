@@ -18,6 +18,7 @@ bending the Obsidian projector, which is wikilink/dataview-specific.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 from collections import defaultdict
@@ -53,12 +54,22 @@ def _concept_ids(graph: ResearchGraph) -> Dict[str, str]:
     """
     slug_by_id = unique_slugs(graph.nodes)
     out: Dict[str, str] = {}
-    for node in graph.nodes:
+    taken: Dict[str, str] = {}
+    # ``unique_slugs`` maps same-name nodes to ONE canonical slug, so two
+    # distinct nodes can collide on the same concept path and one would
+    # overwrite the other's file (lossy round-trip). Disambiguate collisions
+    # with a short stable hash of the node id; sorted for deterministic output.
+    for node in sorted(graph.nodes, key=lambda n: n.id):
         if node.type == ResearchNodeType.STUB:
             continue
         rel_dir = directory_for_node(node)
         slug = slug_by_id[node.id]
-        out[node.id] = f"{rel_dir}/{slug}" if rel_dir else slug
+        base = f"{rel_dir}/{slug}" if rel_dir else slug
+        concept = base
+        if taken.get(concept, node.id) != node.id:
+            concept = f"{base}-{hashlib.sha1(node.id.encode('utf-8')).hexdigest()[:8]}"
+        taken[concept] = node.id
+        out[node.id] = concept
     return out
 
 
@@ -77,6 +88,13 @@ def write_okf_bundle(graph: ResearchGraph, out_dir: str | Path) -> List[Path]:
     """Write ``graph`` as an OKF v0.1 bundle under ``out_dir``. Deterministic."""
     root = Path(out_dir)
     root.mkdir(parents=True, exist_ok=True)
+    # Clear prior *.md so a re-export is a deterministic projection of the
+    # CURRENT graph (a deleted node must not linger as a stale concept file).
+    for stale in root.rglob("*.md"):
+        try:
+            stale.unlink()
+        except OSError:
+            pass
     cid = _concept_ids(graph)
     node_by_id = {n.id: n for n in graph.nodes}
     out_edges: Dict[str, List[ResearchEdge]] = defaultdict(list)
@@ -94,7 +112,9 @@ def write_okf_bundle(graph: ResearchGraph, out_dir: str | Path) -> List[Path]:
 
         edges = sorted(out_edges[node.id], key=lambda e: (e.type, cid[e.target]))
         x_edges = [
-            {"target": cid[e.target], "type": e.type, **({"evidence": e.evidence} if e.evidence else {})}
+            {"target": cid[e.target], "type": e.type,
+             **({"evidence": e.evidence} if e.evidence else {}),
+             **({"metadata": e.metadata} if e.metadata else {})}
             for e in edges
         ]
         x_tess: dict = {"id": node.id}
@@ -206,13 +226,24 @@ def read_okf_bundle(in_dir: str | Path) -> ResearchGraph:
     the reserved ``index.md``/``log.md`` are skipped.
     """
     root = Path(in_dir)
+    root_resolved = root.resolve()
     parsed = []
     concept_to_node: Dict[str, str] = {}
     for f in sorted(root.rglob("*.md")):
         concept = str(f.relative_to(root).with_suffix("")).replace(os.sep, "/")
         if concept in _RESERVED:
             continue
-        fm, body = _split_frontmatter(f.read_text(encoding="utf-8"))
+        # Never follow a symlink (or any path) that escapes the bundle root —
+        # a crafted bundle must not coax import into reading arbitrary files.
+        try:
+            if f.is_symlink() or root_resolved not in f.resolve().parents:
+                continue
+        except OSError:
+            continue
+        try:
+            fm, body = _split_frontmatter(f.read_text(encoding="utf-8"))
+        except OSError:
+            continue
         if not str(fm.get("type") or "").strip():
             continue  # OKF: type is required — tolerate by skipping
         x = fm.get("x_tesserae") if isinstance(fm.get("x_tesserae"), dict) else None
@@ -245,6 +276,7 @@ def read_okf_bundle(in_dir: str | Path) -> ResearchGraph:
                     edges.append(ResearchEdge(
                         source=node_id, target=concept_to_node[tgt], type=t,
                         evidence=e.get("evidence"),
+                        metadata=dict(e.get("metadata") or {}),
                     ))
         else:
             meta = {"okf_type": foreign} if foreign else {}

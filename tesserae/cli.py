@@ -2398,8 +2398,12 @@ def _handle_export_okf(args: argparse.Namespace) -> int:
     if getattr(args, "import_dir", None):
         graph = read_okf_bundle(args.import_dir)
         out = args.output or str(graph_dir / "okf-imported.graph.json")
-        # ponytail: import writes a SEPARATE graph file by default — never
-        # silently clobber the compiled graph.json. Pass --output to override.
+        # Import writes a SEPARATE graph file by default; even with an explicit
+        # --output, refuse to clobber the compiled graph.json (codex review).
+        if Path(out).resolve() == Path(wiki.paths.graph).resolve():
+            print("export okf --import: refusing to overwrite the compiled graph.json; "
+                  "choose a different --output", file=sys.stderr)
+            return 2
         Path(out).write_text(graph.to_json(), encoding="utf-8")
         print(f"Imported OKF bundle: nodes={len(graph.nodes)} edges={len(graph.edges)} path={out}")
         return 0

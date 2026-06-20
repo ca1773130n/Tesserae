@@ -57,6 +57,63 @@ def test_export_is_deterministic(tmp_path: Path):
     assert "index.md" in a and "log.md" in a  # reserved files emitted
 
 
+def test_same_name_nodes_round_trip_without_collision(tmp_path: Path):
+    # Two distinct nodes with the same name+type would collide on one concept
+    # file; both must survive (codex BLOCKER).
+    g = ResearchGraph(
+        nodes=[
+            ResearchNode(id="a1", name="Cache", type=ResearchNodeType.CONCEPT, description="one"),
+            ResearchNode(id="a2", name="Cache", type=ResearchNodeType.CONCEPT, description="two"),
+        ],
+        edges=[],
+    )
+    write_okf_bundle(g, tmp_path)
+    back = read_okf_bundle(tmp_path)
+    assert {n.id for n in back.nodes} == {"a1", "a2"}
+    assert {n.description for n in back.nodes} == {"one", "two"}
+
+
+def test_edge_metadata_round_trips(tmp_path: Path):
+    g = ResearchGraph(
+        nodes=[
+            ResearchNode(id="n1", name="A", type=ResearchNodeType.CONCEPT),
+            ResearchNode(id="n2", name="B", type=ResearchNodeType.MODEL),
+        ],
+        edges=[ResearchEdge(source="n2", target="n1", type="uses",
+                            metadata={"weight": 2, "note": "x"})],
+    )
+    write_okf_bundle(g, tmp_path)
+    back = read_okf_bundle(tmp_path)
+    assert back.edges[0].metadata == {"weight": 2, "note": "x"}
+
+
+def test_reexport_drops_deleted_nodes(tmp_path: Path):
+    write_okf_bundle(_graph(), tmp_path)
+    smaller = ResearchGraph(
+        nodes=[ResearchNode(id="n1", name="Attention", type=ResearchNodeType.CONCEPT)],
+        edges=[],
+    )
+    write_okf_bundle(smaller, tmp_path)  # re-export into the SAME dir
+    back = read_okf_bundle(tmp_path)
+    assert {n.id for n in back.nodes} == {"n1"}  # n2 (deleted) must not linger
+
+
+def test_symlink_outside_root_is_skipped(tmp_path: Path):
+    import os as _os
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "real.md").write_text("---\ntype: Concept\nname: Real\n---\n\nhi\n", encoding="utf-8")
+    secret = tmp_path / "secret.md"
+    secret.write_text("---\ntype: Concept\nname: Secret\n---\n\nleak\n", encoding="utf-8")
+    try:
+        _os.symlink(secret, bundle / "link.md")
+    except (OSError, NotImplementedError):
+        import pytest
+        pytest.skip("symlinks unavailable")
+    g = read_okf_bundle(bundle)
+    assert {n.name for n in g.nodes} == {"Real"}  # symlinked file outside root not read
+
+
 def test_foreign_bundle_best_effort(tmp_path: Path):
     # A hand-authored OKF bundle: no x_tesserae, an unknown type, a body link,
     # a broken link, and a file with no type (must be skipped).
