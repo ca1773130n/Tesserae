@@ -216,6 +216,7 @@ _TESSERAE_PROMPT_SIGNATURES: tuple[str, ...] = (
     "You are a research subagent. Given a sub-question",
     "You are the writer of an agentic research report",
     "You are a structured-output adapter for Cognee",
+    "You are a writing assistant for Cognee",
     "Summarize the following in 2 sentences as a TL;DR",
     # JSON-client compile/retrieval prompts (codex/claude exec, also captured):
     "You distill a cluster of related coding/agent session findings",
