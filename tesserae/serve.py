@@ -95,6 +95,17 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
                 self._send_json(200, {"status": "ok"})
                 return
             if parsed.path == "/api/transcript-search":
+                # Reads LOCAL indexed transcripts, so it must not be callable
+                # from arbitrary websites the user visits (a hostile page could
+                # probe local history). Reuse the clip gate: a cross-site browser
+                # Origin is rejected; same-origin / no-Origin / loopback /
+                # extension callers pass. We also never emit
+                # Access-Control-Allow-Origin, so a slipped-through cross-origin
+                # request still can't READ the results.
+                allowed, _ = self._clip_origin()
+                if not allowed:
+                    self._send_json(403, {"error": "forbidden"})
+                    return
                 from .memex_search import search_transcripts
 
                 qs = parse_qs(parsed.query)

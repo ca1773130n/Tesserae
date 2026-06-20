@@ -347,23 +347,28 @@ _TRANSCRIPT_SEARCH_WIDGET = """
 <script>
 (function(){
   var q=document.getElementById('mx-q'),status=document.getElementById('mx-status'),box=document.getElementById('mx-results'),t=null;
-  function esc(s){var d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML;}
+  // Untrusted transcript text is ONLY ever set via textContent — never
+  // innerHTML — so a malicious transcript snippet can't inject markup.
+  function el(tag,cls,text){var n=document.createElement(tag);if(cls)n.className=cls;if(text!=null)n.textContent=text;return n;}
   function run(){
     var v=q.value.trim();
-    box.innerHTML='';
+    box.textContent='';
     if(!v){status.textContent='';return;}
     status.textContent='Searching…';
     fetch('/api/transcript-search?limit=20&q='+encodeURIComponent(v)).then(function(r){return r.json();}).then(function(d){
+      box.textContent='';
       if(d.available===false){status.textContent=d.error||'memex is not installed.';return;}
       if(d.error){status.textContent=d.error;return;}
       var res=d.results||[];
       status.textContent=res.length?(res.length+' match'+(res.length>1?'es':'')):'No matches.';
-      box.innerHTML=res.map(function(x){
-        var meta=[x.project,x.role,(x.ts||'').slice(0,10),x.score!=null?('score '+Number(x.score).toFixed(1)):''].filter(Boolean).map(esc).join(' · ');
-        return '<article class="panel" style="padding:.6rem .8rem;margin:0;">'
-          +'<div class="muted small">'+meta+'</div>'
-          +'<div style="white-space:pre-wrap;font-size:.9rem;margin-top:.25rem;">'+esc(x.snippet||x.text||'')+'</div></article>';
-      }).join('');
+      res.forEach(function(x){
+        var meta=[x.project,x.role,(x.ts||'').slice(0,10),x.score!=null?('score '+Number(x.score).toFixed(1)):''].filter(Boolean).join(' · ');
+        var art=el('article','panel');art.style.padding='.6rem .8rem';art.style.margin='0';
+        art.appendChild(el('div','muted small',meta));
+        var snip=el('div',null,x.snippet||x.text||'');snip.style.whiteSpace='pre-wrap';snip.style.fontSize='.9rem';snip.style.marginTop='.25rem';
+        art.appendChild(snip);
+        box.appendChild(art);
+      });
     }).catch(function(e){status.textContent='Search failed: '+e;});
   }
   q.addEventListener('input',function(){clearTimeout(t);t=setTimeout(run,250);});

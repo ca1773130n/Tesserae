@@ -46,13 +46,28 @@ def search_transcripts(
     if not query:
         return {"available": True, "results": [], "total": 0}
 
-    cmd = [binary, "search", query, "--json-array", "--limit", str(max(1, min(int(limit), 100)))]
-    if project:
-        cmd += ["--project", project]
+    # Parse limit defensively (the wrapper promises "never raises", and direct
+    # callers may pass junk — codex review).
+    try:
+        limit = max(1, min(int(limit), 100))
+    except (TypeError, ValueError):
+        limit = 20
+
+    # Argv flag-smuggling guard (security review): the query is UNTRUSTED (it
+    # arrives from the public GET endpoint). Emit all of OUR flags first, then an
+    # explicit `--` end-of-options sentinel, so a query like "--version" can
+    # never be parsed as a memex flag. Reject a leading-dash project (it sits
+    # before the sentinel).
+    if project and project.startswith("-"):
+        return {"available": True, "results": [], "total": 0, "error": "invalid project filter"}
+    cmd = [binary, "search", "--json-array", "--limit", str(limit)]
     if source in ("claude", "codex", "opencode"):
         cmd += ["--source", source]
     if hybrid:
         cmd.append("--hybrid")
+    if project:
+        cmd += ["--project", project]
+    cmd += ["--", query]
 
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=_TIMEOUT_S)

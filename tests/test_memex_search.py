@@ -33,6 +33,36 @@ def test_success_parses_json_array(monkeypatch):
     assert r["available"] and r["total"] == 1 and r["results"][0]["project"] == "P"
 
 
+def test_query_cannot_smuggle_flags(monkeypatch):
+    # Untrusted query must sit AFTER a `--` end-of-options sentinel so it can
+    # never be parsed as a memex flag (security review).
+    seen = {}
+    monkeypatch.setattr(memex_search, "memex_path", lambda: "/bin/memex")
+
+    def capture(cmd, **k):
+        seen["cmd"] = cmd
+        return _Proc(stdout="[]")
+    monkeypatch.setattr(subprocess, "run", capture)
+    memex_search.search_transcripts("--version", limit=3)
+    cmd = seen["cmd"]
+    assert cmd[-2:] == ["--", "--version"]  # sentinel then the literal query
+    assert "--version" not in cmd[:-1]  # never appears as a flag position
+
+
+def test_leading_dash_project_rejected(monkeypatch):
+    monkeypatch.setattr(memex_search, "memex_path", lambda: "/bin/memex")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _Proc(stdout="[]"))
+    r = memex_search.search_transcripts("q", project="--evil")
+    assert r["results"] == [] and "invalid project" in r["error"]
+
+
+def test_junk_limit_degrades(monkeypatch):
+    monkeypatch.setattr(memex_search, "memex_path", lambda: "/bin/memex")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: _Proc(stdout="[]"))
+    # int("oops") must not raise out of the wrapper.
+    assert memex_search.search_transcripts("q", limit="oops")["available"] is True
+
+
 def test_no_index_gives_actionable_error(monkeypatch):
     monkeypatch.setattr(memex_search, "memex_path", lambda: "/bin/memex")
     monkeypatch.setattr(subprocess, "run",
