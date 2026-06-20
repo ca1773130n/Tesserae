@@ -78,10 +78,18 @@ DEPS_BY_NAME = {d.name: d for d in DEPS}
 DEP_NAMES = [d.name for d in DEPS]
 
 
+def _safe_detect(dep: Dep) -> bool:
+    """``dep.detect()`` that can never raise — a probe failure means 'absent'."""
+    try:
+        return bool(dep.detect())
+    except Exception:  # noqa: BLE001 — detection is best-effort; never propagate
+        return False
+
+
 def status() -> List[dict]:
     """``[{name, summary, installed, note}]`` for every known dependency."""
     return [
-        {"name": d.name, "summary": d.summary, "installed": d.detect(), "note": d.note}
+        {"name": d.name, "summary": d.summary, "installed": _safe_detect(d), "note": d.note}
         for d in DEPS
     ]
 
@@ -94,7 +102,7 @@ def install(name: str, *, timeout: float = _INSTALL_TIMEOUT_S) -> dict:
     dep = DEPS_BY_NAME.get(name)
     if dep is None:
         return {"name": name, "ok": False, "error": f"unknown dependency (known: {', '.join(DEP_NAMES)})"}
-    if dep.detect():
+    if _safe_detect(dep):
         return {"name": name, "ok": True, "already": True, "cmd": ""}
     cmd_display = " ".join(dep.install_cmd)
     try:
@@ -104,6 +112,6 @@ def install(name: str, *, timeout: float = _INSTALL_TIMEOUT_S) -> dict:
     except OSError as exc:
         # e.g. cargo / pip not on PATH.
         return {"name": name, "ok": False, "error": f"could not run installer: {exc}", "cmd": cmd_display}
-    ok = proc.returncode == 0 and dep.detect()
+    ok = proc.returncode == 0 and _safe_detect(dep)
     err = None if ok else (proc.stderr or proc.stdout or f"exit {proc.returncode}").strip()[-500:]
     return {"name": name, "ok": ok, "error": err, "cmd": cmd_display}

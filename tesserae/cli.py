@@ -2786,7 +2786,7 @@ def _build_config_parser() -> argparse.ArgumentParser:
             "  tesserae config deps --all           # install everything\n"
         ),
     )
-    p_deps.add_argument("--install", action="append", default=[], metavar="NAME", help="Dependency to install; repeat for several")
+    p_deps.add_argument("--install", action="append", default=[], metavar="NAME", help="Dependency to install (or 'all'); repeat for several")
     p_deps.add_argument("--all", action="store_true", help="Install every known optional dependency")
     p_deps.set_defaults(_handler="_handle_config_deps")
 
@@ -2805,7 +2805,7 @@ def _build_config_parser() -> argparse.ArgumentParser:
     p_setup.add_argument("--claude-config-dir", action="append", default=[], help="Default Claude CLI config dir; repeat for fallbacks")
     p_setup.add_argument("--codex-home", default=None, help="Default Codex CLI home")
     p_setup.add_argument("--reasoning-effort", choices=["low", "medium", "high", "xhigh"], default=None, help="Default codex reasoning effort")
-    p_setup.add_argument("--install", action="append", default=[], metavar="NAME", help="Dependency to install (memex, cognee, raganything, understand-anything); repeat")
+    p_setup.add_argument("--install", action="append", default=[], metavar="NAME", help="Dependency to install (memex, cognee, raganything, understand-anything, or 'all'); repeat")
     p_setup.add_argument("--install-all", action="store_true", help="Install every known optional dependency")
     p_setup.set_defaults(_handler="_handle_config_setup")
 
@@ -2839,13 +2839,36 @@ def _print_dep_status() -> None:
         print(f"  {mark:>15}  {d['name']:<20} {d['summary']}{note}")
 
 
+def _resolve_dep_targets(install: List[str], all_flag: bool) -> Tuple[List[str], List[str]]:
+    """Return ``(targets, unknown)``. ``all`` (flag or token) expands to every
+    dep; targets are de-duplicated, order-preserved."""
+    from . import deps
+
+    if all_flag or "all" in (install or []):
+        return list(deps.DEP_NAMES), []
+    targets: List[str] = []
+    for name in install or []:
+        if name not in targets:
+            targets.append(name)
+    unknown = [n for n in targets if n not in deps.DEPS_BY_NAME]
+    return targets, unknown
+
+
 def _install_deps(names: List[str]) -> int:
-    """Install each named dependency; return 0 only if all succeeded."""
+    """Install each named dependency once; return 0 only if all succeeded."""
     from . import deps
 
     rc = 0
+    seen: set = set()
     for name in names:
-        print(f"Installing {name} …", flush=True)
+        if name in seen:  # never run the same installer twice
+            continue
+        seen.add(name)
+        dep = deps.DEPS_BY_NAME.get(name)
+        # Surface the exact command first — important for the deps that run an
+        # unpinned remote install script (understand-anything).
+        if dep is not None:
+            print(f"Installing {name} … ({' '.join(dep.install_cmd)})", flush=True)
         res = deps.install(name)
         if res.get("already"):
             print(f"  {name}: already installed.")
@@ -2853,8 +2876,6 @@ def _install_deps(names: List[str]) -> int:
             print(f"  {name}: installed.")
         else:
             print(f"  {name}: FAILED — {res.get('error')}", file=sys.stderr)
-            if res.get("cmd"):
-                print(f"    (tried: {res['cmd']})", file=sys.stderr)
             rc = 1
     return rc
 
@@ -2863,15 +2884,10 @@ def _handle_config_deps(args: argparse.Namespace) -> int:
     """`config deps` — list optional dependency status, or install some."""
     from . import deps
 
-    targets: List[str] = []
-    if getattr(args, "all", False):
-        targets = list(deps.DEP_NAMES)
-    elif args.install:
-        targets = args.install
+    targets, unknown = _resolve_dep_targets(args.install, getattr(args, "all", False))
     if not targets:
         _print_dep_status()
         return 0
-    unknown = [n for n in targets if n not in deps.DEPS_BY_NAME]
     if unknown:
         print(f"Unknown dependency: {', '.join(unknown)} (known: {', '.join(deps.DEP_NAMES)})", file=sys.stderr)
         return 2
@@ -2882,6 +2898,14 @@ def _handle_config_setup(args: argparse.Namespace) -> int:
     """`config setup` — one-shot machine-wide setup: LLM defaults + dep installs."""
     import tesserae.llm_json as _lj
     from . import deps
+
+    # Resolve + VALIDATE install targets BEFORE writing any config, so a bad
+    # --install never leaves a half-applied setup (config mutated, install
+    # rejected).
+    targets, unknown = _resolve_dep_targets(args.install, args.install_all)
+    if unknown:
+        print(f"Unknown dependency: {', '.join(unknown)} (known: {', '.join(deps.DEP_NAMES)})", file=sys.stderr)
+        return 2
 
     wrote_llm = bool(args.llm_provider or args.claude_config_dir or args.codex_home or args.reasoning_effort)
     if wrote_llm:
@@ -2895,18 +2919,7 @@ def _handle_config_setup(args: argparse.Namespace) -> int:
         _write_global_config(_lj.GLOBAL_CONFIG_PATH, merged)
         print(f"Saved machine-wide LLM defaults to {_lj.GLOBAL_CONFIG_PATH}.")
 
-    targets: List[str] = []
-    if args.install_all:
-        targets = list(deps.DEP_NAMES)
-    elif args.install:
-        targets = args.install
-    rc = 0
-    if targets:
-        unknown = [n for n in targets if n not in deps.DEPS_BY_NAME]
-        if unknown:
-            print(f"Unknown dependency: {', '.join(unknown)}", file=sys.stderr)
-            return 2
-        rc = _install_deps(targets)
+    rc = _install_deps(targets) if targets else 0
 
     if not wrote_llm and not targets:
         # No-op invocation → show what's configured + available so the user

@@ -5,7 +5,7 @@ from __future__ import annotations
 import types
 
 from tesserae import deps
-from tesserae.cli import _merge_global_llm_config
+from tesserae.cli import _merge_global_llm_config, _resolve_dep_targets
 
 
 def test_status_shape_covers_known_deps():
@@ -57,6 +57,27 @@ def test_install_missing_installer_degrades(monkeypatch):
     monkeypatch.setattr(deps.subprocess, "run", boom)
     r = deps.install("x")
     assert r["ok"] is False and "could not run" in r["error"]
+
+
+def test_detect_exception_never_propagates(monkeypatch):
+    def boom():
+        raise RuntimeError("which blew up")
+    monkeypatch.setitem(deps.DEPS_BY_NAME, "x", deps.Dep("x", "s", boom, ["true"]))
+    monkeypatch.setattr(deps.subprocess, "run",
+                        lambda *a, **k: types.SimpleNamespace(returncode=0, stdout="", stderr=""))
+    # status() and install() must both swallow a detect exception.
+    assert deps.status()  # does not raise
+    r = deps.install("x")
+    assert r["ok"] is False  # detect-after-install raised -> treated as absent
+
+
+def test_resolve_targets_expands_all_and_dedups():
+    targets, unknown = _resolve_dep_targets(["all"], False)
+    assert targets == deps.DEP_NAMES and unknown == []
+    targets, unknown = _resolve_dep_targets(["memex", "memex", "cognee"], False)
+    assert targets == ["memex", "cognee"] and unknown == []
+    targets, unknown = _resolve_dep_targets(["bogus"], False)
+    assert unknown == ["bogus"]
 
 
 def test_merge_global_llm_config_only_changes_passed_keys():
