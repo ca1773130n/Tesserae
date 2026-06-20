@@ -2715,6 +2715,23 @@ def _handle_config_status(args: argparse.Namespace) -> int:
         dirs = settings["claude_config_dirs"] or ["<CLI default>"]
         print(f"  claude_dirs: {dirs}   [{_source('llm_claude_config_dirs', 'CLAUDE_CONFIG_DIR')}]")
 
+    # Machine-wide (non-LLM) settings + optional dependency status — the rest of
+    # what `config setup` manages, so `status` is a full picture, not LLM-only.
+    backends = global_cfg.get("memory_backends") if isinstance(global_cfg.get("memory_backends"), dict) else {}
+    cognee = backends.get("cognee") if isinstance(backends.get("cognee"), dict) else {}
+    print("\nMachine-wide settings (~/.tesserae/config.json):")
+    if cognee.get("enabled"):
+        print(f"  cognee     : enabled (mode={cognee.get('mode') or 'codex_cognify'})")
+    else:
+        print("  cognee     : disabled   [enable: tesserae config setup --enable-cognee]")
+
+    from .deps import status as _dep_status
+
+    print("\nOptional dependencies:")
+    for dep in _dep_status():
+        mark = "✓ installed" if dep["installed"] else "· not installed"
+        print(f"  {mark:>15}  {dep['name']}")
+
     if not getattr(args, "ping", True):
         return 0
 
