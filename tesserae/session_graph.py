@@ -296,15 +296,7 @@ class SessionGraphExtractor:
                     "chunk_index": chunk_index,
                     "turn_start": start,
                     "session_id": session.id,
-                    "findings": [
-                        {
-                            "kind": f.kind,
-                            "body": f.body,
-                            "turn_ids": f.turn_ids,
-                            "references": f.references,
-                        }
-                        for f in findings
-                    ],
+                    "findings": [_finding_to_dict(f) for f in findings],
                 },
             )
             all_findings.extend(findings)
@@ -377,6 +369,17 @@ class SessionGraphExtractor:
                 finding_metadata["first_seen_at"] = str(session_started_at)
             if self.model:
                 finding_metadata["llm_model"] = self.model
+            # Extraction QUALITY signals (Jonasb8/memex ideas; AGPL, no code
+            # copied). These come from the content-keyed cached LLM output, so
+            # like body/turn_ids they are byte-stable across compiles of
+            # unchanged sources — safe in graph.json, unlike wall-clock decay
+            # state. They flag, never guarantee, finding quality.
+            if f.confidence is not None:
+                finding_metadata["confidence"] = f.confidence
+            if f.confidence_rationale:
+                finding_metadata["confidence_rationale"] = f.confidence_rationale
+            if f.revisit_signals:
+                finding_metadata["revisit_signals"] = list(f.revisit_signals)
             finding_node = builder.add_node(
                 name=f.body,
                 node_type=node_type,
@@ -468,6 +471,9 @@ def _offset_turn_ids(finding: Finding, offset: int) -> Finding:
         body=finding.body,
         turn_ids=[offset + t for t in finding.turn_ids],
         references=list(finding.references),
+        confidence=finding.confidence,
+        confidence_rationale=finding.confidence_rationale,
+        revisit_signals=list(finding.revisit_signals),
     )
 
 
@@ -529,13 +535,53 @@ def _write_cache(path: Path, payload: dict) -> None:
                 pass
 
 
+def _coerce_confidence(raw: object) -> Optional[float]:
+    """Tolerant parse of a cached confidence to ``[0,1]`` or ``None``.
+
+    A malformed/future cache (``"confidence": "nope"`` or ``5``) must DEGRADE,
+    never crash compile on a cache hit — mirrors ``_validate_finding``.
+    """
+    if raw is None:
+        return None
+    try:
+        return max(0.0, min(1.0, float(raw)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_signal_list(raw: object) -> List[str]:
+    """Always a clean list. A bare string becomes one element (never iterated
+    char-by-char into the cache/graph); non-list/str -> []."""
+    if isinstance(raw, str):
+        raw = [raw]
+    elif not isinstance(raw, (list, tuple)):
+        return []
+    return [s for r in raw if (s := str(r or "").strip())]
+
+
 def _finding_from_dict(d: dict) -> Finding:
     return Finding(
         kind=str(d.get("kind") or ""),
         body=str(d.get("body") or ""),
         turn_ids=list(d.get("turn_ids") or []),
         references=list(d.get("references") or []),
+        confidence=_coerce_confidence(d.get("confidence")),
+        confidence_rationale=str(d.get("confidence_rationale") or ""),
+        revisit_signals=_coerce_signal_list(d.get("revisit_signals")),
     )
+
+
+def _finding_to_dict(f: Finding) -> dict:
+    d: dict = {"kind": f.kind, "body": f.body, "turn_ids": f.turn_ids, "references": f.references}
+    # Only persist quality signals when present — keeps caches that predate the
+    # feature byte-identical to new ones for findings that have no signals.
+    if f.confidence is not None:
+        d["confidence"] = f.confidence
+    if f.confidence_rationale:
+        d["confidence_rationale"] = f.confidence_rationale
+    if f.revisit_signals:
+        d["revisit_signals"] = list(f.revisit_signals)
+    return d
 
 
 def _normalised_turns(session: HarnessSession) -> List[dict]:
