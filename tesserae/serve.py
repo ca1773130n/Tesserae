@@ -27,7 +27,7 @@ import http.server
 import json
 from pathlib import Path
 from typing import Optional, Tuple, Type
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 # Hard ceiling on a clip request body. The extension caps captured content at
 # ~200 KB client-side, but the server must never trust the client: a malicious
@@ -93,6 +93,34 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
             parsed = urlparse(self.path)
             if parsed.path == "/api/ask/health":
                 self._send_json(200, {"status": "ok"})
+                return
+            if parsed.path == "/api/transcript-search":
+                # Reads LOCAL indexed transcripts, so it must not be callable
+                # from arbitrary websites the user visits (a hostile page could
+                # probe local history). Reuse the clip gate: a cross-site browser
+                # Origin is rejected; same-origin / no-Origin / loopback /
+                # extension callers pass. We also never emit
+                # Access-Control-Allow-Origin, so a slipped-through cross-origin
+                # request still can't READ the results.
+                allowed, _ = self._clip_origin()
+                if not allowed:
+                    self._send_json(403, {"error": "forbidden"})
+                    return
+                from .memex_search import search_transcripts
+
+                qs = parse_qs(parsed.query)
+                query = (qs.get("q") or [""])[0]
+                try:
+                    limit = int((qs.get("limit") or ["20"])[0])
+                except ValueError:
+                    limit = 20
+                result = search_transcripts(
+                    query,
+                    limit=limit,
+                    source=(qs.get("source") or [None])[0],
+                    hybrid=(qs.get("hybrid") or ["0"])[0] in ("1", "true"),
+                )
+                self._send_json(200, result)
                 return
             try:
                 return super().do_GET()
