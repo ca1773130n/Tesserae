@@ -51,6 +51,55 @@ LINT_REPORT_BYTE_CAP = 64 * 1024
 WIKI_BODY_BYTE_CAP = 64 * 1024
 
 
+import hashlib
+from collections import OrderedDict
+
+
+class _HandleStore:
+    """In-process content-keyed store for large tool payloads (read-discipline).
+
+    A tool can stash a big body and return a short handle + preview; the agent
+    pulls the rest in slices via ``get_handle`` instead of holding it all in
+    context. Content-keyed ids sidestep invalidation: a recompiled/changed body
+    yields a NEW handle, and an old handle keeps returning its own snapshot. LRU
+    cap bounds memory. ponytail: a dict with a cap — no lifetimes, no GC thread.
+    """
+
+    def __init__(self, capacity: int = 64) -> None:
+        self._cap = capacity
+        self._items: "OrderedDict[str, str]" = OrderedDict()
+
+    # Hard ceiling on a single slice — the whole point is read-discipline, so
+    # get_handle must never be coaxed into dumping an arbitrarily large chunk
+    # back into context (codex review).
+    MAX_SLICE = 50_000
+
+    def put(self, text: str) -> str:
+        # Full SHA-256 hex: content-keyed dedup with a negligible collision
+        # surface (a 64-bit prefix is needless attack surface — codex review).
+        hid = "h_" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+        self._items[hid] = text
+        self._items.move_to_end(hid)
+        while len(self._items) > self._cap:
+            self._items.popitem(last=False)
+        return hid
+
+    def slice(self, hid: str, offset: int, limit: int) -> Optional[dict]:
+        text = self._items.get(hid)
+        if text is None:
+            return None
+        self._items.move_to_end(hid)
+        offset = max(0, min(offset, len(text)))
+        limit = max(1, min(int(limit), self.MAX_SLICE))
+        chunk = text[offset:offset + limit]
+        end = offset + len(chunk)
+        return {"handle": hid, "found": True, "offset": offset, "limit": limit,
+                "total_chars": len(text), "slice": chunk, "eof": end >= len(text)}
+
+
+_HANDLES = _HandleStore()
+
+
 _INTERNAL_LINK_RE = re.compile(r"\[\[([^\]\|]+?)(?:\|[^\]]+)?\]\]")
 _MARKDOWN_LINK_RE = re.compile(r"\]\(([^)]+)\)")
 
@@ -881,7 +930,37 @@ class LLMWikiMCPServer:
                                 "distilled-memory nodes. Default false = single-pool."
                             ),
                         },
+                        "preview": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "default": 0,
+                            "description": (
+                                "Read-discipline (memex-style). When > 0, return only "
+                                "the first N chars of the body plus a 'handle' id; fetch "
+                                "the rest in slices with the 'get_handle' tool instead of "
+                                "dumping the whole body into context. 0 = return full body."
+                            ),
+                        },
                     },
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "get_handle",
+                "description": (
+                    "Fetch a slice of a large payload previously returned as a "
+                    "'handle' (e.g. by compile_context with preview>0). Lets an agent "
+                    "page through big results on demand instead of holding the whole "
+                    "thing in context — a programmable read scratchpad."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "handle": {"type": "string", "description": "The handle id returned by a previous tool call."},
+                        "offset": {"type": "integer", "minimum": 0, "default": 0, "description": "Start character offset."},
+                        "limit": {"type": "integer", "minimum": 1, "default": 4000, "description": "Max characters to return in this slice."},
+                    },
+                    "required": ["handle"],
                     "additionalProperties": False,
                 },
             },
@@ -1566,6 +1645,22 @@ class LLMWikiMCPServer:
                 synthesize=synthesize,
                 multi_pool=multi_pool,
             )
+            preview = int(args.get("preview") or 0)
+            if preview > 0 and len(bundle.body) > preview:
+                handle = _HANDLES.put(bundle.body)
+                return {
+                    "handle": handle,
+                    "preview": bundle.body[:preview],
+                    "total_chars": len(bundle.body),
+                    "truncated": True,
+                    "hint": f"Body truncated. Fetch more with get_handle(handle='{handle}', offset=...).",
+                    "citations": [dataclasses.asdict(c) for c in bundle.citations],
+                    "selected_node_ids": bundle.selected_nodes,
+                    "char_budget_used": bundle.char_budget_used,
+                    "synthesized": bundle.synthesized,
+                }
+            # preview disabled (or body already short): EXACT original shape,
+            # body first — back-compat for byte/order-sensitive callers.
             return {
                 "body": bundle.body,
                 "citations": [dataclasses.asdict(c) for c in bundle.citations],
@@ -1573,6 +1668,20 @@ class LLMWikiMCPServer:
                 "char_budget_used": bundle.char_budget_used,
                 "synthesized": bundle.synthesized,
             }
+        if name == "get_handle":
+            handle = str(args.get("handle") or "")
+            try:
+                offset, limit = int(args.get("offset") or 0), int(args.get("limit") or 4000)
+            except (TypeError, ValueError):
+                offset, limit = 0, 4000
+            sliced = _HANDLES.slice(handle, offset, limit)
+            if sliced is None:
+                # LRU expiry / unknown handle is EXPECTED, not exceptional —
+                # degrade with guidance instead of raising (codex review).
+                return {"handle": handle, "found": False, "slice": "", "eof": True,
+                        "error": "handle not found (LRU-evicted or never issued); "
+                                 "re-run compile_context with preview>0 for a fresh handle"}
+            return sliced
         if name == "ingest":
             from .project import ProjectWiki
             from .clip import ingest_clip
