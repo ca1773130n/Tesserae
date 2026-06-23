@@ -3,7 +3,9 @@
  */
 
 const DEFAULTS = {
-  endpoint: "http://localhost:8765",
+  // 127.0.0.1, not "localhost": `tesserae serve` is IPv4-only and Chrome hits
+  // IPv6 ::1 for "localhost", which is refused. 127.0.0.1 forces IPv4.
+  endpoint: "http://127.0.0.1:8765",
   defaultTags: "",
   captureMode: "selection-first",
   tldr: true
