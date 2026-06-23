@@ -131,6 +131,7 @@ def ingest_clip(
     tags: Optional[List[str]] = None,
     tldr: bool = True,
     clipped_at: Optional[str] = None,
+    lock_wait: Optional[float] = 60.0,
 ) -> dict:
     """Persist a web clip as a tracked source and run it through the ingest pipeline.
 
@@ -171,7 +172,28 @@ def ingest_clip(
 
     # Feed the persisted file through the normal ingest path. ingest_sources
     # returns a report dict with node_count / edge_count among other keys.
-    report = ingest_sources(wiki, [str(dest_path)])
+    #
+    # The clip markdown is ALREADY on disk above, so if a compile/refresh is
+    # holding the project lock we must not fail and lose the clip: wait up to
+    # ``lock_wait`` seconds for the lock, and if it's still held, return a
+    # "deferred" report (the file is saved; the next compile — or the engine
+    # daemon — will ingest it) instead of a 500.
+    from .locking import CompileLockHeldError
+
+    try:
+        report = ingest_sources(wiki, [str(dest_path)], lock_wait=lock_wait)
+    except CompileLockHeldError as exc:
+        return {
+            "status": "deferred",
+            "path": str(dest_path),
+            "tldr": tldr_text,
+            "node_count": 0,
+            "edge_count": 0,
+            "detail": (
+                "clip saved but not yet ingested — a compile/refresh is running; "
+                "it will be picked up by the next compile. " + str(exc)
+            ),
+        }
 
     return {
         "status": "ok",

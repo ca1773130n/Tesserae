@@ -41,6 +41,7 @@ def ingest_sources(
     title: Optional[str] = None,
     exact: bool = False,
     dry_run: bool = False,
+    lock_wait: Optional[float] = None,
 ) -> dict:
     """Ingest one or more file paths / URLs into ``wiki``'s knowledge base.
 
@@ -74,11 +75,12 @@ def ingest_sources(
     # Drive a corpus-wide compile so baseline nodes are preserved. Ingesting a single
     # explicit file with changed_only=False would drop the rest of the corpus (data loss).
     if exact:
-        result = wiki.compile(changed_only=False, source_kind=source_kind)
+        result = wiki.compile(changed_only=False, source_kind=source_kind, lock_wait=lock_wait)
         path_taken = "full-recompile"
     else:
         result = wiki.compile(
-            changed_only=True, incremental_override=True, source_kind=source_kind
+            changed_only=True, incremental_override=True, source_kind=source_kind,
+            lock_wait=lock_wait,
         )
         path_taken = "incremental"
     return {

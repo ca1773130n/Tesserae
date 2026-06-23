@@ -1437,6 +1437,7 @@ class ProjectWiki:
         llm_passes_client: Optional["LLMJsonClient"] = None,
         progress: Optional["CompileProgress"] = None,
         incremental_override: Optional[bool] = None,
+        lock_wait: Optional[float] = None,
     ) -> dict:
         """Compile every configured source into the .tesserae artifacts.
 
@@ -1475,7 +1476,7 @@ class ProjectWiki:
         # One compile per project at a time: a hook-triggered refresh that
         # fires mid-compile must fail fast (or opt into waiting) instead of
         # stacking onto the same .tesserae state.
-        with compile_lock(self.paths.root):
+        with compile_lock(self.paths.root, wait_seconds=lock_wait):
             return self.ingest(
                 sources,
                 source_kind=source_kind,

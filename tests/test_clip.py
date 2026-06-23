@@ -185,9 +185,37 @@ def test_ingest_clip_writes_file_and_returns_report_with_tldr(
     assert "## Content" in text
     assert "The full article body to be clipped." in text
 
-    # ingest_sources received the written path.
+    # ingest_sources received the written path AND the clip lock-wait.
     assert captured["inputs"] == [str(written)]
     assert captured["wiki"] is wiki
+    assert captured["kwargs"].get("lock_wait") == 60.0
+
+
+def test_ingest_clip_defers_when_compile_lock_held(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A clip during a running compile must NOT 500 and must NOT be lost: the
+    file is saved and the report is 'deferred'."""
+    from tesserae.locking import CompileLockHeldError
+    from tesserae.project import ProjectWiki
+
+    project = _bootstrap_project(tmp_path)
+    monkeypatch.setattr(clip, "_summarize", lambda content: None)
+
+    def _lock_held(wiki, inputs, **kwargs):
+        raise CompileLockHeldError("another tesserae compile/refresh is already running (pid 999)")
+
+    monkeypatch.setattr("tesserae.ingest.orchestrator.ingest_sources", _lock_held)
+    wiki = ProjectWiki.load(project)
+
+    report = clip.ingest_clip(
+        wiki, content="Body to clip.", url="https://example.com/x", tldr=False, lock_wait=0.1,
+    )
+    assert report["status"] == "deferred"
+    assert "pid 999" in report["detail"]
+    # The clip markdown was still written to disk — never lost.
+    written = Path(report["path"])
+    assert written.exists() and written.parent == (project / "data" / "ingested")
 
 
 def test_ingest_clip_tldr_none_on_summarizer_failure(
