@@ -8,6 +8,7 @@
   "homepage_url": "https://github.com/ca1773130n/Tesserae",
   "permissions": ["activeTab", "scripting", "storage", "contextMenus", "notifications"],
   "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
   "background": {
     "service_worker": "src/background.js",
     "type": "module"

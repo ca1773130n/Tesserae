@@ -36,17 +36,43 @@ function normalizeEndpoint(raw) {
   return v.replace(/\/+$/, "");
 }
 
+// localhost / 127.0.0.1 are already in host_permissions. Any other endpoint host
+// (e.g. a LAN IP, to clip from another machine to this one's `tesserae serve`)
+// needs an optional host permission granted at runtime, or the background
+// worker's fetch is blocked by the browser.
+async function ensureHostPermission(endpoint) {
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)([:/]|$)/i.test(endpoint)) return true;
+  let origin;
+  try {
+    origin = new URL(endpoint).origin + "/*";
+  } catch (_) {
+    return true; // unparseable → let the save proceed; the clip will surface it
+  }
+  try {
+    if (await chrome.permissions.contains({ origins: [origin] })) return true;
+    return await chrome.permissions.request({ origins: [origin] });
+  } catch (_) {
+    return false;
+  }
+}
+
 async function save() {
-  const settings = {
-    endpoint: normalizeEndpoint(els.endpoint.value),
+  const endpoint = normalizeEndpoint(els.endpoint.value);
+  // Request host access FIRST so the call stays inside the Save click's user
+  // gesture (chrome.permissions.request requires one).
+  const granted = await ensureHostPermission(endpoint);
+  await chrome.storage.sync.set({
+    endpoint,
     defaultTags: els.defaultTags.value.trim(),
     captureMode: els.captureMode.value,
     tldr: els.tldr.checked
-  };
-  await chrome.storage.sync.set(settings);
-  els.endpoint.value = settings.endpoint;
+  });
+  els.endpoint.value = endpoint;
+  els.saved.textContent = granted
+    ? "Saved ✓"
+    : "Saved — but host access was denied; clips to this endpoint will fail.";
   els.saved.classList.add("show");
-  setTimeout(() => els.saved.classList.remove("show"), 1600);
+  setTimeout(() => els.saved.classList.remove("show"), granted ? 1600 : 4000);
 }
 
 els.saveBtn.addEventListener("click", save);
