@@ -18,6 +18,7 @@ import json
 import socket
 import socketserver
 import threading
+import time
 import urllib.error
 import urllib.request
 from contextlib import contextmanager
@@ -133,18 +134,23 @@ def test_serve_clip_endpoint_delegates_to_ingest_clip(
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
-            assert resp.status == 200
+            # The clip is persisted synchronously and ACCEPTED immediately; the
+            # ingest/compile runs in a background thread.
+            assert resp.status == 202
             assert (
                 resp.headers.get("Access-Control-Allow-Origin")
                 == "chrome-extension://abcdefgh"
             )
             report = json.loads(resp.read().decode("utf-8"))
 
-    assert report["status"] == "ok"
-    assert report["node_count"] == 5
-    assert report["edge_count"] == 2
-    assert report["tldr"] == "stub-tldr"
-    assert "path" in report
+        assert report["status"] == "accepted"
+        assert "path" in report
+
+        # ingest_clip runs asynchronously — wait for the background thread to
+        # call it (still inside the server context so the thread is alive).
+        deadline = time.time() + 3.0
+        while "url" not in captured and time.time() < deadline:
+            time.sleep(0.02)
 
     assert captured["url"] == "https://example.com/post"
     assert captured["title"] == "A Post"
@@ -191,7 +197,10 @@ def test_serve_clip_endpoint_uses_selection_as_content(
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
-            assert resp.status == 200
+            assert resp.status == 202
+        deadline = time.time() + 3.0
+        while "content" not in captured and time.time() < deadline:
+            time.sleep(0.02)
 
     assert captured["content"] == "Just the highlighted bit."
 
@@ -283,21 +292,20 @@ def test_serve_clip_rejects_foreign_origin(
     assert called["hit"] is False
 
 
-def test_serve_clip_endpoint_surfaces_error(
+def test_serve_clip_synchronous_persist_failure_is_500(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """If ``ingest_clip`` raises, the handler returns a 500 with the message."""
+    """If the SYNCHRONOUS persist (``write_clip_file``) fails, the handler returns
+    500 with the message — that's the only clip error the client can see now."""
     project = _bootstrap_project(tmp_path)
     site_dir = project / ".tesserae" / "site"
 
     def _boom(*args, **kw):
-        raise RuntimeError("boom from clip")
+        raise RuntimeError("boom from write")
 
-    monkeypatch.setattr("tesserae.clip.ingest_clip", _boom)
+    monkeypatch.setattr("tesserae.clip.write_clip_file", _boom)
 
-    body = json.dumps(
-        {"url": "https://example.com/x", "content": "body"}
-    ).encode("utf-8")
+    body = json.dumps({"url": "https://example.com/x", "content": "body"}).encode("utf-8")
     with _running_server(project, site_dir) as (host, port):
         req = urllib.request.Request(
             f"http://{host}:{port}/api/clip",
@@ -309,4 +317,32 @@ def test_serve_clip_endpoint_surfaces_error(
             urllib.request.urlopen(req, timeout=5)
         assert exc_info.value.code == 500
         payload = json.loads(exc_info.value.read().decode("utf-8"))
-        assert "boom from clip" in payload["error"]
+        assert "boom from write" in payload["error"]
+
+
+def test_serve_clip_async_ingest_error_still_accepts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failure in the BACKGROUND ingest must not affect the client: the clip was
+    already persisted + ACCEPTED (202); the error is only logged to stdout."""
+    project = _bootstrap_project(tmp_path)
+    site_dir = project / ".tesserae" / "site"
+
+    def _boom(*args, **kw):
+        raise RuntimeError("boom from ingest")
+
+    monkeypatch.setattr("tesserae.clip.ingest_clip", _boom)
+
+    body = json.dumps({"url": "https://example.com/x", "content": "body"}).encode("utf-8")
+    with _running_server(project, site_dir) as (host, port):
+        req = urllib.request.Request(
+            f"http://{host}:{port}/api/clip",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            assert resp.status == 202
+            assert json.loads(resp.read().decode("utf-8"))["status"] == "accepted"
+    # The clip file was written synchronously despite the async ingest failure.
+    assert list((project / "data" / "ingested").glob("*.md"))

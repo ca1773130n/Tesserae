@@ -121,6 +121,42 @@ def _summarize(content: str) -> Optional[str]:
         return None
 
 
+def write_clip_file(
+    wiki,
+    *,
+    content: str,
+    url: str,
+    title: Optional[str] = None,
+    note: Optional[str] = None,
+    tags: Optional[List[str]] = None,
+    tldr_text: Optional[str] = None,
+    clipped_at: Optional[str] = None,
+) -> Path:
+    """Render + persist the clip markdown to ``data/ingested/<slug>.md`` and return
+    the path. FAST: no LLM, no compile — so a caller (e.g. the serve clip endpoint)
+    can durably save a clip and confirm receipt *before* kicking off the slow
+    ingest. ``ingest_clip`` re-writes the same path with the TL;DR before compiling.
+    """
+    effective_title = title or url
+    clipped_at = clipped_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    markdown = build_clip_markdown(
+        content=content,
+        url=url,
+        title=effective_title,
+        note=note,
+        tags=tags,
+        tldr_text=tldr_text,
+        clipped_at=clipped_at,
+    )
+    dest_dir = Path(wiki.project_root) / "data" / "ingested"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    # Slug from the URL when present; raw-content clips (MCP path) may have no
+    # URL, so fall back to the title. ``_slugify`` stays collision-safe either way.
+    dest_path = dest_dir / f"{_slugify(url or effective_title)}.md"
+    dest_path.write_text(markdown, encoding="utf-8")
+    return dest_path
+
+
 def ingest_clip(
     wiki,
     *,
@@ -148,27 +184,11 @@ def ingest_clip(
     # context just by importing this module.
     from .ingest.orchestrator import ingest_sources
 
-    effective_title = title or url
-    clipped_at = clipped_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
     tldr_text = _summarize(content) if tldr else None
-
-    markdown = build_clip_markdown(
-        content=content,
-        url=url,
-        title=effective_title,
-        note=note,
-        tags=tags,
-        tldr_text=tldr_text,
-        clipped_at=clipped_at,
+    dest_path = write_clip_file(
+        wiki, content=content, url=url, title=title, note=note, tags=tags,
+        tldr_text=tldr_text, clipped_at=clipped_at,
     )
-
-    dest_dir = Path(wiki.project_root) / "data" / "ingested"
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    # Slug from the URL when present; raw-content clips (MCP path) may have no
-    # URL, so fall back to the title. ``_slugify`` stays collision-safe either way.
-    dest_path = dest_dir / f"{_slugify(url or effective_title)}.md"
-    dest_path.write_text(markdown, encoding="utf-8")
 
     # Feed the persisted file through the normal ingest path. ingest_sources
     # returns a report dict with node_count / edge_count among other keys.

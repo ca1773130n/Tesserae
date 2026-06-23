@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import http.server
 import json
+import threading
 from pathlib import Path
 from typing import Optional, Tuple, Type
 from urllib.parse import parse_qs, urlparse
@@ -282,7 +283,7 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
             # Import inside the handler so importing this module stays cheap
             # (the static-file path never touches clip/ingest machinery).
             from .project import ProjectWiki
-            from .clip import ingest_clip
+            from .clip import ingest_clip, write_clip_file
 
             try:
                 wiki = ProjectWiki.load(type(self).project_root)
@@ -293,21 +294,48 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
                 self._send_json_cors(500, {"error": f"clip failed: {exc}"}, reflect)
                 return
 
+            # Persist the clip durably FIRST (fast — no LLM, no compile) so the
+            # response is a truthful "accepted", then run the slow ingest/compile
+            # in a BACKGROUND thread. The static server is single-threaded, so a
+            # synchronous compile would block every other request (and the
+            # extension would hang); returning immediately lets the extension
+            # show success at once. The thread prints progress to this server's
+            # stdout so the operator can watch each clip land.
             try:
-                report = ingest_clip(
-                    wiki,
-                    content=content,
-                    url=url,
-                    title=title,
-                    note=note,
-                    tags=tags,
-                    tldr=tldr,
+                dest_path = write_clip_file(
+                    wiki, content=content, url=url, title=title, note=note, tags=tags
                 )
             except Exception as exc:
                 self._send_json_cors(500, {"error": f"clip failed: {exc}"}, reflect)
                 return
 
-            self._send_json_cors(200, report, reflect)
+            label = url or title or dest_path.name
+
+            def _ingest_async():
+                print(f"[clip] received {label} -> {dest_path.name}; ingesting…", flush=True)
+                try:
+                    report = ingest_clip(
+                        wiki, content=content, url=url, title=title,
+                        note=note, tags=tags, tldr=tldr,
+                    )
+                except Exception as exc:  # noqa: BLE001 — log, never crash the thread
+                    print(f"[clip] ERROR ingesting {label}: {exc}", flush=True)
+                    return
+                if report.get("status") == "deferred":
+                    print(f"[clip] deferred: {label} saved; will ingest on the next compile", flush=True)
+                else:
+                    print(
+                        f"[clip] done: {label} — nodes={report.get('node_count')} "
+                        f"edges={report.get('edge_count')}",
+                        flush=True,
+                    )
+
+            threading.Thread(target=_ingest_async, name="clip-ingest", daemon=True).start()
+            self._send_json_cors(202, {
+                "status": "accepted",
+                "path": str(dest_path),
+                "detail": "clip saved; ingesting in the background — watch the tesserae serve log",
+            }, reflect)
 
         # ---------------------------------------------------------- helpers
         def _send_json(self, status: int, body: dict) -> None:
