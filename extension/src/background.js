@@ -17,7 +17,11 @@ const DEFAULTS = {
   endpoint: "http://127.0.0.1:8765",
   defaultTags: "",
   captureMode: "selection-first", // "article" | "selection-first"
-  tldr: true
+  tldr: true,
+  // Optional shared secret. When the server runs with TESSERAE_CLIP_TOKEN set
+  // (e.g. exposed on a LAN/public IP), it requires a matching X-Tesserae-Token
+  // header; set the same value here. Empty = no token sent.
+  token: ""
 };
 
 const MENU_ID = "tesserae-clip";
@@ -68,11 +72,13 @@ async function extractFromTab(tabId, mode) {
 }
 
 // ---- POST to Tesserae -------------------------------------------------------
-async function postClip(payload, endpoint) {
+async function postClip(payload, endpoint, token) {
   const base = String(endpoint || DEFAULTS.endpoint).replace(/\/+$/, "");
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers["X-Tesserae-Token"] = String(token);
   const res = await fetch(`${base}/api/clip`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(payload)
   });
   if (!res.ok) {
@@ -118,7 +124,7 @@ async function clipTab(tabId, { note = "" } = {}) {
       tags: parseTags(settings.defaultTags),
       tldr: settings.tldr
     };
-    const data = await postClip(payload, settings.endpoint);
+    const data = await postClip(payload, settings.endpoint, settings.token);
     flashBadge("✓", "#2e7d5b");
     notify(
       "Clipped to Tesserae",
@@ -185,7 +191,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           tags: msg.payload.tags || [],
           tldr: msg.payload.tldr
         };
-        const data = await postClip(payload, settings.endpoint);
+        const data = await postClip(payload, settings.endpoint, settings.token);
         flashBadge("✓", "#2e7d5b");
         sendResponse({ ok: true, data });
       } catch (err) {

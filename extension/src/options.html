@@ -75,6 +75,12 @@
     </div>
 
     <div class="field">
+      <label class="fl" for="token">Access token <span style="font-weight:400;opacity:.6;">(optional)</span></label>
+      <input type="password" id="token" placeholder="leave empty unless your server requires one" autocomplete="off" />
+      <p class="hint">Sent as the <code>X-Tesserae-Token</code> header. Set this only if you run the server with <code>TESSERAE_CLIP_TOKEN=…</code> (recommended when the endpoint is exposed on a LAN/public IP) — it must match exactly.</p>
+    </div>
+
+    <div class="field">
       <label class="fl" for="defaultTags">Default tags</label>
       <input type="text" id="defaultTags" placeholder="research, inbox" />
       <p class="hint">Comma-separated. Pre-filled in the popup for every clip.</p>

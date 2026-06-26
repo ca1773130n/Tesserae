@@ -23,8 +23,10 @@ that want to spin a tiny ``ThreadingTCPServer`` against a tmp project.
 
 from __future__ import annotations
 
+import hmac
 import http.server
 import json
+import os
 import threading
 from pathlib import Path
 from typing import Optional, Tuple, Type
@@ -165,7 +167,7 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
                 self.send_header("Access-Control-Allow-Origin", reflect)
                 self.send_header("Vary", "Origin")
             self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Tesserae-Token")
             # Private Network Access: Chrome gates requests that target a more
             # private address space (localhost) than the initiator. A Web Store
             # extension posting to http://localhost trips this, sending a
@@ -237,6 +239,18 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
             if not allowed:
                 self._send_json_cors(403, {"error": "origin not allowed"}, reflect)
                 return
+
+            # Shared-secret auth (opt-in). When TESSERAE_CLIP_TOKEN is set, every
+            # clip must carry a matching X-Tesserae-Token header — so an endpoint
+            # bound to 0.0.0.0 / a public IP can't be written to by anyone who
+            # reaches the port (the origin gate alone is forgeable). No token set
+            # => open, as before (loopback/trusted-LAN use). Constant-time compare.
+            token = (os.environ.get("TESSERAE_CLIP_TOKEN") or "").strip()
+            if token:
+                provided = self.headers.get("X-Tesserae-Token") or ""
+                if not hmac.compare_digest(provided, token):
+                    self._send_json_cors(401, {"error": "invalid or missing clip token"}, reflect)
+                    return
 
             # Bound the body BEFORE reading it into memory. The extension caps
             # content client-side, but the server must enforce its own limit.

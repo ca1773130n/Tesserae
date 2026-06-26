@@ -8,7 +8,8 @@ const DEFAULTS = {
   endpoint: "http://127.0.0.1:8765",
   defaultTags: "",
   captureMode: "selection-first",
-  tldr: true
+  tldr: true,
+  token: ""
 };
 
 const $ = (id) => document.getElementById(id);
@@ -17,6 +18,7 @@ const els = {
   defaultTags: $("defaultTags"),
   captureMode: $("captureMode"),
   tldr: $("tldr"),
+  token: $("token"),
   saveBtn: $("saveBtn"),
   saved: $("saved")
 };
@@ -27,6 +29,7 @@ async function load() {
   els.defaultTags.value = s.defaultTags || "";
   els.captureMode.value = s.captureMode || DEFAULTS.captureMode;
   els.tldr.checked = s.tldr !== false;
+  els.token.value = s.token || "";
 }
 
 function normalizeEndpoint(raw) {
@@ -65,7 +68,8 @@ async function save() {
     endpoint,
     defaultTags: els.defaultTags.value.trim(),
     captureMode: els.captureMode.value,
-    tldr: els.tldr.checked
+    tldr: els.tldr.checked,
+    token: els.token.value.trim()
   });
   els.endpoint.value = endpoint;
   els.saved.textContent = granted

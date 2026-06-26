@@ -346,3 +346,61 @@ def test_serve_clip_async_ingest_error_still_accepts(
             assert json.loads(resp.read().decode("utf-8"))["status"] == "accepted"
     # The clip file was written synchronously despite the async ingest failure.
     assert list((project / "data" / "ingested").glob("*.md"))
+
+
+def _clip_request(host, port, *, token_header=None):
+    body = json.dumps({"url": "https://example.com/x", "content": "body"}).encode("utf-8")
+    headers = {"Content-Type": "application/json", "Origin": "chrome-extension://abc"}
+    if token_header is not None:
+        headers["X-Tesserae-Token"] = token_header
+    return urllib.request.Request(
+        f"http://{host}:{port}/api/clip", data=body, headers=headers, method="POST"
+    )
+
+
+def test_serve_clip_requires_token_when_configured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With TESSERAE_CLIP_TOKEN set, a clip without the matching header is 401."""
+    project = _bootstrap_project(tmp_path)
+    site_dir = project / ".tesserae" / "site"
+    monkeypatch.setenv("TESSERAE_CLIP_TOKEN", "s3cret")
+    monkeypatch.setattr("tesserae.clip.write_clip_file",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not run")))
+
+    with _running_server(project, site_dir) as (host, port):
+        # Missing token → 401.
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(_clip_request(host, port), timeout=5)
+        assert exc.value.code == 401
+        # Wrong token → 401.
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(_clip_request(host, port, token_header="nope"), timeout=5)
+        assert exc.value.code == 401
+
+
+def test_serve_clip_accepts_matching_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _bootstrap_project(tmp_path)
+    site_dir = project / ".tesserae" / "site"
+    monkeypatch.setenv("TESSERAE_CLIP_TOKEN", "s3cret")
+    monkeypatch.setattr("tesserae.clip.ingest_clip", lambda *a, **k: {"status": "ok", "node_count": 0, "edge_count": 0})
+
+    with _running_server(project, site_dir) as (host, port):
+        with urllib.request.urlopen(_clip_request(host, port, token_header="s3cret"), timeout=5) as resp:
+            assert resp.status == 202
+
+
+def test_serve_clip_options_allows_token_header(tmp_path: Path) -> None:
+    """The CORS preflight must permit X-Tesserae-Token so the browser sends it."""
+    project = _bootstrap_project(tmp_path)
+    site_dir = project / ".tesserae" / "site"
+    with _running_server(project, site_dir) as (host, port):
+        req = urllib.request.Request(
+            f"http://{host}:{port}/api/clip",
+            headers={"Origin": "chrome-extension://abc", "Access-Control-Request-Method": "POST"},
+            method="OPTIONS",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            assert "X-Tesserae-Token" in (resp.headers.get("Access-Control-Allow-Headers") or "")
