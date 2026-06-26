@@ -36,18 +36,28 @@ _NS = "::"  # namespace separator; never produced by stable_id
 # --------------------------------------------------------------------------- #
 
 def _norm_repo(metadata: dict) -> str:
-    """Canonical ``github.com/owner/repo`` identity from repo_url/github_repo."""
+    """Canonical ``host/owner/repo`` repo identity from repo_url/github_repo.
+
+    Handles https/http/www and scp-style SSH (``git@host:owner/repo`` — the colon
+    becomes a slash so SSH and HTTPS remotes of the same repo merge). Returns ""
+    for a bare host or anything without an owner/repo path, so a malformed value
+    never becomes a (false) identity key.
+    """
     url = str(metadata.get("repo_url") or "").strip().lower().rstrip("/")
+    is_ssh = url.startswith("git@")
     for pre in ("https://", "http://", "git@", "www."):
         if url.startswith(pre):
             url = url[len(pre):]
+    if is_ssh and ":" in url:
+        url = url.replace(":", "/", 1)  # git@host:owner/repo -> host/owner/repo
     if url.endswith(".git"):
         url = url[:-4]
-    if url:
+    if url and url.count("/") >= 2:  # host/owner/repo — reject bare host / owner-only
         return url
     gh = str(metadata.get("github_repo") or "").strip().lower().strip("/")
     if gh:
-        return gh if gh.startswith("github.com/") else f"github.com/{gh}"
+        canonical = gh if gh.startswith("github.com/") else f"github.com/{gh}"
+        return canonical if canonical.count("/") >= 2 else ""
     return ""
 
 
@@ -181,12 +191,15 @@ def federate_graphs(named_graphs: List[Tuple[str, ResearchGraph]]) -> Tuple[Rese
     live = {n.id for n in merged_nodes}
     seen: set = set()
     fed_edges: List[ResearchEdge] = []
+    dropped_edges = 0
     for edge in all_edges:
         source, target = find(edge.source), find(edge.target)
         if source == target or source not in live or target not in live:
+            dropped_edges += 1  # self-loop after merge, dangling, or duplicate target
             continue
         key = (source, edge.type, target)
         if key in seen:
+            dropped_edges += 1
             continue
         seen.add(key)
         fed_edges.append(dataclasses.replace(edge, source=source, target=target))
@@ -197,6 +210,7 @@ def federate_graphs(named_graphs: List[Tuple[str, ResearchGraph]]) -> Tuple[Rese
         "nodes": len(federated.nodes),
         "edges": len(federated.edges),
         "merged_groups": merged_groups,
+        "dropped_edges": dropped_edges,
     }
     return federated, stats
 
@@ -219,7 +233,7 @@ def load_federated_graph(aliases, registry) -> Tuple[ResearchGraph, dict]:
     wanted = sorted({str(a).strip() for a in (aliases or []) if str(a).strip()})
     if not wanted:
         raise ValueError(
-            "federated scope needs at least one project — pass --projects A,B "
+            "federated scope needs at least one project — pass --scope-aliases A B "
             "(CLI) or scope_aliases (MCP)."
         )
     missing = [a for a in wanted if a not in by_name]

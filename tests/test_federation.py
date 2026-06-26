@@ -43,6 +43,12 @@ def test_identity_key_per_type():
     repo2 = ResearchNode(id="r2", name="R", type=ResearchNodeType.REPOSITORY,
                          metadata={"github_repo": "Owner/Repo"})
     assert F.identity_key(repo2) == ("Repository", "github.com/owner/repo")  # same canonical
+    ssh = ResearchNode(id="r3", name="R", type=ResearchNodeType.REPOSITORY,
+                       metadata={"repo_url": "git@github.com:Owner/Repo.git"})
+    assert F.identity_key(ssh) == ("Repository", "github.com/owner/repo")  # SSH == HTTPS
+    bare = ResearchNode(id="r4", name="R", type=ResearchNodeType.REPOSITORY,
+                        metadata={"repo_url": "https://github.com"})
+    assert F.identity_key(bare) is None  # bare host -> no false identity key
 
 
 def test_namespace_does_not_mutate_input():
