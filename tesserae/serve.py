@@ -40,6 +40,21 @@ from urllib.parse import parse_qs, urlparse
 _MAX_CLIP_BYTES = 5 * 1024 * 1024
 
 
+def configured_clip_token() -> str:
+    """The clip auth token, or "" when auth is off. Read FRESH each call so a
+    user can rotate it with ``tesserae config clip-token`` without restarting
+    the server: env ``TESSERAE_CLIP_TOKEN`` wins (fixed at launch), else the
+    ``clip_token`` field of ``~/.tesserae/config.json`` (dynamic)."""
+    env = (os.environ.get("TESSERAE_CLIP_TOKEN") or "").strip()
+    if env:
+        return env
+    try:
+        cfg = json.loads((Path.home() / ".tesserae" / "config.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError):
+        return ""
+    return str(cfg.get("clip_token") or "").strip() if isinstance(cfg, dict) else ""
+
+
 def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTTPRequestHandler]:
     """Return a request handler class bound to ``project_root``.
 
@@ -240,12 +255,13 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
                 self._send_json_cors(403, {"error": "origin not allowed"}, reflect)
                 return
 
-            # Shared-secret auth (opt-in). When TESSERAE_CLIP_TOKEN is set, every
-            # clip must carry a matching X-Tesserae-Token header — so an endpoint
-            # bound to 0.0.0.0 / a public IP can't be written to by anyone who
-            # reaches the port (the origin gate alone is forgeable). No token set
-            # => open, as before (loopback/trusted-LAN use). Constant-time compare.
-            token = (os.environ.get("TESSERAE_CLIP_TOKEN") or "").strip()
+            # Shared-secret auth (opt-in). When a clip token is configured (env
+            # or `tesserae config clip-token`), every clip must carry a matching
+            # X-Tesserae-Token header — so an endpoint bound to 0.0.0.0 / a public
+            # IP can't be written to by anyone who reaches the port (the origin
+            # gate alone is forgeable). No token => open, as before. Read fresh so
+            # the token can be rotated without a restart. Constant-time compare.
+            token = configured_clip_token()
             if token:
                 provided = self.headers.get("X-Tesserae-Token") or ""
                 if not hmac.compare_digest(provided, token):

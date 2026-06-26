@@ -2845,7 +2845,76 @@ def _build_config_parser() -> argparse.ArgumentParser:
     p_status.add_argument("--project", default=None, help="Resolve as a specific project sees it (reads its .tesserae/config.json).")
     p_status.add_argument("--no-ping", dest="ping", action="store_false", default=True, help="Skip the live backend ping (don't spend an LLM call).")
     p_status.set_defaults(_handler="_handle_config_status")
+
+    p_clip_token = sub.add_parser(
+        "clip-token",
+        help="Get/set the /api/clip access token (the extension sends it as X-Tesserae-Token).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae config clip-token                 # show the current token\n"
+            "  tesserae config clip-token --generate      # create + set a random token\n"
+            "  tesserae config clip-token --set my-secret\n"
+            "  tesserae config clip-token --clear         # disable token auth\n"
+        ),
+    )
+    _ct = p_clip_token.add_mutually_exclusive_group()
+    _ct.add_argument("--set", metavar="TOKEN", default=None, help="Set the token to this exact value")
+    _ct.add_argument("--generate", action="store_true", help="Generate a random token and set it")
+    _ct.add_argument("--clear", action="store_true", help="Remove the token (disable /api/clip auth)")
+    p_clip_token.set_defaults(_handler="_handle_config_clip_token")
     return parser
+
+
+def _handle_config_clip_token(args: argparse.Namespace) -> int:
+    """`config clip-token` — get/set/generate/clear the /api/clip auth token.
+
+    Stored machine-wide in ``~/.tesserae/config.json`` (``clip_token``). The
+    running ``tesserae serve`` reads it FRESH per request, so a change takes
+    effect immediately — no restart needed.
+    """
+    import json as _json
+    import secrets
+    from . import llm_json as _lj
+
+    path = _lj.GLOBAL_CONFIG_PATH
+    try:
+        cfg = _json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except (OSError, _json.JSONDecodeError):
+        cfg = {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+
+    if args.clear:
+        cfg.pop("clip_token", None)
+        _write_global_config(path, cfg)
+        print("Clip token cleared — /api/clip is open again (no token required).")
+        return 0
+
+    value = None
+    if args.generate:
+        value = secrets.token_urlsafe(24)
+    elif args.set is not None:
+        value = args.set.strip()
+        if not value:
+            print("config clip-token --set: empty value; use --clear to disable auth.", file=sys.stderr)
+            return 2
+
+    if value is not None:
+        cfg["clip_token"] = value
+        _write_global_config(path, cfg)
+        print("Clip token set (takes effect immediately — no serve restart needed).")
+        print("Put this exact value in the extension → Options → Access token:\n")
+        print(f"    {value}\n")
+        return 0
+
+    current = str(cfg.get("clip_token") or "")
+    if current:
+        print(f"Clip token (send as X-Tesserae-Token): {current}")
+    else:
+        print("No clip token set — /api/clip is open. Create one with:\n"
+              "    tesserae config clip-token --generate")
+    return 0
 
 
 def _print_dep_status() -> None:

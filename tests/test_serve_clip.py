@@ -392,6 +392,28 @@ def test_serve_clip_accepts_matching_token(
             assert resp.status == 202
 
 
+def test_serve_clip_token_read_dynamically_from_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The token can be set in ~/.tesserae/config.json (no env, no restart) and
+    is read fresh per request — so `tesserae config clip-token` rotates it live."""
+    project = _bootstrap_project(tmp_path)
+    site_dir = project / ".tesserae" / "site"
+    monkeypatch.delenv("TESSERAE_CLIP_TOKEN", raising=False)
+    home = tmp_path / "home"
+    (home / ".tesserae").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    (home / ".tesserae" / "config.json").write_text('{"clip_token": "cfg-key"}', encoding="utf-8")
+    monkeypatch.setattr("tesserae.clip.ingest_clip", lambda *a, **k: {"status": "ok", "node_count": 0, "edge_count": 0})
+
+    with _running_server(project, site_dir) as (host, port):
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urllib.request.urlopen(_clip_request(host, port), timeout=5)
+        assert exc.value.code == 401
+        with urllib.request.urlopen(_clip_request(host, port, token_header="cfg-key"), timeout=5) as resp:
+            assert resp.status == 202
+
+
 def test_serve_clip_options_allows_token_header(tmp_path: Path) -> None:
     """The CORS preflight must permit X-Tesserae-Token so the browser sends it."""
     project = _bootstrap_project(tmp_path)
