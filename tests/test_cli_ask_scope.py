@@ -10,6 +10,24 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+
+def _write_shared_graph(proj: Path, prefix: str, desc: str) -> None:
+    """Overwrite a project's graph.json with a Paper (shared arxiv) + a Concept."""
+    graph = {
+        "nodes": [
+            {"id": f"Paper:t:{prefix}", "name": "arXiv:1706.03762", "type": "Paper",
+             "aliases": [], "description": "", "source_path": None,
+             "metadata": {"arxiv_id": "1706.03762"}},
+            {"id": f"Concept:c:{prefix}", "name": "Attention", "type": "Concept",
+             "aliases": [], "description": desc, "source_path": None, "metadata": {}},
+        ],
+        "edges": [{"source": f"Concept:c:{prefix}", "target": f"Paper:t:{prefix}",
+                   "type": "references", "evidence": None, "metadata": {}}],
+    }
+    (proj / ".tesserae" / "graph.json").write_text(json.dumps(graph), encoding="utf-8")
+
 
 def _bootstrap_project(root: Path, name: str) -> Path:
     """Create a minimal .tesserae layout the registry will accept."""
@@ -216,3 +234,65 @@ def test_mcp_ask_scope_all_registered(tmp_path, monkeypatch):
     assert result["scope"] == "all-registered"
     assert set(result["by_project"].keys()) == {"p1", "p2"}
     assert result["by_project"]["p1"]["answer"] == "a-p1"
+
+
+def test_top_level_ask_scope_federated_requires_aliases(tmp_path, monkeypatch, capsys):
+    from tesserae import cli
+    import tesserae.mcp_server as mcp_server
+
+    monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", tmp_path / "registry.json")
+    rc = cli.main(["ask", "hi?", "--scope", "federated"])
+    assert rc == 2
+    assert "scope-aliases" in capsys.readouterr().err.lower()
+
+
+def test_top_level_ask_scope_federated_merges_and_cross_references(tmp_path, monkeypatch, capsys):
+    from tesserae import cli
+    import tesserae.mcp_server as mcp_server
+
+    monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", tmp_path / "registry.json")
+    p1 = _bootstrap_project(tmp_path, "work")
+    _write_shared_graph(p1, "w", "work view of attention")
+    p2 = _bootstrap_project(tmp_path, "research")
+    _write_shared_graph(p2, "r", "research view of attention")
+    cli.main(["projects", "register", str(p1), "--name", "work"])
+    cli.main(["projects", "register", str(p2), "--name", "research"])
+    capsys.readouterr()
+
+    rc = cli.main(["ask", "what is attention", "--scope", "federated",
+                   "--scope-aliases", "work", "research", "--json"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["scope"] == "federated"
+    assert payload["stats"]["merged_groups"] == 1  # the two same-arxiv papers merged
+    cited = {c["node_id"].split("::", 1)[0] for c in payload["citations"]}
+    assert cited == {"work", "research"}  # a single answer spanning both projects
+
+
+def test_mcp_ask_scope_federated(tmp_path, monkeypatch):
+    import tesserae.mcp_server as mcp_server
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    registry_path = tmp_path / "registry.json"
+    monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
+    server = LLMWikiMCPServer(registry_path=registry_path)
+    p1 = _bootstrap_project(tmp_path, "work"); _write_shared_graph(p1, "w", "work")
+    p2 = _bootstrap_project(tmp_path, "research"); _write_shared_graph(p2, "r", "research")
+    server.registry.register(str(p1), name="work")
+    server.registry.register(str(p2), name="research")
+
+    result = server.call_tool("ask", {"question": "attention", "scope": "federated",
+                                       "scope_aliases": ["work", "research"]})
+    assert result["scope"] == "federated"
+    assert result["stats"]["merged_groups"] == 1
+    with pytest.raises(ValueError, match="requires scope_aliases"):
+        server.call_tool("ask", {"question": "x", "scope": "federated"})
+
+
+def test_mcp_ask_scope_enum_matches_validation():
+    """Schema enum must list 'federated' (drift guard vs the handler's set)."""
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    tools = {t["name"]: t for t in LLMWikiMCPServer().list_tools()}
+    enum = tools["ask"]["inputSchema"]["properties"]["scope"]["enum"]
+    assert set(enum) == {"current", "all-registered", "federated"}
