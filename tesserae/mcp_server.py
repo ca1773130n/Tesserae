@@ -670,8 +670,8 @@ class LLMWikiMCPServer:
                         },
                         "semantic": {
                             "type": "boolean",
-                            "default": False,
-                            "description": "scope='federated' only: add embedding-backed cross-project links so the answer bridges RELATED (not just identical) concepts. Needs a real embedding backend.",
+                            "default": True,
+                            "description": "scope='federated' only: embedding-backed cross-project links so the answer bridges RELATED (not just identical) concepts. ON by default (opt-out); set false for identity-merge only. Degrades cleanly without a real embedding backend.",
                         },
                         "claude_config_dir": {
                             "type": "string",
@@ -1565,7 +1565,7 @@ class LLMWikiMCPServer:
                     return self._mcp_ask_federated(
                         question=question,
                         scope_aliases=_coerce_str_list(args.get("scope_aliases")),
-                        semantic=bool(args.get("semantic") or False),
+                        semantic=bool(args.get("semantic", True)),  # opt-out: on unless disabled
                     )
                 return self._mcp_ask(args, question=question, backend=backend, top_k=top_k)
         if name == "list_projects":
@@ -2519,7 +2519,7 @@ class LLMWikiMCPServer:
         return ask_project(wiki, question, backend=backend, top_k=top_k)
 
     def _mcp_ask_federated(
-        self, *, question: str, scope_aliases: List[str], semantic: bool = False
+        self, *, question: str, scope_aliases: List[str], semantic: bool = True
     ) -> JSONDict:
         """Federated scope — merge the named projects into ONE identity-merged
         graph and compile a single cross-referenced, cited answer (vs the

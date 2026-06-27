@@ -790,12 +790,20 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--semantic",
+        dest="semantic",
         action="store_true",
+        default=True,
         help=(
-            "With --scope=federated, also add embedding-backed cross-project links "
-            "so the answer bridges RELATED (not just identical) concepts. Requires "
-            "a real embedding backend (pip install tesserae[semantic])."
+            "With --scope=federated, add embedding-backed cross-project links so "
+            "the answer bridges RELATED (not just identical) concepts. ON by default; "
+            "degrades cleanly without a real embedding backend (tesserae[semantic])."
         ),
+    )
+    parser.add_argument(
+        "--no-semantic",
+        dest="semantic",
+        action="store_false",
+        help="With --scope=federated, identity merges only (no embedding-backed links).",
     )
     return parser
 

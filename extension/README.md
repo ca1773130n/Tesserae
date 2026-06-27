@@ -43,7 +43,7 @@ You need a running Tesserae server that accepts `POST /api/clip`:
 tesserae serve
 ```
 
-By default the extension posts to `http://localhost:8765`. Change the endpoint in
+By default the extension posts to `http://127.0.0.1:8765`. Change the endpoint in
 the extension's **Settings** (options) page if your server listens elsewhere.
 
 ## Install (load unpacked)
@@ -59,7 +59,7 @@ The mosaic-tile icon appears in the toolbar. Pin it for quick access.
 
 Right-click the toolbar icon → **Options** (or click **Settings** in the popup):
 
-- **Tesserae endpoint** — base URL of your server (default `http://localhost:8765`).
+- **Tesserae endpoint** — base URL of your server (default `http://127.0.0.1:8765`).
 - **Default tags** — comma-separated, pre-filled in the popup.
 - **Default capture mode** — *Selection first* (fall back to article) or *Article only*.
 - **Generate TL;DR by default** — on/off.

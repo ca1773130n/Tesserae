@@ -259,7 +259,7 @@ def test_top_level_ask_scope_federated_merges_and_cross_references(tmp_path, mon
     cli.main(["projects", "register", str(p2), "--name", "research"])
     capsys.readouterr()
 
-    rc = cli.main(["ask", "what is attention", "--scope", "federated",
+    rc = cli.main(["ask", "what is attention", "--scope", "federated", "--no-semantic",
                    "--scope-aliases", "work", "research", "--json"])
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
@@ -282,11 +282,23 @@ def test_mcp_ask_scope_federated(tmp_path, monkeypatch):
     server.registry.register(str(p2), name="research")
 
     result = server.call_tool("ask", {"question": "attention", "scope": "federated",
-                                       "scope_aliases": ["work", "research"]})
+                                       "scope_aliases": ["work", "research"], "semantic": False})
     assert result["scope"] == "federated"
     assert result["stats"]["merged_groups"] == 1
     with pytest.raises(ValueError, match="requires scope_aliases"):
         server.call_tool("ask", {"question": "x", "scope": "federated"})
+
+
+def test_federated_semantic_is_opt_out_by_default():
+    """Semantic federation is ON unless explicitly disabled (--no-semantic)."""
+    import inspect
+
+    from tesserae import cli, federation
+
+    assert inspect.signature(federation.federated_recall).parameters["semantic"].default is True
+    parser = cli._build_top_level_ask_parser()
+    assert parser.parse_args(["q", "--scope", "federated"]).semantic is True
+    assert parser.parse_args(["q", "--scope", "federated", "--no-semantic"]).semantic is False
 
 
 def test_mcp_ask_scope_enum_matches_validation():

@@ -239,7 +239,7 @@ def test_federated_recall_envelope_cross_references_projects(tmp_path):
         {"name": "work", "graph_path": str(gw)},
         {"name": "research", "graph_path": str(gr)},
     ])
-    env = F.federated_recall(["work", "research"], "caching", registry=reg)
+    env = F.federated_recall(["work", "research"], "caching", semantic=False, registry=reg)
     assert env["scope"] == "federated"
     assert env["projects"] == ["research", "work"]
     assert env["synthesized"] is False  # deterministic, no LLM

@@ -498,7 +498,7 @@ def federated_recall(
     depth: int = 2,
     budget: int = 64_000,
     synthesize: bool = False,
-    semantic: bool = False,
+    semantic: bool = True,
     semantic_min_cosine: float = DEFAULT_SEMANTIC_MIN_COSINE,
     registry,
 ) -> dict:
