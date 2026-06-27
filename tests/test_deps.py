@@ -105,6 +105,18 @@ def test_install_uses_uv_argv_for_pip_dep_without_pip(monkeypatch):
     assert seen["argv"][:3] == ["uv", "pip", "install"]  # not `python -m pip`
 
 
+def test_setup_is_top_level_command_interactive_by_default():
+    from tesserae.cli import _build_setup_parser, _setup_wants_interactive
+    from tesserae.cli_tree import KNOWN_COMMANDS
+
+    assert "setup" in KNOWN_COMMANDS  # `tesserae setup`, not just `config setup`
+    flagged = _build_setup_parser().parse_args(["--install", "all"])
+    assert flagged._handler == "_handle_setup_machine"
+    assert _setup_wants_interactive(flagged) is False  # flags given -> skip prompts
+    # bare invocation under a non-TTY (CI/scripts) must NOT block on input
+    assert _setup_wants_interactive(_build_setup_parser().parse_args([])) is False
+
+
 def test_resolve_targets_expands_all_and_dedups():
     targets, unknown = _resolve_dep_targets(["all"], False)
     assert targets == deps.DEP_NAMES and unknown == []
