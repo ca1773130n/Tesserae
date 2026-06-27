@@ -3212,8 +3212,9 @@ def _build_federation_parser() -> argparse.ArgumentParser:
     p_status.set_defaults(_handler="_handle_federation_status")
 
     p_explain = sub.add_parser("explain", help="Show one node's cross-project connections.")
-    p_explain.add_argument("node", help="Node id (alias::id) or a unique suffix.")
+    p_explain.add_argument("node", help="Node id (alias::id, a merged-away id, or a unique suffix).")
     p_explain.add_argument("projects", nargs="*", help="Aliases to federate (default: all registered).")
+    p_explain.add_argument("--semantic", dest="semantic", action="store_true", help="Include semantic links (the default).")
     p_explain.add_argument("--no-semantic", dest="semantic", action="store_false", help="Identity merges only (default includes semantic links).")
     p_explain.add_argument("--json", dest="federation_json", action="store_true", help="Emit JSON.")
     p_explain.set_defaults(_handler="_handle_federation_explain", semantic=True)

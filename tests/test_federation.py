@@ -294,3 +294,41 @@ def test_federation_explain_not_found_raises(tmp_path):
     reg = _StubRegistry([{"name": "work", "graph_path": str(gw)}])
     with pytest.raises(ValueError, match="not found"):
         F.federation_explain("does::not::exist", ["work"], reg, semantic=False)
+
+
+def test_federation_explain_resolves_merged_away_id(tmp_path):
+    gw = _write_graph(tmp_path / "work" / ".tesserae" / "graph.json", "w", "work")
+    gr = _write_graph(tmp_path / "research" / ".tesserae" / "graph.json", "r", "research")
+    reg = _StubRegistry([{"name": "work", "graph_path": str(gw)},
+                         {"name": "research", "graph_path": str(gr)}])
+    rep = min("research::Paper:t:r", "work::Paper:t:w")
+    absorbed = max("research::Paper:t:r", "work::Paper:t:w")
+    res = F.federation_explain(absorbed, ["work", "research"], reg, semantic=False)
+    assert res["node"] == rep  # the merged-away id resolves to its representative
+
+
+def _two_concept_projects():
+    work = _concept_graph([("Concept:ppr:w", "Personalized PageRank", "ranking")])
+    research = _concept_graph([("Concept:ppr:r", "PPR algorithm", "pagerank ranking")])
+    return [("work", work), ("research", research)]
+
+
+def test_semantic_cache_invalidates_on_param_change(tmp_path):
+    graphs, fb = _two_concept_projects(), _FakeBackend()
+    F.federate_graphs(graphs, semantic=True, semantic_backend=fb, semantic_min_cosine=0.5, semantic_cache_dir=tmp_path)
+    first = set(tmp_path.glob("links-*.json"))
+    # a different threshold must NOT reuse the prior key (full float, not rounded)
+    _, s2 = F.federate_graphs(graphs, semantic=True, semantic_backend=fb, semantic_min_cosine=0.6, semantic_cache_dir=tmp_path)
+    assert not s2.get("semantic_cached")
+    assert set(tmp_path.glob("links-*.json")) != first
+
+
+def test_corrupt_cache_is_treated_as_miss_not_poison(tmp_path):
+    graphs, fb = _two_concept_projects(), _FakeBackend()
+    F.federate_graphs(graphs, semantic=True, semantic_backend=fb, semantic_min_cosine=0.5, semantic_cache_dir=tmp_path)
+    cache_file = next(tmp_path.glob("links-*.json"))
+    cache_file.write_text('{"not": "a triple list"}', encoding="utf-8")  # valid JSON, wrong shape
+    fed, s2 = F.federate_graphs(graphs, semantic=True, semantic_backend=fb, semantic_min_cosine=0.5, semantic_cache_dir=tmp_path)
+    assert not s2.get("semantic_cached")  # corrupt -> miss -> recompute (no crash, no poison)
+    links = sorted((e.source, e.target) for e in fed.edges if e.type == "shares_concept_with")
+    assert links == [("research::Concept:ppr:r", "work::Concept:ppr:w")]

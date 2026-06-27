@@ -207,7 +207,13 @@ def federate_graphs(
         acc = members[0]
         for member in members[1:]:
             acc = _merge_two(acc, member)
-        merged_nodes.append(dataclasses.replace(acc, id=root))  # representative = smallest id
+        # representative = smallest id; record the absorbed ids so `explain` can
+        # resolve a merged-away id back to its representative.
+        acc = dataclasses.replace(
+            acc, id=root,
+            metadata={**acc.metadata, "federation_merged_ids": sorted(m.id for m in members)},
+        )
+        merged_nodes.append(acc)
 
     live = {n.id for n in merged_nodes}
     seen: set = set()
@@ -265,20 +271,42 @@ def _federation_cache_dir() -> Path:
     return Path.home() / ".tesserae" / "federation"
 
 
-def _semantic_cache_key(backend_name, top_k, min_cosine, candidates) -> str:
+def _semantic_cache_key(backend_name, top_k, min_cosine, max_candidates, candidates, existing) -> str:
+    """Key on EVERYTHING add_semantic_links reads that changes the output, so a
+    stale cache can never survive a change it should invalidate."""
     import hashlib
     import json
 
     payload = json.dumps(
-        [backend_name, top_k, round(float(min_cosine), 4),
-         [(n.id, f"{n.name}. {(n.description or '').strip()}".strip()) for n in candidates]],
+        [backend_name, top_k, repr(float(min_cosine)), max_candidates,
+         [(n.id, f"{n.name}. {(n.description or '').strip()}".strip()) for n in candidates],
+         sorted(existing)],  # existing edges suppress duplicate links -> part of the result
         sort_keys=True, ensure_ascii=False,
     )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()  # full digest, no truncation
+
+
+def _load_cached_links(cache_file):
+    """Return validated [[str, str, number], ...] or None (treat anything off as
+    a miss — a corrupt cache must never poison results or raise)."""
+    import json
+
+    try:
+        raw = json.loads(cache_file.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return None
+    if not isinstance(raw, list):
+        return None
+    for triple in raw:
+        if (not isinstance(triple, list) or len(triple) != 3
+                or not isinstance(triple[0], str) or not isinstance(triple[1], str)
+                or not isinstance(triple[2], (int, float)) or isinstance(triple[2], bool)):
+            return None
+    return raw
 
 
 def _apply_cached_links(graph, cached, existing):
-    """Rebuild shares_concept_with edges from cached [source, target, cosine]."""
+    """Rebuild shares_concept_with edges from validated [source, target, cosine]."""
     edges = []
     for source, target, cosine in cached:
         if (source, target) in existing:
@@ -340,14 +368,10 @@ def add_semantic_links(
     # fine until you federate many large overlapping project combos.
     cache_file = None
     if cache_dir is not None:
-        import json
-
-        cache_file = Path(cache_dir) / f"links-{_semantic_cache_key(backend_name, top_k, min_cosine, candidates)}.json"
+        key = _semantic_cache_key(backend_name, top_k, min_cosine, max_candidates, candidates, existing)
+        cache_file = Path(cache_dir) / f"links-{key}.json"
         if cache_file.is_file():
-            try:
-                cached = json.loads(cache_file.read_text(encoding="utf-8"))
-            except (ValueError, OSError):
-                cached = None
+            cached = _load_cached_links(cache_file)
             if cached is not None:
                 edges = _apply_cached_links(graph, cached, existing)
                 enriched = ResearchGraph(nodes=list(graph.nodes), edges=list(graph.edges) + edges).canonicalized()
@@ -396,12 +420,16 @@ def add_semantic_links(
             ))
 
     if cache_file is not None:
+        import json
+
         try:
             cache_file.parent.mkdir(parents=True, exist_ok=True)
-            cache_file.write_text(
+            tmp = cache_file.with_suffix(".json.tmp")
+            tmp.write_text(
                 json.dumps([[e.source, e.target, e.metadata["cosine"]] for e in new_edges]),
                 encoding="utf-8",
             )
+            tmp.replace(cache_file)  # atomic: no torn-file read by a concurrent reader
         except OSError:
             pass  # ponytail: cache write is best-effort, never break recall over it
 
@@ -537,6 +565,10 @@ def federation_explain(node_ref, aliases, registry, *, semantic: bool = True) ->
     graph, _ = load_federated_graph(aliases, registry, semantic=semantic)
     by_id = {n.id: n for n in graph.nodes}
     node = by_id.get(node_ref)
+    if node is None:
+        # a merged-away id (absorbed by a representative) resolves to that rep
+        node = next((n for n in graph.nodes
+                     if node_ref in ((n.metadata or {}).get("federation_merged_ids") or [])), None)
     if node is None:
         matches = [n for n in graph.nodes
                    if n.id.endswith(node_ref) or (n.metadata or {}).get("federation_origin_id") == node_ref]
