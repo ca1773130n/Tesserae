@@ -3190,6 +3190,108 @@ def _route_projects(rest: List[str]) -> int:
     return _resolve_handler(args._handler)(args)
 
 
+# ----- federation (v3 inspectability) ---------------------------------------
+def _build_federation_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae federation",
+        description="Inspect cross-project federation: status | explain.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae federation status research work\n"
+            "  tesserae federation status research work --semantic\n"
+            "  tesserae federation explain 'research::Concept:42' research work --semantic\n"
+        ),
+    )
+    sub = parser.add_subparsers(dest="federation_command", required=True)
+
+    p_status = sub.add_parser("status", help="Counts: per-project nodes, identity merges, semantic links.")
+    p_status.add_argument("projects", nargs="*", help="Aliases to federate (default: all registered).")
+    p_status.add_argument("--semantic", action="store_true", help="Include embedding-backed cross-project links.")
+    p_status.add_argument("--json", dest="federation_json", action="store_true", help="Emit JSON.")
+    p_status.set_defaults(_handler="_handle_federation_status")
+
+    p_explain = sub.add_parser("explain", help="Show one node's cross-project connections.")
+    p_explain.add_argument("node", help="Node id (alias::id, a merged-away id, or a unique suffix).")
+    p_explain.add_argument("projects", nargs="*", help="Aliases to federate (default: all registered).")
+    p_explain.add_argument("--semantic", dest="semantic", action="store_true", help="Include semantic links (the default).")
+    p_explain.add_argument("--no-semantic", dest="semantic", action="store_false", help="Identity merges only (default includes semantic links).")
+    p_explain.add_argument("--json", dest="federation_json", action="store_true", help="Emit JSON.")
+    p_explain.set_defaults(_handler="_handle_federation_explain", semantic=True)
+    return parser
+
+
+def _route_federation(rest: List[str]) -> int:
+    args = _build_federation_parser().parse_args(rest)
+    return _resolve_handler(args._handler)(args)
+
+
+def _resolve_federation_aliases(args):
+    from .mcp_server import ProjectRegistry
+
+    registry = ProjectRegistry()
+    aliases = list(getattr(args, "projects", None) or [])
+    if not aliases:
+        data = registry.list_projects()
+        aliases = sorted(p.get("name") for p in (data.get("projects") or []) if p.get("name"))
+    return registry, aliases
+
+
+def _handle_federation_status(args: argparse.Namespace) -> int:
+    from .federation import federation_status
+
+    registry, aliases = _resolve_federation_aliases(args)
+    if not aliases:
+        print("No projects registered. Use `tesserae projects register <path>`.", file=sys.stderr)
+        return 2
+    try:
+        result = federation_status(aliases, registry, semantic=bool(getattr(args, "semantic", False)))
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    if getattr(args, "federation_json", False):
+        print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+        return 0
+    print(f"Federation · {', '.join(result['projects'])}")
+    print(f"  nodes={result['nodes']}  edges={result['edges']}  "
+          f"identity_merges={result['identity_merges']}  dropped_edges={result['dropped_edges']}")
+    for alias, count in result["per_project_nodes"].items():
+        print(f"    {alias}: {count} nodes")
+    sem = result["semantic"]
+    if sem.get("semantic_skipped"):
+        print(f"  semantic: skipped — {sem['semantic_skipped']}")
+    elif "semantic_added" in sem:
+        cached = " [cached]" if sem.get("semantic_cached") else ""
+        print(f"  semantic: {sem['semantic_added']} cross-project links via {sem.get('semantic_backend', '?')}{cached}")
+    return 0
+
+
+def _handle_federation_explain(args: argparse.Namespace) -> int:
+    from .federation import federation_explain
+
+    registry, aliases = _resolve_federation_aliases(args)
+    if not aliases:
+        print("No projects registered. Use `tesserae projects register <path>`.", file=sys.stderr)
+        return 2
+    try:
+        result = federation_explain(args.node, aliases, registry, semantic=bool(getattr(args, "semantic", True)))
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    if getattr(args, "federation_json", False):
+        print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+        return 0
+    print(f"{result['node']}  ({result['type']}: {result['name']})")
+    if len(result["merged_from_projects"]) > 1:
+        print(f"  identity-merged across: {', '.join(result['merged_from_projects'])}")
+    print(f"  links: {len(result['links'])}")
+    for link in result["links"]:
+        kind = f"~{link['cosine']}" if link["semantic"] else link["type"]
+        proj = ",".join(link["other_projects"]) or "?"
+        print(f"    [{kind}] {link['other']} ({proj}) — {link['other_name']}")
+    return 0
+
+
 # ----- integrations ---------------------------------------------------------
 def _handle_integrations_refresh(args: argparse.Namespace) -> int:
     """`integrations refresh <name>` routes to the two old refresh handlers."""
@@ -3575,6 +3677,7 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "ingest": _route_ingest,
     "config": _route_config,
     "projects": _route_projects,
+    "federation": _route_federation,
     "integrations": _route_integrations,
     "lab": _route_lab,
     "extract": _route_extract,
