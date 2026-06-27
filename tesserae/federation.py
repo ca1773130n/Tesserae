@@ -135,7 +135,7 @@ def federate_graphs(
     *,
     semantic: bool = False,
     semantic_top_k: int = 5,
-    semantic_min_cosine: float = 0.5,
+    semantic_min_cosine: float = 0.55,
     semantic_backend=None,
 ) -> Tuple[ResearchGraph, dict]:
     """Namespace + identity-merge ``[(alias, graph), ...]`` into one ResearchGraph.
@@ -257,7 +257,7 @@ def add_semantic_links(
     graph: ResearchGraph,
     *,
     top_k: int = 5,
-    min_cosine: float = 0.5,
+    min_cosine: float = 0.55,
     backend=None,
     max_candidates: int = 1500,
 ) -> Tuple[ResearchGraph, dict]:
@@ -349,7 +349,7 @@ def add_semantic_links(
 # --------------------------------------------------------------------------- #
 
 def load_federated_graph(
-    aliases, registry, *, semantic: bool = False, semantic_min_cosine: float = 0.5
+    aliases, registry, *, semantic: bool = False, semantic_min_cosine: float = 0.55
 ) -> Tuple[ResearchGraph, dict]:
     """Load the named registered projects' graphs (read-only) and federate them.
 
@@ -398,7 +398,7 @@ def federated_recall(
     budget: int = 64_000,
     synthesize: bool = False,
     semantic: bool = False,
-    semantic_min_cosine: float = 0.5,
+    semantic_min_cosine: float = 0.55,
     registry,
 ) -> dict:
     """Federate the selected projects and compile ONE cited context bundle.
