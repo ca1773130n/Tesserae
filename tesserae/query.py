@@ -992,7 +992,16 @@ def ask_project(
 
     # ---- cognee path ----
     cognee_cfg = cognee_backend_config(cfg)
-    use_cognee = backend == "cognee" or (backend == "auto" and cognee_cfg.get("enabled", False))
+    # In 'auto', only reach for cognee if it's actually importable in THIS runtime
+    # (the packaged CLI often ships without it) — an absent optional backend is
+    # normal, not a failure to announce. Explicit backend='cognee' still tries and
+    # raises a clear error.
+    import importlib.util as _importlib_util
+
+    _cognee_importable = _importlib_util.find_spec("cognee") is not None
+    use_cognee = backend == "cognee" or (
+        backend == "auto" and cognee_cfg.get("enabled", False) and _cognee_importable
+    )
     if use_cognee:
         from .cognee_query import search_cognee
 

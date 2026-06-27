@@ -1037,6 +1037,7 @@ def _handle_ingest(args: argparse.Namespace) -> int:
             f"nodes={result['node_count']} edges={result['edge_count']}"
         )
         print(f"Graph: {result['graph_path']}")
+        _warn_if_concept_poor(result)
         return 0
 
 
@@ -1093,6 +1094,39 @@ def _handle_sync_code(args: argparse.Namespace) -> int:
         )
         print(f"Graph: {output}")
         return 0
+
+
+_CONCEPT_LAYER_TYPES = frozenset({
+    "Concept", "TechnicalTerm", "MethodologicalConcept", "MathematicalConcept",
+    "Algorithm", "Claim", "ContributionClaim", "PerformanceClaim", "CausalClaim",
+})
+
+
+def _warn_if_concept_poor(result: dict) -> None:
+    """A non-trivial graph with NO concept/claim layer means retrieval is just
+    full-text search over document blobs. The default deterministic extractor
+    only mints concepts for registry-matching headings, so a docs-heavy compile
+    can land here silently. Point the way to the LLM extractor. Best-effort."""
+    try:
+        if int(result.get("node_count", 0)) < 20:
+            return
+        from .project import load_graph_file
+
+        graph = load_graph_file(result["graph_path"])
+        conceptual = sum(
+            1 for n in graph.nodes
+            if (n.type.value if hasattr(n.type, "value") else str(n.type)) in _CONCEPT_LAYER_TYPES
+        )
+        if conceptual == 0:
+            print(
+                f"note: compiled {result['node_count']} nodes but no concept/claim layer — the "
+                "default deterministic extractor only mints concepts for known headings, so "
+                "`ask` falls back to full-text search. For a real typed graph, recompile with "
+                "`--extractor claude-cli` (or `--extractor selective-claude --claude-include <globs>`).",
+                file=sys.stderr,
+            )
+    except Exception:
+        pass  # the hint must never break a successful compile
 
 
 def _handle_compile_legacy(args: argparse.Namespace) -> int:
@@ -1214,6 +1248,7 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                 f"nodes={result['node_count']} edges={result['edge_count']}"
             )
         print(f"Graph: {result['graph_path']}")
+        _warn_if_concept_poor(result)
         return 0
 
 

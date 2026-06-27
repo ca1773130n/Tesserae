@@ -71,6 +71,31 @@ def test_detect_exception_never_propagates(monkeypatch):
     assert r["ok"] is False  # detect-after-install raised -> treated as absent
 
 
+def test_pip_install_falls_back_to_uv_when_pip_absent(monkeypatch):
+    # uv tool envs ship without pip -> must not emit a dead `python -m pip` argv.
+    monkeypatch.setattr(deps, "_module_present", lambda n: False)
+    monkeypatch.setattr(deps, "_binary_present", lambda n: n == "uv")
+    argv = deps._pip_install_argv(["cognee"])
+    assert argv[:3] == ["uv", "pip", "install"] and "--python" in argv and argv[-1] == "cognee"
+    # when pip IS importable, use it directly
+    monkeypatch.setattr(deps, "_module_present", lambda n: n == "pip")
+    assert deps._pip_install_argv(["cognee"])[1:3] == ["-m", "pip"]
+
+
+def test_install_uses_uv_argv_for_pip_dep_without_pip(monkeypatch):
+    monkeypatch.setattr(deps, "_module_present", lambda n: False)  # nothing importable
+    monkeypatch.setattr(deps, "_binary_present", lambda n: n == "uv")
+    seen = {}
+
+    def fake_run(argv, **k):
+        seen["argv"] = argv
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(deps.subprocess, "run", fake_run)
+    deps.install("cognee")
+    assert seen["argv"][:3] == ["uv", "pip", "install"]  # not `python -m pip`
+
+
 def test_resolve_targets_expands_all_and_dedups():
     targets, unknown = _resolve_dep_targets(["all"], False)
     assert targets == deps.DEP_NAMES and unknown == []
