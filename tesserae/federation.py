@@ -144,6 +144,7 @@ def federate_graphs(
     semantic_top_k: int = 5,
     semantic_min_cosine: float = DEFAULT_SEMANTIC_MIN_COSINE,
     semantic_backend=None,
+    semantic_cache_dir: Optional[Path] = None,
 ) -> Tuple[ResearchGraph, dict]:
     """Namespace + identity-merge ``[(alias, graph), ...]`` into one ResearchGraph.
 
@@ -235,7 +236,7 @@ def federate_graphs(
     if semantic:
         federated, sem_stats = add_semantic_links(
             federated, top_k=semantic_top_k, min_cosine=semantic_min_cosine,
-            backend=semantic_backend,
+            backend=semantic_backend, cache_dir=semantic_cache_dir,
         )
         stats.update(sem_stats)
         stats["edges"] = len(federated.edges)
@@ -260,6 +261,35 @@ _SEMANTIC_TYPE_VALUES = frozenset({
 })
 
 
+def _federation_cache_dir() -> Path:
+    return Path.home() / ".tesserae" / "federation"
+
+
+def _semantic_cache_key(backend_name, top_k, min_cosine, candidates) -> str:
+    import hashlib
+    import json
+
+    payload = json.dumps(
+        [backend_name, top_k, round(float(min_cosine), 4),
+         [(n.id, f"{n.name}. {(n.description or '').strip()}".strip()) for n in candidates]],
+        sort_keys=True, ensure_ascii=False,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _apply_cached_links(graph, cached, existing):
+    """Rebuild shares_concept_with edges from cached [source, target, cosine]."""
+    edges = []
+    for source, target, cosine in cached:
+        if (source, target) in existing:
+            continue
+        existing.add((source, target))
+        existing.add((target, source))
+        edges.append(ResearchEdge(source=source, target=target, type="shares_concept_with",
+                                  metadata={"federation_semantic": True, "cosine": cosine}))
+    return edges
+
+
 def add_semantic_links(
     graph: ResearchGraph,
     *,
@@ -267,6 +297,7 @@ def add_semantic_links(
     min_cosine: float = DEFAULT_SEMANTIC_MIN_COSINE,
     backend=None,
     max_candidates: int = 1500,
+    cache_dir: Optional[Path] = None,
 ) -> Tuple[ResearchGraph, dict]:
     """Add ``shares_concept_with`` edges between idea-bearing nodes from DIFFERENT
     projects whose embeddings are similar — so federated PPR (already run by
@@ -297,6 +328,31 @@ def add_semantic_links(
                        "semantic_skipped": "no real embedding backend (install tesserae[semantic])"}
     if len(candidates) < 2:
         return graph, {"semantic_added": 0, "semantic_backend": backend_name}
+
+    existing: set = set()
+    for edge in graph.edges:
+        existing.add((edge.source, edge.target))
+        existing.add((edge.target, edge.source))
+
+    # Persisted link cache (best-effort). Keyed on the candidate (id, text) set +
+    # backend + params, so it auto-invalidates when any project recompiles.
+    # ponytail: caches the whole link set per project-combo, not incrementally —
+    # fine until you federate many large overlapping project combos.
+    cache_file = None
+    if cache_dir is not None:
+        import json
+
+        cache_file = Path(cache_dir) / f"links-{_semantic_cache_key(backend_name, top_k, min_cosine, candidates)}.json"
+        if cache_file.is_file():
+            try:
+                cached = json.loads(cache_file.read_text(encoding="utf-8"))
+            except (ValueError, OSError):
+                cached = None
+            if cached is not None:
+                edges = _apply_cached_links(graph, cached, existing)
+                enriched = ResearchGraph(nodes=list(graph.nodes), edges=list(graph.edges) + edges).canonicalized()
+                return enriched, {"semantic_added": len(edges), "semantic_backend": backend_name, "semantic_cached": True}
+
     try:
         import numpy as np
     except ImportError:
@@ -314,11 +370,6 @@ def add_semantic_links(
     vectors = vectors / norms
     sims = vectors @ vectors.T  # now genuine cosine in [-1, 1]
     project_sets = [set(_members(n)) for n in candidates]
-
-    existing: set = set()
-    for edge in graph.edges:
-        existing.add((edge.source, edge.target))
-        existing.add((edge.target, edge.source))
 
     new_edges: List[ResearchEdge] = []
     for i, node in enumerate(candidates):
@@ -344,6 +395,16 @@ def add_semantic_links(
                 metadata={"federation_semantic": True, "cosine": round(cosine, 4)},
             ))
 
+    if cache_file is not None:
+        try:
+            cache_file.parent.mkdir(parents=True, exist_ok=True)
+            cache_file.write_text(
+                json.dumps([[e.source, e.target, e.metadata["cosine"]] for e in new_edges]),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass  # ponytail: cache write is best-effort, never break recall over it
+
     enriched = ResearchGraph(nodes=list(graph.nodes), edges=list(graph.edges) + new_edges).canonicalized()
     stats = {"semantic_added": len(new_edges), "semantic_backend": backend_name}
     if capped:
@@ -356,7 +417,9 @@ def add_semantic_links(
 # --------------------------------------------------------------------------- #
 
 def load_federated_graph(
-    aliases, registry, *, semantic: bool = False, semantic_min_cosine: float = DEFAULT_SEMANTIC_MIN_COSINE
+    aliases, registry, *, semantic: bool = False,
+    semantic_min_cosine: float = DEFAULT_SEMANTIC_MIN_COSINE,
+    semantic_cache_dir: Optional[Path] = None,
 ) -> Tuple[ResearchGraph, dict]:
     """Load the named registered projects' graphs (read-only) and federate them.
 
@@ -394,7 +457,10 @@ def load_federated_graph(
                 "run 'tesserae compile' for it first."
             )
         named.append((alias, load_graph_file(graph_path)))
-    return federate_graphs(named, semantic=semantic, semantic_min_cosine=semantic_min_cosine)
+    return federate_graphs(
+        named, semantic=semantic, semantic_min_cosine=semantic_min_cosine,
+        semantic_cache_dir=semantic_cache_dir or _federation_cache_dir(),
+    )
 
 
 def federated_recall(
@@ -438,4 +504,68 @@ def federated_recall(
         "selected_node_ids": bundle.selected_nodes,
         "char_budget_used": bundle.char_budget_used,
         "synthesized": bundle.synthesized,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Inspectability (v3): status + explain                                       #
+# --------------------------------------------------------------------------- #
+
+def federation_status(aliases, registry, *, semantic: bool = False) -> dict:
+    """Counts for a federation: per-project node contribution + merge/link stats."""
+    graph, stats = load_federated_graph(aliases, registry, semantic=semantic)
+    per_project: Dict[str, int] = {}
+    for node in graph.nodes:
+        for alias in _members(node):  # a merged node counts toward each source project
+            per_project[alias] = per_project.get(alias, 0) + 1
+    return {
+        "projects": stats["projects"],
+        "per_project_nodes": dict(sorted(per_project.items())),
+        "nodes": stats["nodes"],
+        "edges": stats["edges"],
+        "identity_merges": stats["merged_groups"],
+        "dropped_edges": stats.get("dropped_edges", 0),
+        "semantic": {k: v for k, v in stats.items() if k.startswith("semantic")},
+    }
+
+
+def federation_explain(node_ref, aliases, registry, *, semantic: bool = True) -> dict:
+    """Explain ONE node's cross-project connections — why it bridges projects.
+
+    Accepts the namespaced id (``alias::id``) or a unique suffix / origin id.
+    """
+    graph, _ = load_federated_graph(aliases, registry, semantic=semantic)
+    by_id = {n.id: n for n in graph.nodes}
+    node = by_id.get(node_ref)
+    if node is None:
+        matches = [n for n in graph.nodes
+                   if n.id.endswith(node_ref) or (n.metadata or {}).get("federation_origin_id") == node_ref]
+        if len(matches) == 1:
+            node = matches[0]
+        elif not matches:
+            raise ValueError(f"node {node_ref!r} not found among {len(graph.nodes)} federated nodes")
+        else:
+            raise ValueError(f"ambiguous node {node_ref!r}: {sorted(m.id for m in matches)[:8]}")
+
+    links = []
+    for edge in graph.edges:
+        if node.id not in (edge.source, edge.target):
+            continue
+        other_id = edge.target if edge.source == node.id else edge.source
+        other = by_id.get(other_id)
+        links.append({
+            "other": other_id,
+            "other_name": other.name if other else None,
+            "other_projects": sorted(set(_members(other))) if other else [],
+            "type": edge.type,
+            "semantic": bool((edge.metadata or {}).get("federation_semantic")),
+            "cosine": (edge.metadata or {}).get("cosine"),
+        })
+    links.sort(key=lambda link: (not link["semantic"], link["other"]))
+    return {
+        "node": node.id,
+        "name": node.name,
+        "type": node.type.value if hasattr(node.type, "value") else str(node.type),
+        "merged_from_projects": sorted(set(_members(node))),  # >1 => identity merge spanned projects
+        "links": links,
     }

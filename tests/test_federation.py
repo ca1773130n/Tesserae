@@ -246,3 +246,51 @@ def test_federated_recall_envelope_cross_references_projects(tmp_path):
     # citations are project-namespaced and span both projects
     cited = {c["node_id"].split("::", 1)[0] for c in env["citations"]}
     assert cited == {"research", "work"}
+
+
+# --- v3: cache + status + explain ---------------------------------------- #
+
+def test_semantic_link_cache_round_trips(tmp_path):
+    work = _concept_graph([("Concept:ppr:w", "Personalized PageRank", "ranking")])
+    research = _concept_graph([("Concept:ppr:r", "PPR algorithm", "pagerank ranking")])
+    kw = dict(semantic=True, semantic_backend=_FakeBackend(), semantic_min_cosine=0.5,
+              semantic_cache_dir=tmp_path)
+    fed1, s1 = F.federate_graphs([("work", work), ("research", research)], **kw)
+    assert s1["semantic_added"] == 1 and not s1.get("semantic_cached")
+    assert list(tmp_path.glob("links-*.json"))  # cache written
+
+    fed2, s2 = F.federate_graphs([("work", work), ("research", research)], **kw)
+    assert s2.get("semantic_cached") is True and s2["semantic_added"] == 1
+    links1 = sorted((e.source, e.target) for e in fed1.edges if e.type == "shares_concept_with")
+    links2 = sorted((e.source, e.target) for e in fed2.edges if e.type == "shares_concept_with")
+    assert links1 == links2  # cache reproduces the computed links
+
+
+def test_federation_status_counts(tmp_path):
+    gw = _write_graph(tmp_path / "work" / ".tesserae" / "graph.json", "w", "work")
+    gr = _write_graph(tmp_path / "research" / ".tesserae" / "graph.json", "r", "research")
+    reg = _StubRegistry([{"name": "work", "graph_path": str(gw)},
+                         {"name": "research", "graph_path": str(gr)}])
+    st = F.federation_status(["work", "research"], reg)
+    assert st["projects"] == ["research", "work"]
+    assert st["identity_merges"] == 1  # the shared arxiv paper merged
+    # merged paper counts toward both projects; each also has its own Concept
+    assert st["per_project_nodes"] == {"research": 2, "work": 2}
+
+
+def test_federation_explain_merged_node(tmp_path):
+    gw = _write_graph(tmp_path / "work" / ".tesserae" / "graph.json", "w", "work")
+    gr = _write_graph(tmp_path / "research" / ".tesserae" / "graph.json", "r", "research")
+    reg = _StubRegistry([{"name": "work", "graph_path": str(gw)},
+                         {"name": "research", "graph_path": str(gr)}])
+    merged_id = min("research::Paper:t:r", "work::Paper:t:w")
+    res = F.federation_explain(merged_id, ["work", "research"], reg, semantic=False)
+    assert res["merged_from_projects"] == ["research", "work"]  # spanned both
+    assert len(res["links"]) == 2  # each project's Concept references it
+
+
+def test_federation_explain_not_found_raises(tmp_path):
+    gw = _write_graph(tmp_path / "work" / ".tesserae" / "graph.json", "w", "work")
+    reg = _StubRegistry([{"name": "work", "graph_path": str(gw)}])
+    with pytest.raises(ValueError, match="not found"):
+        F.federation_explain("does::not::exist", ["work"], reg, semantic=False)
