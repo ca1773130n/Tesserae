@@ -659,14 +659,14 @@ class LLMWikiMCPServer:
                         "top_k": {"type": "integer", "description": "Maximum results/context items.", "default": 5, "minimum": 1, "maximum": 100},
                         "scope": {
                             "type": "string",
-                            "enum": ["current", "all-registered"],
+                            "enum": ["current", "all-registered", "federated"],
                             "default": "current",
-                            "description": "B2: 'current' (default) targets the resolved project; 'all-registered' fans out across every registered project and returns an aggregated envelope.",
+                            "description": "'current' (default) targets the resolved project; 'all-registered' fans out and returns one answer per project (by_project); 'federated' merges the named projects into ONE identity-merged graph and returns a single cross-referenced answer (requires scope_aliases).",
                         },
                         "scope_aliases": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "When scope='all-registered', optionally restrict to this list of registered alias names.",
+                            "description": "Registered alias names. Optional filter for 'all-registered'; REQUIRED for 'federated' (the projects to federate).",
                         },
                         "claude_config_dir": {
                             "type": "string",
@@ -1544,7 +1544,7 @@ class LLMWikiMCPServer:
                 raise ValueError(f"ask: unknown backend {backend!r}")
             top_k = int(args.get("top_k") or 5)
             scope = str(args.get("scope") or "current")
-            if scope not in {"current", "all-registered"}:
+            if scope not in {"current", "all-registered", "federated"}:
                 raise ValueError(f"ask: unknown scope {scope!r}")
             claude_config_dir = args.get("claude_config_dir")
             claude_config_dir = str(claude_config_dir).strip() if claude_config_dir else None
@@ -1554,6 +1554,11 @@ class LLMWikiMCPServer:
                         question=question,
                         backend=backend,
                         top_k=top_k,
+                        scope_aliases=_coerce_str_list(args.get("scope_aliases")),
+                    )
+                if scope == "federated":
+                    return self._mcp_ask_federated(
+                        question=question,
                         scope_aliases=_coerce_str_list(args.get("scope_aliases")),
                     )
                 return self._mcp_ask(args, question=question, backend=backend, top_k=top_k)
@@ -2506,6 +2511,20 @@ class LLMWikiMCPServer:
         project_root = self._resolve_project_root_for_ask(args)
         wiki = ProjectWiki.load(project_root)
         return ask_project(wiki, question, backend=backend, top_k=top_k)
+
+    def _mcp_ask_federated(self, *, question: str, scope_aliases: List[str]) -> JSONDict:
+        """Federated scope — merge the named projects into ONE identity-merged
+        graph and compile a single cross-referenced, cited answer (vs the
+        per-project ``by_project`` fan-out). ``scope_aliases`` is required.
+        ``backend``/``top_k`` don't apply (deterministic graph compile)."""
+        from .federation import federated_recall
+
+        if not [a for a in scope_aliases if a]:
+            raise ValueError(
+                "ask: scope='federated' requires scope_aliases — the projects to "
+                "federate. Use list_projects to see registered projects."
+            )
+        return federated_recall(scope_aliases, question, registry=self.registry)
 
     def _mcp_ask_all_registered(
         self,

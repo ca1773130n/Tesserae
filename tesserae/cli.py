@@ -290,6 +290,8 @@ def _top_level_ask_handler(args) -> int:
     scope = getattr(args, "scope", "current") or "current"
     if scope == "all-registered":
         return _top_level_ask_scope_all_registered(args)
+    if scope == "federated":
+        return _top_level_ask_scope_federated(args)
 
     project_root: Optional[Path] = None
     source: str = ""
@@ -369,6 +371,44 @@ def _top_level_ask_handler(args) -> int:
         return 2
 
     return _emit_ask_envelope(envelope, json_output=bool(args.json_output))
+
+
+def _top_level_ask_scope_federated(args) -> int:
+    """Federated scope — assemble ONE identity-merged graph from the named
+    projects and compile a single cross-referenced, cited answer (not the
+    per-project fan-out). Requires --scope-aliases (the projects to federate)."""
+    from .federation import federated_recall
+    from .mcp_server import ProjectRegistry
+
+    aliases = list(getattr(args, "scope_aliases", None) or [])
+    if not aliases:
+        print(
+            "--scope federated requires --scope-aliases A B — the projects to "
+            "federate into one graph. Use `tesserae projects list` to see them.",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        envelope = federated_recall(
+            aliases,
+            args.question,
+            synthesize=bool(getattr(args, "llm", False)),
+            registry=ProjectRegistry(),
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    if bool(getattr(args, "json_output", False)):
+        print(json.dumps(envelope, ensure_ascii=False, indent=2, default=str))
+        return 0
+    stats = envelope["stats"]
+    print(
+        f"Federated scope · projects: {', '.join(envelope['projects'])} · "
+        f"nodes={stats['nodes']} merged_groups={stats['merged_groups']}"
+    )
+    print(f"question: {args.question!r}\n")
+    print(envelope["body"])
+    return 0
 
 
 def _top_level_ask_scope_all_registered(args) -> int:
@@ -728,11 +768,13 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
     # Bet B2 — registry-scoped fan-out.
     parser.add_argument(
         "--scope",
-        choices=["current", "all-registered"],
+        choices=["current", "all-registered", "federated"],
         default="current",
         help=(
             "Query scope: 'current' (default) hits the active/named project; "
-            "'all-registered' fans out across every project in the registry."
+            "'all-registered' fans out and returns one answer per project; "
+            "'federated' merges the named projects into ONE graph (identity-merged) "
+            "and returns a single cross-referenced answer (requires --scope-aliases)."
         ),
     )
     parser.add_argument(
@@ -740,8 +782,9 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
         nargs="*",
         default=None,
         help=(
-            "When --scope=all-registered, optionally restrict to this list "
-            "of registered alias names (e.g. --scope-aliases research work)."
+            "Registered alias names. With --scope=all-registered, optionally "
+            "restricts the fan-out; with --scope=federated, the (required) set of "
+            "projects to federate (e.g. --scope-aliases research work)."
         ),
     )
     return parser
