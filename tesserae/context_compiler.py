@@ -30,7 +30,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Set
+from typing import Dict, List, Mapping, Optional, Sequence, Set
 
 from .research_graph import ResearchGraph, ResearchNode
 from .retrieval.hybrid import hybrid_search
@@ -150,6 +150,7 @@ def compile_context(
     synthesize: bool = False,
     backend=None,
     multi_pool: bool = False,
+    edge_type_weights: Optional[Mapping[str, float]] = None,
 ) -> ContextBundle:
     """Compile a tailored, cited context bundle for ``query`` / ``seeds``.
 
@@ -215,7 +216,8 @@ def compile_context(
     in_neighborhood = _neighborhood_within_depth(graph, seed_ids, max(0, depth))
     cap = max(1, depth) * 10
     full_ranked = personalized_pagerank(
-        graph, seed_ids, alpha=0.15, top_k=max(1, len(graph.nodes))
+        graph, seed_ids, alpha=0.15, top_k=max(1, len(graph.nodes)),
+        edge_type_weights=edge_type_weights,
     )
     ranked = [
         (nid, score) for nid, score in full_ranked if nid in in_neighborhood

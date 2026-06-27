@@ -84,6 +84,110 @@ def test_edges_repointed_to_merged_node_no_selfloops_or_dups():
     assert all(e.source != e.target for e in fed.edges)  # no self-loops
 
 
+class _FakeBackend:
+    """Deterministic orthogonal-unit embeddings keyed on content (no model2vec)."""
+    name = "fake-test"
+
+    def embed(self, texts):
+        out = []
+        for t in texts:
+            tl = t.lower()
+            if "pagerank" in tl or "ppr" in tl:
+                out.append([1.0, 0.0, 0.0])
+            elif "banana" in tl:
+                out.append([0.0, 1.0, 0.0])
+            else:
+                out.append([0.0, 0.0, 1.0])
+        return out
+
+
+def _concept_graph(nodes):
+    return ResearchGraph(
+        nodes=[ResearchNode(id=i, name=n, type=ResearchNodeType.CONCEPT, description=d)
+               for i, n, d in nodes],
+        edges=[],
+    )
+
+
+def test_semantic_links_bridge_related_cross_project_concepts_only():
+    work = _concept_graph([
+        ("Concept:ppr:w", "Personalized PageRank", "ranking"),
+        ("Concept:ppr2:w", "PPR variant", "another pagerank node, SAME project"),
+        ("Concept:ban:w", "Banana", "fruit"),
+    ])
+    research = _concept_graph([("Concept:ppr:r", "PPR algorithm", "pagerank ranking")])
+    fed, stats = F.federate_graphs(
+        [("work", work), ("research", research)],
+        semantic=True, semantic_backend=_FakeBackend(), semantic_min_cosine=0.5,
+    )
+    sem = sorted((e.source, e.target) for e in fed.edges if e.type == "shares_concept_with")
+    # research's PPR links to BOTH of work's PPR concepts (cross-project, similar);
+    # the same-project PPR pair is NOT linked; banana has no cross-project match.
+    assert stats["semantic_backend"] == "fake-test"
+    assert sem == [
+        ("research::Concept:ppr:r", "work::Concept:ppr2:w"),
+        ("research::Concept:ppr:r", "work::Concept:ppr:w"),
+    ]
+
+
+def test_semantic_skipped_on_hash_stub():
+    from tesserae.retrieval.hybrid import HashEmbeddingBackend
+
+    g = _concept_graph([("Concept:a:w", "Alpha", "x"), ("Concept:b:r", "Beta", "y")])
+    out, stats = F.add_semantic_links(g, backend=HashEmbeddingBackend())
+    assert stats["semantic_added"] == 0 and "semantic_skipped" in stats
+    assert len(out.edges) == 0  # no noise edges from the stub
+
+
+class _UnnormBackend:
+    """Returns NON-unit vectors so the test exercises L2-normalization."""
+    name = "unnorm"
+
+    def embed(self, texts):
+        out = []
+        for t in texts:
+            if "AAA" in t:
+                out.append([2.0, 0.0, 0.0])   # |v|=2
+            elif "BBB" in t:
+                out.append([1.0, 1.0, 0.0])   # |v|=sqrt2; true cosine to AAA = 0.707
+            else:
+                out.append([0.0, 0.0, 9.0])
+        return out
+
+
+def test_semantic_uses_true_cosine_not_raw_dot():
+    work = _concept_graph([("Concept:a:w", "AAA", "x")])
+    research = _concept_graph([("Concept:b:r", "BBB", "y")])
+    # raw dot(AAA,BBB)=2 would pass 0.8; true cosine=0.707 must FAIL 0.8.
+    _, s_hi = F.federate_graphs([("work", work), ("research", research)],
+                                semantic=True, semantic_backend=_UnnormBackend(), semantic_min_cosine=0.8)
+    assert s_hi["semantic_added"] == 0
+    # at 0.7 the real cosine (0.707) passes.
+    _, s_lo = F.federate_graphs([("work", work), ("research", research)],
+                                semantic=True, semantic_backend=_UnnormBackend(), semantic_min_cosine=0.7)
+    assert s_lo["semantic_added"] == 1
+
+
+def test_semantic_skips_nodes_without_provenance():
+    # Direct call on a NON-federated graph: nodes lack federation_alias -> empty
+    # provenance -> never treated cross-project (no same-project false links).
+    g = _concept_graph([("Concept:a", "AAA", "x"), ("Concept:b", "AAA", "x")])
+    out, stats = F.add_semantic_links(g, backend=_UnnormBackend(), min_cosine=0.5)
+    assert stats["semantic_added"] == 0
+    assert not any(e.type == "shares_concept_with" for e in out.edges)
+
+
+def test_semantic_type_list_covers_claims_and_session_findings():
+    for value in ("ComparisonClaim", "CausalClaim", "SessionQuestion", "SessionTODO", "OpenQuestion"):
+        assert value in F._SEMANTIC_TYPE_VALUES
+
+
+def test_semantic_default_off_is_identity_only():
+    a, b = _g("a", "x"), _g("b", "y")
+    plain, _ = F.federate_graphs([("p", a), ("q", b)])
+    assert not any(e.type == "shares_concept_with" for e in plain.edges)
+
+
 def test_federation_is_byte_identical_regardless_of_order():
     a, b = _g("a", "x"), _g("b", "y")
     fed1, _ = F.federate_graphs([("alpha", a), ("beta", b)])
