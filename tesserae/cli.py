@@ -3050,10 +3050,12 @@ def _install_deps(names: List[str]) -> int:
             continue
         seen.add(name)
         dep = deps.DEPS_BY_NAME.get(name)
-        # Surface the exact command first — important for the deps that run an
-        # unpinned remote install script (understand-anything).
+        # Surface the EXACT command that will run (pip deps resolve to uv-pip in a
+        # pip-less env) — important for the deps that run an unpinned remote
+        # install script (understand-anything).
         if dep is not None:
-            print(f"Installing {name} … ({' '.join(dep.install_cmd)})", flush=True)
+            shown = deps._pip_install_argv(dep.pip_specs) if dep.pip_specs else dep.install_cmd
+            print(f"Installing {name} … ({' '.join(shown)})", flush=True)
         res = deps.install(name)
         if res.get("already"):
             print(f"  {name}: already installed.")
