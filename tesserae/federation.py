@@ -30,6 +30,13 @@ from .research_graph import (
 
 _NS = "::"  # namespace separator; never produced by stable_id
 
+# Semantic-link defaults — single source of truth (the eval harness in
+# evals/federation/ and its regression test import these, so the data-backed
+# values and the shipped values can never silently diverge). See
+# evals/federation/report.md for the precision/recall + swamping data.
+DEFAULT_SEMANTIC_MIN_COSINE = 0.55   # F1 frontier with perfect precision
+SEMANTIC_BRIDGE_PPR_WEIGHT = 0.5     # nudge: below references (1.5); >=1.0 swamps
+
 
 # --------------------------------------------------------------------------- #
 # Identity keys — high precision only (a None key is NEVER auto-merged)        #
@@ -135,7 +142,7 @@ def federate_graphs(
     *,
     semantic: bool = False,
     semantic_top_k: int = 5,
-    semantic_min_cosine: float = 0.55,
+    semantic_min_cosine: float = DEFAULT_SEMANTIC_MIN_COSINE,
     semantic_backend=None,
 ) -> Tuple[ResearchGraph, dict]:
     """Namespace + identity-merge ``[(alias, graph), ...]`` into one ResearchGraph.
@@ -257,7 +264,7 @@ def add_semantic_links(
     graph: ResearchGraph,
     *,
     top_k: int = 5,
-    min_cosine: float = 0.55,
+    min_cosine: float = DEFAULT_SEMANTIC_MIN_COSINE,
     backend=None,
     max_candidates: int = 1500,
 ) -> Tuple[ResearchGraph, dict]:
@@ -349,7 +356,7 @@ def add_semantic_links(
 # --------------------------------------------------------------------------- #
 
 def load_federated_graph(
-    aliases, registry, *, semantic: bool = False, semantic_min_cosine: float = 0.55
+    aliases, registry, *, semantic: bool = False, semantic_min_cosine: float = DEFAULT_SEMANTIC_MIN_COSINE
 ) -> Tuple[ResearchGraph, dict]:
     """Load the named registered projects' graphs (read-only) and federate them.
 
@@ -398,7 +405,7 @@ def federated_recall(
     budget: int = 64_000,
     synthesize: bool = False,
     semantic: bool = False,
-    semantic_min_cosine: float = 0.55,
+    semantic_min_cosine: float = DEFAULT_SEMANTIC_MIN_COSINE,
     registry,
 ) -> dict:
     """Federate the selected projects and compile ONE cited context bundle.
@@ -416,7 +423,7 @@ def federated_recall(
     # shares_concept_with in PPR so an identity merge (node collapse) and
     # references (1.5) still outrank a fuzzy bridge. Only when semantic links
     # were actually added.
-    edge_type_weights = {"shares_concept_with": 0.5} if stats.get("semantic_added") else None
+    edge_type_weights = {"shares_concept_with": SEMANTIC_BRIDGE_PPR_WEIGHT} if stats.get("semantic_added") else None
     bundle = compile_context(
         graph, project_root=None, query=query, depth=depth, budget=budget,
         synthesize=synthesize, edge_type_weights=edge_type_weights,

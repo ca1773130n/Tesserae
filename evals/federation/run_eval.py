@@ -25,7 +25,11 @@ from collections import defaultdict
 from pathlib import Path
 from typing import List, Tuple
 
-from tesserae.federation import federate_graphs
+from tesserae.federation import (
+    DEFAULT_SEMANTIC_MIN_COSINE,
+    SEMANTIC_BRIDGE_PPR_WEIGHT,
+    federate_graphs,
+)
 from tesserae.research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
 from tesserae.retrieval.hybrid import active_embedding_backend
 from tesserae.retrieval.ppr import personalized_pagerank
@@ -34,8 +38,16 @@ from .fixture import CONCEPTS, gold_cross_project_pairs
 
 _THRESHOLDS = [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70]
 _WEIGHTS = [0.0, 0.25, 0.5, 1.0, 2.0]  # 0.0 == no bridge (identity-only)
-DEFAULT_MIN_COSINE = 0.55
-DEFAULT_EDGE_WEIGHT = 0.50
+# Mirror the SHIPPED defaults (imported, not re-declared) so the eval + its
+# regression test always score the values production actually uses.
+DEFAULT_MIN_COSINE = DEFAULT_SEMANTIC_MIN_COSINE
+DEFAULT_EDGE_WEIGHT = SEMANTIC_BRIDGE_PPR_WEIGHT
+
+
+def _model2vec_backend():
+    """Force model2vec (fail-loud if it can't construct) — the eval's numbers
+    are only meaningful with real embeddings, never the hash stub."""
+    return active_embedding_backend("model2vec")
 
 
 def _fixture_graphs():
@@ -48,7 +60,7 @@ def _fixture_graphs():
 
 
 def compute_threshold_rows(backend=None) -> List[dict]:
-    backend = backend or active_embedding_backend()
+    backend = backend or _model2vec_backend()
     named = _fixture_graphs()
     gold = gold_cross_project_pairs(lambda project, index: f"{project}::Concept:{index}")
     rows = []
@@ -103,7 +115,7 @@ def compute_weight_rows(backend=None) -> Tuple[List[dict], dict]:
     ``b::Concept:ppr`` is the bridged B node; ``b::Concept:tele`` is B content
     reachable ONLY through the bridge; ``b::Concept:ban`` is unrelated B noise.
     """
-    backend = backend or active_embedding_backend()
+    backend = backend or _model2vec_backend()
     fed, _ = _bridge_graph(backend)
     seed = ["a::Concept:rw"]
     watch = {"A_neighbour": "a::Concept:spec", "B_bridged": "b::Concept:ppr",
@@ -152,7 +164,7 @@ def _fmt_weight(rows, meta) -> str:
 
 
 def main() -> int:
-    backend = active_embedding_backend()
+    backend = _model2vec_backend()
     name = getattr(backend, "name", type(backend).__name__)
     t_rows = compute_threshold_rows(backend)
     w_rows, w_meta = compute_weight_rows(backend)

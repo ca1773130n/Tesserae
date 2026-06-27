@@ -20,21 +20,40 @@ from evals.federation.run_eval import (  # noqa: E402
 )
 
 
-def test_threshold_default_is_near_optimal_and_high_precision():
+def test_eval_constants_track_production_defaults():
+    """The eval scores the values production actually ships (single source of
+    truth), so a default revert moves the eval + trips the guards below."""
+    import inspect
+
+    from tesserae import federation as F
+
+    assert DEFAULT_MIN_COSINE == F.DEFAULT_SEMANTIC_MIN_COSINE
+    assert DEFAULT_EDGE_WEIGHT == F.SEMANTIC_BRIDGE_PPR_WEIGHT
+    sig = inspect.signature
+    assert sig(F.add_semantic_links).parameters["min_cosine"].default == DEFAULT_MIN_COSINE
+    assert sig(F.federate_graphs).parameters["semantic_min_cosine"].default == DEFAULT_MIN_COSINE
+
+
+def test_threshold_default_is_frontier_with_zero_false_positives():
     rows = compute_threshold_rows()
     best_f1 = max(r["f1"] for r in rows)
     assert best_f1 >= 0.75, "eval not discriminating — fixture/model broken"
     default = next(r for r in rows if abs(r["threshold"] - DEFAULT_MIN_COSINE) < 1e-9)
-    # Adding edges makes false links costly, so the default must stay near the
-    # F1 frontier AND high-precision. Locks the data-backed 0.55 + catches drift.
-    assert default["f1"] >= best_f1 - 0.06
-    assert default["precision"] >= 0.85
+    # The bump's whole justification is "zero false links at the same recall".
+    # fp==0 is exactly what FAILS on a revert to 0.50 (which has a false positive),
+    # so this is a real guard, not a rubber stamp.
+    assert default["fp"] == 0, f"shipped threshold {DEFAULT_MIN_COSINE} admits false links"
+    assert default["precision"] >= 0.95
+    assert default["f1"] >= best_f1 - 0.03  # on the F1 frontier
 
 
 def test_weight_default_surfaces_bridge_without_swamping():
     rows, meta = compute_weight_rows()
     assert meta["bridge_linked"], "the semantic bridge a::rw <-> b::ppr did not form"
     by_weight = {r["weight"]: r for r in rows}
+
+    # The shipped weight must be one the sweep actually characterised.
+    assert DEFAULT_EDGE_WEIGHT in by_weight, f"weight {DEFAULT_EDGE_WEIGHT} not in the sweep"
 
     # No bridge (weight 0) -> the cross-project B node is unreachable.
     assert by_weight[0.0]["B_bridged"] is None
