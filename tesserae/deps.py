@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, List, Optional
 
 # Install can be slow (a Rust build, a large pip resolve) — generous ceiling.
@@ -30,6 +31,14 @@ def _module_present(name: str) -> bool:
 
 def _binary_present(name: str) -> bool:
     return shutil.which(name) is not None
+
+
+def _ua_installed() -> bool:
+    """Understand-Anything's installer drops a plugin/skills tree (no PATH binary),
+    so detect the install marker dir, not a `ua` executable."""
+    return _binary_present("understand-anything") or _binary_present("ua") or (
+        Path.home() / ".understand-anything"
+    ).is_dir()
 
 
 def _pip_install_argv(specs: List[str]) -> List[str]:
@@ -84,7 +93,7 @@ DEPS: List[Dep] = [
     Dep(
         "understand-anything",
         "Understand-Anything code knowledge-graph skill",
-        lambda: _binary_present("understand-anything") or _binary_present("ua"),
+        _ua_installed,
         ["bash", "-c",
          "curl -fsSL https://raw.githubusercontent.com/Lum1104/Understand-Anything/main/install.sh | bash -s codex"],
         needs_shell=True,

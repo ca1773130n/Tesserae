@@ -82,6 +82,15 @@ def test_pip_install_falls_back_to_uv_when_pip_absent(monkeypatch):
     assert deps._pip_install_argv(["cognee"])[1:3] == ["-m", "pip"]
 
 
+def test_ua_detect_uses_install_dir_not_binary(monkeypatch, tmp_path):
+    # UA installs a plugin/skills tree, no PATH binary -> detect the marker dir.
+    monkeypatch.setattr(deps, "_binary_present", lambda n: False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert deps._ua_installed() is False
+    (tmp_path / ".understand-anything").mkdir()
+    assert deps._ua_installed() is True
+
+
 def test_install_uses_uv_argv_for_pip_dep_without_pip(monkeypatch):
     monkeypatch.setattr(deps, "_module_present", lambda n: False)  # nothing importable
     monkeypatch.setattr(deps, "_binary_present", lambda n: n == "uv")
