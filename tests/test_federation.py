@@ -139,6 +139,49 @@ def test_semantic_skipped_on_hash_stub():
     assert len(out.edges) == 0  # no noise edges from the stub
 
 
+class _UnnormBackend:
+    """Returns NON-unit vectors so the test exercises L2-normalization."""
+    name = "unnorm"
+
+    def embed(self, texts):
+        out = []
+        for t in texts:
+            if "AAA" in t:
+                out.append([2.0, 0.0, 0.0])   # |v|=2
+            elif "BBB" in t:
+                out.append([1.0, 1.0, 0.0])   # |v|=sqrt2; true cosine to AAA = 0.707
+            else:
+                out.append([0.0, 0.0, 9.0])
+        return out
+
+
+def test_semantic_uses_true_cosine_not_raw_dot():
+    work = _concept_graph([("Concept:a:w", "AAA", "x")])
+    research = _concept_graph([("Concept:b:r", "BBB", "y")])
+    # raw dot(AAA,BBB)=2 would pass 0.8; true cosine=0.707 must FAIL 0.8.
+    _, s_hi = F.federate_graphs([("work", work), ("research", research)],
+                                semantic=True, semantic_backend=_UnnormBackend(), semantic_min_cosine=0.8)
+    assert s_hi["semantic_added"] == 0
+    # at 0.7 the real cosine (0.707) passes.
+    _, s_lo = F.federate_graphs([("work", work), ("research", research)],
+                                semantic=True, semantic_backend=_UnnormBackend(), semantic_min_cosine=0.7)
+    assert s_lo["semantic_added"] == 1
+
+
+def test_semantic_skips_nodes_without_provenance():
+    # Direct call on a NON-federated graph: nodes lack federation_alias -> empty
+    # provenance -> never treated cross-project (no same-project false links).
+    g = _concept_graph([("Concept:a", "AAA", "x"), ("Concept:b", "AAA", "x")])
+    out, stats = F.add_semantic_links(g, backend=_UnnormBackend(), min_cosine=0.5)
+    assert stats["semantic_added"] == 0
+    assert not any(e.type == "shares_concept_with" for e in out.edges)
+
+
+def test_semantic_type_list_covers_claims_and_session_findings():
+    for value in ("ComparisonClaim", "CausalClaim", "SessionQuestion", "SessionTODO", "OpenQuestion"):
+        assert value in F._SEMANTIC_TYPE_VALUES
+
+
 def test_semantic_default_off_is_identity_only():
     a, b = _g("a", "x"), _g("b", "y")
     plain, _ = F.federate_graphs([("p", a), ("q", b)])

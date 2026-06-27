@@ -247,8 +247,9 @@ _SEMANTIC_TYPE_VALUES = frozenset({
     "Algorithm", "ArchitecturePattern", "TrainingParadigm", "InferenceStrategy",
     "Task", "Capability", "ResearchTopic", "ProblemArea", "ApproachFamily",
     "SessionInsight", "SessionDecision", "SessionHypothesis", "SessionTakeaway",
-    "Runbook", "Gotcha", "Claim", "ContributionClaim", "PerformanceClaim",
-    "LimitationClaim",
+    "SessionQuestion", "SessionTODO", "Runbook", "Gotcha", "OpenQuestion",
+    "Claim", "ContributionClaim", "PerformanceClaim", "ComparisonClaim",
+    "LimitationClaim", "CausalClaim",
 })
 
 
@@ -270,8 +271,9 @@ def add_semantic_links(
     edge direction). Linking is cross-project only (nodes sharing a project are
     never linked) and never duplicates an existing edge.
     """
-    import numpy as np
-
+    # NB: numpy is imported only AFTER the stub-skip below, so `--semantic` on a
+    # base install (no embedding extra, no numpy) degrades cleanly instead of
+    # crashing on the import.
     from .retrieval.hybrid import HashEmbeddingBackend, active_embedding_backend
 
     backend = backend or active_embedding_backend()
@@ -288,12 +290,22 @@ def add_semantic_links(
                        "semantic_skipped": "no real embedding backend (install tesserae[semantic])"}
     if len(candidates) < 2:
         return graph, {"semantic_added": 0, "semantic_backend": backend_name}
+    try:
+        import numpy as np
+    except ImportError:
+        return graph, {"semantic_added": 0, "semantic_backend": backend_name,
+                       "semantic_skipped": "numpy not available (install tesserae[semantic])"}
 
     vectors = np.asarray(
         backend.embed([f"{n.name}. {(n.description or '').strip()}".strip() for n in candidates]),
         dtype="float64",
     )
-    sims = vectors @ vectors.T  # backend vectors are L2-normalised -> cosine
+    # L2-normalize defensively: the EmbeddingBackend protocol does not guarantee
+    # unit vectors, so raw dot products could exceed 1 and create false links.
+    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    vectors = vectors / norms
+    sims = vectors @ vectors.T  # now genuine cosine in [-1, 1]
     project_sets = [set(_members(n)) for n in candidates]
 
     existing: set = set()
@@ -304,10 +316,14 @@ def add_semantic_links(
     new_edges: List[ResearchEdge] = []
     for i, node in enumerate(candidates):
         row = sims[i]
+        # cross-project ONLY: both nodes must carry provenance AND share no project
+        # (empty provenance is NOT treated as cross-project — guards direct calls
+        # on a non-federated graph).
         scored = [
             (float(row[j]), candidates[j].id)
             for j in range(len(candidates))
-            if j != i and not (project_sets[i] & project_sets[j]) and row[j] >= min_cosine
+            if j != i and project_sets[i] and project_sets[j]
+            and not (project_sets[i] & project_sets[j]) and row[j] >= min_cosine
         ]
         scored.sort(key=lambda t: (-t[0], t[1]))
         for cosine, other_id in scored[:top_k]:
@@ -396,8 +412,14 @@ def federated_recall(
     )
     from .context_compiler import compile_context
 
+    # Cross-project semantic edges should NUDGE, not dominate: down-weight
+    # shares_concept_with in PPR so an identity merge (node collapse) and
+    # references (1.5) still outrank a fuzzy bridge. Only when semantic links
+    # were actually added.
+    edge_type_weights = {"shares_concept_with": 0.5} if stats.get("semantic_added") else None
     bundle = compile_context(
-        graph, project_root=None, query=query, depth=depth, budget=budget, synthesize=synthesize
+        graph, project_root=None, query=query, depth=depth, budget=budget,
+        synthesize=synthesize, edge_type_weights=edge_type_weights,
     )
     return {
         "scope": "federated",
