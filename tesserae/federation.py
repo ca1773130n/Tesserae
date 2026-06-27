@@ -130,11 +130,24 @@ def _merge_two(a: ResearchNode, b: ResearchNode) -> ResearchNode:
     return dataclasses.replace(merged, metadata={**merged.metadata, "federation_members": members})
 
 
-def federate_graphs(named_graphs: List[Tuple[str, ResearchGraph]]) -> Tuple[ResearchGraph, dict]:
+def federate_graphs(
+    named_graphs: List[Tuple[str, ResearchGraph]],
+    *,
+    semantic: bool = False,
+    semantic_top_k: int = 5,
+    semantic_min_cosine: float = 0.5,
+    semantic_backend=None,
+) -> Tuple[ResearchGraph, dict]:
     """Namespace + identity-merge ``[(alias, graph), ...]`` into one ResearchGraph.
 
     Deterministic regardless of input order: aliases are sorted, nodes processed
     in id order, clusters keep the smallest member id as representative.
+
+    ``semantic=True`` (opt-in, v2) additionally adds embedding-backed
+    ``shares_concept_with`` edges across projects (see :func:`add_semantic_links`)
+    so federated PPR can bridge RELATED, not just identical, concepts. This makes
+    the result embedding-backend-dependent (no longer byte-identical across
+    machines); the default identity-only mode stays byte-stable.
     """
     all_nodes: List[ResearchNode] = []
     all_edges: List[ResearchEdge] = []
@@ -212,14 +225,116 @@ def federate_graphs(named_graphs: List[Tuple[str, ResearchGraph]]) -> Tuple[Rese
         "merged_groups": merged_groups,
         "dropped_edges": dropped_edges,
     }
+    if semantic:
+        federated, sem_stats = add_semantic_links(
+            federated, top_k=semantic_top_k, min_cosine=semantic_min_cosine,
+            backend=semantic_backend,
+        )
+        stats.update(sem_stats)
+        stats["edges"] = len(federated.edges)
     return federated, stats
+
+
+# --------------------------------------------------------------------------- #
+# Semantic cross-project links (v2, opt-in, embedding-backed)                  #
+# --------------------------------------------------------------------------- #
+
+# Idea-bearing node types worth a semantic bridge across projects (concepts,
+# methods, claims, session findings...). Excludes documents/code/people/papers
+# (those bridge by IDENTITY) and high-volume structural nodes.
+_SEMANTIC_TYPE_VALUES = frozenset({
+    "Concept", "TechnicalTerm", "MathematicalConcept", "MethodologicalConcept",
+    "Algorithm", "ArchitecturePattern", "TrainingParadigm", "InferenceStrategy",
+    "Task", "Capability", "ResearchTopic", "ProblemArea", "ApproachFamily",
+    "SessionInsight", "SessionDecision", "SessionHypothesis", "SessionTakeaway",
+    "Runbook", "Gotcha", "Claim", "ContributionClaim", "PerformanceClaim",
+    "LimitationClaim",
+})
+
+
+def add_semantic_links(
+    graph: ResearchGraph,
+    *,
+    top_k: int = 5,
+    min_cosine: float = 0.5,
+    backend=None,
+    max_candidates: int = 1500,
+) -> Tuple[ResearchGraph, dict]:
+    """Add ``shares_concept_with`` edges between idea-bearing nodes from DIFFERENT
+    projects whose embeddings are similar — so federated PPR (already run by
+    ``compile_context``) can traverse RELATED, not just identical, concepts.
+
+    Embedding-backed and opt-in. Honest degradation: with only the hash-bucket
+    stub (no real model) the similarities are noise, so we skip and say so.
+    Deterministic given a fixed embedding model (id-sorted candidates, canonical
+    edge direction). Linking is cross-project only (nodes sharing a project are
+    never linked) and never duplicates an existing edge.
+    """
+    import numpy as np
+
+    from .retrieval.hybrid import HashEmbeddingBackend, active_embedding_backend
+
+    backend = backend or active_embedding_backend()
+    backend_name = getattr(backend, "name", type(backend).__name__)
+    candidates = sorted(
+        (n for n in graph.nodes if (n.type.value if hasattr(n.type, "value") else str(n.type)) in _SEMANTIC_TYPE_VALUES),
+        key=lambda n: n.id,
+    )
+    capped = len(candidates) > max_candidates
+    if capped:
+        candidates = candidates[:max_candidates]
+    if isinstance(backend, HashEmbeddingBackend):
+        return graph, {"semantic_added": 0, "semantic_backend": backend_name,
+                       "semantic_skipped": "no real embedding backend (install tesserae[semantic])"}
+    if len(candidates) < 2:
+        return graph, {"semantic_added": 0, "semantic_backend": backend_name}
+
+    vectors = np.asarray(
+        backend.embed([f"{n.name}. {(n.description or '').strip()}".strip() for n in candidates]),
+        dtype="float64",
+    )
+    sims = vectors @ vectors.T  # backend vectors are L2-normalised -> cosine
+    project_sets = [set(_members(n)) for n in candidates]
+
+    existing: set = set()
+    for edge in graph.edges:
+        existing.add((edge.source, edge.target))
+        existing.add((edge.target, edge.source))
+
+    new_edges: List[ResearchEdge] = []
+    for i, node in enumerate(candidates):
+        row = sims[i]
+        scored = [
+            (float(row[j]), candidates[j].id)
+            for j in range(len(candidates))
+            if j != i and not (project_sets[i] & project_sets[j]) and row[j] >= min_cosine
+        ]
+        scored.sort(key=lambda t: (-t[0], t[1]))
+        for cosine, other_id in scored[:top_k]:
+            source, target = (node.id, other_id) if node.id < other_id else (other_id, node.id)
+            if (source, target) in existing:
+                continue
+            existing.add((source, target))
+            existing.add((target, source))
+            new_edges.append(ResearchEdge(
+                source=source, target=target, type="shares_concept_with",
+                metadata={"federation_semantic": True, "cosine": round(cosine, 4)},
+            ))
+
+    enriched = ResearchGraph(nodes=list(graph.nodes), edges=list(graph.edges) + new_edges).canonicalized()
+    stats = {"semantic_added": len(new_edges), "semantic_backend": backend_name}
+    if capped:
+        stats["semantic_capped_at"] = max_candidates
+    return enriched, stats
 
 
 # --------------------------------------------------------------------------- #
 # Loading + recall                                                            #
 # --------------------------------------------------------------------------- #
 
-def load_federated_graph(aliases, registry) -> Tuple[ResearchGraph, dict]:
+def load_federated_graph(
+    aliases, registry, *, semantic: bool = False, semantic_min_cosine: float = 0.5
+) -> Tuple[ResearchGraph, dict]:
     """Load the named registered projects' graphs (read-only) and federate them.
 
     ``registry`` must expose ``list_projects() -> {"projects": [{name, root,
@@ -256,7 +371,7 @@ def load_federated_graph(aliases, registry) -> Tuple[ResearchGraph, dict]:
                 "run 'tesserae compile' for it first."
             )
         named.append((alias, load_graph_file(graph_path)))
-    return federate_graphs(named)
+    return federate_graphs(named, semantic=semantic, semantic_min_cosine=semantic_min_cosine)
 
 
 def federated_recall(
@@ -266,14 +381,19 @@ def federated_recall(
     depth: int = 2,
     budget: int = 64_000,
     synthesize: bool = False,
+    semantic: bool = False,
+    semantic_min_cosine: float = 0.5,
     registry,
 ) -> dict:
     """Federate the selected projects and compile ONE cited context bundle.
 
-    ``synthesize=False`` (default) is fully deterministic and needs no LLM — the
-    body is assembled from the selected nodes' descriptions, cited per project.
+    ``synthesize=False`` (default) needs no LLM. ``semantic=True`` adds
+    embedding-backed cross-project ``shares_concept_with`` edges so the answer can
+    bridge related (not just identical) concepts across projects — the v2 payoff.
     """
-    graph, stats = load_federated_graph(aliases, registry)
+    graph, stats = load_federated_graph(
+        aliases, registry, semantic=semantic, semantic_min_cosine=semantic_min_cosine
+    )
     from .context_compiler import compile_context
 
     bundle = compile_context(

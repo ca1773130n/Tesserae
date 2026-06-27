@@ -393,6 +393,7 @@ def _top_level_ask_scope_federated(args) -> int:
             aliases,
             args.question,
             synthesize=bool(getattr(args, "llm", False)),
+            semantic=bool(getattr(args, "semantic", False)),
             registry=ProjectRegistry(),
         )
     except ValueError as exc:
@@ -785,6 +786,15 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
             "Registered alias names. With --scope=all-registered, optionally "
             "restricts the fan-out; with --scope=federated, the (required) set of "
             "projects to federate (e.g. --scope-aliases research work)."
+        ),
+    )
+    parser.add_argument(
+        "--semantic",
+        action="store_true",
+        help=(
+            "With --scope=federated, also add embedding-backed cross-project links "
+            "so the answer bridges RELATED (not just identical) concepts. Requires "
+            "a real embedding backend (pip install tesserae[semantic])."
         ),
     )
     return parser

@@ -668,6 +668,11 @@ class LLMWikiMCPServer:
                             "items": {"type": "string"},
                             "description": "Registered alias names. Optional filter for 'all-registered'; REQUIRED for 'federated' (the projects to federate).",
                         },
+                        "semantic": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "scope='federated' only: add embedding-backed cross-project links so the answer bridges RELATED (not just identical) concepts. Needs a real embedding backend.",
+                        },
                         "claude_config_dir": {
                             "type": "string",
                             "description": (
@@ -1560,6 +1565,7 @@ class LLMWikiMCPServer:
                     return self._mcp_ask_federated(
                         question=question,
                         scope_aliases=_coerce_str_list(args.get("scope_aliases")),
+                        semantic=bool(args.get("semantic") or False),
                     )
                 return self._mcp_ask(args, question=question, backend=backend, top_k=top_k)
         if name == "list_projects":
@@ -2512,11 +2518,13 @@ class LLMWikiMCPServer:
         wiki = ProjectWiki.load(project_root)
         return ask_project(wiki, question, backend=backend, top_k=top_k)
 
-    def _mcp_ask_federated(self, *, question: str, scope_aliases: List[str]) -> JSONDict:
+    def _mcp_ask_federated(
+        self, *, question: str, scope_aliases: List[str], semantic: bool = False
+    ) -> JSONDict:
         """Federated scope — merge the named projects into ONE identity-merged
         graph and compile a single cross-referenced, cited answer (vs the
-        per-project ``by_project`` fan-out). ``scope_aliases`` is required.
-        ``backend``/``top_k`` don't apply (deterministic graph compile)."""
+        per-project ``by_project`` fan-out). ``scope_aliases`` is required;
+        ``semantic=True`` adds embedding-backed cross-project concept links."""
         from .federation import federated_recall
 
         if not [a for a in scope_aliases if a]:
@@ -2524,7 +2532,7 @@ class LLMWikiMCPServer:
                 "ask: scope='federated' requires scope_aliases — the projects to "
                 "federate. Use list_projects to see registered projects."
             )
-        return federated_recall(scope_aliases, question, registry=self.registry)
+        return federated_recall(scope_aliases, question, semantic=semantic, registry=self.registry)
 
     def _mcp_ask_all_registered(
         self,
