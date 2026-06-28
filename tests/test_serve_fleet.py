@@ -27,10 +27,12 @@ def _get(port, path):
     return _req(port, path)
 
 
-def _req(port, path, *, data=None, referer=None):
+def _req(port, path, *, data=None, referer=None, origin=None):
     headers = {}
     if referer:
         headers["Referer"] = referer
+    if origin:
+        headers["Origin"] = origin
     if data is not None:
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(
@@ -113,6 +115,31 @@ def test_fleet_ask_routes_to_project_by_referer(tmp_path, monkeypatch):
     assert health_with_ref == 200 and health_no_ref == 404  # live per page only
     assert post_code == 200 and "hi" in post_body
     assert str(seen.get("root")).endswith("p")  # routed to project 'p'
+
+
+def test_fleet_ask_rejects_cross_origin_and_oversized_body(tmp_path):
+    from tesserae.serve import build_fleet_handler
+
+    site = tmp_path / "p" / ".tesserae" / "site"
+    site.mkdir(parents=True)
+    root = tmp_path / "p"
+    served = tmp_path / "served"
+    served.mkdir()
+    srv = _serve(build_fleet_handler(served_root=served, project_sites={"p": site}, project_roots={"p": root}))
+    try:
+        port = srv.server_address[1]
+        page = f"http://127.0.0.1:{port}/p/"
+        # a hostile cross-origin page (even with a valid Referer) is rejected
+        xo_code, _ = _req(port, "/api/ask", data=b'{"question":"x"}', referer=page, origin="http://evil.example")
+        xo_health, _ = _req(port, "/api/ask/health", referer=page, origin="http://evil.example")
+        # oversized body is rejected before it's read
+        big = b'{"question":"' + b"a" * (300 * 1024) + b'"}'
+        big_code, _ = _req(port, "/api/ask", data=big, referer=page)
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert xo_code == 403 and xo_health == 403
+    assert big_code == 413
 
 
 def test_fleet_handler_rejects_symlink_escape(tmp_path):
