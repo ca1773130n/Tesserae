@@ -293,11 +293,17 @@ def _top_level_ask_handler(args) -> int:
     # goes (single project / all-registered / federated), federated as the
     # fallback so "unsure" never means the wrong project. Replaces active-project.
     if scope is None and not explicit_project:
-        from .ask_router import route_ask, SCOPE_CURRENT, SCOPE_FEDERATED
+        from .ask_router import SCOPE_CURRENT, SCOPE_FEDERATED, make_llm_classifier, route_ask
+        from .llm_json import build_rotating_client
 
         cwd_root = registry.resolve_project_by_cwd()
         cwd_alias = registry.alias_for_root(cwd_root) if cwd_root else None
-        route = route_ask(args.question, registry.all_project_names(), cwd_alias=cwd_alias)
+        # LLM classifier (lazy, no API key) fires ONLY for the ambiguous middle;
+        # heuristic-resolved questions never build or call it.
+        route = route_ask(
+            args.question, registry.all_project_names(), cwd_alias=cwd_alias,
+            llm_classify=make_llm_classifier(build_rotating_client),
+        )
         tail = (" " + ", ".join(route.aliases)) if route.aliases else ""
         print(f"(scope: {route.scope}{tail} — {route.reason})", file=sys.stderr)
         scope = route.scope

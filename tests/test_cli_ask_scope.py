@@ -308,6 +308,23 @@ def test_mcp_bare_ask_routes_and_reroutes_across_consecutive_questions(tmp_path,
     assert shifted.scope == "current" and shifted.aliases == ["work"]
 
 
+def test_mcp_route_history_is_isolated_per_conversation(tmp_path, monkeypatch):
+    import tesserae.mcp_server as mcp_server
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    registry_path = tmp_path / "registry.json"
+    monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
+    server = LLMWikiMCPServer(registry_path=registry_path)
+    server.registry.register(str(_bootstrap_project(tmp_path, "work")), name="work")
+    server.registry.register(str(_bootstrap_project(tmp_path, "research")), name="research")
+
+    server._route_ask("tell me about work", conversation_id="A")        # A -> work
+    server._route_ask("tell me about research", conversation_id="B")    # B -> research
+    # Each conversation's follow-up keeps ITS own route — no cross-bleed.
+    assert server._route_ask("and why?", conversation_id="A").aliases == ["work"]
+    assert server._route_ask("and why?", conversation_id="B").aliases == ["research"]
+
+
 def test_federated_semantic_is_opt_out_by_default():
     """Semantic federation is ON unless explicitly disabled (--no-semantic)."""
     import inspect

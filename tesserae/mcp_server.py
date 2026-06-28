@@ -664,6 +664,10 @@ class LLMWikiMCPServer:
                             "enum": ["current", "all-registered", "federated"],
                             "description": "OMIT to let the smart router pick (federated fallback; reroutes across your consecutive questions). 'current' targets the cwd/--project project; 'all-registered' fans out, one answer per project (by_project); 'federated' merges projects into ONE graph for a single cross-referenced answer (defaults to ALL registered).",
                         },
+                        "conversation_id": {
+                            "type": "string",
+                            "description": "Optional. Groups your consecutive omitted-scope questions so follow-ups reroute correctly without bleeding into another conversation on the same server.",
+                        },
                         "scope_aliases": {
                             "type": "array",
                             "items": {"type": "string"},
@@ -1547,7 +1551,7 @@ class LLMWikiMCPServer:
             # No explicit scope => SMART ROUTER, with continuity across the agent's
             # consecutive questions (rolling per-server history). Federated fallback.
             if scope is None and not args.get("project") and not args.get("graph_path"):
-                route = self._route_ask(question)
+                route = self._route_ask(question, conversation_id=args.get("conversation_id"))
                 scope = route.scope
                 if route.scope == "federated" and route.aliases:
                     scope_aliases = route.aliases
@@ -2501,23 +2505,28 @@ class LLMWikiMCPServer:
             "project, or start the MCP server with --graph pointing at a .tesserae layout."
         )
 
-    def _route_ask(self, question: str):
-        """Pick the scope for a bare question, with continuity across the agent's
-        consecutive calls (rolling per-server history of the last few routes).
+    def _route_ask(self, question: str, conversation_id: Optional[str] = None):
+        """Pick the scope for a bare question, with continuity across an agent's
+        consecutive calls. History is keyed by ``conversation_id`` so concurrent
+        clients on one server don't cross-contaminate (the default bucket is used
+        when a client doesn't supply one). The LLM classifier (lazy, no API key)
+        fires only for the ambiguous middle; the federated fallback means a mixed
+        history can never produce a *wrong* (vs. merely broader) answer."""
+        from .ask_router import make_llm_classifier, route_ask
+        from .llm_json import build_rotating_client
 
-        ponytail: history is per-server-process, not per-conversation — fine for
-        the usual one-client-per-stdio-server case; it only nudges follow-up
-        detection, and the federated fallback keeps a mixed history from ever
-        producing a *wrong* (vs. merely broader) answer."""
-        from .ask_router import route_ask
-
-        history = getattr(self, "_ask_route_history", None)
-        if history is None:
-            history = self._ask_route_history = []
+        histories = getattr(self, "_ask_route_histories", None)
+        if histories is None:
+            histories = self._ask_route_histories = {}
+        history = histories.setdefault(conversation_id or "_default", [])
+        classifier = getattr(self, "_ask_classifier", None)
+        if classifier is None:
+            classifier = self._ask_classifier = make_llm_classifier(build_rotating_client)
         cwd_root = self.registry.resolve_project_by_cwd()
         cwd_alias = self.registry.alias_for_root(cwd_root) if cwd_root else None
         route = route_ask(
-            question, self.registry.all_project_names(), history=history, cwd_alias=cwd_alias
+            question, self.registry.all_project_names(), history=history,
+            cwd_alias=cwd_alias, llm_classify=classifier,
         )
         history.append(route)
         del history[:-8]  # keep only the recent window

@@ -78,6 +78,53 @@ def test_llm_classifier_used_only_for_the_ambiguous_middle():
     assert calls and r.aliases == ["beta"]
 
 
+class _FakeClient:
+    def __init__(self, out):
+        self.out = out
+        self.calls = 0
+
+    def complete_json(self, *, system, user, schema_name, **kw):
+        self.calls += 1
+        if isinstance(self.out, Exception):
+            raise self.out
+        return self.out
+
+
+def test_llm_classifier_routes_the_ambiguous_middle():
+    from tesserae.ask_router import make_llm_classifier
+
+    client = _FakeClient({"scope": "current", "aliases": ["beta"]})
+    classify = make_llm_classifier(lambda: client)
+    r = route_ask("give me the gist of recent work", NAMES, llm_classify=classify)
+    assert r.scope == "current" and r.aliases == ["beta"] and r.reason == "llm router"
+    assert client.calls == 1
+
+
+def test_llm_classifier_failure_falls_back_to_federated():
+    from tesserae.ask_router import make_llm_classifier
+
+    classify = make_llm_classifier(lambda: _FakeClient(RuntimeError("backend down")))
+    r = route_ask("give me the gist of recent work", NAMES, llm_classify=classify)
+    assert r.scope == "federated"  # never a new failure mode
+
+
+def test_llm_classifier_is_lazy_for_heuristic_cases():
+    from tesserae.ask_router import make_llm_classifier
+
+    built = []
+    classify = make_llm_classifier(lambda: built.append(1) or _FakeClient({"scope": "federated", "aliases": []}))
+    route_ask("how does alpha compile work?", NAMES, llm_classify=classify)  # heuristic -> alpha
+    assert built == []  # client never even constructed for a heuristic-resolved question
+
+
+def test_llm_classifier_rejects_bad_output():
+    from tesserae.ask_router import make_llm_classifier
+
+    # 'current' with no concrete alias -> None -> federated fallback.
+    classify = make_llm_classifier(lambda: _FakeClient({"scope": "current", "aliases": []}))
+    assert route_ask("vague vague vague stuff", NAMES, llm_classify=classify).scope == "federated"
+
+
 def test_is_followup():
     assert is_followup("and why?")
     assert is_followup("more")

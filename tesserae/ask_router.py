@@ -102,3 +102,64 @@ def route_ask(
 
     # 6. fallback: federated across everything (sees all -> never the wrong project).
     return Route(SCOPE_FEDERATED, names, "default: federated across all projects")
+
+
+# --------------------------------------------------------------------------- #
+# Optional LLM classifier for the ambiguous middle (step 5 above)             #
+# --------------------------------------------------------------------------- #
+
+def llm_route(question, names, history, *, client) -> Optional[Route]:
+    """Ask an LLM which project(s) a question targets. Returns None on ANY
+    failure so the caller falls back to the federated default — additive, never
+    a new failure mode."""
+    if client is None:
+        return None
+    name_list = "\n".join(f"- {n}" for n in names)
+    recent = ""
+    if history:
+        recent = "Recent routes (most recent last):\n" + "\n".join(
+            f"- {r.scope} {r.aliases}" for r in list(history)[-3:]
+        ) + "\n"
+    system = (
+        "You route a question to the right project(s) in a multi-project knowledge base. "
+        "Pick scope: 'current' (one project), 'all-registered' (answer each project separately), "
+        "or 'federated' (ONE merged, cross-referenced answer across several). Use 'current' when the "
+        "question clearly targets a single project; 'federated' when it spans, compares, or is general. "
+        'Return JSON {"scope": "current|all-registered|federated", "aliases": ["..."]} where aliases is '
+        "a subset of the listed projects (empty means all)."
+    )
+    user = f"Projects:\n{name_list}\n\n{recent}Question: {question}"
+    try:
+        out = client.complete_json(system=system, user=user, schema_name="ask_route")
+    except Exception:
+        return None
+    if not isinstance(out, dict):
+        return None
+    scope = out.get("scope")
+    if scope not in (SCOPE_CURRENT, SCOPE_ALL, SCOPE_FEDERATED):
+        return None
+    aliases = [a for a in (out.get("aliases") or []) if a in names]
+    if scope == SCOPE_CURRENT:
+        if not aliases:
+            return None  # 'current' needs a concrete target; let heuristics fall back
+        return Route(SCOPE_CURRENT, aliases[:1], "llm router")
+    return Route(scope, aliases or list(names), "llm router")
+
+
+def make_llm_classifier(client_factory):
+    """Build the ``llm_classify`` callable from a 0-arg client factory. The client
+    is constructed LAZILY on first ambiguous question, so heuristic-resolved
+    questions pay nothing."""
+    if client_factory is None:
+        return None
+    cache: dict = {}
+
+    def classify(question, names, history):
+        if "client" not in cache:
+            try:
+                cache["client"] = client_factory()
+            except Exception:
+                cache["client"] = None
+        return llm_route(question, names, history, client=cache["client"])
+
+    return classify
