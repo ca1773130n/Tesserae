@@ -2184,7 +2184,7 @@ def _serve_fleet(args: argparse.Namespace) -> int:
         if index.exists():
             title = (wiki.config().get("site_title") or entry["name"])
             nav_projects.append({"alias": entry["name"], "title": title})
-            links.append((entry["name"], wiki.paths.site.resolve()))
+            links.append((entry["name"], wiki.paths.site.resolve(), root))
     if not links:
         print("No buildable project sites found (run `tesserae compile` for a project first).", file=sys.stderr)
         return 2
@@ -2195,7 +2195,8 @@ def _serve_fleet(args: argparse.Namespace) -> int:
     import tempfile
 
     served_root = Path(tempfile.mkdtemp(prefix="tesserae-fleet-"))
-    project_sites = {alias: site_dir for alias, site_dir in links}
+    project_sites = {alias: site_dir for alias, site_dir, _root in links}
+    project_roots = {alias: root for alias, _site_dir, root in links}
     (served_root / "projects.json").write_text(json.dumps(nav_projects), encoding="utf-8")
     (served_root / "index.html").write_text(_fleet_landing_html(nav_projects), encoding="utf-8")
 
@@ -2208,7 +2209,9 @@ def _serve_fleet(args: argparse.Namespace) -> int:
     class ReusableTCPServer(socketserver.TCPServer):
         allow_reuse_address = True
 
-    handler = build_fleet_handler(served_root=served_root, project_sites=project_sites)
+    handler = build_fleet_handler(
+        served_root=served_root, project_sites=project_sites, project_roots=project_roots
+    )
     try:
         with ReusableTCPServer((args.host, args.port), handler) as httpd:
             print(f"Serving {len(links)} project(s) at {url}")

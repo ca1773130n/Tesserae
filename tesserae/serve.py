@@ -471,19 +471,73 @@ def _contained(target: Path, base: Path) -> bool:
 
 
 def build_fleet_handler(
-    *, served_root: Path, project_sites: dict
+    *, served_root: Path, project_sites: dict, project_roots: Optional[dict] = None
 ) -> Type[http.server.SimpleHTTPRequestHandler]:
     """Serve a multi-project view from one server. ``served_root`` holds only the
     landing ``index.html`` + ``projects.json``; ``project_sites`` maps each alias
-    to its REAL ``.tesserae/site`` dir. Requests are CONTAINED — a resolved path
-    that escapes its alias's site dir (e.g. a planted symlink) is rejected — so no
-    symlink tree and no traversal out of a project. The Projects switcher is
-    injected into every HTML page. Browse-only: ``/api/ask*`` -> 404."""
+    to its REAL ``.tesserae/site`` dir (``project_roots`` maps alias -> project
+    root for live ask). Requests are CONTAINED — a resolved path that escapes its
+    alias's site dir (e.g. a planted symlink) is rejected — so no symlink tree and
+    no traversal out of a project. The Projects switcher is injected into every
+    HTML page. ``/api/ask*`` is routed to the project of the page that called it
+    (via the Referer alias), so the in-page ask widget works live per project."""
     root = Path(served_root).resolve()
     sites = {alias: Path(d).resolve() for alias, d in project_sites.items()}
+    roots = {alias: Path(r) for alias, r in (project_roots or {}).items()}
     nav = _PROJECTS_NAV.encode("utf-8")
 
     class _FleetHandler(http.server.SimpleHTTPRequestHandler):
+        def _alias_from_referer(self):
+            """The project alias of the page that issued an /api/* call, or None."""
+            try:
+                ref_path = urlparse(self.headers.get("Referer") or "").path
+            except ValueError:
+                return None
+            segs = [s for s in ref_path.split("/") if s]
+            return segs[0] if segs and segs[0] in roots else None
+
+        def _send_json(self, status: int, obj):
+            data = json.dumps(obj).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_POST(self):  # noqa: N802 — fixed by stdlib API
+            if urlparse(self.path).path != "/api/ask":
+                self._send_json(404, {"error": "not found"})
+                return
+            alias = self._alias_from_referer()
+            if alias is None:
+                self._send_json(404, {"error": "no project for this page"})
+                return
+            try:
+                length = int(self.headers.get("Content-Length") or "0")
+                payload = json.loads((self.rfile.read(length) if length > 0 else b"").decode("utf-8") or "{}")
+            except Exception as exc:
+                self._send_json(400, {"error": f"bad request: {exc}"})
+                return
+            question = (payload.get("question") or "").strip() if isinstance(payload, dict) else ""
+            if not question:
+                self._send_json(400, {"error": "question required"})
+                return
+            backend = payload.get("backend") or "auto"
+            try:
+                top_k = int(payload.get("top_k") or 5)
+            except (TypeError, ValueError):
+                top_k = 5
+            from .project import ProjectWiki
+            from .query import ask_project
+
+            try:
+                wiki = ProjectWiki.load(roots[alias])
+                envelope = ask_project(wiki, question, backend=backend, top_k=top_k)
+            except Exception as exc:
+                self._send_json(500, {"error": f"ask failed: {exc}"})
+                return
+            self._send_json(200, envelope)
+
         def _resolve(self, url_path: str):
             """Map a URL path to a contained filesystem path, or None if it would
             escape. Drops '.'/'..' segments, then enforces containment."""
@@ -501,8 +555,14 @@ def build_fleet_handler(
 
         def do_GET(self):  # noqa: N802 — fixed by stdlib API
             parsed = urlparse(self.path)
-            if parsed.path.endswith("/api/ask/health") or parsed.path.endswith("/api/ask"):
-                self.send_response(404)
+            if parsed.path == "/api/ask/health":
+                # Live per page: the widget's health-check resolves to the project
+                # of the page that asked (Referer alias); unknown page -> 404.
+                ok = self._alias_from_referer() is not None
+                self._send_json(200 if ok else 404, {"status": "ok"} if ok else {"error": "no project"})
+                return
+            if parsed.path == "/api/ask":
+                self.send_response(405)
                 self.end_headers()
                 return
             target = self._resolve(parsed.path)

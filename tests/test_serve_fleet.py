@@ -24,8 +24,21 @@ def _serve(handler_cls):
 
 
 def _get(port, path):
+    return _req(port, path)
+
+
+def _req(port, path, *, data=None, referer=None):
+    headers = {}
+    if referer:
+        headers["Referer"] = referer
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}", data=data, headers=headers,
+        method="POST" if data is not None else "GET",
+    )
     try:
-        r = urllib.request.urlopen(f"http://127.0.0.1:{port}{path}")
+        r = urllib.request.urlopen(req)
         return r.getcode(), r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as exc:
         return exc.code, ""
@@ -49,7 +62,7 @@ def test_fleet_handler_injects_nav_and_preserves_html(tmp_path):
     assert "<h1>hi</h1>" in body  # original preserved
 
 
-def test_fleet_handler_is_browse_only(tmp_path):
+def test_fleet_ask_health_404_without_referer(tmp_path):
     from tesserae.serve import build_fleet_handler
 
     served = tmp_path / "served"
@@ -61,7 +74,45 @@ def test_fleet_handler_is_browse_only(tmp_path):
     finally:
         srv.shutdown()
         srv.server_close()
-    assert code == 404  # fleet mode -> widgets fall back to static
+    assert code == 404  # no Referer -> no project context
+
+
+def test_fleet_ask_routes_to_project_by_referer(tmp_path, monkeypatch):
+    """In-page ask works live in fleet mode, routed to the page's project."""
+    import types
+
+    from tesserae.serve import build_fleet_handler
+
+    site = tmp_path / "p" / ".tesserae" / "site"
+    site.mkdir(parents=True)
+    (site / "index.html").write_text("<html><body>ok</body></html>", encoding="utf-8")
+    root = tmp_path / "p"
+    served = tmp_path / "served"
+    served.mkdir()
+
+    seen = {}
+    monkeypatch.setattr("tesserae.project.ProjectWiki.load",
+                        lambda r: types.SimpleNamespace(project_root=str(r)))
+
+    def fake_ask(wiki, question, **kwargs):
+        seen["root"] = wiki.project_root
+        return {"answer": "hi", "question": question}
+
+    monkeypatch.setattr("tesserae.query.ask_project", fake_ask)
+
+    srv = _serve(build_fleet_handler(served_root=served, project_sites={"p": site}, project_roots={"p": root}))
+    try:
+        port = srv.server_address[1]
+        page = f"http://127.0.0.1:{port}/p/index.html"
+        health_with_ref, _ = _req(port, "/api/ask/health", referer=page)
+        health_no_ref, _ = _req(port, "/api/ask/health")
+        post_code, post_body = _req(port, "/api/ask", data=b'{"question":"hi"}', referer=page)
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert health_with_ref == 200 and health_no_ref == 404  # live per page only
+    assert post_code == 200 and "hi" in post_body
+    assert str(seen.get("root")).endswith("p")  # routed to project 'p'
 
 
 def test_fleet_handler_rejects_symlink_escape(tmp_path):
