@@ -38,6 +38,9 @@ from urllib.parse import parse_qs, unquote, urlparse
 # memory. 5 MB leaves generous headroom for legitimate clips while bounding the
 # blast radius of a memory-exhaustion attempt.
 _MAX_CLIP_BYTES = 5 * 1024 * 1024
+# A question is small; cap the ask body so a remote caller can't force a large
+# read or stall the single-threaded server.
+_MAX_ASK_BYTES = 256 * 1024
 
 
 def configured_clip_token() -> str:
@@ -496,10 +499,24 @@ def build_fleet_handler(
             segs = [s for s in ref_path.split("/") if s]
             return segs[0] if segs and segs[0] in roots else None
 
+        def _cross_origin(self) -> bool:
+            """True if a browser Origin is present and is NOT same-origin. Blocks a
+            hostile web page from forging a Referer to trigger ask for any project.
+            A missing Origin (same-origin nav / non-browser) is allowed."""
+            origin = self.headers.get("Origin")
+            if not origin:
+                return False
+            try:
+                origin_host = urlparse(origin).hostname
+            except ValueError:
+                return True
+            host = (self.headers.get("Host") or "").rsplit(":", 1)[0]
+            return origin_host not in (host, "localhost", "127.0.0.1", "::1")
+
         def _send_json(self, status: int, obj):
             data = json.dumps(obj).encode("utf-8")
             self.send_response(status)
-            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
@@ -508,17 +525,30 @@ def build_fleet_handler(
             if urlparse(self.path).path != "/api/ask":
                 self._send_json(404, {"error": "not found"})
                 return
+            if self._cross_origin():
+                self._send_json(403, {"error": "cross-origin request rejected"})
+                return
             alias = self._alias_from_referer()
             if alias is None:
                 self._send_json(404, {"error": "no project for this page"})
                 return
             try:
                 length = int(self.headers.get("Content-Length") or "0")
+            except ValueError:
+                self._send_json(400, {"error": "bad Content-Length"})
+                return
+            if length > _MAX_ASK_BYTES:
+                self._send_json(413, {"error": "request too large"})
+                return
+            try:
                 payload = json.loads((self.rfile.read(length) if length > 0 else b"").decode("utf-8") or "{}")
             except Exception as exc:
                 self._send_json(400, {"error": f"bad request: {exc}"})
                 return
-            question = (payload.get("question") or "").strip() if isinstance(payload, dict) else ""
+            if not isinstance(payload, dict):
+                self._send_json(400, {"error": "expected JSON object"})
+                return
+            question = (payload.get("question") or "").strip()
             if not question:
                 self._send_json(400, {"error": "question required"})
                 return
@@ -558,6 +588,9 @@ def build_fleet_handler(
             if parsed.path == "/api/ask/health":
                 # Live per page: the widget's health-check resolves to the project
                 # of the page that asked (Referer alias); unknown page -> 404.
+                if self._cross_origin():
+                    self._send_json(403, {"error": "cross-origin request rejected"})
+                    return
                 ok = self._alias_from_referer() is not None
                 self._send_json(200 if ok else 404, {"status": "ok"} if ok else {"error": "no project"})
                 return
