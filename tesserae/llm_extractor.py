@@ -34,6 +34,13 @@ class GraphJSONValidationError(ValueError):
     """Raised when LLM-produced graph JSON violates the controlled schema."""
 
 
+# A single bad generation (out-of-vocab type, truncated JSON) is transient — the
+# model is non-deterministic, so re-calling almost always validates. Retry the
+# generation this many times before falling back. ponytail: small constant, not a
+# config knob — nobody tunes it, and the compile already degrades gracefully.
+_VALIDATION_RETRIES = 2
+
+
 ClaudeRunner = Callable[[str, str, str, int], str]
 
 
@@ -256,16 +263,27 @@ class ClaudeCLIResearchExtractor:
         prompt = build_research_extraction_prompt(text=text, source_path=source_path, source_kind=source_kind, guidance=guidance)
         last_error: Optional[Exception] = None
         for config_dir in self.config_dirs:
-            try:
-                raw = self.runner(prompt, config_dir, self.model, self.timeout)
-                payload = extract_json_object(raw)
-                graph = graph_from_llm_payload(payload, source_path=source_path, source_kind=source_kind)
-                ensure_source_metadata(graph, text, source_path, source_kind)
-                return graph
-            except Exception as exc:  # Try fallback auth dirs for CLI/auth/config failures.
-                if isinstance(exc, GraphJSONValidationError):
-                    raise
-                last_error = exc
+            # ponytail: the model is non-deterministic, so a transient bad
+            # generation (a node/edge type outside the vocab, truncated JSON)
+            # usually validates on a re-call. Retry GraphJSONValidationError a
+            # couple times before giving up on this dir; CLI/auth/config errors
+            # fall through to the next config dir instead.
+            for attempt in range(_VALIDATION_RETRIES + 1):
+                try:
+                    raw = self.runner(prompt, config_dir, self.model, self.timeout)
+                    payload = extract_json_object(raw)
+                    graph = graph_from_llm_payload(payload, source_path=source_path, source_kind=source_kind)
+                    ensure_source_metadata(graph, text, source_path, source_kind)
+                    return graph
+                except GraphJSONValidationError as exc:
+                    last_error = exc
+                    if attempt < _VALIDATION_RETRIES:
+                        print(f"  extract: invalid generation for {source_path or 'doc'} "
+                              f"({exc}); retrying ({attempt + 1}/{_VALIDATION_RETRIES})", file=sys.stderr)
+                    continue
+                except Exception as exc:  # CLI/auth/config failure -> next config dir
+                    last_error = exc
+                    break
         raise GraphJSONValidationError(f"Claude CLI extraction failed: {last_error}")
 
 
