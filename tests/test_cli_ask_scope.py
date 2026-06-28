@@ -183,7 +183,7 @@ def test_top_level_ask_scope_default_is_current(tmp_path, monkeypatch, capsys):
     p1 = _bootstrap_project(tmp_path, "p1")
     registry_path = tmp_path / "registry.json"
     monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
-    cli.main(["projects", "register", str(p1), "--name", "p1", "--activate"])
+    cli.main(["projects", "register", str(p1), "--name", "p1"])
     capsys.readouterr()
 
     called: list[str] = []
@@ -194,6 +194,7 @@ def test_top_level_ask_scope_default_is_current(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr("tesserae.query.ask_project", fake_ask)
 
+    # one project registered -> router sends a bare ask to it (single-project).
     rc = cli.main(["ask", "hello?", "--json"])
     assert rc == 0
     assert called == ["p1"]
@@ -241,9 +242,11 @@ def test_top_level_ask_scope_federated_requires_aliases(tmp_path, monkeypatch, c
     import tesserae.mcp_server as mcp_server
 
     monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", tmp_path / "registry.json")
+    # federated now defaults to ALL registered projects; with none registered it
+    # errors clearly instead of demanding --scope-aliases.
     rc = cli.main(["ask", "hi?", "--scope", "federated"])
     assert rc == 2
-    assert "scope-aliases" in capsys.readouterr().err.lower()
+    assert "no registered projects" in capsys.readouterr().err.lower()
 
 
 def test_top_level_ask_scope_federated_merges_and_cross_references(tmp_path, monkeypatch, capsys):

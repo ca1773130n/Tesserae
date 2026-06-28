@@ -267,16 +267,14 @@ def _run_query_repl(run_one, *, json_output: bool, use_llm: bool) -> int:
 
 
 def _top_level_ask_handler(args) -> int:
-    """Resolve a project via --project/--wiki/active and call the shared ask dispatcher.
+    """Route a question and call the shared ask dispatcher.
 
-    Project resolution order (highest priority first):
-      1. ``--project <path>`` — direct path (no registry lookup).
-      2. ``--wiki <name>`` — look up the registered alias.
-      3. The registry's currently active project.
-
-    Bet B2 — ``--scope all-registered`` fans out across every registered
-    project instead of just the one resolved above. The single-project
-    path is kept as the default so existing call sites are unchanged.
+    With no ``--scope`` and no explicit project, a smart router (ask_router)
+    decides where the question goes — one project, all registered, or federated
+    (the fallback). An explicit ``--scope`` (current/all-registered/federated) or
+    ``--project``/``--wiki`` overrides the router. ``current`` resolves one
+    project via ``--project`` → ``--wiki`` → the project you're standing in (cwd
+    ancestor). There is no active project.
     """
 
     from .mcp_server import ProjectRegistry
@@ -287,12 +285,35 @@ def _top_level_ask_handler(args) -> int:
     # under one top-level wrapper so JSON consumers can iterate the
     # ``by_project`` map. ``current`` (default) keeps the legacy
     # single-project behaviour byte-for-byte.
-    scope = getattr(args, "scope", "current") or "current"
+    registry = ProjectRegistry()
+    scope = getattr(args, "scope", None)
+    explicit_project = bool(args.project or args.wiki)
+
+    # No --scope and no explicit project => SMART ROUTER picks where the question
+    # goes (single project / all-registered / federated), federated as the
+    # fallback so "unsure" never means the wrong project. Replaces active-project.
+    if scope is None and not explicit_project:
+        from .ask_router import route_ask, SCOPE_CURRENT, SCOPE_FEDERATED
+
+        cwd_root = registry.resolve_project_by_cwd()
+        cwd_alias = registry.alias_for_root(cwd_root) if cwd_root else None
+        route = route_ask(args.question, registry.all_project_names(), cwd_alias=cwd_alias)
+        tail = (" " + ", ".join(route.aliases)) if route.aliases else ""
+        print(f"(scope: {route.scope}{tail} — {route.reason})", file=sys.stderr)
+        scope = route.scope
+        if route.scope == SCOPE_FEDERATED:
+            args.scope_aliases = route.aliases
+        elif route.scope == SCOPE_CURRENT and route.aliases:
+            args.wiki = route.aliases[0]
+    elif scope is None:
+        scope = "current"  # explicit --project/--wiki => single-project
+
     if scope == "all-registered":
         return _top_level_ask_scope_all_registered(args)
     if scope == "federated":
         return _top_level_ask_scope_federated(args)
 
+    # scope == "current": one project via --project / --wiki / cwd-ancestor.
     project_root: Optional[Path] = None
     source: str = ""
 
@@ -300,7 +321,6 @@ def _top_level_ask_handler(args) -> int:
         project_root = Path(args.project).expanduser().resolve()
         source = f"--project {project_root}"
     elif args.wiki:
-        registry = ProjectRegistry()
         data = registry.load()
         entry = (data.get("projects") or {}).get(args.wiki)
         if not entry:
@@ -318,30 +338,18 @@ def _top_level_ask_handler(args) -> int:
             project_root = gp.parent.parent if gp.parent.name == ".tesserae" else gp.parent
         source = f"--wiki {args.wiki}"
     else:
-        registry = ProjectRegistry()
-        data = registry.load()
-        active = data.get("active")
-        if not active:
+        cwd_root = registry.resolve_project_by_cwd()
+        if cwd_root is None:
+            known = ", ".join(registry.all_project_names()) or "(none registered)"
             print(
-                "No project specified and no active project in the registry. "
-                "Use `tesserae ask --wiki <name>`, `tesserae ask --project <path>`, "
-                "or `tesserae projects activate <name>`.",
+                "No project specified and not inside a registered project. Pass "
+                "--project <path> / --wiki <name>, use --scope all-registered|federated, "
+                f"or cd into a registered project. Registered: {known}.",
                 file=sys.stderr,
             )
             return 2
-        entry = (data.get("projects") or {}).get(active) or {}
-        if entry.get("root"):
-            project_root = Path(entry["root"]).resolve()
-        elif entry.get("graph_path"):
-            gp = Path(entry["graph_path"]).resolve()
-            project_root = gp.parent.parent if gp.parent.name == ".tesserae" else gp.parent
-        if project_root is None:
-            print(
-                f"Active project '{active}' has no recorded root; re-register it.",
-                file=sys.stderr,
-            )
-            return 2
-        source = f"active project '{active}'"
+        project_root = cwd_root
+        source = f"cwd project {cwd_root}"
 
     try:
         wiki = ProjectWiki.load(project_root)
@@ -376,15 +384,18 @@ def _top_level_ask_handler(args) -> int:
 def _top_level_ask_scope_federated(args) -> int:
     """Federated scope — assemble ONE identity-merged graph from the named
     projects and compile a single cross-referenced, cited answer (not the
-    per-project fan-out). Requires --scope-aliases (the projects to federate)."""
+    per-project fan-out). Defaults to ALL registered projects; --scope-aliases narrows it."""
     from .federation import federated_recall
     from .mcp_server import ProjectRegistry
 
+    registry = ProjectRegistry()
     aliases = list(getattr(args, "scope_aliases", None) or [])
     if not aliases:
+        aliases = registry.all_project_names()  # federate everything by default
+    if not aliases:
         print(
-            "--scope federated requires --scope-aliases A B — the projects to "
-            "federate into one graph. Use `tesserae projects list` to see them.",
+            "No registered projects to federate. Register some with "
+            "`tesserae projects register <path>`.",
             file=sys.stderr,
         )
         return 2
@@ -394,7 +405,7 @@ def _top_level_ask_scope_federated(args) -> int:
             args.question,
             synthesize=bool(getattr(args, "llm", False)),
             semantic=bool(getattr(args, "semantic", False)),
-            registry=ProjectRegistry(),
+            registry=registry,
         )
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
@@ -521,15 +532,13 @@ def _wiki_command_handler(args) -> int:
         if getattr(args, "wiki_list_json", False):
             print(json.dumps(data, ensure_ascii=False, indent=2))
             return 0
-        active = data.get("active")
         projects = data.get("projects") or []
         if not projects:
             print("No projects registered. Use `tesserae projects register <path> --name <alias>`.")
             return 0
-        print(f"Active: {active or '(none)'}")
+        print(f"{len(projects)} registered project(s) — all active (no privileged project):")
         for entry in projects:
-            marker = "*" if entry.get("name") == active else " "
-            print(f" {marker} {entry.get('name', ''):<24} {entry.get('root', '')}")
+            print(f"   {entry.get('name', ''):<24} {entry.get('root', '')}")
         return 0
 
     if sub == "register":
@@ -539,22 +548,6 @@ def _wiki_command_handler(args) -> int:
             print(f"register failed: {exc}", file=sys.stderr)
             return 2
         print(f"Registered '{entry['name']}' -> {entry['root']}")
-        if getattr(args, "activate", False):
-            try:
-                registry.activate(entry["name"])
-            except Exception as exc:
-                print(f"activate failed: {exc}", file=sys.stderr)
-                return 2
-            print(f"Active: {entry['name']}")
-        return 0
-
-    if sub == "activate":
-        try:
-            entry = registry.activate(args.name)
-        except Exception as exc:
-            print(f"activate failed: {exc}", file=sys.stderr)
-            return 2
-        print(f"Active: {entry['name']} -> {entry['root']}")
         return 0
 
     if sub == "unregister":
@@ -723,9 +716,10 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae ask",
         description=(
-            "Ask a question about a registered Tesserae project. Resolves the project via "
-            "--project, --wiki, or the registry's active project. Dispatches through the same "
-            "backend selector as `project ask` (raganything -> cognee -> wiki)."
+            "Ask a question across your registered Tesserae projects. With no --scope a "
+            "smart router picks the target (one project / all / federated); --project, "
+            "--wiki or --scope override it. Dispatches through the same backend selector "
+            "as `project ask` (raganything -> cognee -> wiki)."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
@@ -770,12 +764,13 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--scope",
         choices=["current", "all-registered", "federated"],
-        default="current",
+        default=None,
         help=(
-            "Query scope: 'current' (default) hits the active/named project; "
-            "'all-registered' fans out and returns one answer per project; "
-            "'federated' merges the named projects into ONE graph (identity-merged) "
-            "and returns a single cross-referenced answer (requires --scope-aliases)."
+            "Query scope. Omit it and a smart router picks per question (federated "
+            "fallback). 'current' hits one project (--project/--wiki or the project "
+            "you're in); 'all-registered' fans out, one answer per project; "
+            "'federated' merges projects into ONE graph and returns a single "
+            "cross-referenced answer (defaults to ALL registered; narrow with --scope-aliases)."
         ),
     )
     parser.add_argument(
@@ -3273,11 +3268,6 @@ def _handle_projects_list(args: argparse.Namespace) -> int:
     return _wiki_command_handler(args)
 
 
-def _handle_projects_activate(args: argparse.Namespace) -> int:
-    args.wiki_command = "activate"
-    return _wiki_command_handler(args)
-
-
 def _handle_projects_unregister(args: argparse.Namespace) -> int:
     args.wiki_command = "unregister"
     return _wiki_command_handler(args)
@@ -3291,13 +3281,12 @@ def _handle_projects_mcp_config(args: argparse.Namespace) -> int:
 def _build_projects_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae projects",
-        description="Project registry: register | list | activate | unregister | mcp-config.",
+        description="Project registry: register | list | unregister | mcp-config.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
             "  tesserae projects register /path/to/project\n"
             "  tesserae projects list\n"
-            "  tesserae projects activate myproj\n"
         ),
     )
     sub = parser.add_subparsers(dest="projects_command", required=True)
@@ -3309,21 +3298,16 @@ def _build_projects_parser() -> argparse.ArgumentParser:
         epilog=(
             "examples:\n"
             "  tesserae projects register /path/to/project\n"
-            "  tesserae projects register /path/to/project --name myproj --activate\n"
+            "  tesserae projects register /path/to/project --name myproj\n"
         ),
     )
     p_register.add_argument("path", help="Path to the project root containing .tesserae/.")
     p_register.add_argument("--name", help="Friendly name (defaults to the sanitized directory name).")
-    p_register.add_argument("--activate", action="store_true", help="Also set the new entry as the active project.")
     p_register.set_defaults(_handler="_handle_projects_register")
 
-    p_list = sub.add_parser("list", help="List registered projects and show the active one.")
+    p_list = sub.add_parser("list", help="List registered projects (all active — no privileged project).")
     p_list.add_argument("--json", dest="wiki_list_json", action="store_true", help="Emit the registry payload as JSON.")
     p_list.set_defaults(_handler="_handle_projects_list")
-
-    p_activate = sub.add_parser("activate", help="Set a registered project as the active one.")
-    p_activate.add_argument("name")
-    p_activate.set_defaults(_handler="_handle_projects_activate")
 
     p_unregister = sub.add_parser("unregister", help="Remove a project from the registry.")
     p_unregister.add_argument("name")
