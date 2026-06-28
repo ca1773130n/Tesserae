@@ -137,8 +137,8 @@ Obsidian's built-in graph view (`Ctrl/Cmd+G`) already works against the wikilink
 Register multiple Tesserae vaults so `wiki://` URIs resolve across them:
 
 ```bash
-tesserae register-project /path/to/research --name research
-tesserae register-project /path/to/notes    --name notes
+tesserae projects register /path/to/research --name research
+tesserae projects register /path/to/notes    --name notes
 ```
 
 Re-export each vault after registration. `_bridges.md` in each export will now show resolvable references between vaults grouped by alias.

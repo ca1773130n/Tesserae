@@ -56,14 +56,14 @@ Restart the client after editing. The next session will connect and discover the
 
 ## 3) What the client sees
 
-Every tool accepts an optional `graph_path` or `project` (registry alias) so a single server can resolve any registered vault per call. Defaults fall back to the active project.
+Every tool accepts an optional `graph_path` or `project` (registry alias) so a single server can resolve any registered vault per call. With no explicit project, read tools resolve the project you're in (the nearest registered project root above the server's cwd), then the server's `--graph`. There is no "active project" — all registered projects are equal.
 
 **Graph query & retrieval**
 
 | Tool | Purpose |
 |---|---|
 | `schema` | Controlled node, edge, and wiki-kind vocabulary |
-| `graph_summary` | Node + edge counts and type distributions for the active project |
+| `graph_summary` | Node + edge counts and type distributions for the resolved project |
 | `search_nodes` | Filter public graph nodes by `query`, `type`/`types`, `kind`, `limit`, hybrid `mode`/`weights`; `include_superseded` to surface retired nodes |
 | `node_context` | A node + its incident edges + neighbouring nodes. `use_ppr` ranks neighbours by personalized PageRank instead of a 1-hop walk; `include_superseded` and `limit` bound the result |
 | `embedding_status` | Report the active embedding backend powering hybrid search |
@@ -87,7 +87,7 @@ Every tool accepts an optional `graph_path` or `project` (registry alias) so a s
 
 | Tool | Purpose |
 |---|---|
-| `list_sessions` | Session envelopes (id, started_at, title, files_touched, finding counts) for the active project; `since`, `limit` |
+| `list_sessions` | Session envelopes (id, started_at, title, files_touched, finding counts) for the resolved project; `since`, `limit` |
 | `find_session_findings` | Every Session-derived finding linked to `node_id` via `discussed_in` / `references`, optionally filtered to `kinds` (insight / decision / question / todo / hypothesis / takeaway) |
 | `find_code_symbol_mentions` | Expand a session finding into the `CodeFunction`/`CodeClass`/`CodeMethod` symbols it mentions, via `discusses` edges from the opt-in insight↔symbol link pass |
 
@@ -95,8 +95,8 @@ Every tool accepts an optional `graph_path` or `project` (registry alias) so a s
 
 | Tool | Purpose |
 |---|---|
-| `ask` | Natural-language Q&A via the configured memory backend (raganything, cognee, or compiled wiki). `backend`, `top_k`; cross-vault fan-out via `scope`/`scope_aliases`; `claude_config_dir` for multi-account routing |
-| `list_projects` / `register_project` / `activate_project` / `unregister_project` | Multi-project registry control |
+| `ask` | Natural-language Q&A. Omit `scope` and a smart router picks the target across your registered projects (federated fallback) and reroutes across consecutive questions (pass `conversation_id` to isolate a thread). Explicit `scope`: `current` (one project), `all-registered` (one answer per project), `federated` (ONE merged, cross-referenced answer; `semantic` on by default). Plus `backend`, `top_k`, `scope_aliases`, `claude_config_dir` |
+| `list_projects` / `register_project` / `unregister_project` | Multi-project registry control (no privileged "active" project) |
 
 **Guided setup**
 
@@ -110,7 +110,7 @@ Every tool accepts an optional `graph_path` or `project` (registry alias) so a s
 URIs the client can pull in via its resource picker without burning a tool turn:
 
 - `tesserae://graph/schema` — same payload as the `schema` tool, ready as static context
-- `tesserae://graph/summary` — summary of the active project
+- `tesserae://graph/summary` — summary of the resolved (cwd) project
 - `tesserae://lint-report` — the latest lint report as markdown
 
 Plus URI templates the client can construct on demand:
@@ -137,27 +137,30 @@ Each prompt renders to a single user message that tells the model exactly which 
 A persistent registry at `~/.tesserae/registry.json` lets the same MCP server resolve any registered project by name:
 
 ```bash
-tesserae register-project /path/to/research --name research
-tesserae register-project /path/to/notes    --name notes
+tesserae projects register /path/to/research --name research
+tesserae projects register /path/to/notes    --name notes
 ```
 
 After this, every tool that accepts `project` or `graph_path` will resolve `project: "research"` against the registry instead of needing a full path. The server even validates that the registered `graph_path` still exists and returns a clear error if a recompile is needed.
 
-### Fan-out across every registered vault
+### Querying across projects
 
-The `ask` tool accepts `scope: "all-registered"` to query every registered project in parallel and return aggregated results:
+With no `scope`, the `ask` tool **routes the question for you**: it picks a single project when the question clearly targets one, and **federates** (one merged, cross-referenced answer) when it's comparative or general. The two explicit cross-project scopes:
+
+- **`federated`** — assemble ONE graph from the named projects (identity-merged + embedding-backed semantic links) and return a single cross-referenced answer. Defaults to ALL registered projects; narrow with `scope_aliases`. `semantic` is on by default.
+- **`all-registered`** — fan out and return one independent answer per project (`by_project`).
 
 ```jsonc
 {
   "name": "ask",
   "arguments": {
-    "question": "Where is splatting used?",
-    "scope": "all-registered"
+    "question": "What did I decide about caching, and does any clipped paper support it?",
+    "scope": "federated"
   }
 }
 ```
 
-Restrict to a subset with `scope_aliases: ["research", "notes"]`.
+Restrict either scope to a subset with `scope_aliases: ["research", "notes"]`. Inspect a federation from the CLI with `tesserae federation status` / `tesserae federation explain <node>`.
 
 ## Multi-account Claude CLI
 

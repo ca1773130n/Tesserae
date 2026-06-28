@@ -130,17 +130,18 @@ Run `tesserae --help` for the full grouped list, `tesserae <cmd> --help` for fla
 | `tesserae compile` | Rebuild the knowledge graph and all artifacts. `compile <paths>` ad-hoc ingests extra files. |
 | `tesserae ingest <file\|url>` | Merge a single document or web page into the knowledge base without a full recompile (parity-gated incremental fast path). |
 | `tesserae context "<query>"` | **On-demand context compiler**: cited context doc via PPR expansion under `--budget`; `--synthesize` adds an LLM summary. |
-| `tesserae ask "<question>"` | Ask the compiled knowledge base (`--scope all-registered` fans out across projects). |
+| `tesserae ask "<question>"` | Ask the compiled knowledge base. With no `--scope` a smart router picks the target across your projects (federated fallback); `--scope federated` returns ONE merged, cross-referenced answer, `--scope all-registered` one answer per project. |
 | `tesserae engine` | Supervised refresh daemon for the current project: watch, debounce, recompile. |
 | `tesserae engine --all` | **Fleet mode**: one process keeps *every* registered project fresh — registry hot-reload, `--compile-slots` throttling. |
 | `tesserae refresh` | One-shot pipeline: import new sessions → compile → sync vault. |
 | `tesserae sessions discover --import` | Find and import local Claude Code / Codex session history for this project. |
 | `tesserae export site` | Build the static site (`--deploy`, `--watch`). |
 | `tesserae export okf` | Export the graph as a [Google **OKF v0.1**](https://github.com/GoogleCloudPlatform/knowledge-catalog) bundle (Markdown + YAML frontmatter); `--import DIR` reads one back (round-trips Tesserae's own bundles losslessly). |
-| `tesserae serve` | Serve the site locally with the inline ask widget (`/api/ask`) and **fast transcript search** (memex) on the sessions dashboard. |
-| `tesserae config setup` | **Machine-wide setup**: set LLM defaults for *all* projects (`--llm-provider`, `--reasoning-effort`) and install optional deps (`--install all`) in one shot. |
+| `tesserae serve` | Serve **every registered project** under one server — a projects landing at `/`, each project at `/<alias>/`, and a Projects switcher in the header. `--project X` serves just one (with the live `/api/ask` widget). |
+| `tesserae setup` | **Machine-wide setup** — interactive by default: pick the LLM provider/effort and which optional deps to install. Flags (`--install all`, `--llm-provider …`) skip the prompts. (`config setup` is a back-compat alias.) |
 | `tesserae config deps` | List / install optional dependencies (memex, cognee, raganything, understand-anything). |
-| `tesserae projects …` | Multi-project registry: `register`, `list`, `activate`, `mcp-config`. |
+| `tesserae projects …` | Multi-project registry: `register`, `list`, `unregister`, `mcp-config` (no privileged "active" project). |
+| `tesserae federation status` / `explain` | Inspect a cross-project federation: per-project node counts, identity merges, semantic links, and why a node bridges projects. |
 | `tesserae integrations refresh …` | Re-run companion tools (Understand-Anything, RAG-Anything). |
 
 ## Keep it fresh automatically
@@ -193,17 +194,22 @@ any MCP client. Headline tools:
   `find_code_symbol_mentions`, `fresh_insights` (decay-ranked, deduplicated,
   now carrying extraction `confidence` + `revisit_signals` when available).
 - **`ingest`** — merge raw web/text content (e.g. a browser clip) into the graph.
-- **Registry**: `list_projects`, `register_project`, `activate_project`.
+- **Registry**: `list_projects`, `register_project`, `unregister_project`.
 
 ## Multi-project
 
 A registry at `~/.tesserae/registry.json` resolves project names everywhere —
-CLI, MCP, and the fleet engine:
+CLI, MCP, and the fleet engine. **All registered projects are equal** — there's
+no "active" project; per-project commands resolve the project you're standing in
+(cwd), and queries route across projects automatically:
 
 ```bash
 tesserae projects register /path/to/my-project --name myproj
-tesserae projects activate myproj
-tesserae ask "..." --scope all-registered        # fan out across all projects
+tesserae ask "compare retrieval in research and notes"   # routes -> federated
+tesserae ask "how does myproj compile?"                  # routes -> that project
+tesserae ask "..." --scope federated                     # ONE merged, cross-referenced answer
+tesserae ask "..." --scope all-registered                # one answer per project
+tesserae serve                                           # serve EVERY project at /<alias>/
 ```
 
 Markdown in one project can deep-link a node in another via

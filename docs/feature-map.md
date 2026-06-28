@@ -9,6 +9,17 @@ Tesserae is a **context engine** running on three pillars: (1) session monitorin
 
 Status legend: ✅ shipped · ⚠ in-progress / partial.
 
+## Cross-project & UX — v0.11.0 (June 2026)
+
+| Feature | Status | Source | Notes |
+|---|---|---|---|
+| Cross-project federation | ✅ | [`tesserae/federation.py`](../tesserae/federation.py) | `ask --scope federated` assembles ONE graph from several registered projects — identity-merge (same arxiv/repo/hash/symbol) + opt-out embedding-backed `shares_concept_with` links — and returns a single cross-referenced, cited answer over the union (PPR + `compile_context`). Per-project `graph.json` is read-only; deterministic for identity-only. |
+| Smart `ask` router (no active project) | ✅ | [`tesserae/ask_router.py`](../tesserae/ask_router.py) | The "active project" concept is removed — all registered projects are equal. A bare `ask` routes itself (names a project → that one; comparative → federated; follow-up → keeps route; else federated fallback), with an optional LLM tiebreaker and per-conversation continuity. Per-project ops resolve the project from cwd. |
+| Federation inspection | ✅ | `tesserae/federation.py`, `cli.py` | `tesserae federation status` (per-project node counts, identity merges, semantic links) and `federation explain <node>` (why a node bridges projects). |
+| Multi-project serve | ✅ | [`tesserae/serve.py`](../tesserae/serve.py), `cli.py` | Bare `tesserae serve` serves EVERY registered project under one server (landing at `/`, each at `/<alias>/`, a Projects switcher in the header, path-contained); `--project X` serves one with the live ask widget. |
+| LLM extractor in `compile` | ✅ | `cli.py`, [`tesserae/selective_extractor.py`](../tesserae/selective_extractor.py) | `tesserae compile --extractor claude-cli` (or `selective-claude --claude-include … --claude-limit N`) builds the concept/claim layer the deterministic default omits. |
+| `tesserae setup` (interactive) | ✅ | `cli.py`, [`tesserae/deps.py`](../tesserae/deps.py) | Top-level `tesserae setup` — interactive by default (LLM provider/effort + which optional deps); flags skip the prompts. Installs work in pip-less uv-tool envs (uv-pip fallback). |
+
 ## Interop, search & setup — v0.10.0 (June 2026)
 
 | Feature | Status | Source | Notes |
@@ -261,7 +272,7 @@ Generated target files for:
 - ✅ Retrieval/graph tools: `schema`, `graph_summary`, `search_nodes`, `node_context` (with `use_ppr`), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`.
 - ✅ Context-engine tools (v0.5.0): `compile_context`, `embedding_status`, `fresh_insights` (decay-ranked), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`, `ask`.
 - ✅ Setup tools: `tesserae_setup_plan`, `tesserae_setup_apply`.
-- ✅ Multi-project registry: `list_projects`, `register_project`, `activate_project`, `unregister_project`, `list_sessions`. Store URL dispatch via `url_resolver`.
+- ✅ Multi-project registry: `list_projects`, `register_project`, `unregister_project`, `list_sessions`. Store URL dispatch via `url_resolver`.
 
 ## Tests
 

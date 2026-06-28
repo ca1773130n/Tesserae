@@ -166,9 +166,9 @@ a browser:
 | `tags`    | no       | Front-matter tags. |
 | `tldr`    | no       | Default `true`. |
 
-It ingests into the **active project** (resolve with `activate_project`
-or pass `project`) and returns the same `{status, path, tldr, node_count,
-edge_count}` report. See [mcp.md](mcp.md) for MCP setup.
+It ingests into the project the server resolves from its working directory
+(or pass `project` to target a registered alias) and returns the same
+`{status, path, tldr, node_count, edge_count}` report. See [mcp.md](mcp.md) for MCP setup.
 
 ---
 

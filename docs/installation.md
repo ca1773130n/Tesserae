@@ -37,8 +37,10 @@ Configure Tesserae once instead of per project, and install the optional
 dependencies from one command:
 
 ```bash
-# Global LLM defaults (written to ~/.tesserae/config.json) + install everything
-tesserae config setup --llm-provider codex --reasoning-effort medium --install all
+# Interactive machine-wide setup — pick LLM provider/effort + which deps to install:
+tesserae setup
+# …or non-interactively (written to ~/.tesserae/config.json) + install everything:
+tesserae setup --llm-provider codex --reasoning-effort medium --install all
 
 # Just see / manage optional dependencies
 tesserae config deps                     # show what's installed

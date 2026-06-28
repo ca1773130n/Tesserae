@@ -197,10 +197,9 @@ The handler iterates registered projects in alphabetical order, calls `ask_proje
 
 | Command | Purpose |
 | --- | --- |
-| `tesserae projects list [--json]` | Show registered projects and which one is active. |
-| `tesserae projects register <path> [--name <alias>] [--activate]` | Add a project to the registry; alias defaults to the sanitized directory name. |
-| `tesserae projects activate <name>` | Mark an entry as the active project for subsequent `tesserae ask` calls without `--wiki`. |
-| `tesserae projects unregister <name>` | Remove an entry; clears the active pointer when it matched. |
+| `tesserae projects list [--json]` | Show registered projects (all are equal — there is no "active" one). |
+| `tesserae projects register <path> [--name <alias>]` | Add a project to the registry; alias defaults to the sanitized directory name. |
+| `tesserae projects unregister <name>` | Remove an entry from the registry. |
 
 These commands operate directly on `tesserae.mcp_server.ProjectRegistry` — no MCP roundtrip — so they can be scripted without running the MCP server.
 
