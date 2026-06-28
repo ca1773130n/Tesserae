@@ -202,6 +202,14 @@ _NODE_CITATION_RE = re.compile(r"\[([a-zA-Z0-9_\-:./]{3,})\]")
 _LOGGED_FAILURE_KINDS: set[str] = set()
 
 
+def _cognee_importable() -> bool:
+    """Whether cognee can be imported in THIS runtime. Module-level so tests can
+    monkeypatch it (the packaged CLI often ships without cognee)."""
+    import importlib.util
+
+    return importlib.util.find_spec("cognee") is not None
+
+
 def _log_once(key: str, message: str) -> None:
     if key in _LOGGED_FAILURE_KINDS:
         return
@@ -992,7 +1000,13 @@ def ask_project(
 
     # ---- cognee path ----
     cognee_cfg = cognee_backend_config(cfg)
-    use_cognee = backend == "cognee" or (backend == "auto" and cognee_cfg.get("enabled", False))
+    # In 'auto', only reach for cognee if it's actually importable in THIS runtime
+    # (the packaged CLI often ships without it) — an absent optional backend is
+    # normal, not a failure to announce. Explicit backend='cognee' still tries and
+    # raises a clear error. (Module-level helper so tests can patch it.)
+    use_cognee = backend == "cognee" or (
+        backend == "auto" and cognee_cfg.get("enabled", False) and _cognee_importable()
+    )
     if use_cognee:
         from .cognee_query import search_cognee
 

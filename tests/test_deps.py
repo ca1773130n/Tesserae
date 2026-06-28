@@ -71,6 +71,64 @@ def test_detect_exception_never_propagates(monkeypatch):
     assert r["ok"] is False  # detect-after-install raised -> treated as absent
 
 
+def test_pip_install_falls_back_to_uv_when_pip_absent(monkeypatch):
+    # uv tool envs ship without pip -> must not emit a dead `python -m pip` argv.
+    monkeypatch.setattr(deps, "_module_present", lambda n: False)
+    monkeypatch.setattr(deps, "_binary_present", lambda n: n == "uv")
+    argv = deps._pip_install_argv(["cognee"])
+    assert argv[:3] == ["uv", "pip", "install"] and "--python" in argv and argv[-1] == "cognee"
+    # when pip IS importable, use it directly
+    monkeypatch.setattr(deps, "_module_present", lambda n: n == "pip")
+    assert deps._pip_install_argv(["cognee"])[1:3] == ["-m", "pip"]
+
+
+def test_ua_detect_uses_install_marker_not_binary(monkeypatch, tmp_path):
+    # UA installs a plugin/skills tree, no PATH binary -> detect a real completion
+    # marker (repo/install.sh), NOT a bare leftover dir a failed install leaves.
+    monkeypatch.setattr(deps, "_binary_present", lambda n: False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert deps._ua_installed() is False
+    (tmp_path / ".understand-anything").mkdir()
+    assert deps._ua_installed() is False  # bare dir is not enough
+    repo = tmp_path / ".understand-anything" / "repo"
+    repo.mkdir()
+    (repo / "install.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+    assert deps._ua_installed() is True
+
+
+def test_install_uses_uv_argv_for_pip_dep_without_pip(monkeypatch):
+    monkeypatch.setattr(deps, "_module_present", lambda n: False)  # nothing importable
+    monkeypatch.setattr(deps, "_binary_present", lambda n: n == "uv")
+    seen = {}
+
+    def fake_run(argv, **k):
+        seen["argv"] = argv
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(deps.subprocess, "run", fake_run)
+    deps.install("cognee")
+    assert seen["argv"][:3] == ["uv", "pip", "install"]  # not `python -m pip`
+
+
+def test_setup_is_top_level_command_interactive_by_default():
+    from tesserae.cli import _build_setup_parser, _setup_wants_interactive
+    from tesserae.cli_tree import KNOWN_COMMANDS
+
+    assert "setup" in KNOWN_COMMANDS  # `tesserae setup`, not just `config setup`
+    flagged = _build_setup_parser().parse_args(["--install", "all"])
+    assert flagged._handler == "_handle_setup_machine"
+    assert _setup_wants_interactive(flagged) is False  # flags given -> skip prompts
+    # bare invocation under a non-TTY (CI/scripts) must NOT block on input
+    assert _setup_wants_interactive(_build_setup_parser().parse_args([])) is False
+    # only top-level `setup` opts into interactive; the `config setup` alias keeps
+    # its legacy no-op = status behavior (no _interactive_default flag).
+    from tesserae.cli import _build_config_parser
+
+    cfg_setup = _build_config_parser().parse_args(["setup"])
+    assert getattr(cfg_setup, "_interactive_default", False) is False
+    assert _setup_wants_interactive(cfg_setup) is False
+
+
 def test_resolve_targets_expands_all_and_dedups():
     targets, unknown = _resolve_dep_targets(["all"], False)
     assert targets == deps.DEP_NAMES and unknown == []

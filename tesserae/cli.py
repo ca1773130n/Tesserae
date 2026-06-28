@@ -1037,6 +1037,7 @@ def _handle_ingest(args: argparse.Namespace) -> int:
             f"nodes={result['node_count']} edges={result['edge_count']}"
         )
         print(f"Graph: {result['graph_path']}")
+        _warn_if_concept_poor(result)
         return 0
 
 
@@ -1093,6 +1094,42 @@ def _handle_sync_code(args: argparse.Namespace) -> int:
         )
         print(f"Graph: {output}")
         return 0
+
+
+_CONCEPT_LAYER_TYPES = frozenset({
+    "Concept", "TechnicalTerm", "MethodologicalConcept", "MathematicalConcept",
+    "Algorithm", "ArchitecturePattern", "TrainingParadigm", "InferenceStrategy",
+    "ObjectiveFunction", "Task", "Capability", "ResearchTopic", "ProblemArea",
+    "ApproachFamily", "Claim", "ContributionClaim", "PerformanceClaim",
+    "ComparisonClaim", "LimitationClaim", "CausalClaim", "OpenQuestion",
+})
+
+
+def _warn_if_concept_poor(result: dict) -> None:
+    """A non-trivial graph with NO concept/claim layer means retrieval is just
+    full-text search over document blobs. The default deterministic extractor
+    only mints concepts for registry-matching headings, so a docs-heavy compile
+    can land here silently. Point the way to the LLM extractor. Best-effort."""
+    try:
+        if int(result.get("node_count", 0)) < 20:
+            return
+        from .project import load_graph_file
+
+        graph = load_graph_file(result["graph_path"])
+        conceptual = sum(
+            1 for n in graph.nodes
+            if (n.type.value if hasattr(n.type, "value") else str(n.type)) in _CONCEPT_LAYER_TYPES
+        )
+        if conceptual == 0:
+            print(
+                f"note: compiled {result['node_count']} nodes but no concept/claim layer — the "
+                "default deterministic extractor only mints concepts for known headings, so "
+                "`ask` falls back to full-text search. For a real typed graph, recompile with "
+                "`--extractor claude-cli` (or `--extractor selective-claude --claude-include <globs>`).",
+                file=sys.stderr,
+            )
+    except Exception:
+        pass  # the hint must never break a successful compile
 
 
 def _handle_compile_legacy(args: argparse.Namespace) -> int:
@@ -1214,6 +1251,7 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                 f"nodes={result['node_count']} edges={result['edge_count']}"
             )
         print(f"Graph: {result['graph_path']}")
+        _warn_if_concept_poor(result)
         return 0
 
 
@@ -2887,7 +2925,8 @@ def _build_config_parser() -> argparse.ArgumentParser:
     p_setup.add_argument("--install-all", action="store_true", help="Install every known optional dependency")
     p_setup.add_argument("--enable-cognee", action="store_true", help="Enable the cognee cognify pass for ALL projects (writes memory_backends.cognee to the machine-wide config)")
     p_setup.add_argument("--cognee-mode", choices=["add", "cognify", "codex_cognify"], default="codex_cognify", help="cognee mode when --enable-cognee (default: codex_cognify — uses codex, no extra API key)")
-    p_setup.set_defaults(_handler="_handle_config_setup")
+    p_setup.add_argument("-y", "--yes", action="store_true", help="Non-interactive: apply the flags as given without prompting")
+    p_setup.set_defaults(_handler="_handle_setup_machine")
 
     p_show = sub.add_parser("show", help="Print the effective machine-wide LLM defaults and exit.")
     p_show.set_defaults(_handler="_handle_config_show")
@@ -3014,10 +3053,12 @@ def _install_deps(names: List[str]) -> int:
             continue
         seen.add(name)
         dep = deps.DEPS_BY_NAME.get(name)
-        # Surface the exact command first — important for the deps that run an
-        # unpinned remote install script (understand-anything).
+        # Surface the EXACT command that will run (pip deps resolve to uv-pip in a
+        # pip-less env) — important for the deps that run an unpinned remote
+        # install script (understand-anything).
         if dep is not None:
-            print(f"Installing {name} … ({' '.join(dep.install_cmd)})", flush=True)
+            shown = deps._pip_install_argv(dep.pip_specs) if dep.pip_specs else dep.install_cmd
+            print(f"Installing {name} … ({' '.join(shown)})", flush=True)
         res = deps.install(name)
         if res.get("already"):
             print(f"  {name}: already installed.")
@@ -3041,6 +3082,77 @@ def _handle_config_deps(args: argparse.Namespace) -> int:
         print(f"Unknown dependency: {', '.join(unknown)} (known: {', '.join(deps.DEP_NAMES)})", file=sys.stderr)
         return 2
     return _install_deps(targets)
+
+
+def _setup_wants_interactive(args: argparse.Namespace) -> bool:
+    """Interactive when on a TTY with no actionable flags and not --yes — so a
+    bare `tesserae setup` prompts (like the init wizard) instead of dumping status.
+
+    Only the top-level `tesserae setup` opts in (``_interactive_default``); the
+    `config setup` alias keeps its legacy no-op = show-status behavior."""
+    if not getattr(args, "_interactive_default", False):
+        return False
+    explicit = bool(
+        args.llm_provider or args.claude_config_dir or args.codex_home
+        or args.reasoning_effort or args.install or getattr(args, "install_all", False)
+        or getattr(args, "enable_cognee", False)
+    )
+    return (
+        sys.stdin.isatty() and sys.stdout.isatty()
+        and not explicit and not getattr(args, "yes", False)
+    )
+
+
+def _setup_interactive_fill(args: argparse.Namespace) -> bool:
+    """Prompt for LLM defaults + which optional deps to install, writing the
+    answers back onto ``args``. Returns False if the user declines to apply."""
+    from rich.prompt import Confirm, Prompt
+
+    import tesserae.llm_json as _lj
+    from . import deps
+
+    current = _lj._load_global_llm_config()
+    print("Tesserae setup — machine-wide LLM defaults + optional dependencies.\n")
+    args.llm_provider = Prompt.ask(
+        "LLM provider", choices=["codex", "claude"],
+        default=current.get("llm_provider") or "codex",
+    )
+    if args.llm_provider == "codex":
+        args.reasoning_effort = Prompt.ask(
+            "Codex reasoning effort", choices=["low", "medium", "high", "xhigh"],
+            default=current.get("llm_codex_reasoning_effort") or "medium",
+        )
+
+    installed = {d["name"]: d["installed"] for d in deps.status()}
+    recommended = {"memex": True, "cognee": True, "understand-anything": True, "raganything": False}
+    chosen: List[str] = []
+    print("\nOptional dependencies:")
+    for name in deps.DEP_NAMES:
+        if installed.get(name):
+            print(f"  · {name}: already installed")
+            continue
+        if Confirm.ask(f"  install {name}?", default=recommended.get(name, False)):
+            chosen.append(name)
+    args.install = chosen
+    args.install_all = False
+    if "cognee" in chosen or installed.get("cognee"):
+        args.enable_cognee = Confirm.ask("\nEnable cognee for all projects?", default=True)
+    print()
+    return Confirm.ask("Apply this setup?", default=True)
+
+
+def _handle_setup_machine(args: argparse.Namespace) -> int:
+    """`tesserae setup` (and the `config setup` alias) — machine-wide LLM defaults
+    + optional deps. Interactive by default on a TTY; flags or --yes skip the prompts."""
+    if _setup_wants_interactive(args):
+        try:
+            if not _setup_interactive_fill(args):
+                print("Setup cancelled — nothing changed.")
+                return 0
+        except (KeyboardInterrupt, EOFError):
+            print("\nSetup cancelled — nothing changed.")
+            return 130
+    return _handle_config_setup(args)
 
 
 def _handle_config_setup(args: argparse.Namespace) -> int:
@@ -3088,14 +3200,46 @@ def _handle_config_setup(args: argparse.Namespace) -> int:
         _handle_config_status(argparse.Namespace(project=None, ping=False))
         print()
         _print_dep_status()
-        print("\nSet defaults + install with, e.g.:\n"
-              "  tesserae config setup --llm-provider codex --reasoning-effort medium --install all\n"
-              "  tesserae config setup --enable-cognee --install cognee")
+        print("\nRun `tesserae setup` for the interactive wizard, or pass flags, e.g.:\n"
+              "  tesserae setup --llm-provider codex --reasoning-effort medium --install all\n"
+              "  tesserae setup --enable-cognee --install cognee")
     return rc
 
 
 def _route_config(rest: List[str]) -> int:
     args = _build_config_parser().parse_args(rest)
+    return _resolve_handler(args._handler)(args)
+
+
+# ----- setup (top-level alias for `config setup`, interactive by default) ----
+def _build_setup_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae setup",
+        description="Machine-wide setup: LLM defaults + optional dependencies. "
+                    "Interactive by default — run it bare to be prompted; pass flags to skip.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae setup                       # interactive wizard\n"
+            "  tesserae setup --install all         # install every optional dep\n"
+            "  tesserae setup --llm-provider codex --reasoning-effort medium --install all\n"
+        ),
+    )
+    parser.add_argument("--llm-provider", choices=["claude", "codex"], default=None, help="Machine-wide default LLM backend")
+    parser.add_argument("--claude-config-dir", action="append", default=[], help="Default Claude CLI config dir; repeat for fallbacks")
+    parser.add_argument("--codex-home", default=None, help="Default Codex CLI home")
+    parser.add_argument("--reasoning-effort", choices=["low", "medium", "high", "xhigh"], default=None, help="Default codex reasoning effort")
+    parser.add_argument("--install", action="append", default=[], metavar="NAME", help="Dependency to install (memex, cognee, raganything, understand-anything, or 'all'); repeat")
+    parser.add_argument("--install-all", action="store_true", help="Install every known optional dependency")
+    parser.add_argument("--enable-cognee", action="store_true", help="Enable the cognee cognify pass for ALL projects")
+    parser.add_argument("--cognee-mode", choices=["add", "cognify", "codex_cognify"], default="codex_cognify", help="cognee mode when --enable-cognee")
+    parser.add_argument("-y", "--yes", action="store_true", help="Non-interactive: apply the flags as given without prompting")
+    parser.set_defaults(_handler="_handle_setup_machine", _interactive_default=True)
+    return parser
+
+
+def _route_setup(rest: List[str]) -> int:
+    args = _build_setup_parser().parse_args(rest)
     return _resolve_handler(args._handler)(args)
 
 
@@ -3684,6 +3828,7 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "code": _route_code,
     "ingest": _route_ingest,
     "config": _route_config,
+    "setup": _route_setup,
     "projects": _route_projects,
     "federation": _route_federation,
     "integrations": _route_integrations,
