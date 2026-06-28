@@ -1230,6 +1230,14 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
         # (and the plain summary line below) when piped/CI/MCP/daemon.
         progress = make_compile_progress()
         with progress:
+            # --extractor != deterministic -> use the LLM extractor (concept/claim
+            # layer). Default (deterministic) passes None so the pipeline keeps its
+            # existing behaviour byte-for-byte.
+            doc_extractor = (
+                _build_doc_extractor(args)
+                if getattr(args, "extractor", "deterministic") != "deterministic"
+                else None
+            )
             result = wiki.compile(
                 source_kind=opts.get("source_kind", None),
                 changed_only=args.changed_only,
@@ -1241,6 +1249,7 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                 vault_pull=not bool(opts.get("no_vault_pull", False)),
                 session_options=session_override,
                 use_extraction_feedback=bool(opts.get("use_extraction_feedback", False)),
+                doc_extractor=doc_extractor,
                 progress=progress,
             )
             progress.done(nodes=result["node_count"], edges=result["edge_count"])
@@ -1916,6 +1925,15 @@ def _build_compile_parser() -> argparse.ArgumentParser:
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--changed-only", action="store_true", help="Skip unchanged files using .tesserae/manifest.json")
     parser.add_argument("--limit", type=int, help="Maximum number of changed files to process")
+    # Document extractor: 'deterministic' (default, structural baseline — sparse
+    # concept layer) vs the LLM extractors that mint the concept/claim layer.
+    parser.add_argument("--extractor", choices=["deterministic", "claude-cli", "selective-claude"], default="deterministic",
+                        help="Doc extractor. 'claude-cli'/'selective-claude' build the concept/claim layer (needs the claude CLI).")
+    parser.add_argument("--claude-include", action="append", default=[], help="Glob selecting files for --extractor selective-claude; repeat for several")
+    parser.add_argument("--claude-limit", type=int, help="Max files sent to Claude under --extractor selective-claude")
+    parser.add_argument("--claude-timeout", type=float, default=180.0, help="Per-file Claude extraction timeout in seconds (raise for large docs)")
+    parser.add_argument("--claude-model", default="sonnet", help="Claude model for the LLM extractor")
+    # NB: --claude-config-dir is already provided by the compile parser's LLM-client args.
     parser.add_argument(
         "--refresh-integrations",
         dest="refresh_integrations",
@@ -3713,30 +3731,36 @@ def _build_extract_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _build_doc_extractor(args: argparse.Namespace):
+    """Build the document extractor from --extractor/--claude-* args. Shared by
+    `extract` and `compile`. 'deterministic' -> ResearchGraphExtractor (the
+    structural baseline); 'claude-cli'/'selective-claude' -> the LLM extractor
+    that mints the concept/claim layer."""
+    kind = getattr(args, "extractor", "deterministic")
+    if kind == "claude-cli":
+        return ClaudeCLIResearchExtractor(
+            config_dirs=getattr(args, "claude_config_dir", None) or None,
+            model=getattr(args, "claude_model", None),
+            timeout=getattr(args, "claude_timeout", None),
+        )
+    if kind == "selective-claude":
+        return SelectiveClaudeResearchExtractor(
+            deterministic=ResearchGraphExtractor(),
+            claude=ClaudeCLIResearchExtractor(
+                config_dirs=getattr(args, "claude_config_dir", None) or None,
+                model=getattr(args, "claude_model", None),
+                timeout=getattr(args, "claude_timeout", None),
+            ),
+            include_patterns=getattr(args, "claude_include", []),
+            claude_limit=getattr(args, "claude_limit", None),
+        )
+    return ResearchGraphExtractor()
+
+
 def _handle_extract(args: argparse.Namespace) -> int:
     """Body lifted verbatim from the legacy bare-extraction main (now removed;
     sans its own parse_args)."""
-    if args.extractor == "claude-cli":
-        extractor = ClaudeCLIResearchExtractor(
-            config_dirs=args.claude_config_dir or None,
-            model=args.claude_model,
-            timeout=args.claude_timeout,
-        )
-    elif args.extractor == "selective-claude":
-        deterministic = ResearchGraphExtractor()
-        claude = ClaudeCLIResearchExtractor(
-            config_dirs=args.claude_config_dir or None,
-            model=args.claude_model,
-            timeout=args.claude_timeout,
-        )
-        extractor = SelectiveClaudeResearchExtractor(
-            deterministic=deterministic,
-            claude=claude,
-            include_patterns=args.claude_include,
-            claude_limit=args.claude_limit,
-        )
-    else:
-        extractor = ResearchGraphExtractor()
+    extractor = _build_doc_extractor(args)
     graphs = []
     markdown_files = []
     for raw_path in args.paths:
