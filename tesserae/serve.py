@@ -30,7 +30,7 @@ import os
 import threading
 from pathlib import Path
 from typing import Optional, Tuple, Type
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 # Hard ceiling on a clip request body. The extension caps captured content at
 # ~200 KB client-side, but the server must never trust the client: a malicious
@@ -405,4 +405,135 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
     return _AskAwareHandler
 
 
-__all__ = ["build_ask_aware_handler"]
+# --------------------------------------------------------------------------- #
+# Multi-project ("fleet") serving — one server for every registered project.   #
+# --------------------------------------------------------------------------- #
+
+# A self-contained Projects switcher injected into every served page. It reads
+# /projects.json, drops into the page's header bar if one exists (so it sits ON
+# the header) and otherwise pins to the top-right. Pure overlay — the per-project
+# sites are served unchanged, so this never touches the site builder.
+_PROJECTS_NAV = """
+<style>
+.tesserae-projects-nav{font:600 13px system-ui,-apple-system,sans-serif}
+.tesserae-projects-nav.tpn-float{position:fixed;top:10px;right:14px;z-index:99999}
+.tesserae-projects-nav details{position:relative;display:inline-block}
+.tesserae-projects-nav summary{cursor:pointer;list-style:none;padding:6px 12px;border:1px solid #3a4254;border-radius:7px;background:#1b2030;color:#cde}
+.tesserae-projects-nav summary::-webkit-details-marker{display:none}
+.tesserae-projects-nav .tpn-menu{position:absolute;right:0;margin-top:4px;min-width:190px;display:flex;flex-direction:column;padding:5px;background:#161b27;border:1px solid #3a4254;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.4)}
+.tesserae-projects-nav .tpn-menu a{padding:7px 11px;color:#bcd;text-decoration:none;border-radius:5px;white-space:nowrap}
+.tesserae-projects-nav .tpn-menu a:hover{background:#252c3c;color:#fff}
+.tesserae-projects-nav .tpn-menu a.tpn-active{color:#74e0c0}
+.tesserae-projects-nav .tpn-menu hr{border:0;border-top:1px solid #2c3344;margin:4px 2px}
+</style>
+<script>
+(function(){
+  fetch('/projects.json').then(function(r){return r.json();}).then(function(ps){
+    if(!Array.isArray(ps)) return;
+    var cur=(location.pathname.split('/').filter(Boolean)[0]||'');
+    var host=document.querySelector('.topbar, .site-header, header, .header');
+    var box=document.createElement('div');
+    box.className='tesserae-projects-nav'+(host?'':' tpn-float');
+    var det=document.createElement('details');
+    var sum=document.createElement('summary');
+    sum.textContent=(cur?('Project: '+cur):'Projects')+' \\u25be';  // textContent -> no injection
+    var menu=document.createElement('div'); menu.className='tpn-menu';
+    var all=document.createElement('a'); all.href='/'; all.textContent='\\u2302 All projects'; menu.appendChild(all);
+    menu.appendChild(document.createElement('hr'));
+    ps.forEach(function(p){
+      if(!p||typeof p.alias!=='string') return;
+      var a=document.createElement('a');
+      a.href='/'+encodeURIComponent(p.alias)+'/';
+      if(p.alias===cur) a.className='tpn-active';
+      a.textContent=p.alias;                                       // text, never HTML
+      if(p.title&&p.title!==p.alias){
+        var s=document.createElement('span');
+        s.style.cssText='color:#7a8699;font-weight:400;margin-left:6px';
+        s.textContent=String(p.title); a.appendChild(s);
+      }
+      menu.appendChild(a);
+    });
+    det.appendChild(sum); det.appendChild(menu); box.appendChild(det);
+    (host||document.body).appendChild(box);
+  }).catch(function(){});
+})();
+</script>
+""".strip()
+
+
+def _contained(target: Path, base: Path) -> bool:
+    """True iff ``target`` (after resolving symlinks) stays under ``base``."""
+    try:
+        target.resolve().relative_to(base.resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def build_fleet_handler(
+    *, served_root: Path, project_sites: dict
+) -> Type[http.server.SimpleHTTPRequestHandler]:
+    """Serve a multi-project view from one server. ``served_root`` holds only the
+    landing ``index.html`` + ``projects.json``; ``project_sites`` maps each alias
+    to its REAL ``.tesserae/site`` dir. Requests are CONTAINED — a resolved path
+    that escapes its alias's site dir (e.g. a planted symlink) is rejected — so no
+    symlink tree and no traversal out of a project. The Projects switcher is
+    injected into every HTML page. Browse-only: ``/api/ask*`` -> 404."""
+    root = Path(served_root).resolve()
+    sites = {alias: Path(d).resolve() for alias, d in project_sites.items()}
+    nav = _PROJECTS_NAV.encode("utf-8")
+
+    class _FleetHandler(http.server.SimpleHTTPRequestHandler):
+        def _resolve(self, url_path: str):
+            """Map a URL path to a contained filesystem path, or None if it would
+            escape. Drops '.'/'..' segments, then enforces containment."""
+            segs = [s for s in (unquote(url_path).split("/")) if s and s not in (".", "..")]
+            if segs and segs[0] in sites:
+                base, rel = sites[segs[0]], segs[1:]
+            else:
+                base, rel = root, segs
+            target = base
+            for seg in rel:
+                target = target / seg
+            if os.path.isdir(target):
+                target = target / "index.html"
+            return target if _contained(target, base) else None
+
+        def do_GET(self):  # noqa: N802 — fixed by stdlib API
+            parsed = urlparse(self.path)
+            if parsed.path.endswith("/api/ask/health") or parsed.path.endswith("/api/ask"):
+                self.send_response(404)
+                self.end_headers()
+                return
+            target = self._resolve(parsed.path)
+            if target is None:
+                self.send_response(403)
+                self.end_headers()
+                return
+            if not target.is_file():
+                self.send_response(404)
+                self.end_headers()
+                return
+            if target.suffix == ".html":
+                body = target.read_bytes()
+                marker = body.lower().rfind(b"</body>")
+                body = body[:marker] + nav + body[marker:] if marker != -1 else body + nav
+                ctype = "text/html; charset=utf-8"
+            else:
+                body = target.read_bytes()
+                ctype = self.guess_type(str(target))
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args):  # noqa: A002 — match stdlib
+            if args and isinstance(args[0], str) and args[0].startswith(("\\x16", "\\x17")):
+                return
+            super().log_message(format, *args)
+
+    return _FleetHandler
+
+
+__all__ = ["build_ask_aware_handler", "build_fleet_handler"]
