@@ -405,4 +405,91 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
     return _AskAwareHandler
 
 
-__all__ = ["build_ask_aware_handler"]
+# --------------------------------------------------------------------------- #
+# Multi-project ("fleet") serving — one server for every registered project.   #
+# --------------------------------------------------------------------------- #
+
+# A self-contained Projects switcher injected into every served page. It reads
+# /projects.json, drops into the page's header bar if one exists (so it sits ON
+# the header) and otherwise pins to the top-right. Pure overlay — the per-project
+# sites are served unchanged, so this never touches the site builder.
+_PROJECTS_NAV = """
+<style>
+.tesserae-projects-nav{font:600 13px system-ui,-apple-system,sans-serif}
+.tesserae-projects-nav.tpn-float{position:fixed;top:10px;right:14px;z-index:99999}
+.tesserae-projects-nav details{position:relative;display:inline-block}
+.tesserae-projects-nav summary{cursor:pointer;list-style:none;padding:6px 12px;border:1px solid #3a4254;border-radius:7px;background:#1b2030;color:#cde}
+.tesserae-projects-nav summary::-webkit-details-marker{display:none}
+.tesserae-projects-nav .tpn-menu{position:absolute;right:0;margin-top:4px;min-width:190px;display:flex;flex-direction:column;padding:5px;background:#161b27;border:1px solid #3a4254;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.4)}
+.tesserae-projects-nav .tpn-menu a{padding:7px 11px;color:#bcd;text-decoration:none;border-radius:5px;white-space:nowrap}
+.tesserae-projects-nav .tpn-menu a:hover{background:#252c3c;color:#fff}
+.tesserae-projects-nav .tpn-menu a.tpn-active{color:#74e0c0}
+.tesserae-projects-nav .tpn-menu hr{border:0;border-top:1px solid #2c3344;margin:4px 2px}
+</style>
+<script>
+(function(){
+  fetch('/projects.json').then(function(r){return r.json();}).then(function(ps){
+    var cur=(location.pathname.split('/').filter(Boolean)[0]||'');
+    var host=document.querySelector('.topbar, .site-header, header, .header');
+    var box=document.createElement('div');
+    box.className='tesserae-projects-nav'+(host?'':' tpn-float');
+    var items='<a href="/">\\u2302 All projects</a><hr>';
+    ps.forEach(function(p){
+      var label=String(p.alias).replace(/[<>&]/g,'');
+      var t=(p.title&&p.title!==p.alias)?(' <span style="color:#7a8699;font-weight:400">'+String(p.title).replace(/[<>&]/g,'')+'</span>'):'';
+      items+='<a href="/'+encodeURIComponent(p.alias)+'/"'+(p.alias===cur?' class="tpn-active"':'')+'>'+label+t+'</a>';
+    });
+    var label=cur?('Project: '+cur):'Projects';
+    box.innerHTML='<details><summary>'+label+' \\u25be</summary><div class="tpn-menu">'+items+'</div></details>';
+    if(host){host.appendChild(box);}else{document.body.appendChild(box);}
+  }).catch(function(){});
+})();
+</script>
+""".strip()
+
+
+def build_fleet_handler(*, served_root: Path) -> Type[http.server.SimpleHTTPRequestHandler]:
+    """Serve the multi-project tree at ``served_root`` (``/<alias>/`` symlinks +
+    a landing ``index.html``), injecting the Projects switcher into every HTML
+    page. Browse-only: ``/api/ask*`` returns 404 so in-page widgets fall back to
+    static mode (per-project live ask still works via ``serve --project X``)."""
+    root = Path(served_root).resolve()
+    nav = _PROJECTS_NAV.encode("utf-8")
+
+    class _FleetHandler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=str(root), **kwargs)
+
+        def do_GET(self):  # noqa: N802 — fixed by stdlib API
+            parsed = urlparse(self.path)
+            if parsed.path.endswith("/api/ask/health") or parsed.path.endswith("/api/ask"):
+                self.send_response(404)
+                self.end_headers()
+                return
+            fs_path = self.translate_path(parsed.path)
+            if os.path.isdir(fs_path):
+                fs_path = os.path.join(fs_path, "index.html")
+            if fs_path.endswith(".html") and os.path.isfile(fs_path):
+                try:
+                    body = Path(fs_path).read_bytes()
+                except OSError:
+                    return super().do_GET()
+                marker = body.lower().rfind(b"</body>")
+                body = body[:marker] + nav + body[marker:] if marker != -1 else body + nav
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            return super().do_GET()
+
+        def log_message(self, format: str, *args):  # noqa: A002 — match stdlib
+            if args and isinstance(args[0], str) and args[0].startswith(("\\x16", "\\x17")):
+                return
+            super().log_message(format, *args)
+
+    return _FleetHandler
+
+
+__all__ = ["build_ask_aware_handler", "build_fleet_handler"]

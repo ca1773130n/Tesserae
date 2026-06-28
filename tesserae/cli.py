@@ -1953,15 +1953,17 @@ def _build_context_parser() -> argparse.ArgumentParser:
 def _build_serve_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae serve",
-        description="Browse the compiled site (auto-builds if missing/stale).",
+        description="Browse the compiled site. Bare `serve` runs ALL registered projects "
+                    "under one server (Projects switcher in the header); --project serves one.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
-            "  tesserae serve\n"
+            "  tesserae serve                 # every registered project at /<alias>/\n"
+            "  tesserae serve --project .     # just this project (with live ask)\n"
             "  tesserae serve --port 8765 --no-build\n"
         ),
     )
-    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--project", default=None, help="Serve ONE project root (with live ask). Omit to serve every registered project.")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind")
     parser.add_argument("--port", type=int, default=8765, help="Port to bind")
     parser.add_argument("--dry-run", action="store_true", help="Print the site URL without starting a server")
@@ -2107,10 +2109,116 @@ def _serve_build_site(args: argparse.Namespace) -> int:
     return _handle_build_site(build_args)
 
 
+def _fleet_landing_html(projects: List[dict]) -> str:
+    """A minimal projects-landing page served at `/` in fleet mode."""
+    import html as _html
+
+    cards = "\n".join(
+        f'<a class="card" href="/{_html.escape(p["alias"])}/">'
+        f'<span class="name">{_html.escape(p.get("title") or p["alias"])}</span>'
+        f'<span class="alias">{_html.escape(p["alias"])}</span></a>'
+        for p in projects
+    )
+    return (
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<title>Tesserae — projects</title><style>"
+        "body{margin:0;background:#0f131c;color:#dde;font:16px system-ui,-apple-system,sans-serif}"
+        ".wrap{max-width:880px;margin:0 auto;padding:48px 24px}"
+        "h1{font-size:22px;font-weight:700;margin:0 0 6px}.sub{color:#8995a8;margin:0 0 28px}"
+        ".grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}"
+        ".card{display:flex;flex-direction:column;gap:4px;padding:18px;background:#161b27;"
+        "border:1px solid #2a3140;border-radius:10px;text-decoration:none;color:inherit}"
+        ".card:hover{border-color:#4a93ff;background:#1a2030}"
+        ".name{font-weight:600;font-size:17px}.alias{color:#74e0c0;font-size:13px}"
+        "</style></head><body><div class='wrap'>"
+        f"<h1>Tesserae</h1><p class='sub'>{len(projects)} registered project(s) — all active.</p>"
+        f"<div class='grid'>{cards}</div></div></body></html>"
+    )
+
+
+def _serve_fleet(args: argparse.Namespace) -> int:
+    """Serve EVERY registered project under one server: a landing page at `/`,
+    each project's site at `/<alias>/`, with a Projects switcher in the header."""
+    import shutil
+    import socketserver
+
+    from .mcp_server import ProjectRegistry
+    from .serve import build_fleet_handler
+
+    projects = ProjectRegistry().list_projects().get("projects") or []
+    if not projects:
+        print(
+            "No projects registered. Register some with `tesserae projects register <path>`, "
+            "or serve one directly with `tesserae serve --project <path>`.",
+            file=sys.stderr,
+        )
+        return 2
+
+    nav_projects: List[dict] = []
+    links: List[tuple] = []
+    for entry in projects:
+        root = Path(entry.get("root") or "").expanduser().resolve()
+        try:
+            wiki = ProjectWiki.load(root)
+        except Exception as exc:
+            print(f"  skip {entry.get('name')}: {exc}", file=sys.stderr)
+            continue
+        index = wiki.paths.site / "index.html"
+        if not getattr(args, "no_build", False):
+            stale = (not index.exists()) or (
+                wiki.paths.graph.exists() and wiki.paths.graph.stat().st_mtime > index.stat().st_mtime
+            )
+            if stale:
+                print(f"building {entry['name']} site …")
+                try:
+                    wiki.build_site()
+                except Exception as exc:
+                    print(f"  build failed for {entry['name']}: {exc}", file=sys.stderr)
+        if index.exists():
+            title = (wiki.config().get("site_title") or entry["name"])
+            nav_projects.append({"alias": entry["name"], "title": title})
+            links.append((entry["name"], wiki.paths.site.resolve()))
+    if not links:
+        print("No buildable project sites found (run `tesserae compile` for a project first).", file=sys.stderr)
+        return 2
+
+    served_root = Path.home() / ".tesserae" / "fleet-site"
+    shutil.rmtree(served_root, ignore_errors=True)
+    served_root.mkdir(parents=True, exist_ok=True)
+    for alias, site_dir in links:
+        (served_root / alias).symlink_to(site_dir, target_is_directory=True)
+    (served_root / "projects.json").write_text(json.dumps(nav_projects), encoding="utf-8")
+    (served_root / "index.html").write_text(_fleet_landing_html(nav_projects), encoding="utf-8")
+
+    url = f"http://{args.host}:{args.port}/"
+    if getattr(args, "dry_run", False):
+        print(f"Fleet site ready: {served_root} at {url}")
+        return 0
+
+    class ReusableTCPServer(socketserver.TCPServer):
+        allow_reuse_address = True
+
+    try:
+        with ReusableTCPServer((args.host, args.port), build_fleet_handler(served_root=served_root)) as httpd:
+            print(f"Serving {len(links)} project(s) at {url}")
+            for p in nav_projects:
+                print(f"  {url}{p['alias']}/  — {p['title']}")
+            httpd.serve_forever()
+    except OSError as exc:
+        print(f"Could not serve fleet site at {url}: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
 def _handle_serve(args: argparse.Namespace) -> int:
-    """New-tree serve wrapper: auto-build the site when missing/stale, then
-    delegate to the legacy serve handler (``_handle_serve_legacy``).
+    """Serve all registered projects (bare `serve`) or one (`--project`).
+
+    Fleet mode (no --project) auto-builds each project's site when stale, then
+    serves them under one server with a Projects switcher.
     """
+    if getattr(args, "project", None) is None:
+        return _serve_fleet(args)
     try:
         wiki = ProjectWiki.load(args.project)
     except FileNotFoundError:
