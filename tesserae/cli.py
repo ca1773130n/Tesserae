@@ -1098,7 +1098,10 @@ def _handle_sync_code(args: argparse.Namespace) -> int:
 
 _CONCEPT_LAYER_TYPES = frozenset({
     "Concept", "TechnicalTerm", "MethodologicalConcept", "MathematicalConcept",
-    "Algorithm", "Claim", "ContributionClaim", "PerformanceClaim", "CausalClaim",
+    "Algorithm", "ArchitecturePattern", "TrainingParadigm", "InferenceStrategy",
+    "ObjectiveFunction", "Task", "Capability", "ResearchTopic", "ProblemArea",
+    "ApproachFamily", "Claim", "ContributionClaim", "PerformanceClaim",
+    "ComparisonClaim", "LimitationClaim", "CausalClaim", "OpenQuestion",
 })
 
 
@@ -3083,7 +3086,12 @@ def _handle_config_deps(args: argparse.Namespace) -> int:
 
 def _setup_wants_interactive(args: argparse.Namespace) -> bool:
     """Interactive when on a TTY with no actionable flags and not --yes — so a
-    bare `tesserae setup` prompts (like the init wizard) instead of dumping status."""
+    bare `tesserae setup` prompts (like the init wizard) instead of dumping status.
+
+    Only the top-level `tesserae setup` opts in (``_interactive_default``); the
+    `config setup` alias keeps its legacy no-op = show-status behavior."""
+    if not getattr(args, "_interactive_default", False):
+        return False
     explicit = bool(
         args.llm_provider or args.claude_config_dir or args.codex_home
         or args.reasoning_effort or args.install or getattr(args, "install_all", False)
@@ -3226,7 +3234,7 @@ def _build_setup_parser() -> argparse.ArgumentParser:
     parser.add_argument("--enable-cognee", action="store_true", help="Enable the cognee cognify pass for ALL projects")
     parser.add_argument("--cognee-mode", choices=["add", "cognify", "codex_cognify"], default="codex_cognify", help="cognee mode when --enable-cognee")
     parser.add_argument("-y", "--yes", action="store_true", help="Non-interactive: apply the flags as given without prompting")
-    parser.set_defaults(_handler="_handle_setup_machine")
+    parser.set_defaults(_handler="_handle_setup_machine", _interactive_default=True)
     return parser
 
 

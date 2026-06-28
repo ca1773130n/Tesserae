@@ -35,10 +35,11 @@ def _binary_present(name: str) -> bool:
 
 def _ua_installed() -> bool:
     """Understand-Anything's installer drops a plugin/skills tree (no PATH binary),
-    so detect the install marker dir, not a `ua` executable."""
-    return _binary_present("understand-anything") or _binary_present("ua") or (
-        Path.home() / ".understand-anything"
-    ).is_dir()
+    so detect a real completion marker — its cloned ``repo/install.sh`` — rather
+    than a `ua` executable or a bare leftover dir a failed install could leave."""
+    if _binary_present("understand-anything") or _binary_present("ua"):
+        return True
+    return (Path.home() / ".understand-anything" / "repo" / "install.sh").is_file()
 
 
 def _pip_install_argv(specs: List[str]) -> List[str]:

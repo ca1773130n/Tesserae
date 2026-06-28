@@ -77,6 +77,9 @@ def test_ask_project_auto_records_cognee_failure_note(monkeypatch):
         raise RuntimeError("auth required")
 
     monkeypatch.setattr(cq, "search_cognee", _boom)
+    # auto only reaches cognee when it's importable; force it so the test is
+    # deterministic regardless of whether cognee is installed in CI.
+    monkeypatch.setattr("tesserae.query._cognee_importable", lambda: True)
     wiki = _StubWiki(backends={"cognee": {"enabled": True, "dataset": "d"}})
     env = ask_project(wiki, "q?", backend="auto")
     assert env["backend"] == "wiki"

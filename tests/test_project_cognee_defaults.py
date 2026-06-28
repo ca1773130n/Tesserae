@@ -211,6 +211,9 @@ def test_project_ask_uses_configured_cognee_backend(tmp_path, monkeypatch, capsy
         "tesserae.cognee_query.search_cognee",
         lambda question, dataset=None, search_type="INSIGHTS", top_k=8: [f"answer for {question} in {dataset}"],
     )
+    # auto reaches cognee only when importable; force it so the test doesn't
+    # depend on cognee being installed in CI.
+    monkeypatch.setattr("tesserae.query._cognee_importable", lambda: True)
 
     assert main(["ask", "What renders Mermaid?", "--project", str(project)]) == 0
     out = capsys.readouterr().out
