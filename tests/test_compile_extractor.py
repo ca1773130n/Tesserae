@@ -120,3 +120,45 @@ def test_selective_extract_text_falls_back_when_claude_fails():
     )
     sel.extract_text("x", "/a/docs/spec.md")  # routed to claude -> raises -> deterministic
     assert calls == ["det"]  # fell back, did not propagate
+
+
+def test_claude_extract_text_retries_transient_bad_generation():
+    """A transient invalid generation (out-of-vocab node type) is retried, not fatal."""
+    from tesserae.llm_extractor import ClaudeCLIResearchExtractor
+
+    calls = []
+    bad = '{"nodes":[{"name":"X","type":"Vulnerability"}],"edges":[]}'   # not in vocab
+    good = '{"nodes":[{"name":"X","type":"Concept"}],"edges":[]}'
+
+    def runner(prompt, cd, model, timeout):
+        calls.append(1)
+        return bad if len(calls) == 1 else good
+
+    ex = ClaudeCLIResearchExtractor(model="sonnet", timeout=5)
+    ex.config_dirs = [None]
+    ex.runner = runner
+    g = ex.extract_text("doc text", "x.md", "SourceDocument")
+    assert len(calls) == 2          # first bad -> retried once -> good
+    assert len(g.nodes) >= 1
+
+
+def test_claude_extract_text_gives_up_after_retries():
+    """A persistently invalid generation raises after the bounded retries."""
+    import pytest
+
+    from tesserae.llm_extractor import (
+        ClaudeCLIResearchExtractor, GraphJSONValidationError, _VALIDATION_RETRIES,
+    )
+
+    calls = []
+
+    def runner(prompt, cd, model, timeout):
+        calls.append(1)
+        return '{"nodes":[{"name":"X","type":"Vulnerability"}],"edges":[]}'
+
+    ex = ClaudeCLIResearchExtractor(model="sonnet", timeout=5)
+    ex.config_dirs = [None]
+    ex.runner = runner
+    with pytest.raises(GraphJSONValidationError):
+        ex.extract_text("t", "x.md", "SourceDocument")
+    assert len(calls) == _VALIDATION_RETRIES + 1   # initial + retries, then gives up
