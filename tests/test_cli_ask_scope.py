@@ -183,7 +183,7 @@ def test_top_level_ask_scope_default_is_current(tmp_path, monkeypatch, capsys):
     p1 = _bootstrap_project(tmp_path, "p1")
     registry_path = tmp_path / "registry.json"
     monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
-    cli.main(["projects", "register", str(p1), "--name", "p1", "--activate"])
+    cli.main(["projects", "register", str(p1), "--name", "p1"])
     capsys.readouterr()
 
     called: list[str] = []
@@ -194,6 +194,7 @@ def test_top_level_ask_scope_default_is_current(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr("tesserae.query.ask_project", fake_ask)
 
+    # one project registered -> router sends a bare ask to it (single-project).
     rc = cli.main(["ask", "hello?", "--json"])
     assert rc == 0
     assert called == ["p1"]
@@ -241,9 +242,11 @@ def test_top_level_ask_scope_federated_requires_aliases(tmp_path, monkeypatch, c
     import tesserae.mcp_server as mcp_server
 
     monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", tmp_path / "registry.json")
+    # federated now defaults to ALL registered projects; with none registered it
+    # errors clearly instead of demanding --scope-aliases.
     rc = cli.main(["ask", "hi?", "--scope", "federated"])
     assert rc == 2
-    assert "scope-aliases" in capsys.readouterr().err.lower()
+    assert "no registered projects" in capsys.readouterr().err.lower()
 
 
 def test_top_level_ask_scope_federated_merges_and_cross_references(tmp_path, monkeypatch, capsys):
@@ -287,6 +290,22 @@ def test_mcp_ask_scope_federated(tmp_path, monkeypatch):
     assert result["stats"]["merged_groups"] == 1
     with pytest.raises(ValueError, match="requires scope_aliases"):
         server.call_tool("ask", {"question": "x", "scope": "federated"})
+
+
+def test_mcp_bare_ask_routes_and_reroutes_across_consecutive_questions(tmp_path, monkeypatch):
+    import tesserae.mcp_server as mcp_server
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    registry_path = tmp_path / "registry.json"
+    monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
+    server = LLMWikiMCPServer(registry_path=registry_path)
+    server.registry.register(str(_bootstrap_project(tmp_path, "work")), name="work")
+    server.registry.register(str(_bootstrap_project(tmp_path, "research")), name="research")
+
+    assert server._route_ask("compare work and research").scope == "federated"
+    assert server._route_ask("and why?").scope == "federated"  # follow-up keeps route
+    shifted = server._route_ask("what about work?")            # topic shift -> reroute
+    assert shifted.scope == "current" and shifted.aliases == ["work"]
 
 
 def test_federated_semantic_is_opt_out_by_default():

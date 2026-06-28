@@ -163,13 +163,13 @@ class ProjectRegistry:
 
     def load(self) -> JSONDict:
         if not self.path.exists():
-            return {"version": 1, "active": None, "projects": {}}
+            return {"version": 1, "projects": {}}
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
             raise ValueError(f"Corrupt registry at {self.path}: {exc}") from exc
         data.setdefault("version", 1)
-        data.setdefault("active", None)
+        data.pop("active", None)  # active-project concept removed; ignore legacy key
         data.setdefault("projects", {})
         return data
 
@@ -190,29 +190,17 @@ class ProjectRegistry:
         self.save(data)
         return {"name": derived, "root": str(project_root), "graph_path": str(graph_path)}
 
-    def activate(self, name: str) -> JSONDict:
-        data = self.load()
-        if name not in data["projects"]:
-            raise ValueError(f"Unknown project: {name}. Register it first via register_project.")
-        data["active"] = name
-        self.save(data)
-        entry = data["projects"][name]
-        return {"name": name, **entry}
-
     def unregister(self, name: str) -> JSONDict:
         data = self.load()
         if name not in data["projects"]:
             raise ValueError(f"Unknown project: {name}")
         del data["projects"][name]
-        if data.get("active") == name:
-            data["active"] = None
         self.save(data)
         return {"removed": name}
 
     def list_projects(self) -> JSONDict:
         data = self.load()
         return {
-            "active": data.get("active"),
             "projects": [
                 {"name": name, **entry}
                 for name, entry in sorted(data["projects"].items())
@@ -224,13 +212,27 @@ class ProjectRegistry:
         entry = data["projects"].get(name)
         return Path(entry["graph_path"]) if entry else None
 
-    def active_graph_path(self) -> Optional[Path]:
-        data = self.load()
-        active = data.get("active")
-        if not active:
+    def all_project_names(self) -> List[str]:
+        """Every registered alias (sorted). The basis for the federated default —
+        with no active project, queries span all of these."""
+        return [name for name, _root in self.iter_registered_projects()]
+
+    def resolve_project_by_cwd(self, start: Optional[Path] = None) -> Optional[Path]:
+        """Nearest ancestor of ``start`` (default cwd) that is a registered project
+        root — the replacement for the active-project fallback for per-project ops
+        (compile/ingest/status): you operate on the project you're standing in.
+        Returns the project ROOT (deepest match wins for nested projects), or None."""
+        try:
+            here = (start or Path.cwd()).resolve()
+        except OSError:
             return None
-        entry = data["projects"].get(active)
-        return Path(entry["graph_path"]) if entry else None
+        matches = [
+            root.resolve() for _name, root in self.iter_registered_projects()
+            if root.resolve() == here or root.resolve() in here.parents
+        ]
+        if not matches:
+            return None
+        return max(matches, key=lambda r: len(r.parts))  # deepest = most specific
 
     # ---------------- vault-root extensions for multi-project sync ----------
 
@@ -445,7 +447,7 @@ class LLMWikiMCPServer:
         self._graph_cache: Dict[Path, Tuple[float, ResearchGraph]] = {}
 
     def list_tools(self) -> List[JSONDict]:
-        graph_path_prop = {"type": "string", "description": "Path to a ResearchGraph JSON file. Defaults to active project, then server --graph."}
+        graph_path_prop = {"type": "string", "description": "Path to a ResearchGraph JSON file. Defaults to the project you are in (cwd), then server --graph."}
         project_prop = {"type": "string", "description": "Registered project name (see list_projects). Overridden by graph_path."}
         return [
             {
@@ -625,7 +627,7 @@ class LLMWikiMCPServer:
             {
                 "name": "lint_report",
                 "description": (
-                    "Return the contents of .tesserae/lint-report.md for the active/given "
+                    "Return the contents of .tesserae/lint-report.md for the resolved/given "
                     "project (capped at 64 KB). Empty if the report does not exist."
                 ),
                 "inputSchema": {
@@ -660,8 +662,7 @@ class LLMWikiMCPServer:
                         "scope": {
                             "type": "string",
                             "enum": ["current", "all-registered", "federated"],
-                            "default": "current",
-                            "description": "'current' (default) targets the resolved project; 'all-registered' fans out and returns one answer per project (by_project); 'federated' merges the named projects into ONE identity-merged graph and returns a single cross-referenced answer (requires scope_aliases).",
+                            "description": "OMIT to let the smart router pick (federated fallback; reroutes across your consecutive questions). 'current' targets the cwd/--project project; 'all-registered' fans out, one answer per project (by_project); 'federated' merges projects into ONE graph for a single cross-referenced answer (defaults to ALL registered).",
                         },
                         "scope_aliases": {
                             "type": "array",
@@ -688,7 +689,7 @@ class LLMWikiMCPServer:
             },
             {
                 "name": "list_projects",
-                "description": "List registered Tesserae projects and the active project alias.",
+                "description": "List registered Tesserae projects (all active — no privileged project).",
                 "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
             },
             {
@@ -705,18 +706,8 @@ class LLMWikiMCPServer:
                 },
             },
             {
-                "name": "activate_project",
-                "description": "Set the active project so subsequent tool calls without graph_path/project use it.",
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {"name": {"type": "string"}},
-                    "required": ["name"],
-                    "additionalProperties": False,
-                },
-            },
-            {
                 "name": "unregister_project",
-                "description": "Remove a project from the registry. Clears active if it matched.",
+                "description": "Remove a project from the registry.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {"name": {"type": "string"}},
@@ -732,7 +723,7 @@ class LLMWikiMCPServer:
             {
                 "name": "list_sessions",
                 "description": (
-                    "List Session nodes for the active project. Returns the "
+                    "List Session nodes for the resolved project. Returns the "
                     "lightweight envelope per session (id, started_at, title, "
                     "files_touched, finding counts). Use find_session_findings "
                     "to pull the structured Insight / Decision / Question / "
@@ -973,7 +964,7 @@ class LLMWikiMCPServer:
                 "name": "ingest",
                 "description": (
                     "Ingest raw web/text content (e.g. a browser clip) into "
-                    "the active project's knowledge graph"
+                    "the resolved project's knowledge graph"
                 ),
                 "inputSchema": {
                     "type": "object",
@@ -1154,9 +1145,9 @@ class LLMWikiMCPServer:
     _RESOURCE_TEMPLATES = (
         {
             "uriTemplate": "tesserae://graph/summary",
-            "name": "Active project — graph summary",
+            "name": "Resolved project — graph summary",
             "description": (
-                "JSON summary of the currently active Tesserae project's typed graph: "
+                "JSON summary of the resolved Tesserae project's typed graph: "
                 "node and edge counts plus type distributions. Cheaper than calling the "
                 "graph_summary tool when you just need orientation."
             ),
@@ -1174,7 +1165,7 @@ class LLMWikiMCPServer:
         },
         {
             "uriTemplate": "tesserae://lint-report",
-            "name": "Active project — latest lint report",
+            "name": "Resolved project — latest lint report",
             "description": (
                 "The markdown lint report from the most recent `tesserae compile`. "
                 "Capped at 64 KB."
@@ -1206,7 +1197,7 @@ class LLMWikiMCPServer:
         """Concrete (non-templated) resources for ``resources/list``.
 
         We only enumerate the two static URIs here — schema is project-agnostic
-        and summary keys off the active project. Wiki pages and raw sources are
+        and summary keys off the resolved project. Wiki pages and raw sources are
         exposed via :meth:`list_resource_templates` so clients can construct
         URIs on demand instead of paging through hundreds of nodes.
         """
@@ -1219,13 +1210,13 @@ class LLMWikiMCPServer:
             },
             {
                 "uri": "tesserae://graph/summary",
-                "name": "Active project — graph summary",
-                "description": "Node and edge counts for the active project.",
+                "name": "Resolved project — graph summary",
+                "description": "Node and edge counts for the resolved project.",
                 "mimeType": "application/json",
             },
             {
                 "uri": "tesserae://lint-report",
-                "name": "Active project — lint report",
+                "name": "Resolved project — lint report",
                 "description": "Latest compile-time lint findings.",
                 "mimeType": "text/markdown",
             },
@@ -1360,7 +1351,7 @@ class LLMWikiMCPServer:
         {
             "name": "triage-open-questions",
             "description": (
-                "List every OpenQuestion node in the active project, group by topic, and "
+                "List every OpenQuestion node in the resolved project, group by topic, and "
                 "propose a priority order based on dependency and recency. Pure "
                 "search_nodes + node_context, no LLM needed for retrieval."
             ),
@@ -1385,7 +1376,7 @@ class LLMWikiMCPServer:
             if not slug:
                 raise ValueError("summarize-paper requires argument 'slug'")
             text = (
-                f"Summarize the paper at wiki slug `{slug}` from the active Tesserae "
+                f"Summarize the paper at wiki slug `{slug}` from the resolved Tesserae "
                 f"project. Steps:\n"
                 f"1. Call `node_context` with name=`{slug}` to load the paper node, its "
                 f"incident edges, and immediate neighbours.\n"
@@ -1404,7 +1395,7 @@ class LLMWikiMCPServer:
             if not topic:
                 raise ValueError("find-related-work requires argument 'topic'")
             text = (
-                f"Find work in the active Tesserae project related to `{topic}`. Steps:\n"
+                f"Find work in the resolved Tesserae project related to `{topic}`. Steps:\n"
                 f"1. Call `search_nodes` with query=`{topic}` limit={limit + 4} and "
                 f"narrow to kinds papers,repos,concepts.\n"
                 f"2. For the top {limit} candidates, call `node_context` to inspect "
@@ -1419,7 +1410,7 @@ class LLMWikiMCPServer:
             if not (a and b):
                 raise ValueError("compare-approaches requires arguments 'a' and 'b'")
             text = (
-                f"Compare approaches `{a}` and `{b}` using the active Tesserae project. Steps:\n"
+                f"Compare approaches `{a}` and `{b}` using the resolved Tesserae project. Steps:\n"
                 f"1. Call `node_context` for both nodes.\n"
                 f"2. Call `search_facts` with query=`{a}` and again with query=`{b}` to "
                 f"pull headline performance / contribution claims.\n"
@@ -1433,7 +1424,7 @@ class LLMWikiMCPServer:
             topic = str(args.get("topic") or "").strip()
             scoped = f" scoped to `{topic}`" if topic else " across the entire corpus"
             text = (
-                f"Run a gap analysis{scoped} against the active Tesserae project. Steps:\n"
+                f"Run a gap analysis{scoped} against the resolved Tesserae project. Steps:\n"
                 f"1. Call `search_nodes` with type=OpenQuestion"
                 + (f" and query=`{topic}`" if topic else "")
                 + ".\n"
@@ -1449,7 +1440,7 @@ class LLMWikiMCPServer:
             return self._prompt_messages("Surface gaps in the corpus.", text)
         if name == "triage-open-questions":
             text = (
-                "Triage every OpenQuestion node in the active Tesserae project. Steps:\n"
+                "Triage every OpenQuestion node in the resolved Tesserae project. Steps:\n"
                 "1. Call `search_nodes` with type=OpenQuestion limit=100.\n"
                 "2. For each, call `node_context` to see what it connects to.\n"
                 "3. Group by topic/research field.\n"
@@ -1548,9 +1539,22 @@ class LLMWikiMCPServer:
             if backend not in {"auto", "raganything", "cognee", "wiki"}:
                 raise ValueError(f"ask: unknown backend {backend!r}")
             top_k = int(args.get("top_k") or 5)
-            scope = str(args.get("scope") or "current")
-            if scope not in {"current", "all-registered", "federated"}:
+            raw_scope = args.get("scope")
+            scope = str(raw_scope) if raw_scope else None
+            if scope is not None and scope not in {"current", "all-registered", "federated"}:
                 raise ValueError(f"ask: unknown scope {scope!r}")
+            scope_aliases = _coerce_str_list(args.get("scope_aliases"))
+            # No explicit scope => SMART ROUTER, with continuity across the agent's
+            # consecutive questions (rolling per-server history). Federated fallback.
+            if scope is None and not args.get("project") and not args.get("graph_path"):
+                route = self._route_ask(question)
+                scope = route.scope
+                if route.scope == "federated" and route.aliases:
+                    scope_aliases = route.aliases
+                elif route.scope == "current" and route.aliases:
+                    args = {**args, "project": route.aliases[0]}
+            elif scope is None:
+                scope = "current"  # explicit project/graph_path => single project
             claude_config_dir = args.get("claude_config_dir")
             claude_config_dir = str(claude_config_dir).strip() if claude_config_dir else None
             with _claude_config_dir_override(claude_config_dir):
@@ -1559,12 +1563,12 @@ class LLMWikiMCPServer:
                         question=question,
                         backend=backend,
                         top_k=top_k,
-                        scope_aliases=_coerce_str_list(args.get("scope_aliases")),
+                        scope_aliases=scope_aliases,
                     )
                 if scope == "federated":
                     return self._mcp_ask_federated(
                         question=question,
-                        scope_aliases=_coerce_str_list(args.get("scope_aliases")),
+                        scope_aliases=scope_aliases,
                         semantic=bool(args.get("semantic", True)),  # opt-out: on unless disabled
                     )
                 return self._mcp_ask(args, question=question, backend=backend, top_k=top_k)
@@ -1575,11 +1579,6 @@ class LLMWikiMCPServer:
             if not path:
                 raise ValueError("register_project requires 'path'")
             return self.registry.register(str(path), name=args.get("name"))
-        if name == "activate_project":
-            project = args.get("name")
-            if not project:
-                raise ValueError("activate_project requires 'name'")
-            return self.registry.activate(str(project))
         if name == "unregister_project":
             project = args.get("name")
             if not project:
@@ -2008,7 +2007,7 @@ class LLMWikiMCPServer:
            the canonical, persisted matches.
         2. If no edges are present (pass never ran), fall back to a live
            scan of the finding body against ``.tesserae/code-graph.json``
-           for the active project root. No graph mutation happens here.
+           for the resolved project root. No graph mutation happens here.
         """
         from .memory.insight_symbol_link import (
             build_symbol_index,
@@ -2490,19 +2489,39 @@ class LLMWikiMCPServer:
             if root is None:
                 raise ValueError(f"ask: registered project {project!r} has no .tesserae layout")
             return root
-        active = self.registry.active_graph_path()
-        if active is not None:
-            root = _project_root_for_graph_path(active)
-            if root is not None:
-                return root
+        cwd_root = self.registry.resolve_project_by_cwd()
+        if cwd_root is not None and (cwd_root / ".tesserae").exists():
+            return cwd_root
         if self.default_graph_path:
             root = _project_root_for_graph_path(self.default_graph_path)
             if root is not None:
                 return root
         raise ValueError(
-            "ask: no project specified. Pass 'project' or 'graph_path', activate a project, "
-            "or start the MCP server with --graph pointing at a .tesserae layout."
+            "ask: no project specified. Pass 'project' or 'graph_path', cd into a registered "
+            "project, or start the MCP server with --graph pointing at a .tesserae layout."
         )
+
+    def _route_ask(self, question: str):
+        """Pick the scope for a bare question, with continuity across the agent's
+        consecutive calls (rolling per-server history of the last few routes).
+
+        ponytail: history is per-server-process, not per-conversation — fine for
+        the usual one-client-per-stdio-server case; it only nudges follow-up
+        detection, and the federated fallback keeps a mixed history from ever
+        producing a *wrong* (vs. merely broader) answer."""
+        from .ask_router import route_ask
+
+        history = getattr(self, "_ask_route_history", None)
+        if history is None:
+            history = self._ask_route_history = []
+        cwd_root = self.registry.resolve_project_by_cwd()
+        cwd_alias = self.registry.alias_for_root(cwd_root) if cwd_root else None
+        route = route_ask(
+            question, self.registry.all_project_names(), history=history, cwd_alias=cwd_alias
+        )
+        history.append(route)
+        del history[:-8]  # keep only the recent window
+        return route
 
     def _mcp_ask(self, args: JSONDict, *, question: str, backend: str, top_k: int) -> JSONDict:
         """Dispatch ``ask`` to raganything, cognee, or compiled-wiki search.
@@ -2724,21 +2743,17 @@ class LLMWikiMCPServer:
                     f"{resolved}. Recompile the project or unregister and re-register it."
                 )
             return self._load_graph_cached(resolved_path), _project_root_for_graph_path(resolved_path)
-        active = self.registry.active_graph_path()
-        if active is not None:
-            active_path = Path(active)
-            if not active_path.is_file():
-                raise ValueError(
-                    f"Active project's graph file is missing: {active}. "
-                    f"Recompile, activate a different project, or unregister the stale entry."
-                )
-            return self._load_graph_cached(active_path), _project_root_for_graph_path(active_path)
+        cwd_root = self.registry.resolve_project_by_cwd()
+        if cwd_root is not None:
+            cwd_graph = cwd_root / ".tesserae" / "graph.json"
+            if cwd_graph.is_file():
+                return self._load_graph_cached(cwd_graph), cwd_root
         if self.graph_store is not None:
             return _materialize_graph(self.graph_store), None
         if self.default_graph_path:
             return self._load_graph_cached(self.default_graph_path), _project_root_for_graph_path(self.default_graph_path)
         raise ValueError(
-            "No graph specified. Pass graph_path, project, activate a project, "
+            "No graph specified. Pass graph_path or project, cd into a registered project, "
             "start the MCP server with --graph, or pass --graph-store-url."
         )
 

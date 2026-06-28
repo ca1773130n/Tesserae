@@ -50,9 +50,9 @@ def test_registry_tools_are_listed():
     assert {
         "list_projects",
         "register_project",
-        "activate_project",
         "unregister_project",
     }.issubset(names)
+    assert "activate_project" not in names  # active-project concept removed
 
 
 def test_existing_tools_advertise_optional_project_argument():
@@ -71,7 +71,7 @@ def test_existing_tools_advertise_optional_project_argument():
 def test_list_projects_empty_registry(tmp_path):
     server = _server_with_registry(tmp_path)
     result = server.call_tool("list_projects", {})
-    assert result == {"active": None, "projects": []}
+    assert result == {"projects": []}
 
 
 # ---------------------------------------------------------------------------
@@ -162,22 +162,24 @@ def test_register_project_rejects_path_without_graph(tmp_path):
 # activate_project
 # ---------------------------------------------------------------------------
 
-def test_activate_project_sets_active_in_registry(tmp_path):
-    project_root = _make_project(tmp_path, "eta")
-    server = _server_with_registry(tmp_path)
-    server.call_tool("register_project", {"path": str(project_root)})
-
-    activated = server.call_tool("activate_project", {"name": "eta"})
-
-    assert activated["name"] == "eta"
-    listed = server.call_tool("list_projects", {})
-    assert listed["active"] == "eta"
-
-
-def test_activate_project_unknown_name_raises(tmp_path):
+def test_activate_project_tool_is_gone(tmp_path):
+    # active-project concept removed: the tool no longer exists.
     server = _server_with_registry(tmp_path)
     with pytest.raises(Exception):
-        server.call_tool("activate_project", {"name": "does_not_exist"})
+        server.call_tool("activate_project", {"name": "anything"})
+
+
+def test_resolve_project_by_cwd_and_all_names(tmp_path):
+    from tesserae.mcp_server import ProjectRegistry
+
+    reg = ProjectRegistry(tmp_path / "reg.json")
+    reg.register(str(_make_project(tmp_path, "alpha")))
+    reg.register(str(_make_project(tmp_path, "beta")))
+    assert reg.all_project_names() == ["alpha", "beta"]
+    # standing deep inside alpha resolves to alpha's root
+    assert reg.resolve_project_by_cwd(tmp_path / "alpha" / "src" / "deep") == (tmp_path / "alpha").resolve()
+    # outside every registered root -> None (the new "no active" state)
+    assert reg.resolve_project_by_cwd(tmp_path / "nowhere") is None
 
 
 # ---------------------------------------------------------------------------
@@ -195,18 +197,6 @@ def test_unregister_project_removes_entry(tmp_path):
     assert listed["projects"] == []
 
 
-def test_unregister_active_project_clears_active(tmp_path):
-    project_root = _make_project(tmp_path, "iota")
-    server = _server_with_registry(tmp_path)
-    server.call_tool("register_project", {"path": str(project_root)})
-    server.call_tool("activate_project", {"name": "iota"})
-
-    server.call_tool("unregister_project", {"name": "iota"})
-
-    listed = server.call_tool("list_projects", {})
-    assert listed["active"] is None
-
-
 # ---------------------------------------------------------------------------
 # Resolution priority in tool calls
 # ---------------------------------------------------------------------------
@@ -222,17 +212,6 @@ def test_tool_call_resolves_project_arg_via_registry(tmp_path):
     assert summary["edge_count"] == 1
 
 
-def test_tool_call_falls_back_to_active_project(tmp_path):
-    p_root = _make_project(tmp_path, "lambda")
-    server = _server_with_registry(tmp_path)
-    server.call_tool("register_project", {"path": str(p_root)})
-    server.call_tool("activate_project", {"name": "lambda"})
-
-    summary = server.call_tool("graph_summary", {})
-
-    assert summary["node_count"] == 2
-
-
 def test_tool_call_unknown_project_raises(tmp_path):
     server = _server_with_registry(tmp_path)
     with pytest.raises(Exception) as excinfo:
@@ -240,20 +219,17 @@ def test_tool_call_unknown_project_raises(tmp_path):
     assert "ghost" in str(excinfo.value) or "unknown" in str(excinfo.value).lower()
 
 
-def test_explicit_graph_path_takes_priority_over_active(tmp_path):
-    p_active = _make_project(tmp_path, "mu")
+def test_explicit_graph_path_takes_priority(tmp_path):
     p_other = _make_project(tmp_path, "nu")
     server = _server_with_registry(tmp_path)
-    server.call_tool("register_project", {"path": str(p_active)})
-    server.call_tool("activate_project", {"name": "mu"})
+    server.call_tool("register_project", {"path": str(_make_project(tmp_path, "mu"))})
 
     summary = server.call_tool(
         "graph_summary",
         {"graph_path": str(p_other / ".tesserae" / "graph.json")},
     )
 
-    # Both fixtures have the same shape (2/1) — but explicit-path branch must not
-    # raise even when active is set, which is what we're verifying here.
+    # explicit graph_path wins over any cwd/default resolution.
     assert summary["node_count"] == 2
 
 

@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 
 def _bootstrap_project(tmp_path: Path) -> Path:
     """Create a minimal .tesserae layout the registry will accept."""
@@ -92,7 +94,7 @@ def test_top_level_ask_resolves_project_via_wiki_name(tmp_path, monkeypatch, cap
     assert "by-name-answer" in out
 
 
-def test_top_level_ask_uses_active_project_when_no_args(tmp_path, monkeypatch, capsys):
+def test_bare_ask_routes_to_sole_registered_project(tmp_path, monkeypatch, capsys):
     from tesserae import cli
     import tesserae.mcp_server as mcp_server
     import tesserae.raganything_query as rq
@@ -101,17 +103,15 @@ def test_top_level_ask_uses_active_project_when_no_args(tmp_path, monkeypatch, c
     registry_path = tmp_path / "registry.json"
     monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
 
-    rc = cli.main(
-        ["projects", "register", str(project), "--name", "demo-active", "--activate"]
-    )
+    rc = cli.main(["projects", "register", str(project), "--name", "demo-sole"])
     assert rc == 0
     capsys.readouterr()
 
-    monkeypatch.setattr(rq, "query", lambda q, *, backend_config: "active-answer")
+    # No --project/--scope: the router sends a single-project registry to that project.
+    monkeypatch.setattr(rq, "query", lambda q, *, backend_config: "routed-answer")
     rc = cli.main(["ask", "hello?", "--backend", "raganything"])
     assert rc == 0
-    out = capsys.readouterr().out
-    assert "active-answer" in out
+    assert "routed-answer" in capsys.readouterr().out
 
 
 def test_top_level_ask_fails_helpfully_when_no_project(tmp_path, monkeypatch, capsys):
@@ -123,8 +123,8 @@ def test_top_level_ask_fails_helpfully_when_no_project(tmp_path, monkeypatch, ca
 
     rc = cli.main(["ask", "hello?"])
     assert rc == 2
-    err = capsys.readouterr().err
-    assert "active project" in err.lower() or "wiki list" in err.lower()
+    err = capsys.readouterr().err.lower()
+    assert "not inside a registered project" in err or "register" in err
 
 
 def test_top_level_ask_unknown_wiki_name(tmp_path, monkeypatch, capsys):
@@ -174,14 +174,14 @@ def test_wiki_list_command(tmp_path, monkeypatch, capsys):
     registry_path = tmp_path / "registry.json"
     monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
 
-    cli.main(["projects", "register", str(project), "--name", "demo", "--activate"])
+    cli.main(["projects", "register", str(project), "--name", "demo"])
     capsys.readouterr()
 
     rc = cli.main(["projects", "list"])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "Active: demo" in out
-    assert "* demo" in out
+    assert "demo" in out
+    assert "Active:" not in out  # no privileged project anymore
 
 
 def test_wiki_list_json(tmp_path, monkeypatch, capsys):
@@ -198,7 +198,7 @@ def test_wiki_list_json(tmp_path, monkeypatch, capsys):
     rc = cli.main(["projects", "list", "--json"])
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["active"] is None
+    assert "active" not in payload  # active-project concept removed
     assert any(p["name"] == "demo" for p in payload["projects"])
 
 
@@ -223,18 +223,11 @@ def test_wiki_unregister_command(tmp_path, monkeypatch, capsys):
     assert "No projects registered" in out
 
 
-def test_wiki_activate_command(tmp_path, monkeypatch, capsys):
+def test_projects_activate_command_is_gone(tmp_path, monkeypatch, capsys):
     from tesserae import cli
     import tesserae.mcp_server as mcp_server
 
-    project = _bootstrap_project(tmp_path)
-    registry_path = tmp_path / "registry.json"
-    monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
-
-    cli.main(["projects", "register", str(project), "--name", "demo"])
-    capsys.readouterr()
-
-    rc = cli.main(["projects", "activate", "demo"])
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "Active: demo" in out
+    monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", tmp_path / "registry.json")
+    # `projects activate` was removed -> argparse rejects the subcommand.
+    with pytest.raises(SystemExit):
+        cli.main(["projects", "activate", "demo"])
