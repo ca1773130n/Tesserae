@@ -30,7 +30,7 @@ import os
 import threading
 from pathlib import Path
 from typing import Optional, Tuple, Type
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 # Hard ceiling on a clip request body. The extension caps captured content at
 # ~200 KB client-side, but the server must never trust the client: a malicious
@@ -429,36 +429,75 @@ _PROJECTS_NAV = """
 <script>
 (function(){
   fetch('/projects.json').then(function(r){return r.json();}).then(function(ps){
+    if(!Array.isArray(ps)) return;
     var cur=(location.pathname.split('/').filter(Boolean)[0]||'');
     var host=document.querySelector('.topbar, .site-header, header, .header');
     var box=document.createElement('div');
     box.className='tesserae-projects-nav'+(host?'':' tpn-float');
-    var items='<a href="/">\\u2302 All projects</a><hr>';
+    var det=document.createElement('details');
+    var sum=document.createElement('summary');
+    sum.textContent=(cur?('Project: '+cur):'Projects')+' \\u25be';  // textContent -> no injection
+    var menu=document.createElement('div'); menu.className='tpn-menu';
+    var all=document.createElement('a'); all.href='/'; all.textContent='\\u2302 All projects'; menu.appendChild(all);
+    menu.appendChild(document.createElement('hr'));
     ps.forEach(function(p){
-      var label=String(p.alias).replace(/[<>&]/g,'');
-      var t=(p.title&&p.title!==p.alias)?(' <span style="color:#7a8699;font-weight:400">'+String(p.title).replace(/[<>&]/g,'')+'</span>'):'';
-      items+='<a href="/'+encodeURIComponent(p.alias)+'/"'+(p.alias===cur?' class="tpn-active"':'')+'>'+label+t+'</a>';
+      if(!p||typeof p.alias!=='string') return;
+      var a=document.createElement('a');
+      a.href='/'+encodeURIComponent(p.alias)+'/';
+      if(p.alias===cur) a.className='tpn-active';
+      a.textContent=p.alias;                                       // text, never HTML
+      if(p.title&&p.title!==p.alias){
+        var s=document.createElement('span');
+        s.style.cssText='color:#7a8699;font-weight:400;margin-left:6px';
+        s.textContent=String(p.title); a.appendChild(s);
+      }
+      menu.appendChild(a);
     });
-    var label=cur?('Project: '+cur):'Projects';
-    box.innerHTML='<details><summary>'+label+' \\u25be</summary><div class="tpn-menu">'+items+'</div></details>';
-    if(host){host.appendChild(box);}else{document.body.appendChild(box);}
+    det.appendChild(sum); det.appendChild(menu); box.appendChild(det);
+    (host||document.body).appendChild(box);
   }).catch(function(){});
 })();
 </script>
 """.strip()
 
 
-def build_fleet_handler(*, served_root: Path) -> Type[http.server.SimpleHTTPRequestHandler]:
-    """Serve the multi-project tree at ``served_root`` (``/<alias>/`` symlinks +
-    a landing ``index.html``), injecting the Projects switcher into every HTML
-    page. Browse-only: ``/api/ask*`` returns 404 so in-page widgets fall back to
-    static mode (per-project live ask still works via ``serve --project X``)."""
+def _contained(target: Path, base: Path) -> bool:
+    """True iff ``target`` (after resolving symlinks) stays under ``base``."""
+    try:
+        target.resolve().relative_to(base.resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def build_fleet_handler(
+    *, served_root: Path, project_sites: dict
+) -> Type[http.server.SimpleHTTPRequestHandler]:
+    """Serve a multi-project view from one server. ``served_root`` holds only the
+    landing ``index.html`` + ``projects.json``; ``project_sites`` maps each alias
+    to its REAL ``.tesserae/site`` dir. Requests are CONTAINED — a resolved path
+    that escapes its alias's site dir (e.g. a planted symlink) is rejected — so no
+    symlink tree and no traversal out of a project. The Projects switcher is
+    injected into every HTML page. Browse-only: ``/api/ask*`` -> 404."""
     root = Path(served_root).resolve()
+    sites = {alias: Path(d).resolve() for alias, d in project_sites.items()}
     nav = _PROJECTS_NAV.encode("utf-8")
 
     class _FleetHandler(http.server.SimpleHTTPRequestHandler):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, directory=str(root), **kwargs)
+        def _resolve(self, url_path: str):
+            """Map a URL path to a contained filesystem path, or None if it would
+            escape. Drops '.'/'..' segments, then enforces containment."""
+            segs = [s for s in (unquote(url_path).split("/")) if s and s not in (".", "..")]
+            if segs and segs[0] in sites:
+                base, rel = sites[segs[0]], segs[1:]
+            else:
+                base, rel = root, segs
+            target = base
+            for seg in rel:
+                target = target / seg
+            if os.path.isdir(target):
+                target = target / "index.html"
+            return target if _contained(target, base) else None
 
         def do_GET(self):  # noqa: N802 — fixed by stdlib API
             parsed = urlparse(self.path)
@@ -466,23 +505,28 @@ def build_fleet_handler(*, served_root: Path) -> Type[http.server.SimpleHTTPRequ
                 self.send_response(404)
                 self.end_headers()
                 return
-            fs_path = self.translate_path(parsed.path)
-            if os.path.isdir(fs_path):
-                fs_path = os.path.join(fs_path, "index.html")
-            if fs_path.endswith(".html") and os.path.isfile(fs_path):
-                try:
-                    body = Path(fs_path).read_bytes()
-                except OSError:
-                    return super().do_GET()
+            target = self._resolve(parsed.path)
+            if target is None:
+                self.send_response(403)
+                self.end_headers()
+                return
+            if not target.is_file():
+                self.send_response(404)
+                self.end_headers()
+                return
+            if target.suffix == ".html":
+                body = target.read_bytes()
                 marker = body.lower().rfind(b"</body>")
                 body = body[:marker] + nav + body[marker:] if marker != -1 else body + nav
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-                return
-            return super().do_GET()
+                ctype = "text/html; charset=utf-8"
+            else:
+                body = target.read_bytes()
+                ctype = self.guess_type(str(target))
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
 
         def log_message(self, format: str, *args):  # noqa: A002 — match stdlib
             if args and isinstance(args[0], str) and args[0].startswith(("\\x16", "\\x17")):

@@ -2183,24 +2183,28 @@ def _serve_fleet(args: argparse.Namespace) -> int:
         print("No buildable project sites found (run `tesserae compile` for a project first).", file=sys.stderr)
         return 2
 
-    served_root = Path.home() / ".tesserae" / "fleet-site"
-    shutil.rmtree(served_root, ignore_errors=True)
-    served_root.mkdir(parents=True, exist_ok=True)
-    for alias, site_dir in links:
-        (served_root / alias).symlink_to(site_dir, target_is_directory=True)
+    # Per-process temp root holding ONLY the landing + projects.json. Project
+    # sites are mapped by alias (no symlink tree), so the handler can enforce
+    # containment and a stray `serve` can never clobber a fixed shared dir.
+    import tempfile
+
+    served_root = Path(tempfile.mkdtemp(prefix="tesserae-fleet-"))
+    project_sites = {alias: site_dir for alias, site_dir in links}
     (served_root / "projects.json").write_text(json.dumps(nav_projects), encoding="utf-8")
     (served_root / "index.html").write_text(_fleet_landing_html(nav_projects), encoding="utf-8")
 
     url = f"http://{args.host}:{args.port}/"
     if getattr(args, "dry_run", False):
-        print(f"Fleet site ready: {served_root} at {url}")
+        print(f"Fleet site ready ({len(links)} project(s)) at {url}")
+        shutil.rmtree(served_root, ignore_errors=True)
         return 0
 
     class ReusableTCPServer(socketserver.TCPServer):
         allow_reuse_address = True
 
+    handler = build_fleet_handler(served_root=served_root, project_sites=project_sites)
     try:
-        with ReusableTCPServer((args.host, args.port), build_fleet_handler(served_root=served_root)) as httpd:
+        with ReusableTCPServer((args.host, args.port), handler) as httpd:
             print(f"Serving {len(links)} project(s) at {url}")
             for p in nav_projects:
                 print(f"  {url}{p['alias']}/  — {p['title']}")
@@ -2208,6 +2212,8 @@ def _serve_fleet(args: argparse.Namespace) -> int:
     except OSError as exc:
         print(f"Could not serve fleet site at {url}: {exc}", file=sys.stderr)
         return 2
+    finally:
+        shutil.rmtree(served_root, ignore_errors=True)  # clean the per-process temp root
     return 0
 
 
