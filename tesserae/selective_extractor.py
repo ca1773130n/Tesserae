@@ -12,6 +12,7 @@ from .research_graph import ResearchGraph
 
 class ExtractorLike(Protocol):
     def extract_file(self, path: str | Path, source_kind: str = "SourceDocument") -> ResearchGraph: ...
+    def extract_text(self, text: str, source_path: Optional[str] = None, source_kind: str = "SourceDocument") -> ResearchGraph: ...
 
 
 class SelectiveClaudeResearchExtractor:
@@ -65,10 +66,29 @@ class SelectiveClaudeResearchExtractor:
         # guidance via a pure post-filter. No guidance => byte-identical no-op.
         return apply_guidance_filter(result, self._guidance_bullets())
 
+    def extract_text(
+        self, text: str, source_path: Optional[str] = None, source_kind: str = "SourceDocument"
+    ) -> ResearchGraph:
+        """Text counterpart to :meth:`extract_file` — the form the compile/ingest
+        pipeline (``BatchIngestRunner``) actually calls. Routes by ``source_path``."""
+        path = Path(source_path) if source_path else None
+        if path is not None and self._should_use_claude(path):
+            self.claude_calls += 1
+            return self.claude.extract_text(text, source_path, source_kind)
+        result = self.deterministic.extract_text(text, source_path, source_kind)
+        return apply_guidance_filter(result, self._guidance_bullets())
+
     def _should_use_claude(self, path: Path) -> bool:
         if not self.include_patterns:
             return False
         if self.claude_limit is not None and self.claude_calls >= self.claude_limit:
             return False
         path_text = str(path)
-        return any(fnmatch(path_text, pattern) or fnmatch(path.name, pattern) for pattern in self.include_patterns)
+        name = path.name
+        # Sources reach us as ABSOLUTE paths but include patterns are usually
+        # written relative ("docs/superpowers/**/*.md"), so also try the pattern
+        # anchored anywhere in the path ("*/" + pattern) and the bare filename.
+        return any(
+            fnmatch(path_text, pat) or fnmatch(path_text, "*/" + pat) or fnmatch(name, pat)
+            for pat in self.include_patterns
+        )
