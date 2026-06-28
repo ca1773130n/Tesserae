@@ -31,7 +31,9 @@ class Route:
 
 
 _COMPARE = re.compile(
-    r"\b(compare|comparison|compared|across|versus|vs\.?|which project|best project|"
+    # Deliberately NOT bare 'vs'/'across' — they false-fire on 'vs code',
+    # 'across organizations'. Require an unambiguous cross-project phrasing.
+    r"\b(compare|comparison|compared|versus|which project|best project|"
     r"every project|all projects|each project|between projects|cross[- ]project)\b",
     re.I,
 )
@@ -72,9 +74,11 @@ def route_ask(
     q = question or ""
     mentioned = _mentioned_projects(q, names)
 
-    # 1. comparative / cross-project cue -> federated over everything.
+    # 1. comparative / cross-project cue -> federated. If specific projects are
+    #    named ("compare alpha and gamma"), federate JUST those; otherwise all.
     if _COMPARE.search(q):
-        return Route(SCOPE_FEDERATED, names, "comparative / cross-project question")
+        targets = sorted(mentioned) if len(mentioned) >= 2 else names
+        return Route(SCOPE_FEDERATED, targets, "comparative / cross-project question")
 
     # 2. follow-up with no new project named -> keep the previous route.
     if history and is_followup(q) and not mentioned:

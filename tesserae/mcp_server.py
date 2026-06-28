@@ -1145,7 +1145,7 @@ class LLMWikiMCPServer:
     _RESOURCE_TEMPLATES = (
         {
             "uriTemplate": "tesserae://graph/summary",
-            "name": "Active project — graph summary",
+            "name": "Resolved project — graph summary",
             "description": (
                 "JSON summary of the resolved Tesserae project's typed graph: "
                 "node and edge counts plus type distributions. Cheaper than calling the "
@@ -1165,7 +1165,7 @@ class LLMWikiMCPServer:
         },
         {
             "uriTemplate": "tesserae://lint-report",
-            "name": "Active project — latest lint report",
+            "name": "Resolved project — latest lint report",
             "description": (
                 "The markdown lint report from the most recent `tesserae compile`. "
                 "Capped at 64 KB."
@@ -1210,13 +1210,13 @@ class LLMWikiMCPServer:
             },
             {
                 "uri": "tesserae://graph/summary",
-                "name": "Active project — graph summary",
+                "name": "Resolved project — graph summary",
                 "description": "Node and edge counts for the resolved project.",
                 "mimeType": "application/json",
             },
             {
                 "uri": "tesserae://lint-report",
-                "name": "Active project — lint report",
+                "name": "Resolved project — lint report",
                 "description": "Latest compile-time lint findings.",
                 "mimeType": "text/markdown",
             },
@@ -2503,7 +2503,12 @@ class LLMWikiMCPServer:
 
     def _route_ask(self, question: str):
         """Pick the scope for a bare question, with continuity across the agent's
-        consecutive calls (rolling per-server history of the last few routes)."""
+        consecutive calls (rolling per-server history of the last few routes).
+
+        ponytail: history is per-server-process, not per-conversation — fine for
+        the usual one-client-per-stdio-server case; it only nudges follow-up
+        detection, and the federated fallback keeps a mixed history from ever
+        producing a *wrong* (vs. merely broader) answer."""
         from .ask_router import route_ask
 
         history = getattr(self, "_ask_route_history", None)

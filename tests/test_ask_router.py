@@ -22,6 +22,19 @@ def test_names_multiple_projects_federates_those():
     assert r.scope == "federated" and r.aliases == ["alpha", "beta"]
 
 
+def test_comparative_with_named_projects_federates_just_those():
+    # "compare alpha and gamma" must NOT drag in unmentioned beta.
+    r = route_ask("compare alpha and gamma", NAMES)
+    assert r.scope == "federated" and r.aliases == ["alpha", "gamma"]
+
+
+def test_bare_vs_does_not_misroute_a_local_question():
+    # 'vs'/'across' are no longer comparative cues -> a short query inside a
+    # project stays local instead of federating everything.
+    r = route_ask("vs setup", ["alpha", "beta"], cwd_alias="alpha")
+    assert r.scope == "current" and r.aliases == ["alpha"]
+
+
 def test_ambiguous_question_falls_back_to_federated_all():
     r = route_ask("what did I decide about caching?", NAMES)
     assert r.scope == "federated" and r.aliases == NAMES
