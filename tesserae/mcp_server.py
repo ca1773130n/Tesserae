@@ -1553,8 +1553,8 @@ class LLMWikiMCPServer:
             if scope is None and not args.get("project") and not args.get("graph_path"):
                 route = self._route_ask(question, conversation_id=args.get("conversation_id"))
                 scope = route.scope
-                if route.scope == "federated" and route.aliases:
-                    scope_aliases = route.aliases
+                if route.scope in ("federated", "all-registered") and route.aliases:
+                    scope_aliases = route.aliases  # honor an LLM-narrowed subset
                 elif route.scope == "current" and route.aliases:
                     args = {**args, "project": route.aliases[0]}
             elif scope is None:
@@ -2518,7 +2518,14 @@ class LLMWikiMCPServer:
         histories = getattr(self, "_ask_route_histories", None)
         if histories is None:
             histories = self._ask_route_histories = {}
-        history = histories.setdefault(conversation_id or "_default", [])
+        # Coerce the (client-supplied) id to a hashable str and bound the number
+        # of conversation buckets so a client spraying unique ids can't leak memory.
+        key = str(conversation_id) if conversation_id is not None else "_default"
+        history = histories.get(key)
+        if history is None:
+            if len(histories) >= 64:
+                histories.pop(next(iter(histories)))  # evict oldest-inserted bucket
+            history = histories[key] = []
         classifier = getattr(self, "_ask_classifier", None)
         if classifier is None:
             classifier = self._ask_classifier = make_llm_classifier(build_rotating_client)

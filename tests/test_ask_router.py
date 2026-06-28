@@ -125,6 +125,27 @@ def test_llm_classifier_rejects_bad_output():
     assert route_ask("vague vague vague stuff", NAMES, llm_classify=classify).scope == "federated"
 
 
+def test_llm_route_rejects_malformed_aliases_and_falls_back():
+    from tesserae.ask_router import make_llm_classifier
+
+    q = "give me a broad overview please"  # ambiguous -> reaches the LLM step
+    for bad in (1, {"alpha": True}, "alpha", None):
+        classify = make_llm_classifier(lambda b=bad: _FakeClient({"scope": "federated", "aliases": b}))
+        r = route_ask(q, NAMES, llm_classify=classify)
+        # None/0-alias federated still federates all, but never via a crash;
+        # a non-list aliases value must NOT be accepted as an llm route.
+        if bad in (1, {"alpha": True}):
+            assert r.reason != "llm router"
+
+
+def test_llm_all_registered_subset_is_preserved():
+    from tesserae.ask_router import make_llm_classifier
+
+    classify = make_llm_classifier(lambda: _FakeClient({"scope": "all-registered", "aliases": ["alpha", "gamma"]}))
+    r = route_ask("give me a broad overview please", NAMES, llm_classify=classify)
+    assert r.scope == "all-registered" and r.aliases == ["alpha", "gamma"]
+
+
 def test_is_followup():
     assert is_followup("and why?")
     assert is_followup("more")

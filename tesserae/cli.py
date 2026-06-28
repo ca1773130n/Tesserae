@@ -293,7 +293,7 @@ def _top_level_ask_handler(args) -> int:
     # goes (single project / all-registered / federated), federated as the
     # fallback so "unsure" never means the wrong project. Replaces active-project.
     if scope is None and not explicit_project:
-        from .ask_router import SCOPE_CURRENT, SCOPE_FEDERATED, make_llm_classifier, route_ask
+        from .ask_router import SCOPE_ALL, SCOPE_CURRENT, SCOPE_FEDERATED, make_llm_classifier, route_ask
         from .llm_json import build_rotating_client
 
         cwd_root = registry.resolve_project_by_cwd()
@@ -307,8 +307,8 @@ def _top_level_ask_handler(args) -> int:
         tail = (" " + ", ".join(route.aliases)) if route.aliases else ""
         print(f"(scope: {route.scope}{tail} — {route.reason})", file=sys.stderr)
         scope = route.scope
-        if route.scope == SCOPE_FEDERATED:
-            args.scope_aliases = route.aliases
+        if route.scope in (SCOPE_FEDERATED, SCOPE_ALL):
+            args.scope_aliases = route.aliases  # an LLM-narrowed subset must be honored
         elif route.scope == SCOPE_CURRENT and route.aliases:
             args.wiki = route.aliases[0]
     elif scope is None:

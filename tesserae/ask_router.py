@@ -138,7 +138,12 @@ def llm_route(question, names, history, *, client) -> Optional[Route]:
     scope = out.get("scope")
     if scope not in (SCOPE_CURRENT, SCOPE_ALL, SCOPE_FEDERATED):
         return None
-    aliases = [a for a in (out.get("aliases") or []) if a in names]
+    raw_aliases = out.get("aliases")
+    if raw_aliases is None:
+        raw_aliases = []
+    if not isinstance(raw_aliases, list):  # {"aliases": 1} / {"aliases": {...}} -> reject
+        return None
+    aliases = [a for a in raw_aliases if isinstance(a, str) and a in names]
     if scope == SCOPE_CURRENT:
         if not aliases:
             return None  # 'current' needs a concrete target; let heuristics fall back
