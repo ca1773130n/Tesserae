@@ -172,10 +172,13 @@ argparse default is still the fallback. Set a key there to change behavior:
 ## 3. Build and serve the static frontend
 
 `serve` auto-builds the site if it is missing, so a single command gets you a
-browsable Tesserae:
+browsable Tesserae. **Bare `serve` serves every registered project** under one
+server — a projects landing at `/`, each project at `/<alias>/`, and a Projects
+switcher in the header to jump between them:
 
 ```bash
-tesserae serve --port 8765
+tesserae serve --port 8765                 # all registered projects
+tesserae serve --project . --port 8765     # just this one (with the live ask widget)
 ```
 
 Open:

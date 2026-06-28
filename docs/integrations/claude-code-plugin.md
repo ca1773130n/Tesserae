@@ -38,7 +38,7 @@ You can use the MCP server alone (manual `claude_desktop_config.json` edit via `
 ```
 /plugin list           # tesserae should appear
 /mcp                   # `tesserae` MCP server should be registered
-/tesserae:status       # prints the active project's graph stats
+/tesserae:status       # prints the resolved project's graph stats
 ```
 
 ## Uninstall

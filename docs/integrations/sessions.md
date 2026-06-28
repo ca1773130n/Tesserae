@@ -77,7 +77,7 @@ CLI flags override config. `llm_enabled = "auto"` (default) runs the LLM pass wh
 
 Two MCP tools land on top of the existing search/wiki ones:
 
-* `list_sessions(since?, limit?)` — Session envelopes (id, started_at, title, finding counts) for the active project.
+* `list_sessions(since?, limit?)` — Session envelopes (id, started_at, title, finding counts) for the resolved project.
 * `find_session_findings(node_id, kinds?)` — every Session-derived finding linked to `node_id` via `discussed_in` or `references`, optionally filtered to insight / decision / question / todo / hypothesis / takeaway.
 
 From the CLI:
