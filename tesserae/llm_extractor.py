@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional, Sequence
 
@@ -101,24 +102,34 @@ def graph_from_llm_payload(payload: Mapping[str, object], source_path: Optional[
         key_to_node["source"] = source
         name_to_node[source.name] = source
 
+    dropped_edges = 0
     for raw_edge in payload.get("edges", []):
         if not isinstance(raw_edge, Mapping):
             raise GraphJSONValidationError("Every edge must be an object")
         edge_type = str(raw_edge.get("type", "")).strip()
         if edge_type not in ALLOWED_EDGE_TYPES:
-            raise GraphJSONValidationError(f"Unsupported edge type: {edge_type}")
+            # ponytail: the LLM occasionally hallucinates an edge type outside the
+            # 55-type vocab (e.g. 'used_by', the inverse of 'uses'). Skip the bad
+            # edge — one hallucination must not abort a whole multi-doc compile.
+            dropped_edges += 1
+            continue
         source_ref = str(raw_edge.get("source", "")).strip()
         target_ref = str(raw_edge.get("target", "")).strip()
         source = key_to_node.get(source_ref) or name_to_node.get(source_ref)
         target = key_to_node.get(target_ref) or name_to_node.get(target_ref)
         if source is None or target is None:
-            raise GraphJSONValidationError(f"Edge references unknown nodes: {source_ref} -> {target_ref}")
+            dropped_edges += 1  # edge points at a node the model never defined
+            continue
         metadata = raw_edge.get("metadata", {})
         if metadata is None:
             metadata = {}
         if not isinstance(metadata, dict):
             raise GraphJSONValidationError(f"Edge metadata must be an object: {source_ref} -> {target_ref}")
         builder.add_edge(source, edge_type, target, evidence=str(raw_edge.get("evidence") or "") or None, metadata=dict(metadata))
+
+    if dropped_edges:  # non-silent: name what we discarded
+        print(f"  extract: dropped {dropped_edges} edge(s) with unknown type/endpoints "
+              f"from {source_path or 'payload'}", file=sys.stderr)
 
     graph = builder.build()
     # Bug A: the LLM occasionally returns ``Concept``-typed nodes whose
