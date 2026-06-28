@@ -54,3 +54,21 @@ def test_selective_extract_text_routes_by_absolute_path_and_limit():
         ("det", "/Users/x/Agented/README.md"),
         ("det", "/Users/x/Agented/docs/superpowers/spec2.md"),
     ]
+
+
+def test_compile_paths_threads_extractor_into_ingest(monkeypatch):
+    from tesserae import cli
+    from tesserae.llm_extractor import ClaudeCLIResearchExtractor
+
+    captured = {}
+
+    class _FakeWiki:
+        def ingest(self, inputs, **kwargs):
+            captured.update(kwargs)
+            return {"processed_files": 1, "skipped_files": 0, "node_count": 0,
+                    "edge_count": 0, "graph_path": "/tmp/x.json"}
+
+    monkeypatch.setattr("tesserae.cli.ProjectWiki.load", lambda p: _FakeWiki())
+    args = cli._build_compile_parser().parse_args(["--extractor", "claude-cli", "doc.md"])
+    assert cli._handle_compile(args) == 0  # dispatches to the paths-ingest branch
+    assert isinstance(captured.get("doc_extractor"), ClaudeCLIResearchExtractor)

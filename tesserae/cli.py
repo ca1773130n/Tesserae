@@ -1031,6 +1031,13 @@ def _handle_ingest(args: argparse.Namespace) -> int:
             limit=args.limit,
             trends=args.trends,
             min_trend_sources=args.min_trend_sources,
+            # `compile <paths> --extractor` routes through here; honor the LLM
+            # extractor (deterministic / unset -> None, unchanged).
+            doc_extractor=(
+                _build_doc_extractor(args)
+                if getattr(args, "extractor", "deterministic") != "deterministic"
+                else None
+            ),
         )
         print(
             "Ingested project wiki: "
