@@ -6,10 +6,18 @@ import asyncio
 from typing import Any, List, Optional
 
 
+# Cognee 1.0 removed several V1 search types (notably INSIGHTS, the entity/edge
+# triplet retriever Tesserae defaulted to). Map the ones Tesserae historically
+# used to their 1.x successor so existing configs keep working. GRAPH_COMPLETION
+# answers a query over the knowledge graph — the closest fit for `ask`.
+_SEARCH_TYPE_ALIASES = {"INSIGHTS": "GRAPH_COMPLETION"}
+
+
 def _search_type(name: str):
     import cognee
 
     normalized = (name or "INSIGHTS").upper()
+    normalized = _SEARCH_TYPE_ALIASES.get(normalized, normalized)
     try:
         return getattr(cognee.SearchType, normalized)
     except AttributeError as exc:

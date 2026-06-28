@@ -759,7 +759,7 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--cognee-search-type",
         default=None,
-        help="Cognee SearchType name when --backend cognee (e.g. INSIGHTS, CHUNKS).",
+        help="Cognee SearchType name when --backend cognee (e.g. GRAPH_COMPLETION, CHUNKS, SUMMARIES; legacy INSIGHTS maps to GRAPH_COMPLETION).",
     )
     parser.add_argument(
         "--cognee-dataset",
