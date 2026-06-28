@@ -72,3 +72,21 @@ def test_compile_paths_threads_extractor_into_ingest(monkeypatch):
     args = cli._build_compile_parser().parse_args(["--extractor", "claude-cli", "doc.md"])
     assert cli._handle_compile(args) == 0  # dispatches to the paths-ingest branch
     assert isinstance(captured.get("doc_extractor"), ClaudeCLIResearchExtractor)
+
+
+def test_llm_payload_drops_bad_edges_instead_of_aborting():
+    """One hallucinated edge type / dangling endpoint must not void a doc's
+    extraction (else a single bad doc aborts a whole multi-doc compile)."""
+    from tesserae.llm_extractor import graph_from_llm_payload
+
+    payload = {
+        "nodes": [{"name": "A", "type": "Concept"}, {"name": "B", "type": "Concept"}],
+        "edges": [
+            {"type": "used_by", "source": "A", "target": "B"},   # not in the vocab -> drop
+            {"type": "uses", "source": "A", "target": "B"},      # valid -> keep
+            {"type": "is_a", "source": "A", "target": "GHOST"},  # dangling endpoint -> drop
+        ],
+    }
+    g = graph_from_llm_payload(payload, source_path="x.md", source_kind="SourceDocument")
+    kept = {e.type for e in g.edges}
+    assert "uses" in kept and "used_by" not in kept and "is_a" not in kept
