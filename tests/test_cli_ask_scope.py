@@ -292,6 +292,22 @@ def test_mcp_ask_scope_federated(tmp_path, monkeypatch):
         server.call_tool("ask", {"question": "x", "scope": "federated"})
 
 
+def test_mcp_bare_ask_routes_and_reroutes_across_consecutive_questions(tmp_path, monkeypatch):
+    import tesserae.mcp_server as mcp_server
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    registry_path = tmp_path / "registry.json"
+    monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
+    server = LLMWikiMCPServer(registry_path=registry_path)
+    server.registry.register(str(_bootstrap_project(tmp_path, "work")), name="work")
+    server.registry.register(str(_bootstrap_project(tmp_path, "research")), name="research")
+
+    assert server._route_ask("compare work and research").scope == "federated"
+    assert server._route_ask("and why?").scope == "federated"  # follow-up keeps route
+    shifted = server._route_ask("what about work?")            # topic shift -> reroute
+    assert shifted.scope == "current" and shifted.aliases == ["work"]
+
+
 def test_federated_semantic_is_opt_out_by_default():
     """Semantic federation is ON unless explicitly disabled (--no-semantic)."""
     import inspect

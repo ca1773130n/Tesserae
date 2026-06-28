@@ -662,8 +662,7 @@ class LLMWikiMCPServer:
                         "scope": {
                             "type": "string",
                             "enum": ["current", "all-registered", "federated"],
-                            "default": "current",
-                            "description": "'current' (default) targets the resolved project; 'all-registered' fans out and returns one answer per project (by_project); 'federated' merges the named projects into ONE identity-merged graph and returns a single cross-referenced answer (requires scope_aliases).",
+                            "description": "OMIT to let the smart router pick (federated fallback; reroutes across your consecutive questions). 'current' targets the cwd/--project project; 'all-registered' fans out, one answer per project (by_project); 'federated' merges projects into ONE graph for a single cross-referenced answer (defaults to ALL registered).",
                         },
                         "scope_aliases": {
                             "type": "array",
@@ -1540,9 +1539,22 @@ class LLMWikiMCPServer:
             if backend not in {"auto", "raganything", "cognee", "wiki"}:
                 raise ValueError(f"ask: unknown backend {backend!r}")
             top_k = int(args.get("top_k") or 5)
-            scope = str(args.get("scope") or "current")
-            if scope not in {"current", "all-registered", "federated"}:
+            raw_scope = args.get("scope")
+            scope = str(raw_scope) if raw_scope else None
+            if scope is not None and scope not in {"current", "all-registered", "federated"}:
                 raise ValueError(f"ask: unknown scope {scope!r}")
+            scope_aliases = _coerce_str_list(args.get("scope_aliases"))
+            # No explicit scope => SMART ROUTER, with continuity across the agent's
+            # consecutive questions (rolling per-server history). Federated fallback.
+            if scope is None and not args.get("project") and not args.get("graph_path"):
+                route = self._route_ask(question)
+                scope = route.scope
+                if route.scope == "federated" and route.aliases:
+                    scope_aliases = route.aliases
+                elif route.scope == "current" and route.aliases:
+                    args = {**args, "project": route.aliases[0]}
+            elif scope is None:
+                scope = "current"  # explicit project/graph_path => single project
             claude_config_dir = args.get("claude_config_dir")
             claude_config_dir = str(claude_config_dir).strip() if claude_config_dir else None
             with _claude_config_dir_override(claude_config_dir):
@@ -1551,12 +1563,12 @@ class LLMWikiMCPServer:
                         question=question,
                         backend=backend,
                         top_k=top_k,
-                        scope_aliases=_coerce_str_list(args.get("scope_aliases")),
+                        scope_aliases=scope_aliases,
                     )
                 if scope == "federated":
                     return self._mcp_ask_federated(
                         question=question,
-                        scope_aliases=_coerce_str_list(args.get("scope_aliases")),
+                        scope_aliases=scope_aliases,
                         semantic=bool(args.get("semantic", True)),  # opt-out: on unless disabled
                     )
                 return self._mcp_ask(args, question=question, backend=backend, top_k=top_k)
@@ -2488,6 +2500,23 @@ class LLMWikiMCPServer:
             "ask: no project specified. Pass 'project' or 'graph_path', cd into a registered "
             "project, or start the MCP server with --graph pointing at a .tesserae layout."
         )
+
+    def _route_ask(self, question: str):
+        """Pick the scope for a bare question, with continuity across the agent's
+        consecutive calls (rolling per-server history of the last few routes)."""
+        from .ask_router import route_ask
+
+        history = getattr(self, "_ask_route_history", None)
+        if history is None:
+            history = self._ask_route_history = []
+        cwd_root = self.registry.resolve_project_by_cwd()
+        cwd_alias = self.registry.alias_for_root(cwd_root) if cwd_root else None
+        route = route_ask(
+            question, self.registry.all_project_names(), history=history, cwd_alias=cwd_alias
+        )
+        history.append(route)
+        del history[:-8]  # keep only the recent window
+        return route
 
     def _mcp_ask(self, args: JSONDict, *, question: str, backend: str, top_k: int) -> JSONDict:
         """Dispatch ``ask`` to raganything, cognee, or compiled-wiki search.
