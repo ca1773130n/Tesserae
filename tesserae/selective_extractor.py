@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Optional, Protocol, Sequence
@@ -74,7 +75,14 @@ class SelectiveClaudeResearchExtractor:
         path = Path(source_path) if source_path else None
         if path is not None and self._should_use_claude(path):
             self.claude_calls += 1
-            return self.claude.extract_text(text, source_path, source_kind)
+            try:
+                return self.claude.extract_text(text, source_path, source_kind)
+            except Exception as exc:
+                # claude timed out / errored on this doc — fall back to the
+                # deterministic baseline so one slow doc can't abort the whole
+                # compile (the big design docs occasionally exceed the timeout).
+                print(f"  selective: claude failed on {source_path or 'doc'} "
+                      f"({type(exc).__name__}); used deterministic", file=sys.stderr)
         result = self.deterministic.extract_text(text, source_path, source_kind)
         return apply_guidance_filter(result, self._guidance_bullets())
 

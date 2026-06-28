@@ -90,3 +90,33 @@ def test_llm_payload_drops_bad_edges_instead_of_aborting():
     g = graph_from_llm_payload(payload, source_path="x.md", source_kind="SourceDocument")
     kept = {e.type for e in g.edges}
     assert "uses" in kept and "used_by" not in kept and "is_a" not in kept
+
+
+def test_selective_extract_text_falls_back_when_claude_fails():
+    """A claude timeout/error on one doc must fall back to deterministic, not
+    raise (else one slow doc aborts the whole compile)."""
+    from tesserae.research_graph import ResearchGraph
+    from tesserae.selective_extractor import SelectiveClaudeResearchExtractor
+
+    calls = []
+
+    class _Det:
+        def extract_text(self, t, sp=None, sk="SourceDocument"):
+            calls.append("det")
+            return ResearchGraph(nodes=[], edges=[])
+
+        def extract_file(self, p, source_kind="SourceDocument"):
+            return ResearchGraph(nodes=[], edges=[])
+
+    class _Claude:
+        def extract_text(self, t, sp=None, sk="SourceDocument"):
+            raise TimeoutError("claude slow")
+
+        def extract_file(self, p, source_kind="SourceDocument"):
+            return ResearchGraph(nodes=[], edges=[])
+
+    sel = SelectiveClaudeResearchExtractor(
+        deterministic=_Det(), claude=_Claude(), include_patterns=["*docs*"], claude_limit=5
+    )
+    sel.extract_text("x", "/a/docs/spec.md")  # routed to claude -> raises -> deterministic
+    assert calls == ["det"]  # fell back, did not propagate
