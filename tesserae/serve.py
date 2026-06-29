@@ -58,6 +58,207 @@ def configured_clip_token() -> str:
     return str(cfg.get("clip_token") or "").strip() if isinstance(cfg, dict) else ""
 
 
+# --------------------------------------------------------------------------- #
+# Shared clip / transcript-search logic.                                       #
+#                                                                              #
+# Both the single-project handler (build_ask_aware_handler) and the multi-     #
+# project fleet handler (build_fleet_handler) accept clips and run transcript  #
+# searches. The security logic — the CORS origin policy, the clip-token check, #
+# the body cap — must be IDENTICAL in both, so it lives here as module-level   #
+# helpers parameterised by a resolved project root rather than being copied.   #
+# --------------------------------------------------------------------------- #
+
+
+def _eval_clip_origin(headers) -> Tuple[bool, Optional[str]]:
+    """The clip CORS policy, as a pure function of request headers.
+
+    Returns ``(allowed, origin_to_reflect)``. Allow only browser-extension
+    origins (``chrome-extension://`` / ``moz-extension://``) and loopback
+    http(s) origins; a real website's Origin is rejected. No Origin header ->
+    a non-browser / same-origin caller, allowed with nothing to reflect.
+    """
+    origin = headers.get("Origin")
+    if not origin:
+        return (True, None)
+    if origin.startswith(("chrome-extension://", "moz-extension://")):
+        return (True, origin)
+    try:
+        parsed = urlparse(origin)
+    except ValueError:
+        return (False, None)
+    if parsed.scheme in ("http", "https") and parsed.hostname in (
+        "localhost",
+        "127.0.0.1",
+        "::1",
+    ):
+        return (True, origin)
+    return (False, None)
+
+
+def _run_clip_preflight(handler) -> None:
+    """CORS preflight (``OPTIONS``) for the clip endpoint, shared by both
+    handlers. Reflect only a validated origin so a real website's preflight
+    fails and its POST never reaches us."""
+    allowed, reflect = _eval_clip_origin(handler.headers)
+    if not allowed:
+        handler.send_response(403)
+        handler.send_header("Content-Length", "0")
+        handler.end_headers()
+        return
+    handler.send_response(204)
+    if reflect:
+        handler.send_header("Access-Control-Allow-Origin", reflect)
+        handler.send_header("Vary", "Origin")
+    handler.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+    handler.send_header("Access-Control-Allow-Headers", "Content-Type, X-Tesserae-Token")
+    if handler.headers.get("Access-Control-Request-Private-Network") == "true":
+        handler.send_header("Access-Control-Allow-Private-Network", "true")
+    handler.send_header("Content-Length", "0")
+    handler.end_headers()
+
+
+def _run_transcript_search(handler, query_string: str, *, project: Optional[str] = None) -> None:
+    """Execute a transcript search and reply, shared by both handlers. The
+    caller is responsible for the origin/alias gate BEFORE calling this.
+    ``project`` scopes the search to one project (fleet); ``None`` searches
+    across all indexed transcripts (single-project serve — unchanged)."""
+    from .memex_search import search_transcripts
+
+    qs = parse_qs(query_string)
+    query = (qs.get("q") or [""])[0]
+    try:
+        limit = int((qs.get("limit") or ["20"])[0])
+    except ValueError:
+        limit = 20
+    result = search_transcripts(
+        query,
+        limit=limit,
+        project=project,
+        source=(qs.get("source") or [None])[0],
+        hybrid=(qs.get("hybrid") or ["0"])[0] in ("1", "true"),
+    )
+    handler._send_json(200, result)
+
+
+def _run_clip(handler, *, resolve_root) -> None:
+    """The full clip flow — origin gate, token gate, body cap, parse, validate,
+    project load, durable write, background ingest, respond — shared by both
+    handlers. ``resolve_root(payload)`` returns ``(root, None)`` to proceed
+    against ``root``, or ``(None, (status, body))`` to short-circuit with an
+    error (e.g. fleet's "specify 'project'"). ``handler`` must provide
+    ``_send_json_cors(status, body, reflect)``."""
+    allowed, reflect = _eval_clip_origin(handler.headers)
+    if not allowed:
+        handler._send_json_cors(403, {"error": "origin not allowed"}, reflect)
+        return
+
+    # Shared-secret auth (opt-in). Read fresh so the token can be rotated
+    # without a restart. Constant-time compare.
+    token = configured_clip_token()
+    if token:
+        provided = handler.headers.get("X-Tesserae-Token") or ""
+        if not hmac.compare_digest(provided, token):
+            handler._send_json_cors(401, {"error": "invalid or missing clip token"}, reflect)
+            return
+
+    # Bound the body BEFORE reading it into memory.
+    try:
+        length = int(handler.headers.get("Content-Length") or "0")
+    except (TypeError, ValueError):
+        handler._send_json_cors(400, {"error": "bad Content-Length"}, reflect)
+        return
+    if length > _MAX_CLIP_BYTES:
+        handler._send_json_cors(413, {"error": "payload too large"}, reflect)
+        return
+
+    try:
+        raw = handler.rfile.read(length) if length > 0 else b""
+        payload = json.loads(raw.decode("utf-8") or "{}")
+    except Exception as exc:  # pragma: no cover — request shape
+        handler._send_json_cors(400, {"error": f"bad request: {exc}"}, reflect)
+        return
+
+    if not isinstance(payload, dict):
+        handler._send_json_cors(400, {"error": "expected JSON object"}, reflect)
+        return
+
+    url = (payload.get("url") or "").strip()
+    if not url:
+        handler._send_json_cors(400, {"error": "url required"}, reflect)
+        return
+
+    selection = payload.get("selection")
+    content = selection if (isinstance(selection, str) and selection.strip()) \
+        else payload.get("content")
+    if not isinstance(content, str) or not content.strip():
+        handler._send_json_cors(400, {"error": "content required"}, reflect)
+        return
+
+    title = payload.get("title")
+    note = payload.get("note")
+    tags = payload.get("tags")
+    tldr = payload.get("tldr")
+    tldr = True if tldr is None else bool(tldr)
+
+    # Resolve the target project (single: the baked root; fleet: by 'project'
+    # alias). A garbage value never reaches ProjectWiki.load — resolve_root
+    # only ever returns a registered root or an error.
+    root, err = resolve_root(payload)
+    if err is not None:
+        handler._send_json_cors(err[0], err[1], reflect)
+        return
+
+    from .project import ProjectWiki
+    from .clip import ingest_clip, write_clip_file
+
+    try:
+        wiki = ProjectWiki.load(root)
+    except FileNotFoundError as exc:
+        handler._send_json_cors(409, {"error": f"no project: {exc}"}, reflect)
+        return
+    except Exception as exc:
+        handler._send_json_cors(500, {"error": f"clip failed: {exc}"}, reflect)
+        return
+
+    # Persist durably FIRST (fast), then run the slow ingest in a BACKGROUND
+    # thread so the single-threaded server stays responsive.
+    try:
+        dest_path = write_clip_file(
+            wiki, content=content, url=url, title=title, note=note, tags=tags
+        )
+    except Exception as exc:
+        handler._send_json_cors(500, {"error": f"clip failed: {exc}"}, reflect)
+        return
+
+    label = url or title or dest_path.name
+
+    def _ingest_async():
+        print(f"[clip] received {label} -> {dest_path.name}; ingesting…", flush=True)
+        try:
+            report = ingest_clip(
+                wiki, content=content, url=url, title=title,
+                note=note, tags=tags, tldr=tldr,
+            )
+        except Exception as exc:  # noqa: BLE001 — log, never crash the thread
+            print(f"[clip] ERROR ingesting {label}: {exc}", flush=True)
+            return
+        if report.get("status") == "deferred":
+            print(f"[clip] deferred: {label} saved; will ingest on the next compile", flush=True)
+        else:
+            print(
+                f"[clip] done: {label} — nodes={report.get('node_count')} "
+                f"edges={report.get('edge_count')}",
+                flush=True,
+            )
+
+    threading.Thread(target=_ingest_async, name="clip-ingest", daemon=True).start()
+    handler._send_json_cors(202, {
+        "status": "accepted",
+        "path": str(dest_path),
+        "detail": "clip saved; ingesting in the background — watch the tesserae serve log",
+    }, reflect)
+
+
 def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTTPRequestHandler]:
     """Return a request handler class bound to ``project_root``.
 
@@ -74,40 +275,10 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
 
         # ----------------------------------------------------------- CORS gate
         def _clip_origin(self) -> Tuple[bool, Optional[str]]:
-            """Decide whether the request may write a clip, and what origin to
-            reflect back.
-
-            The clip endpoint mutates the knowledge graph and can trigger an
-            LLM summarization, so it must not be callable from arbitrary web
-            pages the user happens to visit (CSRF). The policy:
-
-            * No ``Origin`` header -> a non-browser caller (curl, a same-origin
-              widget, the test client). Allow it; CORS reflection is moot.
-            * A browser extension origin (``chrome-extension://`` /
-              ``moz-extension://``) -> the intended caller. Allow + reflect.
-            * An ``http(s)`` origin whose host is loopback -> a local tool /
-              dev page. Allow + reflect.
-            * Anything else (a real website) -> reject.
-
-            Returns ``(allowed, origin_to_reflect)``. ``origin_to_reflect`` is
-            ``None`` when there is nothing to echo (no Origin header).
-            """
-            origin = self.headers.get("Origin")
-            if not origin:
-                return (True, None)
-            if origin.startswith(("chrome-extension://", "moz-extension://")):
-                return (True, origin)
-            try:
-                parsed = urlparse(origin)
-            except ValueError:
-                return (False, None)
-            if parsed.scheme in ("http", "https") and parsed.hostname in (
-                "localhost",
-                "127.0.0.1",
-                "::1",
-            ):
-                return (True, origin)
-            return (False, None)
+            """The clip CORS policy (see :func:`_eval_clip_origin`). Kept as a
+            thin instance method so the gate reads naturally at the call sites
+            below; the policy itself is shared with the fleet handler."""
+            return _eval_clip_origin(self.headers)
 
         # -------------------------------------------------------------- GET
         def do_GET(self):  # noqa: N802 — fixed by stdlib API
@@ -127,21 +298,9 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
                 if not allowed:
                     self._send_json(403, {"error": "forbidden"})
                     return
-                from .memex_search import search_transcripts
-
-                qs = parse_qs(parsed.query)
-                query = (qs.get("q") or [""])[0]
-                try:
-                    limit = int((qs.get("limit") or ["20"])[0])
-                except ValueError:
-                    limit = 20
-                result = search_transcripts(
-                    query,
-                    limit=limit,
-                    source=(qs.get("source") or [None])[0],
-                    hybrid=(qs.get("hybrid") or ["0"])[0] in ("1", "true"),
-                )
-                self._send_json(200, result)
+                # Single-project serve searches across all indexed transcripts
+                # (project=None) — unchanged behaviour.
+                _run_transcript_search(self, parsed.query)
                 return
             try:
                 return super().do_GET()
@@ -171,30 +330,8 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
         # ----------------------------------------------------------- OPTIONS
         def do_OPTIONS(self):  # noqa: N802 — fixed by stdlib API
             # CORS preflight for the clip endpoint (browser extension /
-            # bookmarklet posts cross-origin). Reflect only a validated origin
-            # so a real website's preflight fails and its POST is blocked by
-            # the browser before it ever reaches us.
-            allowed, reflect = self._clip_origin()
-            if not allowed:
-                self.send_response(403)
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-                return
-            self.send_response(204)
-            if reflect:
-                self.send_header("Access-Control-Allow-Origin", reflect)
-                self.send_header("Vary", "Origin")
-            self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Tesserae-Token")
-            # Private Network Access: Chrome gates requests that target a more
-            # private address space (localhost) than the initiator. A Web Store
-            # extension posting to http://localhost trips this, sending a
-            # preflight with `Access-Control-Request-Private-Network: true`. We
-            # must answer with the matching allow header or the POST is blocked.
-            if self.headers.get("Access-Control-Request-Private-Network") == "true":
-                self.send_header("Access-Control-Allow-Private-Network", "true")
-            self.send_header("Content-Length", "0")
-            self.end_headers()
+            # bookmarklet posts cross-origin). Shared with the fleet handler.
+            _run_clip_preflight(self)
 
         # -------------------------------------------------------------- POST
         def do_POST(self):  # noqa: N802 — fixed by stdlib API
@@ -250,125 +387,10 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
 
         # -------------------------------------------------------------- clip
         def _handle_clip(self):
-            # Reject cross-origin writes from arbitrary websites before doing
-            # any work (parsing, project load, LLM call). ``reflect`` is the
-            # origin to echo on every response below.
-            allowed, reflect = self._clip_origin()
-            if not allowed:
-                self._send_json_cors(403, {"error": "origin not allowed"}, reflect)
-                return
-
-            # Shared-secret auth (opt-in). When a clip token is configured (env
-            # or `tesserae config clip-token`), every clip must carry a matching
-            # X-Tesserae-Token header — so an endpoint bound to 0.0.0.0 / a public
-            # IP can't be written to by anyone who reaches the port (the origin
-            # gate alone is forgeable). No token => open, as before. Read fresh so
-            # the token can be rotated without a restart. Constant-time compare.
-            token = configured_clip_token()
-            if token:
-                provided = self.headers.get("X-Tesserae-Token") or ""
-                if not hmac.compare_digest(provided, token):
-                    self._send_json_cors(401, {"error": "invalid or missing clip token"}, reflect)
-                    return
-
-            # Bound the body BEFORE reading it into memory. The extension caps
-            # content client-side, but the server must enforce its own limit.
-            try:
-                length = int(self.headers.get("Content-Length") or "0")
-            except (TypeError, ValueError):
-                self._send_json_cors(400, {"error": "bad Content-Length"}, reflect)
-                return
-            if length > _MAX_CLIP_BYTES:
-                self._send_json_cors(413, {"error": "payload too large"}, reflect)
-                return
-
-            # Read + parse the JSON body exactly like /api/ask does.
-            try:
-                raw = self.rfile.read(length) if length > 0 else b""
-                payload = json.loads(raw.decode("utf-8") or "{}")
-            except Exception as exc:  # pragma: no cover — request shape
-                self._send_json_cors(400, {"error": f"bad request: {exc}"}, reflect)
-                return
-
-            if not isinstance(payload, dict):
-                self._send_json_cors(400, {"error": "expected JSON object"}, reflect)
-                return
-
-            url = (payload.get("url") or "").strip()
-            if not url:
-                self._send_json_cors(400, {"error": "url required"}, reflect)
-                return
-
-            # Selection wins over full content when present and non-empty.
-            selection = payload.get("selection")
-            content = selection if (isinstance(selection, str) and selection.strip()) \
-                else payload.get("content")
-            if not isinstance(content, str) or not content.strip():
-                self._send_json_cors(400, {"error": "content required"}, reflect)
-                return
-
-            title = payload.get("title")
-            note = payload.get("note")
-            tags = payload.get("tags")
-            tldr = payload.get("tldr")
-            tldr = True if tldr is None else bool(tldr)
-
-            # Import inside the handler so importing this module stays cheap
-            # (the static-file path never touches clip/ingest machinery).
-            from .project import ProjectWiki
-            from .clip import ingest_clip, write_clip_file
-
-            try:
-                wiki = ProjectWiki.load(type(self).project_root)
-            except FileNotFoundError as exc:
-                self._send_json_cors(409, {"error": f"no project: {exc}"}, reflect)
-                return
-            except Exception as exc:
-                self._send_json_cors(500, {"error": f"clip failed: {exc}"}, reflect)
-                return
-
-            # Persist the clip durably FIRST (fast — no LLM, no compile) so the
-            # response is a truthful "accepted", then run the slow ingest/compile
-            # in a BACKGROUND thread. The static server is single-threaded, so a
-            # synchronous compile would block every other request (and the
-            # extension would hang); returning immediately lets the extension
-            # show success at once. The thread prints progress to this server's
-            # stdout so the operator can watch each clip land.
-            try:
-                dest_path = write_clip_file(
-                    wiki, content=content, url=url, title=title, note=note, tags=tags
-                )
-            except Exception as exc:
-                self._send_json_cors(500, {"error": f"clip failed: {exc}"}, reflect)
-                return
-
-            label = url or title or dest_path.name
-
-            def _ingest_async():
-                print(f"[clip] received {label} -> {dest_path.name}; ingesting…", flush=True)
-                try:
-                    report = ingest_clip(
-                        wiki, content=content, url=url, title=title,
-                        note=note, tags=tags, tldr=tldr,
-                    )
-                except Exception as exc:  # noqa: BLE001 — log, never crash the thread
-                    print(f"[clip] ERROR ingesting {label}: {exc}", flush=True)
-                    return
-                if report.get("status") == "deferred":
-                    print(f"[clip] deferred: {label} saved; will ingest on the next compile", flush=True)
-                else:
-                    print(
-                        f"[clip] done: {label} — nodes={report.get('node_count')} "
-                        f"edges={report.get('edge_count')}",
-                        flush=True,
-                    )
-
-            threading.Thread(target=_ingest_async, name="clip-ingest", daemon=True).start()
-            self._send_json_cors(202, {
-                "status": "accepted",
-                "path": str(dest_path),
-                "detail": "clip saved; ingesting in the background — watch the tesserae serve log",
-            }, reflect)
+            # Single-project serve: every clip targets the one baked project
+            # root. The full clip flow (gates, write, ingest) is shared with the
+            # fleet handler via :func:`_run_clip`.
+            _run_clip(self, resolve_root=lambda _payload: (type(self).project_root, None))
 
         # ---------------------------------------------------------- helpers
         def _send_json(self, status: int, body: dict) -> None:
@@ -487,6 +509,13 @@ def build_fleet_handler(
     root = Path(served_root).resolve()
     sites = {alias: Path(d).resolve() for alias, d in project_sites.items()}
     roots = {alias: Path(r) for alias, r in (project_roots or {}).items()}
+    # memex namespaces transcripts by the project-dir BASENAME, so two registered
+    # roots that share a basename (e.g. ~/work/api and ~/side/api) are one memex
+    # namespace and can't be scoped apart — transcript search must fail closed
+    # for them rather than mix one project's session history into another's.
+    basename_counts: dict = {}
+    for _p in roots.values():
+        basename_counts[_p.name] = basename_counts.get(_p.name, 0) + 1
     nav = _PROJECTS_NAV.encode("utf-8")
 
     class _FleetHandler(http.server.SimpleHTTPRequestHandler):
@@ -521,8 +550,50 @@ def build_fleet_handler(
             self.end_headers()
             self.wfile.write(data)
 
+        def _send_json_cors(self, status: int, obj, origin: Optional[str] = None):
+            # Clip responses reflect a *validated* CORS origin (so the extension
+            # / a localhost tool can read the reply) while staying closed to
+            # arbitrary websites. Mirrors the single handler's variant.
+            data = json.dumps(obj, ensure_ascii=False, default=str).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            if origin:
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
+            self.end_headers()
+            self.wfile.write(data)
+
+        def _resolve_clip_root(self, payload):
+            """Pick the target project root for a clip. A clip comes from an
+            EXTERNAL page, so the Referer is NOT a /<alias>/ page — resolve by
+            the body's 'project' alias instead. Order: (1) a registered 'project'
+            alias; (2) the sole project if exactly one is registered; (3) else a
+            400 listing the available aliases. A garbage alias never reaches
+            ProjectWiki.load — only registered aliases map to roots."""
+            alias = payload.get("project")
+            if isinstance(alias, str) and alias in roots:
+                return roots[alias], None
+            if len(roots) == 1:
+                return next(iter(roots.values())), None
+            return None, (400, {"error": "specify 'project'", "available": sorted(roots)})
+
+        def do_OPTIONS(self):  # noqa: N802 — fixed by stdlib API
+            # CORS preflight for the clip endpoint (the extension posts
+            # cross-origin from chrome-extension://). Shared with the single
+            # handler. The fleet ask widget is same-origin and needs no preflight.
+            _run_clip_preflight(self)
+
         def do_POST(self):  # noqa: N802 — fixed by stdlib API
-            if urlparse(self.path).path != "/api/ask":
+            path = urlparse(self.path).path
+            if path == "/api/clip":
+                # Clip uses the extension/loopback CORS gate (not _cross_origin,
+                # which would reject the chrome-extension:// origin). The shared
+                # flow resolves the project from the body's 'project' alias.
+                _run_clip(self, resolve_root=self._resolve_clip_root)
+                return
+            if path != "/api/ask":
                 self._send_json(404, {"error": "not found"})
                 return
             if self._cross_origin():
@@ -593,6 +664,37 @@ def build_fleet_handler(
                     return
                 ok = self._alias_from_referer() is not None
                 self._send_json(200 if ok else 404, {"status": "ok"} if ok else {"error": "no project"})
+                return
+            if parsed.path == "/api/transcript-search":
+                # The sessions page calls this from /<alias>/ — route by the
+                # Referer alias and scope the search to that project. Same
+                # cross-origin guard as ask; unknown/missing alias -> 404.
+                if self._cross_origin():
+                    self._send_json(403, {"error": "cross-origin request rejected"})
+                    return
+                alias = self._alias_from_referer()
+                if alias is None:
+                    self._send_json(404, {"error": "no project"})
+                    return
+                # memex scopes transcripts by the session cwd BASENAME (original
+                # case, e.g. 'Tesserae'), NOT the registry alias (lowercased key,
+                # e.g. 'tesserae') — pass the project root's basename so the
+                # filter actually matches.
+                root = roots.get(alias)
+                if root is None:
+                    self._send_json(404, {"error": "no project"})
+                    return
+                if basename_counts.get(root.name, 0) > 1:
+                    # Another registered project shares this directory name, so
+                    # memex can't scope them apart — fail closed rather than leak
+                    # one project's transcripts into the other (codex review).
+                    self._send_json(409, {"error": (
+                        f"transcript search is ambiguous: project '{alias}' shares its "
+                        f"directory name '{root.name}' with another registered project, "
+                        f"which memex indexes under the same namespace. Rename one "
+                        f"project directory to disambiguate.")})
+                    return
+                _run_transcript_search(self, parsed.query, project=root.name)
                 return
             if parsed.path == "/api/ask":
                 self.send_response(405)
