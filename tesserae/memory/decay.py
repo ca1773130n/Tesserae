@@ -97,10 +97,15 @@ def compute_decay_score(
         now = now.replace(tzinfo=timezone.utc)
 
     meta = _coerce_metadata(node)
-    # Prefer last_accessed_at — that's the timestamp A-MEM decays from.
-    # Fall back to first_seen_at, then to "now" (i.e. brand new node).
-    anchor = _parse_ts(meta.get("last_accessed_at")) or _parse_ts(
-        meta.get("first_seen_at")
+    # Prefer last_accessed_at — that's the timestamp A-MEM decays from. Fall back
+    # to first_seen_at, then to a session node's ended_at/started_at (session
+    # nodes carry their date there, NOT in first_seen_at — without these they
+    # anchor on nothing and read as brand-new), then to "now".
+    anchor = (
+        _parse_ts(meta.get("last_accessed_at"))
+        or _parse_ts(meta.get("first_seen_at"))
+        or _parse_ts(meta.get("ended_at"))
+        or _parse_ts(meta.get("started_at"))
     )
     if anchor is None:
         age_days = 0.0

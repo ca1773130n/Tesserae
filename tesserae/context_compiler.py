@@ -71,13 +71,22 @@ def _recency_score(node: ResearchNode, now: datetime) -> float:
     timestamps for byte-idempotence, so that would hand the offending 'Review ALL
     improvements' nodes top freshness — the exact bug this guards against.)"""
     meta = getattr(node, "metadata", None) or {}
-    anchor = _parse_iso(meta.get("last_accessed_at")) or _parse_iso(meta.get("first_seen_at"))
+    # Session nodes carry their date in ended_at/started_at, NOT first_seen_at —
+    # omit those and a real session node anchors on nothing, falls through to
+    # neutral, and the blend can't tell old from recent: the exact no-op a
+    # reviewer caught against the reported nodes. Order = most-recent activity first.
+    anchor = (
+        _parse_iso(meta.get("last_accessed_at"))
+        or _parse_iso(meta.get("first_seen_at"))
+        or _parse_iso(meta.get("ended_at"))
+        or _parse_iso(meta.get("started_at"))
+    )
     if anchor is None:
         match = _LEADING_DATE.match(getattr(node, "name", "") or "")
         if match:
             anchor = _parse_iso(match.group(1))
     if anchor is None:
-        return 0.5  # undated -> neutral, NOT fresh
+        return 0.5  # genuinely undated -> neutral, NOT fresh
     age_days = max((now - anchor).total_seconds() / 86400.0, 0.0)
     return math.exp(-math.log(2) * age_days / _RECENCY_HALF_LIFE_DAYS)
 

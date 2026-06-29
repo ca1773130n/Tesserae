@@ -571,3 +571,16 @@ def test_fresh_insights_kind_filter(tmp_path: Path, three_insights):
     payload = server.call_tool("fresh_insights", {"kind": "decision"})
     assert [f["kind"] for f in payload["findings"]] == ["SessionDecision"]
     assert payload["findings"][0]["body"] == decision.name
+
+
+def test_decay_anchors_on_session_started_at():
+    """A session node carries its date in started_at (no first_seen_at). Decay must
+    use it, not treat the node as freshly minted (1.0) — the reviewer's guard."""
+    from datetime import datetime, timezone
+
+    from tesserae.memory.decay import compute_decay_score
+
+    now = datetime(2026, 6, 12, tzinfo=timezone.utc)
+    node = {"metadata": {"started_at": "2026-05-18T14:23:04Z"}}  # ~25d old, no first_seen_at
+    score = compute_decay_score(node, now)
+    assert score < 1.0  # decayed, not brand-new

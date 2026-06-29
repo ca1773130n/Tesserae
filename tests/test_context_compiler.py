@@ -473,3 +473,32 @@ def test_recency_falls_back_to_a_leading_date_in_the_name():
         return next(i for i, n in enumerate(b.ranked_nodes) if key in n)
 
     assert pos(recent, "new") < pos(recent, "old")  # name-date makes May-18 sink under June
+
+
+def test_recency_uses_session_started_at_not_just_first_seen():
+    """Real session nodes carry their date in started_at (NOT first_seen_at, NOT
+    always a leading date in the name). The blend must still demote an OLD
+    started_at node below a recent one — the no-op a reviewer caught when only
+    first_seen_at / name were anchored."""
+    from datetime import datetime, timezone
+
+    def sess(nid, name, started):
+        return ResearchNode(id=nid, name=name, type=ResearchNodeType.SESSION_INSIGHT,
+                            description=(name + ". ") * 20, metadata={"started_at": started})
+
+    seed = sess("Session:s", "work session", "2026-06-10T00:00:00Z")
+    old = sess("SessionInsight:old", "Review ALL improvements that were just made", "2026-05-18T14:23:04Z")
+    new = sess("SessionInsight:new", "the latest change", "2026-06-09T10:00:00Z")
+    edges = [
+        ResearchEdge(source="Session:s", target="SessionInsight:old", type="discusses", evidence="", metadata={}),
+        ResearchEdge(source="Session:s", target="SessionInsight:new", type="discusses", evidence="", metadata={}),
+    ]
+    g = ResearchGraph(nodes=[seed, old, new], edges=edges)
+    now = datetime(2026, 6, 12, tzinfo=timezone.utc)
+    recent = compile_context(g, query="recent improvements", seeds=["Session:s"], budget=8000,
+                             backend=_backend(), recency_now=now, recency_weight=0.4)
+
+    def pos(b, key):
+        return next(i for i, n in enumerate(b.ranked_nodes) if key in n)
+
+    assert pos(recent, "new") < pos(recent, "old")  # started_at anchors recency -> old demoted
