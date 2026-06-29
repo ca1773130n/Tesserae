@@ -33,6 +33,7 @@ COMMAND_TREE: list[tuple[str, list[tuple[str, str]]]] = [
         ("setup", "Machine-wide setup: LLM defaults + optional deps (interactive by default)"),
         ("config", "llm | show | status — LLM backend defaults + resolved view & liveness ping"),
         ("projects", "register | list | activate | unregister | mcp-config — registry"),
+        ("sources", "add | list | remove — manage compile source dirs (local & global)"),
         ("federation", "status | explain — inspect cross-project federation"),
         ("integrations", "refresh raganything|understand-anything"),
         ("extract", "Low-level: extract a typed graph from markdown paths"),

@@ -85,6 +85,22 @@ unchanged docs reuses the prior extraction.
 > flags) are deprecated aliases for `llm` / `selective-llm` (and `--llm-*`); they
 > still work but emit a deprecation note.
 
+## Managing the compile scope (`sources`)
+
+`tesserae compile` (no args) compiles the directories in the project's `sources`
+list. Manage that list — **local or global** — with the `sources` subcommands:
+
+    tesserae sources add docs                 # local: inside the project (stored project-relative)
+    tesserae sources add /data/shared-notes   # global: an absolute path outside the project
+    tesserae sources add ../sibling-project   # global: a relative path that escapes the root
+    tesserae sources list                     # shows each source tagged local/global, flags missing
+    tesserae sources remove docs
+
+A path inside the project is stored project-relative (portable); anything outside
+is stored absolute. Both are resolved at compile time, so a global source compiles
+just like a local one. (Adds dedupe by resolved location, so the absolute and
+`../`-relative forms of the same directory never double-count.)
+
 ## Related commands
 
 - `tesserae compile` (no args) re-extracts the whole tracked corpus.

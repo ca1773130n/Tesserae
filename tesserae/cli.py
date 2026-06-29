@@ -22,7 +22,7 @@ from .locking import CompileLockHeldError
 from .markdown_projection import GraphMarkdownProjector
 from .persistence import KuzuResearchGraphStore, SQLiteResearchGraphStore
 from .graphiti_adapter import GraphitiSyncUnavailableError
-from .project import CognifyOptions, ProjectWiki, SessionExtractionOptions, cognify_options_from_config, cognee_backend_config, iter_markdown_files, load_graph_file as _load_graph_file
+from .project import CognifyOptions, ProjectWiki, SessionExtractionOptions, cognify_options_from_config, cognee_backend_config, iter_markdown_files, load_graph_file as _load_graph_file, resolve_project_input
 from .project_setup import apply_setup_plan, build_setup_plan, interactive_setup_plan, refresh_configured_external_tools, render_setup_summary
 from .report import GraphReporter
 from .understand_anything_refresh import refresh_understand_anything
@@ -3493,6 +3493,110 @@ def _route_projects(rest: List[str]) -> int:
     return _resolve_handler(args._handler)(args)
 
 
+# ----- sources (compile scope: local + global) ------------------------------
+def _normalize_source(project_root: Path, raw: str):
+    """Map a user-given path to its stored form + resolved location + kind.
+
+    A path that lands INSIDE the project root is stored project-relative (a
+    *local* source — keeps config.json portable); anything outside (an absolute
+    path, or a relative one like ``../shared`` that escapes the root) is stored
+    absolute (a *global* source). ``resolve_project_input`` resolves both at
+    compile time, so either kind just works."""
+    abs_resolved = resolve_project_input(project_root, raw).resolve()
+    try:
+        return (str(abs_resolved.relative_to(project_root.resolve())), abs_resolved, False)
+    except ValueError:
+        return (str(abs_resolved), abs_resolved, True)
+
+
+def _write_sources(wiki, sources: List[str]) -> None:
+    cfg = wiki.config()
+    cfg["sources"] = sources
+    wiki.paths.config.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _handle_sources_add(args: argparse.Namespace) -> int:
+    wiki = ProjectWiki.load(args.project)
+    root = wiki.project_root
+    sources = list(wiki.config().get("sources") or [])
+    stored, abs_resolved, is_global = _normalize_source(root, args.path)
+    if not abs_resolved.exists():
+        print(f"warning: {abs_resolved} does not exist (adding anyway)", file=sys.stderr)
+    existing = {resolve_project_input(root, s).resolve() for s in sources}
+    if abs_resolved in existing:
+        print(f"already a source: {stored}")
+        return 0
+    sources.append(stored)
+    _write_sources(wiki, sources)
+    print(f"Added {'global' if is_global else 'local'} source: {stored}  ({len(sources)} total)")
+    return 0
+
+
+def _handle_sources_list(args: argparse.Namespace) -> int:
+    wiki = ProjectWiki.load(args.project)
+    root = wiki.project_root
+    sources = list(wiki.config().get("sources") or [])
+    if not sources:
+        print("No sources configured. Add one: tesserae sources add <path>")
+        return 0
+    for s in sources:
+        kind = "global" if Path(s).is_absolute() else "local"
+        exists = "" if resolve_project_input(root, s).resolve().exists() else "  (MISSING)"
+        print(f"  [{kind:6}] {s}{exists}")
+    return 0
+
+
+def _handle_sources_remove(args: argparse.Namespace) -> int:
+    wiki = ProjectWiki.load(args.project)
+    root = wiki.project_root
+    sources = list(wiki.config().get("sources") or [])
+    target = resolve_project_input(root, args.path).resolve()
+    kept = [s for s in sources if resolve_project_input(root, s).resolve() != target]
+    if len(kept) == len(sources):
+        print(f"not a source: {args.path}", file=sys.stderr)
+        return 1
+    _write_sources(wiki, kept)
+    print(f"Removed source: {args.path}  ({len(kept)} total)")
+    return 0
+
+
+def _build_sources_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae sources",
+        description="Manage the project's compile source directories (local & global).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae sources add docs                 # local (project-relative)\n"
+            "  tesserae sources add /data/shared-notes   # global (absolute)\n"
+            "  tesserae sources add ../sibling-project   # global (escapes the root)\n"
+            "  tesserae sources list\n"
+            "  tesserae sources remove docs\n"
+        ),
+    )
+    sub = parser.add_subparsers(dest="sources_command", required=True)
+
+    p_add = sub.add_parser("add", help="Add a directory/file to the compile scope (inside the project = local, outside = global).")
+    p_add.add_argument("path", help="Directory or file to compile. Inside the project → stored project-relative (local); outside → stored absolute (global).")
+    p_add.add_argument("--project", default=".", help="Project root; defaults to the current directory.")
+    p_add.set_defaults(_handler="_handle_sources_add")
+
+    p_list = sub.add_parser("list", help="List the configured compile sources (marks each local/global, flags missing).")
+    p_list.add_argument("--project", default=".", help="Project root; defaults to the current directory.")
+    p_list.set_defaults(_handler="_handle_sources_list")
+
+    p_remove = sub.add_parser("remove", help="Remove a source from the compile scope (matched by resolved location).")
+    p_remove.add_argument("path", help="The source path to remove.")
+    p_remove.add_argument("--project", default=".", help="Project root; defaults to the current directory.")
+    p_remove.set_defaults(_handler="_handle_sources_remove")
+    return parser
+
+
+def _route_sources(rest: List[str]) -> int:
+    args = _build_sources_parser().parse_args(rest)
+    return _resolve_handler(args._handler)(args)
+
+
 # ----- federation (v3 inspectability) ---------------------------------------
 def _build_federation_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -4023,6 +4127,7 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "config": _route_config,
     "setup": _route_setup,
     "projects": _route_projects,
+    "sources": _route_sources,
     "federation": _route_federation,
     "integrations": _route_integrations,
     "lab": _route_lab,
