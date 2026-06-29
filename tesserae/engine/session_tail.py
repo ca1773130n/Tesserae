@@ -356,6 +356,26 @@ class SessionTailer:
         offset = self._offsets.get(path)
         if offset is None:
             offset = self.sessions_db.get_offset(path)
+        # Cheap stat gate (fd-exhaustion fix): ``_known`` is dominated by finished,
+        # idle transcripts, and a large project history can hold tens of thousands
+        # of them. Opening the .jsonl (and, uncached, a sqlite connection) for
+        # EVERY known file EVERY tick exhausts the process fd table faster than it
+        # is reclaimed — surfacing as "Too many open files" / "unable to open
+        # database file" storms across the daemon. A single ``stat`` (no fd) lets
+        # us skip the open when there are no new bytes.
+        try:
+            size = path.stat().st_size
+        except OSError:
+            # The file vanished (deleted / rotated). Stop tracking it so ``_known``
+            # and the per-tick work stay bounded over a long-running daemon.
+            self._known.pop(path, None)
+            self._offsets.pop(path, None)
+            return
+        # Cache the offset so subsequent idle ticks never touch sqlite for this
+        # file again (the first tick may have read it from the DB above).
+        self._offsets.setdefault(path, offset)
+        if size <= offset:
+            return  # fully tailed, no new bytes — skip the open entirely
         lines, new_offset = self._read_new_complete_lines(path, offset)
         if not lines or new_offset == offset:
             return
