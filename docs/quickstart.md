@@ -174,11 +174,12 @@ argparse default is still the fallback. Set a key there to change behavior:
 `serve` auto-builds the site if it is missing, so a single command gets you a
 browsable Tesserae. **Bare `serve` serves every registered project** under one
 server — a projects landing at `/`, each project at `/<alias>/`, and a Projects
-switcher in the header to jump between them:
+switcher in the header to jump between them. The in-page **ask widget works live
+in either mode**, routed to the project of the page you're on:
 
 ```bash
 tesserae serve --port 8765                 # all registered projects
-tesserae serve --project . --port 8765     # just this one (with the live ask widget)
+tesserae serve --project . --port 8765     # just this one
 ```
 
 Open:
