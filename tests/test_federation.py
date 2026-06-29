@@ -332,3 +332,44 @@ def test_corrupt_cache_is_treated_as_miss_not_poison(tmp_path):
     assert not s2.get("semantic_cached")  # corrupt -> miss -> recompute (no crash, no poison)
     links = sorted((e.source, e.target) for e in fed.edges if e.type == "shares_concept_with")
     assert links == [("research::Concept:ppr:r", "work::Concept:ppr:w")]
+
+
+def test_load_federated_graph_memoizes_until_a_member_changes(tmp_path, monkeypatch):
+    """The assembled federated graph is memoized in-process and self-invalidates
+    the instant any member project's graph file changes (mtime/size)."""
+    import tesserae.federation as Fed
+    import tesserae.project as proj
+
+    gw = _write_graph(tmp_path / "work" / ".tesserae" / "graph.json", "w", "work")
+    gr = _write_graph(tmp_path / "research" / ".tesserae" / "graph.json", "r", "research")
+    reg = _StubRegistry([
+        {"name": "work", "graph_path": str(gw)},
+        {"name": "research", "graph_path": str(gr)},
+    ])
+    Fed._FED_GRAPH_CACHE.clear()
+
+    reads = {"n": 0}
+    orig = proj.load_graph_file
+
+    def spy(p):
+        reads["n"] += 1
+        return orig(p)
+
+    monkeypatch.setattr(proj, "load_graph_file", spy)
+
+    a = Fed.load_federated_graph(["work", "research"], reg)
+    b = Fed.load_federated_graph(["work", "research"], reg)
+    assert a is b            # cache HIT -> same object
+    assert reads["n"] == 2   # only the first call read the 2 source files
+
+    gw.write_text(gw.read_text() + "\n", encoding="utf-8")  # change size+mtime
+    c = Fed.load_federated_graph(["work", "research"], reg)
+    assert c is not a        # member changed -> rebuilt
+    assert reads["n"] == 4
+
+    Fed._FED_GRAPH_CACHE.clear()
+    reads["n"] = 0
+    monkeypatch.setenv("TESSERAE_NO_FEDERATION_CACHE", "1")
+    d = Fed.load_federated_graph(["work", "research"], reg)
+    e = Fed.load_federated_graph(["work", "research"], reg)
+    assert d is not e and reads["n"] == 4  # env override disables the memo

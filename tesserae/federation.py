@@ -16,7 +16,8 @@ Design invariants (see docs/superpowers/specs/2026-06-26-cross-project-federatio
 from __future__ import annotations
 
 import dataclasses
-from collections import defaultdict
+import os
+from collections import OrderedDict, defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -271,6 +272,32 @@ def _federation_cache_dir() -> Path:
     return Path.home() / ".tesserae" / "federation"
 
 
+# In-process memo for the assembled federated graph. Assembling the union
+# (read + parse + namespace + identity-merge, ~25% of federated-ask latency)
+# repeats for every query in a conversation against the SAME project set. We key
+# on each member's graph-file change signature (mtime+size), so the entry
+# self-invalidates the instant ANY member project recompiles — no disk, no stale
+# graph. This is a query-time projection only (never a compiled artifact), so it
+# raises no byte-idempotence concern. Bounded; a short-lived CLI process simply
+# never gets a second hit (the win is the long-lived MCP server / a burst of
+# follow-ups). Disable with TESSERAE_NO_FEDERATION_CACHE=1.
+_FED_GRAPH_CACHE: "OrderedDict[tuple, Tuple[ResearchGraph, dict]]" = OrderedDict()
+_FED_GRAPH_CACHE_MAX = 8
+
+
+def _graph_signature(path: str) -> "Optional[tuple]":
+    """A cheap (mtime_ns, size) change-signature for a graph file; None if absent."""
+    try:
+        st = os.stat(path)
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
+def _federation_cache_enabled() -> bool:
+    return os.environ.get("TESSERAE_NO_FEDERATION_CACHE", "") not in ("1", "true", "yes")
+
+
 def _semantic_cache_key(backend_name, top_k, min_cosine, max_candidates, candidates, existing) -> str:
     """Key on EVERYTHING add_semantic_links reads that changes the output, so a
     stale cache can never survive a change it should invalidate."""
@@ -472,7 +499,9 @@ def load_federated_graph(
             "to see registered projects."
         )
 
-    named: List[Tuple[str, ResearchGraph]] = []
+    # Resolve + validate each member's graph path first (cheap; needed for the
+    # cache signature) BEFORE the expensive read+parse+merge.
+    paths: List[Tuple[str, str]] = []
     for alias in wanted:
         entry = by_name[alias]
         graph_path = entry.get("graph_path")
@@ -484,11 +513,33 @@ def load_federated_graph(
                 f"project '{alias}' has no compiled graph at {graph_path!r}; "
                 "run 'tesserae compile' for it first."
             )
-        named.append((alias, load_graph_file(graph_path)))
-    return federate_graphs(
+        paths.append((alias, graph_path))
+
+    use_cache = _federation_cache_enabled()
+    key = (
+        tuple(wanted),
+        bool(semantic),
+        round(float(semantic_min_cosine), 6),
+        str(semantic_cache_dir or ""),
+        tuple((a, _graph_signature(p)) for a, p in paths),
+    )
+    if use_cache:
+        cached = _FED_GRAPH_CACHE.get(key)
+        if cached is not None:
+            _FED_GRAPH_CACHE.move_to_end(key)  # LRU touch
+            return cached
+
+    named: List[Tuple[str, ResearchGraph]] = [(alias, load_graph_file(p)) for alias, p in paths]
+    result = federate_graphs(
         named, semantic=semantic, semantic_min_cosine=semantic_min_cosine,
         semantic_cache_dir=semantic_cache_dir or _federation_cache_dir(),
     )
+    if use_cache:
+        _FED_GRAPH_CACHE[key] = result
+        _FED_GRAPH_CACHE.move_to_end(key)
+        while len(_FED_GRAPH_CACHE) > _FED_GRAPH_CACHE_MAX:
+            _FED_GRAPH_CACHE.popitem(last=False)  # evict oldest
+    return result
 
 
 def federated_recall(
