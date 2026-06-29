@@ -411,6 +411,7 @@ def _top_level_ask_scope_federated(args) -> int:
             args.question,
             synthesize=bool(getattr(args, "llm", False)),
             semantic=bool(getattr(args, "semantic", False)),
+            recency_weight=getattr(args, "recency_weight", None),
             registry=registry,
         )
     except ValueError as exc:
@@ -805,6 +806,16 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
         dest="semantic",
         action="store_false",
         help="With --scope=federated, identity merges only (no embedding-backed links).",
+    )
+    parser.add_argument(
+        "--recency-weight",
+        type=float,
+        default=None,
+        help=(
+            "Blend node recency into federated ranking [0..1] so a 'what's recent' "
+            "query doesn't magnet onto old 'review of all work' syntheses (default "
+            "0.25; pass 0 to rank by pure relevance)."
+        ),
     )
     return parser
 

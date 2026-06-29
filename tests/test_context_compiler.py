@@ -373,3 +373,103 @@ def test_empty_query_no_seeds_is_valid() -> None:
     assert bundle.body.startswith("# Context:")
     assert bundle.char_budget_used == 0
     assert bundle.citations == []
+
+
+def _dated(nid: str, name: str, date: str) -> ResearchNode:
+    return ResearchNode(
+        id=nid, name=name, type=ResearchNodeType.SESSION_INSIGHT,
+        description=(name + ". ") * 20, metadata={"first_seen_at": date},
+    )
+
+
+def test_recency_blend_promotes_recent_over_old():
+    """A recency-weighted ask surfaces a newer node above an older, equally
+    relevant one — the 'old review-of-all-work synthesis magnet' fix."""
+    from datetime import datetime, timezone
+
+    seed = _dated("Session:s", "work session", "2026-06-10T00:00:00Z")
+    old = _dated("SessionInsight:old", "2026-05-18 review ALL improvements just made", "2026-05-18T00:00:00Z")
+    new = _dated("SessionInsight:new", "2026-06-08 latest change", "2026-06-08T00:00:00Z")
+    edges = [
+        ResearchEdge(source="Session:s", target="SessionInsight:old", type="discusses", evidence="", metadata={}),
+        ResearchEdge(source="Session:s", target="SessionInsight:new", type="discusses", evidence="", metadata={}),
+    ]
+    g = ResearchGraph(nodes=[seed, old, new], edges=edges)
+    now = datetime(2026, 6, 12, tzinfo=timezone.utc)
+
+    plain = compile_context(g, query="recent improvements", seeds=["Session:s"], budget=8000, backend=_backend())
+    recent = compile_context(g, query="recent improvements", seeds=["Session:s"], budget=8000,
+                             backend=_backend(), recency_now=now, recency_weight=0.4)
+
+    def pos(bundle, key):
+        return next(i for i, n in enumerate(bundle.ranked_nodes) if key in n)
+
+    assert pos(recent, "new") < pos(recent, "old")           # recent surfaces above old
+    assert recent.ranked_nodes != plain.ranked_nodes          # ranking actually changed
+
+
+def test_recency_default_off_is_byte_identical():
+    """No recency params (or weight 0) -> ranking unchanged; compiled/export
+    artifacts stay byte-deterministic."""
+    from datetime import datetime, timezone
+
+    g = _connected_graph()
+    a = compile_context(g, query="splatting", budget=8000, backend=_backend())
+    b = compile_context(g, query="splatting", budget=8000, backend=_backend(),
+                        recency_now=datetime(2026, 6, 12, tzinfo=timezone.utc), recency_weight=0.0)
+    assert a.ranked_nodes == b.ranked_nodes and a.body == b.body
+
+
+def test_recency_undated_synthesis_is_not_max_fresh():
+    """An UNDATED synthesis node (timestamps omitted for byte-idempotence) is
+    treated as NEUTRAL, not max-fresh — else the 'Review ALL improvements' magnet
+    survives the recency blend (codex review)."""
+    from datetime import datetime, timezone
+
+    seed = _dated("Session:s", "work session", "2026-06-10T00:00:00Z")
+    synth = ResearchNode(  # no date in metadata OR name
+        id="Synthesis:pulse", name="Project Pulse — review of all work",
+        type=ResearchNodeType.SYNTHESIS, description=("project pulse. ") * 20, metadata={},
+    )
+    new = _dated("SessionInsight:new", "2026-06-08 latest change", "2026-06-08T00:00:00Z")
+    edges = [
+        ResearchEdge(source="Session:s", target="Synthesis:pulse", type="discusses", evidence="", metadata={}),
+        ResearchEdge(source="Session:s", target="SessionInsight:new", type="discusses", evidence="", metadata={}),
+    ]
+    g = ResearchGraph(nodes=[seed, synth, new], edges=edges)
+    now = datetime(2026, 6, 12, tzinfo=timezone.utc)
+    recent = compile_context(g, query="recent work", seeds=["Session:s"], budget=8000,
+                             backend=_backend(), recency_now=now, recency_weight=0.4)
+
+    def pos(b, key):
+        return next(i for i, n in enumerate(b.ranked_nodes) if key in n)
+
+    assert pos(recent, "new") < pos(recent, "pulse")  # recent dated beats neutral undated
+
+
+def test_recency_falls_back_to_a_leading_date_in_the_name():
+    """When metadata has no timestamp, a leading YYYY-MM-DD in the NAME anchors
+    recency — exactly the dated session/synthesis titles in the bug report."""
+    from datetime import datetime, timezone
+
+    seed = ResearchNode(id="Session:s", name="work session",
+                        type=ResearchNodeType.SESSION_INSIGHT, description="seed. " * 20, metadata={})
+    old = ResearchNode(  # date ONLY in the name (no metadata) — the reported case
+        id="SessionInsight:old", name="2026-05-18 — Review ALL improvements just made",
+        type=ResearchNodeType.SESSION_INSIGHT, description=("review. ") * 20, metadata={})
+    new = ResearchNode(
+        id="SessionInsight:new", name="2026-06-09 — latest change",
+        type=ResearchNodeType.SESSION_INSIGHT, description=("latest. ") * 20, metadata={})
+    edges = [
+        ResearchEdge(source="Session:s", target="SessionInsight:old", type="discusses", evidence="", metadata={}),
+        ResearchEdge(source="Session:s", target="SessionInsight:new", type="discusses", evidence="", metadata={}),
+    ]
+    g = ResearchGraph(nodes=[seed, old, new], edges=edges)
+    now = datetime(2026, 6, 12, tzinfo=timezone.utc)
+    recent = compile_context(g, query="recent improvements", seeds=["Session:s"], budget=8000,
+                             backend=_backend(), recency_now=now, recency_weight=0.4)
+
+    def pos(b, key):
+        return next(i for i, n in enumerate(b.ranked_nodes) if key in n)
+
+    assert pos(recent, "new") < pos(recent, "old")  # name-date makes May-18 sink under June
