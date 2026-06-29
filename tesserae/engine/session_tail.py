@@ -371,6 +371,12 @@ class SessionTailer:
             self._known.pop(path, None)
             self._offsets.pop(path, None)
             return
+        if size < offset:
+            # The file SHRANK (truncated / rotated / replaced at the same path).
+            # The cached offset is now past EOF and ``size <= offset`` would skip
+            # it forever — reset to re-read from the start. The successful read
+            # below rewrites the offset, so this self-corrects (codex review).
+            offset = 0
         # Cache the offset so subsequent idle ticks never touch sqlite for this
         # file again (the first tick may have read it from the DB above).
         self._offsets.setdefault(path, offset)

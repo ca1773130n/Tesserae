@@ -554,3 +554,19 @@ def test_deleted_file_pruned_from_known(tmp_path):
     path.unlink()  # transcript deleted out from under the tailer
     tailer.tick()
     assert path not in tailer._known  # pruned, not re-processed forever
+
+
+def test_truncated_file_is_reread_from_start(tmp_path):
+    """A transcript that SHRINKS (truncate/rotate at the same path) is re-read
+    from the start instead of skipped forever by the stat-gate (codex review)."""
+    project, path, roots, header, mk = _setup(tmp_path, "claude")
+    _write(path, header + [mk("user", "the first, deliberately long original turn", "2026-05-05T10:00:00Z")])
+    sink: list = []
+    tailer, _db = _make_tailer(project, roots, tmp_path, sink)
+    tailer.tick()
+    assert sink  # original ingested; cached offset == size
+    sink.clear()
+
+    _write(path, header + [mk("user", "new", "2026-05-06T10:00:00Z")])  # smaller file
+    tailer.tick()
+    assert sink and "new" in _text_turns(sink[0][1])  # re-read, not skipped
