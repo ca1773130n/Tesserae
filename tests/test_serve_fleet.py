@@ -428,3 +428,35 @@ def test_fleet_clip_options_preflight(tmp_path, monkeypatch):
         srv.server_close()
     assert evil == 403   # foreign preflight rejected -> its POST never lands
     assert ext == 204    # extension preflight ok
+
+
+def test_fleet_transcript_search_fails_closed_on_basename_collision(tmp_path, monkeypatch):
+    """Two registered projects sharing a directory name are ONE memex namespace;
+    transcript search must 409 rather than mix their session history (codex)."""
+    from tesserae.serve import build_fleet_handler
+
+    roots = {}
+    for alias, sub in (("alpha", "a"), ("beta", "b")):
+        r = tmp_path / sub / "App"                     # same basename 'App'
+        (r / ".tesserae" / "site").mkdir(parents=True)
+        roots[alias] = r
+    sites = {a: r / ".tesserae" / "site" for a, r in roots.items()}
+    served = tmp_path / "served"
+    served.mkdir()
+
+    called = {"n": 0}
+
+    def fake_search(query, **kwargs):
+        called["n"] += 1
+        return {"available": True, "results": []}
+
+    monkeypatch.setattr("tesserae.memex_search.search_transcripts", fake_search)
+    srv = _serve(build_fleet_handler(served_root=served, project_sites=sites, project_roots=roots))
+    try:
+        port = srv.server_address[1]
+        code, body = _req(port, "/api/transcript-search?q=hi", referer=f"http://127.0.0.1:{port}/alpha/sessions.html")
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert code == 409 and "ambiguous" in body
+    assert called["n"] == 0  # never queried memex under the ambiguous namespace

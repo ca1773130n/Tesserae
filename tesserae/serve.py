@@ -509,6 +509,13 @@ def build_fleet_handler(
     root = Path(served_root).resolve()
     sites = {alias: Path(d).resolve() for alias, d in project_sites.items()}
     roots = {alias: Path(r) for alias, r in (project_roots or {}).items()}
+    # memex namespaces transcripts by the project-dir BASENAME, so two registered
+    # roots that share a basename (e.g. ~/work/api and ~/side/api) are one memex
+    # namespace and can't be scoped apart — transcript search must fail closed
+    # for them rather than mix one project's session history into another's.
+    basename_counts: dict = {}
+    for _p in roots.values():
+        basename_counts[_p.name] = basename_counts.get(_p.name, 0) + 1
     nav = _PROJECTS_NAV.encode("utf-8")
 
     class _FleetHandler(http.server.SimpleHTTPRequestHandler):
@@ -672,11 +679,22 @@ def build_fleet_handler(
                 # memex scopes transcripts by the session cwd BASENAME (original
                 # case, e.g. 'Tesserae'), NOT the registry alias (lowercased key,
                 # e.g. 'tesserae') — pass the project root's basename so the
-                # filter actually matches; fall back to all-transcripts if the
-                # root is unknown.
+                # filter actually matches.
                 root = roots.get(alias)
-                memex_project = root.name if root is not None else None
-                _run_transcript_search(self, parsed.query, project=memex_project)
+                if root is None:
+                    self._send_json(404, {"error": "no project"})
+                    return
+                if basename_counts.get(root.name, 0) > 1:
+                    # Another registered project shares this directory name, so
+                    # memex can't scope them apart — fail closed rather than leak
+                    # one project's transcripts into the other (codex review).
+                    self._send_json(409, {"error": (
+                        f"transcript search is ambiguous: project '{alias}' shares its "
+                        f"directory name '{root.name}' with another registered project, "
+                        f"which memex indexes under the same namespace. Rename one "
+                        f"project directory to disambiguate.")})
+                    return
+                _run_transcript_search(self, parsed.query, project=root.name)
                 return
             if parsed.path == "/api/ask":
                 self.send_response(405)
