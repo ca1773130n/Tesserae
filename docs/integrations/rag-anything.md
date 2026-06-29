@@ -151,6 +151,11 @@ tesserae ask "..." --backend cognee
 tesserae ask "..." --backend wiki
 ```
 
+> **Cognee 1.0 search type.** Cognee 1.0 retired the old `INSIGHTS` retriever, so
+> Tesserae defaults the cognee backend to `GRAPH_COMPLETION` (an answer
+> synthesized over the knowledge graph). For raw retrieval instead of a generated
+> answer, pass `--cognee-search-type CHUNKS` (or `SUMMARIES`).
+
 `--backend raganything` calls `tesserae.raganything_query.query` directly. A relative `working_dir` in `memory_backends.raganything` is resolved against the project root before the call.
 
 ### Top-level `ask` (uses the multi-project registry)

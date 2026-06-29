@@ -33,6 +33,41 @@ Pass `--exact` to force a full recompile of the whole corpus.
 - `--title` — title override, useful for bare URLs.
 - `--source-kind` — override the source classification.
 
+## Building the concept layer (`--extractor`)
+
+By default, extraction is **deterministic** — fast, no LLM, no API keys, and
+byte-stable — but structural: it captures sources, sections, and explicit links,
+leaving a sparse *concept* layer. To mint the richer layer (concepts, claims,
+capabilities, technical terms, evidence spans, and typed edges between them),
+run `compile` with an LLM extractor:
+
+    # every doc through the Claude CLI (no API key — uses your `claude` login)
+    tesserae compile --extractor claude-cli
+
+    # cost-aware: only matching docs through Claude, the rest deterministic
+    tesserae compile --extractor selective-claude \
+      --claude-include "docs/**/*.md" --claude-limit 20
+
+The same flags work on `tesserae extract <paths>` (standalone) and
+`tesserae compile <paths>` (ad-hoc path ingest).
+
+**Tuning:**
+
+- `--claude-include <glob>` — for `selective-claude`, which files go through
+  Claude (repeat for several; patterns match anywhere in the absolute path, e.g.
+  `"*docs/superpowers*"`).
+- `--claude-limit N` — cap how many files reach Claude (the rest stay deterministic).
+- `--claude-timeout S` — per-file timeout in seconds (default 180; **raise to
+  ~600 for large design docs** — they generate big JSON and can exceed the default).
+- `--claude-model` / `--claude-config-dir` — model and Claude CLI account.
+
+**Robust on real corpora.** One noisy or slow document never aborts the whole
+compile: an edge or node type outside the controlled vocabulary is dropped, a
+file that exceeds the timeout falls back to deterministic extraction for that
+file, and a transient invalid generation is retried (the model is
+non-deterministic, so a re-call almost always validates). The deterministic
+default and a clean `--extractor` run otherwise produce the same structural graph.
+
 ## Related commands
 
 - `tesserae compile` (no args) re-extracts the whole tracked corpus.
