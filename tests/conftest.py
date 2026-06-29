@@ -13,12 +13,15 @@ WIKI_CORPUS_ROOT = Path(__file__).parent / "fixtures" / "wiki_corpus"
 
 
 @pytest.fixture(autouse=True)
-def _no_real_llm_extraction(monkeypatch):
+def _no_real_llm_extraction(request, monkeypatch):
     """The doc extractor now defaults to 'llm', so a bare CLI `compile` in a test
     would shell out to the developer's REAL codex/claude — slow, non-deterministic,
-    token-burning. Force the no-backend path so tests get the deterministic
-    fallback by default; tests that exercise the LLM extractor override this with
-    their own fake client."""
+    token-burning. Default every test to the no-backend path (deterministic
+    fallback). `test_llm_json` exercises the client layer itself, so it opts out;
+    extractor tests that want a backend re-stub `build_default_json_client` after
+    this fixture runs."""
+    if "test_llm_json" in request.node.nodeid:
+        return
     monkeypatch.setattr("tesserae.llm_json.build_default_json_client", lambda *a, **k: None)
 
 

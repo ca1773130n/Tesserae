@@ -34,12 +34,15 @@ def test_build_doc_extractor_selects_backend(monkeypatch):
     monkeypatch.setattr(lj, "build_default_json_client", lambda **k: None)
     assert isinstance(_build_doc_extractor(p.parse_args(["--extractor", "llm"])), ResearchGraphExtractor)
 
-    # llm WITH a backend -> provider-agnostic LLMResearchExtractor
+    # llm WITH a backend -> LLMResearchExtractor wrapped in the per-doc fallback
+    # router (include=["*"] routes every doc to the LLM; a failure falls back).
     monkeypatch.setattr(lj, "build_default_json_client", lambda **k: object())
-    assert isinstance(_build_doc_extractor(p.parse_args(["--extractor", "llm"])), LLMResearchExtractor)
+    plain = _build_doc_extractor(p.parse_args(["--extractor", "llm"]))
+    assert isinstance(plain, SelectiveClaudeResearchExtractor)
+    assert isinstance(plain.claude, LLMResearchExtractor) and plain.include_patterns == ["*"]
     assert isinstance(_build_doc_extractor(p.parse_args(["--extractor", "selective-llm"])), SelectiveClaudeResearchExtractor)
     # deprecated alias still works
-    assert isinstance(_build_doc_extractor(p.parse_args(["--extractor", "claude-cli"])), LLMResearchExtractor)
+    assert isinstance(_build_doc_extractor(p.parse_args(["--extractor", "claude-cli"])), SelectiveClaudeResearchExtractor)
 
 
 def test_selective_extract_text_routes_by_absolute_path_and_limit():
@@ -77,10 +80,14 @@ def test_compile_paths_threads_extractor_into_ingest(monkeypatch):
     import tesserae.llm_json as lj
     from tesserae import cli
     from tesserae.llm_extractor import LLMResearchExtractor
+    from tesserae.selective_extractor import SelectiveClaudeResearchExtractor
 
     captured = {}
 
     class _FakeWiki:
+        def config(self):
+            return {}
+
         def ingest(self, inputs, **kwargs):
             captured.update(kwargs)
             return {"processed_files": 1, "skipped_files": 0, "node_count": 0,
@@ -90,7 +97,9 @@ def test_compile_paths_threads_extractor_into_ingest(monkeypatch):
     monkeypatch.setattr(lj, "build_default_json_client", lambda **k: object())  # a backend is available
     args = cli._build_compile_parser().parse_args(["--extractor", "llm", "doc.md"])
     assert cli._handle_compile(args) == 0  # dispatches to the paths-ingest branch
-    assert isinstance(captured.get("doc_extractor"), LLMResearchExtractor)
+    doc_ex = captured.get("doc_extractor")
+    assert isinstance(doc_ex, SelectiveClaudeResearchExtractor)  # per-doc fallback router
+    assert isinstance(doc_ex.claude, LLMResearchExtractor)
 
 
 def test_llm_payload_drops_bad_edges_instead_of_aborting():
@@ -200,3 +209,39 @@ def test_llm_research_extractor_drives_the_client():
     g = ex.extract_text("Gaussian splatting renders radiance fields.", "x.md", "SourceDocument")
     assert any(n.name == "Gaussian Splatting" for n in g.nodes)
     assert seen["schema"] == "research-graph-v1" and seen["cache_key"]  # content-keyed
+
+
+def test_llm_extractor_falls_back_per_doc_on_backend_failure(monkeypatch):
+    """A backend failure on ONE doc (complete_json -> None: auth/timeout/parse)
+    must fall back to deterministic for that doc, NOT abort the whole compile."""
+    import tesserae.llm_json as lj
+    from tesserae.cli import _build_compile_parser, _build_doc_extractor
+
+    class _FailClient:
+        def complete_json(self, **k):
+            return None  # auth expiry / timeout / unparseable
+
+    monkeypatch.setattr(lj, "build_default_json_client", lambda **k: _FailClient())
+    ex = _build_doc_extractor(_build_compile_parser().parse_args(["--extractor", "llm"]))
+    g = ex.extract_text("a document body", "/proj/doc.md", "SourceDocument")  # must NOT raise
+    assert g is not None  # fell back to the deterministic baseline
+
+
+def test_doc_extractor_honors_project_provider_and_disables_timeout(monkeypatch):
+    """_build_doc_extractor threads the PROJECT config's llm_provider and asks for
+    no timeout (extraction runs to completion)."""
+    import tesserae.llm_json as lj
+    from tesserae.cli import _build_compile_parser, _build_doc_extractor
+
+    monkeypatch.delenv("TESSERAE_LLM_PROVIDER", raising=False)
+    seen = {}
+
+    def _fake(**k):
+        seen.update(k)
+        return object()
+
+    monkeypatch.setattr(lj, "build_default_json_client", _fake)
+    _build_doc_extractor(_build_compile_parser().parse_args(["--extractor", "llm"]),
+                         cfg={"llm_provider": "codex"})
+    assert seen["provider"] == "codex"   # project config wins, not the global default
+    assert seen["timeout"] is None       # no default cutoff

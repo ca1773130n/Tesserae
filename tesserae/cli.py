@@ -1045,7 +1045,7 @@ def _handle_ingest(args: argparse.Namespace) -> int:
             # `compile <paths> --extractor` routes through here; honor the LLM
             # extractor (deterministic / unset -> None, unchanged).
             doc_extractor=(
-                _build_doc_extractor(args)
+                _build_doc_extractor(args, cfg=wiki.config())
                 if getattr(args, "extractor", "deterministic") != "deterministic"
                 else None
             ),
@@ -1252,7 +1252,7 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
             # layer). Default (deterministic) passes None so the pipeline keeps its
             # existing behaviour byte-for-byte.
             doc_extractor = (
-                _build_doc_extractor(args)
+                _build_doc_extractor(args, cfg=wiki.config())
                 if getattr(args, "extractor", "deterministic") != "deterministic"
                 else None
             )
@@ -3763,7 +3763,7 @@ def _build_extract_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _build_doc_extractor(args: argparse.Namespace):
+def _build_doc_extractor(args: argparse.Namespace, cfg: Optional[dict] = None):
     """Build the document extractor for `compile` / `extract`.
 
     Tesserae is an LLM wiki, so the concept/claim layer is the DEFAULT: 'llm'
@@ -3772,7 +3772,8 @@ def _build_doc_extractor(args: argparse.Namespace):
     explicit opt-out — the structural, key-free, byte-idempotent mode (CI). If no
     LLM backend is configured/authed we degrade to deterministic with a warning
     rather than hard-fail. ('claude-cli'/'selective-claude' are deprecated aliases
-    for 'llm'/'selective-llm'.)"""
+    for 'llm'/'selective-llm'.) ``cfg`` is the PROJECT config so a per-project
+    ``llm_provider`` is honoured, not just the machine-global default."""
     kind = getattr(args, "extractor", None) or "llm"
     aliases = {"claude-cli": "llm", "selective-claude": "selective-llm"}
     if kind in aliases:
@@ -3786,13 +3787,14 @@ def _build_doc_extractor(args: argparse.Namespace):
     # llm / selective-llm: provider-agnostic client (codex/claude/api per config).
     from .llm_json import build_default_json_client, resolve_llm_client_settings
 
-    settings = resolve_llm_client_settings()
+    settings = resolve_llm_client_settings(cfg)  # honour the PROJECT's llm_provider
     client = build_default_json_client(
         model=getattr(args, "llm_model", None) or getattr(args, "claude_model", None),
         provider=getattr(args, "llm_provider", None) or settings.get("provider"),
         claude_config_dirs=(getattr(args, "claude_config_dir", None) or settings.get("claude_config_dirs")),
         codex_home=settings.get("codex_home"),
         codex_reasoning_effort=settings.get("codex_reasoning_effort") or "medium",
+        timeout=None,  # no cutoff — a slow doc runs to completion (timeout is opt-in only)
     )
     if client is None:
         print("warning: no LLM backend available (codex/claude not authed, no "
@@ -3801,15 +3803,20 @@ def _build_doc_extractor(args: argparse.Namespace):
               "`--extractor deterministic` to silence this.", file=sys.stderr)
         return ResearchGraphExtractor()
 
+    # Wrap in the selective router so a backend failure on ONE doc (auth expiry,
+    # timeout, None/invalid generation -> GraphJSONValidationError) falls back to
+    # deterministic for THAT doc instead of aborting the whole compile. Plain
+    # 'llm' routes every doc to the LLM (include=["*"]); 'selective-llm' only the
+    # user's globs.
+    det = ResearchGraphExtractor()
     llm = LLMResearchExtractor(client)
     if kind == "selective-llm":
         return SelectiveClaudeResearchExtractor(
-            deterministic=ResearchGraphExtractor(),
-            claude=llm,
+            deterministic=det, claude=llm,
             include_patterns=getattr(args, "llm_include", None) or getattr(args, "claude_include", []),
             claude_limit=getattr(args, "llm_limit", None) or getattr(args, "claude_limit", None),
         )
-    return llm
+    return SelectiveClaudeResearchExtractor(deterministic=det, claude=llm, include_patterns=["*"])
 
 
 def _handle_extract(args: argparse.Namespace) -> int:
