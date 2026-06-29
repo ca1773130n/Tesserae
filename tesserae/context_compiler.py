@@ -27,9 +27,11 @@ must not perturb byte-idempotence).
 
 from __future__ import annotations
 
+import math
+import re
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence, Set
 
@@ -42,6 +44,42 @@ from .wiki_store import WikiPageStore
 # Modest default recency blend for INTERACTIVE ask (relevance still dominates at
 # 0.75). 0 disables. Compiled/export paths leave it off entirely for determinism.
 DEFAULT_RECENCY_WEIGHT = 0.25
+
+_RECENCY_HALF_LIFE_DAYS = 30.0
+_LEADING_DATE = re.compile(r"\s*(\d{4}-\d{2}-\d{2})")
+
+
+def _parse_iso(value: object) -> Optional[datetime]:
+    """Parse an ISO-8601 date/datetime string into an aware (UTC) datetime."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _recency_score(node: ResearchNode, now: datetime) -> float:
+    """Recency in ``[0, 1]`` for ranking. Anchor = a metadata timestamp, else a
+    leading ``YYYY-MM-DD`` in the node name (session/synthesis titles carry one),
+    else **neutral 0.5** — an UNDATED node is never treated as max-fresh. (Raw
+    ``compute_decay_score`` returns 1.0 for undated nodes; synthesis nodes omit
+    timestamps for byte-idempotence, so that would hand the offending 'Review ALL
+    improvements' nodes top freshness — the exact bug this guards against.)"""
+    meta = getattr(node, "metadata", None) or {}
+    anchor = _parse_iso(meta.get("last_accessed_at")) or _parse_iso(meta.get("first_seen_at"))
+    if anchor is None:
+        match = _LEADING_DATE.match(getattr(node, "name", "") or "")
+        if match:
+            anchor = _parse_iso(match.group(1))
+    if anchor is None:
+        return 0.5  # undated -> neutral, NOT fresh
+    age_days = max((now - anchor).total_seconds() / 86400.0, 0.0)
+    return math.exp(-math.log(2) * age_days / _RECENCY_HALF_LIFE_DAYS)
 
 __all__ = ["compile_context", "ContextBundle", "ContextCitation", "DEFAULT_RECENCY_WEIGHT"]
 
@@ -226,34 +264,37 @@ def compile_context(
         graph, seed_ids, alpha=0.15, top_k=max(1, len(graph.nodes)),
         edge_type_weights=edge_type_weights,
     )
-    ranked = [
-        (nid, score) for nid, score in full_ranked if nid in in_neighborhood
-    ][:cap]
-    if not ranked:  # PITFALL 1: disconnected seeds -> fall back to seed order.
-        ranked = [(sid, 0.0) for sid in seed_ids]
-    ranked_nodes = [nid for nid, _ in ranked]
+    in_nb = [(nid, score) for nid, score in full_ranked if nid in in_neighborhood]
 
-    # Recency-aware re-rank (OPT-IN). Pure relevance ranking magnets onto old
-    # "review of ALL recent work" synthesis nodes for "what's recent" queries —
-    # they are the strongest semantic match yet the oldest content. Blend each
-    # node's normalized PPR relevance with its decay score so newer nodes surface.
-    # Disabled by default (``recency_now`` None / weight <= 0) so compiled/export
-    # artifacts stay byte-deterministic; ``ask`` passes an explicit ``now``.
-    if recency_now is not None and recency_weight > 0 and ranked:
-        from .memory.decay import compute_decay_score
-
-        _max = max((s for _, s in ranked), default=0.0) or 1.0
+    # Recency-aware re-rank (OPT-IN). Pure relevance magnets onto old "review of
+    # ALL recent work" synthesis nodes for "what's recent" queries — strongest
+    # semantic match, oldest content. Blend each node's normalized PPR relevance
+    # with a recency score so newer nodes surface. Two things matter:
+    #  - apply it to the FULL in-neighbourhood set BEFORE the cap, so a newer node
+    #    below the top PPR window can still be pulled in (codex review);
+    #  - use ``_recency_score`` (NOT raw decay), which treats an UNDATED node as
+    #    neutral, never max-fresh — synthesis nodes deliberately omit timestamps
+    #    for byte-idempotence, so raw decay (undated -> 1.0) would hand the very
+    #    "Review ALL improvements" nodes top freshness (codex review).
+    # Disabled by default (recency_now None / weight <= 0) so the slice below is
+    # byte-identical to the old ``[:cap]`` and compiled/export artifacts stay stable.
+    if recency_now is not None and recency_weight > 0 and in_nb:
+        _max = max((s for _, s in in_nb), default=0.0) or 1.0
         _w = min(max(recency_weight, 0.0), 1.0)
 
         def _blended(item):
             nid, ppr = item
             node = node_index.get(nid)
-            decay = compute_decay_score(node, recency_now) if node is not None else 0.0
-            # Stable: ties (e.g. equal blend) keep PPR order via the secondary key.
-            return ((1.0 - _w) * (ppr / _max) + _w * decay, ppr)
+            rec = _recency_score(node, recency_now) if node is not None else 0.5
+            # ppr secondary key keeps ties in PPR order (stable).
+            return ((1.0 - _w) * (ppr / _max) + _w * rec, ppr)
 
-        ranked = sorted(ranked, key=_blended, reverse=True)
-        ranked_nodes = [nid for nid, _ in ranked]
+        in_nb = sorted(in_nb, key=_blended, reverse=True)
+
+    ranked = in_nb[:cap]
+    if not ranked:  # PITFALL 1: disconnected seeds -> fall back to seed order.
+        ranked = [(sid, 0.0) for sid in seed_ids]
+    ranked_nodes = [nid for nid, _ in ranked]
 
     # Multi-pool reservation: guarantee the most relevant distilled-memory node
     # of each pool (Runbook / Gotcha / Event) in the neighbourhood gets a budget
