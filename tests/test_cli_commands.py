@@ -378,10 +378,10 @@ def test_compile_flag_surface_is_small():
     flags = [a for a in parser._actions if a.option_strings and "-h" not in a.option_strings]
     # 9 core dests (llm_provider/claude_config_dir/codex_home + project +
     # changed_only + limit + refresh_integrations + sessions_enabled +
-    # distill_enabled) + the 5-flag LLM-extractor surface (extractor +
-    # claude_include/limit/timeout/model) that mirrors `tesserae extract` and
-    # lets `compile --extractor` build the concept layer = 14 dests max.
-    assert len({a.dest for a in flags}) <= 14, sorted({a.dest for a in flags})
+    # distill_enabled) + the provider-agnostic extractor surface: extractor +
+    # llm_model/llm_include/llm_limit (LLM is the default), with the deprecated
+    # claude_include/limit/timeout/model kept as hidden aliases = 17 dests max.
+    assert len({a.dest for a in flags}) <= 17, sorted({a.dest for a in flags})
 
 
 def test_compile_keeps_exactly_the_dieted_dests():
@@ -404,11 +404,14 @@ def test_compile_keeps_exactly_the_dieted_dests():
         "llm_provider",
         "claude_config_dir",
         "codex_home",
-        # LLM-extractor surface (mirrors `tesserae extract`): `compile
-        # --extractor claude-cli|selective-claude` builds the concept/claim
-        # layer the deterministic default omits; the claude_* flags tune that
-        # backend per-invocation (timeout/model/include globs/limit).
+        # Provider-agnostic extractor surface: `compile --extractor llm` (the
+        # DEFAULT) builds the concept/claim layer via the configured provider;
+        # --llm-model/--llm-include/--llm-limit tune it. The claude_* dests are
+        # deprecated hidden aliases (no default timeout) kept for back-compat.
         "extractor",
+        "llm_model",
+        "llm_include",
+        "llm_limit",
         "claude_include",
         "claude_limit",
         "claude_timeout",

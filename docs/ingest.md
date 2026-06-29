@@ -33,40 +33,57 @@ Pass `--exact` to force a full recompile of the whole corpus.
 - `--title` — title override, useful for bare URLs.
 - `--source-kind` — override the source classification.
 
-## Building the concept layer (`--extractor`)
+## The concept layer (`--extractor`)
 
-By default, extraction is **deterministic** — fast, no LLM, no API keys, and
-byte-stable — but structural: it captures sources, sections, and explicit links,
-leaving a sparse *concept* layer. To mint the richer layer (concepts, claims,
-capabilities, technical terms, evidence spans, and typed edges between them),
-run `compile` with an LLM extractor:
+Tesserae is an LLM wiki, so `compile` builds the **concept/claim layer by
+default** (`--extractor llm`): it reads each document through your configured LLM
+provider — **codex / claude / Anthropic API**, per `llm_provider` — and mints
+concepts, claims, capabilities, technical terms, evidence spans, and the typed
+edges between them. That's the layer that lets the graph answer *"what idea is
+this, and how does it relate"*, not just *"which file said it"*.
 
-    # every doc through the Claude CLI (no API key — uses your `claude` login)
-    tesserae compile --extractor claude-cli
+    tesserae compile                        # LLM concept layer, configured provider
+    tesserae compile --llm-provider codex   # force a provider for this run
 
-    # cost-aware: only matching docs through Claude, the rest deterministic
-    tesserae compile --extractor selective-claude \
-      --claude-include "docs/**/*.md" --claude-limit 20
+If no LLM backend is configured/authed, compile degrades to the **deterministic**
+extractor (structural only — sources, sections, explicit links) and warns. You can
+also ask for it explicitly — it's fast, key-free, and byte-stable, the CI /
+reproducible mode:
+
+    tesserae compile --extractor deterministic
+
+**Cost-aware (`selective-llm`)** — route only matching docs through the LLM, the
+rest deterministic:
+
+    tesserae compile --extractor selective-llm \
+      --llm-include "docs/**/*.md" --llm-limit 20
 
 The same flags work on `tesserae extract <paths>` (standalone) and
 `tesserae compile <paths>` (ad-hoc path ingest).
 
 **Tuning:**
 
-- `--claude-include <glob>` — for `selective-claude`, which files go through
-  Claude (repeat for several; patterns match anywhere in the absolute path, e.g.
+- `--llm-provider codex|claude|anthropic` — override the provider (default:
+  `llm_provider` in config).
+- `--llm-model` — model for the extractor (default: the provider's default).
+- `--llm-include <glob>` — for `selective-llm`, which files go through the LLM
+  (repeat for several; patterns match anywhere in the absolute path, e.g.
   `"*docs/superpowers*"`).
-- `--claude-limit N` — cap how many files reach Claude (the rest stay deterministic).
-- `--claude-timeout S` — per-file timeout in seconds (default 180; **raise to
-  ~600 for large design docs** — they generate big JSON and can exceed the default).
-- `--claude-model` / `--claude-config-dir` — model and Claude CLI account.
+- `--llm-limit N` — cap how many files reach the LLM (the rest stay deterministic).
+
+**No default timeout.** A large design doc generates a lot of JSON and can take
+minutes; extraction runs to completion rather than being silently cut off (a
+timeout is opt-in only).
 
 **Robust on real corpora.** One noisy or slow document never aborts the whole
-compile: an edge or node type outside the controlled vocabulary is dropped, a
-file that exceeds the timeout falls back to deterministic extraction for that
-file, and a transient invalid generation is retried (the model is
-non-deterministic, so a re-call almost always validates). The deterministic
-default and a clean `--extractor` run otherwise produce the same structural graph.
+compile: an LLM failure on a doc (auth, error, an unparseable generation) falls
+back to the deterministic baseline for *that* doc, an edge or node type outside the
+controlled vocabulary is dropped, and content-keyed caching means a re-compile of
+unchanged docs reuses the prior extraction.
+
+> The `claude-cli` / `selective-claude` extractor names (and the `--claude-*`
+> flags) are deprecated aliases for `llm` / `selective-llm` (and `--llm-*`); they
+> still work but emit a deprecation note.
 
 ## Related commands
 

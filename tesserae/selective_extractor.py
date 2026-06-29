@@ -61,7 +61,11 @@ class SelectiveClaudeResearchExtractor:
         file_path = Path(path)
         if self._should_use_claude(file_path):
             self.claude_calls += 1
-            return self.claude.extract_file(file_path, source_kind=source_kind)
+            try:
+                return self.claude.extract_file(file_path, source_kind=source_kind)
+            except Exception as exc:
+                print(f"  selective: claude failed on {file_path} "
+                      f"({type(exc).__name__}); used deterministic", file=sys.stderr)
         result = self.deterministic.extract_file(file_path, source_kind=source_kind)
         # The deterministic baseline can't be re-prompted, so honor structural
         # guidance via a pure post-filter. No guidance => byte-identical no-op.

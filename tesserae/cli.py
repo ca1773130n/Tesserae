@@ -17,7 +17,7 @@ from .cognee_codex import CogneeCodexPatch
 from .cognee_direct import CogneeDirectImporter
 from .harness_sessions import HarnessSession, HarnessSessionStore, discover_harness_sessions, session_matches_project
 from .ingest.orchestrator import ingest_sources
-from .llm_extractor import ClaudeCLIResearchExtractor
+from .llm_extractor import ClaudeCLIResearchExtractor, LLMResearchExtractor
 from .locking import CompileLockHeldError
 from .markdown_projection import GraphMarkdownProjector
 from .persistence import KuzuResearchGraphStore, SQLiteResearchGraphStore
@@ -832,9 +832,9 @@ def _add_llm_client_args(parser: argparse.ArgumentParser, persisted: bool = Fals
     suffix = " (persisted into config.json)" if persisted else " (this run only; overrides config.json)"
     parser.add_argument(
         "--llm-provider",
-        choices=["claude", "codex"],
+        choices=["claude", "codex", "anthropic"],
         default=None,
-        help="CLI backend for the synthesis/insights LLM client" + suffix,
+        help="Backend for the LLM client (claude/codex CLI over OAuth, or anthropic API key)" + suffix,
     )
     parser.add_argument(
         "--claude-config-dir",
@@ -1045,7 +1045,7 @@ def _handle_ingest(args: argparse.Namespace) -> int:
             # `compile <paths> --extractor` routes through here; honor the LLM
             # extractor (deterministic / unset -> None, unchanged).
             doc_extractor=(
-                _build_doc_extractor(args)
+                _build_doc_extractor(args, cfg=wiki.config())
                 if getattr(args, "extractor", "deterministic") != "deterministic"
                 else None
             ),
@@ -1252,7 +1252,7 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
             # layer). Default (deterministic) passes None so the pipeline keeps its
             # existing behaviour byte-for-byte.
             doc_extractor = (
-                _build_doc_extractor(args)
+                _build_doc_extractor(args, cfg=wiki.config())
                 if getattr(args, "extractor", "deterministic") != "deterministic"
                 else None
             )
@@ -1943,14 +1943,22 @@ def _build_compile_parser() -> argparse.ArgumentParser:
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--changed-only", action="store_true", help="Skip unchanged files using .tesserae/manifest.json")
     parser.add_argument("--limit", type=int, help="Maximum number of changed files to process")
-    # Document extractor: 'deterministic' (default, structural baseline — sparse
-    # concept layer) vs the LLM extractors that mint the concept/claim layer.
-    parser.add_argument("--extractor", choices=["deterministic", "claude-cli", "selective-claude"], default="deterministic",
-                        help="Doc extractor. 'claude-cli'/'selective-claude' build the concept/claim layer (needs the claude CLI).")
-    parser.add_argument("--claude-include", action="append", default=[], help="Glob selecting files for --extractor selective-claude; repeat for several")
-    parser.add_argument("--claude-limit", type=int, help="Max files sent to Claude under --extractor selective-claude")
-    parser.add_argument("--claude-timeout", type=float, default=180.0, help="Per-file Claude extraction timeout in seconds (raise for large docs)")
-    parser.add_argument("--claude-model", default="sonnet", help="Claude model for the LLM extractor")
+    # Document extractor. Tesserae is an LLM wiki: 'llm' is the DEFAULT — it
+    # builds the concept/claim layer via the configured provider (codex/claude/api
+    # per llm_provider). 'deterministic' is the structural, key-free, byte-stable
+    # opt-out (CI). No per-doc timeout: a slow doc runs to completion.
+    parser.add_argument("--extractor", choices=["llm", "selective-llm", "deterministic", "claude-cli", "selective-claude"], default="llm",
+                        help="Extraction backend. 'llm' (default) builds the concept/claim layer via the configured provider; 'selective-llm' routes only --llm-include globs through the LLM; 'deterministic' is structural-only / byte-stable / key-free.")
+    # NB: --llm-provider is already provided by the compile parser's LLM-client args.
+    parser.add_argument("--llm-model", default=None, help="Model for the LLM extractor (default: the provider's default).")
+    parser.add_argument("--llm-include", action="append", default=None, help="Glob selecting files for --extractor selective-llm; repeat for several.")
+    parser.add_argument("--llm-limit", type=int, default=None, help="Max files sent to the LLM under --extractor selective-llm.")
+    # Deprecated Claude-specific aliases (kept hidden so 0.12.x invocations still
+    # parse). The timeout default is gone — extraction is no longer truncated.
+    parser.add_argument("--claude-include", action="append", default=[], help=argparse.SUPPRESS)
+    parser.add_argument("--claude-limit", type=int, help=argparse.SUPPRESS)
+    parser.add_argument("--claude-timeout", type=float, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--claude-model", default=None, help=argparse.SUPPRESS)
     # NB: --claude-config-dir is already provided by the compile parser's LLM-client args.
     parser.add_argument(
         "--refresh-integrations",
@@ -3713,12 +3721,18 @@ def _build_extract_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON")
     parser.add_argument("--trends", action="store_true", help="Add corpus-level Trend nodes for concepts repeated across sources")
     parser.add_argument("--min-trend-sources", type=int, default=2, help="Minimum distinct sources required to create a Trend node")
-    parser.add_argument("--extractor", choices=["deterministic", "claude-cli", "selective-claude"], default="deterministic", help="Extractor backend to use")
-    parser.add_argument("--claude-config-dir", action="append", default=[], help="CLAUDE_CONFIG_DIR to try for Claude-backed extractors; repeat for fallbacks")
-    parser.add_argument("--claude-model", default="sonnet", help="Claude CLI model alias for Claude-backed extractors")
-    parser.add_argument("--claude-timeout", type=int, default=180, help="Claude CLI timeout in seconds")
-    parser.add_argument("--claude-include", action="append", default=[], help="Glob pattern selecting files for --extractor selective-claude; repeat for multiple subsets")
-    parser.add_argument("--claude-limit", type=int, help="Maximum number of files to send to Claude in --extractor selective-claude")
+    parser.add_argument("--extractor", choices=["llm", "selective-llm", "deterministic", "claude-cli", "selective-claude"], default="llm",
+                        help="Extraction backend. 'llm' (default) builds the concept/claim layer via the configured provider (codex/claude/api); 'selective-llm' routes only --llm-include globs through the LLM; 'deterministic' is structural-only.")
+    parser.add_argument("--llm-provider", choices=["codex", "claude", "anthropic"], default=None, help="Override the LLM provider (default: llm_provider in config).")
+    parser.add_argument("--llm-model", default=None, help="Model for the LLM extractor (default: the provider's default).")
+    parser.add_argument("--llm-include", action="append", default=None, help="Glob selecting files for --extractor selective-llm; repeat for several.")
+    parser.add_argument("--llm-limit", type=int, default=None, help="Max files sent to the LLM under --extractor selective-llm.")
+    # Deprecated Claude-specific aliases (kept hidden so 0.12.x invocations parse).
+    parser.add_argument("--claude-config-dir", action="append", default=[], help=argparse.SUPPRESS)
+    parser.add_argument("--claude-model", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--claude-timeout", type=int, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--claude-include", action="append", default=[], help=argparse.SUPPRESS)
+    parser.add_argument("--claude-limit", type=int, help=argparse.SUPPRESS)
     parser.add_argument("--canonicalize", action="store_true", help="Merge high-confidence aliases and produce review candidates for ambiguous duplicates")
     parser.add_argument("--review-output", help="Write canonicalization review queue JSON to this path")
     parser.add_argument("--review-markdown-output", help="Write a human-readable markdown review queue")
@@ -3749,30 +3763,60 @@ def _build_extract_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _build_doc_extractor(args: argparse.Namespace):
-    """Build the document extractor from --extractor/--claude-* args. Shared by
-    `extract` and `compile`. 'deterministic' -> ResearchGraphExtractor (the
-    structural baseline); 'claude-cli'/'selective-claude' -> the LLM extractor
-    that mints the concept/claim layer."""
-    kind = getattr(args, "extractor", "deterministic")
-    if kind == "claude-cli":
-        return ClaudeCLIResearchExtractor(
-            config_dirs=getattr(args, "claude_config_dir", None) or None,
-            model=getattr(args, "claude_model", None),
-            timeout=getattr(args, "claude_timeout", None),
-        )
-    if kind == "selective-claude":
+def _build_doc_extractor(args: argparse.Namespace, cfg: Optional[dict] = None):
+    """Build the document extractor for `compile` / `extract`.
+
+    Tesserae is an LLM wiki, so the concept/claim layer is the DEFAULT: 'llm'
+    (and 'selective-llm') drive the configured provider (codex / claude / api per
+    ``llm_provider``) through the shared LLMJsonClient. 'deterministic' is the
+    explicit opt-out — the structural, key-free, byte-idempotent mode (CI). If no
+    LLM backend is configured/authed we degrade to deterministic with a warning
+    rather than hard-fail. ('claude-cli'/'selective-claude' are deprecated aliases
+    for 'llm'/'selective-llm'.) ``cfg`` is the PROJECT config so a per-project
+    ``llm_provider`` is honoured, not just the machine-global default."""
+    kind = getattr(args, "extractor", None) or "llm"
+    aliases = {"claude-cli": "llm", "selective-claude": "selective-llm"}
+    if kind in aliases:
+        print(f"note: --extractor {kind} is deprecated; use --extractor {aliases[kind]} "
+              "(provider comes from llm_provider in config).", file=sys.stderr)
+        kind = aliases[kind]
+
+    if kind == "deterministic":
+        return ResearchGraphExtractor()
+
+    # llm / selective-llm: provider-agnostic client (codex/claude/api per config).
+    from .llm_json import build_default_json_client, resolve_llm_client_settings
+
+    settings = resolve_llm_client_settings(cfg)  # honour the PROJECT's llm_provider
+    client = build_default_json_client(
+        model=getattr(args, "llm_model", None) or getattr(args, "claude_model", None),
+        provider=getattr(args, "llm_provider", None) or settings.get("provider"),
+        claude_config_dirs=(getattr(args, "claude_config_dir", None) or settings.get("claude_config_dirs")),
+        codex_home=settings.get("codex_home"),
+        codex_reasoning_effort=settings.get("codex_reasoning_effort") or "medium",
+        timeout=None,  # no cutoff — a slow doc runs to completion (timeout is opt-in only)
+    )
+    if client is None:
+        print("warning: no LLM backend available (codex/claude not authed, no "
+              "ANTHROPIC_API_KEY) — building the STRUCTURAL graph only. Run "
+              "`tesserae setup` to configure a provider, or pass "
+              "`--extractor deterministic` to silence this.", file=sys.stderr)
+        return ResearchGraphExtractor()
+
+    # Wrap in the selective router so a backend failure on ONE doc (auth expiry,
+    # timeout, None/invalid generation -> GraphJSONValidationError) falls back to
+    # deterministic for THAT doc instead of aborting the whole compile. Plain
+    # 'llm' routes every doc to the LLM (include=["*"]); 'selective-llm' only the
+    # user's globs.
+    det = ResearchGraphExtractor()
+    llm = LLMResearchExtractor(client)
+    if kind == "selective-llm":
         return SelectiveClaudeResearchExtractor(
-            deterministic=ResearchGraphExtractor(),
-            claude=ClaudeCLIResearchExtractor(
-                config_dirs=getattr(args, "claude_config_dir", None) or None,
-                model=getattr(args, "claude_model", None),
-                timeout=getattr(args, "claude_timeout", None),
-            ),
-            include_patterns=getattr(args, "claude_include", []),
-            claude_limit=getattr(args, "claude_limit", None),
+            deterministic=det, claude=llm,
+            include_patterns=getattr(args, "llm_include", None) or getattr(args, "claude_include", []),
+            claude_limit=getattr(args, "llm_limit", None) or getattr(args, "claude_limit", None),
         )
-    return ResearchGraphExtractor()
+    return SelectiveClaudeResearchExtractor(deterministic=det, claude=llm, include_patterns=["*"])
 
 
 def _handle_extract(args: argparse.Namespace) -> int:

@@ -7,6 +7,7 @@ normalizes it through the same controlled ontology before anything is stored.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -285,6 +286,56 @@ class ClaudeCLIResearchExtractor:
                     last_error = exc
                     break
         raise GraphJSONValidationError(f"Claude CLI extraction failed: {last_error}")
+
+
+class LLMResearchExtractor:
+    """Provider-agnostic concept/claim extractor.
+
+    Drives the *configured* LLM backend (codex / claude / anthropic) through the
+    shared :class:`tesserae.llm_json.LLMJsonClient` — the SAME path session
+    extraction uses — instead of shelling out to one hardcoded CLI. The client
+    owns provider selection, OAuth/account rotation, content-keyed caching
+    (``cache_key``) and retries, so this extractor is a thin prompt->validate
+    shim. There is NO per-call timeout here: a slow document runs to completion
+    rather than being silently truncated into the deterministic fallback (the
+    ``--claude-timeout`` footgun is gone)."""
+
+    def __init__(self, client: object, *, guidance: str = "") -> None:
+        self.client = client
+        self.guidance = guidance
+
+    def extract_file(self, path: "str | Path", source_kind: str = "SourceDocument", guidance: Optional[str] = None) -> ResearchGraph:
+        file_path = Path(path)
+        return self.extract_text(
+            file_path.read_text(encoding="utf-8", errors="replace"),
+            str(file_path), source_kind, guidance=guidance,
+        )
+
+    def extract_text(self, text: str, source_path: Optional[str] = None, source_kind: str = "SourceDocument", guidance: Optional[str] = None) -> ResearchGraph:
+        if guidance is None:
+            guidance = self.guidance
+        if source_path_looks_like_i18n_duplicate(source_path):
+            return ResearchGraph(nodes=[], edges=[])
+        prompt = build_research_extraction_prompt(text=text, source_path=source_path, source_kind=source_kind, guidance=guidance)
+        # Content-keyed cache: identical (doc, kind, guidance) reuses the prior
+        # extraction -> cheap re-compiles + stable output, via the client cache.
+        cache_key = hashlib.sha256(
+            ("research-graph-v1\n" + (guidance or "") + "\n" + (source_kind or "") + "\n"
+             + (source_path or "") + "\n" + text).encode("utf-8")
+        ).hexdigest()
+        payload = self.client.complete_json(
+            system="You extract a typed research-intelligence graph as ONE JSON object (nodes + edges).",
+            user=prompt,
+            schema_name="research-graph-v1",
+            cache_key=cache_key,
+        )
+        if not isinstance(payload, dict):
+            raise GraphJSONValidationError(
+                f"LLM backend returned no usable JSON for {source_path or 'doc'}"
+            )
+        graph = graph_from_llm_payload(payload, source_path=source_path, source_kind=source_kind)
+        ensure_source_metadata(graph, text, source_path, source_kind)
+        return graph
 
 
 def build_research_extraction_prompt(text: str, source_path: Optional[str], source_kind: str, guidance: str = "") -> str:

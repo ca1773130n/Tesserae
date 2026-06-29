@@ -13,6 +13,19 @@ WIKI_CORPUS_ROOT = Path(__file__).parent / "fixtures" / "wiki_corpus"
 
 
 @pytest.fixture(autouse=True)
+def _no_real_llm_extraction(request, monkeypatch):
+    """The doc extractor now defaults to 'llm', so a bare CLI `compile` in a test
+    would shell out to the developer's REAL codex/claude — slow, non-deterministic,
+    token-burning. Default every test to the no-backend path (deterministic
+    fallback). `test_llm_json` exercises the client layer itself, so it opts out;
+    extractor tests that want a backend re-stub `build_default_json_client` after
+    this fixture runs."""
+    if any(m in request.node.nodeid for m in ("test_llm_json", "test_llm_provider_config")):
+        return  # these exercise the client builder itself
+    monkeypatch.setattr("tesserae.llm_json.build_default_json_client", lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
 def _isolated_discovery_scan_cache(tmp_path_factory, monkeypatch):
     """Keep harness-discovery marker-scan caching out of the user's ~/.cache."""
     cache_dir = tmp_path_factory.mktemp("discovery-cache")

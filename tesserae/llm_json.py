@@ -412,7 +412,7 @@ class ClaudeCLIJsonClient:
                 if p.is_dir() and not p.name.endswith((".bak", ".old"))
             )
             self.config_dirs = discovered or [str(home / ".claude")]
-        self.timeout = int(timeout)
+        self.timeout = int(timeout) if timeout is not None else None
 
     def _run_prompt(
         self,
@@ -616,7 +616,7 @@ class CodexCLIJsonClient:
                 if p.is_dir() and not p.name.endswith((".bak", ".old"))
             )
             self.codex_homes = discovered or [str(home / ".codex")]
-        self.timeout = int(timeout)
+        self.timeout = int(timeout) if timeout is not None else None
 
     def _run_prompt(
         self,
@@ -886,12 +886,16 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     }
 
 
+_KEEP_TIMEOUT = object()  # sentinel: "use each client's own default timeout"
+
+
 def build_default_json_client(
     model: Optional[str] = None,
     provider: Optional[str] = None,
     claude_config_dirs: Optional[List[str]] = None,
     codex_home: Optional[str] = None,
     codex_reasoning_effort: Optional[str] = "medium",
+    timeout: Any = _KEEP_TIMEOUT,
 ) -> Optional[LLMJsonClient]:
     """Return the best-available JSON-completion client.
 
@@ -925,12 +929,17 @@ def build_default_json_client(
         provider or os.environ.get("TESSERAE_LLM_PROVIDER") or "claude"
     ).strip().lower()
 
+    # timeout=None (from the doc extractor) means "no cutoff — run to completion";
+    # the sentinel leaves each client on its own default (180s CLI / 30s API).
+    _tkw = {} if timeout is _KEEP_TIMEOUT else {"timeout": timeout}
+
     def _codex() -> Optional[LLMJsonClient]:
         if _codex_cli_available():
             return CodexCLIJsonClient(
                 model=model or "gpt-5.4",
                 codex_homes=[codex_home] if codex_home else None,
                 reasoning_effort=codex_reasoning_effort,
+                **_tkw,
             )
         return None
 
@@ -939,6 +948,7 @@ def build_default_json_client(
             return ClaudeCLIJsonClient(
                 model=model or "sonnet",
                 config_dirs=claude_config_dirs,
+                **_tkw,
             )
         return None
 
@@ -949,13 +959,16 @@ def build_default_json_client(
         # remains useful with zero LLM access.
         if os.environ.get("ANTHROPIC_API_KEY"):
             try:
-                return AnthropicLLMJsonClient(model=model or "claude-sonnet-4-6")
+                return AnthropicLLMJsonClient(model=model or "claude-sonnet-4-6", **_tkw)
             except RuntimeError:
                 return None
         return None
 
     if resolved_provider == "codex":
         chain = (_codex, _claude, _api_key)
+    elif resolved_provider == "anthropic":
+        # Honour an explicit anthropic choice: the SDK first, not the Claude CLI.
+        chain = (_api_key, _claude, _codex)
     else:
         chain = (_claude, _api_key, _codex)
     for builder in chain:
