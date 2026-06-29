@@ -81,6 +81,12 @@
     </div>
 
     <div class="field">
+      <label class="fl" for="project">Target project <span style="font-weight:400;opacity:.6;">(optional)</span></label>
+      <input type="text" id="project" placeholder="leave empty for single-project servers" autocomplete="off" />
+      <p class="hint">Project <em>alias</em> to clip into. Needed only when the server runs in <strong>fleet</strong> mode (<code>tesserae serve</code> with no <code>--project</code>, serving every registered project) and more than one project is registered. Sent as the <code>project</code> field of the clip body. Empty is fine for a normal single-project <code>tesserae serve</code>.</p>
+    </div>
+
+    <div class="field">
       <label class="fl" for="defaultTags">Default tags</label>
       <input type="text" id="defaultTags" placeholder="research, inbox" />
       <p class="hint">Comma-separated. Pre-filled in the popup for every clip.</p>

@@ -27,7 +27,7 @@ def _get(port, path):
     return _req(port, path)
 
 
-def _req(port, path, *, data=None, referer=None, origin=None):
+def _req(port, path, *, data=None, referer=None, origin=None, extra_headers=None):
     headers = {}
     if referer:
         headers["Referer"] = referer
@@ -35,6 +35,8 @@ def _req(port, path, *, data=None, referer=None, origin=None):
         headers["Origin"] = origin
     if data is not None:
         headers["Content-Type"] = "application/json"
+    if extra_headers:
+        headers.update(extra_headers)
     req = urllib.request.Request(
         f"http://127.0.0.1:{port}{path}", data=data, headers=headers,
         method="POST" if data is not None else "GET",
@@ -43,7 +45,8 @@ def _req(port, path, *, data=None, referer=None, origin=None):
         r = urllib.request.urlopen(req)
         return r.getcode(), r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as exc:
-        return exc.code, ""
+        # Return the error body too so callers can assert on 400/403/… payloads.
+        return exc.code, exc.read().decode("utf-8", "replace")
 
 
 def test_fleet_handler_injects_nav_and_preserves_html(tmp_path):
@@ -168,3 +171,260 @@ def test_fleet_handler_rejects_symlink_escape(tmp_path):
     assert escape_code in (403, 404) and "TOPSECRET" not in escape_body
     assert "TOPSECRET" not in dotdot_body  # '..' is stripped, never escapes
     assert ok_code == 200  # the legit page still serves
+
+
+# --------------------------------------------------------------------------- #
+# Fleet clip: route a clip (from an EXTERNAL page) to the right project.       #
+# --------------------------------------------------------------------------- #
+
+
+def _fleet_clip_env(tmp_path, monkeypatch, aliases):
+    """Build project_roots for ``aliases`` and stub the clip write/ingest path so
+    no real graph/LLM work runs. Returns (project_roots, served, seen)."""
+    import types
+
+    roots = {}
+    for alias in aliases:
+        r = tmp_path / alias
+        (r / ".tesserae" / "site").mkdir(parents=True)
+        roots[alias] = r
+    served = tmp_path / "served"
+    served.mkdir()
+
+    seen = {}
+    monkeypatch.setattr("tesserae.project.ProjectWiki.load",
+                        lambda r: types.SimpleNamespace(project_root=str(r)))
+
+    def fake_write(wiki, **kw):
+        seen["root"] = wiki.project_root
+        return tmp_path / "clip.md"
+
+    monkeypatch.setattr("tesserae.clip.write_clip_file", fake_write)
+    monkeypatch.setattr("tesserae.clip.ingest_clip", lambda *a, **k: {"status": "deferred"})
+    return roots, served, seen
+
+
+def test_fleet_clip_routes_to_payload_project(tmp_path, monkeypatch):
+    from tesserae.serve import build_fleet_handler
+
+    roots, served, seen = _fleet_clip_env(tmp_path, monkeypatch, ["alpha", "beta"])
+    sites = {a: r / ".tesserae" / "site" for a, r in roots.items()}
+    srv = _serve(build_fleet_handler(served_root=served, project_sites=sites, project_roots=roots))
+    try:
+        port = srv.server_address[1]
+        body = b'{"url":"http://ex.com/a","content":"hello world","project":"beta"}'
+        code, resp = _req(port, "/api/clip", data=body)
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert code == 202 and "accepted" in resp
+    assert str(seen.get("root")).endswith("beta")  # routed to the named project
+
+
+def test_fleet_clip_single_project_uses_it_without_project_field(tmp_path, monkeypatch):
+    from tesserae.serve import build_fleet_handler
+
+    roots, served, seen = _fleet_clip_env(tmp_path, monkeypatch, ["solo"])
+    sites = {a: r / ".tesserae" / "site" for a, r in roots.items()}
+    srv = _serve(build_fleet_handler(served_root=served, project_sites=sites, project_roots=roots))
+    try:
+        port = srv.server_address[1]
+        body = b'{"url":"http://ex.com/a","content":"hello"}'  # no 'project'
+        code, resp = _req(port, "/api/clip", data=body)
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert code == 202 and str(seen.get("root")).endswith("solo")
+
+
+def test_fleet_clip_multiple_projects_no_project_field_400(tmp_path, monkeypatch):
+    from tesserae.serve import build_fleet_handler
+
+    roots, served, seen = _fleet_clip_env(tmp_path, monkeypatch, ["alpha", "beta"])
+    sites = {a: r / ".tesserae" / "site" for a, r in roots.items()}
+    srv = _serve(build_fleet_handler(served_root=served, project_sites=sites, project_roots=roots))
+    try:
+        port = srv.server_address[1]
+        body = b'{"url":"http://ex.com/a","content":"hello"}'  # ambiguous
+        code, resp = _req(port, "/api/clip", data=body)
+        # A garbage alias is equally ambiguous -> must NOT reach ProjectWiki.load.
+        code2, resp2 = _req(port, "/api/clip",
+                            data=b'{"url":"http://ex.com/a","content":"x","project":"nope"}')
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert code == 400 and "specify 'project'" in resp
+    assert "alpha" in resp and "beta" in resp  # lists available aliases
+    assert code2 == 400 and "root" not in seen  # unknown alias never loaded
+
+
+def test_fleet_clip_enforces_cors_gate(tmp_path, monkeypatch):
+    from tesserae.serve import build_fleet_handler
+
+    roots, served, seen = _fleet_clip_env(tmp_path, monkeypatch, ["solo"])
+    sites = {a: r / ".tesserae" / "site" for a, r in roots.items()}
+    srv = _serve(build_fleet_handler(served_root=served, project_sites=sites, project_roots=roots))
+    try:
+        port = srv.server_address[1]
+        body = b'{"url":"http://ex.com/a","content":"hi"}'
+        # A real website Origin is rejected before any work happens.
+        web_code, _ = _req(port, "/api/clip", data=body, origin="http://evil.example")
+        rejected_before_load = "root" not in seen  # the gate ran before any write
+        # A browser-extension Origin is the intended caller -> allowed.
+        ext_code, _ = _req(port, "/api/clip", data=body, origin="chrome-extension://abcd")
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert web_code == 403 and rejected_before_load  # rejected before project load
+    assert ext_code == 202  # extension clip accepted
+
+
+def test_fleet_clip_enforces_token(tmp_path, monkeypatch):
+    from tesserae.serve import build_fleet_handler
+
+    roots, served, seen = _fleet_clip_env(tmp_path, monkeypatch, ["solo"])
+    sites = {a: r / ".tesserae" / "site" for a, r in roots.items()}
+    monkeypatch.setattr("tesserae.serve.configured_clip_token", lambda: "s3cret")
+    srv = _serve(build_fleet_handler(served_root=served, project_sites=sites, project_roots=roots))
+    try:
+        port = srv.server_address[1]
+        body = b'{"url":"http://ex.com/a","content":"hi"}'
+        no_tok, _ = _req(port, "/api/clip", data=body)
+        bad_tok, _ = _req(port, "/api/clip", data=body,
+                          extra_headers={"X-Tesserae-Token": "wrong"})
+        ok_tok, _ = _req(port, "/api/clip", data=body,
+                         extra_headers={"X-Tesserae-Token": "s3cret"})
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert no_tok == 401 and bad_tok == 401
+    assert ok_tok == 202
+
+
+def test_fleet_transcript_search_routes_by_referer(tmp_path, monkeypatch):
+    from tesserae.serve import build_fleet_handler
+
+    roots, served, _ = _fleet_clip_env(tmp_path, monkeypatch, ["p"])
+    sites = {a: r / ".tesserae" / "site" for a, r in roots.items()}
+
+    seen = {}
+
+    def fake_search(query, **kwargs):
+        seen["project"] = kwargs.get("project")
+        return {"available": True, "results": [], "total": 0}
+
+    monkeypatch.setattr("tesserae.memex_search.search_transcripts", fake_search)
+
+    srv = _serve(build_fleet_handler(served_root=served, project_sites=sites, project_roots=roots))
+    try:
+        port = srv.server_address[1]
+        page = f"http://127.0.0.1:{port}/p/sessions.html"
+        with_ref, body = _req(port, "/api/transcript-search?q=hi", referer=page)
+        no_ref, _ = _req(port, "/api/transcript-search?q=hi")
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert with_ref == 200 and '"available"' in body
+    assert seen.get("project") == "p"  # scoped to the page's project
+    assert no_ref == 404  # unknown/missing alias -> no project context
+
+
+def _options(port, path, *, origin=None):
+    headers = {}
+    if origin:
+        headers["Origin"] = origin
+    req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", headers=headers, method="OPTIONS")
+    try:
+        return urllib.request.urlopen(req).getcode()
+    except urllib.error.HTTPError as exc:
+        return exc.code
+
+
+def test_fleet_transcript_search_passes_root_basename_not_alias(tmp_path, monkeypatch):
+    """memex scopes by the project-root BASENAME (original case), not the
+    registry alias (lowercased key) — the fleet route must pass the basename."""
+    from tesserae.serve import build_fleet_handler
+
+    root = tmp_path / "MyProj"                       # basename 'MyProj'
+    (root / ".tesserae" / "site").mkdir(parents=True)
+    served = tmp_path / "served"
+    served.mkdir()
+    roots = {"myproj": root}                          # registry alias 'myproj'
+    sites = {"myproj": root / ".tesserae" / "site"}
+
+    seen = {}
+
+    def fake_search(query, **kwargs):
+        seen["project"] = kwargs.get("project")
+        return {"available": True, "results": [], "total": 0}
+
+    monkeypatch.setattr("tesserae.memex_search.search_transcripts", fake_search)
+    srv = _serve(build_fleet_handler(served_root=served, project_sites=sites, project_roots=roots))
+    try:
+        port = srv.server_address[1]
+        code, _ = _req(port, "/api/transcript-search?q=hi", referer=f"http://127.0.0.1:{port}/myproj/sessions.html")
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert code == 200 and seen.get("project") == "MyProj"  # basename, NOT the alias 'myproj'
+
+
+def test_fleet_transcript_search_rejects_cross_origin(tmp_path, monkeypatch):
+    from tesserae.serve import build_fleet_handler
+
+    roots, served, _ = _fleet_clip_env(tmp_path, monkeypatch, ["p"])
+    sites = {a: r / ".tesserae" / "site" for a, r in roots.items()}
+    monkeypatch.setattr("tesserae.memex_search.search_transcripts",
+                        lambda q, **kw: {"available": True, "results": []})
+    srv = _serve(build_fleet_handler(served_root=served, project_sites=sites, project_roots=roots))
+    try:
+        port = srv.server_address[1]
+        page = f"http://127.0.0.1:{port}/p/sessions.html"
+        code, _ = _req(port, "/api/transcript-search?q=hi", referer=page, origin="http://evil.example")
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert code == 403  # foreign Origin can't read local transcripts even with a valid Referer
+
+
+def test_fleet_clip_empty_project_string_is_unset(tmp_path, monkeypatch):
+    """The extension always sends 'project' (possibly ''); '' must behave as unset."""
+    from tesserae.serve import build_fleet_handler
+
+    roots, served, seen = _fleet_clip_env(tmp_path, monkeypatch, ["solo"])
+    sites = {a: r / ".tesserae" / "site" for a, r in roots.items()}
+    srv = _serve(build_fleet_handler(served_root=served, project_sites=sites, project_roots=roots))
+    try:
+        port = srv.server_address[1]
+        code1, _ = _req(port, "/api/clip", data=b'{"url":"http://e/a","content":"x","project":""}')
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert code1 == 202 and str(seen.get("root")).endswith("solo")  # '' -> sole project
+
+    roots2, served2, seen2 = _fleet_clip_env(tmp_path / "multi", monkeypatch, ["alpha", "beta"])
+    sites2 = {a: r / ".tesserae" / "site" for a, r in roots2.items()}
+    srv2 = _serve(build_fleet_handler(served_root=served2, project_sites=sites2, project_roots=roots2))
+    try:
+        code2, _ = _req(srv2.server_address[1], "/api/clip", data=b'{"url":"http://e/a","content":"x","project":""}')
+    finally:
+        srv2.shutdown()
+        srv2.server_close()
+    assert code2 == 400 and "root" not in seen2  # '' with 2+ projects -> ambiguous 400
+
+
+def test_fleet_clip_options_preflight(tmp_path, monkeypatch):
+    from tesserae.serve import build_fleet_handler
+
+    roots, served, _ = _fleet_clip_env(tmp_path, monkeypatch, ["solo"])
+    sites = {a: r / ".tesserae" / "site" for a, r in roots.items()}
+    srv = _serve(build_fleet_handler(served_root=served, project_sites=sites, project_roots=roots))
+    try:
+        port = srv.server_address[1]
+        evil = _options(port, "/api/clip", origin="http://evil.example")
+        ext = _options(port, "/api/clip", origin="chrome-extension://abcd")
+    finally:
+        srv.shutdown()
+        srv.server_close()
+    assert evil == 403   # foreign preflight rejected -> its POST never lands
+    assert ext == 204    # extension preflight ok

@@ -111,8 +111,29 @@ Leave it running while you browse; each clip hits `/api/clip`.
 | `note`      | string    | no       | Your free-text annotation → `## Note`. |
 | `tags`      | string[]  | no       | Front-matter tags. |
 | `tldr`      | boolean   | no       | Default `true`. Set `false` to skip TL;DR generation. |
+| `project`   | string    | no       | Target project **alias**. Only consulted by a fleet server (see below); ignored by single-project serve. |
 
 \* Either `content` or `selection` must be non-empty.
+
+### Which project a clip lands in
+
+A clip comes from an external web page, so the server cannot infer the
+target project from the page itself. Resolution depends on how the server
+was started:
+
+- **Single-project** (`tesserae serve --project /path`): every clip goes to
+  that one project. `project` in the body is ignored.
+- **Fleet** (`tesserae serve` with no `--project`, serving every registered
+  project): the server picks the project in this order —
+  1. a `project` alias in the body that matches a **registered** alias;
+  2. otherwise, if exactly **one** project is registered, that one;
+  3. otherwise `400 {"error": "specify 'project'", "available": [<aliases>]}`.
+
+  With **2+** registered projects, an unknown/garbage `project` (or none) gives
+  the `400` above — it never loads the wrong project. With exactly **one**
+  registered project, any `project` value (including an unknown alias) routes to
+  that sole project. Set the **Target project** field in the extension's options
+  to the alias you want.
 
 **Response** `200 OK`:
 

@@ -21,7 +21,13 @@ const DEFAULTS = {
   // Optional shared secret. When the server runs with TESSERAE_CLIP_TOKEN set
   // (e.g. exposed on a LAN/public IP), it requires a matching X-Tesserae-Token
   // header; set the same value here. Empty = no token sent.
-  token: ""
+  token: "",
+  // Optional target project alias. Sent as the body's `project` field so a
+  // fleet server (`tesserae serve` with no --project, serving every registered
+  // project) routes the clip to the right project. Empty = let the server pick:
+  // single-project serve uses its one project; a fleet server with exactly one
+  // registered project uses it; a fleet server with several needs this set.
+  project: ""
 };
 
 const MENU_ID = "tesserae-clip";
@@ -122,7 +128,8 @@ async function clipTab(tabId, { note = "" } = {}) {
       selection: extracted.selection,
       note,
       tags: parseTags(settings.defaultTags),
-      tldr: settings.tldr
+      tldr: settings.tldr,
+      project: settings.project || ""
     };
     const data = await postClip(payload, settings.endpoint, settings.token);
     flashBadge("✓", "#2e7d5b");
@@ -189,7 +196,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           selection: msg.payload.selection,
           note: msg.payload.note || "",
           tags: msg.payload.tags || [],
-          tldr: msg.payload.tldr
+          tldr: msg.payload.tldr,
+          // Per-clip override from the popup, else the configured default.
+          project: msg.payload.project || settings.project || ""
         };
         const data = await postClip(payload, settings.endpoint, settings.token);
         flashBadge("✓", "#2e7d5b");

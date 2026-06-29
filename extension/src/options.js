@@ -9,7 +9,11 @@ const DEFAULTS = {
   defaultTags: "",
   captureMode: "selection-first",
   tldr: true,
-  token: ""
+  token: "",
+  // Target project alias for fleet servers (serving every registered project).
+  // Empty = let the server pick (single-project serve, or a fleet server with
+  // exactly one registered project).
+  project: ""
 };
 
 const $ = (id) => document.getElementById(id);
@@ -19,6 +23,7 @@ const els = {
   captureMode: $("captureMode"),
   tldr: $("tldr"),
   token: $("token"),
+  project: $("project"),
   saveBtn: $("saveBtn"),
   saved: $("saved")
 };
@@ -30,6 +35,7 @@ async function load() {
   els.captureMode.value = s.captureMode || DEFAULTS.captureMode;
   els.tldr.checked = s.tldr !== false;
   els.token.value = s.token || "";
+  els.project.value = s.project || "";
 }
 
 function normalizeEndpoint(raw) {
@@ -69,7 +75,8 @@ async function save() {
     defaultTags: els.defaultTags.value.trim(),
     captureMode: els.captureMode.value,
     tldr: els.tldr.checked,
-    token: els.token.value.trim()
+    token: els.token.value.trim(),
+    project: els.project.value.trim()
   });
   els.endpoint.value = endpoint;
   els.saved.textContent = granted
