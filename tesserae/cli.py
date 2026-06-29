@@ -832,9 +832,9 @@ def _add_llm_client_args(parser: argparse.ArgumentParser, persisted: bool = Fals
     suffix = " (persisted into config.json)" if persisted else " (this run only; overrides config.json)"
     parser.add_argument(
         "--llm-provider",
-        choices=["claude", "codex"],
+        choices=["claude", "codex", "anthropic"],
         default=None,
-        help="CLI backend for the synthesis/insights LLM client" + suffix,
+        help="Backend for the LLM client (claude/codex CLI over OAuth, or anthropic API key)" + suffix,
     )
     parser.add_argument(
         "--claude-config-dir",

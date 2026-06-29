@@ -35,51 +35,37 @@ Gaussian Splatting supports novel view synthesis.
     assert "Trend: Gaussian Splatting" in payload
 
 
-def test_cli_can_select_claude_cli_extractor(monkeypatch, tmp_path):
+def test_cli_can_select_llm_extractor(monkeypatch, tmp_path):
+    """`--extractor llm` drives the provider-agnostic LLMJsonClient (codex/claude/
+    api per config), not a hardcoded Claude subprocess."""
+    import tesserae.llm_json as lj
+
     source = tmp_path / "paper.md"
-    source.write_text("# LLM Wiki Paper\nClaude should extract this.", encoding="utf-8")
+    source.write_text("# LLM Wiki Paper\nExtract this.", encoding="utf-8")
     output = tmp_path / "graph.json"
-    calls = []
+    seen = {}
 
-    class FakeClaudeExtractor:
-        def __init__(self, config_dirs, model, timeout):
-            calls.append({"config_dirs": config_dirs, "model": model, "timeout": timeout})
+    class _FakeClient:
+        def complete_json(self, *, system, user, schema_name, cache_key=None, max_retries=2):
+            seen["schema"] = schema_name
+            return {"nodes": [{"name": "LLM Wiki Paper", "type": "Paper"}], "edges": []}
 
-        def extract_file(self, path, source_kind="SourceDocument"):
-            calls.append({"path": str(path), "source_kind": source_kind})
-            return ResearchGraph(
-                nodes=[ResearchNode(id="Paper:tesserae-paper:test", name="LLM Wiki Paper", type=ResearchNodeType.PAPER)],
-                edges=[],
-            )
-
-    import tesserae.cli as cli
-
-    monkeypatch.setattr(cli, "ClaudeCLIResearchExtractor", FakeClaudeExtractor)
+    monkeypatch.setattr(lj, "build_default_json_client", lambda **k: _FakeClient())
 
     assert main([
-        "extract",
-        str(source),
-        "--source-kind",
-        "Paper",
-        "--extractor",
-        "claude-cli",
-        "--claude-config-dir",
-        "/Users/neo/.claude-personal1",
-        "--claude-model",
-        "sonnet",
-        "--claude-timeout",
-        "9",
-        "-o",
-        str(output),
+        "extract", str(source), "--source-kind", "Paper",
+        "--extractor", "llm", "--llm-provider", "codex", "--llm-model", "gpt-5.4",
+        "-o", str(output),
     ]) == 0
 
     data = json.loads(output.read_text(encoding="utf-8"))
-    assert data["nodes"][0]["name"] == "LLM Wiki Paper"
-    assert calls[0] == {"config_dirs": ["/Users/neo/.claude-personal1"], "model": "sonnet", "timeout": 9}
-    assert calls[1]["source_kind"] == "Paper"
+    assert any(n["name"] == "LLM Wiki Paper" for n in data["nodes"])
+    assert seen["schema"] == "research-graph-v1"  # went through the LLM client
 
 
-def test_cli_can_use_selective_claude_extractor(monkeypatch, tmp_path):
+def test_cli_can_use_selective_llm_extractor(monkeypatch, tmp_path):
+    import tesserae.llm_json as lj
+
     selected = tmp_path / "important" / "paper.md"
     plain = tmp_path / "plain" / "paper.md"
     selected.parent.mkdir()
@@ -88,35 +74,21 @@ def test_cli_can_use_selective_claude_extractor(monkeypatch, tmp_path):
     plain.write_text("# Plain", encoding="utf-8")
     output = tmp_path / "graph.json"
 
-    class FakeClaudeExtractor:
-        def __init__(self, config_dirs, model, timeout):
-            pass
+    class _FakeClient:
+        def complete_json(self, *, system, user, schema_name, cache_key=None, max_retries=2):
+            return {"nodes": [{"name": "Claude Selected", "type": "Paper"}], "edges": []}
 
-        def extract_file(self, path, source_kind="SourceDocument"):
-            return ResearchGraph(nodes=[ResearchNode(id="Paper:claude:test", name="Claude Selected", type=ResearchNodeType.PAPER)], edges=[])
-
-    import tesserae.cli as cli
-
-    monkeypatch.setattr(cli, "ClaudeCLIResearchExtractor", FakeClaudeExtractor)
+    monkeypatch.setattr(lj, "build_default_json_client", lambda **k: _FakeClient())
 
     assert main([
-        "extract",
-        str(tmp_path),
-        "--source-kind",
-        "Paper",
-        "--extractor",
-        "selective-claude",
-        "--claude-include",
-        "*/important/*",
-        "--claude-limit",
-        "1",
-        "-o",
-        str(output),
+        "extract", str(tmp_path), "--source-kind", "Paper",
+        "--extractor", "selective-llm", "--llm-include", "*/important/*", "--llm-limit", "1",
+        "-o", str(output),
     ]) == 0
 
     names = [node["name"] for node in json.loads(output.read_text(encoding="utf-8"))["nodes"]]
-    assert "Claude Selected" in names
-    assert "Plain" in names
+    assert "Claude Selected" in names  # important/ routed to the LLM
+    assert "Plain" in names            # plain/ stayed deterministic
 
 
 def test_cli_can_canonicalize_and_write_review_queue(tmp_path):

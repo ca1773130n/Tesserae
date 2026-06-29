@@ -20,8 +20,8 @@ def _no_real_llm_extraction(request, monkeypatch):
     fallback). `test_llm_json` exercises the client layer itself, so it opts out;
     extractor tests that want a backend re-stub `build_default_json_client` after
     this fixture runs."""
-    if "test_llm_json" in request.node.nodeid:
-        return
+    if any(m in request.node.nodeid for m in ("test_llm_json", "test_llm_provider_config")):
+        return  # these exercise the client builder itself
     monkeypatch.setattr("tesserae.llm_json.build_default_json_client", lambda *a, **k: None)
 
 
