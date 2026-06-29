@@ -3,26 +3,43 @@
 from __future__ import annotations
 
 
+def test_compile_extractor_default_is_llm():
+    from tesserae.cli import _build_compile_parser
+
+    assert _build_compile_parser().parse_args([]).extractor == "llm"  # LLM by default
+
+
 def test_compile_parser_accepts_extractor_flags():
     from tesserae.cli import _build_compile_parser
 
     args = _build_compile_parser().parse_args(
-        ["--extractor", "selective-claude", "--claude-include", "docs/**/*.md", "--claude-limit", "5"]
+        ["--extractor", "selective-llm", "--llm-include", "docs/**/*.md", "--llm-limit", "5", "--llm-provider", "codex"]
     )
-    assert args.extractor == "selective-claude"
-    assert args.claude_include == ["docs/**/*.md"] and args.claude_limit == 5
+    assert args.extractor == "selective-llm"
+    assert args.llm_include == ["docs/**/*.md"] and args.llm_limit == 5 and args.llm_provider == "codex"
 
 
-def test_build_doc_extractor_selects_backend():
+def test_build_doc_extractor_selects_backend(monkeypatch):
+    import tesserae.llm_json as lj
     from tesserae.cli import _build_compile_parser, _build_doc_extractor
-    from tesserae.llm_extractor import ClaudeCLIResearchExtractor
+    from tesserae.llm_extractor import LLMResearchExtractor
     from tesserae.research_graph import ResearchGraphExtractor
     from tesserae.selective_extractor import SelectiveClaudeResearchExtractor
 
     p = _build_compile_parser()
+    # deterministic -> structural baseline
     assert isinstance(_build_doc_extractor(p.parse_args(["--extractor", "deterministic"])), ResearchGraphExtractor)
-    assert isinstance(_build_doc_extractor(p.parse_args(["--extractor", "claude-cli"])), ClaudeCLIResearchExtractor)
-    assert isinstance(_build_doc_extractor(p.parse_args(["--extractor", "selective-claude"])), SelectiveClaudeResearchExtractor)
+
+    # llm with NO backend available -> graceful fallback to deterministic
+    monkeypatch.setattr(lj, "build_default_json_client", lambda **k: None)
+    assert isinstance(_build_doc_extractor(p.parse_args(["--extractor", "llm"])), ResearchGraphExtractor)
+
+    # llm WITH a backend -> provider-agnostic LLMResearchExtractor
+    monkeypatch.setattr(lj, "build_default_json_client", lambda **k: object())
+    assert isinstance(_build_doc_extractor(p.parse_args(["--extractor", "llm"])), LLMResearchExtractor)
+    assert isinstance(_build_doc_extractor(p.parse_args(["--extractor", "selective-llm"])), SelectiveClaudeResearchExtractor)
+    # deprecated alias still works
+    assert isinstance(_build_doc_extractor(p.parse_args(["--extractor", "claude-cli"])), LLMResearchExtractor)
 
 
 def test_selective_extract_text_routes_by_absolute_path_and_limit():
@@ -57,8 +74,9 @@ def test_selective_extract_text_routes_by_absolute_path_and_limit():
 
 
 def test_compile_paths_threads_extractor_into_ingest(monkeypatch):
+    import tesserae.llm_json as lj
     from tesserae import cli
-    from tesserae.llm_extractor import ClaudeCLIResearchExtractor
+    from tesserae.llm_extractor import LLMResearchExtractor
 
     captured = {}
 
@@ -69,9 +87,10 @@ def test_compile_paths_threads_extractor_into_ingest(monkeypatch):
                     "edge_count": 0, "graph_path": "/tmp/x.json"}
 
     monkeypatch.setattr("tesserae.cli.ProjectWiki.load", lambda p: _FakeWiki())
-    args = cli._build_compile_parser().parse_args(["--extractor", "claude-cli", "doc.md"])
+    monkeypatch.setattr(lj, "build_default_json_client", lambda **k: object())  # a backend is available
+    args = cli._build_compile_parser().parse_args(["--extractor", "llm", "doc.md"])
     assert cli._handle_compile(args) == 0  # dispatches to the paths-ingest branch
-    assert isinstance(captured.get("doc_extractor"), ClaudeCLIResearchExtractor)
+    assert isinstance(captured.get("doc_extractor"), LLMResearchExtractor)
 
 
 def test_llm_payload_drops_bad_edges_instead_of_aborting():
@@ -162,3 +181,22 @@ def test_claude_extract_text_gives_up_after_retries():
     with pytest.raises(GraphJSONValidationError):
         ex.extract_text("t", "x.md", "SourceDocument")
     assert len(calls) == _VALIDATION_RETRIES + 1   # initial + retries, then gives up
+
+
+def test_llm_research_extractor_drives_the_client():
+    """The provider-agnostic extractor calls the LLMJsonClient (any backend),
+    passes a content cache_key, and validates the returned payload into a graph."""
+    from tesserae.llm_extractor import LLMResearchExtractor
+
+    seen = {}
+
+    class _FakeClient:
+        def complete_json(self, *, system, user, schema_name, cache_key=None, max_retries=2):
+            seen["schema"] = schema_name
+            seen["cache_key"] = cache_key
+            return {"nodes": [{"name": "Gaussian Splatting", "type": "Concept"}], "edges": []}
+
+    ex = LLMResearchExtractor(_FakeClient())
+    g = ex.extract_text("Gaussian splatting renders radiance fields.", "x.md", "SourceDocument")
+    assert any(n.name == "Gaussian Splatting" for n in g.nodes)
+    assert seen["schema"] == "research-graph-v1" and seen["cache_key"]  # content-keyed
