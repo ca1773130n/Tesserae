@@ -29,6 +29,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence, Set
 
@@ -38,7 +39,11 @@ from .retrieval.ppr import personalized_pagerank
 from .wiki_projector import kind_for_node
 from .wiki_store import WikiPageStore
 
-__all__ = ["compile_context", "ContextBundle", "ContextCitation"]
+# Modest default recency blend for INTERACTIVE ask (relevance still dominates at
+# 0.75). 0 disables. Compiled/export paths leave it off entirely for determinism.
+DEFAULT_RECENCY_WEIGHT = 0.25
+
+__all__ = ["compile_context", "ContextBundle", "ContextCitation", "DEFAULT_RECENCY_WEIGHT"]
 
 
 @dataclass(frozen=True)
@@ -151,6 +156,8 @@ def compile_context(
     backend=None,
     multi_pool: bool = False,
     edge_type_weights: Optional[Mapping[str, float]] = None,
+    recency_now: Optional[datetime] = None,
+    recency_weight: float = 0.0,
 ) -> ContextBundle:
     """Compile a tailored, cited context bundle for ``query`` / ``seeds``.
 
@@ -225,6 +232,28 @@ def compile_context(
     if not ranked:  # PITFALL 1: disconnected seeds -> fall back to seed order.
         ranked = [(sid, 0.0) for sid in seed_ids]
     ranked_nodes = [nid for nid, _ in ranked]
+
+    # Recency-aware re-rank (OPT-IN). Pure relevance ranking magnets onto old
+    # "review of ALL recent work" synthesis nodes for "what's recent" queries —
+    # they are the strongest semantic match yet the oldest content. Blend each
+    # node's normalized PPR relevance with its decay score so newer nodes surface.
+    # Disabled by default (``recency_now`` None / weight <= 0) so compiled/export
+    # artifacts stay byte-deterministic; ``ask`` passes an explicit ``now``.
+    if recency_now is not None and recency_weight > 0 and ranked:
+        from .memory.decay import compute_decay_score
+
+        _max = max((s for _, s in ranked), default=0.0) or 1.0
+        _w = min(max(recency_weight, 0.0), 1.0)
+
+        def _blended(item):
+            nid, ppr = item
+            node = node_index.get(nid)
+            decay = compute_decay_score(node, recency_now) if node is not None else 0.0
+            # Stable: ties (e.g. equal blend) keep PPR order via the secondary key.
+            return ((1.0 - _w) * (ppr / _max) + _w * decay, ppr)
+
+        ranked = sorted(ranked, key=_blended, reverse=True)
+        ranked_nodes = [nid for nid, _ in ranked]
 
     # Multi-pool reservation: guarantee the most relevant distilled-memory node
     # of each pool (Runbook / Gotcha / Event) in the neighbourhood gets a budget

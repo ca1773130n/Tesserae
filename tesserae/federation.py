@@ -500,6 +500,7 @@ def federated_recall(
     synthesize: bool = False,
     semantic: bool = True,
     semantic_min_cosine: float = DEFAULT_SEMANTIC_MIN_COSINE,
+    recency_weight: Optional[float] = None,
     registry,
 ) -> dict:
     """Federate the selected projects and compile ONE cited context bundle.
@@ -511,16 +512,24 @@ def federated_recall(
     graph, stats = load_federated_graph(
         aliases, registry, semantic=semantic, semantic_min_cosine=semantic_min_cosine
     )
-    from .context_compiler import compile_context
+    from datetime import datetime, timezone
+
+    from .context_compiler import DEFAULT_RECENCY_WEIGHT, compile_context
 
     # Cross-project semantic edges should NUDGE, not dominate: down-weight
     # shares_concept_with in PPR so an identity merge (node collapse) and
     # references (1.5) still outrank a fuzzy bridge. Only when semantic links
     # were actually added.
     edge_type_weights = {"shares_concept_with": SEMANTIC_BRIDGE_PPR_WEIGHT} if stats.get("semantic_added") else None
+    # Interactive recall is recency-aware by default so a "what's recent" query
+    # doesn't magnet onto old "review of all recent work" syntheses (pass
+    # recency_weight=0 to rank by pure relevance).
+    _rw = DEFAULT_RECENCY_WEIGHT if recency_weight is None else recency_weight
     bundle = compile_context(
         graph, project_root=None, query=query, depth=depth, budget=budget,
         synthesize=synthesize, edge_type_weights=edge_type_weights,
+        recency_now=datetime.now(timezone.utc) if _rw > 0 else None,
+        recency_weight=_rw,
     )
     return {
         "scope": "federated",
