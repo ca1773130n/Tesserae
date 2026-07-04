@@ -271,7 +271,7 @@ def test_fleet_clip_enforces_cors_gate(tmp_path, monkeypatch):
         web_code, _ = _req(port, "/api/clip", data=body, origin="http://evil.example")
         rejected_before_load = "root" not in seen  # the gate ran before any write
         # A browser-extension Origin is the intended caller -> allowed.
-        ext_code, _ = _req(port, "/api/clip", data=body, origin="chrome-extension://abcd")
+        ext_code, _ = _req(port, "/api/clip", data=body, origin="chrome-extension://bcggimpleodcbhkidhicnbdmedoceobd")
     finally:
         srv.shutdown()
         srv.server_close()
@@ -422,7 +422,7 @@ def test_fleet_clip_options_preflight(tmp_path, monkeypatch):
     try:
         port = srv.server_address[1]
         evil = _options(port, "/api/clip", origin="http://evil.example")
-        ext = _options(port, "/api/clip", origin="chrome-extension://abcd")
+        ext = _options(port, "/api/clip", origin="chrome-extension://bcggimpleodcbhkidhicnbdmedoceobd")
     finally:
         srv.shutdown()
         srv.server_close()

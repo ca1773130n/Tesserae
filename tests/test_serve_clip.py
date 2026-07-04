@@ -129,7 +129,7 @@ def test_serve_clip_endpoint_delegates_to_ingest_clip(
                 "Content-Type": "application/json",
                 # A real browser-extension origin: the handler must reflect it
                 # back exactly (not "*"), proving the validated-CORS path.
-                "Origin": "chrome-extension://abcdefgh",
+                "Origin": "chrome-extension://bcggimpleodcbhkidhicnbdmedoceobd",
             },
             method="POST",
         )
@@ -139,7 +139,7 @@ def test_serve_clip_endpoint_delegates_to_ingest_clip(
             assert resp.status == 202
             assert (
                 resp.headers.get("Access-Control-Allow-Origin")
-                == "chrome-extension://abcdefgh"
+                == "chrome-extension://bcggimpleodcbhkidhicnbdmedoceobd"
             )
             report = json.loads(resp.read().decode("utf-8"))
 
@@ -243,7 +243,7 @@ def test_serve_clip_options_grants_private_network_access(tmp_path: Path) -> Non
         req = urllib.request.Request(
             f"http://{host}:{port}/api/clip",
             headers={
-                "Origin": "chrome-extension://abcdefgh",
+                "Origin": "chrome-extension://bcggimpleodcbhkidhicnbdmedoceobd",
                 "Access-Control-Request-Method": "POST",
                 "Access-Control-Request-Private-Network": "true",
             },
@@ -350,7 +350,7 @@ def test_serve_clip_async_ingest_error_still_accepts(
 
 def _clip_request(host, port, *, token_header=None):
     body = json.dumps({"url": "https://example.com/x", "content": "body"}).encode("utf-8")
-    headers = {"Content-Type": "application/json", "Origin": "chrome-extension://abc"}
+    headers = {"Content-Type": "application/json", "Origin": "chrome-extension://bcggimpleodcbhkidhicnbdmedoceobd"}
     if token_header is not None:
         headers["X-Tesserae-Token"] = token_header
     return urllib.request.Request(
@@ -421,8 +421,41 @@ def test_serve_clip_options_allows_token_header(tmp_path: Path) -> None:
     with _running_server(project, site_dir) as (host, port):
         req = urllib.request.Request(
             f"http://{host}:{port}/api/clip",
-            headers={"Origin": "chrome-extension://abc", "Access-Control-Request-Method": "POST"},
+            headers={"Origin": "chrome-extension://bcggimpleodcbhkidhicnbdmedoceobd", "Access-Control-Request-Method": "POST"},
             method="OPTIONS",
         )
         with urllib.request.urlopen(req, timeout=5) as resp:
             assert "X-Tesserae-Token" in (resp.headers.get("Access-Control-Allow-Headers") or "")
+
+
+def test_clip_origin_pins_to_published_extension(tmp_path, monkeypatch):
+    """Only the published extension id (and loopback) may clip — an ARBITRARY
+    installed extension is rejected, which is the whole point of the pin."""
+    from tesserae.serve import _eval_clip_origin, PUBLISHED_CLIP_EXTENSION_ID
+
+    monkeypatch.setenv("HOME", str(tmp_path))  # no ~/.tesserae/config.json -> just the published id
+    ev = lambda o: _eval_clip_origin({"Origin": o} if o else {})
+
+    pub = f"chrome-extension://{PUBLISHED_CLIP_EXTENSION_ID}"
+    assert ev(pub) == (True, pub)                                         # published -> allowed + reflected
+    assert ev("chrome-extension://someotherinstalledextension0000")[0] is False  # unknown -> rejected
+    assert ev("moz-extension://11111111-2222-3333-4444-555555555555")[0] is False
+    assert ev("http://127.0.0.1:8765")[0] is True                        # loopback unchanged
+    assert ev(None) == (True, None)                                      # non-browser caller
+    assert ev("https://evil.example.com")[0] is False                    # a real website
+
+
+def test_clip_extension_ids_config_allowlist(tmp_path, monkeypatch):
+    """A dev build / fork id added to clip_extension_ids is trusted too."""
+    from tesserae import serve
+
+    (tmp_path / ".tesserae").mkdir()
+    (tmp_path / ".tesserae" / "config.json").write_text(
+        json.dumps({"clip_extension_ids": ["mydevbuildextensionidaaaaaaaaaaaa"]}), encoding="utf-8"
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    ev = lambda o: serve._eval_clip_origin({"Origin": o})
+
+    assert ev("chrome-extension://mydevbuildextensionidaaaaaaaaaaaa")[0] is True   # config-allowed
+    assert ev(f"chrome-extension://{serve.PUBLISHED_CLIP_EXTENSION_ID}")[0] is True  # published still allowed
+    assert ev("chrome-extension://notinthelistxxxxxxxxxxxxxxxxxxxx")[0] is False     # still pinned

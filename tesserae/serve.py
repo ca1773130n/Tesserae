@@ -58,6 +58,30 @@ def configured_clip_token() -> str:
     return str(cfg.get("clip_token") or "").strip() if isinstance(cfg, dict) else ""
 
 
+# The published "Clip to Tesserae" Chrome Web Store extension id. Trusted by
+# default so the shipped extension works with zero config; see
+# _allowed_clip_extension_ids for how to trust additional ones.
+PUBLISHED_CLIP_EXTENSION_ID = "bcggimpleodcbhkidhicnbdmedoceobd"
+
+
+def _allowed_clip_extension_ids() -> set:
+    """Extension ids whose ``chrome-extension://`` / ``moz-extension://`` origin
+    may POST clips: the published extension, plus any in the ``clip_extension_ids``
+    list of ``~/.tesserae/config.json`` (your own unpacked dev build, Firefox, a
+    fork). Read FRESH each call like :func:`configured_clip_token`. Pinning to this
+    set — instead of trusting ANY installed extension — stops a random/malicious
+    extension the user happens to have from clipping into their local server."""
+    ids = {PUBLISHED_CLIP_EXTENSION_ID}
+    try:
+        cfg = json.loads((Path.home() / ".tesserae" / "config.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError):
+        cfg = None
+    extra = cfg.get("clip_extension_ids") if isinstance(cfg, dict) else None
+    if isinstance(extra, list):
+        ids.update(str(x).strip().lower() for x in extra if str(x).strip())
+    return ids
+
+
 # --------------------------------------------------------------------------- #
 # Shared clip / transcript-search logic.                                       #
 #                                                                              #
@@ -72,16 +96,19 @@ def configured_clip_token() -> str:
 def _eval_clip_origin(headers) -> Tuple[bool, Optional[str]]:
     """The clip CORS policy, as a pure function of request headers.
 
-    Returns ``(allowed, origin_to_reflect)``. Allow only browser-extension
-    origins (``chrome-extension://`` / ``moz-extension://``) and loopback
-    http(s) origins; a real website's Origin is rejected. No Origin header ->
-    a non-browser / same-origin caller, allowed with nothing to reflect.
+    Returns ``(allowed, origin_to_reflect)``. Allow browser-extension origins
+    (``chrome-extension://`` / ``moz-extension://``) ONLY for an allow-listed
+    extension id (see :func:`_allowed_clip_extension_ids`) and loopback http(s)
+    origins; a real website's Origin, or an unknown extension, is rejected. No
+    Origin header -> a non-browser / same-origin caller, allowed with nothing to
+    reflect.
     """
     origin = headers.get("Origin")
     if not origin:
         return (True, None)
     if origin.startswith(("chrome-extension://", "moz-extension://")):
-        return (True, origin)
+        ext_id = origin.split("://", 1)[1].split("/", 1)[0].strip().lower()
+        return (True, origin) if ext_id in _allowed_clip_extension_ids() else (False, None)
     try:
         parsed = urlparse(origin)
     except ValueError:
