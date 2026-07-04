@@ -13,11 +13,14 @@ gatherers (later tasks) emit.
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone, tzinfo
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 from tesserae.harness_sessions import _claude_turns, _codex_turns, _parse_jsonl
 from tesserae.harness_sessions_db import HarnessSessionsDB
@@ -523,3 +526,259 @@ def gather_docs(
                 )
             )
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Deterministic renderer — one day's gathered items -> stable markdown
+# --------------------------------------------------------------------------- #
+# Every subsection is always emitted (empty -> ``_none_``) and every list is
+# sorted by ``(ts, id)`` inside the renderer so the same gathered inputs always
+# produce byte-identical markdown regardless of the order the gatherers yielded
+# them (git-log order, graph.nodes order, dict iteration order).
+_NONE = "_none_"
+
+
+def render_day(window: Window, items_by_kind: Dict[str, object], aggregates: Dict[str, object]) -> str:
+    """Render one window's gathered items into deterministic markdown.
+
+    Layout: ``## <label>`` then the six fixed subsections — Sessions and Files
+    touched from ``aggregates``; Decisions & Insights, Commits, Pull Requests and
+    Ingested docs from ``items_by_kind``. An empty subsection renders ``_none_``.
+    Ordering is fixed and every list is sorted (``(ts, id)``) so the output is
+    reproducible for identical inputs.
+    """
+    findings = sorted(
+        list(items_by_kind.get("findings") or []), key=lambda f: (f.ts, f.node_id)
+    )
+    commits = sorted(
+        list(items_by_kind.get("commits") or []), key=lambda c: (c.ts, c.sha)
+    )
+    prs = sorted(
+        list(items_by_kind.get("prs") or []), key=lambda p: (p.ts, p.number, p.event)
+    )
+    docs = sorted(
+        list(items_by_kind.get("docs") or []), key=lambda d: (d.ts, d.title, d.source_path)
+    )
+    sessions = sorted(
+        list(aggregates.get("sessions") or []), key=lambda s: s["session_id"]
+    )
+    files = sorted(str(f) for f in (aggregates.get("files_touched") or []))
+
+    lines: List[str] = [f"## {window.label}", ""]
+
+    def _section(heading: str, rows: List[str]) -> None:
+        lines.append(heading)
+        lines.extend(rows if rows else [_NONE])
+        lines.append("")
+
+    _section(
+        "### Sessions",
+        [
+            f"- `{s['session_id']}` ({s.get('harness', '')}, {s.get('turns', 0)} turns)"
+            for s in sessions
+        ],
+    )
+    _section("### Files touched", [f"- `{f}`" for f in files])
+    _section(
+        "### Decisions & Insights",
+        [f"- **{f.kind}** {f.body}" for f in findings],
+    )
+    _section(
+        "### Commits",
+        [f"- `{c.sha}` {c.subject} ({c.author})" for c in commits],
+    )
+    _section(
+        "### Pull Requests",
+        [f"- #{p.number} {p.title} — {p.event}" for p in prs],
+    )
+    _section(
+        "### Ingested docs",
+        [f"- {d.title}" for d in docs],
+    )
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+# --------------------------------------------------------------------------- #
+# Orchestration — resolve projects, run the gatherers, render, optionally write
+# --------------------------------------------------------------------------- #
+@dataclass
+class SummaryResult:
+    """The rendered activity summary: combined markdown + any files written."""
+
+    markdown: str
+    paths: List[Path] = field(default_factory=list)
+
+
+def _sessions_aggregate(messages: List[MessageItem]) -> List[Dict[str, object]]:
+    """Fold in-window messages into one row per session (id, harness, turn count).
+
+    Order-independent: keyed on ``session_id`` and re-sorted by the renderer, so
+    the Sessions subsection is deterministic regardless of gather order.
+    """
+    by_session: Dict[str, Dict[str, object]] = {}
+    for m in messages:
+        entry = by_session.get(m.session_id)
+        if entry is None:
+            entry = {"session_id": m.session_id, "harness": m.harness, "turns": 0}
+            by_session[m.session_id] = entry
+        entry["turns"] = int(entry["turns"]) + 1
+    return list(by_session.values())
+
+
+def _files_touched(root: str, commits: List[CommitItem]) -> List[str]:
+    """Distinct files changed by the in-window ``commits`` (best-effort, sorted).
+
+    Derived from the already-windowed commit SHAs via a single
+    ``git show --name-only`` so the window boundary is exactly the commits'
+    (never re-filtered by git's fuzzier date matching). Any git failure — not a
+    repo, missing git — yields ``[]`` (graceful degradation), never a raise.
+    """
+    if not commits:
+        return []
+    out = _run(
+        ["git", "show", "--name-only", "--format=", *[c.sha for c in commits]],
+        cwd=root,
+    )
+    if not out:
+        return []
+    files = {line.strip() for line in out.splitlines() if line.strip()}
+    return sorted(files)
+
+
+def _load_project_graph(root: Path) -> Optional[object]:
+    """Load a project's compiled ``graph.json`` (findings/docs source), or None.
+
+    Uses the same loader the MCP server uses (imported lazily to avoid a
+    circular import once ``mcp_server`` imports :func:`build_summary`). A project
+    with no compiled graph — or an unreadable one — yields ``None`` so the caller
+    simply drops the graph-derived sections (findings, docs) for that project.
+    """
+    graph_path = Path(root) / ".tesserae" / "graph.json"
+    if not graph_path.is_file():
+        return None
+    try:
+        from tesserae.mcp_server import load_graph
+
+        return load_graph(graph_path)
+    except Exception as exc:  # pragma: no cover - defensive: corrupt graph.json
+        logger.warning("activity summary: failed to load graph for %s: %s", root, exc)
+        return None
+
+
+def _resolve_projects(project_names: Optional[List[str]]) -> List[Tuple[str, Path]]:
+    """Resolve the projects to summarize: all registered, or the named subset.
+
+    Default scope is every registered project
+    (``ProjectRegistry.iter_registered_projects()``). ``project_names`` opts into
+    a subset (order preserved as registered). ``mcp_server`` is imported lazily so
+    this module stays importable from ``mcp_server`` without a cycle.
+    """
+    from tesserae.mcp_server import ProjectRegistry
+
+    registered = list(ProjectRegistry().iter_registered_projects())
+    if not project_names:
+        return registered
+    wanted = set(project_names)
+    return [(name, root) for name, root in registered if name in wanted]
+
+
+def _summary_filename(windows: List[Window]) -> str:
+    """``daily-<label>.md`` for a single window, ``weekly-<first>_<last>.md`` else."""
+    if len(windows) > 1:
+        return f"weekly-{windows[0].label}_{windows[-1].label}.md"
+    return f"daily-{windows[0].label}.md"
+
+
+def _write_project_summary(root: Path, name: str, windows: List[Window], body: str) -> Path:
+    """Write one project's deterministic digest under ``.tesserae/summaries``.
+
+    Path: ``<root>/.tesserae/summaries/<project>/daily-<label>.md`` (or
+    ``weekly-*.md`` for a multi-day run). Only the deterministic per-project body
+    is written — no graph timestamps are involved, so byte-idempotence is
+    unaffected (Global Constraint).
+    """
+    out_dir = Path(root) / ".tesserae" / "summaries" / name
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / _summary_filename(windows)
+    path.write_text(body if body.endswith("\n") else body + "\n", encoding="utf-8")
+    return path
+
+
+def _maybe_narrate(deterministic_md: str, projects: List[Tuple[str, Path]]) -> str:
+    """Prepend an LLM narrative to the digest when a narrator is wired.
+
+    The narrative layer (``synthesize_narrative`` + ``_summary_llm_client``) is
+    added by a later step; until it exists this returns the deterministic digest
+    unchanged. When present, narration is best-effort — a missing LLM client or
+    any LLM error falls back to the digest (logged), never raising (so a summary
+    always renders). The client is built from the first project's root.
+    """
+    narrate = globals().get("synthesize_narrative")
+    make_client = globals().get("_summary_llm_client")
+    if not callable(narrate) or not callable(make_client) or not projects:
+        return deterministic_md
+    try:
+        _name, root = projects[0]
+        client = make_client(str(root))
+        return narrate(deterministic_md, client)
+    except Exception as exc:  # narration is best-effort; the digest always stands
+        logger.warning("activity summary narrative synthesis failed: %s", exc)
+        return deterministic_md
+
+
+def build_summary(
+    windows: List[Window],
+    project_names: Optional[List[str]] = None,
+    *,
+    synthesize: bool = True,
+    write: bool = True,
+) -> SummaryResult:
+    """Gather → render → (optionally narrate + write) the activity summary.
+
+    For every resolved project (all registered, or ``project_names``) and every
+    window, runs the five gatherers, folds the Sessions/Files-touched aggregates,
+    and renders one deterministic day block. Findings and ingested docs are
+    dropped for a project with no compiled ``graph.json``. The per-project days
+    are joined under a ``# <project>`` heading. When ``write``, each project's
+    deterministic digest is written to ``.tesserae/summaries/<project>/``. When
+    ``synthesize``, an LLM narrative is prepended to the returned markdown
+    (best-effort; falls back to the deterministic digest on any failure).
+    """
+    projects = _resolve_projects(project_names)
+    project_sections: List[str] = []
+    paths: List[Path] = []
+
+    for name, root in projects:
+        root_str = str(root)
+        graph = _load_project_graph(root)
+        day_blocks: List[str] = []
+        for window in windows:
+            messages, turns_by_session = gather_messages(name, root_str, window)
+            findings = (
+                gather_findings(name, graph, turns_by_session, window)
+                if graph is not None
+                else []
+            )
+            commits = gather_git(name, root_str, window)
+            prs = gather_prs(name, root_str, window)
+            docs = gather_docs(name, root_str, graph, window) if graph is not None else []
+            items_by_kind = {
+                "findings": findings,
+                "commits": commits,
+                "prs": prs,
+                "docs": docs,
+            }
+            aggregates = {
+                "sessions": _sessions_aggregate(messages),
+                "files_touched": _files_touched(root_str, commits),
+            }
+            day_blocks.append(render_day(window, items_by_kind, aggregates))
+        body = f"# {name}\n\n" + "\n\n".join(day_blocks)
+        project_sections.append(body)
+        if write:
+            paths.append(_write_project_summary(root, name, windows, body))
+
+    deterministic_md = "\n\n".join(project_sections)
+    markdown = _maybe_narrate(deterministic_md, projects) if synthesize else deterministic_md
+    return SummaryResult(markdown=markdown, paths=paths)
