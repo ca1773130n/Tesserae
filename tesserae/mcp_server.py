@@ -18,6 +18,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
+from .activity_summary import build_summary, resolve_windows
 from .ports import GraphStore
 from .retrieval.hybrid import (
     DEFAULT_WEIGHTS as _HYBRID_DEFAULT_WEIGHTS,
@@ -1128,6 +1129,59 @@ class LLMWikiMCPServer:
                     "additionalProperties": False,
                 },
             },
+            {
+                "name": "activity_summary",
+                "description": (
+                    "Daily/weekly activity digest for registered projects — "
+                    "sessions, findings, git commits, PRs and ingested docs, "
+                    "each windowed by its own timestamp (never a session's "
+                    "started_at). Renders a deterministic markdown digest and, "
+                    "unless disabled, prepends an LLM narrative. Answers "
+                    "\"what happened today/this week?\". Writes the digest to "
+                    ".tesserae/summaries/<project>/ and returns the combined "
+                    "markdown plus the paths written."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "day": {
+                            "type": "string",
+                            "description": "Single day YYYY-MM-DD (default: today).",
+                        },
+                        "week": {
+                            "type": "string",
+                            "description": (
+                                "Seven daily windows ending on YYYY-MM-DD; "
+                                "empty string = the last 7 days ending today."
+                            ),
+                        },
+                        "since": {
+                            "type": "string",
+                            "description": "Window start (ISO date/datetime).",
+                        },
+                        "until": {
+                            "type": "string",
+                            "description": "Window end (ISO date/datetime).",
+                        },
+                        "project": {
+                            "type": "string",
+                            "description": (
+                                "Registered project name to scope to. Omit for "
+                                "all registered projects."
+                            ),
+                        },
+                        "synthesize": {
+                            "type": "boolean",
+                            "default": True,
+                            "description": (
+                                "Prepend an LLM narrative over the deterministic "
+                                "digest (default true). Set false for the digest only."
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+            },
         ]
 
     # ------------------------------------------------------------------ Resources
@@ -1820,6 +1874,8 @@ class LLMWikiMCPServer:
                 "drift": result.drift,
                 "wiki_root": str(result.wiki_root),
             }
+        if name == "activity_summary":
+            return self._mcp_activity_summary(args)
         raise ValueError(f"Unknown Tesserae MCP tool: {name}")
 
     def _mcp_graph_ppr(
@@ -1880,6 +1936,32 @@ class LLMWikiMCPServer:
         "hypothesis": "SessionHypothesis",
         "takeaway": "SessionTakeaway",
     }
+
+    def _mcp_activity_summary(self, args: JSONDict) -> JSONDict:
+        """Adapter over :func:`build_summary` — resolve windows, gather, render.
+
+        ``project`` optionally scopes to one registered project (default: all
+        registered). ``synthesize`` (default true) prepends the LLM narrative;
+        the deterministic digest is always written to
+        ``.tesserae/summaries/<project>/``. Returns the combined markdown plus
+        the string paths written.
+        """
+        windows = resolve_windows(
+            day=args.get("day"),
+            week=args.get("week"),
+            since=args.get("since"),
+            until=args.get("until"),
+        )
+        project = args.get("project")
+        project_names = [str(project)] if project else None
+        synthesize = bool(args.get("synthesize", True))
+        result = build_summary(
+            windows, project_names, synthesize=synthesize, write=True
+        )
+        return {
+            "markdown": result.markdown,
+            "paths": [str(p) for p in result.paths],
+        }
 
     def _mcp_list_sessions(
         self,
