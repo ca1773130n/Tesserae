@@ -70,6 +70,29 @@ def test_render_day_sorts_and_is_reproducible():
     assert render_day(w, {"commits": list(reversed(commits)), "findings": findings}, {}) == md
 
 
+def test_render_session_excerpts_groups_bounds_and_compresses():
+    from tesserae.activity_summary import MessageItem, render_session_excerpts
+
+    def _t(h):
+        return datetime(2026, 7, 4, h, tzinfo=timezone.utc)
+
+    msgs = [
+        MessageItem(ts=_t(11), role="assistant", name=None, text="done, tests pass",
+                    project="p", session_id="s1", harness="claude-code"),
+        MessageItem(ts=_t(9), role="user", name=None, text="please refactor the parser",
+                    project="p", session_id="s1", harness="claude-code"),
+        MessageItem(ts=_t(10), role="tool", name="Edit", text="{huge tool payload}",
+                    project="p", session_id="s1", harness="claude-code"),
+    ]
+    out = render_session_excerpts(msgs)
+    assert "session s1 (claude-code, 3 turns)" in out
+    # user/assistant text is kept, ordered by time (user before assistant).
+    assert out.index("please refactor the parser") < out.index("done, tests pass")
+    # tool turns collapse to just the tool name — no payload noise.
+    assert "[tool:Edit]" in out
+    assert "huge tool payload" not in out
+
+
 # --------------------------------------------------------------------------- #
 # build_summary — end-to-end over live sources
 # --------------------------------------------------------------------------- #
@@ -243,6 +266,11 @@ def test_build_summary_synthesize_prepends_narrative(tmp_path, monkeypatch):
     assert "day4 commit" in res.markdown
     # The digest — not some fabrication — was the model's context.
     assert "day4 commit" in client.seen_user
+    # The narrator is given the actual session conversation, not just counts,
+    # so it can summarize sessions with no commits ("session activity only" bug).
+    assert "hi day4" in client.seen_user
+    # But the raw excerpts never leak into the rendered output.
+    assert "hi day4" not in res.markdown
 
 
 def test_build_summary_narrative_falls_back_on_client_failure(tmp_path, monkeypatch):

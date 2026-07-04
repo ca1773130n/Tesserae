@@ -815,13 +815,16 @@ _SUMMARY_SYSTEM = (
     "  - **Decided** — decisions, trade-offs, or direction changes.\n"
     "  - **In progress** — opened-but-unmerged PRs / partial work.\n"
     "  - **Docs** — ingested/synthesized knowledge, one bullet each.\n"
+    "  - **Worked on** — for sessions that produced NO commits/PRs, read the "
+    "SESSION CONVERSATION EXCERPTS and summarize what was actually worked on and "
+    "how it went: what was attempted, what was decided, and whether it landed or "
+    "got blocked. 1-3 concrete bullets. NEVER write 'session activity only'.\n"
     "  - **Watch** — risks or follow-ups the digest implies (e.g. untested path).\n"
-    "- Every bullet is a single concrete line referencing real PR numbers, phases, "
-    "or file/area names from the digest. No sub-paragraphs.\n"
+    "- Every bullet is a single concrete line grounded in the digest or the "
+    "conversation excerpts (real PR numbers, phases, files, or what the session "
+    "worked through). No sub-paragraphs.\n"
     "- No opening preamble, no closing 'net for the day' summary, no prose.\n"
-    "- NEVER invent activity that is not in the digest. If a project only has "
-    "sessions with no commits/PRs/findings, give it a single bullet noting "
-    "session activity only (with the turn count) — do not embellish."
+    "- NEVER invent activity absent from the digest or the conversation excerpts."
 )
 
 
@@ -850,31 +853,93 @@ def _summary_llm_client(root: str) -> object:
     return client
 
 
-def synthesize_narrative(deterministic_md: str, client: object) -> str:
+def render_session_excerpts(
+    messages: Sequence[MessageItem],
+    *,
+    per_turn_chars: int = 500,
+    per_session_chars: int = 2000,
+    project_chars: int = 15000,
+) -> str:
+    """Compact per-session transcript so the narrator can summarize a session's
+    actual work — the deterministic digest only has counts, so a session with no
+    commits/PRs would otherwise be un-summarizable ("session activity only").
+
+    Groups ``messages`` by session, orders turns by time, and renders one bullet
+    per user/assistant turn (tool turns collapse to ``[tool:<name>]`` to cut
+    noise). Bounded three ways — per turn, per session, and per project — so a
+    busy project never starves the others' excerpt budget in a single LLM call.
+    """
+    by_session: Dict[str, List[MessageItem]] = {}
+    for m in messages:
+        by_session.setdefault(m.session_id, []).append(m)
+
+    blocks: List[str] = []
+    used = 0
+    for sid, msgs in by_session.items():
+        msgs = sorted(msgs, key=lambda m: m.ts)
+        lines = [f"### session {sid} ({msgs[0].harness}, {len(msgs)} turns)"]
+        slen = 0
+        for m in msgs:
+            text = " ".join((m.text or "").split())
+            if m.role == "tool":
+                frag = f"- [tool:{m.name}]" if m.name else "- [tool]"
+            elif text:
+                frag = f"- [{m.role}] {text[:per_turn_chars]}"
+            else:
+                continue
+            if slen + len(frag) > per_session_chars:
+                lines.append("- …(session truncated)")
+                break
+            lines.append(frag)
+            slen += len(frag)
+        block = "\n".join(lines)
+        if used + len(block) > project_chars:
+            blocks.append("### …(more sessions omitted for length)")
+            break
+        blocks.append(block)
+        used += len(block)
+    return "\n".join(blocks)
+
+
+def synthesize_narrative(
+    deterministic_md: str, client: object, *, conversation: str = ""
+) -> str:
     """Prepend an LLM "what happened" narrative to the deterministic digest.
 
-    ``client`` is any object exposing ``complete_text(system, user) -> str`` — the
-    rotating CLI/SDK client :func:`_summary_llm_client` builds. The deterministic
-    digest is passed verbatim as the *only* user context (the system prompt forbids
-    inventing activity absent from it), and the model's prose is placed above the
-    unchanged digest, separated by a horizontal rule, so the exact windowed facts
-    stay auditable below the narrative. An empty/whitespace-only reply yields the
-    digest unchanged (no dangling narrative or rule).
+    ``client`` exposes ``complete_text(system, user) -> str`` (the rotating CLI/SDK
+    client :func:`_summary_llm_client` builds). The model is given the deterministic
+    digest AND — when supplied — ``conversation`` (bounded per-session excerpts) so
+    it can summarize what sessions with no commits/PRs actually did. Only the
+    narrative is placed above the *unchanged* digest (excerpts never leak into the
+    rendered output), separated by a rule so the windowed facts stay auditable. An
+    empty/whitespace reply yields the digest unchanged.
     """
-    prose = (client.complete_text(system=_SUMMARY_SYSTEM, user=deterministic_md) or "").strip()
+    user = deterministic_md
+    if conversation.strip():
+        user = (
+            deterministic_md
+            + "\n\n=== SESSION CONVERSATION EXCERPTS ===\n"
+            + "(Use these to summarize what each session worked on and how it went, "
+            "especially sessions with no commits/PRs. Do not quote verbatim.)\n\n"
+            + conversation
+        )
+    prose = (client.complete_text(system=_SUMMARY_SYSTEM, user=user) or "").strip()
     if not prose:
         return deterministic_md
     return f"{prose}\n\n---\n\n{deterministic_md}"
 
 
-def _maybe_narrate(deterministic_md: str, projects: List[Tuple[str, Path]]) -> str:
+def _maybe_narrate(
+    deterministic_md: str,
+    projects: List[Tuple[str, Path]],
+    conversation: str = "",
+) -> str:
     """Prepend an LLM narrative to the digest when a narrator is wired.
 
-    The narrative layer (``synthesize_narrative`` + ``_summary_llm_client``) is
-    added by a later step; until it exists this returns the deterministic digest
-    unchanged. When present, narration is best-effort — a missing LLM client or
-    any LLM error falls back to the digest (logged), never raising (so a summary
-    always renders). The client is built from the first project's root.
+    Narration is best-effort — a missing LLM client or any LLM error falls back to
+    the digest (logged), never raising (so a summary always renders). The client is
+    built from the first project's root; ``conversation`` carries the bounded
+    per-session excerpts the narrator summarizes.
     """
     narrate = globals().get("synthesize_narrative")
     make_client = globals().get("_summary_llm_client")
@@ -883,7 +948,7 @@ def _maybe_narrate(deterministic_md: str, projects: List[Tuple[str, Path]]) -> s
     try:
         _name, root = projects[0]
         client = make_client(str(root))
-        return narrate(deterministic_md, client)
+        return narrate(deterministic_md, client, conversation=conversation)
     except Exception as exc:  # narration is best-effort; the digest always stands
         logger.warning("activity summary narrative synthesis failed: %s", exc)
         return deterministic_md
@@ -909,6 +974,7 @@ def build_summary(
     """
     projects = _resolve_projects(project_names)
     project_sections: List[str] = []
+    convo_blocks: List[str] = []
     paths: List[Path] = []
 
     # One window-scoped scan over ALL harness roots for every project at once.
@@ -920,6 +986,12 @@ def build_summary(
         day_blocks: List[str] = []
         for window in windows:
             messages = messages_by.get(name, {}).get(window.label, [])
+            # Bounded per-session excerpts so the narrator can summarize sessions
+            # with no commits/PRs (only built when we'll actually narrate).
+            if synthesize and messages:
+                excerpts = render_session_excerpts(messages)
+                if excerpts:
+                    convo_blocks.append(f"## {name} — {window.label}\n{excerpts}")
             findings = (
                 gather_findings(name, graph, window) if graph is not None else []
             )
@@ -943,5 +1015,10 @@ def build_summary(
             paths.append(_write_project_summary(root, name, windows, body))
 
     deterministic_md = "\n\n".join(project_sections)
-    markdown = _maybe_narrate(deterministic_md, projects) if synthesize else deterministic_md
+    conversation = "\n\n".join(convo_blocks)
+    markdown = (
+        _maybe_narrate(deterministic_md, projects, conversation)
+        if synthesize
+        else deterministic_md
+    )
     return SummaryResult(markdown=markdown, paths=paths)
