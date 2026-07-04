@@ -2,15 +2,24 @@
 
 Task 5 covers :func:`gather_messages` — turn-level, uncapped, windowed by each
 turn's *own* timestamp (never the session's ``started_at``).
+
+Task 6 covers :func:`gather_findings` — compiled session findings dated by their
+*source turn's* timestamp (via the ``turns_by_session`` map from Task 5), never
+by the session's long-running ``started_at``.
 """
 import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from tesserae.activity_summary import gather_messages, resolve_windows
+from tesserae.activity_summary import (
+    gather_findings,
+    gather_messages,
+    resolve_windows,
+)
 from tesserae.harness_sessions import HarnessSession
 from tesserae.harness_sessions_db import HarnessSessionsDB
+from tesserae.research_graph import ResearchGraph, ResearchNode, ResearchNodeType
 
 
 def _write_claude_transcript(p: Path, day: str, texts):
@@ -66,3 +75,63 @@ def test_gather_messages_only_in_window(tmp_path):
     (w5,) = resolve_windows(day="2026-07-05", tz=timezone.utc)
     msgs5, _ = gather_messages("proj", str(tmp_path), w5)
     assert msgs5 == []  # day-4 turns excluded from the day-5 window
+
+
+def test_finding_dated_by_source_turn(tmp_path):
+    """A finding is dated by its latest source turn, not the session start.
+
+    ``turns_by_session`` mirrors what :func:`gather_messages` returns (Task 5)
+    and the compile-time index base: index 0 -> 07-04, index 1 -> 07-05.
+    """
+    turns_by_session = {
+        "s1": [
+            {"role": "assistant", "timestamp": "2026-07-04T10:00:00Z", "text": "a"},
+            {"role": "assistant", "timestamp": "2026-07-05T10:00:00Z", "text": "b"},
+        ]
+    }
+    # A real ResearchNode: findings carry their body as ``name`` and record the
+    # source turns in ``metadata["turn_ids"]`` (session_graph.py mints them this
+    # way; there is no ``metadata["body"]`` key in practice).
+    node_valid = ResearchNode(
+        id="SessionInsight:s1:zz",
+        name="insight text",
+        type=ResearchNodeType.SESSION_INSIGHT,
+        metadata={"session_id": "s1", "turn_ids": [0]},
+    )
+    # turn_ids out of range -> unresolvable -> skipped (never dated from start).
+    node_out_of_range = ResearchNode(
+        id="SessionDecision:s1:yy",
+        name="undated decision",
+        type=ResearchNodeType.SESSION_DECISION,
+        metadata={"session_id": "s1", "turn_ids": [9]},
+    )
+    # session absent from the turns map -> unresolvable -> skipped.
+    node_orphan = ResearchNode(
+        id="SessionTODO:s2:xx",
+        name="orphan todo",
+        type=ResearchNodeType.SESSION_TODO,
+        metadata={"session_id": "s2", "turn_ids": [0]},
+    )
+    # A non-finding node is ignored by the type filter.
+    node_event = ResearchNode(
+        id="Event:s1:ev",
+        name="a session event",
+        type=ResearchNodeType.EVENT,
+        metadata={"session_id": "s1", "turn_ids": [0]},
+    )
+    graph = ResearchGraph(
+        nodes=[node_valid, node_out_of_range, node_orphan, node_event]
+    )
+
+    (w4,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
+    got = gather_findings("proj", graph, turns_by_session, w4)
+    assert [f.body for f in got] == ["insight text"]
+    assert [f.kind for f in got] == ["SessionInsight"]
+    assert got[0].node_id == "SessionInsight:s1:zz"
+    assert got[0].session_id == "s1"
+    assert got[0].project == "proj"
+    assert got[0].ts.date().isoformat() == "2026-07-04"
+
+    # The day-5 window excludes the finding whose source turn is on 07-04.
+    (w5,) = resolve_windows(day="2026-07-05", tz=timezone.utc)
+    assert gather_findings("proj", graph, turns_by_session, w5) == []

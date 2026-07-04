@@ -19,6 +19,12 @@ from typing import Dict, List, Optional, Tuple
 
 from tesserae.harness_sessions import _claude_turns, _codex_turns, _parse_jsonl
 from tesserae.harness_sessions_db import HarnessSessionsDB
+from tesserae.research_graph import SESSION_FINDING_TYPES
+
+# String values of the six structured session-finding node types. Findings are
+# matched on ``node.type.value`` (a string), so mirror the canonical enum set
+# rather than re-listing the names — one source of truth, no drift.
+_FINDING_TYPE_VALUES = {t.value for t in SESSION_FINDING_TYPES}
 
 
 # --------------------------------------------------------------------------- #
@@ -234,3 +240,63 @@ def gather_messages(
                     )
                 )
     return messages, turns_by_session
+
+
+# --------------------------------------------------------------------------- #
+# Finding gatherer — dated by the source turn, compile-aligned, never started_at
+# --------------------------------------------------------------------------- #
+def gather_findings(
+    project: str,
+    graph: object,
+    turns_by_session: Dict[str, List[Dict[str, object]]],
+    window: Window,
+) -> List[FindingItem]:
+    """Gather compiled session findings whose *source turn* falls in ``window``.
+
+    Each session-finding node (``SessionInsight``/``SessionDecision``/…) carries
+    ``metadata["turn_ids"]`` — indices into the session's turn list assigned at
+    compile time (``session_graph.py`` mints them against the default,
+    HEAD-capped slice; the finding's body is stored as ``node.name``). A finding
+    is dated by its *latest* source turn::
+
+        ts = parse_ts(turns[max(turn_ids)]["timestamp"])
+
+    resolved through the ``turns_by_session`` map produced by
+    :func:`gather_messages`. Because ``_claude_turns``/``_codex_turns`` cap by
+    keeping the HEAD (they ``break`` once ``len(turns) >= limit``), the indices
+    produced with the 100k gather limit are identical to the compile-time
+    default-limit (300) indices for every valid ``turn_id`` — so the map is
+    reused directly, with no rebuild.
+
+    A finding whose turns can't be resolved — its session is absent from the
+    map, or every ``turn_id`` is out of range — is **skipped**. It is never
+    dated from the session's long-running ``started_at`` (Global Constraint).
+    The returned list is in ``graph.nodes`` order; the renderer (Task 9) sorts.
+    """
+    out: List[FindingItem] = []
+    for node in graph.nodes:
+        tname = getattr(node.type, "value", node.type)
+        if tname not in _FINDING_TYPE_VALUES:
+            continue
+        meta = getattr(node, "metadata", None) or {}
+        turns = turns_by_session.get(meta.get("session_id")) or []
+        ids = [
+            i
+            for i in (meta.get("turn_ids") or [])
+            if isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(turns)
+        ]
+        if not ids:
+            continue  # no resolvable source turn -> undated -> skip
+        ts = parse_ts(str(turns[max(ids)].get("timestamp") or ""))
+        if ts and in_window(ts, window):
+            out.append(
+                FindingItem(
+                    ts=ts,
+                    kind=str(tname),
+                    body=str(meta.get("body") or getattr(node, "name", "") or ""),
+                    project=project,
+                    session_id=meta.get("session_id"),
+                    node_id=node.id,
+                )
+            )
+    return out
