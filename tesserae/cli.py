@@ -10,6 +10,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional
 
+from .activity_summary import SummaryResult, build_summary, resolve_windows
 from .batch import BatchIngestRunner
 from .canonicalization import GraphCanonicalizer, ReviewDecision
 from .cognee_adapter import CogneeResearchGraphAdapter
@@ -2120,6 +2121,58 @@ def _handle_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _build_summary_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae summary",
+        description="Daily/weekly activity digest — sessions, findings, commits, PRs, ingested docs.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae summary                       # today, every registered project\n"
+            "  tesserae summary --day 2026-07-04\n"
+            "  tesserae summary --week                # the last 7 days\n"
+            "  tesserae summary --week 2026-07-04     # 7 days ending on that date\n"
+            "  tesserae summary --since 2026-07-01 --until 2026-07-04\n"
+            "  tesserae summary --project my-repo --no-llm\n"
+        ),
+    )
+    parser.add_argument("--day", default=None, help="Single day YYYY-MM-DD (default: today).")
+    parser.add_argument(
+        "--week",
+        nargs="?",
+        const="",
+        default=None,
+        help="Seven daily windows ending on YYYY-MM-DD; bare --week = the last 7 days.",
+    )
+    parser.add_argument("--since", default=None, help="Window start (ISO datetime/date).")
+    parser.add_argument("--until", default=None, help="Window end (ISO datetime/date).")
+    parser.add_argument(
+        "--project",
+        action="append",
+        default=None,
+        help="Limit to a registered project by name; repeat for several. Omit = all registered.",
+    )
+    parser.add_argument(
+        "--no-llm",
+        dest="no_llm",
+        action="store_true",
+        help="Skip the LLM narrative; print the deterministic digest only.",
+    )
+    return parser
+
+
+def _handle_summary(args: argparse.Namespace) -> int:
+    windows = resolve_windows(
+        day=args.day, week=args.week, since=args.since, until=args.until
+    )
+    synthesize = not args.no_llm
+    result = build_summary(windows, args.project, synthesize=synthesize, write=True)
+    print(result.markdown)
+    for path in result.paths:
+        print(f"wrote {path}", file=sys.stderr)
+    return 0
+
+
 def _handle_compile_paths_ingest(args: argparse.Namespace) -> int:
     """Ad-hoc ingest of explicit paths (INGEST-ONLY).
 
@@ -2320,6 +2373,11 @@ def _route_serve(rest: List[str]) -> int:
 def _route_status(rest: List[str]) -> int:
     args = _build_status_parser().parse_args(rest)
     return _handle_status(args)
+
+
+def _route_summary(rest: List[str]) -> int:
+    args = _build_summary_parser().parse_args(rest)
+    return _handle_summary(args)
 
 
 def _route_engine(rest: List[str]) -> int:
@@ -4116,6 +4174,7 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "context": _route_context,
     "serve": _route_serve,
     "status": _route_status,
+    "summary": _route_summary,
     "engine": _route_engine,
     "refresh": _route_refresh,
     # task 5: groups
