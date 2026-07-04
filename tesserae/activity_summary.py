@@ -662,13 +662,24 @@ def render_day(window: Window, items_by_kind: Dict[str, object], aggregates: Dic
         lines.extend(rows if rows else [_NONE])
         lines.append("")
 
-    _section(
-        "### Sessions",
+    # A count line, not a hash dump — the per-session detail lives in the
+    # narrative's **Sessions** subsection. Turns are in-window only.
+    n_sessions = len(sessions)
+    n_turns = sum(int(s.get("turns", 0)) for s in sessions)
+    harness_tally: Dict[str, int] = {}
+    for s in sessions:
+        h = str(s.get("harness", "") or "?")
+        harness_tally[h] = harness_tally.get(h, 0) + 1
+    breakdown = ", ".join(f"{h} ×{n}" for h, n in sorted(harness_tally.items()))
+    session_rows = (
         [
-            f"- `{s['session_id']}` ({s.get('harness', '')}, {s.get('turns', 0)} turns)"
-            for s in sessions
-        ],
+            f"- {n_sessions} sessions · {n_turns} in-window turns"
+            + (f" ({breakdown})" if breakdown else "")
+        ]
+        if n_sessions
+        else []
     )
+    _section("### Sessions", session_rows)
     _section("### Files touched", [f"- `{f}`" for f in files])
     _section(
         "### Decisions & Insights",
@@ -815,14 +826,18 @@ _SUMMARY_SYSTEM = (
     "  - **Decided** — decisions, trade-offs, or direction changes.\n"
     "  - **In progress** — opened-but-unmerged PRs / partial work.\n"
     "  - **Docs** — ingested/synthesized knowledge, one bullet each.\n"
-    "  - **Worked on** — for sessions that produced NO commits/PRs, read the "
-    "SESSION CONVERSATION EXCERPTS and summarize what was actually worked on and "
-    "how it went: what was attempted, what was decided, and whether it landed or "
-    "got blocked. 1-3 concrete bullets. NEVER write 'session activity only'.\n"
     "  - **Watch** — risks or follow-ups the digest implies (e.g. untested path).\n"
+    "  - **Sessions** — REQUIRED whenever excerpts are present. Under the SESSION "
+    "CONVERSATION EXCERPTS, each session appears as `### session <id> (<harness>, "
+    "<N> turns)`. Emit exactly ONE bullet per session summarizing what that "
+    "session actually did — the work, key decisions, and outcome/blocker — in one "
+    "concrete line, suffixed with `(<harness>, <N> turns)` copied from that "
+    "session's header. Cover every session; never merge, drop, or reorder-away a "
+    "session; NEVER print the session id/hash. The excerpts contain ONLY the turns "
+    "inside the requested time window, so summarize just that slice.\n"
     "- Every bullet is a single concrete line grounded in the digest or the "
     "conversation excerpts (real PR numbers, phases, files, or what the session "
-    "worked through). No sub-paragraphs.\n"
+    "worked through). No sub-paragraphs. Never write 'session activity only'.\n"
     "- No opening preamble, no closing 'net for the day' summary, no prose.\n"
     "- NEVER invent activity absent from the digest or the conversation excerpts."
 )
@@ -856,9 +871,9 @@ def _summary_llm_client(root: str) -> object:
 def render_session_excerpts(
     messages: Sequence[MessageItem],
     *,
-    per_turn_chars: int = 500,
-    per_session_chars: int = 2000,
-    project_chars: int = 15000,
+    per_turn_chars: int = 600,
+    per_session_chars: int = 3500,
+    project_chars: int = 24000,
 ) -> str:
     """Compact per-session transcript so the narrator can summarize a session's
     actual work — the deterministic digest only has counts, so a session with no

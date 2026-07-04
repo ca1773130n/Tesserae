@@ -175,8 +175,10 @@ def test_e2e_deterministic_day(tmp_path, monkeypatch):
     assert "day5 commit" not in res.markdown  # day-5 activity excluded
     assert "a.txt" in res.markdown  # files-touched aggregate from the day-4 commit
     assert "b.txt" not in res.markdown
-    assert "sess4" in res.markdown  # the day-4 transcript is listed as a session
-    assert "sess5" not in res.markdown  # the day-5 transcript contributed nothing on 07-04
+    # Sessions render as an in-window count, never a hash dump: the day-4 window
+    # sees exactly the one 2-turn transcript; the day-5 transcript contributes 0.
+    assert "1 sessions · 2 in-window turns" in res.markdown
+    assert "sess5" not in res.markdown
     assert res.paths == []  # write=False
 
     # Determinism: identical inputs -> byte-identical output.
