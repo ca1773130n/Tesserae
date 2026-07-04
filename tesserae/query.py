@@ -42,6 +42,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
+from .citation_names import NODE_CITATION_RE, rewrite_citations
 from .research_graph import ResearchNodeType
 from .site.search import bm25_score, bm25_score_tokens, average_doc_len, tokenize
 
@@ -193,13 +194,18 @@ def _ontology_recap() -> str:
     return "\n".join(lines)
 
 
-_NODE_CITATION_RE = re.compile(r"\[([a-zA-Z0-9_\-:./]{3,})\]")
-
-
 # ---------------------------------------------------------------- log helpers
 
 
 _LOGGED_FAILURE_KINDS: set[str] = set()
+
+
+def _readable_label_from_id(node_id: str, raw: Mapping[str, object]) -> str:
+    """Human label for an untitled node. '<Kind>: <slug>' from 'Kind:slug:hash'."""
+    parts = node_id.split(":")
+    if len(parts) >= 2 and parts[0]:
+        return f"{parts[0]}: {parts[1].replace('-', ' ').strip()}".strip(": ")
+    return node_id or "source"
 
 
 def _cognee_importable() -> bool:
@@ -385,7 +391,13 @@ class WikiQuery:
     def _hit_for(self, entry: _IndexEntry, score: float) -> QueryHit:
         raw = entry.raw
         kind = str(raw.get("kind") or "")
-        title = str(raw.get("title") or raw.get("id") or "")
+        raw_title = raw.get("title")
+        if raw_title:
+            title = str(raw_title)
+        else:
+            # Never surface the raw id as a display name. Prefer a readable
+            # "<Kind>: <slug>" label derived from the node id.
+            title = _readable_label_from_id(str(raw.get("id") or ""), raw)
         href = str(raw.get("href") or "")
         node_id_raw = raw.get("id")
         node_id = str(node_id_raw) if node_id_raw is not None else None
@@ -623,7 +635,7 @@ class WikiQuery:
                 fallback_reason="model produced empty response",
             )
 
-        if not _NODE_CITATION_RE.search(body_text):
+        if not NODE_CITATION_RE.search(body_text):
             return QueryResult(
                 question=question,
                 hits=hits,
@@ -634,6 +646,10 @@ class WikiQuery:
             )
 
         model_id = getattr(response, "model", None) or model
+        # Rewrite [node_id] citations to the hit title AFTER the grounding
+        # check above (names contain spaces and no longer match the regex).
+        id_to_name = {h.node_id: h.title for h in hits if h.node_id and h.title}
+        body_text = rewrite_citations(body_text, id_to_name)
         return QueryResult(
             question=question,
             hits=hits,
@@ -694,7 +710,7 @@ class WikiQuery:
 
         if not body_text or not body_text.strip():
             return None
-        if not _NODE_CITATION_RE.search(body_text):
+        if not NODE_CITATION_RE.search(body_text):
             # Ungrounded prose — drop to search-only, same as the SDK path.
             return QueryResult(
                 question=question,
@@ -704,6 +720,10 @@ class WikiQuery:
                 used_llm=False,
                 fallback_reason="model produced no citations",
             )
+        # Rewrite [node_id] citations to the hit title AFTER the grounding
+        # check above (names contain spaces and no longer match the regex).
+        id_to_name = {h.node_id: h.title for h in hits if h.node_id and h.title}
+        body_text = rewrite_citations(body_text, id_to_name)
         return QueryResult(
             question=question,
             hits=hits,
