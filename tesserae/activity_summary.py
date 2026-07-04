@@ -705,6 +705,59 @@ def _write_project_summary(root: Path, name: str, windows: List[Window], body: s
     return path
 
 
+# --------------------------------------------------------------------------- #
+# LLM narrative — one prose "what happened" section over the deterministic digest
+# --------------------------------------------------------------------------- #
+_SUMMARY_SYSTEM = (
+    "You are summarizing a developer's activity for a time period. "
+    "Given a deterministic digest of sessions, findings, commits, PRs and "
+    "ingested docs, write a concise narrative of what happened and why it "
+    "mattered. Do not invent activity not present in the digest."
+)
+
+
+def _summary_llm_client(root: str) -> object:
+    """Build the same rotating, no-API-key LLM client ``tesserae ask`` uses.
+
+    Mirrors ``query.QueryEngine._answer_via_cli``: :func:`build_rotating_client`
+    composes every available backend — the Claude CLI (rotating its config dirs),
+    the Codex CLI (rotating its homes), and the Anthropic SDK if a key is set — so
+    narration works over OAuth without an ``ANTHROPIC_API_KEY`` and survives a
+    rate-limited account by rotating to the next one. The returned client exposes
+    ``complete_text(system, user) -> str``. Raises ``RuntimeError`` when no backend
+    is usable so the caller (:func:`_maybe_narrate`) falls back to the
+    deterministic digest rather than dereferencing ``None``.
+
+    ``root`` is accepted for call-site symmetry with the other per-project helpers
+    (and to leave room for a future per-project provider override); the client is
+    discovered from the machine's global CLI accounts exactly as the ask path does,
+    so it is not consulted today.
+    """
+    from tesserae.llm_json import build_rotating_client
+
+    client = build_rotating_client()
+    if client is None:
+        raise RuntimeError("no LLM backend available for narrative synthesis")
+    return client
+
+
+def synthesize_narrative(deterministic_md: str, client: object) -> str:
+    """Prepend an LLM "what happened" narrative to the deterministic digest.
+
+    ``client`` is any object exposing ``complete_text(system, user) -> str`` — the
+    rotating CLI/SDK client :func:`_summary_llm_client` builds. The deterministic
+    digest is passed verbatim as the *only* user context (the system prompt forbids
+    inventing activity absent from it), and the model's prose is placed above the
+    unchanged digest, separated by a horizontal rule, so the exact windowed facts
+    stay auditable below the narrative. An empty/whitespace-only reply yields the
+    digest unchanged (no dangling narrative or rule).
+    """
+    prose = (client.complete_text(system=_SUMMARY_SYSTEM, user=deterministic_md) or "").strip()
+    if not prose:
+        return deterministic_md
+    return f"{prose}\n\n---\n\n{deterministic_md}"
+
+
 def _maybe_narrate(deterministic_md: str, projects: List[Tuple[str, Path]]) -> str:
     """Prepend an LLM narrative to the digest when a narrator is wired.
 

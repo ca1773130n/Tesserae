@@ -193,3 +193,81 @@ def test_build_summary_default_scope_is_all_registered(tmp_path, monkeypatch):
     res = build_summary([w4], None, synthesize=False, write=False)
     assert "# proj" in res.markdown
     assert "day4 commit" in res.markdown
+
+
+# --------------------------------------------------------------------------- #
+# synthesize_narrative — LLM prose prepended to the deterministic digest
+# --------------------------------------------------------------------------- #
+class _FakeClient:
+    """Stand-in for the rotating CLI/SDK client's ``complete_text`` surface."""
+
+    def __init__(self, prose: str = "On July 4, one commit landed.") -> None:
+        self.prose = prose
+        self.seen_user = None
+        self.seen_system = None
+
+    def complete_text(self, system: str, user: str) -> str:
+        self.seen_system = system
+        self.seen_user = user
+        return self.prose
+
+
+def test_synthesize_narrative_uses_client():
+    from tesserae.activity_summary import synthesize_narrative
+
+    client = _FakeClient()
+    md = "## 2026-07-04\n### Commits\n- day4 commit\n"
+    out = synthesize_narrative(md, client)
+    # The deterministic body is the model's only context.
+    assert "day4 commit" in client.seen_user
+    assert "On July 4, one commit landed." in out
+    # Deterministic body retained verbatim below the narrative.
+    assert "## 2026-07-04" in out
+    assert out.index("On July 4, one commit landed.") < out.index("## 2026-07-04")
+
+
+def test_synthesize_narrative_empty_prose_falls_back_to_digest():
+    from tesserae.activity_summary import synthesize_narrative
+
+    md = "## 2026-07-04\n### Commits\n- day4 commit\n"
+    # An empty/whitespace model reply must not produce a dangling rule; the
+    # deterministic digest stands unchanged.
+    assert synthesize_narrative(md, _FakeClient(prose="   ")) == md
+
+
+def test_build_summary_synthesize_prepends_narrative(tmp_path, monkeypatch):
+    import tesserae.activity_summary as summary
+
+    _build_project(tmp_path)
+    _register_single_project(monkeypatch, "proj", tmp_path)
+    client = _FakeClient(prose="A concise story of the day.")
+    monkeypatch.setattr(summary, "_summary_llm_client", lambda root: client, raising=False)
+
+    (w4,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
+    res = build_summary([w4], ["proj"], synthesize=True, write=False)
+
+    # Narrative prepended above the (still present) deterministic digest.
+    assert "A concise story of the day." in res.markdown
+    assert res.markdown.index("A concise story of the day.") < res.markdown.index("# proj")
+    assert "day4 commit" in res.markdown
+    # The digest — not some fabrication — was the model's context.
+    assert "day4 commit" in client.seen_user
+
+
+def test_build_summary_narrative_falls_back_on_client_failure(tmp_path, monkeypatch):
+    import tesserae.activity_summary as summary
+
+    _build_project(tmp_path)
+    _register_single_project(monkeypatch, "proj", tmp_path)
+
+    def _boom(root):
+        raise RuntimeError("no LLM backend available")
+
+    monkeypatch.setattr(summary, "_summary_llm_client", _boom, raising=False)
+
+    (w4,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
+    # synthesize=True but the client blows up -> deterministic digest, no raise.
+    res = build_summary([w4], ["proj"], synthesize=True, write=False)
+    res_plain = build_summary([w4], ["proj"], synthesize=False, write=False)
+    assert res.markdown == res_plain.markdown
+    assert res.markdown.startswith("# proj")
