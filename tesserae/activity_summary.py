@@ -800,10 +800,28 @@ def _write_project_summary(root: Path, name: str, windows: List[Window], body: s
 # LLM narrative — one prose "what happened" section over the deterministic digest
 # --------------------------------------------------------------------------- #
 _SUMMARY_SYSTEM = (
-    "You are summarizing a developer's activity for a time period. "
-    "Given a deterministic digest of sessions, findings, commits, PRs and "
-    "ingested docs, write a concise narrative of what happened and why it "
-    "mattered. Do not invent activity not present in the digest."
+    "You summarize a developer's activity for a time period from a deterministic "
+    "digest of sessions, commits, PRs, findings, and ingested docs.\n"
+    "\n"
+    "Output STRUCTURED MARKDOWN ONLY — never flowing paragraphs, never an essay.\n"
+    "Format:\n"
+    "- One `### <project>` heading per project that had substantive activity, "
+    "ordered by volume (most active first). Skip projects with only trivial or no "
+    "activity.\n"
+    "- Under each project, terse one-line bullets grouped under bold category "
+    "labels, and ONLY the categories that apply:\n"
+    "  - **Shipped** — merged PRs / completed features (cite PR # and phase/name).\n"
+    "  - **Fixed** — bugs and security issues closed (name the actual issue).\n"
+    "  - **Decided** — decisions, trade-offs, or direction changes.\n"
+    "  - **In progress** — opened-but-unmerged PRs / partial work.\n"
+    "  - **Docs** — ingested/synthesized knowledge, one bullet each.\n"
+    "  - **Watch** — risks or follow-ups the digest implies (e.g. untested path).\n"
+    "- Every bullet is a single concrete line referencing real PR numbers, phases, "
+    "or file/area names from the digest. No sub-paragraphs.\n"
+    "- No opening preamble, no closing 'net for the day' summary, no prose.\n"
+    "- NEVER invent activity that is not in the digest. If a project only has "
+    "sessions with no commits/PRs/findings, give it a single bullet noting "
+    "session activity only (with the turn count) — do not embellish."
 )
 
 
