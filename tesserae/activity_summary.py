@@ -49,8 +49,14 @@ class Window:
     label: str
 
 
+# ponytail: pinned to KST (UTC+9, no DST) rather than the machine locale — the
+# user is in Korea, which never shifts, so day/week midnights are unambiguous and
+# there is no DST case to handle. Swap this constant if the deployment zone changes.
+KST = timezone(timedelta(hours=9))
+
+
 def _local_tz() -> tzinfo:
-    return datetime.now().astimezone().tzinfo or timezone.utc
+    return KST
 
 
 def _midnight(day: str, tz: tzinfo) -> datetime:
