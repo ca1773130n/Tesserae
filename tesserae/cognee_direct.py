@@ -61,6 +61,25 @@ def _installed_cognee_version() -> Optional[str]:
         return None
 
 
+# Artifacts a real cognee system store contains. We refuse to delete a
+# ``databases`` dir that doesn't hold at least one of these — so a user-supplied
+# ``system_root`` that merely happens to have a ``databases`` child is never
+# wiped by mistake.
+_COGNEE_STORE_MARKERS = (
+    "cognee_db",
+    "cognee.lancedb",
+    "cognee.graph",
+    "cognee_db__main_staging",
+)
+
+
+def _looks_like_cognee_store(databases: Path) -> bool:
+    try:
+        return any((databases / marker).exists() for marker in _COGNEE_STORE_MARKERS)
+    except OSError:
+        return False
+
+
 def reset_stale_cognee_system_db(system_root: str | Path) -> bool:
     """Drop the cognee system DBs if they were created by a different cognee version.
 
@@ -71,6 +90,11 @@ def reset_stale_cognee_system_db(system_root: str | Path) -> bool:
     dir like the one this fixes), delete the ``databases`` subdir so cognee
     rebuilds a schema-current store from the bundle on the next cognify. Returns
     True when a reset happened. Best-effort: never raises.
+
+    Safety: only ever deletes a ``databases`` dir that actually looks like a
+    cognee store, never follows a symlinked root/dir, and only stamps the current
+    version once deletion is confirmed — a failed delete stays unstamped so the
+    next run retries instead of masking the broken store.
     """
     current = _installed_cognee_version()
     if not current:
@@ -82,20 +106,33 @@ def reset_stale_cognee_system_db(system_root: str | Path) -> bool:
         if prior == current:
             return False  # same cognee version → keep the accumulated store
         databases = root / "databases"
-        reset = False
-        if databases.exists():
-            shutil.rmtree(databases, ignore_errors=True)
-            reset = True
+        if not databases.exists():
+            # Fresh store (nothing to reset) — just record the version.
+            root.mkdir(parents=True, exist_ok=True)
+            stamp.write_text(current, encoding="utf-8")
+            return False
+        # Destructive guard: never delete a symlinked root/dir, and never delete
+        # a ``databases`` dir that isn't recognizably a cognee store.
+        if root.is_symlink() or databases.is_symlink() or not _looks_like_cognee_store(databases):
             logger.warning(
-                "cognee system store at %s was created by a different cognee "
-                "version (%s vs installed %s); reset it (cognee has no schema "
-                "migration). It rebuilds on the next cognify.",
-                databases, prior or "unstamped", current,
+                "cognee system dir at %s is not a recognizable cognee store (or "
+                "is a symlink); leaving it untouched.", databases,
             )
-        root.mkdir(parents=True, exist_ok=True)
+            return False
+        # Delete WITHOUT ignore_errors so a failure is visible; only stamp after
+        # the store is confirmed gone, else leave it for the next run to retry.
+        shutil.rmtree(databases)
+        if databases.exists():
+            return False  # partial/failed delete — do NOT mask it with a stamp
+        logger.warning(
+            "cognee system store at %s was created by a different cognee version "
+            "(%s vs installed %s); reset it (cognee has no schema migration). It "
+            "rebuilds on the next cognify.", databases, prior or "unstamped", current,
+        )
         stamp.write_text(current, encoding="utf-8")
-        return reset
-    except OSError:  # noqa: BLE001 — cleanup is best-effort
+        return True
+    except Exception:  # noqa: BLE001 — cleanup is best-effort; never propagate
+        logger.warning("cognee system-store reset skipped (unexpected error)", exc_info=True)
         return False
 
 
