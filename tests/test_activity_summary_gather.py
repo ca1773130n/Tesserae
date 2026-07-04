@@ -6,15 +6,23 @@ turn's *own* timestamp (never the session's ``started_at``).
 Task 6 covers :func:`gather_findings` — compiled session findings dated by their
 *source turn's* timestamp (via the ``turns_by_session`` map from Task 5), never
 by the session's long-running ``started_at``.
+
+Task 7 covers :func:`gather_git` (commits, read at summary time from a real git
+repo, windowed by author date) and :func:`gather_prs` (GitHub PR events, gated on
+an ``origin`` remote + ``gh`` — a non-repo / missing ``gh`` drops the section
+gracefully instead of raising).
 """
 import json
 import os
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
 from tesserae.activity_summary import (
     gather_findings,
+    gather_git,
     gather_messages,
+    gather_prs,
     resolve_windows,
 )
 from tesserae.harness_sessions import HarnessSession
@@ -135,3 +143,54 @@ def test_finding_dated_by_source_turn(tmp_path):
     # The day-5 window excludes the finding whose source turn is on 07-04.
     (w5,) = resolve_windows(day="2026-07-05", tz=timezone.utc)
     assert gather_findings("proj", graph, turns_by_session, w5) == []
+
+
+def _git(root: Path, *args, env=None) -> None:
+    """Run a git subcommand against ``root``, failing loudly on non-zero exit."""
+    subprocess.run(
+        ["git", "-C", str(root), *args],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+
+
+def test_gather_git_windows_commits(tmp_path):
+    """gather_git returns only commits whose author date falls in the window."""
+    root = tmp_path
+    _git(root, "init", "-q")
+    _git(root, "config", "user.email", "t@t")
+    _git(root, "config", "user.name", "T")
+    # A fixed author/committer date so the window edge is deterministic. The
+    # naive stamp is read in the machine's local zone; the gatherer compares the
+    # tz-aware %aI it emits against the tz-aware window, so the instant is exact.
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_DATE": "2026-07-04T10:00:00",
+        "GIT_COMMITTER_DATE": "2026-07-04T10:00:00",
+    }
+    (root / "f").write_text("x")
+    _git(root, "add", ".")
+    _git(root, "commit", "-q", "-m", "day4 commit", env=env)
+
+    (w4,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
+    commits = gather_git("proj", str(root), w4)
+    assert [c.subject for c in commits] == ["day4 commit"]
+    assert commits[0].author == "T"
+    assert commits[0].project == "proj"
+    assert commits[0].ts.date().isoformat() == "2026-07-04"
+
+    (w5,) = resolve_windows(day="2026-07-05", tz=timezone.utc)
+    assert gather_git("proj", str(root), w5) == []
+
+
+def test_gather_git_skips_non_repo(tmp_path):
+    """A directory that is not a git repo drops the commits section, no raise."""
+    (w,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
+    assert gather_git("proj", str(tmp_path), w) == []
+
+
+def test_gather_prs_skips_without_origin(tmp_path):
+    """No git repo / no origin remote / no gh -> empty PR list, never raises."""
+    (w,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
+    assert gather_prs("proj", str(tmp_path), w) == []

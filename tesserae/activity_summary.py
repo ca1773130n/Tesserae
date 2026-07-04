@@ -12,6 +12,8 @@ gatherers (later tasks) emit.
 """
 from __future__ import annotations
 
+import json
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone, tzinfo
 from pathlib import Path
@@ -300,3 +302,128 @@ def gather_findings(
                 )
             )
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Git + PR gatherers — read live at summary time, drop the section on any error
+# --------------------------------------------------------------------------- #
+def _run(cmd: List[str], cwd: str, timeout: int = 20) -> Optional[str]:
+    """Run ``cmd`` in ``cwd`` and return its stdout, or ``None`` on any failure.
+
+    Mirrors ``raganything_refresh._git_head``'s capture+timeout pattern. A
+    missing binary, a non-zero exit (not a git repo, no ``origin``, ``gh``
+    unauthenticated), or a timeout all collapse to ``None`` so the caller can
+    drop just this section rather than fail the whole summary (Global
+    Constraint: graceful degradation).
+    """
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return proc.stdout if proc.returncode == 0 else None
+
+
+def gather_git(project: str, root: str, window: Window) -> List[CommitItem]:
+    """Gather commits whose *author date* falls inside ``window``.
+
+    Runs ``git log`` in ``root`` with the window as a ``--since``/``--until``
+    pre-filter, then re-checks each commit's strict-ISO author date (``%aI``)
+    against the half-open window so the boundary is exact regardless of git's
+    fuzzier date matching. Fields are ``\\x1f``-separated to survive subjects
+    that contain any other punctuation. A non-git directory / missing git
+    yields ``[]`` (via :func:`_run`), never a raise. Returned in git-log order
+    (newest first); the renderer sorts.
+    """
+    out = _run(
+        [
+            "git",
+            "log",
+            f"--since={window.start.isoformat()}",
+            f"--until={window.end.isoformat()}",
+            "--date=iso-strict",
+            "--pretty=%H%x1f%an%x1f%aI%x1f%s",
+        ],
+        cwd=root,
+    )
+    if not out:
+        return []
+    items: List[CommitItem] = []
+    for line in out.splitlines():
+        sha, author, authored_iso, subject = (line.split("\x1f") + ["", "", "", ""])[:4]
+        ts = parse_ts(authored_iso)
+        if ts and in_window(ts, window):
+            items.append(
+                CommitItem(
+                    ts=ts,
+                    sha=sha[:12],
+                    author=author,
+                    subject=subject,
+                    project=project,
+                )
+            )
+    return items
+
+
+def gather_prs(project: str, root: str, window: Window) -> List[PRItem]:
+    """Gather GitHub PR events (opened/merged/closed) that fall in ``window``.
+
+    Requires an ``origin`` remote and an authenticated ``gh``; each PR emits an
+    event per lifecycle timestamp that lands in the window: ``createdAt``→
+    ``opened``, ``mergedAt``→``merged``, ``closedAt``→``closed`` (a merged PR is
+    *not* also double-counted as closed). Any failure — no repo, no ``origin``,
+    ``gh`` missing/unauthenticated, non-zero exit, or malformed JSON — yields
+    ``[]`` (Global Constraint: graceful degradation), never a raise. Returned in
+    ``gh`` order; the renderer sorts.
+    """
+    origin = _run(["git", "remote", "get-url", "origin"], cwd=root)
+    if not origin:
+        return []
+    raw = _run(
+        [
+            "gh",
+            "pr",
+            "list",
+            "--state",
+            "all",
+            "--limit",
+            "200",
+            "--json",
+            "number,title,state,createdAt,mergedAt,closedAt",
+        ],
+        cwd=root,
+        timeout=30,
+    )
+    if not raw:
+        return []
+    try:
+        prs = json.loads(raw)
+    except ValueError:
+        return []
+    items: List[PRItem] = []
+    for pr in prs:
+        for field, event in (
+            ("createdAt", "opened"),
+            ("mergedAt", "merged"),
+            ("closedAt", "closed"),
+        ):
+            if event == "closed" and pr.get("mergedAt"):
+                continue  # a merge already counted; don't double-count as closed
+            ts = parse_ts(str(pr.get(field) or ""))
+            if ts and in_window(ts, window):
+                items.append(
+                    PRItem(
+                        ts=ts,
+                        number=pr["number"],
+                        title=pr["title"],
+                        state=pr["state"],
+                        event=event,
+                        project=project,
+                    )
+                )
+    return items
