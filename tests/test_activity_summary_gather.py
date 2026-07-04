@@ -1,0 +1,68 @@
+"""Gatherer tests for the activity summary.
+
+Task 5 covers :func:`gather_messages` — turn-level, uncapped, windowed by each
+turn's *own* timestamp (never the session's ``started_at``).
+"""
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+
+from tesserae.activity_summary import gather_messages, resolve_windows
+from tesserae.harness_sessions import HarnessSession
+from tesserae.harness_sessions_db import HarnessSessionsDB
+
+
+def _write_claude_transcript(p: Path, day: str, texts):
+    """Write a minimal Claude JSONL transcript with one turn per text."""
+    rows = []
+    for i, t in enumerate(texts):
+        role = "user" if i % 2 == 0 else "assistant"
+        rows.append(
+            {
+                "type": role,
+                "timestamp": f"{day}T10:0{i}:00Z",
+                "message": {"role": role, "content": [{"type": "text", "text": t}]},
+            }
+        )
+    p.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+
+
+def _seed_session(tmp_path: Path, tx: Path) -> None:
+    """Seed a real HarnessSessionsDB so gather_messages reads the live path."""
+    db = HarnessSessionsDB(tmp_path / ".tesserae" / "harness_sessions.db")
+    session = HarnessSession(
+        id="s1",
+        slug="sess",
+        harness="claude",
+        agent_label="claude",
+        project_name="proj",
+        project_root=str(tmp_path),
+        # Deliberately OUTSIDE both test windows: proves the gatherer windows on
+        # each turn's own timestamp, never on the session's started_at.
+        started_at="2026-06-01T00:00:00Z",
+        raw_transcript_path=str(tx),
+    )
+    db.upsert(session, jsonl_path=str(tx))
+
+
+def test_gather_messages_only_in_window(tmp_path):
+    tx = tmp_path / "sess.jsonl"
+    _write_claude_transcript(tx, "2026-07-04", ["hi day4", "reply day4"])
+    # Pin the transcript mtime inside the 07-04 window so the mtime prune is
+    # deterministic regardless of the wall clock the test runs under.
+    stamp = datetime(2026, 7, 4, 10, tzinfo=timezone.utc).timestamp()
+    os.utime(tx, (stamp, stamp))
+    _seed_session(tmp_path, tx)
+
+    (w,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
+    msgs, turns_by_session = gather_messages("proj", str(tmp_path), w)
+    assert {m.text for m in msgs} == {"hi day4", "reply day4"}
+    assert all(m.ts.date().isoformat() == "2026-07-04" for m in msgs)
+    assert all(m.project == "proj" and m.session_id == "s1" for m in msgs)
+    # The full turns list is captured for later tasks (finding resolution).
+    assert turns_by_session["s1"]
+
+    (w5,) = resolve_windows(day="2026-07-05", tz=timezone.utc)
+    msgs5, _ = gather_messages("proj", str(tmp_path), w5)
+    assert msgs5 == []  # day-4 turns excluded from the day-5 window

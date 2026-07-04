@@ -14,7 +14,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone, tzinfo
-from typing import List, Optional
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+from tesserae.harness_sessions import _claude_turns, _codex_turns, _parse_jsonl
+from tesserae.harness_sessions_db import HarnessSessionsDB
 
 
 # --------------------------------------------------------------------------- #
@@ -165,3 +169,68 @@ class DocItem:
     title: str
     source_path: str
     project: str
+
+
+# --------------------------------------------------------------------------- #
+# Message gatherer — turn-level, uncapped, never windowed on started_at
+# --------------------------------------------------------------------------- #
+def _turns_for(session: object, turn_limit: int) -> List[Dict[str, object]]:
+    """Parse a session's transcript into its full, harness-aware turn list.
+
+    ``turn_limit`` is effectively unbounded (default 100k) so no in-window turn
+    is dropped by the head cap the compiler uses for its own 300-turn slice.
+    """
+    rows = _parse_jsonl(Path(getattr(session, "raw_transcript_path", "") or ""))
+    if getattr(session, "harness", "") == "codex":
+        return _codex_turns(rows, limit=turn_limit)
+    return _claude_turns(rows, limit=turn_limit)
+
+
+def gather_messages(
+    project: str,
+    root: str,
+    window: Window,
+    *,
+    turn_limit: int = 100_000,
+) -> Tuple[List[MessageItem], Dict[str, List[Dict[str, object]]]]:
+    """Gather conversation turns whose *own* timestamp falls inside ``window``.
+
+    Reads the project's ``.tesserae/harness_sessions.db`` and, for every stored
+    session, parses its transcript into turns. A turn is kept when
+    ``parse_ts(turn["timestamp"]) ∈ window`` — the session's long-running
+    ``started_at``/``ended_at`` is never consulted (Global Constraint). Returns
+    the in-window :class:`MessageItem` list plus a ``session_id -> full turns
+    list`` map, which Task 6 reuses to date findings by their source turn.
+    """
+    db = HarnessSessionsDB(Path(root) / ".tesserae" / "harness_sessions.db")
+    messages: List[MessageItem] = []
+    turns_by_session: Dict[str, List[Dict[str, object]]] = {}
+    for session in db.list_for_project(root):
+        tpath = Path(session.raw_transcript_path or "")
+        # Cheap prune: a transcript last written before the window opened cannot
+        # hold any in-window turn (a stored turn is never newer than the file's
+        # own mtime), so skip it without parsing.
+        try:
+            mtime = tpath.stat().st_mtime
+        except OSError:
+            continue
+        if mtime < window.start.timestamp():
+            continue
+        turns = _turns_for(session, turn_limit)
+        turns_by_session[session.id] = turns
+        for turn in turns:
+            ts = parse_ts(str(turn.get("timestamp") or ""))
+            if ts and in_window(ts, window):
+                name = turn.get("name")
+                messages.append(
+                    MessageItem(
+                        ts=ts,
+                        role=str(turn.get("role") or ""),
+                        name=str(name) if name else None,
+                        text=str(turn.get("text") or ""),
+                        project=project,
+                        session_id=session.id,
+                        harness=session.harness,
+                    )
+                )
+    return messages, turns_by_session
