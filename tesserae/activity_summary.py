@@ -632,15 +632,13 @@ _NONE = "_none_"
 def render_day(window: Window, items_by_kind: Dict[str, object], aggregates: Dict[str, object]) -> str:
     """Render one window's gathered items into deterministic markdown.
 
-    Layout: ``## <label>`` then the six fixed subsections — Sessions and Files
-    touched from ``aggregates``; Decisions & Insights, Commits, Pull Requests and
-    Ingested docs from ``items_by_kind``. An empty subsection renders ``_none_``.
-    Ordering is fixed and every list is sorted (``(ts, id)``) so the output is
-    reproducible for identical inputs.
+    Layout: ``### <label>`` then the raw-fact subsections (``#### <name>``) —
+    Sessions (a count), Files touched, Commits, Pull Requests, Ingested docs. An
+    empty subsection renders ``_none_``. Decisions/insights are NOT here: they are
+    LLM-derived from the conversations and live in the narrative (the compiled
+    findings section was always empty for a live, un-compiled window). Ordering is
+    fixed and every list sorted so the output is reproducible for identical inputs.
     """
-    findings = sorted(
-        list(items_by_kind.get("findings") or []), key=lambda f: (f.ts, f.node_id)
-    )
     commits = sorted(
         list(items_by_kind.get("commits") or []), key=lambda c: (c.ts, c.sha)
     )
@@ -655,7 +653,7 @@ def render_day(window: Window, items_by_kind: Dict[str, object], aggregates: Dic
     )
     files = sorted(str(f) for f in (aggregates.get("files_touched") or []))
 
-    lines: List[str] = [f"## {window.label}", ""]
+    lines: List[str] = [f"### {window.label}", ""]
 
     def _section(heading: str, rows: List[str]) -> None:
         lines.append(heading)
@@ -679,22 +677,18 @@ def render_day(window: Window, items_by_kind: Dict[str, object], aggregates: Dic
         if n_sessions
         else []
     )
-    _section("### Sessions", session_rows)
-    _section("### Files touched", [f"- `{f}`" for f in files])
+    _section("#### Sessions", session_rows)
+    _section("#### Files touched", [f"- `{f}`" for f in files])
     _section(
-        "### Decisions & Insights",
-        [f"- **{f.kind}** {f.body}" for f in findings],
-    )
-    _section(
-        "### Commits",
+        "#### Commits",
         [f"- `{c.sha}` {c.subject} ({c.author})" for c in commits],
     )
     _section(
-        "### Pull Requests",
+        "#### Pull Requests",
         [f"- #{p.number} {p.title} — {p.event}" for p in prs],
     )
     _section(
-        "### Ingested docs",
+        "#### Ingested docs",
         [f"- {d.title}" for d in docs],
     )
 
@@ -816,14 +810,18 @@ _SUMMARY_SYSTEM = (
     "\n"
     "Output STRUCTURED MARKDOWN ONLY — never flowing paragraphs, never an essay.\n"
     "Format:\n"
-    "- One `### <project>` heading per project that had substantive activity, "
-    "ordered by volume (most active first). Skip projects with only trivial or no "
-    "activity.\n"
+    "- One `## <project>` heading (exactly two hashes) per project that had "
+    "substantive activity, ordered by volume (most active first). Use the project "
+    "name verbatim. Skip projects with only trivial or no activity.\n"
     "- Under each project, terse one-line bullets grouped under bold category "
     "labels, and ONLY the categories that apply:\n"
     "  - **Shipped** — merged PRs / completed features (cite PR # and phase/name).\n"
     "  - **Fixed** — bugs and security issues closed (name the actual issue).\n"
-    "  - **Decided** — decisions, trade-offs, or direction changes.\n"
+    "  - **Decisions & Insights** — decisions made, trade-offs chosen, direction "
+    "changes, and non-obvious things learned. Mine these from the SESSION "
+    "CONVERSATION EXCERPTS as well as the digest; almost every active project has "
+    "at least one. This is important — do not omit it when the sessions decided or "
+    "discovered anything.\n"
     "  - **In progress** — opened-but-unmerged PRs / partial work.\n"
     "  - **Docs** — ingested/synthesized knowledge, one bullet each.\n"
     "  - **Watch** — risks or follow-ups the digest implies (e.g. untested path).\n"
@@ -919,15 +917,15 @@ def render_session_excerpts(
 def synthesize_narrative(
     deterministic_md: str, client: object, *, conversation: str = ""
 ) -> str:
-    """Prepend an LLM "what happened" narrative to the deterministic digest.
+    """Return the LLM "what happened" narrative (``## <project>`` sections) — prose
+    only, NOT joined with the digest (the caller assembles the document).
 
     ``client`` exposes ``complete_text(system, user) -> str`` (the rotating CLI/SDK
     client :func:`_summary_llm_client` builds). The model is given the deterministic
     digest AND — when supplied — ``conversation`` (bounded per-session excerpts) so
-    it can summarize what sessions with no commits/PRs actually did. Only the
-    narrative is placed above the *unchanged* digest (excerpts never leak into the
-    rendered output), separated by a rule so the windowed facts stay auditable. An
-    empty/whitespace reply yields the digest unchanged.
+    it can summarize what each session actually did, including sessions with no
+    commits/PRs. Returns ``""`` on an empty/whitespace reply. Excerpts are model
+    context only; they never appear in the returned text.
     """
     user = deterministic_md
     if conversation.strip():
@@ -938,10 +936,7 @@ def synthesize_narrative(
             "especially sessions with no commits/PRs. Do not quote verbatim.)\n\n"
             + conversation
         )
-    prose = (client.complete_text(system=_SUMMARY_SYSTEM, user=user) or "").strip()
-    if not prose:
-        return deterministic_md
-    return f"{prose}\n\n---\n\n{deterministic_md}"
+    return (client.complete_text(system=_SUMMARY_SYSTEM, user=user) or "").strip()
 
 
 def _maybe_narrate(
@@ -949,24 +944,24 @@ def _maybe_narrate(
     projects: List[Tuple[str, Path]],
     conversation: str = "",
 ) -> str:
-    """Prepend an LLM narrative to the digest when a narrator is wired.
+    """Return the LLM narrative prose, or ``""`` when no narrator is wired / it fails.
 
-    Narration is best-effort — a missing LLM client or any LLM error falls back to
-    the digest (logged), never raising (so a summary always renders). The client is
-    built from the first project's root; ``conversation`` carries the bounded
+    Narration is best-effort — a missing LLM client or any LLM error yields ``""``
+    (logged), never raising, so the summary always renders (facts-only). The client
+    is built from the first project's root; ``conversation`` carries the bounded
     per-session excerpts the narrator summarizes.
     """
     narrate = globals().get("synthesize_narrative")
     make_client = globals().get("_summary_llm_client")
     if not callable(narrate) or not callable(make_client) or not projects:
-        return deterministic_md
+        return ""
     try:
         _name, root = projects[0]
         client = make_client(str(root))
         return narrate(deterministic_md, client, conversation=conversation)
-    except Exception as exc:  # narration is best-effort; the digest always stands
+    except Exception as exc:  # narration is best-effort; facts-only still renders
         logger.warning("activity summary narrative synthesis failed: %s", exc)
-        return deterministic_md
+        return ""
 
 
 def build_summary(
@@ -1007,33 +1002,32 @@ def build_summary(
                 excerpts = render_session_excerpts(messages)
                 if excerpts:
                     convo_blocks.append(f"## {name} — {window.label}\n{excerpts}")
-            findings = (
-                gather_findings(name, graph, window) if graph is not None else []
-            )
             commits = gather_git(name, root_str, window)
             prs = gather_prs(name, root_str, window)
             docs = gather_docs(name, root_str, graph, window) if graph is not None else []
-            items_by_kind = {
-                "findings": findings,
-                "commits": commits,
-                "prs": prs,
-                "docs": docs,
-            }
+            items_by_kind = {"commits": commits, "prs": prs, "docs": docs}
             aggregates = {
                 "sessions": _sessions_aggregate(messages),
                 "files_touched": _files_touched(root_str, commits),
             }
             day_blocks.append(render_day(window, items_by_kind, aggregates))
-        body = f"# {name}\n\n" + "\n\n".join(day_blocks)
+        body = f"## {name}\n\n" + "\n\n".join(day_blocks)
         project_sections.append(body)
         if write:
             paths.append(_write_project_summary(root, name, windows, body))
 
-    deterministic_md = "\n\n".join(project_sections)
-    conversation = "\n\n".join(convo_blocks)
-    markdown = (
-        _maybe_narrate(deterministic_md, projects, conversation)
-        if synthesize
-        else deterministic_md
+    facts_md = "\n\n".join(project_sections)
+    label = (
+        windows[0].label
+        if len(windows) == 1
+        else f"{windows[0].label} … {windows[-1].label}"
     )
+    conversation = "\n\n".join(convo_blocks)
+    narrative = _maybe_narrate(facts_md, projects, conversation) if synthesize else ""
+
+    parts = [f"# Activity summary — {label}"]
+    if narrative.strip():
+        parts.append(narrative)
+    parts.append(f"# Windowed facts\n\n{facts_md}")
+    markdown = "\n\n".join(parts)
     return SummaryResult(markdown=markdown, paths=paths)

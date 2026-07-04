@@ -34,18 +34,19 @@ from tesserae.harness_sessions import _claude_project_dir
 def test_render_day_has_all_sections_with_none_placeholders():
     (w,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
     md = render_day(w, {}, {})
-    assert md.startswith("## 2026-07-04")
+    assert md.startswith("### 2026-07-04")
     for heading in (
-        "### Sessions",
-        "### Files touched",
-        "### Decisions & Insights",
-        "### Commits",
-        "### Pull Requests",
-        "### Ingested docs",
+        "#### Sessions",
+        "#### Files touched",
+        "#### Commits",
+        "#### Pull Requests",
+        "#### Ingested docs",
     ):
         assert heading in md
-    # Every empty subsection renders the literal placeholder.
-    assert md.count("_none_") == 6
+    # Decisions & Insights is NOT a raw-fact section (it's LLM-derived, in the
+    # narrative); the five fact subsections each render the placeholder when empty.
+    assert "Decisions & Insights" not in md
+    assert md.count("_none_") == 5
 
 
 def test_render_day_sorts_and_is_reproducible():
@@ -57,17 +58,11 @@ def test_render_day_sorts_and_is_reproducible():
         CommitItem(ts=t2, sha="bbbb2222", author="T", subject="later", project="p"),
         CommitItem(ts=t1, sha="aaaa1111", author="T", subject="earlier", project="p"),
     ]
-    findings = [
-        FindingItem(ts=t1, kind="SessionInsight", body="an insight",
-                    project="p", session_id="s1", node_id="SessionInsight:s1:zz"),
-    ]
-    md = render_day(w, {"commits": commits, "findings": findings}, {})
+    md = render_day(w, {"commits": commits}, {})
     # 'earlier' (09:00) must precede 'later' (11:00) regardless of input order.
     assert md.index("earlier") < md.index("later")
-    assert "an insight" in md
-    assert "**SessionInsight**" in md
     # Same inputs -> byte-identical render.
-    assert render_day(w, {"commits": list(reversed(commits)), "findings": findings}, {}) == md
+    assert render_day(w, {"commits": list(reversed(commits))}, {}) == md
 
 
 def test_render_session_excerpts_groups_bounds_and_compresses():
@@ -207,7 +202,9 @@ def test_build_summary_default_scope_is_all_registered(tmp_path, monkeypatch):
     (w4,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
     # project_names=None -> every registered project (here just "proj").
     res = build_summary([w4], None, synthesize=False, write=False)
-    assert "# proj" in res.markdown
+    assert res.markdown.startswith("# Activity summary — 2026-07-04")
+    assert "## proj" in res.markdown  # project heading under Windowed facts
+    assert "# Windowed facts" in res.markdown
     assert "day4 commit" in res.markdown
 
 
@@ -232,23 +229,20 @@ def test_synthesize_narrative_uses_client():
     from tesserae.activity_summary import synthesize_narrative
 
     client = _FakeClient()
-    md = "## 2026-07-04\n### Commits\n- day4 commit\n"
+    md = "## agented\n#### Commits\n- day4 commit\n"
     out = synthesize_narrative(md, client)
-    # The deterministic body is the model's only context.
+    # The deterministic facts are the model's context.
     assert "day4 commit" in client.seen_user
-    assert "On July 4, one commit landed." in out
-    # Deterministic body retained verbatim below the narrative.
-    assert "## 2026-07-04" in out
-    assert out.index("On July 4, one commit landed.") < out.index("## 2026-07-04")
+    # synthesize_narrative returns the prose ONLY — the caller assembles the doc.
+    assert out == "On July 4, one commit landed."
 
 
-def test_synthesize_narrative_empty_prose_falls_back_to_digest():
+def test_synthesize_narrative_empty_prose_returns_empty():
     from tesserae.activity_summary import synthesize_narrative
 
-    md = "## 2026-07-04\n### Commits\n- day4 commit\n"
-    # An empty/whitespace model reply must not produce a dangling rule; the
-    # deterministic digest stands unchanged.
-    assert synthesize_narrative(md, _FakeClient(prose="   ")) == md
+    md = "## agented\n#### Commits\n- day4 commit\n"
+    # An empty/whitespace model reply yields "" (the caller then renders facts-only).
+    assert synthesize_narrative(md, _FakeClient(prose="   ")) == ""
 
 
 def test_build_summary_synthesize_prepends_narrative(tmp_path, monkeypatch):
@@ -262,9 +256,9 @@ def test_build_summary_synthesize_prepends_narrative(tmp_path, monkeypatch):
     (w4,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
     res = build_summary([w4], ["proj"], synthesize=True, write=False)
 
-    # Narrative prepended above the (still present) deterministic digest.
+    # Narrative sits above the Windowed-facts section.
     assert "A concise story of the day." in res.markdown
-    assert res.markdown.index("A concise story of the day.") < res.markdown.index("# proj")
+    assert res.markdown.index("A concise story of the day.") < res.markdown.index("# Windowed facts")
     assert "day4 commit" in res.markdown
     # The digest — not some fabrication — was the model's context.
     assert "day4 commit" in client.seen_user
@@ -291,4 +285,4 @@ def test_build_summary_narrative_falls_back_on_client_failure(tmp_path, monkeypa
     res = build_summary([w4], ["proj"], synthesize=True, write=False)
     res_plain = build_summary([w4], ["proj"], synthesize=False, write=False)
     assert res.markdown == res_plain.markdown
-    assert res.markdown.startswith("# proj")
+    assert res.markdown.startswith("# Activity summary — 2026-07-04")
