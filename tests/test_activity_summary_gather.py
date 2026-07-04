@@ -11,6 +11,12 @@ Task 7 covers :func:`gather_git` (commits, read at summary time from a real git
 repo, windowed by author date) and :func:`gather_prs` (GitHub PR events, gated on
 an ``origin`` remote + ``gh`` — a non-repo / missing ``gh`` drops the section
 gracefully instead of raising).
+
+Task 8 covers :func:`gather_docs` — ingested ``SourceDocument`` nodes dated by
+their *own* timestamp (metadata ``updated_at``/``created``/``analysis_date`` when
+present, else the ``source_path`` file's mtime resolved against the project
+root), never by a session's ``started_at``. Best-effort: an unresolvable/
+unreadable doc is skipped, never raised.
 """
 import json
 import os
@@ -19,6 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from tesserae.activity_summary import (
+    gather_docs,
     gather_findings,
     gather_git,
     gather_messages,
@@ -194,3 +201,104 @@ def test_gather_prs_skips_without_origin(tmp_path):
     """No git repo / no origin remote / no gh -> empty PR list, never raises."""
     (w,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
     assert gather_prs("proj", str(tmp_path), w) == []
+
+
+def _stamp_mtime(path: Path, when: datetime) -> None:
+    """Pin a file's mtime to a fixed instant so the window edge is deterministic."""
+    ts = when.timestamp()
+    os.utime(path, (ts, ts))
+
+
+def test_gather_docs_by_own_timestamp(tmp_path):
+    """A SourceDocument with no metadata timestamp is dated by its file mtime."""
+    src = tmp_path / "doc.md"
+    src.write_text("hello")
+    _stamp_mtime(src, datetime(2026, 7, 4, 10, tzinfo=timezone.utc))
+    # A real ResearchNode: ingested docs carry their path in the first-class
+    # ``source_path`` attribute (not metadata) and have no per-node ingest time.
+    node = ResearchNode(
+        id="SourceDocument:doc:aa",
+        name="Doc",
+        type=ResearchNodeType.SOURCE_DOCUMENT,
+        source_path=str(src),
+    )
+    graph = ResearchGraph(nodes=[node])
+
+    (w4,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
+    got = gather_docs("proj", str(tmp_path), graph, w4)
+    assert [d.title for d in got] == ["Doc"]
+    assert got[0].source_path == str(src)
+    assert got[0].project == "proj"
+    assert got[0].ts.date().isoformat() == "2026-07-04"
+
+    (w5,) = resolve_windows(day="2026-07-05", tz=timezone.utc)
+    assert gather_docs("proj", str(tmp_path), graph, w5) == []
+
+
+def test_gather_docs_metadata_timestamp_wins_over_mtime(tmp_path):
+    """An explicit metadata ``updated_at`` is preferred over the file mtime."""
+    src = tmp_path / "doc.md"
+    src.write_text("hello")
+    # mtime is on 07-05 but the doc's own updated_at is 07-04 -> lands on 07-04.
+    _stamp_mtime(src, datetime(2026, 7, 5, 10, tzinfo=timezone.utc))
+    node = ResearchNode(
+        id="SourceDocument:doc:bb",
+        name="Meta Doc",
+        type=ResearchNodeType.SOURCE_DOCUMENT,
+        source_path=str(src),
+        metadata={"updated_at": "2026-07-04T09:00:00Z"},
+    )
+    graph = ResearchGraph(nodes=[node])
+
+    (w4,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
+    assert [d.title for d in gather_docs("proj", str(tmp_path), graph, w4)] == ["Meta Doc"]
+    (w5,) = resolve_windows(day="2026-07-05", tz=timezone.utc)
+    assert gather_docs("proj", str(tmp_path), graph, w5) == []
+
+
+def test_gather_docs_relative_source_path_resolved_against_root(tmp_path):
+    """RAG-ingested docs store a project-relative ``source_path``; the mtime
+    fallback must resolve it against ``root`` (that is what ``root`` is for)."""
+    src = tmp_path / "notes" / "d.md"
+    src.parent.mkdir()
+    src.write_text("hi")
+    _stamp_mtime(src, datetime(2026, 7, 4, 12, tzinfo=timezone.utc))
+    node = ResearchNode(
+        id="SourceDocument:rel:cc",
+        name="Rel Doc",
+        type=ResearchNodeType.SOURCE_DOCUMENT,
+        source_path="notes/d.md",  # relative, exactly as the RAG manifest records it
+    )
+    graph = ResearchGraph(nodes=[node])
+
+    (w4,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
+    got = gather_docs("proj", str(tmp_path), graph, w4)
+    assert [d.title for d in got] == ["Rel Doc"]
+    assert got[0].source_path == "notes/d.md"  # the as-stored (relative) path is preserved
+
+
+def test_gather_docs_best_effort_skips_unresolvable(tmp_path):
+    """A non-doc node is ignored; a doc with no readable source and no metadata
+    timestamp is skipped rather than crashing (best-effort)."""
+    non_doc = ResearchNode(
+        id="Paper:x:dd",
+        name="A Paper",
+        type=ResearchNodeType.PAPER,
+        source_path=str(tmp_path / "whatever.md"),
+    )
+    no_source = ResearchNode(
+        id="SourceDocument:none:ee",
+        name="No Source",
+        type=ResearchNodeType.SOURCE_DOCUMENT,
+        source_path=None,
+    )
+    missing_file = ResearchNode(
+        id="SourceDocument:gone:ff",
+        name="Gone",
+        type=ResearchNodeType.SOURCE_DOCUMENT,
+        source_path=str(tmp_path / "does-not-exist.md"),
+    )
+    graph = ResearchGraph(nodes=[non_doc, no_source, missing_file])
+
+    (w4,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
+    assert gather_docs("proj", str(tmp_path), graph, w4) == []

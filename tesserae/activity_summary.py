@@ -21,7 +21,7 @@ from typing import Dict, List, Optional, Tuple
 
 from tesserae.harness_sessions import _claude_turns, _codex_turns, _parse_jsonl
 from tesserae.harness_sessions_db import HarnessSessionsDB
-from tesserae.research_graph import SESSION_FINDING_TYPES
+from tesserae.research_graph import SESSION_FINDING_TYPES, ResearchNodeType
 
 # String values of the six structured session-finding node types. Findings are
 # matched on ``node.type.value`` (a string), so mirror the canonical enum set
@@ -427,3 +427,99 @@ def gather_prs(project: str, root: str, window: Window) -> List[PRItem]:
                     )
                 )
     return items
+
+
+# --------------------------------------------------------------------------- #
+# Ingested-docs gatherer — best-effort, dated by the doc's OWN timestamp
+# --------------------------------------------------------------------------- #
+# ``SourceDocument`` is the single ingested-document node type in the ontology:
+# the RAG-Anything adapter (``raganything_adapter``) and ``extract_file``'s
+# default ``source_kind`` both mint it for every ingested markdown/PDF/note.
+# Matched on the string ``node.type.value`` to mirror the other gatherers.
+_DOC_TYPE_VALUES = {ResearchNodeType.SOURCE_DOCUMENT.value}
+
+# Metadata keys that, when present, carry the document's own last-touched time.
+# Checked in order; the first parseable value wins. Graph nodes rarely carry
+# these in practice (the RAG manifest records ``updated_at`` at the corpus level
+# in ``meta.json``, not per node), so the ``source_path`` mtime is the common
+# path — but an explicit per-node timestamp always takes precedence when set.
+_DOC_TS_KEYS = ("updated_at", "created", "analysis_date")
+
+
+def _resolve_doc_path(source_path: Optional[str], root: str) -> Optional[Path]:
+    """Resolve a doc's stored ``source_path`` to an absolute path for stat().
+
+    Ingested ``SourceDocument`` nodes store a *project-relative* ``source_path``
+    (the RAG manifest records ``path.relative_to(project)``), so a relative value
+    is resolved against ``root``. An already-absolute path is used as-is. ``None``
+    / empty yields ``None`` (nothing to stat).
+    """
+    if not source_path:
+        return None
+    p = Path(source_path)
+    return p if p.is_absolute() else Path(root) / p
+
+
+def _doc_ts(
+    resolved_path: Optional[Path],
+    meta: Dict[str, object],
+    tz: Optional[tzinfo],
+) -> Optional[datetime]:
+    """Best-effort timestamp for an ingested doc: metadata key, else file mtime.
+
+    Precedence: the first parseable ``updated_at``/``created``/``analysis_date``
+    metadata value, else the resolved ``source_path`` file's mtime. Returns
+    ``None`` when neither is available/readable (the doc is then skipped — never
+    dated from a session's ``started_at``).
+    """
+    for key in _DOC_TS_KEYS:
+        ts = parse_ts(str(meta.get(key) or ""))
+        if ts:
+            return ts
+    if resolved_path is not None:
+        try:
+            mtime = resolved_path.stat().st_mtime
+        except OSError:
+            return None
+        return datetime.fromtimestamp(mtime, tz=tz or timezone.utc)
+    return None
+
+
+def gather_docs(
+    project: str,
+    root: str,
+    graph: object,
+    window: Window,
+) -> List[DocItem]:
+    """Gather ingested documents whose *own* timestamp falls inside ``window``.
+
+    For every ``SourceDocument`` node, the timestamp is the doc's own
+    ``updated_at``/``created``/``analysis_date`` metadata when present, else its
+    ``source_path`` file's mtime (relative paths resolved against ``root``). A
+    node whose timestamp can't be determined — no metadata time and a
+    missing/unreadable/absent ``source_path`` — is **skipped** (best-effort);
+    the session's long-running ``started_at`` is never consulted (Global
+    Constraint). The as-stored ``source_path`` (which may be project-relative) is
+    preserved on the emitted :class:`DocItem`. Returned in ``graph.nodes`` order;
+    the renderer (Task 9) sorts.
+    """
+    out: List[DocItem] = []
+    for node in graph.nodes:
+        tname = getattr(node.type, "value", node.type)
+        if tname not in _DOC_TYPE_VALUES:
+            continue
+        meta = getattr(node, "metadata", None) or {}
+        raw_source_path = getattr(node, "source_path", None) or meta.get("source_path")
+        raw_source_path = str(raw_source_path) if raw_source_path else None
+        resolved = _resolve_doc_path(raw_source_path, root)
+        ts = _doc_ts(resolved, meta, window.start.tzinfo)
+        if ts and in_window(ts, window):
+            out.append(
+                DocItem(
+                    ts=ts,
+                    title=str(getattr(node, "name", "") or node.id),
+                    source_path=raw_source_path or "",
+                    project=project,
+                )
+            )
+    return out
