@@ -1,5 +1,7 @@
 from datetime import datetime, timezone, timedelta
 
+import pytest
+
 from tesserae.activity_summary import resolve_windows, in_window, parse_ts, Window
 
 
@@ -27,3 +29,12 @@ def test_edge_inclusion_half_open():
 def test_parse_ts_handles_z_and_naive():
     assert parse_ts("2026-07-04T12:00:00Z") == datetime(2026, 7, 4, 12, tzinfo=timezone.utc)
     assert parse_ts("not-a-date") is None
+
+
+def test_bad_since_until_raises_clean_valueerror():
+    # A malformed bound must raise ValueError (a clean, catchable error the CLI
+    # and MCP surface), never a raw AttributeError from dereferencing None.
+    with pytest.raises(ValueError):
+        resolve_windows(since="not-a-date", tz=timezone.utc)
+    with pytest.raises(ValueError):
+        resolve_windows(until="garbage", tz=timezone.utc)

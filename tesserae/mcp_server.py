@@ -1946,12 +1946,15 @@ class LLMWikiMCPServer:
         ``.tesserae/summaries/<project>/``. Returns the combined markdown plus
         the string paths written.
         """
-        windows = resolve_windows(
-            day=args.get("day"),
-            week=args.get("week"),
-            since=args.get("since"),
-            until=args.get("until"),
-        )
+        try:
+            windows = resolve_windows(
+                day=args.get("day"),
+                week=args.get("week"),
+                since=args.get("since"),
+                until=args.get("until"),
+            )
+        except ValueError as exc:
+            return {"error": str(exc)}
         project = args.get("project")
         project_names = [str(project)] if project else None
         synthesize = bool(args.get("synthesize", True))

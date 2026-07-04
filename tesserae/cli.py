@@ -2162,9 +2162,13 @@ def _build_summary_parser() -> argparse.ArgumentParser:
 
 
 def _handle_summary(args: argparse.Namespace) -> int:
-    windows = resolve_windows(
-        day=args.day, week=args.week, since=args.since, until=args.until
-    )
+    try:
+        windows = resolve_windows(
+            day=args.day, week=args.week, since=args.since, until=args.until
+        )
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     synthesize = not args.no_llm
     result = build_summary(windows, args.project, synthesize=synthesize, write=True)
     print(result.markdown)

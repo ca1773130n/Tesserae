@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone, tzinfo
@@ -93,8 +94,24 @@ def resolve_windows(
             out.append(Window(s, s + timedelta(days=1), s.strftime("%Y-%m-%d")))
         return out
     if since or until:
-        s = parse_ts(since) if since else datetime(1970, 1, 1, tzinfo=tz)
-        e = parse_ts(until) if until else datetime.now(tz)
+        if since:
+            s = parse_ts(since)
+            if s is None:
+                raise ValueError(
+                    f"--since: could not parse {since!r}; use ISO-8601 "
+                    "(e.g. 2026-07-04 or 2026-07-04T12:00:00Z)"
+                )
+        else:
+            s = datetime(1970, 1, 1, tzinfo=tz)
+        if until:
+            e = parse_ts(until)
+            if e is None:
+                raise ValueError(
+                    f"--until: could not parse {until!r}; use ISO-8601 "
+                    "(e.g. 2026-07-04 or 2026-07-04T12:00:00Z)"
+                )
+        else:
+            e = datetime.now(tz)
         return [Window(s, e, f"{s.date()}..{e.date()}")]
     today = datetime.now(tz).strftime("%Y-%m-%d")
     s = _midnight(today, tz)
@@ -332,6 +349,24 @@ def _run(cmd: List[str], cwd: str, timeout: int = 20) -> Optional[str]:
     return proc.stdout if proc.returncode == 0 else None
 
 
+def _is_repo_root(root: str) -> bool:
+    """True iff ``root`` is itself the top level of a git work tree.
+
+    ``git -C <dir>`` searches *upward* for a repo, so a non-repo directory
+    nested inside a parent repo would otherwise report the parent's commits and
+    origin. Requiring ``root`` to be the repo top level keeps a project's digest
+    to that project's own history and makes "not a git repo → drop the section"
+    hold for nested directories too.
+    """
+    top = _run(["git", "rev-parse", "--show-toplevel"], cwd=root)
+    if not top:
+        return False
+    try:
+        return os.path.realpath(top.strip()) == os.path.realpath(root)
+    except OSError:
+        return False
+
+
 def gather_git(project: str, root: str, window: Window) -> List[CommitItem]:
     """Gather commits whose *author date* falls inside ``window``.
 
@@ -343,6 +378,8 @@ def gather_git(project: str, root: str, window: Window) -> List[CommitItem]:
     yields ``[]`` (via :func:`_run`), never a raise. Returned in git-log order
     (newest first); the renderer sorts.
     """
+    if not _is_repo_root(root):
+        return []
     out = _run(
         [
             "git",
@@ -384,6 +421,8 @@ def gather_prs(project: str, root: str, window: Window) -> List[PRItem]:
     ``[]`` (Global Constraint: graceful degradation), never a raise. Returned in
     ``gh`` order; the renderer sorts.
     """
+    if not _is_repo_root(root):
+        return []
     origin = _run(["git", "remote", "get-url", "origin"], cwd=root)
     if not origin:
         return []
@@ -410,6 +449,13 @@ def gather_prs(project: str, root: str, window: Window) -> List[PRItem]:
         return []
     items: List[PRItem] = []
     for pr in prs:
+        # A valid-JSON-but-unexpected shape (future gh schema change) must still
+        # degrade to a skip, not raise — the contract promises never a raise.
+        if not isinstance(pr, dict) or pr.get("number") is None:
+            continue
+        number = pr["number"]
+        title = pr.get("title") or ""
+        state = pr.get("state") or ""
         for field, event in (
             ("createdAt", "opened"),
             ("mergedAt", "merged"),
@@ -422,9 +468,9 @@ def gather_prs(project: str, root: str, window: Window) -> List[PRItem]:
                 items.append(
                     PRItem(
                         ts=ts,
-                        number=pr["number"],
-                        title=pr["title"],
-                        state=pr["state"],
+                        number=number,
+                        title=title,
+                        state=state,
                         event=event,
                         project=project,
                     )
