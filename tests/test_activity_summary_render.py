@@ -15,6 +15,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+import tesserae.activity_summary as summary
 import tesserae.mcp_server as mcp_server
 from tesserae.activity_summary import (
     CommitItem,
@@ -24,8 +25,7 @@ from tesserae.activity_summary import (
     render_day,
     resolve_windows,
 )
-from tesserae.harness_sessions import HarnessSession
-from tesserae.harness_sessions_db import HarnessSessionsDB
+from tesserae.harness_sessions import _claude_project_dir
 
 
 # --------------------------------------------------------------------------- #
@@ -87,23 +87,6 @@ def _write_claude_transcript(p: Path, day: str, texts) -> None:
     p.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
 
 
-def _seed_session(root: Path, session_id: str, tx: Path) -> None:
-    db = HarnessSessionsDB(root / ".tesserae" / "harness_sessions.db")
-    session = HarnessSession(
-        id=session_id,
-        slug=session_id,
-        harness="claude",
-        agent_label="claude",
-        project_name="proj",
-        project_root=str(root),
-        # Deliberately outside every test window: proves windowing is per-turn,
-        # never on the session's long-running started_at.
-        started_at="2026-06-01T00:00:00Z",
-        raw_transcript_path=str(tx),
-    )
-    db.upsert(session, jsonl_path=str(tx))
-
-
 def _git(root: Path, *args, env=None) -> None:
     subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True, env=env)
 
@@ -124,16 +107,24 @@ def _stamp_mtime(path: Path, when: datetime) -> None:
     os.utime(path, (ts, ts))
 
 
-def _build_project(tmp_path: Path) -> None:
-    # Two sessions: one with a turn on 07-04, one on 07-05.
-    tx4 = tmp_path / "sess4.jsonl"
-    tx5 = tmp_path / "sess5.jsonl"
+def _build_project(tmp_path: Path, monkeypatch) -> None:
+    # Two transcripts under a fake Claude *account* root, matched to the project
+    # by its encoded slug dir — scan_messages reads the live harness roots, not
+    # the index. One has a turn on 07-04, the other on 07-05.
+    acct = tmp_path / ".claude-acct"
+    slug = _claude_project_dir(tmp_path)
+    sdir = acct / "projects" / slug
+    sdir.mkdir(parents=True, exist_ok=True)
+    tx4 = sdir / "sess4.jsonl"
+    tx5 = sdir / "sess5.jsonl"
     _write_claude_transcript(tx4, "2026-07-04", ["hi day4", "reply day4"])
     _write_claude_transcript(tx5, "2026-07-05", ["hi day5", "reply day5"])
     _stamp_mtime(tx4, datetime(2026, 7, 4, 10, tzinfo=timezone.utc))
     _stamp_mtime(tx5, datetime(2026, 7, 5, 10, tzinfo=timezone.utc))
-    _seed_session(tmp_path, "s4", tx4)
-    _seed_session(tmp_path, "s5", tx5)
+    # Isolate the scan from the real machine: one fake account root, Claude only.
+    monkeypatch.setattr(summary, "discover_harness_roots", lambda: [acct])
+    monkeypatch.setattr(summary, "_root_supports_claude", lambda r: True)
+    monkeypatch.setattr(summary, "_root_supports_codex", lambda r: False)
     # A git repo with one commit per day (author date fixed, tz-explicit).
     _git(tmp_path, "init", "-q")
     _git(tmp_path, "config", "user.email", "t@t")
@@ -151,7 +142,7 @@ def _register_single_project(monkeypatch, name: str, root: Path) -> None:
 
 
 def test_e2e_deterministic_day(tmp_path, monkeypatch):
-    _build_project(tmp_path)
+    _build_project(tmp_path, monkeypatch)
     _register_single_project(monkeypatch, "proj", tmp_path)
 
     (w4,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
@@ -161,8 +152,8 @@ def test_e2e_deterministic_day(tmp_path, monkeypatch):
     assert "day5 commit" not in res.markdown  # day-5 activity excluded
     assert "a.txt" in res.markdown  # files-touched aggregate from the day-4 commit
     assert "b.txt" not in res.markdown
-    assert "s4" in res.markdown  # the day-4 session is listed
-    assert "s5" not in res.markdown  # the day-5 session contributed nothing on 07-04
+    assert "sess4" in res.markdown  # the day-4 transcript is listed as a session
+    assert "sess5" not in res.markdown  # the day-5 transcript contributed nothing on 07-04
     assert res.paths == []  # write=False
 
     # Determinism: identical inputs -> byte-identical output.
@@ -171,7 +162,7 @@ def test_e2e_deterministic_day(tmp_path, monkeypatch):
 
 
 def test_build_summary_writes_per_project_file(tmp_path, monkeypatch):
-    _build_project(tmp_path)
+    _build_project(tmp_path, monkeypatch)
     _register_single_project(monkeypatch, "proj", tmp_path)
 
     (w4,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
@@ -185,7 +176,7 @@ def test_build_summary_writes_per_project_file(tmp_path, monkeypatch):
 
 
 def test_build_summary_default_scope_is_all_registered(tmp_path, monkeypatch):
-    _build_project(tmp_path)
+    _build_project(tmp_path, monkeypatch)
     _register_single_project(monkeypatch, "proj", tmp_path)
 
     (w4,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
@@ -238,7 +229,7 @@ def test_synthesize_narrative_empty_prose_falls_back_to_digest():
 def test_build_summary_synthesize_prepends_narrative(tmp_path, monkeypatch):
     import tesserae.activity_summary as summary
 
-    _build_project(tmp_path)
+    _build_project(tmp_path, monkeypatch)
     _register_single_project(monkeypatch, "proj", tmp_path)
     client = _FakeClient(prose="A concise story of the day.")
     monkeypatch.setattr(summary, "_summary_llm_client", lambda root: client, raising=False)
@@ -257,7 +248,7 @@ def test_build_summary_synthesize_prepends_narrative(tmp_path, monkeypatch):
 def test_build_summary_narrative_falls_back_on_client_failure(tmp_path, monkeypatch):
     import tesserae.activity_summary as summary
 
-    _build_project(tmp_path)
+    _build_project(tmp_path, monkeypatch)
     _register_single_project(monkeypatch, "proj", tmp_path)
 
     def _boom(root):

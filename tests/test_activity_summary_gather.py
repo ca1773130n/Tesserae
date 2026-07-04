@@ -24,16 +24,16 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+import tesserae.activity_summary as A
 from tesserae.activity_summary import (
     gather_docs,
     gather_findings,
     gather_git,
-    gather_messages,
     gather_prs,
     resolve_windows,
+    scan_messages,
 )
-from tesserae.harness_sessions import HarnessSession
-from tesserae.harness_sessions_db import HarnessSessionsDB
+from tesserae.harness_sessions import _claude_project_dir
 from tesserae.research_graph import ResearchGraph, ResearchNode, ResearchNodeType
 
 
@@ -52,94 +52,94 @@ def _write_claude_transcript(p: Path, day: str, texts):
     p.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
 
 
-def _seed_session(tmp_path: Path, tx: Path) -> None:
-    """Seed a real HarnessSessionsDB so gather_messages reads the live path."""
-    db = HarnessSessionsDB(tmp_path / ".tesserae" / "harness_sessions.db")
-    session = HarnessSession(
-        id="s1",
-        slug="sess",
-        harness="claude",
-        agent_label="claude",
-        project_name="proj",
-        project_root=str(tmp_path),
-        # Deliberately OUTSIDE both test windows: proves the gatherer windows on
-        # each turn's own timestamp, never on the session's started_at.
-        started_at="2026-06-01T00:00:00Z",
-        raw_transcript_path=str(tx),
-    )
-    db.upsert(session, jsonl_path=str(tx))
-
-
-def test_gather_messages_only_in_window(tmp_path):
-    tx = tmp_path / "sess.jsonl"
-    _write_claude_transcript(tx, "2026-07-04", ["hi day4", "reply day4"])
-    # Pin the transcript mtime inside the 07-04 window so the mtime prune is
-    # deterministic regardless of the wall clock the test runs under.
-    stamp = datetime(2026, 7, 4, 10, tzinfo=timezone.utc).timestamp()
+def _make_claude_root(tmp_path: Path, project_root: Path, day: str, texts):
+    """Create a fake Claude account root holding one in-window transcript for
+    ``project_root`` (under its encoded ``projects/<slug>/`` dir), mtime-pinned
+    inside ``day`` so the scan's ``mtime >= window.start`` prune is deterministic.
+    Returns the account root to feed to a patched ``discover_harness_roots``."""
+    root = tmp_path / ".claude-acct"
+    slug = _claude_project_dir(project_root)
+    sdir = root / "projects" / slug
+    sdir.mkdir(parents=True, exist_ok=True)
+    tx = sdir / "sess.jsonl"
+    _write_claude_transcript(tx, day, texts)
+    stamp = datetime.fromisoformat(f"{day}T10:00:00+00:00").timestamp()
     os.utime(tx, (stamp, stamp))
-    _seed_session(tmp_path, tx)
+    return root
 
-    (w,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
-    msgs, turns_by_session = gather_messages("proj", str(tmp_path), w)
+
+def test_scan_messages_windows_across_roots(tmp_path, monkeypatch):
+    """scan_messages reads live transcripts from the harness roots (all AI
+    accounts), bucketing each turn by its OWN timestamp — not a stale index,
+    never the session's started_at."""
+    project_root = tmp_path / "proj"
+    project_root.mkdir()
+    root = _make_claude_root(tmp_path, project_root, "2026-07-04", ["hi day4", "reply day4"])
+    # Isolate from the real machine: one fake account root, treated as Claude.
+    monkeypatch.setattr(A, "discover_harness_roots", lambda: [root])
+    monkeypatch.setattr(A, "_root_supports_claude", lambda r: True)
+    monkeypatch.setattr(A, "_root_supports_codex", lambda r: False)
+
+    (w4,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
+    out = scan_messages([("proj", project_root)], [w4])
+    msgs = out["proj"]["2026-07-04"]
     assert {m.text for m in msgs} == {"hi day4", "reply day4"}
     assert all(m.ts.date().isoformat() == "2026-07-04" for m in msgs)
-    assert all(m.project == "proj" and m.session_id == "s1" for m in msgs)
-    # The full turns list is captured for later tasks (finding resolution).
-    assert turns_by_session["s1"]
+    assert all(m.project == "proj" for m in msgs)
 
+    # A window with no in-range turns yields an empty bucket (07-04 turns excluded).
     (w5,) = resolve_windows(day="2026-07-05", tz=timezone.utc)
-    msgs5, _ = gather_messages("proj", str(tmp_path), w5)
-    assert msgs5 == []  # day-4 turns excluded from the day-5 window
+    out5 = scan_messages([("proj", project_root)], [w5])
+    assert out5["proj"]["2026-07-05"] == []
 
 
-def test_finding_dated_by_source_turn(tmp_path):
-    """A finding is dated by its latest source turn, not the session start.
-
-    ``turns_by_session`` mirrors what :func:`gather_messages` returns (Task 5)
-    and the compile-time index base: index 0 -> 07-04, index 1 -> 07-05.
-    """
-    turns_by_session = {
-        "s1": [
-            {"role": "assistant", "timestamp": "2026-07-04T10:00:00Z", "text": "a"},
-            {"role": "assistant", "timestamp": "2026-07-05T10:00:00Z", "text": "b"},
-        ]
-    }
-    # A real ResearchNode: findings carry their body as ``name`` and record the
-    # source turns in ``metadata["turn_ids"]`` (session_graph.py mints them this
-    # way; there is no ``metadata["body"]`` key in practice).
+def test_finding_dated_by_first_seen_at(tmp_path):
+    """A finding is dated by its ``first_seen_at`` (the source turn's timestamp),
+    and a finding whose ``first_seen_at`` fell back to the session's
+    ``started_at`` is dropped — never windowed by the long-running start."""
+    # Session started at 07-04 00:00 (inside the day-4 window), so the fallback
+    # case below lands IN the window and must still be excluded by the guard.
+    session_node = ResearchNode(
+        id="Session:s1",
+        name="s1",
+        type=ResearchNodeType.SESSION,
+        metadata={"session_id": "s1", "started_at": "2026-07-04T00:00:00Z"},
+    )
+    # first_seen_at is a real source-turn timestamp, != started_at -> kept.
     node_valid = ResearchNode(
         id="SessionInsight:s1:zz",
         name="insight text",
         type=ResearchNodeType.SESSION_INSIGHT,
-        metadata={"session_id": "s1", "turn_ids": [0]},
+        metadata={"session_id": "s1", "first_seen_at": "2026-07-04T10:00:00Z"},
     )
-    # turn_ids out of range -> unresolvable -> skipped (never dated from start).
-    node_out_of_range = ResearchNode(
+    # first_seen_at == the session's started_at -> fallback case -> skipped,
+    # even though it lands inside the window.
+    node_fallback = ResearchNode(
         id="SessionDecision:s1:yy",
-        name="undated decision",
+        name="fallback decision",
         type=ResearchNodeType.SESSION_DECISION,
-        metadata={"session_id": "s1", "turn_ids": [9]},
+        metadata={"session_id": "s1", "first_seen_at": "2026-07-04T00:00:00Z"},
     )
-    # session absent from the turns map -> unresolvable -> skipped.
-    node_orphan = ResearchNode(
-        id="SessionTODO:s2:xx",
-        name="orphan todo",
+    # No first_seen_at -> undated -> skipped (never dated from started_at).
+    node_undated = ResearchNode(
+        id="SessionTODO:s1:uu",
+        name="undated todo",
         type=ResearchNodeType.SESSION_TODO,
-        metadata={"session_id": "s2", "turn_ids": [0]},
+        metadata={"session_id": "s1"},
     )
     # A non-finding node is ignored by the type filter.
     node_event = ResearchNode(
         id="Event:s1:ev",
         name="a session event",
         type=ResearchNodeType.EVENT,
-        metadata={"session_id": "s1", "turn_ids": [0]},
+        metadata={"session_id": "s1", "first_seen_at": "2026-07-04T10:00:00Z"},
     )
     graph = ResearchGraph(
-        nodes=[node_valid, node_out_of_range, node_orphan, node_event]
+        nodes=[session_node, node_valid, node_fallback, node_undated, node_event]
     )
 
     (w4,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
-    got = gather_findings("proj", graph, turns_by_session, w4)
+    got = gather_findings("proj", graph, w4)
     assert [f.body for f in got] == ["insight text"]
     assert [f.kind for f in got] == ["SessionInsight"]
     assert got[0].node_id == "SessionInsight:s1:zz"
@@ -147,9 +147,9 @@ def test_finding_dated_by_source_turn(tmp_path):
     assert got[0].project == "proj"
     assert got[0].ts.date().isoformat() == "2026-07-04"
 
-    # The day-5 window excludes the finding whose source turn is on 07-04.
+    # The day-5 window excludes the finding first seen on 07-04.
     (w5,) = resolve_windows(day="2026-07-05", tz=timezone.utc)
-    assert gather_findings("proj", graph, turns_by_session, w5) == []
+    assert gather_findings("proj", graph, w5) == []
 
 
 def _git(root: Path, *args, env=None) -> None:

@@ -12,6 +12,7 @@ gatherers (later tasks) emit.
 """
 from __future__ import annotations
 
+import glob
 import json
 import logging
 import os
@@ -19,12 +20,20 @@ import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone, tzinfo
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 logger = logging.getLogger(__name__)
 
-from tesserae.harness_sessions import _claude_turns, _codex_turns, _parse_jsonl
-from tesserae.harness_sessions_db import HarnessSessionsDB
+from tesserae.harness_sessions import (
+    _claude_project_dir,
+    _claude_turns,
+    _codex_turns,
+    _parse_jsonl,
+    _root_supports_claude,
+    _root_supports_codex,
+    _rows_match_project,
+    discover_harness_roots,
+)
 from tesserae.research_graph import SESSION_FINDING_TYPES, ResearchNodeType
 
 # String values of the six structured session-finding node types. Findings are
@@ -206,68 +215,102 @@ class DocItem:
 
 
 # --------------------------------------------------------------------------- #
-# Message gatherer — turn-level, uncapped, never windowed on started_at
+# Message scan — window-scoped, direct from ALL harness roots (all AI accounts)
 # --------------------------------------------------------------------------- #
-def _turns_for(session: object, turn_limit: int) -> List[Dict[str, object]]:
-    """Parse a session's transcript into its full, harness-aware turn list.
-
-    ``turn_limit`` is effectively unbounded (default 100k) so no in-window turn
-    is dropped by the head cap the compiler uses for its own 300-turn slice.
-    """
-    rows = _parse_jsonl(Path(getattr(session, "raw_transcript_path", "") or ""))
-    if getattr(session, "harness", "") == "codex":
-        return _codex_turns(rows, limit=turn_limit)
-    return _claude_turns(rows, limit=turn_limit)
-
-
-def gather_messages(
-    project: str,
-    root: str,
-    window: Window,
+# The summary reads live transcripts across every discovered AI-account config
+# root (``~/.claude*``, ``~/.codex*``), NOT the per-project ``harness_sessions.db``
+# index. The index proved unreliable for completeness — a suspended/behind tailer
+# silently drops every session started since it stalled — and the user's spec is
+# explicit: "go through all session transcripts of registered projects with the
+# ai backend config directories". A window only touches a handful of files, so a
+# cheap ``mtime >= window.start`` prune keeps a full-account scan fast (~30s for
+# all projects across all accounts). Turns are windowed on their OWN timestamp;
+# a session's long-running ``started_at`` is never consulted (Global Constraint).
+def scan_messages(
+    projects: Sequence[Tuple[str, object]],
+    windows: Sequence[Window],
     *,
     turn_limit: int = 100_000,
-) -> Tuple[List[MessageItem], Dict[str, List[Dict[str, object]]]]:
-    """Gather conversation turns whose *own* timestamp falls inside ``window``.
+) -> Dict[str, Dict[str, List[MessageItem]]]:
+    """One pass over all harness roots → ``{project_name: {window_label: [msgs]}}``.
 
-    Reads the project's ``.tesserae/harness_sessions.db`` and, for every stored
-    session, parses its transcript into turns. A turn is kept when
-    ``parse_ts(turn["timestamp"]) ∈ window`` — the session's long-running
-    ``started_at``/``ended_at`` is never consulted (Global Constraint). Returns
-    the in-window :class:`MessageItem` list plus a ``session_id -> full turns
-    list`` map, which Task 6 reuses to date findings by their source turn.
+    Claude transcripts are matched precisely by the project's encoded ``projects/``
+    slug directory (including its ``--worktrees-*`` siblings); Codex transcripts
+    are matched by Tesserae's own project matcher (:func:`_rows_match_project`)
+    over the parsed rows. Each transcript is parsed at most once (deduped by real
+    path so a symlinked ``~/.claude`` root isn't double-counted), and only files
+    with ``mtime >= min(window.start)`` are opened.
     """
-    db = HarnessSessionsDB(Path(root) / ".tesserae" / "harness_sessions.db")
-    messages: List[MessageItem] = []
-    turns_by_session: Dict[str, List[Dict[str, object]]] = {}
-    for session in db.list_for_project(root):
-        tpath = Path(session.raw_transcript_path or "")
-        # Cheap prune: a transcript last written before the window opened cannot
-        # hold any in-window turn (a stored turn is never newer than the file's
-        # own mtime), so skip it without parsing.
-        try:
-            mtime = tpath.stat().st_mtime
-        except OSError:
-            continue
-        if mtime < window.start.timestamp():
-            continue
-        turns = _turns_for(session, turn_limit)
-        turns_by_session[session.id] = turns
+    roots = discover_harness_roots()
+    floor = min(w.start for w in windows).timestamp()
+    out: Dict[str, Dict[str, List[MessageItem]]] = {
+        name: {w.label: [] for w in windows} for name, _root in projects
+    }
+    seen_files: set[str] = set()
+
+    def _bucket(name: str, harness: str, turns: List[Dict[str, object]], key: str) -> None:
         for turn in turns:
             ts = parse_ts(str(turn.get("timestamp") or ""))
-            if ts and in_window(ts, window):
-                name = turn.get("name")
-                messages.append(
-                    MessageItem(
-                        ts=ts,
-                        role=str(turn.get("role") or ""),
-                        name=str(name) if name else None,
-                        text=str(turn.get("text") or ""),
-                        project=project,
-                        session_id=session.id,
-                        harness=session.harness,
+            if not ts:
+                continue
+            for w in windows:
+                if in_window(ts, w):
+                    nm = turn.get("name")
+                    out[name][w.label].append(
+                        MessageItem(
+                            ts=ts,
+                            role=str(turn.get("role") or ""),
+                            name=str(nm) if nm else None,
+                            text=str(turn.get("text") or ""),
+                            project=name,
+                            session_id=key,
+                            harness=harness,
+                        )
                     )
-                )
-    return messages, turns_by_session
+                    break
+
+    def _fresh(path: str) -> bool:
+        try:
+            if os.stat(path).st_mtime < floor:
+                return False
+        except OSError:
+            return False
+        real = os.path.realpath(path)
+        if real in seen_files:
+            return False
+        seen_files.add(real)
+        return True
+
+    seen_roots: set[str] = set()
+    for r in roots:
+        rk = os.path.realpath(r)
+        if rk in seen_roots:
+            continue
+        seen_roots.add(rk)
+        if _root_supports_claude(r):
+            for name, root in projects:
+                slug = _claude_project_dir(Path(root))
+                for d in glob.glob(str(Path(r) / "projects" / (slug + "*"))):
+                    dn = Path(d).name
+                    if dn != slug and not dn.startswith(slug + "-"):
+                        continue  # avoid a different project whose slug shares this prefix
+                    for f in glob.glob(str(Path(d) / "*.jsonl")):
+                        if not _fresh(f):
+                            continue
+                        rows = _parse_jsonl(Path(f))
+                        key = f"{Path(r).name}:{Path(f).stem}"
+                        _bucket(name, "claude-code", _claude_turns(rows, limit=turn_limit), key)
+        if _root_supports_codex(r):
+            for f in glob.glob(str(Path(r) / "sessions" / "**" / "*.jsonl"), recursive=True):
+                if not _fresh(f):
+                    continue
+                rows = _parse_jsonl(Path(f))
+                key = f"{Path(r).name}:{Path(f).stem}"
+                for name, root in projects:
+                    if _rows_match_project(rows, Path(root)):
+                        _bucket(name, "codex", _codex_turns(rows, limit=turn_limit), key)
+                        break
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -276,46 +319,42 @@ def gather_messages(
 def gather_findings(
     project: str,
     graph: object,
-    turns_by_session: Dict[str, List[Dict[str, object]]],
     window: Window,
 ) -> List[FindingItem]:
-    """Gather compiled session findings whose *source turn* falls in ``window``.
+    """Gather compiled session findings whose source turn falls in ``window``.
 
-    Each session-finding node (``SessionInsight``/``SessionDecision``/…) carries
-    ``metadata["turn_ids"]`` — indices into the session's turn list assigned at
-    compile time (``session_graph.py`` mints them against the default,
-    HEAD-capped slice; the finding's body is stored as ``node.name``). A finding
-    is dated by its *latest* source turn::
-
-        ts = parse_ts(turns[max(turn_ids)]["timestamp"])
-
-    resolved through the ``turns_by_session`` map produced by
-    :func:`gather_messages`. Because ``_claude_turns``/``_codex_turns`` cap by
-    keeping the HEAD (they ``break`` once ``len(turns) >= limit``), the indices
-    produced with the 100k gather limit are identical to the compile-time
-    default-limit (300) indices for every valid ``turn_id`` — so the map is
-    reused directly, with no rebuild.
-
-    A finding whose turns can't be resolved — its session is absent from the
-    map, or every ``turn_id`` is out of range — is **skipped**. It is never
-    dated from the session's long-running ``started_at`` (Global Constraint).
-    The returned list is in ``graph.nodes`` order; the renderer (Task 9) sorts.
+    A session-finding node (``SessionInsight``/``SessionDecision``/…) carries
+    ``metadata["first_seen_at"]``, which the compiler sets from the *source
+    turn's own timestamp* (``session_event.py``), falling back to the session's
+    ``started_at`` only when that turn has no timestamp. We date the finding by
+    ``first_seen_at`` but **drop the started_at-fallback case** — a finding whose
+    ``first_seen_at`` equals its Session node's ``started_at`` is skipped, so a
+    finding is never windowed by the session's long-running start (Global
+    Constraint). Findings only exist for windows that have been compiled; a
+    recent, un-compiled window yields none (that is correct, not a miss).
+    The returned list is in ``graph.nodes`` order; the renderer sorts.
     """
+    started_at_by_session: Dict[str, str] = {}
+    for node in graph.nodes:
+        if getattr(node.type, "value", node.type) == "Session":
+            meta = getattr(node, "metadata", None) or {}
+            sid = meta.get("session_id")
+            if sid is not None:
+                started_at_by_session[str(sid)] = str(meta.get("started_at") or "")
+
     out: List[FindingItem] = []
     for node in graph.nodes:
         tname = getattr(node.type, "value", node.type)
         if tname not in _FINDING_TYPE_VALUES:
             continue
         meta = getattr(node, "metadata", None) or {}
-        turns = turns_by_session.get(meta.get("session_id")) or []
-        ids = [
-            i
-            for i in (meta.get("turn_ids") or [])
-            if isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(turns)
-        ]
-        if not ids:
-            continue  # no resolvable source turn -> undated -> skip
-        ts = parse_ts(str(turns[max(ids)].get("timestamp") or ""))
+        raw = str(meta.get("first_seen_at") or "")
+        if not raw:
+            continue  # undated -> skip; never fall back to started_at
+        sid = meta.get("session_id")
+        if sid is not None and raw == started_at_by_session.get(str(sid)):
+            continue  # first_seen_at fell back to the session's started_at -> drop
+        ts = parse_ts(raw)
         if ts and in_window(ts, window):
             out.append(
                 FindingItem(
@@ -323,7 +362,7 @@ def gather_findings(
                     kind=str(tname),
                     body=str(meta.get("body") or getattr(node, "name", "") or ""),
                     project=project,
-                    session_id=meta.get("session_id"),
+                    session_id=sid,
                     node_id=node.id,
                 )
             )
@@ -854,16 +893,17 @@ def build_summary(
     project_sections: List[str] = []
     paths: List[Path] = []
 
+    # One window-scoped scan over ALL harness roots for every project at once.
+    messages_by = scan_messages(projects, windows)
+
     for name, root in projects:
         root_str = str(root)
         graph = _load_project_graph(root)
         day_blocks: List[str] = []
         for window in windows:
-            messages, turns_by_session = gather_messages(name, root_str, window)
+            messages = messages_by.get(name, {}).get(window.label, [])
             findings = (
-                gather_findings(name, graph, turns_by_session, window)
-                if graph is not None
-                else []
+                gather_findings(name, graph, window) if graph is not None else []
             )
             commits = gather_git(name, root_str, window)
             prs = gather_prs(name, root_str, window)
