@@ -27,6 +27,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
+from tesserae.citation_names import rewrite_citations
+
 
 _VALID_KINDS = (
     "pulse",
@@ -557,6 +559,19 @@ class LlmSynthesizer:
                     f"{req.kind}; falling back to heuristic.",
                 )
             return None
+
+        # Render citations as human-readable names. Validation above ran
+        # against the raw ``[node_id]`` markers (names carry spaces and would
+        # not match the citation regex), so rewrite only now — the ``citations``
+        # list keeps the raw ids for internal tracking while the body reads in
+        # display names for agents. The id->name map is the same source-node
+        # list packed into the prompt inputs.
+        id_to_name = {
+            str(node.get("id")): str(node.get("name"))
+            for node in (req.inputs or ())
+            if node.get("id") and node.get("name")
+        }
+        body = rewrite_citations(body, id_to_name)
 
         model_id = getattr(response, "model", None) or self.model
         return LlmSynthesisResponse(
