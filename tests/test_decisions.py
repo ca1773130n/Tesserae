@@ -180,6 +180,29 @@ def test_cli_decisions_markdown_and_json(monkeypatch, capsys):
     assert called["include_agent"] is True  # agent on by default
 
 
+def test_mcp_query_decisions_dispatch(monkeypatch):
+    import tesserae.mcp_server as m
+
+    def fake_gather(windows, project_names, *, include_agent):
+        assert include_agent is False
+        return [
+            Decision(
+                ts=datetime(2026, 7, 4, 10, tzinfo=timezone.utc), source="human",
+                project="proj", session_id="s", question="Which backend?",
+                answer="Postgres", options=["SQLite", "Postgres"], header="Backend",
+            )
+        ]
+
+    monkeypatch.setattr(D, "gather_decisions", fake_gather, raising=False)
+    server = m.LLMWikiMCPServer()
+    out = server.call_tool("query_decisions", {"day": "2026-07-04", "include_agent": False})
+    assert "decisions" in out
+    d = out["decisions"][0]
+    assert d["source"] == "human" and d["answer"] == "Postgres"
+    assert d["options"] == ["SQLite", "Postgres"] and d["header"] == "Backend"
+    assert d["ts"].startswith("2026-07-04")
+
+
 def test_render_decisions_groups_empty_sections():
     md = render_decisions([])
     assert md.strip() == ""  # no projects -> empty

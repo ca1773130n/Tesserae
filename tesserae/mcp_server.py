@@ -1182,6 +1182,60 @@ class LLMWikiMCPServer:
                     "additionalProperties": False,
                 },
             },
+            {
+                "name": "query_decisions",
+                "description": (
+                    "Decisions made across registered projects within a time "
+                    "range — explicit HUMAN choices parsed deterministically from "
+                    "Claude Code's AskUserQuestion tool (the question + the option "
+                    "chosen) plus AGENT decisions mined from the conversation. Each "
+                    "decision is dated by its own timestamp (never a session's "
+                    "started_at). Answers e.g. \"what decisions were made since "
+                    "last Monday?\" — the caller resolves relative dates like "
+                    "'last Monday' to `since`. Returns a structured decision list."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "day": {
+                            "type": "string",
+                            "description": "Single day YYYY-MM-DD (default: today).",
+                        },
+                        "week": {
+                            "type": "string",
+                            "description": (
+                                "Seven daily windows ending on YYYY-MM-DD; "
+                                "empty string = the last 7 days ending today."
+                            ),
+                        },
+                        "since": {
+                            "type": "string",
+                            "description": "Window start (ISO date/datetime).",
+                        },
+                        "until": {
+                            "type": "string",
+                            "description": "Window end (ISO date/datetime).",
+                        },
+                        "project": {
+                            "type": "string",
+                            "description": (
+                                "Registered project name to scope to. Omit for "
+                                "all registered projects."
+                            ),
+                        },
+                        "include_agent": {
+                            "type": "boolean",
+                            "default": True,
+                            "description": (
+                                "Include LLM-mined agent decisions (default true). "
+                                "Set false for the deterministic human "
+                                "(AskUserQuestion) decisions only."
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+            },
         ]
 
     # ------------------------------------------------------------------ Resources
@@ -1876,6 +1930,8 @@ class LLMWikiMCPServer:
             }
         if name == "activity_summary":
             return self._mcp_activity_summary(args)
+        if name == "query_decisions":
+            return self._mcp_query_decisions(args)
         raise ValueError(f"Unknown Tesserae MCP tool: {name}")
 
     def _mcp_graph_ppr(
@@ -1964,6 +2020,43 @@ class LLMWikiMCPServer:
         return {
             "markdown": result.markdown,
             "paths": [str(p) for p in result.paths],
+        }
+
+    def _mcp_query_decisions(self, args: JSONDict) -> JSONDict:
+        """Adapter over :func:`tesserae.decisions.gather_decisions` — resolve the
+        window, return the structured decision list. ``project`` scopes to one
+        registered project (default: all); ``include_agent`` (default true) adds
+        LLM-mined agent decisions on top of the deterministic human ones.
+        """
+        from .decisions import gather_decisions
+
+        try:
+            windows = resolve_windows(
+                day=args.get("day"),
+                week=args.get("week"),
+                since=args.get("since"),
+                until=args.get("until"),
+            )
+        except ValueError as exc:
+            return {"error": str(exc)}
+        project = args.get("project")
+        project_names = [str(project)] if project else None
+        include_agent = bool(args.get("include_agent", True))
+        decisions = gather_decisions(windows, project_names, include_agent=include_agent)
+        return {
+            "decisions": [
+                {
+                    "ts": d.ts.isoformat(),
+                    "source": d.source,
+                    "project": d.project,
+                    "session_id": d.session_id,
+                    "question": d.question,
+                    "answer": d.answer,
+                    "options": d.options,
+                    "header": d.header,
+                }
+                for d in decisions
+            ]
         }
 
     def _mcp_list_sessions(
