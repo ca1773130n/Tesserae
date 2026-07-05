@@ -3307,10 +3307,14 @@ JS_GRAPH = r"""
           var charge = inst.d3Force('charge');
           if (charge && charge.strength) {
             if (mode === '2d') {
+              // Compact repulsion: a modest base so low-degree/peripheral nodes
+              // are NOT flung to the far edges (extreme outliers blow up the
+              // zoom-to-fit bounding box and crush the hub core into a central
+              // knot). Hubs still get extra push via the degree term.
               charge.strength(function(n){
                 var d = (n && n.degree) || 0;
                 var t = Math.sqrt(Math.min(1, d / Math.max(1, maxDegree)));
-                return -(380 + t * 520);
+                return -(140 + t * 300);
               });
             } else {
               // 3D: degree-scaled repulsion so hubs claim breathing room and
@@ -3327,9 +3331,9 @@ JS_GRAPH = r"""
           var link = inst.d3Force('link');
           if (link && link.distance) {
             if (mode === '2d') {
-              // Longer links between hubs spread the canvas out so the
-              // overall composition reads as connected clusters rather
-              // than a single hairball. Min ~70 px, max ~140 px.
+              // Compact link rest length so the whole composition fits the
+              // viewport as connected clusters rather than sprawling off the
+              // canvas edges. Min ~34 px, max ~80 px.
               link.distance(function(l){
                 var s = typeof l.source === 'object' ? l.source : byId.get(l.source);
                 var t = typeof l.target === 'object' ? l.target : byId.get(l.target);
@@ -3337,7 +3341,7 @@ JS_GRAPH = r"""
                 var dt = (t && t.degree) || 0;
                 var hub = Math.max(ds, dt);
                 var k = Math.sqrt(Math.min(1, hub / Math.max(1, maxDegree)));
-                return 70 + k * 70;
+                return 34 + k * 46;
               });
             } else {
               // 3D: longer rest length spreads connected clusters apart so the
@@ -3354,11 +3358,16 @@ JS_GRAPH = r"""
           }
         }
       } catch (_) {}
-      try { inst.cooldownTicks(120); } catch (_) {}
-      // Spec §F — settle fast on the 2.4k-node corpus: a higher velocity
-      // decay damps node motion sooner so the layout cools to a stable frame
-      // quickly instead of churning (and re-triggering onEngineStop).
-      try { if (inst.d3VelocityDecay) inst.d3VelocityDecay(0.45); } catch (_) {}
+      // 2D has one fewer dimension to spread into, so the same 3D settings
+      // freeze it into a tight central blob before the charge repulsion pushes
+      // hubs apart. Give 2D more ticks and lighter damping so the layout opens
+      // up (then the initial Fit frames a spread graph, not a knot); 3D keeps
+      // the fast-settle values tuned for the larger corpus.
+      try { inst.cooldownTicks(mode === '2d' ? 260 : 120); } catch (_) {}
+      // Spec §F — settle fast on the big corpus: a higher velocity decay damps
+      // node motion sooner so the layout cools to a stable frame quickly instead
+      // of churning (and re-triggering onEngineStop).
+      try { if (inst.d3VelocityDecay) inst.d3VelocityDecay(mode === '2d' ? 0.4 : 0.45); } catch (_) {}
 
       try {
         // Auto-fit fires exactly once: the first onEngineStop after the
@@ -4255,10 +4264,23 @@ JS_GRAPH = r"""
       if (btn2D) btn2D.setAttribute('aria-pressed', String(next === '2d'));
       if (btn3D) btn3D.setAttribute('aria-pressed', String(next === '3d'));
       try {
-        // A mode switch rebuilds the graph from scratch — reset the
-        // single-shot fit flag so the new projection gets framed once.
+        // A mode switch rebuilds the graph. Nodes carry their x/y/(z) across the
+        // rebuild, so a 2D->3D switch would inherit a FLAT layout the 3D camera
+        // cannot frame (the view reads empty until a manual Fit). Clear each
+        // node's position + velocity so the new projection's forces lay the
+        // graph out from scratch, then reset the single-shot fit flag.
+        payload.nodes.forEach(function(n){
+          delete n.x; delete n.y; delete n.z;
+          delete n.vx; delete n.vy; delete n.vz;
+        });
         hasInitialFit = false;
         buildGraph(next);
+        // buildGraph's own ~50ms fit frames the not-yet-spread layout, so
+        // re-frame once the from-scratch simulation has settled (2D needs
+        // longer: more cooldown ticks, one fewer dimension to spread into).
+        window.setTimeout(function(){
+          if (!pinnedNode && !pinnedLink) { try { fitAll(600); } catch (_) {} }
+        }, next === '2d' ? 5200 : 3800);
       } catch (err) {
         console.error('graph: mode switch failed', err);
         if (banner) {
