@@ -20,7 +20,7 @@ import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone, tzinfo
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, Iterator, List, Optional, Sequence, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -241,14 +241,16 @@ def scan_messages(
     path so a symlinked ``~/.claude`` root isn't double-counted), and only files
     with ``mtime >= min(window.start)`` are opened.
     """
-    roots = discover_harness_roots()
-    floor = min(w.start for w in windows).timestamp()
     out: Dict[str, Dict[str, List[MessageItem]]] = {
         name: {w.label: [] for w in windows} for name, _root in projects
     }
-    seen_files: set[str] = set()
-
-    def _bucket(name: str, harness: str, turns: List[Dict[str, object]], key: str) -> None:
+    for name, harness, path, key in iter_project_transcripts(projects, windows):
+        rows = _parse_jsonl(path)
+        turns = (
+            _codex_turns(rows, limit=turn_limit)
+            if harness == "codex"
+            else _claude_turns(rows, limit=turn_limit)
+        )
         for turn in turns:
             ts = parse_ts(str(turn.get("timestamp") or ""))
             if not ts:
@@ -268,6 +270,27 @@ def scan_messages(
                         )
                     )
                     break
+    return out
+
+
+def iter_project_transcripts(
+    projects: Sequence[Tuple[str, object]],
+    windows: Sequence[Window],
+) -> "Iterator[Tuple[str, str, Path, str]]":
+    """Yield ``(project_name, harness, transcript_path, session_key)`` for every
+    transcript across all harness roots that matches a project and was touched in
+    the window (``mtime >= min(window.start)``), deduped by real path.
+
+    Claude transcripts match by the project's encoded ``projects/`` slug dir
+    (incl. ``--worktrees-*`` siblings); codex by :func:`_rows_match_project`.
+    ``harness`` is ``"claude-code"`` or ``"codex"``; ``session_key`` is
+    ``"<account-dir>:<file-stem>"``. Shared by :func:`scan_messages` and the
+    decisions module so both discover transcripts identically.
+    """
+    roots = discover_harness_roots()
+    floor = min(w.start for w in windows).timestamp()
+    seen_files: set[str] = set()
+    seen_roots: set[str] = set()
 
     def _fresh(path: str) -> bool:
         try:
@@ -281,12 +304,12 @@ def scan_messages(
         seen_files.add(real)
         return True
 
-    seen_roots: set[str] = set()
     for r in roots:
         rk = os.path.realpath(r)
         if rk in seen_roots:
             continue
         seen_roots.add(rk)
+        acct = Path(r).name
         if _root_supports_claude(r):
             for name, root in projects:
                 slug = _claude_project_dir(Path(root))
@@ -295,22 +318,17 @@ def scan_messages(
                     if dn != slug and not dn.startswith(slug + "-"):
                         continue  # avoid a different project whose slug shares this prefix
                     for f in glob.glob(str(Path(d) / "*.jsonl")):
-                        if not _fresh(f):
-                            continue
-                        rows = _parse_jsonl(Path(f))
-                        key = f"{Path(r).name}:{Path(f).stem}"
-                        _bucket(name, "claude-code", _claude_turns(rows, limit=turn_limit), key)
+                        if _fresh(f):
+                            yield name, "claude-code", Path(f), f"{acct}:{Path(f).stem}"
         if _root_supports_codex(r):
             for f in glob.glob(str(Path(r) / "sessions" / "**" / "*.jsonl"), recursive=True):
                 if not _fresh(f):
                     continue
                 rows = _parse_jsonl(Path(f))
-                key = f"{Path(r).name}:{Path(f).stem}"
                 for name, root in projects:
                     if _rows_match_project(rows, Path(root)):
-                        _bucket(name, "codex", _codex_turns(rows, limit=turn_limit), key)
+                        yield name, "codex", Path(f), f"{acct}:{Path(f).stem}"
                         break
-    return out
 
 
 # --------------------------------------------------------------------------- #
