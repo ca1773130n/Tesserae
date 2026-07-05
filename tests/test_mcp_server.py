@@ -449,14 +449,29 @@ def test_search_nodes_honours_kind_filter(tmp_path):
 
 
 def test_search_nodes_excludes_code_graph_nodes_even_on_name_match(tmp_path):
-    """CodeFunction must never surface, even when q matches its name verbatim."""
+    """CodeFunction must never surface, even when q matches its name verbatim.
+
+    Search the FIXTURE graph directly. Going through ``call_tool`` would let the
+    graph resolver pick the current-directory/registered project's graph over
+    the fixture (pytest's tmp dir lives under the registered repo), so the
+    assertions must target the graph we built, not the host's live graph.
+    """
     _, graph_path = _project_with_wiki_and_lint(tmp_path)
     server = LLMWikiMCPServer(default_graph_path=graph_path)
+    graph = server._load_graph_cached(graph_path)
 
-    result = server.call_tool("search_nodes", {"q": "vision_helper"})
+    # Deterministic lexical lane: the query matches the CodeFunction's name
+    # verbatim, yet it is filtered out of the candidate pool before search, and
+    # no public node contains "vision_helper" as a substring -> zero matches.
+    legacy = server.search_nodes(graph, query="vision_helper", mode="legacy")
+    assert legacy["total_matches"] == 0
+    assert all(node["type"] != "CodeFunction" for node in legacy["nodes"])
 
-    assert result["total_matches"] == 0
-    assert all(node["type"] != "CodeFunction" for node in result["nodes"])
+    # And under the default hybrid lane (which may semantically surface the
+    # Vision *Paper*), the CodeFunction still never appears.
+    hybrid = server.search_nodes(graph, query="vision_helper")
+    assert all(node["type"] != "CodeFunction" for node in hybrid["nodes"])
+    assert not any(n["id"].startswith("CodeFunction:") for n in hybrid["nodes"])
 
 
 def test_graph_summary_excludes_code_graph_types(tmp_path):
