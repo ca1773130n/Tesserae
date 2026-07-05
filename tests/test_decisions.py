@@ -203,6 +203,46 @@ def test_mcp_query_decisions_dispatch(monkeypatch):
     assert d["ts"].startswith("2026-07-04")
 
 
+def test_summary_narrator_gets_human_decisions(tmp_path, monkeypatch):
+    """build_summary must feed explicit human decisions to the narrator so its
+    Decisions & Insights includes AskUserQuestion choices."""
+    import tesserae.mcp_server as mcp
+
+    monkeypatch.setattr(
+        mcp.ProjectRegistry, "iter_registered_projects",
+        lambda self: iter([("proj", tmp_path)]),
+    )
+    monkeypatch.setattr(
+        A, "scan_messages",
+        lambda projects, windows: {"proj": {w.label: [] for w in windows}},
+    )
+    monkeypatch.setattr(
+        D, "gather_decisions",
+        lambda windows, names, *, include_agent: [
+            Decision(ts=datetime(2026, 7, 4, tzinfo=timezone.utc), source="human",
+                     project="proj", session_id="s", question="Which backend?",
+                     answer="Postgres", options=[], header="Backend")
+        ],
+    )
+
+    class _NarClient:
+        def __init__(self):
+            self.seen = None
+
+        def complete_text(self, system, user):
+            self.seen = user
+            return "narrative"
+
+    client = _NarClient()
+    monkeypatch.setattr(A, "_summary_llm_client", lambda root: client, raising=False)
+
+    (w,) = resolve_windows(day="2026-07-04", tz=timezone.utc)
+    A.build_summary([w], ["proj"], synthesize=True, write=False)
+    assert client.seen is not None
+    assert "HUMAN DECISIONS" in client.seen
+    assert "Which backend? -> Postgres" in client.seen
+
+
 def test_render_decisions_groups_empty_sections():
     md = render_decisions([])
     assert md.strip() == ""  # no projects -> empty

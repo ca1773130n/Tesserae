@@ -1041,6 +1041,24 @@ def build_summary(
         else f"{windows[0].label} … {windows[-1].label}"
     )
     conversation = "\n\n".join(convo_blocks)
+    if synthesize:
+        # Surface explicit human decisions (AskUserQuestion) so the narrator's
+        # Decisions & Insights reliably includes them — the excerpts truncate the
+        # tool input and often miss the chosen answer. Deterministic; best-effort.
+        from tesserae.decisions import gather_decisions  # lazy: decisions imports this module
+
+        try:
+            human = gather_decisions(windows, [n for n, _ in projects], include_agent=False)
+        except Exception as exc:  # noqa: BLE001 - narration is best-effort
+            logger.warning("summary: human-decision gather failed: %s", exc)
+            human = []
+        if human:
+            hd_block = (
+                "=== HUMAN DECISIONS (explicit AskUserQuestion choices — include "
+                "these in each project's Decisions & Insights) ===\n"
+                + "\n".join(f"- [{d.project}] {d.question} -> {d.answer}" for d in human)
+            )
+            conversation = f"{hd_block}\n\n{conversation}" if conversation.strip() else hd_block
     narrative = _maybe_narrate(facts_md, projects, conversation) if synthesize else ""
 
     parts = [f"# Activity summary — {label}"]
