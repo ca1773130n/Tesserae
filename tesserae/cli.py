@@ -2384,6 +2384,92 @@ def _route_summary(rest: List[str]) -> int:
     return _handle_summary(args)
 
 
+def _build_decisions_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae decisions",
+        description="Decisions across projects + time — explicit human choices (AskUserQuestion) + agent decisions.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae decisions --since 2026-06-30          # all projects since a date\n"
+            "  tesserae decisions --day 2026-07-04\n"
+            "  tesserae decisions --week                      # the last 7 days\n"
+            "  tesserae decisions --project my-repo --no-llm  # human decisions only\n"
+            "  tesserae decisions --since 2026-06-30 --json   # structured output\n"
+        ),
+    )
+    parser.add_argument("--day", default=None, help="Single day YYYY-MM-DD (default: today).")
+    parser.add_argument(
+        "--week",
+        nargs="?",
+        const="",
+        default=None,
+        help="Seven daily windows ending on YYYY-MM-DD; bare --week = the last 7 days.",
+    )
+    parser.add_argument("--since", default=None, help="Window start (ISO datetime/date).")
+    parser.add_argument("--until", default=None, help="Window end (ISO datetime/date).")
+    parser.add_argument(
+        "--project",
+        action="append",
+        default=None,
+        help="Limit to a registered project by name; repeat for several. Omit = all registered.",
+    )
+    parser.add_argument(
+        "--no-llm",
+        dest="no_llm",
+        action="store_true",
+        help="Only the deterministic human (AskUserQuestion) decisions; skip agent-decision mining.",
+    )
+    parser.add_argument(
+        "--json",
+        dest="as_json",
+        action="store_true",
+        help="Emit the structured decision list as JSON instead of markdown.",
+    )
+    return parser
+
+
+def _handle_decisions(args: argparse.Namespace) -> int:
+    try:
+        windows = resolve_windows(
+            day=args.day, week=args.week, since=args.since, until=args.until
+        )
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    from .decisions import gather_decisions, render_decisions
+
+    decisions = gather_decisions(windows, args.project, include_agent=not args.no_llm)
+    if args.as_json:
+        print(
+            json.dumps(
+                [
+                    {
+                        "ts": d.ts.isoformat(),
+                        "source": d.source,
+                        "project": d.project,
+                        "session_id": d.session_id,
+                        "question": d.question,
+                        "answer": d.answer,
+                        "options": d.options,
+                        "header": d.header,
+                    }
+                    for d in decisions
+                ],
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    else:
+        print(render_decisions(decisions))
+    return 0
+
+
+def _route_decisions(rest: List[str]) -> int:
+    args = _build_decisions_parser().parse_args(rest)
+    return _handle_decisions(args)
+
+
 def _route_engine(rest: List[str]) -> int:
     args = _build_engine_parser().parse_args(rest)
     return _handle_engine(args)
@@ -4179,6 +4265,7 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "serve": _route_serve,
     "status": _route_status,
     "summary": _route_summary,
+    "decisions": _route_decisions,
     "engine": _route_engine,
     "refresh": _route_refresh,
     # task 5: groups

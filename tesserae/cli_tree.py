@@ -25,6 +25,7 @@ COMMAND_TREE: list[tuple[str, list[tuple[str, str]]]] = [
         ("query", "Raw retrieval over the graph (top-k, kind filters)"),
         ("lint", "Graph lint report (--fix-trivial, --severity, --json)"),
         ("summary", "Daily/weekly activity digest (sessions, findings, commits, PRs, docs)"),
+        ("decisions", "Decisions across projects + time (human AskUserQuestion + agent)"),
     ]),
     ("GROUPS", [
         ("sessions", "import | discover | list — agent session history"),

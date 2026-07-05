@@ -148,6 +148,38 @@ def test_gather_decisions_deterministic(tmp_path, monkeypatch):
     assert "### Human decisions" in md and "### Agent decisions" in md
 
 
+def test_cli_decisions_markdown_and_json(monkeypatch, capsys):
+    import tesserae.cli as cli
+
+    called = {}
+
+    def fake_gather(windows, projects, *, include_agent):
+        called["projects"] = projects
+        called["include_agent"] = include_agent
+        return [
+            Decision(
+                ts=datetime(2026, 7, 4, 10, tzinfo=timezone.utc), source="human",
+                project="proj", session_id="s", question="Which backend?",
+                answer="Postgres", options=["SQLite", "Postgres"], header="Backend",
+            )
+        ]
+
+    monkeypatch.setattr(D, "gather_decisions", fake_gather, raising=False)
+
+    rc = cli.main(["decisions", "--day", "2026-07-04", "--project", "proj", "--no-llm"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Which backend?" in out and "Postgres" in out
+    assert called["projects"] == ["proj"] and called["include_agent"] is False
+
+    rc2 = cli.main(["decisions", "--day", "2026-07-04", "--json"])
+    assert rc2 == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data[0]["source"] == "human" and data[0]["answer"] == "Postgres"
+    assert data[0]["options"] == ["SQLite", "Postgres"]
+    assert called["include_agent"] is True  # agent on by default
+
+
 def test_render_decisions_groups_empty_sections():
     md = render_decisions([])
     assert md.strip() == ""  # no projects -> empty
