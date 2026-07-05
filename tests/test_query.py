@@ -468,7 +468,10 @@ def test_answer_llm_path_returns_body_with_citations(tmp_path, monkeypatch):
     assert result.used_llm is True
     assert result.fallback_reason is None
     assert result.answer is not None
-    assert "[Concept:VisionBanana]" in result.answer
+    # Citations are rewritten from the raw node id to the node's display title,
+    # so agents read a name, not `node-<hash>`. The raw id must not leak.
+    assert "[Vision Banana]" in result.answer
+    assert "[Concept:VisionBanana]" not in result.answer
     # The system block is cached.
     call = factory.holder["client"].calls[0]
     system = call["system"]

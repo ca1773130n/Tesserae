@@ -463,7 +463,15 @@ def test_embedding_status_reports_semantic_flag(tmp_path, monkeypatch):
     wiki.compile()
     server = LLMWikiMCPServer(default_graph_path=wiki.paths.graph)
 
-    # Default env (no model2vec): hash-bucket stub, not semantic.
+    # Hash-stub path: force BOTH real backends unavailable so this asserts the
+    # non-semantic stub deterministically whether or not model2vec /
+    # sentence-transformers happen to be installed on the host.
+    class _Unavailable:
+        def __init__(self, *a, **k):
+            raise ImportError("forced unavailable for test")
+
+    monkeypatch.setattr(hybrid, "Model2VecBackend", _Unavailable)
+    monkeypatch.setattr(hybrid, "SentenceTransformersBackend", _Unavailable)
     reset_embedding_backend()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")  # fail-loud warning asserted in Task 1
