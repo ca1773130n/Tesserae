@@ -12,7 +12,7 @@ from tesserae.activity_summary import SummaryResult
 def test_cli_summary_no_llm(monkeypatch, capsys):
     called = {}
 
-    def fake_build(windows, projects, *, synthesize, write):
+    def fake_build(windows, projects, *, synthesize, write, **_kw):
         called.update(windows=windows, projects=projects, synthesize=synthesize, write=write)
         return SummaryResult(markdown="# digest\n", paths=[])
 
@@ -28,7 +28,7 @@ def test_cli_summary_defaults_all_projects_and_synthesizes(monkeypatch, capsys):
     """No --project → projects=None (all registered); no --no-llm → synthesize=True."""
     called = {}
 
-    def fake_build(windows, projects, *, synthesize, write):
+    def fake_build(windows, projects, *, synthesize, write, **_kw):
         called.update(windows=windows, projects=projects, synthesize=synthesize, write=write)
         return SummaryResult(markdown="# body\n", paths=[])
 
@@ -44,7 +44,7 @@ def test_cli_summary_defaults_all_projects_and_synthesizes(monkeypatch, capsys):
 def test_cli_summary_prints_written_paths(monkeypatch, capsys):
     from pathlib import Path
 
-    def fake_build(windows, projects, *, synthesize, write):
+    def fake_build(windows, projects, *, synthesize, write, **_kw):
         return SummaryResult(markdown="# d\n", paths=[Path("/tmp/proj/2026-07-04.md")])
 
     monkeypatch.setattr(cli, "build_summary", fake_build, raising=False)
@@ -60,7 +60,7 @@ def test_cli_summary_week_bare_flag_is_seven_windows(monkeypatch):
     """Bare --week (nargs='?') → last 7 daily windows via resolve_windows."""
     called = {}
 
-    def fake_build(windows, projects, *, synthesize, write):
+    def fake_build(windows, projects, *, synthesize, write, **_kw):
         called.update(windows=windows)
         return SummaryResult(markdown="# w\n", paths=[])
 

@@ -153,7 +153,7 @@ def test_cli_decisions_markdown_and_json(monkeypatch, capsys):
 
     called = {}
 
-    def fake_gather(windows, projects, *, include_agent):
+    def fake_gather(windows, projects, *, include_agent, **_kw):
         called["projects"] = projects
         called["include_agent"] = include_agent
         return [
@@ -183,7 +183,7 @@ def test_cli_decisions_markdown_and_json(monkeypatch, capsys):
 def test_mcp_query_decisions_dispatch(monkeypatch):
     import tesserae.mcp_server as m
 
-    def fake_gather(windows, project_names, *, include_agent):
+    def fake_gather(windows, project_names, *, include_agent, **_kw):
         assert include_agent is False
         return [
             Decision(
@@ -214,11 +214,11 @@ def test_summary_narrator_gets_human_decisions(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         A, "scan_messages",
-        lambda projects, windows: {"proj": {w.label: [] for w in windows}},
+        lambda projects, windows, **_kw: {"proj": {w.label: [] for w in windows}},
     )
     monkeypatch.setattr(
         D, "gather_decisions",
-        lambda windows, names, *, include_agent: [
+        lambda windows, names, *, include_agent, **_kw: [
             Decision(ts=datetime(2026, 7, 4, tzinfo=timezone.utc), source="human",
                      project="proj", session_id="s", question="Which backend?",
                      answer="Postgres", options=[], header="Backend")

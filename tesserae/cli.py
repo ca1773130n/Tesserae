@@ -2158,6 +2158,13 @@ def _build_summary_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip the LLM narrative; print the deterministic digest only.",
     )
+    parser.add_argument(
+        "--max-turns",
+        dest="max_turns",
+        type=int,
+        default=None,
+        help="Cap the turns gathered per session (default: unbounded).",
+    )
     return parser
 
 
@@ -2170,7 +2177,10 @@ def _handle_summary(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     synthesize = not args.no_llm
-    result = build_summary(windows, args.project, synthesize=synthesize, write=True)
+    result = build_summary(
+        windows, args.project, synthesize=synthesize, write=True,
+        turn_limit=args.max_turns or 100_000,
+    )
     print(result.markdown)
     for path in result.paths:
         print(f"wrote {path}", file=sys.stderr)
@@ -2426,6 +2436,13 @@ def _build_decisions_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Emit the structured decision list as JSON instead of markdown.",
     )
+    parser.add_argument(
+        "--max-turns",
+        dest="max_turns",
+        type=int,
+        default=None,
+        help="Cap the turns gathered per session (default: unbounded).",
+    )
     return parser
 
 
@@ -2439,7 +2456,10 @@ def _handle_decisions(args: argparse.Namespace) -> int:
         return 2
     from .decisions import gather_decisions, render_decisions
 
-    decisions = gather_decisions(windows, args.project, include_agent=not args.no_llm)
+    decisions = gather_decisions(
+        windows, args.project, include_agent=not args.no_llm,
+        turn_limit=args.max_turns or 100_000,
+    )
     if args.as_json:
         print(
             json.dumps(

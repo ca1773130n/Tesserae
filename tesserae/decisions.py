@@ -169,6 +169,7 @@ def gather_decisions(
     project_names: Optional[Sequence[str]] = None,
     *,
     include_agent: bool = True,
+    turn_limit: int = 100_000,
 ) -> List[Decision]:
     """All decisions for the resolved projects within ``windows``.
 
@@ -196,7 +197,7 @@ def gather_decisions(
         except Exception as exc:  # noqa: BLE001 - best-effort narration
             logger.warning("decisions: no LLM client for agent decisions: %s", exc)
         if client is not None:
-            messages_by = scan_messages(projects, windows)
+            messages_by = scan_messages(projects, windows, turn_limit=turn_limit)
             for name, _root in projects:
                 msgs = [m for bucket in messages_by.get(name, {}).values() for m in bucket]
                 if not msgs:

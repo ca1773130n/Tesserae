@@ -988,6 +988,7 @@ def build_summary(
     *,
     synthesize: bool = True,
     write: bool = True,
+    turn_limit: int = 100_000,
 ) -> SummaryResult:
     """Gather → render → (optionally narrate + write) the activity summary.
 
@@ -1006,7 +1007,7 @@ def build_summary(
     paths: List[Path] = []
 
     # One window-scoped scan over ALL harness roots for every project at once.
-    messages_by = scan_messages(projects, windows)
+    messages_by = scan_messages(projects, windows, turn_limit=turn_limit)
 
     for name, root in projects:
         root_str = str(root)
