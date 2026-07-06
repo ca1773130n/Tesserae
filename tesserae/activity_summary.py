@@ -276,6 +276,8 @@ def scan_messages(
 def iter_project_transcripts(
     projects: Sequence[Tuple[str, object]],
     windows: Sequence[Window],
+    *,
+    harnesses: Sequence[str] = ("claude-code", "codex"),
 ) -> "Iterator[Tuple[str, str, Path, str]]":
     """Yield ``(project_name, harness, transcript_path, session_key)`` for every
     transcript across all harness roots that matches a project and was touched in
@@ -286,7 +288,15 @@ def iter_project_transcripts(
     ``harness`` is ``"claude-code"`` or ``"codex"``; ``session_key`` is
     ``"<account-dir>:<file-stem>"``. Shared by :func:`scan_messages` and the
     decisions module so both discover transcripts identically.
+
+    ``harnesses`` restricts which harness families are scanned. Codex sessions
+    are NOT directory-scoped, so a codex scan parses every in-window session file
+    to read its cwd — cheap offline but ~170s on a busy machine. The live serve
+    endpoints pass ``("claude-code",)`` (slug-scoped, sub-second) and lean on the
+    memex index for codex; callers that can afford the full scan keep the default.
     """
+    want_claude = "claude-code" in harnesses
+    want_codex = "codex" in harnesses
     roots = discover_harness_roots()
     floor = min(w.start for w in windows).timestamp()
     seen_files: set[str] = set()
@@ -310,7 +320,7 @@ def iter_project_transcripts(
             continue
         seen_roots.add(rk)
         acct = Path(r).name
-        if _root_supports_claude(r):
+        if want_claude and _root_supports_claude(r):
             for name, root in projects:
                 slug = _claude_project_dir(Path(root))
                 for d in glob.glob(str(Path(r) / "projects" / (slug + "*"))):
@@ -320,7 +330,7 @@ def iter_project_transcripts(
                     for f in glob.glob(str(Path(d) / "*.jsonl")):
                         if _fresh(f):
                             yield name, "claude-code", Path(f), f"{acct}:{Path(f).stem}"
-        if _root_supports_codex(r):
+        if want_codex and _root_supports_codex(r):
             for f in glob.glob(str(Path(r) / "sessions" / "**" / "*.jsonl"), recursive=True):
                 if not _fresh(f):
                     continue

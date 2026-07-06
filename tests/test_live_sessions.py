@@ -56,3 +56,31 @@ def test_live_session_list_and_search(tmp_path, monkeypatch):
     assert hits[0]["project"] == "proj" and hits[0]["role"] == "user"
     assert live_transcript_search("nonexistent", [("proj", proj)], days=100_000) == []
     assert live_transcript_search("", [("proj", proj)], days=100_000) == []
+
+
+def test_run_sessions_and_search_merge(tmp_path, monkeypatch):
+    import tesserae.serve as S
+
+    proj = _seed(tmp_path, monkeypatch, ["design the parser", "reply"])
+    monkeypatch.setattr(
+        "tesserae.memex_search.search_transcripts",
+        lambda *a, **k: {"available": True, "results": [{"text": "old indexed hit"}], "total": 1},
+    )
+    sent = {}
+
+    class H:  # minimal fake handler
+        project_root = proj
+
+        def _send_json(self, status, body):
+            sent["status"] = status
+            sent["body"] = body
+
+    S._run_sessions(H(), "days=100000", project_root=proj, project_name="proj")
+    assert sent["status"] == 200
+    assert sent["body"]["sessions"][0]["project"] == "proj"
+
+    S._run_transcript_search(H(), "q=parser", project_root=proj, project_name="proj")
+    results = sent["body"]["results"]
+    assert any("parser" in (r.get("text") or "") for r in results)  # live hit present
+    assert any(r.get("text") == "old indexed hit" for r in results)  # index hit merged
+    assert sent["body"]["live"] == 1

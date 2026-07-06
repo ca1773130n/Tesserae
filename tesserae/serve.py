@@ -32,6 +32,8 @@ from pathlib import Path
 from typing import Optional, Tuple, Type
 from urllib.parse import parse_qs, unquote, urlparse
 
+from .live_sessions import CLAUDE_ONLY, live_session_list, live_transcript_search
+
 # Hard ceiling on a clip request body. The extension caps captured content at
 # ~200 KB client-side, but the server must never trust the client: a malicious
 # or buggy caller could otherwise stream an arbitrary ``Content-Length`` into
@@ -144,19 +146,52 @@ def _run_clip_preflight(handler) -> None:
     handler.end_headers()
 
 
-def _run_transcript_search(handler, query_string: str, *, project: Optional[str] = None) -> None:
+def _qs_int(qs: dict, key: str, default: int) -> int:
+    """One positive int from a parsed query string, tolerating garbage."""
+    try:
+        return int((qs.get(key) or [str(default)])[0])
+    except (ValueError, TypeError):
+        return default
+
+
+# Live serve scans claude only (slug-scoped, sub-second) and a short default
+# window so the page load / search box stay snappy; the compiled page + memex
+# index cover codex and anything older. See CLAUDE_ONLY in live_sessions.
+_LIVE_DAYS_DEFAULT = 7
+
+
+def _run_sessions(handler, query_string: str, *, project_root, project_name: str) -> None:
+    """Reply with the project's CURRENT sessions, scanned live from the harness
+    roots (recent-window bounded). The caller gates origin BEFORE calling this."""
+    qs = parse_qs(query_string)
+    sessions = live_session_list(
+        [(project_name, Path(project_root))],
+        days=_qs_int(qs, "days", _LIVE_DAYS_DEFAULT),
+        max_turns=_qs_int(qs, "max_turns", 100_000),
+        harnesses=CLAUDE_ONLY,
+    )
+    handler._send_json(200, {"sessions": sessions})
+
+
+def _run_transcript_search(
+    handler,
+    query_string: str,
+    *,
+    project: Optional[str] = None,
+    project_root=None,
+    project_name: Optional[str] = None,
+) -> None:
     """Execute a transcript search and reply, shared by both handlers. The
     caller is responsible for the origin/alias gate BEFORE calling this.
-    ``project`` scopes the search to one project (fleet); ``None`` searches
-    across all indexed transcripts (single-project serve — unchanged)."""
+    ``project`` scopes the memex index search to one project (fleet); ``None``
+    searches across all indexed transcripts. When ``project_root`` is given, a
+    live recent-window scan runs too and its fresh hits are merged AHEAD of the
+    (possibly lagging) index results — so newly-typed turns show up instantly."""
     from .memex_search import search_transcripts
 
     qs = parse_qs(query_string)
     query = (qs.get("q") or [""])[0]
-    try:
-        limit = int((qs.get("limit") or ["20"])[0])
-    except ValueError:
-        limit = 20
+    limit = _qs_int(qs, "limit", 20)
     result = search_transcripts(
         query,
         limit=limit,
@@ -164,6 +199,32 @@ def _run_transcript_search(handler, query_string: str, *, project: Optional[str]
         source=(qs.get("source") or [None])[0],
         hybrid=(qs.get("hybrid") or ["0"])[0] in ("1", "true"),
     )
+
+    live_hits = []
+    if project_root is not None and query.strip():
+        live_hits = live_transcript_search(
+            query,
+            [(project_name or Path(project_root).name, Path(project_root))],
+            days=_qs_int(qs, "days", _LIVE_DAYS_DEFAULT),
+            max_turns=_qs_int(qs, "max_turns", 100_000),
+            limit=limit,
+            harnesses=CLAUDE_ONLY,
+        )
+    if live_hits:
+        # Merge live ahead of the index, deduped by (session_id, ts) so a turn the
+        # index already carries isn't shown twice, capped to the requested limit.
+        seen = {(h.get("session_id"), h.get("ts")) for h in live_hits}
+        index_results = [
+            r for r in (result.get("results") or [])
+            if (r.get("session_id") or r.get("session"), r.get("ts")) not in seen
+        ]
+        merged = (live_hits + index_results)[:limit]
+        result = {
+            "available": True,
+            "results": merged,
+            "total": len(merged),
+            "live": len(live_hits),
+        }
     handler._send_json(200, result)
 
 
@@ -325,9 +386,23 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
                 if not allowed:
                     self._send_json(403, {"error": "forbidden"})
                     return
-                # Single-project serve searches across all indexed transcripts
-                # (project=None) — unchanged behaviour.
-                _run_transcript_search(self, parsed.query)
+                # Index across all transcripts (project=None) + a live recent
+                # scan of THIS project's roots merged ahead of the index.
+                _run_transcript_search(
+                    self, parsed.query,
+                    project_root=self.project_root, project_name=self.project_root.name,
+                )
+                return
+            if parsed.path == "/api/sessions":
+                # Same local-history exposure as transcript-search — origin-gated.
+                allowed, _ = self._clip_origin()
+                if not allowed:
+                    self._send_json(403, {"error": "forbidden"})
+                    return
+                _run_sessions(
+                    self, parsed.query,
+                    project_root=self.project_root, project_name=self.project_root.name,
+                )
                 return
             try:
                 return super().do_GET()
@@ -721,7 +796,23 @@ def build_fleet_handler(
                         f"which memex indexes under the same namespace. Rename one "
                         f"project directory to disambiguate.")})
                     return
-                _run_transcript_search(self, parsed.query, project=root.name)
+                _run_transcript_search(
+                    self, parsed.query, project=root.name,
+                    project_root=root, project_name=root.name,
+                )
+                return
+            if parsed.path == "/api/sessions":
+                # Live current-sessions for the page's project (Referer alias),
+                # same cross-origin guard as ask/transcript-search.
+                if self._cross_origin():
+                    self._send_json(403, {"error": "cross-origin request rejected"})
+                    return
+                alias = self._alias_from_referer()
+                root = roots.get(alias) if alias else None
+                if root is None:
+                    self._send_json(404, {"error": "no project"})
+                    return
+                _run_sessions(self, parsed.query, project_root=root, project_name=root.name)
                 return
             if parsed.path == "/api/ask":
                 self.send_response(405)
