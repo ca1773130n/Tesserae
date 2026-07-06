@@ -377,6 +377,39 @@ _TRANSCRIPT_SEARCH_WIDGET = """
 """
 
 
+# Live sessions panel. Best-effort: fetches /api/sessions (only served by
+# `tesserae serve`); on any error / non-200 (static gh-pages) the panel stays
+# hidden and the compiled table below is the whole page. Untrusted transcript
+# text goes in via textContent only — never innerHTML.
+_LIVE_SESSIONS_WIDGET = """
+<section class="panel" id="live-sessions" hidden>
+  <h2>Live sessions <span class="muted small">· last 7 days</span></h2>
+  <p class="muted small">Scanned live from the harness roots by <code>tesserae serve</code>, so newly-active sessions appear before the next compile. Codex sessions show in the table below (served from the index).</p>
+  <div id="live-sessions-list" style="display:flex;flex-direction:column;gap:.5rem;"></div>
+</section>
+<script>
+(function(){
+  var sec=document.getElementById('live-sessions'),box=document.getElementById('live-sessions-list');
+  if(!sec||!box)return;
+  function el(tag,cls,text){var n=document.createElement(tag);if(cls)n.className=cls;if(text!=null)n.textContent=text;return n;}
+  fetch('/api/sessions').then(function(r){if(!r.ok)throw 0;return r.json();}).then(function(d){
+    var rows=(d&&d.sessions)||[];
+    if(!rows.length)return;                       // nothing live -> leave compiled content alone
+    rows.forEach(function(s){
+      var meta=[s.account,s.turns+' turns',(s.last_ts||'').slice(0,16).replace('T',' ')].filter(Boolean).join(' · ');
+      var art=el('article','panel');art.style.padding='.6rem .8rem';art.style.margin='0';
+      art.appendChild(el('div',null,s.session_id||'session'));
+      art.appendChild(el('div','muted small',meta));
+      if(s.preview){var p=el('div',null,s.preview);p.style.fontSize='.9rem';p.style.marginTop='.25rem';p.style.whiteSpace='pre-wrap';art.appendChild(p);}
+      box.appendChild(art);
+    });
+    sec.hidden=false;                             // reveal only once populated
+  }).catch(function(){/* static hosting / no server -> stay hidden */});
+})();
+</script>
+"""
+
+
 def render_sessions_index(
     site_title: str,
     sessions: List[HarnessSession],
@@ -420,6 +453,7 @@ def render_sessions_index(
   <p class="muted">{_esc(' · '.join(f'{k}: {v}' for k, v in sorted(harness_counts.items())) or 'No harnesses yet.')}</p>
   <p class="muted">Top tools: {_esc(', '.join(f'{k} {v}' for k, v in tool_counts.most_common(8)) or 'None recorded.')}</p>
 </section>
+{_LIVE_SESSIONS_WIDGET}
 {_TRANSCRIPT_SEARCH_WIDGET}
 <section class="panel" id="sessions">
   <div class="table-scroll"><table class="node-table session-table">
