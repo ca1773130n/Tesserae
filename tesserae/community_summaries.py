@@ -9,8 +9,9 @@ applied to the typed ``ResearchGraph``:
    importable; otherwise fall back to deterministic label propagation.
 3. Per cluster (>= ``min_size`` members), call an :class:`LLMJsonClient`
    for a ``{title, description, tags}`` triple. Cache at
-   ``<cache_dir>/<community_id>.json`` keyed on the sorted-member content
-   hash — membership-stable re-runs skip the LLM entirely.
+   ``<cache_dir>/<community_id>.json`` keyed on the sorted member ids and
+   invalidated via a content digest over the member prompt lines —
+   membership- and content-stable re-runs skip the LLM entirely.
 4. Mint a :class:`ResearchNode` of type ``COMMUNITY_SUMMARY`` plus a
    ``summarizes`` edge per member.
 
@@ -99,12 +100,16 @@ _SYSTEM_PROMPT = (
 )
 
 
+def _member_line(n: ResearchNode) -> str:
+    desc = (n.description or "").strip().splitlines()[0] if n.description else ""
+    desc = desc[:160]
+    return f"- {n.name} ({n.type.value}): {desc}"
+
+
 def _format_user_prompt(members: Sequence[ResearchNode]) -> str:
     lines = [f"Community has {len(members)} members. Members:"]
     for n in members:
-        desc = (n.description or "").strip().splitlines()[0] if n.description else ""
-        desc = desc[:160]
-        lines.append(f"- {n.name} ({n.type.value}): {desc}")
+        lines.append(_member_line(n))
     lines.append("")
     lines.append(
         'Respond with: {"title": "...", "description": "...", '
@@ -114,9 +119,27 @@ def _format_user_prompt(members: Sequence[ResearchNode]) -> str:
 
 
 def community_id(member_ids: Sequence[str]) -> str:
-    """Stable id derived from the sorted-member content hash."""
+    """Stable id derived from the sorted member *ids* (membership only).
+
+    Node identity must stay stable across member-content edits so
+    ``graph.json`` stays byte-idempotent; content drift is handled by
+    :func:`_members_digest` cache invalidation instead.
+    """
     h = hashlib.sha256(("\n".join(sorted(member_ids))).encode("utf-8")).hexdigest()
     return f"CommunitySummary:{h[:16]}"
+
+
+def _members_digest(members: Sequence[ResearchNode]) -> str:
+    """Content hash over the exact per-member lines the LLM prompt uses.
+
+    Reuses :func:`_member_line` so digest and prompt can never drift.
+    Lines are sorted so the digest depends only on member content, not
+    iteration order. Any change to a member's name/type/description
+    invalidates the cached summary even when membership (and therefore
+    :func:`community_id`) is unchanged.
+    """
+    lines = sorted(_member_line(n) for n in members)
+    return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
 
 
 def _cache_path(cache_dir: Path, cid: str) -> Path:
@@ -206,15 +229,33 @@ def compile_community_summaries(
         members = [by_id[m] for m in member_ids if m in by_id]
         if not members:
             continue
+        prompt_members = members[: max(1, int(max_members_in_prompt))]
+        digest = _members_digest(prompt_members)
         summary: Optional[Tuple[str, str, List[str]]] = None
         if cached and isinstance(cached, dict):
             payload = cached.get("summary")
             summary = _validate_summary(payload) if payload else None
+            if summary is not None:
+                stored_digest = cached.get("members_digest")
+                if stored_digest is None:
+                    # Legacy pre-digest cache: honour it once but backfill
+                    # the digest so future runs can detect member-content
+                    # drift (avoids a one-time LLM stampede on upgrade).
+                    _write_cache(cache_path, {**cached, "members_digest": digest})
+                elif stored_digest != digest:
+                    if json_client is None:
+                        logger.warning(
+                            "community_summaries: cached summary for %s is "
+                            "stale (member content changed) but no LLM is "
+                            "available; serving the stale summary",
+                            cid,
+                        )
+                    else:
+                        summary = None  # content drifted → re-summarize
         if summary is None:
             if json_client is None:
                 logger.debug("community_summaries: no LLM; skipping %s", cid)
                 continue
-            prompt_members = members[: max(1, int(max_members_in_prompt))]
             try:
                 resp = json_client.complete_json(  # type: ignore[attr-defined]
                     system=_SYSTEM_PROMPT,
@@ -235,6 +276,7 @@ def compile_community_summaries(
                     "schema_version": 1,
                     "community_id": cid,
                     "member_ids": list(member_ids),
+                    "members_digest": digest,
                     "summary": {
                         "title": summary[0],
                         "description": summary[1],

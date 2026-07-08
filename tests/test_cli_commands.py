@@ -376,12 +376,12 @@ def test_compile_flag_surface_is_small():
 
     parser = cli._build_compile_parser()
     flags = [a for a in parser._actions if a.option_strings and "-h" not in a.option_strings]
-    # 9 core dests (llm_provider/claude_config_dir/codex_home + project +
+    # 10 core dests (llm_provider/claude_config_dir/codex_home + project +
     # changed_only + limit + refresh_integrations + sessions_enabled +
-    # distill_enabled) + the provider-agnostic extractor surface: extractor +
-    # llm_model/llm_include/llm_limit (LLM is the default), with the deprecated
-    # claude_include/limit/timeout/model kept as hidden aliases = 17 dests max.
-    assert len({a.dest for a in flags}) <= 17, sorted({a.dest for a in flags})
+    # distill_enabled + strict) + the provider-agnostic extractor surface:
+    # extractor + llm_model/llm_include/llm_limit (LLM is the default), with the
+    # deprecated claude_include/limit/timeout/model hidden aliases = 18 dests max.
+    assert len({a.dest for a in flags}) <= 18, sorted({a.dest for a in flags})
 
 
 def test_compile_keeps_exactly_the_dieted_dests():
@@ -401,6 +401,10 @@ def test_compile_keeps_exactly_the_dieted_dests():
         # config.json ``distillation.enabled`` key — so it stays a CLI flag
         # rather than a pure ``compile_options.*`` config key.
         "distill_enabled",
+        # ``--strict`` gates the exit code on the post-compile lint (errors→2,
+        # warnings→1); default stays report-only. A per-run CI/publish knob,
+        # so a CLI flag rather than a ``compile_options.*`` key.
+        "strict",
         "llm_provider",
         "claude_config_dir",
         "codex_home",

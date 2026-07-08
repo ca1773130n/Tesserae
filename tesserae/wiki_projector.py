@@ -168,6 +168,98 @@ def _format_relation_block(title: str, items: Sequence[Tuple[str, str, str]]) ->
     return "\n".join(lines)
 
 
+# --- Synthetic contradictions page -------------------------------------------
+#
+# ``contradicts_claim`` / ``resolved_by`` / ``supersedes`` edges live in
+# ``graph.json`` (minted by the extractor and the KB-04 ``memory.contradiction``
+# / ``memory.supersede`` passes) but no projection surfaced them — findings were
+# reachable only via the ``lint_report`` MCP tool. One synthetic page collects
+# them: OPEN contradicting pairs, RESOLVED pairs (loser → winner, with the
+# arbitration rationale carried on ``edge.evidence``), and OBSOLETED findings
+# (``source supersedes target`` — source is the newer node). Emitted under the
+# existing ``questions`` kind so the static site and MCP ``wiki_page`` pick it
+# up with zero ``site/`` changes. Omitted entirely when no such edges exist.
+
+_CONTRADICTIONS_KIND = "questions"
+_CONTRADICTIONS_SLUG = "contradictions"
+_CONTRADICTIONS_TITLE = "Contradictions"
+
+
+def _contradictions_page(graph: ResearchGraph, nodes_by_id: Mapping[str, ResearchNode], wiki_store: WikiPageStore) -> Optional[WikiPage]:
+    """Build the synthetic contradictions page, or ``None`` when empty.
+
+    Every section is sorted by node id and deduped so two compiles of the
+    same graph emit byte-identical output regardless of edge list order.
+    """
+    resolved_pairs = {
+        frozenset((edge.source, edge.target))
+        for edge in graph.edges
+        if edge.type == "resolved_by"
+    }
+    open_pairs: List[Tuple[str, str]] = []
+    resolved: List[Tuple[str, str, str]] = []
+    obsoleted: List[Tuple[str, str]] = []
+    for edge in graph.edges:
+        if edge.source not in nodes_by_id or edge.target not in nodes_by_id:
+            continue
+        if edge.type == "contradicts_claim":
+            if frozenset((edge.source, edge.target)) in resolved_pairs:
+                continue
+            a, b = sorted((edge.source, edge.target))
+            open_pairs.append((a, b))
+        elif edge.type == "resolved_by":
+            # Rationale can be multi-line LLM prose; collapse whitespace so it
+            # stays inside the bullet.
+            rationale = " ".join((edge.evidence or "").split())
+            resolved.append((edge.source, edge.target, rationale))
+        elif edge.type == "supersedes":
+            obsoleted.append((edge.source, edge.target))
+    if not (open_pairs or resolved or obsoleted):
+        return None
+
+    def _name(node_id: str) -> str:
+        return nodes_by_id[node_id].name
+
+    body_lines = [
+        f"# {_CONTRADICTIONS_TITLE}",
+        "",
+        "Disputes surfaced from the knowledge graph: contradicting claim pairs,"
+        " their arbitrated resolutions, and findings superseded by newer ones.",
+        "",
+    ]
+    if open_pairs:
+        body_lines.extend(["## Open", ""])
+        for a, b in sorted(set(open_pairs)):
+            body_lines.append(f"- **{_name(a)}** ↔ **{_name(b)}**")
+        body_lines.append("")
+    if resolved:
+        body_lines.extend(["## Resolved", ""])
+        for loser, winner, rationale in sorted(set(resolved)):
+            line = f"- **{_name(loser)}** → resolved by **{_name(winner)}**"
+            if rationale:
+                line += f" — {rationale}"
+            body_lines.append(line)
+        body_lines.append("")
+    if obsoleted:
+        body_lines.extend(["## Obsoleted", ""])
+        for newer, older in sorted(set(obsoleted)):
+            body_lines.append(f"- **{_name(older)}** → superseded by **{_name(newer)}**")
+        body_lines.append("")
+    body = "\n".join(body_lines).rstrip() + "\n"
+    frontmatter: Dict[str, object] = {
+        "title": _CONTRADICTIONS_TITLE,
+        "kind": _CONTRADICTIONS_KIND,
+    }
+    return WikiPage(
+        kind=_CONTRADICTIONS_KIND,
+        slug=_CONTRADICTIONS_SLUG,
+        title=_CONTRADICTIONS_TITLE,
+        body=body,
+        path=wiki_store.path_for(_CONTRADICTIONS_KIND, _CONTRADICTIONS_SLUG),
+        frontmatter=frontmatter,
+    )
+
+
 class WikiLayerProjector:
     """Materialize wiki/<kind>/<slug>.md files for every wiki-layer graph node."""
 
@@ -185,7 +277,31 @@ class WikiLayerProjector:
             page = self._page_for_node(node, kind, adj, nodes_by_id)
             if self.wiki_store.write_page(page):
                 written.append(page)
+        contradictions = _contradictions_page(graph, nodes_by_id, self.wiki_store)
+        if contradictions is not None and self.wiki_store.write_page(contradictions):
+            written.append(contradictions)
         return written
+
+    def project_contradictions(self, graph: ResearchGraph) -> Optional[WikiPage]:
+        """Re-emit ONLY the synthetic contradictions page from ``graph``.
+
+        ``ProjectWiki`` calls this after the KB-04 memory passes mint
+        ``resolved_by`` / ``supersedes`` edges: the full :meth:`project` run
+        happens BEFORE those passes, so without this re-emit a resolution
+        minted during compile N would only surface on compile N+1 — breaking
+        second-compile byte-stability. ``write_page`` is a no-op when the
+        post-pass body is unchanged.
+        """
+        nodes_by_id = {node.id: node for node in graph.nodes}
+        page = _contradictions_page(graph, nodes_by_id, self.wiki_store)
+        if page is None:
+            # The pre-pass projection may have written a page the post-pass
+            # graph no longer supports; drop it so the wiki tree matches the
+            # final graph.
+            self.wiki_store.path_for(_CONTRADICTIONS_KIND, _CONTRADICTIONS_SLUG).unlink(missing_ok=True)
+            return None
+        self.wiki_store.write_page(page)
+        return page
 
     def _page_for_node(
         self,

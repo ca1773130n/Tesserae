@@ -502,3 +502,54 @@ def test_recency_uses_session_started_at_not_just_first_seen():
         return next(i for i, n in enumerate(b.ranked_nodes) if key in n)
 
     assert pos(recent, "new") < pos(recent, "old")  # started_at anchors recency -> old demoted
+
+
+def _arbitrated_graph() -> ResearchGraph:
+    """Winner A, superseded loser B (A supersedes B), arbitration loser C
+    (C resolved_by A — loser is the SOURCE, per tesserae.memory.contradiction)."""
+    nodes = [
+        ResearchNode(id="A", name="Winning Claim",
+                     type=ResearchNodeType.PERFORMANCE_CLAIM,
+                     description="The winning, current claim. " * 8),
+        ResearchNode(id="B", name="Old Duplicate Claim",
+                     type=ResearchNodeType.PERFORMANCE_CLAIM,
+                     description="An older near-duplicate claim. " * 8),
+        ResearchNode(id="C", name="Contradicted Claim",
+                     type=ResearchNodeType.PERFORMANCE_CLAIM,
+                     description="A claim that lost LLM arbitration. " * 8),
+    ]
+    edges = [
+        ResearchEdge(source="A", target="B", type="supersedes"),
+        ResearchEdge(source="C", target="A", type="resolved_by"),
+    ]
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def test_superseded_and_arbitration_losers_excluded_by_default() -> None:
+    graph = _arbitrated_graph()
+    bundle = compile_context(
+        graph, project_root=None, query="", seeds=["A"], backend=_backend()
+    )
+    assert bundle.selected_nodes == ["A"]
+    assert set(bundle.ranked_nodes) == {"A"}
+    assert "Old Duplicate Claim" not in bundle.body
+    assert "Contradicted Claim" not in bundle.body
+
+    # A query landing on a LOSER seed still surfaces the winner, never the loser.
+    via_loser = compile_context(
+        graph, project_root=None, query="", seeds=["B"], backend=_backend()
+    )
+    assert "A" in via_loser.selected_nodes
+    assert "B" not in via_loser.selected_nodes
+    assert "C" not in via_loser.selected_nodes
+
+
+def test_include_superseded_restores_losers() -> None:
+    graph = _arbitrated_graph()
+    bundle = compile_context(
+        graph, project_root=None, query="", seeds=["A"],
+        backend=_backend(), include_superseded=True,
+    )
+    assert set(bundle.selected_nodes) == {"A", "B", "C"}
+    assert "Old Duplicate Claim" in bundle.body
+    assert "Contradicted Claim" in bundle.body

@@ -35,6 +35,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence, Set
 
+from .graph_filters import superseded_ids
 from .research_graph import ResearchGraph, ResearchNode
 from .retrieval.hybrid import hybrid_search
 from .retrieval.ppr import personalized_pagerank
@@ -205,13 +206,21 @@ def compile_context(
     edge_type_weights: Optional[Mapping[str, float]] = None,
     recency_now: Optional[datetime] = None,
     recency_weight: float = 0.0,
+    include_superseded: bool = False,
 ) -> ContextBundle:
     """Compile a tailored, cited context bundle for ``query`` / ``seeds``.
 
     See the module docstring for the full pipeline. Pure function: returns a
     :class:`ContextBundle` and writes nothing to disk.
+
+    ``include_superseded=False`` (default, mirroring the MCP read tools)
+    excludes superseded / arbitration-losing nodes from the ranked candidates,
+    so a claim that lost to a winner is never cited as current knowledge. The
+    losers still count as seeds, so a query landing on a stale claim surfaces
+    its winner via the ``supersedes`` / ``resolved_by`` edge.
     """
     node_index = {n.id: n for n in graph.nodes}
+    suppressed: Set[str] = set() if include_superseded else superseded_ids(graph)
 
     # --- Step 1: seed resolution (explicit first, then hybrid, deduped) ------
     seed_ids: List[str] = []
@@ -273,7 +282,11 @@ def compile_context(
         graph, seed_ids, alpha=0.15, top_k=max(1, len(graph.nodes)),
         edge_type_weights=edge_type_weights,
     )
-    in_nb = [(nid, score) for nid, score in full_ranked if nid in in_neighborhood]
+    in_nb = [
+        (nid, score)
+        for nid, score in full_ranked
+        if nid in in_neighborhood and nid not in suppressed
+    ]
 
     # Recency-aware re-rank (OPT-IN). Pure relevance magnets onto old "review of
     # ALL recent work" synthesis nodes for "what's recent" queries — strongest
@@ -302,7 +315,7 @@ def compile_context(
 
     ranked = in_nb[:cap]
     if not ranked:  # PITFALL 1: disconnected seeds -> fall back to seed order.
-        ranked = [(sid, 0.0) for sid in seed_ids]
+        ranked = [(sid, 0.0) for sid in seed_ids if sid not in suppressed]
     ranked_nodes = [nid for nid, _ in ranked]
 
     # Multi-pool reservation: guarantee the most relevant distilled-memory node
@@ -319,7 +332,11 @@ def compile_context(
             ResearchNodeType.GOTCHA,
             ResearchNodeType.EVENT,
         )
-        _in_nb_ranked = [(nid, sc) for nid, sc in full_ranked if nid in in_neighborhood]
+        _in_nb_ranked = [
+            (nid, sc)
+            for nid, sc in full_ranked
+            if nid in in_neighborhood and nid not in suppressed
+        ]
         _reserved: List[tuple] = []
         _reserved_ids: set = set()
         for _pool in _pools:

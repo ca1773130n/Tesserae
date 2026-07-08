@@ -1281,6 +1281,31 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
             )
         print(f"Graph: {result['graph_path']}")
         _warn_if_concept_poor(result)
+        # --strict: gate the exit code on the post-compile lint, reusing the
+        # `tesserae lint` exit-code mapping at its default floor (warning):
+        # errors → 2, warnings → 1. Default stays report-only.
+        if getattr(args, "strict", False):
+            lint_counts = result.get("lint")
+            if lint_counts is None:
+                # compile() swallows lint crashes and omits the key entirely;
+                # strict must fail CLOSED on a missing signal, not exit 0.
+                print(
+                    "compile --strict: lint did not run (crashed); failing --strict",
+                    file=sys.stderr,
+                )
+                return 2
+            if int(lint_counts.get("errors", 0)) > 0:
+                print(
+                    "compile --strict: lint reported errors — see .tesserae/lint-report.md",
+                    file=sys.stderr,
+                )
+                return 2
+            if int(lint_counts.get("warnings", 0)) > 0:
+                print(
+                    "compile --strict: lint reported warnings — see .tesserae/lint-report.md",
+                    file=sys.stderr,
+                )
+                return 1
         return 0
 
 
@@ -1944,6 +1969,7 @@ def _build_compile_parser() -> argparse.ArgumentParser:
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--changed-only", action="store_true", help="Skip unchanged files using .tesserae/manifest.json")
     parser.add_argument("--limit", type=int, help="Maximum number of changed files to process")
+    parser.add_argument("--strict", action="store_true", help="Exit non-zero when the post-compile lint reports errors (default: report-only)")
     # Document extractor. Tesserae is an LLM wiki: 'llm' is the DEFAULT — it
     # builds the concept/claim layer via the configured provider (codex/claude/api
     # per llm_provider). 'deterministic' is the structural, key-free, byte-stable

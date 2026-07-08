@@ -227,6 +227,41 @@ def test_graph_ppr_mcp_call_preserves_explicit_alpha(tmp_path) -> None:
     )
 
 
+def test_graph_ppr_exclude_direct_neighbors_surfaces_multi_hop_only(tmp_path) -> None:
+    """``exclude_direct_neighbors=true`` drops the seeds and their 1-hop
+    neighbourhood so only 2+ hop "unexpected" connections are returned."""
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    tools = LLMWikiMCPServer().list_tools()
+    ppr_tool = next(tool for tool in tools if tool["name"] == "graph_ppr")
+    flag_schema = ppr_tool["inputSchema"]["properties"]["exclude_direct_neighbors"]
+    assert flag_schema["type"] == "boolean"
+    assert flag_schema["default"] is False
+
+    graph_path = _write_graph_json(tmp_path, _make_graph())
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    # Default: the 1-hop neighbourhood dominates — ``session`` (direct
+    # neighbour of the seed) outranks ``insight_b`` (2 hops away).
+    payload_default = server.call_tool(
+        "graph_ppr", {"seed_node_id": "insight_a", "top_k": 10}
+    )
+    ids_default = [item["node_id"] for item in payload_default["results"]]
+    assert ids_default.index("session") < ids_default.index("insight_b")
+
+    payload = server.call_tool(
+        "graph_ppr",
+        {"seed_node_id": "insight_a", "top_k": 10, "exclude_direct_neighbors": True},
+    )
+    assert payload["exclude_direct_neighbors"] is True
+    ids = [item["node_id"] for item in payload["results"]]
+    # The seed (insight_a) and its direct neighbours (session via
+    # derived_from_session, decision via references — both edge directions
+    # count) are dropped; only the 2-hop ``insight_b`` survives. The
+    # disconnected ``paper`` never receives PPR mass.
+    assert ids == ["insight_b"], f"expected only the 2-hop node: {ids}"
+
+
 def test_graph_ppr_mcp_call_rejects_zero_alpha(tmp_path) -> None:
     """Regression for codex P3: ``alpha=0`` must be rejected end-to-end,
     not silently coerced to the default."""

@@ -13,7 +13,9 @@ Covers:
 
 from __future__ import annotations
 
+import dataclasses
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any, List, Optional, Union
@@ -184,6 +186,8 @@ def test_compile_mints_summary_nodes_and_summarizes_edges(tmp_path: Path) -> Non
         assert payload["schema_version"] == 1
         assert {"title", "description", "tags"} <= set(payload["summary"].keys())
         assert isinstance(payload["member_ids"], list) and payload["member_ids"]
+        # Content digest persisted so member edits invalidate the cache.
+        assert isinstance(payload["members_digest"], str) and payload["members_digest"]
 
 
 def test_rerun_with_same_membership_skips_llm(tmp_path: Path) -> None:
@@ -216,6 +220,98 @@ def test_rerun_with_same_membership_skips_llm(tmp_path: Path) -> None:
     for node in slice_second.nodes:
         assert node.metadata == meta_first[node.id]
         assert "cache_hit" not in node.metadata
+
+
+def _with_changed_description(graph: ResearchGraph, node_id: str) -> ResearchGraph:
+    """Same membership/edges, one member's description rewritten."""
+    return ResearchGraph(
+        nodes=[
+            dataclasses.replace(n, description="rewritten description")
+            if n.id == node_id
+            else n
+            for n in graph.nodes
+        ],
+        edges=graph.edges,
+    )
+
+
+def test_changed_member_description_invalidates_only_that_cluster(
+    tmp_path: Path,
+) -> None:
+    graph = _two_cluster_graph()
+    cache_dir = tmp_path / "community_summaries"
+    first = _ScriptedClient()
+    compile_community_summaries(
+        graph, cache_dir=cache_dir, json_client=first, min_size=3,
+    )
+    assert len(first.calls) == 2
+
+    # Same membership (same community ids), but one member of the "a"
+    # cluster changes its description → only that cluster re-summarizes.
+    changed = _with_changed_description(graph, "Concept:a0")
+    second = _ScriptedClient()
+    slice_second = compile_community_summaries(
+        changed, cache_dir=cache_dir, json_client=second, min_size=3,
+    )
+    assert len(second.calls) == 1, "content drift did not trigger re-summarize"
+    # Node identity is membership-keyed, so ids are unchanged.
+    assert {n.id for n in slice_second.nodes} == {
+        community_id([f"Concept:a{i}" for i in range(3)]),
+        community_id([f"Concept:b{i}" for i in range(3)]),
+    }
+
+
+def test_legacy_cache_without_digest_hits_once_and_backfills(tmp_path: Path) -> None:
+    graph = _two_cluster_graph()
+    cache_dir = tmp_path / "community_summaries"
+    first = _ScriptedClient()
+    compile_community_summaries(
+        graph, cache_dir=cache_dir, json_client=first, min_size=3,
+    )
+
+    # Simulate pre-digest caches by stripping the digest field.
+    for path in cache_dir.glob("CommunitySummary_*.json"):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload.pop("members_digest", None)
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+    # Legacy caches are honoured once (no LLM stampede)...
+    second = _ScriptedClient()
+    compile_community_summaries(
+        graph, cache_dir=cache_dir, json_client=second, min_size=3,
+    )
+    assert second.calls == [], "legacy cache without digest was not honoured"
+    # ...and the digest is backfilled on disk.
+    for path in cache_dir.glob("CommunitySummary_*.json"):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        assert payload["members_digest"]
+
+    # Subsequent runs are digest-verified pure hits.
+    third = _ScriptedClient()
+    compile_community_summaries(
+        graph, cache_dir=cache_dir, json_client=third, min_size=3,
+    )
+    assert third.calls == []
+
+
+def test_stale_cache_without_llm_serves_stale_and_warns(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture,
+) -> None:
+    graph = _two_cluster_graph()
+    cache_dir = tmp_path / "community_summaries"
+    compile_community_summaries(
+        graph, cache_dir=cache_dir, json_client=_ScriptedClient(), min_size=3,
+    )
+
+    changed = _with_changed_description(graph, "Concept:a0")
+    with caplog.at_level(logging.WARNING, logger="tesserae.community_summaries"):
+        slice_graph = compile_community_summaries(
+            changed, cache_dir=cache_dir, json_client=None, min_size=3,
+        )
+    # No LLM available: the stale summary is served (node still minted,
+    # no graph churn) and the staleness is surfaced as a warning.
+    assert len(slice_graph.nodes) == 2
+    assert any("stale" in record.getMessage() for record in caplog.records)
 
 
 def test_compile_returns_empty_when_no_cluster_meets_min_size() -> None:

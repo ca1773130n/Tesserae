@@ -431,3 +431,125 @@ def test_cli_lint_severity_error_only_fails_on_errors(tmp_path: Path) -> None:
     (project / ".tesserae" / "graph.json").write_text(json.dumps(graph), encoding="utf-8")
     code = cli_main(["lint", "--project", str(project), "--severity", "error"])
     assert code == 0
+
+
+# --------------------------------------------------------------------------- compile-tail lint
+
+
+def _seed_compile_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ProjectWiki:
+    """A real, compilable project (one paper doc under data/).
+
+    Pins the LLM-backed ``community_summaries`` pass off — byte-idempotence is
+    a guarantee of the DETERMINISTIC compile (same guard as
+    ``tests/test_idempotence.py``).
+    """
+    monkeypatch.setenv("TESSERAE_COMMUNITY_SUMMARIES", "false")
+    project = tmp_path / "proj"
+    (project / "data").mkdir(parents=True)
+    (project / "data" / "a.md").write_text(
+        "---\ntype: paper\n---\n# Graph Neural Networks\n\nbody a\n", encoding="utf-8"
+    )
+    return ProjectWiki.init(project, name="lint_tail")
+
+
+def test_compile_runs_lint_at_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every compile refreshes lint-report.md/json and reports lint counts."""
+    wiki = _seed_compile_project(tmp_path, monkeypatch)
+    result = wiki.compile()
+    wiki_root = wiki.project_root / ".tesserae"
+    assert (wiki_root / "lint-report.md").exists()
+    assert (wiki_root / "lint-report.json").exists()
+    assert set(result["lint"]) == {"errors", "warnings", "info"}
+
+
+def test_compile_twice_lint_report_is_byte_stable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A second compile over the unchanged corpus changes no lint/graph bytes."""
+    wiki = _seed_compile_project(tmp_path, monkeypatch)
+    wiki_root = wiki.project_root / ".tesserae"
+    wiki.compile()
+    first = {
+        name: (wiki_root / name).read_bytes()
+        for name in ("lint-report.md", "lint-report.json", "graph.json")
+    }
+    wiki.compile()
+    for name, payload in sorted(first.items()):
+        assert (wiki_root / name).read_bytes() == payload, (
+            f"{name} not byte-identical across two compiles of the same corpus"
+        )
+
+
+def test_compile_survives_lint_crash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A lint bug must never fail a compile — the error is logged and swallowed."""
+    wiki = _seed_compile_project(tmp_path, monkeypatch)
+
+    def _boom(self, fix_trivial: bool = False, severity_floor: str = "info"):
+        raise RuntimeError("lint exploded")
+
+    monkeypatch.setattr(ProjectWiki, "lint", _boom)
+    result = wiki.compile()
+    assert "lint" not in result
+    assert (wiki.project_root / ".tesserae" / "graph.json").exists()
+
+
+def _canned_lint(severity: str):
+    def _fake_lint(self, fix_trivial: bool = False, severity_floor: str = "info"):
+        finding = LintFinding(severity=severity, code="TEST_FINDING", message="canned")
+        return LintReport(
+            findings=[finding],
+            by_code={"TEST_FINDING": 1},
+            by_severity={severity: 1},
+        )
+
+    return _fake_lint
+
+
+def test_cli_compile_strict_maps_lint_errors_to_exit_2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    wiki = _seed_compile_project(tmp_path, monkeypatch)
+    monkeypatch.setattr(ProjectWiki, "lint", _canned_lint("error"))
+    code = cli_main(
+        ["compile", "--project", str(wiki.project_root), "--strict", "--extractor", "deterministic"]
+    )
+    assert code == 2
+
+
+def test_cli_compile_strict_maps_lint_warnings_to_exit_1(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    wiki = _seed_compile_project(tmp_path, monkeypatch)
+    monkeypatch.setattr(ProjectWiki, "lint", _canned_lint("warning"))
+    code = cli_main(
+        ["compile", "--project", str(wiki.project_root), "--strict", "--extractor", "deterministic"]
+    )
+    assert code == 1
+
+
+def test_cli_compile_strict_fails_closed_when_lint_crashes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A lint crash omits result['lint']; --strict must fail closed, not exit 0."""
+    wiki = _seed_compile_project(tmp_path, monkeypatch)
+
+    def _boom(self, fix_trivial: bool = False, severity_floor: str = "info"):
+        raise RuntimeError("lint exploded")
+
+    monkeypatch.setattr(ProjectWiki, "lint", _boom)
+    code = cli_main(
+        ["compile", "--project", str(wiki.project_root), "--strict", "--extractor", "deterministic"]
+    )
+    assert code == 2
+    assert "lint did not run" in capsys.readouterr().err
+
+
+def test_cli_compile_without_strict_stays_report_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    wiki = _seed_compile_project(tmp_path, monkeypatch)
+    monkeypatch.setattr(ProjectWiki, "lint", _canned_lint("error"))
+    code = cli_main(
+        ["compile", "--project", str(wiki.project_root), "--extractor", "deterministic"]
+    )
+    assert code == 0

@@ -347,15 +347,10 @@ def _project_root_for_graph_path(graph_path: str | Path) -> Optional[Path]:
     return None
 
 
-def _superseded_ids(graph: "ResearchGraph") -> set:
-    """Ids of nodes that have been SUPERSEDED (the losers).
-
-    A node is superseded when it is the *target* of a ``supersedes`` edge
-    (the source being the winner). This orientation matches the canonical
-    choice in ``tesserae.memory.supersede`` and the ``fresh_insights``
-    consumer, so all three MCP read paths suppress the same set.
-    """
-    return {edge.target for edge in graph.edges if edge.type == "supersedes"}
+# Suppression set shared by every read path (search_nodes, fresh_insights,
+# node_context, compile_context): supersedes targets + resolved_by sources.
+# Lives in graph_filters so the context compiler suppresses the same losers.
+from .graph_filters import superseded_ids as _superseded_ids
 
 
 from contextlib import contextmanager
@@ -861,6 +856,16 @@ class LLMWikiMCPServer:
                             "default": False,
                             "description": "Treat edges as directed. Default is undirected (better for relevance).",
                         },
+                        "exclude_direct_neighbors": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "Drop the seeds and their 1-hop neighbours "
+                                "(either edge direction) from the ranking "
+                                "before capping to top_k, so only 2+ hop "
+                                "'unexpected' connections are returned."
+                            ),
+                        },
                         "edge_type_weights": {
                             "type": "object",
                             "additionalProperties": {"type": "number"},
@@ -940,6 +945,15 @@ class LLMWikiMCPServer:
                                 "the first N chars of the body plus a 'handle' id; fetch "
                                 "the rest in slices with the 'get_handle' tool instead of "
                                 "dumping the whole body into context. 0 = return full body."
+                            ),
+                        },
+                        "include_superseded": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "When true, include superseded / arbitration-losing "
+                                "nodes (losers of `supersedes` / `resolved_by` edges). "
+                                "Default false suppresses them."
                             ),
                         },
                     },
@@ -1741,6 +1755,9 @@ class LLMWikiMCPServer:
                 alpha=alpha,
                 directed=bool(args.get("directed") or False),
                 edge_type_weights=edge_weights,
+                exclude_direct_neighbors=bool(
+                    args.get("exclude_direct_neighbors") or False
+                ),
             )
         if name == "compile_context":
             from .context_compiler import compile_context
@@ -1766,6 +1783,7 @@ class LLMWikiMCPServer:
                 budget=budget,
                 synthesize=synthesize,
                 multi_pool=multi_pool,
+                include_superseded=bool(args.get("include_superseded", False)),
             )
             preview = int(args.get("preview") or 0)
             if preview > 0 and len(bundle.body) > preview:
@@ -1943,16 +1961,37 @@ class LLMWikiMCPServer:
         alpha: float = 0.15,
         directed: bool = False,
         edge_type_weights: Optional[Dict[str, float]] = None,
+        exclude_direct_neighbors: bool = False,
     ) -> JSONDict:
         """Run PPR and decorate results with node name/type for the agent."""
+        # When excluding the seeds' 1-hop neighbourhood, over-fetch the FULL
+        # ranking (same pattern as node_context's use_ppr branch): filtering
+        # happens BEFORE the cap so ``top_k`` applies to the surviving 2+ hop
+        # nodes, not the pre-filter ranking.
+        fetch_k = max(1, len(graph.nodes)) if exclude_direct_neighbors else top_k
         ranked = personalized_pagerank(
             graph,
             seed_ids=seed_ids,
             alpha=alpha,
-            top_k=top_k,
+            top_k=fetch_k,
             edge_type_weights=edge_type_weights,
             directed=directed,
         )
+        if exclude_direct_neighbors:
+            seed_set = set(seed_ids)
+            # 1-hop neighbours in EITHER direction — an "unexpected
+            # connection" means not directly linked at all, regardless of
+            # edge direction (and regardless of ``directed``).
+            neighbor_ids = {
+                edge.target if edge.source in seed_set else edge.source
+                for edge in graph.edges
+                if edge.source in seed_set or edge.target in seed_set
+            }
+            ranked = [
+                (node_id, score)
+                for node_id, score in ranked
+                if node_id not in seed_set and node_id not in neighbor_ids
+            ][:top_k]
         index = {node.id: node for node in graph.nodes}
         results: List[JSONDict] = []
         for node_id, score in ranked:
@@ -1969,6 +2008,7 @@ class LLMWikiMCPServer:
             "seed_ids": list(seed_ids),
             "alpha": alpha,
             "directed": directed,
+            "exclude_direct_neighbors": exclude_direct_neighbors,
             "results": results,
         }
 

@@ -377,7 +377,7 @@ def test_validate_response_rejects_short_body():
     from tesserae.llm_synthesis import _validate_response
 
     short_with_citation = "Tiny [node-a].\n"
-    assert _validate_response(short_with_citation) is None
+    assert _validate_response(short_with_citation, {"node-a"}) is None
 
 
 def test_validate_response_rejects_zero_citations():
@@ -389,11 +389,11 @@ def test_validate_response_rejects_zero_citations():
         "This paragraph is plenty long but it does not name any node by id "
         "in square brackets, so the validator should reject it.\n"
     )
-    assert _validate_response(long_no_citation) is None
+    assert _validate_response(long_no_citation, {"node-a"}) is None
 
 
 def test_validate_response_accepts_valid_body():
-    """A long body with at least one [id] marker is accepted."""
+    """A long body citing only input node ids is accepted."""
 
     from tesserae.llm_synthesis import _validate_response
 
@@ -402,8 +402,23 @@ def test_validate_response_accepts_valid_body():
         "new papers contributing to the geometry-grounded splatting family "
         "[Paper:geometry-grounded:abcdef123456].\n"
     )
-    citations = _validate_response(body)
+    citations = _validate_response(
+        body, {"Paper:geometry-grounded:abcdef123456", "node-b"}
+    )
     assert citations == ["Paper:geometry-grounded:abcdef123456"]
+
+
+def test_validate_response_rejects_ungrounded_citation():
+    """A long body citing an id absent from the inputs fails validation."""
+
+    from tesserae.llm_synthesis import _validate_response
+
+    body = (
+        "This paragraph is plenty long and cites a node id, but the id was "
+        "fabricated by the model rather than drawn from the inputs "
+        "[Paper:made-up:123456abcdef].\n"
+    )
+    assert _validate_response(body, {"node-a", "node-b"}) is None
 
 
 def test_korean_inputs_render_through_to_user_message_and_system_has_language_rule():
@@ -459,6 +474,28 @@ def test_short_response_logs_short_message_and_returns_none():
     assert out is None
     log = buf.getvalue()
     assert "shorter than" in log
+
+
+def test_ungrounded_citation_logs_and_returns_none():
+    """A body citing a fabricated node id is rejected with a log line."""
+
+    factory = _factory(
+        fixed_body=(
+            "A long-enough paragraph that cites one real input and one "
+            "fabricated node id the model invented out of thin air "
+            "[node-a] [Paper:made-up:123456abcdef].\n"
+        )
+    )
+    set_client_factory(factory)
+
+    buf = io.StringIO()
+    with redirect_stderr(buf):
+        out = LlmSynthesizer().synthesize(_basic_request())
+
+    assert out is None
+    log = buf.getvalue()
+    assert "not present in the inputs" in log
+    assert "Paper:made-up:123456abcdef" in log
 
 
 def test_response_frontmatter_and_h1_are_stripped():

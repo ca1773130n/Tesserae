@@ -25,7 +25,7 @@ import re
 import sys
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set
 
 from tesserae.citation_names import rewrite_citations
 
@@ -345,12 +345,14 @@ def _extract_citations(body: str) -> List[str]:
 _MIN_BODY_LENGTH = 80
 
 
-def _validate_response(body: str) -> Optional[List[str]]:
+def _validate_response(body: str, valid_ids: Set[str]) -> Optional[List[str]]:
     """Return parsed citations on success, ``None`` if the body is invalid.
 
     A valid body must:
     - be at least ``_MIN_BODY_LENGTH`` characters once stripped
     - contain at least one ``[node_id]`` citation marker
+    - cite only ids present in ``valid_ids`` (the request's input nodes) — a
+      fabricated id means the model invented a source, so the body is untrusted
 
     On failure the caller logs once per kind/reason and falls back to the
     heuristic body for that page.
@@ -361,6 +363,8 @@ def _validate_response(body: str) -> Optional[List[str]]:
         return None
     citations = _extract_citations(body)
     if not citations:
+        return None
+    if any(citation not in valid_ids for citation in citations):
         return None
     return citations
 
@@ -542,9 +546,15 @@ class LlmSynthesizer:
         body = _strip_leading_h1(body, req.title)
         body = body.rstrip() + "\n"
 
-        citations = _validate_response(body)
+        valid_ids = {
+            str(node.get("id"))
+            for node in (req.inputs or ())
+            if node.get("id")
+        }
+        citations = _validate_response(body, valid_ids)
         if citations is None:
             stripped = body.strip()
+            extracted = _extract_citations(body)
             if len(stripped) < _MIN_BODY_LENGTH:
                 _log_once(
                     f"short-response:{req.kind}",
@@ -552,11 +562,19 @@ class LlmSynthesizer:
                     f"{_MIN_BODY_LENGTH} chars for kind={req.kind}; "
                     "falling back to heuristic.",
                 )
-            else:
+            elif not extracted:
                 _log_once(
                     f"no-citations:{req.kind}",
                     f"LLM synthesis produced no [node_id] citations for kind="
                     f"{req.kind}; falling back to heuristic.",
+                )
+            else:
+                unknown = sorted(c for c in extracted if c not in valid_ids)
+                _log_once(
+                    f"ungrounded-citation:{req.kind}",
+                    f"LLM synthesis cited node ids not present in the inputs "
+                    f"for kind={req.kind}: {', '.join(unknown)}; "
+                    "falling back to heuristic.",
                 )
             return None
 

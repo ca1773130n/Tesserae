@@ -1477,7 +1477,7 @@ class ProjectWiki:
         # fires mid-compile must fail fast (or opt into waiting) instead of
         # stacking onto the same .tesserae state.
         with compile_lock(self.paths.root, wait_seconds=lock_wait):
-            return self.ingest(
+            result = self.ingest(
                 sources,
                 source_kind=source_kind,
                 changed_only=changed_only,
@@ -1496,6 +1496,23 @@ class ProjectWiki:
                 progress=progress,
                 incremental_override=incremental_override,
             )
+            # Tail-of-compile lint: refresh lint-report.md/json at every
+            # publish so the verifier signal is never stale. The linter only
+            # READS the just-written artifacts (fix_trivial=False → it never
+            # touches graph.json), and its reports are byte-stable on
+            # identical input. A lint bug must never fail a compile, so
+            # failures are logged and swallowed.
+            try:
+                report = self.lint(severity_floor="warning")
+            except Exception:
+                logger.exception("post-compile lint failed; compile artifacts are unaffected")
+            else:
+                result["lint"] = {
+                    "errors": report.by_severity.get("error", 0),
+                    "warnings": report.by_severity.get("warning", 0),
+                    "info": report.by_severity.get("info", 0),
+                }
+            return result
 
     def lint(self, fix_trivial: bool = False, severity_floor: str = "info") -> LintReport:
         """Run :class:`WikiLinter` against this project's compiled artifacts.
@@ -2573,6 +2590,14 @@ class ProjectWiki:
         except Exception:  # pragma: no cover — defensive; never fail compile
             logger.exception("phase5 memory passes failed; continuing")
             memory_rows = []
+
+        # The contradictions page was projected above from the PRE-memory-pass
+        # graph; the passes may have just minted resolved_by / supersedes
+        # edges. Re-emit only that page from the post-pass graph so a
+        # resolution minted during THIS compile lands in THIS compile's page —
+        # otherwise it surfaces one compile late and the second compile over
+        # identical inputs is not byte-identical. No-op when nothing changed.
+        WikiLayerProjector(wiki_store).project_contradictions(graph)
 
         # Karpathy schema layer: purpose / schema / index / log files at the
         # top of the wiki dir. ``purpose.md`` is seeded once and preserved on
