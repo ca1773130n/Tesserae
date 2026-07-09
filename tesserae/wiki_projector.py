@@ -168,6 +168,31 @@ def _format_relation_block(title: str, items: Sequence[Tuple[str, str, str]]) ->
     return "\n".join(lines)
 
 
+_SOURCES_CAP = 25
+
+
+def _community_source_files(
+    node: ResearchNode,
+    adj: _Adjacency,
+    nodes_by_id: Mapping[str, ResearchNode],
+) -> List[str]:
+    """Sorted deduped member source files for a COMMUNITY_SUMMARY node.
+
+    Pure function of the graph (``summarizes`` out-edges + member
+    ``source_path`` fields) so the page footer is byte-stable across
+    recompiles. Empty for every other node type.
+    """
+    if node.type is not ResearchNodeType.COMMUNITY_SUMMARY:
+        return []
+    return sorted({
+        nodes_by_id[edge.target].source_path
+        for edge in adj.out.get(node.id, [])
+        if edge.type == "summarizes"
+        and edge.target in nodes_by_id
+        and nodes_by_id[edge.target].source_path
+    })
+
+
 # --- Synthetic contradictions page -------------------------------------------
 #
 # ``contradicts_claim`` / ``resolved_by`` / ``supersedes`` edges live in
@@ -376,6 +401,16 @@ class WikiLayerProjector:
             for kind_name, count in sorted(type_mix.items(), key=lambda item: (-item[1], item[0])):
                 body_lines.append(f"- {kind_name}: {count}")
             body_lines.append("")
+        source_files = _community_source_files(node, adj, nodes_by_id)
+        if source_files:
+            body_lines.append("## Sources")
+            body_lines.append("")
+            for path_str in source_files[:_SOURCES_CAP]:
+                body_lines.append(f"- `{path_str}`")
+            remaining = len(source_files) - _SOURCES_CAP
+            if remaining > 0:
+                body_lines.append(f"- …and {remaining} more")
+            body_lines.append("")
         body = "\n".join(body_lines).rstrip() + "\n"
         frontmatter: Dict[str, object] = {
             "title": title,
@@ -386,6 +421,8 @@ class WikiLayerProjector:
         }
         if node.aliases:
             frontmatter["aliases"] = sorted(node.aliases)
+        if source_files:
+            frontmatter["sources"] = source_files
         path = self.wiki_store.path_for(kind, slug)
         return WikiPage(kind=kind, slug=slug, title=title, body=body, path=path, frontmatter=frontmatter)
 

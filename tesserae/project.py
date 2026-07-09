@@ -22,7 +22,14 @@ from typing import Dict, Iterable, List, Mapping, Optional, Set, Tuple
 
 from .agent_harness import AgentHarnessAdapter, SUPPORTED_AGENT_HARNESSES, install_instruction_pointer
 from .batch import BatchIngestRunner, read_markdown_text, sha256_text
-from .code_graph import CodeGraphExtractor
+from .code_graph import (
+    CodeGraphExtractor,
+    extractor_fingerprint,
+    manifest_delta,
+    read_code_graph_cache,
+    stat_manifest,
+    write_code_graph_cache,
+)
 from .cognee_adapter import CogneeResearchGraphAdapter
 from .cognee_codex import CogneeCodexPatch
 from .cognee_direct import CogneeDirectImporter
@@ -43,7 +50,7 @@ from .markdown_projection import GraphMarkdownProjector
 from .obsidian_adapter import ObsidianVaultAdapter
 from .persistence import SQLiteResearchGraphStore
 from .report import GraphReporter
-from .research_graph import ResearchCorpusAnalyzer, ResearchEdge, ResearchGraph, ResearchGraphExtractor, ResearchNode, ResearchNodeType, filter_filename_shaped_concepts, link_paper_repo_pairs, prefer_research_node
+from .research_graph import ResearchCorpusAnalyzer, ResearchGraph, ResearchGraphExtractor, ResearchNode, ResearchNodeType, filter_filename_shaped_concepts, graph_from_payload, link_paper_repo_pairs, prefer_research_node
 from .temporal import TemporalFactProjector, render_competitive_report
 from .raganything_adapter import merge_raganything_graph
 from .understand_anything_adapter import merge_understand_anything_graph
@@ -221,6 +228,12 @@ class ProjectPaths:
     # tripwire; see ``tesserae.output_snapshot``). Hex digests + a bool only —
     # never timestamps — and always excluded from the hash by construction.
     output_snapshot: Path = Path(".tesserae/output-snapshot.json")
+    # Code-graph extraction cache (delta-scoped regeneration; see
+    # ``tesserae.code_graph``). INPUT state, not a compiled artifact: it
+    # carries a stat manifest (``mtime_ns`` — volatile across checkouts), so
+    # it must stay excluded from every output-hash scope — the
+    # ``output_snapshot`` allowlists never include it.
+    code_graph_cache: Path = Path(".tesserae/code-graph-cache.json")
 
 
 class ProjectWiki:
@@ -262,6 +275,7 @@ class ProjectWiki:
             extraction_guidance=self.root / "extraction-guidance.md",
             extraction_guidance_cache=self.root / "extraction_guidance_cache",
             output_snapshot=self.root / "output-snapshot.json",
+            code_graph_cache=self.root / "code-graph-cache.json",
         )
         # In-memory override of the Obsidian vault location, set by
         # obsidian-sync --vault for the duration of a single CLI call.
@@ -706,8 +720,51 @@ class ProjectWiki:
             progress.finalize("community summaries, vault, site")
 
         graph = ResearchCorpusAnalyzer().summarize_trends(graphs, min_sources=min_trend_sources) if trends else base_graph
+        code_graph_report: Optional[Dict[str, object]] = None
         if kind in {"CodeProject", "Repository", "Project"}:
-            code_graph = CodeGraphExtractor(self.project_root).extract_paths(code_inputs)
+            # Delta-scoped regeneration gate (whole-layer grain — reuse
+            # everything or re-extract everything, never a partial graph).
+            # When the stat manifest of the walked file list AND the extractor
+            # fingerprint match the cache, rehydrate the cached extractor
+            # output instead of re-parsing every code file. Cache failures of
+            # any kind degrade to the always-correct full extraction.
+            cg_extractor = CodeGraphExtractor(self.project_root)
+            cg_files = cg_extractor.iter_code_files(code_inputs)
+            manifest = stat_manifest(cg_files, self.project_root)
+            fingerprint = extractor_fingerprint()
+            cached = read_code_graph_cache(self.paths.code_graph_cache)
+            code_graph: Optional[ResearchGraph] = None
+            if (
+                manifest is not None
+                and fingerprint is not None
+                and cached is not None
+                and cached.fingerprint == fingerprint
+                and cached.manifest == manifest
+            ):
+                try:
+                    code_graph = graph_from_payload(cached.graph_payload)
+                except Exception:
+                    logger.exception("code-graph cache rehydration failed; re-extracting")
+                    code_graph = None
+            reused = code_graph is not None
+            if code_graph is None:
+                code_graph = cg_extractor.extract_files(cg_files)
+                if manifest is not None and fingerprint is not None:
+                    write_code_graph_cache(
+                        self.paths.code_graph_cache, code_graph, manifest, fingerprint
+                    )
+            code_graph_report = {
+                "reused": reused,
+                "files": len(cg_files),
+                "delta": None
+                if reused or manifest is None
+                else manifest_delta(cached.manifest if cached else None, manifest),
+            }
+            logger.info(
+                "code graph %s (%d files)",
+                "reused — tree unchanged" if reused else "re-extracted",
+                len(cg_files),
+            )
             _before_code = graph
             graph = merge_graphs([graph, code_graph])
             # Codex #6: code-graph re-derives its nodes/edges from the repo every
@@ -1003,7 +1060,7 @@ class ProjectWiki:
             # row-set is authoritative and safe to reconcile.
             full_compile=not incremental_active,
         )
-        return {
+        result = {
             "project_root": str(self.project_root),
             "wiki_root": str(self.root),
             "source_kind": kind,
@@ -1018,6 +1075,12 @@ class ProjectWiki:
             "site_path": str(self.paths.site),
             "mcp_server_name": cfg.get("name", sanitize_server_name(self.project_root.name)),
         }
+        if code_graph_report is not None:
+            # Present only when the code branch ran: reuse/extraction signal +
+            # the code-tree delta (surgicality observability, result-dict and
+            # logs only — never serialized into artifacts).
+            result["code_graph_cache"] = code_graph_report
+        return result
 
     def _merge_configured_understand_anything_graph(self, graph: ResearchGraph, cfg: dict) -> ResearchGraph:
         """Merge configured Understand Anything graph artifacts natively.
@@ -3172,31 +3235,9 @@ def _strip_generated_layer(graph: ResearchGraph) -> ResearchGraph:
 
 
 def load_graph_file(path: str | Path) -> ResearchGraph:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    return ResearchGraph(
-        nodes=[
-            ResearchNode(
-                id=str(raw["id"]),
-                name=str(raw["name"]),
-                type=ResearchNodeType(str(raw["type"])),
-                aliases=[str(alias) for alias in raw.get("aliases", [])],
-                description=str(raw.get("description") or ""),
-                source_path=raw.get("source_path"),
-                metadata=dict(raw.get("metadata") or {}),
-            )
-            for raw in payload.get("nodes", [])
-        ],
-        edges=[
-            ResearchEdge(
-                source=str(raw["source"]),
-                target=str(raw["target"]),
-                type=str(raw["type"]),
-                evidence=raw.get("evidence"),
-                metadata=dict(raw.get("metadata") or {}),
-            )
-            for raw in payload.get("edges", [])
-        ],
-    )
+    # Body moved verbatim to ``research_graph.graph_from_payload`` so the
+    # code-graph cache can rehydrate without importing this module (circular).
+    return graph_from_payload(json.loads(Path(path).read_text(encoding="utf-8")))
 
 
 def resolve_project_input(project_root: Path, item: str | Path) -> Path:

@@ -1288,6 +1288,20 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                 f"Output: {'changed' if result['output_changed'] else 'unchanged'} "
                 f"(sha256 {str(result.get('output_sha256', ''))[:12]})"
             )
+        # Code-graph reuse signal (delta-scoped regeneration, see
+        # tesserae/code_graph.py). Omitted when the code branch didn't run
+        # (non-code projects, injected compile doubles). Info-only — never a
+        # failure condition, so --strict is deliberately not extended.
+        cg = result.get("code_graph_cache")
+        if cg is not None:
+            if cg["reused"]:
+                print(f"Code graph: reused (tree unchanged, {cg['files']} files)")
+            else:
+                d = cg.get("delta") or {}
+                print(
+                    f"Code graph: re-extracted ({cg['files']} files; delta "
+                    f"+{d.get('added', 0)} ~{d.get('changed', 0)} -{d.get('removed', 0)})"
+                )
         _warn_if_concept_poor(result)
         # --strict: gate the exit code on the byte-idempotence tripwire first
         # (a suspected determinism regression outranks lint warnings), then on

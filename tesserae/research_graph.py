@@ -477,6 +477,40 @@ class ResearchGraph:
         )
 
 
+def graph_from_payload(payload: Dict[str, object]) -> ResearchGraph:
+    """Rehydrate a :class:`ResearchGraph` from a ``model_dump()``-shaped dict.
+
+    Moved verbatim from ``project.load_graph_file`` (which now delegates here)
+    so callers that already hold the parsed payload — e.g. the code-graph
+    extraction cache — can rehydrate without importing ``tesserae.project``
+    (circular import).
+    """
+    return ResearchGraph(
+        nodes=[
+            ResearchNode(
+                id=str(raw["id"]),
+                name=str(raw["name"]),
+                type=ResearchNodeType(str(raw["type"])),
+                aliases=[str(alias) for alias in raw.get("aliases", [])],
+                description=str(raw.get("description") or ""),
+                source_path=raw.get("source_path"),
+                metadata=dict(raw.get("metadata") or {}),
+            )
+            for raw in payload.get("nodes", [])
+        ],
+        edges=[
+            ResearchEdge(
+                source=str(raw["source"]),
+                target=str(raw["target"]),
+                type=str(raw["type"]),
+                evidence=raw.get("evidence"),
+                metadata=dict(raw.get("metadata") or {}),
+            )
+            for raw in payload.get("edges", [])
+        ],
+    )
+
+
 class ResearchGraphBuilder:
     def __init__(self) -> None:
         self._nodes: Dict[str, ResearchNode] = {}

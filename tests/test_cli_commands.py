@@ -542,6 +542,34 @@ def test_compile_prints_output_change_line(tmp_path, monkeypatch, capsys):
     assert "Output: changed (sha256 " in capsys.readouterr().out
 
 
+def test_compile_prints_code_graph_cache_line(tmp_path, monkeypatch, capsys):
+    _bare_project(tmp_path)
+    import tesserae.cli as cli
+
+    reused = {"reused": True, "files": 17, "delta": None}
+    _patch_compile_canned(
+        monkeypatch, {**_CANNED_COMPILE_RESULT, "code_graph_cache": reused}
+    )
+    assert cli.main(["compile", "--project", str(tmp_path)]) == 0
+    assert "Code graph: reused (tree unchanged, 17 files)" in capsys.readouterr().out
+
+    extracted = {
+        "reused": False,
+        "files": 18,
+        "delta": {"added": 1, "changed": 2, "removed": 3},
+    }
+    _patch_compile_canned(
+        monkeypatch, {**_CANNED_COMPILE_RESULT, "code_graph_cache": extracted}
+    )
+    assert cli.main(["compile", "--project", str(tmp_path)]) == 0
+    assert "Code graph: re-extracted (18 files; delta +1 ~2 -3)" in capsys.readouterr().out
+
+    # Absent key (non-code project / older doubles) → no line at all.
+    _patch_compile_canned(monkeypatch, dict(_CANNED_COMPILE_RESULT))
+    assert cli.main(["compile", "--project", str(tmp_path)]) == 0
+    assert "Code graph:" not in capsys.readouterr().out
+
+
 def test_compile_strict_fails_on_idempotence_suspect(tmp_path, monkeypatch, capsys):
     _bare_project(tmp_path)
     import tesserae.cli as cli

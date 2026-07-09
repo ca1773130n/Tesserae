@@ -181,3 +181,81 @@ def test_has_contradictions_true_only_for_dispute_edges_with_known_endpoints():
         ResearchEdge(source=a.id, target="missing", type="contradicts_claim"),
     ])
     assert not has_contradictions(dangling)
+
+
+# --- Community-page ``## Sources`` footer ------------------------------------
+
+
+def _community_graph(member_paths, extra_members_without_paths=0):
+    members = [
+        _node(f"Member {i:02d}", ResearchNodeType.CONCEPT, source_path=p)
+        for i, p in enumerate(member_paths)
+    ]
+    members += [
+        _node(f"Pathless {i:02d}", ResearchNodeType.CONCEPT)
+        for i in range(extra_members_without_paths)
+    ]
+    community = _node("Cluster Alpha", ResearchNodeType.COMMUNITY_SUMMARY,
+                      description="A cluster.")
+    edges = [
+        ResearchEdge(source=community.id, target=m.id, type="summarizes")
+        for m in members
+    ]
+    return community, ResearchGraph(nodes=[community, *members], edges=edges)
+
+
+def test_community_page_lists_sorted_deduped_member_source_files(tmp_path):
+    community, graph = _community_graph(
+        ["data/b.md", "data/a.md", "data/b.md"]  # unsorted + duplicate
+    )
+    store = WikiPageStore(tmp_path)
+    WikiLayerProjector(store).project(graph)
+    page = store.read_page(store.path_for("communities", store.slug_for(community.name)))
+    assert "## Sources" in page.body
+    assert page.body.index("- `data/a.md`") < page.body.index("- `data/b.md`")
+    assert page.body.count("- `data/b.md`") == 1
+    assert page.frontmatter["sources"] == ["data/a.md", "data/b.md"]
+
+
+def test_community_sources_capped_with_deterministic_more_line(tmp_path):
+    community, graph = _community_graph([f"data/{i:03d}.md" for i in range(30)])
+    store = WikiPageStore(tmp_path)
+    WikiLayerProjector(store).project(graph)
+    page = store.read_page(store.path_for("communities", store.slug_for(community.name)))
+    assert "- `data/024.md`" in page.body and "- `data/025.md`" not in page.body
+    assert "…and 5 more" in page.body
+    assert len(page.frontmatter["sources"]) == 30  # frontmatter uncapped
+
+
+def test_community_page_omits_sources_when_members_lack_source_path(tmp_path):
+    community, graph = _community_graph([], extra_members_without_paths=3)
+    store = WikiPageStore(tmp_path)
+    WikiLayerProjector(store).project(graph)
+    page = store.read_page(store.path_for("communities", store.slug_for(community.name)))
+    assert "## Sources" not in page.body
+    assert "sources" not in page.frontmatter
+
+
+def test_non_community_pages_gain_no_sources_section(tmp_path):
+    concept = _node("Plain Concept", ResearchNodeType.CONCEPT,
+                    source_path="data/x.md")
+    store = WikiPageStore(tmp_path)
+    WikiLayerProjector(store).project(ResearchGraph(nodes=[concept], edges=[]))
+    page = store.read_page(store.path_for("concepts", store.slug_for(concept.name)))
+    assert "## Sources" not in page.body
+    assert "sources" not in page.frontmatter  # source_path frontmatter is enough
+
+
+def test_community_sources_deterministic_across_node_and_edge_order(tmp_path):
+    community, graph = _community_graph(["data/c.md", "data/a.md", "data/b.md"])
+    reordered = ResearchGraph(
+        nodes=list(reversed(graph.nodes)), edges=list(reversed(graph.edges))
+    )
+    store_a = WikiPageStore(tmp_path / "a")
+    store_b = WikiPageStore(tmp_path / "b")
+    WikiLayerProjector(store_a).project(graph)
+    WikiLayerProjector(store_b).project(reordered)
+    slug = store_a.slug_for(community.name)
+    text_a = store_a.path_for("communities", slug).read_text(encoding="utf-8")
+    text_b = store_b.path_for("communities", slug).read_text(encoding="utf-8")
+    assert text_a == text_b
