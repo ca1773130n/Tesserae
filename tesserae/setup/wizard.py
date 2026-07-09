@@ -104,6 +104,8 @@ def render_review(plan: SetupPlan) -> str:
     if plan.codex_model:
         table.add_row("codex_model", plan.codex_model)
     table.add_row("sources", ", ".join(plan.sources) or "(none)")
+    if plan.install_agent_pointer:
+        table.add_row("agent pointer", "AGENTS.md / CLAUDE.md marker block")
 
     tool_names = {
         str(t.get("id")): str(t.get("name") or t.get("id"))
@@ -196,6 +198,10 @@ def run_wizard(
                 "[yellow]raganything requires Python 3.10+; skipping install option.[/yellow]"
             )
 
+    install_pointer = Confirm.ask(
+        "Add a Tesserae pointer section to AGENTS.md/CLAUDE.md?", default=True
+    )
+
     plan = build_plan(
         detection,
         overrides={
@@ -210,6 +216,7 @@ def run_wizard(
             "include_raganything": include_raganything,
             "install_raganything": install_raganything,
             "enable_cognee": enable_cognee,
+            "install_agent_pointer": install_pointer,
         },
     )
 

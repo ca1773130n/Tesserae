@@ -49,6 +49,8 @@ class SetupPlan(BaseModel):
     claude_model: Optional[str] = None
     codex_model: Optional[str] = None
 
+    install_agent_pointer: bool = True
+
     external_tools: list[dict[str, Any]] = Field(default_factory=list)
     memory_backends: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
@@ -176,6 +178,7 @@ def build_plan(
     )
     claude_model = overrides.pop("claude_model", None)
     codex_model = overrides.pop("codex_model", detection.recommended.codex_model)
+    install_agent_pointer = bool(overrides.pop("install_agent_pointer", True))
 
     warnings = list(detection.recommended.warnings)
     external_tools: list[dict[str, Any]] = []
@@ -307,6 +310,7 @@ def build_plan(
             claude_config_dir=claude_config_dir,
             claude_model=claude_model,
             codex_model=codex_model,
+            install_agent_pointer=install_agent_pointer,
             external_tools=external_tools,
             memory_backends=memory_backends,
             install_actions=install_actions,

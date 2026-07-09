@@ -104,6 +104,7 @@ def render_harness_context(
         "## Artifacts",
         "",
         "- `.tesserae/graph.json` — authoritative typed ResearchGraph",
+        "- `.tesserae/wiki/index.md` — wiki entrypoint: query guidance + table of contents",
         "- `.tesserae/markdown_projection/` — Obsidian/VS Code markdown projection",
         "- `.tesserae/obsidian_vault/` — generated Obsidian vault",
         "- `.tesserae/temporal_facts.jsonl` — temporal/provenance fact projection",
@@ -138,6 +139,7 @@ def render_harness_context(
         "## Agent instructions",
         "",
         "- Prefer MCP graph queries before grep-style rediscovery.",
+        "- When you do browse the wiki, start at `.tesserae/wiki/index.md` and follow its links; do not crawl pages blindly.",
         "- Preserve the controlled ontology; do not invent node or edge types outside the Tesserae schema.",
         "- Keep markdown projection generated; update sources and re-run compile instead of hand-editing generated pages.",
         "- When adding code, run the project tests before reporting success.",
@@ -154,6 +156,75 @@ def write_text(path: Path, content: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
     return path
+
+
+POINTER_BEGIN = "<!-- tesserae:pointer:begin -->"
+POINTER_END = "<!-- tesserae:pointer:end -->"
+
+
+def render_pointer_block(project_name: str) -> str:
+    # DETERMINISM: pure function of project_name — no counts, timestamps,
+    # or graph content. This block is written into USER instruction files;
+    # any dynamic value here reintroduces the byte-idempotence bug class.
+    body = "\n".join([
+        "## Tesserae",
+        "",
+        f"Project `{project_name}` has a compiled Tesserae knowledge graph in `.tesserae/`.",
+        "",
+        "Start here:",
+        "- `.tesserae/agent_harness/TESSERAE.md` — compiled context brief (artifacts, MCP config, agent instructions)",
+        "- `.tesserae/graph.json` — authoritative typed ResearchGraph (markdown pages are projections)",
+        "",
+        "Query the graph via the local MCP server instead of grep-style rediscovery:",
+        "",
+        "    python3 -m tesserae.mcp_server --graph .tesserae/graph.json",
+        "",
+        "Preferred MCP tools: `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`, `compile_context`.",
+    ])
+    return POINTER_BEGIN + "\n" + body + "\n" + POINTER_END
+
+
+def _splice_pointer(text: str, block: str) -> tuple[str, str]:
+    n_begin, n_end = text.count(POINTER_BEGIN), text.count(POINTER_END)
+    if n_begin == 0 and n_end == 0:
+        base = text.rstrip("\n")
+        return ((base + "\n\n" + block + "\n") if base.strip() else (block + "\n")), "appended"
+    # Splice only when there is exactly one well-ordered marker pair. Orphans,
+    # duplicates, or END-before-BEGIN would make the span ambiguous and risk
+    # deleting user content between stray markers — bail out without writing.
+    b, e = text.find(POINTER_BEGIN), text.find(POINTER_END)
+    if n_begin != 1 or n_end != 1 or e < b:
+        return text, "malformed"
+    span = text[b : e + len(POINTER_END)]
+    if span == block:
+        return text, "current"
+    return text[:b] + block + text[e + len(POINTER_END):], "updated"
+
+
+def install_instruction_pointer(project_root: str | Path, project_name: str) -> dict[str, str]:
+    """Install/refresh the marker-delimited Tesserae pointer block into the
+    project's top-level ``AGENTS.md``/``CLAUDE.md`` (creating ``AGENTS.md``
+    when neither exists). Byte-idempotent: a current block is never rewritten."""
+    root = Path(project_root)
+    block = render_pointer_block(project_name)
+    targets = [p for p in (root / "AGENTS.md", root / "CLAUDE.md") if p.exists()]
+    if not targets:
+        (root / "AGENTS.md").write_text(block + "\n", encoding="utf-8")
+        return {"AGENTS.md": "created"}
+    has_agents = any(p.name == "AGENTS.md" for p in targets)
+    results: dict[str, str] = {}
+    for path in targets:
+        text = path.read_text(encoding="utf-8")
+        if path.name == "CLAUDE.md" and has_agents and "@AGENTS.md" in text and POINTER_BEGIN not in text:
+            # Claude Code inlines AGENTS.md via `@AGENTS.md`; writing both
+            # instruction files would double-inject the block.
+            results[path.name] = "skipped-include"
+            continue
+        new_text, status = _splice_pointer(text, block)
+        if status in ("appended", "updated"):
+            path.write_text(new_text, encoding="utf-8")
+        results[path.name] = status
+    return results
 
 
 def claude_writer(root: Path, summary: str, project_name: str, command: str, args: Sequence[str]) -> List[Path]:

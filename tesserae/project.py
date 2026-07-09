@@ -20,7 +20,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Dict, Iterable, List, Mapping, Optional, Set, Tuple
 
-from .agent_harness import AgentHarnessAdapter, SUPPORTED_AGENT_HARNESSES
+from .agent_harness import AgentHarnessAdapter, SUPPORTED_AGENT_HARNESSES, install_instruction_pointer
 from .batch import BatchIngestRunner, read_markdown_text, sha256_text
 from .code_graph import CodeGraphExtractor
 from .cognee_adapter import CogneeResearchGraphAdapter
@@ -29,8 +29,9 @@ from .cognee_direct import CogneeDirectImporter
 from .deploy import GitHubPagesDeployer
 from .graph_stores import SqliteGraphStore
 from .karpathy_layer import KarpathyLayerWriter
-from .lint import LintReport, WikiLinter
+from .lint import LintReport, WikiLinter, read_git_head
 from .locking import compile_lock
+from .output_snapshot import snapshot_output, write_state
 from .ports import GraphStore, Source, SourceLoader
 from .site import StaticSiteBuilder
 from .source_loaders import FilesystemSourceLoader
@@ -216,6 +217,10 @@ class ProjectPaths:
     extraction_feedback: Path = Path(".tesserae/extraction-feedback.jsonl")
     extraction_guidance: Path = Path(".tesserae/extraction-guidance.md")
     extraction_guidance_cache: Path = Path(".tesserae/extraction_guidance_cache")
+    # Compile-output snapshot state (no-op detector + byte-idempotence
+    # tripwire; see ``tesserae.output_snapshot``). Hex digests + a bool only —
+    # never timestamps — and always excluded from the hash by construction.
+    output_snapshot: Path = Path(".tesserae/output-snapshot.json")
 
 
 class ProjectWiki:
@@ -256,6 +261,7 @@ class ProjectWiki:
             extraction_feedback=self.root / "extraction-feedback.jsonl",
             extraction_guidance=self.root / "extraction-guidance.md",
             extraction_guidance_cache=self.root / "extraction_guidance_cache",
+            output_snapshot=self.root / "output-snapshot.json",
         )
         # In-memory override of the Obsidian vault location, set by
         # obsidian-sync --vault for the duration of a single CLI call.
@@ -1477,6 +1483,10 @@ class ProjectWiki:
         # fires mid-compile must fail fast (or opt into waiting) instead of
         # stacking onto the same .tesserae state.
         with compile_lock(self.paths.root, wait_seconds=lock_wait):
+            # Output-snapshot bracket (no-op detector + byte-idempotence
+            # tripwire, see ``tesserae.output_snapshot``): hash the allowlisted
+            # artifacts before ingest and again after the post-compile lint.
+            before = snapshot_output(self.root)
             result = self.ingest(
                 sources,
                 source_kind=source_kind,
@@ -1512,19 +1522,60 @@ class ProjectWiki:
                     "warnings": report.by_severity.get("warning", 0),
                     "info": report.by_severity.get("info", 0),
                 }
+            # Close the output-snapshot bracket. Lint writes only root-level
+            # reports — outside the allowlist, so ordering is cosmetic; taking
+            # the snapshot last keeps the bracket honest. ``idempotence_suspect``
+            # = identical graph layer but drifted projections, i.e. a projector
+            # rewrote a pure function of unchanged inputs differently.
+            after = snapshot_output(self.root)
+            result["output_sha256"] = after.output_sha256
+            result["output_changed"] = after != before
+            result["idempotence_suspect"] = (
+                after.graph_sha256 == before.graph_sha256
+                and after.projections_sha256 != before.projections_sha256
+            )
+            if result["idempotence_suspect"]:
+                logger.warning(
+                    "byte-idempotence regression suspected: projections changed while "
+                    "graph.json/config were byte-identical (before=%s after=%s)",
+                    before.projections_sha256[:12], after.projections_sha256[:12],
+                )
+            else:
+                logger.info(
+                    "compile output %s (sha256 %s)",
+                    "changed" if result["output_changed"] else "unchanged",
+                    after.output_sha256[:12],
+                )
+            try:
+                write_state(self.paths.output_snapshot, after, changed=result["output_changed"])
+            except OSError:
+                logger.exception("output-snapshot state write failed; compile artifacts are unaffected")
             return result
 
-    def lint(self, fix_trivial: bool = False, severity_floor: str = "info") -> LintReport:
+    def lint(
+        self,
+        fix_trivial: bool = False,
+        severity_floor: str = "info",
+        *,
+        verify_claims: bool = False,
+        claim_cap: int = 20,
+        llm_client: Optional[object] = None,
+    ) -> LintReport:
         """Run :class:`WikiLinter` against this project's compiled artifacts.
 
         Thin wrapper that defers all work — including artifact writes and the
         colored stderr summary — to :class:`WikiLinter`. The returned
         :class:`LintReport` lets callers inspect findings programmatically;
-        the CLI uses it to derive the exit code.
+        the CLI uses it to derive the exit code. ``verify_claims`` opts into
+        the LLM-backed claim-support check; the tail-of-compile lint never
+        passes it, so compile can never pay LLM cost here.
         """
         return WikiLinter(self.project_root).run(
             fix_trivial=fix_trivial,
             severity_floor=severity_floor,
+            verify_claims=verify_claims,
+            claim_cap=claim_cap,
+            llm_client=llm_client,
         )
 
     def render_mcp_config(self, server_name: Optional[str] = None, pythonpath: Optional[str] = None) -> str:
@@ -1553,7 +1604,7 @@ class ProjectWiki:
         episodes = adapter.write_episodes(graph, target)
         return {"episodes": len(episodes), "path": str(target), "group_id": adapter.group_id}
 
-    def export_agent_harness(self, targets: Optional[Iterable[str]] = None, output: Optional[str | Path] = None) -> dict:
+    def export_agent_harness(self, targets: Optional[Iterable[str]] = None, output: Optional[str | Path] = None, install_pointer: bool = False) -> dict:
         cfg = self.config()
         graph = load_graph_file(self.paths.graph)
         target = Path(output) if output else self.paths.agent_harness
@@ -1565,7 +1616,10 @@ class ProjectWiki:
             mcp_args=["-m", "tesserae.mcp_server", "--graph", str(self.paths.graph.resolve())],
             targets=list(targets) if targets else SUPPORTED_AGENT_HARNESSES,
         )
-        return {"path": str(target), "files": len(written), "targets": list(targets) if targets else SUPPORTED_AGENT_HARNESSES}
+        result = {"path": str(target), "files": len(written), "targets": list(targets) if targets else SUPPORTED_AGENT_HARNESSES}
+        if install_pointer:
+            result["pointer"] = install_instruction_pointer(self.project_root, name)
+        return result
 
     def export_obsidian(self, vault: Optional[str | Path] = None) -> dict:
         cfg = self.config()
@@ -2866,6 +2920,9 @@ class ProjectWiki:
             "code_nodes": len(code_graph.nodes),
             "code_edges": len(code_graph.edges),
         }
+        head = read_git_head(self.project_root)
+        if head:
+            entry["git_head"] = head
         line = json.dumps(entry, sort_keys=True, ensure_ascii=False)
         existing = ""
         if self.paths.build_history.exists():

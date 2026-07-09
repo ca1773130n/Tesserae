@@ -160,3 +160,24 @@ def test_no_contradictions_page_when_graph_has_no_dispute_edges(tmp_path):
     WikiLayerProjector(WikiPageStore(tmp_path)).project(graph)
 
     assert not (tmp_path / "questions" / "contradictions.md").exists()
+
+
+def test_has_contradictions_true_only_for_dispute_edges_with_known_endpoints():
+    from tesserae.wiki_projector import has_contradictions
+
+    # Full dispute graph -> True.
+    assert has_contradictions(_contradiction_graph())
+
+    # No dispute edges -> False.
+    a = _node("A", ResearchNodeType.PERFORMANCE_CLAIM)
+    b = _node("B", ResearchNodeType.PERFORMANCE_CLAIM)
+    plain = ResearchGraph(nodes=[a, b], edges=[
+        ResearchEdge(source=a.id, target=b.id, type="uses"),
+    ])
+    assert not has_contradictions(plain)
+
+    # Dispute edge with a missing endpoint -> False (matches page emission).
+    dangling = ResearchGraph(nodes=[a], edges=[
+        ResearchEdge(source=a.id, target="missing", type="contradicts_claim"),
+    ])
+    assert not has_contradictions(dangling)

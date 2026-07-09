@@ -200,3 +200,11 @@ def test_list_pages_returns_sorted_results_and_skips_non_md(tmp_path: Path):
 def test_list_pages_returns_empty_for_unknown_kind(tmp_path: Path):
     store = _store(tmp_path)
     assert store.list_pages("does-not-exist") == []
+
+
+def test_canonical_slug_matches_store_slug_for(tmp_path):
+    from tesserae.wiki_store import canonical_slug
+
+    store = WikiPageStore(tmp_path)
+    for name in ("Gaussian Splatting", "C++ / CUDA kernels", "  weird   spacing  "):
+        assert canonical_slug(name) == store.slug_for(name)

@@ -9,6 +9,7 @@ contract is verified independently of the rest of the pipeline.
 from __future__ import annotations
 
 import json
+import subprocess as _sp
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -20,6 +21,9 @@ from tesserae.lint import (
     LintReport,
     SEVERITIES,
     WikiLinter,
+    _ClaimCandidate,
+    _iter_claim_candidates,
+    _sample_claims,
 )
 from tesserae.project import ProjectWiki
 
@@ -553,3 +557,334 @@ def test_cli_compile_without_strict_stays_report_only(
         ["compile", "--project", str(wiki.project_root), "--extractor", "deterministic"]
     )
     assert code == 0
+
+
+# --------------------------------------------------------------------------- claim support (opt-in)
+
+
+def _claim_graph() -> dict:
+    return {
+        "nodes": [
+            _node(
+                "Paper:alpha:aaaa1111",
+                "Paper",
+                "Alpha Attention",
+                metadata={"title_quality": "verified"},
+            ),
+            _node("Concept:beta:bbbb2222", "Concept", "Beta Routing"),
+        ],
+        "edges": [],
+    }
+
+
+def _claim_body() -> str:
+    return (
+        "## Overview\n\n"
+        "Alpha introduced sparse attention over long contexts and reported "
+        "a 2x speedup on retrieval tasks [Alpha Attention].\n\n"
+        "Beta routing extends this with learned gating "
+        "[Concept:beta:bbbb2222].\n\n"
+        "See [Alpha Attention](papers/alpha.md) for details.\n"
+    )
+
+
+def test_claim_candidates_extracted_from_synthesis_pages(tmp_path: Path) -> None:
+    project = _scaffold(tmp_path, graph=_claim_graph())
+    _write_synthesis(
+        project,
+        "daily-2026-07-01",
+        ["Paper:alpha:aaaa1111", "Concept:beta:bbbb2222"],
+        body=_claim_body(),
+    )
+    nodes = {n["id"]: n for n in _claim_graph()["nodes"]}
+    got = _iter_claim_candidates(project / ".tesserae", nodes)
+    pairs = {(c.node_id, c.claim_text[:20]) for c in got}
+    # display-name marker resolved to the Paper id; raw-id marker resolved too
+    assert ("Paper:alpha:aaaa1111", "Alpha introduced spa") in pairs
+    assert any(c.node_id == "Concept:beta:bbbb2222" for c in got)
+    # markdown link [Alpha Attention](...) is NOT a citation
+    assert not any("See [Alpha Attention]" in c.claim_text for c in got)
+    # heading paragraph skipped
+    assert not any(c.claim_text.startswith("##") for c in got)
+
+
+def test_claim_sampling_is_deterministic_and_capped(tmp_path: Path) -> None:
+    cands = [
+        _ClaimCandidate(
+            "wiki/syntheses/a.md",
+            f"Concept:x{i}:c{i:04d}",
+            f"Claim text number {i} with enough length to matter.",
+        )
+        for i in range(50)
+    ]
+    first = _sample_claims(list(cands), cap=20)
+    second = _sample_claims(list(reversed(cands)), cap=20)
+    assert first == second          # input order irrelevant
+    assert len(first) == 20         # capped
+
+
+class _StubJsonClient:
+    def __init__(self, payload):
+        self.payload = payload
+        self.calls: list[dict] = []
+
+    def complete_json(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.payload
+
+    def complete_text(self, **kwargs):
+        return None
+
+
+class _ExplodingClient:
+    def complete_json(self, **kwargs):
+        raise AssertionError("LLM must not be called")
+
+    complete_text = complete_json
+
+
+def _claim_project(tmp_path: Path) -> Path:
+    project = _scaffold(tmp_path, graph=_claim_graph())
+    _write_synthesis(
+        project,
+        "daily-2026-07-01",
+        ["Paper:alpha:aaaa1111", "Concept:beta:bbbb2222"],
+        body=_claim_body(),
+    )
+    return project
+
+
+def test_claim_support_off_by_default(tmp_path: Path) -> None:
+    project = _claim_project(tmp_path)
+    report = WikiLinter(project).run(llm_client=_ExplodingClient())
+    assert not [f for f in report.findings if f.code.startswith("CLAIM_")]
+
+
+def test_claim_support_unsupported_is_warning_partial_is_info(tmp_path: Path) -> None:
+    project = _claim_project(tmp_path)
+    stub = _StubJsonClient({"verdicts": ["unsupported", "partial"]})
+    report = WikiLinter(project).run(verify_claims=True, llm_client=stub)
+    codes = report.by_code
+    assert codes.get("CLAIM_UNSUPPORTED") == 1
+    assert codes.get("CLAIM_PARTIAL") == 1
+    assert codes.get("CLAIM_SUPPORT_SUMMARY") == 1
+    warn = [f for f in report.findings if f.code == "CLAIM_UNSUPPORTED"][0]
+    assert warn.severity == "warning" and not warn.auto_fixable
+    assert len(stub.calls) == 1  # ONE batched call
+    # summary counts are embedded in the message
+    summary = [f for f in report.findings if f.code == "CLAIM_SUPPORT_SUMMARY"][0]
+    assert "1 unsupported" in summary.message and "1 partial" in summary.message
+
+
+def test_claim_support_skipped_without_llm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _claim_project(tmp_path)
+    import tesserae.llm_json as llm_json
+
+    monkeypatch.setattr(llm_json, "build_default_json_client", lambda **kw: None)
+    report = WikiLinter(project).run(verify_claims=True)
+    assert report.by_code.get("CLAIM_SUPPORT_SKIPPED") == 1
+    # The claim check degrades to info-only — no CLAIM_* warning appears.
+    claim_findings = [f for f in report.findings if f.code.startswith("CLAIM_")]
+    assert claim_findings and all(f.severity == "info" for f in claim_findings)
+
+
+def test_claim_support_bad_llm_output_degrades_to_skipped(tmp_path: Path) -> None:
+    project = _claim_project(tmp_path)
+    stub = _StubJsonClient({"nonsense": True})
+    report = WikiLinter(project).run(verify_claims=True, llm_client=stub)
+    # wrong shape → all entries unverifiable; still a summary, never a crash
+    assert report.by_code.get("CLAIM_SUPPORT_SUMMARY") == 1
+    assert report.by_code.get("CLAIM_UNSUPPORTED") is None
+
+
+def test_claim_support_prompt_bytes_are_stable(tmp_path: Path) -> None:
+    project = _claim_project(tmp_path)
+    a, b = _StubJsonClient({"verdicts": []}), _StubJsonClient({"verdicts": []})
+    WikiLinter(project).run(verify_claims=True, llm_client=a)
+    WikiLinter(project).run(verify_claims=True, llm_client=b)
+    assert a.calls == b.calls  # identical system+user bytes across runs
+
+
+def test_cli_lint_verify_claims_flag_forwards(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = _scaffold(tmp_path)
+    ProjectWiki.init(project, name="demo_claims")
+    seen: dict = {}
+
+    def fake_lint(self, fix_trivial=False, severity_floor="info", **kw):
+        seen.update(kw)
+        return LintReport()
+
+    monkeypatch.setattr(ProjectWiki, "lint", fake_lint)
+    rc = cli_main(
+        ["lint", "--project", str(project), "--verify-claims", "--claim-cap", "5"]
+    )
+    assert rc == 0
+    assert seen["verify_claims"] is True and seen["claim_cap"] == 5
+
+
+def test_compile_tail_lint_never_verifies_claims(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The compile tail lint runs with defaults — it can never opt in."""
+    wiki = _seed_compile_project(tmp_path, monkeypatch)
+
+    def _no_claims(self, *args, **kwargs):
+        raise AssertionError("compile must not verify claims")
+
+    monkeypatch.setattr(WikiLinter, "_check_claim_support", _no_claims)
+    result = wiki.compile()
+    # Lint ran to completion (a claim-support invocation would have raised,
+    # been swallowed by compile, and dropped the "lint" key).
+    assert set(result["lint"]) == {"errors", "warnings", "info"}
+
+
+# --------------------------------------------------------------------------- code-graph staleness (git delta)
+
+
+def _git_init(root: Path) -> str:
+    """git init + one commit; returns the full HEAD sha."""
+    def g(*args: str) -> str:
+        return _sp.run(
+            ["git", "-C", str(root), "-c", "user.email=t@t", "-c", "user.name=t", *args],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+    g("init", "-q", "-b", "main")
+    (root / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    g("add", "-A")
+    g("commit", "-qm", "c1")
+    return g("rev-parse", "HEAD")
+
+
+def _ledger(project: Path, sha: str) -> None:
+    (project / ".tesserae" / ".build-history.jsonl").write_text(
+        json.dumps({"built_at": "2026-07-01T00:00:00Z", "code_edges": 0, "code_nodes": 1,
+                    "git_head": sha, "research_edges": 0, "research_nodes": 0},
+                   sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _code_graph(paths: list[str]) -> dict:
+    # Zero-padded ids so the report's (code, node_id, path) sort keeps the
+    # findings in the same lexicographic order the cap selects by path.
+    return {
+        "nodes": [_node(f"sf{i:02d}", "SourceFile", p, metadata={"layer": "raw-code"})
+                  for i, p in enumerate(paths)],
+        "edges": [],
+    }
+
+
+def test_read_git_head_returns_sha_in_repo_and_none_outside(tmp_path: Path) -> None:
+    from tesserae.lint import read_git_head
+    project = _scaffold(tmp_path)
+    assert read_git_head(project) is None  # tmp scaffold is not a repo
+    sha = _git_init(project)
+    assert read_git_head(project) == sha
+    assert len(sha) == 40
+
+
+def test_code_graph_staleness_flags_changed_source_files(tmp_path: Path) -> None:
+    project = _scaffold(tmp_path, graph=_code_graph(["a.py"]))
+    sha = _git_init(project)
+    _ledger(project, sha)
+    (project / "a.py").write_text("def f():\n    return 2\n", encoding="utf-8")
+    _sp.run(["git", "-C", str(project), "-c", "user.email=t@t", "-c", "user.name=t",
+             "commit", "-aqm", "c2"], check=True)
+    report = WikiLinter(project).run()
+    behind = [f for f in report.findings if f.code == "CODE_GRAPH_BEHIND"]
+    stale = [f for f in report.findings if f.code == "CODE_GRAPH_STALE_FILE"]
+    assert len(behind) == 1 and "1 commit(s) behind" in behind[0].message
+    assert len(stale) == 1
+    assert stale[0].node_id == "sf00" and stale[0].path == "a.py"
+    assert stale[0].severity == "info"
+
+
+def test_code_graph_staleness_silent_when_head_unchanged(tmp_path: Path) -> None:
+    project = _scaffold(tmp_path, graph=_code_graph(["a.py"]))
+    _ledger(project, _git_init(project))
+    report = WikiLinter(project).run()
+    assert not [f for f in report.findings if f.code.startswith("CODE_GRAPH")]
+
+
+def test_code_graph_staleness_skips_without_git_repo(tmp_path: Path) -> None:
+    project = _scaffold(tmp_path, graph=_code_graph(["a.py"]))
+    _ledger(project, "0" * 40)  # ledger has a head, but no repo exists
+    report = WikiLinter(project).run()
+    assert not [f for f in report.findings if f.code.startswith("CODE_GRAPH")]
+
+
+def test_code_graph_staleness_skips_without_recorded_head(tmp_path: Path) -> None:
+    project = _scaffold(tmp_path, graph=_code_graph(["a.py"]))
+    _git_init(project)  # repo exists, but ledger has no git_head key
+    (project / ".tesserae" / ".build-history.jsonl").write_text(
+        json.dumps({"built_at": "2026-07-01T00:00:00Z"}) + "\n", encoding="utf-8")
+    report = WikiLinter(project).run()
+    assert not [f for f in report.findings if f.code.startswith("CODE_GRAPH")]
+
+
+def test_code_graph_staleness_unresolvable_head_emits_single_info(tmp_path: Path) -> None:
+    project = _scaffold(tmp_path, graph=_code_graph(["a.py"]))
+    _git_init(project)
+    _ledger(project, "1234567890abcdef1234567890abcdef12345678")
+    report = WikiLinter(project).run()
+    unresolved = [f for f in report.findings if f.code == "CODE_GRAPH_HEAD_UNRESOLVED"]
+    assert len(unresolved) == 1 and unresolved[0].severity == "info"
+    assert not [f for f in report.findings if f.code == "CODE_GRAPH_STALE_FILE"]
+
+
+def test_code_graph_staleness_caps_per_file_findings_at_twenty(tmp_path: Path) -> None:
+    names = [f"m{i:02d}.py" for i in range(25)]
+    project = _scaffold(tmp_path, graph=_code_graph(names))
+    sha = _git_init(project)
+    _ledger(project, sha)
+    for n in names:
+        (project / n).write_text("x = 1\n", encoding="utf-8")
+    _sp.run(["git", "-C", str(project), "-c", "user.email=t@t", "-c", "user.name=t",
+             "add", "-A"], check=True)
+    _sp.run(["git", "-C", str(project), "-c", "user.email=t@t", "-c", "user.name=t",
+             "commit", "-qm", "c2"], check=True)
+    report = WikiLinter(project).run()
+    stale = [f for f in report.findings if f.code == "CODE_GRAPH_STALE_FILE"]
+    assert len(stale) == 20
+    assert [f.path for f in stale] == sorted(f.path for f in stale)
+    behind = [f for f in report.findings if f.code == "CODE_GRAPH_BEHIND"]
+    assert "25 tracked in graph" in behind[0].message
+
+
+def test_code_graph_staleness_report_is_byte_stable_under_fixed_git_state(
+    tmp_path: Path,
+) -> None:
+    project = _scaffold(tmp_path, graph=_code_graph(["a.py"]))
+    sha = _git_init(project)
+    _ledger(project, sha)
+    (project / "a.py").write_text("def f():\n    return 2\n", encoding="utf-8")
+    _sp.run(["git", "-C", str(project), "-c", "user.email=t@t", "-c", "user.name=t",
+             "commit", "-aqm", "c2"], check=True)
+    WikiLinter(project).run()
+    report_md = project / ".tesserae" / "lint-report.md"
+    report_json = project / ".tesserae" / "lint-report.json"
+    first = (report_md.read_bytes(), report_json.read_bytes())
+    WikiLinter(project).run()
+    assert (report_md.read_bytes(), report_json.read_bytes()) == first
+
+
+def test_compile_records_git_head_and_tail_lint_sees_no_staleness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Head is recorded before the tail lint, so a fresh compile is never stale."""
+    wiki = _seed_compile_project(tmp_path, monkeypatch)
+    sha = _git_init(wiki.project_root)
+    wiki.compile()
+    ledger = (wiki.project_root / ".tesserae" / ".build-history.jsonl").read_text(
+        encoding="utf-8"
+    )
+    last = json.loads(ledger.strip().splitlines()[-1])
+    assert last["git_head"] == sha
+    report = json.loads(
+        (wiki.project_root / ".tesserae" / "lint-report.json").read_text(encoding="utf-8")
+    )
+    assert not [f for f in report["findings"] if f["code"].startswith("CODE_GRAPH")]

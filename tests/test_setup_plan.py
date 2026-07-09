@@ -79,3 +79,11 @@ def test_build_plan_rejects_unknown_extractor(tmp_path: Path) -> None:
     report = detect(tmp_path)
     with pytest.raises(PlanValidationError):
         build_plan(report, overrides={"extractor": "not-a-real-backend"})
+
+
+def test_build_plan_records_install_agent_pointer_override(tmp_path: Path) -> None:
+    report = detect(tmp_path)
+    assert build_plan(report).install_agent_pointer is True
+    plan = build_plan(report, overrides={"install_agent_pointer": False})
+    assert plan.install_agent_pointer is False
+    assert plan.intent["install_agent_pointer"] is False

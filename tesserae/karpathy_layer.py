@@ -13,7 +13,7 @@ reference:
   later compiles unless the user opts in to overwriting.
 * ``schema.md`` — the controlled ontology, generated from
   :class:`ResearchNodeType` and ``ALLOWED_EDGE_TYPES`` so it stays in sync.
-* ``index.md`` — wiki-layer table of contents with per-kind counts.
+* ``index.md`` — agent entrypoint: query guidance + table of contents.
 * ``log.md`` — chronological build log sourced from
   ``.build-history.jsonl``.
 
@@ -40,8 +40,12 @@ from .research_graph import (
 from .wiki_projector import (
     ASSERTION_LAYER_TYPES,
     CODE_GRAPH_TYPES,
+    _CONTRADICTIONS_KIND,
+    _CONTRADICTIONS_SLUG,
+    has_contradictions,
     kind_for_node,
 )
+from .wiki_store import canonical_slug
 
 
 # Public sentinel that marks the editable section of ``purpose.md``. Anything
@@ -318,22 +322,64 @@ class KarpathyLayerWriter:
                 continue
             counts[kind] = counts.get(kind, 0) + 1
 
+        project = self.project_name or "this project"
         lines: List[str] = []
         lines.append("# Index")
         lines.append("")
         lines.append(
-            "Auto-generated table of contents over the wiki layer. Each row "
-            "links to the index page on the rendered site (relative paths "
-            "assume the site is mounted next to this wiki)."
+            f"Start here. This is the typed knowledge base Tesserae compiled "
+            f"for **{project}**. Every markdown page (this wiki included) is a "
+            "projection; the authoritative artifact is `.tesserae/graph.json`."
         )
         lines.append("")
-        lines.append("| Kind | Count | Route |")
-        lines.append("|---|---:|---|")
+        lines.append("## How to query")
+        lines.append("")
+        lines.append(
+            "1. **Retrieval first** — query the compiled context via the MCP "
+            "server over `graph.json`: `compile_context`, `search_nodes`, "
+            "`node_context`, `search_facts`, `wiki_page`, `query_decisions`, "
+            "`lint_report`."
+        )
+        lines.append(
+            "2. **Wiki browsing second** — follow the links below for "
+            "orientation and deep dives. Browsing pages one-by-one costs "
+            "roughly an order of magnitude more tokens than a retrieval "
+            "query, so do not crawl the tree for routine lookups."
+        )
+        lines.append("")
+        lines.append("## Kinds")
+        lines.append("")
+        lines.append("| Kind | Count | Wiki dir | Site route |")
+        lines.append("|---|---:|---|---|")
         kinds = sorted(counts.keys())
         for kind in kinds:
-            lines.append(f"| {kind} | {counts[kind]} | `<site>/{kind}/index.html` |")
+            lines.append(
+                f"| {kind} | {counts[kind]} | `{kind}/` | `<site>/{kind}/index.html` |"
+            )
         if not kinds:
-            lines.append("| _(empty)_ | 0 | _no public nodes yet_ |")
+            lines.append("| _(empty)_ | 0 | — | _no public nodes yet_ |")
+        lines.append("")
+        lines.append("## Key pages")
+        lines.append("")
+        lines.append("- [schema.md](schema.md) — the controlled ontology (node and edge types).")
+        lines.append("- [purpose.md](purpose.md) — what this knowledge base is for.")
+        if has_contradictions(graph):
+            lines.append(
+                f"- [Contradictions]({_CONTRADICTIONS_KIND}/{_CONTRADICTIONS_SLUG}.md) "
+                "— open disputes, resolutions, and superseded findings."
+            )
+        communities = sorted(
+            (n for n in graph.nodes if kind_for_node(n) == "communities"),
+            key=lambda n: (n.name.lower(), n.id),
+        )[:10]
+        if communities:
+            lines.append("")
+            lines.append("## Communities")
+            lines.append("")
+            for node in communities:
+                lines.append(
+                    f"- [{node.name}](communities/{canonical_slug(node.name)}.md)"
+                )
         lines.append("")
         return "\n".join(lines).rstrip() + "\n"
 

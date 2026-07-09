@@ -1280,11 +1280,28 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                 f"nodes={result['node_count']} edges={result['edge_count']}"
             )
         print(f"Graph: {result['graph_path']}")
+        # Output-snapshot no-op signal (see tesserae/output_snapshot.py): a
+        # stable, script-parseable line. Omitted when the key is absent
+        # (defensive: injected compile doubles in older tests).
+        if result.get("output_changed") is not None:
+            print(
+                f"Output: {'changed' if result['output_changed'] else 'unchanged'} "
+                f"(sha256 {str(result.get('output_sha256', ''))[:12]})"
+            )
         _warn_if_concept_poor(result)
-        # --strict: gate the exit code on the post-compile lint, reusing the
-        # `tesserae lint` exit-code mapping at its default floor (warning):
-        # errors → 2, warnings → 1. Default stays report-only.
+        # --strict: gate the exit code on the byte-idempotence tripwire first
+        # (a suspected determinism regression outranks lint warnings), then on
+        # the post-compile lint, reusing the `tesserae lint` exit-code mapping
+        # at its default floor (warning): errors → 2, warnings → 1. Default
+        # stays report-only.
         if getattr(args, "strict", False):
+            if result.get("idempotence_suspect"):
+                print(
+                    "compile --strict: projections changed while graph/config were "
+                    "byte-identical — byte-idempotence regression suspected",
+                    file=sys.stderr,
+                )
+                return 2
             lint_counts = result.get("lint")
             if lint_counts is None:
                 # compile() swallows lint crashes and omits the key entirely;
@@ -1609,7 +1626,12 @@ def _handle_refresh_raganything(args: argparse.Namespace) -> int:
 def _handle_lint(args: argparse.Namespace) -> int:
     if True:
         wiki = ProjectWiki.load(args.project)
-        report = wiki.lint(fix_trivial=args.fix_trivial, severity_floor=args.severity)
+        report = wiki.lint(
+            fix_trivial=args.fix_trivial,
+            severity_floor=args.severity,
+            verify_claims=args.verify_claims,
+            claim_cap=args.claim_cap,
+        )
         if args.lint_json:
             sys.stdout.write(report.to_json())
         else:
@@ -1699,8 +1721,14 @@ def _handle_sync_graphiti(args: argparse.Namespace) -> int:
 
 def _handle_export_agent_harness(args: argparse.Namespace) -> int:
     wiki = ProjectWiki.load(args.project)
-    result = wiki.export_agent_harness(targets=args.target or None, output=args.output)
+    result = wiki.export_agent_harness(
+        targets=args.target or None,
+        output=args.output,
+        install_pointer=getattr(args, "install_pointer", False),
+    )
     print(f"Exported agent harness: files={result['files']} path={result['path']} targets={','.join(result['targets'])}")
+    for name, status in result.get("pointer", {}).items():
+        print(f"Pointer: {name} {status}")
     return 0
 
 
@@ -1969,7 +1997,7 @@ def _build_compile_parser() -> argparse.ArgumentParser:
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--changed-only", action="store_true", help="Skip unchanged files using .tesserae/manifest.json")
     parser.add_argument("--limit", type=int, help="Maximum number of changed files to process")
-    parser.add_argument("--strict", action="store_true", help="Exit non-zero when the post-compile lint reports errors (default: report-only)")
+    parser.add_argument("--strict", action="store_true", help="Exit non-zero when the byte-idempotence tripwire fires or the post-compile lint reports errors (default: report-only)")
     # Document extractor. Tesserae is an LLM wiki: 'llm' is the DEFAULT — it
     # builds the concept/claim layer via the configured provider (codex/claude/api
     # per llm_provider). 'deterministic' is the structural, key-free, byte-stable
@@ -2938,6 +2966,7 @@ def _build_export_parser() -> argparse.ArgumentParser:
     p_harness.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     p_harness.add_argument("--target", action="append", default=[], help="Agent target to export; repeat for multiple targets. Defaults to all supported targets")
     p_harness.add_argument("--output", help="Harness output directory; defaults to .tesserae/agent_harness")
+    p_harness.add_argument("--install-pointer", action="store_true", help="Also install/refresh the Tesserae pointer block in the project's AGENTS.md/CLAUDE.md")
     p_harness.set_defaults(_handler="_handle_export_harness")
 
     # graphiti = export-graphiti flags UNION sync-graphiti flags + --sync.
@@ -4255,6 +4284,8 @@ def _build_lint_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fix-trivial", action="store_true", help="Apply safe auto-fixes (add missing implemented_in edges; prune ghost synthesis inputs)")
     parser.add_argument("--severity", choices=["info", "warning", "error"], default="warning", help="Severity floor for the exit code (default: warning). Findings below the floor are still reported.")
     parser.add_argument("--json", dest="lint_json", action="store_true", help="Print the JSON report to stdout instead of the markdown summary.")
+    parser.add_argument("--verify-claims", dest="verify_claims", action="store_true", help="Opt-in: sample cited claims from synthesis pages and LLM-verify the cited node supports each (supported/partial/unsupported). Needs an LLM backend; costs one batched call.")
+    parser.add_argument("--claim-cap", dest="claim_cap", type=int, default=20, help="Max claims to sample for --verify-claims (default: 20).")
     return parser
 
 

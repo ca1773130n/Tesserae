@@ -141,6 +141,22 @@ def apply_plan(
 
     actions_taken: list[dict[str, Any]] = []
 
+    # Not gated behind confirm_install_actions: this executes no commands, is
+    # byte-idempotent, and is confirmed in the wizard / reviewable in the plan
+    # JSON — same trust level as the unconditional config write above.
+    if plan.install_agent_pointer:
+        from ..agent_harness import install_instruction_pointer
+
+        pointer = install_instruction_pointer(project_root, plan.name)
+        actions_taken.append(
+            {
+                "id": "agent-pointer",
+                "description": "Install Tesserae pointer block into AGENTS.md/CLAUDE.md",
+                "status": "installed",
+                "files": pointer,
+            }
+        )
+
     for action in plan.install_actions:
         if not confirm_install_actions:
             actions_taken.append(

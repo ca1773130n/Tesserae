@@ -48,6 +48,11 @@ def _canonical_slug(value: str) -> str:
     return safe or hashlib.sha1(value.encode("utf-8")).hexdigest()[:12]
 
 
+def canonical_slug(value: str) -> str:
+    """Public alias for the store's slug rule (``WikiPageStore.slug_for``)."""
+    return _canonical_slug(value)
+
+
 def _coerce_scalar(raw: str) -> object:
     """Best-effort scalar coercion for a frontmatter value."""
 

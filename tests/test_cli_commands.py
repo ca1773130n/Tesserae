@@ -342,6 +342,17 @@ def test_group_smokes_run_real_handlers(tmp_path):
     assert cli.main(["vault", "export", "--project", str(tmp_path)]) == 0
 
 
+def test_export_harness_install_pointer_flag(tmp_path):
+    import tesserae.cli as cli
+
+    assert cli.main(["init", "--bare", "--project", str(tmp_path), "--name", "pointer"]) == 0
+    assert cli.main(["export", "harness", "--project", str(tmp_path)]) == 0
+    assert not (tmp_path / "AGENTS.md").exists()  # default: no pointer install
+    rc = cli.main(["export", "harness", "--project", str(tmp_path), "--install-pointer"])
+    assert rc == 0
+    assert "tesserae:pointer:begin" in (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+
+
 # ---------------------------------------------------------------------------
 # Task 8 — compile flag diet
 # ---------------------------------------------------------------------------
@@ -491,6 +502,64 @@ def test_compile_options_defaults_when_unset(tmp_path, monkeypatch):
     assert seen["exclude_data"] is False
     assert seen["vault_pull"] is True
     assert seen["use_extraction_feedback"] is False
+
+
+def _patch_compile_canned(monkeypatch, result):
+    """Patch ProjectWiki.compile to return a canned result dict (with the
+    output-snapshot + lint keys the real compile now reports)."""
+    import tesserae.cli as cli
+
+    def _fake_compile(self, **kwargs):
+        canned = dict(result)
+        canned.setdefault("graph_path", str(self.paths.graph))
+        return canned
+
+    monkeypatch.setattr(cli.ProjectWiki, "compile", _fake_compile)
+
+
+_CANNED_COMPILE_RESULT = {
+    "processed_files": 0,
+    "skipped_files": 0,
+    "node_count": 0,
+    "edge_count": 0,
+    "lint": {"errors": 0, "warnings": 0, "info": 0},
+    "output_sha256": "a" * 64,
+    "output_changed": False,
+    "idempotence_suspect": False,
+}
+
+
+def test_compile_prints_output_change_line(tmp_path, monkeypatch, capsys):
+    _bare_project(tmp_path)
+    import tesserae.cli as cli
+
+    _patch_compile_canned(monkeypatch, {**_CANNED_COMPILE_RESULT, "output_changed": False})
+    assert cli.main(["compile", "--project", str(tmp_path)]) == 0
+    assert "Output: unchanged (sha256 " in capsys.readouterr().out
+
+    _patch_compile_canned(monkeypatch, {**_CANNED_COMPILE_RESULT, "output_changed": True})
+    assert cli.main(["compile", "--project", str(tmp_path)]) == 0
+    assert "Output: changed (sha256 " in capsys.readouterr().out
+
+
+def test_compile_strict_fails_on_idempotence_suspect(tmp_path, monkeypatch, capsys):
+    _bare_project(tmp_path)
+    import tesserae.cli as cli
+
+    _patch_compile_canned(
+        monkeypatch,
+        {**_CANNED_COMPILE_RESULT, "output_changed": True, "idempotence_suspect": True},
+    )
+    assert cli.main(["compile", "--project", str(tmp_path), "--strict"]) == 2
+    assert "byte-idempotence" in capsys.readouterr().err
+
+
+def test_compile_strict_passes_when_output_clean(tmp_path, monkeypatch, capsys):
+    _bare_project(tmp_path)
+    import tesserae.cli as cli
+
+    _patch_compile_canned(monkeypatch, dict(_CANNED_COMPILE_RESULT))
+    assert cli.main(["compile", "--project", str(tmp_path), "--strict"]) == 0
 
 
 def test_session_compile_options_flow_into_session_options(tmp_path, monkeypatch):

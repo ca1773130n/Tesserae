@@ -185,11 +185,15 @@ _CONTRADICTIONS_SLUG = "contradictions"
 _CONTRADICTIONS_TITLE = "Contradictions"
 
 
-def _contradictions_page(graph: ResearchGraph, nodes_by_id: Mapping[str, ResearchNode], wiki_store: WikiPageStore) -> Optional[WikiPage]:
-    """Build the synthetic contradictions page, or ``None`` when empty.
+def _collect_disputes(
+    graph: ResearchGraph, nodes_by_id: Mapping[str, ResearchNode]
+) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str, str]], List[Tuple[str, str]]]:
+    """Collect ``(open_pairs, resolved, obsoleted)`` dispute lists from ``graph``.
 
-    Every section is sorted by node id and deduped so two compiles of the
-    same graph emit byte-identical output regardless of edge list order.
+    Single source of truth for both :func:`_contradictions_page` (rendering)
+    and :func:`has_contradictions` (link condition): only edges with both
+    endpoints known count; ``contradicts_claim`` pairs are suppressed when a
+    ``resolved_by`` edge covers the same pair.
     """
     resolved_pairs = {
         frozenset((edge.source, edge.target))
@@ -214,6 +218,26 @@ def _contradictions_page(graph: ResearchGraph, nodes_by_id: Mapping[str, Researc
             resolved.append((edge.source, edge.target, rationale))
         elif edge.type == "supersedes":
             obsoleted.append((edge.source, edge.target))
+    return open_pairs, resolved, obsoleted
+
+
+def has_contradictions(graph: ResearchGraph) -> bool:
+    """True iff the synthetic contradictions page would be emitted for ``graph``.
+
+    Single source of truth with ``_contradictions_page`` (via
+    ``_collect_disputes``) so the wiki index link can never dangle.
+    """
+    nodes_by_id = {node.id: node for node in graph.nodes}
+    return any(_collect_disputes(graph, nodes_by_id))
+
+
+def _contradictions_page(graph: ResearchGraph, nodes_by_id: Mapping[str, ResearchNode], wiki_store: WikiPageStore) -> Optional[WikiPage]:
+    """Build the synthetic contradictions page, or ``None`` when empty.
+
+    Every section is sorted by node id and deduped so two compiles of the
+    same graph emit byte-identical output regardless of edge list order.
+    """
+    open_pairs, resolved, obsoleted = _collect_disputes(graph, nodes_by_id)
     if not (open_pairs or resolved or obsoleted):
         return None
 
@@ -526,6 +550,7 @@ __all__ = [
     "WikiLayerProjector",
     "CODE_GRAPH_TYPES",
     "ASSERTION_LAYER_TYPES",
+    "has_contradictions",
     "is_code_graph_node",
     "is_assertion_node",
     "kind_for_node",

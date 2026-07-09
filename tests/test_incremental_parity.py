@@ -62,12 +62,19 @@ except ImportError:  # fallback when tests/ is importable as a package
 # straight from that ledger via ``KarpathyLayerWriter._render_log``); both arms
 # share ONE root, so the full-recompile arm legitimately carries one extra build
 # row. It belongs with the ledgers it projects, not with the canonical graph
-# artifacts the parity assertion guards.
+# artifacts the parity assertion guards. ``output-snapshot.json`` is the
+# compile's no-op-detector state file (tesserae/output_snapshot.py): its
+# ``changed`` bool records the TRANSITION of the last compile, so it
+# legitimately differs between the incremental arm (inputs mutated ->
+# changed=true) and the full-recompile arm of the identical corpus
+# (changed=false). Like manifest.json it is input/transition state, excluded
+# from the snapshot hash by construction — not a canonical artifact.
 PARITY_EXCLUDE = {
     "sqlite.db",
     ".build-history.jsonl",
     ".history.jsonl",
     "log.md",
+    "output-snapshot.json",
 }
 
 WIKI_CORPUS_ROOT = Path(__file__).parent / "fixtures" / "wiki_corpus"

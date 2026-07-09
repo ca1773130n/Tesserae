@@ -1906,6 +1906,7 @@ class LLMWikiMCPServer:
                 "install_cognee",
                 "cognee_mode",
                 "cognee_auto_cognify",
+                "install_agent_pointer",
             }
             _ALLOWED_UA_PLATFORMS = {"codex", "claude", "opencode", "gemini"}
             _ALLOWED_RAG_PARSERS = {"mineru", "docling", "paddleocr"}

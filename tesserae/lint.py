@@ -12,10 +12,13 @@ loads the graph + wiki + site, runs every check, optionally applies safe
 auto-fixes (``fix_trivial=True``), and writes ``lint-report.md`` /
 ``lint-report.json`` next to the project graph.
 
-Stdlib only — no LLM, no network. The report is intended to flag the kinds
-of corruption documented in ``docs/superpowers/codex-extraction-review.md``
-(orphan papers, stale citations, ghost synthesis inputs, drift, etc.) so the
-operator can fix them cheaply.
+Stdlib + local git only by default — no LLM, no network. ``run(verify_claims=True)``
+opts into ONE batched LLM call (via ``tesserae.llm_json``, imported lazily)
+that judges whether cited source nodes actually support sampled claims.
+The report is intended to flag the kinds of corruption documented in
+``docs/superpowers/codex-extraction-review.md`` (orphan papers, stale
+citations, ghost synthesis inputs, drift, etc.) so the operator can fix
+them cheaply.
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -132,6 +136,30 @@ class LintReport:
         return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=False) + "\n"
 
 
+# --------------------------------------------------------------------------- git
+
+
+def _git(repo_root: Path, *args: str) -> Optional[str]:
+    """Run git in ``repo_root``; stdout on success, ``None`` on any failure."""
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(repo_root), *args],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return proc.stdout if proc.returncode == 0 else None
+
+
+def read_git_head(repo_root: Path) -> Optional[str]:
+    """Full 40-char HEAD sha of the repo at ``repo_root``, or ``None``."""
+    out = _git(repo_root, "rev-parse", "HEAD")
+    head = (out or "").strip()
+    return head or None
+
+
 # --------------------------------------------------------------------------- linter
 
 # Markdown link patterns we scan in wiki bodies.
@@ -169,7 +197,15 @@ class WikiLinter:
     # entry point
     # ------------------------------------------------------------------
 
-    def run(self, *, fix_trivial: bool = False, severity_floor: str = "info") -> LintReport:
+    def run(
+        self,
+        *,
+        fix_trivial: bool = False,
+        severity_floor: str = "info",
+        verify_claims: bool = False,
+        claim_cap: int = 20,
+        llm_client: Optional[object] = None,
+    ) -> LintReport:
         if severity_floor not in _SEVERITY_RANK:
             raise ValueError(f"Unknown severity floor: {severity_floor!r}")
 
@@ -191,6 +227,11 @@ class WikiLinter:
         findings.extend(self._check_synthesis_ghost_inputs(nodes_by_id))
         findings.extend(self._check_suggested_merges(nodes_by_id))
         findings.extend(self._check_stale_build_history())
+        findings.extend(self._check_code_graph_staleness(nodes_by_id))
+        if verify_claims:
+            findings.extend(
+                self._check_claim_support(nodes_by_id, cap=claim_cap, llm_client=llm_client)
+            )
 
         if fix_trivial:
             graph_changed = False
@@ -668,6 +709,219 @@ class WikiLinter:
                 suggested_fix="Trim `.build-history.jsonl` to recent entries.",
             )
 
+    def _check_code_graph_staleness(
+        self, nodes_by_id: Dict[str, dict]
+    ) -> Iterable[LintFinding]:
+        """``SourceFile`` nodes whose backing files changed since last compile.
+
+        Diffs the git HEAD recorded in the build-history ledger against the
+        current HEAD and reports which changed files back ``SourceFile``
+        nodes. Read-only over git and the graph — a staleness *report*, never
+        auto-regeneration. Every finding is ``info``: a repo that merely
+        advanced by a commit must not fail ``compile --strict``. No wall
+        clock, no config-dependent git output (``--no-renames``,
+        ``core.quotepath=false``, full shas sliced in Python), so the report
+        stays a pure function of (graph, ledger, git object state).
+        """
+        if not self.build_history_path.exists():
+            return
+        recorded: Optional[str] = None
+        try:
+            for line in self.build_history_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                git_head = entry.get("git_head")
+                if isinstance(git_head, str) and git_head:
+                    recorded = git_head
+        except OSError:
+            return
+        if recorded is None:
+            # Pre-feature ledgers and non-code projects produce no noise.
+            return
+        head = read_git_head(self.project_root)
+        if head is None or head == recorded:
+            return
+        if _git(self.project_root, "rev-parse", "--verify", "--quiet", recorded + "^{commit}") is None:
+            yield LintFinding(
+                severity="info",
+                code="CODE_GRAPH_HEAD_UNRESOLVED",
+                message=(
+                    f"Recorded compile head {recorded[:12]} is not resolvable in "
+                    "this repo (history rewritten or pruned); staleness unknown"
+                ),
+                path=str(self.build_history_path),
+                suggested_fix="Run `tesserae compile` to re-anchor the graph to the current HEAD.",
+            )
+            return
+        out = _git(self.project_root, "rev-list", "--count", f"{recorded}..HEAD")
+        n_commits = int(out.strip()) if out else 0
+        # Two-dot snapshot diff (not ``log``) so merges/reverts net out;
+        # ``--relative`` re-roots paths at project_root when the workspace is
+        # a repo subdirectory, matching SourceFile node names.
+        diff_out = _git(
+            self.project_root,
+            "-c",
+            "core.quotepath=false",
+            "diff",
+            "--no-renames",
+            "--relative",
+            "--name-status",
+            recorded,
+            "HEAD",
+        )
+        changes: List[Tuple[str, str]] = []
+        for raw in (diff_out or "").splitlines():
+            raw = raw.strip()
+            if not raw:
+                continue
+            status, _, path = raw.partition("\t")
+            if path:
+                changes.append((status[:1], path))
+        if not changes and n_commits == 0:
+            # Diverged-but-identical trees (e.g. reset + recommit).
+            return
+        source_files = {
+            node["name"]: node_id
+            for node_id, node in nodes_by_id.items()
+            if node.get("type") == "SourceFile"
+        }
+        matched = sorted((path, status) for status, path in changes if path in source_files)
+        yield LintFinding(
+            severity="info",
+            code="CODE_GRAPH_BEHIND",
+            message=(
+                f"Code graph compiled at {recorded[:12]} is {n_commits} commit(s) behind HEAD {head[:12]} "
+                f"({len(changes)} changed file(s), {len(matched)} tracked in graph)"
+            ),
+            suggested_fix="Run `tesserae compile` to refresh the graph from the current working tree.",
+        )
+        # Lexicographic path order = deterministic cap. Deletions matched to a
+        # node are the strongest signal (the graph cites a file that no longer
+        # exists); added files have no node and only count toward the summary.
+        for path, status in matched[:20]:
+            yield LintFinding(
+                severity="info",
+                code="CODE_GRAPH_STALE_FILE",
+                message=f"Source file changed since last compile ({status}): {path}",
+                node_id=source_files[path],
+                path=path,
+                suggested_fix="Run `tesserae compile` to refresh the graph from the current working tree.",
+            )
+
+    def _check_claim_support(
+        self,
+        nodes_by_id: Dict[str, dict],
+        *,
+        cap: int,
+        llm_client: Optional[object] = None,
+    ) -> Iterable[LintFinding]:
+        """Opt-in (``verify_claims=True``): LLM-judge sampled cited claims.
+
+        Samples up to ``cap`` cited claims from synthesis pages
+        (deterministically, by content hash — no RNG, no wall clock) and asks
+        the configured JSON client, in ONE batched call, whether each cited
+        source node's text supports the claim. Any failure (no candidates, no
+        client, LLM error, unparsable output) degrades to a single
+        ``CLAIM_SUPPORT_SKIPPED`` info finding — never an exception. Writes
+        nothing; no finding is ``auto_fixable``.
+        """
+        sampled = _sample_claims(_iter_claim_candidates(self.wiki_root, nodes_by_id), cap)
+        if not sampled:
+            yield LintFinding(
+                severity="info",
+                code="CLAIM_SUPPORT_SKIPPED",
+                message="claim support: no cited claims found in wiki/syntheses — nothing to verify.",
+            )
+            return
+        client = llm_client
+        if client is None:
+            # Lazy import keeps the default lint path stdlib-only.
+            from .llm_json import build_default_json_client
+
+            client = build_default_json_client()
+        if client is None:
+            yield LintFinding(
+                severity="info",
+                code="CLAIM_SUPPORT_SKIPPED",
+                message=(
+                    "claim support: no LLM backend available "
+                    "(claude/codex CLI or ANTHROPIC_API_KEY); skipped."
+                ),
+            )
+            return
+        user = json.dumps(
+            {
+                "items": [
+                    {
+                        "index": i,
+                        "claim": candidate.claim_text[:_CLAIM_MAX_CHARS],
+                        "source": _claim_text(nodes_by_id[candidate.node_id])[:_SOURCE_MAX_CHARS],
+                    }
+                    for i, candidate in enumerate(sampled)
+                ]
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        try:
+            payload = client.complete_json(
+                system=_CLAIM_SUPPORT_SYSTEM,
+                user=user,
+                schema_name="claim_support_v1",
+            )
+        except Exception:
+            payload = None
+        if payload is None:
+            yield LintFinding(
+                severity="info",
+                code="CLAIM_SUPPORT_SKIPPED",
+                message="claim support: LLM call failed or returned unparsable output; skipped.",
+            )
+            return
+        raw_verdicts = payload.get("verdicts") if isinstance(payload, dict) else payload
+        if not isinstance(raw_verdicts, list):
+            raw_verdicts = []
+        counts = {"supported": 0, "partial": 0, "unsupported": 0, "unverifiable": 0}
+        for i, candidate in enumerate(sampled):
+            verdict = str(raw_verdicts[i]).strip().lower() if i < len(raw_verdicts) else ""
+            if verdict not in _CLAIM_VERDICTS:
+                verdict = "unverifiable"
+            counts[verdict] += 1
+            if verdict in ("supported", "unverifiable"):
+                continue
+            snippet = candidate.claim_text[:160]
+            if verdict == "unsupported":
+                severity = "warning"
+                code = "CLAIM_UNSUPPORTED"
+                message = f"Cited source does not support the claim: {snippet!r}"
+            else:
+                severity = "info"
+                code = "CLAIM_PARTIAL"
+                message = f"Cited source only partially supports the claim: {snippet!r}"
+            yield LintFinding(
+                severity=severity,
+                code=code,
+                message=message,
+                node_id=candidate.node_id,
+                path=str(self.wiki_root / candidate.page_relpath),
+                suggested_fix="Re-run synthesis for this page, or correct/remove the citation.",
+            )
+        pages = len({candidate.page_relpath for candidate in sampled})
+        yield LintFinding(
+            severity="info",
+            code="CLAIM_SUPPORT_SUMMARY",
+            message=(
+                f"claim support: sampled {len(sampled)} claims across {pages} pages — "
+                f"{counts['supported']} supported, {counts['partial']} partial, "
+                f"{counts['unsupported']} unsupported, {counts['unverifiable']} unverifiable."
+            ),
+        )
+
     # ------------------------------------------------------------------
     # auto-fix helpers
     # ------------------------------------------------------------------
@@ -948,6 +1202,104 @@ _TOPIC_STOPWORDS = {
 def _topic_tokens(text: str) -> List[str]:
     tokens = re.findall(r"[A-Za-z0-9][A-Za-z0-9_\-]+", text.lower())
     return [t for t in tokens if t not in _TOPIC_STOPWORDS and len(t) >= 3]
+
+
+# --------------------------------------------------------------------------- claim support (opt-in)
+
+
+@dataclass(frozen=True)
+class _ClaimCandidate:
+    """A cited claim extracted from a synthesis page (``verify_claims=True``)."""
+
+    page_relpath: str  # "wiki/syntheses/<slug>.md" (posix, relative to wiki root)
+    node_id: str  # resolved graph node id
+    claim_text: str  # the paragraph containing the citation, stripped
+
+
+_CLAIM_SUPPORT_SYSTEM = (
+    "You judge whether a SOURCE text supports a CLAIM. For each item, answer "
+    "exactly one of: supported, partial, unsupported. Judge only from the "
+    "given source text — use no outside knowledge. Respond as JSON "
+    '{"verdicts": ["supported", ...]} with one entry per item, in the same '
+    "order as the items."
+)
+
+# Fixed truncation widths keep the prompt bytes deterministic for fixed artifacts.
+_CLAIM_MAX_CHARS = 600
+_SOURCE_MAX_CHARS = 1200
+_CLAIM_VERDICTS: FrozenSet[str] = frozenset({"supported", "partial", "unsupported"})
+
+
+def _iter_claim_candidates(
+    wiki_root: Path, nodes_by_id: Dict[str, dict]
+) -> List[_ClaimCandidate]:
+    """Extract paragraph-level cited claims from ``wiki/syntheses/*.md``.
+
+    A citation marker is ``[<node id>]`` or ``[<node name>]`` for any of the
+    page's resolved frontmatter ``inputs:`` — except when immediately followed
+    by ``(`` (a markdown link, not a citation). Deterministic by construction:
+    sorted pages, sorted markers, first-seen dedupe on the candidate tuple.
+    """
+    synth_dir = wiki_root / "wiki" / "syntheses"
+    if not synth_dir.exists():
+        return []
+    candidates: List[_ClaimCandidate] = []
+    seen: set = set()
+    for md_path in sorted(synth_dir.glob("*.md")):
+        try:
+            text = md_path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        frontmatter, body = _split_frontmatter(text)
+        inputs = frontmatter.get("inputs") or []
+        if not isinstance(inputs, list):
+            continue
+        # Ghost inputs are ``_check_synthesis_ghost_inputs``'s job — skip them.
+        resolved = sorted({str(raw) for raw in inputs if str(raw) in nodes_by_id})
+        if not resolved:
+            continue
+        # Marker -> node id. Raw ids first, then display names; a name shared
+        # by several inputs maps to the sorted-first id (setdefault over the
+        # sorted id list keeps this deterministic).
+        markers: Dict[str, str] = {}
+        for node_id in resolved:
+            markers.setdefault(node_id, node_id)
+        for node_id in resolved:
+            name = nodes_by_id[node_id].get("name")
+            if not isinstance(name, str) or not name:
+                continue
+            if "]" in name or "\n" in name:
+                continue
+            markers.setdefault(name, node_id)
+        page_relpath = f"wiki/syntheses/{md_path.name}"
+        for paragraph in re.split(r"\n\s*\n", body):
+            claim_text = paragraph.strip()
+            if len(claim_text) < 40:
+                continue
+            if claim_text.startswith(("#", "|", "```")):
+                continue
+            for marker in sorted(markers):
+                if not re.search(re.escape(f"[{marker}]") + r"(?!\()", claim_text):
+                    continue
+                key = (page_relpath, markers[marker], claim_text)
+                if key in seen:
+                    continue
+                seen.add(key)
+                candidates.append(_ClaimCandidate(*key))
+    return candidates
+
+
+def _sample_claims(candidates: List[_ClaimCandidate], cap: int) -> List[_ClaimCandidate]:
+    """Deterministic content-hash sample: same artifacts → same sample bytes."""
+    import hashlib
+
+    def _key(candidate: _ClaimCandidate) -> Tuple[str, str, str, str]:
+        digest = hashlib.sha256(
+            f"{candidate.page_relpath}\x00{candidate.node_id}\x00{candidate.claim_text}".encode("utf-8")
+        ).hexdigest()
+        return (digest, candidate.page_relpath, candidate.node_id, candidate.claim_text)
+
+    return sorted(candidates, key=_key)[: max(cap, 0)]
 
 
 def _split_frontmatter(text: str) -> Tuple[Dict[str, object], str]:

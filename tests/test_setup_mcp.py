@@ -57,7 +57,13 @@ def test_mcp_apply_ignores_injected_install_commands(tmp_path: Path, monkeypatch
     server = LLMWikiMCPServer(default_graph_path=None)
     plan_response = server.call_tool(
         "tesserae_setup_plan",
-        {"project_root": str(tmp_path), "overrides": {"enable_cognee": False}},
+        {
+            "project_root": str(tmp_path),
+            # agent-pointer install is a pure file write with status
+            # "installed"; disable it so the assertion below can stay
+            # "no installed statuses at all" = no subprocess executions.
+            "overrides": {"enable_cognee": False, "install_agent_pointer": False},
+        },
     )
     plan = dict(plan_response["plan"])
     sentinel = tmp_path / "OWNED-MARKER"
@@ -92,3 +98,24 @@ def test_mcp_apply_ignores_injected_install_commands(tmp_path: Path, monkeypatch
     statuses = [a.get("status") for a in apply_response.get("actions_taken", [])]
     assert "installed" not in statuses
     assert "install_failed" not in statuses
+
+
+def test_mcp_apply_honors_install_agent_pointer_intent(tmp_path: Path) -> None:
+    """`install_agent_pointer` is a safe boolean intent key: an MCP caller
+    disabling it must prevent the AGENTS.md pointer write on apply."""
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    server = LLMWikiMCPServer(default_graph_path=None)
+    plan_response = server.call_tool(
+        "tesserae_setup_plan",
+        {
+            "project_root": str(tmp_path),
+            "overrides": {"install_agent_pointer": False},
+        },
+    )
+    server.call_tool(
+        "tesserae_setup_apply",
+        {"plan": dict(plan_response["plan"]), "drift_policy": "ignore"},
+    )
+    assert not (tmp_path / "AGENTS.md").exists()
+    assert not (tmp_path / "CLAUDE.md").exists()

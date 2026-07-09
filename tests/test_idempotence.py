@@ -291,3 +291,102 @@ def _diff_keys(a: Dict[str, str], b: Dict[str, str]) -> str:
     if not rows:
         return "(no differences)"
     return "\n" + "\n".join(rows[:20])
+
+
+# ---------------------------------------------------------------------------
+# Output snapshot hashing (tesserae/output_snapshot.py) — the no-op detector
+# and byte-idempotence tripwire wired into ProjectWiki.compile. See
+# docs/superpowers/plans/2026-07-09-openwiki-output-snapshot-plan.md.
+# ---------------------------------------------------------------------------
+
+
+def test_snapshot_output_stable_and_ignores_ledgers_and_state(tmp_path: Path) -> None:
+    from tesserae.output_snapshot import snapshot_output, write_state
+    wiki = _seed_project(tmp_path / "proj")
+    wiki.compile(session_options=SessionExtractionOptions(enabled=False))
+    root = wiki.root
+    first = snapshot_output(root)
+    # Excluded churn: ledgers, state file, lint noise at the root.
+    with (root / ".build-history.jsonl").open("a") as fh:
+        fh.write('{"noise": true}\n')
+    (root / "wiki" / "syntheses").mkdir(parents=True, exist_ok=True)
+    with (root / "wiki" / "syntheses" / ".history.jsonl").open("a") as fh:
+        fh.write('{"noise": true}\n')
+    write_state(root / "output-snapshot.json", first, changed=False)
+    assert snapshot_output(root) == first
+    # Included churn: a projection file flips only the projections part.
+    (root / "wiki" / "drift.md").write_text("drift", encoding="utf-8")
+    second = snapshot_output(root)
+    assert second.projections_sha256 != first.projections_sha256
+    assert second.graph_sha256 == first.graph_sha256
+    assert second.output_sha256 != first.output_sha256
+
+
+def test_snapshot_output_handles_missing_artifacts(tmp_path: Path) -> None:
+    from tesserae.output_snapshot import snapshot_output
+    empty = snapshot_output(tmp_path / "nothing-here")
+    assert empty == snapshot_output(tmp_path / "nothing-here")  # deterministic
+    assert len(empty.graph_sha256) == 64 and len(empty.projections_sha256) == 64
+
+
+def test_compile_result_reports_output_unchanged_on_recompile(tmp_path: Path) -> None:
+    wiki = _seed_project(tmp_path / "proj")
+    opts = SessionExtractionOptions(enabled=False)
+    first = wiki.compile(session_options=opts)
+    second = wiki.compile(session_options=opts)
+    assert first["output_changed"] is True          # first compile populated an empty tree
+    assert second["output_changed"] is False        # no-op detected
+    assert second["idempotence_suspect"] is False
+    assert second["output_sha256"] == first["output_sha256"]
+
+
+def test_compile_result_reports_output_changed_on_new_source(tmp_path: Path) -> None:
+    wiki = _seed_project(tmp_path / "proj")
+    opts = SessionExtractionOptions(enabled=False)
+    first = wiki.compile(session_options=opts)
+    (tmp_path / "proj" / "docs" / "new-note.md").write_text(
+        "# New Note\n\nA fresh concept: snapshot gating.\n", encoding="utf-8"
+    )
+    second = wiki.compile(session_options=opts)
+    assert second["output_changed"] is True
+    assert second["output_sha256"] != first["output_sha256"]
+    assert second["idempotence_suspect"] is False   # graph layer changed too
+
+
+def test_compile_flags_idempotence_suspect_on_projection_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Simulate the historical failure class: a projector emitting bytes not
+    derived from the graph. Graph layer identical + projections drifted must
+    raise the tripwire."""
+    from tesserae.karpathy_layer import KarpathyLayerWriter
+    wiki = _seed_project(tmp_path / "proj")
+    opts = SessionExtractionOptions(enabled=False)
+    wiki.compile(session_options=opts)
+
+    original = KarpathyLayerWriter.write_all
+    def drifting(self, graph, build_history_path=None):
+        written = original(self, graph, build_history_path)
+        (Path(self.wiki_root) / "drift.md").write_text("wall-clock leak", encoding="utf-8")
+        return written
+    monkeypatch.setattr(KarpathyLayerWriter, "write_all", drifting)
+
+    second = wiki.compile(session_options=opts)
+    assert second["idempotence_suspect"] is True
+    assert second["output_changed"] is True
+
+
+def test_output_snapshot_state_file_is_byte_stable(tmp_path: Path) -> None:
+    wiki = _seed_project(tmp_path / "proj")
+    opts = SessionExtractionOptions(enabled=False)
+    wiki.compile(session_options=opts)
+    state_path = wiki.paths.output_snapshot
+    assert state_path.exists()
+    first_bytes = state_path.read_bytes()
+    payload = json.loads(first_bytes)
+    assert set(payload) == {"changed", "graph_sha256", "output_sha256", "projections_sha256"}
+    wiki.compile(session_options=opts)
+    second = json.loads(state_path.read_bytes())
+    assert second["changed"] is False
+    # Identical hashes both runs; only `changed` may differ on the first run.
+    assert second["output_sha256"] == payload["output_sha256"]

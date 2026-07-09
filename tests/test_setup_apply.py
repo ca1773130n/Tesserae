@@ -59,6 +59,25 @@ def test_apply_runs_install_actions_when_confirmed(tmp_path: Path) -> None:
     assert "hello" in install_row.get("stdout", "")
 
 
+def test_apply_installs_agent_pointer(tmp_path: Path) -> None:
+    report = detect(tmp_path)
+    plan = build_plan(report)
+    apply_plan(plan)
+    text = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    assert "tesserae:pointer:begin" in text
+    result = apply_plan(plan)  # second apply: pointer must be byte-stable
+    entry = next(a for a in result.actions_taken if a["id"] == "agent-pointer")
+    assert entry["files"]["AGENTS.md"] == "current"
+
+
+def test_apply_skips_agent_pointer_when_disabled(tmp_path: Path) -> None:
+    report = detect(tmp_path)
+    plan = build_plan(report, overrides={"install_agent_pointer": False})
+    result = apply_plan(plan)
+    assert not (tmp_path / "AGENTS.md").exists()
+    assert all(a["id"] != "agent-pointer" for a in result.actions_taken)
+
+
 def test_apply_detects_drift_with_warn_policy(tmp_path: Path) -> None:
     report = detect(tmp_path)
     plan = build_plan(report)

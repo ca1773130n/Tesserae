@@ -104,6 +104,14 @@ def test_harness_topic_changes_brief():
     assert scoped != static
 
 
+def test_harness_context_points_agents_at_wiki_entrypoint():
+    text = render_harness_context(
+        "demo", harness_sample_graph(), "python3", ["-m", "tesserae.mcp_server"]
+    )
+    assert ".tesserae/wiki/index.md" in text
+    assert "start at `.tesserae/wiki/index.md`" in text
+
+
 def test_harness_topic_distinguishes_topics():
     """Two different topics over distinct neighborhoods yield different briefs."""
     graph = harness_topic_graph()
@@ -114,3 +122,130 @@ def test_harness_topic_distinguishes_topics():
         "demo", graph, "python3", ["-m", "tesserae.mcp_server"], topic="transformer attention language"
     )
     assert splat != lang
+
+
+# --------------------------------------------------------------- pointer install (07-09)
+
+
+from tesserae.agent_harness import (
+    POINTER_BEGIN,
+    POINTER_END,
+    install_instruction_pointer,
+    render_pointer_block,
+)
+
+
+def test_pointer_block_is_deterministic():
+    a, b = render_pointer_block("demo"), render_pointer_block("demo")
+    assert a == b
+    assert a.startswith(POINTER_BEGIN) and a.endswith(POINTER_END)
+    assert ".tesserae/graph.json" in a and "TESSERAE.md" in a
+
+
+def test_install_pointer_creates_agents_md_when_neither_exists(tmp_path):
+    result = install_instruction_pointer(tmp_path, "demo")
+    assert result == {"AGENTS.md": "created"}
+    text = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    assert text == render_pointer_block("demo") + "\n"
+    assert not (tmp_path / "CLAUDE.md").exists()
+
+
+def test_install_pointer_appends_to_existing_files_preserving_content(tmp_path):
+    (tmp_path / "AGENTS.md").write_text("# Mine\n\nkeep me\n", encoding="utf-8")
+    (tmp_path / "CLAUDE.md").write_text("# Rules\n", encoding="utf-8")
+    result = install_instruction_pointer(tmp_path, "demo")
+    assert result == {"AGENTS.md": "appended", "CLAUDE.md": "appended"}
+    text = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    assert text.startswith("# Mine\n\nkeep me\n")
+    assert POINTER_BEGIN in text and text.endswith(POINTER_END + "\n")
+
+
+def test_install_pointer_is_idempotent_second_run_no_write(tmp_path):
+    (tmp_path / "AGENTS.md").write_text("# Mine\n", encoding="utf-8")
+    install_instruction_pointer(tmp_path, "demo")
+    before = (tmp_path / "AGENTS.md").read_bytes()
+    result = install_instruction_pointer(tmp_path, "demo")
+    assert result == {"AGENTS.md": "current"}
+    assert (tmp_path / "AGENTS.md").read_bytes() == before  # byte-idempotent
+
+
+def test_install_pointer_refreshes_stale_block_in_place(tmp_path):
+    (tmp_path / "AGENTS.md").write_text(
+        "top\n\n" + POINTER_BEGIN + "\nOLD STALE BODY\n" + POINTER_END + "\n\nbottom\n",
+        encoding="utf-8",
+    )
+    result = install_instruction_pointer(tmp_path, "demo")
+    assert result == {"AGENTS.md": "updated"}
+    text = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    assert "OLD STALE BODY" not in text
+    assert text.startswith("top\n\n") and text.endswith("\n\nbottom\n")
+    assert render_pointer_block("demo") in text
+
+
+def test_install_pointer_skips_claude_md_with_agents_include(tmp_path):
+    (tmp_path / "AGENTS.md").write_text("# A\n", encoding="utf-8")
+    (tmp_path / "CLAUDE.md").write_text("@AGENTS.md\n", encoding="utf-8")
+    result = install_instruction_pointer(tmp_path, "demo")
+    assert result == {"AGENTS.md": "appended", "CLAUDE.md": "skipped-include"}
+    assert (tmp_path / "CLAUDE.md").read_text(encoding="utf-8") == "@AGENTS.md\n"
+
+
+def test_install_pointer_leaves_malformed_markers_untouched(tmp_path):
+    body = "x\n" + POINTER_BEGIN + "\nno end marker\n"
+    (tmp_path / "AGENTS.md").write_text(body, encoding="utf-8")
+    result = install_instruction_pointer(tmp_path, "demo")
+    assert result == {"AGENTS.md": "malformed"}
+    assert (tmp_path / "AGENTS.md").read_text(encoding="utf-8") == body
+
+
+def test_install_pointer_bails_on_orphan_begin_before_complete_pair(tmp_path):
+    """A stray BEGIN before a real pair must NOT splice orphan-BEGIN → first-END
+    (that would silently delete the user content between them)."""
+    body = (
+        "docs mention " + POINTER_BEGIN + " as an example\n\n"
+        "precious user content\n\n"
+        + POINTER_BEGIN + "\nstale\n" + POINTER_END + "\n"
+    )
+    (tmp_path / "AGENTS.md").write_text(body, encoding="utf-8")
+    before = (tmp_path / "AGENTS.md").read_bytes()
+    result = install_instruction_pointer(tmp_path, "demo")
+    assert result == {"AGENTS.md": "malformed"}
+    assert (tmp_path / "AGENTS.md").read_bytes() == before  # untouched
+
+
+def test_install_pointer_bails_on_duplicate_marker_pairs(tmp_path):
+    body = (
+        POINTER_BEGIN + "\nfirst copy\n" + POINTER_END + "\n\n"
+        "between\n\n"
+        + POINTER_BEGIN + "\nsecond copy\n" + POINTER_END + "\n"
+    )
+    (tmp_path / "AGENTS.md").write_text(body, encoding="utf-8")
+    before = (tmp_path / "AGENTS.md").read_bytes()
+    result = install_instruction_pointer(tmp_path, "demo")
+    assert result == {"AGENTS.md": "malformed"}
+    assert (tmp_path / "AGENTS.md").read_bytes() == before  # untouched
+
+
+def test_install_pointer_coexists_with_foreign_marker_blocks(tmp_path):
+    """Other managed blocks (e.g. HarnessSync) must survive both append and
+    refresh untouched — our splice only ever moves bytes between OUR markers."""
+    foreign = (
+        "<!-- [harness-sync:start rules] -->\n"
+        "synced rules body\n"
+        "<!-- [harness-sync:end rules] -->\n"
+    )
+    (tmp_path / "AGENTS.md").write_text("# Mine\n\n" + foreign, encoding="utf-8")
+    result = install_instruction_pointer(tmp_path, "demo")
+    assert result == {"AGENTS.md": "appended"}
+    text = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    assert foreign in text  # foreign block byte-identical
+    # Now make our block stale and refresh: foreign block still untouched.
+    stale = text.replace(render_pointer_block("demo"),
+                         POINTER_BEGIN + "\nstale\n" + POINTER_END)
+    (tmp_path / "AGENTS.md").write_text(stale, encoding="utf-8")
+    result = install_instruction_pointer(tmp_path, "demo")
+    assert result == {"AGENTS.md": "updated"}
+    text = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    assert foreign in text
+    assert text.startswith("# Mine\n\n" + foreign)
+    assert render_pointer_block("demo") in text and "stale" not in text
