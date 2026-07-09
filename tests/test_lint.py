@@ -778,8 +778,14 @@ def _code_graph(paths: list[str]) -> dict:
     }
 
 
-def test_read_git_head_returns_sha_in_repo_and_none_outside(tmp_path: Path) -> None:
+def test_read_git_head_returns_sha_in_repo_and_none_outside(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from tesserae.lint import read_git_head
+    # Keep git discovery from escaping the scaffold: if pytest's basetemp
+    # happens to live inside a real repo, `git -C <scaffold>` would otherwise
+    # resolve the enclosing repo's HEAD.
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
     project = _scaffold(tmp_path)
     assert read_git_head(project) is None  # tmp scaffold is not a repo
     sha = _git_init(project)
@@ -810,7 +816,12 @@ def test_code_graph_staleness_silent_when_head_unchanged(tmp_path: Path) -> None
     assert not [f for f in report.findings if f.code.startswith("CODE_GRAPH")]
 
 
-def test_code_graph_staleness_skips_without_git_repo(tmp_path: Path) -> None:
+def test_code_graph_staleness_skips_without_git_repo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # See test_read_git_head_returns_sha_in_repo_and_none_outside: pin git
+    # discovery to the scaffold so an enclosing repo can't leak in.
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
     project = _scaffold(tmp_path, graph=_code_graph(["a.py"]))
     _ledger(project, "0" * 40)  # ledger has a head, but no repo exists
     report = WikiLinter(project).run()
