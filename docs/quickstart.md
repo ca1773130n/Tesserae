@@ -17,8 +17,9 @@ usage: tesserae <command> [options]
 EVERYDAY
   init          Set up .tesserae (wizard by default; --yes non-interactive)
   compile       Rebuild the knowledge graph (compile [paths] = ad-hoc ingest)
+  ingest        Ingest a document file or URL into the knowledge base
   context       Compile agent-ready context for a query
-  ask           Ask the project memory a question
+  ask           LLM answer over the knowledge graph (planned retrieval)
   serve         Browse the compiled site (auto-builds if missing)
   status        Node/edge counts, last compile, vault state
 
@@ -28,16 +29,22 @@ AUTOMATION
   research      Autonomous research mode: investigate a query
 
 ANALYSIS
-  query         Raw retrieval over the graph (top-k, kind filters)
+  query         raw retrieval: BM25/semantic + explicit backends
   lint          Graph lint report (--fix-trivial, --severity, --json)
+  doctor        Health checks: init/graph/registry/staleness/locks (--fix = safe repairs only)
+  summary       Daily/weekly activity digest (sessions, findings, commits, PRs, docs)
+  decisions     Decisions across projects + time (human AskUserQuestion + agent)
 
 GROUPS
-  sessions      import | discover | list — agent session history
+  sessions      import | discover | list | chunk-backfill — agent session history
   vault         sync | sync-all | set-root | export | prune — Obsidian projection
   export        harness | graphiti | site — artifact exports
   code          ingest | sync — CodeGraph ⇄ project graph (hook-invoked)
-  config        llm | show — machine-wide defaults (~/.tesserae/config.json)
-  projects      register | list | activate | unregister | mcp-config — registry
+  setup         Machine-wide setup: LLM defaults + optional deps (interactive by default)
+  config        llm | deps | show | status | clip-token — LLM backend defaults + resolved view & liveness ping
+  projects      register | list | unregister | mcp-config — registry
+  sources       add | list | remove — manage compile source dirs (local & global)
+  federation    status | explain — inspect cross-project federation
   integrations  refresh raganything|understand-anything
   extract       Low-level: extract a typed graph from markdown paths
 
@@ -59,46 +66,46 @@ cd /path/to/my-project
 tesserae init
 ```
 
-The wizard detects common sources such as `README.md`, `docs`, `src`, `lib`, `app`, `packages`, and `data`, then writes `.tesserae/config.json`. It also configures the default Cognee backend so `tesserae ask` can try Cognee and fall back to compiled wiki search.
+`tesserae init` is the single onboarding step. The wizard detects common sources such as `README.md`, `docs`, `src`, `lib`, `app`, `packages`, and `data`, probes which LLM CLIs are installed **and logged in**, lets you pick the LLM provider, and writes `.tesserae/config.json`. Optional memory backends (RAG-Anything, Cognee) are **off by default**; enable them later in `memory_backends` in the config, and query them explicitly with `tesserae query --backend …`.
 
 For a non-interactive setup (CI, scripts), pass `--yes` to accept the detected
-defaults without prompting:
+defaults without prompting (all optional integrations OFF):
 
 ```bash
 tesserae init --yes
 ```
 
-For a fully automated setup with Understand Anything and Cognee runtime memory enabled:
+### LLM provider configuration
+
+The wizard's provider pick (or the equivalent flags) persists these config keys:
+
+| Config key | Flag | What it is |
+|---|---|---|
+| `llm_provider` | `--llm-provider {claude,codex,anthropic,custom}` | Backend for the LLM client: `claude`/`codex` use the logged-in CLI over OAuth; `anthropic` uses the API directly; `custom` targets any claude-compatible endpoint. |
+| `llm_model` | `--llm-model` | Model for the synthesis/insights LLM client. |
+| `llm_base_url` | `--llm-base-url` | Endpoint base URL for `anthropic`/`custom`. |
+| `llm_api_key` | `--llm-api-key` | API key for `anthropic`/`custom`. |
+
+> **Plaintext warning.** `llm_api_key` is stored in **plaintext** in
+> `.tesserae/config.json`. Prefer the environment variables instead:
+> `ANTHROPIC_API_KEY` (key), `ANTHROPIC_BASE_URL` (endpoint), and
+> `TESSERAE_LLM_MODEL` (model). Resolution order is env → project config →
+> machine-wide config (`~/.tesserae/config.json`, written by `tesserae setup`)
+> → built-in default.
+
+Re-running `init` on an existing project **merges** — your configured `sources`
+and `memory_backends` are preserved, not clobbered.
+
+Example non-interactive provider setups:
 
 ```bash
-tesserae init \
-  --yes \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex \
-  --with-raganything \
-  --install-raganything \
-  --raganything-parser mineru \
-  --run-raganything \
-  --run-cognee \
-  --install-cognee
+tesserae init --yes --llm-provider codex
+tesserae init --yes --llm-provider custom \
+  --llm-base-url https://llm.internal.example/v1 \
+  --llm-model my-model            # key via ANTHROPIC_API_KEY
 ```
 
-What that does:
-
-| Flag | Effect |
-|---|---|
-| `--with-understand-anything` | Adds the UA graph projection as a source. |
-| `--install-understand-anything` | Installs/updates the UA companion skills. |
-| `--understand-anything-platform codex` | Uses Codex to run Tesserae's managed UA refresh wrapper. |
-| `--with-raganything` | Enable multimodal ingestion via RAG-Anything. |
-| `--install-raganything` | Install raganything[all] during setup. |
-| `--raganything-parser` | Parser choice: mineru (default), docling, paddleocr. |
-| `--run-raganything` | Auto-refresh RAG-Anything on every compile. |
-| `--run-cognee` | Runs best-effort Cognee runtime cognify during compile. |
-| `--install-cognee` | Installs Cognee with the current Python if missing. |
-
-Users do not need to know the UA install path or type `/understand`; `tesserae compile` runs `tesserae integrations refresh understand-anything` when the UA graph is missing or stale.
+If you enable Understand Anything with `auto_refresh: true` in its `external_tools` entry (off by default — its refresh runs a remote install script), `tesserae compile` runs `tesserae integrations refresh understand-anything` when the UA graph is missing or stale; otherwise run that command yourself.
 
 > **Skip the wizard.** `tesserae init --bare` writes a minimal `.tesserae/config.json`
 > without source detection or backend probing — handy when you want to hand-edit
@@ -155,9 +162,6 @@ argparse default is still the fallback. Set a key there to change behavior:
 | `sessions_model` | `--sessions-model` | (none) | Override the LLM model used for session extraction. |
 | `cognee_add` | `--cognee-add` | `false` | Add the Cognee bundle to the dataset (no cognify). |
 | `cognee_cognify` | `--cognee-cognify` | `false` | Add the bundle and run Cognee cognify. |
-| `cognee_codex_cognify` | `--cognee-codex-cognify` | `false` | Run cognify with Cognee's LLM client patched to Codex. |
-| `cognee_codex_model` | `--cognee-codex-model` | `gpt-5.4` | Codex CLI model for `cognee_codex_cognify`. |
-| `cognee_codex_timeout` | `--cognee-codex-timeout` | `300` | Per-call Codex CLI timeout (seconds). |
 | `cognee_dataset` | `--cognee-dataset` | `tesserae_research_graph` | Cognee dataset name. |
 | `cognee_embedding_provider` | `--cognee-embedding-provider` | `deterministic` | Embedding provider for the Cognee lane. |
 | `cognee_ollama_embedding_model` | `--cognee-ollama-embedding-model` | `qwen3-embedding:0.6b` | Ollama embedding model. |
@@ -166,6 +170,13 @@ argparse default is still the fallback. Set a key there to change behavior:
 | `cognee_local_embedding_dimensions` | `--cognee-local-embedding-dimensions` | `128` | Local embedding dimensionality. |
 | `cognee_system_root` | `--cognee-system-root` | (none) | Isolated Cognee system root directory. |
 | `cognee_data_root` | `--cognee-data-root` | (none) | Isolated Cognee data root directory. |
+
+> **Cognee is opt-in.** The Cognee backend is disabled by default: install it
+> with `pip install tesserae[cognee]` and set `memory_backends.cognee.enabled: true`
+> to use it (queried explicitly via `tesserae query --backend cognee`). The
+> legacy Codex-patched cognify mode (`cognee_codex_cognify` /
+> `cognee_codex_model` / `cognee_codex_timeout`) was removed — configs still
+> carrying those keys are inert.
 
 > **One-shot pipeline.** `tesserae refresh` runs the whole loop in-process — it imports any new agent sessions, compiles, and syncs the vault in a single command. Pass `--changed-only` for the opt-in incremental compile.
 
@@ -263,13 +274,21 @@ tesserae lint
 
 Walks the compiled graph + wiki + site and flags orphan papers, stale citations, drift between graph and wiki/, ghost synthesis inputs, and more. Writes `.tesserae/lint-report.md` and `.tesserae/lint-report.json`. Pass `--fix-trivial` to apply safe auto-fixes (missing `implemented_in` edges, ghost-input pruning) and `--severity error` to only fail the exit code on errors.
 
-## 6. Query the wiki
+For workspace health beyond the graph itself — registry consistency, staleness, locks, LLM login, hygiene — run `tesserae doctor` (`--fix` applies the safe repairs only). See [`docs/doctor.md`](doctor.md).
+
+## 6. Ask and query the wiki
 
 ```bash
+# LLM-planned, cited answer over the compiled graph (the default):
+tesserae ask "What is Gaussian Splatting?"
+
+# Raw retrieval — ranked search hits, no LLM:
 tesserae query "What is Gaussian Splatting?"
 ```
 
-Search-only by default — BM25 over `.tesserae/site/search-index.json`, with a 200-char excerpt pulled from the matching `wiki/<kind>/<slug>.md`. Pass `--kind papers` (or `concepts`, `repos`, etc.) to narrow, `--top-k N` to widen, and `--json` for structured output. Add `--llm` (or set `TESSERAE_QUERY_LLM=1`) to ask Claude for a synthesized answer with `[node_id]` citations; `--interactive` opens a readline REPL — blank line or EOF exits. `TESSERAE_QUERY_DRY_RUN=1` exercises the prompt without an API call.
+`ask` is the answer surface: the model plans retrieval over the compiled graph, then synthesizes a cited answer. It works with a logged-in `claude`/`codex` CLI (OAuth) or `ANTHROPIC_API_KEY`; pass `--no-llm` for ranked search hits only (this force-off beats `TESSERAE_QUERY_LLM=1`). `TESSERAE_QUERY_DRY_RUN=1` exercises the prompt without an API call.
+
+`query` is the retrieval surface: BM25/semantic search over `.tesserae/site/search-index.json`, with a 200-char excerpt pulled from the matching `wiki/<kind>/<slug>.md`. Pass `--kind papers` (or `concepts`, `repos`, etc.) to narrow, `--top-k N` to widen, and `--json` for structured output; `--interactive` opens a readline REPL — blank line or EOF exits. Explicit memory backends live here too: `--backend raganything|cognee` short-circuits to that backend and surfaces its errors (with `--cognee-search-type` / `--cognee-dataset` for the Cognee lane). There is no LLM synthesis on `query` — that's `ask`.
 
 ## 7. Compile agent-ready context on demand
 
@@ -279,7 +298,7 @@ The headline of v0.5.0 is the On-Demand Context Compiler: ask the compiled graph
 tesserae context "How does session import work?"
 ```
 
-It seeds Personalized PageRank from the nodes matching your query (use `--seeds <node_id>` to seed explicitly), expands the neighbourhood (`--depth`, default 2), and assembles a cited doc capped at a character `--budget` (default 32000; pass `<= 0` for uncapped). Add `--synthesize` for an LLM-written summary on top (requires an LLM backend) and `-o/--output <file>` to write the doc to disk instead of stdout.
+It seeds Personalized PageRank from the nodes matching your query (use `--seeds <node_id>` to seed explicitly), expands the neighbourhood (`--depth`, default 2), and assembles a cited doc capped at a character `--budget` (default 32000; pass `<= 0` for uncapped). Add `--llm` for an LLM-written summary on top (requires an LLM backend) and `-o/--output <file>` to write the doc to disk instead of stdout.
 
 The same compiler is exposed to agents over MCP as the `compile_context` tool, so a coding agent can pull just-enough, budget-bounded project context mid-conversation without a manual export.
 
@@ -316,7 +335,7 @@ tesserae vault export
 Or write into an existing vault:
 
 ```bash
-tesserae vault export --vault "$OBSIDIAN_VAULT_PATH"
+tesserae vault export --output "$OBSIDIAN_VAULT_PATH"
 ```
 
 The vault includes markdown projections, `.obsidian` defaults, graph coloring, `raw/assets/`, and a Dataview dashboard. Use `tesserae vault sync` to reconcile an existing vault with the latest compile (add `--prune` to drop orphaned notes).

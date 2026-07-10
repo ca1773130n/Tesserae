@@ -38,16 +38,12 @@ Understand Anything 可以写入：
 tesserae init
 ```
 
-在配套工具步骤中选择 Understand Anything。Tesserae 会在请求时安装/更新配套 skills，并把受管理的刷新命令写入 `.tesserae/config.json`。之后调用 `tesserae compile` 时，如果 UA 图谱缺失或过期，就会自动运行该包装命令。
+在配套工具步骤中选择 Understand Anything（它**默认关闭**——它的刷新会运行一个远程安装脚本）。Tesserae 会把受管理的刷新命令写入 `.tesserae/config.json` 的 `external_tools` 之下。编译时的自动刷新同样默认关闭（`auto_refresh: false`）；如果你希望在 UA 图谱缺失或过期时让 `tesserae compile` 自动运行该包装命令，就把它设为 `true`。
 
-对于非交互式自动化，请使用：
+对于非交互式自动化，运行 `tesserae init --yes`（集成关闭），在 `.tesserae/config.json` 中启用 Understand Anything，然后：
 
 ```bash
-tesserae init \
-  --yes \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex
+tesserae integrations refresh understand-anything --platform codex
 tesserae compile
 ```
 
@@ -60,7 +56,7 @@ tesserae integrations refresh understand-anything --platform codex
 编译期间，Tesserae 会：
 
 1. 检查 `.understand-anything/knowledge-graph.json` 是否存在，并在元数据可用时确认它与当前 git 提交匹配；
-2. 仅当图谱缺失/过期或强制刷新时，运行已配置的智能体平台（`codex`、`opencode` 或 `claude`）；
+2. 仅当其 `external_tools` 条目设置了 `auto_refresh: true` 且图谱缺失/过期，或刷新被强制执行时，运行已配置的智能体平台（`codex`、`opencode` 或 `claude`）；
 3. 验证图谱已经写入；
 4. 生成 `.tesserae/external/understand-anything.md`；
 5. 继续正常的记忆编译。
@@ -71,17 +67,7 @@ tesserae integrations refresh understand-anything --platform codex
 tesserae compile --refresh-integrations
 ```
 
-也需要 Cognee？在同一 setup 命令中添加运行时记忆标志：
-
-```bash
-tesserae init \
-  --yes \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex \
-  --run-cognee \
-  --install-cognee
-```
+也需要 Cognee？Cognee 同样是可选启用的：用 `pip install tesserae[cognee]` 安装它，并在 `.tesserae/config.json` 中设置 `memory_backends.cognee.enabled: true`（通过 `tesserae query --backend cognee` 显式查询它）。
 
 ## 手动等效流程
 

@@ -3,44 +3,44 @@
 <!-- translations:start -->
 <p align="center"><a href="../session-history.md">English</a> · <a href="session-history.ko.md">한국어</a> · <a href="session-history.zh.md">中文</a> · <a href="session-history.ja.md">日本語</a> · <a href="session-history.ru.md">Русский</a> · <a href="session-history.es.md">Español</a> · <a href="session-history.fr.md">Français</a> · <a href="session-history.de.md">Deutsch</a></p>
 <!-- translations:end -->
-Tesserae 可以导入本地 AI-agent transcript，并在静态站点的 `sessions/` 区域下把它们渲染为项目记忆。
+Tesserae 可以导入本地 AI-agent 转录，并把它们作为项目记忆渲染在静态站点的 `sessions/` 区之下。
 
-此功能有意与 `export harness` 分开：
+此功能刻意与 `export harness` 分离：
 
 - `export harness` 是面向 Claude Code、Codex、Gemini、Cursor、Kiro、OpenCode 等工具的出站上下文。
-- `sessions ...` 是入站历史：它会为当前项目规范化既有 Claude Code/Codex 会话，将其存储在 `.tesserae/harness_sessions/` 下，并让 `export site` 发布会话索引/详情页。
+- `sessions ...` 是入站历史：它归一化当前项目此前的 Claude Code/Codex 会话，存储在 `.tesserae/harness_sessions/` 下，并让 `export site` 发布会话索引/详情页。
 
 ## 两条入口：批量导入与实时监控
 
-会话采集不再只有批量方式。进入同一个规范化存储有两条路径：
+会话摄取不再仅限批量。有两条路径通往同一个归一化存储：
 
-- **批量导入** —— `sessions discover/import` 按需扫描 transcript root，一次性写入。本页下文说明该流程。
-- **实时监控** —— supervisor daemon（`tesserae engine`）运行 `SessionTailer`，监视*本项目自身的* Claude Code 和 Codex transcript，并在新 turn 落地时即时采集。每个 tick 都会 seek 到按文件持久化的 byte offset，仅读取新增的 byte，并在 enqueue 去抖后的重新编译**之前**将完整 turn 写入 SQLite `HarnessSessionsDB`（`.tesserae/sqlite.db`），因此编译始终读到一致状态。tailer 的范围被限制为项目自身的会话（Claude `projects/<slug>/*.jsonl`；Codex 按 cwd 过滤），重启后从已存 offset 恢复，不会重放 turn。
+- **批量导入**——`sessions discover/import` 按需扫描转录根目录并一次性写入。本页下文记录该流程。
+- **实时监控**——监督守护进程（`tesserae engine`）运行一个 `SessionTailer`，它监视*本项目自己的* Claude Code 和 Codex 转录，并在新 turn 落盘时摄取它们。每个 tick 会定位到持久化的按文件字节偏移量、只读取新字节，并把完整的 turn 存入 SQLite 的 `HarnessSessionsDB`（`.tesserae/sqlite.db`），**然后**才入队一次去抖的重编译，因此编译总是读取一致的状态。tailer 的范围限定于项目自己的会话（Claude 的 `projects/<slug>/*.jsonl`；Codex 按 cwd 过滤），重启后从存储的偏移量恢复而不重放 turn。
 
 运行实时循环：
 
 ```bash
-tesserae engine        # 监视源、合并突发、自动重新编译
-tesserae engine --once # 单次 drain 周期后退出（确定性）
+tesserae engine        # watch sources, coalesce bursts, auto-recompile
+tesserae engine --once # single drain cycle then exit (deterministic)
 ```
 
-`tesserae refresh` 在 in-process 中一次性运行同样的 ingest → compile → project 流水线，而不启动长驻 watcher（用 `--skip-sessions` 跳过 harness 会话 discovery 扫描）。
+`tesserae refresh` 在进程内一次性运行同样的 ingest → compile → project 流水线，而不启动长驻的监视器（传入 `--no-sessions` 可跳过 harness 会话发现扫描）。
 
 ## 隐私模型
 
-两条采集路径都是显式的。实时 tailer 仅在你保持 `tesserae engine` 运行期间工作，批量 discovery 仅在 `--import` 时写入。普通的 `tesserae compile` 或 `tesserae export site` 会读取 `.tesserae/harness_sessions/` 中已规范化的会话以及 `.tesserae/sqlite.db` 中的实时记录，但不会自行意外抓取私有 harness transcript 目录。
+两条摄取路径都是显式的：实时 tailer 只在你保持 `tesserae engine` 存活时运行，批量发现只在带 `--import` 时写入。普通的 `tesserae compile` 或 `tesserae export site` 会读取 `.tesserae/harness_sessions/` 中已归一化的会话和 `.tesserae/sqlite.db` 中的实时记录，但绝不会自行意外抓取私有的 harness 转录目录。
 
-导入的会话记录是本地项目产物。发布公开站点前请先检查它们，尤其当 transcript 可能包含密钥、私有路径、客户数据或未发布代码时。
+导入的会话记录是本地项目产物。在发布公开站点之前请先审查它们，尤其当你的转录可能包含密钥、私有路径、客户数据或未发布的代码时。
 
 ## 发现并导入本地会话
 
-在项目根目录运行：
+在项目根目录下：
 
 ```bash
 tesserae sessions discover --import
 ```
 
-Discovery 会扫描属于当前项目工作目录的本地 Claude Code 和 Codex transcript root。使用 `--root` 扫描指定配置目录，并重复 `--harness` 来限制 discovery：
+发现过程会扫描属于当前项目工作目录的本地 Claude Code 和 Codex 转录根目录。使用 `--root` 扫描特定的配置目录，重复 `--harness` 来限定发现范围：
 
 ```bash
 tesserae sessions discover \
@@ -51,25 +51,25 @@ tesserae sessions discover \
   --import
 ```
 
-不带 `--import` 时，discovery 只打印找到的内容，不写入规范化会话记录。
+不带 `--import` 时，发现过程只打印找到的内容，而不写入归一化的会话记录。
 
-## 直接导入规范化 JSON
+## 直接导入归一化 JSON
 
-如果其他工具已经生成了规范化的 `HarnessSession` JSON，可以导入一个文件或一组文件：
+如果另一个工具已经产出了归一化的 `HarnessSession` JSON，可以导入单个文件或文件列表：
 
 ```bash
 tesserae sessions import path/to/session.json path/to/more-sessions.json
 ```
 
-每个输入可以包含一个会话对象或会话对象列表。
+每个输入可以包含一个会话对象或一个会话对象列表。
 
-## 列出已导入会话
+## 列出已导入的会话
 
 ```bash
 tesserae sessions list
 ```
 
-会话存储在：
+会话存储在以下位置：
 
 ```text
 .tesserae/harness_sessions/
@@ -79,58 +79,70 @@ tesserae sessions list
     <session>.md
 ```
 
-实时监控的会话还会记录在 SQLite `HarnessSessionsDB`（`.tesserae/sqlite.db`）中，其中也持久化了 tailer 恢复所用的按文件 read offset。`sessions list` 报告合并后的视图。
+实时监控的会话还会被记录在 SQLite 的 `HarnessSessionsDB`（`.tesserae/sqlite.db`）中，它同时持久化 tailer 用于恢复的按文件读取偏移量。`tesserae sessions list` 报告合并后的视图。
 
 ## 构建静态会话页面
 
-导入会话后，重新构建站点：
+导入会话后，重建站点：
 
 ```bash
 tesserae export site
 ```
 
-站点会输出：
+站点会发出：
 
 ```text
 .tesserae/site/sessions/index.html
 .tesserae/site/sessions/<project>/<session>.html
 ```
 
-生成的站点会从全局 rail、首页 Browse 卡片、搜索条目以及每个会话详情页的 breadcrumb trail 链接到 Sessions。
+生成的站点从全局导航栏、主页 Browse 卡片、搜索条目以及每个会话详情页的面包屑路径链接到 Sessions。
+
+## 快速转录搜索（memex）
+
+当你用 `tesserae serve` 服务站点时，**sessions 仪表盘**会获得一个覆盖所有已索引 Claude/Codex 转录的全文搜索框，由 [`nicosuave/memex`](https://github.com/nicosuave/memex)（BM25）支持。结果显示 `project · role · date · score` 以及匹配的片段。
+
+```bash
+cargo install --git https://github.com/nicosuave/memex --locked   # or: tesserae config deps --install memex
+memex index                                                        # build the index once
+tesserae serve                                                     # search box appears on /sessions
+```
+
+它是**可选且优雅降级的**：没有 `memex` 二进制（或索引）时，搜索框会显示一条清晰、可行动的消息，仪表盘的其余部分不受影响。搜索端点（`GET /api/transcript-search`）仅限同源/回环调用方，因此你访问的网页无法探测你的本地历史。
 
 ## 会话详情页布局
 
-会话详情页使用共享的静态站点 shell，而不是独立的 transcript dump。它们包括：
+会话详情页使用共享的静态站点外壳，而不是独立的转录转储。它们包括：
 
-- hero 和 stat strip；
+- hero 与统计条；
 - 高层摘要；
-- timeline 和 size metadata；
-- 存在时的 decisions、files、commands、tools 和 errors；
-- 折叠的 subagent tree；
-- 按 turn 展示的 user/assistant 对话；
-- 附在前一个 assistant turn 下方的折叠 tool-use blocks；
-- 链接到 `#turn-N` anchors 的左侧 conversation rail。
+- 时间线与大小元数据；
+- 存在时显示的决策、文件、命令、工具和错误；
+- 折叠的 subagent 树；
+- 逐轮的 user/assistant 对话；
+- 附在前一条 assistant 轮次下方的折叠 tool-use 块；
+- 链接到 `#turn-N` 锚点的左侧对话导航栏。
 
-对话 markdown 通过站点 markdown renderer 渲染。inline code、显式 command/tag markup、paths、filenames、hashtags 等语义表面会装饰成紧凑 chip；随机大写名词不会自动变成 chip。
+对话 markdown 通过站点 markdown 渲染器渲染。行内代码、显式命令/标签标记、路径、文件名和话题标签等语义表面会被装饰为紧凑的 chip；随意的大写名词不会被自动 chip 化。
 
-当前 transcript typography：
+当前的转录排版：
 
-| Surface | Selector | Size |
+| 表面 | 选择器 | 大小 |
 |---|---|---|
-| 对话 markdown prose | `.session-turn-text`, prose children | `8px` |
-| 通用对话 code fences | `.session-turn-text pre` | `10px` |
-| Bash/shell fenced code content | `.session-code-block code.language-bash`, `.language-sh`, `.language-shell`, `.language-zsh` | `11px` |
-| Tool details/summary | `.session-tool-details`, `.session-tool-details > summary` | `10px` |
-| Tool-use header | `.session-tool-use-header` | `8px` |
-| Tool payload text | `.session-tool-use-text` | `6px` |
+| 对话 markdown 正文 | `.session-turn-text`，正文子元素 | `8px` |
+| 通用对话代码围栏 | `.session-turn-text pre` | `10px` |
+| Bash/shell 围栏代码内容 | `.session-code-block code.language-bash`、`.language-sh`、`.language-shell`、`.language-zsh` | `11px` |
+| 工具 details/summary | `.session-tool-details`、`.session-tool-details > summary` | `10px` |
+| Tool-use 头部 | `.session-tool-use-header` | `8px` |
+| 工具载荷文本 | `.session-tool-use-text` | `6px` |
 
-## 会话发布清单
+## 包含会话的发布检查清单
 
-部署包含会话的公开站点之前：
+在部署包含会话的公开站点之前：
 
 1. 运行 `tesserae sessions list` 并确认数量符合预期。
-2. 检查 `.tesserae/harness_sessions/` 是否包含敏感内容。
-3. 使用 `tesserae export site` 重新构建。
+2. 检查 `.tesserae/harness_sessions/` 中是否有敏感内容。
+3. 用 `tesserae export site` 重建。
 4. 在本地打开 `sessions/index.html` 和至少一个会话详情页。
-5. 确认 tool blocks 默认折叠，并且 raw tool payload 可以发布。
-6. 在 source tree 已提交后，使用 `tesserae export site --deploy` 部署。
+5. 确认工具块默认折叠，且原始工具载荷可以接受发布。
+6. 在源码树已提交后用 `tesserae export site --deploy` 部署。

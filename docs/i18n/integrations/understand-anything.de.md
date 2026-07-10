@@ -39,16 +39,12 @@ Empfohlen ist der Setup-Wizard:
 tesserae init
 ```
 
-Wähle im Schritt „Companion-Tools“ Understand Anything aus. Tesserae installiert/aktualisiert die Companion-Skills auf Wunsch und schreibt einen verwalteten Refresh-Befehl in `.tesserae/config.json`. Künftige `tesserae compile`-Aufrufe führen diesen Wrapper automatisch aus, wenn der UA-Graph fehlt oder veraltet ist.
+Wähle im Schritt „Companion-Tools“ Understand Anything aus (es ist **standardmäßig aus** — sein Refresh führt ein Remote-Install-Skript aus). Tesserae schreibt einen verwalteten Refresh-Befehl in `.tesserae/config.json` unter `external_tools`. Auto-Refresh beim Compile ist ebenfalls standardmäßig aus (`auto_refresh: false`); setze ihn auf `true`, wenn `tesserae compile` den Wrapper automatisch ausführen soll, sobald der UA-Graph fehlt oder veraltet ist.
 
-Für nicht-interaktive Automatisierung:
+Für nicht-interaktive Automatisierung führe `tesserae init --yes` aus (Integrationen AUS), aktiviere Understand Anything in `.tesserae/config.json` und dann:
 
 ```bash
-tesserae init \
-  --yes \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex
+tesserae integrations refresh understand-anything --platform codex
 tesserae compile
 ```
 
@@ -61,7 +57,7 @@ tesserae integrations refresh understand-anything --platform codex
 Während des Compiles geht Tesserae so vor:
 
 1. prüft, ob `.understand-anything/knowledge-graph.json` existiert und mit dem aktuellen git-commit übereinstimmt, sofern Metadaten verfügbar sind;
-2. führt die konfigurierte Agent-Plattform (`codex`, `opencode` oder `claude`) nur dann aus, wenn der Graph fehlt/veraltet ist oder ein Refresh erzwungen wurde;
+2. führt die konfigurierte Agent-Plattform (`codex`, `opencode` oder `claude`) nur dann aus, wenn ihr `external_tools`-Eintrag `auto_refresh: true` hat und der Graph fehlt/veraltet ist, oder ein Refresh erzwungen wurde;
 3. verifiziert, dass der Graph geschrieben wurde;
 4. materialisiert `.tesserae/external/understand-anything.md`;
 5. setzt die normale Memory-Kompilation fort.
@@ -72,17 +68,7 @@ Du kannst vor einem Compile alle konfigurierten externen Refresh-Befehle erzwing
 tesserae compile --refresh-integrations
 ```
 
-Cognee zusätzlich nötig? Füge die Runtime-Memory-Flags im selben Setup-Befehl hinzu:
-
-```bash
-tesserae init \
-  --yes \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex \
-  --run-cognee \
-  --install-cognee
-```
+Cognee zusätzlich nötig? Cognee ist ebenfalls Opt-in: Installiere es mit `pip install tesserae[cognee]` und setze `memory_backends.cognee.enabled: true` in `.tesserae/config.json` (frage es explizit mit `tesserae query --backend cognee` ab).
 
 ## Manuelles Äquivalent
 

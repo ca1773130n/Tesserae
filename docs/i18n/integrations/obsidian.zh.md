@@ -21,7 +21,7 @@ tesserae compile
 ## 1) 导出 vault
 
 ```bash
-tesserae vault export --vault ~/Documents/tesserae-vault
+tesserae vault export --output ~/Documents/tesserae-vault
 ```
 
 如果目录不存在会自动创建。重复运行会幂等地覆盖 —— 在相同图谱下，markdown 投影是确定性的。
@@ -137,8 +137,8 @@ Obsidian 内置的图谱视图（`Ctrl/Cmd+G`）已经能直接读取 `## Outgoi
 注册多个 Tesserae vault，让 `wiki://` URI 能跨 vault 解析：
 
 ```bash
-tesserae register-project /path/to/research --name research
-tesserae register-project /path/to/notes    --name notes
+tesserae projects register /path/to/research --name research
+tesserae projects register /path/to/notes    --name notes
 ```
 
 注册之后重新导出每个 vault。导出后的 `_bridges.md` 会按别名分组，显示 vault 之间可解析的引用。
@@ -154,7 +154,7 @@ Obsidian 本身不会原生跟随 `wiki://` URI —— 它们会被渲染成内�
 tesserae compile
 ```
 
-`compile` 会自动重新投影 vault —— 你不再需要单独运行导出步骤。（若只想在不做完整重编译的情况下做一次性重新投影，`tesserae vault export --vault <路径>` 仍然可用。）Obsidian 会热重载磁盘上变更的文件。
+`compile` 会自动重新投影 vault —— 你不再需要单独运行导出步骤。（若只想在不做完整重编译的情况下做一次性重新投影，`tesserae vault export --output <路径>` 仍然可用。）Obsidian 会热重载磁盘上变更的文件。
 
 如果你在 vault 里添加了一些并非从图谱投影出来的 markdown 笔记（例如你自己的个人批注），它们会被保留 —— 投影器只覆盖它自己拥有的文件：`papers/`、`concepts/`、`claims/` 下的页面，以及 `index.md`、`_bridges.md`、`_meta/dashboard.md` 和 `README.md`。手写页面（没有 `node_id:` frontmatter 的文件）以及每个投影页面上专用的用户笔记块（`<!-- user-notes:start -->` … `<!-- user-notes:end -->`）在重编译之间会被保留。
 
@@ -191,7 +191,7 @@ tesserae vault sync --watch
 tesserae vault sync --prune-orphans
 ```
 
-完整的逐字段归属矩阵与设计原理见 [obsidian-sync.md](obsidian-sync.md)。
+完整的逐字段归属矩阵与设计原理见 [obsidian-sync.md](obsidian-sync.zh.md)。
 
 ## 何时用它、何时用静态站点
 

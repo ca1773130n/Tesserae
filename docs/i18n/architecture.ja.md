@@ -1,29 +1,29 @@
+# アーキテクチャ
+
 <!-- translations:start -->
 <p align="center"><a href="../architecture.md">English</a> · <a href="architecture.ko.md">한국어</a> · <a href="architecture.zh.md">中文</a> · <a href="architecture.ja.md">日本語</a> · <a href="architecture.ru.md">Русский</a> · <a href="architecture.es.md">Español</a> · <a href="architecture.fr.md">Français</a> · <a href="architecture.de.md">Deutsch</a></p>
 <!-- translations:end -->
-＃ 建築
+Tesserae は**コンテキストエンジン**です。プロジェクトから自己改善型のナレッジベースを再構築し、それをすぐに使えるコンテキストとしてエージェントに渡します。3 本の柱の上で動作します: (1) **セッション監視** — ライブのエージェント/作業セッションを観察し、発見をその場で捕捉する; (2) **自律的・能動的なナレッジ取り込み** — パイプライン + スーパーバイザーのループが知識を継続的に取り込み再抽出し、指示を待たずにベースを改善し続ける; (3) **オンデマンドのドキュメント/コンテキスト** — 同じベースからコンパイルされる、ユーザー要求の成果物。型付きグラフ、markdown ヴォルト、静的サイトはナレッジベースの*射影*であり、エンジンはそれらを新鮮に保ち、エージェントに供給するループです。
 
-Tesserae は**コンテキスト エンジン**です。プロジェクトから自己改善型のナレッジ ベースを再構築し、それをエージェントがすぐに使えるコンテキストとして提供します。3 本の柱の上で動作します。(1) **セッション監視** — ライブのエージェント/作業セッションを観察し、発生したその場で発見を捕捉します。(2) **自律的・能動的なナレッジ取り込み** — パイプライン + スーパーバイザー ループが知識を継続的に取り込み再抽出し、指示を待たずにベースを改善し続けます。(3) **オンデマンド ドキュメント/コンテキスト** — 同じベースからコンパイルされたユーザー要求の成果物です。型付きグラフ、Markdown ボールト、静的サイトはナレッジ ベースの*投影*であり、エンジンはそれらを新鮮に保ちエージェントに供給するループです。
-
-その下層で、Tesserae は、ソース素材のディレクトリを制御された型付きナレッジ グラフに変換し、耐久性のあるマークダウン Wiki レイヤーを介してグラフを作成し、静的で AI フレンドリーな Web サイトを作成するプロジェクトを作成します。 2026 年 4 月の再設計では、投影側を Karpathy の 3 層モデルを中心に再編成しました。生の証拠は生のままで、型付きグラフがオントロジーを管理し、マークダウン Wiki レイヤーがグラフとレンダリングされた出力の間に配置されます。静的サイトは、[`tesserae/research_graph.py`](../../tesserae/research_graph.py) 内の制御されたオントロジーをスキーマとして使用し、グラフの直接ダンプではなく、その Wiki レイヤーの *レンダラー* です。**v0.5.0** マイルストーン（2026 年 6 月）は、3 本の柱すべてを駆動するエンジン スパインを追加しました — 下記の*エンジン スパイン*および*オンデマンド コンテキスト コンパイラ*を参照してください。
+その下層で、Tesserae はソース素材のディレクトリを制御された型付きナレッジグラフに変換し、そのグラフを永続的な markdown wiki レイヤーを通して、静的で AI フレンドリーなウェブサイトに射影します。2026 年 4 月の再設計では、射影側を Karpathy の 3 層モデルを中心に再編成しました: 生の証拠は生のまま残り、型付きグラフがオントロジーを統治し、markdown wiki レイヤーがグラフとあらゆるレンダリング出力の間に位置します。静的サイトはグラフの直接ダンプではなく、その wiki レイヤーの*レンダラー*であり、[`tesserae/research_graph.py`](../../tesserae/research_graph.py) 内の制御されたオントロジーをスキーマとします。**v0.5.0** マイルストーン（2026 年 6 月）は、3 本の柱すべてを駆動するエンジンスパインを追加しました — 下記の*エンジンスパイン*と*オンデマンドコンテキストコンパイラ*を参照してください。
 
 ## Karpathy の 3 層モデル
 
-Andrej Karpathy による LLM フレンドリーなナレッジ ベースの構成は 3 つの層に分かれており、それぞれに独自の耐久性が保証されています。
+LLM フレンドリーなナレッジベースに関する Andrej Karpathy のフレーミングは、それぞれ固有の永続性保証を持つ 3 つのレイヤーを区別します:
 
-|レイヤー |懸念事項 |リポジトリの場所 |オーナー |
+| レイヤー | 関心事 | リポジトリ内の場所 | 所有者 |
 |---|---|---|---|
-| L1 — 生のソース |ユーザーが作成または収集したリテラル バイト。追加のみ。 | `data/`、`docs/`、`.tesserae/config.json` で参照されるプロジェクト ツリー |ユーザー |
-| L2 — ウィキ | YAML フロントマターを使用した型付きマークダウン ページ (ソース、コンセプト、エンティティ、論文、リポジトリ、トピック、合成、質問)。冪等: コンパイルごとに再生成されますが、コンテンツのハッシュが変更された場合にのみ書き換えられます。 | `.tesserae/wiki/` | `WikiPageStore`、`WikiLayerProjector`、`SynthesisProjector` |
-| L3 — レンダリング済み |静的 HTML サイト、AI 兄弟エクスポート、検索インデックス、サイトマップ、JSON-LD。コンパイルごとに消去および再書き込みされますが、再実行後もバイトは安定しています。 | `.tesserae/site/` | `StaticSiteBuilder` (`tesserae/site/`) |
+| L1 — 生ソース | ユーザーが執筆または収集したそのままのバイト列。追記専用。 | `data/`、`docs/`、`.tesserae/config.json` で参照されるプロジェクトツリー | ユーザー |
+| L2 — Wiki | YAML frontmatter を持つ型付き markdown ページ（sources、concepts、entities、papers、repos、topics、syntheses、questions）。冪等: コンパイルごとに再生成されるが、コンテンツハッシュが変わったときにのみ書き直される。 | `.tesserae/wiki/` | `WikiPageStore`、`WikiLayerProjector`、`SynthesisProjector` |
+| L3 — レンダリング済み | 静的 HTML サイト、AI シブリングのエクスポート、検索インデックス、サイトマップ、JSON-LD。コンパイルごとに消去・再書き込みされるが、再実行間でバイト安定。 | `.tesserae/site/` | `StaticSiteBuilder`（`tesserae/site/`） |
 
-スキーマは、別個の軸として 3 つのレイヤーすべてにまたがっています。`graph.json` の `ResearchGraph` は、L2 ページがリンクする制御されたオントロジーであり、[`tesserae/research_graph.py`](../../tesserae/research_graph.py) の `ResearchNodeType` / エッジ ホワイトリストは、そもそもどのようなタイプが存在するのかの信頼できる情報源です。
+スキーマは独立した軸として 3 層すべてにまたがります: `graph.json` の `ResearchGraph` は L2 ページがリンクする制御されたオントロジーであり、[`tesserae/research_graph.py`](../../tesserae/research_graph.py) の `ResearchNodeType` / エッジのホワイトリストが、そもそもどんな型が存在するかについての真実のソースです。
 
-再設計により、L2 が明示的に追加されました。 2026 年 4 月以前は、静的サイトは `graph.json` から直接投影されていました。 wiki レイヤーは Obsidian ボールト エクスポート内にのみ存在していました。それを分割すると次のようになりました。
+再設計は L2 を明示的に追加しました。2026 年 4 月以前は、静的サイトは `graph.json` から直接射影されており、wiki レイヤーは Obsidian ヴォルトのエクスポート内にのみ存在していました。これを分離したことで得られたもの:
 
-- 人間が編集可能な単一のサーフェス (Obsidian または任意のマークダウン エディターで `.tesserae/wiki/` を開きます)。
-- 冪等なリビルド: `project compile` を再実行すると、ソース コンテンツが変更されない限り、ファイルの差分はゼロになります。
-- 進化ログ: 合成ページは時間の経過とともに蓄積され、プロジェクト自体が物語るようになります。
+- 人間が編集できる単一のサーフェス（`.tesserae/wiki/` を Obsidian や任意の markdown エディタで開く）。
+- 冪等な再ビルド: ソースコンテンツが変わらない限り、`project compile` の再実行はファイル差分ゼロを生みます。
+- 進化のログ: 統合（synthesis）ページは時間とともに蓄積し、プロジェクトが自らを語れるようにします。
 
 ## パイプライン
 
@@ -65,139 +65,139 @@ data/, docs/, src/                                    (L1 raw)
 └───────────────────────────┘
 ```
 
-すべてのステップは段階的に行われます。グラフ抽出プログラムは、`manifest.json` コンテンツ ハッシュを使用して、変更されていないソース ファイルをスキップします。本体ハッシュがすでにディスク上にあるものと一致する場合、`WikiPageStore.write_page` は `False` を返します (書き込みをスキップします)。 `StaticSiteBuilder` は `.tesserae/site/` を消去して書き換えますが、その出力は決定的です。以下の「冪等性の話」を参照してください。
+すべてのステップが増分的です。グラフ抽出器は `manifest.json` のコンテンツハッシュを使って未変更のソースファイルをスキップします。`WikiPageStore.write_page` は、ボディのハッシュがディスク上の既存の内容と一致する場合に `False` を返し（書き込みをスキップし）ます。`StaticSiteBuilder` は `.tesserae/site/` を消去して書き直しますが、その出力は決定的です — 下記の「冪等性の話」を参照してください。
 
-## コンテキスト コンパイラのデータフロー
+## コンテキストコンパイラのデータフロー
 
-オンデマンド コンテキスト コンパイラ（[`tesserae/context_compiler.py`](../../tesserae/context_compiler.py)）は柱 3 の目玉となる経路です。クエリおよび/または明示的なシード ノード id が与えられると、`compile_context` はグラフから直接、調整済みで**引用付き**の Markdown バンドルを構築し、メモリ内に返します — `.tesserae/` 配下には何も書き込みません。
+オンデマンドコンテキストコンパイラ（[`tesserae/context_compiler.py`](../../tesserae/context_compiler.py)）は柱 3 の看板パスです。クエリおよび/または明示的なシードノード ID を与えると、`compile_context` はグラフから直接、引用付きに仕立てられた markdown バンドルを構築してメモリ上で返します — `.tesserae/` 配下には何も書き込みません。
 
 ```
 query / seeds
      │
-     ▼  1. シード解決
-        明示的シード（グラフに存在する場合のみ保持）+ hybrid_search() ヒット、重複排除、安定順
+     ▼  1. Seed resolution
+        explicit seeds (kept iff they exist) + hybrid_search() hits, deduped, stable order
      │
-     ▼  2. PPR 展開
-        retrieval.ppr.personalized_pagerank が深さ制限付き k ホップ近傍をランク付け;
-        結果が空（シードが非連結）→ シード順にフォールバック（バンドルは決して空にならない）
+     ▼  2. PPR expansion
+        retrieval.ppr.personalized_pagerank ranks the depth-bounded k-hop neighbourhood;
+        empty result (disconnected seeds) → fall back to seed order (bundle is never empty)
      │
-     ▼  3. 予算制約付き選択
-        PPR 順にたどり、次の本文が `budget` 文字を超過する直前まで各ノードの引用本文を含める
-        （budget <= 0 = 無制限; 単語境界に超過マーカー）
+     ▼  3. Budget-bound selection
+        walk PPR order, include each node's cited body until the next would overflow
+        `budget` chars (budget <= 0 = uncapped; over-budget marker on a word boundary)
      │
-     ▼  4. 引用付き Markdown 組み立て
-        選択された各ノードにつき 1 セクション + 末尾の `## Citations` ブロック。
-        本文は（store と公開 wiki 種別が存在する場合）投影された wiki ページを優先し、
-        なければノード説明、それもなければ最小スタブを使用。LLM なしの本文は壁時計の
-        タイムスタンプを一切埋め込まない → 同じ (graph, query, seeds, depth, budget) でバイト一致。
+     ▼  4. Cited markdown assembly
+        one section per selected node + a trailing `## Citations` block.
+        Body text prefers the projected wiki page (when a store + public wiki kind exist),
+        else the node description, else a minimal stub. The no-LLM body embeds NO
+        wall-clock timestamp → byte-identical for the same (graph, query, seeds, depth, budget).
      │
-     ▼  5. オプションの LLM 合成  （synthesize=true かつ ANTHROPIC_API_KEY が設定されている場合のみ）
+     ▼  5. Optional LLM synthesis  (only when synthesize=true AND ANTHROPIC_API_KEY is set)
      ▼
    ContextBundle { query, seeds_used, ranked_nodes, selected_nodes,
                    citations[ContextCitation], body, synthesized,
                    char_budget_used, char_budget_total }
 ```
 
-既定値: `depth=2`、`budget=32000`。決定的な組み立て（ステップ 1〜4）が契約であり、LLM 合成は純粋に付加的です。同じパイプラインが `project context` CLI コマンド、`compile_context` MCP ツール、およびトピック範囲のエクスポート スライス（`slice_export_context_for_topic`、トピック範囲の `llms.txt`）を支えています。
+既定値: `depth=2`、`budget=32000`。決定的なアセンブリ（ステップ 1–4）が契約であり、LLM 合成は純粋に加算的です。同じパイプラインが `project context` CLI コマンド、`compile_context` MCP ツール、トピックスコープのエクスポートスライス（`slice_export_context_for_topic`、トピックスコープの `llms.txt`）を支えています。
 
 ## モジュールマップ
 
-### Wiki + 総合 (L2)
+### Wiki + 統合（L2）
 
-|モジュール |責任 |
+| モジュール | 責務 |
 |---|---|
-| [`tesserae/wiki_store.py`](../../tesserae/wiki_store.py) | `WikiPage` データクラス、ファイルシステム I/O の場合は `WikiPageStore`。 Stdlib 専用の YAML サブセット フロントマター パーサー。ボディハッシュ冪等性。 |
-| [`tesserae/wiki_projector.py`](../../tesserae/wiki_projector.py) | `WikiLayerProjector`: Wiki レイヤー タイプの各 `ResearchGraph` ノードを、適切な `kind/` フォルダー内のマークダウン ページにマップします。 |
-| [`tesserae/synthesis.py`](../../tesserae/synthesis.py) | `SynthesisProjector`: パルス、デイリーダイジェスト、ウィークリー、トピック、比較、フィールド概要の決定的テンプレート。 `Synthesis` ノードと `synthesizes` / `summarizes` エッジをグラフに追加します。 |
+| [`tesserae/wiki_store.py`](../../tesserae/wiki_store.py) | `WikiPage` データクラス、ファイルシステム I/O のための `WikiPageStore`。標準ライブラリのみの YAML サブセット frontmatter パーサー。ボディハッシュによる冪等性。 |
+| [`tesserae/wiki_projector.py`](../../tesserae/wiki_projector.py) | `WikiLayerProjector`: wiki レイヤー型の各 `ResearchGraph` ノードを、適切な `kind/` フォルダ内の markdown ページにマッピングします。 |
+| [`tesserae/synthesis.py`](../../tesserae/synthesis.py) | `SynthesisProjector`: pulse、daily_digest、weekly、topic、comparison、field_overview のための決定的テンプレート。`Synthesis` ノードと `synthesizes` / `summarizes` エッジをグラフに追加し返します。 |
 
 ### グラフ + オントロジー
 
-|モジュール |責任 |
+| モジュール | 責務 |
 |---|---|
-| [`tesserae/research_graph.py`](../../tesserae/research_graph.py) | `ResearchNodeType` 列挙型 (`SYNTHESIS` を含む)、エッジタイプのホワイトリスト (`synthesizes`、`summarizes` を含む)、検証。 |
-| [`tesserae/canonicalization.py`](../../tesserae/canonicalization.py) |エイリアスの正規化 + ほぼ重複したレビュー キュー。 |
-| [`tesserae/code_graph.py`](../../tesserae/code_graph.py) |開発スライス用の決定論的 Python AST エクストラクター。 |
-| [`tesserae/llm_extractor.py`](../../tesserae/llm_extractor.py) | Claude CLI/OAuth 選択的エクストラクター。 |
+| [`tesserae/research_graph.py`](../../tesserae/research_graph.py) | `ResearchNodeType` 列挙型（`SYNTHESIS` を含む）、エッジ型のホワイトリスト（`synthesizes`、`summarizes` を含む）、バリデーション。 |
+| [`tesserae/canonicalization.py`](../../tesserae/canonicalization.py) | エイリアスの正規化 + 近似重複のレビューキュー。 |
+| [`tesserae/code_graph.py`](../../tesserae/code_graph.py) | 開発スライス用の決定的 Python AST 抽出器。 |
+| [`tesserae/llm_extractor.py`](../../tesserae/llm_extractor.py) | Claude CLI/OAuth の選択的抽出器。 |
 
-### サイトレンダラー (L3)
+### サイトレンダラー（L3）
 
-|モジュール |責任 |
+| モジュール | 責務 |
 |---|---|
-| [`tesserae/site/__init__.py`](../../tesserae/site/__init__.py) | `StaticSiteBuilder.write_site`: サイトをワイプ + 再構築し、すべてのルートを歩き、エクスポート + AI 兄弟 + マニフェストを生成します。 |
-| [`tesserae/site/pages.py`](../../tesserae/site/pages.py) |ルートごとに 1 つのレンダラー (ホーム、インデックス、詳細ページ、タイムライン、グラフ、概要)。 `SiteContext` は事前計算されたインデックスを保持するため、レンダラーは純粋な状態を保ちます。 |
+| [`tesserae/site/__init__.py`](../../tesserae/site/__init__.py) | `StaticSiteBuilder.write_site`: サイトを消去 + 再ビルドし、すべてのルートを走査し、エクスポート + AI シブリング + マニフェストを出力します。 |
+| [`tesserae/site/pages.py`](../../tesserae/site/pages.py) | ルートごとに 1 つのレンダラー（ホーム、インデックス、詳細ページ、タイムライン、グラフ、about）。`SiteContext` が事前計算済みインデックスを運ぶため、レンダラーは純粋なままです。 |
 | [`tesserae/site/components.py`](../../tesserae/site/components.py) | HTML プリミティブ: `breadcrumbs`、`card`、`badge`、`node_table`、`edge_list`、`sparkline_svg`、`heatmap_svg`、`toc`、`page_shell`、`ai_siblings_footer`。 |
-| [`tesserae/site/tokens.py`](../../tesserae/site/tokens.py) |デザイントークン — CSS変数、ライトテーマとダークテーマ、レイアウト、タイポグラフィー、ここでスタイル設定されたすべてのコンポーネント。 |
-| [`tesserae/site/js.py`](../../tesserae/site/js.py) |クライアント JS バンドル: 検索パレット、テーマ切り替え、シグマ + 3D フォース グラフ ビュー。 |
-| [`tesserae/site/markdown.py`](../../tesserae/site/markdown.py) | Stdlib 専用のマークダウン レンダラー (リンク、自動リンク、コード、強調、見出し)。外部依存性はありません。 |
-| [`tesserae/site/relevance.py`](../../tesserae/site/relevance.py) |すべての `Related` セクションで使用される 4 つのシグナル関連性スコアリング (ダイレクト リンク、ソース オーバーラップ、Adamic-Adar、タイプ アフィニティ)。 |
-| [`tesserae/site/search.py`](../../tesserae/site/search.py) | `search-index.json`ビルダー。 Wiki レイヤーの種類のみ。 |
-| [`tesserae/site/sessions.py`](../../tesserae/site/sessions.py) |インポートされたハーネス履歴のセッション インデックス/詳細レンダラー: プロジェクト メモリ概要セクション、会話ターン レール、マークダウン トランスクリプト レンダリング、および折りたたまれたツール使用ブロック。 |
-| [`tesserae/site/exports.py`](../../tesserae/site/exports.py) | `llms.txt`、`llms-full.txt`、`graph.jsonld`、`sitemap.xml`、`rss.xml`、`robots.txt`、`ai-readme.md`、ページごとの `.txt`/`.json` の兄弟。 |
+| [`tesserae/site/tokens.py`](../../tesserae/site/tokens.py) | デザイントークン — CSS 変数、ライト + ダークテーマ、レイアウト、タイポグラフィ。すべてのコンポーネントがここでスタイルされます。 |
+| [`tesserae/site/js.py`](../../tesserae/site/js.py) | クライアント JS バンドル: 検索パレット、テーマトグル、sigma + 3D-force グラフビュー。 |
+| [`tesserae/site/markdown.py`](../../tesserae/site/markdown.py) | 標準ライブラリのみの markdown レンダラー（リンク、オートリンク、コード、強調、見出し）。外部依存なし。 |
+| [`tesserae/site/relevance.py`](../../tesserae/site/relevance.py) | すべての `Related` セクションが使う 4 シグナルの関連度スコアリング（直接リンク、ソースの重なり、Adamic-Adar、型の親和性）。 |
+| [`tesserae/site/search.py`](../../tesserae/site/search.py) | `search-index.json` のビルダー。wiki レイヤーの kind のみ。 |
+| [`tesserae/site/sessions.py`](../../tesserae/site/sessions.py) | インポートされたハーネス履歴のセッション インデックス/詳細レンダラー: プロジェクトメモリのサマリセクション、会話ターンのレール、markdown トランスクリプトのレンダリング、折りたたまれたツール使用ブロック。 |
+| [`tesserae/site/exports.py`](../../tesserae/site/exports.py) | `llms.txt`、`llms-full.txt`、`graph.jsonld`、`sitemap.xml`、`rss.xml`、`robots.txt`、`ai-readme.md`、ページ単位の `.txt`/`.json` シブリング。 |
 
 ### パイプラインオーケストレーション
 
-|モジュール |責任 |
+| モジュール | 責務 |
 |---|---|
-| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`: 抽出 → グラフ → メモリ パス → Wiki レイヤー → サイトを駆動。 `ProjectPaths`（`config`、`graph`、`manifest`、`wiki`、`site`など）所有。来歴（provenance）駆動の増分コンパイルが適格かを事前に判断（`incremental_compile` でゲート、既定 OFF）。 |
-| [`tesserae/cli.py`](../../tesserae/cli.py) | フラット動詞の CLI ディスパッチ（レガシーの `project`/`wiki` サブコマンド群を削除した後で約 2,732 行）。動詞 — `init`、`compile`、`context`、`ask`、`refresh`、`serve`、`engine`、`export`、`vault`、`code`、`lab`、`config`、`projects`、`integrations` — は [`tesserae/cli_tree.py`](../../tesserae/cli_tree.py) にメタデータとして宣言され、手動登録ではなくそのツリーから配線されます。 |
-| [`tesserae/deploy.py`](../../tesserae/deploy.py) | `export site --deploy`: ワークツリー経由で `.tesserae/site/` を `gh-pages` ブランチにプッシュし、オプションで `gh` 経由でページを有効にします。 |
+| [`tesserae/project.py`](../../tesserae/project.py) | `ProjectWiki.compile`: 抽出 → グラフ → メモリパス → wiki レイヤー → サイトを駆動。`ProjectPaths`（`config`、`graph`、`manifest`、`wiki`、`site` など）を所有。来歴（provenance）駆動の増分コンパイルが適格かを事前に判断します（`incremental_compile` でゲート、既定 OFF）。 |
+| [`tesserae/cli.py`](../../tesserae/cli.py) | フラット動詞の CLI ディスパッチ（レガシーの `project`/`wiki` サブコマンド群を削除した後で約 2,732 行）。動詞 — `init`、`compile`、`ingest`、`context`、`ask`、`query`、`doctor`、`summary`、`decisions`、`refresh`、`serve`、`engine`、`export`、`vault`、`code`、`lab`、`setup`、`config`、`projects`、`sources`、`federation`、`integrations` — は [`tesserae/cli_tree.py`](../../tesserae/cli_tree.py) にメタデータとして宣言され、手動登録ではなくそのツリーから配線されます。 |
+| [`tesserae/deploy.py`](../../tesserae/deploy.py) | `export site --deploy`: ワークツリー経由で `.tesserae/site/` を `gh-pages` ブランチにプッシュし、オプションで `gh` 経由で Pages を有効化します。 |
 
-### エンジン スパイン (v0.5.0 — 柱 1 & 2)
+### エンジンスパイン（v0.5.0 — 柱 1 & 2）
 
-エンジン スパインは、セッション監視と自律的な再取り込みを駆動するインプロセス ループです。同じ `Pipeline.run()` が、CLI、スーパーバイザー デーモン、そして（後の）MCP サーバーがすべて呼び出す単一のリフレッシュ経路です。
+エンジンスパインは、セッション監視と自律的な再取り込みを駆動するインプロセスのループです。同じ `Pipeline.run()` が、CLI・スーパーバイザーデーモン・（後には）MCP サーバーのすべてが呼び出す単一のリフレッシュパスです。
 
 | モジュール | 責務 |
 |---|---|
-| [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | `Pipeline`: 逐次ステップ ランナー。散文的なリフレッシュ チェーン（取り込み → コンパイル → 投影/公開）をインポート可能なオブジェクトとして定式化し、表示して終了する代わりに構造化された `List[StepResult]` を返すため、各呼び出し元が結果の提示方法を自分で決められます。`run()` はステップごとに `Exception` を捕捉し（`KeyboardInterrupt`/`SystemExit` は通す）、最初の失敗で停止します。 |
-| [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | `Daemon`: 単一所有者の asyncio スーパーバイザー。ソース ディレクトリ、Obsidian ボールト、ハーネス セッション ディレクトリを監視し、キャンセル・再スケジュールのデバウンスにより一連の `TriggerEvent` をちょうど 1 回の `Pipeline.run()` にまとめます。既存の `watch.py` / `vault_watch.py` ウォッチャーを再利用（書き換えはしない）し、pidfile を書き、実行中の例外でも生き延びます。`engine`（`--interval`、`--debounce`、`--once`）として公開。 |
-| [`tesserae/watch.py`](../../tesserae/watch.py), [`tesserae/vault_watch.py`](../../tesserae/vault_watch.py) | スタンドアロンの `export site --watch` コマンドとデーモンのソース/ボールト レーンが共通で再利用するポーリング ウォッチャー。 |
+| [`tesserae/engine/pipeline.py`](../../tesserae/engine/pipeline.py) | `Pipeline`: 逐次的なステップランナー。散文で書かれていたリフレッシュチェーン（取り込み → コンパイル → 射影/公開）を、print して exit する代わりに構造化された `List[StepResult]` を返すインポート可能なオブジェクトとして成文化し、結果の見せ方を各呼び出し側が決められるようにします。`run()` はステップごとに `Exception` を捕捉し（`KeyboardInterrupt`/`SystemExit` は通し）、最初の失敗で停止します。 |
+| [`tesserae/engine/daemon.py`](../../tesserae/engine/daemon.py) | `Daemon`: 単一所有者の asyncio スーパーバイザー。ソースディレクトリ、Obsidian ヴォルト、ハーネスセッションのディレクトリを監視し、`TriggerEvent` のバーストを cancel-and-reschedule のデバウンスで正確に 1 回の `Pipeline.run()` に合流させます。既存の `watch.py` / `vault_watch.py` ウォッチャーを再利用し（書き直しません）、pidfile を書き込み、実行中の例外にも耐えます。`engine`（`--interval`、`--debounce`、`--once`）として公開されます。 |
+| [`tesserae/watch.py`](../../tesserae/watch.py)、[`tesserae/vault_watch.py`](../../tesserae/vault_watch.py) | スタンドアロンの `export site --watch` コマンドとデーモンのソース/ヴォルトレーンの両方で再利用されるポーリングウォッチャー。 |
 
-### 自己改善メモリ (v0.5.0 — 柱 2)
+### 自己改善メモリ（v0.5.0 — 柱 2）
 
-フェーズ 5 は永続的な自己改善を有効化しました。ノードごとの可変状態は `node_memory` SQLite サイドカー（`.tesserae/sqlite.db` 内部）に存在し、不変の `node_provenance.first_seen_at` 初回観測スタンプ（フェーズ 4 サイドカー）とは分離されています。コンパイルはグラフに対して一連の決定的なパスを駆動します。
-
-| モジュール | 責務 |
-|---|---|
-| [`tesserae/memory/store.py`](../../tesserae/memory/store.py) | `NodeMemoryRow` + `node_memory` テーブルへのストア非依存アクセサ（`read_memory`、`write_memory`、`bump_access`）— `decay_score`、`last_accessed_at`、`confidence`、`superseded`。どの呼び出し箇所も生の SQL を埋め込みません。 |
-| [`tesserae/memory/decay.py`](../../tesserae/memory/decay.py) | `compute_decay_score`: セッション発見をランク付けするエビングハウス式の鮮度スコア（最新 + 最もアクセスされた順）。 |
-| [`tesserae/memory/supersede.py`](../../tesserae/memory/supersede.py) | `run_supersede_pass`（**既定 ON**）: 古い近似重複インサイトを新しいものに取って代わられたと印付ける決定的判定で、`supersedes` エッジを追加。 |
-| [`tesserae/memory/insight_symbol_link.py`](../../tesserae/memory/insight_symbol_link.py) | `run_insight_symbol_link_pass`: セッション インサイトを、それが論じるコード シンボルに `discusses` エッジで結び付け。 |
-| [`tesserae/memory/reinforce.py`](../../tesserae/memory/reinforce.py), [`tesserae/memory/contradiction.py`](../../tesserae/memory/contradiction.py) | 同じサイドカーに対するアクセス強化と矛盾検出のヘルパー。 |
-
-再発信頼度は出力で数値です。時間投影は各事実の `confidence` を `NodeMemoryRow.confidence`（SQLite ではテキスト、`temporal.py` 経由で提示）からスタンプし、保存値がない場合のみ `infer_confidence` にフォールバックします。
-
-### 検索 (v0.5.0 — 柱 2 & 3)
+フェーズ 5 は永続的な自己改善を起動しました。ノードごとの可変状態は（`.tesserae/sqlite.db` 内の）`node_memory` SQLite サイドカーに存在し、不変の `node_provenance.first_seen_at` 初出スタンプ（フェーズ 4 のサイドカー）とは分離されています。コンパイルはグラフに対して一連の決定的パスを駆動します。
 
 | モジュール | 責務 |
 |---|---|
-| [`tesserae/retrieval/hybrid.py`](../../tesserae/retrieval/hybrid.py) | `hybrid_search`: 3 つのレーン — Okapi BM25（k1=1.5、b=0.75）、大小文字を無視する語彙/FTS 風部分文字列、プラグ可能な埋め込みレーン — を逆順位融合（RRF、k=60）で融合するローカル優先のハイブリッド検索器。完全に決定的。 |
-| [`tesserae/retrieval/ppr.py`](../../tesserae/retrieval/ppr.py) | `personalized_pagerank`: グラフ上での HippoRAG-2 風（arXiv:2502.14802）パーソナライズド PageRank によるマルチホップ シード展開 — 1 ホップ近傍だけでなく、シードから数ホップ離れていても良く結ばれたノードを表面化。 |
-| 埋め込みバックエンド (フェーズ 6, Track B) | ハイブリッド埋め込みレーンの既定バックエンドは追加依存を必要としない決定的なハッシュ バケット疑似埋め込みです。オプション依存がインストールされている場合は `sentence-transformers`（`all-MiniLM-L6-v2`）が優先され、遅延ロードされます。`embedding_status` MCP ツールがアクティブなバックエンドを報告します。 |
+| [`tesserae/memory/store.py`](../../tesserae/memory/store.py) | `NodeMemoryRow` + `node_memory` テーブル上のストア非依存アクセサ（`read_memory`、`write_memory`、`bump_access`） — `decay_score`、`last_accessed_at`、`confidence`、`superseded`。生の SQL を埋め込む呼び出し箇所はありません。 |
+| [`tesserae/memory/decay.py`](../../tesserae/memory/decay.py) | `compute_decay_score`: セッションの発見をランク付けするために使われる、エビングハウス様の鮮度スコア（最新 + 最もアクセスされたものが先頭）。 |
+| [`tesserae/memory/supersede.py`](../../tesserae/memory/supersede.py) | `run_supersede_pass`（**既定で ON**）: 古い近似重複のインサイトを新しいものに置き換えられたとマークし、`supersedes` エッジを追加する決定的な判定。 |
+| [`tesserae/memory/insight_symbol_link.py`](../../tesserae/memory/insight_symbol_link.py) | `run_insight_symbol_link_pass`: セッションのインサイトを、それが論じるコードシンボルに `discusses` エッジで結びつけます。 |
+| [`tesserae/memory/reinforce.py`](../../tesserae/memory/reinforce.py)、[`tesserae/memory/contradiction.py`](../../tesserae/memory/contradiction.py) | 同じサイドカー上のアクセス強化と矛盾検出のヘルパー。 |
 
-### オンデマンド コンテキスト コンパイラ (v0.5.0 — 柱 3 の目玉)
+再帰性の確信度は出力において数値です: 時間的射影は各事実の `confidence` を `NodeMemoryRow.confidence`（SQLite ではテキスト、`temporal.py` 経由で表面化）からスタンプし、保存された値が存在しない場合にのみ `infer_confidence` にフォールバックします。
 
-| モジュール | 責務 |
-|---|---|
-| [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | `compile_context`: 柱 3 の目玉機能。クエリ/シード集合に対する調整済みの**引用付き**コンテキスト バンドルをグラフから直接コンパイル — 下記*コンテキスト コンパイラのデータフロー*を参照。メモリ内 `ContextBundle`（`ContextCitation` を含む）を返し、ディスクには何も書き込みません。`project context` CLI コマンドと `compile_context` MCP ツールとして公開。 |
-
-### 永続化ポート + グラフ ストア
+### 検索（v0.5.0 — 柱 2 & 3）
 
 | モジュール | 責務 |
 |---|---|
-| [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | `GraphStore` プロトコル: `upsert_node`/`upsert_edge`、`get_node`、`iterate_nodes`、`query_subgraph`、`find_canonical`、そしてフェーズ 4 の削除面 — `delete_node` と `delete_nodes_by_source`（指定したソース パスを除いた後に来歴集合が空になるノードを削除するため、ファイル横断的な概念は生き残る）。 |
-| [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | `SqliteGraphStore`: スタンドアロンのバッキング ストア; `node_provenance` と `node_memory` のサイドカー テーブルを所有。 |
-| [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | ストア URL（`sqlite:///…`、`hypepaper-postgres://…`）を適切な `GraphStore` に解決し、MCP サーバーが実行時に任意のバッキング ストアを指せるようにします。 |
+| [`tesserae/retrieval/hybrid.py`](../../tesserae/retrieval/hybrid.py) | `hybrid_search`: 3 つのレーン — Okapi BM25（k1=1.5、b=0.75）、ケースフォールドされた字句/FTS スタイルの部分文字列、プラガブルな埋め込みレーン — を相互ランク融合（RRF、k=60）で融合するローカルファーストのハイブリッドリトリーバー。完全に決定的。 |
+| [`tesserae/retrieval/ppr.py`](../../tesserae/retrieval/ppr.py) | `personalized_pagerank`: マルチホップのシード拡張のための、グラフ上の HippoRAG-2 スタイル（arXiv:2502.14802）Personalized PageRank — 1 ホップ近傍だけでなく、シードから数ホップ先のよく接続されたノードを表面化します。 |
+| 埋め込みバックエンド（フェーズ 6、トラック B） | ハイブリッド埋め込みレーンの既定バックエンドは、追加依存を必要としない決定的なハッシュバケット疑似埋め込みです。`sentence-transformers`（`all-MiniLM-L6-v2`）が優先され、オプション依存がインストールされている場合に遅延ロードされます。`embedding_status` MCP ツールがどのバックエンドがアクティブかを報告します。 |
 
-### 外部アダプター (今回は変更なし)
+### オンデマンドコンテキストコンパイラ（v0.5.0 — 柱 3 の看板）
 
-|モジュール |責任 |
+| モジュール | 責務 |
 |---|---|
-| [`tesserae/obsidian_adapter.py`](../../tesserae/obsidian_adapter.py) | Obsidian ボールト投影 (グラフの色分け、データビュー ダッシュボード、生のアセット)。 |
-| [`tesserae/agent_harness.py`](../../tesserae/agent_harness.py) | Claude コード / Codex / Gemini / Kiro / Cursor / OpenCode ハーネスのエクスポート。 |
-| [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) |インバウンド Claude コード/Codex セッションの検出、正規化、`.tesserae/harness_sessions/` での保存、および編集されたマークダウンの概要。 |
-| [`tesserae/graphiti_adapter.py`](../../tesserae/graphiti_adapter.py) |時間的事実の JSONL + オプションのライブ Graphiti 同期。 |
-| [`tesserae/cognee_adapter.py`](../../tesserae/cognee_adapter.py) | Cognee ノード/エッジ JSONL バンドルと直接追加/認識パス。 |
-| [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | MCP stdio サーバー。検索/グラフ: `schema`、`graph_summary`、`search_nodes`、`node_context`（`use_ppr` 付き）、`search_facts`、`timeline`、`graph_ppr`、`wiki_page`、`raw_source`、`lint_report`。コンテキスト エンジン（v0.5.0）: `compile_context`（オンデマンド コンテキスト コンパイラ）、`embedding_status`、`fresh_insights`（減衰ランク付けされたセッション発見）、`list_communities`、`find_session_findings`、`find_code_symbol_mentions`。さらに `ask`、マルチプロジェクト レジストリ ツール（`list_projects`、`register_project`、`activate_project`、`unregister_project`、`list_sessions`）、`tesserae_setup_plan` / `tesserae_setup_apply`。 |
+| [`tesserae/context_compiler.py`](../../tesserae/context_compiler.py) | `compile_context`: 柱 3 の看板機能。クエリ/シード集合のために、仕立てられた**引用付き**コンテキストバンドルをグラフから直接コンパイルします — 下記の*コンテキストコンパイラのデータフロー*を参照。メモリ上の `ContextBundle`（`ContextCitation` 付き）を返し、ディスクには何も書き込みません。`project context` CLI コマンドと `compile_context` MCP ツールとして公開されます。 |
+
+### 永続化ポート + グラフストア
+
+| モジュール | 責務 |
+|---|---|
+| [`tesserae/ports/graph_store.py`](../../tesserae/ports/graph_store.py) | `GraphStore` プロトコル: `upsert_node`/`upsert_edge`、`get_node`、`iterate_nodes`、`query_subgraph`、`find_canonical`、およびフェーズ 4 の削除サーフェス — `delete_node` と `delete_nodes_by_source`（指定されたソースパスを取り除いた後に来歴集合が空になるノードを削除するため、ファイル横断の概念は生き残ります）。 |
+| [`tesserae/graph_stores/sqlite.py`](../../tesserae/graph_stores/sqlite.py) | `SqliteGraphStore`: スタンドアロンのバッキングストア。`node_provenance` と `node_memory` のサイドカーテーブルを所有します。 |
+| [`tesserae/graph_stores/url_resolver.py`](../../tesserae/graph_stores/url_resolver.py) | ストア URL（`sqlite:///…`、`hypepaper-postgres://…`）を適切な `GraphStore` に解決し、MCP サーバーが実行時に任意のバッキングストアを指せるようにします。 |
+
+### 外部アダプター（今回は変更なし）
+
+| モジュール | 責務 |
+|---|---|
+| [`tesserae/obsidian_adapter.py`](../../tesserae/obsidian_adapter.py) | Obsidian ヴォルト射影（グラフの色付け、Dataview ダッシュボード、生アセット）。 |
+| [`tesserae/agent_harness.py`](../../tesserae/agent_harness.py) | Claude Code / Codex / Gemini / Kiro / Cursor / OpenCode のハーネスエクスポート。 |
+| [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | インバウンドの Claude Code/Codex セッションの発見、正規化、`.tesserae/harness_sessions/` 配下への保存、および秘匿化された markdown サマリ。 |
+| [`tesserae/graphiti_adapter.py`](../../tesserae/graphiti_adapter.py) | 時間的事実の JSONL + オプションのライブ Graphiti 同期。 |
+| [`tesserae/cognee_adapter.py`](../../tesserae/cognee_adapter.py) | Cognee のノード/エッジ JSONL バンドルと直接の add/cognify パス。 |
+| [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | MCP stdio サーバー。検索/グラフ: `schema`、`graph_summary`、`search_nodes`、`node_context`（`use_ppr` 付き）、`search_facts`、`timeline`、`graph_ppr`、`wiki_page`、`raw_source`、`lint_report`、`doctor_report`。コンテキストエンジン（v0.5.0）: `compile_context`（オンデマンドコンテキストコンパイラ）、`embedding_status`、`fresh_insights`（減衰ランクのセッション発見）、`list_communities`、`find_session_findings`、`find_code_symbol_mentions`。さらに `ask`、マルチプロジェクトレジストリのツール（`list_projects`、`register_project`、`unregister_project`、`list_sessions`）、および `tesserae_setup_plan` / `tesserae_setup_apply`。 |
 
 ## プロジェクトワークスペースのレイアウト
 
@@ -206,9 +206,10 @@ query / seeds
   config.json                 project name, source kind, source list
   graph.json                  validated ResearchGraph (incl. Synthesis nodes)
   manifest.json               per-source content hashes (input dedup)
-  sqlite.db                   SQLite graph store; node_provenance（初回観測、フェーズ 4）と
-                              node_memory（減衰 / 信頼度 / 取って代わられた、フェーズ 5）サイドカー テーブルも所有
-  temporal_facts.jsonl        Graphiti-style temporal projection（数値の再発信頼度）
+  sqlite.db                   SQLite graph store; also owns the node_provenance
+                              (first-seen, Phase 4) and node_memory (decay /
+                              confidence / superseded, Phase 5) sidecar tables
+  temporal_facts.jsonl        Graphiti-style temporal projection (numeric recurrence confidence)
   graphiti_episodes.jsonl     dependency-free Graphiti episode export
   report.md                   graph quality / summary
   competitive_report.md       comparison vs. MegaMem / Graphiti / others
@@ -221,7 +222,7 @@ query / seeds
   site/                       L3 static site — see below
 ```
 
-### `.tesserae/wiki/` (L2)
+### `.tesserae/wiki/`（L2）
 
 ```text
 wiki/
@@ -235,9 +236,9 @@ wiki/
   questions/<slug>.md         OpenQuestion
 ```
 
-各ファイルは手動で編集できます。次のコンパイルでは、本体ハッシュがプロジェクターが書き込むものと異なる限り、ユーザーの編集が尊重されます。 (本文のみの編集が有効です。フロントマターの編集は次のコンパイル時に失われます。これは、フロントマターが再生成されるためです。) Obsidian ユーザーは、`.tesserae/wiki/` を直接開くことができます。既存の `obsidian_vault/` アダプターは別個の投影であり、代替品ではありません。
+各ファイルは手で編集できます。ボディのハッシュが射影器の書こうとする内容と異なる限り、次のコンパイルはユーザーの編集を尊重します。（ボディだけの編集は勝ちます; frontmatter の編集は再生成されるため次のコンパイルで負けます。）Obsidian ユーザーは `.tesserae/wiki/` を直接開けます。既存の `obsidian_vault/` アダプターは別の射影であり、代替ではありません。
 
-### `.tesserae/site/` (L3)
+### `.tesserae/site/`（L3）
 
 ```text
 site/
@@ -265,61 +266,61 @@ site/
   manifest.json               sha256 + size for every emitted file
 ```
 
-## 意図的に除外されたもの
+## 意図的に除外されているもの
 
-再設計では、明示的な境界線が引かれました。 コード クラス ノードとコード関数ノードは `graph.json` に残ります (つまり、MCP、Cognee、Graphiti のコンシューマーには引き続き表示されます) が、HTML ページを取得したり、`search-index.json` に表示されたり、ナビゲーションに表示されたりすることはありません。これがユーザー側の契約です。Wiki はドキュメントファーストの知識ベースであり、関数ブラウザーではありません。
+再設計は明示的な線を引きました: コードクラスとコード関数のノードは `graph.json` に留まります（そのため MCP、Cognee、Graphiti のコンシューマーからは引き続き見えます）が、HTML ページを持つことはなく、`search-index.json` に現れることもなく、ナビゲーションに現れることもありません。これがユーザー向けの契約です — この wiki はドキュメントファーストのナレッジベースであり、関数ブラウザではありません。
 
-具体的には、`StaticSiteBuilder` は、タイプが L2 wiki 種類マップ (`tesserae/wiki_projector.py::_KIND_FOR_TYPE`) にないノードをスキップします。
+具体的には、`StaticSiteBuilder` は、型が L2 wiki kind マップ（`tesserae/wiki_projector.py::_KIND_FOR_TYPE`）にないノードをすべてスキップします:
 
-- L2 + L3 から除外: `CodeClass`、`CodeFunction`、`CodeModule`、`Dependency`、`EvidenceSpan`、`SourceFile`、すべての `Claim` バリアント (`Claim`、`ContributionClaim`、`PerformanceClaim`、`ComparisonClaim`、`LimitationClaim`、`CausalClaim`)。
-- それらが引き続き表示される場所を表示します: 箇条書き、バッジ、近隣カウント、または証拠の抜粋として、関連する Wiki ページのインラインで、および下流のツール用に `graph.json` で表示されます。
+- L2 + L3 から除外: `CodeClass`、`CodeFunction`、`CodeModule`、`Dependency`、`EvidenceSpan`、`SourceFile`、すべての `Claim` 系（`Claim`、`ContributionClaim`、`PerformanceClaim`、`ComparisonClaim`、`LimitationClaim`、`CausalClaim`）。
+- それらが引き続き現れるサーフェス: 関連する wiki ページ上のインラインの箇条書き、バッジ、隣接数、証拠の抜粋として、および下流ツール向けの `graph.json` 内。
 
-コードレベルの参照が必要な場合は、LSP / コールグラフ ツールをソース ツリーに直接指定します。これは、「このプロジェクトが知っていることの Wiki」とは別の問題です。
+コードレベルのブラウジングが必要なら、LSP / コールグラフツールをソースツリーに直接向けてください — それは「このプロジェクトが知っていることの wiki」とは別の問題です。
 
 ## 冪等性の話
 
-再設計は、*変更されていない入力に対する 2 つの連続した `project compile` 実行でバイトが同一の出力**を目指しています。ピース:
+再設計は、**未変更の入力に対する連続 2 回の `project compile` 実行でバイト単位に同一な出力**を目指しています。その構成要素:
 
-1. **ソース抽出**では、`manifest.json` コンテンツ ハッシュを使用します。変更されていないファイルはスキップされるため、グラフは安定したままになります。
-2. **Wiki レイヤーの書き込み**は本体レベルで冪等です。 `WikiPageStore.write_page` は、既存のファイルを読み取り、フロントマターを削除し、ボディを sha256 で実行し、新しいボディのハッシュが同じであれば、新しいフロントマターの `generated_at` タイムスタンプが異なる場合でもショートサーキットします。これは、リビルド時に git diff を厳密に保つための重要なトリックです。
-3. **合成出力** は前付に `content_hash: sha256-…` を持ちます。本体ハッシュは `generated_at` を使用せずに計算されるため、同じグラフでコンパイルを繰り返すと同じハッシュが生成され、`Synthesis` ノードはグラフ メタデータに同じ `content_hash` を保持します。
-4. **サイト レンダリング** は、`write_site` の開始時に `site/` をワイプし、決定的に書き込みます。ルートはソートされ、辞書は `sort_keys=True` でダンプされ、`manifest.json` は `sorted(rglob("*"))` を経由してウォークされます。 2 回実行すると、マニフェストを含むバイト同一のファイルが生成されます。
+1. **ソース抽出**は `manifest.json` のコンテンツハッシュを使います。未変更のファイルはスキップされるため、グラフは安定したままです。
+2. **wiki レイヤーの書き込み**はボディレベルで冪等です。`WikiPageStore.write_page` は既存ファイルを読み、frontmatter を剥がし、ボディを sha256 し、新しいボディが同じハッシュになる場合は — 新しい frontmatter の `generated_at` タイムスタンプが違っていても — ショートサーキットします。これが再ビルド時の git 差分を小さく保つ鍵となるトリックです。
+3. **統合（synthesis）出力**は frontmatter に `content_hash: sha256-…` を持ちます。ボディハッシュは `generated_at` 抜きで計算されるため、同じグラフに対する繰り返しのコンパイルは同じハッシュを生み、`Synthesis` ノードはグラフメタデータに同じ `content_hash` を持ちます。
+4. **サイトレンダリング**は `write_site` の最初に `site/` を消去し、その後決定的に書き込みます: ルートはソートされ、辞書は `sort_keys=True` でダンプされ、`manifest.json` は `sorted(rglob("*"))` で走査されます。2 回の実行はマニフェストを含めてバイト単位に同一なファイルを生みます。
 
-これは、`tests/test_site_pages.py` および `tests/test_project_e2e_redesign.py` のエンドツーエンド スモークによって検証されます (コンパイルを 2 回、サイトの差分を行い、ファイル デルタはゼロであると予想されます)。
+これは `tests/test_site_pages.py` と、`tests/test_project_e2e_redesign.py` のエンドツーエンドスモーク（2 回コンパイルし、サイトを diff し、ファイル差分ゼロを期待する）で検証されています。
 
 ## スケーリングノート
 
-- **グラフ ビュー ノード キャップ** [`MAX_GRAPH_NODES = 1500`](../../tesserae/site/pages.py) は、インタラクティブなフォース レイアウトのページ埋め込みペイロードを制限します。ノードが 1500 を超えると、ミッドレンジのハードウェアではブラウザ側のシミュレーションが遅くなるため、ノード数が上限を超えると、ページは最初に最下位の wiki レイヤー ノードを削除します。エクスポートされた `graph.json` は影響を受けません。常に完全なグラフが含まれています。コード ノードは、キャップが適用される前にフィルターで除外されます。
-- **`llms-full.txt` の上限。** 5 MB の安全上限は [`tesserae/site/exports.py`](../../tesserae/site/exports.py) に適用されます。キャップに達すると、ファイルは `[TRUNCATED — see graph.jsonld for the full set]` マーカーで終わります。 JSON-LD コンシューマは完全なセットを期待しているため、`graph.jsonld` には上限がありません。
-- **検索インデックス。** Wiki レイヤーの種類のみ。コードグラフ ノードが `search-index.json` に入ることはありません。再設計の目標はドッグフード コーパスの 500 KB 未満であり、現在はそれを大きく下回っています。
-- **ページごとのバイト予算 (経験則)。** 各詳細ページ < 60 KB gz HTML、共有 CSS < 30 KB、共有 JS < 25 KB、グラフ ページのシグマ ベンダーのみ (~60 KB)。グラフ ビューは 3D-force-graph + Three.js を 1 回ロードして使用します。他のページはすべてバニラのままです。
-- **dogfood でのコンパイル時間。** 最近の開発マシンでは、最大 300 個のマークダウン ファイルが 5 秒以内に抽出されます。サイトのレンダリングではさらに約 2 秒が追加されます。 wiki 層の冪等性は、後続のコンパイルが変更されたパスのみに影響することを意味します。
+- **グラフビューのノード上限。** [`MAX_GRAPH_NODES = 1500`](../../tesserae/site/pages.py) が、インタラクティブなフォースレイアウトのページ埋め込みペイロードを制限します。約 1500 ノードを超えるとブラウザ側のシミュレーションはミッドレンジのハードウェアで重くなるため、数が上限を超えるとページは次数の最も低い wiki レイヤーノードから先に落とします。エクスポートされる `graph.json` は影響を受けません — 常に完全なグラフを含みます。コードノードは上限適用の前にフィルタリングされます。
+- **`llms-full.txt` の上限。** [`tesserae/site/exports.py`](../../tesserae/site/exports.py) で 5 MB の安全上限が適用されます。上限に達した場合、ファイルは `[TRUNCATED — see graph.jsonld for the full set]` マーカーで終わります。`graph.jsonld` は上限なしです。JSON-LD のコンシューマーは完全な集合を期待するからです。
+- **検索インデックス。** wiki レイヤーの kind のみ。コードグラフのノードは決して `search-index.json` に入りません。再設計の目標はドッグフードコーパスで 500 KB 未満であり、現在は余裕でその範囲内です。
+- **ページごとのバイト予算（経験則）。** 各詳細ページは gz HTML で 60 KB 未満、共有 CSS は 30 KB 未満、共有 JS は 25 KB 未満、sigma ベンダーはグラフページのみ（約 60 KB）。グラフビューは 3D-force-graph + Three.js を一度だけロードします。他のすべてのページはバニラのままです。
+- **ドッグフードでのコンパイル時間。** 最近の開発マシンで約 300 の markdown ファイルが 5 秒未満で抽出され、サイトレンダリングがさらに約 2 秒を追加します。wiki レイヤーの冪等性により、以降のコンパイルは変更されたパスにのみ触れます。
 
-## フロントエンド インタラクション サーフェス
+## フロントエンドのインタラクションサーフェス
 
-- **検索パレット** — `cmd+k` / `ctrl+k` / `/`。 Wiki の種類に限定された、`search-index.json` に対するあいまい一致。最近のページは `localStorage` に残りました。
-- **テーマの切り替え** — 右上のボタン; `data-theme="dark"` は `localStorage` に保存され、フラッシュを避けるためにペイント前に適用されます。
-- **右に貼り付けられた目次** — デスクトップのみ。モバイルでは `<details>` ドロワーに折りたたまれます。ページ本文の `<h2>` / `<h3>` から生成されます。
-- **アクティビティ ヒートマップ** — 月と曜日のラベルが付いた 26 週間の SVG。セルは、その日の `digest.md` ソース ページが存在する場合、そのページにリンクします。 (日ごとのタイムライン詳細ページ — `/timeline/<YYYY-MM-DD>.html` — は明示的なフォローアップです。`render_timeline` のインライン通知でフラグが立てられます。⚠ 進行中です。)
-- **グラフ表示** — `/graph/`。ホバー ツールチップ、エッジ ラベル、カーソル アンカー ズーム、および 2D フォールバック ビューを備えた 3D フォース レイアウト (3d-force-graph + Three.js)。ノードの色は `ResearchNodeType` から取得されます。
-- **モバイル シェル** — ドロワー レール、ボトム ナビゲーション、流体タイプ、タッチセーフ ヒット ターゲット (≥ 44 ピクセル)。
+- **検索パレット** — `cmd+k` / `ctrl+k` / `/`。`search-index.json` 上のあいまい一致、wiki kind にスコープ。最近のページは `localStorage` に永続化。
+- **テーマトグル** — 右上のボタン。`data-theme="dark"` は `localStorage` に保存され、フラッシュを避けるためにペイント前に適用されます。
+- **スティッキーな右側 TOC** — デスクトップのみ。モバイルでは `<details>` ドロワーに折りたたまれます。ページボディの `<h2>` / `<h3>` から生成されます。
+- **アクティビティヒートマップ** — 月と曜日のラベル付きの 26 週 SVG。セルは、存在する場合にその日の `digest.md` ソースページにリンクします。（日ごとのタイムライン詳細ページ — `/timeline/<YYYY-MM-DD>.html` — は明示的なフォローアップです。`render_timeline` 内のインライン通知がそれを示します。⚠ 進行中。）
+- **グラフビュー** — `/graph/`。ホバーツールチップ、エッジラベル、カーソル基点のズーム、2D フォールバックビューを備えた 3D フォースレイアウト（3d-force-graph + Three.js）。ノードの色は `ResearchNodeType` に由来します。
+- **モバイルシェル** — ドロワーレール、ボトムナビ、流動的なタイポグラフィ、タッチセーフなヒットターゲット（44 px 以上）。
 
 ## テスト戦略
 
 - **ユニット** — `tests/test_wiki_store.py`、`tests/test_synthesis.py`、`tests/test_site_components.py`、`tests/test_site_pages.py`、`tests/test_site_exports.py`、`tests/test_relevance.py`。
-- **エンジン スパイン** — `tests/test_pipeline.py`、`tests/test_refresh_pipeline.py`、`tests/test_daemon_core.py`、`tests/test_daemon_sources.py`、`tests/test_cli_engine.py`。
+- **エンジンスパイン** — `tests/test_pipeline.py`、`tests/test_refresh_pipeline.py`、`tests/test_daemon_core.py`、`tests/test_daemon_sources.py`、`tests/test_cli_engine.py`。
 - **自己改善メモリ** — `tests/test_memory_sidecar.py`、`tests/test_decay_supersede.py`、`tests/test_supersede_suppression.py`、`tests/test_mcp_supersede_suppression.py`、`tests/test_memory_contradiction_reinforce.py`。
 - **検索 + 埋め込み** — `tests/test_hybrid_search.py`、`tests/test_ppr.py`、`tests/test_real_embeddings_phase6.py`。
-- **コンテキスト コンパイラ** — `tests/test_context_compiler.py`（形状、引用整合性、決定性、予算、PPR フォールバック）、`tests/test_cli_context.py`、`tests/test_mcp_server_context.py`。
+- **コンテキストコンパイラ** — `tests/test_context_compiler.py`（形状、引用の整合性、決定性、予算、PPR フォールバック）、`tests/test_cli_context.py`、`tests/test_mcp_server_context.py`。
 - **増分コンパイル（実験的）** — `tests/test_incremental_compile.py`、`tests/test_incremental_parity.py`、`tests/test_provenance_readiness.py`、`tests/test_sqlite_provenance.py`。
-- **冪等** — `tests/test_project_e2e_redesign.py` は 2 回コンパイルされ、`wiki/` と `site/` の差分がゼロであるとアサートされます。
-- **リンクの整合性** - `tests/test_frontend.py` は、出力されたすべての HTML を href に対して解析し、すべての内部リンクが生成されたファイルに解決されることをアサートします。 `nodes/codeclass-*.html`は生産しておりません。
-- **AI 兄弟** — すべての `path/foo.html` について、テスト スイートは `path/foo.txt` と `path/foo.json` が存在することをアサートします。 JSON は解析され、`{title, kind, body, links}` が含まれます。
-- **Playwright なし** — `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` でのバニラ pytest。
+- **冪等性** — `tests/test_project_e2e_redesign.py` は 2 回コンパイルし、`wiki/` と `site/` に差分ゼロであることをアサートします。
+- **リンクの整合性** — `tests/test_frontend.py` は出力されたすべての HTML の href をパースし、すべての内部リンクが生成済みファイルに解決されることをアサートします。`nodes/codeclass-*.html` は生成されません。
+- **AI シブリング** — すべての `path/foo.html` について、テストスイートは `path/foo.txt` と `path/foo.json` の存在をアサートします。JSON はパースでき、`{title, kind, body, links}` を含みます。
+- **Playwright なし** — `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` の下でのバニラ pytest。
 
 ## 関連ドキュメント
 
-- [クイックスタート](quickstart.ja.md) — `project init` から閲覧可能なサイトまでの最小パス。
-- [フロントエンド再設計ウォークスルー](frontend-redesign.ja.md) — すべてのルートの注釈付きツアー。
-- [機能マップ](feature-map.ja.md) — 出荷されたもの、進行中のもの、ファイル ポインター付き。
-- [Self-dogfood デモ](self-dogfood.ja.md) — 独自のリポジトリに対して Tesserae を実行します。
+- [クイックスタート](quickstart.ja.md) — `project init` から閲覧可能なサイトまでの最短パス。
+- [フロントエンド再設計のウォークスルー](frontend-redesign.ja.md) — すべてのルートの注釈付きツアー。
+- [機能マップ](feature-map.ja.md) — 何が出荷済みで何が進行中か、ファイルポインタ付き。
+- [セルフドッグフードのデモ](self-dogfood.ja.md) — Tesserae を自身のリポジトリに対して実行する。

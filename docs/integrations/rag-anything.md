@@ -142,13 +142,14 @@ Direct OpenAI embedding support is not wired through these flags in v1 — users
 ### Invoking from the CLI
 
 ```bash
-# Auto mode: tries RAG-Anything (when enabled), then Cognee, then compiled-wiki search.
+# `ask` never enters memory backends: it plans retrieval over the compiled
+# graph and synthesizes a cited LLM answer (--no-llm = ranked hits only).
 tesserae ask "What does the integration spec say about parser routing?"
 
-# Force a specific backend.
-tesserae ask "..." --backend raganything
-tesserae ask "..." --backend cognee
-tesserae ask "..." --backend wiki
+# Explicit backends live on `query` — raw retrieval, no LLM synthesis.
+tesserae query "..." --backend raganything
+tesserae query "..." --backend cognee
+tesserae query "..." --backend wiki
 ```
 
 > **Cognee 1.0 search type.** Cognee 1.0 retired the old `INSIGHTS` retriever, so
@@ -156,7 +157,7 @@ tesserae ask "..." --backend wiki
 > synthesized over the knowledge graph). For raw retrieval instead of a generated
 > answer, pass `--cognee-search-type CHUNKS` (or `SUMMARIES`).
 
-`--backend raganything` calls `tesserae.raganything_query.query` directly. A relative `working_dir` in `memory_backends.raganything` is resolved against the project root before the call.
+`tesserae query --backend raganything` calls `tesserae.raganything_query.query` directly. A relative `working_dir` in `memory_backends.raganything` is resolved against the project root before the call.
 
 ### Top-level `ask` (uses the multi-project registry)
 
@@ -164,24 +165,24 @@ For workflows where you want to ask across multiple registered Tesserae projects
 
 ```bash
 # One-time: register your projects (saved to ~/.tesserae/registry.json).
-tesserae projects register ~/Developer/Projects/Tesserae --name tesserae --activate
+tesserae projects register ~/Developer/Projects/Tesserae --name tesserae
 tesserae projects register ~/Developer/Projects/Other --name other
 
 # List registered projects.
 tesserae projects list
 
-# Ask the currently active project.
+# Ask from inside a project (the smart router picks the target otherwise).
 tesserae ask "How does the parser routing work?"
 
-# Ask a specific registered project (no need to activate it).
-tesserae ask "What is the architecture?" --wiki other
+# Ask a specific registered project by name.
+tesserae ask "What is the architecture?" --name other
 
-# Force a backend or pass a direct path.
-tesserae ask "..." --wiki tesserae --backend raganything --json
+# Pass a direct path, or hit a memory backend explicitly via `query`.
 tesserae ask "..." --project /tmp/somewhere
+tesserae query "..." --backend raganything --json
 ```
 
-The dispatch logic — `--project > --wiki > active project` — is implemented in `_top_level_ask_handler` and the answer formatting / backend selection is shared with `project ask` and the MCP `ask` tool through `tesserae.query.ask_project`. The registry is file-backed (`~/.tesserae/registry.json` by default), so it persists across sessions and stays in sync with the MCP server's project list.
+The dispatch logic — `--project > --name > router` — is implemented in the top-level ask handler and the answer formatting is shared with the MCP `ask` tool through `tesserae.query.ask_project` (memory backends are reachable only through `tesserae query --backend …`). The registry is file-backed (`~/.tesserae/registry.json` by default), so it persists across sessions and stays in sync with the MCP server's project list.
 
 #### Querying across multiple vaults (`--scope all-registered`)
 
@@ -263,7 +264,7 @@ When a configured parser is missing, `refresh-raganything` bails fast — listin
 
 ### Per-page ask widget
 
-Every detail page (concept, paper, repo, synthesis, entity, topic, question, source) includes an inline "ask about this page" widget. It POSTs to `/api/ask` on the local `tesserae serve` instance, which calls `tesserae.query.ask_project` and renders the answer inline. The widget prepends the current page's node name to the user's question as a natural-language context hint (e.g. `` About `<NodeName>`: <question> ``); a future PR can wire real subgraph scoping into `ask_project` itself.
+Every detail page (concept, paper, repo, synthesis, entity, topic, question, source) includes an inline "ask about this page" widget. It POSTs to `/api/ask` on the local `tesserae serve` instance, which calls `tesserae.query.ask_project` and renders the answer inline. Unlike the CLI (where `tesserae ask` is LLM-by-default), `/api/ask` defaults to **non-LLM retrieval** for widget latency; send `{"llm": true}` in the payload to opt into the planned/synthesized answer. The widget prepends the current page's node name to the user's question as a natural-language context hint (e.g. `` About `<NodeName>`: <question> ``); a future PR can wire real subgraph scoping into `ask_project` itself.
 
 The widget detects backend availability via `/api/ask/health` on load. When the wiki is served statically (GitHub Pages, `file://`, S3, any plain static host) the widget collapses to a one-line note pointing readers at `tesserae serve` for local interactive use. No requests fail and nothing blocks page rendering — the widget is a deferred JS island, separate from the heavier graph bundle.
 

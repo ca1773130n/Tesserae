@@ -21,7 +21,7 @@ Der Compile erzeugt `.tesserae/graph.json` (die Quelle der Wahrheit) und eine sc
 ## 1) Den Vault exportieren
 
 ```bash
-tesserae vault export --vault ~/Documents/tesserae-vault
+tesserae vault export --output ~/Documents/tesserae-vault
 ```
 
 Das Verzeichnis wird angelegt, falls es nicht existiert. Erneutes Ausführen überschreibt es idempotent — die Markdown-Projektion ist deterministisch bei gleichem Graphen.
@@ -137,8 +137,8 @@ Obsidians eingebaute Graph-Ansicht (`Ctrl/Cmd+G`) funktioniert bereits mit den W
 Registriere mehrere Tesserae-Vaults, damit `wiki://`-URIs sich vault-übergreifend auflösen lassen:
 
 ```bash
-tesserae register-project /path/to/research --name research
-tesserae register-project /path/to/notes    --name notes
+tesserae projects register /path/to/research --name research
+tesserae projects register /path/to/notes    --name notes
 ```
 
 Exportiere jeden Vault nach der Registrierung erneut. `_bridges.md` zeigt in jedem Export nun auflösbare Referenzen zwischen Vaults, gruppiert nach Alias.
@@ -154,7 +154,7 @@ Um neue Quellen oder Fixes aus deinen Quelldateien einzubauen:
 tesserae compile
 ```
 
-`compile` reprojiziert den Vault jetzt automatisch — du musst keinen separaten Export-Schritt mehr ausführen. (`tesserae vault export --vault <Pfad>` existiert weiterhin für eine einmalige Reprojektion ohne vollständige Neukompilierung.) Obsidian lädt geänderte Dateien auf der Platte hot neu.
+`compile` reprojiziert den Vault jetzt automatisch — du musst keinen separaten Export-Schritt mehr ausführen. (`tesserae vault export --output <Pfad>` existiert weiterhin für eine einmalige Reprojektion ohne vollständige Neukompilierung.) Obsidian lädt geänderte Dateien auf der Platte hot neu.
 
 Wenn du im Vault eigene Markdown-Notizen ergänzt hast, die nicht aus dem Graphen projiziert sind (z. B. persönliche Annotationen), bleiben sie erhalten — der Projektor überschreibt nur Dateien, die er selbst besitzt: unter `papers/`, `concepts/`, `claims/` sowie `index.md`, `_bridges.md`, `_meta/dashboard.md` und `README.md`. Handgeschriebene Seiten (ohne Frontmatter-Schlüssel `node_id:`) und der dedizierte Nutzernotiz-Block (`<!-- user-notes:start -->` … `<!-- user-notes:end -->`) auf jeder projizierten Seite bleiben über Neukompilierungen hinweg erhalten.
 

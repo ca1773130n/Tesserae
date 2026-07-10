@@ -6,7 +6,7 @@
 
 > **状态：已交付（Tier 1，v0.5.0）。** 下面描述的覆盖层读取器、用户笔记追加区、watch 模式和孤儿页面清理，都已在 `tesserae vault sync` 背后实际运行。本页既是设计依据也是用户指南。多 vault 联邦（Tier 3）仍在范围之外。
 
-[Obsidian 导出](obsidian.md)过去是严格单向的：`.tesserae/graph.json` 中的类型化图谱投影到 vault，而 `project compile` 会覆盖所有投影出的文件。`obsidian-sync` 加上了反方向 —— 在 Obsidian 中修改一段描述，它就能在重编译中存活下来。
+[Obsidian 导出](obsidian.zh.md)过去是严格单向的：`.tesserae/graph.json` 中的类型化图谱投影到 vault，而 `project compile` 会覆盖所有投影出的文件。`obsidian-sync` 加上了反方向 —— 在 Obsidian 中修改一段描述，它就能在重编译中存活下来。
 
 本文档说明在不让数据模型陷入不一致的前提下，这件事是怎么做到的。
 
@@ -118,8 +118,8 @@ tesserae vault sync --vault ~/Documents/tesserae-vault
 tesserae vault sync --vault ~/Documents/tesserae-vault --persist-vault
 
 # 长驻 watch：每当 vault 变化就重新应用覆盖层。
-# Ctrl-C 停止；用 --poll-interval 调节轮询节奏（默认 1.5 秒）。
-tesserae vault sync --watch --poll-interval 1.5
+# Ctrl-C 停止；用 --interval 调节轮询节奏（默认 1.5 秒）。
+tesserae vault sync --watch --interval 1.5
 
 # 删除其源节点已不存在的投影页面（投影器只覆盖，
 # 从不删除）。除非同时传 --force-prune-with-notes，
@@ -159,4 +159,4 @@ tesserae vault sync --prune-orphans --force-prune-with-notes
 
 ## 这在 `obsidian.md` 中的呈现方式
 
-面向用户的指南依旧聚焦于"你可以阅读和查询 vault"，然后用一句话总结链接到这里讲述往返的故事："在 Obsidian 中修改字段，它们会在重编译时存活。完整模型见 [obsidian-sync.md](obsidian-sync.md)。"
+面向用户的指南依旧聚焦于"你可以阅读和查询 vault"，然后用一句话总结链接到这里讲述往返的故事："在 Obsidian 中修改字段，它们会在重编译时存活。完整模型见 [obsidian-sync.md](obsidian-sync.zh.md)。"

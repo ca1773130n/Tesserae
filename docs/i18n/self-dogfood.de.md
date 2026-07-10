@@ -3,22 +3,31 @@
 <!-- translations:start -->
 <p align="center"><a href="../self-dogfood.md">English</a> · <a href="self-dogfood.ko.md">한국어</a> · <a href="self-dogfood.zh.md">中文</a> · <a href="self-dogfood.ja.md">日本語</a> · <a href="self-dogfood.ru.md">Русский</a> · <a href="self-dogfood.es.md">Español</a> · <a href="self-dogfood.fr.md">Français</a></p>
 <!-- translations:end -->
-Dieses Projekt kann sich selbst indexieren. Der Self-Dogfood-Flow beweist, dass Tesserae installiert, in seinem eigenen Repository aufgesetzt werden kann, seine eigenen Docs/Source/Tests/Scripts ingestiert, optional Understand Anything und Cognee refresht, Graph-Artefakte kompiliert und das statische Web-Frontend baut.
+Dieses Projekt kann sich selbst indexieren. Der Self-Dogfood-Flow beweist, dass Tesserae installiert, im eigenen Repository eingerichtet werden, seine eigenen Docs/Quellen/Tests/Skripte ingesten, optional Understand Anything und Cognee refreshen, Graph-Artefakte kompilieren und das statische Web-Frontend bauen kann.
 
-Derselbe Flow dient gleichzeitig als multimodaler Smoke-Test. Mit `--with-raganything --install-raganything --run-raganything` richtet der Dogfood-Compile RAG-Anything auf das eigene `docs/`-Markdown von Tesserae plus die Bilder unter `docs/assets/` und projekt-level `assets/`. Das validiert die multimodale Pipeline gegen einen echten, projekt-eigenen Nicht-Code-Korpus — abdeckend Screenshots und Diagramme, die die textzentrierten Source-Loader überspringen — ohne ein separates Fixture-Set zu erfinden.
+Derselbe Flow dient zugleich als multimodaler Smoke-Test. Mit installiertem RAG-Anything (`tesserae setup --install raganything`) und aktiviert in `.tesserae/config.json` (`memory_backends.raganything.enabled: true`) richtet der Dogfood-Compile RAG-Anything auf Tesseraes eigenes `docs/`-Markdown plus die Bilder unter `docs/assets/` und dem projektweiten `assets/`. Das validiert die multimodale Pipeline gegen einen realen, projekteigenen Nicht-Code-Korpus — inklusive Screenshots und Diagrammen, die die text-first Source-Loader überspringen — ohne ein separates Fixture-Set zu erfinden.
 
-Er übt außerdem die Selbstverbesserungs-Schleife. Jeder Compile leitet den veränderlichen Memory-Zustand — `decay_score`, `access_count`, `confidence` und das `superseded`-Flag — neu in eine **`node_memory`-Sidecar-Tabelle** innerhalb von `.tesserae/sqlite.db` ab. Diese Skalare leben *nur* im Sidecar und niemals in `graph.json`, sodass ein erneuter Dogfood-Compile auf dem Graph byte-identical ist, während der Sidecar Decay und Recurrence verfolgt. Insights, die über `>= 3` verschiedene Sessions wiederkehren, werden mit einem numerischen Confidence in `(0, 1]` verstärkt (3 Sessions → `0.5`, 4 → `0.75`, 5+ → `1.0`, gedeckelt), in den Sidecar geschrieben und vom MCP-Tool `fresh_insights` ausgegeben, das standardmäßig Findings ausblendet, die von einem neueren Near-Duplicate ersetzt (superseded) wurden.
+Er exerziert außerdem die Selbstverbesserungsschleife. Jeder Compile leitet den mutierbaren
+Memory-Zustand neu ab — `decay_score`, `access_count`, `confidence` und das
+`superseded`-Flag — in eine **`node_memory`-Sidecar**-Tabelle innerhalb von
+`.tesserae/sqlite.db`. Diese Skalare leben *nur* im Sidecar und nie in
+`graph.json`, sodass ein frischer Dogfood-Compile auf dem Graph byte-identisch ist, während
+das Sidecar Decay und Wiederkehr verfolgt. Insights, die über `>= 3`
+verschiedene Sessions wiederkehren, werden mit einer numerischen Confidence in `(0, 1]`
+verstärkt (3 Sessions → `0.5`, 4 → `0.75`, 5+ → `1.0`, gedeckelt), ins Sidecar
+geschrieben und vom MCP-Tool `fresh_insights` angezeigt, das standardmäßig Befunde
+verbirgt, die von einem neueren Beinahe-Duplikat superseded wurden.
 
 ## Befehle
 
-Aus dem Repository-Root:
+Vom Repository-Root:
 
 ```bash
 # Ensure the shell command is installed.
 ./scripts/install.sh --dir "$PWD"
 export PATH="$HOME/.local/bin:$PATH"
 
-# (optional) den Standard-Semantik-Embedding-Backend installieren.
+# (optional) install the default semantic embedding backend.
 pip install 'tesserae[semantic]'
 
 # Set up this repository as an Tesserae project.
@@ -29,16 +38,11 @@ tesserae init \
   --source docs \
   --source tesserae \
   --source tests \
-  --source scripts \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex \
-  --with-raganything \
-  --install-raganything \
-  --raganything-parser mineru \
-  --run-raganything \
-  --run-cognee \
-  --install-cognee
+  --source scripts
+
+# (optional) install + enable the heavier companions afterwards:
+#   tesserae setup --install raganything --install understand-anything --install cognee
+#   then flip memory_backends.*.enabled / external_tools in .tesserae/config.json
 
 # Compile the configured sources.
 tesserae compile
@@ -46,7 +50,7 @@ tesserae compile
 # Rebuild the static frontend explicitly.
 tesserae export site
 
-# Lokal bereitstellen (baut die Site bei Bedarf zuerst automatisch).
+# Serve locally (auto-builds the site first if needed).
 tesserae serve --port 8765
 ```
 
@@ -56,7 +60,7 @@ tesserae serve --port 8765
 http://127.0.0.1:8765/
 ```
 
-## Generiertes Workspace
+## Generierter Workspace
 
 Die Self-Demo schreibt generierte Artefakte unter:
 
@@ -64,13 +68,13 @@ Die Self-Demo schreibt generierte Artefakte unter:
 .tesserae/
 ```
 
-Schlüssel-Artefakte:
+Zentrale Artefakte:
 
 ```text
 .tesserae/config.json
 .tesserae/graph.json
 .tesserae/manifest.json
-.tesserae/sqlite.db          # typisierter Graph + node_memory-Sidecar + Live-HarnessSessionsDB
+.tesserae/sqlite.db          # typed graph + node_memory sidecar + live HarnessSessionsDB
 .tesserae/report.md
 .tesserae/competitive_report.md
 .tesserae/temporal_facts.jsonl
@@ -82,23 +86,23 @@ Schlüssel-Artefakte:
 .tesserae/cognee_bundle/
 ```
 
-Das generierte Workspace wird absichtlich standardmäßig nicht committet. Es ist mit den obigen Befehlen aus den Repository-Sources reproduzierbar.
+Der generierte Workspace wird absichtlich standardmäßig nicht committet. Er ist mit den obigen Befehlen aus dem Repository-Quellcode reproduzierbar.
 
 ## Letzter verifizierter Lauf
 
 Verifiziert am `2026-04-27 11:11:23 KST` aus dem Tesserae-Repository selbst.
 
 Integrations-Opt-ins (Understand Anything, cognee) sind jetzt **interaktive
-Wizard-Abfragen**, keine CLI-Flags. Das nicht-interaktive Äquivalent unten
-führt `tesserae init --yes` aus (Integrationen AUS), aktiviert die Integrationen
-in `.tesserae/config.json` (der Wizard schreibt sie unter die Schlüssel
-`memory_backends` und `external_tools` — die genauen Schlüssel stehen in den
-Integrationsdokumenten) und aktualisiert dann jede vor dem Kompilieren.
+Wizard-Prompts**, keine CLI-Flags. Das nicht-interaktive Äquivalent unten führt
+`tesserae init --yes` aus (Integrationen AUS), aktiviert die Integrationen in
+`.tesserae/config.json` (der Wizard schreibt sie unter die Keys `memory_backends`
+und `external_tools` — siehe die Integrations-Docs für die exakten Keys) und
+refresht dann jede vor dem Kompilieren.
 
 ```text
 install command: ./scripts/install.sh --dir /Users/neo/Developer/Projects/Tesserae --skip-shell-config
 setup command:   tesserae init --yes --name tesserae_self --source README.md --source docs --source tesserae --source tests --source scripts
-                 # dann Understand Anything + cognee in .tesserae/config.json aktivieren und ausführen:
+                 # then enable Understand Anything + cognee in .tesserae/config.json and run:
                  #   tesserae integrations refresh understand-anything
                  #   tesserae integrations refresh cognee
 ingest command:  tesserae compile README.md docs --changed-only
@@ -109,7 +113,7 @@ local URL:       http://127.0.0.1:56821/
 LAN URL:         http://192.168.45.130:56821/
 ```
 
-Finale Artefakt-Counts:
+Finale Artefakt-Zahlen:
 
 ```text
 nodes:               667
@@ -126,7 +130,7 @@ node pages:          687
 source pages:        56
 ```
 
-Top-Node-Typen:
+Top-Knotentypen:
 
 ```text
 CodeFunction:    452
@@ -150,13 +154,13 @@ console: no JavaScript errors on home, sources, source detail, or graph pages
 server: TCP *:56821 LISTEN, serving via --host 0.0.0.0
 ```
 
-## Was das demonstriert
+## Was dies demonstriert
 
-- Der öffentliche Install-Pfad funktioniert.
-- Der `tesserae`-Shell-Befehl funktioniert.
-- Ein Repository kann ein projekt-lokales `.tesserae`-Workspace anhängen.
-- Research-/Dokumentations-Markdown und Development-Code-Graph-Knoten können koexistieren.
-- Markdown-, Obsidian-, Frontend-, Graphiti-, Cognee-, SQLite-, Report- und Agent-Harness-Projektionen werden aus einer Graph-Pipeline produziert.
-- Das statische HTML-Frontend kann den Project-Graph ohne JavaScript-Build-Schritt browsen.
-- Die Selbstverbesserungs-Schleife läuft und persistiert: Decay, Access-Counts, Recurrence-Confidence und Supersede-Flags landen im `node_memory`-Sidecar, ohne `graph.json` zu stören.
-- Hybride Retrieval löst ein echtes semantisches Backend auf, wenn `tesserae[semantic]` installiert ist (Standard-`auto`-Reihenfolge: model2vec → sentence-transformers → Hash-Bucket-Stub); ohne es degradiert das Embedding-Retrieval zum nicht-semantischen Hash-Bucket-Stub und gibt eine laute Warnung aus.
+- Der öffentliche Installationspfad funktioniert.
+- Der Shell-Befehl `tesserae` funktioniert.
+- Ein Repository kann sich einen projektlokalen `.tesserae`-Workspace anhängen.
+- Research-/Dokumentations-Markdown und Entwicklungs-Code-Graphknoten können koexistieren.
+- Markdown-, Obsidian-, Frontend-, Graphiti-, Cognee-, SQLite-, Report- und Agent-Harness-Projektionen werden aus einer einzigen Graph-Pipeline produziert.
+- Das statische HTML-Frontend kann den Projektgraph ohne JavaScript-Build-Schritt browsen.
+- Die Selbstverbesserungsschleife läuft und persistiert: Decay, Access-Counts, Wiederkehr-Confidence und Supersede-Flags landen im `node_memory`-Sidecar, ohne `graph.json` zu stören.
+- Hybrid-Retrieval löst ein echtes semantisches Backend auf, wenn `tesserae[semantic]` installiert ist (Default-`auto`-Reihenfolge: model2vec → sentence-transformers → Hash-Bucket-Stub); ohne es degradiert Embedding-Retrieval zum nicht-semantischen Hash-Bucket-Stub und gibt eine laute Warnung aus.

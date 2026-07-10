@@ -54,32 +54,34 @@ built-in). `tesserae init` also offers to install memex during an interactive se
 
 ## Optional integrations (per project)
 
-The default wheel is intentionally light. The setup wizard can install the heavier companion/runtime pieces only when you ask for them:
+The default wheel is intentionally light, and the optional memory backends are
+**off by default**. `tesserae init` is the single per-project onboarding step —
+its wizard picks the LLM provider and detected sources; the heavier
+companion/runtime pieces are installed machine-wide via `tesserae setup
+--install …` (or `tesserae config deps --install …`) and enabled per project in
+`.tesserae/config.json`:
 
 ```bash
-# Understand Anything companion graph + RAG-Anything multimodal + Cognee runtime memory
-tesserae init \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex \
-  --with-raganything \
-  --install-raganything \
-  --raganything-parser mineru \
-  --run-raganything \
-  --run-cognee \
-  --install-cognee
+# Machine-wide installs of the optional pieces:
+tesserae setup --install raganything --install understand-anything --install cognee
+
+# Then per project: enable what you want in .tesserae/config.json
+#   memory_backends.raganything.enabled: true
+#   memory_backends.cognee.enabled: true        (query via `tesserae query --backend …`)
+#   external_tools: understand-anything entry   (auto_refresh: false by default)
 ```
 
 Manual package installs are still available for advanced workflows:
 
 ```bash
-pip install kuzu cognee graphiti-core
+pip install kuzu graphiti-core
+pip install "tesserae[cognee]"
 ```
 
 - `kuzu` — Kuzu graph persistence.
-- `cognee` — runtime Cognee add/cognify workflows; setup stores `{python} -m pip install cognee` and retries once if Cognee is missing.
-- Understand Anything — installed via the upstream installer when `--install-understand-anything` is selected; Tesserae stores a managed refresh wrapper instead of asking users to invent a shell command.
-- RAG-Anything — installed via `pip install 'raganything[all]'` when `--install-raganything` is selected; Tesserae stores a managed refresh wrapper for multimodal parser runs.
+- `tesserae[cognee]` — the opt-in Cognee runtime add/cognify workflows (disabled by default; the Codex-patched cognify mode was removed).
+- Understand Anything — installed via the upstream installer (`tesserae setup --install understand-anything`); Tesserae stores a managed refresh wrapper instead of asking users to invent a shell command.
+- RAG-Anything — installed via `pip install 'raganything[all]'` (`tesserae setup --install raganything`); Tesserae stores a managed refresh wrapper for multimodal parser runs.
 - `graphiti-core` — live Graphiti/Neo4j sync. `export graphiti` and `export graphiti --sync --dry-run` work without it.
 
 The Anthropic-backed synthesis path uses an extras marker:

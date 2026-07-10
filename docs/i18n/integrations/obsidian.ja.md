@@ -21,7 +21,7 @@ tesserae compile
 ## 1) ヴォルトをエクスポートする
 
 ```bash
-tesserae vault export --vault ~/Documents/tesserae-vault
+tesserae vault export --output ~/Documents/tesserae-vault
 ```
 
 ディレクトリが存在しない場合は作成されます。再実行すると冪等に上書きされます — 同じグラフが与えられれば markdown 射影は決定論的です。
@@ -137,8 +137,8 @@ Obsidian 組み込みのグラフビュー（`Ctrl/Cmd+G`）は、`## Outgoing` 
 複数の Tesserae ヴォルトを登録して `wiki://` URI がヴォルト間で解決されるようにします:
 
 ```bash
-tesserae register-project /path/to/research --name research
-tesserae register-project /path/to/notes    --name notes
+tesserae projects register /path/to/research --name research
+tesserae projects register /path/to/notes    --name notes
 ```
 
 登録後、各ヴォルトを再エクスポートしてください。各エクスポートの `_bridges.md` には alias でグルーピングされた、ヴォルト間で解決可能な参照が表示されます。
@@ -154,7 +154,7 @@ Obsidian 自体は `wiki://` URI をネイティブにたどりません — イ
 tesserae compile
 ```
 
-`compile` がヴォルトを自動的に再射影します — 別途エクスポート手順を実行する必要はもうありません。（フルの再コンパイルなしで一度きりの再射影だけを行いたい場合は `tesserae vault export --vault <パス>` も引き続き使えます。）Obsidian はディスク上で変更されたファイルをホットリロードします。
+`compile` がヴォルトを自動的に再射影します — 別途エクスポート手順を実行する必要はもうありません。（フルの再コンパイルなしで一度きりの再射影だけを行いたい場合は `tesserae vault export --output <パス>` も引き続き使えます。）Obsidian はディスク上で変更されたファイルをホットリロードします。
 
 ヴォルト内にグラフから射影されない markdown メモ（例: 個人的な注釈）を追加してあれば、それらは残ります — プロジェクターは自身が所有するファイル（`papers/`、`concepts/`、`claims/` 配下、および `index.md`、`_bridges.md`、`_meta/dashboard.md`、`README.md`）のみを上書きします。手書きのページ（`node_id:` フロントマターのないファイル）と、各射影ページにある専用のユーザーノートブロック（`<!-- user-notes:start -->` … `<!-- user-notes:end -->`）は再コンパイルをまたいで保持されます。
 

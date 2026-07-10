@@ -3,34 +3,61 @@
 <!-- translations:start -->
 <p align="center"><a href="../session-history.md">English</a> · <a href="session-history.ko.md">한국어</a> · <a href="session-history.zh.md">中文</a> · <a href="session-history.ja.md">日本語</a> · <a href="session-history.ru.md">Русский</a> · <a href="session-history.es.md">Español</a> · <a href="session-history.fr.md">Français</a> · <a href="session-history.de.md">Deutsch</a></p>
 <!-- translations:end -->
-Tesserae может импортировать локальные transcript AI-agent и отображать их как память проекта в разделе `sessions/` статического сайта.
+Tesserae может импортировать локальные транскрипты AI-агентов и отображать их
+как память проекта в секции `sessions/` статического сайта.
 
-Эта функция намеренно отделена от `export harness`:
+Эта возможность намеренно отделена от `export harness`:
 
-- `export harness` — исходящий контекст для инструментов вроде Claude Code, Codex, Gemini, Cursor, Kiro и OpenCode.
-- `sessions ...` — входящая история: она нормализует предыдущие сессии Claude Code/Codex для текущего проекта, сохраняет их в `.tesserae/harness_sessions/` и позволяет `export site` публиковать страницы index/detail сессий.
+- `export harness` — исходящий контекст для инструментов вроде Claude Code,
+  Codex, Gemini, Cursor, Kiro и OpenCode.
+- `sessions ...` — входящая история: она нормализует прошлые сессии Claude
+  Code/Codex для текущего проекта, сохраняет их под
+  `.tesserae/harness_sessions/` и позволяет `export site` публиковать
+  индексные и детальные страницы сессий.
 
-## Два входа: пакетный импорт и живой мониторинг
+## Два пути внутрь: пакетный импорт и живой мониторинг
 
-Приём сессий больше не только пакетный. В одно и то же нормализованное хранилище ведут два пути:
+Инжест сессий больше не только пакетный. Есть два пути в одно и то же
+нормализованное хранилище:
 
-- **Пакетный импорт** — `sessions discover/import` сканирует корни transcript по запросу и пишет за один проход. Этот поток описан ниже.
-- **Живой мониторинг** — supervisor daemon (`tesserae engine`) запускает `SessionTailer`, который наблюдает за *собственными* transcript проекта (Claude Code и Codex) и принимает новые turn по мере их появления. На каждом tick он делает seek к сохранённому пофайловому byte offset, читает только поступившие новые байты и записывает полные turn в SQLite `HarnessSessionsDB` (`.tesserae/sqlite.db`) **до** постановки в очередь debounce-перекомпиляции, поэтому компиляция всегда читает согласованное состояние. Tailer ограничен собственными сессиями проекта (Claude `projects/<slug>/*.jsonl`; Codex фильтруется по cwd) и после перезапуска возобновляется с сохранённых offset, не повторяя turn.
+- **Пакетный импорт** — `sessions discover/import` сканирует корни
+  транскриптов по требованию и записывает одноразово. Ниже на этой странице
+  описан именно этот поток.
+- **Живой мониторинг** — демон-супервизор (`tesserae engine`) запускает
+  `SessionTailer`, который наблюдает за транскриптами Claude Code и Codex
+  *самого этого проекта* и вливает новые ходы по мере их появления. Каждый
+  тик переходит к сохранённому пофайловому байтовому смещению, читает только
+  новые байты и сохраняет завершённые ходы в SQLite `HarnessSessionsDB`
+  (`.tesserae/sqlite.db`) **до** постановки в очередь дебаунсированной
+  перекомпиляции, так что компиляция всегда читает согласованное состояние.
+  Тейлер ограничен сессиями собственного проекта (Claude
+  `projects/<slug>/*.jsonl`; Codex фильтруется по cwd) и после перезапуска
+  возобновляет работу с сохранённых смещений без повторного проигрывания
+  ходов.
 
 Запуск живого цикла:
 
 ```bash
-tesserae engine        # наблюдать источники, объединять всплески, авто-перекомпиляция
-tesserae engine --once # один цикл drain и выход (детерминированно)
+tesserae engine        # watch sources, coalesce bursts, auto-recompile
+tesserae engine --once # single drain cycle then exit (deterministic)
 ```
 
-`tesserae refresh` запускает тот же конвейер ingest → compile → project один раз, in-process, не поднимая долгоживущий watcher (передайте `--skip-sessions`, чтобы пропустить сканирование discovery harness-сессий).
+`tesserae refresh` выполняет тот же конвейер ingest → compile → project один
+раз, внутри процесса, без запуска долгоживущего наблюдателя (передайте
+`--no-sessions`, чтобы пропустить сканирование harness-сессий).
 
 ## Модель приватности
 
-Оба пути приёма явные: живой tailer работает только пока вы держите `tesserae engine` запущенным, а пакетный discovery пишет только с `--import`. Обычный `tesserae compile` или `tesserae export site` читает уже нормализованные сессии из `.tesserae/harness_sessions/` и живые записи в `.tesserae/sqlite.db`, но сам по себе не выполняет неожиданное scrape приватных каталогов harness transcript.
+Оба пути инжеста явные: живой тейлер работает только пока вы держите
+`tesserae engine` живым, а пакетное обнаружение пишет только с `--import`.
+Обычный `tesserae compile` или `tesserae export site` читает уже
+нормализованные сессии из `.tesserae/harness_sessions/` и живые записи в
+`.tesserae/sqlite.db`, но сам по себе не лезет неожиданно в приватные каталоги
+транскриптов harness.
 
-Импортированные записи сессий — локальные артефакты проекта. Проверьте их перед публикацией публичного сайта, особенно если transcript могут содержать secrets, приватные пути, данные клиентов или не выпущенный код.
+Импортированные записи сессий — локальные артефакты проекта. Просмотрите их
+перед публикацией публичного сайта, особенно если транскрипты могут содержать
+секреты, приватные пути, данные клиентов или невыпущенный код.
 
 ## Обнаружение и импорт локальных сессий
 
@@ -40,7 +67,10 @@ tesserae engine --once # один цикл drain и выход (детермин
 tesserae sessions discover --import
 ```
 
-Discovery сканирует локальные корни transcript Claude Code и Codex, относящиеся к рабочей директории текущего проекта. Используйте `--root`, чтобы сканировать конкретный config-каталог, и повторяйте `--harness`, чтобы ограничить discovery:
+Обнаружение сканирует локальные корни транскриптов Claude Code и Codex,
+принадлежащие рабочему каталогу текущего проекта. Используйте `--root` для
+сканирования конкретного каталога конфигурации и повторяйте `--harness`, чтобы
+ограничить обнаружение:
 
 ```bash
 tesserae sessions discover \
@@ -51,11 +81,13 @@ tesserae sessions discover \
   --import
 ```
 
-Без `--import` discovery печатает найденное, не записывая нормализованные записи сессий.
+Без `--import` обнаружение печатает найденное, не записывая нормализованные
+записи сессий.
 
 ## Прямой импорт нормализованного JSON
 
-Если другой инструмент уже создал нормализованный JSON `HarnessSession`, импортируйте один файл или список файлов:
+Если другой инструмент уже произвёл нормализованный JSON `HarnessSession`,
+импортируйте один файл или список файлов:
 
 ```bash
 tesserae sessions import path/to/session.json path/to/more-sessions.json
@@ -69,7 +101,7 @@ tesserae sessions import path/to/session.json path/to/more-sessions.json
 tesserae sessions list
 ```
 
-Сессии хранятся здесь:
+Сессии хранятся ниже:
 
 ```text
 .tesserae/harness_sessions/
@@ -79,7 +111,10 @@ tesserae sessions list
     <session>.md
 ```
 
-Сессии, отслеживаемые в живом режиме, дополнительно учитываются в SQLite `HarnessSessionsDB` (`.tesserae/sqlite.db`), где также сохраняются пофайловые read offset, с которых возобновляется tailer. `sessions list` показывает объединённое представление.
+Сессии живого мониторинга дополнительно отслеживаются в SQLite
+`HarnessSessionsDB` (`.tesserae/sqlite.db`), которая также персистит
+пофайловые смещения чтения, с которых возобновляется тейлер.
+`tesserae sessions list` отображает объединённое представление.
 
 ## Сборка статических страниц сессий
 
@@ -89,48 +124,78 @@ tesserae sessions list
 tesserae export site
 ```
 
-Сайт создаёт:
+Сайт эмитирует:
 
 ```text
 .tesserae/site/sessions/index.html
 .tesserae/site/sessions/<project>/<session>.html
 ```
 
-Сгенерированный сайт ссылается на Sessions из global rail, карточек Browse на главной, поисковых записей и breadcrumb trail каждой страницы detail сессии.
+Сгенерированный сайт ссылается на Sessions из глобального рейла, домашних
+карточек Browse, записей поиска и хлебных крошек каждой детальной страницы
+сессии.
 
-## Макет страницы detail сессии
+## Быстрый поиск по транскриптам (memex)
 
-Страницы detail сессий используют общий static-site shell, а не отдельный transcript dump. Они включают:
+Когда вы поднимаете сайт через `tesserae serve`, **дашборд сессий** получает
+поле полнотекстового поиска по каждому проиндексированному транскрипту
+Claude/Codex на базе [`nicosuave/memex`](https://github.com/nicosuave/memex)
+(BM25). Результаты показывают `project · role · date · score` плюс совпадающий
+сниппет.
 
-- hero и stat strip;
-- high-level summary;
-- timeline и size metadata;
-- decisions, files, commands, tools и errors, если есть;
-- свёрнутое subagent tree;
-- user/assistant conversation по turn;
-- свёрнутые tool-use blocks, прикреплённые под предыдущим assistant turn;
-- левый conversation rail со ссылками на anchors `#turn-N`.
+```bash
+cargo install --git https://github.com/nicosuave/memex --locked   # or: tesserae config deps --install memex
+memex index                                                        # build the index once
+tesserae serve                                                     # search box appears on /sessions
+```
 
-Markdown разговора рендерится через site markdown renderer. Семантические поверхности вроде inline code, явной command/tag markup, paths, filenames и hashtags оформляются как компактные chips; случайные существительные с заглавной буквы не chip-ятся автоматически.
+Он **опционален и деградирует мягко**: без бинарника `memex` (или индекса)
+поле показывает понятное, действенное сообщение, а остальной дашборд не
+затрагивается. Поисковый эндпоинт (`GET /api/transcript-search`) ограничен
+same-origin/loopback-вызовами, так что посещённая веб-страница не может
+прощупать вашу локальную историю.
 
-Текущая transcript typography:
+## Раскладка детальной страницы сессии
 
-| Surface | Selector | Size |
+Детальные страницы сессий используют общий каркас статического сайта, а не
+автономный дамп транскрипта. Они включают:
+
+- hero и полосу статистики;
+- высокоуровневую сводку;
+- таймлайн и метаданные размера;
+- решения, файлы, команды, инструменты и ошибки, когда они есть;
+- свёрнутое дерево субагентов;
+- поход за ходом диалог user/assistant;
+- свёрнутые блоки использования инструментов, прикреплённые под предыдущим
+  ходом assistant;
+- левый рейл диалога со ссылками на якоря `#turn-N`.
+
+Markdown диалога рендерится через markdown-рендерер сайта. Семантические
+поверхности — inline-код, явная разметка команд/тегов, пути, имена файлов и
+хэштеги — оформляются как компактные чипы; случайные существительные с
+заглавной буквы автоматически чипами не становятся.
+
+Текущая типографика транскриптов:
+
+| Поверхность | Селектор | Размер |
 |---|---|---|
-| Conversation markdown prose | `.session-turn-text`, prose children | `8px` |
-| Generic conversation code fences | `.session-turn-text pre` | `10px` |
-| Bash/shell fenced code content | `.session-code-block code.language-bash`, `.language-sh`, `.language-shell`, `.language-zsh` | `11px` |
-| Tool details/summary | `.session-tool-details`, `.session-tool-details > summary` | `10px` |
-| Tool-use header | `.session-tool-use-header` | `8px` |
-| Tool payload text | `.session-tool-use-text` | `6px` |
+| Markdown-проза диалога | `.session-turn-text`, дочерние элементы прозы | `8px` |
+| Обычные code-фенсы диалога | `.session-turn-text pre` | `10px` |
+| Содержимое bash/shell-фенсов | `.session-code-block code.language-bash`, `.language-sh`, `.language-shell`, `.language-zsh` | `11px` |
+| Details/summary инструментов | `.session-tool-details`, `.session-tool-details > summary` | `10px` |
+| Заголовок tool-use | `.session-tool-use-header` | `8px` |
+| Текст payload инструмента | `.session-tool-use-text` | `6px` |
 
-## Чеклист публикации сессий
+## Чек-лист публикации для сессий
 
-Перед деплоем публичного сайта с сессиями:
+Перед развёртыванием публичного сайта, включающего сессии:
 
-1. Запустите `tesserae sessions list` и подтвердите ожидаемое количество.
-2. Проверьте `.tesserae/harness_sessions/` на чувствительное содержимое.
-3. Пересоберите через `tesserae export site`.
-4. Локально откройте `sessions/index.html` и хотя бы одну страницу detail сессии.
-5. Убедитесь, что tool blocks свёрнуты по умолчанию и raw tool payloads допустимы к публикации.
-6. После commit исходного дерева выполните деплой через `tesserae export site --deploy`.
+1. Запустите `tesserae sessions list` и убедитесь, что количество ожидаемое.
+2. Просмотрите `.tesserae/harness_sessions/` на чувствительное содержимое.
+3. Пересоберите с `tesserae export site`.
+4. Откройте локально `sessions/index.html` и хотя бы одну детальную страницу
+   сессии.
+5. Убедитесь, что блоки инструментов свёрнуты по умолчанию и что сырые payload
+   инструментов допустимо публиковать.
+6. Разверните с `tesserae export site --deploy`, когда дерево исходников
+   закоммичено.

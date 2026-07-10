@@ -5,7 +5,7 @@
 <!-- translations:end -->
 This project can index itself. The self-dogfood flow proves that Tesserae can be installed, set up inside its own repository, ingest its own docs/source/tests/scripts, optionally refresh Understand Anything and Cognee, compile graph artifacts, and build the static web frontend.
 
-The same flow doubles as a multimodal smoke test. With `--with-raganything --install-raganything --run-raganything`, the dogfood compile points RAG-Anything at Tesserae's own `docs/` markdown plus the `docs/assets/` and project-level `assets/` images. That validates the multimodal pipeline against a real, project-owned non-code corpus — covering screenshots and diagrams the text-first source loaders skip — without inventing a separate fixture set.
+The same flow doubles as a multimodal smoke test. With RAG-Anything installed (`tesserae setup --install raganything`) and enabled in `.tesserae/config.json` (`memory_backends.raganything.enabled: true`), the dogfood compile points RAG-Anything at Tesserae's own `docs/` markdown plus the `docs/assets/` and project-level `assets/` images. That validates the multimodal pipeline against a real, project-owned non-code corpus — covering screenshots and diagrams the text-first source loaders skip — without inventing a separate fixture set.
 
 It also exercises the self-improvement loop. Each compile re-derives mutable
 memory state — `decay_score`, `access_count`, `confidence`, and the
@@ -38,16 +38,11 @@ tesserae init \
   --source docs \
   --source tesserae \
   --source tests \
-  --source scripts \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex \
-  --with-raganything \
-  --install-raganything \
-  --raganything-parser mineru \
-  --run-raganything \
-  --run-cognee \
-  --install-cognee
+  --source scripts
+
+# (optional) install + enable the heavier companions afterwards:
+#   tesserae setup --install raganything --install understand-anything --install cognee
+#   then flip memory_backends.*.enabled / external_tools in .tesserae/config.json
 
 # Compile the configured sources.
 tesserae compile

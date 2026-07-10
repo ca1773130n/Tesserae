@@ -21,7 +21,7 @@ The compile produces `.tesserae/graph.json` (the source of truth) and a plain ma
 ## 1) Export the vault
 
 ```bash
-tesserae vault export --vault ~/Documents/tesserae-vault
+tesserae vault export --output ~/Documents/tesserae-vault
 ```
 
 The directory is created if it doesn't exist. Re-running overwrites it idempotently — the markdown projection is deterministic given the same graph.
@@ -154,7 +154,7 @@ To incorporate new sources or fixes from your source files:
 tesserae compile
 ```
 
-`compile` re-projects the vault automatically — you no longer have to run a separate export step. (`tesserae vault export --vault <path>` still exists for a one-off re-projection without a full recompile.) Obsidian hot-reloads the changed files on disk.
+`compile` re-projects the vault automatically — you no longer have to run a separate export step. (`tesserae vault export --output <path>` still exists for a one-off re-projection without a full recompile.) Obsidian hot-reloads the changed files on disk.
 
 If you've added markdown notes inside the vault that aren't projected from the graph (e.g. your own personal annotations), they survive — the projector only overwrites files it owns under `papers/`, `concepts/`, `claims/`, plus `index.md`, `_bridges.md`, `_meta/dashboard.md`, and `README.md`. Hand-written pages (no `node_id:` frontmatter) and the dedicated user-notes block (`<!-- user-notes:start -->` … `<!-- user-notes:end -->`) on each projected page are preserved across recompiles.
 

@@ -5,53 +5,49 @@
 <!-- translations:end -->
 [Understand Anything](https://github.com/Lum1104/Understand-Anything) и Tesserae — взаимодополняющие проекты.
 
-- Understand Anything хорошо создает граф знаний кодовой базы и интерактивную панель.
-- Tesserae сосредоточен на долговременной памяти агентов: документах, компиляции markdown/wiki, статической публикации, истории сессий и экспортах для агентов.
+- Understand Anything отлично производит граф знаний кодовой базы и интерактивный дашборд.
+- Tesserae сфокусирован на долгоживущей памяти агентов: документы, компиляция markdown/wiki, статическая публикация, история сессий и агентские экспорты.
 
-Tesserae не должен встраивать или поглощать Understand Anything. Рассматривайте его как независимый сопутствующий инструмент, который может создавать полезные графовые артефакты.
+Tesserae не должен вендорить или поглощать Understand Anything. Относитесь к нему как к независимому компаньону, способному производить полезные графовые артефакты.
 
-## Зачем использовать оба?
+## Зачем оба?
 
-Understand Anything может записывать:
+Understand Anything может записать:
 
 ```text
 .understand-anything/knowledge-graph.json
 ```
 
-Этот граф фиксирует структуру кода: файлы, функции, классы, модули, концепции, зависимости, слои и туры.
+Этот граф захватывает структуру кода: файлы, функции, классы, модули, концепты, зависимости, слои и туры.
 
-Затем Tesserae может сохранить этот артефакт вместе с остальной памятью проекта:
+Tesserae затем может сохранить этот артефакт рядом с остальной памятью проекта:
 
 - исходные документы и markdown-страницы;
 - файлы репозитория;
 - исследовательские заметки;
-- локальную историю сессий Claude Code / Codex;
-- сгенерированные статические wiki-страницы;
-- 2D / 3D представления сайта графа;
-- `llms.txt`, `llms-full.txt`, `search-index.json`, `graph.json` и агентские sibling-файлы для каждой страницы.
+- локальная история сессий Claude Code / Codex;
+- генерируемые статические wiki-страницы;
+- 2D / 3D виды графа на сайте;
+- `llms.txt`, `llms-full.txt`, `search-index.json`, `graph.json` и per-page агентские siblings.
 
-## Текущий рабочий процесс с низким трением
+## Текущий низкофрикционный рабочий процесс
 
-Рекомендуемый путь — мастер настройки:
+Рекомендуемый путь — визард настройки:
 
 ```bash
 tesserae init
 ```
 
-Выберите Understand Anything на шаге сопутствующих инструментов. Tesserae установит/обновит сопутствующие skills по запросу и запишет управляемую команду обновления в `.tesserae/config.json`. Последующие вызовы `tesserae compile` будут автоматически запускать эту обертку, когда граф UA отсутствует или устарел.
+Выберите Understand Anything на шаге companion-инструментов (он **выключен по умолчанию** — его обновление запускает удалённый install-скрипт). Tesserae записывает управляемую команду refresh в `.tesserae/config.json` под `external_tools`. Авто-обновление при компиляции тоже выключено по умолчанию (`auto_refresh: false`); установите `true`, если хотите, чтобы `tesserae compile` запускал обёртку автоматически, когда UA-граф отсутствует или устарел.
 
-Для неинтерактивной автоматизации используйте:
+Для неинтерактивной автоматизации запустите `tesserae init --yes` (интеграции ВЫКЛ), включите Understand Anything в `.tesserae/config.json`, затем:
 
 ```bash
-tesserae init \
-  --yes \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex
+tesserae integrations refresh understand-anything --platform codex
 tesserae compile
 ```
 
-Сохраненная команда принадлежит Tesserae, а не является тем, что пользователь должен придумать сам:
+Сохранённая команда принадлежит Tesserae, а не является чем-то, что пользователь должен придумать:
 
 ```bash
 tesserae integrations refresh understand-anything --platform codex
@@ -59,56 +55,46 @@ tesserae integrations refresh understand-anything --platform codex
 
 Во время компиляции Tesserae:
 
-1. проверяет, существует ли `.understand-anything/knowledge-graph.json` и совпадает ли он с текущим git-коммитом, когда доступны метаданные;
-2. запускает настроенную агентскую платформу (`codex`, `opencode` или `claude`) только когда граф отсутствует/устарел или обновление принудительное;
+1. проверяет, существует ли `.understand-anything/knowledge-graph.json` и совпадает ли он с текущим git-коммитом, когда метаданные доступны;
+2. запускает настроенную агентскую платформу (`codex`, `opencode` или `claude`) только когда её запись `external_tools` имеет `auto_refresh: true` и граф отсутствует/устарел, либо обновление принудительно;
 3. проверяет, что граф был записан;
 4. материализует `.tesserae/external/understand-anything.md`;
 5. продолжает обычную компиляцию памяти.
 
-Можно принудительно выполнить все настроенные внешние команды обновления перед компиляцией:
+Можно принудить все настроенные внешние refresh-команды перед компиляцией:
 
 ```bash
 tesserae compile --refresh-integrations
 ```
 
-Нужен также Cognee? Добавьте флаги runtime-памяти в ту же команду setup:
-
-```bash
-tesserae init \
-  --yes \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex \
-  --run-cognee \
-  --install-cognee
-```
+Нужен ещё и Cognee? Cognee тоже opt-in: установите его через `pip install tesserae[cognee]` и задайте `memory_backends.cognee.enabled: true` в `.tesserae/config.json` (запрашивайте явно через `tesserae query --backend cognee`).
 
 ## Ручной эквивалент
 
-Предпочтителен управляемый путь настройки. Если вы намеренно хотите использовать UA вне Tesserae, сначала запустите Understand Anything в вашей агентской среде:
+Управляемый путь настройки предпочтителен. Если вы намеренно хотите использовать UA вне Tesserae, сначала запустите Understand Anything внутри вашего агентского окружения:
 
 ```bash
 /understand
 ```
 
-Затем запустите мастер настройки и **включите Understand Anything по
-соответствующему запросу**, чтобы Tesserae записал источник markdown-проекции.
-Прямые JSON-файлы сохраняются как сырые сопутствующие артефакты, а не как
-вручную введенные пути источников.
+Затем запустите визард настройки и **включите Understand Anything, когда
+спросят**, чтобы Tesserae записал источник markdown-проекции. Прямые JSON-файлы
+хранятся как сырые companion-артефакты, а не пути источников, введённые
+вручную.
 
 ```bash
 tesserae init
-# включите Understand Anything, когда мастер спросит
+# enable Understand Anything when the wizard prompts
 tesserae compile
 tesserae export site
 ```
 
-Для неинтерактивной автоматизации выполните `tesserae init --yes` (интеграции
-ВЫКЛЮЧЕНЫ), включите Understand Anything в `.tesserae/config.json` (мастер
-записывает интеграцию под ключом `external_tools`), затем выполните `tesserae
-integrations refresh understand-anything` перед компиляцией.
+Для неинтерактивной автоматизации запустите `tesserae init --yes` (интеграции
+ВЫКЛ), включите Understand Anything в `.tesserae/config.json` (визард пишет
+интеграцию под ключом `external_tools`), затем `tesserae integrations
+refresh understand-anything` перед компиляцией.
 
-Если также нужна локальная память агентских сессий:
+Если также нужна память локальных агентских сессий:
 
 ```bash
 tesserae sessions discover --import
@@ -117,39 +103,39 @@ tesserae export site
 
 ## Нативная синхронизация графа
 
-Tesserae по-прежнему сохраняет markdown projection для читаемости, но также нативно импортирует граф UA во время compile, когда настроенный инструмент использует `sync_mode: native_graph`.
+Tesserae теперь хранит markdown-проекцию для читаемости и также импортирует UA-граф нативно во время компиляции, когда настроенный инструмент использует `sync_mode: native_graph`.
 
-Нативный адаптер читает `.understand-anything/knowledge-graph.json`, сопоставляет узлы/ребра UA с контролируемой ontology Tesserae и записывает sync manifest:
+Нативный адаптер читает `.understand-anything/knowledge-graph.json`, отображает узлы/рёбра UA в контролируемую онтологию Tesserae и пишет манифест синхронизации:
 
 ```text
 .tesserae/external/understand-anything-sync.json
 ```
 
-Текущее сопоставление:
+Текущее отображение:
 
 | Understand Anything | Направление Tesserae |
 |---|---|
-| `project` | repository/project metadata |
-| `nodes[type=file]` | `SourceFile` nodes |
-| `nodes[type=function]` / `method` | `CodeFunction` nodes |
-| `nodes[type=class]` / `component` | `CodeClass` nodes |
-| `nodes[type=module]` / `package` | `CodeModule` nodes |
-| `nodes[type=concept]` / `topic` | canonical `Concept` nodes |
-| `nodes[type=feature]` / `capability` | `Capability` nodes |
-| `edges[type=imports]` | `imports` edges |
-| `edges[type=contains]` | `contains` edges |
-| `edges[type=calls]` | `calls` edges |
-| unknown edge types | `shares_concept_with` с metadata `ua_edge_type` |
+| `project` | метаданные репозитория/проекта |
+| `nodes[type=file]` | узлы `SourceFile` |
+| `nodes[type=function]` / `method` | узлы `CodeFunction` |
+| `nodes[type=class]` / `component` | узлы `CodeClass` |
+| `nodes[type=module]` / `package` | узлы `CodeModule` |
+| `nodes[type=concept]` / `topic` | канонические узлы `Concept` |
+| `nodes[type=feature]` / `capability` | узлы `Capability` |
+| `edges[type=imports]` | рёбра `imports` |
+| `edges[type=contains]` | рёбра `contains` |
+| `edges[type=calls]` | рёбра `calls` |
+| неизвестные типы рёбер | `shares_concept_with` с метаданными `ua_edge_type` |
 
-Concept synchronization выполняет canonicalization, а не создает дубликаты вслепую. Если UA выдает `Mermaid Rendering`, а в Tesserae уже есть `Mermaid rendering`, compile сохраняет один concept node и добавляет UA provenance в `metadata.external_refs`.
+Синхронизация концептов канонизируется, а не слепо дублируется. Если UA эмитирует `Mermaid Rendering`, а у Tesserae уже есть `Mermaid rendering`, компиляция сохраняет один узел концепта и добавляет UA-provenance под `metadata.external_refs`.
 
-Tesserae остается memory compiler; UA остается независимым companion graph generator.
+Tesserae остаётся компилятором памяти; UA остаётся независимым генератором companion-графа.
 
 ## Принцип сотрудничества
 
-Не представляйте Tesserae как замену Understand Anything.
+Не подавайте Tesserae как замену Understand Anything.
 
-Лучшее позиционирование:
+Лучший фрейминг:
 
 - Understand Anything помогает разработчику понять кодовую базу сейчас.
-- Tesserae помогает агентам со временем помнить, искать, цитировать, обновлять и публиковать знания проекта.
+- Tesserae помогает агентам помнить, искать, цитировать, обновлять и публиковать знания проекта во времени.

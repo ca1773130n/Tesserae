@@ -38,16 +38,12 @@ The recommended path is the setup wizard:
 tesserae init
 ```
 
-Choose Understand Anything in the companion-tools step. Tesserae installs/updates the companion skills when requested and writes a managed refresh command into `.tesserae/config.json`. Future `tesserae compile` calls run that wrapper automatically when the UA graph is missing or stale.
+Choose Understand Anything in the companion-tools step (it is **off by default** — its refresh runs a remote install script). Tesserae writes a managed refresh command into `.tesserae/config.json` under `external_tools`. Auto-refresh on compile is also off by default (`auto_refresh: false`); set it to `true` if you want `tesserae compile` to run the wrapper automatically when the UA graph is missing or stale.
 
-For non-interactive automation, use:
+For non-interactive automation, run `tesserae init --yes` (integrations OFF), enable Understand Anything in `.tesserae/config.json`, then:
 
 ```bash
-tesserae init \
-  --yes \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex
+tesserae integrations refresh understand-anything --platform codex
 tesserae compile
 ```
 
@@ -60,7 +56,7 @@ tesserae integrations refresh understand-anything --platform codex
 During compile, Tesserae:
 
 1. checks whether `.understand-anything/knowledge-graph.json` exists and matches the current git commit when metadata is available;
-2. runs the configured agent platform (`codex`, `opencode`, or `claude`) only when the graph is missing/stale or refresh is forced;
+2. runs the configured agent platform (`codex`, `opencode`, or `claude`) only when its `external_tools` entry has `auto_refresh: true` and the graph is missing/stale, or refresh is forced;
 3. verifies the graph was written;
 4. materializes `.tesserae/external/understand-anything.md`;
 5. continues the normal memory compile.
@@ -71,17 +67,7 @@ You can force all configured external refresh commands before a compile:
 tesserae compile --refresh-integrations
 ```
 
-Need Cognee too? Add the runtime memory flags in the same setup command:
-
-```bash
-tesserae init \
-  --yes \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex \
-  --run-cognee \
-  --install-cognee
-```
+Need Cognee too? Cognee is opt-in as well: install it with `pip install tesserae[cognee]` and set `memory_backends.cognee.enabled: true` in `.tesserae/config.json` (query it explicitly with `tesserae query --backend cognee`).
 
 ## Manual equivalent
 

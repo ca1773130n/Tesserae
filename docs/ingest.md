@@ -7,7 +7,7 @@ Merge a single document file or URL into the knowledge base.
 
 ## Usage
 
-    tesserae ingest <input>...  [--title T] [--source-kind K] [--exact] [--dry-run]
+    tesserae ingest <input>...  [--title T] [--source-kind K] [--full] [--dry-run]
 
 `<input>` is one or more local file paths or `http(s)` URLs. URLs are fetched, converted to
 markdown, and persisted under `data/ingested/<slug>.md` with provenance front-matter
@@ -24,11 +24,11 @@ URL ingest requires the optional extra:
 By default `ingest` merges the new source via an incremental compile — it does not re-extract
 the whole corpus — and the result is byte-identical to a full compile (an automatic
 full-recompile fallback guarantees correctness for any case the incremental path cannot handle).
-Pass `--exact` to force a full recompile of the whole corpus.
+Pass `--full` to force a full recompile of the whole corpus.
 
 ## Flags
 
-- `--exact` — force a full recompile of the whole corpus.
+- `--full` — force a full recompile of the whole corpus.
 - `--dry-run` — fetch and report what would be ingested; write no graph.
 - `--title` — title override, useful for bare URLs.
 - `--source-kind` — override the source classification.

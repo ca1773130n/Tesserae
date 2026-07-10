@@ -118,8 +118,8 @@ tesserae vault sync --vault ~/Documents/tesserae-vault
 tesserae vault sync --vault ~/Documents/tesserae-vault --persist-vault
 
 # Long-running watch: re-apply the overlay every time the vault changes.
-# Ctrl-C to stop; tune the poll cadence with --poll-interval (default 1.5s).
-tesserae vault sync --watch --poll-interval 1.5
+# Ctrl-C to stop; tune the poll cadence with --interval (default 1.5s).
+tesserae vault sync --watch --interval 1.5
 
 # Delete projected pages whose source node no longer exists (the projector
 # only overwrites, never deletes). Pages with user-notes are kept unless you

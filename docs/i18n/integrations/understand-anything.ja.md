@@ -1,57 +1,53 @@
-# Understand Anything 連携ワークフロー
+# Understand Anything コンパニオンワークフロー
 
 <!-- translations:start -->
 <p align="center"><a href="../../integrations/understand-anything.md">English</a> · <a href="understand-anything.ko.md">한국어</a> · <a href="understand-anything.zh.md">中文</a> · <a href="understand-anything.ja.md">日本語</a> · <a href="understand-anything.ru.md">Русский</a> · <a href="understand-anything.es.md">Español</a> · <a href="understand-anything.fr.md">Français</a> · <a href="understand-anything.de.md">Deutsch</a></p>
 <!-- translations:end -->
-[Understand Anything](https://github.com/Lum1104/Understand-Anything) と Tesserae は相互補完的なプロジェクトです。
+[Understand Anything](https://github.com/Lum1104/Understand-Anything) と Tesserae は補完的なプロジェクトです。
 
-- Understand Anything は、コードベースの知識グラフとインタラクティブなダッシュボードの生成に優れています。
-- Tesserae は、長期的なエージェントメモリに注力しています: ドキュメント、markdown/wiki コンパイル、静的公開、セッション履歴、エージェント向けエクスポート。
+- Understand Anything はコードベースのナレッジグラフとインタラクティブなダッシュボードの生成に優れています。
+- Tesserae は長寿命のエージェントメモリに焦点を当てています: ドキュメント、markdown/wiki コンパイル、静的パブリッシング、セッション履歴、エージェント向けエクスポート。
 
-Tesserae は Understand Anything をベンダー化したり取り込んだりすべきではありません。有用なグラフ成果物を生成できる独立した連携ツールとして扱ってください。
+Tesserae は Understand Anything をベンダリングしたり吸収したりすべきではありません。有用なグラフ成果物を生成できる独立したコンパニオンとして扱ってください。
 
 ## なぜ両方を使うのか？
 
-Understand Anything は次を書き込めます:
+Understand Anything は次を書き出せます:
 
 ```text
 .understand-anything/knowledge-graph.json
 ```
 
-このグラフは、ファイル、関数、クラス、モジュール、概念、依存関係、レイヤー、ツアーなどのコード構造を捉えます。
+このグラフは、ファイル、関数、クラス、モジュール、概念、依存関係、レイヤー、ツアーといったコード構造を捉えます。
 
-その後、Tesserae はその成果物をプロジェクトメモリの残りと一緒に保存できます:
+Tesserae はその成果物を、プロジェクトメモリの残りの部分と並べて保存できます:
 
 - ソースドキュメントと markdown ページ;
 - リポジトリファイル;
-- 調査メモ;
+- 研究ノート;
 - ローカルの Claude Code / Codex セッション履歴;
 - 生成された静的 wiki ページ;
-- 2D / 3D グラフ Web サイトビュー;
-- `llms.txt`、`llms-full.txt`、`search-index.json`、`graph.json`、ページごとのエージェント sibling。
+- 2D / 3D グラフウェブサイトビュー;
+- `llms.txt`、`llms-full.txt`、`search-index.json`、`graph.json`、およびページ単位のエージェント向けシブリング。
 
 ## 現在の低摩擦ワークフロー
 
-推奨される経路はセットアップウィザードです:
+推奨パスはセットアップウィザードです:
 
 ```bash
 tesserae init
 ```
 
-連携ツールのステップで Understand Anything を選択します。Tesserae は要求に応じて連携 skills をインストール/更新し、管理された更新コマンドを `.tesserae/config.json` に書き込みます。以降の `tesserae compile` 呼び出しでは、UA グラフが存在しない、または古い場合に、そのラッパーが自動実行されます。
+コンパニオンツールのステップで Understand Anything を選んでください（**既定では OFF** です — そのリフレッシュはリモートのインストールスクリプトを実行します）。Tesserae は管理されたリフレッシュコマンドを `.tesserae/config.json` の `external_tools` の下に書き込みます。コンパイル時の自動リフレッシュも既定では OFF です（`auto_refresh: false`）。UA グラフが欠落している、または古いときに `tesserae compile` にラッパーを自動実行させたい場合は `true` に設定してください。
 
-非対話型の自動化には次を使います:
+非対話の自動化では、`tesserae init --yes`（統合は OFF）を実行し、`.tesserae/config.json` で Understand Anything を有効化してから、次を実行します:
 
 ```bash
-tesserae init \
-  --yes \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex
+tesserae integrations refresh understand-anything --platform codex
 tesserae compile
 ```
 
-保存されるコマンドはユーザーが考案するものではなく、Tesserae が所有するものです:
+保存されるコマンドは Tesserae 管理のものであり、ユーザーが自作する必要はありません:
 
 ```bash
 tesserae integrations refresh understand-anything --platform codex
@@ -59,55 +55,45 @@ tesserae integrations refresh understand-anything --platform codex
 
 コンパイル中、Tesserae は次を行います:
 
-1. `.understand-anything/knowledge-graph.json` が存在し、メタデータが利用可能な場合は現在の git コミットと一致するか確認します;
-2. グラフが欠落/古い場合、または更新が強制された場合にのみ、設定されたエージェントプラットフォーム（`codex`、`opencode`、または `claude`）を実行します;
-3. グラフが書き込まれたことを検証します;
-4. `.tesserae/external/understand-anything.md` を具体化します;
-5. 通常のメモリコンパイルを続行します。
+1. `.understand-anything/knowledge-graph.json` が存在し、メタデータが利用可能な場合に現在の git コミットと一致するかを確認する;
+2. その `external_tools` エントリが `auto_refresh: true` を持ち、かつグラフが欠落/古い場合、またはリフレッシュが強制された場合にのみ、設定されたエージェントプラットフォーム（`codex`、`opencode`、または `claude`）を実行する;
+3. グラフが書き込まれたことを検証する;
+4. `.tesserae/external/understand-anything.md` をマテリアライズする;
+5. 通常のメモリコンパイルを続行する。
 
-コンパイル前に、設定済みの外部更新コマンドをすべて強制実行できます:
+コンパイル前に、設定済みのすべての外部リフレッシュコマンドを強制実行できます:
 
 ```bash
 tesserae compile --refresh-integrations
 ```
 
-Cognee も必要ですか？同じ setup コマンドにランタイムメモリのフラグを追加してください:
-
-```bash
-tesserae init \
-  --yes \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex \
-  --run-cognee \
-  --install-cognee
-```
+Cognee も必要ですか？ Cognee も同様にオプトインです: `pip install tesserae[cognee]` でインストールし、`.tesserae/config.json` で `memory_backends.cognee.enabled: true` を設定してください（`tesserae query --backend cognee` で明示的にクエリします）。
 
 ## 手動での同等手順
 
-管理されたセットアップ経路が推奨です。意図的に Tesserae の外で UA を使いたい場合は、まずエージェント環境内で Understand Anything を実行してください:
+管理されたセットアップパスが推奨です。意図的に Tesserae の外で UA を使いたい場合は、まずエージェント環境内で Understand Anything を実行してください:
 
 ```bash
 /understand
 ```
 
-次にセットアップウィザードを実行し、**プロンプトが表示されたら Understand
-Anything を有効化**して、Tesserae に markdown 投影ソースを記録させます。直接の
-JSON ファイルは手入力のソースパスではなく、生の連携成果物として保持されます。
+その後セットアップウィザードを実行し、**プロンプトが出たら Understand Anything を有効化**して、
+Tesserae に markdown 射影ソースを記録させてください。直接の JSON ファイルは、手入力の
+ソースパスとしてではなく、生のコンパニオン成果物として保持されます。
 
 ```bash
 tesserae init
-# ウィザードが尋ねたら Understand Anything を有効化する
+# enable Understand Anything when the wizard prompts
 tesserae compile
 tesserae export site
 ```
 
-非対話的な自動化では、`tesserae init --yes`（連携 OFF）を実行し、
-`.tesserae/config.json` で Understand Anything を有効化し（ウィザードは連携を
+非対話の自動化では、`tesserae init --yes`（統合は OFF）を実行し、
+`.tesserae/config.json` で Understand Anything を有効化してから（ウィザードは統合を
 `external_tools` キーの下に書き込みます）、コンパイル前に `tesserae integrations
-refresh understand-anything` を実行します。
+refresh understand-anything` を実行してください。
 
-ローカルのエージェントセッションメモリも必要な場合:
+ローカルのエージェントセッションメモリも欲しい場合:
 
 ```bash
 tesserae sessions discover --import
@@ -116,9 +102,9 @@ tesserae export site
 
 ## ネイティブグラフ同期
 
-Tesserae は読みやすい markdown projection を維持しつつ、設定されたツールが `sync_mode: native_graph` を使う場合は compile 中に UA グラフもネイティブに取り込みます。
+Tesserae は現在、可読性のために markdown 射影を維持しつつ、設定されたツールが `sync_mode: native_graph` を使う場合にはコンパイル中に UA グラフをネイティブにインポートもします。
 
-ネイティブアダプターは `.understand-anything/knowledge-graph.json` を読み込み、UA のノード/エッジを Tesserae の制御された ontology にマッピングし、sync manifest を書き込みます:
+ネイティブアダプタは `.understand-anything/knowledge-graph.json` を読み込み、UA のノード/エッジを Tesserae の制御されたオントロジーにマッピングし、同期マニフェストを書き込みます:
 
 ```text
 .tesserae/external/understand-anything-sync.json
@@ -126,23 +112,23 @@ Tesserae は読みやすい markdown projection を維持しつつ、設定さ�
 
 現在のマッピング:
 
-| Understand Anything | Tesserae の方向性 |
+| Understand Anything | Tesserae 側 |
 |---|---|
-| `project` | repository/project metadata |
-| `nodes[type=file]` | `SourceFile` nodes |
-| `nodes[type=function]` / `method` | `CodeFunction` nodes |
-| `nodes[type=class]` / `component` | `CodeClass` nodes |
-| `nodes[type=module]` / `package` | `CodeModule` nodes |
-| `nodes[type=concept]` / `topic` | canonical `Concept` nodes |
-| `nodes[type=feature]` / `capability` | `Capability` nodes |
-| `edges[type=imports]` | `imports` edges |
-| `edges[type=contains]` | `contains` edges |
-| `edges[type=calls]` | `calls` edges |
-| unknown edge types | `ua_edge_type` metadata 付きの `shares_concept_with` |
+| `project` | リポジトリ/プロジェクトのメタデータ |
+| `nodes[type=file]` | `SourceFile` ノード |
+| `nodes[type=function]` / `method` | `CodeFunction` ノード |
+| `nodes[type=class]` / `component` | `CodeClass` ノード |
+| `nodes[type=module]` / `package` | `CodeModule` ノード |
+| `nodes[type=concept]` / `topic` | 正規化された `Concept` ノード |
+| `nodes[type=feature]` / `capability` | `Capability` ノード |
+| `edges[type=imports]` | `imports` エッジ |
+| `edges[type=contains]` | `contains` エッジ |
+| `edges[type=calls]` | `calls` エッジ |
+| 未知のエッジタイプ | `ua_edge_type` メタデータ付きの `shares_concept_with` |
 
-Concept synchronization は重複を無条件に作るのではなく canonicalize します。UA が `Mermaid Rendering` を出力し、Tesserae にすでに `Mermaid rendering` がある場合、compile は 1 つの concept node を保持し、`metadata.external_refs` に UA provenance を追加します。
+概念の同期は、盲目的に複製されるのではなく正規化されます。UA が `Mermaid Rendering` を出力し、Tesserae に既に `Mermaid rendering` がある場合、コンパイルは 1 つの概念ノードを保持し、`metadata.external_refs` の下に UA の来歴を追加します。
 
-Tesserae は memory compiler のままで、UA は独立した companion graph generator のままです。
+Tesserae はメモリコンパイラであり続けます; UA は独立したコンパニオングラフ生成器であり続けます。
 
 ## 協業の原則
 
@@ -150,5 +136,5 @@ Tesserae を Understand Anything の置き換えとして位置づけないで�
 
 より良い位置づけ:
 
-- Understand Anything は、開発者が今コードベースを理解するのを助けます。
-- Tesserae は、エージェントが時間をかけてプロジェクト知識を記憶、検索、引用、更新、公開するのを助けます。
+- Understand Anything は、開発者が*いま*コードベースを理解するのを助けます。
+- Tesserae は、エージェントがプロジェクト知識を時間をかけて記憶・検索・引用・更新・公開するのを助けます。

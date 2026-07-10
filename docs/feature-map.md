@@ -28,7 +28,7 @@ Status legend: ✅ shipped · ⚠ in-progress / partial.
 | Fast transcript search (memex) | ✅ | [`tesserae/memex_search.py`](../tesserae/memex_search.py) | `nicosuave/memex` BM25 index over Claude/Codex transcripts, wired to the `tesserae serve` sessions dashboard via `GET /api/transcript-search`. Optional + graceful when absent. |
 | Read-discipline handles | ✅ | [`tesserae/mcp_server.py`](../tesserae/mcp_server.py) | `compile_context` `preview=N` returns a bounded preview + a content-keyed handle; `get_handle` pages the rest. Keeps huge payloads out of the agent's context. |
 | Extraction quality signals | ✅ | [`tesserae/session_graph_llm.py`](../tesserae/session_graph_llm.py) | Per-finding `confidence` + `confidence_rationale` + `revisit_signals` (byte-stable; surfaced in `fresh_insights`). |
-| Machine-wide setup + deps | ✅ | [`tesserae/deps.py`](../tesserae/deps.py), `cli.py` | `tesserae config setup` writes global LLM defaults + installs optional deps (memex, cognee, raganything, understand-anything); `tesserae config deps` lists/installs; `tesserae init` offers memex. Per-project config still overrides. |
+| Machine-wide setup + deps | ✅ | [`tesserae/deps.py`](../tesserae/deps.py), `cli.py` | `tesserae setup` writes global LLM defaults + installs optional deps (memex, cognee, raganything, understand-anything); `tesserae config deps` lists/installs; `tesserae init` offers memex. Per-project config still overrides. |
 
 ## Context engine — v0.5.0 (June 2026)
 
@@ -41,7 +41,7 @@ The engine spine that drives the three pillars. See [`docs/architecture.md`](arc
 | `Pipeline` — reusable refresh chain returning `List[StepResult]` | ✅ | [`tesserae/engine/pipeline.py`](../tesserae/engine/pipeline.py) | One step runner the CLI, daemon, and MCP all call. Catches `Exception` per step; stops at first failure. |
 | `Daemon` — single-owner asyncio supervisor | ✅ | [`tesserae/engine/daemon.py`](../tesserae/engine/daemon.py) | Watches sources + vault + harness-session dir; debounced cancel-and-reschedule coalesces a burst into one `Pipeline.run()`. Pidfile; survives in-flight exceptions. |
 | `project engine` / `project daemon` | ✅ | [`tesserae/cli.py`](../tesserae/cli.py) | `--interval`, `--debounce`, `--once`. `daemon` is an alias of `engine`. |
-| `project refresh` — prose chain (ingest → compile → project) | ✅ | `cli.py` + [`tesserae/project.py`](../tesserae/project.py) | `--changed-only` (opt-in incremental), `--skip-sessions`. |
+| `project refresh` — prose chain (ingest → compile → project) | ✅ | `cli.py` + [`tesserae/project.py`](../tesserae/project.py) | `--changed-only` (opt-in incremental), `--no-sessions`. |
 | Live session monitor → findings | ✅ | `harness_sessions.py` + session-graph modules | Imported sessions feed the graph; `fresh_insights` / `find_session_findings` surface them. |
 
 ### Self-improvement memory (pillar 2)
@@ -68,7 +68,7 @@ The engine spine that drives the three pillars. See [`docs/architecture.md`](arc
 | Feature | Status | Source | Notes |
 |---|---|---|---|
 | `compile_context` — cited in-memory `ContextBundle` | ✅ | [`tesserae/context_compiler.py`](../tesserae/context_compiler.py) | Seed resolution → PPR expansion → budget-bound selection → cited markdown → optional LLM synthesis. Deterministic unless `synthesize=true`. Writes nothing to disk. |
-| `project context` CLI | ✅ | `cli.py` | `[query]`, `--seeds`, `--depth` (2), `--budget` (32000; ≤0 = uncapped), `--synthesize`, `--output`. |
+| `project context` CLI | ✅ | `cli.py` | `[query]`, `--seeds`, `--depth` (2), `--budget` (32000; ≤0 = uncapped), `--llm`, `--output`. |
 | `compile_context` MCP tool | ✅ | [`tesserae/mcp_server.py`](../tesserae/mcp_server.py) | Same pipeline over MCP; `budget=0` is uncapped. |
 | Topic-scoped export slices | ✅ | [`tesserae/site/exports.py`](../tesserae/site/exports.py) `slice_export_context_for_topic` | Topic-scoped `llms.txt` + `render_harness_context` via `compile_context`. |
 
@@ -269,7 +269,7 @@ Generated target files for:
 ### MCP server
 
 - ✅ `tesserae_mcp` / `python3 -m tesserae.mcp_server` over stdio JSON-RPC.
-- ✅ Retrieval/graph tools: `schema`, `graph_summary`, `search_nodes`, `node_context` (with `use_ppr`), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`.
+- ✅ Retrieval/graph tools: `schema`, `graph_summary`, `search_nodes`, `node_context` (with `use_ppr`), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`, `doctor_report`.
 - ✅ Context-engine tools (v0.5.0): `compile_context`, `embedding_status`, `fresh_insights` (decay-ranked), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`, `ask`.
 - ✅ Setup tools: `tesserae_setup_plan`, `tesserae_setup_apply`.
 - ✅ Multi-project registry: `list_projects`, `register_project`, `unregister_project`, `list_sessions`. Store URL dispatch via `url_resolver`.

@@ -1,39 +1,111 @@
 # `tesserae ingest`
 
 <!-- translations:start -->
-<p align="center"><a href="../ingest.md">English</a> · <a href="ingest.ko.md">한국어</a> · <a href="ingest.zh.md">中文</a> · <a href="ingest.ja.md">日本語</a> · <a href="ingest.ru.md">Русский</a> · <a href="ingest.es.md">Español</a> · <a href="ingest.fr.md">Français</a> · <a href="ingest.de.md">Deutsch</a></p>
+<p align="center"><a href="../ingest.md">English</a> · <a href="ingest.zh.md">中文</a> · <a href="ingest.ja.md">日本語</a> · <a href="ingest.ru.md">Русский</a> · <a href="ingest.es.md">Español</a> · <a href="ingest.fr.md">Français</a> · <a href="ingest.de.md">Deutsch</a></p>
 <!-- translations:end -->
 단일 문서 파일 또는 URL을 지식 베이스에 병합합니다.
 
 ## 사용법
 
-    tesserae ingest <input>...  [--title T] [--source-kind K] [--exact] [--dry-run]
+    tesserae ingest <input>...  [--title T] [--source-kind K] [--full] [--dry-run]
 
-`<input>`은 하나 이상의 로컬 파일 경로 또는 `http(s)` URL입니다. URL은 가져와서 마크다운으로
-변환된 다음 출처 정보가 담긴 front-matter(`source_url`, `fetched_at`, `content_sha256`, 그리고
-감지된 경우 `arxiv_id`)와 함께 `data/ingested/<slug>.md`에 저장된 후 병합됩니다.
-프로젝트 외부의 로컬 파일은 `data/ingested/`로 복사되어 추적되는 소스가 됩니다(이후 전체 컴파일이
-동일하게 재현합니다).
+`<input>`은 하나 이상의 로컬 파일 경로 또는 `http(s)` URL입니다. URL은 가져와서 markdown으로
+변환되고, 출처(provenance) front-matter(`source_url`, `fetched_at`, `content_sha256`,
+감지되면 `arxiv_id`)와 함께 `data/ingested/<slug>.md` 아래에 영속화된 뒤 병합됩니다.
+프로젝트 외부의 로컬 파일은 `data/ingested/`로 복사되어 추적되는 소스가 됩니다
+(이후의 전체 compile이 이를 동일하게 재현합니다).
 
-URL 인제스트에는 선택적 추가 패키지가 필요합니다.
+URL ingest에는 선택적 extra가 필요합니다:
 
     pip install tesserae[ingest-url]
 
-## 작동 방식
+## 동작 방식
 
-기본적으로 `ingest`는 증분 컴파일을 통해 새 소스를 병합합니다. 전체 코퍼스를 다시 추출하지 않으며,
-그 결과는 전체 컴파일과 바이트 단위로 동일합니다(증분 경로가 처리할 수 없는 경우에도 자동 전체
-재컴파일 폴백이 정확성을 보장합니다). 전체 코퍼스의 전체 재컴파일을 강제하려면 `--exact`를 전달하세요.
+기본적으로 `ingest`는 새 소스를 증분 compile로 병합합니다 — 전체 코퍼스를 다시 추출하지
+않습니다 — 그리고 결과는 전체 compile과 바이트 단위로 동일합니다(증분 경로가 처리할 수
+없는 모든 경우에 대해 자동 전체-재compile 폴백이 정확성을 보장합니다).
+전체 코퍼스의 전체 재compile을 강제하려면 `--full`을 전달하세요.
 
 ## 플래그
 
-- `--exact` — 전체 코퍼스의 전체 재컴파일을 강제합니다.
-- `--dry-run` — 인제스트될 항목을 가져와 보고하지만 그래프는 쓰지 않습니다.
-- `--title` — 제목 재정의로, 단순 URL에 유용합니다.
-- `--source-kind` — 소스 분류를 재정의합니다.
+- `--full` — 전체 코퍼스의 전체 재compile을 강제.
+- `--dry-run` — 가져와서 무엇이 ingest될지 보고; 그래프는 기록하지 않음.
+- `--title` — 타이틀 재정의, 순수 URL에 유용.
+- `--source-kind` — 소스 분류를 재정의.
 
-## 관련 명령어
+## 개념 레이어 (`--extractor`)
 
-- `tesserae compile`(인수 없음)은 추적되는 전체 코퍼스를 다시 추출합니다.
-- `tesserae ingest <x>`는 하나의 소스를 증분 방식으로 추가합니다.
-- `tesserae code ingest`는 Python 소스에서 코드 그래프를 생성합니다(다른 명령어입니다).
+Tesserae는 LLM 위키이므로 `compile`은 **기본적으로 개념/클레임 레이어**를
+빌드합니다(`--extractor llm`): 설정된 LLM 프로바이더 — `llm_provider`에 따라
+**codex / claude / Anthropic API** — 를 통해 각 문서를 읽고 개념, 클레임,
+capability, 기술 용어, 근거 스팬(evidence span), 그리고 이들 사이의 타입
+엣지를 생성합니다. 이 레이어가 있어야 그래프가 단지 *"어느 파일이 그것을
+말했는가"*가 아니라 *"이것이 어떤 아이디어이고 어떻게 연관되는가"*에 답할 수
+있습니다.
+
+    tesserae compile                        # LLM concept layer, configured provider
+    tesserae compile --llm-provider codex   # force a provider for this run
+
+LLM 백엔드가 설정/인증되어 있지 않으면 compile은 **결정적(deterministic)**
+추출기로 강등되고(구조만 — 소스, 섹션, 명시적 링크) 경고를 냅니다. 명시적으로
+요청할 수도 있습니다 — 빠르고, 키가 필요 없고, 바이트 단위로 안정적인 CI /
+재현 가능 모드입니다:
+
+    tesserae compile --extractor deterministic
+
+**비용 인지형 (`selective-llm`)** — 매칭되는 문서만 LLM을 통해 라우팅하고
+나머지는 결정적으로:
+
+    tesserae compile --extractor selective-llm \
+      --llm-include "docs/**/*.md" --llm-limit 20
+
+같은 플래그가 `tesserae extract <paths>`(독립 실행)와
+`tesserae compile <paths>`(임시 경로 ingest)에서도 동작합니다.
+
+**튜닝:**
+
+- `--llm-provider codex|claude|anthropic` — 프로바이더 재정의(기본값: 설정의
+  `llm_provider`).
+- `--llm-model` — 추출기용 모델(기본값: 프로바이더의 기본 모델).
+- `--llm-include <glob>` — `selective-llm`에서 어떤 파일이 LLM을 거칠지
+  (여러 개 지정하려면 반복; 패턴은 절대 경로의 어디에서든 매칭됨, 예:
+  `"*docs/superpowers*"`).
+- `--llm-limit N` — LLM에 도달하는 파일 수 상한(나머지는 결정적 처리 유지).
+
+**기본 타임아웃 없음.** 큰 설계 문서는 많은 JSON을 생성하며 수 분이 걸릴 수
+있습니다; 추출은 조용히 잘리는 대신 완료까지 실행됩니다(타임아웃은 옵트인
+전용).
+
+**실제 코퍼스에서 견고함.** 노이즈가 많거나 느린 문서 하나가 전체 compile을
+중단시키는 일은 없습니다: 한 문서에 대한 LLM 실패(인증, 오류, 파싱 불가한
+생성물)는 *그* 문서에 한해 결정적 베이스라인으로 폴백하고, 통제 어휘를 벗어난
+엣지나 노드 타입은 버려지며, 콘텐츠 키 기반 캐싱 덕분에 변경되지 않은 문서의
+재compile은 이전 추출을 재사용합니다.
+
+> `claude-cli` / `selective-claude` 추출기 이름(그리고 `--claude-*` 플래그)은
+> `llm` / `selective-llm`(그리고 `--llm-*`)의 폐기 예정(deprecated) 별칭입니다;
+> 여전히 동작하지만 폐기 예정 안내를 출력합니다.
+
+## compile 범위 관리 (`sources`)
+
+`tesserae compile`(인자 없음)은 프로젝트의 `sources` 목록에 있는 디렉터리를
+compile합니다. 그 목록은 — **로컬 또는 글로벌** — `sources` 하위 명령으로
+관리합니다:
+
+    tesserae sources add docs                 # local: inside the project (stored project-relative)
+    tesserae sources add /data/shared-notes   # global: an absolute path outside the project
+    tesserae sources add ../sibling-project   # global: a relative path that escapes the root
+    tesserae sources list                     # shows each source tagged local/global, flags missing
+    tesserae sources remove docs
+
+프로젝트 내부의 경로는 프로젝트 상대 경로로 저장되고(이식 가능), 외부의 것은
+절대 경로로 저장됩니다. 둘 다 compile 시점에 해석되므로 글로벌 소스도 로컬
+소스와 똑같이 compile됩니다. (추가는 해석된 위치 기준으로 중복 제거되므로,
+같은 디렉터리의 절대 경로 형태와 `../` 상대 경로 형태가 이중 계산되는 일은
+없습니다.)
+
+## 관련 명령
+
+- `tesserae compile`(인자 없음)은 추적되는 전체 코퍼스를 다시 추출합니다.
+- `tesserae ingest <x>`는 소스 하나를 증분으로 추가합니다.
+- `tesserae code ingest`는 Python 소스에서 코드 그래프를 생성합니다(별개의 명령).

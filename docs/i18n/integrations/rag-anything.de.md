@@ -142,16 +142,23 @@ Direkte OpenAI-Embedding-Unterstützung ist in v1 nicht über diese Flags verdra
 ### Aufruf über die CLI
 
 ```bash
-# Auto mode: tries RAG-Anything (when enabled), then Cognee, then compiled-wiki search.
+# `ask` never enters memory backends: it plans retrieval over the compiled
+# graph and synthesizes a cited LLM answer (--no-llm = ranked hits only).
 tesserae ask "What does the integration spec say about parser routing?"
 
-# Force a specific backend.
-tesserae ask "..." --backend raganything
-tesserae ask "..." --backend cognee
-tesserae ask "..." --backend wiki
+# Explicit backends live on `query` — raw retrieval, no LLM synthesis.
+tesserae query "..." --backend raganything
+tesserae query "..." --backend cognee
+tesserae query "..." --backend wiki
 ```
 
-`--backend raganything` ruft `tesserae.raganything_query.query` direkt auf. Ein relativer `working_dir` in `memory_backends.raganything` wird vor dem Aufruf gegen die Projekt-Root aufgelöst.
+> **Cognee-1.0-Suchtyp.** Cognee 1.0 hat den alten `INSIGHTS`-Retriever
+> ausgemustert, daher defaultet Tesserae das cognee-Backend auf
+> `GRAPH_COMPLETION` (eine über den Knowledge Graph synthetisierte Antwort).
+> Für rohes Retrieval statt einer generierten Antwort übergib
+> `--cognee-search-type CHUNKS` (oder `SUMMARIES`).
+
+`tesserae query --backend raganything` ruft `tesserae.raganything_query.query` direkt auf. Ein relativer `working_dir` in `memory_backends.raganything` wird vor dem Aufruf gegen die Projekt-Root aufgelöst.
 
 ### Top-Level-`ask` (nutzt die Multi-Projekt-Registry)
 
@@ -159,24 +166,24 @@ Für Workflows, in denen du über mehrere registrierte Tesserae-Projekte hinweg 
 
 ```bash
 # One-time: register your projects (saved to ~/.tesserae/registry.json).
-tesserae projects register ~/Developer/Projects/Tesserae --name tesserae --activate
+tesserae projects register ~/Developer/Projects/Tesserae --name tesserae
 tesserae projects register ~/Developer/Projects/Other --name other
 
 # List registered projects.
 tesserae projects list
 
-# Ask the currently active project.
+# Ask from inside a project (the smart router picks the target otherwise).
 tesserae ask "How does the parser routing work?"
 
-# Ask a specific registered project (no need to activate it).
-tesserae ask "What is the architecture?" --wiki other
+# Ask a specific registered project by name.
+tesserae ask "What is the architecture?" --name other
 
-# Force a backend or pass a direct path.
-tesserae ask "..." --wiki tesserae --backend raganything --json
+# Pass a direct path, or hit a memory backend explicitly via `query`.
 tesserae ask "..." --project /tmp/somewhere
+tesserae query "..." --backend raganything --json
 ```
 
-Die Dispatch-Logik — `--project > --wiki > active project` — ist in `_top_level_ask_handler` implementiert; die Antwortformatierung und Backend-Auswahl wird über `tesserae.query.ask_project` mit `project ask` und dem MCP-Tool `ask` geteilt. Die Registry ist datei-gestützt (standardmäßig `~/.tesserae/registry.json`), bleibt also über Sessions erhalten und ist mit der Projektliste des MCP-Servers synchron.
+Die Dispatch-Logik — `--project > --name > Router` — ist im Top-Level-Ask-Handler implementiert; die Antwortformatierung wird über `tesserae.query.ask_project` mit dem MCP-Tool `ask` geteilt (Memory-Backends sind nur über `tesserae query --backend …` erreichbar). Die Registry ist datei-gestützt (standardmäßig `~/.tesserae/registry.json`), bleibt also über Sessions erhalten und ist mit der Projektliste des MCP-Servers synchron.
 
 #### Über mehrere Vaults abfragen (`--scope all-registered`)
 
@@ -197,10 +204,9 @@ Der Handler iteriert die registrierten Projekte in alphabetischer Reihenfolge, r
 
 | Befehl | Zweck |
 | --- | --- |
-| `tesserae projects list [--json]` | Listet registrierte Projekte und zeigt, welches aktiv ist. |
-| `tesserae projects register <path> [--name <alias>] [--activate]` | Fügt ein Projekt der Registry hinzu; der Alias wird standardmäßig vom bereinigten Verzeichnisnamen abgeleitet. |
-| `tesserae projects activate <name>` | Markiert einen Eintrag als aktives Projekt für nachfolgende `tesserae ask`-Aufrufe ohne `--wiki`. |
-| `tesserae projects unregister <name>` | Entfernt einen Eintrag; löscht den Aktiv-Pointer, falls dieser passte. |
+| `tesserae projects list [--json]` | Listet registrierte Projekte (alle sind gleichgestellt — es gibt kein „aktives“). |
+| `tesserae projects register <path> [--name <alias>]` | Fügt ein Projekt der Registry hinzu; der Alias wird standardmäßig vom bereinigten Verzeichnisnamen abgeleitet. |
+| `tesserae projects unregister <name>` | Entfernt einen Eintrag aus der Registry. |
 
 Diese Befehle arbeiten direkt auf `tesserae.mcp_server.ProjectRegistry` — kein MCP-Roundtrip — und lassen sich ohne laufenden MCP-Server skripten.
 
@@ -259,7 +265,7 @@ Wenn ein konfigurierter Parser fehlt, bricht `refresh-raganything` früh ab — 
 
 ### Per-Page-Ask-Widget
 
-Jede Detailseite (Concept, Paper, Repo, Synthesis, Entity, Topic, Question, Source) enthält ein Inline-„Ask about this page“-Widget. Es POSTet an `/api/ask` der lokalen `tesserae serve`-Instanz, ruft `tesserae.query.ask_project` auf und rendert die Antwort inline. Das Widget setzt der Frage des Nutzers den Node-Namen der aktuellen Seite als natürlich-sprachlichen Kontext-Hinweis voran (z. B. `` About `<NodeName>`: <question> ``); ein künftiger PR kann echtes Subgraph-Scoping direkt in `ask_project` einhängen.
+Jede Detailseite (Concept, Paper, Repo, Synthesis, Entity, Topic, Question, Source) enthält ein Inline-„Ask about this page“-Widget. Es POSTet an `/api/ask` der lokalen `tesserae serve`-Instanz, ruft `tesserae.query.ask_project` auf und rendert die Antwort inline. Anders als die CLI (wo `tesserae ask` standardmäßig LLM nutzt) defaultet `/api/ask` aus Latenzgründen für das Widget auf **Nicht-LLM-Retrieval**; sende `{"llm": true}` im Payload, um in die geplante/synthetisierte Antwort zu optieren. Das Widget setzt der Frage des Nutzers den Node-Namen der aktuellen Seite als natürlich-sprachlichen Kontext-Hinweis voran (z. B. `` About `<NodeName>`: <question> ``); ein künftiger PR kann echtes Subgraph-Scoping direkt in `ask_project` einhängen.
 
 Das Widget erkennt beim Laden die Backend-Verfügbarkeit über `/api/ask/health`. Wenn das Wiki statisch ausgeliefert wird (GitHub Pages, `file://`, S3, beliebiger statischer Host), kollabiert das Widget zu einer einzeiligen Notiz, die Leser zu `tesserae serve` für die lokale interaktive Nutzung verweist. Keine Requests schlagen fehl, und nichts blockiert das Page-Rendering — das Widget ist eine deferred JS-Insel, getrennt vom schwereren Graph-Bundle.
 

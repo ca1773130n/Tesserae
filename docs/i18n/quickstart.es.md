@@ -9,7 +9,7 @@ Esta página muestra el camino más corto desde un directorio de proyecto existe
 
 La CLI está agrupada: un puñado de verbos cotidianos en el nivel superior, más grupos
 (`sessions`, `vault`, `export`, `code`, `config`, `projects`, `integrations`,
-`lab`) para el resto. Ejecuta `tesserae --help` para ver todo el árbol:
+`lab`) para el resto. Ejecuta `tesserae --help` para ver el árbol completo:
 
 ```text
 usage: tesserae <command> [options]
@@ -17,8 +17,9 @@ usage: tesserae <command> [options]
 EVERYDAY
   init          Set up .tesserae (wizard by default; --yes non-interactive)
   compile       Rebuild the knowledge graph (compile [paths] = ad-hoc ingest)
+  ingest        Ingest a document file or URL into the knowledge base
   context       Compile agent-ready context for a query
-  ask           Ask the project memory a question
+  ask           LLM answer over the knowledge graph (planned retrieval)
   serve         Browse the compiled site (auto-builds if missing)
   status        Node/edge counts, last compile, vault state
 
@@ -28,16 +29,22 @@ AUTOMATION
   research      Autonomous research mode: investigate a query
 
 ANALYSIS
-  query         Raw retrieval over the graph (top-k, kind filters)
+  query         raw retrieval: BM25/semantic + explicit backends
   lint          Graph lint report (--fix-trivial, --severity, --json)
+  doctor        Health checks: init/graph/registry/staleness/locks (--fix = safe repairs only)
+  summary       Daily/weekly activity digest (sessions, findings, commits, PRs, docs)
+  decisions     Decisions across projects + time (human AskUserQuestion + agent)
 
 GROUPS
-  sessions      import | discover | list — agent session history
+  sessions      import | discover | list | chunk-backfill — agent session history
   vault         sync | sync-all | set-root | export | prune — Obsidian projection
   export        harness | graphiti | site — artifact exports
   code          ingest | sync — CodeGraph ⇄ project graph (hook-invoked)
-  config        llm | show — machine-wide defaults (~/.tesserae/config.json)
-  projects      register | list | activate | unregister | mcp-config — registry
+  setup         Machine-wide setup: LLM defaults + optional deps (interactive by default)
+  config        llm | deps | show | status | clip-token — LLM backend defaults + resolved view & liveness ping
+  projects      register | list | unregister | mcp-config — registry
+  sources       add | list | remove — manage compile source dirs (local & global)
+  federation    status | explain — inspect cross-project federation
   integrations  refresh raganything|understand-anything
   extract       Low-level: extract a typed graph from markdown paths
 
@@ -47,9 +54,10 @@ LAB
 Run `tesserae <command> --help` for command details.
 ```
 
-Para ver los flags de un comando concreto, ejecuta `tesserae <command> --help` (por ejemplo, `tesserae compile --help`).
+Ejecuta `tesserae <command> --help` (p. ej. `tesserae compile --help`) para ver los flags de
+cualquier comando individual.
 
-## 1. Ejecutar el asistente de configuración
+## 1. Ejecuta el asistente de configuración
 
 Desde el proyecto que quieres indexar:
 
@@ -58,55 +66,58 @@ cd /path/to/my-project
 tesserae init
 ```
 
-El asistente detecta source comunes como `README.md`, `docs`, `src`, `lib`, `app`, `packages` y `data`, y luego escribe `.tesserae/config.json`. También configura el Cognee backend por defecto para que `tesserae ask` pueda probar Cognee y recurrir a la búsqueda wiki compilada.
+`tesserae init` es el único paso de onboarding. El asistente detecta fuentes comunes como `README.md`, `docs`, `src`, `lib`, `app`, `packages` y `data`, sondea qué CLIs de LLM están instaladas **y con sesión iniciada**, te deja elegir el proveedor LLM, y escribe `.tesserae/config.json`. Los backends de memoria opcionales (RAG-Anything, Cognee) están **desactivados por defecto**; habilítalos más tarde en `memory_backends` en la config, y consúltalos explícitamente con `tesserae query --backend …`.
 
-Para una configuración no interactiva (CI, scripts), pasa `--yes` para aceptar los valores por defecto detectados sin preguntar:
+Para una configuración no interactiva (CI, scripts), pasa `--yes` para aceptar los valores
+detectados sin preguntar (todas las integraciones opcionales OFF):
 
 ```bash
 tesserae init --yes
 ```
 
-Para una configuración totalmente automática con Understand Anything y Cognee runtime memory habilitados:
+### Configuración del proveedor LLM
+
+La elección de proveedor del asistente (o los flags equivalentes) persiste estas claves de config:
+
+| Clave de config | Flag | Qué es |
+|---|---|---|
+| `llm_provider` | `--llm-provider {claude,codex,anthropic,custom}` | Backend para el cliente LLM: `claude`/`codex` usan la CLI con sesión iniciada vía OAuth; `anthropic` usa la API directamente; `custom` apunta a cualquier endpoint compatible con claude. |
+| `llm_model` | `--llm-model` | Modelo para el cliente LLM de síntesis/insights. |
+| `llm_base_url` | `--llm-base-url` | URL base del endpoint para `anthropic`/`custom`. |
+| `llm_api_key` | `--llm-api-key` | Clave de API para `anthropic`/`custom`. |
+
+> **Advertencia de texto plano.** `llm_api_key` se guarda en **texto plano** en
+> `.tesserae/config.json`. Prefiere las variables de entorno en su lugar:
+> `ANTHROPIC_API_KEY` (clave), `ANTHROPIC_BASE_URL` (endpoint) y
+> `TESSERAE_LLM_MODEL` (modelo). El orden de resolución es env → config del proyecto →
+> config a nivel de máquina (`~/.tesserae/config.json`, escrita por `tesserae setup`)
+> → valor por defecto integrado.
+
+Volver a ejecutar `init` sobre un proyecto existente **fusiona** — tus `sources`
+y `memory_backends` configurados se preservan, no se machacan.
+
+Ejemplos de configuraciones de proveedor no interactivas:
 
 ```bash
-tesserae init \
-  --yes \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex \
-  --with-raganything \
-  --install-raganything \
-  --raganything-parser mineru \
-  --run-raganything \
-  --run-cognee \
-  --install-cognee
+tesserae init --yes --llm-provider codex
+tesserae init --yes --llm-provider custom \
+  --llm-base-url https://llm.internal.example/v1 \
+  --llm-model my-model            # key via ANTHROPIC_API_KEY
 ```
 
-Qué hace eso:
+Si habilitas Understand Anything con `auto_refresh: true` en su entrada de `external_tools` (desactivado por defecto — su refresco ejecuta un script de instalación remoto), `tesserae compile` ejecuta `tesserae integrations refresh understand-anything` cuando el grafo de UA falta o está obsoleto; de lo contrario, ejecuta ese comando tú mismo.
 
-| Flag | Effect |
-|---|---|
-| `--with-understand-anything` | Añade la UA graph projection como source. |
-| `--install-understand-anything` | Instala/actualiza las UA companion skills. |
-| `--understand-anything-platform codex` | Usa Codex para ejecutar el UA refresh wrapper gestionado por Tesserae. |
-| `--with-raganything` | Habilita el ingestion multimodal vía RAG-Anything. |
-| `--install-raganything` | Instala raganything[all] durante la configuración. |
-| `--raganything-parser` | Elección de parser: mineru (por defecto), docling, paddleocr. |
-| `--run-raganything` | Refresca automáticamente RAG-Anything en cada compile. |
-| `--run-cognee` | Ejecuta un Cognee runtime cognify best-effort durante el compile. |
-| `--install-cognee` | Instala Cognee con el Python actual si falta. |
+> **Sáltate el asistente.** `tesserae init --bare` escribe un `.tesserae/config.json` mínimo
+> sin detección de fuentes ni sondeo de backends — práctico cuando quieres editar a mano
+> la config antes de la primera compilación.
 
-Los usuarios no necesitan conocer la ruta de instalación de UA ni escribir `/understand`; cuando el UA graph falta o está obsoleto, `tesserae compile` ejecuta `tesserae integrations refresh understand-anything`.
-
-> **Saltarse el asistente.** `tesserae init --bare` escribe un `.tesserae/config.json` mínimo sin detección de source ni sondeo de backend — útil cuando quieres editar el config a mano antes del primer compile.
-
-## 2. Compilar el grafo y las proyecciones
+## 2. Compila el grafo y las proyecciones
 
 ```bash
 tesserae compile
 ```
 
-`compile` escribe los artefactos duraderos:
+`compile` escribe los artefactos durables:
 
 ```text
 .tesserae/
@@ -126,51 +137,60 @@ tesserae compile
   cognee_bundle/
 ```
 
-Después de la primera ejecución usa `--changed-only` para omitir los archivos markdown sin cambios, preservando el grafo anterior cuando no cambia ningún archivo. Si Understand Anything está habilitado, compile primero refresh/materialize `.tesserae/external/understand-anything.md`; si Cognee runtime está habilitado, también actualiza Cognee de forma best-effort tras escribir `.tesserae/cognee_bundle/`.
+Usa `--changed-only` después de la primera ejecución para saltarte los archivos markdown sin cambios preservando el grafo previo cuando ningún archivo cambió. Si Understand Anything está habilitado, compile primero refresca/materializa `.tesserae/external/understand-anything.md`; si el runtime de Cognee está habilitado, también actualiza Cognee best-effort tras escribir `.tesserae/cognee_bundle/`.
 
-Para hacer ingest ad-hoc de rutas adicionales sin tocar los source configurados, pásalas posicionalmente: `tesserae compile path/to/extra.md docs/`.
+Para ingerir rutas extra ad-hoc sin tocar las fuentes configuradas, pásalas
+posicionalmente: `tesserae compile path/to/extra.md docs/`.
 
-### Los interruptores de integración ahora viven en config
+### Los knobs de integración ahora viven en la config
 
-`tesserae compile` está deliberadamente limitado a los flags cotidianos (paths
-posicionales más `--project`, `--changed-only`, `--limit`, `--refresh-integrations`,
-`--sessions`/`--no-sessions` y los tres flags de LLM). Todos los demás flags
-anteriores de compile se trasladaron a un bloque `compile_options` en
-`.tesserae/config.json`; el valor por defecto de argparse anterior sigue siendo el
-fallback. Establece una clave allí para cambiar el comportamiento:
+`tesserae compile` está deliberadamente limitado a los flags cotidianos (rutas posicionales
+más `--project`, `--changed-only`, `--limit`, `--refresh-integrations`,
+`--sessions`/`--no-sessions`, y los tres flags de LLM). Cada antiguo flag de compile
+restante se movió a un bloque `compile_options` en `.tesserae/config.json`; el antiguo
+valor por defecto de argparse sigue siendo el fallback. Establece una clave allí para cambiar el comportamiento:
 
-| Clave `compile_options` | Flag antiguo | Por defecto | Qué hace |
+| Clave de `compile_options` | Flag antiguo | Por defecto | Qué hace |
 |---|---|---|---|
-| `source_kind` | `--source-kind` | (ninguno) | Sobrescribe el source kind configurado. |
+| `source_kind` | `--source-kind` | (ninguno) | Anula el source kind configurado. |
 | `trends` | `--trends` | `false` | Añade nodos Trend a nivel de corpus. |
-| `min_trend_sources` | `--min-trend-sources` | `2` | Mínimo de source necesarios para un nodo Trend. |
-| `exclude_data` | `--exclude-data` | `false` | Omite la auto-inclusión implícita de `project_root/data`. |
-| `no_vault_pull` | `--no-vault-pull` | `false` | No vuelve a hacer pull de las ediciones existentes del vault antes del compile. |
-| `use_extraction_feedback` | `--use-extraction-feedback` | `false` | Reinyecta resultados de extraction previos en la ejecución. |
-| `sessions_llm` | `--sessions-llm` | (auto) | Modo de extracción de sesiones por LLM (`auto`/`true`/`false`). |
-| `sessions_model` | `--sessions-model` | (ninguno) | Sobrescribe el modelo LLM usado para la extracción de sesiones. |
-| `cognee_add` | `--cognee-add` | `false` | Añade el Cognee bundle al dataset (sin cognify). |
-| `cognee_cognify` | `--cognee-cognify` | `false` | Añade el bundle y ejecuta Cognee cognify. |
-| `cognee_codex_cognify` | `--cognee-codex-cognify` | `false` | Ejecuta cognify con el LLM client de Cognee parcheado a Codex. |
-| `cognee_codex_model` | `--cognee-codex-model` | `gpt-5.4` | Modelo de Codex CLI para `cognee_codex_cognify`. |
-| `cognee_codex_timeout` | `--cognee-codex-timeout` | `300` | Timeout por llamada de Codex CLI (segundos). |
+| `min_trend_sources` | `--min-trend-sources` | `2` | Mínimo de fuentes necesarias para un nodo Trend. |
+| `exclude_data` | `--exclude-data` | `false` | Se salta el auto-include implícito de `project_root/data`. |
+| `no_vault_pull` | `--no-vault-pull` | `false` | No traer de vuelta las ediciones existentes del vault antes de compilar. |
+| `use_extraction_feedback` | `--use-extraction-feedback` | `false` | Reinyecta resultados de extracción previos en la ejecución. |
+| `sessions_llm` | `--sessions-llm` | (auto) | Modo de extracción de sesiones con LLM (`auto`/`true`/`false`). |
+| `sessions_model` | `--sessions-model` | (ninguno) | Anula el modelo LLM usado para la extracción de sesiones. |
+| `cognee_add` | `--cognee-add` | `false` | Añade el bundle de Cognee al dataset (sin cognify). |
+| `cognee_cognify` | `--cognee-cognify` | `false` | Añade el bundle y ejecuta el cognify de Cognee. |
 | `cognee_dataset` | `--cognee-dataset` | `tesserae_research_graph` | Nombre del dataset de Cognee. |
-| `cognee_embedding_provider` | `--cognee-embedding-provider` | `deterministic` | Embedding provider para la lane de Cognee. |
-| `cognee_ollama_embedding_model` | `--cognee-ollama-embedding-model` | `qwen3-embedding:0.6b` | Modelo de embedding de Ollama. |
+| `cognee_embedding_provider` | `--cognee-embedding-provider` | `deterministic` | Proveedor de embeddings para la vía de Cognee. |
+| `cognee_ollama_embedding_model` | `--cognee-ollama-embedding-model` | `qwen3-embedding:0.6b` | Modelo de embeddings de Ollama. |
 | `cognee_ollama_embedding_endpoint` | `--cognee-ollama-embedding-endpoint` | `http://127.0.0.1:11434/api/embed` | Endpoint `/api/embed` de Ollama. |
-| `cognee_ollama_embedding_timeout` | `--cognee-ollama-embedding-timeout` | `120` | Timeout de la petición de embedding de Ollama (segundos). |
-| `cognee_local_embedding_dimensions` | `--cognee-local-embedding-dimensions` | `128` | Dimensionalidad del embedding local. |
-| `cognee_system_root` | `--cognee-system-root` | (ninguno) | Directorio system root aislado de Cognee. |
-| `cognee_data_root` | `--cognee-data-root` | (ninguno) | Directorio data root aislado de Cognee. |
+| `cognee_ollama_embedding_timeout` | `--cognee-ollama-embedding-timeout` | `120` | Timeout de la petición de embeddings de Ollama (segundos). |
+| `cognee_local_embedding_dimensions` | `--cognee-local-embedding-dimensions` | `128` | Dimensionalidad de los embeddings locales. |
+| `cognee_system_root` | `--cognee-system-root` | (ninguno) | Directorio raíz de sistema aislado de Cognee. |
+| `cognee_data_root` | `--cognee-data-root` | (ninguno) | Directorio raíz de datos aislado de Cognee. |
 
-> **Pipeline de un solo paso.** `tesserae refresh` ejecuta todo el bucle en proceso: importa cualquier sesión nueva de agente, compila y sincroniza el vault en un solo comando. Pasa `--changed-only` para el compile incremental opcional.
+> **Cognee es opt-in.** El backend de Cognee está desactivado por defecto: instálalo
+> con `pip install tesserae[cognee]` y establece `memory_backends.cognee.enabled: true`
+> para usarlo (consultado explícitamente vía `tesserae query --backend cognee`). El
+> modo legacy de cognify parcheado con Codex (`cognee_codex_cognify` /
+> `cognee_codex_model` / `cognee_codex_timeout`) fue eliminado — las configs que aún
+> lleven esas claves son inertes.
 
-## 3. Construir y servir el frontend estático
+> **Pipeline de un solo golpe.** `tesserae refresh` ejecuta todo el bucle en el propio proceso — importa las sesiones de agente nuevas, compila y sincroniza el vault en un solo comando. Pasa `--changed-only` para la compilación incremental opt-in.
 
-`serve` construye automáticamente el site si falta, así que un solo comando te da un Tesserae navegable:
+## 3. Construye y sirve el frontend estático
+
+`serve` auto-construye el sitio si falta, así que un solo comando te da un
+Tesserae navegable. **Un `serve` a secas sirve cada proyecto registrado** bajo un
+servidor — una landing de proyectos en `/`, cada proyecto en `/<alias>/`, y un
+selector de Projects en la cabecera para saltar entre ellos. El **widget de ask** en la página **funciona en vivo
+en cualquiera de los dos modos**, enrutado al proyecto de la página en la que estás:
 
 ```bash
-tesserae serve --port 8765
+tesserae serve --port 8765                 # all registered projects
+tesserae serve --project . --port 8765     # just this one
 ```
 
 Abre:
@@ -179,7 +199,9 @@ Abre:
 http://127.0.0.1:8765/
 ```
 
-Para construir el site de forma explícita (por ejemplo, para deploy sin servir) usa `export site`; pasa `--no-build` a `serve` cuando quieras navegar un site construido previamente sin reconstruirlo:
+Para construir el sitio explícitamente (p. ej. para desplegar sin servir) usa `export site`;
+pasa `--no-build` a `serve` cuando quieras navegar un sitio construido previamente
+sin reconstruirlo:
 
 ```bash
 tesserae export site
@@ -187,9 +209,9 @@ tesserae serve --no-build --port 8765
 ```
 
 <!-- BEGIN: subagent-r-watch -->
-### Reconstrucción automática al guardar
+### Auto-reconstrucción al guardar
 
-Empareja el servidor de desarrollo con el watcher integrado para que las ediciones bajo `data/` y `docs/` disparen un recompile incremental:
+Empareja el servidor de desarrollo con el watcher integrado para que las ediciones bajo `data/` y `docs/` disparen una recompilación incremental:
 
 ```bash
 # terminal 1
@@ -199,20 +221,20 @@ python3 -m http.server 56821 --directory .tesserae/site
 tesserae export site --watch
 ```
 
-`export site --watch` sondea cada 2 s, hace debounce 1 s y ejecuta `compile --changed-only`. Usa `--once` para reconstrucciones estilo cron (instantáneas frente a `.tesserae/.watch-cache.json`), `--paths <dir>` para añadir directorios de vigilancia personalizados y `--interval` / `--debounce` para ajustar la cadencia.
+`export site --watch` sondea cada 2 s, aplica debounce de 1 s, y ejecuta `compile --changed-only`. Usa `--once` para reconstrucciones estilo cron (snapshots vs `.tesserae/.watch-cache.json`), `--paths <dir>` para añadir directorios de vigilancia personalizados, y `--interval` / `--debounce` para ajustar la cadencia.
 <!-- END: subagent-r-watch -->
 
-### Ejecutar el daemon de refresh
+### Ejecuta el daemon de refresco
 
-Si quieres un motor siempre activo que mantenga la base de conocimiento fresca por sí mismo — vigilando tus source, fusionando ráfagas de ediciones y recompilando automáticamente — inicia el daemon supervisado:
+Para un engine siempre encendido que mantiene la base de conocimiento fresca por su cuenta — vigilando tus fuentes, coalesciendo ráfagas de ediciones y auto-recompilando — arranca el daemon supervisado:
 
 ```bash
 tesserae engine
 ```
 
-`engine` es el supervisor de larga duración: sondea cada 2 s y espera una ventana de silencio de 1 s antes de cada reconstrucción. Ajusta la cadencia con `--interval` y `--debounce`, apúntalo a otro proyecto con `--project`, o pasa `--once` para ejecutar un único ciclo de drain determinista y salir (útil para cron o CI). Es la contraparte sin intervención de `export site --watch`: déjalo corriendo y el grafo, el vault y el site se mantienen al día mientras tú y tus agentes trabajáis.
+`engine` es el supervisor de larga vida: sondea cada 2 s y espera una ventana de calma de 1 s antes de cada reconstrucción. Ajusta la cadencia con `--interval` y `--debounce`, apúntalo a otro proyecto con `--project`, o pasa `--once` para ejecutar un único ciclo de drenaje determinista y salir (útil para cron o CI). Es la contraparte manos-libres de `export site --watch`: déjalo corriendo y el grafo, el vault y el sitio se mantienen al día mientras tú y tus agentes trabajáis.
 
-Para un recorrido anotado de cada ruta visible — home, sources, concepts, entities, papers, repos, topics, syntheses, questions, timeline, graph, además de los AI siblings — consulta [`docs/frontend-redesign.md`](frontend-redesign.es.md).
+Para un recorrido anotado de cada ruta visible — home, sources, concepts, entities, papers, repos, topics, syntheses, questions, timeline, graph, más los AI siblings — ver [`docs/frontend-redesign.md`](frontend-redesign.es.md).
 
 El frontend es ligero en dependencias y escribe:
 
@@ -224,9 +246,9 @@ El frontend es ligero en dependencias y escribe:
 .tesserae/site/llms.txt
 ```
 
-## 4. Importar el historial local de sesiones de agente
+## 4. Importa el historial local de sesiones de agente
 
-La importación del historial de sesiones es explícita: el compile/build normal lee sesiones ya normalizadas, pero no escanea por su cuenta los almacenes privados de transcripciones de Claude Code o Codex.
+La importación del historial de sesiones es explícita: la compilación/build normal lee las sesiones ya normalizadas pero no escanea por su cuenta los almacenes privados de transcripts de Claude Code o Codex.
 
 ```bash
 # Preview matching Claude Code/Codex sessions for this project:
@@ -242,37 +264,45 @@ tesserae sessions list
 tesserae export site
 ```
 
-Las sesiones importadas aparecen en la sección global Sessions, en la búsqueda del site y en las tarjetas Browse de la home. Las páginas de detalle de sesión renderizan los turnos user/assistant como markdown legible, adjuntan los bloques tool-use bajo el turno assistant anterior y exponen un riel de turnos a la izquierda para la navegación `#turn-N`. Para notas de privacidad, formatos de importación y el mapa tipográfico actual de transcripciones, consulta [`docs/session-history.md`](session-history.es.md).
+Las sesiones importadas aparecen en la sección global Sessions, la búsqueda del sitio y las tarjetas Browse de la home. Las páginas de detalle de sesión renderizan los turnos usuario/asistente como markdown legible, adjuntan los bloques de tool-use bajo el turno de asistente precedente, y exponen un rail de turnos a la izquierda para la navegación `#turn-N`. Ver [`docs/session-history.md`](session-history.es.md) para notas de privacidad, formatos de importación y el mapa tipográfico actual de los transcripts.
 
-## 5. Lint del wiki
+## 5. Lintea la wiki
 
 ```bash
 tesserae lint
 ```
 
-Recorre el graph + wiki + site compilados y marca orphan papers, stale citations, drift entre graph y wiki/, ghost synthesis inputs y más. Escribe `.tesserae/lint-report.md` y `.tesserae/lint-report.json`. Pasa `--fix-trivial` para aplicar auto-correcciones seguras (edges `implemented_in` faltantes, poda de ghost-input) y `--severity error` para que el código de salida solo falle ante errores.
+Recorre el grafo compilado + wiki + sitio y marca papers huérfanos, citas obsoletas, deriva entre grafo y wiki/, inputs fantasma de síntesis, y más. Escribe `.tesserae/lint-report.md` y `.tesserae/lint-report.json`. Pasa `--fix-trivial` para aplicar auto-correcciones seguras (aristas `implemented_in` ausentes, poda de inputs fantasma) y `--severity error` para que el código de salida solo falle con errores.
 
-## 6. Consultar el wiki
+Para la salud del workspace más allá del propio grafo — consistencia del registro, staleness, locks, login del LLM, higiene — ejecuta `tesserae doctor` (`--fix` aplica solo las reparaciones seguras). Ver [`docs/doctor.md`](doctor.es.md).
+
+## 6. Pregunta y consulta la wiki
 
 ```bash
+# LLM-planned, cited answer over the compiled graph (the default):
+tesserae ask "What is Gaussian Splatting?"
+
+# Raw retrieval — ranked search hits, no LLM:
 tesserae query "What is Gaussian Splatting?"
 ```
 
-Solo búsqueda por defecto — BM25 sobre `.tesserae/site/search-index.json`, con un extracto de 200 caracteres tomado del `wiki/<kind>/<slug>.md` coincidente. Pasa `--kind papers` (o `concepts`, `repos`, etc.) para acotar, `--top-k N` para ampliar y `--json` para salida estructurada. Añade `--llm` (o define `TESSERAE_QUERY_LLM=1`) para pedir a Claude una respuesta sintetizada con citas `[node_id]`; `--interactive` abre un REPL readline — línea en blanco o EOF sale. `TESSERAE_QUERY_DRY_RUN=1` ejercita el prompt sin llamar a la API.
+`ask` es la superficie de respuestas: el modelo planifica la recuperación sobre el grafo compilado y luego sintetiza una respuesta con citas. Funciona con una CLI `claude`/`codex` con sesión iniciada (OAuth) o con `ANTHROPIC_API_KEY`; pasa `--no-llm` para obtener solo hits de búsqueda rankeados (este apagado forzoso gana a `TESSERAE_QUERY_LLM=1`). `TESSERAE_QUERY_DRY_RUN=1` ejercita el prompt sin llamada a la API.
 
-## 7. Compilar context listo para agentes bajo demanda
+`query` es la superficie de recuperación: búsqueda BM25/semántica sobre `.tesserae/site/search-index.json`, con un extracto de 200 caracteres tomado del `wiki/<kind>/<slug>.md` coincidente. Pasa `--kind papers` (o `concepts`, `repos`, etc.) para acotar, `--top-k N` para ampliar, y `--json` para salida estructurada; `--interactive` abre un REPL readline — línea en blanco o EOF sale. Los backends de memoria explícitos también viven aquí: `--backend raganything|cognee` cortocircuita a ese backend y expone sus errores (con `--cognee-search-type` / `--cognee-dataset` para la vía de Cognee). No hay síntesis LLM en `query` — eso es `ask`.
 
-Lo destacado de v0.5.0 es el On-Demand Context Compiler: pide al grafo compilado un único documento de context citado, acotado a una consulta y dimensionado para caber en la ventana de un agente.
+## 7. Compila contexto listo para agentes bajo demanda
+
+El titular de v0.5.0 es el On-Demand Context Compiler: pide al grafo compilado un único documento de contexto con citas acotado a una consulta, dimensionado para caber en la ventana de un agente.
 
 ```bash
 tesserae context "How does session import work?"
 ```
 
-Siembra Personalized PageRank desde los nodos que coinciden con tu consulta (usa `--seeds <node_id>` para sembrar explícitamente), expande la vecindad (`--depth`, por defecto 2) y ensambla un documento citado limitado por un `--budget` de caracteres (por defecto 32000; pasa `<= 0` para sin límite). Añade `--synthesize` para un resumen escrito por LLM encima (requiere un LLM backend) y `-o/--output <file>` para escribir el documento en disco en lugar de stdout.
+Siembra Personalized PageRank desde los nodos que coinciden con tu consulta (usa `--seeds <node_id>` para sembrar explícitamente), expande el vecindario (`--depth`, por defecto 2), y ensambla un doc con citas limitado a un `--budget` de caracteres (por defecto 32000; pasa `<= 0` para sin tope). Añade `--llm` para un resumen escrito por LLM encima (requiere un backend LLM) y `-o/--output <file>` para escribir el doc a disco en lugar de stdout.
 
-El mismo compiler se expone a los agentes por MCP como la herramienta `compile_context`, así que un agente de codificación puede extraer justo el context del proyecto necesario y acotado por budget a mitad de conversación, sin un export manual.
+El mismo compilador se expone a los agentes por MCP como la herramienta `compile_context`, de modo que un agente de código pueda extraer contexto de proyecto justo-suficiente y acotado por presupuesto a mitad de conversación sin un export manual.
 
-## 8. Exportar archivos de agent harness
+## 8. Exporta archivos de agent harness
 
 ```bash
 tesserae export harness
@@ -296,27 +326,27 @@ tesserae export harness \
   --target opencode
 ```
 
-## 9. Exportar un vault de Obsidian
+## 9. Exporta un vault de Obsidian
 
 ```bash
 tesserae vault export
 ```
 
-O escribir en un vault existente:
+O escribe en un vault existente:
 
 ```bash
-tesserae vault export --vault "$OBSIDIAN_VAULT_PATH"
+tesserae vault export --output "$OBSIDIAN_VAULT_PATH"
 ```
 
-El vault incluye markdown projections, `.obsidian` defaults, coloreado del grafo, `raw/assets/` y un Dataview dashboard. Usa `tesserae vault sync` para reconciliar un vault existente con el último compile (añade `--prune` para descartar notas huérfanas).
+El vault incluye proyecciones markdown, valores por defecto de `.obsidian`, coloreado del grafo, `raw/assets/`, y un dashboard de Dataview. Usa `tesserae vault sync` para reconciliar un vault existente con la última compilación (añade `--prune` para eliminar notas huérfanas).
 
-## 10. Configurar MCP
+## 10. Configura MCP
 
 ```bash
 tesserae projects mcp-config --server-name my_project_wiki
 ```
 
-Pega la salida bajo `mcp_servers` en `~/.hermes/config.yaml`, luego reinicia Hermes/gateway.
+Pega la salida bajo `mcp_servers` en `~/.hermes/config.yaml`, y luego reinicia Hermes/gateway.
 
 ## 11. Export / sync de Graphiti
 
@@ -326,13 +356,13 @@ Export de episodios sin dependencias:
 tesserae export graphiti
 ```
 
-Smoke de sync en dry-run sin Graphiti instalado:
+Prueba de humo de sync en dry-run sin Graphiti instalado:
 
 ```bash
 tesserae export graphiti --sync --dry-run
 ```
 
-La sync en vivo requiere `graphiti_core` y un Neo4j backend alcanzable:
+La sincronización en vivo requiere `graphiti_core` y un backend Neo4j alcanzable:
 
 ```bash
 tesserae export graphiti --sync \
@@ -341,14 +371,14 @@ tesserae export graphiti --sync \
   --neo4j-password '<password>'
 ```
 
-## 12. Desplegar en GitHub Pages
+## 12. Despliega a GitHub Pages
 
-Empuja el site compilado en `.tesserae/site/` a la rama `gh-pages` del git origin del proyecto:
+Empuja el sitio compilado en `.tesserae/site/` a la rama `gh-pages` del origin git del proyecto:
 
 ```bash
 tesserae export site --deploy --build --enable-pages
 ```
 
-`--build` ejecuta `compile` primero para que el site esté fresco. `--enable-pages` activa Pages vía la `gh` CLI (idempotente; se omite con una pista si falta `gh`). Usa `--dry-run` para hacer stage y commit sin push, `--branch` / `--remote` para sobrescribir los valores por defecto y `--force` para permitir el deploy con un árbol de trabajo sucio.
+`--build` ejecuta `compile` primero para que el sitio esté fresco. `--enable-pages` activa Pages vía la CLI `gh` (idempotente; se salta con una pista si falta `gh`). Usa `--dry-run` para preparar y commitear sin empujar, `--branch` / `--remote` para anular los valores por defecto, y `--force` para permitir desplegar con un árbol de trabajo sucio.
 
 El sitio queda accesible en `https://<owner>.github.io/<repo>/`.

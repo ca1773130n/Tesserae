@@ -118,8 +118,8 @@ tesserae vault sync --vault ~/Documents/tesserae-vault
 tesserae vault sync --vault ~/Documents/tesserae-vault --persist-vault
 
 # 長時間ウォッチ: ヴォルトが変わるたびにオーバーレイを再適用。
-# Ctrl-C で停止。--poll-interval でポーリング間隔を調整（既定 1.5 秒）。
-tesserae vault sync --watch --poll-interval 1.5
+# Ctrl-C で停止。--interval でポーリング間隔を調整（既定 1.5 秒）。
+tesserae vault sync --watch --interval 1.5
 
 # ソースノードがもう存在しない射影ページを削除（射影器は
 # 上書きのみで決して削除しない）。ユーザーノートを持つページは

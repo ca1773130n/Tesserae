@@ -3,7 +3,7 @@
 <!-- translations:start -->
 <p align="center"><a href="../installation.md">English</a> · <a href="installation.ko.md">한국어</a> · <a href="installation.zh.md">中文</a> · <a href="installation.ja.md">日本語</a> · <a href="installation.ru.md">Русский</a> · <a href="installation.es.md">Español</a> · <a href="installation.fr.md">Français</a></p>
 <!-- translations:end -->
-Tesserae ist auf PyPI veröffentlicht und stellt Shell-Commands bereit, damit Nutzer nicht manuell `python3 -m tesserae.cli` ausführen müssen.
+Tesserae wird auf PyPI veröffentlicht und stellt Shell-Befehle bereit, damit Nutzer nicht manuell `python3 -m tesserae.cli` ausführen müssen.
 
 ## Von PyPI installieren (empfohlen)
 
@@ -11,16 +11,16 @@ Tesserae ist auf PyPI veröffentlicht und stellt Shell-Commands bereit, damit Nu
 pip install tesserae
 ```
 
-Das war's. `pip` registriert zwei Console-Scripts in deinem `PATH`:
+Das war's. `pip` registriert zwei Console-Scripts auf deinem `PATH`:
 
 ```bash
 tesserae --help
 tesserae_mcp --help
 ```
 
-Der kanonische Befehl in der Doku ist `tesserae`. `tesserae_mcp` startet den MCP-Server (der jetzt das On-Demand-Tool `compile_context` bereitstellt — siehe Schnellstart).
+Der kanonische Befehl in den Docs ist `tesserae`. `tesserae_mcp` startet den MCP-Server (der jetzt das On-Demand-Tool `compile_context` exponiert — siehe Quickstart).
 
-> **pipx ist auch fine.** Wenn du CLI-Tools lieber in eigenen isolierten Venvs hältst:
+> **pipx geht auch.** Wenn du CLI-Tools lieber in eigenen isolierten venvs hältst:
 > ```bash
 > pipx install tesserae
 > ```
@@ -31,49 +31,72 @@ Der kanonische Befehl in der Doku ist `tesserae`. `tesserae_mcp` startet den MCP
 pip install --upgrade tesserae
 ```
 
-## Optionale Integrationen
+## Maschinenweites Setup (einmal setzen, alle Projekte)
 
-Das Default-Wheel ist bewusst leicht. Der Setup-Wizard kann die schwereren Companion-/Runtime-Teile nur dann installieren, wenn du sie anforderst:
+Konfiguriere Tesserae einmal statt pro Projekt und installiere die optionalen
+Abhängigkeiten aus einem Befehl:
 
 ```bash
-# Understand Anything companion graph + RAG-Anything multimodal + Cognee runtime memory
-tesserae init \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex \
-  --with-raganything \
-  --install-raganything \
-  --raganything-parser mineru \
-  --run-raganything \
-  --run-cognee \
-  --install-cognee
+# Interactive machine-wide setup — pick LLM provider/effort + which deps to install:
+tesserae setup
+# …or non-interactively (written to ~/.tesserae/config.json) + install everything:
+tesserae setup --llm-provider codex --reasoning-effort medium --install all
+
+# Just see / manage optional dependencies
+tesserae config deps                     # show what's installed
+tesserae config deps --install memex     # fast transcript search (needs cargo)
 ```
 
-Manuelle Package-Installs stehen für fortgeschrittene Workflows weiter zur Verfügung:
+Bekannte optionale Abhängigkeiten: **memex** (schnelle Transkript-Suche), **cognee**,
+**raganything**, **understand-anything**. Eine projektbezogene `.tesserae/config.json`
+überschreibt diese globalen Defaults weiterhin (Auflösungsreihenfolge: env → Projekt → global →
+eingebaut). `tesserae init` bietet während eines interaktiven Setups ebenfalls an, memex zu installieren.
+
+## Optionale Integrationen (pro Projekt)
+
+Das Default-Wheel ist bewusst leicht, und die optionalen Memory-Backends sind
+**standardmäßig aus**. `tesserae init` ist der einzige projektbezogene Onboarding-Schritt —
+sein Wizard wählt den LLM-Provider und die erkannten Quellen; die schwereren
+Companion-/Runtime-Teile werden maschinenweit über `tesserae setup
+--install …` (oder `tesserae config deps --install …`) installiert und pro Projekt in
+`.tesserae/config.json` aktiviert:
 
 ```bash
-pip install kuzu cognee graphiti-core
+# Machine-wide installs of the optional pieces:
+tesserae setup --install raganything --install understand-anything --install cognee
+
+# Then per project: enable what you want in .tesserae/config.json
+#   memory_backends.raganything.enabled: true
+#   memory_backends.cognee.enabled: true        (query via `tesserae query --backend …`)
+#   external_tools: understand-anything entry   (auto_refresh: false by default)
+```
+
+Manuelle Paketinstallationen bleiben für fortgeschrittene Workflows verfügbar:
+
+```bash
+pip install kuzu graphiti-core
+pip install "tesserae[cognee]"
 ```
 
 - `kuzu` — Kuzu-Graph-Persistenz.
-- `cognee` — Runtime-Cognee-Add/Cognify-Workflows; Setup hinterlegt `{python} -m pip install cognee` und versucht es einmal nach, falls Cognee fehlt.
-- Understand Anything — wird über den Upstream-Installer installiert, wenn `--install-understand-anything` gewählt ist; Tesserae hinterlegt einen verwalteten Refresh-Wrapper, statt von Nutzern zu verlangen, einen Shell-Befehl zu erfinden.
-- RAG-Anything — wird über `pip install 'raganything[all]'` installiert, wenn `--install-raganything` gewählt ist; Tesserae hinterlegt einen verwalteten Refresh-Wrapper für multimodale Parser-Runs.
-- `graphiti-core` — Live-Graphiti/Neo4j-Sync. `export graphiti` und `export graphiti --sync --dry-run` funktionieren auch ohne.
+- `tesserae[cognee]` — die Opt-in-Cognee-Runtime-add/cognify-Workflows (standardmäßig deaktiviert; der Codex-gepatchte cognify-Modus wurde entfernt).
+- Understand Anything — installiert über den Upstream-Installer (`tesserae setup --install understand-anything`); Tesserae speichert einen verwalteten Refresh-Wrapper, statt Nutzer einen Shell-Befehl erfinden zu lassen.
+- RAG-Anything — installiert via `pip install 'raganything[all]'` (`tesserae setup --install raganything`); Tesserae speichert einen verwalteten Refresh-Wrapper für multimodale Parser-Läufe.
+- `graphiti-core` — Live-Graphiti-/Neo4j-Sync. `export graphiti` und `export graphiti --sync --dry-run` funktionieren ohne.
 
-Der Anthropic-gestützte Synthese-Pfad nutzt einen Extras-Marker:
+Der Anthropic-gestützte Synthesis-Pfad nutzt einen Extras-Marker:
 
 ```bash
 pip install "tesserae[synthesis-llm]"
 ```
 
-Echte semantische Embeddings (seit v0.5.0 die Standard-Retrieval-Lane) liefert das Extra `semantic`:
+Echte semantische Embeddings (seit v0.5.0 die Default-Retrieval-Spur) liegen hinter dem `semantic`-Extra:
 
 ```bash
 pip install "tesserae[semantic]"
 ```
 
-Das installiert `model2vec` und lädt ein leichtgewichtiges, offline-fähiges, torch-freies statisches Modell herunter (rund 8 MB `potion-base-8M`, beim ersten Gebrauch einmalig geladen). Ohne dieses Extra fällt das hybride/Embedding-Retrieval auf einen nicht-semantischen Hash-Bucket-Stub zurück und gibt eine deutliche Warnung aus. Wer `tesserae ask`, `tesserae context` oder das MCP-Tool `compile_context` nutzt, sollte dieses Extra daher installieren.
+Das zieht `model2vec` herein und lädt ein leichtgewichtiges, offline nutzbares, torch-freies statisches Modell herunter (~8 MB `potion-base-8M`, einmal beim ersten Gebrauch geholt). Ohne es fällt Hybrid-/Embedding-Retrieval auf einen nicht-semantischen Hash-Bucket-Stub zurück und gibt eine laute Warnung aus, daher wird die Installation dieses Extras allen empfohlen, die `tesserae ask`, `tesserae context` oder das MCP-Tool `compile_context` nutzen.
 
 Für den multimodalen RAG-Anything-Stack mit allen Parsern vorinstalliert:
 
@@ -83,9 +106,9 @@ pip install 'tesserae[raganything-all]'
 
 > **System-Voraussetzung:** Das Parsen von `.doc/.docx/.ppt/.pptx/.xls/.xlsx` erfordert LibreOffice auf dem Host. Installiere es über den Paketmanager deiner Plattform (z. B. `brew install --cask libreoffice`, `apt-get install libreoffice`); RAG-Anything überspringt Office-Dokumente mit einer Warnung, wenn LibreOffice fehlt.
 
-## Aus Source installieren (für Contributors)
+## Aus dem Quellcode installieren (für Contributor)
 
-Wenn du an der Codebase hacken willst, installiere stattdessen den editierbaren Checkout:
+Wenn du am Codebase arbeiten willst, installiere stattdessen den editierbaren Checkout:
 
 ```bash
 git clone https://github.com/ca1773130n/Tesserae.git
@@ -93,7 +116,7 @@ cd Tesserae
 pip install -e .
 ```
 
-Ein Convenience-Installer ist ebenfalls dabei — er klont, erzeugt ein projektlokales `.venv`, läuft `pip install -e .` und legt die Wrapper in `~/.local/bin` ab:
+Ein Convenience-Installer ist ebenfalls gebündelt — er cloned, erzeugt eine projektlokale `.venv`, führt `pip install -e .` aus und legt die Wrapper in `~/.local/bin` ab:
 
 ```bash
 # Quick: clone + install in one shot
@@ -110,11 +133,11 @@ Nützliche Flags (`./scripts/install.sh --help`):
 | `--dir PATH` | Installiert oder aktualisiert den Checkout unter `PATH`. |
 | `--branch NAME` | Installiert einen bestimmten Branch. |
 | `--repo URL` | Überschreibt die Git-Repository-URL. Nützlich für Forks oder lokale Smoke-Tests. |
-| `--bin-dir PATH` | Schreibt Command-Wrapper woanders hin als `~/.local/bin`. |
-| `--no-venv` | Installiert in die aktuelle Python-Umgebung, statt `.venv` zu erzeugen. |
-| `--skip-shell-config` | Vermeidet das Bearbeiten von `.zshrc` / `.bashrc`. |
+| `--bin-dir PATH` | Schreibt Befehls-Wrapper woandershin als `~/.local/bin`. |
+| `--no-venv` | Installiert in die aktuelle Python-Umgebung statt eine `.venv` zu erzeugen. |
+| `--skip-shell-config` | Vermeidet Edits an `.zshrc` / `.bashrc`. |
 
-Wurde `--skip-shell-config` verwendet, starte entweder die Shell neu oder führe aus:
+Wenn `--skip-shell-config` genutzt wurde, starte entweder die Shell neu oder führe aus:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"

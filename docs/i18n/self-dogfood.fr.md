@@ -1,25 +1,37 @@
-# Démo Self-dogfood
+# Démo self-dogfood
 
 <!-- translations:start -->
 <p align="center"><a href="../self-dogfood.md">English</a> · <a href="self-dogfood.ko.md">한국어</a> · <a href="self-dogfood.zh.md">中文</a> · <a href="self-dogfood.ja.md">日本語</a> · <a href="self-dogfood.ru.md">Русский</a> · <a href="self-dogfood.es.md">Español</a> · <a href="self-dogfood.fr.md">Français</a> · <a href="self-dogfood.de.md">Deutsch</a></p>
 <!-- translations:end -->
-Ce projet peut s'indexer lui-même. Le flux self-dogfood prouve que Tesserae peut être installé, configuré dans son propre dépôt, ingérer ses propres docs/source/tests/scripts, rafraîchir optionnellement Understand Anything et Cognee, compiler des artefacts de graphe et construire le frontend web statique.
+Ce projet peut s’indexer lui-même. Le flux self-dogfood prouve que Tesserae peut être installé, configuré à l’intérieur de son propre dépôt, ingérer ses propres docs/sources/tests/scripts, éventuellement rafraîchir Understand Anything et Cognee, compiler les artefacts de graphe et construire le frontend web statique.
 
-Il exerce aussi la boucle d'auto-amélioration. Chaque compilation re-dérive l'état de mémoire mutable — `decay_score`, `access_count`, `confidence` et le flag `superseded` — vers une **table sidecar `node_memory`** à l'intérieur de `.tesserae/sqlite.db`. Ces scalaires vivent *uniquement* dans le sidecar et jamais dans `graph.json`, de sorte qu'une recompilation dogfood est byte-identical sur le graphe tandis que le sidecar suit le decay et la recurrence. Les insights qui reviennent dans `>= 3` sessions distinctes sont renforcés avec un confidence numérique dans `(0, 1]` (3 sessions → `0.5`, 4 → `0.75`, 5+ → `1.0`, plafonné), écrits dans le sidecar et exposés par l'outil MCP `fresh_insights`, qui masque par défaut les findings remplacés (superseded) par un near-duplicate plus récent.
+Le même flux sert aussi de test de fumée multimodal. Avec RAG-Anything installé (`tesserae setup --install raganything`) et activé dans `.tesserae/config.json` (`memory_backends.raganything.enabled: true`), la compilation dogfood pointe RAG-Anything vers le markdown de `docs/` de Tesserae lui-même plus les images de `docs/assets/` et d’`assets/` au niveau projet. Cela valide le pipeline multimodal contre un vrai corpus non-code appartenant au projet — couvrant les captures d’écran et diagrammes que les chargeurs de sources orientés texte sautent — sans inventer un jeu de fixtures séparé.
+
+Il exerce aussi la boucle d’auto-amélioration. Chaque compilation re-dérive
+l’état de mémoire mutable — `decay_score`, `access_count`, `confidence` et le
+drapeau `superseded` — dans une table sidecar **`node_memory`** à l’intérieur de
+`.tesserae/sqlite.db`. Ces scalaires vivent dans le sidecar *uniquement* et
+jamais dans `graph.json`, si bien qu’une compilation dogfood fraîche est
+octet-pour-octet identique côté graphe pendant que le sidecar suit la décrue et
+la récurrence. Les insights qui reviennent dans `>= 3` sessions distinctes sont
+renforcés avec une confiance numérique dans `(0, 1]`
+(3 sessions → `0.5`, 4 → `0.75`, 5+ → `1.0`, plafonné), écrite dans le sidecar
+et exposée par l’outil MCP `fresh_insights`, qui masque par défaut les constats
+supplantés par un quasi-doublon plus récent.
 
 ## Commandes
 
 Depuis la racine du dépôt :
 
 ```bash
-# Vérifiez que la commande shell est installée.
+# Ensure the shell command is installed.
 ./scripts/install.sh --dir "$PWD"
 export PATH="$HOME/.local/bin:$PATH"
 
-# (optionnel) installez le backend d'embeddings sémantiques par défaut.
+# (optional) install the default semantic embedding backend.
 pip install 'tesserae[semantic]'
 
-# Configurez ce dépôt comme projet Tesserae.
+# Set up this repository as an Tesserae project.
 tesserae init \
   --yes \
   --name tesserae_self \
@@ -27,32 +39,31 @@ tesserae init \
   --source docs \
   --source tesserae \
   --source tests \
-  --source scripts \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex \
-  --run-cognee \
-  --install-cognee
+  --source scripts
 
-# Compilez les sources configurées.
+# (optional) install + enable the heavier companions afterwards:
+#   tesserae setup --install raganything --install understand-anything --install cognee
+#   then flip memory_backends.*.enabled / external_tools in .tesserae/config.json
+
+# Compile the configured sources.
 tesserae compile
 
-# Reconstruisez explicitement le frontend statique.
+# Rebuild the static frontend explicitly.
 tesserae export site
 
-# Servez localement (reconstruit d'abord le site automatiquement si nécessaire).
+# Serve locally (auto-builds the site first if needed).
 tesserae serve --port 8765
 ```
 
-Ouvrir :
+Ouvrez :
 
 ```text
 http://127.0.0.1:8765/
 ```
 
-## Workspace généré
+## Espace de travail généré
 
-La self-demo écrit les artefacts générés sous :
+La démo self écrit les artefacts générés sous :
 
 ```text
 .tesserae/
@@ -64,7 +75,7 @@ Artefacts clés :
 .tesserae/config.json
 .tesserae/graph.json
 .tesserae/manifest.json
-.tesserae/sqlite.db          # graphe typé + sidecar node_memory + HarnessSessionsDB en direct
+.tesserae/sqlite.db          # typed graph + node_memory sidecar + live HarnessSessionsDB
 .tesserae/report.md
 .tesserae/competitive_report.md
 .tesserae/temporal_facts.jsonl
@@ -76,23 +87,24 @@ Artefacts clés :
 .tesserae/cognee_bundle/
 ```
 
-Le workspace généré n'est intentionnellement pas committé par défaut. Il est reproductible depuis les sources du dépôt avec les commandes ci-dessus.
+L’espace de travail généré n’est volontairement pas commité par défaut. Il est reproductible depuis les sources du dépôt avec les commandes ci-dessus.
 
 ## Dernière exécution vérifiée
 
-Vérifié le `2026-04-27 11:11:23 KST` depuis le dépôt Tesserae lui-même.
+Vérifiée le `2026-04-27 11:11:23 KST` depuis le dépôt Tesserae lui-même.
 
-Les opt-ins d'intégration (Understand Anything, cognee) sont désormais des
-**invites interactives de l'assistant**, et non des flags CLI. L'équivalent non
-interactif ci-dessous exécute `tesserae init --yes` (intégrations DÉSACTIVÉES),
-active les intégrations dans `.tesserae/config.json` (l'assistant les écrit sous
-les clés `memory_backends` et `external_tools` — consultez les documents
-d'intégration pour les clés exactes), puis rafraîchit chacune avant de compiler.
+Les opt-ins d’intégration (Understand Anything, cognee) sont désormais des
+**invites interactives de l’assistant**, pas des drapeaux CLI. L’équivalent
+non interactif ci-dessous lance `tesserae init --yes` (intégrations OFF),
+active les intégrations dans `.tesserae/config.json` (l’assistant les écrit
+sous les clés `memory_backends` et `external_tools` — voir les docs
+d’intégration pour les clés exactes), puis rafraîchit chacune avant de
+compiler.
 
 ```text
 install command: ./scripts/install.sh --dir /Users/neo/Developer/Projects/Tesserae --skip-shell-config
 setup command:   tesserae init --yes --name tesserae_self --source README.md --source docs --source tesserae --source tests --source scripts
-                 # puis activez Understand Anything + cognee dans .tesserae/config.json et exécutez :
+                 # then enable Understand Anything + cognee in .tesserae/config.json and run:
                  #   tesserae integrations refresh understand-anything
                  #   tesserae integrations refresh cognee
 ingest command:  tesserae compile README.md docs --changed-only
@@ -103,7 +115,7 @@ local URL:       http://127.0.0.1:56821/
 LAN URL:         http://192.168.45.130:56821/
 ```
 
-Décompte final des artefacts :
+Comptes d’artefacts finaux :
 
 ```text
 nodes:               667
@@ -132,7 +144,7 @@ SourceDocument:    7
 CodeProject:       1
 ```
 
-Vérification dans le navigateur :
+Vérification navigateur :
 
 ```text
 loaded title: Home · tesserae_self
@@ -146,11 +158,11 @@ server: TCP *:56821 LISTEN, serving via --host 0.0.0.0
 
 ## Ce que cela démontre
 
-- Le chemin d'installation public fonctionne.
+- Le chemin d’installation public fonctionne.
 - La commande shell `tesserae` fonctionne.
-- Un dépôt peut attacher un workspace `.tesserae` local au projet.
-- Le markdown de recherche/documentation et les nœuds de graphe du code de développement peuvent coexister.
-- Les projections Markdown, Obsidian, frontend, Graphiti, Cognee, SQLite, report et agent-harness sont produites depuis un seul pipeline de graphe.
+- Un dépôt peut s’attacher un espace de travail `.tesserae` local au projet.
+- Le markdown de recherche/documentation et les nœuds de graphe de code de développement peuvent coexister.
+- Les projections Markdown, Obsidian, frontend, Graphiti, Cognee, SQLite, rapport et harness d’agent sont produites depuis un seul pipeline de graphe.
 - Le frontend HTML statique peut parcourir le graphe du projet sans étape de build JavaScript.
-- La boucle d'auto-amélioration tourne et persiste : decay, compteurs d'accès, recurrence confidence et flags supersede atterrissent dans le sidecar `node_memory` sans perturber `graph.json`.
-- La recherche hybride résout un vrai backend sémantique lorsque `tesserae[semantic]` est installé (ordre `auto` par défaut : model2vec → sentence-transformers → stub hash-bucket) ; sans lui, la recherche par embeddings se dégrade vers le stub hash-bucket non sémantique et émet un avertissement bruyant.
+- La boucle d’auto-amélioration tourne et persiste : décrue, compteurs d’accès, confiance de récurrence et drapeaux de supplantation atterrissent dans le sidecar `node_memory` sans perturber `graph.json`.
+- La récupération hybride résout un vrai backend sémantique quand `tesserae[semantic]` est installé (ordre `auto` par défaut : model2vec → sentence-transformers → stub hash-bucket) ; sans lui, la récupération par embeddings se dégrade vers le stub hash-bucket non sémantique et émet un avertissement bruyant.

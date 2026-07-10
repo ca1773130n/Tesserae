@@ -113,7 +113,7 @@ Common Ubuntu issues with plain `pip install tesserae`:
 <details>
 <summary>3. Ask — query the compiled wiki from the CLI</summary>
 <br/>
-<img src="docs/screencasts/ask.gif" alt="tesserae ask --backend wiki returning top-3 hits with score, kind, and outbound relations" width="100%" />
+<img src="docs/screencasts/ask.gif" alt="tesserae ask answering a question over the compiled graph with score, kind, and outbound relations" width="100%" />
 </details>
 
 Rebuild any GIF with `vhs docs/screencasts/<name>.tape`.
@@ -126,11 +126,13 @@ Run `tesserae --help` for the full grouped list, `tesserae <cmd> --help` for fla
 
 | Command | What it does |
 |---|---|
-| `tesserae init` | Setup wizard → `.tesserae/config.json`. `--yes` non-interactive, `--bare` minimal. |
+| `tesserae init` | The single onboarding step: setup wizard → `.tesserae/config.json`, including the LLM provider pick (`--llm-provider claude\|codex\|anthropic\|custom` + `--llm-model/--llm-base-url/--llm-api-key`). `--yes` non-interactive, `--bare` minimal. |
 | `tesserae compile` | Rebuild the knowledge graph and all artifacts. `compile <paths>` ad-hoc ingests extra files. |
 | `tesserae ingest <file\|url>` | Merge a single document or web page into the knowledge base without a full recompile (parity-gated incremental fast path). |
-| `tesserae context "<query>"` | **On-demand context compiler**: cited context doc via PPR expansion under `--budget`; `--synthesize` adds an LLM summary. |
-| `tesserae ask "<question>"` | Ask the compiled knowledge base. With no `--scope` a smart router picks the target across your projects (federated fallback); `--scope federated` returns ONE merged, cross-referenced answer, `--scope all-registered` one answer per project. |
+| `tesserae context "<query>"` | **On-demand context compiler**: cited context doc via PPR expansion under `--budget`; `--llm` adds an LLM summary. |
+| `tesserae ask "<question>"` | **LLM-planned, cited answer** over the compiled knowledge base (the default; `--no-llm` = ranked search hits only). With no `--scope` a smart router picks the target across your projects (federated fallback); `--scope federated` returns ONE merged, cross-referenced answer, `--scope all-registered` one answer per project. |
+| `tesserae query "<question>"` | Raw retrieval — BM25/semantic search over the compiled wiki, or an explicit backend (`--backend raganything\|cognee`). No LLM synthesis (that's `ask`). |
+| `tesserae doctor` | Project health checks (init/graph/config, registry, staleness, locks, hygiene). `--fix` applies the safe repairs only; exit 0/1/2 = healthy/warnings/errors. See [docs/doctor.md](docs/doctor.md). |
 | `tesserae engine` | Supervised refresh daemon for the current project: watch, debounce, recompile. |
 | `tesserae engine --all` | **Fleet mode**: one process keeps *every* registered project fresh — registry hot-reload, `--compile-slots` throttling. |
 | `tesserae refresh` | One-shot pipeline: import new sessions → compile → sync vault. |
@@ -138,7 +140,7 @@ Run `tesserae --help` for the full grouped list, `tesserae <cmd> --help` for fla
 | `tesserae export site` | Build the static site (`--deploy`, `--watch`). |
 | `tesserae export okf` | Export the graph as a [Google **OKF v0.1**](https://github.com/GoogleCloudPlatform/knowledge-catalog) bundle (Markdown + YAML frontmatter); `--import DIR` reads one back (round-trips Tesserae's own bundles losslessly). |
 | `tesserae serve` | Serve **every registered project** under one server — a projects landing at `/`, each project at `/<alias>/`, and a Projects switcher in the header. `--project X` serves just one (with the live `/api/ask` widget). |
-| `tesserae setup` | **Machine-wide setup** — interactive by default: pick the LLM provider/effort and which optional deps to install. Flags (`--install all`, `--llm-provider …`) skip the prompts. (`config setup` is a back-compat alias.) |
+| `tesserae setup` | **Machine-wide setup** — interactive by default: pick the LLM provider/effort and which optional deps to install. Flags (`--install all`, `--llm-provider …`) skip the prompts. (The old `config setup` name now points here.) |
 | `tesserae config deps` | List / install optional dependencies (memex, cognee, raganything, understand-anything). |
 | `tesserae projects …` | Multi-project registry: `register`, `list`, `unregister`, `mcp-config` (no privileged "active" project). |
 | `tesserae federation status` / `explain` | Inspect a cross-project federation: per-project node counts, identity merges, semantic links, and why a node bridges projects. |

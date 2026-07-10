@@ -7,13 +7,13 @@ Fusiona un único archivo de documento o URL en la base de conocimiento.
 
 ## Uso
 
-    tesserae ingest <input>...  [--title T] [--source-kind K] [--exact] [--dry-run]
+    tesserae ingest <input>...  [--title T] [--source-kind K] [--full] [--dry-run]
 
-`<input>` es una o más rutas de archivos locales o URL `http(s)`. Las URL se obtienen, se
-convierten a markdown y se guardan en `data/ingested/<slug>.md` con front-matter de procedencia
-(`source_url`, `fetched_at`, `content_sha256` y `arxiv_id` cuando se detecta) y luego se fusionan.
-Los archivos locales externos al proyecto se copian a `data/ingested/` para que se conviertan en
-fuentes rastreadas (una compilación completa posterior los reproduce de forma idéntica).
+`<input>` es una o más rutas de archivo locales o URLs `http(s)`. Las URLs se descargan, se convierten a
+markdown y se persisten bajo `data/ingested/<slug>.md` con front-matter de procedencia
+(`source_url`, `fetched_at`, `content_sha256` y `arxiv_id` cuando se detecta), y luego se fusionan.
+Los archivos locales de fuera del proyecto se copian a `data/ingested/` para que se conviertan en
+fuentes rastreadas (una compilación completa posterior los reproduce idénticamente).
 
 La ingesta por URL requiere el extra opcional:
 
@@ -21,21 +21,88 @@ La ingesta por URL requiere el extra opcional:
 
 ## Cómo funciona
 
-De forma predeterminada, `ingest` fusiona la nueva fuente mediante una compilación incremental —no
-vuelve a extraer todo el corpus— y el resultado es idéntico byte a byte al de una compilación
-completa (un mecanismo automático de recompilación completa garantiza la corrección en cualquier
-caso que la ruta incremental no pueda manejar). Pasa `--exact` para forzar una recompilación
-completa de todo el corpus.
+Por defecto `ingest` fusiona la nueva fuente mediante una compilación incremental — no re-extrae
+todo el corpus — y el resultado es byte-idéntico a una compilación completa (un fallback automático
+de recompilación completa garantiza la corrección para cualquier caso que la ruta incremental no pueda manejar).
+Pasa `--full` para forzar una recompilación completa de todo el corpus.
 
-## Opciones
+## Flags
 
-- `--exact` — fuerza una recompilación completa de todo el corpus.
-- `--dry-run` — obtiene e informa de lo que se ingeriría; no escribe ningún grafo.
-- `--title` — anulación del título, útil para URL sin más.
+- `--full` — fuerza una recompilación completa de todo el corpus.
+- `--dry-run` — descarga e informa de lo que se ingeriría; no escribe ningún grafo.
+- `--title` — anulación del título, útil para URLs sueltas.
 - `--source-kind` — anula la clasificación de la fuente.
+
+## La capa de conceptos (`--extractor`)
+
+Tesserae es una wiki LLM, así que `compile` construye la **capa de conceptos/afirmaciones por
+defecto** (`--extractor llm`): lee cada documento a través de tu proveedor LLM
+configurado — **codex / claude / Anthropic API**, según `llm_provider` — y acuña
+conceptos, afirmaciones, capacidades, términos técnicos, spans de evidencia y las aristas
+tipadas entre ellos. Esa es la capa que permite al grafo responder *"qué idea es
+esta, y cómo se relaciona"*, no solo *"qué archivo lo dijo"*.
+
+    tesserae compile                        # LLM concept layer, configured provider
+    tesserae compile --llm-provider codex   # force a provider for this run
+
+Si no hay ningún backend LLM configurado/autenticado, compile degrada al extractor
+**determinista** (solo estructural — fuentes, secciones, enlaces explícitos) y avisa. También puedes
+pedirlo explícitamente — es rápido, sin claves y byte-estable, el modo de CI /
+reproducible:
+
+    tesserae compile --extractor deterministic
+
+**Consciente del coste (`selective-llm`)** — enruta solo los docs que coincidan a través del LLM, el
+resto determinista:
+
+    tesserae compile --extractor selective-llm \
+      --llm-include "docs/**/*.md" --llm-limit 20
+
+Los mismos flags funcionan en `tesserae extract <paths>` (standalone) y
+`tesserae compile <paths>` (ingesta de rutas ad-hoc).
+
+**Ajustes:**
+
+- `--llm-provider codex|claude|anthropic` — anula el proveedor (por defecto:
+  `llm_provider` en la config).
+- `--llm-model` — modelo para el extractor (por defecto: el del proveedor).
+- `--llm-include <glob>` — para `selective-llm`, qué archivos pasan por el LLM
+  (repítelo para varios; los patrones casan en cualquier parte de la ruta absoluta, p. ej.
+  `"*docs/superpowers*"`).
+- `--llm-limit N` — limita cuántos archivos llegan al LLM (el resto queda determinista).
+
+**Sin timeout por defecto.** Un documento de diseño grande genera mucho JSON y puede tardar
+minutos; la extracción corre hasta completarse en lugar de cortarse silenciosamente (un
+timeout es solo opt-in).
+
+**Robusto sobre corpus reales.** Un documento ruidoso o lento nunca aborta toda la
+compilación: un fallo del LLM en un doc (auth, error, una generación imparseable) recae
+en la línea base determinista para *ese* doc, una arista o tipo de nodo fuera del
+vocabulario controlado se descarta, y la caché indexada por contenido hace que una recompilación de
+docs sin cambios reutilice la extracción previa.
+
+> Los nombres de extractor `claude-cli` / `selective-claude` (y los flags `--claude-*`)
+> son alias en desuso de `llm` / `selective-llm` (y `--llm-*`); todavía
+> funcionan pero emiten una nota de deprecación.
+
+## Gestionar el alcance de la compilación (`sources`)
+
+`tesserae compile` (sin argumentos) compila los directorios de la lista `sources`
+del proyecto. Gestiona esa lista — **local o global** — con los subcomandos de `sources`:
+
+    tesserae sources add docs                 # local: inside the project (stored project-relative)
+    tesserae sources add /data/shared-notes   # global: an absolute path outside the project
+    tesserae sources add ../sibling-project   # global: a relative path that escapes the root
+    tesserae sources list                     # shows each source tagged local/global, flags missing
+    tesserae sources remove docs
+
+Una ruta dentro del proyecto se guarda relativa al proyecto (portable); cualquier cosa fuera
+se guarda absoluta. Ambas se resuelven en tiempo de compilación, así que una fuente global compila
+igual que una local. (Las adiciones deduplican por ubicación resuelta, así que las formas absoluta y
+relativa con `../` del mismo directorio nunca cuentan doble.)
 
 ## Comandos relacionados
 
-- `tesserae compile` (sin argumentos) vuelve a extraer todo el corpus rastreado.
-- `tesserae ingest <x>` añade una fuente de forma incremental.
-- `tesserae code ingest` genera un grafo de código a partir de código fuente de Python (es un comando distinto).
+- `tesserae compile` (sin argumentos) re-extrae todo el corpus rastreado.
+- `tesserae ingest <x>` añade una fuente incrementalmente.
+- `tesserae code ingest` acuña un grafo de código desde fuente Python (un comando distinto).

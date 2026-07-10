@@ -1,15 +1,16 @@
-# 빠른 시작
+# 퀵스타트
 
 <!-- translations:start -->
-<p align="center"><a href="../quickstart.md">English</a> · <a href="quickstart.ko.md">한국어</a> · <a href="quickstart.zh.md">中文</a> · <a href="quickstart.ja.md">日本語</a> · <a href="quickstart.ru.md">Русский</a> · <a href="quickstart.es.md">Español</a> · <a href="quickstart.fr.md">Français</a> · <a href="quickstart.de.md">Deutsch</a></p>
+<p align="center"><a href="../quickstart.md">English</a> · <a href="quickstart.zh.md">中文</a> · <a href="quickstart.ja.md">日本語</a> · <a href="quickstart.ru.md">Русский</a> · <a href="quickstart.es.md">Español</a> · <a href="quickstart.fr.md">Français</a> · <a href="quickstart.de.md">Deutsch</a></p>
 <!-- translations:end -->
-이 페이지는 기존 프로젝트 디렉터리에서 탐색 가능한 Tesserae까지 가는 가장 짧은 경로를 보여줍니다.
+이 페이지는 기존 프로젝트 디렉터리에서 탐색 가능한 Tesserae까지의 최단 경로를 보여줍니다.
 
 ## 명령 개요
 
-CLI는 그룹으로 구성됩니다. 최상위에 몇 개의 일상 동사가 있고, 나머지는 그룹
-(`sessions`, `vault`, `export`, `code`, `config`, `projects`, `integrations`,
-`lab`)으로 묶여 있습니다. 전체 트리를 보려면 `tesserae --help`를 실행하세요.
+CLI는 그룹화되어 있습니다: 최상위에 몇 가지 일상 동사, 그리고 나머지를 위한
+그룹(`sessions`, `vault`, `export`, `code`, `config`, `projects`,
+`integrations`, `lab`)이 있습니다. 전체 트리를 보려면 `tesserae --help`를
+실행하세요:
 
 ```text
 usage: tesserae <command> [options]
@@ -17,8 +18,9 @@ usage: tesserae <command> [options]
 EVERYDAY
   init          Set up .tesserae (wizard by default; --yes non-interactive)
   compile       Rebuild the knowledge graph (compile [paths] = ad-hoc ingest)
+  ingest        Ingest a document file or URL into the knowledge base
   context       Compile agent-ready context for a query
-  ask           Ask the project memory a question
+  ask           LLM answer over the knowledge graph (planned retrieval)
   serve         Browse the compiled site (auto-builds if missing)
   status        Node/edge counts, last compile, vault state
 
@@ -28,16 +30,22 @@ AUTOMATION
   research      Autonomous research mode: investigate a query
 
 ANALYSIS
-  query         Raw retrieval over the graph (top-k, kind filters)
+  query         raw retrieval: BM25/semantic + explicit backends
   lint          Graph lint report (--fix-trivial, --severity, --json)
+  doctor        Health checks: init/graph/registry/staleness/locks (--fix = safe repairs only)
+  summary       Daily/weekly activity digest (sessions, findings, commits, PRs, docs)
+  decisions     Decisions across projects + time (human AskUserQuestion + agent)
 
 GROUPS
-  sessions      import | discover | list — agent session history
+  sessions      import | discover | list | chunk-backfill — agent session history
   vault         sync | sync-all | set-root | export | prune — Obsidian projection
   export        harness | graphiti | site — artifact exports
   code          ingest | sync — CodeGraph ⇄ project graph (hook-invoked)
-  config        llm | show — machine-wide defaults (~/.tesserae/config.json)
-  projects      register | list | activate | unregister | mcp-config — registry
+  setup         Machine-wide setup: LLM defaults + optional deps (interactive by default)
+  config        llm | deps | show | status | clip-token — LLM backend defaults + resolved view & liveness ping
+  projects      register | list | unregister | mcp-config — registry
+  sources       add | list | remove — manage compile source dirs (local & global)
+  federation    status | explain — inspect cross-project federation
   integrations  refresh raganything|understand-anything
   extract       Low-level: extract a typed graph from markdown paths
 
@@ -47,66 +55,69 @@ LAB
 Run `tesserae <command> --help` for command details.
 ```
 
-개별 명령의 flag를 보려면 `tesserae <command> --help`(예: `tesserae compile --help`)를 실행하세요.
+개별 명령의 플래그는 `tesserae <command> --help`(예: `tesserae compile --help`)로
+확인하세요.
 
 ## 1. 설정 마법사 실행
 
-색인화하려는 프로젝트에서:
+인덱싱하려는 프로젝트에서:
 
 ```bash
 cd /path/to/my-project
 tesserae init
 ```
 
-마법사는 `README.md`, `docs`, `src`, `lib`, `app`, `packages`, `data` 같은 일반적인 source를 감지한 뒤 `.tesserae/config.json`을 씁니다. 또한 기본 Cognee backend를 설정하여 `tesserae ask`가 Cognee를 시도하고 compiled wiki search로 fallback할 수 있게 합니다.
+`tesserae init`이 유일한 온보딩 단계입니다. 마법사는 `README.md`, `docs`, `src`, `lib`, `app`, `packages`, `data` 같은 흔한 소스를 감지하고, 어떤 LLM CLI가 설치되어 **로그인까지 되어 있는지** 탐침하고, LLM 프로바이더를 고르게 하고, `.tesserae/config.json`을 기록합니다. 선택적 메모리 백엔드(RAG-Anything, Cognee)는 **기본적으로 꺼져** 있습니다; 나중에 config의 `memory_backends`에서 활성화하고, `tesserae query --backend …`로 명시적으로 쿼리하세요.
 
-비대화형 설정(CI, 스크립트)을 원하면 `--yes`를 전달해 프롬프트 없이 감지된 기본값을 그대로 수락합니다.
+비대화형 설정(CI, 스크립트)의 경우, `--yes`를 전달해 감지된 기본값을 프롬프트
+없이 수락하세요(모든 선택적 통합 OFF):
 
 ```bash
 tesserae init --yes
 ```
 
-Understand Anything과 Cognee runtime memory를 활성화한 완전 자동 설정:
+### LLM 프로바이더 설정
+
+마법사의 프로바이더 선택(또는 동등한 플래그)은 다음 config 키를 영속화합니다:
+
+| Config 키 | 플래그 | 설명 |
+|---|---|---|
+| `llm_provider` | `--llm-provider {claude,codex,anthropic,custom}` | LLM 클라이언트의 백엔드: `claude`/`codex`는 OAuth로 로그인된 CLI 사용; `anthropic`은 API 직접 사용; `custom`은 claude 호환 엔드포인트 대상. |
+| `llm_model` | `--llm-model` | synthesis/insights LLM 클라이언트용 모델. |
+| `llm_base_url` | `--llm-base-url` | `anthropic`/`custom`용 엔드포인트 기본 URL. |
+| `llm_api_key` | `--llm-api-key` | `anthropic`/`custom`용 API 키. |
+
+> **평문 경고.** `llm_api_key`는 `.tesserae/config.json`에 **평문**으로
+> 저장됩니다. 대신 환경 변수를 선호하세요: `ANTHROPIC_API_KEY`(키),
+> `ANTHROPIC_BASE_URL`(엔드포인트), `TESSERAE_LLM_MODEL`(모델). 해석 순서는
+> env → 프로젝트 config → 머신 전역 config(`~/.tesserae/config.json`,
+> `tesserae setup`이 기록) → 내장 기본값입니다.
+
+기존 프로젝트에서 `init`을 재실행하면 **병합**됩니다 — 설정된 `sources`와
+`memory_backends`는 뭉개지지 않고 보존됩니다.
+
+비대화형 프로바이더 설정 예시:
 
 ```bash
-tesserae init \
-  --yes \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex \
-  --with-raganything \
-  --install-raganything \
-  --raganything-parser mineru \
-  --run-raganything \
-  --run-cognee \
-  --install-cognee
+tesserae init --yes --llm-provider codex
+tesserae init --yes --llm-provider custom \
+  --llm-base-url https://llm.internal.example/v1 \
+  --llm-model my-model            # key via ANTHROPIC_API_KEY
 ```
 
-수행 내용:
+Understand Anything의 `external_tools` 항목에서 `auto_refresh: true`로 활성화하면(기본 off — 그 refresh는 원격 설치 스크립트를 실행), UA 그래프가 없거나 오래되었을 때 `tesserae compile`이 `tesserae integrations refresh understand-anything`을 실행합니다; 그렇지 않으면 그 명령을 직접 실행하세요.
 
-| Flag | Effect |
-|---|---|
-| `--with-understand-anything` | UA graph projection을 source로 추가합니다. |
-| `--install-understand-anything` | UA companion skills를 설치/업데이트합니다. |
-| `--understand-anything-platform codex` | Codex를 사용해 Tesserae의 managed UA refresh wrapper를 실행합니다. |
-| `--with-raganything` | RAG-Anything을 통한 multimodal ingestion을 활성화합니다. |
-| `--install-raganything` | 설정 중 raganything[all]을 설치합니다. |
-| `--raganything-parser` | 파서 선택: mineru(기본값), docling, paddleocr. |
-| `--run-raganything` | 모든 compile에서 RAG-Anything을 자동 refresh합니다. |
-| `--run-cognee` | compile 중 best-effort Cognee runtime cognify를 실행합니다. |
-| `--install-cognee` | Cognee가 없으면 현재 Python으로 설치합니다. |
+> **마법사 건너뛰기.** `tesserae init --bare`는 소스 감지나 백엔드 탐침 없이
+> 최소한의 `.tesserae/config.json`을 기록합니다 — 첫 compile 전에 config를
+> 직접 편집하고 싶을 때 편리합니다.
 
-사용자는 UA install path를 알거나 `/understand`를 입력할 필요가 없습니다. UA graph가 없거나 오래되면 `tesserae compile`이 `tesserae integrations refresh understand-anything`을 실행합니다.
-
-> **마법사 건너뛰기.** `tesserae init --bare`는 source 감지나 backend 프로빙 없이 최소한의 `.tesserae/config.json`만 씁니다. 첫 compile 전에 config를 직접 편집하고 싶을 때 유용합니다.
-
-## 2. 그래프와 projection 컴파일
+## 2. 그래프와 프로젝션 compile
 
 ```bash
 tesserae compile
 ```
 
-`compile`은 durable artifact를 씁니다.
+`compile`은 내구성 있는 아티팩트를 기록합니다:
 
 ```text
 .tesserae/
@@ -126,50 +137,62 @@ tesserae compile
   cognee_bundle/
 ```
 
-첫 실행 후에는 `--changed-only`를 사용해 변경되지 않은 markdown 파일을 건너뛰면서, 파일 변경이 없을 때 이전 graph를 보존할 수 있습니다. Understand Anything이 활성화되어 있으면 compile은 먼저 `.tesserae/external/understand-anything.md`를 refresh/materialize합니다. Cognee runtime이 활성화되어 있으면 `.tesserae/cognee_bundle/` 작성 후 best-effort로 Cognee도 업데이트합니다.
+첫 실행 이후에는 `--changed-only`를 사용해 변경되지 않은 markdown 파일을 건너뛰세요 — 변경된 파일이 없으면 이전 그래프가 보존됩니다. Understand Anything이 활성화되어 있으면, compile은 먼저 `.tesserae/external/understand-anything.md`를 refresh/구체화합니다; Cognee 런타임이 활성화되어 있으면 `.tesserae/cognee_bundle/`을 기록한 뒤 best-effort로 Cognee도 업데이트합니다.
 
-구성된 source를 건드리지 않고 추가 경로를 ad-hoc으로 ingest하려면 위치 인자로 전달하세요: `tesserae compile path/to/extra.md docs/`.
+설정된 소스를 건드리지 않고 임시로 추가 경로를 ingest하려면 위치 인자로
+전달하세요: `tesserae compile path/to/extra.md docs/`.
 
-### 통합 옵션은 이제 config에 있습니다
+### 통합 노브는 이제 config에 있습니다
 
-`tesserae compile`은 일상 flag(위치 인자 paths, `--project`, `--changed-only`,
-`--limit`, `--refresh-integrations`, `--sessions`/`--no-sessions`, 그리고 3개의
-LLM flag)로 의도적으로 제한됩니다. 그 외 이전의 모든 compile flag는
-`.tesserae/config.json`의 `compile_options` 블록으로 이동했습니다. 이전 argparse
-기본값이 여전히 fallback입니다. 동작을 바꾸려면 해당 키를 설정하세요.
+`tesserae compile`은 의도적으로 일상 플래그로 제한되어 있습니다(위치 인자
+paths와 `--project`, `--changed-only`, `--limit`, `--refresh-integrations`,
+`--sessions`/`--no-sessions`, 그리고 세 개의 LLM 플래그). 나머지 모든 예전
+compile 플래그는 `.tesserae/config.json`의 `compile_options` 블록으로
+이동했습니다; 예전 argparse 기본값이 여전히 폴백입니다. 동작을 바꾸려면
+거기에 키를 설정하세요:
 
-| `compile_options` 키 | 이전 flag | 기본값 | 설명 |
+| `compile_options` 키 | 예전 플래그 | 기본값 | 하는 일 |
 |---|---|---|---|
-| `source_kind` | `--source-kind` | (없음) | 구성된 source kind를 재정의합니다. |
-| `trends` | `--trends` | `false` | corpus 수준 Trend 노드를 추가합니다. |
-| `min_trend_sources` | `--min-trend-sources` | `2` | Trend 노드에 필요한 최소 source 수. |
-| `exclude_data` | `--exclude-data` | `false` | 암시적 `project_root/data` 자동 포함을 건너뜁니다. |
-| `no_vault_pull` | `--no-vault-pull` | `false` | compile 전에 기존 vault 편집을 다시 pull하지 않습니다. |
-| `use_extraction_feedback` | `--use-extraction-feedback` | `false` | 이전 extraction 결과를 다시 입력으로 사용합니다. |
+| `source_kind` | `--source-kind` | (없음) | 설정된 소스 종류를 재정의. |
+| `trends` | `--trends` | `false` | 코퍼스 수준 Trend 노드 추가. |
+| `min_trend_sources` | `--min-trend-sources` | `2` | Trend 노드에 필요한 최소 소스 수. |
+| `exclude_data` | `--exclude-data` | `false` | 암묵적인 `project_root/data` 자동 포함을 건너뜀. |
+| `no_vault_pull` | `--no-vault-pull` | `false` | compile 전에 기존 vault 편집을 되돌려 받지 않음. |
+| `use_extraction_feedback` | `--use-extraction-feedback` | `false` | 이전 추출 결과를 실행에 피드백. |
 | `sessions_llm` | `--sessions-llm` | (auto) | LLM 세션 추출 모드(`auto`/`true`/`false`). |
-| `sessions_model` | `--sessions-model` | (없음) | 세션 추출에 사용하는 LLM 모델을 재정의합니다. |
-| `cognee_add` | `--cognee-add` | `false` | Cognee bundle을 dataset에 추가합니다(cognify 없음). |
-| `cognee_cognify` | `--cognee-cognify` | `false` | bundle을 추가하고 Cognee cognify를 실행합니다. |
-| `cognee_codex_cognify` | `--cognee-codex-cognify` | `false` | Cognee의 LLM client를 Codex로 패치해 cognify를 실행합니다. |
-| `cognee_codex_model` | `--cognee-codex-model` | `gpt-5.4` | `cognee_codex_cognify`용 Codex CLI 모델. |
-| `cognee_codex_timeout` | `--cognee-codex-timeout` | `300` | Codex CLI 호출당 timeout(초). |
-| `cognee_dataset` | `--cognee-dataset` | `tesserae_research_graph` | Cognee dataset 이름. |
-| `cognee_embedding_provider` | `--cognee-embedding-provider` | `deterministic` | Cognee lane의 embedding provider. |
+| `sessions_model` | `--sessions-model` | (없음) | 세션 추출에 사용되는 LLM 모델을 재정의. |
+| `cognee_add` | `--cognee-add` | `false` | Cognee 번들을 데이터셋에 추가(cognify 없음). |
+| `cognee_cognify` | `--cognee-cognify` | `false` | 번들을 추가하고 Cognee cognify 실행. |
+| `cognee_dataset` | `--cognee-dataset` | `tesserae_research_graph` | Cognee 데이터셋 이름. |
+| `cognee_embedding_provider` | `--cognee-embedding-provider` | `deterministic` | Cognee 레인용 embedding 프로바이더. |
 | `cognee_ollama_embedding_model` | `--cognee-ollama-embedding-model` | `qwen3-embedding:0.6b` | Ollama embedding 모델. |
-| `cognee_ollama_embedding_endpoint` | `--cognee-ollama-embedding-endpoint` | `http://127.0.0.1:11434/api/embed` | Ollama `/api/embed` endpoint. |
-| `cognee_ollama_embedding_timeout` | `--cognee-ollama-embedding-timeout` | `120` | Ollama embedding 요청 timeout(초). |
+| `cognee_ollama_embedding_endpoint` | `--cognee-ollama-embedding-endpoint` | `http://127.0.0.1:11434/api/embed` | Ollama `/api/embed` 엔드포인트. |
+| `cognee_ollama_embedding_timeout` | `--cognee-ollama-embedding-timeout` | `120` | Ollama embedding 요청 타임아웃(초). |
 | `cognee_local_embedding_dimensions` | `--cognee-local-embedding-dimensions` | `128` | 로컬 embedding 차원 수. |
-| `cognee_system_root` | `--cognee-system-root` | (없음) | 격리된 Cognee system root 디렉터리. |
-| `cognee_data_root` | `--cognee-data-root` | (없음) | 격리된 Cognee data root 디렉터리. |
+| `cognee_system_root` | `--cognee-system-root` | (없음) | 격리된 Cognee 시스템 루트 디렉터리. |
+| `cognee_data_root` | `--cognee-data-root` | (없음) | 격리된 Cognee 데이터 루트 디렉터리. |
 
-> **원샷 파이프라인.** `tesserae refresh`는 전체 루프를 in-process로 실행합니다. 즉, 새 agent session을 import하고, compile하고, vault를 sync하는 작업을 하나의 명령으로 처리합니다. opt-in 증분 compile에는 `--changed-only`를 사용하세요.
+> **Cognee는 옵트인.** Cognee 백엔드는 기본 비활성화입니다:
+> `pip install tesserae[cognee]`로 설치하고 `memory_backends.cognee.enabled: true`를
+> 설정해서 사용하세요(`tesserae query --backend cognee`로 명시적으로 쿼리).
+> 레거시 Codex 패치 cognify 모드(`cognee_codex_cognify` /
+> `cognee_codex_model` / `cognee_codex_timeout`)는 제거되었습니다 — 그 키를
+> 아직 갖고 있는 config는 아무 효과가 없습니다.
 
-## 3. 정적 frontend 빌드 및 제공
+> **원샷 파이프라인.** `tesserae refresh`는 전체 루프를 프로세스 내에서 실행합니다 — 새 에이전트 세션을 가져오고, compile하고, vault를 하나의 명령으로 동기화합니다. 옵트인 증분 compile은 `--changed-only`를 전달하세요.
 
-`serve`는 site가 없으면 자동으로 빌드하므로, 단일 명령으로 탐색 가능한 Tesserae를 얻을 수 있습니다.
+## 3. 정적 프론트엔드 빌드 및 서빙
+
+`serve`는 사이트가 없으면 자동으로 빌드하므로, 명령 하나로 탐색 가능한
+Tesserae를 얻습니다. **인자 없는 `serve`는 등록된 모든 프로젝트**를 하나의
+서버 아래에서 서빙합니다 — `/`에 프로젝트 랜딩, 각 프로젝트는 `/<alias>/`,
+헤더에는 프로젝트 간 이동을 위한 Projects 스위처. 페이지 내 **ask 위젯은 두
+모드 모두에서 라이브로 동작**하며, 현재 보고 있는 페이지의 프로젝트로
+라우팅됩니다:
 
 ```bash
-tesserae serve --port 8765
+tesserae serve --port 8765                 # all registered projects
+tesserae serve --project . --port 8765     # just this one
 ```
 
 열기:
@@ -178,7 +201,9 @@ tesserae serve --port 8765
 http://127.0.0.1:8765/
 ```
 
-site를 명시적으로 빌드하려면(예: 제공 없이 배포할 때) `export site`를 사용하세요. 이미 빌드된 site를 다시 빌드하지 않고 탐색하려면 `serve`에 `--no-build`를 전달합니다.
+사이트를 명시적으로 빌드하려면(예: 서빙 없이 배포용) `export site`를
+사용하세요; 재빌드 없이 이전에 빌드된 사이트를 탐색하고 싶을 때는 `serve`에
+`--no-build`를 전달하세요:
 
 ```bash
 tesserae export site
@@ -188,7 +213,7 @@ tesserae serve --no-build --port 8765
 <!-- BEGIN: subagent-r-watch -->
 ### 저장 시 자동 재빌드
 
-개발 서버를 내장 watcher와 함께 사용하면 `data/` 및 `docs/` 아래 편집이 incremental recompile을 트리거합니다.
+내장 감시자와 dev 서버를 함께 쓰면 `data/`와 `docs/` 아래의 편집이 증분 재compile을 트리거합니다:
 
 ```bash
 # terminal 1
@@ -198,22 +223,22 @@ python3 -m http.server 56821 --directory .tesserae/site
 tesserae export site --watch
 ```
 
-`export site --watch`는 2초마다 polling하고 1초 debounce 후 `compile --changed-only`를 실행합니다. cron 스타일 rebuild에는 `--once`(snapshots vs `.tesserae/.watch-cache.json`), custom watch dir 추가에는 `--paths <dir>`, cadence 조정에는 `--interval` / `--debounce`를 사용하세요.
+`export site --watch`는 2초마다 폴링하고, 1초 디바운스하며, `compile --changed-only`를 실행합니다. cron 스타일 재빌드에는 `--once`(`.tesserae/.watch-cache.json` 대비 스냅샷), 사용자 지정 감시 디렉터리 추가에는 `--paths <dir>`, 주기 조정에는 `--interval` / `--debounce`를 사용하세요.
 <!-- END: subagent-r-watch -->
 
-### refresh daemon 실행
+### refresh 데몬 실행
 
-소스를 감시하고, 편집 burst를 합치며, 자동으로 recompile하여 지식 베이스를 스스로 항상 최신으로 유지하는 상시 엔진을 원한다면 supervised daemon을 시작하세요.
+지식 베이스를 스스로 신선하게 유지하는 상시 가동 엔진 — 소스를 감시하고, 편집 버스트를 병합하고, 자동 재compile — 을 원하면 감독(supervised) 데몬을 시작하세요:
 
 ```bash
 tesserae engine
 ```
 
-`engine`은 장기 실행 supervisor입니다. 2초마다 polling하고, 각 rebuild 전에 1초의 정적 구간을 기다립니다. cadence는 `--interval`과 `--debounce`로 조정하고, 다른 프로젝트를 대상으로 하려면 `--project`를, 단일 결정적 drain 사이클을 실행하고 종료하려면(cron이나 CI에 유용) `--once`를 사용하세요. 이는 `export site --watch`의 무인 버전입니다. 계속 실행해 두면 작업하는 동안 graph, vault, site가 최신 상태로 유지됩니다.
+`engine`은 장수 슈퍼바이저입니다: 2초마다 폴링하고 각 재빌드 전에 1초의 조용한 윈도우를 기다립니다. `--interval`과 `--debounce`로 주기를 조정하고, `--project`로 다른 프로젝트를 가리키고, `--once`를 전달하면 단일 결정적 drain 사이클을 실행하고 종료합니다(cron이나 CI에 유용). 이는 `export site --watch`의 핸즈오프 대응물입니다: 켜 두면 사용자와 에이전트가 작업하는 동안 그래프, vault, 사이트가 최신으로 유지됩니다.
 
-보이는 모든 route(home, sources, concepts, entities, papers, repos, topics, syntheses, questions, timeline, graph, AI siblings)에 대한 주석 달린 tour는 [`docs/frontend-redesign.md`](frontend-redesign.ko.md)를 참고하세요.
+보이는 모든 라우트 — home, sources, concepts, entities, papers, repos, topics, syntheses, questions, timeline, graph, 그리고 AI 시블링 — 의 주석 달린 투어는 [`docs/frontend-redesign.md`](frontend-redesign.ko.md)를 참조하세요.
 
-Frontend는 dependency-light이며 다음을 씁니다.
+프론트엔드는 의존성이 가볍고 다음을 기록합니다:
 
 ```text
 .tesserae/site/index.html
@@ -223,9 +248,9 @@ Frontend는 dependency-light이며 다음을 씁니다.
 .tesserae/site/llms.txt
 ```
 
-## 4. 로컬 agent 세션 기록 가져오기
+## 4. 로컬 에이전트 세션 이력 가져오기
 
-세션 기록 import는 명시적입니다. 일반 compile/build는 이미 정규화된 세션을 읽지만 private Claude Code 또는 Codex transcript store를 자체적으로 스캔하지 않습니다.
+세션 이력 가져오기는 명시적입니다: 일반 compile/build는 이미 정규화된 세션을 읽을 뿐, 스스로 비공개 Claude Code나 Codex 트랜스크립트 저장소를 스캔하지 않습니다.
 
 ```bash
 # Preview matching Claude Code/Codex sessions for this project:
@@ -241,43 +266,51 @@ tesserae sessions list
 tesserae export site
 ```
 
-가져온 세션은 global Sessions section, site search, home Browse cards에 나타납니다. 세션 detail page는 user/assistant turn을 읽기 쉬운 markdown으로 렌더링하고, tool-use block을 앞선 assistant turn 아래 붙이며, `#turn-N` navigation을 위한 왼쪽 turn rail을 제공합니다. privacy notes, import formats, 현재 transcript typography map은 [`docs/session-history.md`](session-history.ko.md)를 참고하세요.
+가져온 세션은 글로벌 Sessions 섹션, 사이트 검색, 홈 Browse 카드에 나타납니다. 세션 상세 페이지는 user/assistant 턴을 읽기 좋은 markdown으로 렌더링하고, tool-use 블록을 직전 assistant 턴 아래에 부착하며, `#turn-N` 내비게이션을 위한 왼쪽 턴 레일을 노출합니다. 프라이버시 참고 사항, 가져오기 형식, 현재 트랜스크립트 타이포그래피 맵은 [`docs/session-history.md`](session-history.ko.md)를 참조하세요.
 
-## 5. Wiki lint
+## 5. 위키 lint
 
 ```bash
 tesserae lint
 ```
 
-Compiled graph + wiki + site를 순회하면서 orphan papers, stale citations, graph와 wiki/ 간 drift, ghost synthesis inputs 등을 표시합니다. `.tesserae/lint-report.md`와 `.tesserae/lint-report.json`을 씁니다. 안전한 auto-fix(missing `implemented_in` edges, ghost-input pruning)를 적용하려면 `--fix-trivial`, error일 때만 exit code 실패를 원하면 `--severity error`를 전달하세요.
+컴파일된 그래프 + 위키 + 사이트를 순회하며 고아 paper, 오래된 citation, 그래프와 wiki/ 사이의 드리프트, 유령 synthesis 입력 등을 플래그합니다. `.tesserae/lint-report.md`와 `.tesserae/lint-report.json`을 기록합니다. 안전한 자동 수정(누락된 `implemented_in` 엣지, 유령 입력 정리)을 적용하려면 `--fix-trivial`을, 오류에서만 종료 코드를 실패시키려면 `--severity error`를 전달하세요.
 
-## 6. Wiki 질의
+그래프 자체를 넘어선 워크스페이스 건강 상태 — 레지스트리 일관성, staleness, lock, LLM 로그인, 위생 — 는 `tesserae doctor`를 실행하세요(`--fix`는 안전한 복구만 적용). [`docs/doctor.md`](doctor.ko.md)를 참조하세요.
+
+## 6. 위키에 ask와 query
 
 ```bash
+# LLM-planned, cited answer over the compiled graph (the default):
+tesserae ask "What is Gaussian Splatting?"
+
+# Raw retrieval — ranked search hits, no LLM:
 tesserae query "What is Gaussian Splatting?"
 ```
 
-기본은 search-only입니다. `.tesserae/site/search-index.json` 위의 BM25와 일치하는 `wiki/<kind>/<slug>.md`에서 가져온 200자 excerpt를 사용합니다. 좁히려면 `--kind papers`(또는 `concepts`, `repos` 등), 넓히려면 `--top-k N`, structured output은 `--json`을 전달하세요. `[node_id]` citation이 있는 합성 답변을 Claude에 요청하려면 `--llm`을 추가하거나 `TESSERAE_QUERY_LLM=1`을 설정합니다. `--interactive`는 readline REPL을 열며 blank line 또는 EOF로 종료합니다. `TESSERAE_QUERY_DRY_RUN=1`은 API 호출 없이 prompt를 실행해 봅니다.
+`ask`는 답변 표면입니다: 모델이 컴파일된 그래프 위에서 retrieval을 계획한 뒤 citation이 달린 답변을 합성합니다. 로그인된 `claude`/`codex` CLI(OAuth) 또는 `ANTHROPIC_API_KEY`로 동작합니다; 순위 매겨진 검색 결과만 원하면 `--no-llm`을 전달하세요(이 강제 off는 `TESSERAE_QUERY_LLM=1`을 이깁니다). `TESSERAE_QUERY_DRY_RUN=1`은 API 호출 없이 프롬프트를 연습합니다.
 
-## 7. 온디맨드로 agent용 context 컴파일
+`query`는 retrieval 표면입니다: `.tesserae/site/search-index.json` 위의 BM25/시맨틱 검색이며, 매칭되는 `wiki/<kind>/<slug>.md`에서 200자 발췌를 가져옵니다. 좁히려면 `--kind papers`(또는 `concepts`, `repos` 등)를, 넓히려면 `--top-k N`을, 구조화된 출력에는 `--json`을 전달하세요; `--interactive`는 readline REPL을 엽니다 — 빈 줄이나 EOF로 종료합니다. 명시적 메모리 백엔드도 여기에 있습니다: `--backend raganything|cognee`는 해당 백엔드로 바로 가서 그 오류를 노출합니다(Cognee 레인에는 `--cognee-search-type` / `--cognee-dataset`). `query`에는 LLM 합성이 없습니다 — 그건 `ask`입니다.
 
-v0.5.0의 핵심 기능은 On-Demand Context Compiler입니다. 컴파일된 graph에 query 범위로 한정된 단일 인용 context 문서를 요청하고, agent의 context window에 맞게 크기를 조절합니다.
+## 7. 온디맨드로 에이전트 준비 컨텍스트 compile
+
+v0.5.0의 헤드라인은 온디맨드 컨텍스트 컴파일러입니다: 컴파일된 그래프에 질의 범위로 한정되고 에이전트의 윈도우에 맞게 크기가 조정된, citation이 달린 단일 컨텍스트 문서를 요청하세요.
 
 ```bash
 tesserae context "How does session import work?"
 ```
 
-query와 일치하는 노드에서 Personalized PageRank를 seed로 시작하고(명시적으로 seed하려면 `--seeds <node_id>` 사용), 이웃을 확장한 뒤(`--depth`, 기본값 2), 문자 `--budget`(기본값 32000, `<= 0`이면 무제한)으로 제한된 인용 문서를 조립합니다. 그 위에 LLM이 작성한 요약을 추가하려면 `--synthesize`(LLM 백엔드 필요)를, 문서를 stdout 대신 파일로 쓰려면 `-o/--output <file>`을 사용하세요.
+질의에 매칭되는 노드에서 Personalized PageRank를 시드하고(명시적으로 시드하려면 `--seeds <node_id>` 사용), 이웃을 확장하고(`--depth`, 기본 2), 문자 `--budget`(기본 32000; 무제한은 `<= 0` 전달)으로 상한이 정해진 citation 문서를 조립합니다. 그 위에 LLM 작성 요약을 원하면 `--llm`을 추가하고(LLM 백엔드 필요), stdout 대신 디스크에 문서를 기록하려면 `-o/--output <file>`을 사용하세요.
 
-같은 compiler가 MCP를 통해 `compile_context` 도구로 agent에게 노출되므로, 코딩 agent는 수동 export 없이 대화 도중에 budget으로 제한된, 딱 필요한 만큼의 프로젝트 context를 가져올 수 있습니다.
+같은 컴파일러가 MCP를 통해 `compile_context` 도구로 에이전트에 노출되므로, 코딩 에이전트가 수동 export 없이 대화 중에 딱 필요한 만큼의 예산 제한 프로젝트 컨텍스트를 가져올 수 있습니다.
 
-## 8. Agent harness 파일 export
+## 8. 에이전트 harness 파일 내보내기
 
 ```bash
 tesserae export harness
 ```
 
-지원 target:
+지원 타깃:
 
 - Claude Code
 - Codex
@@ -286,7 +319,7 @@ tesserae export harness
 - Cursor
 - OpenCode
 
-부분 예시:
+부분 집합 예시:
 
 ```bash
 tesserae export harness \
@@ -295,19 +328,19 @@ tesserae export harness \
   --target opencode
 ```
 
-## 9. Obsidian vault export
+## 9. Obsidian vault 내보내기
 
 ```bash
 tesserae vault export
 ```
 
-또는 기존 vault에 쓰기:
+또는 기존 vault에 기록:
 
 ```bash
-tesserae vault export --vault "$OBSIDIAN_VAULT_PATH"
+tesserae vault export --output "$OBSIDIAN_VAULT_PATH"
 ```
 
-Vault에는 markdown projections, `.obsidian` defaults, graph coloring, `raw/assets/`, Dataview dashboard가 포함됩니다. 기존 vault를 최신 compile과 맞추려면 `tesserae vault sync`를 사용하세요(고아 노트를 제거하려면 `--prune` 추가).
+vault에는 markdown 프로젝션, `.obsidian` 기본값, 그래프 색상, `raw/assets/`, Dataview 대시보드가 포함됩니다. 기존 vault를 최신 compile과 조정하려면 `tesserae vault sync`를 사용하세요(고아 노트를 제거하려면 `--prune` 추가).
 
 ## 10. MCP 설정
 
@@ -315,23 +348,23 @@ Vault에는 markdown projections, `.obsidian` defaults, graph coloring, `raw/ass
 tesserae projects mcp-config --server-name my_project_wiki
 ```
 
-출력을 `~/.hermes/config.yaml`의 `mcp_servers` 아래 붙여 넣은 뒤 Hermes/gateway를 재시작하세요.
+출력을 `~/.hermes/config.yaml`의 `mcp_servers` 아래에 붙여넣고 Hermes/gateway를 재시작하세요.
 
-## 11. Graphiti export / sync
+## 11. Graphiti 내보내기 / 동기화
 
-Dependency-free episode export:
+의존성 없는 에피소드 내보내기:
 
 ```bash
 tesserae export graphiti
 ```
 
-Graphiti 설치 없이 dry-run sync smoke:
+Graphiti 설치 없이 dry-run 동기화 스모크:
 
 ```bash
 tesserae export graphiti --sync --dry-run
 ```
 
-Live sync에는 `graphiti_core`와 접근 가능한 Neo4j backend가 필요합니다.
+라이브 동기화에는 `graphiti_core`와 접근 가능한 Neo4j 백엔드가 필요합니다:
 
 ```bash
 tesserae export graphiti --sync \
@@ -342,12 +375,12 @@ tesserae export graphiti --sync \
 
 ## 12. GitHub Pages에 배포
 
-`.tesserae/site/`의 compiled site를 프로젝트 git origin의 `gh-pages` branch로 push합니다.
+`.tesserae/site/`의 컴파일된 사이트를 프로젝트 git origin의 `gh-pages` 브랜치에 푸시하세요:
 
 ```bash
 tesserae export site --deploy --build --enable-pages
 ```
 
-`--build`는 먼저 `compile`을 실행해 site를 최신으로 만듭니다. `--enable-pages`는 `gh` CLI를 통해 Pages를 켭니다(idempotent, `gh`가 없으면 hint와 함께 skip). push 없이 stage/commit하려면 `--dry-run`, default override에는 `--branch` / `--remote`, dirty working tree에서 배포 허용에는 `--force`를 사용하세요.
+`--build`는 먼저 `compile`을 실행해 사이트를 신선하게 합니다. `--enable-pages`는 `gh` CLI를 통해 Pages를 켭니다(멱등적; `gh`가 없으면 힌트와 함께 건너뜀). 푸시 없이 스테이징과 커밋만 하려면 `--dry-run`을, 기본값 재정의에는 `--branch` / `--remote`를, 더러운 워킹 트리로도 배포를 허용하려면 `--force`를 사용하세요.
 
-사이트는 `https://<owner>.github.io/<repo>/`에서 접근할 수 있습니다.
+사이트는 `https://<owner>.github.io/<repo>/`에서 접근 가능해집니다.

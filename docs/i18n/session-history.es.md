@@ -3,34 +3,51 @@
 <!-- translations:start -->
 <p align="center"><a href="../session-history.md">English</a> · <a href="session-history.ko.md">한국어</a> · <a href="session-history.zh.md">中文</a> · <a href="session-history.ja.md">日本語</a> · <a href="session-history.ru.md">Русский</a> · <a href="session-history.es.md">Español</a> · <a href="session-history.fr.md">Français</a> · <a href="session-history.de.md">Deutsch</a></p>
 <!-- translations:end -->
-Tesserae puede importar transcript locales de AI-agent y renderizarlos como memoria del proyecto en la sección `sessions/` del sitio estático.
+Tesserae puede importar transcripts locales de agentes de IA y renderizarlos como memoria del proyecto bajo la sección `sessions/` del sitio estático.
 
-Esta función está separada intencionalmente de `export harness`:
+Esta función es intencionadamente independiente de `export harness`:
 
 - `export harness` es contexto saliente para herramientas como Claude Code, Codex, Gemini, Cursor, Kiro y OpenCode.
-- `sessions ...` es historial entrante: normaliza sesiones previas de Claude Code/Codex para el proyecto actual, las guarda bajo `.tesserae/harness_sessions/` y permite que `export site` publique páginas de índice/detalle de sesiones.
+- `sessions ...` es historial entrante: normaliza sesiones previas de Claude Code/Codex para el proyecto actual, las guarda bajo `.tesserae/harness_sessions/`, y permite que `export site` publique páginas de índice/detalle de sesión.
 
-## Dos vías de entrada: importación por lotes y monitoreo en vivo
+## Dos vías de entrada: importación por lotes y monitorización en vivo
 
-La ingesta de sesiones ya no es solo por lotes. Hay dos rutas hacia el mismo almacén normalizado:
+La ingesta de sesiones ya no es solo por lotes. Hay dos rutas hacia el mismo
+almacén normalizado:
 
-- **Importación por lotes** — `sessions discover/import` escanea las raíces de transcript bajo demanda y escribe de una sola vez. Esta página documenta ese flujo más abajo.
-- **Monitoreo en vivo** — el supervisor daemon (`tesserae engine`) ejecuta un `SessionTailer` que observa los transcript *del propio proyecto* (Claude Code y Codex) e ingiere nuevos turnos a medida que llegan. En cada tick hace seek a un byte offset persistido por archivo, lee solo los bytes nuevos y guarda los turnos completos en el SQLite `HarnessSessionsDB` (`.tesserae/sqlite.db`) **antes** de encolar una recompilación con debounce, de modo que la compilación siempre lee un estado consistente. El tailer se limita a las propias sesiones del proyecto (Claude `projects/<slug>/*.jsonl`; Codex filtrado por cwd) y, tras un reinicio, reanuda desde los offset guardados sin reproducir turnos.
+- **Importación por lotes** — `sessions discover/import` escanea las raíces de transcripts
+  bajo demanda y escribe de una sola vez. Esta página documenta ese flujo más abajo.
+- **Monitorización en vivo** — el daemon supervisor (`tesserae engine`) ejecuta un
+  `SessionTailer` que vigila los transcripts de Claude Code y Codex *del propio
+  proyecto* e ingiere los turnos nuevos conforme aterrizan. Cada
+  tick busca un offset de bytes por archivo persistido, lee solo los bytes nuevos,
+  y guarda los turnos completos en la `HarnessSessionsDB` de SQLite
+  (`.tesserae/sqlite.db`) **antes** de encolar una recompilación con debounce, de modo que la
+  compilación siempre lee un estado consistente. El tailer está acotado a las sesiones
+  propias del proyecto (Claude `projects/<slug>/*.jsonl`; Codex filtrado por cwd) y
+  se reanuda desde los offsets guardados tras un reinicio sin re-reproducir turnos.
 
 Ejecuta el bucle en vivo con:
 
 ```bash
-tesserae engine        # observar fuentes, fusionar ráfagas, recompilar automáticamente
-tesserae engine --once # un solo ciclo de drain y salir (determinista)
+tesserae engine        # watch sources, coalesce bursts, auto-recompile
+tesserae engine --once # single drain cycle then exit (deterministic)
 ```
 
-`tesserae refresh` ejecuta el mismo pipeline ingest → compile → project una vez, in-process, sin iniciar el watcher de larga duración (pasa `--skip-sessions` para omitir el escaneo de discovery de sesiones del harness).
+`tesserae refresh` ejecuta el mismo pipeline ingest → compile → project
+una vez, en el propio proceso, sin arrancar el watcher de larga vida (pasa
+`--no-sessions` para saltarte el escaneo de descubrimiento de sesiones de harness).
 
 ## Modelo de privacidad
 
-Ambas rutas de ingesta son explícitas: el tailer en vivo solo corre mientras mantengas `tesserae engine` activo, y el discovery por lotes solo escribe con `--import`. Un `tesserae compile` o `tesserae export site` normal lee las sesiones ya normalizadas desde `.tesserae/harness_sessions/` y los registros en vivo de `.tesserae/sqlite.db`, pero por sí mismo no hace surprise-scrape de directorios privados de transcript del harness.
+Ambas rutas de ingesta son explícitas: el tailer en vivo solo corre mientras mantengas
+`tesserae engine` vivo, y el descubrimiento por lotes solo escribe con
+`--import`. Un `tesserae compile` o `tesserae export site` normal lee las
+sesiones ya normalizadas de `.tesserae/harness_sessions/` y los registros en vivo
+de `.tesserae/sqlite.db`, pero no rasca por sorpresa los directorios privados de
+transcripts de harness por su cuenta.
 
-Los registros de sesiones importados son artefactos locales del proyecto. Revísalos antes de publicar un sitio público, especialmente si tus transcript pueden incluir secretos, rutas privadas, datos de clientes o código no publicado.
+Los registros de sesión importados son artefactos locales del proyecto. Revísalos antes de publicar un sitio público, especialmente si tus transcripts pueden incluir secretos, rutas privadas, datos de clientes o código no publicado.
 
 ## Descubrir e importar sesiones locales
 
@@ -40,7 +57,7 @@ Desde la raíz del proyecto:
 tesserae sessions discover --import
 ```
 
-Discovery escanea raíces locales de transcript de Claude Code y Codex que pertenecen al directorio de trabajo del proyecto actual. Usa `--root` para escanear un directorio de configuración específico y repite `--harness` para limitar discovery:
+El descubrimiento escanea las raíces locales de transcripts de Claude Code y Codex que pertenecen al directorio de trabajo del proyecto actual. Usa `--root` para escanear un directorio de configuración específico, y repite `--harness` para limitar el descubrimiento:
 
 ```bash
 tesserae sessions discover \
@@ -51,11 +68,11 @@ tesserae sessions discover \
   --import
 ```
 
-Sin `--import`, discovery imprime lo encontrado sin escribir registros de sesión normalizados.
+Sin `--import`, el descubrimiento imprime lo que encontró sin escribir registros de sesión normalizados.
 
 ## Importar JSON normalizado directamente
 
-Si otra herramienta ya produjo JSON `HarnessSession` normalizado, importa un archivo o una lista de archivos:
+Si otra herramienta ya ha producido JSON `HarnessSession` normalizado, importa un archivo o una lista de archivos:
 
 ```bash
 tesserae sessions import path/to/session.json path/to/more-sessions.json
@@ -63,13 +80,13 @@ tesserae sessions import path/to/session.json path/to/more-sessions.json
 
 Cada entrada puede contener un objeto de sesión o una lista de objetos de sesión.
 
-## Listar sesiones importadas
+## Listar las sesiones importadas
 
 ```bash
 tesserae sessions list
 ```
 
-Las sesiones se almacenan debajo de:
+Las sesiones se guardan debajo:
 
 ```text
 .tesserae/harness_sessions/
@@ -79,7 +96,10 @@ Las sesiones se almacenan debajo de:
     <session>.md
 ```
 
-Las sesiones monitoreadas en vivo también se registran en el SQLite `HarnessSessionsDB` (`.tesserae/sqlite.db`), que además persiste los read offset por archivo desde los que el tailer reanuda. `sessions list` reporta la vista combinada.
+Las sesiones monitorizadas en vivo se rastrean adicionalmente en la
+`HarnessSessionsDB` de SQLite (`.tesserae/sqlite.db`), que también persiste los offsets
+de lectura por archivo desde los que se reanuda el tailer. `tesserae sessions list` reporta la
+vista combinada.
 
 ## Construir las páginas estáticas de sesiones
 
@@ -96,41 +116,59 @@ El sitio emite:
 .tesserae/site/sessions/<project>/<session>.html
 ```
 
-El sitio generado enlaza Sessions desde el global rail, las tarjetas Browse de inicio, las entradas de búsqueda y el breadcrumb trail de cada página de detalle de sesión.
+El sitio generado enlaza Sessions desde el rail global, las tarjetas Browse de la home, las entradas de búsqueda y el rastro de breadcrumbs de cada página de detalle de sesión.
 
-## Diseño de la página de detalle de sesión
+## Búsqueda rápida de transcripts (memex)
 
-Las páginas de detalle usan el shell compartido del sitio estático en vez de un transcript dump independiente. Incluyen:
+Cuando sirves el sitio con `tesserae serve`, el **dashboard de sesiones** gana una caja de búsqueda
+de texto completo sobre cada transcript de Claude/Codex indexado, respaldada por
+[`nicosuave/memex`](https://github.com/nicosuave/memex) (BM25). Los resultados muestran
+`project · role · date · score` más un snippet coincidente.
 
-- hero y stat strip;
+```bash
+cargo install --git https://github.com/nicosuave/memex --locked   # or: tesserae config deps --install memex
+memex index                                                        # build the index once
+tesserae serve                                                     # search box appears on /sessions
+```
+
+Es **opcional y degrada con elegancia**: sin binario `memex` (o sin índice) la caja muestra
+un mensaje claro y accionable y el resto del dashboard no se ve afectado. El
+endpoint de búsqueda (`GET /api/transcript-search`) está restringido a llamadores
+same-origin/loopback para que una página web visitada no pueda sondear tu historial local.
+
+## Layout de la página de detalle de sesión
+
+Las páginas de detalle de sesión usan el shell compartido del sitio estático en lugar de un volcado de transcript independiente. Incluyen:
+
+- hero y franja de estadísticas;
 - resumen de alto nivel;
-- timeline y size metadata;
-- decisions, files, commands, tools y errors cuando existen;
-- subagent tree colapsado;
-- conversación user/assistant turno por turno;
-- tool-use blocks colapsados adjuntos bajo el turno assistant anterior;
-- un conversation rail izquierdo que enlaza a anchors `#turn-N`.
+- metadatos de timeline y tamaño;
+- decisiones, archivos, comandos, herramientas y errores cuando existen;
+- árbol de subagentes colapsado;
+- conversación usuario/asistente turno a turno;
+- bloques de tool-use colapsados adjuntos bajo el turno de asistente precedente;
+- un rail de conversación a la izquierda que enlaza a anclas `#turn-N`.
 
-El markdown de conversación se renderiza mediante el renderer markdown del sitio. Superficies semánticas como inline code, command/tag markup explícito, paths, filenames y hashtags se decoran como chips compactos; los sustantivos aleatorios en mayúscula no se convierten automáticamente en chips.
+El markdown de la conversación se renderiza con el renderizador de markdown del sitio. Las superficies semánticas como código inline, marcado explícito de comando/etiqueta, rutas, nombres de archivo y hashtags se decoran como chips compactos; los sustantivos capitalizados aleatorios no se convierten en chips automáticamente.
 
-Typography actual de transcript:
+Tipografía actual de los transcripts:
 
-| Surface | Selector | Size |
+| Superficie | Selector | Tamaño |
 |---|---|---|
-| Prosa markdown de conversación | `.session-turn-text`, prose children | `8px` |
-| Code fences genéricos de conversación | `.session-turn-text pre` | `10px` |
-| Contenido fenced code Bash/shell | `.session-code-block code.language-bash`, `.language-sh`, `.language-shell`, `.language-zsh` | `11px` |
-| Tool details/summary | `.session-tool-details`, `.session-tool-details > summary` | `10px` |
-| Tool-use header | `.session-tool-use-header` | `8px` |
-| Tool payload text | `.session-tool-use-text` | `6px` |
+| Prosa markdown de la conversación | `.session-turn-text`, hijos de prosa | `8px` |
+| Bloques de código genéricos de la conversación | `.session-turn-text pre` | `10px` |
+| Contenido de código Bash/shell | `.session-code-block code.language-bash`, `.language-sh`, `.language-shell`, `.language-zsh` | `11px` |
+| Details/summary de herramientas | `.session-tool-details`, `.session-tool-details > summary` | `10px` |
+| Cabecera de tool-use | `.session-tool-use-header` | `8px` |
+| Texto del payload de herramienta | `.session-tool-use-text` | `6px` |
 
-## Checklist de publicación de sesiones
+## Lista de verificación de publicación para sesiones
 
 Antes de desplegar un sitio público que incluya sesiones:
 
-1. Ejecuta `tesserae sessions list` y confirma que el conteo sea el esperado.
+1. Ejecuta `tesserae sessions list` y confirma que el recuento es el esperado.
 2. Inspecciona `.tesserae/harness_sessions/` en busca de contenido sensible.
 3. Reconstruye con `tesserae export site`.
-4. Abre localmente `sessions/index.html` y al menos una página de detalle de sesión.
-5. Confirma que los tool blocks estén colapsados por defecto y que los raw tool payloads sean aceptables para publicar.
-6. Despliega con `tesserae export site --deploy` una vez que el source tree esté committed.
+4. Abre `sessions/index.html` y al menos una página de detalle de sesión en local.
+5. Confirma que los bloques de herramientas están colapsados por defecto y que los payloads en bruto de herramientas son aceptables para publicar.
+6. Despliega con `tesserae export site --deploy` una vez que el árbol de fuentes esté commiteado.

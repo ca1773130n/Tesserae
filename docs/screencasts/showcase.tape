@@ -57,17 +57,17 @@ Type "# 3) Ask the compiled wiki — deterministic graph lookup"
 Sleep 300ms
 Enter
 
-Type@25ms `tesserae ask --backend wiki --top-k 3 "What is 3D Gaussian Splatting?"`
+Type@25ms `tesserae ask --no-llm --top-k 3 "What is 3D Gaussian Splatting?"`
 Sleep 200ms
 Enter
 Sleep 3500ms
 
-Type@25ms `tesserae ask --backend wiki --top-k 3 "Which repos implement NeRF?"`
+Type@25ms `tesserae ask --no-llm --top-k 3 "Which repos implement NeRF?"`
 Sleep 200ms
 Enter
 Sleep 3500ms
 
-Type@25ms `tesserae ask --backend wiki --top-k 3 "How does DreamFusion generate 3D from text?"`
+Type@25ms `tesserae ask --no-llm --top-k 3 "How does DreamFusion generate 3D from text?"`
 Sleep 200ms
 Enter
 Sleep 4500ms

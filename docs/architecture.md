@@ -139,7 +139,7 @@ Defaults: `depth=2`, `budget=32000`. The deterministic assembly (steps 1–4) is
 | Module | Responsibility |
 |---|---|
 | [`tesserae/project.py`](../tesserae/project.py) | `ProjectWiki.compile`: drives extraction → graph → memory passes → wiki layer → site. Owns `ProjectPaths` (`config`, `graph`, `manifest`, `wiki`, `site`, etc.). Decides up front whether a provenance-driven incremental compile is eligible (gated on `incremental_compile`, default OFF). |
-| [`tesserae/cli.py`](../tesserae/cli.py) | Flat-verb CLI dispatch (~2,732 lines after the legacy `project`/`wiki` subcommand groups were deleted). Verbs — `init`, `compile`, `context`, `ask`, `refresh`, `serve`, `engine`, `export`, `vault`, `code`, `lab`, `config`, `projects`, `integrations` — are declared as metadata in [`tesserae/cli_tree.py`](../tesserae/cli_tree.py) and wired up from that tree rather than hand-registered. |
+| [`tesserae/cli.py`](../tesserae/cli.py) | Flat-verb CLI dispatch (~2,732 lines after the legacy `project`/`wiki` subcommand groups were deleted). Verbs — `init`, `compile`, `ingest`, `context`, `ask`, `query`, `doctor`, `summary`, `decisions`, `refresh`, `serve`, `engine`, `export`, `vault`, `code`, `lab`, `setup`, `config`, `projects`, `sources`, `federation`, `integrations` — are declared as metadata in [`tesserae/cli_tree.py`](../tesserae/cli_tree.py) and wired up from that tree rather than hand-registered. |
 | [`tesserae/deploy.py`](../tesserae/deploy.py) | `export site --deploy`: pushes `.tesserae/site/` to a `gh-pages` branch via worktree, optionally enables Pages via `gh`. |
 
 ### Engine spine (v0.5.0 — pillars 1 & 2)
@@ -197,7 +197,7 @@ Recurrence confidence is numeric in the output: the temporal projection stamps e
 | [`tesserae/harness_sessions.py`](../tesserae/harness_sessions.py) | Inbound Claude Code/Codex session discovery, normalization, storage under `.tesserae/harness_sessions/`, and redacted markdown summaries. |
 | [`tesserae/graphiti_adapter.py`](../tesserae/graphiti_adapter.py) | Temporal-fact JSONL + optional live Graphiti sync. |
 | [`tesserae/cognee_adapter.py`](../tesserae/cognee_adapter.py) | Cognee nodes/edges JSONL bundle and direct add/cognify path. |
-| [`tesserae/mcp_server.py`](../tesserae/mcp_server.py) | MCP stdio server. Retrieval/graph: `schema`, `graph_summary`, `search_nodes`, `node_context` (with `use_ppr`), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`. Context engine (v0.5.0): `compile_context` (the on-demand context compiler), `embedding_status`, `fresh_insights` (decay-ranked session findings), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`. Plus `ask`, the multi-project registry tools (`list_projects`, `register_project`, `unregister_project`, `list_sessions`), and `tesserae_setup_plan` / `tesserae_setup_apply`. |
+| [`tesserae/mcp_server.py`](../tesserae/mcp_server.py) | MCP stdio server. Retrieval/graph: `schema`, `graph_summary`, `search_nodes`, `node_context` (with `use_ppr`), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`, `doctor_report`. Context engine (v0.5.0): `compile_context` (the on-demand context compiler), `embedding_status`, `fresh_insights` (decay-ranked session findings), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`. Plus `ask`, the multi-project registry tools (`list_projects`, `register_project`, `unregister_project`, `list_sessions`), and `tesserae_setup_plan` / `tesserae_setup_apply`. |
 
 ## Project workspace layout
 

@@ -7,7 +7,7 @@
 
 ## 使い方
 
-    tesserae ingest <input>...  [--title T] [--source-kind K] [--exact] [--dry-run]
+    tesserae ingest <input>...  [--title T] [--source-kind K] [--full] [--dry-run]
 
 `<input>` は 1 つ以上のローカルファイルパスまたは `http(s)` URL です。URL は取得され、
 markdown に変換され、来歴を示す front-matter（`source_url`、`fetched_at`、`content_sha256`、
@@ -19,19 +19,88 @@ URL の取り込みにはオプションの追加パッケージが必要です�
 
     pip install tesserae[ingest-url]
 
-## 仕組み
+## 動作の仕組み
 
-デフォルトでは、`ingest` は増分コンパイルによって新しいソースをマージします。コーパス全体を
-再抽出することはなく、その結果は完全コンパイルとバイト単位で同一です（増分パスが処理できない
-ケースに対しても、自動の完全再コンパイルフォールバックが正しさを保証します）。
-コーパス全体の完全再コンパイルを強制するには `--exact` を渡します。
+デフォルトでは `ingest` は新しいソースを増分コンパイルでマージします — コーパス全体を
+再抽出することはありません — そして結果は完全コンパイルとバイト単位で同一です（増分パスが
+扱えないケースについては、自動の完全再コンパイルフォールバックが正しさを保証します）。
+コーパス全体の完全再コンパイルを強制するには `--full` を渡してください。
 
 ## フラグ
 
-- `--exact` — コーパス全体の完全再コンパイルを強制します。
-- `--dry-run` — 取り込まれる内容を取得して報告しますが、グラフは書き込みません。
-- `--title` — タイトルのオーバーライド。素の URL に便利です。
-- `--source-kind` — ソース分類をオーバーライドします。
+- `--full` — コーパス全体の完全再コンパイルを強制します。
+- `--dry-run` — 取得して、何が取り込まれるかを報告します。グラフは書き込みません。
+- `--title` — タイトルの上書き。素の URL に便利です。
+- `--source-kind` — ソースの分類を上書きします。
+
+## コンセプトレイヤー（`--extractor`）
+
+Tesserae は LLM wiki なので、`compile` は**デフォルトでコンセプト/クレームレイヤーを
+構築**します（`--extractor llm`）: 各ドキュメントを設定済みの LLM プロバイダ —
+`llm_provider` に従い **codex / claude / Anthropic API** — を通して読み、コンセプト、
+クレーム、ケイパビリティ、技術用語、エビデンスのスパン、そしてそれらを結ぶ型付き
+エッジを生成します。これが、グラフが単に *「どのファイルがそれを言ったか」* ではなく
+*「これはどんなアイデアで、どう関係しているか」* に答えられるようにするレイヤーです。
+
+    tesserae compile                        # LLM concept layer, configured provider
+    tesserae compile --llm-provider codex   # force a provider for this run
+
+LLM バックエンドが未設定/未認証の場合、compile は**決定論的（deterministic）**
+エクストラクタ（構造のみ — ソース、セクション、明示的リンク）にデグレードし、警告します。
+明示的に指定することもできます — 高速でキー不要、バイト安定であり、CI /
+再現可能モードです:
+
+    tesserae compile --extractor deterministic
+
+**コスト意識型（`selective-llm`）** — マッチするドキュメントだけを LLM に通し、
+残りは決定論的に処理します:
+
+    tesserae compile --extractor selective-llm \
+      --llm-include "docs/**/*.md" --llm-limit 20
+
+同じフラグは `tesserae extract <paths>`（スタンドアロン）と
+`tesserae compile <paths>`（アドホックなパス取り込み）でも機能します。
+
+**チューニング:**
+
+- `--llm-provider codex|claude|anthropic` — プロバイダを上書き（デフォルト:
+  config の `llm_provider`）。
+- `--llm-model` — エクストラクタで使うモデル（デフォルト: プロバイダのデフォルト）。
+- `--llm-include <glob>` — `selective-llm` で、どのファイルを LLM に通すか
+  （複数指定は繰り返し。パターンは絶対パスの任意の位置にマッチします。例:
+  `"*docs/superpowers*"`）。
+- `--llm-limit N` — LLM に到達するファイル数の上限（残りは決定論的のまま）。
+
+**デフォルトのタイムアウトはありません。** 大きな設計ドキュメントは大量の JSON を生成し、
+数分かかることがあります。抽出は黙って打ち切られるのではなく完了まで実行されます
+（タイムアウトはオプトインのみです）。
+
+**実際のコーパスに対して堅牢。** ノイズの多い、あるいは遅いドキュメント 1 つがコンパイル
+全体を中断させることは決してありません: あるドキュメントでの LLM の失敗（認証、エラー、
+パース不能な生成）は*その*ドキュメントについて決定論的ベースラインへフォールバックし、
+制御された語彙の外にあるエッジやノードの型は破棄され、コンテンツをキーとするキャッシュに
+より、変更されていないドキュメントの再コンパイルは以前の抽出を再利用します。
+
+> `claude-cli` / `selective-claude` というエクストラクタ名（および `--claude-*`
+> フラグ）は `llm` / `selective-llm`（および `--llm-*`）の非推奨エイリアスです。
+> まだ動作しますが、非推奨の注意が表示されます。
+
+## コンパイルスコープの管理（`sources`）
+
+`tesserae compile`（引数なし）はプロジェクトの `sources` リストにあるディレクトリを
+コンパイルします。そのリスト — **local または global** — は `sources` サブコマンドで
+管理します:
+
+    tesserae sources add docs                 # local: inside the project (stored project-relative)
+    tesserae sources add /data/shared-notes   # global: an absolute path outside the project
+    tesserae sources add ../sibling-project   # global: a relative path that escapes the root
+    tesserae sources list                     # shows each source tagged local/global, flags missing
+    tesserae sources remove docs
+
+プロジェクト内のパスはプロジェクト相対で保存されます（ポータブル）。外部のものは
+絶対パスで保存されます。どちらもコンパイル時に解決されるため、global なソースも
+local なソースと同じようにコンパイルされます。（追加は解決後の場所で重複排除されるため、
+同じディレクトリの絶対パス形式と `../` 相対形式が二重にカウントされることはありません。）
 
 ## 関連コマンド
 

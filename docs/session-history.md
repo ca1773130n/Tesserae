@@ -36,7 +36,7 @@ tesserae engine --once # single drain cycle then exit (deterministic)
 
 `tesserae refresh` runs the same ingest → compile → project pipeline
 once, in-process, without starting the long-lived watcher (pass
-`--skip-sessions` to skip the harness-session discovery scan).
+`--no-sessions` to skip the harness-session discovery scan).
 
 ## Privacy model
 

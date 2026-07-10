@@ -18,9 +18,9 @@ tesserae --help
 tesserae_mcp --help
 ```
 
-El comando canónico en la documentación es `tesserae`. `tesserae_mcp` inicia el servidor MCP (que ahora expone la herramienta `compile_context` bajo demanda; consulta la Guía rápida).
+El comando canónico en la documentación es `tesserae`. `tesserae_mcp` arranca el servidor MCP (que ahora expone la herramienta on-demand `compile_context` — ver el Quickstart).
 
-> **pipx también sirve.** Si prefieres mantener las herramientas CLI en venvs aislados:
+> **pipx también vale.** Si prefieres mantener las herramientas CLI en sus propios venvs aislados:
 > ```bash
 > pipx install tesserae
 > ```
@@ -31,48 +31,84 @@ El comando canónico en la documentación es `tesserae`. `tesserae_mcp` inicia e
 pip install --upgrade tesserae
 ```
 
-## Integraciones opcionales
+## Configuración a nivel de máquina (configura una vez, todos los proyectos)
 
-La wheel predeterminada es deliberadamente ligera. El asistente de configuración puede instalar las piezas complementarias/de runtime más pesadas solo cuando se lo pidas:
+Configura Tesserae una vez en lugar de por proyecto, e instala las dependencias
+opcionales desde un solo comando:
 
 ```bash
-# Understand Anything companion graph + Cognee runtime memory
-tesserae init \
-  --with-understand-anything \
-  --install-understand-anything \
-  --understand-anything-platform codex \
-  --run-cognee \
-  --install-cognee
+# Interactive machine-wide setup — pick LLM provider/effort + which deps to install:
+tesserae setup
+# …or non-interactively (written to ~/.tesserae/config.json) + install everything:
+tesserae setup --llm-provider codex --reasoning-effort medium --install all
+
+# Just see / manage optional dependencies
+tesserae config deps                     # show what's installed
+tesserae config deps --install memex     # fast transcript search (needs cargo)
+```
+
+Dependencias opcionales conocidas: **memex** (búsqueda rápida de transcripts), **cognee**,
+**raganything**, **understand-anything**. Un `.tesserae/config.json` por proyecto
+sigue anulando estos valores globales (orden de resolución: env → proyecto → global →
+por defecto integrado). `tesserae init` también ofrece instalar memex durante una configuración interactiva.
+
+## Integraciones opcionales (por proyecto)
+
+El wheel por defecto es intencionadamente ligero, y los backends de memoria opcionales están
+**desactivados por defecto**. `tesserae init` es el único paso de onboarding por proyecto —
+su asistente elige el proveedor LLM y las fuentes detectadas; las piezas más pesadas
+de acompañamiento/runtime se instalan a nivel de máquina vía `tesserae setup
+--install …` (o `tesserae config deps --install …`) y se habilitan por proyecto en
+`.tesserae/config.json`:
+
+```bash
+# Machine-wide installs of the optional pieces:
+tesserae setup --install raganything --install understand-anything --install cognee
+
+# Then per project: enable what you want in .tesserae/config.json
+#   memory_backends.raganything.enabled: true
+#   memory_backends.cognee.enabled: true        (query via `tesserae query --backend …`)
+#   external_tools: understand-anything entry   (auto_refresh: false by default)
 ```
 
 Las instalaciones manuales de paquetes siguen disponibles para flujos avanzados:
 
 ```bash
-pip install kuzu cognee graphiti-core
+pip install kuzu graphiti-core
+pip install "tesserae[cognee]"
 ```
 
-- `kuzu` — persistencia de grafos Kuzu.
-- `cognee` — flujos runtime add/cognify de Cognee; la configuración guarda `{python} -m pip install cognee` y reintenta una vez si falta Cognee.
-- Understand Anything — se instala mediante el instalador upstream cuando se selecciona `--install-understand-anything`; Tesserae guarda un wrapper de actualización gestionado en lugar de pedir a los usuarios que inventen un comando shell.
+- `kuzu` — persistencia de grafo Kuzu.
+- `tesserae[cognee]` — los flujos opt-in add/cognify del runtime de Cognee (desactivados por defecto; el modo cognify parcheado con Codex fue eliminado).
+- Understand Anything — instalado vía el instalador upstream (`tesserae setup --install understand-anything`); Tesserae guarda un wrapper de refresco gestionado en lugar de pedir a los usuarios que inventen un comando de shell.
+- RAG-Anything — instalado vía `pip install 'raganything[all]'` (`tesserae setup --install raganything`); Tesserae guarda un wrapper de refresco gestionado para las ejecuciones del parser multimodal.
 - `graphiti-core` — sincronización en vivo Graphiti/Neo4j. `export graphiti` y `export graphiti --sync --dry-run` funcionan sin él.
 
-La ruta de síntesis respaldada por Anthropic usa un marcador extras:
+La ruta de síntesis respaldada por Anthropic usa un marcador de extras:
 
 ```bash
 pip install "tesserae[synthesis-llm]"
 ```
 
-Los embeddings semánticos reales (el carril de recuperación predeterminado desde la v0.5.0) se incluyen tras el extra `semantic`:
+Los embeddings semánticos reales (la vía de recuperación por defecto desde v0.5.0) se distribuyen tras el extra `semantic`:
 
 ```bash
 pip install "tesserae[semantic]"
 ```
 
-Esto instala `model2vec` y descarga un modelo estático ligero, sin conexión y sin torch (unos 8 MB de `potion-base-8M`, descargado una sola vez en el primer uso). Sin él, la recuperación híbrida/por embeddings recurre a un stub no semántico basado en cubos hash y emite una advertencia llamativa, por lo que se recomienda instalar este extra a quien use `tesserae ask`, `tesserae context` o la herramienta MCP `compile_context`.
+Esto trae `model2vec` y descarga un modelo estático ligero, offline y sin torch (~8 MB `potion-base-8M`, descargado una vez en el primer uso). Sin él, la recuperación híbrida/por embeddings recae en un stub no semántico de hash-bucket y emite una advertencia bien visible, así que instalar este extra se recomienda a cualquiera que use `tesserae ask`, `tesserae context` o la herramienta MCP `compile_context`.
+
+Para el stack multimodal de RAG-Anything con todos los parsers preinstalados:
+
+```bash
+pip install 'tesserae[raganything-all]'
+```
+
+> **Prerrequisito de sistema:** parsear `.doc/.docx/.ppt/.pptx/.xls/.xlsx` requiere LibreOffice en el host. Instálalo vía el gestor de paquetes de tu plataforma (p. ej., `brew install --cask libreoffice`, `apt-get install libreoffice`); RAG-Anything se salta los documentos de Office con una advertencia cuando falta LibreOffice.
 
 ## Instalar desde el código fuente (para contribuidores)
 
-Si quieres trabajar en el código, instala el checkout editable:
+Si quieres hackear en el código, instala el checkout editable en su lugar:
 
 ```bash
 git clone https://github.com/ca1773130n/Tesserae.git
@@ -80,7 +116,7 @@ cd Tesserae
 pip install -e .
 ```
 
-También se incluye un instalador de conveniencia: clona, crea un `.venv` local del proyecto, ejecuta `pip install -e .` y deja los wrappers en `~/.local/bin`:
+También se incluye un instalador de conveniencia — clona, crea un `.venv` local al proyecto, ejecuta `pip install -e .` y deja los wrappers en `~/.local/bin`:
 
 ```bash
 # Quick: clone + install in one shot
@@ -94,14 +130,14 @@ Flags útiles (`./scripts/install.sh --help`):
 
 | Opción | Propósito |
 | --- | --- |
-| `--dir PATH` | Instalar o actualizar el checkout en `PATH`. |
-| `--branch NAME` | Instalar una rama específica. |
-| `--repo URL` | Reemplazar la URL del repositorio Git. Útil para forks o smoke tests locales. |
-| `--bin-dir PATH` | Escribir wrappers de comandos en un lugar distinto de `~/.local/bin`. |
-| `--no-venv` | Instalar en el entorno Python actual en vez de crear `.venv`. |
-| `--skip-shell-config` | Evitar editar `.zshrc` / `.bashrc`. |
+| `--dir PATH` | Instala o actualiza el checkout en `PATH`. |
+| `--branch NAME` | Instala una rama específica. |
+| `--repo URL` | Anula la URL del repositorio Git. Útil para forks o pruebas de humo locales. |
+| `--bin-dir PATH` | Escribe los wrappers de comandos en otro lugar distinto de `~/.local/bin`. |
+| `--no-venv` | Instala en el entorno Python actual en lugar de crear `.venv`. |
+| `--skip-shell-config` | Evita editar `.zshrc` / `.bashrc`. |
 
-Si usaste `--skip-shell-config`, reinicia la shell o ejecuta:
+Si se usó `--skip-shell-config`, reinicia la shell o ejecuta:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
