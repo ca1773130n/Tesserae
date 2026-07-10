@@ -37,7 +37,7 @@ def _parity(root: Path, *, exact: bool) -> tuple[bytes, bytes]:
 
 def test_ingest_exact_matches_full_compile(tmp_path):
     ing, full = _parity(tmp_path / "exact", exact=True)
-    assert ing == full, "ingest --exact graph.json must equal a full compile of the same corpus"
+    assert ing == full, "ingest --full graph.json must equal a full compile of the same corpus"
 
 
 def test_ingest_fast_matches_full_compile(tmp_path):

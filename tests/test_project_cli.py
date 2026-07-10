@@ -59,7 +59,9 @@ def test_project_ingest_updates_standard_artifacts(tmp_path):
     assert any(node["name"] == "Demo Paper" for node in graph["nodes"])
     assert (project / ".tesserae" / "sqlite.db").exists()
     assert (project / ".tesserae" / "markdown_projection" / "index.md").exists()
-    assert (project / ".tesserae" / "cognee_bundle" / "nodes.jsonl").exists()
+    # Cognee demotion: the bundle is only written when the backend is enabled
+    # in config (or a cognify pass runs); the default install writes nothing.
+    assert not (project / ".tesserae" / "cognee_bundle" / "nodes.jsonl").exists()
     assert (project / ".tesserae" / "temporal_facts.jsonl").exists()
     assert (project / ".tesserae" / "competitive_report.md").exists()
 

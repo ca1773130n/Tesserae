@@ -467,6 +467,12 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
                 top_k = int(payload.get("top_k") or 5)
             except (TypeError, ValueError):
                 top_k = 5
+            # LLM synthesis is OPT-IN here (payload {"llm": true}) — unlike the
+            # CLI/MCP default, the browser widget favors latency. An explicit
+            # {"llm": false} force-disables (beats TESSERAE_QUERY_LLM=1).
+            llm_val = payload.get("llm")
+            use_llm = bool(llm_val)
+            no_llm = llm_val is not None and not bool(llm_val)
 
             # Import inside the handler so importing this module stays
             # cheap (no model / wiki configuration touched at import time).
@@ -480,6 +486,8 @@ def build_ask_aware_handler(*, project_root: Path) -> Type[http.server.SimpleHTT
                     question,
                     backend=backend,
                     top_k=top_k,
+                    use_llm=use_llm,
+                    no_llm=no_llm,
                 )
             except Exception as exc:
                 self._send_json(500, {"error": f"ask failed: {exc}"})
@@ -730,12 +738,20 @@ def build_fleet_handler(
                 top_k = int(payload.get("top_k") or 5)
             except (TypeError, ValueError):
                 top_k = 5
+            # Same opt-in llm knob as the single-project handler: default OFF
+            # for widget latency; {"llm": false} force-disables.
+            llm_val = payload.get("llm")
+            use_llm = bool(llm_val)
+            no_llm = llm_val is not None and not bool(llm_val)
             from .project import ProjectWiki
             from .query import ask_project
 
             try:
                 wiki = ProjectWiki.load(roots[alias])
-                envelope = ask_project(wiki, question, backend=backend, top_k=top_k)
+                envelope = ask_project(
+                    wiki, question, backend=backend, top_k=top_k,
+                    use_llm=use_llm, no_llm=no_llm,
+                )
             except Exception as exc:
                 self._send_json(500, {"error": f"ask failed: {exc}"})
                 return

@@ -17,11 +17,25 @@ import pytest
 
 import tesserae.cli as cli
 import tesserae.harness_sessions as hs
+import tesserae.session_chunks as session_chunks
 from tesserae.project import ProjectWiki
+from tesserae.session_chunks import BackfillResult
 from tesserae.vault_watch import VaultWatchResult
 
 
 WIKI_CORPUS_ROOT = Path(__file__).parent / "fixtures" / "wiki_corpus"
+
+
+@pytest.fixture(autouse=True)
+def _stub_chunk_backfill(monkeypatch):
+    """``backfill()`` walks the host's real transcripts (the same reason
+    ``discover_harness_sessions`` is stubbed below); refresh tests assert step
+    wiring, not chunk contents — test_session_chunks.py covers those."""
+    monkeypatch.setattr(
+        session_chunks,
+        "backfill",
+        lambda root, since=None, **k: BackfillResult(turns_inserted=0, days_covered=0),
+    )
 
 
 def _seed_project(project_root: Path) -> ProjectWiki:
@@ -56,7 +70,7 @@ def test_refresh_runs_steps_in_order(tmp_path: Path, monkeypatch: pytest.MonkeyP
         def __init__(self, root):
             self.root = root
 
-        def write_sessions(self, sessions):
+        def write_sessions(self, sessions, replace=False):
             return {"sessions": 0, "path": "x"}
 
     def fake_compile(self, changed_only=False, **k):
@@ -78,6 +92,31 @@ def test_refresh_runs_steps_in_order(tmp_path: Path, monkeypatch: pytest.MonkeyP
     # import precedes compile; compile is never called before the sessions write.
     assert order[0] == "sessions-import"
     assert order.index("sessions-import") < order.index("compile")
+
+
+def test_refresh_chunk_backfill_runs_after_import_and_never_fails_refresh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """chunk-backfill is an optimization step: it runs in the pipeline after
+    sessions-import, and a crashing backfill degrades to an ok-skip instead of
+    failing the refresh."""
+    project_root = tmp_path / "project"
+    _seed_project(project_root)
+
+    monkeypatch.setattr(hs, "discover_harness_sessions", lambda root, *a, **k: [])
+    monkeypatch.setattr(ProjectWiki, "compile", lambda self, changed_only=False, **k: {"node_count": 0, "edge_count": 0})
+    monkeypatch.setattr(ProjectWiki, "effective_obsidian_vault", lambda self: self.project_root / "no_such_vault")
+
+    def boom(root, since=None, **k):
+        raise RuntimeError("chunk store exploded")
+
+    monkeypatch.setattr(session_chunks, "backfill", boom)
+
+    rc = _run_refresh(project_root)
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "chunk-backfill: ok" in out
 
 
 def test_refresh_vault_guard_skips_when_no_vault(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

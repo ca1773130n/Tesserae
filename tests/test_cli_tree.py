@@ -90,7 +90,6 @@ def test_unknown_command_exits_2_and_points_at_help(capsys):
         (["project", "query", "q"], "tesserae query"),
         (["wiki", "register"], "tesserae projects register"),
         (["wiki", "list"], "tesserae projects list"),
-        (["wiki", "activate"], "tesserae projects activate"),
         (["wiki", "unregister"], "tesserae projects unregister"),
         (["wiki", "obsidian-set-root"], "tesserae vault set-root"),
         (["wiki", "obsidian-sync-all"], "tesserae vault sync-all"),
@@ -106,6 +105,31 @@ def test_moved_commands_print_one_line_stub(old, hint, capsys):
     err = capsys.readouterr().err
     assert err.count("\n") == 1, f"stub must be exactly one line, got: {err!r}"
     assert "has moved" in err and hint in err
+
+
+def test_wiki_activate_stub_is_a_terminal_removal(capsys):
+    """`wiki activate` no longer points at `projects activate` (which is gone):
+    it prints a one-line removal explanation, exit 2."""
+    from tesserae.cli import main
+
+    rc = main(["wiki", "activate"])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert err.count("\n") == 1, f"stub must be exactly one line, got: {err!r}"
+    assert "was removed — all registered projects are active" in err
+    assert "tesserae projects list" in err
+    assert "has moved" not in err
+
+
+def test_projects_activate_stub_is_a_terminal_removal(capsys):
+    """`projects activate` gets the same removal explanation, exit 2."""
+    from tesserae.cli import main
+
+    rc = main(["projects", "activate", "demo"])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "was removed — all registered projects are active" in err
+    assert "tesserae projects list" in err
 
 
 def test_bare_extraction_paths_get_extract_stub(tmp_path, capsys):

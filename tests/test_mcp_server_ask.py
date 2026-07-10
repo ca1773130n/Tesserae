@@ -1,4 +1,10 @@
-"""Tests for the MCP `ask` tool that mirrors the CLI ``project ask`` dispatcher."""
+"""Tests for the MCP `ask` tool that mirrors the top-level ``tesserae ask``.
+
+Contract (spec §1): ask = LLM-planned answer over the compiled graph, with a
+boolean ``llm`` knob (default true, matching the CLI). The old ``backend`` /
+``claude_config_dir`` params were removed — explicit raganything/cognee
+retrieval lives on ``tesserae query --backend ...``.
+"""
 import json
 from pathlib import Path
 
@@ -37,36 +43,16 @@ def test_mcp_lists_ask_tool():
     assert "ask" in by_name
     schema = by_name["ask"]["inputSchema"]
     assert "question" in schema["properties"]
-    assert "backend" in schema["properties"]
-    assert set(schema["properties"]["backend"]["enum"]) == {"auto", "raganything", "cognee", "wiki"}
     assert "question" in schema["required"]
-
-
-def test_mcp_ask_routes_to_raganything(tmp_path, monkeypatch):
-    from tesserae.mcp_server import LLMWikiMCPServer
-
-    project = tmp_path / "demo"
-    _write_minimal_project(project, raganything_enabled=True)
-
-    captured = {}
-
-    def fake_query(question, *, backend_config):
-        captured["question"] = question
-        captured["backend_config"] = backend_config
-        return f"answered:{question}"
-
-    import tesserae.raganything_query as rq
-    monkeypatch.setattr(rq, "query", fake_query)
-
-    server = LLMWikiMCPServer(registry_path=tmp_path / "registry.json")
-    server.registry.register(str(project), name="demo")
-
-    result = server.call_tool("ask", {"question": "hello?", "backend": "raganything", "project": "demo"})
-    assert result["backend"] == "raganything"
-    assert result["question"] == "hello?"
-    assert result["answer"] == "answered:hello?"
-    # working_dir resolved relative to the project
-    assert str(project.resolve()) in captured["backend_config"]["working_dir"]
+    # Backend selection left ask entirely (moved to `tesserae query`); the
+    # claude_config_dir raganything shim went with it.
+    assert "backend" not in schema["properties"]
+    assert "claude_config_dir" not in schema["properties"]
+    # The llm knob defaults ON, in lockstep with the CLI.
+    assert schema["properties"]["llm"]["type"] == "boolean"
+    assert schema["properties"]["llm"]["default"] is True
+    # top_k default unified at 8 across ask/query surfaces.
+    assert schema["properties"]["top_k"]["default"] == 8
 
 
 def test_mcp_ask_requires_question(tmp_path):
@@ -77,38 +63,114 @@ def test_mcp_ask_requires_question(tmp_path):
         server.call_tool("ask", {"question": "  "})
 
 
-def test_mcp_ask_falls_through_to_wiki_when_raganything_returns_none(tmp_path, monkeypatch):
-    """auto mode + raganything returning None should fall through; cognee disabled means wiki search runs."""
+def test_mcp_ask_backend_param_rejected(tmp_path):
+    """Passing the removed `backend` param errors with a pointer at `query`."""
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    server = LLMWikiMCPServer(registry_path=tmp_path / "registry.json")
+    with pytest.raises(ValueError, match="has moved → tesserae query"):
+        server.call_tool("ask", {"question": "hello?", "backend": "raganything"})
+
+
+def test_mcp_ask_claude_config_dir_param_rejected(tmp_path):
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    server = LLMWikiMCPServer(registry_path=tmp_path / "registry.json")
+    with pytest.raises(ValueError, match="claude_config_dir"):
+        server.call_tool(
+            "ask", {"question": "hello?", "claude_config_dir": "/tmp/claude"}
+        )
+
+
+def test_mcp_ask_never_enters_raganything(tmp_path, monkeypatch):
+    """Even with raganything enabled in config, ask goes straight to the
+    wiki/planner path (auto never enters optional backends)."""
     from tesserae.mcp_server import LLMWikiMCPServer
 
     project = tmp_path / "demo"
     _write_minimal_project(project, raganything_enabled=True, cognee_enabled=False)
 
     import tesserae.raganything_query as rq
-    monkeypatch.setattr(rq, "query", lambda q, *, backend_config: None)
+
+    def _boom(*a, **k):
+        raise AssertionError("ask must not call raganything")
+
+    monkeypatch.setattr(rq, "query", _boom)
 
     server = LLMWikiMCPServer(registry_path=tmp_path / "registry.json")
     server.registry.register(str(project), name="demo")
 
-    result = server.call_tool("ask", {"question": "anything", "backend": "auto", "project": "demo"})
-    # Wiki fallback path returned a structured QueryResult-shaped dict, with backend=wiki.
+    result = server.call_tool("ask", {"question": "anything", "project": "demo"})
     assert result["backend"] == "wiki"
     assert result["question"] == "anything"
 
 
-def test_mcp_ask_explicit_raganything_returns_note_when_no_answer(tmp_path, monkeypatch):
+def test_mcp_ask_llm_defaults_true_and_threads(tmp_path, monkeypatch):
     from tesserae.mcp_server import LLMWikiMCPServer
 
     project = tmp_path / "demo"
-    _write_minimal_project(project, raganything_enabled=True)
+    _write_minimal_project(project)
 
-    import tesserae.raganything_query as rq
-    monkeypatch.setattr(rq, "query", lambda q, *, backend_config: None)
+    captured = {}
+
+    def fake_ask(wiki, question, **kwargs):
+        captured["question"] = question
+        captured.update(kwargs)
+        return {"backend": "wiki", "question": question, "answer": "a", "hits": [], "used_llm": True}
+
+    monkeypatch.setattr("tesserae.query.ask_project", fake_ask)
 
     server = LLMWikiMCPServer(registry_path=tmp_path / "registry.json")
     server.registry.register(str(project), name="demo")
 
-    result = server.call_tool("ask", {"question": "q", "backend": "raganything", "project": "demo"})
-    assert result["backend"] == "raganything"
-    assert result["answer"] is None
-    assert "no answer" in result.get("note", "")
+    result = server.call_tool("ask", {"question": "hello?", "project": "demo"})
+    assert result["used_llm"] is True
+    assert captured["use_llm"] is True
+    assert captured["no_llm"] is False
+    assert captured["top_k"] == 8
+
+
+def test_mcp_ask_llm_false_pins_search_only(tmp_path, monkeypatch):
+    """llm:false is the MCP equivalent of --no-llm: force-off, beats env."""
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    project = tmp_path / "demo"
+    _write_minimal_project(project)
+    monkeypatch.setenv("TESSERAE_QUERY_LLM", "1")
+
+    captured = {}
+
+    def fake_ask(wiki, question, **kwargs):
+        captured.update(kwargs)
+        return {"backend": "wiki", "question": question, "answer": None, "hits": [], "used_llm": False}
+
+    monkeypatch.setattr("tesserae.query.ask_project", fake_ask)
+
+    server = LLMWikiMCPServer(registry_path=tmp_path / "registry.json")
+    server.registry.register(str(project), name="demo")
+
+    result = server.call_tool("ask", {"question": "hello?", "project": "demo", "llm": False})
+    assert result["used_llm"] is False
+    assert captured["use_llm"] is False
+    assert captured["no_llm"] is True
+
+
+def test_mcp_ask_llm_false_end_to_end_skips_planner(tmp_path, monkeypatch):
+    """No ask_project stub: llm:false must return the search-only wiki envelope
+    without ever invoking the planner."""
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    project = tmp_path / "demo"
+    _write_minimal_project(project)
+
+    def _boom(*a, **k):
+        raise AssertionError("planner must not run when llm=false")
+
+    monkeypatch.setattr("tesserae.ask_planner.plan_and_answer", _boom)
+
+    server = LLMWikiMCPServer(registry_path=tmp_path / "registry.json")
+    server.registry.register(str(project), name="demo")
+
+    result = server.call_tool("ask", {"question": "anything", "project": "demo", "llm": False})
+    assert result["backend"] == "wiki"
+    assert result["used_llm"] is False

@@ -17,7 +17,7 @@ def test_setup_enables_cognee_backend_by_default(tmp_path):
     cfg = json.loads(result.config_path.read_text(encoding="utf-8"))
     cognee = cfg["memory_backends"]["cognee"]
     assert cognee["enabled"] is True
-    assert cognee["mode"] == "codex_cognify"
+    assert cognee["mode"] == "cognify"
     assert cognee["auto_cognify"] is False
     assert cognee["dataset"] == "demo_memory"
     assert cognee["system_root"] == ".tesserae/cognee_system"
@@ -102,7 +102,7 @@ def test_compile_cli_cognee_flags_override_config(tmp_path, monkeypatch):
     wiki = ProjectWiki.init(project, name="demo", source_kind="Repository", sources=["README.md"])
     cfg = wiki.config()
     cfg["memory_backends"] = {"cognee": {"enabled": True, "mode": "add", "auto_cognify": False, "dataset": "configured"}}
-    cfg["compile_options"] = {"cognee_codex_cognify": True, "cognee_dataset": "override_memory"}
+    cfg["compile_options"] = {"cognee_cognify": True, "cognee_dataset": "override_memory"}
     wiki.paths.config.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
     calls = []
     monkeypatch.setattr(ProjectWiki, "_run_cognify", lambda self, options: calls.append(options))
@@ -112,16 +112,27 @@ def test_compile_cli_cognee_flags_override_config(tmp_path, monkeypatch):
     ]) == 0
 
     assert calls
-    assert calls[0].mode == "codex_cognify"
+    assert calls[0].mode == "cognify"
     assert calls[0].dataset == "override_memory"
 
 
 def test_cognify_options_from_config_ignores_disabled_or_manual_cognee(tmp_path):
-    cfg = {"memory_backends": {"cognee": {"enabled": True, "auto_cognify": False, "mode": "codex_cognify"}}}
+    cfg = {"memory_backends": {"cognee": {"enabled": True, "auto_cognify": False, "mode": "cognify"}}}
     assert cognify_options_from_config(cfg) is None
     cfg["memory_backends"]["cognee"]["auto_cognify"] = True
     cfg["memory_backends"]["cognee"]["enabled"] = False
     assert cognify_options_from_config(cfg) is None
+
+
+def test_removed_codex_cognify_mode_is_inert():
+    """Configs written by older setups carry mode=codex_cognify; with the
+    codex patch removed that mode must deactivate the pass, not crash."""
+    options = cognify_options_from_config({
+        "name": "legacy_demo",
+        "memory_backends": {"cognee": {"enabled": True, "mode": "codex_cognify", "auto_cognify": True}},
+    })
+
+    assert options is None
 
 
 def test_legacy_project_config_gets_default_cognee_backend():
@@ -129,7 +140,9 @@ def test_legacy_project_config_gets_default_cognee_backend():
 
     cognee = cognee_backend_config({"name": "legacy_demo"})
 
-    assert cognee["enabled"] is True
+    # Demotion: the built-in default (no memory_backends section anywhere)
+    # is now disabled.
+    assert cognee["enabled"] is False
     assert cognee["dataset"] == "legacy_demo_memory"
     assert cognee["auto_cognify"] is False
     assert cognee["install"]["enabled"] is True
@@ -138,7 +151,7 @@ def test_legacy_project_config_gets_default_cognee_backend():
 def test_legacy_auto_cognify_config_auto_installs_cognee_if_missing():
     options = cognify_options_from_config({
         "name": "legacy_demo",
-        "memory_backends": {"cognee": {"enabled": True, "mode": "codex_cognify", "auto_cognify": True}},
+        "memory_backends": {"cognee": {"enabled": True, "mode": "cognify", "auto_cognify": True}},
     })
 
     assert options is not None
@@ -152,6 +165,7 @@ def test_configured_cognee_failure_warns_and_compile_continues(tmp_path, monkeyp
     (project / "README.md").write_text("# Demo\nGaussian Splatting supports novel view synthesis.\n", encoding="utf-8")
     wiki = ProjectWiki.init(project, name="demo", source_kind="Repository", sources=["README.md"])
     cfg = wiki.config()
+    cfg["memory_backends"]["cognee"]["enabled"] = True  # opt in: default is now disabled
     cfg["memory_backends"]["cognee"]["auto_cognify"] = True
     cfg["memory_backends"]["cognee"]["fail_fast"] = False
     wiki.paths.config.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
@@ -174,6 +188,7 @@ def test_configured_cognee_missing_module_installs_then_retries(tmp_path, monkey
     (project / "README.md").write_text("# Demo\nGaussian Splatting supports novel view synthesis.\n", encoding="utf-8")
     wiki = ProjectWiki.init(project, name="demo", source_kind="Repository", sources=["README.md"])
     cfg = wiki.config()
+    cfg["memory_backends"]["cognee"]["enabled"] = True  # opt in: default is now disabled
     cfg["memory_backends"]["cognee"]["auto_cognify"] = True
     cfg["memory_backends"]["cognee"]["install"]["auto_install"] = True
     wiki.paths.config.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
@@ -211,11 +226,11 @@ def test_project_ask_uses_configured_cognee_backend(tmp_path, monkeypatch, capsy
         "tesserae.cognee_query.search_cognee",
         lambda question, dataset=None, search_type="INSIGHTS", top_k=8: [f"answer for {question} in {dataset}"],
     )
-    # auto reaches cognee only when importable; force it so the test doesn't
-    # depend on cognee being installed in CI.
-    monkeypatch.setattr("tesserae.query._cognee_importable", lambda: True)
 
-    assert main(["ask", "What renders Mermaid?", "--project", str(project)]) == 0
+    # Contract change: backend flags moved off `ask` — explicit cognee retrieval
+    # lives on `tesserae query --backend cognee`, which still threads the
+    # configured dataset.
+    assert main(["query", "What renders Mermaid?", "--backend", "cognee", "--project", str(project)]) == 0
     out = capsys.readouterr().out
     assert "Cognee answer" in out
     assert "answer for What renders Mermaid? in demo_memory" in out

@@ -1,6 +1,6 @@
 ---
 description: Daily/weekly activity digest — sessions, findings, commits, PRs, ingested docs.
-argument-hint: "[--day YYYY-MM-DD] [--week [YYYY-MM-DD]] [--since ISO] [--until ISO] [--project NAME] [--no-llm]"
+argument-hint: "[--day YYYY-MM-DD] [--week [YYYY-MM-DD]] [--since ISO] [--until ISO] [--name NAME] [--no-llm]"
 allowed-tools:
   - "Bash(tesserae summary:*)"
 ---
@@ -10,6 +10,6 @@ Run `tesserae summary` to build an activity digest for your registered Tesserae 
 Examples:
 - `/tesserae:summary` — today, every registered project
 - `/tesserae:summary --week` — the last 7 days
-- `/tesserae:summary --day 2026-07-04 --project my-repo --no-llm`
+- `/tesserae:summary --day 2026-07-04 --name my-repo --no-llm`
 
 !`tesserae summary $ARGUMENTS`

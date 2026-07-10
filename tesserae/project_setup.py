@@ -106,7 +106,7 @@ def build_setup_plan(
     install_understand_anything: Optional[bool] = None,
     understand_anything_platform: str = "codex",
     enable_cognee: bool = True,
-    cognee_mode: str = "codex_cognify",
+    cognee_mode: str = "cognify",
     cognee_auto_cognify: bool = False,
     install_cognee: Optional[bool] = None,
     include_raganything: bool = False,
@@ -125,7 +125,9 @@ def build_setup_plan(
     external_tools: List[dict] = []
 
     ua_artifact = understand_anything_artifact(root)
-    if include_understand_anything or ua_artifact:
+    # Demoted: presence of a .understand-anything artifact no longer adopts
+    # the integration silently — the caller must opt in explicitly.
+    if include_understand_anything:
         artifact = ua_artifact or ".understand-anything/knowledge-graph.json"
         projection = understand_anything_projection_path()
         if projection not in source_list:
@@ -139,7 +141,10 @@ def build_setup_plan(
                 "artifact": artifact,
                 "source": projection,
                 "refresh_command": refresh_command,
-                "auto_refresh": True,
+                # Demoted: refreshes run a remote-installed tool (potentially
+                # LLM/network heavy), so compile no longer triggers them
+                # unless the user flips this on in config.json.
+                "auto_refresh": False,
                 "sync_mode": "native_graph",
                 "preserve_markdown_projection": True,
                 "managed_refresh": understand_anything_command is None,
@@ -156,6 +161,9 @@ def build_setup_plan(
     memory_backends: dict = {}
     if enable_cognee:
         cognee = default_cognee_backend_config(name or sanitize_server_name(root.name))
+        # The built-in default is disabled; a plan that asked for cognee is an
+        # explicit opt-in, so the written config must say so.
+        cognee["enabled"] = True
         cognee["mode"] = cognee_mode
         cognee["auto_cognify"] = bool(cognee_auto_cognify)
         cognee["install"]["auto_install"] = bool(install_cognee) if install_cognee is not None else bool(cognee_auto_cognify)
@@ -318,57 +326,10 @@ def render_setup_summary(plan: SetupPlan, *, color: bool = True) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _ask_yes_no(prompt: str, default: bool) -> bool:
-    suffix = "Y/n" if default else "y/N"
-    raw = input(f"{prompt} [{suffix}] ").strip().lower()
-    if not raw:
-        return default
-    return raw in {"y", "yes"}
-
-
-def _ask_list(prompt: str, default: Sequence[str]) -> List[str]:
-    rendered_default = ", ".join(default)
-    raw = input(f"{prompt} [{rendered_default}] ").strip()
-    if not raw:
-        return list(default)
-    return [part.strip() for part in raw.split(",") if part.strip()]
-
-
-def interactive_setup_plan(project_root: str | Path, *, color: bool = True) -> SetupPlan:
-    root = Path(project_root).resolve()
-    print(_paint("\n◆ Tesserae project setup", BOLD + CYAN, color))
-    print(_paint("Choose sources and companion tools. Press Enter to accept defaults.\n", DIM, color))
-    default_sources = discover_default_sources(root)
-    name_raw = input(f"Wiki name [{sanitize_server_name(root.name)}] ").strip()
-    source_kind = input("Source kind [Repository] ").strip() or "Repository"
-    sources = _ask_list("Sources", default_sources)
-    ua_default = bool(understand_anything_artifact(root))
-    include_ua = _ask_yes_no("Use Understand Anything graph artifact?", ua_default)
-    ua_command = ""
-    run_ua = False
-    if include_ua:
-        ua_command = input("Refresh command for Understand Anything before compile [leave blank to skip] ").strip()
-        run_ua = bool(ua_command) and _ask_yes_no("Run that refresh command now?", False)
-    enable_cognee = _ask_yes_no("Enable Cognee as the project memory backend?", True)
-    cognee_auto = False
-    if enable_cognee:
-        cognee_auto = _ask_yes_no("Run Cognee add/cognify automatically during compile?", False)
-    plan = build_setup_plan(
-        root,
-        name=name_raw or None,
-        source_kind=source_kind,
-        sources=sources,
-        include_understand_anything=include_ua,
-        run_understand_anything=run_ua,
-        understand_anything_command=ua_command or None,
-        enable_cognee=enable_cognee,
-        cognee_auto_cognify=cognee_auto,
-    )
-    print()
-    print(render_setup_summary(plan, color=color), end="")
-    if not _ask_yes_no("Write this .tesserae setup?", True):
-        raise KeyboardInterrupt("setup cancelled")
-    return plan
+# The legacy in-module interactive wizard (interactive_setup_plan and its
+# _ask_yes_no/_ask_list prompt helpers) was deleted: `tesserae init` runs the
+# rich wizard in tesserae/setup/wizard.py instead. refresh_configured_external_tools
+# below is the surviving runtime surface of this module.
 
 
 def run_external_tools(plan: SetupPlan, *, fail_fast: bool = True) -> List[dict]:
@@ -527,7 +488,9 @@ def apply_setup_plan(plan: SetupPlan) -> SetupResult:
         "updated": date.today().isoformat(),
     }
     cfg["external_tools"] = plan.external_tools
-    cfg["memory_backends"] = plan.memory_backends or {"cognee": default_cognee_backend_config(plan.name)}
+    # No resurrection: a plan without memory backends writes an empty section
+    # (cognee is opt-in via enable_cognee, never re-added here).
+    cfg["memory_backends"] = plan.memory_backends or {}
     cognee = (cfg.get("memory_backends") or {}).get("cognee") or {}
     install = cognee.get("install") or {}
     if cognee.get("enabled") and install.get("enabled") and install.get("auto_install"):

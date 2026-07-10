@@ -124,6 +124,7 @@ def test_serve_ask_endpoint_delegates_to_ask_project(
         captured["question"] = question
         captured["backend"] = backend
         captured["top_k"] = top_k
+        captured.update(kw)
         return {
             "backend": "raganything",
             "question": question,
@@ -157,6 +158,48 @@ def test_serve_ask_endpoint_delegates_to_ask_project(
     assert envelope["answer"] == "stub-answer"
     assert "About `Foo`: What is foo?" in envelope["question"]
     assert captured["backend"] == "raganything"
+    # Widget latency: /api/ask defaults LLM OFF (unlike the CLI/MCP default).
+    assert captured["use_llm"] is False
+    assert captured["no_llm"] is False
+
+
+def _post_ask(host: str, port: int, payload: dict) -> dict:
+    req = urllib.request.Request(
+        f"http://{host}:{port}/api/ask",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        assert resp.status == 200
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def test_serve_ask_endpoint_accepts_llm_payload_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """{"llm": true} opts a single request into synthesis; {"llm": false}
+    force-disables (beats TESSERAE_QUERY_LLM=1)."""
+    project = _bootstrap_project(tmp_path)
+    site_dir = project / ".tesserae" / "site"
+
+    calls: list = []
+
+    def _stub_ask_project(wiki, question, **kw):
+        calls.append(kw)
+        return {"backend": "wiki", "question": question, "answer": None, "hits": []}
+
+    monkeypatch.setattr("tesserae.query.ask_project", _stub_ask_project)
+
+    with _running_server(project, site_dir) as (host, port):
+        _post_ask(host, port, {"question": "q1", "llm": True})
+        _post_ask(host, port, {"question": "q2", "llm": False})
+        _post_ask(host, port, {"question": "q3"})
+
+    assert calls[0]["use_llm"] is True and calls[0]["no_llm"] is False
+    assert calls[1]["use_llm"] is False and calls[1]["no_llm"] is True
+    # No llm key at all: default off, but not the force-off (env may enable).
+    assert calls[2]["use_llm"] is False and calls[2]["no_llm"] is False
 
 
 def test_serve_ask_endpoint_rejects_empty_question(tmp_path: Path) -> None:

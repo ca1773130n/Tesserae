@@ -1,6 +1,6 @@
 ---
 description: Decisions across projects + time — explicit human choices (AskUserQuestion) + agent decisions.
-argument-hint: "[--day YYYY-MM-DD] [--week [YYYY-MM-DD]] [--since ISO] [--until ISO] [--project NAME] [--no-llm] [--json]"
+argument-hint: "[--day YYYY-MM-DD] [--week [YYYY-MM-DD]] [--since ISO] [--until ISO] [--name NAME] [--no-llm] [--json]"
 allowed-tools:
   - "Bash(tesserae decisions:*)"
 ---
@@ -10,7 +10,7 @@ Run `tesserae decisions` to retrieve the decisions made across your registered T
 Examples:
 - `/tesserae:decisions --since 2026-06-30` — all projects since a date
 - `/tesserae:decisions --week` — the last 7 days
-- `/tesserae:decisions --project my-repo --no-llm` — human decisions only
+- `/tesserae:decisions --name my-repo --no-llm` — human decisions only
 - `/tesserae:decisions --since 2026-06-30 --json`
 
 !`tesserae decisions $ARGUMENTS`

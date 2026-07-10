@@ -120,12 +120,47 @@ def test_serve_autobuilds_when_missing(tmp_path, monkeypatch, capsys):
         return 0
 
     monkeypatch.setattr(cli, "_serve_build_site", _build)
+    # The stubbed legacy handler keeps a real server from starting; --dry-run
+    # must NOT be used here — it is hoisted ABOVE the autobuild (see below).
     monkeypatch.setattr(cli, "_handle_serve_legacy", lambda args: 0)
-    rc = cli.main(["serve", "--project", str(tmp_path), "--dry-run"])
+    rc = cli.main(["serve", "--project", str(tmp_path)])
     assert rc == 0
     assert built.get("built") is True
     out = capsys.readouterr().out
     assert "building site first (missing)" in out
+
+
+def test_serve_dry_run_skips_autobuild(tmp_path, monkeypatch, capsys):
+    """--dry-run is hoisted above the autobuild: report the URL, build nothing."""
+    import tesserae.cli as cli
+
+    assert cli.main(["init", "--bare", "--project", str(tmp_path)]) == 0
+    built = {}
+
+    def _build(args):
+        built["built"] = True
+        return 0
+
+    monkeypatch.setattr(cli, "_serve_build_site", _build)
+    rc = cli.main(["serve", "--project", str(tmp_path), "--dry-run"])
+    assert rc == 0
+    assert "built" not in built
+    assert "Frontend site ready" in capsys.readouterr().out
+
+
+def test_bare_serve_empty_registry_falls_back_to_cwd(tmp_path, monkeypatch, capsys):
+    """Bare `serve` with an EMPTY registry serves the cwd as a single project."""
+    import tesserae.cli as cli
+    import tesserae.mcp_server as mcp_server
+
+    monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", tmp_path / "registry.json")
+    assert cli.main(["init", "--bare", "--project", str(tmp_path)]) == 0
+    monkeypatch.chdir(tmp_path)
+    rc = cli.main(["serve", "--dry-run"])
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "No projects registered — serving the current directory." in captured.err
+    assert "Frontend site ready" in captured.out
 
 
 def test_serve_autobuilds_when_stale(tmp_path, monkeypatch, capsys):
@@ -153,7 +188,7 @@ def test_serve_autobuilds_when_stale(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(cli, "_serve_build_site", _build)
     monkeypatch.setattr(cli, "_handle_serve_legacy", lambda args: 0)
-    rc = cli.main(["serve", "--project", str(tmp_path), "--dry-run"])
+    rc = cli.main(["serve", "--project", str(tmp_path)])
     assert rc == 0
     assert built.get("built") is True
     assert "building site first (stale)" in capsys.readouterr().out
@@ -229,7 +264,7 @@ def test_init_keeps_llm_flags(tmp_path):
     assert cfg["llm_provider"] == "codex"
 
 
-def test_init_has_exactly_eight_flags():
+def test_init_has_exactly_eleven_flags():
     import tesserae.cli as cli
 
     parser = cli._build_init_parser()
@@ -238,7 +273,142 @@ def test_init_has_exactly_eight_flags():
     assert dests == sorted([
         "project", "name", "source", "yes", "bare",
         "llm_provider", "claude_config_dir", "codex_home",
+        # custom claude-compatible endpoint knobs (persisted as llm_* keys)
+        "llm_model", "llm_base_url", "llm_api_key",
     ]), dests
+
+
+def test_init_provider_choices_are_consistent_everywhere():
+    """Every surface with --llm-provider offers the same 4 providers."""
+    import tesserae.cli as cli
+
+    expected = {"claude", "codex", "anthropic", "custom"}
+    for build in (cli._build_init_parser, cli._build_compile_parser,
+                  cli._build_setup_parser, cli._build_extract_parser):
+        parser = build()
+        action = next(a for a in parser._actions if a.dest == "llm_provider")
+        assert set(action.choices) == expected, build.__name__
+    import argparse
+
+    config_parser = cli._build_config_parser()
+    sub = next(a for a in config_parser._actions if isinstance(a, argparse._SubParsersAction))
+    llm = sub.choices["llm"]
+    action = next(a for a in llm._actions if a.dest == "llm_provider")
+    assert set(action.choices) == expected
+
+
+def test_init_yes_threads_llm_flags_into_plan(tmp_path, monkeypatch):
+    """The silent-drop defect: init --yes must persist EVERY llm flag via the
+    setup plan (not just on --bare)."""
+    import json
+
+    import tesserae.cli as cli
+
+    rc = cli.main([
+        "init", "--yes", "--project", str(tmp_path),
+        "--llm-provider", "custom",
+        "--llm-base-url", "https://llm.example/v1",
+        "--llm-api-key", "sk-test-secret",
+        "--llm-model", "claude-opus-4-6",
+        "--codex-home", "/h/.codex-personal1",
+    ])
+    assert rc == 0
+    cfg = json.loads((tmp_path / ".tesserae" / "config.json").read_text())
+    assert cfg["llm_provider"] == "custom"
+    assert cfg["llm_base_url"] == "https://llm.example/v1"
+    assert cfg["llm_api_key"] == "sk-test-secret"
+    assert cfg["llm_model"] == "claude-opus-4-6"
+    assert cfg["llm_codex_home"] == "/h/.codex-personal1"
+
+
+def test_init_yes_api_key_warning_prints_exactly_once(tmp_path, capsys):
+    import tesserae.cli as cli
+
+    rc = cli.main([
+        "init", "--yes", "--project", str(tmp_path),
+        "--llm-provider", "custom", "--llm-api-key", "sk-warn-once",
+    ])
+    assert rc == 0
+    captured = capsys.readouterr()
+    # apply_plan prints the write-time warning; _handle_setup must NOT repeat
+    # it from result.warnings. (Count the phrase, not bare "plaintext" — the
+    # tmp_path embeds the test name in the warning's config path.)
+    assert captured.err.count("is stored in plaintext") == 1
+    assert "sk-warn-once" not in captured.out + captured.err
+
+
+def test_init_bare_persists_endpoint_flags(tmp_path, capsys):
+    import json
+
+    import tesserae.cli as cli
+
+    rc = cli.main([
+        "init", "--bare", "--project", str(tmp_path),
+        "--llm-provider", "custom",
+        "--llm-base-url", "https://llm.example/v1",
+        "--llm-api-key", "sk-bare-secret",
+        "--llm-model", "claude-opus-4-6",
+    ])
+    assert rc == 0
+    cfg = json.loads((tmp_path / ".tesserae" / "config.json").read_text())
+    assert cfg["llm_provider"] == "custom"
+    assert cfg["llm_base_url"] == "https://llm.example/v1"
+    assert cfg["llm_api_key"] == "sk-bare-secret"
+    assert cfg["llm_model"] == "claude-opus-4-6"
+    captured = capsys.readouterr()
+    assert captured.err.count("is stored in plaintext") == 1
+    # --bare's next-step hint is the real command, not the legacy module form.
+    assert "Next: tesserae compile" in captured.out
+
+
+def test_init_bare_and_yes_agree_on_source_kind(tmp_path, monkeypatch):
+    """--bare and --yes both default source_kind to Repository."""
+    import json
+
+    import tesserae.cli as cli
+
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    assert cli.main(["init", "--bare", "--project", str(bare)]) == 0
+    cfg = json.loads((bare / ".tesserae" / "config.json").read_text())
+    assert cfg["source_kind"] == "Repository"
+
+    seen = {}
+
+    def _stub(args):
+        seen.update(vars(args))
+        return 0
+
+    monkeypatch.setattr(cli, "_handle_setup", _stub)
+    assert cli.main(["init", "--yes", "--project", str(tmp_path)]) == 0
+    assert seen["source_kind"] == "Repository"
+
+
+def test_init_no_tty_error_names_init_not_setup(tmp_path, monkeypatch, capsys):
+    """The no-TTY error must point at `tesserae init --yes` (the command the
+    user actually ran), not the old `tesserae setup:` prefix."""
+    import tesserae.cli as cli
+    from tesserae.setup import WizardNotInteractive
+
+    def _raise(*a, **k):
+        raise WizardNotInteractive("no tty")
+
+    monkeypatch.setattr("tesserae.setup.run_wizard", _raise)
+    rc = cli.main(["init", "--project", str(tmp_path)])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "tesserae init:" in err
+    assert "tesserae init --yes" in err
+    assert "tesserae setup:" not in err
+
+
+def test_config_setup_is_a_moved_stub(capsys):
+    import tesserae.cli as cli
+
+    rc = cli.main(["config", "setup", "--enable-cognee"])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "config setup has moved → tesserae setup" in err
 
 
 def test_init_yes_defaults_disable_optional_integrations(tmp_path, monkeypatch):
@@ -340,6 +510,32 @@ def test_group_smokes_run_real_handlers(tmp_path):
     assert cli.main(["lint", "--project", str(tmp_path)]) == 0
     assert cli.main(["export", "harness", "--project", str(tmp_path)]) == 0
     assert cli.main(["vault", "export", "--project", str(tmp_path)]) == 0
+
+
+@pytest.mark.parametrize(
+    "argv, message",
+    [
+        (["context", "q", "--synthesize"], "context: --synthesize has moved → --llm"),
+        (["refresh", "--skip-sessions"], "refresh: --skip-sessions has moved → --no-sessions"),
+        (["vault", "sync", "--poll-interval", "2"], "vault: --poll-interval has moved → --interval"),
+        (["vault", "sync-all", "--poll-interval", "2"], "vault: --poll-interval has moved → --interval"),
+        (["vault", "export", "--vault", "/tmp/v"], "vault export: --vault has moved → --output"),
+        (["ingest", "x.md", "--exact"], "ingest: --exact was renamed --full"),
+        (["research", "q", "--no-web"], "research: web search is not implemented; --no-web was removed"),
+        (["compile", "--claude-timeout", "5"], "compile: --claude-timeout was removed (extraction is no longer truncated)"),
+        (["summary", "--project", "p"], "summary: --project has moved → --name"),
+        (["decisions", "--project", "p"], "decisions: --project has moved → --name"),
+    ],
+)
+def test_removed_flag_stubs_exit_2_with_one_line_hint(argv, message, capsys):
+    """Item-6 change table: every renamed/removed flag is a clean-break stub —
+    one line on stderr, exit 2, never a silent alias."""
+    import tesserae.cli as cli
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(argv)
+    assert exc.value.code == 2
+    assert message in capsys.readouterr().err
 
 
 def test_export_harness_install_pointer_flag(tmp_path):
@@ -642,8 +838,10 @@ def test_cognee_compile_options_flow_into_cognify(tmp_path, monkeypatch):
     assert cognify.data_root == "/tmp/data"
 
 
-def test_cognee_codex_cognify_compile_option(tmp_path, monkeypatch):
-    """cognee_codex_cognify + cognee_add removed flags select cognify mode."""
+def test_cognee_codex_cognify_compile_option_is_inert(tmp_path, monkeypatch):
+    """The codex_cognify mode was removed with the cognee demotion: a config
+    still setting cognee_codex_cognify maps to an inactive CognifyOptions,
+    so compile receives no cognify pass at all."""
     config_path = _bare_project(tmp_path)
     _set_compile_options(config_path, cognee_codex_cognify=True)
     seen = {}
@@ -651,8 +849,7 @@ def test_cognee_codex_cognify_compile_option(tmp_path, monkeypatch):
     import tesserae.cli as cli
 
     assert cli.main(["compile", "--project", str(tmp_path)]) == 0
-    assert seen["cognify"] is not None
-    assert seen["cognify"].mode == "codex_cognify"
+    assert seen["cognify"] is None
 
 
 def test_refresh_integrations_reaches_external_tool_refresh(tmp_path, monkeypatch):
@@ -727,3 +924,194 @@ def test_projects_register_does_not_reinit_existing_project(tmp_path, capsys):
     assert rc == 0, capsys.readouterr().err
     after = _json.loads(wiki.paths.config.read_text())
     assert after.get("sentinel") == "preserve-me", "register must not re-init/overwrite config"
+
+
+# ---------------------------------------------------------------------------
+# item-6 riders (P5b): export site guards, engine --compile-slots, vault prune
+# --dry-run, export graphiti mode-mismatch, status/sessions --json, unregister
+# by path, federation status semantic default.
+# ---------------------------------------------------------------------------
+
+
+def test_export_site_deploy_and_watch_are_mutually_exclusive(capsys):
+    import tesserae.cli as cli
+
+    rc = cli.main(["export", "site", "--deploy", "--watch"])
+    assert rc == 2
+    assert "mutually exclusive" in capsys.readouterr().err
+
+
+def test_export_site_output_conflicts_with_deploy_and_watch(capsys):
+    import tesserae.cli as cli
+
+    rc = cli.main(["export", "site", "--deploy", "--output", "/tmp/x"])
+    assert rc == 2
+    assert "--output only applies to a plain build" in capsys.readouterr().err
+    rc = cli.main(["export", "site", "--watch", "--output", "/tmp/x"])
+    assert rc == 2
+    assert "--output only applies to a plain build" in capsys.readouterr().err
+
+
+def test_export_site_deploy_autobuilds_when_stale(tmp_path, monkeypatch, capsys):
+    import tesserae.cli as cli
+
+    assert cli.main(["init", "--bare", "--project", str(tmp_path)]) == 0
+    capsys.readouterr()
+    built = {}
+
+    class _FakeWiki:
+        class paths:
+            site = tmp_path / ".tesserae" / "site"
+            graph = tmp_path / ".tesserae" / "graph.json"
+
+        def build_site(self):
+            built["built"] = True
+
+    monkeypatch.setattr(cli.ProjectWiki, "load", staticmethod(lambda p: _FakeWiki()))
+    monkeypatch.setattr(cli, "_handle_deploy", lambda args: 0)
+    rc = cli.main(["export", "site", "--deploy", "--project", str(tmp_path)])
+    assert rc == 0
+    assert built.get("built") is True
+    assert "building site first" in capsys.readouterr().out
+
+
+def test_engine_compile_slots_requires_all(capsys):
+    import tesserae.cli as cli
+
+    rc = cli.main(["engine", "--compile-slots", "2", "--once"])
+    assert rc == 2
+    assert "--compile-slots requires --all" in capsys.readouterr().err
+
+
+def test_vault_prune_dry_run_deletes_nothing(tmp_path, capsys):
+    import tesserae.cli as cli
+    from tesserae.project import ProjectWiki
+
+    assert cli.main(["init", "--bare", "--project", str(tmp_path)]) == 0
+    wiki = ProjectWiki.load(str(tmp_path))
+    vault = wiki.effective_obsidian_vault()
+    vault.mkdir(parents=True, exist_ok=True)
+    orphan = vault / "orphan.md"
+    orphan.write_text("---\nnode_id: Concept:gone\n---\n\nbody\n", encoding="utf-8")
+    capsys.readouterr()
+
+    rc = cli.main(["vault", "prune", "--dry-run", "--project", str(tmp_path)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "dry-run: would prune 1 orphan page(s)" in out
+    assert orphan.exists(), "--dry-run must not delete"
+
+    rc = cli.main(["vault", "prune", "--project", str(tmp_path)])
+    assert rc == 0
+    assert not orphan.exists(), "a real prune still deletes"
+
+
+def test_export_graphiti_sync_flags_require_sync(capsys):
+    import tesserae.cli as cli
+
+    rc = cli.main(["export", "graphiti", "--neo4j-uri", "bolt://x:7687"])
+    assert rc == 2
+    assert "requires --sync" in capsys.readouterr().err
+    rc = cli.main(["export", "graphiti", "--neo4j-uri", "bolt://x:7687", "--dry-run"])
+    assert rc == 2
+    assert "require --sync" in capsys.readouterr().err
+
+
+def test_export_graphiti_sync_rejects_output(capsys):
+    import tesserae.cli as cli
+
+    rc = cli.main(["export", "graphiti", "--sync", "--output", "/tmp/x.jsonl"])
+    assert rc == 2
+    assert "--sync writes to Neo4j" in capsys.readouterr().err
+
+
+def test_export_graphiti_sync_password_defaults_from_env(tmp_path, monkeypatch):
+    import tesserae.cli as cli
+
+    monkeypatch.setenv("NEO4J_PASSWORD", "hunter2")
+    seen = {}
+
+    def _stub(args):
+        seen["password"] = args.neo4j_password
+        seen["uri"] = args.neo4j_uri
+        return 0
+
+    monkeypatch.setattr(cli, "_handle_sync_graphiti", _stub)
+    rc = cli.main(["export", "graphiti", "--sync", "--project", str(tmp_path)])
+    assert rc == 0
+    assert seen["password"] == "hunter2"
+    assert seen["uri"] == "bolt://localhost:7687"
+
+
+def test_status_json_includes_sessions_line(tmp_path, capsys):
+    import json as _json
+
+    import tesserae.cli as cli
+
+    assert cli.main(["init", "--bare", "--project", str(tmp_path)]) == 0
+    capsys.readouterr()
+    rc = cli.main(["status", "--project", str(tmp_path), "--json"])
+    assert rc == 0
+    payload = _json.loads(capsys.readouterr().out)
+    assert payload["sessions"] == 0
+    assert payload["nodes"] == 0 and payload["edges"] == 0
+    rc = cli.main(["status", "--project", str(tmp_path)])
+    assert rc == 0
+    assert "sessions:" in capsys.readouterr().out
+
+
+def test_sessions_list_json(tmp_path, capsys):
+    import json as _json
+
+    import tesserae.cli as cli
+
+    assert cli.main(["init", "--bare", "--project", str(tmp_path)]) == 0
+    capsys.readouterr()
+    rc = cli.main(["sessions", "list", "--project", str(tmp_path), "--json"])
+    assert rc == 0
+    assert _json.loads(capsys.readouterr().out) == []
+
+
+def test_projects_unregister_accepts_path(tmp_path, monkeypatch, capsys):
+    import tesserae.cli as cli
+    import tesserae.mcp_server as mcp_server
+
+    monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", tmp_path / "registry.json")
+    proj = tmp_path / "bypath"
+    proj.mkdir()
+    assert cli.main(["projects", "register", str(proj), "--name", "bypath"]) == 0
+    capsys.readouterr()
+
+    rc = cli.main(["projects", "unregister", str(proj)])
+    assert rc == 0
+    assert "Unregistered: bypath" in capsys.readouterr().out
+
+
+def test_federation_status_semantic_defaults_true():
+    import tesserae.cli as cli
+
+    parser = cli._build_federation_parser()
+    args = parser.parse_args(["status"])
+    assert args.semantic is True
+    args = parser.parse_args(["status", "--no-semantic"])
+    assert args.semantic is False
+
+
+def test_compile_paths_reject_full_compile_only_flags(capsys):
+    import tesserae.cli as cli
+
+    rc = cli.main(["compile", "notes.md", "--strict"])
+    assert rc == 2
+    assert "only apply to a full compile" in capsys.readouterr().err
+    rc = cli.main(["compile", "notes.md", "--no-sessions"])
+    assert rc == 2
+    assert "only apply to a full compile" in capsys.readouterr().err
+
+
+def test_scope_aliases_is_comma_separated_and_does_not_swallow_question():
+    import tesserae.cli as cli
+
+    parser = cli._build_top_level_ask_parser()
+    args = parser.parse_args(["--scope-aliases", "research,work", "what changed?"])
+    assert args.scope_aliases == ["research", "work"]
+    assert args.question == "what changed?"

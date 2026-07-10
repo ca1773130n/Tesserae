@@ -6,6 +6,8 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 import tesserae.activity_summary as A
 import tesserae.decisions as D
 from tesserae.activity_summary import iter_project_transcripts, resolve_windows
@@ -166,7 +168,7 @@ def test_cli_decisions_markdown_and_json(monkeypatch, capsys):
 
     monkeypatch.setattr(D, "gather_decisions", fake_gather, raising=False)
 
-    rc = cli.main(["decisions", "--day", "2026-07-04", "--project", "proj", "--no-llm"])
+    rc = cli.main(["decisions", "--day", "2026-07-04", "--name", "proj", "--no-llm"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "Which backend?" in out and "Postgres" in out
@@ -178,6 +180,48 @@ def test_cli_decisions_markdown_and_json(monkeypatch, capsys):
     assert data[0]["source"] == "human" and data[0]["answer"] == "Postgres"
     assert data[0]["options"] == ["SQLite", "Postgres"]
     assert called["include_agent"] is True  # agent on by default
+
+
+def test_cli_decisions_project_flag_is_a_removed_stub(capsys):
+    """`decisions --project` was renamed --name: one-line stderr stub, exit 2."""
+    import tesserae.cli as cli
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["decisions", "--project", "proj"])
+    assert exc.value.code == 2
+    assert "decisions: --project has moved → --name" in capsys.readouterr().err
+
+
+def test_cli_decisions_unknown_name_exits_2_with_hint(monkeypatch, capsys):
+    """A typo'd --name errors (exit 2) with the available-names hint."""
+    import tesserae.cli as cli
+
+    def fake_gather(windows, projects, **_kw):
+        raise ValueError(
+            "unknown project name(s): typo. Available: proj — see `tesserae projects list`."
+        )
+
+    monkeypatch.setattr(D, "gather_decisions", fake_gather, raising=False)
+    rc = cli.main(["decisions", "--day", "2026-07-04", "--name", "typo"])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "unknown project name(s): typo" in err
+
+
+def test_resolve_projects_unknown_name_raises(monkeypatch, tmp_path):
+    """activity_summary._resolve_projects: a typo'd name raises ValueError with
+    the available names instead of silently filtering to nothing."""
+    from tesserae import activity_summary as A
+    import tesserae.mcp_server as m
+
+    class _FakeRegistry:
+        def iter_registered_projects(self):
+            return [("proj", tmp_path)]
+
+    monkeypatch.setattr(m, "ProjectRegistry", _FakeRegistry)
+    assert A._resolve_projects(["proj"]) == [("proj", tmp_path)]
+    with pytest.raises(ValueError, match="unknown project name.*typo.*proj"):
+        A._resolve_projects(["typo"])
 
 
 def test_mcp_query_decisions_dispatch(monkeypatch):

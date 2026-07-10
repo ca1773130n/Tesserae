@@ -365,68 +365,27 @@ def test_cli_can_add_cognee_bundle_directly(monkeypatch, tmp_path):
     assert calls == [{"bundle_dir": str(cognee_output), "dataset_name": "tesserae_test", "cognify": False, "system_root": None, "data_root": None}]
 
 
-def test_cli_can_cognify_cognee_bundle_with_codex_patch(monkeypatch, tmp_path):
+def test_cli_extract_codex_cognify_flags_removed_with_stub(tmp_path, capsys):
+    """The codex-patched cognify mode was removed with tesserae.cognee_codex:
+    every --cognee-codex-*/embedding flag now prints a one-line stub and
+    exits 2 (clean break; --cognee-cognify with Cognee's own providers remains)."""
+    import pytest
+
     source = tmp_path / "paper.md"
     source.write_text("# Cognee Codex Paper\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")
-    graph_output = tmp_path / "graph.json"
-    cognee_output = tmp_path / "cognee"
-    calls = []
-    patches = []
 
-    class FakeCogneeDirectImporter:
-        async def add_bundle(self, bundle_dir, dataset_name="tesserae_research_graph", cognify=False, system_root=None, data_root=None):
-            calls.append({"bundle_dir": str(bundle_dir), "dataset_name": dataset_name, "cognify": cognify, "system_root": str(system_root) if system_root else None, "data_root": str(data_root) if data_root else None})
-            return {"dataset_name": dataset_name, "files_added": 2, "cognified": cognify}
-
-    class FakeCogneeCodexPatch:
-        def __init__(self, model="gpt-5.4", timeout=300, deterministic_embeddings=False, ollama_embeddings=False, ollama_model="qwen3-embedding:0.6b", ollama_endpoint="http://127.0.0.1:11434/api/embed", ollama_timeout=120, embedding_dimensions=128):
-            patches.append({"model": model, "timeout": timeout, "deterministic_embeddings": deterministic_embeddings, "ollama_embeddings": ollama_embeddings, "ollama_model": ollama_model, "ollama_endpoint": ollama_endpoint, "ollama_timeout": ollama_timeout, "embedding_dimensions": embedding_dimensions, "event": "init"})
-
-        def __enter__(self):
-            patches.append({"event": "enter"})
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            patches.append({"event": "exit"})
-            return False
-
-    import tesserae.cli as cli
-
-    monkeypatch.setattr(cli, "CogneeDirectImporter", FakeCogneeDirectImporter)
-    monkeypatch.setattr(cli, "CogneeCodexPatch", FakeCogneeCodexPatch)
-
-    assert main([
-        "extract",
-        str(source),
-        "--source-kind",
-        "Paper",
-        "--cognee-output",
-        str(cognee_output),
-        "--cognee-codex-cognify",
-        "--cognee-dataset",
-        "tesserae_codex_test",
-        "--cognee-codex-model",
-        "gpt-5.4",
-        "--cognee-codex-timeout",
-        "11",
-        "--cognee-local-embedding-dimensions",
-        "1024",
-        "--cognee-embedding-provider",
-        "ollama",
-        "--cognee-ollama-embedding-model",
-        "qwen3-embedding:0.6b",
-        "--cognee-ollama-embedding-timeout",
-        "44",
-        "--cognee-system-root",
-        str(tmp_path / "cognee_system"),
-        "--cognee-data-root",
-        str(tmp_path / "cognee_data"),
-        "-o",
-        str(graph_output),
-    ]) == 0
-
-    assert calls == [{"bundle_dir": str(cognee_output), "dataset_name": "tesserae_codex_test", "cognify": True, "system_root": str(tmp_path / "cognee_system"), "data_root": str(tmp_path / "cognee_data")}]
-    assert patches == [{"model": "gpt-5.4", "timeout": 11, "deterministic_embeddings": False, "ollama_embeddings": True, "ollama_model": "qwen3-embedding:0.6b", "ollama_endpoint": "http://127.0.0.1:11434/api/embed", "ollama_timeout": 44, "embedding_dimensions": 1024, "event": "init"}, {"event": "enter"}, {"event": "exit"}]
+    for flag in (
+        ["--cognee-codex-cognify"],
+        ["--cognee-codex-model", "gpt-5.4"],
+        ["--cognee-codex-timeout", "11"],
+        ["--cognee-embedding-provider", "ollama"],
+        ["--cognee-local-embedding-dimensions", "1024"],
+    ):
+        with pytest.raises(SystemExit) as exc_info:
+            main(["extract", str(source), "--cognee-output", str(tmp_path / "cognee"), *flag])
+        assert exc_info.value.code == 2
+        err = capsys.readouterr().err
+        assert "extract: the cognee codex mode was removed" in err
 
 
 def test_cli_changed_only_uses_batch_manifest(tmp_path):

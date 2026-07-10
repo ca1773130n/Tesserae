@@ -17,11 +17,11 @@ The Tesserae plugin gives you two distinct surfaces:
    - `mcp__plugin_tesserae_tesserae__node_context` — fetch one node plus its 1-hop neighbourhood
    - `mcp__plugin_tesserae_tesserae__list_sessions` — Session envelopes for the active project (newest first, with per-kind finding counts)
    - `mcp__plugin_tesserae_tesserae__find_session_findings` — every Session-derived finding linked to a node (filter by kind: `insight`, `decision`, `question`, `todo`, `hypothesis`, `takeaway`)
-   - `mcp__plugin_tesserae_tesserae__list_projects` / `activate_project` — multi-project registry navigation
+   - `mcp__plugin_tesserae_tesserae__list_projects` / `register_project` — multi-project registry navigation (no privileged "active" project)
 
 2. **Slash commands** — workflow actions the user explicitly invokes:
    - `/tesserae:compile` — full project compile
-   - `/tesserae:ask "<question>"` — same as the MCP `ask` tool but for human invocation
+   - `/tesserae:ask "<question>"` — same as the MCP `ask` tool but for human invocation; **LLM-planned, cited answer by default** (`--no-llm` = ranked hits only)
    - `/tesserae:refresh` — sessions-import → compile → vault-sync, with summary
    - `/tesserae:status` — node/edge counts + last compile + session count
    - `/tesserae:setup` — interactive wizard (`disable-model-invocation: true` — never auto-invoke this; the user has to run it themselves)
@@ -75,8 +75,8 @@ Grouped by category. Helps decode MCP responses without guessing what a returned
 
 Suggest `/tesserae:refresh`. It chains:
 1. `tesserae sessions discover --import` (capture any new agent sessions inside this project)
-2. `tesserae project compile` (rebuild the graph)
-3. `tesserae project obsidian-sync` (push to the vault if configured)
+2. `tesserae compile` (rebuild the graph)
+3. `tesserae vault sync` (push to the vault if configured)
 
 The user gets a single-line summary at the end.
 
@@ -94,7 +94,7 @@ Suggest `/tesserae:status` — shows last-compile timestamp + per-kind counts in
 
 ### Hooks already running in the background
 
-The plugin's `SessionStart` hook prints a one-liner with the graph counts at the start of every session. The `SessionEnd` hook backgrounds a `sessions discover --import` + `project compile` (not a full refresh — vault-sync is intentionally skipped at session-close so it doesn't race with an Obsidian client that may already be syncing). So by the next session, this conversation's insights are already graph nodes; the user only needs `/tesserae:refresh` explicitly if they want the vault projection updated in the same pass.
+The plugin's `SessionStart` hook prints a one-liner with the graph counts at the start of every session. The `SessionEnd` hook backgrounds a `sessions discover --import` + `tesserae compile` (not a full refresh — vault-sync is intentionally skipped at session-close so it doesn't race with an Obsidian client that may already be syncing). So by the next session, this conversation's insights are already graph nodes; the user only needs `/tesserae:refresh` explicitly if they want the vault projection updated in the same pass.
 
 ## Anti-patterns
 

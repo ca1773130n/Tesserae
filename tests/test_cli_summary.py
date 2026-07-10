@@ -17,15 +17,40 @@ def test_cli_summary_no_llm(monkeypatch, capsys):
         return SummaryResult(markdown="# digest\n", paths=[])
 
     monkeypatch.setattr(cli, "build_summary", fake_build, raising=False)
-    rc = cli.main(["summary", "--day", "2026-07-04", "--project", "proj", "--no-llm"])
+    rc = cli.main(["summary", "--day", "2026-07-04", "--name", "proj", "--no-llm"])
     assert rc == 0
     assert called["projects"] == ["proj"]
     assert called["synthesize"] is False
     assert "# digest" in capsys.readouterr().out
 
 
+def test_cli_summary_project_flag_is_a_removed_stub(capsys):
+    """`summary --project` was renamed --name: one-line stderr stub, exit 2."""
+    import pytest
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["summary", "--project", "proj"])
+    assert exc.value.code == 2
+    assert "summary: --project has moved → --name" in capsys.readouterr().err
+
+
+def test_cli_summary_unknown_name_exits_2_with_hint(monkeypatch, capsys):
+    """A typo'd --name errors (exit 2) with the available-names hint instead of
+    silently summarizing nothing."""
+    def fake_build(windows, projects, **_kw):
+        raise ValueError(
+            "unknown project name(s): typo. Available: proj — see `tesserae projects list`."
+        )
+
+    monkeypatch.setattr(cli, "build_summary", fake_build, raising=False)
+    rc = cli.main(["summary", "--day", "2026-07-04", "--name", "typo", "--no-llm"])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "unknown project name(s): typo" in err and "Available: proj" in err
+
+
 def test_cli_summary_defaults_all_projects_and_synthesizes(monkeypatch, capsys):
-    """No --project → projects=None (all registered); no --no-llm → synthesize=True."""
+    """No --name → projects=None (all registered); no --no-llm → synthesize=True."""
     called = {}
 
     def fake_build(windows, projects, *, synthesize, write, **_kw):

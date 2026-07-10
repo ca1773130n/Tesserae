@@ -14,7 +14,6 @@ from .activity_summary import SummaryResult, build_summary, resolve_windows
 from .batch import BatchIngestRunner
 from .canonicalization import GraphCanonicalizer, ReviewDecision
 from .cognee_adapter import CogneeResearchGraphAdapter
-from .cognee_codex import CogneeCodexPatch
 from .cognee_direct import CogneeDirectImporter
 from .harness_sessions import HarnessSession, HarnessSessionStore, discover_harness_sessions, session_matches_project
 from .ingest.orchestrator import ingest_sources
@@ -24,7 +23,7 @@ from .markdown_projection import GraphMarkdownProjector
 from .persistence import KuzuResearchGraphStore, SQLiteResearchGraphStore
 from .graphiti_adapter import GraphitiSyncUnavailableError
 from .project import CognifyOptions, ProjectWiki, SessionExtractionOptions, cognify_options_from_config, cognee_backend_config, iter_markdown_files, load_graph_file as _load_graph_file, resolve_project_input
-from .project_setup import apply_setup_plan, build_setup_plan, interactive_setup_plan, refresh_configured_external_tools, render_setup_summary
+from .project_setup import refresh_configured_external_tools
 from .report import GraphReporter
 from .understand_anything_refresh import refresh_understand_anything
 from .raganything_refresh import main as _raganything_refresh_main
@@ -66,34 +65,63 @@ def load_review_decisions(path: Path) -> List[ReviewDecision]:
 def _project_query_handler(args) -> int:
     """Handle the ``query`` command (one-shot or interactive REPL).
 
-    A standalone handler so the parser-vs-handler block ordering can
-    stay in lockstep without inflating the dispatch ladder. Tolerant of
-    missing arguments: an interactive session falls back to the REPL when
-    ``question`` is empty, and one-shot prints a friendly error when the
-    index isn't built yet.
+    ``query`` is the raw-retrieval surface: BM25/semantic search over the
+    compiled wiki by default, or an explicit backend
+    (``--backend raganything|cognee``) for the optional memory backends.
+    LLM synthesis lives on ``tesserae ask``; the wiki path here still honors
+    the ``TESSERAE_QUERY_LLM`` env gate for scripted setups.
     """
 
-    from .query import QueryResult, WikiQuery
+    from .query import QueryResult, WikiQuery, env_enabled
 
     project_root = args.project
     top_k = args.top_k
     kind_filter = args.kind
-    use_llm = bool(args.llm)
-    no_llm = bool(args.no_llm)
-    model = args.model
     json_output = bool(args.json_output)
     interactive = bool(args.interactive)
+    backend = getattr(args, "backend", "wiki") or "wiki"
+
+    if backend in ("raganything", "cognee"):
+        from .query import ask_project
+
+        if interactive:
+            print("query: --interactive is wiki-search only (not usable with --backend)", file=sys.stderr)
+            return 2
+        question = (args.question or "").strip()
+        if not question:
+            print("query: question is required", file=sys.stderr)
+            return 2
+        try:
+            wiki = ProjectWiki.load(args.project)
+        except FileNotFoundError:
+            print(f"No Tesserae project at {args.project}. Did you run `tesserae init`?", file=sys.stderr)
+            return 2
+        try:
+            envelope = ask_project(
+                wiki,
+                question,
+                backend=backend,
+                top_k=top_k,
+                cognee_search_type=getattr(args, "cognee_search_type", None),
+                cognee_dataset=getattr(args, "cognee_dataset", None),
+                use_llm=False,
+                no_llm=True,
+            )
+        except RuntimeError as exc:
+            # Backend-specific failures with explicit --backend surface here.
+            print(str(exc), file=sys.stderr)
+            return 2
+        except Exception as exc:
+            print(f"query failed: {exc}", file=sys.stderr)
+            return 2
+        return _emit_ask_envelope(envelope, json_output=json_output)
 
     wq = WikiQuery(project_root, top_k=top_k, kind_filter=kind_filter)
 
     def run_one(question: str, history: List[dict] | None = None) -> "QueryResult":
-        return wq.answer(
-            question,
-            model=model,
-            force_llm=use_llm,
-            force_no_llm=no_llm,
-            history=history,
-        )
+        return wq.answer(question, history=history)
+
+    use_llm = env_enabled()  # REPL history tracking only; flags moved to `ask`
 
     if interactive:
         return _run_query_repl(run_one, json_output=json_output, use_llm=use_llm)
@@ -113,36 +141,11 @@ def _project_query_handler(args) -> int:
     return 0
 
 
-def _project_ask_handler(args) -> int:
-    from .query import ask_project
-
-    wiki = ProjectWiki.load(args.project)
-    try:
-        envelope = ask_project(
-            wiki,
-            args.question,
-            backend=args.backend,
-            top_k=args.top_k,
-            cognee_search_type=args.cognee_search_type,
-            cognee_dataset=args.cognee_dataset,
-            use_llm=bool(getattr(args, "llm", False)),
-        )
-    except RuntimeError as exc:
-        # Backend-specific failures with explicit --backend surface here.
-        print(str(exc), file=sys.stderr)
-        return 2
-    except Exception as exc:
-        print(f"ask failed: {exc}", file=sys.stderr)
-        return 2
-
-    return _emit_ask_envelope(envelope, json_output=bool(args.json_output))
-
-
 def _emit_ask_envelope(envelope: dict, *, json_output: bool) -> int:
     """Print an ``ask_project`` envelope in human or JSON form.
 
-    Shared by ``project ask`` and the new top-level ``ask`` command so output
-    formatting stays in lockstep with the dispatcher's contract.
+    Shared by the top-level ``ask`` command and ``query --backend ...`` so
+    output formatting stays in lockstep with the dispatcher's contract.
     """
 
     if json_output:
@@ -175,6 +178,15 @@ def _emit_ask_envelope(envelope: dict, *, json_output: bool) -> int:
             # auto fell through to wiki because a richer backend errored —
             # say so, so the user isn't left thinking wiki was the only try.
             print(f"(auto: {'; '.join(notes)} — fell back to wiki search)", file=sys.stderr)
+        plan = envelope.get("plan") or {}
+        plan_steps = plan.get("steps") or []
+        if plan_steps:
+            rendered = "; ".join(
+                f"{s.get('action')}({json.dumps(s.get('args') or {}, ensure_ascii=False)})"
+                for s in plan_steps
+            )
+            reason = str(plan.get("reasoning") or "")
+            print(f"(retrieval plan: {rendered}{' — ' + reason if reason else ''})", file=sys.stderr)
         print("Compiled wiki answer:")
         from .query import QueryHit, QueryResult
 
@@ -211,7 +223,10 @@ def _print_query_result(result) -> None:
 
     hits = result.hits
     if not hits:
-        print(f"No matches for: {result.question!r}")
+        # A planned KG answer can be fully grounded in graph evidence with no
+        # wiki-page hits — "No matches" would be misleading next to it.
+        if not result.answer:
+            print(f"No matches for: {result.question!r}")
     else:
         print(f"Top {len(hits)} hit(s) for: {result.question!r}")
         for idx, hit in enumerate(hits, start=1):
@@ -270,12 +285,15 @@ def _run_query_repl(run_one, *, json_output: bool, use_llm: bool) -> int:
 def _top_level_ask_handler(args) -> int:
     """Route a question and call the shared ask dispatcher.
 
-    With no ``--scope`` and no explicit project, a smart router (ask_router)
-    decides where the question goes — one project, all registered, or federated
-    (the fallback). An explicit ``--scope`` (current/all-registered/federated) or
-    ``--project``/``--wiki`` overrides the router. ``current`` resolves one
-    project via ``--project`` → ``--wiki`` → the project you're standing in (cwd
-    ancestor). There is no active project.
+    ``ask`` is the LLM-answer surface: the model plans retrieval over the
+    knowledge graph and synthesizes a cited answer by default; ``--no-llm``
+    forces search-only (and beats ``TESSERAE_QUERY_LLM=1``). With no
+    ``--scope`` and no explicit project, a smart router (ask_router) decides
+    where the question goes — one project, all registered, or federated (the
+    fallback). An explicit ``--scope`` (current/all-registered/federated) or
+    ``--project``/``--name`` overrides the router. ``current`` resolves one
+    project via ``--project`` → ``--name`` → the project you're standing in
+    (cwd ancestor). There is no active project.
     """
 
     from .mcp_server import ProjectRegistry
@@ -288,7 +306,7 @@ def _top_level_ask_handler(args) -> int:
     # single-project behaviour byte-for-byte.
     registry = ProjectRegistry()
     scope = getattr(args, "scope", None)
-    explicit_project = bool(args.project or args.wiki)
+    explicit_project = bool(args.project or args.name)
 
     # No --scope and no explicit project => SMART ROUTER picks where the question
     # goes (single project / all-registered / federated), federated as the
@@ -311,9 +329,9 @@ def _top_level_ask_handler(args) -> int:
         if route.scope in (SCOPE_FEDERATED, SCOPE_ALL):
             args.scope_aliases = route.aliases  # an LLM-narrowed subset must be honored
         elif route.scope == SCOPE_CURRENT and route.aliases:
-            args.wiki = route.aliases[0]
+            args.name = route.aliases[0]
     elif scope is None:
-        scope = "current"  # explicit --project/--wiki => single-project
+        scope = "current"  # explicit --project/--name => single-project
 
     if scope == "all-registered":
         return _top_level_ask_scope_all_registered(args)
@@ -327,14 +345,14 @@ def _top_level_ask_handler(args) -> int:
     if args.project:
         project_root = Path(args.project).expanduser().resolve()
         source = f"--project {project_root}"
-    elif args.wiki:
+    elif args.name:
         data = registry.load()
-        entry = (data.get("projects") or {}).get(args.wiki)
+        entry = (data.get("projects") or {}).get(args.name)
         if not entry:
             print(
-                f"No registered project named '{args.wiki}'. "
+                f"No registered project named '{args.name}'. "
                 f"Run `tesserae projects list` to see available names, or "
-                f"`tesserae projects register <path> --name {args.wiki}` to register one.",
+                f"`tesserae projects register <path> --name {args.name}` to register one.",
                 file=sys.stderr,
             )
             return 2
@@ -343,14 +361,14 @@ def _top_level_ask_handler(args) -> int:
         else:
             gp = Path(entry["graph_path"]).resolve()
             project_root = gp.parent.parent if gp.parent.name == ".tesserae" else gp.parent
-        source = f"--wiki {args.wiki}"
+        source = f"--name {args.name}"
     else:
         cwd_root = registry.resolve_project_by_cwd()
         if cwd_root is None:
             known = ", ".join(registry.all_project_names()) or "(none registered)"
             print(
                 "No project specified and not inside a registered project. Pass "
-                "--project <path> / --wiki <name>, use --scope all-registered|federated, "
+                "--project <path> / --name <name>, use --scope all-registered|federated, "
                 f"or cd into a registered project. Registered: {known}.",
                 file=sys.stderr,
             )
@@ -368,15 +386,14 @@ def _top_level_ask_handler(args) -> int:
         )
         return 2
 
+    no_llm = bool(getattr(args, "no_llm", False))
     try:
         envelope = ask_project(
             wiki,
             args.question,
-            backend=args.backend,
             top_k=args.top_k,
-            cognee_search_type=args.cognee_search_type,
-            cognee_dataset=args.cognee_dataset,
-            use_llm=bool(getattr(args, "llm", False)),
+            use_llm=not no_llm,
+            no_llm=no_llm,
         )
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
@@ -410,7 +427,7 @@ def _top_level_ask_scope_federated(args) -> int:
         envelope = federated_recall(
             aliases,
             args.question,
-            synthesize=bool(getattr(args, "llm", False)),
+            synthesize=not bool(getattr(args, "no_llm", False)),
             semantic=bool(getattr(args, "semantic", False)),
             recency_weight=getattr(args, "recency_weight", None),
             registry=registry,
@@ -469,6 +486,7 @@ def _top_level_ask_scope_all_registered(args) -> int:
             return 2
 
     by_project: Dict[str, dict] = {}
+    no_llm = bool(getattr(args, "no_llm", False))
     for entry in all_projects:
         name = entry.get("name") or ""
         root_str = entry.get("root")
@@ -483,13 +501,14 @@ def _top_level_ask_scope_all_registered(args) -> int:
             by_project[name] = {"error": f"could not load project: {exc}"}
             continue
         try:
+            # Bug fix: thread the LLM knobs into the fan-out (previously the
+            # all-registered path silently dropped them vs the current scope).
             envelope = ask_project(
                 wiki,
                 args.question,
-                backend=args.backend,
                 top_k=args.top_k,
-                cognee_search_type=args.cognee_search_type,
-                cognee_dataset=args.cognee_dataset,
+                use_llm=not no_llm,
+                no_llm=no_llm,
             )
             by_project[name] = envelope
         except RuntimeError as exc:
@@ -602,7 +621,7 @@ def _wiki_command_handler(args) -> int:
         )
 
     print(
-        "Usage: tesserae projects {list|register|activate|unregister|obsidian-set-root|obsidian-sync-all}",
+        "Usage: tesserae projects {list|register|unregister|obsidian-set-root|obsidian-sync-all}",
         file=sys.stderr,
     )
     return 2
@@ -720,14 +739,39 @@ def _wiki_obsidian_sync_all(
     return 0
 
 
+class _RemovedFlagAction(argparse.Action):
+    """Clean-break stub for a removed/renamed FLAG: one-line stderr + exit 2.
+
+    Mirrors the MOVED_COMMANDS convention (cli_tree.py) at flag granularity —
+    never a silent alias. ``nargs="?"`` swallows an optional attached value so
+    both ``--flag value`` and ``--flag=value`` hit the stub instead of a
+    confusing argparse error. Reusable: pass ``message=`` via
+    ``parser.add_argument(..., action=_RemovedFlagAction, message="...")``.
+    """
+
+    def __init__(self, option_strings, dest, message: str = "flag removed", **kwargs):
+        self.message = message
+        kwargs.setdefault("nargs", "?")
+        kwargs.setdefault("help", argparse.SUPPRESS)
+        kwargs.setdefault("default", argparse.SUPPRESS)
+        super().__init__(option_strings, dest, **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        print(self.message, file=sys.stderr)
+        raise SystemExit(2)
+
+
 def _build_top_level_ask_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae ask",
         description=(
-            "Ask a question across your registered Tesserae projects. With no --scope a "
+            "LLM answer over the knowledge graph (planned retrieval). The model plans "
+            "retrieval over the compiled graph, then synthesizes a cited answer — this "
+            "is the default; pass --no-llm for ranked search hits only. Works with a "
+            "logged-in claude/codex CLI (OAuth) or ANTHROPIC_API_KEY. With no --scope a "
             "smart router picks the target (one project / all / federated); --project, "
-            "--wiki or --scope override it. Dispatches through the same backend selector "
-            "as `project ask` (raganything -> cognee -> wiki)."
+            "--name or --scope override it. Raw retrieval and explicit backends "
+            "(raganything/cognee) live on `tesserae query`."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
@@ -737,20 +781,25 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("question", help="Natural-language question text.")
-    parser.add_argument("--wiki", help="Registered project name (see `tesserae projects list`).")
-    parser.add_argument("--project", help="Project root path (overrides --wiki).")
+    parser.add_argument("--name", help="Registered project name (see `tesserae projects list`).")
+    parser.add_argument("--project", help="Project root path (overrides --name).")
     parser.add_argument(
-        "--backend",
-        choices=["auto", "raganything", "cognee", "wiki"],
-        default="auto",
-        help="Backend to use (default: auto = raganything -> cognee -> wiki).",
+        "--wiki",
+        action=_RemovedFlagAction,
+        message="ask: --wiki has moved → --name",
     )
-    parser.add_argument("--top-k", type=int, default=5, help="Maximum results/context items (default: 5).")
+    parser.add_argument("--top-k", type=int, default=8, help="Maximum results/context items (default: 8).")
     parser.add_argument(
         "--llm",
+        action=_RemovedFlagAction,
+        message="ask: --llm is now the default; use --no-llm to disable",
+    )
+    parser.add_argument(
+        "--no-llm",
+        dest="no_llm",
         action="store_true",
-        help="Synthesize an answer with the LLM (also honored via TESSERAE_QUERY_LLM=1; "
-        "requires ANTHROPIC_API_KEY). Without it, only ranked hits are returned.",
+        help="Skip the LLM planner/synthesis and return ranked search hits only "
+        "(force-off: beats TESSERAE_QUERY_LLM=1).",
     )
     parser.add_argument(
         "--json",
@@ -758,16 +807,12 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the raw JSON envelope instead of the pretty-printed answer.",
     )
-    parser.add_argument(
-        "--cognee-search-type",
-        default=None,
-        help="Cognee SearchType name when --backend cognee (e.g. GRAPH_COMPLETION, CHUNKS, SUMMARIES; legacy INSIGHTS maps to GRAPH_COMPLETION).",
-    )
-    parser.add_argument(
-        "--cognee-dataset",
-        default=None,
-        help="Override the configured Cognee dataset.",
-    )
+    for _moved in ("--backend", "--cognee-search-type", "--cognee-dataset"):
+        parser.add_argument(
+            _moved,
+            action=_RemovedFlagAction,
+            message="ask: backend flags have moved → tesserae query",
+        )
     # Bet B2 — registry-scoped fan-out.
     parser.add_argument(
         "--scope",
@@ -783,12 +828,16 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--scope-aliases",
-        nargs="*",
+        # ONE comma-separated value (not nargs="*"): a greedy nargs list here
+        # used to swallow the positional question when the flag came first.
+        type=lambda raw: [a.strip() for a in raw.split(",") if a.strip()],
         default=None,
+        metavar="A,B,...",
         help=(
-            "Registered alias names. With --scope=all-registered, optionally "
-            "restricts the fan-out; with --scope=federated, the (required) set of "
-            "projects to federate (e.g. --scope-aliases research work)."
+            "Comma-separated registered alias names. Optionally narrows the "
+            "fan-out (--scope=all-registered) or the set of projects to "
+            "federate (--scope=federated; defaults to ALL registered), e.g. "
+            "--scope-aliases research,work."
         ),
     )
     parser.add_argument(
@@ -833,9 +882,9 @@ def _add_llm_client_args(parser: argparse.ArgumentParser, persisted: bool = Fals
     suffix = " (persisted into config.json)" if persisted else " (this run only; overrides config.json)"
     parser.add_argument(
         "--llm-provider",
-        choices=["claude", "codex", "anthropic"],
+        choices=["claude", "codex", "anthropic", "custom"],
         default=None,
-        help="Backend for the LLM client (claude/codex CLI over OAuth, or anthropic API key)" + suffix,
+        help="Backend for the LLM client (claude/codex CLI over OAuth, anthropic API key, or a custom claude-compatible endpoint)" + suffix,
     )
     parser.add_argument(
         "--claude-config-dir",
@@ -881,14 +930,25 @@ def _handle_llm_defaults(args: argparse.Namespace) -> int:
             "llm_provider": existing.get("llm_provider"),
             "llm_claude_config_dirs": existing.get("llm_claude_config_dirs"),
             "llm_codex_home": existing.get("llm_codex_home"),
+            "llm_codex_reasoning_effort": existing.get("llm_codex_reasoning_effort"),
+            "llm_model": existing.get("llm_model"),
+            "llm_base_url": existing.get("llm_base_url"),
+            # NEVER echo the key itself — show only whether one is stored.
+            "llm_api_key": "set" if existing.get("llm_api_key") else "unset",
         }
         print(f"Machine-wide LLM defaults ({path}):")
         print(_json.dumps(effective, ensure_ascii=False, indent=2))
         return 0
     reasoning = getattr(args, "reasoning_effort", None)
-    if not (args.llm_provider or args.claude_config_dir or args.codex_home or reasoning):
+    llm_model = getattr(args, "llm_model", None)
+    llm_base_url = getattr(args, "llm_base_url", None)
+    llm_api_key = getattr(args, "llm_api_key", None)
+    if not (args.llm_provider or args.claude_config_dir or args.codex_home or reasoning
+            or llm_model or llm_base_url or llm_api_key):
         print(
-            "Nothing to set — pass --llm-provider/--claude-config-dir/--codex-home/--reasoning-effort, or --show.",
+            "Nothing to set — pass --llm-provider/--claude-config-dir/--codex-home/"
+            "--reasoning-effort/--llm-model/--llm-base-url/--llm-api-key, "
+            "or run `tesserae config show` to view the current defaults.",
             file=sys.stderr,
         )
         return 2
@@ -898,17 +958,29 @@ def _handle_llm_defaults(args: argparse.Namespace) -> int:
         claude_config_dirs=args.claude_config_dir,
         codex_home=args.codex_home,
         reasoning_effort=reasoning,
+        model=llm_model,
+        base_url=llm_base_url,
+        api_key=llm_api_key,
     )
     _write_global_config(path, merged)
+    if llm_api_key:
+        print(
+            f"warning: llm_api_key is stored in plaintext in {path}; "
+            "prefer the ANTHROPIC_API_KEY environment variable",
+            file=sys.stderr,
+        )
     print(f"Saved machine-wide LLM defaults to {path}:")
-    for key in ("llm_provider", "llm_claude_config_dirs", "llm_codex_home", "llm_codex_reasoning_effort"):
+    for key in ("llm_provider", "llm_claude_config_dirs", "llm_codex_home",
+                "llm_codex_reasoning_effort", "llm_model", "llm_base_url", "llm_api_key"):
         if key in merged:
-            print(f"  {key}: {merged[key]}")
+            value = "(set)" if key == "llm_api_key" else merged[key]
+            print(f"  {key}: {value}")
     return 0
 
 
 def _merge_global_llm_config(existing: dict, *, llm_provider=None, claude_config_dirs=None,
-                             codex_home=None, reasoning_effort=None) -> dict:
+                             codex_home=None, reasoning_effort=None, model=None,
+                             base_url=None, api_key=None) -> dict:
     """Merge-preserving update of the machine-wide config: only passed keys change."""
     merged = dict(existing)
     if llm_provider:
@@ -919,6 +991,12 @@ def _merge_global_llm_config(existing: dict, *, llm_provider=None, claude_config
         merged["llm_codex_home"] = codex_home
     if reasoning_effort:
         merged["llm_codex_reasoning_effort"] = reasoning_effort
+    if model:
+        merged["llm_model"] = model
+    if base_url:
+        merged["llm_base_url"] = base_url
+    if api_key:
+        merged["llm_api_key"] = api_key
     return merged
 
 
@@ -941,9 +1019,30 @@ def _handle_init(args: argparse.Namespace) -> int:
         llm_claude_config_dirs=args.claude_config_dir or None,
         llm_codex_home=args.codex_home,
     )
+    # The custom-endpoint knobs are persisted the same only-when-set way as
+    # llm_provider above (ProjectWiki.init predates them; patch config here so
+    # `--bare` never silently drops a flag).
+    endpoint_keys = {
+        "llm_model": getattr(args, "llm_model", None),
+        "llm_base_url": getattr(args, "llm_base_url", None),
+        "llm_api_key": getattr(args, "llm_api_key", None),
+    }
+    endpoint_keys = {k: v for k, v in endpoint_keys.items() if v}
+    if endpoint_keys:
+        cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+        cfg.update(endpoint_keys)
+        wiki.paths.config.write_text(
+            json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+        if "llm_api_key" in endpoint_keys:
+            print(
+                f"warning: llm_api_key is stored in plaintext in {wiki.paths.config}; "
+                "prefer the ANTHROPIC_API_KEY environment variable",
+                file=sys.stderr,
+            )
     print(f"Initialized project wiki: {wiki.root}")
     print(f"Graph: {wiki.paths.graph}")
-    print("Next: python3 -m tesserae compile <paths>")
+    print("Next: tesserae compile")
     return 0
 
 
@@ -960,6 +1059,22 @@ def _handle_setup(args: argparse.Namespace) -> int:
 
         try:
             report = detect(args.project)
+            # LLM client flags (provider / dirs / model / base_url / api_key)
+            # must reach the plan on BOTH paths — the old code silently
+            # dropped them (only `init --bare` persisted them).
+            llm_overrides: dict = {
+                "llm_provider": getattr(args, "llm_provider", None),
+                "llm_model": getattr(args, "llm_model", None),
+                "llm_base_url": getattr(args, "llm_base_url", None),
+                "llm_api_key": getattr(args, "llm_api_key", None),
+                "codex_home": getattr(args, "codex_home", None),
+                "claude_config_dir": (
+                    args.claude_config_dir[0]
+                    if getattr(args, "claude_config_dir", None)
+                    else None
+                ),
+            }
+            llm_overrides = {k: v for k, v in llm_overrides.items() if v is not None}
             if args.yes:
                 yes_overrides: dict = {
                     "name": args.name,
@@ -996,15 +1111,23 @@ def _handle_setup(args: argparse.Namespace) -> int:
                 yes_overrides = {
                     k: v for k, v in yes_overrides.items() if v is not None
                 }
+                yes_overrides.update(llm_overrides)
                 plan = build_plan(report, overrides=yes_overrides)
                 print(render_review(plan), end="")
             else:
                 try:
-                    plan = run_wizard(report)
+                    # CLI flags seed the wizard's recommended defaults.
+                    wizard_defaults = (
+                        build_plan(report, overrides=llm_overrides)
+                        if llm_overrides
+                        else None
+                    )
+                    plan = run_wizard(report, wizard_defaults)
                 except WizardNotInteractive:
                     print(
-                        "tesserae setup: stdin is not a TTY. Re-run from a real "
-                        "terminal, or pass --yes to use detected defaults.",
+                        "tesserae init: stdin is not a TTY. Re-run from a real "
+                        "terminal, or run `tesserae init --yes` to use detected "
+                        "defaults.",
                         file=sys.stderr,
                     )
                     return 2
@@ -1028,6 +1151,10 @@ def _handle_setup(args: argparse.Namespace) -> int:
                 print(f"  [{status}] {row.get('id')}: {detail}")
         if result.warnings:
             for w in result.warnings:
+                if "llm_api_key" in w and "plaintext" in w:
+                    # apply_plan already printed this one at write time —
+                    # exactly ONE plaintext-key warning per run.
+                    continue
                 print(f"warning: {w}", file=sys.stderr)
         print("Next: tesserae compile && tesserae export site")
         return 0
@@ -1143,9 +1270,9 @@ def _warn_if_concept_poor(result: dict) -> None:
         if conceptual == 0:
             print(
                 f"note: compiled {result['node_count']} nodes but no concept/claim layer — the "
-                "default deterministic extractor only mints concepts for known headings, so "
+                "deterministic extractor only mints concepts for known headings, so "
                 "`ask` falls back to full-text search. For a real typed graph, recompile with "
-                "`--extractor claude-cli` (or `--extractor selective-claude --claude-include <globs>`).",
+                "`--extractor llm` (or `--extractor selective-llm --llm-include <globs>`).",
                 file=sys.stderr,
             )
     except Exception:
@@ -1175,13 +1302,14 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                     print(f"  - {failure.get('id')}: {failure.get('command')} exited {failure.get('returncode')}{tail}")
             else:
                 print(f"Refreshed external tools: {len(refreshed)}")
-        cognee_codex_cognify = bool(opts.get("cognee_codex_cognify", False))
+        # ``cognee_codex_cognify`` is ignored: the codex-patched mode was
+        # removed with tesserae.cognee_codex (configs still carrying it are
+        # inert — CognifyOptions treats unknown modes as inactive).
         cognee_cognify = bool(opts.get("cognee_cognify", False))
         cognee_add = bool(opts.get("cognee_add", False))
-        explicit_cognee = cognee_codex_cognify or cognee_cognify or cognee_add
+        explicit_cognee = cognee_cognify or cognee_add
         cognify_mode = (
-            "codex_cognify" if cognee_codex_cognify
-            else "cognify" if cognee_cognify
+            "cognify" if cognee_cognify
             else "add" if cognee_add
             else "off"
         )
@@ -1418,10 +1546,10 @@ def _handle_research(args: argparse.Namespace) -> int:
         backend = GraphSearchBackend(server=server, graph=graph)
         output_path = Path(args.output) if args.output else None
         output_dir = output_path.parent if output_path else (wiki.root / "research")
-        # punt: web disabled by default in v1 — wiring a stdlib DuckDuckGo
-        # scraper is finicky to test deterministically and adds zero value
-        # without a real BeautifulSoup-style HTML parser. --no-web is a
-        # forward-compat knob for the day a WebFetcher backend ships.
+        # punt: web search is not implemented (web=None always) — wiring a
+        # stdlib DuckDuckGo scraper is finicky to test deterministically and
+        # adds zero value without a real BeautifulSoup-style HTML parser.
+        # (The dead --no-web flag was removed; it is a stub now.)
         session = ResearchSession(
             query=args.query,
             llm=llm,
@@ -1596,7 +1724,10 @@ def _handle_refresh(args: argparse.Namespace) -> int:
     def step_sessions_import():
         sessions = discover_harness_sessions(wiki.project_root)
         store = HarnessSessionStore(wiki.paths.harness_sessions)
-        return store.write_sessions(sessions)  # {"sessions": n, "path": ...}
+        # A non-empty discovery is authoritative (replace: prunes stale
+        # records); an EMPTY discovery merges (a no-op) so a scan that finds
+        # nothing — wrong HOME, detached harness roots — never wipes the store.
+        return store.write_sessions(sessions, replace=bool(sessions))  # {"sessions": n, "path": ...}
 
     def step_compile():
         return wiki.compile(changed_only=args.changed_only)
@@ -1612,9 +1743,23 @@ def _handle_refresh(args: argparse.Namespace) -> int:
             "stubs_minted": r.stubs_minted,
         }
 
+    def step_chunk_backfill():
+        # Skip-if-held flock inside backfill(); chunking is an optimization —
+        # any failure degrades to the raw scan and must not fail the refresh.
+        from .session_chunks import backfill
+
+        try:
+            result = backfill(wiki.project_root)
+        except Exception as exc:  # noqa: BLE001
+            return {"skipped": f"backfill failed: {exc}"}
+        if result.skipped:
+            return {"skipped": result.reason}
+        return {"turns_inserted": result.turns_inserted, "days_covered": result.days_covered}
+
     steps = []
-    if not args.skip_sessions:
+    if not args.no_sessions:
         steps.append(("sessions-import", step_sessions_import))
+        steps.append(("chunk-backfill", step_chunk_backfill))
     steps += [("compile", step_compile), ("obsidian-sync", step_obsidian_sync)]
 
     results = Pipeline(steps).run()
@@ -1665,10 +1810,6 @@ def _handle_lint(args: argparse.Namespace) -> int:
 
 def _handle_query(args: argparse.Namespace) -> int:
     return _project_query_handler(args)
-
-
-def _handle_ask(args: argparse.Namespace) -> int:
-    return _project_ask_handler(args)
 
 
 def _handle_context(args: argparse.Namespace) -> int:
@@ -1748,7 +1889,8 @@ def _handle_export_agent_harness(args: argparse.Namespace) -> int:
 
 def _handle_export_obsidian(args: argparse.Namespace) -> int:
     wiki = ProjectWiki.load(args.project)
-    result = wiki.export_obsidian(vault=args.vault)
+    # `vault export --output` (the old `--vault` spelling is a removed-flag stub).
+    result = wiki.export_obsidian(vault=args.output)
     print(f"Exported Obsidian vault: notes={result['notes']} path={result['vault_path']}")
     return 0
 
@@ -1794,11 +1936,28 @@ def _handle_sessions(args: argparse.Namespace) -> int:
             if len(sessions) > 100:
                 print(f"  ... {len(sessions) - 100} more")
             if args.import_sessions:
-                result = store.write_sessions(sessions)
+                # Non-empty discovery = authoritative replace; empty = merge
+                # no-op so it never wipes previously imported sessions.
+                result = store.write_sessions(sessions, replace=bool(sessions))
                 print(f"Imported harness sessions: {result['sessions']} path={result['path']}")
             return 0
         if args.sessions_command == "list":
             sessions = store.list_sessions()
+            if getattr(args, "as_json", False):
+                print(json.dumps(
+                    [
+                        {
+                            "date": session.date,
+                            "harness": session.harness,
+                            "project": session.project_name,
+                            "title": session.title or session.slug,
+                            "slug": session.slug,
+                        }
+                        for session in sessions
+                    ],
+                    ensure_ascii=False, indent=2,
+                ))
+                return 0
             print(f"Harness sessions: {len(sessions)}")
             for session in sessions:
                 print(
@@ -1901,6 +2060,9 @@ def _handle_engine(args: argparse.Namespace) -> int:
     # default 256-fd soft limit; exhaustion surfaces as sqlite "unable to open
     # database file" storms (observed with `engine --all`, 5 projects).
     raise_fd_limit()
+    if not getattr(args, "all", False) and getattr(args, "compile_slots", None) is not None:
+        print("tesserae engine: --compile-slots requires --all (fleet mode)", file=sys.stderr)
+        return 2
     if getattr(args, "all", False):
         if args.project is not None:
             print("tesserae engine: --all and --project are mutually exclusive", file=sys.stderr)
@@ -1911,7 +2073,7 @@ def _handle_engine(args: argparse.Namespace) -> int:
         pidfile_env = os.environ.get("TESSERAE_FLEET_PIDFILE")
         fleet = FleetDaemon(
             registry_path=Path(registry_env) if registry_env else None,
-            compile_slots=args.compile_slots,
+            compile_slots=args.compile_slots if args.compile_slots is not None else 1,
             debounce=args.debounce,
             watch_interval=args.interval,
             pidfile=Path(pidfile_env) if pidfile_env else None,
@@ -1952,7 +2114,11 @@ def main(argv: List[str] | None = None) -> int:
     moved = moved_replacement(argv)
     if moved is not None:
         old_prefix, hint = moved
-        print(f"tesserae {old_prefix} has moved → {hint}", file=sys.stderr)
+        if hint.startswith("removed"):
+            # Terminal removal — no replacement spelling exists.
+            print(f"tesserae {old_prefix} was {hint}", file=sys.stderr)
+        else:
+            print(f"tesserae {old_prefix} has moved → {hint}", file=sys.stderr)
         return 2
     if argv[0] not in KNOWN_COMMANDS:
         from .cli_tree import looks_like_extraction_path
@@ -1977,6 +2143,11 @@ def main(argv: List[str] | None = None) -> int:
         )
         return 2
     except CompileLockHeldError as exc:
+        print(f"tesserae {argv[0]}: {exc}", file=sys.stderr)
+        return 2
+    except FileNotFoundError as exc:
+        # Central catch for "project not initialized" / missing-input errors so
+        # every command gets a one-line message instead of a traceback.
         print(f"tesserae {argv[0]}: {exc}", file=sys.stderr)
         return 2
 
@@ -2011,7 +2182,7 @@ def _build_compile_parser() -> argparse.ArgumentParser:
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--changed-only", action="store_true", help="Skip unchanged files using .tesserae/manifest.json")
     parser.add_argument("--limit", type=int, help="Maximum number of changed files to process")
-    parser.add_argument("--strict", action="store_true", help="Exit non-zero when the byte-idempotence tripwire fires or the post-compile lint reports errors (default: report-only)")
+    parser.add_argument("--strict", action="store_true", help="Exit non-zero when the byte-idempotence tripwire fires or the post-compile lint reports problems (lint errors → exit 2, warnings → exit 1; default: report-only)")
     # Document extractor. Tesserae is an LLM wiki: 'llm' is the DEFAULT — it
     # builds the concept/claim layer via the configured provider (codex/claude/api
     # per llm_provider). 'deterministic' is the structural, key-free, byte-stable
@@ -2023,10 +2194,15 @@ def _build_compile_parser() -> argparse.ArgumentParser:
     parser.add_argument("--llm-include", action="append", default=None, help="Glob selecting files for --extractor selective-llm; repeat for several.")
     parser.add_argument("--llm-limit", type=int, default=None, help="Max files sent to the LLM under --extractor selective-llm.")
     # Deprecated Claude-specific aliases (kept hidden so 0.12.x invocations still
-    # parse). The timeout default is gone — extraction is no longer truncated.
+    # parse). --claude-timeout is a removed-flag stub — it was parsed but never
+    # read (extraction is no longer truncated).
     parser.add_argument("--claude-include", action="append", default=[], help=argparse.SUPPRESS)
     parser.add_argument("--claude-limit", type=int, help=argparse.SUPPRESS)
-    parser.add_argument("--claude-timeout", type=float, default=None, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--claude-timeout",
+        action=_RemovedFlagAction,
+        message="compile: --claude-timeout was removed (extraction is no longer truncated)",
+    )
     parser.add_argument("--claude-model", default=None, help=argparse.SUPPRESS)
     # NB: --claude-config-dir is already provided by the compile parser's LLM-client args.
     parser.add_argument(
@@ -2055,14 +2231,19 @@ def _build_context_parser() -> argparse.ArgumentParser:
         epilog=(
             "examples:\n"
             "  tesserae context \"how does compile work?\"\n"
-            "  tesserae context \"how does compile work?\" --budget 4000 --synthesize\n"
+            "  tesserae context \"how does compile work?\" --budget 4000 --llm\n"
         ),
     )
     parser.add_argument("query", nargs="?", default="", help="Query text to seed the context doc")
     parser.add_argument("--seeds", nargs="*", help="Explicit seed node IDs")
     parser.add_argument("--depth", type=int, default=2, help="PPR expansion depth (default: 2)")
     parser.add_argument("--budget", type=int, default=32_000, help="Character budget for the doc body (default: 32000; <=0 = uncapped)")
-    parser.add_argument("--synthesize", action="store_true", help="Add an LLM-synthesized summary (requires an LLM backend)")
+    parser.add_argument("--llm", dest="synthesize", action="store_true", help="Add an LLM-synthesized summary (requires an LLM backend)")
+    parser.add_argument(
+        "--synthesize",
+        action=_RemovedFlagAction,
+        message="context: --synthesize has moved → --llm",
+    )
     parser.add_argument("--multi-pool", dest="multi_pool", action="store_true", help="AgentRunbook multi-pool retrieval: decompose the query and reserve slots for Runbook/Gotcha/Event memory")
     parser.add_argument("--output", "-o", help="Write the doc to a file instead of stdout")
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
@@ -2073,7 +2254,9 @@ def _build_serve_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae serve",
         description="Browse the compiled site. Bare `serve` runs ALL registered projects "
-                    "under one server (Projects switcher in the header); --project serves one.",
+                    "under one server (Projects switcher in the header); --project serves one. "
+                    "The in-page /api/ask widget defaults to search-only for latency (unlike "
+                    "`tesserae ask`); a request opts into synthesis with payload {\"llm\": true}.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
@@ -2116,8 +2299,8 @@ def _build_engine_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--compile-slots",
         type=int,
-        default=1,
-        help="Fleet mode: max concurrent compiles across all projects (default 1).",
+        default=None,
+        help="Fleet mode: max concurrent compiles across all projects (requires --all; default 1).",
     )
     return parser
 
@@ -2130,12 +2313,17 @@ def _build_refresh_parser() -> argparse.ArgumentParser:
         epilog=(
             "examples:\n"
             "  tesserae refresh\n"
-            "  tesserae refresh --changed-only --skip-sessions\n"
+            "  tesserae refresh --changed-only --no-sessions\n"
         ),
     )
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--changed-only", action="store_true", default=False, help="Opt-in incremental compile (skip unchanged files); default is a full compile")
-    parser.add_argument("--skip-sessions", action="store_true", default=False, help="Opt-in skip of the slow harness-session discovery scan")
+    parser.add_argument("--no-sessions", dest="no_sessions", action="store_true", default=False, help="Opt-in skip of the slow harness-session discovery scan (matches `compile --no-sessions`)")
+    parser.add_argument(
+        "--skip-sessions",
+        action=_RemovedFlagAction,
+        message="refresh: --skip-sessions has moved → --no-sessions",
+    )
     return parser
 
 
@@ -2151,7 +2339,18 @@ def _build_status_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--json", dest="as_json", action="store_true", help="Emit the status as JSON instead of the aligned text block.")
     return parser
+
+
+def _count_imported_sessions(wiki) -> int:
+    """Cheap imported-session count from the harness_sessions manifest."""
+    manifest = Path(wiki.paths.harness_sessions) / "manifest.json"
+    try:
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+        return len(payload.get("sessions") or [])
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return 0
 
 
 def _handle_status(args: argparse.Namespace) -> int:
@@ -2176,6 +2375,20 @@ def _handle_status(args: argparse.Namespace) -> int:
         _dt.datetime.fromtimestamp(wiki.paths.graph.stat().st_mtime).isoformat(timespec="seconds")
         if wiki.paths.graph.exists() else "never"
     )
+    sessions_count = _count_imported_sessions(wiki)
+    if getattr(args, "as_json", False):
+        payload = {
+            "project": str(wiki.project_root),
+            "nodes": len(graph.nodes) if graph is not None else None,
+            "edges": len(graph.edges) if graph is not None else None,
+            "graph_corrupt": graph is None,
+            "sessions": sessions_count,
+            "last_compile": None if compiled == "never" else compiled,
+            "vault": str(wiki.effective_obsidian_vault()),
+            "site": str(wiki.paths.site),
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
     print(f"project:       {wiki.project_root}")
     if graph is None:
         print("nodes:         corrupt graph.json")
@@ -2183,6 +2396,7 @@ def _handle_status(args: argparse.Namespace) -> int:
     else:
         print(f"nodes:         {len(graph.nodes)}")
         print(f"edges:         {len(graph.edges)}")
+    print(f"sessions:      {sessions_count}")
     print(f"last compile:  {compiled}")
     print(f"vault:         {wiki.effective_obsidian_vault()}")
     print(f"site:          {wiki.paths.site}")
@@ -2201,7 +2415,7 @@ def _build_summary_parser() -> argparse.ArgumentParser:
             "  tesserae summary --week                # the last 7 days\n"
             "  tesserae summary --week 2026-07-04     # 7 days ending on that date\n"
             "  tesserae summary --since 2026-07-01 --until 2026-07-04\n"
-            "  tesserae summary --project my-repo --no-llm\n"
+            "  tesserae summary --name my-repo --no-llm\n"
         ),
     )
     parser.add_argument("--day", default=None, help="Single day YYYY-MM-DD (default: today).")
@@ -2215,10 +2429,16 @@ def _build_summary_parser() -> argparse.ArgumentParser:
     parser.add_argument("--since", default=None, help="Window start (ISO datetime/date).")
     parser.add_argument("--until", default=None, help="Window end (ISO datetime/date).")
     parser.add_argument(
-        "--project",
+        "--name",
         action="append",
         default=None,
-        help="Limit to a registered project by name; repeat for several. Omit = all registered.",
+        help="Limit to a registered project by name; repeat for several. "
+        "Unknown names error (exit 2). Omit = all registered.",
+    )
+    parser.add_argument(
+        "--project",
+        action=_RemovedFlagAction,
+        message="summary: --project has moved → --name <registered name>",
     )
     parser.add_argument(
         "--no-llm",
@@ -2245,10 +2465,18 @@ def _handle_summary(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     synthesize = not args.no_llm
-    result = build_summary(
-        windows, args.project, synthesize=synthesize, write=True,
-        turn_limit=args.max_turns or 100_000,
-    )
+    try:
+        result = build_summary(
+            windows, args.name, synthesize=synthesize, write=True,
+            # `is None` (not `or`): an explicit --max-turns 0 must mean 0,
+            # not silently fall back to the unbounded default.
+            turn_limit=args.max_turns if args.max_turns is not None else 100_000,
+        )
+    except ValueError as exc:
+        # Strict --name: a typo'd registered name errors instead of silently
+        # meaning "no projects" (see activity_summary._resolve_projects).
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     print(result.markdown)
     for path in result.paths:
         print(f"wrote {path}", file=sys.stderr)
@@ -2263,6 +2491,28 @@ def _handle_compile_paths_ingest(args: argparse.Namespace) -> int:
     (that would overwrite the ad-hoc graph). Backfills the attrs the legacy
     ingest handler reads with the old ingest parser's defaults.
     """
+    # Flags that only mean something on a FULL compile are rejected instead of
+    # silently ignored on the ad-hoc ingest path.
+    inapplicable = [
+        flag
+        for flag, is_set in (
+            ("--strict", getattr(args, "strict", False)),
+            ("--sessions/--no-sessions", getattr(args, "sessions_enabled", None) is not None),
+            ("--distill/--no-distill", getattr(args, "distill_enabled", None) is not None),
+            ("--refresh-integrations", getattr(args, "refresh_integrations", False)),
+        )
+        if is_set
+    ]
+    if inapplicable:
+        print(
+            f"compile <paths>: {'/'.join(inapplicable)} only apply to a full compile, "
+            "not ad-hoc path ingest",
+            file=sys.stderr,
+        )
+        return 2
+    # Per-run LLM backend flags (--llm-provider/--claude-config-dir/--codex-home)
+    # must reach the extractor here too, exactly like the full-compile path.
+    _apply_llm_cli_env(args)
     args.inputs = list(args.paths)
     # After the Task 8 flag diet the compile parser no longer defines these
     # (they moved to compile_options); the ad-hoc ingest path keeps the old
@@ -2342,6 +2592,9 @@ def _serve_fleet(args: argparse.Namespace) -> int:
 
     nav_projects: List[dict] = []
     links: List[tuple] = []
+    # --dry-run is hoisted ABOVE the per-project builds: report what would be
+    # served without triggering (potentially heavy) site builds.
+    dry_run = getattr(args, "dry_run", False)
     for entry in projects:
         root = Path(entry.get("root") or "").expanduser().resolve()
         try:
@@ -2350,7 +2603,7 @@ def _serve_fleet(args: argparse.Namespace) -> int:
             print(f"  skip {entry.get('name')}: {exc}", file=sys.stderr)
             continue
         index = wiki.paths.site / "index.html"
-        if not getattr(args, "no_build", False):
+        if not getattr(args, "no_build", False) and not dry_run:
             stale = (not index.exists()) or (
                 wiki.paths.graph.exists() and wiki.paths.graph.stat().st_mtime > index.stat().st_mtime
             )
@@ -2368,6 +2621,11 @@ def _serve_fleet(args: argparse.Namespace) -> int:
         print("No buildable project sites found (run `tesserae compile` for a project first).", file=sys.stderr)
         return 2
 
+    url = f"http://{args.host}:{args.port}/"
+    if dry_run:
+        print(f"Fleet site ready ({len(links)} project(s)) at {url}")
+        return 0
+
     # Per-process temp root holding ONLY the landing + projects.json. Project
     # sites are mapped by alias (no symlink tree), so the handler can enforce
     # containment and a stray `serve` can never clobber a fixed shared dir.
@@ -2378,12 +2636,6 @@ def _serve_fleet(args: argparse.Namespace) -> int:
     project_roots = {alias: root for alias, _site_dir, root in links}
     (served_root / "projects.json").write_text(json.dumps(nav_projects), encoding="utf-8")
     (served_root / "index.html").write_text(_fleet_landing_html(nav_projects), encoding="utf-8")
-
-    url = f"http://{args.host}:{args.port}/"
-    if getattr(args, "dry_run", False):
-        print(f"Fleet site ready ({len(links)} project(s)) at {url}")
-        shutil.rmtree(served_root, ignore_errors=True)
-        return 0
 
     class ReusableTCPServer(socketserver.TCPServer):
         allow_reuse_address = True
@@ -2409,10 +2661,17 @@ def _handle_serve(args: argparse.Namespace) -> int:
     """Serve all registered projects (bare `serve`) or one (`--project`).
 
     Fleet mode (no --project) auto-builds each project's site when stale, then
-    serves them under one server with a Projects switcher.
+    serves them under one server with a Projects switcher. An EMPTY registry
+    falls back to serving the current directory as a single project.
     """
     if getattr(args, "project", None) is None:
-        return _serve_fleet(args)
+        from .mcp_server import ProjectRegistry
+
+        if ProjectRegistry().list_projects().get("projects"):
+            return _serve_fleet(args)
+        # Empty registry: bare `serve` degrades to cwd single-project mode.
+        print("No projects registered — serving the current directory.", file=sys.stderr)
+        args.project = "."
     try:
         wiki = ProjectWiki.load(args.project)
     except FileNotFoundError:
@@ -2421,7 +2680,9 @@ def _handle_serve(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    if not getattr(args, "no_build", False):
+    # --dry-run is hoisted ABOVE the auto-build: it reports the URL without
+    # triggering a (potentially heavy) site build.
+    if not getattr(args, "no_build", False) and not getattr(args, "dry_run", False):
         index = wiki.paths.site / "index.html"
         reason = None
         if not index.exists():
@@ -2472,7 +2733,7 @@ def _build_decisions_parser() -> argparse.ArgumentParser:
             "  tesserae decisions --since 2026-06-30          # all projects since a date\n"
             "  tesserae decisions --day 2026-07-04\n"
             "  tesserae decisions --week                      # the last 7 days\n"
-            "  tesserae decisions --project my-repo --no-llm  # human decisions only\n"
+            "  tesserae decisions --name my-repo --no-llm     # human decisions only\n"
             "  tesserae decisions --since 2026-06-30 --json   # structured output\n"
         ),
     )
@@ -2487,10 +2748,16 @@ def _build_decisions_parser() -> argparse.ArgumentParser:
     parser.add_argument("--since", default=None, help="Window start (ISO datetime/date).")
     parser.add_argument("--until", default=None, help="Window end (ISO datetime/date).")
     parser.add_argument(
-        "--project",
+        "--name",
         action="append",
         default=None,
-        help="Limit to a registered project by name; repeat for several. Omit = all registered.",
+        help="Limit to a registered project by name; repeat for several. "
+        "Unknown names error (exit 2). Omit = all registered.",
+    )
+    parser.add_argument(
+        "--project",
+        action=_RemovedFlagAction,
+        message="decisions: --project has moved → --name <registered name>",
     )
     parser.add_argument(
         "--no-llm",
@@ -2524,10 +2791,17 @@ def _handle_decisions(args: argparse.Namespace) -> int:
         return 2
     from .decisions import gather_decisions, render_decisions
 
-    decisions = gather_decisions(
-        windows, args.project, include_agent=not args.no_llm,
-        turn_limit=args.max_turns or 100_000,
-    )
+    try:
+        decisions = gather_decisions(
+            windows, args.name, include_agent=not args.no_llm,
+            # `is None` (not `or`): an explicit --max-turns 0 must mean 0.
+            turn_limit=args.max_turns if args.max_turns is not None else 100_000,
+        )
+    except ValueError as exc:
+        # Strict --name: a typo'd registered name errors instead of silently
+        # meaning "no projects" (see activity_summary._resolve_projects).
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     if args.as_json:
         print(
             json.dumps(
@@ -2574,14 +2848,17 @@ def _route_ask(rest: List[str]) -> int:
 
 
 def _build_init_parser() -> argparse.ArgumentParser:
-    """The dieted `tesserae init` parser: EXACTLY 8 flags.
+    """The dieted `tesserae init` parser: EXACTLY 11 flags.
 
     `tesserae init` runs the setup wizard by default; `--yes` accepts detected
     defaults non-interactively; `--bare` skips the wizard entirely and writes a
     minimal workspace (the old `project init`). The ~21 other legacy `setup`
     flags (``--source-kind`` and the integration toggles) become wizard prompts
     and/or documented config.json keys — they are NOT surfaced here. The legacy
-    `project init` / `init` parsers keep their own full flag sets.
+    `project init` / `init` parsers keep their own full flag sets. The LLM
+    client surface (provider / claude dir / codex home / model / base_url /
+    api_key) IS here — init is the single onboarding step, so every runtime
+    ``llm_*`` config key must be settable from it.
     """
     parser = argparse.ArgumentParser(
         prog="tesserae init",
@@ -2600,6 +2877,9 @@ def _build_init_parser() -> argparse.ArgumentParser:
     parser.add_argument("--yes", action="store_true", help="Accept detected defaults non-interactively (all optional integrations OFF)")
     parser.add_argument("--bare", action="store_true", help="Skip the wizard; write a minimal workspace (the old `project init`)")
     _add_llm_client_args(parser, persisted=True)
+    parser.add_argument("--llm-model", default=None, help="Model for the synthesis/insights LLM client (persisted into config.json as llm_model)")
+    parser.add_argument("--llm-base-url", default=None, help="Claude-compatible endpoint base URL for --llm-provider anthropic/custom (persisted as llm_base_url)")
+    parser.add_argument("--llm-api-key", default=None, help="API key for --llm-provider anthropic/custom (persisted in PLAINTEXT config.json as llm_api_key; prefer ANTHROPIC_API_KEY)")
     return parser
 
 
@@ -2621,7 +2901,7 @@ def _backfill_setup_defaults(args: argparse.Namespace) -> None:
     d.setdefault("understand_anything_platform", "codex")
     d.setdefault("raganything_parser", "mineru")
     d.setdefault("raganything_extras", "all")
-    d.setdefault("cognee_mode", "codex_cognify")
+    d.setdefault("cognee_mode", "cognify")
     # --yes default: cognee OFF (this is exactly what CI's `--no-cognee` encoded).
     d.setdefault("no_cognee", True)
     # --yes default: raganything OFF (CI's `--skip-raganything`; never `--with-raganything`).
@@ -2649,9 +2929,11 @@ def _backfill_bare_init_defaults(args: argparse.Namespace) -> None:
     `_handle_init` reads ``args.source_kind`` (and ``args.source`` /
     ``args.name`` / the LLM attrs, which the dieted init parser already
     supplies). Only ``source_kind`` is missing from the diet — backfill it with
-    the legacy `project init` default.
+    ``Repository``, the SAME default the ``--yes`` path uses (the legacy
+    ``project init`` default of ``SourceDocument`` made `--bare` and `--yes`
+    disagree about what kind of project they were initializing).
     """
-    args.__dict__.setdefault("source_kind", "SourceDocument")
+    args.__dict__.setdefault("source_kind", "Repository")
 
 
 def _handle_init_v2(args: argparse.Namespace) -> int:
@@ -2759,6 +3041,22 @@ def _handle_sessions_prune_internal(args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_sessions_chunk_backfill(args: argparse.Namespace) -> int:
+    """Backfill the daily session-chunk store from existing transcripts."""
+    from .session_chunks import backfill
+
+    wiki = ProjectWiki.load(args.project)
+    result = backfill(wiki.project_root, since=args.since)
+    if result.skipped:
+        print(f"chunk-backfill skipped: {result.reason}")
+        return 0
+    print(
+        f"chunk-backfill: inserted={result.turns_inserted} turn(s), "
+        f"covered={result.days_covered} day(s) db={wiki.paths.session_chunks}"
+    )
+    return 0
+
+
 def _build_sessions_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae sessions",
@@ -2798,6 +3096,7 @@ def _build_sessions_parser() -> argparse.ArgumentParser:
     p_discover.set_defaults(_handler="_handle_sessions_discover")
     p_list = sub.add_parser("list", help="List normalized harness sessions for this project")
     p_list.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_list.add_argument("--json", dest="as_json", action="store_true", help="Emit the session list as JSON.")
     p_list.set_defaults(_handler="_handle_sessions_list")
     p_prune = sub.add_parser(
         "prune-internal",
@@ -2805,6 +3104,13 @@ def _build_sessions_parser() -> argparse.ArgumentParser:
     )
     p_prune.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     p_prune.set_defaults(_handler="_handle_sessions_prune_internal")
+    p_chunk = sub.add_parser(
+        "chunk-backfill",
+        help="Backfill the daily session-chunk store (.tesserae/session_chunks.db) from existing transcripts",
+    )
+    p_chunk.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_chunk.add_argument("--since", default=None, help="Earliest day to backfill (YYYY-MM-DD); defaults to full history")
+    p_chunk.set_defaults(_handler="_handle_sessions_chunk_backfill")
     return parser
 
 
@@ -2820,8 +3126,38 @@ def _handle_vault_sync(args: argparse.Namespace) -> int:
 
 
 def _handle_vault_prune(args: argparse.Namespace) -> int:
-    """`vault prune` = `obsidian-sync --prune-orphans` preset."""
+    """`vault prune` = `obsidian-sync --prune-orphans` preset.
+
+    ``--dry-run`` takes a dedicated preview path (NOT the sync overlay
+    dry-run): list the orphan pages that would be deleted, touch nothing —
+    no deletions, no snapshot refresh.
+    """
     args.prune_orphans = True
+    if getattr(args, "dry_run", False):
+        from .vault_pull import prune_orphan_pages
+
+        wiki = ProjectWiki.load(args.project)
+        if not wiki.paths.graph.is_file():
+            print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
+            return 2
+        graph = _load_graph_file(wiki.paths.graph)
+        vault = wiki.effective_obsidian_vault()
+        result = prune_orphan_pages(
+            vault, graph, force=args.force_prune_with_notes, dry_run=True
+        )
+        print(f"dry-run: would prune {len(result.deleted)} orphan page(s)")
+        for p in result.deleted[:20]:
+            print(f"  - {p.relative_to(vault)}")
+        if len(result.deleted) > 20:
+            print(f"  ... and {len(result.deleted) - 20} more")
+        if result.skipped_with_user_notes:
+            print(
+                f"  would keep {len(result.skipped_with_user_notes)} orphan(s) with "
+                "user-notes content (pass --force-prune-with-notes to include them)"
+            )
+        return 0
+    # dry_run stays False here so the sync overlay dry-run branch is not taken.
+    args.dry_run = False
     return _handle_obsidian_sync(args)
 
 
@@ -2861,7 +3197,12 @@ def _build_vault_parser() -> argparse.ArgumentParser:
         p.add_argument("--project", default=".", help="Project root; defaults to cwd")
         p.add_argument("--watch", action="store_true", help="Run a long-lived poll loop that re-applies the overlay every time the vault changes. Press Ctrl-C to stop.")
         p.add_argument("--dry-run", action="store_true", help="Compute the overlay diff and write .tesserae/diverged-fields.md, but DON'T apply changes to the graph or re-project. Useful for previewing what a compile would do.")
-        p.add_argument("--poll-interval", type=float, default=1.5, help="Watch-mode poll interval in seconds (default: 1.5).")
+        p.add_argument("--interval", dest="poll_interval", type=float, default=1.5, help="Watch-mode poll interval in seconds (default: 1.5; matches `engine --interval`).")
+        p.add_argument(
+            "--poll-interval",
+            action=_RemovedFlagAction,
+            message="vault: --poll-interval has moved → --interval",
+        )
         p.add_argument("--vault", type=str, default=None, help="Override the configured Obsidian vault directory for this call.")
         p.add_argument("--persist-vault", action="store_true", help="When passed with --vault, writes the path to .tesserae/config.json under obsidian.vault_path.")
         p.add_argument("--prune-orphans", action="store_true", help="Delete projected pages in the vault whose node_id no longer exists in the current graph.")
@@ -2885,15 +3226,21 @@ def _build_vault_parser() -> argparse.ArgumentParser:
     p_prune = sub.add_parser("prune", help="Delete projected pages whose node_id no longer exists in the graph (preset of `sync --prune-orphans`).")
     p_prune.add_argument("--project", default=".", help="Project root; defaults to cwd")
     p_prune.add_argument("--force-prune-with-notes", action="store_true", help="Also delete orphan pages that have user-notes content.")
+    p_prune.add_argument("--dry-run", action="store_true", help="List the orphan pages that would be deleted; delete nothing.")
     p_prune.set_defaults(
         _handler="_handle_vault_prune",
-        watch=False, dry_run=False, poll_interval=1.5, vault=None,
+        watch=False, poll_interval=1.5, vault=None,
         persist_vault=False, prune_orphans=True,
     )
 
     p_export = sub.add_parser("export", help="Export the compiled graph as an Obsidian vault")
     p_export.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    p_export.add_argument("--vault", help="Vault output directory; defaults to .tesserae/obsidian_vault")
+    p_export.add_argument("--output", help="Vault output directory; defaults to .tesserae/obsidian_vault")
+    p_export.add_argument(
+        "--vault",
+        action=_RemovedFlagAction,
+        message="vault export: --vault has moved → --output",
+    )
     p_export.set_defaults(_handler="_handle_vault_export")
 
     p_set_root = sub.add_parser("set-root", help="Set the registry-wide Obsidian vault root.")
@@ -2902,7 +3249,12 @@ def _build_vault_parser() -> argparse.ArgumentParser:
     p_set_root.set_defaults(_handler="_handle_vault_set_root")
 
     p_sync_all = sub.add_parser("sync-all", help="Run an obsidian-sync --watch loop for every registered project (one thread per project).")
-    p_sync_all.add_argument("--poll-interval", type=float, default=1.5, help="Per-watcher poll interval in seconds (default: 1.5).")
+    p_sync_all.add_argument("--interval", dest="poll_interval", type=float, default=1.5, help="Per-watcher poll interval in seconds (default: 1.5; matches `engine --interval`).")
+    p_sync_all.add_argument(
+        "--poll-interval",
+        action=_RemovedFlagAction,
+        message="vault: --poll-interval has moved → --interval",
+    )
     p_sync_all.add_argument("--prune-orphans", action="store_true", help="Prune stale projected pages in every project's vault before starting watchers.")
     p_sync_all.add_argument("--force-prune-with-notes", action="store_true", help="With --prune-orphans, also delete orphans with user-notes content.")
     p_sync_all.add_argument("--no-watch", action="store_true", help="Run prune-only (requires --prune-orphans); skip the watch phase.")
@@ -2922,17 +3274,79 @@ def _handle_export_harness(args: argparse.Namespace) -> int:
 
 
 def _handle_export_graphiti_cmd(args: argparse.Namespace) -> int:
-    """`export graphiti` = old `export-graphiti`; `--sync` → old `sync-graphiti`."""
+    """`export graphiti` = old `export-graphiti`; `--sync` → old `sync-graphiti`.
+
+    Mode-mismatch flags error instead of being silently ignored: the Neo4j
+    connection flags and --dry-run only mean something under --sync, while
+    --output only applies to the JSONL export.
+    """
+    import os as _os
+
     if getattr(args, "sync", False):
+        if getattr(args, "output", None):
+            print(
+                "export graphiti: --output only applies to the JSONL export; "
+                "--sync writes to Neo4j",
+                file=sys.stderr,
+            )
+            return 2
+        # Fill connection defaults; NEO4J_PASSWORD env beats the built-in default.
+        args.neo4j_uri = args.neo4j_uri or "bolt://localhost:7687"
+        args.neo4j_user = args.neo4j_user or "neo4j"
+        args.neo4j_password = (
+            args.neo4j_password or _os.environ.get("NEO4J_PASSWORD") or "password"
+        )
         return _handle_sync_graphiti(args)
+    set_sync_flags = [
+        flag
+        for flag, value in (
+            ("--neo4j-uri", args.neo4j_uri),
+            ("--neo4j-user", args.neo4j_user),
+            ("--neo4j-password", args.neo4j_password),
+            ("--dry-run", getattr(args, "dry_run", False) or None),
+        )
+        if value
+    ]
+    if set_sync_flags:
+        print(
+            f"export graphiti: {'/'.join(set_sync_flags)} "
+            f"{'requires' if len(set_sync_flags) == 1 else 'require'} --sync",
+            file=sys.stderr,
+        )
+        return 2
     return _handle_export_graphiti(args)
 
 
 def _handle_export_site(args: argparse.Namespace) -> int:
     """`export site` = old `build-site`; `--deploy` → old `deploy`, `--watch` → old `watch`."""
-    if getattr(args, "deploy", False):
+    deploy = getattr(args, "deploy", False)
+    watch = getattr(args, "watch", False)
+    if deploy and watch:
+        print("export site: --deploy and --watch are mutually exclusive", file=sys.stderr)
+        return 2
+    if (deploy or watch) and getattr(args, "output", None):
+        # Deploy/watch operate on the project's configured site path; a custom
+        # --output would be silently ignored — reject instead.
+        print(
+            "export site: --output only applies to a plain build; "
+            "--deploy/--watch use the project's .tesserae/site",
+            file=sys.stderr,
+        )
+        return 2
+    if deploy:
+        if not getattr(args, "build", False):
+            # Auto-build when the site is missing or older than the graph, so
+            # `export site --deploy` never publishes a stale site by accident.
+            wiki = ProjectWiki.load(args.project)
+            index = wiki.paths.site / "index.html"
+            stale = (not index.exists()) or (
+                wiki.paths.graph.exists() and wiki.paths.graph.stat().st_mtime > index.stat().st_mtime
+            )
+            if stale:
+                print("building site first (stale) …")
+                wiki.build_site()
         return _handle_deploy(args)
-    if getattr(args, "watch", False):
+    if watch:
         return _handle_watch(args)
     return _handle_build_site(args)
 
@@ -2989,9 +3403,9 @@ def _build_export_parser() -> argparse.ArgumentParser:
     p_graphiti.add_argument("--group-id", help="Graphiti group_id; defaults to project wiki name")
     p_graphiti.add_argument("--output", help="Episode JSONL output path; defaults to .tesserae/graphiti_episodes.jsonl")
     p_graphiti.add_argument("--sync", action="store_true", help="Sync episodes into Graphiti/Neo4j instead of writing JSONL")
-    p_graphiti.add_argument("--neo4j-uri", default="bolt://localhost:7687", help="Neo4j URI for Graphiti (--sync)")
-    p_graphiti.add_argument("--neo4j-user", default="neo4j", help="Neo4j username (--sync)")
-    p_graphiti.add_argument("--neo4j-password", default="password", help="Neo4j password (--sync)")
+    p_graphiti.add_argument("--neo4j-uri", default=None, help="Neo4j URI for Graphiti (--sync; default: bolt://localhost:7687)")
+    p_graphiti.add_argument("--neo4j-user", default=None, help="Neo4j username (--sync; default: neo4j)")
+    p_graphiti.add_argument("--neo4j-password", default=None, help="Neo4j password (--sync; default: $NEO4J_PASSWORD, then 'password')")
     p_graphiti.add_argument("--dry-run", action="store_true", help="Count episodes without requiring Graphiti or Neo4j (--sync)")
     p_graphiti.set_defaults(_handler="_handle_export_graphiti_cmd")
 
@@ -3116,8 +3530,19 @@ def _build_ingest_parser() -> argparse.ArgumentParser:
     parser.add_argument("inputs", nargs="+", help="File path(s) or http(s) URL(s) to ingest")
     parser.add_argument("--project", default=".", help="Project root directory")
     parser.add_argument("--title", default=None, help="Title override (useful for URLs)")
-    parser.add_argument("--source-kind", default=None, help="Override source classification")
-    parser.add_argument("--exact", action="store_true", help="Force a full recompile (skip the fast path)")
+    parser.add_argument(
+        "--source-kind",
+        choices=["Paper", "Repository", "ResearchDigest", "SourceDocument"],
+        default=None,
+        help="Override source classification (exact: 'Paper'/'Repository'/'ResearchDigest' map "
+        "directly to that node type; 'SourceDocument' keeps path-based detection)",
+    )
+    parser.add_argument("--full", action="store_true", help="Force a full recompile (skip the fast path); matches `integrations refresh --full`")
+    parser.add_argument(
+        "--exact",
+        action=_RemovedFlagAction,
+        message="ingest: --exact was renamed --full",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Fetch + report, write no graph")
     parser.set_defaults(_handler="_handle_ingest_docs")
     return parser
@@ -3130,7 +3555,7 @@ def _handle_ingest_docs(args: argparse.Namespace) -> int:
         args.inputs,
         source_kind=args.source_kind,
         title=args.title,
-        exact=args.exact,
+        exact=args.full,
         dry_run=getattr(args, "dry_run", False),
     )
     print(
@@ -3209,19 +3634,30 @@ def _handle_config_status(args: argparse.Namespace) -> int:
         print(f"  codex_home : {home}   [{_source('llm_codex_home', 'CODEX_HOME')}]")
         effort = settings.get("codex_reasoning_effort") or "medium"
         print(f"  effort     : {effort}   [{_source('llm_codex_reasoning_effort', 'TESSERAE_CODEX_REASONING_EFFORT')}]")
+    elif provider in ("anthropic", "custom"):
+        # API-key providers: no CLI dirs — show the endpoint knobs instead.
+        model = settings.get("model") or "<provider default>"
+        print(f"  model      : {model}   [{_source('llm_model', 'TESSERAE_LLM_MODEL')}]")
+        base_url = settings.get("base_url") or "<api default>"
+        print(f"  base_url   : {base_url}   [{_source('llm_base_url', 'ANTHROPIC_BASE_URL')}]")
+        # NEVER print the key itself — only whether one is resolved.
+        key_state = "set" if settings.get("api_key") else "unset"
+        print(f"  api_key    : {key_state}   [{_source('llm_api_key', 'ANTHROPIC_API_KEY')}]")
     else:
         dirs = settings["claude_config_dirs"] or ["<CLI default>"]
         print(f"  claude_dirs: {dirs}   [{_source('llm_claude_config_dirs', 'CLAUDE_CONFIG_DIR')}]")
+    if provider not in ("anthropic", "custom") and settings.get("model"):
+        print(f"  model      : {settings['model']}   [{_source('llm_model', 'TESSERAE_LLM_MODEL')}]")
 
     # Machine-wide (non-LLM) settings + optional dependency status — the rest of
-    # what `config setup` manages, so `status` is a full picture, not LLM-only.
+    # what `tesserae setup` manages, so `status` is a full picture, not LLM-only.
     backends = global_cfg.get("memory_backends") if isinstance(global_cfg.get("memory_backends"), dict) else {}
     cognee = backends.get("cognee") if isinstance(backends.get("cognee"), dict) else {}
     print("\nMachine-wide settings (~/.tesserae/config.json):")
     if cognee.get("enabled"):
-        print(f"  cognee     : enabled (mode={cognee.get('mode') or 'codex_cognify'})")
+        print(f"  cognee     : enabled (mode={cognee.get('mode') or 'cognify'})")
     else:
-        print("  cognee     : disabled   [enable: tesserae config setup --enable-cognee]")
+        print("  cognee     : disabled   [enable: tesserae setup --enable-cognee]")
 
     from .deps import status as _dep_status
 
@@ -3237,6 +3673,9 @@ def _handle_config_status(args: argparse.Namespace) -> int:
         provider=provider,
         codex_home=settings["codex_home"],
         claude_config_dirs=settings["claude_config_dirs"],
+        model=settings.get("model"),
+        base_url=settings.get("base_url"),
+        api_key=settings.get("api_key"),
     )
     if client is None:
         print("  liveness   : ✗ no client could be built (CLI missing / not configured)")
@@ -3264,7 +3703,11 @@ def _handle_config_status(args: argparse.Namespace) -> int:
 def _build_config_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae config",
-        description="LLM backend: llm (set machine-wide defaults) | show | status (resolved view + liveness).",
+        description=(
+            "Machine-wide config: llm (set LLM defaults) | deps (optional dependencies) | "
+            "show (effective defaults) | status (resolved view + liveness) | clip-token "
+            "(/api/clip auth). (`config setup` moved → `tesserae setup`.)"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
@@ -3284,10 +3727,13 @@ def _build_config_parser() -> argparse.ArgumentParser:
             "  tesserae config llm --llm-provider claude --claude-config-dir ~/.claude-personal2\n"
         ),
     )
-    p_llm.add_argument("--llm-provider", choices=["claude", "codex"], default=None, help="Default CLI backend for the synthesis/insights LLM client on this machine")
+    p_llm.add_argument("--llm-provider", choices=["claude", "codex", "anthropic", "custom"], default=None, help="Default backend for the synthesis/insights LLM client on this machine")
     p_llm.add_argument("--claude-config-dir", action="append", default=[], help="Default Claude CLI config directory; repeat for fallback accounts")
     p_llm.add_argument("--codex-home", default=None, help="Default Codex CLI home (e.g. ~/.codex-personal1)")
     p_llm.add_argument("--reasoning-effort", choices=["low", "medium", "high", "xhigh"], default=None, help="Default codex reasoning effort for Tesserae's own LLM calls")
+    p_llm.add_argument("--llm-model", default=None, help="Default model for the synthesis LLM client (llm_model)")
+    p_llm.add_argument("--llm-base-url", default=None, help="Claude-compatible endpoint base URL for anthropic/custom (llm_base_url)")
+    p_llm.add_argument("--llm-api-key", default=None, help="API key for anthropic/custom (stored in PLAINTEXT ~/.tesserae/config.json; prefer ANTHROPIC_API_KEY)")
     p_llm.set_defaults(_handler="_handle_config_llm")
 
     p_deps = sub.add_parser(
@@ -3305,27 +3751,8 @@ def _build_config_parser() -> argparse.ArgumentParser:
     p_deps.add_argument("--all", action="store_true", help="Install every known optional dependency")
     p_deps.set_defaults(_handler="_handle_config_deps")
 
-    p_setup = sub.add_parser(
-        "setup",
-        help="Machine-wide setup: set LLM defaults for ALL projects and install optional dependencies in one shot.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "examples:\n"
-            "  tesserae config setup                                  # show current config + deps\n"
-            "  tesserae config setup --llm-provider codex --reasoning-effort medium\n"
-            "  tesserae config setup --llm-provider codex --install all\n"
-        ),
-    )
-    p_setup.add_argument("--llm-provider", choices=["claude", "codex"], default=None, help="Machine-wide default LLM backend")
-    p_setup.add_argument("--claude-config-dir", action="append", default=[], help="Default Claude CLI config dir; repeat for fallbacks")
-    p_setup.add_argument("--codex-home", default=None, help="Default Codex CLI home")
-    p_setup.add_argument("--reasoning-effort", choices=["low", "medium", "high", "xhigh"], default=None, help="Default codex reasoning effort")
-    p_setup.add_argument("--install", action="append", default=[], metavar="NAME", help="Dependency to install (memex, cognee, raganything, understand-anything, or 'all'); repeat")
-    p_setup.add_argument("--install-all", action="store_true", help="Install every known optional dependency")
-    p_setup.add_argument("--enable-cognee", action="store_true", help="Enable the cognee cognify pass for ALL projects (writes memory_backends.cognee to the machine-wide config)")
-    p_setup.add_argument("--cognee-mode", choices=["add", "cognify", "codex_cognify"], default="codex_cognify", help="cognee mode when --enable-cognee (default: codex_cognify — uses codex, no extra API key)")
-    p_setup.add_argument("-y", "--yes", action="store_true", help="Non-interactive: apply the flags as given without prompting")
-    p_setup.set_defaults(_handler="_handle_setup_machine")
+    # `config setup` was removed — the MOVED_COMMANDS stub in cli_tree.py
+    # prints "tesserae config setup has moved → tesserae setup" (exit 2).
 
     p_show = sub.add_parser("show", help="Print the effective machine-wide LLM defaults and exit.")
     p_show.set_defaults(_handler="_handle_config_show")
@@ -3341,7 +3768,7 @@ def _build_config_parser() -> argparse.ArgumentParser:
             "  tesserae config status --no-ping       # skip the live call\n"
         ),
     )
-    p_status.add_argument("--project", default=None, help="Resolve as a specific project sees it (reads its .tesserae/config.json).")
+    p_status.add_argument("--project", default=".", help="Resolve as a specific project sees it (reads its .tesserae/config.json); defaults to the current directory.")
     p_status.add_argument("--no-ping", dest="ping", action="store_false", default=True, help="Skip the live backend ping (don't spend an LLM call).")
     p_status.set_defaults(_handler="_handle_config_status")
 
@@ -3487,14 +3914,16 @@ def _setup_wants_interactive(args: argparse.Namespace) -> bool:
     """Interactive when on a TTY with no actionable flags and not --yes — so a
     bare `tesserae setup` prompts (like the init wizard) instead of dumping status.
 
-    Only the top-level `tesserae setup` opts in (``_interactive_default``); the
-    `config setup` alias keeps its legacy no-op = show-status behavior."""
+    Only the top-level `tesserae setup` opts in (``_interactive_default``);
+    the old `config setup` alias is a moved-command stub now."""
     if not getattr(args, "_interactive_default", False):
         return False
     explicit = bool(
         args.llm_provider or args.claude_config_dir or args.codex_home
         or args.reasoning_effort or args.install or getattr(args, "install_all", False)
         or getattr(args, "enable_cognee", False)
+        or getattr(args, "llm_model", None) or getattr(args, "llm_base_url", None)
+        or getattr(args, "llm_api_key", None)
     )
     return (
         sys.stdin.isatty() and sys.stdout.isatty()
@@ -3513,7 +3942,7 @@ def _setup_interactive_fill(args: argparse.Namespace) -> bool:
     current = _lj._load_global_llm_config()
     print("Tesserae setup — machine-wide LLM defaults + optional dependencies.\n")
     args.llm_provider = Prompt.ask(
-        "LLM provider", choices=["codex", "claude"],
+        "LLM provider", choices=["codex", "claude", "anthropic", "custom"],
         default=current.get("llm_provider") or "codex",
     )
     if args.llm_provider == "codex":
@@ -3521,6 +3950,24 @@ def _setup_interactive_fill(args: argparse.Namespace) -> bool:
             "Codex reasoning effort", choices=["low", "medium", "high", "xhigh"],
             default=current.get("llm_codex_reasoning_effort") or "medium",
         )
+    if args.llm_provider == "custom":
+        args.llm_base_url = Prompt.ask(
+            "Base URL (claude-compatible endpoint)",
+            default=current.get("llm_base_url") or "",
+        ) or None
+        args.llm_api_key = Prompt.ask(
+            "API key (stored in plaintext config; blank = use ANTHROPIC_API_KEY env)",
+            default="",
+            password=True,
+        ) or None
+        args.llm_model = Prompt.ask(
+            "Model name", default=current.get("llm_model") or "",
+        ) or None
+    elif args.llm_provider == "anthropic":
+        args.llm_model = Prompt.ask(
+            "Model name (blank = provider default)",
+            default=current.get("llm_model") or "",
+        ) or None
 
     installed = {d["name"]: d["installed"] for d in deps.status()}
     recommended = {"memex": True, "cognee": True, "understand-anything": True, "raganything": False}
@@ -3541,8 +3988,8 @@ def _setup_interactive_fill(args: argparse.Namespace) -> bool:
 
 
 def _handle_setup_machine(args: argparse.Namespace) -> int:
-    """`tesserae setup` (and the `config setup` alias) — machine-wide LLM defaults
-    + optional deps. Interactive by default on a TTY; flags or --yes skip the prompts."""
+    """`tesserae setup` — machine-wide LLM defaults + optional deps.
+    Interactive by default on a TTY; flags or --yes skip the prompts."""
     if _setup_wants_interactive(args):
         try:
             if not _setup_interactive_fill(args):
@@ -3555,7 +4002,8 @@ def _handle_setup_machine(args: argparse.Namespace) -> int:
 
 
 def _handle_config_setup(args: argparse.Namespace) -> int:
-    """`config setup` — one-shot machine-wide setup: LLM defaults + dep installs."""
+    """One-shot machine-wide setup: LLM defaults + dep installs (the body of
+    `tesserae setup`; the old `config setup` spelling is a moved stub)."""
     import tesserae.llm_json as _lj
     from . import deps
 
@@ -3567,7 +4015,11 @@ def _handle_config_setup(args: argparse.Namespace) -> int:
         print(f"Unknown dependency: {', '.join(unknown)} (known: {', '.join(deps.DEP_NAMES)})", file=sys.stderr)
         return 2
 
-    wrote_llm = bool(args.llm_provider or args.claude_config_dir or args.codex_home or args.reasoning_effort)
+    llm_model = getattr(args, "llm_model", None)
+    llm_base_url = getattr(args, "llm_base_url", None)
+    llm_api_key = getattr(args, "llm_api_key", None)
+    wrote_llm = bool(args.llm_provider or args.claude_config_dir or args.codex_home
+                     or args.reasoning_effort or llm_model or llm_base_url or llm_api_key)
     enable_cognee = bool(getattr(args, "enable_cognee", False))
     if wrote_llm or enable_cognee:
         merged = _merge_global_llm_config(
@@ -3576,6 +4028,9 @@ def _handle_config_setup(args: argparse.Namespace) -> int:
             claude_config_dirs=args.claude_config_dir,
             codex_home=args.codex_home,
             reasoning_effort=args.reasoning_effort,
+            model=llm_model,
+            base_url=llm_base_url,
+            api_key=llm_api_key,
         )
         wrote = []
         if wrote_llm:
@@ -3589,6 +4044,12 @@ def _handle_config_setup(args: argparse.Namespace) -> int:
             merged["memory_backends"] = backends
             wrote.append(f"cognee ({args.cognee_mode}) enabled for all projects")
         _write_global_config(_lj.GLOBAL_CONFIG_PATH, merged)
+        if llm_api_key:
+            print(
+                f"warning: llm_api_key is stored in plaintext in {_lj.GLOBAL_CONFIG_PATH}; "
+                "prefer the ANTHROPIC_API_KEY environment variable",
+                file=sys.stderr,
+            )
         print(f"Saved machine-wide config to {_lj.GLOBAL_CONFIG_PATH}: {', '.join(wrote)}.")
 
     rc = _install_deps(targets) if targets else 0
@@ -3610,7 +4071,7 @@ def _route_config(rest: List[str]) -> int:
     return _resolve_handler(args._handler)(args)
 
 
-# ----- setup (top-level alias for `config setup`, interactive by default) ----
+# ----- setup (machine-wide, interactive by default) --------------------------
 def _build_setup_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae setup",
@@ -3624,14 +4085,17 @@ def _build_setup_parser() -> argparse.ArgumentParser:
             "  tesserae setup --llm-provider codex --reasoning-effort medium --install all\n"
         ),
     )
-    parser.add_argument("--llm-provider", choices=["claude", "codex"], default=None, help="Machine-wide default LLM backend")
+    parser.add_argument("--llm-provider", choices=["claude", "codex", "anthropic", "custom"], default=None, help="Machine-wide default LLM backend")
     parser.add_argument("--claude-config-dir", action="append", default=[], help="Default Claude CLI config dir; repeat for fallbacks")
     parser.add_argument("--codex-home", default=None, help="Default Codex CLI home")
     parser.add_argument("--reasoning-effort", choices=["low", "medium", "high", "xhigh"], default=None, help="Default codex reasoning effort")
+    parser.add_argument("--llm-model", default=None, help="Machine-wide default model for the synthesis LLM client (llm_model)")
+    parser.add_argument("--llm-base-url", default=None, help="Claude-compatible endpoint base URL for anthropic/custom (llm_base_url)")
+    parser.add_argument("--llm-api-key", default=None, help="API key for anthropic/custom (stored in PLAINTEXT ~/.tesserae/config.json; prefer ANTHROPIC_API_KEY)")
     parser.add_argument("--install", action="append", default=[], metavar="NAME", help="Dependency to install (memex, cognee, raganything, understand-anything, or 'all'); repeat")
     parser.add_argument("--install-all", action="store_true", help="Install every known optional dependency")
     parser.add_argument("--enable-cognee", action="store_true", help="Enable the cognee cognify pass for ALL projects")
-    parser.add_argument("--cognee-mode", choices=["add", "cognify", "codex_cognify"], default="codex_cognify", help="cognee mode when --enable-cognee")
+    parser.add_argument("--cognee-mode", choices=["add", "cognify"], default="cognify", help="cognee mode when --enable-cognee")
     parser.add_argument("-y", "--yes", action="store_true", help="Non-interactive: apply the flags as given without prompting")
     parser.set_defaults(_handler="_handle_setup_machine", _interactive_default=True)
     return parser
@@ -3658,10 +4122,9 @@ def _handle_projects_register(args: argparse.Namespace) -> int:
         from .project import ProjectWiki
 
         ProjectWiki.init(candidate, name=args.name)
-        alias = args.name or candidate.name
         print(
             f"{candidate} was not a Tesserae project — initialized .tesserae/ "
-            f"(run `tesserae compile --project {alias}` to populate the graph)."
+            f"(run `tesserae compile --project {candidate}` to populate the graph)."
         )
     args.wiki_command = "register"
     return _wiki_command_handler(args)
@@ -3673,6 +4136,20 @@ def _handle_projects_list(args: argparse.Namespace) -> int:
 
 
 def _handle_projects_unregister(args: argparse.Namespace) -> int:
+    # Convenience: accept a project PATH as well as the registered alias —
+    # resolve it against the registry before delegating.
+    from .mcp_server import ProjectRegistry
+
+    registry = ProjectRegistry()
+    entries = list(registry.iter_registered_projects())
+    if args.name not in {alias for alias, _root in entries}:
+        candidate = Path(args.name).expanduser()
+        if candidate.exists() or "/" in args.name:
+            resolved = candidate.resolve()
+            for alias, root in entries:
+                if Path(root).expanduser().resolve() == resolved:
+                    args.name = alias
+                    break
     args.wiki_command = "unregister"
     return _wiki_command_handler(args)
 
@@ -3713,8 +4190,8 @@ def _build_projects_parser() -> argparse.ArgumentParser:
     p_list.add_argument("--json", dest="wiki_list_json", action="store_true", help="Emit the registry payload as JSON.")
     p_list.set_defaults(_handler="_handle_projects_list")
 
-    p_unregister = sub.add_parser("unregister", help="Remove a project from the registry.")
-    p_unregister.add_argument("name")
+    p_unregister = sub.add_parser("unregister", help="Remove a project from the registry (the project itself is untouched).")
+    p_unregister.add_argument("name", help="Registered project name, or the project's path (resolved against the registry).")
     p_unregister.set_defaults(_handler="_handle_projects_unregister")
 
     p_mcp = sub.add_parser("mcp-config", help="Print a Hermes mcp_servers config snippet for this project")
@@ -3726,6 +4203,14 @@ def _build_projects_parser() -> argparse.ArgumentParser:
 
 
 def _route_projects(rest: List[str]) -> int:
+    if rest[:1] == ["activate"]:
+        # Terminal removal stub (mirrors the `wiki activate` MOVED_COMMANDS row).
+        print(
+            "tesserae projects activate was removed — all registered projects "
+            "are active; see `tesserae projects list`",
+            file=sys.stderr,
+        )
+        return 2
     args = _build_projects_parser().parse_args(rest)
     return _resolve_handler(args._handler)(args)
 
@@ -3851,9 +4336,10 @@ def _build_federation_parser() -> argparse.ArgumentParser:
 
     p_status = sub.add_parser("status", help="Counts: per-project nodes, identity merges, semantic links.")
     p_status.add_argument("projects", nargs="*", help="Aliases to federate (default: all registered).")
-    p_status.add_argument("--semantic", action="store_true", help="Include embedding-backed cross-project links.")
+    p_status.add_argument("--semantic", dest="semantic", action="store_true", help="Include embedding-backed cross-project links (the default; matches `explain` and federated ask).")
+    p_status.add_argument("--no-semantic", dest="semantic", action="store_false", help="Identity merges only (default includes semantic links).")
     p_status.add_argument("--json", dest="federation_json", action="store_true", help="Emit JSON.")
-    p_status.set_defaults(_handler="_handle_federation_status")
+    p_status.set_defaults(_handler="_handle_federation_status", semantic=True)
 
     p_explain = sub.add_parser("explain", help="Show one node's cross-project connections.")
     p_explain.add_argument("node", help="Node id (alias::id, a merged-away id, or a unique suffix).")
@@ -3889,7 +4375,7 @@ def _handle_federation_status(args: argparse.Namespace) -> int:
         print("No projects registered. Use `tesserae projects register <path>`.", file=sys.stderr)
         return 2
     try:
-        result = federation_status(aliases, registry, semantic=bool(getattr(args, "semantic", False)))
+        result = federation_status(aliases, registry, semantic=bool(getattr(args, "semantic", True)))
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
@@ -4057,14 +4543,20 @@ def _build_extract_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("paths", nargs="+", help="Markdown file or directory paths to extract")
-    parser.add_argument("--source-kind", default="SourceDocument", help="Default source kind: Paper, Repository, ResearchDigest, SourceDocument")
+    parser.add_argument(
+        "--source-kind",
+        choices=["Paper", "Repository", "ResearchDigest", "SourceDocument"],
+        default="SourceDocument",
+        help="Default source kind (exact: 'Paper'/'Repository'/'ResearchDigest' map directly "
+        "to that node type; 'SourceDocument' keeps path-based detection)",
+    )
     parser.add_argument("--output", "-o", help="Write JSON graph to this path instead of stdout")
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON")
     parser.add_argument("--trends", action="store_true", help="Add corpus-level Trend nodes for concepts repeated across sources")
     parser.add_argument("--min-trend-sources", type=int, default=2, help="Minimum distinct sources required to create a Trend node")
     parser.add_argument("--extractor", choices=["llm", "selective-llm", "deterministic", "claude-cli", "selective-claude"], default="llm",
                         help="Extraction backend. 'llm' (default) builds the concept/claim layer via the configured provider (codex/claude/api); 'selective-llm' routes only --llm-include globs through the LLM; 'deterministic' is structural-only.")
-    parser.add_argument("--llm-provider", choices=["codex", "claude", "anthropic"], default=None, help="Override the LLM provider (default: llm_provider in config).")
+    parser.add_argument("--llm-provider", choices=["claude", "codex", "anthropic", "custom"], default=None, help="Override the LLM provider (default: llm_provider in config).")
     parser.add_argument("--llm-model", default=None, help="Model for the LLM extractor (default: the provider's default).")
     parser.add_argument("--llm-include", action="append", default=None, help="Glob selecting files for --extractor selective-llm; repeat for several.")
     parser.add_argument("--llm-limit", type=int, default=None, help="Max files sent to the LLM under --extractor selective-llm.")
@@ -4086,14 +4578,22 @@ def _build_extract_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cognee-output", help="Write a Cognee-friendly JSONL export bundle to this directory")
     parser.add_argument("--cognee-add", action="store_true", help="Add the generated --cognee-output bundle to Cognee without running cognify")
     parser.add_argument("--cognee-cognify", action="store_true", help="After --cognee-add, run Cognee cognify for the dataset; may invoke configured LLM/embedding providers")
-    parser.add_argument("--cognee-codex-cognify", action="store_true", help="Run Cognee cognify with Cognee's LLM client patched to Codex CLI/OAuth")
-    parser.add_argument("--cognee-codex-model", default="gpt-5.4", help="Codex CLI model for --cognee-codex-cognify")
-    parser.add_argument("--cognee-codex-timeout", type=int, default=300, help="Timeout per Codex CLI structured call")
-    parser.add_argument("--cognee-local-embedding-dimensions", type=int, default=128, help="Embedding dimensions for --cognee-codex-cognify; qwen3-embedding:0.6b uses 1024")
-    parser.add_argument("--cognee-embedding-provider", choices=["deterministic", "ollama"], default="deterministic", help="Embedding provider for --cognee-codex-cognify")
-    parser.add_argument("--cognee-ollama-embedding-model", default="qwen3-embedding:0.6b", help="Ollama embedding model for --cognee-embedding-provider ollama")
-    parser.add_argument("--cognee-ollama-embedding-endpoint", default="http://127.0.0.1:11434/api/embed", help="Ollama /api/embed endpoint for Cognee embeddings")
-    parser.add_argument("--cognee-ollama-embedding-timeout", type=int, default=120, help="Ollama embedding request timeout in seconds")
+    # Removed with tesserae.cognee_codex (the Codex-patched cognify mode).
+    for _moved in (
+        "--cognee-codex-cognify",
+        "--cognee-codex-model",
+        "--cognee-codex-timeout",
+        "--cognee-local-embedding-dimensions",
+        "--cognee-embedding-provider",
+        "--cognee-ollama-embedding-model",
+        "--cognee-ollama-embedding-endpoint",
+        "--cognee-ollama-embedding-timeout",
+    ):
+        parser.add_argument(
+            _moved,
+            action=_RemovedFlagAction,
+            message="extract: the cognee codex mode was removed; use --cognee-cognify (Cognee's own providers)",
+        )
     parser.add_argument("--cognee-dataset", default="tesserae_research_graph", help="Cognee dataset name for --cognee-add")
     parser.add_argument("--cognee-system-root", help="Optional isolated Cognee system root directory, useful when changing vector dimensions")
     parser.add_argument("--cognee-data-root", help="Optional isolated Cognee data root directory")
@@ -4211,25 +4711,7 @@ def _handle_extract(args: argparse.Namespace) -> int:
         KuzuResearchGraphStore(Path(args.kuzu_output)).write_graph(graph, replace=True)
     if args.cognee_output:
         CogneeResearchGraphAdapter().write_bundle(graph, Path(args.cognee_output))
-        if args.cognee_codex_cognify:
-            with CogneeCodexPatch(
-                model=args.cognee_codex_model,
-                timeout=args.cognee_codex_timeout,
-                deterministic_embeddings=args.cognee_embedding_provider == "deterministic",
-                ollama_embeddings=args.cognee_embedding_provider == "ollama",
-                ollama_model=args.cognee_ollama_embedding_model,
-                ollama_endpoint=args.cognee_ollama_embedding_endpoint,
-                ollama_timeout=args.cognee_ollama_embedding_timeout,
-                embedding_dimensions=args.cognee_local_embedding_dimensions,
-            ):
-                asyncio.run(CogneeDirectImporter().add_bundle(
-                    Path(args.cognee_output),
-                    dataset_name=args.cognee_dataset,
-                    cognify=True,
-                    system_root=args.cognee_system_root,
-                    data_root=args.cognee_data_root,
-                ))
-        elif args.cognee_add or args.cognee_cognify:
+        if args.cognee_add or args.cognee_cognify:
             asyncio.run(CogneeDirectImporter().add_bundle(
                 Path(args.cognee_output),
                 dataset_name=args.cognee_dataset,
@@ -4274,7 +4756,11 @@ def _build_research_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-iters", type=int, default=6, help="Hard cap on (search + reflect) iterations (default: 6)")
     parser.add_argument("--top-k", type=int, default=5, help="Top-K graph evidence nodes per sub-question (default: 5)")
     parser.add_argument("--output", help="Report output path; defaults to .tesserae/research/<slug>.md")
-    parser.add_argument("--no-web", action="store_true", help="Disable web search even if a backend is configured (v1 default — web stays off)")
+    parser.add_argument(
+        "--no-web",
+        action=_RemovedFlagAction,
+        message="research: web search is not implemented; --no-web was removed",
+    )
     return parser
 
 
@@ -4308,24 +4794,99 @@ def _route_lint(rest: List[str]) -> int:
     return _resolve_handler("_handle_lint")(args)
 
 
+def _build_doctor_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae doctor",
+        description="Project health checks: init/graph/config, registry, staleness, locks, hygiene. Read-only by default; --fix applies only the safe repairs.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae doctor\n"
+            "  tesserae doctor --fix\n"
+            "  tesserae doctor --all --json\n"
+        ),
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--all", dest="all_projects", action="store_true", help="Doctor every registered project (ignores --project)")
+    parser.add_argument("--fix", action="store_true", help="Apply the safe fixes only: registry prune, site rebuild, lint trivial fixes, stale daemon.pid removal, build-history trim, hook-log rotation, vault mkdir, git worktree prune. Never kills or removes a live compile lock.")
+    parser.add_argument("--json", dest="doctor_json", action="store_true", help="Print the JSON report to stdout instead of the markdown checklist")
+    return parser
+
+
+def _handle_doctor(args: argparse.Namespace) -> int:
+    from .doctor import (
+        overall_exit_code,
+        render_markdown,
+        run_doctor,
+        run_doctor_all,
+        to_json,
+        write_report,
+    )
+
+    if args.all_projects:
+        from .mcp_server import ProjectRegistry
+
+        reports = run_doctor_all(ProjectRegistry(), fix=args.fix)
+        for _alias, report in sorted(reports.items()):
+            if (Path(report.project_root) / ".tesserae").is_dir():
+                write_report(report.project_root, report)
+            sys.stdout.write(to_json(report) if args.doctor_json else render_markdown(report))
+        return overall_exit_code(reports)
+    report = run_doctor(args.project, fix=args.fix)
+    if (Path(args.project) / ".tesserae").is_dir():
+        write_report(args.project, report)  # .tesserae/doctor-report.{md,json}
+    sys.stdout.write(to_json(report) if args.doctor_json else render_markdown(report))
+    return report.exit_code  # 0 healthy / 1 warnings / 2 errors (mirrors lint)
+
+
+def _route_doctor(rest: List[str]) -> int:
+    args = _build_doctor_parser().parse_args(rest)
+    return _resolve_handler("_handle_doctor")(args)
+
+
 def _build_query_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae query",
-        description="Search the compiled wiki and (optionally) ask the LLM for a synthesized answer with citations.",
+        description=(
+            "Raw retrieval: BM25/semantic search over the compiled wiki, or an "
+            "explicit memory backend (--backend raganything|cognee). No LLM "
+            "synthesis — that lives on `tesserae ask`."
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
             "  tesserae query \"what cites the compile pipeline?\"\n"
-            "  tesserae query \"open questions\" --llm --top-k 12\n"
+            "  tesserae query \"open questions\" --top-k 12\n"
+            "  tesserae query \"vector store choice\" --backend cognee\n"
         ),
     )
     parser.add_argument("question", nargs="?", default=None, help="Question text; omit to use --interactive")
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    parser.add_argument("--top-k", type=int, default=8, help="Maximum number of search hits to return / feed to the LLM (default: 8)")
+    parser.add_argument("--top-k", type=int, default=8, help="Maximum number of search hits to return (default: 8)")
     parser.add_argument("--kind", help="Restrict hits to a single wiki kind (e.g. papers, concepts, repos)")
-    parser.add_argument("--llm", action="store_true", help="Force the LLM path on, even if TESSERAE_QUERY_LLM is unset")
-    parser.add_argument("--no-llm", action="store_true", help="Force the LLM path off, even if TESSERAE_QUERY_LLM=1")
-    parser.add_argument("--model", default="claude-sonnet-4-6", help="Anthropic model id for --llm (default: claude-sonnet-4-6)")
+    parser.add_argument(
+        "--backend",
+        choices=["wiki", "raganything", "cognee"],
+        default="wiki",
+        help="Retrieval backend (default: wiki = compiled-wiki search). Explicit "
+        "raganything/cognee short-circuit to that backend and surface its errors.",
+    )
+    parser.add_argument(
+        "--cognee-search-type",
+        default=None,
+        help="Cognee SearchType name when --backend cognee (e.g. GRAPH_COMPLETION, CHUNKS, SUMMARIES; legacy INSIGHTS maps to GRAPH_COMPLETION).",
+    )
+    parser.add_argument(
+        "--cognee-dataset",
+        default=None,
+        help="Override the configured Cognee dataset when --backend cognee.",
+    )
+    for _moved in ("--llm", "--no-llm", "--model"):
+        parser.add_argument(
+            _moved,
+            action=_RemovedFlagAction,
+            message="query: LLM synthesis has moved → tesserae ask",
+        )
     parser.add_argument("--json", dest="json_output", action="store_true", help="Print the structured QueryResult as JSON")
     parser.add_argument("--interactive", action="store_true", help="Drop into a REPL with readline history; blank line or EOF exits")
     return parser
@@ -4376,6 +4937,7 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     # task 5: standalone verbs
     "research": _route_research,
     "lint": _route_lint,
+    "doctor": _route_doctor,
     "query": _route_query,
 }
 

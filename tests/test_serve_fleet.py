@@ -101,6 +101,8 @@ def test_fleet_ask_routes_to_project_by_referer(tmp_path, monkeypatch):
 
     def fake_ask(wiki, question, **kwargs):
         seen["root"] = wiki.project_root
+        seen["use_llm"] = kwargs.get("use_llm")
+        seen["no_llm"] = kwargs.get("no_llm")
         return {"answer": "hi", "question": question}
 
     monkeypatch.setattr("tesserae.query.ask_project", fake_ask)
@@ -118,6 +120,8 @@ def test_fleet_ask_routes_to_project_by_referer(tmp_path, monkeypatch):
     assert health_with_ref == 200 and health_no_ref == 404  # live per page only
     assert post_code == 200 and "hi" in post_body
     assert str(seen.get("root")).endswith("p")  # routed to project 'p'
+    # Fleet /api/ask mirrors single-project serve: LLM defaults OFF (widget latency).
+    assert seen.get("use_llm") is False and seen.get("no_llm") is False
 
 
 def test_fleet_ask_rejects_cross_origin_and_oversized_body(tmp_path):

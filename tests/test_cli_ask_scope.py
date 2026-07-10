@@ -66,15 +66,17 @@ def test_top_level_ask_scope_all_registered_iterates_each_project(
     capsys.readouterr()
 
     called: list[str] = []
+    seen_kwargs: list[dict] = []
 
     def fake_ask(wiki, question, **kwargs):
         called.append(wiki.project_root.name)
+        seen_kwargs.append(kwargs)
         return {
             "backend": "wiki",
             "question": question,
             "answer": f"answer-from-{wiki.project_root.name}",
             "hits": [],
-            "used_llm": False,
+            "used_llm": bool(kwargs.get("use_llm")),
         }
 
     monkeypatch.setattr("tesserae.cli.ask_project", fake_ask, raising=False)
@@ -89,6 +91,39 @@ def test_top_level_ask_scope_all_registered_iterates_each_project(
     assert set(payload["by_project"].keys()) == {"p1", "p2"}
     assert payload["by_project"]["p1"]["answer"] == "answer-from-p1"
     assert payload["by_project"]["p2"]["answer"] == "answer-from-p2"
+    # Bug fix (spec §1): the fan-out THREADS the LLM knobs — every envelope is
+    # produced with use_llm=True by default, so `used_llm` shows up per project.
+    assert all(k.get("use_llm") is True and k.get("no_llm") is False for k in seen_kwargs)
+    assert payload["by_project"]["p1"]["used_llm"] is True
+
+
+def test_top_level_ask_scope_all_registered_no_llm_threads_force_off(
+    tmp_path, monkeypatch, capsys,
+):
+    """--no-llm reaches every project in the fan-out (beats TESSERAE_QUERY_LLM=1)."""
+    from tesserae import cli
+    import tesserae.mcp_server as mcp_server
+
+    p1 = _bootstrap_project(tmp_path, "p1")
+    registry_path = tmp_path / "registry.json"
+    monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", registry_path)
+    cli.main(["projects", "register", str(p1), "--name", "p1"])
+    capsys.readouterr()
+    monkeypatch.setenv("TESSERAE_QUERY_LLM", "1")
+
+    seen_kwargs: list[dict] = []
+
+    def fake_ask(wiki, question, **kwargs):
+        seen_kwargs.append(kwargs)
+        return {"backend": "wiki", "question": question, "answer": None, "hits": [], "used_llm": False}
+
+    monkeypatch.setattr("tesserae.query.ask_project", fake_ask)
+
+    rc = cli.main(["ask", "hello?", "--scope", "all-registered", "--no-llm", "--json"])
+    assert rc == 0
+    assert seen_kwargs and all(
+        k.get("use_llm") is False and k.get("no_llm") is True for k in seen_kwargs
+    )
 
 
 def test_top_level_ask_scope_aliases_restricts_subset(
@@ -120,7 +155,7 @@ def test_top_level_ask_scope_aliases_restricts_subset(
     rc = cli.main([
         "ask", "hello?",
         "--scope", "all-registered",
-        "--scope-aliases", "p1", "p3",
+        "--scope-aliases", "p1,p3",
         "--json",
     ])
     assert rc == 0
@@ -262,8 +297,10 @@ def test_top_level_ask_scope_federated_merges_and_cross_references(tmp_path, mon
     cli.main(["projects", "register", str(p2), "--name", "research"])
     capsys.readouterr()
 
+    # --no-llm: federated synthesize now defaults ON; keep the merge assertions
+    # deterministic (no LLM in tests).
     rc = cli.main(["ask", "what is attention", "--scope", "federated", "--no-semantic",
-                   "--scope-aliases", "work", "research", "--json"])
+                   "--no-llm", "--scope-aliases", "work,research", "--json"])
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["scope"] == "federated"
@@ -284,10 +321,14 @@ def test_mcp_ask_scope_federated(tmp_path, monkeypatch):
     server.registry.register(str(p1), name="work")
     server.registry.register(str(p2), name="research")
 
+    # llm:false — federated synthesize follows the ask llm knob (default true);
+    # tests pin the deterministic no-synthesis path.
     result = server.call_tool("ask", {"question": "attention", "scope": "federated",
-                                       "scope_aliases": ["work", "research"], "semantic": False})
+                                       "scope_aliases": ["work", "research"], "semantic": False,
+                                       "llm": False})
     assert result["scope"] == "federated"
     assert result["stats"]["merged_groups"] == 1
+    assert result["synthesized"] is False
     with pytest.raises(ValueError, match="requires scope_aliases"):
         server.call_tool("ask", {"question": "x", "scope": "federated"})
 

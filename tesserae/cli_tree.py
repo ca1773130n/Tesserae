@@ -12,7 +12,7 @@ COMMAND_TREE: list[tuple[str, list[tuple[str, str]]]] = [
         ("compile", "Rebuild the knowledge graph (compile [paths] = ad-hoc ingest)"),
         ("ingest", "Ingest a document file or URL into the knowledge base"),
         ("context", "Compile agent-ready context for a query"),
-        ("ask", "Ask the project memory a question"),
+        ("ask", "LLM answer over the knowledge graph (planned retrieval)"),
         ("serve", "Browse the compiled site (auto-builds if missing)"),
         ("status", "Node/edge counts, last compile, vault state"),
     ]),
@@ -22,8 +22,9 @@ COMMAND_TREE: list[tuple[str, list[tuple[str, str]]]] = [
         ("research", "Autonomous research mode: investigate a query"),
     ]),
     ("ANALYSIS", [
-        ("query", "Raw retrieval over the graph (top-k, kind filters)"),
+        ("query", "raw retrieval: BM25/semantic + explicit backends"),
         ("lint", "Graph lint report (--fix-trivial, --severity, --json)"),
+        ("doctor", "Health checks: init/graph/registry/staleness/locks (--fix = safe repairs only)"),
         ("summary", "Daily/weekly activity digest (sessions, findings, commits, PRs, docs)"),
         ("decisions", "Decisions across projects + time (human AskUserQuestion + agent)"),
     ]),
@@ -33,8 +34,8 @@ COMMAND_TREE: list[tuple[str, list[tuple[str, str]]]] = [
         ("export", "harness | graphiti | site — artifact exports"),
         ("code", "ingest | sync — CodeGraph ⇄ project graph (hook-invoked)"),
         ("setup", "Machine-wide setup: LLM defaults + optional deps (interactive by default)"),
-        ("config", "llm | show | status — LLM backend defaults + resolved view & liveness ping"),
-        ("projects", "register | list | activate | unregister | mcp-config — registry"),
+        ("config", "llm | deps | show | status | clip-token — LLM backend defaults + resolved view & liveness ping"),
+        ("projects", "register | list | unregister | mcp-config — registry"),
         ("sources", "add | list | remove — manage compile source dirs (local & global)"),
         ("federation", "status | explain — inspect cross-project federation"),
         ("integrations", "refresh raganything|understand-anything"),
@@ -89,13 +90,16 @@ MOVED_COMMANDS: dict[tuple[str, ...], str] = {
     ("project",): "tesserae <command> (see tesserae --help)",
     ("wiki", "register"): "tesserae projects register",
     ("wiki", "list"): "tesserae projects list",
-    ("wiki", "activate"): "tesserae projects activate",
+    # Terminal removal (value starts with "removed"): main() prints it as a
+    # removal notice, not a "has moved →" redirect — there is no replacement.
+    ("wiki", "activate"): "removed — all registered projects are active; see `tesserae projects list`",
     ("wiki", "unregister"): "tesserae projects unregister",
     ("wiki", "obsidian-set-root"): "tesserae vault set-root",
     ("wiki", "obsidian-sync-all"): "tesserae vault sync-all",
     ("wiki",): "tesserae projects",
     ("llm-defaults", "--show"): "tesserae config show",
     ("llm-defaults",): "tesserae config llm",
+    ("config", "setup"): "tesserae setup",
 }
 
 

@@ -114,19 +114,16 @@ def test_setup_is_top_level_command_interactive_by_default():
     from tesserae.cli import _build_setup_parser, _setup_wants_interactive
     from tesserae.cli_tree import KNOWN_COMMANDS
 
-    assert "setup" in KNOWN_COMMANDS  # `tesserae setup`, not just `config setup`
+    assert "setup" in KNOWN_COMMANDS  # `tesserae setup` is the one setup surface
     flagged = _build_setup_parser().parse_args(["--install", "all"])
     assert flagged._handler == "_handle_setup_machine"
     assert _setup_wants_interactive(flagged) is False  # flags given -> skip prompts
     # bare invocation under a non-TTY (CI/scripts) must NOT block on input
     assert _setup_wants_interactive(_build_setup_parser().parse_args([])) is False
-    # only top-level `setup` opts into interactive; the `config setup` alias keeps
-    # its legacy no-op = status behavior (no _interactive_default flag).
-    from tesserae.cli import _build_config_parser
+    # the old `config setup` alias is gone: it is a moved-command stub now.
+    from tesserae.cli import main as _cli_main
 
-    cfg_setup = _build_config_parser().parse_args(["setup"])
-    assert getattr(cfg_setup, "_interactive_default", False) is False
-    assert _setup_wants_interactive(cfg_setup) is False
+    assert _cli_main(["config", "setup"]) == 2
 
 
 def test_resolve_targets_expands_all_and_dedups():

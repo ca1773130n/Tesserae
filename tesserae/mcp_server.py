@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from .activity_summary import build_summary, resolve_windows
+from .cli_tree import package_version as _package_version
 from .ports import GraphStore
 from .retrieval.hybrid import (
     DEFAULT_WEIGHTS as _HYBRID_DEFAULT_WEIGHTS,
@@ -49,6 +50,7 @@ JSONDict = Dict[str, Any]
 # can't blow up the agent's context window.
 RAW_SOURCE_BYTE_CAP = 16 * 1024
 LINT_REPORT_BYTE_CAP = 64 * 1024
+DOCTOR_REPORT_BYTE_CAP = LINT_REPORT_BYTE_CAP
 WIKI_BODY_BYTE_CAP = 64 * 1024
 
 
@@ -353,33 +355,6 @@ def _project_root_for_graph_path(graph_path: str | Path) -> Optional[Path]:
 from .graph_filters import superseded_ids as _superseded_ids
 
 
-from contextlib import contextmanager
-
-
-@contextmanager
-def _claude_config_dir_override(value: Optional[str]):
-    """Temporarily set CLAUDE_CONFIG_DIR for the wrapped block.
-
-    The raganything LLM adapter reads CLAUDE_CONFIG_DIR at call time, so
-    setting it here lets MCP clients target a multi-account Claude setup
-    (e.g. ``~/.claude-personal2``) for a single `ask` invocation without
-    leaking the change to other tools or future calls. ``None`` is a no-op
-    so callers don't have to branch.
-    """
-    if not value:
-        yield
-        return
-    previous = os.environ.get("CLAUDE_CONFIG_DIR")
-    os.environ["CLAUDE_CONFIG_DIR"] = value
-    try:
-        yield
-    finally:
-        if previous is None:
-            os.environ.pop("CLAUDE_CONFIG_DIR", None)
-        else:
-            os.environ["CLAUDE_CONFIG_DIR"] = previous
-
-
 def _extract_internal_links(body: str) -> List[JSONDict]:
     """Pull wiki-style and markdown links out of a page body.
 
@@ -636,25 +611,42 @@ class LLMWikiMCPServer:
                 },
             },
             {
+                "name": "doctor_report",
+                "description": (
+                    "Return the contents of .tesserae/doctor-report.md for the resolved/given "
+                    "project (capped at 64 KB). Empty if the report does not exist — run "
+                    "`tesserae doctor` to (re)generate it."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            {
                 "name": "ask",
                 "description": (
-                    "Ask a natural-language question and get an answer from a configured "
-                    "memory backend (raganything, cognee, or compiled wiki search). Mirrors "
-                    "`tesserae ask`. Supports cross-vault fan-out via `scope`."
+                    "Ask a natural-language question and get an LLM-planned, cited answer "
+                    "over the compiled knowledge graph. Mirrors `tesserae ask` (llm defaults "
+                    "true; pass llm=false for ranked search hits only). Supports cross-vault "
+                    "fan-out via `scope`. Explicit raganything/cognee retrieval moved to "
+                    "`tesserae query --backend ...` on the CLI."
                 ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "question": {"type": "string", "description": "The natural-language question."},
-                        "backend": {
-                            "type": "string",
-                            "enum": ["auto", "raganything", "cognee", "wiki"],
-                            "default": "auto",
-                            "description": "Which backend to use. 'auto' tries raganything (if enabled), then cognee, then compiled wiki search.",
+                        "llm": {
+                            "type": "boolean",
+                            "default": True,
+                            "description": "Synthesize an LLM-planned answer (default true, matching the CLI). false = ranked search hits only (beats TESSERAE_QUERY_LLM=1).",
                         },
                         "project": project_prop,
                         "graph_path": graph_path_prop,
-                        "top_k": {"type": "integer", "description": "Maximum results/context items.", "default": 5, "minimum": 1, "maximum": 100},
+                        "top_k": {"type": "integer", "description": "Maximum results/context items.", "default": 8, "minimum": 1, "maximum": 100},
                         "scope": {
                             "type": "string",
                             "enum": ["current", "all-registered", "federated"],
@@ -673,14 +665,6 @@ class LLMWikiMCPServer:
                             "type": "boolean",
                             "default": True,
                             "description": "scope='federated' only: embedding-backed cross-project links so the answer bridges RELATED (not just identical) concepts. ON by default (opt-out); set false for identity-merge only. Degrades cleanly without a real embedding backend.",
-                        },
-                        "claude_config_dir": {
-                            "type": "string",
-                            "description": (
-                                "Override CLAUDE_CONFIG_DIR for this call. Lets MCP clients "
-                                "target a multi-account Claude setup (e.g. ~/.claude-personal2). "
-                                "Mirrors the CLI's --raganything-claude-config-dir."
-                            ),
                         },
                     },
                     "required": ["question"],
@@ -1657,14 +1641,21 @@ class LLMWikiMCPServer:
         if name == "lint_report":
             _, project_root = self._load_requested_graph_with_root(args)
             return self.lint_report(project_root)
+        if name == "doctor_report":
+            _, project_root = self._load_requested_graph_with_root(args)
+            return self.doctor_report(project_root)
         if name == "ask":
             question = str(args.get("question") or "").strip()
             if not question:
                 raise ValueError("ask requires 'question'")
-            backend = str(args.get("backend") or "auto")
-            if backend not in {"auto", "raganything", "cognee", "wiki"}:
-                raise ValueError(f"ask: unknown backend {backend!r}")
-            top_k = int(args.get("top_k") or 5)
+            # Clean-break stubs (lockstep with the CLI's removed flags).
+            if "backend" in args:
+                raise ValueError("ask: 'backend' has moved → tesserae query --backend")
+            if "claude_config_dir" in args:
+                raise ValueError("ask: 'claude_config_dir' was removed (configure providers via tesserae init/setup)")
+            use_llm = bool(args.get("llm", True))
+            no_llm = not use_llm
+            top_k = int(args.get("top_k") or 8)
             raw_scope = args.get("scope")
             scope = str(raw_scope) if raw_scope else None
             if scope is not None and scope not in {"current", "all-registered", "federated"}:
@@ -1681,23 +1672,22 @@ class LLMWikiMCPServer:
                     args = {**args, "project": route.aliases[0]}
             elif scope is None:
                 scope = "current"  # explicit project/graph_path => single project
-            claude_config_dir = args.get("claude_config_dir")
-            claude_config_dir = str(claude_config_dir).strip() if claude_config_dir else None
-            with _claude_config_dir_override(claude_config_dir):
-                if scope == "all-registered":
-                    return self._mcp_ask_all_registered(
-                        question=question,
-                        backend=backend,
-                        top_k=top_k,
-                        scope_aliases=scope_aliases,
-                    )
-                if scope == "federated":
-                    return self._mcp_ask_federated(
-                        question=question,
-                        scope_aliases=scope_aliases,
-                        semantic=bool(args.get("semantic", True)),  # opt-out: on unless disabled
-                    )
-                return self._mcp_ask(args, question=question, backend=backend, top_k=top_k)
+            if scope == "all-registered":
+                return self._mcp_ask_all_registered(
+                    question=question,
+                    top_k=top_k,
+                    scope_aliases=scope_aliases,
+                    use_llm=use_llm,
+                    no_llm=no_llm,
+                )
+            if scope == "federated":
+                return self._mcp_ask_federated(
+                    question=question,
+                    scope_aliases=scope_aliases,
+                    semantic=bool(args.get("semantic", True)),  # opt-out: on unless disabled
+                    synthesize=use_llm,
+                )
+            return self._mcp_ask(args, question=question, top_k=top_k, use_llm=use_llm, no_llm=no_llm)
         if name == "list_projects":
             return self.registry.list_projects()
         if name == "register_project":
@@ -1864,10 +1854,23 @@ class LLMWikiMCPServer:
 
             project_root = args.get("project_root") or "."
             overrides = args.get("overrides") or None
+            if isinstance(overrides, dict):
+                # SECURITY: the api key is not settable over MCP (and must
+                # never round-trip through a plan JSON an MCP client sees).
+                overrides = {k: v for k, v in overrides.items() if k != "llm_api_key"}
             report = detect(project_root)
             plan = build_plan(report, overrides=overrides)
+            plan_json = json.loads(plan.model_dump_json())
+            # SECURITY: redact the api key everywhere it could surface in the
+            # returned plan (top-level field + recorded intent). render_review
+            # already masks it.
+            if plan_json.get("llm_api_key"):
+                plan_json["llm_api_key"] = None
+            intent = plan_json.get("intent")
+            if isinstance(intent, dict):
+                intent.pop("llm_api_key", None)
             return {
-                "plan": json.loads(plan.model_dump_json()),
+                "plan": plan_json,
                 "rendered_summary": render_review(plan),
             }
         if name == "tesserae_setup_apply":
@@ -1907,6 +1910,13 @@ class LLMWikiMCPServer:
                 "cognee_mode",
                 "cognee_auto_cognify",
                 "install_agent_pointer",
+                # Runtime LLM client keys. llm_api_key is deliberately ABSENT:
+                # secrets are not settable over MCP (set it via `tesserae init`
+                # flags / the wizard, or the ANTHROPIC_API_KEY env var).
+                "llm_provider",
+                "llm_model",
+                "llm_base_url",
+                "codex_home",
             }
             _ALLOWED_UA_PLATFORMS = {"codex", "claude", "opencode", "gemini"}
             _ALLOWED_RAG_PARSERS = {"mineru", "docling", "paddleocr"}
@@ -1921,6 +1931,14 @@ class LLMWikiMCPServer:
             for key in ("name", "source_kind", "sources", "extractor",
                         "claude_config_dir", "claude_model", "codex_model"):
                 safe_intent.setdefault(key, getattr(inbound, key))
+            # Runtime LLM keys: only when actually set, so an absent value
+            # keeps build_plan's detection-recommended default instead of
+            # clobbering it with None. (llm_api_key stays excluded: secrets
+            # are not settable over MCP.)
+            for key in ("codex_home", "llm_provider", "llm_model", "llm_base_url"):
+                value = getattr(inbound, key)
+                if value is not None:
+                    safe_intent.setdefault(key, value)
 
             # Bounded-value validation: enum strings must be in their allowlist.
             ua_platform = safe_intent.get("understand_anything_platform")
@@ -2055,9 +2073,14 @@ class LLMWikiMCPServer:
         project = args.get("project")
         project_names = [str(project)] if project else None
         synthesize = bool(args.get("synthesize", True))
-        result = build_summary(
-            windows, project_names, synthesize=synthesize, write=True
-        )
+        try:
+            result = build_summary(
+                windows, project_names, synthesize=synthesize, write=True
+            )
+        except ValueError as exc:
+            # Strict names: a typo'd project errors instead of silently
+            # meaning "no projects" (activity_summary._resolve_projects).
+            return {"error": str(exc)}
         return {
             "markdown": result.markdown,
             "paths": [str(p) for p in result.paths],
@@ -2083,7 +2106,12 @@ class LLMWikiMCPServer:
         project = args.get("project")
         project_names = [str(project)] if project else None
         include_agent = bool(args.get("include_agent", True))
-        decisions = gather_decisions(windows, project_names, include_agent=include_agent)
+        try:
+            decisions = gather_decisions(windows, project_names, include_agent=include_agent)
+        except ValueError as exc:
+            # Strict names: a typo'd project errors instead of silently
+            # meaning "no projects" (activity_summary._resolve_projects).
+            return {"error": str(exc)}
         return {
             "decisions": [
                 {
@@ -2688,6 +2716,33 @@ class LLMWikiMCPServer:
             "cap_bytes": LINT_REPORT_BYTE_CAP,
         }
 
+    def doctor_report(self, project_root: Optional[Path]) -> JSONDict:
+        """Serve the persisted doctor report; regeneration stays a CLI action."""
+        if project_root is None:
+            raise ValueError(
+                "doctor_report requires a project root — pass graph_path or project, or set a default graph."
+            )
+        report_path = project_root / ".tesserae" / "doctor-report.md"
+        if not report_path.exists():
+            return {
+                "exists": False,
+                "path": str(report_path.relative_to(project_root)),
+                "body": "",
+                "byte_count": 0,
+                "truncated": False,
+            }
+        raw = report_path.read_bytes()
+        truncated = len(raw) > DOCTOR_REPORT_BYTE_CAP
+        body = raw[:DOCTOR_REPORT_BYTE_CAP].decode("utf-8", errors="ignore")
+        return {
+            "exists": True,
+            "path": str(report_path.relative_to(project_root)),
+            "body": body,
+            "byte_count": len(raw),
+            "truncated": truncated,
+            "cap_bytes": DOCTOR_REPORT_BYTE_CAP,
+        }
+
     def _resolve_project_root_for_ask(self, args: JSONDict) -> Path:
         """Resolve the project root for ``ask`` even when no graph.json exists yet.
 
@@ -2758,22 +2813,32 @@ class LLMWikiMCPServer:
         del history[:-8]  # keep only the recent window
         return route
 
-    def _mcp_ask(self, args: JSONDict, *, question: str, backend: str, top_k: int) -> JSONDict:
-        """Dispatch ``ask`` to raganything, cognee, or compiled-wiki search.
+    def _mcp_ask(
+        self,
+        args: JSONDict,
+        *,
+        question: str,
+        top_k: int,
+        use_llm: bool = True,
+        no_llm: bool = False,
+    ) -> JSONDict:
+        """Dispatch ``ask`` to the compiled-wiki planner/search path.
 
         Thin adapter around :func:`tesserae.query.ask_project` so the MCP
-        ``ask`` tool, the ``tesserae ask`` CLI handler, and the new
-        top-level ``tesserae ask`` command share one dispatcher.
+        ``ask`` tool and the top-level ``tesserae ask`` command share one
+        dispatcher (LLM-planned answer by default; ``llm=false`` pins
+        search-only).
         """
         from .project import ProjectWiki
         from .query import ask_project
 
         project_root = self._resolve_project_root_for_ask(args)
         wiki = ProjectWiki.load(project_root)
-        return ask_project(wiki, question, backend=backend, top_k=top_k)
+        return ask_project(wiki, question, top_k=top_k, use_llm=use_llm, no_llm=no_llm)
 
     def _mcp_ask_federated(
-        self, *, question: str, scope_aliases: List[str], semantic: bool = True
+        self, *, question: str, scope_aliases: List[str], semantic: bool = True,
+        synthesize: bool = True,
     ) -> JSONDict:
         """Federated scope — merge the named projects into ONE identity-merged
         graph and compile a single cross-referenced, cited answer (vs the
@@ -2786,15 +2851,19 @@ class LLMWikiMCPServer:
                 "ask: scope='federated' requires scope_aliases — the projects to "
                 "federate. Use list_projects to see registered projects."
             )
-        return federated_recall(scope_aliases, question, semantic=semantic, registry=self.registry)
+        return federated_recall(
+            scope_aliases, question, semantic=semantic, synthesize=synthesize,
+            registry=self.registry,
+        )
 
     def _mcp_ask_all_registered(
         self,
         *,
         question: str,
-        backend: str,
         top_k: int,
         scope_aliases: List[str],
+        use_llm: bool = True,
+        no_llm: bool = False,
     ) -> JSONDict:
         """B2 — fan ``ask`` out across every registered project.
 
@@ -2835,7 +2904,11 @@ class LLMWikiMCPServer:
                 project_root = Path(str(root_str)).resolve()
             try:
                 wiki = ProjectWiki.load(project_root)
-                by_project[name] = ask_project(wiki, question, backend=backend, top_k=top_k)
+                # Thread the LLM knobs into the fan-out (kept in lockstep with
+                # the CLI's all-registered scope).
+                by_project[name] = ask_project(
+                    wiki, question, top_k=top_k, use_llm=use_llm, no_llm=no_llm
+                )
             except Exception as exc:
                 by_project[name] = {"error": f"ask failed: {exc}"}
         return {
@@ -3034,7 +3107,7 @@ class MCPRequestHandler:
                             "resources": {"listChanged": False, "subscribe": False},
                             "prompts": {"listChanged": False},
                         },
-                        "serverInfo": {"name": "tesserae", "version": "0.1.0"},
+                        "serverInfo": {"name": "tesserae", "version": _package_version()},
                     },
                 )
             if method == "tools/list":

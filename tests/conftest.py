@@ -26,6 +26,24 @@ def _no_real_llm_extraction(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _dry_run_e2e_ask(request, monkeypatch):
+    """`ask` now defaults to the LLM-planned answer, so an e2e CLI/MCP ask in a
+    test would build the rotating CLI client and hit the developer's REAL
+    claude/codex login. Pin the e2e ask surfaces to TESSERAE_QUERY_DRY_RUN=1
+    (query.py's gate skips the planner and returns the deterministic stub).
+    Scoped to the e2e modules only — planner unit tests (test_ask_planner)
+    assert real planner behavior against fake clients and must NOT inherit
+    the dry-run short-circuit."""
+    e2e_ask_modules = (
+        "test_cli_top_level_ask",
+        "test_cli_ask_scope",
+        "test_mcp_server_ask",
+    )
+    if any(m in request.node.nodeid for m in e2e_ask_modules):
+        monkeypatch.setenv("TESSERAE_QUERY_DRY_RUN", "1")
+
+
+@pytest.fixture(autouse=True)
 def _isolated_discovery_scan_cache(tmp_path_factory, monkeypatch):
     """Keep harness-discovery marker-scan caching out of the user's ~/.cache."""
     cache_dir = tmp_path_factory.mktemp("discovery-cache")

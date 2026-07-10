@@ -40,11 +40,27 @@ def test_setup_plan_detects_common_sources_and_understand_anything(tmp_path):
     assert plan.external_tools[0]["id"] == "understand-anything"
     assert plan.external_tools[0]["artifact"] == ".understand-anything/knowledge-graph.json"
     assert plan.external_tools[0]["source"] == ".tesserae/external/understand-anything.md"
-    assert plan.external_tools[0]["auto_refresh"] is True
+    assert plan.external_tools[0]["auto_refresh"] is False  # demoted: opt-in refresh
     assert plan.external_tools[0]["sync_mode"] == "native_graph"
     assert plan.external_tools[0]["preserve_markdown_projection"] is True
     assert plan.external_tools[0]["managed_refresh"] is True
     assert "tesserae.understand_anything_refresh" in plan.external_tools[0]["refresh_command"]
+
+
+def test_setup_plan_does_not_auto_adopt_understand_anything_artifact(tmp_path):
+    """Demotion: a .understand-anything artifact on disk no longer pulls the
+    integration into the plan — only an explicit include does."""
+    project = tmp_path / "demo"
+    project.mkdir()
+    (project / "README.md").write_text("# Demo\n", encoding="utf-8")
+    ua = project / ".understand-anything"
+    ua.mkdir()
+    (ua / "knowledge-graph.json").write_text('{"nodes": [], "edges": []}\n', encoding="utf-8")
+
+    plan = build_setup_plan(project)
+
+    assert plan.external_tools == []
+    assert ".tesserae/external/understand-anything.md" not in plan.sources
 
 
 def test_managed_understand_anything_refresh_command_expands_to_current_python(tmp_path):

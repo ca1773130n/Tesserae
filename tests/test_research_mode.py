@@ -264,7 +264,7 @@ def test_run_no_web_does_not_call_network(tmp_path: Path):
     # `.search()` would explode if invoked.
     class _ExplodingFetcher:
         def search(self, query, *, limit=5):  # pragma: no cover — defensive
-            raise AssertionError("must not be called when --no-web")
+            raise AssertionError("must not be called when web is disabled")
 
     session, _llm, _search, _web = _make_run(tmp_path, with_web=False, depth=0)
     # Replace the field to make the assertion explicit.
