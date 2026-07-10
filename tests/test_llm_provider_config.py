@@ -321,3 +321,237 @@ def test_memory_passes_honor_configured_provider(tmp_path, monkeypatch):
     assert seen.get("called") is True, (
         "memory passes must build their client via _build_json_client"
     )
+
+
+# ---------------------------------------------------------------------------
+# Custom claude-compatible endpoint: llm_model / llm_base_url / llm_api_key
+# ---------------------------------------------------------------------------
+
+
+def _isolate_endpoint_env(monkeypatch):
+    _isolate_env(monkeypatch)
+    monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    monkeypatch.delenv("TESSERAE_LLM_MODEL", raising=False)
+
+
+def _write_global_cfg(tmp_path: Path, monkeypatch, payload: dict) -> None:
+    import tesserae.llm_json as lj
+
+    global_cfg = tmp_path / "global-config.json"
+    global_cfg.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(lj, "GLOBAL_CONFIG_PATH", global_cfg)
+
+
+def test_resolve_settings_returns_endpoint_knobs_from_config(tmp_path: Path, monkeypatch):
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    _write_global_cfg(
+        tmp_path,
+        monkeypatch,
+        {
+            "llm_provider": "custom",
+            "llm_model": "glm-4.7",
+            "llm_base_url": "https://llm.example.com/api",
+            "llm_api_key": "sk-global",
+        },
+    )
+
+    settings = lj.resolve_llm_client_settings({})
+    assert settings["provider"] == "custom"
+    assert settings["model"] == "glm-4.7"
+    assert settings["base_url"] == "https://llm.example.com/api"
+    assert settings["api_key"] == "sk-global"
+
+
+def test_resolve_settings_project_endpoint_beats_global(tmp_path: Path, monkeypatch):
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    _write_global_cfg(
+        tmp_path,
+        monkeypatch,
+        {"llm_model": "global-model", "llm_base_url": "https://global.example.com"},
+    )
+
+    settings = lj.resolve_llm_client_settings(
+        {
+            "llm_model": "project-model",
+            "llm_base_url": "https://project.example.com",
+            "llm_api_key": "sk-project",
+        }
+    )
+    assert settings["model"] == "project-model"
+    assert settings["base_url"] == "https://project.example.com"
+    assert settings["api_key"] == "sk-project"
+
+
+def test_resolve_settings_env_beats_config_for_endpoint_knobs(tmp_path: Path, monkeypatch):
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    _write_global_cfg(tmp_path, monkeypatch, {})
+    monkeypatch.setenv("TESSERAE_LLM_MODEL", "env-model")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://env.example.com")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-env")
+
+    settings = lj.resolve_llm_client_settings(
+        {
+            "llm_model": "cfg-model",
+            "llm_base_url": "https://cfg.example.com",
+            "llm_api_key": "sk-cfg",
+        }
+    )
+    assert settings["model"] == "env-model"
+    assert settings["base_url"] == "https://env.example.com"
+    assert settings["api_key"] == "sk-env"
+
+
+def test_build_default_custom_provider_uses_configured_endpoint(tmp_path: Path, monkeypatch):
+    """provider=custom builds the Anthropic client from config — WITHOUT
+    ANTHROPIC_API_KEY in the environment."""
+    import tesserae.llm_json as lj
+
+    pytest.importorskip("anthropic")
+    _isolate_endpoint_env(monkeypatch)
+    monkeypatch.setattr(lj, "_CLIENT_FACTORY", None, raising=False)
+    _write_global_cfg(
+        tmp_path,
+        monkeypatch,
+        {
+            "llm_provider": "custom",
+            "llm_model": "glm-4.7",
+            "llm_base_url": "https://llm.example.com/api",
+            "llm_api_key": "sk-cfg",
+        },
+    )
+
+    # provider comes from config alone — no arg, no env var
+    client = lj.build_default_json_client()
+    assert isinstance(client, lj.AnthropicLLMJsonClient)
+    assert client.model == "glm-4.7"
+    assert client.base_url == "https://llm.example.com/api"
+    assert client._client.api_key == "sk-cfg"
+    assert str(client._client.base_url).startswith("https://llm.example.com")
+
+
+def test_build_rotating_client_custom_provider_uses_configured_endpoint(
+    tmp_path: Path, monkeypatch
+):
+    import tesserae.llm_json as lj
+
+    pytest.importorskip("anthropic")
+    _isolate_endpoint_env(monkeypatch)
+    monkeypatch.setattr(lj, "_CLIENT_FACTORY", None, raising=False)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: False)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: False)
+    _write_global_cfg(
+        tmp_path,
+        monkeypatch,
+        {
+            "llm_provider": "custom",
+            "llm_model": "glm-4.7",
+            "llm_base_url": "https://llm.example.com/api",
+            "llm_api_key": "sk-cfg",
+        },
+    )
+
+    client = lj.build_rotating_client()
+    assert isinstance(client, lj.AnthropicLLMJsonClient)
+    assert client.model == "glm-4.7"
+    assert client.base_url == "https://llm.example.com/api"
+
+
+def test_configured_llm_model_is_provider_scoped_fallback(tmp_path: Path, monkeypatch):
+    """llm_model replaces the hardcoded default for the configured provider
+    only; explicit model args still win, other providers keep their own
+    defaults so a claude model name never lands on the codex CLI."""
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    _write_global_cfg(
+        tmp_path, monkeypatch, {"llm_provider": "claude", "llm_model": "opus"}
+    )
+
+    assert lj.ClaudeCLIJsonClient(config_dirs=["/x"]).model == "opus"
+    assert lj.ClaudeCLIJsonClient(model="sonnet", config_dirs=["/x"]).model == "sonnet"
+    # provider-scoped: the codex client keeps its native default
+    assert lj.CodexCLIJsonClient(codex_homes=["/y"]).model == "gpt-5.4"
+
+    # env beats config
+    monkeypatch.setenv("TESSERAE_LLM_MODEL", "env-model")
+    assert lj.ClaudeCLIJsonClient(config_dirs=["/x"]).model == "env-model"
+
+
+def test_claude_cli_child_env_gets_custom_endpoint(monkeypatch):
+    """When base_url/api_key are resolved, the claude CLI child process gets
+    ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN injected."""
+    import subprocess
+
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    seen = {}
+
+    def fake_run(cmd, prompt=None, env=None, timeout=None):
+        seen["env"] = env
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="ok")
+
+    monkeypatch.setattr(lj, "_run_cli", fake_run)
+    client = lj.ClaudeCLIJsonClient(
+        config_dirs=["/tmp/fake-claude"],
+        base_url="https://llm.example.com/api",
+        api_key="sk-cfg",
+    )
+    assert client.complete_text(system="s", user="u") == "ok"
+    assert seen["env"]["ANTHROPIC_BASE_URL"] == "https://llm.example.com/api"
+    assert seen["env"]["ANTHROPIC_AUTH_TOKEN"] == "sk-cfg"
+
+
+def test_claude_cli_child_env_untouched_without_endpoint(monkeypatch):
+    import subprocess
+
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    seen = {}
+
+    def fake_run(cmd, prompt=None, env=None, timeout=None):
+        seen["env"] = env
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="ok")
+
+    monkeypatch.setattr(lj, "_run_cli", fake_run)
+    client = lj.ClaudeCLIJsonClient(config_dirs=["/tmp/fake-claude"])
+    assert client.complete_text(system="s", user="u") == "ok"
+    assert "ANTHROPIC_BASE_URL" not in seen["env"]
+    assert "ANTHROPIC_AUTH_TOKEN" not in seen["env"]
+
+
+def test_build_default_threads_endpoint_to_claude_cli_only_with_base_url(
+    tmp_path: Path, monkeypatch
+):
+    """A configured base_url routes the claude CLI at the custom endpoint,
+    but a configured api_key ALONE must not flip the CLI off OAuth."""
+    import tesserae.llm_json as lj
+
+    _isolate_endpoint_env(monkeypatch)
+    monkeypatch.setattr(lj, "_CLIENT_FACTORY", None, raising=False)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: False)
+
+    _write_global_cfg(
+        tmp_path,
+        monkeypatch,
+        {"llm_base_url": "https://llm.example.com/api", "llm_api_key": "sk-cfg"},
+    )
+    client = lj.build_default_json_client()
+    assert isinstance(client, lj.ClaudeCLIJsonClient)
+    assert client.base_url == "https://llm.example.com/api"
+    assert client.api_key == "sk-cfg"
+
+    _write_global_cfg(tmp_path, monkeypatch, {"llm_api_key": "sk-cfg"})
+    client = lj.build_default_json_client()
+    assert isinstance(client, lj.ClaudeCLIJsonClient)
+    assert client.base_url is None
+    assert client.api_key is None

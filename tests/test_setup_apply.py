@@ -23,7 +23,8 @@ def test_apply_writes_config_without_running_installs(tmp_path: Path) -> None:
     assert result.config_path.exists()
     payload = json.loads(result.config_path.read_text())
     assert payload["project"]["name"] == plan.name
-    assert payload["extraction"]["backend"] == plan.extractor
+    # The unread "extraction" block is gone; runtime llm_* keys replace it.
+    assert "extraction" not in payload
 
 
 def test_apply_skips_install_actions_without_confirmation(tmp_path: Path, monkeypatch) -> None:
@@ -76,6 +77,65 @@ def test_apply_skips_agent_pointer_when_disabled(tmp_path: Path) -> None:
     result = apply_plan(plan)
     assert not (tmp_path / "AGENTS.md").exists()
     assert all(a["id"] != "agent-pointer" for a in result.actions_taken)
+
+
+def test_apply_custom_provider_persists_all_llm_keys(
+    tmp_path: Path, capsys
+) -> None:
+    report = detect(tmp_path)
+    plan = build_plan(
+        report,
+        overrides={
+            "llm_provider": "custom",
+            "llm_base_url": "https://llm.example/v1",
+            "llm_api_key": "sk-apply-secret",
+            "llm_model": "claude-opus-4-6",
+        },
+    )
+    plan.install_actions = []
+    plan.run_actions = []
+    result = apply_plan(plan)
+    cfg = json.loads(result.config_path.read_text())
+    assert cfg["llm_provider"] == "custom"
+    assert cfg["llm_base_url"] == "https://llm.example/v1"
+    assert cfg["llm_api_key"] == "sk-apply-secret"
+    assert cfg["llm_model"] == "claude-opus-4-6"
+    assert "extraction" not in cfg
+    # persisting a plaintext key prints a one-line warning and records it
+    assert "plaintext" in capsys.readouterr().err
+    assert any("plaintext" in w for w in result.warnings)
+
+
+def test_apply_reinit_merges_sources_and_memory_backends(tmp_path: Path) -> None:
+    plan = build_plan(detect(tmp_path), overrides={"sources": ["README.md"]})
+    plan.install_actions = []
+    plan.run_actions = []
+    result = apply_plan(plan)
+    cfg = json.loads(result.config_path.read_text())
+
+    # Simulate user edits between inits.
+    cfg["sources"].append("notes/extra.md")
+    cfg["memory_backends"]["cognee"]["enabled"] = True
+    cfg["memory_backends"]["cognee"]["user_marker"] = "keep-me"
+    cfg["custom_top_level"] = {"keep": True}
+    result.config_path.write_text(json.dumps(cfg, indent=2) + "\n")
+
+    plan2 = build_plan(
+        detect(tmp_path), overrides={"sources": ["README.md", "docs"]}
+    )
+    plan2.install_actions = []
+    plan2.run_actions = []
+    result2 = apply_plan(plan2)
+    cfg2 = json.loads(result2.config_path.read_text())
+    # union of existing + plan sources, no duplicates
+    assert "notes/extra.md" in cfg2["sources"]
+    assert "docs" in cfg2["sources"]
+    assert cfg2["sources"].count("README.md") == 1
+    # user-tuned memory backends survive re-init
+    assert cfg2["memory_backends"]["cognee"]["enabled"] is True
+    assert cfg2["memory_backends"]["cognee"]["user_marker"] == "keep-me"
+    # unknown user keys survive too
+    assert cfg2["custom_top_level"] == {"keep": True}
 
 
 def test_apply_detects_drift_with_warn_policy(tmp_path: Path) -> None:

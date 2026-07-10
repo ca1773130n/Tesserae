@@ -11,7 +11,9 @@ def test_make_codex_llm_func_routes_to_run_codex_cli(monkeypatch):
         captured["timeout"] = timeout
         return "codex-answer"
 
-    monkeypatch.setattr("tesserae.cognee_codex.run_codex_cli", fake_run_codex_cli)
+    # run_codex_cli was inlined into raganything_llm when tesserae.cognee_codex
+    # was removed; the adapter resolves it via module-global lookup.
+    monkeypatch.setattr("tesserae.raganything_llm.run_codex_cli", fake_run_codex_cli)
 
     func = mod.make_codex_llm_func(model="gpt-5.4", timeout=60)
     answer = asyncio.run(func("What is X?", system_prompt="be concise."))
@@ -84,7 +86,7 @@ def test_build_runtime_funcs_default_uses_codex_and_deterministic(monkeypatch):
     async def fake_codex(prompt, model, timeout):
         return f"codex({prompt[:20]})"
 
-    monkeypatch.setattr("tesserae.cognee_codex.run_codex_cli", fake_codex)
+    monkeypatch.setattr("tesserae.raganything_llm.run_codex_cli", fake_codex)
 
     funcs = build_runtime_funcs({})  # empty config -> all defaults
     assert "llm_model_func" in funcs

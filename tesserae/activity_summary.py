@@ -244,7 +244,53 @@ def scan_messages(
     out: Dict[str, Dict[str, List[MessageItem]]] = {
         name: {w.label: [] for w in windows} for name, _root in projects
     }
-    for name, harness, path, key in iter_project_transcripts(projects, windows):
+    # Chunk fast path: a fully covered PAST day is served from the project's
+    # ``.tesserae/session_chunks.db`` instead of re-scanning transcripts.
+    # Coverage-gated per (project, day); today and uncovered/unaligned windows
+    # fall through to the raw scan below unchanged. Any chunk-store error
+    # degrades to the raw scan — never raises (code_graph posture).
+    served: "set[Tuple[str, str]]" = set()
+    try:
+        from tesserae.session_chunks import served_messages_for_windows
+
+        for name, root in projects:
+            by_label = served_messages_for_windows(
+                root, windows, turn_limit=turn_limit
+            )
+            for label, rows in by_label.items():
+                bucket: List[MessageItem] = []
+                for row in rows:
+                    ts = parse_ts(str(row.get("ts") or ""))
+                    if not ts:
+                        continue
+                    nm = row.get("name")
+                    bucket.append(
+                        MessageItem(
+                            ts=ts,
+                            role=str(row.get("role") or ""),
+                            name=str(nm) if nm else None,
+                            text=str(row.get("text") or ""),
+                            project=name,
+                            session_id=str(row.get("session_id") or ""),
+                            harness=str(row.get("harness") or ""),
+                        )
+                    )
+                out[name][label] = bucket
+                served.add((name, label))
+    except Exception as exc:  # noqa: BLE001 — chunk path is an optimization
+        logger.debug("session-chunk fast path failed (%s); using raw scan", exc)
+
+    # Raw scan for whatever the chunk store could not serve. A window stays in
+    # the scan when ANY project still needs it; per-project served buckets are
+    # skipped inside the loop so they are never double-filled.
+    remaining = [
+        w
+        for w in windows
+        if any((name, w.label) not in served for name, _root in projects)
+    ]
+    if not remaining:
+        return out
+    for name, harness, path, key in iter_project_transcripts(projects, remaining):
         rows = _parse_jsonl(path)
         turns = (
             _codex_turns(rows, limit=turn_limit)
@@ -255,8 +301,10 @@ def scan_messages(
             ts = parse_ts(str(turn.get("timestamp") or ""))
             if not ts:
                 continue
-            for w in windows:
+            for w in remaining:
                 if in_window(ts, w):
+                    if (name, w.label) in served:
+                        break  # this project's day came from the chunk store
                     nm = turn.get("name")
                     out[name][w.label].append(
                         MessageItem(
@@ -795,8 +843,10 @@ def _resolve_projects(project_names: Optional[List[str]]) -> List[Tuple[str, Pat
 
     Default scope is every registered project
     (``ProjectRegistry.iter_registered_projects()``). ``project_names`` opts into
-    a subset (order preserved as registered). ``mcp_server`` is imported lazily so
-    this module stays importable from ``mcp_server`` without a cycle.
+    a subset (order preserved as registered). Unknown names raise ``ValueError``
+    — a typo must error, not silently mean "no projects". ``mcp_server`` is
+    imported lazily so this module stays importable from ``mcp_server`` without
+    a cycle.
     """
     from tesserae.mcp_server import ProjectRegistry
 
@@ -804,6 +854,14 @@ def _resolve_projects(project_names: Optional[List[str]]) -> List[Tuple[str, Pat
     if not project_names:
         return registered
     wanted = set(project_names)
+    known = {name for name, _root in registered}
+    unknown = [n for n in project_names if n not in known]
+    if unknown:
+        available = ", ".join(sorted(known)) or "(none registered)"
+        raise ValueError(
+            f"unknown project name(s): {', '.join(unknown)}. "
+            f"Available: {available} — see `tesserae projects list`."
+        )
     return [(name, root) for name, root in registered if name in wanted]
 
 

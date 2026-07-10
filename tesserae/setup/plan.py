@@ -15,7 +15,7 @@ from ..project import (
     default_raganything_backend_config,
     sanitize_server_name,
 )
-from .detection import DetectionReport
+from .detection import DetectionReport, LlmProvider
 
 
 Extractor = Literal["deterministic", "claude-cli", "codex", "selective-claude"]
@@ -48,6 +48,14 @@ class SetupPlan(BaseModel):
     claude_config_dir: Optional[str] = None
     claude_model: Optional[str] = None
     codex_model: Optional[str] = None
+    codex_home: Optional[str] = None
+
+    # Runtime LLM client settings, persisted as config.json llm_* keys and
+    # resolved by llm_json.resolve_llm_client_settings (env wins over config).
+    llm_provider: Optional[LlmProvider] = None
+    llm_model: Optional[str] = None
+    llm_base_url: Optional[str] = None
+    llm_api_key: Optional[str] = None
 
     install_agent_pointer: bool = True
 
@@ -164,7 +172,7 @@ def build_plan(
     )
 
     enable_cognee = bool(overrides.pop("enable_cognee", True))
-    cognee_mode = str(overrides.pop("cognee_mode", "codex_cognify"))
+    cognee_mode = str(overrides.pop("cognee_mode", "cognify"))
     cognee_auto_cognify = bool(overrides.pop("cognee_auto_cognify", False))
     install_cognee = bool(overrides.pop("install_cognee", False))
 
@@ -178,6 +186,11 @@ def build_plan(
     )
     claude_model = overrides.pop("claude_model", None)
     codex_model = overrides.pop("codex_model", detection.recommended.codex_model)
+    codex_home = overrides.pop("codex_home", None)
+    llm_provider = overrides.pop("llm_provider", detection.recommended.llm_provider)
+    llm_model = overrides.pop("llm_model", None)
+    llm_base_url = overrides.pop("llm_base_url", None)
+    llm_api_key = overrides.pop("llm_api_key", None)
     install_agent_pointer = bool(overrides.pop("install_agent_pointer", True))
 
     warnings = list(detection.recommended.warnings)
@@ -242,6 +255,9 @@ def build_plan(
 
     if enable_cognee:
         cognee = default_cognee_backend_config(name)
+        # The built-in default is disabled; a plan that asked for cognee is an
+        # explicit opt-in, so the written config must say so.
+        cognee["enabled"] = True
         cognee["mode"] = cognee_mode
         cognee["auto_cognify"] = cognee_auto_cognify
         cognee.setdefault("install", {})
@@ -310,6 +326,11 @@ def build_plan(
             claude_config_dir=claude_config_dir,
             claude_model=claude_model,
             codex_model=codex_model,
+            codex_home=codex_home,
+            llm_provider=llm_provider,
+            llm_model=llm_model,
+            llm_base_url=llm_base_url,
+            llm_api_key=llm_api_key,
             install_agent_pointer=install_agent_pointer,
             external_tools=external_tools,
             memory_backends=memory_backends,

@@ -415,9 +415,14 @@ def write_code_graph_from_codegraph(
     tmp = output_path.with_suffix(
         output_path.suffix + f".tmp.{os.getpid()}.{secrets.token_hex(4)}"
     )
+    # Same producer-stamp contract as code_graph_extractor.write_code_graph.
+    import json as _json
+
+    payload = result.graph.model_dump()
+    payload["generated_by"] = "tesserae code sync (codegraph)"
     try:
         tmp.write_text(
-            result.graph.to_json(indent=2, sort_keys=True) + "\n",
+            _json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
         os.replace(tmp, output_path)

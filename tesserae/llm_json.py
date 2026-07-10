@@ -136,6 +136,23 @@ class LLMJsonClient(Protocol):
         ...
 
 
+def _configured_default_model(for_providers: Sequence[str]) -> Optional[str]:
+    """The configured ``llm_model`` (env → global config), scoped by provider.
+
+    Returns the resolved model only when the resolved provider is one of
+    ``for_providers`` — so a claude-shaped ``llm_model`` configured for
+    provider ``custom`` never lands on the Codex CLI when the availability
+    chain falls through providers. Project-level ``llm_model`` reaches the
+    clients through callers threading ``resolve_llm_client_settings(cfg)``
+    into the explicit ``model`` argument, which always wins.
+    """
+    settings = resolve_llm_client_settings()
+    if not settings.get("model"):
+        return None
+    provider = (settings.get("provider") or "claude").strip().lower()
+    return settings["model"] if provider in for_providers else None
+
+
 # ---------------------------------------------------------------------------
 # Anthropic implementation
 # ---------------------------------------------------------------------------
@@ -146,12 +163,20 @@ class AnthropicLLMJsonClient:
 
     def __init__(
         self,
-        model: str = "claude-sonnet-4-6",
+        model: Optional[str] = None,
         api_key: Optional[str] = None,
         timeout: float = 30.0,
         max_tokens: int = 4096,
+        base_url: Optional[str] = None,
     ) -> None:
-        self.model = model
+        # Hardcoded literal is a last-resort fallback behind the configured
+        # llm_model (env TESSERAE_LLM_MODEL → global config).
+        self.model = (
+            model
+            or _configured_default_model(("anthropic", "custom"))
+            or "claude-sonnet-4-6"
+        )
+        self.base_url = base_url
         self.timeout = timeout
         self.max_tokens = int(max_tokens)
         self._client: Any = None
@@ -170,7 +195,12 @@ class AnthropicLLMJsonClient:
                 "anthropic SDK not installed; install tesserae[synthesis-llm]"
             ) from exc
 
-        self._client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
+        client_kwargs: dict = {"api_key": api_key, "timeout": timeout}
+        if base_url:
+            # Only pass when set so the SDK's own default/env resolution
+            # (ANTHROPIC_BASE_URL) still applies otherwise.
+            client_kwargs["base_url"] = base_url
+        self._client = anthropic.Anthropic(**client_kwargs)
         try:
             self._rate_limit_cls = anthropic.RateLimitError
             self._status_cls = anthropic.APIStatusError
@@ -380,14 +410,23 @@ class ClaudeCLIJsonClient:
 
     def __init__(
         self,
-        model: str = "sonnet",
+        model: Optional[str] = None,
         config_dirs: Optional[List[str]] = None,
         timeout: int = 180,
+        base_url: Optional[str] = None,
+        api_key: Optional[str] = None,
     ) -> None:
         import os as _os
         from pathlib import Path as _Path
 
-        self.model = model
+        # Hardcoded literal is a last-resort fallback behind the configured
+        # llm_model (env TESSERAE_LLM_MODEL → global config).
+        self.model = model or _configured_default_model(("claude",)) or "sonnet"
+        # Custom claude-compatible endpoint routing: when set, these are
+        # surfaced to the CLI child process as ANTHROPIC_BASE_URL /
+        # ANTHROPIC_AUTH_TOKEN in _run_prompt.
+        self.base_url = base_url
+        self.api_key = api_key
         # Resolution order:
         #   1. Explicit ``config_dirs`` argument wins (tests, MCP override,
         #      CLI flags like --claude-config-dir).
@@ -455,6 +494,14 @@ class ClaudeCLIJsonClient:
                         env.pop("CLAUDE_CONFIG_DIR", None)
                     else:
                         env["CLAUDE_CONFIG_DIR"] = config_dir
+                    # Route the CLI at a custom claude-compatible endpoint
+                    # when one was resolved from config. ANTHROPIC_AUTH_TOKEN
+                    # (not ANTHROPIC_API_KEY) so the CLI treats the key as a
+                    # bearer token for that endpoint.
+                    if self.base_url:
+                        env["ANTHROPIC_BASE_URL"] = self.base_url
+                    if self.api_key:
+                        env["ANTHROPIC_AUTH_TOKEN"] = self.api_key
                     cmd = [
                         "claude",
                         "-p",
@@ -581,7 +628,7 @@ class CodexCLIJsonClient:
 
     def __init__(
         self,
-        model: str = "gpt-5.4",
+        model: Optional[str] = None,
         codex_homes: Optional[List[str]] = None,
         timeout: int = 180,
         reasoning_effort: Optional[str] = "medium",
@@ -589,7 +636,9 @@ class CodexCLIJsonClient:
         import os as _os
         from pathlib import Path as _Path
 
-        self.model = model
+        # Hardcoded literal is a last-resort fallback behind the configured
+        # llm_model (env TESSERAE_LLM_MODEL → global config).
+        self.model = model or _configured_default_model(("codex",)) or "gpt-5.4"
         # Reasoning effort for Tesserae's own codex calls. Defaults to
         # ``medium`` — structured graph/finding extraction does NOT need the
         # ``xhigh`` a user may set globally in ``~/.codex/config.toml`` for
@@ -831,8 +880,11 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     > ``~/.tesserae/config.json`` > default.
 
     Keys read from both config layers: ``llm_provider`` (``"claude"`` |
-    ``"codex"``), ``llm_claude_config_dirs`` (list or str),
-    ``llm_codex_home`` (str).
+    ``"codex"`` | ``"anthropic"`` | ``"custom"``), ``llm_claude_config_dirs``
+    (list or str), ``llm_codex_home`` (str), ``llm_model`` (str),
+    ``llm_base_url`` (str), ``llm_api_key`` (str). Env overrides:
+    ``TESSERAE_LLM_MODEL`` → model, ``ANTHROPIC_BASE_URL`` → base_url,
+    ``ANTHROPIC_API_KEY`` → api_key.
     """
     import os
 
@@ -878,11 +930,36 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
         or "medium"
     )
 
+    # Custom claude-compatible endpoint knobs (also used to override the
+    # model/base_url/key on the anthropic provider). Same precedence:
+    # env → project config → global config → None.
+    model = (
+        os.environ.get("TESSERAE_LLM_MODEL")
+        or cfg.get("llm_model")
+        or global_cfg.get("llm_model")
+        or None
+    )
+    base_url = (
+        os.environ.get("ANTHROPIC_BASE_URL")
+        or cfg.get("llm_base_url")
+        or global_cfg.get("llm_base_url")
+        or None
+    )
+    api_key = (
+        os.environ.get("ANTHROPIC_API_KEY")
+        or cfg.get("llm_api_key")
+        or global_cfg.get("llm_api_key")
+        or None
+    )
+
     return {
         "provider": provider,
         "claude_config_dirs": claude_config_dirs,
         "codex_home": codex_home,
         "codex_reasoning_effort": codex_reasoning_effort,
+        "model": model,
+        "base_url": base_url,
+        "api_key": api_key,
     }
 
 
@@ -896,6 +973,8 @@ def build_default_json_client(
     codex_home: Optional[str] = None,
     codex_reasoning_effort: Optional[str] = "medium",
     timeout: Any = _KEEP_TIMEOUT,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
 ) -> Optional[LLMJsonClient]:
     """Return the best-available JSON-completion client.
 
@@ -918,16 +997,26 @@ def build_default_json_client(
 
     ``provider="codex"`` puts the Codex CLI first (codex → claude → API
     key → None); the model defaults to ``gpt-5.4`` on the codex path.
-    """
-    import os
 
+    ``provider="custom"`` targets a claude-compatible endpoint through the
+    Anthropic SDK with the resolved ``llm_model`` / ``llm_base_url`` /
+    ``llm_api_key`` (env → project config → global config) — no
+    ``ANTHROPIC_API_KEY`` env var required when ``llm_api_key`` is
+    configured.
+    """
     # Test seam wins.
     if _CLIENT_FACTORY is not None:
         return AnthropicLLMJsonClient(model=model or "claude-sonnet-4-6")
 
+    # Explicit args (threaded from a project config by the caller) beat the
+    # env → global-config resolution. ``settings["provider"]`` already folds
+    # in TESSERAE_LLM_PROVIDER.
+    settings = resolve_llm_client_settings()
     resolved_provider = (
-        provider or os.environ.get("TESSERAE_LLM_PROVIDER") or "claude"
+        provider or settings["provider"] or "claude"
     ).strip().lower()
+    resolved_base_url = base_url or settings["base_url"]
+    resolved_api_key = api_key or settings["api_key"]
 
     # timeout=None (from the doc extractor) means "no cutoff — run to completion";
     # the sentinel leaves each client on its own default (180s CLI / 30s API).
@@ -936,7 +1025,7 @@ def build_default_json_client(
     def _codex() -> Optional[LLMJsonClient]:
         if _codex_cli_available():
             return CodexCLIJsonClient(
-                model=model or "gpt-5.4",
+                model=model,
                 codex_homes=[codex_home] if codex_home else None,
                 reasoning_effort=codex_reasoning_effort,
                 **_tkw,
@@ -945,9 +1034,18 @@ def build_default_json_client(
 
     def _claude() -> Optional[LLMJsonClient]:
         if _claude_cli_available():
+            # Thread the endpoint pair only when a custom base_url is in
+            # play — a stray ANTHROPIC_API_KEY env var must not flip the
+            # CLI from OAuth to bearer-token auth.
+            _ekw = (
+                {"base_url": resolved_base_url, "api_key": resolved_api_key}
+                if resolved_base_url
+                else {}
+            )
             return ClaudeCLIJsonClient(
-                model=model or "sonnet",
+                model=model,
                 config_dirs=claude_config_dirs,
+                **_ekw,
                 **_tkw,
             )
         return None
@@ -957,18 +1055,38 @@ def build_default_json_client(
         # install without `tesserae[synthesis-llm]`) — that's a silent
         # no-op rather than a crash because the structural-only path
         # remains useful with zero LLM access.
-        if os.environ.get("ANTHROPIC_API_KEY"):
+        if resolved_api_key:
             try:
-                return AnthropicLLMJsonClient(model=model or "claude-sonnet-4-6", **_tkw)
+                return AnthropicLLMJsonClient(
+                    model=model,
+                    api_key=resolved_api_key,
+                    base_url=resolved_base_url,
+                    **_tkw,
+                )
             except RuntimeError:
                 return None
         return None
+
+    def _custom() -> Optional[LLMJsonClient]:
+        # Explicit custom endpoint: build unconditionally (some local
+        # claude-compatible endpoints are keyless), resolved knobs applied.
+        try:
+            return AnthropicLLMJsonClient(
+                model=model,
+                api_key=resolved_api_key,
+                base_url=resolved_base_url,
+                **_tkw,
+            )
+        except RuntimeError:
+            return None
 
     if resolved_provider == "codex":
         chain = (_codex, _claude, _api_key)
     elif resolved_provider == "anthropic":
         # Honour an explicit anthropic choice: the SDK first, not the Claude CLI.
         chain = (_api_key, _claude, _codex)
+    elif resolved_provider == "custom":
+        chain = (_custom, _claude, _codex)
     else:
         chain = (_claude, _api_key, _codex)
     for builder in chain:
@@ -1007,32 +1125,48 @@ class CompositeCLIClient:
 
 
 def build_rotating_client(
-    model_claude: str = "sonnet",
-    model_codex: str = "gpt-5.4",
+    model_claude: Optional[str] = None,
+    model_codex: Optional[str] = None,
     provider: Optional[str] = None,
     claude_config_dirs: Optional[List[str]] = None,
     codex_home: Optional[str] = None,
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
 ) -> Optional[Any]:
     """Build a client that rotates across EVERY available account/provider.
 
     Unlike :func:`build_default_json_client` (which returns the single
     best-available client), this composes ALL available backends — Claude
     CLI (rotating its config dirs), Codex CLI (rotating its homes), and the
-    Anthropic SDK if a key is set — in ``provider`` preference order, and
-    falls through provider-to-provider on exhaustion. Returns None only when
-    no backend is usable at all. Used by prose synthesis (``tesserae ask``).
+    Anthropic SDK if a key is set or provider is ``custom``/``anthropic`` —
+    in ``provider`` preference order, and falls through provider-to-provider
+    on exhaustion. Returns None only when no backend is usable at all. Used
+    by prose synthesis (``tesserae ask``).
     """
-    import os
-
     if _CLIENT_FACTORY is not None:
         return AnthropicLLMJsonClient(model="claude-sonnet-4-6")
 
+    # Callers here (ask/query/summary) don't thread a project config, so
+    # resolve env → global config directly; explicit args still win.
+    settings = resolve_llm_client_settings()
     resolved_provider = (
-        provider or os.environ.get("TESSERAE_LLM_PROVIDER") or "claude"
+        provider or settings["provider"] or "claude"
     ).strip().lower()
+    resolved_base_url = base_url or settings["base_url"]
+    resolved_api_key = api_key or settings["api_key"]
 
+    # Same gate as build_default_json_client: route the CLI at the custom
+    # endpoint only when a base_url is in play, so a stray ANTHROPIC_API_KEY
+    # env var never flips the CLI from OAuth to bearer-token auth.
+    _claude_ekw = (
+        {"base_url": resolved_base_url, "api_key": resolved_api_key}
+        if resolved_base_url
+        else {}
+    )
     claude_client = (
-        ClaudeCLIJsonClient(model=model_claude, config_dirs=claude_config_dirs)
+        ClaudeCLIJsonClient(
+            model=model_claude, config_dirs=claude_config_dirs, **_claude_ekw
+        )
         if _claude_cli_available()
         else None
     )
@@ -1045,14 +1179,18 @@ def build_rotating_client(
         else None
     )
     api_client = None
-    if os.environ.get("ANTHROPIC_API_KEY"):
+    if resolved_api_key or resolved_provider == "custom":
         try:
-            api_client = AnthropicLLMJsonClient(model="claude-sonnet-4-6")
+            api_client = AnthropicLLMJsonClient(
+                api_key=resolved_api_key, base_url=resolved_base_url
+            )
         except RuntimeError:
             api_client = None
 
     if resolved_provider == "codex":
         ordered = [codex_client, claude_client, api_client]
+    elif resolved_provider in ("anthropic", "custom"):
+        ordered = [api_client, claude_client, codex_client]
     else:
         ordered = [claude_client, api_client, codex_client]
     available = [c for c in ordered if c is not None]

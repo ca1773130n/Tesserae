@@ -506,6 +506,31 @@ class Daemon:
                 )
             )
 
+        # Daily chunk writer (session_chunks.db): best-effort optimization —
+        # if the store cannot be built the tailer simply runs without it and
+        # the activity summary keeps its raw-scan path. Never blocks startup.
+        chunk_writer = None
+        try:
+            from ..session_chunks import (
+                SessionChunksDB,
+                chunks_db_path,
+                record_live_turns,
+            )
+
+            chunks_db = SessionChunksDB(chunks_db_path(self.project_root))
+
+            def chunk_writer(harness, path, session_key, turns, _db=chunks_db):
+                # record_live_turns is itself never-raise; this wrapper only
+                # binds the db handle.
+                record_live_turns(_db, harness, path, session_key, turns)
+
+        except Exception:  # noqa: BLE001 - chunk store not ready: run without it
+            logger.warning(
+                "session-chunks writer unavailable; live day-chunking disabled",
+                exc_info=True,
+            )
+            chunk_writer = None
+
         try:
             db = HarnessSessionsDB(
                 self.project_root / ".tesserae" / "harness_sessions.db"
@@ -515,6 +540,7 @@ class Daemon:
                 sessions_db=db,
                 poll_interval=self._session_poll_interval,
                 on_new_turns=on_new_turns,
+                on_chunk_turns=chunk_writer,
             )
         except Exception:  # noqa: BLE001 - tailer not ready: skip, don't crash
             logger.warning(

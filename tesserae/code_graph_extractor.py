@@ -18,6 +18,7 @@ Distinct from :mod:`tesserae.code_graph` (older ``SOURCE_FILE`` /
 from __future__ import annotations
 
 import ast
+import json
 import os
 import secrets
 from dataclasses import dataclass
@@ -414,14 +415,23 @@ def _call_name(node: ast.AST) -> Optional[str]:
 # collide on a shared ``.tmp`` suffix.
 
 
-def write_code_graph(graph: ResearchGraph, target: Path) -> Path:
-    """Persist ``graph`` to ``target`` atomically via ``os.replace``."""
+def write_code_graph(
+    graph: ResearchGraph, target: Path, *, generated_by: str = "tesserae code ingest"
+) -> Path:
+    """Persist ``graph`` to ``target`` atomically via ``os.replace``.
+
+    The payload carries a top-level ``generated_by`` stamp so consumers can
+    tell WHICH producer wrote ``code-graph.json`` (the stdlib-``ast`` extractor
+    vs the CodeGraph SQLite adapter); ``graph_from_payload`` ignores extra keys.
+    """
 
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(target.suffix + f".tmp.{os.getpid()}.{secrets.token_hex(4)}")
+    payload = graph.model_dump()
+    payload["generated_by"] = generated_by
     try:
         tmp.write_text(
-            graph.to_json(indent=2, sort_keys=True) + "\n",
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
         os.replace(tmp, target)

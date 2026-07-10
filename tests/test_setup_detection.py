@@ -21,14 +21,52 @@ def test_detect_returns_report_for_empty_project(tmp_path: Path) -> None:
 def test_detect_finds_claude_cli(tmp_path: Path, monkeypatch) -> None:
     import shutil
 
+    from tesserae import llm_json
+
     def fake_which(name: str) -> str | None:
         return "/fake/bin/claude" if name == "claude" else None
 
     monkeypatch.setattr(shutil, "which", fake_which)
+    monkeypatch.setattr(llm_json, "_claude_cli_available", lambda: True)
     report = detect(tmp_path)
     assert report.llm_clis["claude"].available is True
+    assert report.llm_clis["claude"].credentialed is True
     assert report.llm_clis["claude"].binary == "/fake/bin/claude"
     assert report.llm_clis["codex"].available is False
+
+
+def test_detect_reports_logged_out_cli_unavailable(tmp_path: Path, monkeypatch) -> None:
+    """A CLI on PATH without credentials must not be reported available."""
+    import shutil
+
+    from tesserae import llm_json
+
+    monkeypatch.setattr(
+        shutil,
+        "which",
+        lambda name: f"/fake/bin/{name}" if name in {"claude", "codex"} else None,
+    )
+    monkeypatch.setattr(llm_json, "_claude_cli_available", lambda: False)
+    monkeypatch.setattr(llm_json, "_codex_cli_available", lambda: False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    report = detect(tmp_path)
+    assert report.llm_clis["claude"].available is False
+    assert report.llm_clis["claude"].credentialed is False
+    assert report.llm_clis["claude"].binary == "/fake/bin/claude"
+    assert report.llm_clis["codex"].available is False
+    assert report.recommended.extractor == "deterministic"
+    assert report.recommended.llm_provider is None
+
+
+def test_detect_recommends_anthropic_provider_from_api_key(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import shutil
+
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-x")
+    report = detect(tmp_path)
+    assert report.recommended.llm_provider == "anthropic"
 
 
 def test_detect_reads_api_key_presence_only(tmp_path: Path, monkeypatch) -> None:
@@ -51,13 +89,17 @@ def test_detect_warns_on_old_python(tmp_path: Path, monkeypatch) -> None:
 def test_detect_recommends_claude_when_present(tmp_path: Path, monkeypatch) -> None:
     import shutil
 
+    from tesserae import llm_json
+
     monkeypatch.setattr(
         shutil,
         "which",
         lambda name: "/fake/bin/claude" if name == "claude" else None,
     )
+    monkeypatch.setattr(llm_json, "_claude_cli_available", lambda: True)
     report = detect(tmp_path)
     assert report.recommended.extractor == "claude-cli"
+    assert report.recommended.llm_provider == "claude"
 
 
 def test_detect_recommends_deterministic_with_no_llm(tmp_path: Path, monkeypatch) -> None:

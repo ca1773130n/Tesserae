@@ -22,6 +22,8 @@ LLM_CLI_NAMES: tuple[str, ...] = (
     "gh",
 )
 
+LlmProvider = Literal["claude", "codex", "anthropic", "custom"]
+
 API_KEYS: tuple[str, ...] = (
     "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
@@ -40,6 +42,8 @@ class LlmCli(BaseModel):
     binary: Optional[str] = None
     version: Optional[str] = None
     available: bool = False
+    # True/False when a login probe exists for this CLI; None = unknown.
+    credentialed: Optional[bool] = None
 
 
 class ConfigDir(BaseModel):
@@ -74,6 +78,7 @@ class Recommendations(BaseModel):
     extractor: Literal[
         "deterministic", "claude-cli", "codex", "selective-claude"
     ] = "deterministic"
+    llm_provider: Optional[LlmProvider] = None
     claude_config_dir: Optional[str] = None
     claude_model: Optional[str] = None
     codex_model: Optional[str] = None
@@ -90,6 +95,26 @@ class DetectionReport(BaseModel):
     python: PythonEnv
     recommended: Recommendations
     detected_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
+
+
+def _probe_credentials(name: str) -> Optional[bool]:
+    """Login probe for CLIs we know how to check; ``None`` = no probe exists.
+
+    Imported lazily so plain detection stays cheap and never pays the
+    llm_json import unless a probe-able CLI binary is actually on PATH.
+    """
+    try:
+        if name == "claude":
+            from ..llm_json import _claude_cli_available
+
+            return _claude_cli_available()
+        if name == "codex":
+            from ..llm_json import _codex_cli_available
+
+            return _codex_cli_available()
+    except Exception:
+        return None
+    return None
 
 
 def _probe_cli(name: str) -> LlmCli:
@@ -109,7 +134,16 @@ def _probe_cli(name: str) -> LlmCli:
             version = text.splitlines()[0] if text else None
     except Exception:
         version = None
-    return LlmCli(name=name, binary=binary, version=version, available=True)
+    credentialed = _probe_credentials(name)
+    # A binary that is on PATH but logged out must not be reported available:
+    # recommending it yields silent no-LLM fallbacks downstream.
+    return LlmCli(
+        name=name,
+        binary=binary,
+        version=version,
+        available=credentialed is not False,
+        credentialed=credentialed,
+    )
 
 
 def _probe_python(project_root: Path) -> PythonEnv:
@@ -188,6 +222,16 @@ def _recommend(
     else:
         extractor = "deterministic"
 
+    # Runtime LLM provider (synthesis/insights JSON client). `available` is
+    # credential-gated above, so a logged-out CLI is never recommended.
+    llm_provider: Optional[str] = None
+    if llm_clis.get("claude", LlmCli(name="claude")).available:
+        llm_provider = "claude"
+    elif llm_clis.get("codex", LlmCli(name="codex")).available:
+        llm_provider = "codex"
+    elif api_keys.get("ANTHROPIC_API_KEY"):
+        llm_provider = "anthropic"
+
     claude_config_dir: Optional[str] = None
     env_dir = os.environ.get("CLAUDE_CONFIG_DIR")
     if env_dir:
@@ -202,6 +246,7 @@ def _recommend(
 
     return Recommendations(
         extractor=extractor,  # type: ignore[arg-type]
+        llm_provider=llm_provider,  # type: ignore[arg-type]
         claude_config_dir=claude_config_dir,
         codex_model=codex_model,
         include_understand_anything=project.has_understand_anything,

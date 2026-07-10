@@ -111,18 +111,28 @@ class HarnessSessionStore:
         self.root = Path(root)
         self.manifest_path = self.root / "manifest.json"
 
-    def write_sessions(self, sessions: Iterable[HarnessSession]) -> Dict[str, object]:
+    def write_sessions(
+        self, sessions: Iterable[HarnessSession], *, replace: bool = False
+    ) -> Dict[str, object]:
+        """Write normalized sessions into the store.
+
+        Default (``replace=False``) MERGES: existing records are kept, new
+        sessions are added (same-filename records are overwritten in place),
+        and the manifest is rebuilt from everything on disk. This makes an
+        empty import / empty discover a no-op instead of a store wipe.
+
+        ``replace=True`` restores the authoritative-import semantics: stale
+        session records are removed first so changed filename schemes or
+        deduped imports cannot leave orphan pages/search entries behind.
+        """
         ordered = sorted(list(sessions), key=lambda s: (s.started_at or "", s.harness, s.slug))
         self.root.mkdir(parents=True, exist_ok=True)
-        # Treat writes as an authoritative normalized import. Remove stale
-        # session records first so changed filename schemes or deduped imports
-        # cannot leave orphan pages/search entries behind on the next build.
-        for stale in list(self.root.glob("*/*.json")) + list(self.root.glob("*/*.md")):
-            try:
-                stale.unlink()
-            except OSError:
-                pass
-        manifest_sessions: List[Dict[str, object]] = []
+        if replace:
+            for stale in list(self.root.glob("*/*.json")) + list(self.root.glob("*/*.md")):
+                try:
+                    stale.unlink()
+                except OSError:
+                    pass
         for session in ordered:
             harness_dir = self.root / safe_slug(session.harness)
             harness_dir.mkdir(parents=True, exist_ok=True)
@@ -131,10 +141,17 @@ class HarnessSessionStore:
             json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             md_path = harness_dir / f"{session.filename}.md"
             md_path.write_text(render_session_markdown(session), encoding="utf-8")
-            manifest_sessions.append(_manifest_entry(session))
-        manifest = {"version": "1", "sessions": manifest_sessions}
+        if replace:
+            merged = ordered
+        else:
+            # Rebuild the manifest from disk so pre-existing records survive.
+            merged = sorted(
+                self.list_sessions(),
+                key=lambda s: (s.started_at or "", s.harness, s.slug),
+            )
+        manifest = {"version": "1", "sessions": [_manifest_entry(s) for s in merged]}
         self.manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        return {"path": str(self.root), "sessions": len(ordered)}
+        return {"path": str(self.root), "sessions": len(ordered), "total": len(merged)}
 
     def list_sessions(self) -> List[HarnessSession]:
         if not self.root.exists():
@@ -211,6 +228,7 @@ _TESSERAE_PROMPT_SIGNATURES: tuple[str, ...] = (
     "You are extracting a typed research intelligence graph for Tesserae",
     "You are an Tesserae synthesis writer",
     "You are the librarian voice of Tesserae",
+    "You are the retrieval planner for a project knowledge graph",
     "You are an ontology engineer assisting the Tesserae knowledge-graph",
     "You are the lead planner of an agentic research loop",
     "You are a research subagent. Given a sub-question",

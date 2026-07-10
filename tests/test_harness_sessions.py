@@ -261,3 +261,83 @@ def test_cli_project_sessions_import_filters_other_project_sessions(tmp_path, ca
     assert "Skipped non-project harness sessions: 1" in captured
     assert "Project memory ingestion" in captured
     assert "Foreign project session" not in captured
+
+
+# ---------------------------------------------------------------------------
+# write_sessions merge-by-default (item-6 rider): an empty import / empty
+# discover must never wipe the store; replace=True keeps the authoritative
+# prune-stale semantics.
+# ---------------------------------------------------------------------------
+
+
+def test_write_sessions_merges_by_default(tmp_path):
+    project = tmp_path / "demo-project"
+    project.mkdir()
+    store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
+    first = sample_session(project)
+    store.write_sessions([first])
+
+    second = HarnessSession.from_dict({
+        **sample_session(project).to_dict(),
+        "id": "claude-code:second",
+        "slug": "second-session",
+        "title": "Second session",
+        "started_at": "2026-05-06T10:00:00Z",
+    })
+    result = store.write_sessions([second])
+
+    # Both records survive: merge added the new one without deleting the old.
+    assert result["sessions"] == 1
+    assert result["total"] == 2
+    listed = store.list_sessions()
+    assert {s.title for s in listed} == {"Project memory ingestion", "Second session"}
+    manifest = json.loads((store.root / "manifest.json").read_text(encoding="utf-8"))
+    assert len(manifest["sessions"]) == 2
+
+
+def test_write_sessions_empty_write_is_a_noop_not_a_wipe(tmp_path):
+    project = tmp_path / "demo-project"
+    project.mkdir()
+    store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
+    store.write_sessions([sample_session(project)])
+
+    result = store.write_sessions([])  # empty import/discover
+
+    assert result["sessions"] == 0
+    assert result["total"] == 1
+    assert len(store.list_sessions()) == 1
+
+
+def test_write_sessions_replace_prunes_stale_records(tmp_path):
+    project = tmp_path / "demo-project"
+    project.mkdir()
+    store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
+    store.write_sessions([sample_session(project)])
+
+    replacement = HarnessSession.from_dict({
+        **sample_session(project).to_dict(),
+        "id": "claude-code:replacement",
+        "slug": "replacement-session",
+        "title": "Replacement session",
+    })
+    result = store.write_sessions([replacement], replace=True)
+
+    assert result["sessions"] == 1
+    listed = store.list_sessions()
+    assert [s.title for s in listed] == ["Replacement session"]
+
+
+def test_cli_sessions_import_with_no_paths_leaves_existing_sessions_intact(tmp_path, capsys):
+    """Regression: `tesserae sessions import` (no paths) used to WIPE the store."""
+    project = tmp_path / "demo-project"
+    project.mkdir()
+    ProjectWiki.init(project, name="demo_project", source_kind="Repository")
+    store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
+    store.write_sessions([sample_session(project)])
+
+    assert main(["sessions", "import", "--project", str(project)]) == 0
+    capsys.readouterr()
+
+    assert len(store.list_sessions()) == 1
+    manifest = json.loads((store.root / "manifest.json").read_text(encoding="utf-8"))
+    assert len(manifest["sessions"]) == 1

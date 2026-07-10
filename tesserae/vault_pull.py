@@ -631,6 +631,7 @@ def prune_orphan_pages(
     graph: ResearchGraph,
     *,
     force: bool = False,
+    dry_run: bool = False,
 ) -> PruneResult:
     """Delete projected pages whose ``node_id`` is no longer in ``graph``.
 
@@ -711,6 +712,10 @@ def prune_orphan_pages(
         if notes and not force:
             skipped.append(md)
             continue
+        if dry_run:
+            # Report what WOULD be deleted; touch nothing.
+            deleted.append(md)
+            continue
         try:
             md.unlink()
             deleted.append(md)
@@ -719,6 +724,8 @@ def prune_orphan_pages(
 
     # Sweep empty directories bottom-up.
     removed_dirs: List[Path] = []
+    if dry_run:
+        return PruneResult(deleted=deleted, skipped_with_user_notes=skipped, removed_empty_dirs=[])
     for d in sorted(vault_dir.rglob("*"), reverse=True):
         if not d.is_dir():
             continue

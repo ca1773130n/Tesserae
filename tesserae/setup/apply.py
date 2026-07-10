@@ -89,15 +89,11 @@ def _detect_drift(
 
 
 def _build_config_payload(plan: SetupPlan) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
+        "name": plan.name,
+        "source_kind": plan.source_kind,
         "project": {"name": plan.name, "source_kind": plan.source_kind},
         "sources": list(plan.sources),
-        "extraction": {
-            "backend": plan.extractor,
-            "claude_config_dir": plan.claude_config_dir,
-            "claude_model": plan.claude_model,
-            "codex_model": plan.codex_model,
-        },
         "external_tools": list(plan.external_tools),
         "memory_backends": dict(plan.memory_backends),
         "setup": {
@@ -105,6 +101,53 @@ def _build_config_payload(plan: SetupPlan) -> dict[str, Any]:
             "updated": date.today().isoformat(),
         },
     }
+    # Runtime keys read by llm_json.resolve_llm_client_settings (env vars —
+    # ANTHROPIC_BASE_URL / ANTHROPIC_API_KEY / TESSERAE_LLM_MODEL — win over
+    # these). Persisted only when set so untouched configs stay byte-stable.
+    if plan.llm_provider:
+        payload["llm_provider"] = plan.llm_provider
+    if plan.claude_config_dir:
+        payload["llm_claude_config_dirs"] = [plan.claude_config_dir]
+    if plan.codex_home:
+        payload["llm_codex_home"] = plan.codex_home
+    if plan.llm_model:
+        payload["llm_model"] = plan.llm_model
+    if plan.llm_base_url:
+        payload["llm_base_url"] = plan.llm_base_url
+    if plan.llm_api_key:
+        payload["llm_api_key"] = plan.llm_api_key
+    return payload
+
+
+def _merge_config_payload(
+    payload: dict[str, Any], existing_cfg: dict[str, Any]
+) -> dict[str, Any]:
+    """Re-init merges instead of clobbering: union sources, preserve
+    user-tuned memory_backends, keep external tools the plan doesn't manage."""
+    existing_sources = [
+        s for s in (existing_cfg.get("sources") or []) if isinstance(s, str)
+    ]
+    if existing_sources:
+        payload["sources"] = existing_sources + [
+            s for s in payload["sources"] if s not in existing_sources
+        ]
+    existing_backends = existing_cfg.get("memory_backends")
+    if isinstance(existing_backends, dict) and existing_backends:
+        payload["memory_backends"] = {
+            **payload["memory_backends"],
+            **existing_backends,
+        }
+    existing_tools = existing_cfg.get("external_tools")
+    if isinstance(existing_tools, list) and existing_tools:
+        plan_tool_ids = {
+            t.get("id") for t in payload["external_tools"] if isinstance(t, dict)
+        }
+        payload["external_tools"] = list(payload["external_tools"]) + [
+            t
+            for t in existing_tools
+            if isinstance(t, dict) and t.get("id") not in plan_tool_ids
+        ]
+    return payload
 
 
 def apply_plan(
@@ -126,6 +169,21 @@ def apply_plan(
         if drift_policy == "warn":
             warnings.append(f"environment drift detected at apply time: {drift}")
 
+    # Capture any pre-existing config BEFORE ProjectWiki.init rewrites it:
+    # re-init must merge with what the user already has, not clobber it.
+    existing_cfg: dict[str, Any] = {}
+    existing_config_path = project_root / ".tesserae" / "config.json"
+    if existing_config_path.exists():
+        try:
+            loaded = json.loads(existing_config_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                existing_cfg = loaded
+        except Exception:
+            warnings.append(
+                f"existing config at {existing_config_path} is unreadable; "
+                "rewriting it from the plan"
+            )
+
     wiki = ProjectWiki.init(
         project_root,
         name=plan.name,
@@ -133,11 +191,22 @@ def apply_plan(
         sources=plan.sources,
     )
     cfg = wiki.config()
-    cfg.update(_build_config_payload(plan))
+    if existing_cfg:
+        # Restore user keys over the freshly templated config; the merged
+        # payload below re-asserts every key the plan actually owns.
+        cfg.update(existing_cfg)
+    cfg.update(_merge_config_payload(_build_config_payload(plan), existing_cfg))
     wiki.paths.config.write_text(
         json.dumps(cfg, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    if plan.llm_api_key:
+        key_warning = (
+            f"llm_api_key is stored in plaintext in {wiki.paths.config}; "
+            "prefer the ANTHROPIC_API_KEY environment variable"
+        )
+        warnings.append(key_warning)
+        print(f"warning: {key_warning}", file=sys.stderr)
 
     actions_taken: list[dict[str, Any]] = []
 

@@ -943,21 +943,27 @@ def ask_project(
     top_k: int = 5,
     cognee_search_type: Optional[str] = None,
     cognee_dataset: Optional[str] = None,
-    use_llm: bool = False,
+    use_llm: bool = True,
+    no_llm: bool = False,
 ) -> Dict[str, Any]:
     """Run a question against the configured memory backends and return a JSON-serializable envelope.
 
     Shared by ``tesserae ask``, the new top-level ``tesserae ask``,
     and the MCP ``ask`` tool so all three call sites stay in lockstep.
 
-    Dispatch order under ``backend="auto"``:
+    Dispatch:
 
-    1. raganything (when ``memory_backends.raganything.enabled``)
-    2. cognee (when ``memory_backends.cognee.enabled`` per ``cognee_backend_config``)
-    3. compiled-wiki BM25 search (always available)
+    * ``backend="auto"`` (and ``"wiki"``) go straight to the compiled-wiki
+      path — the KG planner when LLM synthesis is enabled, BM25 search
+      otherwise. Auto never enters raganything/cognee.
+    * Explicit ``backend="raganything"|"cognee"`` short-circuits to that
+      backend and surfaces its errors instead of silently falling through.
 
-    Explicit ``backend="raganything"|"cognee"|"wiki"`` short-circuits the
-    selector and surfaces backend errors instead of silently falling through.
+    ``use_llm`` defaults to **True**: ask is the LLM-answer surface (the
+    planner + synthesis run unless disabled). ``no_llm=True`` forces
+    synthesis off on the wiki path — it beats both ``use_llm`` and
+    ``TESSERAE_QUERY_LLM``, skips the planner, and pins ``wiki.query`` to
+    search-only.
 
     Returns one of:
 
@@ -978,58 +984,40 @@ def ask_project(
         raise ValueError("ask_project: question is required")
 
     cfg = wiki.config()
-    # Under backend="auto", remember why a richer backend was skipped so the
-    # wiki fallback can tell the user (vs. silently looking like the only
-    # backend that was ever tried).
-    auto_notes: List[str] = []
 
-    # ---- raganything path ----
-    raganything_cfg = (cfg.get("memory_backends") or {}).get("raganything") or {}
-    raganything_enabled = bool(raganything_cfg.get("enabled"))
-    use_raganything = backend == "raganything" or (backend == "auto" and raganything_enabled)
-    if use_raganything:
+    # ---- raganything path (explicit backend only; auto never enters) ----
+    if backend == "raganything":
+        raganything_cfg = (cfg.get("memory_backends") or {}).get("raganything") or {}
         # Resolve working_dir relative to the project root for portability.
         wd = raganything_cfg.get("working_dir")
         if wd and not Path(wd).is_absolute():
             raganything_cfg = {**raganything_cfg, "working_dir": str(wiki.project_root / wd)}
-        if backend == "raganything" and not raganything_cfg.get("enabled"):
+        if not raganything_cfg.get("enabled"):
             raganything_cfg = {**raganything_cfg, "enabled": True}
         from .raganything_query import query as _raganything_query
 
         try:
             answer = _raganything_query(cleaned_question, backend_config=raganything_cfg)
         except Exception as exc:
-            if backend == "raganything":
-                raise RuntimeError(f"raganything ask failed: {exc}") from exc
-            auto_notes.append(f"raganything failed: {type(exc).__name__}")
-            answer = None
+            raise RuntimeError(f"raganything ask failed: {exc}") from exc
         if answer is not None:
             return {
                 "backend": "raganything",
                 "question": cleaned_question,
                 "answer": answer,
             }
-        if backend == "raganything":
-            return {
-                "backend": "raganything",
-                "question": cleaned_question,
-                "answer": None,
-                "note": "no answer (likely missing API keys or empty index)",
-            }
-        # auto: fall through
+        return {
+            "backend": "raganything",
+            "question": cleaned_question,
+            "answer": None,
+            "note": "no answer (likely missing API keys or empty index)",
+        }
 
-    # ---- cognee path ----
-    cognee_cfg = cognee_backend_config(cfg)
-    # In 'auto', only reach for cognee if it's actually importable in THIS runtime
-    # (the packaged CLI often ships without it) — an absent optional backend is
-    # normal, not a failure to announce. Explicit backend='cognee' still tries and
-    # raises a clear error. (Module-level helper so tests can patch it.)
-    use_cognee = backend == "cognee" or (
-        backend == "auto" and cognee_cfg.get("enabled", False) and _cognee_importable()
-    )
-    if use_cognee:
+    # ---- cognee path (explicit backend only; auto never enters) ----
+    if backend == "cognee":
         from .cognee_query import search_cognee
 
+        cognee_cfg = cognee_backend_config(cfg)
         dataset = cognee_dataset or cognee_cfg.get("dataset")
         cognee_kwargs: Dict[str, Any] = {"dataset": dataset, "top_k": top_k}
         if cognee_search_type:
@@ -1037,10 +1025,7 @@ def ask_project(
         try:
             results = search_cognee(cleaned_question, **cognee_kwargs)
         except Exception as exc:
-            if backend == "cognee":
-                raise RuntimeError(f"cognee ask failed: {exc}") from exc
-            auto_notes.append(f"cognee failed: {type(exc).__name__}")
-            results = None
+            raise RuntimeError(f"cognee ask failed: {exc}") from exc
         if results is not None:
             return {
                 "backend": "cognee",
@@ -1048,17 +1033,31 @@ def ask_project(
                 "question": cleaned_question,
                 "results": results,
             }
+        # search_cognee returned nothing: fall through to wiki, matching the
+        # pre-split behavior for an explicit cognee ask with no results.
 
-    # ---- wiki search fallback ----
-    # Honor the LLM gate: synthesize when the caller asked (use_llm) or the
-    # TESSERAE_QUERY_LLM env is set. Previously hardcoded False, so the wiki
-    # path could NEVER produce an answer even with a key configured.
-    result = wiki.query(cleaned_question, top_k=top_k, use_llm=use_llm or env_enabled())
+    # ---- wiki path ----
+    # LLM gate: synthesize when the caller asked (use_llm) or the
+    # TESSERAE_QUERY_LLM env is set; no_llm force-disables and beats both.
+    want_llm = (use_llm or env_enabled()) and not no_llm
+    # LLM path: the model PLANS retrieval over the KG (timeline, sessions,
+    # activity, facts, wiki) before answering — plain BM25 cannot see dated
+    # evidence, so "what happened recently?" is unanswerable without this.
+    # Requires a compiled graph; dry-run keeps the deterministic classic path.
+    graph_path = getattr(getattr(wiki, "paths", None), "graph", None)
+    if want_llm and not env_dry_run() and graph_path is not None and graph_path.exists():
+        from .ask_planner import plan_and_answer
+
+        planned = plan_and_answer(wiki, cleaned_question, top_k=top_k)
+        if planned is not None:
+            planned["backend"] = "wiki"
+            planned["question"] = cleaned_question
+            return planned
+
+    result = wiki.query(cleaned_question, top_k=top_k, use_llm=want_llm, force_no_llm=no_llm)
     payload = result.to_dict()
     payload["backend"] = "wiki"
     payload["question"] = cleaned_question
-    if auto_notes:
-        payload["auto_notes"] = auto_notes
     return payload
 
 

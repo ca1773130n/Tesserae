@@ -15,7 +15,23 @@ from .detection import DetectionReport
 from .plan import SetupPlan, build_plan
 
 
-EXTRACTOR_CHOICES = ["claude-cli", "codex", "selective-claude", "deterministic"]
+def _provider_choices(report: DetectionReport) -> list[tuple[str, str]]:
+    """(value, label) provider options: detected, credentialed CLIs first,
+    then the always-offered API-key and custom-endpoint providers."""
+    choices: list[tuple[str, str]] = []
+    claude = report.llm_clis.get("claude")
+    if claude is not None and claude.available:
+        choices.append(
+            ("claude", f"claude — Claude CLI, logged in ({claude.version or claude.binary})")
+        )
+    codex = report.llm_clis.get("codex")
+    if codex is not None and codex.available:
+        choices.append(
+            ("codex", f"codex — Codex CLI, logged in ({codex.version or codex.binary})")
+        )
+    choices.append(("anthropic", "anthropic — Anthropic API key"))
+    choices.append(("custom", "custom — claude-compatible endpoint (base URL + API key)"))
+    return choices
 
 
 class WizardNotInteractive(RuntimeError):
@@ -99,8 +115,19 @@ def render_review(plan: SetupPlan) -> str:
     table.add_row("write config", str(plan.project_root / ".tesserae" / "config.json"))
     table.add_row("name", plan.name)
     table.add_row("extractor", plan.extractor)
+    if plan.llm_provider:
+        table.add_row("llm_provider", plan.llm_provider)
+    if plan.llm_model:
+        table.add_row("llm_model", plan.llm_model)
+    if plan.llm_base_url:
+        table.add_row("llm_base_url", plan.llm_base_url)
+    if plan.llm_api_key:
+        # Never echo the key: this rendering reaches MCP/non-TTY consumers.
+        table.add_row("llm_api_key", "(set — will be stored in plaintext config.json)")
     if plan.claude_config_dir:
         table.add_row("claude_config_dir", plan.claude_config_dir)
+    if plan.codex_home:
+        table.add_row("codex_home", plan.codex_home)
     if plan.codex_model:
         table.add_row("codex_model", plan.codex_model)
     table.add_row("sources", ", ".join(plan.sources) or "(none)")
@@ -153,28 +180,51 @@ def run_wizard(
     )
     sources.extend(p.strip() for p in extra.split(",") if p.strip())
 
-    console.print("\n[bold]Extractor backend[/bold]")
-    for i, choice in enumerate(EXTRACTOR_CHOICES):
-        marker = "[cyan]*[/cyan]" if choice == base_plan.extractor else " "
-        console.print(f"  {marker} {i + 1}) {choice}")
-    extractor_raw = Prompt.ask(
-        "Pick a backend (number, or Enter to keep recommended)",
-        default=str(EXTRACTOR_CHOICES.index(base_plan.extractor) + 1),
+    console.print("\n[bold]LLM provider[/bold]")
+    provider_choices = _provider_choices(detection)
+    provider_values = [value for value, _ in provider_choices]
+    recommended_provider = (
+        base_plan.llm_provider
+        if base_plan.llm_provider in provider_values
+        else provider_values[0]
+    )
+    for i, (value, label) in enumerate(provider_choices):
+        marker = "[cyan]*[/cyan]" if value == recommended_provider else " "
+        console.print(f"  {marker} {i + 1}) {label}")
+    provider_raw = Prompt.ask(
+        "Pick a provider (number, or Enter to keep recommended)",
+        default=str(provider_values.index(recommended_provider) + 1),
     )
     try:
-        extractor = EXTRACTOR_CHOICES[int(extractor_raw) - 1]
+        llm_provider = provider_values[int(provider_raw) - 1]
     except (ValueError, IndexError):
-        extractor = base_plan.extractor
+        llm_provider = recommended_provider
 
-    claude_config_dir = base_plan.claude_config_dir
+    # Persisted only when the user types one: blank = auto-discovery at
+    # runtime (a pinned dir would restrict multi-account ~/.claude* scans).
+    claude_config_dir: Optional[str] = None
     codex_model = base_plan.codex_model
-    if extractor in {"claude-cli", "selective-claude"}:
-        claude_config_dir = Prompt.ask(
-            "CLAUDE_CONFIG_DIR (leave default unless multi-account)",
-            default=claude_config_dir or "~/.claude",
+    llm_model = base_plan.llm_model
+    llm_base_url = base_plan.llm_base_url
+    llm_api_key = base_plan.llm_api_key
+    if llm_provider == "claude":
+        raw_dir = Prompt.ask(
+            "CLAUDE_CONFIG_DIR (blank = auto; set only for multi-account)",
+            default="",
         )
-    if extractor == "codex":
+        claude_config_dir = raw_dir.strip() or None
+    if llm_provider == "codex":
         codex_model = Prompt.ask("Codex model", default=codex_model or "gpt-5.4")
+    if llm_provider == "custom":
+        llm_base_url = Prompt.ask(
+            "Base URL (claude-compatible endpoint)", default=llm_base_url or ""
+        )
+        llm_api_key = Prompt.ask(
+            "API key (stored in plaintext config)",
+            default=llm_api_key or "",
+            password=True,
+        )
+        llm_model = Prompt.ask("Model name", default=llm_model or "")
 
     companion_items = [
         ("understand-anything", detection.recommended.include_understand_anything),
@@ -208,9 +258,12 @@ def run_wizard(
             "name": name,
             "source_kind": source_kind,
             "sources": sources,
-            "extractor": extractor,
             "claude_config_dir": claude_config_dir,
             "codex_model": codex_model,
+            "llm_provider": llm_provider,
+            "llm_model": llm_model,
+            "llm_base_url": llm_base_url,
+            "llm_api_key": llm_api_key,
             "include_understand_anything": include_ua,
             "install_understand_anything": install_ua,
             "include_raganything": include_raganything,

@@ -124,11 +124,19 @@ def test_source_kind_to_node_type_uses_frontmatter_type_for_repo_and_synthesis()
 
 
 def test_source_kind_to_node_type_falls_back_when_no_frontmatter():
-    # No frontmatter type -> rely on path / source_kind heuristics.
+    # An explicit known source_kind maps EXACTLY — path heuristics never
+    # override it (the CLI validates --source-kind with choices=).
     assert source_kind_to_node_type("Repository", "src/foo.py", None) == ResearchNodeType.REPOSITORY
-    # Hyphen-slug paper folder is now recognized even without frontmatter.
     assert (
         source_kind_to_node_type("Repository", "data/research/papers/arxiv-2308-04079/paper.md", None)
+        == ResearchNodeType.REPOSITORY
+    )
+    assert source_kind_to_node_type("Paper", "src/foo.py", None) == ResearchNodeType.PAPER
+    assert source_kind_to_node_type("ResearchDigest", "x.md", None) == ResearchNodeType.SYNTHESIS
+    # The generic default keeps path-based detection: a hyphen-slug paper
+    # folder is recognized even without frontmatter.
+    assert (
+        source_kind_to_node_type("SourceDocument", "data/research/papers/arxiv-2308-04079/paper.md", None)
         == ResearchNodeType.PAPER
     )
 

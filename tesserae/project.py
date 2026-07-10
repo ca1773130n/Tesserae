@@ -31,7 +31,6 @@ from .code_graph import (
     write_code_graph_cache,
 )
 from .cognee_adapter import CogneeResearchGraphAdapter
-from .cognee_codex import CogneeCodexPatch
 from .cognee_direct import CogneeDirectImporter
 from .deploy import GitHubPagesDeployer
 from .graph_stores import SqliteGraphStore
@@ -93,15 +92,20 @@ def _get_community_summaries_test_client() -> Optional[object]:
 
 @dataclass(frozen=True)
 class CognifyOptions:
-    """Optional Cognee/Codex cognify pass run after the bundle is written.
+    """Optional Cognee cognify pass run after the bundle is written.
 
     All fields default to no-op values; the pass is a no-op when ``mode`` is
     ``"off"``. The CLI ``compile`` builds this from --cognee-* flags;
     direct callers can construct it explicitly. Defaults mirror the legacy
     ``ingest`` subcommand at ``tesserae.cli.main``.
+
+    The legacy ``codex_cognify`` mode (Cognee's LLM client patched to OAuth
+    Codex CLI) was removed with :mod:`tesserae.cognee_codex`'s demotion; a
+    config still carrying it is treated as inactive. ``codex_model`` /
+    ``codex_timeout`` remain only because the CLI still constructs them.
     """
 
-    mode: str = "off"  # off | add | cognify | codex_cognify
+    mode: str = "off"  # off | add | cognify
     dataset: str = "tesserae_research_graph"
     codex_model: str = "gpt-4o"
     codex_timeout: int = 300
@@ -141,11 +145,11 @@ class CognifyOptions:
 
     @property
     def is_active(self) -> bool:
-        return self.mode in {"add", "cognify", "codex_cognify"}
+        return self.mode in {"add", "cognify"}
 
     @property
     def runs_cognify(self) -> bool:
-        return self.mode in {"cognify", "codex_cognify"}
+        return self.mode == "cognify"
 
 
 @dataclass(frozen=True)
@@ -234,6 +238,13 @@ class ProjectPaths:
     # it must stay excluded from every output-hash scope — the
     # ``output_snapshot`` allowlists never include it.
     code_graph_cache: Path = Path(".tesserae/code-graph-cache.json")
+    # Daily session-chunk store (see ``tesserae.session_chunks``): normalised
+    # turns bucketed by KST day + a day_coverage gate, written live by the
+    # engine daemon's tailer and by ``tesserae sessions chunk-backfill``. The
+    # ``.lock`` is the backfill's non-blocking skip-if-held flock. INPUT-side
+    # state (like ``harness_sessions``), never part of any output-hash scope.
+    session_chunks: Path = Path(".tesserae/session_chunks.db")
+    session_chunks_lock: Path = Path(".tesserae/session_chunks.lock")
 
 
 class ProjectWiki:
@@ -276,6 +287,8 @@ class ProjectWiki:
             extraction_guidance_cache=self.root / "extraction_guidance_cache",
             output_snapshot=self.root / "output-snapshot.json",
             code_graph_cache=self.root / "code-graph-cache.json",
+            session_chunks=self.root / "session_chunks.db",
+            session_chunks_lock=self.root / "session_chunks.lock",
         )
         # In-memory override of the Obsidian vault location, set by
         # obsidian-sync --vault for the duration of a single CLI call.
@@ -423,7 +436,7 @@ class ProjectWiki:
     def load(cls, project_root: str | Path = ".") -> "ProjectWiki":
         wiki = cls(project_root)
         if not wiki.paths.config.exists():
-            raise FileNotFoundError(f"Project wiki is not initialized: {wiki.root}. Run `python3 -m tesserae init --bare` first.")
+            raise FileNotFoundError(f"Project wiki is not initialized: {wiki.root}. Run `tesserae init` first.")
         return wiki
 
     def config(self) -> dict:
@@ -1802,6 +1815,7 @@ class ProjectWiki:
         top_k: int = 8,
         kind: Optional[str] = None,
         use_llm: bool = False,
+        force_no_llm: bool = False,
         model: str = "claude-sonnet-4-6",
     ) -> "QueryResult":
         """Convenience wrapper around :class:`tesserae.query.WikiQuery`.
@@ -1818,6 +1832,7 @@ class ProjectWiki:
             question,
             model=model,
             force_llm=use_llm,
+            force_no_llm=force_no_llm,
         )
 
     def deploy_github_pages(
@@ -2852,8 +2867,13 @@ class ProjectWiki:
         # stale per-node page behind. Prune those orphans so an incremental and
         # a full compile project byte-identical trees (Phase-4 subtractive gate).
         self._prune_orphaned_vault_pages(graph, self.paths.markdown_projection)
-        CogneeResearchGraphAdapter().write_bundle(graph, self.paths.cognee_bundle)
-        if cognify and cognify.is_active:
+        # Cognee demotion: only materialize the JSONL bundle when the cognee
+        # backend is enabled in config or this compile explicitly runs a
+        # cognify pass — a default install never writes (or logs about) it.
+        run_cognify = bool(cognify and cognify.is_active)
+        if run_cognify or cognee_backend_config(self.config()).get("enabled"):
+            CogneeResearchGraphAdapter().write_bundle(graph, self.paths.cognee_bundle)
+        if run_cognify:
             self._run_cognify_best_effort(cognify)
         report = GraphReporter().render_markdown(GraphReporter().summarize(graph))
         self.paths.report.write_text(report, encoding="utf-8")
@@ -2927,10 +2947,7 @@ class ProjectWiki:
         """Invoke Cognee on the freshly written bundle.
 
         ``add`` only loads the bundle into the Cognee dataset. ``cognify`` runs
-        Cognee's full cognify pipeline (LLM + embedding calls). ``codex_cognify``
-        wraps the cognify pass in :class:`CogneeCodexPatch` so Cognee's LLM
-        client is patched to OAuth Codex CLI — useful when you don't have an
-        OpenAI API key but do have Codex installed.
+        Cognee's full cognify pipeline (LLM + embedding calls) directly.
         """
 
         bundle = self.paths.cognee_bundle
@@ -2950,20 +2967,7 @@ class ProjectWiki:
                 data_root=options.data_root,
             )
 
-        if options.mode == "codex_cognify":
-            with CogneeCodexPatch(
-                model=options.codex_model,
-                timeout=options.codex_timeout,
-                deterministic_embeddings=options.embedding_provider == "deterministic",
-                ollama_embeddings=options.embedding_provider == "ollama",
-                ollama_model=options.ollama_embedding_model,
-                ollama_endpoint=options.ollama_embedding_endpoint,
-                ollama_timeout=options.ollama_embedding_timeout,
-                embedding_dimensions=options.local_embedding_dimensions,
-            ):
-                asyncio.run(_add())
-        else:
-            asyncio.run(_add())
+        asyncio.run(_add())
 
     def _append_build_history(
         self, research_graph: ResearchGraph, code_graph: ResearchGraph
@@ -3004,14 +3008,15 @@ class ProjectWiki:
 def default_cognee_backend_config(name: str = "tesserae") -> dict:
     dataset_base = sanitize_server_name(name or "tesserae")
     return {
-        "enabled": True,
-        "mode": "codex_cognify",
+        # Demoted: cognee is opt-in. A project (or the machine-wide config)
+        # must explicitly set enabled: true for the bundle write / cognify
+        # pass / explicit backend to consider it configured.
+        "enabled": False,
+        "mode": "cognify",
         "auto_cognify": False,
         "dataset": f"{dataset_base}_memory",
         "system_root": ".tesserae/cognee_system",
         "data_root": ".tesserae/cognee_data",
-        "codex_model": "gpt-5.4",
-        "codex_timeout": 300,
         "embedding_provider": "deterministic",
         "local_embedding_dimensions": 128,
         "fail_fast": False,
@@ -3061,7 +3066,7 @@ def cognee_backend_config(config: dict) -> dict:
     """Resolve the cognee backend config, layering machine-wide over defaults.
 
     Precedence: built-in defaults < machine-wide ``~/.tesserae/config.json`` <
-    this project's config. The global layer lets ``tesserae config setup
+    this project's config. The global layer lets ``tesserae setup
     --enable-cognee`` turn cognee on for *every* project at once, while a project
     can still override (disable, or change ``mode``/``dataset``).
     """

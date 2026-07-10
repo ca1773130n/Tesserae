@@ -17,15 +17,45 @@ from tesserae.setup.plan import (
 def test_build_plan_uses_recommendations(tmp_path: Path, monkeypatch) -> None:
     import shutil
 
+    from tesserae import llm_json
+
     monkeypatch.setattr(
         shutil,
         "which",
         lambda name: "/fake/bin/claude" if name == "claude" else None,
     )
+    monkeypatch.setattr(llm_json, "_claude_cli_available", lambda: True)
     report = detect(tmp_path)
     plan = build_plan(report)
     assert plan.extractor == "claude-cli"
+    assert plan.llm_provider == "claude"
     assert plan.project_root == tmp_path.resolve()
+
+
+def test_build_plan_records_llm_fields(tmp_path: Path) -> None:
+    report = detect(tmp_path)
+    plan = build_plan(
+        report,
+        overrides={
+            "llm_provider": "custom",
+            "llm_base_url": "https://llm.example/v1",
+            "llm_api_key": "sk-plan-key",
+            "llm_model": "claude-opus-4-6",
+            "codex_home": "~/.codex-alt",
+        },
+    )
+    assert plan.llm_provider == "custom"
+    assert plan.llm_base_url == "https://llm.example/v1"
+    assert plan.llm_api_key == "sk-plan-key"
+    assert plan.llm_model == "claude-opus-4-6"
+    assert plan.codex_home == "~/.codex-alt"
+    assert plan.intent["llm_provider"] == "custom"
+
+
+def test_build_plan_rejects_unknown_llm_provider(tmp_path: Path) -> None:
+    report = detect(tmp_path)
+    with pytest.raises(PlanValidationError):
+        build_plan(report, overrides={"llm_provider": "openai"})
 
 
 def test_build_plan_applies_overrides(tmp_path: Path) -> None:

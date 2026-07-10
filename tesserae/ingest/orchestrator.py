@@ -47,12 +47,31 @@ def ingest_sources(
 
     The default (``exact=False``) takes the incremental fast path, with the compile layer
     automatically falling back to a full recompile when an incremental run is not safe.
-    Passing ``exact=True`` (CLI ``--exact``) forces a full recompile (correct by
+    Passing ``exact=True`` (CLI ``--full``) forces a full recompile (correct by
     construction). The fast path is parity-gated by ``tests/test_ingest_parity.py``.
     Returns a report dict with keys:
     ``path_taken``, ``node_count``, ``edge_count``, ``processed_files``, ``skipped_files``,
     ``graph_path``, ``sources`` (resolved input paths).
     """
+    # Validate local inputs up front: a typo'd path must error immediately
+    # (the CLI maps FileNotFoundError to exit 2), never silently compile nothing.
+    for item in inputs:
+        if not is_url(item) and not Path(item).exists():
+            raise FileNotFoundError(f"Input path does not exist: {item}")
+
+    if dry_run:
+        # Truly dry: no URL fetch, no copy into data/ingested, no compile —
+        # just report what WOULD be ingested.
+        return {
+            "path_taken": "dry-run",
+            "sources": [item if is_url(item) else str(Path(item).resolve()) for item in inputs],
+            "node_count": 0,
+            "edge_count": 0,
+            "processed_files": 0,
+            "skipped_files": 0,
+            "graph_path": str(wiki.paths.graph),
+        }
+
     resolved: List[str] = []
     dest = Path(wiki.project_root) / "data" / "ingested"
     for item in inputs:
@@ -60,17 +79,6 @@ def ingest_sources(
             resolved.append(str(fetch_to_source(item, dest, title=title)))
         else:
             resolved.append(_ensure_in_corpus(wiki, item))
-
-    if dry_run:
-        return {
-            "path_taken": "dry-run",
-            "sources": resolved,
-            "node_count": 0,
-            "edge_count": 0,
-            "processed_files": 0,
-            "skipped_files": 0,
-            "graph_path": str(wiki.paths.graph),
-        }
 
     # Drive a corpus-wide compile so baseline nodes are preserved. Ingesting a single
     # explicit file with changed_only=False would drop the rest of the corpus (data loss).

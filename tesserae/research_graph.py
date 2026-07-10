@@ -2284,6 +2284,14 @@ def source_kind_to_node_type(
         if mapped is not None:
             return mapped
     lowered = (source_kind or "").lower()
+    # Exact source-kind mapping: an explicit 'Paper' / 'Repository' /
+    # 'ResearchDigest' (CLI `--source-kind`, now `choices=`-validated) maps
+    # DIRECTLY to that node type — path heuristics must not override it.
+    # 'SourceDocument' (the generic default) deliberately falls through so the
+    # path-based corpus detection below still refines it.
+    exact = _frontmatter_node_type_map().get(lowered)
+    if exact is not None:
+        return exact
     path = (source_path or "").replace("\\", "/")
     path_lower = path.lower()
     # Path-precise matches win over the looser keyword fallbacks below: a daily

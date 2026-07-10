@@ -53,6 +53,11 @@ logger = logging.getLogger("tesserae.session_tail")
 
 OnNewTurns = Callable[[Path, List[dict]], None]
 
+# Chunk-store hook: ``(harness, transcript_path, session_key, turns)`` where
+# ``harness`` is the activity-summary name ("claude-code"|"codex") and
+# ``session_key`` matches ``iter_project_transcripts``'s "<account>:<stem>".
+OnChunkTurns = Callable[[str, Path, str, List[dict]], None]
+
 
 def _dir_changed_since(directory: Path, floor: float) -> bool:
     """Return True if ``directory``'s mtime is at/after ``floor``.
@@ -90,10 +95,12 @@ class SessionTailer:
         on_new_turns: OnNewTurns,
         watch_roots: Optional[List[Path]] = None,
         poll_interval: float = 1.0,
+        on_chunk_turns: Optional[OnChunkTurns] = None,
     ) -> None:
         self.project_root = Path(project_root).resolve()
         self.sessions_db = sessions_db
         self.on_new_turns = on_new_turns
+        self.on_chunk_turns = on_chunk_turns
         self.poll_interval = poll_interval
         self._watch_roots = (
             [Path(r).expanduser() for r in watch_roots]
@@ -419,6 +426,21 @@ class SessionTailer:
             session, jsonl_path=path, last_offset=new_offset
         )
         self._offsets[path] = new_offset
+        if new_turns and self.on_chunk_turns is not None:
+            # Daily chunk capture (session_chunks.db) — an optimization only.
+            # It must NEVER raise into the tick: a chunk failure degrades the
+            # activity summary to its raw scan, it does not break tailing.
+            try:
+                self.on_chunk_turns(
+                    "codex" if harness == "codex" else "claude-code",
+                    path,
+                    f"{self._root_for(path).name}:{path.stem}",
+                    new_turns,
+                )
+            except Exception:  # noqa: BLE001 — chunk capture is best-effort
+                logger.warning(
+                    "session chunk write failed for %s", path, exc_info=True
+                )
         if new_turns:
             self.on_new_turns(path, new_turns)
 

@@ -39,23 +39,24 @@ class _StubResult:
 
 
 class _StubWiki:
-    """Minimal ProjectWiki surface for ask_project's wiki-fallback path."""
+    """Minimal ProjectWiki surface for ask_project's wiki path."""
 
     def __init__(self, backends=None):
         self._backends = backends or {}
         self.last_use_llm = None
+        self.last_force_no_llm = None
 
     def config(self):
         return {"memory_backends": self._backends}
 
-    def query(self, question, *, top_k, use_llm):
+    def query(self, question, *, top_k, use_llm, force_no_llm=False):
         self.last_use_llm = use_llm
+        self.last_force_no_llm = force_no_llm
         return _StubResult()
 
 
-def test_ask_project_wiki_fallback_honors_use_llm_param():
-    # Regression: the wiki fallback hardcoded use_llm=False, so ask could
-    # never synthesize. It must now thread the caller's use_llm.
+def test_ask_project_wiki_path_honors_use_llm_param():
+    # Contract: the wiki path threads the caller's use_llm to synthesis.
     wiki = _StubWiki()
     ask_project(wiki, "q?", backend="auto", use_llm=False)
     assert wiki.last_use_llm is False
@@ -63,27 +64,69 @@ def test_ask_project_wiki_fallback_honors_use_llm_param():
     assert wiki.last_use_llm is True
 
 
-def test_ask_project_wiki_fallback_honors_env_gate(monkeypatch):
+def test_ask_project_defaults_to_llm():
+    # Contract (spec §1): ask IS the LLM-answer surface — use_llm defaults True,
+    # no env var or flag needed.
+    wiki = _StubWiki()
+    ask_project(wiki, "q?", backend="auto")
+    assert wiki.last_use_llm is True
+    assert wiki.last_force_no_llm is False
+
+
+def test_ask_project_wiki_path_honors_env_gate(monkeypatch):
+    # Even with the param forced off, TESSERAE_QUERY_LLM=1 re-enables synthesis
+    # (only no_llm=True beats the env).
     monkeypatch.setenv("TESSERAE_QUERY_LLM", "1")
     wiki = _StubWiki()
-    ask_project(wiki, "q?", backend="auto")  # use_llm defaults False, env enables
+    ask_project(wiki, "q?", backend="auto", use_llm=False)
     assert wiki.last_use_llm is True
 
 
-def test_ask_project_auto_records_cognee_failure_note(monkeypatch):
+def test_ask_project_no_llm_beats_env_and_use_llm(monkeypatch):
+    # no_llm=True force-disables synthesis even when both the param and the
+    # env gate ask for it, and pins the wiki query to search-only.
+    monkeypatch.setenv("TESSERAE_QUERY_LLM", "1")
+    wiki = _StubWiki()
+    env = ask_project(wiki, "q?", backend="auto", use_llm=True, no_llm=True)
+    assert env["backend"] == "wiki"
+    assert wiki.last_use_llm is False
+    assert wiki.last_force_no_llm is True
+
+
+def test_ask_project_auto_never_enters_optional_backends(monkeypatch):
+    # Contract change: auto goes straight to the wiki/planner path — enabled
+    # raganything/cognee backends are reachable only via explicit backend=.
+    import tesserae.cognee_query as cq
+    import tesserae.raganything_query as rq
+
+    def _boom(*a, **k):
+        raise AssertionError("auto must not call optional backends")
+
+    monkeypatch.setattr(cq, "search_cognee", _boom)
+    monkeypatch.setattr(rq, "query", _boom)
+    monkeypatch.setattr("tesserae.query._cognee_importable", lambda: True)
+    wiki = _StubWiki(
+        backends={
+            "raganything": {"enabled": True, "working_dir": "rag"},
+            "cognee": {"enabled": True, "dataset": "d"},
+        }
+    )
+    env = ask_project(wiki, "q?", backend="auto")
+    assert env["backend"] == "wiki"
+    assert "auto_notes" not in env
+
+
+def test_ask_project_explicit_cognee_surfaces_errors(monkeypatch):
+    # Explicit backend= still short-circuits to the backend and raises.
     import tesserae.cognee_query as cq
 
     def _boom(*a, **k):
         raise RuntimeError("auth required")
 
     monkeypatch.setattr(cq, "search_cognee", _boom)
-    # auto only reaches cognee when it's importable; force it so the test is
-    # deterministic regardless of whether cognee is installed in CI.
-    monkeypatch.setattr("tesserae.query._cognee_importable", lambda: True)
     wiki = _StubWiki(backends={"cognee": {"enabled": True, "dataset": "d"}})
-    env = ask_project(wiki, "q?", backend="auto")
-    assert env["backend"] == "wiki"
-    assert env.get("auto_notes") and "cognee failed" in env["auto_notes"][0]
+    with pytest.raises(RuntimeError, match="cognee ask failed"):
+        ask_project(wiki, "q?", backend="cognee")
 
 
 def test_answer_via_cli_synthesizes_without_api_key(tmp_path, monkeypatch):
@@ -556,6 +599,37 @@ def _subprocess_env(**extra: str) -> Dict[str, str]:
     env["PYTHONPATH"] = os.pathsep.join(parts)
     env.update(extra)
     return env
+
+
+@pytest.mark.parametrize("flag", [["--llm"], ["--no-llm"], ["--model", "claude-x"]])
+def test_cli_query_llm_flags_moved_to_ask(flag, capsys):
+    """query lost its synthesis flags — one-line stub, exit 2 (clean break)."""
+    from tesserae import cli
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["query", "anything", *flag])
+    assert exc_info.value.code == 2
+    assert "query: LLM synthesis has moved → tesserae ask" in capsys.readouterr().err
+
+
+def test_cli_query_backend_cognee_short_circuits(tmp_path, monkeypatch, capsys):
+    """`query --backend cognee` is the new home of explicit-backend retrieval."""
+    from tesserae import cli
+
+    project = _make_project(tmp_path)
+    (project / ".tesserae" / "config.json").write_text(
+        json.dumps({"name": "demo", "sources": [], "external_tools": []}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "tesserae.cognee_query.search_cognee",
+        lambda question, dataset=None, search_type="INSIGHTS", top_k=8: [f"cognee:{question}"],
+    )
+    rc = cli.main(["query", "vision banana", "--backend", "cognee", "--project", str(project)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Cognee answer" in out
+    assert "cognee:vision banana" in out
 
 
 def test_cli_one_shot_json_emits_valid_payload(tmp_path):

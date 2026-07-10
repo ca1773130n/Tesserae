@@ -15,8 +15,65 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+import tempfile
 from pathlib import Path
 from typing import Awaitable, Callable, List, Optional
+
+
+class CodexCLIError(RuntimeError):
+    """Raised when the `codex exec` subprocess fails or times out."""
+
+
+async def run_codex_cli(prompt: str, model: str, timeout: int) -> str:
+    """Run Codex CLI with prompt on stdin and return the final message text.
+
+    Inlined from the removed :mod:`tesserae.cognee_codex` adapter — this is
+    the only surviving consumer. Degrades with a clear :class:`CodexCLIError`
+    when the CLI is missing, times out, or exits non-zero.
+    """
+    with tempfile.NamedTemporaryFile("w+", suffix=".txt", delete=False, encoding="utf-8") as handle:
+        output_path = Path(handle.name)
+    try:
+        cmd = [
+            "codex",
+            "exec",
+            "--skip-git-repo-check",
+            "--sandbox",
+            "read-only",
+            "--model",
+            model,
+            "--output-last-message",
+            str(output_path),
+            "-",
+        ]
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=os.environ.copy(),
+            )
+        except FileNotFoundError as exc:
+            raise CodexCLIError("codex CLI not found on PATH") from exc
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(prompt.encode("utf-8")), timeout=timeout)
+        except asyncio.TimeoutError as exc:
+            proc.kill()
+            await proc.wait()
+            raise CodexCLIError(f"codex exec timed out after {timeout}s") from exc
+        if proc.returncode != 0:
+            raise CodexCLIError(
+                f"codex exec exited {proc.returncode}: "
+                f"{stderr.decode('utf-8', errors='replace') or stdout.decode('utf-8', errors='replace')}"
+            )
+        final = output_path.read_text(encoding="utf-8", errors="replace") if output_path.exists() else ""
+        return final or stdout.decode("utf-8", errors="replace")
+    finally:
+        try:
+            output_path.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _flatten_prompt(prompt: str, system_prompt: Optional[str], history: Optional[list]) -> str:
@@ -40,11 +97,10 @@ def make_codex_llm_func(
     """Return an async llm_model_func that routes through `codex exec` OAuth."""
 
     async def llm_model_func(prompt, system_prompt=None, history_messages=None, **kwargs):
-        # Import lazily so the module loads even when cognee_codex's deps aren't ready.
-        from . import cognee_codex as _cc
-
         flat = _flatten_prompt(prompt, system_prompt, history_messages)
-        return await _cc.run_codex_cli(flat, model=model, timeout=timeout)
+        # Module-global lookup (not a closed-over reference) so tests can
+        # monkeypatch `tesserae.raganything_llm.run_codex_cli`.
+        return await run_codex_cli(flat, model=model, timeout=timeout)
 
     return llm_model_func
 
