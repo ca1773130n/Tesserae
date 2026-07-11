@@ -131,7 +131,7 @@ Run `tesserae --help` for the full grouped list, `tesserae <cmd> --help` for fla
 | `tesserae ingest <file\|url>` | Merge a single document or web page into the knowledge base without a full recompile (parity-gated incremental fast path). |
 | `tesserae context "<query>"` | **On-demand context compiler**: cited context doc via PPR expansion under `--budget`; `--llm` adds an LLM summary. |
 | `tesserae ask "<question>"` | **LLM-planned, cited answer** over the compiled knowledge base (the default; `--no-llm` = ranked search hits only). With no `--scope` a smart router picks the target across your projects (federated fallback); `--scope federated` returns ONE merged, cross-referenced answer, `--scope all-registered` one answer per project. |
-| `tesserae query "<question>"` | Raw retrieval — BM25/semantic search over the compiled wiki, or an explicit backend (`--backend raganything\|cognee`). No LLM synthesis (that's `ask`). |
+| `tesserae query "<question>"` | Raw retrieval — BM25/semantic search over the compiled wiki, or an explicit backend (`--backend raganything`). No LLM synthesis (that's `ask`). |
 | `tesserae doctor` | Project health checks (init/graph/config, registry, staleness, locks, hygiene). `--fix` applies the safe repairs only; exit 0/1/2 = healthy/warnings/errors. See [docs/doctor.md](docs/doctor.md). |
 | `tesserae engine` | Supervised refresh daemon for the current project: watch, debounce, recompile. |
 | `tesserae engine --all` | **Fleet mode**: one process keeps *every* registered project fresh — registry hot-reload, `--compile-slots` throttling. |
@@ -141,7 +141,7 @@ Run `tesserae --help` for the full grouped list, `tesserae <cmd> --help` for fla
 | `tesserae export okf` | Export the graph as a [Google **OKF v0.1**](https://github.com/GoogleCloudPlatform/knowledge-catalog) bundle (Markdown + YAML frontmatter); `--import DIR` reads one back (round-trips Tesserae's own bundles losslessly). |
 | `tesserae serve` | Serve **every registered project** under one server — a projects landing at `/`, each project at `/<alias>/`, and a Projects switcher in the header. `--project X` serves just one (with the live `/api/ask` widget). |
 | `tesserae setup` | **Machine-wide setup** — interactive by default: pick the LLM provider/effort and which optional deps to install. Flags (`--install all`, `--llm-provider …`) skip the prompts. (The old `config setup` name now points here.) |
-| `tesserae config deps` | List / install optional dependencies (memex, cognee, raganything). |
+| `tesserae config deps` | List / install optional dependencies (memex, raganything). |
 | `tesserae projects …` | Multi-project registry: `register`, `list`, `unregister`, `mcp-config` (no privileged "active" project). |
 | `tesserae federation status` / `explain` | Inspect a cross-project federation: per-project node counts, identity merges, semantic links, and why a node bridges projects. |
 | `tesserae integrations refresh …` | Re-run companion tools (RAG-Anything). |
@@ -176,7 +176,6 @@ once (it says so in the log); restarts resume from a persisted floor.
   site/                   # static site (graph view + wiki + search)
   harness_sessions/       # imported Claude/Codex session memory
   agent_harness/          # per-agent context config (Claude/Codex/Gemini/...)
-  cognee_bundle/          # JSONL ready for Cognee ingest
   config.json · manifest.json · report.md · …
 ```
 
@@ -229,8 +228,6 @@ the graph view. See [docs](docs/) for details.
 - **RAG-Anything** — multimodal ingestion (PDF/Office/images via
   MinerU/Docling) and a LightRAG question backend.
   [docs/integrations/rag-anything.md](docs/integrations/rag-anything.md)
-- **Cognee** — graph+vector memory backend; compile always writes a
-  Cognee-ready bundle, runtime cognify is best-effort.
 - **Obsidian** — bidirectional vault sync with user-edit overlay.
   [docs/integrations/obsidian.md](docs/integrations/obsidian.md)
 - **Web Clipper (Chrome extension)** — one-click clip a page or selection
@@ -268,7 +265,7 @@ engine* for your knowledge graph, this is the project.
 
 **Use it if** you want a durable, inspectable knowledge graph over a
 project's text-heavy sources, a local MCP server grounded in your own files,
-or clean bundles for Cognee/Obsidian without writing glue.
+or a clean Obsidian vault without writing glue.
 
 **Skip it if** you only need vector search over a small directory, want a
 hosted wiki with an editing UI, or expect a turnkey "ask anything" agent —
@@ -281,8 +278,8 @@ The common path uses **no API keys**:
 - **Codex CLI** (default) and **Claude Code CLI** over OAuth, with
   multi-account rotation.
 - **Embeddings**: native hybrid retrieval uses an offline, torch-free semantic
-  lane via `pip install "tesserae[semantic]"` (`model2vec`). Cognee/RAG-Anything
-  backends default to a deterministic provider; switch to Ollama or any
+  lane via `pip install "tesserae[semantic]"` (`model2vec`). The RAG-Anything
+  backend defaults to a deterministic provider; switch to Ollama or any
   OpenAI-compatible endpoint for better recall.
 
 `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` are picked up if present, never required.
@@ -297,8 +294,6 @@ Current release: see [release notes](docs/release-notes/). Known limitations:
 - Without the `semantic` extra, hybrid retrieval degrades to a non-semantic
   stub (with a loud warning).
 - RAG-Anything vision (image description) is not yet wired end-to-end.
-- Cognee runtime cognify is best-effort: missing providers are logged and
-  skipped, never fatal.
 - The MCP tool set is stable; the graph schema may still gain node types.
 
 ## Project layout

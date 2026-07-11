@@ -10,8 +10,9 @@ from tesserae.cli import _merge_global_llm_config, _resolve_dep_targets
 
 def test_status_shape_covers_known_deps():
     s = deps.status()
-    assert {d["name"] for d in s} >= {"memex", "cognee", "raganything"}
+    assert {d["name"] for d in s} >= {"memex", "raganything"}
     assert "understand-anything" not in {d["name"] for d in s}  # backend removed
+    assert "cognee" not in {d["name"] for d in s}  # backend removed in 0.19
     assert all(set(d) == {"name", "summary", "installed", "note"} for d in s)
 
 
@@ -76,11 +77,11 @@ def test_pip_install_falls_back_to_uv_when_pip_absent(monkeypatch):
     # uv tool envs ship without pip -> must not emit a dead `python -m pip` argv.
     monkeypatch.setattr(deps, "_module_present", lambda n: False)
     monkeypatch.setattr(deps, "_binary_present", lambda n: n == "uv")
-    argv = deps._pip_install_argv(["cognee"])
-    assert argv[:3] == ["uv", "pip", "install"] and "--python" in argv and argv[-1] == "cognee"
+    argv = deps._pip_install_argv(["some-pkg"])
+    assert argv[:3] == ["uv", "pip", "install"] and "--python" in argv and argv[-1] == "some-pkg"
     # when pip IS importable, use it directly
     monkeypatch.setattr(deps, "_module_present", lambda n: n == "pip")
-    assert deps._pip_install_argv(["cognee"])[1:3] == ["-m", "pip"]
+    assert deps._pip_install_argv(["some-pkg"])[1:3] == ["-m", "pip"]
 
 
 def test_install_uses_uv_argv_for_pip_dep_without_pip(monkeypatch):
@@ -92,8 +93,13 @@ def test_install_uses_uv_argv_for_pip_dep_without_pip(monkeypatch):
         seen["argv"] = argv
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
+    monkeypatch.setitem(
+        deps.DEPS_BY_NAME,
+        "x",
+        deps.Dep("x", "s", lambda: False, ["unused"], pip_specs=["x"]),
+    )
     monkeypatch.setattr(deps.subprocess, "run", fake_run)
-    deps.install("cognee")
+    deps.install("x")
     assert seen["argv"][:3] == ["uv", "pip", "install"]  # not `python -m pip`
 
 
@@ -116,8 +122,8 @@ def test_setup_is_top_level_command_interactive_by_default():
 def test_resolve_targets_expands_all_and_dedups():
     targets, unknown = _resolve_dep_targets(["all"], False)
     assert targets == deps.DEP_NAMES and unknown == []
-    targets, unknown = _resolve_dep_targets(["memex", "memex", "cognee"], False)
-    assert targets == ["memex", "cognee"] and unknown == []
+    targets, unknown = _resolve_dep_targets(["memex", "memex", "raganything"], False)
+    assert targets == ["memex", "raganything"] and unknown == []
     targets, unknown = _resolve_dep_targets(["bogus"], False)
     assert unknown == ["bogus"]
 

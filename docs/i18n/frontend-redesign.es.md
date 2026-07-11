@@ -361,7 +361,7 @@ La forma larga de llmstxt.org: todas las páginas wiki concatenadas. Limitada a 
 
 ### `/graph.json` ✅
 
-El payload completo de `ResearchGraph`, incluidos nodos de code-graph que no tienen páginas HTML. Adecuado cuando una herramienta quiere el grafo completo para su propio análisis (consumidores MCP, Cognee y Graphiti leen esto).
+El payload completo de `ResearchGraph`, incluidos nodos de code-graph que no tienen páginas HTML. Adecuado cuando una herramienta quiere el grafo completo para su propio análisis (consumidores MCP y Graphiti leen esto).
 
 ### `/graph.jsonld` ✅
 

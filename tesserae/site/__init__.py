@@ -10,7 +10,7 @@ graph.jsonld, search-index.json, sitemap.xml, rss.xml, robots.txt,
 ai-readme.md, manifest.json).
 
 Per-``CodeClass`` / ``CodeFunction`` HTML pages are deliberately not rendered
-— they remain in ``graph.json`` so MCP/Cognee/Graphiti consumers still see
+— they remain in ``graph.json`` so MCP/Graphiti consumers still see
 them, but they have no URL of their own and no entry in ``search-index.json``.
 
 The builder is deterministic: re-running ``write_site`` over the same input
@@ -402,7 +402,7 @@ class StaticSiteBuilder:
             day_html = out / "timeline" / f"{day}.html"
             day_html.write_text(render_timeline_day(site_ctx, day), encoding="utf-8")
 
-            # AI siblings next to each day page so MCP/Cognee consumers can
+            # AI siblings next to each day page so MCP consumers can
             # diff a day's structured fields without parsing HTML.
             ids = site_ctx.activity_by_day.get(day, frozenset())
             sources = list(site_ctx.sources_by_day.get(day, ()))

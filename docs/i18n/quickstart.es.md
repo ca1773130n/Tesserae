@@ -66,7 +66,7 @@ cd /path/to/my-project
 tesserae init
 ```
 
-`tesserae init` es el único paso de onboarding. El asistente detecta fuentes comunes como `README.md`, `docs`, `src`, `lib`, `app`, `packages` y `data`, sondea qué CLIs de LLM están instaladas **y con sesión iniciada**, te deja elegir el proveedor LLM, y escribe `.tesserae/config.json`. Los backends de memoria opcionales (RAG-Anything, Cognee) están **desactivados por defecto**; habilítalos más tarde en `memory_backends` en la config, y consúltalos explícitamente con `tesserae query --backend …`.
+`tesserae init` es el único paso de onboarding. El asistente detecta fuentes comunes como `README.md`, `docs`, `src`, `lib`, `app`, `packages` y `data`, sondea qué CLIs de LLM están instaladas **y con sesión iniciada**, te deja elegir el proveedor LLM, y escribe `.tesserae/config.json`. El backend de memoria opcional RAG-Anything está **desactivado por defecto**; habilítalo más tarde en `memory_backends` en la config, y consúltalo explícitamente con `tesserae query --backend raganything`.
 
 Para una configuración no interactiva (CI, scripts), pasa `--yes` para aceptar los valores
 detectados sin preguntar (todas las integraciones opcionales OFF):
@@ -132,10 +132,9 @@ tesserae compile
   agent_harness/
   harness_sessions/
   site/
-  cognee_bundle/
 ```
 
-Usa `--changed-only` después de la primera ejecución para saltarte los archivos markdown sin cambios preservando el grafo previo cuando ningún archivo cambió. Si el runtime de Cognee está habilitado, compile también actualiza Cognee best-effort tras escribir `.tesserae/cognee_bundle/`.
+Usa `--changed-only` después de la primera ejecución para saltarte los archivos markdown sin cambios preservando el grafo previo cuando ningún archivo cambió.
 
 Para ingerir rutas extra ad-hoc sin tocar las fuentes configuradas, pásalas
 posicionalmente: `tesserae compile path/to/extra.md docs/`.
@@ -158,23 +157,11 @@ valor por defecto de argparse sigue siendo el fallback. Establece una clave all�
 | `use_extraction_feedback` | `--use-extraction-feedback` | `false` | Reinyecta resultados de extracción previos en la ejecución. |
 | `sessions_llm` | `--sessions-llm` | (auto) | Modo de extracción de sesiones con LLM (`auto`/`true`/`false`). |
 | `sessions_model` | `--sessions-model` | (ninguno) | Anula el modelo LLM usado para la extracción de sesiones. |
-| `cognee_add` | `--cognee-add` | `false` | Añade el bundle de Cognee al dataset (sin cognify). |
-| `cognee_cognify` | `--cognee-cognify` | `false` | Añade el bundle y ejecuta el cognify de Cognee. |
-| `cognee_dataset` | `--cognee-dataset` | `tesserae_research_graph` | Nombre del dataset de Cognee. |
-| `cognee_embedding_provider` | `--cognee-embedding-provider` | `deterministic` | Proveedor de embeddings para la vía de Cognee. |
-| `cognee_ollama_embedding_model` | `--cognee-ollama-embedding-model` | `qwen3-embedding:0.6b` | Modelo de embeddings de Ollama. |
-| `cognee_ollama_embedding_endpoint` | `--cognee-ollama-embedding-endpoint` | `http://127.0.0.1:11434/api/embed` | Endpoint `/api/embed` de Ollama. |
-| `cognee_ollama_embedding_timeout` | `--cognee-ollama-embedding-timeout` | `120` | Timeout de la petición de embeddings de Ollama (segundos). |
-| `cognee_local_embedding_dimensions` | `--cognee-local-embedding-dimensions` | `128` | Dimensionalidad de los embeddings locales. |
-| `cognee_system_root` | `--cognee-system-root` | (ninguno) | Directorio raíz de sistema aislado de Cognee. |
-| `cognee_data_root` | `--cognee-data-root` | (ninguno) | Directorio raíz de datos aislado de Cognee. |
 
-> **Cognee es opt-in.** El backend de Cognee está desactivado por defecto: instálalo
-> con `pip install tesserae[cognee]` y establece `memory_backends.cognee.enabled: true`
-> para usarlo (consultado explícitamente vía `tesserae query --backend cognee`). El
-> modo legacy de cognify parcheado con Codex (`cognee_codex_cognify` /
-> `cognee_codex_model` / `cognee_codex_timeout`) fue eliminado — las configs que aún
-> lleven esas claves son inertes.
+> **Cognee fue eliminado en 0.19.** El backend de cognee fue degradado en 0.18 y
+> nunca alimentó el grafo. Las configs que aún lleven una sección
+> `memory_backends.cognee` (u opciones de compile `cognee_*`) siguen cargando —
+> la sección se ignora con una nota de una línea.
 
 > **Pipeline de un solo golpe.** `tesserae refresh` ejecuta todo el bucle en el propio proceso — importa las sesiones de agente nuevas, compila y sincroniza el vault en un solo comando. Pasa `--changed-only` para la compilación incremental opt-in.
 
@@ -286,7 +273,7 @@ tesserae query "What is Gaussian Splatting?"
 
 `ask` es la superficie de respuestas: el modelo planifica la recuperación sobre el grafo compilado y luego sintetiza una respuesta con citas. Funciona con una CLI `claude`/`codex` con sesión iniciada (OAuth) o con `ANTHROPIC_API_KEY`; pasa `--no-llm` para obtener solo hits de búsqueda rankeados (este apagado forzoso gana a `TESSERAE_QUERY_LLM=1`). `TESSERAE_QUERY_DRY_RUN=1` ejercita el prompt sin llamada a la API.
 
-`query` es la superficie de recuperación: búsqueda BM25/semántica sobre `.tesserae/site/search-index.json`, con un extracto de 200 caracteres tomado del `wiki/<kind>/<slug>.md` coincidente. Pasa `--kind papers` (o `concepts`, `repos`, etc.) para acotar, `--top-k N` para ampliar, y `--json` para salida estructurada; `--interactive` abre un REPL readline — línea en blanco o EOF sale. Los backends de memoria explícitos también viven aquí: `--backend raganything|cognee` cortocircuita a ese backend y expone sus errores (con `--cognee-search-type` / `--cognee-dataset` para la vía de Cognee). No hay síntesis LLM en `query` — eso es `ask`.
+`query` es la superficie de recuperación: búsqueda BM25/semántica sobre `.tesserae/site/search-index.json`, con un extracto de 200 caracteres tomado del `wiki/<kind>/<slug>.md` coincidente. Pasa `--kind papers` (o `concepts`, `repos`, etc.) para acotar, `--top-k N` para ampliar, y `--json` para salida estructurada; `--interactive` abre un REPL readline — línea en blanco o EOF sale. El backend de memoria explícito también vive aquí: `--backend raganything` cortocircuita a ese backend y expone sus errores. No hay síntesis LLM en `query` — eso es `ask`.
 
 ## 7. Compila contexto listo para agentes bajo demanda
 

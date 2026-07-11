@@ -63,7 +63,7 @@ cd /path/to/my-project
 tesserae init
 ```
 
-`tesserae init` 是唯一的入门步骤。向导会检测常见来源，如 `README.md`、`docs`、`src`、`lib`、`app`、`packages` 和 `data`，探测哪些 LLM CLI 已安装**且已登录**，让你选择 LLM 提供方，并写入 `.tesserae/config.json`。可选内存后端（RAG-Anything、Cognee）**默认关闭**；之后可在配置的 `memory_backends` 中启用，并通过 `tesserae query --backend …` 显式查询。
+`tesserae init` 是唯一的入门步骤。向导会检测常见来源，如 `README.md`、`docs`、`src`、`lib`、`app`、`packages` 和 `data`，探测哪些 LLM CLI 已安装**且已登录**，让你选择 LLM 提供方，并写入 `.tesserae/config.json`。可选的 RAG-Anything 内存后端**默认关闭**；之后可在配置的 `memory_backends` 中启用，并通过 `tesserae query --backend raganything` 显式查询。
 
 对于非交互式设置（CI、脚本），传入 `--yes` 接受检测出的默认值而不发出提示（所有可选集成均为 OFF）：
 
@@ -120,10 +120,9 @@ tesserae compile
   agent_harness/
   harness_sessions/
   site/
-  cognee_bundle/
 ```
 
-首次运行之后使用 `--changed-only` 可跳过未变化的 markdown 文件，在没有文件变化时保留之前的图谱。如果启用了 Cognee 运行时，compile 还会在写出 `.tesserae/cognee_bundle/` 之后尽力更新 Cognee。
+首次运行之后使用 `--changed-only` 可跳过未变化的 markdown 文件，在没有文件变化时保留之前的图谱。
 
 若要在不触及已配置来源的情况下临时摄取额外路径，把它们作为位置参数传入：`tesserae compile path/to/extra.md docs/`。
 
@@ -141,18 +140,10 @@ tesserae compile
 | `use_extraction_feedback` | `--use-extraction-feedback` | `false` | 将先前的提取结果反馈进本次运行。 |
 | `sessions_llm` | `--sessions-llm` | （auto） | LLM 会话提取模式（`auto`/`true`/`false`）。 |
 | `sessions_model` | `--sessions-model` | （无） | 覆盖用于会话提取的 LLM 模型。 |
-| `cognee_add` | `--cognee-add` | `false` | 将 Cognee bundle 添加到数据集（不做 cognify）。 |
-| `cognee_cognify` | `--cognee-cognify` | `false` | 添加 bundle 并运行 Cognee cognify。 |
-| `cognee_dataset` | `--cognee-dataset` | `tesserae_research_graph` | Cognee 数据集名称。 |
-| `cognee_embedding_provider` | `--cognee-embedding-provider` | `deterministic` | Cognee 通道的嵌入提供方。 |
-| `cognee_ollama_embedding_model` | `--cognee-ollama-embedding-model` | `qwen3-embedding:0.6b` | Ollama 嵌入模型。 |
-| `cognee_ollama_embedding_endpoint` | `--cognee-ollama-embedding-endpoint` | `http://127.0.0.1:11434/api/embed` | Ollama `/api/embed` 端点。 |
-| `cognee_ollama_embedding_timeout` | `--cognee-ollama-embedding-timeout` | `120` | Ollama 嵌入请求超时（秒）。 |
-| `cognee_local_embedding_dimensions` | `--cognee-local-embedding-dimensions` | `128` | 本地嵌入维度。 |
-| `cognee_system_root` | `--cognee-system-root` | （无） | 隔离的 Cognee 系统根目录。 |
-| `cognee_data_root` | `--cognee-data-root` | （无） | 隔离的 Cognee 数据根目录。 |
 
-> **Cognee 是可选项。** Cognee 后端默认禁用：通过 `pip install tesserae[cognee]` 安装并设置 `memory_backends.cognee.enabled: true` 来使用它（通过 `tesserae query --backend cognee` 显式查询）。遗留的 Codex 补丁 cognify 模式（`cognee_codex_cognify` / `cognee_codex_model` / `cognee_codex_timeout`）已移除——仍带有这些键的配置不再生效。
+> **Cognee 已在 0.19 中移除。** cognee 后端在 0.18 中被降级，且从未真正
+> 参与图谱构建。仍带有 `memory_backends.cognee` 配置段（或 `cognee_*`
+> 编译选项）的配置依然可以加载——该段会被忽略，并给出一行提示。
 
 > **一步式流水线。** `tesserae refresh` 在进程内运行整条循环——它导入任何新的 agent 会话、编译并同步 vault，一条命令完成。传入 `--changed-only` 启用可选的增量编译。
 
@@ -258,7 +249,7 @@ tesserae query "What is Gaussian Splatting?"
 
 `ask` 是答案界面：模型在编译后的图谱上规划检索，然后合成一个带引用的答案。它可以配合已登录的 `claude`/`codex` CLI（OAuth）或 `ANTHROPIC_API_KEY` 使用；传入 `--no-llm` 只返回排序后的搜索命中（此强制关闭优先于 `TESSERAE_QUERY_LLM=1`）。`TESSERAE_QUERY_DRY_RUN=1` 会演练提示词而不发出 API 调用。
 
-`query` 是检索界面：在 `.tesserae/site/search-index.json` 上做 BM25/语义搜索，并从匹配的 `wiki/<kind>/<slug>.md` 提取 200 字符的摘录。传入 `--kind papers`（或 `concepts`、`repos` 等）缩小范围，`--top-k N` 扩大范围，`--json` 获取结构化输出；`--interactive` 打开一个 readline REPL——空行或 EOF 退出。显式内存后端也在这里：`--backend raganything|cognee` 直达该后端并透出它的错误（Cognee 通道另有 `--cognee-search-type` / `--cognee-dataset`）。`query` 上没有 LLM 合成——那是 `ask` 的事。
+`query` 是检索界面：在 `.tesserae/site/search-index.json` 上做 BM25/语义搜索，并从匹配的 `wiki/<kind>/<slug>.md` 提取 200 字符的摘录。传入 `--kind papers`（或 `concepts`、`repos` 等）缩小范围，`--top-k N` 扩大范围，`--json` 获取结构化输出；`--interactive` 打开一个 readline REPL——空行或 EOF 退出。显式内存后端也在这里：`--backend raganything` 直达该后端并透出它的错误。`query` 上没有 LLM 合成——那是 `ask` 的事。
 
 ## 7. 按需编译 agent 可用的上下文
 

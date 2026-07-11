@@ -11,7 +11,6 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, Field, ValidationError
 
 from ..project import (
-    default_cognee_backend_config,
     default_raganything_backend_config,
     sanitize_server_name,
 )
@@ -150,10 +149,13 @@ def build_plan(
         )
     )
 
-    enable_cognee = bool(overrides.pop("enable_cognee", True))
-    cognee_mode = str(overrides.pop("cognee_mode", "cognify"))
-    cognee_auto_cognify = bool(overrides.pop("cognee_auto_cognify", False))
-    install_cognee = bool(overrides.pop("install_cognee", False))
+    # Removed backend (0.19): swallow legacy cognee override keys so old
+    # callers don't trip the unrecognized-key warning; requesting it warns.
+    cognee_requested = bool(overrides.pop("enable_cognee", False)) or bool(
+        overrides.pop("install_cognee", False)
+    )
+    for _legacy_cognee_key in ("cognee_mode", "cognee_auto_cognify"):
+        overrides.pop(_legacy_cognee_key, None)
 
     name = str(overrides.pop("name", None) or sanitize_server_name(root.name))
     source_kind = str(overrides.pop("source_kind", "Repository"))
@@ -184,26 +186,11 @@ def build_plan(
             "extracted natively; see tesserae code ingest"
         )
 
-    if enable_cognee:
-        cognee = default_cognee_backend_config(name)
-        # The built-in default is disabled; a plan that asked for cognee is an
-        # explicit opt-in, so the written config must say so.
-        cognee["enabled"] = True
-        cognee["mode"] = cognee_mode
-        cognee["auto_cognify"] = cognee_auto_cognify
-        cognee.setdefault("install", {})
-        cognee["install"]["auto_install"] = install_cognee
-        memory_backends["cognee"] = cognee
-        if install_cognee:
-            install_command = str(cognee.get("install", {}).get("command") or "")
-            if install_command:
-                install_actions.append(
-                    InstallAction(
-                        id="cognee",
-                        description="Install Cognee memory backend",
-                        command=install_command,
-                    )
-                )
+    if cognee_requested:
+        warnings.append(
+            "cognee backend was removed in 0.19 — request ignored; "
+            "use plain query or ask"
+        )
 
     if include_raganything:
         if not detection.recommended.raganything_available:

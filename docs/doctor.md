@@ -35,7 +35,7 @@ Twenty checks, grouped by category:
 | `compile_lock` | processes | whether a live compile lock is held, and by which pid | report-only — doctor **never kills or removes a live lock** |
 | `daemon_pid` | processes | `daemon.pid` points at a live engine process | **SAFE**: removes the pidfile when its owner is dead |
 | `llm_login` | environment | the configured LLM backend is actually usable (claude/codex CLI logged in, or API key present) | report-only (suggests `claude /login` / `codex login`) |
-| `optional_deps` | environment | status of optional dependencies (memex, cognee, raganything) | report-only (installs are networked) |
+| `optional_deps` | environment | status of optional dependencies (memex, raganything) | report-only (installs are networked) |
 | `embedding_backend` | environment | a real semantic embedding backend is available | report-only (suggests `pip install tesserae[semantic]`) |
 | `environment` | environment | wholesale environment detection summary | report-only section |
 | `build_history` | hygiene | `.build-history` size and shape | **SAFE**: trims it, always preserving the newest `git_head` entry (the staleness check depends on it) |

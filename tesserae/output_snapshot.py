@@ -18,7 +18,7 @@ The hash scope is an ALLOWLIST of test-proven byte-stable artifacts only
 phase-5 suite). Deliberately excluded because their byte-stability is
 unproven and one noisy artifact would make the signal cry wolf:
 ``report.md``, ``competitive_report.md``, ``temporal_facts.jsonl`` (depends
-on the mutable ``node_memory`` sidecar), ``cognee_bundle/``,
+on the mutable ``node_memory`` sidecar),
 ``graphiti_episodes.jsonl``, ``agent_harness/``, ``sqlite.db``, the Obsidian
 vault (bidirectional, user-owned), ``manifest.json`` (input state), lint
 reports, and all ledgers/caches. Extending scope later is a one-line

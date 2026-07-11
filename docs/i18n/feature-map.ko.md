@@ -28,7 +28,7 @@ Tesserae는 세 개의 기둥 위에서 동작하는 **컨텍스트 엔진**입�
 | 빠른 트랜스크립트 검색 (memex) | ✅ | [`tesserae/memex_search.py`](../../tesserae/memex_search.py) | Claude/Codex 트랜스크립트에 대한 `nicosuave/memex` BM25 인덱스, `GET /api/transcript-search`를 통해 `tesserae serve` sessions 대시보드에 연결. 선택적이며 없어도 우아하게 동작. |
 | 읽기 규율 핸들 | ✅ | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | `compile_context` `preview=N`은 제한된 미리보기 + 콘텐츠 키 핸들을 반환; `get_handle`이 나머지를 페이징. 거대한 페이로드를 에이전트의 컨텍스트 밖에 유지. |
 | 추출 품질 신호 | ✅ | [`tesserae/session_graph_llm.py`](../../tesserae/session_graph_llm.py) | finding별 `confidence` + `confidence_rationale` + `revisit_signals` (바이트 안정적; `fresh_insights`에 노출). |
-| 머신 전역 설정 + deps | ✅ | [`tesserae/deps.py`](../../tesserae/deps.py), `cli.py` | `tesserae setup`이 글로벌 LLM 기본값을 기록하고 선택적 deps(memex, cognee, raganything)를 설치; `tesserae config deps`가 목록/설치; `tesserae init`이 memex를 제안. 프로젝트별 config가 여전히 재정의. |
+| 머신 전역 설정 + deps | ✅ | [`tesserae/deps.py`](../../tesserae/deps.py), `cli.py` | `tesserae setup`이 글로벌 LLM 기본값을 기록하고 선택적 deps(memex, raganything)를 설치; `tesserae config deps`가 목록/설치; `tesserae init`이 memex를 제안. 프로젝트별 config가 여전히 재정의. |
 
 ## 컨텍스트 엔진 — v0.5.0 (2026년 6월)
 
@@ -259,13 +259,6 @@ Tesserae는 세 개의 기둥 위에서 동작하는 **컨텍스트 엔진**입�
 - ✅ Graphiti 설치 없이 `sync-graphiti --dry-run` 스모크.
 - ✅ `graphiti_core`와 Neo4j를 사용하는 선택적 라이브 동기화.
 
-### Cognee
-
-- ✅ Cognee JSONL 번들 (`nodes.jsonl`, `edges.jsonl`, `manifest.json`).
-- ✅ 선택적 add-only 직접 가져오기.
-- ✅ 선택적 Codex CLI/OAuth 기반 Cognee cognify 어댑터.
-- ✅ API 키 없는 스모크/품질 워크플로를 위한 결정적 및 Ollama embedding 어댑터 경로.
-
 ### MCP 서버
 
 - ✅ stdio JSON-RPC를 통한 `tesserae_mcp` / `python3 -m tesserae.mcp_server`.
@@ -286,7 +279,6 @@ Tesserae는 세 개의 기둥 위에서 동작하는 **컨텍스트 엔진**입�
 - ✅ 배치 ingest;
 - ✅ 보고서;
 - ✅ SQLite/Kuzu 영속화;
-- ✅ Cognee 번들/가져오기 패치;
 - ✅ Graphiti export/sync dry-run;
 - ✅ 프로젝트 CLI 워크플로;
 - ✅ 에이전트 harness export;

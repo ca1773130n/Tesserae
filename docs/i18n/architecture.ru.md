@@ -196,7 +196,6 @@ query / seeds
 | [`tesserae/agent_harness.py`](../../tesserae/agent_harness.py) | Экспорты харнесов Claude Code / Codex / Gemini / Kiro / Cursor / OpenCode. |
 | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | Входящее обнаружение сессий Claude Code/Codex, нормализация, хранение под `.tesserae/harness_sessions/` и редактированные markdown-сводки. |
 | [`tesserae/graphiti_adapter.py`](../../tesserae/graphiti_adapter.py) | JSONL темпоральных фактов + опциональная живая синхронизация Graphiti. |
-| [`tesserae/cognee_adapter.py`](../../tesserae/cognee_adapter.py) | JSONL-бандл узлов/рёбер Cognee и прямой путь add/cognify. |
 | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | MCP stdio-сервер. Retrieval/граф: `schema`, `graph_summary`, `search_nodes`, `node_context` (с `use_ppr`), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`, `doctor_report`. Контекстный движок (v0.5.0): `compile_context` (компилятор контекста по требованию), `embedding_status`, `fresh_insights` (находки сессий, ранжированные затуханием), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`. Плюс `ask`, инструменты мультипроектного реестра (`list_projects`, `register_project`, `unregister_project`, `list_sessions`) и `tesserae_setup_plan` / `tesserae_setup_apply`. |
 
 ## Раскладка рабочего пространства проекта
@@ -217,7 +216,6 @@ query / seeds
   obsidian_vault/             Obsidian projection w/ .obsidian/, raw/assets/
   agent_harness/              Claude Code / Codex / etc. harness files
   harness_sessions/           imported local Claude Code/Codex sessions
-  cognee_bundle/              Cognee nodes/edges/manifest JSONL
   wiki/                       L2 markdown wiki — see below
   site/                       L3 static site — see below
 ```
@@ -268,7 +266,7 @@ site/
 
 ## Что сознательно исключено
 
-Редизайн провёл явную черту: узлы code-class и code-function остаются в `graph.json` (так что потребители MCP, Cognee и Graphiti их по-прежнему видят), но никогда не получают HTML-страниц, никогда не попадают в `search-index.json` и никогда не появляются в навигации. Это контракт для пользователя — wiki есть документо-ориентированная база знаний, а не браузер функций.
+Редизайн провёл явную черту: узлы code-class и code-function остаются в `graph.json` (так что потребители MCP и Graphiti их по-прежнему видят), но никогда не получают HTML-страниц, никогда не попадают в `search-index.json` и никогда не появляются в навигации. Это контракт для пользователя — wiki есть документо-ориентированная база знаний, а не браузер функций.
 
 Конкретно, `StaticSiteBuilder` пропускает любой узел, чей тип не входит в карту видов L2-wiki (`tesserae/wiki_projector.py::_KIND_FOR_TYPE`):
 

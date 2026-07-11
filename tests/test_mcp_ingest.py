@@ -29,7 +29,6 @@ def _write_minimal_project(project: Path) -> None:
         "external_tools": [],
         "memory_backends": {
             "raganything": {"enabled": False},
-            "cognee": {"enabled": False},
         },
     }
     (cfg_dir / "config.json").write_text(json.dumps(cfg), encoding="utf-8")

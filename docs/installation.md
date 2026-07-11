@@ -47,7 +47,7 @@ tesserae config deps                     # show what's installed
 tesserae config deps --install memex     # fast transcript search (needs cargo)
 ```
 
-Known optional dependencies: **memex** (fast transcript search), **cognee**,
+Known optional dependencies: **memex** (fast transcript search) and
 **raganything**. A per-project `.tesserae/config.json`
 still overrides these global defaults (resolution order: env → project → global →
 built-in). `tesserae init` also offers to install memex during an interactive setup.
@@ -63,22 +63,19 @@ companion/runtime pieces are installed machine-wide via `tesserae setup
 
 ```bash
 # Machine-wide installs of the optional pieces:
-tesserae setup --install raganything --install cognee
+tesserae setup --install raganything
 
 # Then per project: enable what you want in .tesserae/config.json
-#   memory_backends.raganything.enabled: true
-#   memory_backends.cognee.enabled: true        (query via `tesserae query --backend …`)
+#   memory_backends.raganything.enabled: true   (query via `tesserae query --backend raganything`)
 ```
 
 Manual package installs are still available for advanced workflows:
 
 ```bash
 pip install kuzu graphiti-core
-pip install "tesserae[cognee]"
 ```
 
 - `kuzu` — Kuzu graph persistence.
-- `tesserae[cognee]` — the opt-in Cognee runtime add/cognify workflows (disabled by default; the Codex-patched cognify mode was removed).
 - RAG-Anything — installed via `pip install 'raganything[all]'` (`tesserae setup --install raganything`); Tesserae stores a managed refresh wrapper for multimodal parser runs.
 - `graphiti-core` — live Graphiti/Neo4j sync. `export graphiti` and `export graphiti --sync --dry-run` work without it.
 

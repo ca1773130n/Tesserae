@@ -621,9 +621,8 @@ class CodexCLIJsonClient:
 
     Mirrors :class:`ClaudeCLIJsonClient` but shells out to
     ``codex exec --skip-git-repo-check --sandbox read-only`` with the prompt
-    on stdin and the final message captured via ``--output-last-message``
-    (the same contract :mod:`tesserae.cognee_codex` uses). No API key
-    required — auth comes from the credentialed ``CODEX_HOME``.
+    on stdin and the final message captured via ``--output-last-message``.
+    No API key required — auth comes from the credentialed ``CODEX_HOME``.
     """
 
     def __init__(

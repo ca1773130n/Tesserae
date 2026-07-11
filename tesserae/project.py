@@ -2,17 +2,15 @@
 
 A project wiki lives under ``<project>/.tesserae`` and keeps all generated
 artifacts for that project together: graph JSON, batch manifest, SQLite store,
-markdown projection, Cognee export bundle, report, and MCP config snippet.
+markdown projection, report, and MCP config snippet.
 """
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
 import shutil
-import subprocess
 import sys
 from dataclasses import dataclass, field, replace as dataclasses_replace
 from datetime import date
@@ -30,8 +28,6 @@ from .code_graph import (
     stat_manifest,
     write_code_graph_cache,
 )
-from .cognee_adapter import CogneeResearchGraphAdapter
-from .cognee_direct import CogneeDirectImporter
 from .deploy import GitHubPagesDeployer
 from .graph_stores import SqliteGraphStore
 from .karpathy_layer import KarpathyLayerWriter
@@ -55,6 +51,27 @@ from .raganything_adapter import merge_raganything_graph
 from .wiki_projector import partition_graph
 
 logger = logging.getLogger("tesserae.project")
+
+# Removed-backend tolerance (mirrors the understand-anything pattern): OLD
+# configs may still carry a ``memory_backends.cognee`` section. It is ignored
+# with ONE stderr note per process — never an error — so those configs keep
+# loading unchanged.
+_COGNEE_REMOVAL_NOTED = False
+
+
+def _note_removed_cognee_section(cfg: object) -> None:
+    """Print a one-per-process stderr note when a legacy config still carries
+    ``memory_backends.cognee`` (the backend was removed in 0.19)."""
+    global _COGNEE_REMOVAL_NOTED
+    if _COGNEE_REMOVAL_NOTED:
+        return
+    backends = cfg.get("memory_backends") if isinstance(cfg, dict) else None
+    if isinstance(backends, dict) and "cognee" in backends:
+        print(
+            "note: cognee backend was removed in 0.19 — section ignored",
+            file=sys.stderr,
+        )
+        _COGNEE_REMOVAL_NOTED = True
 
 
 def _env_truthy(name: str) -> bool:
@@ -87,68 +104,6 @@ def set_community_summaries_test_client(client: Optional[object]) -> None:
 
 def _get_community_summaries_test_client() -> Optional[object]:
     return _COMMUNITY_SUMMARIES_TEST_CLIENT
-
-
-@dataclass(frozen=True)
-class CognifyOptions:
-    """Optional Cognee cognify pass run after the bundle is written.
-
-    All fields default to no-op values; the pass is a no-op when ``mode`` is
-    ``"off"``. The CLI ``compile`` builds this from --cognee-* flags;
-    direct callers can construct it explicitly. Defaults mirror the legacy
-    ``ingest`` subcommand at ``tesserae.cli.main``.
-
-    The legacy ``codex_cognify`` mode (Cognee's LLM client patched to OAuth
-    Codex CLI) was removed with :mod:`tesserae.cognee_codex`'s demotion; a
-    config still carrying it is treated as inactive. ``codex_model`` /
-    ``codex_timeout`` remain only because the CLI still constructs them.
-    """
-
-    mode: str = "off"  # off | add | cognify
-    dataset: str = "tesserae_research_graph"
-    codex_model: str = "gpt-4o"
-    codex_timeout: int = 300
-    embedding_provider: str = "deterministic"  # deterministic | ollama
-    ollama_embedding_model: str = "qwen3-embedding:0.6b"
-    ollama_embedding_endpoint: str = "http://127.0.0.1:11434/api/embed"
-    ollama_embedding_timeout: int = 120
-    local_embedding_dimensions: int = 128
-    system_root: Optional[str] = None
-    data_root: Optional[str] = None
-    fail_fast: bool = True
-    install_enabled: bool = True
-    auto_install: bool = False
-    install_command: str = "{python} -m pip install cognee"
-
-    @classmethod
-    def from_mapping(cls, data: dict) -> "CognifyOptions":
-        install = data.get("install") or {}
-        install_auto_default = bool(data.get("auto_cognify", False)) if "auto_install" not in install else bool(install.get("auto_install"))
-        return cls(
-            mode=str(data.get("mode") or "off"),
-            dataset=str(data.get("dataset") or "tesserae_research_graph"),
-            codex_model=str(data.get("codex_model") or "gpt-4o"),
-            codex_timeout=int(data.get("codex_timeout") or 300),
-            embedding_provider=str(data.get("embedding_provider") or "deterministic"),
-            ollama_embedding_model=str(data.get("ollama_embedding_model") or "qwen3-embedding:0.6b"),
-            ollama_embedding_endpoint=str(data.get("ollama_embedding_endpoint") or "http://127.0.0.1:11434/api/embed"),
-            ollama_embedding_timeout=int(data.get("ollama_embedding_timeout") or 120),
-            local_embedding_dimensions=int(data.get("local_embedding_dimensions") or 128),
-            system_root=data.get("system_root"),
-            data_root=data.get("data_root"),
-            fail_fast=bool(data.get("fail_fast", False)),
-            install_enabled=bool(install.get("enabled", True)),
-            auto_install=install_auto_default,
-            install_command=str(install.get("command") or "{python} -m pip install cognee"),
-        )
-
-    @property
-    def is_active(self) -> bool:
-        return self.mode in {"add", "cognify"}
-
-    @property
-    def runs_cognify(self) -> bool:
-        return self.mode == "cognify"
 
 
 @dataclass(frozen=True)
@@ -192,7 +147,6 @@ class ProjectPaths:
     manifest: Path
     sqlite: Path
     markdown_projection: Path
-    cognee_bundle: Path
     report: Path
     temporal_facts: Path
     competitive_report: Path
@@ -267,7 +221,6 @@ class ProjectWiki:
             manifest=self.root / "manifest.json",
             sqlite=self.root / "sqlite.db",
             markdown_projection=self.root / "markdown_projection",
-            cognee_bundle=self.root / "cognee_bundle",
             report=self.root / "report.md",
             temporal_facts=self.root / "temporal_facts.jsonl",
             competitive_report=self.root / "competitive_report.md",
@@ -367,7 +320,6 @@ class ProjectWiki:
         wiki = cls(project_root)
         wiki.root.mkdir(parents=True, exist_ok=True)
         wiki.paths.markdown_projection.mkdir(parents=True, exist_ok=True)
-        wiki.paths.cognee_bundle.mkdir(parents=True, exist_ok=True)
         wiki.paths.agent_harness.mkdir(parents=True, exist_ok=True)
         wiki.paths.harness_sessions.mkdir(parents=True, exist_ok=True)
         wiki.effective_obsidian_vault().mkdir(parents=True, exist_ok=True)
@@ -406,7 +358,6 @@ class ProjectWiki:
             "manifest_path": ".tesserae/manifest.json",
             "sqlite_path": ".tesserae/sqlite.db",
             "markdown_projection_path": ".tesserae/markdown_projection",
-            "cognee_bundle_path": ".tesserae/cognee_bundle",
             "report_path": ".tesserae/report.md",
             "temporal_facts_path": ".tesserae/temporal_facts.jsonl",
             "competitive_report_path": ".tesserae/competitive_report.md",
@@ -415,9 +366,6 @@ class ProjectWiki:
             "harness_sessions_path": ".tesserae/harness_sessions",
             "obsidian_vault_path": ".tesserae/obsidian_vault",
             "site_path": ".tesserae/site",
-            "memory_backends": {
-                "cognee": default_cognee_backend_config(name or sanitize_server_name(wiki.project_root.name)),
-            },
         }
         # Durable LLM backend preference for the synthesis/insights JSON
         # client ("use codex instead of claude"). Only persisted when set so
@@ -439,7 +387,9 @@ class ProjectWiki:
         return wiki
 
     def config(self) -> dict:
-        return json.loads(self.paths.config.read_text(encoding="utf-8"))
+        cfg = json.loads(self.paths.config.read_text(encoding="utf-8"))
+        _note_removed_cognee_section(cfg)
+        return cfg
 
     def _compile_options(self) -> dict:
         """Return the ``compile_options`` block from config.json.
@@ -487,7 +437,6 @@ class ProjectWiki:
         limit: Optional[int] = None,
         trends: bool = False,
         min_trend_sources: int = 2,
-        cognify: Optional[CognifyOptions] = None,
         loader: Optional[SourceLoader] = None,
         store: Optional[GraphStore] = None,
         vault_pull: bool = True,
@@ -1056,7 +1005,6 @@ class ProjectWiki:
         extraction_prov = compute_extraction_provenance(extracted_graphs)
         self._write_artifacts(
             graph,
-            cognify=cognify,
             store=store,
             vault_pull=vault_pull,
             extraction_prov=extraction_prov,
@@ -1477,7 +1425,6 @@ class ProjectWiki:
         trends: bool = False,
         min_trend_sources: int = 2,
         exclude_data: bool = False,
-        cognify: Optional[CognifyOptions] = None,
         loader: Optional[SourceLoader] = None,
         store: Optional[GraphStore] = None,
         vault_pull: bool = True,
@@ -1539,7 +1486,6 @@ class ProjectWiki:
                 limit=limit,
                 trends=trends,
                 min_trend_sources=min_trend_sources,
-                cognify=cognify,
                 loader=loader,
                 store=store,
                 vault_pull=vault_pull,
@@ -1882,7 +1828,7 @@ class ProjectWiki:
         graph = self._apply_vault_overlay(graph)
         new_stubs = sum(1 for n in graph.nodes[before_node_count:] if n.type == ResearchNodeType.STUB)
 
-        # Re-project: markdown + the obsidian vault itself. Cognee bundle,
+        # Re-project: markdown + the obsidian vault itself. The
         # site, harness, etc. are intentionally NOT touched here — those are
         # compile-time concerns. The watcher exists to make vault edits
         # round-trip; everything else stays static between compiles.
@@ -2623,7 +2569,6 @@ class ProjectWiki:
     def _write_artifacts(
         self,
         graph: ResearchGraph,
-        cognify: Optional[CognifyOptions] = None,
         store: Optional[GraphStore] = None,
         vault_pull: bool = True,
         extraction_prov: Optional[
@@ -2659,7 +2604,7 @@ class ProjectWiki:
         WikiLayerProjector(wiki_store).project(graph)
         graph, _written = SynthesisProjector(wiki_store, manifest_path=self.paths.manifest).project(graph)
         # Canonicalize node/edge order ONCE here so every downstream artifact
-        # (graph.json via ``to_json``, the cognee bundle, temporal facts,
+        # (graph.json via ``to_json``, temporal facts,
         # Graphiti episodes, markdown/obsidian projections, the provenance
         # sidecar) derives from the SAME content-derived order. A full compile
         # builds the graph in insertion order; an incremental compile appends
@@ -2753,7 +2698,7 @@ class ProjectWiki:
             # Don't let a stale combined graph survive a config flip.
             self.paths.combined_graph.unlink()
 
-        # The downstream stores (SQLite, markdown projection, Cognee bundle,
+        # The downstream stores (SQLite, markdown projection,
         # report, temporal facts, Graphiti episodes, agent harness, Obsidian
         # vault) keep operating on the union so existing consumers see the
         # same structure they always did.
@@ -2836,14 +2781,6 @@ class ProjectWiki:
         # stale per-node page behind. Prune those orphans so an incremental and
         # a full compile project byte-identical trees (Phase-4 subtractive gate).
         self._prune_orphaned_vault_pages(graph, self.paths.markdown_projection)
-        # Cognee demotion: only materialize the JSONL bundle when the cognee
-        # backend is enabled in config or this compile explicitly runs a
-        # cognify pass — a default install never writes (or logs about) it.
-        run_cognify = bool(cognify and cognify.is_active)
-        if run_cognify or cognee_backend_config(self.config()).get("enabled"):
-            CogneeResearchGraphAdapter().write_bundle(graph, self.paths.cognee_bundle)
-        if run_cognify:
-            self._run_cognify_best_effort(cognify)
         report = GraphReporter().render_markdown(GraphReporter().summarize(graph))
         self.paths.report.write_text(report, encoding="utf-8")
         mem_by_id = {r.node_id: r for r in memory_rows}
@@ -2863,80 +2800,6 @@ class ProjectWiki:
         # bypasses reading; we still want a fresh baseline for the next run.
         from .vault_snapshot import write_snapshot
         write_snapshot(graph.nodes, self.paths.vault_snapshot)
-
-    def _run_cognify_best_effort(self, options: "CognifyOptions") -> None:
-        try:
-            self._run_cognify(options)
-            return
-        except ModuleNotFoundError as exc:
-            missing_name = getattr(exc, "name", "") or ""
-            message = str(exc)
-            is_cognee_missing = missing_name == "cognee" or "No module named 'cognee'" in message
-            if is_cognee_missing and options.install_enabled and options.auto_install:
-                print("[tesserae] Cognee missing; installing configured Cognee package...", flush=True)
-                try:
-                    self._install_cognee(options)
-                    print("[tesserae] Cognee installed; retrying cognify...", flush=True)
-                    self._run_cognify(options)
-                    return
-                except Exception as install_exc:
-                    if options.fail_fast:
-                        raise
-                    print(f"[tesserae] Cognee install/cognify warning; compile will continue: {install_exc}", flush=True)
-                    return
-            if options.fail_fast:
-                raise
-            print(f"[tesserae] Cognee cognify warning; compile will continue: {exc}", flush=True)
-        except Exception as exc:
-            if options.fail_fast:
-                raise
-            print(f"[tesserae] Cognee cognify warning; compile will continue: {exc}", flush=True)
-
-    def _install_cognee(self, options: "CognifyOptions") -> dict:
-        command = (options.install_command or "{python} -m pip install cognee").format(python=sys.executable)
-        completed = subprocess.run(
-            command,
-            shell=True,
-            cwd=self.project_root,
-            text=True,
-            capture_output=True,
-        )
-        if completed.returncode != 0:
-            tail = (completed.stderr or completed.stdout or "").strip().splitlines()
-            detail = f": {tail[-1]}" if tail else ""
-            raise RuntimeError(f"Cognee install failed ({completed.returncode}){detail}")
-        return {
-            "status": "installed",
-            "command": command,
-            "stdout": completed.stdout[-2000:],
-            "stderr": completed.stderr[-2000:],
-        }
-
-    def _run_cognify(self, options: "CognifyOptions") -> None:
-        """Invoke Cognee on the freshly written bundle.
-
-        ``add`` only loads the bundle into the Cognee dataset. ``cognify`` runs
-        Cognee's full cognify pipeline (LLM + embedding calls) directly.
-        """
-
-        bundle = self.paths.cognee_bundle
-        if not bundle.exists() or not any(bundle.iterdir()):
-            print(
-                "[tesserae] cognify skipped: cognee bundle is empty",
-                flush=True,
-            )
-            return
-
-        async def _add() -> None:
-            await CogneeDirectImporter().add_bundle(
-                bundle,
-                dataset_name=options.dataset,
-                cognify=options.runs_cognify,
-                system_root=options.system_root,
-                data_root=options.data_root,
-            )
-
-        asyncio.run(_add())
 
     def _append_build_history(
         self, research_graph: ResearchGraph, code_graph: ResearchGraph
@@ -2974,31 +2837,9 @@ class ProjectWiki:
         self.paths.build_history.write_text(existing + line + "\n", encoding="utf-8")
 
 
-def default_cognee_backend_config(name: str = "tesserae") -> dict:
-    dataset_base = sanitize_server_name(name or "tesserae")
-    return {
-        # Demoted: cognee is opt-in. A project (or the machine-wide config)
-        # must explicitly set enabled: true for the bundle write / cognify
-        # pass / explicit backend to consider it configured.
-        "enabled": False,
-        "mode": "cognify",
-        "auto_cognify": False,
-        "dataset": f"{dataset_base}_memory",
-        "system_root": ".tesserae/cognee_system",
-        "data_root": ".tesserae/cognee_data",
-        "embedding_provider": "deterministic",
-        "local_embedding_dimensions": 128,
-        "fail_fast": False,
-        "install": {
-            "enabled": True,
-            "auto_install": False,
-            "command": "{python} -m pip install cognee",
-        },
-    }
-
-
 def default_raganything_backend_config(name: str = "tesserae") -> dict:
-    # ``name`` is unused for now; kept for symmetry with default_cognee_backend_config.
+    # ``name`` is unused for now; kept for signature symmetry with the other
+    # backend-default helpers this module has carried.
     return {
         "enabled": False,
         "working_dir": ".tesserae/external/raganything/working_dir",
@@ -3021,50 +2862,6 @@ def default_raganything_backend_config(name: str = "tesserae") -> dict:
             "auto_install": False,
         },
     }
-
-
-def _cognee_section(cfg: dict) -> dict:
-    """The ``memory_backends.cognee`` mapping from a config, or ``{}``."""
-    backends = cfg.get("memory_backends") if isinstance(cfg, dict) else None
-    if isinstance(backends, dict) and isinstance(backends.get("cognee"), dict):
-        return dict(backends["cognee"])
-    return {}
-
-
-def cognee_backend_config(config: dict) -> dict:
-    """Resolve the cognee backend config, layering machine-wide over defaults.
-
-    Precedence: built-in defaults < machine-wide ``~/.tesserae/config.json`` <
-    this project's config. The global layer lets ``tesserae setup
-    --enable-cognee`` turn cognee on for *every* project at once, while a project
-    can still override (disable, or change ``mode``/``dataset``).
-    """
-    defaults = default_cognee_backend_config(str(config.get("name") or "tesserae"))
-    from .llm_json import _load_global_llm_config
-
-    global_cognee = _cognee_section(_load_global_llm_config())
-    project_cognee = _cognee_section(config)
-    if not global_cognee and not project_cognee:
-        return defaults
-
-    merged = {**defaults, **global_cognee, **project_cognee}
-    merged["install"] = {
-        **defaults.get("install", {}),
-        **(global_cognee.get("install") or {}),
-        **(project_cognee.get("install") or {}),
-    }
-    if (global_cognee.get("install") is None and project_cognee.get("install") is None
-            and merged.get("auto_cognify")):
-        merged["install"]["auto_install"] = True
-    return merged
-
-
-def cognify_options_from_config(config: dict) -> Optional[CognifyOptions]:
-    cognee = cognee_backend_config(config)
-    if not cognee.get("enabled", False) or not cognee.get("auto_cognify", False):
-        return None
-    options = CognifyOptions.from_mapping(cognee)
-    return options if options.is_active else None
 
 
 def _vault_file_node_id(vault_file: object) -> Optional[str]:

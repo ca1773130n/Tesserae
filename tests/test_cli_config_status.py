@@ -162,8 +162,8 @@ def test_config_show_masks_api_key_and_includes_new_keys(monkeypatch, tmp_path, 
 
 
 def test_status_shows_machine_wide_settings_and_deps(_stub_resolution, monkeypatch, capsys):
-    # status must report more than the LLM backend: the machine-wide cognee
-    # setting and optional-dependency status too.
+    # status must report more than the LLM backend: the optional-dependency
+    # status too. A legacy machine-wide cognee section must not resurface.
     monkeypatch.setattr(
         lj, "_load_global_llm_config",
         lambda: {"memory_backends": {"cognee": {"enabled": True, "mode": "codex_cognify"}}},
@@ -171,8 +171,7 @@ def test_status_shows_machine_wide_settings_and_deps(_stub_resolution, monkeypat
     rc = _handle_config_status(SimpleNamespace(project=None, ping=False))
     out = capsys.readouterr().out
     assert rc == 0
-    assert "Machine-wide settings" in out
-    assert "cognee     : enabled (mode=codex_cognify)" in out
     assert "Optional dependencies:" in out
     assert "memex" in out and "raganything" in out
+    assert "cognee" not in out  # backend removed in 0.19
     assert "understand-anything" not in out  # backend removed

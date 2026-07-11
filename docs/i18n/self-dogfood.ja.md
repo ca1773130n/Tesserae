@@ -3,7 +3,7 @@
 <!-- translations:start -->
 <p align="center"><a href="../self-dogfood.md">English</a> · <a href="self-dogfood.ko.md">한국어</a> · <a href="self-dogfood.zh.md">中文</a> · <a href="self-dogfood.ja.md">日本語</a> · <a href="self-dogfood.ru.md">Русский</a> · <a href="self-dogfood.es.md">Español</a> · <a href="self-dogfood.fr.md">Français</a> · <a href="self-dogfood.de.md">Deutsch</a></p>
 <!-- translations:end -->
-このプロジェクトは自分自身をインデックスできます。セルフドッグフードのフローは、Tesserae をインストールし、自身のリポジトリ内にセットアップし、自身の docs/ソース/テスト/スクリプトを取り込み、必要に応じて RAG-Anything と Cognee をリフレッシュし、グラフ成果物をコンパイルし、静的 Web フロントエンドをビルドできることを証明します。
+このプロジェクトは自分自身をインデックスできます。セルフドッグフードのフローは、Tesserae をインストールし、自身のリポジトリ内にセットアップし、自身の docs/ソース/テスト/スクリプトを取り込み、必要に応じて RAG-Anything をリフレッシュし、グラフ成果物をコンパイルし、静的 Web フロントエンドをビルドできることを証明します。
 
 同じフローはマルチモーダルのスモークテストも兼ねています。RAG-Anything がインストールされ（`tesserae setup --install raganything`）、`.tesserae/config.json` で有効化されている場合（`memory_backends.raganything.enabled: true`）、ドッグフードのコンパイルは RAG-Anything を Tesserae 自身の `docs/` markdown と、`docs/assets/` およびプロジェクトレベルの `assets/` の画像に向けます。これにより、テキストファーストのソースローダーがスキップするスクリーンショットや図を含む、実在するプロジェクト所有の非コードコーパスに対してマルチモーダルパイプラインを検証できます — 別個のフィクスチャセットを発明することなく。
 
@@ -41,7 +41,7 @@ tesserae init \
   --source scripts
 
 # (optional) install + enable the heavier companions afterwards:
-#   tesserae setup --install raganything --install cognee
+#   tesserae setup --install raganything
 #   then flip memory_backends.*.enabled / external_tools in .tesserae/config.json
 
 # Compile the configured sources.
@@ -83,7 +83,6 @@ http://127.0.0.1:8765/
 .tesserae/obsidian_vault/
 .tesserae/agent_harness/
 .tesserae/site/
-.tesserae/cognee_bundle/
 ```
 
 生成されたワークスペースは意図的にデフォルトではコミットされません。上記のコマンドでリポジトリのソースから再現できます。
@@ -92,7 +91,7 @@ http://127.0.0.1:8765/
 
 Tesserae リポジトリ自身から `2026-04-27 11:11:23 KST` に検証済み。
 
-統合のオプトイン（RAG-Anything、cognee）は現在、CLI フラグではなく
+統合のオプトイン（RAG-Anything）は現在、CLI フラグではなく
 **インタラクティブなウィザードのプロンプト**です。以下の非インタラクティブな同等手順は、
 `tesserae init --yes`（統合は OFF）を実行し、`.tesserae/config.json` で統合を有効化し
 （ウィザードは `memory_backends` と `external_tools` キーの下に書き込みます —
@@ -103,7 +102,6 @@ install command: ./scripts/install.sh --dir /Users/neo/Developer/Projects/Tesser
 setup command:   tesserae init --yes --name tesserae_self --source README.md --source docs --source tesserae --source tests --source scripts
                  # then enable the optional integrations in .tesserae/config.json and run:
                  #   tesserae integrations refresh raganything
-                 #   tesserae integrations refresh cognee
 ingest command:  tesserae compile README.md docs --changed-only
 compile command: tesserae compile
 site command:    tesserae export site
@@ -120,8 +118,6 @@ edges:               1020
 markdown notes:      684
 obsidian notes:      686
 agent harness files: 14
-cognee nodes:        667
-cognee edges:        1020
 graphiti episodes:  1020
 temporal facts:      1020
 site files:          index.html, nodes/index.html, sources/index.html, graph/index.html, graph.json, search-index.json, llms.txt, llms-full.txt, manifest.json, assets/style.css, assets/app.js
@@ -159,7 +155,7 @@ server: TCP *:56821 LISTEN, serving via --host 0.0.0.0
 - `tesserae` シェルコマンドが機能する。
 - リポジトリにプロジェクトローカルの `.tesserae` ワークスペースをアタッチできる。
 - 研究/ドキュメントの markdown と開発コードのグラフノードが共存できる。
-- Markdown、Obsidian、フロントエンド、Graphiti、Cognee、SQLite、レポート、agent-harness の各プロジェクションが 1 つのグラフパイプラインから生成される。
+- Markdown、Obsidian、フロントエンド、Graphiti、SQLite、レポート、agent-harness の各プロジェクションが 1 つのグラフパイプラインから生成される。
 - 静的 HTML フロントエンドが JavaScript のビルドステップなしでプロジェクトグラフを閲覧できる。
 - 自己改善ループが動作し永続化される: 減衰、アクセスカウント、再出現の confidence、supersede フラグが `graph.json` を乱すことなく `node_memory` サイドカーに書き込まれる。
 - `tesserae[semantic]` がインストールされている場合、hybrid 検索は実際のセマンティックバックエンドを解決する（デフォルトの `auto` 順序: model2vec → sentence-transformers → hash-bucket スタブ）。ない場合、埋め込み検索は非セマンティックな hash-bucket スタブにデグレードし、目立つ警告を発する。

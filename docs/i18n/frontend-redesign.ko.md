@@ -361,7 +361,7 @@ llmstxt.org 긴 형식입니다. 모든 위키 페이지를 이어 붙입니다.
 
 ### `/graph.json` ✅
 
-전체 `ResearchGraph` payload입니다. HTML 페이지가 없는 코드 그래프 노드도 포함합니다. 도구가 자체 분석을 위해 완전한 그래프를 원할 때 적합합니다(MCP, Cognee, Graphiti 소비자가 모두 이를 읽습니다).
+전체 `ResearchGraph` payload입니다. HTML 페이지가 없는 코드 그래프 노드도 포함합니다. 도구가 자체 분석을 위해 완전한 그래프를 원할 때 적합합니다(MCP와 Graphiti 소비자가 모두 이를 읽습니다).
 
 ### `/graph.jsonld` ✅
 

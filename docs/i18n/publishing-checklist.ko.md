@@ -58,7 +58,7 @@ Pages 단계는 `continue-on-error`다: 기본 `GITHUB_TOKEN`은 Pages 사이트
 
 ## Self-dogfood
 
-통합 옵트인(RAG-Anything, cognee)은 이제 CLI 플래그가 아니라
+통합 옵트인(RAG-Anything)은 이제 CLI 플래그가 아니라
 **대화형 마법사 프롬프트**입니다. 마법사를 실행하고 답하세요:
 
 ```bash
@@ -71,7 +71,6 @@ tesserae init \
   --source scripts
 # 마법사가 물어보면:
 #   - RAG-Anything 활성화, 설치: 예, 파서: mineru, 이후 실행: 예
-#   - cognee 활성화, 설치: 예
 tesserae compile
 tesserae sessions list
 tesserae export site
@@ -79,8 +78,8 @@ tesserae serve --port 8765
 ```
 
 완전한 비대화형 실행에는 `tesserae init --yes`(모든 통합 OFF)를 사용한 뒤,
-`.tesserae/config.json`에서 각 통합을 활성화하고(마법사는 이를 `memory_backends`
-(cognee)와 `external_tools`(RAG-Anything) 키 아래에 씁니다)
+`.tesserae/config.json`에서 각 통합을 활성화하고(마법사는 이를 `memory_backends`와
+`external_tools`(RAG-Anything) 키 아래에 씁니다)
 컴파일하기 전에 각 통합에 대해 `tesserae integrations refresh <name>`을 실행하세요.
 정확한 설정 키는 통합 문서를 참조하세요.
 

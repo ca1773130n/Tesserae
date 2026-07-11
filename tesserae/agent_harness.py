@@ -109,7 +109,6 @@ def render_harness_context(
         "- `.tesserae/obsidian_vault/` — generated Obsidian vault",
         "- `.tesserae/temporal_facts.jsonl` — temporal/provenance fact projection",
         "- `.tesserae/graphiti_episodes.jsonl` — Graphiti-compatible episode export",
-        "- `.tesserae/cognee_bundle/` — Cognee JSONL bundle",
         "",
         "## MCP server",
         "",

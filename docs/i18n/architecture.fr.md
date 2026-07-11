@@ -196,7 +196,6 @@ La confiance de récurrence est numérique en sortie : la projection temporelle 
 | [`tesserae/agent_harness.py`](../../tesserae/agent_harness.py) | Exports de harness Claude Code / Codex / Gemini / Kiro / Cursor / OpenCode. |
 | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | Découverte, normalisation, stockage sous `.tesserae/harness_sessions/` des sessions Claude Code/Codex entrantes, et résumés markdown expurgés. |
 | [`tesserae/graphiti_adapter.py`](../../tesserae/graphiti_adapter.py) | JSONL de faits temporels + sync Graphiti en direct optionnelle. |
-| [`tesserae/cognee_adapter.py`](../../tesserae/cognee_adapter.py) | Bundle JSONL de nœuds/arêtes Cognee et chemin direct add/cognify. |
 | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | Serveur MCP stdio. Récupération/graphe : `schema`, `graph_summary`, `search_nodes`, `node_context` (avec `use_ppr`), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`, `doctor_report`. Moteur de contexte (v0.5.0) : `compile_context` (le compilateur de contexte à la demande), `embedding_status`, `fresh_insights` (constats de session classés par décrue), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`. Plus `ask`, les outils du registre multi-projets (`list_projects`, `register_project`, `unregister_project`, `list_sessions`), et `tesserae_setup_plan` / `tesserae_setup_apply`. |
 
 ## Disposition de l’espace de travail du projet
@@ -217,7 +216,6 @@ La confiance de récurrence est numérique en sortie : la projection temporelle 
   obsidian_vault/             Obsidian projection w/ .obsidian/, raw/assets/
   agent_harness/              Claude Code / Codex / etc. harness files
   harness_sessions/           imported local Claude Code/Codex sessions
-  cognee_bundle/              Cognee nodes/edges/manifest JSONL
   wiki/                       L2 markdown wiki — see below
   site/                       L3 static site — see below
 ```
@@ -268,7 +266,7 @@ site/
 
 ## Ce qui est délibérément exclu
 
-La refonte a tracé une ligne explicite : les nœuds code-class et code-function restent dans `graph.json` (pour que les consommateurs MCP, Cognee et Graphiti les voient toujours) mais n’obtiennent jamais de pages HTML, n’apparaissent jamais dans `search-index.json` et n’apparaissent jamais dans la navigation. C’est le contrat côté utilisateur — le wiki est une base de connaissances orientée documents, pas un navigateur de fonctions.
+La refonte a tracé une ligne explicite : les nœuds code-class et code-function restent dans `graph.json` (pour que les consommateurs MCP et Graphiti les voient toujours) mais n’obtiennent jamais de pages HTML, n’apparaissent jamais dans `search-index.json` et n’apparaissent jamais dans la navigation. C’est le contrat côté utilisateur — le wiki est une base de connaissances orientée documents, pas un navigateur de fonctions.
 
 Concrètement, `StaticSiteBuilder` saute tout nœud dont le type n’est pas dans la carte des types de wiki L2 (`tesserae/wiki_projector.py::_KIND_FOR_TYPE`) :
 

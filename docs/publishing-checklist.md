@@ -61,7 +61,7 @@ that toggle is on, the build still stays green and the artifact is still produce
 
 ## Self-dogfood
 
-Integration opt-ins (RAG-Anything, cognee) are now
+Integration opt-ins (RAG-Anything) are now
 **interactive wizard prompts**, not CLI flags. Run the wizard and answer them:
 
 ```bash
@@ -74,7 +74,6 @@ tesserae init \
   --source scripts
 # when the wizard prompts:
 #   - enable RAG-Anything, install: yes, parser: mineru, run after install: yes
-#   - enable cognee, install: yes
 tesserae compile
 tesserae sessions list
 tesserae export site
@@ -83,7 +82,7 @@ tesserae serve --port 8765
 
 For a fully non-interactive run, use `tesserae init --yes` (all integrations
 OFF), then enable each integration in `.tesserae/config.json` — the wizard
-writes them under the `memory_backends` (cognee) and `external_tools`
+writes them under the `memory_backends` and `external_tools`
 (RAG-Anything) keys — and run `tesserae integrations
 refresh <name>` for each before compiling. See the integration docs for the
 exact config keys.

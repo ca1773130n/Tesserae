@@ -153,7 +153,6 @@ def test_cli_ask_never_enters_raganything(tmp_path, monkeypatch, capsys):
         "external_tools": [],
         "memory_backends": {
             "raganything": {"enabled": True, "working_dir": "wd", "parser": "docling"},
-            "cognee": {"enabled": False},  # force fallback to wiki
         },
     }
     (cfg_dir / "config.json").write_text(_json.dumps(cfg), encoding="utf-8")

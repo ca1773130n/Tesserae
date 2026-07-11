@@ -59,7 +59,7 @@ build reste verte et l’artefact est toujours produit.
 
 ## Self-dogfood
 
-Les opt-ins d'intégration (RAG-Anything, cognee) sont
+Les opt-ins d'intégration (RAG-Anything) sont
 désormais des **invites interactives de l'assistant**, et non des flags CLI.
 Exécutez l'assistant et répondez-y :
 
@@ -73,7 +73,6 @@ tesserae init \
   --source scripts
 # lorsque l'assistant demande :
 #   - activez RAG-Anything, installer : oui, parseur : mineru, exécuter ensuite : oui
-#   - activez cognee, installer : oui
 tesserae compile
 tesserae sessions list
 tesserae export site
@@ -83,7 +82,7 @@ tesserae serve --port 8765
 Pour une exécution entièrement non interactive, utilisez `tesserae init --yes`
 (toutes les intégrations DÉSACTIVÉES), puis activez chaque intégration dans
 `.tesserae/config.json` — l'assistant les écrit sous les clés `memory_backends`
-(cognee) et `external_tools` (RAG-Anything) — et exécutez
+et `external_tools` (RAG-Anything) — et exécutez
 `tesserae integrations refresh <name>` pour chacune avant de compiler.
 Consultez les documents d'intégration pour les clés de configuration exactes.
 

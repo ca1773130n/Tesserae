@@ -28,7 +28,7 @@ Tesserae — это **контекстный движок**, работающи�
 | Быстрый поиск по транскриптам (memex) | ✅ | [`tesserae/memex_search.py`](../../tesserae/memex_search.py) | BM25-индекс `nicosuave/memex` по транскриптам Claude/Codex, подключённый к дашборду сессий `tesserae serve` через `GET /api/transcript-search`. Опционален + мягко деградирует при отсутствии. |
 | Хэндлы дисциплины чтения | ✅ | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | `compile_context` `preview=N` возвращает ограниченное превью + хэндл по ключу контента; `get_handle` подгружает остальное постранично. Держит огромные payload вне контекста агента. |
 | Сигналы качества извлечения | ✅ | [`tesserae/session_graph_llm.py`](../../tesserae/session_graph_llm.py) | По-находочные `confidence` + `confidence_rationale` + `revisit_signals` (байт-стабильны; выводятся в `fresh_insights`). |
-| Машинная настройка + зависимости | ✅ | [`tesserae/deps.py`](../../tesserae/deps.py), `cli.py` | `tesserae setup` пишет глобальные LLM-дефолты + устанавливает опциональные зависимости (memex, cognee, raganything); `tesserae config deps` показывает/устанавливает; `tesserae init` предлагает memex. Проектный конфиг по-прежнему переопределяет. |
+| Машинная настройка + зависимости | ✅ | [`tesserae/deps.py`](../../tesserae/deps.py), `cli.py` | `tesserae setup` пишет глобальные LLM-дефолты + устанавливает опциональные зависимости (memex, raganything); `tesserae config deps` показывает/устанавливает; `tesserae init` предлагает memex. Проектный конфиг по-прежнему переопределяет. |
 
 ## Контекстный движок — v0.5.0 (июнь 2026)
 
@@ -259,13 +259,6 @@ Tesserae — это **контекстный движок**, работающи�
 - ✅ Smoke `sync-graphiti --dry-run` без установленного Graphiti.
 - ✅ Опциональная живая синхронизация с `graphiti_core` и Neo4j.
 
-### Cognee
-
-- ✅ JSONL-бандл Cognee (`nodes.jsonl`, `edges.jsonl`, `manifest.json`).
-- ✅ Опциональный add-only прямой импорт.
-- ✅ Опциональный адаптер Cognee cognify на базе Codex CLI/OAuth.
-- ✅ Детерминированный и Ollama-адаптеры эмбеддингов для smoke/quality-процессов без API-ключей.
-
 ### MCP-сервер
 
 - ✅ `tesserae_mcp` / `python3 -m tesserae.mcp_server` по stdio JSON-RPC.
@@ -286,7 +279,6 @@ Tesserae — это **контекстный движок**, работающи�
 - ✅ пакетный инжест;
 - ✅ отчёты;
 - ✅ персистентность SQLite/Kuzu;
-- ✅ бандлы Cognee/патчи импорта;
 - ✅ экспорт Graphiti/dry-run синхронизации;
 - ✅ рабочий процесс CLI проекта;
 - ✅ экспорт агентских харнесов;

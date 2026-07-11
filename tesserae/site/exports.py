@@ -985,7 +985,7 @@ def render_ai_readme(site_title: str, ctx: ExportContext) -> str:
     lines.append(
         "Code-graph nodes (CodeClass / CodeFunction / CodeModule / Dependency / SourceFile) "
         "and assertion-layer nodes (Claim variants / EvidenceSpan) live in `graph.json` for "
-        "MCP and Cognee consumers, but they have no HTML route and no entry in "
+        "MCP consumers, but they have no HTML route and no entry in "
         "`search-index.json`."
     )
     lines.append("")

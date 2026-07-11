@@ -58,7 +58,7 @@ tesserae context --help     # 按需上下文编译器
 
 ## Self-dogfood
 
-集成选项（RAG-Anything、cognee）现在是**交互式向导提示**，
+集成选项（RAG-Anything）现在是**交互式向导提示**，
 而不是 CLI 标志。运行向导并回答它们：
 
 ```bash
@@ -71,7 +71,6 @@ tesserae init \
   --source scripts
 # 当向导提示时：
 #   - 启用 RAG-Anything，安装：是，解析器：mineru，之后运行：是
-#   - 启用 cognee，安装：是
 tesserae compile
 tesserae sessions list
 tesserae export site
@@ -80,7 +79,7 @@ tesserae serve --port 8765
 
 如需完全非交互式运行，请使用 `tesserae init --yes`（所有集成关闭），然后在
 `.tesserae/config.json` 中启用每个集成——向导会将它们写入 `memory_backends`
-（cognee）和 `external_tools`（RAG-Anything）键下——并在编译
+和 `external_tools`（RAG-Anything）键下——并在编译
 前对每个集成运行 `tesserae integrations refresh <name>`。确切的配置键请参阅集成
 文档。
 

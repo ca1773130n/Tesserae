@@ -405,14 +405,14 @@ def test_init_no_tty_error_names_init_not_setup(tmp_path, monkeypatch, capsys):
 def test_config_setup_is_a_moved_stub(capsys):
     import tesserae.cli as cli
 
-    rc = cli.main(["config", "setup", "--enable-cognee"])
+    rc = cli.main(["config", "setup", "--install", "all"])
     err = capsys.readouterr().err
     assert rc == 2
     assert "config setup has moved → tesserae setup" in err
 
 
 def test_init_yes_defaults_disable_optional_integrations(tmp_path, monkeypatch):
-    """--yes must encode what CI's --no-cognee/--skip-* flags meant."""
+    """--yes must encode what CI's --skip-* flags meant."""
     import tesserae.cli as cli
 
     seen = {}
@@ -425,10 +425,12 @@ def test_init_yes_defaults_disable_optional_integrations(tmp_path, monkeypatch):
     assert cli.main(["init", "--yes", "--project", str(tmp_path)]) == 0
     # exact attr names come from the legacy setup parser dests — the
     # integration toggles must land OFF (these are the real dests).
-    assert seen["no_cognee"] is True
     assert seen["skip_raganything"] is True
     # Backend EOL stage 1: understand-anything dests are gone entirely.
     assert "with_understand_anything" not in seen
+    # Backend EOL stage 2 (0.19): cognee dests are gone entirely.
+    assert "no_cognee" not in seen
+    assert "install_cognee" not in seen
 
 
 @pytest.mark.parametrize(
@@ -802,55 +804,22 @@ def test_session_compile_options_flow_into_session_options(tmp_path, monkeypatch
     assert opts.model == "claude-x"
 
 
-def test_cognee_compile_options_flow_into_cognify(tmp_path, monkeypatch):
-    """All cognee_* removed flags → CognifyOptions at the handler point."""
+def test_legacy_cognee_compile_options_are_ignored(tmp_path, monkeypatch):
+    """Backend EOL stage 2 (0.19): a config still carrying cognee_* compile
+    options compiles fine and no cognify kwarg reaches wiki.compile()."""
     config_path = _bare_project(tmp_path)
     _set_compile_options(
         config_path,
         cognee_cognify=True,
         cognee_dataset="custom_ds",
-        cognee_codex_model="gpt-x",
-        cognee_codex_timeout=999,
-        cognee_local_embedding_dimensions=1024,
-        cognee_embedding_provider="ollama",
-        cognee_ollama_embedding_model="my-embed",
-        cognee_ollama_embedding_endpoint="http://host:1234/api/embed",
-        cognee_ollama_embedding_timeout=42,
-        cognee_system_root="/tmp/sys",
-        cognee_data_root="/tmp/data",
+        cognee_codex_cognify=True,
     )
     seen = {}
     _patch_compile(monkeypatch, seen)
     import tesserae.cli as cli
 
     assert cli.main(["compile", "--project", str(tmp_path)]) == 0
-    cognify = seen["cognify"]
-    assert cognify is not None
-    assert cognify.mode == "cognify"
-    assert cognify.dataset == "custom_ds"
-    assert cognify.codex_model == "gpt-x"
-    assert cognify.codex_timeout == 999
-    assert cognify.local_embedding_dimensions == 1024
-    assert cognify.embedding_provider == "ollama"
-    assert cognify.ollama_embedding_model == "my-embed"
-    assert cognify.ollama_embedding_endpoint == "http://host:1234/api/embed"
-    assert cognify.ollama_embedding_timeout == 42
-    assert cognify.system_root == "/tmp/sys"
-    assert cognify.data_root == "/tmp/data"
-
-
-def test_cognee_codex_cognify_compile_option_is_inert(tmp_path, monkeypatch):
-    """The codex_cognify mode was removed with the cognee demotion: a config
-    still setting cognee_codex_cognify maps to an inactive CognifyOptions,
-    so compile receives no cognify pass at all."""
-    config_path = _bare_project(tmp_path)
-    _set_compile_options(config_path, cognee_codex_cognify=True)
-    seen = {}
-    _patch_compile(monkeypatch, seen)
-    import tesserae.cli as cli
-
-    assert cli.main(["compile", "--project", str(tmp_path)]) == 0
-    assert seen["cognify"] is None
+    assert "cognify" not in seen
 
 
 def test_refresh_integrations_reaches_external_tool_refresh(tmp_path, monkeypatch):

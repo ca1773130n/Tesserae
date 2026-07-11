@@ -28,7 +28,7 @@ Tesserae 是一个运行在三大支柱上的**上下文引擎**：(1) 会话监
 | 快速转录搜索（memex） | ✅ | [`tesserae/memex_search.py`](../../tesserae/memex_search.py) | `nicosuave/memex` 对 Claude/Codex 转录的 BM25 索引，通过 `GET /api/transcript-search` 接入 `tesserae serve` 的 sessions 仪表盘。可选，缺失时优雅降级。 |
 | 读取纪律 handle | ✅ | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | `compile_context` 的 `preview=N` 返回一个有界预览 + 一个按内容哈希的 handle；`get_handle` 分页读取其余部分。把巨大载荷挡在 agent 的上下文之外。 |
 | 提取质量信号 | ✅ | [`tesserae/session_graph_llm.py`](../../tesserae/session_graph_llm.py) | 每条发现的 `confidence` + `confidence_rationale` + `revisit_signals`（字节稳定；在 `fresh_insights` 中呈现）。 |
-| 机器级设置 + 依赖 | ✅ | [`tesserae/deps.py`](../../tesserae/deps.py)、`cli.py` | `tesserae setup` 写入全局 LLM 默认值 + 安装可选依赖（memex、cognee、raganything）；`tesserae config deps` 列出/安装；`tesserae init` 提供 memex。按项目配置仍可覆盖。 |
+| 机器级设置 + 依赖 | ✅ | [`tesserae/deps.py`](../../tesserae/deps.py)、`cli.py` | `tesserae setup` 写入全局 LLM 默认值 + 安装可选依赖（memex、raganything）；`tesserae config deps` 列出/安装；`tesserae init` 提供 memex。按项目配置仍可覆盖。 |
 
 ## 上下文引擎 — v0.5.0（2026 年 6 月）
 
@@ -259,13 +259,6 @@ Tesserae 是一个运行在三大支柱上的**上下文引擎**：(1) 会话监
 - ✅ 未安装 Graphiti 时的 `sync-graphiti --dry-run` 冒烟。
 - ✅ 使用 `graphiti_core` 和 Neo4j 的可选实时同步。
 
-### Cognee
-
-- ✅ Cognee JSONL bundle（`nodes.jsonl`、`edges.jsonl`、`manifest.json`）。
-- ✅ 可选的仅添加直接导入。
-- ✅ 可选的由 Codex CLI/OAuth 支持的 Cognee cognify 适配器。
-- ✅ 面向无 API key 冒烟/质量工作流的确定性和 Ollama 嵌入适配器路径。
-
 ### MCP 服务器
 
 - ✅ `tesserae_mcp` / `python3 -m tesserae.mcp_server`，基于 stdio JSON-RPC。
@@ -286,7 +279,6 @@ Tesserae 是一个运行在三大支柱上的**上下文引擎**：(1) 会话监
 - ✅ 批量摄取；
 - ✅ 报告；
 - ✅ SQLite/Kuzu 持久化；
-- ✅ Cognee bundle/导入补丁；
 - ✅ Graphiti 导出/同步干跑；
 - ✅ 项目 CLI 工作流；
 - ✅ agent harness 导出；

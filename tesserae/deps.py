@@ -68,13 +68,6 @@ DEPS: List[Dep] = [
         note="requires the Rust toolchain (cargo)",
     ),
     Dep(
-        "cognee",
-        "Cognee knowledge-graph backend",
-        lambda: _module_present("cognee"),
-        [sys.executable, "-m", "pip", "install", "cognee"],
-        pip_specs=["cognee"],
-    ),
-    Dep(
         "raganything",
         "RAG-Anything multimodal retrieval backend",
         lambda: _module_present("raganything"),

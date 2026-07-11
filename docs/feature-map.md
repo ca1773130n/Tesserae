@@ -28,7 +28,7 @@ Status legend: ✅ shipped · ⚠ in-progress / partial.
 | Fast transcript search (memex) | ✅ | [`tesserae/memex_search.py`](../tesserae/memex_search.py) | `nicosuave/memex` BM25 index over Claude/Codex transcripts, wired to the `tesserae serve` sessions dashboard via `GET /api/transcript-search`. Optional + graceful when absent. |
 | Read-discipline handles | ✅ | [`tesserae/mcp_server.py`](../tesserae/mcp_server.py) | `compile_context` `preview=N` returns a bounded preview + a content-keyed handle; `get_handle` pages the rest. Keeps huge payloads out of the agent's context. |
 | Extraction quality signals | ✅ | [`tesserae/session_graph_llm.py`](../tesserae/session_graph_llm.py) | Per-finding `confidence` + `confidence_rationale` + `revisit_signals` (byte-stable; surfaced in `fresh_insights`). |
-| Machine-wide setup + deps | ✅ | [`tesserae/deps.py`](../tesserae/deps.py), `cli.py` | `tesserae setup` writes global LLM defaults + installs optional deps (memex, cognee, raganything); `tesserae config deps` lists/installs; `tesserae init` offers memex. Per-project config still overrides. |
+| Machine-wide setup + deps | ✅ | [`tesserae/deps.py`](../tesserae/deps.py), `cli.py` | `tesserae setup` writes global LLM defaults + installs optional deps (memex, raganything); `tesserae config deps` lists/installs; `tesserae init` offers memex. Per-project config still overrides. |
 
 ## Context engine — v0.5.0 (June 2026)
 
@@ -259,13 +259,6 @@ Generated target files for:
 - ✅ `sync-graphiti --dry-run` smoke without Graphiti installed.
 - ✅ Optional live sync with `graphiti_core` and Neo4j.
 
-### Cognee
-
-- ✅ Cognee JSONL bundle (`nodes.jsonl`, `edges.jsonl`, `manifest.json`).
-- ✅ Optional add-only direct import.
-- ✅ Optional Codex CLI/OAuth-backed Cognee cognify adapter.
-- ✅ Deterministic and Ollama embedding adapter paths for no-API-key smoke/quality workflows.
-
 ### MCP server
 
 - ✅ `tesserae_mcp` / `python3 -m tesserae.mcp_server` over stdio JSON-RPC.
@@ -286,7 +279,6 @@ The current suite covers:
 - ✅ batch ingest;
 - ✅ reports;
 - ✅ SQLite/Kuzu persistence;
-- ✅ Cognee bundles/import patches;
 - ✅ Graphiti export/sync dry-run;
 - ✅ project CLI workflow;
 - ✅ agent harness export;

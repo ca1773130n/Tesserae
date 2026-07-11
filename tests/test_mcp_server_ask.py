@@ -2,7 +2,7 @@
 
 Contract (spec §1): ask = LLM-planned answer over the compiled graph, with a
 boolean ``llm`` knob (default true, matching the CLI). The old ``backend`` /
-``claude_config_dir`` params were removed — explicit raganything/cognee
+``claude_config_dir`` params were removed — explicit raganything
 retrieval lives on ``tesserae query --backend ...``.
 """
 import json
@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 
-def _write_minimal_project(project: Path, *, raganything_enabled: bool = True, cognee_enabled: bool = False) -> None:
+def _write_minimal_project(project: Path, *, raganything_enabled: bool = True) -> None:
     """Create a minimal .tesserae layout with a graph.json so the MCP registry accepts it."""
     cfg_dir = project / ".tesserae"
     cfg_dir.mkdir(parents=True, exist_ok=True)
@@ -26,7 +26,6 @@ def _write_minimal_project(project: Path, *, raganything_enabled: bool = True, c
                 "parser": "docling",
                 "query_mode": "hybrid",
             },
-            "cognee": {"enabled": cognee_enabled},
         },
     }
     (cfg_dir / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
@@ -88,7 +87,7 @@ def test_mcp_ask_never_enters_raganything(tmp_path, monkeypatch):
     from tesserae.mcp_server import LLMWikiMCPServer
 
     project = tmp_path / "demo"
-    _write_minimal_project(project, raganything_enabled=True, cognee_enabled=False)
+    _write_minimal_project(project, raganything_enabled=True)
 
     import tesserae.raganything_query as rq
 

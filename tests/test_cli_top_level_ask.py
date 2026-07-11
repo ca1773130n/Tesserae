@@ -165,9 +165,9 @@ def test_ask_no_llm_beats_env_end_to_end(tmp_path, monkeypatch, capsys):
     [
         (["--llm"], "ask: --llm is now the default; use --no-llm to disable"),
         (["--wiki", "demo"], "ask: --wiki has moved → --name"),
-        (["--backend", "cognee"], "ask: backend flags have moved → tesserae query"),
-        (["--cognee-search-type", "CHUNKS"], "ask: backend flags have moved → tesserae query"),
-        (["--cognee-dataset", "d"], "ask: backend flags have moved → tesserae query"),
+        (["--backend", "raganything"], "ask: backend flags have moved → tesserae query"),
+        (["--cognee-search-type", "CHUNKS"], "ask: --cognee-search-type was removed in 0.19"),
+        (["--cognee-dataset", "d"], "ask: --cognee-dataset was removed in 0.19"),
     ],
 )
 def test_ask_removed_flags_exit_2_with_stub(argv_flag, stub, capsys):

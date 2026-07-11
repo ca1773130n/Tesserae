@@ -1,8 +1,8 @@
 """Research-domain literature intelligence graph primitives.
 
-This module is intentionally independent from Cognee/Graphiti. It defines the
+This module is intentionally independent from external graph backends. It defines the
 controlled research ontology and a deterministic baseline extractor that can be
-used in tests and as a guardrail around future Claude/Cognee extraction.
+used in tests and as a guardrail around future LLM extraction.
 """
 
 from __future__ import annotations
@@ -464,7 +464,7 @@ class ResearchGraph:
 
         Nodes sort by ``id``; edges by ``(source, type, target)`` — the same
         keys ``model_dump`` uses for graph.json. Applying this to the in-memory
-        graph BEFORE the downstream projectors (cognee bundle, temporal facts,
+        graph BEFORE the downstream projectors (temporal facts,
         Graphiti episodes, markdown projection) run makes every artifact derive
         from one canonical order, so an incremental compile (whose graph is
         assembled in a different order than a full compile) produces
@@ -1731,7 +1731,7 @@ def is_social_feed_source_path(source_path: Optional[str]) -> bool:
     return _DAILY_FEEDS_RE.search(source_path.replace("\\", "/")) is not None
 
 
-# Node types that stay in ``graph.json`` (so MCP / Cognee / search still
+# Node types that stay in ``graph.json`` (so MCP / search still
 # see them) but are hidden from the public wiki projection: no wiki pages,
 # no entity-index rows, no visual-graph payload. Person is the canonical
 # example — author names from bibliographic ``Authors:`` blocks would
@@ -1765,7 +1765,7 @@ def is_public_research_node(node: ResearchNode) -> bool:
     Social feed captures are noisy evidence inputs, not durable wiki entities.
     Likewise, arXiv mentions that have not been resolved from a real paper file
     must not become public paper pages. ``Person`` nodes (paper authors) are
-    private by default — they stay in ``graph.json`` for MCP/Cognee but
+    private by default — they stay in ``graph.json`` for MCP but
     don't get wiki pages or entity-index rows. Names that look like YAML
     frontmatter tokens (``type: Paper``, ``arxiv:``, ``authors:``, etc.)
     are dropped from public outputs regardless of type.
@@ -2337,7 +2337,7 @@ def extract_arxiv_id_from_path(source_path: Optional[str]) -> Optional[str]:
 #   * Frontmatter ``title`` / ``arxiv`` win over body-derived guesses so we
 #     never mis-promote ``type: Paper`` (the YAML token) as a node name.
 #   * ``methods`` / ``datasets`` / ``metrics`` lists feed straight into
-#     metadata for downstream consumers (MCP, Cognee, search).
+#     metadata for downstream consumers (MCP, search).
 #
 # This is deliberately a tiny parser — yaml.safe_load would pull a heavy
 # dependency into the extractor hot path; we only need the leaf shapes the

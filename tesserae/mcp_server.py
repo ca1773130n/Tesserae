@@ -632,8 +632,8 @@ class LLMWikiMCPServer:
                     "Ask a natural-language question and get an LLM-planned, cited answer "
                     "over the compiled knowledge graph. Mirrors `tesserae ask` (llm defaults "
                     "true; pass llm=false for ranked search hits only). Supports cross-vault "
-                    "fan-out via `scope`. Explicit raganything/cognee retrieval moved to "
-                    "`tesserae query --backend ...` on the CLI."
+                    "fan-out via `scope`. Explicit raganything retrieval moved to "
+                    "`tesserae query --backend raganything` on the CLI."
                 ),
                 "inputSchema": {
                     "type": "object",
@@ -1093,7 +1093,7 @@ class LLMWikiMCPServer:
                             "description": (
                                 "Optional field overrides applied to build_plan() — any "
                                 "SetupPlan field plus "
-                                "include_raganything, enable_cognee, install_* flags."
+                                "include_raganything and install_* flags."
                             ),
                         },
                     },
@@ -1900,10 +1900,6 @@ class LLMWikiMCPServer:
                 "install_raganything",
                 "raganything_parser",
                 "raganything_extras",
-                "enable_cognee",
-                "install_cognee",
-                "cognee_mode",
-                "cognee_auto_cognify",
                 "install_agent_pointer",
                 # Runtime LLM client keys. llm_api_key is deliberately ABSENT:
                 # secrets are not settable over MCP (set it via `tesserae init`

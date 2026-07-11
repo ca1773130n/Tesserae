@@ -46,7 +46,7 @@ tesserae config deps                     # show what's installed
 tesserae config deps --install memex     # fast transcript search (needs cargo)
 ```
 
-已知的可选依赖：**memex**（快速转录搜索）、**cognee**、**raganything**。每个项目的 `.tesserae/config.json` 仍会覆盖这些全局默认值（解析顺序：env → 项目 → 全局 → 内置）。在交互式设置期间，`tesserae init` 也会提议安装 memex。
+已知的可选依赖：**memex**（快速转录搜索）和 **raganything**。每个项目的 `.tesserae/config.json` 仍会覆盖这些全局默认值（解析顺序：env → 项目 → 全局 → 内置）。在交互式设置期间，`tesserae init` 也会提议安装 memex。
 
 ## 可选集成（按项目）
 
@@ -54,22 +54,19 @@ tesserae config deps --install memex     # fast transcript search (needs cargo)
 
 ```bash
 # Machine-wide installs of the optional pieces:
-tesserae setup --install raganything --install cognee
+tesserae setup --install raganything
 
 # Then per project: enable what you want in .tesserae/config.json
-#   memory_backends.raganything.enabled: true
-#   memory_backends.cognee.enabled: true        (query via `tesserae query --backend …`)
+#   memory_backends.raganything.enabled: true   (query via `tesserae query --backend raganything`)
 ```
 
 高级工作流仍可手动安装软件包：
 
 ```bash
 pip install kuzu graphiti-core
-pip install "tesserae[cognee]"
 ```
 
 - `kuzu` —— Kuzu 图持久化。
-- `tesserae[cognee]` —— 可选的 Cognee 运行时 add/cognify 工作流（默认禁用；Codex 补丁式的 cognify 模式已移除）。
 - RAG-Anything —— 通过 `pip install 'raganything[all]'` 安装（`tesserae setup --install raganything`）；Tesserae 为多模态解析器运行存储一个受管的刷新包装器。
 - `graphiti-core` —— 实时 Graphiti/Neo4j 同步。`export graphiti` 和 `export graphiti --sync --dry-run` 在没有它的情况下也能工作。
 

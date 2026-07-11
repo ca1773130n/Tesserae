@@ -16,7 +16,7 @@ and any external agents that read ``search-index.json``. By design it lists
 Code-graph node types (``CodeClass`` / ``CodeFunction`` / ``CodeModule`` /
 ``Dependency`` / ``SourceFile``) and assertion-layer types (``Claim`` and the
 five ``*Claim`` variants, plus ``EvidenceSpan``) are intentionally excluded:
-they remain in ``graph.json`` for MCP/Cognee/Graphiti consumers but never get
+they remain in ``graph.json`` for MCP/Graphiti consumers but never get
 their own URL or search entry.
 
 Each entry in the index carries three new fields on top of the original

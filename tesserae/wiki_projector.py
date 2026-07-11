@@ -447,7 +447,7 @@ def _local_slug(value: str) -> str:
 #   1. ``is_code_graph_node(n)``  — code-graph layer (F-11). Always private,
 #      lives in ``code-graph.json``, never appears in ``graph.json``.
 #   2. ``is_assertion_node(n)``   — claim/evidence layer. Lives in the
-#      research graph (so MCP/Cognee see it) but never gets a public URL.
+#      research graph (so MCP sees it) but never gets a public URL.
 #   3. ``is_public_research_node`` (re-exported from research_graph) — public
 #      research entity (Paper/Repository/Concept/Synthesis/...) subject to
 #      per-node validity gates such as paper title quality.
@@ -475,7 +475,7 @@ def is_private_research_node(node: ResearchNode) -> bool:
     ``Session``) that we deliberately keep out of the public wiki/site for
     noise / relevance reasons (see ``PRIVATE_PUBLIC_RESEARCH_TYPES`` and the
     ``is_public_research_node`` docstring in ``research_graph.py``). They
-    still live in ``graph.json`` for MCP/Cognee consumers.
+    still live in ``graph.json`` for MCP consumers.
 
     NB: this is a *type-level* bucket. ``is_public_research_node`` applies
     additional *per-node* gates (paper title quality, social-feed source
@@ -541,7 +541,7 @@ def partition_graph(graph: ResearchGraph) -> Tuple[ResearchGraph, ResearchGraph]
 
     * ``research_graph`` keeps every node that is *not* a code-graph type
       (so it includes public research nodes plus the private assertion layer
-      that consumers like MCP/Cognee still want). Edges where either endpoint
+      that consumers like MCP still want). Edges where either endpoint
       is a code-graph node are dropped.
     * ``code_graph`` keeps only code-graph nodes (``CodeProject`` /
       ``SourceFile`` / ``CodeModule`` / ``CodeClass`` / ``CodeFunction`` /

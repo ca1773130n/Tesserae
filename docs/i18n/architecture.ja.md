@@ -196,7 +196,6 @@ query / seeds
 | [`tesserae/agent_harness.py`](../../tesserae/agent_harness.py) | Claude Code / Codex / Gemini / Kiro / Cursor / OpenCode のハーネスエクスポート。 |
 | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | インバウンドの Claude Code/Codex セッションの発見、正規化、`.tesserae/harness_sessions/` 配下への保存、および秘匿化された markdown サマリ。 |
 | [`tesserae/graphiti_adapter.py`](../../tesserae/graphiti_adapter.py) | 時間的事実の JSONL + オプションのライブ Graphiti 同期。 |
-| [`tesserae/cognee_adapter.py`](../../tesserae/cognee_adapter.py) | Cognee のノード/エッジ JSONL バンドルと直接の add/cognify パス。 |
 | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | MCP stdio サーバー。検索/グラフ: `schema`、`graph_summary`、`search_nodes`、`node_context`（`use_ppr` 付き）、`search_facts`、`timeline`、`graph_ppr`、`wiki_page`、`raw_source`、`lint_report`、`doctor_report`。コンテキストエンジン（v0.5.0）: `compile_context`（オンデマンドコンテキストコンパイラ）、`embedding_status`、`fresh_insights`（減衰ランクのセッション発見）、`list_communities`、`find_session_findings`、`find_code_symbol_mentions`。さらに `ask`、マルチプロジェクトレジストリのツール（`list_projects`、`register_project`、`unregister_project`、`list_sessions`）、および `tesserae_setup_plan` / `tesserae_setup_apply`。 |
 
 ## プロジェクトワークスペースのレイアウト
@@ -217,7 +216,6 @@ query / seeds
   obsidian_vault/             Obsidian projection w/ .obsidian/, raw/assets/
   agent_harness/              Claude Code / Codex / etc. harness files
   harness_sessions/           imported local Claude Code/Codex sessions
-  cognee_bundle/              Cognee nodes/edges/manifest JSONL
   wiki/                       L2 markdown wiki — see below
   site/                       L3 static site — see below
 ```
@@ -268,7 +266,7 @@ site/
 
 ## 意図的に除外されているもの
 
-再設計は明示的な線を引きました: コードクラスとコード関数のノードは `graph.json` に留まります（そのため MCP、Cognee、Graphiti のコンシューマーからは引き続き見えます）が、HTML ページを持つことはなく、`search-index.json` に現れることもなく、ナビゲーションに現れることもありません。これがユーザー向けの契約です — この wiki はドキュメントファーストのナレッジベースであり、関数ブラウザではありません。
+再設計は明示的な線を引きました: コードクラスとコード関数のノードは `graph.json` に留まります（そのため MCP と Graphiti のコンシューマーからは引き続き見えます）が、HTML ページを持つことはなく、`search-index.json` に現れることもなく、ナビゲーションに現れることもありません。これがユーザー向けの契約です — この wiki はドキュメントファーストのナレッジベースであり、関数ブラウザではありません。
 
 具体的には、`StaticSiteBuilder` は、型が L2 wiki kind マップ（`tesserae/wiki_projector.py::_KIND_FOR_TYPE`）にないノードをすべてスキップします:
 

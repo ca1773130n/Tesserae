@@ -361,7 +361,7 @@ Die llmstxt.org-Langform: jede Wiki-Seite aneinandergehängt. Gedeckelt bei 5 MB
 
 ### `/graph.json` ✅
 
-Das volle `ResearchGraph`-Payload — inklusive Code-Graph-Knoten, die keine HTML-Seiten haben. Richtig, wenn ein Tool den vollständigen Graphen für eigene Analyse will (MCP-, Cognee-, Graphiti-Consumer lesen das alle).
+Das volle `ResearchGraph`-Payload — inklusive Code-Graph-Knoten, die keine HTML-Seiten haben. Richtig, wenn ein Tool den vollständigen Graphen für eigene Analyse will (MCP- und Graphiti-Consumer lesen das alle).
 
 ### `/graph.jsonld` ✅
 

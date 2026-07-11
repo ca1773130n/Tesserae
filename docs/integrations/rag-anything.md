@@ -4,7 +4,7 @@
 <p align="center"><a href="../i18n/integrations/rag-anything.ko.md">한국어</a> · <a href="../i18n/integrations/rag-anything.zh.md">中文</a> · <a href="../i18n/integrations/rag-anything.ja.md">日本語</a> · <a href="../i18n/integrations/rag-anything.ru.md">Русский</a> · <a href="../i18n/integrations/rag-anything.es.md">Español</a> · <a href="../i18n/integrations/rag-anything.fr.md">Français</a> · <a href="../i18n/integrations/rag-anything.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-[RAG-Anything](https://github.com/HKUDS/RAG-Anything) is a multimodal RAG framework (built on LightRAG) that parses PDFs, Office documents, images, and equations through MinerU/Docling/PaddleOCR. Tesserae integrates it both as a multimodal ingestion pipeline (UA-style native graph projection) and as a runtime memory backend alongside Cognee.
+[RAG-Anything](https://github.com/HKUDS/RAG-Anything) is a multimodal RAG framework (built on LightRAG) that parses PDFs, Office documents, images, and equations through MinerU/Docling/PaddleOCR. Tesserae integrates it both as a multimodal ingestion pipeline (UA-style native graph projection) and as the optional runtime memory backend.
 
 ## Why use both?
 
@@ -113,11 +113,11 @@ Provenance is preserved on each node:
 {"system": "rag-anything", "id": "doc-<sha256>", "type": "document", "artifact": ".tesserae/external/raganything/manifest.json"}
 ```
 
-Note: the interactive graph view hides `sources`-group nodes by default to focus on concepts and entities — projected raganything SourceDocuments stay in `graph.json` (MCP, Cognee, search, per-page wiki views still see them), they just don't flood the canvas. Set `graph_view.show_sources = true` in `.tesserae/config.json` to restore the dense view.
+Note: the interactive graph view hides `sources`-group nodes by default to focus on concepts and entities — projected raganything SourceDocuments stay in `graph.json` (MCP, search, per-page wiki views still see them), they just don't flood the canvas. Set `graph_view.show_sources = true` in `.tesserae/config.json` to restore the dense view.
 
 ## Runtime memory backend
 
-`memory_backends.raganything` (default produced by `default_raganything_backend_config`) coexists with Cognee. `project ask` tries backends in priority order; per-project priority can be set via `memory_backends.priority`. RAG-Anything is opt-in (default `enabled: false`); the setup flag `--with-raganything` flips it on.
+`memory_backends.raganything` (default produced by `default_raganything_backend_config`) is the only optional memory backend. RAG-Anything is opt-in (default `enabled: false`); the setup flag `--with-raganything` flips it on.
 
 ### LLM provider (no API key needed)
 
@@ -148,14 +148,8 @@ tesserae ask "What does the integration spec say about parser routing?"
 
 # Explicit backends live on `query` — raw retrieval, no LLM synthesis.
 tesserae query "..." --backend raganything
-tesserae query "..." --backend cognee
 tesserae query "..." --backend wiki
 ```
-
-> **Cognee 1.0 search type.** Cognee 1.0 retired the old `INSIGHTS` retriever, so
-> Tesserae defaults the cognee backend to `GRAPH_COMPLETION` (an answer
-> synthesized over the knowledge graph). For raw retrieval instead of a generated
-> answer, pass `--cognee-search-type CHUNKS` (or `SUMMARIES`).
 
 `tesserae query --backend raganything` calls `tesserae.raganything_query.query` directly. A relative `working_dir` in `memory_backends.raganything` is resolved against the project root before the call.
 
@@ -197,7 +191,7 @@ tesserae ask "What did I write about RLHF?" --scope all-registered --json
 tesserae ask "..." --scope all-registered --scope-aliases research side-projects
 ```
 
-The handler iterates registered projects in alphabetical order, calls `ask_project` against each, and aggregates the per-project envelopes. A single project failing — missing config, RAG-Anything not enabled, Cognee down — is captured as `{"error": "..."}` in that alias's slot and never aborts the rest of the fan-out. The same `scope` argument is accepted by the MCP `ask` tool, so MCP-driven coding agents get the same fan-out without extra plumbing.
+The handler iterates registered projects in alphabetical order, calls `ask_project` against each, and aggregates the per-project envelopes. A single project failing — missing config, RAG-Anything not enabled — is captured as `{"error": "..."}` in that alias's slot and never aborts the rest of the fan-out. The same `scope` argument is accepted by the MCP `ask` tool, so MCP-driven coding agents get the same fan-out without extra plumbing.
 
 ### Multi-project registry (`tesserae projects`)
 
@@ -224,7 +218,7 @@ The stdio MCP server exposes an `ask` tool with the same backend selector:
 }
 ```
 
-The dispatch order (`raganything` → `cognee` → compiled-wiki search) and `working_dir` resolution mirror the CLI handler exactly, so coding agents and human operators converge on the same answers.
+The dispatch order (`raganything` → compiled-wiki search) and `working_dir` resolution mirror the CLI handler exactly, so coding agents and human operators converge on the same answers.
 
 ## System prerequisites
 

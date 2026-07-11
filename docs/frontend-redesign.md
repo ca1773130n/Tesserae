@@ -361,7 +361,7 @@ The llmstxt.org long form: every wiki page concatenated. Capped at 5 MB; if the 
 
 ### `/graph.json` ✅
 
-The full `ResearchGraph` payload — including code-graph nodes that don't have HTML pages. Right when a tool wants the complete graph for its own analysis (MCP, Cognee, Graphiti consumers all read this).
+The full `ResearchGraph` payload — including code-graph nodes that don't have HTML pages. Right when a tool wants the complete graph for its own analysis (MCP and Graphiti consumers all read this).
 
 ### `/graph.jsonld` ✅
 

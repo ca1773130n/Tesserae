@@ -59,7 +59,7 @@ tesserae context --help     # オンデマンド・コンテキスト・コン�
 
 ## Self-dogfood
 
-連携のオプトイン（RAG-Anything、cognee）は、CLI フラグではなく
+連携のオプトイン（RAG-Anything）は、CLI フラグではなく
 **対話型ウィザードのプロンプト**になりました。ウィザードを実行して答えてください:
 
 ```bash
@@ -72,7 +72,6 @@ tesserae init \
   --source scripts
 # ウィザードが尋ねたら:
 #   - RAG-Anything を有効化、インストール: はい、パーサー: mineru、その後実行: はい
-#   - cognee を有効化、インストール: はい
 tesserae compile
 tesserae sessions list
 tesserae export site
@@ -80,7 +79,7 @@ tesserae serve --port 8765
 ```
 
 完全に非対話的な実行には、`tesserae init --yes`（すべての連携 OFF）を使い、その後
-`.tesserae/config.json` で各連携を有効化し（ウィザードは `memory_backends`（cognee）
+`.tesserae/config.json` で各連携を有効化し（ウィザードは `memory_backends`
 と `external_tools`（RAG-Anything）キーの下に書き込みます）、
 コンパイル前に各連携に対して `tesserae integrations refresh <name>` を実行します。
 正確な設定キーは連携ドキュメントを参照してください。

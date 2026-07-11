@@ -27,7 +27,7 @@ class CodexCLIError(RuntimeError):
 async def run_codex_cli(prompt: str, model: str, timeout: int) -> str:
     """Run Codex CLI with prompt on stdin and return the final message text.
 
-    Inlined from the removed :mod:`tesserae.cognee_codex` adapter — this is
+    Inlined from a long-removed backend adapter — this is
     the only surviving consumer. Degrades with a clear :class:`CodexCLIError`
     when the CLI is missing, times out, or exits non-zero.
     """

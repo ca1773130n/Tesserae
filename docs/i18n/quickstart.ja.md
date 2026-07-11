@@ -66,7 +66,7 @@ cd /path/to/my-project
 tesserae init
 ```
 
-`tesserae init` は唯一のオンボーディングステップです。ウィザードは `README.md`、`docs`、`src`、`lib`、`app`、`packages`、`data` などの一般的なソースを検出し、どの LLM CLI がインストール済みで**かつログイン済み**かを調べ、LLM プロバイダを選択させ、`.tesserae/config.json` を書き込みます。オプションのメモリバックエンド（RAG-Anything、Cognee）は**デフォルトで無効**です。後で config の `memory_backends` で有効化し、`tesserae query --backend …` で明示的にクエリしてください。
+`tesserae init` は唯一のオンボーディングステップです。ウィザードは `README.md`、`docs`、`src`、`lib`、`app`、`packages`、`data` などの一般的なソースを検出し、どの LLM CLI がインストール済みで**かつログイン済み**かを調べ、LLM プロバイダを選択させ、`.tesserae/config.json` を書き込みます。オプションの RAG-Anything メモリバックエンドは**デフォルトで無効**です。後で config の `memory_backends` で有効化し、`tesserae query --backend raganything` で明示的にクエリしてください。
 
 非インタラクティブなセットアップ（CI、スクリプト）では、`--yes` を渡すとプロンプトなしで
 検出されたデフォルトを受け入れます（すべてのオプション統合は OFF）:
@@ -132,10 +132,9 @@ tesserae compile
   agent_harness/
   harness_sessions/
   site/
-  cognee_bundle/
 ```
 
-初回実行後は `--changed-only` を使うと、変更されていない markdown ファイルをスキップし、ファイルに変更がない場合は以前のグラフを保持します。Cognee ランタイムが有効な場合は、`.tesserae/cognee_bundle/` の書き込み後にベストエフォートで Cognee も更新します。
+初回実行後は `--changed-only` を使うと、変更されていない markdown ファイルをスキップし、ファイルに変更がない場合は以前のグラフを保持します。
 
 設定済みのソースに触れずに追加パスをアドホックに取り込むには、位置引数として渡します:
 `tesserae compile path/to/extra.md docs/`。
@@ -158,23 +157,11 @@ tesserae compile
 | `use_extraction_feedback` | `--use-extraction-feedback` | `false` | 以前の抽出結果を実行にフィードバックする。 |
 | `sessions_llm` | `--sessions-llm` | (auto) | LLM セッション抽出モード（`auto`/`true`/`false`）。 |
 | `sessions_model` | `--sessions-model` | (none) | セッション抽出に使う LLM モデルを上書きする。 |
-| `cognee_add` | `--cognee-add` | `false` | Cognee バンドルをデータセットに追加する（cognify なし）。 |
-| `cognee_cognify` | `--cognee-cognify` | `false` | バンドルを追加し Cognee cognify を実行する。 |
-| `cognee_dataset` | `--cognee-dataset` | `tesserae_research_graph` | Cognee のデータセット名。 |
-| `cognee_embedding_provider` | `--cognee-embedding-provider` | `deterministic` | Cognee レーンの埋め込みプロバイダ。 |
-| `cognee_ollama_embedding_model` | `--cognee-ollama-embedding-model` | `qwen3-embedding:0.6b` | Ollama の埋め込みモデル。 |
-| `cognee_ollama_embedding_endpoint` | `--cognee-ollama-embedding-endpoint` | `http://127.0.0.1:11434/api/embed` | Ollama の `/api/embed` エンドポイント。 |
-| `cognee_ollama_embedding_timeout` | `--cognee-ollama-embedding-timeout` | `120` | Ollama 埋め込みリクエストのタイムアウト（秒）。 |
-| `cognee_local_embedding_dimensions` | `--cognee-local-embedding-dimensions` | `128` | ローカル埋め込みの次元数。 |
-| `cognee_system_root` | `--cognee-system-root` | (none) | 分離された Cognee システムルートディレクトリ。 |
-| `cognee_data_root` | `--cognee-data-root` | (none) | 分離された Cognee データルートディレクトリ。 |
 
-> **Cognee はオプトインです。** Cognee バックエンドはデフォルトで無効です:
-> `pip install tesserae[cognee]` でインストールし、`memory_backends.cognee.enabled: true`
-> を設定して使用します（`tesserae query --backend cognee` で明示的にクエリ）。
-> レガシーの Codex パッチ版 cognify モード（`cognee_codex_cognify` /
-> `cognee_codex_model` / `cognee_codex_timeout`）は削除されました — これらのキーを
-> まだ含む config は不活性です。
+> **Cognee は 0.19 で削除されました。** cognee バックエンドは 0.18 で降格され、
+> グラフに寄与することはありませんでした。`memory_backends.cognee` セクション
+> （または `cognee_*` の compile オプション）をまだ含む config も引き続き読み込めます —
+> そのセクションは 1 行の注記とともに無視されます。
 
 > **ワンショットパイプライン。** `tesserae refresh` はループ全体をインプロセスで実行します — 新しいエージェントセッションのインポート、コンパイル、vault の同期を 1 つのコマンドで行います。オプトインの増分コンパイルには `--changed-only` を渡してください。
 
@@ -286,7 +273,7 @@ tesserae query "What is Gaussian Splatting?"
 
 `ask` は回答のためのインターフェースです: モデルがコンパイル済みグラフに対する検索を計画し、引用付きの回答を合成します。ログイン済みの `claude`/`codex` CLI（OAuth）または `ANTHROPIC_API_KEY` で動作します。`--no-llm` を渡すとランク付けされた検索ヒットのみになります（この強制オフは `TESSERAE_QUERY_LLM=1` に優先します）。`TESSERAE_QUERY_DRY_RUN=1` は API 呼び出しなしでプロンプトを検証します。
 
-`query` は検索のためのインターフェースです: `.tesserae/site/search-index.json` に対する BM25/セマンティック検索で、マッチした `wiki/<kind>/<slug>.md` から 200 文字の抜粋を取得します。`--kind papers`（または `concepts`、`repos` など）で絞り込み、`--top-k N` で広げ、`--json` で構造化出力を得られます。`--interactive` は readline の REPL を開きます — 空行または EOF で終了します。明示的なメモリバックエンドもここにあります: `--backend raganything|cognee` はそのバックエンドに直行し、そのエラーを表面化します（Cognee レーンには `--cognee-search-type` / `--cognee-dataset`）。`query` に LLM 合成はありません — それは `ask` の役割です。
+`query` は検索のためのインターフェースです: `.tesserae/site/search-index.json` に対する BM25/セマンティック検索で、マッチした `wiki/<kind>/<slug>.md` から 200 文字の抜粋を取得します。`--kind papers`（または `concepts`、`repos` など）で絞り込み、`--top-k N` で広げ、`--json` で構造化出力を得られます。`--interactive` は readline の REPL を開きます — 空行または EOF で終了します。明示的なメモリバックエンドもここにあります: `--backend raganything` はそのバックエンドに直行し、そのエラーを表面化します。`query` に LLM 合成はありません — それは `ask` の役割です。
 
 ## 7. エージェント対応コンテキストをオンデマンドでコンパイルする
 

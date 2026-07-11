@@ -35,7 +35,7 @@ Veinte comprobaciones, agrupadas por categoría:
 | `compile_lock` | processes | si hay un lock de compilación vivo retenido, y por qué pid | solo informe — doctor **nunca mata ni elimina un lock vivo** |
 | `daemon_pid` | processes | `daemon.pid` apunta a un proceso de engine vivo | **SAFE**: elimina el pidfile cuando su propietario está muerto |
 | `llm_login` | environment | el backend LLM configurado es realmente utilizable (CLI de claude/codex con sesión iniciada, o clave de API presente) | solo informe (sugiere `claude /login` / `codex login`) |
-| `optional_deps` | environment | estado de las dependencias opcionales (memex, cognee, raganything) | solo informe (las instalaciones usan red) |
+| `optional_deps` | environment | estado de las dependencias opcionales (memex, raganything) | solo informe (las instalaciones usan red) |
 | `embedding_backend` | environment | hay disponible un backend real de embeddings semánticos | solo informe (sugiere `pip install tesserae[semantic]`) |
 | `environment` | environment | resumen completo de la detección de entorno | sección de solo informe |
 | `build_history` | hygiene | tamaño y forma de `.build-history` | **SAFE**: lo recorta, preservando siempre la entrada `git_head` más reciente (la comprobación de staleness depende de ella) |

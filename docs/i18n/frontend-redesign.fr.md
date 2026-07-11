@@ -361,7 +361,7 @@ Le format long llmstxt.org : toutes les pages wiki concaténées. Plafonné à 5
 
 ### `/graph.json` ✅
 
-Le payload complet `ResearchGraph` — y compris les nœuds code-graph qui n’ont pas de pages HTML. Adapté lorsqu’un outil veut le graphe complet pour sa propre analyse (les consommateurs MCP, Cognee, Graphiti lisent tous ceci).
+Le payload complet `ResearchGraph` — y compris les nœuds code-graph qui n’ont pas de pages HTML. Adapté lorsqu’un outil veut le graphe complet pour sa propre analyse (les consommateurs MCP et Graphiti lisent tous ceci).
 
 ### `/graph.jsonld` ✅
 

@@ -66,7 +66,7 @@ cd /path/to/my-project
 tesserae init
 ```
 
-`tesserae init` — единственный шаг онбординга. Визард обнаруживает типичные источники, такие как `README.md`, `docs`, `src`, `lib`, `app`, `packages` и `data`, проверяет, какие LLM CLI установлены **и залогинены**, позволяет выбрать LLM-провайдера и пишет `.tesserae/config.json`. Опциональные memory-бэкенды (RAG-Anything, Cognee) **выключены по умолчанию**; включите их позже в `memory_backends` в конфиге и запрашивайте явно через `tesserae query --backend …`.
+`tesserae init` — единственный шаг онбординга. Визард обнаруживает типичные источники, такие как `README.md`, `docs`, `src`, `lib`, `app`, `packages` и `data`, проверяет, какие LLM CLI установлены **и залогинены**, позволяет выбрать LLM-провайдера и пишет `.tesserae/config.json`. Опциональный memory-бэкенд RAG-Anything **выключен по умолчанию**; включите его позже в `memory_backends` в конфиге и запрашивайте явно через `tesserae query --backend raganything`.
 
 Для неинтерактивной настройки (CI, скрипты) передайте `--yes`, чтобы принять
 обнаруженные дефолты без запросов (все опциональные интеграции ВЫКЛ):
@@ -132,10 +132,9 @@ tesserae compile
   agent_harness/
   harness_sessions/
   site/
-  cognee_bundle/
 ```
 
-Используйте `--changed-only` после первого запуска, чтобы пропускать неизменённые markdown-файлы, сохраняя предыдущий граф, когда файлы не менялись. Если включён рантайм Cognee, compile также обновляет Cognee по мере возможности после записи `.tesserae/cognee_bundle/`.
+Используйте `--changed-only` после первого запуска, чтобы пропускать неизменённые markdown-файлы, сохраняя предыдущий граф, когда файлы не менялись.
 
 Чтобы влить дополнительные пути ad-hoc, не трогая настроенные источники,
 передайте их позиционно: `tesserae compile path/to/extra.md docs/`.
@@ -159,23 +158,11 @@ compile переехал в блок `compile_options` в `.tesserae/config.json
 | `use_extraction_feedback` | `--use-extraction-feedback` | `false` | Подавать результаты прежнего извлечения обратно в прогон. |
 | `sessions_llm` | `--sessions-llm` | (auto) | Режим LLM-извлечения сессий (`auto`/`true`/`false`). |
 | `sessions_model` | `--sessions-model` | (нет) | Переопределить LLM-модель извлечения сессий. |
-| `cognee_add` | `--cognee-add` | `false` | Добавить Cognee-бандл в датасет (без cognify). |
-| `cognee_cognify` | `--cognee-cognify` | `false` | Добавить бандл и запустить Cognee cognify. |
-| `cognee_dataset` | `--cognee-dataset` | `tesserae_research_graph` | Имя датасета Cognee. |
-| `cognee_embedding_provider` | `--cognee-embedding-provider` | `deterministic` | Провайдер эмбеддингов для линии Cognee. |
-| `cognee_ollama_embedding_model` | `--cognee-ollama-embedding-model` | `qwen3-embedding:0.6b` | Модель эмбеддингов Ollama. |
-| `cognee_ollama_embedding_endpoint` | `--cognee-ollama-embedding-endpoint` | `http://127.0.0.1:11434/api/embed` | Эндпоинт Ollama `/api/embed`. |
-| `cognee_ollama_embedding_timeout` | `--cognee-ollama-embedding-timeout` | `120` | Таймаут запроса эмбеддингов Ollama (секунды). |
-| `cognee_local_embedding_dimensions` | `--cognee-local-embedding-dimensions` | `128` | Размерность локальных эмбеддингов. |
-| `cognee_system_root` | `--cognee-system-root` | (нет) | Изолированный системный корневой каталог Cognee. |
-| `cognee_data_root` | `--cognee-data-root` | (нет) | Изолированный корневой каталог данных Cognee. |
 
-> **Cognee — opt-in.** Бэкенд Cognee выключен по умолчанию: установите его
-> через `pip install tesserae[cognee]` и задайте `memory_backends.cognee.enabled: true`,
-> чтобы использовать (запрашивается явно через `tesserae query --backend cognee`).
-> Устаревший режим cognify с патчем Codex (`cognee_codex_cognify` /
-> `cognee_codex_model` / `cognee_codex_timeout`) удалён — конфиги, всё ещё
-> несущие эти ключи, инертны.
+> **Cognee удалён в 0.19.** Бэкенд cognee был понижен в 0.18 и никогда не
+> питал граф. Конфиги, всё ещё несущие секцию `memory_backends.cognee`
+> (или compile-опции `cognee_*`), продолжают загружаться — секция
+> игнорируется с однострочной заметкой.
 
 > **Однопроходный конвейер.** `tesserae refresh` прогоняет весь цикл внутри процесса — импортирует новые агентские сессии, компилирует и синхронизирует vault одной командой. Передайте `--changed-only` для opt-in инкрементальной компиляции.
 
@@ -288,7 +275,7 @@ tesserae query "What is Gaussian Splatting?"
 
 `ask` — поверхность ответов: модель планирует retrieval по скомпилированному графу, затем синтезирует ответ с цитированиями. Работает с залогиненным CLI `claude`/`codex` (OAuth) или `ANTHROPIC_API_KEY`; передайте `--no-llm` для только-ранжированных результатов поиска (этот force-off сильнее `TESSERAE_QUERY_LLM=1`). `TESSERAE_QUERY_DRY_RUN=1` прогоняет промпт без вызова API.
 
-`query` — поверхность retrieval: BM25/семантический поиск по `.tesserae/site/search-index.json` с 200-символьным отрывком из совпавшего `wiki/<kind>/<slug>.md`. Передайте `--kind papers` (или `concepts`, `repos` и т.д.) для сужения, `--top-k N` для расширения и `--json` для структурированного вывода; `--interactive` открывает readline-REPL — пустая строка или EOF завершают. Явные memory-бэкенды тоже живут здесь: `--backend raganything|cognee` замыкается на этот бэкенд и показывает его ошибки (с `--cognee-search-type` / `--cognee-dataset` для линии Cognee). На `query` нет LLM-синтеза — для этого есть `ask`.
+`query` — поверхность retrieval: BM25/семантический поиск по `.tesserae/site/search-index.json` с 200-символьным отрывком из совпавшего `wiki/<kind>/<slug>.md`. Передайте `--kind papers` (или `concepts`, `repos` и т.д.) для сужения, `--top-k N` для расширения и `--json` для структурированного вывода; `--interactive` открывает readline-REPL — пустая строка или EOF завершают. Явный memory-бэкенд тоже живёт здесь: `--backend raganything` замыкается на этот бэкенд и показывает его ошибки. На `query` нет LLM-синтеза — для этого есть `ask`.
 
 ## 7. Компилируйте agent-ready контекст по требованию
 

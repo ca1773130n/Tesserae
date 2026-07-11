@@ -28,7 +28,7 @@ Leyenda de estado: ✅ entregado · ⚠ en progreso / parcial.
 | Búsqueda rápida de transcripts (memex) | ✅ | [`tesserae/memex_search.py`](../../tesserae/memex_search.py) | Índice BM25 de `nicosuave/memex` sobre transcripts de Claude/Codex, cableado al dashboard de sesiones de `tesserae serve` vía `GET /api/transcript-search`. Opcional + degrada con elegancia si está ausente. |
 | Handles de disciplina de lectura | ✅ | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | `compile_context` `preview=N` devuelve una vista previa acotada + un handle indexado por contenido; `get_handle` pagina el resto. Mantiene los payloads enormes fuera del contexto del agente. |
 | Señales de calidad de extracción | ✅ | [`tesserae/session_graph_llm.py`](../../tesserae/session_graph_llm.py) | Por hallazgo: `confidence` + `confidence_rationale` + `revisit_signals` (byte-estable; expuesto en `fresh_insights`). |
-| Setup a nivel de máquina + deps | ✅ | [`tesserae/deps.py`](../../tesserae/deps.py), `cli.py` | `tesserae setup` escribe los defaults globales de LLM + instala deps opcionales (memex, cognee, raganything); `tesserae config deps` lista/instala; `tesserae init` ofrece memex. La config por proyecto sigue teniendo prioridad. |
+| Setup a nivel de máquina + deps | ✅ | [`tesserae/deps.py`](../../tesserae/deps.py), `cli.py` | `tesserae setup` escribe los defaults globales de LLM + instala deps opcionales (memex, raganything); `tesserae config deps` lista/instala; `tesserae init` ofrece memex. La config por proyecto sigue teniendo prioridad. |
 
 ## Motor de contexto — v0.5.0 (junio 2026)
 
@@ -259,13 +259,6 @@ Archivos target generados para:
 - ✅ Prueba de humo `sync-graphiti --dry-run` sin Graphiti instalado.
 - ✅ Sincronización en vivo opcional con `graphiti_core` y Neo4j.
 
-### Cognee
-
-- ✅ Bundle JSONL de Cognee (`nodes.jsonl`, `edges.jsonl`, `manifest.json`).
-- ✅ Importación directa add-only opcional.
-- ✅ Adaptador opcional de cognify de Cognee respaldado por Codex CLI/OAuth.
-- ✅ Rutas de adaptador de embeddings determinista y Ollama para flujos de humo/calidad sin claves de API.
-
 ### Servidor MCP
 
 - ✅ `tesserae_mcp` / `python3 -m tesserae.mcp_server` sobre stdio JSON-RPC.
@@ -286,7 +279,6 @@ La suite actual cubre:
 - ✅ ingesta por lotes;
 - ✅ informes;
 - ✅ persistencia SQLite/Kuzu;
-- ✅ bundles/parches de importación de Cognee;
 - ✅ export/sync dry-run de Graphiti;
 - ✅ flujo CLI de proyecto;
 - ✅ export de agent harness;

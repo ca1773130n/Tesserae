@@ -57,7 +57,6 @@ class ProjectFingerprint(BaseModel):
     has_git: bool = False
     has_tesserae: bool = False
     has_codegraph: bool = False
-    has_cognee: bool = False
     has_pyproject: bool = False
     has_package_json: bool = False
     default_sources: list[str] = Field(default_factory=list)
@@ -176,7 +175,6 @@ def _probe_project(root: Path) -> ProjectFingerprint:
         has_git=(root / ".git").exists(),
         has_tesserae=(root / ".tesserae" / "config.json").exists(),
         has_codegraph=(root / ".codegraph").exists(),
-        has_cognee=(root / ".cognee").exists(),
         has_pyproject=(root / "pyproject.toml").exists(),
         has_package_json=(root / "package.json").exists(),
         default_sources=_discover_default_sources(root),

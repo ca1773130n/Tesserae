@@ -3,7 +3,7 @@
 <!-- translations:start -->
 <p align="center"><a href="../self-dogfood.md">English</a> · <a href="self-dogfood.zh.md">中文</a> · <a href="self-dogfood.ja.md">日本語</a> · <a href="self-dogfood.ru.md">Русский</a> · <a href="self-dogfood.es.md">Español</a> · <a href="self-dogfood.fr.md">Français</a> · <a href="self-dogfood.de.md">Deutsch</a></p>
 <!-- translations:end -->
-이 프로젝트는 자기 자신을 인덱싱할 수 있습니다. self-dogfood 플로우는 Tesserae를 설치하고, 자체 저장소 안에서 설정하고, 자체 docs/소스/테스트/스크립트를 ingest하고, 선택적으로 RAG-Anything과 Cognee를 refresh하고, 그래프 아티팩트를 compile하고, 정적 웹 프론트엔드를 빌드할 수 있음을 증명합니다.
+이 프로젝트는 자기 자신을 인덱싱할 수 있습니다. self-dogfood 플로우는 Tesserae를 설치하고, 자체 저장소 안에서 설정하고, 자체 docs/소스/테스트/스크립트를 ingest하고, 선택적으로 RAG-Anything을 refresh하고, 그래프 아티팩트를 compile하고, 정적 웹 프론트엔드를 빌드할 수 있음을 증명합니다.
 
 같은 플로우는 멀티모달 스모크 테스트를 겸합니다. RAG-Anything이 설치되어 있고(`tesserae setup --install raganything`) `.tesserae/config.json`에서 활성화되어 있으면(`memory_backends.raganything.enabled: true`), dogfood compile은 RAG-Anything을 Tesserae 자체의 `docs/` markdown과 `docs/assets/` 및 프로젝트 수준 `assets/` 이미지로 향하게 합니다. 이는 별도의 픽스처 세트를 만들지 않고도 — 텍스트 우선 소스 로더가 건너뛰는 스크린샷과 다이어그램을 포함해 — 실제 프로젝트 소유의 비코드 코퍼스에 대해 멀티모달 파이프라인을 검증합니다.
 
@@ -41,7 +41,7 @@ tesserae init \
   --source scripts
 
 # (optional) install + enable the heavier companions afterwards:
-#   tesserae setup --install raganything --install cognee
+#   tesserae setup --install raganything
 #   then flip memory_backends.*.enabled / external_tools in .tesserae/config.json
 
 # Compile the configured sources.
@@ -83,7 +83,6 @@ self-demo는 생성된 아티팩트를 다음 아래에 기록합니다:
 .tesserae/obsidian_vault/
 .tesserae/agent_harness/
 .tesserae/site/
-.tesserae/cognee_bundle/
 ```
 
 생성된 워크스페이스는 의도적으로 기본 커밋 대상이 아닙니다. 위의 명령으로 저장소 소스에서 재현할 수 있습니다.
@@ -92,7 +91,7 @@ self-demo는 생성된 아티팩트를 다음 아래에 기록합니다:
 
 Tesserae 저장소 자체에서 `2026-04-27 11:11:23 KST`에 검증됨.
 
-통합 옵트인(RAG-Anything, cognee)은 이제 CLI 플래그가 아니라 **대화형
+통합 옵트인(RAG-Anything)은 이제 CLI 플래그가 아니라 **대화형
 마법사 프롬프트**입니다. 아래의 비대화형 등가물은 `tesserae init --yes`(통합
 OFF)를 실행하고, `.tesserae/config.json`에서 통합을 활성화한 뒤(마법사는
 `memory_backends`와 `external_tools` 키 아래에 기록합니다 — 정확한 키는 통합
@@ -103,7 +102,6 @@ install command: ./scripts/install.sh --dir /Users/neo/Developer/Projects/Tesser
 setup command:   tesserae init --yes --name tesserae_self --source README.md --source docs --source tesserae --source tests --source scripts
                  # then enable the optional integrations in .tesserae/config.json and run:
                  #   tesserae integrations refresh raganything
-                 #   tesserae integrations refresh cognee
 ingest command:  tesserae compile README.md docs --changed-only
 compile command: tesserae compile
 site command:    tesserae export site
@@ -120,8 +118,6 @@ edges:               1020
 markdown notes:      684
 obsidian notes:      686
 agent harness files: 14
-cognee nodes:        667
-cognee edges:        1020
 graphiti episodes:  1020
 temporal facts:      1020
 site files:          index.html, nodes/index.html, sources/index.html, graph/index.html, graph.json, search-index.json, llms.txt, llms-full.txt, manifest.json, assets/style.css, assets/app.js
@@ -159,7 +155,7 @@ server: TCP *:56821 LISTEN, serving via --host 0.0.0.0
 - `tesserae` 셸 명령이 동작합니다.
 - 저장소가 프로젝트 로컬 `.tesserae` 워크스페이스를 부착할 수 있습니다.
 - 연구/문서 markdown과 개발 코드 그래프 노드가 공존할 수 있습니다.
-- Markdown, Obsidian, 프론트엔드, Graphiti, Cognee, SQLite, 보고서, agent-harness 프로젝션이 하나의 그래프 파이프라인에서 생산됩니다.
+- Markdown, Obsidian, 프론트엔드, Graphiti, SQLite, 보고서, agent-harness 프로젝션이 하나의 그래프 파이프라인에서 생산됩니다.
 - 정적 HTML 프론트엔드가 JavaScript 빌드 단계 없이 프로젝트 그래프를 탐색할 수 있습니다.
 - 자기 개선 루프가 실행되고 영속화됩니다: 감쇠, 접근 횟수, 재발 신뢰도, supersede 플래그가 `graph.json`을 건드리지 않고 `node_memory` 사이드카에 기록됩니다.
 - `tesserae[semantic]`이 설치되어 있으면 hybrid retrieval이 실제 시맨틱 백엔드를 해석합니다(기본 `auto` 순서: model2vec → sentence-transformers → hash-bucket 스텁); 없으면 embedding retrieval은 비시맨틱 hash-bucket 스텁으로 강등되고 큰 경고를 출력합니다.

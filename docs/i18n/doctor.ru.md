@@ -35,7 +35,7 @@ tesserae doctor --project ~/src/other
 | `compile_lock` | processes | удерживается ли живая блокировка компиляции и каким pid | только отчёт — doctor **никогда не убивает процесс и не снимает живую блокировку** |
 | `daemon_pid` | processes | `daemon.pid` указывает на живой процесс движка | **SAFE**: удаляет pid-файл, если его владелец мёртв |
 | `llm_login` | environment | настроенный LLM-бэкенд действительно пригоден (CLI claude/codex залогинен или есть API-ключ) | только отчёт (предлагает `claude /login` / `codex login`) |
-| `optional_deps` | environment | статус опциональных зависимостей (memex, cognee, raganything) | только отчёт (установки требуют сети) |
+| `optional_deps` | environment | статус опциональных зависимостей (memex, raganything) | только отчёт (установки требуют сети) |
 | `embedding_backend` | environment | доступен настоящий семантический бэкенд эмбеддингов | только отчёт (предлагает `pip install tesserae[semantic]`) |
 | `environment` | environment | сводка полной диагностики окружения | секция только-отчёт |
 | `build_history` | hygiene | размер и форма `.build-history` | **SAFE**: обрезает её, всегда сохраняя самую свежую запись `git_head` (от неё зависит проверка staleness) |

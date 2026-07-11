@@ -4,7 +4,7 @@
 <p align="center"><a href="../../integrations/rag-anything.md">English</a> · <a href="rag-anything.ko.md">한국어</a> · <a href="rag-anything.zh.md">中文</a> · <a href="rag-anything.ru.md">Русский</a> · <a href="rag-anything.es.md">Español</a> · <a href="rag-anything.fr.md">Français</a> · <a href="rag-anything.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-[RAG-Anything](https://github.com/HKUDS/RAG-Anything) は（LightRAG 上に構築された）マルチモーダル RAG フレームワークで、PDF・Office ドキュメント・画像・数式を MinerU/Docling/PaddleOCR 経由で解析します。Tesserae はこれを、マルチモーダル取り込みパイプライン（UA スタイルのネイティブグラフ射影）として、また Cognee と並ぶランタイムメモリバックエンドとして、両面で統合しています。
+[RAG-Anything](https://github.com/HKUDS/RAG-Anything) は（LightRAG 上に構築された）マルチモーダル RAG フレームワークで、PDF・Office ドキュメント・画像・数式を MinerU/Docling/PaddleOCR 経由で解析します。Tesserae はこれを、マルチモーダル取り込みパイプライン（UA スタイルのネイティブグラフ射影）として、またオプションのランタイムメモリバックエンドとして、両面で統合しています。
 
 ## なぜ両方を使うのか？
 
@@ -108,11 +108,11 @@ Tesserae は統合を明確に分割しています:
 {"system": "rag-anything", "id": "doc-<sha256>", "type": "document", "artifact": ".tesserae/external/raganything/manifest.json"}
 ```
 
-注: インタラクティブなグラフビューは、概念とエンティティに焦点を当てるため、既定で `sources` グループのノードを非表示にします — 射影された raganything の SourceDocument は `graph.json` に残ります（MCP、Cognee、検索、ページ単位の wiki ビューからは引き続き見えます）。単にキャンバスを埋め尽くさないだけです。密なビューを復元するには `.tesserae/config.json` で `graph_view.show_sources = true` を設定してください。
+注: インタラクティブなグラフビューは、概念とエンティティに焦点を当てるため、既定で `sources` グループのノードを非表示にします — 射影された raganything の SourceDocument は `graph.json` に残ります（MCP、検索、ページ単位の wiki ビューからは引き続き見えます）。単にキャンバスを埋め尽くさないだけです。密なビューを復元するには `.tesserae/config.json` で `graph_view.show_sources = true` を設定してください。
 
 ## ランタイムメモリバックエンド
 
-`memory_backends.raganything`（`default_raganything_backend_config` が生成する既定値）は Cognee と共存します。`project ask` は優先順にバックエンドを試します。プロジェクトごとの優先度は `memory_backends.priority` で設定できます。RAG-Anything はオプトインです（既定 `enabled: false`）。セットアップフラグ `--with-raganything` で有効になります。
+`memory_backends.raganything`（`default_raganything_backend_config` が生成する既定値）は唯一のオプションのメモリバックエンドです。RAG-Anything はオプトインです（既定 `enabled: false`）。セットアップフラグ `--with-raganything` で有効になります。
 
 ### LLM プロバイダ（API キー不要）
 
@@ -143,14 +143,8 @@ tesserae ask "What does the integration spec say about parser routing?"
 
 # Explicit backends live on `query` — raw retrieval, no LLM synthesis.
 tesserae query "..." --backend raganything
-tesserae query "..." --backend cognee
 tesserae query "..." --backend wiki
 ```
-
-> **Cognee 1.0 の検索タイプ。** Cognee 1.0 は旧来の `INSIGHTS` リトリーバーを廃止したため、
-> Tesserae は cognee バックエンドの既定を `GRAPH_COMPLETION`（ナレッジグラフ上で
-> 合成された回答）にしています。生成された回答ではなく生の検索結果が欲しい場合は、
-> `--cognee-search-type CHUNKS`（または `SUMMARIES`）を渡してください。
 
 `tesserae query --backend raganything` は `tesserae.raganything_query.query` を直接呼び出します。`memory_backends.raganything` 内の相対 `working_dir` は、呼び出し前にプロジェクトルートに対して解決されます。
 
@@ -192,7 +186,7 @@ tesserae ask "What did I write about RLHF?" --scope all-registered --json
 tesserae ask "..." --scope all-registered --scope-aliases research side-projects
 ```
 
-ハンドラは登録済みプロジェクトをアルファベット順に反復し、それぞれに対して `ask_project` を呼び出し、プロジェクトごとのエンベロープを集約します。単一プロジェクトの失敗 — 設定の欠落、RAG-Anything が未有効化、Cognee のダウン — はそのエイリアスのスロットに `{"error": "..."}` として記録され、残りのファンアウトを中断させることはありません。同じ `scope` 引数は MCP の `ask` ツールでも受け付けられるため、MCP 駆動のコーディングエージェントは追加の配管なしで同じファンアウトを得られます。
+ハンドラは登録済みプロジェクトをアルファベット順に反復し、それぞれに対して `ask_project` を呼び出し、プロジェクトごとのエンベロープを集約します。単一プロジェクトの失敗 — 設定の欠落、RAG-Anything が未有効化 — はそのエイリアスのスロットに `{"error": "..."}` として記録され、残りのファンアウトを中断させることはありません。同じ `scope` 引数は MCP の `ask` ツールでも受け付けられるため、MCP 駆動のコーディングエージェントは追加の配管なしで同じファンアウトを得られます。
 
 ### マルチプロジェクトレジストリ（`tesserae projects`）
 
@@ -219,7 +213,7 @@ stdio MCP サーバーは、同じバックエンドセレクタを備えた `as
 }
 ```
 
-ディスパッチ順（`raganything` → `cognee` → コンパイル済み wiki 検索）と `working_dir` の解決は CLI ハンドラを正確にミラーするため、コーディングエージェントと人間のオペレーターは同じ回答に収束します。
+ディスパッチ順（`raganything` → コンパイル済み wiki 検索）と `working_dir` の解決は CLI ハンドラを正確にミラーするため、コーディングエージェントと人間のオペレーターは同じ回答に収束します。
 
 ## システム前提条件
 

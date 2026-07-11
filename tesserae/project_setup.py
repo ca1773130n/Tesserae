@@ -11,7 +11,7 @@ from datetime import date
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence
 
-from .project import ProjectWiki, CognifyOptions, default_cognee_backend_config, default_raganything_backend_config, sanitize_server_name
+from .project import ProjectWiki, default_raganything_backend_config, sanitize_server_name
 
 
 RESET = "\033[0m"
@@ -77,7 +77,9 @@ def build_setup_plan(
     name: Optional[str] = None,
     source_kind: str = "Repository",
     sources: Optional[Iterable[str | Path]] = None,
-    enable_cognee: bool = True,
+    # Removed backend (0.19): legacy cognee kwargs are swallowed with a
+    # removal warning (never an error) so old callers keep working.
+    enable_cognee: bool = False,
     cognee_mode: str = "cognify",
     cognee_auto_cognify: bool = False,
     install_cognee: Optional[bool] = None,
@@ -97,15 +99,11 @@ def build_setup_plan(
     external_tools: List[dict] = []
 
     memory_backends: dict = {}
-    if enable_cognee:
-        cognee = default_cognee_backend_config(name or sanitize_server_name(root.name))
-        # The built-in default is disabled; a plan that asked for cognee is an
-        # explicit opt-in, so the written config must say so.
-        cognee["enabled"] = True
-        cognee["mode"] = cognee_mode
-        cognee["auto_cognify"] = bool(cognee_auto_cognify)
-        cognee["install"]["auto_install"] = bool(install_cognee) if install_cognee is not None else bool(cognee_auto_cognify)
-        memory_backends["cognee"] = cognee
+    if enable_cognee or cognee_auto_cognify or install_cognee:
+        print(
+            "note: cognee backend was removed in 0.19 — request ignored",
+            file=sys.stderr,
+        )
 
     if include_raganything:
         if install_raganything is None:
@@ -238,14 +236,11 @@ def render_setup_summary(plan: SetupPlan, *, color: bool = True) -> str:
     lines.append("")
     lines.append(_paint("Memory backends", BOLD, color))
     backends = plan.memory_backends or {}
-    cognee = backends.get("cognee")
-    if cognee and cognee.get("enabled", True):
-        auto = "auto-cognify" if cognee.get("auto_cognify") else "manual cognify"
-        lines.append(f"  {_paint('◆', CYAN, color)} Cognee → {cognee.get('dataset')} ({cognee.get('mode')}, {auto})")
-    else:
-        lines.append(f"  {_paint('·', DIM, color)} Cognee bundle only")
+    if not backends:
+        lines.append(f"  {_paint('·', DIM, color)} none")
     for backend_id, backend in backends.items():
         if backend_id == "cognee":
+            # Removed backend (0.19): a stale plan entry is ignored.
             continue
         if not isinstance(backend, dict):
             continue
@@ -367,16 +362,15 @@ def apply_setup_plan(plan: SetupPlan) -> SetupResult:
         "updated": date.today().isoformat(),
     }
     cfg["external_tools"] = plan.external_tools
-    # No resurrection: a plan without memory backends writes an empty section
-    # (cognee is opt-in via enable_cognee, never re-added here).
-    cfg["memory_backends"] = plan.memory_backends or {}
-    cognee = (cfg.get("memory_backends") or {}).get("cognee") or {}
-    install = cognee.get("install") or {}
-    if cognee.get("enabled") and install.get("enabled") and install.get("auto_install"):
-        try:
-            installed = wiki._install_cognee(CognifyOptions.from_mapping(cognee))
-            ran_tools.append({"id": "cognee", **installed})
-        except Exception as exc:
-            ran_tools.append({"id": "cognee", "status": "install_failed", "command": install.get("command"), "returncode": 1, "stderr": str(exc)})
+    # No resurrection: a plan without memory backends writes an empty section.
+    memory_backends = dict(plan.memory_backends or {})
+    if memory_backends.pop("cognee", None) is not None:
+        # Removed backend (0.19): a stale plan entry is dropped with a note.
+        print(
+            "note: cognee backend was removed in 0.19 — plan entry ignored",
+            file=sys.stderr,
+        )
+        ran_tools.append({"id": "cognee", "status": "skipped", "reason": "backend removed"})
+    cfg["memory_backends"] = memory_backends
     wiki.paths.config.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return SetupResult(wiki=wiki, config_path=wiki.paths.config, ran_tools=ran_tools)

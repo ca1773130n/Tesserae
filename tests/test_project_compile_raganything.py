@@ -45,7 +45,7 @@ def test_project_compile_merges_configured_raganything_native_graph(tmp_path):
     ]
     wiki.paths.config.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
 
-    wiki.compile(cognify=None)
+    wiki.compile()
 
     # Bug B fix: raganything-projected docs are SOURCE_DOCUMENT nodes (not
     # SOURCE_FILE), so they land in the main graph -- where the visual

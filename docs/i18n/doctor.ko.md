@@ -35,7 +35,7 @@ tesserae doctor --project ~/src/other
 | `compile_lock` | processes | 라이브 compile lock이 잡혀 있는지, 어느 pid가 잡고 있는지 | 보고만 — doctor는 **살아 있는 lock을 절대 죽이거나 제거하지 않음** |
 | `daemon_pid` | processes | `daemon.pid`가 살아 있는 엔진 프로세스를 가리키는지 | **SAFE**: 소유자가 죽었을 때 pidfile 제거 |
 | `llm_login` | environment | 설정된 LLM 백엔드가 실제로 사용 가능한지 (claude/codex CLI 로그인 상태이거나 API 키 존재) | 보고만 (`claude /login` / `codex login` 제안) |
-| `optional_deps` | environment | 선택적 의존성 상태 (memex, cognee, raganything) | 보고만 (설치는 네트워크가 필요) |
+| `optional_deps` | environment | 선택적 의존성 상태 (memex, raganything) | 보고만 (설치는 네트워크가 필요) |
 | `embedding_backend` | environment | 실제 시맨틱 embedding 백엔드가 사용 가능한지 | 보고만 (`pip install tesserae[semantic]` 제안) |
 | `environment` | environment | 환경 전반 감지 요약 | 보고 전용 섹션 |
 | `build_history` | hygiene | `.build-history` 크기와 형태 | **SAFE**: 트리밍하되 항상 최신 `git_head` 항목을 보존 (staleness 점검이 이것에 의존) |

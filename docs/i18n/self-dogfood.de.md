@@ -3,7 +3,7 @@
 <!-- translations:start -->
 <p align="center"><a href="../self-dogfood.md">English</a> · <a href="self-dogfood.ko.md">한국어</a> · <a href="self-dogfood.zh.md">中文</a> · <a href="self-dogfood.ja.md">日本語</a> · <a href="self-dogfood.ru.md">Русский</a> · <a href="self-dogfood.es.md">Español</a> · <a href="self-dogfood.fr.md">Français</a></p>
 <!-- translations:end -->
-Dieses Projekt kann sich selbst indexieren. Der Self-Dogfood-Flow beweist, dass Tesserae installiert, im eigenen Repository eingerichtet werden, seine eigenen Docs/Quellen/Tests/Skripte ingesten, optional RAG-Anything und Cognee refreshen, Graph-Artefakte kompilieren und das statische Web-Frontend bauen kann.
+Dieses Projekt kann sich selbst indexieren. Der Self-Dogfood-Flow beweist, dass Tesserae installiert, im eigenen Repository eingerichtet werden, seine eigenen Docs/Quellen/Tests/Skripte ingesten, optional RAG-Anything refreshen, Graph-Artefakte kompilieren und das statische Web-Frontend bauen kann.
 
 Derselbe Flow dient zugleich als multimodaler Smoke-Test. Mit installiertem RAG-Anything (`tesserae setup --install raganything`) und aktiviert in `.tesserae/config.json` (`memory_backends.raganything.enabled: true`) richtet der Dogfood-Compile RAG-Anything auf Tesseraes eigenes `docs/`-Markdown plus die Bilder unter `docs/assets/` und dem projektweiten `assets/`. Das validiert die multimodale Pipeline gegen einen realen, projekteigenen Nicht-Code-Korpus — inklusive Screenshots und Diagrammen, die die text-first Source-Loader überspringen — ohne ein separates Fixture-Set zu erfinden.
 
@@ -41,7 +41,7 @@ tesserae init \
   --source scripts
 
 # (optional) install + enable the heavier companions afterwards:
-#   tesserae setup --install raganything --install cognee
+#   tesserae setup --install raganything
 #   then flip memory_backends.*.enabled / external_tools in .tesserae/config.json
 
 # Compile the configured sources.
@@ -83,7 +83,6 @@ Zentrale Artefakte:
 .tesserae/obsidian_vault/
 .tesserae/agent_harness/
 .tesserae/site/
-.tesserae/cognee_bundle/
 ```
 
 Der generierte Workspace wird absichtlich standardmäßig nicht committet. Er ist mit den obigen Befehlen aus dem Repository-Quellcode reproduzierbar.
@@ -92,7 +91,7 @@ Der generierte Workspace wird absichtlich standardmäßig nicht committet. Er is
 
 Verifiziert am `2026-04-27 11:11:23 KST` aus dem Tesserae-Repository selbst.
 
-Integrations-Opt-ins (RAG-Anything, cognee) sind jetzt **interaktive
+Integrations-Opt-ins (RAG-Anything) sind jetzt **interaktive
 Wizard-Prompts**, keine CLI-Flags. Das nicht-interaktive Äquivalent unten führt
 `tesserae init --yes` aus (Integrationen AUS), aktiviert die Integrationen in
 `.tesserae/config.json` (der Wizard schreibt sie unter die Keys `memory_backends`
@@ -104,7 +103,6 @@ install command: ./scripts/install.sh --dir /Users/neo/Developer/Projects/Tesser
 setup command:   tesserae init --yes --name tesserae_self --source README.md --source docs --source tesserae --source tests --source scripts
                  # then enable the optional integrations in .tesserae/config.json and run:
                  #   tesserae integrations refresh raganything
-                 #   tesserae integrations refresh cognee
 ingest command:  tesserae compile README.md docs --changed-only
 compile command: tesserae compile
 site command:    tesserae export site
@@ -121,8 +119,6 @@ edges:               1020
 markdown notes:      684
 obsidian notes:      686
 agent harness files: 14
-cognee nodes:        667
-cognee edges:        1020
 graphiti episodes:  1020
 temporal facts:      1020
 site files:          index.html, nodes/index.html, sources/index.html, graph/index.html, graph.json, search-index.json, llms.txt, llms-full.txt, manifest.json, assets/style.css, assets/app.js
@@ -160,7 +156,7 @@ server: TCP *:56821 LISTEN, serving via --host 0.0.0.0
 - Der Shell-Befehl `tesserae` funktioniert.
 - Ein Repository kann sich einen projektlokalen `.tesserae`-Workspace anhängen.
 - Research-/Dokumentations-Markdown und Entwicklungs-Code-Graphknoten können koexistieren.
-- Markdown-, Obsidian-, Frontend-, Graphiti-, Cognee-, SQLite-, Report- und Agent-Harness-Projektionen werden aus einer einzigen Graph-Pipeline produziert.
+- Markdown-, Obsidian-, Frontend-, Graphiti-, SQLite-, Report- und Agent-Harness-Projektionen werden aus einer einzigen Graph-Pipeline produziert.
 - Das statische HTML-Frontend kann den Projektgraph ohne JavaScript-Build-Schritt browsen.
 - Die Selbstverbesserungsschleife läuft und persistiert: Decay, Access-Counts, Wiederkehr-Confidence und Supersede-Flags landen im `node_memory`-Sidecar, ohne `graph.json` zu stören.
 - Hybrid-Retrieval löst ein echtes semantisches Backend auf, wenn `tesserae[semantic]` installiert ist (Default-`auto`-Reihenfolge: model2vec → sentence-transformers → Hash-Bucket-Stub); ohne es degradiert Embedding-Retrieval zum nicht-semantischen Hash-Bucket-Stub und gibt eine laute Warnung aus.

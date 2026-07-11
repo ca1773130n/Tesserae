@@ -55,11 +55,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[synthesis-llm]"
 
-      - name: Init project (no Cognee, no RAG-Anything)
+      - name: Init project (no RAG-Anything)
         # `init --yes` writes .tesserae/config.json non-interactively. With
-        # `--yes`, all optional integrations (Cognee, RAG-Anything,
-        # Understand-Anything) default OFF and color auto-disables off a TTY,
-        # so the old --no-color/--no-cognee/--skip-install-* flags are no
+        # `--yes`, all optional integrations (RAG-Anything)
+        # default OFF and color auto-disables off a TTY,
+        # so the old --no-color/--skip-install-* flags are no
         # longer needed — `--yes` encodes them. `--source-kind` is dropped
         # too: `--yes` backfills source_kind=Repository (see
         # _backfill_setup_defaults in tesserae/cli.py), preserving behavior.

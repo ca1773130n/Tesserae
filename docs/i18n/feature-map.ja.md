@@ -28,7 +28,7 @@ Tesserae は 3 つの柱で動く**コンテキストエンジン**です: (1) �
 | 高速トランスクリプト検索（memex） | ✅ | [`tesserae/memex_search.py`](../../tesserae/memex_search.py) | Claude/Codex トランスクリプトに対する `nicosuave/memex` の BM25 インデックス。`GET /api/transcript-search` 経由で `tesserae serve` の sessions ダッシュボードに接続。オプションであり、ない場合もグレースフルです。 |
 | 読み取り規律ハンドル | ✅ | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | `compile_context` の `preview=N` は境界付きプレビュー + コンテンツをキーとするハンドルを返し、`get_handle` が残りをページングします。巨大なペイロードをエージェントのコンテキストの外に保ちます。 |
 | 抽出品質シグナル | ✅ | [`tesserae/session_graph_llm.py`](../../tesserae/session_graph_llm.py) | 検出項目ごとの `confidence` + `confidence_rationale` + `revisit_signals`（バイト安定。`fresh_insights` で表面化）。 |
-| マシン全体のセットアップ + 依存関係 | ✅ | [`tesserae/deps.py`](../../tesserae/deps.py), `cli.py` | `tesserae setup` はグローバルな LLM デフォルトを書き込み、オプション依存関係（memex、cognee、raganything）をインストールします。`tesserae config deps` は一覧/インストール。`tesserae init` は memex を提案します。プロジェクトごとの config は引き続き優先されます。 |
+| マシン全体のセットアップ + 依存関係 | ✅ | [`tesserae/deps.py`](../../tesserae/deps.py), `cli.py` | `tesserae setup` はグローバルな LLM デフォルトを書き込み、オプション依存関係（memex、raganything）をインストールします。`tesserae config deps` は一覧/インストール。`tesserae init` は memex を提案します。プロジェクトごとの config は引き続き優先されます。 |
 
 ## コンテキストエンジン — v0.5.0（2026 年 6 月）
 
@@ -259,13 +259,6 @@ Tesserae は 3 つの柱で動く**コンテキストエンジン**です: (1) �
 - ✅ Graphiti をインストールせずに行う `sync-graphiti --dry-run` スモーク。
 - ✅ `graphiti_core` と Neo4j によるオプションのライブ同期。
 
-### Cognee
-
-- ✅ Cognee JSONL バンドル（`nodes.jsonl`、`edges.jsonl`、`manifest.json`）。
-- ✅ オプションの add-only 直接インポート。
-- ✅ オプションの Codex CLI/OAuth ベースの Cognee cognify アダプター。
-- ✅ API キーなしのスモーク/品質ワークフローのための決定論的および Ollama 埋め込みアダプターパス。
-
 ### MCP サーバー
 
 - ✅ stdio JSON-RPC 上の `tesserae_mcp` / `python3 -m tesserae.mcp_server`。
@@ -286,7 +279,6 @@ Tesserae は 3 つの柱で動く**コンテキストエンジン**です: (1) �
 - ✅ バッチ取り込み;
 - ✅ レポート;
 - ✅ SQLite/Kuzu の永続化;
-- ✅ Cognee のバンドル/インポートパッチ;
 - ✅ Graphiti のエクスポート/同期ドライラン;
 - ✅ プロジェクト CLI ワークフロー;
 - ✅ エージェントハーネスのエクスポート;

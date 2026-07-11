@@ -20,12 +20,41 @@ def test_project_init_creates_tesserae_workspace(tmp_path):
     assert (wiki.root / "graph.json").exists()
     assert (wiki.root / "manifest.json").exists()
     assert (wiki.root / "markdown_projection").is_dir()
-    assert (wiki.root / "cognee_bundle").is_dir()
+    # Removed backend (0.19): init no longer creates a cognee_bundle dir.
+    assert not (wiki.root / "cognee_bundle").exists()
     config = json.loads((wiki.root / "config.json").read_text(encoding="utf-8"))
     assert config["name"] == "demo_wiki"
     assert config["project_root"] == str(project.resolve())
     assert config["source_kind"] == "Repository"
     assert config["graph_path"] == ".tesserae/graph.json"
+
+
+def test_legacy_cognee_config_section_notes_once_and_compiles(tmp_path, monkeypatch, capsys):
+    """Legacy-config tolerance (0.19 removal): a config still carrying
+    ``memory_backends.cognee`` compiles fine and prints exactly ONE stderr
+    note per process — never an error."""
+    import tesserae.project as project_mod
+
+    monkeypatch.setattr(project_mod, "_COGNEE_REMOVAL_NOTED", False)
+    project = tmp_path / "legacy-project"
+    project.mkdir()
+    (project / "README.md").write_text("# Legacy\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")
+    wiki = ProjectWiki.init(project, name="legacy", sources=["README.md"])
+    cfg = wiki.config()
+    cfg["memory_backends"] = {"cognee": {"enabled": True, "mode": "cognify"}}
+    wiki.paths.config.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    result = wiki.compile()
+
+    assert result["node_count"] > 0
+    err = capsys.readouterr().err
+    note = "cognee backend was removed in 0.19 — section ignored"
+    assert err.count(note) == 1
+    # Loading the config again in the same process stays silent.
+    wiki.config()
+    assert note not in capsys.readouterr().err
+    # The removed backend never materializes its bundle.
+    assert not (project / ".tesserae" / "cognee_bundle").exists()
 
 
 def test_project_mcp_config_renders_absolute_hermes_snippet(tmp_path):
@@ -59,9 +88,8 @@ def test_project_ingest_updates_standard_artifacts(tmp_path):
     assert any(node["name"] == "Demo Paper" for node in graph["nodes"])
     assert (project / ".tesserae" / "sqlite.db").exists()
     assert (project / ".tesserae" / "markdown_projection" / "index.md").exists()
-    # Cognee demotion: the bundle is only written when the backend is enabled
-    # in config (or a cognify pass runs); the default install writes nothing.
-    assert not (project / ".tesserae" / "cognee_bundle" / "nodes.jsonl").exists()
+    # Removed backend (0.19): no cognee bundle is ever written.
+    assert not (project / ".tesserae" / "cognee_bundle").exists()
     assert (project / ".tesserae" / "temporal_facts.jsonl").exists()
     assert (project / ".tesserae" / "competitive_report.md").exists()
 

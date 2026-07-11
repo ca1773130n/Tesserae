@@ -51,8 +51,8 @@ tesserae config deps                     # show what's installed
 tesserae config deps --install memex     # fast transcript search (needs cargo)
 ```
 
-Известные опциональные зависимости: **memex** (быстрый поиск по транскриптам),
-**cognee**, **raganything**. Проектный
+Известные опциональные зависимости: **memex** (быстрый поиск по транскриптам) и
+**raganything**. Проектный
 `.tesserae/config.json` по-прежнему переопределяет эти глобальные значения
 (порядок разрешения: env → проект → глобальный → встроенный дефолт).
 `tesserae init` также предлагает установить memex во время интерактивной
@@ -69,11 +69,10 @@ companion/runtime-части устанавливаются на уровне м
 
 ```bash
 # Machine-wide installs of the optional pieces:
-tesserae setup --install raganything --install cognee
+tesserae setup --install raganything
 
 # Then per project: enable what you want in .tesserae/config.json
-#   memory_backends.raganything.enabled: true
-#   memory_backends.cognee.enabled: true        (query via `tesserae query --backend …`)
+#   memory_backends.raganything.enabled: true   (query via `tesserae query --backend raganything`)
 ```
 
 Ручная установка пакетов по-прежнему доступна для продвинутых рабочих
@@ -81,12 +80,9 @@ tesserae setup --install raganything --install cognee
 
 ```bash
 pip install kuzu graphiti-core
-pip install "tesserae[cognee]"
 ```
 
 - `kuzu` — персистентность графа в Kuzu.
-- `tesserae[cognee]` — опциональные рабочие процессы Cognee add/cognify
-  (выключены по умолчанию; режим cognify с патчем Codex удалён).
 - RAG-Anything — устанавливается через `pip install 'raganything[all]'`
   (`tesserae setup --install raganything`); Tesserae хранит управляемую обёртку
   обновления для мультимодальных запусков парсера.

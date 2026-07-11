@@ -31,7 +31,7 @@ tesserae doctor --project ~/src/other
 | `compile_lock` | processes | 是否有活动的编译锁被持有，以及被哪个 pid 持有 | 仅报告 —— doctor **绝不杀掉进程也绝不移除活动锁** |
 | `daemon_pid` | processes | `daemon.pid` 指向一个存活的 engine 进程 | **SAFE**：当持有者已死亡时删除该 pidfile |
 | `llm_login` | environment | 配置的 LLM 后端确实可用（claude/codex CLI 已登录，或存在 API key） | 仅报告（建议运行 `claude /login` / `codex login`） |
-| `optional_deps` | environment | 可选依赖的状态（memex、cognee、raganything） | 仅报告（安装需要联网） |
+| `optional_deps` | environment | 可选依赖的状态（memex、raganything） | 仅报告（安装需要联网） |
 | `embedding_backend` | environment | 有真正的语义嵌入后端可用 | 仅报告（建议 `pip install tesserae[semantic]`） |
 | `environment` | environment | 整体环境检测摘要 | 仅报告的小节 |
 | `build_history` | hygiene | `.build-history` 的大小和形状 | **SAFE**：裁剪它，且始终保留最新的 `git_head` 条目（新鲜度检查依赖它） |

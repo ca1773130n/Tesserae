@@ -113,10 +113,13 @@ def test_apply_reinit_merges_sources_and_memory_backends(tmp_path: Path) -> None
     result = apply_plan(plan)
     cfg = json.loads(result.config_path.read_text())
 
-    # Simulate user edits between inits.
+    # Simulate user edits between inits. A legacy cognee section (backend
+    # removed in 0.19) is user data too — the merge must not drop it.
     cfg["sources"].append("notes/extra.md")
-    cfg["memory_backends"]["cognee"]["enabled"] = True
-    cfg["memory_backends"]["cognee"]["user_marker"] = "keep-me"
+    cfg.setdefault("memory_backends", {})["cognee"] = {
+        "enabled": True,
+        "user_marker": "keep-me",
+    }
     cfg["custom_top_level"] = {"keep": True}
     result.config_path.write_text(json.dumps(cfg, indent=2) + "\n")
 

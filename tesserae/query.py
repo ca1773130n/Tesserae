@@ -208,14 +208,6 @@ def _readable_label_from_id(node_id: str, raw: Mapping[str, object]) -> str:
     return node_id or "source"
 
 
-def _cognee_importable() -> bool:
-    """Whether cognee can be imported in THIS runtime. Module-level so tests can
-    monkeypatch it (the packaged CLI often ships without cognee)."""
-    import importlib.util
-
-    return importlib.util.find_spec("cognee") is not None
-
-
 def _log_once(key: str, message: str) -> None:
     if key in _LOGGED_FAILURE_KINDS:
         return
@@ -941,8 +933,6 @@ def ask_project(
     *,
     backend: str = "auto",
     top_k: int = 5,
-    cognee_search_type: Optional[str] = None,
-    cognee_dataset: Optional[str] = None,
     use_llm: bool = True,
     no_llm: bool = False,
 ) -> Dict[str, Any]:
@@ -955,8 +945,8 @@ def ask_project(
 
     * ``backend="auto"`` (and ``"wiki"``) go straight to the compiled-wiki
       path — the KG planner when LLM synthesis is enabled, BM25 search
-      otherwise. Auto never enters raganything/cognee.
-    * Explicit ``backend="raganything"|"cognee"`` short-circuits to that
+      otherwise. Auto never enters raganything.
+    * Explicit ``backend="raganything"`` short-circuits to that
       backend and surfaces its errors instead of silently falling through.
 
     ``use_llm`` defaults to **True**: ask is the LLM-answer surface (the
@@ -970,14 +960,17 @@ def ask_project(
     * ``{"backend": "raganything", "question", "answer"}``
       (or ``{"backend": "raganything", "answer": None, "note": ...}`` when
       explicit raganything was requested but returned nothing)
-    * ``{"backend": "cognee", "question", "dataset", "results"}``
     * ``{"backend": "wiki", "question", ...}`` (carries the full
       ``QueryResult.to_dict()`` payload merged with ``backend`` and ``question``)
     """
 
-    from .project import cognee_backend_config
-
-    if backend not in {"auto", "raganything", "cognee", "wiki"}:
+    if backend == "cognee":
+        raise ValueError(
+            "ask_project: the cognee backend was removed in 0.19 "
+            "(demoted in 0.18, never fed the graph); use backend='auto', "
+            "'wiki', or 'raganything'"
+        )
+    if backend not in {"auto", "raganything", "wiki"}:
         raise ValueError(f"ask_project: unknown backend {backend!r}")
     cleaned_question = (question or "").strip()
     if not cleaned_question:
@@ -1012,29 +1005,6 @@ def ask_project(
             "answer": None,
             "note": "no answer (likely missing API keys or empty index)",
         }
-
-    # ---- cognee path (explicit backend only; auto never enters) ----
-    if backend == "cognee":
-        from .cognee_query import search_cognee
-
-        cognee_cfg = cognee_backend_config(cfg)
-        dataset = cognee_dataset or cognee_cfg.get("dataset")
-        cognee_kwargs: Dict[str, Any] = {"dataset": dataset, "top_k": top_k}
-        if cognee_search_type:
-            cognee_kwargs["search_type"] = cognee_search_type
-        try:
-            results = search_cognee(cleaned_question, **cognee_kwargs)
-        except Exception as exc:
-            raise RuntimeError(f"cognee ask failed: {exc}") from exc
-        if results is not None:
-            return {
-                "backend": "cognee",
-                "dataset": dataset,
-                "question": cleaned_question,
-                "results": results,
-            }
-        # search_cognee returned nothing: fall through to wiki, matching the
-        # pre-split behavior for an explicit cognee ask with no results.
 
     # ---- wiki path ----
     # LLM gate: synthesize when the caller asked (use_llm) or the

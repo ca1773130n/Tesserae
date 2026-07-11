@@ -361,7 +361,7 @@ llmstxt.org の長い形式です。すべての wiki page を連結します。
 
 ### `/graph.json` ✅
 
-完全な `ResearchGraph` payload です — HTML ページを持たない code-graph nodes も含みます。tool が自身の分析のために完全な graph を必要とするときに適しています（MCP、Cognee、Graphiti consumers はすべてこれを読みます）。
+完全な `ResearchGraph` payload です — HTML ページを持たない code-graph nodes も含みます。tool が自身の分析のために完全な graph を必要とするときに適しています（MCP と Graphiti consumers はこれを読みます）。
 
 ### `/graph.jsonld` ✅
 

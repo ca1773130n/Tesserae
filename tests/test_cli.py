@@ -310,82 +310,32 @@ def test_cli_can_write_review_human_workflow_files(tmp_path):
     assert json.loads(template.read_text(encoding="utf-8"))["decisions"] is not None
 
 
-def test_cli_can_write_cognee_bundle(tmp_path):
-    source = tmp_path / "paper.md"
-    source.write_text("# Cognee Paper\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")
-    graph_output = tmp_path / "graph.json"
-    cognee_output = tmp_path / "cognee"
-
-    assert main([
-        "extract",
-        str(source),
-        "--source-kind",
-        "Paper",
-        "--cognee-output",
-        str(cognee_output),
-        "-o",
-        str(graph_output),
-    ]) == 0
-
-    assert (cognee_output / "nodes.jsonl").exists()
-    assert (cognee_output / "edges.jsonl").exists()
-    assert (cognee_output / "manifest.json").exists()
-
-
-def test_cli_can_add_cognee_bundle_directly(monkeypatch, tmp_path):
-    source = tmp_path / "paper.md"
-    source.write_text("# Cognee Direct Paper\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")
-    graph_output = tmp_path / "graph.json"
-    cognee_output = tmp_path / "cognee"
-    calls = []
-
-    class FakeCogneeDirectImporter:
-        async def add_bundle(self, bundle_dir, dataset_name="tesserae_research_graph", cognify=False, system_root=None, data_root=None):
-            calls.append({"bundle_dir": str(bundle_dir), "dataset_name": dataset_name, "cognify": cognify, "system_root": system_root, "data_root": data_root})
-            return {"dataset_name": dataset_name, "files_added": 2, "cognified": cognify}
-
-    import tesserae.cli as cli
-
-    monkeypatch.setattr(cli, "CogneeDirectImporter", FakeCogneeDirectImporter)
-
-    assert main([
-        "extract",
-        str(source),
-        "--source-kind",
-        "Paper",
-        "--cognee-output",
-        str(cognee_output),
-        "--cognee-add",
-        "--cognee-dataset",
-        "tesserae_test",
-        "-o",
-        str(graph_output),
-    ]) == 0
-
-    assert calls == [{"bundle_dir": str(cognee_output), "dataset_name": "tesserae_test", "cognify": False, "system_root": None, "data_root": None}]
-
-
-def test_cli_extract_codex_cognify_flags_removed_with_stub(tmp_path, capsys):
-    """The codex-patched cognify mode was removed with tesserae.cognee_codex:
-    every --cognee-codex-*/embedding flag now prints a one-line stub and
-    exits 2 (clean break; --cognee-cognify with Cognee's own providers remains)."""
+def test_cli_extract_cognee_flags_removed_with_stub(tmp_path, capsys):
+    """Backend EOL stage 2 (0.19): every extract --cognee-* flag prints a
+    one-line removal stub and exits 2 (clean break, never an alias)."""
     import pytest
 
     source = tmp_path / "paper.md"
-    source.write_text("# Cognee Codex Paper\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")
+    source.write_text("# Cognee Paper\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")
 
     for flag in (
+        ["--cognee-output", str(tmp_path / "cognee")],
+        ["--cognee-add"],
+        ["--cognee-cognify"],
+        ["--cognee-dataset", "tesserae_test"],
         ["--cognee-codex-cognify"],
         ["--cognee-codex-model", "gpt-5.4"],
         ["--cognee-codex-timeout", "11"],
         ["--cognee-embedding-provider", "ollama"],
         ["--cognee-local-embedding-dimensions", "1024"],
+        ["--cognee-system-root", "/tmp/sys"],
+        ["--cognee-data-root", "/tmp/data"],
     ):
         with pytest.raises(SystemExit) as exc_info:
-            main(["extract", str(source), "--cognee-output", str(tmp_path / "cognee"), *flag])
+            main(["extract", str(source), *flag])
         assert exc_info.value.code == 2
         err = capsys.readouterr().err
-        assert "extract: the cognee codex mode was removed" in err
+        assert f"extract: {flag[0]} was removed in 0.19" in err
 
 
 def test_cli_changed_only_uses_batch_manifest(tmp_path):

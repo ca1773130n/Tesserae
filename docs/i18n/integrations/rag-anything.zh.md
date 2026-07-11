@@ -4,7 +4,7 @@
 <p align="center"><a href="../../integrations/rag-anything.md">English</a> · <a href="rag-anything.ko.md">한국어</a> · <a href="rag-anything.ja.md">日本語</a> · <a href="rag-anything.ru.md">Русский</a> · <a href="rag-anything.es.md">Español</a> · <a href="rag-anything.fr.md">Français</a> · <a href="rag-anything.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-[RAG-Anything](https://github.com/HKUDS/RAG-Anything) 是一个基于 LightRAG 的多模态 RAG 框架，通过 MinerU/Docling/PaddleOCR 解析 PDF、Office 文档、图像和公式。Tesserae 同时把它作为多模态摄取流水线（UA 风格的原生图投影）和与 Cognee 并行的运行时记忆后端进行集成。
+[RAG-Anything](https://github.com/HKUDS/RAG-Anything) 是一个基于 LightRAG 的多模态 RAG 框架，通过 MinerU/Docling/PaddleOCR 解析 PDF、Office 文档、图像和公式。Tesserae 同时把它作为多模态摄取流水线（UA 风格的原生图投影）和可选的运行时记忆后端进行集成。
 
 ## 为什么两者都用？
 
@@ -111,11 +111,11 @@ Tesserae 把这项集成干净地拆成两部分：
 {"system": "rag-anything", "id": "doc-<sha256>", "type": "document", "artifact": ".tesserae/external/raganything/manifest.json"}
 ```
 
-注意：交互式图谱视图默认隐藏 `sources` 组的节点，以聚焦于概念和实体——投影出来的 raganything SourceDocument 仍留在 `graph.json` 中（MCP、Cognee、搜索、每页 wiki 视图仍能看到它们），只是不会淹没画布。在 `.tesserae/config.json` 中设置 `graph_view.show_sources = true` 可恢复密集视图。
+注意：交互式图谱视图默认隐藏 `sources` 组的节点，以聚焦于概念和实体——投影出来的 raganything SourceDocument 仍留在 `graph.json` 中（MCP、搜索、每页 wiki 视图仍能看到它们），只是不会淹没画布。在 `.tesserae/config.json` 中设置 `graph_view.show_sources = true` 可恢复密集视图。
 
 ## 运行时记忆后端
 
-`memory_backends.raganything`（由 `default_raganything_backend_config` 生成的默认配置）与 Cognee 共存。`project ask` 按优先级顺序尝试各后端；每个项目的优先级可以通过 `memory_backends.priority` 设置。RAG-Anything 是可选启用的（默认 `enabled: false`）；设置标志 `--with-raganything` 会将其打开。
+`memory_backends.raganything`（由 `default_raganything_backend_config` 生成的默认配置）是唯一的可选记忆后端。RAG-Anything 是可选启用的（默认 `enabled: false`）；设置标志 `--with-raganything` 会将其打开。
 
 ### LLM 提供方（无需 API 密钥）
 
@@ -146,14 +146,8 @@ tesserae ask "What does the integration spec say about parser routing?"
 
 # Explicit backends live on `query` — raw retrieval, no LLM synthesis.
 tesserae query "..." --backend raganything
-tesserae query "..." --backend cognee
 tesserae query "..." --backend wiki
 ```
-
-> **Cognee 1.0 搜索类型。** Cognee 1.0 移除了旧的 `INSIGHTS` 检索器，因此
-> Tesserae 将 cognee 后端默认设为 `GRAPH_COMPLETION`（在知识图谱之上合成的
-> 答案）。如需原始检索而非生成式答案，传入
-> `--cognee-search-type CHUNKS`（或 `SUMMARIES`）。
 
 `tesserae query --backend raganything` 直接调用 `tesserae.raganything_query.query`。`memory_backends.raganything` 中的相对 `working_dir` 会在调用前基于项目根目录解析。
 
@@ -195,7 +189,7 @@ tesserae ask "What did I write about RLHF?" --scope all-registered --json
 tesserae ask "..." --scope all-registered --scope-aliases research side-projects
 ```
 
-处理器按字母序遍历已注册项目，对每个项目调用 `ask_project`，并聚合各项目的返回信封。单个项目的失败——缺少配置、未启用 RAG-Anything、Cognee 宕机——会以 `{"error": "..."}` 的形式记录在该别名的槽位中，绝不会中止其余的扇出。MCP 的 `ask` 工具接受同样的 `scope` 参数，因此由 MCP 驱动的编码智能体无需额外管道即可获得同样的扇出能力。
+处理器按字母序遍历已注册项目，对每个项目调用 `ask_project`，并聚合各项目的返回信封。单个项目的失败——缺少配置、未启用 RAG-Anything——会以 `{"error": "..."}` 的形式记录在该别名的槽位中，绝不会中止其余的扇出。MCP 的 `ask` 工具接受同样的 `scope` 参数，因此由 MCP 驱动的编码智能体无需额外管道即可获得同样的扇出能力。
 
 ### 多项目注册表（`tesserae projects`）
 
@@ -222,7 +216,7 @@ stdio MCP 服务器暴露了带有相同后端选择器的 `ask` 工具：
 }
 ```
 
-分派顺序（`raganything` → `cognee` → 编译后的 wiki 搜索）和 `working_dir` 解析与 CLI 处理器完全一致，因此编码智能体和人工操作者会收敛到相同的答案。
+分派顺序（`raganything` → 编译后的 wiki 搜索）和 `working_dir` 解析与 CLI 处理器完全一致，因此编码智能体和人工操作者会收敛到相同的答案。
 
 ## 系统先决条件
 

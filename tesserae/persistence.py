@@ -46,7 +46,7 @@ class SQLiteResearchGraphStore:
     """Small local graph store using stdlib SQLite.
 
     This is intentionally simple and dependency-free. It provides a durable local
-    substrate before optional Kuzu/Cognee integrations are added.
+    substrate before optional Kuzu integrations are added.
     """
 
     def __init__(self, path: str | Path) -> None:

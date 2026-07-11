@@ -607,7 +607,7 @@ class _FakeCodexRun:
     """Stand-in for subprocess.run capturing the codex invocation.
 
     Writes ``payload`` to the ``--output-last-message`` tmp path embedded in
-    the command, mimicking the real CLI contract used by cognee_codex.
+    the command, mimicking the real codex CLI contract.
     """
 
     def __init__(self, payload: str = '{"ok": true}', returncode: int = 0, stderr: str = ""):

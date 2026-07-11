@@ -34,7 +34,7 @@ tesserae doctor --project ~/src/other
 | `compile_lock` | processes | 稼働中のコンパイルロックが保持されているか、またどの pid によってか | レポートのみ — doctor は**稼働中のロックを決して kill も削除もしません** |
 | `daemon_pid` | processes | `daemon.pid` が生きているエンジンプロセスを指していること | **SAFE**: 所有プロセスが死んでいる場合に pidfile を削除 |
 | `llm_login` | environment | 設定された LLM バックエンドが実際に使用可能であること（claude/codex CLI にログイン済み、または API キーが存在） | レポートのみ（`claude /login` / `codex login` を提案） |
-| `optional_deps` | environment | オプション依存関係（memex、cognee、raganything）の状態 | レポートのみ（インストールはネットワークを要するため） |
+| `optional_deps` | environment | オプション依存関係（memex、raganything）の状態 | レポートのみ（インストールはネットワークを要するため） |
 | `embedding_backend` | environment | 実際のセマンティック埋め込みバックエンドが利用可能であること | レポートのみ（`pip install tesserae[semantic]` を提案） |
 | `environment` | environment | 環境検出の全体サマリ | レポートのみのセクション |
 | `build_history` | hygiene | `.build-history` のサイズと形状 | **SAFE**: トリムする。ただし最新の `git_head` エントリは常に保持（staleness チェックがそれに依存するため） |

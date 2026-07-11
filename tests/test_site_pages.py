@@ -1180,7 +1180,7 @@ def test_build_graph_payload_node_sizing_uses_in_degree(site_ctx: SiteContext) -
 def test_build_graph_payload_hides_person_nodes_and_authored_by_edges() -> None:
     """Issue 5 — Person nodes (paper authors) and ``authored_by`` edges
     are filtered out of the interactive graph payload. They stay in
-    ``graph.json`` (MCP / cognee see them); they only disappear from the
+    ``graph.json`` (MCP sees them); they only disappear from the
     on-page visualization so the canvas isn't drowned by author chrome.
     """
     from tesserae.site.pages import _GRAPH_HIDDEN_TYPES, build_graph_payload
@@ -1276,7 +1276,7 @@ def test_build_graph_payload_filters_translation_sibling_edges() -> None:
     """Edges between two nodes whose ``source_path`` resolves to the
     same canonical document (in different languages) are translation-
     siblings and are dropped from the interactive payload. They stay in
-    ``ctx.graph.edges`` so MCP/Cognee consumers see them; only the
+    ``ctx.graph.edges`` so MCP consumers see them; only the
     visual graph loses them."""
     from tesserae.research_graph import ResearchEdge
     from tesserae.site.pages import build_graph_payload
@@ -1358,7 +1358,7 @@ def test_build_graph_payload_hides_source_nodes_by_default() -> None:
     explicitly flip ``graph_view.show_sources`` in their config.
 
     Underlying ``ctx.graph`` is untouched — the SourceDocument node is
-    still present for MCP, Cognee, search, and per-page wiki views.
+    still present for MCP, search, and per-page wiki views.
     """
     from tesserae.research_graph import ResearchEdge
     from tesserae.site.pages import build_graph_payload

@@ -204,7 +204,7 @@ def _kind_for_node_type(node_type: ResearchNodeType) -> Optional[str]:
 
     ``None`` means the type has no public detail page (CodeClass /
     CodeFunction / CodeModule / Dependency / EvidenceSpan / SourceFile /
-    Claim variants). Those types stay in ``graph.json`` for MCP/Cognee
+    Claim variants). Those types stay in ``graph.json`` for MCP
     consumers but never get a URL of their own.
     """
     if node_type in (ResearchNodeType.SOURCE_DOCUMENT, ResearchNodeType.SOURCE_FILE):
@@ -2259,7 +2259,7 @@ def render_timeline_day(ctx: SiteContext, date_str: str) -> str:
 
 
 # Issue 5 — node ``type``s the interactive graph view hides. They stay in
-# ``graph.json`` (MCP / cognee / etc. still see them) but never appear in the
+# ``graph.json`` (MCP / etc. still see them) but never appear in the
 # on-page payload so the canvas isn't drowned by author chrome. Easy to extend
 # (e.g. add ``Organization`` if it ever gets noisy too).
 _GRAPH_HIDDEN_TYPES: frozenset[str] = frozenset({"Person"})
@@ -2274,7 +2274,7 @@ _GRAPH_HIDDEN_EDGE_TYPES: frozenset[str] = frozenset({"authored_by"})
 # Visual-payload group filter. Every node whose group resolves to one of
 # these names is dropped before reaching ``payload-core.json`` /
 # ``payload-rest.json``, alongside every edge incident to it. The
-# underlying ``ResearchGraph`` (and therefore MCP, Cognee, search, and
+# underlying ``ResearchGraph`` (and therefore MCP, search, and
 # the per-page wiki views) still sees them — this is strictly a visual
 # decluttering filter. ``sources`` is the only entry today because
 # raganything-projected SourceDocument nodes flood the canvas at 1000+
@@ -2420,7 +2420,7 @@ def _is_hidden_group_node(node: ResearchNode) -> bool:
 # translation of it. Edges between them carry no semantic information —
 # they're "this document linked to itself in another language" — so we
 # drop them from the interactive graph view. They remain in the full
-# ``graph.json`` because MCP/Cognee consumers may still want to surface
+# ``graph.json`` because MCP consumers may still want to surface
 # the redundancy. The visual graph only.
 _DOC_LANG_SUFFIX_RE = re.compile(
     r"^(?P<base>.+?)[._](?P<lang>ko|zh|ja|ru|es|fr)\.md$",
@@ -2567,7 +2567,7 @@ def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
             # docs/foo.md <-> docs/i18n/foo.fr.md, paper.md <-> paper_ja.md,
             # etc.) are suppressed: they're the same document in different
             # languages, not a semantic relationship worth visualizing.
-            # Full ``graph.json`` keeps them so MCP/Cognee consumers can
+            # Full ``graph.json`` keeps them so MCP consumers can
             # still see the redundancy if they want. See
             # ``_is_translation_sibling`` for the matching rules.
             src_path = visible_source_paths.get(e.source, "")
@@ -2647,7 +2647,7 @@ def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
         importance = round(float(max(importance_raw, 0)), 3)
         description = (n.description or "").strip()
         # Bug B: surface the ``parser`` provenance flag (raganything /
-        # cognee / etc.) on each node so the front-end legend and any
+        # etc.) on each node so the front-end legend and any
         # downstream consumers can distinguish externally-projected
         # source documents from natively extracted ones. We deliberately
         # send only the small flag, not the full metadata blob, to keep

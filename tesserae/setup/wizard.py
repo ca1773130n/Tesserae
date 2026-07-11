@@ -70,7 +70,6 @@ def _detection_panel(report: DetectionReport) -> Panel:
     proj = report.project
     for label, present in (
         ("codegraph", proj.has_codegraph),
-        ("cognee", proj.has_cognee),
     ):
         mark = "[green]✓[/green]" if present else "[dim]·[/dim]"
         lines.append(f"  {mark} {label}")
@@ -227,11 +226,9 @@ def run_wizard(
 
     companion_items = [
         ("raganything", False),
-        ("cognee", True),
     ]
     chosen = _multi_select(console, "Companion tools", companion_items)
     include_raganything = "raganything" in chosen
-    enable_cognee = "cognee" in chosen
 
     install_raganything = False
     if include_raganything and not detection.python.raganything_importable:
@@ -260,7 +257,6 @@ def run_wizard(
             "llm_api_key": llm_api_key,
             "include_raganything": include_raganything,
             "install_raganything": install_raganything,
-            "enable_cognee": enable_cognee,
             "install_agent_pointer": install_pointer,
         },
     )

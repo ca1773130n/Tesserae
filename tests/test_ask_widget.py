@@ -58,7 +58,7 @@ def test_ask_widget_js_renders_envelope_shapes() -> None:
     js = ask_widget_js()
     # raganything → answer string
     assert "envelope.answer" in js
-    # cognee / wiki → results list
+    # wiki → results list
     assert "envelope.results" in js
     # backend === "none" → note string
     assert "envelope.note" in js

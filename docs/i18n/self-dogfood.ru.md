@@ -6,7 +6,7 @@
 Этот проект может индексировать сам себя. Поток self-dogfood доказывает, что
 Tesserae можно установить, настроить внутри его собственного репозитория,
 влить его собственные docs/исходники/тесты/скрипты, опционально обновить
-RAG-Anything и Cognee, скомпилировать артефакты графа и собрать
+RAG-Anything, скомпилировать артефакты графа и собрать
 статический веб-фронтенд.
 
 Тот же поток служит и мультимодальным smoke-тестом. С установленным
@@ -52,7 +52,7 @@ tesserae init \
   --source scripts
 
 # (optional) install + enable the heavier companions afterwards:
-#   tesserae setup --install raganything --install cognee
+#   tesserae setup --install raganything
 #   then flip memory_backends.*.enabled / external_tools in .tesserae/config.json
 
 # Compile the configured sources.
@@ -94,7 +94,6 @@ Self-демо записывает генерируемые артефакты �
 .tesserae/obsidian_vault/
 .tesserae/agent_harness/
 .tesserae/site/
-.tesserae/cognee_bundle/
 ```
 
 Генерируемое рабочее пространство намеренно не коммитится по умолчанию. Оно
@@ -104,7 +103,7 @@ Self-демо записывает генерируемые артефакты �
 
 Проверено `2026-04-27 11:11:23 KST` из самого репозитория Tesserae.
 
-Подключение интеграций (RAG-Anything, cognee) теперь — **интерактивные
+Подключение интеграций (RAG-Anything) теперь — **интерактивные
 подсказки визарда**, а не CLI-флаги. Неинтерактивный эквивалент ниже запускает
 `tesserae init --yes` (интеграции ВЫКЛ), включает интеграции в
 `.tesserae/config.json` (визард пишет их под ключами `memory_backends` и
@@ -116,7 +115,6 @@ install command: ./scripts/install.sh --dir /Users/neo/Developer/Projects/Tesser
 setup command:   tesserae init --yes --name tesserae_self --source README.md --source docs --source tesserae --source tests --source scripts
                  # then enable the optional integrations in .tesserae/config.json and run:
                  #   tesserae integrations refresh raganything
-                 #   tesserae integrations refresh cognee
 ingest command:  tesserae compile README.md docs --changed-only
 compile command: tesserae compile
 site command:    tesserae export site
@@ -133,8 +131,6 @@ edges:               1020
 markdown notes:      684
 obsidian notes:      686
 agent harness files: 14
-cognee nodes:        667
-cognee edges:        1020
 graphiti episodes:  1020
 temporal facts:      1020
 site files:          index.html, nodes/index.html, sources/index.html, graph/index.html, graph.json, search-index.json, llms.txt, llms-full.txt, manifest.json, assets/style.css, assets/app.js
@@ -173,7 +169,7 @@ server: TCP *:56821 LISTEN, serving via --host 0.0.0.0
 - Репозиторий может подключить проектное рабочее пространство `.tesserae`.
 - Markdown исследований/документации и узлы графа кода разработки могут
   сосуществовать.
-- Проекции Markdown, Obsidian, фронтенда, Graphiti, Cognee, SQLite, отчёта и
+- Проекции Markdown, Obsidian, фронтенда, Graphiti, SQLite, отчёта и
   agent-harness производятся из одного графового конвейера.
 - Статический HTML-фронтенд может просматривать граф проекта без шага сборки
   JavaScript.

@@ -62,7 +62,7 @@ def test_mcp_apply_ignores_injected_install_commands(tmp_path: Path, monkeypatch
             # agent-pointer install is a pure file write with status
             # "installed"; disable it so the assertion below can stay
             # "no installed statuses at all" = no subprocess executions.
-            "overrides": {"enable_cognee": False, "install_agent_pointer": False},
+            "overrides": {"install_agent_pointer": False},
         },
     )
     plan = dict(plan_response["plan"])
@@ -93,7 +93,7 @@ def test_mcp_apply_ignores_injected_install_commands(tmp_path: Path, monkeypatch
     assert not sentinel.exists(), "MCP must not execute caller-supplied command strings"
     assert not (tmp_path / "OWNED-MARKER-run").exists()
     # The actions_taken list reflects what the SERVER decided to run — when
-    # cognee/raganything are disabled there should be no
+    # raganything is disabled there should be no
     # subprocess executions at all.
     statuses = [a.get("status") for a in apply_response.get("actions_taken", [])]
     assert "installed" not in statuses
@@ -145,7 +145,6 @@ def test_mcp_apply_allowlists_llm_keys_but_never_api_key(tmp_path: Path) -> None
                 "llm_base_url": "https://llm.example/v1",
                 "llm_model": "claude-opus-4-6",
                 "codex_home": "/h/.codex-personal1",
-                "enable_cognee": False,
             },
         },
     )

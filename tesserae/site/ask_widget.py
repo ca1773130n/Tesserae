@@ -37,7 +37,7 @@ the bottom of the article body. The widget is a tiny JS island that:
   ``serve`` handler delegates to :func:`tesserae.query.ask_project` and
   returns the JSON envelope verbatim.
 * Renders the answer inline below the input. ``raganything`` returns a
-  single ``answer`` string; ``cognee`` / ``wiki`` return a ``results``
+  single ``answer`` string; ``wiki`` returns a ``results``
   list which the widget renders as an ordered list with anchor links
   for any item that already carries an ``href``. Wiki-relative
   ``<kind>/<slug>.html`` substrings inside answer text become anchor
@@ -227,7 +227,6 @@ _ASK_WIDGET_JS_TEMPLATE = r"""(function(){
     clear(answer);
     // envelope shapes (from tesserae.query.ask_project):
     //   { backend: "raganything", question, answer }
-    //   { backend: "cognee", question, results: [...] }
     //   { backend: "wiki", question, results: [...] }
     //   { backend: "none", question, results: [], note: "..." }
     if (envelope.answer) {

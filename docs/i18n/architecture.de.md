@@ -196,7 +196,6 @@ Die Wiederkehr-Konfidenz ist in der Ausgabe numerisch: Die zeitliche Projektion 
 | [`tesserae/agent_harness.py`](../../tesserae/agent_harness.py) | Harness-Exporte für Claude Code / Codex / Gemini / Kiro / Cursor / OpenCode. |
 | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | Inbound Discovery, Normalisierung und Storage von Claude-Code-/Codex-Sessions unter `.tesserae/harness_sessions/` plus redigierte Markdown-Zusammenfassungen. |
 | [`tesserae/graphiti_adapter.py`](../../tesserae/graphiti_adapter.py) | Temporal-Fact-JSONL + optionaler Live-Sync mit Graphiti. |
-| [`tesserae/cognee_adapter.py`](../../tesserae/cognee_adapter.py) | Cognee-Nodes/Edges-JSONL-Bundle und direkter Add-/Cognify-Pfad. |
 | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | MCP-Stdio-Server. Retrieval/Graph: `schema`, `graph_summary`, `search_nodes`, `node_context` (mit `use_ppr`), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`, `doctor_report`. Kontext-Engine (v0.5.0): `compile_context` (der On-Demand-Kontext-Compiler), `embedding_status`, `fresh_insights` (nach Decay gerankte Sitzungsbefunde), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`. Dazu `ask`, die Multi-Projekt-Registry-Werkzeuge (`list_projects`, `register_project`, `unregister_project`, `list_sessions`) sowie `tesserae_setup_plan` / `tesserae_setup_apply`. |
 
 ## Projekt-Workspace-Layout
@@ -217,7 +216,6 @@ Die Wiederkehr-Konfidenz ist in der Ausgabe numerisch: Die zeitliche Projektion 
   obsidian_vault/             Obsidian projection w/ .obsidian/, raw/assets/
   agent_harness/              Claude Code / Codex / etc. harness files
   harness_sessions/           imported local Claude Code/Codex sessions
-  cognee_bundle/              Cognee nodes/edges/manifest JSONL
   wiki/                       L2 markdown wiki — see below
   site/                       L3 static site — see below
 ```
@@ -268,7 +266,7 @@ site/
 
 ## Was bewusst ausgeschlossen ist
 
-Das Redesign hat eine klare Linie gezogen: Code-Class- und Code-Function-Knoten bleiben in `graph.json` (damit MCP-, Cognee- und Graphiti-Consumer sie weiterhin sehen), bekommen aber nie HTML-Seiten, tauchen nie in `search-index.json` auf und erscheinen nie in der Navigation. Das ist der Vertrag nach außen — das Wiki ist eine dokument-zentrierte Wissensdatenbank, kein Function-Browser.
+Das Redesign hat eine klare Linie gezogen: Code-Class- und Code-Function-Knoten bleiben in `graph.json` (damit MCP- und Graphiti-Consumer sie weiterhin sehen), bekommen aber nie HTML-Seiten, tauchen nie in `search-index.json` auf und erscheinen nie in der Navigation. Das ist der Vertrag nach außen — das Wiki ist eine dokument-zentrierte Wissensdatenbank, kein Function-Browser.
 
 Konkret überspringt `StaticSiteBuilder` jeden Knoten, dessen Typ nicht in der L2-Wiki-Kind-Map (`tesserae/wiki_projector.py::_KIND_FOR_TYPE`) steht:
 

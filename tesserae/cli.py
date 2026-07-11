@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import sys
 from collections import Counter
@@ -13,8 +12,6 @@ from typing import Callable, Dict, Iterable, List, Optional
 from .activity_summary import SummaryResult, build_summary, resolve_windows
 from .batch import BatchIngestRunner
 from .canonicalization import GraphCanonicalizer, ReviewDecision
-from .cognee_adapter import CogneeResearchGraphAdapter
-from .cognee_direct import CogneeDirectImporter
 from .harness_sessions import HarnessSession, HarnessSessionStore, discover_harness_sessions, session_matches_project
 from .ingest.orchestrator import ingest_sources
 from .llm_extractor import ClaudeCLIResearchExtractor, LLMResearchExtractor
@@ -22,7 +19,7 @@ from .locking import CompileLockHeldError
 from .markdown_projection import GraphMarkdownProjector
 from .persistence import KuzuResearchGraphStore, SQLiteResearchGraphStore
 from .graphiti_adapter import GraphitiSyncUnavailableError
-from .project import CognifyOptions, ProjectWiki, SessionExtractionOptions, cognify_options_from_config, cognee_backend_config, iter_markdown_files, load_graph_file as _load_graph_file, resolve_project_input
+from .project import ProjectWiki, SessionExtractionOptions, iter_markdown_files, load_graph_file as _load_graph_file, resolve_project_input
 from .project_setup import refresh_configured_external_tools
 from .report import GraphReporter
 from .raganything_refresh import main as _raganything_refresh_main
@@ -66,7 +63,7 @@ def _project_query_handler(args) -> int:
 
     ``query`` is the raw-retrieval surface: BM25/semantic search over the
     compiled wiki by default, or an explicit backend
-    (``--backend raganything|cognee``) for the optional memory backends.
+    (``--backend raganything``) for the optional memory backend.
     LLM synthesis lives on ``tesserae ask``; the wiki path here still honors
     the ``TESSERAE_QUERY_LLM`` env gate for scripted setups.
     """
@@ -80,7 +77,18 @@ def _project_query_handler(args) -> int:
     interactive = bool(args.interactive)
     backend = getattr(args, "backend", "wiki") or "wiki"
 
-    if backend in ("raganything", "cognee"):
+    if backend == "cognee":
+        # Clean-break stub (no-silent-aliases convention): one line, exit 2.
+        # "cognee" stays parseable so this stub can answer instead of a
+        # confusing argparse choices error.
+        print(
+            "removed in 0.19 — cognee was demoted in 0.18 and never fed the "
+            "graph; use plain query or ask",
+            file=sys.stderr,
+        )
+        return 2
+
+    if backend == "raganything":
         from .query import ask_project
 
         if interactive:
@@ -101,8 +109,6 @@ def _project_query_handler(args) -> int:
                 question,
                 backend=backend,
                 top_k=top_k,
-                cognee_search_type=getattr(args, "cognee_search_type", None),
-                cognee_dataset=getattr(args, "cognee_dataset", None),
                 use_llm=False,
                 no_llm=True,
             )
@@ -160,16 +166,6 @@ def _emit_ask_envelope(envelope: dict, *, json_output: bool) -> int:
             return 2
         print("RAG-Anything answer:")
         print(answer)
-        return 0
-    if backend == "cognee":
-        dataset = envelope.get("dataset")
-        results = envelope.get("results") or []
-        print(f"Cognee answer (dataset={dataset or 'default'}):")
-        if results:
-            for idx, result in enumerate(results, start=1):
-                print(f"\n[{idx}] {result}")
-        else:
-            print("No Cognee results returned.")
         return 0
     if backend == "wiki":
         notes = envelope.get("auto_notes") or []
@@ -769,8 +765,8 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
             "is the default; pass --no-llm for ranked search hits only. Works with a "
             "logged-in claude/codex CLI (OAuth) or ANTHROPIC_API_KEY. With no --scope a "
             "smart router picks the target (one project / all / federated); --project, "
-            "--name or --scope override it. Raw retrieval and explicit backends "
-            "(raganything/cognee) live on `tesserae query`."
+            "--name or --scope override it. Raw retrieval and the explicit "
+            "raganything backend live on `tesserae query`."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
@@ -806,11 +802,18 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the raw JSON envelope instead of the pretty-printed answer.",
     )
-    for _moved in ("--backend", "--cognee-search-type", "--cognee-dataset"):
+    parser.add_argument(
+        "--backend",
+        action=_RemovedFlagAction,
+        message="ask: backend flags have moved → tesserae query",
+    )
+    # Removed backend (0.19): the old moved-flag stubs for --cognee-* now
+    # report the removal instead of pointing at `tesserae query`.
+    for _removed in ("--cognee-search-type", "--cognee-dataset"):
         parser.add_argument(
-            _moved,
+            _removed,
             action=_RemovedFlagAction,
-            message="ask: backend flags have moved → tesserae query",
+            message=f"ask: {_removed} was removed in 0.19 — cognee was demoted in 0.18 and never fed the graph",
         )
     # Bet B2 — registry-scoped fan-out.
     parser.add_argument(
@@ -1089,14 +1092,6 @@ def _handle_setup(args: argparse.Namespace) -> int:
                     ),
                     "raganything_extras": args.raganything_extras,
                     "raganything_parser": args.raganything_parser,
-                    "enable_cognee": not args.no_cognee,
-                    "cognee_mode": args.cognee_mode,
-                    "cognee_auto_cognify": args.run_cognee,
-                    "install_cognee": (
-                        False if args.skip_install_cognee
-                        else True if args.install_cognee
-                        else None
-                    ),
                 }
                 yes_overrides = {
                     k: v for k, v in yes_overrides.items() if v is not None
@@ -1292,30 +1287,9 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                     print(f"  - {failure.get('id')}: {failure.get('command')} exited {failure.get('returncode')}{tail}")
             else:
                 print(f"Refreshed external tools: {len(refreshed)}")
-        # ``cognee_codex_cognify`` is ignored: the codex-patched mode was
-        # removed with tesserae.cognee_codex (configs still carrying it are
-        # inert — CognifyOptions treats unknown modes as inactive).
-        cognee_cognify = bool(opts.get("cognee_cognify", False))
-        cognee_add = bool(opts.get("cognee_add", False))
-        explicit_cognee = cognee_cognify or cognee_add
-        cognify_mode = (
-            "cognify" if cognee_cognify
-            else "add" if cognee_add
-            else "off"
-        )
-        cognify_options = CognifyOptions(
-            mode=cognify_mode,
-            dataset=opts.get("cognee_dataset", "tesserae_research_graph"),
-            codex_model=opts.get("cognee_codex_model", "gpt-5.4"),
-            codex_timeout=int(opts.get("cognee_codex_timeout", 300)),
-            embedding_provider=opts.get("cognee_embedding_provider", "deterministic"),
-            ollama_embedding_model=opts.get("cognee_ollama_embedding_model", "qwen3-embedding:0.6b"),
-            ollama_embedding_endpoint=opts.get("cognee_ollama_embedding_endpoint", "http://127.0.0.1:11434/api/embed"),
-            ollama_embedding_timeout=int(opts.get("cognee_ollama_embedding_timeout", 120)),
-            local_embedding_dimensions=int(opts.get("cognee_local_embedding_dimensions", 128)),
-            system_root=opts.get("cognee_system_root", None),
-            data_root=opts.get("cognee_data_root", None),
-        ) if explicit_cognee else cognify_options_from_config(wiki.config())
+        # ``cognee_*`` compile_options keys are ignored: the cognee backend was
+        # removed in 0.19 (a legacy config carrying the memory_backends.cognee
+        # section gets a one-line note from the config loader).
         # Build a SessionExtractionOptions override when a --sessions/--no-sessions
         # CLI flag was passed OR a sessions_* compile_option is configured. None
         # means "no override — read from config", which is what
@@ -1382,7 +1356,6 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                 trends=bool(opts.get("trends", False)),
                 min_trend_sources=int(opts.get("min_trend_sources", 2)),
                 exclude_data=bool(opts.get("exclude_data", False)),
-                cognify=cognify_options if (cognify_options and cognify_options.is_active) else None,
                 vault_pull=not bool(opts.get("no_vault_pull", False)),
                 session_options=session_override,
                 use_extraction_feedback=bool(opts.get("use_extraction_feedback", False)),
@@ -2871,7 +2844,7 @@ def _backfill_setup_defaults(args: argparse.Namespace) -> None:
     branch reads ~21 attrs that the dieted init parser no longer defines. We
     ``setdefault`` each one with the legacy `setup_parser` default, EXCEPT the
     integration toggles, which take the NEW ``--yes`` defaults: every optional
-    integration (cognee, raganything) lands OFF. Color is
+    integration (raganything) lands OFF. Color is
     auto-disabled when stdout is not a TTY.
     """
     d = args.__dict__
@@ -2879,9 +2852,6 @@ def _backfill_setup_defaults(args: argparse.Namespace) -> None:
     d.setdefault("source_kind", "Repository")
     d.setdefault("raganything_parser", "mineru")
     d.setdefault("raganything_extras", "all")
-    d.setdefault("cognee_mode", "cognify")
-    # --yes default: cognee OFF (this is exactly what CI's `--no-cognee` encoded).
-    d.setdefault("no_cognee", True)
     # --yes default: raganything OFF (CI's `--skip-raganything`; never `--with-raganything`).
     d.setdefault("with_raganything", False)
     d.setdefault("skip_raganything", True)
@@ -2889,9 +2859,6 @@ def _backfill_setup_defaults(args: argparse.Namespace) -> None:
     # never `--install-*`/`--run-*`). These keep the wizard from shelling out.
     d.setdefault("install_raganything", False)
     d.setdefault("skip_install_raganything", True)
-    d.setdefault("install_cognee", False)
-    d.setdefault("skip_install_cognee", True)
-    d.setdefault("run_cognee", False)
     # --yes default: color auto-disabled when stdout is not an interactive TTY.
     d.setdefault("no_color", not sys.stdout.isatty())
 
@@ -3622,16 +3589,8 @@ def _handle_config_status(args: argparse.Namespace) -> int:
     if provider not in ("anthropic", "custom") and settings.get("model"):
         print(f"  model      : {settings['model']}   [{_source('llm_model', 'TESSERAE_LLM_MODEL')}]")
 
-    # Machine-wide (non-LLM) settings + optional dependency status — the rest of
-    # what `tesserae setup` manages, so `status` is a full picture, not LLM-only.
-    backends = global_cfg.get("memory_backends") if isinstance(global_cfg.get("memory_backends"), dict) else {}
-    cognee = backends.get("cognee") if isinstance(backends.get("cognee"), dict) else {}
-    print("\nMachine-wide settings (~/.tesserae/config.json):")
-    if cognee.get("enabled"):
-        print(f"  cognee     : enabled (mode={cognee.get('mode') or 'cognify'})")
-    else:
-        print("  cognee     : disabled   [enable: tesserae setup --enable-cognee]")
-
+    # Optional dependency status — the rest of what `tesserae setup` manages,
+    # so `status` is a full picture, not LLM-only.
     from .deps import status as _dep_status
 
     print("\nOptional dependencies:")
@@ -3711,7 +3670,7 @@ def _build_config_parser() -> argparse.ArgumentParser:
 
     p_deps = sub.add_parser(
         "deps",
-        help="List optional dependency status (memex, cognee, raganything, …) or install them.",
+        help="List optional dependency status (memex, raganything, …) or install them.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
@@ -3893,7 +3852,6 @@ def _setup_wants_interactive(args: argparse.Namespace) -> bool:
     explicit = bool(
         args.llm_provider or args.claude_config_dir or args.codex_home
         or args.reasoning_effort or args.install or getattr(args, "install_all", False)
-        or getattr(args, "enable_cognee", False)
         or getattr(args, "llm_model", None) or getattr(args, "llm_base_url", None)
         or getattr(args, "llm_api_key", None)
     )
@@ -3942,7 +3900,7 @@ def _setup_interactive_fill(args: argparse.Namespace) -> bool:
         ) or None
 
     installed = {d["name"]: d["installed"] for d in deps.status()}
-    recommended = {"memex": True, "cognee": True, "raganything": False}
+    recommended = {"memex": True, "raganything": False}
     chosen: List[str] = []
     print("\nOptional dependencies:")
     for name in deps.DEP_NAMES:
@@ -3953,8 +3911,6 @@ def _setup_interactive_fill(args: argparse.Namespace) -> bool:
             chosen.append(name)
     args.install = chosen
     args.install_all = False
-    if "cognee" in chosen or installed.get("cognee"):
-        args.enable_cognee = Confirm.ask("\nEnable cognee for all projects?", default=True)
     print()
     return Confirm.ask("Apply this setup?", default=True)
 
@@ -3992,8 +3948,7 @@ def _handle_config_setup(args: argparse.Namespace) -> int:
     llm_api_key = getattr(args, "llm_api_key", None)
     wrote_llm = bool(args.llm_provider or args.claude_config_dir or args.codex_home
                      or args.reasoning_effort or llm_model or llm_base_url or llm_api_key)
-    enable_cognee = bool(getattr(args, "enable_cognee", False))
-    if wrote_llm or enable_cognee:
+    if wrote_llm:
         merged = _merge_global_llm_config(
             _lj._load_global_llm_config(),
             llm_provider=args.llm_provider,
@@ -4004,17 +3959,7 @@ def _handle_config_setup(args: argparse.Namespace) -> int:
             base_url=llm_base_url,
             api_key=llm_api_key,
         )
-        wrote = []
-        if wrote_llm:
-            wrote.append("LLM defaults")
-        if enable_cognee:
-            # Turn cognee on for EVERY project (a project can still override).
-            backends = dict(merged.get("memory_backends") or {})
-            cognee = dict(backends.get("cognee") or {})
-            cognee.update({"enabled": True, "auto_cognify": True, "mode": args.cognee_mode})
-            backends["cognee"] = cognee
-            merged["memory_backends"] = backends
-            wrote.append(f"cognee ({args.cognee_mode}) enabled for all projects")
+        wrote = ["LLM defaults"]
         _write_global_config(_lj.GLOBAL_CONFIG_PATH, merged)
         if llm_api_key:
             print(
@@ -4026,15 +3971,14 @@ def _handle_config_setup(args: argparse.Namespace) -> int:
 
     rc = _install_deps(targets) if targets else 0
 
-    if not wrote_llm and not enable_cognee and not targets:
+    if not wrote_llm and not targets:
         # No-op invocation → show what's configured + available so the user
         # knows what to pass.
         _handle_config_status(argparse.Namespace(project=None, ping=False))
         print()
         _print_dep_status()
         print("\nRun `tesserae setup` for the interactive wizard, or pass flags, e.g.:\n"
-              "  tesserae setup --llm-provider codex --reasoning-effort medium --install all\n"
-              "  tesserae setup --enable-cognee --install cognee")
+              "  tesserae setup --llm-provider codex --reasoning-effort medium --install all")
     return rc
 
 
@@ -4064,10 +4008,19 @@ def _build_setup_parser() -> argparse.ArgumentParser:
     parser.add_argument("--llm-model", default=None, help="Machine-wide default model for the synthesis LLM client (llm_model)")
     parser.add_argument("--llm-base-url", default=None, help="Claude-compatible endpoint base URL for anthropic/custom (llm_base_url)")
     parser.add_argument("--llm-api-key", default=None, help="API key for anthropic/custom (stored in PLAINTEXT ~/.tesserae/config.json; prefer ANTHROPIC_API_KEY)")
-    parser.add_argument("--install", action="append", default=[], metavar="NAME", help="Dependency to install (memex, cognee, raganything, or 'all'); repeat")
+    parser.add_argument("--install", action="append", default=[], metavar="NAME", help="Dependency to install (memex, raganything, or 'all'); repeat")
     parser.add_argument("--install-all", action="store_true", help="Install every known optional dependency")
-    parser.add_argument("--enable-cognee", action="store_true", help="Enable the cognee cognify pass for ALL projects")
-    parser.add_argument("--cognee-mode", choices=["add", "cognify"], default="cognify", help="cognee mode when --enable-cognee")
+    # Removed backend (0.19): the cognee cognify pass no longer exists.
+    parser.add_argument(
+        "--enable-cognee",
+        action=_RemovedFlagAction,
+        message="setup: --enable-cognee was removed in 0.19 — the cognee backend no longer exists",
+    )
+    parser.add_argument(
+        "--cognee-mode",
+        action=_RemovedFlagAction,
+        message="setup: --cognee-mode was removed in 0.19 — the cognee backend no longer exists",
+    )
     parser.add_argument("-y", "--yes", action="store_true", help="Non-interactive: apply the flags as given without prompting")
     parser.set_defaults(_handler="_handle_setup_machine", _interactive_default=True)
     return parser
@@ -4504,7 +4457,7 @@ def _build_extract_parser() -> argparse.ArgumentParser:
     """The preserved bare-extraction parser, surfaced as `tesserae extract`.
 
     Flags copied verbatim from the legacy bare-extraction main (now removed; the
-    kuzu/cognee/canonicalize flags live HERE, not on `compile`).
+    kuzu/canonicalize flags live HERE, not on `compile`).
     """
     parser = argparse.ArgumentParser(
         prog="tesserae extract",
@@ -4549,11 +4502,12 @@ def _build_extract_parser() -> argparse.ArgumentParser:
     parser.add_argument("--project-markdown", help="Write a human-readable markdown projection of the final graph to this directory")
     parser.add_argument("--sqlite-output", help="Persist the final graph to a local SQLite database")
     parser.add_argument("--kuzu-output", help="Persist the final graph to a local Kuzu database")
-    parser.add_argument("--cognee-output", help="Write a Cognee-friendly JSONL export bundle to this directory")
-    parser.add_argument("--cognee-add", action="store_true", help="Add the generated --cognee-output bundle to Cognee without running cognify")
-    parser.add_argument("--cognee-cognify", action="store_true", help="After --cognee-add, run Cognee cognify for the dataset; may invoke configured LLM/embedding providers")
-    # Removed with tesserae.cognee_codex (the Codex-patched cognify mode).
-    for _moved in (
+    # Removed backend (0.19): the cognee bundle export / cognify pass no longer
+    # exist. Every --cognee-* flag is a clean-break stub (exit 2, one line).
+    for _removed in (
+        "--cognee-output",
+        "--cognee-add",
+        "--cognee-cognify",
         "--cognee-codex-cognify",
         "--cognee-codex-model",
         "--cognee-codex-timeout",
@@ -4562,15 +4516,15 @@ def _build_extract_parser() -> argparse.ArgumentParser:
         "--cognee-ollama-embedding-model",
         "--cognee-ollama-embedding-endpoint",
         "--cognee-ollama-embedding-timeout",
+        "--cognee-dataset",
+        "--cognee-system-root",
+        "--cognee-data-root",
     ):
         parser.add_argument(
-            _moved,
+            _removed,
             action=_RemovedFlagAction,
-            message="extract: the cognee codex mode was removed; use --cognee-cognify (Cognee's own providers)",
+            message=f"extract: {_removed} was removed in 0.19 — cognee was demoted in 0.18 and never fed the graph",
         )
-    parser.add_argument("--cognee-dataset", default="tesserae_research_graph", help="Cognee dataset name for --cognee-add")
-    parser.add_argument("--cognee-system-root", help="Optional isolated Cognee system root directory, useful when changing vector dimensions")
-    parser.add_argument("--cognee-data-root", help="Optional isolated Cognee data root directory")
     parser.add_argument("--batch-manifest", help="Track file hashes for incremental changed-only batch ingestion")
     parser.add_argument("--changed-only", action="store_true", help="When used with --batch-manifest, skip files whose content hash is unchanged")
     parser.add_argument("--limit", type=int, help="Maximum number of files to process in this run")
@@ -4683,16 +4637,6 @@ def _handle_extract(args: argparse.Namespace) -> int:
         SQLiteResearchGraphStore(Path(args.sqlite_output)).write_graph(graph, replace=True)
     if args.kuzu_output:
         KuzuResearchGraphStore(Path(args.kuzu_output)).write_graph(graph, replace=True)
-    if args.cognee_output:
-        CogneeResearchGraphAdapter().write_bundle(graph, Path(args.cognee_output))
-        if args.cognee_add or args.cognee_cognify:
-            asyncio.run(CogneeDirectImporter().add_bundle(
-                Path(args.cognee_output),
-                dataset_name=args.cognee_dataset,
-                cognify=args.cognee_cognify,
-                system_root=args.cognee_system_root,
-                data_root=args.cognee_data_root,
-            ))
     if args.report_output:
         report = GraphReporter().render_markdown(GraphReporter().summarize(graph))
         Path(args.report_output).parent.mkdir(parents=True, exist_ok=True)
@@ -4823,7 +4767,7 @@ def _build_query_parser() -> argparse.ArgumentParser:
         prog="tesserae query",
         description=(
             "Raw retrieval: BM25/semantic search over the compiled wiki, or an "
-            "explicit memory backend (--backend raganything|cognee). No LLM "
+            "explicit memory backend (--backend raganything). No LLM "
             "synthesis — that lives on `tesserae ask`."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -4831,30 +4775,30 @@ def _build_query_parser() -> argparse.ArgumentParser:
             "examples:\n"
             "  tesserae query \"what cites the compile pipeline?\"\n"
             "  tesserae query \"open questions\" --top-k 12\n"
-            "  tesserae query \"vector store choice\" --backend cognee\n"
+            "  tesserae query \"vector store choice\" --backend raganything\n"
         ),
     )
     parser.add_argument("question", nargs="?", default=None, help="Question text; omit to use --interactive")
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--top-k", type=int, default=8, help="Maximum number of search hits to return (default: 8)")
     parser.add_argument("--kind", help="Restrict hits to a single wiki kind (e.g. papers, concepts, repos)")
+    # "cognee" stays parseable so the removal stub in `_project_query_handler`
+    # (exit 2) can answer instead of a confusing argparse choices error.
     parser.add_argument(
         "--backend",
         choices=["wiki", "raganything", "cognee"],
         default="wiki",
+        metavar="{wiki,raganything}",
         help="Retrieval backend (default: wiki = compiled-wiki search). Explicit "
-        "raganything/cognee short-circuit to that backend and surface its errors.",
+        "raganything short-circuits to that backend and surfaces its errors.",
     )
-    parser.add_argument(
-        "--cognee-search-type",
-        default=None,
-        help="Cognee SearchType name when --backend cognee (e.g. GRAPH_COMPLETION, CHUNKS, SUMMARIES; legacy INSIGHTS maps to GRAPH_COMPLETION).",
-    )
-    parser.add_argument(
-        "--cognee-dataset",
-        default=None,
-        help="Override the configured Cognee dataset when --backend cognee.",
-    )
+    # Removed backend (0.19): every --cognee-* flag is a clean-break stub.
+    for _removed in ("--cognee-search-type", "--cognee-dataset"):
+        parser.add_argument(
+            _removed,
+            action=_RemovedFlagAction,
+            message=f"query: {_removed} was removed in 0.19 — cognee was demoted in 0.18 and never fed the graph",
+        )
     for _moved in ("--llm", "--no-llm", "--model"):
         parser.add_argument(
             _moved,

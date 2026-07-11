@@ -361,7 +361,7 @@ llmstxt.org 长格式：所有 wiki 页面串接在一起。限制为 5 MB；如
 
 ### `/graph.json` ✅
 
-完整的 `ResearchGraph` payload — 包括没有 HTML 页面的 code-graph nodes。当工具想要完整 graph 做自己的分析时适用（MCP、Cognee、Graphiti consumers 都会读取它）。
+完整的 `ResearchGraph` payload — 包括没有 HTML 页面的 code-graph nodes。当工具想要完整 graph 做自己的分析时适用（MCP 和 Graphiti consumers 都会读取它）。
 
 ### `/graph.jsonld` ✅
 

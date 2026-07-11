@@ -66,7 +66,7 @@ cd /path/to/my-project
 tesserae init
 ```
 
-`tesserae init` is the single onboarding step. The wizard detects common sources such as `README.md`, `docs`, `src`, `lib`, `app`, `packages`, and `data`, probes which LLM CLIs are installed **and logged in**, lets you pick the LLM provider, and writes `.tesserae/config.json`. Optional memory backends (RAG-Anything, Cognee) are **off by default**; enable them later in `memory_backends` in the config, and query them explicitly with `tesserae query --backend …`.
+`tesserae init` is the single onboarding step. The wizard detects common sources such as `README.md`, `docs`, `src`, `lib`, `app`, `packages`, and `data`, probes which LLM CLIs are installed **and logged in**, lets you pick the LLM provider, and writes `.tesserae/config.json`. The optional RAG-Anything memory backend is **off by default**; enable it later in `memory_backends` in the config, and query it explicitly with `tesserae query --backend raganything`.
 
 For a non-interactive setup (CI, scripts), pass `--yes` to accept the detected
 defaults without prompting (all optional integrations OFF):
@@ -132,10 +132,9 @@ tesserae compile
   agent_harness/
   harness_sessions/
   site/
-  cognee_bundle/
 ```
 
-Use `--changed-only` after the first run to skip unchanged markdown files while preserving the previous graph when no files changed. If Cognee runtime is enabled, compile also updates Cognee best-effort after writing `.tesserae/cognee_bundle/`.
+Use `--changed-only` after the first run to skip unchanged markdown files while preserving the previous graph when no files changed.
 
 To ingest extra paths ad-hoc without touching the configured sources, pass them
 positionally: `tesserae compile path/to/extra.md docs/`.
@@ -158,23 +157,11 @@ argparse default is still the fallback. Set a key there to change behavior:
 | `use_extraction_feedback` | `--use-extraction-feedback` | `false` | Feed prior extraction results back into the run. |
 | `sessions_llm` | `--sessions-llm` | (auto) | LLM session-extraction mode (`auto`/`true`/`false`). |
 | `sessions_model` | `--sessions-model` | (none) | Override the LLM model used for session extraction. |
-| `cognee_add` | `--cognee-add` | `false` | Add the Cognee bundle to the dataset (no cognify). |
-| `cognee_cognify` | `--cognee-cognify` | `false` | Add the bundle and run Cognee cognify. |
-| `cognee_dataset` | `--cognee-dataset` | `tesserae_research_graph` | Cognee dataset name. |
-| `cognee_embedding_provider` | `--cognee-embedding-provider` | `deterministic` | Embedding provider for the Cognee lane. |
-| `cognee_ollama_embedding_model` | `--cognee-ollama-embedding-model` | `qwen3-embedding:0.6b` | Ollama embedding model. |
-| `cognee_ollama_embedding_endpoint` | `--cognee-ollama-embedding-endpoint` | `http://127.0.0.1:11434/api/embed` | Ollama `/api/embed` endpoint. |
-| `cognee_ollama_embedding_timeout` | `--cognee-ollama-embedding-timeout` | `120` | Ollama embedding request timeout (seconds). |
-| `cognee_local_embedding_dimensions` | `--cognee-local-embedding-dimensions` | `128` | Local embedding dimensionality. |
-| `cognee_system_root` | `--cognee-system-root` | (none) | Isolated Cognee system root directory. |
-| `cognee_data_root` | `--cognee-data-root` | (none) | Isolated Cognee data root directory. |
 
-> **Cognee is opt-in.** The Cognee backend is disabled by default: install it
-> with `pip install tesserae[cognee]` and set `memory_backends.cognee.enabled: true`
-> to use it (queried explicitly via `tesserae query --backend cognee`). The
-> legacy Codex-patched cognify mode (`cognee_codex_cognify` /
-> `cognee_codex_model` / `cognee_codex_timeout`) was removed — configs still
-> carrying those keys are inert.
+> **Cognee was removed in 0.19.** The cognee backend was demoted in 0.18 and
+> never fed the graph. Configs still carrying a `memory_backends.cognee`
+> section (or `cognee_*` compile options) keep loading — the section is
+> ignored with a one-line note.
 
 > **One-shot pipeline.** `tesserae refresh` runs the whole loop in-process — it imports any new agent sessions, compiles, and syncs the vault in a single command. Pass `--changed-only` for the opt-in incremental compile.
 
@@ -286,7 +273,7 @@ tesserae query "What is Gaussian Splatting?"
 
 `ask` is the answer surface: the model plans retrieval over the compiled graph, then synthesizes a cited answer. It works with a logged-in `claude`/`codex` CLI (OAuth) or `ANTHROPIC_API_KEY`; pass `--no-llm` for ranked search hits only (this force-off beats `TESSERAE_QUERY_LLM=1`). `TESSERAE_QUERY_DRY_RUN=1` exercises the prompt without an API call.
 
-`query` is the retrieval surface: BM25/semantic search over `.tesserae/site/search-index.json`, with a 200-char excerpt pulled from the matching `wiki/<kind>/<slug>.md`. Pass `--kind papers` (or `concepts`, `repos`, etc.) to narrow, `--top-k N` to widen, and `--json` for structured output; `--interactive` opens a readline REPL — blank line or EOF exits. Explicit memory backends live here too: `--backend raganything|cognee` short-circuits to that backend and surfaces its errors (with `--cognee-search-type` / `--cognee-dataset` for the Cognee lane). There is no LLM synthesis on `query` — that's `ask`.
+`query` is the retrieval surface: BM25/semantic search over `.tesserae/site/search-index.json`, with a 200-char excerpt pulled from the matching `wiki/<kind>/<slug>.md`. Pass `--kind papers` (or `concepts`, `repos`, etc.) to narrow, `--top-k N` to widen, and `--json` for structured output; `--interactive` opens a readline REPL — blank line or EOF exits. The explicit memory backend lives here too: `--backend raganything` short-circuits to that backend and surfaces its errors. There is no LLM synthesis on `query` — that's `ask`.
 
 ## 7. Compile agent-ready context on demand
 

@@ -47,7 +47,7 @@ tesserae config deps                     # show what's installed
 tesserae config deps --install memex     # fast transcript search (needs cargo)
 ```
 
-既知のオプション依存関係: **memex**（高速トランスクリプト検索）、**cognee**、
+既知のオプション依存関係: **memex**（高速トランスクリプト検索）と
 **raganything**。プロジェクトごとの `.tesserae/config.json`
 はこれらのグローバルデフォルトを引き続き上書きします（解決順序: env → project → global →
 built-in）。`tesserae init` もインタラクティブなセットアップ中に memex のインストールを提案します。
@@ -63,22 +63,19 @@ built-in）。`tesserae init` もインタラクティブなセットアップ�
 
 ```bash
 # Machine-wide installs of the optional pieces:
-tesserae setup --install raganything --install cognee
+tesserae setup --install raganything
 
 # Then per project: enable what you want in .tesserae/config.json
-#   memory_backends.raganything.enabled: true
-#   memory_backends.cognee.enabled: true        (query via `tesserae query --backend …`)
+#   memory_backends.raganything.enabled: true   (query via `tesserae query --backend raganything`)
 ```
 
 高度なワークフローのために、手動でのパッケージインストールも引き続き利用できます:
 
 ```bash
 pip install kuzu graphiti-core
-pip install "tesserae[cognee]"
 ```
 
 - `kuzu` — Kuzu グラフの永続化。
-- `tesserae[cognee]` — オプトインの Cognee ランタイム add/cognify ワークフロー（デフォルトで無効。Codex パッチ版の cognify モードは削除されました）。
 - RAG-Anything — `pip install 'raganything[all]'` 経由でインストールされます（`tesserae setup --install raganything`）。Tesserae はマルチモーダルパーサー実行のための管理されたリフレッシュラッパーを保存します。
 - `graphiti-core` — ライブの Graphiti/Neo4j 同期。`export graphiti` と `export graphiti --sync --dry-run` はこれがなくても動作します。
 

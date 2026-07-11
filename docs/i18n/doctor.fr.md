@@ -35,7 +35,7 @@ Vingt vérifications, regroupées par catégorie :
 | `compile_lock` | processes | si un verrou de compilation vivant est détenu, et par quel pid | rapport seulement — doctor **ne tue jamais et ne supprime jamais un verrou vivant** |
 | `daemon_pid` | processes | `daemon.pid` pointe vers un processus moteur vivant | **SAFE** : supprime le pidfile quand son propriétaire est mort |
 | `llm_login` | environment | le backend LLM configuré est réellement utilisable (CLI claude/codex connectée, ou clé API présente) | rapport seulement (suggère `claude /login` / `codex login`) |
-| `optional_deps` | environment | statut des dépendances optionnelles (memex, cognee, raganything) | rapport seulement (les installations passent par le réseau) |
+| `optional_deps` | environment | statut des dépendances optionnelles (memex, raganything) | rapport seulement (les installations passent par le réseau) |
 | `embedding_backend` | environment | un vrai backend d’embeddings sémantiques est disponible | rapport seulement (suggère `pip install tesserae[semantic]`) |
 | `environment` | environment | résumé de détection d’environnement en bloc | section rapport seulement |
 | `build_history` | hygiene | taille et forme de `.build-history` | **SAFE** : le tronque, en préservant toujours l’entrée `git_head` la plus récente (la vérification de staleness en dépend) |

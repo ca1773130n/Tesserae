@@ -67,7 +67,7 @@ cd /path/to/my-project
 tesserae init
 ```
 
-`tesserae init`이 유일한 온보딩 단계입니다. 마법사는 `README.md`, `docs`, `src`, `lib`, `app`, `packages`, `data` 같은 흔한 소스를 감지하고, 어떤 LLM CLI가 설치되어 **로그인까지 되어 있는지** 탐침하고, LLM 프로바이더를 고르게 하고, `.tesserae/config.json`을 기록합니다. 선택적 메모리 백엔드(RAG-Anything, Cognee)는 **기본적으로 꺼져** 있습니다; 나중에 config의 `memory_backends`에서 활성화하고, `tesserae query --backend …`로 명시적으로 쿼리하세요.
+`tesserae init`이 유일한 온보딩 단계입니다. 마법사는 `README.md`, `docs`, `src`, `lib`, `app`, `packages`, `data` 같은 흔한 소스를 감지하고, 어떤 LLM CLI가 설치되어 **로그인까지 되어 있는지** 탐침하고, LLM 프로바이더를 고르게 하고, `.tesserae/config.json`을 기록합니다. 선택적인 RAG-Anything 메모리 백엔드는 **기본적으로 꺼져** 있습니다; 나중에 config의 `memory_backends`에서 활성화하고, `tesserae query --backend raganything`으로 명시적으로 쿼리하세요.
 
 비대화형 설정(CI, 스크립트)의 경우, `--yes`를 전달해 감지된 기본값을 프롬프트
 없이 수락하세요(모든 선택적 통합 OFF):
@@ -132,10 +132,9 @@ tesserae compile
   agent_harness/
   harness_sessions/
   site/
-  cognee_bundle/
 ```
 
-첫 실행 이후에는 `--changed-only`를 사용해 변경되지 않은 markdown 파일을 건너뛰세요 — 변경된 파일이 없으면 이전 그래프가 보존됩니다. Cognee 런타임이 활성화되어 있으면, compile은 `.tesserae/cognee_bundle/`을 기록한 뒤 best-effort로 Cognee도 업데이트합니다.
+첫 실행 이후에는 `--changed-only`를 사용해 변경되지 않은 markdown 파일을 건너뛰세요 — 변경된 파일이 없으면 이전 그래프가 보존됩니다.
 
 설정된 소스를 건드리지 않고 임시로 추가 경로를 ingest하려면 위치 인자로
 전달하세요: `tesserae compile path/to/extra.md docs/`.
@@ -159,23 +158,11 @@ compile 플래그는 `.tesserae/config.json`의 `compile_options` 블록으로
 | `use_extraction_feedback` | `--use-extraction-feedback` | `false` | 이전 추출 결과를 실행에 피드백. |
 | `sessions_llm` | `--sessions-llm` | (auto) | LLM 세션 추출 모드(`auto`/`true`/`false`). |
 | `sessions_model` | `--sessions-model` | (없음) | 세션 추출에 사용되는 LLM 모델을 재정의. |
-| `cognee_add` | `--cognee-add` | `false` | Cognee 번들을 데이터셋에 추가(cognify 없음). |
-| `cognee_cognify` | `--cognee-cognify` | `false` | 번들을 추가하고 Cognee cognify 실행. |
-| `cognee_dataset` | `--cognee-dataset` | `tesserae_research_graph` | Cognee 데이터셋 이름. |
-| `cognee_embedding_provider` | `--cognee-embedding-provider` | `deterministic` | Cognee 레인용 embedding 프로바이더. |
-| `cognee_ollama_embedding_model` | `--cognee-ollama-embedding-model` | `qwen3-embedding:0.6b` | Ollama embedding 모델. |
-| `cognee_ollama_embedding_endpoint` | `--cognee-ollama-embedding-endpoint` | `http://127.0.0.1:11434/api/embed` | Ollama `/api/embed` 엔드포인트. |
-| `cognee_ollama_embedding_timeout` | `--cognee-ollama-embedding-timeout` | `120` | Ollama embedding 요청 타임아웃(초). |
-| `cognee_local_embedding_dimensions` | `--cognee-local-embedding-dimensions` | `128` | 로컬 embedding 차원 수. |
-| `cognee_system_root` | `--cognee-system-root` | (없음) | 격리된 Cognee 시스템 루트 디렉터리. |
-| `cognee_data_root` | `--cognee-data-root` | (없음) | 격리된 Cognee 데이터 루트 디렉터리. |
 
-> **Cognee는 옵트인.** Cognee 백엔드는 기본 비활성화입니다:
-> `pip install tesserae[cognee]`로 설치하고 `memory_backends.cognee.enabled: true`를
-> 설정해서 사용하세요(`tesserae query --backend cognee`로 명시적으로 쿼리).
-> 레거시 Codex 패치 cognify 모드(`cognee_codex_cognify` /
-> `cognee_codex_model` / `cognee_codex_timeout`)는 제거되었습니다 — 그 키를
-> 아직 갖고 있는 config는 아무 효과가 없습니다.
+> **Cognee는 0.19에서 제거되었습니다.** cognee 백엔드는 0.18에서 강등되었고
+> 그래프에 실제로 데이터를 공급한 적이 없습니다. `memory_backends.cognee`
+> 섹션(또는 `cognee_*` compile 옵션)을 아직 갖고 있는 config는 계속
+> 로드됩니다 — 해당 섹션은 한 줄짜리 안내와 함께 무시됩니다.
 
 > **원샷 파이프라인.** `tesserae refresh`는 전체 루프를 프로세스 내에서 실행합니다 — 새 에이전트 세션을 가져오고, compile하고, vault를 하나의 명령으로 동기화합니다. 옵트인 증분 compile은 `--changed-only`를 전달하세요.
 
@@ -288,7 +275,7 @@ tesserae query "What is Gaussian Splatting?"
 
 `ask`는 답변 표면입니다: 모델이 컴파일된 그래프 위에서 retrieval을 계획한 뒤 citation이 달린 답변을 합성합니다. 로그인된 `claude`/`codex` CLI(OAuth) 또는 `ANTHROPIC_API_KEY`로 동작합니다; 순위 매겨진 검색 결과만 원하면 `--no-llm`을 전달하세요(이 강제 off는 `TESSERAE_QUERY_LLM=1`을 이깁니다). `TESSERAE_QUERY_DRY_RUN=1`은 API 호출 없이 프롬프트를 연습합니다.
 
-`query`는 retrieval 표면입니다: `.tesserae/site/search-index.json` 위의 BM25/시맨틱 검색이며, 매칭되는 `wiki/<kind>/<slug>.md`에서 200자 발췌를 가져옵니다. 좁히려면 `--kind papers`(또는 `concepts`, `repos` 등)를, 넓히려면 `--top-k N`을, 구조화된 출력에는 `--json`을 전달하세요; `--interactive`는 readline REPL을 엽니다 — 빈 줄이나 EOF로 종료합니다. 명시적 메모리 백엔드도 여기에 있습니다: `--backend raganything|cognee`는 해당 백엔드로 바로 가서 그 오류를 노출합니다(Cognee 레인에는 `--cognee-search-type` / `--cognee-dataset`). `query`에는 LLM 합성이 없습니다 — 그건 `ask`입니다.
+`query`는 retrieval 표면입니다: `.tesserae/site/search-index.json` 위의 BM25/시맨틱 검색이며, 매칭되는 `wiki/<kind>/<slug>.md`에서 200자 발췌를 가져옵니다. 좁히려면 `--kind papers`(또는 `concepts`, `repos` 등)를, 넓히려면 `--top-k N`을, 구조화된 출력에는 `--json`을 전달하세요; `--interactive`는 readline REPL을 엽니다 — 빈 줄이나 EOF로 종료합니다. 명시적 메모리 백엔드도 여기에 있습니다: `--backend raganything`은 해당 백엔드로 바로 가서 그 오류를 노출합니다. `query`에는 LLM 합성이 없습니다 — 그건 `ask`입니다.
 
 ## 7. 온디맨드로 에이전트 준비 컨텍스트 compile
 

@@ -94,21 +94,17 @@ def test_ask_project_no_llm_beats_env_and_use_llm(monkeypatch):
 
 
 def test_ask_project_auto_never_enters_optional_backends(monkeypatch):
-    # Contract change: auto goes straight to the wiki/planner path — enabled
-    # raganything/cognee backends are reachable only via explicit backend=.
-    import tesserae.cognee_query as cq
+    # Contract change: auto goes straight to the wiki/planner path — an enabled
+    # raganything backend is reachable only via explicit backend=.
     import tesserae.raganything_query as rq
 
     def _boom(*a, **k):
         raise AssertionError("auto must not call optional backends")
 
-    monkeypatch.setattr(cq, "search_cognee", _boom)
     monkeypatch.setattr(rq, "query", _boom)
-    monkeypatch.setattr("tesserae.query._cognee_importable", lambda: True)
     wiki = _StubWiki(
         backends={
             "raganything": {"enabled": True, "working_dir": "rag"},
-            "cognee": {"enabled": True, "dataset": "d"},
         }
     )
     env = ask_project(wiki, "q?", backend="auto")
@@ -116,16 +112,11 @@ def test_ask_project_auto_never_enters_optional_backends(monkeypatch):
     assert "auto_notes" not in env
 
 
-def test_ask_project_explicit_cognee_surfaces_errors(monkeypatch):
-    # Explicit backend= still short-circuits to the backend and raises.
-    import tesserae.cognee_query as cq
-
-    def _boom(*a, **k):
-        raise RuntimeError("auth required")
-
-    monkeypatch.setattr(cq, "search_cognee", _boom)
-    wiki = _StubWiki(backends={"cognee": {"enabled": True, "dataset": "d"}})
-    with pytest.raises(RuntimeError, match="cognee ask failed"):
+def test_ask_project_backend_cognee_raises_removal_error():
+    # Removed backend (0.19): an explicit cognee ask gets a clear ValueError
+    # naming the removal, not a generic unknown-backend message.
+    wiki = _StubWiki()
+    with pytest.raises(ValueError, match="cognee backend was removed in 0.19"):
         ask_project(wiki, "q?", backend="cognee")
 
 
@@ -612,24 +603,29 @@ def test_cli_query_llm_flags_moved_to_ask(flag, capsys):
     assert "query: LLM synthesis has moved → tesserae ask" in capsys.readouterr().err
 
 
-def test_cli_query_backend_cognee_short_circuits(tmp_path, monkeypatch, capsys):
-    """`query --backend cognee` is the new home of explicit-backend retrieval."""
+def test_cli_query_backend_cognee_prints_removal_stub(tmp_path, capsys):
+    """`query --backend cognee` is a clean-break stub: one line, exit 2."""
     from tesserae import cli
 
     project = _make_project(tmp_path)
-    (project / ".tesserae" / "config.json").write_text(
-        json.dumps({"name": "demo", "sources": [], "external_tools": []}),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(
-        "tesserae.cognee_query.search_cognee",
-        lambda question, dataset=None, search_type="INSIGHTS", top_k=8: [f"cognee:{question}"],
-    )
     rc = cli.main(["query", "vision banana", "--backend", "cognee", "--project", str(project)])
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "Cognee answer" in out
-    assert "cognee:vision banana" in out
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert (
+        "removed in 0.19 — cognee was demoted in 0.18 and never fed the graph; "
+        "use plain query or ask" in err
+    )
+
+
+@pytest.mark.parametrize("flag", [["--cognee-search-type", "CHUNKS"], ["--cognee-dataset", "d"]])
+def test_cli_query_cognee_flags_removed(flag, capsys):
+    """query lost its --cognee-* flags — one-line stub, exit 2 (clean break)."""
+    from tesserae import cli
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["query", "anything", *flag])
+    assert exc_info.value.code == 2
+    assert "was removed in 0.19" in capsys.readouterr().err
 
 
 def test_cli_one_shot_json_emits_valid_payload(tmp_path):

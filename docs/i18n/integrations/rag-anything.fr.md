@@ -4,7 +4,7 @@
 <p align="center"><a href="../../integrations/rag-anything.md">English</a> · <a href="rag-anything.ko.md">한국어</a> · <a href="rag-anything.zh.md">中文</a> · <a href="rag-anything.ja.md">日本語</a> · <a href="rag-anything.ru.md">Русский</a> · <a href="rag-anything.es.md">Español</a> · <a href="rag-anything.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-[RAG-Anything](https://github.com/HKUDS/RAG-Anything) est un framework RAG multimodal (construit sur LightRAG) qui parse les PDF, documents Office, images et équations via MinerU/Docling/PaddleOCR. Tesserae l’intègre à la fois comme pipeline d’ingestion multimodale (projection de graphe native façon UA) et comme backend mémoire runtime aux côtés de Cognee.
+[RAG-Anything](https://github.com/HKUDS/RAG-Anything) est un framework RAG multimodal (construit sur LightRAG) qui parse les PDF, documents Office, images et équations via MinerU/Docling/PaddleOCR. Tesserae l’intègre à la fois comme pipeline d’ingestion multimodale (projection de graphe native façon UA) et comme backend mémoire runtime optionnel.
 
 ## Pourquoi utiliser les deux ?
 
@@ -114,11 +114,11 @@ La provenance est préservée sur chaque nœud :
 {"system": "rag-anything", "id": "doc-<sha256>", "type": "document", "artifact": ".tesserae/external/raganything/manifest.json"}
 ```
 
-Note : la vue graphe interactive masque par défaut les nœuds du groupe `sources` pour se concentrer sur les concepts et entités — les SourceDocuments raganything projetés restent dans `graph.json` (MCP, Cognee, la recherche et les vues wiki par page les voient toujours), ils n’inondent simplement pas le canevas. Définissez `graph_view.show_sources = true` dans `.tesserae/config.json` pour restaurer la vue dense.
+Note : la vue graphe interactive masque par défaut les nœuds du groupe `sources` pour se concentrer sur les concepts et entités — les SourceDocuments raganything projetés restent dans `graph.json` (MCP, la recherche et les vues wiki par page les voient toujours), ils n’inondent simplement pas le canevas. Définissez `graph_view.show_sources = true` dans `.tesserae/config.json` pour restaurer la vue dense.
 
 ## Backend mémoire runtime
 
-`memory_backends.raganything` (défaut produit par `default_raganything_backend_config`) coexiste avec Cognee. `project ask` essaie les backends par ordre de priorité ; la priorité par projet peut être définie via `memory_backends.priority`. RAG-Anything est opt-in (défaut `enabled: false`) ; le drapeau de setup `--with-raganything` l’active.
+`memory_backends.raganything` (défaut produit par `default_raganything_backend_config`) est le seul backend mémoire optionnel. RAG-Anything est opt-in (défaut `enabled: false`) ; le drapeau de setup `--with-raganything` l’active.
 
 ### Fournisseur LLM (aucune clé API requise)
 
@@ -149,15 +149,8 @@ tesserae ask "What does the integration spec say about parser routing?"
 
 # Explicit backends live on `query` — raw retrieval, no LLM synthesis.
 tesserae query "..." --backend raganything
-tesserae query "..." --backend cognee
 tesserae query "..." --backend wiki
 ```
-
-> **Type de recherche Cognee 1.0.** Cognee 1.0 a retiré l’ancien récupérateur
-> `INSIGHTS`, donc Tesserae fait défaut du backend cognee à `GRAPH_COMPLETION`
-> (une réponse synthétisée sur le graphe de connaissances). Pour de la
-> récupération brute au lieu d’une réponse générée, passez
-> `--cognee-search-type CHUNKS` (ou `SUMMARIES`).
 
 `tesserae query --backend raganything` appelle `tesserae.raganything_query.query` directement. Un `working_dir` relatif dans `memory_backends.raganything` est résolu contre la racine du projet avant l’appel.
 
@@ -199,7 +192,7 @@ tesserae ask "What did I write about RLHF?" --scope all-registered --json
 tesserae ask "..." --scope all-registered --scope-aliases research side-projects
 ```
 
-Le handler itère les projets enregistrés par ordre alphabétique, appelle `ask_project` sur chacun et agrège les enveloppes par projet. Un seul projet en échec — config manquante, RAG-Anything non activé, Cognee hors service — est capturé comme `{"error": "..."}` dans l’emplacement de cet alias et n’avorte jamais le reste du fan-out. Le même argument `scope` est accepté par l’outil MCP `ask`, donc les agents de codage pilotés par MCP obtiennent le même fan-out sans plomberie supplémentaire.
+Le handler itère les projets enregistrés par ordre alphabétique, appelle `ask_project` sur chacun et agrège les enveloppes par projet. Un seul projet en échec — config manquante, RAG-Anything non activé — est capturé comme `{"error": "..."}` dans l’emplacement de cet alias et n’avorte jamais le reste du fan-out. Le même argument `scope` est accepté par l’outil MCP `ask`, donc les agents de codage pilotés par MCP obtiennent le même fan-out sans plomberie supplémentaire.
 
 ### Registre multi-projets (`tesserae projects`)
 
@@ -226,7 +219,7 @@ Le serveur MCP stdio expose un outil `ask` avec le même sélecteur de backend :
 }
 ```
 
-L’ordre de dispatch (`raganything` → `cognee` → recherche du wiki compilé) et la résolution de `working_dir` reflètent exactement le handler CLI, si bien que les agents de codage et les opérateurs humains convergent vers les mêmes réponses.
+L’ordre de dispatch (`raganything` → recherche du wiki compilé) et la résolution de `working_dir` reflètent exactement le handler CLI, si bien que les agents de codage et les opérateurs humains convergent vers les mêmes réponses.
 
 ## Prérequis système
 

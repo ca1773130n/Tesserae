@@ -11,7 +11,7 @@ def test_make_codex_llm_func_routes_to_run_codex_cli(monkeypatch):
         captured["timeout"] = timeout
         return "codex-answer"
 
-    # run_codex_cli was inlined into raganything_llm when tesserae.cognee_codex
+    # run_codex_cli was inlined into raganything_llm when its former home
     # was removed; the adapter resolves it via module-global lookup.
     monkeypatch.setattr("tesserae.raganything_llm.run_codex_cli", fake_run_codex_cli)
 

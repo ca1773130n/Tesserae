@@ -62,7 +62,6 @@ class _FakeWiki:
             manifest=project_root / ".tesserae" / "manifest.json",
             sqlite=project_root / ".tesserae" / "sqlite.db",
             markdown_projection=project_root / ".tesserae" / "markdown_projection",
-            cognee_bundle=project_root / ".tesserae" / "cognee_bundle",
             report=project_root / ".tesserae" / "report.md",
             temporal_facts=project_root / ".tesserae" / "temporal_facts.jsonl",
             competitive_report=project_root / ".tesserae" / "competitive_report.md",
