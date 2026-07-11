@@ -83,3 +83,9 @@ uv-*.lock
 
 # grd evolve / autopilot planning artifacts — per-developer state
 .planning/
+
+# Local tool state / OS noise (never ship)
+.DS_Store
+.codegraph/
+tsx-501/
+graph-3d.png
