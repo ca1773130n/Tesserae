@@ -57,12 +57,17 @@ def process_start_time(pid: int) -> Optional[str]:
         except (IndexError, ValueError):
             return None
     # macOS / BSD: no /proc — ask ps for the absolute start timestamp.
+    # LC_ALL=C pins the rendering: ps localizes lstart, so a daemon started
+    # under a Korean-locale shell and a checker under an English one would
+    # otherwise disagree about the SAME instant and misread a live owner as
+    # PID reuse (doctor would then offer to delete a live daemon's pidfile).
     try:
         result = subprocess.run(
             ["ps", "-o", "lstart=", "-p", str(pid)],
             capture_output=True,
             text=True,
             timeout=_PS_TIMEOUT_S,
+            env={**os.environ, "LC_ALL": "C"},
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -71,7 +76,11 @@ def process_start_time(pid: int) -> Optional[str]:
 
 
 def process_cmdline(pid: int) -> Optional[str]:
-    """Best-effort command line for ``pid`` (diagnostic only; never decisive)."""
+    """Best-effort command line for ``pid``.
+
+    Diagnostic in pidfiles, plus one narrow decisive use: when start-time
+    renders disagree (locale-mismatched writer/reader), an exact cmdline match
+    rescues ``owner_is_alive`` — see the fallback there."""
     proc_cmdline = Path(f"/proc/{pid}/cmdline")
     if proc_cmdline.exists():
         try:
@@ -159,7 +168,16 @@ def owner_is_alive(payload: Optional[dict]) -> bool:
     live = process_start_time(pid)
     if live is None:
         return True  # can't read identity now — don't risk a double start
-    return live == recorded
+    if live == recorded:
+        return True
+    # Start-time render can differ for the SAME instant when writer and
+    # reader ran under different locales (pre-fix pidfiles; ps localizes
+    # lstart on macOS). A matching full cmdline rescues the alive verdict —
+    # it can only ever widen "alive", never declare a live owner stale.
+    recorded_cmd = payload.get("cmdline")
+    if recorded_cmd:
+        return process_cmdline(pid) == recorded_cmd
+    return False
 
 
 def read_owner(path: Path) -> Optional[dict]:

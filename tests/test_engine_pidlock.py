@@ -102,3 +102,37 @@ def test_real_platform_start_time_roundtrips():
     assert payload["pid"] == os.getpid()
     assert payload["start_time"] is not None
     assert pidlock.owner_is_alive(payload) is True
+
+
+def test_locale_mismatched_start_time_rescued_by_cmdline(monkeypatch):
+    """Same instant, different locale renderings (Korean writer, C reader):
+    a matching full cmdline rescues the alive verdict instead of misreading
+    a live daemon as PID reuse."""
+    monkeypatch.setattr(pidlock, "process_start_time", lambda pid: "Sat Jul 11 18:51:15 2026")
+    monkeypatch.setattr(pidlock, "process_cmdline", lambda pid: "python -m tesserae engine")
+    payload = {
+        "pid": os.getpid(),
+        "start_time": "2026년  7월 11일 토요일 18시 51분 15초",
+        "cmdline": "python -m tesserae engine",
+    }
+    assert pidlock.owner_is_alive(payload) is True
+
+
+def test_mismatched_start_time_and_cmdline_is_stale(monkeypatch):
+    """Genuine PID reuse: both identity signals disagree — stale."""
+    monkeypatch.setattr(pidlock, "process_start_time", lambda pid: "Sat Jul 11 18:51:15 2026")
+    monkeypatch.setattr(pidlock, "process_cmdline", lambda pid: "some other process")
+    payload = {
+        "pid": os.getpid(),
+        "start_time": "Sat Jan  1 00:00:00 2022",
+        "cmdline": "python -m tesserae engine",
+    }
+    assert pidlock.owner_is_alive(payload) is False
+
+
+def test_ps_start_time_is_locale_pinned():
+    """The macOS ps branch must pin LC_ALL=C so writer/reader agree."""
+    import inspect
+
+    src = inspect.getsource(pidlock.process_start_time)
+    assert 'LC_ALL' in src  # regression guard: locale-pinned ps invocation
