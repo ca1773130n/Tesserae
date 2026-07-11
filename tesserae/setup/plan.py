@@ -76,21 +76,6 @@ class SetupPlan(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
-def _understand_anything_install_command(platform: str = "codex") -> str:
-    return (
-        "curl -fsSL https://raw.githubusercontent.com/Lum1104/Understand-Anything/main/install.sh "
-        f"| bash -s {shlex.quote(platform)}"
-    )
-
-
-def _understand_anything_refresh_command(platform: str = "codex") -> str:
-    return (
-        "{python} -m tesserae.understand_anything_refresh "
-        "--project {project} "
-        f"--platform {shlex.quote(platform)}"
-    )
-
-
 def _raganything_refresh_command(parser: str = "mineru") -> str:
     return (
         "{python} -m tesserae.raganything_refresh "
@@ -144,22 +129,16 @@ def build_plan(
     }
     root = Path(overrides.pop("project_root", detection.project.project_root))
 
-    include_understand_anything = bool(
-        overrides.pop(
-            "include_understand_anything",
-            detection.recommended.include_understand_anything,
-        )
-    )
-    understand_anything_platform = str(
-        overrides.pop("understand_anything_platform", "codex")
-    )
-    install_understand_anything = bool(
-        overrides.pop("install_understand_anything", include_understand_anything)
-    )
-    custom_understand_anything_command = overrides.pop(
-        "understand_anything_command", None
-    )
-    run_understand_anything = bool(overrides.pop("run_understand_anything", False))
+    # Removed backend: swallow legacy understand-anything override keys so old
+    # callers don't trip the unrecognized-key warning; requesting it warns.
+    ua_requested = bool(overrides.pop("include_understand_anything", False))
+    for _legacy_ua_key in (
+        "understand_anything_platform",
+        "install_understand_anything",
+        "understand_anything_command",
+        "run_understand_anything",
+    ):
+        overrides.pop(_legacy_ua_key, None)
 
     include_raganything = bool(overrides.pop("include_raganything", False))
     raganything_extras = str(overrides.pop("raganything_extras", "all"))
@@ -199,59 +178,11 @@ def build_plan(
     install_actions: list[InstallAction] = []
     run_actions: list[RunAction] = []
 
-    if include_understand_anything:
-        projection = ".tesserae/external/understand-anything.md"
-        if projection not in sources:
-            sources.append(projection)
-        refresh_command = (
-            custom_understand_anything_command
-            if custom_understand_anything_command
-            else _understand_anything_refresh_command(understand_anything_platform)
+    if ua_requested:
+        warnings.append(
+            "understand-anything was removed — code-structure nodes are "
+            "extracted natively; see tesserae code ingest"
         )
-        managed_refresh = custom_understand_anything_command is None
-        external_tools.append(
-            {
-                "id": "understand-anything",
-                "name": "Understand Anything",
-                "artifact": ".understand-anything/knowledge-graph.json",
-                "source": projection,
-                "refresh_command": refresh_command,
-                "auto_refresh": True,
-                "sync_mode": "native_graph",
-                "preserve_markdown_projection": True,
-                "managed_refresh": managed_refresh,
-                "enabled": True,
-                "install": {
-                    "enabled": True,
-                    "auto_install": install_understand_anything,
-                    "platform": understand_anything_platform,
-                    "command": _understand_anything_install_command(
-                        understand_anything_platform
-                    ),
-                },
-            }
-        )
-        if install_understand_anything:
-            install_actions.append(
-                InstallAction(
-                    id="understand-anything",
-                    description=(
-                        f"Install/update Understand Anything for platform "
-                        f"{understand_anything_platform}"
-                    ),
-                    command=_understand_anything_install_command(
-                        understand_anything_platform
-                    ),
-                )
-            )
-        if run_understand_anything:
-            run_actions.append(
-                RunAction(
-                    id="understand-anything",
-                    description="Refresh Understand Anything knowledge graph",
-                    command=refresh_command,
-                )
-            )
 
     if enable_cognee:
         cognee = default_cognee_backend_config(name)

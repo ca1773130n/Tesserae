@@ -3,7 +3,7 @@
 <!-- translations:start -->
 <p align="center"><a href="../self-dogfood.md">English</a> · <a href="self-dogfood.ko.md">한국어</a> · <a href="self-dogfood.zh.md">中文</a> · <a href="self-dogfood.ja.md">日本語</a> · <a href="self-dogfood.ru.md">Русский</a> · <a href="self-dogfood.es.md">Español</a> · <a href="self-dogfood.fr.md">Français</a> · <a href="self-dogfood.de.md">Deutsch</a></p>
 <!-- translations:end -->
-这个项目可以索引自己。self-dogfood 流程证明了 Tesserae 可以被安装、在自己的仓库内完成设置、摄取自己的 docs/source/tests/scripts、（可选地）刷新 Understand Anything 和 Cognee、编译图产物，并构建静态 Web 前端。
+这个项目可以索引自己。self-dogfood 流程证明了 Tesserae 可以被安装、在自己的仓库内完成设置、摄取自己的 docs/source/tests/scripts、（可选地）刷新 RAG-Anything 和 Cognee、编译图产物，并构建静态 Web 前端。
 
 同一流程还兼作多模态冒烟测试。在安装了 RAG-Anything（`tesserae setup --install raganything`）并在 `.tesserae/config.json` 中启用（`memory_backends.raganything.enabled: true`）之后，dogfood 编译会把 RAG-Anything 指向 Tesserae 自己的 `docs/` markdown，加上 `docs/assets/` 和项目级 `assets/` 图片。这就在一个真实的、项目自有的非代码语料上验证了多模态流水线——覆盖了文本优先的来源加载器会跳过的截图和示意图——而无需发明一套单独的测试夹具。
 
@@ -32,7 +32,7 @@ tesserae init \
   --source scripts
 
 # (optional) install + enable the heavier companions afterwards:
-#   tesserae setup --install raganything --install understand-anything --install cognee
+#   tesserae setup --install raganything --install cognee
 #   then flip memory_backends.*.enabled / external_tools in .tesserae/config.json
 
 # Compile the configured sources.
@@ -83,13 +83,13 @@ self-demo 把生成的产物写在：
 
 于 `2026-04-27 11:11:23 KST` 在 Tesserae 仓库自身上验证。
 
-集成的启用（Understand Anything、cognee）现在是**交互式向导提示**，不再是 CLI 标志。下面的非交互式等价流程先运行 `tesserae init --yes`（集成 OFF），再在 `.tesserae/config.json` 中启用这些集成（向导把它们写在 `memory_backends` 和 `external_tools` 键下——确切的键见各集成文档），然后在编译前逐一刷新。
+集成的启用（RAG-Anything、cognee）现在是**交互式向导提示**，不再是 CLI 标志。下面的非交互式等价流程先运行 `tesserae init --yes`（集成 OFF），再在 `.tesserae/config.json` 中启用这些集成（向导把它们写在 `memory_backends` 和 `external_tools` 键下——确切的键见各集成文档），然后在编译前逐一刷新。
 
 ```text
 install command: ./scripts/install.sh --dir /Users/neo/Developer/Projects/Tesserae --skip-shell-config
 setup command:   tesserae init --yes --name tesserae_self --source README.md --source docs --source tesserae --source tests --source scripts
-                 # then enable Understand Anything + cognee in .tesserae/config.json and run:
-                 #   tesserae integrations refresh understand-anything
+                 # then enable the optional integrations in .tesserae/config.json and run:
+                 #   tesserae integrations refresh raganything
                  #   tesserae integrations refresh cognee
 ingest command:  tesserae compile README.md docs --changed-only
 compile command: tesserae compile

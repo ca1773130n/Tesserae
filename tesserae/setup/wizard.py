@@ -69,7 +69,6 @@ def _detection_panel(report: DetectionReport) -> Panel:
     lines.append("[bold]Companions[/bold]")
     proj = report.project
     for label, present in (
-        ("understand-anything", proj.has_understand_anything),
         ("codegraph", proj.has_codegraph),
         ("cognee", proj.has_cognee),
     ):
@@ -227,18 +226,13 @@ def run_wizard(
         llm_model = Prompt.ask("Model name", default=llm_model or "")
 
     companion_items = [
-        ("understand-anything", detection.recommended.include_understand_anything),
         ("raganything", False),
         ("cognee", True),
     ]
     chosen = _multi_select(console, "Companion tools", companion_items)
-    include_ua = "understand-anything" in chosen
     include_raganything = "raganything" in chosen
     enable_cognee = "cognee" in chosen
 
-    install_ua = False
-    if include_ua and not detection.project.has_understand_anything:
-        install_ua = Confirm.ask("Install Understand Anything now?", default=True)
     install_raganything = False
     if include_raganything and not detection.python.raganything_importable:
         if detection.recommended.raganything_available:
@@ -264,8 +258,6 @@ def run_wizard(
             "llm_model": llm_model,
             "llm_base_url": llm_base_url,
             "llm_api_key": llm_api_key,
-            "include_understand_anything": include_ua,
-            "install_understand_anything": install_ua,
             "include_raganything": include_raganything,
             "install_raganything": install_raganything,
             "enable_cognee": enable_cognee,

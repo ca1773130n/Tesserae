@@ -56,7 +56,6 @@ class ProjectFingerprint(BaseModel):
     project_root: Path
     has_git: bool = False
     has_tesserae: bool = False
-    has_understand_anything: bool = False
     has_codegraph: bool = False
     has_cognee: bool = False
     has_pyproject: bool = False
@@ -82,7 +81,6 @@ class Recommendations(BaseModel):
     claude_config_dir: Optional[str] = None
     claude_model: Optional[str] = None
     codex_model: Optional[str] = None
-    include_understand_anything: bool = False
     raganything_available: bool = True
     warnings: list[str] = Field(default_factory=list)
 
@@ -177,9 +175,6 @@ def _probe_project(root: Path) -> ProjectFingerprint:
         project_root=root.resolve(),
         has_git=(root / ".git").exists(),
         has_tesserae=(root / ".tesserae" / "config.json").exists(),
-        has_understand_anything=(
-            root / ".understand-anything" / "knowledge-graph.json"
-        ).exists(),
         has_codegraph=(root / ".codegraph").exists(),
         has_cognee=(root / ".cognee").exists(),
         has_pyproject=(root / "pyproject.toml").exists(),
@@ -249,7 +244,6 @@ def _recommend(
         llm_provider=llm_provider,  # type: ignore[arg-type]
         claude_config_dir=claude_config_dir,
         codex_model=codex_model,
-        include_understand_anything=project.has_understand_anything,
         raganything_available=raganything_available,
         warnings=warnings,
     )

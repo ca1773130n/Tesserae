@@ -28,7 +28,7 @@ Légende de statut : ✅ livré · ⚠ en cours / partiel.
 | Recherche rapide de transcriptions (memex) | ✅ | [`tesserae/memex_search.py`](../../tesserae/memex_search.py) | Index BM25 `nicosuave/memex` sur les transcriptions Claude/Codex, câblé au tableau de bord des sessions de `tesserae serve` via `GET /api/transcript-search`. Optionnel + gracieux en son absence. |
 | Handles de discipline de lecture | ✅ | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | `compile_context` `preview=N` retourne un aperçu borné + un handle clé par contenu ; `get_handle` pagine le reste. Garde les énormes payloads hors du contexte de l’agent. |
 | Signaux de qualité d’extraction | ✅ | [`tesserae/session_graph_llm.py`](../../tesserae/session_graph_llm.py) | `confidence` + `confidence_rationale` + `revisit_signals` par constat (octet-stable ; exposés dans `fresh_insights`). |
-| Setup machine + deps | ✅ | [`tesserae/deps.py`](../../tesserae/deps.py), `cli.py` | `tesserae setup` écrit les défauts LLM globaux + installe les deps optionnelles (memex, cognee, raganything, understand-anything) ; `tesserae config deps` liste/installe ; `tesserae init` propose memex. La config par projet prime toujours. |
+| Setup machine + deps | ✅ | [`tesserae/deps.py`](../../tesserae/deps.py), `cli.py` | `tesserae setup` écrit les défauts LLM globaux + installe les deps optionnelles (memex, cognee, raganything) ; `tesserae config deps` liste/installe ; `tesserae init` propose memex. La config par projet prime toujours. |
 
 ## Moteur de contexte — v0.5.0 (juin 2026)
 

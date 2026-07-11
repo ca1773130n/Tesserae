@@ -28,13 +28,13 @@ tesserae doctor --project ~/src/other
 | `registry_consistent` | registry | `~/.tesserae/registry.json` のエントリが実在するプロジェクトルートを指していること | **SAFE**: ルートが消滅したエントリを削除し、レガシーの `active` キーを除去。グラフの欠落はレポートのみ |
 | `graph_staleness` | freshness | 最後のコンパイルで記録された `git_head` 以降の git 差分 | レポートのみ（`tesserae refresh` を提案 — コンパイルは重い処理のため） |
 | `site_search_index` | freshness | 静的サイト / `search-index.json` が `graph.json` より新しいこと | **SAFE**: サイトを再ビルド |
-| `backend_artifacts` | freshness | RAG-Anything / Understand-Anything の成果物が最新であること | レポートのみ（これらのリフレッシュは LLM / ネットワーク負荷が大きいため） |
+| `backend_artifacts` | freshness | RAG-Anything の成果物が最新であること | レポートのみ（これらのリフレッシュは LLM / ネットワーク負荷が大きいため） |
 | `session_chunks` | freshness | [日次セッションチャンク](session-chunks.ja.md)のカバレッジに直近ウィンドウの欠落がないこと | レポートのみ（`tesserae sessions chunk-backfill` を提案） |
 | `wiki_lint` | graph | グラフ ⇄ wiki のドリフト + 自明に修正可能な lint 検出項目 | **SAFE**: lint の自明な修正（`fix_trivial`）を適用 |
 | `compile_lock` | processes | 稼働中のコンパイルロックが保持されているか、またどの pid によってか | レポートのみ — doctor は**稼働中のロックを決して kill も削除もしません** |
 | `daemon_pid` | processes | `daemon.pid` が生きているエンジンプロセスを指していること | **SAFE**: 所有プロセスが死んでいる場合に pidfile を削除 |
 | `llm_login` | environment | 設定された LLM バックエンドが実際に使用可能であること（claude/codex CLI にログイン済み、または API キーが存在） | レポートのみ（`claude /login` / `codex login` を提案） |
-| `optional_deps` | environment | オプション依存関係（memex、cognee、raganything、understand-anything）の状態 | レポートのみ（インストールはネットワークを要するため） |
+| `optional_deps` | environment | オプション依存関係（memex、cognee、raganything）の状態 | レポートのみ（インストールはネットワークを要するため） |
 | `embedding_backend` | environment | 実際のセマンティック埋め込みバックエンドが利用可能であること | レポートのみ（`pip install tesserae[semantic]` を提案） |
 | `environment` | environment | 環境検出の全体サマリ | レポートのみのセクション |
 | `build_history` | hygiene | `.build-history` のサイズと形状 | **SAFE**: トリムする。ただし最新の `git_head` エントリは常に保持（staleness チェックがそれに依存するため） |

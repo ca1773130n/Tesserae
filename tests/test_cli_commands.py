@@ -427,7 +427,8 @@ def test_init_yes_defaults_disable_optional_integrations(tmp_path, monkeypatch):
     # integration toggles must land OFF (these are the real dests).
     assert seen["no_cognee"] is True
     assert seen["skip_raganything"] is True
-    assert seen["with_understand_anything"] is False
+    # Backend EOL stage 1: understand-anything dests are gone entirely.
+    assert "with_understand_anything" not in seen
 
 
 @pytest.mark.parametrize(

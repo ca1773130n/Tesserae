@@ -25,7 +25,6 @@ from .graphiti_adapter import GraphitiSyncUnavailableError
 from .project import CognifyOptions, ProjectWiki, SessionExtractionOptions, cognify_options_from_config, cognee_backend_config, iter_markdown_files, load_graph_file as _load_graph_file, resolve_project_input
 from .project_setup import refresh_configured_external_tools
 from .report import GraphReporter
-from .understand_anything_refresh import refresh_understand_anything
 from .raganything_refresh import main as _raganything_refresh_main
 from .research_graph import ResearchCorpusAnalyzer, ResearchGraph, ResearchGraphExtractor
 from .review_workflow import ReviewQueueExporter
@@ -1080,15 +1079,6 @@ def _handle_setup(args: argparse.Namespace) -> int:
                     "name": args.name,
                     "source_kind": args.source_kind,
                     "sources": args.source or None,
-                    "include_understand_anything": args.with_understand_anything,
-                    "understand_anything_platform": args.understand_anything_platform,
-                    "understand_anything_command": args.understand_anything_command,
-                    "run_understand_anything": args.run_understand_anything,
-                    "install_understand_anything": (
-                        False if args.skip_install_understand_anything
-                        else True if args.install_understand_anything
-                        else None
-                    ),
                     "include_raganything": (
                         False if args.skip_raganything else args.with_raganything
                     ),
@@ -1598,16 +1588,6 @@ def _handle_research(args: argparse.Namespace) -> int:
             f"{merged_note}"
         )
         return 0
-
-
-def _handle_refresh_understand_anything(args: argparse.Namespace) -> int:
-    return refresh_understand_anything(
-        args.project,
-        platform=args.platform,
-        full=args.full,
-        force=args.force,
-        timeout=args.timeout,
-    )
 
 
 def _handle_obsidian_sync(args: argparse.Namespace) -> int:
@@ -2891,14 +2871,12 @@ def _backfill_setup_defaults(args: argparse.Namespace) -> None:
     branch reads ~21 attrs that the dieted init parser no longer defines. We
     ``setdefault`` each one with the legacy `setup_parser` default, EXCEPT the
     integration toggles, which take the NEW ``--yes`` defaults: every optional
-    integration (cognee, raganything, understand-anything) lands OFF. Color is
+    integration (cognee, raganything) lands OFF. Color is
     auto-disabled when stdout is not a TTY.
     """
     d = args.__dict__
     # Legacy setup defaults (verbatim from the `setup_parser.add_argument` calls).
     d.setdefault("source_kind", "Repository")
-    d.setdefault("understand_anything_command", None)
-    d.setdefault("understand_anything_platform", "codex")
     d.setdefault("raganything_parser", "mineru")
     d.setdefault("raganything_extras", "all")
     d.setdefault("cognee_mode", "cognify")
@@ -2907,13 +2885,8 @@ def _backfill_setup_defaults(args: argparse.Namespace) -> None:
     # --yes default: raganything OFF (CI's `--skip-raganything`; never `--with-raganything`).
     d.setdefault("with_raganything", False)
     d.setdefault("skip_raganything", True)
-    # --yes default: understand-anything OFF (never `--with-understand-anything`).
-    d.setdefault("with_understand_anything", False)
     # --yes default: no companion-tool installs/runs (CI's `--skip-install-*`,
     # never `--install-*`/`--run-*`). These keep the wizard from shelling out.
-    d.setdefault("install_understand_anything", False)
-    d.setdefault("skip_install_understand_anything", True)
-    d.setdefault("run_understand_anything", False)
     d.setdefault("install_raganything", False)
     d.setdefault("skip_install_raganything", True)
     d.setdefault("install_cognee", False)
@@ -3880,8 +3853,7 @@ def _install_deps(names: List[str]) -> int:
         seen.add(name)
         dep = deps.DEPS_BY_NAME.get(name)
         # Surface the EXACT command that will run (pip deps resolve to uv-pip in a
-        # pip-less env) — important for the deps that run an unpinned remote
-        # install script (understand-anything).
+        # pip-less env).
         if dep is not None:
             shown = deps._pip_install_argv(dep.pip_specs) if dep.pip_specs else dep.install_cmd
             print(f"Installing {name} … ({' '.join(shown)})", flush=True)
@@ -3970,7 +3942,7 @@ def _setup_interactive_fill(args: argparse.Namespace) -> bool:
         ) or None
 
     installed = {d["name"]: d["installed"] for d in deps.status()}
-    recommended = {"memex": True, "cognee": True, "understand-anything": True, "raganything": False}
+    recommended = {"memex": True, "cognee": True, "raganything": False}
     chosen: List[str] = []
     print("\nOptional dependencies:")
     for name in deps.DEP_NAMES:
@@ -4092,7 +4064,7 @@ def _build_setup_parser() -> argparse.ArgumentParser:
     parser.add_argument("--llm-model", default=None, help="Machine-wide default model for the synthesis LLM client (llm_model)")
     parser.add_argument("--llm-base-url", default=None, help="Claude-compatible endpoint base URL for anthropic/custom (llm_base_url)")
     parser.add_argument("--llm-api-key", default=None, help="API key for anthropic/custom (stored in PLAINTEXT ~/.tesserae/config.json; prefer ANTHROPIC_API_KEY)")
-    parser.add_argument("--install", action="append", default=[], metavar="NAME", help="Dependency to install (memex, cognee, raganything, understand-anything, or 'all'); repeat")
+    parser.add_argument("--install", action="append", default=[], metavar="NAME", help="Dependency to install (memex, cognee, raganything, or 'all'); repeat")
     parser.add_argument("--install-all", action="store_true", help="Install every known optional dependency")
     parser.add_argument("--enable-cognee", action="store_true", help="Enable the cognee cognify pass for ALL projects")
     parser.add_argument("--cognee-mode", choices=["add", "cognify"], default="cognify", help="cognee mode when --enable-cognee")
@@ -4424,10 +4396,15 @@ def _handle_federation_explain(args: argparse.Namespace) -> int:
 
 # ----- integrations ---------------------------------------------------------
 def _handle_integrations_refresh(args: argparse.Namespace) -> int:
-    """`integrations refresh <name>` routes to the two old refresh handlers."""
-    if args.name == "raganything":
-        return _handle_refresh_raganything(args)
-    return _handle_refresh_understand_anything(args)
+    """`integrations refresh <name>` routes to the managed refresh handlers."""
+    if args.name == "understand-anything":
+        # Clean-break stub (no-silent-aliases convention): one line, exit 2.
+        print(
+            "removed — code-structure nodes are extracted natively; see tesserae code ingest",
+            file=sys.stderr,
+        )
+        return 2
+    return _handle_refresh_raganything(args)
 
 
 def _build_integrations_parser() -> argparse.ArgumentParser:
@@ -4438,21 +4415,21 @@ def _build_integrations_parser() -> argparse.ArgumentParser:
         epilog=(
             "examples:\n"
             "  tesserae integrations refresh raganything\n"
-            "  tesserae integrations refresh understand-anything\n"
         ),
     )
     sub = parser.add_subparsers(dest="integrations_command", required=True)
     p_refresh = sub.add_parser(
         "refresh",
-        help="Run the managed refresh for raganything | understand-anything",
+        help="Run the managed refresh for raganything",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
-            "  tesserae integrations refresh raganything\n"
-            "  tesserae integrations refresh understand-anything --full\n"
+            "  tesserae integrations refresh raganything --full\n"
         ),
     )
-    p_refresh.add_argument("name", choices=["raganything", "understand-anything"], help="Integration to refresh")
+    # "understand-anything" stays parseable so the removal stub (exit 2) can
+    # answer instead of a confusing argparse choices error.
+    p_refresh.add_argument("name", choices=["raganything", "understand-anything"], help="Integration to refresh", metavar="raganything")
     p_refresh.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     # raganything flags (refresh-raganything parser)
     p_refresh.add_argument("--parser", default="mineru", choices=["mineru", "docling", "paddleocr"], help="raganything parser backend")
@@ -4460,9 +4437,6 @@ def _build_integrations_parser() -> argparse.ArgumentParser:
     p_refresh.add_argument("--root", action="append", dest="roots", help="Restrict to this root (repeatable; raganything)")
     p_refresh.add_argument("--full", action="store_true", help="Force a full refresh")
     p_refresh.add_argument("--force", action="store_true", help="Run even if the existing graph appears current")
-    # understand-anything flags (refresh-understand-anything parser)
-    p_refresh.add_argument("--platform", default="codex", help="Agent platform to use: codex, opencode, or claude (understand-anything)")
-    p_refresh.add_argument("--timeout", type=int, help="Optional timeout in seconds (understand-anything)")
     p_refresh.set_defaults(_handler="_handle_integrations_refresh")
     return parser
 

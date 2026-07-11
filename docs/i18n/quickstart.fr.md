@@ -46,7 +46,7 @@ GROUPS
   projects      register | list | unregister | mcp-config — registry
   sources       add | list | remove — manage compile source dirs (local & global)
   federation    status | explain — inspect cross-project federation
-  integrations  refresh raganything|understand-anything
+  integrations  refresh raganything
   extract       Low-level: extract a typed graph from markdown paths
 
 LAB
@@ -107,8 +107,6 @@ tesserae init --yes --llm-provider custom \
   --llm-model my-model            # key via ANTHROPIC_API_KEY
 ```
 
-Si vous activez Understand Anything avec `auto_refresh: true` dans son entrée `external_tools` (désactivé par défaut — son rafraîchissement exécute un script d’installation distant), `tesserae compile` lance `tesserae integrations refresh understand-anything` quand le graphe UA est manquant ou périmé ; sinon lancez cette commande vous-même.
-
 > **Sauter l’assistant.** `tesserae init --bare` écrit un `.tesserae/config.json`
 > minimal sans détection de sources ni sondage de backends — pratique quand vous
 > voulez éditer la config à la main avant la première compilation.
@@ -139,7 +137,7 @@ tesserae compile
   cognee_bundle/
 ```
 
-Utilisez `--changed-only` après la première exécution pour sauter les fichiers markdown inchangés tout en préservant le graphe précédent quand aucun fichier n’a changé. Si Understand Anything est activé, compile rafraîchit/matérialise d’abord `.tesserae/external/understand-anything.md` ; si le runtime Cognee est activé, il met aussi à jour Cognee au mieux (best-effort) après avoir écrit `.tesserae/cognee_bundle/`.
+Utilisez `--changed-only` après la première exécution pour sauter les fichiers markdown inchangés tout en préservant le graphe précédent quand aucun fichier n’a changé. Si le runtime Cognee est activé, compile met aussi à jour Cognee au mieux (best-effort) après avoir écrit `.tesserae/cognee_bundle/`.
 
 Pour ingérer des chemins supplémentaires ad hoc sans toucher aux sources
 configurées, passez-les en positionnel : `tesserae compile path/to/extra.md docs/`.

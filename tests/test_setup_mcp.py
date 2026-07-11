@@ -93,7 +93,7 @@ def test_mcp_apply_ignores_injected_install_commands(tmp_path: Path, monkeypatch
     assert not sentinel.exists(), "MCP must not execute caller-supplied command strings"
     assert not (tmp_path / "OWNED-MARKER-run").exists()
     # The actions_taken list reflects what the SERVER decided to run — when
-    # cognee/raganything/understand-anything are disabled there should be no
+    # cognee/raganything are disabled there should be no
     # subprocess executions at all.
     statuses = [a.get("status") for a in apply_response.get("actions_taken", [])]
     assert "installed" not in statuses

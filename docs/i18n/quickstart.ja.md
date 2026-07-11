@@ -45,7 +45,7 @@ GROUPS
   projects      register | list | unregister | mcp-config — registry
   sources       add | list | remove — manage compile source dirs (local & global)
   federation    status | explain — inspect cross-project federation
-  integrations  refresh raganything|understand-anything
+  integrations  refresh raganything
   extract       Low-level: extract a typed graph from markdown paths
 
 LAB
@@ -105,8 +105,6 @@ tesserae init --yes --llm-provider custom \
   --llm-model my-model            # key via ANTHROPIC_API_KEY
 ```
 
-Understand Anything を `external_tools` エントリで `auto_refresh: true` にして有効化した場合（デフォルトは off — そのリフレッシュはリモートのインストールスクリプトを実行するため）、UA グラフが欠落または古いときに `tesserae compile` が `tesserae integrations refresh understand-anything` を実行します。そうでなければ、そのコマンドを自分で実行してください。
-
 > **ウィザードをスキップする。** `tesserae init --bare` は、ソース検出やバックエンドの
 > プローブを行わずに最小限の `.tesserae/config.json` を書き込みます — 最初のコンパイルの前に
 > config を手で編集したいときに便利です。
@@ -137,7 +135,7 @@ tesserae compile
   cognee_bundle/
 ```
 
-初回実行後は `--changed-only` を使うと、変更されていない markdown ファイルをスキップし、ファイルに変更がない場合は以前のグラフを保持します。Understand Anything が有効な場合、compile はまず `.tesserae/external/understand-anything.md` をリフレッシュ/実体化します。Cognee ランタイムが有効な場合は、`.tesserae/cognee_bundle/` の書き込み後にベストエフォートで Cognee も更新します。
+初回実行後は `--changed-only` を使うと、変更されていない markdown ファイルをスキップし、ファイルに変更がない場合は以前のグラフを保持します。Cognee ランタイムが有効な場合は、`.tesserae/cognee_bundle/` の書き込み後にベストエフォートで Cognee も更新します。
 
 設定済みのソースに触れずに追加パスをアドホックに取り込むには、位置引数として渡します:
 `tesserae compile path/to/extra.md docs/`。

@@ -3,7 +3,7 @@
 <!-- translations:start -->
 <p align="center"><a href="i18n/self-dogfood.ko.md">한국어</a> · <a href="i18n/self-dogfood.zh.md">中文</a> · <a href="i18n/self-dogfood.ja.md">日本語</a> · <a href="i18n/self-dogfood.ru.md">Русский</a> · <a href="i18n/self-dogfood.es.md">Español</a> · <a href="i18n/self-dogfood.fr.md">Français</a> · <a href="../i18n/self-dogfood.de.md">Deutsch</a></p>
 <!-- translations:end -->
-This project can index itself. The self-dogfood flow proves that Tesserae can be installed, set up inside its own repository, ingest its own docs/source/tests/scripts, optionally refresh Understand Anything and Cognee, compile graph artifacts, and build the static web frontend.
+This project can index itself. The self-dogfood flow proves that Tesserae can be installed, set up inside its own repository, ingest its own docs/source/tests/scripts, optionally refresh RAG-Anything and Cognee, compile graph artifacts, and build the static web frontend.
 
 The same flow doubles as a multimodal smoke test. With RAG-Anything installed (`tesserae setup --install raganything`) and enabled in `.tesserae/config.json` (`memory_backends.raganything.enabled: true`), the dogfood compile points RAG-Anything at Tesserae's own `docs/` markdown plus the `docs/assets/` and project-level `assets/` images. That validates the multimodal pipeline against a real, project-owned non-code corpus — covering screenshots and diagrams the text-first source loaders skip — without inventing a separate fixture set.
 
@@ -41,7 +41,7 @@ tesserae init \
   --source scripts
 
 # (optional) install + enable the heavier companions afterwards:
-#   tesserae setup --install raganything --install understand-anything --install cognee
+#   tesserae setup --install raganything --install cognee
 #   then flip memory_backends.*.enabled / external_tools in .tesserae/config.json
 
 # Compile the configured sources.
@@ -92,7 +92,7 @@ The generated workspace is intentionally not committed by default. It is reprodu
 
 Verified on `2026-04-27 11:11:23 KST` from the Tesserae repository itself.
 
-Integration opt-ins (Understand Anything, cognee) are **interactive wizard
+Integration opt-ins (RAG-Anything, cognee) are **interactive wizard
 prompts** now, not CLI flags. The non-interactive equivalent below runs
 `tesserae init --yes` (integrations OFF), enables the integrations in
 `.tesserae/config.json` (the wizard writes them under the `memory_backends`
@@ -102,8 +102,8 @@ refreshes each before compiling.
 ```text
 install command: ./scripts/install.sh --dir /Users/neo/Developer/Projects/Tesserae --skip-shell-config
 setup command:   tesserae init --yes --name tesserae_self --source README.md --source docs --source tesserae --source tests --source scripts
-                 # then enable Understand Anything + cognee in .tesserae/config.json and run:
-                 #   tesserae integrations refresh understand-anything
+                 # then enable the optional integrations in .tesserae/config.json and run:
+                 #   tesserae integrations refresh raganything
                  #   tesserae integrations refresh cognee
 ingest command:  tesserae compile README.md docs --changed-only
 compile command: tesserae compile

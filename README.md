@@ -141,10 +141,10 @@ Run `tesserae --help` for the full grouped list, `tesserae <cmd> --help` for fla
 | `tesserae export okf` | Export the graph as a [Google **OKF v0.1**](https://github.com/GoogleCloudPlatform/knowledge-catalog) bundle (Markdown + YAML frontmatter); `--import DIR` reads one back (round-trips Tesserae's own bundles losslessly). |
 | `tesserae serve` | Serve **every registered project** under one server — a projects landing at `/`, each project at `/<alias>/`, and a Projects switcher in the header. `--project X` serves just one (with the live `/api/ask` widget). |
 | `tesserae setup` | **Machine-wide setup** — interactive by default: pick the LLM provider/effort and which optional deps to install. Flags (`--install all`, `--llm-provider …`) skip the prompts. (The old `config setup` name now points here.) |
-| `tesserae config deps` | List / install optional dependencies (memex, cognee, raganything, understand-anything). |
+| `tesserae config deps` | List / install optional dependencies (memex, cognee, raganything). |
 | `tesserae projects …` | Multi-project registry: `register`, `list`, `unregister`, `mcp-config` (no privileged "active" project). |
 | `tesserae federation status` / `explain` | Inspect a cross-project federation: per-project node counts, identity merges, semantic links, and why a node bridges projects. |
-| `tesserae integrations refresh …` | Re-run companion tools (Understand-Anything, RAG-Anything). |
+| `tesserae integrations refresh …` | Re-run companion tools (RAG-Anything). |
 
 ## Keep it fresh automatically
 
@@ -226,8 +226,6 @@ the graph view. See [docs](docs/) for details.
 - **Session graph** — Claude Code / Codex conversations → Insight / Decision /
   Question / TODO nodes, linked to the docs they touched. No API key required.
   [docs/integrations/sessions.md](docs/integrations/sessions.md)
-- **Understand-Anything** — code knowledge graph ingestion.
-  [docs/integrations/understand-anything.md](docs/integrations/understand-anything.md)
 - **RAG-Anything** — multimodal ingestion (PDF/Office/images via
   MinerU/Docling) and a LightRAG question backend.
   [docs/integrations/rag-anything.md](docs/integrations/rag-anything.md)

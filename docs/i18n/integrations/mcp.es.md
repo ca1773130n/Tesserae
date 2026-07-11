@@ -188,4 +188,4 @@ Si no aparece nada, verifica que `--graph` apunte a un `.tesserae/graph.json` ex
 
 ## Dónde encaja esto
 
-El servidor MCP es la **interfaz de lectura** al grafo tipado. Para la **ruta de escritura** (ingestar fuentes, recompilar, refrescar herramientas acompañantes como RAG-Anything o Understand-Anything) usa la CLI directamente. Ambas están desacopladas: la CLI actualiza `.tesserae/`, y el servidor MCP lee lo que haya allí en la siguiente llamada a tool.
+El servidor MCP es la **interfaz de lectura** al grafo tipado. Para la **ruta de escritura** (ingestar fuentes, recompilar, refrescar herramientas acompañantes como RAG-Anything) usa la CLI directamente. Ambas están desacopladas: la CLI actualiza `.tesserae/`, y el servidor MCP lee lo que haya allí en la siguiente llamada a tool.

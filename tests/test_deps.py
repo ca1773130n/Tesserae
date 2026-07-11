@@ -10,7 +10,8 @@ from tesserae.cli import _merge_global_llm_config, _resolve_dep_targets
 
 def test_status_shape_covers_known_deps():
     s = deps.status()
-    assert {d["name"] for d in s} >= {"memex", "cognee", "raganything", "understand-anything"}
+    assert {d["name"] for d in s} >= {"memex", "cognee", "raganything"}
+    assert "understand-anything" not in {d["name"] for d in s}  # backend removed
     assert all(set(d) == {"name", "summary", "installed", "note"} for d in s)
 
 
@@ -80,20 +81,6 @@ def test_pip_install_falls_back_to_uv_when_pip_absent(monkeypatch):
     # when pip IS importable, use it directly
     monkeypatch.setattr(deps, "_module_present", lambda n: n == "pip")
     assert deps._pip_install_argv(["cognee"])[1:3] == ["-m", "pip"]
-
-
-def test_ua_detect_uses_install_marker_not_binary(monkeypatch, tmp_path):
-    # UA installs a plugin/skills tree, no PATH binary -> detect a real completion
-    # marker (repo/install.sh), NOT a bare leftover dir a failed install leaves.
-    monkeypatch.setattr(deps, "_binary_present", lambda n: False)
-    monkeypatch.setenv("HOME", str(tmp_path))
-    assert deps._ua_installed() is False
-    (tmp_path / ".understand-anything").mkdir()
-    assert deps._ua_installed() is False  # bare dir is not enough
-    repo = tmp_path / ".understand-anything" / "repo"
-    repo.mkdir()
-    (repo / "install.sh").write_text("#!/bin/sh\n", encoding="utf-8")
-    assert deps._ua_installed() is True
 
 
 def test_install_uses_uv_argv_for_pip_dep_without_pip(monkeypatch):

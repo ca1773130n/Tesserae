@@ -28,7 +28,7 @@ Tesserae 是一个运行在三大支柱上的**上下文引擎**：(1) 会话监
 | 快速转录搜索（memex） | ✅ | [`tesserae/memex_search.py`](../../tesserae/memex_search.py) | `nicosuave/memex` 对 Claude/Codex 转录的 BM25 索引，通过 `GET /api/transcript-search` 接入 `tesserae serve` 的 sessions 仪表盘。可选，缺失时优雅降级。 |
 | 读取纪律 handle | ✅ | [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | `compile_context` 的 `preview=N` 返回一个有界预览 + 一个按内容哈希的 handle；`get_handle` 分页读取其余部分。把巨大载荷挡在 agent 的上下文之外。 |
 | 提取质量信号 | ✅ | [`tesserae/session_graph_llm.py`](../../tesserae/session_graph_llm.py) | 每条发现的 `confidence` + `confidence_rationale` + `revisit_signals`（字节稳定；在 `fresh_insights` 中呈现）。 |
-| 机器级设置 + 依赖 | ✅ | [`tesserae/deps.py`](../../tesserae/deps.py)、`cli.py` | `tesserae setup` 写入全局 LLM 默认值 + 安装可选依赖（memex、cognee、raganything、understand-anything）；`tesserae config deps` 列出/安装；`tesserae init` 提供 memex。按项目配置仍可覆盖。 |
+| 机器级设置 + 依赖 | ✅ | [`tesserae/deps.py`](../../tesserae/deps.py)、`cli.py` | `tesserae setup` 写入全局 LLM 默认值 + 安装可选依赖（memex、cognee、raganything）；`tesserae config deps` 列出/安装；`tesserae init` 提供 memex。按项目配置仍可覆盖。 |
 
 ## 上下文引擎 — v0.5.0（2026 年 6 月）
 

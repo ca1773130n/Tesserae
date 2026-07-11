@@ -25,13 +25,13 @@ tesserae doctor --project ~/src/other
 | `registry_consistent` | registry | `~/.tesserae/registry.json` 的条目指向真实存在的项目根目录 | **SAFE**：清理根目录已消失的条目，删除遗留的 `active` 键；图谱缺失时仅报告 |
 | `graph_staleness` | freshness | 自上次编译记录的 `git_head` 以来的 git 增量 | 仅报告（建议运行 `tesserae refresh` —— 编译开销较大） |
 | `site_search_index` | freshness | 静态站点 / `search-index.json` 比 `graph.json` 更新 | **SAFE**：重建站点 |
-| `backend_artifacts` | freshness | RAG-Anything / Understand-Anything 产物是最新的 | 仅报告（它们的刷新是 LLM/网络重操作） |
+| `backend_artifacts` | freshness | RAG-Anything 产物是最新的 | 仅报告（它们的刷新是 LLM/网络重操作） |
 | `session_chunks` | freshness | [每日 session-chunk](session-chunks.zh.md) 覆盖率在近期窗口内没有缺口 | 仅报告（建议运行 `tesserae sessions chunk-backfill`） |
 | `wiki_lint` | graph | 图谱 ⇄ wiki 漂移 + 可轻易修复的 lint 发现 | **SAFE**：应用 lint 的琐碎修复（`fix_trivial`） |
 | `compile_lock` | processes | 是否有活动的编译锁被持有，以及被哪个 pid 持有 | 仅报告 —— doctor **绝不杀掉进程也绝不移除活动锁** |
 | `daemon_pid` | processes | `daemon.pid` 指向一个存活的 engine 进程 | **SAFE**：当持有者已死亡时删除该 pidfile |
 | `llm_login` | environment | 配置的 LLM 后端确实可用（claude/codex CLI 已登录，或存在 API key） | 仅报告（建议运行 `claude /login` / `codex login`） |
-| `optional_deps` | environment | 可选依赖的状态（memex、cognee、raganything、understand-anything） | 仅报告（安装需要联网） |
+| `optional_deps` | environment | 可选依赖的状态（memex、cognee、raganything） | 仅报告（安装需要联网） |
 | `embedding_backend` | environment | 有真正的语义嵌入后端可用 | 仅报告（建议 `pip install tesserae[semantic]`） |
 | `environment` | environment | 整体环境检测摘要 | 仅报告的小节 |
 | `build_history` | hygiene | `.build-history` 的大小和形状 | **SAFE**：裁剪它，且始终保留最新的 `git_head` 条目（新鲜度检查依赖它） |

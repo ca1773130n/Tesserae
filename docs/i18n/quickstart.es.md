@@ -45,7 +45,7 @@ GROUPS
   projects      register | list | unregister | mcp-config — registry
   sources       add | list | remove — manage compile source dirs (local & global)
   federation    status | explain — inspect cross-project federation
-  integrations  refresh raganything|understand-anything
+  integrations  refresh raganything
   extract       Low-level: extract a typed graph from markdown paths
 
 LAB
@@ -105,8 +105,6 @@ tesserae init --yes --llm-provider custom \
   --llm-model my-model            # key via ANTHROPIC_API_KEY
 ```
 
-Si habilitas Understand Anything con `auto_refresh: true` en su entrada de `external_tools` (desactivado por defecto — su refresco ejecuta un script de instalación remoto), `tesserae compile` ejecuta `tesserae integrations refresh understand-anything` cuando el grafo de UA falta o está obsoleto; de lo contrario, ejecuta ese comando tú mismo.
-
 > **Sáltate el asistente.** `tesserae init --bare` escribe un `.tesserae/config.json` mínimo
 > sin detección de fuentes ni sondeo de backends — práctico cuando quieres editar a mano
 > la config antes de la primera compilación.
@@ -137,7 +135,7 @@ tesserae compile
   cognee_bundle/
 ```
 
-Usa `--changed-only` después de la primera ejecución para saltarte los archivos markdown sin cambios preservando el grafo previo cuando ningún archivo cambió. Si Understand Anything está habilitado, compile primero refresca/materializa `.tesserae/external/understand-anything.md`; si el runtime de Cognee está habilitado, también actualiza Cognee best-effort tras escribir `.tesserae/cognee_bundle/`.
+Usa `--changed-only` después de la primera ejecución para saltarte los archivos markdown sin cambios preservando el grafo previo cuando ningún archivo cambió. Si el runtime de Cognee está habilitado, compile también actualiza Cognee best-effort tras escribir `.tesserae/cognee_bundle/`.
 
 Para ingerir rutas extra ad-hoc sin tocar las fuentes configuradas, pásalas
 posicionalmente: `tesserae compile path/to/extra.md docs/`.

@@ -174,4 +174,5 @@ def test_status_shows_machine_wide_settings_and_deps(_stub_resolution, monkeypat
     assert "Machine-wide settings" in out
     assert "cognee     : enabled (mode=codex_cognify)" in out
     assert "Optional dependencies:" in out
-    assert "memex" in out and "understand-anything" in out
+    assert "memex" in out and "raganything" in out
+    assert "understand-anything" not in out  # backend removed

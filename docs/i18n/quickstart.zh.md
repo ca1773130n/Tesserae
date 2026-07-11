@@ -43,7 +43,7 @@ GROUPS
   projects      register | list | unregister | mcp-config — registry
   sources       add | list | remove — manage compile source dirs (local & global)
   federation    status | explain — inspect cross-project federation
-  integrations  refresh raganything|understand-anything
+  integrations  refresh raganything
   extract       Low-level: extract a typed graph from markdown paths
 
 LAB
@@ -95,8 +95,6 @@ tesserae init --yes --llm-provider custom \
   --llm-model my-model            # key via ANTHROPIC_API_KEY
 ```
 
-如果你在 Understand Anything 的 `external_tools` 条目中启用了 `auto_refresh: true`（默认关闭——它的刷新会运行一个远程安装脚本），那么当 UA 图缺失或过期时，`tesserae compile` 会运行 `tesserae integrations refresh understand-anything`；否则请自行运行该命令。
-
 > **跳过向导。** `tesserae init --bare` 写入一个最小化的 `.tesserae/config.json`，不做来源检测或后端探测——当你想在首次编译前手工编辑配置时很方便。
 
 ## 2. 编译图谱与投影
@@ -125,7 +123,7 @@ tesserae compile
   cognee_bundle/
 ```
 
-首次运行之后使用 `--changed-only` 可跳过未变化的 markdown 文件，在没有文件变化时保留之前的图谱。如果启用了 Understand Anything，compile 会先刷新/物化 `.tesserae/external/understand-anything.md`；如果启用了 Cognee 运行时，它还会在写出 `.tesserae/cognee_bundle/` 之后尽力更新 Cognee。
+首次运行之后使用 `--changed-only` 可跳过未变化的 markdown 文件，在没有文件变化时保留之前的图谱。如果启用了 Cognee 运行时，compile 还会在写出 `.tesserae/cognee_bundle/` 之后尽力更新 Cognee。
 
 若要在不触及已配置来源的情况下临时摄取额外路径，把它们作为位置参数传入：`tesserae compile path/to/extra.md docs/`。
 

@@ -68,20 +68,26 @@ def test_build_plan_applies_overrides(tmp_path: Path) -> None:
     assert plan.extractor == "deterministic"
 
 
-def test_build_plan_emits_install_action_for_understand_anything(tmp_path: Path) -> None:
-    (tmp_path / ".understand-anything").mkdir()
-    (tmp_path / ".understand-anything" / "knowledge-graph.json").write_text("{}")
+def test_build_plan_ignores_legacy_understand_anything_overrides(tmp_path: Path) -> None:
+    """Removed backend: legacy UA override keys are swallowed (no unrecognized-key
+    warning), requesting the integration only yields a removal warning, and no
+    UA action or external tool is ever planned."""
     report = detect(tmp_path)
     plan = build_plan(
         report,
         overrides={
             "include_understand_anything": True,
             "install_understand_anything": True,
+            "understand_anything_platform": "codex",
+            "understand_anything_command": "echo hi",
+            "run_understand_anything": True,
         },
     )
     ids = {a.id for a in plan.install_actions}
     tool_ids = {t.get("id") for t in plan.external_tools}
-    assert "understand-anything" in ids or "understand-anything" in tool_ids
+    assert "understand-anything" not in ids and "understand-anything" not in tool_ids
+    assert not any("unrecognized override keys" in w for w in plan.warnings)
+    assert any("understand-anything was removed" in w for w in plan.warnings)
 
 
 def test_build_plan_skips_raganything_install_on_old_python(

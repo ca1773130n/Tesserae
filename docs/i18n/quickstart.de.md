@@ -45,7 +45,7 @@ GROUPS
   projects      register | list | unregister | mcp-config — registry
   sources       add | list | remove — manage compile source dirs (local & global)
   federation    status | explain — inspect cross-project federation
-  integrations  refresh raganything|understand-anything
+  integrations  refresh raganything
   extract       Low-level: extract a typed graph from markdown paths
 
 LAB
@@ -105,8 +105,6 @@ tesserae init --yes --llm-provider custom \
   --llm-model my-model            # key via ANTHROPIC_API_KEY
 ```
 
-Wenn du Understand Anything mit `auto_refresh: true` in seinem `external_tools`-Eintrag aktivierst (standardmäßig aus — sein Refresh führt ein Remote-Install-Skript aus), führt `tesserae compile` `tesserae integrations refresh understand-anything` aus, wenn der UA-Graph fehlt oder veraltet ist; andernfalls führe diesen Befehl selbst aus.
-
 > **Den Wizard überspringen.** `tesserae init --bare` schreibt eine minimale `.tesserae/config.json`
 > ohne Quellenerkennung oder Backend-Probing — praktisch, wenn du die Config vor dem
 > ersten Compile von Hand editieren willst.
@@ -137,7 +135,7 @@ tesserae compile
   cognee_bundle/
 ```
 
-Nutze `--changed-only` nach dem ersten Lauf, um unveränderte Markdown-Dateien zu überspringen und dabei den vorherigen Graph zu bewahren, wenn sich keine Dateien geändert haben. Wenn Understand Anything aktiviert ist, refresht/materialisiert compile zuerst `.tesserae/external/understand-anything.md`; wenn die Cognee-Runtime aktiviert ist, aktualisiert es Cognee zusätzlich best-effort nach dem Schreiben von `.tesserae/cognee_bundle/`.
+Nutze `--changed-only` nach dem ersten Lauf, um unveränderte Markdown-Dateien zu überspringen und dabei den vorherigen Graph zu bewahren, wenn sich keine Dateien geändert haben. Wenn die Cognee-Runtime aktiviert ist, aktualisiert compile Cognee zusätzlich best-effort nach dem Schreiben von `.tesserae/cognee_bundle/`.
 
 Um zusätzliche Pfade ad-hoc zu ingesten, ohne die konfigurierten Quellen anzufassen,
 übergib sie positional: `tesserae compile path/to/extra.md docs/`.

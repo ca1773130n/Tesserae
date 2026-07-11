@@ -190,4 +190,4 @@ If nothing appears, double-check that `--graph` points at an existing `.tesserae
 
 ## Where this fits
 
-The MCP server is the **read interface** to the typed graph. For the **write path** (ingesting sources, recompiling, refreshing companion tools like RAG-Anything or Understand-Anything) use the CLI directly. The two are decoupled: the CLI updates `.tesserae/`, the MCP server reads whatever's there on the next tool call.
+The MCP server is the **read interface** to the typed graph. For the **write path** (ingesting sources, recompiling, refreshing companion tools like RAG-Anything) use the CLI directly. The two are decoupled: the CLI updates `.tesserae/`, the MCP server reads whatever's there on the next tool call.

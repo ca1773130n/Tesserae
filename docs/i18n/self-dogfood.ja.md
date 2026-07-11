@@ -3,7 +3,7 @@
 <!-- translations:start -->
 <p align="center"><a href="../self-dogfood.md">English</a> · <a href="self-dogfood.ko.md">한국어</a> · <a href="self-dogfood.zh.md">中文</a> · <a href="self-dogfood.ja.md">日本語</a> · <a href="self-dogfood.ru.md">Русский</a> · <a href="self-dogfood.es.md">Español</a> · <a href="self-dogfood.fr.md">Français</a> · <a href="self-dogfood.de.md">Deutsch</a></p>
 <!-- translations:end -->
-このプロジェクトは自分自身をインデックスできます。セルフドッグフードのフローは、Tesserae をインストールし、自身のリポジトリ内にセットアップし、自身の docs/ソース/テスト/スクリプトを取り込み、必要に応じて Understand Anything と Cognee をリフレッシュし、グラフ成果物をコンパイルし、静的 Web フロントエンドをビルドできることを証明します。
+このプロジェクトは自分自身をインデックスできます。セルフドッグフードのフローは、Tesserae をインストールし、自身のリポジトリ内にセットアップし、自身の docs/ソース/テスト/スクリプトを取り込み、必要に応じて RAG-Anything と Cognee をリフレッシュし、グラフ成果物をコンパイルし、静的 Web フロントエンドをビルドできることを証明します。
 
 同じフローはマルチモーダルのスモークテストも兼ねています。RAG-Anything がインストールされ（`tesserae setup --install raganything`）、`.tesserae/config.json` で有効化されている場合（`memory_backends.raganything.enabled: true`）、ドッグフードのコンパイルは RAG-Anything を Tesserae 自身の `docs/` markdown と、`docs/assets/` およびプロジェクトレベルの `assets/` の画像に向けます。これにより、テキストファーストのソースローダーがスキップするスクリーンショットや図を含む、実在するプロジェクト所有の非コードコーパスに対してマルチモーダルパイプラインを検証できます — 別個のフィクスチャセットを発明することなく。
 
@@ -41,7 +41,7 @@ tesserae init \
   --source scripts
 
 # (optional) install + enable the heavier companions afterwards:
-#   tesserae setup --install raganything --install understand-anything --install cognee
+#   tesserae setup --install raganything --install cognee
 #   then flip memory_backends.*.enabled / external_tools in .tesserae/config.json
 
 # Compile the configured sources.
@@ -92,7 +92,7 @@ http://127.0.0.1:8765/
 
 Tesserae リポジトリ自身から `2026-04-27 11:11:23 KST` に検証済み。
 
-統合のオプトイン（Understand Anything、cognee）は現在、CLI フラグではなく
+統合のオプトイン（RAG-Anything、cognee）は現在、CLI フラグではなく
 **インタラクティブなウィザードのプロンプト**です。以下の非インタラクティブな同等手順は、
 `tesserae init --yes`（統合は OFF）を実行し、`.tesserae/config.json` で統合を有効化し
 （ウィザードは `memory_backends` と `external_tools` キーの下に書き込みます —
@@ -101,8 +101,8 @@ Tesserae リポジトリ自身から `2026-04-27 11:11:23 KST` に検証済み�
 ```text
 install command: ./scripts/install.sh --dir /Users/neo/Developer/Projects/Tesserae --skip-shell-config
 setup command:   tesserae init --yes --name tesserae_self --source README.md --source docs --source tesserae --source tests --source scripts
-                 # then enable Understand Anything + cognee in .tesserae/config.json and run:
-                 #   tesserae integrations refresh understand-anything
+                 # then enable the optional integrations in .tesserae/config.json and run:
+                 #   tesserae integrations refresh raganything
                  #   tesserae integrations refresh cognee
 ingest command:  tesserae compile README.md docs --changed-only
 compile command: tesserae compile

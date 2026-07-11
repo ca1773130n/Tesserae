@@ -29,13 +29,13 @@ Twenty checks, grouped by category:
 | `registry_consistent` | registry | `~/.tesserae/registry.json` entries point at real project roots | **SAFE**: prunes entries whose root is gone, drops the legacy `active` key; a missing graph is report-only |
 | `graph_staleness` | freshness | git delta since the last compile's recorded `git_head` | report-only (suggests `tesserae refresh` — compiles are heavy) |
 | `site_search_index` | freshness | the static site / `search-index.json` is newer than `graph.json` | **SAFE**: rebuilds the site |
-| `backend_artifacts` | freshness | RAG-Anything / Understand-Anything artifacts are current | report-only (their refresh is LLM/network heavy) |
+| `backend_artifacts` | freshness | RAG-Anything artifacts are current | report-only (their refresh is LLM/network heavy) |
 | `session_chunks` | freshness | [daily session-chunk](session-chunks.md) coverage has no gaps in the recent window | report-only (suggests `tesserae sessions chunk-backfill`) |
 | `wiki_lint` | graph | graph ⇄ wiki drift + trivially fixable lint findings | **SAFE**: applies the lint trivial fixes (`fix_trivial`) |
 | `compile_lock` | processes | whether a live compile lock is held, and by which pid | report-only — doctor **never kills or removes a live lock** |
 | `daemon_pid` | processes | `daemon.pid` points at a live engine process | **SAFE**: removes the pidfile when its owner is dead |
 | `llm_login` | environment | the configured LLM backend is actually usable (claude/codex CLI logged in, or API key present) | report-only (suggests `claude /login` / `codex login`) |
-| `optional_deps` | environment | status of optional dependencies (memex, cognee, raganything, understand-anything) | report-only (installs are networked) |
+| `optional_deps` | environment | status of optional dependencies (memex, cognee, raganything) | report-only (installs are networked) |
 | `embedding_backend` | environment | a real semantic embedding backend is available | report-only (suggests `pip install tesserae[semantic]`) |
 | `environment` | environment | wholesale environment detection summary | report-only section |
 | `build_history` | hygiene | `.build-history` size and shape | **SAFE**: trims it, always preserving the newest `git_head` entry (the staleness check depends on it) |

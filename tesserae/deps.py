@@ -15,7 +15,6 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Callable, List, Optional
 
 # Install can be slow (a Rust build, a large pip resolve) — generous ceiling.
@@ -31,15 +30,6 @@ def _module_present(name: str) -> bool:
 
 def _binary_present(name: str) -> bool:
     return shutil.which(name) is not None
-
-
-def _ua_installed() -> bool:
-    """Understand-Anything's installer drops a plugin/skills tree (no PATH binary),
-    so detect a real completion marker — its cloned ``repo/install.sh`` — rather
-    than a `ua` executable or a bare leftover dir a failed install could leave."""
-    if _binary_present("understand-anything") or _binary_present("ua"):
-        return True
-    return (Path.home() / ".understand-anything" / "repo" / "install.sh").is_file()
 
 
 def _pip_install_argv(specs: List[str]) -> List[str]:
@@ -90,15 +80,6 @@ DEPS: List[Dep] = [
         lambda: _module_present("raganything"),
         [sys.executable, "-m", "pip", "install", "raganything[all]>=1.3.0", "docling"],
         pip_specs=["raganything[all]>=1.3.0", "docling"],
-    ),
-    Dep(
-        "understand-anything",
-        "Understand-Anything code knowledge-graph skill",
-        _ua_installed,
-        ["bash", "-c",
-         "curl -fsSL https://raw.githubusercontent.com/Lum1104/Understand-Anything/main/install.sh | bash -s codex"],
-        needs_shell=True,
-        note="runs the upstream install script (needs network)",
     ),
 ]
 

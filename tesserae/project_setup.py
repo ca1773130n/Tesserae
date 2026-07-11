@@ -56,29 +56,6 @@ def discover_default_sources(project_root: str | Path) -> List[str]:
     return [item for item in candidates if (root / item).exists()]
 
 
-def understand_anything_artifact(project_root: str | Path) -> Optional[str]:
-    root = Path(project_root).resolve()
-    artifact = root / ".understand-anything" / "knowledge-graph.json"
-    return _rel(root, artifact) if artifact.exists() else None
-
-
-def understand_anything_projection_path() -> str:
-    return ".tesserae/external/understand-anything.md"
-
-
-def understand_anything_install_command(platform: str = "codex") -> str:
-    return f"curl -fsSL https://raw.githubusercontent.com/Lum1104/Understand-Anything/main/install.sh | bash -s {platform}"
-
-
-def understand_anything_refresh_command(platform: str = "codex") -> str:
-    """Return Tesserae's managed Understand Anything refresh command."""
-    return (
-        "{python} -m tesserae.understand_anything_refresh "
-        "--project {project} "
-        f"--platform {shlex.quote(platform)}"
-    )
-
-
 def expand_tool_command(command: str, project_root: str | Path, tool: Optional[dict] = None) -> str:
     root = Path(project_root).resolve()
     tool = tool or {}
@@ -100,11 +77,6 @@ def build_setup_plan(
     name: Optional[str] = None,
     source_kind: str = "Repository",
     sources: Optional[Iterable[str | Path]] = None,
-    include_understand_anything: bool = False,
-    run_understand_anything: bool = False,
-    understand_anything_command: Optional[str] = None,
-    install_understand_anything: Optional[bool] = None,
-    understand_anything_platform: str = "codex",
     enable_cognee: bool = True,
     cognee_mode: str = "cognify",
     cognee_auto_cognify: bool = False,
@@ -123,40 +95,6 @@ def build_setup_plan(
     root = Path(project_root).resolve()
     source_list = [str(source) for source in sources] if sources is not None else discover_default_sources(root)
     external_tools: List[dict] = []
-
-    ua_artifact = understand_anything_artifact(root)
-    # Demoted: presence of a .understand-anything artifact no longer adopts
-    # the integration silently — the caller must opt in explicitly.
-    if include_understand_anything:
-        artifact = ua_artifact or ".understand-anything/knowledge-graph.json"
-        projection = understand_anything_projection_path()
-        if projection not in source_list:
-            source_list.append(projection)
-        should_install = bool(install_understand_anything) if install_understand_anything is not None else not bool(ua_artifact)
-        refresh_command = understand_anything_command or understand_anything_refresh_command(understand_anything_platform)
-        external_tools.append(
-            {
-                "id": "understand-anything",
-                "name": "Understand Anything",
-                "artifact": artifact,
-                "source": projection,
-                "refresh_command": refresh_command,
-                # Demoted: refreshes run a remote-installed tool (potentially
-                # LLM/network heavy), so compile no longer triggers them
-                # unless the user flips this on in config.json.
-                "auto_refresh": False,
-                "sync_mode": "native_graph",
-                "preserve_markdown_projection": True,
-                "managed_refresh": understand_anything_command is None,
-                "enabled": True,
-                "install": {
-                    "enabled": True,
-                    "auto_install": should_install,
-                    "platform": understand_anything_platform,
-                    "command": understand_anything_install_command(understand_anything_platform),
-                },
-            }
-        )
 
     memory_backends: dict = {}
     if enable_cognee:
@@ -260,7 +198,7 @@ def build_setup_plan(
         source_kind=source_kind,
         sources=source_list,
         external_tools=external_tools,
-        run_external_tools=run_understand_anything,
+        run_external_tools=False,
         install_external_tools=any((tool.get("install") or {}).get("auto_install") for tool in external_tools),
         memory_backends=memory_backends,
     )
@@ -345,7 +283,20 @@ def run_external_tools(plan: SetupPlan, *, fail_fast: bool = True) -> List[dict]
 def run_tool_configs(project_root: str | Path, tools: Sequence[dict], *, only_auto: bool = True, fail_fast: bool = True, run_installers: bool = False) -> List[dict]:
     root = Path(project_root).resolve()
     results: List[dict] = []
+    ua_noted = False
     for tool in tools:
+        if tool.get("id") == "understand-anything":
+            # Removed backend: OLD configs may still carry the entry. Ignore it
+            # with ONE stderr note (not an error) so those configs keep loading.
+            if not ua_noted:
+                print(
+                    "note: understand-anything external tool was removed — entry ignored"
+                    " (code-structure nodes are extracted natively; see tesserae code ingest)",
+                    file=sys.stderr,
+                )
+                ua_noted = True
+            results.append({"id": "understand-anything", "status": "skipped", "reason": "backend removed"})
+            continue
         if not tool.get("enabled", True):
             continue
         if only_auto and not tool.get("auto_refresh"):
@@ -398,76 +349,7 @@ def run_tool_configs(project_root: str | Path, tools: Sequence[dict], *, only_au
                 raise RuntimeError(f"External tool failed: {tool.get('name')} ({completed.returncode})")
         else:
             results.append({"id": tool.get("id"), "status": "skipped", "reason": "no refresh_command"})
-        if tool.get("id") == "understand-anything":
-            materialized = materialize_understand_anything_source(root, tool)
-            results.append({"id": tool.get("id"), "status": "materialized", "source": materialized})
     return results
-
-
-def materialize_understand_anything_source(project_root: str | Path, tool: dict) -> str:
-    root = Path(project_root).resolve()
-    artifact = root / str(tool.get("artifact") or ".understand-anything/knowledge-graph.json")
-    source = root / str(tool.get("source") or understand_anything_projection_path())
-    source.parent.mkdir(parents=True, exist_ok=True)
-    if not artifact.exists():
-        source.write_text(
-            "# Understand Anything Knowledge Graph\n\n"
-            f"Expected artifact: `{_rel(root, artifact)}`\n\n"
-            "The artifact does not exist yet. Run the configured Understand Anything refresh command, then compile again.\n",
-            encoding="utf-8",
-        )
-        return _rel(root, source)
-    try:
-        payload = json.loads(artifact.read_text(encoding="utf-8"))
-    except Exception as exc:
-        source.write_text(
-            "# Understand Anything Knowledge Graph\n\n"
-            f"Artifact: `{_rel(root, artifact)}`\n\n"
-            f"Could not parse JSON: `{exc}`\n",
-            encoding="utf-8",
-        )
-        return _rel(root, source)
-    project = payload.get("project", {}) if isinstance(payload, dict) else {}
-    nodes = payload.get("nodes", []) if isinstance(payload, dict) else []
-    edges = payload.get("edges", []) if isinstance(payload, dict) else []
-    layers = payload.get("layers", []) if isinstance(payload, dict) else []
-    tour = payload.get("tour", []) if isinstance(payload, dict) else []
-    lines = [
-        "# Understand Anything Knowledge Graph",
-        "",
-        f"Source artifact: `{_rel(root, artifact)}`",
-        "",
-        "This page is generated by `tesserae init` / external-tool refresh so Tesserae can compile Understand Anything output as project memory without vendoring Understand Anything.",
-        "",
-        "## Summary",
-        "",
-        f"- Project: {project.get('name') or root.name}",
-        f"- Description: {project.get('description') or 'n/a'}",
-        f"- Languages: {', '.join(project.get('languages') or []) if isinstance(project.get('languages'), list) else project.get('languages', 'n/a')}",
-        f"- Frameworks: {', '.join(project.get('frameworks') or []) if isinstance(project.get('frameworks'), list) else project.get('frameworks', 'n/a')}",
-        f"- Nodes: {len(nodes) if isinstance(nodes, list) else 0}",
-        f"- Edges: {len(edges) if isinstance(edges, list) else 0}",
-        f"- Layers: {len(layers) if isinstance(layers, list) else 0}",
-        f"- Tour steps: {len(tour) if isinstance(tour, list) else 0}",
-        "",
-        "## Representative nodes",
-        "",
-    ]
-    for node in (nodes[:40] if isinstance(nodes, list) else []):
-        if not isinstance(node, dict):
-            continue
-        name = node.get("name") or node.get("id") or "unnamed"
-        ntype = node.get("type") or "node"
-        summary = node.get("summary") or ""
-        path = node.get("filePath") or ""
-        lines.append(f"- **{name}** (`{ntype}`){f' — `{path}`' if path else ''}: {summary}".rstrip())
-    lines.extend(["", "## Representative edges", ""])
-    for edge in (edges[:60] if isinstance(edges, list) else []):
-        if not isinstance(edge, dict):
-            continue
-        lines.append(f"- `{edge.get('source')}` --{edge.get('type', 'related_to')}--> `{edge.get('target')}`")
-    source.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
-    return _rel(root, source)
 
 
 def refresh_configured_external_tools(project_root: str | Path, *, only_auto: bool = True, fail_fast: bool = False) -> List[dict]:
@@ -479,9 +361,6 @@ def refresh_configured_external_tools(project_root: str | Path, *, only_auto: bo
 def apply_setup_plan(plan: SetupPlan) -> SetupResult:
     ran_tools = run_external_tools(plan, fail_fast=False)
     wiki = ProjectWiki.init(plan.project_root, name=plan.name, source_kind=plan.source_kind, sources=plan.sources)
-    for tool in plan.external_tools:
-        if tool.get("id") == "understand-anything":
-            materialize_understand_anything_source(plan.project_root, tool)
     cfg = wiki.config()
     cfg["setup"] = {
         "wizard": "tesserae init",

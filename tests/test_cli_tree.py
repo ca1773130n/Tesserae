@@ -78,7 +78,6 @@ def test_unknown_command_exits_2_and_points_at_help(capsys):
         (["project", "sync-graphiti"], "tesserae export graphiti --sync"),
         (["project", "mcp-config"], "tesserae projects mcp-config"),
         (["project", "refresh-raganything"], "tesserae integrations refresh raganything"),
-        (["project", "refresh-understand-anything"], "tesserae integrations refresh understand-anything"),
         (["project", "evolve"], "tesserae lab evolve"),
         (["project", "schema-drift"], "tesserae lab schema-drift"),
         (["project", "sessions", "import"], "tesserae sessions import"),
@@ -118,6 +117,20 @@ def test_wiki_activate_stub_is_a_terminal_removal(capsys):
     assert err.count("\n") == 1, f"stub must be exactly one line, got: {err!r}"
     assert "was removed — all registered projects are active" in err
     assert "tesserae projects list" in err
+    assert "has moved" not in err
+
+
+def test_refresh_understand_anything_stub_is_a_terminal_removal(capsys):
+    """Backend EOL stage 1: the old `project refresh-understand-anything`
+    surface is a one-line removal notice (exit 2), not a redirect."""
+    from tesserae.cli import main
+
+    rc = main(["project", "refresh-understand-anything"])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert err.count("\n") == 1, f"stub must be exactly one line, got: {err!r}"
+    assert "removed — code-structure nodes are extracted natively" in err
+    assert "tesserae code ingest" in err
     assert "has moved" not in err
 
 

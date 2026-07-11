@@ -792,16 +792,6 @@ def _detect_backend_artifacts(ctx: DoctorContext) -> Optional[Finding]:
                 stale.append("raganything")
     except Exception:
         pass
-    try:
-        from .understand_anything_refresh import _artifact_is_current as _ua_current
-
-        ua_dir = ctx.project_root / ".understand-anything"
-        if ua_dir.exists():
-            present = True
-            if not _ua_current(ctx.project_root):
-                stale.append("understand-anything")
-    except Exception:
-        pass
     if not present:
         return _f("backend_artifacts", "freshness", OK, "no external backend artifacts")
     if stale:

@@ -59,7 +59,7 @@ build reste verte et l’artefact est toujours produit.
 
 ## Self-dogfood
 
-Les opt-ins d'intégration (Understand Anything, RAG-Anything, cognee) sont
+Les opt-ins d'intégration (RAG-Anything, cognee) sont
 désormais des **invites interactives de l'assistant**, et non des flags CLI.
 Exécutez l'assistant et répondez-y :
 
@@ -72,7 +72,6 @@ tesserae init \
   --source tests \
   --source scripts
 # lorsque l'assistant demande :
-#   - activez Understand Anything (plateforme : codex), installer : oui
 #   - activez RAG-Anything, installer : oui, parseur : mineru, exécuter ensuite : oui
 #   - activez cognee, installer : oui
 tesserae compile
@@ -84,7 +83,7 @@ tesserae serve --port 8765
 Pour une exécution entièrement non interactive, utilisez `tesserae init --yes`
 (toutes les intégrations DÉSACTIVÉES), puis activez chaque intégration dans
 `.tesserae/config.json` — l'assistant les écrit sous les clés `memory_backends`
-(cognee) et `external_tools` (Understand Anything, RAG-Anything) — et exécutez
+(cognee) et `external_tools` (RAG-Anything) — et exécutez
 `tesserae integrations refresh <name>` pour chacune avant de compiler.
 Consultez les documents d'intégration pour les clés de configuration exactes.
 

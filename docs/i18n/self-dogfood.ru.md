@@ -6,7 +6,7 @@
 Этот проект может индексировать сам себя. Поток self-dogfood доказывает, что
 Tesserae можно установить, настроить внутри его собственного репозитория,
 влить его собственные docs/исходники/тесты/скрипты, опционально обновить
-Understand Anything и Cognee, скомпилировать артефакты графа и собрать
+RAG-Anything и Cognee, скомпилировать артефакты графа и собрать
 статический веб-фронтенд.
 
 Тот же поток служит и мультимодальным smoke-тестом. С установленным
@@ -52,7 +52,7 @@ tesserae init \
   --source scripts
 
 # (optional) install + enable the heavier companions afterwards:
-#   tesserae setup --install raganything --install understand-anything --install cognee
+#   tesserae setup --install raganything --install cognee
 #   then flip memory_backends.*.enabled / external_tools in .tesserae/config.json
 
 # Compile the configured sources.
@@ -104,7 +104,7 @@ Self-демо записывает генерируемые артефакты �
 
 Проверено `2026-04-27 11:11:23 KST` из самого репозитория Tesserae.
 
-Подключение интеграций (Understand Anything, cognee) теперь — **интерактивные
+Подключение интеграций (RAG-Anything, cognee) теперь — **интерактивные
 подсказки визарда**, а не CLI-флаги. Неинтерактивный эквивалент ниже запускает
 `tesserae init --yes` (интеграции ВЫКЛ), включает интеграции в
 `.tesserae/config.json` (визард пишет их под ключами `memory_backends` и
@@ -114,8 +114,8 @@ Self-демо записывает генерируемые артефакты �
 ```text
 install command: ./scripts/install.sh --dir /Users/neo/Developer/Projects/Tesserae --skip-shell-config
 setup command:   tesserae init --yes --name tesserae_self --source README.md --source docs --source tesserae --source tests --source scripts
-                 # then enable Understand Anything + cognee in .tesserae/config.json and run:
-                 #   tesserae integrations refresh understand-anything
+                 # then enable the optional integrations in .tesserae/config.json and run:
+                 #   tesserae integrations refresh raganything
                  #   tesserae integrations refresh cognee
 ingest command:  tesserae compile README.md docs --changed-only
 compile command: tesserae compile

@@ -188,4 +188,4 @@ tesserae register-project /path/to/notes    --name notes
 
 ## 它在整个体系中的位置
 
-MCP 服务器是类型化图谱的 **读接口**。**写路径**（摄取源文件、重新编译、刷新 RAG-Anything 或 Understand-Anything 等配套工具）请直接使用 CLI。两者是解耦的：CLI 更新 `.tesserae/`，MCP 服务器在下一次工具调用时读取其中的内容。
+MCP 服务器是类型化图谱的 **读接口**。**写路径**（摄取源文件、重新编译、刷新 RAG-Anything 等配套工具）请直接使用 CLI。两者是解耦的：CLI 更新 `.tesserae/`，MCP 服务器在下一次工具调用时读取其中的内容。

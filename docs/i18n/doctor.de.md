@@ -29,13 +29,13 @@ Zwanzig Checks, nach Kategorie gruppiert:
 | `registry_consistent` | registry | `~/.tesserae/registry.json`-Einträge zeigen auf reale Projekt-Roots | **SAFE**: entfernt Einträge, deren Root verschwunden ist, streicht den Legacy-Key `active`; ein fehlender Graph ist nur Bericht |
 | `graph_staleness` | freshness | Git-Delta seit dem im letzten Compile aufgezeichneten `git_head` | nur Bericht (schlägt `tesserae refresh` vor — Compiles sind teuer) |
 | `site_search_index` | freshness | die statische Site / `search-index.json` ist neuer als `graph.json` | **SAFE**: baut die Site neu |
-| `backend_artifacts` | freshness | RAG-Anything- / Understand-Anything-Artefakte sind aktuell | nur Bericht (deren Refresh ist LLM-/Netzwerk-lastig) |
+| `backend_artifacts` | freshness | RAG-Anything-Artefakte sind aktuell | nur Bericht (deren Refresh ist LLM-/Netzwerk-lastig) |
 | `session_chunks` | freshness | die Abdeckung der [täglichen Session-Chunks](session-chunks.de.md) hat keine Lücken im jüngsten Fenster | nur Bericht (schlägt `tesserae sessions chunk-backfill` vor) |
 | `wiki_lint` | graph | Graph-⇄-Wiki-Drift + trivial behebbare Lint-Befunde | **SAFE**: wendet die trivialen Lint-Fixes an (`fix_trivial`) |
 | `compile_lock` | processes | ob ein lebendiger Compile-Lock gehalten wird, und von welcher PID | nur Bericht — doctor **killt nie einen Prozess und entfernt nie einen lebendigen Lock** |
 | `daemon_pid` | processes | `daemon.pid` zeigt auf einen lebendigen Engine-Prozess | **SAFE**: entfernt die Pidfile, wenn ihr Eigentümer tot ist |
 | `llm_login` | environment | das konfigurierte LLM-Backend ist tatsächlich nutzbar (claude/codex-CLI eingeloggt, oder API-Key vorhanden) | nur Bericht (schlägt `claude /login` / `codex login` vor) |
-| `optional_deps` | environment | Status optionaler Abhängigkeiten (memex, cognee, raganything, understand-anything) | nur Bericht (Installationen brauchen Netzwerk) |
+| `optional_deps` | environment | Status optionaler Abhängigkeiten (memex, cognee, raganything) | nur Bericht (Installationen brauchen Netzwerk) |
 | `embedding_backend` | environment | ein echtes semantisches Embedding-Backend ist verfügbar | nur Bericht (schlägt `pip install tesserae[semantic]` vor) |
 | `environment` | environment | Gesamtzusammenfassung der Umgebungserkennung | Berichtsabschnitt |
 | `build_history` | hygiene | Größe und Form von `.build-history` | **SAFE**: kürzt sie und bewahrt immer den neuesten `git_head`-Eintrag (der Staleness-Check hängt davon ab) |

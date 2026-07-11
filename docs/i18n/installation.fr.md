@@ -48,7 +48,7 @@ tesserae config deps --install memex     # fast transcript search (needs cargo)
 ```
 
 Dépendances optionnelles connues : **memex** (recherche rapide de transcriptions), **cognee**,
-**raganything**, **understand-anything**. Un `.tesserae/config.json` par projet
+**raganything**. Un `.tesserae/config.json` par projet
 prime toujours sur ces valeurs globales (ordre de résolution : env → projet → global →
 défaut intégré). `tesserae init` propose aussi d’installer memex lors d’une configuration interactive.
 
@@ -63,12 +63,11 @@ niveau machine via `tesserae setup --install …` (ou `tesserae config deps
 
 ```bash
 # Machine-wide installs of the optional pieces:
-tesserae setup --install raganything --install understand-anything --install cognee
+tesserae setup --install raganything --install cognee
 
 # Then per project: enable what you want in .tesserae/config.json
 #   memory_backends.raganything.enabled: true
 #   memory_backends.cognee.enabled: true        (query via `tesserae query --backend …`)
-#   external_tools: understand-anything entry   (auto_refresh: false by default)
 ```
 
 Les installations manuelles de paquets restent disponibles pour les workflows avancés :
@@ -80,7 +79,6 @@ pip install "tesserae[cognee]"
 
 - `kuzu` — persistance de graphe Kuzu.
 - `tesserae[cognee]` — les workflows opt-in add/cognify du runtime Cognee (désactivés par défaut ; le mode cognify patché par Codex a été supprimé).
-- Understand Anything — installé via l’installeur amont (`tesserae setup --install understand-anything`) ; Tesserae stocke un wrapper de rafraîchissement géré au lieu de demander aux utilisateurs d’inventer une commande shell.
 - RAG-Anything — installé via `pip install 'raganything[all]'` (`tesserae setup --install raganything`) ; Tesserae stocke un wrapper de rafraîchissement géré pour les exécutions du parseur multimodal.
 - `graphiti-core` — synchronisation Graphiti/Neo4j en direct. `export graphiti` et `export graphiti --sync --dry-run` fonctionnent sans lui.
 

@@ -38,7 +38,7 @@ COMMAND_TREE: list[tuple[str, list[tuple[str, str]]]] = [
         ("projects", "register | list | unregister | mcp-config — registry"),
         ("sources", "add | list | remove — manage compile source dirs (local & global)"),
         ("federation", "status | explain — inspect cross-project federation"),
-        ("integrations", "refresh raganything|understand-anything"),
+        ("integrations", "refresh raganything"),
         ("extract", "Low-level: extract a typed graph from markdown paths"),
     ]),
     ("LAB", [
@@ -84,7 +84,7 @@ MOVED_COMMANDS: dict[tuple[str, ...], str] = {
     ("project", "sync-graphiti"): "tesserae export graphiti --sync",
     ("project", "mcp-config"): "tesserae projects mcp-config",
     ("project", "refresh-raganything"): "tesserae integrations refresh raganything",
-    ("project", "refresh-understand-anything"): "tesserae integrations refresh understand-anything",
+    ("project", "refresh-understand-anything"): "removed — code-structure nodes are extracted natively; see tesserae code ingest",
     ("project", "evolve"): "tesserae lab evolve",
     ("project", "schema-drift"): "tesserae lab schema-drift",
     ("project",): "tesserae <command> (see tesserae --help)",

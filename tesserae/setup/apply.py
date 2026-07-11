@@ -272,12 +272,6 @@ def apply_plan(
             )
         )
 
-    for tool in plan.external_tools:
-        if tool.get("id") == "understand-anything":
-            from ..project_setup import materialize_understand_anything_source
-
-            materialize_understand_anything_source(project_root, tool)
-
     return SetupResult(
         config_path=wiki.paths.config,
         actions_taken=actions_taken,

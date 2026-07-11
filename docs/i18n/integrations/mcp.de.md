@@ -188,4 +188,4 @@ Falls nichts erscheint, prüfe noch einmal, dass `--graph` auf eine existierende
 
 ## Wo das hineinpasst
 
-Der MCP-Server ist das **Lese-Interface** zum typisierten Graphen. Für den **Schreibpfad** (Quellen ingestieren, recompilieren, Companion-Tools wie RAG-Anything oder Understand-Anything aktualisieren) nutze die CLI direkt. Beide sind entkoppelt: Die CLI aktualisiert `.tesserae/`, der MCP-Server liest beim nächsten Tool-Call genau das, was dort liegt.
+Der MCP-Server ist das **Lese-Interface** zum typisierten Graphen. Für den **Schreibpfad** (Quellen ingestieren, recompilieren, Companion-Tools wie RAG-Anything aktualisieren) nutze die CLI direkt. Beide sind entkoppelt: Die CLI aktualisiert `.tesserae/`, der MCP-Server liest beim nächsten Tool-Call genau das, was dort liegt.

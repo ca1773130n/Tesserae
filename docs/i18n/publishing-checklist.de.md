@@ -60,7 +60,7 @@ bleibt der Build grün und das Artefakt wird trotzdem erzeugt.
 
 ## Self-Dogfood
 
-Integrations-Opt-ins (Understand Anything, RAG-Anything, cognee) sind jetzt
+Integrations-Opt-ins (RAG-Anything, cognee) sind jetzt
 **interaktive Wizard-Abfragen**, keine CLI-Flags. Führe den Wizard aus und
 beantworte sie:
 
@@ -73,7 +73,6 @@ tesserae init \
   --source tests \
   --source scripts
 # wenn der Wizard fragt:
-#   - Understand Anything aktivieren (Plattform: codex), installieren: ja
 #   - RAG-Anything aktivieren, installieren: ja, Parser: mineru, danach ausführen: ja
 #   - cognee aktivieren, installieren: ja
 tesserae compile
@@ -85,7 +84,7 @@ tesserae serve --port 8765
 Für einen vollständig nicht-interaktiven Lauf nutze `tesserae init --yes` (alle
 Integrationen AUS), aktiviere dann jede Integration in `.tesserae/config.json`
 — der Wizard schreibt sie unter den Schlüsseln `memory_backends` (cognee) und
-`external_tools` (Understand Anything, RAG-Anything) — und führe `tesserae
+`external_tools` (RAG-Anything) — und führe `tesserae
 integrations refresh <name>` für jede vor dem Kompilieren aus. Die genauen
 Konfigurations-Schlüssel stehen in den Integrationsdokumenten.
 

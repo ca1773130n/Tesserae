@@ -113,9 +113,10 @@ def test_detect_recommends_deterministic_with_no_llm(tmp_path: Path, monkeypatch
     assert report.recommended.extractor == "deterministic"
 
 
-def test_detect_picks_up_understand_anything_artifact(tmp_path: Path) -> None:
+def test_detect_ignores_understand_anything_artifact(tmp_path: Path) -> None:
+    """Removed backend: a leftover .understand-anything dir is not fingerprinted."""
     (tmp_path / ".understand-anything").mkdir()
     (tmp_path / ".understand-anything" / "knowledge-graph.json").write_text("{}")
     report = detect(tmp_path)
-    assert report.project.has_understand_anything is True
-    assert report.recommended.include_understand_anything is True
+    assert not hasattr(report.project, "has_understand_anything")
+    assert not hasattr(report.recommended, "include_understand_anything")

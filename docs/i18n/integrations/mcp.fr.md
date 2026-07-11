@@ -188,4 +188,4 @@ Si rien n'apparaît, vérifiez à deux fois que `--graph` pointe vers un `.tesse
 
 ## Où cela s'inscrit
 
-Le serveur MCP est l'**interface de lecture** du graphe typé. Pour le **chemin d'écriture** (ingestion des sources, recompilation, rafraîchissement d'outils compagnons comme RAG-Anything ou Understand-Anything), utilisez la CLI directement. Les deux sont découplés : la CLI met à jour `.tesserae/`, le serveur MCP lit ce qui s'y trouve au prochain appel d'outil.
+Le serveur MCP est l'**interface de lecture** du graphe typé. Pour le **chemin d'écriture** (ingestion des sources, recompilation, rafraîchissement d'outils compagnons comme RAG-Anything), utilisez la CLI directement. Les deux sont découplés : la CLI met à jour `.tesserae/`, le serveur MCP lit ce qui s'y trouve au prochain appel d'outil.

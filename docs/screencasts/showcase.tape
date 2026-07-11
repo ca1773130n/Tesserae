@@ -5,8 +5,8 @@
 #     gifsicle --optimize=3 --colors=128 docs/screencasts/showcase.gif \
 #         -o docs/screencasts/showcase.gif
 #
-# Configures all three optional integrations (Cognee, RAG-Anything,
-# Understand-Anything) but skips their pip/curl installers so the
+# Configures the optional integrations (Cognee, RAG-Anything)
+# but skips their pip installers so the
 # recording doesn't have to wait on slow network IO. The setup output
 # still lists them as configured external tools.
 #

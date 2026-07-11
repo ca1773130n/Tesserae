@@ -59,7 +59,7 @@ tesserae context --help     # Компилятор контекста по за�
 
 ## Self-dogfood
 
-Подключения интеграций (Understand Anything, RAG-Anything, cognee) теперь
+Подключения интеграций (RAG-Anything, cognee) теперь
 являются **интерактивными запросами мастера**, а не CLI-флагами. Запустите
 мастер и ответьте на них:
 
@@ -72,7 +72,6 @@ tesserae init \
   --source tests \
   --source scripts
 # когда мастер спросит:
-#   - включите Understand Anything (платформа: codex), установить: да
 #   - включите RAG-Anything, установить: да, парсер: mineru, запустить после: да
 #   - включите cognee, установить: да
 tesserae compile
@@ -84,7 +83,7 @@ tesserae serve --port 8765
 Для полностью неинтерактивного запуска используйте `tesserae init --yes` (все
 интеграции ВЫКЛЮЧЕНЫ), затем включите каждую интеграцию в
 `.tesserae/config.json` — мастер записывает их под ключами `memory_backends`
-(cognee) и `external_tools` (Understand Anything, RAG-Anything) — и выполните
+(cognee) и `external_tools` (RAG-Anything) — и выполните
 `tesserae integrations refresh <name>` для каждой перед компиляцией. Точные
 ключи конфигурации см. в документах по интеграциям.
 

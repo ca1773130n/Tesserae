@@ -29,13 +29,13 @@ Veinte comprobaciones, agrupadas por categoría:
 | `registry_consistent` | registry | las entradas de `~/.tesserae/registry.json` apuntan a raíces de proyecto reales | **SAFE**: poda las entradas cuya raíz ha desaparecido, elimina la clave legacy `active`; un grafo ausente es solo informe |
 | `graph_staleness` | freshness | delta de git desde el `git_head` registrado en la última compilación | solo informe (sugiere `tesserae refresh` — las compilaciones son pesadas) |
 | `site_search_index` | freshness | el sitio estático / `search-index.json` es más reciente que `graph.json` | **SAFE**: reconstruye el sitio |
-| `backend_artifacts` | freshness | los artefactos de RAG-Anything / Understand-Anything están al día | solo informe (su refresco es pesado en LLM/red) |
+| `backend_artifacts` | freshness | los artefactos de RAG-Anything están al día | solo informe (su refresco es pesado en LLM/red) |
 | `session_chunks` | freshness | la cobertura de [session-chunks diarios](session-chunks.es.md) no tiene huecos en la ventana reciente | solo informe (sugiere `tesserae sessions chunk-backfill`) |
 | `wiki_lint` | graph | deriva grafo ⇄ wiki + hallazgos de lint trivialmente corregibles | **SAFE**: aplica las correcciones triviales del lint (`fix_trivial`) |
 | `compile_lock` | processes | si hay un lock de compilación vivo retenido, y por qué pid | solo informe — doctor **nunca mata ni elimina un lock vivo** |
 | `daemon_pid` | processes | `daemon.pid` apunta a un proceso de engine vivo | **SAFE**: elimina el pidfile cuando su propietario está muerto |
 | `llm_login` | environment | el backend LLM configurado es realmente utilizable (CLI de claude/codex con sesión iniciada, o clave de API presente) | solo informe (sugiere `claude /login` / `codex login`) |
-| `optional_deps` | environment | estado de las dependencias opcionales (memex, cognee, raganything, understand-anything) | solo informe (las instalaciones usan red) |
+| `optional_deps` | environment | estado de las dependencias opcionales (memex, cognee, raganything) | solo informe (las instalaciones usan red) |
 | `embedding_backend` | environment | hay disponible un backend real de embeddings semánticos | solo informe (sugiere `pip install tesserae[semantic]`) |
 | `environment` | environment | resumen completo de la detección de entorno | sección de solo informe |
 | `build_history` | hygiene | tamaño y forma de `.build-history` | **SAFE**: lo recorta, preservando siempre la entrada `git_head` más reciente (la comprobación de staleness depende de ella) |

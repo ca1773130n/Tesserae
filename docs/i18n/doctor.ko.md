@@ -29,13 +29,13 @@ tesserae doctor --project ~/src/other
 | `registry_consistent` | registry | `~/.tesserae/registry.json` 항목이 실제 프로젝트 루트를 가리키는지 | **SAFE**: 루트가 사라진 항목을 정리하고, 레거시 `active` 키를 제거; 그래프 누락은 보고만 |
 | `graph_staleness` | freshness | 마지막 compile에 기록된 `git_head` 이후의 git delta | 보고만 (`tesserae refresh` 제안 — compile은 무거움) |
 | `site_search_index` | freshness | 정적 사이트 / `search-index.json`이 `graph.json`보다 최신인지 | **SAFE**: 사이트를 재빌드 |
-| `backend_artifacts` | freshness | RAG-Anything / Understand-Anything 아티팩트가 최신인지 | 보고만 (해당 refresh는 LLM/네트워크 비용이 큼) |
+| `backend_artifacts` | freshness | RAG-Anything 아티팩트가 최신인지 | 보고만 (해당 refresh는 LLM/네트워크 비용이 큼) |
 | `session_chunks` | freshness | [일일 session-chunk](session-chunks.ko.md) 커버리지에 최근 윈도우 내 공백이 없는지 | 보고만 (`tesserae sessions chunk-backfill` 제안) |
 | `wiki_lint` | graph | graph ⇄ wiki 드리프트 + 자명하게 고칠 수 있는 lint 발견 사항 | **SAFE**: lint의 자명한 수정(`fix_trivial`)을 적용 |
 | `compile_lock` | processes | 라이브 compile lock이 잡혀 있는지, 어느 pid가 잡고 있는지 | 보고만 — doctor는 **살아 있는 lock을 절대 죽이거나 제거하지 않음** |
 | `daemon_pid` | processes | `daemon.pid`가 살아 있는 엔진 프로세스를 가리키는지 | **SAFE**: 소유자가 죽었을 때 pidfile 제거 |
 | `llm_login` | environment | 설정된 LLM 백엔드가 실제로 사용 가능한지 (claude/codex CLI 로그인 상태이거나 API 키 존재) | 보고만 (`claude /login` / `codex login` 제안) |
-| `optional_deps` | environment | 선택적 의존성 상태 (memex, cognee, raganything, understand-anything) | 보고만 (설치는 네트워크가 필요) |
+| `optional_deps` | environment | 선택적 의존성 상태 (memex, cognee, raganything) | 보고만 (설치는 네트워크가 필요) |
 | `embedding_backend` | environment | 실제 시맨틱 embedding 백엔드가 사용 가능한지 | 보고만 (`pip install tesserae[semantic]` 제안) |
 | `environment` | environment | 환경 전반 감지 요약 | 보고 전용 섹션 |
 | `build_history` | hygiene | `.build-history` 크기와 형태 | **SAFE**: 트리밍하되 항상 최신 `git_head` 항목을 보존 (staleness 점검이 이것에 의존) |

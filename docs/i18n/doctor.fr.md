@@ -29,13 +29,13 @@ Vingt vérifications, regroupées par catégorie :
 | `registry_consistent` | registry | les entrées de `~/.tesserae/registry.json` pointent vers de vraies racines de projet | **SAFE** : élague les entrées dont la racine a disparu, supprime la clé héritée `active` ; un graphe manquant reste rapport seulement |
 | `graph_staleness` | freshness | delta git depuis le `git_head` enregistré par la dernière compilation | rapport seulement (suggère `tesserae refresh` — les compilations sont lourdes) |
 | `site_search_index` | freshness | le site statique / `search-index.json` est plus récent que `graph.json` | **SAFE** : reconstruit le site |
-| `backend_artifacts` | freshness | les artefacts RAG-Anything / Understand-Anything sont à jour | rapport seulement (leur rafraîchissement est lourd en LLM/réseau) |
+| `backend_artifacts` | freshness | les artefacts RAG-Anything sont à jour | rapport seulement (leur rafraîchissement est lourd en LLM/réseau) |
 | `session_chunks` | freshness | la couverture des [chunks de session quotidiens](session-chunks.fr.md) n’a pas de trous dans la fenêtre récente | rapport seulement (suggère `tesserae sessions chunk-backfill`) |
 | `wiki_lint` | graph | dérive graphe ⇄ wiki + constats de lint trivialement corrigeables | **SAFE** : applique les corrections triviales du lint (`fix_trivial`) |
 | `compile_lock` | processes | si un verrou de compilation vivant est détenu, et par quel pid | rapport seulement — doctor **ne tue jamais et ne supprime jamais un verrou vivant** |
 | `daemon_pid` | processes | `daemon.pid` pointe vers un processus moteur vivant | **SAFE** : supprime le pidfile quand son propriétaire est mort |
 | `llm_login` | environment | le backend LLM configuré est réellement utilisable (CLI claude/codex connectée, ou clé API présente) | rapport seulement (suggère `claude /login` / `codex login`) |
-| `optional_deps` | environment | statut des dépendances optionnelles (memex, cognee, raganything, understand-anything) | rapport seulement (les installations passent par le réseau) |
+| `optional_deps` | environment | statut des dépendances optionnelles (memex, cognee, raganything) | rapport seulement (les installations passent par le réseau) |
 | `embedding_backend` | environment | un vrai backend d’embeddings sémantiques est disponible | rapport seulement (suggère `pip install tesserae[semantic]`) |
 | `environment` | environment | résumé de détection d’environnement en bloc | section rapport seulement |
 | `build_history` | hygiene | taille et forme de `.build-history` | **SAFE** : le tronque, en préservant toujours l’entrée `git_head` la plus récente (la vérification de staleness en dépend) |

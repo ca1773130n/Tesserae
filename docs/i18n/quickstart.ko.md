@@ -46,7 +46,7 @@ GROUPS
   projects      register | list | unregister | mcp-config — registry
   sources       add | list | remove — manage compile source dirs (local & global)
   federation    status | explain — inspect cross-project federation
-  integrations  refresh raganything|understand-anything
+  integrations  refresh raganything
   extract       Low-level: extract a typed graph from markdown paths
 
 LAB
@@ -105,8 +105,6 @@ tesserae init --yes --llm-provider custom \
   --llm-model my-model            # key via ANTHROPIC_API_KEY
 ```
 
-Understand Anything의 `external_tools` 항목에서 `auto_refresh: true`로 활성화하면(기본 off — 그 refresh는 원격 설치 스크립트를 실행), UA 그래프가 없거나 오래되었을 때 `tesserae compile`이 `tesserae integrations refresh understand-anything`을 실행합니다; 그렇지 않으면 그 명령을 직접 실행하세요.
-
 > **마법사 건너뛰기.** `tesserae init --bare`는 소스 감지나 백엔드 탐침 없이
 > 최소한의 `.tesserae/config.json`을 기록합니다 — 첫 compile 전에 config를
 > 직접 편집하고 싶을 때 편리합니다.
@@ -137,7 +135,7 @@ tesserae compile
   cognee_bundle/
 ```
 
-첫 실행 이후에는 `--changed-only`를 사용해 변경되지 않은 markdown 파일을 건너뛰세요 — 변경된 파일이 없으면 이전 그래프가 보존됩니다. Understand Anything이 활성화되어 있으면, compile은 먼저 `.tesserae/external/understand-anything.md`를 refresh/구체화합니다; Cognee 런타임이 활성화되어 있으면 `.tesserae/cognee_bundle/`을 기록한 뒤 best-effort로 Cognee도 업데이트합니다.
+첫 실행 이후에는 `--changed-only`를 사용해 변경되지 않은 markdown 파일을 건너뛰세요 — 변경된 파일이 없으면 이전 그래프가 보존됩니다. Cognee 런타임이 활성화되어 있으면, compile은 `.tesserae/cognee_bundle/`을 기록한 뒤 best-effort로 Cognee도 업데이트합니다.
 
 설정된 소스를 건드리지 않고 임시로 추가 경로를 ingest하려면 위치 인자로
 전달하세요: `tesserae compile path/to/extra.md docs/`.

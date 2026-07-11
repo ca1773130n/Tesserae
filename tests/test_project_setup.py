@@ -2,7 +2,13 @@ import json
 
 import tesserae.cli as cli
 from tesserae.cli import main
-from tesserae.project_setup import build_setup_plan, render_setup_summary, expand_tool_command
+from tesserae.project_setup import (
+    build_setup_plan,
+    expand_tool_command,
+    refresh_configured_external_tools,
+    render_setup_summary,
+    run_tool_configs,
+)
 
 
 def _run_setup(*, project, name=None, overrides=None):
@@ -24,32 +30,30 @@ def _run_setup(*, project, name=None, overrides=None):
     return cli._handle_setup(args)
 
 
-def test_setup_plan_detects_common_sources_and_understand_anything(tmp_path):
+def _write_external_tool(project, tool: dict) -> None:
+    """Inject an external_tools entry into an already-initialized config.json."""
+    cfg_path = project / ".tesserae" / "config.json"
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    cfg.setdefault("external_tools", []).append(tool)
+    cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def test_setup_plan_detects_common_sources(tmp_path):
     project = tmp_path / "demo"
     project.mkdir()
     (project / "README.md").write_text("# Demo\n", encoding="utf-8")
     (project / "docs").mkdir()
     (project / "src").mkdir()
-    ua = project / ".understand-anything"
-    ua.mkdir()
-    (ua / "knowledge-graph.json").write_text('{"nodes": [], "edges": []}\n', encoding="utf-8")
 
-    plan = build_setup_plan(project, include_understand_anything=True)
+    plan = build_setup_plan(project)
 
-    assert plan.sources == ["README.md", "docs", "src", ".tesserae/external/understand-anything.md"]
-    assert plan.external_tools[0]["id"] == "understand-anything"
-    assert plan.external_tools[0]["artifact"] == ".understand-anything/knowledge-graph.json"
-    assert plan.external_tools[0]["source"] == ".tesserae/external/understand-anything.md"
-    assert plan.external_tools[0]["auto_refresh"] is False  # demoted: opt-in refresh
-    assert plan.external_tools[0]["sync_mode"] == "native_graph"
-    assert plan.external_tools[0]["preserve_markdown_projection"] is True
-    assert plan.external_tools[0]["managed_refresh"] is True
-    assert "tesserae.understand_anything_refresh" in plan.external_tools[0]["refresh_command"]
+    assert plan.sources == ["README.md", "docs", "src"]
+    assert plan.external_tools == []
 
 
-def test_setup_plan_does_not_auto_adopt_understand_anything_artifact(tmp_path):
-    """Demotion: a .understand-anything artifact on disk no longer pulls the
-    integration into the plan — only an explicit include does."""
+def test_setup_plan_ignores_understand_anything_artifact(tmp_path):
+    """Removed backend: a .understand-anything artifact on disk never pulls
+    anything into the plan (the integration itself was removed)."""
     project = tmp_path / "demo"
     project.mkdir()
     (project / "README.md").write_text("# Demo\n", encoding="utf-8")
@@ -63,180 +67,154 @@ def test_setup_plan_does_not_auto_adopt_understand_anything_artifact(tmp_path):
     assert ".tesserae/external/understand-anything.md" not in plan.sources
 
 
-def test_managed_understand_anything_refresh_command_expands_to_current_python(tmp_path):
+def test_expand_tool_command_substitutes_python_project_platform(tmp_path):
     project = tmp_path / "demo"
     project.mkdir()
+    tool = {"install": {"platform": "opencode"}}
+    command = expand_tool_command(
+        "{python} -m some.module --project {project} --platform {platform}", project, tool
+    )
 
-    plan = build_setup_plan(project, include_understand_anything=True, understand_anything_platform="opencode")
-    tool = plan.external_tools[0]
-    command = expand_tool_command(tool["refresh_command"], project, tool)
-
-    assert "tesserae.understand_anything_refresh" in command
+    assert "some.module" in command
     assert f"--project {project}" in command
     assert "--platform opencode" in command
 
-def test_setup_command_yes_writes_config_with_external_tool_metadata(tmp_path, capsys):
+
+def test_setup_command_yes_writes_config_without_external_tools(tmp_path):
     project = tmp_path / "demo"
     project.mkdir()
     (project / "README.md").write_text("# Demo\n", encoding="utf-8")
-    ua = project / ".understand-anything"
-    ua.mkdir()
-    (ua / "knowledge-graph.json").write_text('{"nodes": [], "edges": []}\n', encoding="utf-8")
 
-    # TODO(redesign-task-8): migrate when flag→config key lands. The setup-wizard-only
-    # opt-ins applied below (with/install/run/skip-install-understand-anything, no-color,
-    # name, understand-anything-command) are NOT surfaced on `tesserae init`; its
-    # --yes hard-codes integrations OFF and color auto. We drive `_handle_setup` with
-    # the same namespace those flags produced until Task 8 lands the flag→config keys.
-    code = _run_setup(
-        project=project,
-        name="demo_wiki",
-        overrides={"with_understand_anything": True, "no_color": True},
-    )
+    code = _run_setup(project=project, name="demo_wiki", overrides={"no_color": True})
 
     assert code == 0
     cfg = json.loads((project / ".tesserae" / "config.json").read_text(encoding="utf-8"))
-    assert cfg["sources"] == ["README.md", ".tesserae/external/understand-anything.md"]
-    assert cfg["setup"]["wizard"] == "tesserae init"
-    assert cfg["external_tools"][0]["id"] == "understand-anything"
-    assert cfg["external_tools"][0]["install"]["enabled"] is True
-    assert cfg["external_tools"][0]["auto_refresh"] is True
-    assert cfg["external_tools"][0]["sync_mode"] == "native_graph"
-    assert cfg["external_tools"][0]["preserve_markdown_projection"] is True
-    assert cfg["external_tools"][0]["managed_refresh"] is True
-    assert "tesserae.understand_anything_refresh" in cfg["external_tools"][0]["refresh_command"]
-    assert "install.sh" in cfg["external_tools"][0]["install"]["command"]
-    assert (project / ".tesserae" / "external" / "understand-anything.md").exists()
-    out = capsys.readouterr().out
-    assert "Tesserae setup" in out
-    assert "Understand Anything" in out
+    assert cfg["sources"] == ["README.md"]
+    assert cfg.get("external_tools", []) == []
 
 
-def test_setup_installs_understand_anything_when_requested(tmp_path, monkeypatch, capsys):
+def test_legacy_understand_anything_config_entry_is_ignored_with_one_note(tmp_path, capsys):
+    """Regression (backend EOL stage 1): loading an OLD config that still
+    carries an understand-anything external_tools entry prints ONE stderr
+    note and continues — never an error."""
     project = tmp_path / "demo"
     project.mkdir()
-    (project / "README.md").write_text("# Demo\n", encoding="utf-8")
-
-    # Patch the new pipeline's subprocess.run so the curl|bash installer
-    # doesn't actually execute.
-    import subprocess
-
-    seen: list[str] = []
-    original_run = subprocess.run
-
-    def fake_run(cmd, *rest, **kwargs):
-        if isinstance(cmd, str) and "install.sh" in cmd:
-            seen.append(cmd)
-            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="ok", stderr="")
-        return original_run(cmd, *rest, **kwargs)
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-
-    # TODO(redesign-task-8): migrate when flag→config key lands. The setup-wizard-only
-    # opt-ins applied below (with/install/run/skip-install-understand-anything, no-color,
-    # name, understand-anything-command) are NOT surfaced on `tesserae init`; its
-    # --yes hard-codes integrations OFF and color auto. We drive `_handle_setup` with
-    # the same namespace those flags produced until Task 8 lands the flag→config keys.
-    assert _run_setup(
-        project=project,
-        overrides={
-            "with_understand_anything": True,
-            "install_understand_anything": True,
-            "skip_install_understand_anything": False,
-            "no_color": True,
+    (project / "README.md").write_text(
+        "# Demo\nGaussian Splatting supports novel view synthesis.\n", encoding="utf-8"
+    )
+    assert _run_setup(project=project, overrides={"no_color": True}) == 0
+    capsys.readouterr()
+    _write_external_tool(
+        project,
+        {
+            "id": "understand-anything",
+            "name": "Understand Anything",
+            "artifact": ".understand-anything/knowledge-graph.json",
+            "refresh_command": "definitely_missing_understand_command",
+            "auto_refresh": True,
+            "enabled": True,
         },
-    ) == 0
+    )
 
-    assert seen, "install.sh installer should have been invoked"
-    out = capsys.readouterr().out
-    assert "[installed] understand-anything" in out
+    results = refresh_configured_external_tools(project, only_auto=True, fail_fast=False)
+
+    err = capsys.readouterr().err
+    assert err.count("understand-anything external tool was removed") == 1
+    assert [r for r in results if r.get("id") == "understand-anything"] == [
+        {"id": "understand-anything", "status": "skipped", "reason": "backend removed"}
+    ]
+
+    # And a full compile over that legacy config still succeeds.
+    assert main(["compile", "--project", str(project), "--limit", "1"]) == 0
+    assert (project / ".tesserae" / "graph.json").exists()
 
 
-def test_setup_persists_config_even_when_initial_external_refresh_fails(tmp_path, capsys):
+def test_run_tool_configs_notes_once_for_multiple_legacy_entries(tmp_path, capsys):
     project = tmp_path / "demo"
     project.mkdir()
-    (project / "README.md").write_text("# Demo\n", encoding="utf-8")
+    tools = [
+        {"id": "understand-anything", "enabled": True},
+        {"id": "understand-anything", "enabled": True},
+    ]
 
-    # TODO(redesign-task-8): migrate when flag→config key lands. The setup-wizard-only
-    # opt-ins applied below (with/install/run/skip-install-understand-anything, no-color,
-    # name, understand-anything-command) are NOT surfaced on `tesserae init`; its
-    # --yes hard-codes integrations OFF and color auto. We drive `_handle_setup` with
-    # the same namespace those flags produced until Task 8 lands the flag→config keys.
-    assert _run_setup(
-        project=project,
-        overrides={
-            "with_understand_anything": True,
-            "understand_anything_command": "definitely_missing_understand_command",
-            "run_understand_anything": True,
-            "skip_install_understand_anything": True,
-            "no_color": True,
-        },
-    ) == 0
+    results = run_tool_configs(project, tools, only_auto=False, fail_fast=False)
 
-    cfg = json.loads((project / ".tesserae" / "config.json").read_text(encoding="utf-8"))
-    assert cfg["external_tools"][0]["refresh_command"] == "definitely_missing_understand_command"
-    assert cfg["external_tools"][0]["auto_refresh"] is True
-    assert (project / ".tesserae" / "external" / "understand-anything.md").exists()
-    out = capsys.readouterr().out
-    assert "[failed] understand-anything" in out
-    assert "definitely_missing_understand_command" in out
+    err = capsys.readouterr().err
+    assert err.count("understand-anything external tool was removed") == 1
+    assert all(r["status"] == "skipped" for r in results)
+
+
+def test_run_tool_configs_reports_failure_without_raising_when_not_fail_fast(tmp_path):
+    project = tmp_path / "demo"
+    project.mkdir()
+    tools = [
+        {
+            "id": "custom-tool",
+            "name": "Custom Tool",
+            "refresh_command": "definitely_missing_custom_command",
+            "auto_refresh": True,
+            "enabled": True,
+        }
+    ]
+
+    results = run_tool_configs(project, tools, only_auto=True, fail_fast=False)
+
+    assert results[0]["id"] == "custom-tool"
+    assert results[0]["status"] == "failed"
+    assert results[0]["returncode"] != 0
 
 
 def test_compile_auto_refreshes_configured_external_tools(tmp_path, capsys):
     project = tmp_path / "demo"
     project.mkdir()
-    (project / "README.md").write_text("# Demo\nGaussian Splatting supports novel view synthesis.\n", encoding="utf-8")
-    command = "python3 -c \"from pathlib import Path; p=Path('.understand-anything'); p.mkdir(exist_ok=True); (p/'knowledge-graph.json').write_text('{\\\"nodes\\\": [], \\\"edges\\\": []}\\n')\""
-
-    # TODO(redesign-task-8): migrate when flag→config key lands. The setup-wizard-only
-    # opt-ins applied below (with/install/run/skip-install-understand-anything, no-color,
-    # name, understand-anything-command) are NOT surfaced on `tesserae init`; its
-    # --yes hard-codes integrations OFF and color auto. We drive `_handle_setup` with
-    # the same namespace those flags produced until Task 8 lands the flag→config keys.
-    assert _run_setup(
-        project=project,
-        overrides={
-            "with_understand_anything": True,
-            "understand_anything_command": command,
-            "run_understand_anything": True,
-            "skip_install_understand_anything": True,
-            "no_color": True,
+    (project / "README.md").write_text(
+        "# Demo\nGaussian Splatting supports novel view synthesis.\n", encoding="utf-8"
+    )
+    assert _run_setup(project=project, overrides={"no_color": True}) == 0
+    command = (
+        "python3 -c \"from pathlib import Path; p=Path('.external-marker');"
+        " p.mkdir(exist_ok=True); (p/'artifact.json').write_text('{}')\""
+    )
+    _write_external_tool(
+        project,
+        {
+            "id": "custom-tool",
+            "name": "Custom Tool",
+            "refresh_command": command,
+            "auto_refresh": True,
+            "enabled": True,
         },
-    ) == 0
-    (project / ".understand-anything" / "knowledge-graph.json").unlink()
+    )
 
     assert main(["compile", "--project", str(project), "--limit", "1"]) == 0
 
-    assert (project / ".understand-anything" / "knowledge-graph.json").exists()
+    assert (project / ".external-marker" / "artifact.json").exists()
     assert "Refreshed external tools" in capsys.readouterr().out
 
 
 def test_compile_warns_and_continues_when_auto_refresh_command_is_missing(tmp_path, capsys):
     project = tmp_path / "demo"
     project.mkdir()
-    (project / "README.md").write_text("# Demo\nGaussian Splatting supports novel view synthesis.\n", encoding="utf-8")
-
-    # TODO(redesign-task-8): migrate when flag→config key lands. The setup-wizard-only
-    # opt-ins applied below (with/install/run/skip-install-understand-anything, no-color,
-    # name, understand-anything-command) are NOT surfaced on `tesserae init`; its
-    # --yes hard-codes integrations OFF and color auto. We drive `_handle_setup` with
-    # the same namespace those flags produced until Task 8 lands the flag→config keys.
-    assert _run_setup(
-        project=project,
-        overrides={
-            "with_understand_anything": True,
-            "understand_anything_command": "definitely_missing_understand_command",
-            "run_understand_anything": True,
-            "skip_install_understand_anything": True,
-            "no_color": True,
+    (project / "README.md").write_text(
+        "# Demo\nGaussian Splatting supports novel view synthesis.\n", encoding="utf-8"
+    )
+    assert _run_setup(project=project, overrides={"no_color": True}) == 0
+    _write_external_tool(
+        project,
+        {
+            "id": "custom-tool",
+            "name": "Custom Tool",
+            "refresh_command": "definitely_missing_custom_command",
+            "auto_refresh": True,
+            "enabled": True,
         },
-    ) == 0
+    )
 
     assert main(["compile", "--project", str(project), "--limit", "1"]) == 0
 
     out = capsys.readouterr().out
     assert "External tool" in out and "warnings" in out
-    assert "definitely_missing_understand_command" in out
+    assert "definitely_missing_custom_command" in out
     assert "Compiled project wiki" in out
     assert (project / ".tesserae" / "graph.json").exists()
 
@@ -244,7 +222,7 @@ def test_compile_warns_and_continues_when_auto_refresh_command_is_missing(tmp_pa
 def test_render_setup_summary_contains_ansi_when_color_enabled(tmp_path):
     project = tmp_path / "demo"
     project.mkdir()
-    plan = build_setup_plan(project, sources=["README.md"], include_understand_anything=False)
+    plan = build_setup_plan(project, sources=["README.md"])
 
     rendered = render_setup_summary(plan, color=True)
 

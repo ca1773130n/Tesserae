@@ -1092,7 +1092,7 @@ class LLMWikiMCPServer:
                             "type": "object",
                             "description": (
                                 "Optional field overrides applied to build_plan() — any "
-                                "SetupPlan field plus include_understand_anything, "
+                                "SetupPlan field plus "
                                 "include_raganything, enable_cognee, install_* flags."
                             ),
                         },
@@ -1886,9 +1886,8 @@ class LLMWikiMCPServer:
             # with MCP access could inject arbitrary shell commands. Instead,
             # we extract only the *intent* fields the caller is allowed to
             # influence (booleans + enum choices), then regenerate the action
-            # lists server-side via build_plan. Free-form command strings (like
-            # `understand_anything_command`) are dropped — that escape hatch is
-            # only honored on the local CLI path.
+            # lists server-side via build_plan. Free-form command strings are
+            # dropped — that escape hatch is only honored on the local CLI path.
             _MCP_SAFE_INTENT_KEYS = {
                 "name",
                 "source_kind",
@@ -1897,10 +1896,6 @@ class LLMWikiMCPServer:
                 "claude_config_dir",
                 "claude_model",
                 "codex_model",
-                "include_understand_anything",
-                "install_understand_anything",
-                "run_understand_anything",
-                "understand_anything_platform",
                 "include_raganything",
                 "install_raganything",
                 "raganything_parser",
@@ -1918,7 +1913,6 @@ class LLMWikiMCPServer:
                 "llm_base_url",
                 "codex_home",
             }
-            _ALLOWED_UA_PLATFORMS = {"codex", "claude", "opencode", "gemini"}
             _ALLOWED_RAG_PARSERS = {"mineru", "docling", "paddleocr"}
 
             safe_intent: dict = {}
@@ -1941,9 +1935,6 @@ class LLMWikiMCPServer:
                     safe_intent.setdefault(key, value)
 
             # Bounded-value validation: enum strings must be in their allowlist.
-            ua_platform = safe_intent.get("understand_anything_platform")
-            if ua_platform and ua_platform not in _ALLOWED_UA_PLATFORMS:
-                safe_intent.pop("understand_anything_platform", None)
             rag_parser = safe_intent.get("raganything_parser")
             if rag_parser and rag_parser not in _ALLOWED_RAG_PARSERS:
                 safe_intent.pop("raganything_parser", None)
@@ -3185,9 +3176,14 @@ def _resolve_auth_token_to_user_id(token: str) -> str:
             user = await WikiMcpTokenService.get_user_from_token(token, session)
             return str(user.id) if user else None
 
-    import asyncio
+    # Run on the SAME persistent loop the graph-store tool calls use
+    # (CMP-04 runtime). A private asyncio.run() here binds the shared
+    # SQLAlchemy engine pool's first connection to a loop that closes at
+    # startup, poisoning every later tool call ("Event loop is closed" ->
+    # "another operation is in progress" on the pooled connection).
+    from .graph_stores.url_resolver import _runtime
 
-    user_id = asyncio.run(_lookup())
+    user_id = _runtime().run(_lookup())
     if not user_id:
         raise RuntimeError(
             "Auth token is invalid, expired, or revoked. Mint a fresh "

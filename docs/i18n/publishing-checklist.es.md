@@ -59,7 +59,7 @@ sigue en verde y el artefacto se sigue produciendo.
 
 ## Self-dogfood
 
-Las opciones de integración (Understand Anything, RAG-Anything, cognee) ahora
+Las opciones de integración (RAG-Anything, cognee) ahora
 son **preguntas interactivas del asistente**, no banderas de CLI. Ejecuta el
 asistente y respóndelas:
 
@@ -72,7 +72,6 @@ tesserae init \
   --source tests \
   --source scripts
 # cuando el asistente pregunte:
-#   - activa Understand Anything (plataforma: codex), instalar: sí
 #   - activa RAG-Anything, instalar: sí, parser: mineru, ejecutar después: sí
 #   - activa cognee, instalar: sí
 tesserae compile
@@ -84,8 +83,8 @@ tesserae serve --port 8765
 Para una ejecución totalmente no interactiva, usa `tesserae init --yes` (todas
 las integraciones DESACTIVADAS), luego activa cada integración en
 `.tesserae/config.json` — el asistente las escribe bajo las claves
-`memory_backends` (cognee) y `external_tools` (Understand Anything,
-RAG-Anything) — y ejecuta `tesserae integrations refresh <name>` para cada una
+`memory_backends` (cognee) y `external_tools`
+(RAG-Anything) — y ejecuta `tesserae integrations refresh <name>` para cada una
 antes de compilar. Consulta los documentos de integración para las claves de
 configuración exactas.
 
