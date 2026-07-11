@@ -12,7 +12,9 @@ Tesserae is a project-memory compiler. It produces a typed knowledge graph from 
 The Tesserae plugin gives you two distinct surfaces:
 
 1. **MCP tools** — read-only graph queries the agent calls directly during a conversation. Tool names land under the plugin namespace: `mcp__plugin_tesserae_tesserae__<tool>`. The tools you'll use most:
-   - `mcp__plugin_tesserae_tesserae__ask` — natural-language Q&A against the compiled graph
+   - `mcp__plugin_tesserae_tesserae__ask` — natural-language Q&A against the compiled graph (LLM-planned, cited; `llm: false` for hits only)
+   - `mcp__plugin_tesserae_tesserae__query` — raw retrieval, never an LLM call: ranked BM25/semantic wiki hits (`kind` filter), or `backend: "raganything"` for the optional multimodal index
+   - `mcp__plugin_tesserae_tesserae__doctor_run` — run the project health checks read-only, fresh JSON findings (fixes stay on the CLI: `tesserae doctor --fix`)
    - `mcp__plugin_tesserae_tesserae__search_nodes` — keyword/semantic node lookup
    - `mcp__plugin_tesserae_tesserae__node_context` — fetch one node plus its 1-hop neighbourhood
    - `mcp__plugin_tesserae_tesserae__list_sessions` — Session envelopes for the active project (newest first, with per-kind finding counts)

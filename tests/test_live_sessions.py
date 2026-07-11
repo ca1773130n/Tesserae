@@ -79,7 +79,10 @@ def test_run_sessions_and_search_merge(tmp_path, monkeypatch):
     assert sent["status"] == 200
     assert sent["body"]["sessions"][0]["project"] == "proj"
 
-    S._run_transcript_search(H(), "q=parser", project_root=proj, project_name="proj")
+    # days=100000 like every other call here: the fixture turns are dated
+    # 2026-07-04, and the default live window would silently age them out
+    # (this exact test went red the evening that boundary crossed).
+    S._run_transcript_search(H(), "q=parser&days=100000", project_root=proj, project_name="proj")
     results = sent["body"]["results"]
     assert any("parser" in (r.get("text") or "") for r in results)  # live hit present
     assert any(r.get("text") == "old indexed hit" for r in results)  # index hit merged

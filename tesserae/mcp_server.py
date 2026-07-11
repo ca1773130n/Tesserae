@@ -627,13 +627,60 @@ class LLMWikiMCPServer:
                 },
             },
             {
+                "name": "doctor_run",
+                "description": (
+                    "Run the doctor health checks for the resolved/given project and return "
+                    "the report as JSON (findings, exit_code 0/1/2). Always READ-ONLY: fixes "
+                    "never run over MCP and no report artifact is written — use "
+                    "`tesserae doctor --fix` on the CLI for repairs."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "query",
+                "description": (
+                    "Raw retrieval, no LLM — mirrors `tesserae query`. backend='wiki' "
+                    "(default) is deterministic BM25/semantic search over the compiled wiki "
+                    "(ranked hits with excerpts); backend='raganything' queries the optional "
+                    "multimodal RAG index when the project has it enabled. Use `ask` for a "
+                    "synthesized, cited answer."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "question": {"type": "string", "description": "The search query text."},
+                        "top_k": {"type": "integer", "default": 8, "minimum": 1, "maximum": 50},
+                        "kind": {
+                            "type": "string",
+                            "description": "Optional wiki-kind filter (e.g. papers, concepts, repos, sources). wiki backend only.",
+                        },
+                        "backend": {
+                            "type": "string",
+                            "enum": ["wiki", "raganything"],
+                            "default": "wiki",
+                        },
+                        "project": project_prop,
+                        "graph_path": graph_path_prop,
+                    },
+                    "required": ["question"],
+                    "additionalProperties": False,
+                },
+            },
+            {
                 "name": "ask",
                 "description": (
                     "Ask a natural-language question and get an LLM-planned, cited answer "
                     "over the compiled knowledge graph. Mirrors `tesserae ask` (llm defaults "
                     "true; pass llm=false for ranked search hits only). Supports cross-vault "
-                    "fan-out via `scope`. Explicit raganything retrieval moved to "
-                    "`tesserae query --backend raganything` on the CLI."
+                    "fan-out via `scope`. For raw ranked hits or explicit raganything "
+                    "retrieval use the `query` tool."
                 ),
                 "inputSchema": {
                     "type": "object",
@@ -1644,6 +1691,16 @@ class LLMWikiMCPServer:
         if name == "doctor_report":
             _, project_root = self._load_requested_graph_with_root(args)
             return self.doctor_report(project_root)
+        if name == "doctor_run":
+            return self._mcp_doctor_run(args)
+        if name == "query":
+            return self._mcp_query(
+                args,
+                question=str(args.get("question", "")),
+                top_k=int(args.get("top_k", 8)),
+                kind=(str(args["kind"]) if args.get("kind") else None),
+                backend=str(args.get("backend", "wiki") or "wiki"),
+            )
         if name == "ask":
             question = str(args.get("question") or "").strip()
             if not question:
@@ -2799,6 +2856,53 @@ class LLMWikiMCPServer:
         history.append(route)
         del history[:-8]  # keep only the recent window
         return route
+
+    def _mcp_doctor_run(self, args: JSONDict) -> JSONDict:
+        """Run the doctor checks read-only and return the report JSON.
+
+        Never fixes, never writes the report artifacts — MCP callers get a
+        fresh diagnosis; repairs stay an explicit CLI action (`doctor --fix`).
+        """
+        from .doctor import run_doctor, to_json
+
+        project_root = self._resolve_project_root_for_ask(args)
+        report = run_doctor(project_root, fix=False)
+        return json.loads(to_json(report))
+
+    def _mcp_query(
+        self,
+        args: JSONDict,
+        *,
+        question: str,
+        top_k: int,
+        kind: Optional[str],
+        backend: str,
+    ) -> JSONDict:
+        """Raw-retrieval adapter mirroring `tesserae query` (no LLM).
+
+        wiki: deterministic BM25/semantic hits via WikiQuery, force_no_llm.
+        raganything: the optional multimodal backend through ask_project's
+        explicit-backend path (its not-enabled/no-answer envelopes pass
+        through unchanged).
+        """
+        cleaned = (question or "").strip()
+        if not cleaned:
+            raise ValueError("query: question is required")
+        bounded = max(1, min(int(top_k), 50))
+        project_root = self._resolve_project_root_for_ask(args)
+        if backend == "raganything":
+            from .project import ProjectWiki
+            from .query import ask_project
+
+            wiki = ProjectWiki.load(project_root)
+            return ask_project(wiki, cleaned, backend="raganything", top_k=bounded)
+        from .query import WikiQuery
+
+        wq = WikiQuery(project_root, top_k=bounded, kind_filter=kind)
+        result = wq.answer(cleaned, force_no_llm=True)
+        payload = result.to_dict()
+        payload["backend"] = "wiki"
+        return payload
 
     def _mcp_ask(
         self,
