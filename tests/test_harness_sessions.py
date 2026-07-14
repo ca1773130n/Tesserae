@@ -341,3 +341,32 @@ def test_cli_sessions_import_with_no_paths_leaves_existing_sessions_intact(tmp_p
     assert len(store.list_sessions()) == 1
     manifest = json.loads((store.root / "manifest.json").read_text(encoding="utf-8"))
     assert len(manifest["sessions"]) == 1
+
+
+def test_long_sessions_are_not_truncated_at_300_turns():
+    # Regression: the old default limit=300 silently dropped everything past
+    # turn 300, so the chunked LLM extractor never saw the rest of the session.
+    from tesserae.harness_sessions import _claude_turns, _codex_turns
+
+    claude_rows = [
+        {
+            "type": "user" if i % 2 == 0 else "assistant",
+            "timestamp": f"2026-07-01T00:00:{i % 60:02d}Z",
+            "message": {"content": f"turn {i}"},
+        }
+        for i in range(500)
+    ]
+    assert len(_claude_turns(claude_rows)) == 500
+
+    codex_rows = [
+        {
+            "timestamp": f"2026-07-01T00:00:{i % 60:02d}Z",
+            "payload": {
+                "type": "message",
+                "role": "user" if i % 2 == 0 else "assistant",
+                "content": f"turn {i}",
+            },
+        }
+        for i in range(500)
+    ]
+    assert len(_codex_turns(codex_rows)) == 500

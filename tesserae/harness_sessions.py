@@ -837,7 +837,16 @@ def _turn_text(text: str, limit: int = 2400) -> str:
     return clean[:limit].rstrip() + "…"
 
 
-def _claude_turns(rows: Sequence[Mapping[str, object]], limit: int = 300) -> List[Dict[str, object]]:
+# Default turn limit is a runaway-file backstop, NOT a context-window guard.
+# Full history must be captured here: the LLM never reads this list whole — the
+# extractor walks it in max_turns_per_chunk windows (per-turn text already
+# capped by _turn_text), so per-call prompt size is bounded regardless of
+# session length. A low default silently truncates long sessions before
+# chunking ever runs (users hit this at the old default of 300).
+_TURN_LIMIT_BACKSTOP = 100_000
+
+
+def _claude_turns(rows: Sequence[Mapping[str, object]], limit: int = _TURN_LIMIT_BACKSTOP) -> List[Dict[str, object]]:
     turns: List[Dict[str, object]] = []
     for row in rows:
         role = row.get("type")
@@ -862,7 +871,7 @@ def _claude_turns(rows: Sequence[Mapping[str, object]], limit: int = 300) -> Lis
     return turns
 
 
-def _codex_turns(rows: Sequence[Mapping[str, object]], limit: int = 300) -> List[Dict[str, object]]:
+def _codex_turns(rows: Sequence[Mapping[str, object]], limit: int = _TURN_LIMIT_BACKSTOP) -> List[Dict[str, object]]:
     turns: List[Dict[str, object]] = []
     for row in rows:
         timestamp = row.get("timestamp") if isinstance(row.get("timestamp"), str) else ""
