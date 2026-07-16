@@ -19,12 +19,13 @@ from tesserae.activity_summary import (
     in_window,
     iter_project_transcripts,
     parse_ts,
-    render_session_excerpts,
+    render_session_excerpt_blocks,
     resolve_windows,
     scan_messages,
     _resolve_projects,
     _summary_llm_client,
 )
+from tesserae.llm_chunking import pack_blocks
 from tesserae.harness_sessions import _parse_jsonl
 
 logger = logging.getLogger(__name__)
@@ -132,35 +133,55 @@ _AGENT_SYSTEM = (
 
 
 def extract_agent_decisions(
-    excerpts: str, client: object, project: str, ts: datetime
+    excerpts: "str | Sequence[str]",
+    client: object,
+    project: str,
+    ts: datetime,
+    *,
+    budget: Optional[int] = None,
 ) -> List[Decision]:
     """LLM-mined agent decisions from conversation ``excerpts``.
 
-    ``client`` exposes ``complete_text(system, user) -> str``; each returned line
-    ``<decision> :: <rationale>`` becomes a :class:`Decision` (``source="agent"``).
-    All share ``ts`` (the session's earliest in-window turn) since the LLM does not
-    date individual decisions. An empty reply yields ``[]``.
+    ``excerpts`` is either one rendered string or a list of per-session blocks.
+    They are packed into chunks of at most ``budget`` chars (default:
+    :func:`tesserae.llm_chunking.chunk_char_budget`) and ``_AGENT_SYSTEM`` runs
+    over EVERY chunk — map-only, no reduce, since decision extraction is
+    associative — so no session is ever dropped for length. Each returned line
+    ``<decision> :: <rationale>`` becomes a :class:`Decision` (``source="agent"``);
+    exact duplicate lines across chunks are deduped. All share ``ts`` (the
+    session's earliest in-window turn) since the LLM does not date individual
+    decisions. A failed/empty chunk reply just skips that chunk; all-empty
+    yields ``[]``.
     """
-    reply = (client.complete_text(system=_AGENT_SYSTEM, user=excerpts) or "").strip()
+    blocks = [excerpts] if isinstance(excerpts, str) else list(excerpts)
+    chunks = pack_blocks(blocks, budget=budget)
     out: List[Decision] = []
-    for line in reply.splitlines():
-        line = line.strip().lstrip("-*").strip()
-        if "::" not in line:
+    seen: set = set()
+    for chunk in chunks:
+        try:
+            reply = (client.complete_text(system=_AGENT_SYSTEM, user=chunk) or "").strip()
+        except Exception as exc:  # noqa: BLE001 - per-chunk failures degrade
+            logger.warning("decisions: agent extraction chunk failed for %s: %s", project, exc)
             continue
-        decision, _, rationale = line.partition("::")
-        decision = decision.strip()
-        if not decision:
-            continue
-        out.append(
-            Decision(
-                ts=ts,
-                source="agent",
-                project=project,
-                session_id="",
-                question=decision,
-                answer=rationale.strip(),
+        for line in reply.splitlines():
+            line = line.strip().lstrip("-*").strip()
+            if "::" not in line or line in seen:
+                continue
+            seen.add(line)
+            decision, _, rationale = line.partition("::")
+            decision = decision.strip()
+            if not decision:
+                continue
+            out.append(
+                Decision(
+                    ts=ts,
+                    source="agent",
+                    project=project,
+                    session_id="",
+                    question=decision,
+                    answer=rationale.strip(),
+                )
             )
-        )
     return out
 
 
@@ -202,12 +223,15 @@ def gather_decisions(
                 msgs = [m for bucket in messages_by.get(name, {}).values() for m in bucket]
                 if not msgs:
                     continue
-                excerpts = render_session_excerpts(msgs)
-                if not excerpts.strip():
+                # One block per session; extract_agent_decisions packs them into
+                # chunked LLM calls so EVERY session is mined, however long the
+                # window's history is.
+                blocks = [b for b in render_session_excerpt_blocks(msgs) if b.strip()]
+                if not blocks:
                     continue
                 try:
                     out.extend(
-                        extract_agent_decisions(excerpts, client, name, min(m.ts for m in msgs))
+                        extract_agent_decisions(blocks, client, name, min(m.ts for m in msgs))
                     )
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("decisions: agent extraction failed for %s: %s", name, exc)

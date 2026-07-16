@@ -261,8 +261,11 @@ class SessionGraphExtractor:
 
             # Cache miss → extract this chunk. Pass max_turns_per_chunk >=
             # len(chunk) so extract_with_llm treats the chunk as a single
-            # window (no internal re-chunking) — the chunking decision is
-            # ours so it stays aligned to original indices.
+            # count window — the count-chunking decision is ours so it stays
+            # aligned to original indices. extract_with_llm may still split a
+            # chunk that exceeds the LLM char budget (huge tool dumps), but
+            # split turns carry their chunk-local index via "_turn_idx", so
+            # the start-offset remap below stays correct.
             chunk_stats: dict = {}
             raw_findings = extract_with_llm(
                 session,

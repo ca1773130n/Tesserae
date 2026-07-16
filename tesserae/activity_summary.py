@@ -952,6 +952,38 @@ def _summary_llm_client(root: str) -> object:
     return client
 
 
+def render_session_excerpt_blocks(
+    messages: Sequence[MessageItem],
+    *,
+    per_turn_chars: int = 600,
+) -> List[str]:
+    """Per-session excerpt blocks — EVERY session, EVERY turn, no capacity cuts.
+
+    Groups ``messages`` by session, orders turns by time, and renders one bullet
+    per user/assistant turn (tool turns collapse to ``[tool:<name>]`` to cut
+    noise). The per-turn char cap is excerpt STYLE compression (a turn's gist),
+    not capacity truncation — no session or turn is ever dropped. Callers feed
+    the returned blocks to :func:`tesserae.llm_chunking.pack_blocks` so the LLM
+    reads all of them across as many chunked calls as needed.
+    """
+    by_session: Dict[str, List[MessageItem]] = {}
+    for m in messages:
+        by_session.setdefault(m.session_id, []).append(m)
+
+    blocks: List[str] = []
+    for sid, msgs in by_session.items():
+        msgs = sorted(msgs, key=lambda m: m.ts)
+        lines = [f"### session {sid} ({msgs[0].harness}, {len(msgs)} turns)"]
+        for m in msgs:
+            text = " ".join((m.text or "").split())
+            if m.role == "tool":
+                lines.append(f"- [tool:{m.name}]" if m.name else "- [tool]")
+            elif text:
+                lines.append(f"- [{m.role}] {text[:per_turn_chars]}")
+        blocks.append("\n".join(lines))
+    return blocks
+
+
 def render_session_excerpts(
     messages: Sequence[MessageItem],
     *,
@@ -959,83 +991,118 @@ def render_session_excerpts(
     per_session_chars: int = 3500,
     project_chars: int = 24000,
 ) -> str:
-    """Compact per-session transcript so the narrator can summarize a session's
-    actual work — the deterministic digest only has counts, so a session with no
-    commits/PRs would otherwise be un-summarizable ("session activity only").
+    """String form of :func:`render_session_excerpt_blocks` (all sessions joined).
 
-    Groups ``messages`` by session, orders turns by time, and renders one bullet
-    per user/assistant turn (tool turns collapse to ``[tool:<name>]`` to cut
-    noise). Bounded three ways — per turn, per session, and per project — so a
-    busy project never starves the others' excerpt budget in a single LLM call.
+    ``per_session_chars`` and ``project_chars`` are accepted for backward
+    compatibility but are NO-OPS: capacity truncation silently DROPPED whole
+    sessions from summaries and decision mining. Excerpts are now rendered in
+    full and the LLM consumers chunk them (see :mod:`tesserae.llm_chunking`)
+    so everything is read regardless of total length.
     """
-    by_session: Dict[str, List[MessageItem]] = {}
-    for m in messages:
-        by_session.setdefault(m.session_id, []).append(m)
+    del per_session_chars, project_chars  # compat only — capacity cuts removed
+    return "\n".join(
+        render_session_excerpt_blocks(messages, per_turn_chars=per_turn_chars)
+    )
 
-    blocks: List[str] = []
-    used = 0
-    for sid, msgs in by_session.items():
-        msgs = sorted(msgs, key=lambda m: m.ts)
-        lines = [f"### session {sid} ({msgs[0].harness}, {len(msgs)} turns)"]
-        slen = 0
-        for m in msgs:
-            text = " ".join((m.text or "").split())
-            if m.role == "tool":
-                frag = f"- [tool:{m.name}]" if m.name else "- [tool]"
-            elif text:
-                frag = f"- [{m.role}] {text[:per_turn_chars]}"
-            else:
-                continue
-            if slen + len(frag) > per_session_chars:
-                lines.append("- …(session truncated)")
-                break
-            lines.append(frag)
-            slen += len(frag)
-        block = "\n".join(lines)
-        if used + len(block) > project_chars:
-            blocks.append("### …(more sessions omitted for length)")
-            break
-        blocks.append(block)
-        used += len(block)
-    return "\n".join(blocks)
+
+_SUMMARY_MAP_SYSTEM = (
+    _SUMMARY_SYSTEM
+    + "\n\nYou are seeing ONE PART (labeled `PART i/N`) of a larger digest + "
+    "excerpt set that was chunked to fit your context window. Write partial "
+    "`## <project>` sections covering ONLY what this part shows — a later pass "
+    "merges all parts. Follow every formatting rule above and cover every "
+    "session header present in this part."
+)
+
+_SUMMARY_REDUCE_SYSTEM = (
+    "You merge PARTIAL activity-summary drafts (each produced from one slice "
+    "of the same time period, labeled `PART i/N`) into ONE final summary.\n"
+    "- Merge duplicate `## <project>` headings into a single section per "
+    "project, ordered by volume (most active first).\n"
+    "- Preserve every bullet from every part, keeping the bold category "
+    "grouping (**Shipped**, **Fixed**, **Decisions & Insights**, **In "
+    "progress**, **Docs**, **Watch**, **Sessions**); drop only bullets that "
+    "are exact duplicates.\n"
+    "- Keep exactly ONE **Sessions** bullet per session; never merge, drop, "
+    "or invent sessions.\n"
+    "- Ignore `[part i unavailable]` markers.\n"
+    "- Output the same structured markdown contract as the parts: `## "
+    "<project>` sections with terse one-line bullets, no preamble, no closing "
+    "prose, nothing invented."
+)
 
 
 def synthesize_narrative(
-    deterministic_md: str, client: object, *, conversation: str = ""
+    deterministic_md: str,
+    client: object,
+    *,
+    conversation: "str | Sequence[str]" = "",
+    budget: Optional[int] = None,
 ) -> str:
     """Return the LLM "what happened" narrative (``## <project>`` sections) — prose
     only, NOT joined with the digest (the caller assembles the document).
 
     ``client`` exposes ``complete_text(system, user) -> str`` (the rotating CLI/SDK
     client :func:`_summary_llm_client` builds). The model is given the deterministic
-    digest AND — when supplied — ``conversation`` (bounded per-session excerpts) so
-    it can summarize what each session actually did, including sessions with no
-    commits/PRs. Returns ``""`` on an empty/whitespace reply. Excerpts are model
-    context only; they never appear in the returned text.
+    digest AND — when supplied — ``conversation`` (per-session excerpts, either one
+    string or a list of blocks) so it can summarize what each session actually did,
+    including sessions with no commits/PRs.
+
+    The digest + excerpts are packed into chunks of at most ``budget`` chars
+    (default: :func:`tesserae.llm_chunking.chunk_char_budget`). One chunk → a
+    single ``_SUMMARY_SYSTEM`` call, bit-identical to the pre-chunking path.
+    More → per-chunk map calls then a merging reduce, so EVERY session is read
+    no matter how busy the window was. Returns ``""`` on an empty/whitespace
+    reply. Excerpts are model context only; they never appear in the returned
+    text.
     """
-    user = deterministic_md
-    if conversation.strip():
-        user = (
-            deterministic_md
-            + "\n\n=== SESSION CONVERSATION EXCERPTS ===\n"
-            + "(Use these to summarize what each session worked on and how it went, "
-            "especially sessions with no commits/PRs. Do not quote verbatim.)\n\n"
-            + conversation
+    from tesserae.llm_chunking import (
+        PART_LABEL_HEADROOM,
+        chunk_char_budget,
+        map_reduce_text,
+        pack_blocks,
+    )
+
+    convo_blocks = (
+        [conversation] if isinstance(conversation, str) else list(conversation)
+    )
+    convo_blocks = [b for b in convo_blocks if b and b.strip()]
+    blocks: List[str] = [deterministic_md]
+    if convo_blocks:
+        blocks.append(
+            "=== SESSION CONVERSATION EXCERPTS ===\n"
+            "(Use these to summarize what each session worked on and how it went, "
+            "especially sessions with no commits/PRs. Do not quote verbatim.)"
         )
-    return (client.complete_text(system=_SUMMARY_SYSTEM, user=user) or "").strip()
+        blocks.extend(convo_blocks)
+
+    if budget is None:
+        budget = chunk_char_budget()
+    chunks = pack_blocks(blocks, budget=max(1_000, budget - PART_LABEL_HEADROOM))
+    if not chunks:
+        return ""
+    if len(chunks) == 1:
+        return (client.complete_text(system=_SUMMARY_SYSTEM, user=chunks[0]) or "").strip()
+    return map_reduce_text(
+        client,
+        map_system=_SUMMARY_MAP_SYSTEM,
+        reduce_system=_SUMMARY_REDUCE_SYSTEM,
+        chunks=chunks,
+        budget=budget,
+    )
 
 
 def _maybe_narrate(
     deterministic_md: str,
     projects: List[Tuple[str, Path]],
-    conversation: str = "",
+    conversation: "str | Sequence[str]" = "",
 ) -> str:
     """Return the LLM narrative prose, or ``""`` when no narrator is wired / it fails.
 
     Narration is best-effort — a missing LLM client or any LLM error yields ``""``
     (logged), never raising, so the summary always renders (facts-only). The client
-    is built from the first project's root; ``conversation`` carries the bounded
-    per-session excerpts the narrator summarizes.
+    is built from the first project's root; ``conversation`` carries the
+    per-session excerpt blocks the narrator summarizes (chunked, read in full).
     """
     narrate = globals().get("synthesize_narrative")
     make_client = globals().get("_summary_llm_client")
@@ -1083,12 +1150,13 @@ def build_summary(
         day_blocks: List[str] = []
         for window in windows:
             messages = messages_by.get(name, {}).get(window.label, [])
-            # Bounded per-session excerpts so the narrator can summarize sessions
+            # Full per-session excerpts so the narrator can summarize sessions
             # with no commits/PRs (only built when we'll actually narrate).
+            # One block per session — the narrator packs them into as many
+            # chunked LLM calls as needed, so nothing is ever dropped.
             if synthesize and messages:
-                excerpts = render_session_excerpts(messages)
-                if excerpts:
-                    convo_blocks.append(f"## {name} — {window.label}\n{excerpts}")
+                for block in render_session_excerpt_blocks(messages):
+                    convo_blocks.append(f"## {name} — {window.label}\n{block}")
             commits = gather_git(name, root_str, window)
             prs = gather_prs(name, root_str, window)
             docs = gather_docs(name, root_str, graph, window) if graph is not None else []
@@ -1109,7 +1177,7 @@ def build_summary(
         if len(windows) == 1
         else f"{windows[0].label} … {windows[-1].label}"
     )
-    conversation = "\n\n".join(convo_blocks)
+    conversation: List[str] = list(convo_blocks)
     if synthesize:
         # Surface explicit human decisions (AskUserQuestion) so the narrator's
         # Decisions & Insights reliably includes them — the excerpts truncate the
@@ -1127,7 +1195,7 @@ def build_summary(
                 "these in each project's Decisions & Insights) ===\n"
                 + "\n".join(f"- [{d.project}] {d.question} -> {d.answer}" for d in human)
             )
-            conversation = f"{hd_block}\n\n{conversation}" if conversation.strip() else hd_block
+            conversation = [hd_block, *conversation]
     narrative = _maybe_narrate(facts_md, projects, conversation) if synthesize else ""
 
     parts = [f"# Activity summary — {label}"]

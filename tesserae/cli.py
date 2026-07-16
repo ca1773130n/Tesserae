@@ -2404,7 +2404,11 @@ def _build_summary_parser() -> argparse.ArgumentParser:
         dest="max_turns",
         type=int,
         default=None,
-        help="Cap the turns gathered per session (default: unbounded).",
+        help=(
+            "Scan memory guard: cap the turns gathered per session while "
+            "scanning transcripts (default: unbounded). LLM reading is "
+            "chunked and always reads everything gathered."
+        ),
     )
     return parser
 
@@ -2729,7 +2733,11 @@ def _build_decisions_parser() -> argparse.ArgumentParser:
         dest="max_turns",
         type=int,
         default=None,
-        help="Cap the turns gathered per session (default: unbounded).",
+        help=(
+            "Scan memory guard: cap the turns gathered per session while "
+            "scanning transcripts (default: unbounded). LLM reading is "
+            "chunked and always reads everything gathered."
+        ),
     )
     return parser
 

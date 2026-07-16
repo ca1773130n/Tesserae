@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Sequence, Tuple
 
 from .harness_sessions import HarnessSession
+from .llm_chunking import chunk_char_budget, split_text
 from .llm_json import LLMJsonClient
 
 logger = logging.getLogger(__name__)
@@ -115,7 +116,10 @@ def _build_user_message(
         text = str(turn.get("text") or "").strip()
         if not text:
             continue
-        turn_lines.append(f"[turn_id={idx}] [{role}] {text}")
+        # A size-split/windowed turn carries its ORIGINAL index in "_turn_idx"
+        # (set by _chunk_turns) so citations stay stable across sub-chunks.
+        tid = turn.get("_turn_idx", idx)
+        turn_lines.append(f"[turn_id={tid}] [{role}] {text}")
 
     doc_lines = [f"  - {nid}  ({display})" for nid, display in doc_id_context]
     doc_block = (
@@ -136,37 +140,82 @@ def _build_user_message(
 # ---------------------------------------------------------------------------
 
 
+# Approximate rendered overhead per turn ("[turn_id=N] [role] " + newline).
+_TURN_OVERHEAD = 64
+
+# Headroom kept when line-splitting one oversized turn, so the doc-ID block
+# and prompt scaffolding still fit alongside the split part.
+_SPLIT_MARGIN = 512
+
+
+def _turn_size(turn: dict) -> int:
+    """Approximate rendered size of one turn in the user message."""
+    return len(str(turn.get("text") or "")) + _TURN_OVERHEAD
+
+
 def _chunk_turns(
     turns: Sequence[dict],
     *,
     max_turns_per_chunk: int,
     overlap: int = 5,
+    budget: Optional[int] = None,
 ) -> List[Sequence[dict]]:
-    """Split a long turn list into overlapping windows.
+    """Split a long turn list into overlapping, SIZE-AWARE windows.
 
-    Overlap of ``overlap`` turns lets cross-chunk-boundary findings still
-    have context. The starting index of each chunk is
-    ``i * (max_turns_per_chunk - overlap)`` so windows step by
-    ``max_turns_per_chunk - overlap``.
+    Two limits close a chunk, whichever hits first:
+
+    * ``max_turns_per_chunk`` — the turn-count window (a scan memory guard);
+    * ``budget`` chars of rendered turn text (default:
+      :func:`tesserae.llm_chunking.chunk_char_budget`) — so one turn carrying a
+      huge tool dump can no longer blow the model's context window.
+
+    Consecutive chunks overlap by ``overlap`` turns so cross-boundary findings
+    keep context. ONE turn whose rendered text alone exceeds the budget is
+    split on line boundaries into parts spread across consecutive chunks (each
+    part keeps the turn's ORIGINAL index via ``"_turn_idx"``), so its content
+    is still fully read — chunked, never truncated.
     """
     if not turns:
         return []
-    if len(turns) <= max_turns_per_chunk:
+    if budget is None:
+        budget = chunk_char_budget()
+
+    # Fast path — small in count AND size: one window, original dicts,
+    # identical to the historic count-only behavior.
+    if (
+        len(turns) <= max_turns_per_chunk
+        and sum(_turn_size(t) for t in turns) <= budget
+    ):
         return [turns]
 
-    step = max(1, max_turns_per_chunk - max(0, overlap))
+    # Expand: annotate every turn with its original index; line-split any turn
+    # whose rendered text alone exceeds the budget.
+    part_limit = max(256, budget - _SPLIT_MARGIN)
+    expanded: List[dict] = []
+    for i, t in enumerate(turns):
+        text = str(t.get("text") or "")
+        if len(text) + _TURN_OVERHEAD > budget:
+            for part in split_text(text, part_limit):
+                expanded.append({**t, "text": part, "_turn_idx": i})
+        else:
+            expanded.append({**t, "_turn_idx": i})
+
     chunks: List[Sequence[dict]] = []
+    n = len(expanded)
     i = 0
-    while i < len(turns):
-        chunks.append(turns[i : i + max_turns_per_chunk])
-        i += step
-        # Avoid emitting a tiny tail chunk that's fully contained in the
-        # previous one due to the overlap.
-        if i + overlap >= len(turns) and chunks and len(chunks[-1]) >= max_turns_per_chunk:
-            tail = turns[i:]
-            if tail and len(tail) > overlap:
-                chunks.append(tail)
+    while i < n:
+        j = i
+        size = 0
+        while j < n and (j - i) < max_turns_per_chunk:
+            s = _turn_size(expanded[j])
+            if j > i and size + s > budget:  # budget closes the chunk early
+                break
+            size += s
+            j += 1
+        chunks.append(expanded[i:j])
+        if j >= n:
             break
+        i = max(i + 1, j - max(0, overlap))
     return chunks
 
 
@@ -183,6 +232,7 @@ def extract_with_llm(
     *,
     max_turns_per_chunk: int = 30,
     overlap: int = 5,
+    budget: Optional[int] = None,
     cache_key: Optional[str] = None,
     guidance: str = "",
     stats: Optional[dict] = None,
@@ -224,6 +274,7 @@ def extract_with_llm(
         transcript_turns,
         max_turns_per_chunk=max_turns_per_chunk,
         overlap=overlap,
+        budget=budget,
     )
 
     findings: List[Finding] = []
