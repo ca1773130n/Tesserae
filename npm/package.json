@@ -1,6 +1,6 @@
 {
   "name": "@jokerized/tesserae",
-  "version": "0.20.1",
+  "version": "0.20.2",
   "description": "Node convenience wrapper for Tesserae — a context engine that compiles agent-ready knowledge from your project. Forwards to the Python CLI.",
   "keywords": [
     "tesserae",
