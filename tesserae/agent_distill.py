@@ -60,7 +60,7 @@ import os
 import re
 import secrets
 import sqlite3
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import (
@@ -224,6 +224,21 @@ _CACHE_KEEP_RUNS = 20
 _FALSY = {"0", "false", "no", "off"}
 
 _GUIDANCE_DIGEST_EMPTY = hashlib.sha256(b"").hexdigest()
+
+
+def _compute_guidance_digest(guidance: str) -> str:
+    """Cache-fork key for a guidance stream (§12 Phase-5).
+
+    Single source of truth for the digest folded into cluster-cache envelopes,
+    the negative-cache key and the per-agent watermark, so an empty stream is
+    always the ``_GUIDANCE_DIGEST_EMPTY`` sentinel and a non-empty edit forks
+    only the agents whose combined text changed.
+    """
+    return (
+        hashlib.sha256(guidance.encode("utf-8")).hexdigest()
+        if guidance
+        else _GUIDANCE_DIGEST_EMPTY
+    )
 
 # Faithfulness lint (§5.3): identifier / number / version / quoted-error
 # tokens appearing in an LLM body must appear in some cited member.
@@ -472,6 +487,9 @@ class DistillRequest:
     mode: str = "distill"
     prior_output: Optional[Mapping[str, object]] = None
     new_members: Tuple[Tuple[str, str, str], ...] = ()
+    #: Combined per-agent guidance stream (§12 Phase-5) the summarizer should
+    #: obey. Empty by default → prompts are byte-identical to pre-Phase-5.
+    guidance: str = ""
 
 
 Summarizer = Callable[[DistillRequest], Optional[Mapping[str, object]]]
@@ -637,6 +655,18 @@ class LLMSummarizer:
     # -- prompt rendering (pure functions of the request) --------------------
 
     @staticmethod
+    def _guidance_lines(request: DistillRequest) -> List[str]:
+        """Per-agent guidance block for the user prompt (§12 Phase-5).
+
+        Empty when the agent has no stream, so a guidance-less request renders
+        byte-identically to a pre-Phase-5 prompt.
+        """
+        guidance = request.guidance.strip()
+        if not guidance:
+            return []
+        return ["Extraction guidance (obey this steering):", guidance, ""]
+
+    @staticmethod
     def _citation_ids(request: DistillRequest, chunk: Optional[str] = None) -> List[str]:
         """The citation whitelist a call may use — chunk-scoped for map calls."""
         member_ids = [member_id for member_id, _name, _desc in request.members]
@@ -656,6 +686,7 @@ class LLMSummarizer:
                 f"Preferred kind: {request.kind_hint}",
                 "Valid citation ids: " + ", ".join(self._citation_ids(request, chunk)),
                 "",
+                *self._guidance_lines(request),
                 "Findings:",
                 chunk,
                 "",
@@ -678,6 +709,7 @@ class LLMSummarizer:
                 f"Preferred kind: {request.kind_hint}",
                 "Valid citation ids: " + ", ".join(self._citation_ids(request)),
                 "",
+                *self._guidance_lines(request),
                 "Partial notes:",
                 rendered,
                 "",
@@ -693,6 +725,7 @@ class LLMSummarizer:
                 f"Agent: {request.agent_key}",
                 "Valid citation ids: " + ", ".join(self._citation_ids(request)),
                 "",
+                *self._guidance_lines(request),
                 "Existing note:",
                 json.dumps(
                     _normalize_note(current), ensure_ascii=False, indent=2, sort_keys=True
@@ -1346,11 +1379,7 @@ class _LLMStage:
         self.prior_distillates = list(prior_distillates)
         self.run_seq = run_seq
         self.result = result
-        self.guidance_digest = (
-            hashlib.sha256(options.guidance.encode("utf-8")).hexdigest()
-            if options.guidance
-            else _GUIDANCE_DIGEST_EMPTY
-        )
+        self.guidance_digest = _compute_guidance_digest(options.guidance)
         self.breaker = breaker if breaker is not None else _CircuitBreaker()
         if self.breaker.tripped:
             self.result.llm_aborted = True
@@ -1372,6 +1401,13 @@ class _LLMStage:
         # attempt; blocking here would let sidecar state pick the bytes).
         if str(entry.get("members_digest") or "") != members_digest:
             return False
+        # A changed guidance_digest is likewise NEW input (§12 Phase-5): a
+        # fallback recorded under the old per-agent guidance must not suppress
+        # a retry under the edited stream — the positive cache already forks on
+        # guidance_digest, so the negative cache must fork too or the fork is
+        # incomplete for clusters that last took a fallback verdict.
+        if str(entry.get("guidance_digest") or "") != self.guidance_digest:
+            return False
         retry_after = int(entry.get("retry_after_run") or 0)
         return self.run_seq < retry_after
 
@@ -1383,8 +1419,12 @@ class _LLMStage:
         if raw:
             try:
                 entry = json.loads(raw)
-                # Failure streaks only accumulate over the SAME input digest.
-                if str(entry.get("members_digest") or "") == members_digest:
+                # Failure streaks only accumulate over the SAME input digest —
+                # both the member bytes and the guidance stream (§12 Phase-5).
+                if (
+                    str(entry.get("members_digest") or "") == members_digest
+                    and str(entry.get("guidance_digest") or "") == self.guidance_digest
+                ):
                     failures = int(entry.get("failures") or 0) + 1
             except (json.JSONDecodeError, ValueError, TypeError):
                 failures = 1
@@ -1398,6 +1438,7 @@ class _LLMStage:
                     "failures": failures,
                     "retry_after_run": self.run_seq + 2 ** min(failures, 6),
                     "members_digest": members_digest,
+                    "guidance_digest": self.guidance_digest,
                 }
             ),
         )
@@ -1620,6 +1661,7 @@ class _LLMStage:
                     "citations": sorted(prior_ids),
                 },
                 new_members=new_triples,
+                guidance=self.options.guidance,
             )
         return DistillRequest(
             agent_key=self.agent_key,
@@ -1627,6 +1669,7 @@ class _LLMStage:
             kind_hint=kind_hint,
             members=triples,
             chunks=tuple(pack_blocks(blocks, budget)),
+            guidance=self.options.guidance,
         )
 
     def _failed(
@@ -1755,6 +1798,28 @@ def _absorbable(
 # --------------------------------------------------------------------------- the pass
 
 
+def _resolve_options_guidance(
+    options: DistillOptions, project_root: Path | str, agent_key: str
+) -> DistillOptions:
+    """Populate ``options.guidance`` from the on-disk per-agent stream (§12).
+
+    Returns a per-agent COPY so ``distill_all``'s one shared ``options`` is
+    never mutated across agents — each agent forks its own ``guidance_digest``
+    (cluster cache + watermark) from its own combined stream. An explicit
+    caller-set ``options.guidance`` wins (test/CLI override); an absent stream
+    leaves ``options`` untouched so the empty-guidance path is byte-identical
+    to today.
+    """
+    if options.guidance:
+        return options
+    from .extraction_guidance import resolve_agent_guidance
+
+    combined = resolve_agent_guidance(project_root, agent_key)
+    if not combined:
+        return options
+    return replace(options, guidance=combined)
+
+
 def distill_agent(
     graph: ResearchGraph,
     agent_key: str,
@@ -1780,6 +1845,11 @@ def distill_agent(
     registry = registry if registry is not None else AgentRegistry.for_project(project_root)
     canonical_key = registry.resolve_alias(sanitize_agent_key(agent_key))
     result = DistillResult(agent_key=canonical_key, status="no-sessions")
+
+    # §12 Phase-5: resolve this agent's combined guidance stream BEFORE the
+    # manager dispatch so both worker and manager passes fork on it. Never
+    # mutates the shared ``options`` (distill_all reuses one instance).
+    options = _resolve_options_guidance(options, project_root, canonical_key)
 
     if state is None:
         state = DistillStateStore(_state_db_path(project_root))
@@ -1823,6 +1893,16 @@ def distill_agent(
     confidence = compute_recurring_confidence(graph)
 
     input_hash = _slice_input_hash(scope_nodes, graph, findings, confidence)
+    # §12 Phase-5: a guidance edit changes no scope byte, so fold its digest
+    # into the watermark or an edited stream would be watermark-skipped and
+    # never re-distill. Gated on a non-empty stream so the default path stays
+    # byte-identical to pre-Phase-5 runs.
+    if options.guidance:
+        input_hash = hashlib.sha256(
+            f"{input_hash}\nguidance\t{_compute_guidance_digest(options.guidance)}".encode(
+                "utf-8"
+            )
+        ).hexdigest()
     result.input_hash = input_hash
     artifact_path = agent_artifact_path(project_root, canonical_key)
     result.artifact_path = artifact_path
@@ -2375,6 +2455,10 @@ def _distill_manager(
         for key, note in child_notes
     )
     hash_lines.append("children:" + ",".join(sorted(children)))
+    # §12 Phase-5: fold the manager's own guidance stream into its watermark so
+    # an edit re-triggers the rollup (gated — empty stream is byte-identical).
+    if options.guidance:
+        hash_lines.append("guidance:" + _compute_guidance_digest(options.guidance))
     input_hash = hashlib.sha256("\n".join(hash_lines).encode("utf-8")).hexdigest()
     result.input_hash = input_hash
     artifact_path = agent_artifact_path(project_root, manager_key)

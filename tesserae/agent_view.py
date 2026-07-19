@@ -150,6 +150,9 @@ def resolve_agent_view(
     l0: ResearchGraph,
     *,
     l0_path: Optional[Path] = None,
+    bridges: bool = False,
+    bridge_backend=None,
+    bridge_cache_dir: Optional[Path] = None,
 ) -> Tuple[ResearchGraph, Dict[str, object]]:
     """Resolve ``agent`` onto its read-time view over ``l0``.
 
@@ -158,6 +161,24 @@ def resolve_agent_view(
     provenance (path, ``distilled_through`` staleness watermark, node count)
     for ``federation_explain``-style surfacing. Raises :class:`AgentViewError`
     on unknown keys or missing artifacts — never a silently degraded view.
+
+    ``bridges=True`` (opt-in, spec §8.3-step-5/§12 Phase 5) adds embedding-backed
+    ``shares_concept_with`` edges across a manager/org federation so RELATED (not
+    identical) distillates from different reports get linked — the existing
+    :func:`tesserae.federation.add_semantic_links` machinery, with agent keys as
+    the federation aliases (so two reports' notes count as cross-"project" and get
+    bridged; two notes from the same report never do). Bridges are **edges only**
+    and never fuse nodes, so the flag never changes node counts. It is a no-op on
+    a worker view (no federation there). Because the resolved view is in-memory
+    only and never serialized, the embedding-backend nondeterminism of bridges
+    (:func:`add_semantic_links` is byte-stable only given a fixed model) never
+    reaches a committed artifact — the default ``bridges=False`` path stays
+    byte-identical. When bridges are requested but the active backend is the hash
+    stub / numpy is absent, ``info['bridges']`` surfaces ``semantic_skipped`` so
+    the caller learns bridges were requested-but-skipped rather than silently
+    dropped. ``bridge_backend`` / ``bridge_cache_dir`` inject the embedding
+    backend and persisted link cache (both optional; a caller passes them for
+    testing or to reuse a warm bridge cache).
     """
     root = Path(project_root)
     registry = AgentRegistry.for_project(root)
@@ -168,7 +189,18 @@ def resolve_agent_view(
     known = _known_agent_keys(l0, registry)
     canonical = requested if requested == AGENT_ORG_KEY else registry.resolve_alias(requested)
 
-    cache_key = (str(root), canonical)
+    # The bridge signature MUST be part of the cache key: an ON view (with its
+    # extra shares_concept_with edges) and the OFF view share (root, canonical),
+    # so without this a bridged/unbridged result would bleed across calls. Backend
+    # name + cache dir ride along too, so swapping the embedding model re-resolves
+    # instead of serving links from another model.
+    bridge_sig = (
+        bool(bridges),
+        getattr(bridge_backend, "name", type(bridge_backend).__name__)
+        if (bridges and bridge_backend is not None) else "",
+        str(bridge_cache_dir or "") if bridges else "",
+    )
+    cache_key = (str(root), canonical, bridge_sig)
     involved: List[Path] = [registry.path]
     if l0_path is not None:
         involved.append(l0_path)
@@ -230,8 +262,27 @@ def resolve_agent_view(
         if cached and cached[0] == signature:
             _VIEW_CACHE.move_to_end(cache_key)
             return cached[1], cached[2]
-        view, _fed_info = federate_graphs(named)
-        info = {"mode": mode, "agent": canonical, "members": infos}
+        if bridges:
+            # Opt-in cross-agent bridges. Aliases are agent keys, so
+            # add_semantic_links (cross-"project" only) links related notes from
+            # DIFFERENT reports and never same-report ones. Edges only — node
+            # count is identical to the unbridged federation.
+            view, fed_info = federate_graphs(
+                named, semantic=True, semantic_backend=bridge_backend,
+                semantic_cache_dir=bridge_cache_dir,
+            )
+            bridge_info = {
+                k: fed_info[k]
+                for k in (
+                    "semantic_added", "semantic_backend",
+                    "semantic_skipped", "semantic_cached", "semantic_capped_at",
+                )
+                if k in fed_info
+            }
+            info = {"mode": mode, "agent": canonical, "members": infos, "bridges": bridge_info}
+        else:
+            view, _fed_info = federate_graphs(named)
+            info = {"mode": mode, "agent": canonical, "members": infos}
 
     _VIEW_CACHE[cache_key] = (signature, view, info)
     _VIEW_CACHE.move_to_end(cache_key)

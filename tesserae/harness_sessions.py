@@ -246,6 +246,14 @@ _TESSERAE_PROMPT_SIGNATURES: tuple[str, ...] = (
     "You distill a cluster of related agent-session findings",
     "You merge partial distilled notes over ONE cluster",
     "You maintain a distilled note in an agent's knowledge base",
+    # agent_harness per-agent pointer block (§9): NOT an LLM call Tesserae
+    # issues — it is instruction text embedded in harness files an agent reads,
+    # so it is never captured as a session. Listed only so the source-scan
+    # anti-drift guard (test_harness_self_capture) treats it as covered. The
+    # literal ``{agent_key}`` placeholder is deliberate: it can never match a
+    # real (resolved) session blob, so this entry adds zero false-positive risk
+    # (dropping real work is worse than a missed capture — see the docstring).
+    "You are agent `{agent_key}`; work from your own distilled expertise layer.",
 )
 
 

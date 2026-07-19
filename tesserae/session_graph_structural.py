@@ -167,7 +167,7 @@ def extract_structural(
             # nodes above (same-text decisions within a session collapse to
             # one hash-seeded node) — so the profile's finding_counts routing
             # signal (§8.2) always agrees with the queryable graph.
-            decision_count=len(
+            finding_count=len(
                 {(d or "").strip() for d in session.decisions or []} - {""}
             ),
             path_index=path_index,
@@ -180,9 +180,64 @@ def extract_structural(
                     continue
                 sub_key = resolve_agent_key(session, agent_registry, subagent=descriptor)
                 performer_keys.add(sub_key)
+                sub_type = str(descriptor.get("type") or "").strip()
+                # §12 Phase 5 — deeper subagent-transcript promotion. A TYPED
+                # subagent run (reviewer, planner, test-writer, …) stops being
+                # attribution-only: it becomes one scoped structural finding
+                # under the subagent's OWN agent_key, seeded from the parent
+                # session id + the subagent's stable id (no wall clock). The
+                # finding hangs off the parent Session via ``derived_from_session``
+                # (the subagent has no Session node of its own — §3.1); the
+                # parent Session already carries a ``performed_by`` edge to the
+                # subagent's Agent, so ``_scope_for_agent`` folds the run into
+                # that agent's distill scope (§5.1) with no new performed_by
+                # edge — a reviewer subagent's runs accumulate into the reviewer
+                # agent. UNTYPED subagents carry no role signal worth promoting
+                # and stay attribution-only (performed_by edge only).
+                promoted_count = 0
+                promoted_kind = ResearchNodeType.SESSION_DECISION.value
+                if sub_type:
+                    sub_id = str(descriptor.get("id") or sub_key)
+                    run_text = (
+                        str(descriptor.get("title") or "").strip()
+                        or f"{sub_type} subagent run"
+                    )
+                    run_id_seed = f"session:{session.id}:subagent:{sub_id}:run"
+                    run_metadata: dict = {
+                        "session_id": session.id,
+                        "extractor": "subagent-structural",
+                        "subagent_id": sub_id,
+                        "subagent_type": sub_type,
+                    }
+                    # Decay anchor from the subagent's OWN clock (§7.1), falling
+                    # back to the parent session's anchor; omitted (never "now")
+                    # when neither carries a timestamp.
+                    sub_anchor = (
+                        _subagent_anchor_timestamp(descriptor) or session_anchor_ts
+                    )
+                    if sub_anchor:
+                        run_metadata["first_seen_at"] = sub_anchor
+                    builder.add_node(
+                        name=run_text,
+                        node_type=ResearchNodeType.SESSION_TAKEAWAY,
+                        id_seed=run_id_seed,
+                        metadata=run_metadata,
+                    )
+                    run_node = ResearchNode(
+                        id=stable_id(
+                            ResearchNodeType.SESSION_TAKEAWAY.value, run_id_seed
+                        ),
+                        name=run_text,
+                        type=ResearchNodeType.SESSION_TAKEAWAY,
+                    )
+                    builder.add_edge(
+                        run_node, "derived_from_session", session_node
+                    )
+                    promoted_count = 1
+                    promoted_kind = ResearchNodeType.SESSION_TAKEAWAY.value
                 observations.observe(
                     sub_key,
-                    label=str(descriptor.get("type") or "") or None,
+                    label=sub_type or None,
                     session_id=session.id,
                     files=descriptor.get("files_touched") or [],
                     clock=str(
@@ -190,7 +245,11 @@ def extract_structural(
                         or descriptor.get("started_at")
                         or session_clock
                     ),
-                    decision_count=0,
+                    # Keep the profile's finding_counts (§8.2) in lockstep with
+                    # the queryable graph: exactly one SessionTakeaway is minted
+                    # per typed subagent run, zero for untyped.
+                    finding_count=promoted_count,
+                    finding_kind=promoted_kind,
                     path_index=path_index,
                 )
         for agent_key in sorted(performer_keys):
@@ -229,16 +288,16 @@ class _AgentObservations:
         session_id: str,
         files: object,
         clock: str,
-        decision_count: int,
+        finding_count: int = 0,
+        finding_kind: str = ResearchNodeType.SESSION_DECISION.value,
         path_index: DocPathIndex,
     ) -> None:
         self.session_ids.setdefault(agent_key, set()).add(session_id)
         if label and label.strip():
             self.labels.setdefault(agent_key, set()).add(label.strip())
-        if decision_count:
+        if finding_count:
             counts = self.finding_counts.setdefault(agent_key, {})
-            kind = ResearchNodeType.SESSION_DECISION.value
-            counts[kind] = counts.get(kind, 0) + decision_count
+            counts[finding_kind] = counts.get(finding_kind, 0) + finding_count
         if isinstance(files, list):
             concepts = self.concept_counts.setdefault(agent_key, {})
             for touched in files:
@@ -392,6 +451,21 @@ def _session_anchor_timestamp(session: HarnessSession) -> str | None:
     for candidate in (session.started_at, session.ended_at):
         if candidate and str(candidate).strip():
             return str(candidate)
+    return None
+
+
+def _subagent_anchor_timestamp(descriptor: Mapping[str, object]) -> str | None:
+    """Decay anchor for a promoted subagent run (§12 Phase 5).
+
+    Mirrors :func:`_session_anchor_timestamp` for a subagent descriptor:
+    prefers ``started_at``, falls back to ``ended_at``, and returns ``None``
+    when neither is present so the caller can borrow the parent session's
+    anchor rather than mint a misleading "now".
+    """
+    for key in ("started_at", "ended_at"):
+        value = descriptor.get(key)
+        if value and str(value).strip():
+            return str(value)
     return None
 
 

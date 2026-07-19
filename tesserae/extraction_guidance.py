@@ -19,6 +19,50 @@ from .guidance_markdown import GuidanceBullet
 
 MIN_EVENTS = 3
 
+#: Project-level curated stream (the extractor guidance humans edit today).
+PROJECT_GUIDANCE_NAME = "extraction-guidance.md"
+
+
+def project_guidance_path(project_root: Path | str) -> Path:
+    """The project's single curated ``extraction-guidance.md`` (§ project.py)."""
+    return Path(project_root) / ".tesserae" / PROJECT_GUIDANCE_NAME
+
+
+def agent_guidance_path(project_root: Path | str, agent_key: str) -> Path:
+    """The per-agent guidance stream, a sibling of the project stream.
+
+    Named ``extraction-guidance-<sanitized_key>.md`` so it sorts beside the
+    project file and shares the ``sanitize_agent_key`` slug used by the L1
+    artifact directory (``agent_distill.agent_artifact_path``).
+    """
+    from .agent_identity import sanitize_agent_key
+
+    slug = sanitize_agent_key(agent_key)
+    return Path(project_root) / ".tesserae" / f"extraction-guidance-{slug}.md"
+
+
+def resolve_agent_guidance(project_root: Path | str, agent_key: str) -> str:
+    """Combined per-agent distill guidance — project stream, then agent stream.
+
+    The agent stream *refines* the project stream: both files are read and
+    concatenated project-then-agent (agent bullets appended, never replacing
+    the project ones). A pure function of the two files' bytes — returns the
+    empty string when neither exists — so it never perturbs the byte-idempotent
+    distill artifact when the guidance is unchanged. The joined text becomes
+    ``DistillOptions.guidance``, whose ``guidance_digest`` forks the per-agent
+    cluster cache (spec §12 Phase-5).
+    """
+    root = Path(project_root)
+    parts: List[str] = []
+    for path in (project_guidance_path(root), agent_guidance_path(root, agent_key)):
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if text:
+            parts.append(text)
+    return "\n\n".join(parts)
+
 
 def _cluster_hash(key: Sequence[str], event_ids: Sequence[str]) -> str:
     basis = "|".join(key) + "::" + "|".join(sorted(event_ids))
