@@ -88,6 +88,7 @@ from .research_graph import (
     ResearchGraph,
     ResearchNode,
     ResearchNodeType,
+    graph_from_payload,
     stable_id,
 )
 from .session_graph_structural import _agent_metadata
@@ -1665,7 +1666,12 @@ def _load_prior_artifact(path: Path) -> Dict[str, object]:
     Returns ``{"remainder_ids", "absorbed_ids", "distillates"}``; a missing or
     corrupt artifact degrades to the empty prior (tolerant read).
     """
-    empty: Dict[str, object] = {"remainder_ids": set(), "absorbed_ids": set(), "distillates": []}
+    empty: Dict[str, object] = {
+        "remainder_ids": set(),
+        "absorbed_ids": set(),
+        "distillates": [],
+        "distillate_ids": [],
+    }
     if not path.is_file():
         return empty
     try:
@@ -1677,6 +1683,7 @@ def _load_prior_artifact(path: Path) -> Dict[str, object]:
     remainder_ids: Set[str] = set()
     absorbed_ids: Set[str] = set()
     distillates: List[Dict[str, object]] = []
+    distillate_ids: List[str] = []
     for raw in payload.get("nodes", []) if isinstance(payload, dict) else []:
         if not isinstance(raw, dict):
             continue
@@ -1686,6 +1693,7 @@ def _load_prior_artifact(path: Path) -> Dict[str, object]:
             continue
         if type_value != ResearchNodeType.DISTILLED_NOTE.value:
             continue
+        distillate_ids.append(str(raw.get("id")))
         metadata = raw.get("metadata") or {}
         if not isinstance(metadata, dict):
             continue
@@ -1714,6 +1722,7 @@ def _load_prior_artifact(path: Path) -> Dict[str, object]:
         "remainder_ids": remainder_ids,
         "absorbed_ids": absorbed_ids,
         "distillates": distillates,
+        "distillate_ids": distillate_ids,
     }
 
 
@@ -1774,6 +1783,27 @@ def distill_agent(
 
     if state is None:
         state = DistillStateStore(_state_db_path(project_root))
+
+    # §8.3 dispatch: an agent with direct reports is a MANAGER — its artifact
+    # is the L2' rollup over the children's L1s (selective, verbatim-carrying,
+    # arbitration-only LLM), not a worker pass over raw findings.
+    # ponytail: a manager that ALSO has own sessions rolls up children only in
+    # v1 — fold its own worker-pass distillates into the input when a real
+    # working-manager corpus shows up.
+    children = manager_children(graph, registry, canonical_key)
+    if children:
+        return _distill_manager(
+            graph,
+            canonical_key,
+            children,
+            project_root=project_root,
+            registry=registry,
+            summarizer=summarizer,
+            options=options,
+            state=state,
+            breaker=_breaker,
+            result=result,
+        )
 
     sessions, findings, extras = _scope_for_agent(graph, canonical_key)
     result.session_count = len(sessions)
@@ -2101,6 +2131,46 @@ def distill_agent(
     return result
 
 
+def known_agent_keys(graph: ResearchGraph, registry: AgentRegistry) -> List[str]:
+    """Observed (L0 Agent nodes) ∪ declared (registry) agent keys, sorted."""
+    keys = {
+        str((node.metadata or {}).get("agent_key") or "")
+        for node in graph.nodes
+        if node.type is ResearchNodeType.AGENT
+    }
+    keys.discard("")
+    declared = registry.load().get("agents")
+    if isinstance(declared, dict):
+        keys.update(declared.keys())
+    keys.discard(ORG_ROOT)
+    return sorted(keys)
+
+
+def manager_children(
+    graph: ResearchGraph, registry: AgentRegistry, manager_key: str
+) -> List[str]:
+    """Direct reports of ``manager_key`` — keys whose effective parent is it."""
+    return [
+        key
+        for key in known_agent_keys(graph, registry)
+        if key != manager_key and registry.effective_parent(key) == manager_key
+    ]
+
+
+def _org_depth(registry: AgentRegistry, key: str) -> int:
+    """Distance to org:root via effective_parent (cycle-guarded upstream)."""
+    depth = 0
+    cursor = key
+    seen = {cursor}
+    while cursor != ORG_ROOT and depth < 64:
+        cursor = registry.effective_parent(cursor)
+        if cursor in seen:
+            break
+        seen.add(cursor)
+        depth += 1
+    return depth
+
+
 def distill_all(
     graph: ResearchGraph,
     *,
@@ -2109,21 +2179,21 @@ def distill_all(
     summarizer: Optional[Summarizer] = None,
     options: Optional[DistillOptions] = None,
 ) -> List[DistillResult]:
-    """Distill every agent observed in ``graph`` (sorted key order).
+    """Distill every known agent, leaves first (children before managers).
 
-    One circuit breaker spans the whole sweep (§5.3): once a dead provider
-    trips it, the remaining agents' clusters take the un-cached deterministic
-    fallback without paying further transport attempts.
+    Deepest org level runs first so a manager's pass always federates its
+    children's FRESH artifacts in the same sweep (§8.3); within a level the
+    order is sorted-key. One circuit breaker spans the whole sweep (§5.3):
+    once a dead provider trips it, the remaining agents' clusters take the
+    un-cached deterministic fallback without paying further transport
+    attempts.
     """
     registry = (
         registry if registry is not None else AgentRegistry.for_project(Path(project_root))
     )
     agent_keys = sorted(
-        str((node.metadata or {}).get("agent_key") or "")
-        for node in graph.nodes
-        if node.type is ResearchNodeType.AGENT
-        and str((node.metadata or {}).get("agent_key") or "")
-        and str((node.metadata or {}).get("agent_key") or "") != ORG_ROOT
+        known_agent_keys(graph, registry),
+        key=lambda key: (-_org_depth(registry, key), key),
     )
     state = DistillStateStore(_state_db_path(Path(project_root)))
     breaker = _CircuitBreaker()
@@ -2140,6 +2210,540 @@ def distill_all(
         )
         for key in agent_keys
     ]
+
+
+# --------------------------------------------------------------------------- manager pass (§8.3)
+
+
+_MANAGER_GROUP_JACCARD = 0.5
+_NEGATION_MARKERS = ("do not ", "don't ", "never ", "avoid ", "must not ")
+
+
+def _load_child_artifact(project_root: Path, agent_key: str) -> ResearchGraph:
+    path = agent_artifact_path(project_root, agent_key)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return graph_from_payload(payload)
+
+
+def _note_member_ids(note: ResearchNode) -> List[str]:
+    return sorted(
+        {
+            str(ref.get("node_id"))
+            for ref in (note.metadata or {}).get("member_refs") or []
+            if isinstance(ref, dict) and str(ref.get("node_id") or "").strip()
+        }
+    )
+
+
+def _merged_refs(notes: Sequence[ResearchNode]) -> List[Dict[str, str]]:
+    """Union of the notes' member_refs by node_id (§6.4: flattened raw roots).
+
+    On a content_hash disagreement for the same node_id (children distilled at
+    different times), the lexicographically smallest hash wins — deterministic
+    regardless of child iteration order; drift is surfaced by drill_down, not
+    hidden here.
+    """
+    merged: Dict[str, str] = {}
+    for note in notes:
+        for ref in (note.metadata or {}).get("member_refs") or []:
+            if not isinstance(ref, dict):
+                continue
+            node_id = str(ref.get("node_id") or "").strip()
+            if not node_id:
+                continue
+            chash = str(ref.get("content_hash") or "")
+            if node_id not in merged or chash < merged[node_id]:
+                merged[node_id] = chash
+    return [
+        {"node_id": node_id, "content_hash": merged[node_id]}
+        for node_id in sorted(merged)
+    ]
+
+
+def _conflicting_note_pairs(
+    notes: Sequence[ResearchNode],
+) -> List[Tuple[ResearchNode, ResearchNode]]:
+    """Content-keyed conflict detection between grouped sibling notes.
+
+    Reuses contradiction.py's topic machinery (§8.3 step 4). ponytail: the
+    conflict signal is topic overlap + one-sided negation markers — upgrade to
+    the full marker taxonomy (or an LLM judge) when real manager corpora show
+    missed conflicts.
+    """
+    from .memory.contradiction import _node_text, _share_topic
+
+    pairs: List[Tuple[ResearchNode, ResearchNode]] = []
+    ordered = sorted(notes, key=lambda n: n.id)
+    for i, left in enumerate(ordered):
+        for right in ordered[i + 1 :]:
+            if str(left.metadata.get("agent")) == str(right.metadata.get("agent")):
+                continue  # §8.3 step 5: conflicts matter ACROSS agents
+            left_text = _node_text(left).lower()
+            right_text = _node_text(right).lower()
+            if not _share_topic(left_text, right_text):
+                continue
+            left_neg = any(m in left_text for m in _NEGATION_MARKERS)
+            right_neg = any(m in right_text for m in _NEGATION_MARKERS)
+            if left_neg != right_neg:
+                pairs.append((left, right))
+    return pairs
+
+
+def _distill_manager(
+    graph: ResearchGraph,
+    manager_key: str,
+    children: List[str],
+    *,
+    project_root: Path,
+    registry: AgentRegistry,
+    summarizer: Optional[Summarizer],
+    options: DistillOptions,
+    state: DistillStateStore,
+    breaker: Optional[_CircuitBreaker],
+    result: DistillResult,
+) -> DistillResult:
+    """The L2' materialization — same pass, different input (§8.3).
+
+    Selective, not paraphrasing: child distillates are deduped by lineage,
+    grouped by raw-root overlap (Jaccard ≥ 0.5 on member_refs — never by
+    LLM-authored titles), and the representative of each group is carried
+    with its body VERBATIM. The only prose generation at this level is
+    contradiction arbitration (kind: arbitration, cached like any cluster).
+    Refs stay flattened to L0 roots, so recursion never compounds a
+    hallucination and a child re-distill that changes no constituent
+    content_hash triggers zero manager work (cluster keys are lineage-set
+    derived). The corpus clock is recursive: max over children's
+    ``distilled_through`` — never wall-clock.
+    """
+    missing = [
+        key for key in children if not agent_artifact_path(project_root, key).is_file()
+    ]
+    if missing:
+        remedy = "; ".join(f"tesserae distill --agent {key}" for key in missing)
+        raise DistillError(
+            f"children of {manager_key} have no distilled artifact: "
+            f"{', '.join(missing)}; run: {remedy}"
+        )
+
+    child_notes: List[Tuple[str, ResearchNode]] = []
+    child_agent_nodes: Dict[str, ResearchNode] = {}
+    child_profiles: Dict[str, ResearchNode] = {}
+    stamps: List[str] = []
+    for key in children:  # children is registry-derived, sorted upstream
+        child = _load_child_artifact(project_root, key)
+        for node in sorted(child.nodes, key=lambda n: n.id):
+            if node.type is ResearchNodeType.DISTILLED_NOTE:
+                if str((node.metadata or {}).get("kind")) in {"runbook", "gotcha", "note"}:
+                    child_notes.append((key, node))
+                stamp = str((node.metadata or {}).get("distilled_through") or "")
+                if stamp:
+                    stamps.append(stamp)
+            elif node.type is ResearchNodeType.AGENT:
+                child_agent_nodes.setdefault(node.id, node)
+            elif node.type is ResearchNodeType.EXPERTISE_PROFILE:
+                child_profiles.setdefault(node.id, node)
+                stamp = str((node.metadata or {}).get("distilled_through") or "")
+                if stamp:
+                    stamps.append(stamp)
+
+    result.session_count = 0
+    result.finding_count = len(child_notes)
+    result.scope_count = len(child_notes)
+    if not child_notes:
+        result.status = "no-sessions"
+        return result
+
+    # Recursive corpus clock (§8.3): the manager's "now" is the freshest
+    # instant any child has distilled through — corpus-derived, never
+    # wall-clock, so two runs any wall-time apart are byte-identical.
+    if options.as_of:
+        corpus_now_iso = str(options.as_of)
+    elif stamps:
+        corpus_now_iso = max(stamps, key=_instant_key)
+    else:
+        raise DistillError(
+            f"manager {manager_key}: no child artifact carries distilled_through "
+            "and no as_of was given (spec §7.1/§8.3)."
+        )
+    result.distilled_through = corpus_now_iso
+
+    # Watermark: lineage-set + content_hash derived (§8.3 step 6). A child
+    # re-distill that changes no constituent's content bytes reproduces this
+    # hash exactly → skipped-watermark, zero manager work.
+    hash_lines = sorted(
+        f"{key}|{note.id}|{note.metadata.get('lineage_key')}|{note.metadata.get('content_hash')}"
+        for key, note in child_notes
+    )
+    hash_lines.append("children:" + ",".join(sorted(children)))
+    input_hash = hashlib.sha256("\n".join(hash_lines).encode("utf-8")).hexdigest()
+    result.input_hash = input_hash
+    artifact_path = agent_artifact_path(project_root, manager_key)
+    result.artifact_path = artifact_path
+
+    if not options.full and not options.dry_run:
+        watermark = state.get(DistillStateStore.SCOPE_WATERMARK, manager_key, "")
+        if watermark == input_hash and artifact_path.is_file():
+            result.status = "skipped-watermark"
+            return result
+
+    # ---------------- select & dedup (§8.3 steps 1-2) ----------------
+    # Step 1 — dedup by lineage identity: same lineage_key from two children
+    # is the same knowledge; representative = (-member_count, id).
+    by_lineage: Dict[str, List[ResearchNode]] = {}
+    for _key, note in child_notes:
+        lineage = str((note.metadata or {}).get("lineage_key") or note.id)
+        by_lineage.setdefault(lineage, []).append(note)
+    reps: List[ResearchNode] = []
+    lineage_dups: List[ResearchNode] = []
+    for lineage in sorted(by_lineage):
+        group = sorted(
+            by_lineage[lineage],
+            key=lambda n: (-int((n.metadata or {}).get("member_count") or 0), n.id),
+        )
+        reps.append(group[0])
+        lineage_dups.extend(group[1:])
+
+    # Step 2 — group by raw-root ref-set overlap (Jaccard ≥ 0.5), NEVER by
+    # titles. ponytail: O(n²) pairwise over deduped reps — a manager rolls up
+    # tens of notes, not thousands; index it like §5.2 if that changes.
+    reps.sort(key=lambda n: n.id)
+    uf = _UnionFind()
+    for note in reps:
+        uf.add(note.id)
+    member_sets = {n.id: set(_note_member_ids(n)) for n in reps}
+    for i, left in enumerate(reps):
+        for right in reps[i + 1 :]:
+            a, b = member_sets[left.id], member_sets[right.id]
+            union_size = len(a | b)
+            overlap = len(a & b) / union_size if union_size else 0.0
+            if overlap >= _MANAGER_GROUP_JACCARD:
+                uf.union(left.id, right.id)
+    grouped: Dict[str, List[ResearchNode]] = {}
+    for note in reps:
+        grouped.setdefault(uf.find(note.id), []).append(note)
+
+    # ---------------- carry & arbitrate (§8.3 steps 3-5) ----------------
+    prior = _load_prior_artifact(artifact_path)
+    run_seq = state.current_run_seq() + 1 if not options.dry_run else state.current_run_seq()
+    stage = _LLMStage(
+        agent_key=manager_key,
+        summarizer=summarizer,
+        cache_root=distill_cache_dir(project_root),
+        state=None if options.dry_run else state,
+        options=options,
+        prior_distillates=prior["distillates"],
+        run_seq=run_seq,
+        result=result,
+        breaker=breaker,
+    )
+
+    carried: List[ResearchNode] = []
+    sibling_index_pool: List[ResearchNode] = []
+    for root_id in sorted(grouped):
+        group = sorted(
+            grouped[root_id],
+            key=lambda n: (-int((n.metadata or {}).get("member_count") or 0), n.id),
+        )
+        rep = group[0]
+        siblings = group[1:]
+        group_with_dups = group + [
+            d for d in lineage_dups
+            if str((d.metadata or {}).get("lineage_key"))
+            in {str((n.metadata or {}).get("lineage_key")) for n in group}
+        ]
+        union_lineage = compute_lineage_key(
+            {n.id: _note_member_ids(n) for n in group_with_dups}
+        )
+        union_refs = _merged_refs(group_with_dups)
+        first_seen = sorted(
+            str((n.metadata or {}).get("first_seen_at"))
+            for n in group_with_dups
+            if (n.metadata or {}).get("first_seen_at")
+        )
+
+        # Step 3 — verbatim carry: body/title/kind untouched from the
+        # representative. No paraphrase-of-paraphrase (LLM depth stays 1).
+        metadata: Dict[str, object] = {
+            "agent": manager_key,
+            "kind": str((rep.metadata or {}).get("kind") or "note"),
+            "lineage_key": union_lineage,
+            "content_hash": str((rep.metadata or {}).get("content_hash") or ""),
+            "member_count": len(union_refs),
+            "member_refs": union_refs,
+            "absorbed_refs": [],
+            "distill_quality": str((rep.metadata or {}).get("distill_quality") or "structural"),
+            "distilled_through": corpus_now_iso,
+        }
+        if first_seen:
+            metadata["first_seen_at"] = first_seen[0]
+        carried.append(
+            ResearchNode(
+                id=stable_id(
+                    ResearchNodeType.DISTILLED_NOTE.value,
+                    f"distilled:{manager_key}:{union_lineage[:16]}",
+                ),
+                name=rep.name,
+                type=ResearchNodeType.DISTILLED_NOTE,
+                description=rep.description,
+                metadata=metadata,
+            )
+        )
+        sibling_index_pool.extend(siblings)
+
+        # Step 4 — arbitration: the ONLY prose minted at manager level.
+        for left, right in _conflicting_note_pairs(group):
+            arb_lineage = compute_lineage_key(
+                {left.id: _note_member_ids(left), right.id: _note_member_ids(right)}
+            )
+            output, quality = stage.summarize_cluster([left, right], arb_lineage)
+            arb_refs = _merged_refs([left, right])
+            carried.append(
+                ResearchNode(
+                    id=stable_id(
+                        ResearchNodeType.DISTILLED_NOTE.value,
+                        f"distilled:{manager_key}:arb:{arb_lineage[:16]}",
+                    ),
+                    name=str(output["title"]),
+                    type=ResearchNodeType.DISTILLED_NOTE,
+                    description=str(output["body"]),
+                    metadata={
+                        "agent": manager_key,
+                        "kind": "arbitration",
+                        "lineage_key": arb_lineage,
+                        "content_hash": hashlib.sha256(
+                            str(output["body"]).encode("utf-8")
+                        ).hexdigest()[:24],
+                        "member_count": len(arb_refs),
+                        "member_refs": arb_refs,
+                        "absorbed_refs": [],
+                        "distill_quality": quality,
+                        "distilled_through": corpus_now_iso,
+                    },
+                )
+            )
+
+    result.cluster_count = len(grouped)
+    result.distilled_count = len(carried)
+
+    # ---------------- emit (§5.5 shape, manager flavor) ----------------
+    agent_node, parent_node, reports_edge = _mint_agent_nodes(manager_key, registry, [])
+    # Child artifacts carry their PARENT Agent node too (the manager itself,
+    # minted by the child's worker pass) — never a report of its own.
+    child_agent_nodes.pop(agent_node.id, None)
+    reports_edges: List[ResearchEdge] = [] if reports_edge is None else [reports_edge]
+    child_keys_set = set(children)
+    for node in child_agent_nodes.values():
+        if str((node.metadata or {}).get("agent_key") or "") not in child_keys_set:
+            continue  # grandparents/org:root riding along in a child artifact
+        reports_edges.append(
+            ResearchEdge(source=node.id, target=agent_node.id, type="reports_to")
+        )
+
+    def _assemble(index_entries: List[ResearchNode], truncated: int) -> ResearchGraph:
+        nodes: List[ResearchNode] = [agent_node]
+        if parent_node is not None:
+            nodes.append(parent_node)
+        nodes.extend(child_agent_nodes[k] for k in sorted(child_agent_nodes))
+        nodes.extend(child_profiles[k] for k in sorted(child_profiles))
+        nodes.extend(carried)
+        nodes.append(
+            _mint_index_note(manager_key, index_entries, truncated, corpus_now_iso)
+        )
+        deduped_edges = {
+            (e.source, e.type, e.target): e for e in reports_edges
+        }
+        return ResearchGraph(
+            nodes=list({n.id: n for n in nodes}.values()),
+            edges=[deduped_edges[key] for key in sorted(deduped_edges)],
+        )
+
+    budget = options.artifact_char_budget or ARTIFACT_CHAR_BUDGET
+    index_entries = sorted(sibling_index_pool, key=lambda n: n.id)
+    truncated = 0
+    while True:
+        artifact = _assemble(index_entries, truncated)
+        rendered = artifact.canonicalized().to_json(indent=2) + "\n"
+        if len(rendered) <= budget or not index_entries:
+            break
+        drop = max(1, min(len(index_entries), 32))
+        index_entries = index_entries[:-drop]
+        truncated += drop
+
+    result.artifact_chars = len(rendered)
+    size_level = artifact_size_level(len(rendered), budget)
+    if size_level == "error":
+        raise DistillSizeError(
+            f"Distilled artifact for {manager_key} is {len(rendered)} chars — "
+            f"exceeds the one-read bound of {budget} chars even after index "
+            "truncation (spec §2/§7.2)."
+        )
+    result.size_level = size_level
+
+    if options.dry_run:
+        result.status = "dry-run"
+        return result
+
+    run_seq = state.bump_run_seq()
+    new_bytes = rendered.encode("utf-8")
+    existing = artifact_path.read_bytes() if artifact_path.is_file() else None
+    if existing == new_bytes:
+        result.status = "unchanged"
+    else:
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = artifact_path.with_suffix(f".tmp.{os.getpid()}.{secrets.token_hex(4)}")
+        try:
+            tmp.write_bytes(new_bytes)
+            os.replace(tmp, artifact_path)
+        finally:
+            if tmp.exists():
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
+        result.status = "written"
+
+    # Forget ledger (§6.2): at manager level "carried" plays the remainder
+    # role — the diff records which rollup notes appeared / disappeared.
+    carried_ids = sorted(n.id for n in carried)
+    prior_ids = sorted(prior.get("distillate_ids") or [])
+    diff = {
+        "promoted": sorted(set(carried_ids) - set(prior_ids)),
+        "demoted": sorted(set(prior_ids) - set(carried_ids)),
+        "absorbed": [],
+    }
+    result.forget_diff = diff
+    state.append(
+        DistillStateStore.SCOPE_FORGET_LEDGER,
+        manager_key,
+        json.dumps(
+            {
+                "distilled_through": corpus_now_iso,
+                "input_hash": input_hash,
+                "remainder": carried_ids,
+                **diff,
+            },
+            sort_keys=True,
+        ),
+    )
+    state.put(DistillStateStore.SCOPE_WATERMARK, manager_key, "", input_hash)
+    _prune_cache_lru(state, distill_cache_dir(project_root), run_seq)
+    return result
+
+
+# --------------------------------------------------------------------------- refresh trigger (§8.2)
+
+
+def undistilled_slice_chars(
+    graph: ResearchGraph, agent_key: str, project_root: Path | str
+) -> int:
+    """Rendered size of the agent's scope findings no distillate covers.
+
+    The §8.2 memory-pressure signal: when this exceeds half the LLM chunk
+    budget, raw recall for the agent no longer fits one read and
+    consolidation should fire.
+    """
+    _sessions, findings, _extras = _scope_for_agent(graph, agent_key)
+    if not findings:
+        return 0
+    covered: Set[str] = set()
+    path = agent_artifact_path(project_root, agent_key)
+    if path.is_file():
+        prior = _load_prior_artifact(path)
+        covered.update(prior["absorbed_ids"])
+        for distillate in prior["distillates"]:
+            covered.update(distillate["member_ids"])
+    return sum(
+        len(_render_member_block(node))
+        for node in findings
+        if node.id not in covered
+    )
+
+
+def maybe_distill_on_refresh(
+    project_root: Path | str,
+    graph: ResearchGraph,
+    *,
+    cfg: Optional[dict] = None,
+    env: Optional[Mapping[str, str]] = None,
+    summarizer: Optional[Summarizer] = None,
+    options: Optional[DistillOptions] = None,
+) -> Dict[str, object]:
+    """Refresh-flow hook (§8.2): distill under memory pressure, never always.
+
+    Gated three ways: the ``TESSERAE_AGENT_DISTILL`` opt-in, a changed
+    watermark (something actually new), and the memory-pressure signal
+    (undistilled slice > half the LLM chunk budget). Managers are re-rolled
+    afterwards only if any child wrote. Returns a summary dict for the
+    pipeline step output; never raises for per-agent failures — refresh must
+    not die because one agent's distill did.
+    """
+    if not agent_distill_enabled(cfg, env):
+        return {"skipped": "agent distill gate off (TESSERAE_AGENT_DISTILL)"}
+    project_root = Path(project_root)
+    registry = AgentRegistry.for_project(project_root)
+    state = DistillStateStore(_state_db_path(project_root))
+    pressure_floor = chunk_char_budget() // 2
+    ran: List[str] = []
+    skipped: List[str] = []
+    failed: List[str] = []
+    workers = [
+        key
+        for key in known_agent_keys(graph, registry)
+        if not manager_children(graph, registry, key)
+    ]
+    for key in workers:
+        slice_chars = undistilled_slice_chars(graph, key, project_root)
+        if slice_chars <= pressure_floor:
+            skipped.append(key)
+            continue
+        try:
+            outcome = distill_agent(
+                graph,
+                key,
+                project_root=project_root,
+                registry=registry,
+                summarizer=summarizer,
+                options=options,
+            )
+        except DistillError as exc:
+            logger.warning("refresh distill for %s failed: %s", key, exc)
+            failed.append(key)
+            continue
+        if outcome.status in {"written", "unchanged"}:
+            ran.append(key)
+        else:
+            skipped.append(key)
+    wrote = {key for key in ran}
+    # Managers roll whenever every child artifact exists — their lineage-set
+    # watermark makes the repeat case one hash comparison. A manager with a
+    # missing child is a loud FAILURE only when this run's writes made the
+    # rollup stale; otherwise it just isn't ready yet (skip, don't nag).
+    managers = [
+        key
+        for key in known_agent_keys(graph, registry)
+        if manager_children(graph, registry, key)
+    ]
+    for key in managers:
+        kids = manager_children(graph, registry, key)
+        ready = all(agent_artifact_path(project_root, k).is_file() for k in kids)
+        if not ready:
+            (failed if any(k in wrote for k in kids) else skipped).append(key)
+            continue
+        try:
+            outcome = distill_agent(
+                graph,
+                key,
+                project_root=project_root,
+                registry=registry,
+                summarizer=summarizer,
+                options=options,
+            )
+        except DistillError as exc:
+            logger.warning("refresh distill for manager %s failed: %s", key, exc)
+            failed.append(key)
+            continue
+        (ran if outcome.status in {"written", "unchanged"} else skipped).append(key)
+    return {"distilled": sorted(ran), "skipped": sorted(skipped), "failed": sorted(failed)}
 
 
 # --------------------------------------------------------------------------- minting helpers

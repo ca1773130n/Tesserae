@@ -1709,11 +1709,33 @@ def _handle_refresh(args: argparse.Namespace) -> int:
             return {"skipped": result.reason}
         return {"turns_inserted": result.turns_inserted, "days_covered": result.days_covered}
 
+    def step_agent_distill():
+        # §8.2 freshness path: consolidation fires when an agent's raw recall
+        # stops fitting one read. Triple-gated inside (TESSERAE_AGENT_DISTILL
+        # opt-in, watermark, memory pressure) — a no-op for everyone else, and
+        # never a refresh failure.
+        from .agent_distill import maybe_distill_on_refresh
+        from .project import load_graph_file
+
+        graph_path = wiki.project_root / ".tesserae" / "graph.json"
+        if not graph_path.is_file():
+            return {"skipped": "no compiled graph"}
+        try:
+            return maybe_distill_on_refresh(
+                wiki.project_root, load_graph_file(graph_path)
+            )
+        except Exception as exc:  # noqa: BLE001 — optimization, not correctness
+            return {"skipped": f"agent distill failed: {exc}"}
+
     steps = []
     if not args.no_sessions:
         steps.append(("sessions-import", step_sessions_import))
         steps.append(("chunk-backfill", step_chunk_backfill))
-    steps += [("compile", step_compile), ("obsidian-sync", step_obsidian_sync)]
+    steps += [
+        ("compile", step_compile),
+        ("agent-distill", step_agent_distill),
+        ("obsidian-sync", step_obsidian_sync),
+    ]
 
     results = Pipeline(steps).run()
 

@@ -277,6 +277,8 @@ class WikiLinter:
         findings.extend(self._check_stale_build_history())
         findings.extend(self._check_code_graph_staleness(nodes_by_id))
         findings.extend(self._check_agent_metadata_allowlist(nodes_by_id))
+        findings.extend(self._check_agent_forget_ledger())
+        findings.extend(self._check_undistilled_backlog(nodes_by_id, edges))
         if verify_claims:
             findings.extend(
                 self._check_claim_support(nodes_by_id, cap=claim_cap, llm_client=llm_client)
@@ -700,6 +702,95 @@ class WikiLinter:
                         node_id=node_id,
                         suggested_fix="Use a kind from the layered-agent-kg spec §4.",
                     )
+
+    def _check_agent_forget_ledger(self) -> Iterable[LintFinding]:
+        """Surface each agent's latest forget-ledger diff (§6.2).
+
+        Shrinkage must be visible BEFORE it costs a decision: any distill run
+        that demoted or absorbed knowledge yields a warning naming the counts;
+        promotion-only runs stay info-quiet (nothing became less visible).
+        Reads the sidecar, not the graph — no effect on compile bytes.
+        """
+        try:
+            from .agent_distill import DistillStateStore, _state_db_path
+
+            db_path = _state_db_path(self.project_root)
+            if not db_path.is_file():
+                return
+            state = DistillStateStore(db_path)
+            rows = state.rows(DistillStateStore.SCOPE_FORGET_LEDGER)
+        except Exception:  # noqa: BLE001 — lint never dies on sidecar trouble
+            return
+        latest: Dict[str, dict] = {}
+        for _rowid, agent_key, _key, value in rows:
+            try:
+                latest[str(agent_key)] = json.loads(value)
+            except (json.JSONDecodeError, TypeError):
+                continue
+        for agent_key in sorted(latest):
+            entry = latest[agent_key]
+            demoted = list(entry.get("demoted") or [])
+            absorbed = list(entry.get("absorbed") or [])
+            if not demoted and not absorbed:
+                continue
+            yield LintFinding(
+                severity="warning",
+                code="AGENT_FORGET_LEDGER",
+                message=(
+                    f"agent {agent_key}: last distill demoted {len(demoted)} and "
+                    f"absorbed {len(absorbed)} node(s) "
+                    f"(through {entry.get('distilled_through', '?')}). "
+                    "Demoted knowledge is index-only; absorbed knowledge lives "
+                    "inside a distillate."
+                ),
+                suggested_fix=(
+                    "Review with drill_down / include_superseded; re-run "
+                    "`tesserae distill --recheck` if a demotion looks wrong."
+                ),
+            )
+
+    def _check_undistilled_backlog(
+        self, nodes_by_id: Dict[str, dict], edges: List[dict]
+    ) -> Iterable[LintFinding]:
+        """Per-agent undistilled-backlog metric (§6.3).
+
+        Scope findings referenced by no distillate's ``member_refs`` are the
+        knowledge sitting below the distillation waterline — measured, not
+        invisible. Info severity: backlog is normal; the metric exists so its
+        growth is watchable.
+        """
+        try:
+            from .agent_distill import undistilled_slice_chars
+            from .research_graph import graph_from_payload
+
+            graph = graph_from_payload(
+                {"nodes": list(nodes_by_id.values()), "edges": edges}
+            )
+        except Exception:  # noqa: BLE001 — a malformed payload is other probes' job
+            return
+        agent_keys = sorted(
+            str((node.get("metadata") or {}).get("agent_key") or "")
+            for node in nodes_by_id.values()
+            if str(node.get("type") or "") == "Agent"
+            and str((node.get("metadata") or {}).get("agent_key") or "")
+            and str((node.get("metadata") or {}).get("agent_key") or "") != "org:root"
+        )
+        for agent_key in agent_keys:
+            try:
+                chars = undistilled_slice_chars(graph, agent_key, self.project_root)
+            except Exception:  # noqa: BLE001
+                continue
+            if chars <= 0:
+                continue
+            yield LintFinding(
+                severity="info",
+                code="AGENT_UNDISTILLED_BACKLOG",
+                message=(
+                    f"agent {agent_key}: ~{chars} chars of scope findings are "
+                    "covered by no distillate (undistilled backlog)."
+                ),
+                suggested_fix=f"tesserae distill --agent {agent_key}",
+            )
 
     def _check_synthesis_ghost_inputs(
         self, nodes_by_id: Dict[str, dict]
