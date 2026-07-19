@@ -217,6 +217,22 @@ Markdown in one project can deep-link a node in another via
 `wiki://<alias>/<kind>/<slug>`; at compile time these become bridge nodes in
 the graph view. See [docs](docs/) for details.
 
+## Layered agent memory (opt-in)
+
+Every agent grows its own knowledge graph from its own sessions; `tesserae
+distill` compacts each one into a bounded, single-read **L1 artifact**
+(organize / polish / forget — safely, never deleting). Managers read only the
+distilled layer of their reports, recursively up an org tree — so no reader
+ever needs the whole archive, and no memory outgrows a context window.
+
+```bash
+tesserae agents init                    # discover agents, propose the org registry
+tesserae distill                        # distill every agent, leaves first
+# then any MCP read tool takes agent=<key> | <manager> | org
+```
+
+See [docs/agent-memory.md](docs/agent-memory.md).
+
 ## Integrations (all opt-in)
 
 - **Claude Code plugin** — slash commands, session hooks, skill, and MCP
