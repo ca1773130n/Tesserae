@@ -4148,6 +4148,313 @@ def _route_projects(rest: List[str]) -> int:
     return _resolve_handler(args._handler)(args)
 
 
+# ----- agents (role-grade org registry) -------------------------------------
+def _agents_observed_stats(sessions, registry) -> Dict[str, Dict[str, set]]:
+    """Per-agent-key observation stats over the imported session corpus.
+
+    Mirrors the label sourcing in the structural pass
+    (session_graph_structural._agent_metadata): parent sessions contribute
+    their ``agent_label``, subagents their descriptor ``type``. Returns
+    ``{agent_key: {"labels": set[str], "session_ids": set[str]}}``.
+    """
+    from .agent_identity import resolve_agent_key
+
+    stats: Dict[str, Dict[str, set]] = {}
+
+    def note(key: str, label: str, session_id: str) -> None:
+        row = stats.setdefault(key, {"labels": set(), "session_ids": set()})
+        row["session_ids"].add(session_id)
+        if label:
+            row["labels"].add(label)
+
+    for session in sessions:
+        note(resolve_agent_key(session, registry), (session.agent_label or "").strip(), session.id)
+        subagents = (session.metadata or {}).get("subagents")
+        if isinstance(subagents, list):
+            for descriptor in subagents:
+                if isinstance(descriptor, dict):
+                    note(
+                        resolve_agent_key(session, registry, subagent=descriptor),
+                        str(descriptor.get("type") or "").strip(),
+                        session.id,
+                    )
+    return stats
+
+
+def _handle_agents_init(args: argparse.Namespace) -> int:
+    from .agent_identity import ORG_ROOT, AgentRegistry
+
+    wiki = ProjectWiki.load(args.project)
+    registry = AgentRegistry.for_project(wiki.project_root)
+    if registry.path.exists() and not args.force:
+        print(
+            f"Agent registry already exists at {registry.path} — pass --force to overwrite.",
+            file=sys.stderr,
+        )
+        return 1
+    sessions = HarnessSessionStore(wiki.paths.harness_sessions).list_sessions()
+    # Raw envelope keys (registry=None): init PROPOSES a registry from what
+    # the sessions themselves say, so a pre-existing registry being --force
+    # overwritten never bakes its aliases or match rules into the scan.
+    stats = _agents_observed_stats(sessions, registry=None)
+    agents = {
+        key: {
+            "label": sorted(row["labels"])[0] if row["labels"] else key,
+            "parent": ORG_ROOT,
+            "aliases": [],
+            "match": [],
+        }
+        for key, row in sorted(stats.items())
+    }
+    registry.save({"version": 1, "agents": agents})
+    print(f"Proposed agent registry: {len(agents)} agent(s) path={registry.path}")
+    for key, row in sorted(stats.items()):
+        print(f"  {key}  ({len(row['session_ids'])} session(s))")
+    if not agents:
+        print("No sessions imported yet — run `tesserae sessions discover --import` first.")
+    return 0
+
+
+def _handle_agents_list(args: argparse.Namespace) -> int:
+    from .agent_identity import ORG_ROOT, AgentRegistry
+
+    wiki = ProjectWiki.load(args.project)
+    registry = AgentRegistry.for_project(wiki.project_root)
+    try:
+        declared = registry.load()["agents"]
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    sessions = HarnessSessionStore(wiki.paths.harness_sessions).list_sessions()
+    stats = _agents_observed_stats(sessions, registry)
+    rows = []
+    for key in sorted(set(stats) | set(declared)):
+        entry = declared.get(key)
+        observed = stats.get(key, {"labels": set(), "session_ids": set()})
+        # Label preference matches the structural pass: registry declaration,
+        # then sorted-first observed label, then the key itself.
+        label = str(entry.get("label") or "").strip() if isinstance(entry, dict) else ""
+        if not label:
+            label = sorted(observed["labels"])[0] if observed["labels"] else key
+        parent = ORG_ROOT
+        if isinstance(entry, dict) and entry.get("parent"):
+            parent = str(entry["parent"])
+        rows.append(
+            {
+                "key": key,
+                "label": label,
+                "parent": parent,
+                "sessions": len(observed["session_ids"]),
+                "registered": entry is not None,
+            }
+        )
+    if getattr(args, "as_json", False):
+        print(json.dumps(rows, ensure_ascii=False, indent=2))
+        return 0
+    if not rows:
+        print(
+            "No agents observed — run `tesserae sessions discover --import` "
+            "then `tesserae agents init`."
+        )
+        return 0
+    registry_state = registry.path if registry.path.exists() else "none"
+    print(f"Agents: {len(rows)} (registry: {registry_state})")
+    for row in rows:
+        marker = "registered" if row["registered"] else "observed"
+        print(
+            f"  {row['key']}  parent={row['parent']}  sessions={row['sessions']}  "
+            f"[{marker}]  {row['label']}"
+        )
+    return 0
+
+
+def _handle_agents_set_parent(args: argparse.Namespace) -> int:
+    from .agent_identity import ORG_ROOT, AgentRegistry, sanitize_agent_key
+
+    wiki = ProjectWiki.load(args.project)
+    registry = AgentRegistry.for_project(wiki.project_root)
+    try:
+        declared = registry.load()["agents"]
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    sessions = HarnessSessionStore(wiki.paths.harness_sessions).list_sessions()
+    stats = _agents_observed_stats(sessions, registry)
+    # Fail loud (spec §3.2): both ends must be a declared agent, an observed
+    # envelope key, or the implicit org:root — never a silent typo'd org chart.
+    known = set(declared) | set(stats) | {ORG_ROOT}
+    child = sanitize_agent_key(args.child)
+    parent = sanitize_agent_key(args.parent)
+    for what, key in (("agent", child), ("parent agent", parent)):
+        if key not in known:
+            print(
+                f"Unknown {what}: {key}. Known agents: {', '.join(sorted(known))}",
+                file=sys.stderr,
+            )
+            return 1
+    # Post-sanitize self-parent check ("A b" and "a_b" sanitize to the same
+    # key) BEFORE the auto-register writes below — set_parent would reject it
+    # anyway, but only after new registry entries had already been saved, and
+    # a failed command must not leave partial writes behind.
+    if child == parent:
+        print(f"Agent {child!r} cannot be its own parent", file=sys.stderr)
+        return 1
+    # Observed-but-undeclared endpoints are registered on the fly (parented to
+    # org:root) so reparenting an agent that only exists in session history
+    # needs no manual registry ceremony first.
+    for key in (child, parent):
+        if key != ORG_ROOT and key not in declared:
+            labels = stats.get(key, {}).get("labels") or set()
+            registry.register(key, label=sorted(labels)[0] if labels else "")
+    try:
+        row = registry.set_parent(child, parent)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(f"{child} now reports to {row['parent']}")
+    return 0
+
+
+def _handle_agents_rename(args: argparse.Namespace) -> int:
+    from .agent_identity import AgentRegistry, sanitize_agent_key
+
+    wiki = ProjectWiki.load(args.project)
+    registry = AgentRegistry.for_project(wiki.project_root)
+    try:
+        data = registry.load()
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    agents = data["agents"]
+    old = sanitize_agent_key(args.old)
+    new = sanitize_agent_key(args.new)
+    if old not in agents:
+        print(
+            f"Unknown agent: {old}. Declared agents: {', '.join(sorted(agents)) or '(none)'}",
+            file=sys.stderr,
+        )
+        return 1
+    if new == old:
+        print(f"Agent is already named {new}", file=sys.stderr)
+        return 1
+    if new in agents:
+        print(f"Agent already declared: {new}", file=sys.stderr)
+        return 1
+    entry = agents.pop(old)
+    # The old key stays behind as an alias so envelope keys from already
+    # imported sessions keep resolving to the renamed agent.
+    aliases = {str(a) for a in (entry.get("aliases") or [])}
+    aliases.add(old)
+    entry["aliases"] = sorted(aliases)
+    agents[new] = entry
+    for other in agents.values():
+        if isinstance(other, dict) and other.get("parent") == old:
+            other["parent"] = new
+    # Migrate the per-agent artifact dir (distill outputs, Phase 2+) together
+    # with the registry entry: rename the dir first and roll it back if the
+    # registry save fails, so dir and registry never disagree.
+    old_dir = registry.path.parent / old
+    new_dir = registry.path.parent / new
+    moved = False
+    if old_dir.is_dir():
+        if new_dir.exists():
+            print(f"Cannot rename: {new_dir} already exists", file=sys.stderr)
+            return 1
+        old_dir.rename(new_dir)
+        moved = True
+    try:
+        registry.save(data)
+    except (ValueError, OSError) as exc:
+        # OSError covers a failed tmp write/rename (disk full, permissions)
+        # — the dir rename must be undone on ANY save failure, or dir and
+        # registry disagree exactly as this block promises they never will.
+        if moved:
+            new_dir.rename(old_dir)
+        print(str(exc), file=sys.stderr)
+        return 1
+    migrated = f" (migrated {old_dir.name}/ -> {new_dir.name}/)" if moved else ""
+    print(f"Renamed agent: {old} -> {new}{migrated} (old key kept as alias)")
+    return 0
+
+
+def _build_agents_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae agents",
+        description="Role-grade agent org registry: init | list | set-parent | rename.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae agents init\n"
+            "  tesserae agents list\n"
+            "  tesserae agents set-parent claude-code:me:reviewer claude-code:me:default\n"
+        ),
+    )
+    sub = parser.add_subparsers(dest="agents_command", required=True)
+
+    p_init = sub.add_parser(
+        "init",
+        help="Scan imported sessions and write a proposed registry (everyone parented to org:root).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae agents init\n"
+            "  tesserae agents init --force\n"
+        ),
+    )
+    p_init.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_init.add_argument("--force", action="store_true", help="Overwrite an existing registry (reversible — it is one JSON file)")
+    p_init.set_defaults(_handler="_handle_agents_init")
+
+    p_list = sub.add_parser(
+        "list",
+        help="List observed agent keys + registry state (label, parent, session counts).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae agents list\n"
+            "  tesserae agents list --json\n"
+        ),
+    )
+    p_list.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_list.add_argument("--json", dest="as_json", action="store_true", help="Emit the agent rows as JSON.")
+    p_list.set_defaults(_handler="_handle_agents_list")
+
+    p_set = sub.add_parser(
+        "set-parent",
+        help="Reparent an agent in the org chart (both keys validated against observed/registry keys).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae agents set-parent claude-code:me:reviewer claude-code:me:default\n"
+            "  tesserae agents set-parent codex:me:default org:root\n"
+        ),
+    )
+    p_set.add_argument("child", help="Agent key to reparent.")
+    p_set.add_argument("parent", help="New parent agent key, or org:root.")
+    p_set.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_set.set_defaults(_handler="_handle_agents_set_parent")
+
+    p_rename = sub.add_parser(
+        "rename",
+        help="Rename a declared agent — migrates the agents/<key>/ dir + registry entry atomically.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae agents rename claude-code:old-account:reviewer claude-code:me:reviewer\n"
+        ),
+    )
+    p_rename.add_argument("old", help="Currently declared agent key.")
+    p_rename.add_argument("new", help="New agent key (the old key is kept as an alias).")
+    p_rename.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_rename.set_defaults(_handler="_handle_agents_rename")
+    return parser
+
+
+def _route_agents(rest: List[str]) -> int:
+    args = _build_agents_parser().parse_args(rest)
+    return _resolve_handler(args._handler)(args)
+
+
 # ----- sources (compile scope: local + global) ------------------------------
 def _normalize_source(project_root: Path, raw: str):
     """Map a user-given path to its stored form + resolved location + kind.
@@ -4855,6 +5162,7 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "config": _route_config,
     "setup": _route_setup,
     "projects": _route_projects,
+    "agents": _route_agents,
     "sources": _route_sources,
     "federation": _route_federation,
     "integrations": _route_integrations,

@@ -172,6 +172,54 @@ _FRONTMATTER_END_RE = re.compile(
     r"(^|\n)" + re.escape(_FRONTMATTER_DELIM) + r"(\n|\r\n|$)", re.MULTILINE
 )
 
+# Closed metadata-key allowlists for the agent-layer node types
+# (2026-07-19 layered-agent-kg spec §4). Compile determinism has broken
+# repeatedly via wall-clock / counter state sneaking into graph.json
+# metadata, so these schemas are enforced as an error-severity probe:
+# any key outside the sets is rejected at lint time instead of surfacing
+# later as a byte-idempotence diff.
+_AGENT_LAYER_METADATA_ALLOWLIST: Dict[str, FrozenSet[str]] = {
+    "Agent": frozenset({"agent_key", "harness", "account", "role", "label"}),
+    "DistilledNote": frozenset(
+        {
+            "agent",
+            "kind",
+            "lineage_key",
+            "content_hash",
+            "member_count",
+            "member_refs",
+            "absorbed_refs",
+            "distill_quality",
+            "first_seen_at",
+            "distilled_through",
+        }
+    ),
+    "ExpertiseProfile": frozenset(
+        {
+            "agent",
+            "session_count",
+            "finding_counts",
+            "top_concepts",
+            "distilled_through",
+        }
+    ),
+}
+
+# The only timestamp/counter-shaped keys allowed on agent-layer nodes —
+# all pure functions of the corpus (earliest member timestamp, corpus
+# clock, member/session/finding tallies). Anything else matching
+# ``*_at`` / ``*_time`` / ``*count*`` gets the pointed idempotence-hazard
+# message below.
+_AGENT_LAYER_TEMPORAL_ALLOWED: FrozenSet[str] = frozenset(
+    {"first_seen_at", "distilled_through", "member_count", "session_count", "finding_counts"}
+)
+_AGENT_LAYER_TEMPORAL_KEY_RE = re.compile(r"(_at$|_time$|count)")
+
+# Valid ``metadata.kind`` flavors for a DistilledNote (spec §4).
+_DISTILLED_NOTE_KINDS: FrozenSet[str] = frozenset(
+    {"runbook", "gotcha", "note", "index", "activity", "arbitration"}
+)
+
 
 class WikiLinter:
     """Run lint checks against a project's `.tesserae/` artifacts.
@@ -228,6 +276,7 @@ class WikiLinter:
         findings.extend(self._check_suggested_merges(nodes_by_id))
         findings.extend(self._check_stale_build_history())
         findings.extend(self._check_code_graph_staleness(nodes_by_id))
+        findings.extend(self._check_agent_metadata_allowlist(nodes_by_id))
         if verify_claims:
             findings.extend(
                 self._check_claim_support(nodes_by_id, cap=claim_cap, llm_client=llm_client)
@@ -584,6 +633,73 @@ class WikiLinter:
                 node_id=node_id,
                 suggested_fix="Locate the paper.md file and verify its real title.",
             )
+
+    def _check_agent_metadata_allowlist(
+        self, nodes_by_id: Dict[str, dict]
+    ) -> Iterable[LintFinding]:
+        """Agent-layer nodes carrying metadata outside the closed §4 allowlist.
+
+        Agent / DistilledNote / ExpertiseProfile metadata schemas are CLOSED
+        (2026-07-19 layered-agent-kg spec §4): every key must be a pure
+        function of the corpus, or byte-idempotent compiles break. Keys are
+        checked in sorted order per node so the report is byte-stable;
+        timestamp/counter-shaped strays get a pointed message because that
+        exact class of key is how determinism has broken before.
+        """
+        for node_id, node in nodes_by_id.items():
+            type_value = str(node.get("type") or "")
+            allowed = _AGENT_LAYER_METADATA_ALLOWLIST.get(type_value)
+            if allowed is None:
+                continue
+            metadata = node.get("metadata") or {}
+            for key in sorted(metadata):
+                if key in allowed:
+                    continue
+                if (
+                    _AGENT_LAYER_TEMPORAL_KEY_RE.search(key)
+                    and key not in _AGENT_LAYER_TEMPORAL_ALLOWED
+                ):
+                    message = (
+                        f"{type_value} node carries timestamp/counter-shaped metadata "
+                        f"key {key!r} outside the closed allowlist — wall-clock or "
+                        f"run-varying state in graph.json breaks byte-idempotent "
+                        f"compiles (CMP-03)."
+                    )
+                else:
+                    message = (
+                        f"{type_value} node carries metadata key {key!r} outside "
+                        f"the closed allowlist."
+                    )
+                yield LintFinding(
+                    severity="error",
+                    code="AGENT_METADATA_KEY",
+                    message=message,
+                    node_id=node_id,
+                    suggested_fix=(
+                        "Drop the key, or extend the closed schema in the "
+                        "layered-agent-kg spec first."
+                    ),
+                )
+            if type_value == "DistilledNote":
+                # ``kind`` is REQUIRED (§4: kind ∈ {runbook,...}) — a missing
+                # or empty kind is as much a schema violation as an unknown one.
+                kind = str(metadata.get("kind") or "")
+                if kind not in _DISTILLED_NOTE_KINDS:
+                    detail = (
+                        f"has unknown kind {kind!r}"
+                        if kind
+                        else "is missing the required 'kind' metadata key"
+                    )
+                    yield LintFinding(
+                        severity="error",
+                        code="AGENT_METADATA_KEY",
+                        message=(
+                            f"DistilledNote node {detail}; expected "
+                            f"one of {sorted(_DISTILLED_NOTE_KINDS)}."
+                        ),
+                        node_id=node_id,
+                        suggested_fix="Use a kind from the layered-agent-kg spec §4.",
+                    )
 
     def _check_synthesis_ghost_inputs(
         self, nodes_by_id: Dict[str, dict]

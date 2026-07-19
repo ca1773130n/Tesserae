@@ -25,8 +25,9 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Iterable, List
+from typing import Dict, Iterable, List, Mapping, Optional, Set
 
+from .agent_identity import ORG_ROOT, AgentRegistry, resolve_agent_key
 from .harness_sessions import HarnessSession, session_matches_project
 from .research_graph import (
     ResearchEdge,
@@ -38,23 +39,39 @@ from .research_graph import (
 )
 from .session_graph_path_index import DocPathIndex
 
+# Cap on ``top_concepts`` per structural ExpertiseProfile — enough for a
+# capability card, small enough that one hot session can't balloon the node.
+_TOP_CONCEPT_LIMIT = 10
+
 
 def extract_structural(
     sessions: Iterable[HarnessSession],
     path_index: DocPathIndex,
     project_root: Path | str,
+    registry: Optional[AgentRegistry] = None,
 ) -> ResearchGraph:
     """Return a graph slice covering the project-scoped sessions.
 
-    The returned graph contains only ``Session`` + ``SessionDecision``
-    nodes and the ``discussed_in`` / ``derived_from_session`` edges
-    between them and the doc nodes already resolvable from
-    ``path_index``. The caller is responsible for merging this slice
-    with the document graph (typically via
+    The returned graph contains ``Session`` + ``SessionDecision`` nodes
+    and the ``discussed_in`` / ``derived_from_session`` edges between
+    them and the doc nodes already resolvable from ``path_index``, plus
+    the agent-layer substrate (spec 2026-07-19 §12 Phase 1): one
+    ``Agent`` node per role-grade agent_key observed across the session
+    set, ``performed_by`` edges Session → Agent, ``reports_to`` edges
+    Agent → parent Agent from the org registry (implicit ``org:root``
+    included), and one structural ``ExpertiseProfile`` per observed
+    agent (§8.2). All of it is a pure function of the session envelopes
+    plus the registry file, so it lives inside the CMP-03 byte-
+    idempotent compile. The caller is responsible for merging this
+    slice with the document graph (typically via
     :func:`tesserae.project.merge_graphs`).
     """
     builder = ResearchGraphBuilder()
     project_root_path = Path(project_root).resolve()
+    agent_registry = (
+        registry if registry is not None else AgentRegistry.for_project(project_root_path)
+    )
+    observations = _AgentObservations()
 
     for session in sessions:
         # Privacy invariant: only process sessions whose project_root
@@ -134,11 +151,233 @@ def extract_structural(
             )
             builder.add_edge(decision_node, "derived_from_session", session_node)
 
+        # Role-grade agent attribution (spec §3.1). The parent session's own
+        # agent plus one agent per subagent descriptor; the subagent work has
+        # no Session node of its own, so its ``performed_by`` edge hangs off
+        # the parent Session. Keys iterate sorted for deterministic edge order.
+        session_clock = session.ended_at or session.started_at or ""
+        parent_key = resolve_agent_key(session, agent_registry)
+        observations.observe(
+            parent_key,
+            label=session.agent_label,
+            session_id=session.id,
+            files=session.files_touched or [],
+            clock=session_clock,
+            # DISTINCT stripped texts, matching the minted SessionDecision
+            # nodes above (same-text decisions within a session collapse to
+            # one hash-seeded node) — so the profile's finding_counts routing
+            # signal (§8.2) always agrees with the queryable graph.
+            decision_count=len(
+                {(d or "").strip() for d in session.decisions or []} - {""}
+            ),
+            path_index=path_index,
+        )
+        performer_keys = {parent_key}
+        subagents = (session.metadata or {}).get("subagents")
+        if isinstance(subagents, list):
+            for descriptor in subagents:
+                if not isinstance(descriptor, Mapping):
+                    continue
+                sub_key = resolve_agent_key(session, agent_registry, subagent=descriptor)
+                performer_keys.add(sub_key)
+                observations.observe(
+                    sub_key,
+                    label=str(descriptor.get("type") or "") or None,
+                    session_id=session.id,
+                    files=descriptor.get("files_touched") or [],
+                    clock=str(
+                        descriptor.get("ended_at")
+                        or descriptor.get("started_at")
+                        or session_clock
+                    ),
+                    decision_count=0,
+                    path_index=path_index,
+                )
+        for agent_key in sorted(performer_keys):
+            builder.add_edge(session_node, "performed_by", _agent_pseudo(agent_key))
+
+    _mint_agent_layer(builder, observations, agent_registry)
     return builder.build()
 
 
 def _short_hash(text: str) -> str:
     return hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+
+
+class _AgentObservations:
+    """Per-agent accumulators for the structural agent layer.
+
+    Everything gathered here is a pure function of the session envelopes:
+    session membership, structural finding counts, doc-node mention counts
+    (via ``path_index``), the corpus clock (max ``ended_at or started_at``
+    over the agent's scope — spec §7.1, never wall clock), and candidate
+    display labels.
+    """
+
+    def __init__(self) -> None:
+        self.session_ids: Dict[str, Set[str]] = {}
+        self.finding_counts: Dict[str, Dict[str, int]] = {}
+        self.concept_counts: Dict[str, Dict[str, int]] = {}
+        self.clocks: Dict[str, str] = {}
+        self.labels: Dict[str, Set[str]] = {}
+
+    def observe(
+        self,
+        agent_key: str,
+        *,
+        label: Optional[str],
+        session_id: str,
+        files: object,
+        clock: str,
+        decision_count: int,
+        path_index: DocPathIndex,
+    ) -> None:
+        self.session_ids.setdefault(agent_key, set()).add(session_id)
+        if label and label.strip():
+            self.labels.setdefault(agent_key, set()).add(label.strip())
+        if decision_count:
+            counts = self.finding_counts.setdefault(agent_key, {})
+            kind = ResearchNodeType.SESSION_DECISION.value
+            counts[kind] = counts.get(kind, 0) + decision_count
+        if isinstance(files, list):
+            concepts = self.concept_counts.setdefault(agent_key, {})
+            for touched in files:
+                node_id = path_index.lookup(str(touched))
+                if node_id:
+                    concepts[node_id] = concepts.get(node_id, 0) + 1
+        if clock and clock.strip():
+            # ISO-8601 strings order lexicographically, so max() is the
+            # corpus clock without any datetime parsing.
+            self.clocks[agent_key] = max(self.clocks.get(agent_key, ""), clock.strip())
+
+
+def _agent_pseudo(agent_key: str) -> ResearchNode:
+    """Minimal Agent node carrying only the stable id, for edge endpoints.
+
+    Mirrors the ``doc_pseudo`` / ``decision_node`` pattern above: builder's
+    add_edge takes ResearchNode objects but only reads ``.id``; the real
+    Agent node (minted in :func:`_mint_agent_layer`) wins on merge.
+    """
+    return ResearchNode(
+        id=stable_id(ResearchNodeType.AGENT.value, f"agent:{agent_key}"),
+        name="",
+        type=ResearchNodeType.AGENT,
+    )
+
+
+def _mint_agent_layer(
+    builder: ResearchGraphBuilder,
+    observations: _AgentObservations,
+    registry: AgentRegistry,
+) -> None:
+    """Mint Agent nodes, ``reports_to`` chains, and structural profiles.
+
+    Every observed agent is walked up its registry parent chain to the
+    implicit ``org:root`` (spec §3.2 zero-config default), minting the
+    intermediate registry-declared agents along the way so the org chart
+    is fully queryable in-graph. All iteration is over sorted keys —
+    identical inputs must yield an identical structural slice.
+    """
+    if not observations.session_ids:
+        return
+
+    # Fail-loud registry read (spec §3.2): a corrupt registry aborts the
+    # compile rather than silently flattening the org chart.
+    registry_agents = registry.load().get("agents") or {}
+
+    # Observed agents plus their transitive registry parents, and the
+    # child → parent pairs for reports_to edges.
+    all_keys: Set[str] = set(observations.session_ids)
+    reports_pairs: Set[tuple] = set()
+    for agent_key in sorted(observations.session_ids):
+        current = agent_key
+        seen = {current}
+        while current != ORG_ROOT:
+            parent = registry.effective_parent(current)
+            if parent in seen:
+                # Defensive only: registry load() rejects self-parents and
+                # parent cycles (agent_identity._validate), so this can fire
+                # only if that validation regresses — never hang the compile,
+                # never mint a cycle-closing reports_to edge.
+                break
+            reports_pairs.add((current, parent))
+            all_keys.add(parent)
+            seen.add(parent)
+            current = parent
+
+    for agent_key in sorted(all_keys):
+        entry = registry_agents.get(agent_key)
+        builder.add_node(
+            name=agent_key,
+            node_type=ResearchNodeType.AGENT,
+            id_seed=f"agent:{agent_key}",
+            metadata=_agent_metadata(
+                agent_key, entry, observations.labels.get(agent_key)
+            ),
+        )
+
+    for child, parent in sorted(reports_pairs):
+        builder.add_edge(_agent_pseudo(child), "reports_to", _agent_pseudo(parent))
+
+    # One structural ExpertiseProfile per OBSERVED agent (§8.2) — the
+    # capability card a manager/router reads. Registry-declared agents with
+    # no sessions in scope get no profile (there is nothing to profile).
+    for agent_key in sorted(observations.session_ids):
+        top_concepts = [
+            node_id
+            for node_id, _count in sorted(
+                observations.concept_counts.get(agent_key, {}).items(),
+                key=lambda kv: (-kv[1], kv[0]),
+            )[:_TOP_CONCEPT_LIMIT]
+        ]
+        profile_metadata: dict = {
+            "agent": agent_key,
+            "session_count": len(observations.session_ids[agent_key]),
+            "finding_counts": dict(
+                sorted(observations.finding_counts.get(agent_key, {}).items())
+            ),
+            "top_concepts": top_concepts,
+        }
+        # Corpus clock of the agent's scope (§7.1) — omitted entirely when no
+        # session carried a timestamp, never defaulted to "now".
+        clock = observations.clocks.get(agent_key)
+        if clock:
+            profile_metadata["distilled_through"] = clock
+        builder.add_node(
+            name=f"Expertise: {agent_key}",
+            node_type=ResearchNodeType.EXPERTISE_PROFILE,
+            id_seed=f"profile:{agent_key}",
+            metadata=profile_metadata,
+        )
+
+
+def _agent_metadata(
+    agent_key: str,
+    registry_entry: Optional[Mapping[str, object]],
+    observed_labels: Optional[Set[str]],
+) -> dict:
+    """Agent node metadata per the §4 closed allowlist.
+
+    ``harness`` / ``account`` / ``role`` are the key's own components when it
+    is envelope-shaped (``h:a:r``); registry-declared agents with free-form
+    keys just omit them (the lint allowlist permits subsets). The label
+    prefers the registry declaration, then the sorted-first observed label,
+    then the key itself — all deterministic.
+    """
+    metadata: dict = {"agent_key": agent_key}
+    if agent_key == ORG_ROOT:
+        metadata["label"] = "Org root"
+        return metadata
+    parts = agent_key.split(":")
+    if len(parts) == 3:
+        metadata["harness"], metadata["account"], metadata["role"] = parts
+    label = ""
+    if isinstance(registry_entry, Mapping):
+        label = str(registry_entry.get("label") or "")
+    if not label and observed_labels:
+        label = sorted(observed_labels)[0]
+    metadata["label"] = label or agent_key
+    return metadata
 
 
 def _session_anchor_timestamp(session: HarnessSession) -> str | None:

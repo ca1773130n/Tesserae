@@ -634,7 +634,9 @@ def _parse_claude_session(project: Path, root: Path, path: Path) -> Optional[Har
     branch = parsed.branch
     model = parsed.model
     slug = safe_slug(title or session_id)
-    subagents = _claude_subagent_summaries(project, root, path, session_id)
+    subagents = _claude_subagent_summaries(
+        project, root, path, session_id, _claude_subagent_types(rows)
+    )
     metadata: Dict[str, object] = {"config_root": str(root), "transcript": str(path), "turns": _claude_turns(rows)}
     if subagents:
         metadata["subagents"] = subagents
@@ -662,7 +664,61 @@ def _parse_claude_session(project: Path, root: Path, path: Path) -> Optional[Har
     )
 
 
-def _claude_subagent_summaries(project: Path, root: Path, parent_path: Path, parent_session_id: str) -> List[Dict[str, object]]:
+# Links a parent-session tool_result back to the subagent transcript it
+# spawned: the result text carries "agentId: <id>" and the child transcript is
+# stored as ``subagents/agent-<id>.jsonl``.
+_SUBAGENT_AGENT_ID_RE = re.compile(r"agentId:\s*([0-9A-Za-z_-]+)")
+
+
+def _claude_subagent_types(rows: Sequence[Mapping[str, object]]) -> Dict[str, str]:
+    """Map subagent agentId → declared ``subagent_type`` from the parent rows.
+
+    Subagent transcripts carry no role of their own — the role lives in the
+    parent's Task-style ``tool_use`` (``input['subagent_type']``, e.g.
+    "reviewer" or "general-purpose"), paired with the child transcript via the
+    matching ``tool_result`` text. One pass over the parent rows recovers the
+    pairing so subagent summaries can carry a role-grade ``type`` field
+    (consumed by ``tesserae.agent_identity.resolve_agent_key`` tier 1).
+    """
+    types_by_tool_use: Dict[str, str] = {}
+    types_by_agent_id: Dict[str, str] = {}
+    for row in rows:
+        msg = row.get("message")
+        if not isinstance(msg, dict):
+            continue
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") == "tool_use":
+                tool_input = item.get("input")
+                tool_use_id = item.get("id")
+                if isinstance(tool_input, dict) and isinstance(tool_use_id, str):
+                    subagent_type = tool_input.get("subagent_type")
+                    if isinstance(subagent_type, str) and subagent_type.strip():
+                        types_by_tool_use[tool_use_id] = subagent_type.strip()
+            elif item.get("type") == "tool_result":
+                tool_use_id = item.get("tool_use_id")
+                if not isinstance(tool_use_id, str):
+                    continue
+                subagent_type = types_by_tool_use.get(tool_use_id)
+                if not subagent_type:
+                    continue
+                match = _SUBAGENT_AGENT_ID_RE.search(_content_to_text(item.get("content")))
+                if match:
+                    types_by_agent_id.setdefault(match.group(1), subagent_type)
+    return types_by_agent_id
+
+
+def _claude_subagent_summaries(
+    project: Path,
+    root: Path,
+    parent_path: Path,
+    parent_session_id: str,
+    subagent_types: Optional[Mapping[str, str]] = None,
+) -> List[Dict[str, object]]:
     subagents_dir = parent_path.with_suffix("") / "subagents"
     if not subagents_dir.exists():
         return []
@@ -675,7 +731,7 @@ def _claude_subagent_summaries(project: Path, root: Path, parent_path: Path, par
         title, preview = _title_and_preview_from_claude(rows)
         tools, commands, files = _claude_activity(rows, project)
         message_count = sum(1 for row in rows if row.get("type") in {"user", "assistant"})
-        summaries.append({
+        summary: Dict[str, object] = {
             "id": f"claude-code:{parent_session_id}:{path.stem}",
             "title": title or f"Claude Code subagent {path.stem}",
             "started_at": min(timestamps) if timestamps else "",
@@ -687,7 +743,15 @@ def _claude_subagent_summaries(project: Path, root: Path, parent_path: Path, par
             "files_touched": sorted(set(files)),
             "commands_run": _dedupe(commands)[:50],
             "raw_transcript_path": str(path),
-        })
+        }
+        # Role-grade type recovered from the parent transcript (file stem is
+        # ``agent-<id>``). Omitted, not empty, when unmatched — consumers
+        # degrade to registry match rules / "default".
+        agent_id = path.stem[len("agent-"):] if path.stem.startswith("agent-") else path.stem
+        subagent_type = (subagent_types or {}).get(agent_id)
+        if subagent_type:
+            summary["type"] = subagent_type
+        summaries.append(summary)
     return sorted(summaries, key=lambda item: str(item.get("started_at") or ""))
 
 

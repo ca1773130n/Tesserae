@@ -83,18 +83,30 @@ def test_in_project_session_mints_session_node(tmp_path: Path):
 
     graph = extract_structural([session], idx, project_root=tmp_path)
 
-    # 1 Session + 2 SessionDecision = 3 nodes
+    # 1 Session + 2 SessionDecision, plus the Phase-1 agent layer: the
+    # session's Agent + the implicit org:root Agent + one structural
+    # ExpertiseProfile for the observed agent.
     types = sorted(n.type.value for n in graph.nodes)
-    assert types == ["Session", "SessionDecision", "SessionDecision"]
+    assert types == [
+        "Agent",
+        "Agent",
+        "ExpertiseProfile",
+        "Session",
+        "SessionDecision",
+        "SessionDecision",
+    ]
 
     # 2 `discussed_in` edges (the missing path doesn't bind) + 2
-    # `derived_from_session` edges from the decisions.
+    # `derived_from_session` edges from the decisions + the agent-layer
+    # `performed_by` (Session → Agent) and `reports_to` (Agent → org:root).
     edge_types = sorted(e.type for e in graph.edges)
     assert edge_types == [
         "derived_from_session",
         "derived_from_session",
         "discussed_in",
         "discussed_in",
+        "performed_by",
+        "reports_to",
     ]
 
     # Session metadata is sanitised — must include session_id, must NOT

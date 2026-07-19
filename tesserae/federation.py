@@ -87,6 +87,24 @@ def identity_key(node: ResearchNode) -> Optional[tuple]:
     if node.type == ResearchNodeType.SOURCE_DOCUMENT:
         content_hash = str(md.get("content_hash") or "").strip()
         return ("SourceDocument", content_hash) if content_hash else None
+    # Agent-layer identities (2026-07-19 layered-agent-kg spec §4). The
+    # ``agent_key`` is role-grade (``harness:account:role``); ``lineage_key``
+    # hashes the sorted transitive raw L0 member ids underlying a distillate
+    # (Runbook/Gotcha included once the distill pass stamps it) — LLM wording
+    # is change detection only, never identity.
+    if node.type == ResearchNodeType.AGENT:
+        agent_key = str(md.get("agent_key") or "").strip()
+        return ("Agent", agent_key) if agent_key else None
+    if node.type in (
+        ResearchNodeType.DISTILLED_NOTE,
+        ResearchNodeType.RUNBOOK,
+        ResearchNodeType.GOTCHA,
+    ):
+        lineage = str(md.get("lineage_key") or "").strip()
+        return (type_value, lineage) if lineage else None
+    if node.type == ResearchNodeType.EXPERTISE_PROFILE:
+        agent = str(md.get("agent") or "").strip()
+        return ("profile", agent) if agent else None
     if type_value.startswith("Code"):
         source_path = str(node.source_path or md.get("source_path") or "").strip()
         qualified = str(md.get("qualified_name") or "").strip()

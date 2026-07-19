@@ -118,27 +118,14 @@ class SessionGraphExtractor:
         doc_id_context = self._build_doc_id_context()
         builder = ResearchGraphBuilder()
 
-        # Start with the structural slice — every Session and structural
-        # Decision node carries over.
-        for node in structural.nodes:
-            builder.add_node(
-                name=node.name,
-                node_type=node.type,
-                aliases=node.aliases,
-                description=node.description,
-                source_path=node.source_path,
-                metadata=node.metadata,
-                # Reuse the same id by passing back the seed that produced it.
-                # The cleanest way is to recover the seed from the id —
-                # ResearchNode ids look like ``<Type>:<seed-slug>:<short-hash>``.
-                # Simpler: use a no-op id_seed reconstruction via name +
-                # rely on builder's id-dedup. But since we know the exact
-                # node ids, we just re-emit via the builder's structures.
-                id_seed=None,
-            )
-        # Actually, the builder's add_node would mint NEW ids. We need to
-        # preserve the original ids. Use the slice's nodes directly via
-        # the builder's internal dict.
+        # Start with the structural slice — every Session, SessionDecision
+        # and agent-layer node carries over. Insert via the builder's
+        # internal dicts so the ORIGINAL seed-based ids are preserved:
+        # ``add_node`` without an id_seed would mint NEW name-based ids,
+        # duplicating every structural node whose seed differs from its
+        # name — and the aggressive-dedup exemptions in ``build()``
+        # (session findings, agent-layer types) deliberately never fuse
+        # such same-name strays back together.
         for node in structural.nodes:
             builder._nodes[node.id] = node  # type: ignore[attr-defined]
         for edge in structural.edges:

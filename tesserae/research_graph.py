@@ -154,6 +154,26 @@ class ResearchNodeType(str, Enum):
     RUNBOOK = "Runbook"
     GOTCHA = "Gotcha"
 
+    # Layered per-agent knowledge graphs ("Distillery"; see
+    # docs/superpowers/specs/2026-07-19-layered-agent-kg.md).
+    #
+    # ``Agent``            — one node per role-grade agent identity
+    #                        (``harness:account:role``); minted structurally
+    #                        by ``tesserae.session_graph_structural`` from
+    #                        session envelopes, no LLM.
+    # ``DistilledNote``    — generic distillate sibling of Runbook/Gotcha
+    #                        (``metadata.kind`` picks the flavor); minted by
+    #                        the Phase-2 ``tesserae.agent_distill`` pass.
+    # ``ExpertiseProfile`` — one per agent; purely structural routing signal
+    #                        (session/finding counts + top concepts).
+    #
+    # All three are queryable in graph.json / MCP / retrieval but are kept
+    # PRIVATE from the wiki/site projection in v1 (graph-queryable, no wiki
+    # page) — see PRIVATE_PUBLIC_RESEARCH_TYPES.
+    AGENT = "Agent"
+    DISTILLED_NOTE = "DistilledNote"
+    EXPERTISE_PROFILE = "ExpertiseProfile"
+
 
 ALLOWED_NODE_TYPES: Set[str] = {item.value for item in ResearchNodeType}
 
@@ -179,6 +199,19 @@ SESSION_FINDING_TYPES: Set[ResearchNodeType] = {
 DISTILLED_MEMORY_TYPES: Set[ResearchNodeType] = {
     ResearchNodeType.RUNBOOK,
     ResearchNodeType.GOTCHA,
+}
+
+# Agent-layer node types (layered per-agent knowledge graphs; see the
+# 2026-07-19 layered-agent-kg spec). Deliberately a NEW set rather than an
+# addition to DISTILLED_MEMORY_TYPES — that set drives the existing
+# ``tesserae.memory.distill`` pass, which must not pick these up. Used by
+# the aggressive same-type dedup pass to skip them (identity lives in
+# ``metadata.agent_key`` / ``metadata.lineage_key``, never in the display
+# name) and by the lint metadata-allowlist probe.
+AGENT_LAYER_TYPES: Set[ResearchNodeType] = {
+    ResearchNodeType.AGENT,
+    ResearchNodeType.DISTILLED_NOTE,
+    ResearchNodeType.EXPERTISE_PROFILE,
 }
 
 # Code-graph symbol types. The aggressive same-type dedup pass keys on
@@ -350,6 +383,13 @@ ALLOWED_EDGE_TYPES: Set[str] = {
     # and each session finding — back to the Event(s) / findings it was
     # distilled from.
     "precedes",
+    # Layered per-agent knowledge graphs (2026-07-19 layered-agent-kg spec).
+    # ``performed_by`` links a Session (or session finding) to the Agent
+    # that produced it; ``reports_to`` links an Agent to its parent Agent
+    # in the org tree. Distillation provenance reuses the existing
+    # ``derived_from`` edge above — deliberately no ``distills_to``.
+    "performed_by",
+    "reports_to",
 }
 
 
@@ -757,6 +797,15 @@ def _merge_same_type_aliased_duplicates(
         # the trouble of separating, and rewrite both files' edges onto
         # a single survivor.
         if node.type in CODE_SYMBOL_TYPES:
+            continue
+        # Agent-layer nodes (Agent/DistilledNote/ExpertiseProfile) are
+        # likewise NOT collapsed by aggressive same-name dedup. Two agents
+        # routinely produce same-text notes (and two accounts can run an
+        # identically labeled agent) — identity lives in
+        # ``metadata.agent_key`` / ``metadata.lineage_key``, so same-text
+        # nodes from two agents are distinct provenance and must never
+        # fuse. See the 2026-07-19 layered-agent-kg spec.
+        if node.type in AGENT_LAYER_TYPES:
             continue
         key = _aggressive_dedup_key(node.name or "")
         if not key:
@@ -1756,6 +1805,12 @@ PRIVATE_PUBLIC_RESEARCH_TYPES: Set[str] = {
     ResearchNodeType.EVENT.value,
     ResearchNodeType.RUNBOOK.value,
     ResearchNodeType.GOTCHA.value,
+    # Agent-layer nodes (2026-07-19 layered-agent-kg spec). Org plumbing
+    # (Agent/DistilledNote/ExpertiseProfile) is queryable in graph.json /
+    # MCP / retrieval but projection-private in v1 — no wiki pages.
+    ResearchNodeType.AGENT.value,
+    ResearchNodeType.DISTILLED_NOTE.value,
+    ResearchNodeType.EXPERTISE_PROFILE.value,
 }
 
 
