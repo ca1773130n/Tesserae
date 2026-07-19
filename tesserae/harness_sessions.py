@@ -242,6 +242,10 @@ _TESSERAE_PROMPT_SIGNATURES: tuple[str, ...] = (
     "You decide whether one research-session finding obsoletes another",
     "You arbitrate a contradiction between two research performance claims",
     "You split a single retrieval question into a short list",
+    # agent_distill (per-agent L1 distillation, §5.3) map/reduce/fold prompts:
+    "You distill a cluster of related agent-session findings",
+    "You merge partial distilled notes over ONE cluster",
+    "You maintain a distilled note in an agent's knowledge base",
 )
 
 

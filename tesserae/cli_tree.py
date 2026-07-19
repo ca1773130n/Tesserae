@@ -20,6 +20,7 @@ COMMAND_TREE: list[tuple[str, list[tuple[str, str]]]] = [
         ("engine", "Refresh daemon: watch sessions/sources, coalesced recompiles"),
         ("refresh", "One-shot: import sessions + compile + sync vault"),
         ("research", "Autonomous research mode: investigate a query"),
+        ("distill", "Per-agent L1 expertise artifacts (opt-in: TESSERAE_AGENT_DISTILL)"),
     ]),
     ("ANALYSIS", [
         ("query", "raw retrieval: BM25/semantic + explicit backends"),

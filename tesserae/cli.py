@@ -5130,6 +5130,204 @@ def _route_query(rest: List[str]) -> int:
     return _resolve_handler("_handle_query")(args)
 
 
+def _build_distill_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae distill",
+        description=(
+            "Distill per-agent L1 expertise artifacts "
+            "(.tesserae/agents/<key>/distilled.graph.json) from the compiled "
+            "graph. Runs outside compile; opt-in via TESSERAE_AGENT_DISTILL=1 "
+            "or config.json {\"agent_distill\": {\"enabled\": true}}. "
+            "Exit codes: 0 ok, 1 failure (gate off, unknown agent, distill "
+            "error), 2 usage / missing inputs."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae distill --dry-run\n"
+            "  tesserae distill --agent claude-code:me:reviewer\n"
+            "  tesserae distill --all --max-llm-calls 20\n"
+            "  tesserae distill --full --retry-fallbacks\n"
+        ),
+    )
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument(
+        "--agent",
+        dest="agents",
+        action="append",
+        default=[],
+        metavar="KEY",
+        help="Distill only this agent key (repeatable; registry aliases resolve). Unknown keys fail loud.",
+    )
+    scope.add_argument(
+        "--all",
+        dest="all_agents",
+        action="store_true",
+        help="Distill every agent observed in the compiled graph (the default when no --agent is given).",
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument("--dry-run", action="store_true", help="Print clusters + estimated LLM calls per agent; write nothing, call nothing.")
+    parser.add_argument("--max-llm-calls", type=int, default=None, metavar="N", help="Cap provider calls for this run (the shared cache makes capped runs converge over several invocations).")
+    parser.add_argument("--jobs", type=int, default=1, metavar="N", help="Accepted for CLI parity with the spec; execution is sequential in this release (validated >= 1).")
+    parser.add_argument("--full", action="store_true", help="Ignore per-agent watermarks (still uses the shared distill cache) — converges a fresh clone to byte-identical artifacts.")
+    parser.add_argument("--retry-fallbacks", action="store_true", help="Re-attempt clusters whose cached verdict is a deterministic fallback (provider recovered).")
+    parser.add_argument("--recheck", action="store_true", help="Re-audit cached outputs against the current validation contract (pair with a schema_version bump).")
+    parser.add_argument("--as-of", default=None, metavar="TS", help="ISO-8601 corpus-clock override — required only when scope sessions carry no timestamps.")
+    parser.set_defaults(_handler="_handle_distill")
+    return parser
+
+
+def _handle_distill(args: argparse.Namespace) -> int:
+    from .agent_distill import (
+        DistillError,
+        DistillOptions,
+        agent_distill_enabled,
+        build_llm_summarizer,
+        distill_agent,
+        distill_all,
+    )
+    from .agent_identity import ORG_ROOT, AgentRegistry, sanitize_agent_key
+    from .research_graph import ResearchNodeType
+
+    if args.jobs < 1:
+        print("distill: --jobs must be >= 1", file=sys.stderr)
+        return 2
+
+    wiki = ProjectWiki.load(args.project)
+    if not agent_distill_enabled(wiki.config()):
+        print(
+            "Agent distillation is opt-in — set TESSERAE_AGENT_DISTILL=1 or "
+            'config.json {"agent_distill": {"enabled": true}} to enable it.',
+            file=sys.stderr,
+        )
+        return 1
+    if not wiki.paths.graph.is_file():
+        print("error: no compiled graph yet — run `tesserae compile` first.", file=sys.stderr)
+        return 2
+
+    graph = _load_graph_file(wiki.paths.graph)
+    registry = AgentRegistry.for_project(wiki.project_root)
+    try:
+        declared = set(registry.load()["agents"])
+    except ValueError as exc:  # corrupt registry — same fail-loud as `agents list`
+        print(str(exc), file=sys.stderr)
+        return 1
+    observed = {
+        str((node.metadata or {}).get("agent_key") or "")
+        for node in graph.nodes
+        if node.type is ResearchNodeType.AGENT
+    }
+    observed -= {"", ORG_ROOT}
+
+    options = DistillOptions(
+        max_llm_calls=args.max_llm_calls,
+        dry_run=args.dry_run,
+        full=args.full,
+        retry_fallbacks=args.retry_fallbacks,
+        recheck=args.recheck,
+        as_of=args.as_of,
+        jobs=args.jobs,
+    )
+    # Resolved through build_llm_summarizer so the set_agent_distill_test_client
+    # seam intercepts; None means no LLM backend — the pass still runs, every
+    # cluster takes the deterministic fallback path and is visibly counted.
+    summarizer = build_llm_summarizer()
+
+    try:
+        if args.agents:
+            # Fail loud on unknown keys (spec §3.2 culture): a key must be
+            # declared in the registry or observed as an Agent node in the
+            # compiled graph — never a silently empty distill run.
+            known = declared | observed
+            keys: List[str] = []
+            for raw in args.agents:
+                key = registry.resolve_alias(sanitize_agent_key(raw))
+                if key not in known:
+                    print(
+                        f"Unknown agent: {key}. Known agents: "
+                        f"{', '.join(sorted(known)) or '(none)'}",
+                        file=sys.stderr,
+                    )
+                    return 1
+                keys.append(key)
+            results = [
+                distill_agent(
+                    graph,
+                    key,
+                    project_root=wiki.project_root,
+                    registry=registry,
+                    summarizer=summarizer,
+                    options=options,
+                )
+                for key in dict.fromkeys(keys)  # dedupe, keep CLI order
+            ]
+        else:
+            results = distill_all(
+                graph,
+                project_root=wiki.project_root,
+                registry=registry,
+                summarizer=summarizer,
+                options=options,
+            )
+    except DistillError as exc:
+        print(f"distill: {exc}", file=sys.stderr)
+        return 1
+
+    if not results:
+        print(
+            "No agents observed in the compiled graph — import sessions and "
+            "run `tesserae compile` first (then `tesserae agents init`)."
+        )
+        return 0
+
+    totals: Dict[str, int] = {}
+    for result in results:
+        totals[result.status] = totals.get(result.status, 0) + 1
+        if result.status == "skipped-watermark":
+            print(f"{result.agent_key}  skipped-watermark (inputs unchanged)")
+            continue
+        if result.status == "no-sessions":
+            print(f"{result.agent_key}  no-sessions (nothing attributed to this agent)")
+            continue
+        if result.status == "dry-run":
+            print(
+                f"{result.agent_key}  dry-run  clusters={result.cluster_count} "
+                f"estimated_llm_calls={result.estimated_llm_calls} "
+                f"scope={result.scope_count}"
+            )
+            continue
+        print(
+            f"{result.agent_key}  {result.status}  clusters={result.cluster_count} "
+            f"llm_calls={result.llm_calls} cache_hits={result.llm_cache_hits} "
+            f"folds={result.llm_folds} fallbacks={result.llm_fallbacks} "
+            f"rejected={result.llm_rejected} failed={result.llm_failed}"
+        )
+        print(
+            f"  -> {result.artifact_path} "
+            f"({result.artifact_chars} chars, {result.size_level})"
+        )
+        if result.llm_aborted:
+            print(
+                f"  !! LLM stage aborted (circuit breaker) — "
+                f"{result.llm_failed} transport failure(s); affected clusters "
+                "took the cached deterministic fallback. Re-run when the "
+                "provider recovers (--retry-fallbacks upgrades them)."
+            )
+        if result.size_level == "warning":
+            print(
+                f"  !! artifact at {result.artifact_chars} chars is within 10% "
+                "of the one-read 48k bound (spec §2) — expect index truncation soon."
+            )
+    summary = "  ".join(f"{status}={count}" for status, count in sorted(totals.items()))
+    print(f"Distill pass over {len(results)} agent(s): {summary}")
+    return 0
+
+
+def _route_distill(rest: List[str]) -> int:
+    args = _build_distill_parser().parse_args(rest)
+    return _resolve_handler("_handle_distill")(args)
+
+
 def _resolve_handler(name: str) -> Callable[[argparse.Namespace], int]:
     """Resolve a handler by its module-level name at CALL time.
 
@@ -5173,6 +5371,8 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "lint": _route_lint,
     "doctor": _route_doctor,
     "query": _route_query,
+    # layered agent KG (Phase 2): per-agent L1 distillation
+    "distill": _route_distill,
 }
 
 

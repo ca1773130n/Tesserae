@@ -628,7 +628,10 @@ Emit/forget (§5.5/§6) apply unchanged; refs stay flattened to L0 roots.
   citation whitelist + faithfulness lint; mint with lineage keys + anchors;
   corpus clock; remainder (+hysteresis) + Index/Activity notes; canonical
   write-if-changed; watermark skip; CLI with `--dry-run/--max-llm-calls/
-  --jobs/--full/--retry-fallbacks/--recheck/--as-of`. *Tests:* warm + stubbed
+  --jobs/--full/--retry-fallbacks/--recheck/--as-of` (`--jobs` is accepted
+  and validated but runs sequentially in Phase 2 — the §5.3 subprocess pool
+  ships with Phase 4's refresh-flow hardening, since a pool needs run-seq /
+  sidecar write coordination that Phase 4 introduces). *Tests:* warm + stubbed
   cold-cache byte parity, tie fixture, size lint, ref-resolution. Shippable:
   any agent's L1 exists and is queryable via the existing graph-path argument
   on every MCP tool.
