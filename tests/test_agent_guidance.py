@@ -1,7 +1,7 @@
 """Tests for the Phase-5 per-agent extraction-guidance stream (2026-07-19
 layered-agent-kg §12).
 
-The stream lives beside the project's ``extraction-guidance.md`` as a per-agent
+The stream lives beside the project-level ``distill-guidance.md`` as a per-agent
 sibling and refines it (project-then-agent concatenation). Threaded into the
 distill pass it forks the cluster cache (positive + negative envelopes) and the
 per-agent watermark via ``guidance_digest`` so a guidance edit re-distills ONLY
@@ -28,7 +28,7 @@ from tesserae.agent_distill import (
 )
 from tesserae.extraction_guidance import (
     agent_guidance_path,
-    project_guidance_path,
+    distill_guidance_path,
     resolve_agent_guidance,
 )
 from tesserae.research_graph import (
@@ -172,7 +172,7 @@ def _cache_guidance_digests(project: Path) -> List[str]:
 
 def test_resolve_agent_guidance_combines_project_then_agent(tmp_path: Path) -> None:
     project = _project(tmp_path)
-    _write_guidance(project_guidance_path(project), "PROJECT: prefer runbooks")
+    _write_guidance(distill_guidance_path(project), "PROJECT: prefer runbooks")
     _write_guidance(agent_guidance_path(project, AGENT), "AGENT: cite the rollback step")
 
     combined = resolve_agent_guidance(project, AGENT)
@@ -194,7 +194,7 @@ def test_resolve_agent_guidance_agent_only(tmp_path: Path) -> None:
 
 def test_agent_and_project_streams_reach_the_summarizer(tmp_path: Path) -> None:
     project = _project(tmp_path)
-    _write_guidance(project_guidance_path(project), "PROJECT: be terse")
+    _write_guidance(distill_guidance_path(project), "PROJECT: be terse")
     _write_guidance(agent_guidance_path(project, AGENT), "AGENT: name the deploy target")
     summ = StubSummarizer()
 
@@ -211,7 +211,7 @@ def test_agent_and_project_streams_reach_the_summarizer(tmp_path: Path) -> None:
 
 def test_cluster_cache_envelope_records_combined_guidance_digest(tmp_path: Path) -> None:
     project = _project(tmp_path)
-    _write_guidance(project_guidance_path(project), "PROJECT: prefer runbooks")
+    _write_guidance(distill_guidance_path(project), "PROJECT: prefer runbooks")
     _write_guidance(agent_guidance_path(project, AGENT), "AGENT: cite rollback")
 
     distill_agent(_two_agent_graph(), AGENT, project_root=project, summarizer=StubSummarizer())
@@ -341,3 +341,17 @@ def test_guidance_fork_reopens_the_negative_cache(tmp_path: Path) -> None:
         if node["type"] == "DistilledNote" and node["metadata"].get("kind") == "runbook"
     }
     assert qualities == {"llm"}
+
+
+def test_extractor_stream_edits_do_not_fork_distill_guidance(tmp_path):
+    # The extractor's extraction-guidance.md is curated independently of
+    # distillation — editing it must not change any agent's distill guidance
+    # (and therefore never forks distill caches or watermarks).
+    from tesserae.extraction_guidance import project_guidance_path
+
+    project = tmp_path / "proj"
+    (project / ".tesserae").mkdir(parents=True)
+    _write_guidance(distill_guidance_path(project), "DISTILL: prefer runbooks")
+    before = resolve_agent_guidance(project, AGENT)
+    _write_guidance(project_guidance_path(project), "EXTRACTOR: new curation rule")
+    assert resolve_agent_guidance(project, AGENT) == before

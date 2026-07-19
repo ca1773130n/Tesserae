@@ -28,6 +28,18 @@ def project_guidance_path(project_root: Path | str) -> Path:
     return Path(project_root) / ".tesserae" / PROJECT_GUIDANCE_NAME
 
 
+def distill_guidance_path(project_root: Path | str) -> Path:
+    """The project-level DISTILL guidance stream — separate from the extractor's.
+
+    ``extraction-guidance.md`` steers the session-finding EXTRACTOR and is
+    edited for curation reasons unrelated to distillation; folding it into
+    every agent's ``guidance_digest`` would re-distill all agents on each
+    extractor edit. Distill gets its own project stream instead, so only
+    genuine distill guidance forks agent caches.
+    """
+    return Path(project_root) / ".tesserae" / "distill-guidance.md"
+
+
 def agent_guidance_path(project_root: Path | str, agent_key: str) -> Path:
     """The per-agent guidance stream, a sibling of the project stream.
 
@@ -44,17 +56,19 @@ def agent_guidance_path(project_root: Path | str, agent_key: str) -> Path:
 def resolve_agent_guidance(project_root: Path | str, agent_key: str) -> str:
     """Combined per-agent distill guidance — project stream, then agent stream.
 
-    The agent stream *refines* the project stream: both files are read and
-    concatenated project-then-agent (agent bullets appended, never replacing
-    the project ones). A pure function of the two files' bytes — returns the
-    empty string when neither exists — so it never perturbs the byte-idempotent
-    distill artifact when the guidance is unchanged. The joined text becomes
-    ``DistillOptions.guidance``, whose ``guidance_digest`` forks the per-agent
-    cluster cache (spec §12 Phase-5).
+    The agent stream *refines* the project-level DISTILL stream
+    (``distill-guidance.md`` — deliberately NOT the extractor's
+    ``extraction-guidance.md``, see :func:`distill_guidance_path`): both files
+    are read and concatenated project-then-agent (agent bullets appended,
+    never replacing the project ones). A pure function of the two files'
+    bytes — returns the empty string when neither exists — so it never
+    perturbs the byte-idempotent distill artifact when the guidance is
+    unchanged. The joined text becomes ``DistillOptions.guidance``, whose
+    ``guidance_digest`` forks the per-agent cluster cache (spec §12 Phase-5).
     """
     root = Path(project_root)
     parts: List[str] = []
-    for path in (project_guidance_path(root), agent_guidance_path(root, agent_key)):
+    for path in (distill_guidance_path(root), agent_guidance_path(root, agent_key)):
         try:
             text = path.read_text(encoding="utf-8").strip()
         except OSError:
