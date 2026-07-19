@@ -420,6 +420,7 @@ class LLMWikiMCPServer:
     def list_tools(self) -> List[JSONDict]:
         graph_path_prop = {"type": "string", "description": "Path to a ResearchGraph JSON file. Defaults to the project you are in (cwd), then server --graph."}
         project_prop = {"type": "string", "description": "Registered project name (see list_projects). Overridden by graph_path."}
+        agent_prop = {"type": "string", "description": "Agent-scoped view: a worker key (own raw + distilled memory), a manager key (federated reports' distillates), or 'org' (all distilled artifacts). Requires a project root; see agents list / tesserae distill."}
         return [
             {
                 "name": "schema",
@@ -431,7 +432,7 @@ class LLMWikiMCPServer:
                 "description": "Summarize a ResearchGraph JSON file with node/edge counts and type distributions.",
                 "inputSchema": {
                     "type": "object",
-                    "properties": {"graph_path": graph_path_prop, "project": project_prop},
+                    "properties": {"graph_path": graph_path_prop, "project": project_prop, "agent": agent_prop},
                     "additionalProperties": False,
                 },
             },
@@ -447,7 +448,7 @@ class LLMWikiMCPServer:
                     "type": "object",
                     "properties": {
                         "graph_path": graph_path_prop,
-                        "project": project_prop,
+                        "project": project_prop, "agent": agent_prop,
                         "query": {"type": "string", "description": "Whitespace-separated search terms (optional)."},
                         "q": {"type": "string", "description": "Alias for 'query' for short call sites."},
                         "type": {
@@ -506,7 +507,7 @@ class LLMWikiMCPServer:
                     "type": "object",
                     "properties": {
                         "graph_path": graph_path_prop,
-                        "project": project_prop,
+                        "project": project_prop, "agent": agent_prop,
                         "node_id": {"type": "string", "description": "Exact node id to inspect."},
                         "name": {"type": "string", "description": "Exact case-insensitive node name if node_id is omitted."},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
@@ -538,7 +539,7 @@ class LLMWikiMCPServer:
                     "type": "object",
                     "properties": {
                         "graph_path": graph_path_prop,
-                        "project": project_prop,
+                        "project": project_prop, "agent": agent_prop,
                         "query": {"type": "string", "description": "Whitespace-separated fact search terms."},
                         "current_only": {"type": "boolean", "default": False},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10},
@@ -554,7 +555,7 @@ class LLMWikiMCPServer:
                     "type": "object",
                     "properties": {
                         "graph_path": graph_path_prop,
-                        "project": project_prop,
+                        "project": project_prop, "agent": agent_prop,
                         "query": {"type": "string", "description": "Optional fact search terms."},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
                     },
@@ -571,7 +572,7 @@ class LLMWikiMCPServer:
                     "type": "object",
                     "properties": {
                         "graph_path": graph_path_prop,
-                        "project": project_prop,
+                        "project": project_prop, "agent": agent_prop,
                         "node_id": {"type": "string", "description": "Exact node id whose wiki page to return."},
                         "name": {"type": "string", "description": "Exact case-insensitive node name if node_id is omitted."},
                     },
@@ -588,7 +589,7 @@ class LLMWikiMCPServer:
                     "type": "object",
                     "properties": {
                         "graph_path": graph_path_prop,
-                        "project": project_prop,
+                        "project": project_prop, "agent": agent_prop,
                         "source_path": {"type": "string", "description": "Project-relative source path (e.g. data/research/...)."},
                     },
                     "required": ["source_path"],
@@ -605,7 +606,7 @@ class LLMWikiMCPServer:
                     "type": "object",
                     "properties": {
                         "graph_path": graph_path_prop,
-                        "project": project_prop,
+                        "project": project_prop, "agent": agent_prop,
                     },
                     "additionalProperties": False,
                 },
@@ -621,7 +622,7 @@ class LLMWikiMCPServer:
                     "type": "object",
                     "properties": {
                         "graph_path": graph_path_prop,
-                        "project": project_prop,
+                        "project": project_prop, "agent": agent_prop,
                     },
                     "additionalProperties": False,
                 },
@@ -638,7 +639,7 @@ class LLMWikiMCPServer:
                     "type": "object",
                     "properties": {
                         "graph_path": graph_path_prop,
-                        "project": project_prop,
+                        "project": project_prop, "agent": agent_prop,
                     },
                     "additionalProperties": False,
                 },
@@ -666,7 +667,7 @@ class LLMWikiMCPServer:
                             "enum": ["wiki", "raganything"],
                             "default": "wiki",
                         },
-                        "project": project_prop,
+                        "project": project_prop, "agent": agent_prop,
                         "graph_path": graph_path_prop,
                     },
                     "required": ["question"],
@@ -691,7 +692,7 @@ class LLMWikiMCPServer:
                             "default": True,
                             "description": "Synthesize an LLM-planned answer (default true, matching the CLI). false = ranked search hits only (beats TESSERAE_QUERY_LLM=1).",
                         },
-                        "project": project_prop,
+                        "project": project_prop, "agent": agent_prop,
                         "graph_path": graph_path_prop,
                         "top_k": {"type": "integer", "description": "Maximum results/context items.", "default": 8, "minimum": 1, "maximum": 100},
                         "scope": {
@@ -858,7 +859,7 @@ class LLMWikiMCPServer:
                     "type": "object",
                     "properties": {
                         "graph_path": graph_path_prop,
-                        "project": project_prop,
+                        "project": project_prop, "agent": agent_prop,
                         "seed_node_id": {
                             "oneOf": [
                                 {"type": "string"},
@@ -920,7 +921,7 @@ class LLMWikiMCPServer:
                     "type": "object",
                     "properties": {
                         "graph_path": graph_path_prop,
-                        "project": project_prop,
+                        "project": project_prop, "agent": agent_prop,
                         "query": {
                             "type": "string",
                             "description": (
@@ -1011,6 +1012,48 @@ class LLMWikiMCPServer:
                 },
             },
             {
+                "name": "agent_view_explain",
+                "description": (
+                    "Explain an agent-scoped view without loading it into context: "
+                    "resolution mode (worker/manager/org), member agents, each L1 "
+                    "artifact's path, node count, and distilled_through staleness "
+                    "watermark. The manager's 'which reports know this, and how "
+                    "stale' audit surface."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
+                        "agent": {"type": "string", "description": "Agent key, manager key, or 'org'."},
+                    },
+                    "required": ["agent"],
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "drill_down",
+                "description": (
+                    "Resolve a distillate member_ref back to its raw L0 node — the "
+                    "manager's explicit, audit-logged escalation past distilled "
+                    "visibility. Returns the raw node with status: alive (hash "
+                    "matches), changed (content moved on), absorbed (folded into a "
+                    "distillate), or gone. Every call is logged to the sidecar."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop,
+                        "node_id": {"type": "string", "description": "member_refs[].node_id from a distilled note."},
+                        "content_hash": {"type": "string", "description": "member_refs[].content_hash for staleness detection (optional)."},
+                        "agent": {"type": "string", "description": "Owning agent key (optional; scopes the absorbed-status check to that agent's artifact)."},
+                    },
+                    "required": ["node_id"],
+                    "additionalProperties": False,
+                },
+            },
+            {
                 "name": "ingest",
                 "description": (
                     "Ingest raw web/text content (e.g. a browser clip) into "
@@ -1020,7 +1063,7 @@ class LLMWikiMCPServer:
                     "type": "object",
                     "properties": {
                         "graph_path": graph_path_prop,
-                        "project": project_prop,
+                        "project": project_prop, "agent": agent_prop,
                         "content": {
                             "type": "string",
                             "description": "Raw text/markdown content to ingest.",
@@ -1070,7 +1113,7 @@ class LLMWikiMCPServer:
                     "type": "object",
                     "properties": {
                         "graph_path": graph_path_prop,
-                        "project": project_prop,
+                        "project": project_prop, "agent": agent_prop,
                         "min_size": {"type": "integer", "minimum": 2, "default": 3},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 20},
                     },
@@ -1094,7 +1137,7 @@ class LLMWikiMCPServer:
                     "type": "object",
                     "properties": {
                         "graph_path": graph_path_prop,
-                        "project": project_prop,
+                        "project": project_prop, "agent": agent_prop,
                         "limit": {
                             "type": "integer",
                             "minimum": 1,
@@ -1869,6 +1912,16 @@ class LLMWikiMCPServer:
                         "error": "handle not found (LRU-evicted or never issued); "
                                  "re-run compile_context with preview>0 for a fresh handle"}
             return sliced
+        if name == "agent_view_explain":
+            graph, root = self._load_base_graph_with_root(args)
+            if root is None:
+                raise ValueError("agent_view_explain requires a project root — pass graph_path or project.")
+            from .agent_view import resolve_agent_view
+
+            _view, info = resolve_agent_view(root, str(args.get("agent") or ""), graph)
+            return info
+        if name == "drill_down":
+            return self._drill_down(args)
         if name == "ingest":
             from .project import ProjectWiki
             from .clip import ingest_clip
@@ -3112,6 +3165,21 @@ class LLMWikiMCPServer:
         return graph
 
     def _load_requested_graph_with_root(self, args: JSONDict) -> Tuple[ResearchGraph, Optional[Path]]:
+        graph, root = self._load_base_graph_with_root(args)
+        agent = args.get("agent")
+        if agent:
+            if root is None:
+                raise ValueError(
+                    "agent= requires a project root (graph stores have none). "
+                    "Pass graph_path/project or cd into a registered project."
+                )
+            from .agent_view import resolve_agent_view
+
+            view, _info = resolve_agent_view(root, str(agent), graph)
+            return view, root
+        return graph, root
+
+    def _load_base_graph_with_root(self, args: JSONDict) -> Tuple[ResearchGraph, Optional[Path]]:
         """Load the requested graph plus the project root for filesystem lookups.
 
         ``project_root`` is the directory containing ``.tesserae/`` for the
@@ -3155,6 +3223,89 @@ class LLMWikiMCPServer:
             "No graph specified. Pass graph_path or project, cd into a registered project, "
             "start the MCP server with --graph, or pass --graph-store-url."
         )
+
+    def _drill_down(self, args: JSONDict) -> JSONDict:
+        """Resolve a distillate member_ref against raw L0 — audit-logged (§6.4).
+
+        Reads the UNSCOPED L0 graph (drill-down is the explicit escalation past
+        distilled visibility, so it must not itself be filtered by the agent
+        view). Statuses: ``gone`` (id absent from L0), ``absorbed`` (the owning
+        agent's live artifact lists it in ``absorbed_refs``), ``changed``
+        (caller's content_hash no longer matches), ``alive``.
+        """
+        base_args = {k: v for k, v in args.items() if k in {"graph_path", "project"}}
+        graph, root = self._load_base_graph_with_root(base_args)
+        if root is None:
+            raise ValueError("drill_down requires a project root — pass graph_path or project.")
+        node_id = str(args.get("node_id") or "")
+        if not node_id:
+            raise ValueError("drill_down requires 'node_id' (a member_refs[].node_id).")
+        want_hash = str(args.get("content_hash") or "")
+        agent = str(args.get("agent") or "")
+
+        from .agent_distill import (
+            DistillStateStore,
+            _node_content_hash,
+            _state_db_path,
+            agent_artifact_path,
+        )
+
+        node = next((n for n in graph.nodes if n.id == node_id), None)
+        absorbed_by = ""
+        if node is not None and agent:
+            artifact = agent_artifact_path(root, agent)
+            if artifact.is_file():
+                l1 = self._load_graph_cached(artifact)
+                for distillate in sorted(l1.nodes, key=lambda n: n.id):
+                    refs = distillate.metadata.get("absorbed_refs") or []
+                    if any(isinstance(r, dict) and r.get("node_id") == node_id for r in refs):
+                        absorbed_by = distillate.id
+                        break
+
+        if node is None:
+            status = "gone"
+        elif absorbed_by:
+            status = "absorbed"
+        elif want_hash and want_hash != _node_content_hash(node):
+            status = "changed"
+        else:
+            status = "alive"
+
+        result: JSONDict = {"node_id": node_id, "status": status, "agent": agent or None}
+        if absorbed_by:
+            result["absorbed_by"] = absorbed_by
+        if node is not None:
+            result["node"] = {
+                "id": node.id,
+                "name": node.name,
+                "type": node.type.value,
+                "description": node.description,
+                "content_hash": _node_content_hash(node),
+                "source_path": node.source_path,
+            }
+        # Audit log — every drill-down is recorded in the sidecar (§6.4).
+        # Best-effort like bump_access: a locked sidecar must not break a read,
+        # but failures are logged loudly rather than swallowed silently.
+        from datetime import datetime, timezone
+
+        try:
+            entry = json.dumps(
+                {
+                    "at": datetime.now(timezone.utc).isoformat(),
+                    "content_hash": want_hash,
+                    "node_id": node_id,
+                    "status": status,
+                },
+                sort_keys=True,
+            )
+            DistillStateStore(_state_db_path(root)).append("drill_down_audit", agent, entry)
+            result["audited"] = True
+        except Exception as exc:  # noqa: BLE001 — read must survive sidecar failure
+            import logging
+
+            logging.getLogger(__name__).warning("drill_down: audit log write failed (%s)", exc)
+            result["audited"] = False
+        return result
 
     def _load_graph_cached(self, graph_path: Path) -> ResearchGraph:
         """Load graph.json, returning a cached copy when mtime is unchanged."""

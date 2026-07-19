@@ -331,6 +331,10 @@ def compile_context(
             ResearchNodeType.RUNBOOK,
             ResearchNodeType.GOTCHA,
             ResearchNodeType.EVENT,
+            # Agent-layer pools (spec §9): distilled knowledge and the per-agent
+            # capability card get budget even when raw findings crowd the window.
+            ResearchNodeType.DISTILLED_NOTE,
+            ResearchNodeType.EXPERTISE_PROFILE,
         )
         _in_nb_ranked = [
             (nid, sc)
@@ -340,12 +344,26 @@ def compile_context(
         _reserved: List[tuple] = []
         _reserved_ids: set = set()
         for _pool in _pools:
+            # Within a pool, a fallback-quality distillate (structural stand-in
+            # for a failed LLM call) loses its slot to any llm-quality sibling
+            # further down the ranking (spec §9) — first non-fallback wins,
+            # fallback kept only when it is all the pool has.
+            _fallback_pick: Optional[tuple] = None
             for _nid, _sc in _in_nb_ranked:
                 _n = node_index.get(_nid)
-                if _n is not None and _n.type == _pool and _nid not in _reserved_ids:
-                    _reserved.append((_nid, _sc))
-                    _reserved_ids.add(_nid)
-                    break  # one per pool
+                if _n is None or _n.type != _pool or _nid in _reserved_ids:
+                    continue
+                if str(_n.metadata.get("distill_quality") or "") == "fallback":
+                    if _fallback_pick is None:
+                        _fallback_pick = (_nid, _sc)
+                    continue
+                _fallback_pick = None
+                _reserved.append((_nid, _sc))
+                _reserved_ids.add(_nid)
+                break  # one per pool
+            if _fallback_pick is not None:
+                _reserved.append(_fallback_pick)
+                _reserved_ids.add(_fallback_pick[0])
         if _reserved:
             ranked = _reserved + [r for r in ranked if r[0] not in _reserved_ids]
             ranked_nodes = [nid for nid, _ in ranked]
@@ -377,10 +395,25 @@ def compile_context(
 
     # --- Step 4: assemble cited markdown ------------------------------------
     sections: List[str] = [f"# Context: {query}\n"]
+    # Staleness header (spec §9): when distilled knowledge is in the bundle,
+    # say how fresh it is — delegation on weeks-old expertise is at least
+    # labeled. Max over the selected distillates' corpus-clock watermarks.
+    _watermarks = [
+        str(n.metadata.get("distilled_through") or "")
+        for n, _b in selected
+        if n.metadata.get("distilled_through")
+    ]
+    if _watermarks:
+        sections.append(f"\n_distilled through: {max(_watermarks)}_\n")
     citations: List[ContextCitation] = []
     for i, (node, body) in enumerate(selected, 1):
         anchor = f"node-{i}"
-        sections.append(f"\n## [{node.name}][{anchor}]\n\n{body}\n")
+        _flag = (
+            " _(fallback distillate — structural stand-in, LLM summary pending)_"
+            if str(node.metadata.get("distill_quality") or "") == "fallback"
+            else ""
+        )
+        sections.append(f"\n## [{node.name}][{anchor}]{_flag}\n\n{body}\n")
         citations.append(
             ContextCitation(
                 node_id=node.id,
