@@ -75,12 +75,16 @@ def test_agents_init_writes_proposed_registry(tmp_path, capsys):
         "claude-code:claude-home:reviewer",
         "codex:codex-home:default",
     ]
-    # Everyone parented to the implicit root; labels come from the envelope
+    # The proposed org is a role hierarchy (CORE A infer_org_parents): a subagent
+    # role nests under its same-account :default main agent, while main agents (and
+    # orphans) parent to the implicit org root. Labels come from the envelope
     # (agent_label for parent sessions, descriptor type for subagents).
-    for entry in payload["agents"].values():
-        assert entry["parent"] == "org:root"
-    assert payload["agents"]["claude-code:claude-home:default"]["label"] == "Claude Code"
-    assert payload["agents"]["claude-code:claude-home:reviewer"]["label"] == "reviewer"
+    agents = payload["agents"]
+    assert agents["claude-code:claude-home:default"]["parent"] == "org:root"
+    assert agents["codex:codex-home:default"]["parent"] == "org:root"
+    assert agents["claude-code:claude-home:reviewer"]["parent"] == "claude-code:claude-home:default"
+    assert agents["claude-code:claude-home:default"]["label"] == "Claude Code"
+    assert agents["claude-code:claude-home:reviewer"]["label"] == "reviewer"
 
 
 def test_agents_init_refuses_overwrite_without_force(tmp_path, capsys):
@@ -139,7 +143,8 @@ def test_agents_list_json(tmp_path, capsys):
         "codex:codex-home:default",
     ]
     reviewer = next(r for r in rows if r["key"].endswith(":reviewer"))
-    assert reviewer["parent"] == "org:root"
+    # infer_org_parents nests the reviewer subagent under its same-account main.
+    assert reviewer["parent"] == "claude-code:claude-home:default"
     assert reviewer["sessions"] == 1
     assert reviewer["registered"] is True
 

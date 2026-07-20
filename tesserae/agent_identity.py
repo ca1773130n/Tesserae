@@ -186,6 +186,42 @@ def observed_agent_keys(
     return sorted(keys)
 
 
+def infer_org_parents(observed_keys: Iterable[str]) -> Dict[str, str]:
+    """Propose a parent for every observed agent key, structurally.
+
+    Pure, deterministic, total, and I/O-free — a function of the key SET alone,
+    so ``agents init`` and ``agents tree`` can share one source of truth for the
+    manager→worker edge without re-reading sessions.
+
+    Rule (spec §3): a role-grade key ``harness:account:role`` whose ``role`` is
+    not :data:`DEFAULT_ROLE` reports to its sibling main agent
+    ``harness:account:default`` **iff that default key is also observed** — a
+    subagent role is subordinate to the main agent of the same harness+account
+    that spawned it. Otherwise (the key IS the default role, has no observed
+    sibling default, or is not a well-formed 3-component key) it reports to
+    :data:`ORG_ROOT`.
+
+    Components are colon-free by construction (:func:`build_agent_key` sanitizes
+    each), so a canonical key splits into exactly three parts; anything else
+    (``org:root`` itself, malformed input) is parented at the root rather than
+    guessed at.
+    """
+    keys = sorted(set(observed_keys))
+    key_set = set(keys)
+    parents: Dict[str, str] = {}
+    for key in keys:
+        parts = key.split(":")
+        parent = ORG_ROOT
+        if len(parts) == 3:
+            harness, account, role = parts
+            if role != DEFAULT_ROLE:
+                sibling_default = ":".join((harness, account, DEFAULT_ROLE))
+                if sibling_default in key_set and sibling_default != key:
+                    parent = sibling_default
+        parents[key] = parent
+    return parents
+
+
 class AgentRegistry:
     """File-backed org registry of declared logical agents.
 

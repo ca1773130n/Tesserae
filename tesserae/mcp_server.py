@@ -3237,75 +3237,19 @@ class LLMWikiMCPServer:
         graph, root = self._load_base_graph_with_root(base_args)
         if root is None:
             raise ValueError("drill_down requires a project root — pass graph_path or project.")
-        node_id = str(args.get("node_id") or "")
-        if not node_id:
-            raise ValueError("drill_down requires 'node_id' (a member_refs[].node_id).")
-        want_hash = str(args.get("content_hash") or "")
-        agent = str(args.get("agent") or "")
 
-        from .agent_distill import (
-            DistillStateStore,
-            _node_content_hash,
-            _state_db_path,
-            agent_artifact_path,
+        from .agent_view import drill_down
+
+        # Reuse the shared, audit-logged core. Inject the server's mtime-cached
+        # L1 loader so behavior stays byte-identical to the in-process cache.
+        return drill_down(
+            root,
+            graph,
+            str(args.get("node_id") or ""),
+            content_hash=str(args.get("content_hash") or ""),
+            agent=str(args.get("agent") or ""),
+            l1_loader=self._load_graph_cached,
         )
-
-        node = next((n for n in graph.nodes if n.id == node_id), None)
-        absorbed_by = ""
-        if node is not None and agent:
-            artifact = agent_artifact_path(root, agent)
-            if artifact.is_file():
-                l1 = self._load_graph_cached(artifact)
-                for distillate in sorted(l1.nodes, key=lambda n: n.id):
-                    refs = distillate.metadata.get("absorbed_refs") or []
-                    if any(isinstance(r, dict) and r.get("node_id") == node_id for r in refs):
-                        absorbed_by = distillate.id
-                        break
-
-        if node is None:
-            status = "gone"
-        elif absorbed_by:
-            status = "absorbed"
-        elif want_hash and want_hash != _node_content_hash(node):
-            status = "changed"
-        else:
-            status = "alive"
-
-        result: JSONDict = {"node_id": node_id, "status": status, "agent": agent or None}
-        if absorbed_by:
-            result["absorbed_by"] = absorbed_by
-        if node is not None:
-            result["node"] = {
-                "id": node.id,
-                "name": node.name,
-                "type": node.type.value,
-                "description": node.description,
-                "content_hash": _node_content_hash(node),
-                "source_path": node.source_path,
-            }
-        # Audit log — every drill-down is recorded in the sidecar (§6.4).
-        # Best-effort like bump_access: a locked sidecar must not break a read,
-        # but failures are logged loudly rather than swallowed silently.
-        from datetime import datetime, timezone
-
-        try:
-            entry = json.dumps(
-                {
-                    "at": datetime.now(timezone.utc).isoformat(),
-                    "content_hash": want_hash,
-                    "node_id": node_id,
-                    "status": status,
-                },
-                sort_keys=True,
-            )
-            DistillStateStore(_state_db_path(root)).append("drill_down_audit", agent, entry)
-            result["audited"] = True
-        except Exception as exc:  # noqa: BLE001 — read must survive sidecar failure
-            import logging
-
-            logging.getLogger(__name__).warning("drill_down: audit log write failed (%s)", exc)
-            result["audited"] = False
-        return result
 
     def _load_graph_cached(self, graph_path: Path) -> ResearchGraph:
         """Load graph.json, returning a cached copy when mtime is unchanged."""

@@ -76,6 +76,7 @@ def _project_query_handler(args) -> int:
     json_output = bool(args.json_output)
     interactive = bool(args.interactive)
     backend = getattr(args, "backend", "wiki") or "wiki"
+    agent = getattr(args, "agent", None)
 
     if backend == "cognee":
         # Clean-break stub (no-silent-aliases convention): one line, exit 2.
@@ -91,6 +92,13 @@ def _project_query_handler(args) -> int:
     if backend == "raganything":
         from .query import ask_project
 
+        if agent:
+            print(
+                "query: --agent is not supported with --backend raganything "
+                "(no typed graph to scope). Use the default wiki backend.",
+                file=sys.stderr,
+            )
+            return 2
         if interactive:
             print("query: --interactive is wiki-search only (not usable with --backend)", file=sys.stderr)
             return 2
@@ -123,8 +131,31 @@ def _project_query_handler(args) -> int:
 
     wq = WikiQuery(project_root, top_k=top_k, kind_filter=kind_filter)
 
+    # `query` runs BM25 over the projected search index (not the typed graph),
+    # so --agent post-filters hits to the resolved view's node set: a hit
+    # survives only when its node_id is a member of the agent's view. Hits with
+    # no node_id can't be proven in-scope, so they drop.
+    agent_node_ids = None
+    if agent:
+        try:
+            wiki = ProjectWiki.load(project_root)
+        except FileNotFoundError:
+            print(f"No Tesserae project at {project_root}. Did you run `tesserae init`?", file=sys.stderr)
+            return 2
+        if not wiki.paths.graph.exists():
+            print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
+            return 2
+        resolved = _resolve_agent_view_or_none(wiki.project_root, wiki.paths.graph, agent)
+        if resolved is None:
+            return 1
+        view, _info = resolved
+        agent_node_ids = {node.id for node in view.nodes}
+
     def run_one(question: str, history: List[dict] | None = None) -> "QueryResult":
-        return wq.answer(question, history=history)
+        result = wq.answer(question, history=history)
+        if agent_node_ids is not None:
+            result.hits = [hit for hit in result.hits if hit.node_id in agent_node_ids]
+        return result
 
     use_llm = env_enabled()  # REPL history tracking only; flags moved to `ask`
 
@@ -277,6 +308,88 @@ def _run_query_repl(run_one, *, json_output: bool, use_llm: bool) -> int:
                 history = history[-12:]
 
 
+# --------------------------------------------------------------------------- #
+# CLI-1 — agent-scoped reads (`--agent` on query / ask / context).
+#
+# `--agent KEY` runs the existing retrieval/synthesis over one agent's resolved
+# view instead of the raw L0 graph. KEY may be a worker key (its L0 ∪ own
+# distillate), a manager key (its team's distillates) or 'org' (every agent's
+# distillate). Unknown keys / missing artifacts fail loud with the resolver's
+# remedy command. The default (no --agent) path stays byte-identical.
+# --------------------------------------------------------------------------- #
+
+
+def _resolve_agent_view_or_none(project_root, graph_path, agent, *, l0=None):
+    """Resolve ``agent``'s read view over the L0 graph at ``graph_path``.
+
+    Returns ``(view_graph, info)`` on success, or ``None`` after printing the
+    :class:`AgentViewError` remedy message (unknown key / missing artifact) so
+    the caller can map ``None`` to a fail-loud exit 1. ``l0`` lets a caller that
+    already materialized the base graph avoid re-reading it.
+    """
+
+    from .agent_view import AgentViewError, resolve_agent_view
+
+    if l0 is None:
+        l0 = _load_graph_file(graph_path)
+    try:
+        return resolve_agent_view(project_root, agent, l0, l0_path=graph_path)
+    except AgentViewError as exc:
+        print(str(exc), file=sys.stderr)
+        return None
+
+
+class _GraphPathProxy:
+    """A ``wiki.paths`` stand-in that swaps only ``.graph`` for a scoped copy."""
+
+    def __init__(self, real_paths, graph_path):
+        self._real = real_paths
+        self.graph = graph_path
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+class _AgentScopedWiki:
+    """A ``ProjectWiki`` proxy whose ``paths.graph`` points at a materialized
+    agent view.
+
+    Everything else delegates to the real wiki, so ``ask_project`` and the
+    planner read the SCOPED graph while sessions, config and ``project_root``
+    stay real. The scoped graph is a throwaway temp file — nothing is written to
+    a committed artifact, so artifact byte-idempotence is untouched.
+    """
+
+    def __init__(self, real_wiki, graph_path):
+        self._wiki = real_wiki
+        self.paths = _GraphPathProxy(real_wiki.paths, graph_path)
+
+    def __getattr__(self, name):
+        return getattr(self._wiki, name)
+
+
+def _run_scoped_ask(wiki, view, question, *, top_k, no_llm):
+    """Run ``ask_project`` over an agent-scoped ``view`` by materializing it to a
+    throwaway ``graph.json`` and pointing an :class:`_AgentScopedWiki` at it.
+
+    ask reaches the graph only through ``wiki.paths.graph`` (the planner loads it
+    lazily), so re-pointing that one path scopes the whole planner without
+    touching ``query.py`` / ``ask_planner.py``.
+    """
+
+    import tempfile
+
+    from .query import ask_project
+
+    with tempfile.TemporaryDirectory(prefix="tesserae-agentview-") as tmp:
+        scoped_path = Path(tmp) / "graph.json"
+        scoped_path.write_text(view.to_json(indent=2) + "\n", encoding="utf-8")
+        scoped_wiki = _AgentScopedWiki(wiki, scoped_path)
+        return ask_project(
+            scoped_wiki, question, top_k=top_k, use_llm=not no_llm, no_llm=no_llm
+        )
+
+
 def _top_level_ask_handler(args) -> int:
     """Route a question and call the shared ask dispatcher.
 
@@ -327,6 +440,28 @@ def _top_level_ask_handler(args) -> int:
             args.name = route.aliases[0]
     elif scope is None:
         scope = "current"  # explicit --project/--name => single-project
+
+    # --agent scopes ONE project's agent view — it only makes sense on the
+    # single-project (current) path, and needs the LLM planner to read the
+    # scoped graph (search-only --no-llm goes through the unscoped index).
+    agent = getattr(args, "agent", None)
+    if agent:
+        if scope in ("all-registered", "federated"):
+            print(
+                "ask: --agent scopes ONE project's agent view — it is incompatible "
+                "with --scope all-registered/federated. Use --scope current "
+                "(or --project/--name).",
+                file=sys.stderr,
+            )
+            return 2
+        if bool(getattr(args, "no_llm", False)):
+            print(
+                "ask: --agent needs the LLM planner to read the scoped graph; "
+                "search-only --no-llm can't scope to an agent view. Drop --no-llm, "
+                "or use `tesserae query --agent`.",
+                file=sys.stderr,
+            )
+            return 2
 
     if scope == "all-registered":
         return _top_level_ask_scope_all_registered(args)
@@ -383,13 +518,25 @@ def _top_level_ask_handler(args) -> int:
 
     no_llm = bool(getattr(args, "no_llm", False))
     try:
-        envelope = ask_project(
-            wiki,
-            args.question,
-            top_k=args.top_k,
-            use_llm=not no_llm,
-            no_llm=no_llm,
-        )
+        if agent:
+            if not wiki.paths.graph.exists():
+                print("ask: no compiled graph yet — run `compile` first.", file=sys.stderr)
+                return 2
+            resolved = _resolve_agent_view_or_none(wiki.project_root, wiki.paths.graph, agent)
+            if resolved is None:
+                return 1
+            view, _info = resolved
+            envelope = _run_scoped_ask(
+                wiki, view, args.question, top_k=args.top_k, no_llm=no_llm
+            )
+        else:
+            envelope = ask_project(
+                wiki,
+                args.question,
+                top_k=args.top_k,
+                use_llm=not no_llm,
+                no_llm=no_llm,
+            )
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 2
@@ -784,6 +931,12 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
         message="ask: --wiki has moved → --name",
     )
     parser.add_argument("--top-k", type=int, default=8, help="Maximum results/context items (default: 8).")
+    parser.add_argument(
+        "--agent",
+        default=None,
+        metavar="KEY",
+        help="Scope the answer to one agent's distilled view: a worker key (its L0 ∪ own distillate), a manager key (its team's distillates), or 'org' (every agent's distillate). Needs the LLM planner and --scope current. Unknown/undistilled keys fail loud.",
+    )
     parser.add_argument(
         "--llm",
         action=_RemovedFlagAction,
@@ -1795,6 +1948,14 @@ def _handle_context(args: argparse.Namespace) -> int:
         print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
         return 2
     graph = _load_graph_file(wiki.paths.graph)
+    agent = getattr(args, "agent", None)
+    if agent:
+        resolved = _resolve_agent_view_or_none(
+            wiki.project_root, wiki.paths.graph, agent, l0=graph
+        )
+        if resolved is None:
+            return 1
+        graph, _info = resolved
     bundle = compile_context(
         graph,
         str(wiki.project_root),
@@ -2222,6 +2383,12 @@ def _build_context_parser() -> argparse.ArgumentParser:
     parser.add_argument("--multi-pool", dest="multi_pool", action="store_true", help="AgentRunbook multi-pool retrieval: decompose the query and reserve slots for Runbook/Gotcha/Event memory")
     parser.add_argument("--output", "-o", help="Write the doc to a file instead of stdout")
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    parser.add_argument(
+        "--agent",
+        default=None,
+        metavar="KEY",
+        help="Scope the context to one agent's distilled view: a worker key (its L0 ∪ own distillate), a manager key (its team's distillates), or 'org' (every agent's distillate). Unknown/undistilled keys fail loud.",
+    )
     return parser
 
 
@@ -4203,8 +4370,45 @@ def _agents_observed_stats(sessions, registry) -> Dict[str, Dict[str, set]]:
     return stats
 
 
+def _org_tree_lines(parent_of, keys, annotate) -> List[str]:
+    """Render an indented org tree from ``org:root`` down.
+
+    ``parent_of`` maps each key to its parent (``org:root`` or another key);
+    ``annotate(key)`` returns the trailing per-line detail. Deterministic:
+    siblings are emitted in sorted key order. Any key whose parent chain never
+    reaches the root (orphan / broken reference) is emitted directly under the
+    root so no observed agent is ever silently dropped from the tree.
+    """
+    from .agent_identity import ORG_ROOT
+
+    all_keys = sorted(set(keys))
+    children: Dict[str, List[str]] = {}
+    for key in all_keys:
+        parent = parent_of.get(key, ORG_ROOT)
+        if parent == key:
+            parent = ORG_ROOT
+        children.setdefault(parent, []).append(key)
+    lines = [ORG_ROOT]
+    emitted: set = set()
+
+    def walk(node: str, depth: int) -> None:
+        for child in sorted(children.get(node, [])):
+            if child in emitted:
+                continue
+            emitted.add(child)
+            lines.append(("  " * depth + f"{child}  {annotate(child)}").rstrip())
+            walk(child, depth + 1)
+
+    walk(ORG_ROOT, 1)
+    for key in all_keys:
+        if key not in emitted:
+            emitted.add(key)
+            lines.append(("  " + f"{key}  {annotate(key)}").rstrip())
+    return lines
+
+
 def _handle_agents_init(args: argparse.Namespace) -> int:
-    from .agent_identity import ORG_ROOT, AgentRegistry
+    from .agent_identity import ORG_ROOT, AgentRegistry, infer_org_parents
 
     wiki = ProjectWiki.load(args.project)
     registry = AgentRegistry.for_project(wiki.project_root)
@@ -4219,10 +4423,15 @@ def _handle_agents_init(args: argparse.Namespace) -> int:
     # the sessions themselves say, so a pre-existing registry being --force
     # overwritten never bakes its aliases or match rules into the scan.
     stats = _agents_observed_stats(sessions, registry=None)
+    # Structural org: a subagent role parents to its same-account main agent
+    # (CORE A infer_org_parents), unless --flat forces the legacy everyone-under-
+    # org:root chart. Pure function of the observed key set, so it stays
+    # deterministic and byte-stable.
+    parents = {} if args.flat else infer_org_parents(stats.keys())
     agents = {
         key: {
             "label": sorted(row["labels"])[0] if row["labels"] else key,
-            "parent": ORG_ROOT,
+            "parent": parents.get(key, ORG_ROOT),
             "aliases": [],
             "match": [],
         }
@@ -4230,8 +4439,16 @@ def _handle_agents_init(args: argparse.Namespace) -> int:
     }
     registry.save({"version": 1, "agents": agents})
     print(f"Proposed agent registry: {len(agents)} agent(s) path={registry.path}")
-    for key, row in sorted(stats.items()):
-        print(f"  {key}  ({len(row['session_ids'])} session(s))")
+
+    def _annotate(key: str) -> str:
+        row = stats.get(key, {"labels": set(), "session_ids": set()})
+        label = agents[key]["label"]
+        return f"{label}  ({len(row['session_ids'])} session(s))"
+
+    for line in _org_tree_lines(
+        {k: v["parent"] for k, v in agents.items()}, agents.keys(), _annotate
+    ):
+        print(f"  {line}")
     if not agents:
         print("No sessions imported yet — run `tesserae sessions discover --import` first.")
     return 0
@@ -4399,15 +4616,143 @@ def _handle_agents_rename(args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_agents_tree(args: argparse.Namespace) -> int:
+    from .agent_distill import agent_artifact_path
+    from .agent_identity import ORG_ROOT, AgentRegistry
+    from .project import load_graph_file
+
+    wiki = ProjectWiki.load(args.project)
+    registry = AgentRegistry.for_project(wiki.project_root)
+    try:
+        declared = registry.load()["agents"]
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    sessions = HarnessSessionStore(wiki.paths.harness_sessions).list_sessions()
+    stats = _agents_observed_stats(sessions, registry)
+    keys = sorted(set(stats) | set(declared))
+    if not keys:
+        print(
+            "No agents observed — run `tesserae sessions discover --import` "
+            "then `tesserae agents init`."
+        )
+        return 0
+
+    # Parent edges come from the CURRENT registry (declared parent, else the
+    # implicit org:root for purely-observed keys) — tree reflects the live org
+    # chart, exactly like `agents list`, not a re-inferred one.
+    parent_of = {
+        key: str(declared[key].get("parent") or ORG_ROOT)
+        if isinstance(declared.get(key), dict)
+        else ORG_ROOT
+        for key in keys
+    }
+
+    def _staleness(key: str) -> str:
+        path = agent_artifact_path(wiki.project_root, key)
+        if not path.is_file():
+            return "(not distilled)"
+        graph = load_graph_file(path)
+        stamps = [
+            str(node.metadata.get("distilled_through") or "")
+            for node in graph.nodes
+            if node.metadata.get("distilled_through")
+        ]
+        return f"distilled_through={max(stamps)}" if stamps else "(distilled)"
+
+    def _annotate(key: str) -> str:
+        entry = declared.get(key)
+        observed = stats.get(key, {"labels": set(), "session_ids": set()})
+        label = str(entry.get("label") or "").strip() if isinstance(entry, dict) else ""
+        if not label:
+            label = sorted(observed["labels"])[0] if observed["labels"] else key
+        return f"{label}  sessions={len(observed['session_ids'])}  {_staleness(key)}"
+
+    registry_state = registry.path if registry.path.exists() else "none"
+    print(f"Agent org tree: {len(keys)} agent(s) (registry: {registry_state})")
+    for line in _org_tree_lines(parent_of, keys, _annotate):
+        print(f"  {line}")
+    return 0
+
+
+def _handle_agents_show(args: argparse.Namespace) -> int:
+    wiki = ProjectWiki.load(args.project)
+    if not wiki.paths.graph.exists():
+        print(
+            f"No compiled graph at {wiki.paths.graph} — run: tesserae compile",
+            file=sys.stderr,
+        )
+        return 1
+    resolved = _resolve_agent_view_or_none(wiki.project_root, wiki.paths.graph, args.key)
+    if resolved is None:
+        return 1
+    _view, info = resolved
+    members = info.get("members") or []
+    print(f"agent: {info.get('agent')}")
+    print(f"mode: {info.get('mode')}")
+    print(f"members: {len(members)}")
+    for member in members:
+        through = str(member.get("distilled_through") or "") or "(unknown)"
+        print(
+            f"  {member.get('agent_key')}  nodes={member.get('nodes')}  "
+            f"distilled_through={through}  {member.get('artifact_path')}"
+        )
+    return 0
+
+
+def _handle_agents_drill(args: argparse.Namespace) -> int:
+    from .agent_view import drill_down
+    from .project import load_graph_file
+
+    wiki = ProjectWiki.load(args.project)
+    if not wiki.paths.graph.exists():
+        print(
+            f"No compiled graph at {wiki.paths.graph} — run: tesserae compile",
+            file=sys.stderr,
+        )
+        return 1
+    l0 = load_graph_file(wiki.paths.graph)
+    try:
+        result = drill_down(
+            wiki.project_root,
+            l0,
+            args.node_id,
+            content_hash=getattr(args, "content_hash", "") or "",
+            agent=args.agent or "",
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(f"node: {result['node_id']}")
+    print(f"status: {result['status']}")
+    if result.get("agent"):
+        print(f"agent: {result['agent']}")
+    if result.get("absorbed_by"):
+        print(f"absorbed_by: {result['absorbed_by']}")
+    node = result.get("node")
+    if isinstance(node, dict):
+        print(f"  {node.get('name')} ({node.get('type')})")
+        if node.get("description"):
+            print(f"  {node['description']}")
+        print(f"  content_hash={node.get('content_hash')}")
+    print(
+        "audit: "
+        + ("recorded" if result.get("audited") else "write failed")
+        + " in the drill_down_audit ledger"
+    )
+    return 0
+
+
 def _build_agents_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae agents",
-        description="Role-grade agent org registry: init | list | set-parent | rename.",
+        description="Role-grade agent org registry: init | list | tree | show | drill | set-parent | rename.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
             "  tesserae agents init\n"
-            "  tesserae agents list\n"
+            "  tesserae agents tree\n"
+            "  tesserae agents show claude-code:me:reviewer\n"
             "  tesserae agents set-parent claude-code:me:reviewer claude-code:me:default\n"
         ),
     )
@@ -4415,17 +4760,61 @@ def _build_agents_parser() -> argparse.ArgumentParser:
 
     p_init = sub.add_parser(
         "init",
-        help="Scan imported sessions and write a proposed registry (everyone parented to org:root).",
+        help="Scan imported sessions and write a proposed registry (subagent roles under their main agent; --flat for a flat org).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
             "  tesserae agents init\n"
+            "  tesserae agents init --flat\n"
             "  tesserae agents init --force\n"
         ),
     )
     p_init.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     p_init.add_argument("--force", action="store_true", help="Overwrite an existing registry (reversible — it is one JSON file)")
+    p_init.add_argument("--flat", action="store_true", help="Parent every agent to org:root (legacy flat org) instead of inferring role hierarchy.")
     p_init.set_defaults(_handler="_handle_agents_init")
+
+    p_tree = sub.add_parser(
+        "tree",
+        help="Render the current org chart as an indented tree (label, session count, distill staleness).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae agents tree\n"
+        ),
+    )
+    p_tree.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_tree.set_defaults(_handler="_handle_agents_tree")
+
+    p_show = sub.add_parser(
+        "show",
+        help="Resolve an agent's read view and print its mode + members (artifact path, node count, staleness).",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae agents show claude-code:me:reviewer\n"
+            "  tesserae agents show org\n"
+        ),
+    )
+    p_show.add_argument("key", help="Agent key to resolve (a worker/manager key, or 'org').")
+    p_show.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_show.set_defaults(_handler="_handle_agents_show")
+
+    p_drill = sub.add_parser(
+        "drill",
+        help="Drill a distillate member_ref back to the raw L0 node (alive/absorbed/changed/gone); audited.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae agents drill SessionInsight:f1\n"
+            "  tesserae agents drill SessionInsight:f1 --agent claude-code:me:reviewer\n"
+        ),
+    )
+    p_drill.add_argument("node_id", help="The member_refs[].node_id to resolve against L0.")
+    p_drill.add_argument("--agent", default=None, help="Owning agent key — checks its L1 artifact for an absorbing distillate.")
+    p_drill.add_argument("--content-hash", dest="content_hash", default="", help="Expected content hash; a mismatch reports status=changed.")
+    p_drill.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_drill.set_defaults(_handler="_handle_agents_drill")
 
     p_list = sub.add_parser(
         "list",
@@ -5144,6 +5533,12 @@ def _build_query_parser() -> argparse.ArgumentParser:
         )
     parser.add_argument("--json", dest="json_output", action="store_true", help="Print the structured QueryResult as JSON")
     parser.add_argument("--interactive", action="store_true", help="Drop into a REPL with readline history; blank line or EOF exits")
+    parser.add_argument(
+        "--agent",
+        default=None,
+        metavar="KEY",
+        help="Scope hits to one agent's distilled view: a worker key (its L0 ∪ own distillate), a manager key (its team's distillates), or 'org' (every agent's distillate). Post-filters hits to the view's nodes. Unknown/undistilled keys fail loud.",
+    )
     return parser
 
 

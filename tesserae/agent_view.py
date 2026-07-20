@@ -26,7 +26,12 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from .agent_distill import agent_artifact_path
+from .agent_distill import (
+    DistillStateStore,
+    _node_content_hash,
+    _state_db_path,
+    agent_artifact_path,
+)
 from .agent_identity import AgentRegistry
 from .federation import federate_graphs
 from .project import load_graph_file
@@ -38,7 +43,18 @@ from .research_graph import (
 
 AGENT_ORG_KEY = "org"
 
-__all__ = ["AGENT_ORG_KEY", "AgentViewError", "resolve_agent_view"]
+# Sidecar ledger scope for drill-down audit entries (§6.4). A named constant
+# rather than a literal so the MCP tool and any CLI/library call site stay in
+# lockstep (DistillStateStore has no SCOPE_* constant for this ledger).
+DRILL_DOWN_AUDIT_SCOPE = "drill_down_audit"
+
+__all__ = [
+    "AGENT_ORG_KEY",
+    "DRILL_DOWN_AUDIT_SCOPE",
+    "AgentViewError",
+    "drill_down",
+    "resolve_agent_view",
+]
 
 
 class AgentViewError(ValueError):
@@ -122,10 +138,16 @@ def _worker_view(l0: ResearchGraph, l1: ResearchGraph) -> ResearchGraph:
 
 def _missing_artifact_error(keys: List[str], *, owner: str) -> AgentViewError:
     remedy = " ".join(f"tesserae distill --agent {key};" for key in keys).rstrip(";")
-    noun = "children" if owner else "agents"
-    scope = f" of {owner}" if owner else ""
+    single = len(keys) == 1
+    if owner:
+        noun = "child" if single else "children"
+        scope = f" of {owner}:"
+    else:
+        noun = "agent" if single else "agents"
+        scope = ""
+    verb = "has" if single else "have"
     return AgentViewError(
-        f"{noun}{scope} {', '.join(keys)} have no distilled artifact; run: {remedy}"
+        f"{noun}{scope} {', '.join(keys)} {verb} no distilled artifact; run: {remedy}"
     )
 
 
@@ -289,3 +311,102 @@ def resolve_agent_view(
     while len(_VIEW_CACHE) > _VIEW_CACHE_MAX:
         _VIEW_CACHE.popitem(last=False)
     return view, info
+
+
+def drill_down(
+    project_root: Path | str,
+    l0: ResearchGraph,
+    node_id: str,
+    *,
+    content_hash: str = "",
+    agent: str = "",
+    l1_loader=None,
+) -> Dict[str, object]:
+    """Resolve a distillate ``member_ref`` against the raw L0 graph (§6.4).
+
+    Drill-down is the explicit escalation past distilled visibility, so ``l0``
+    is the UNSCOPED base graph — never an agent-filtered view. Statuses:
+
+    - ``gone`` — ``node_id`` is absent from L0.
+    - ``absorbed`` — the owning ``agent``'s live L1 artifact lists it in a
+      distillate's ``absorbed_refs``.
+    - ``changed`` — ``content_hash`` was supplied and no longer matches.
+    - ``alive`` — present and unchanged.
+
+    Every call is recorded in the ``drill_down_audit`` sidecar ledger
+    (``.tesserae/sqlite.db``). The audit write is best-effort: a locked or
+    unwritable sidecar must not break the read, so failures are logged loudly
+    and surfaced via ``result['audited'] = False`` rather than swallowed.
+
+    ``l1_loader`` (default :func:`load_graph_file`) loads the agent's L1
+    artifact; the MCP server injects its mtime-cached loader so behavior stays
+    identical to the in-process cache. The returned dict shape is stable:
+    ``{node_id, status, agent, [absorbed_by], [node], audited}``.
+    """
+    root = Path(project_root)
+    node_id = str(node_id or "")
+    if not node_id:
+        raise ValueError("drill_down requires 'node_id' (a member_refs[].node_id).")
+    want_hash = str(content_hash or "")
+    agent = str(agent or "")
+    load_l1 = l1_loader or load_graph_file
+
+    node = next((n for n in l0.nodes if n.id == node_id), None)
+    absorbed_by = ""
+    if node is not None and agent:
+        artifact = agent_artifact_path(root, agent)
+        if artifact.is_file():
+            l1 = load_l1(artifact)
+            for distillate in sorted(l1.nodes, key=lambda n: n.id):
+                refs = distillate.metadata.get("absorbed_refs") or []
+                if any(isinstance(r, dict) and r.get("node_id") == node_id for r in refs):
+                    absorbed_by = distillate.id
+                    break
+
+    if node is None:
+        status = "gone"
+    elif absorbed_by:
+        status = "absorbed"
+    elif want_hash and want_hash != _node_content_hash(node):
+        status = "changed"
+    else:
+        status = "alive"
+
+    result: Dict[str, object] = {"node_id": node_id, "status": status, "agent": agent or None}
+    if absorbed_by:
+        result["absorbed_by"] = absorbed_by
+    if node is not None:
+        result["node"] = {
+            "id": node.id,
+            "name": node.name,
+            "type": node.type.value,
+            "description": node.description,
+            "content_hash": _node_content_hash(node),
+            "source_path": node.source_path,
+        }
+    # Audit log — every drill-down is recorded in the sidecar (§6.4). The only
+    # wall-clock here writes to the sidecar sqlite, never to a graph artifact,
+    # so it does not threaten artifact byte-idempotence. Best-effort like
+    # bump_access: failures are logged loudly, not swallowed silently.
+    from datetime import datetime, timezone
+
+    try:
+        import json as _json
+
+        entry = _json.dumps(
+            {
+                "at": datetime.now(timezone.utc).isoformat(),
+                "content_hash": want_hash,
+                "node_id": node_id,
+                "status": status,
+            },
+            sort_keys=True,
+        )
+        DistillStateStore(_state_db_path(root)).append(DRILL_DOWN_AUDIT_SCOPE, agent, entry)
+        result["audited"] = True
+    except Exception as exc:  # noqa: BLE001 — read must survive sidecar failure
+        import logging
+
+        logging.getLogger(__name__).warning("drill_down: audit log write failed (%s)", exc)
+        result["audited"] = False
+    return result
