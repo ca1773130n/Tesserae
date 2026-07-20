@@ -1,7 +1,7 @@
 # 레이어드 에이전트 메모리 — 에이전트별 지식 그래프
 
 <!-- translations:start -->
-<p align="center"><a href="../agent-memory.md">English</a> · <a href="agent-memory.ko.md">한국어</a> · <a href="agent-memory.zh.md">中文</a> · <a href="agent-memory.ja.md">日本語</a> · <a href="agent-memory.ru.md">Русский</a> · <a href="agent-memory.es.md">Español</a> · <a href="agent-memory.fr.md">Français</a> · <a href="agent-memory.de.md">Deutsch</a></p>
+<p align="center"><a href="../agent-memory.md">English</a> · <a href="agent-memory.zh.md">中文</a> · <a href="agent-memory.ja.md">日本語</a> · <a href="agent-memory.ru.md">Русский</a> · <a href="agent-memory.es.md">Español</a> · <a href="agent-memory.fr.md">Français</a> · <a href="agent-memory.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
 누구도 모든 것을 기억할 수 없고, 어떤 에이전트의 컨텍스트 윈도우도 모든 것을 담을 수 없습니다.
@@ -23,7 +23,7 @@ Tesserae의 답은 **레이어드 지식 베이스**입니다. 모든 에이전�
 - **L1 — 에이전트당 하나의 아티팩트** (`.tesserae/agents/<key>/distilled.graph.json`).
   `tesserae distill`이 작성합니다. 일반 그래프 파일은 **하나의 48k 읽기**로
   제한되므로, 어떤 에이전트든 단일 호출에서 전체 압축된 메모리를 로드할 수 있습니다.
-- **L2 — 관리자 롤업.** 리포트가 있는 에이전트를 압축할 때 리포트의 L1을 롤업합니다.
+- **L2' — 관리자 롤업.** 리포트가 있는 에이전트를 압축할 때 리포트의 L1을 롤업합니다.
   혈통으로 중복 제거, 공유 원시 증거로 그룹화, 최고의 노트는 **문자 그대로** 가져갑니다 —
   LLM 재요약 깊이는 1로 제한되므로, 요약은 요약의 의역이 절대 아닙니다. 같은 패스는
   모든 조직 깊이로 재귀합니다.
@@ -36,14 +36,20 @@ Tesserae의 답은 **레이어드 지식 베이스**입니다. 모든 에이전�
 `default`로 폴백됩니다.
 
 ```bash
-tesserae agents init         # 세션 스캔, .tesserae/agents/registry.json 제안
+tesserae agents init         # 세션 스캔, 조직 추론, .tesserae/agents/registry.json 작성
+tesserae agents tree         # 조직도, 세션 수 + 압축 부실 함께
 tesserae agents list         # 관찰된 키, 레이블, 부모, 세션 수
 tesserae agents set-parent claude-code:me:reviewer claude-code:me:manager
 tesserae agents rename <old> <new>   # 아티팩트 디렉토리 + 레지스트리 원자적으로 마이그레이션
 ```
 
-영구 설정 필요 없음: 관찰된 모든 에이전트는 암시적으로 `org:root`에 리포트하고,
-`agent="org"`는 레지스트리 없이 완전한 팀 개요를 제공합니다.
+`init`은 역할 신호에서 계층을 추론합니다. 서브에이전트 역할
+(`claude-code:me:reviewer`)은 그것을 스폰한 메인 에이전트
+(`claude-code:me:default`)에 부모화되므로, 한 명령이 작동하는 다중 레벨 조직을 제공합니다
+— `set-parent`가 필요하지 않습니다. 더 깊고 손으로 설계된 계층 구조를 위해 `--flat`을 전달하여
+이전 모두-아래-루트 차트를 강제합니다. `set-parent`은 더 깊고 손으로 설계된 계층 구조를 위해서만입니다.
+영구 설정 없음: 레지스트리가 없으면, 모든 에이전트는 암시적으로 `org:root`에 리포트하고,
+`agent="org"`는 완전한 팀 개요를 제공합니다.
 
 ## 압축
 
@@ -63,7 +69,7 @@ tesserae distill --full               # 워터마크 무시, 처음부터 재압
 증분 폴드인, 제공자 실패는 회로 차단되고 결정적 구조 폴백을 생성합니다(플래그됨,
 재시도 가능, 성공으로 캐시되지 않음).
 
-압축은 **옵트인**입니다. `TESSERAE_AGENT_DISTILL=1` 설정 또는
+압축은 **옵트인**입니다: `TESSERAE_AGENT_DISTILL=1` 설정 또는
 `{"agent_distill": {"enabled": true}}`를 `config.json`에 설정합니다. 활성화되면,
 `tesserae refresh`도 자동으로 압축합니다 — 하지만 *메모리 압력* 하에 있는 에이전트만
 (압축되지 않은 발견이 더 이상 컨텍스트 읽기의 절반에 맞지 않음), MemGPT 스타일의
@@ -79,20 +85,31 @@ tesserae distill --full               # 워터마크 무시, 처음부터 재압
 - **Ledger**: 모든 승격/강등/흡수는 망각 원장에 추가되고 `tesserae lint`로 표면화됩니다
   (`AGENT_FORGET_LEDGER`). 에이전트당 압축되지 않은 백로그 메트릭도 함께(`AGENT_UNDISTILLED_BACKLOG`).
 
-## 에이전트로 읽기 — `agent=` 인수
+## 스코프된 뷰 읽기
 
-모든 그래프 읽기 MCP 도구는 `agent=`를 수용합니다:
+**CLI**에서 `--agent KEY`는 `query`, `ask`, 및 `context`을 스코프합니다:
+
+```bash
+tesserae query "release checklist" --agent claude-code:me:reviewer   # 워커 뷰
+tesserae ask "what does my team know about deploys?" --agent org      # 전체 팀
+tesserae agents show claude-code:me:manager    # 모드, 멤버, 부실
+tesserae agents drill SessionInsight:abc123 --agent claude-code:me:reviewer
+```
+
+**MCP**를 통해, 모든 그래프 읽기 도구는 같은 `agent=`를 수용합니다. 두 경우 모두
+키는 다음 중 하나로 해석됩니다:
 
 - **워커 키** → 자신의 원시 경험 ∪ 자신의 압축된 노트, 압축된 선호(흡수된 원시는
   로드 시 파생된 오버레이로 자동 억제됨 — 아무 것도 `graph.json`으로 다시 작성되지 않음).
 - **관리자 키** → 리포트의 L1 아티팩트만의 연합. 원시 발견은 절대 위로 누출되지 않습니다.
 - **`org`** → 모든 압축된 아티팩트, 영구 설정 없음.
 
-지원 도구: `agent_view_explain`(멤버 + `distilled_through` 부실 워터마크 —
-각 리포트의 전문성이 얼마나 오래되었는지), 그리고 `drill_down`(압축된 노트의
-`member_refs`를 원시 L0 증거로 해결. 살아있음/변경됨/흡수됨/사라짐 상태 —
-모든 호출 감사 로그됨). `compile_context --multi-pool`는 압축된 노트와 전문성 프로필을
-위해 예산 슬롯을 예약하고 출력에서 부실 또는 폴백 품질 지식에 레이블을 붙입니다.
+지원 도구: `agents show` / `agent_view_explain`(멤버 +
+`distilled_through` 부실 워터마크 — 각 리포트의 전문성이 얼마나 오래되었는지),
+그리고 `agents drill` / `drill_down`(압축된 노트의 `member_refs`를 원시 L0 증거로
+해결. 살아있음/변경됨/흡수됨/사라짐 상태 — 모든 호출 감사 로그됨).
+`compile_context --multi-pool`은 압축된 노트와 전문성 프로필을 위해 예산 슬롯을
+예약하고 출력에서 부실 또는 폴백 품질 지식에 레이블을 붙입니다.
 
 ## 성장 루프
 
@@ -103,8 +120,8 @@ tesserae distill --full               # 워터마크 무시, 처음부터 재압
   프로젝트 레벨 `.tesserae/distill-guidance.md` 위에 계층화된 하나의 에이전트의
   압축을 조종합니다. 하나의 에이전트의 스트림을 편집하면 그 에이전트만 재압축합니다.
 - **의미 다리**(옵트인): 매니저/조직 뷰에서 `shares_concept_with` 엣지로
-  에이전트 간의 *관련* 압축된 노트를 링크하세요 — 엣지, 절대 병합 아님.
-- **주제 맵**: `agent_topics`는 에이전트의 압축 세트를 결정적 `topics.md`로 롤하세요 —
+  에이전트 간의 *관련* 압축된 노트를 링크합니다 — 엣지, 절대 병합 아님.
+- **주제 맵**: `agent_topics`는 에이전트의 압축 세트를 결정적 `topics.md`로 롤합니다 —
   에이전트의 목차.
 - **서브에이전트 승격**: 타입된 서브에이전트 실행은 서브에이전트 자신의 키 아래에서
   발견을 생성하므로, 위임된 작업은 위임자의 전문성에 축적됩니다.

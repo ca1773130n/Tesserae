@@ -1,7 +1,7 @@
 # Memoria de agente estratificada — gráficos de conocimiento por agente
 
 <!-- translations:start -->
-<p align="center"><a href="../agent-memory.md">English</a> · <a href="agent-memory.ko.md">한국어</a> · <a href="agent-memory.zh.md">中文</a> · <a href="agent-memory.ja.md">日本語</a> · <a href="agent-memory.ru.md">Русский</a> · <a href="agent-memory.es.md">Español</a> · <a href="agent-memory.fr.md">Français</a> · <a href="agent-memory.de.md">Deutsch</a></p>
+<p align="center"><a href="../agent-memory.md">English</a> · <a href="agent-memory.ko.md">한국어</a> · <a href="agent-memory.zh.md">中文</a> · <a href="agent-memory.ja.md">日本語</a> · <a href="agent-memory.ru.md">Русский</a> · <a href="agent-memory.fr.md">Français</a> · <a href="agent-memory.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
 Nadie recuerda todo — y ninguna ventana de contexto de agente cabe todo.
@@ -37,14 +37,18 @@ incluso en una máquina. Los roles provienen de descriptores de subagentes en tr
 luego de reglas de coincidencia de registro declarativo, luego regresan a `default`.
 
 ```bash
-tesserae agents init         # escanear sesiones, proponer .tesserae/agents/registry.json
+tesserae agents init         # escanear sesiones, inferir organización, escribir .tesserae/agents/registry.json
+tesserae agents tree         # organigrama, con recuentos de sesiones + obsolescencia de destilación
 tesserae agents list         # claves observadas, etiquetas, padres, recuentos de sesiones
 tesserae agents set-parent claude-code:me:reviewer claude-code:me:manager
 tesserae agents rename <old> <new>   # migra directorio de artefactos + registro atómicamente
 ```
 
-Funciona sin configuración: cada agente observado reporta implícitamente a `org:root`,
-y `agent="org"` proporciona una descripción general de equipo plana sin registro.
+`init` infiere la jerarquía a partir de la señal de rol: un rol de subagente
+(`claude-code:me:reviewer`) se asigna como padre del agente principal que lo generó
+(`claude-code:me:default`), de modo que un comando le proporciona una organización multinivel funcional
+— sin necesidad de `set-parent`. Pase `--flat` para forzar el antiguo gráfico todo-bajo-raíz. `set-parent` es solo para jerarquías más profundas diseñadas manualmente. Sin configuración: sin registro, cada agente reporta implícitamente a `org:root`,
+y `agent="org"` es una descripción general de equipo completa.
 
 ## Destilación
 
@@ -83,9 +87,19 @@ de consolidación tipo MemGPT.
   y se muestra mediante `tesserae lint` (`AGENT_FORGET_LEDGER`), junto con una métrica de
   pendientes no destilados por agente (`AGENT_UNDISTILLED_BACKLOG`).
 
-## Lectura como agente — argumento `agent=`
+## Lectura con alcance restringido
 
-Cada herramienta de lectura de gráfico MCP acepta `agent=`:
+Desde la **CLI**, `--agent KEY` restringe `query`, `ask` y `context`:
+
+```bash
+tesserae query "release checklist" --agent claude-code:me:reviewer   # vista de trabajador
+tesserae ask "what does my team know about deploys?" --agent org      # equipo completo
+tesserae agents show claude-code:me:manager    # modo, miembros, obsolescencia
+tesserae agents drill SessionInsight:abc123 --agent claude-code:me:reviewer
+```
+
+A través de **MCP**, cada herramienta de lectura de gráfico acepta el mismo `agent=`. En ambos casos
+la clave se resuelve a uno de:
 
 - **clave de trabajador** → experiencia sin procesar propia ∪ notas destiladas propias,
   preferencia destilada (sin procesar absorbido se suprime automáticamente por una superposición
@@ -94,10 +108,8 @@ Cada herramienta de lectura de gráfico MCP acepta `agent=`:
   sin procesar nunca se filtran hacia arriba.
 - **`org`** → todos los artefactos destilados, sin configuración.
 
-Herramientas de apoyo: `agent_view_explain` (miembros + marca de agua `distilled_through`
-de antigüedad — cuán antiguo es el conocimiento especializado de cada informe), y
-`drill_down` (resolver `member_refs` de una nota destilada de nuevo a evidencia sin procesar
-L0 con estado vivo/cambiado/absorbido/desaparecido — cada llamada se registra en auditoría).
+Herramientas de apoyo: `agents show` / `agent_view_explain` (miembros + marca de agua `distilled_through`
+de antigüedad — cuán antiguo es el conocimiento especializado de cada informe) y `agents drill` / `drill_down` (resolver `member_refs` de una nota destilada de nuevo a evidencia sin procesar L0 con estado vivo/cambiado/absorbido/desaparecido — cada llamada se registra en auditoría).
 `compile_context --multi-pool` reserva espacios de presupuesto para notas destiladas
 y perfiles de conocimiento especializado, y etiqueta el conocimiento de calidad anticuado
 o fallback en la salida.

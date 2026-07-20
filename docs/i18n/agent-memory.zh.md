@@ -1,7 +1,7 @@
 # 分层代理内存 — 按代理知识图
 
 <!-- translations:start -->
-<p align="center"><a href="../agent-memory.md">English</a> · <a href="agent-memory.ko.md">한국어</a> · <a href="agent-memory.zh.md">中文</a> · <a href="agent-memory.ja.md">日本語</a> · <a href="agent-memory.ru.md">Русский</a> · <a href="agent-memory.es.md">Español</a> · <a href="agent-memory.fr.md">Français</a> · <a href="agent-memory.de.md">Deutsch</a></p>
+<p align="center"><a href="../agent-memory.md">English</a> · <a href="agent-memory.ko.md">한국어</a> · <a href="agent-memory.ja.md">日本語</a> · <a href="agent-memory.ru.md">Русский</a> · <a href="agent-memory.es.md">Español</a> · <a href="agent-memory.fr.md">Français</a> · <a href="agent-memory.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
 没有人能记住所有事情，任何代理的上下文窗口也装不下所有信息。Tesserae 的解决方案是一个**分层知识库**：每个代理从自己的会话中积累自己的记忆，该记忆定期**提炼**（组织、压缩、打磨、精化——并安全地遗忘），管理者只看到其报告的提炼层。管理者的管理者看到进一步的汇总。就像真实的组织一样，没有任何单一的读者需要整个档案。
@@ -19,13 +19,18 @@
 代理键为 `harness:account:role`——角色级别，因此 `reviewer` 子代理和 `planner` 子代理即使在一台机器上也会发展出*不同的*专业知识。角色来自成绩单中的子代理描述符，然后来自声明性注册表匹配规则，最后回退到 `default`。
 
 ```bash
-tesserae agents init         # 扫描会话，提议 .tesserae/agents/registry.json
+tesserae agents init         # 扫描会话，推断组织，写入 .tesserae/agents/registry.json
+tesserae agents tree         # 组织图，带会话计数 + 压缩陈旧
 tesserae agents list         # 观察到的键、标签、父级、会话计数
 tesserae agents set-parent claude-code:me:reviewer claude-code:me:manager
-tesserae agents rename <old> <new>   # 原子性地迁移工件目录 + 注册表
+tesserae agents rename <old> <new>   # 原子性迁移工件目录 + 注册表
 ```
 
-零配置有效：每个观察到的代理隐式报告到 `org:root`，而 `agent="org"` 在没有注册表的情况下提供平面团队概览。
+`init` 从角色信号推断层次结构：子代理角色
+（`claude-code:me:reviewer`）被父化为生成它的主代理
+（`claude-code:me:default`），因此一个命令给你一个工作的多级组织
+——无需 `set-parent`。传递 `--flat` 以强制旧的所有-在-根下图表。`set-parent` 仅适用于更深的手工设计的层次结构。无配置：在没有注册表的情况下，每个代理隐式报告给 `org:root`，
+`agent="org"` 是完整的团队概览。
 
 ## 提炼
 
@@ -48,15 +53,25 @@ tesserae distill --full               # 忽略水位线，从头重新提炼
 - **降级**：所有其他内容最坏情况下从完整正文降至代理索引注记中的标题+参考行。仅年龄永远不会使知识不可见。
 - **账本**：每个升级/降级/吸收都追加到遗忘账本，由 `tesserae lint` 呈现（`AGENT_FORGET_LEDGER`），以及每个代理的未提炼积压指标（`AGENT_UNDISTILLED_BACKLOG`）。
 
-## 作为代理读取 — `agent=` 参数
+## 读取作用域视图
 
-每个图形读取 MCP 工具都接受 `agent=`：
+从 **CLI**，`--agent KEY` 作用于 `query`、`ask` 和 `context`：
+
+```bash
+tesserae query "release checklist" --agent claude-code:me:reviewer   # 工作者视图
+tesserae ask "what does my team know about deploys?" --agent org      # 整个团队
+tesserae agents show claude-code:me:manager    # 模式、成员、陈旧
+tesserae agents drill SessionInsight:abc123 --agent claude-code:me:reviewer
+```
+
+通过 **MCP**，每个图形读取工具接受相同的 `agent=`。在两种情况下
+键解析为以下之一：
 
 - **工作键** → 自己的原始体验 ∪ 自己的提炼笔记，提炼首选（吸收的原始在加载时由导出的覆盖自动抑制——没有任何内容被写回 `graph.json`）。
 - **管理键** → 仅限报告的 L1 工件的联合。原始发现永远不会向上泄露。
 - **`org`** → 所有提炼工件，零配置。
 
-支持工具：`agent_view_explain`（成员 + `distilled_through` 陈旧水位线——每份报告的专业知识有多旧），和 `drill_down`（将提炼笔记的 `member_refs` 解析回原始 L0 证据，包括活跃/已更改/已吸收/已消失状态——每个调用审计记录）。`compile_context --multi-pool` 为提炼笔记和专业知识档案预留预算插槽，并标记输出中的陈旧或退回质量知识。
+支持工具：`agents show` / `agent_view_explain`（成员 + `distilled_through` 陈旧水位线——每份报告的专业知识有多旧）和 `agents drill` / `drill_down`（将提炼笔记的 `member_refs` 解析回原始 L0 证据，包括活跃/已更改/已吸收/已消失状态——每个调用审计记录）。`compile_context --multi-pool` 为提炼笔记和专业知识档案预留预算插槽，并标记输出中的陈旧或退回质量知识。
 
 ## 增长循环
 

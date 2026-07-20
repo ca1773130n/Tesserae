@@ -1,7 +1,7 @@
 # Geschichtete Agentenerinnerung — Wissensgraphen pro Agent
 
 <!-- translations:start -->
-<p align="center"><a href="../agent-memory.md">English</a> · <a href="agent-memory.ko.md">한국어</a> · <a href="agent-memory.zh.md">中文</a> · <a href="agent-memory.ja.md">日本語</a> · <a href="agent-memory.ru.md">Русский</a> · <a href="agent-memory.es.md">Español</a> · <a href="agent-memory.fr.md">Français</a> · <a href="agent-memory.de.md">Deutsch</a></p>
+<p align="center"><a href="../agent-memory.md">English</a> · <a href="agent-memory.ko.md">한국어</a> · <a href="agent-memory.zh.md">中文</a> · <a href="agent-memory.ja.md">日本語</a> · <a href="agent-memory.ru.md">Русский</a> · <a href="agent-memory.es.md">Español</a> · <a href="agent-memory.fr.md">Français</a></p>
 <!-- translations:end -->
 
 Niemand erinnert sich an alles — und kein Kontextfenster eines Agenten passt alles.
@@ -37,14 +37,18 @@ Rollen stammen aus Unteragenten-Deskriptoren in Transkripten, dann aus deklarati
 Registrierungsabgleichregeln, dann Rückfall auf `default`.
 
 ```bash
-tesserae agents init         # Sitzungen scannen, .tesserae/agents/registry.json vorschlagen
+tesserae agents init         # Sitzungen scannen, Organisation ableiten, .tesserae/agents/registry.json schreiben
+tesserae agents tree         # Organisationsdiagramm mit Sitzungszählern + Destillationsalter
 tesserae agents list         # beobachtete Schlüssel, Etiketten, Eltern, Sitzungszähler
 tesserae agents set-parent claude-code:me:reviewer claude-code:me:manager
 tesserae agents rename <old> <new>   # migriert Artefaktverzeichnis + Registrierung atomar
 ```
 
-Konfigurationslos funktionieren: Jeder beobachtete Agent meldet sich implizit bei `org:root` an,
-und `agent="org"` bietet eine flache Teamübersicht ohne Registrierung.
+`init` leitet die Hierarchie vom Rollensignal ab: Eine Unteragenten-Rolle
+(`claude-code:me:reviewer`) wird als übergeordnet zum Haupt-Agenten, der sie erzeugt hat, zugewiesen
+(`claude-code:me:default`), sodass ein Befehl eine funktionierende mehrstufige Organisation ergibt
+— ohne Bedarf für `set-parent`. Übergeben Sie `--flat` um das alte alles-unter-Wurzel-Diagramm zu erzwingen. `set-parent` ist nur für tiefere handgestaltete Hierarchien gedacht. Keine Konfiguration: Ohne Registrierung meldet sich jeder Agent implizit bei `org:root` an,
+und `agent="org"` ist eine vollständige Teamübersicht.
 
 ## Destillation
 
@@ -80,9 +84,19 @@ mehr in die Hälfte einer Kontextleseoperation), MemGPT-Style-Konsolidierungstri
   `tesserae lint` angezeigt (`AGENT_FORGET_LEDGER`), zusammen mit einer nicht destillierten Rückstandsmetrik
   pro Agent (`AGENT_UNDISTILLED_BACKLOG`).
 
-## Als Agent lesen — `agent=`-Argument
+## Scoped-View-Lesevorgänge
 
-Jedes Graph-Read-MCP-Tool akzeptiert `agent=`:
+Aus der **CLI** beschränkt `--agent KEY` `query`, `ask` und `context`:
+
+```bash
+tesserae query "release checklist" --agent claude-code:me:reviewer   # Worker-Ansicht
+tesserae ask "what does my team know about deploys?" --agent org      # ganzes Team
+tesserae agents show claude-code:me:manager    # Modus, Mitglieder, Veraltung
+tesserae agents drill SessionInsight:abc123 --agent claude-code:me:reviewer
+```
+
+Über **MCP** akzeptiert jedes Graph-Read-Tool denselben `agent=`. In beiden Fällen
+wird der Schlüssel auf einen der folgenden aufgelöst:
 
 - **Worker-Schlüssel** → eigene Roherfahrung ∪ eigene destillierte Notizen, Destillat bevorzugt
   (absorbierte Rohe werden beim Laden automatisch durch abgeleitete Überlagerung unterdrückt —
@@ -91,8 +105,8 @@ Jedes Graph-Read-MCP-Tool akzeptiert `agent=`:
   lecken niemals nach oben.
 - **`org`** → alle destillierten Artefakte, keine Konfiguration.
 
-Unterstützungswerkzeuge: `agent_view_explain` (Mitglieder + `distilled_through` Veraltungs-Wasserzeichen —
-wie alt die Expertise jedes Berichts ist) und `drill_down` (löse `member_refs` von eine destillierten
+Unterstützungswerkzeuge: `agents show` / `agent_view_explain` (Mitglieder + `distilled_through` Veraltungs-Wasserzeichen —
+wie alt die Expertise jedes Berichts ist) und `agents drill` / `drill_down` (löse `member_refs` von eine destillierten
 Notiz zurück zu Rohevidenz L0 mit Status lebendig/geändert/absorbiert/verschwunden — jeder Aufruf wird
 geprüft). `compile_context --multi-pool` reserviert Budgetplätze für destillierte Notizen und Fachwissensprofile
 und kennzeichnet veraltete oder Fallback-Qualitätswissen in der Ausgabe.

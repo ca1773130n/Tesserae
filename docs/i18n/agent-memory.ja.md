@@ -1,7 +1,7 @@
 # レイヤー化エージェントメモリ — エージェント別知識グラフ
 
 <!-- translations:start -->
-<p align="center"><a href="../agent-memory.md">English</a> · <a href="agent-memory.ko.md">한국어</a> · <a href="agent-memory.zh.md">中文</a> · <a href="agent-memory.ja.md">日本語</a> · <a href="agent-memory.ru.md">Русский</a> · <a href="agent-memory.es.md">Español</a> · <a href="agent-memory.fr.md">Français</a> · <a href="agent-memory.de.md">Deutsch</a></p>
+<p align="center"><a href="../agent-memory.md">English</a> · <a href="agent-memory.ko.md">한국어</a> · <a href="agent-memory.zh.md">中文</a> · <a href="agent-memory.ru.md">Русский</a> · <a href="agent-memory.es.md">Español</a> · <a href="agent-memory.fr.md">Français</a> · <a href="agent-memory.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
 誰もがすべてを覚えているわけではありませんし、どのエージェントのコンテキストウィンドウもすべてを収めることができません。Tesserae の答えは**レイヤー化知識ベース**です。すべてのエージェントは自分のセッションから独自のメモリを成長させ、そのメモリは定期的に**蒸留**（整理、圧縮、磨く、精製——そして安全に忘れ）され、マネージャーは自分のレポートの蒸留済みレイヤーのみを見ます。マネージャーのマネージャーはさらなるロールアップを見ます。実際の組織のように、単一の読み手も完全なアーカイブが必要ではありません。
@@ -19,13 +19,18 @@
 エージェントは `harness:account:role`でキー付けされます——役割レベルなので、`reviewer` サブエージェントと `planner` サブエージェントは 1 台のマシンでも*異なる*専門知識を開発します。役割はトランスクリプト内のサブエージェント記述子から来て、次に宣言的レジストリマッチングルールから来て、最後に `default` にフォールバックします。
 
 ```bash
-tesserae agents init         # セッションスキャン、.tesserae/agents/registry.json を提案
+tesserae agents init         # セッションスキャン、組織を推論、.tesserae/agents/registry.json を書き込み
+tesserae agents tree         # 組織図、セッション数 + 蒸留陳腐性付き
 tesserae agents list         # 観察されたキー、ラベル、親、セッション数
 tesserae agents set-parent claude-code:me:reviewer claude-code:me:manager
 tesserae agents rename <old> <new>   # アーティファクトディレクトリ + レジストリをアトミックに移行
 ```
 
-ゼロコンフィグが機能します。観察されたすべてのエージェントは暗黙的に `org:root` にレポートし、`agent="org"` はレジストリなしでフラットなチームの概要を提供します。
+`init` は役割信号から階層を推論します。サブエージェント役割
+（`claude-code:me:reviewer`）は、それを生み出した主エージェント
+（`claude-code:me:default`）にペアレント化されるため、1 つのコマンドで動作する多段階の組織が得られます
+——`set-parent` は不要です。古いすべてのツリー図を強制するには `--flat` を渡します。`set-parent` はより深い手作業の階層構造のみです。ゼロコンフィグ：レジストリがない場合、すべてのエージェントは暗黙的に `org:root` にレポートし、
+`agent="org"` は完全なチーム概要を提供します。
 
 ## 蒸留
 
@@ -48,15 +53,25 @@ tesserae distill --full               # ウォーターマークを無視、最�
 - **降格**：他のすべてては最悪の場合、完全な本体からエージェントのインデックスノートのタイトル+参照行に低下します。年齢だけでは知識が見えなくなることはありません。
 - **台帳**：すべての昇格/降格/吸収は忘却台帳に追加され、`tesserae lint` で表示されます（`AGENT_FORGET_LEDGER`）。また、エージェントごとの蒸留されていないバックログメトリック（`AGENT_UNDISTILLED_BACKLOG`）。
 
-## エージェントとして読み取り — `agent=` 引数
+## スコープ付きビューの読み取り
 
-すべてのグラフ読み取り MCP ツールは `agent=` を受け入れます。
+**CLI** では、`--agent KEY` が `query`、`ask`、および `context` をスコープします：
+
+```bash
+tesserae query "release checklist" --agent claude-code:me:reviewer   # ワーカービュー
+tesserae ask "what does my team know about deploys?" --agent org      # チーム全体
+tesserae agents show claude-code:me:manager    # モード、メンバー、陳腐性
+tesserae agents drill SessionInsight:abc123 --agent claude-code:me:reviewer
+```
+
+**MCP** では、すべてのグラフ読み取りツールが同じ `agent=` を受け入れます。どちらの場合も
+キーは次のいずれかに解決されます：
 
 - **ワーカーキー** → 独自の生の経験 ∪ 独自の蒸留済みメモ、蒸留済み優先（吸収された生は読み込み時に派生オーバーレイで自動抑制——何も `graph.json` に書き戻されない）。
 - **マネージャーキー** → レポートの L1 アーティファクトのみの連合。生の検索結果は上方に漏らされることはありません。
 - **`org`** → すべての蒸留済みアーティファクト、ゼロコンフィグ。
 
-サポートツール：`agent_view_explain`（メンバー + `distilled_through` 陳腐ウォーターマーク——各レポートの専門知識がどの程度古いか）、および `drill_down`（蒸留メモの `member_refs` を生の L0 証拠に解決。活気のある/変更された/吸収された/消失した状態——各呼び出しは監査ログ）。`compile_context --multi-pool` は蒸留メモと専門知識プロファイルの予算スロットを予約し、出力内の陳腐またはフォールバック品質の知識にラベルを付けます。
+サポートツール：`agents show` / `agent_view_explain`（メンバー + `distilled_through` 陳腐ウォーターマーク——各レポートの専門知識がどの程度古いか）および `agents drill` / `drill_down`（蒸留メモの `member_refs` を生の L0 証拠に解決。活気のある/変更された/吸収された/消失した状態——各呼び出しは監査ログ）。`compile_context --multi-pool` は蒸留メモと専門知識プロファイルの予算スロットを予約し、出力内の陳腐またはフォールバック品質の知識にラベルを付けます。
 
 ## 成長ループ
 

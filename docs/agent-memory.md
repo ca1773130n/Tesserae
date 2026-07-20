@@ -38,14 +38,20 @@ machine. Roles come from subagent descriptors in transcripts, then from
 declarative registry match rules, then fall back to `default`.
 
 ```bash
-tesserae agents init         # scan sessions, propose .tesserae/agents/registry.json
+tesserae agents init         # scan sessions, INFER the org, write .tesserae/agents/registry.json
+tesserae agents tree         # the org chart, with session counts + distill staleness
 tesserae agents list         # observed keys, labels, parents, session counts
 tesserae agents set-parent claude-code:me:reviewer claude-code:me:manager
 tesserae agents rename <old> <new>   # migrates the artifact dir + registry atomically
 ```
 
-Zero config works: every observed agent implicitly reports to `org:root`, and
-`agent="org"` gives the flat team overview with no registry at all.
+`init` infers the hierarchy from the role signal: a subagent role
+(`claude-code:me:reviewer`) is parented to the main agent that spawned it
+(`claude-code:me:default`), so one command gives you a working multi-level org
+— no `set-parent` needed. Pass `--flat` to force the old everyone-under-root
+chart. `set-parent` is only for deeper, hand-designed hierarchies. Zero config
+still works: absent a registry, every agent reports to `org:root` and
+`agent="org"` is the flat team overview.
 
 ## Distilling
 
@@ -83,9 +89,19 @@ read), the MemGPT-style consolidation trigger.
   ledger and surfaced by `tesserae lint` (`AGENT_FORGET_LEDGER`), along with
   an undistilled-backlog metric per agent (`AGENT_UNDISTILLED_BACKLOG`).
 
-## Reading as an agent — the `agent=` argument
+## Reading a scoped view
 
-Every graph-reading MCP tool accepts `agent=`:
+From the **CLI**, `--agent KEY` scopes `query`, `ask`, and `context`:
+
+```bash
+tesserae query "release checklist" --agent claude-code:me:reviewer   # worker view
+tesserae ask "what does my team know about deploys?" --agent org      # whole team
+tesserae agents show claude-code:me:manager    # mode, members, staleness
+tesserae agents drill SessionInsight:abc123 --agent claude-code:me:reviewer
+```
+
+Over **MCP**, every graph-reading tool accepts the same `agent=`. In both
+cases the key resolves to one of:
 
 - **worker key** → own raw experience ∪ own distilled notes, distillate-
   preferred (absorbed raw is auto-suppressed by an overlay derived at load
@@ -94,9 +110,10 @@ Every graph-reading MCP tool accepts `agent=`:
   findings never leak upward.
 - **`org`** → all distilled artifacts, zero config.
 
-Supporting tools: `agent_view_explain` (members + `distilled_through`
-staleness watermark — how old each report's expertise is), and `drill_down`
-(resolve a distilled note's `member_refs` back to raw L0 evidence with
+Supporting tools: `agents show` / `agent_view_explain` (members +
+`distilled_through` staleness watermark — how old each report's expertise is),
+and `agents drill` / `drill_down` (resolve a distilled note's `member_refs`
+back to raw L0 evidence with
 alive / changed / absorbed / gone status — every call audit-logged).
 `compile_context --multi-pool` reserves budget slots for distilled notes and
 expertise profiles and labels stale or fallback-quality knowledge in the

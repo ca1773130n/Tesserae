@@ -1,7 +1,7 @@
 # Многоуровневая память агента — графы знаний по агентам
 
 <!-- translations:start -->
-<p align="center"><a href="../agent-memory.md">English</a> · <a href="agent-memory.ko.md">한국어</a> · <a href="agent-memory.zh.md">中文</a> · <a href="agent-memory.ja.md">日本語</a> · <a href="agent-memory.ru.md">Русский</a> · <a href="agent-memory.es.md">Español</a> · <a href="agent-memory.fr.md">Français</a> · <a href="agent-memory.de.md">Deutsch</a></p>
+<p align="center"><a href="../agent-memory.md">English</a> · <a href="agent-memory.ko.md">한국어</a> · <a href="agent-memory.zh.md">中文</a> · <a href="agent-memory.ja.md">日本語</a> · <a href="agent-memory.es.md">Español</a> · <a href="agent-memory.fr.md">Français</a> · <a href="agent-memory.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
 Никто не помнит все — и контекстное окно агента не вмещает все.
@@ -38,14 +38,18 @@
 декларативного реестра, затем откатываются на `default`.
 
 ```bash
-tesserae agents init         # сканировать сеансы, предложить .tesserae/agents/registry.json
+tesserae agents init         # сканировать сеансы, выводить организацию, писать .tesserae/agents/registry.json
+tesserae agents tree         # организационная диаграмма, с подсчетом сеансов + устаревание дистилляции
 tesserae agents list         # наблюдаемые ключи, ярлыки, родители, счетчики сеансов
 tesserae agents set-parent claude-code:me:reviewer claude-code:me:manager
 tesserae agents rename <old> <new>   # атомно мигрирует директорию артефактов + реестр
 ```
 
-Работает без конфигурации: каждый наблюдаемый агент неявно докладывает в `org:root`,
-и `agent="org"` дает плоский обзор команды без реестра.
+`init` выводит иерархию из сигнала роли: роль подагента
+(`claude-code:me:reviewer`) назначается родителем главному агенту, который его создал
+(`claude-code:me:default`), поэтому одна команда дает вам рабочую многоуровневую организацию
+— без необходимости в `set-parent`. Передайте `--flat` для принудительного использования старой диаграммы все-в-корень. `set-parent` предназначен только для более глубоких ручно спроектированных иерархий. Без конфигурации: без реестра каждый агент неявно докладывает в `org:root`,
+и `agent="org"` является полным обзором команды.
 
 ## Дистилляция
 
@@ -83,9 +87,19 @@ tesserae distill --full               # игнорировать водяные 
   и выводится `tesserae lint` (`AGENT_FORGET_LEDGER`), наряду с метрикой недостиллированного
   невыполненных работ на агента (`AGENT_UNDISTILLED_BACKLOG`).
 
-## Чтение как агент — аргумент `agent=`
+## Чтение с ограничением области видимости
 
-Каждый инструмент чтения графика MCP принимает `agent=`:
+Из **CLI**, `--agent KEY` ограничивает область `query`, `ask` и `context`:
+
+```bash
+tesserae query "release checklist" --agent claude-code:me:reviewer   # рабочее представление
+tesserae ask "what does my team know about deploys?" --agent org      # вся команда
+tesserae agents show claude-code:me:manager    # режим, члены, устаревание
+tesserae agents drill SessionInsight:abc123 --agent claude-code:me:reviewer
+```
+
+По **MCP**, каждый инструмент чтения графика принимает тот же `agent=`. В обоих случаях
+ключ разрешается одному из следующих:
 
 - **ключ рабочего** → собственный сырой опыт ∪ собственные дистиллированные заметки,
   предпочтительно дистиллированные (поглощенные сырые автоматически подавляются наложением,
@@ -94,9 +108,9 @@ tesserae distill --full               # игнорировать водяные 
   не просачиваются вверх.
 - **`org`** → все дистиллированные артефакты, без конфигурации.
 
-Вспомогательные инструменты: `agent_view_explain` (члены + водяной знак
-`distilled_through` устарелости — насколько старик опыт каждого отчета),
-и `drill_down` (разрешить `member_refs` дистиллированной заметки обратно
+Вспомогательные инструменты: `agents show` / `agent_view_explain` (члены + водяной знак
+`distilled_through` устарелости — насколько старик опыт каждого отчета)
+и `agents drill` / `drill_down` (разрешить `member_refs` дистиллированной заметки обратно
 к сырым доказательствам L0 со статусом живой/измененный/поглощенный/исчезнувший —
 каждый вызов ведется в журнале аудита). `compile_context --multi-pool` резервирует
 бюджеты для дистиллированных заметок и профилей опыта и помечает устаревшие или

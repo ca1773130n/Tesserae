@@ -1,7 +1,7 @@
 # Mémoire d'agent en couches — graphes de connaissance par agent
 
 <!-- translations:start -->
-<p align="center"><a href="../agent-memory.md">English</a> · <a href="agent-memory.ko.md">한국어</a> · <a href="agent-memory.zh.md">中文</a> · <a href="agent-memory.ja.md">日本語</a> · <a href="agent-memory.ru.md">Русский</a> · <a href="agent-memory.es.md">Español</a> · <a href="agent-memory.fr.md">Français</a> · <a href="agent-memory.de.md">Deutsch</a></p>
+<p align="center"><a href="../agent-memory.md">English</a> · <a href="agent-memory.ko.md">한국어</a> · <a href="agent-memory.zh.md">中文</a> · <a href="agent-memory.ja.md">日本語</a> · <a href="agent-memory.ru.md">Русский</a> · <a href="agent-memory.es.md">Español</a> · <a href="agent-memory.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
 Personne ne se souvient de tout — et aucune fenêtre de contexte d'agent ne peut contenir tout.
@@ -38,14 +38,18 @@ Les rôles proviennent des descripteurs de sous-agent dans les transcriptions, p
 de correspondance du registre déclaratif, puis reviennent à `default`.
 
 ```bash
-tesserae agents init         # analyser les sessions, proposer .tesserae/agents/registry.json
+tesserae agents init         # analyser les sessions, déduire l'organisation, écrire .tesserae/agents/registry.json
+tesserae agents tree         # organigramme, avec comptages de session + obsolescence de distillation
 tesserae agents list         # clés observées, libellés, parents, comptages de session
 tesserae agents set-parent claude-code:me:reviewer claude-code:me:manager
 tesserae agents rename <old> <new>   # migre atomiquement le répertoire d'artefacts + registre
 ```
 
-Fonctionnement sans configuration : chaque agent observé rapporte implicitement à `org:root`,
-et `agent="org"` fournit une vue d'équipe plate sans registre.
+`init` déduit la hiérarchie à partir du signal de rôle : un rôle de sous-agent
+(`claude-code:me:reviewer`) est assigné au parent de l'agent principal qui l'a engendré
+(`claude-code:me:default`), de sorte qu'une commande vous donne une organisation multi-niveaux fonctionnelle
+— sans besoin de `set-parent`. Passez `--flat` pour forcer l'ancien graphique tout-sous-racine. `set-parent` ne concerne que les hiérarchies plus profondes conçues à la main. Sans configuration : sans registre, chaque agent rapporte implicitement à `org:root`,
+et `agent="org"` est une vue d'équipe complète.
 
 ## Distillation
 
@@ -82,9 +86,19 @@ style MemGPT.
   par `tesserae lint` (`AGENT_FORGET_LEDGER`), ainsi qu'une métrique de travail non distillé par agent
   (`AGENT_UNDISTILLED_BACKLOG`).
 
-## Lecture en tant qu'agent — argument `agent=`
+## Lecture avec portée contrôlée
 
-Chaque outil de lecture de graphe MCP accepte `agent=` :
+Depuis la **CLI**, `--agent KEY` limite la portée de `query`, `ask` et `context` :
+
+```bash
+tesserae query "release checklist" --agent claude-code:me:reviewer   # vue travailleur
+tesserae ask "what does my team know about deploys?" --agent org      # équipe entière
+tesserae agents show claude-code:me:manager    # mode, membres, obsolescence
+tesserae agents drill SessionInsight:abc123 --agent claude-code:me:reviewer
+```
+
+Via **MCP**, chaque outil de lecture de graphe accepte le même `agent=`. Dans les deux cas,
+la clé se résout à l'une des suivantes :
 
 - **clé de travailleur** → expérience brute propre ∪ notes distillées propres, préférence distillée
   (le brut absorbé est automatiquement supprimé par une superposition dérivée au moment du chargement —
@@ -93,8 +107,8 @@ Chaque outil de lecture de graphe MCP accepte `agent=` :
   brutes ne fuient jamais vers le haut.
 - **`org`** → tous les artefacts distillés, sans configuration.
 
-Outils de soutien : `agent_view_explain` (membres + filigrane `distilled_through` de péremption —
-l'ancienneté de l'expertise de chaque rapport), et `drill_down` (résoudre `member_refs` d'une note
+Outils de soutien : `agents show` / `agent_view_explain` (membres + filigrane `distilled_through` de péremption —
+l'ancienneté de l'expertise de chaque rapport) et `agents drill` / `drill_down` (résoudre `member_refs` d'une note
 distillée de retour aux preuves brutes L0 avec état vivant/modifié/absorbé/disparu — chaque appel est
 enregistré à titre de suivi). `compile_context --multi-pool` réserve des emplacements budgétaires pour
 les notes distillées et les profils d'expertise, et étiquette les connaissances obsolètes ou de qualité
