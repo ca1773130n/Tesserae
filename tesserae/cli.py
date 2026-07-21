@@ -4414,7 +4414,10 @@ def _handle_agents_init(args: argparse.Namespace) -> int:
     registry = AgentRegistry.for_project(wiki.project_root)
     if registry.path.exists() and not args.force:
         print(
-            f"Agent registry already exists at {registry.path} — pass --force to overwrite.",
+            f"Agent registry already exists at {registry.path} — pass --force to "
+            "re-infer it from the current sessions (do this after a "
+            "`tesserae sessions discover --import` to pick up newly captured "
+            "subagent roles).",
             file=sys.stderr,
         )
         return 1
@@ -4451,6 +4454,19 @@ def _handle_agents_init(args: argparse.Namespace) -> int:
         print(f"  {line}")
     if not agents:
         print("No sessions imported yet — run `tesserae sessions discover --import` first.")
+    elif not args.flat and not any(v["parent"] != ORG_ROOT for v in agents.values()):
+        # Every agent landed flat under org:root: no subagent roles were
+        # observed, so there is no hierarchy to infer. The usual cause is a
+        # session store imported before subagent-descriptor capture existed —
+        # tell the user how to surface the roles instead of leaving a silent
+        # flat org that looks like the feature did nothing.
+        print(
+            "\nNote: only main (:default) agents were observed, so the org is "
+            "flat — no subagent roles to build a hierarchy from.\n"
+            "If you use subagents, re-import to capture them, then re-run init:\n"
+            "  tesserae sessions discover --import && tesserae agents init --force",
+            file=sys.stderr,
+        )
     return 0
 
 

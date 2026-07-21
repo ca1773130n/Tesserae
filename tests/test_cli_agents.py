@@ -311,3 +311,44 @@ def test_agents_rename_fails_loud(tmp_path, capsys):
         "claude-code:claude-home:reviewer",
         "codex:codex-home:default",
     ]
+
+
+def _seed_flat_project(tmp_path):
+    """A corpus with ONLY main (:default) agents — no subagent descriptors."""
+    proj = tmp_path / "proj"
+    (proj / "docs").mkdir(parents=True)
+    ProjectWiki.init(proj, sources=["docs"])
+    HarnessSessionStore(proj / ".tesserae" / "harness_sessions").write_sessions(
+        [
+            HarnessSession(
+                id="s1", slug="work", harness="claude-code", agent_label="Claude Code",
+                project_name="proj", project_root=str(proj), started_at="2026-07-01T10:00:00Z",
+                metadata={"config_root": str(tmp_path / "claude-home")},
+            ),
+        ]
+    )
+    return proj
+
+
+def test_agents_init_warns_when_org_is_flat_no_subagents(tmp_path, capsys):
+    proj = _seed_flat_project(tmp_path)
+    assert main(["agents", "init", "--project", str(proj)]) == 0
+    err = capsys.readouterr().err
+    assert "only main (:default) agents were observed" in err
+    assert "sessions discover --import" in err
+
+
+def test_agents_init_no_flat_warning_with_subagent_roles(tmp_path, capsys):
+    # The role-diverse fixture yields a real hierarchy → no flat-org warning.
+    proj = _seed_project(tmp_path)
+    assert main(["agents", "init", "--project", str(proj)]) == 0
+    err = capsys.readouterr().err
+    assert "only main (:default) agents" not in err
+
+
+def test_agents_init_flat_flag_suppresses_the_warning(tmp_path, capsys):
+    # --flat is an explicit choice, not an accident — no nag.
+    proj = _seed_flat_project(tmp_path)
+    assert main(["agents", "init", "--project", str(proj), "--flat"]) == 0
+    err = capsys.readouterr().err
+    assert "only main (:default) agents" not in err
