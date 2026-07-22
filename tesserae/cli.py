@@ -2213,6 +2213,10 @@ def _handle_engine(args: argparse.Namespace) -> int:
             debounce=args.debounce,
             watch_interval=args.interval,
             pidfile=Path(pidfile_env) if pidfile_env else None,
+            consolidate=getattr(args, "consolidate", True),
+            consolidate_idle_seconds=getattr(args, "consolidate_idle", 300.0),
+            consolidate_max_interval_seconds=getattr(args, "consolidate_every", 21600.0),
+            consolidate_check_interval=getattr(args, "consolidate_check", 30.0),
         )
         try:
             return fleet.run(once=args.once)
@@ -2226,6 +2230,10 @@ def _handle_engine(args: argparse.Namespace) -> int:
         Path(args.project or ".").resolve(),
         debounce=args.debounce,
         watch_interval=args.interval,
+        consolidate=getattr(args, "consolidate", True),
+        consolidate_idle_seconds=getattr(args, "consolidate_idle", 300.0),
+        consolidate_max_interval_seconds=getattr(args, "consolidate_every", 21600.0),
+        consolidate_check_interval=getattr(args, "consolidate_check", 30.0),
     )
     try:
         return daemon.run(once=args.once)
@@ -2443,6 +2451,34 @@ def _build_engine_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Fleet mode: max concurrent compiles across all projects (requires --all; default 1).",
+    )
+    parser.add_argument(
+        "--consolidate",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Idle/periodic memory-consolidation ('sleep') cycle: while the project "
+            "rests, distill agent memory in the background (no-op unless "
+            "TESSERAE_AGENT_DISTILL is set). Use --no-consolidate to disable (default: on)."
+        ),
+    )
+    parser.add_argument(
+        "--consolidate-idle",
+        type=float,
+        default=300.0,
+        help="Sleep cycle: idle window in seconds before consolidating (default: 300 = 5 min).",
+    )
+    parser.add_argument(
+        "--consolidate-every",
+        type=float,
+        default=21600.0,
+        help="Sleep cycle: max seconds between consolidations regardless of activity; 0 disables the ceiling (default: 21600 = 6h).",
+    )
+    parser.add_argument(
+        "--consolidate-check",
+        type=float,
+        default=30.0,
+        help="Sleep cycle: how often in seconds to check the consolidation trigger (default: 30).",
     )
     return parser
 

@@ -78,6 +78,21 @@ Distillation is **opt-in**: set `TESSERAE_AGENT_DISTILL=1` (or
 *memory pressure* (their undistilled findings no longer fit half a context
 read), the MemGPT-style consolidation trigger.
 
+## Automatic consolidation (the sleep cycle)
+
+You do not have to remember to distill. Like a brain consolidating memory
+during rest, the always-on `tesserae engine` daemon runs the same distillation
+pass on its own whenever a project goes **idle** (no edits or sessions for a
+few minutes), plus a periodic ceiling so a continuously busy project still
+consolidates. It wraps exactly the `maybe_distill_on_refresh` trigger described
+above — the same opt-in gate, per-agent watermark, and memory-pressure checks —
+so it is a no-op unless `TESSERAE_AGENT_DISTILL` is set, runs under the compile
+gate, and never disturbs the deterministic artifacts.
+
+Full behavior, CLI flags (`--consolidate-idle` / `--consolidate-every` /
+`--consolidate-check`), and fleet notes:
+[docs/engine-consolidation.md](engine-consolidation.md).
+
 ## Forgetting — never deletion
 
 - **Absorb**: a decayed, low-confidence finding covered by an llm-quality

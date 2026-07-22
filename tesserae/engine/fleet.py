@@ -59,6 +59,10 @@ class FleetDaemon:
         registry_poll: float = 10.0,
         debounce: float = 1.0,
         watch_interval: float = 2.0,
+        consolidate: bool = True,
+        consolidate_idle_seconds: float = 300.0,
+        consolidate_max_interval_seconds: float = 21600.0,
+        consolidate_check_interval: float = 30.0,
         pidfile: Optional[Path] = None,
         daemon_factory: Optional[DaemonFactory] = None,
     ) -> None:
@@ -69,6 +73,10 @@ class FleetDaemon:
         self._registry_poll = registry_poll
         self._unit_debounce = debounce
         self._unit_watch_interval = watch_interval
+        self._unit_consolidate = consolidate
+        self._unit_consolidate_idle_seconds = consolidate_idle_seconds
+        self._unit_consolidate_max_interval_seconds = consolidate_max_interval_seconds
+        self._unit_consolidate_check_interval = consolidate_check_interval
         self._pidfile = Path(pidfile) if pidfile is not None else DEFAULT_FLEET_PIDFILE
         self._daemon_factory = daemon_factory or self._default_daemon_factory
         self._units: Dict[str, _Unit] = {}
@@ -81,6 +89,10 @@ class FleetDaemon:
             root,
             debounce=fleet._unit_debounce,
             watch_interval=fleet._unit_watch_interval,
+            consolidate=fleet._unit_consolidate,
+            consolidate_idle_seconds=fleet._unit_consolidate_idle_seconds,
+            consolidate_max_interval_seconds=fleet._unit_consolidate_max_interval_seconds,
+            consolidate_check_interval=fleet._unit_consolidate_check_interval,
             install_signal_handlers=False,
             compile_gate=fleet.compile_gate,
         )

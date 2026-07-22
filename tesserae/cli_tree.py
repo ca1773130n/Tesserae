@@ -17,7 +17,7 @@ COMMAND_TREE: list[tuple[str, list[tuple[str, str]]]] = [
         ("status", "Node/edge counts, last compile, vault state"),
     ]),
     ("AUTOMATION", [
-        ("engine", "Refresh daemon: watch sessions/sources, coalesced recompiles"),
+        ("engine", "Refresh daemon: watch sessions/sources, coalesced recompiles, idle 'sleep' consolidation"),
         ("refresh", "One-shot: import sessions + compile + sync vault"),
         ("research", "Autonomous research mode: investigate a query"),
         ("distill", "Per-agent L1 expertise artifacts (opt-in: TESSERAE_AGENT_DISTILL)"),

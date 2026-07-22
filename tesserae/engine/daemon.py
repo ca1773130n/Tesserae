@@ -24,10 +24,12 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import nullcontext
+import json
 import logging
 import os
 import signal
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -100,9 +102,15 @@ class Daemon:
         enable_watch: bool = True,
         enable_vault: bool = True,
         enable_session_tail: bool = True,
+        consolidate: bool = True,
+        consolidate_idle_seconds: float = 300.0,
+        consolidate_max_interval_seconds: float = 21600.0,
+        consolidate_check_interval: float = 30.0,
         install_signal_handlers: bool = True,
         compile_gate: Optional[threading.Semaphore] = None,
         run_pipeline: Optional[Callable[[List[Path]], None]] = None,
+        monotonic: Optional[Callable[[], float]] = None,
+        distill: Optional[Callable[..., dict]] = None,
     ) -> None:
         self.project_root = Path(project_root).resolve()
         self.debounce = debounce
@@ -114,14 +122,35 @@ class Daemon:
         self._enable_watch = enable_watch
         self._enable_vault = enable_vault
         self._enable_session_tail = enable_session_tail
+        self._consolidate = consolidate
+        self._consolidate_idle_seconds = consolidate_idle_seconds
+        self._consolidate_max_interval_seconds = consolidate_max_interval_seconds
+        self._consolidate_check_interval = consolidate_check_interval
         self._install_signal_handlers = install_signal_handlers
-        self._compile_gate = compile_gate
+        # Default the compile gate to a private mutex so the consolidation
+        # thread NEVER overlaps a compile even in single-daemon mode. Without
+        # this, single mode leaves the gate as a nullcontext and the sleep-cycle
+        # distill (which runs on its own thread) could race a pipeline run — the
+        # fleet already shares a real Semaphore, so it was covered there.
+        self._compile_gate = (
+            compile_gate if compile_gate is not None else threading.Semaphore(1)
+        )
+        self._monotonic = monotonic if monotonic is not None else time.monotonic
+        self._distill_override = distill
         self._pidfile = self.project_root / ".tesserae" / self.PIDFILE_NAME
         self._stop_event = threading.Event()
         self._threads: List[threading.Thread] = []
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._queue: Optional[asyncio.Queue] = None
         self._run_pipeline_override = run_pipeline
+        # Monotonic activity clock for the sleep-cycle trigger: updated on every
+        # enqueue() and _run_pipeline(), read by the consolidation thread. A
+        # float read/write is atomic under the GIL so no lock is needed (and a
+        # lock here could deadlock against the compile gate). NEVER persisted —
+        # wall-clock/mutable state in artifacts is the byte-idempotence blind spot.
+        now = self._monotonic()
+        self._last_activity = now
+        self._last_consolidation = now
 
     # ----- thread -> loop bridge -------------------------------------------
 
@@ -136,6 +165,10 @@ class Daemon:
         """
         if self._loop is None or self._queue is None or self._stop_event.is_set():
             return
+        # A real trigger event is activity: reset the idle clock so the
+        # sleep-cycle consolidation only fires during genuine rest. Placed after
+        # the guard so late events dropped during shutdown don't reset it.
+        self._last_activity = self._monotonic()
         try:
             self._loop.call_soon_threadsafe(self._queue.put_nowait, event)
         except RuntimeError:
@@ -170,6 +203,11 @@ class Daemon:
                             # Windows / non-main-thread: signals unavailable here.
                             logger.warning("add_signal_handler unavailable for %s; skipping", sig)
                 self._start_sources(loop)
+                # Sleep-cycle consolidation: idle + periodic agent-memory
+                # distill on its own poller thread. Long-running mode only —
+                # once=True (above) must never spawn poller threads.
+                if self._consolidate:
+                    self._start_consolidation(loop)
                 loop.run_until_complete(self._drain_loop())
         finally:
             self._stop_event.set()
@@ -313,6 +351,9 @@ class Daemon:
                 on_consumed()
 
     def _run_pipeline(self, paths: List[Path]) -> None:
+        # A pipeline run is activity: reset the idle clock so idle-triggered
+        # consolidation does not fire immediately after a compile.
+        self._last_activity = self._monotonic()
         gate = self._compile_gate if self._compile_gate is not None else nullcontext()
         with gate:
             # Visibility: without this line a long compile looks like a hang —
@@ -578,6 +619,135 @@ class Daemon:
                 tailer.tick()
         except Exception:  # noqa: BLE001 - daemon survives a dead source
             logger.exception("session-tail thread died")
+
+    # ----- sleep-cycle consolidation ---------------------------------------
+
+    def _start_consolidation(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Spawn the sleep-cycle consolidation thread (idle + periodic distill).
+
+        The brain-sleep analogy: agent memory is consolidated during *rest*,
+        not while work is in flight. Mirrors the poller-thread idiom
+        (:meth:`_start_watch_source`) — one ``daemon=True`` thread gated by the
+        shared ``stop_event`` that wakes every ``consolidate_check_interval``
+        and, when the project has been idle long enough (or the max interval has
+        elapsed), runs one consolidation pass UNDER the compile gate. ``loop`` is
+        unused (kept for signature parity with the other ``_start_*`` sources).
+        """
+        t = threading.Thread(
+            target=self._run_consolidation,
+            daemon=True,
+            name="consolidation",
+        )
+        t.start()
+        self._threads.append(t)
+
+    def _run_consolidation(self) -> None:
+        """Poll body for the consolidation source (mirrors ``_run_watch_source``).
+
+        Wakes every ``consolidate_check_interval`` and evaluates the idle /
+        periodic trigger against the monotonic activity clock. ``stop_event``
+        wakes it promptly on shutdown. A dead thread dies LOUDLY (logged)
+        without killing the daemon; a single failed consolidation is contained
+        by :meth:`_consolidation_tick` and never breaks the loop.
+        """
+        try:
+            while not self._stop_event.is_set():
+                # stop_event.wait() so a stopping daemon wakes promptly instead
+                # of sleeping out the full check interval (codex #6).
+                if self._stop_event.wait(self._consolidate_check_interval):
+                    break
+                self._consolidation_tick()
+        except Exception:  # noqa: BLE001 - daemon survives a dead source
+            logger.exception("consolidation thread died")
+
+    def _consolidation_tick(self) -> None:
+        """Evaluate the sleep-cycle trigger once; consolidate if due.
+
+        Two independent triggers, both measured on the monotonic clock:
+
+        * IDLE — no trigger event and no pipeline run for
+          ``consolidate_idle_seconds`` AND at least that long since the last
+          consolidation (the anti-thrash floor uses ``_last_consolidation``, not
+          ``_last_activity``, so a busy project that just went quiet cannot
+          re-fire immediately). This is the "consolidate during rest" path.
+        * CEILING — ``consolidate_max_interval_seconds`` elapsed since the last
+          consolidation regardless of activity (``0`` disables it). Guarantees a
+          periodic pass on a project that never goes quiet.
+
+        Runs UNDER the compile gate so it serializes with — and never overlaps —
+        a compile. Never raises; ``_last_consolidation`` is stamped after every
+        attempt (in a ``finally``) so a due-but-failed pass cannot hot-loop.
+        """
+        now = self._monotonic()
+        since_activity = now - self._last_activity
+        since_consolidation = now - self._last_consolidation
+        idle = (
+            since_activity >= self._consolidate_idle_seconds
+            and since_consolidation >= self._consolidate_idle_seconds
+        )
+        ceiling = (
+            self._consolidate_max_interval_seconds > 0
+            and since_consolidation >= self._consolidate_max_interval_seconds
+        )
+        if not (idle or ceiling):
+            return
+        if self._stop_event.is_set():
+            return
+        gate = self._compile_gate if self._compile_gate is not None else nullcontext()
+        try:
+            with gate:
+                self._consolidate_once()
+        except Exception as exc:  # noqa: BLE001 - consolidation never kills the loop
+            logger.error("consolidation raised (daemon survives): %s", exc)
+        finally:
+            self._last_consolidation = self._monotonic()
+
+    def _consolidate_once(self) -> None:
+        """Load the compiled graph and run one agent-memory consolidation pass.
+
+        Mirrors ``cli.py``'s ``step_agent_distill`` refresh path: load
+        ``.tesserae/graph.json`` (skip if absent) and call
+        :func:`maybe_distill_on_refresh`, which is triple-gated internally
+        (``TESSERAE_AGENT_DISTILL`` opt-in, per-agent watermark, per-agent memory
+        pressure) and never raises for per-agent failures — so this is a safe
+        no-op whenever the distill gate is off. Runs under the compile gate
+        (held by the caller).
+        """
+        graph_path = self.project_root / ".tesserae" / "graph.json"
+        if not graph_path.is_file():
+            logger.debug(
+                "consolidation: no compiled graph at %s; skipping", graph_path
+            )
+            return
+        from ..project import load_graph_file
+
+        graph = load_graph_file(graph_path)
+        cfg = self._load_config()
+        if self._distill_override is not None:
+            distill = self._distill_override
+        else:
+            from ..agent_distill import maybe_distill_on_refresh
+
+            distill = maybe_distill_on_refresh
+        summary = distill(self.project_root, graph, cfg=cfg, env=os.environ)
+        logger.info("consolidation for %s: %s", self.project_root.name, summary)
+
+    def _load_config(self) -> Optional[dict]:
+        """Best-effort read of ``.tesserae/config.json`` for the distill opt-in.
+
+        The agent-distill gate reads ``TESSERAE_AGENT_DISTILL`` from the env
+        first and only falls back to ``cfg['agent_distill']['enabled']``, so a
+        missing or unparseable config degrades safely to env-only gating. Never
+        raises.
+        """
+        config_path = self.project_root / ".tesserae" / "config.json"
+        if not config_path.is_file():
+            return None
+        try:
+            payload = json.loads(config_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return payload if isinstance(payload, dict) else None
 
     # ----- pidfile ---------------------------------------------------------
 

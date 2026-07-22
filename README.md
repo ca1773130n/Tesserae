@@ -114,8 +114,10 @@ an agent over MCP.
 
 **Keeps itself fresh.** A supervised engine watches sources and sessions,
 debounces bursts, recompiles, and runs a self-improvement pass that reinforces
-recurring findings and supersedes stale ones. One process can keep every project
-you own current.
+recurring findings and supersedes stale ones. Like a brain consolidating memory
+during rest, it also **consolidates agent memory on its own** when the project
+goes idle — a periodic sleep cycle, no command required. One process can keep
+every project you own current.
 
 **Gives every agent its own growing memory.** Distill each agent's experience
 into a bounded, higher-level layer; let managers read only the distilled layer of
@@ -165,6 +167,11 @@ via `agents drill`, never dropped. Time is the corpus clock, node identity never
 depends on LLM wording, and the artifacts stay deterministic. Full design in
 [docs/agent-memory.md](docs/agent-memory.md).
 
+You need not run `distill` by hand: leave `tesserae engine` running and it
+**consolidates on its own** during idle rest — a sleep cycle that wraps the
+same opt-in, memory-pressure-gated pass. See
+[docs/engine-consolidation.md](docs/engine-consolidation.md).
+
 ## MCP server
 
 `tesserae projects mcp-config` prints a ready server entry for Claude Code,
@@ -192,7 +199,7 @@ Run `tesserae --help` for the grouped list, `tesserae <cmd> --help` for flags.
 | `tesserae ask "<q>"` | LLM-planned, cited answer over the base. A smart router picks the target project; `--scope federated` merges them into one answer. |
 | `tesserae query "<q>"` | Raw retrieval — BM25/semantic search, no LLM synthesis. |
 | `tesserae context "<q>"` | On-demand cited context doc via PPR under `--budget`. |
-| `tesserae engine [--all]` | Supervised refresh daemon — watch, debounce, recompile. `--all` keeps every registered project fresh in one process. |
+| `tesserae engine [--all]` | Supervised refresh daemon — watch, debounce, recompile, and consolidate agent memory on idle (the sleep cycle; `--no-consolidate` to disable). `--all` keeps every registered project fresh in one process. |
 | `tesserae refresh` | One-shot: import new sessions → compile → sync vault. |
 | `tesserae agents …` | `init` (infer the org) · `tree` · `show` · `drill` — the layered-memory org tools. |
 | `tesserae distill` | Compact each agent's sessions into its bounded L1 memory layer. |
