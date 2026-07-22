@@ -1,57 +1,73 @@
 # Automatische Konsolidierung — der Schlafzyklus der Engine
 
 <!-- translations:start -->
-<p align="center"><a href="../engine-consolidation.md">English</a> · <a href="engine-consolidation.ko.md">한국어</a> · <a href="engine-consolidation.zh.md">中文</a> · <a href="engine-consolidation.ja.md">日本語</a> · <a href="engine-consolidation.ru.md">Русский</a> · <a href="engine-consolidation.es.md">Español</a> · <a href="engine-consolidation.fr.md">Français</a></p>
+<p align="center"><a href="../engine-consolidation.md">English</a> · <a href="engine-consolidation.ko.md">한국어</a> · <a href="engine-consolidation.zh.md">中文</a> · <a href="engine-consolidation.ja.md">日本語</a> · <a href="engine-consolidation.ru.md">Русский</a> · <a href="engine-consolidation.es.md">Español</a> · <a href="engine-consolidation.fr.md">Français</a> · <a href="engine-consolidation.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-Das Gehirn konsolidiert Erinnerungen während der Ruhe. Während du schläfst, wird die rohe Erfahrung des Tages reorganisiert, verdichtet und integriert — das Jüngste, Lauteste wird in stabile Struktur gefaltet. Tesseraes Motor macht dasselbe. Wenn ein Projekt **untätig** wird, hört der ständig laufende Daemon auf, auf die nächste Bearbeitung zu warten, und verbringt die ruhige Zeit damit, das Bekannte zu reorganisieren: Es führt einen Destillationspass durch, der jede Agent-Speicher reorganisiert, verdichtet und sicher vergisst.
+Das Gehirn konsolidiert Erinnerungen während des Schlafs. Während Sie schlafen, wird die rohe Erfahrung des Tages umorganisiert, komprimiert und integriert — die jüngsten, lauten Dinge werden in eine dauerhafte Struktur gefaltet. Die Tesserae-Engine macht das Gleiche. Wenn ein Projekt **inaktiv** wird, stoppt der immer aktive Daemon, auf die nächste Bearbeitung zu warten, und verbringt die ruhige Zeit damit, das zu reorganisieren, was er bereits weiß: er **komprimiert und vergisst** laute aktuelle Erinnerungen, lässt Wissen, das niemand abgerufen hat, **durch Nichtverwendung verblassen** und **entdeckt neue Verbindungen** zwischen dem, was überlebt.
 
-Bis jetzt lief dieser Pass nur auf Anfrage — `tesserae refresh` unter Speicherdruck oder ein explizites `tesserae distill`. Die Engine kompilierte bei jeder Datei und jedem Sitzungsereignis neu, konsolidierte sich aber nie automatisch. Der **Schlafzyklus** schließt diese Lücke: Lassen Sie `tesserae engine` laufen, und die Konsolidierung erfolgt während der Ruhe, ohne dass Sie einen Befehl speichern müssen.
+Bislang wurde dieser Durchgang nur ausgeführt, wenn Sie ihn anforderten — `tesserae refresh` unter Speicherdruck oder ein explizites `tesserae distill`. Die Engine recompilierte bei jeder Datei und jedem Sessionsereignis, konsolidierte sich aber nie automatisch. Der **Schlafzyklus** schließt diese Lücke: Lassen Sie `tesserae engine` laufen und die Konsolidierung findet während der Ruhe statt, ohne dass Sie sich einen Befehl merken müssen.
 
-Wie alles im System der [geschichteten Speicher](agent-memory.md), ist dies ein **no-op, wenn du nicht einwilligst** — der Daemon konsolidiert bei Untätigkeit, aber die Destillation darunter funktioniert nur, wenn `TESSERAE_AGENT_DISTILL` gesetzt ist.
+Wie alles im System der [geschichteten Erinnerungen](agent-memory.md) ist dies **ein Noop, wenn Sie nicht teilnehmen** — der Daemon konsolidiert im Leerlauf, aber die Destillation darunter funktioniert nur, wenn `TESSERAE_AGENT_DISTILL` eingestellt ist.
 
 ## Wann es auslöst
 
-Ein dedizierter Konsolidierungs-Thread wacht bei einem festen **Überprüfungsintervall** (Standard 30 Sekunden) auf und bewertet zwei unabhängige Auslöser gegen eine monotone Aktivitätsuhr:
+Ein dedizierter Konsolidierungs-Thread wacht in einem festen **Prüfintervall** (Standard 30 Sekunden) auf und bewertet zwei unabhängige Auslöser gegen eine monotone Aktivitätsuhr:
 
-- **Untätigkeitsauslöser.** Das Projekt hat mindestens `--consolidate-idle` Sekunden lang kein Auslöseereignis oder keine Pipeline-Ausführung gesehen (Standard **300s = 5 min**). Dies ist der Fall "Konsolidierung während der Ruhe" — die Engine bemerkte, dass du aufgehört hast zu arbeiten, und nutzte die Pause. Ein **Boden** seit der letzten Konsolidierung verhindert Zittern, daher wird ein geschäftiges Projekt, das gerade ruhig geworden ist, nicht bei empfindlichem Auslöser konsolidiert. - **Deckenauslöser.** Mindestens `--consolidate-every` Sekunden sind seit der letzten Konsolidierung vergangen, **unabhängig von Aktivität** (Standard **21600s = 6h**). Dies stellt sicher, dass sich ein durchgehend beschäftigtes Projekt trotzdem regelmäßig konsolidiert, anstatt nie einen ruhigen Moment zu bekommen. Wenn du es auf `0` setzt, wird die Decke deaktiviert — dann ist Untätigkeit der einzige Auslöser.
+- **Leerlauf-Auslöser.** Das Projekt hat mindestens `--consolidate-idle` Sekunden lang kein Triggerereignis und keine Pipeline-Ausführung gesehen (Standard **300 Sekunden = 5 Minuten**). Dies ist der Fall der "Konsolidierung während der Ruhe" — die Engine bemerkte, dass Sie aufgehört haben zu arbeiten, und nutzte die Pause. Ein **Boden** seit der letzten Konsolidierung verhindert Flattern, daher konsolidiert sich ein geschäftiges Projekt, das gerade ruhig geworden ist, nicht beim empfindlichen Auslöser.
+- **Obergrenze-Auslöser.** Mindestens `--consolidate-every` Sekunden sind seit der letzten Konsolidierung verstrichen, **unabhängig von der Aktivität** (Standard **21600 Sekunden = 6 Stunden**). Dies garantiert, dass ein ständig beschäftigtes Projekt sich immer noch regelmäßig konsolidiert, anstatt nie einen ruhigen Moment zu haben. Das Setzen auf `0` deaktiviert die Obergrenze — dann ist Leerlauf der einzige Auslöser.
 
-Jede Bearbeitung, jeder Sitzungszug oder jede Neukompilierung erhöht die Aktivitätsuhr, daher verstreicht das Untätigkeitsfenster nur während echter Ruhe. Beide Uhren sind **monoton**, niemals Wanduhr, und werden nie in Artefakten beibehalten — Konsolidierungszeitpunkt kann nie das byte-deterministische Diagramm stören.
+Jede Bearbeitung, jeder Sessionsdurchgang oder jede Neukompilierung erhöht die Aktivitätsuhr, daher verstreicht das Leerlauf-Fenster nur während echter Ruhe. Beide Uhren sind **monoton**, nie Wanduhr, und werden niemals in einem Artefakt beibehalten — Konsolidierungszeitpunkt kann niemals das Byte-deterministische Diagramm stören.
 
-## Was ausgeführt wird
+## Was ausgeführt wird — drei Operationen
 
-Jeder Auslöser lädt das kompilierte Diagramm aus `.tesserae/graph.json` (wenn die Datei fehlt, wird der Pass übersprungen) und ruft denselben `maybe_distill_on_refresh`-Einstiegspunkt auf, den `tesserae refresh` verwendet. Diese Funktion ist **dreifach überprüft** intern und wirft niemals einen Fehler pro Agent auf:
+Jede Auslösung lädt das kompilierte Diagramm aus `.tesserae/graph.json` (wenn die Datei fehlt, wird der Durchgang übersprungen) und führt drei Konsolidierungsvorgänge in der richtigen Reihenfolge aus. Zusammen spiegeln sie das wider, was ein ruhender Gehirn macht: die letzten lauten Dinge komprimieren, das nie Besuchteste verblassen lassen und neue Assoziationen zwischen dem, was überlebt, verkabeln.
 
-1. **Zustimmungtor** — `TESSERAE_AGENT_DISTILL=1` (oder `{"agent_distill": {"enabled": true}}` in `config.json`). Standardmäßig deaktiviert; der gesamte Zyklus ist ein sicheres no-op, bis du ihn setzt.
-2. **Pro-Agent-Wasserzeichen** — ein Agent, dessen Erkenntnisse sich seit seiner letzten Destillation nicht geändert haben, wird übersprungen.
-3. **Pro-Agent-Speicherdruck** — nur Agenten, deren undestillierten Erkenntnisse nicht mehr in die halbe Kontextlesart passen, werden konsolidiert (MemGPT-Stil-Auslöser).
+### 1. Komprimieren / vergessen — Destillation
 
-Auch wenn die Konsolidierung auf einem Zeitplan *auslöst*, *funktioniert* sie nur für Agenten, die zugestimmt haben und tatsächlich genug neuen Speicher angesammelt haben, um dies zu rechtfertigen. Siehe [Geschichteter Agent-Speicher](agent-memory.md) für das, was Destillation produziert.
+Ruft denselben `maybe_distill_on_refresh`-Einstiegspunkt auf, den `tesserae refresh` verwendet, um die Erinnerung jedes Agenten zu reorganisieren, zu komprimieren und sicher zu vergessen. Diese Funktion ist intern **dreifach gesperrt** und wird nie für einen Fehler pro Agent angehoben:
+
+1. **Opt-in-Tor** — `TESSERAE_AGENT_DISTILL=1` (oder `{"agent_distill": {"enabled": true}}` in `config.json`). Standardmäßig deaktiviert; der gesamte Zyklus ist ein sicherer Noop, bis Sie ihn einschalten.
+2. **Pro-Agent-Wasserstand** — ein Agent, dessen Ergebnisse sich seit der letzten Destillation nicht geändert haben, wird übersprungen.
+3. **Pro-Agent-Speicherdruck** — nur Agenten, deren undestillierte Ergebnisse nicht mehr in die Hälfte einer Kontextlesung passen, werden konsolidiert (MemGPT-Stil-Auslöser).
+
+Also auch wenn die Konsolidierung nach einem Zeitplan **auslöst**, **funktioniert** sie nur für Agenten, die sich angemeldet haben und tatsächlich genug neue Erinnerungen angesammelt haben, um sie zu rechtfertigen. Siehe [Geschichtete Agent-Erinnerung](agent-memory.md) für das, was Destillation produziert.
+
+### 2. Durch Nichtverwendung vergessen — LRU-Abbau beim Abrufen, nicht nur nach Alter
+
+Der Abbau der Destillation wird nicht mehr nur durch das Erstellungsalter vorangetrieben. Jede Lesefläche zeichnet den Zugriff auf die Ergebnisse, die sie zurückgibt, auf — `last_accessed_at` und `access_count` — in einem **`node_memory`-Sidecar**, niemals in `graph.json`. Bevor der Destillationsdurchgang den Abbau berechnet, fusioniert er diesen Live-Zugriffszustand in seine Arbeitsansicht, sodass ein Ergebnis, das seit seiner Erstellung nicht abgerufen wurde, abbaut und zur Absorption oder Herabstufung in Frage kommt, während eines, das kürzlich gelesen wurde, unabhängig von seinem Alter frisch bleibt. Dies ist **Abruf-Aktualität**, die LRU-Intuition (Least Recently Used) auf Erinnerungen angewendet: Wissen, das Sie weiterhin abrufen, bleibt erhalten; Wissen, das niemand anfordert, verblasst zuerst. Ein leerer Sidecar reproduziert das alte Verhalten nur nach Alter exakt, daher ist es vollständig rückwärtskompatibel.
+
+### 3. Zuordnen — neue Verbindungen entdecken
+
+Der letzte Vorgang sucht nach *neuen* Beziehungen zwischen dem, was überlebt hat. Er bettet destillierte Notizen ein und verknüpft Paare, deren Bedeutungen nahe beieinander liegen — **Einbettungs-Gating**, daher wird er nur ausgeführt, wenn ein echtes Einbettungs-Backend konfiguriert ist (der Hash-Stub wird übersprungen, nie rauschhafte Links produzierend). Die Entdeckung läuft innerhalb des Projekts und **übergreifend** und die Verbindungen, die sie findet, werden als `shares_concept_with`-Kanten mit einem `federation_semantic`-Marker geprägt.
+
+Entscheidend ist, dass diese erkannten Kanten in eine **Sidecar-Überlagerung** unter `.tesserae` geschrieben werden, *niemals* in `graph.json`. Die Überlagerung **sammelt sich über Zyklen an** — jeder Zuordnungsdurchgang dedupliciert und erweitert das, was frühere Durchgänge gefunden haben. Bei der Lesezeit (Abfrage, PPR-Expansion, Föderations-Ansichten) wird die Überlagerung **nur im Speicher** in das Diagramm zusammengeführt, genau wie die Pro-Agent-Ansichtsüberlagerung — daher wird das Byte-deterministische `graph.json` niemals berührt. Der gesamte Vorgang wird eingewickelt und wird nie in die Daemon-Schleife angehoben.
 
 ## Sicherheit und Determinismus
 
-- **Läuft unter dem Kompiliertor.** Konsolidierung erwirbt denselben Lock wie Neukompilierung, wird daher mit Kompilierungen serialisiert und **überlappt sich nie mit einer**. Ein ausstehender Kompilierung wartet auf eine laufende Konsolidierung und umgekehrt — das Diagramm wird nie beim Schreiben gelesen.
-- **Löst niemals in der Daemon-Schleife aus.** Der gesamte Pass ist umhüllt; Fehler werden protokolliert und der Thread wiederholt die Schleife. Eine fehlgeschlagene Konsolidierung beendet die Engine nie.
-- **No-op, wenn das Tor aus ist.** Mit `TESSERAE_AGENT_DISTILL` nicht gesetzt, lädt der Pass nichts Teures und gibt sofort zurück, daher kostet das Laufen des Schlafzyklus im Wesentlichen nichts.
-- **Deterministische Artefakte, unverändert.** Destillierte Artefakte bleiben angesichts ihrer Eingaben deterministisch; der Schlafzyklus ändert nur *wann* Destillation läuft, nie *was* sie produziert. Untätigkeitszeitpunkt lässt sich niemals in `graph.json` oder eine destillierte Ebene ein.
-- **Sauberer Shutdown.** Der Konsolidierungsthread beobachtet das Stop-Event des Daemons und beendet sich ordnungsgemäß bei `Ctrl-C` / Shutdown. Es ist nur eine Langzeitmodus-Funktion: `tesserae engine ... --once` startet es niemals.
+- **Läuft unter dem Kompilierungs-Tor.** Konsolidierung erwirbt das gleiche Sperren wie eine Neukompilierung, daher **serialisiert** sie sich mit Kompilierungen und **überlappt sich niemals**. Eine ausstehende Kompilierung wartet auf eine laufende Konsolidierung und umgekehrt — das Diagramm wird niemals während des Schreibens gelesen.
+- **Wird niemals in die Daemon-Schleife angehoben.** Der gesamte Durchgang wird eingewickelt; jeder Fehler wird protokolliert und der Thread schleift weiter. Eine fehlgeschlagene Konsolidierung bringt die Engine nie zum Abstürz.
+- **Noop, wenn das Tor aus ist.** Mit ungesetztem `TESSERAE_AGENT_DISTILL` lädt der Durchgang nichts Teures und kehrt sofort zurück, daher kostet die Beibehaltung des Schlafzyklus im Wesentlichen nichts.
+- **Deterministische Artefakte, unverändert.** Destillierte Artefakte bleiben deterministische bei ihren Eingaben; der Schlafzyklus ändert nur *wann* Destillation läuft, niemals *was* sie produziert. Leerlauf-Zeit leckt niemals in `graph.json` oder irgendeine destillierte Schicht.
+- **`graph.json` bleibt Byte-idempotent.** Keine neue Operation schreibt es. Der Zugriffszustand lebt im `node_memory`-Sidecar und erkannte Verbindungen in einer kumulativen Überlagerung — beide unter `.tesserae`, beide nur im Speicher bei Lesezeit zusammengeführt. Die maßgeblichen Diagramm-Bytes sind von Abrufverlauf oder erkannten Links unberührt.
+- **Sauberes Herunterfahren.** Der Konsolidierungs-Thread beobachtet das Stopperereignis des Daemon und wird bei `Ctrl-C` / Herunterfahren rasch beendet. Es ist nur eine Funktion im Langzeitlaufmodus: `tesserae engine ... --once` startet ihn niemals.
 
-## CLI-Flags
+## CLI-Flaggen
 
-| Flag | Standard | Wirkung |
+| Flagge | Standard | Effekt |
 |---|---|---|
-| `--consolidate` / `--no-consolidate` | on | Aktivieren oder deaktivieren Sie den Schlafzyklus vollständig. Standardmäßig aktiviert (no-op, wenn das Destillationstor nicht gesetzt ist). |
-| `--consolidate-idle SECONDS` | `300` | Ruhebereich: Konsolidieren Sie nach dieser vielen Sekunden Inaktivität. |
-| `--consolidate-every SECONDS` | `21600` | Decke: Konsolidieren Sie mindestens so häufig unabhängig von Aktivität. `0` deaktiviert die Decke. |
-| `--consolidate-check SECONDS` | `30` | Wie oft der Konsolidierungsthread aufwacht, um die Auslöser neu zu bewerten. |
+| `--consolidate` / `--no-consolidate` | on | Schlafzyklus vollständig aktivieren oder deaktivieren. Standardmäßig aktiviert (Noop, wenn Destillations-Tor nicht eingestellt). |
+| `--consolidate-idle SECONDS` | `300` | Ruhefenster: Konsolidierung nach dieser Anzahl von Sekunden ohne Aktivität. |
+| `--consolidate-every SECONDS` | `21600` | Obergrenze: Konsolidierung mindestens so häufig unabhängig von Aktivität. `0` deaktiviert die Obergrenze. |
+| `--consolidate-check SECONDS` | `30` | Wie oft der Konsolidierungs-Thread aufwacht, um die Auslöser neu zu bewerten. |
 
-## Flottenverhalten(`--all`)
+## Flotten-Verhalten(`--all`)
 
-`tesserae engine --all` hält jedes registrierte Projekt in einem einzigen Prozess frisch. Jede Projekteinheit erhält ihren eigenen Konsolidierungsthread mit denselben Reglern, und alle Einheiten teilen sich ein flottenweit Kompiliertor — daher wird eine Konsolidierung in einem Projekt gegen Kompilierungen in der gesamten Flotte serialisiert und überlappt sich nie.
+`tesserae engine --all` hält jedes registrierte Projekt in einem Prozess frisch. Jede Projekteinheit erhält ihren eigenen Konsolidierungs-Thread mit den gleichen Steuerelementen, und alle Einheiten teilen sich ein flottenweites Kompilierungs-Tor — daher serialisiert sich eine Konsolidierung in einem Projekt gegen Kompilierungen in der gesamten Flotte, überlappt sich mit keiner.
 
-## Durchgearbeitetes Beispiel
+## Ausgearbeitetes Beispiel
 
-Schalten Sie Destillation ein und führen Sie die Engine mit einem schnelleren Schlafzyklus für eine Demo aus — konsolidieren Sie nach 60 Sekunden Untätigkeit und mindestens alle 30 Minuten unabhängig:
+Aktivieren Sie Destillation, führen Sie dann die Engine mit einem schnelleren Schlafzyklus zu einer Demo aus — Konsolidierung nach 60 Sekunden Leerlauf und mindestens alle 30 Minuten unabhängig:
 
 ```bash
 export TESSERAE_AGENT_DISTILL=1
@@ -61,6 +77,6 @@ tesserae engine \
   --consolidate-check 15
 ```
 
-Arbeite wie gewohnt in deinem Editor und mit Agenten; die Engine beobachtet, entprallt und kompiliert jede Änderung neu. Stoppe eine Minute und der Untätigkeitsauslöser feuert: Der Konsolidierungsthread erwirbt das Kompiliertor und destilliert jeden Agent unter Speicherdruck — reorganisiert, verdichtet, vergisst sicher — und schläft dann wieder. Arbeite über die halbe Stunde hinaus ohne jemals zu pausieren, und die Decke wird auch auslösen, daher konsolidiert sich ein rücksichtslose Projekt trotzdem.
+Arbeiten Sie wie gewohnt in Ihrem Editor und in Ihren Agenten; die Engine beobachtet, puffert und recompiliert jede Änderung. Stoppen Sie eine Minute lang und der Leerlauf-Auslöser tritt auf: der Konsolidierungs-Thread erwirbt das Kompilierungs-Tor und destilliert jeden Agent unter Speicherdruck — reorganisiert, komprimiert und vergisst sicher — dann schläft wieder ein. Arbeiten Sie nach der 30-Minuten-Marke weiter, ohne jemals anzuhalten, und auch die Obergrenze tritt auf, daher konsolidiert sich ein unerbittliches Projekt immer noch.
 
-Um die Engine am Laufen zu halten, aber Konsolidierung für manuelle `tesserae distill`-Läufe zu hinterlassen, übergeben Sie `--no-consolidate`. Um es bei Untätigkeit auszuführen, aber nie auf einem festen Zeitplan, übergeben Sie `--consolidate-every 0`.
+Um die Engine laufen zu lassen, aber Konsolidierung manuellen `tesserae distill`-Läufen zu überlassen, übergeben Sie `--no-consolidate`. Um sie im Leerlauf laufen zu lassen, aber nie nach einem festen Zeitplan, übergeben Sie `--consolidate-every 0`.
