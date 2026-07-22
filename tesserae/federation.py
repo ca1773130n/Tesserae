@@ -371,16 +371,26 @@ def add_semantic_links(
     backend=None,
     max_candidates: int = 1500,
     cache_dir: Optional[Path] = None,
+    scope: str = "cross",
 ) -> Tuple[ResearchGraph, dict]:
-    """Add ``shares_concept_with`` edges between idea-bearing nodes from DIFFERENT
-    projects whose embeddings are similar — so federated PPR (already run by
-    ``compile_context``) can traverse RELATED, not just identical, concepts.
+    """Add ``shares_concept_with`` edges between idea-bearing nodes whose
+    embeddings are similar — so PPR (already run by ``compile_context``) can
+    traverse RELATED, not just identical, concepts.
 
     Embedding-backed and opt-in. Honest degradation: with only the hash-bucket
     stub (no real model) the similarities are noise, so we skip and say so.
     Deterministic given a fixed embedding model (id-sorted candidates, canonical
-    edge direction). Linking is cross-project only (nodes sharing a project are
-    never linked) and never duplicates an existing edge.
+    edge direction), and never duplicates an existing edge.
+
+    ``scope="cross"`` (default) links only nodes from DIFFERENT projects — nodes
+    sharing a project, or carrying no provenance at all, are never linked. This
+    is the federation path and stays byte-identical. ``scope="intra"`` relaxes
+    that for the consolidation "associate" pass
+    (:mod:`tesserae.memory.associate`): any two distinct candidates with DISJOINT
+    provenance are eligible, so idea nodes within ONE project (empty provenance)
+    and notes from DIFFERENT agents both link, while same-project / same-agent
+    pairs never do. The persisted link cache (``cache_dir``) is used for the
+    ``cross`` scope only — the associate pass keeps its own accumulating overlay.
     """
     # NB: numpy is imported only AFTER the stub-skip below, so `--semantic` on a
     # base install (no embedding extra, no numpy) degrades cleanly instead of
@@ -412,7 +422,7 @@ def add_semantic_links(
     # ponytail: caches the whole link set per project-combo, not incrementally —
     # fine until you federate many large overlapping project combos.
     cache_file = None
-    if cache_dir is not None:
+    if cache_dir is not None and scope == "cross":
         key = _semantic_cache_key(backend_name, top_k, min_cosine, max_candidates, candidates, existing)
         cache_file = Path(cache_dir) / f"links-{key}.json"
         if cache_file.is_file():
@@ -443,14 +453,18 @@ def add_semantic_links(
     new_edges: List[ResearchEdge] = []
     for i, node in enumerate(candidates):
         row = sims[i]
-        # cross-project ONLY: both nodes must carry provenance AND share no project
-        # (empty provenance is NOT treated as cross-project — guards direct calls
-        # on a non-federated graph).
+        # Eligibility. ``scope="cross"`` (default): both nodes must carry
+        # provenance AND share no project (empty provenance is NOT treated as
+        # cross-project — guards direct calls on a non-federated graph).
+        # ``scope="intra"`` (associate pass): any distinct pair with DISJOINT
+        # provenance — empty-provenance intra-project nodes and different-agent
+        # notes both qualify; same-project / same-agent pairs never do.
         scored = [
             (float(row[j]), candidates[j].id)
             for j in range(len(candidates))
-            if j != i and project_sets[i] and project_sets[j]
-            and not (project_sets[i] & project_sets[j]) and row[j] >= min_cosine
+            if j != i and row[j] >= min_cosine
+            and not (project_sets[i] & project_sets[j])
+            and (scope == "intra" or (project_sets[i] and project_sets[j]))
         ]
         scored.sort(key=lambda t: (-t[0], t[1]))
         for cosine, other_id in scored[:top_k]:

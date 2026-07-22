@@ -63,6 +63,7 @@ import sqlite3
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import (
     Callable,
     Dict,
@@ -80,6 +81,7 @@ from .llm_json import LLMJsonClient, build_default_json_client
 from .memory.decay import compute_decay_score
 from .memory.distill import _UnionFind
 from .memory.reinforce import compute_recurring_confidence
+from .memory.store import NodeMemoryRow, read_memory
 from .memory.supersede import _tokenise as _base_tokenise
 from .memory.supersede import jaccard
 from .research_graph import (
@@ -1779,20 +1781,77 @@ def _supersede_winners(graph: ResearchGraph) -> Set[str]:
     return sources - targets
 
 
+def _read_access_state(project_root: Path | str) -> Mapping[str, NodeMemoryRow]:
+    """Load ``{node_id: NodeMemoryRow}`` MCP read-access state for LRU decay.
+
+    Sidecar-only and best-effort. The live ``last_accessed_at`` / ``access_count``
+    that drive forgetting-by-disuse are accumulated by the MCP read surfaces into
+    the ``node_memory`` table of ``.tesserae/sqlite.db`` (see
+    :mod:`tesserae.memory.store`); this pass only READS them — it never records
+    access. Gated on the db file already existing so a pure-fixture distill that
+    never compiled does not lazily mint the sidecar (mirrors
+    ``mcp_server._read_node_memory``), and any error degrades to an empty map.
+
+    Determinism: with no sidecar rows the result is ``{}`` -> :func:`_decay_view`
+    is a no-op -> :func:`compute_decay_score` falls back to ``first_seen_at`` ->
+    the distillate is byte-identical to the pre-LRU artifact. The byte-parity
+    guards depend on this fallback staying exact.
+    """
+    db_path = _state_db_path(project_root)
+    if not db_path.exists():
+        return {}
+    try:
+        return read_memory(db_path)
+    except Exception:  # pragma: no cover — defensive; missing/locked/foreign db
+        return {}
+
+
+def _decay_view(node: ResearchNode, access: Mapping[str, NodeMemoryRow]) -> object:
+    """Return a decay-scoring view of ``node`` overlaid with live LRU access state.
+
+    Mirrors ``project.py``'s compile-time ``decay_node`` merge EXACTLY: when the
+    ``node_memory`` sidecar has a row for this node, copy the node's metadata and
+    overlay ``access_count`` / ``last_accessed_at`` onto the COPY, then score that
+    view — so a finding not retrieved for a long time decays toward absorb/demote
+    while a recently-read one is kept. The original ``node.metadata`` is never
+    touched (``model_dump`` would otherwise serialize wall-clock sidecar state
+    into ``graph.json`` and break byte-idempotence). With no matching row the
+    node is returned verbatim, so the empty-sidecar path is byte-identical.
+    """
+    prev = access.get(node.id)
+    if prev is None:
+        return node
+    base_meta = getattr(node, "metadata", None)
+    merged_meta = dict(base_meta) if isinstance(base_meta, dict) else {}
+    if prev.access_count:
+        merged_meta["access_count"] = prev.access_count
+    if prev.last_accessed_at:
+        merged_meta["last_accessed_at"] = prev.last_accessed_at
+    return SimpleNamespace(metadata=merged_meta)
+
+
 def _absorbable(
     node: ResearchNode,
     corpus_now: datetime,
     confidence: Mapping[str, float],
     winners: Set[str],
+    access: Mapping[str, NodeMemoryRow],
 ) -> bool:
-    """§6.1 Tier-1 gate — llm-quality distillates only; anchors never absorbed."""
+    """§6.1 Tier-1 gate — llm-quality distillates only; anchors never absorbed.
+
+    Decay is scored through :func:`_decay_view` so LRU access recency (when a
+    sidecar exists) drives absorption: a stale, never-retrieved finding falls
+    below ``_ABSORB_DECAY_BELOW`` and is absorbed, while a recently-read one is
+    kept. With no sidecar the view is a no-op and this reduces to the prior
+    creation-age behavior.
+    """
     if _kind(node) not in {t.value for t in SESSION_FINDING_TYPES}:
         return False
     if node.id in winners:
         return False
     if confidence.get(node.id, 0.0) >= _ABSORB_CONFIDENCE_BAR:
         return False
-    return compute_decay_score(node, corpus_now) < _ABSORB_DECAY_BELOW
+    return compute_decay_score(_decay_view(node, access), corpus_now) < _ABSORB_DECAY_BELOW
 
 
 # --------------------------------------------------------------------------- the pass
@@ -1922,6 +1981,16 @@ def distill_agent(
         )
     result.distilled_through = corpus_now_iso
 
+    # LRU forgetting-by-disuse (§6 / Phase-5 KB-01): load the node_memory
+    # sidecar's live read-access state ONCE, then thread it into every decay
+    # score (absorption gate + remainder ranking) via ``_decay_view``. This makes
+    # "not retrieved for a long time" — not merely "old" — drive forgetting.
+    # Read-only and sidecar-only: we never record access here (that is the MCP
+    # read surfaces' job) and never stamp it onto node.metadata, so graph.json
+    # stays byte-idempotent. With no sidecar the map is empty and the pass is
+    # byte-identical to the pre-LRU distillate (the determinism guards rely on it).
+    access = _read_access_state(project_root)
+
     # ---------------- cluster (§5.2) ----------------
     clusters = _cluster_scope_findings(
         findings,
@@ -1981,7 +2050,7 @@ def distill_agent(
             cluster_absorbed = [
                 node
                 for node in members
-                if _absorbable(node, corpus_now, confidence, winners)
+                if _absorbable(node, corpus_now, confidence, winners, access)
             ]
         absorbed_refs = [
             {"node_id": node.id, "content_hash": _node_content_hash(node)}
@@ -2066,7 +2135,9 @@ def distill_agent(
     prior_remainder: Set[str] = set(prior["remainder_ids"])
     eligible: List[ResearchNode] = []
     for node in remainder_pool:
-        decay = compute_decay_score(node, corpus_now)
+        # LRU: score through the sidecar-merged view so a recently-retrieved
+        # finding survives the decay cutoff while a stale one is demoted.
+        decay = compute_decay_score(_decay_view(node, access), corpus_now)
         threshold = (
             _REMAINDER_EXIT_DECAY if node.id in prior_remainder else _REMAINDER_ENTER_DECAY
         )

@@ -111,6 +111,7 @@ class Daemon:
         run_pipeline: Optional[Callable[[List[Path]], None]] = None,
         monotonic: Optional[Callable[[], float]] = None,
         distill: Optional[Callable[..., dict]] = None,
+        associate: Optional[Callable[..., dict]] = None,
     ) -> None:
         self.project_root = Path(project_root).resolve()
         self.debounce = debounce
@@ -137,6 +138,7 @@ class Daemon:
         )
         self._monotonic = monotonic if monotonic is not None else time.monotonic
         self._distill_override = distill
+        self._associate_override = associate
         self._pidfile = self.project_root / ".tesserae" / self.PIDFILE_NAME
         self._stop_event = threading.Event()
         self._threads: List[threading.Thread] = []
@@ -705,13 +707,23 @@ class Daemon:
     def _consolidate_once(self) -> None:
         """Load the compiled graph and run one agent-memory consolidation pass.
 
-        Mirrors ``cli.py``'s ``step_agent_distill`` refresh path: load
-        ``.tesserae/graph.json`` (skip if absent) and call
-        :func:`maybe_distill_on_refresh`, which is triple-gated internally
-        (``TESSERAE_AGENT_DISTILL`` opt-in, per-agent watermark, per-agent memory
-        pressure) and never raises for per-agent failures — so this is a safe
-        no-op whenever the distill gate is off. Runs under the compile gate
-        (held by the caller).
+        Two operations, in order, on the SAME loaded graph:
+
+        1. DISTILL (compress/forget) — mirrors ``cli.py``'s ``step_agent_distill``
+           refresh path: load ``.tesserae/graph.json`` (skip if absent) and call
+           :func:`maybe_distill_on_refresh`, which is triple-gated internally
+           (``TESSERAE_AGENT_DISTILL`` opt-in, per-agent watermark, per-agent
+           memory pressure) and never raises for per-agent failures — a safe
+           no-op whenever the distill gate is off.
+        2. ASSOCIATE (discover connections) — the third sleep-cycle operation:
+           :func:`tesserae.memory.associate.consolidate_associations` finds new
+           embedding-similar links and accumulates them into a ``.tesserae``
+           sidecar overlay (NEVER ``graph.json``). It resolves the app's semantic
+           backend (:meth:`_resolve_embedding_backend`); with no real backend it
+           skips honestly. It never raises, but the call is wrapped anyway so an
+           unexpected failure — or a test stub that throws — cannot break the tick.
+
+        Runs under the compile gate (held by the caller).
         """
         graph_path = self.project_root / ".tesserae" / "graph.json"
         if not graph_path.is_file():
@@ -731,6 +743,45 @@ class Daemon:
             distill = maybe_distill_on_refresh
         summary = distill(self.project_root, graph, cfg=cfg, env=os.environ)
         logger.info("consolidation for %s: %s", self.project_root.name, summary)
+
+        # Associate runs AFTER distill, on the same graph, under the same gate.
+        # It must never raise into the tick — consolidate_associations is already
+        # non-raising, but the wrap covers backend resolution and injected stubs.
+        if self._associate_override is not None:
+            associate = self._associate_override
+        else:
+            from ..memory.associate import consolidate_associations
+
+            associate = consolidate_associations
+        try:
+            backend = self._resolve_embedding_backend()
+            assoc = associate(self.project_root, graph, backend=backend)
+            logger.info("association for %s: %s", self.project_root.name, assoc)
+        except Exception as exc:  # noqa: BLE001 - associate never kills the tick
+            logger.error("association raised (daemon survives): %s", exc)
+
+    def _resolve_embedding_backend(self):
+        """Resolve the app's semantic embedding backend, or ``None`` when absent.
+
+        Resolves exactly the way semantic features do
+        (:func:`tesserae.retrieval.hybrid.active_embedding_backend`) and collapses
+        the non-semantic hash-bucket stub to ``None`` so the associate pass skips
+        honestly instead of discovering noise links off a stub model. Any
+        resolution failure degrades to ``None`` (never raises).
+        """
+        try:
+            from ..retrieval.hybrid import (
+                HashEmbeddingBackend,
+                active_embedding_backend,
+            )
+
+            backend = active_embedding_backend()
+            if isinstance(backend, HashEmbeddingBackend):
+                return None
+            return backend
+        except Exception as exc:  # noqa: BLE001 - unavailable backend -> honest skip
+            logger.debug("no semantic backend for association: %s", exc)
+            return None
 
     def _load_config(self) -> Optional[dict]:
         """Best-effort read of ``.tesserae/config.json`` for the distill opt-in.

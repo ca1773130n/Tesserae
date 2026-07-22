@@ -58,6 +58,54 @@ def load_review_decisions(path: Path) -> List[ReviewDecision]:
     return decisions
 
 
+def _bump_read_access(project_root, node_ids: Iterable[Optional[str]]) -> None:
+    """Best-effort LRU access bump for a CLI read surface.
+
+    Records a read of each id in the ``node_memory`` sidecar (never
+    ``graph.json``), mirroring the MCP read path so CLI-driven reads keep the
+    same findings alive against forgetting-by-disuse. Opens the sidecar once,
+    dedups ids, and swallows every failure so a read never breaks when the
+    memory layer is unavailable.
+    """
+    if project_root is None:
+        return
+    try:
+        from datetime import datetime, timezone
+
+        from .memory.store import bump_access as _bump_access
+
+        db_path = Path(project_root) / ".tesserae" / "sqlite.db"
+        if not db_path.parent.is_dir():
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        seen: set = set()
+        for raw in node_ids:
+            nid = str(raw) if raw else ""
+            if not nid or nid in seen:
+                continue
+            seen.add(nid)
+            try:
+                _bump_access(db_path, nid, now)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def _envelope_hit_ids(envelope) -> List[str]:
+    """Pull the ``node_id`` off each hit in an ask/query envelope (or ``[]``)."""
+    if not isinstance(envelope, dict):
+        return []
+    hits = envelope.get("hits")
+    if not isinstance(hits, list):
+        return []
+    return [
+        str(hit["node_id"])
+        for hit in hits
+        if isinstance(hit, dict) and hit.get("node_id")
+    ]
+
+
 def _project_query_handler(args) -> int:
     """Handle the ``query`` command (one-shot or interactive REPL).
 
@@ -127,6 +175,7 @@ def _project_query_handler(args) -> int:
         except Exception as exc:
             print(f"query failed: {exc}", file=sys.stderr)
             return 2
+        _bump_read_access(args.project, _envelope_hit_ids(envelope))
         return _emit_ask_envelope(envelope, json_output=json_output)
 
     wq = WikiQuery(project_root, top_k=top_k, kind_filter=kind_filter)
@@ -155,6 +204,9 @@ def _project_query_handler(args) -> int:
         result = wq.answer(question, history=history)
         if agent_node_ids is not None:
             result.hits = [hit for hit in result.hits if hit.node_id in agent_node_ids]
+        # LRU: the surfaced hits count as reads (sidecar only; covers both the
+        # one-shot and the interactive REPL path).
+        _bump_read_access(project_root, (hit.node_id for hit in result.hits))
         return result
 
     use_llm = env_enabled()  # REPL history tracking only; flags moved to `ask`
@@ -544,6 +596,9 @@ def _top_level_ask_handler(args) -> int:
         print(f"ask failed: {exc}", file=sys.stderr)
         return 2
 
+    # LRU: the cited/retrieved hits count as reads of those nodes (single
+    # project; the cross-project scopes are handled by their own dispatchers).
+    _bump_read_access(wiki.project_root, _envelope_hit_ids(envelope))
     return _emit_ask_envelope(envelope, json_output=bool(args.json_output))
 
 
@@ -1948,6 +2003,15 @@ def _handle_context(args: argparse.Namespace) -> int:
         print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
         return 2
     graph = _load_graph_file(wiki.paths.graph)
+    # Merge the discovered-connections overlay so compiled context can traverse
+    # shares_concept_with links (in-memory only; no-op when absent — never
+    # touches graph.json). Applied to the base before any agent view is built.
+    try:
+        from .memory.associate import apply_overlay
+
+        graph = apply_overlay(wiki.project_root, graph)
+    except Exception:
+        pass
     agent = getattr(args, "agent", None)
     if agent:
         resolved = _resolve_agent_view_or_none(
@@ -1966,6 +2030,8 @@ def _handle_context(args: argparse.Namespace) -> int:
         synthesize=args.synthesize,
         multi_pool=getattr(args, "multi_pool", False),
     )
+    # LRU: the nodes selected into the bundle count as reads (sidecar only).
+    _bump_read_access(wiki.project_root, bundle.selected_nodes)
     if args.output:
         Path(args.output).write_text(bundle.body, encoding="utf-8")
         print(

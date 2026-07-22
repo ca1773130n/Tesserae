@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import logging
 import os
 import re
 import sys
@@ -44,6 +45,8 @@ from .wiki_store import WikiPageStore
 
 
 JSONDict = Dict[str, Any]
+
+_LOG = logging.getLogger(__name__)
 
 
 # Cap raw payload sizes returned to MCP clients so a malicious / huge file
@@ -139,6 +142,26 @@ def load_graph(path: str | Path) -> ResearchGraph:
 
 def node_to_dict(node: ResearchNode) -> JSONDict:
     return node.model_dump()
+
+
+def _hit_node_ids(payload: Any) -> List[str]:
+    """Pull the ``node_id`` off each hit in an ask/query envelope.
+
+    Both ``ask_project`` and the wiki ``query`` path return an envelope with a
+    ``hits`` list whose items carry a (possibly ``None``) ``node_id``. Missing
+    ``hits`` (e.g. a not-enabled/no-answer envelope) yields an empty list, so
+    the LRU bump degrades to a no-op rather than raising.
+    """
+    if not isinstance(payload, dict):
+        return []
+    hits = payload.get("hits")
+    if not isinstance(hits, list):
+        return []
+    return [
+        str(hit["node_id"])
+        for hit in hits
+        if isinstance(hit, dict) and hit.get("node_id")
+    ]
 
 
 def edge_to_dict(edge: ResearchEdge) -> JSONDict:
@@ -1685,8 +1708,9 @@ class LLMWikiMCPServer:
             weights = None
             if isinstance(weights_arg, dict):
                 weights = {str(k): float(v) for k, v in weights_arg.items()}
-            return self.search_nodes(
-                self._load_requested_graph(args),
+            graph, project_root = self._load_requested_graph_with_root(args)
+            result = self.search_nodes(
+                graph,
                 query=query,
                 types=type_filter or None,
                 kinds=kind_filter or None,
@@ -1695,6 +1719,11 @@ class LLMWikiMCPServer:
                 weights=weights,
                 include_superseded=bool(args.get("include_superseded", False)),
             )
+            # LRU: record a read of every node this search surfaced (sidecar only).
+            self._bump_nodes_access(
+                project_root, (n.get("id") for n in result.get("nodes", []))
+            )
+            return result
         if name == "embedding_status":
             return self.embedding_status()
         if name == "node_context":
@@ -1811,12 +1840,19 @@ class LLMWikiMCPServer:
             node_id = args.get("node_id")
             if not node_id:
                 raise ValueError("find_session_findings requires 'node_id'")
-            graph = self._load_requested_graph(args)
-            return self._mcp_find_session_findings(
+            graph, project_root = self._load_requested_graph_with_root(args)
+            result = self._mcp_find_session_findings(
                 graph,
                 node_id=str(node_id),
                 kinds=args.get("kinds"),
             )
+            # LRU: reading a node's findings via this tool is a read of each
+            # surfaced finding — refresh their access so active use keeps them
+            # above the absorb/demote threshold (mirrors search_nodes/node_context).
+            self._bump_nodes_access(
+                project_root, (f.get("node_id") for f in result.get("findings", []))
+            )
+            return result
         if name == "find_code_symbol_mentions":
             node_id = args.get("node_id")
             if not node_id:
@@ -1830,7 +1866,7 @@ class LLMWikiMCPServer:
             if seed is None or (isinstance(seed, (list, tuple)) and not seed):
                 raise ValueError("graph_ppr requires 'seed_node_id'")
             seed_ids = _coerce_str_list(seed) if not isinstance(seed, str) else [seed]
-            graph = self._load_requested_graph(args)
+            graph, project_root = self._load_requested_graph_with_root(args)
             edge_weights = args.get("edge_type_weights") or None
             # Preserve an explicit alpha (even a tiny one like 0.05) rather
             # than collapsing it via ``or 0.15``. ``alpha=0`` is rejected
@@ -1838,7 +1874,7 @@ class LLMWikiMCPServer:
             # ``exclusiveMinimum: 0``.
             alpha_arg = args.get("alpha")
             alpha = 0.15 if alpha_arg is None else float(alpha_arg)
-            return self._mcp_graph_ppr(
+            result = self._mcp_graph_ppr(
                 graph,
                 seed_ids=seed_ids,
                 top_k=int(args.get("top_k") or 20),
@@ -1849,6 +1885,12 @@ class LLMWikiMCPServer:
                     args.get("exclude_direct_neighbors") or False
                 ),
             )
+            # LRU: navigating to and reading the ranked nodes is a read —
+            # refresh access so actively-surfaced findings don't decay.
+            self._bump_nodes_access(
+                project_root, (r.get("node_id") for r in result.get("results", []))
+            )
+            return result
         if name == "compile_context":
             from .context_compiler import compile_context
 
@@ -1875,6 +1917,8 @@ class LLMWikiMCPServer:
                 multi_pool=multi_pool,
                 include_superseded=bool(args.get("include_superseded", False)),
             )
+            # LRU: the nodes actually selected into the bundle count as reads.
+            self._bump_nodes_access(project_root, bundle.selected_nodes)
             preview = int(args.get("preview") or 0)
             if preview > 0 and len(bundle.body) > preview:
                 handle = _HANDLES.put(bundle.body)
@@ -2948,13 +2992,19 @@ class LLMWikiMCPServer:
             from .query import ask_project
 
             wiki = ProjectWiki.load(project_root)
-            return ask_project(wiki, cleaned, backend="raganything", top_k=bounded)
+            envelope = ask_project(wiki, cleaned, backend="raganything", top_k=bounded)
+            self._bump_nodes_access(
+                project_root, _hit_node_ids(envelope)
+            )
+            return envelope
         from .query import WikiQuery
 
         wq = WikiQuery(project_root, top_k=bounded, kind_filter=kind)
         result = wq.answer(cleaned, force_no_llm=True)
         payload = result.to_dict()
         payload["backend"] = "wiki"
+        # LRU: the retrieved hits count as reads (sidecar only).
+        self._bump_nodes_access(project_root, _hit_node_ids(payload))
         return payload
 
     def _mcp_ask(
@@ -2978,7 +3028,11 @@ class LLMWikiMCPServer:
 
         project_root = self._resolve_project_root_for_ask(args)
         wiki = ProjectWiki.load(project_root)
-        return ask_project(wiki, question, top_k=top_k, use_llm=use_llm, no_llm=no_llm)
+        envelope = ask_project(wiki, question, top_k=top_k, use_llm=use_llm, no_llm=no_llm)
+        # LRU: the retrieved/cited hits count as reads (single-project scope;
+        # the cross-project federated/all-registered fan-outs are not bumped).
+        self._bump_nodes_access(project_root, _hit_node_ids(envelope))
+        return envelope
 
     def _mcp_ask_federated(
         self, *, question: str, scope_aliases: List[str], semantic: bool = True,
@@ -3117,7 +3171,8 @@ class LLMWikiMCPServer:
             ]
             node_payload = node_to_dict(node)
             node_payload["superseded"] = node.id in _superseded_ids(graph)
-            self._bump_node_access(project_root, node.id)
+            # LRU: the focal node AND the neighbourhood it surfaced are reads.
+            self._bump_nodes_access(project_root, [node.id, *ppr_neighbor_ids])
             return {"node": node_payload, "edges": [edge_to_dict(edge) for edge in incident_edges], "neighbors": neighbors}
         neighbor_ids = []
         for edge in incident_edges:
@@ -3134,8 +3189,14 @@ class LLMWikiMCPServer:
         ]
         node_payload = node_to_dict(node)
         node_payload["superseded"] = node.id in _superseded_ids(graph)
-        # KB-02: record that an agent actually read this node.
-        self._bump_node_access(project_root, node.id)
+        # KB-02/LRU: record that an agent actually read this node AND the live
+        # neighbours surfaced alongside it (the nodes actually returned).
+        surfaced_neighbor_ids = [
+            neighbor_id
+            for neighbor_id in neighbor_ids
+            if neighbor_id in node_by_id and neighbor_id not in suppressed
+        ]
+        self._bump_nodes_access(project_root, [node.id, *surfaced_neighbor_ids])
         return {"node": node_payload, "edges": [edge_to_dict(edge) for edge in incident_edges], "neighbors": neighbors}
 
     def _bump_node_access(self, project_root: Optional[Path], node_id: str) -> None:
@@ -3158,7 +3219,41 @@ class LLMWikiMCPServer:
             _bump_access(db_path, node_id, now)
         except Exception:
             # Best-effort signal; never propagate sidecar failures to a read.
-            pass
+            _LOG.debug("bump_access failed for node %s", node_id, exc_info=True)
+
+    def _bump_nodes_access(
+        self, project_root: Optional[Path], node_ids: Iterable[Optional[str]]
+    ) -> None:
+        """Record a read of every id in ``node_ids`` (LRU access signal).
+
+        Batch form of :meth:`_bump_node_access` for read surfaces that return a
+        list of nodes (search_nodes, compile_context selection, ask/query hits,
+        drill_down). Dedups ids and bumps each through the sidecar accessor
+        (one connection per distinct id). Writes the ``node_memory`` sidecar
+        ONLY, never ``graph.json``. Best-effort: a
+        sidecar failure is logged at debug and swallowed so a read never breaks.
+        """
+        if project_root is None:
+            return
+        try:
+            from datetime import datetime, timezone
+
+            from .memory.store import bump_access as _bump_access
+
+            db_path = project_root / ".tesserae" / "sqlite.db"
+            now = datetime.now(timezone.utc).isoformat()
+            seen: set[str] = set()
+            for raw in node_ids:
+                nid = str(raw) if raw else ""
+                if not nid or nid in seen:
+                    continue
+                seen.add(nid)
+                try:
+                    _bump_access(db_path, nid, now)
+                except Exception:
+                    _LOG.debug("bump_access failed for node %s", nid, exc_info=True)
+        except Exception:
+            _LOG.debug("bump_nodes_access setup failed", exc_info=True)
 
     def _load_requested_graph(self, args: JSONDict) -> ResearchGraph:
         graph, _root = self._load_requested_graph_with_root(args)
@@ -3180,6 +3275,28 @@ class LLMWikiMCPServer:
         return graph, root
 
     def _load_base_graph_with_root(self, args: JSONDict) -> Tuple[ResearchGraph, Optional[Path]]:
+        """Load the requested graph (with discovered-link overlay) plus its root.
+
+        Thin wrapper over :meth:`_resolve_base_graph_with_root` that merges the
+        accumulated connection-discovery overlay (``associate.apply_overlay``)
+        so discovered ``shares_concept_with`` edges are traversable by every
+        read surface — search/PPR/federation/agent views built on top of this
+        base. In-memory ONLY (``apply_overlay`` returns a fresh graph, never
+        mutating the mtime-cached instance, and never writes ``graph.json``);
+        a no-op when there is no project root or no overlay on disk. Best-effort
+        — an overlay failure degrades to the un-overlaid graph.
+        """
+        graph, root = self._resolve_base_graph_with_root(args)
+        if root is not None:
+            try:
+                from .memory.associate import apply_overlay
+
+                graph = apply_overlay(root, graph)
+            except Exception:
+                _LOG.debug("apply_overlay failed for %s", root, exc_info=True)
+        return graph, root
+
+    def _resolve_base_graph_with_root(self, args: JSONDict) -> Tuple[ResearchGraph, Optional[Path]]:
         """Load the requested graph plus the project root for filesystem lookups.
 
         ``project_root`` is the directory containing ``.tesserae/`` for the
@@ -3242,7 +3359,7 @@ class LLMWikiMCPServer:
 
         # Reuse the shared, audit-logged core. Inject the server's mtime-cached
         # L1 loader so behavior stays byte-identical to the in-process cache.
-        return drill_down(
+        result = drill_down(
             root,
             graph,
             str(args.get("node_id") or ""),
@@ -3250,6 +3367,11 @@ class LLMWikiMCPServer:
             agent=str(args.get("agent") or ""),
             l1_loader=self._load_graph_cached,
         )
+        # LRU: an explicit drill escalation is a read of the resolved node —
+        # unless it is `gone` (absent from L0), where there is nothing to bump.
+        if isinstance(result, dict) and result.get("status") != "gone":
+            self._bump_nodes_access(root, [result.get("node_id")])
+        return result
 
     def _load_graph_cached(self, graph_path: Path) -> ResearchGraph:
         """Load graph.json, returning a cached copy when mtime is unchanged."""

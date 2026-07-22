@@ -81,13 +81,16 @@ read), the MemGPT-style consolidation trigger.
 ## Automatic consolidation (the sleep cycle)
 
 You do not have to remember to distill. Like a brain consolidating memory
-during rest, the always-on `tesserae engine` daemon runs the same distillation
-pass on its own whenever a project goes **idle** (no edits or sessions for a
-few minutes), plus a periodic ceiling so a continuously busy project still
-consolidates. It wraps exactly the `maybe_distill_on_refresh` trigger described
-above — the same opt-in gate, per-agent watermark, and memory-pressure checks —
-so it is a no-op unless `TESSERAE_AGENT_DISTILL` is set, runs under the compile
-gate, and never disturbs the deterministic artifacts.
+during rest, the always-on `tesserae engine` daemon consolidates on its own
+whenever a project goes **idle** (no edits or sessions for a few minutes), plus
+a periodic ceiling so a continuously busy project still consolidates. Each fire
+runs three operations: it **compresses and forgets** (the distillation pass
+below), lets unretrieved knowledge **fade by disuse** (the LRU decay above),
+and **discovers new connections** between what survives. The distillation step
+wraps exactly the `maybe_distill_on_refresh` trigger described above — the same
+opt-in gate, per-agent watermark, and memory-pressure checks — so the cycle is
+a no-op unless `TESSERAE_AGENT_DISTILL` is set, runs under the compile gate, and
+never disturbs the deterministic artifacts.
 
 Full behavior, CLI flags (`--consolidate-idle` / `--consolidate-every` /
 `--consolidate-check`), and fleet notes:
@@ -100,9 +103,31 @@ Full behavior, CLI flags (`--consolidate-idle` / `--consolidate-every` /
   reads — but stays reachable via `include_superseded` and `drill_down`.
 - **Demote**: everything else at worst drops from full body to a title+ref
   line in the agent's Index note. Age alone never makes knowledge invisible.
+- **By disuse (LRU)**: decay is driven by *retrieval recency*, not creation
+  age alone. Read surfaces record access — `last_accessed_at` / `access_count`
+  — into a `node_memory` sidecar (never into `graph.json`). Distillation merges
+  that live access state into its working view **before** computing decay, so a
+  finding nothing ever retrieves decays and becomes eligible to be absorbed or
+  demoted, while one that was read recently is kept regardless of age. An empty
+  sidecar reproduces the old age-only behavior exactly.
 - **Ledger**: every promotion/demotion/absorption is appended to a forget
   ledger and surfaced by `tesserae lint` (`AGENT_FORGET_LEDGER`), along with
   an undistilled-backlog metric per agent (`AGENT_UNDISTILLED_BACKLOG`).
+
+## Discovered connections
+
+Beyond compacting and forgetting, consolidation also **discovers new
+connections** between distilled notes — across agents within the project, not
+just within one agent. It embeds notes and links close pairs as `shares_concept_with`
+edges (carrying a `federation_semantic` marker). Discovery is **embedding-gated**
+— it runs only when a real embedding backend is configured, and skips the hash
+stub — so it never manufactures spurious links. The edges are written to an
+accumulating **sidecar overlay** under `.tesserae`, *never* into `graph.json`,
+and are merged in memory at query / PPR / federation read time (exactly like
+the scoped-view overlay). Each consolidation cycle dedups against and extends
+what earlier cycles found. See
+[docs/engine-consolidation.md](engine-consolidation.md) for the sleep-cycle
+operation that runs it.
 
 ## Reading a scoped view
 

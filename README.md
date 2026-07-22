@@ -116,8 +116,10 @@ an agent over MCP.
 debounces bursts, recompiles, and runs a self-improvement pass that reinforces
 recurring findings and supersedes stale ones. Like a brain consolidating memory
 during rest, it also **consolidates agent memory on its own** when the project
-goes idle — a periodic sleep cycle, no command required. One process can keep
-every project you own current.
+goes idle — a periodic sleep cycle, no command required: it compacts and forgets
+loud recent memory, **forgets by disuse** (knowledge nothing retrieves fades,
+not just old knowledge), and **discovers new connections** between what
+survives. One process can keep every project you own current.
 
 **Gives every agent its own growing memory.** Distill each agent's experience
 into a bounded, higher-level layer; let managers read only the distilled layer of
