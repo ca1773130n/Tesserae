@@ -1,88 +1,100 @@
-# 分层代理内存 — 按代理知识图
+# 分层代理内存 — 每个代理的知识图
 
 <!-- translations:start -->
 <p align="center"><a href="../agent-memory.md">English</a> · <a href="agent-memory.ko.md">한국어</a> · <a href="agent-memory.ja.md">日本語</a> · <a href="agent-memory.ru.md">Русский</a> · <a href="agent-memory.es.md">Español</a> · <a href="agent-memory.fr.md">Français</a> · <a href="agent-memory.de.md">Deutsch</a></p>
 <!-- translations:end -->
 
-没有人能记住所有事情，任何代理的上下文窗口也装不下所有信息。Tesserae 的解决方案是一个**分层知识库**：每个代理从自己的会话中积累自己的记忆，该记忆定期**提炼**（组织、压缩、打磨、精化——并安全地遗忘），管理者只看到其报告的提炼层。管理者的管理者看到进一步的汇总。就像真实的组织一样，没有任何单一的读者需要整个档案。
+没有人记得一切——没有任何代理的上下文窗口能容纳一切。
+Tesserae 的答案是一个**分层知识库**：每个代理从自己的会话中成长自己的内存，该内存定期被**蒸馏**(组织、压缩、精炼、完善——并且安全地遗忘)，管理者只看到他们报告的蒸馏层。管理者的管理者看到进一步的汇总。像真正的组织一样，单一读者永远不需要整个档案。
 
-下面的所有内容都是选择加入且附加的：从不运行 `tesserae distill` 的项目的行为与之前完全相同。
+下面的一切都是可选的和附加的：从不运行 `tesserae distill` 的项目的行为与以前完全相同。
 
 ## 各层
 
-- **L0 — 项目图** (`.tesserae/graph.json`)。不变，仍然保持字节幂等性。编译的结构化阶段现在为每个观察到的代理生成一个 `Agent` 节点，以及从每个会话到该节点的 `performed_by` 边——原始属性，零 LLM 成本。
-- **L1 — 每个代理一个工件** (`.tesserae/agents/<key>/distilled.graph.json`)。由 `tesserae distill` 写入。普通图文件限制在**单个 48k 读取**内，因此任何代理都可以在单个调用中加载其整个提炼的内存。
-- **L2 — 管理者汇总。** 提炼具有报告的代理时，汇总报告的 L1：按血统去重，按共享原始证据分组，**逐字**执行最佳笔记——LLM 重新汇总深度限制为 1，因此摘要永远不会是摘要的释义。同一阶段递归到任何组织深度。
+- **L0 — 项目图** (`.tesserae/graph.json`)。不变。仍然
+  字节幂等。编译的结构过程现在对每个观察到的代理铸造一个 `Agent` 节点，加上从每个会话到 `performed_by` 边——原始归属，零 LLM 成本。
+- **L1 — 每个代理一个工件** (`.tesserae/agents/<key>/distilled.graph.json`)。
+  由 `tesserae distill` 编写。一个普通的图形文件，受限于**单次 48k
+  读取**，因此任何代理都可以在单个调用中加载其整个蒸馏内存。
+- **L2' — 管理者汇总。** 蒸馏具有报告的代理时，汇总报告的 L1：按谱系去重、按共享的原始证据分组，并逐字保留最佳注释——LLM 重新摘要深度上限为 1，因此摘要永远不是摘要的改写。相同的通过递归到任何组织深度。
 
 ## 代理身份
 
-代理键为 `harness:account:role`——角色级别，因此 `reviewer` 子代理和 `planner` 子代理即使在一台机器上也会发展出*不同的*专业知识。角色来自成绩单中的子代理描述符，然后来自声明性注册表匹配规则，最后回退到 `default`。
+代理由 `harness:account:role` 键控——角色等级，所以 `reviewer` 子代理和 `planner` 子代理即使在同一台机器上也会发展*不同的*专业知识。角色来自记录中的子代理描述符，然后是声明性注册表匹配规则，然后回退到 `default`。
 
 ```bash
 tesserae agents init         # 扫描会话，推断组织，写入 .tesserae/agents/registry.json
-tesserae agents tree         # 组织图，带会话计数 + 压缩陈旧
-tesserae agents list         # 观察到的键、标签、父级、会话计数
+tesserae agents tree         # 组织结构图，带有会话数 + 蒸馏过时
+tesserae agents list         # 观察到的键、标签、父项、会话数
 tesserae agents set-parent claude-code:me:reviewer claude-code:me:manager
-tesserae agents rename <old> <new>   # 原子性迁移工件目录 + 注册表
+tesserae agents rename <old> <new>   # 原子地迁移工件目录 + 注册表
 ```
 
-`init` 从角色信号推断层次结构：子代理角色
-（`claude-code:me:reviewer`）被父化为生成它的主代理
-（`claude-code:me:default`），因此一个命令给你一个工作的多级组织
-——无需 `set-parent`。传递 `--flat` 以强制旧的所有-在-根下图表。`set-parent` 仅适用于更深的手工设计的层次结构。无配置：在没有注册表的情况下，每个代理隐式报告给 `org:root`，
-`agent="org"` 是完整的团队概览。
+`init` 从角色信号推断层次结构。子代理角色(`claude-code:me:reviewer`)被分配给生成它的主代理(`claude-code:me:default`)，因此一个命令给你一个有效的多级组织——不需要 `set-parent`。传递 `--flat` 强制旧的"所有人在根下"图表。`set-parent` 仅用于更深层、手工设计的层次结构。零配置仍然有效：没有注册表，每个代理报告给 `org:root`，`agent="org"` 是平面团队概览。
 
-## 提炼
+## 蒸馏
 
 ```bash
 tesserae distill                      # 每个代理，叶子优先，管理者最后
-tesserae distill --agent <key>        # 单个代理
-tesserae distill --dry-run            # 估算 LLM 调用，不写入任何内容
-tesserae distill --max-llm-calls 50   # 硬预算；限制的运行在重新运行上汇合
-tesserae distill --retry-fallbacks    # 重新尝试退回的集群
-tesserae distill --full               # 忽略水位线，从头重新提炼
+tesserae distill --agent <key>        # 一个代理
+tesserae distill --dry-run            # 估计 LLM 调用，不写任何内容
+tesserae distill --max-llm-calls 50   # 硬预算；上限运行在重新运行上收敛
+tesserae distill --retry-fallbacks    # 重新尝试回退的集群
+tesserae distill --full               # 忽略水位标，从头重新蒸馏
 ```
 
-该阶段对代理的发现进行集群化、汇总每个集群（引用列入白名单和忠实性封闭），并生成提炼的笔记，其身份是**血统键**——底层原始 L0 证据的哈希，永远不是 LLM 的措辞。缓存是激进的且共享的：未更改的输入被水位线跳过，成长的集群增量折叠、提供商故障被断路器处理并生成确定性结构退回（已标记、可重试、永远不会作为成功缓存）。
+该通过将代理的发现聚类、摘要每个集群(引用白名单和真实性检查)，并铸造蒸馏的笔记，其身份是**谱系键**——底层原始 L0 证据的哈希，永远不是 LLM 的措辞。缓存是主动的且共享的。未更改的输入被水位标跳过、生长的集群递增折叠、提供者故障被断路并产生确定性结构回退(标记、可重试、永远不作为成功缓存)。
 
-提炼是**选择加入的**：设置 `TESSERAE_AGENT_DISTILL=1`（或 `config.json` 中的 `{"agent_distill": {"enabled": true}}`）。启用后，`tesserae refresh` 也会自动提炼——但仅提炼*内存压力*下的代理（其未提炼的发现不再适应上下文读取的一半），MemGPT 风格的合并触发。
+蒸馏是**可选的**：设置 `TESSERAE_AGENT_DISTILL=1`(或 `config.json` 中的 `{"agent_distill": {"enabled": true}}`)。启用时，`tesserae refresh` 也会自动蒸馏——但仅限于**内存压力**下的代理(其未蒸馏的发现不再适合半个上下文读取)，MemGPT 风格的整合触发器。
+
+## 自动整合(睡眠周期)
+
+你不必记得蒸馏。像大脑在休息中整合记忆一样，始终在线的 `tesserae engine` 守护程序在项目**闲置**时自动整合(几分钟内没有编辑或会话)，加上定期的上限，因此持续繁忙的项目仍然会整合。每次运行执行三项操作：它**压缩和遗忘**(下面的蒸馏通过)，让未检索的知识**因不使用而衰减**(上面的 LRU 衰减)，并**发现存活下来的内容之间的新连接**。蒸馏步骤完全包装上面描述的 `maybe_distill_on_refresh` 触发器——相同的可选择门、每个代理水位标和内存压力检查——因此循环是无操作，除非 `TESSERAE_AGENT_DISTILL` 被设置、在编译门下运行且不干扰确定性工件。
+
+完整行为、CLI 标志(`--consolidate-idle` / `--consolidate-every` / `--consolidate-check`)和车队笔记：
+[docs/engine-consolidation.md](engine-consolidation.md)。
 
 ## 遗忘 — 永不删除
 
-- **吸收**：衰减、低信度发现被高质量 llm 提炼覆盖时，将其折叠到其中（`absorbed_refs`）并在默认读取中抑制——但仍可通过 `include_superseded` 和 `drill_down` 访问。
-- **降级**：所有其他内容最坏情况下从完整正文降至代理索引注记中的标题+参考行。仅年龄永远不会使知识不可见。
-- **账本**：每个升级/降级/吸收都追加到遗忘账本，由 `tesserae lint` 呈现（`AGENT_FORGET_LEDGER`），以及每个代理的未提炼积压指标（`AGENT_UNDISTILLED_BACKLOG`）。
+- **吸收**：一个衰减的、低置信度的发现被 llm 质量蒸馏液覆盖，会被折叠到它 (`absorbed_refs`) 并在默认读取中被抑制——但通过 `include_superseded` 和 `drill_down` 仍可到达。
+- **降级**：其他所有东西最坏的情况下从完整正文下降到代理索引注释中的标题+参考行。仅年龄永远不会使知识不可见。
+- **因不使用 (LRU)**：衰减由*检索最近性*驱动，而不仅仅是创建年龄。读取表面记录访问——`last_accessed_at` / `access_count`——到一个 `node_memory` sidecar(绝不进入 `graph.json`)。蒸馏在计算衰减**之前**将该活动访问状态合并到其工作视图中，因此从未检索到的发现衰减并变得有资格被吸收或降级，而最近读过的发现则无论年龄如何都保持。空 sidecar 完全再现了旧的仅年龄行为。
+- **分类账**：每个升级/降级/吸收都追加到遗忘分类账并由 `tesserae lint` 表面化(`AGENT_FORGET_LEDGER`)，以及每个代理的未蒸馏积压指标(`AGENT_UNDISTILLED_BACKLOG`)。
+
+## 发现的连接
+
+除了压缩和遗忘外，整合还会**发现蒸馏笔记之间的新连接**——跨项目内的代理，而不仅仅是在一个代理内。它嵌入笔记并将接近的对链接为 `shares_concept_with` 边(带有 `federation_semantic` 标记)。发现被**嵌入门控**——仅当配置了真实嵌入后端时运行，并跳过哈希存根——因此它永远不会制造虚假链接。边被写入到 `.tesserae` 下累积的**边车覆盖层**，*永远*不会进入 `graph.json`，并在查询/PPR/联合读取时在内存中合并(完全像范围视图覆盖)。每个整合周期对之前周期发现的内容进行去重和扩展。有关运行它的睡眠周期操作，请参见
+[docs/engine-consolidation.md](engine-consolidation.md)。
 
 ## 读取作用域视图
 
-从 **CLI**，`--agent KEY` 作用于 `query`、`ask` 和 `context`：
+从**CLI**，`--agent KEY` 对 `query`、`ask` 和 `context` 进行范围界定。
 
 ```bash
-tesserae query "release checklist" --agent claude-code:me:reviewer   # 工作者视图
+tesserae query "release checklist" --agent claude-code:me:reviewer   # 工人视图
 tesserae ask "what does my team know about deploys?" --agent org      # 整个团队
-tesserae agents show claude-code:me:manager    # 模式、成员、陈旧
+tesserae agents show claude-code:me:manager    # 模式、成员、过时
 tesserae agents drill SessionInsight:abc123 --agent claude-code:me:reviewer
 ```
 
-通过 **MCP**，每个图形读取工具接受相同的 `agent=`。在两种情况下
-键解析为以下之一：
+在**MCP**，每个图形读取工具都接受相同的 `agent=`。在两种情况下，密钥解析为以下之一：
 
-- **工作键** → 自己的原始体验 ∪ 自己的提炼笔记，提炼首选（吸收的原始在加载时由导出的覆盖自动抑制——没有任何内容被写回 `graph.json`）。
-- **管理键** → 仅限报告的 L1 工件的联合。原始发现永远不会向上泄露。
-- **`org`** → 所有提炼工件，零配置。
+- **工人密钥** → 自己的原始经验 ∪ 自己的蒸馏笔记，蒸馏液首选(吸收的原始由加载时派生的覆盖层自动抑制——永远不会写回 `graph.json`)。
+- **管理者密钥** → 仅报告 L1 工件的联合。原始发现永远不会向上泄露。
+- **`org`** → 所有蒸馏工件，零配置。
 
-支持工具：`agents show` / `agent_view_explain`（成员 + `distilled_through` 陈旧水位线——每份报告的专业知识有多旧）和 `agents drill` / `drill_down`（将提炼笔记的 `member_refs` 解析回原始 L0 证据，包括活跃/已更改/已吸收/已消失状态——每个调用审计记录）。`compile_context --multi-pool` 为提炼笔记和专业知识档案预留预算插槽，并标记输出中的陈旧或退回质量知识。
+支持工具：`agents show` / `agent_view_explain`(成员 + `distilled_through` 陈旧水位标——每份报告的专业知识有多旧)，以及 `agents drill` / `drill_down`(将蒸馏笔记的 `member_refs` 解析回原始 L0 证据，状态为"活跃/已更改/已吸收/已消失"——每个调用均被审计记录)。`compile_context --multi-pool` 为蒸馏笔记和专业知识档案预留预算插槽，并在输出中标记陈旧或回退质量的知识。
 
 ## 增长循环
 
-- **按代理的工具**：`write_harness` 代理模式为每个代理发出一个工具目录，其 MCP 配置到达该代理的解决视图，加上从其专业知识档案生成的一次性种子 `purpose.md` 任务页面。
-- **按代理的指导**：通过 `.tesserae/extraction-guidance-<key>.md` 在项目级 `.tesserae/distill-guidance.md` 之上分层来指导一个代理的提炼。编辑一个代理的流只会重新提炼该代理。
-- **语义网桥**（选择加入）：在管理器/组织视图中用 `shares_concept_with` 边链接*相关的*提炼——边，永不合并。
-- **主题地图**：`agent_topics` 将代理的提炼集合卷成确定性 `topics.md`——代理的目录。
-- **子代理升级**：类型化子代理运行在子代理自己的键下生成发现，因此委派工作累积到委派人的专业知识中。
+- **每个代理一个线束**：`write_harness` 代理模式为每个代理发出一个线束目录，其 MCP 配置到达该代理的已解析视图，加上一个仅播种一次的 `purpose.md` 任务页面，从其专业知识档案生成。
+- **每个代理指导**：通过 `.tesserae/extraction-guidance-<key>.md` 指导一个代理的蒸馏，分层位于项目级别 `.tesserae/distill-guidance.md` 上。编辑一个代理的流只重新蒸馏该代理。
+- **语义桥**(可选)：在管理者/组织视图中用 `shares_concept_with` 边链接*相关的*蒸馏液——边，不是合并。
+- **主题映射**：`agent_topics` 将代理的蒸馏液集合转换成确定性 `topics.md` ——代理的目录。
+- **子代理晋升**：类型化子代理运行在子代理自己的键下生成发现，因此委派的工作积累到代表的专业知识。
 
 ## 确定性保证
 
-项目图保持字节幂等；提炼工件在给定（图字节、注册表、缓存目录、先前工件、选项）时是确定性的。时间总是**语料库时钟**——会话本身中最新的时刻，递归地对于管理者来说最新的子水位线——永远不是挂钟。节点身份不依赖于 LLM 散文。Lint 探针拒绝代理层节点上的时间戳/计数器形状的元数据，因为这正是破坏字节幂等性的状态类。
+项目图保持字节幂等；蒸馏工件在给定(图字节、注册表、缓存目录、先前工件、选项)时是确定性的。时间总是**语料时钟**——会话本身的最新时刻，递归地为管理者提供最新的子水位标——永远不是挂钟时间。节点标识不取决于 LLM 散文。Lint 探针拒绝代理层节点上的时间戳/计数器形元数据，因为那个精确的状态类之前已经打破了字节幂等。
 
-完整的设计基本原理：`docs/superpowers/specs/2026-07-19-layered-agent-kg.md`。
+完整设计基本原理：`docs/superpowers/specs/2026-07-19-layered-agent-kg.md`。
