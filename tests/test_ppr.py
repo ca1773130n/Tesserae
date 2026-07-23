@@ -234,6 +234,41 @@ def test_tame_hubs_degree_cap_is_deterministic() -> None:
     assert first == second
 
 
+def test_hub_ids_scopes_the_degree_cap_to_listed_nodes() -> None:
+    """The sidecar hub list (Descent PR8) replaces the fanout scan verbatim."""
+    graph = _hub_graph(250)
+
+    scan = personalized_pagerank(graph, seed_ids=["seed"], top_k=300, tame_hubs=True)
+    listed = personalized_pagerank(
+        graph, seed_ids=["seed"], top_k=300, tame_hubs=True, hub_ids=["hub"]
+    )
+    # Naming the actual hub reproduces the scan's cap byte-for-byte.
+    assert listed == scan
+
+    # An EMPTY hub list means "no hubs" — nothing is capped (unlike None,
+    # which keeps the PR1 scan): every leaf receives mass again.
+    uncapped = personalized_pagerank(
+        graph, seed_ids=["seed"], top_k=300, tame_hubs=True, hub_ids=[]
+    )
+    assert len(uncapped) == 252
+
+    # Unknown ids are dropped silently (seed_ids contract) — same as empty.
+    unknown = personalized_pagerank(
+        graph, seed_ids=["seed"], top_k=300, tame_hubs=True, hub_ids=["ghost"]
+    )
+    assert unknown == uncapped
+
+
+def test_hub_ids_ignored_without_tame_hubs() -> None:
+    """hub_ids is flag-gated: without tame_hubs it must change nothing."""
+    graph = _hub_graph(250)
+    plain = personalized_pagerank(graph, seed_ids=["seed"], top_k=300)
+    with_list = personalized_pagerank(
+        graph, seed_ids=["seed"], top_k=300, tame_hubs=False, hub_ids=["hub"]
+    )
+    assert with_list == plain
+
+
 # -- MCP tool wiring ---------------------------------------------------------
 
 
