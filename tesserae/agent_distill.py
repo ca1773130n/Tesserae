@@ -76,6 +76,7 @@ from typing import (
 )
 
 from .agent_identity import ORG_ROOT, AgentRegistry, sanitize_agent_key
+from .context_compiler import fit_to_budget
 from .llm_chunking import chunk_char_budget, pack_blocks
 from .llm_json import LLMJsonClient, build_default_json_client
 from .memory.decay import compute_decay_score
@@ -2207,17 +2208,18 @@ def distill_agent(
     # TESSERAE_LLM_CHUNK_CHARS env var is no §7.2 declared input and must
     # never move the index-truncation point (= artifact bytes).
     budget = options.artifact_char_budget or ARTIFACT_CHAR_BUDGET
-    index_entries = list(index_pool)
-    truncated = 0
-    while True:
-        artifact = _assemble(index_entries, truncated)
-        rendered = artifact.canonicalized().to_json(indent=2) + "\n"
-        if len(rendered) <= budget or not index_entries:
-            break
-        # Roll the OLDEST index entries into the deterministic count line.
-        drop = max(1, min(len(index_entries), 32))
-        index_entries = index_entries[:-drop]
-        truncated += drop
+    # CTX-01 helper in render mode (§5.3): drop the OLDEST index entries from
+    # the tail (32 per step) into the deterministic count line until the
+    # rendered artifact fits — byte-identical to the historical inline loop
+    # (the distill determinism tests are the oracle).
+    fit = fit_to_budget(
+        index_pool,
+        budget,
+        render=lambda kept, dropped: (
+            _assemble(kept, dropped).canonicalized().to_json(indent=2) + "\n"
+        ),
+    )
+    rendered = fit.payload or ""
 
     result.artifact_chars = len(rendered)
     size_level = artifact_size_level(len(rendered), budget)
@@ -2713,16 +2715,16 @@ def _distill_manager(
         )
 
     budget = options.artifact_char_budget or ARTIFACT_CHAR_BUDGET
-    index_entries = sorted(sibling_index_pool, key=lambda n: n.id)
-    truncated = 0
-    while True:
-        artifact = _assemble(index_entries, truncated)
-        rendered = artifact.canonicalized().to_json(indent=2) + "\n"
-        if len(rendered) <= budget or not index_entries:
-            break
-        drop = max(1, min(len(index_entries), 32))
-        index_entries = index_entries[:-drop]
-        truncated += drop
+    # CTX-01 helper in render mode (§5.3) — same byte-identical migration as
+    # the worker loop above.
+    fit = fit_to_budget(
+        sorted(sibling_index_pool, key=lambda n: n.id),
+        budget,
+        render=lambda kept, dropped: (
+            _assemble(kept, dropped).canonicalized().to_json(indent=2) + "\n"
+        ),
+    )
+    rendered = fit.payload or ""
 
     result.artifact_chars = len(rendered)
     size_level = artifact_size_level(len(rendered), budget)

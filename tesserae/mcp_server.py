@@ -21,6 +21,10 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from .activity_summary import build_summary, resolve_windows
 from .cli_tree import package_version as _package_version
+from .context_compiler import (
+    _truncate_to_budget as _truncate_text,
+    fit_to_budget,
+)
 from .ports import GraphStore
 from .retrieval.hybrid import (
     DEFAULT_WEIGHTS as _HYBRID_DEFAULT_WEIGHTS,
@@ -166,6 +170,93 @@ def _hit_node_ids(payload: Any) -> List[str]:
 
 def edge_to_dict(edge: ResearchEdge) -> JSONDict:
     return edge.model_dump()
+
+
+# ------------------------------------------------------------------ CTX-01 clamps
+
+#: Default per-response character budget (CTX-01, §5.3) — matches
+#: ``compile_context``'s default ``budget`` so both bounds behave identically
+#: (budget currency is chars everywhere; explicit 0 = uncapped).
+DEFAULT_BUDGET_CHARS = 32_000
+
+#: Deterministic stand-in for a metadata block too big for the per-entry cap
+#: (mirrors the list_communities member_ids -> count elision precedent).
+_ELIDED_METADATA = {
+    "_elided": "metadata over the per-entry budget cap; refetch with budget_chars=0"
+}
+
+
+def _measure_item(item: JSONDict) -> int:
+    """Serialized size of a payload item in chars — the unit CTX-01 admits in."""
+    return len(json.dumps(item, ensure_ascii=False, default=str))
+
+
+def _clamp_payload_item(item: JSONDict, cap: int, text_field: str) -> JSONDict:
+    """Clamp one ``model_dump`` payload to the CTX-01 per-entry cap.
+
+    Truncates the dominant ``text_field`` first (word-boundary cut, visible
+    marker), then elides an oversized ``metadata`` block, re-measuring after
+    each step — JSON escaping can shrink less than the raw cut, so the trim
+    iterates (strictly decreasing, always terminates). Returns the item
+    untouched when it already fits or ``cap <= 0`` (uncapped). When even the
+    remaining structural fields exceed ``cap`` the item is returned best-effort
+    — admission still measures its actual size. Deterministic, never raises.
+    """
+    if cap <= 0 or _measure_item(item) <= cap:
+        return item
+    clamped = dict(item)
+    while True:
+        size = _measure_item(clamped)
+        if size <= cap:
+            return clamped
+        text = str(clamped.get(text_field) or "")
+        if text:
+            clamped[text_field] = _truncate_text(
+                text, max(0, len(text) - (size - cap))
+            )
+            continue
+        meta = clamped.get("metadata")
+        if isinstance(meta, (dict, list)) and meta and meta != _ELIDED_METADATA:
+            clamped["metadata"] = dict(_ELIDED_METADATA)
+            continue
+        return clamped
+
+
+def _fit_payload_list(
+    items: Sequence[JSONDict],
+    budget_chars: int,
+    text_field: str = "description",
+) -> Tuple[List[JSONDict], Optional[str]]:
+    """Apply CTX-01 to a list of ``model_dump`` payloads.
+
+    Each item is clamped to the per-entry cap (``budget_chars // 8``), then
+    whole items are greedily admitted in input order via
+    :func:`tesserae.context_compiler.fit_to_budget` over their serialized
+    forms. Returns ``(kept_items, continuation)`` where ``continuation`` is the
+    single ``+N more, cursor=K`` line iff items were dropped.
+    ``budget_chars <= 0`` is the uncapped passthrough.
+    """
+    items = list(items)
+    if budget_chars <= 0 or not items:
+        return items, None
+    cap = budget_chars // 8
+    clamped = [_clamp_payload_item(item, cap, text_field) for item in items]
+    fit = fit_to_budget(
+        [json.dumps(item, ensure_ascii=False, default=str) for item in clamped],
+        budget_chars,
+    )
+    return clamped[: len(fit.entries)], fit.continuation
+
+
+def _budget_chars_arg(args: Mapping[str, Any]) -> int:
+    """Parse the ``budget_chars`` tool argument, preserving an explicit 0.
+
+    An explicit ``budget_chars=0`` means uncapped (compile_context's
+    ``budget=0`` invariant) — so no ``or``-coercion; only default when the
+    argument is absent/None.
+    """
+    raw = args.get("budget_chars")
+    return DEFAULT_BUDGET_CHARS if raw is None else int(raw)
 
 
 DEFAULT_REGISTRY_PATH = Path.home() / ".tesserae" / "registry.json"
@@ -444,6 +535,7 @@ class LLMWikiMCPServer:
         graph_path_prop = {"type": "string", "description": "Path to a ResearchGraph JSON file. Defaults to the project you are in (cwd), then server --graph."}
         project_prop = {"type": "string", "description": "Registered project name (see list_projects). Overridden by graph_path."}
         agent_prop = {"type": "string", "description": "Agent-scoped view: a worker key (own raw + distilled memory), a manager key (federated reports' distillates), or 'org' (all distilled artifacts). Requires a project root; see agents list / tesserae distill."}
+        budget_chars_prop = {"type": "integer", "minimum": 0, "default": DEFAULT_BUDGET_CHARS, "description": "CTX-01 response budget in characters: each returned item is clamped to budget_chars/8 and overflow items are dropped behind one '+N more, cursor=K' continuation line. 0 = uncapped."}
         return [
             {
                 "name": "schema",
@@ -514,6 +606,7 @@ class LLMWikiMCPServer:
                                 "Default false suppresses them."
                             ),
                         },
+                        "budget_chars": budget_chars_prop,
                     },
                     "additionalProperties": False,
                 },
@@ -551,6 +644,7 @@ class LLMWikiMCPServer:
                                 "by this node instead of a 1-hop walk."
                             ),
                         },
+                        "budget_chars": budget_chars_prop,
                     },
                     "additionalProperties": False,
                 },
@@ -566,6 +660,7 @@ class LLMWikiMCPServer:
                         "query": {"type": "string", "description": "Whitespace-separated fact search terms."},
                         "current_only": {"type": "boolean", "default": False},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10},
+                        "budget_chars": budget_chars_prop,
                     },
                     "required": ["query"],
                     "additionalProperties": False,
@@ -581,6 +676,7 @@ class LLMWikiMCPServer:
                         "project": project_prop, "agent": agent_prop,
                         "query": {"type": "string", "description": "Optional fact search terms."},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
+                        "budget_chars": budget_chars_prop,
                     },
                     "additionalProperties": False,
                 },
@@ -1735,6 +1831,7 @@ class LLMWikiMCPServer:
                 mode=mode,
                 weights=weights,
                 include_superseded=bool(args.get("include_superseded", False)),
+                budget_chars=_budget_chars_arg(args),
             )
             # LRU: record a read of every node this search surfaced (sidecar only).
             self._bump_nodes_access(
@@ -1753,13 +1850,28 @@ class LLMWikiMCPServer:
                 limit=int(args.get("limit", 50)),
                 include_superseded=bool(args.get("include_superseded", False)),
                 use_ppr=bool(args.get("use_ppr") or False),
+                budget_chars=_budget_chars_arg(args),
             )
         if name == "search_facts":
             facts = TemporalFactProjector().project(self._load_requested_graph(args))
-            return search_facts(facts, query=str(args.get("query", "")), limit=int(args.get("limit", 10)), current_only=bool(args.get("current_only", False)))
+            result = search_facts(facts, query=str(args.get("query", "")), limit=int(args.get("limit", 10)), current_only=bool(args.get("current_only", False)))
+            # CTX-01: per-fact truncation of evidence blocks (§5.3).
+            result["facts"], continuation = _fit_payload_list(
+                result["facts"], _budget_chars_arg(args), text_field="evidence"
+            )
+            if continuation:
+                result["continuation"] = continuation
+            return result
         if name == "timeline":
             facts = TemporalFactProjector().project(self._load_requested_graph(args))
-            return timeline(facts, query=str(args.get("query", "")), limit=int(args.get("limit", 50)))
+            result = timeline(facts, query=str(args.get("query", "")), limit=int(args.get("limit", 50)))
+            # CTX-01: per-fact truncation of evidence blocks (§5.3).
+            result["events"], continuation = _fit_payload_list(
+                result["events"], _budget_chars_arg(args), text_field="evidence"
+            )
+            if continuation:
+                result["continuation"] = continuation
+            return result
         if name == "wiki_page":
             graph, project_root = self._load_requested_graph_with_root(args)
             return self.wiki_page(
@@ -2675,6 +2787,7 @@ class LLMWikiMCPServer:
         mode: str = "hybrid",
         weights: Optional[Dict[str, float]] = None,
         include_superseded: bool = False,
+        budget_chars: int = DEFAULT_BUDGET_CHARS,
     ) -> JSONDict:
         """Search public ResearchGraph nodes.
 
@@ -2687,6 +2800,12 @@ class LLMWikiMCPServer:
 
         The return shape (``query``, ``total_matches``, ``nodes``) is
         unchanged; ``mode`` is appended so clients can confirm what ran.
+
+        ``budget_chars`` enforces CTX-01 on the response: each returned node
+        payload is clamped to the per-entry cap (``budget_chars // 8`` —
+        the count was already clamped by ``limit``, per-node size was not) and
+        whole payloads are greedily admitted until the budget; a drop adds one
+        ``continuation`` line. ``budget_chars=0`` = uncapped.
         """
         type_filter = {str(item) for item in types or []}
         kind_filter = {str(item).lower() for item in kinds or []}
@@ -2728,12 +2847,18 @@ class LLMWikiMCPServer:
                 for score, _index, node in scored
                 if score > 0 or not terms
             ]
-            return {
+            page, continuation = _fit_payload_list(
+                matches[:bounded_limit], budget_chars
+            )
+            out: JSONDict = {
                 "query": query,
                 "mode": "legacy",
                 "total_matches": len(matches),
-                "nodes": matches[:bounded_limit],
+                "nodes": page,
             }
+            if continuation:
+                out["continuation"] = continuation
+            return out
 
         result = _hybrid_search(
             graph,
@@ -2752,7 +2877,8 @@ class LLMWikiMCPServer:
                 "ranks": item.ranks,
             }
             nodes_out.append(payload)
-        return {
+        nodes_out, continuation = _fit_payload_list(nodes_out, budget_chars)
+        out = {
             "query": query,
             "mode": result.mode,
             "backend": result.backend,
@@ -2763,6 +2889,9 @@ class LLMWikiMCPServer:
             "total_matches": int(result.total_matches),
             "nodes": nodes_out,
         }
+        if continuation:
+            out["continuation"] = continuation
+        return out
 
     def embedding_status(self) -> JSONDict:
         """Report the active embedding backend used by hybrid search."""
@@ -3151,11 +3280,18 @@ class LLMWikiMCPServer:
             "by_project": by_project,
         }
 
-    def node_context(self, graph: ResearchGraph, project_root: Optional[Path] = None, node_id: Optional[str] = None, node_name: Optional[str] = None, limit: int = 50, include_superseded: bool = False, use_ppr: bool = False) -> JSONDict:
+    def node_context(self, graph: ResearchGraph, project_root: Optional[Path] = None, node_id: Optional[str] = None, node_name: Optional[str] = None, limit: int = 50, include_superseded: bool = False, use_ppr: bool = False, budget_chars: int = DEFAULT_BUDGET_CHARS) -> JSONDict:
         node = self._find_node(graph, node_id=node_id, node_name=node_name)
         if not node:
             raise ValueError("Node not found; provide an exact node_id or node name")
         bounded_limit = max(1, min(limit, 200))
+        # CTX-01 (§5.3): per-item size clamp — the counts were already clamped
+        # by ``limit``, per-item size was not. Node payloads trim their
+        # description, edge payloads their evidence; neighbours additionally go
+        # through greedy admission (one ``continuation`` line on drop).
+        # ``budget_chars=0`` = uncapped (``_clamp_payload_item`` no-ops on
+        # ``cap <= 0``).
+        per_entry_cap = budget_chars // 8 if budget_chars > 0 else 0
         suppressed = set() if include_superseded else _superseded_ids(graph)
         node_by_id = {candidate.id: candidate for candidate in graph.nodes}
         # Incident edges whose OTHER endpoint is suppressed are dropped along
@@ -3205,11 +3341,26 @@ class LLMWikiMCPServer:
             neighbors = [
                 node_to_dict(node_by_id[nid]) for nid in ppr_neighbor_ids
             ]
+            neighbors, continuation = _fit_payload_list(neighbors, budget_chars)
             node_payload = node_to_dict(node)
             node_payload["superseded"] = node.id in _superseded_ids(graph)
-            # LRU: the focal node AND the neighbourhood it surfaced are reads.
-            self._bump_nodes_access(project_root, [node.id, *ppr_neighbor_ids])
-            return {"node": node_payload, "edges": [edge_to_dict(edge) for edge in incident_edges], "neighbors": neighbors}
+            node_payload = _clamp_payload_item(node_payload, per_entry_cap, "description")
+            # LRU: the focal node AND the neighbourhood actually RETURNED are
+            # reads (budget-dropped neighbours were not surfaced).
+            self._bump_nodes_access(
+                project_root, [node.id, *(str(n.get("id")) for n in neighbors)]
+            )
+            out: JSONDict = {
+                "node": node_payload,
+                "edges": [
+                    _clamp_payload_item(edge_to_dict(edge), per_entry_cap, "evidence")
+                    for edge in incident_edges
+                ],
+                "neighbors": neighbors,
+            }
+            if continuation:
+                out["continuation"] = continuation
+            return out
         neighbor_ids = []
         for edge in incident_edges:
             other_id = edge.target if edge.source == node.id else edge.source
@@ -3223,17 +3374,27 @@ class LLMWikiMCPServer:
             for neighbor_id in neighbor_ids
             if neighbor_id in node_by_id and neighbor_id not in suppressed
         ]
+        neighbors, continuation = _fit_payload_list(neighbors, budget_chars)
         node_payload = node_to_dict(node)
         node_payload["superseded"] = node.id in _superseded_ids(graph)
+        node_payload = _clamp_payload_item(node_payload, per_entry_cap, "description")
         # KB-02/LRU: record that an agent actually read this node AND the live
-        # neighbours surfaced alongside it (the nodes actually returned).
-        surfaced_neighbor_ids = [
-            neighbor_id
-            for neighbor_id in neighbor_ids
-            if neighbor_id in node_by_id and neighbor_id not in suppressed
-        ]
-        self._bump_nodes_access(project_root, [node.id, *surfaced_neighbor_ids])
-        return {"node": node_payload, "edges": [edge_to_dict(edge) for edge in incident_edges], "neighbors": neighbors}
+        # neighbours surfaced alongside it (the nodes actually RETURNED —
+        # budget-dropped neighbours were not surfaced).
+        self._bump_nodes_access(
+            project_root, [node.id, *(str(n.get("id")) for n in neighbors)]
+        )
+        out = {
+            "node": node_payload,
+            "edges": [
+                _clamp_payload_item(edge_to_dict(edge), per_entry_cap, "evidence")
+                for edge in incident_edges
+            ],
+            "neighbors": neighbors,
+        }
+        if continuation:
+            out["continuation"] = continuation
+        return out
 
     def _bump_node_access(self, project_root: Optional[Path], node_id: str) -> None:
         """Atomically bump access_count/last_accessed_at for a read node.

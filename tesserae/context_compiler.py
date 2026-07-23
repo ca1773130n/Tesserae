@@ -33,7 +33,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Mapping, Optional, Sequence, Set
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set
 
 from .graph_filters import superseded_ids
 from .research_graph import ResearchGraph, ResearchNode
@@ -91,7 +91,15 @@ def _recency_score(node: ResearchNode, now: datetime) -> float:
     age_days = max((now - anchor).total_seconds() / 86400.0, 0.0)
     return math.exp(-math.log(2) * age_days / _RECENCY_HALF_LIFE_DAYS)
 
-__all__ = ["compile_context", "ContextBundle", "ContextCitation", "DEFAULT_RECENCY_WEIGHT"]
+__all__ = [
+    "compile_context",
+    "fit_to_budget",
+    "BudgetFit",
+    "ContextBundle",
+    "ContextCitation",
+    "DEFAULT_HEADER_RESERVE",
+    "DEFAULT_RECENCY_WEIGHT",
+]
 
 
 @dataclass(frozen=True)
@@ -163,6 +171,114 @@ def _truncate_to_budget(body: str, budget: int) -> str:
     if cut > 0:
         head = head[:cut]
     return head + _TRUNCATION_MARKER
+
+
+# --------------------------------------------------------------------------- CTX-01
+
+#: Chars carved out of ``budget_chars`` before entry admission: the tool's own
+#: header fields and the single ``+N more, cursor=K`` continuation line must
+#: always fit inside it, whatever the entries do.
+DEFAULT_HEADER_RESERVE = 600
+
+
+@dataclass(frozen=True)
+class BudgetFit:
+    """Outcome of :func:`fit_to_budget` — the admitted entries plus drop math.
+
+    ``entries`` preserves the input order (a strict prefix of the input;
+    strings may be truncated in the default char mode). ``cursor`` is the index
+    of the first dropped entry — i.e. the resume offset a paging caller feeds
+    back. ``continuation`` is the single O(1) ``+N more, cursor=K`` line when
+    anything was dropped, else ``None``. ``payload`` is set only in render mode
+    (the final rendering the size check ran against).
+    """
+
+    entries: List[Any]
+    dropped: int
+    cursor: int
+    continuation: Optional[str]
+    payload: Optional[str] = None
+
+
+def fit_to_budget(
+    entries: Sequence[Any],
+    budget_chars: int,
+    header_reserve: int = DEFAULT_HEADER_RESERVE,
+    *,
+    render: Optional[Callable[[List[Any], int], str]] = None,
+    drop_step: int = 32,
+) -> BudgetFit:
+    """Fit ``entries`` into ``budget_chars`` per invariant CTX-01 (§5.3).
+
+    Default (char) mode — ``entries`` are strings:
+
+    * each entry is individually truncated to ``min(len(entry),
+      budget_chars // 8)`` (via :func:`_truncate_to_budget`, so the cut lands
+      on a word/newline boundary and is marked);
+    * deterministic input order is preserved — admission is greedy and stops
+      BEFORE the first entry that would overflow
+      ``budget_chars - header_reserve`` (kept entries are always a prefix);
+    * exactly one continuation line ``+N more, cursor=K`` reports the drop;
+    * ``budget_chars <= 0`` is the uncapped passthrough — entries returned
+      byte-identical, nothing dropped (compile_context's existing ``budget=0``
+      invariant, preserved verbatim).
+
+    Render mode — ``render`` given, ``entries`` arbitrary: reproduces the
+    agent-distill ``ARTIFACT_CHAR_BUDGET`` assemble-then-truncate math
+    byte-for-byte (the distill determinism tests are the oracle). ``render``
+    maps ``(kept_entries, dropped_count)`` to the full payload; while the
+    payload overflows ``budget_chars``, ``max(1, min(len(kept), drop_step))``
+    entries are dropped from the tail and the payload is re-rendered.
+    ``header_reserve`` is unused here — the rendering carries its own header —
+    and the final rendering is returned as ``payload``.
+
+    Deterministic — no wall-clock, no randomness — in both modes.
+    """
+    if render is not None:
+        kept_any: List[Any] = list(entries)
+        dropped = 0
+        while True:
+            payload = render(kept_any, dropped)
+            if budget_chars <= 0 or len(payload) <= budget_chars or not kept_any:
+                break
+            drop = max(1, min(len(kept_any), drop_step))
+            kept_any = kept_any[:-drop]
+            dropped += drop
+        continuation = (
+            f"+{dropped} more, cursor={len(kept_any)}" if dropped else None
+        )
+        return BudgetFit(
+            entries=kept_any,
+            dropped=dropped,
+            cursor=len(kept_any),
+            continuation=continuation,
+            payload=payload,
+        )
+
+    if budget_chars <= 0:
+        return BudgetFit(
+            entries=list(entries), dropped=0, cursor=len(entries), continuation=None
+        )
+
+    per_entry_cap = budget_chars // 8
+    available = max(0, budget_chars - header_reserve)
+    kept: List[Any] = []
+    used = 0
+    for entry in entries:
+        text = (
+            entry
+            if len(entry) <= per_entry_cap
+            else _truncate_to_budget(entry, per_entry_cap)
+        )
+        if used + len(text) > available:
+            break
+        kept.append(text)
+        used += len(text)
+    dropped = len(entries) - len(kept)
+    continuation = f"+{dropped} more, cursor={len(kept)}" if dropped else None
+    return BudgetFit(
+        entries=kept, dropped=dropped, cursor=len(kept), continuation=continuation
+    )
 
 
 def _neighborhood_within_depth(
