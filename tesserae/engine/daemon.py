@@ -32,7 +32,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 from . import pidlock
 
@@ -106,12 +106,14 @@ class Daemon:
         consolidate_idle_seconds: float = 300.0,
         consolidate_max_interval_seconds: float = 21600.0,
         consolidate_check_interval: float = 30.0,
+        summarize_budget: int = 25,
         install_signal_handlers: bool = True,
         compile_gate: Optional[threading.Semaphore] = None,
         run_pipeline: Optional[Callable[[List[Path]], None]] = None,
         monotonic: Optional[Callable[[], float]] = None,
         distill: Optional[Callable[..., dict]] = None,
         associate: Optional[Callable[..., dict]] = None,
+        summary_client: Optional[object] = None,
     ) -> None:
         self.project_root = Path(project_root).resolve()
         self.debounce = debounce
@@ -127,6 +129,7 @@ class Daemon:
         self._consolidate_idle_seconds = consolidate_idle_seconds
         self._consolidate_max_interval_seconds = consolidate_max_interval_seconds
         self._consolidate_check_interval = consolidate_check_interval
+        self._summarize_budget = summarize_budget
         self._install_signal_handlers = install_signal_handlers
         # Default the compile gate to a private mutex so the consolidation
         # thread NEVER overlaps a compile even in single-daemon mode. Without
@@ -139,6 +142,7 @@ class Daemon:
         self._monotonic = monotonic if monotonic is not None else time.monotonic
         self._distill_override = distill
         self._associate_override = associate
+        self._summary_client_override = summary_client
         self._pidfile = self.project_root / ".tesserae" / self.PIDFILE_NAME
         self._stop_event = threading.Event()
         self._threads: List[threading.Thread] = []
@@ -707,7 +711,7 @@ class Daemon:
     def _consolidate_once(self) -> None:
         """Load the compiled graph and run one agent-memory consolidation pass.
 
-        Two operations, in order, on the SAME loaded graph:
+        Three operations, in order, on the SAME loaded graph:
 
         1. DISTILL (compress/forget) — mirrors ``cli.py``'s ``step_agent_distill``
            refresh path: load ``.tesserae/graph.json`` (skip if absent) and call
@@ -722,6 +726,12 @@ class Daemon:
            backend (:meth:`_resolve_embedding_backend`); with no real backend it
            skips honestly. It never raises, but the call is wrapped anyway so an
            unexpected failure — or a test stub that throws — cannot break the tick.
+        3. SUMMARIZE (pre-warm) — the Descent sleep-cycle operation (§6.4, PR7):
+           :meth:`_summarize_once` spends a per-tick LLM-call budget warming
+           community-summary caches for the scopes agents demand most (ranked by
+           ``node_memory`` access bumps from ``graph_map``), so a later descent
+           finds a warm cache instead of paying a synchronous LLM call. Honest
+           no-op without a hierarchy sidecar or an LLM client.
 
         Runs under the compile gate (held by the caller).
         """
@@ -759,6 +769,175 @@ class Daemon:
             logger.info("association for %s: %s", self.project_root.name, assoc)
         except Exception as exc:  # noqa: BLE001 - associate never kills the tick
             logger.error("association raised (daemon survives): %s", exc)
+
+        # Summarize runs LAST, on the same graph, under the same gate.
+        # _summarize_once already degrades every failure mode to a summary
+        # dict, but the wrap covers injected stubs and import edges anyway.
+        try:
+            warm = self._summarize_once(graph)
+            logger.info("summarize for %s: %s", self.project_root.name, warm)
+        except Exception as exc:  # noqa: BLE001 - summarize never kills the tick
+            logger.error("summarize raised (daemon survives): %s", exc)
+
+    def _summarize_once(self, graph) -> dict:
+        """Pre-warm community-summary caches by demand (SUMMARIZE, Descent §6.4).
+
+        Within a per-tick LLM-call budget (``summarize_budget``, default 25;
+        ``0`` disables the op) lazily materialize summaries for the communities
+        agents are most likely to descend into next, so their first ``graph_map``
+        visit finds a warm cache instead of paying a synchronous LLM call.
+        Candidates are every community in the hierarchy sidecar at its
+        canonical (coarsest) occurrence, ranked by demand — Σ
+        ``node_memory.access_count`` over members (populated by ``graph_map``
+        bumps) — tie-broken by member count, then summed member degree, then
+        coarsest level first, then cid. Warm (digest-valid) caches, in-graph
+        COMMUNITY_SUMMARY scopes (compile-owned) and singletons cost no budget;
+        only cold materializations do — each via
+        :func:`~tesserae.community_summaries.materialize_community_summary`,
+        the exact single-call path ``graph_map`` uses (same level-scoped cache
+        layout, citation discipline, atomic writes). Summaries are caches, not
+        knowledge: nothing here touches ``graph.json``. Honest no-op without a
+        hierarchy sidecar or an LLM client; never raises — every outcome is a
+        summary dict for the tick log.
+        """
+        budget = max(0, int(self._summarize_budget))
+        if budget == 0:
+            return {"summarized": [], "skipped": "budget=0"}
+        try:
+            from ..hierarchy import load_hierarchy, undirected_degrees
+
+            hierarchy = load_hierarchy(self.project_root)
+        except ValueError:
+            return {"summarized": [], "skipped": "no hierarchy sidecar"}
+        if not hierarchy.levels:
+            return {"summarized": [], "skipped": "empty hierarchy"}
+        client = self._resolve_summary_client()
+        if client is None:
+            return {"summarized": [], "skipped": "no LLM client"}
+
+        from ..community_summaries import (
+            materialize_community_summary,
+            read_warm_summary,
+        )
+        from ..research_graph import ResearchNodeType
+
+        access = self._read_access_counts()
+        by_id = {n.id: n for n in graph.nodes}
+        degrees = undirected_degrees(graph)
+        # One canonical (level, members) per cid — the coarsest occurrence,
+        # matching Hierarchy.find_scope and therefore the level-scoped cache
+        # path graph_map reads (a community unchanged between adjacent levels
+        # repeats its membership hash; warming it once is enough).
+        scopes: Dict[str, Tuple[int, List[str]]] = {}
+        for level in range(len(hierarchy.levels) - 1, -1, -1):
+            for cid, members in hierarchy.levels[level].items():
+                scopes.setdefault(cid, (level, members))
+        ranked = sorted(
+            scopes.items(),
+            key=lambda kv: (
+                -sum(access.get(m, 0) for m in kv[1][1]),
+                -len(kv[1][1]),
+                -sum(degrees.get(m, 0) for m in kv[1][1]),
+                -kv[1][0],
+                kv[0],
+            ),
+        )
+        cache_dir = self.project_root / ".tesserae" / "community_summaries"
+        summarized: List[str] = []
+        failed: List[str] = []
+        warm = 0
+        attempted = 0
+        for cid, (level, members) in ranked:
+            if attempted >= budget:
+                break
+            if len(members) < 2:
+                continue  # a singleton "community" card is just the node
+            node = by_id.get(cid)
+            if node is not None and node.type is ResearchNodeType.COMMUNITY_SUMMARY:
+                warm += 1  # compile-owned coarsest summary, already in-graph
+                continue
+            present = [by_id[m] for m in members if m in by_id]
+            if not present:
+                continue
+            if read_warm_summary(cache_dir, level, cid, present) is not None:
+                warm += 1  # digest-valid cache — free, costs no budget
+                continue
+            children = hierarchy.children(cid)
+            child_cids = [child_cid for child_cid, _ in children[0]] if children else []
+            attempted += 1
+            result = materialize_community_summary(
+                present,
+                cid=cid,
+                member_ids=members,
+                level=level,
+                cache_dir=cache_dir,
+                json_client=client,
+                child_cids=child_cids,
+            )
+            if result is not None:
+                summarized.append(cid)
+            else:
+                failed.append(cid)
+        return {
+            "summarized": summarized,
+            "failed": failed,
+            "warm": warm,
+            "attempted": attempted,
+            "budget": budget,
+        }
+
+    def _resolve_summary_client(self) -> Optional[object]:
+        """LLM JSON client for the SUMMARIZE op, or ``None`` for an honest no-op.
+
+        The constructor seam (``summary_client=``) wins so tests inject a fake
+        client; otherwise resolution mirrors
+        ``mcp_server._community_summary_json_client``: the community-summaries
+        test client, then the ``TESSERAE_COMMUNITY_SUMMARIES`` opt-out, then
+        the default client — memoized including a ``None``/failed build so a
+        clientless environment costs nothing per tick. Never raises.
+        """
+        if self._summary_client_override is not None:
+            return self._summary_client_override
+        try:
+            from ..community_summaries import is_enabled_via_env
+            from ..project import _get_community_summaries_test_client
+
+            injected = _get_community_summaries_test_client()
+            if injected is not None:
+                return injected
+            if not is_enabled_via_env():
+                return None
+            if not hasattr(self, "_default_summary_client"):
+                from ..llm_json import build_default_json_client
+
+                self._default_summary_client = build_default_json_client()
+            return self._default_summary_client
+        except Exception as exc:  # noqa: BLE001 - no client -> honest no-op
+            logger.debug("no LLM client for summarize: %s", exc)
+            return None
+
+    def _read_access_counts(self) -> Dict[str, int]:
+        """``access_count`` per node id from the node_memory sidecar, or empty.
+
+        Reads only when ``.tesserae/sqlite.db`` already exists — the demand
+        signal comes from ``graph_map`` bumps, so a missing sidecar means no
+        demand yet, and creating the db from the consolidation thread would be
+        a side-effect write the tick has no business making. Never raises;
+        an unreadable sidecar degrades to size/degree ranking.
+        """
+        db_path = self.project_root / ".tesserae" / "sqlite.db"
+        if not db_path.is_file():
+            return {}
+        try:
+            from ..memory.store import read_memory
+
+            return {
+                node_id: int(row.access_count)
+                for node_id, row in read_memory(db_path).items()
+            }
+        except Exception as exc:  # noqa: BLE001 - demand signal is best-effort
+            logger.debug("summarize: node_memory unreadable: %s", exc)
+            return {}
 
     def _resolve_embedding_backend(self):
         """Resolve the app's semantic embedding backend, or ``None`` when absent.

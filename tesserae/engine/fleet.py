@@ -63,6 +63,7 @@ class FleetDaemon:
         consolidate_idle_seconds: float = 300.0,
         consolidate_max_interval_seconds: float = 21600.0,
         consolidate_check_interval: float = 30.0,
+        summarize_budget: int = 25,
         pidfile: Optional[Path] = None,
         daemon_factory: Optional[DaemonFactory] = None,
     ) -> None:
@@ -77,6 +78,7 @@ class FleetDaemon:
         self._unit_consolidate_idle_seconds = consolidate_idle_seconds
         self._unit_consolidate_max_interval_seconds = consolidate_max_interval_seconds
         self._unit_consolidate_check_interval = consolidate_check_interval
+        self._unit_summarize_budget = summarize_budget
         self._pidfile = Path(pidfile) if pidfile is not None else DEFAULT_FLEET_PIDFILE
         self._daemon_factory = daemon_factory or self._default_daemon_factory
         self._units: Dict[str, _Unit] = {}
@@ -93,6 +95,7 @@ class FleetDaemon:
             consolidate_idle_seconds=fleet._unit_consolidate_idle_seconds,
             consolidate_max_interval_seconds=fleet._unit_consolidate_max_interval_seconds,
             consolidate_check_interval=fleet._unit_consolidate_check_interval,
+            summarize_budget=fleet._unit_summarize_budget,
             install_signal_handlers=False,
             compile_gate=fleet.compile_gate,
         )
