@@ -112,6 +112,20 @@ def test_harness_context_points_agents_at_wiki_entrypoint():
     assert "start at `.tesserae/wiki/index.md`" in text
 
 
+def test_harness_brief_names_graph_map_canonical_entry_point():
+    """Descent PR10: the TESSERAE.md brief names graph_map as the canonical
+    entry point for graph navigation (project brief AND pointer blocks)."""
+    text = render_harness_context(
+        "demo", harness_sample_graph(), "python3", ["-m", "tesserae.mcp_server"]
+    )
+    assert "`graph_map`" in text
+    assert "canonical entry point" in text
+    from tesserae.agent_harness import render_pointer_block as _pointer
+
+    assert "`graph_map`" in _pointer("demo")
+    assert "`graph_map`" in _pointer("demo", "harness:acct:role")
+
+
 def test_harness_topic_distinguishes_topics():
     """Two different topics over distinct neighborhoods yield different briefs."""
     graph = harness_topic_graph()

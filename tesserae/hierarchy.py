@@ -19,7 +19,10 @@ an in-graph COMMUNITY_SUMMARY node reuse its title/description/tags with
 Also home to the agent-org card builders (§6.2 PR9): :func:`agent_card` and
 :func:`distilled_note_card` render the registry tree and an agent's distilled
 L1 Index in the same uniform shape — pure functions of registry structure and
-distillate metadata, sealed off from raw L0 content.
+distillate metadata, sealed off from raw L0 content. Federated-scope helpers
+(§6.3 PR10) — :func:`split_federated_scope`, :func:`federated_scope_id`,
+:func:`namespace_card` — carry the ``alias::`` grammar for sibling-project
+descent, reusing ``federation.federate_graphs`` namespacing semantics.
 Deterministic throughout — sorted iteration, no wall-clock, no randomness.
 """
 
@@ -32,6 +35,7 @@ from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from .community_summaries import read_warm_summary
 from .context_compiler import _truncate_to_budget
+from .federation import _NS as FEDERATION_NS
 from .research_graph import ResearchGraph, ResearchNode, ResearchNodeType
 
 #: Per-card prose cap (§3): summaries and node descriptions are clamped to
@@ -313,6 +317,61 @@ def node_card(node_id: str, parent_cid: str, by_id: Dict[str, ResearchNode]) -> 
 #: agent's distilled L1 Index; ``org:root`` (agent_identity.ORG_ROOT) maps the
 #: registry tree itself.
 AGENT_SCOPE_PREFIX = "agent:"
+
+# ``FEDERATION_NS`` (imported above) is the federated-scope separator (§6.3
+# PR10): the SAME ``::`` that :func:`tesserae.federation.namespace_graph`
+# stamps on cross-project node ids, imported rather than redeclared so the
+# ``graph_map`` scope grammar and ``federate_graphs`` id namespacing can never
+# drift apart. Merger rule, codified: cross-graph read paths use
+# ``federation.federate_graphs`` namespacing semantics ONLY — the
+# order-dependent ``batch.merge_graphs`` is ingest machinery and must never be
+# imported here (tests/test_graph_map_federated.py lints for it).
+
+
+def split_federated_scope(scope: str) -> Optional[Tuple[str, str]]:
+    """Parse ``<alias>::<sub>`` into ``(alias, sub)``, or ``None`` if local.
+
+    ``sub`` is ``""`` for the alias root scope (``"<alias>::"``). Local
+    community ids carry single colons (``CommunitySummary:<hash>``) but never
+    the ``::`` separator, so the probe is unambiguous. An empty alias
+    (``"::<cid>"``) is malformed and reported as non-federated, so the local
+    scope lookup fails loud with the full scope-grammar error.
+    """
+    if FEDERATION_NS not in scope:
+        return None
+    alias, sub = scope.split(FEDERATION_NS, 1)
+    if not alias:
+        return None
+    return alias, sub
+
+
+def federated_scope_id(alias: str, scope_id: Optional[str]) -> str:
+    """Namespace a scope id as ``alias::id`` (federate_graphs semantics).
+
+    ``None`` — a parentless root card — maps to the alias root scope
+    ``"<alias>::"``, so ``graph_map(card.parent_scope)`` ascends to the
+    sibling project's root map instead of dead-ending.
+    """
+    return alias + FEDERATION_NS + (scope_id or "")
+
+
+def namespace_card(card: JSONDict, alias: str, *, stale: bool = False) -> JSONDict:
+    """Rewrite one card's navigation ids into the ``alias::`` namespace (§6.3).
+
+    ``scope_id`` and ``parent_scope`` gain the alias prefix; everything else
+    is served verbatim from the sibling's compiled bytes. ``stale=True`` marks
+    the card per digest verification — the caller's held map predates the
+    sibling's current bytes and should be rebuilt from ``"<alias>::"``.
+    """
+    out = dict(card)
+    out["scope_id"] = federated_scope_id(alias, str(card["scope_id"]))
+    parent = card.get("parent_scope")
+    out["parent_scope"] = federated_scope_id(
+        alias, str(parent) if parent is not None else None
+    )
+    if stale:
+        out["stale"] = True
+    return out
 
 
 def agent_card(

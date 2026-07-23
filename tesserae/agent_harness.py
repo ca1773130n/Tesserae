@@ -248,7 +248,7 @@ def render_harness_context(
         f"args: {json.dumps(list(mcp_args), ensure_ascii=False)}",
         "```",
         "",
-        "Expected MCP tools: `schema`, `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`.",
+        "Expected MCP tools: `graph_map` (canonical entry point for graph navigation), `schema`, `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`.",
         "",
         "## Graph summary",
         "",
@@ -266,6 +266,7 @@ def render_harness_context(
         "",
         "## Agent instructions",
         "",
+        "- Navigate the graph through `graph_map` first — the canonical entry point: budgeted cards, descend by a card's `scope_id`, ascend by `parent_scope`; sibling registered projects via scope='<alias>::'.",
         "- Prefer MCP graph queries before grep-style rediscovery.",
         "- When you do browse the wiki, start at `.tesserae/wiki/index.md` and follow its links; do not crawl pages blindly.",
         "- Preserve the controlled ontology; do not invent node or edge types outside the Tesserae schema.",
@@ -314,7 +315,7 @@ def render_pointer_block(project_name: str, agent_key: Optional[str] = None) -> 
             "",
             "    python3 -m tesserae.mcp_server --graph .tesserae/graph.json",
             "",
-            "Preferred MCP tools: `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`, `compile_context`.",
+            "Preferred MCP tools: `graph_map` (canonical entry point for graph navigation), `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`, `compile_context`.",
         ])
         return POINTER_BEGIN + "\n" + agent_body + "\n" + POINTER_END
     body = "\n".join([
@@ -330,7 +331,7 @@ def render_pointer_block(project_name: str, agent_key: Optional[str] = None) -> 
         "",
         "    python3 -m tesserae.mcp_server --graph .tesserae/graph.json",
         "",
-        "Preferred MCP tools: `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`, `compile_context`.",
+        "Preferred MCP tools: `graph_map` (canonical entry point for graph navigation), `graph_summary`, `search_nodes`, `node_context`, `search_facts`, `timeline`, `compile_context`.",
     ])
     return POINTER_BEGIN + "\n" + body + "\n" + POINTER_END
 

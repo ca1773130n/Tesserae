@@ -539,6 +539,101 @@ def _discover_graph_and_root(path: Path) -> tuple[Path, Path]:
     raise ValueError(f"Path does not exist: {p}")
 
 
+# ------------------------------------------------------- federated scopes (§6.3)
+
+@dataclasses.dataclass(frozen=True)
+class _FederatedChild:
+    """One sibling project's read-only Descent inputs (§6.3 PR10).
+
+    Everything ``graph_map`` needs to serve ``<alias>::`` scopes without
+    touching the local graph: the parsed sibling graph + hierarchy, the
+    derived id index and undirected degrees (so warm calls are pure dictionary
+    work), and the sha256 content digests of its ``graph.json`` /
+    ``hierarchy.json`` bytes — the GRAPH_REF identity that digest verification
+    checks card staleness against.
+    """
+
+    root: Path
+    graph: ResearchGraph
+    hierarchy: "Hierarchy"  # noqa: F821 — tesserae.hierarchy, imported lazily
+    by_id: Dict[str, ResearchNode]
+    degrees: Dict[str, int]
+    digests: Dict[str, str]
+
+
+#: Mtime-keyed LRU over sibling projects' parsed graph + hierarchy (§6.3 PR10).
+#: Key = resolved project root; signature = (mtime_ns, size) of graph.json and
+#: hierarchy.json, so a sibling recompile is picked up on the very next call
+#: while repeat descents parse nothing. 8 entries, mirroring
+#: ``agent_view._VIEW_CACHE`` and the server's own mtime-cached graph loads.
+#: READ-ONLY throughout: nothing in the federated path ever writes to the
+#: sibling project's ``.tesserae/``.
+_FED_CHILD_CACHE: "OrderedDict[str, Tuple[tuple, _FederatedChild]]" = OrderedDict()
+_FED_CHILD_CACHE_MAX = 8
+
+
+def _fed_path_signature(path: Path) -> Optional[Tuple[int, int]]:
+    try:
+        stat = path.stat()
+        return (stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        return None
+
+
+def _load_federated_child(alias: str, graph_path: Path) -> _FederatedChild:
+    """Load a sibling project READ-ONLY through the LRU — one graph per call.
+
+    Exactly ONE child graph parse on a cold call and zero on a warm one; the
+    federated scope path never loads the local graph. Deliberately skips the
+    discovered-links overlay and lazy summary materialization: both are the
+    LOCAL project's read-time enrichments, and the sibling is served verbatim
+    from its own compiled bytes — the same bytes digest verification hashes.
+    Fail-loud (missing graph / missing sidecar) with the recompile remedy.
+    """
+    root = _project_root_for_graph_path(graph_path)
+    if root is None:
+        raise ValueError(
+            f"graph_map: registered project {alias!r} graph is not in the "
+            f"canonical <root>/.tesserae/graph.json layout: {graph_path}. "
+            f"Re-register the project root with register_project."
+        )
+    hierarchy_path = root / ".tesserae" / "hierarchy.json"
+    signature = (_fed_path_signature(graph_path), _fed_path_signature(hierarchy_path))
+    key = str(root)
+    cached = _FED_CHILD_CACHE.get(key)
+    if cached and cached[0] == signature:
+        _FED_CHILD_CACHE.move_to_end(key)
+        return cached[1]
+
+    from .hierarchy import load_hierarchy, undirected_degrees
+
+    if not graph_path.is_file():
+        raise ValueError(
+            f"Registered project {alias!r} points at a missing graph file: "
+            f"{graph_path}. Recompile the project or unregister and "
+            f"re-register it."
+        )
+    hierarchy = load_hierarchy(root)  # fail-loud with the compile remedy
+    digests = {
+        "graph.json": hashlib.sha256(graph_path.read_bytes()).hexdigest(),
+        "hierarchy.json": hashlib.sha256(hierarchy_path.read_bytes()).hexdigest(),
+    }
+    graph = load_graph(graph_path)
+    child = _FederatedChild(
+        root=root,
+        graph=graph,
+        hierarchy=hierarchy,
+        by_id={n.id: n for n in graph.nodes},
+        degrees=undirected_degrees(graph),
+        digests=digests,
+    )
+    _FED_CHILD_CACHE[key] = (signature, child)
+    _FED_CHILD_CACHE.move_to_end(key)
+    while len(_FED_CHILD_CACHE) > _FED_CHILD_CACHE_MAX:
+        _FED_CHILD_CACHE.popitem(last=False)
+    return child
+
+
 class LLMWikiMCPServer:
     """Tool implementation backing the Tesserae MCP JSON-RPC server."""
 
@@ -552,6 +647,11 @@ class LLMWikiMCPServer:
         self.registry = ProjectRegistry(registry_path)
         self.graph_store = graph_store
         self._graph_cache: Dict[Path, Tuple[float, ResearchGraph]] = {}
+        # Per-alias content digests recorded when an ``<alias>::`` root card
+        # set was built (§6.3) — the reference digest verification checks
+        # descent calls against. In-memory by design: staleness is a property
+        # of the map THIS server handed out, not a persisted artifact.
+        self._fed_digests: Dict[str, Dict[str, str]] = {}
 
     def list_tools(self) -> List[JSONDict]:
         graph_path_prop = {"type": "string", "description": "Path to a ResearchGraph JSON file. Defaults to the project you are in (cwd), then server --graph."}
@@ -601,7 +701,17 @@ class LLMWikiMCPServer:
                     "index as kind=note cards — distillate-only (sealed L0), "
                     "each carrying a drill block whose agent + member_refs "
                     "feed the drill_down tool to escalate one member to raw "
-                    "L0. Community scopes require the .tesserae/hierarchy.json "
+                    "L0. Federated scopes: scope='<alias>::' maps a sibling "
+                    "registered project's root card set (alias = a name from "
+                    "list_projects; its graph.json + hierarchy.json are loaded "
+                    "READ-ONLY and their sha256 content digests ride on the "
+                    "response header); scope='<alias>::<scope_id>' descends "
+                    "that project's tree with alias::-namespaced cards. If the "
+                    "sibling's bytes changed since its '<alias>::' card set "
+                    "was built, descent cards come back stale:true with a "
+                    "'stale — recompile' note — re-run graph_map('<alias>::') "
+                    "to rebuild the map. Community scopes require the "
+                    ".tesserae/hierarchy.json "
                     "sidecar written by `tesserae compile`; agent scopes need "
                     "only the agent registry and distilled artifacts."
                 ),
@@ -616,7 +726,9 @@ class LLMWikiMCPServer:
                                 "Scope to descend into (a card's scope_id from "
                                 "a previous graph_map call): a community id, "
                                 "'agent:<key>' for an agent's distilled index, "
-                                "or 'org:root' for the agent org tree. Omit "
+                                "'org:root' for the agent org tree, or "
+                                "'<alias>::' / '<alias>::<scope_id>' for a "
+                                "sibling registered project's tree. Omit "
                                 "for the root card set."
                             ),
                         },
@@ -2744,7 +2856,11 @@ class LLMWikiMCPServer:
 
         Agent-org scopes (``org:root`` / ``agent:<key>``, §6.2 PR9) dispatch
         to :meth:`_graph_map_agent_scope` BEFORE the hierarchy sidecar loads —
-        the org tree is the registry, not the Louvain dendrogram.
+        the org tree is the registry, not the Louvain dendrogram. Federated
+        scopes (``<alias>::`` / ``<alias>::<cid>``, §6.3 PR10) dispatch to
+        :meth:`_graph_map_federated_scope` for the same reason: a sibling
+        project's tree is resolved through the registry and its OWN sidecar,
+        and the local graph is never loaded for it.
         """
         from .agent_identity import ORG_ROOT
         from .community_summaries import materialize_community_summary
@@ -2754,6 +2870,7 @@ class LLMWikiMCPServer:
             community_card,
             load_hierarchy,
             node_card,
+            split_federated_scope,
             undirected_degrees,
         )
 
@@ -2764,6 +2881,11 @@ class LLMWikiMCPServer:
         if scope is not None and (scope == ORG_ROOT or scope.startswith(AGENT_SCOPE_PREFIX)):
             return self._graph_map_agent_scope(
                 args, scope, budget_chars=budget_chars, cursor=cursor
+            )
+        federated = split_federated_scope(scope) if scope is not None else None
+        if federated is not None:
+            return self._graph_map_federated_scope(
+                federated[0], federated[1], budget_chars=budget_chars, cursor=cursor
             )
 
         graph, project_root = self._load_requested_graph_with_root(args)
@@ -2982,6 +3104,154 @@ class LLMWikiMCPServer:
                 "direct_reports": len(children_of.get(canonical, [])),
                 "parent_scope": parent if parent == ORG_ROOT else AGENT_SCOPE_PREFIX + parent,
             }
+        return _paginate_cards(header, cards, budget_chars, cursor)
+
+    def _graph_map_federated_scope(
+        self, alias: str, sub: str, *, budget_chars: int, cursor: int
+    ) -> JSONDict:
+        """Federated scopes for ``graph_map``: ``<alias>::`` / ``<alias>::<cid>`` (§6.3 PR10).
+
+        Resolves ``alias`` through the project registry and serves that
+        sibling project's Descent tree READ-ONLY from its own compiled bytes,
+        loading exactly ONE child graph per call via the mtime-keyed
+        :data:`_FED_CHILD_CACHE` (the local graph is never loaded). Card ids
+        are namespaced ``alias::id`` — ``federation.federate_graphs``
+        semantics ONLY; the order-dependent ``batch.merge_graphs`` is
+        ingest-only and never enters this path. Digest verification: the alias
+        root call records sha256 content digests of the sibling's
+        ``graph.json`` + ``hierarchy.json`` (returned as header metadata,
+        GRAPH_REF-style); a descent whose current bytes no longer match those
+        recorded digests is served from the CURRENT bytes but with
+        ``stale: true`` on every card and a ``"stale — recompile"`` header
+        note — never a silently outdated map. A missing/corrupt registry
+        degrades to single-graph mode: the federated scope fails loud with an
+        actionable error while every non-federated scope keeps serving.
+        READ-ONLY invariants: no ``_bump_nodes_access`` (that would write the
+        sibling's node-memory sqlite) and no lazy summary materialization
+        (that would write its cache) — cards reuse the sibling's in-graph
+        summaries and warm caches, else the deterministic structural title.
+        """
+        from .hierarchy import (
+            FEDERATION_NS,
+            community_card,
+            federated_scope_id,
+            namespace_card,
+            node_card,
+        )
+
+        scope = alias + FEDERATION_NS + sub
+        try:
+            graph_path = self.registry.resolve_graph_path(alias)
+            known = self.registry.all_project_names()
+        except ValueError as exc:
+            # Corrupt registry: degrade to single-graph mode — fail loud on
+            # the federated scope only, never crash serve.
+            raise ValueError(
+                f"graph_map: federated scope {scope!r} is unavailable — the "
+                f"project registry is unreadable ({exc}). Serving single-graph "
+                f"mode: use non-federated scopes, or fix/remove the registry "
+                f"file and retry."
+            ) from exc
+        if graph_path is None:
+            raise ValueError(
+                f"graph_map: unknown project alias {alias!r} in scope "
+                f"{scope!r}. Registered projects: "
+                f"{', '.join(known) or '(none)'}. Register the sibling with "
+                f"register_project, or drop the '{alias}::' prefix to descend "
+                f"the local graph."
+            )
+        child = _load_federated_child(alias, graph_path)
+        summary_cache_dir = child.root / ".tesserae" / "community_summaries"
+
+        if not sub:
+            # Alias root: record the digests later descents verify against.
+            self._fed_digests[alias] = dict(child.digests)
+            coarsest = child.hierarchy.coarsest
+            cards = [
+                namespace_card(
+                    community_card(
+                        child.hierarchy, cid, members, child.by_id, child.degrees,
+                        summary_cache_dir=summary_cache_dir,
+                    ),
+                    alias,
+                )
+                for cid, members in sorted(
+                    coarsest.items(), key=lambda kv: (-len(kv[1]), kv[0])
+                )
+            ]
+            counts = self.graph_summary(child.graph)
+            header: JSONDict = {
+                "scope": scope,
+                "kind": "root",
+                "project": alias,
+                "levels": len(child.hierarchy.levels),
+                "node_count": counts["node_count"],
+                "edge_count": counts["edge_count"],
+                "community_count": len(coarsest),
+                "hubs": [
+                    child.by_id[h].name
+                    for h in child.hierarchy.hubs[:10]
+                    if h in child.by_id
+                ],
+                "digests": dict(child.digests),
+                "stale": False,
+            }
+        else:
+            found = child.hierarchy.find_scope(sub)
+            if found is None:
+                raise ValueError(
+                    f"graph_map: unknown scope {sub!r} in project {alias!r}. "
+                    f"Valid federated scopes are '{alias}::' (that project's "
+                    f"root card set) and '{alias}::<scope_id>' for a scope_id "
+                    f"from a previous '{alias}::' card."
+                )
+            recorded = self._fed_digests.get(alias)
+            stale = recorded is not None and recorded != child.digests
+            level, members = found
+            community_children, loose = child.hierarchy.children(sub) or ([], list(members))
+            scope_card = community_card(
+                child.hierarchy, sub, members, child.by_id, child.degrees,
+                summary_cache_dir=summary_cache_dir,
+            )
+            cards = [
+                namespace_card(
+                    community_card(
+                        child.hierarchy, child_cid, child_members, child.by_id,
+                        child.degrees, summary_cache_dir=summary_cache_dir,
+                    ),
+                    alias,
+                    stale=stale,
+                )
+                for child_cid, child_members in community_children
+            ]
+            cards.extend(
+                namespace_card(node_card(member_id, sub, child.by_id), alias, stale=stale)
+                for member_id in loose
+            )
+            header = {
+                "scope": scope,
+                "kind": "community",
+                "project": alias,
+                "level": level,  # dendrogram index in the SIBLING's tree
+                "title": scope_card["title"],
+                "summary": scope_card["summary"],
+                "quality": scope_card["quality"],
+                "leaf_member_count": len(members),
+                "parent_scope": federated_scope_id(alias, scope_card["parent_scope"]),
+                "digests": dict(child.digests),
+                "stale": stale,
+            }
+            if stale:
+                header["note"] = (
+                    f"stale — recompile your map: {alias}'s graph.json/"
+                    f"hierarchy.json changed since its '{alias}::' card set "
+                    f"was built; re-run graph_map('{alias}::') before trusting "
+                    f"cards held from the old map."
+                )
+        # READ-ONLY sibling: no _bump_nodes_access (a write to the sibling's
+        # node-memory sqlite) — the pre-warm demand signal belongs to the
+        # sibling's own sessions, and drill/compile_context reads over there
+        # record their own use.
         return _paginate_cards(header, cards, budget_chars, cursor)
 
     def _community_summary_json_client(self) -> Optional[object]:
