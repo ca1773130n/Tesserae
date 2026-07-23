@@ -787,10 +787,13 @@ class Daemon:
         agents are most likely to descend into next, so their first ``graph_map``
         visit finds a warm cache instead of paying a synchronous LLM call.
         Candidates are every community in the hierarchy sidecar at its
-        canonical (coarsest) occurrence, ranked by demand — Σ
-        ``node_memory.access_count`` over members (populated by ``graph_map``
-        bumps) — tie-broken by member count, then summed member degree, then
-        coarsest level first, then cid. Warm (digest-valid) caches, in-graph
+        canonical (coarsest) occurrence, ranked by demand — the scope's own
+        cid ``access_count`` row (``graph_map`` bumps every surfaced card's
+        scope_id, and below the coarsest level those cids are pseudo-id rows,
+        not graph nodes, so spine traversal is visible ONLY there) plus Σ
+        ``node_memory.access_count`` over members (leaf reads from
+        node_context/search surfaces) — tie-broken by member count, then
+        summed member degree, then coarsest level first, then cid. Warm (digest-valid) caches, in-graph
         COMMUNITY_SUMMARY scopes (compile-owned) and singletons cost no budget;
         only cold materializations do — each via
         :func:`~tesserae.community_summaries.materialize_community_summary`,
@@ -832,10 +835,13 @@ class Daemon:
         for level in range(len(hierarchy.levels) - 1, -1, -1):
             for cid, members in hierarchy.levels[level].items():
                 scopes.setdefault(cid, (level, members))
+        # Demand = the cid row's own bumps (graph_map spine traversal — the
+        # only place browsing lands when an agent never reaches leaf node
+        # cards) + member bumps (leaf reads). Both live in node_memory.
         ranked = sorted(
             scopes.items(),
             key=lambda kv: (
-                -sum(access.get(m, 0) for m in kv[1][1]),
+                -(access.get(kv[0], 0) + sum(access.get(m, 0) for m in kv[1][1])),
                 -len(kv[1][1]),
                 -sum(degrees.get(m, 0) for m in kv[1][1]),
                 -kv[1][0],
