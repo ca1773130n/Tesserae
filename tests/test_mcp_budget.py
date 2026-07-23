@@ -2,9 +2,13 @@
 
 ``search_nodes`` / ``node_context`` clamp each returned ``model_dump`` payload
 to the per-entry cap (``budget_chars // 8``); ``search_facts`` / ``timeline``
-clamp per-fact evidence blocks. ``budget_chars=0`` is the uncapped passthrough
+clamp per-fact evidence blocks. ``node_context``'s edges array is additionally
+greedily admitted against ``budget_chars`` (both the default and ``use_ppr``
+paths — per-item evidence clamps alone cannot bound a hub's edge payload),
+reporting drops via ``edges_continuation`` so the neighbours' ``continuation``
+line keeps its format. ``budget_chars=0`` is the uncapped passthrough
 everywhere, and dropping items yields exactly one ``+N more, cursor=K``
-continuation.
+continuation per list.
 """
 
 from __future__ import annotations
@@ -128,6 +132,45 @@ def test_node_context_budget_zero_is_uncapped(tmp_path) -> None:
     assert _LONG in context["node"]["description"]
     assert len(context["neighbors"]) == 12
     assert "continuation" not in context
+    # Edges pass through uncapped too: all present, evidence untruncated.
+    assert len(context["edges"]) == 12
+    assert all(_LONG in edge["evidence"] for edge in context["edges"])
+    assert "edges_continuation" not in context
+
+
+def test_node_context_edges_admitted_against_budget(tmp_path) -> None:
+    """CTX-01: the edges array is greedily admitted against ``budget_chars``,
+    not merely per-item clamped — 12 long-evidence edges must NOT all survive
+    an 8k budget."""
+    server = _server(tmp_path)
+    budget = 8_000
+    context = server.call_tool(
+        "node_context", {"node_id": "Concept:hub", "budget_chars": budget}
+    )
+    kept = len(context["edges"])
+    assert 0 < kept < 12
+    for edge in context["edges"]:
+        assert _item_size(edge) <= budget // 8
+    assert sum(_item_size(edge) for edge in context["edges"]) <= budget
+    assert context["edges_continuation"] == f"+{12 - kept} more, cursor={kept}"
+
+
+def test_node_context_ppr_edges_admitted_against_budget(tmp_path) -> None:
+    """The ``use_ppr`` path rebuilds incident edges from the FULL edge list
+    over the selected neighbour set; those edges obey the same greedy
+    admission as the default path."""
+    server = _server(tmp_path)
+    budget = 8_000
+    context = server.call_tool(
+        "node_context",
+        {"node_id": "Concept:hub", "use_ppr": True, "budget_chars": budget},
+    )
+    kept = len(context["edges"])
+    assert 0 < kept < 12
+    for edge in context["edges"]:
+        assert _item_size(edge) <= budget // 8
+    assert sum(_item_size(edge) for edge in context["edges"]) <= budget
+    assert context["edges_continuation"] == f"+{12 - kept} more, cursor={kept}"
 
 
 def test_search_facts_truncates_evidence_blocks(tmp_path) -> None:

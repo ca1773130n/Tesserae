@@ -5,9 +5,10 @@ The idle-consolidation tick already runs DISTILL (compress/forget) and
 ASSOCIATE (discover connections); this suite covers the third op wired into
 the SAME tick, under the SAME compile gate, AFTER associate: within a
 per-tick LLM-call budget, pre-warm community-summary caches for the
-communities ranked by demand (Σ ``node_memory.access_count`` over members,
-populated by ``graph_map`` bumps), tie-broken by size then degree, coarsest
-level first. Determinism reuses the constructor seams from
+communities ranked by demand (the scope's own cid ``access_count`` row —
+``graph_map`` bumps every surfaced card's scope_id — plus Σ
+``node_memory.access_count`` over members), tie-broken by size then degree,
+coarsest level first. Determinism reuses the constructor seams from
 ``tests/test_daemon_associate.py`` — an injected monotonic clock
 (``monotonic=``), injected distill/associate callables — plus the new
 ``summary_client=`` seam (a fake LLM JSON client, so no test shells out to a
@@ -323,6 +324,33 @@ def test_demand_ranking_prefers_accessed_members(tmp_path):
     assert level_cache_path(cache, 2, CID_B).is_file()
     assert level_cache_path(cache, 0, CID_B2).is_file()
     assert not level_cache_path(cache, 0, CID_B1).is_file(), "cold B1 lost to demand"
+
+
+def test_demand_ranking_sees_spine_traversal_bumps(tmp_path):
+    """``graph_map`` bumps land on surfaced cards' scope_ids — community cids
+    that below the coarsest level are pseudo-ids, not graph nodes and never
+    members of any community. The demand ranking must read those cid rows
+    directly, so an agent that browses the spine without ever reaching leaf
+    node cards still steers the pre-warm budget toward the hot branch."""
+    root = _make_project(tmp_path)
+    _bump(root, CID_B2, 3)  # spine traversal: B2's card surfaced repeatedly
+    clock = FakeClock(1000.0)
+    order: list = []
+    client = RecordingSummaryClient(order)
+    d = _make_daemon(root, clock, order, summary_client=client, summarize_budget=2)
+
+    clock.advance(301)
+    d._consolidation_tick()
+
+    assert len(client.calls) == 2, "budget caps the tick at 2 LLM calls"
+    # Demand 3 on the B2 cid row itself ranks B2 first; the runner-up falls
+    # back to size order (B leads with 6 members).
+    assert client.prompt_member_counts() == [2, 6]
+    cache = _cache_dir(root)
+    assert level_cache_path(cache, 0, CID_B2).is_file()
+    assert not level_cache_path(cache, 0, CID_B1).is_file(), (
+        "cold B1 lost the budget to spine demand"
+    )
 
 
 def test_budget_zero_disables_summarize(tmp_path):

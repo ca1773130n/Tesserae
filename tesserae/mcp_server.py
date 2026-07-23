@@ -2981,8 +2981,12 @@ class LLMWikiMCPServer:
             }
 
         result = _paginate_cards(header, cards, budget_chars, cursor)
-        # LRU: every surfaced scope_id counts as a read (node ids and the
-        # coarsest cids, which ARE graph node ids when summaries are minted).
+        # LRU + demand: every surfaced scope_id counts as a read. Coarsest
+        # cids ARE graph node ids when summaries are minted; finer-level cids
+        # are pseudo-id rows that exist ONLY as the SUMMARIZE demand signal
+        # (daemon._summarize_once ranks by the cid row + member sums). Decay,
+        # distill and forget-by-disuse all key node_memory by graph node id,
+        # so those rows never leak into leaf memory semantics.
         self._bump_nodes_access(
             project_root, (str(c.get("scope_id")) for c in result["cards"])
         )
@@ -3931,10 +3935,13 @@ class LLMWikiMCPServer:
         bounded_limit = max(1, min(limit, 200))
         # CTX-01 (§5.3): per-item size clamp — the counts were already clamped
         # by ``limit``, per-item size was not. Node payloads trim their
-        # description, edge payloads their evidence; neighbours additionally go
-        # through greedy admission (one ``continuation`` line on drop).
-        # ``budget_chars=0`` = uncapped (``_clamp_payload_item`` no-ops on
-        # ``cap <= 0``).
+        # description, edge payloads their evidence; neighbours AND edges each
+        # go through greedy admission against ``budget_chars`` (per-item
+        # clamps alone cannot bound a hub's edge payload). Drops surface as
+        # one ``continuation`` line for neighbours and one
+        # ``edges_continuation`` line for edges, keeping the neighbour line's
+        # format stable. ``budget_chars=0`` = uncapped
+        # (``_clamp_payload_item`` no-ops on ``cap <= 0``).
         per_entry_cap = budget_chars // 8 if budget_chars > 0 else 0
         suppressed = set() if include_superseded else _superseded_ids(graph)
         node_by_id = {candidate.id: candidate for candidate in graph.nodes}
@@ -3994,16 +4001,20 @@ class LLMWikiMCPServer:
             self._bump_nodes_access(
                 project_root, [node.id, *(str(n.get("id")) for n in neighbors)]
             )
+            edges_out, edges_continuation = _fit_payload_list(
+                [edge_to_dict(edge) for edge in incident_edges],
+                budget_chars,
+                text_field="evidence",
+            )
             out: JSONDict = {
                 "node": node_payload,
-                "edges": [
-                    _clamp_payload_item(edge_to_dict(edge), per_entry_cap, "evidence")
-                    for edge in incident_edges
-                ],
+                "edges": edges_out,
                 "neighbors": neighbors,
             }
             if continuation:
                 out["continuation"] = continuation
+            if edges_continuation:
+                out["edges_continuation"] = edges_continuation
             return out
         neighbor_ids = []
         for edge in incident_edges:
@@ -4028,16 +4039,20 @@ class LLMWikiMCPServer:
         self._bump_nodes_access(
             project_root, [node.id, *(str(n.get("id")) for n in neighbors)]
         )
+        edges_out, edges_continuation = _fit_payload_list(
+            [edge_to_dict(edge) for edge in incident_edges],
+            budget_chars,
+            text_field="evidence",
+        )
         out = {
             "node": node_payload,
-            "edges": [
-                _clamp_payload_item(edge_to_dict(edge), per_entry_cap, "evidence")
-                for edge in incident_edges
-            ],
+            "edges": edges_out,
             "neighbors": neighbors,
         }
         if continuation:
             out["continuation"] = continuation
+        if edges_continuation:
+            out["edges_continuation"] = edges_continuation
         return out
 
     def _bump_node_access(self, project_root: Optional[Path], node_id: str) -> None:
