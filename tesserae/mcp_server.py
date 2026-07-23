@@ -552,6 +552,58 @@ class LLMWikiMCPServer:
                 },
             },
             {
+                "name": "graph_map",
+                "description": (
+                    "Budgeted map of the knowledge-graph hierarchy — the Descent "
+                    "entry point (start here to orient). Scope grammar: call with "
+                    "NO scope for the root card set (graph counts, top-hub names, "
+                    "and one card per coarsest community, largest first); pass "
+                    "scope='<a card's scope_id>' to descend one dendrogram level "
+                    "(cards for its sub-communities; at the finest level, its "
+                    "member nodes); pass a card's parent_scope to ascend (null "
+                    "parent_scope = the root, i.e. call with no scope). Every "
+                    "card has the uniform shape {scope_id, kind: community|node, "
+                    "title, summary, size, children_count, leaf_member_count, "
+                    "parent_scope, tags, quality: llm|structural, stale} — use "
+                    "children_count/leaf_member_count to gauge branch mass "
+                    "before descending. Responses are budget-packed (CTX-01): "
+                    "when cards are dropped, the single continuation line "
+                    "'+N more, cursor=K' means re-call with cursor=K for the "
+                    "next page. Typical loop: graph_map() -> pick a card by "
+                    "tags/size -> graph_map(scope_id) -> repeat -> "
+                    "compile_context/node_context on the leaf node ids. "
+                    "Requires the .tesserae/hierarchy.json sidecar written by "
+                    "`tesserae compile`."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop, "agent": agent_prop,
+                        "scope": {
+                            "type": "string",
+                            "description": (
+                                "Community id to descend into (a card's scope_id "
+                                "from a previous graph_map call). Omit for the "
+                                "root card set."
+                            ),
+                        },
+                        "cursor": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "default": 0,
+                            "description": (
+                                "Resume offset from a previous '+N more, "
+                                "cursor=K' continuation line. 0 starts from the "
+                                "first card."
+                            ),
+                        },
+                        "budget_chars": budget_chars_prop,
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            {
                 "name": "search_nodes",
                 "description": (
                     "Search public research-graph nodes by name, aliases, description, type, "
@@ -1808,6 +1860,8 @@ class LLMWikiMCPServer:
             }
         if name == "graph_summary":
             return self.graph_summary(self._load_requested_graph(args))
+        if name == "graph_map":
+            return self._mcp_graph_map(args)
         if name == "search_nodes":
             # Accept both 'query' and 'q' (short alias), plus singular 'type'
             # alongside the legacy 'types' list. Either may be omitted.
@@ -2636,6 +2690,103 @@ class LLMWikiMCPServer:
         items.sort(key=lambda d: (-int(d["member_count"]), d["community_id"]))
         items = items[: max(1, int(limit))]
         return {"communities": items, "total": len(items)}
+
+    def _mcp_graph_map(self, args: JSONDict) -> JSONDict:
+        """Budgeted Descent map over the hierarchy sidecar (§5.1, PR5).
+
+        Structural-only: cards are pure functions of ``graph.json`` +
+        ``hierarchy.json`` — the sole ``quality="llm"`` source is the reuse of
+        in-graph COMMUNITY_SUMMARY nodes at the coarsest level; no LLM call is
+        ever made here. Auto-coarsening below the root is built into
+        ``Hierarchy.children`` (descent lands on the first finer level that
+        actually splits the scope, skipping byte-identical pass-through
+        levels); overflow beyond that is handled by cursor pagination, never a
+        terminal rollup. Every returned card's scope_id is fed to
+        ``_bump_nodes_access`` — spine traversal is memory "use", the demand
+        signal the consolidation SUMMARIZE op (PR7) pre-warms from.
+        """
+        from .hierarchy import (
+            community_card,
+            load_hierarchy,
+            node_card,
+            undirected_degrees,
+        )
+
+        graph, project_root = self._load_requested_graph_with_root(args)
+        if project_root is None:
+            raise ValueError(
+                "graph_map requires a project root (graph stores have none). "
+                "Pass graph_path/project or cd into a registered project."
+            )
+        hierarchy = load_hierarchy(project_root)
+        by_id = {n.id: n for n in graph.nodes}
+        degrees = undirected_degrees(graph)
+        budget_chars = _budget_chars_arg(args)
+        cursor = max(0, int(args.get("cursor") or 0))
+        raw_scope = args.get("scope")
+        scope = str(raw_scope) if raw_scope else None
+
+        if scope is None:
+            coarsest = hierarchy.coarsest
+            cards = [
+                community_card(hierarchy, cid, members, by_id, degrees)
+                for cid, members in sorted(
+                    coarsest.items(), key=lambda kv: (-len(kv[1]), kv[0])
+                )
+            ]
+            counts = self.graph_summary(graph)
+            header: JSONDict = {
+                "scope": None,
+                "kind": "root",
+                "levels": len(hierarchy.levels),
+                "node_count": counts["node_count"],
+                "edge_count": counts["edge_count"],
+                "community_count": len(coarsest),
+                "hubs": [by_id[h].name for h in hierarchy.hubs[:10] if h in by_id],
+            }
+        else:
+            found = hierarchy.find_scope(scope)
+            if found is None:
+                raise ValueError(
+                    f"graph_map: unknown scope {scope!r}. Valid scopes are "
+                    f"community ids from a previous graph_map call (a card's "
+                    f"scope_id, e.g. 'CommunitySummary:<hash>'); start from the "
+                    f"root with graph_map() (no scope) and descend."
+                )
+            level, members = found
+            scope_card = community_card(hierarchy, scope, members, by_id, degrees)
+            community_children, loose = hierarchy.children(scope) or ([], list(members))
+            cards = [
+                community_card(hierarchy, child_cid, child_members, by_id, degrees)
+                for child_cid, child_members in community_children
+            ]
+            cards.extend(node_card(member_id, scope, by_id) for member_id in loose)
+            header = {
+                "scope": scope,
+                "kind": "community",
+                "level": level,  # dendrogram index, 0 = finest
+                "title": scope_card["title"],
+                "leaf_member_count": len(members),
+                "parent_scope": scope_card["parent_scope"],
+            }
+
+        cursor = min(cursor, len(cards))
+        header["total_cards"] = len(cards)
+        header["cursor"] = cursor
+        remaining = cards[cursor:]
+        kept, continuation = _fit_payload_list(
+            remaining, budget_chars, text_field="summary"
+        )
+        result: JSONDict = {"header": header, "cards": kept}
+        if continuation:
+            # Rewrite fit_to_budget's page-relative cursor as an absolute
+            # resume offset over the full deterministic card ordering.
+            dropped = len(remaining) - len(kept)
+            result["continuation"] = f"+{dropped} more, cursor={cursor + len(kept)}"
+        # LRU: every surfaced scope_id counts as a read (node ids and the
+        # coarsest cids, which ARE graph node ids when summaries are minted).
+        self._bump_nodes_access(project_root, (str(c.get("scope_id")) for c in kept))
+        return result
 
     def _mcp_fresh_insights(
         self,
