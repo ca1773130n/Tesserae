@@ -2692,20 +2692,27 @@ class LLMWikiMCPServer:
         return {"communities": items, "total": len(items)}
 
     def _mcp_graph_map(self, args: JSONDict) -> JSONDict:
-        """Budgeted Descent map over the hierarchy sidecar (§5.1, PR5).
+        """Budgeted Descent map over the hierarchy sidecar (§5.1 + §5.2).
 
-        Structural-only: cards are pure functions of ``graph.json`` +
-        ``hierarchy.json`` — the sole ``quality="llm"`` source is the reuse of
-        in-graph COMMUNITY_SUMMARY nodes at the coarsest level; no LLM call is
-        ever made here. Auto-coarsening below the root is built into
-        ``Hierarchy.children`` (descent lands on the first finer level that
-        actually splits the scope, skipping byte-identical pass-through
-        levels); overflow beyond that is handled by cursor pagination, never a
-        terminal rollup. Every returned card's scope_id is fed to
-        ``_bump_nodes_access`` — spine traversal is memory "use", the demand
-        signal the consolidation SUMMARIZE op (PR7) pre-warms from.
+        Cards are pure functions of ``graph.json`` + ``hierarchy.json`` +
+        the summary caches: ``quality="llm"`` comes from in-graph
+        COMMUNITY_SUMMARY nodes (coarsest level) or a warm level-scoped
+        cache entry. The ONE exception is lazy materialization (PR6): the
+        first visit to a cold scope pays exactly one ``complete_json`` call
+        and caches the result; no client, call failure, invalid or
+        citation-rejected output all degrade to the deterministic
+        structural card — never blocks, never raises. Auto-coarsening below
+        the root is built into ``Hierarchy.children`` (descent lands on the
+        first finer level that actually splits the scope, skipping
+        byte-identical pass-through levels); overflow beyond that is handled
+        by cursor pagination, never a terminal rollup. Every returned card's
+        scope_id is fed to ``_bump_nodes_access`` — spine traversal is
+        memory "use", the demand signal the consolidation SUMMARIZE op (PR7)
+        pre-warms from.
         """
+        from .community_summaries import materialize_community_summary
         from .hierarchy import (
+            SUMMARY_CHAR_CAP,
             community_card,
             load_hierarchy,
             node_card,
@@ -2721,6 +2728,7 @@ class LLMWikiMCPServer:
         hierarchy = load_hierarchy(project_root)
         by_id = {n.id: n for n in graph.nodes}
         degrees = undirected_degrees(graph)
+        summary_cache_dir = project_root / ".tesserae" / "community_summaries"
         budget_chars = _budget_chars_arg(args)
         cursor = max(0, int(args.get("cursor") or 0))
         raw_scope = args.get("scope")
@@ -2729,7 +2737,10 @@ class LLMWikiMCPServer:
         if scope is None:
             coarsest = hierarchy.coarsest
             cards = [
-                community_card(hierarchy, cid, members, by_id, degrees)
+                community_card(
+                    hierarchy, cid, members, by_id, degrees,
+                    summary_cache_dir=summary_cache_dir,
+                )
                 for cid, members in sorted(
                     coarsest.items(), key=lambda kv: (-len(kv[1]), kv[0])
                 )
@@ -2754,10 +2765,40 @@ class LLMWikiMCPServer:
                     f"root with graph_map() (no scope) and descend."
                 )
             level, members = found
-            scope_card = community_card(hierarchy, scope, members, by_id, degrees)
             community_children, loose = hierarchy.children(scope) or ([], list(members))
+            scope_card = community_card(
+                hierarchy, scope, members, by_id, degrees,
+                summary_cache_dir=summary_cache_dir,
+            )
+            if scope_card["quality"] == "structural":
+                # §5.2 lazy materialization: this visit pays at most ONE
+                # complete_json call. Community children engage the citation
+                # discipline (the prompt lists their cids; prose citing none
+                # is rejected and stays uncached). Failure of any kind keeps
+                # the deterministic structural card.
+                materialized = materialize_community_summary(
+                    [by_id[m] for m in members if m in by_id],
+                    cid=scope,
+                    member_ids=members,
+                    level=level,
+                    cache_dir=summary_cache_dir,
+                    json_client=self._community_summary_json_client(),
+                    child_cids=[child_cid for child_cid, _ in community_children],
+                )
+                if materialized is not None:
+                    title, description, tags = materialized
+                    scope_card = {
+                        **scope_card,
+                        "title": title,
+                        "summary": _truncate_text(description, SUMMARY_CHAR_CAP),
+                        "tags": tags,
+                        "quality": "llm",
+                    }
             cards = [
-                community_card(hierarchy, child_cid, child_members, by_id, degrees)
+                community_card(
+                    hierarchy, child_cid, child_members, by_id, degrees,
+                    summary_cache_dir=summary_cache_dir,
+                )
                 for child_cid, child_members in community_children
             ]
             cards.extend(node_card(member_id, scope, by_id) for member_id in loose)
@@ -2766,6 +2807,8 @@ class LLMWikiMCPServer:
                 "kind": "community",
                 "level": level,  # dendrogram index, 0 = finest
                 "title": scope_card["title"],
+                "summary": scope_card["summary"],
+                "quality": scope_card["quality"],
                 "leaf_member_count": len(members),
                 "parent_scope": scope_card["parent_scope"],
             }
@@ -2787,6 +2830,33 @@ class LLMWikiMCPServer:
         # coarsest cids, which ARE graph node ids when summaries are minted).
         self._bump_nodes_access(project_root, (str(c.get("scope_id")) for c in kept))
         return result
+
+    def _community_summary_json_client(self) -> Optional[object]:
+        """LLM client for lazy summary materialization (§5.2), or ``None``.
+
+        Resolution mirrors ``project._merge_community_summaries``: the test
+        seam wins, the ``TESSERAE_COMMUNITY_SUMMARIES`` opt-out disables, and
+        otherwise the default client is built once and memoized — including a
+        ``None``/failed build, so a clientless environment costs nothing per
+        ``graph_map`` call. Never raises: no client just means every cold
+        scope keeps its structural card.
+        """
+        from .community_summaries import is_enabled_via_env
+        from .project import _get_community_summaries_test_client
+
+        injected = _get_community_summaries_test_client()
+        if injected is not None:
+            return injected
+        if not is_enabled_via_env():
+            return None
+        if not hasattr(self, "_lazy_summary_client"):
+            try:
+                from .llm_json import build_default_json_client
+
+                self._lazy_summary_client = build_default_json_client()
+            except Exception:  # noqa: BLE001
+                self._lazy_summary_client = None
+        return self._lazy_summary_client
 
     def _mcp_fresh_insights(
         self,

@@ -24,7 +24,8 @@ from pathlib import Path
 
 import pytest
 
-from tesserae.community_summaries import community_id
+import tesserae.project as project_mod
+from tesserae.community_summaries import community_id, level_cache_path
 from tesserae.mcp_server import LLMWikiMCPServer
 from tesserae.research_graph import (
     ResearchEdge,
@@ -317,6 +318,134 @@ def test_root_call_bumps_community_ids(project) -> None:
     _call(project)
     rows = read_memory(project["root"] / ".tesserae" / "sqlite.db")
     assert CID_A in rows and CID_B in rows
+
+
+# ---------------------------------------------------------------------------
+# Lazy LLM materialization (§5.2, PR6)
+# ---------------------------------------------------------------------------
+
+
+class _ScriptedClient:
+    """LLMJsonClient stub following the community_summaries test pattern."""
+
+    def __init__(self, scripted: list) -> None:
+        self._scripted = list(scripted)
+        self.calls: list = []
+
+    def complete_json(self, *, system, user, schema_name, cache_key=None, **_):  # noqa: ANN001
+        self.calls.append({"system": system, "user": user, "schema_name": schema_name})
+        return self._scripted.pop(0) if self._scripted else None
+
+
+@pytest.fixture(autouse=True)
+def _reset_community_client():
+    # Reset BEFORE (in case a prior test leaked) and AFTER (so a scripted
+    # client injected here can never leak into another test's compiles).
+    project_mod.set_community_summaries_test_client(None)
+    yield
+    project_mod.set_community_summaries_test_client(None)
+
+
+def _summary_payload(description: str) -> dict:
+    return {
+        "title": "Beta Systems",
+        "description": description,
+        "tags": ["beta", "systems", "graph", "kg", "llm"],
+    }
+
+
+def test_cold_scope_visit_materializes_and_warms_cache(project) -> None:
+    """First visit to a cold cid pays exactly ONE complete_json call; the
+    result is cached level-scoped and reused by later card builds."""
+    client = _ScriptedClient([_summary_payload(f"Beta cluster spanning {CID_B1}.")])
+    project_mod.set_community_summaries_test_client(client)
+
+    result = _call(project, scope=CID_B)
+    assert len(client.calls) == 1
+    header = result["header"]
+    assert header["quality"] == "llm"
+    assert header["title"] == "Beta Systems"
+    assert header["summary"] == f"Beta cluster spanning {CID_B1}."
+    # B's children are communities → the prompt lists their cids.
+    assert CID_B1 in client.calls[0]["user"]
+    assert CID_B2 in client.calls[0]["user"]
+
+    # Cache landed under community_summaries/<level>/ (B resolves at level 2).
+    cache_dir = project["root"] / ".tesserae" / "community_summaries"
+    payload = json.loads(
+        level_cache_path(cache_dir, 2, CID_B).read_text(encoding="utf-8")
+    )
+    assert payload["community_id"] == CID_B
+    assert payload["member_ids"] == B_MEMBERS
+
+    # Warm everywhere now: the root map's B card is llm-quality with zero
+    # further calls, and re-visiting the scope is a pure cache hit.
+    root_card = next(c for c in _call(project)["cards"] if c["scope_id"] == CID_B)
+    assert root_card["quality"] == "llm"
+    assert root_card["title"] == "Beta Systems"
+    again = _call(project, scope=CID_B)
+    assert again["header"]["quality"] == "llm"
+    assert len(client.calls) == 1, "warm cache re-invoked the LLM"
+
+
+def test_citation_rejection_stays_structural_and_uncached(project) -> None:
+    """Prose citing NO child community id is rejected: structural card,
+    nothing cached as llm-quality (§5.2 citation discipline)."""
+    client = _ScriptedClient([_summary_payload("A vague summary citing nothing.")])
+    project_mod.set_community_summaries_test_client(client)
+
+    header = _call(project, scope=CID_B)["header"]
+    assert len(client.calls) == 1
+    assert header["quality"] == "structural"
+    assert header["title"] == "Beta Hub"  # deterministic structural title
+    cache_dir = project["root"] / ".tesserae" / "community_summaries"
+    assert not cache_dir.exists() or not list(cache_dir.rglob("CommunitySummary_*.json"))
+
+
+def test_finest_scope_has_no_citation_requirement(project) -> None:
+    """B1's children are leaf nodes, not summaries — plain prompt, plain
+    acceptance, no cid citation demanded."""
+    client = _ScriptedClient([_summary_payload("The dense beta-one triangle.")])
+    project_mod.set_community_summaries_test_client(client)
+
+    header = _call(project, scope=CID_B1)["header"]
+    assert len(client.calls) == 1
+    assert header["quality"] == "llm"
+    assert header["title"] == "Beta Systems"
+    assert "Child sub-communities" not in client.calls[0]["user"]
+    assert "cite at least one" not in client.calls[0]["system"]
+    cache_dir = project["root"] / ".tesserae" / "community_summaries"
+    assert level_cache_path(cache_dir, 0, CID_B1).is_file()  # B1 is finest-level
+
+
+def test_invalid_llm_payload_stays_structural(project) -> None:
+    client = _ScriptedClient([{"title": "T", "description": "D"}])  # no tags
+    project_mod.set_community_summaries_test_client(client)
+    header = _call(project, scope=CID_B)["header"]
+    assert header["quality"] == "structural"
+    assert header["title"] == "Beta Hub"
+
+
+def test_no_client_stays_structural_without_blocking(project) -> None:
+    # No seam, and conftest pins build_default_json_client to None: the visit
+    # must degrade to the structural card without writing anything.
+    header = _call(project, scope=CID_B)["header"]
+    assert header["quality"] == "structural"
+    assert header["title"] == "Beta Hub"
+    cache_dir = project["root"] / ".tesserae" / "community_summaries"
+    assert not cache_dir.exists() or not list(cache_dir.rglob("CommunitySummary_*.json"))
+
+
+def test_scope_with_in_graph_summary_never_calls_llm(project) -> None:
+    client = _ScriptedClient([])
+    project_mod.set_community_summaries_test_client(client)
+    # A carries an in-graph COMMUNITY_SUMMARY node; the root call builds
+    # cards only. Neither may trigger materialization.
+    header = _call(project, scope=CID_A)["header"]
+    assert header["quality"] == "llm"
+    assert header["title"] == "Alpha Systems"
+    _call(project)
+    assert client.calls == []
 
 
 # ---------------------------------------------------------------------------

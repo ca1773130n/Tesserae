@@ -30,7 +30,10 @@ from tesserae.community_summaries import (
     detect_community_levels,
     hub_node_ids,
     is_enabled_via_env,
+    level_cache_path,
+    materialize_community_summary,
     prune_stale_summary_caches,
+    read_warm_summary,
 )
 from tesserae.mcp_server import LLMWikiMCPServer
 from tesserae.research_graph import (
@@ -67,7 +70,14 @@ class _ScriptedClient:
         cache_key: Any = None,
         max_retries: int = 2,
     ) -> Optional[Union[dict, list]]:
-        self.calls.append({"schema_name": schema_name, "cache_key": cache_key})
+        self.calls.append(
+            {
+                "schema_name": schema_name,
+                "cache_key": cache_key,
+                "system": system,
+                "user": user,
+            }
+        )
         if self._scripted is not None:
             return self._scripted.pop(0) if self._scripted else None
         index = len(self.calls)
@@ -595,6 +605,241 @@ def test_compile_drops_cluster_when_llm_returns_invalid_payload(tmp_path: Path) 
     assert slice_graph.edges == []
     # No cache files written on failure (we only persist validated summaries).
     assert list((tmp_path / "cache").glob("*.json")) == []
+
+
+# ---------------------------------------------------------------------------
+# Lazy materialization (§5.2, PR6)
+# ---------------------------------------------------------------------------
+
+
+def _lazy_members(n: int = 3) -> List[ResearchNode]:
+    return [
+        ResearchNode(
+            id=f"Concept:m{i}",
+            name=f"M{i}",
+            type=ResearchNodeType.CONCEPT,
+            description=f"description of member {i}",
+        )
+        for i in range(n)
+    ]
+
+
+def test_level_cache_path_is_level_scoped(tmp_path: Path) -> None:
+    cid = community_id(["a", "b"])
+    path = level_cache_path(tmp_path, 2, cid)
+    assert path == tmp_path / "2" / f"{cid.replace(':', '_')}.json"
+
+
+def test_materialize_writes_level_scoped_envelope_once(tmp_path: Path) -> None:
+    members = _lazy_members()
+    member_ids = [n.id for n in members]
+    cid = community_id(member_ids)
+    client = _ScriptedClient()
+
+    summary = materialize_community_summary(
+        members,
+        cid=cid,
+        member_ids=member_ids,
+        level=1,
+        cache_dir=tmp_path,
+        json_client=client,
+    )
+    assert summary == (
+        "Cluster 1",
+        "Test description for cluster 1.",
+        ["alpha", "beta", "gamma", "delta", "epsilon"],
+    )
+    assert len(client.calls) == 1
+
+    # Cache landed under the level subdir with the compile pass's envelope.
+    payload = json.loads(
+        level_cache_path(tmp_path, 1, cid).read_text(encoding="utf-8")
+    )
+    assert payload["schema_version"] == 1
+    assert payload["community_id"] == cid
+    assert payload["member_ids"] == member_ids
+    assert isinstance(payload["members_digest"], str) and payload["members_digest"]
+    assert {"title", "description", "tags"} <= set(payload["summary"].keys())
+
+    # Warm re-visit: cache hit, the LLM is never called again.
+    again = materialize_community_summary(
+        members,
+        cid=cid,
+        member_ids=member_ids,
+        level=1,
+        cache_dir=tmp_path,
+        json_client=_ScriptedClient(),
+    )
+    assert again == summary
+    assert read_warm_summary(tmp_path, 1, cid, members) == summary
+
+
+def test_materialize_without_client_returns_none(tmp_path: Path) -> None:
+    members = _lazy_members()
+    cid = community_id([n.id for n in members])
+    assert (
+        materialize_community_summary(
+            members,
+            cid=cid,
+            member_ids=[n.id for n in members],
+            level=0,
+            cache_dir=tmp_path,
+            json_client=None,
+        )
+        is None
+    )
+    assert not (tmp_path / "0").exists()
+
+
+def test_materialize_never_raises(tmp_path: Path) -> None:
+    class _ExplodingClient:
+        def complete_json(self, **kwargs: Any) -> None:
+            raise RuntimeError("boom")
+
+    members = _lazy_members()
+    cid = community_id([n.id for n in members])
+    assert (
+        materialize_community_summary(
+            members,
+            cid=cid,
+            member_ids=[n.id for n in members],
+            level=0,
+            cache_dir=tmp_path,
+            json_client=_ExplodingClient(),
+        )
+        is None
+    )
+    assert not (tmp_path / "0").exists()
+
+
+def test_materialize_invalid_payload_not_cached(tmp_path: Path) -> None:
+    members = _lazy_members()
+    cid = community_id([n.id for n in members])
+    bad = _ScriptedClient(scripted=[{"title": "T", "description": "D"}])  # no tags
+    assert (
+        materialize_community_summary(
+            members,
+            cid=cid,
+            member_ids=[n.id for n in members],
+            level=0,
+            cache_dir=tmp_path,
+            json_client=bad,
+        )
+        is None
+    )
+    assert not (tmp_path / "0").exists()
+
+
+def test_citation_prompt_lists_child_cids(tmp_path: Path) -> None:
+    members = _lazy_members()
+    cid = community_id([n.id for n in members])
+    child_a = community_id(["Concept:m0", "Concept:m1"])
+    child_b = community_id(["Concept:m2", "Concept:m3"])
+    client = _ScriptedClient(
+        scripted=[
+            {
+                "title": "Cited",
+                "description": f"Spans {child_a} and friends.",
+                "tags": ["a", "b", "c", "d", "e"],
+            }
+        ]
+    )
+    summary = materialize_community_summary(
+        members,
+        cid=cid,
+        member_ids=[n.id for n in members],
+        level=1,
+        cache_dir=tmp_path,
+        json_client=client,
+        child_cids=[child_a, child_b],
+    )
+    assert summary is not None and summary[0] == "Cited"
+    # The prompt lists every child cid and the system prompt demands citation.
+    assert child_a in client.calls[0]["user"]
+    assert child_b in client.calls[0]["user"]
+    assert "cite at least one" in client.calls[0]["system"]
+    # Accepted output IS cached as llm-quality.
+    assert level_cache_path(tmp_path, 1, cid).is_file()
+
+
+def test_citation_rejection_falls_back_and_is_not_cached(tmp_path: Path) -> None:
+    """§5.2: prose citing NO child community id is rejected — structural
+    fallback, nothing cached, so a later visit may still retry the LLM."""
+    members = _lazy_members()
+    cid = community_id([n.id for n in members])
+    child_cids = [community_id(["Concept:m0", "Concept:m1"])]
+    uncited = {
+        "title": "Vague",
+        "description": "A summary that cites nothing at all.",
+        "tags": ["a", "b", "c", "d", "e"],
+    }
+    client = _ScriptedClient(scripted=[uncited, uncited])
+    for _ in range(2):  # rejection is not sticky — both visits re-attempt
+        assert (
+            materialize_community_summary(
+                members,
+                cid=cid,
+                member_ids=[n.id for n in members],
+                level=1,
+                cache_dir=tmp_path,
+                json_client=client,
+                child_cids=child_cids,
+            )
+            is None
+        )
+    assert len(client.calls) == 2
+    assert not level_cache_path(tmp_path, 1, cid).exists()
+
+
+def test_compile_prompt_has_no_citation_section(tmp_path: Path) -> None:
+    """The compile pass summarizes leaf members (child_cids empty) — its
+    prompts and system message are byte-identical to the pre-refactor code."""
+    client = _ScriptedClient()
+    compile_community_summaries(
+        _two_cluster_graph(), cache_dir=tmp_path / "cs", json_client=client, min_size=3,
+    )
+    for call in client.calls:
+        assert "Child sub-communities" not in call["user"]
+        assert "cite at least one" not in call["system"]
+
+
+def test_read_warm_summary_rejects_digest_drift(tmp_path: Path) -> None:
+    members = _lazy_members()
+    member_ids = [n.id for n in members]
+    cid = community_id(member_ids)
+    materialize_community_summary(
+        members,
+        cid=cid,
+        member_ids=member_ids,
+        level=0,
+        cache_dir=tmp_path,
+        json_client=_ScriptedClient(),
+    )
+    assert read_warm_summary(tmp_path, 0, cid, members) is not None
+    drifted = [
+        dataclasses.replace(members[0], description="edited description")
+    ] + members[1:]
+    # Strict: content drift is a MISS (no stale llm-quality cards), and the
+    # wrong level is a miss too (the layout is level-scoped).
+    assert read_warm_summary(tmp_path, 0, cid, drifted) is None
+    assert read_warm_summary(tmp_path, 1, cid, members) is None
+
+
+def test_prune_recurses_into_level_subdirs(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "community_summaries"
+    live = community_id(["a", "b"])
+    dead = community_id(["x", "y"])
+    _seed_cache_files(cache_dir, [live, dead])
+    _seed_cache_files(cache_dir / "2", [live, dead])
+    # Non-numeric subdirs are foreign — never touched.
+    _seed_cache_files(cache_dir / "backup", [dead])
+
+    deleted = prune_stale_summary_caches(cache_dir, {live})
+    dead_name = f"{dead.replace(':', '_')}.json"
+    assert deleted == sorted([dead_name, f"2/{dead_name}"])
+    assert _cache_path(cache_dir, live).exists()
+    assert _cache_path(cache_dir / "2", live).exists()
+    assert _cache_path(cache_dir / "backup", dead).exists()
 
 
 # ---------------------------------------------------------------------------
