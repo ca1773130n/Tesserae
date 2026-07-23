@@ -248,6 +248,28 @@ def _fit_payload_list(
     return clamped[: len(fit.entries)], fit.continuation
 
 
+def _paginate_cards(
+    header: JSONDict, cards: List[JSONDict], budget_chars: int, cursor: int
+) -> JSONDict:
+    """Shared ``graph_map`` response tail: absolute-cursor pagination + CTX-01.
+
+    ``cursor`` is a resume offset over the full deterministic card ordering;
+    the continuation line rewrites ``fit_to_budget``'s page-relative drop count
+    as the absolute next cursor, so every scope kind (community, org, agent)
+    paginates identically.
+    """
+    cursor = min(cursor, len(cards))
+    header["total_cards"] = len(cards)
+    header["cursor"] = cursor
+    remaining = cards[cursor:]
+    kept, continuation = _fit_payload_list(remaining, budget_chars, text_field="summary")
+    result: JSONDict = {"header": header, "cards": kept}
+    if continuation:
+        dropped = len(remaining) - len(kept)
+        result["continuation"] = f"+{dropped} more, cursor={cursor + len(kept)}"
+    return result
+
+
 def _budget_chars_arg(args: Mapping[str, Any]) -> int:
     """Parse the ``budget_chars`` tool argument, preserving an explicit 0.
 
@@ -572,8 +594,16 @@ class LLMWikiMCPServer:
                     "next page. Typical loop: graph_map() -> pick a card by "
                     "tags/size -> graph_map(scope_id) -> repeat -> "
                     "compile_context/node_context on the leaf node ids. "
-                    "Requires the .tesserae/hierarchy.json sidecar written by "
-                    "`tesserae compile`."
+                    "Agent-org scopes: scope='org:root' maps the agent "
+                    "registry tree (kind=agent cards, children_count = direct "
+                    "reports; descend with scope='agent:<key>'); "
+                    "scope='agent:<key>' lists that agent's distilled L1 "
+                    "index as kind=note cards — distillate-only (sealed L0), "
+                    "each carrying a drill block whose agent + member_refs "
+                    "feed the drill_down tool to escalate one member to raw "
+                    "L0. Community scopes require the .tesserae/hierarchy.json "
+                    "sidecar written by `tesserae compile`; agent scopes need "
+                    "only the agent registry and distilled artifacts."
                 ),
                 "inputSchema": {
                     "type": "object",
@@ -583,9 +613,11 @@ class LLMWikiMCPServer:
                         "scope": {
                             "type": "string",
                             "description": (
-                                "Community id to descend into (a card's scope_id "
-                                "from a previous graph_map call). Omit for the "
-                                "root card set."
+                                "Scope to descend into (a card's scope_id from "
+                                "a previous graph_map call): a community id, "
+                                "'agent:<key>' for an agent's distilled index, "
+                                "or 'org:root' for the agent org tree. Omit "
+                                "for the root card set."
                             ),
                         },
                         "cursor": {
@@ -2709,15 +2741,30 @@ class LLMWikiMCPServer:
         scope_id is fed to ``_bump_nodes_access`` — spine traversal is
         memory "use", the demand signal the consolidation SUMMARIZE op (PR7)
         pre-warms from.
+
+        Agent-org scopes (``org:root`` / ``agent:<key>``, §6.2 PR9) dispatch
+        to :meth:`_graph_map_agent_scope` BEFORE the hierarchy sidecar loads —
+        the org tree is the registry, not the Louvain dendrogram.
         """
+        from .agent_identity import ORG_ROOT
         from .community_summaries import materialize_community_summary
         from .hierarchy import (
+            AGENT_SCOPE_PREFIX,
             SUMMARY_CHAR_CAP,
             community_card,
             load_hierarchy,
             node_card,
             undirected_degrees,
         )
+
+        budget_chars = _budget_chars_arg(args)
+        cursor = max(0, int(args.get("cursor") or 0))
+        raw_scope = args.get("scope")
+        scope = str(raw_scope) if raw_scope else None
+        if scope is not None and (scope == ORG_ROOT or scope.startswith(AGENT_SCOPE_PREFIX)):
+            return self._graph_map_agent_scope(
+                args, scope, budget_chars=budget_chars, cursor=cursor
+            )
 
         graph, project_root = self._load_requested_graph_with_root(args)
         if project_root is None:
@@ -2729,10 +2776,6 @@ class LLMWikiMCPServer:
         by_id = {n.id: n for n in graph.nodes}
         degrees = undirected_degrees(graph)
         summary_cache_dir = project_root / ".tesserae" / "community_summaries"
-        budget_chars = _budget_chars_arg(args)
-        cursor = max(0, int(args.get("cursor") or 0))
-        raw_scope = args.get("scope")
-        scope = str(raw_scope) if raw_scope else None
 
         if scope is None:
             coarsest = hierarchy.coarsest
@@ -2761,8 +2804,10 @@ class LLMWikiMCPServer:
                 raise ValueError(
                     f"graph_map: unknown scope {scope!r}. Valid scopes are "
                     f"community ids from a previous graph_map call (a card's "
-                    f"scope_id, e.g. 'CommunitySummary:<hash>'); start from the "
-                    f"root with graph_map() (no scope) and descend."
+                    f"scope_id, e.g. 'CommunitySummary:<hash>'), 'agent:<key>' "
+                    f"for an agent's distilled index, or 'org:root' for the "
+                    f"agent org tree; start from the root with graph_map() "
+                    f"(no scope) and descend."
                 )
             level, members = found
             community_children, loose = hierarchy.children(scope) or ([], list(members))
@@ -2813,23 +2858,131 @@ class LLMWikiMCPServer:
                 "parent_scope": scope_card["parent_scope"],
             }
 
-        cursor = min(cursor, len(cards))
-        header["total_cards"] = len(cards)
-        header["cursor"] = cursor
-        remaining = cards[cursor:]
-        kept, continuation = _fit_payload_list(
-            remaining, budget_chars, text_field="summary"
-        )
-        result: JSONDict = {"header": header, "cards": kept}
-        if continuation:
-            # Rewrite fit_to_budget's page-relative cursor as an absolute
-            # resume offset over the full deterministic card ordering.
-            dropped = len(remaining) - len(kept)
-            result["continuation"] = f"+{dropped} more, cursor={cursor + len(kept)}"
+        result = _paginate_cards(header, cards, budget_chars, cursor)
         # LRU: every surfaced scope_id counts as a read (node ids and the
         # coarsest cids, which ARE graph node ids when summaries are minted).
-        self._bump_nodes_access(project_root, (str(c.get("scope_id")) for c in kept))
+        self._bump_nodes_access(
+            project_root, (str(c.get("scope_id")) for c in result["cards"])
+        )
         return result
+
+    def _graph_map_agent_scope(
+        self, args: JSONDict, scope: str, *, budget_chars: int, cursor: int
+    ) -> JSONDict:
+        """Org-tree scopes for ``graph_map``: ``org:root`` / ``agent:<key>`` (§6.2).
+
+        ``org:root`` renders the agent registry tree as agent cards
+        (``children_count`` = direct reports; descent into a child is
+        ``agent:<child key>``); ``agent:<key>`` renders that agent's distilled
+        L1 Index as note cards, with a manager's direct-report agent cards
+        first so org navigation continues downward. CRITICAL invariant, sealed
+        L0: the base graph is consulted ONLY to enumerate observed agent keys
+        and as :func:`resolve_agent_view` input — no raw L0 node ever becomes
+        a card and no L0 content is rendered; manager/org callers see
+        distillate-only knowledge, exactly like ``agent=`` reads. Escalation
+        past that seal is each note card's ``drill`` block feeding the
+        existing audited ``drill_down`` tool. Fail-loud on unknown agent keys
+        and missing artifacts (AgentViewError names the distill remedy). No
+        ``_bump_nodes_access``: agent/org cards are registry structure and
+        distillate ids, not L0 graph nodes — the community pre-warm demand
+        signal stays clean, and drill_down records the raw read on escalation.
+        """
+        from .agent_distill import agent_artifact_path
+        from .agent_identity import ORG_ROOT, AgentRegistry
+        from .agent_view import _known_agent_keys, resolve_agent_view
+        from .hierarchy import AGENT_SCOPE_PREFIX, agent_card, distilled_note_card
+
+        graph, project_root = self._load_base_graph_with_root(args)
+        if project_root is None:
+            raise ValueError(
+                "graph_map agent scopes require a project root (graph stores "
+                "have none). Pass graph_path/project or cd into a registered "
+                "project."
+            )
+        registry = AgentRegistry.for_project(project_root)
+        known = _known_agent_keys(graph, registry)
+        parent_of = {key: registry.effective_parent(key) for key in known}
+        children_of: Dict[str, List[str]] = {}
+        for key in known:  # known is sorted → children lists stay key-sorted
+            children_of.setdefault(parent_of[key], []).append(key)
+        declared = registry.load().get("agents")
+        labels = declared if isinstance(declared, dict) else {}
+
+        def label_for(key: str) -> str:
+            entry = labels.get(key)
+            return str(entry.get("label") or "") if isinstance(entry, dict) else ""
+
+        def subtree_keys(key: str) -> List[str]:
+            out = [key]
+            for child in children_of.get(key, []):
+                out.extend(subtree_keys(child))
+            return out
+
+        def note_count(key: str) -> int:
+            path = agent_artifact_path(project_root, key)
+            if not path.is_file():
+                return 0
+            l1 = self._load_graph_cached(path)
+            return sum(1 for n in l1.nodes if n.type is ResearchNodeType.DISTILLED_NOTE)
+
+        def report_card(key: str) -> JSONDict:
+            parent = parent_of[key]
+            subtree = subtree_keys(key)
+            return agent_card(
+                key,
+                label=label_for(key),
+                parent_scope=parent if parent == ORG_ROOT else AGENT_SCOPE_PREFIX + parent,
+                direct_reports=len(children_of.get(key, [])),
+                subtree_agents=len(subtree),
+                subtree_notes=sum(note_count(k) for k in subtree),
+                distilled=agent_artifact_path(project_root, key).is_file(),
+            )
+
+        def report_cards(keys: List[str]) -> List[JSONDict]:
+            cards = [report_card(key) for key in keys]
+            cards.sort(key=lambda c: (-int(c["size"]), str(c["scope_id"])))
+            return cards
+
+        if scope == ORG_ROOT:
+            cards = report_cards(children_of.get(ORG_ROOT, []))
+            header: JSONDict = {
+                "scope": ORG_ROOT,
+                "kind": "org",
+                "title": "Agent org",
+                "agent_count": len(known),
+                "parent_scope": None,
+            }
+        else:
+            canonical = registry.resolve_alias(scope[len(AGENT_SCOPE_PREFIX):])
+            if canonical not in known:
+                raise ValueError(
+                    f"graph_map: unknown agent scope {scope!r}. Known agents: "
+                    f"{', '.join(known) or '(none)'}. Start from "
+                    f"scope='org:root' and descend via the agent cards."
+                )
+            # Distillate-only resolution, READ-ONLY reuse of the agent-view
+            # layer — fail-loud on missing artifacts, same as agent= reads.
+            view, info = resolve_agent_view(project_root, canonical, graph)
+            cards = report_cards(children_of.get(canonical, []))
+            note_cards = [
+                distilled_note_card(node)
+                for node in view.nodes
+                if node.type is ResearchNodeType.DISTILLED_NOTE
+            ]
+            note_cards.sort(key=lambda c: (-int(c["size"]), str(c["scope_id"])))
+            cards.extend(note_cards)
+            parent = parent_of[canonical]
+            header = {
+                "scope": scope,
+                "kind": "agent",
+                "agent": canonical,
+                "mode": info["mode"],
+                "title": label_for(canonical) or canonical,
+                "note_count": len(note_cards),
+                "direct_reports": len(children_of.get(canonical, [])),
+                "parent_scope": parent if parent == ORG_ROOT else AGENT_SCOPE_PREFIX + parent,
+            }
+        return _paginate_cards(header, cards, budget_chars, cursor)
 
     def _community_summary_json_client(self) -> Optional[object]:
         """LLM client for lazy summary materialization (§5.2), or ``None``.
