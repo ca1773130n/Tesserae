@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set
 
 from .graph_filters import superseded_ids
-from .research_graph import ResearchGraph, ResearchNode
+from .research_graph import ResearchGraph, ResearchNode, ResearchNodeType
 from .retrieval.hybrid import hybrid_search
 from .retrieval.ppr import personalized_pagerank
 from .wiki_projector import kind_for_node
@@ -309,6 +309,70 @@ def _neighborhood_within_depth(
     return reachable
 
 
+def _induced_subgraph(graph: ResearchGraph, keep: Set[str]) -> ResearchGraph:
+    """The subgraph induced by ``keep``: those nodes + edges internal to them.
+
+    In-memory only, input order preserved — the community-scoped PPR run
+    (Descent §5.4) never sees a hub outside the scope, so 2-hop hub explosion
+    is impossible by construction rather than by downweighting.
+    """
+    return ResearchGraph(
+        nodes=[n for n in graph.nodes if n.id in keep],
+        edges=[e for e in graph.edges if e.source in keep and e.target in keep],
+    )
+
+
+def _summary_layer_nodes(
+    graph: ResearchGraph, hierarchy, project_root: Path
+) -> List[ResearchNode]:
+    """The hierarchical-seeding corpus (Descent §5.4): one node per summary.
+
+    In-graph coarse COMMUNITY_SUMMARY nodes (live in the hierarchy sidecar)
+    plus WARM cached fine summaries read from the cache index under
+    ``.tesserae/community_summaries/`` — the cached ones become synthetic
+    in-memory nodes for hybrid search only, never minted into the graph
+    (§3's reserved-``refines`` decision stays deferred). Deterministic:
+    sorted cache scan (``rglob`` so the PR6 level subdirs are covered), the
+    in-graph node wins over a cache file for the same cid, cold/invalid/
+    orphaned cache files are skipped silently.
+    """
+    from .community_summaries import _read_cache, _validate_summary
+
+    layer: List[ResearchNode] = []
+    seen: Set[str] = set()
+    for node in graph.nodes:
+        if node.type is not ResearchNodeType.COMMUNITY_SUMMARY:
+            continue
+        if hierarchy.find_scope(node.id) is None:
+            continue
+        layer.append(node)
+        seen.add(node.id)
+    cache_dir = project_root / ".tesserae" / "community_summaries"
+    if cache_dir.is_dir():
+        for path in sorted(cache_dir.rglob("CommunitySummary_*.json")):
+            payload = _read_cache(path)
+            if not isinstance(payload, dict):
+                continue
+            cid = str(payload.get("community_id") or "")
+            if not cid or cid in seen or hierarchy.find_scope(cid) is None:
+                continue
+            validated = _validate_summary(payload.get("summary"))
+            if validated is None:
+                continue
+            title, description, tags = validated
+            layer.append(
+                ResearchNode(
+                    id=cid,
+                    name=title,
+                    type=ResearchNodeType.COMMUNITY_SUMMARY,
+                    description=description,
+                    metadata={"tags": tags},
+                )
+            )
+            seen.add(cid)
+    return layer
+
+
 def compile_context(
     graph: ResearchGraph,
     project_root: Optional[str] = None,
@@ -323,6 +387,9 @@ def compile_context(
     recency_now: Optional[datetime] = None,
     recency_weight: float = 0.0,
     include_superseded: bool = False,
+    scope: Optional[str] = None,
+    strategy: str = "default",
+    tame_hubs: bool = False,
 ) -> ContextBundle:
     """Compile a tailored, cited context bundle for ``query`` / ``seeds``.
 
@@ -334,7 +401,94 @@ def compile_context(
     so a claim that lost to a winner is never cited as current knowledge. The
     losers still count as seeds, so a query landing on a stale claim surfaces
     its winner via the ``supersedes`` / ``resolved_by`` edge.
+
+    Descent §5.4 (PR8) additions — all default-off, the default path is
+    byte-identical with them unset:
+
+    * ``scope=<cid>`` restricts the whole pipeline (seed search, PPR,
+      selection) to the community-induced subgraph, member set resolved from
+      the ``hierarchy.json`` sidecar — 2-hop hub explosion is killed
+      structurally. Unknown cids fail loud with the valid grammar
+      (``graph_map`` card ``scope_id``s).
+    * ``strategy="hierarchical"`` seeds hybrid search against the summary
+      layer first (in-graph coarse summaries + warm cached fine summaries,
+      see :func:`_summary_layer_nodes`), descends the top ``max(1, depth)``
+      matched branches, then runs the normal pipeline within the selected
+      communities' member union (intersected with ``scope`` when both are
+      given). Needs a non-empty ``query``; without one — or when no summary
+      matches — it degrades to the default/scope path rather than guessing.
+    * ``tame_hubs=True`` forwards the flag-gated PR1 hub mitigation to PPR,
+      wiring the sidecar's precomputed ``hubs`` list into the degree cap
+      when the hierarchy is available (best-effort: a missing sidecar just
+      falls back to the fanout scan).
+
+    Both ``scope`` and ``strategy="hierarchical"`` require ``project_root``
+    (the sidecar lives under it); the ``budget=0`` uncapped invariant is
+    honoured on every path.
     """
+    if strategy not in ("default", "hierarchical"):
+        raise ValueError(
+            f"compile_context: unknown strategy {strategy!r} — expected "
+            f"'default' or 'hierarchical'."
+        )
+
+    # --- Step 0 (Descent §5.4): resolve hierarchy-backed restriction --------
+    hierarchy = None
+    if scope is not None or strategy == "hierarchical":
+        if project_root is None:
+            raise ValueError(
+                "compile_context: scope= and strategy='hierarchical' resolve "
+                "community members from the .tesserae/hierarchy.json sidecar "
+                "— pass project_root (then `tesserae compile` writes it)."
+            )
+        from .hierarchy import load_hierarchy  # local: hierarchy imports us
+
+        hierarchy = load_hierarchy(Path(project_root))
+    elif tame_hubs and project_root is not None:
+        from .hierarchy import load_hierarchy
+
+        try:  # best-effort hub list — the cap works without it (fanout scan)
+            hierarchy = load_hierarchy(Path(project_root))
+        except ValueError:
+            hierarchy = None
+    hub_ids = hierarchy.hubs if (tame_hubs and hierarchy is not None) else None
+
+    restrict: Optional[Set[str]] = None
+    if scope is not None:
+        found_scope = hierarchy.find_scope(scope)
+        if found_scope is None:
+            raise ValueError(
+                f"compile_context: unknown scope {scope!r} — valid scopes are "
+                f"community ids from the hierarchy sidecar (a graph_map "
+                f"card's scope_id, e.g. 'CommunitySummary:<hash>'); start "
+                f"from graph_map() and descend."
+            )
+        restrict = set(found_scope[1])
+
+    if strategy == "hierarchical" and query and query.strip():
+        layer = _summary_layer_nodes(graph, hierarchy, Path(project_root))
+        if layer:
+            matches = hybrid_search(
+                ResearchGraph(nodes=layer, edges=[]),
+                query,
+                top_k=max(1, depth) * 5,
+                backend=backend,
+            )
+            union: Set[str] = set()
+            for scored in matches.scored[: max(1, depth)]:
+                found_branch = hierarchy.find_scope(scored.node.id)
+                if found_branch is not None:
+                    union.update(found_branch[1])
+            if union:
+                narrowed = union if restrict is None else restrict & union
+                # An empty intersection means the matched branches all live
+                # outside the caller's scope — keep the explicit scope, it
+                # is the harder contract of the two.
+                restrict = narrowed or restrict
+
+    if restrict is not None:
+        graph = _induced_subgraph(graph, restrict)
+
     node_index = {n.id: n for n in graph.nodes}
     suppressed: Set[str] = set() if include_superseded else superseded_ids(graph)
 
@@ -397,6 +551,7 @@ def compile_context(
     full_ranked = personalized_pagerank(
         graph, seed_ids, alpha=0.15, top_k=max(1, len(graph.nodes)),
         edge_type_weights=edge_type_weights,
+        tame_hubs=tame_hubs, hub_ids=hub_ids,
     )
     in_nb = [
         (nid, score)

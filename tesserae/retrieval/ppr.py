@@ -96,6 +96,7 @@ def personalized_pagerank(
     max_iter: int = 100,
     tol: float = 1.0e-6,
     tame_hubs: bool = False,
+    hub_ids: Optional[Sequence[str]] = None,
 ) -> List[Tuple[str, float]]:
     """Run Personalized PageRank seeded at ``seed_ids``.
 
@@ -119,6 +120,13 @@ def personalized_pagerank(
             (b) each node's fanout on the aggregated projection is capped
             at ``HUB_DEGREE_CAP`` — only its strongest ties keep spreading
             mass (deterministic tie-break by node index).
+        hub_ids: Optional precomputed hub list (the ``hubs`` field of the
+            ``.tesserae/hierarchy.json`` sidecar, Descent PR8). Only read
+            when ``tame_hubs`` is on: the degree cap is then applied to
+            EXACTLY these nodes instead of scanning every node's fanout —
+            the sidecar already knows who the hubs are. ``None`` keeps the
+            PR1 scan-everything behaviour; unknown ids are dropped silently
+            (same contract as ``seed_ids``).
 
     Returns:
         ``[(node_id, score), ...]`` sorted descending. Scores over all
@@ -162,7 +170,17 @@ def personalized_pagerank(
         # neighbours keeps only its strongest ties (highest aggregated
         # weight, ties broken by node index for determinism). This bounds
         # how far a single mega-hub can smear PPR mass across the graph.
+        # With a sidecar hub list, only the listed nodes are candidates —
+        # the hierarchy pass already measured degrees, so the per-node
+        # fanout scan collapses to a membership check.
+        capped: Optional[frozenset] = (
+            frozenset(node_index[h] for h in hub_ids if h in node_index)
+            if hub_ids is not None
+            else None
+        )
         for src, dst_map in out_weights.items():
+            if capped is not None and src not in capped:
+                continue
             if len(dst_map) <= HUB_DEGREE_CAP:
                 continue
             kept = sorted(dst_map.items(), key=lambda item: (-item[1], item[0]))
