@@ -1,4 +1,5 @@
-"""FleetDaemon threads the four consolidate_* knobs down to each unit Daemon.
+"""FleetDaemon threads the sleep-cycle knobs (consolidate_* + the SUMMARIZE
+``summarize_budget``) down to each unit Daemon.
 
 'tesserae engine --all' must consolidate every registered project on idle, so
 the fleet's constructor knobs have to reach the per-unit Daemon built by the
@@ -69,6 +70,7 @@ def test_default_factory_threads_default_consolidate_knobs(tmp_path, monkeypatch
     assert kw["consolidate_idle_seconds"] == 300.0
     assert kw["consolidate_max_interval_seconds"] == 21600.0
     assert kw["consolidate_check_interval"] == 30.0
+    assert kw["summarize_budget"] == 25
 
 
 def test_default_factory_threads_custom_consolidate_knobs(tmp_path, monkeypatch):
@@ -82,6 +84,7 @@ def test_default_factory_threads_custom_consolidate_knobs(tmp_path, monkeypatch)
         consolidate_idle_seconds=17.0,
         consolidate_max_interval_seconds=0.0,
         consolidate_check_interval=5.0,
+        summarize_budget=4,
     )
     fleet._default_daemon_factory("alpha", root, fleet)
 
@@ -91,6 +94,7 @@ def test_default_factory_threads_custom_consolidate_knobs(tmp_path, monkeypatch)
     assert kw["consolidate_idle_seconds"] == 17.0
     assert kw["consolidate_max_interval_seconds"] == 0.0
     assert kw["consolidate_check_interval"] == 5.0
+    assert kw["summarize_budget"] == 4
 
 
 def test_reconcile_builds_units_carrying_custom_consolidate_config(tmp_path, monkeypatch):
@@ -137,5 +141,6 @@ def test_fleet_defaults_match_daemon_defaults():
         "consolidate_idle_seconds",
         "consolidate_max_interval_seconds",
         "consolidate_check_interval",
+        "summarize_budget",
     ):
         assert fleet_params[knob].default == daemon_params[knob].default

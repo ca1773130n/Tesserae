@@ -29,6 +29,15 @@ def test_consolidate_defaults_present():
     assert args.consolidate_idle == 300.0
     assert args.consolidate_every == 21600.0
     assert args.consolidate_check == 30.0
+    assert args.summarize_budget == 25
+
+
+def test_summarize_budget_parses_including_zero():
+    """`--summarize-budget` parses as int; 0 disables the SUMMARIZE op."""
+    args = _build_engine_parser().parse_args(["--summarize-budget", "0"])
+    assert args.summarize_budget == 0
+    args = _build_engine_parser().parse_args(["--summarize-budget", "7"])
+    assert args.summarize_budget == 7
 
 
 def test_no_consolidate_disables():
@@ -65,6 +74,7 @@ def test_consolidate_flags_appear_in_help():
     assert "--consolidate-idle" in help_text
     assert "--consolidate-every" in help_text
     assert "--consolidate-check" in help_text
+    assert "--summarize-budget" in help_text
     assert "sleep" in help_text.lower()
 
 
@@ -102,6 +112,17 @@ def test_default_consolidate_knobs_reach_daemon(tmp_path, monkeypatch):
     assert kw["consolidate_idle_seconds"] == 300.0
     assert kw["consolidate_max_interval_seconds"] == 21600.0
     assert kw["consolidate_check_interval"] == 30.0
+    assert kw["summarize_budget"] == 25
+
+
+def test_summarize_budget_reaches_daemon(tmp_path, monkeypatch):
+    (tmp_path / ".tesserae").mkdir(parents=True, exist_ok=True)
+    rc = _run_engine(
+        monkeypatch,
+        ["engine", "--once", "--project", str(tmp_path), "--summarize-budget", "3"],
+    )
+    assert rc == 0
+    assert _FakeDaemon.last_kwargs["summarize_budget"] == 3
 
 
 def test_custom_consolidate_knobs_reach_daemon(tmp_path, monkeypatch):
@@ -154,3 +175,11 @@ def test_consolidate_knobs_reach_fleet(monkeypatch):
     assert kw["consolidate_idle_seconds"] == 120.0
     assert kw["consolidate_max_interval_seconds"] == 3600.0
     assert kw["consolidate_check_interval"] == 15.0
+    assert kw["summarize_budget"] == 25
+
+
+def test_summarize_budget_reaches_fleet(monkeypatch):
+    monkeypatch.setattr("tesserae.engine.fleet.FleetDaemon", _FakeFleet)
+    rc = cli.main(["engine", "--all", "--once", "--summarize-budget", "0"])
+    assert rc == 0
+    assert _FakeFleet.last_kwargs["summarize_budget"] == 0

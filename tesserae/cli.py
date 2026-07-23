@@ -2283,6 +2283,7 @@ def _handle_engine(args: argparse.Namespace) -> int:
             consolidate_idle_seconds=getattr(args, "consolidate_idle", 300.0),
             consolidate_max_interval_seconds=getattr(args, "consolidate_every", 21600.0),
             consolidate_check_interval=getattr(args, "consolidate_check", 30.0),
+            summarize_budget=getattr(args, "summarize_budget", 25),
         )
         try:
             return fleet.run(once=args.once)
@@ -2300,6 +2301,7 @@ def _handle_engine(args: argparse.Namespace) -> int:
         consolidate_idle_seconds=getattr(args, "consolidate_idle", 300.0),
         consolidate_max_interval_seconds=getattr(args, "consolidate_every", 21600.0),
         consolidate_check_interval=getattr(args, "consolidate_check", 30.0),
+        summarize_budget=getattr(args, "summarize_budget", 25),
     )
     try:
         return daemon.run(once=args.once)
@@ -2545,6 +2547,16 @@ def _build_engine_parser() -> argparse.ArgumentParser:
         type=float,
         default=30.0,
         help="Sleep cycle: how often in seconds to check the consolidation trigger (default: 30).",
+    )
+    parser.add_argument(
+        "--summarize-budget",
+        type=int,
+        default=25,
+        help=(
+            "Sleep cycle: max LLM calls per consolidation tick spent pre-warming "
+            "community-summary caches for the most-demanded graph_map scopes; "
+            "0 disables the SUMMARIZE op (default: 25)."
+        ),
     )
     return parser
 
