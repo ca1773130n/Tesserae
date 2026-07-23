@@ -5,8 +5,10 @@ applied to the typed ``ResearchGraph``:
 
 1. Project the typed graph to an undirected graph (community detection
    ignores edge direction and ontology).
-2. Run ``networkx.community.louvain_communities`` when ``networkx`` is
-   importable; otherwise fall back to deterministic label propagation.
+2. Run ``networkx.community.louvain_partitions`` (seed=0) and keep the
+   coarsest dendrogram level (byte-identical to the previous direct
+   ``louvain_communities`` call; finer levels feed the Descent hierarchy
+   sidecar via :func:`detect_community_levels`).
 3. Per cluster (>= ``min_size`` members), call an :class:`LLMJsonClient`
    for a ``{title, description, tags}`` triple. Cache at
    ``<cache_dir>/<community_id>.json`` keyed on the sorted member ids and
@@ -47,13 +49,37 @@ logger = logging.getLogger(__name__)
 def detect_communities(graph: ResearchGraph) -> List[List[str]]:
     """Return non-singleton node-id clusters from the undirected projection.
 
-    Uses ``networkx.community.louvain_communities`` (pinned in
-    ``pyproject.toml``) with a fixed ``seed`` so cluster cache ids stay
-    deterministic across runs. The previous label-propagation fallback was
-    removed in favour of a single tested code path: it collapsed the
-    two-triangle-with-a-bridge fixture into one cluster on minimal installs,
-    diverging from the production behaviour asserted by
+    Implemented as the coarsest level of :func:`detect_community_levels`
+    (Descent PR3). ``networkx.community.louvain_communities`` is defined as
+    the last yield of ``louvain_partitions`` with the same ``seed``, so the
+    output here is byte-identical to the previous direct
+    ``louvain_communities(seed=0)`` call — same clusters, same cluster order,
+    same member order (asserted by
+    ``test_detect_communities_matches_legacy_louvain_communities`` and the
+    CMP-03 full-vs-incremental parity tests). The previous label-propagation
+    fallback was removed in favour of a single tested code path: it collapsed
+    the two-triangle-with-a-bridge fixture into one cluster on minimal
+    installs, diverging from the production behaviour asserted by
     ``test_detect_communities_returns_two_clusters``.
+    """
+    levels = detect_community_levels(graph)
+    return levels[-1] if levels else []
+
+
+def detect_community_levels(graph: ResearchGraph) -> List[List[List[str]]]:
+    """Return every Louvain dendrogram level, finest to coarsest.
+
+    Uses ``networkx.community.louvain_partitions`` (pinned in
+    ``pyproject.toml``) with a fixed ``seed`` so cluster cache ids stay
+    deterministic across runs. Each level applies the SAME filtering
+    :func:`detect_communities` has always applied to the coarsest level:
+    singleton clusters are dropped (``len > 1``) and each surviving cluster's
+    member ids are sorted. Cluster order within a level is Louvain's
+    deterministic emission order — NOT re-sorted, because re-ordering the
+    coarsest level would change :func:`detect_communities` output and
+    therefore ``graph.json`` bytes (§13 idempotence). A level that is all
+    singletons filters to an empty list but is kept, so level indices stay
+    aligned with the dendrogram.
     """
     # Canonical, order-independent input. Louvain with a fixed seed is still
     # sensitive to node/edge INSERTION ORDER, so an incremental compile (whose
@@ -81,8 +107,10 @@ def detect_communities(graph: ResearchGraph) -> List[List[str]]:
     g.add_edges_from(sorted(edge_pairs))
     # ``seed`` + canonical insertion order keep Louvain deterministic so cache
     # ids stay stable across full and incremental compiles.
-    clusters = nx.community.louvain_communities(g, seed=0)
-    return [sorted(c) for c in clusters if len(c) > 1]
+    return [
+        [sorted(c) for c in partition if len(c) > 1]
+        for partition in nx.community.louvain_partitions(g, seed=0)
+    ]
 
 
 # ---------------------------------------------------------------------------
