@@ -16,6 +16,10 @@ an in-graph COMMUNITY_SUMMARY node reuse its title/description/tags with
 ``quality="llm"``; everything else gets a deterministic structural title
 (type histogram + top-degree member names, the same fallback family
 ``agent_topics._structural_summary`` uses) with ``quality="structural"``.
+Also home to the agent-org card builders (§6.2 PR9): :func:`agent_card` and
+:func:`distilled_note_card` render the registry tree and an agent's distilled
+L1 Index in the same uniform shape — pure functions of registry structure and
+distillate metadata, sealed off from raw L0 content.
 Deterministic throughout — sorted iteration, no wall-clock, no randomness.
 """
 
@@ -302,4 +306,90 @@ def node_card(node_id: str, parent_cid: str, by_id: Dict[str, ResearchNode]) -> 
         "tags": [],
         "quality": "structural",
         "stale": False,
+    }
+
+
+#: Scope-grammar prefix for the agent org tree (§5.1): ``agent:<key>`` maps an
+#: agent's distilled L1 Index; ``org:root`` (agent_identity.ORG_ROOT) maps the
+#: registry tree itself.
+AGENT_SCOPE_PREFIX = "agent:"
+
+
+def agent_card(
+    agent_key: str,
+    *,
+    label: str,
+    parent_scope: str,
+    direct_reports: int,
+    subtree_agents: int,
+    subtree_notes: int,
+    distilled: bool,
+) -> JSONDict:
+    """Uniform card for one org-tree agent (§6.2).
+
+    Pure registry/artifact structure — never resolved views, never L0 content
+    (sealed L0). ``children_count`` is the agent's DIRECT reports (spec-pinned),
+    ``size`` the agents in its subtree (itself included), ``leaf_member_count``
+    the transitive DistilledNote count over the subtree's artifacts — the org
+    tree's leaves are distillates, so that is the branch mass a caller gauges
+    before descending. Descent is ``graph_map("agent:<key>")``; ``parent_scope``
+    is ``org:root`` for root children, else the parent's agent scope.
+    """
+    artifact = "artifact present" if distilled else "artifact missing — run tesserae distill"
+    summary = (
+        f"{direct_reports} direct report(s), {subtree_agents} agent(s) in "
+        f"subtree, {subtree_notes} distilled note(s); {artifact}"
+    )
+    return {
+        "scope_id": AGENT_SCOPE_PREFIX + agent_key,
+        "kind": "agent",
+        "title": label or agent_key,
+        "summary": _truncate_to_budget(summary, SUMMARY_CHAR_CAP),
+        "size": subtree_agents,
+        "children_count": direct_reports,
+        "leaf_member_count": subtree_notes,
+        "parent_scope": parent_scope,
+        "tags": [],
+        "quality": "structural",
+        "stale": False,
+    }
+
+
+def distilled_note_card(note: ResearchNode) -> JSONDict:
+    """Uniform card for one L1 DistilledNote (§6.2 — the agent's Index entry).
+
+    Title/kind/size come from the distillate ONLY (sealed L0: member_refs are
+    pointers, never dereferenced here). The ``drill`` block carries exactly the
+    arguments the existing audited ``drill_down`` tool needs to escalate one
+    member to raw L0: the owning agent key plus ``{node_id, content_hash}``
+    refs. ``quality`` reflects ``distill_quality`` — llm-authored notes are
+    ``"llm"``, deterministic fallback/structural notes stay visibly
+    ``"structural"`` (§9 risk 8). ``parent_scope`` ascends to the OWNING
+    agent's scope, so a federated manager-view note reorients to its author.
+    """
+    meta = note.metadata or {}
+    owner = str(meta.get("agent") or "")
+    member_refs = [
+        {
+            "node_id": str(ref.get("node_id") or ""),
+            "content_hash": str(ref.get("content_hash") or ""),
+        }
+        for ref in meta.get("member_refs") or []
+        if isinstance(ref, dict)
+    ]
+    kind = str(meta.get("kind") or "note")
+    quality = "llm" if str(meta.get("distill_quality") or "") == "llm" else "structural"
+    return {
+        "scope_id": note.id,
+        "kind": "note",
+        "title": note.name,
+        "summary": _truncate_to_budget(note.description or "", SUMMARY_CHAR_CAP),
+        "size": len(member_refs),
+        "children_count": 0,
+        "leaf_member_count": len(member_refs),
+        "parent_scope": AGENT_SCOPE_PREFIX + owner if owner else None,
+        "tags": [kind],
+        "quality": quality,
+        "stale": False,
+        "drill": {"tool": "drill_down", "agent": owner, "member_refs": member_refs},
     }
