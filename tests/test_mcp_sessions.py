@@ -139,3 +139,38 @@ def test_find_session_findings_requires_node_id(tmp_path: Path):
     server = _server(tmp_path, _fixture_graph())
     with pytest.raises(ValueError, match="node_id"):
         server.call_tool("find_session_findings", {})
+
+
+def test_find_session_findings_limit_truncates_but_total_reports_all(tmp_path: Path):
+    """Descent PR1 safety clamp: ``limit`` bounds the returned findings while
+    ``total`` still reports the full pre-limit count."""
+    server = _server(tmp_path, _fixture_graph())
+    result = server.call_tool(
+        "find_session_findings",
+        {"node_id": "Paper:foo", "limit": 1},
+    )
+    assert len(result["findings"]) == 1
+    assert result["total"] == 3
+    # Deterministic ordering (kind, body) means the first entry is stable.
+    assert result["findings"][0]["kind"] == "SessionDecision"
+
+
+def test_find_session_findings_limit_is_clamped(tmp_path: Path):
+    server = _server(tmp_path, _fixture_graph())
+    result = server.call_tool(
+        "find_session_findings",
+        {"node_id": "Paper:foo", "limit": 0},  # 0 → clamped to 1
+    )
+    assert len(result["findings"]) == 1
+    assert result["total"] == 3
+
+
+def test_find_session_findings_schema_declares_limit(tmp_path: Path):
+    server = _server(tmp_path, _fixture_graph())
+    tool = next(
+        t for t in server.list_tools() if t["name"] == "find_session_findings"
+    )
+    limit_schema = tool["inputSchema"]["properties"]["limit"]
+    assert limit_schema["default"] == 50
+    assert limit_schema["minimum"] == 1
+    assert limit_schema["maximum"] == 200

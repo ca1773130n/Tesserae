@@ -12,6 +12,8 @@ from tesserae.research_graph import (
 )
 from tesserae.retrieval.ppr import (
     DEFAULT_EDGE_TYPE_WEIGHTS,
+    HUB_DEGREE_CAP,
+    PROVENANCE_EDGE_TYPES,
     personalized_pagerank,
 )
 
@@ -126,6 +128,110 @@ def test_top_k_excludes_unreachable_zero_score_nodes() -> None:
     # Reachable component size is 4; we must return exactly those 4 even
     # though ``top_k`` was 10.
     assert len(ranked) == 4
+
+
+# -- tame_hubs: degree cap + provenance downweight (Descent PR1) -------------
+
+
+def test_provenance_edge_types_cover_the_bookkeeping_classes() -> None:
+    # Spec (Descent §5.4): exactly these five edge classes carry provenance
+    # rather than semantic relatedness; the cap is 200 per the design doc.
+    assert PROVENANCE_EDGE_TYPES == frozenset(
+        {"authored_by", "discussed_in", "evidenced_by", "mentioned_in", "part_of"}
+    )
+    assert HUB_DEGREE_CAP == 200
+
+
+def test_tame_hubs_off_by_default_leaves_ranking_unchanged() -> None:
+    graph = _make_graph()
+    default = personalized_pagerank(graph, seed_ids=["insight_a"], top_k=10)
+    explicit_off = personalized_pagerank(
+        graph, seed_ids=["insight_a"], top_k=10, tame_hubs=False
+    )
+    assert default == explicit_off
+
+
+def _provenance_vs_semantic_graph() -> ResearchGraph:
+    """Seed with two neighbours: one over a provenance edge, one semantic.
+
+        prov ---(discussed_in)--- seed ---(references)--- sem
+
+    Both edge types default to weight 1.5, so without ``tame_hubs`` the
+    two neighbours receive identical PPR mass.
+    """
+    nodes = [
+        ResearchNode(id="seed", name="Seed", type=ResearchNodeType.SESSION_INSIGHT),
+        ResearchNode(id="prov", name="Provenance", type=ResearchNodeType.SESSION),
+        ResearchNode(id="sem", name="Semantic", type=ResearchNodeType.SESSION_DECISION),
+    ]
+    edges = [
+        ResearchEdge(source="seed", target="prov", type="discussed_in"),
+        ResearchEdge(source="seed", target="sem", type="references"),
+    ]
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def test_tame_hubs_downweights_provenance_edges_vs_semantic() -> None:
+    graph = _provenance_vs_semantic_graph()
+
+    untamed = dict(personalized_pagerank(graph, seed_ids=["seed"], top_k=10))
+    assert untamed["prov"] == pytest.approx(untamed["sem"]), (
+        f"fixture broken: both edge types weigh 1.5 by default: {untamed}"
+    )
+
+    tamed = dict(
+        personalized_pagerank(graph, seed_ids=["seed"], top_k=10, tame_hubs=True)
+    )
+    assert tamed["sem"] > tamed["prov"], (
+        f"provenance edge not downweighted relative to semantic: {tamed}"
+    )
+
+
+def _hub_graph(n_leaves: int) -> ResearchGraph:
+    """A hub with ``n_leaves`` provenance-attached leaves plus one seed.
+
+        seed ---(references)--- hub ---(mentioned_in)--- leaf_000..leaf_NNN
+    """
+    nodes = [
+        ResearchNode(id="seed", name="Seed", type=ResearchNodeType.SESSION_INSIGHT),
+        ResearchNode(id="hub", name="Hub", type=ResearchNodeType.SESSION),
+    ]
+    edges = [ResearchEdge(source="seed", target="hub", type="references")]
+    for i in range(n_leaves):
+        leaf = f"leaf_{i:03d}"
+        nodes.append(
+            ResearchNode(id=leaf, name=f"Leaf {i}", type=ResearchNodeType.PAPER)
+        )
+        edges.append(ResearchEdge(source="hub", target=leaf, type="mentioned_in"))
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def test_tame_hubs_degree_cap_bounds_hub_fanout() -> None:
+    # 250 leaves + seed = 251 hub neighbours, over the 200 cap.
+    graph = _hub_graph(250)
+
+    untamed = personalized_pagerank(graph, seed_ids=["seed"], top_k=300)
+    # Without the cap, every leaf receives mass through the hub.
+    assert len(untamed) == 252
+
+    tamed = personalized_pagerank(
+        graph, seed_ids=["seed"], top_k=300, tame_hubs=True
+    )
+    # With the cap the hub keeps its 200 strongest ties: the semantic seed
+    # edge (weight 1.5) plus the 199 lowest-index leaves (deterministic
+    # tie-break). The remaining 51 leaves never receive mass.
+    assert len(tamed) == 201
+    tamed_ids = {node_id for node_id, _score in tamed}
+    assert {"seed", "hub"} <= tamed_ids
+    assert "leaf_000" in tamed_ids
+    assert "leaf_249" not in tamed_ids
+
+
+def test_tame_hubs_degree_cap_is_deterministic() -> None:
+    graph = _hub_graph(250)
+    first = personalized_pagerank(graph, seed_ids=["seed"], top_k=300, tame_hubs=True)
+    second = personalized_pagerank(graph, seed_ids=["seed"], top_k=300, tame_hubs=True)
+    assert first == second
 
 
 # -- MCP tool wiring ---------------------------------------------------------

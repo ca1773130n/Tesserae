@@ -63,6 +63,28 @@ DEFAULT_EDGE_TYPE_WEIGHTS: Dict[str, float] = {
     "summarizes": 1.25,
 }
 
+# Edge classes that carry provenance/bookkeeping ("where did this come
+# from") rather than semantic relatedness. Under ``tame_hubs`` they are
+# downweighted relative to semantic edges so a mega-hub Session/Paper node
+# reached mostly through provenance links stops dominating the walk
+# (Descent design §5.4; the deg-1,257 leaked-prompt Session node).
+PROVENANCE_EDGE_TYPES = frozenset({
+    "authored_by",
+    "discussed_in",
+    "evidenced_by",
+    "mentioned_in",
+    "part_of",
+})
+
+# Multiplier applied on top of the resolved edge weight for provenance
+# classes when ``tame_hubs`` is on.
+PROVENANCE_EDGE_DOWNWEIGHT = 0.25
+
+# Max neighbours a single node may spread PPR mass to when ``tame_hubs``
+# is on. 200 per the Descent design doc: comfortably above any legitimate
+# community's fanout, far below the pathological hubs.
+HUB_DEGREE_CAP = 200
+
 
 def personalized_pagerank(
     graph: ResearchGraph,
@@ -73,6 +95,7 @@ def personalized_pagerank(
     directed: bool = False,
     max_iter: int = 100,
     tol: float = 1.0e-6,
+    tame_hubs: bool = False,
 ) -> List[Tuple[str, float]]:
     """Run Personalized PageRank seeded at ``seed_ids``.
 
@@ -89,6 +112,13 @@ def personalized_pagerank(
             reverse edge (typical for relevance walks over a Tesserae graph).
         max_iter: Power-iteration cap.
         tol: Convergence tolerance on L1 score-vector delta.
+        tame_hubs: Hub-poisoning mitigation (Descent PR1), default OFF so
+            existing consumers are byte-for-byte unchanged. When ``True``:
+            (a) ``PROVENANCE_EDGE_TYPES`` weights are multiplied by
+            ``PROVENANCE_EDGE_DOWNWEIGHT`` relative to semantic edges, and
+            (b) each node's fanout on the aggregated projection is capped
+            at ``HUB_DEGREE_CAP`` — only its strongest ties keep spreading
+            mass (deterministic tie-break by node index).
 
     Returns:
         ``[(node_id, score), ...]`` sorted descending. Scores over all
@@ -119,11 +149,24 @@ def personalized_pagerank(
         if src is None or dst is None:
             continue
         w = float(weights.get(edge.type, 1.0))
+        if tame_hubs and edge.type in PROVENANCE_EDGE_TYPES:
+            w *= PROVENANCE_EDGE_DOWNWEIGHT
         if w <= 0.0:
             continue
         out_weights[src][dst] += w
         if not directed:
             out_weights[dst][src] += w
+
+    if tame_hubs:
+        # Degree-cap the projection: a hub with more than HUB_DEGREE_CAP
+        # neighbours keeps only its strongest ties (highest aggregated
+        # weight, ties broken by node index for determinism). This bounds
+        # how far a single mega-hub can smear PPR mass across the graph.
+        for src, dst_map in out_weights.items():
+            if len(dst_map) <= HUB_DEGREE_CAP:
+                continue
+            kept = sorted(dst_map.items(), key=lambda item: (-item[1], item[0]))
+            out_weights[src] = defaultdict(float, kept[:HUB_DEGREE_CAP])
 
     # Row-normalize so each node's out-weights sum to 1 (or stay empty
     # for dangling nodes; we redistribute their mass via teleport below).

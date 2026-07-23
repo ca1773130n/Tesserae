@@ -26,6 +26,7 @@ from tesserae.community_summaries import (
     community_id,
     compile_community_summaries,
     detect_communities,
+    detect_community_levels,
     is_enabled_via_env,
 )
 from tesserae.mcp_server import LLMWikiMCPServer
@@ -114,6 +115,86 @@ def _two_cluster_graph() -> ResearchGraph:
     return ResearchGraph(nodes=nodes, edges=edges)
 
 
+def _hierarchical_graph() -> ResearchGraph:
+    """Eight triangles ring-bridged into two super-groups, plus one isolate.
+
+    Louvain (seed=0) on this fixture produces a >= 2-level dendrogram: the
+    finest level is the eight triangles; a coarser level merges some of them
+    along the ring bridges. The isolated node stays a singleton community at
+    every level, exercising the per-level ``len > 1`` filter.
+    """
+    nodes = [
+        ResearchNode(id=f"Concept:n{b}_{i}", name=f"N{b}{i}", type=ResearchNodeType.CONCEPT)
+        for b in range(8)
+        for i in range(3)
+    ]
+    nodes.append(
+        ResearchNode(id="Concept:isolated", name="Iso", type=ResearchNodeType.CONCEPT)
+    )
+    edges = []
+    for b in range(8):
+        for i in range(3):
+            for j in range(i + 1, 3):
+                edges.append(
+                    ResearchEdge(
+                        source=f"Concept:n{b}_{i}",
+                        target=f"Concept:n{b}_{j}",
+                        type="shares_concept_with",
+                    )
+                )
+    # Ring of bridges inside each super-group {0..3} / {4..7}, plus a single
+    # cross-group edge — dense enough for Louvain to aggregate past the
+    # triangle level, sparse enough to keep the triangles as the finest level.
+    for group in (range(0, 4), range(4, 8)):
+        members = list(group)
+        for k, b in enumerate(members):
+            nxt = members[(k + 1) % len(members)]
+            edges.append(
+                ResearchEdge(
+                    source=f"Concept:n{b}_0",
+                    target=f"Concept:n{nxt}_1",
+                    type="shares_concept_with",
+                )
+            )
+    edges.append(
+        ResearchEdge(
+            source="Concept:n0_2",
+            target="Concept:n4_2",
+            type="shares_concept_with",
+        )
+    )
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def _legacy_detect_communities(graph: ResearchGraph) -> List[List[str]]:
+    """Verbatim pre-dendrogram body of :func:`detect_communities`.
+
+    Kept as the parity oracle for the ``louvain_partitions`` swap: the
+    refactored ``detect_communities`` must return byte-identical output
+    (Descent PR3 / CMP-03), because community ids flow into ``graph.json``.
+    """
+    nodes = sorted(n.id for n in graph.nodes)
+    if not nodes:
+        return []
+    node_set = set(nodes)
+    edge_pairs = set()
+    for edge in graph.edges:
+        if edge.source == edge.target:
+            continue
+        if edge.source not in node_set or edge.target not in node_set:
+            continue
+        lo, hi = (edge.source, edge.target) if edge.source < edge.target else (edge.target, edge.source)
+        edge_pairs.add((lo, hi))
+
+    import networkx as nx
+
+    g = nx.Graph()
+    g.add_nodes_from(nodes)
+    g.add_edges_from(sorted(edge_pairs))
+    clusters = nx.community.louvain_communities(g, seed=0)
+    return [sorted(c) for c in clusters if len(c) > 1]
+
+
 # ---------------------------------------------------------------------------
 # Detection
 # ---------------------------------------------------------------------------
@@ -142,6 +223,55 @@ def test_community_id_is_stable_for_same_members() -> None:
     b = community_id(["z", "y", "x"])
     assert a == b
     assert a.startswith("CommunitySummary:")
+
+
+def test_detect_communities_matches_legacy_louvain_communities() -> None:
+    # PR3 parity oracle: the ``louvain_partitions`` internals must reproduce
+    # the old direct ``louvain_communities(seed=0)`` output exactly — same
+    # clusters, same cluster order, same member order — on every fixture.
+    for graph in (_two_cluster_graph(), _hierarchical_graph()):
+        assert detect_communities(graph) == _legacy_detect_communities(graph)
+
+
+def test_detect_community_levels_empty_graph_returns_empty_list() -> None:
+    assert detect_community_levels(ResearchGraph()) == []
+
+
+def test_detect_community_levels_coarsest_equals_detect_communities() -> None:
+    for graph in (_two_cluster_graph(), _hierarchical_graph()):
+        levels = detect_community_levels(graph)
+        assert levels, "expected at least one dendrogram level"
+        assert levels[-1] == detect_communities(graph)
+
+
+def test_detect_community_levels_finest_to_coarsest_refinement() -> None:
+    levels = detect_community_levels(_hierarchical_graph())
+    assert len(levels) >= 2, f"fixture should dendrogram past one level, got {levels!r}"
+    # Finest-to-coarsest: every finer cluster nests inside one coarser cluster.
+    for finer, coarser in zip(levels, levels[1:]):
+        for cluster in finer:
+            assert any(
+                set(cluster) <= set(parent) for parent in coarser
+            ), f"cluster {cluster!r} is not nested in the next-coarser level"
+    # The finest level is the eight triangles.
+    assert sorted(len(c) for c in levels[0]) == [3] * 8
+
+
+def test_detect_community_levels_filters_singletons_per_level() -> None:
+    # The isolate stays a singleton community at every level; the per-level
+    # filter (same ``len > 1`` rule detect_communities always applied to the
+    # coarsest level) must drop it everywhere, and members stay sorted.
+    levels = detect_community_levels(_hierarchical_graph())
+    for level in levels:
+        for cluster in level:
+            assert len(cluster) > 1
+            assert cluster == sorted(cluster)
+            assert "Concept:isolated" not in cluster
+
+
+def test_detect_community_levels_is_deterministic() -> None:
+    graph = _hierarchical_graph()
+    assert detect_community_levels(graph) == detect_community_levels(graph)
 
 
 # ---------------------------------------------------------------------------
@@ -409,7 +539,10 @@ def test_mcp_list_communities_ranks_by_member_count_and_filters(
     for entry in result["communities"]:
         assert entry["community_id"].startswith("CommunitySummary:")
         assert entry["member_count"] == 3
-        assert len(entry["member_ids"]) == 3
+        # Descent PR1 safety clamp: the unbounded member id list never
+        # enters context inline — only a count plus a content-keyed handle.
+        assert "member_ids" not in entry
+        assert entry["member_ids_handle"].startswith("h_")
         assert len(entry["tags"]) == 5
 
     # min_size=5 filters every cluster out.
@@ -420,3 +553,34 @@ def test_mcp_list_communities_ranks_by_member_count_and_filters(
     # were considered, but only 1 surfaces).
     capped = server._mcp_list_communities(union, min_size=3, limit=1)
     assert len(capped["communities"]) == 1
+
+
+def test_mcp_list_communities_member_ids_handle_round_trips(
+    tmp_path: Path,
+) -> None:
+    """The member_ids handle pages the full list back via ``get_handle``."""
+    graph = _two_cluster_graph()
+    client = _ScriptedClient()
+    slice_graph = compile_community_summaries(
+        graph,
+        cache_dir=tmp_path / "cs",
+        json_client=client,
+        min_size=3,
+    )
+    union = ResearchGraph(
+        nodes=graph.nodes + slice_graph.nodes,
+        edges=graph.edges + slice_graph.edges,
+    )
+
+    server = LLMWikiMCPServer()
+    result = server._mcp_list_communities(union, min_size=3, limit=10)
+    entry = result["communities"][0]
+    expected = next(
+        list((n.metadata or {}).get("member_ids") or [])
+        for n in union.nodes
+        if n.id == entry["community_id"]
+    )
+
+    sliced = server.call_tool("get_handle", {"handle": entry["member_ids_handle"]})
+    assert sliced["found"] is True and sliced["eof"] is True
+    assert json.loads(sliced["slice"]) == expected

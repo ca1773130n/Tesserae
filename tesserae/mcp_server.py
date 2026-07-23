@@ -828,6 +828,13 @@ class LLMWikiMCPServer:
                             },
                             "description": "Optional whitelist of finding kinds to include.",
                         },
+                        "limit": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 200,
+                            "default": 50,
+                            "description": "Maximum findings to return (default 50, clamped to 200).",
+                        },
                     },
                     "required": ["node_id"],
                     "additionalProperties": False,
@@ -1130,7 +1137,10 @@ class LLMWikiMCPServer:
                 "description": (
                     "List COMMUNITY_SUMMARY nodes minted by the post-compile pass, "
                     "ranked by member count. Use node_context on the returned "
-                    "community_id to walk `summarizes` edges back to members."
+                    "community_id to walk `summarizes` edges back to members. "
+                    "Each entry carries member_count plus a member_ids_handle — "
+                    "page the full member id list via get_handle instead of "
+                    "receiving it inline."
                 ),
                 "inputSchema": {
                     "type": "object",
@@ -1342,6 +1352,13 @@ class LLMWikiMCPServer:
                                 "Set false for the deterministic human "
                                 "(AskUserQuestion) decisions only."
                             ),
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 200,
+                            "default": 50,
+                            "description": "Maximum decisions to return (default 50, clamped to 200).",
                         },
                     },
                     "additionalProperties": False,
@@ -1841,10 +1858,12 @@ class LLMWikiMCPServer:
             if not node_id:
                 raise ValueError("find_session_findings requires 'node_id'")
             graph, project_root = self._load_requested_graph_with_root(args)
+            limit_arg = args.get("limit")
             result = self._mcp_find_session_findings(
                 graph,
                 node_id=str(node_id),
                 kinds=args.get("kinds"),
+                limit=50 if limit_arg is None else int(limit_arg),
             )
             # LRU: reading a node's findings via this tool is a read of each
             # surfaced finding — refresh their access so active use keeps them
@@ -2253,6 +2272,11 @@ class LLMWikiMCPServer:
             # Strict names: a typo'd project errors instead of silently
             # meaning "no projects" (activity_summary._resolve_projects).
             return {"error": str(exc)}
+        # Descent PR1 safety clamp: a busy week can hold hundreds of
+        # decisions; never dump an unbounded list into context. Preserve an
+        # explicit 0 by clamping it (like alpha/budget: no ``or`` coercion).
+        limit_arg = args.get("limit")
+        limit = max(1, min(50 if limit_arg is None else int(limit_arg), 200))
         return {
             "decisions": [
                 {
@@ -2265,8 +2289,9 @@ class LLMWikiMCPServer:
                     "options": d.options,
                     "header": d.header,
                 }
-                for d in decisions
-            ]
+                for d in decisions[:limit]
+            ],
+            "total": len(decisions),
         }
 
     def _mcp_list_sessions(
@@ -2326,6 +2351,7 @@ class LLMWikiMCPServer:
         *,
         node_id: str,
         kinds: Optional[List[str]] = None,
+        limit: int = 50,
     ) -> JSONDict:
         """Return findings connected to ``node_id`` via discussed_in/references."""
         kind_filter: Optional[set] = None
@@ -2379,9 +2405,13 @@ class LLMWikiMCPServer:
                     "directly_references_node": fid in direct_finding_ids,
                 }
             )
-        # Deterministic ordering: by kind then body.
+        # Deterministic ordering: by kind then body. ``total`` reports the
+        # full pre-limit count; the clamp (Descent PR1) bounds what enters
+        # context for hub nodes with hundreds of findings.
         out.sort(key=lambda d: (d["kind"], d["body"]))
-        return {"node_id": node_id, "findings": out, "total": len(out)}
+        total = len(out)
+        out = out[: max(1, min(int(limit), 200))]
+        return {"node_id": node_id, "findings": out, "total": total}
 
     def _mcp_find_code_symbol_mentions(
         self,
@@ -2477,14 +2507,20 @@ class LLMWikiMCPServer:
             count = int(meta.get("member_count") or len(member_ids))
             if count < max(2, int(min_size)):
                 continue
-            items.append({
+            item: JSONDict = {
                 "community_id": node.id,
                 "title": node.name,
                 "description": node.description,
                 "tags": list(meta.get("tags") or []),
                 "member_count": count,
-                "member_ids": member_ids,
-            })
+            }
+            # Descent PR1 safety clamp: the member id list is unbounded
+            # (a mega-community holds hundreds of ids), so it never enters
+            # context inline. Stash it behind a content-keyed handle; a
+            # caller that really needs the ids pages them via get_handle.
+            if member_ids:
+                item["member_ids_handle"] = _HANDLES.put(json.dumps(member_ids))
+            items.append(item)
         items.sort(key=lambda d: (-int(d["member_count"]), d["community_id"]))
         items = items[: max(1, int(limit))]
         return {"communities": items, "total": len(items)}
