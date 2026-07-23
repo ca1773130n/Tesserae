@@ -29,7 +29,7 @@ import logging
 import os
 import secrets
 from pathlib import Path
-from typing import Dict, List, Mapping, Optional, Sequence, Set, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 from .research_graph import (
     ResearchEdge,
@@ -81,15 +81,38 @@ def detect_community_levels(graph: ResearchGraph) -> List[List[List[str]]]:
     singletons filters to an empty list but is kept, so level indices stay
     aligned with the dendrogram.
     """
-    # Canonical, order-independent input. Louvain with a fixed seed is still
-    # sensitive to node/edge INSERTION ORDER, so an incremental compile (whose
-    # graph is assembled in a different order than a full compile) would mint a
-    # different partition for the SAME node set. Sorting the node ids and edges
-    # before construction makes the partition depend only on the graph's content
-    # — identical for full vs incremental (CMP-03 community parity).
-    nodes = sorted(n.id for n in graph.nodes)
+    nodes, edge_pairs = _undirected_projection(graph)
     if not nodes:
         return []
+
+    import networkx as nx
+
+    g = nx.Graph()
+    g.add_nodes_from(nodes)
+    g.add_edges_from(edge_pairs)
+    # ``seed`` + canonical insertion order keep Louvain deterministic so cache
+    # ids stay stable across full and incremental compiles.
+    return [
+        [sorted(c) for c in partition if len(c) > 1]
+        for partition in nx.community.louvain_partitions(g, seed=0)
+    ]
+
+
+def _undirected_projection(graph: ResearchGraph) -> Tuple[List[str], List[Tuple[str, str]]]:
+    """Canonical sorted undirected projection of ``graph``.
+
+    Sorted node ids plus deduped ``(lo, hi)`` edge pairs — self-loops and
+    edges with a missing endpoint dropped. Canonical, order-independent
+    input: Louvain with a fixed seed is still sensitive to node/edge
+    INSERTION ORDER, so an incremental compile (whose graph is assembled in
+    a different order than a full compile) would mint a different partition
+    for the SAME node set. Sorting the node ids and edges before
+    construction makes the partition depend only on the graph's content —
+    identical for full vs incremental (CMP-03 community parity). Shared by
+    :func:`detect_community_levels` and :func:`hub_node_ids` so hub degrees
+    and partitions can never drift onto different projections.
+    """
+    nodes = sorted(n.id for n in graph.nodes)
     node_set = set(nodes)
     edge_pairs: Set[Tuple[str, str]] = set()
     for edge in graph.edges:
@@ -99,18 +122,29 @@ def detect_community_levels(graph: ResearchGraph) -> List[List[List[str]]]:
             continue
         lo, hi = (edge.source, edge.target) if edge.source < edge.target else (edge.target, edge.source)
         edge_pairs.add((lo, hi))
+    return nodes, sorted(edge_pairs)
 
-    import networkx as nx
 
-    g = nx.Graph()
-    g.add_nodes_from(nodes)
-    g.add_edges_from(sorted(edge_pairs))
-    # ``seed`` + canonical insertion order keep Louvain deterministic so cache
-    # ids stay stable across full and incremental compiles.
-    return [
-        [sorted(c) for c in partition if len(c) > 1]
-        for partition in nx.community.louvain_partitions(g, seed=0)
-    ]
+# Degree threshold above which a node is listed in the hierarchy sidecar's
+# ``hubs`` array (Descent §3): consumers (PPR degree-capping, provenance
+# downweighting) treat these as hub nodes whose neighborhoods explode
+# naive expansion — e.g. the deg-1,257 leaked-prompt Session node.
+HUB_DEGREE_THRESHOLD = 200
+
+
+def hub_node_ids(graph: ResearchGraph, *, degree_threshold: int = HUB_DEGREE_THRESHOLD) -> List[str]:
+    """Sorted node ids with degree > ``degree_threshold`` in the undirected projection.
+
+    Degrees are computed over the SAME deduped projection Louvain partitions
+    (parallel/reversed edges count once, self-loops never), so the hub list
+    is a pure, deterministic function of graph content.
+    """
+    _, edge_pairs = _undirected_projection(graph)
+    degree: Dict[str, int] = {}
+    for lo, hi in edge_pairs:
+        degree[lo] = degree.get(lo, 0) + 1
+        degree[hi] = degree.get(hi, 0) + 1
+    return sorted(nid for nid, d in degree.items() if d > degree_threshold)
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +235,34 @@ def _write_cache(path: Path, payload: dict) -> None:
                 tmp.unlink()
             except OSError:
                 pass
+
+
+def prune_stale_summary_caches(cache_dir: Path, live_cids: Iterable[str]) -> List[str]:
+    """Delete summary-cache files whose cid is live at NO hierarchy level.
+
+    ``live_cids`` is the manifest of community ids across ALL dendrogram
+    levels of the freshly-written hierarchy sidecar (Descent §9.5): a cache
+    file is stale only when its community no longer exists at any level —
+    keying on the coarsest level alone would delete valid fine-level caches.
+    Live-but-unvisited files are deliberately KEPT (they cost nothing and
+    save a future LLM call). Only files matching the
+    ``CommunitySummary_*.json`` cache naming scheme are considered, so tmp
+    files and foreign artifacts are never touched. Returns the deleted
+    basenames in sorted order.
+    """
+    if not cache_dir.is_dir():
+        return []
+    live_names = {_cache_path(cache_dir, cid).name for cid in live_cids}
+    deleted: List[str] = []
+    for path in sorted(cache_dir.glob("CommunitySummary_*.json")):
+        if path.name in live_names:
+            continue
+        try:
+            path.unlink()
+        except OSError:
+            continue
+        deleted.append(path.name)
+    return deleted
 
 
 def _validate_summary(payload: object) -> Optional[Tuple[str, str, List[str]]]:

@@ -1291,6 +1291,7 @@ _KIND_FOR_TYPE: Dict[str, str] = {
     "Trend": "topics",
     "OpenQuestion": "questions",
     "Synthesis": "syntheses",
+    "CommunitySummary": "communities",
 }
 
 

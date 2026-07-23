@@ -23,11 +23,14 @@ from typing import Any, List, Optional, Union
 import pytest
 
 from tesserae.community_summaries import (
+    _cache_path,
     community_id,
     compile_community_summaries,
     detect_communities,
     detect_community_levels,
+    hub_node_ids,
     is_enabled_via_env,
+    prune_stale_summary_caches,
 )
 from tesserae.mcp_server import LLMWikiMCPServer
 from tesserae.research_graph import (
@@ -272,6 +275,126 @@ def test_detect_community_levels_filters_singletons_per_level() -> None:
 def test_detect_community_levels_is_deterministic() -> None:
     graph = _hierarchical_graph()
     assert detect_community_levels(graph) == detect_community_levels(graph)
+
+
+# ---------------------------------------------------------------------------
+# Hub detection (Descent PR4 — hierarchy sidecar ``hubs`` list)
+# ---------------------------------------------------------------------------
+
+
+def _star_graph(leaves: int) -> ResearchGraph:
+    """One hub wired to ``leaves`` leaf nodes, with dedup/self-loop noise.
+
+    Includes a duplicate reversed edge and a self-loop so the test proves the
+    hub degree is computed over the SAME deduped undirected projection Louvain
+    uses (parallel/reversed edges count once, self-loops never).
+    """
+    nodes = [
+        ResearchNode(id="Concept:hub", name="Hub", type=ResearchNodeType.CONCEPT)
+    ] + [
+        ResearchNode(id=f"Concept:leaf{i}", name=f"L{i}", type=ResearchNodeType.CONCEPT)
+        for i in range(leaves)
+    ]
+    edges = [
+        ResearchEdge(source="Concept:hub", target=f"Concept:leaf{i}", type="shares_concept_with")
+        for i in range(leaves)
+    ]
+    # Reversed duplicate of the first spoke + a self-loop: both must not
+    # inflate the hub's undirected degree.
+    edges.append(
+        ResearchEdge(source="Concept:leaf0", target="Concept:hub", type="shares_concept_with")
+    )
+    edges.append(
+        ResearchEdge(source="Concept:hub", target="Concept:hub", type="shares_concept_with")
+    )
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def test_hub_node_ids_flags_only_nodes_above_threshold() -> None:
+    graph = _star_graph(5)
+    # Hub degree is exactly 5 on the deduped projection (reversed duplicate
+    # and self-loop excluded), so threshold 4 flags it and threshold 5 does not.
+    assert hub_node_ids(graph, degree_threshold=4) == ["Concept:hub"]
+    assert hub_node_ids(graph, degree_threshold=5) == []
+
+
+def test_hub_node_ids_empty_graph_and_default_threshold() -> None:
+    assert hub_node_ids(ResearchGraph()) == []
+    # Fixture degrees are tiny, so the production default (200, the Descent
+    # degree cap) flags nothing.
+    assert hub_node_ids(_hierarchical_graph()) == []
+
+
+# ---------------------------------------------------------------------------
+# Cache pruning (Descent PR4 — live-cid manifest across ALL levels, §9.5)
+# ---------------------------------------------------------------------------
+
+
+def _seed_cache_files(cache_dir: Path, cids: List[str]) -> List[Path]:
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for cid in cids:
+        path = cache_dir / f"{cid.replace(':', '_')}.json"
+        path.write_text("{}", encoding="utf-8")
+        paths.append(path)
+    return paths
+
+
+def test_prune_deletes_only_cids_live_at_no_level(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "community_summaries"
+    live = community_id(["a", "b"])
+    dead = community_id(["x", "y"])
+    live_path, dead_path = _seed_cache_files(cache_dir, [live, dead])
+    deleted = prune_stale_summary_caches(cache_dir, {live})
+    assert deleted == [dead_path.name]
+    assert live_path.exists()
+    assert not dead_path.exists()
+
+
+def test_prune_after_leaf_shift_keeps_untouched_level_caches(tmp_path: Path) -> None:
+    """§9.5: pruning keys on ALL-level liveness, not just the coarsest level.
+
+    A one-leaf membership shift re-mints the cids of exactly the communities
+    that contain the shifted leaf (at every level). Caches for untouched
+    communities — including live-but-unvisited ones — must survive the prune;
+    only the pre-shift cids that exist at NO post-shift level are deleted.
+    """
+    cache_dir = tmp_path / "community_summaries"
+    # Two dendrogram levels before the shift: fine {ab, cd} -> coarse {abcd}.
+    levels_before = [[["a", "b"], ["c", "d"]], [["a", "b", "c", "d"]]]
+    before_cids = [
+        community_id(members) for level in levels_before for members in level
+    ]
+    _seed_cache_files(cache_dir, before_cids)
+    # Leaf "e" joins the {a,b} community: its cid and its ancestor's cid
+    # change; {c,d} is untouched at its level.
+    levels_after = [[["a", "b", "e"], ["c", "d"]], [["a", "b", "c", "d", "e"]]]
+    live = {
+        community_id(members) for level in levels_after for members in level
+    }
+    deleted = prune_stale_summary_caches(cache_dir, live)
+    untouched = community_id(["c", "d"])
+    assert _cache_path(cache_dir, untouched).exists(), (
+        "prune deleted the cache of an untouched community — it must key on "
+        "all-level liveness, not visit history"
+    )
+    assert sorted(deleted) == sorted(
+        _cache_path(cache_dir, community_id(members)).name
+        for members in (["a", "b"], ["a", "b", "c", "d"])
+    )
+
+
+def test_prune_ignores_foreign_files_and_missing_dir(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "community_summaries"
+    cache_dir.mkdir(parents=True)
+    foreign = cache_dir / "notes.json"
+    foreign.write_text("{}", encoding="utf-8")
+    tmp_file = cache_dir / "CommunitySummary_abc.tmp.123.deadbeef"
+    tmp_file.write_text("{}", encoding="utf-8")
+    assert prune_stale_summary_caches(cache_dir, set()) == []
+    assert foreign.exists()
+    assert tmp_file.exists()
+    assert prune_stale_summary_caches(tmp_path / "does-not-exist", {"x"}) == []
 
 
 # ---------------------------------------------------------------------------

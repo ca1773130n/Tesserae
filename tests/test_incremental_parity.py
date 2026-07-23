@@ -267,6 +267,69 @@ def test_incremental_equals_full_compile(tmp_path: Path, k: int) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Descent PR4 — hierarchy sidecar parity + live-cid cache pruning
+# --------------------------------------------------------------------------- #
+
+
+def test_hierarchy_sidecar_parity_all_levels(tmp_path: Path) -> None:
+    """CMP-03 extension: full vs incremental compiles of the same final corpus
+    must mint IDENTICAL dendrograms at EVERY level (plus identical hubs) —
+    byte-for-byte in ``.tesserae/hierarchy.json``. The sidecar is written from
+    the post-``merge_graphs([graph])`` canonical graph, so any divergence here
+    is the CMP-03 community-drift bug resurfacing at a finer level."""
+    root = tmp_path / "project"
+    papers = _build_corpus(root, n_papers=30)
+    wiki = _seed_wiki(root)
+    wiki.compile()  # seed
+
+    _mutate(papers[0], "hierarchy-parity-edit")
+
+    wiki.compile(changed_only=True, changed_paths=[papers[0]])
+    incr_bytes = wiki.paths.hierarchy.read_bytes()
+    incr = json.loads(incr_bytes)
+    assert incr["schema_version"] == 1
+    assert incr["levels"], "expected at least one dendrogram level"
+
+    wiki.compile()  # full recompile of the identical on-disk corpus
+    full_bytes = wiki.paths.hierarchy.read_bytes()
+    full = json.loads(full_bytes)
+
+    assert incr["levels"] == full["levels"], (
+        "dendrogram levels differ between incremental and full compiles of "
+        "the same corpus — ALL levels must match, not just the coarsest"
+    )
+    assert incr["hubs"] == full["hubs"]
+    assert incr_bytes == full_bytes
+
+
+def test_compile_prunes_dead_community_caches_keeps_live(tmp_path: Path) -> None:
+    """Post-compile pruning (§9.5 wiring): a cache file whose cid appears at
+    NO level of the fresh hierarchy sidecar is deleted; every live cache —
+    including live-but-unvisited ones — survives a recompile."""
+    root = tmp_path / "project"
+    _build_corpus(root, n_papers=12)
+    wiki = _seed_wiki(root)
+    wiki.compile()  # scripted client (autouse fixture) mints summary caches
+
+    cache_dir = wiki.paths.community_summaries
+    live_before = {p.name for p in cache_dir.glob("CommunitySummary_*.json")}
+    assert live_before, "seed compile minted no community-summary caches"
+
+    # Plant a stale cache for a community that exists at no dendrogram level
+    # (the 2,429-stale-vs-47-live failure mode).
+    stale = cache_dir / ("CommunitySummary_" + "0" * 16 + ".json")
+    stale.write_text("{}", encoding="utf-8")
+
+    wiki.compile()  # unchanged corpus
+    assert not stale.exists(), "recompile did not prune the dead-cid cache file"
+    survivors = {p.name for p in cache_dir.glob("CommunitySummary_*.json")}
+    assert live_before <= survivors, (
+        "recompile pruned live cache files: "
+        f"{sorted(live_before - survivors)}"
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Idempotence-with-provenance regression guards (Pitfall 1)
 # --------------------------------------------------------------------------- #
 
