@@ -247,6 +247,54 @@ def test_mcp_query_decisions_dispatch(monkeypatch):
     assert d["ts"].startswith("2026-07-04")
 
 
+def test_mcp_query_decisions_limit_truncates_but_total_reports_all(monkeypatch):
+    """Descent PR1 safety clamp: ``limit`` (default 50, clamped) bounds the
+    returned decisions while ``total`` still reports the full count."""
+    import tesserae.mcp_server as m
+
+    def fake_gather(windows, project_names, *, include_agent, **_kw):
+        return [
+            Decision(
+                ts=datetime(2026, 7, 4, 10, i, tzinfo=timezone.utc), source="human",
+                project="proj", session_id=f"s{i}", question=f"Q{i}",
+                answer=f"A{i}", options=[], header="",
+            )
+            for i in range(3)
+        ]
+
+    monkeypatch.setattr(D, "gather_decisions", fake_gather, raising=False)
+    server = m.LLMWikiMCPServer()
+
+    out = server.call_tool("query_decisions", {"day": "2026-07-04", "limit": 2})
+    assert len(out["decisions"]) == 2
+    assert out["total"] == 3
+    # Deterministic: the limit keeps the head of the gathered list.
+    assert out["decisions"][0]["question"] == "Q0"
+
+    # limit=0 clamps up to 1 rather than returning everything.
+    clamped = server.call_tool("query_decisions", {"day": "2026-07-04", "limit": 0})
+    assert len(clamped["decisions"]) == 1
+    assert clamped["total"] == 3
+
+    # Default (no limit) returns all 3 — well under the 50 default.
+    default = server.call_tool("query_decisions", {"day": "2026-07-04"})
+    assert len(default["decisions"]) == 3
+    assert default["total"] == 3
+
+
+def test_mcp_query_decisions_schema_declares_limit():
+    import tesserae.mcp_server as m
+
+    tool = next(
+        t for t in m.LLMWikiMCPServer().list_tools()
+        if t["name"] == "query_decisions"
+    )
+    limit_schema = tool["inputSchema"]["properties"]["limit"]
+    assert limit_schema["default"] == 50
+    assert limit_schema["minimum"] == 1
+    assert limit_schema["maximum"] == 200
+
+
 def test_summary_narrator_gets_human_decisions(tmp_path, monkeypatch):
     """build_summary must feed explicit human decisions to the narrator so its
     Decisions & Insights includes AskUserQuestion choices."""
