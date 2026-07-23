@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
+from .community_summaries import read_warm_summary
 from .context_compiler import _truncate_to_budget
 from .research_graph import ResearchGraph, ResearchNode, ResearchNodeType
 
@@ -225,17 +226,24 @@ def community_card(
     members: Sequence[str],
     by_id: Dict[str, ResearchNode],
     degrees: Dict[str, int],
+    *,
+    summary_cache_dir: Optional[Path] = None,
 ) -> JSONDict:
     """Build the uniform card for one community scope (§3 card shape).
 
-    ``quality="llm"`` iff the graph carries a COMMUNITY_SUMMARY node whose id
-    is this cid (coarsest-level communities only, minted by the summary
-    pass) — its title/description/tags are reused verbatim, so this PR adds
-    zero LLM calls. ``children_count`` is the number of cards
-    ``graph_map(cid)`` would return pre-budget (direct sub-communities plus
-    loose member nodes); ``leaf_member_count`` is transitive by construction
-    (sidecar memberships are leaf node ids at every level).
+    ``quality="llm"`` when the graph carries a COMMUNITY_SUMMARY node whose
+    id is this cid (coarsest-level communities only, minted by the summary
+    pass) — its title/description/tags are reused verbatim — or, given a
+    ``summary_cache_dir``, when the level-scoped lazy cache holds a warm
+    digest-valid summary for the cid (§5.2; written by an earlier
+    ``graph_map`` visit or the daemon pre-warm). Both lookups are reads —
+    card building itself never calls an LLM. ``children_count`` is the
+    number of cards ``graph_map(cid)`` would return pre-budget (direct
+    sub-communities plus loose member nodes); ``leaf_member_count`` is
+    transitive by construction (sidecar memberships are leaf node ids at
+    every level).
     """
+    warm: Optional[Tuple[str, str, List[str]]] = None
     summary_node = by_id.get(cid)
     if summary_node is not None and summary_node.type is ResearchNodeType.COMMUNITY_SUMMARY:
         meta = summary_node.metadata or {}
@@ -244,8 +252,22 @@ def community_card(
         tags = [str(t) for t in meta.get("tags") or []]
         quality = "llm"
     else:
-        title, summary, tags = _structural_summary(members, by_id, degrees)
-        quality = "structural"
+        if summary_cache_dir is not None:
+            found = hierarchy.find_scope(cid)
+            if found is not None:
+                warm = read_warm_summary(
+                    summary_cache_dir,
+                    found[0],
+                    cid,
+                    [by_id[m] for m in members if m in by_id],
+                )
+        if warm is not None:
+            title, description, tags = warm
+            summary = _truncate_to_budget(description, SUMMARY_CHAR_CAP)
+            quality = "llm"
+        else:
+            title, summary, tags = _structural_summary(members, by_id, degrees)
+            quality = "structural"
     children = hierarchy.children(cid)
     community_children, loose = children if children is not None else ([], list(members))
     return {

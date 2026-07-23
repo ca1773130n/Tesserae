@@ -19,6 +19,16 @@ applied to the typed ``ResearchGraph``:
 
 Default-on; opt-out via ``TESSERAE_COMMUNITY_SUMMARIES=false`` (wired
 by :meth:`tesserae.project.ProjectWiki._merge_community_summaries`).
+
+Descent PR6 (§5.2) reuses the same single-community path lazily at query
+time: :func:`materialize_community_summary` pays exactly one LLM call the
+first time ``graph_map`` visits a cold community, caching the result under
+the level-scoped layout ``<cache_dir>/<level>/CommunitySummary_<cid>.json``
+(same envelope, same digest invalidation, same atomic write). Scopes whose
+children are themselves communities carry a citation discipline: the prompt
+lists the child community ids and :func:`_cites_child_communities` rejects
+prose that cites none of them — rejected output falls back to the
+structural card and is never cached as llm-quality.
 """
 
 from __future__ import annotations
@@ -161,6 +171,16 @@ _SYSTEM_PROMPT = (
     "outside the supplied list."
 )
 
+# Appended to the system prompt when the summarized scope has community
+# children (§5.2 citation discipline): the description must cite at least one
+# child community id verbatim, and :func:`_cites_child_communities` enforces
+# it deterministically after the call.
+_CITATION_SYSTEM_SUFFIX = (
+    " This community is composed of the child sub-communities listed in the "
+    "prompt; the description MUST cite at least one child community id "
+    "verbatim (copy the full id string)."
+)
+
 
 def _member_line(n: ResearchNode) -> str:
     desc = (n.description or "").strip().splitlines()[0] if n.description else ""
@@ -168,10 +188,20 @@ def _member_line(n: ResearchNode) -> str:
     return f"- {n.name} ({n.type.value}): {desc}"
 
 
-def _format_user_prompt(members: Sequence[ResearchNode]) -> str:
+def _format_user_prompt(
+    members: Sequence[ResearchNode], child_cids: Sequence[str] = ()
+) -> str:
     lines = [f"Community has {len(members)} members. Members:"]
     for n in members:
         lines.append(_member_line(n))
+    if child_cids:
+        lines.append("")
+        lines.append(
+            "Child sub-communities (cite at least one of these ids verbatim "
+            "in the description):"
+        )
+        for child_cid in child_cids:
+            lines.append(f"- {child_cid}")
     lines.append("")
     lines.append(
         'Respond with: {"title": "...", "description": "...", '
@@ -207,6 +237,17 @@ def _members_digest(members: Sequence[ResearchNode]) -> str:
 def _cache_path(cache_dir: Path, cid: str) -> Path:
     safe = cid.replace(":", "_")
     return cache_dir / f"{safe}.json"
+
+
+def level_cache_path(cache_dir: Path, level: int, cid: str) -> Path:
+    """Level-scoped cache location for lazily-materialized summaries (§3).
+
+    ``<cache_dir>/<level>/CommunitySummary_<cid>.json`` — ``level`` is the
+    dendrogram index (0 = finest) at which ``graph_map`` resolved the scope.
+    The flat top-level files stay reserved for the compile pass's coarsest
+    communities, so the two writers can never collide on a path.
+    """
+    return _cache_path(cache_dir / str(int(level)), cid)
 
 
 def _read_cache(path: Path) -> Optional[dict]:
@@ -246,23 +287,30 @@ def prune_stale_summary_caches(cache_dir: Path, live_cids: Iterable[str]) -> Lis
     keying on the coarsest level alone would delete valid fine-level caches.
     Live-but-unvisited files are deliberately KEPT (they cost nothing and
     save a future LLM call). Only files matching the
-    ``CommunitySummary_*.json`` cache naming scheme are considered, so tmp
-    files and foreign artifacts are never touched. Returns the deleted
-    basenames in sorted order.
+    ``CommunitySummary_*.json`` cache naming scheme are considered — both in
+    the flat compile-pass layout and in the numeric ``<level>/`` subdirs the
+    lazy path writes (:func:`level_cache_path`) — so tmp files and foreign
+    artifacts are never touched. Returns the deleted paths relative to
+    ``cache_dir`` in sorted order.
     """
     if not cache_dir.is_dir():
         return []
     live_names = {_cache_path(cache_dir, cid).name for cid in live_cids}
+    candidates = list(cache_dir.glob("CommunitySummary_*.json")) + [
+        path
+        for path in cache_dir.glob("*/CommunitySummary_*.json")
+        if path.parent.name.isdigit()
+    ]
     deleted: List[str] = []
-    for path in sorted(cache_dir.glob("CommunitySummary_*.json")):
+    for path in sorted(candidates):
         if path.name in live_names:
             continue
         try:
             path.unlink()
         except OSError:
             continue
-        deleted.append(path.name)
-    return deleted
+        deleted.append(str(path.relative_to(cache_dir)))
+    return sorted(deleted)
 
 
 def _validate_summary(payload: object) -> Optional[Tuple[str, str, List[str]]]:
@@ -278,6 +326,189 @@ def _validate_summary(payload: object) -> Optional[Tuple[str, str, List[str]]]:
     if not tags:
         return None
     return title, description, tags[:5]
+
+
+def _cites_child_communities(
+    summary: Tuple[str, str, List[str]], child_cids: Sequence[str]
+) -> bool:
+    """Deterministic citation lint for summaries-of-summaries (§5.2).
+
+    Mirrors the ``agent_distill`` faithfulness-lint pattern: pure string
+    checks, no LLM. Prose (title + description) must cite at least one child
+    community id verbatim, so an upper-level summary is always anchored to a
+    child a reader can descend into — the summary-of-summary drift hole
+    never opens. Vacuously true when the scope has no community children
+    (finest level: members are leaf nodes, not summaries).
+    """
+    if not child_cids:
+        return True
+    title, description, _tags = summary
+    prose = f"{title}\n{description}"
+    return any(child_cid in prose for child_cid in child_cids)
+
+
+def summarize_community(
+    prompt_members: Sequence[ResearchNode],
+    *,
+    cid: str,
+    member_ids: Sequence[str],
+    cache_path: Path,
+    json_client: Optional[object],
+    child_cids: Sequence[str] = (),
+) -> Optional[Tuple[str, str, List[str]]]:
+    """Summarize-and-cache ONE community; the shared single-community path.
+
+    Cache read → digest invalidation → LLM call → validation → atomic cache
+    write, exactly as :func:`compile_community_summaries` has always done per
+    cluster (the compile pass now delegates here; the ``graph_map`` lazy path
+    reuses it via :func:`materialize_community_summary`). Returns the
+    validated ``(title, description, tags)`` or ``None`` when the community
+    cannot be summarized (no client and no cache, LLM failure, invalid or
+    citation-rejected response). ``child_cids``, when non-empty, engages the
+    §5.2 citation discipline: the prompt lists the child community ids and
+    :func:`_cites_child_communities` rejects prose citing none of them —
+    rejected output is NOT cached, so a later attempt may still produce an
+    llm-quality summary.
+    """
+    cached = _read_cache(cache_path)
+    digest = _members_digest(prompt_members)
+    summary: Optional[Tuple[str, str, List[str]]] = None
+    if cached and isinstance(cached, dict):
+        payload = cached.get("summary")
+        summary = _validate_summary(payload) if payload else None
+        if summary is not None:
+            stored_digest = cached.get("members_digest")
+            if stored_digest is None:
+                # Legacy pre-digest cache: honour it once but backfill
+                # the digest so future runs can detect member-content
+                # drift (avoids a one-time LLM stampede on upgrade).
+                _write_cache(cache_path, {**cached, "members_digest": digest})
+            elif stored_digest != digest:
+                if json_client is None:
+                    logger.warning(
+                        "community_summaries: cached summary for %s is "
+                        "stale (member content changed) but no LLM is "
+                        "available; serving the stale summary",
+                        cid,
+                    )
+                else:
+                    summary = None  # content drifted → re-summarize
+    if summary is None:
+        if json_client is None:
+            logger.debug("community_summaries: no LLM; skipping %s", cid)
+            return None
+        try:
+            resp = json_client.complete_json(  # type: ignore[attr-defined]
+                system=(
+                    _SYSTEM_PROMPT + _CITATION_SYSTEM_SUFFIX
+                    if child_cids
+                    else _SYSTEM_PROMPT
+                ),
+                user=_format_user_prompt(prompt_members, child_cids),
+                schema_name="community_summary",
+                cache_key=f"community-summary-v1::{len(prompt_members)}",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("community_summaries: LLM failed for %s: %s", cid, exc)
+            return None
+        summary = _validate_summary(resp)
+        if summary is None:
+            logger.warning("community_summaries: invalid LLM response for %s", cid)
+            return None
+        if not _cites_child_communities(summary, child_cids):
+            logger.warning(
+                "community_summaries: summary for %s cites none of its child "
+                "community ids; falling back to structural (not cached)",
+                cid,
+            )
+            return None
+        _write_cache(
+            cache_path,
+            {
+                "schema_version": 1,
+                "community_id": cid,
+                "member_ids": list(member_ids),
+                "members_digest": digest,
+                "summary": {
+                    "title": summary[0],
+                    "description": summary[1],
+                    "tags": summary[2],
+                },
+            },
+        )
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# Lazy materialization (§5.2, PR6)
+# ---------------------------------------------------------------------------
+
+
+def read_warm_summary(
+    cache_dir: Path,
+    level: int,
+    cid: str,
+    members: Sequence[ResearchNode],
+    *,
+    max_members_in_prompt: int = 25,
+) -> Optional[Tuple[str, str, List[str]]]:
+    """Warm-cache read for card building: validated summary or ``None``.
+
+    Strict — a digest mismatch is a miss, never a stale serve: cards must
+    not present drifted prose as ``quality="llm"``; the next scope visit
+    re-summarizes (or, without a client, the card stays structural).
+    """
+    cached = _read_cache(level_cache_path(cache_dir, level, cid))
+    if not isinstance(cached, dict):
+        return None
+    payload = cached.get("summary")
+    summary = _validate_summary(payload) if payload else None
+    if summary is None:
+        return None
+    prompt_members = list(members)[: max(1, int(max_members_in_prompt))]
+    if cached.get("members_digest") != _members_digest(prompt_members):
+        return None
+    return summary
+
+
+def materialize_community_summary(
+    members: Sequence[ResearchNode],
+    *,
+    cid: str,
+    member_ids: Sequence[str],
+    level: int,
+    cache_dir: Path,
+    json_client: Optional[object],
+    child_cids: Sequence[str] = (),
+    max_members_in_prompt: int = 25,
+) -> Optional[Tuple[str, str, List[str]]]:
+    """Lazily summarize one ``graph_map`` scope (§5.2). NEVER raises.
+
+    Exactly one ``complete_json`` call on a cold cache (via
+    :func:`summarize_community` — same prompt family, envelope, digest
+    invalidation and atomic write as the compile pass), cached under the
+    level-scoped layout (:func:`level_cache_path`). Any failure — no
+    client, LLM error, invalid or citation-rejected response, cache IO —
+    returns ``None`` so the caller keeps its deterministic structural card;
+    the map is never blocked by summarization.
+    """
+    try:
+        prompt_members = list(members)[: max(1, int(max_members_in_prompt))]
+        if not prompt_members:
+            return None
+        return summarize_community(
+            prompt_members,
+            cid=cid,
+            member_ids=member_ids,
+            cache_path=level_cache_path(cache_dir, level, cid),
+            json_client=json_client,
+            child_cids=child_cids,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "community_summaries: lazy materialization failed for %s: %s", cid, exc
+        )
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -314,66 +545,24 @@ def compile_community_summaries(
     new_edges: List[ResearchEdge] = []
     for member_ids in communities:
         cid = community_id(member_ids)
-        cache_path = _cache_path(cache_dir, cid)
-        cached = _read_cache(cache_path)
         members = [by_id[m] for m in member_ids if m in by_id]
         if not members:
             continue
         prompt_members = members[: max(1, int(max_members_in_prompt))]
-        digest = _members_digest(prompt_members)
-        summary: Optional[Tuple[str, str, List[str]]] = None
-        if cached and isinstance(cached, dict):
-            payload = cached.get("summary")
-            summary = _validate_summary(payload) if payload else None
-            if summary is not None:
-                stored_digest = cached.get("members_digest")
-                if stored_digest is None:
-                    # Legacy pre-digest cache: honour it once but backfill
-                    # the digest so future runs can detect member-content
-                    # drift (avoids a one-time LLM stampede on upgrade).
-                    _write_cache(cache_path, {**cached, "members_digest": digest})
-                elif stored_digest != digest:
-                    if json_client is None:
-                        logger.warning(
-                            "community_summaries: cached summary for %s is "
-                            "stale (member content changed) but no LLM is "
-                            "available; serving the stale summary",
-                            cid,
-                        )
-                    else:
-                        summary = None  # content drifted → re-summarize
+        # Shared single-community path (PR6 refactor): cache read, digest
+        # invalidation, LLM call, validation and atomic write all live in
+        # summarize_community — behaviourally identical to the inline code
+        # this replaced (coarsest-level flat cache layout, no child_cids, so
+        # no citation discipline and byte-identical prompts/envelopes).
+        summary = summarize_community(
+            prompt_members,
+            cid=cid,
+            member_ids=member_ids,
+            cache_path=_cache_path(cache_dir, cid),
+            json_client=json_client,
+        )
         if summary is None:
-            if json_client is None:
-                logger.debug("community_summaries: no LLM; skipping %s", cid)
-                continue
-            try:
-                resp = json_client.complete_json(  # type: ignore[attr-defined]
-                    system=_SYSTEM_PROMPT,
-                    user=_format_user_prompt(prompt_members),
-                    schema_name="community_summary",
-                    cache_key=f"community-summary-v1::{len(prompt_members)}",
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("community_summaries: LLM failed for %s: %s", cid, exc)
-                continue
-            summary = _validate_summary(resp)
-            if summary is None:
-                logger.warning("community_summaries: invalid LLM response for %s", cid)
-                continue
-            _write_cache(
-                cache_path,
-                {
-                    "schema_version": 1,
-                    "community_id": cid,
-                    "member_ids": list(member_ids),
-                    "members_digest": digest,
-                    "summary": {
-                        "title": summary[0],
-                        "description": summary[1],
-                        "tags": summary[2],
-                    },
-                },
-            )
+            continue
         title, description, tags = summary
         new_nodes.append(
             ResearchNode(
