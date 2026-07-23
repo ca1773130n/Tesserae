@@ -173,6 +173,13 @@ class ProjectPaths:
     # the same membership skip the LLM call. See
     # ``tesserae.community_summaries``.
     community_summaries: Path = Path(".tesserae/community_summaries")
+    # Descent hierarchy sidecar (§3): every Louvain dendrogram level
+    # (finest→coarsest, ``community_id`` → sorted member ids) plus the
+    # high-degree hub ids, written by ``_write_hierarchy_sidecar`` right
+    # after graph canonicalization. A pure function of graph content —
+    # deterministic, byte-idempotent, never shipped to an LLM. Follows the
+    # established sidecar idiom (``discovered_links.json``, ``sqlite.db``).
+    hierarchy: Path = Path(".tesserae/hierarchy.json")
     # Extraction-feedback loop (docs/superpowers/specs/2026-05-26-...). Human
     # corrections captured during vault overlay / review-apply are appended to
     # ``extraction_feedback`` (JSONL, deduped). ``tesserae evolve`` distills them
@@ -234,6 +241,7 @@ class ProjectWiki:
             diverged_fields=self.root / "diverged-fields.md",
             session_findings=self.root / "session_findings",
             community_summaries=self.root / "community_summaries",
+            hierarchy=self.root / "hierarchy.json",
             extraction_feedback=self.root / "extraction-feedback.jsonl",
             extraction_guidance=self.root / "extraction-guidance.md",
             extraction_guidance_cache=self.root / "extraction_guidance_cache",
@@ -983,6 +991,13 @@ class ProjectWiki:
         # bug. It is an idempotent no-op for a full compile (the graph is
         # already canonical), so byte-idempotence is preserved.
         graph = merge_graphs([graph])
+        # Descent hierarchy sidecar (PR4): persist the full Louvain dendrogram
+        # + hub list to ``.tesserae/hierarchy.json``. Runs on the canonical
+        # graph (the same ordering CMP-03 requires) and BEFORE the community-
+        # summary merge so Louvain never sees a COMMUNITY_SUMMARY node.
+        # Returns the all-level live-cid manifest used to prune stale summary
+        # caches after that pass (§9.5).
+        live_community_ids = self._write_hierarchy_sidecar(graph)
         # Community-summary pass (Microsoft GraphRAG playbook applied to
         # the typed graph). Opt-in via ``TESSERAE_COMMUNITY_SUMMARIES=true``
         # so quiet ``compile`` runs stay free of incremental LLM
@@ -991,6 +1006,21 @@ class ProjectWiki:
         # COMMUNITY_SUMMARY nodes flow through vault projection,
         # graph.json persistence, MCP, and site builds in one pass.
         graph = self._merge_community_summaries(graph, cfg)
+        # §9.5 cache pruning: with this compile's caches written, delete
+        # summary-cache files whose cid appears at NO dendrogram level.
+        # Live-but-unvisited caches are kept (pruning on the coarsest level
+        # alone would delete valid fine-level caches).
+        from .community_summaries import prune_stale_summary_caches
+
+        pruned_caches = prune_stale_summary_caches(
+            self.paths.community_summaries, live_community_ids
+        )
+        if pruned_caches:
+            print(
+                f"[tesserae] community summaries: pruned {len(pruned_caches)} "
+                "stale cache file(s).",
+                flush=True,
+            )
         # AgentRunbook Runbook/Gotcha distillation (opt-in). Runs after
         # merge/dedup + community summaries so it clusters the canonical
         # session findings, and before ``_write_artifacts`` so the minted
@@ -1226,6 +1256,55 @@ class ProjectWiki:
                 merged, code_graph_path=self.paths.code_graph
             )
         return merged
+
+    def _write_hierarchy_sidecar(self, graph: ResearchGraph) -> Set[str]:
+        """Write ``.tesserae/hierarchy.json`` — the Descent hierarchy sidecar.
+
+        Runs immediately after the ``merge_graphs([graph])`` canonicalization
+        and BEFORE ``_merge_community_summaries``, so the dendrogram is a pure
+        function of the canonical graph content (identical for full vs
+        incremental compiles — the CMP-03 parity surface) and Louvain never
+        sees a COMMUNITY_SUMMARY node. Payload::
+
+            {"schema_version": 1,
+             "levels": [{cid: [sorted member ids], ...}, ...],  # finest→coarsest
+             "hubs": [node ids with undirected degree > 200]}
+
+        ``cid`` is the existing :func:`community_id` scheme, so the coarsest
+        level's keys are exactly the COMMUNITY_SUMMARY node ids the summary
+        pass mints. Deterministic (fixed seed, sorted construction, no wall
+        clock, no LLM); atomic tmp + ``os.replace`` with sorted keys, matching
+        the sidecar idiom of ``output_snapshot.write_state``.
+
+        Returns the live-cid manifest across ALL levels — the §9.5 pruning
+        key: a community-summary cache file is stale only when its cid appears
+        at no level.
+        """
+        from .community_summaries import (
+            community_id,
+            detect_community_levels,
+            hub_node_ids,
+        )
+
+        levels = detect_community_levels(graph)
+        levels_payload = [
+            {community_id(members): members for members in level}
+            for level in levels
+        ]
+        payload = {
+            "schema_version": 1,
+            "levels": levels_payload,
+            "hubs": hub_node_ids(graph),
+        }
+        path = self.paths.hierarchy
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(tmp, path)
+        return {cid for level_map in levels_payload for cid in level_map}
 
     def _merge_community_summaries(self, graph: ResearchGraph, cfg: dict) -> ResearchGraph:
         """Mint COMMUNITY_SUMMARY nodes + ``summarizes`` edges (opt-in).

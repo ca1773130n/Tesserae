@@ -177,6 +177,33 @@ def test_drift_graph_to_wiki_and_back(tmp_path: Path) -> None:
     assert len(reverse) == 1
 
 
+def test_drift_covers_community_summary_nodes(tmp_path: Path) -> None:
+    """Descent PR4: ``CommunitySummary`` is part of the lint kind table, so a
+    minted community node without its ``wiki/communities/`` page is drift."""
+    graph = {
+        "nodes": [
+            _node("CommunitySummary:abc123", "CommunitySummary", "Orphan Cluster"),
+        ],
+        "edges": [],
+    }
+    project = _scaffold(tmp_path, graph=graph)
+    report = WikiLinter(project).run()
+    matches = [f for f in report.findings if f.code == "GRAPH_WIKI_DRIFT"]
+    assert any(f.node_id == "CommunitySummary:abc123" for f in matches)
+
+
+def test_lint_kind_table_mirrors_wiki_projector() -> None:
+    """The lint drift table must cover every public kind the projector writes
+    (the missing ``CommunitySummary`` entry was the latent wiki-drift gap)."""
+    from tesserae.lint import _KIND_FOR_TYPE as lint_kinds
+    from tesserae.wiki_projector import _KIND_FOR_TYPE as projector_kinds
+
+    for node_type, kind in sorted(projector_kinds.items(), key=lambda kv: kv[0].value):
+        assert lint_kinds.get(node_type.value) == kind, (
+            f"lint._KIND_FOR_TYPE is missing or mismapping {node_type.value!r}"
+        )
+
+
 def _contradicting_pair_graph(extra_edges: list | None = None) -> dict:
     return {
         "nodes": [

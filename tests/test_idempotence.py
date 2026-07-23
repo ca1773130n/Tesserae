@@ -107,6 +107,39 @@ def test_compile_is_byte_idempotent(tmp_path: Path) -> None:
     )
 
 
+def test_hierarchy_sidecar_is_byte_idempotent(tmp_path: Path) -> None:
+    """``.tesserae/hierarchy.json`` (Descent PR4) is a pure function of graph
+    content: recompiling an unchanged corpus must rewrite it byte-identically,
+    and its shape must match the sidecar contract (schema_version 1, dendrogram
+    levels finest→coarsest keyed by ``community_id`` with sorted members,
+    sorted high-degree hub ids)."""
+    project_root = tmp_path / "project"
+    wiki = _seed_project(project_root)
+
+    wiki.compile()
+    sidecar = wiki.paths.hierarchy
+    assert sidecar.exists(), "compile did not write the hierarchy sidecar"
+    first_bytes = sidecar.read_bytes()
+
+    payload = json.loads(first_bytes)
+    assert payload["schema_version"] == 1
+    assert isinstance(payload["levels"], list)
+    assert payload["levels"], "expected at least one dendrogram level"
+    for level in payload["levels"]:
+        assert isinstance(level, dict)
+        for cid, members in level.items():
+            assert cid.startswith("CommunitySummary:")
+            assert len(members) > 1, "singleton communities must be filtered"
+            assert members == sorted(members)
+    assert payload["hubs"] == sorted(payload["hubs"])
+
+    wiki.compile()
+    assert sidecar.read_bytes() == first_bytes, (
+        "hierarchy sidecar is not byte-idempotent across recompiles of an "
+        "unchanged corpus"
+    )
+
+
 def test_synthesis_pages_have_no_generated_at_on_disk(tmp_path: Path) -> None:
     """The on-disk synthesis frontmatter must not carry a build timestamp."""
     project_root = tmp_path / "project"
