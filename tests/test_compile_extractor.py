@@ -234,6 +234,7 @@ def test_doc_extractor_honors_project_provider_and_disables_timeout(monkeypatch)
     from tesserae.cli import _build_compile_parser, _build_doc_extractor
 
     monkeypatch.delenv("TESSERAE_LLM_PROVIDER", raising=False)
+    monkeypatch.delenv("TESSERAE_EXTRACT_TIMEOUT", raising=False)
     seen = {}
 
     def _fake(**k):
@@ -245,3 +246,36 @@ def test_doc_extractor_honors_project_provider_and_disables_timeout(monkeypatch)
                          cfg={"llm_provider": "codex"})
     assert seen["provider"] == "codex"   # project config wins, not the global default
     assert seen["timeout"] is None       # no default cutoff
+
+
+def test_doc_extractor_opt_in_timeout_via_env(monkeypatch):
+    """TESSERAE_EXTRACT_TIMEOUT bounds each extraction call so a wedged codex child
+    is killed and that doc falls back to deterministic — instead of hanging the compile.
+    Unset / non-positive / garbage all mean 'no cutoff' (None), byte-identical to prior."""
+    import tesserae.llm_json as lj
+    from tesserae.cli import _build_compile_parser, _build_doc_extractor, _extract_timeout
+
+    # helper parses the env directly
+    monkeypatch.delenv("TESSERAE_EXTRACT_TIMEOUT", raising=False)
+    assert _extract_timeout() is None
+    monkeypatch.setenv("TESSERAE_EXTRACT_TIMEOUT", "600")
+    assert _extract_timeout() == 600
+    for bad in ("0", "-5", "", "abc", "inf", "nan"):
+        monkeypatch.setenv("TESSERAE_EXTRACT_TIMEOUT", bad)
+        assert _extract_timeout() is None, bad
+
+    # Whole seconds >= 1: the CLI clients coerce with int(), so a fractional value
+    # must NOT round down to 0 (an instant timeout that would degrade every doc to
+    # deterministic while the anthropic client kept the float).
+    for frac, expected in (("0.5", 1), ("0.01", 1), ("600.2", 601), ("1.0", 1)):
+        monkeypatch.setenv("TESSERAE_EXTRACT_TIMEOUT", frac)
+        got = _extract_timeout()
+        assert got == expected, f"{frac} -> {got}"
+        assert isinstance(got, int) and int(got) >= 1
+
+    # and it is threaded into the client the compile builds
+    seen = {}
+    monkeypatch.setattr(lj, "build_default_json_client", lambda **k: seen.update(k) or object())
+    monkeypatch.setenv("TESSERAE_EXTRACT_TIMEOUT", "600")
+    _build_doc_extractor(_build_compile_parser().parse_args(["--extractor", "llm"]))
+    assert seen["timeout"] == 600.0

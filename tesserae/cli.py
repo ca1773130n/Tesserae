@@ -5388,6 +5388,38 @@ def _build_extract_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _extract_timeout() -> Optional[int]:
+    """Per-file LLM extraction cutoff in WHOLE SECONDS, opt-in via ``TESSERAE_EXTRACT_TIMEOUT``.
+
+    Default (env unset, or non-positive/invalid) is ``None`` — no cutoff, a slow doc
+    runs to completion, byte-identical to prior behaviour. Set a positive number to
+    bound each codex/claude extraction call: a wedged CLI child (e.g. a network wait
+    that never resolves) is then killed by ``_run_cli``'s process-group guard, the
+    provider client moves on / returns None, and the selective router falls back to
+    deterministic for THAT doc instead of blocking the whole compile forever.
+
+    Rounded UP to a whole second >= 1 because the two CLI clients coerce their
+    timeout with ``int()`` (llm_json.py) while the Anthropic client keeps the float:
+    a fractional ``0.5`` would otherwise become ``0`` for codex/claude — an INSTANT
+    timeout degrading every doc to deterministic — and stay ``0.5`` for anthropic.
+    Normalising here makes all three providers behave identically and reads a
+    sub-second value as "the shortest cutoff this can express", never "no extraction".
+    """
+    import math
+    import os
+
+    raw = os.environ.get("TESSERAE_EXTRACT_TIMEOUT")
+    if not raw:
+        return None
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if val <= 0 or math.isinf(val) or math.isnan(val):
+        return None
+    return max(1, math.ceil(val))
+
+
 def _build_doc_extractor(args: argparse.Namespace, cfg: Optional[dict] = None):
     """Build the document extractor for `compile` / `extract`.
 
@@ -5419,7 +5451,7 @@ def _build_doc_extractor(args: argparse.Namespace, cfg: Optional[dict] = None):
         claude_config_dirs=(getattr(args, "claude_config_dir", None) or settings.get("claude_config_dirs")),
         codex_home=settings.get("codex_home"),
         codex_reasoning_effort=settings.get("codex_reasoning_effort") or "medium",
-        timeout=None,  # no cutoff — a slow doc runs to completion (timeout is opt-in only)
+        timeout=_extract_timeout(),  # opt-in cutoff via TESSERAE_EXTRACT_TIMEOUT (default None = run to completion)
     )
     if client is None:
         print("warning: no LLM backend available (codex/claude not authed, no "
@@ -5677,6 +5709,73 @@ def _route_query(rest: List[str]) -> int:
     return _resolve_handler("_handle_query")(args)
 
 
+def _build_graph_map_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae graph-map",
+        description=(
+            "Budgeted Descent navigation over the compiled graph + hierarchy sidecar "
+            "(the graph_map MCP tool, exposed as a CLI verb for non-MCP callers). No "
+            "--scope prints the root map; pass a card's scope_id to descend, its "
+            "parent_scope to ascend, --cursor to page an oversized level. Emits the "
+            "tool's JSON result on stdout. Requires a >= 0.25 compile (which writes "
+            ".tesserae/hierarchy.json)."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae graph-map                      # root map\n"
+            "  tesserae graph-map --scope <cid>        # descend a community\n"
+            "  tesserae graph-map --scope org:root     # agent org tree\n"
+            "  tesserae graph-map --scope <cid> --cursor 50\n"
+        ),
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to CWD.")
+    parser.add_argument("--scope", default=None, help="Scope id: a community/node scope_id, 'org:root', 'agent:<key>', or '<alias>::[<cid>]'. Omit for the root map.")
+    parser.add_argument("--cursor", type=int, default=0, help="Pagination cursor for an oversized level (from a prior '+N more' continuation).")
+    parser.add_argument("--budget-chars", type=int, default=None, help="Response character budget (default 32000; 0 = uncapped).")
+    parser.set_defaults(_handler="_handle_graph_map")
+    return parser
+
+
+def _route_graph_map(rest: List[str]) -> int:
+    args = _build_graph_map_parser().parse_args(rest)
+    return _resolve_handler("_handle_graph_map")(args)
+
+
+def _handle_graph_map(args: argparse.Namespace) -> int:
+    import json
+
+    from .mcp_server import LLMWikiMCPServer
+
+    wiki = ProjectWiki.load(args.project)
+    if not wiki.paths.graph.exists():
+        print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
+        return 2
+    server = LLMWikiMCPServer(default_graph_path=wiki.paths.graph)
+    # Pass the graph PATH (not a registry alias) so the verb works on any project
+    # dir without a prior `projects register`; graph_map derives the root from it.
+    # Agent-org / federated scopes dispatch before this is read, so it's harmless there.
+    call_args: Dict[str, object] = {"graph_path": str(wiki.paths.graph)}
+    if args.scope:
+        call_args["scope"] = args.scope
+    if args.cursor:
+        call_args["cursor"] = args.cursor
+    if args.budget_chars is not None:
+        call_args["budget_chars"] = args.budget_chars
+    try:
+        # graph_map raises ValueError for the actionable USER/STATE cases (missing
+        # hierarchy sidecar, unknown scope/project, stale federated child) and OSError
+        # for unreadable sidecars — surface those as a clean CLI message. Anything
+        # else is a programming error and SHOULD traceback rather than be disguised
+        # as a normal CLI failure.
+        result = server.call_tool("graph_map", call_args)
+    except (ValueError, OSError) as exc:
+        print(f"error: graph_map failed: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
 def _build_distill_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae distill",
@@ -5918,6 +6017,8 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "lint": _route_lint,
     "doctor": _route_doctor,
     "query": _route_query,
+    # Descent (0.25): graph_map MCP tool exposed as a CLI verb for non-MCP callers
+    "graph-map": _route_graph_map,
     # layered agent KG (Phase 2): per-agent L1 distillation
     "distill": _route_distill,
 }

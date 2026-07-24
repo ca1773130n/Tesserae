@@ -212,7 +212,7 @@ def test_every_command_help_has_examples(capsys):
 
     for cmd in (["init"], ["compile"], ["context"], ["ask"], ["serve"],
                 ["status"], ["engine"], ["refresh"], ["research"], ["query"],
-                ["lint"], ["extract"],
+                ["lint"], ["extract"], ["graph-map"],
                 ["sessions", "import"], ["vault", "sync"], ["export", "site"],
                 ["code", "sync"], ["config", "llm"], ["projects", "register"],
                 ["integrations", "refresh"], ["lab", "evolve"]):

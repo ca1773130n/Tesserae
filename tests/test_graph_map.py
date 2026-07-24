@@ -463,3 +463,55 @@ def test_graph_map_is_listed_with_scope_grammar(project) -> None:
     assert "scope_id" in tool["description"]
     assert "parent_scope" in tool["description"]
     assert "cursor" in tool["description"]
+
+
+# ---------------------------------------------------------------------------
+# `tesserae graph-map` CLI verb — the non-MCP bridge (parser/dispatch/stdout)
+# ---------------------------------------------------------------------------
+
+
+def _cli_project(project: dict) -> Path:
+    """The fixture project + the config.json that ``ProjectWiki.load`` requires."""
+    root: Path = project["root"]
+    (root / ".tesserae" / "config.json").write_text("{}\n", encoding="utf-8")
+    return root
+
+
+def test_cli_graph_map_prints_card_json(project, capsys) -> None:
+    """The CLI verb emits the same payload the MCP tool returns, as JSON on stdout."""
+    import tesserae.cli as cli
+
+    root = _cli_project(project)
+    rc = cli.main(["graph-map", "--project", str(root)])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["header"]["scope"] is None
+    assert [c["scope_id"] for c in payload["cards"]] == [
+        c["scope_id"] for c in _call(project)["cards"]
+    ]
+
+
+def test_cli_graph_map_descends_by_scope(project, capsys) -> None:
+    """--scope reaches the same descent the tool does (argv → call_tool wiring)."""
+    import tesserae.cli as cli
+
+    root = _cli_project(project)
+    scope = _call(project)["cards"][0]["scope_id"]
+    rc = cli.main(["graph-map", "--project", str(root), "--scope", scope])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["header"]["scope"] == scope
+
+
+def test_cli_graph_map_missing_sidecar_is_clean_error(project, capsys) -> None:
+    """A pre-Descent project exits 1 with the actionable remedy — not a traceback."""
+    import tesserae.cli as cli
+
+    root = _cli_project(project)
+    (root / ".tesserae" / "hierarchy.json").unlink()
+    rc = cli.main(["graph-map", "--project", str(root)])
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "Traceback" not in captured.err
+    assert "tesserae compile" in captured.err  # the remedy
+    assert captured.out.strip() == ""  # no half-written JSON on the happy channel
