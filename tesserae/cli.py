@@ -5698,6 +5698,71 @@ def _route_query(rest: List[str]) -> int:
     return _resolve_handler("_handle_query")(args)
 
 
+def _build_graph_map_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae graph-map",
+        description=(
+            "Budgeted Descent navigation over the compiled graph + hierarchy sidecar "
+            "(the graph_map MCP tool, exposed as a CLI verb for non-MCP callers). No "
+            "--scope prints the root map; pass a card's scope_id to descend, its "
+            "parent_scope to ascend, --cursor to page an oversized level. Emits the "
+            "tool's JSON result on stdout. Requires a >= 0.25 compile (which writes "
+            ".tesserae/hierarchy.json)."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae graph-map                      # root map\n"
+            "  tesserae graph-map --scope <cid>        # descend a community\n"
+            "  tesserae graph-map --scope org:root     # agent org tree\n"
+            "  tesserae graph-map --scope <cid> --cursor 50\n"
+        ),
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to CWD.")
+    parser.add_argument("--scope", default=None, help="Scope id: a community/node scope_id, 'org:root', 'agent:<key>', or '<alias>::[<cid>]'. Omit for the root map.")
+    parser.add_argument("--cursor", type=int, default=0, help="Pagination cursor for an oversized level (from a prior '+N more' continuation).")
+    parser.add_argument("--budget-chars", type=int, default=None, help="Response character budget (default 32000; 0 = uncapped).")
+    parser.set_defaults(_handler="_handle_graph_map")
+    return parser
+
+
+def _route_graph_map(rest: List[str]) -> int:
+    args = _build_graph_map_parser().parse_args(rest)
+    return _resolve_handler("_handle_graph_map")(args)
+
+
+def _handle_graph_map(args: argparse.Namespace) -> int:
+    import json
+
+    from .mcp_server import LLMWikiMCPServer
+
+    wiki = ProjectWiki.load(args.project)
+    if not wiki.paths.graph.exists():
+        print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
+        return 2
+    server = LLMWikiMCPServer(default_graph_path=wiki.paths.graph)
+    # Pass the graph PATH (not a registry alias) so the verb works on any project
+    # dir without a prior `projects register`; graph_map derives the root from it.
+    # Agent-org / federated scopes dispatch before this is read, so it's harmless there.
+    call_args: Dict[str, object] = {"graph_path": str(wiki.paths.graph)}
+    if args.scope:
+        call_args["scope"] = args.scope
+    if args.cursor:
+        call_args["cursor"] = args.cursor
+    if args.budget_chars is not None:
+        call_args["budget_chars"] = args.budget_chars
+    try:
+        # graph_map raises its own actionable errors (missing hierarchy sidecar,
+        # unknown scope, stale federated child) — surface them as a clean CLI
+        # message instead of a traceback.
+        result = server.call_tool("graph_map", call_args)
+    except Exception as exc:  # noqa: BLE001
+        print(f"error: graph_map failed: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
 def _build_distill_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae distill",
@@ -5939,6 +6004,8 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "lint": _route_lint,
     "doctor": _route_doctor,
     "query": _route_query,
+    # Descent (0.25): graph_map MCP tool exposed as a CLI verb for non-MCP callers
+    "graph-map": _route_graph_map,
     # layered agent KG (Phase 2): per-agent L1 distillation
     "distill": _route_distill,
 }
