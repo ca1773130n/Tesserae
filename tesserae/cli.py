@@ -5388,6 +5388,27 @@ def _build_extract_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _extract_timeout() -> Optional[float]:
+    """Per-file LLM extraction cutoff (seconds), opt-in via ``TESSERAE_EXTRACT_TIMEOUT``.
+
+    Default (env unset, or non-positive/invalid) is ``None`` — no cutoff, a slow doc
+    runs to completion, byte-identical to prior behaviour. Set a positive number to
+    bound each codex/claude extraction call: a wedged CLI child (e.g. a network wait
+    that never resolves) is then killed by ``_run_cli``'s process-group guard, the
+    provider client moves on / returns None, and the selective router falls back to
+    deterministic for THAT doc instead of blocking the whole compile forever."""
+    import os
+
+    raw = os.environ.get("TESSERAE_EXTRACT_TIMEOUT")
+    if not raw:
+        return None
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return val if val > 0 else None
+
+
 def _build_doc_extractor(args: argparse.Namespace, cfg: Optional[dict] = None):
     """Build the document extractor for `compile` / `extract`.
 
@@ -5419,7 +5440,7 @@ def _build_doc_extractor(args: argparse.Namespace, cfg: Optional[dict] = None):
         claude_config_dirs=(getattr(args, "claude_config_dir", None) or settings.get("claude_config_dirs")),
         codex_home=settings.get("codex_home"),
         codex_reasoning_effort=settings.get("codex_reasoning_effort") or "medium",
-        timeout=None,  # no cutoff — a slow doc runs to completion (timeout is opt-in only)
+        timeout=_extract_timeout(),  # opt-in cutoff via TESSERAE_EXTRACT_TIMEOUT (default None = run to completion)
     )
     if client is None:
         print("warning: no LLM backend available (codex/claude not authed, no "
