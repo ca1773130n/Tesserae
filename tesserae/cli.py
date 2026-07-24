@@ -5388,15 +5388,24 @@ def _build_extract_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _extract_timeout() -> Optional[float]:
-    """Per-file LLM extraction cutoff (seconds), opt-in via ``TESSERAE_EXTRACT_TIMEOUT``.
+def _extract_timeout() -> Optional[int]:
+    """Per-file LLM extraction cutoff in WHOLE SECONDS, opt-in via ``TESSERAE_EXTRACT_TIMEOUT``.
 
     Default (env unset, or non-positive/invalid) is ``None`` — no cutoff, a slow doc
     runs to completion, byte-identical to prior behaviour. Set a positive number to
     bound each codex/claude extraction call: a wedged CLI child (e.g. a network wait
     that never resolves) is then killed by ``_run_cli``'s process-group guard, the
     provider client moves on / returns None, and the selective router falls back to
-    deterministic for THAT doc instead of blocking the whole compile forever."""
+    deterministic for THAT doc instead of blocking the whole compile forever.
+
+    Rounded UP to a whole second >= 1 because the two CLI clients coerce their
+    timeout with ``int()`` (llm_json.py) while the Anthropic client keeps the float:
+    a fractional ``0.5`` would otherwise become ``0`` for codex/claude — an INSTANT
+    timeout degrading every doc to deterministic — and stay ``0.5`` for anthropic.
+    Normalising here makes all three providers behave identically and reads a
+    sub-second value as "the shortest cutoff this can express", never "no extraction".
+    """
+    import math
     import os
 
     raw = os.environ.get("TESSERAE_EXTRACT_TIMEOUT")
@@ -5406,7 +5415,9 @@ def _extract_timeout() -> Optional[float]:
         val = float(raw)
     except (TypeError, ValueError):
         return None
-    return val if val > 0 else None
+    if val <= 0 or math.isinf(val) or math.isnan(val):
+        return None
+    return max(1, math.ceil(val))
 
 
 def _build_doc_extractor(args: argparse.Namespace, cfg: Optional[dict] = None):
@@ -5752,11 +5763,13 @@ def _handle_graph_map(args: argparse.Namespace) -> int:
     if args.budget_chars is not None:
         call_args["budget_chars"] = args.budget_chars
     try:
-        # graph_map raises its own actionable errors (missing hierarchy sidecar,
-        # unknown scope, stale federated child) — surface them as a clean CLI
-        # message instead of a traceback.
+        # graph_map raises ValueError for the actionable USER/STATE cases (missing
+        # hierarchy sidecar, unknown scope/project, stale federated child) and OSError
+        # for unreadable sidecars — surface those as a clean CLI message. Anything
+        # else is a programming error and SHOULD traceback rather than be disguised
+        # as a normal CLI failure.
         result = server.call_tool("graph_map", call_args)
-    except Exception as exc:  # noqa: BLE001
+    except (ValueError, OSError) as exc:
         print(f"error: graph_map failed: {exc}", file=sys.stderr)
         return 1
     print(json.dumps(result, ensure_ascii=False))
