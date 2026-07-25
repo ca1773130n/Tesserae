@@ -914,3 +914,31 @@ def test_run_cli_returns_completed_process_output():
     assert result.returncode == 3
     assert result.stdout == "out"
     assert result.stderr == "err"
+
+
+def test_build_default_json_client_seam_forwards_timeout():
+    """The test seam must observe the timeout the production path would have used.
+
+    It previously returned AnthropicLLMJsonClient(model=...) with no timeout, so the
+    injected fake was handed the 30s Anthropic default regardless of what the caller
+    asked for — a test pinning a timeout silently proved nothing. _KEEP_TIMEOUT
+    semantics match the real builders: sentinel -> client default, explicit value
+    (including None = no cutoff) -> forwarded verbatim.
+    """
+    from tesserae.llm_json import build_default_json_client, set_client_factory
+
+    seen: dict = {}
+    try:
+        set_client_factory(lambda api_key=None, timeout=None: seen.update(timeout=timeout))
+
+        build_default_json_client(timeout=600)
+        assert seen["timeout"] == 600
+
+        build_default_json_client(timeout=None)   # 0 -> None: no cutoff
+        assert seen["timeout"] is None
+
+        seen.clear()
+        build_default_json_client()               # sentinel -> Anthropic default
+        assert seen["timeout"] == 30.0
+    finally:
+        set_client_factory(None)
