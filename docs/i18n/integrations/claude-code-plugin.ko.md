@@ -22,6 +22,22 @@ Tesserae는 [Claude Code](https://docs.claude.com/en/docs/claude-code) 플러그
 * **`using-tesserae` 스킬** — 사용자가 타입드 그래프, 과거 세션 회수, 위키/볼트 콘텐츠, 또는 tesserae 워크플로우에 대해 질문할 때 자동 로드됩니다. 에이전트에게 어떤 MCP 도구를 사용할지 vs 어떤 슬래시 명령을 제안할지 가르쳐줍니다.
 * **훅 5개** — `SessionStart`는 그래프 요약을 출력; `SessionEnd`는 이번 대화의 인사이트가 다음 세션의 그래프 노드가 되도록 백그라운드 import+compile; `Edit`/`Write`/`MultiEdit`에서 두 개의 `PostToolUse` 훅이 발동 — 하나는 docs/ 편집 시 옵트인 증분 재컴파일, 다른 하나는 코드 그래프 동기화를 디바운스(~30초); `PreToolUse`(`Bash` 대상)는 큰 그래프 컴파일을 확인 대화상자로 게이팅.
 
+> **세션 종료 시 compile은 기회적일 뿐, 보장되지 않습니다.** 훅은 `setsid`가 있으면
+> 그것으로 백그라운드 작업을 분리하고, 없으면 `nohup`으로 폴백합니다. macOS에는
+> `setsid`가 없고 `nohup`은 `SIGHUP`을 무시할 뿐 — 작업을 세션의 프로세스 그룹에
+> 그대로 남겨둡니다 — 따라서 세션 종료 시 그룹을 회수하는 하네스는 여전히 compile을
+> 도중에 죽일 수 있습니다. 그때 남는 상태는 "손상되지 않은" 것이 아니라 "복구
+> 가능한" 것입니다. `graph.json`은 원자적 rename으로 기록되므로 절반만 쓰인 파일이
+> 되는 일은 없지만, 생성물인 `wiki/`와 `site/` 투영은 아티팩트 기록 시작 시점에
+> 지워지고 SQLite 스토어는 `graph.json` 이후에 기록되므로, 그 구간에서 죽으면
+> 이들은 사라지거나 한 compile 뒤처진 상태로 남습니다. 다만 조용히 그렇게 되지는
+> 않습니다 — `.tesserae/manifest.json`은 아티팩트가 안착한 뒤에만 문서에 `graphed`
+> 표시를 남기므로, 다음 `compile --changed-only`는 no-op을 거부하고 `graph.json is
+> not known to cover every tracked document`이라고 알린 뒤 전체 코퍼스를 다시
+> 추출하며, 그 과정에서 투영도 다시 만들어집니다.
+> 긴 compile이 그것을 시작한 세션보다 오래 살아남는다고 가정하는 워크플로는 만들지
+> 마세요 — 포그라운드에서 실행하거나 `tesserae engine`을 쓰세요.
+
 전체 세부 정보, 명령/훅 표, 프로젝트별 opt-out 설정은 플러그인 자체의 [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md)에 있습니다.
 
 ## 왜 플러그인과 MCP 서버 모두?

@@ -25,6 +25,18 @@ Der kanonische Befehl in den Docs ist `tesserae`. `tesserae_mcp` startet den MCP
 > pipx install tesserae
 > ```
 
+> **uv geht auch, aber Extras gehören in die Anführungszeichen.** `uv tool install`
+> hat kein `--extra`-Flag (geprüft mit uv 0.10), daher bricht
+> `uv tool install tesserae --extra semantic` mit
+> `unexpected argument '--extra'` ab und das Extra landet nie:
+> ```bash
+> uv tool install "tesserae[semantic]"        # Extras in die Anführungszeichen
+> uv tool install --with model2vec tesserae   # äquivalent
+> ```
+> Du skriptest das? Prüfe den Exit-Status. Eine stillschweigend übersprungene
+> `semantic`-Installation ist genau der Grund, warum Hybrid-Retrieval und
+> `associate` auf den nicht-semantischen Stub zurückfallen.
+
 ## Upgrade
 
 ```bash

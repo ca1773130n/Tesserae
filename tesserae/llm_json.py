@@ -35,6 +35,7 @@ import re
 import secrets
 import signal
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Any, Callable, List, Mapping, Optional, Protocol, Sequence, Union
@@ -94,6 +95,63 @@ def _reset_login_warning_for_tests() -> None:
     """Reset the one-shot login warning flag. Test-only helper."""
     global _LOGGED_LOGIN_WARNING
     _LOGGED_LOGIN_WARNING = False
+
+
+#: Why the most recent ``complete_json`` on THIS thread returned None.
+#: ``"unavailable"`` = the provider never produced text (non-zero exit, spawn
+#: error, or a clean exit with an empty body) — transport/capacity.
+#: ``"timeout"`` = the attempt did not finish inside ``TESSERAE_EXTRACT_TIMEOUT``.
+#: That is ALL it establishes. It is deliberately not folded into
+#: ``"unavailable"`` — the remedies differ (wait out a capacity window vs. raise
+#: the bound / split the document) — but it must not assert the opposite either:
+#: the ``TimeoutExpired`` comes from the child process, and a DNS/connect stall
+#: that never reached the provider raises exactly the same exception as a
+#: genuinely slow generation. The verdict says the bound was hit; it does not
+#: say the provider saw the request, in either direction.
+#: ``"auth"`` = every account that was tried answered "not logged in". Split out
+#: of ``"unavailable"`` for the third time the same way: waiting out a capacity
+#: window never refreshes an expired OAuth session, and this verdict is re-read
+#: PER DOCUMENT — before it existed, the one actionable ``claude /login`` /
+#: ``codex login`` line was the once-per-process login warning and the other 136
+#: per-document lines of a 137-doc compile asserted transport/capacity.
+#: The verdict is what carries the remedy per doc (``LLMResearchExtractor`` turns
+#: it into ``ProviderAuthError``); how loudly each client ALSO logs it is a
+#: separate, deliberately unequal choice — :class:`ClaudeCLIJsonClient`
+#: de-duplicates its static hint via ``_LOGGED_LOGIN_WARNING``,
+#: :class:`CodexCLIJsonClient` logs one line per call.
+#: Covers ONLY the credential refusal — a missing CLI binary stays
+#: ``"unavailable"``.
+#: ponytail: ``"auth"`` is written by the two CLI clients only;
+#: :class:`AnthropicLLMJsonClient` still reports a 401 as ``"unavailable"``
+#: (its except ladder classifies by rate-limit/status, not by auth). Upgrade
+#: path when an API-key deployment needs it: test ``status_code == 401`` in
+#: that ladder and note ``"auth"`` there too.
+#: ``"unparseable"`` = the provider DID answer and the answer wasn't JSON — a
+#: real bad generation. Collapsing these into a bare ``None`` is not free:
+#: a provider capacity window (99 "Reconnecting…" lines in the raw log) pushed
+#: 35/137 docs to the deterministic baseline and was read three times, with
+#: rising confidence, as the MODEL having worse schema compliance. The model
+#: never returned anything to validate.
+#: Thread-local because BatchIngestRunner shares ONE client across
+#: TESSERAE_EXTRACT_CONCURRENCY worker threads, so an instance attribute would
+#: report whichever worker wrote last — the same reason
+#: SelectiveClaudeResearchExtractor keeps its fallback flag in threading.local.
+#: ponytail: three string literals, not an enum or an exception hierarchy —
+#: there is exactly one consumer (LLMResearchExtractor). Promote if a second
+#: one appears.
+_LAST_FAILURE = threading.local()
+
+
+def _note_failure(kind: Optional[str]) -> None:
+    """Record why this thread's in-flight ``complete_json`` is giving up."""
+    _LAST_FAILURE.kind = kind
+
+
+def last_failure_kind() -> Optional[str]:
+    """``"unavailable"`` | ``"timeout"`` | ``"auth"`` | ``"unparseable"`` |
+    ``None`` for this thread's most recent ``complete_json``. Only meaningful
+    immediately after a None return."""
+    return getattr(_LAST_FAILURE, "kind", None)
 
 
 def set_client_factory(factory: Optional[Callable[..., Any]]) -> None:
@@ -193,6 +251,35 @@ def _cli_cache_put(cache_key: Optional[str], raw: str, *, model: str, extra: str
         pass  # a cache that can't be written is a slow compile, not a failed one
 
 
+def _cli_cache_drop(cache_key: Optional[str], *, model: str, extra: str = "") -> None:
+    """Forget an answer the CALLER rejected. Never raises.
+
+    ``_cli_cache_put`` stores every PARSEABLE answer, but parseable is not the
+    same as accepted — schema validation lives one layer up, in
+    :class:`tesserae.llm_extractor.LLMResearchExtractor`. Without this, JSON
+    that parses and then violates the node-type vocabulary is stored as if it
+    were a success, which is worse than not caching at all: the extractor's
+    retry loop re-reads its OWN bad answer (zero extra LLM calls while stderr
+    says "retrying"), and because ``_CLI_CACHE_DIR`` has no eviction the doc
+    then fails identically forever — ``--retry-fallbacks`` can never recover
+    it until the document's bytes change.
+
+    ponytail: ceiling — the drop is BY KEY, and the key is content-derived, so
+    two byte-identical documents extracted concurrently share it: one worker
+    can unlink the good answer another just stored. The cost is one cache miss
+    (the next run re-asks and re-validates), never a wrong graph, so this stays
+    a plain unlink rather than a compare-and-delete. Upgrade path if it ever
+    matters: thread the rejected raw text down and unlink only when the stored
+    ``raw`` matches it.
+    """
+    if not cache_key or not _cli_cache_enabled():
+        return
+    try:
+        _cli_cache_path(cache_key, model=model, extra=extra).unlink()
+    except (OSError, ValueError):
+        pass  # already gone, or unreadable — either way there is nothing to serve
+
+
 def _configured_default_model(for_providers: Sequence[str]) -> Optional[str]:
     """The configured ``llm_model`` (env → global config), scoped by provider.
 
@@ -275,6 +362,9 @@ class AnthropicLLMJsonClient:
         max_retries: int = 2,
     ) -> Optional[Union[dict, list]]:
         """Call the model and return parsed JSON; None on any unrecoverable error."""
+        # Clear first: a caller reads last_failure_kind() only after a None
+        # return, and a stale note from an earlier call would misattribute it.
+        _note_failure(None)
         # Add a JSON-mode reminder to whatever system prompt the caller
         # supplied. Belt-and-suspenders even though the prompt should
         # already say "respond with JSON only".
@@ -333,16 +423,23 @@ class AnthropicLLMJsonClient:
                     schema_name,
                     exc,
                 )
+                _note_failure("unavailable")  # the API never answered
                 return None
 
         text = _extract_text(response)
         if not text:
+            # A 200 with an empty body is a transport failure wearing a clean
+            # status code, not a bad generation.
+            _note_failure("unavailable")
             return None
         # The model started the assistant turn from `{`. Re-prepend so we
         # parse what the model "thinks" it wrote.
         if not text.lstrip().startswith(("{", "[")):
             text = "{" + text
-        return parse_json_tolerant(text)
+        parsed = parse_json_tolerant(text)
+        if parsed is None:
+            _note_failure("unparseable")  # the model answered; it wasn't JSON
+        return parsed
 
     def complete_text(
         self,
@@ -514,7 +611,6 @@ class ClaudeCLIJsonClient:
         self,
         prompt: str,
         *,
-        max_retries: int = 2,
         error_label: str = "ClaudeCLIJsonClient call failed",
     ) -> Optional[str]:
         """Run ``claude -p`` over the rotating ``config_dirs`` and return the
@@ -525,6 +621,15 @@ class ClaudeCLIJsonClient:
         prose as-is). Each config_dir is one account; a rate-limited or
         failing account falls through to the next, so synthesis never gets
         stuck on a single exhausted account while another has headroom.
+
+        Takes no ``max_retries``: rotation IS this client's retry, and the
+        policy below is deliberately "never hammer the same account" — every
+        outcome either returns or moves to the next config_dir. It used to
+        accept one and wrap the body in ``for attempt in range(max_retries+1)``
+        whose second iteration was unreachable, so the parameter documented a
+        retry that never happened. Callers' ``max_retries`` (part of the
+        :class:`LLMJsonClient` protocol, honored by the Anthropic SDK client
+        for rate-limit backoff) is accepted and ignored one level up.
         """
         import os as _os
         import subprocess as _subprocess
@@ -533,79 +638,110 @@ class ClaudeCLIJsonClient:
         last_error: Optional[Exception] = None
         all_not_logged_in = True  # only True if EVERY tried config_dir was Not-logged-in
         any_attempted = False
+        timed_out = False  # same bug class as the codex client — see below
         default_claude_dir = str(_Path.home() / ".claude")
         for config_dir in self.config_dirs:
-            for attempt in range(max_retries + 1):
-                any_attempted = True
-                try:
-                    env = _os.environ.copy()
-                    # WORKAROUND for Claude CLI quirk: setting
-                    # CLAUDE_CONFIG_DIR explicitly (even to the same
-                    # value the user is implicitly using) causes the
-                    # CLI to lose its auth lookup chain — `Not logged
-                    # in` even when the user IS logged into that exact
-                    # dir. So when our target config_dir IS the
-                    # canonical default ``~/.claude``, leave the env
-                    # alone and let the CLI's native discovery work.
-                    if config_dir == default_claude_dir:
-                        env.pop("CLAUDE_CONFIG_DIR", None)
-                    else:
-                        env["CLAUDE_CONFIG_DIR"] = config_dir
-                    # Route the CLI at a custom claude-compatible endpoint
-                    # when one was resolved from config. ANTHROPIC_AUTH_TOKEN
-                    # (not ANTHROPIC_API_KEY) so the CLI treats the key as a
-                    # bearer token for that endpoint.
-                    if self.base_url:
-                        env["ANTHROPIC_BASE_URL"] = self.base_url
-                    if self.api_key:
-                        env["ANTHROPIC_AUTH_TOKEN"] = self.api_key
-                    cmd = [
-                        "claude",
-                        "-p",
-                        "--output-format", "text",
-                        "--max-turns", "1",
-                    ]
-                    if self.model:
-                        cmd.extend(["--model", self.model])
-                    proc = _run_cli(cmd, prompt=prompt, env=env, timeout=self.timeout)
-                    if proc.returncode != 0:
-                        stderr_text = (proc.stderr or "").strip()
-                        stdout_text = (proc.stdout or "").strip()
-                        # Detect the canonical "Not logged in" message from
-                        # the Claude CLI. Substring + case-insensitive so
-                        # we're robust to minor phrasing drift (e.g.
-                        # "Not logged in · Please run /login").
-                        combined = f"{stderr_text}\n{stdout_text}".lower()
-                        if "not logged in" in combined:
-                            # Continue to the next config_dir — a later
-                            # configured profile may be logged in. Only
-                            # emit the actionable warning AFTER every
-                            # profile has been tried (codex PR #17 P2 fix).
-                            last_error = RuntimeError(
-                                f"claude exited {proc.returncode}: {stderr_text or stdout_text}"
-                            )
-                            break  # skip to next config_dir
-                        # Non-auth failure on this profile (incl. a rate
-                        # limit — `claude -p` exits non-zero with "You've
-                        # hit your … limit") resets the all_not_logged_in
-                        # tracker; the except below rotates to the next
-                        # account.
-                        all_not_logged_in = False
-                        raise RuntimeError(
-                            f"claude exited {proc.returncode}: "
-                            f"{stderr_text or stdout_text}"
+            any_attempted = True
+            try:
+                env = _os.environ.copy()
+                # WORKAROUND for Claude CLI quirk: setting
+                # CLAUDE_CONFIG_DIR explicitly (even to the same
+                # value the user is implicitly using) causes the
+                # CLI to lose its auth lookup chain — `Not logged
+                # in` even when the user IS logged into that exact
+                # dir. So when our target config_dir IS the
+                # canonical default ``~/.claude``, leave the env
+                # alone and let the CLI's native discovery work.
+                if config_dir == default_claude_dir:
+                    env.pop("CLAUDE_CONFIG_DIR", None)
+                else:
+                    env["CLAUDE_CONFIG_DIR"] = config_dir
+                # Route the CLI at a custom claude-compatible endpoint
+                # when one was resolved from config. ANTHROPIC_AUTH_TOKEN
+                # (not ANTHROPIC_API_KEY) so the CLI treats the key as a
+                # bearer token for that endpoint.
+                if self.base_url:
+                    env["ANTHROPIC_BASE_URL"] = self.base_url
+                if self.api_key:
+                    env["ANTHROPIC_AUTH_TOKEN"] = self.api_key
+                cmd = [
+                    "claude",
+                    "-p",
+                    "--output-format", "text",
+                    "--max-turns", "1",
+                ]
+                if self.model:
+                    cmd.extend(["--model", self.model])
+                proc = _run_cli(cmd, prompt=prompt, env=env, timeout=self.timeout)
+                if proc.returncode != 0:
+                    stderr_text = (proc.stderr or "").strip()
+                    stdout_text = (proc.stdout or "").strip()
+                    # Detect the canonical "Not logged in" message from
+                    # the Claude CLI. Substring + case-insensitive so
+                    # we're robust to minor phrasing drift (e.g.
+                    # "Not logged in · Please run /login").
+                    combined = f"{stderr_text}\n{stdout_text}".lower()
+                    if "not logged in" in combined:
+                        # Continue to the next config_dir — a later
+                        # configured profile may be logged in. Only
+                        # emit the actionable warning AFTER every
+                        # profile has been tried (codex PR #17 P2 fix).
+                        last_error = RuntimeError(
+                            f"claude exited {proc.returncode}: {stderr_text or stdout_text}"
                         )
-                    return proc.stdout
-                except Exception as exc:  # noqa: BLE001
-                    last_error = exc
-                    # Don't retry on the same config_dir; fall through to
-                    # the next one. Auth/network/rate-limit issues are best
-                    # handled by switching accounts, not hammering one.
-                    break
+                        continue  # skip to next config_dir
+                    # Non-auth failure on this profile (incl. a rate
+                    # limit — `claude -p` exits non-zero with "You've
+                    # hit your … limit"); the except below clears the
+                    # all_not_logged_in tracker and rotates to the next
+                    # account.
+                    raise RuntimeError(
+                        f"claude exited {proc.returncode}: "
+                        f"{stderr_text or stdout_text}"
+                    )
+                if not (proc.stdout or "").strip():
+                    # Exit 0 with an EMPTY body is transport wearing a clean
+                    # exit code, not an answer (the same shape complete_json
+                    # already classifies "unavailable" one layer up). Returning
+                    # it ended the rotation on the first account; rotating
+                    # instead gives every remaining profile its turn, which is
+                    # this client's whole retry policy.
+                    all_not_logged_in = False
+                    last_error = RuntimeError(
+                        f"claude exited 0 but printed nothing (config dir {config_dir})"
+                    )
+                    continue
+                return proc.stdout
+            except Exception as exc:  # noqa: BLE001
+                last_error = exc
+                # Reaching here means this profile did NOT answer "Not logged
+                # in" (that branch continues above without raising), so the
+                # auth verdict is off the table. It used to be cleared only on
+                # the non-auth returncode path, which left a timeout or a spawn
+                # error reported as "Claude CLI not logged in — run
+                # `claude /login`" — the same confidently-wrong remedy this
+                # change exists to remove.
+                all_not_logged_in = False
+                # And a timeout is NOT "the backend is unavailable" either: all
+                # we know is that this attempt hit the bound. Same defect the
+                # codex client had; fixed in both — including the overcorrection
+                # of then asserting the CLI *was* reachable, which this layer
+                # cannot see (a connect stall raises the same TimeoutExpired).
+                if isinstance(exc, _subprocess.TimeoutExpired):
+                    timed_out = True
+                # Don't retry on the same config_dir; fall through to
+                # the next one. Auth/network/rate-limit issues are best
+                # handled by switching accounts, not hammering one.
+                continue
         # All profiles exhausted. If every one failed with "Not logged in",
         # emit the actionable once-per-process auth warning. Otherwise emit
         # the generic warning so genuine errors stay visible.
         if any_attempted and all_not_logged_in and last_error is not None:
+            # Per-CALL verdict, deliberately outside the once-per-process log
+            # guard below: the caller re-reads it for every document, and
+            # flattening it to "unavailable" is what made 136 of 137 per-doc
+            # lines assert transport/capacity for an expired session.
+            _note_failure("auth")
             global _LOGGED_LOGIN_WARNING
             if not _LOGGED_LOGIN_WARNING:
                 _LOGGED_LOGIN_WARNING = True
@@ -618,7 +754,21 @@ class ClaudeCLIJsonClient:
                 )
             return None
         if last_error is not None:
-            logger.warning("%s: %s", error_label, last_error)
+            if timed_out:
+                _note_failure("timeout")
+                logger.warning(
+                    "%s — timed out after %ss: %s. All this establishes is that the "
+                    "attempt did not finish inside the per-attempt bound — a slow "
+                    "generation and a stall that never reached the provider look the "
+                    "same from here. If the document is large, raise "
+                    "TESSERAE_EXTRACT_TIMEOUT (0 = no bound) or split it; if it is not, "
+                    "check that the provider is reachable from this host.",
+                    error_label,
+                    self.timeout,
+                    last_error,
+                )
+            else:
+                logger.warning("%s: %s", error_label, last_error)
         return None
 
     def complete_json(
@@ -630,6 +780,8 @@ class ClaudeCLIJsonClient:
         cache_key: Optional[str] = None,
         max_retries: int = 2,
     ) -> Optional[Union[dict, list]]:
+        # Clear first so a cache hit can't leave a stale note behind.
+        _note_failure(None)
         # Stitch system + user into a single prompt for the CLI's -p flag.
         # The CLI doesn't expose a separate system slot, so we prefix the
         # JSON-only contract to the user message.
@@ -639,23 +791,43 @@ class ClaudeCLIJsonClient:
             f"no trailing commas. Schema name: {schema_name}.\n\n"
             f"{user}"
         )
-        model = self.model or "claude-cli-default"
-        cached = _cli_cache_get(cache_key, model=model, extra=schema_name)
+        model, extra = self._cache_coords(schema_name)
+        cached = _cli_cache_get(cache_key, model=model, extra=extra)
         if cached is not None:
             return parse_json_tolerant(cached)
         raw = self._run_prompt(
             prompt,
-            max_retries=max_retries,
             error_label=f"ClaudeCLIJsonClient.complete_json failed (schema={schema_name})",
         )
         if raw is None:
+            # _run_prompt records "timeout" when that's what it was; every
+            # other exhausted-all-config-dirs path means nothing was answered.
+            if last_failure_kind() is None:
+                _note_failure("unavailable")
             return None
         parsed = parse_json_tolerant(raw)
+        if parsed is None:
+            # `claude -p` can exit 0 and print nothing; that is transport, not
+            # a bad generation. Only a non-empty answer can be a bad one.
+            _note_failure("unavailable" if not raw.strip() else "unparseable")
         if parsed is not None:
             # Only a parseable answer is worth keeping — caching a malformed
             # generation would make one bad roll permanent.
-            _cli_cache_put(cache_key, raw, model=model, extra=schema_name)
+            _cli_cache_put(cache_key, raw, model=model, extra=extra)
         return parsed
+
+    def _cache_coords(self, schema_name: str) -> tuple:
+        """``(model, extra)`` for the on-disk cache. One definition so a write
+        and a later drop can never disagree about which file they mean."""
+        return (self.model or "claude-cli-default", schema_name)
+
+    def forget_cached_answer(self, cache_key: Optional[str], *, schema_name: str) -> None:
+        """Drop the cached answer for this key — the CALLER rejected it.
+
+        Parseable is not accepted; see :func:`_cli_cache_drop`.
+        """
+        model, extra = self._cache_coords(schema_name)
+        _cli_cache_drop(cache_key, model=model, extra=extra)
 
     def complete_text(
         self,
@@ -669,10 +841,12 @@ class ClaudeCLIJsonClient:
         Used by the prose-synthesis callers (``tesserae ask``) so they get
         the no-API-key OAuth path + multi-account rotation for free.
         """
+        # See CodexCLIJsonClient.complete_text: clear the thread-local verdict
+        # so a recycled pool worker cannot read the prior document's.
+        _note_failure(None)
         prompt = f"{system.strip()}\n\n{user}"
         raw = self._run_prompt(
             prompt,
-            max_retries=max_retries,
             error_label="ClaudeCLIJsonClient.complete_text failed",
         )
         text = (raw or "").strip()
@@ -682,6 +856,35 @@ class ClaudeCLIJsonClient:
 # ---------------------------------------------------------------------------
 # Codex CLI implementation (OAuth — `codex exec`, no API key needed)
 # ---------------------------------------------------------------------------
+
+
+#: A transport failure (dropped stream, 5xx, provider capacity window) is
+#: transient, but the ``codex_homes`` rotation is ONE attempt on a
+#: single-account machine — so a momentary blip permanently condemns that
+#: document to the deterministic baseline until a human re-runs. Re-run the
+#: WHOLE rotation with backoff against the SAME homes.
+#: What that actually buys, honestly: only blips that fail FAST relative to
+#: ``self.timeout``. ``_run_prompt`` refuses to START a new rotation once the
+#: cumulative elapsed time reaches that bound, so with the default 1800s a
+#: rotation that spent the whole budget in network wait gets ZERO retries — the
+#: retry count is a ceiling, not a promise. That is deliberate: 3x1800s per
+#: document while ``.tesserae/compile.lock`` is held is worse than the
+#: deterministic baseline this exists to avoid.
+#: Second ceiling: homes are NOT accounts. When ``CODEX_HOME`` is absent from
+#: the environment — a daemon, a launchd job, a subprocess with a scrubbed env —
+#: ``__init__`` discovers every ``~/.codex*`` DIRECTORY, and on the machine this
+#: was measured on that is five (``.codex``, ``.codex-nomcp``,
+#: ``.codex-nomcp-pr208``, ``.codex-personal1``, ``.codex-personal2``), four of
+#: them stale. A single stale directory answering "not logged in" must not
+#: disable the retry for the healthy one, so the logged-out verdict is tracked
+#: PER HOME: such a home is skipped on later attempts (it will answer the same),
+#: and only an all-homes-logged-out rotation aborts — which is what keeps an
+#: expired session from costing 3 spawns + 6s of sleep per document.
+#: ponytail: small constants, not config knobs — nobody tunes them, and
+#: account rotation is NOT available on this machine so it must not be
+#: assumed as the remedy.
+_TRANSPORT_RETRIES = 2
+_TRANSPORT_BACKOFF = 2.0  # seconds; doubled per attempt
 
 
 class CodexCLIJsonClient:
@@ -744,7 +947,22 @@ class CodexCLIJsonClient:
         final message text from the first account that succeeds, else None.
 
         Shared by :meth:`complete_json` and :meth:`complete_text`; a
-        rate-limited or failing CODEX_HOME falls through to the next.
+        rate-limited or failing CODEX_HOME falls through to the next, and the
+        whole rotation may be re-run with backoff (see ``_TRANSPORT_RETRIES``)
+        because on a single-account machine the rotation is one attempt.
+        "May", not "is": a new rotation only STARTS while the cumulative
+        elapsed time is under ``self.timeout``, so a rotation that consumed the
+        whole budget — the observed capacity shape, ``codex exec`` in network
+        wait for ~``self.timeout`` then a non-zero exit — is tried exactly once.
+        The retries are reached by failures that are FAST relative to that
+        bound.
+
+        On failure this records the verdict for the calling thread via
+        :func:`_note_failure` — ``"timeout"`` (the attempt didn't finish inside
+        the bound; that says nothing about whether the provider saw it),
+        ``"auth"`` (every home tried answered "not logged in") or
+        ``"unavailable"`` (nothing was generated).
+        ``complete_json`` must not overwrite it.
         """
         import os as _os
         import subprocess as _subprocess
@@ -752,60 +970,215 @@ class CodexCLIJsonClient:
         from pathlib import Path as _Path
 
         last_error: Optional[Exception] = None
-        for codex_home in self.codex_homes:
-            with _tempfile.NamedTemporaryFile(
-                "w+", suffix=".txt", delete=False, encoding="utf-8"
-            ) as handle:
-                output_path = _Path(handle.name)
-            try:
-                env = _os.environ.copy()
-                env["CODEX_HOME"] = codex_home
-                cmd = [
-                    "codex",
-                    "exec",
-                    "--skip-git-repo-check",
-                    "--sandbox", "read-only",
-                    "--model", self.model,
-                    *(
-                        ["-c", f"model_reasoning_effort={self.reasoning_effort}"]
-                        if self.reasoning_effort
-                        else []
-                    ),
-                    "--output-last-message", str(output_path),
-                    "-",
-                ]
-                proc = _run_cli(cmd, prompt=prompt, env=env, timeout=self.timeout)
-                if proc.returncode != 0:
-                    # Auth / rate-limit / transport failure on this home —
-                    # try the next one. Switching accounts beats hammering
-                    # one (same policy as the Claude CLI client).
-                    last_error = RuntimeError(
-                        f"codex exited {proc.returncode}: "
-                        f"{(proc.stderr or '').strip() or (proc.stdout or '').strip()}"
-                    )
+        timed_out = False
+        # An auth/binary failure is NOT transient: with an expired OAuth token
+        # the retry loop costs 3 spawns + 6s of sleep PER DOCUMENT, so a
+        # 137-doc corpus pays 411 codex spawns and ~14 minutes of pure
+        # time.sleep for a compile that is guaranteed to fail. Detected with
+        # exactly the signals the module already trusts — the Claude client's
+        # "not logged in" substring test, and FileNotFoundError for a missing
+        # binary. Anything subtler stays a transport failure and gets retried.
+        # Logged-out is tracked PER HOME because homes are not accounts: an
+        # env without CODEX_HOME rotates over every ``~/.codex*`` directory,
+        # and one stale directory must not cancel the retry for a healthy one.
+        logged_out_homes: set[str] = set()
+        binary_missing = False
+        # True only while EVERY home tried has answered "not logged in" — the
+        # same all-or-nothing rule the Claude client uses, so a capacity failure
+        # on one home can't get reported as an auth problem just because
+        # another home was logged out. Narrower than ``logged_out_homes``, which
+        # a still-healthy sibling home leaves non-empty without making the whole
+        # call an auth failure.
+        auth_only = True
+        started = time.monotonic()
+        # OUTER loop = the retry; INNER loop = the account rotation. Keeping
+        # the retry outside preserves the "never get stuck on a rate limit
+        # while another account has headroom" policy: every home gets a turn
+        # before we sleep and start over on the same set.
+        for attempt in range(_TRANSPORT_RETRIES + 1):
+            for codex_home in self.codex_homes:
+                if codex_home in logged_out_homes:
+                    # It answered "not logged in" on an earlier attempt and will
+                    # answer the same now. Don't pay another spawn for it.
                     continue
-                final = (
-                    output_path.read_text(encoding="utf-8", errors="replace")
-                    if output_path.exists()
-                    else ""
-                )
-                return final or proc.stdout or ""
-            except Exception as exc:  # noqa: BLE001
-                last_error = exc
-                continue
-            finally:
+                with _tempfile.NamedTemporaryFile(
+                    "w+", suffix=".txt", delete=False, encoding="utf-8"
+                ) as handle:
+                    output_path = _Path(handle.name)
                 try:
-                    output_path.unlink()
-                except FileNotFoundError:
-                    pass
+                    env = _os.environ.copy()
+                    env["CODEX_HOME"] = codex_home
+                    cmd = [
+                        "codex",
+                        "exec",
+                        "--skip-git-repo-check",
+                        "--sandbox", "read-only",
+                        "--model", self.model,
+                        *(
+                            ["-c", f"model_reasoning_effort={self.reasoning_effort}"]
+                            if self.reasoning_effort
+                            else []
+                        ),
+                        "--output-last-message", str(output_path),
+                        "-",
+                    ]
+                    proc = _run_cli(cmd, prompt=prompt, env=env, timeout=self.timeout)
+                    if proc.returncode != 0:
+                        # Auth / rate-limit / transport failure on this home —
+                        # try the next one. Switching accounts beats hammering
+                        # one (same policy as the Claude CLI client).
+                        stderr_text = (proc.stderr or "").strip()
+                        stdout_text = (proc.stdout or "").strip()
+                        last_error = RuntimeError(
+                            f"codex exited {proc.returncode}: "
+                            f"{stderr_text or stdout_text}"
+                        )
+                        # Same substring test ClaudeCLIJsonClient already uses.
+                        # Keep rotating (a later home may be logged in); THIS
+                        # home is then skipped for the rest of the call, and
+                        # only an all-homes-logged-out rotation stops the retry.
+                        if "not logged in" in f"{stderr_text}\n{stdout_text}".lower():
+                            logged_out_homes.add(codex_home)
+                        else:
+                            auth_only = False
+                        continue
+                    final = (
+                        output_path.read_text(encoding="utf-8", errors="replace")
+                        if output_path.exists()
+                        else ""
+                    )
+                    answer = final or proc.stdout or ""
+                    if not answer.strip():
+                        # Exit 0 with an EMPTY last message is a capacity blip
+                        # wearing a clean exit code, not an answer. Returning it
+                        # made this the ONE failure shape that never entered the
+                        # retry loop — while the extractor above declines to
+                        # re-ask precisely because "the transport layer already
+                        # retried". A non-zero exit got three rolls; this got
+                        # one. Fall through to the same retry as every other
+                        # transport failure.
+                        auth_only = False
+                        last_error = RuntimeError(
+                            f"codex exited 0 but produced an empty last message "
+                            f"(CODEX_HOME {codex_home})"
+                        )
+                        continue
+                    return answer
+                except _subprocess.TimeoutExpired as exc:
+                    # The wedge guard already bounded THIS attempt
+                    # (TESSERAE_EXTRACT_TIMEOUT, default 1800s). Retrying would
+                    # multiply that bound by _TRANSPORT_RETRIES — resurrecting
+                    # the multi-day hang _run_cli's process-group kill exists
+                    # to prevent. Rotate the homes, then give up.
+                    last_error = exc
+                    timed_out = True
+                    auth_only = False
+                    continue
+                except FileNotFoundError as exc:
+                    # No ``codex`` on PATH. No amount of backoff installs it,
+                    # and the next home would fail the same way. Permanent, but
+                    # NOT an auth failure — `codex login` needs a binary first.
+                    last_error = exc
+                    binary_missing = True
+                    auth_only = False
+                    continue
+                except Exception as exc:  # noqa: BLE001
+                    last_error = exc
+                    auth_only = False
+                    continue
+                finally:
+                    try:
+                        output_path.unlink()
+                    except FileNotFoundError:
+                        pass
+            # Bound the retry by CUMULATIVE elapsed time, not just per attempt:
+            # a capacity window presents as `codex exec` sitting in network wait
+            # at 0% CPU for ~self.timeout and then exiting NON-ZERO, which is
+            # the returncode path above, not the TimeoutExpired guard — so
+            # without this a doc costs 3x the wedge bound while
+            # .tesserae/compile.lock is held. Falsy self.timeout (None / 0 =
+            # "run to completion") means no cumulative bound either.
+            # ponytail: this stops a NEW rotation from STARTING once the budget
+            # is spent; it does not interrupt one in flight. Real guarantee for
+            # a single home is "< 2x self.timeout", not "== self.timeout".
+            # A hard deadline would mean shrinking the timeout passed to
+            # _run_cli, which would change the documented per-ATTEMPT bound.
+            budget_spent = bool(self.timeout) and (time.monotonic() - started) >= self.timeout
+            if (
+                timed_out
+                or binary_missing
+                or budget_spent
+                or attempt >= _TRANSPORT_RETRIES
+                or len(logged_out_homes) == len(self.codex_homes)
+            ):
+                break
+            time.sleep(_TRANSPORT_BACKOFF * (2 ** attempt))
         if last_error is not None:
-            logger.warning(
-                "%s (tried %d CODEX_HOME %s): %s — run `codex login` to re-auth.",
-                error_label,
-                len(self.codex_homes),
-                "dir" if len(self.codex_homes) == 1 else "dirs",
-                last_error,
-            )
+            # ONE record per call, not one per attempt: three attempts across
+            # 137 docs would drown the compile output. Say plainly which
+            # failure mode this was — the operator-facing per-doc line used to
+            # name only the exception class, so a capacity window read exactly
+            # like a schema violation.
+            if timed_out:
+                # A timeout is NOT a capacity outage. Claiming otherwise sends
+                # the operator to wait out a window that does not exist and
+                # re-run --retry-fallbacks forever — the same
+                # confident-wrong-diagnosis this whole classification exists to
+                # kill. But the opposite claim is the same mistake mirrored: we
+                # see a killed child, not a completed round trip, so a DNS or
+                # connect stall reaches this branch too. State the bound, then
+                # BOTH remedies.
+                _note_failure("timeout")
+                logger.warning(
+                    "%s — timed out after %ss on %d CODEX_HOME %s: %s. All this "
+                    "establishes is that the attempt did not finish inside the "
+                    "per-attempt bound — a slow generation and a stall that never "
+                    "reached the provider look the same from here. If the document is "
+                    "large, raise TESSERAE_EXTRACT_TIMEOUT (0 = no bound) or split it; "
+                    "if it is not, check that the provider is reachable from this host. "
+                    "`codex login` is unlikely to help — a logged-out home exits fast "
+                    "and lands on the auth line instead.",
+                    error_label,
+                    self.timeout,
+                    len(self.codex_homes),
+                    "dir" if len(self.codex_homes) == 1 else "dirs",
+                    last_error,
+                )
+            elif auth_only:
+                # An expired session is not a capacity window: it will still be
+                # expired after any amount of waiting, and the caller renders
+                # this verdict once PER DOCUMENT, so it must carry the real
+                # remedy rather than "transport/capacity".
+                # ponytail: this WARNING is per call, unlike the Claude client's
+                # one-shot ``_LOGGED_LOGIN_WARNING``, so a 137-doc compile logs
+                # 137 identical lines here on top of the 137 the selective
+                # router prints. Not re-gated, because the router's line is the
+                # one that names the document and this one is the only place the
+                # home count and the raw CLI text appear. Upgrade path if the
+                # volume ever bites: log the full line once and a one-line
+                # `(auth, see above)` thereafter — the ``auth`` verdict, not the
+                # log, is what the per-document diagnosis rides on.
+                _note_failure("auth")
+                logger.warning(
+                    "%s — every CODEX_HOME tried (%d) reported `not logged in`: %s. "
+                    "This is NOT a capacity window; run `codex login` and re-compile.",
+                    error_label,
+                    len(self.codex_homes),
+                    last_error,
+                )
+            else:
+                _note_failure("unavailable")
+                logger.warning(
+                    "%s — provider returned nothing after %d attempt(s) over %d CODEX_HOME "
+                    "%s: %s. Nothing was generated, so this is NOT a bad model generation "
+                    "— and NOT an auth failure either: a logged-out home reports itself "
+                    "and lands on the auth line. If it persists, run `tesserae doctor`.",
+                    error_label,
+                    attempt + 1,
+                    len(self.codex_homes),
+                    "dir" if len(self.codex_homes) == 1 else "dirs",
+                    last_error,
+                )
         return None
 
     def complete_json(
@@ -817,6 +1190,8 @@ class CodexCLIJsonClient:
         cache_key: Optional[str] = None,
         max_retries: int = 2,
     ) -> Optional[Union[dict, list]]:
+        # Clear first so a cache hit can't leave a stale note behind.
+        _note_failure(None)
         # Same prompt stitching as the Claude CLI client: codex exec has no
         # separate system slot either, so prefix the JSON-only contract.
         prompt = (
@@ -825,8 +1200,7 @@ class CodexCLIJsonClient:
             f"no trailing commas. Schema name: {schema_name}.\n\n"
             f"{user}"
         )
-        model = self.model or "codex-cli-default"
-        extra = f"{schema_name}\n{self.reasoning_effort or ''}"
+        model, extra = self._cache_coords(schema_name)
         cached = _cli_cache_get(cache_key, model=model, extra=extra)
         if cached is not None:
             return parse_json_tolerant(cached)
@@ -835,13 +1209,38 @@ class CodexCLIJsonClient:
             error_label=f"CodexCLIJsonClient.complete_json failed (schema={schema_name})",
         )
         if raw is None:
+            # _run_prompt already recorded WHY (timeout vs unavailable) —
+            # don't flatten a timeout back into a capacity outage. Only the
+            # degenerate "no homes configured, nothing was even tried" path
+            # leaves the verdict unset.
+            if last_failure_kind() is None:
+                _note_failure("unavailable")
             return None
         parsed = parse_json_tolerant(raw or "")
+        if parsed is None:
+            # `codex exec` can exit 0 and write an EMPTY last-message; that is
+            # a transport failure wearing a clean exit code, not a bad
+            # generation. Only a non-empty answer can be a bad generation.
+            _note_failure("unavailable" if not raw.strip() else "unparseable")
         if parsed is not None:
             # Only a parseable answer is worth keeping — caching a malformed
             # generation would make one bad roll permanent.
             _cli_cache_put(cache_key, raw, model=model, extra=extra)
         return parsed
+
+    def _cache_coords(self, schema_name: str) -> tuple:
+        """``(model, extra)`` for the on-disk cache. One definition so a write
+        and a later drop can never disagree about which file they mean —
+        ``extra`` folds in reasoning effort, which is easy to forget twice."""
+        return (self.model or "codex-cli-default", f"{schema_name}\n{self.reasoning_effort or ''}")
+
+    def forget_cached_answer(self, cache_key: Optional[str], *, schema_name: str) -> None:
+        """Drop the cached answer for this key — the CALLER rejected it.
+
+        Parseable is not accepted; see :func:`_cli_cache_drop`.
+        """
+        model, extra = self._cache_coords(schema_name)
+        _cli_cache_drop(cache_key, model=model, extra=extra)
 
     def complete_text(
         self,
@@ -851,6 +1250,9 @@ class CodexCLIJsonClient:
         max_retries: int = 2,
     ) -> Optional[str]:
         """Prose completion over the same rotating CODEX_HOMEs as complete_json."""
+        # The verdict is thread-local and pool workers are recycled, so a
+        # success here must not leave the PREVIOUS document's verdict readable.
+        _note_failure(None)
         prompt = f"{system.strip()}\n\n{user}"
         raw = self._run_prompt(
             prompt,
@@ -1197,11 +1599,28 @@ class CompositeCLIClient:
         self.clients: List[Any] = [c for c in clients if c is not None]
 
     def complete_json(self, **kwargs: Any) -> Optional[Union[dict, list]]:
+        # No failure bookkeeping here on purpose: each sub-client writes its
+        # own `_note_failure`, so the LAST provider tried wins — which is the
+        # right verdict for "why did the whole chain give up". This must keep
+        # RETURNING None rather than raising; 20+ call sites read None as
+        # "degrade gracefully", and the new exception lives strictly above the
+        # client layer, in LLMResearchExtractor.
         for client in self.clients:
             result = client.complete_json(**kwargs)
             if result is not None:
                 return result
         return None
+
+    def forget_cached_answer(self, cache_key: Optional[str], *, schema_name: str) -> None:
+        """Forward a caller's rejection to every sub-client.
+
+        We don't track which provider answered, and dropping a key that was
+        never cached is a no-op — so fan out rather than guess.
+        """
+        for client in self.clients:
+            forget = getattr(client, "forget_cached_answer", None)
+            if callable(forget):
+                forget(cache_key, schema_name=schema_name)
 
     def complete_text(self, **kwargs: Any) -> Optional[str]:
         for client in self.clients:

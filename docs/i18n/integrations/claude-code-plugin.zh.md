@@ -22,6 +22,18 @@ Tesserae 提供了一个 [Claude Code](https://docs.claude.com/en/docs/claude-co
 * **`using-tesserae` 技能** —— 当你询问类型化图谱、过去会话回忆、wiki/vault 内容或任何 tesserae 工作流时自动加载。教会代理使用哪个 MCP 工具 vs 建议哪个斜杠命令。
 * **5 个 hook** —— `SessionStart` 打印图谱摘要;`SessionEnd` 后台执行 import+compile,使本次对话的洞察成为下次会话的图谱节点;两个 `PostToolUse` hook 在 `Edit`/`Write`/`MultiEdit` 上触发 —— 一个在 docs/ 编辑时做可选的增量重编译,另一个对代码图谱同步做防抖(约 30 秒);`PreToolUse`(作用于 `Bash`)通过确认对话框对大图谱编译进行门控。
 
+> **会话结束时的 compile 是尽力而为,并非有保证。** hook 在有 `setsid` 时用它分离
+> 后台作业,否则回退到 `nohup`。macOS 不带 `setsid`,而 `nohup` 只是忽略 `SIGHUP`
+> —— 它把作业留在会话的进程组里 —— 所以在会话关闭时回收整个进程组的 harness 依然
+> 会把 compile 中途杀掉。此时留下的状态是「可恢复」,而不是「毫发无损」:`graph.json`
+> 通过原子 rename 写入,永远不会只写一半;但生成物 `wiki/` 与 `site/` 投影会在写
+> 工件之初被清空,SQLite 存储又写在 `graph.json` 之后,所以在这个窗口被杀掉会让它们
+> 缺失或落后一次 compile。不过这绝不会悄无声息 —— `.tesserae/manifest.json` 只在工件
+> 落盘后才给文档打上 `graphed`,因此下一次 `compile --changed-only` 会拒绝 no-op,
+> 提示 `graph.json is not known to cover every tracked document`,并重新抽取整个语料,
+> 顺带把投影重建回来。不要假设长时间 compile 能活得比启动
+> 它的会话更久 —— 请在前台运行,或使用 `tesserae engine`。
+
 完整细节、完整的命令/hook 表以及每个项目的 opt-out 说明在插件自己的 [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md) 中。
 
 ## 为什么同时需要插件和 MCP 服务器?

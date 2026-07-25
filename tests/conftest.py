@@ -50,6 +50,26 @@ def _isolated_discovery_scan_cache(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("TESSERAE_DISCOVERY_CACHE", str(cache_dir / "discovery_scan.sqlite"))
 
 
+@pytest.fixture(autouse=True)
+def _isolated_cli_llm_cache(tmp_path, monkeypatch):
+    """Keep the CLI response cache out of the operator's ~/.tesserae/llm_cache.
+
+    ``llm_json._CLI_CACHE_DIR`` is a real directory under $HOME with no
+    eviction, and it is keyed on the caller's ``cache_key``. Tests that pass a
+    short literal key (``cache_key="k"``) therefore share one entry ACROSS
+    RUNS: the first run stores an answer, every later run gets a cache hit and
+    ``_run_cli`` is never called. That — not the production code — is why
+    ``test_codex_reasoning_effort`` failed on a developer box and passed in CI
+    (and passed under ``TESSERAE_LLM_CACHE=0``). Repoint at a fresh per-test
+    tmp dir so the suite can neither read nor write operator state; tests that
+    exercise the cache itself set the same name with an in-body
+    ``monkeypatch.setattr``, which wins because it is applied later.
+    """
+    monkeypatch.setattr(
+        "tesserae.llm_json._CLI_CACHE_DIR", tmp_path / "llm-cache", raising=True
+    )
+
+
 def _source_kind_for(path: Path) -> str:
     """Pick the right ResearchGraphExtractor source_kind for a fixture file."""
     parts = path.parts

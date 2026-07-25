@@ -25,6 +25,16 @@ tesserae_mcp --help
 > pipx install tesserae
 > ```
 
+> **uv도 되지만, extra는 따옴표 안에 넣어야 합니다.** `uv tool install`에는
+> `--extra` 플래그가 없어서(uv 0.10 기준 확인), `uv tool install tesserae --extra semantic`은
+> `unexpected argument '--extra'`로 종료되고 extra는 결국 설치되지 않습니다:
+> ```bash
+> uv tool install "tesserae[semantic]"        # extra는 따옴표 안에
+> uv tool install --with model2vec tesserae   # 동일한 효과
+> ```
+> 스크립트로 실행한다면 종료 코드를 확인하세요. `semantic` 설치가 조용히 건너뛰어지는 것이
+> 바로 hybrid retrieval과 `associate`가 비시맨틱 스텁으로 강등되는 원인입니다.
+
 ## 업그레이드
 
 ```bash
