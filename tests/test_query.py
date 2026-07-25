@@ -671,3 +671,95 @@ def test_cli_dry_run_llm_returns_stub_answer(tmp_path):
     assert payload["used_llm"] is True
     assert payload["model"] == "claude-sonnet-4-6"
     assert payload["answer"] and "(dry-run preview" in payload["answer"]
+
+
+# --------------------------------------------------------------- shape routing
+
+
+class _PathsStub:
+    def __init__(self, graph):
+        self.graph = graph
+
+
+class _PlannerWiki(_StubWiki):
+    """_StubWiki plus a real `paths.graph` so the planner gate is reachable."""
+
+    def __init__(self, graph_path):
+        super().__init__()
+        self.paths = _PathsStub(graph_path)
+
+
+def _planner_wiki(tmp_path):
+    graph = tmp_path / "graph.json"
+    graph.write_text(json.dumps({"nodes": [], "edges": []}), encoding="utf-8")
+    return _PlannerWiki(graph)
+
+
+def _record_planner(monkeypatch):
+    calls = []
+
+    def fake_plan_and_answer(wiki, question, *, top_k=5):
+        calls.append(question)
+        return {"answer": "planned", "hits": [], "plan": {"steps": []}}
+
+    monkeypatch.setattr("tesserae.ask_planner.plan_and_answer", fake_plan_and_answer)
+    return calls
+
+
+def test_lookup_shaped_question_skips_the_planner(tmp_path, monkeypatch):
+    # The integration pin: shape decides whether the expensive planner runs.
+    wiki = _planner_wiki(tmp_path)
+    calls = _record_planner(monkeypatch)
+
+    ask_project(wiki, "what is the hybrid retriever?", backend="auto")
+    assert calls == []  # definitional lookup -> BM25, no planner roundtrip
+
+    ask_project(wiki, "what changed in the compiler last week?", backend="auto")
+    assert calls == ["what changed in the compiler last week?"]
+
+
+def test_envelope_carries_route_on_both_paths(tmp_path, monkeypatch):
+    # Auditability IS the feature: a cheap answer must say why it was cheap.
+    wiki = _planner_wiki(tmp_path)
+    _record_planner(monkeypatch)
+
+    planned = ask_project(wiki, "why did we choose SQLite?", backend="auto")
+    assert planned["route"]["shape"] == "graph"
+    assert planned["route"]["source"] == "heuristic"
+    assert planned["route"]["reason"]
+
+    classic = ask_project(wiki, "what is the hybrid retriever?", backend="auto")
+    assert classic["route"]["shape"] == "lookup"
+    assert classic["route"]["source"] == "heuristic"
+    assert classic["route"]["reason"]
+
+
+def test_no_llm_reports_forced_route(tmp_path, monkeypatch):
+    # The router never got a say here — the envelope must not claim it did.
+    wiki = _planner_wiki(tmp_path)
+    _record_planner(monkeypatch)
+
+    env = ask_project(wiki, "why did we choose SQLite?", backend="auto", no_llm=True)
+    assert env["route"]["source"] == "forced"
+    assert "planner unavailable" in env["route"]["reason"]
+
+
+def test_route_flag_overrides_the_heuristic(tmp_path, monkeypatch):
+    wiki = _planner_wiki(tmp_path)
+    calls = _record_planner(monkeypatch)
+
+    forced_graph = ask_project(wiki, "what is the hybrid retriever?", backend="auto", route="graph")
+    assert calls == ["what is the hybrid retriever?"]
+    assert forced_graph["route"] == {
+        "shape": "graph", "reason": "--route graph", "source": "flag",
+    }
+
+    forced_lookup = ask_project(wiki, "what changed last week?", backend="auto", route="lookup")
+    assert calls == ["what is the hybrid retriever?"]  # planner NOT called again
+    assert forced_lookup["route"]["source"] == "flag"
+
+
+def test_unknown_route_is_rejected(tmp_path):
+    wiki = _planner_wiki(tmp_path)
+    with pytest.raises(ValueError, match="unknown route"):
+        ask_project(wiki, "q?", backend="auto", route="sideways")

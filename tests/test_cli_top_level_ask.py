@@ -290,3 +290,90 @@ def test_projects_activate_command_is_gone(tmp_path, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "was removed — all registered projects are active" in err
     assert "tesserae projects list" in err
+
+
+# ----------------------------------------------------- shape routing (--route)
+
+
+def test_route_flag_overrides_the_heuristic(tmp_path, monkeypatch):
+    """--route is threaded into ask_project verbatim (auto is the default)."""
+    from tesserae import cli
+
+    project = _bootstrap_project(tmp_path)
+    fake_ask, captured = _stub_wiki_envelope("routed")
+    monkeypatch.setattr("tesserae.query.ask_project", fake_ask)
+
+    assert cli.main(["ask", "what is X", "--project", str(project)]) == 0
+    assert captured["route"] == "auto"
+
+    assert cli.main(["ask", "what is X", "--project", str(project), "--route", "graph"]) == 0
+    assert captured["route"] == "graph"
+
+    assert cli.main(["ask", "what changed", "--project", str(project), "--route", "lookup"]) == 0
+    assert captured["route"] == "lookup"
+
+
+def test_route_decision_printed_to_stderr(tmp_path, monkeypatch, capsys):
+    """Human-surface auditability: the route decision is visible, not just in --json."""
+    from tesserae import cli
+
+    project = _bootstrap_project(tmp_path)
+
+    def fake_ask(wiki, question, **kwargs):
+        return {
+            "backend": "wiki", "question": question, "answer": "a", "hits": [],
+            "used_llm": True,
+            "route": {"shape": "lookup", "reason": "'what is' lookup shape, no graph cue",
+                      "source": "heuristic"},
+        }
+
+    monkeypatch.setattr("tesserae.query.ask_project", fake_ask)
+    capsys.readouterr()
+    assert cli.main(["ask", "what is X", "--project", str(project)]) == 0
+    err = capsys.readouterr().err
+    assert "(route: lookup — 'what is' lookup shape, no graph cue)" in err
+
+
+def test_route_lookup_with_agent_is_rejected(tmp_path, capsys):
+    """--route lookup reads the UNSCOPED wiki index — under --agent that leaks."""
+    from tesserae import cli
+
+    project = _bootstrap_project(tmp_path)
+    capsys.readouterr()
+    rc = cli.main(["ask", "q", "--project", str(project), "--agent", "worker",
+                   "--route", "lookup"])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "UNSCOPED wiki index" in err
+    assert "--agent implies --route graph" in err
+
+
+def test_scoped_ask_pins_route_graph(tmp_path, monkeypatch):
+    """--agent scoping works ONLY because the planner is the sole graph reader.
+
+    A lookup-shaped question under --agent must still take the planner, or the
+    BM25 path would answer from the unscoped index.
+    """
+    from tesserae import cli
+
+    captured: dict = {}
+
+    def fake_ask(wiki, question, **kwargs):
+        captured.update(kwargs)
+        return {"backend": "wiki", "question": question, "answer": "a", "hits": []}
+
+    monkeypatch.setattr("tesserae.query.ask_project", fake_ask)
+
+    class _View:
+        def to_json(self, indent=None):
+            return json.dumps({"nodes": [], "edges": []})
+
+    class _Paths:
+        graph = Path("unused")
+
+    class _Wiki:
+        paths = _Paths()
+        project_root = tmp_path
+
+    cli._run_scoped_ask(_Wiki(), _View(), "what is X?", top_k=5, no_llm=False)
+    assert captured["route"] == "graph"

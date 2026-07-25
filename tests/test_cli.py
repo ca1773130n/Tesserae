@@ -167,7 +167,7 @@ def test_cli_can_apply_review_decision_file(monkeypatch, tmp_path):
     import tesserae.cli as cli
 
     monkeypatch.setattr(cli, "ResearchGraphExtractor", lambda: FakeExtractor())
-    monkeypatch.setattr(cli, "GraphCanonicalizer", lambda: FakeCanonicalizer())
+    monkeypatch.setattr(cli, "GraphCanonicalizer", lambda **kwargs: FakeCanonicalizer())
 
     assert main([
         "extract",
@@ -366,3 +366,72 @@ def test_cli_limit_caps_batch_processing(tmp_path):
     data = json.loads(output.read_text(encoding="utf-8"))
     paper_nodes = [node for node in data["nodes"] if node["type"] == "Paper"]
     assert len(paper_nodes) == 2
+
+
+def test_cli_extract_accepts_canonicalize_semantic(monkeypatch, tmp_path, capsys):
+    """`--canonicalize-semantic` reaches GraphCanonicalizer and reports honestly."""
+    source = tmp_path / "paper.md"
+    source.write_text("# Semantic Paper\nGaussian Splatting supports novel view synthesis.", encoding="utf-8")
+    graph_output = tmp_path / "graph.json"
+    captured: dict = {}
+
+    class FakeCanonicalizer:
+        def canonicalize(self, graph):
+            from tesserae.canonicalization import CanonicalizationResult
+
+            return CanonicalizationResult(
+                graph=graph,
+                stats={"semantic_backend": "stub", "semantic_added": 3},
+            )
+
+    import tesserae.cli as cli
+
+    def factory(**kwargs):
+        captured.update(kwargs)
+        return FakeCanonicalizer()
+
+    monkeypatch.setattr(cli, "GraphCanonicalizer", factory)
+
+    capsys.readouterr()
+    assert main([
+        "extract",
+        str(source),
+        "--source-kind",
+        "Paper",
+        "--canonicalize-semantic",
+        "-o",
+        str(graph_output),
+    ]) == 0
+    assert captured == {"semantic": True}
+    err = capsys.readouterr().err
+    assert "3 review candidates via stub" in err
+    assert "candidates only, nothing merged" in err
+
+
+def test_cli_extract_semantic_skip_says_why(monkeypatch, tmp_path, capsys):
+    """A skip must never read as 'ran and found nothing'."""
+    source = tmp_path / "paper.md"
+    source.write_text("# Skip Paper\nGaussian Splatting.", encoding="utf-8")
+    graph_output = tmp_path / "graph.json"
+
+    class FakeCanonicalizer:
+        def canonicalize(self, graph):
+            from tesserae.canonicalization import CanonicalizationResult
+
+            return CanonicalizationResult(
+                graph=graph,
+                stats={"semantic_backend": "hash-bucket", "semantic_added": 0,
+                       "semantic_skipped": "no real embedding backend (install tesserae[semantic])"},
+            )
+
+    import tesserae.cli as cli
+
+    monkeypatch.setattr(cli, "GraphCanonicalizer", lambda **kwargs: FakeCanonicalizer())
+    capsys.readouterr()
+    assert main([
+        "extract", str(source), "--source-kind", "Paper",
+        "--canonicalize-semantic", "-o", str(graph_output),
+    ]) == 0
+    err = capsys.readouterr().err
+    assert "semantic canonicalization skipped" in err
+    assert "tesserae[semantic]" in err
