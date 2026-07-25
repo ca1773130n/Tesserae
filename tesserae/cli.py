@@ -5391,12 +5391,19 @@ def _build_extract_parser() -> argparse.ArgumentParser:
 def _extract_timeout() -> Optional[int]:
     """Per-file LLM extraction cutoff in WHOLE SECONDS, opt-in via ``TESSERAE_EXTRACT_TIMEOUT``.
 
-    Default (env unset, or non-positive/invalid) is ``None`` — no cutoff, a slow doc
-    runs to completion, byte-identical to prior behaviour. Set a positive number to
-    bound each codex/claude extraction call: a wedged CLI child (e.g. a network wait
+    Default (env unset) is ``None`` — no cutoff, a slow doc runs to completion,
+    byte-identical to prior behaviour. Set a positive number to bound each
+    codex/claude extraction ATTEMPT: a wedged CLI child (e.g. a network wait
     that never resolves) is then killed by ``_run_cli``'s process-group guard, the
     provider client moves on / returns None, and the selective router falls back to
     deterministic for THAT doc instead of blocking the whole compile forever.
+
+    Per ATTEMPT, not per doc: ``_run_prompt`` (llm_json.py) treats a timeout like
+    an auth failure and rotates to the next CODEX_HOME / claude config dir, so one
+    doc's worst case is ``timeout × <number of configured profiles>``.
+
+    Set but unusable (garbage, non-positive, inf/nan) warns on stderr and falls
+    back to ``None``: a safety valve that silently fails to arm is worse than none.
 
     Rounded UP to a whole second >= 1 because the two CLI clients coerce their
     timeout with ``int()`` (llm_json.py) while the Anthropic client keeps the float:
@@ -5409,13 +5416,16 @@ def _extract_timeout() -> Optional[int]:
     import os
 
     raw = os.environ.get("TESSERAE_EXTRACT_TIMEOUT")
-    if not raw:
+    if not raw or not raw.strip():
         return None
     try:
         val = float(raw)
     except (TypeError, ValueError):
-        return None
+        val = float("nan")
     if val <= 0 or math.isinf(val) or math.isnan(val):
+        print(f"warning: ignoring TESSERAE_EXTRACT_TIMEOUT={raw!r} — expected a "
+              f"positive number of seconds; extraction runs with NO cutoff.",
+              file=sys.stderr)
         return None
     return max(1, math.ceil(val))
 
@@ -5743,8 +5753,6 @@ def _route_graph_map(rest: List[str]) -> int:
 
 
 def _handle_graph_map(args: argparse.Namespace) -> int:
-    import json
-
     from .mcp_server import LLMWikiMCPServer
 
     wiki = ProjectWiki.load(args.project)
