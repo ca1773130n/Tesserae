@@ -25,6 +25,18 @@ La commande canonique dans les docs est `tesserae`. `tesserae_mcp` démarre le s
 > pipx install tesserae
 > ```
 
+> **uv convient aussi, mais les extras s'écrivent à l'intérieur des guillemets.**
+> `uv tool install` n'a pas d'option `--extra` (vérifié avec uv 0.10), donc
+> `uv tool install tesserae --extra semantic` se termine sur
+> `unexpected argument '--extra'` et l'extra n'est jamais installé :
+> ```bash
+> uv tool install "tesserae[semantic]"        # les extras, dans les guillemets
+> uv tool install --with model2vec tesserae   # équivalent
+> ```
+> Vous le scriptez ? Vérifiez le code de sortie. Une installation de `semantic`
+> silencieusement ignorée est exactement la raison pour laquelle la recherche
+> hybride et `associate` retombent sur le stub non sémantique.
+
 ## Mise à niveau
 
 ```bash

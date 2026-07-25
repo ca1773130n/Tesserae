@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional, Sequence
 
+from .llm_json import _note_failure, last_failure_kind
 from .research_graph import (
     ALLOWED_EDGE_TYPES,
     ALLOWED_NODE_TYPES,
@@ -33,6 +34,47 @@ from .research_graph import (
 
 class GraphJSONValidationError(ValueError):
     """Raised when LLM-produced graph JSON violates the controlled schema."""
+
+
+class ProviderUnavailableError(RuntimeError):
+    """Raised when the LLM backend never produced output to validate.
+
+    Deliberately NOT a subclass of :class:`GraphJSONValidationError`: "the
+    provider dropped the stream" and "the model emitted an out-of-vocab type"
+    demand opposite responses — wait and re-run vs. fix the prompt/schema —
+    and for three compiles they were reported as the same thing, which read as
+    the *model* having 8x worse schema compliance during what was actually a
+    provider capacity window. Safe as a sibling rather than a subclass:
+    :class:`LLMResearchExtractor` is only ever wrapped by
+    ``SelectiveClaudeResearchExtractor``, which catches bare ``Exception``.
+    """
+
+
+class ProviderAuthError(RuntimeError):
+    """Raised when every configured account refused the credentials.
+
+    A sibling of :class:`ProviderUnavailableError` for the same reason
+    :class:`ExtractionTimeoutError` is one: the per-document line prints the
+    class name first, and "unavailable (transport/capacity)" sends the operator
+    to wait out a window that will never close — waiting does not refresh an
+    expired OAuth session. The actionable ``claude /login`` / ``codex login``
+    hint is logged ONCE per process, so a 137-doc compile against an expired
+    session printed 136 lines naming the wrong remedy and one, long scrolled
+    away, naming the right one.
+    """
+
+
+class ExtractionTimeoutError(RuntimeError):
+    """Raised when the provider answered nothing because the ATTEMPT ran out of time.
+
+    A sibling of :class:`ProviderUnavailableError`, not a subclass, for the
+    same reason that one is a sibling of :class:`GraphJSONValidationError`: the
+    operator-facing line prints the class name first, and "unavailable" would
+    send them to wait out a capacity window that doesn't exist. The provider
+    was reachable; this document did not finish inside
+    ``TESSERAE_EXTRACT_TIMEOUT``. Raise the bound (``0`` = no bound) or split
+    the document.
+    """
 
 
 # A single bad generation (out-of-vocab type, truncated JSON) is transient — the
@@ -326,19 +368,98 @@ class LLMResearchExtractor:
             ("research-graph-v1\n" + (guidance or "") + "\n" + (source_kind or "") + "\n"
              + (source_path or "") + "\n" + text).encode("utf-8")
         ).hexdigest()
-        payload = self.client.complete_json(
-            system="You extract a typed research-intelligence graph as ONE JSON object (nodes + edges).",
-            user=prompt,
-            schema_name="research-graph-v1",
-            cache_key=cache_key,
-        )
-        if not isinstance(payload, dict):
-            raise GraphJSONValidationError(
-                f"LLM backend returned no usable JSON for {source_path or 'doc'}"
+        # Every client we build clears its own verdict on entry, but a
+        # duck-typed client that never writes one would otherwise let the
+        # PREVIOUS call's verdict misattribute this doc. Clear once here so
+        # "unset" really means unset — and unset falls through to the
+        # pre-existing GraphJSONValidationError behaviour.
+        _note_failure(None)
+        # Parity with ClaudeCLIResearchExtractor: a bad generation is transient
+        # (the model is non-deterministic), so re-ask.
+        last_error: Optional[Exception] = None
+        for attempt in range(_VALIDATION_RETRIES + 1):
+            payload = self.client.complete_json(
+                system="You extract a typed research-intelligence graph as ONE JSON object (nodes + edges).",
+                user=prompt,
+                schema_name="research-graph-v1",
+                cache_key=cache_key,
             )
-        graph = graph_from_llm_payload(payload, source_path=source_path, source_kind=source_kind)
-        ensure_source_metadata(graph, text, source_path, source_kind)
-        return graph
+            if not isinstance(payload, dict):
+                # These verdicts are final here because the client has already
+                # exhausted the transport-level recovery it HAS — the codex
+                # client re-runs its whole rotation with backoff, the Claude
+                # client gives every configured profile a turn — so re-asking
+                # would stack _VALIDATION_RETRIES on top of that for up to 9
+                # codex spawns on one doc. What that does NOT mean is that
+                # every shape got the same number of rolls: the codex retry is
+                # bounded by cumulative elapsed time, so a rotation that spent
+                # the whole TESSERAE_EXTRACT_TIMEOUT budget is tried once. The
+                # invariant we rely on is only "the layer that owns transport
+                # already decided"; adding a second re-ask here cannot improve
+                # a verdict about transport. An unset verdict (a client that
+                # doesn't report one) falls through to the old behaviour.
+                kind = last_failure_kind()
+                if kind == "timeout":
+                    raise ExtractionTimeoutError(
+                        f"LLM extraction timed out for {source_path or 'doc'} — the provider "
+                        f"was reachable but did not finish inside TESSERAE_EXTRACT_TIMEOUT; "
+                        f"raise it (0 = no bound) or split the document"
+                    )
+                if kind == "auth":
+                    raise ProviderAuthError(
+                        f"LLM backend not logged in for {source_path or 'doc'} — every "
+                        f"configured account refused the credentials, so this is NOT a "
+                        f"capacity window and waiting will not clear it; re-auth the "
+                        f"configured CLI (`claude /login` / `codex login`) and re-run"
+                    )
+                if kind == "unavailable":
+                    raise ProviderUnavailableError(
+                        f"LLM backend unavailable for {source_path or 'doc'} — no response "
+                        f"(transport/capacity); the model never returned anything to validate"
+                    )
+                last_error = GraphJSONValidationError(
+                    f"LLM backend returned no usable JSON for {source_path or 'doc'}"
+                )
+            else:
+                try:
+                    graph = graph_from_llm_payload(
+                        payload, source_path=source_path, source_kind=source_kind
+                    )
+                    ensure_source_metadata(graph, text, source_path, source_kind)
+                    return graph
+                except GraphJSONValidationError as exc:
+                    last_error = exc
+            # Reached only by REJECTING what the client returned. The CLI
+            # clients cache every PARSEABLE answer, and an out-of-vocab type
+            # parses fine — so without dropping it here the next attempt reads
+            # its own bad answer back off disk (zero extra LLM calls while
+            # stderr claims "retrying"), and, because the cache has no
+            # eviction, `--changed-only --retry-fallbacks` would re-fail on
+            # that same entry forever. Dropping it is what makes the retry a
+            # real re-ask AND keeps the doc recoverable on a later run.
+            # Duck-typed: a client with no cache (Anthropic SDK, test fakes)
+            # simply has no such method.
+            forget = getattr(self.client, "forget_cached_answer", None)
+            if callable(forget):
+                try:
+                    forget(cache_key, schema_name="research-graph-v1")
+                except Exception as exc:  # noqa: BLE001
+                    # The point of the duck-typed getattr is tolerating client
+                    # shapes we don't own, and a drop that raises must not
+                    # replace the validation error we are in the middle of
+                    # raising with an unrelated one (CompositeCLIClient fans
+                    # out unguarded, so ONE bad sub-client would do it). Worst
+                    # case the rejected answer survives on disk and this doc
+                    # re-fails identically next run — the pre-existing
+                    # no-cache-drop behaviour, not a new failure.
+                    print(f"  extract: could not drop the rejected cached answer for "
+                          f"{source_path or 'doc'} ({type(exc).__name__}: {exc})",
+                          file=sys.stderr)
+            if attempt < _VALIDATION_RETRIES:
+                print(f"  extract: invalid generation for {source_path or 'doc'} "
+                      f"({last_error}); retrying ({attempt + 1}/{_VALIDATION_RETRIES})",
+                      file=sys.stderr)
+        raise GraphJSONValidationError(f"LLM extraction failed: {last_error}")
 
 
 def build_research_extraction_prompt(text: str, source_path: Optional[str], source_kind: str, guidance: str = "") -> str:

@@ -22,6 +22,15 @@ Tesserae는 [Claude Code](https://docs.claude.com/en/docs/claude-code) 플러그
 * **`using-tesserae` 스킬** — 사용자가 타입드 그래프, 과거 세션 회수, 위키/볼트 콘텐츠, 또는 tesserae 워크플로우에 대해 질문할 때 자동 로드됩니다. 에이전트에게 어떤 MCP 도구를 사용할지 vs 어떤 슬래시 명령을 제안할지 가르쳐줍니다.
 * **훅 5개** — `SessionStart`는 그래프 요약을 출력; `SessionEnd`는 이번 대화의 인사이트가 다음 세션의 그래프 노드가 되도록 백그라운드 import+compile; `Edit`/`Write`/`MultiEdit`에서 두 개의 `PostToolUse` 훅이 발동 — 하나는 docs/ 편집 시 옵트인 증분 재컴파일, 다른 하나는 코드 그래프 동기화를 디바운스(~30초); `PreToolUse`(`Bash` 대상)는 큰 그래프 컴파일을 확인 대화상자로 게이팅.
 
+> **세션 종료 시 compile은 기회적일 뿐, 보장되지 않습니다.** 훅은 `setsid`가 있으면
+> 그것으로 백그라운드 작업을 분리하고, 없으면 `nohup`으로 폴백합니다. macOS에는
+> `setsid`가 없고 `nohup`은 `SIGHUP`을 무시할 뿐 — 작업을 세션의 프로세스 그룹에
+> 그대로 남겨둡니다 — 따라서 세션 종료 시 그룹을 회수하는 하네스는 여전히 compile을
+> 도중에 죽일 수 있습니다. 그래도 손상되는 것은 없습니다. 그래프가 오래된 상태로
+> 남을 뿐이고, `SessionStart`가 그 사실을 알려주며, 다음 compile이 이어받습니다.
+> 긴 compile이 그것을 시작한 세션보다 오래 살아남는다고 가정하는 워크플로는 만들지
+> 마세요 — 포그라운드에서 실행하거나 `tesserae engine`을 쓰세요.
+
 전체 세부 정보, 명령/훅 표, 프로젝트별 opt-out 설정은 플러그인 자체의 [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md)에 있습니다.
 
 ## 왜 플러그인과 MCP 서버 모두?

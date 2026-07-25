@@ -227,6 +227,197 @@ def test_llm_extractor_falls_back_per_doc_on_backend_failure(monkeypatch):
     assert g is not None  # fell back to the deterministic baseline
 
 
+def test_llm_extractor_raises_provider_unavailable_not_validation_error(monkeypatch):
+    """A provider that never answered must NOT be reported as a schema violation.
+
+    Conflating them cost three rounds of blaming the model for what was a
+    provider capacity window. The transport layer already retried with backoff,
+    so this verdict is final — no stacked re-ask.
+    """
+    import pytest
+
+    import tesserae.llm_json as lj
+    from tesserae.llm_extractor import (
+        GraphJSONValidationError, LLMResearchExtractor, ProviderUnavailableError,
+    )
+
+    calls = []
+
+    class _UnavailableClient:
+        def complete_json(self, **k):
+            calls.append(1)
+            lj._note_failure("unavailable")
+            return None
+
+    with pytest.raises(ProviderUnavailableError) as err:
+        LLMResearchExtractor(_UnavailableClient()).extract_text("body", "/proj/doc.md")
+    assert not isinstance(err.value, GraphJSONValidationError)  # sibling, not subclass
+    assert "transport/capacity" in str(err.value)
+    assert len(calls) == 1  # final verdict: no _VALIDATION_RETRIES on top of the transport ones
+
+
+def test_llm_extractor_retries_a_bad_generation_then_gives_up(monkeypatch):
+    """A real bad generation keeps the old contract: re-ask, then raise the
+    schema error (parity with ClaudeCLIResearchExtractor)."""
+    import pytest
+
+    import tesserae.llm_json as lj
+    from tesserae.llm_extractor import (
+        _VALIDATION_RETRIES, GraphJSONValidationError, LLMResearchExtractor,
+        ProviderUnavailableError,
+    )
+
+    calls = []
+
+    class _UnparseableClient:
+        def complete_json(self, **k):
+            calls.append(1)
+            lj._note_failure("unparseable")
+            return None
+
+    with pytest.raises(GraphJSONValidationError) as err:
+        LLMResearchExtractor(_UnparseableClient()).extract_text("body", "/proj/doc.md")
+    assert not isinstance(err.value, ProviderUnavailableError)
+    assert len(calls) == _VALIDATION_RETRIES + 1  # initial + retries
+
+
+def test_llm_extractor_retries_an_out_of_vocab_type_then_gives_up():
+    """The other bad-generation shape: parseable JSON that violates the vocab.
+
+    Counts calls into a CACHELESS fake, so it pins the loop shape only. The
+    "does the retry actually reach the provider" question needs the real
+    client's on-disk cache — see
+    ``test_llm_extractor_retry_re_asks_and_leaves_no_poisoned_cache``.
+    """
+    import pytest
+
+    from tesserae.llm_extractor import (
+        _VALIDATION_RETRIES, GraphJSONValidationError, LLMResearchExtractor,
+    )
+
+    calls = []
+
+    class _BadVocabClient:
+        def complete_json(self, **k):
+            calls.append(1)
+            return {"nodes": [{"name": "X", "type": "software"}], "edges": []}
+
+    with pytest.raises(GraphJSONValidationError):
+        LLMResearchExtractor(_BadVocabClient()).extract_text("body", "/proj/doc.md")
+    assert len(calls) == _VALIDATION_RETRIES + 1
+
+
+def test_llm_extractor_retry_re_asks_and_leaves_no_poisoned_cache(monkeypatch, tmp_path):
+    """A rejected generation must not be served back from the on-disk cache.
+
+    Run against the REAL ``CodexCLIJsonClient`` cache, because that is where
+    the defect lived: ``_cli_cache_put`` stores every PARSEABLE answer, and an
+    out-of-vocab node type parses fine. So the retry loop re-read its own bad
+    answer — ONE subprocess spawn while stderr printed "retrying (1/2)" and
+    "(2/2)", two false statements per failed doc — and since
+    ``~/.tesserae/llm_cache`` has no eviction, ``--changed-only
+    --retry-fallbacks`` then spent ZERO llm calls on that doc and failed
+    identically forever. A fake client with no cache passes this vacuously.
+    """
+    from pathlib import Path
+
+    import pytest
+
+    import tesserae.llm_json as lj
+    from tesserae.llm_extractor import (
+        _VALIDATION_RETRIES, GraphJSONValidationError, LLMResearchExtractor,
+    )
+
+    cache_dir = tmp_path / "cache"
+    monkeypatch.setattr(lj, "_CLI_CACHE_DIR", cache_dir)
+    monkeypatch.delenv("TESSERAE_LLM_CACHE", raising=False)
+
+    answer = {"raw": '{"nodes": [{"name": "X", "type": "software"}], "edges": []}'}
+    spawns: list = []
+
+    class _Proc:
+        def __init__(self, rc=0, stdout="", stderr=""):
+            self.returncode, self.stdout, self.stderr = rc, stdout, stderr
+
+    def fake_run(cmd, *, prompt, env, timeout):
+        spawns.append(1)
+        Path(cmd[cmd.index("--output-last-message") + 1]).write_text(
+            answer["raw"], encoding="utf-8"
+        )
+        return _Proc()
+
+    monkeypatch.setattr(lj, "_run_cli", fake_run)
+    client = lj.CodexCLIJsonClient(codex_homes=[str(tmp_path / "home")])
+
+    with pytest.raises(GraphJSONValidationError):
+        LLMResearchExtractor(client).extract_text("body", "/proj/doc.md")
+    # (i) every "retrying (n/2)" line corresponds to a real provider call.
+    assert len(spawns) == _VALIDATION_RETRIES + 1
+    # (ii) nothing rejected survived on disk to re-fail on the next run.
+    assert list(cache_dir.rglob("*.json")) == []
+
+    # ...so `--retry-fallbacks` genuinely re-asks, and the doc is recoverable.
+    answer["raw"] = '{"nodes": [{"name": "X", "type": "Concept"}], "edges": []}'
+    graph = LLMResearchExtractor(client).extract_text("body", "/proj/doc.md")
+    assert any(node.name == "X" for node in graph.nodes)
+    assert len(spawns) == _VALIDATION_RETRIES + 2  # a real call, not a cache hit
+
+
+def test_llm_extractor_reports_a_timeout_as_a_timeout(monkeypatch, tmp_path):
+    """A doc too big to extract inside TESSERAE_EXTRACT_TIMEOUT is NOT a
+    capacity outage, and `codex login` is not the remedy.
+
+    Reporting it as ``ProviderUnavailableError`` sent the operator to wait out
+    a window that does not exist and re-run ``--retry-fallbacks`` forever.
+    """
+    import subprocess
+
+    import pytest
+
+    import tesserae.llm_json as lj
+    from tesserae.llm_extractor import (
+        ExtractionTimeoutError, LLMResearchExtractor, ProviderUnavailableError,
+    )
+
+    def fake_run(cmd, *, prompt, env, timeout):
+        raise subprocess.TimeoutExpired(cmd=cmd, timeout=timeout)
+
+    monkeypatch.setattr(lj, "_run_cli", fake_run)
+    client = lj.CodexCLIJsonClient(codex_homes=[str(tmp_path / "home")], timeout=1800)
+
+    with pytest.raises(ExtractionTimeoutError) as err:
+        LLMResearchExtractor(client).extract_text("body", "/proj/big.md")
+    assert not isinstance(err.value, ProviderUnavailableError)  # sibling, not subclass
+    assert "TESSERAE_EXTRACT_TIMEOUT" in str(err.value)
+    assert "codex login" not in str(err.value)
+
+
+def test_selective_fallback_line_names_the_cause(capsys):
+    """The operator-facing per-doc line must say WHICH failure it was, and a
+    provider outage must still be marked a fallback so --retry-fallbacks
+    can recover it."""
+    from tesserae.llm_extractor import ProviderUnavailableError
+    from tesserae.research_graph import ResearchGraph
+    from tesserae.selective_extractor import SelectiveClaudeResearchExtractor
+
+    class _Down:
+        def extract_text(self, *a, **k):
+            raise ProviderUnavailableError("LLM backend unavailable for /proj/doc.md — no response")
+
+    class _Det:
+        def extract_text(self, *a, **k):
+            return ResearchGraph(nodes=[], edges=[])
+
+    sel = SelectiveClaudeResearchExtractor(
+        deterministic=_Det(), claude=_Down(), include_patterns=["*.md"]
+    )
+    sel.extract_text("x", "/proj/doc.md")
+    err = capsys.readouterr().err
+    assert "ProviderUnavailableError" in err and "no response" in err
+    assert "used deterministic" in err
+    assert sel.last_was_fallback is True  # a provider outage IS recoverable work
+
+
 def test_doc_extractor_honors_project_provider_and_default_timeout(monkeypatch):
     """_build_doc_extractor threads the PROJECT config's llm_provider and arms the
     default wedge guard (extraction is bounded unless explicitly disabled)."""
@@ -294,3 +485,119 @@ def test_extract_timeout_env_parsing(monkeypatch):
     monkeypatch.setenv("TESSERAE_EXTRACT_TIMEOUT", "600")
     _build_doc_extractor(_build_compile_parser().parse_args(["--extractor", "llm"]))
     assert seen["timeout"] == 600.0
+
+
+def test_every_transport_failure_shape_gets_the_same_number_of_rolls(monkeypatch, tmp_path):
+    """The extractor skips its own re-ask because the transport layer retried.
+
+    That was structurally false for one shape: `codex exec` exiting 0 with an
+    EMPTY last message returned straight out of the rotation, so it never
+    entered the retry loop — and then the extractor refused to retry it on the
+    grounds that it already had. A capacity blip presenting as a clean exit with
+    an empty body was condemned to the deterministic baseline on ONE roll while
+    a non-zero exit got three. Measured in provider spawns, which is what the
+    operator pays.
+    """
+    import pytest
+
+    import tesserae.llm_json as lj
+    from tesserae.llm_extractor import LLMResearchExtractor, ProviderUnavailableError
+
+    def _spawns_for(returncode: int, last_message: str) -> int:
+        spawns: list = []
+
+        def fake_run(cmd, *, prompt, env, timeout):
+            spawns.append(1)
+            if returncode == 0:
+                Path(cmd[cmd.index("--output-last-message") + 1]).write_text(
+                    last_message, encoding="utf-8"
+                )
+            return types.SimpleNamespace(returncode=returncode, stdout="", stderr=last_message)
+
+        monkeypatch.setattr(lj, "_run_cli", fake_run)
+        monkeypatch.setattr(lj.time, "sleep", lambda _s: None)
+        client = lj.CodexCLIJsonClient(codex_homes=[str(tmp_path / "home")], timeout=1800)
+        with pytest.raises(ProviderUnavailableError):
+            LLMResearchExtractor(client).extract_text("body", "/proj/doc.md")
+        return len(spawns)
+
+    import types
+    from pathlib import Path
+
+    clean_exit_empty_body = _spawns_for(0, "")
+    non_zero_exit = _spawns_for(1, "stream error: high demand")
+    assert clean_exit_empty_body == non_zero_exit == lj._TRANSPORT_RETRIES + 1
+
+
+def test_llm_extractor_reports_an_auth_failure_as_auth_not_capacity(monkeypatch):
+    """An expired session is not a capacity window, and it is reported per doc.
+
+    ``ProviderUnavailableError(... "(transport/capacity)")`` told the operator to
+    wait and re-run on every one of 137 lines; the single line naming
+    `claude /login` is gated on a once-per-process flag and had scrolled away.
+    """
+    import pytest
+
+    import tesserae.llm_json as lj
+    from tesserae.llm_extractor import (
+        ExtractionTimeoutError, GraphJSONValidationError, LLMResearchExtractor,
+        ProviderAuthError, ProviderUnavailableError,
+    )
+
+    calls: list = []
+
+    class _LoggedOutClient:
+        def complete_json(self, **k):
+            calls.append(1)
+            lj._note_failure("auth")
+            return None
+
+    with pytest.raises(ProviderAuthError) as err:
+        LLMResearchExtractor(_LoggedOutClient()).extract_text("body", "/proj/doc.md")
+    message = str(err.value)
+    assert "login" in message  # the real remedy, on THIS line
+    assert "transport/capacity" not in message
+    assert len(calls) == 1  # an auth verdict is final: no re-ask, no backoff
+    # A fourth sibling, not a subclass: the per-doc line prints the class name,
+    # and an `except` ladder that collapses these re-creates the whole defect.
+    for other in (ProviderUnavailableError, ExtractionTimeoutError, GraphJSONValidationError):
+        assert not issubclass(ProviderAuthError, other)
+        assert not issubclass(other, ProviderAuthError)
+
+
+def test_a_cache_drop_that_raises_does_not_replace_the_validation_error():
+    """``forget_cached_answer`` is duck-typed, so it can raise anything.
+
+    ``CompositeCLIClient`` fans the drop out to every sub-client unguarded, so
+    ONE sub-client whose drop fails used to abort the retry loop mid-flight with
+    an unrelated exception — the operator sees OSError on a document whose real
+    problem is a schema violation, and loses two of the three re-asks.
+    """
+    import pytest
+
+    import tesserae.llm_json as lj
+    from tesserae.llm_extractor import (
+        _VALIDATION_RETRIES, GraphJSONValidationError, LLMResearchExtractor,
+    )
+
+    calls: list = []
+
+    class _BadVocab:
+        def complete_json(self, **k):
+            calls.append(1)
+            return {"nodes": [{"name": "X", "type": "software"}], "edges": []}
+
+        def forget_cached_answer(self, cache_key, *, schema_name):
+            pass
+
+    class _DropRaises:
+        def complete_json(self, **k):
+            return None
+
+        def forget_cached_answer(self, cache_key, *, schema_name):
+            raise OSError("read-only filesystem")
+
+    client = lj.CompositeCLIClient([_BadVocab(), _DropRaises()])
+    with pytest.raises(GraphJSONValidationError):
+        LLMResearchExtractor(client).extract_text("body", "/proj/doc.md")
+    assert len(calls) == _VALIDATION_RETRIES + 1  # the re-asks still happened

@@ -25,6 +25,16 @@ tesserae_mcp --help
 > pipx install tesserae
 > ```
 
+> **uv 也可以，但 extra 必须写在引号里。** `uv tool install` 没有 `--extra` 参数
+>（基于 uv 0.10 验证），所以 `uv tool install tesserae --extra semantic` 会以
+> `unexpected argument '--extra'` 退出，extra 根本没装上：
+> ```bash
+> uv tool install "tesserae[semantic]"        # extra 写在引号里
+> uv tool install --with model2vec tesserae   # 等价写法
+> ```
+> 写进脚本时请检查退出码。`semantic` 被静默跳过，正是 hybrid retrieval 和 `associate`
+> 退回到非语义 stub 的原因。
+
 ## 升级
 
 ```bash

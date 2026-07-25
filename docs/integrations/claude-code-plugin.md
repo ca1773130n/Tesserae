@@ -22,6 +22,15 @@ Pre-req: `tesserae` already installed (`pip install tesserae` or `pipx install t
 * **`using-tesserae` skill** — auto-loads when you ask about the typed graph, past-session recall, wiki/vault content, or any tesserae workflow. Teaches the agent which MCP tool to use vs which slash command to suggest.
 * **5 hooks** — `SessionStart` prints a graph summary; `SessionEnd` backgrounds an import+compile so this conversation's insights become graph nodes for the next session; two `PostToolUse` hooks fire on `Edit`/`Write`/`MultiEdit` — one does an opt-in incremental recompile on docs/ edits, the other debounces (~30s) a code-graph sync; `PreToolUse` (on `Bash`) gates large-graph compiles via a confirmation dialog.
 
+> **The session-close compile is opportunistic, not guaranteed.** The hook detaches
+> its background job with `setsid` where that exists, and falls back to `nohup`
+> otherwise. macOS ships no `setsid`, and `nohup` only ignores `SIGHUP` — it leaves
+> the job in the session's process group — so a harness that reaps the group on
+> session close can still kill the compile mid-flight. Nothing is corrupted when
+> that happens; the graph is just stale, `SessionStart` says so, and the next
+> compile picks it up. Don't build a workflow that assumes a long compile survives
+> the session that started it — run it in the foreground, or via `tesserae engine`.
+
 Full details, the complete command/hook tables, and per-project opt-out instructions are in the plugin's own [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md).
 
 ## Why a plugin AND an MCP server?

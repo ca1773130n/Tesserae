@@ -34,9 +34,19 @@ All four are opt-out per-project via `.claude/tesserae.local.md` frontmatter (se
 | Hook | When it fires | What it does | Default |
 |---|---|---|---|
 | `SessionStart` | Every session start in a Tesserae project | Prints a one-liner: `tesserae: N nodes, M edges, last compile <ts>`. Warns if last compile > 7 days. | on |
-| `SessionEnd` | Every session close | Backgrounds `sessions discover --import` + `project compile` so this conversation's insights become graph nodes for the next session. Detached via `setsid`/`nohup` so it survives session reap. | on |
+| `SessionEnd` | Every session close | Backgrounds `sessions discover --import` + `project compile` so this conversation's insights become graph nodes for the next session. Detach is best-effort (`setsid` where it exists, else `nohup`) — see the caveat below. | on |
 | `PostToolUse` (Edit / Write / MultiEdit) | Agent edits a file under `docs/` | Debounced `tesserae project compile --changed-only`. Path filter applied inside the script (matchers can't filter by path). | **off** — opt in if you want live wiki updates as you write docs |
 | `PreToolUse` (Bash → `tesserae project compile`) | Agent invokes compile via Bash | If graph has > 5000 nodes, emits `{"permissionDecision": "ask", "systemMessage": "..."}` so Claude Code surfaces a confirmation dialog. | on |
+
+> **Caveat — the `SessionEnd` compile is opportunistic, not guaranteed.** The hook
+> detaches with `setsid` where that exists and falls back to `nohup` otherwise.
+> macOS ships no `setsid`, and `nohup` only sets `SIGHUP` to ignore — it does *not*
+> leave the session's process group — so a harness that reaps the group on session
+> close can still kill the compile mid-flight. Measured on macOS 26: the `nohup`'d
+> child keeps its parent shell's pgid. Nothing is corrupted when it is killed; the
+> graph is just stale, `SessionStart` warns about it, and the next compile picks it
+> up. Don't rely on a long compile outliving the session that started it — run it in
+> the foreground, or under `tesserae engine`.
 
 ## MCP auto-registration
 

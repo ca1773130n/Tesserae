@@ -22,6 +22,16 @@ Requisito previo: `tesserae` ya instalado (`pip install tesserae` o `pipx instal
 * **Habilidad `using-tesserae`** — se carga automáticamente cuando preguntas sobre el grafo tipado, recuperación de sesiones pasadas, contenido wiki/vault, o cualquier flujo de trabajo tesserae. Enseña al agente qué herramienta MCP usar vs qué comando slash sugerir.
 * **5 hooks** — `SessionStart` imprime un resumen del grafo; `SessionEnd` ejecuta en segundo plano import+compile para que las ideas de esta conversación se conviertan en nodos del grafo para la próxima sesión; dos hooks `PostToolUse` se disparan en `Edit`/`Write`/`MultiEdit` — uno hace recompilación incremental opcional en ediciones de docs/, el otro aplica un debounce (~30 s) a la sincronización del grafo de código; `PreToolUse` (en `Bash`) controla compilaciones de grafos grandes mediante un diálogo de confirmación.
 
+> **La compilación al cerrar la sesión es oportunista, no garantizada.** El hook
+> desacopla su tarea en segundo plano con `setsid` cuando existe, y recurre a
+> `nohup` en caso contrario. macOS no incluye `setsid`, y `nohup` solo ignora
+> `SIGHUP` — deja la tarea en el grupo de procesos de la sesión —, así que un
+> harness que recoja el grupo al cerrar la sesión todavía puede matar la
+> compilación a mitad. Nada se corrompe cuando ocurre: el grafo simplemente queda
+> desactualizado, `SessionStart` lo indica y la siguiente compilación lo retoma.
+> No construyas un flujo que asuma que una compilación larga sobrevive a la sesión
+> que la lanzó: ejecútala en primer plano o mediante `tesserae engine`.
+
 Detalles completos, tablas completas de comandos/hooks e instrucciones de opt-out por proyecto están en el propio [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md) del plugin.
 
 ## ¿Por qué un plugin Y un servidor MCP?

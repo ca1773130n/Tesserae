@@ -176,8 +176,13 @@ class BatchIngestRunner:
                 fallback_paths.append(key)
         if fallback_paths:
             print(
+                # ``--retry-fallbacks`` only NARROWS the changed-only work list
+                # (see the skip above); on its own it is a whole-corpus
+                # re-extract, so the hint must name both flags or it sends the
+                # operator into an hours-long full compile.
                 f"  {len(fallback_paths)} doc(s) fell back to deterministic "
-                f"extraction; re-attempt with `compile --retry-fallbacks`.",
+                f"extraction; re-attempt with "
+                f"`compile --changed-only --retry-fallbacks`.",
                 file=sys.stderr,
             )
         return BatchIngestResult(

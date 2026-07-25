@@ -1557,6 +1557,20 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                 if getattr(args, "extractor", "deterministic") != "deterministic"
                 else None
             )
+            # ``--retry-fallbacks`` only narrows the CHANGED-ONLY work list
+            # (BatchIngestRunner.run); on a full compile every doc is
+            # re-extracted anyway, so the flag alone silently buys a
+            # whole-corpus run instead of the scoped recovery it advertises.
+            # Warn rather than imply --changed-only: implying it would turn a
+            # deliberately-requested full compile into a subset one.
+            if getattr(args, "retry_fallbacks", False) and not args.changed_only:
+                print(
+                    "warning: --retry-fallbacks has no effect without "
+                    "--changed-only; this is a full re-extract of every "
+                    "document. Use `tesserae compile --changed-only "
+                    "--retry-fallbacks`.",
+                    file=sys.stderr,
+                )
             result = wiki.compile(
                 source_kind=opts.get("source_kind", None),
                 changed_only=args.changed_only,
@@ -2383,6 +2397,7 @@ def _build_compile_parser() -> argparse.ArgumentParser:
             "examples:\n"
             "  tesserae compile\n"
             "  tesserae compile --changed-only\n"
+            "  tesserae compile --changed-only --retry-fallbacks\n"
             "  tesserae compile notes/idea.md\n"
         ),
     )
@@ -5486,11 +5501,21 @@ def _build_doc_extractor(args: argparse.Namespace, cfg: Optional[dict] = None):
               "`--extractor deterministic` to silence this.", file=sys.stderr)
         return ResearchGraphExtractor()
 
-    # Wrap in the selective router so a backend failure on ONE doc (auth expiry,
-    # timeout, None/invalid generation -> GraphJSONValidationError) falls back to
-    # deterministic for THAT doc instead of aborting the whole compile. Plain
-    # 'llm' routes every doc to the LLM (include=["*"]); 'selective-llm' only the
-    # user's globs.
+    # Wrap in the selective router so a backend failure on ONE doc falls back to
+    # deterministic for THAT doc instead of aborting the whole compile. The
+    # router catches bare ``Exception``; the four named causes it reports are
+    # siblings, NOT a hierarchy, because they demand opposite responses:
+    # ``ProviderUnavailableError`` (backend produced no output at all — e.g. a
+    # capacity window: wait and re-run), ``ProviderAuthError`` (every configured
+    # account refused the credentials: re-auth, waiting never clears it),
+    # ``ExtractionTimeoutError`` (provider was reachable, this doc did not
+    # finish inside ``TESSERAE_EXTRACT_TIMEOUT``: raise the bound or split the
+    # doc), and ``GraphJSONValidationError`` (output arrived but violates the
+    # controlled schema: fix the prompt/schema). Collapsing the first three into
+    # the last is what made a provider outage read as 8x worse model schema
+    # compliance.
+    # Plain 'llm' routes every doc to the LLM (include=["*"]); 'selective-llm'
+    # only the user's globs.
     det = ResearchGraphExtractor()
     llm = LLMResearchExtractor(client)
     if kind == "selective-llm":
