@@ -899,7 +899,21 @@ class ProjectWiki:
         if progress is not None:
             progress.finalize("community summaries, vault, site")
 
-        graph = ResearchCorpusAnalyzer().summarize_trends(graphs, min_sources=min_trend_sources) if trends else base_graph
+        # ``graphs`` is empty on the REUSE paths — the ``noop_skip`` short-circuit
+        # above (and a loader run that discovered nothing) — and
+        # ``summarize_trends([])`` returns an EMPTY graph. Recomputing the trend
+        # layer there would therefore overwrite graph.json with nothing while the
+        # manifest still marks every doc ``graphed``, which makes the loss
+        # PERMANENT: the next ``--changed-only`` no-ops again on the wreck.
+        # Reusing ``base_graph`` is also the CORRECT answer, not merely the safe
+        # one: it is the prior graph loaded from disk, and it still carries its
+        # TREND nodes (``_strip_generated_layer`` removes only SYNTHESIS and
+        # COMMUNITY_SUMMARY).
+        graph = (
+            ResearchCorpusAnalyzer().summarize_trends(graphs, min_sources=min_trend_sources)
+            if trends and graphs
+            else base_graph
+        )
         code_graph_report: Optional[Dict[str, object]] = None
         if kind in {"CodeProject", "Repository", "Project"}:
             # Delta-scoped regeneration gate (whole-layer grain — reuse
@@ -1285,8 +1299,36 @@ class ProjectWiki:
             # compile, or was deleted): graph.json no longer reflects it, so the
             # stamp has to go.
             carried = processed_keys | set(batch.skipped_paths)
+            # ...and an entry whose file left the corpus entirely gets PRUNED,
+            # not just unstamped. ``BatchIngestRunner`` only ever merges into the
+            # manifest, so a deleted or renamed document leaves its key behind
+            # forever — and ``corpus_unchanged`` (manifest keys == candidate
+            # keys, above) is then permanently False, which disables BOTH the
+            # ``--changed-only`` no-op and the scoped ``--retry-fallbacks`` path
+            # for the life of the workspace. That is the whole 137->35 bound,
+            # gone after one ``rm``.
+            #
+            # Pruning is only safe on a run that rebuilt graph.json from THIS
+            # run's extractions alone: ``base_graph`` is then ``batch.graph``, so
+            # the departed document's nodes are already absent from the graph the
+            # next run would reuse and the stale key has done its job. On a
+            # SCOPED run — the incremental differ (``effective_changed_only``) or
+            # ``fallback_only`` — the prior graph IS merged in, so that key is
+            # exactly the signal the subtractive guard needs; keep it.
+            full_run = not effective_changed_only and not fallback_only
+            candidate_keys = {str(md) for md in markdown_files}
             stamped = self._load_manifest()
-            for key, entry in stamped.items():
+            for key in list(stamped):
+                # ``_ingest_via_loader`` shares this manifest under ``source:``
+                # keys; an FS run must not erase them (and vice versa).
+                # ponytail: ceiling — a workspace that mixes loader and FS runs
+                # still has ``corpus_unchanged`` permanently False, because the
+                # loader keys are never candidates. Upgrade path is a per-origin
+                # key namespace in the manifest, which is a schema migration.
+                if full_run and key not in candidate_keys and not key.startswith("source:"):
+                    del stamped[key]
+                    continue
+                entry = stamped[key]
                 if key in processed_keys:
                     entry["graphed"] = True
                 elif key not in carried:
@@ -2470,10 +2512,19 @@ class ProjectWiki:
 
         The injected store must expose the complete edge-aware surface the
         incremental differ relies on — node deletion, edge-aware deletion,
-        node + edge provenance recording, and edge coverage. A node-only store
-        (missing ``record_edge_provenance_many`` / ``provenance_covers_edges`` /
-        ``delete_nodes_by_source_with_edges``) cannot tombstone stale edges, so
-        it is NOT incremental-ready.
+        node + edge provenance recording, and node + edge coverage. A node-only
+        store (missing ``record_edge_provenance_many`` /
+        ``provenance_covers_edges`` / ``delete_nodes_by_source_with_edges``)
+        cannot tombstone stale edges, so it is NOT incremental-ready.
+
+        ``provenance_covers_nodes`` is REQUIRED, not optional: absence of the
+        coverage API is not evidence of coverage. This predicate no longer gates
+        only the experimental differ — it also gates the ``fallback_only`` scoped
+        retry, which is reachable in the DEFAULT config on
+        ``--changed-only --retry-fallbacks`` and whose first act is a
+        ``delete_nodes_by_source_with_edges`` tombstone. Trusting a store that
+        cannot answer "do you cover these nodes?" there deletes co-owned nodes
+        outright instead of falling back to the always-correct full recompile.
         """
         required = (
             "delete_nodes_by_source",
@@ -2481,15 +2532,15 @@ class ProjectWiki:
             "delete_nodes_by_source_with_edges",
             "record_edge_provenance_many",
             "provenance_covers_edges",
+            "provenance_covers_nodes",
         )
         for method in required:
             if not hasattr(store, method):
                 return False
         if not hasattr(store, "has_node_provenance_rows") or not store.has_node_provenance_rows():
             return False
-        if hasattr(store, "provenance_covers_nodes"):
-            if not bool(store.provenance_covers_nodes(prior_node_ids)):
-                return False
+        if not bool(store.provenance_covers_nodes(prior_node_ids)):
+            return False
         if prior_edge_triples and not store.provenance_covers_edges(prior_edge_triples):
             return False
         return True

@@ -254,6 +254,14 @@ def _cli_cache_drop(cache_key: Optional[str], *, model: str, extra: str = "") ->
     says "retrying"), and because ``_CLI_CACHE_DIR`` has no eviction the doc
     then fails identically forever — ``--retry-fallbacks`` can never recover
     it until the document's bytes change.
+
+    ponytail: ceiling — the drop is BY KEY, and the key is content-derived, so
+    two byte-identical documents extracted concurrently share it: one worker
+    can unlink the good answer another just stored. The cost is one cache miss
+    (the next run re-asks and re-validates), never a wrong graph, so this stays
+    a plain unlink rather than a compare-and-delete. Upgrade path if it ever
+    matters: thread the rejected raw text down and unlink only when the stored
+    ``raw`` matches it.
     """
     if not cache_key or not _cli_cache_enabled():
         return
@@ -819,6 +827,9 @@ class ClaudeCLIJsonClient:
         Used by the prose-synthesis callers (``tesserae ask``) so they get
         the no-API-key OAuth path + multi-account rotation for free.
         """
+        # See CodexCLIJsonClient.complete_text: clear the thread-local verdict
+        # so a recycled pool worker cannot read the prior document's.
+        _note_failure(None)
         prompt = f"{system.strip()}\n\n{user}"
         raw = self._run_prompt(
             prompt,
@@ -845,11 +856,16 @@ class ClaudeCLIJsonClient:
 #: retry count is a ceiling, not a promise. That is deliberate: 3x1800s per
 #: document while ``.tesserae/compile.lock`` is held is worse than the
 #: deterministic baseline this exists to avoid.
-#: Second ceiling: ``permanent`` is sticky across the rotation, so if ANY home
-#: answers "not logged in" the retry is disabled for that call — a transient
-#: blip on a still-healthy sibling home gets one roll instead of three. No-op on
-#: a single-account machine (the only shape supported here); scope ``permanent``
-#: per-home if multi-account rotation ever becomes real.
+#: Second ceiling: homes are NOT accounts. When ``CODEX_HOME`` is absent from
+#: the environment — a daemon, a launchd job, a subprocess with a scrubbed env —
+#: ``__init__`` discovers every ``~/.codex*`` DIRECTORY, and on the machine this
+#: was measured on that is five (``.codex``, ``.codex-nomcp``,
+#: ``.codex-nomcp-pr208``, ``.codex-personal1``, ``.codex-personal2``), four of
+#: them stale. A single stale directory answering "not logged in" must not
+#: disable the retry for the healthy one, so the logged-out verdict is tracked
+#: PER HOME: such a home is skipped on later attempts (it will answer the same),
+#: and only an all-homes-logged-out rotation aborts — which is what keeps an
+#: expired session from costing 3 spawns + 6s of sleep per document.
 #: ponytail: small constants, not config knobs — nobody tunes them, and
 #: account rotation is NOT available on this machine so it must not be
 #: assumed as the remedy.
@@ -947,12 +963,17 @@ class CodexCLIJsonClient:
         # exactly the signals the module already trusts — the Claude client's
         # "not logged in" substring test, and FileNotFoundError for a missing
         # binary. Anything subtler stays a transport failure and gets retried.
-        permanent = False
+        # Logged-out is tracked PER HOME because homes are not accounts: an
+        # env without CODEX_HOME rotates over every ``~/.codex*`` directory,
+        # and one stale directory must not cancel the retry for a healthy one.
+        logged_out_homes: set[str] = set()
+        binary_missing = False
         # True only while EVERY home tried has answered "not logged in" — the
         # same all-or-nothing rule the Claude client uses, so a capacity failure
         # on one home can't get reported as an auth problem just because
-        # another home was logged out. Narrower than ``permanent``, which also
-        # covers a missing binary (a different remedy: install it, not log in).
+        # another home was logged out. Narrower than ``logged_out_homes``, which
+        # a still-healthy sibling home leaves non-empty without making the whole
+        # call an auth failure.
         auth_only = True
         started = time.monotonic()
         # OUTER loop = the retry; INNER loop = the account rotation. Keeping
@@ -961,6 +982,10 @@ class CodexCLIJsonClient:
         # before we sleep and start over on the same set.
         for attempt in range(_TRANSPORT_RETRIES + 1):
             for codex_home in self.codex_homes:
+                if codex_home in logged_out_homes:
+                    # It answered "not logged in" on an earlier attempt and will
+                    # answer the same now. Don't pay another spawn for it.
+                    continue
                 with _tempfile.NamedTemporaryFile(
                     "w+", suffix=".txt", delete=False, encoding="utf-8"
                 ) as handle:
@@ -994,10 +1019,11 @@ class CodexCLIJsonClient:
                             f"{stderr_text or stdout_text}"
                         )
                         # Same substring test ClaudeCLIJsonClient already uses.
-                        # Keep rotating (a later home may be logged in), but
-                        # don't sleep-and-repeat the whole rotation.
+                        # Keep rotating (a later home may be logged in); THIS
+                        # home is then skipped for the rest of the call, and
+                        # only an all-homes-logged-out rotation stops the retry.
                         if "not logged in" in f"{stderr_text}\n{stdout_text}".lower():
-                            permanent = True
+                            logged_out_homes.add(codex_home)
                         else:
                             auth_only = False
                         continue
@@ -1038,7 +1064,7 @@ class CodexCLIJsonClient:
                     # and the next home would fail the same way. Permanent, but
                     # NOT an auth failure — `codex login` needs a binary first.
                     last_error = exc
-                    permanent = True
+                    binary_missing = True
                     auth_only = False
                     continue
                 except Exception as exc:  # noqa: BLE001
@@ -1063,7 +1089,13 @@ class CodexCLIJsonClient:
             # A hard deadline would mean shrinking the timeout passed to
             # _run_cli, which would change the documented per-ATTEMPT bound.
             budget_spent = bool(self.timeout) and (time.monotonic() - started) >= self.timeout
-            if timed_out or permanent or budget_spent or attempt >= _TRANSPORT_RETRIES:
+            if (
+                timed_out
+                or binary_missing
+                or budget_spent
+                or attempt >= _TRANSPORT_RETRIES
+                or len(logged_out_homes) == len(self.codex_homes)
+            ):
                 break
             time.sleep(_TRANSPORT_BACKOFF * (2 ** attempt))
         if last_error is not None:
@@ -1186,6 +1218,9 @@ class CodexCLIJsonClient:
         max_retries: int = 2,
     ) -> Optional[str]:
         """Prose completion over the same rotating CODEX_HOMEs as complete_json."""
+        # The verdict is thread-local and pool workers are recycled, so a
+        # success here must not leave the PREVIOUS document's verdict readable.
+        _note_failure(None)
         prompt = f"{system.strip()}\n\n{user}"
         raw = self._run_prompt(
             prompt,

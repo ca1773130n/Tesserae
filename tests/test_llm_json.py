@@ -953,6 +953,82 @@ def test_codex_does_not_retry_a_permanent_failure(monkeypatch, tmp_path):
     assert len(calls) == 1 and slept == []
 
 
+def test_stale_home_does_not_kill_transport_retry(monkeypatch, tmp_path):
+    """One stale ``~/.codex*`` directory must not cancel the retry for the good one.
+
+    Homes are not accounts. With CODEX_HOME absent from the environment — a
+    daemon, a launchd job, a scrubbed subprocess env — ``__init__`` discovers
+    every ``~/.codex*`` DIRECTORY, and on the target machine four of the five
+    are stale. A logged-out verdict that was sticky per CALL made the whole
+    transport retry inert in exactly that (default) shape.
+    """
+    import types
+
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    good = tmp_path / "codex"
+    stale = tmp_path / "codex-stale"
+    good.mkdir()
+    stale.mkdir()
+
+    calls: list = []
+
+    def fake_run(cmd, **kwargs):
+        home = kwargs.get("env", {}).get("CODEX_HOME")
+        calls.append(home)
+        if home == str(stale):
+            return types.SimpleNamespace(
+                returncode=1, stdout="", stderr="Not logged in. Run `codex login`."
+            )
+        return types.SimpleNamespace(
+            returncode=1, stdout="", stderr="stream error: We're currently experiencing high demand"
+        )
+
+    monkeypatch.setattr(llm_json, "_run_cli", fake_run)
+    monkeypatch.setattr(llm_json.time, "sleep", lambda _s: None)
+
+    client = CodexCLIJsonClient(codex_homes=[str(good), str(stale)])
+    assert client.complete_json(system="s", user="u", schema_name="x") is None
+
+    assert calls.count(str(good)) == llm_json._TRANSPORT_RETRIES + 1
+    assert calls.count(str(stale)) == 1  # asked once; it will answer the same
+    # A capacity blip on the healthy home is NOT an auth failure just because a
+    # sibling directory is logged out.
+    assert llm_json.last_failure_kind() == "unavailable"
+
+
+def test_all_homes_logged_out_aborts_without_retry(monkeypatch, tmp_path):
+    """...and the property the per-home scoping must not break: an expired
+    session still costs ONE rotation, not 3 spawns + 6s of sleep per document."""
+    import types
+
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    home_a = tmp_path / "codex"
+    home_b = tmp_path / "codex-personal1"
+    home_a.mkdir()
+    home_b.mkdir()
+
+    calls: list = []
+    slept: list = []
+
+    def not_logged_in(cmd, **kwargs):
+        calls.append(kwargs.get("env", {}).get("CODEX_HOME"))
+        return types.SimpleNamespace(
+            returncode=1, stdout="", stderr="Not logged in. Run `codex login`."
+        )
+
+    monkeypatch.setattr(llm_json, "_run_cli", not_logged_in)
+    monkeypatch.setattr(llm_json.time, "sleep", lambda s: slept.append(s))
+
+    client = CodexCLIJsonClient(codex_homes=[str(home_a), str(home_b)])
+    assert client.complete_json(system="s", user="u", schema_name="x") is None
+
+    assert calls == [str(home_a), str(home_b)]
+    assert slept == []
+    assert llm_json.last_failure_kind() == "auth"
+
+
 def test_codex_timeout_is_not_reported_as_a_capacity_outage(monkeypatch, tmp_path, caplog):
     """The timeout log line must name the real cause and the real remedy.
 

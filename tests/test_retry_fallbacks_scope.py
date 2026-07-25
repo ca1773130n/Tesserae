@@ -238,6 +238,119 @@ def test_changed_only_without_pending_fallback_still_noops(tmp_path):
     assert third_extractor.calls == []
 
 
+def test_changed_only_noop_with_trends_keeps_the_prior_graph(tmp_path):
+    """A trends project's no-op must REUSE the prior graph, not recompute it.
+
+    The ``noop_skip`` path leaves ``graphs == []`` and loads ``base_graph`` from
+    disk, but the trend layer was recomputed unconditionally — and
+    ``summarize_trends([])`` returns an EMPTY graph, so graph.json was
+    overwritten with nothing while every manifest entry still said ``graphed``.
+    That made the loss PERMANENT: the next ``--changed-only`` no-opped again on
+    the wreck, so a project compiled with ``--trends`` lost its whole corpus to
+    one idempotent rerun.
+    """
+    project, wiki = _make_project(tmp_path, "noop-trends", ["a", "b", "c"])
+
+    first = wiki.compile(changed_only=True, trends=True, doc_extractor=FlakyExtractor())
+    assert first["processed_files"] == 3
+    seeded = _graph_node_ids(project)
+    assert len(seeded) > 1, "fixture must seed a non-trivial graph to lose"
+
+    rerun = FlakyExtractor()
+    second = wiki.compile(changed_only=True, trends=True, doc_extractor=rerun)
+
+    assert second["processed_files"] == 0
+    assert second["skipped_files"] == 3
+    assert rerun.calls == []
+    assert _graph_node_ids(project) == seeded
+
+
+def test_deleting_a_doc_does_not_disable_changed_only_forever(tmp_path):
+    """The stale manifest key of a deleted doc must be pruned by the recompile.
+
+    ``BatchIngestRunner`` only merges into the manifest, so a deleted document
+    left its key behind for good — and ``corpus_unchanged`` (manifest keys ==
+    candidate keys) could then never be True again. Every later
+    ``--changed-only --retry-fallbacks`` re-extracted the WHOLE corpus, which is
+    exactly the bound this mode exists to deliver. Pruning is safe on the run
+    that re-extracted every candidate: graph.json was rebuilt without the
+    deleted doc, so the key has done its subtractive job.
+    """
+    project, wiki = _make_project(tmp_path, "manifest-prune", ["a", "b", "c"])
+    wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())
+    assert wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())["processed_files"] == 0
+
+    (project / "docs" / "a.md").unlink()
+
+    recompile = FlakyExtractor()
+    first = wiki.compile(changed_only=True, doc_extractor=recompile)
+    assert sorted(Path(c).name for c in recompile.calls) == ["b.md", "c.md"]
+    assert first["processed_files"] == 2
+    # The deletion still takes effect — the guard is not being bypassed.
+    assert "Paper:a" not in _graph_node_ids(project)
+    assert {Path(k).name for k in _manifest(project)} == {"b.md", "c.md"}
+
+    # ...and the very next run is a no-op again, instead of re-extracting the
+    # survivors forever.
+    rerun = FlakyExtractor()
+    second = wiki.compile(changed_only=True, doc_extractor=rerun)
+    assert second["processed_files"] == 0
+    assert second["skipped_files"] == 2
+    assert rerun.calls == []
+    assert "Paper:a" not in _graph_node_ids(project)
+
+
+def test_a_scoped_incremental_run_keeps_the_stale_key_the_guard_needs(tmp_path):
+    """Pruning is only safe on the run that rebuilt graph.json from scratch.
+
+    With the experimental differ active the batch re-extracts a SUBSET and the
+    PRIOR graph is merged back in, so a document deleted without an explicit
+    ``changed_paths`` keeps its nodes in graph.json (a known differ gap). Prune
+    its manifest key there and the next plain ``--changed-only`` would see a
+    matching key-set, no-op, and reuse a graph that still carries the deleted
+    doc — the resurrection the subtractive guard exists to prevent.
+    """
+    project, wiki = _make_project(tmp_path, "manifest-prune-incremental", ["a", "b", "c"])
+    cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+    cfg["incremental_compile"] = True  # EXPERIMENTAL — off by default
+    wiki.paths.config.write_text(json.dumps(cfg) + "\n", encoding="utf-8")
+
+    wiki.compile(doc_extractor=FlakyExtractor())
+    (project / "docs" / "a.md").unlink()
+
+    result = wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())
+
+    # The differ ran (a scoped run: nothing re-extracted, the prior graph
+    # reused) and left the deleted doc's nodes behind...
+    assert result["processed_files"] == 0
+    assert "Paper:a" in _graph_node_ids(project)
+    # ...so its manifest key MUST survive to keep the no-op refused.
+    assert {Path(k).name for k in _manifest(project)} == {"a.md", "b.md", "c.md"}
+
+
+def test_manifest_prune_leaves_loader_keyed_entries_alone(tmp_path):
+    """``_ingest_via_loader`` shares this manifest under ``source:`` keys.
+
+    Those keys are never filesystem candidates, so an unguarded prune would
+    erase every loader-keyed entry on the next FS compile — the exact erasure
+    the merge-don't-replace comment on the loader path forbids.
+    """
+    project, wiki = _make_project(tmp_path, "manifest-prune-loader", ["a", "b"])
+    wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())
+
+    manifest_path = project / ".tesserae" / "manifest.json"
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload["files"]["source:session-42"] = {"sha256": "deadbeef", "source_kind": "Session"}
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    (project / "docs" / "a.md").unlink()  # force the pruning recompile
+    wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())
+
+    files = _manifest(project)
+    assert "source:session-42" in files, "an FS run must not erase loader-keyed entries"
+    assert {Path(k).name for k in files if not k.startswith("source:")} == {"b.md"}
+
+
 def test_retry_fallbacks_keeps_full_recompile_when_trends_on(tmp_path, capsys):
     """``trends`` recomputes from THIS run's per-doc graphs, so it needs them all."""
     project, wiki = _make_project(tmp_path, "retry-trends", ["a", "b", "c"])
