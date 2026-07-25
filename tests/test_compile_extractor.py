@@ -227,11 +227,15 @@ def test_llm_extractor_falls_back_per_doc_on_backend_failure(monkeypatch):
     assert g is not None  # fell back to the deterministic baseline
 
 
-def test_doc_extractor_honors_project_provider_and_disables_timeout(monkeypatch):
-    """_build_doc_extractor threads the PROJECT config's llm_provider and asks for
-    no timeout (extraction runs to completion)."""
+def test_doc_extractor_honors_project_provider_and_default_timeout(monkeypatch):
+    """_build_doc_extractor threads the PROJECT config's llm_provider and arms the
+    default wedge guard (extraction is bounded unless explicitly disabled)."""
     import tesserae.llm_json as lj
-    from tesserae.cli import _build_compile_parser, _build_doc_extractor
+    from tesserae.cli import (
+        _DEFAULT_EXTRACT_TIMEOUT,
+        _build_compile_parser,
+        _build_doc_extractor,
+    )
 
     monkeypatch.delenv("TESSERAE_LLM_PROVIDER", raising=False)
     monkeypatch.delenv("TESSERAE_EXTRACT_TIMEOUT", raising=False)
@@ -245,24 +249,35 @@ def test_doc_extractor_honors_project_provider_and_disables_timeout(monkeypatch)
     _build_doc_extractor(_build_compile_parser().parse_args(["--extractor", "llm"]),
                          cfg={"llm_provider": "codex"})
     assert seen["provider"] == "codex"   # project config wins, not the global default
-    assert seen["timeout"] is None       # no default cutoff
+    assert seen["timeout"] == _DEFAULT_EXTRACT_TIMEOUT  # guard armed by default
 
 
-def test_doc_extractor_opt_in_timeout_via_env(monkeypatch):
+def test_extract_timeout_env_parsing(monkeypatch):
     """TESSERAE_EXTRACT_TIMEOUT bounds each extraction call so a wedged codex child
     is killed and that doc falls back to deterministic — instead of hanging the compile.
-    Unset / non-positive / garbage all mean 'no cutoff' (None), byte-identical to prior."""
+    Armed by DEFAULT; only an explicit '0' disables it. Garbage must not silently
+    disarm the guard — it warns and keeps the default."""
     import tesserae.llm_json as lj
-    from tesserae.cli import _build_compile_parser, _build_doc_extractor, _extract_timeout
+    from tesserae.cli import (
+        _DEFAULT_EXTRACT_TIMEOUT,
+        _build_compile_parser,
+        _build_doc_extractor,
+        _extract_timeout,
+    )
 
     # helper parses the env directly
     monkeypatch.delenv("TESSERAE_EXTRACT_TIMEOUT", raising=False)
-    assert _extract_timeout() is None
+    assert _extract_timeout() == _DEFAULT_EXTRACT_TIMEOUT
     monkeypatch.setenv("TESSERAE_EXTRACT_TIMEOUT", "600")
     assert _extract_timeout() == 600
-    for bad in ("0", "-5", "", "abc", "inf", "nan"):
+    # explicit opt-out — the ONLY way to get an unbounded run
+    for off in ("0", "0.0", "-0"):
+        monkeypatch.setenv("TESSERAE_EXTRACT_TIMEOUT", off)
+        assert _extract_timeout() is None, off
+    # unset-equivalent and unusable values keep the guard armed
+    for bad in ("-5", "", "   ", "abc", "10m", "600s", "inf", "nan"):
         monkeypatch.setenv("TESSERAE_EXTRACT_TIMEOUT", bad)
-        assert _extract_timeout() is None, bad
+        assert _extract_timeout() == _DEFAULT_EXTRACT_TIMEOUT, bad
 
     # Whole seconds >= 1: the CLI clients coerce with int(), so a fractional value
     # must NOT round down to 0 (an instant timeout that would degrade every doc to

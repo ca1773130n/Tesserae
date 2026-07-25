@@ -2398,7 +2398,8 @@ def _build_compile_parser() -> argparse.ArgumentParser:
     # Document extractor. Tesserae is an LLM wiki: 'llm' is the DEFAULT — it
     # builds the concept/claim layer via the configured provider (codex/claude/api
     # per llm_provider). 'deterministic' is the structural, key-free, byte-stable
-    # opt-out (CI). No per-doc timeout: a slow doc runs to completion.
+    # opt-out (CI). Each LLM attempt is bounded by TESSERAE_EXTRACT_TIMEOUT
+    # (default 1800s; 0 = run to completion) — see _extract_timeout.
     parser.add_argument("--extractor", choices=["llm", "selective-llm", "deterministic", "claude-cli", "selective-claude"], default="llm",
                         help="Extraction backend. 'llm' (default) builds the concept/claim layer via the configured provider; 'selective-llm' routes only --llm-include globs through the LLM; 'deterministic' is structural-only / byte-stable / key-free.")
     # NB: --llm-provider is already provided by the compile parser's LLM-client args.
@@ -5388,22 +5389,33 @@ def _build_extract_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _extract_timeout() -> Optional[int]:
-    """Per-file LLM extraction cutoff in WHOLE SECONDS, opt-in via ``TESSERAE_EXTRACT_TIMEOUT``.
+#: Per-attempt extraction cutoff when ``TESSERAE_EXTRACT_TIMEOUT`` is unset.
+#: 30 minutes is far above any healthy extraction and far below "forever" —
+#: it exists to break wedges, not to bound cost.
+_DEFAULT_EXTRACT_TIMEOUT = 1800
 
-    Default (env unset) is ``None`` — no cutoff, a slow doc runs to completion,
-    byte-identical to prior behaviour. Set a positive number to bound each
-    codex/claude extraction ATTEMPT: a wedged CLI child (e.g. a network wait
-    that never resolves) is then killed by ``_run_cli``'s process-group guard, the
-    provider client moves on / returns None, and the selective router falls back to
+
+def _extract_timeout() -> Optional[int]:
+    """Per-file LLM extraction cutoff in WHOLE SECONDS, tunable via ``TESSERAE_EXTRACT_TIMEOUT``.
+
+    Default (env unset) is :data:`_DEFAULT_EXTRACT_TIMEOUT`. This bounds each
+    codex/claude extraction ATTEMPT: a wedged CLI child (e.g. a network wait that
+    never resolves) is killed by ``_run_cli``'s process-group guard, the provider
+    client moves on / returns None, and the selective router falls back to
     deterministic for THAT doc instead of blocking the whole compile forever.
+
+    Default-ON deliberately. Shipped opt-in, the guard stayed disarmed and the
+    failure it prevents kept happening in the wild — a `compile --project` observed
+    at 0% CPU for 5h43m behind a codex child idle for 4h06m, minting community
+    summaries it never lived to persist. A safety valve nobody switches on is not
+    a safety valve. ``TESSERAE_EXTRACT_TIMEOUT=0`` restores unbounded runs.
 
     Per ATTEMPT, not per doc: ``_run_prompt`` (llm_json.py) treats a timeout like
     an auth failure and rotates to the next CODEX_HOME / claude config dir, so one
     doc's worst case is ``timeout × <number of configured profiles>``.
 
-    Set but unusable (garbage, non-positive, inf/nan) warns on stderr and falls
-    back to ``None``: a safety valve that silently fails to arm is worse than none.
+    Set but unusable (garbage, negative, inf/nan) warns on stderr and falls back to
+    the default: a typo must not silently disarm the guard.
 
     Rounded UP to a whole second >= 1 because the two CLI clients coerce their
     timeout with ``int()`` (llm_json.py) while the Anthropic client keeps the float:
@@ -5417,16 +5429,18 @@ def _extract_timeout() -> Optional[int]:
 
     raw = os.environ.get("TESSERAE_EXTRACT_TIMEOUT")
     if not raw or not raw.strip():
-        return None
+        return _DEFAULT_EXTRACT_TIMEOUT
     try:
         val = float(raw)
     except (TypeError, ValueError):
         val = float("nan")
-    if val <= 0 or math.isinf(val) or math.isnan(val):
+    if val == 0:
+        return None  # documented escape hatch: run to completion
+    if val < 0 or math.isinf(val) or math.isnan(val):
         print(f"warning: ignoring TESSERAE_EXTRACT_TIMEOUT={raw!r} — expected a "
-              f"positive number of seconds; extraction runs with NO cutoff.",
-              file=sys.stderr)
-        return None
+              f"positive number of seconds (or 0 for no cutoff); falling back to "
+              f"{_DEFAULT_EXTRACT_TIMEOUT}s.", file=sys.stderr)
+        return _DEFAULT_EXTRACT_TIMEOUT
     return max(1, math.ceil(val))
 
 
@@ -5461,7 +5475,7 @@ def _build_doc_extractor(args: argparse.Namespace, cfg: Optional[dict] = None):
         claude_config_dirs=(getattr(args, "claude_config_dir", None) or settings.get("claude_config_dirs")),
         codex_home=settings.get("codex_home"),
         codex_reasoning_effort=settings.get("codex_reasoning_effort") or "medium",
-        timeout=_extract_timeout(),  # opt-in cutoff via TESSERAE_EXTRACT_TIMEOUT (default None = run to completion)
+        timeout=_extract_timeout(),  # per-attempt cutoff, default 1800s (TESSERAE_EXTRACT_TIMEOUT=0 = run to completion)
     )
     if client is None:
         print("warning: no LLM backend available (codex/claude not authed, no "

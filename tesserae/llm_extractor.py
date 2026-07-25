@@ -296,9 +296,12 @@ class LLMResearchExtractor:
     extraction uses — instead of shelling out to one hardcoded CLI. The client
     owns provider selection, OAuth/account rotation, content-keyed caching
     (``cache_key``) and retries, so this extractor is a thin prompt->validate
-    shim. There is NO per-call timeout here: a slow document runs to completion
-    rather than being silently truncated into the deterministic fallback (the
-    ``--claude-timeout`` footgun is gone)."""
+    shim. This extractor sets no timeout of its own; the bound lives on the
+    client, per ATTEMPT, from ``cli._extract_timeout`` (``TESSERAE_EXTRACT_TIMEOUT``,
+    default 1800s, ``0`` = run to completion). A doc that exhausts every
+    configured profile lands in the deterministic fallback for THAT doc — the
+    old ``--claude-timeout`` footgun is still gone; what replaced it bounds an
+    attempt rather than the document."""
 
     def __init__(self, client: object, *, guidance: str = "") -> None:
         self.client = client
