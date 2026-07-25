@@ -1003,9 +1003,17 @@ def build_default_json_client(
     ``ANTHROPIC_API_KEY`` env var required when ``llm_api_key`` is
     configured.
     """
-    # Test seam wins.
+    # Test seam wins — but it must still honour the caller's timeout. Dropping
+    # it here handed the injected fake ``AnthropicLLMJsonClient``'s own 30s
+    # default no matter what the caller passed, so a test could not observe the
+    # timeout the production path would have used. Same _KEEP_TIMEOUT semantics
+    # as the real builders below: sentinel = the client's own default, an
+    # explicit value (including None = no cutoff) is forwarded verbatim.
     if _CLIENT_FACTORY is not None:
-        return AnthropicLLMJsonClient(model=model or "claude-sonnet-4-6")
+        return AnthropicLLMJsonClient(
+            model=model or "claude-sonnet-4-6",
+            **({} if timeout is _KEEP_TIMEOUT else {"timeout": timeout}),
+        )
 
     # Explicit args (threaded from a project config by the caller) beat the
     # env → global-config resolution. ``settings["provider"]`` already folds
