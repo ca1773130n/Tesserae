@@ -27,10 +27,12 @@ recipe.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
 import re
+import secrets
 import signal
 import subprocess
 import time
@@ -134,6 +136,61 @@ class LLMJsonClient(Protocol):
         account-rotation path as the JSON extractors.
         """
         ...
+
+
+#: On-disk response cache for the CLI clients, keyed on the caller's
+#: ``cache_key``. The Anthropic client gets prompt caching from the SDK; the
+#: codex/claude CLI clients had none, so they accepted ``cache_key`` and
+#: ignored it — every recompile re-paid full price for byte-identical input.
+#: Global rather than per-project on purpose: the key is a content digest, so
+#: two projects holding the same document should share the answer.
+#: ponytail: no eviction. Entries are small JSON and keyed by content digest;
+#: add an LRU sweep if the directory ever actually gets big.
+_CLI_CACHE_DIR = Path.home() / ".tesserae" / "llm_cache"
+
+
+def _cli_cache_enabled() -> bool:
+    return (os.environ.get("TESSERAE_LLM_CACHE") or "").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _cli_cache_path(cache_key: str, *, model: str, extra: str = "") -> Path:
+    """Cache file for one (content, model, variant) triple.
+
+    The caller's ``cache_key`` covers the document, kind and guidance — but NOT
+    which model produced the answer. Fold the model and any per-client variant
+    (e.g. reasoning effort) in here, so switching models re-asks instead of
+    serving another model's output.
+    """
+    digest = hashlib.sha256(f"{cache_key}\n{model}\n{extra}".encode("utf-8")).hexdigest()
+    return _CLI_CACHE_DIR / digest[:2] / f"{digest}.json"
+
+
+def _cli_cache_get(cache_key: Optional[str], *, model: str, extra: str = "") -> Optional[str]:
+    """Cached raw response text, or None. Never raises — a bad cache must not
+    break a compile, it just means paying for the call."""
+    if not cache_key or not _cli_cache_enabled():
+        return None
+    try:
+        payload = json.loads(_cli_cache_path(cache_key, model=model, extra=extra).read_text(encoding="utf-8"))
+        raw = payload.get("raw")
+        return raw if isinstance(raw, str) else None
+    except (OSError, json.JSONDecodeError, ValueError):
+        return None
+
+
+def _cli_cache_put(cache_key: Optional[str], raw: str, *, model: str, extra: str = "") -> None:
+    """Store a SUCCESSFUL response. Atomic tmp+replace with a pid/random suffix,
+    matching the manifest/sidecar idiom, so concurrent extractions can't collide."""
+    if not cache_key or not _cli_cache_enabled() or not raw:
+        return
+    path = _cli_cache_path(cache_key, model=model, extra=extra)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(f".tmp.{os.getpid()}.{secrets.token_hex(4)}")
+        tmp.write_text(json.dumps({"model": model, "raw": raw}, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError:
+        pass  # a cache that can't be written is a slow compile, not a failed one
 
 
 def _configured_default_model(for_providers: Sequence[str]) -> Optional[str]:
@@ -582,12 +639,23 @@ class ClaudeCLIJsonClient:
             f"no trailing commas. Schema name: {schema_name}.\n\n"
             f"{user}"
         )
+        model = self.model or "claude-cli-default"
+        cached = _cli_cache_get(cache_key, model=model, extra=schema_name)
+        if cached is not None:
+            return parse_json_tolerant(cached)
         raw = self._run_prompt(
             prompt,
             max_retries=max_retries,
             error_label=f"ClaudeCLIJsonClient.complete_json failed (schema={schema_name})",
         )
-        return parse_json_tolerant(raw) if raw is not None else None
+        if raw is None:
+            return None
+        parsed = parse_json_tolerant(raw)
+        if parsed is not None:
+            # Only a parseable answer is worth keeping — caching a malformed
+            # generation would make one bad roll permanent.
+            _cli_cache_put(cache_key, raw, model=model, extra=schema_name)
+        return parsed
 
     def complete_text(
         self,
@@ -637,7 +705,7 @@ class CodexCLIJsonClient:
 
         # Hardcoded literal is a last-resort fallback behind the configured
         # llm_model (env TESSERAE_LLM_MODEL → global config).
-        self.model = model or _configured_default_model(("codex",)) or "gpt-5.4"
+        self.model = model or _configured_default_model(("codex",)) or "gpt-5.6-luna"
         # Reasoning effort for Tesserae's own codex calls. Defaults to
         # ``medium`` — structured graph/finding extraction does NOT need the
         # ``xhigh`` a user may set globally in ``~/.codex/config.toml`` for
@@ -757,11 +825,23 @@ class CodexCLIJsonClient:
             f"no trailing commas. Schema name: {schema_name}.\n\n"
             f"{user}"
         )
+        model = self.model or "codex-cli-default"
+        extra = f"{schema_name}\n{self.reasoning_effort or ''}"
+        cached = _cli_cache_get(cache_key, model=model, extra=extra)
+        if cached is not None:
+            return parse_json_tolerant(cached)
         raw = self._run_prompt(
             prompt,
             error_label=f"CodexCLIJsonClient.complete_json failed (schema={schema_name})",
         )
-        return parse_json_tolerant(raw or "") if raw is not None else None
+        if raw is None:
+            return None
+        parsed = parse_json_tolerant(raw or "")
+        if parsed is not None:
+            # Only a parseable answer is worth keeping — caching a malformed
+            # generation would make one bad roll permanent.
+            _cli_cache_put(cache_key, raw, model=model, extra=extra)
+        return parsed
 
     def complete_text(
         self,
@@ -995,7 +1075,7 @@ def build_default_json_client(
     5. ``None`` — caller falls back to the structural-only path.
 
     ``provider="codex"`` puts the Codex CLI first (codex → claude → API
-    key → None); the model defaults to ``gpt-5.4`` on the codex path.
+    key → None); the model defaults to ``gpt-5.6-luna`` on the codex path.
 
     ``provider="custom"`` targets a claude-compatible endpoint through the
     Anthropic SDK with the resolved ``llm_model`` / ``llm_base_url`` /

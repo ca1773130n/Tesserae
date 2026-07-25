@@ -476,7 +476,7 @@ def test_configured_llm_model_is_provider_scoped_fallback(tmp_path: Path, monkey
     assert lj.ClaudeCLIJsonClient(config_dirs=["/x"]).model == "opus"
     assert lj.ClaudeCLIJsonClient(model="sonnet", config_dirs=["/x"]).model == "sonnet"
     # provider-scoped: the codex client keeps its native default
-    assert lj.CodexCLIJsonClient(codex_homes=["/y"]).model == "gpt-5.4"
+    assert lj.CodexCLIJsonClient(codex_homes=["/y"]).model == "gpt-5.6-luna"
 
     # env beats config
     monkeypatch.setenv("TESSERAE_LLM_MODEL", "env-model")

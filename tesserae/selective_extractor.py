@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Optional, Protocol, Sequence
@@ -35,6 +36,12 @@ class SelectiveClaudeResearchExtractor:
         self.include_patterns = list(include_patterns)
         self.claude_limit = claude_limit
         self.claude_calls = 0
+        #: Per-thread, because BatchIngestRunner may extract concurrently: the
+        #: runner reads ``last_was_fallback`` right after its own extract_text
+        #: call, so the flag must belong to THAT call and not to whichever
+        #: worker happened to write it last. Sequential callers see identical
+        #: behaviour (one thread, one slot).
+        self._tls = threading.local()
         #: True when the LAST extract_* call was routed to the LLM and the LLM
         #: failed, so the result is the deterministic baseline rather than the
         #: typed extraction the caller asked for. ``BatchIngestRunner`` reads it
@@ -45,8 +52,15 @@ class SelectiveClaudeResearchExtractor:
         #: i18n duplicate extracts empty by design): only a raise counts, which
         #: covers both observed failures — a killed wedged child and codex
         #: returning unusable JSON (GraphJSONValidationError).
-        self.last_was_fallback = False
         self._guidance = ""
+
+    @property
+    def last_was_fallback(self) -> bool:
+        return bool(getattr(self._tls, "fallback", False))
+
+    @last_was_fallback.setter
+    def last_was_fallback(self, value: bool) -> None:
+        self._tls.fallback = bool(value)
 
     @property
     def guidance(self) -> str:

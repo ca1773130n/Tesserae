@@ -652,7 +652,7 @@ def test_codex_client_invokes_codex_exec_and_parses_json(monkeypatch, tmp_path):
     assert call["cmd"][-1] == "-"
     assert "--model" in call["cmd"]
     # default model
-    assert call["cmd"][call["cmd"].index("--model") + 1] == "gpt-5.4"
+    assert call["cmd"][call["cmd"].index("--model") + 1] == "gpt-5.6-luna"
     # CODEX_HOME routed to the requested home
     assert call["env"]["CODEX_HOME"] == str(home)
     # prompt carries the JSON-only contract pieces
@@ -942,3 +942,61 @@ def test_build_default_json_client_seam_forwards_timeout():
         assert seen["timeout"] == 30.0
     finally:
         set_client_factory(None)
+
+
+def test_cli_clients_honour_cache_key(tmp_path, monkeypatch):
+    """cache_key was accepted and ignored by both CLI clients, so every recompile
+    re-paid full price for byte-identical input. A second identical call must now
+    hit disk instead of the CLI — and a different model must NOT reuse the answer."""
+    import tesserae.llm_json as lj
+
+    monkeypatch.setattr(lj, "_CLI_CACHE_DIR", tmp_path / "cache")
+    monkeypatch.delenv("TESSERAE_LLM_CACHE", raising=False)
+
+    calls = []
+
+    def _fake_run(self, prompt, **kw):
+        calls.append(prompt)
+        return '{"nodes": [], "edges": []}'
+
+    monkeypatch.setattr(lj.CodexCLIJsonClient, "_run_prompt", _fake_run)
+    client = lj.CodexCLIJsonClient(codex_homes=["/x"], model="gpt-5.6-luna")
+
+    a = client.complete_json(system="s", user="u", schema_name="g", cache_key="k1")
+    b = client.complete_json(system="s", user="u", schema_name="g", cache_key="k1")
+    assert a == b == {"nodes": [], "edges": []}
+    assert len(calls) == 1, "second identical call should have hit the cache"
+
+    # A different model must re-ask: the caller's cache_key covers content only.
+    other = lj.CodexCLIJsonClient(codex_homes=["/x"], model="some-other-model")
+    other.complete_json(system="s", user="u", schema_name="g", cache_key="k1")
+    assert len(calls) == 2, "a different model must not reuse another model's answer"
+
+    # No cache_key => no caching (callers that don't opt in are unaffected).
+    client.complete_json(system="s", user="u", schema_name="g")
+    client.complete_json(system="s", user="u", schema_name="g")
+    assert len(calls) == 4
+
+    # Kill switch.
+    monkeypatch.setenv("TESSERAE_LLM_CACHE", "0")
+    client.complete_json(system="s", user="u", schema_name="g", cache_key="k1")
+    assert len(calls) == 5
+
+
+def test_cli_cache_never_stores_unparseable_output(tmp_path, monkeypatch):
+    """Caching a malformed generation would make one bad roll permanent."""
+    import tesserae.llm_json as lj
+
+    monkeypatch.setattr(lj, "_CLI_CACHE_DIR", tmp_path / "cache")
+    monkeypatch.delenv("TESSERAE_LLM_CACHE", raising=False)
+    calls = []
+
+    def _fake_run(self, prompt, **kw):
+        calls.append(prompt)
+        return "not json at all"
+
+    monkeypatch.setattr(lj.CodexCLIJsonClient, "_run_prompt", _fake_run)
+    client = lj.CodexCLIJsonClient(codex_homes=["/x"], model="gpt-5.6-luna")
+    client.complete_json(system="s", user="u", schema_name="g", cache_key="bad")
+    client.complete_json(system="s", user="u", schema_name="g", cache_key="bad")
+    assert len(calls) == 2, "a malformed answer must not be cached"

@@ -2940,7 +2940,7 @@ def default_raganything_backend_config(name: str = "tesserae") -> dict:
         "vlm_enhanced": True,
         "llm": {
             "provider": "codex",
-            "model": "gpt-5.4",
+            "model": "gpt-5.6-luna",
             "timeout": 300,
             "claude_config_dir": None,
         },

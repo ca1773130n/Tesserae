@@ -54,7 +54,7 @@ def test_cli_can_select_llm_extractor(monkeypatch, tmp_path):
 
     assert main([
         "extract", str(source), "--source-kind", "Paper",
-        "--extractor", "llm", "--llm-provider", "codex", "--llm-model", "gpt-5.4",
+        "--extractor", "llm", "--llm-provider", "codex", "--llm-model", "gpt-5.6-luna",
         "-o", str(output),
     ]) == 0
 
@@ -324,7 +324,7 @@ def test_cli_extract_cognee_flags_removed_with_stub(tmp_path, capsys):
         ["--cognee-cognify"],
         ["--cognee-dataset", "tesserae_test"],
         ["--cognee-codex-cognify"],
-        ["--cognee-codex-model", "gpt-5.4"],
+        ["--cognee-codex-model", "gpt-5.6-luna"],
         ["--cognee-codex-timeout", "11"],
         ["--cognee-embedding-provider", "ollama"],
         ["--cognee-local-embedding-dimensions", "1024"],

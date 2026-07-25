@@ -15,12 +15,12 @@ def test_make_codex_llm_func_routes_to_run_codex_cli(monkeypatch):
     # was removed; the adapter resolves it via module-global lookup.
     monkeypatch.setattr("tesserae.raganything_llm.run_codex_cli", fake_run_codex_cli)
 
-    func = mod.make_codex_llm_func(model="gpt-5.4", timeout=60)
+    func = mod.make_codex_llm_func(model="gpt-5.6-luna", timeout=60)
     answer = asyncio.run(func("What is X?", system_prompt="be concise."))
     assert answer == "codex-answer"
     assert "be concise." in captured["prompt"]
     assert "What is X?" in captured["prompt"]
-    assert captured["model"] == "gpt-5.4"
+    assert captured["model"] == "gpt-5.6-luna"
     assert captured["timeout"] == 60
 
 

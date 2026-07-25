@@ -1,4 +1,6 @@
 import json
+import threading
+import time
 from pathlib import Path
 
 from tesserae.batch import BatchIngestRunner, sha256_text
@@ -194,3 +196,74 @@ def test_fallback_docs_are_marked_and_only_retried_on_demand(tmp_path):
     # The mark is cleared, so the next run skips it again.
     entries = json.loads(manifest.read_text(encoding="utf-8"))["files"]
     assert "fallback" not in entries[str(bad)]
+
+
+class SlowJitterExtractor(CountingExtractor):
+    """Extractor whose completion order deliberately differs from path order.
+
+    Later paths finish FIRST, so a runner that collected results by completion
+    order would produce a different graph than a sequential run.
+    """
+
+    def __init__(self, n: int):
+        super().__init__()
+        self.n = n
+        self.lock = threading.Lock()
+
+    def extract_text(self, content, source_path, source_kind="SourceDocument"):
+        idx = int(Path(source_path).stem.split("_")[1])
+        time.sleep(0.02 * (self.n - idx))  # reverse: the last path returns first
+        with self.lock:
+            self.calls.append(source_path)
+        p = Path(source_path)
+        return ResearchGraph(
+            nodes=[ResearchNode(id=f"Paper:{p.stem}:test", name=p.stem, type=ResearchNodeType.PAPER)],
+            edges=[],
+        )
+
+
+def test_parallel_extraction_matches_sequential_byte_for_byte(tmp_path, monkeypatch):
+    """Concurrency may change SPEED, never OUTPUT.
+
+    merge_graphs resolves duplicate node ids via prefer_research_node, so results
+    collected in completion order would yield a different graph than path order.
+    The extractor here finishes in reverse, which is exactly the case that breaks
+    a naive implementation.
+    """
+    n = 8
+    files = []
+    for i in range(n):
+        f = tmp_path / f"doc_{i}.md"
+        f.write_text(f"# Doc {i}\nGaussian Splatting {i}", encoding="utf-8")
+        files.append(f)
+
+    def _run(workers: int, manifest_name: str):
+        monkeypatch.setenv("TESSERAE_EXTRACT_CONCURRENCY", str(workers))
+        runner = BatchIngestRunner(
+            extractor=SlowJitterExtractor(n), manifest_path=tmp_path / manifest_name
+        )
+        res = runner.run(files, source_kind="Paper")
+        return res, json.loads((tmp_path / manifest_name).read_text(encoding="utf-8"))
+
+    seq, seq_manifest = _run(1, "seq.json")
+    par, par_manifest = _run(4, "par.json")
+
+    assert par.processed == seq.processed == n
+    # Path order preserved regardless of completion order — the actual invariant.
+    assert par.processed_paths == seq.processed_paths == [str(f) for f in files]
+    assert [nd.id for nd in par.graph.nodes] == [nd.id for nd in seq.graph.nodes]
+    assert par_manifest == seq_manifest
+
+
+def test_extract_concurrency_env_parsing(monkeypatch, capsys):
+    from tesserae.batch import _DEFAULT_EXTRACT_CONCURRENCY, _extract_concurrency
+
+    monkeypatch.delenv("TESSERAE_EXTRACT_CONCURRENCY", raising=False)
+    assert _extract_concurrency() == _DEFAULT_EXTRACT_CONCURRENCY
+    monkeypatch.setenv("TESSERAE_EXTRACT_CONCURRENCY", "1")
+    assert _extract_concurrency() == 1          # opt back into sequential
+    monkeypatch.setenv("TESSERAE_EXTRACT_CONCURRENCY", "0")
+    assert _extract_concurrency() == 1          # never zero workers
+    monkeypatch.setenv("TESSERAE_EXTRACT_CONCURRENCY", "lots")
+    assert _extract_concurrency() == _DEFAULT_EXTRACT_CONCURRENCY
+    assert "not an integer" in capsys.readouterr().err
