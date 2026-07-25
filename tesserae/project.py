@@ -455,6 +455,7 @@ class ProjectWiki:
         llm_passes_client: Optional["LLMJsonClient"] = None,
         progress: Optional["CompileProgress"] = None,
         incremental_override: Optional[bool] = None,
+        retry_fallbacks: bool = False,
     ) -> dict:
         """Run the substrate-discovery + extraction pipeline for this project.
 
@@ -632,7 +633,15 @@ class ProjectWiki:
             ):
                 manifest_files = self._load_manifest()
                 candidate_keys = {str(md) for md in markdown_files}
-                if set(manifest_files.keys()) == candidate_keys and all(
+                # ``--retry-fallbacks`` has work to do precisely when nothing
+                # changed, so a pending fallback entry must beat the no-op —
+                # otherwise the flag is swallowed here and never reaches the
+                # batch runner that acts on it.
+                has_pending_fallback = retry_fallbacks and any(
+                    manifest_files.get(str(md), {}).get("fallback") is True
+                    for md in markdown_files
+                )
+                if not has_pending_fallback and set(manifest_files.keys()) == candidate_keys and all(
                     manifest_files.get(str(md), {}).get("sha256")
                     == sha256_text(read_markdown_text(md))
                     for md in markdown_files
@@ -656,6 +665,7 @@ class ProjectWiki:
                     changed_only=effective_changed_only,
                     limit=limit,
                     progress=progress,
+                    retry_fallbacks=retry_fallbacks,
                 )
                 graphs = batch.graphs or [batch.graph]
                 processed = batch.processed
@@ -1515,6 +1525,7 @@ class ProjectWiki:
         progress: Optional["CompileProgress"] = None,
         incremental_override: Optional[bool] = None,
         lock_wait: Optional[float] = None,
+        retry_fallbacks: bool = False,
     ) -> dict:
         """Compile every configured source into the .tesserae artifacts.
 
@@ -1575,6 +1586,7 @@ class ProjectWiki:
                 llm_passes_client=llm_passes_client,
                 progress=progress,
                 incremental_override=incremental_override,
+                retry_fallbacks=retry_fallbacks,
             )
             # Tail-of-compile lint: refresh lint-report.md/json at every
             # publish so the verifier signal is never stale. The linter only

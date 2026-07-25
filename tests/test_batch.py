@@ -134,3 +134,63 @@ def test_batch_runner_progress_is_optional(tmp_path):
     manifest = tmp_path / "manifest.json"
     result = BatchIngestRunner(extractor=CountingExtractor(), manifest_path=manifest).run([f1])
     assert result.processed == 1
+
+
+class FlakyExtractor(CountingExtractor):
+    """Extractor that reports a deterministic fallback for chosen paths.
+
+    Mirrors ``SelectiveClaudeResearchExtractor``'s duck-typed contract: the
+    runner reads ``last_was_fallback`` after each extract_text call.
+    """
+
+    def __init__(self, failing: set[str] | None = None):
+        super().__init__()
+        self.failing = failing if failing is not None else set()
+        self.last_was_fallback = False
+
+    def extract_text(self, content, source_path, source_kind="SourceDocument"):
+        self.last_was_fallback = Path(source_path).name in self.failing
+        return super().extract_text(content, source_path, source_kind)
+
+
+def test_fallback_docs_are_marked_and_only_retried_on_demand(tmp_path):
+    """A doc whose typed extraction fell back is content-identical to a clean one,
+    so plain --changed-only skips it forever. --retry-fallbacks re-attempts exactly
+    those, and a clean entry stays byte-identical to what prior versions wrote."""
+    good = tmp_path / "good.md"
+    bad = tmp_path / "bad.md"
+    good.write_text("# Good\nGaussian Splatting", encoding="utf-8")
+    bad.write_text("# Bad\nNovel View Synthesis", encoding="utf-8")
+    manifest = tmp_path / "manifest.json"
+
+    flaky = FlakyExtractor(failing={"bad.md"})
+    first = BatchIngestRunner(extractor=flaky, manifest_path=manifest).run(
+        [good, bad], source_kind="Paper", changed_only=True
+    )
+    assert first.processed == 2
+    assert first.fallback_paths == [str(bad)]
+
+    entries = json.loads(manifest.read_text(encoding="utf-8"))["files"]
+    assert entries[str(bad)]["fallback"] is True
+    assert "fallback" not in entries[str(good)]  # clean entries unchanged
+
+    # Plain changed-only leaves the degraded doc degraded — the bug.
+    plain = FlakyExtractor(failing={"bad.md"})
+    second = BatchIngestRunner(extractor=plain, manifest_path=manifest).run(
+        [good, bad], source_kind="Paper", changed_only=True
+    )
+    assert second.processed == 0 and second.skipped == 2
+    assert plain.calls == []
+
+    # --retry-fallbacks re-attempts ONLY the fallback doc.
+    recovered = FlakyExtractor(failing=set())  # provider healthy again
+    third = BatchIngestRunner(extractor=recovered, manifest_path=manifest).run(
+        [good, bad], source_kind="Paper", changed_only=True, retry_fallbacks=True
+    )
+    assert recovered.calls == [str(bad)]
+    assert third.processed == 1 and third.skipped == 1
+    assert third.fallback_paths == []
+
+    # The mark is cleared, so the next run skips it again.
+    entries = json.loads(manifest.read_text(encoding="utf-8"))["files"]
+    assert "fallback" not in entries[str(bad)]

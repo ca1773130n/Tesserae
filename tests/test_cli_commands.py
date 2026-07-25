@@ -586,12 +586,13 @@ def test_compile_flag_surface_is_small():
 
     parser = cli._build_compile_parser()
     flags = [a for a in parser._actions if a.option_strings and "-h" not in a.option_strings]
-    # 10 core dests (llm_provider/claude_config_dir/codex_home + project +
-    # changed_only + limit + refresh_integrations + sessions_enabled +
-    # distill_enabled + strict) + the provider-agnostic extractor surface:
-    # extractor + llm_model/llm_include/llm_limit (LLM is the default), with the
-    # deprecated claude_include/limit/timeout/model hidden aliases = 18 dests max.
-    assert len({a.dest for a in flags}) <= 18, sorted({a.dest for a in flags})
+    # 11 core dests (llm_provider/claude_config_dir/codex_home + project +
+    # changed_only + retry_fallbacks + limit + refresh_integrations +
+    # sessions_enabled + distill_enabled + strict) + the provider-agnostic
+    # extractor surface: extractor + llm_model/llm_include/llm_limit (LLM is the
+    # default), with the deprecated claude_include/limit/timeout/model hidden
+    # aliases = 19 dests max.
+    assert len({a.dest for a in flags}) <= 19, sorted({a.dest for a in flags})
 
 
 def test_compile_keeps_exactly_the_dieted_dests():
@@ -602,6 +603,13 @@ def test_compile_keeps_exactly_the_dieted_dests():
     assert sorted({a.dest for a in flags}) == sorted([
         "project",
         "changed_only",
+        # ``--retry-fallbacks`` is the recovery half of ``--changed-only``: a doc
+        # whose typed extraction failed is content-identical to one that
+        # succeeded, so changed-only alone skips it FOREVER and the degradation
+        # is permanent. Opt-in (peer of ``distill --retry-fallbacks``) rather
+        # than automatic, so a doc that reliably fails the provider doesn't tax
+        # every future compile.
+        "retry_fallbacks",
         "limit",
         "refresh_integrations",
         "sessions_enabled",
