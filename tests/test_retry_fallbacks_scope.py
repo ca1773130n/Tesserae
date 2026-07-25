@@ -494,7 +494,7 @@ def test_plain_changed_only_refuses_the_noop_when_a_kill_left_the_manifest_ahead
     assert "Paper:d" in _graph_node_ids(project)
     # ...and the recompile the operator did not ask for is explained.
     err = capsys.readouterr().err
-    assert "--changed-only could not skip this run" in err
+    assert "--changed-only could not reuse the prior graph" in err
     assert "graph.json is not known to cover every tracked document" in err
 
 
@@ -574,7 +574,7 @@ def test_manifest_predating_the_marker_recompiles_once_and_says_why(tmp_path, ca
     second = FlakyExtractor()
     assert wiki.compile(changed_only=True, doc_extractor=second)["processed_files"] == 0
     assert second.calls == []
-    assert "could not skip this run" not in capsys.readouterr().err
+    assert "could not reuse the prior graph" not in capsys.readouterr().err
 
 
 def test_graphed_marker_is_dropped_for_docs_a_narrower_compile_no_longer_covers(
@@ -814,3 +814,91 @@ def test_a_scoped_run_unstamps_the_departed_doc_but_not_the_deferred_one(tmp_pat
         "c.md",
         "d.md",
     }
+
+
+def test_incremental_reuse_refuses_a_prior_graph_a_kill_left_partial(
+    tmp_path, monkeypatch, capsys
+):
+    """The experimental differ has a reuse path of its own, and it needs the marker.
+
+    With ``incremental_compile=true`` the completeness guard was skipped
+    outright (it required ``not incremental_active``), yet the differ reuses the
+    prior ``graph.json`` verbatim whenever the batch re-extracts nothing. Kill a
+    run after the manifest write but before ``_write_artifacts`` and the added
+    doc sits at a matching sha with no ``graphed`` stamp: the next
+    ``--changed-only`` skips it by sha, hits ``processed == 0``, reuses a graph
+    that never had it — and reports a clean run. Nothing ever re-stamps, so the
+    document is missing for good.
+    """
+    project, wiki = _make_project(tmp_path, "incremental-killed", ["a", "b"])
+    cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+    cfg["incremental_compile"] = True  # EXPERIMENTAL — off by default
+    wiki.paths.config.write_text(json.dumps(cfg) + "\n", encoding="utf-8")
+
+    wiki.compile(doc_extractor=FlakyExtractor())
+    assert all(entry.get("graphed") is True for entry in _manifest(project).values())
+
+    (project / "docs" / "c.md").write_text("# c\nbody", encoding="utf-8")
+    with monkeypatch.context() as kill:
+        _kill_during(kill)
+        with pytest.raises(KeyboardInterrupt):
+            wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())
+
+    # The state the repro depends on: three tracked docs at matching shas, a
+    # graph.json holding two, and the new one unstamped.
+    assert {Path(k).name for k in _manifest(project)} == {"a.md", "b.md", "c.md"}
+    assert "Paper:c" not in _graph_node_ids(project)
+    capsys.readouterr()
+
+    rerun = FlakyExtractor()
+    result = wiki.compile(changed_only=True, doc_extractor=rerun)
+
+    assert sorted(Path(c).name for c in rerun.calls) == ["a.md", "b.md", "c.md"]
+    assert result["processed_files"] == 3
+    assert "Paper:c" in _graph_node_ids(project)
+    assert "graph.json is not known to cover every tracked document" in capsys.readouterr().err
+
+    # ...and the guard is not a standing tax on the differ: that recompile
+    # re-stamped, so the very next incremental run reuses the prior graph again
+    # instead of re-extracting everything forever.
+    after = FlakyExtractor()
+    second = wiki.compile(changed_only=True, doc_extractor=after)
+    assert second["processed_files"] == 0
+    assert after.calls == []
+    assert "Paper:c" in _graph_node_ids(project)
+
+
+def test_a_loader_keyed_entry_does_not_disable_scoped_filesystem_reuse(tmp_path, capsys):
+    """``source:`` keys are not filesystem candidates and never carry a stamp.
+
+    ``_ingest_via_loader`` shares this manifest, writing entries keyed on
+    ``source:<id>`` without a ``graphed`` marker (only the FS path stamps). The
+    key-set comparison behind ``corpus_unchanged`` and the all-values scan
+    behind ``graph_covers_corpus`` both counted them, so one loader run made
+    every later filesystem ``--changed-only`` re-extract the WHOLE corpus,
+    permanently — the same erasure the manifest prune already excludes them
+    from.
+    """
+    project, wiki = _make_project(tmp_path, "mixed-loader-fs", ["a", "b", "c"])
+    wiki.compile(changed_only=True, doc_extractor=FlakyExtractor(failing={"c.md"}))
+
+    manifest_path = project / ".tesserae" / "manifest.json"
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload["files"]["source:session-42"] = {"sha256": "deadbeef", "source_kind": "Session"}
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    capsys.readouterr()
+
+    recovered = FlakyExtractor(failing=set())
+    result = wiki.compile(changed_only=True, retry_fallbacks=True, doc_extractor=recovered)
+
+    # Still the 137->35 bound: only the marked doc, and the loader entry stays.
+    assert [Path(c).name for c in recovered.calls] == ["c.md"]
+    assert result["processed_files"] == 1
+    assert "source:session-42" in _manifest(project)
+    assert "ResearchTopic:c-typed" in _graph_node_ids(project)
+    assert "could not scope this run" not in capsys.readouterr().err
+
+    # ...and the plain no-op short-circuit survives the loader entry too.
+    rerun = FlakyExtractor()
+    assert wiki.compile(changed_only=True, doc_extractor=rerun)["processed_files"] == 0
+    assert rerun.calls == []

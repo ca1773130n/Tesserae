@@ -585,6 +585,9 @@ class ProjectWiki:
         # *subset*; a plain ``changed_only`` rerun either no-ops (nothing
         # changed) or falls back to a full recompile (something changed), so it
         # never produces a partial graph.json.
+        # Both this and ``incremental_active`` can still be DEMOTED below, when
+        # the manifest shows ``graph.json`` is not known to cover every tracked
+        # document: the differ would reuse that partial graph as the corpus.
         effective_changed_only = changed_only and incremental_active
         # ...with ONE narrow exception, decided below: ``--changed-only
         # --retry-fallbacks`` on a corpus that is byte-for-byte unchanged AND
@@ -660,12 +663,13 @@ class ProjectWiki:
             # warning only covers a missing ``--changed-only``; these are the
             # other four exits.
             fallback_blocked: Optional[str] = None
-            # Same disqualifier, reached on the plain ``--changed-only`` path
-            # (no pending fallback): the no-op was refused, so the operator is
-            # about to pay for a full recompile they did not ask for and must be
-            # told why. Also fires ONCE per workspace whose manifest predates the
-            # ``graphed`` marker — that recompile re-stamps every entry, so the
-            # next ``--changed-only`` no-ops again.
+            # Same disqualifier, reached on the two ``--changed-only`` paths that
+            # reuse the prior graph without a pending fallback: the plain no-op
+            # skip, and the experimental differ (demoted below). Either way the
+            # operator is about to pay for a full recompile they did not ask for
+            # and must be told why. Also fires ONCE per workspace whose manifest
+            # predates the ``graphed`` marker — that recompile re-stamps every
+            # entry, so the next ``--changed-only`` reuses again.
             noop_blocked: Optional[str] = None
             # One reason string, both exits — they are the same state.
             ungraphed_reason = (
@@ -673,109 +677,153 @@ class ProjectWiki:
                 "(interrupted compile, or a manifest predating the "
                 "completeness marker)"
             )
-            if (
-                changed_only
-                and not incremental_active
-                and markdown_files
-                and self.paths.graph.exists()
-            ):
+            if changed_only and markdown_files and self.paths.graph.exists():
                 manifest_files = self._load_manifest()
                 candidate_keys = {str(md) for md in markdown_files}
-                # ``--retry-fallbacks`` has work to do precisely when nothing
-                # changed, so a pending fallback entry must beat the no-op —
-                # otherwise the flag is swallowed here and never reaches the
-                # batch runner that acts on it.
-                has_pending_fallback = retry_fallbacks and any(
-                    manifest_files.get(str(md), {}).get("fallback") is True
-                    for md in markdown_files
-                )
-                corpus_unchanged = set(manifest_files.keys()) == candidate_keys and all(
-                    manifest_files.get(str(md), {}).get("sha256")
-                    == sha256_text(read_markdown_text(md))
-                    for md in markdown_files
-                )
+                # ``_ingest_via_loader`` shares this manifest under ``source:``
+                # keys. They are never filesystem candidates and never carry a
+                # ``graphed`` stamp (only the FS path stamps), so counting them
+                # made BOTH predicates below permanently false in any workspace
+                # that had ever run a loader — one loader run cost every later
+                # filesystem ``--changed-only`` the whole corpus. Compare
+                # filesystem candidates against filesystem-keyed entries only,
+                # the same exclusion the manifest prune below already applies.
+                # ponytail: ceiling — ``graphed`` therefore says nothing about
+                # loader-sourced coverage, and the loader path (which rebuilds
+                # graph.json from its own sources alone) does not consult these
+                # predicates. Spelling out what that costs, because it is the
+                # same silent failure this guard exists to end: kill a
+                # ``compile(loader=..., changed_only=True)`` mid-run with the
+                # experimental differ on and ``_ingest_via_loader``'s ``finally``
+                # has already persisted the new source's sha, so every later run
+                # skips it on a sha match and reuses a graph that will never
+                # contain it — no warning, no self-heal. Pre-existing, and
+                # unreachable from the CLI or the daemon (neither passes a
+                # loader); the library ``compile(loader=...)`` API is the only
+                # way in. So the promise "an interrupted compile never leaves a
+                # partial graph silently" holds for the FILESYSTEM path only.
+                # Upgrade path is the per-origin key namespace noted at the
+                # prune, which is a schema migration.
+                tracked_files = {
+                    key: entry
+                    for key, entry in manifest_files.items()
+                    if not key.startswith("source:")
+                }
                 # The completeness marker (see the COMPLETENESS guard above).
                 # ``graphed`` is stamped only after ``_write_artifacts``
                 # returned, so its absence means either an interrupted compile
-                # or a manifest written before the marker existed. BOTH reuse
-                # paths below — the scoped fallback merge and the plain no-op
-                # skip — treat the prior ``graph.json`` as the whole corpus, so
-                # both require it.
+                # or a manifest written before the marker existed. ALL THREE
+                # reuse paths need it, because each one hands back the prior
+                # ``graph.json`` as if it were the whole corpus: the scoped
+                # fallback merge, the plain no-op skip, and — reached through
+                # the demotion just below — the experimental differ's own
+                # ``processed == 0`` reuse.
                 graph_covers_corpus = all(
-                    entry.get("graphed") is True for entry in manifest_files.values()
+                    entry.get("graphed") is True for entry in tracked_files.values()
                 )
-                if has_pending_fallback and not corpus_unchanged:
-                    fallback_blocked = (
-                        "the tracked corpus changed since the last compile (a "
-                        "document was added, edited or removed)"
-                    )
-                elif corpus_unchanged and has_pending_fallback:
-                    if trends:
-                        # ``trends`` recomputes the trend layer from THIS run's
-                        # per-doc graphs (``summarize_trends(graphs, ...)``); a
-                        # scoped batch only holds the retried ones, which would
-                        # silently shrink that layer. Keep trends users on the
-                        # full recompile.
-                        fallback_blocked = (
-                            "this project computes trends, which are derived "
-                            "from every document's per-doc graph"
-                        )
-                    elif not graph_covers_corpus:
-                        # Merging one retried doc over a graph that predates the
-                        # docs the killed run added drops those docs
-                        # permanently: this run also CLEARS the fallback marker,
-                        # so every later ``--changed-only`` no-ops and the
-                        # corpus stays partial forever. Full recompile — which
-                        # re-stamps.
-                        fallback_blocked = ungraphed_reason
-                    else:
-                        # The retried docs' DEGRADED nodes have to LEAVE the
-                        # prior graph before the recovered ones merge in, or the
-                        # "recovery" contaminates instead of repairing — see the
-                        # tombstone at the merge below. That tombstone reads the
-                        # provenance sidecar, and (exactly like the differ) is
-                        # only trustworthy when the sidecar covers the whole
-                        # prior graph: a node co-owned by an UNCHANGED doc whose
-                        # row is missing would be deleted outright.
-                        _prior_fb = _strip_generated_layer(
-                            load_graph_file(self.paths.graph)
-                        )
-                        _fb_ids = [n.id for n in _prior_fb.nodes]
-                        _fb_triples = {
-                            (e.source, e.type, e.target) for e in _prior_fb.edges
-                        }
-                        if (
-                            self._provenance_ready(
-                                store, _fb_ids, prior_edge_triples=_fb_triples
-                            )
-                            if store is not None
-                            else self._sqlite_provenance_ready(
-                                self.paths.sqlite,
-                                _fb_ids,
-                                prior_edge_triples=_fb_triples,
-                            )
-                        ):
-                            fallback_only = True
-                            prior_graph_for_fallback = _prior_fb
-                        else:
-                            fallback_blocked = (
-                                "the provenance sidecar does not cover the prior "
-                                "graph, so the degraded nodes could not be "
-                                "tombstoned before the retry merged in"
-                            )
-                elif corpus_unchanged:
-                    if graph_covers_corpus:
-                        noop_skip = True
-                    else:
-                        # Nothing changed, but the graph we would have reused is
-                        # not known to be whole. A kill inside the scoped-retry
-                        # window below lands here too: it rewrites the retried
-                        # doc's manifest entry from scratch, clearing BOTH its
-                        # fallback marker and its ``graphed`` stamp, so
-                        # ``has_pending_fallback`` is False on the next run and
-                        # this is the only guard left to notice that
-                        # ``graph.json`` still carries the degraded nodes.
+                if incremental_active:
+                    if not graph_covers_corpus:
+                        # This demotion is the differ's ONLY consultation of the
+                        # marker; downstream it just skips an unstamped doc by
+                        # sha, hits ``processed == 0``, and returns the prior
+                        # graph verbatim — the graph missing exactly the doc the
+                        # killed run added. Nothing in that run re-stamps, so it
+                        # would stay missing until the doc's bytes change. Demote
+                        # to the always-correct full recompile, which re-extracts
+                        # and re-stamps.
+                        incremental_active = False
+                        prior_graph_for_diff = None
+                        effective_changed_only = False
                         noop_blocked = ungraphed_reason
+                    # else: coverage is complete, so the differ's reuse is sound
+                    # and the scoped run proceeds — no standing full-recompile
+                    # tax on incremental workspaces.
+                else:
+                    # ``--retry-fallbacks`` has work to do precisely when nothing
+                    # changed, so a pending fallback entry must beat the no-op —
+                    # otherwise the flag is swallowed here and never reaches the
+                    # batch runner that acts on it.
+                    has_pending_fallback = retry_fallbacks and any(
+                        manifest_files.get(str(md), {}).get("fallback") is True
+                        for md in markdown_files
+                    )
+                    corpus_unchanged = set(tracked_files.keys()) == candidate_keys and all(
+                        manifest_files.get(str(md), {}).get("sha256")
+                        == sha256_text(read_markdown_text(md))
+                        for md in markdown_files
+                    )
+                    if has_pending_fallback and not corpus_unchanged:
+                        fallback_blocked = (
+                            "the tracked corpus changed since the last compile (a "
+                            "document was added, edited or removed)"
+                        )
+                    elif corpus_unchanged and has_pending_fallback:
+                        if trends:
+                            # ``trends`` recomputes the trend layer from THIS run's
+                            # per-doc graphs (``summarize_trends(graphs, ...)``); a
+                            # scoped batch only holds the retried ones, which would
+                            # silently shrink that layer. Keep trends users on the
+                            # full recompile.
+                            fallback_blocked = (
+                                "this project computes trends, which are derived "
+                                "from every document's per-doc graph"
+                            )
+                        elif not graph_covers_corpus:
+                            # Merging one retried doc over a graph that predates the
+                            # docs the killed run added drops those docs
+                            # permanently: this run also CLEARS the fallback marker,
+                            # so every later ``--changed-only`` no-ops and the
+                            # corpus stays partial forever. Full recompile — which
+                            # re-stamps.
+                            fallback_blocked = ungraphed_reason
+                        else:
+                            # The retried docs' DEGRADED nodes have to LEAVE the
+                            # prior graph before the recovered ones merge in, or the
+                            # "recovery" contaminates instead of repairing — see the
+                            # tombstone at the merge below. That tombstone reads the
+                            # provenance sidecar, and (exactly like the differ) is
+                            # only trustworthy when the sidecar covers the whole
+                            # prior graph: a node co-owned by an UNCHANGED doc whose
+                            # row is missing would be deleted outright.
+                            _prior_fb = _strip_generated_layer(
+                                load_graph_file(self.paths.graph)
+                            )
+                            _fb_ids = [n.id for n in _prior_fb.nodes]
+                            _fb_triples = {
+                                (e.source, e.type, e.target) for e in _prior_fb.edges
+                            }
+                            if (
+                                self._provenance_ready(
+                                    store, _fb_ids, prior_edge_triples=_fb_triples
+                                )
+                                if store is not None
+                                else self._sqlite_provenance_ready(
+                                    self.paths.sqlite,
+                                    _fb_ids,
+                                    prior_edge_triples=_fb_triples,
+                                )
+                            ):
+                                fallback_only = True
+                                prior_graph_for_fallback = _prior_fb
+                            else:
+                                fallback_blocked = (
+                                    "the provenance sidecar does not cover the prior "
+                                    "graph, so the degraded nodes could not be "
+                                    "tombstoned before the retry merged in"
+                                )
+                    elif corpus_unchanged:
+                        if graph_covers_corpus:
+                            noop_skip = True
+                        else:
+                            # Nothing changed, but the graph we would have reused is
+                            # not known to be whole. A kill inside the scoped-retry
+                            # window below lands here too: it rewrites the retried
+                            # doc's manifest entry from scratch, clearing BOTH its
+                            # fallback marker and its ``graphed`` stamp, so
+                            # ``has_pending_fallback`` is False on the next run and
+                            # this is the only guard left to notice that
+                            # ``graph.json`` still carries the degraded nodes.
+                            noop_blocked = ungraphed_reason
 
             if fallback_blocked is not None:
                 print(
@@ -786,7 +834,7 @@ class ProjectWiki:
                 )
             elif noop_blocked is not None:
                 print(
-                    "warning: --changed-only could not skip this run — "
+                    "warning: --changed-only could not reuse the prior graph — "
                     f"{noop_blocked}; re-extracting the whole corpus.",
                     file=sys.stderr,
                 )
@@ -1359,11 +1407,15 @@ class ProjectWiki:
             stamped = self._load_manifest()
             for key in list(stamped):
                 # ``_ingest_via_loader`` shares this manifest under ``source:``
-                # keys; an FS run must not erase them (and vice versa).
-                # ponytail: ceiling — a workspace that mixes loader and FS runs
-                # still has ``corpus_unchanged`` permanently False, because the
-                # loader keys are never candidates. Upgrade path is a per-origin
-                # key namespace in the manifest, which is a schema migration.
+                # keys; an FS run must not erase them (and vice versa). The
+                # reuse predicates above exclude them for the same reason, so a
+                # mixed workspace keeps ``corpus_unchanged`` and the scoped
+                # ``--retry-fallbacks`` path.
+                # ponytail: ceiling — what remains is that FS and loader runs
+                # each rebuild graph.json from their own sources alone, so they
+                # still clobber each other's graph; the manifest keys merely
+                # coexist. Upgrade path is a per-origin key namespace plus a
+                # per-origin graph layer, which is a schema migration.
                 if full_run and key not in candidate_keys and not key.startswith("source:"):
                     del stamped[key]
                     continue
