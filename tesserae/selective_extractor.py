@@ -35,6 +35,17 @@ class SelectiveClaudeResearchExtractor:
         self.include_patterns = list(include_patterns)
         self.claude_limit = claude_limit
         self.claude_calls = 0
+        #: True when the LAST extract_* call was routed to the LLM and the LLM
+        #: failed, so the result is the deterministic baseline rather than the
+        #: typed extraction the caller asked for. ``BatchIngestRunner`` reads it
+        #: (duck-typed) to mark the manifest entry ``fallback: true``, which
+        #: ``compile --retry-fallbacks`` re-attempts. A doc that was never
+        #: routed to the LLM is NOT a fallback — it got exactly what it asked
+        #: for. Neither is an LLM call that legitimately returns nothing (an
+        #: i18n duplicate extracts empty by design): only a raise counts, which
+        #: covers both observed failures — a killed wedged child and codex
+        #: returning unusable JSON (GraphJSONValidationError).
+        self.last_was_fallback = False
         self._guidance = ""
 
     @property
@@ -59,11 +70,13 @@ class SelectiveClaudeResearchExtractor:
 
     def extract_file(self, path: str | Path, source_kind: str = "SourceDocument") -> ResearchGraph:
         file_path = Path(path)
+        self.last_was_fallback = False
         if self._should_use_claude(file_path):
             self.claude_calls += 1
             try:
                 return self.claude.extract_file(file_path, source_kind=source_kind)
             except Exception as exc:
+                self.last_was_fallback = True
                 print(f"  selective: claude failed on {file_path} "
                       f"({type(exc).__name__}); used deterministic", file=sys.stderr)
         result = self.deterministic.extract_file(file_path, source_kind=source_kind)
@@ -77,6 +90,7 @@ class SelectiveClaudeResearchExtractor:
         """Text counterpart to :meth:`extract_file` — the form the compile/ingest
         pipeline (``BatchIngestRunner``) actually calls. Routes by ``source_path``."""
         path = Path(source_path) if source_path else None
+        self.last_was_fallback = False
         if path is not None and self._should_use_claude(path):
             self.claude_calls += 1
             try:
@@ -85,6 +99,7 @@ class SelectiveClaudeResearchExtractor:
                 # claude timed out / errored on this doc — fall back to the
                 # deterministic baseline so one slow doc can't abort the whole
                 # compile (the big design docs occasionally exceed the timeout).
+                self.last_was_fallback = True
                 print(f"  selective: claude failed on {source_path or 'doc'} "
                       f"({type(exc).__name__}); used deterministic", file=sys.stderr)
         result = self.deterministic.extract_text(text, source_path, source_kind)

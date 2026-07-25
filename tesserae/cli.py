@@ -1569,6 +1569,7 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                 use_extraction_feedback=bool(opts.get("use_extraction_feedback", False)),
                 doc_extractor=doc_extractor,
                 progress=progress,
+                retry_fallbacks=bool(getattr(args, "retry_fallbacks", False)),
             )
             progress.done(nodes=result["node_count"], edges=result["edge_count"])
         if isinstance(progress, NullCompileProgress):
@@ -2393,6 +2394,7 @@ def _build_compile_parser() -> argparse.ArgumentParser:
     _add_llm_client_args(parser)
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--changed-only", action="store_true", help="Skip unchanged files using .tesserae/manifest.json")
+    parser.add_argument("--retry-fallbacks", action="store_true", help="With --changed-only: re-extract docs whose typed extraction previously failed and was served by the deterministic baseline (provider recovered). Without it those docs stay deterministic until their content changes.")
     parser.add_argument("--limit", type=int, help="Maximum number of changed files to process")
     parser.add_argument("--strict", action="store_true", help="Exit non-zero when the byte-idempotence tripwire fires or the post-compile lint reports problems (lint errors → exit 2, warnings → exit 1; default: report-only)")
     # Document extractor. Tesserae is an LLM wiki: 'llm' is the DEFAULT — it

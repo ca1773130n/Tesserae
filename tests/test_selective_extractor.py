@@ -43,3 +43,40 @@ def test_selective_claude_extractor_limit_falls_back_after_budget(tmp_path):
 
     assert extractor.extract_file(first, source_kind="Paper").nodes[0].name == "claude"
     assert extractor.extract_file(second, source_kind="Paper").nodes[0].name == "deterministic"
+
+
+def test_last_was_fallback_tracks_llm_failure_only():
+    """The manifest's fallback mark must mean 'the LLM was asked and failed', not
+    'this doc has no typed nodes' — an i18n duplicate legitimately extracts empty
+    and must NOT be re-attempted forever by --retry-fallbacks."""
+    from tesserae.research_graph import ResearchGraph
+    from tesserae.selective_extractor import SelectiveClaudeResearchExtractor
+
+    class Boom:
+        def extract_text(self, *a, **k):
+            raise RuntimeError("codex returned no usable JSON")
+
+    class Empty:
+        def extract_text(self, *a, **k):
+            return ResearchGraph(nodes=[], edges=[])
+
+    class Det:
+        def extract_text(self, *a, **k):
+            return ResearchGraph(nodes=[], edges=[])
+
+    sel = SelectiveClaudeResearchExtractor(
+        deterministic=Det(), claude=Boom(), include_patterns=["*.md"]
+    )
+    sel.extract_text("x", "/tmp/doc.md")
+    assert sel.last_was_fallback is True          # LLM raised -> degraded
+
+    # not routed to the LLM at all: got exactly what it asked for
+    sel.extract_text("x", "/tmp/doc.txt")
+    assert sel.last_was_fallback is False
+
+    # LLM answered with an empty graph: legitimate, not a fallback
+    sel2 = SelectiveClaudeResearchExtractor(
+        deterministic=Det(), claude=Empty(), include_patterns=["*.md"]
+    )
+    sel2.extract_text("x", "/tmp/doc.md")
+    assert sel2.last_was_fallback is False
