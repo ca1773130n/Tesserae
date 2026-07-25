@@ -3279,6 +3279,7 @@ class ProjectWiki:
         is the deterministic ``resolved_by`` / ``supersedes`` edges.
         """
         from .memory.contradiction import run_contradiction_resolution
+        from .memory.contrast import contrast_pass_enabled, run_contrast_pass
         from .memory.decay import compute_decay_score
         from .memory.reinforce import compute_recurring_confidence
         from .memory.store import NodeMemoryRow, read_memory
@@ -3374,6 +3375,24 @@ class ProjectWiki:
             except Exception:  # pragma: no cover — defensive
                 logger.exception("phase5 contradiction resolution failed")
                 conf_map = {}
+
+        # (4.5) Contrast pass: mint typed REASONING edges (contradicts_claim /
+        # derived_from / attributes_improvement_to / criticizes) between
+        # rare-token-blocked node pairs. Measured motivation: 73% of edges on a
+        # real graph are structural "X appeared near Y" and those four
+        # ontology-defined types have ZERO instances. OPT-IN and additionally
+        # gated on an explicit client — there is no honest deterministic
+        # fallback for semantic contrast, so with no flag/credentials this is
+        # zero calls and zero graph delta.
+        if json_client is not None and contrast_pass_enabled():
+            try:
+                graph = run_contrast_pass(
+                    graph,
+                    llm=json_client,
+                    cache_dir=self.paths.root / "contrast_cache",
+                )
+            except Exception:  # pragma: no cover — defensive
+                logger.exception("phase5 contrast pass failed")
 
         # (5) Recurring-insight reinforcement (KB-05): confidence -> node_memory
         # (NEVER graph.json). Reinforced "high" wins over contradiction's map.
