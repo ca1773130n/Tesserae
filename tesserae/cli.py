@@ -2398,7 +2398,8 @@ def _build_compile_parser() -> argparse.ArgumentParser:
     # Document extractor. Tesserae is an LLM wiki: 'llm' is the DEFAULT — it
     # builds the concept/claim layer via the configured provider (codex/claude/api
     # per llm_provider). 'deterministic' is the structural, key-free, byte-stable
-    # opt-out (CI). No per-doc timeout: a slow doc runs to completion.
+    # opt-out (CI). Each LLM attempt is bounded by TESSERAE_EXTRACT_TIMEOUT
+    # (default 1800s; 0 = run to completion) — see _extract_timeout.
     parser.add_argument("--extractor", choices=["llm", "selective-llm", "deterministic", "claude-cli", "selective-claude"], default="llm",
                         help="Extraction backend. 'llm' (default) builds the concept/claim layer via the configured provider; 'selective-llm' routes only --llm-include globs through the LLM; 'deterministic' is structural-only / byte-stable / key-free.")
     # NB: --llm-provider is already provided by the compile parser's LLM-client args.
@@ -5474,7 +5475,7 @@ def _build_doc_extractor(args: argparse.Namespace, cfg: Optional[dict] = None):
         claude_config_dirs=(getattr(args, "claude_config_dir", None) or settings.get("claude_config_dirs")),
         codex_home=settings.get("codex_home"),
         codex_reasoning_effort=settings.get("codex_reasoning_effort") or "medium",
-        timeout=_extract_timeout(),  # opt-in cutoff via TESSERAE_EXTRACT_TIMEOUT (default None = run to completion)
+        timeout=_extract_timeout(),  # per-attempt cutoff, default 1800s (TESSERAE_EXTRACT_TIMEOUT=0 = run to completion)
     )
     if client is None:
         print("warning: no LLM backend available (codex/claude not authed, no "
