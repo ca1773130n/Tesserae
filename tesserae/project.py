@@ -106,6 +106,55 @@ def _get_community_summaries_test_client() -> Optional[object]:
     return _COMMUNITY_SUMMARIES_TEST_CLIENT
 
 
+def _recompile_note(limit: Optional[int], corpus_size: Optional[int]) -> str:
+    """The tail of every completeness-guard warning: what the recompile will do.
+
+    Every one of those warnings used to end "re-extracting the whole corpus",
+    which is a promise the run cannot keep under ``--limit``. ``--limit`` cuts
+    the work-list before the deferred documents, and a full (demoted) run
+    rebuilds graph.json from the processed ones ALONE — so the deferred
+    document stays uncovered, loses its ``graphed`` stamp again, and the very
+    same warning fires on the next run. Measured, filesystem, 3 docs and a
+    RETAINED ``--limit=2``: four consecutive ``--changed-only`` runs each
+    warned and each re-extracted a.md+b.md, and c.md never re-stamped. The
+    loader half does the same with ``--limit=1`` over two sources.
+
+    That livelock is a real CEILING, not something this note fixes: a limited
+    run is a partial compile by construction, and the guard demands totality,
+    so nothing short of accumulating into the prior graph instead of replacing
+    it (the per-origin graph layer named elsewhere in this module, a schema
+    migration) can satisfy both. What the note does is stop the warning lying
+    about it and name the one action that clears the guard.
+
+    ``corpus_size`` is ``None`` when the caller cannot know it yet. The
+    filesystem guard can: it has already walked ``markdown_files``. The LOADER
+    guard runs BEFORE ``discover()``, and the manifest's ``source:`` entries are
+    neither a superset nor a subset of what that run will see — a source
+    compiled once and since removed still has an entry, a brand-new one has none
+    until it is processed. Sizing off them let a ``--limit`` that merely exceeds
+    the ENTRY count take the unlimited branch and re-issue the very promise this
+    note exists to stop making. Measured: one ``source:`` entry in the manifest,
+    a loader discovering three, ``--limit=2`` — "re-extracting the whole corpus."
+    for a run that extracted two of three. Unknown size is therefore reported as
+    unknown rather than asserted wrongly; the limit and the exit are still named,
+    because those are known either way.
+    """
+    if limit is not None:
+        if corpus_size is None:
+            return (
+                f"re-extracting every source discover() yields, up to --limit={limit} "
+                "— if that does not reach them all, this warning repeats every run "
+                "until you compile WITHOUT --limit."
+            )
+        if limit < corpus_size:
+            return (
+                f"re-extracting up to --limit={limit} of {corpus_size} — which cannot "
+                "restore full coverage, so this warning repeats every run until you "
+                "compile WITHOUT --limit."
+            )
+    return "re-extracting the whole corpus."
+
+
 @dataclass(frozen=True)
 class SessionExtractionOptions:
     """Configuration for the session graph extractor.
@@ -604,6 +653,14 @@ class ProjectWiki:
         # takes the full recompile (Codex B4).
         fallback_only = False
         prior_graph_for_fallback: Optional[ResearchGraph] = None
+        # One reason string for every reuse path that refuses to trust
+        # ``graph.json``: the filesystem no-op / scoped-retry / differ gates
+        # below, and the loader branch's own completeness gate.
+        ungraphed_reason = (
+            "graph.json is not known to cover every tracked document "
+            "(interrupted compile, a document deferred past --limit, or a "
+            "manifest predating the completeness marker)"
+        )
 
         if loader is None:
             # Default path: filesystem walk via the legacy ``BatchIngestRunner``,
@@ -667,16 +724,15 @@ class ProjectWiki:
             # reuse the prior graph without a pending fallback: the plain no-op
             # skip, and the experimental differ (demoted below). Either way the
             # operator is about to pay for a full recompile they did not ask for
-            # and must be told why. Also fires ONCE per workspace whose manifest
-            # predates the ``graphed`` marker — that recompile re-stamps every
-            # entry, so the next ``--changed-only`` reuses again.
+            # and must be told why. Also fires for a workspace whose manifest
+            # predates the ``graphed`` marker — ONCE if that recompile is
+            # unlimited, because it re-stamps every entry and the next
+            # ``--changed-only`` reuses again. Under a retained ``--limit`` it
+            # re-stamps only the docs it reached, so it fires EVERY run:
+            # measured with the pre-marker manifest as the ONLY cause, 3 docs
+            # and ``--limit=2``, four consecutive runs each warned, each
+            # re-extracted a.md+b.md, and c.md was never stamped.
             noop_blocked: Optional[str] = None
-            # One reason string, both exits — they are the same state.
-            ungraphed_reason = (
-                "graph.json is not known to cover every tracked document "
-                "(interrupted compile, or a manifest predating the "
-                "completeness marker)"
-            )
             if changed_only and markdown_files and self.paths.graph.exists():
                 manifest_files = self._load_manifest()
                 candidate_keys = {str(md) for md in markdown_files}
@@ -688,22 +744,11 @@ class ProjectWiki:
                 # filesystem ``--changed-only`` the whole corpus. Compare
                 # filesystem candidates against filesystem-keyed entries only,
                 # the same exclusion the manifest prune below already applies.
-                # ponytail: ceiling — ``graphed`` therefore says nothing about
-                # loader-sourced coverage, and the loader path (which rebuilds
-                # graph.json from its own sources alone) does not consult these
-                # predicates. Spelling out what that costs, because it is the
-                # same silent failure this guard exists to end: kill a
-                # ``compile(loader=..., changed_only=True)`` mid-run with the
-                # experimental differ on and ``_ingest_via_loader``'s ``finally``
-                # has already persisted the new source's sha, so every later run
-                # skips it on a sha match and reuses a graph that will never
-                # contain it — no warning, no self-heal. Pre-existing, and
-                # unreachable from the CLI or the daemon (neither passes a
-                # loader); the library ``compile(loader=...)`` API is the only
-                # way in. So the promise "an interrupted compile never leaves a
-                # partial graph silently" holds for the FILESYSTEM path only.
-                # Upgrade path is the per-origin key namespace noted at the
-                # prune, which is a schema migration.
+                # Excluding them is a SCOPING decision, not a hole: ``source:``
+                # entries carry their own ``graphed`` stamp and the loader
+                # branch runs this same predicate over them (its completeness
+                # guard, below), so each origin's reuse is judged against the
+                # graph that origin actually built.
                 tracked_files = {
                     key: entry
                     for key, entry in manifest_files.items()
@@ -711,13 +756,19 @@ class ProjectWiki:
                 }
                 # The completeness marker (see the COMPLETENESS guard above).
                 # ``graphed`` is stamped only after ``_write_artifacts``
-                # returned, so its absence means either an interrupted compile
-                # or a manifest written before the marker existed. ALL THREE
-                # reuse paths need it, because each one hands back the prior
-                # ``graph.json`` as if it were the whole corpus: the scoped
-                # fallback merge, the plain no-op skip, and — reached through
-                # the demotion just below — the experimental differ's own
-                # ``processed == 0`` reuse.
+                # returned, so its absence has three possible causes — an
+                # interrupted compile, a document DEFERRED past ``--limit`` at
+                # the stamp block below, or a manifest written before the marker
+                # existed. Those are the three ``ungraphed_reason`` names, and
+                # the same three the loader guard below spells out. Two of them
+                # clear after one recompile; the DEFERRED one does not while the
+                # ``--limit`` is retained (see the demotion just below).
+                #
+                # ALL THREE reuse paths need the marker, because each hands back
+                # the prior ``graph.json`` as if it were the whole corpus: the
+                # scoped fallback merge, the plain no-op skip, and — reached
+                # through the demotion just below — the experimental differ's
+                # own ``processed == 0`` reuse.
                 graph_covers_corpus = all(
                     entry.get("graphed") is True for entry in tracked_files.values()
                 )
@@ -729,8 +780,23 @@ class ProjectWiki:
                         # graph verbatim — the graph missing exactly the doc the
                         # killed run added. Nothing in that run re-stamps, so it
                         # would stay missing until the doc's bytes change. Demote
-                        # to the always-correct full recompile, which re-extracts
-                        # and re-stamps.
+                        # to the full recompile, which re-extracts and re-stamps.
+                        #
+                        # CORRECT, but not terminating under a retained
+                        # ``--limit``: the demoted run is limited too, so it
+                        # rebuilds graph.json from the docs it reached ALONE,
+                        # defers the same doc, unstamps it again, and the next
+                        # run demotes again. Measured, 3 docs and ``--limit=2``:
+                        # five consecutive ``--changed-only`` runs each warned
+                        # and each re-extracted a.md+b.md, and c.md never
+                        # re-stamped. The loader guard below livelocks
+                        # identically and for the same reason — a limited run is
+                        # a partial compile by construction while the guard
+                        # demands totality. ``_recompile_note`` stops the warning
+                        # claiming otherwise and names the exit (compile WITHOUT
+                        # ``--limit``); actually making progress under a limit
+                        # needs the per-origin accumulate-instead-of-replace
+                        # graph layer this module books as a ceiling.
                         incremental_active = False
                         prior_graph_for_diff = None
                         effective_changed_only = False
@@ -825,25 +891,30 @@ class ProjectWiki:
                             # ``graph.json`` still carries the degraded nodes.
                             noop_blocked = ungraphed_reason
 
+            recompile_note = _recompile_note(limit, len(markdown_files))
             if fallback_blocked is not None:
                 print(
                     "warning: --retry-fallbacks could not scope this run to the "
-                    f"marked document(s) — {fallback_blocked}; re-extracting the "
-                    "whole corpus.",
+                    f"marked document(s) — {fallback_blocked}; {recompile_note}",
                     file=sys.stderr,
                 )
             elif noop_blocked is not None:
                 print(
                     "warning: --changed-only could not reuse the prior graph — "
-                    f"{noop_blocked}; re-extracting the whole corpus.",
+                    f"{noop_blocked}; {recompile_note}",
                     file=sys.stderr,
                 )
 
             if noop_skip:
                 # Nothing changed: the prior graph.json is the corpus. Re-derive
                 # the union graph from disk and report a pure skip. Downstream
-                # artifact writes are byte-idempotent, so re-emitting them from
-                # the prior graph leaves graph.json / vault / site unchanged.
+                # artifact writes are byte-idempotent for graph.json / vault /
+                # site, so re-emitting them from the prior graph leaves those
+                # unchanged. NOT for the provenance sidecar: this run extracts
+                # nothing, so ``extraction_prov`` is empty and a reconcile would
+                # REPLACE the row-set with it — which is exactly why the
+                # ``full_compile`` argument below is gated on
+                # ``extracted_graphs`` being non-empty.
                 base_graph = _strip_generated_layer(load_graph_file(self.paths.graph))
                 graphs = []
                 processed = 0
@@ -926,14 +997,110 @@ class ProjectWiki:
             # source-id-keyed manifest. The on-disk manifest format stays the
             # same JSON dict; entries are merged so a future FS-loader run
             # does not erase loader-keyed entries (and vice versa).
-            graphs, processed, skipped = self._ingest_via_loader(
+            #
+            # COMPLETENESS guard, loader half — the mirror of the filesystem
+            # one above, over ``source:`` keys. Same failure, same remedy: kill
+            # a ``compile(loader=..., changed_only=True)`` with the differ on
+            # and ``_ingest_via_loader``'s ``finally`` has already persisted the
+            # new source's sha while ``graph.json`` never got its nodes. Every
+            # later run then sha-skips it, reports a clean ``processed=0``, and
+            # reuses a graph that will never contain it — no warning, no
+            # self-heal, until the source's bytes change. ``graphed`` is stamped
+            # on processed ``source:`` entries only after ``_write_artifacts``
+            # returns (below), so its ABSENCE means one of THREE things:
+            #
+            # * an interrupted compile — the recompile below covers the source
+            #   and re-stamps it, so the guard clears after one run;
+            # * a manifest predating the marker — likewise, one run and quiet;
+            # * DEFERRED past ``--limit`` at the stamp block below. This one
+            #   does NOT clear while the limit is retained. The demoted run is
+            #   a ``full_loader_run``, so it rebuilds graph.json from the
+            #   sources it processed ALONE and restarts from the top of
+            #   ``discover()`` — the deferred source is deferred again, is
+            #   unstamped again, and the next run warns again. Measured, two
+            #   sources and a retained ``--limit=1``: five consecutive runs
+            #   each warned and each re-extracted doc1.md, and src-2 never
+            #   re-stamped. The filesystem guard livelocks identically.
+            #
+            # So the demotion is CORRECT but not "always-correct" in the sense
+            # of always terminating: it is the right answer for the first two
+            # causes and an unsatisfiable one for the third, because a limited
+            # run is a partial compile by construction while the guard demands
+            # totality. ``_recompile_note`` stops the warning claiming
+            # otherwise and names the exit (drop ``--limit``); actually making
+            # progress under a limit needs the per-origin accumulate-instead-of
+            # -replace graph layer this module already books as a ceiling.
+            if changed_only and incremental_active:
+                source_entries = [
+                    entry
+                    for key, entry in self._load_manifest().items()
+                    if key.startswith("source:")
+                ]
+                graph_covers_corpus = all(
+                    entry.get("graphed") is True for entry in source_entries
+                )
+                if not graph_covers_corpus:
+                    incremental_active = False
+                    prior_graph_for_diff = None
+                    effective_changed_only = False
+                    print(
+                        "warning: --changed-only could not reuse the prior graph — "
+                        f"{ungraphed_reason}; "
+                        # NOT ``len(source_entries)``: those are the manifest's
+                        # ``source:`` keys, not what ``discover()`` will yield
+                        # (see ``_recompile_note``). The real size is unknown
+                        # here — ``_ingest_via_loader`` has not run — so say so
+                        # rather than size the corpus from the wrong set.
+                        f"{_recompile_note(limit, None)}",
+                        file=sys.stderr,
+                    )
+            graphs, processed, skipped, processed_source_keys = self._ingest_via_loader(
                 loader=loader,
                 extractor=extractor,
                 source_kind=markdown_source_kind,
                 changed_only=effective_changed_only,
                 limit=limit,
             )
-            base_graph = merge_graphs(graphs) if graphs else ResearchGraph()
+            # Did this run carry the prior graph.json forward, or does the graph
+            # it writes hold ONLY what the loader produced? The stamp block below
+            # turns on that one question, and ``bool(graphs)`` does not answer it
+            # — the no-graph.json arm below writes an empty graph while ``graphs``
+            # is empty too. Recorded here because by the time the stamps are
+            # decided ``_write_artifacts`` has already created graph.json, so
+            # ``self.paths.graph.exists()`` no longer reports what it did.
+            loader_reused_prior_graph = False
+            if graphs:
+                base_graph = merge_graphs(graphs)
+            elif incremental_active or not self.paths.graph.exists():
+                # Nothing on disk to reuse — or the differ owns the reuse. It
+                # detects ``processed == 0 and not graph.nodes`` below and
+                # rebinds ``graph`` to its own ``prior_graph_for_diff`` (the
+                # same ``_strip_generated_layer(load_graph_file(...))`` the else
+                # arm would load), so on a truly empty changed-set the two look
+                # equivalent. They stop being equivalent the moment something is
+                # TOMBSTONED: a deleted ``changed_paths`` entry fails that
+                # ``not deleted_changed`` test and takes the differ's ``else``
+                # arm, which appends ``graph`` to ``merge_inputs`` AFTER the
+                # tombstone — so a populated base merges the deleted document's
+                # nodes straight back in. Measured: ``Paper:a`` resurrected.
+                base_graph = ResearchGraph()
+            else:
+                # ``discover()`` yielded NOTHING extractable, which is not the
+                # same statement as "the corpus is empty" — an unreachable
+                # backing store, a filtered-out batch or a loader misconfigured
+                # against the wrong workspace all land here. Replacing a
+                # populated graph.json with an empty graph on that evidence is
+                # the silent whole-graph loss this PR exists to end: measured,
+                # a 4-node graph came back as its SYNTHESIS node alone with
+                # ``node_count: 0`` reported and no warning. Every consumer sees
+                # that wreck until the next compile, and under the experimental
+                # differ it is permanent — the loader sha-skips every source, so
+                # nothing re-extracts them. (Without the differ
+                # ``effective_changed_only`` is False, so the next loader run
+                # re-extracts and heals it.) So reuse the prior graph, exactly
+                # as the ``noop_skip`` short-circuit does.
+                base_graph = _strip_generated_layer(load_graph_file(self.paths.graph))
+                loader_reused_prior_graph = True
 
         # Per-file extraction graphs from THIS run, the authoritative source of
         # provenance (Codex B2). On a full compile they cover the whole corpus;
@@ -947,16 +1114,36 @@ class ProjectWiki:
         if progress is not None:
             progress.finalize("community summaries, vault, site")
 
-        # ``graphs`` is empty on the REUSE paths — the ``noop_skip`` short-circuit
-        # above (and a loader run that discovered nothing) — and
+        # ``graphs`` is empty on the two arms that reuse the prior graph from
+        # DISK — the ``noop_skip`` short-circuit above, and the loader's
+        # discovered-nothing arm with the differ off — and
         # ``summarize_trends([])`` returns an EMPTY graph. Recomputing the trend
         # layer there would therefore overwrite graph.json with nothing while the
         # manifest still marks every doc ``graphed``, which makes the loss
         # PERMANENT: the next ``--changed-only`` no-ops again on the wreck.
         # Reusing ``base_graph`` is also the CORRECT answer, not merely the safe
-        # one: it is the prior graph loaded from disk, and it still carries its
-        # TREND nodes (``_strip_generated_layer`` removes only SYNTHESIS and
-        # COMMUNITY_SUMMARY).
+        # one: BOTH of those arms set it to the prior graph loaded from disk, and
+        # it still carries its TREND nodes (``_strip_generated_layer`` removes
+        # only SYNTHESIS and COMMUNITY_SUMMARY).
+        #
+        # Two more shapes leave ``graphs`` empty with a deliberately EMPTY
+        # ``base_graph``, and they end differently:
+        #
+        # * The differ owns the reuse. The prior graph survives by ONE OF TWO
+        #   routes, not just the rebind: that rebind is gated on
+        #   ``not graph.nodes``, and between here and there ``graph`` picks up
+        #   the code-graph merge (CodeProject/Repository/Project) and
+        #   ``_merge_configured_raganything_graph``. Either can make it
+        #   non-empty, and the run then takes the differ's ``else`` arm instead
+        #   — where the prior graph survives by being MERGED in, after a
+        #   tombstone that removes nothing on an empty changed-set. Measured
+        #   both ways: a plain kind rebinds, a CodeProject merges (3 code
+        #   nodes), and graph.json keeps the prior graph either way.
+        # * No graph.json on disk at all (differ on or off). This one DOES
+        #   reach graph.json, correctly — there is no prior graph to lose. It
+        #   does write an EMPTY one though, which is why the stamp block below
+        #   keys off ``loader_reused_prior_graph`` and not ``bool(graphs)``: a
+        #   filesystem doc's ``graphed`` must not survive this arm.
         graph = (
             ResearchCorpusAnalyzer().summarize_trends(graphs, min_sources=min_trend_sources)
             if trends and graphs
@@ -1336,7 +1523,29 @@ class ProjectWiki:
             # is the other subset case: it re-extracted only the MARKED docs, so
             # ``extraction_prov`` covers a subset and a reconcile would delete
             # every unchanged doc's row.
-            full_compile=not incremental_active and not fallback_only,
+            #
+            # ``extracted_graphs`` empty is the THIRD subset case, and the one
+            # that quietly disarmed the scoped ``--retry-fallbacks`` bound. Two
+            # arms reuse the prior graph from DISK without extracting anything —
+            # the ``noop_skip`` short-circuit and the loader's discovered-nothing
+            # arm (a third leaves it empty without reusing anything: a loader run
+            # that discovered nothing with no graph.json on disk, which writes an
+            # empty graph and takes this same additive path) — and with the
+            # differ off (the default) both landed here as
+            # ``full_compile=True`` carrying an EMPTY row-set. Reconcile then
+            # deleted every per-document row, and the NEXT
+            # ``--changed-only --retry-fallbacks`` failed ``_provenance_ready``
+            # and re-extracted the whole corpus. Measured, 3 docs: seed 7 rows ->
+            # one plain ``--changed-only`` no-op -> 1 row (``__synthesis__``
+            # alone) -> retry processed 3, not 1. The bound survived only if the
+            # retry was the LITERAL next compile. A run that extracted NOTHING
+            # has nothing to reconcile against, so it takes the additive path
+            # (record + ``prune_provenance_to_graph``, which still drops rows
+            # whose node/edge left the final graph). Note this is NOT the same
+            # as "the corpus is empty": a real full compile of an emptied corpus
+            # still runs the batch, so ``graphs`` is ``[batch.graph]`` — truthy —
+            # and reconcile still prunes what genuinely left.
+            full_compile=bool(extracted_graphs) and not incremental_active and not fallback_only,
         )
         # graph.json now exists on disk for the docs this run extracted, so —
         # and ONLY now — stamp them ``graphed``. This is the completeness marker
@@ -1346,7 +1555,86 @@ class ProjectWiki:
         # extraction never reached an artifact unstamped. What is guaranteed is
         # therefore narrow and exact: ``graphed`` means "the last successful
         # ``_write_artifacts`` wrote a graph built from THIS entry's content".
-        if loader is None and batch is not None:
+        if loader is not None:
+            # A stamp must never outlive the graph it describes. This run
+            # REPLACED graph.json with a graph built from the loader's own
+            # sources alone (``base_graph = merge_graphs(graphs)`` — or, when it
+            # produced none and had no prior graph to reuse, with an EMPTY
+            # ``ResearchGraph()``), so the filesystem documents are no longer in
+            # it, and their ``graphed`` stamps would otherwise still assert they
+            # are. Left in place, the
+            # next filesystem ``--changed-only`` sees complete coverage, takes
+            # the no-op, and preserves a loader-only graph indefinitely: the
+            # docs come back only when their bytes change. Dropping the stamp is
+            # the same remedy the filesystem block below applies to docs a
+            # narrower compile stopped covering, and it lands on the same guard —
+            # the next run REFUSES the no-op, prints ``ungraphed_reason``, and
+            # re-extracts, which re-stamps — so this is not a standing tax, on
+            # the same condition as every other exit from that guard: the
+            # repair recompile has to be UNLIMITED. Under a retained
+            # ``--limit`` it re-stamps only the docs it reached and the warning
+            # repeats every run (the ceiling recorded at ``_recompile_note``).
+            #
+            # Not when the differ ran: ``incremental_active`` merges the prior
+            # graph in and tombstones only what the re-extracted sources owned,
+            # so the filesystem nodes are still present and their stamps stay
+            # true. Not on the discovered-nothing arm either: that run REUSED
+            # the prior graph rather than replacing it, so the filesystem stamps
+            # are still honest and dropping them would cost the next
+            # ``--changed-only`` a whole-corpus re-extract for nothing.
+            #
+            # That is ``loader_reused_prior_graph``, and it is NOT the same test
+            # as ``graphs`` being empty — which is why this predicate used to
+            # read ``bool(graphs)`` and let a stamp outlive its graph. The
+            # no-graph.json arm also leaves ``graphs`` empty, and it reuses
+            # nothing: it writes an EMPTY graph. Measured — 2 filesystem docs
+            # compiled and stamped, ``graph.json`` deleted by hand (the operator
+            # gesture for "force a rebuild"), then one
+            # ``compile(loader=<discovers nothing>)``: graph.json came back as
+            # the SYNTHESIS node alone while a.md and b.md kept ``graphed:
+            # true``, so the next filesystem ``--changed-only`` no-opped on the
+            # wreck, called the extractor zero times, and left ``Paper:a`` /
+            # ``Paper:b`` gone for good (their bytes never change). Unstamping
+            # sends that run through the guard instead, which re-extracts and
+            # heals.
+            #
+            # The MIRROR — an FS run replacing a loader-built graph.json — is
+            # handled symmetrically at the filesystem block below, by dropping
+            # the loader entries' ``sha256`` (their only reuse claim) on the
+            # same ``full_run``.
+            #
+            # ``source:`` entries get the SAME treatment the filesystem block
+            # below gives its own keys, which is what makes the loader half of
+            # the completeness guard work at all:
+            #
+            # * PROCESSED this run — graph.json was just built from this
+            #   entry's content, so stamp it. Without this nothing ever stamps
+            #   a ``source:`` entry, the loader gate above would refuse every
+            #   reuse forever, and (before that gate existed) a kill between
+            #   the sha write and here was silent permanent loss.
+            # * SKIPPED by the differ — the prior graph was merged in, so
+            #   graph.json still holds what its entry describes and the stamp
+            #   stays true. Nothing to do.
+            # * Neither, on a ``full_loader_run`` — deferred past ``--limit``
+            #   or gone from ``discover()``. graph.json was rebuilt from the
+            #   processed sources ALONE, so its nodes are not in it and the
+            #   stamp has to go, exactly like a departed filesystem doc's.
+            full_loader_run = not incremental_active and not loader_reused_prior_graph
+            stamped = self._load_manifest()
+            touched = False
+            for key, entry in stamped.items():
+                if key.startswith("source:"):
+                    if key in processed_source_keys:
+                        if entry.get("graphed") is not True:
+                            entry["graphed"] = True
+                            touched = True
+                    elif full_loader_run and entry.pop("graphed", None) is not None:
+                        touched = True
+                elif full_loader_run and entry.pop("graphed", None) is not None:
+                    touched = True
+            if touched:
+                self._write_manifest(stamped)
+        elif batch is not None:
             processed_keys = set(batch.processed_paths)
             # Did graph.json get rebuilt from THIS run's extractions alone, or
             # was the prior graph merged into it? Both stamp decisions below
@@ -1411,12 +1699,42 @@ class ProjectWiki:
                 # reuse predicates above exclude them for the same reason, so a
                 # mixed workspace keeps ``corpus_unchanged`` and the scoped
                 # ``--retry-fallbacks`` path.
-                # ponytail: ceiling — what remains is that FS and loader runs
-                # each rebuild graph.json from their own sources alone, so they
-                # still clobber each other's graph; the manifest keys merely
-                # coexist. Upgrade path is a per-origin key namespace plus a
-                # per-origin graph layer, which is a schema migration.
-                if full_run and key not in candidate_keys and not key.startswith("source:"):
+                #
+                # It must not leave them REUSABLE either, and that is the mirror
+                # of the loader block's unstamp above. A ``full_run`` rebuilt
+                # graph.json from ``batch.graph`` alone, so the loader's nodes
+                # are no longer in it — while its ``sha256`` (the loader's only
+                # reuse claim) still says they need no re-extraction. Under the
+                # experimental differ the next ``compile(loader=...)`` then
+                # sha-skips every source, reports a clean ``processed=0``, and
+                # reuses the FS-only graph: the loader's nodes are gone for
+                # good, because nothing re-extracts a source whose sha matches.
+                # Dropping the sha costs that next loader run a re-extract and
+                # nothing else — the same coarseness, in the same direction, as
+                # the unstamp above.
+                #
+                # Their ``graphed`` stamp deliberately STAYS, even though it is
+                # now stale. It cannot cause a reuse on its own — the loader
+                # gate only decides whether the differ runs, and with no sha
+                # every source is re-extracted either way. Dropping it would
+                # DEMOTE that next loader run out of the differ, and a demoted
+                # loader run REPLACES graph.json with its own sources alone,
+                # costing graph.json the filesystem layer this run just wrote.
+                # The re-extract re-stamps it honestly.
+                #
+                # ponytail: ceiling — this makes the loss RECOVERABLE, not
+                # impossible: within a run, FS and loader still each rebuild
+                # graph.json from their own sources alone, so they clobber each
+                # other's graph and only the next run of the clobbered origin
+                # restores it. Upgrade path is a per-origin graph layer (merge
+                # by origin instead of replace), which is a schema migration;
+                # the per-origin KEY namespace is not needed — the ``source:``
+                # prefix already separates them.
+                if key.startswith("source:"):
+                    if full_run:
+                        stamped[key].pop("sha256", None)
+                    continue
+                if full_run and key not in candidate_keys:
                     del stamped[key]
                     continue
                 entry = stamped[key]
@@ -1896,17 +2214,25 @@ class ProjectWiki:
         source_kind: str,
         changed_only: bool,
         limit: Optional[int],
-    ) -> tuple[List[ResearchGraph], int, int]:
+    ) -> tuple[List[ResearchGraph], int, int, set[str]]:
         """Drive extraction from a :class:`SourceLoader` instead of the FS walker.
 
         Manifest bookkeeping mirrors :class:`BatchIngestRunner`: entries are
         keyed on ``source.id`` (rather than file path), value carries the
         content sha256 and source kind. Skipping is an exact-hash match.
+
+        Returns the per-source graphs, the processed/skipped counts, and the
+        manifest keys this run actually extracted — ``BatchIngestRunner``'s
+        ``processed_paths``, in the loader's key space. The caller stamps them
+        ``graphed`` once ``_write_artifacts`` has returned; note the entry
+        written here is a FRESH dict (exactly as the batch runner's is), so a
+        run killed before that line leaves them unstamped.
         """
         manifest = self._load_manifest()
         graphs: List[ResearchGraph] = []
         processed = 0
         skipped = 0
+        processed_keys: set[str] = set()
         try:
             for source in loader.discover():
                 digest = sha256_text(source.content)
@@ -1924,9 +2250,10 @@ class ProjectWiki:
                 graphs.append(graph)
                 processed += 1
                 manifest[key] = {"sha256": digest, "source_kind": source_kind}
+                processed_keys.add(key)
         finally:
             self._write_manifest(manifest)
-        return graphs, processed, skipped
+        return graphs, processed, skipped, processed_keys
 
     def _load_manifest(self) -> dict:
         if not self.paths.manifest.exists():
