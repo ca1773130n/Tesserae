@@ -136,7 +136,7 @@ def _reset_login_warning_for_tests() -> None:
 #: TESSERAE_EXTRACT_CONCURRENCY worker threads, so an instance attribute would
 #: report whichever worker wrote last — the same reason
 #: SelectiveClaudeResearchExtractor keeps its fallback flag in threading.local.
-#: ponytail: three string literals, not an enum or an exception hierarchy —
+#: ponytail: four string literals, not an enum or an exception hierarchy —
 #: there is exactly one consumer (LLMResearchExtractor). Promote if a second
 #: one appears.
 _LAST_FAILURE = threading.local()
