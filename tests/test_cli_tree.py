@@ -207,6 +207,19 @@ def test_known_command_prints_clean_line_not_traceback(capsys):
     assert "Traceback" not in err and err.strip()
 
 
+def test_command_tree_and_dispatch_agree():
+    """Every advertised verb routes, and every route is advertised.
+
+    A new verb (e.g. `graph-map`) touches two files — COMMAND_TREE for --help /
+    KNOWN_COMMANDS, and _NEW_DISPATCH for routing. Miss one and the command is
+    either invisible or "unknown command"; nothing else catches that drift.
+    """
+    from tesserae.cli import _NEW_DISPATCH
+    from tesserae.cli_tree import KNOWN_COMMANDS
+
+    assert set(_NEW_DISPATCH) == set(KNOWN_COMMANDS)
+
+
 def test_every_command_help_has_examples(capsys):
     import tesserae.cli as cli
 
