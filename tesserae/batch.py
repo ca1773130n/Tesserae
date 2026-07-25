@@ -6,11 +6,33 @@ import hashlib
 import json
 import os
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Protocol
 
 from .research_graph import ResearchGraph, link_paper_repo_pairs, prefer_research_node
+
+#: Documents extracted concurrently. Each one is a blocking CLI subprocess
+#: (``codex exec`` / ``claude -p``) taking ~a minute, so a sequential loop makes
+#: wall-clock the literal sum of every model round-trip — measured at ~2h40m for
+#: 161 documents. 4 is deliberately modest: the ceiling is the provider account's
+#: rate limit, not this machine. ``TESSERAE_EXTRACT_CONCURRENCY=1`` restores the
+#: old strictly-sequential behaviour.
+_DEFAULT_EXTRACT_CONCURRENCY = 4
+
+
+def _extract_concurrency() -> int:
+    raw = (os.environ.get("TESSERAE_EXTRACT_CONCURRENCY") or "").strip()
+    if not raw:
+        return _DEFAULT_EXTRACT_CONCURRENCY
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
+        print(f"warning: ignoring TESSERAE_EXTRACT_CONCURRENCY={raw!r} (not an integer); "
+              f"using {_DEFAULT_EXTRACT_CONCURRENCY}.", file=sys.stderr)
+        return _DEFAULT_EXTRACT_CONCURRENCY
 
 
 class ExtractorLike(Protocol):
@@ -70,51 +92,97 @@ class BatchIngestRunner:
             progress.scan(len(path_list))
             progress.extract_start(len(path_list))
 
-        try:
-            for file_path in path_list:
-                content = read_markdown_text(file_path)
-                digest = sha256_text(content)
-                key = str(file_path)
-                prior = manifest.get(key, {})
-                # A doc whose typed extraction fell back to deterministic is
-                # content-identical to one that extracted cleanly, so plain
-                # changed-only skips it forever — the degradation is permanent
-                # until the file itself changes. ``retry_fallbacks`` re-attempts
-                # exactly those, mirroring ``distill --retry-fallbacks``.
-                if (
-                    changed_only
-                    and prior.get("sha256") == digest
-                    and not (retry_fallbacks and prior.get("fallback") is True)
-                ):
-                    skipped += 1
-                    skipped_paths.append(key)
-                    if progress is not None:
-                        progress.advance()
-                    continue
-                if limit is not None and processed >= limit:
-                    break
-                graph = self.extractor.extract_text(content, str(file_path), source_kind)
-                graphs.append(graph)
-                processed += 1
-                processed_paths.append(key)
-                entry: Dict[str, object] = {"sha256": digest, "source_kind": source_kind}
-                # Only present when true — an entry for a clean extraction stays
-                # byte-identical to what prior versions wrote.
-                if getattr(self.extractor, "last_was_fallback", False):
-                    entry["fallback"] = True
-                    fallback_paths.append(key)
+        # Decide the work-list FIRST, in path order, so concurrency below can
+        # never change which documents are extracted — only how fast.
+        todo: List[tuple[Path, str, str]] = []  # (path, key, digest)
+        for file_path in path_list:
+            content = read_markdown_text(file_path)
+            digest = sha256_text(content)
+            key = str(file_path)
+            prior = manifest.get(key, {})
+            # A doc whose typed extraction fell back to deterministic is
+            # content-identical to one that extracted cleanly, so plain
+            # changed-only skips it forever — the degradation is permanent
+            # until the file itself changes. ``retry_fallbacks`` re-attempts
+            # exactly those, mirroring ``distill --retry-fallbacks``.
+            if (
+                changed_only
+                and prior.get("sha256") == digest
+                and not (retry_fallbacks and prior.get("fallback") is True)
+            ):
+                skipped += 1
+                skipped_paths.append(key)
+                if progress is not None:
+                    progress.advance()
+                continue
+            if limit is not None and len(todo) >= limit:
+                break
+            todo.append((file_path, key, digest))
+
+        workers = _extract_concurrency()
+        results: List[Optional[tuple[ResearchGraph, str, Dict[str, object], bool]]] = [None] * len(todo)
+        lock = threading.Lock()
+
+        def _extract_one(index: int) -> None:
+            file_path, key, digest = todo[index]
+            content = read_markdown_text(file_path)
+            graph = self.extractor.extract_text(content, str(file_path), source_kind)
+            entry: Dict[str, object] = {"sha256": digest, "source_kind": source_kind}
+            # Only present when true — an entry for a clean extraction stays
+            # byte-identical to what prior versions wrote. The flag is
+            # thread-local in SelectiveClaudeResearchExtractor, so this reads
+            # THIS call's outcome even with workers > 1.
+            fell_back = bool(getattr(self.extractor, "last_was_fallback", False))
+            if fell_back:
+                entry["fallback"] = True
+            results[index] = (graph, key, entry, fell_back)
+            with lock:
+                # Persist incrementally so a killed compile keeps the ground it
+                # took. Ordering doesn't matter: the manifest is a dict keyed by
+                # path and serialized with sort_keys.
                 manifest[key] = entry
                 self._write_manifest(manifest)
                 if progress is not None:
                     progress.advance()
+
+        try:
+            if workers > 1 and len(todo) > 1:
+                # Extraction is one blocking subprocess per document, so threads
+                # (not processes) are the right tool — the GIL is released for
+                # the entire wait.
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    for fut in as_completed([pool.submit(_extract_one, i) for i in range(len(todo))]):
+                        fut.result()  # re-raise worker exceptions on this thread
+            else:
+                for i in range(len(todo)):
+                    _extract_one(i)
         finally:
             self._write_manifest(manifest)
             if progress is not None:
-                progress.extract_done(processed)
+                progress.extract_done(sum(1 for r in results if r is not None))
+
+        # Collect in PATH order, never completion order: merge_graphs resolves
+        # duplicate node ids via prefer_research_node, so a different order is a
+        # different graph. This is what keeps a parallel run byte-identical to a
+        # sequential one.
+        for item in results:
+            if item is None:
+                continue
+            graph, key, _entry, fell_back = item
+            graphs.append(graph)
+            processed += 1
+            processed_paths.append(key)
+            if fell_back:
+                fallback_paths.append(key)
         if fallback_paths:
             print(
+                # ``--retry-fallbacks`` only NARROWS the changed-only work list
+                # (see the skip above); on its own it is a whole-corpus
+                # re-extract, so the hint must name both flags or it sends the
+                # operator into an hours-long full compile.
                 f"  {len(fallback_paths)} doc(s) fell back to deterministic "
-                f"extraction; re-attempt with `compile --retry-fallbacks`.",
+                f"extraction; re-attempt with "
+                f"`compile --changed-only --retry-fallbacks`.",
                 file=sys.stderr,
             )
         return BatchIngestResult(

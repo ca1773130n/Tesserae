@@ -29,6 +29,18 @@ MCP-сервер (который теперь выставляет инстру�
 > pipx install tesserae
 > ```
 
+> **uv тоже подходит, но extras пишутся внутри кавычек.** У `uv tool install`
+> нет флага `--extra` (проверено на uv 0.10), поэтому
+> `uv tool install tesserae --extra semantic` завершается с
+> `unexpected argument '--extra'`, и extra так и не устанавливается:
+> ```bash
+> uv tool install "tesserae[semantic]"        # extras внутри кавычек
+> uv tool install --with model2vec tesserae   # эквивалент
+> ```
+> Оборачиваете это в скрипт? Проверяйте код возврата. Молча пропущенная установка
+> `semantic` — ровно та причина, по которой гибридный поиск и `associate`
+> откатываются на несемантическую заглушку.
+
 ## Обновление
 
 ```bash

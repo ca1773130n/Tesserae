@@ -91,7 +91,7 @@ def _flatten_prompt(prompt: str, system_prompt: Optional[str], history: Optional
 
 def make_codex_llm_func(
     *,
-    model: str = "gpt-5.4",
+    model: str = "gpt-5.6-luna",
     timeout: int = 300,
 ) -> Callable[..., Awaitable[str]]:
     """Return an async llm_model_func that routes through `codex exec` OAuth."""
@@ -134,7 +134,7 @@ def make_claude_llm_func(
 def make_llm_func(*, provider: str, **opts) -> Callable[..., Awaitable[str]]:
     if provider == "codex":
         return make_codex_llm_func(
-            model=opts.get("model") or "gpt-5.4",
+            model=opts.get("model") or "gpt-5.6-luna",
             timeout=int(opts.get("timeout") or 300),
         )
     if provider == "claude":

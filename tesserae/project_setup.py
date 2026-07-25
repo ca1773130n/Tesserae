@@ -140,7 +140,7 @@ def build_setup_plan(
         backend["llm"] = {
             "provider": raganything_llm_provider,
             "model": raganything_llm_model
-            or ("gpt-5.4" if raganything_llm_provider == "codex" else None),
+            or ("gpt-5.6-luna" if raganything_llm_provider == "codex" else None),
             "timeout": 300,
             "claude_config_dir": raganything_claude_config_dir,
         }

@@ -22,6 +22,25 @@ Prérequis : `tesserae` déjà installé (`pip install tesserae` ou `pipx instal
 * **Compétence `using-tesserae`** — se charge automatiquement lorsque vous posez des questions sur le graphe typé, le rappel de sessions passées, le contenu wiki/vault, ou tout workflow tesserae. Apprend à l'agent quel outil MCP utiliser vs quelle commande slash suggérer.
 * **5 hooks** — `SessionStart` imprime un résumé du graphe ; `SessionEnd` exécute en arrière-plan import+compile pour que les insights de cette conversation deviennent des nœuds du graphe pour la prochaine session ; deux hooks `PostToolUse` se déclenchent sur `Edit`/`Write`/`MultiEdit` — l'un fait une recompilation incrémentielle optionnelle sur les éditions de docs/, l'autre applique un debounce (~30 s) à la synchronisation du graphe de code ; `PreToolUse` (sur `Bash`) filtre les compilations de grands graphes via un dialogue de confirmation.
 
+> **La compilation en fin de session est opportuniste, pas garantie.** Le hook
+> détache sa tâche d'arrière-plan avec `setsid` lorsqu'il existe, et retombe sur
+> `nohup` sinon. macOS ne fournit pas `setsid`, et `nohup` se contente d'ignorer
+> `SIGHUP` — il laisse la tâche dans le groupe de processus de la session — donc
+> un harness qui récupère le groupe à la fermeture de la session peut encore tuer
+> la compilation en plein vol. Ce qui reste alors est récupérable, pas intact :
+> `graph.json` est écrit par rename atomique et n'est donc jamais un demi-fichier,
+> mais les projections générées `wiki/` et `site/` sont effacées au début de
+> l'écriture des artefacts et le magasin SQLite est écrit après `graph.json`, si
+> bien qu'un kill dans cette fenêtre les laisse absentes ou en retard d'une
+> compilation. Cela n'arrive jamais en silence pour autant :
+> `.tesserae/manifest.json` ne marque un document `graphed` qu'une fois les
+> artefacts posés, donc la prochaine `compile --changed-only` refuse son no-op,
+> annonce `graph.json is not known to cover every tracked document` et ré-extrait
+> tout le corpus, ce qui reconstruit aussi les projections.
+> Ne construisez pas un flux qui suppose qu'une longue compilation
+> survit à la session qui l'a lancée — exécutez-la au premier plan, ou via
+> `tesserae engine`.
+
 Les détails complets, les tableaux complets des commandes/hooks et les instructions d'opt-out par projet se trouvent dans le propre [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md) du plugin.
 
 ## Pourquoi un plugin ET un serveur MCP ?

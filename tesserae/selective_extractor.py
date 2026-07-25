@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Optional, Protocol, Sequence
@@ -35,6 +36,12 @@ class SelectiveClaudeResearchExtractor:
         self.include_patterns = list(include_patterns)
         self.claude_limit = claude_limit
         self.claude_calls = 0
+        #: Per-thread, because BatchIngestRunner may extract concurrently: the
+        #: runner reads ``last_was_fallback`` right after its own extract_text
+        #: call, so the flag must belong to THAT call and not to whichever
+        #: worker happened to write it last. Sequential callers see identical
+        #: behaviour (one thread, one slot).
+        self._tls = threading.local()
         #: True when the LAST extract_* call was routed to the LLM and the LLM
         #: failed, so the result is the deterministic baseline rather than the
         #: typed extraction the caller asked for. ``BatchIngestRunner`` reads it
@@ -43,10 +50,21 @@ class SelectiveClaudeResearchExtractor:
         #: routed to the LLM is NOT a fallback — it got exactly what it asked
         #: for. Neither is an LLM call that legitimately returns nothing (an
         #: i18n duplicate extracts empty by design): only a raise counts, which
-        #: covers both observed failures — a killed wedged child and codex
-        #: returning unusable JSON (GraphJSONValidationError).
-        self.last_was_fallback = False
+        #: covers all four observed failures — a killed wedged child
+        #: (ExtractionTimeoutError), the provider never answering
+        #: (ProviderUnavailableError), every account refusing the credentials
+        #: (ProviderAuthError) and the model returning unusable JSON
+        #: (GraphJSONValidationError). A provider outage MUST still land here
+        #: so ``--retry-fallbacks`` can recover it.
         self._guidance = ""
+
+    @property
+    def last_was_fallback(self) -> bool:
+        return bool(getattr(self._tls, "fallback", False))
+
+    @last_was_fallback.setter
+    def last_was_fallback(self, value: bool) -> None:
+        self._tls.fallback = bool(value)
 
     @property
     def guidance(self) -> str:
@@ -77,8 +95,14 @@ class SelectiveClaudeResearchExtractor:
                 return self.claude.extract_file(file_path, source_kind=source_kind)
             except Exception as exc:
                 self.last_was_fallback = True
-                print(f"  selective: claude failed on {file_path} "
-                      f"({type(exc).__name__}); used deterministic", file=sys.stderr)
+                # Name the CAUSE, not just the class: ProviderUnavailableError
+                # ("wait and re-run") and GraphJSONValidationError ("fix the
+                # prompt/schema") used to render identically here. Also drop
+                # the "claude" noun — this routes whatever backend is
+                # configured, and reading a codex outage as a claude failure
+                # was half of the original misdiagnosis.
+                print(f"  selective: LLM extraction failed on {file_path} "
+                      f"({type(exc).__name__}: {exc}); used deterministic", file=sys.stderr)
         result = self.deterministic.extract_file(file_path, source_kind=source_kind)
         # The deterministic baseline can't be re-prompted, so honor structural
         # guidance via a pure post-filter. No guidance => byte-identical no-op.
@@ -96,12 +120,16 @@ class SelectiveClaudeResearchExtractor:
             try:
                 return self.claude.extract_text(text, source_path, source_kind)
             except Exception as exc:
-                # claude timed out / errored on this doc — fall back to the
+                # The LLM timed out / errored on this doc — fall back to the
                 # deterministic baseline so one slow doc can't abort the whole
                 # compile (the big design docs occasionally exceed the timeout).
+                # The message is included so a provider outage
+                # (ProviderUnavailableError) is distinguishable from a genuine
+                # schema violation (GraphJSONValidationError) without grepping
+                # the raw log for "Reconnecting…".
                 self.last_was_fallback = True
-                print(f"  selective: claude failed on {source_path or 'doc'} "
-                      f"({type(exc).__name__}); used deterministic", file=sys.stderr)
+                print(f"  selective: LLM extraction failed on {source_path or 'doc'} "
+                      f"({type(exc).__name__}: {exc}); used deterministic", file=sys.stderr)
         result = self.deterministic.extract_text(text, source_path, source_kind)
         return apply_guidance_filter(result, self._guidance_bullets())
 

@@ -22,6 +22,24 @@ Requisito previo: `tesserae` ya instalado (`pip install tesserae` o `pipx instal
 * **Habilidad `using-tesserae`** — se carga automáticamente cuando preguntas sobre el grafo tipado, recuperación de sesiones pasadas, contenido wiki/vault, o cualquier flujo de trabajo tesserae. Enseña al agente qué herramienta MCP usar vs qué comando slash sugerir.
 * **5 hooks** — `SessionStart` imprime un resumen del grafo; `SessionEnd` ejecuta en segundo plano import+compile para que las ideas de esta conversación se conviertan en nodos del grafo para la próxima sesión; dos hooks `PostToolUse` se disparan en `Edit`/`Write`/`MultiEdit` — uno hace recompilación incremental opcional en ediciones de docs/, el otro aplica un debounce (~30 s) a la sincronización del grafo de código; `PreToolUse` (en `Bash`) controla compilaciones de grafos grandes mediante un diálogo de confirmación.
 
+> **La compilación al cerrar la sesión es oportunista, no garantizada.** El hook
+> desacopla su tarea en segundo plano con `setsid` cuando existe, y recurre a
+> `nohup` en caso contrario. macOS no incluye `setsid`, y `nohup` solo ignora
+> `SIGHUP` — deja la tarea en el grupo de procesos de la sesión —, así que un
+> harness que recoja el grupo al cerrar la sesión todavía puede matar la
+> compilación a mitad. Lo que queda entonces es recuperable, no intacto:
+> `graph.json` se escribe con un rename atómico, así que nunca queda a medias,
+> pero las proyecciones generadas `wiki/` y `site/` se borran al inicio de la
+> escritura de artefactos y el almacén SQLite se escribe después de `graph.json`,
+> de modo que una muerte en esa ventana las deja ausentes o una compilación por
+> detrás. Eso sí, nunca ocurre en silencio: `.tesserae/manifest.json` marca un
+> documento como `graphed` solo cuando los artefactos aterrizan, así que la
+> siguiente `compile --changed-only` rechaza su no-op, avisa `graph.json is not
+> known to cover every tracked document` y vuelve a extraer todo el corpus, lo que
+> también reconstruye las proyecciones.
+> No construyas un flujo que asuma que una compilación larga sobrevive a la sesión
+> que la lanzó: ejecútala en primer plano o mediante `tesserae engine`.
+
 Detalles completos, tablas completas de comandos/hooks e instrucciones de opt-out por proyecto están en el propio [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md) del plugin.
 
 ## ¿Por qué un plugin Y un servidor MCP?

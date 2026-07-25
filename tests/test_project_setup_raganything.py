@@ -139,7 +139,7 @@ def test_build_setup_plan_defaults_codex_provider_and_deterministic_embedding(tm
     )
     raga_backend = plan.memory_backends["raganything"]
     assert raga_backend["llm"]["provider"] == "codex"
-    assert raga_backend["llm"]["model"] == "gpt-5.4"
+    assert raga_backend["llm"]["model"] == "gpt-5.6-luna"
     assert raga_backend["llm"]["claude_config_dir"] is None
     assert raga_backend["embedding"]["provider"] == "deterministic"
     assert raga_backend["embedding"]["dim"] == 768

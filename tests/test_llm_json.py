@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import inspect
 import os
+import re
+from pathlib import Path
 from typing import Any, List
 from unittest import mock
 
 import pytest
 
-from tesserae import llm_json
+from tesserae import llm_extractor, llm_json
 from tesserae.llm_json import (
     AnthropicLLMJsonClient,
     ClaudeCLIJsonClient,
@@ -652,7 +655,7 @@ def test_codex_client_invokes_codex_exec_and_parses_json(monkeypatch, tmp_path):
     assert call["cmd"][-1] == "-"
     assert "--model" in call["cmd"]
     # default model
-    assert call["cmd"][call["cmd"].index("--model") + 1] == "gpt-5.4"
+    assert call["cmd"][call["cmd"].index("--model") + 1] == "gpt-5.6-luna"
     # CODEX_HOME routed to the requested home
     assert call["env"]["CODEX_HOME"] == str(home)
     # prompt carries the JSON-only contract pieces
@@ -722,6 +725,7 @@ def test_codex_client_returns_none_when_all_homes_fail(monkeypatch, tmp_path, ca
         return types.SimpleNamespace(returncode=1, stdout="", stderr="run codex login first")
 
     monkeypatch.setattr(llm_json, "_run_cli", fake_run)
+    monkeypatch.setattr(llm_json.time, "sleep", lambda _s: None)  # skip transport backoff
     home = tmp_path / "h"
     home.mkdir()
 
@@ -731,6 +735,9 @@ def test_codex_client_returns_none_when_all_homes_fail(monkeypatch, tmp_path, ca
 
     assert result is None
     assert any("codex" in r.getMessage().lower() for r in caplog.records)
+    # ONE record for the whole call, not one per transport attempt: three
+    # attempts across 137 docs would drown the compile output.
+    assert sum("complete_json failed" in r.getMessage() for r in caplog.records) == 1
 
 
 def test_codex_client_timeout_returns_none(monkeypatch, tmp_path):
@@ -747,6 +754,441 @@ def test_codex_client_timeout_returns_none(monkeypatch, tmp_path):
 
     client = CodexCLIJsonClient(codex_homes=[str(home)], timeout=1)
     assert client.complete_json(system="s", user="u", schema_name="x") is None
+
+
+# ---------------------------------------------------------------------------
+# Transport retry + failure-kind classification
+#
+# A provider capacity window (99 "Reconnecting…" lines in the raw log) pushed
+# 35/137 docs of one compile to the deterministic baseline, and was read three
+# times as the MODEL having worse schema compliance. Two defects: the single
+# CODEX_HOME made the rotation a single attempt, and the None return carried
+# no provenance so transport and bad-generation rendered identically.
+# ---------------------------------------------------------------------------
+
+
+def _codex_fake_run(script, calls):
+    """Build a _run_cli fake driven by ``script`` (one entry per call).
+
+    Each entry is ``(returncode, last_message)``; the message is written to the
+    --output-last-message path so the client reads it the way codex writes it.
+    """
+
+    def fake_run(cmd, **kwargs):
+        import types
+
+        calls.append(kwargs.get("env", {}).get("CODEX_HOME"))
+        rc, message = script[min(len(calls) - 1, len(script) - 1)]
+        if rc == 0:
+            out_path = cmd[cmd.index("--output-last-message") + 1]
+            with open(out_path, "w", encoding="utf-8") as handle:
+                handle.write(message)
+            return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+        return types.SimpleNamespace(returncode=rc, stdout="", stderr=message)
+
+    return fake_run
+
+
+def test_codex_client_retries_transport_failure_against_same_home(monkeypatch, tmp_path):
+    """A momentary 5xx must NOT permanently condemn the doc to deterministic.
+
+    Rotation is not the remedy here — this machine has ONE paid account — so
+    the retry must re-run against the SAME CODEX_HOME.
+    """
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    calls: list = []
+    script = [
+        (1, "stream error: We're currently experiencing high demand"),
+        (1, "stream disconnected before completion; Reconnecting..."),
+        (0, '{"ok": true}'),
+    ]
+    monkeypatch.setattr(llm_json, "_run_cli", _codex_fake_run(script, calls))
+    monkeypatch.setattr(llm_json.time, "sleep", lambda _s: None)
+    home = tmp_path / "only-home"
+    home.mkdir()
+
+    client = CodexCLIJsonClient(codex_homes=[str(home)])
+    result = client.complete_json(system="s", user="u", schema_name="x")
+
+    assert result == {"ok": True}
+    assert calls == [str(home), str(home), str(home)]  # retried, never rotated
+    assert llm_json.last_failure_kind() is None
+
+
+def test_codex_client_does_not_retry_a_timeout(monkeypatch, tmp_path):
+    """The wedge guard bounds ONE attempt; retrying a 1800s timeout would turn
+    a bounded 30 min into 90 min per document."""
+    import subprocess as _subprocess
+
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    calls: list = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(kwargs.get("env", {}).get("CODEX_HOME"))
+        raise _subprocess.TimeoutExpired(cmd=cmd, timeout=1)
+
+    monkeypatch.setattr(llm_json, "_run_cli", fake_run)
+    monkeypatch.setattr(llm_json.time, "sleep", lambda _s: None)
+    home = tmp_path / "h"
+    home.mkdir()
+
+    client = CodexCLIJsonClient(codex_homes=[str(home)], timeout=1)
+    assert client.complete_json(system="s", user="u", schema_name="x") is None
+    assert len(calls) == 1  # one attempt, no retry stacking
+
+
+def _fake_clock(monkeypatch, elapsed_per_call: float):
+    """Replace ``llm_json.time`` with a clock the test advances itself.
+
+    Swapping the whole module attribute (not ``time.monotonic``) keeps the real
+    ``time`` module untouched — several tests here patch ``llm_json.time.sleep``
+    on the genuine module.
+    """
+    import types
+
+    clock = {"t": 0.0}
+
+    def tick():
+        clock["t"] += elapsed_per_call
+        return clock["t"]
+
+    monkeypatch.setattr(
+        llm_json, "time",
+        types.SimpleNamespace(monotonic=lambda: clock["t"], sleep=lambda _s: None),
+    )
+    return clock, tick
+
+
+def test_codex_transport_retry_is_bounded_by_cumulative_elapsed(monkeypatch, tmp_path):
+    """A SLOW non-zero exit must not triple the per-document wedge bound.
+
+    A capacity window presents as `codex exec` sitting in network wait at 0% CPU
+    for ~TESSERAE_EXTRACT_TIMEOUT and then exiting non-zero — the returncode
+    path, which the TimeoutExpired guard does not cover. Unbounded, that doc
+    costs 3 x 1800s while .tesserae/compile.lock is held.
+    """
+    import types
+
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    calls: list = []
+    clock, tick = _fake_clock(monkeypatch, elapsed_per_call=1800.0)
+
+    def slow_failure(cmd, **kwargs):
+        calls.append(1)
+        tick()
+        return types.SimpleNamespace(returncode=1, stdout="", stderr="stream error")
+
+    monkeypatch.setattr(llm_json, "_run_cli", slow_failure)
+    home = tmp_path / "h"
+    home.mkdir()
+
+    client = CodexCLIJsonClient(codex_homes=[str(home)], timeout=1800)
+    assert client.complete_json(system="s", user="u", schema_name="x") is None
+    assert len(calls) == 1  # budget spent by the first attempt
+    assert clock["t"] < 2 * 1800  # the honest bound: "< 2x", not "== 1x"
+
+
+def test_codex_transport_retry_still_fires_on_a_fast_failure(monkeypatch, tmp_path):
+    """...and the cumulative bound must not silently disable the retry itself:
+    a fast 5xx still gets the full rotation + backoff."""
+    import types
+
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    calls: list = []
+    _fake_clock(monkeypatch, elapsed_per_call=0.0)
+
+    def fast_failure(cmd, **kwargs):
+        calls.append(1)
+        return types.SimpleNamespace(returncode=1, stdout="", stderr="stream error")
+
+    monkeypatch.setattr(llm_json, "_run_cli", fast_failure)
+    home = tmp_path / "h"
+    home.mkdir()
+
+    client = CodexCLIJsonClient(codex_homes=[str(home)], timeout=1800)
+    assert client.complete_json(system="s", user="u", schema_name="x") is None
+    assert len(calls) == llm_json._TRANSPORT_RETRIES + 1
+
+
+def test_codex_does_not_retry_a_permanent_failure(monkeypatch, tmp_path):
+    """An expired token / missing binary is not transient.
+
+    Retrying one costs 3 spawns + [2.0, 4.0] sleeps PER DOCUMENT — 411 spawns
+    and ~14 minutes of pure time.sleep on a 137-doc corpus, added to a compile
+    that is guaranteed to fail.
+    """
+    import types
+
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    slept: list = []
+    monkeypatch.setattr(llm_json.time, "sleep", lambda s: slept.append(s))
+    home = tmp_path / "h"
+    home.mkdir()
+    client = CodexCLIJsonClient(codex_homes=[str(home)])
+
+    # (a) expired OAuth — the same substring test ClaudeCLIJsonClient uses.
+    calls: list = []
+
+    def not_logged_in(cmd, **kwargs):
+        calls.append(1)
+        return types.SimpleNamespace(
+            returncode=1, stdout="", stderr="Not logged in. Run `codex login`."
+        )
+
+    monkeypatch.setattr(llm_json, "_run_cli", not_logged_in)
+    assert client.complete_json(system="s", user="u", schema_name="x") is None
+    assert len(calls) == 1 and slept == []
+
+    # (b) no `codex` on PATH — no amount of backoff installs it.
+    calls.clear()
+
+    def missing_binary(cmd, **kwargs):
+        calls.append(1)
+        raise FileNotFoundError(2, "No such file or directory: 'codex'")
+
+    monkeypatch.setattr(llm_json, "_run_cli", missing_binary)
+    assert client.complete_json(system="s", user="u", schema_name="y") is None
+    assert len(calls) == 1 and slept == []
+
+
+def test_stale_home_does_not_kill_transport_retry(monkeypatch, tmp_path):
+    """One stale ``~/.codex*`` directory must not cancel the retry for the good one.
+
+    Homes are not accounts. With CODEX_HOME absent from the environment — a
+    daemon, a launchd job, a scrubbed subprocess env — ``__init__`` discovers
+    every ``~/.codex*`` DIRECTORY, and on the target machine four of the five
+    are stale. A logged-out verdict that was sticky per CALL made the whole
+    transport retry inert in exactly that (default) shape.
+    """
+    import types
+
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    good = tmp_path / "codex"
+    stale = tmp_path / "codex-stale"
+    good.mkdir()
+    stale.mkdir()
+
+    calls: list = []
+
+    def fake_run(cmd, **kwargs):
+        home = kwargs.get("env", {}).get("CODEX_HOME")
+        calls.append(home)
+        if home == str(stale):
+            return types.SimpleNamespace(
+                returncode=1, stdout="", stderr="Not logged in. Run `codex login`."
+            )
+        return types.SimpleNamespace(
+            returncode=1, stdout="", stderr="stream error: We're currently experiencing high demand"
+        )
+
+    monkeypatch.setattr(llm_json, "_run_cli", fake_run)
+    monkeypatch.setattr(llm_json.time, "sleep", lambda _s: None)
+
+    client = CodexCLIJsonClient(codex_homes=[str(good), str(stale)])
+    assert client.complete_json(system="s", user="u", schema_name="x") is None
+
+    assert calls.count(str(good)) == llm_json._TRANSPORT_RETRIES + 1
+    assert calls.count(str(stale)) == 1  # asked once; it will answer the same
+    # A capacity blip on the healthy home is NOT an auth failure just because a
+    # sibling directory is logged out.
+    assert llm_json.last_failure_kind() == "unavailable"
+
+
+def test_all_homes_logged_out_aborts_without_retry(monkeypatch, tmp_path):
+    """...and the property the per-home scoping must not break: an expired
+    session still costs ONE rotation, not 3 spawns + 6s of sleep per document."""
+    import types
+
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    home_a = tmp_path / "codex"
+    home_b = tmp_path / "codex-personal1"
+    home_a.mkdir()
+    home_b.mkdir()
+
+    calls: list = []
+    slept: list = []
+
+    def not_logged_in(cmd, **kwargs):
+        calls.append(kwargs.get("env", {}).get("CODEX_HOME"))
+        return types.SimpleNamespace(
+            returncode=1, stdout="", stderr="Not logged in. Run `codex login`."
+        )
+
+    monkeypatch.setattr(llm_json, "_run_cli", not_logged_in)
+    monkeypatch.setattr(llm_json.time, "sleep", lambda s: slept.append(s))
+
+    client = CodexCLIJsonClient(codex_homes=[str(home_a), str(home_b)])
+    assert client.complete_json(system="s", user="u", schema_name="x") is None
+
+    assert calls == [str(home_a), str(home_b)]
+    assert slept == []
+    assert llm_json.last_failure_kind() == "auth"
+
+
+def test_codex_timeout_is_not_reported_as_a_capacity_outage(monkeypatch, tmp_path, caplog):
+    """The timeout log line must name the real cause and the real remedy.
+
+    Classifying it "unavailable" and telling the operator to run `codex login`
+    sends them to wait out a capacity window that does not exist.
+    """
+    import logging
+    import subprocess as _subprocess
+
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    def timing_out(cmd, **kwargs):
+        raise _subprocess.TimeoutExpired(cmd=cmd, timeout=1800)
+
+    monkeypatch.setattr(llm_json, "_run_cli", timing_out)
+    monkeypatch.setattr(llm_json.time, "sleep", lambda _s: None)
+    home = tmp_path / "h"
+    home.mkdir()
+
+    client = CodexCLIJsonClient(codex_homes=[str(home)], timeout=1800)
+    with caplog.at_level(logging.WARNING):
+        assert client.complete_json(system="s", user="u", schema_name="x") is None
+
+    assert llm_json.last_failure_kind() == "timeout"  # NOT "unavailable"
+    message = "\n".join(r.getMessage() for r in caplog.records)
+    assert "TESSERAE_EXTRACT_TIMEOUT" in message
+    # The line must steer AWAY from re-auth — that remedy belongs to the auth
+    # verdict. It may not do so absolutely: a hung token refresh reaches this
+    # same branch, so "will not help" was itself an overclaim.
+    assert "codex login" in message and "unlikely to help" in message
+
+
+def test_claude_client_tries_each_config_dir_exactly_once(monkeypatch, tmp_path):
+    """Rotation IS this client's retry — it never hammers one account.
+
+    ``_run_prompt`` used to take a ``max_retries`` and wrap its body in
+    ``for attempt in range(max_retries + 1)`` whose second iteration was
+    unreachable (every path returns or breaks), so the parameter documented a
+    retry that never happened. Deleting it is only safe if this stays true.
+    """
+    import inspect
+    import types
+
+    from tesserae.llm_json import ClaudeCLIJsonClient
+
+    seen: list = []
+
+    def failing(cmd, **kwargs):
+        seen.append(kwargs["env"].get("CLAUDE_CONFIG_DIR"))
+        return types.SimpleNamespace(returncode=1, stdout="", stderr="429 rate limited")
+
+    monkeypatch.setattr(llm_json, "_run_cli", failing)
+    dirs = [str(tmp_path / "a"), str(tmp_path / "b")]
+    client = ClaudeCLIJsonClient(config_dirs=dirs)
+
+    assert client.complete_json(system="s", user="u", schema_name="x", max_retries=5) is None
+    assert seen == dirs  # one attempt per account, even at max_retries=5
+    assert "max_retries" not in inspect.signature(client._run_prompt).parameters
+
+
+def test_codex_failure_kind_unavailable_vs_unparseable(monkeypatch, tmp_path):
+    """The three None paths must be distinguishable at the point of failure."""
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    monkeypatch.setattr(llm_json.time, "sleep", lambda _s: None)
+    home = tmp_path / "h"
+    home.mkdir()
+    client = CodexCLIJsonClient(codex_homes=[str(home)])
+
+    # (a) every attempt exits non-zero: transport.
+    monkeypatch.setattr(llm_json, "_run_cli", _codex_fake_run([(1, "Reconnecting...")], []))
+    assert client.complete_json(system="s", user="u", schema_name="x") is None
+    assert llm_json.last_failure_kind() == "unavailable"
+
+    # (c) exit 0 with prose: the model DID answer, and answered badly.
+    monkeypatch.setattr(llm_json, "_run_cli", _codex_fake_run([(0, "I could not do that.")], []))
+    assert client.complete_json(system="s", user="u", schema_name="y") is None
+    assert llm_json.last_failure_kind() == "unparseable"
+
+    # (b) exit 0 with an EMPTY last-message: transport wearing a clean exit code.
+    monkeypatch.setattr(llm_json, "_run_cli", _codex_fake_run([(0, "")], []))
+    assert client.complete_json(system="s", user="u", schema_name="z") is None
+    assert llm_json.last_failure_kind() == "unavailable"
+
+
+def test_failure_kind_cleared_on_success(monkeypatch, tmp_path):
+    """A stale note from an earlier failure must not misattribute a later call."""
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    monkeypatch.setattr(llm_json.time, "sleep", lambda _s: None)
+    home = tmp_path / "h"
+    home.mkdir()
+    client = CodexCLIJsonClient(codex_homes=[str(home)])
+
+    monkeypatch.setattr(llm_json, "_run_cli", _codex_fake_run([(1, "boom")], []))
+    assert client.complete_json(system="s", user="u", schema_name="x") is None
+    assert llm_json.last_failure_kind() == "unavailable"
+
+    monkeypatch.setattr(llm_json, "_run_cli", _codex_fake_run([(0, '{"ok": 1}')], []))
+    assert client.complete_json(system="s", user="u", schema_name="x2") == {"ok": 1}
+    assert llm_json.last_failure_kind() is None
+
+
+def test_claude_client_failure_kind_unavailable_vs_unparseable(
+    monkeypatch, tmp_path, caplog, reset_login_warning
+):
+    """Same failure-kind treatment on the Claude CLI client (bug-class sweep).
+
+    Takes ``reset_login_warning`` so the "no /login hint" assertion below can't
+    pass just because the one-shot guard already fired in an earlier test.
+    """
+    import logging
+    import subprocess
+    import types
+
+    from tesserae.llm_json import ClaudeCLIJsonClient
+
+    client = ClaudeCLIJsonClient(config_dirs=[str(tmp_path / "cfg")])
+
+    monkeypatch.setattr(
+        llm_json, "_run_cli",
+        lambda cmd, **kw: types.SimpleNamespace(returncode=1, stdout="", stderr="429 rate limited"),
+    )
+    assert client.complete_json(system="s", user="u", schema_name="x") is None
+    assert llm_json.last_failure_kind() == "unavailable"
+
+    monkeypatch.setattr(
+        llm_json, "_run_cli",
+        lambda cmd, **kw: types.SimpleNamespace(returncode=0, stdout="sorry, no.", stderr=""),
+    )
+    assert client.complete_json(system="s", user="u", schema_name="y") is None
+    assert llm_json.last_failure_kind() == "unparseable"
+
+    monkeypatch.setattr(
+        llm_json, "_run_cli",
+        lambda cmd, **kw: types.SimpleNamespace(returncode=0, stdout="   ", stderr=""),
+    )
+    assert client.complete_json(system="s", user="u", schema_name="z") is None
+    assert llm_json.last_failure_kind() == "unavailable"
+
+    # ...and a timeout is its own verdict here too: all we saw is the bound
+    # being hit, so "unavailable" would send the operator after an outage we
+    # never observed.
+    def _timing_out(cmd, **kw):
+        raise subprocess.TimeoutExpired(cmd=cmd, timeout=1800)
+
+    monkeypatch.setattr(llm_json, "_run_cli", _timing_out)
+    caplog.clear()
+    with caplog.at_level(logging.WARNING):
+        assert client.complete_json(system="s", user="u", schema_name="t") is None
+    assert llm_json.last_failure_kind() == "timeout"
+    # ...and it must not be reported as an auth problem either: a timeout never
+    # cleared the all-profiles-not-logged-in tracker, so it used to surface as
+    # "Claude CLI not logged in — run `claude /login`".
+    message = "\n".join(r.getMessage() for r in caplog.records)
+    assert "/login" not in message
+    assert "TESSERAE_EXTRACT_TIMEOUT" in message
 
 
 # ---------------------------------------------------------------------------
@@ -942,3 +1384,372 @@ def test_build_default_json_client_seam_forwards_timeout():
         assert seen["timeout"] == 30.0
     finally:
         set_client_factory(None)
+
+
+def test_cli_clients_honour_cache_key(tmp_path, monkeypatch):
+    """cache_key was accepted and ignored by both CLI clients, so every recompile
+    re-paid full price for byte-identical input. A second identical call must now
+    hit disk instead of the CLI — and a different model must NOT reuse the answer."""
+    import tesserae.llm_json as lj
+
+    monkeypatch.setattr(lj, "_CLI_CACHE_DIR", tmp_path / "cache")
+    monkeypatch.delenv("TESSERAE_LLM_CACHE", raising=False)
+
+    calls = []
+
+    def _fake_run(self, prompt, **kw):
+        calls.append(prompt)
+        return '{"nodes": [], "edges": []}'
+
+    monkeypatch.setattr(lj.CodexCLIJsonClient, "_run_prompt", _fake_run)
+    client = lj.CodexCLIJsonClient(codex_homes=["/x"], model="gpt-5.6-luna")
+
+    a = client.complete_json(system="s", user="u", schema_name="g", cache_key="k1")
+    b = client.complete_json(system="s", user="u", schema_name="g", cache_key="k1")
+    assert a == b == {"nodes": [], "edges": []}
+    assert len(calls) == 1, "second identical call should have hit the cache"
+
+    # A different model must re-ask: the caller's cache_key covers content only.
+    other = lj.CodexCLIJsonClient(codex_homes=["/x"], model="some-other-model")
+    other.complete_json(system="s", user="u", schema_name="g", cache_key="k1")
+    assert len(calls) == 2, "a different model must not reuse another model's answer"
+
+    # No cache_key => no caching (callers that don't opt in are unaffected).
+    client.complete_json(system="s", user="u", schema_name="g")
+    client.complete_json(system="s", user="u", schema_name="g")
+    assert len(calls) == 4
+
+    # Kill switch.
+    monkeypatch.setenv("TESSERAE_LLM_CACHE", "0")
+    client.complete_json(system="s", user="u", schema_name="g", cache_key="k1")
+    assert len(calls) == 5
+
+
+def test_cli_cache_never_stores_unparseable_output(tmp_path, monkeypatch):
+    """Caching a malformed generation would make one bad roll permanent."""
+    import tesserae.llm_json as lj
+
+    monkeypatch.setattr(lj, "_CLI_CACHE_DIR", tmp_path / "cache")
+    monkeypatch.delenv("TESSERAE_LLM_CACHE", raising=False)
+    calls = []
+
+    def _fake_run(self, prompt, **kw):
+        calls.append(prompt)
+        return "not json at all"
+
+    monkeypatch.setattr(lj.CodexCLIJsonClient, "_run_prompt", _fake_run)
+    client = lj.CodexCLIJsonClient(codex_homes=["/x"], model="gpt-5.6-luna")
+    client.complete_json(system="s", user="u", schema_name="g", cache_key="bad")
+    client.complete_json(system="s", user="u", schema_name="g", cache_key="bad")
+    assert len(calls) == 2, "a malformed answer must not be cached"
+
+
+# ---------------------------------------------------------------------------
+# Failure-shape parity + the auth verdict
+# ---------------------------------------------------------------------------
+
+
+def test_claude_empty_answer_rotates_to_the_next_profile(monkeypatch, tmp_path):
+    """`claude -p` exiting 0 with an EMPTY body is transport, not an answer.
+
+    Returning "" ended the rotation on the FIRST profile, so a blip on account A
+    was reported as "the backend produced nothing" while account B — the whole
+    point of keeping a rotation — was never asked.
+    """
+    import types
+
+    calls: list = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(kwargs["env"].get("CLAUDE_CONFIG_DIR"))
+        if len(calls) == 1:
+            return types.SimpleNamespace(returncode=0, stdout="   \n", stderr="")
+        return types.SimpleNamespace(returncode=0, stdout='{"ok": 1}', stderr="")
+
+    monkeypatch.setattr(llm_json, "_run_cli", fake_run)
+    dirs = [str(tmp_path / "a"), str(tmp_path / "b")]
+    client = ClaudeCLIJsonClient(config_dirs=dirs)
+
+    assert client.complete_json(system="s", user="u", schema_name="x") == {"ok": 1}
+    assert calls == dirs  # the empty answer did NOT end the rotation
+
+
+def test_claude_auth_failure_is_its_own_verdict(monkeypatch, tmp_path, reset_login_warning):
+    """Every profile answering "not logged in" is an AUTH verdict, not capacity.
+
+    It used to flatten to "unavailable", which the extractor renders per document
+    as "(transport/capacity)" — a remedy ("wait and re-run") that can never fix
+    an expired session, on every line but the one scrolled-away login hint.
+    """
+    import types
+
+    monkeypatch.setattr(
+        llm_json, "_run_cli",
+        lambda cmd, **kw: types.SimpleNamespace(
+            returncode=1, stdout="", stderr="Not logged in · Please run /login"
+        ),
+    )
+    client = ClaudeCLIJsonClient(config_dirs=[str(tmp_path / "cfg")])
+    assert client.complete_json(system="s", user="u", schema_name="x") is None
+    assert llm_json.last_failure_kind() == "auth"
+
+
+def test_codex_auth_failure_is_its_own_verdict_only_when_every_home_agrees(
+    monkeypatch, tmp_path
+):
+    """Same verdict on the codex client — but all-or-nothing.
+
+    A capacity failure on one home must not be reported as an auth problem just
+    because a different home happens to be logged out; that would swap one
+    confidently-wrong remedy for another.
+    """
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    monkeypatch.setattr(llm_json.time, "sleep", lambda _s: None)
+    homes = [str(tmp_path / "h1"), str(tmp_path / "h2")]
+
+    calls: list = []
+    monkeypatch.setattr(
+        llm_json, "_run_cli", _codex_fake_run([(1, "stream error: Not logged in")], calls)
+    )
+    client = CodexCLIJsonClient(codex_homes=homes)
+    assert client.complete_json(system="s", user="u", schema_name="x") is None
+    assert llm_json.last_failure_kind() == "auth"
+
+    # ...but mixed causes stay "unavailable": h1 is logged out, h2 is a capacity blip.
+    mixed: list = []
+    monkeypatch.setattr(
+        llm_json, "_run_cli",
+        _codex_fake_run([(1, "Not logged in"), (1, "stream error: high demand")], mixed),
+    )
+    assert client.complete_json(system="s", user="u", schema_name="y") is None
+    assert llm_json.last_failure_kind() == "unavailable"
+
+
+def test_codex_empty_answer_reaches_the_transport_retry(monkeypatch, tmp_path):
+    """Exit 0 with an EMPTY last message must get the same rolls as any other
+    transport failure.
+
+    It returned "" straight out of the rotation, so it was the ONE shape that
+    never entered the retry loop — while the extractor above declines to re-ask
+    on the grounds that the transport layer already retried.
+    """
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    monkeypatch.setattr(llm_json.time, "sleep", lambda _s: None)
+    calls: list = []
+    monkeypatch.setattr(llm_json, "_run_cli", _codex_fake_run([(0, "")], calls))
+    home = tmp_path / "h"
+    home.mkdir()
+
+    client = CodexCLIJsonClient(codex_homes=[str(home)], timeout=1800)
+    assert client.complete_json(system="s", user="u", schema_name="x") is None
+    assert len(calls) == llm_json._TRANSPORT_RETRIES + 1
+    assert llm_json.last_failure_kind() == "unavailable"  # nothing was generated
+
+
+def test_transport_retry_prose_states_the_bound_it_actually_delivers():
+    """The retry is a CEILING, not a promise — the prose must say so.
+
+    ``_run_prompt`` refuses to start a new rotation once cumulative elapsed time
+    reaches ``self.timeout``, and the observed capacity shape spends exactly that
+    budget in network wait, so with the default 1800s the retry never fires for
+    it (pinned behaviourally by
+    ``test_codex_transport_retry_is_bounded_by_cumulative_elapsed``). Prose that
+    promises an unconditional "the WHOLE rotation is re-run with backoff" sends
+    an operator looking for two retries that the code will not perform.
+    """
+    import inspect
+
+    source = inspect.getsource(llm_json)
+    banner = source[source.index("#: A transport failure"): source.index("_TRANSPORT_RETRIES = 2")]
+    docstring = inspect.getdoc(llm_json.CodexCLIJsonClient._run_prompt) or ""
+
+    for text, label in ((banner, "_TRANSPORT_RETRIES comment"), (docstring, "_run_prompt docstring")):
+        lowered = text.lower()
+        assert "cumulative" in lowered, f"{label} does not name the cumulative-elapsed bound"
+        assert "once" in lowered or "zero" in lowered, (
+            f"{label} does not say that a rotation which spends the whole budget "
+            "gets no retry"
+        )
+
+
+# ---------------------------------------------------------------------------
+# What a timeout establishes — and what it does not
+#
+# The timeout verdict exists so an operator is not sent to wait out a capacity
+# window that does not exist. Round 3 then overcorrected into the mirror-image
+# claim: "The provider was reachable". Nothing in this layer can see that. The
+# ``TimeoutExpired`` is raised on a killed CHILD PROCESS, so a DNS/connect stall
+# that never sent a byte arrives here identically to a slow generation, and
+# telling that operator to raise the bound or split the document buys them
+# another full ``TESSERAE_EXTRACT_TIMEOUT`` of nothing.
+# ---------------------------------------------------------------------------
+
+# Past tense ONLY: "was reachable" is the claim about a round trip we never
+# observed. "check the provider is reachable from this host" is the remedy, and
+# has to survive.
+_ASSERTS_REACHABILITY = re.compile(r"\b(?:was|were)\s+reachable\b", re.IGNORECASE)
+
+
+def _timeout_before_the_provider_saw_it(monkeypatch, tmp_path, client_factory):
+    """Drive a client through a timeout raised BEFORE the request left the host."""
+    import subprocess as _subprocess
+
+    def stalled(cmd, **kwargs):
+        # The DNS/connect-stall shape: the CLI never reached the provider, and
+        # the wedge guard killed it. Indistinguishable, from here, from a slow
+        # generation — which is the whole point.
+        raise _subprocess.TimeoutExpired(cmd=cmd, timeout=1)
+
+    monkeypatch.setattr(llm_json, "_run_cli", stalled)
+    monkeypatch.setattr(llm_json.time, "sleep", lambda _s: None)
+    home = tmp_path / "h"
+    home.mkdir()
+    client = client_factory(str(home))
+    assert client.complete_json(system="s", user="u", schema_name="x") is None
+    return client
+
+
+@pytest.mark.parametrize(
+    "client_factory",
+    [
+        pytest.param(lambda h: llm_json.CodexCLIJsonClient(codex_homes=[h], timeout=1), id="codex"),
+        pytest.param(lambda h: ClaudeCLIJsonClient(config_dirs=[h], timeout=1), id="claude"),
+    ],
+)
+def test_timeout_line_states_the_bound_without_asserting_reachability(
+    monkeypatch, tmp_path, caplog, client_factory
+):
+    """The timeout line may claim the bound was hit. It may not claim a round trip."""
+    with caplog.at_level("WARNING", logger="tesserae.llm_json"):
+        _timeout_before_the_provider_saw_it(monkeypatch, tmp_path, client_factory)
+
+    # Behaviour (c) is untouched: timeout stays its own verdict, not "unavailable".
+    assert llm_json.last_failure_kind() == "timeout"
+
+    lines = [r.getMessage() for r in caplog.records if "timed out" in r.getMessage()]
+    assert lines, "the timeout produced no operator-facing line"
+    for line in lines:
+        assert not _ASSERTS_REACHABILITY.search(line), (
+            f"the timeout line asserts a round trip this layer cannot observe: {line}"
+        )
+        # ...and it still has to be actionable in BOTH directions, or it is just
+        # a shrug. Large doc -> raise/split; small doc -> check connectivity.
+        assert "TESSERAE_EXTRACT_TIMEOUT" in line
+        assert "split" in line
+        assert "reachable from this host" in line
+
+
+def test_extraction_timeout_error_prose_matches_what_the_timeout_proves():
+    """Both the class docstring and the raised message; both used to overclaim."""
+    from tesserae.llm_extractor import ExtractionTimeoutError
+
+    doc = inspect.getdoc(ExtractionTimeoutError) or ""
+    assert not _ASSERTS_REACHABILITY.search(doc), (
+        "ExtractionTimeoutError's docstring still asserts the provider was reachable"
+    )
+    assert "does not" in doc.lower() or "not establish" in doc.lower(), (
+        "the docstring does not say what the timeout fails to establish"
+    )
+
+    source = inspect.getsource(llm_extractor.LLMResearchExtractor)
+    start = source.index("raise ExtractionTimeoutError(")
+    message = source[start : source.index('if kind == "auth":', start)]
+    assert not _ASSERTS_REACHABILITY.search(message), (
+        f"the ExtractionTimeoutError message still asserts reachability: {message}"
+    )
+
+
+# The claim was retired in seven places at once and immediately reappeared in an
+# eighth (cli.py's router comment), because the guards above only inspect the two
+# modules they import. Sweep the package instead, so the NEXT copy fails here
+# rather than in a review.
+_REACHABILITY_SWEEP_ALLOWED = {
+    # Semantically different: describes a backend that answered and then failed,
+    # which is precisely the case this layer CAN observe.
+    ("session_graph.py", "reachable-but-failing"),
+}
+
+
+def test_no_module_claims_the_provider_was_reachable_on_a_timeout():
+    package = Path(llm_json.__file__).parent
+    offenders = []
+    for path in sorted(package.rglob("*.py")):
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if not _ASSERTS_REACHABILITY.search(line):
+                continue
+            if any(
+                path.name == name and token in line
+                for name, token in _REACHABILITY_SWEEP_ALLOWED
+            ):
+                continue
+            offenders.append(f"{path.relative_to(package)}:{lineno}: {line.strip()}")
+    assert not offenders, (
+        "a timeout cannot establish that the provider was reached — these assert it did:\n"
+        + "\n".join(offenders)
+    )
+
+
+# ---------------------------------------------------------------------------
+# Auth-hint volume: the two clients are deliberately unequal, so say so
+#
+# The ``auth`` verdict is re-read PER DOCUMENT — that is what makes every failed
+# doc name `claude /login` / `codex login` instead of "transport/capacity". The
+# LOG lines on top of it are not symmetric: Claude de-duplicates its static hint
+# to once per process, codex logs one line per call. Prose that promises
+# "logged ONCE per process" flatly is false for half the code it describes.
+# ---------------------------------------------------------------------------
+
+
+def _logged_out_run(cmd, **kwargs):
+    return mock.Mock(returncode=1, stdout="", stderr="Not logged in · Please run /login")
+
+
+def test_auth_hint_volume_is_per_call_on_codex_and_once_per_process_on_claude(
+    monkeypatch, tmp_path, caplog
+):
+    monkeypatch.setattr(llm_json, "_run_cli", _logged_out_run)
+    monkeypatch.setattr(llm_json.time, "sleep", lambda _s: None)
+    llm_json._reset_login_warning_for_tests()
+    home = tmp_path / "h"
+    home.mkdir()
+
+    with caplog.at_level("WARNING", logger="tesserae.llm_json"):
+        codex = llm_json.CodexCLIJsonClient(codex_homes=[str(home)], timeout=1)
+        for i in range(5):
+            assert codex.complete_json(system="s", user=f"doc{i}", schema_name="x") is None
+        codex_lines = [r.getMessage() for r in caplog.records if "codex login" in r.getMessage()]
+
+        caplog.clear()
+        claude = ClaudeCLIJsonClient(config_dirs=[str(home)], timeout=1)
+        for i in range(5):
+            assert claude.complete_json(system="s", user=f"doc{i}", schema_name="x") is None
+        claude_lines = [r.getMessage() for r in caplog.records if "/login" in r.getMessage()]
+
+    assert len(codex_lines) == 5, "codex must keep naming the real remedy per document"
+    assert len(claude_lines) == 1, "the Claude hint is still de-duplicated per process"
+    # Either way the per-document DIAGNOSIS is the verdict, not the log line.
+    assert llm_json.last_failure_kind() == "auth"
+
+
+def test_auth_prose_does_not_promise_a_once_per_process_hint_for_both_clients():
+    """The claim has to name which client it is about, because they differ."""
+    from tesserae.llm_extractor import ProviderAuthError
+
+    banner = inspect.getsource(llm_json)
+    banner = banner[banner.index('#: ``"auth"``'): banner.index("_LAST_FAILURE = threading.local()")]
+
+    for text, label in (
+        (inspect.getdoc(ProviderAuthError) or "", "ProviderAuthError docstring"),
+        (banner, "_LAST_FAILURE auth banner"),
+    ):
+        if "once per process" not in text.lower():
+            continue
+        assert "ClaudeCLIJsonClient" in text, (
+            f"{label} promises a once-per-process hint without saying it is the "
+            "Claude client's alone"
+        )
+        assert "CodexCLIJsonClient" in text and "per call" in text.lower(), (
+            f"{label} does not record that the codex client logs one line per call"
+        )
