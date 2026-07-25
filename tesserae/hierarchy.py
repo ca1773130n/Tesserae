@@ -9,6 +9,15 @@ serves::
      leaf_member_count, parent_scope, tags, quality: "llm"|"structural",
      stale: bool}
 
+Graph-derived cards (:func:`community_card`, :func:`node_card`) add one more
+key, ``live_member_count`` — how many of the scope's members the CURRENT graph
+actually carries. The sidecar is written mid-compile, so a later rewrite of
+``graph.json`` can leave memberships pointing at nodes that are gone; ``size``
+keeps reporting the dendrogram's count and this reports the graph's. The
+registry-derived builders below (:func:`agent_card`, :func:`distilled_note_card`)
+have no such skew — their membership IS the registry — so they omit it. Read it
+with a ``.get()`` default when iterating mixed card kinds.
+
 Parent/child links are derived at read time by membership containment between
 adjacent dendrogram levels — the sidecar stores memberships only (§3). All of
 this is pure structure: zero LLM calls. Coarsest-level communities that carry
@@ -18,8 +27,9 @@ an in-graph COMMUNITY_SUMMARY node reuse its title/description/tags with
 ``agent_topics._structural_summary`` uses) with ``quality="structural"``.
 Also home to the agent-org card builders (§6.2 PR9): :func:`agent_card` and
 :func:`distilled_note_card` render the registry tree and an agent's distilled
-L1 Index in the same uniform shape — pure functions of registry structure and
-distillate metadata, sealed off from raw L0 content. Federated-scope helpers
+L1 Index in the same shape minus ``live_member_count`` (see above) — pure
+functions of registry structure and distillate metadata, sealed off from raw
+L0 content. Federated-scope helpers
 (§6.3 PR10) — :func:`split_federated_scope`, :func:`federated_scope_id`,
 :func:`namespace_card` — carry the ``alias::`` grammar for sibling-project
 descent, reusing ``federation.federate_graphs`` namespacing semantics.
