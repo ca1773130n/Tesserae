@@ -60,6 +60,28 @@ _EXCLUDED_TOPLEVEL_DIRS = frozenset({
     "i18n",
 })
 
+# Same idea, but for directory names whose tail is not knowable at import time.
+# pytest's ``tmp_path_factory`` roots at ``<basetemp>/pytest-of-<user>/pytest-N/``
+# and ``<basetemp>`` is ``$TMPDIR`` — which, when TMPDIR resolves to the repo
+# (see .gitignore:26-28,48-50), plants thousands of throwaway fixture markdown
+# files INSIDE a configured source root. They then churn every test run, so the
+# candidate set never repeats and changed-only can never no-op.
+#
+# ``pip-install-`` is the same story from pip's scratch dirs; .gitignore already
+# enumerates it, so it is a documented junk family with no cost to include.
+#
+# ponytail: a two-entry prefix tuple, not a glob engine. If a third junk-dir
+# family shows up (tsx-*, pip-build-env-*, mkdtemp's tmpXXXXXXXX), upgrade this
+# to fnmatch against a config-overridable pattern list rather than growing the
+# tuple forever. Those three are deliberately absent today: they measured at 32
+# ghost rows and ZERO live files on the repo, and the manifest reconciliation in
+# ``ProjectWiki.ingest`` self-heals their rows anyway. The real fix is
+# containment (keep TMPDIR out of the repo); this only stops the measured bleed.
+#
+# Deliberately NOT .gitignore parsing — the walker's ignore set stays hermetic
+# and deterministic (same rationale as ``code_graph_extractor.DEFAULT_EXCLUDES``).
+_EXCLUDED_DIR_PREFIXES: Tuple[str, ...] = ("pytest-of-", "pip-install-")
+
 
 class FilesystemSourceLoader:
     """Walks filesystem roots and yields :class:`Source` records.
@@ -182,14 +204,33 @@ class FilesystemSourceLoader:
                 # rglob results are always under root; guard for symlink edge
                 # cases by skipping anything that doesn't relativize.
                 continue
-            if any(part.startswith(".") for part in rel.parts):
+            if any(part.startswith(".") for part in rel.parts[:-1]):
                 continue
             # Skip well-known generated/output directories. Without this the
             # walker sweeps up everything under output/, build/, dist/, etc.,
             # which on a repo that's been through previous compiles turns
             # thousands of stale generated markdown files into "source" docs
             # and balloons the typed graph with garbage Paper/Concept nodes.
-            if any(part in _EXCLUDED_TOPLEVEL_DIRS for part in rel.parts):
+            if any(part in _EXCLUDED_TOPLEVEL_DIRS for part in rel.parts[:-1]):
+                continue
+            # Same, for families whose exact name isn't knowable (``pytest-of-
+            # $USER``). MUST stay on ``rel.parts`` — components strictly BELOW
+            # the root — never on ``root`` itself: every fixture project in the
+            # test suite is handed a ``tmp_path``, which IS a
+            # ``pytest-of-<user>/pytest-N/<test>`` directory. Matching the root
+            # would silently empty every one of those corpora, and the suite
+            # would still pass because an empty corpus yields an empty graph
+            # that nothing asserts against. Pinned by
+            # ``test_iter_paths_walks_a_pytest_tmpdir_passed_as_the_root``.
+            # ``rel.parts[:-1]`` — DIRECTORY components only. The last part is
+            # the filename, and this is a directory rule: matching it would drop
+            # ordinary documents whose NAME merely starts with a prefix.
+            # ``pip-install-guide.md`` is not a pytest artifact, and Tesserae's
+            # own concept slugifier mints exactly that shape from any "pip
+            # install <x>" heading — 597 such pages exist in this project's
+            # markdown projection today. Dropping them would be silent: the file
+            # never becomes a candidate, so nothing logs it.
+            if any(part.startswith(_EXCLUDED_DIR_PREFIXES) for part in rel.parts[:-1]):
                 continue
             yield child
 

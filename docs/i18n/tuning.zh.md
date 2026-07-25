@@ -1,0 +1,157 @@
+# 调优参考 — 环境变量
+
+<!-- translations:start -->
+<p align="center"><a href="../tuning.md">English</a> · <a href="tuning.ko.md">한국어</a> · <a href="tuning.zh.md">中文</a> · <a href="tuning.ja.md">日本語</a> · <a href="tuning.ru.md">Русский</a> · <a href="tuning.es.md">Español</a> · <a href="tuning.fr.md">Français</a> · <a href="tuning.de.md">Deutsch</a></p>
+<!-- translations:end -->
+
+Tesserae 从环境读取的每个旋钮、其默认值及实际何时更改它。
+这里的任何内容都不是必需的：默认值的选择使得普通的 `tesserae compile` 能够正确运行。
+
+项目和全局配置（`.tesserae/config.json`、`~/.tesserae/config.json`）
+对 LLM 后端设置优先；下面的环境变量在设置的运行中优先于两者。
+
+---
+
+## 提取
+
+### `TESSERAE_EXTRACT_TIMEOUT`
+
+**默认 `1800`（秒），每次尝试。** 限制每个 codex/claude 提取
+调用，以便 wedged CLI 子进程无法挂起编译。
+
+这是真实发生的：一次编译在 0% CPU 下观察到 **5 h 43 m**
+后面跟着一个空闲 **4 h 6 m** 的 `codex exec` 子进程，一直持有 `.tesserae/compile.lock`。
+它已经在内存中构建了 32 个社区摘要，但从未持久化它们。
+
+每次尝试，不是每个文档——超时后客户端轮换到下一个
+`CODEX_HOME` / claude 配置目录，所以一个文档的最坏情况是
+`timeout × 配置的配置文件`。
+
+```sh
+export TESSERAE_EXTRACT_TIMEOUT=3600   # 为非常大的文档提供更多空间
+export TESSERAE_EXTRACT_TIMEOUT=0      # 无截断——运行至完成
+```
+
+设置但无法使用的值（`10m`、`600s`、负数、`inf`）会在 stderr 上警告
+并保持默认值。拼写错误不得以静默方式禁用安全阀。
+
+### `TESSERAE_EXTRACT_CONCURRENCY`
+
+**默认 `4`。** 并行提取的文档。每个都是一个阻塞 CLI
+子进程，大约需要一分钟，所以顺序循环使得挂钟时间
+是每个模型往返时间的总和——对 161 个文档测量为 ~2 h 40 m。
+
+上限是提供商账户的速率限制，而不是您的机器，这就是为什么
+默认值很低。设置 `1` 以实现严格的顺序行为。
+
+并发永远不会改变输出：工作列表按路径顺序固定，
+结果按索引收集，因此并行运行与
+顺序运行字节相同。
+
+### `TESSERAE_LLM_CACHE`
+
+**默认打开。** CLI 提供商响应的内容寻址缓存，位于
+`~/.tesserae/llm_cache` 下，由（文档、种类、指导）以及模型和
+推理努力进行键控——因此切换模型会重新询问而不是服用先前
+模型的答案。只存储可解析的响应，因此一个不良生成
+无法成为永久的。
+
+```sh
+export TESSERAE_LLM_CACHE=0   # 始终重新询问
+```
+
+### `TESSERAE_LLM_CHUNK_CHARS`
+
+当文档太大而无法进行一次调用时，每个块的字符数。除非您
+在达到上下文限制，否则保持未设置。
+
+---
+
+## LLM 后端
+
+| 变量 | 默认值 | 备注 |
+|---|---|---|
+| `TESSERAE_LLM_PROVIDER` | `claude` | `codex`、`claude`、`anthropic`、`custom` |
+| `TESSERAE_LLM_MODEL` | 特定于提供商 | 由提供商作用域，使得 claude 形状的模型永远不会落在 codex 路径上 |
+| `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | 结构化提取不需要您可能为交互工作设置的 `xhigh`——`xhigh` 使多文档编译慢数倍 |
+
+`tesserae config status` 打印解析后的后端并对其进行活性检测。
+
+---
+
+## 编译通道
+
+| 变量 | 默认值 | 控制内容 |
+|---|---|---|
+| `TESSERAE_COMMUNITY_SUMMARIES` | **打开** | GraphRAG 风格的摘要通道。≥ 5 个成员的集群每个 LLM 调用 1 次，按成员资格摘要缓存。`false`/`0`/`no`/`off` 禁用 |
+| `TESSERAE_ENABLE_LLM_PASSES` | 关闭 | 提取之外的可选 LLM 增强通道 |
+| `TESSERAE_AGENT_DISTILL` | 关闭 | 每个代理 L1 专业知识工件（`tesserae distill`） |
+| `TESSERAE_RUNBOOK_DISTILLATION` | 关闭 | Runbook/Gotcha 蒸馏内存节点 |
+| `TESSERAE_INSIGHT_SYMBOL_LINK` | 打开 | 将会话洞察链接到代码符号 |
+| `TESSERAE_SUPERSEDE_PASS` | 打开 | 修订声明之间的 `superseded_by` 边 |
+| `TESSERAE_PROMPT_SIGNATURES` | 关闭 | 记录提示签名以进行漂移检测 |
+| `TESSERAE_COMPILE_LOCK_WAIT` | — | 在放弃前等待 `.tesserae/compile.lock` 的秒数 |
+
+**关于社区摘要：** 编译通道急切地覆盖最粗粒度；
+`graph_map` 另外在您第一次下降到冷作用域时懒惰地具体化一个摘要，
+按级别缓存。关闭通道是合法的成本策略——您只为
+实际访问的分支付费——但有一个警告：
+**联合下降永远不会懒惰地具体化。** 兄弟项目的卡片只能
+从其在图内摘要或已热缓存中命名，所以跨项目导航的项目
+需要打开急切通道。
+
+---
+
+## 查询和综合
+
+| 变量 | 默认值 | 备注 |
+|---|---|---|
+| `TESSERAE_QUERY_LLM` | 关闭 | `tesserae query` 的 LLM 计划程序 |
+| `TESSERAE_QUERY_DRY_RUN` | 关闭 | 在不调用模型的情况下进行计划 |
+| `TESSERAE_SYNTHESIS_LLM` | 关闭 | `tesserae ask` 中的散文综合 |
+| `TESSERAE_SYNTHESIS_MODEL` | — | 覆盖综合模型 |
+| `TESSERAE_SYNTHESIS_WORKERS` | — | 并行综合工作者 |
+| `TESSERAE_SYNTHESIS_DRY_RUN` | 关闭 | 跳过模型，运行管道 |
+
+---
+
+## 路径和基础设施
+
+| 变量 | 默认值 | 备注 |
+|---|---|---|
+| `TESSERAE_REGISTRY` | `~/.tesserae/registry.json` | 项目注册表位置 |
+| `TESSERAE_DISCOVERY_CACHE` | — | 会话发现缓存 |
+| `TESSERAE_ARXIV_CACHE` | — | arXiv 元数据缓存 |
+| `TESSERAE_NO_FEDERATION_CACHE` | 关闭 | 禁用联合图 LRU |
+| `TESSERAE_INCLUDE_COMBINED_GRAPH` | 关闭 | 发出组合跨项目图 |
+| `TESSERAE_FLEET_PIDFILE` | — | 引擎舰队 pidfile |
+| `TESSERAE_CLIP_TOKEN` | — | Web clipper 的共享密钥 |
+| `TESSERAE_SCHEMA_DRIFT_APPLY` | 关闭 | 应用模式漂移提案（`tesserae lab`） |
+
+---
+
+## 恢复降级的语料库
+
+当文档提取失败时，它由确定性基线服用和
+在 `.tesserae/manifest.json` 中**标记**。没有标记，它无法
+与干净提取区分，所以 `--changed-only` 会永远跳过它，
+降级将是永久的，直到文件自身内容改变。
+
+```sh
+tesserae compile --changed-only --retry-fallbacks
+```
+
+仅重新尝试标记的文档；干净的保持跳过。
+
+## 检查层次结构
+
+```sh
+tesserae graph-map                          # 根地图
+tesserae graph-map --scope <scope_id>       # 下降
+tesserae graph-map --scope '<alias>::'      # 兄弟注册项目
+```
+
+每张卡从层次结构 sidecar 报告 `size` 和 `leaf_member_count`，
+加上 `live_member_count`——*当前*图实际携带的成员数。
+一个 `0` 那里意味着作用域是死的（sidecar/图 skew）：跳过它
+而不是下降。

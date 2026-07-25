@@ -19,6 +19,7 @@ grounded, cited, and on demand.
 [Docs](docs/) ·
 [Agent memory](docs/agent-memory.md) ·
 [MCP setup](docs/integrations/mcp.md) ·
+[Tuning](docs/tuning.md) ·
 [Release notes](docs/release-notes/)
 
 [한국어](./README.ko.md) · [中文](./README.zh.md) · [日本語](./README.ja.md) · [Русский](./README.ru.md) · [Español](./README.es.md) · [Français](./README.fr.md) · [Deutsch](./README.de.md)

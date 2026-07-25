@@ -25,6 +25,7 @@
   <a href="docs/">문서</a> ·
   <a href="docs/release-notes/">릴리스 노트</a> ·
   <a href="docs/integrations/mcp.md">MCP 설정</a> ·
+  <a href="docs/tuning.md">튜닝</a> ·
   <a href="docs/integrations/obsidian.md">Obsidian 내보내기</a>
 </p>
 

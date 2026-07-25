@@ -1,0 +1,162 @@
+# チューニングリファレンス — 環境変数
+
+<!-- translations:start -->
+<p align="center"><a href="../tuning.md">English</a> · <a href="tuning.ko.md">한국어</a> · <a href="tuning.zh.md">中文</a> · <a href="tuning.ja.md">日本語</a> · <a href="tuning.ru.md">Русский</a> · <a href="tuning.es.md">Español</a> · <a href="tuning.fr.md">Français</a> · <a href="tuning.de.md">Deutsch</a></p>
+<!-- translations:end -->
+
+Tesserae が環境から読み取るすべてのノブ、そのデフォルト値、
+および実際に変更する時期について説明します。ここのすべてが必須ではありません：
+デフォルト値は、単純な `tesserae compile` が正しく機能するように選択されています。
+
+プロジェクトおよびグローバル設定（`.tesserae/config.json`、`~/.tesserae/config.json`）
+は LLM バックエンド設定に優先権を持ちます；下記の環境変数は、設定の実行でそれら両方に優先します。
+
+---
+
+## 抽出
+
+### `TESSERAE_EXTRACT_TIMEOUT`
+
+**デフォルト `1800`（秒）、試行ごと。** 各 codex/claude 抽出呼び出しを制限し、
+wedged CLI 子プロセスがコンパイルをハングさせないようにします。
+
+これは実際に起こりました：コンパイルが **5 h 43 m** の間 0% CPU で
+観察され、**4 h 6 m** の間アイドル状態の `codex exec` 子プロセスが背後にあり、
+`.tesserae/compile.lock` をずっと保持していました。
+すでにメモリ内に 32 個のコミュニティサマリーを構築していましたが、
+それらを永続化することはできませんでした。
+
+試行ごと、ドキュメントごとではありません。タイムアウト時に、クライアントは次の
+`CODEX_HOME` / claude 設定ディレクトリにローテーションするため、
+1 つのドキュメントの最悪のケースは `timeout × 設定されたプロファイル` です。
+
+```sh
+export TESSERAE_EXTRACT_TIMEOUT=3600   # 非常に大きなドキュメントのためのより多くの余裕
+export TESSERAE_EXTRACT_TIMEOUT=0      # 制限なし—完了まで実行
+```
+
+設定されているが使用不可な値（`10m`、`600s`、負、`inf`）は stderr に警告し、
+デフォルトを保つ。タイプミスがセーフティバルブをサイレントに無効にしてはいけません。
+
+### `TESSERAE_EXTRACT_CONCURRENCY`
+
+**デフォルト `4`。** 並行して抽出されたドキュメント。各々はおよそ 1 分かかる
+ブロッキング CLI サブプロセスであるため、シーケンシャルループは壁時計を
+すべてのモデルラウンドトリップの文字通りの合計にします—
+161 個のドキュメントで ~2 h 40 m として測定されました。
+
+上限はあなたのマシンではなく、プロバイダーアカウントのレート制限です。
+これが デフォルト値が控えめである理由です。
+厳密にシーケンシャルな動作のために `1` に設定します。
+
+並行性は出力を変更することはありません：作業リストは経路順で固定され、
+結果はインデックスで収集されるため、並行実行はシーケンシャル実行と
+バイト単位で同じです。
+
+### `TESSERAE_LLM_CACHE`
+
+**デフォルトオン。** CLI プロバイダー応答のコンテンツアドレス指定キャッシュは、
+`~/.tesserae/llm_cache` の下にあり、（ドキュメント、種類、ガイダンス）
+およびモデルと推理努力によってキー付けされます—したがって、
+モデルを切り替えると、前のモデルの回答を供給する代わりに再度質問します。
+解析可能な応答のみが保存されるため、1 つの悪い生成も永続的になることはできません。
+
+```sh
+export TESSERAE_LLM_CACHE=0   # 常に再度質問
+```
+
+### `TESSERAE_LLM_CHUNK_CHARS`
+
+ドキュメントが 1 回の呼び出しに対して大きすぎる場合のチャックあたりの文字数。
+コンテキスト制限に達していない限り、設定されていないままにしておきます。
+
+---
+
+## LLM バックエンド
+
+| 変数 | デフォルト | 注記 |
+|---|---|---|
+| `TESSERAE_LLM_PROVIDER` | `claude` | `codex`、`claude`、`anthropic`、`custom` |
+| `TESSERAE_LLM_MODEL` | プロバイダー固有 | プロバイダーによってスコープされるため、claude 型のモデルが codex パスに落ちることはありません |
+| `TESSERAE_CODEX_REASONING_EFFORT` | `medium` | 構造化抽出は、インタラクティブな作業のために設定される可能性のある `xhigh` を必要としません—`xhigh` はマルチドキュメントコンパイルを何倍も遅くします |
+
+`tesserae config status` は解決されたバックエンドを出力し、生存性をチェックします。
+
+---
+
+## コンパイルパス
+
+| 変数 | デフォルト | 何を制御するか |
+|---|---|---|
+| `TESSERAE_COMMUNITY_SUMMARIES` | **オン** | GraphRAG スタイルのサマリーパス。≥ 5 メンバーのクラスタあたり LLM 呼び出し 1 回、メンバーシップダイジェストでキャッシュ。`false`/`0`/`no`/`off` で無効化 |
+| `TESSERAE_ENABLE_LLM_PASSES` | オフ | 抽出以外のオプションの LLM 拡張パス |
+| `TESSERAE_AGENT_DISTILL` | オフ | エージェントごとの L1 専門知識アーティファクト（`tesserae distill`） |
+| `TESSERAE_RUNBOOK_DISTILLATION` | オフ | Runbook/Gotcha 蒸留メモリノード |
+| `TESSERAE_INSIGHT_SYMBOL_LINK` | オン | セッション洞察をコードシンボルにリンク |
+| `TESSERAE_SUPERSEDE_PASS` | オン | 修正されたクレーム間の `superseded_by` エッジ |
+| `TESSERAE_PROMPT_SIGNATURES` | オフ | ドリフト検出のためのプロンプトシグネチャの記録 |
+| `TESSERAE_COMPILE_LOCK_WAIT` | — | `.tesserae/compile.lock` を待つまでの秒数 |
+
+**コミュニティサマリーについて：** コンパイルパスは最も粗い粒度を積極的にカバーします；
+`graph_map` はさらに、冷たいスコープに最初に下降するときに、サマリーを遅延して具体化し、
+レベルごとにキャッシュします。パスをオフにすることは正当なコスト戦略です—
+実際にアクセスするブランチにのみ料金を支払います—ただし 1 つの注意があります：
+**連合下降は遅延具体化を行いません。** 兄弟プロジェクトのカードは、
+そのインビデオサマリーまたは既にウォームなキャッシュからのみ命名できるため、
+クロスプロジェクトナビゲートするプロジェクトはイーグルパスをオンにしたいです。
+
+---
+
+## クエリと合成
+
+| 変数 | デフォルト | 注記 |
+|---|---|---|
+| `TESSERAE_QUERY_LLM` | オフ | `tesserae query` の LLM プランナー |
+| `TESSERAE_QUERY_DRY_RUN` | オフ | モデルを呼び出さずにプラン |
+| `TESSERAE_SYNTHESIS_LLM` | オフ | `tesserae ask` での散文合成 |
+| `TESSERAE_SYNTHESIS_MODEL` | — | 合成モデルのオーバーライド |
+| `TESSERAE_SYNTHESIS_WORKERS` | — | 並行合成ワーカー |
+| `TESSERAE_SYNTHESIS_DRY_RUN` | オフ | モデルをスキップ、パイプラインを実行 |
+
+---
+
+## パスとインフラストラクチャ
+
+| 変数 | デフォルト | 注記 |
+|---|---|---|
+| `TESSERAE_REGISTRY` | `~/.tesserae/registry.json` | プロジェクトレジストリの場所 |
+| `TESSERAE_DISCOVERY_CACHE` | — | セッション発見キャッシュ |
+| `TESSERAE_ARXIV_CACHE` | — | arXiv メタデータキャッシュ |
+| `TESSERAE_NO_FEDERATION_CACHE` | オフ | フェデレーション グラフ LRU を無効化 |
+| `TESSERAE_INCLUDE_COMBINED_GRAPH` | オフ | 結合されたクロスプロジェクトグラフを出力 |
+| `TESSERAE_FLEET_PIDFILE` | — | エンジンフリート pidfile |
+| `TESSERAE_CLIP_TOKEN` | — | Web クリッパーの共有シークレット |
+| `TESSERAE_SCHEMA_DRIFT_APPLY` | オフ | スキーマドリフト提案を適用（`tesserae lab`） |
+
+---
+
+## 低下したコーパスの復旧
+
+ドキュメントの抽出が失敗すると、決定論的ベースラインによって提供され、
+`.tesserae/manifest.json` で**マークされます**。マークなしでは、
+クリーン抽出と区別できないため、`--changed-only` はそれを永遠にスキップし、
+低下はファイル自体のコンテンツが変更されるまで永続的になります。
+
+```sh
+tesserae compile --changed-only --retry-fallbacks
+```
+
+マークされたドキュメントのみ再試行；クリーンなものはスキップのままです。
+
+## 階層構造の検査
+
+```sh
+tesserae graph-map                          # ルートマップ
+tesserae graph-map --scope <scope_id>       # 下降
+tesserae graph-map --scope '<alias>::'      # 兄弟登録プロジェクト
+```
+
+各カードは階層サイドカーから `size` と `leaf_member_count` を報告し、
+さらに `live_member_count`—*現在の*グラフが実際に保持するメンバーの数。
+`0` があるところはスコープが死んでいます（sidecar/グラフスキュー）：
+下降するのではなくスキップしてください。
