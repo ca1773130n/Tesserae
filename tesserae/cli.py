@@ -5388,22 +5388,33 @@ def _build_extract_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _extract_timeout() -> Optional[int]:
-    """Per-file LLM extraction cutoff in WHOLE SECONDS, opt-in via ``TESSERAE_EXTRACT_TIMEOUT``.
+#: Per-attempt extraction cutoff when ``TESSERAE_EXTRACT_TIMEOUT`` is unset.
+#: 30 minutes is far above any healthy extraction and far below "forever" —
+#: it exists to break wedges, not to bound cost.
+_DEFAULT_EXTRACT_TIMEOUT = 1800
 
-    Default (env unset) is ``None`` — no cutoff, a slow doc runs to completion,
-    byte-identical to prior behaviour. Set a positive number to bound each
-    codex/claude extraction ATTEMPT: a wedged CLI child (e.g. a network wait
-    that never resolves) is then killed by ``_run_cli``'s process-group guard, the
-    provider client moves on / returns None, and the selective router falls back to
+
+def _extract_timeout() -> Optional[int]:
+    """Per-file LLM extraction cutoff in WHOLE SECONDS, tunable via ``TESSERAE_EXTRACT_TIMEOUT``.
+
+    Default (env unset) is :data:`_DEFAULT_EXTRACT_TIMEOUT`. This bounds each
+    codex/claude extraction ATTEMPT: a wedged CLI child (e.g. a network wait that
+    never resolves) is killed by ``_run_cli``'s process-group guard, the provider
+    client moves on / returns None, and the selective router falls back to
     deterministic for THAT doc instead of blocking the whole compile forever.
+
+    Default-ON deliberately. Shipped opt-in, the guard stayed disarmed and the
+    failure it prevents kept happening in the wild — a `compile --project` observed
+    at 0% CPU for 5h43m behind a codex child idle for 4h06m, minting community
+    summaries it never lived to persist. A safety valve nobody switches on is not
+    a safety valve. ``TESSERAE_EXTRACT_TIMEOUT=0`` restores unbounded runs.
 
     Per ATTEMPT, not per doc: ``_run_prompt`` (llm_json.py) treats a timeout like
     an auth failure and rotates to the next CODEX_HOME / claude config dir, so one
     doc's worst case is ``timeout × <number of configured profiles>``.
 
-    Set but unusable (garbage, non-positive, inf/nan) warns on stderr and falls
-    back to ``None``: a safety valve that silently fails to arm is worse than none.
+    Set but unusable (garbage, negative, inf/nan) warns on stderr and falls back to
+    the default: a typo must not silently disarm the guard.
 
     Rounded UP to a whole second >= 1 because the two CLI clients coerce their
     timeout with ``int()`` (llm_json.py) while the Anthropic client keeps the float:
@@ -5417,16 +5428,18 @@ def _extract_timeout() -> Optional[int]:
 
     raw = os.environ.get("TESSERAE_EXTRACT_TIMEOUT")
     if not raw or not raw.strip():
-        return None
+        return _DEFAULT_EXTRACT_TIMEOUT
     try:
         val = float(raw)
     except (TypeError, ValueError):
         val = float("nan")
-    if val <= 0 or math.isinf(val) or math.isnan(val):
+    if val == 0:
+        return None  # documented escape hatch: run to completion
+    if val < 0 or math.isinf(val) or math.isnan(val):
         print(f"warning: ignoring TESSERAE_EXTRACT_TIMEOUT={raw!r} — expected a "
-              f"positive number of seconds; extraction runs with NO cutoff.",
-              file=sys.stderr)
-        return None
+              f"positive number of seconds (or 0 for no cutoff); falling back to "
+              f"{_DEFAULT_EXTRACT_TIMEOUT}s.", file=sys.stderr)
+        return _DEFAULT_EXTRACT_TIMEOUT
     return max(1, math.ceil(val))
 
 
