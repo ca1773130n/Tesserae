@@ -25,6 +25,7 @@
   <a href="docs/">文档</a> ·
   <a href="docs/release-notes/">版本说明</a> ·
   <a href="docs/integrations/mcp.md">MCP 配置</a> ·
+  <a href="docs/tuning.md">调优</a> ·
   <a href="docs/integrations/obsidian.md">Obsidian 导出</a>
 </p>
 

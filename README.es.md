@@ -25,6 +25,7 @@
   <a href="docs/">Documentación</a> ·
   <a href="docs/release-notes/">Notas de versión</a> ·
   <a href="docs/integrations/mcp.md">Configuración MCP</a> ·
+  <a href="docs/tuning.md">Ajustes</a> ·
   <a href="docs/integrations/obsidian.md">Exportar a Obsidian</a>
 </p>
 
