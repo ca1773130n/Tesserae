@@ -515,3 +515,30 @@ def test_cli_graph_map_missing_sidecar_is_clean_error(project, capsys) -> None:
     assert "Traceback" not in captured.err
     assert "tesserae compile" in captured.err  # the remedy
     assert captured.out.strip() == ""  # no half-written JSON on the happy channel
+
+
+def test_live_member_count_exposes_sidecar_graph_divergence(tmp_path):
+    """A card whose members graph.json no longer carries still advertises the
+    sidecar's size, so `size` alone cannot distinguish a healthy scope from a dead
+    one. `live_member_count` is the graph's own count — 0 means don't descend."""
+    from tesserae.hierarchy import Hierarchy, community_card, node_card
+    from tesserae.research_graph import ResearchNode, ResearchNodeType
+
+    alive = ResearchNode(id="Paper:alive:1", name="Alive", type=ResearchNodeType.PAPER)
+    by_id = {alive.id: alive}
+    members = [alive.id, "Paper:gone:2", "Paper:gone:3"]
+    hierarchy = Hierarchy(levels=[{"CommunitySummary:c": members}], hubs=[])
+
+    card = community_card(hierarchy, "CommunitySummary:c", members, by_id, {})
+    assert card["size"] == 3 and card["leaf_member_count"] == 3  # sidecar truth
+    assert card["live_member_count"] == 1                        # graph truth
+
+    # Fully dead scope — the 4/96 "Untitled community" case.
+    dead = ["Paper:gone:2", "Paper:gone:3"]
+    hierarchy_dead = Hierarchy(levels=[{"CommunitySummary:d": dead}], hubs=[])
+    dead_card = community_card(hierarchy_dead, "CommunitySummary:d", dead, by_id, {})
+    assert dead_card["size"] == 2 and dead_card["live_member_count"] == 0
+
+    # Leaf-level form of the same divergence.
+    assert node_card(alive.id, "CommunitySummary:c", by_id)["live_member_count"] == 1
+    assert node_card("Paper:gone:2", "CommunitySummary:c", by_id)["live_member_count"] == 0
