@@ -43,10 +43,20 @@ All four are opt-out per-project via `.claude/tesserae.local.md` frontmatter (se
 > macOS ships no `setsid`, and `nohup` only sets `SIGHUP` to ignore — it does *not*
 > leave the session's process group — so a harness that reaps the group on session
 > close can still kill the compile mid-flight. Measured on macOS 26: the `nohup`'d
-> child keeps its parent shell's pgid. Nothing is corrupted when it is killed; the
-> graph is just stale, `SessionStart` warns about it, and the next compile picks it
-> up. Don't rely on a long compile outliving the session that started it — run it in
-> the foreground, or under `tesserae engine`.
+> child keeps its parent shell's pgid.
+>
+> What a kill leaves behind is recoverable, not untouched. `graph.json` is written
+> by atomic rename, so it is never half a file — but the generated `wiki/` and
+> `site/` projections are cleared at the start of the artifact write and rebuilt,
+> and the SQLite store is written after `graph.json`, so a kill inside that window
+> leaves them missing or one compile behind. The guarantee is that this is never
+> *silent*: `.tesserae/manifest.json` marks a document `graphed` only after the
+> artifacts land, so the next `tesserae project compile --changed-only` sees the
+> missing marks, prints `graph.json is not known to cover every tracked document`,
+> and re-extracts the whole corpus — which is also what regenerates `wiki/` and
+> `site/`. Until then `SessionStart` warns that the graph is stale. Don't rely on a
+> long compile outliving the session that started it — run it in the foreground, or
+> under `tesserae engine`.
 
 ## MCP auto-registration
 

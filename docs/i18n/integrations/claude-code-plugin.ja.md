@@ -26,9 +26,15 @@ Tesserae は [Claude Code](https://docs.claude.com/en/docs/claude-code) プラ�
 > があればそれでバックグラウンドジョブを切り離し、なければ `nohup` にフォールバック
 > します。macOS に `setsid` はなく、`nohup` は `SIGHUP` を無視するだけ — ジョブは
 > セッションのプロセスグループに残ります — なので、セッション終了時にグループを刈り
-> 取るハーネスは依然として compile を途中で kill できます。それでも壊れるものはあり
-> ません。グラフが古いままになるだけで、`SessionStart` がそれを知らせ、次の compile
-> が引き継ぎます。長い compile が起動元セッションより長生きする前提のワークフローは
+> 取るハーネスは依然として compile を途中で kill できます。そのとき残る状態は「無傷」
+> ではなく「復旧可能」です。`graph.json` はアトミックな rename で書かれるので半端な
+> ファイルにはなりませんが、生成物である `wiki/` と `site/` の投影はアーティファクト
+> 書き込みの冒頭で消され、SQLite ストアは `graph.json` の後に書かれるため、その区間で
+> kill されるとこれらは失われるか 1 回分古いままになります。ただし黙ってそうなること
+> はありません — `.tesserae/manifest.json` はアーティファクトが着地した後にのみ文書へ
+> `graphed` を刻むので、次の `compile --changed-only` は no-op を拒否し、`graph.json is
+> not known to cover every tracked document` と告げてコーパス全体を再抽出し、そこで投影
+> も作り直されます。長い compile が起動元セッションより長生きする前提のワークフローは
 > 組まないでください — フォアグラウンドで実行するか、`tesserae engine` を使います。
 
 完全な詳細、コマンド/フックの完全な表、プロジェクトごとのオプトアウト手順はプラグイン自身の [`plugin/README.md`](https://github.com/ca1773130n/Tesserae/blob/main/PLUGIN-README.md) にあります。

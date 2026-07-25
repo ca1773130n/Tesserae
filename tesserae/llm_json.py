@@ -100,16 +100,25 @@ def _reset_login_warning_for_tests() -> None:
 #: Why the most recent ``complete_json`` on THIS thread returned None.
 #: ``"unavailable"`` = the provider never produced text (non-zero exit, spawn
 #: error, or a clean exit with an empty body) — transport/capacity.
-#: ``"timeout"`` = the provider WAS reachable but this document did not finish
-#: inside ``TESSERAE_EXTRACT_TIMEOUT``. Kept separate from ``"unavailable"``
-#: because the remedies are opposite: wait out a capacity window vs. raise the
-#: bound / split the document. ``codex login`` fixes neither, but only one of
-#: the two log lines has any business mentioning it.
+#: ``"timeout"`` = the attempt did not finish inside ``TESSERAE_EXTRACT_TIMEOUT``.
+#: That is ALL it establishes. It is deliberately not folded into
+#: ``"unavailable"`` — the remedies differ (wait out a capacity window vs. raise
+#: the bound / split the document) — but it must not assert the opposite either:
+#: the ``TimeoutExpired`` comes from the child process, and a DNS/connect stall
+#: that never reached the provider raises exactly the same exception as a
+#: genuinely slow generation. The verdict says the bound was hit; it does not
+#: say the provider saw the request, in either direction.
 #: ``"auth"`` = every account that was tried answered "not logged in". Split out
 #: of ``"unavailable"`` for the third time the same way: waiting out a capacity
-#: window never refreshes an expired OAuth session, and the actionable
-#: ``claude /login`` / ``codex login`` hint is logged ONCE per process, so on a
-#: 137-doc compile the other 136 per-document lines asserted transport/capacity.
+#: window never refreshes an expired OAuth session, and this verdict is re-read
+#: PER DOCUMENT — before it existed, the one actionable ``claude /login`` /
+#: ``codex login`` line was the once-per-process login warning and the other 136
+#: per-document lines of a 137-doc compile asserted transport/capacity.
+#: The verdict is what carries the remedy per doc (``LLMResearchExtractor`` turns
+#: it into ``ProviderAuthError``); how loudly each client ALSO logs it is a
+#: separate, deliberately unequal choice — :class:`ClaudeCLIJsonClient`
+#: de-duplicates its static hint via ``_LOGGED_LOGIN_WARNING``,
+#: :class:`CodexCLIJsonClient` logs one line per call.
 #: Covers ONLY the credential refusal — a missing CLI binary stays
 #: ``"unavailable"``.
 #: ponytail: ``"auth"`` is written by the two CLI clients only;
@@ -713,9 +722,11 @@ class ClaudeCLIJsonClient:
                 # `claude /login`" — the same confidently-wrong remedy this
                 # change exists to remove.
                 all_not_logged_in = False
-                # And a timeout is NOT "the backend is unavailable" either: the
-                # CLI was reachable, this document just didn't finish inside
-                # the bound. Same defect the codex client had; fixed in both.
+                # And a timeout is NOT "the backend is unavailable" either: all
+                # we know is that this attempt hit the bound. Same defect the
+                # codex client had; fixed in both — including the overcorrection
+                # of then asserting the CLI *was* reachable, which this layer
+                # cannot see (a connect stall raises the same TimeoutExpired).
                 if isinstance(exc, _subprocess.TimeoutExpired):
                     timed_out = True
                 # Don't retry on the same config_dir; fall through to
@@ -746,9 +757,12 @@ class ClaudeCLIJsonClient:
             if timed_out:
                 _note_failure("timeout")
                 logger.warning(
-                    "%s — timed out after %ss: %s. The CLI was reachable; this document "
-                    "did not finish inside the per-attempt bound. Raise "
-                    "TESSERAE_EXTRACT_TIMEOUT (0 = no bound) or split the document.",
+                    "%s — timed out after %ss: %s. All this establishes is that the "
+                    "attempt did not finish inside the per-attempt bound — a slow "
+                    "generation and a stall that never reached the provider look the "
+                    "same from here. If the document is large, raise "
+                    "TESSERAE_EXTRACT_TIMEOUT (0 = no bound) or split it; if it is not, "
+                    "check that the provider is reachable from this host.",
                     error_label,
                     self.timeout,
                     last_error,
@@ -944,9 +958,10 @@ class CodexCLIJsonClient:
         bound.
 
         On failure this records the verdict for the calling thread via
-        :func:`_note_failure` — ``"timeout"`` (the provider WAS reachable; this
-        document didn't finish inside the bound), ``"auth"`` (every home tried
-        answered "not logged in") or ``"unavailable"`` (nothing was generated).
+        :func:`_note_failure` — ``"timeout"`` (the attempt didn't finish inside
+        the bound; that says nothing about whether the provider saw it),
+        ``"auth"`` (every home tried answered "not logged in") or
+        ``"unavailable"`` (nothing was generated).
         ``complete_json`` must not overwrite it.
         """
         import os as _os
@@ -1105,17 +1120,24 @@ class CodexCLIJsonClient:
             # name only the exception class, so a capacity window read exactly
             # like a schema violation.
             if timed_out:
-                # A timeout is NOT a capacity outage, and `codex login` will not
-                # fix it. Claiming otherwise sends the operator to wait out a
-                # window that does not exist and re-run --retry-fallbacks
-                # forever — the same confident-wrong-diagnosis this whole
-                # classification exists to kill.
+                # A timeout is NOT a capacity outage. Claiming otherwise sends
+                # the operator to wait out a window that does not exist and
+                # re-run --retry-fallbacks forever — the same
+                # confident-wrong-diagnosis this whole classification exists to
+                # kill. But the opposite claim is the same mistake mirrored: we
+                # see a killed child, not a completed round trip, so a DNS or
+                # connect stall reaches this branch too. State the bound, then
+                # BOTH remedies.
                 _note_failure("timeout")
                 logger.warning(
-                    "%s — timed out after %ss on %d CODEX_HOME %s: %s. The provider was "
-                    "reachable; this document did not finish inside the per-attempt bound. "
-                    "Raise TESSERAE_EXTRACT_TIMEOUT (0 = no bound) or split the document — "
-                    "`codex login` will not help.",
+                    "%s — timed out after %ss on %d CODEX_HOME %s: %s. All this "
+                    "establishes is that the attempt did not finish inside the "
+                    "per-attempt bound — a slow generation and a stall that never "
+                    "reached the provider look the same from here. If the document is "
+                    "large, raise TESSERAE_EXTRACT_TIMEOUT (0 = no bound) or split it; "
+                    "if it is not, check that the provider is reachable from this host. "
+                    "`codex login` is unlikely to help — a logged-out home exits fast "
+                    "and lands on the auth line instead.",
                     error_label,
                     self.timeout,
                     len(self.codex_homes),
@@ -1127,6 +1149,15 @@ class CodexCLIJsonClient:
                 # expired after any amount of waiting, and the caller renders
                 # this verdict once PER DOCUMENT, so it must carry the real
                 # remedy rather than "transport/capacity".
+                # ponytail: this WARNING is per call, unlike the Claude client's
+                # one-shot ``_LOGGED_LOGIN_WARNING``, so a 137-doc compile logs
+                # 137 identical lines here on top of the 137 the selective
+                # router prints. Not re-gated, because the router's line is the
+                # one that names the document and this one is the only place the
+                # home count and the raw CLI text appear. Upgrade path if the
+                # volume ever bites: log the full line once and a one-line
+                # `(auth, see above)` thereafter — the ``auth`` verdict, not the
+                # log, is what the per-document diagnosis rides on.
                 _note_failure("auth")
                 logger.warning(
                     "%s — every CODEX_HOME tried (%d) reported `not logged in`: %s. "
@@ -1139,8 +1170,9 @@ class CodexCLIJsonClient:
                 _note_failure("unavailable")
                 logger.warning(
                     "%s — provider returned nothing after %d attempt(s) over %d CODEX_HOME "
-                    "%s: %s. Nothing was generated, so this is NOT a bad model generation. "
-                    "Run `codex login` if it persists.",
+                    "%s: %s. Nothing was generated, so this is NOT a bad model generation "
+                    "— and NOT an auth failure either: a logged-out home reports itself "
+                    "and lands on the auth line. If it persists, run `tesserae doctor`.",
                     error_label,
                     attempt + 1,
                     len(self.codex_homes),

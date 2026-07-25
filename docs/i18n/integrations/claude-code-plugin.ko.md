@@ -26,8 +26,15 @@ Tesserae는 [Claude Code](https://docs.claude.com/en/docs/claude-code) 플러그
 > 그것으로 백그라운드 작업을 분리하고, 없으면 `nohup`으로 폴백합니다. macOS에는
 > `setsid`가 없고 `nohup`은 `SIGHUP`을 무시할 뿐 — 작업을 세션의 프로세스 그룹에
 > 그대로 남겨둡니다 — 따라서 세션 종료 시 그룹을 회수하는 하네스는 여전히 compile을
-> 도중에 죽일 수 있습니다. 그래도 손상되는 것은 없습니다. 그래프가 오래된 상태로
-> 남을 뿐이고, `SessionStart`가 그 사실을 알려주며, 다음 compile이 이어받습니다.
+> 도중에 죽일 수 있습니다. 그때 남는 상태는 "손상되지 않은" 것이 아니라 "복구
+> 가능한" 것입니다. `graph.json`은 원자적 rename으로 기록되므로 절반만 쓰인 파일이
+> 되는 일은 없지만, 생성물인 `wiki/`와 `site/` 투영은 아티팩트 기록 시작 시점에
+> 지워지고 SQLite 스토어는 `graph.json` 이후에 기록되므로, 그 구간에서 죽으면
+> 이들은 사라지거나 한 compile 뒤처진 상태로 남습니다. 다만 조용히 그렇게 되지는
+> 않습니다 — `.tesserae/manifest.json`은 아티팩트가 안착한 뒤에만 문서에 `graphed`
+> 표시를 남기므로, 다음 `compile --changed-only`는 no-op을 거부하고 `graph.json is
+> not known to cover every tracked document`이라고 알린 뒤 전체 코퍼스를 다시
+> 추출하며, 그 과정에서 투영도 다시 만들어집니다.
 > 긴 compile이 그것을 시작한 세션보다 오래 살아남는다고 가정하는 워크플로는 만들지
 > 마세요 — 포그라운드에서 실행하거나 `tesserae engine`을 쓰세요.
 

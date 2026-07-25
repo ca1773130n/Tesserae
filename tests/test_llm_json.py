@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import inspect
 import os
+import re
+from pathlib import Path
 from typing import Any, List
 from unittest import mock
 
 import pytest
 
-from tesserae import llm_json
+from tesserae import llm_extractor, llm_json
 from tesserae.llm_json import (
     AnthropicLLMJsonClient,
     ClaudeCLIJsonClient,
@@ -1055,7 +1058,10 @@ def test_codex_timeout_is_not_reported_as_a_capacity_outage(monkeypatch, tmp_pat
     assert llm_json.last_failure_kind() == "timeout"  # NOT "unavailable"
     message = "\n".join(r.getMessage() for r in caplog.records)
     assert "TESSERAE_EXTRACT_TIMEOUT" in message
-    assert "codex login" in message and "will not help" in message
+    # The line must steer AWAY from re-auth — that remedy belongs to the auth
+    # verdict. It may not do so absolutely: a hung token refresh reaches this
+    # same branch, so "will not help" was itself an overclaim.
+    assert "codex login" in message and "unlikely to help" in message
 
 
 def test_claude_client_tries_each_config_dir_exactly_once(monkeypatch, tmp_path):
@@ -1166,8 +1172,9 @@ def test_claude_client_failure_kind_unavailable_vs_unparseable(
     assert client.complete_json(system="s", user="u", schema_name="z") is None
     assert llm_json.last_failure_kind() == "unavailable"
 
-    # ...and a timeout is its own verdict here too: the CLI was reachable, so
-    # "unavailable" would send the operator after a nonexistent outage.
+    # ...and a timeout is its own verdict here too: all we saw is the bound
+    # being hit, so "unavailable" would send the operator after an outage we
+    # never observed.
     def _timing_out(cmd, **kw):
         raise subprocess.TimeoutExpired(cmd=cmd, timeout=1800)
 
@@ -1564,4 +1571,185 @@ def test_transport_retry_prose_states_the_bound_it_actually_delivers():
         assert "once" in lowered or "zero" in lowered, (
             f"{label} does not say that a rotation which spends the whole budget "
             "gets no retry"
+        )
+
+
+# ---------------------------------------------------------------------------
+# What a timeout establishes — and what it does not
+#
+# The timeout verdict exists so an operator is not sent to wait out a capacity
+# window that does not exist. Round 3 then overcorrected into the mirror-image
+# claim: "The provider was reachable". Nothing in this layer can see that. The
+# ``TimeoutExpired`` is raised on a killed CHILD PROCESS, so a DNS/connect stall
+# that never sent a byte arrives here identically to a slow generation, and
+# telling that operator to raise the bound or split the document buys them
+# another full ``TESSERAE_EXTRACT_TIMEOUT`` of nothing.
+# ---------------------------------------------------------------------------
+
+# Past tense ONLY: "was reachable" is the claim about a round trip we never
+# observed. "check the provider is reachable from this host" is the remedy, and
+# has to survive.
+_ASSERTS_REACHABILITY = re.compile(r"\b(?:was|were)\s+reachable\b", re.IGNORECASE)
+
+
+def _timeout_before_the_provider_saw_it(monkeypatch, tmp_path, client_factory):
+    """Drive a client through a timeout raised BEFORE the request left the host."""
+    import subprocess as _subprocess
+
+    def stalled(cmd, **kwargs):
+        # The DNS/connect-stall shape: the CLI never reached the provider, and
+        # the wedge guard killed it. Indistinguishable, from here, from a slow
+        # generation — which is the whole point.
+        raise _subprocess.TimeoutExpired(cmd=cmd, timeout=1)
+
+    monkeypatch.setattr(llm_json, "_run_cli", stalled)
+    monkeypatch.setattr(llm_json.time, "sleep", lambda _s: None)
+    home = tmp_path / "h"
+    home.mkdir()
+    client = client_factory(str(home))
+    assert client.complete_json(system="s", user="u", schema_name="x") is None
+    return client
+
+
+@pytest.mark.parametrize(
+    "client_factory",
+    [
+        pytest.param(lambda h: llm_json.CodexCLIJsonClient(codex_homes=[h], timeout=1), id="codex"),
+        pytest.param(lambda h: ClaudeCLIJsonClient(config_dirs=[h], timeout=1), id="claude"),
+    ],
+)
+def test_timeout_line_states_the_bound_without_asserting_reachability(
+    monkeypatch, tmp_path, caplog, client_factory
+):
+    """The timeout line may claim the bound was hit. It may not claim a round trip."""
+    with caplog.at_level("WARNING", logger="tesserae.llm_json"):
+        _timeout_before_the_provider_saw_it(monkeypatch, tmp_path, client_factory)
+
+    # Behaviour (c) is untouched: timeout stays its own verdict, not "unavailable".
+    assert llm_json.last_failure_kind() == "timeout"
+
+    lines = [r.getMessage() for r in caplog.records if "timed out" in r.getMessage()]
+    assert lines, "the timeout produced no operator-facing line"
+    for line in lines:
+        assert not _ASSERTS_REACHABILITY.search(line), (
+            f"the timeout line asserts a round trip this layer cannot observe: {line}"
+        )
+        # ...and it still has to be actionable in BOTH directions, or it is just
+        # a shrug. Large doc -> raise/split; small doc -> check connectivity.
+        assert "TESSERAE_EXTRACT_TIMEOUT" in line
+        assert "split" in line
+        assert "reachable from this host" in line
+
+
+def test_extraction_timeout_error_prose_matches_what_the_timeout_proves():
+    """Both the class docstring and the raised message; both used to overclaim."""
+    from tesserae.llm_extractor import ExtractionTimeoutError
+
+    doc = inspect.getdoc(ExtractionTimeoutError) or ""
+    assert not _ASSERTS_REACHABILITY.search(doc), (
+        "ExtractionTimeoutError's docstring still asserts the provider was reachable"
+    )
+    assert "does not" in doc.lower() or "not establish" in doc.lower(), (
+        "the docstring does not say what the timeout fails to establish"
+    )
+
+    source = inspect.getsource(llm_extractor.LLMResearchExtractor)
+    start = source.index("raise ExtractionTimeoutError(")
+    message = source[start : source.index('if kind == "auth":', start)]
+    assert not _ASSERTS_REACHABILITY.search(message), (
+        f"the ExtractionTimeoutError message still asserts reachability: {message}"
+    )
+
+
+# The claim was retired in seven places at once and immediately reappeared in an
+# eighth (cli.py's router comment), because the guards above only inspect the two
+# modules they import. Sweep the package instead, so the NEXT copy fails here
+# rather than in a review.
+_REACHABILITY_SWEEP_ALLOWED = {
+    # Semantically different: describes a backend that answered and then failed,
+    # which is precisely the case this layer CAN observe.
+    ("session_graph.py", "reachable-but-failing"),
+}
+
+
+def test_no_module_claims_the_provider_was_reachable_on_a_timeout():
+    package = Path(llm_json.__file__).parent
+    offenders = []
+    for path in sorted(package.rglob("*.py")):
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if not _ASSERTS_REACHABILITY.search(line):
+                continue
+            if any(
+                path.name == name and token in line
+                for name, token in _REACHABILITY_SWEEP_ALLOWED
+            ):
+                continue
+            offenders.append(f"{path.relative_to(package)}:{lineno}: {line.strip()}")
+    assert not offenders, (
+        "a timeout cannot establish that the provider was reached — these assert it did:\n"
+        + "\n".join(offenders)
+    )
+
+
+# ---------------------------------------------------------------------------
+# Auth-hint volume: the two clients are deliberately unequal, so say so
+#
+# The ``auth`` verdict is re-read PER DOCUMENT — that is what makes every failed
+# doc name `claude /login` / `codex login` instead of "transport/capacity". The
+# LOG lines on top of it are not symmetric: Claude de-duplicates its static hint
+# to once per process, codex logs one line per call. Prose that promises
+# "logged ONCE per process" flatly is false for half the code it describes.
+# ---------------------------------------------------------------------------
+
+
+def _logged_out_run(cmd, **kwargs):
+    return mock.Mock(returncode=1, stdout="", stderr="Not logged in · Please run /login")
+
+
+def test_auth_hint_volume_is_per_call_on_codex_and_once_per_process_on_claude(
+    monkeypatch, tmp_path, caplog
+):
+    monkeypatch.setattr(llm_json, "_run_cli", _logged_out_run)
+    monkeypatch.setattr(llm_json.time, "sleep", lambda _s: None)
+    llm_json._reset_login_warning_for_tests()
+    home = tmp_path / "h"
+    home.mkdir()
+
+    with caplog.at_level("WARNING", logger="tesserae.llm_json"):
+        codex = llm_json.CodexCLIJsonClient(codex_homes=[str(home)], timeout=1)
+        for i in range(5):
+            assert codex.complete_json(system="s", user=f"doc{i}", schema_name="x") is None
+        codex_lines = [r.getMessage() for r in caplog.records if "codex login" in r.getMessage()]
+
+        caplog.clear()
+        claude = ClaudeCLIJsonClient(config_dirs=[str(home)], timeout=1)
+        for i in range(5):
+            assert claude.complete_json(system="s", user=f"doc{i}", schema_name="x") is None
+        claude_lines = [r.getMessage() for r in caplog.records if "/login" in r.getMessage()]
+
+    assert len(codex_lines) == 5, "codex must keep naming the real remedy per document"
+    assert len(claude_lines) == 1, "the Claude hint is still de-duplicated per process"
+    # Either way the per-document DIAGNOSIS is the verdict, not the log line.
+    assert llm_json.last_failure_kind() == "auth"
+
+
+def test_auth_prose_does_not_promise_a_once_per_process_hint_for_both_clients():
+    """The claim has to name which client it is about, because they differ."""
+    from tesserae.llm_extractor import ProviderAuthError
+
+    banner = inspect.getsource(llm_json)
+    banner = banner[banner.index('#: ``"auth"``'): banner.index("_LAST_FAILURE = threading.local()")]
+
+    for text, label in (
+        (inspect.getdoc(ProviderAuthError) or "", "ProviderAuthError docstring"),
+        (banner, "_LAST_FAILURE auth banner"),
+    ):
+        if "once per process" not in text.lower():
+            continue
+        assert "ClaudeCLIJsonClient" in text, (
+            f"{label} promises a once-per-process hint without saying it is the "
+            "Claude client's alone"
+        )
+        assert "CodexCLIJsonClient" in text and "per call" in text.lower(), (
+            f"{label} does not record that the codex client logs one line per call"
         )

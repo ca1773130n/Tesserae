@@ -328,6 +328,46 @@ def test_a_scoped_incremental_run_keeps_the_stale_key_the_guard_needs(tmp_path):
     assert {Path(k).name for k in _manifest(project)} == {"a.md", "b.md", "c.md"}
 
 
+def test_a_deferred_doc_loses_its_stamp_when_changed_paths_gutted_it(tmp_path):
+    """Deferred-keeps-its-stamp holds only while nothing tombstoned its nodes.
+
+    An explicit ``changed_paths`` tombstones by CALLER intent, not by what the
+    batch got through — so with ``--limit`` cutting the work-list, a doc can be
+    both deferred (entry not rewritten) and gutted (nodes deleted). Stamping it
+    ``graphed`` there would hand the completeness guard a graph that is genuinely
+    missing a document, and it stays missing until its bytes change.
+    """
+    project, wiki = _make_project(tmp_path, "deferred-but-gutted", ["a", "b", "c", "d"])
+    cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+    cfg["incremental_compile"] = True  # EXPERIMENTAL — off by default
+    wiki.paths.config.write_text(json.dumps(cfg) + "\n", encoding="utf-8")
+
+    wiki.compile(doc_extractor=FlakyExtractor())
+    docs = project / "docs"
+    for name in ("b", "c"):
+        (docs / f"{name}.md").write_text(f"# {name}\n\nedited\n", encoding="utf-8")
+
+    # limit=1 lets only b.md through; c.md is deferred but named as changed, so
+    # its prior nodes are tombstoned anyway.
+    wiki.compile(
+        changed_only=True,
+        limit=1,
+        changed_paths=[str(docs / "b.md"), str(docs / "c.md")],
+        doc_extractor=FlakyExtractor(),
+    )
+
+    manifest = _manifest(project)
+    stamped = {Path(k).name for k, v in manifest.items() if v.get("graphed")}
+    gutted = "Paper:c" not in _graph_node_ids(project)
+    # Whichever way the differ went, the stamp must not outlive the nodes.
+    assert gutted == ("c.md" not in stamped), (
+        f"c.md nodes gone={gutted} but stamped={'c.md' in stamped} — "
+        f"the completeness guard would trust an incomplete graph"
+    )
+    # The untouched doc past the cut keeps its coverage either way.
+    assert "d.md" in stamped
+
+
 def test_manifest_prune_leaves_loader_keyed_entries_alone(tmp_path):
     """``_ingest_via_loader`` shares this manifest under ``source:`` keys.
 
@@ -698,3 +738,79 @@ def test_bare_retry_fallbacks_warns(tmp_path, capsys):
         "deterministic",
     ]) == 0
     assert "--retry-fallbacks has no effect without --changed-only" in capsys.readouterr().err
+
+
+def test_limit_defers_a_doc_without_forfeiting_its_graph_coverage(tmp_path):
+    """``--limit`` on a SCOPED retry must not cost the deferred doc its stamp.
+
+    ``BatchIngestRunner`` breaks out of its scan at the limit, so every document
+    past the cut is neither processed nor skipped. On a scoped run the prior
+    graph is merged in and nothing tombstoned those documents, so graph.json
+    still covers them exactly as their (untouched) manifest entries describe.
+    Unstamping them anyway made the very next ``--changed-only
+    --retry-fallbacks`` see incomplete coverage and re-extract the WHOLE corpus
+    — the 137->35 bound defeated by one ``--limit`` (Codex A1).
+    """
+    project, wiki = _make_project(tmp_path, "retry-limit-defer", ["a", "b", "c", "d"])
+    wiki.compile(changed_only=True, doc_extractor=FlakyExtractor(failing={"b.md", "d.md"}))
+
+    limited = FlakyExtractor(failing=set())
+    wiki.compile(changed_only=True, retry_fallbacks=True, limit=1, doc_extractor=limited)
+    assert [Path(c).name for c in limited.calls] == ["b.md"]
+
+    files = _manifest(project)
+    # ``d.md`` is still marked for retry and still covered by graph.json...
+    assert files[str(project / "docs" / "d.md")].get("fallback") is True
+    assert "Concept:d" + FlakyExtractor.JUNK_SUFFIX in _graph_node_ids(project)
+    # ...so the deferred doc keeps the stamp that says so.
+    assert {Path(k).name for k, v in files.items() if v.get("graphed") is True} == {
+        "a.md",
+        "b.md",
+        "c.md",
+        "d.md",
+    }
+
+    # The pay-off: the follow-up retry is still SCOPED to the remaining doc.
+    resumed = FlakyExtractor(failing=set())
+    result = wiki.compile(changed_only=True, retry_fallbacks=True, doc_extractor=resumed)
+    assert [Path(c).name for c in resumed.calls] == ["d.md"]
+    assert result["processed_files"] == 1
+    assert result["skipped_files"] == 3
+    assert "Concept:d" + FlakyExtractor.JUNK_SUFFIX not in _graph_node_ids(project)
+
+
+def test_a_scoped_run_unstamps_the_departed_doc_but_not_the_deferred_one(tmp_path):
+    """The two reasons a doc is absent from the batch get OPPOSITE answers.
+
+    One scoped run, both directions: ``a.md`` left the corpus (nothing vouches
+    for its coverage any more — the stamp must go, which is what keeps the
+    completeness guard honest) while ``c.md`` and ``d.md`` were merely deferred
+    past ``--limit`` (their prior nodes are still in graph.json — the stamp
+    stays). Widening the keep-set to every manifest key would pass the deferred
+    half and silently lose this one.
+    """
+    project, wiki = _make_project(tmp_path, "scoped-limit-mixed", ["a", "b", "c", "d"])
+    cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+    cfg["incremental_compile"] = True  # EXPERIMENTAL — off by default
+    wiki.paths.config.write_text(json.dumps(cfg) + "\n", encoding="utf-8")
+
+    wiki.compile(doc_extractor=FlakyExtractor())
+    assert all(entry.get("graphed") is True for entry in _manifest(project).values())
+
+    (project / "docs" / "a.md").unlink()  # GONE
+    for stem in ("b", "c"):  # both changed; --limit 1 defers c
+        (project / "docs" / f"{stem}.md").write_text(f"# {stem}\nRevised.", encoding="utf-8")
+
+    scoped = FlakyExtractor()
+    wiki.compile(changed_only=True, limit=1, doc_extractor=scoped)
+    assert [Path(c).name for c in scoped.calls] == ["b.md"]
+
+    files = _manifest(project)
+    # The stale key survives a scoped run (the subtractive guard needs it)...
+    assert {Path(k).name for k in files} == {"a.md", "b.md", "c.md", "d.md"}
+    # ...but only as an UNSTAMPED key, so the completeness guard refuses reuse.
+    assert {Path(k).name for k, v in files.items() if v.get("graphed") is True} == {
+        "b.md",
+        "c.md",
+        "d.md",
+    }

@@ -5508,9 +5508,10 @@ def _build_doc_extractor(args: argparse.Namespace, cfg: Optional[dict] = None):
     # ``ProviderUnavailableError`` (backend produced no output at all — e.g. a
     # capacity window: wait and re-run), ``ProviderAuthError`` (every configured
     # account refused the credentials: re-auth, waiting never clears it),
-    # ``ExtractionTimeoutError`` (provider was reachable, this doc did not
-    # finish inside ``TESSERAE_EXTRACT_TIMEOUT``: raise the bound or split the
-    # doc), and ``GraphJSONValidationError`` (output arrived but violates the
+    # ``ExtractionTimeoutError`` (the attempt did not finish inside
+    # ``TESSERAE_EXTRACT_TIMEOUT`` — which does NOT establish the provider was
+    # reached: raise the bound or split the doc if it is large, else check
+    # reachability), and ``GraphJSONValidationError`` (output arrived but violates the
     # controlled schema: fix the prompt/schema). Collapsing the first three into
     # the last is what made a provider outage read as 8x worse model schema
     # compliance.

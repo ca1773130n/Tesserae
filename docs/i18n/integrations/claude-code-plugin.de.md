@@ -27,9 +27,17 @@ Voraussetzung: `tesserae` bereits installiert (`pip install tesserae` oder `pipx
 > greift sonst auf `nohup` zurück. macOS liefert kein `setsid`, und `nohup`
 > ignoriert lediglich `SIGHUP` — der Job bleibt in der Prozessgruppe der Sitzung —,
 > sodass ein Harness, das die Gruppe beim Sitzungsende einsammelt, die
-> Kompilierung weiterhin mittendrin killen kann. Dabei geht nichts kaputt: der
-> Graph ist nur veraltet, `SessionStart` sagt das, und die nächste Kompilierung
-> holt es nach. Baue keinen Workflow, der annimmt, dass eine lange Kompilierung
+> Kompilierung weiterhin mittendrin killen kann. Was dabei zurückbleibt, ist
+> wiederherstellbar, nicht unberührt: `graph.json` wird per atomarem Rename
+> geschrieben und ist daher nie eine halbe Datei — aber die generierten
+> Projektionen `wiki/` und `site/` werden zu Beginn des Artefaktschreibens
+> gelöscht, und der SQLite-Store wird nach `graph.json` geschrieben, sodass ein
+> Kill in diesem Fenster sie fehlend oder eine Kompilierung veraltet hinterlässt.
+> Still geschieht das aber nie — `.tesserae/manifest.json` markiert ein Dokument
+> erst als `graphed`, wenn die Artefakte liegen, also verweigert die nächste
+> `compile --changed-only` ihren No-op, meldet `graph.json is not known to cover
+> every tracked document` und extrahiert den gesamten Korpus neu, wodurch auch die
+> Projektionen wieder entstehen. Baue keinen Workflow, der annimmt, dass eine lange Kompilierung
 > die Sitzung überlebt, die sie gestartet hat — führe sie im Vordergrund aus oder
 > über `tesserae engine`.
 

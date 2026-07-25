@@ -985,6 +985,13 @@ class ProjectWiki:
         # False; it re-extracted a subset but already tombstoned and merged it
         # over the prior graph, which ``corpus_unchanged`` + the ``graphed``
         # marker prove is complete — see the ceiling noted at that merge.)
+        # Resolved paths whose prior nodes this run TOMBSTONED. The ``graphed``
+        # stamping block below needs it: a ``--limit``-deferred doc normally
+        # keeps its stamp because nothing touched its nodes, but an explicit
+        # ``changed_paths`` tombstones by CALLER intent rather than by what the
+        # batch actually processed — so a deferred doc on that path really did
+        # lose its nodes and must not stay stamped.
+        tombstoned_resolved: set[str] = set()
         if incremental_active and prior_graph_for_diff is not None:
             prior_graph = prior_graph_for_diff
             # A DELETED changed_path no longer exists on disk, so the batch
@@ -1022,6 +1029,7 @@ class ProjectWiki:
                 removed_ids, removed_edges = inc_store.delete_nodes_by_source_with_edges(
                     changed_set
                 )
+                tombstoned_resolved = changed_set
                 kept_nodes = [n for n in prior_graph.nodes if n.id not in removed_ids]
                 # Re-point stale ``source_path`` scalars on surviving cross-file
                 # nodes (Phase-4 subtractive gate). A shared author/field node
@@ -1292,13 +1300,46 @@ class ProjectWiki:
         # ``_write_artifacts`` wrote a graph built from THIS entry's content".
         if loader is None and batch is not None:
             processed_keys = set(batch.processed_paths)
+            # Did graph.json get rebuilt from THIS run's extractions alone, or
+            # was the prior graph merged into it? Both stamp decisions below
+            # turn on that one difference, and so does the prune further down.
+            full_run = not effective_changed_only and not fallback_only
+            candidate_keys = {str(md) for md in markdown_files}
             # A SKIPPED doc keeps whatever stamp it had — its nodes reached this
             # graph only via a prior-graph merge, so its stamp is the honest
-            # record of that. A doc that is neither processed nor skipped was
-            # dropped by ``--limit`` (or belongs to a narrower single-file
-            # compile, or was deleted): graph.json no longer reflects it, so the
-            # stamp has to go.
+            # record of that. A doc that is neither processed nor skipped is one
+            # of two different things, and they get opposite answers:
+            #
+            # * DEFERRED — still a candidate, but ``--limit`` cut the batch's
+            #   work-list before it (``BatchIngestRunner`` BREAKS out of the
+            #   scan, so everything past the cut is neither processed nor
+            #   skipped). Its manifest entry was not rewritten and, on a SCOPED
+            #   run, the prior graph was merged in — so graph.json still holds
+            #   exactly what that entry describes and the stamp is still true,
+            #   UNLESS this run tombstoned its nodes anyway. It can: an explicit
+            #   ``changed_paths`` tombstones by caller intent, not by what the
+            #   batch got to, so a doc past the ``--limit`` cut can be both
+            #   deferred and gutted. ``tombstoned_resolved`` is subtracted for
+            #   exactly that case. Dropping the stamp unconditionally made the
+            #   next ``--changed-only --retry-fallbacks`` see incomplete
+            #   coverage and re-extract the whole corpus: the 137->35 bound,
+            #   gone after one ``--limit`` (Codex A1).
+            # * GONE — no longer a candidate at all (deleted, renamed away, or
+            #   outside a narrower compile's inputs). Nothing vouches for the
+            #   coverage any more, so the stamp has to go; that is what keeps
+            #   the completeness guard from trusting a graph the corpus has
+            #   moved out from under.
+            #
+            # On a FULL run there is no prior graph to inherit from — a
+            # deferred doc is genuinely uncovered, so it falls through to the
+            # unstamp with the departed ones.
             carried = processed_keys | set(batch.skipped_paths)
+            if not full_run:
+                carried |= {
+                    key
+                    for key in candidate_keys
+                    if str(Path(key).resolve()) not in tombstoned_resolved
+                }
             # ...and an entry whose file left the corpus entirely gets PRUNED,
             # not just unstamped. ``BatchIngestRunner`` only ever merges into the
             # manifest, so a deleted or renamed document leaves its key behind
@@ -1315,8 +1356,6 @@ class ProjectWiki:
             # SCOPED run — the incremental differ (``effective_changed_only``) or
             # ``fallback_only`` — the prior graph IS merged in, so that key is
             # exactly the signal the subtractive guard needs; keep it.
-            full_run = not effective_changed_only and not fallback_only
-            candidate_keys = {str(md) for md in markdown_files}
             stamped = self._load_manifest()
             for key in list(stamped):
                 # ``_ingest_via_loader`` shares this manifest under ``source:``

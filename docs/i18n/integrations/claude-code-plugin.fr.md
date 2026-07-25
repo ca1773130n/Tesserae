@@ -27,9 +27,17 @@ Prérequis : `tesserae` déjà installé (`pip install tesserae` ou `pipx instal
 > `nohup` sinon. macOS ne fournit pas `setsid`, et `nohup` se contente d'ignorer
 > `SIGHUP` — il laisse la tâche dans le groupe de processus de la session — donc
 > un harness qui récupère le groupe à la fermeture de la session peut encore tuer
-> la compilation en plein vol. Rien n'est corrompu dans ce cas : le graphe est
-> simplement périmé, `SessionStart` le signale, et la compilation suivante
-> reprend. Ne construisez pas un flux qui suppose qu'une longue compilation
+> la compilation en plein vol. Ce qui reste alors est récupérable, pas intact :
+> `graph.json` est écrit par rename atomique et n'est donc jamais un demi-fichier,
+> mais les projections générées `wiki/` et `site/` sont effacées au début de
+> l'écriture des artefacts et le magasin SQLite est écrit après `graph.json`, si
+> bien qu'un kill dans cette fenêtre les laisse absentes ou en retard d'une
+> compilation. Cela n'arrive jamais en silence pour autant :
+> `.tesserae/manifest.json` ne marque un document `graphed` qu'une fois les
+> artefacts posés, donc la prochaine `compile --changed-only` refuse son no-op,
+> annonce `graph.json is not known to cover every tracked document` et ré-extrait
+> tout le corpus, ce qui reconstruit aussi les projections.
+> Ne construisez pas un flux qui suppose qu'une longue compilation
 > survit à la session qui l'a lancée — exécutez-la au premier plan, ou via
 > `tesserae engine`.
 

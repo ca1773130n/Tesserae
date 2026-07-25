@@ -57,23 +57,31 @@ class ProviderAuthError(RuntimeError):
     :class:`ExtractionTimeoutError` is one: the per-document line prints the
     class name first, and "unavailable (transport/capacity)" sends the operator
     to wait out a window that will never close — waiting does not refresh an
-    expired OAuth session. The actionable ``claude /login`` / ``codex login``
-    hint is logged ONCE per process, so a 137-doc compile against an expired
-    session printed 136 lines naming the wrong remedy and one, long scrolled
-    away, naming the right one.
+    expired OAuth session. Before this class existed, a 137-doc compile against
+    an expired session printed 136 lines naming the wrong remedy and one, long
+    scrolled away in the once-per-process login warning, naming the right one.
+    Every failed document now raises THIS, carrying ``claude /login`` /
+    ``codex login`` in its own message, which is what the selective router
+    prints per doc. How loudly the JSON clients ALSO log it still differs —
+    ``ClaudeCLIJsonClient`` de-duplicates its static hint to once per process,
+    ``CodexCLIJsonClient`` logs one line per call — but that is log volume, not
+    the diagnosis: the diagnosis rides on this exception either way.
     """
 
 
 class ExtractionTimeoutError(RuntimeError):
-    """Raised when the provider answered nothing because the ATTEMPT ran out of time.
+    """Raised when nothing came back because the ATTEMPT ran out of time.
 
     A sibling of :class:`ProviderUnavailableError`, not a subclass, for the
     same reason that one is a sibling of :class:`GraphJSONValidationError`: the
     operator-facing line prints the class name first, and "unavailable" would
-    send them to wait out a capacity window that doesn't exist. The provider
-    was reachable; this document did not finish inside
-    ``TESSERAE_EXTRACT_TIMEOUT``. Raise the bound (``0`` = no bound) or split
-    the document.
+    send them to wait out a capacity window that doesn't exist. What the bound
+    establishes is exactly one thing — this document did not finish inside
+    ``TESSERAE_EXTRACT_TIMEOUT``. It does NOT establish that the provider took
+    the request: the timeout is raised on a killed child process, and a
+    DNS/connect stall raises the same one as a slow generation. So both
+    remedies ship: raise the bound (``0`` = no bound) or split the document if
+    it is large; check the provider is reachable from this host if it is not.
     """
 
 
@@ -401,9 +409,11 @@ class LLMResearchExtractor:
                 kind = last_failure_kind()
                 if kind == "timeout":
                     raise ExtractionTimeoutError(
-                        f"LLM extraction timed out for {source_path or 'doc'} — the provider "
-                        f"was reachable but did not finish inside TESSERAE_EXTRACT_TIMEOUT; "
-                        f"raise it (0 = no bound) or split the document"
+                        f"LLM extraction timed out for {source_path or 'doc'} — the attempt "
+                        f"did not finish inside TESSERAE_EXTRACT_TIMEOUT, which does not "
+                        f"establish that the provider saw it; raise the bound (0 = no bound) "
+                        f"or split the document, and check the provider is reachable from "
+                        f"this host if the document is small"
                     )
                 if kind == "auth":
                     raise ProviderAuthError(
