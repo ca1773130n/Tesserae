@@ -16,6 +16,33 @@ sont définies.
 
 ---
 
+## Crochets qui dépensent de l'argent
+
+Le plugin Claude Code est livré avec des crochets qui peuvent lancer une compilation en arrière-plan. Tout ce qui dépense est **désactivé par défaut** :
+
+```sh
+export TESSERAE_HOOK_AUTOCOMPILE=1   # opt in to automatic recompiles
+```
+
+Protégés : `posttooluse-edit.sh` (se déclenche à chaque Edit/Write) et `session-end.sh`.
+Non protégés, car ils ne coûtent rien : `session-start.sh` exécute `tesserae code
+sync`, qui est déterministe, et `pretooluse-compile.sh` n'intercepte qu'une
+`tesserae compile` que vous avez tapée vous-même.
+
+Cette valeur par défaut existe parce que l'alternative a été mesurée. Une base de connaissances à
+`~/.tesserae` fait que `$HOME` ressemble à une racine de projet, et le résolveur de crochet
+remontait *vers le haut* à partir du répertoire de travail jusqu'au premier `.tesserae/` trouvé — donc
+toute session en dehors d'un projet enregistré se résolvait en `$HOME` et compilait
+le répertoire personnel entier : 15k fichiers, un graphique de 795 MB, **~10 heures de dépense LLM**,
+à partir d'un processus détaché qui a survécu à la session qui l'a lancé.
+
+`resolve_project_root()` refuse maintenant `$HOME` par l'une ou l'autre voie, et retourne vide
+plutôt que de revenir au répertoire de travail, donc les appelants ne font rien au lieu de
+deviner. Un crochet qui lance en arrière-plan du travail modèle devrait être activé délibérément,
+pas désactivé après l'arrivée de la facture.
+
+---
+
 ## Extraction
 
 ### `TESSERAE_EXTRACT_TIMEOUT`

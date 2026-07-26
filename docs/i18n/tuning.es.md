@@ -14,6 +14,20 @@ abajo anulan ambas para la ejecución donde estén establecidas.
 
 ---
 
+## Hooks que gastan dinero
+
+Los hooks que el plugin Claude Code envía pueden lanzar una compilación en segundo plano. Cualquier cosa que gaste está **desactivada por defecto**:
+
+```sh
+export TESSERAE_HOOK_AUTOCOMPILE=1   # opt in a compilaciones automáticas
+```
+
+Bajo control: `posttooluse-edit.sh` (se ejecuta en cada Edit/Write) y `session-end.sh`. No bajo control, porque no cuestan nada: `session-start.sh` ejecuta `tesserae code sync`, que es determinístico, y `pretooluse-compile.sh` solo intercepta un `tesserae compile` que escribiste tú mismo.
+
+Este defecto existe porque fue medido. Una base de conocimiento en `~/.tesserae` hace que `$HOME` parezca la raíz del proyecto, y el resolver del hook caminaba *hacia arriba* desde el directorio de trabajo hacia el primer `.tesserae/` que encontraba — así que cualquier sesión fuera de un proyecto registrado se resolvía en `$HOME` y compilaba el directorio de inicio completo: 15k archivos, un gráfico de 795 MB, **~10 horas de gasto en LLM**, desde un proceso separado que sobrevivió a la sesión que lo inició.
+
+`resolve_project_root()` ahora rechaza `$HOME` por cualquier ruta, y devuelve vacío en lugar de caer a la copia de seguridad del directorio de trabajo, así que los llamadores no-op en lugar de adivinar. Un hook que lanza trabajo del modelo debe activarse deliberadamente, no desactivarse después de que llegue la factura.
+
 ## Extracción
 
 ### `TESSERAE_EXTRACT_TIMEOUT`
@@ -196,10 +210,3 @@ Vale la pena saber al leer resultados: en un gráfico real de 15.284 bordes, alr
 \`tesserae ask\` elige una ruta de recuperación por forma de pregunta: las búsquedas de entidad única van al backend económico, las preguntas multi-salto / "qué cambió" / "por qué" / amplitud del corpus van al gráfico. Los puntos de referencia independientes muestran que los gráficos están adelante en preguntas multi-salto, temporales y de síntesis, y *atrás* en búsqueda de hechos simples y costo — así que pagar precios de gráfico por cada pregunta es una pérdida.
 
 La decisión aparece en el sobre devuelto, por lo que una respuesta económica es auditable. Anularlo con \`--route\` en la CLI, o el parámetro \`route\` en la herramienta MCP.
-
-REGLAS:
-- NO traduzca: graph_write, verify_claim, SUPPORTED, PRESENT_UNEVIDENCED, CONTRADICTED, DISPUTED_UNEVIDENCED, CONFLICTING, ABSENT, NOT_RESOLVABLE, supersedes, contradicts_claim, evidenced_by, subject, predicate, object, MCP, --route
-- Mantenga todos los números exactos: 15,284, 40%
-- Mantenga la estructura de la tabla con los mismos encabezados de columna
-- Traduzca la prosa naturalmente para cada idioma
-- Añada al final de cada archivo sin alterar el contenido existente
