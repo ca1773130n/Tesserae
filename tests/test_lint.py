@@ -926,3 +926,45 @@ def test_compile_records_git_head_and_tail_lint_sees_no_staleness(
         (wiki.project_root / ".tesserae" / "lint-report.json").read_text(encoding="utf-8")
     )
     assert not [f for f in report["findings"] if f["code"].startswith("CODE_GRAPH")]
+
+
+# --------------------------------------------------- reasoning-edge ratio
+
+
+def _ratio_graph(structural: int, reasoning: int) -> dict:
+    nodes = [_node("c0", "Claim", "anchor")]
+    edges = []
+    for i in range(structural):
+        nodes.append(_node(f"s{i}", "Paper", f"paper {i}"))
+        edges.append({"source": f"s{i}", "target": "c0", "type": "discussed_in"})
+    for i in range(reasoning):
+        nodes.append(_node(f"r{i}", "Paper", f"support {i}"))
+        edges.append({"source": f"r{i}", "target": "c0", "type": "supports_claim"})
+    return {"nodes": nodes, "edges": edges}
+
+
+def test_lint_reasoning_edge_ratio_reports_counts(tmp_path: Path) -> None:
+    """The exact counts must land in the report so CI can diff the number."""
+    project = _scaffold(tmp_path, graph=_ratio_graph(structural=9, reasoning=1))
+    report = WikiLinter(project).run()
+
+    matches = [f for f in report.findings if f.code == "REASONING_EDGE_RATIO"]
+    assert len(matches) == 1
+    assert matches[0].severity == "info"  # 10.0% is above the 7.5 floor
+    assert "1 of 10 edges (10.0%)" in matches[0].message
+
+    payload = json.loads(
+        (project / ".tesserae" / "lint-report.json").read_text(encoding="utf-8")
+    )
+    assert any(f["code"] == "REASONING_EDGE_RATIO" for f in payload["findings"])
+
+
+def test_lint_reasoning_edge_ratio_warns_below_floor(tmp_path: Path) -> None:
+    """The ratchet: flooding the graph with membership edges must warn."""
+    project = _scaffold(tmp_path, graph=_ratio_graph(structural=99, reasoning=1))
+    report = WikiLinter(project).run()
+
+    matches = [f for f in report.findings if f.code == "REASONING_EDGE_RATIO"]
+    assert len(matches) == 1
+    assert matches[0].severity == "warning"
+    assert "1 of 100 edges (1.0%)" in matches[0].message

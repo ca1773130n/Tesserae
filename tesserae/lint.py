@@ -39,6 +39,33 @@ from typing import Dict, FrozenSet, Iterable, List, Optional, Tuple
 SEVERITIES: Tuple[str, ...] = ("info", "warning", "error")
 _SEVERITY_RANK: Dict[str, int] = {name: idx for idx, name in enumerate(SEVERITIES)}
 
+# Edge types that assert a REASON rather than co-occurrence. Everything not
+# listed here (discussed_in, summarizes, authored_by, part_of, mentioned_in,
+# ...) is structural/membership — it only says "X appeared near Y".
+_REASONING_EDGE_TYPES: FrozenSet[str] = frozenset(
+    {
+        "improves_on",
+        "compares_against",
+        "criticizes",
+        "contradicts_claim",
+        "attributes_improvement_to",
+        "derived_from",
+        "supports_claim",
+        "has_limitation",
+        "supersedes",
+        "resolved_by",
+        "addresses",
+        "optimizes_for",
+        "extends",
+    }
+)
+
+# A RATCHET, not an aspiration: 7.5% is the value measured on a real
+# 5,197-node / 15,284-edge graph (1,141 reasoning edges with exactly the set
+# above). Dropping below it means membership edges outgrew reasoning edges —
+# a silent regression that green tests would never catch.
+_REASONING_EDGE_FLOOR_PCT: float = 7.5
+
 
 @dataclass(frozen=True)
 class LintFinding:
@@ -279,6 +306,7 @@ class WikiLinter:
         findings.extend(self._check_agent_metadata_allowlist(nodes_by_id))
         findings.extend(self._check_agent_forget_ledger())
         findings.extend(self._check_undistilled_backlog(nodes_by_id, edges))
+        findings.extend(self._check_reasoning_edge_ratio(edges))
         if verify_claims:
             findings.extend(
                 self._check_claim_support(nodes_by_id, cap=claim_cap, llm_client=llm_client)
@@ -748,6 +776,44 @@ class WikiLinter:
                     "`tesserae distill --recheck` if a demotion looks wrong."
                 ),
             )
+
+    def _check_reasoning_edge_ratio(
+        self, edges: List[dict]
+    ) -> Iterable[LintFinding]:
+        """Measure what fraction of the graph carries REASONING, not adjacency.
+
+        Measured on a real 5,197-node graph: 11,250 of 15,284 edges (73%) are
+        structural/membership — ``discussed_in``, ``summarizes``,
+        ``authored_by``, ``part_of``, ``mentioned_in`` — every one of which
+        means "X appeared near Y". Only 1,141 (7.5%) assert a reason.
+
+        ALWAYS emits exactly one finding carrying the exact counts, so the
+        number lands in ``lint-report.json`` where CI can diff it. The
+        severity is the convenience; the counts are the instrument.
+        """
+        total = len(edges)
+        if total == 0:
+            return
+        reasoning = sum(
+            1 for edge in edges if str(edge.get("type") or "") in _REASONING_EDGE_TYPES
+        )
+        pct = round(reasoning * 100.0 / total, 1)
+        below = pct < _REASONING_EDGE_FLOOR_PCT
+        yield LintFinding(
+            severity="warning" if below else "info",
+            code="REASONING_EDGE_RATIO",
+            message=(
+                f"{reasoning} of {total} edges ({pct}%) are reasoning-bearing; "
+                f"the rest are structural/membership. Floor is "
+                f"{_REASONING_EDGE_FLOOR_PCT}%."
+            ),
+            suggested_fix=(
+                "TESSERAE_CONTRAST_PASS=1 tesserae compile  # mint typed "
+                "reasoning edges between blocked claim/finding pairs"
+                if below
+                else None
+            ),
+        )
 
     def _check_undistilled_backlog(
         self, nodes_by_id: Dict[str, dict], edges: List[dict]
