@@ -67,14 +67,34 @@ class CanonicalizationResult:
     graph: ResearchGraph
     merged_nodes: Dict[str, str] = field(default_factory=dict)
     review_items: List[ReviewItem] = field(default_factory=list)
+    # Why the semantic pass did / did not contribute. Same vocabulary as
+    # federation.add_semantic_links so a skip always says WHY rather than
+    # looking like "ran and found nothing".
+    stats: Dict[str, object] = field(default_factory=dict)
 
     def review_queue(self) -> "ReviewQueue":
         return ReviewQueue(self.review_items)
 
 
 class GraphCanonicalizer:
-    def __init__(self, similarity_threshold: float = 0.60) -> None:
+    def __init__(
+        self,
+        similarity_threshold: float = 0.60,
+        *,
+        semantic: bool = False,
+        embedding_backend: Optional[object] = None,
+        embedding_min_cosine: float = 0.60,
+        embedding_top_k: int = 2,
+        max_semantic_items: int = 200,
+        max_block: int = 1500,
+    ) -> None:
         self.similarity_threshold = similarity_threshold
+        self.semantic = semantic
+        self.embedding_backend = embedding_backend
+        self.embedding_min_cosine = embedding_min_cosine
+        self.embedding_top_k = embedding_top_k
+        self.max_semantic_items = max_semantic_items
+        self.max_block = max_block
 
     def canonicalize(self, graph: ResearchGraph) -> CanonicalizationResult:
         canonical_for = self._build_alias_canonical_map(graph.nodes)
@@ -92,7 +112,18 @@ class GraphCanonicalizer:
         new_edges = rewire_edges(graph.edges, {node_id: canonical_for.get(node_id, node_id) for node_id in [node.id for node in graph.nodes]}, node_ids)
         canonicalized_graph = ResearchGraph(nodes=new_nodes, edges=new_edges)
         review_items = self._build_review_items(canonicalized_graph.nodes)
-        return CanonicalizationResult(graph=canonicalized_graph, merged_nodes=merged_nodes, review_items=review_items)
+        stats: Dict[str, object] = {}
+        if self.semantic:
+            semantic_items, stats = self._build_embedding_review_items(canonicalized_graph.nodes, review_items)
+            # APPENDED, never interleaved: today's string items keep today's
+            # bytes and order, so turning the flag on is purely additive.
+            review_items = review_items + semantic_items
+        return CanonicalizationResult(
+            graph=canonicalized_graph,
+            merged_nodes=merged_nodes,
+            review_items=review_items,
+            stats=stats,
+        )
 
     def _build_alias_canonical_map(self, nodes: Sequence[ResearchNode]) -> Dict[str, str]:
         alias_owner: Dict[Tuple[ResearchNodeType, str], ResearchNode] = {}
@@ -163,7 +194,196 @@ class GraphCanonicalizer:
                     score=round(score, 4),
                 )
             )
-        return sorted(items, key=lambda item: (-item.score, item.left_name, item.right_name))
+        return sorted(items, key=_review_sort_key)
+
+    def _build_embedding_review_items(
+        self,
+        nodes: Sequence[ResearchNode],
+        string_items: Sequence[ReviewItem],
+    ) -> Tuple[List[ReviewItem], Dict[str, object]]:
+        """Second CANDIDATE source for the review queue: embedding kNN.
+
+        Emits review items only — never a merge. The token-overlap pass above
+        cannot pair 'Edwin Aldrin' with 'Buzz Aldrin' (no shared token), which
+        is exactly the duplicate class a human reviewer needs surfaced.
+
+        ponytail: candidates only, verdicts stay human — and that is a measured
+        decision, not caution. Against the backend this repo ships
+        (model2vec:minishlab/potion-base-8M), name-only cosines are
+        'Edwin Aldrin'~'Buzz Aldrin' 0.665 (the TRUE merge) versus 'GPT-4'~'GPT-3'
+        0.959, 'Llama 2'~'Llama 3' 0.957, 'BERT-base'~'BERT-large' 0.689 (all
+        FALSE merges). Adding descriptions makes it worse:
+        'Buzz Aldrin'~'Neil Armstrong' 0.792 > 'Edwin Aldrin'~'Buzz Aldrin' 0.758.
+        Every dangerous pair outranks the target pair, so NO cosine threshold
+        admits the case we want and excludes version/family siblings — a static
+        token-mean embedding encodes "same family", and intra-family variants are
+        precisely what must never fuse. Ceiling: static embeddings rank topical
+        proximity, not identity. Upgrade path: LLM adjudication of this <=200-item
+        band, ONE pair per call with clean context (evidence originating outside
+        the graph), not a raw-cosine auto-merge band.
+        """
+
+        # numpy is imported only AFTER the stub-skip so `--canonicalize-semantic`
+        # on a base install degrades cleanly instead of crashing on the import.
+        from .retrieval.hybrid import HashEmbeddingBackend, active_embedding_backend
+
+        backend = self.embedding_backend or active_embedding_backend()
+        backend_name = getattr(backend, "name", type(backend).__name__)
+        stats: Dict[str, object] = {"semantic_backend": backend_name, "semantic_added": 0}
+        if isinstance(backend, HashEmbeddingBackend):
+            stats["semantic_skipped"] = "no real embedding backend (install tesserae[semantic])"
+            return [], stats
+        try:
+            import numpy as np
+        except ImportError:
+            stats["semantic_skipped"] = "numpy not available (install tesserae[semantic])"
+            return [], stats
+
+        # Pairs the string pass already emitted, keyed on the node pair (the
+        # reason differs, so stable_review_id alone would not collide).
+        seen: Set[Tuple[str, str]] = {
+            tuple(sorted((item.left_node_id, item.right_node_id))) for item in string_items  # type: ignore[misc]
+        }
+
+        # Block by node type: cross-type pairs are already ineligible above, so
+        # blocking is free and turns one N^2 matrix into several small ones.
+        blocks: Dict[str, List[ResearchNode]] = {}
+        for node in nodes:
+            if node.type not in CANONICALIZABLE_TYPES:
+                continue
+            blocks.setdefault(node.type.value, []).append(node)
+
+        capped = False
+        items: List[ReviewItem] = []
+        node_by_id = {node.id: node for node in nodes}
+        for type_value in sorted(blocks):
+            block = sorted(blocks[type_value], key=lambda node: node.id)
+            if len(block) > self.max_block:
+                block = block[: self.max_block]  # truncate by sorted id, never by iteration order
+                capped = True
+            if len(block) < 2:
+                continue
+            vectors = np.asarray(
+                backend.embed([f"{n.name}. {(n.description or '').strip()}".strip() for n in block]),
+                dtype="float64",
+            )
+            # L2-normalize defensively: EmbeddingBackend does not promise unit
+            # vectors, so raw dot products could exceed 1 and fake a match.
+            norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+            norms[norms == 0] = 1.0
+            unit = vectors / norms
+            sims = unit @ unit.T
+            for i, node in enumerate(block):
+                row = sims[i]
+                scored = [
+                    (round(float(row[j]), 4), block[j].id)
+                    for j in range(len(block))
+                    if j != i and float(row[j]) >= self.embedding_min_cosine
+                ]
+                scored.sort(key=lambda pair: (-pair[0], pair[1]))
+                for score, other_id in scored[: self.embedding_top_k]:
+                    left_id, right_id = (node.id, other_id) if node.id < other_id else (other_id, node.id)
+                    key = (left_id, right_id)
+                    if key in seen:
+                        continue
+                    left, right = node_by_id[left_id], node_by_id[right_id]
+                    if normalize_key(left.name) == normalize_key(right.name):
+                        continue
+                    seen.add(key)
+                    items.append(
+                        ReviewItem(
+                            id=stable_review_id(left_id, right_id, "similar_embedding"),
+                            left_node_id=left_id,
+                            right_node_id=right_id,
+                            left_name=left.name,
+                            right_name=right.name,
+                            node_type=type_value,
+                            reason="similar_embedding",
+                            score=score,
+                        )
+                    )
+
+        items.sort(key=_review_sort_key)
+        if len(items) > self.max_semantic_items:
+            items = items[: self.max_semantic_items]
+            stats["semantic_capped_at"] = self.max_semantic_items
+        if capped:
+            stats["semantic_block_capped_at"] = self.max_block
+        stats["semantic_added"] = len(items)
+        return items, stats
+
+
+# Tokens that mark a VARIANT of a family rather than a different entity.
+# Digit-bearing tokens ("2", "4", "50") are covered separately.
+_VARIANT_TOKENS = frozenset(
+    {"base", "large", "small", "mini", "tiny", "xl", "xxl", "huge", "lite", "turbo"}
+)
+_NAME_TOKENS = re.compile(r"[0-9]+|[a-z]+")
+
+
+def _name_tokens(name: str) -> List[str]:
+    """Lowercased alphanumeric runs — 'BERT-base' -> ['bert', 'base']."""
+    return _NAME_TOKENS.findall((name or "").casefold())
+
+
+def _is_family_sibling(left_name: str, right_name: str) -> bool:
+    """True when two names differ ONLY by a version/size token.
+
+    This is the never-merge band: 'Llama 2'~'Llama 3', 'GPT-4'~'GPT-3',
+    'BERT-base'~'BERT-large', 'ResNet-50'~'ResNet-101'.
+
+    WHY a name-shape rule and not a cosine cutoff: there is no cutoff. Against
+    the shipped backend those three pairs score 0.9896 / 0.9845 / 0.9458 while
+    the one TRUE merge in the same fixture ('Edwin Aldrin'~'Buzz Aldrin')
+    scores 0.9074 — inside, not below, the sibling range. Any threshold that
+    demoted the siblings would demote the target case with them, which is the
+    same measurement the ponytail note on _build_embedding_review_items
+    records. Name shape separates them cleanly and needs no model.
+    """
+    left, right = _name_tokens(left_name), _name_tokens(right_name)
+    if not left or len(left) != len(right):
+        return False
+    differing = [(a, b) for a, b in zip(left, right) if a != b]
+    if len(differing) != 1:
+        return False
+    a, b = differing[0]
+    return all(t.isdigit() or t in _VARIANT_TOKENS for t in (a, b))
+
+
+def review_band(item: ReviewItem) -> Tuple[int, str]:
+    """``(rank, label)`` for an item — lower rank is MORE actionable.
+
+    Only ``similar_embedding`` inverts, so only it carries a band. The
+    string-similarity items keep rank 0 and an empty label, and their bytes
+    and order are untouched.
+    """
+    if item.reason != "similar_embedding":
+        return (0, "")
+    if _is_family_sibling(item.left_name, item.right_name):
+        return (
+            1,
+            "version/family siblings — the names differ only by a version or "
+            "size token, so these are variants of one family, not one entity; "
+            "expect keep_separate",
+        )
+    return (
+        0,
+        "candidate duplicates — the actionable band; the score ranks topical "
+        "proximity, not identity, so do not read it as confidence",
+    )
+
+
+def _review_sort_key(item: ReviewItem) -> Tuple[int, float, str, str, str, str]:
+    """Total order for review items: ACTIONABILITY first, then score.
+
+    Node ids are part of the key because two DIFFERENT pairs can share both
+    display names (same names under different types, or genuine name collisions),
+    and a partial key there leaves the output at the mercy of emission order —
+    the exact shape that caused prior determinism regressions.
+    """
+
+    band, _ = review_band(item)
+    return (band, -item.score, item.left_name, item.right_name, item.left_node_id, item.right_node_id)
 
 
 class ReviewQueue:

@@ -1035,6 +1035,12 @@ class LLMWikiMCPServer:
                             "default": True,
                             "description": "scope='federated' only: embedding-backed cross-project links so the answer bridges RELATED (not just identical) concepts. ON by default (opt-out); set false for identity-merge only. Degrades cleanly without a real embedding backend.",
                         },
+                        "route": {
+                            "type": "string",
+                            "enum": ["auto", "lookup", "graph"],
+                            "default": "auto",
+                            "description": "How to answer, not where. Mirrors `tesserae ask --route`. 'auto' (default) routes by question shape. 'graph' FORCES the KG planner — use it when you know the question is temporal or multi-hop and the shape heuristic may not see it. 'lookup' pins the cheap BM25 wiki path. Ignored by scope='all-registered'/'federated'.",
+                        },
                     },
                     "required": ["question"],
                     "additionalProperties": False,
@@ -1378,6 +1384,79 @@ class LLMWikiMCPServer:
                         "agent": {"type": "string", "description": "Owning agent key (optional; scopes the absorbed-status check to that agent's artifact)."},
                     },
                     "required": ["node_id"],
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "graph_write",
+                "description": (
+                    "Write typed nodes + edges into the project graph directly — "
+                    "no markdown, no LLM extraction pass. The write is appended "
+                    "to an append-only overlay and replayed as a compile producer, "
+                    "so it SURVIVES recompilation instead of being erased by it. "
+                    "Strict: an unknown node/edge type, an edge without evidence, "
+                    "an edge endpoint not in this payload, or a provenance block "
+                    "without an external anchor (url | file | commit | session_id) "
+                    "is REFUSED — nothing is silently dropped. Node types owned by "
+                    "compile producers (Session, CodeFile, CommunitySummary, "
+                    "Agent, ...) are refused too. Writes are durable immediately "
+                    "and appear in the graph on the next compile; pass "
+                    "materialize=true to compile now and read them back. Check the "
+                    "`existing` flag per node: false means you minted a NEW node "
+                    "rather than attaching to the one you meant."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop, "agent": agent_prop,
+                        "nodes": {
+                            "type": "array",
+                            "description": "Nodes to assert.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "type": {"type": "string", "description": "Member of the node-type ontology (see `schema`)."},
+                                    "description": {"type": "string"},
+                                    "aliases": {"type": "array", "items": {"type": "string"}},
+                                    "metadata": {"type": "object"},
+                                },
+                                "required": ["name", "type"],
+                            },
+                        },
+                        "edges": {
+                            "type": "array",
+                            "description": "Edges between nodes in this payload. `evidence` is required.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "source": {"type": "string", "description": "A node `name` from this payload."},
+                                    "target": {"type": "string", "description": "A node `name` from this payload."},
+                                    "type": {"type": "string", "description": "Member of the edge-type ontology (see `schema`)."},
+                                    "evidence": {"type": "string", "description": "Why this edge holds. Required, non-empty."},
+                                },
+                                "required": ["source", "target", "type", "evidence"],
+                            },
+                        },
+                        "provenance": {
+                            "type": "object",
+                            "description": (
+                                "Requires `agent` plus at least one external "
+                                "anchor: url | file | commit | session_id."
+                            ),
+                        },
+                        "materialize": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "Run compile(changed_only=True) so the write is "
+                                "readable immediately. Costs seconds; the write "
+                                "is already durable without it."
+                            ),
+                        },
+                    },
+                    "required": ["nodes", "agent", "provenance"],
                     "additionalProperties": False,
                 },
             },
@@ -2149,7 +2228,10 @@ class LLMWikiMCPServer:
                     semantic=bool(args.get("semantic", True)),  # opt-out: on unless disabled
                     synthesize=use_llm,
                 )
-            return self._mcp_ask(args, question=question, top_k=top_k, use_llm=use_llm, no_llm=no_llm)
+            return self._mcp_ask(
+                args, question=question, top_k=top_k, use_llm=use_llm, no_llm=no_llm,
+                route=str(args.get("route") or "auto"),
+            )
         if name == "list_projects":
             return self.registry.list_projects()
         if name == "register_project":
@@ -2321,6 +2403,8 @@ class LLMWikiMCPServer:
                 tldr=bool(args.get("tldr", True)),
             )
             return report
+        if name == "graph_write":
+            return self._mcp_graph_write(args)
         if name == "list_communities":
             graph = self._load_requested_graph(args)
             return self._mcp_list_communities(
@@ -3834,6 +3918,7 @@ class LLMWikiMCPServer:
         top_k: int,
         use_llm: bool = True,
         no_llm: bool = False,
+        route: str = "auto",
     ) -> JSONDict:
         """Dispatch ``ask`` to the compiled-wiki planner/search path.
 
@@ -3841,13 +3926,21 @@ class LLMWikiMCPServer:
         ``ask`` tool and the top-level ``tesserae ask`` command share one
         dispatcher (LLM-planned answer by default; ``llm=false`` pins
         search-only).
+
+        ``route`` mirrors ``tesserae ask --route``. Agents are the primary
+        consumer of this server, so withholding the override left them with
+        only the shape heuristic while a human at a terminal got an escape
+        hatch — an agent that KNOWS its question is temporal had no way to say
+        so. ``ask_project`` validates the value and raises on an unknown one.
         """
         from .project import ProjectWiki
         from .query import ask_project
 
         project_root = self._resolve_project_root_for_ask(args)
         wiki = ProjectWiki.load(project_root)
-        envelope = ask_project(wiki, question, top_k=top_k, use_llm=use_llm, no_llm=no_llm)
+        envelope = ask_project(
+            wiki, question, top_k=top_k, use_llm=use_llm, no_llm=no_llm, route=route
+        )
         # LRU: the retrieved/cited hits count as reads (single-project scope;
         # the cross-project federated/all-registered fan-outs are not bumped).
         self._bump_nodes_access(project_root, _hit_node_ids(envelope))
@@ -4202,6 +4295,51 @@ class LLMWikiMCPServer:
             "No graph specified. Pass graph_path or project, cd into a registered project, "
             "start the MCP server with --graph, or pass --graph-store-url."
         )
+
+    def _mcp_graph_write(self, args: JSONDict) -> JSONDict:
+        """Append one typed agent write to the project's overlay.
+
+        The write is durable in ~1 ms and lands in ``graph.json`` on the next
+        compile. ``materialize=true`` compiles now (``changed_only=True``, which
+        on an unchanged corpus takes the no-op arm — no extraction, no LLM).
+        """
+        from .agent_write import record_agent_write
+        from .locking import CompileLockHeldError
+        from .project import ProjectWiki
+
+        agent_key = str(args.get("agent") or "").strip()
+        if not agent_key:
+            raise ValueError("graph_write requires 'agent' (the writing agent's key)")
+        project_root = self._resolve_project_root_for_ask(args)
+        wiki = ProjectWiki.load(project_root)
+
+        graph = None
+        if wiki.paths.graph.exists():
+            try:
+                graph = self._load_graph_cached(wiki.paths.graph)
+            except Exception:  # noqa: BLE001 — an unreadable graph must not block a write
+                graph = None
+
+        result = record_agent_write(
+            wiki.paths.agent_writes,
+            {
+                "nodes": args.get("nodes") or [],
+                "edges": args.get("edges") or [],
+                "provenance": args.get("provenance"),
+            },
+            agent_key,
+            graph=graph,
+        )
+        result["materialized"] = False
+        if args.get("materialize"):
+            try:
+                wiki.compile(changed_only=True)
+                result["materialized"] = True
+            except CompileLockHeldError as exc:
+                # The write already succeeded; a busy compile must not turn a
+                # durable write into an error (same shape ``ingest_clip`` uses).
+                result["materialize_error"] = str(exc)
+        return result
 
     def _drill_down(self, args: JSONDict) -> JSONDict:
         """Resolve a distillate member_ref against raw L0 — audit-logged (§6.4).

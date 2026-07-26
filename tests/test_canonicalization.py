@@ -70,3 +70,260 @@ def test_review_queue_serializes_and_applies_merge_decisions():
 
     assert [node.name for node in merged.nodes] == ["Gaussian Splatting"]
     assert merged.edges == []
+
+
+# ------------------------------------------------- embedding review candidates
+
+
+class _StubBackend:
+    """Deterministic vector table keyed on the node NAME prefix of the text.
+
+    The real backend recipe is ``f"{name}. {description}"``; matching on prefix
+    keeps the fixture readable while exercising the same code path.
+    """
+
+    name = "stub-vectors"
+    dim = 2
+
+    def __init__(self, table, default=(0.0, 1.0)):
+        self._table = table
+        self._default = default
+
+    def embed(self, texts):
+        out = []
+        for text in texts:
+            vec = self._default
+            for prefix, value in self._table.items():
+                if text.startswith(prefix):
+                    vec = value
+                    break
+            out.append(list(vec))
+        return out
+
+
+def _aldrin_graph():
+    return ResearchGraph(
+        nodes=[
+            ResearchNode(id="Concept:edwin:a", name="Edwin Aldrin", type=ResearchNodeType.CONCEPT),
+            ResearchNode(id="Concept:buzz:b", name="Buzz Aldrin", type=ResearchNodeType.CONCEPT),
+        ],
+        edges=[],
+    )
+
+
+def _aldrin_backend():
+    # Near-parallel but not identical: cosine ~0.9998.
+    return _StubBackend({"Edwin Aldrin": (1.0, 0.0), "Buzz Aldrin": (1.0, 0.02)})
+
+
+def test_semantic_review_finds_zero_string_overlap_duplicates():
+    # 'Edwin Aldrin' / 'Buzz Aldrin' share NO token >= 3 chars except 'aldrin'?
+    # They do share 'aldrin' — so use names the inverted index cannot pair.
+    graph = ResearchGraph(
+        nodes=[
+            ResearchNode(id="Concept:edwin:a", name="Edwin Aldrin", type=ResearchNodeType.CONCEPT),
+            ResearchNode(id="Concept:buzz:b", name="Lunar Module Pilot", type=ResearchNodeType.CONCEPT),
+        ],
+        edges=[],
+    )
+    backend = _StubBackend({"Edwin Aldrin": (1.0, 0.0), "Lunar Module Pilot": (1.0, 0.02)})
+
+    baseline = GraphCanonicalizer().canonicalize(graph)
+    assert baseline.review_items == []  # no shared token -> the string pass is blind
+
+    result = GraphCanonicalizer(semantic=True, embedding_backend=backend).canonicalize(graph)
+    semantic = [item for item in result.review_items if item.reason == "similar_embedding"]
+    assert len(semantic) == 1
+    assert {semantic[0].left_node_id, semantic[0].right_node_id} == {"Concept:edwin:a", "Concept:buzz:b"}
+    assert semantic[0].score >= 0.60
+    assert result.stats["semantic_added"] == 1
+
+
+def test_semantic_pass_never_auto_merges():
+    # Precision over recall, pinned: a later "just auto-merge above 0.9" cannot
+    # land silently. Every merge still comes from an alias or a human decision.
+    graph = _aldrin_graph()
+    plain = GraphCanonicalizer().canonicalize(graph)
+    semantic = GraphCanonicalizer(semantic=True, embedding_backend=_aldrin_backend()).canonicalize(graph)
+
+    assert semantic.merged_nodes == {}
+    assert semantic.graph.to_json() == plain.graph.to_json()
+
+
+def test_semantic_review_items_are_byte_stable_across_runs():
+    import json as _json
+
+    # Two pairs that TIE on (score, left_name, right_name) because the same two
+    # display names exist under two different node types. The ids are chosen so
+    # that id order ('aa*' < 'zz*') is the OPPOSITE of emission order (blocks run
+    # in sorted type-value order, so Concept is emitted before Task). Only a sort
+    # key that carries the node ids gives a total, emission-independent order.
+    nodes = [
+        ResearchNode(id="zz-1", name="Alpha", type=ResearchNodeType.CONCEPT),
+        ResearchNode(id="zz-2", name="Beta", type=ResearchNodeType.CONCEPT),
+        ResearchNode(id="aa-1", name="Alpha", type=ResearchNodeType.TASK),
+        ResearchNode(id="aa-2", name="Beta", type=ResearchNodeType.TASK),
+    ]
+    vectors = {"Alpha": (1.0, 0.0), "Beta": (1.0, 0.02)}
+    graph = ResearchGraph(nodes=nodes, edges=[])
+
+    def run():
+        backend = _StubBackend(vectors)
+        result = GraphCanonicalizer(semantic=True, embedding_backend=backend).canonicalize(graph)
+        return _json.dumps(result.review_queue().model_dump(), sort_keys=False)
+
+    first = run()
+    assert first == run()
+    items = GraphCanonicalizer(
+        semantic=True, embedding_backend=_StubBackend(vectors)
+    ).canonicalize(graph).review_items
+    assert [(i.left_node_id, i.right_node_id) for i in items] == [("aa-1", "aa-2"), ("zz-1", "zz-2")]
+
+    # Block cap truncates by SORTED ID, not by iteration order.
+    def run_capped():
+        backend = _StubBackend(vectors)
+        result = GraphCanonicalizer(
+            semantic=True, embedding_backend=backend, max_block=1
+        ).canonicalize(graph)
+        return _json.dumps(result.review_queue().model_dump(), sort_keys=False)
+
+    assert run_capped() == run_capped()
+
+
+def test_semantic_degrades_to_today_without_backend(monkeypatch):
+    from tesserae.retrieval.hybrid import HashEmbeddingBackend
+
+    monkeypatch.setattr(
+        "tesserae.retrieval.hybrid.active_embedding_backend",
+        lambda *a, **k: HashEmbeddingBackend(),
+    )
+    graph = _aldrin_graph()
+    plain = GraphCanonicalizer().canonicalize(graph)
+    degraded = GraphCanonicalizer(semantic=True).canonicalize(graph)
+
+    assert degraded.review_items == plain.review_items
+    assert "tesserae[semantic]" in str(degraded.stats["semantic_skipped"])
+
+
+def test_semantic_candidates_respect_type_blocking():
+    # Cross-type fusion is the worst class of silent merge: identical vectors
+    # across types must still produce nothing.
+    graph = ResearchGraph(
+        nodes=[
+            ResearchNode(id="Model:x:a", name="Orion", type=ResearchNodeType.MODEL),
+            ResearchNode(id="Dataset:y:b", name="Apollo", type=ResearchNodeType.DATASET),
+        ],
+        edges=[],
+    )
+    backend = _StubBackend({}, default=(1.0, 0.0))  # everything identical
+    result = GraphCanonicalizer(semantic=True, embedding_backend=backend).canonicalize(graph)
+    assert [item for item in result.review_items if item.reason == "similar_embedding"] == []
+
+
+def test_semantic_items_are_capped_and_deduped_against_string_items():
+    nodes = [
+        ResearchNode(id=f"Concept:n{idx:03d}:t", name=f"Concept Number {idx:03d}", type=ResearchNodeType.CONCEPT)
+        for idx in range(300)
+    ]
+    graph = ResearchGraph(nodes=nodes, edges=[])
+    backend = _StubBackend({}, default=(1.0, 0.0))  # mutually identical
+
+    result = GraphCanonicalizer(
+        semantic=True, embedding_backend=backend, max_semantic_items=5
+    ).canonicalize(graph)
+    semantic = [item for item in result.review_items if item.reason == "similar_embedding"]
+    assert len(semantic) == 5
+    assert result.stats["semantic_capped_at"] == 5
+    assert len({item.id for item in result.review_items}) == len(result.review_items)
+
+
+def test_semantic_pass_does_not_duplicate_a_string_pass_pair():
+    # 'Gaussian Splatting' is a substring of '3D Gaussian Splatting', so the
+    # token pass already emits this pair. The semantic pass must stay silent on
+    # it — one pair, one review item, string reason wins.
+    graph = ResearchGraph(
+        nodes=[
+            ResearchNode(id="Concept:gs:a", name="Gaussian Splatting", type=ResearchNodeType.CONCEPT),
+            ResearchNode(id="Concept:3dgs:b", name="3D Gaussian Splatting", type=ResearchNodeType.CONCEPT),
+        ],
+        edges=[],
+    )
+    backend = _StubBackend({}, default=(1.0, 0.0))  # would happily pair them
+    result = GraphCanonicalizer(semantic=True, embedding_backend=backend).canonicalize(graph)
+
+    reasons = [item.reason for item in result.review_items]
+    assert reasons == ["similar_name"]
+    assert result.stats["semantic_added"] == 0
+
+
+def test_review_queue_ranks_the_actionable_band_before_family_siblings():
+    """Score-descending put every never-merge pair first.
+
+    Measured against the shipped backend, 'Llama 2'~'Llama 3' (0.9896),
+    'GPT-4'~'GPT-3' (0.9845) and 'BERT-base'~'BERT-large' (0.9458) all outrank
+    the one TRUE merge ('Edwin Aldrin'~'Buzz Aldrin', 0.9074) — so a reviewer
+    working top-down met the most dangerous pairs first. There is no cosine
+    cutoff that separates them; name shape does.
+    """
+    from tesserae.canonicalization import ReviewItem, _review_sort_key
+
+    def item(left, right, score):
+        return ReviewItem(
+            id=f"review:{left}:{right}",
+            left_node_id=f"Model:{left}:t",
+            right_node_id=f"Model:{right}:t",
+            left_name=left,
+            right_name=right,
+            node_type="Model",
+            reason="similar_embedding",
+            score=score,
+        )
+
+    items = [
+        item("Llama 2", "Llama 3", 0.9896),
+        item("GPT-4", "GPT-3", 0.9845),
+        item("BERT-base", "BERT-large", 0.9458),
+        item("Edwin Aldrin", "Buzz Aldrin", 0.9074),
+    ]
+    ordered = sorted(items, key=_review_sort_key)
+
+    assert [i.left_name for i in ordered] == [
+        "Edwin Aldrin", "Llama 2", "GPT-4", "BERT-base",
+    ]
+
+
+def test_family_sibling_band_is_name_shape_not_a_score_threshold():
+    from tesserae.canonicalization import _is_family_sibling
+
+    for left, right in [
+        ("Llama 2", "Llama 3"),
+        ("GPT-4", "GPT-3"),
+        ("BERT-base", "BERT-large"),
+        ("ResNet-50", "ResNet-101"),
+    ]:
+        assert _is_family_sibling(left, right), (left, right)
+
+    for left, right in [
+        ("Edwin Aldrin", "Buzz Aldrin"),
+        ("GPT-4", "GPT4"),          # a genuine spelling duplicate
+        ("Adam", "AdamW"),
+        ("Gaussian Splatting", "4D Gaussian Splatting"),
+    ]:
+        assert not _is_family_sibling(left, right), (left, right)
+
+
+def test_string_similarity_items_carry_no_band():
+    """The band applies only where the score inverts; string items are untouched."""
+    from tesserae.canonicalization import ReviewItem, review_band
+
+    item = ReviewItem(
+        id="review:x",
+        left_node_id="Model:a:t",
+        right_node_id="Model:b:t",
+        left_name="Llama 2",
+        right_name="Llama 3",
+        node_type="Model",
+        reason="similar_name",
+        score=0.99,
+    )
+    assert review_band(item) == (0, "")

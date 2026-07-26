@@ -29,19 +29,25 @@ class CompileLockHeldError(RuntimeError):
 def compile_lock(
     tesserae_dir: str | Path,
     wait_seconds: Optional[float] = None,
+    name: str = "compile.lock",
 ) -> Iterator[None]:
-    """Hold ``<tesserae_dir>/compile.lock`` exclusively for the block.
+    """Hold ``<tesserae_dir>/<name>`` exclusively for the block.
 
     Fails fast with :class:`CompileLockHeldError` when another process holds
     the lock; set ``wait_seconds`` (or the ``TESSERAE_COMPILE_LOCK_WAIT`` env
     var) to poll for the lock instead of failing.
+
+    ``name`` exists so a SHORT critical section can get its own lock file
+    instead of queueing behind a multi-minute compile: ``agent_write`` takes
+    ``agent-writes.lock`` for a read-dedupe-append that costs ~1 ms. No cycle
+    is possible — the write path never takes ``compile.lock``.
     """
     directory = Path(tesserae_dir)
     if fcntl is None:  # pragma: no cover — Windows
         yield
         return
     directory.mkdir(parents=True, exist_ok=True)
-    handle = (directory / "compile.lock").open("a+", encoding="utf-8")
+    handle = (directory / name).open("a+", encoding="utf-8")
     if wait_seconds is None:
         try:
             wait_seconds = float(os.environ.get("TESSERAE_COMPILE_LOCK_WAIT", "0") or 0)

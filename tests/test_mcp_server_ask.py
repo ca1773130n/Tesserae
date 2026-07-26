@@ -173,3 +173,45 @@ def test_mcp_ask_llm_false_end_to_end_skips_planner(tmp_path, monkeypatch):
     result = server.call_tool("ask", {"question": "anything", "project": "demo", "llm": False})
     assert result["backend"] == "wiki"
     assert result["used_llm"] is False
+
+
+# --------------------------------------------------------------- route override
+
+
+def test_mcp_ask_exposes_a_route_override_mirroring_the_cli():
+    """Agents are the primary consumer; the CLI has ``--route`` and MCP did not.
+
+    Without it an agent that KNOWS its question is temporal or multi-hop has no
+    way to escape the shape heuristic, while a human at a terminal does.
+    """
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    ask = next(t for t in LLMWikiMCPServer().list_tools() if t["name"] == "ask")
+    route = ask["inputSchema"]["properties"]["route"]
+
+    assert route["enum"] == ["auto", "lookup", "graph"]
+    assert route["default"] == "auto"
+
+
+@pytest.mark.parametrize("route,expected", [(None, "auto"), ("graph", "graph"), ("lookup", "lookup")])
+def test_mcp_ask_threads_route_to_ask_project(tmp_path, monkeypatch, route, expected):
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    project = tmp_path / "demo"
+    _write_minimal_project(project)
+    captured = {}
+
+    def fake_ask(wiki, question, **kwargs):
+        captured.update(kwargs)
+        return {"backend": "wiki", "question": question, "answer": "a", "hits": []}
+
+    monkeypatch.setattr("tesserae.query.ask_project", fake_ask)
+    server = LLMWikiMCPServer(registry_path=tmp_path / "registry.json")
+    server.registry.register(str(project), name="demo")
+
+    args = {"question": "what is the latest?", "project": "demo"}
+    if route is not None:
+        args["route"] = route
+    server.call_tool("ask", args)
+
+    assert captured["route"] == expected
