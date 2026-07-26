@@ -903,8 +903,16 @@ class LLMWikiMCPServer:
                             "default": True,
                             "description": (
                                 "Re-read the cited span from its source file. "
-                                "Advisory only: it sets provenance.regrounded "
-                                "and can never change the verdict."
+                                "LOAD-BEARING, not advisory: a span the file "
+                                "provably does not contain (regrounded=false) "
+                                "cannot be SUPPORTED, because SUPPORTED asserts "
+                                "the evidence IS a verbatim document span. On a "
+                                "real 15,284-edge graph 198 of 2,088 SUPPORTED "
+                                "verdicts cited stitched text absent from the "
+                                "file. regrounded=null (unchecked, or "
+                                "reground=false) is left alone — disproven is "
+                                "refused, unchecked is not. Branch on verdict, "
+                                "never on regrounded."
                             ),
                         },
                     },

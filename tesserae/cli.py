@@ -5900,6 +5900,74 @@ def _handle_graph_map(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def _build_verify_claim_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae verify-claim",
+        description=(
+            "Ask whether the compiled graph licenses a triple (the verify_claim "
+            "MCP tool as a CLI verb; JSON out). The verdict is a pure function of "
+            "graph bytes — no LLM, no embedding, no fuzzy matching. There is no "
+            "natural-language input by design: endpoints resolve by exact node id, "
+            "unique casefolded name, or unique alias, and anything else is "
+            "NOT_RESOLVABLE rather than a guess."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "verdicts:\n"
+            "  SUPPORTED             edge exists, carries its own evidence, re-grounded\n"
+            "  PRESENT_UNEVIDENCED   edge exists, nothing document-backed behind it\n"
+            "  CONTRADICTED          document-backed contradicts_claim, same endpoints\n"
+            "  DISPUTED_UNEVIDENCED  disagreement asserted, none of it evidenced\n"
+            "  CONFLICTING           both polarities document-backed; not adjudicated\n"
+            "  ABSENT                this graph does not assert it. NOT a refutation\n"
+            "  NOT_RESOLVABLE        an endpoint or predicate could not be resolved\n"
+            "\n"
+            "branch on verdict together with provenance.class; never on reason,\n"
+            "never on regrounded. exit 0 = answered, 2 = NOT_RESOLVABLE.\n"
+            "\n"
+            "examples:\n"
+            "  tesserae verify-claim -s 'Paper:x' -p supports_claim -o 'Claim:y'\n"
+            "  tesserae verify-claim -s 'Flash Attention' -p uses -o 'Tiling' --no-reground\n"
+        ),
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to CWD.")
+    parser.add_argument("-s", "--subject", required=True, help="Subject: node id, exact name, or exact alias.")
+    parser.add_argument("-p", "--predicate", required=True, help="Edge type, verbatim from the controlled vocabulary. No synonyms.")
+    parser.add_argument("-o", "--object", dest="object_", required=True, help="Object: node id, exact name, or exact alias.")
+    parser.add_argument("--no-reground", dest="reground", action="store_false", default=True,
+                        help="Skip re-reading the cited span from disk. NOT advisory: without it a span the file provably lacks cannot be refused, so --no-reground can only make a verdict MORE generous.")
+    parser.set_defaults(_handler="_handle_verify_claim")
+    return parser
+
+
+def _route_verify_claim(rest: List[str]) -> int:
+    args = _build_verify_claim_parser().parse_args(rest)
+    return _resolve_handler("_handle_verify_claim")(args)
+
+
+def _handle_verify_claim(args: argparse.Namespace) -> int:
+    from .verify import verify_claim
+
+    wiki = ProjectWiki.load(args.project)
+    if not wiki.paths.graph.exists():
+        print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
+        return 2
+    out = verify_claim(
+        _load_graph_file(wiki.paths.graph),
+        subject=args.subject,
+        predicate=args.predicate,
+        obj=args.object_,
+        reground=args.reground,
+        project_root=wiki.root,
+    )
+    print(json.dumps(out, ensure_ascii=False, sort_keys=True))
+    # 2 for NOT_RESOLVABLE so a script can tell "could not check" from every
+    # verdict that IS an answer — including ABSENT, which is a real answer
+    # ("this graph does not assert it") and must not read as an error.
+    return 2 if out.get("verdict") == "NOT_RESOLVABLE" else 0
+
+
 def _build_distill_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae distill",
@@ -6143,6 +6211,8 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "query": _route_query,
     # Descent (0.25): graph_map MCP tool exposed as a CLI verb for non-MCP callers
     "graph-map": _route_graph_map,
+    # verify_claim MCP tool exposed as a CLI verb for non-MCP callers
+    "verify-claim": _route_verify_claim,
     # layered agent KG (Phase 2): per-agent L1 distillation
     "distill": _route_distill,
 }
