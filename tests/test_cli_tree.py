@@ -233,3 +233,19 @@ def test_every_command_help_has_examples(capsys):
             cli.main([*cmd, "--help"])
         out = capsys.readouterr().out
         assert "examples:" in out.lower(), f"{' '.join(cmd)} --help lacks EXAMPLES"
+
+
+def test_command_tree_has_no_duplicate_rows():
+    """KNOWN_COMMANDS is a frozenset, so a duplicated row is invisible to the
+    dispatch-agreement test — it only shows up as a verb printed twice in
+    `tesserae --help`. #89 shipped exactly that for `verify-claim`."""
+    from tesserae.cli_tree import COMMAND_TREE, render_root_help
+
+    rows = [cmd for _, section in COMMAND_TREE for cmd, _ in section]
+    dupes = sorted({c for c in rows if rows.count(c) > 1})
+    assert not dupes, f"duplicated COMMAND_TREE rows: {dupes}"
+
+    help_text = render_root_help()
+    for cmd in rows:
+        printed = sum(line.strip().startswith(f"{cmd} ") for line in help_text.splitlines())
+        assert printed == 1, f"`{cmd}` printed {printed}x in root help"
