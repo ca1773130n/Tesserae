@@ -914,6 +914,51 @@ def test_codex_transport_retry_still_fires_on_a_fast_failure(monkeypatch, tmp_pa
     assert len(calls) == llm_json._TRANSPORT_RETRIES + 1
 
 
+def test_a_fast_failure_does_not_sleep_past_the_budget_and_retry(monkeypatch, tmp_path):
+    """The bound is on when the NEXT rotation STARTS, not on when we last looked.
+
+    Checking elapsed alone left the backoff sleep uncharged, so a failure fast
+    enough to leave budget on the clock could sleep straight past the bound and
+    start another rotation anyway. Measured against the real clock at
+    timeout=1s / backoff=2s: attempt 2 began at t=2.01s, i.e. the true bound was
+    timeout + backoff + timeout, not timeout.
+
+    The clock here advances on ``sleep`` — that is the whole point of the test,
+    so it cannot use ``_fake_clock`` (whose sleep is free).
+    """
+    import types
+
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    calls: list = []
+    sleeps: list = []
+    clock = {"t": 0.0}
+
+    def advancing_sleep(seconds):
+        sleeps.append(seconds)
+        clock["t"] += seconds
+
+    monkeypatch.setattr(
+        llm_json, "time",
+        types.SimpleNamespace(monotonic=lambda: clock["t"], sleep=advancing_sleep),
+    )
+    monkeypatch.setattr(llm_json, "_TRANSPORT_BACKOFF", 2.0)
+
+    def fast_failure(cmd, **kwargs):
+        calls.append(clock["t"])
+        return types.SimpleNamespace(returncode=1, stdout="", stderr="boom")
+
+    monkeypatch.setattr(llm_json, "_run_cli", fast_failure)
+    home = tmp_path / "h"
+    home.mkdir()
+
+    client = CodexCLIJsonClient(codex_homes=[str(home)], timeout=1)
+    assert client.complete_json(system="s", user="u", schema_name="x") is None
+    assert len(calls) == 1  # a 2s backoff cannot fit inside a 1s budget
+    assert sleeps == []  # ...and the doomed sleep is not burned either
+    assert all(t < client.timeout for t in calls)  # nothing STARTS past the bound
+
+
 def test_codex_does_not_retry_a_permanent_failure(monkeypatch, tmp_path):
     """An expired token / missing binary is not transient.
 
