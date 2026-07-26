@@ -256,6 +256,14 @@ def _emit_ask_envelope(envelope: dict, *, json_output: bool) -> int:
             # auto fell through to wiki because a richer backend errored —
             # say so, so the user isn't left thinking wiki was the only try.
             print(f"(auto: {'; '.join(notes)} — fell back to wiki search)", file=sys.stderr)
+        # Order on stderr is scope -> route -> plan -> answer: each line narrows
+        # the previous one.
+        route_info = envelope.get("route") or {}
+        if route_info.get("shape"):
+            print(
+                f"(route: {route_info['shape']} — {route_info.get('reason', '')})",
+                file=sys.stderr,
+            )
         plan = envelope.get("plan") or {}
         plan_steps = plan.get("steps") or []
         if plan_steps:
@@ -437,8 +445,15 @@ def _run_scoped_ask(wiki, view, question, *, top_k, no_llm):
         scoped_path = Path(tmp) / "graph.json"
         scoped_path.write_text(view.to_json(indent=2) + "\n", encoding="utf-8")
         scoped_wiki = _AgentScopedWiki(wiki, scoped_path)
+        # route="graph" is NOT a default, it is a correctness pin: the BM25
+        # lookup path reads the UNSCOPED wiki index, so a lookup-shaped question
+        # under --agent would leak pages outside the agent's view.
+        # ponytail: ceiling — any future caller that scopes a wiki proxy must
+        # repeat this pin. Upgrade path is scoping the wiki index itself, at
+        # which point the pin can go.
         return ask_project(
-            scoped_wiki, question, top_k=top_k, use_llm=not no_llm, no_llm=no_llm
+            scoped_wiki, question, top_k=top_k, use_llm=not no_llm, no_llm=no_llm,
+            route="graph",
         )
 
 
@@ -511,6 +526,14 @@ def _top_level_ask_handler(args) -> int:
                 "ask: --agent needs the LLM planner to read the scoped graph; "
                 "search-only --no-llm can't scope to an agent view. Drop --no-llm, "
                 "or use `tesserae query --agent`.",
+                file=sys.stderr,
+            )
+            return 2
+        if getattr(args, "route", "auto") == "lookup":
+            print(
+                "ask: --route lookup answers from the UNSCOPED wiki index, so it "
+                "would leak pages outside the agent view. --agent implies "
+                "--route graph; drop --route lookup.",
                 file=sys.stderr,
             )
             return 2
@@ -588,6 +611,7 @@ def _top_level_ask_handler(args) -> int:
                 top_k=args.top_k,
                 use_llm=not no_llm,
                 no_llm=no_llm,
+                route=getattr(args, "route", "auto"),
             )
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
@@ -1066,6 +1090,18 @@ def _build_top_level_ask_parser() -> argparse.ArgumentParser:
         dest="semantic",
         action="store_false",
         help="With --scope=federated, identity merges only (no embedding-backed links).",
+    )
+    parser.add_argument(
+        "--route",
+        choices=["auto", "lookup", "graph"],
+        default="auto",
+        help=(
+            "How to answer, not where. 'auto' (default) routes by question shape: "
+            "definitional lookups go to BM25 wiki search, everything else to the KG "
+            "planner. 'lookup' STILL synthesizes an LLM answer — it just skips the "
+            "planner (contrast --no-llm, which skips synthesis entirely). 'graph' "
+            "forces the planner. Ignored by --scope all-registered/federated."
+        ),
     )
     parser.add_argument(
         "--recency-weight",
@@ -5368,6 +5404,17 @@ def _build_extract_parser() -> argparse.ArgumentParser:
     parser.add_argument("--claude-include", action="append", default=[], help=argparse.SUPPRESS)
     parser.add_argument("--claude-limit", type=int, help=argparse.SUPPRESS)
     parser.add_argument("--canonicalize", action="store_true", help="Merge high-confidence aliases and produce review candidates for ambiguous duplicates")
+    parser.add_argument(
+        "--canonicalize-semantic",
+        dest="canonicalize_semantic",
+        action="store_true",
+        help=(
+            "Also propose duplicate CANDIDATES via embedding similarity (implies "
+            "--canonicalize). Candidates only — the semantic pass never merges "
+            "anything, it only appends review items for a human to decide. "
+            "Needs tesserae[semantic]; skips with a reason otherwise."
+        ),
+    )
     parser.add_argument("--review-output", help="Write canonicalization review queue JSON to this path")
     parser.add_argument("--review-markdown-output", help="Write a human-readable markdown review queue")
     parser.add_argument("--review-jsonl-output", help="Write review queue items as JSONL")
@@ -5553,9 +5600,22 @@ def _handle_extract(args: argparse.Namespace) -> int:
     graph = merge_graphs(graphs)
     if args.trends:
         graph = ResearchCorpusAnalyzer().summarize_trends(graphs, min_sources=args.min_trend_sources)
-    if args.canonicalize or args.review_output or args.apply_review_decisions or args.review_markdown_output or args.review_jsonl_output or args.review_decisions_template:
-        canonicalization = GraphCanonicalizer().canonicalize(graph)
+    canonicalize_semantic = bool(getattr(args, "canonicalize_semantic", False))
+    if canonicalize_semantic or args.canonicalize or args.review_output or args.apply_review_decisions or args.review_markdown_output or args.review_jsonl_output or args.review_decisions_template:
+        canonicalization = GraphCanonicalizer(semantic=canonicalize_semantic).canonicalize(graph)
         graph = canonicalization.graph
+        if canonicalize_semantic:
+            # Say plainly whether the pass RAN — "skipped" must never read as
+            # "ran and found nothing".
+            skipped = canonicalization.stats.get("semantic_skipped")
+            if skipped:
+                print(f"(semantic canonicalization skipped: {skipped})", file=sys.stderr)
+            else:
+                print(
+                    f"(semantic canonicalization: {canonicalization.stats.get('semantic_added', 0)} "
+                    f"review candidates via {canonicalization.stats.get('semantic_backend')} — candidates only, nothing merged)",
+                    file=sys.stderr,
+                )
         if args.apply_review_decisions:
             decisions = load_review_decisions(Path(args.apply_review_decisions))
             graph = canonicalization.review_queue().apply_decisions(graph, decisions)

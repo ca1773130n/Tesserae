@@ -42,6 +42,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
+from .ask_shape import SHAPE_GRAPH, SHAPE_LOOKUP, classify_ask_shape
 from .citation_names import NODE_CITATION_RE, rewrite_citations
 from .research_graph import ResearchNodeType
 from .site.search import bm25_score, bm25_score_tokens, average_doc_len, tokenize
@@ -935,6 +936,7 @@ def ask_project(
     top_k: int = 5,
     use_llm: bool = True,
     no_llm: bool = False,
+    route: str = "auto",
 ) -> Dict[str, Any]:
     """Run a question against the configured memory backends and return a JSON-serializable envelope.
 
@@ -948,6 +950,12 @@ def ask_project(
       otherwise. Auto never enters raganything.
     * Explicit ``backend="raganything"`` short-circuits to that
       backend and surfaces its errors instead of silently falling through.
+
+    ``route`` picks HOW the wiki path answers: ``"auto"`` classifies the
+    question's SHAPE (:func:`tesserae.ask_shape.classify_ask_shape`) and sends
+    definitional lookups to BM25 instead of the KG planner; ``"graph"`` /
+    ``"lookup"`` force one side. The decision is reported back on
+    ``envelope["route"]`` on BOTH branches so a cheap answer is auditable.
 
     ``use_llm`` defaults to **True**: ask is the LLM-answer surface (the
     planner + synthesis run unless disabled). ``no_llm=True`` forces
@@ -972,6 +980,8 @@ def ask_project(
         )
     if backend not in {"auto", "raganything", "wiki"}:
         raise ValueError(f"ask_project: unknown backend {backend!r}")
+    if route not in {"auto", "lookup", "graph"}:
+        raise ValueError(f"ask_project: unknown route {route!r}")
     cleaned_question = (question or "").strip()
     if not cleaned_question:
         raise ValueError("ask_project: question is required")
@@ -1015,19 +1025,39 @@ def ask_project(
     # evidence, so "what happened recently?" is unanswerable without this.
     # Requires a compiled graph; dry-run keeps the deterministic classic path.
     graph_path = getattr(getattr(wiki, "paths", None), "graph", None)
-    if want_llm and not env_dry_run() and graph_path is not None and graph_path.exists():
+    planner_available = want_llm and not env_dry_run() and graph_path is not None and graph_path.exists()
+
+    # SHAPE routing. Resolved once, reported on both branches. ``forced`` means
+    # the planner was already off (no LLM / no compiled graph / dry-run) and the
+    # router never got a say — the envelope must not claim a decision it did not
+    # make.
+    if not planner_available:
+        route_info = {
+            "shape": SHAPE_LOOKUP,
+            "reason": "planner unavailable (no-llm, dry-run, or no compiled graph)",
+            "source": "forced",
+        }
+    elif route == "auto":
+        shape = classify_ask_shape(cleaned_question)
+        route_info = {"shape": shape.shape, "reason": shape.reason, "source": "heuristic"}
+    else:
+        route_info = {"shape": route, "reason": f"--route {route}", "source": "flag"}
+
+    if planner_available and route_info["shape"] == SHAPE_GRAPH:
         from .ask_planner import plan_and_answer
 
         planned = plan_and_answer(wiki, cleaned_question, top_k=top_k)
         if planned is not None:
             planned["backend"] = "wiki"
             planned["question"] = cleaned_question
+            planned["route"] = route_info
             return planned
 
     result = wiki.query(cleaned_question, top_k=top_k, use_llm=want_llm, force_no_llm=no_llm)
     payload = result.to_dict()
     payload["backend"] = "wiki"
     payload["question"] = cleaned_question
+    payload["route"] = route_info
     return payload
 
 
