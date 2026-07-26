@@ -10,6 +10,10 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=_lib.sh
 . "${HERE}/_lib.sh"
 
+# Spends money: OFF unless TESSERAE_HOOK_AUTOCOMPILE is truthy.
+hook_autocompile_enabled || exit 0
+
+
 if [[ "$(read_plugin_setting posttooluse_edit)" != "true" ]]; then
   exit 0
 fi
