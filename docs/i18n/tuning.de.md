@@ -161,3 +161,42 @@ Jede Karte meldet `size` und `leaf_member_count` aus der Hierarchie-Sidecar,
 plus `live_member_count` — wie viele Mitglieder der *aktuelle* Graph tatsächlich
 trägt. Ein `0` dort bedeutet der Scope ist tot (Sidecar/Graph-Skew): überspringen
 Sie ihn, anstatt hinabzusteigen.
+
+## Agenten schreiben in den Graphen
+
+\`graph_write\` (MCP) nimmt schemavalidierte typisierte Knoten und Kanten mit verbindlicher Herkunft, sodass ein Agent einen Fund als *Struktur* statt als Prosa aufzeichnet, deren Typen ein Extraktor erraten muss.
+
+Es lehnt ab statt zu erzwingen: Untypte Kanten, Knoten- oder Kantentypen außerhalb des kontrollierten Vokabulars, baumelnde Endpunkte und Schreibvorgänge ohne Herkunft werden alle abgelehnt. Doppelte Schreibvorgänge sind idempotent. Von Agenten geschriebene Knoten überleben eine vollständige Neukompilierung, gelöschtes \`graph.json\`, \`--limit\` und vollständige Corpus-Löschung.
+
+## Eine Behauptung gegen den Graphen überprüfen
+
+\`verify_claim\` (MCP) antwortet, ob der Graph ein Triple lizenziert. Es nimmt \`(subject, predicate, object)\` — **es gibt keinen Parameter in natürlicher Sprache**, absichtlich, weil ein Parser die vorherige Version dazu brachte, auf die Negation einer Behauptung, die sie unterstützte, mit SUPPORTED zu antworten.
+
+Das Urteil ist eine reine Funktion der Graph-Bytes: kein LLM, keine Einbettung, nirgends auf dem Entscheidungsweg Fuzzy-Matching.
+
+| Urteil | Bedeutung |
+|---|---|
+| \`SUPPORTED\` | die Kante existiert, trägt eigene Beweise und dieser Text wurde gegen die Quelldatei neu verankert |
+| \`PRESENT_UNEVIDENCED\` | die Kante existiert, aber nichts Dokumentgestütztes unterstützt sie |
+| \`CONTRADICTED\` | dokumentgestützte \`contradicts_claim\` zwischen denselben zwei Endpunkten |
+| \`DISPUTED_UNEVIDENCED\` | behauptete Meinungsverschiedenheit, keine nachgewiesen |
+| \`CONFLICTING\` | beide Polaritäten dokumentgestützt — das Tool lehnt es ab, zu entscheiden |
+| \`ABSENT\` | dieser Graph behauptet das Triple nicht. Keine Widerlegung |
+| \`NOT_RESOLVABLE\` | ein Endpunkt oder Prädikat kann nicht genau aufgelöst werden |
+
+Es gibt zwei Dinge, die es absichtlich nicht tut. Es behandelt \`supersedes\` nie als Widerlegung — diese Beziehung sagt, dass ein *Knoten* ersetzt wurde, nicht dass ein Triple falsch ist. Und ein Agent-Write kann nur eine Herkunftsklasse *schwächen*, niemals eine aktualisieren, also kann nichts, das ein Agent behauptet, als dokumentgestützt dargestellt werden.
+
+Es ist wissenswert beim Lesen von Ergebnissen: auf einem echten Graph mit 15.284 Kanten sind etwa 40% der \`SUPPORTED\`-Urteile tautologisch — \`evidenced_by\`-Kanten, deren zitierter Span das eigene Ziel der Kante ist. Wahr, aber nicht informativ.
+
+## Eine Frage weiterleiten
+
+\`tesserae ask\` wählt einen Abrufpfad nach Frageform aus: Einfache Entitätssuchen gehen zu günstig Backend, Multi-Hop / "was hat sich geändert" / "warum" / Corpus-breite Fragen gehen zum Graph. Unabhängige Benchmarks zeigen, dass Graphen bei Multi-Hop-, Zeit- und Synthesefragen führend sind und bei einfacher Faktsuche und Kosten *hinterherhinken* — also an jedem Graphen-Preisen für jede Frage zu zahlen ist ein Verlust.
+
+Die Entscheidung wird in dem zurückgegebenen Umschlag angezeigt, daher ist eine billige Antwort prüfbar. Überschreiben Sie es mit \`--route\` auf der CLI oder dem Parameter \`route\` im MCP-Tool.
+
+REGELN:
+- NICHT übersetzen: graph_write, verify_claim, SUPPORTED, PRESENT_UNEVIDENCED, CONTRADICTED, DISPUTED_UNEVIDENCED, CONFLICTING, ABSENT, NOT_RESOLVABLE, supersedes, contradicts_claim, evidenced_by, subject, predicate, object, MCP, --route
+- Behalten Sie alle Zahlen genau bei: 15.284, 40 %
+- Behalten Sie die Tabellenstruktur mit denselben Spaltenkopfzeilen bei
+- Übersetzen Sie die Prosa für jede Sprache natürlich
+- Fügen Sie am Ende jeder Datei an, ohne vorhandene Inhalte zu stören
