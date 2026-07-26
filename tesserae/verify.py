@@ -322,10 +322,18 @@ class _Chain:
         # Which surface carried the agent marker — reported, never adjudicated.
         self.agent_marker_on: Optional[str] = None
         self.agent_meta: Dict[str, Any] = {}
+        # ENDPOINT MARKERS ARE NOT READ — they were the one remaining non-local
+        # read, and they violated this module's own LOCALITY invariant. An
+        # endpoint being agent-touched says nothing about whether THIS edge was
+        # agent-minted, so reading it turned one benign agent write into a
+        # self-DoS: on the real graph a single write against a curated Paper
+        # node degraded all 13 edges touching it, flipping SUPPORTED ->
+        # PRESENT_UNEVIDENCED for facts no agent ever asserted. Writing to the
+        # graph is the product's primary use case; it must not poison the
+        # verifier. The edge and the cited span are the deciding chain, and they
+        # are what carry an unforgeable marker (agent_write.py stamps the edge).
         for where, meta in (
             ("edge", edge.metadata),
-            ("subject", self.endpoints[0].metadata if self.endpoints[0] else None),
-            ("object", self.endpoints[1].metadata if self.endpoints[1] else None),
             ("span", self.span.metadata if self.span is not None else None),
         ):
             if _agent_marker(meta):
@@ -348,8 +356,25 @@ class _Chain:
 
     @property
     def document_backed(self) -> bool:
-        """The ONLY gate to a confident verdict."""
-        return self.cls == "document_span"
+        """The ONLY gate to a confident verdict.
+
+        Re-grounding is part of the gate, not advisory colour. The tool tells its
+        caller that SUPPORTED means "its own evidence is a verbatim document
+        span"; on the real 5,197-node graph 198 of 2,088 SUPPORTED verdicts
+        (9.5%, across 56 distinct files) cited a span that is provably NOT in the
+        file — the extractor had stitched a fragment across headings. Class alone
+        cannot see that, because class is computed from metadata and the span
+        text is only checked against disk by ``_reground``.
+
+        ``regrounded is False`` means we READ the file and the text was absent —
+        a definite refutation of the promise, so it must not be SUPPORTED.
+        ``None`` (re-grounding disabled, or no readable source_path) is left
+        alone: refusing on "not checked" as well would make ``reground=False``
+        incapable of ever returning SUPPORTED, forcing disk I/O into every
+        verdict for no gain in honesty. Disprove, don't assume — the 198 are
+        disproven, the 87 are merely unchecked.
+        """
+        return self.cls == "document_span" and self.regrounded is not False
 
     def weakness(self) -> str:
         """Machine slug naming why this chain is not document-backed."""
@@ -523,14 +548,26 @@ def verify_claim(
         "observed_predicates": None,
     }
 
-    deciding = next(
-        (e for e in pair_edges if e.source == s_id and e.type == predicate and e.target == o_id),
-        None,
+    # STRONGEST match, not first match. ``load_graph`` does not dedup and the MCP
+    # tool accepts an arbitrary graph_path, so two edges can differ only in
+    # evidence — and picking whichever came first made the verdict depend on file
+    # order: the same triple returned SUPPORTED or PRESENT_UNEVIDENCED depending
+    # on how the JSON happened to be written. Prefer an evidenced edge, then sort
+    # by (evidence, id-ish repr) so the choice is total and content-derived.
+    # ponytail: sorts a handful of parallel edges, not the graph. There are zero
+    # duplicates on today's real graphs; this is a correctness floor, not a
+    # hot path.
+    def _pick(matches):
+        ordered = sorted(matches, key=lambda e: (not bool(e.evidence), e.evidence or "", repr(e)))
+        return ordered[0] if ordered else None
+
+    deciding = _pick(
+        [e for e in pair_edges if e.source == s_id and e.type == predicate and e.target == o_id]
     )
     # Symmetric in effect, asserted in one direction; the direction is reported
     # in the citation. Only ``supports_claim`` has a polar opposite.
     counter = (
-        next((e for e in pair_edges if e.type == "contradicts_claim"), None)
+        _pick([e for e in pair_edges if e.type == "contradicts_claim"])
         if predicate in _REFUTABLE_PREDICATES
         else None
     )
@@ -546,11 +583,32 @@ def verify_claim(
         else _Chain(graph, counter, project_root=project_root, reground=reground)
     )
 
-    if d_chain is not None and c_chain is not None:
-        # The graph asserts both polarities. This tool does not adjudicate; it
-        # cites the positive edge and names the conflict.
+    # CONFLICTING is reserved for a genuine standoff: BOTH polarities
+    # document-backed. Only then does the tool decline to adjudicate.
+    #
+    # Requiring it of both sides is what stops an unevidenced assertion from
+    # cancelling an evidenced one — in EITHER direction. Before this, any
+    # counter-edge produced CONFLICTING, so one agent write with empty evidence
+    # downgraded a document-grounded CONTRADICTED to a non-verdict. Symmetrically,
+    # an unevidenced positive must not blunt a document-backed refutation. When
+    # exactly one side is document-backed, that side wins and the other is
+    # reported in `advisory`, where unevidenced disagreement belongs.
+    if (
+        d_chain is not None
+        and c_chain is not None
+        and d_chain.document_backed
+        and c_chain.document_backed
+    ):
         return _payload(
             "CONFLICTING", "both_polarities_asserted", triple, d_chain, advisory, s_id
+        )
+    if (
+        c_chain is not None
+        and c_chain.document_backed
+        and (d_chain is None or not d_chain.document_backed)
+    ):
+        return _payload(
+            "CONTRADICTED", "contradicted_by_document_span", triple, c_chain, advisory, s_id
         )
     if d_chain is not None:
         if d_chain.document_backed:

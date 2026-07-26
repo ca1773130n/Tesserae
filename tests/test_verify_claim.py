@@ -249,10 +249,21 @@ def test_agent_edge_stamp_survives_merge(tmp_path):
 
 
 def test_provenance_is_monotone_under_agent_write():
-    """Property: an agent re-assertion can only ever WEAKEN the class."""
+    """An agent re-assertion on the DECIDING CHAIN can only ever WEAKEN the class.
+
+    The chain is the edge and the cited span — not the endpoint nodes. Reading
+    endpoint markers was a non-local read that violated this module's own
+    LOCALITY invariant and turned writing into a self-DoS: on the real graph one
+    benign write against a curated Paper degraded all 13 edges touching it,
+    flipping SUPPORTED -> PRESENT_UNEVIDENCED for facts no agent ever asserted.
+    Writing to the graph is the product's primary use case, so it must not
+    poison the verifier for everyone else. Endpoint coverage is not lost: the
+    self-confirmation attack is caught by the EDGE marker, which agent_write
+    stamps precisely because dedup drops node metadata (see the test above).
+    """
     base = evidenced_graph()
     before = verify_claim(base, subject="P:p", predicate="supports_claim", obj="C:q")
-    for surface in ("edge", "subject", "object", "span"):
+    for surface in ("edge", "span"):
         nodes = [copy.deepcopy(n) for n in base.nodes]
         edges = [copy.deepcopy(e) for e in base.edges]
         stamp = {"agent_write_id": "w1", "agent_key": "prober"}
@@ -563,3 +574,58 @@ def test_real_graph_distribution_locked():
             "PRESENT_UNEVIDENCED": 13195,
             "NOT_RESOLVABLE": 1,  # the single self-loop, refused
         }
+
+
+def test_agent_write_on_an_endpoint_does_not_poison_unrelated_verdicts():
+    """The P3 self-DoS, pinned: touching a NODE must not degrade edges the agent
+    never asserted. One benign write against a curated Paper previously flipped
+    all 13 edges touching it from SUPPORTED to PRESENT_UNEVIDENCED."""
+    base = evidenced_graph()
+    before = verify_claim(base, subject="P:p", predicate="supports_claim", obj="C:q")
+    assert before["verdict"] == "SUPPORTED"
+
+    stamp = {"agent_write_id": "w1", "agent_key": "prober"}
+    poisoned = ResearchGraph(
+        nodes=[
+            node(n.id, n.name, n.type, description=n.description, path=n.source_path, meta=stamp)
+            if n.id == "P:p" else n
+            for n in (copy.deepcopy(x) for x in base.nodes)
+        ],
+        edges=[copy.deepcopy(e) for e in base.edges],
+    )
+    after = verify_claim(poisoned, subject="P:p", predicate="supports_claim", obj="C:q")
+    assert after["verdict"] == "SUPPORTED", "an endpoint write poisoned an unrelated verdict"
+    assert after["provenance"]["class"] == "document_span"
+
+
+def test_unevidenced_counter_edge_cannot_erase_a_document_backed_refutation():
+    """P2: an assertion nobody evidenced must not cancel one a document backs."""
+    base = evidenced_graph()
+    graph = ResearchGraph(
+        nodes=base.nodes,
+        edges=[e for e in base.edges if e.type != "supports_claim"]
+        + [edge("P:p", "contradicts_claim", "C:q", SENTENCE)],
+    )
+    assert verify_claim(graph, subject="P:p", predicate="supports_claim",
+                        obj="C:q")["verdict"] == "CONTRADICTED"
+
+    # An agent adds an unevidenced positive edge. It must NOT downgrade the
+    # document-backed refutation to a non-verdict.
+    with_agent = ResearchGraph(
+        nodes=graph.nodes,
+        edges=graph.edges
+        + [edge("P:p", "supports_claim", "C:q", "", {"agent_write_id": "w9", "agent_key": "x"})],
+    )
+    out = verify_claim(with_agent, subject="P:p", predicate="supports_claim", obj="C:q")
+    assert out["verdict"] == "CONTRADICTED", f"refutation erased -> {out['verdict']}"
+
+
+def test_deciding_edge_choice_is_order_independent():
+    """P4: duplicate parallel edges must not make the verdict depend on file order."""
+    base = evidenced_graph()
+    dup = edge("P:p", "supports_claim", "C:q", "")          # same triple, no evidence
+    a = ResearchGraph(nodes=base.nodes, edges=list(base.edges) + [dup])
+    b = ResearchGraph(nodes=base.nodes, edges=[dup] + list(base.edges))
+    va = verify_claim(a, subject="P:p", predicate="supports_claim", obj="C:q")["verdict"]
+    vb = verify_claim(b, subject="P:p", predicate="supports_claim", obj="C:q")["verdict"]
+    assert va == vb == "SUPPORTED", f"order-dependent: {va} vs {vb}"
