@@ -755,3 +755,56 @@ def test_deciding_edge_choice_is_order_independent():
     va = verify_claim(a, subject="P:p", predicate="supports_claim", obj="C:q")["verdict"]
     vb = verify_claim(b, subject="P:p", predicate="supports_claim", obj="C:q")["verdict"]
     assert va == vb == "SUPPORTED", f"order-dependent: {va} vs {vb}"
+
+
+# ---------------------------------------------------------------------------
+# CLI verb — the non-MCP surface consumers were blocked on.
+# ---------------------------------------------------------------------------
+
+
+def _cli(tmp_path, *argv):
+    import subprocess, sys as _sys
+    root = Path(__file__).resolve().parents[1]
+    return subprocess.run(
+        [_sys.executable, "-m", "tesserae.cli", "verify-claim", "--project", str(tmp_path), *argv],
+        cwd=str(root), capture_output=True, text=True,
+        env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(root), "HOME": str(tmp_path)},
+    )
+
+
+def _seed_cli_project(tmp_path):
+    from tesserae.project import ProjectWiki
+    ProjectWiki.init(tmp_path, name="vc")
+    wiki = ProjectWiki.load(tmp_path)
+    payload = evidenced_graph().to_json()
+    wiki.paths.graph.write_text(
+        payload if isinstance(payload, str) else json.dumps(payload), encoding="utf-8"
+    )
+    return wiki
+
+
+def test_cli_verb_answers_and_exits_zero(tmp_path):
+    _seed_cli_project(tmp_path)
+    r = _cli(tmp_path, "-s", "P:p", "-p", "supports_claim", "-o", "C:q")
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout)["verdict"] == "SUPPORTED"
+
+
+def test_cli_verb_exits_2_only_for_not_resolvable(tmp_path):
+    """ABSENT is an ANSWER — "this graph does not assert it" — and must not read
+    as an error. Only "could not check" gets a non-zero exit."""
+    _seed_cli_project(tmp_path)
+    absent = _cli(tmp_path, "-s", "P:p", "-p", "contradicts_claim", "-o", "C:q")
+    assert absent.returncode == 0
+    assert json.loads(absent.stdout)["verdict"] == "ABSENT"
+
+    unknown = _cli(tmp_path, "-s", "no-such-node", "-p", "supports_claim", "-o", "C:q")
+    assert unknown.returncode == 2
+    assert json.loads(unknown.stdout)["verdict"] == "NOT_RESOLVABLE"
+
+
+def test_cli_verb_is_registered(tmp_path):
+    from tesserae.cli import _NEW_DISPATCH
+    from tesserae.cli_tree import KNOWN_COMMANDS
+
+    assert "verify-claim" in _NEW_DISPATCH and "verify-claim" in KNOWN_COMMANDS
