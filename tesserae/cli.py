@@ -3657,8 +3657,10 @@ def _handle_export_site(args: argparse.Namespace) -> int:
 
 
 def _handle_export_okf(args: argparse.Namespace) -> int:
-    """`export okf` — write/read a Google OKF v0.1 bundle. `--import DIR` reads."""
-    from .okf import read_okf_bundle, write_okf_bundle
+    """`export okf` — write/read a Google OKF v0.2 bundle. `--import DIR` reads."""
+    from collections import Counter
+
+    from .okf import OKF_VERSION, okf_trust_tier, read_okf_bundle, write_okf_bundle
 
     wiki = ProjectWiki.load(args.project)
     graph_dir = Path(wiki.paths.graph).parent
@@ -3673,11 +3675,23 @@ def _handle_export_okf(args: argparse.Namespace) -> int:
             return 2
         Path(out).write_text(graph.to_json(), encoding="utf-8")
         print(f"Imported OKF bundle: nodes={len(graph.nodes)} edges={len(graph.edges)} path={out}")
+        # Trust tiers are INFERRED at read time, never stored (§5.1/§5.3). The
+        # histogram is the surfacing mechanism for a mixed bundle whose foreign
+        # concepts carry another producer's verification claims.
+        tiers = Counter(
+            okf_trust_tier(((n.metadata or {}).get("okf") or {}).get("verified"))
+            for n in graph.nodes
+        )
+        print("  trust tiers: " + " ".join(
+            f"{tier}={tiers[tier]}"
+            for tier in ("human-reviewed", "machine-confirmed", "unverified")
+            if tiers[tier]
+        ))
         return 0
     graph = _load_graph_file(wiki.paths.graph)
     out = args.output or str(graph_dir / "okf")
     written = write_okf_bundle(graph, out)
-    print(f"Exported OKF v0.1 bundle: files={len(written)} path={out}")
+    print(f"Exported OKF v{OKF_VERSION} bundle: files={len(written)} path={out}")
     return 0
 
 
@@ -3749,7 +3763,7 @@ def _build_export_parser() -> argparse.ArgumentParser:
 
     p_okf = sub.add_parser(
         "okf",
-        help="Export the graph as a Google OKF v0.1 bundle; --import reads one back.",
+        help="Export the graph as a Google OKF v0.2 bundle; --import reads v0.1 or v0.2 back.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
