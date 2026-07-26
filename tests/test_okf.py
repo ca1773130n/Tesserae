@@ -598,3 +598,19 @@ def test_imports_the_specs_own_canonical_bundle(tmp_path):
     # (2) legacy unquoted `timestamp` still orders the concept
     orders = next(n for n in graph.nodes if "order" in n.id.lower())
     assert orders.metadata.get("updated_at"), "unquoted legacy timestamp was dropped"
+
+
+def test_pyyaml_is_a_declared_dependency():
+    """okf.py imports yaml, so it must be declared — not inherited from the dev env.
+
+    It was imported without being declared: the suite passed because pyyaml is a
+    transitive dependency here, while every INSTALLED build raised
+    ModuleNotFoundError on `tesserae export okf`. The tested path and the shipped
+    path were not the same path.
+    """
+    import re
+    from pathlib import Path
+
+    pyproject = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    deps = re.search(r"^dependencies = \[(.*?)^\]", pyproject, re.S | re.M).group(1)
+    assert re.search(r'"pyyaml', deps, re.I), "tesserae/okf.py imports yaml but pyproject does not declare it"
