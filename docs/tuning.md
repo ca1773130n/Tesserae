@@ -14,6 +14,32 @@ for the run they are set in.
 
 ---
 
+## Hooks that spend money
+
+The Claude Code plugin ships hooks that can background a compile. Anything that
+spends is **off by default**:
+
+```sh
+export TESSERAE_HOOK_AUTOCOMPILE=1   # opt in to automatic recompiles
+```
+
+Gated: `posttooluse-edit.sh` (fires on every Edit/Write) and `session-end.sh`.
+Not gated, because they cost nothing: `session-start.sh` runs `tesserae code
+sync`, which is deterministic, and `pretooluse-compile.sh` only intercepts a
+`tesserae compile` you typed yourself.
+
+This default exists because the alternative was measured. A knowledge base at
+`~/.tesserae` makes `$HOME` look like a project root, and the hook resolver
+walked *up* from the working directory to the first `.tesserae/` it found — so
+any session outside a registered project resolved to `$HOME` and compiled the
+entire home directory: 15k files, a 795 MB graph, **~10 hours of LLM spend**,
+from a detached process that outlived the session that started it.
+
+`resolve_project_root()` now refuses `$HOME` by either path, and returns empty
+rather than falling back to the working directory, so callers no-op instead of
+guessing. A hook that backgrounds model work should be switched on deliberately,
+not switched off after the bill.
+
 ## Extraction
 
 ### `TESSERAE_EXTRACT_TIMEOUT`

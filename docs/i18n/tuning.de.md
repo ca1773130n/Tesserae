@@ -15,6 +15,32 @@ setzen beide in der Ausführung, in der sie gesetzt sind, außer Kraft.
 
 ---
 
+## Hooks die Geld kosten
+
+Das Claude Code Plugin liefert Hooks, die eine Kompilierung im Hintergrund ausführen können. Alles, das Geld kostet, ist **standardmäßig deaktiviert**:
+
+```sh
+export TESSERAE_HOOK_AUTOCOMPILE=1   # opt in to automatic recompiles
+```
+
+Gated: `posttooluse-edit.sh` (wird bei jedem Edit/Write ausgelöst) und `session-end.sh`.
+Nicht gated, weil sie nichts kosten: `session-start.sh` führt deterministisches `code sync` aus,
+und `pretooluse-compile.sh` fängt nur einen `tesserae compile` Befehl ab, den du selbst eingegeben hast.
+
+Dieser Standard existiert, weil die Alternative gemessen wurde. Eine Wissensbasis in
+`~/.tesserae` lässt `$HOME` wie einen Projektstamm aussehen, und der Hook-Resolver
+wanderte *aufwärts* vom Arbeitsverzeichnis zum ersten `.tesserae/`, das er fand — so
+dass jede Sitzung außerhalb eines registrierten Projekts zu `$HOME` auflöste und die
+gesamte Home-Verzeichnis kompilierte: 15k Dateien, ein 795 MB Graph, **~10 Stunden LLM-Ausgaben**,
+von einem detached Prozess, der die Sitzung überlebte, die ihn startete.
+
+`resolve_project_root()` weigert sich jetzt `$HOME` durch beide Pfade, und gibt
+eine leere Antwort zurück anstatt auf das Arbeitsverzeichnis zurückzufallen, daher
+no-op Aufrufer anstatt zu raten. Ein Hook, der Model-Arbeit im Hintergrund ausführt,
+sollte absichtlich aktiviert werden, nicht nach der Rechnung deaktiviert werden.
+
+---
+
 ## Extraktion
 
 ### `TESSERAE_EXTRACT_TIMEOUT`

@@ -12,6 +12,22 @@ LLM 백엔드 설정에 우선권을 가집니다. 아래의 환경 변수는 �
 
 ---
 
+## 돈을 쓰는 훅
+
+Claude Code 플러그인은 백그라운드 컴파일을 시작할 수 있는 훅을 제공합니다. 지출하는 모든 것은 **기본값으로 비활성화됩니다**:
+
+```sh
+export TESSERAE_HOOK_AUTOCOMPILE=1   # 자동 재컴파일 선택
+```
+
+게이트됨: `posttooluse-edit.sh` (모든 Edit/Write에서 실행) 및 `session-end.sh`. 게이트되지 않음, 비용이 들지 않기 때문: `session-start.sh`는 `tesserae code sync`를 실행하며, 이는 결정론적이고, `pretooluse-compile.sh`은 당신이 직접 입력한 `tesserae compile`만 가로챕니다.
+
+이 기본값이 존재하는 이유는 측정되었기 때문입니다. `~/.tesserae`의 지식 기반은 `$HOME`을 프로젝트 루트처럼 보이게 만들고, 훅 해석기는 작업 디렉터리에서 **위로** 첫 번째 `.tesserae/`을 찾아서 걸어갔습니다 — 따라서 등록된 프로젝트 외부의 모든 세션은 `$HOME`으로 해석되고 전체 홈 디렉터리를 컴파일했습니다: 15k 파일, 795 MB 그래프, **~10시간의 LLM 지출**, 세션을 시작한 분리된 프로세스에서.
+
+`resolve_project_root()`는 이제 경로로든 `$HOME`을 거부하고, 작업 디렉터리로 폴백하지 않고 빈 값을 반환하므로, 호출자들은 추측 대신 no-op을 수행합니다. 백그라운드 모델 작업을 수행하는 훅은 청구서가 도착한 후 끄는 것이 아니라 의도적으로 켜져야 합니다.
+
+---
+
 ## 추출
 
 ### `TESSERAE_EXTRACT_TIMEOUT`

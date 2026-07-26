@@ -12,6 +12,22 @@ Tesserae 从环境读取的每个旋钮、其默认值及实际何时更改它�
 
 ---
 
+## 花钱的钩子
+
+Claude Code 插件附带可以后台编译的钩子。任何花钱的**默认关闭**：
+
+```sh
+export TESSERAE_HOOK_AUTOCOMPILE=1   # 选择性加入自动重新编译
+```
+
+受限：`posttooluse-edit.sh`（在每次 Edit/Write 上触发）和 `session-end.sh`。不受限，因为它们花费零：`session-start.sh` 运行 `tesserae code sync`，这是确定性的，`pretooluse-compile.sh` 仅拦截您自己输入的 `tesserae compile`。
+
+这个默认值之所以存在是因为替代方案已经过测量。位于 `~/.tesserae` 的知识库使 `$HOME` 看起来像一个项目根目录，钩子解析器从工作目录向上走到它找到的第一个 `.tesserae/` — 因此任何在已注册项目外启动的会话都会解析为 `$HOME` 并编译整个主目录：15k 个文件，一个 795 MB 的图，**~10 小时的 LLM 花费**，来自一个比启动它的会话存活时间更长的分离进程。
+
+`resolve_project_root()` 现在通过任一路径拒绝 `$HOME`，并返回空值而不是回退到工作目录，因此调用者不执行任何操作而不是猜测。后台运行模型工作的钩子应该被刻意打开，而不是在账单到达后关闭。
+
+---
+
 ## 提取
 
 ### `TESSERAE_EXTRACT_TIMEOUT`
