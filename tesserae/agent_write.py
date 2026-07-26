@@ -39,6 +39,7 @@ walk back to something the graph did not author.
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
@@ -51,9 +52,12 @@ from .research_graph import (
     ALLOWED_EDGE_TYPES,
     ALLOWED_NODE_TYPES,
     CODE_SYMBOL_TYPES,
+    DISTILLED_MEMORY_TYPES,
+    SESSION_FINDING_TYPES,
     ResearchEdge,
     ResearchGraph,
     ResearchGraphBuilder,
+    ResearchNode,
     ResearchNodeType,
     normalize_display_name,
     stable_id,
@@ -70,9 +74,11 @@ __all__ = [
     "resolve_existing_id",
     "DENIED_NODE_TYPES",
     "EXTERNAL_ANCHORS",
+    "NEVER_ALIGNED_TYPES",
     "agent_anchor_id",
     "record_agent_write",
     "replay_agent_writes",
+    "resolve_write_nodes",
     "validate_write",
 ]
 
@@ -99,6 +105,24 @@ DENIED_NODE_TYPES: frozenset = frozenset(
         ResearchNodeType.STUB.value,
         ResearchNodeType.EVENT.value,
     }
+)
+
+# Node types ``_merge_same_type_aliased_duplicates`` deliberately EXEMPTS from
+# aggressive same-name dedup (``research_graph.py``: session findings, Event,
+# distilled memory, code symbols, agent-layer). Two of these with identical text
+# are legitimately separate provenance — merging them loses the link back to the
+# session / cluster / module that produced each one. ``resolve_existing_id``
+# uses the same key that pass uses, so it must honour the same refusals;
+# otherwise an agent's independent observation is fused onto (and erased by)
+# some session's finding that happens to share wording. ``DENIED_NODE_TYPES``
+# already blocks the code/agent/Event families at the door, but SessionInsight,
+# Gotcha, Runbook & co. are writable on purpose.
+NEVER_ALIGNED_TYPES: frozenset = frozenset(
+    SESSION_FINDING_TYPES
+    | DISTILLED_MEMORY_TYPES
+    | CODE_SYMBOL_TYPES
+    | AGENT_LAYER_TYPES
+    | {ResearchNodeType.EVENT}
 )
 
 
@@ -308,14 +332,24 @@ def _graph_from_record(record: Mapping[str, Any]) -> ResearchGraph:
             node,
             "performed_by",
             anchor,
-            evidence=f"written by agent {agent_key} (write {write_id})",
+            # Content must be a pure function of the FINDING, never of the write
+            # event. Two writes whose nodes later collapse (cross-type dedup
+            # fuses ``Claim:x`` into ``Paper:x``) produce two ``performed_by``
+            # edges that collide on ``(source, type, target)``; if their
+            # evidence differed, the survivor would be decided by merge-input
+            # order — which differs between a full and an incremental compile,
+            # so graph.json would oscillate forever. The write id is already on
+            # the node as ``agent_write_id``; it does not belong here.
+            evidence=f"written by agent {agent_key}",
         )
     for raw in record.get("edges") or []:
         source = by_ref.get(str(raw["source"]))
         target = by_ref.get(str(raw["target"]))
         if source is None or target is None:
-            # Unreachable via record_agent_write (validate_write refuses these),
-            # but a hand-edited JSONL must not take a compile down.
+            # Unreachable via record_agent_write (validate_write refuses these).
+            # Raising is right HERE — it is what makes the write path refuse —
+            # and ``replay_agent_writes`` catches it so a hand-edited JSONL
+            # cannot take a compile down.
             raise GraphJSONValidationError(
                 f"agent write {write_id}: edge endpoint missing from record"
             )
@@ -330,6 +364,44 @@ def _graph_from_record(record: Mapping[str, Any]) -> ResearchGraph:
     return graph
 
 
+def _read_records(file_path: Path) -> Dict[str, Dict[str, Any]]:
+    """Parse the JSONL overlay, skipping unreadable lines with a warning.
+
+    Skip-and-warn, exactly like ``BatchIngestRunner._load_manifest`` does for a
+    corrupt manifest. One truncated / hand-edited line must never be able to
+    brick EVERY future compile of the whole corpus: the read path is not the
+    place to enforce write-path validity, and the write path already refuses
+    malformed payloads at the door.
+    """
+    records: Dict[str, Dict[str, Any]] = {}
+    if not file_path.exists():
+        return records
+    for lineno, line in enumerate(
+        file_path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except (json.JSONDecodeError, ValueError) as exc:
+            print(
+                f"warning: unreadable agent-write line {file_path}:{lineno}: "
+                f"{exc}; skipping",
+                file=sys.stderr,
+            )
+            continue
+        if not isinstance(record, Mapping):
+            print(
+                f"warning: agent-write line {file_path}:{lineno} is not an "
+                "object; skipping",
+                file=sys.stderr,
+            )
+            continue
+        records[str(record.get("write_id") or "")] = dict(record)
+    return records
+
+
 def replay_agent_writes(path: str | Path) -> ResearchGraph:
     """Replay the JSONL overlay into a graph. Pure function of the file bytes.
 
@@ -339,19 +411,23 @@ def replay_agent_writes(path: str | Path) -> ResearchGraph:
     ``graph.json`` bytes.
     """
     file_path = Path(path)
-    if not file_path.exists():
-        return ResearchGraph(nodes=[], edges=[])
-    records: Dict[str, Dict[str, Any]] = {}
-    for line in file_path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        record = json.loads(line)
-        records[str(record.get("write_id") or "")] = record
+    records = _read_records(file_path)
     nodes: Dict[str, Any] = {}
     edges: Dict[Tuple[str, str, str], Any] = {}
     for write_id in sorted(records):
-        slice_graph = _graph_from_record(records[write_id])
+        # Same reason: a hand-written record carrying an out-of-vocabulary type,
+        # a dangling endpoint or any other builder-rejected shape is dropped
+        # with a warning rather than raised. ``record_agent_write`` cannot
+        # produce one; only an editor or a partial write can.
+        try:
+            slice_graph = _graph_from_record(records[write_id])
+        except (GraphJSONValidationError, ValueError, KeyError, TypeError) as exc:
+            print(
+                f"warning: unusable agent write {write_id or '<no id>'} in "
+                f"{file_path}: {exc}; skipping",
+                file=sys.stderr,
+            )
+            continue
         for node in slice_graph.nodes:
             nodes.setdefault(node.id, node)
         for edge in slice_graph.edges:
@@ -365,16 +441,20 @@ def resolve_existing_id(
     """Id of the node in ``graph`` an agent write should attach to, if any.
 
     Matches on ``(type, aggressive dedup key)`` — the SAME key the compile's
-    same-type dedup pass uses — so a write lands on the curated node instead of
-    forking beside it. Ambiguity (two existing nodes sharing the key) refuses,
-    for the same reason ``verify_claim`` refuses: guessing an entity is how a
-    5-hop chain drops to 44% trustworthy.
+    same-type dedup pass uses, *including its exemptions* (see
+    ``NEVER_ALIGNED_TYPES``) — so a write lands on the curated node instead of
+    forking beside it, and never fuses onto a node the compile itself refuses to
+    merge. Ambiguity (two existing nodes sharing the key) refuses, for the same
+    reason ``verify_claim`` refuses: guessing an entity is how a 5-hop chain
+    drops to 44% trustworthy.
     """
     if graph is None:
         return None
     try:
         node_enum = ResearchNodeType(node_type)
     except ValueError:
+        return None
+    if node_enum in NEVER_ALIGNED_TYPES:
         return None
     key = _aggressive_dedup_key(normalize_display_name(name))
     if not key:
@@ -403,7 +483,17 @@ def align_overlay(overlay: ResearchGraph, graph: ResearchGraph) -> ResearchGraph
 
     Deterministic: ``resolve_existing_id`` sorts and refuses on ambiguity, and
     the redirect map is applied in overlay node order (itself write_id-sorted).
+
+    A redirected node is NOT dropped. It is re-emitted under the curated id
+    carrying (a) the agent provenance keys and (b) its own display name as an
+    alias — mirroring ``_merge_same_type_aliased_duplicates``'s ``aliases_to_add``.
+    Dropping it wholesale is what made this module's central claim ("provenance
+    travels ON the node") false on exactly the ``existing: true`` path the API
+    advertises as the good outcome. The re-emitted node deliberately reuses the
+    curated node's ``name``/``type`` so ``prefer_research_node`` cannot rename
+    the curated node no matter which side it picks.
     """
+    existing_by_id = {n.id: n for n in graph.nodes}
     redirect: Dict[str, str] = {}
     for node in overlay.nodes:
         # The Agent anchor already uses the session graph's id — never redirect
@@ -416,6 +506,40 @@ def align_overlay(overlay: ResearchGraph, graph: ResearchGraph) -> ResearchGraph
     if not redirect:
         return overlay
     nodes = [n for n in overlay.nodes if n.id not in redirect]
+    carried: Dict[str, List[ResearchNode]] = {}
+    for node in overlay.nodes:
+        target_id = redirect.get(node.id)
+        if target_id:
+            carried.setdefault(target_id, []).append(node)
+    for target_id in sorted(carried):
+        curated = existing_by_id[target_id]
+        # Lowest ``agent_write_id`` wins the scalar provenance keys — the same
+        # "first write by write_id order wins" rule ``replay_agent_writes``
+        # already applies to same-id nodes, and order-free so a merge-order
+        # difference between a full and an incremental compile cannot change it.
+        losers = sorted(
+            carried[target_id],
+            key=lambda n: (str(n.metadata.get("agent_write_id") or ""), n.id),
+        )
+        metadata: Dict[str, Any] = {}
+        aliases: set = set()
+        for loser in reversed(losers):  # so losers[0] is applied last and wins
+            for key in ("agent_write_id", "agent_key", "agent_write_provenance"):
+                if key in loser.metadata:
+                    metadata[key] = loser.metadata[key]
+            for candidate in [loser.name, *(loser.aliases or [])]:
+                if candidate and candidate != curated.name:
+                    aliases.add(candidate)
+        nodes.append(
+            ResearchNode(
+                id=target_id,
+                name=curated.name,
+                type=curated.type,
+                aliases=sorted(aliases),
+                description="",
+                metadata=metadata,
+            )
+        )
     edges = []
     seen = set()
     for edge in overlay.edges:
@@ -434,6 +558,65 @@ def align_overlay(overlay: ResearchGraph, graph: ResearchGraph) -> ResearchGraph
             )
         )
     return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def _resolve_node_ids(
+    nodes: List[Mapping[str, Any]], graph: Optional[ResearchGraph]
+) -> List[Dict[str, Any]]:
+    """Where each written node sits in ``graph`` *right now*.
+
+    ``existing`` is the cheap entity-resolution guard: an agent that typo'd a
+    reference sees ``false`` immediately instead of silently forking a node five
+    hops from where it meant to attach.
+
+    ``provisional`` is the honest half: a minted id is a PREDICTION, not a
+    promise. The very case ``align_overlay`` exists for — an agent writes a
+    paper by title before extraction has seen the PDF, extraction then seeds the
+    id from the arXiv id — moves the node to a different id on the next compile,
+    leaving the returned id dereferencing nothing. Callers must re-resolve via
+    :func:`resolve_write_nodes` (keyed on the durable ``write_id``) rather than
+    persist an id.
+    """
+    resolved: List[Dict[str, Any]] = []
+    known = {n.id for n in graph.nodes} if graph is not None else set()
+    for raw in nodes:
+        name = str(raw.get("name") or "")
+        type_name = str(raw.get("type") or "")
+        aligned = resolve_existing_id(graph, type_name, name)
+        node_id = aligned or stable_id(type_name, normalize_display_name(name))
+        resolved.append(
+            {
+                "name": name,
+                "type": type_name,
+                "id": node_id,
+                "existing": bool(aligned),
+                "provisional": node_id not in known,
+            }
+        )
+    return resolved
+
+
+def resolve_write_nodes(
+    path: str | Path, write_id: str, graph: Optional[ResearchGraph]
+) -> Optional[List[Dict[str, Any]]]:
+    """Current node ids for a recorded write, or ``None`` if it is not recorded.
+
+    ``write_id`` is the only durable handle ``graph_write`` hands back — node
+    ids are resolved against the graph as it stood at write time and can move
+    when a later compile aligns them onto a curated node. Re-resolving here is
+    cheap and always answers about the graph passed in; returning ``None`` for
+    an unknown write is deliberate — a resolver that guesses is worse than one
+    that says NOT_FOUND.
+    """
+    record = _read_records(Path(path)).get(str(write_id))
+    if record is None:
+        return None
+    raw_nodes = record.get("nodes")
+    if not isinstance(raw_nodes, list):
+        return []
+    return _resolve_node_ids(
+        [n for n in raw_nodes if isinstance(n, Mapping)], graph
+    )
 
 
 def record_agent_write(
@@ -455,17 +638,10 @@ def record_agent_write(
     # Build the slice once so a payload that cannot be constructed is refused
     # BEFORE anything is appended.
     _graph_from_record(validated.as_record())
-    # Report the id the write will ACTUALLY land on: the existing node when the
-    # payload resolves onto one, else the id the builder would mint.
-    minted = {}
-    known = set()
-    for raw in validated.nodes:
-        aligned = resolve_existing_id(graph, raw["type"], raw["name"])
-        if aligned:
-            known.add(aligned)
-        minted[raw["name"]] = aligned or stable_id(
-            raw["type"], normalize_display_name(raw["name"])
-        )
+    # Report the id the write will land on AS OF NOW: the existing node when the
+    # payload resolves onto one, else the id the builder would mint — flagged
+    # ``provisional`` when it is not in the graph yet (see ``_resolve_node_ids``).
+    resolved = _resolve_node_ids(validated.nodes, graph)
 
     # Short flock on a DEDICATED file: a read-dedupe-append costs ~1 ms and
     # must not queue behind a multi-minute compile.
@@ -475,16 +651,7 @@ def record_agent_write(
     with compile_lock(
         lock_dir or file_path.parent, wait_seconds=10.0, name="agent-writes.lock"
     ):
-        seen = set()
-        if file_path.exists():
-            for line in file_path.read_text(encoding="utf-8").splitlines():
-                line = line.strip()
-                if line:
-                    try:
-                        seen.add(str(json.loads(line).get("write_id") or ""))
-                    except json.JSONDecodeError:
-                        continue
-        status = "duplicate" if write_id in seen else "recorded"
+        status = "duplicate" if write_id in _read_records(file_path) else "recorded"
         if status == "recorded":
             with file_path.open("a", encoding="utf-8") as handle:
                 handle.write(_canonical_json(validated.as_record(written_at)) + "\n")
@@ -494,17 +661,10 @@ def record_agent_write(
         "status": status,
         "agent": validated.agent,
         "agent_node_id": anchor,
-        # ``existing`` is the cheap entity-resolution guard: an agent that
-        # typo'd a reference sees ``false`` immediately instead of silently
-        # forking a node five hops from where it meant to attach.
-        "nodes": [
-            {
-                "name": raw["name"],
-                "type": raw["type"],
-                "id": minted[raw["name"]],
-                "existing": minted[raw["name"]] in known,
-            }
-            for raw in validated.nodes
-        ],
+        # See ``_resolve_node_ids``: ``existing`` is the entity-resolution
+        # guard, ``provisional`` is the "this id may move on the next compile"
+        # warning. ``write_id`` is the durable handle; ``resolve_write_nodes``
+        # turns it back into current ids.
+        "nodes": resolved,
         "edge_count": len(validated.edges),
     }

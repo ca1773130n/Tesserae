@@ -283,6 +283,9 @@ class ContrastVerdict:
     relation: str  # a key of _RELATION_TO_EDGE
     direction: str  # "a_to_b" | "b_to_a"
     rationale: str = ""
+    # Empty for a judged verdict; otherwise names WHY the call produced no
+    # edge. A rejection is a real, cacheable outcome — see _ask_llm.
+    rejected: str = ""
 
 
 def _direction_to_cache_role(a: ResearchNode, b: ResearchNode, direction: str) -> str:
@@ -311,7 +314,12 @@ def _read_cached_verdict(
     if relation not in _RELATION_TO_EDGE:
         return None
     if relation == "none":
-        return ContrastVerdict(relation="none", direction="a_to_b", rationale="")
+        return ContrastVerdict(
+            relation="none",
+            direction="a_to_b",
+            rationale="",
+            rejected=str(payload.get("rejected") or ""),
+        )
     role = str(payload.get("direction") or "")
     if role not in _CACHE_DIRECTIONS:
         return None
@@ -327,6 +335,9 @@ def _write_cached_verdict(
 ) -> None:
     """Atomic tmp+rename write with PID+token suffix (matches supersede.py)."""
     a, b = pair
+    # ``rejected`` is additive: readers ignore unknown keys and default it to
+    # "", so warm caches written before this key existed stay valid. No
+    # schema_version bump — nothing about the old payloads became wrong.
     payload = {
         "schema_version": 1,
         "relation": verdict.relation,
@@ -336,6 +347,7 @@ def _write_cached_verdict(
             else _direction_to_cache_role(a, b, verdict.direction)
         ),
         "rationale": verdict.rationale,
+        "rejected": verdict.rejected,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + f".tmp.{os.getpid()}.{secrets.token_hex(4)}")
@@ -407,12 +419,33 @@ def _evidence_block(node_id: str, index: Dict[str, List[str]]) -> str:
     return "\n".join(f"- {text}" for text in spans)
 
 
+def _rejection(why: str) -> ContrastVerdict:
+    """A rejection expressed as the verdict it actually is: no edge."""
+    return ContrastVerdict(relation="none", direction="a_to_b", rejected=why)
+
+
 def _ask_llm(
     client: LLMJsonClient,
     a: ResearchNode,
     b: ResearchNode,
     index: Dict[str, List[str]],
-) -> Optional[ContrastVerdict]:
+) -> ContrastVerdict:
+    """Judge one pair. ALWAYS returns a verdict, never ``None``.
+
+    "No edge" is a result, not the absence of one. Returning ``None`` here is
+    what let the caller skip the cache write, so every rejection was re-billed
+    on every compile forever and — worse — a pair that failed transiently on
+    compile N could mint an edge on compile N+1 from byte-identical inputs.
+    Both holes close by making the rejection a cacheable value.
+
+    ponytail: a transport failure is cached exactly like a judged ``none``, so
+    one provider 429 permanently suppresses that pair's edge. Ceiling: the
+    cache cannot distinguish "the model said no" from "we never asked". The
+    reason is recorded in ``rejected`` so the upgrade path is a sweep that
+    deletes cache files whose ``rejected == "llm_error"`` (a retry policy), not
+    a schema change. Chosen deliberately: a bounded, deterministic
+    under-claim beats an unbounded bill plus a non-idempotent graph.
+    """
     try:
         response = client.complete_json(
             system=_CONTRAST_SYSTEM,
@@ -426,19 +459,21 @@ def _ask_llm(
             cache_key="contrast-v1",
             max_retries=1,
         )
-    except Exception:  # pragma: no cover — defensive
+    except Exception:
         logger.exception("contrast: LLM call raised")
-        return None
+        return _rejection("llm_error")
     if not isinstance(response, dict):
-        return None
+        return _rejection("non_dict_response")
     relation = str(response.get("relation") or "").strip().lower()
     if relation not in _RELATION_TO_EDGE:
         # Out-of-vocabulary (notably ``compares_against`` / ``supersedes``) is
-        # a rejection, never a silent remap.
-        return None
+        # a rejection, never a silent remap. It is also the SYSTEMATIC class:
+        # the model answers it again on every compile, so caching it is what
+        # turns a permanent tax back into a one-off cost.
+        return _rejection("out_of_vocab_relation")
     direction = str(response.get("direction") or "a_to_b").strip().lower()
     if direction not in _VALID_DIRECTIONS:
-        return None
+        return _rejection("invalid_direction")
     return ContrastVerdict(
         relation=relation,
         direction=direction,
@@ -497,11 +532,11 @@ def run_contrast_pass(
         if cache_path.exists():
             verdict = _read_cached_verdict(cache_path, a, b)
         if verdict is None:
+            # A missing/corrupt cache file is not a verdict, so we ask. The
+            # answer — INCLUDING a rejection — is always written back, so this
+            # pair is never billed twice.
             verdict = _ask_llm(llm, a, b, index)
-            if verdict is not None:
-                _write_cached_verdict(cache_path, (a, b), verdict)
-        if verdict is None:
-            continue
+            _write_cached_verdict(cache_path, (a, b), verdict)
         edge_type = _RELATION_TO_EDGE.get(verdict.relation)
         if edge_type is None:
             continue

@@ -22,6 +22,16 @@ the bytes of the source file on disk, i.e. against evidence that originates
 OUTSIDE the graph that produced the claim. Because that file can change
 independently of the graph, re-grounding may only set
 ``provenance.regrounded`` — it can never change ``verdict``.
+
+Everything a verdict reports is scoped to **the deciding edge**, never to its
+endpoints. An earlier version anchored the citation and the provenance class on
+the *object node's* evidence span, which let an agent write one fabricated node
+plus one ``supports_claim`` edge into a curated claim and collect
+``SUPPORTED`` + ``class: document_span`` + ``regrounded: true`` citing a real
+document that says nothing about the fabricated claim. A span belongs to an
+edge only when the extractor co-minted the two from the same sentence
+(``research_graph._add_evidence`` puts that sentence on both), so that identity
+is the only link this module will accept.
 """
 
 from __future__ import annotations
@@ -46,6 +56,15 @@ __all__ = ["verify_claim", "REGROUND_BYTE_CAP"]
 REGROUND_BYTE_CAP = 16 * 1024
 
 _WS = re.compile(r"\s+")
+
+# ``contradicts_claim`` is the polar opposite of exactly one predicate. Against
+# a structural predicate ("Delta derived_from Beta") it asserts nothing, so it
+# may not produce a verdict there.
+_REFUTABLE_PREDICATES = frozenset({"supports_claim"})
+
+# Stamped on every node minted by ``agent_write._graph_from_record`` AFTER the
+# agent's own metadata dict, so an agent cannot clear or forge it downward.
+_AGENT_WRITE_MARKER = "agent_write_id"
 
 
 def _norm_ws(text: str) -> str:
@@ -155,50 +174,92 @@ def _reground(
     return None if len(raw) > REGROUND_BYTE_CAP else False
 
 
-def _provenance(
+def _edge_provenance(
     graph: ResearchGraph,
-    node: ResearchNode,
-    span: Optional[ResearchNode],
+    edge: Any,
     project_root: Optional[Path],
     reground: bool,
-) -> Dict[str, Any]:
-    """Classify where the anchor node's content came from.
+) -> Optional[Dict[str, Any]]:
+    """Classify who asserted **the deciding edge**, in refusal order.
+
+    ``agent_assertion`` → ``model_assertion`` (edge stamped by an LLM pass) →
+    ``document_span`` → ``model_assertion`` (endpoint stamped by an extractor)
+    → ``structural``. The order is what makes the class non-forgeable: an agent
+    may write any ``metadata`` it likes onto its nodes, but the agent check runs
+    first and wins, so no agent write can present itself as a document.
 
     ``execution_verified`` is deliberately RESERVED and never emitted — see the
     ponytail note at the bottom of this module.
     """
-    source_path = span.source_path if span is not None else node.source_path
-    if span is not None and source_path:
-        payload: Dict[str, Any] = {
+    if edge is None:
+        return None
+    by_id = {n.id: n for n in graph.nodes}
+    base: Dict[str, Any] = {
+        "edge": {"source": edge.source, "type": edge.type, "target": edge.target},
+        "source_path": None,
+        "regrounded": None,
+    }
+
+    agent_node = next(
+        (
+            by_id[nid]
+            for nid in (edge.source, edge.target)
+            if nid in by_id and by_id[nid].metadata.get(_AGENT_WRITE_MARKER)
+        ),
+        None,
+    )
+    if agent_node is not None:
+        return {
+            **base,
+            "class": "agent_assertion",
+            "agent_key": str(agent_node.metadata.get("agent_key") or ""),
+            "agent_write_id": str(agent_node.metadata.get(_AGENT_WRITE_MARKER)),
+            # The agent's claimed outside anchor, VERBATIM and UNVERIFIED:
+            # ``agent_write.validate_write`` only tests it for non-emptiness,
+            # so it is a claim about evidence, not evidence.
+            "unverified_anchor": dict(
+                agent_node.metadata.get("agent_write_provenance") or {}
+            ),
+        }
+
+    # An edge a model minted is a model assertion even if its rationale happens
+    # to match a span: ``memory.contrast`` stamps ``extractor`` on the EDGE, and
+    # reading only node metadata is how LLM verdicts reached ``verdict``
+    # labelled ``structural``.
+    edge_extractor = (edge.metadata or {}).get("extractor")
+    if edge_extractor:
+        return {**base, "class": "model_assertion", "extractor": str(edge_extractor)}
+
+    span = _edge_span(graph, edge)
+    if span is not None and span.source_path:
+        return {
+            **base,
             "class": "document_span",
-            "node_id": node.id,
-            "source_path": source_path,
+            "source_path": span.source_path,
+            "span_id": span.id,
             "regrounded": (
-                _reground(span.description, source_path, project_root)
+                _reground(span.description, span.source_path, project_root)
                 if reground
                 else None
             ),
         }
-        return payload
-    extractor = node.metadata.get("extractor")
-    if extractor:
-        return {
-            "class": "model_assertion",
-            "node_id": node.id,
-            "source_path": node.source_path,
-            "regrounded": None,
-            # Passed through untouched — a model's self-reported confidence
-            # must never influence the verdict.
-            "extractor": str(extractor),
-            "confidence": node.metadata.get("confidence"),
-            "confidence_rationale": node.metadata.get("confidence_rationale"),
-        }
-    return {
-        "class": "structural",
-        "node_id": node.id,
-        "source_path": node.source_path,
-        "regrounded": None,
-    }
+
+    for nid in (edge.target, edge.source):
+        node = by_id.get(nid)
+        extractor = node.metadata.get("extractor") if node is not None else None
+        if extractor:
+            return {
+                **base,
+                "class": "model_assertion",
+                "source_path": node.source_path,
+                "extractor": str(extractor),
+                # Passed through untouched — a model's self-reported confidence
+                # must never influence the verdict.
+                "confidence": node.metadata.get("confidence"),
+                "confidence_rationale": node.metadata.get("confidence_rationale"),
+                "node_id": node.id,
+            }
+    return {**base, "class": "structural"}
 
 
 # ---------------------------------------------------------------------------
@@ -346,37 +407,47 @@ def verify_claim(
                 "verdict": "CONTRADICTED",
                 "reason": "superseded",
                 "triple": triple,
-                "citation": _citation(graph, winner_edge, object_node, subject_node),
-                "provenance": _anchor_provenance(
-                    graph, subject_node, object_node, project_root, reground
+                "citation": _citation(graph, winner_edge),
+                "provenance": _edge_provenance(
+                    graph, winner_edge, project_root, reground
                 ),
             }
         return {
             "verdict": "SUPPORTED",
             "reason": "triple_present",
             "triple": triple,
-            "citation": _citation(graph, deciding, object_node, subject_node),
-            "provenance": _anchor_provenance(
-                graph, subject_node, object_node, project_root, reground
-            ),
+            "citation": _citation(graph, deciding),
+            "provenance": _edge_provenance(graph, deciding, project_root, reground),
         }
 
-    contradiction = next(
-        (
-            e
-            for e in graph.edges
-            if e.type == "contradicts_claim" and e.target == object_node.id
-        ),
-        None,
+    # A ``contradicts_claim`` edge refutes THIS triple only when it is ABOUT
+    # this triple. Matching by target alone turned "somebody, somewhere,
+    # disputes the object" into "your triple is refuted": one unrelated edge
+    # flipped uninvolved triples from NOT_FOUND to CONTRADICTED, i.e. absence
+    # rendered as refutation — the exact inversion this module exists to
+    # prevent, on the default path, from any ``graph_write`` caller.
+    contradiction = (
+        next(
+            (
+                e
+                for e in graph.edges
+                if e.type == "contradicts_claim"
+                and e.source == subject_node.id
+                and e.target == object_node.id
+            ),
+            None,
+        )
+        if predicate in _REFUTABLE_PREDICATES
+        else None
     )
     if contradiction is not None:
         return {
             "verdict": "CONTRADICTED",
             "reason": "contradicted_claim",
             "triple": triple,
-            "citation": _citation(graph, contradiction, object_node, subject_node),
-            "provenance": _anchor_provenance(
-                graph, subject_node, object_node, project_root, reground
+            "citation": _citation(graph, contradiction),
+            "provenance": _edge_provenance(
+                graph, contradiction, project_root, reground
             ),
         }
     return _not_found(
@@ -397,43 +468,43 @@ def _winning_edge(graph: ResearchGraph, loser_id: str):
     return None
 
 
-def _span_node(
-    graph: ResearchGraph, node_id: str
-) -> Optional[ResearchNode]:
-    span_ids = _evidence_spans(graph, node_id)
-    if not span_ids:
+def _edge_span(graph: ResearchGraph, edge: Any) -> Optional[ResearchNode]:
+    """The EvidenceSpan **this edge** was minted from, or ``None``.
+
+    Edges carry no ``evidenced_by`` of their own, so the only honest link is the
+    one the extractor actually creates: every span site in
+    ``research_graph`` co-mints the sibling pair
+
+        add_edge(paper, "supports_claim", claim, evidence=sentence)
+        add_edge(claim, "evidenced_by", span,   evidence=sentence)
+
+    with ``span.description == sentence``. Text identity between the edge's own
+    evidence and a span reachable from one of its endpoints is therefore
+    *evidence that this edge came from that span* — and anything looser (e.g.
+    "the object node has some span") cites a document that never made the
+    assertion under test.
+    """
+    needle = _norm_ws(edge.evidence or "")
+    if not needle:
         return None
     by_id = {n.id: n for n in graph.nodes}
-    # Lowest span id wins when a node has several — determinism, not ranking.
+    span_ids = sorted(
+        set(_evidence_spans(graph, edge.source)) | set(_evidence_spans(graph, edge.target))
+    )
+    # Lowest span id wins when several match — determinism, not ranking.
     for sid in span_ids:
         node = by_id.get(sid)
-        if node is not None and node.type == ResearchNodeType.EVIDENCE_SPAN:
+        if node is None or node.type != ResearchNodeType.EVIDENCE_SPAN:
+            continue
+        if _norm_ws(node.description) == needle:
             return node
     return None
 
 
-def _anchor(
-    graph: ResearchGraph, subject_node: ResearchNode, object_node: ResearchNode
-) -> Tuple[ResearchNode, Optional[ResearchNode]]:
-    """Pick the endpoint whose evidence we cite: object first, then subject."""
-    span = _span_node(graph, object_node.id)
-    if span is not None:
-        return object_node, span
-    span = _span_node(graph, subject_node.id)
-    if span is not None:
-        return subject_node, span
-    return object_node, None
-
-
-def _citation(
-    graph: ResearchGraph,
-    edge: Any,
-    object_node: ResearchNode,
-    subject_node: ResearchNode,
-) -> Optional[Dict[str, Any]]:
+def _citation(graph: ResearchGraph, edge: Any) -> Optional[Dict[str, Any]]:
     if edge is None:
         return None
-    _, span = _anchor(graph, subject_node, object_node)
+    span = _edge_span(graph, edge)
     return {
         "edge": {"source": edge.source, "type": edge.type, "target": edge.target},
         "edge_evidence": edge.evidence,
@@ -447,17 +518,6 @@ def _citation(
             }
         ),
     }
-
-
-def _anchor_provenance(
-    graph: ResearchGraph,
-    subject_node: ResearchNode,
-    object_node: ResearchNode,
-    project_root: Optional[Path],
-    reground: bool,
-) -> Dict[str, Any]:
-    node, span = _anchor(graph, subject_node, object_node)
-    return _provenance(graph, node, span, project_root, reground)
 
 
 def _not_found(
@@ -486,6 +546,20 @@ def _not_found(
         payload["observed_predicates"] = sorted(observed_predicates)
     return payload
 
+
+# ponytail: ``agent_assertion`` is detected from the ``agent_write_id`` marker
+# that ``agent_write._graph_from_record`` stamps on every node it mints. That
+# marker is reliable in one direction only. ``agent_write.align_overlay`` drops
+# a redirected node wholesale (marker included) and remaps its edges onto the
+# curated node they aligned with, so an agent write whose endpoints BOTH align
+# onto existing curated nodes leaves no node-level trace and is reported here as
+# whatever its endpoints are — ``document_span`` if, and only if, the agent
+# supplied the verbatim text of an existing span as its edge evidence. Ceiling:
+# this module can say "no agent wrote this edge" only for edges with at least
+# one unaligned endpoint. Upgrade path: stamp ``agent_write_id`` on the EDGE
+# metadata in ``agent_write._graph_from_record`` (edges survive alignment with
+# ``metadata=dict(edge.metadata)``, so the marker would too) and read it here
+# before the endpoint check. That is an agent_write change, not a verify change.
 
 # ponytail: ``execution_verified`` provenance is reserved in the vocabulary and
 # never emitted, because the data does not exist yet. The Claude/Codex session

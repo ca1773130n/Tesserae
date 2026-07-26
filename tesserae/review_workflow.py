@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from .canonicalization import ReviewQueue
+from .canonicalization import ReviewQueue, review_band
 
 
 class ReviewQueueExporter:
@@ -23,7 +23,23 @@ class ReviewQueueExporter:
             lines.append("_No pending review items._")
             return "\n".join(lines).rstrip() + "\n"
 
+        # Only emitted when embedding candidates are present, so string-only
+        # queues render byte-identically to before. A reviewer working
+        # top-down must be told that for `similar_embedding` the score ranks
+        # topical proximity, NOT identity.
+        if any(item.reason == "similar_embedding" for item in queue.items):
+            lines.extend(
+                [
+                    "> `similar_embedding` scores rank TOPICAL PROXIMITY, not identity:"
+                    " version and family siblings (Llama 2 / Llama 3) score highest and"
+                    " must never merge. Items are ordered by actionability, not by score;"
+                    " see each item's `band`.",
+                    "",
+                ]
+            )
+
         for idx, item in enumerate(queue.items, start=1):
+            _, band_label = review_band(item)
             lines.extend(
                 [
                     f"## {idx}. {item.left_name} ↔ {item.right_name}",
@@ -32,6 +48,9 @@ class ReviewQueueExporter:
                     f"- node_type: `{item.node_type}`",
                     f"- reason: `{item.reason}`",
                     f"- score: {item.score}",
+                ]
+                + ([f"- band: {band_label}"] if band_label else [])
+                + [
                     f"- left_node_id: `{item.left_node_id}`",
                     f"- right_node_id: `{item.right_node_id}`",
                     "",

@@ -414,3 +414,276 @@ def test_graph_write_dispatches_through_call_tool(tmp_path):
     assert wiki.paths.agent_writes.exists()
     wiki.compile()
     assert _written_ids(result) <= _node_ids(wiki)
+
+
+# ---------------------------------------------------------------------------
+# Adversarial review fixes: determinism P1 and write-safety P2–P5
+# ---------------------------------------------------------------------------
+
+
+def test_performed_by_evidence_is_a_pure_function_of_the_finding(tmp_path):
+    """determinism P1: the write id must NOT ride in the edge evidence.
+
+    Two writes whose nodes later collapse (cross-type dedup fuses ``Claim:x``
+    into ``Paper:x``) mint two ``performed_by`` edges that then collide on
+    ``(source, type, target)``. If their evidence differed, the survivor would
+    be picked by merge-input order — which differs between a full and an
+    incremental compile — so ``graph.json`` oscillated forever and never
+    converged.
+    """
+    jsonl = tmp_path / "agent-writes.jsonl"
+    first = record_agent_write(jsonl, _payload("Alpha Concept"), AGENT)
+    second = record_agent_write(jsonl, _payload("Beta Concept"), AGENT)
+    assert first["write_id"] != second["write_id"]
+
+    overlay = replay_agent_writes(jsonl)
+    evidence = {e.evidence for e in overlay.edges if e.type == "performed_by"}
+    assert evidence == {f"written by agent {AGENT}"}
+    for write_id in (first["write_id"], second["write_id"]):
+        assert not any(write_id in text for text in evidence)
+
+
+def test_full_and_incremental_compile_agree_with_an_overlay(tmp_path):
+    """determinism P1, end to end: alternating compile arms must not oscillate."""
+    wiki = _seed_project(tmp_path / "project")
+    # "Vision Banana" written once as a Paper and once as a Claim: the compile's
+    # cross-type dedup collapses them, colliding their two performed_by edges.
+    record_agent_write(
+        wiki.paths.agent_writes,
+        {
+            "nodes": [{"name": "Vision Banana", "type": "Paper"}],
+            "provenance": dict(PROV),
+        },
+        AGENT,
+    )
+    record_agent_write(
+        wiki.paths.agent_writes,
+        {
+            "nodes": [{"name": "Vision Banana", "type": "Claim"}],
+            "provenance": dict(PROV),
+        },
+        AGENT,
+    )
+    digests = []
+    for changed_only in (False, True, False, True):
+        wiki.compile(changed_only=changed_only)
+        digests.append(wiki.paths.graph.read_bytes())
+    assert len(set(digests)) == 1
+
+
+def test_align_refuses_node_types_the_compile_refuses_to_merge(tmp_path):
+    """write-safety P2: alignment must honour the dedup pass's own exemptions.
+
+    ``_merge_same_type_aliased_duplicates`` never collapses two same-text
+    ``SessionInsight`` nodes — "merging them loses the link back to which
+    session produced each one". ``resolve_existing_id`` applied the key anyway,
+    so an agent's independent observation was fused onto (and erased by) a
+    session's finding that merely shared wording.
+    """
+    from tesserae.agent_write import align_overlay
+    from tesserae.research_graph import ResearchGraph, ResearchNode, ResearchNodeType
+
+    victim = ResearchNode(
+        id="SessionInsight:sess-abc-0001",
+        name="Retry the transient, name the real cause",
+        type=ResearchNodeType.SESSION_INSIGHT,
+        metadata={"session_id": "sess-abc", "extractor": "session-structural"},
+    )
+    base = ResearchGraph(nodes=[victim], edges=[])
+    jsonl = tmp_path / "agent-writes.jsonl"
+    response = record_agent_write(
+        jsonl,
+        {
+            "nodes": [
+                {
+                    "name": "retry the transient; name the REAL cause!",
+                    "type": "SessionInsight",
+                    "description": "the agent's own, unrelated observation",
+                }
+            ],
+            "provenance": dict(PROV),
+        },
+        AGENT,
+        graph=base,
+    )
+    assert response["nodes"][0]["id"] != victim.id
+    assert response["nodes"][0]["existing"] is False
+
+    overlay = align_overlay(replay_agent_writes(jsonl), base)
+    assert victim.id not in {n.id for n in overlay.nodes}
+    # ... and no performed_by edge was grafted onto the session's finding.
+    assert not any(e.source == victim.id for e in overlay.edges)
+
+
+def test_aligned_write_keeps_agent_provenance_and_alias(tmp_path):
+    """write-safety P3: attribution must survive alignment.
+
+    The module's central claim is that provenance travels ON the node. Dropping
+    redirected nodes wholesale made that false on exactly the ``existing: true``
+    path the API advertises as the good outcome.
+    """
+    from tesserae.agent_write import align_overlay
+    from tesserae.batch import merge_graphs
+    from tesserae.research_graph import ResearchGraph, ResearchNode, ResearchNodeType
+
+    curated = ResearchNode(
+        id="Concept:retrieval-budgeting:curated",
+        name="Retrieval Budgeting",
+        type=ResearchNodeType.CONCEPT,
+        metadata={"extractor": "llm"},
+    )
+    base = ResearchGraph(nodes=[curated], edges=[])
+    jsonl = tmp_path / "agent-writes.jsonl"
+    response = record_agent_write(
+        jsonl,
+        {
+            "nodes": [{"name": "retrieval-budgeting!!", "type": "Concept"}],
+            "provenance": dict(PROV),
+        },
+        AGENT,
+        graph=base,
+    )
+    assert response["nodes"][0]["id"] == curated.id
+
+    merged = merge_graphs([base, align_overlay(replay_agent_writes(jsonl), base)])
+    node = next(n for n in merged.nodes if n.id == curated.id)
+    assert node.name == curated.name  # extraction still wins the display name
+    assert node.metadata["agent_write_id"] == response["write_id"]
+    assert node.metadata["agent_key"] == AGENT
+    assert node.metadata["agent_write_provenance"] == PROV
+    # ... and the loser's spelling is aliased, not discarded, exactly as
+    # ``_merge_same_type_aliased_duplicates`` does with ``aliases_to_add``.
+    assert "retrieval-budgeting!!" in node.aliases
+
+
+def test_aligned_provenance_is_order_free(tmp_path):
+    """Two writes onto one curated node must resolve identically either way."""
+    from tesserae.agent_write import align_overlay
+    from tesserae.research_graph import ResearchGraph, ResearchNode, ResearchNodeType
+
+    curated = ResearchNode(
+        id="Concept:retrieval-budgeting:curated",
+        name="Retrieval Budgeting",
+        type=ResearchNodeType.CONCEPT,
+    )
+    base = ResearchGraph(nodes=[curated], edges=[])
+
+    def build(order):
+        jsonl = tmp_path / f"{'-'.join(order)}.jsonl"
+        for spelling in order:
+            record_agent_write(
+                jsonl,
+                {
+                    "nodes": [{"name": spelling, "type": "Concept"}],
+                    "provenance": dict(PROV),
+                },
+                AGENT,
+                graph=base,
+            )
+        overlay = align_overlay(replay_agent_writes(jsonl), base)
+        node = next(n for n in overlay.nodes if n.id == curated.id)
+        return node.metadata["agent_write_id"], tuple(node.aliases)
+
+    assert build(["retrieval budgeting", "RETRIEVAL-BUDGETING"]) == build(
+        ["RETRIEVAL-BUDGETING", "retrieval budgeting"]
+    )
+
+
+def test_malformed_jsonl_line_never_bricks_the_corpus(tmp_path, capsys):
+    """write-safety P5: one bad line must not take every future compile down."""
+    wiki = _seed_project(tmp_path / "project")
+    wiki.compile()
+    record_agent_write(wiki.paths.agent_writes, _payload("Concept A"), AGENT)
+    record_agent_write(wiki.paths.agent_writes, _payload("Concept B"), AGENT)
+
+    lines = wiki.paths.agent_writes.read_text(encoding="utf-8").splitlines()
+    truncated = lines[:-1] + [lines[-1][: len(lines[-1]) // 2]]
+    wiki.paths.agent_writes.write_text("\n".join(truncated) + "\n", encoding="utf-8")
+
+    overlay = replay_agent_writes(wiki.paths.agent_writes)
+    assert any(n.name == "Concept A" for n in overlay.nodes)  # good line survives
+    assert "unreadable agent-write line" in capsys.readouterr().err
+    wiki.compile()  # must not raise
+    assert any(n["name"] == "Concept A" for n in _graph(wiki)["nodes"])
+
+
+def test_hand_written_unusable_record_is_skipped_not_raised(tmp_path, capsys):
+    """Same seam: a record the builder rejects is dropped with a warning."""
+    jsonl = tmp_path / "agent-writes.jsonl"
+    good = record_agent_write(jsonl, _payload("Concept A"), AGENT)
+    with jsonl.open("a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {
+                    "write_id": "zzzzhandedited",
+                    "agent": AGENT,
+                    "nodes": [{"name": "Solo", "type": "Concept"}],
+                    "edges": [
+                        {
+                            "source": "Solo",
+                            "target": "Nowhere",
+                            "type": "supports_claim",
+                            "evidence": "e",
+                        }
+                    ],
+                    "provenance": dict(PROV),
+                }
+            )
+            + "\n"
+        )
+    overlay = replay_agent_writes(jsonl)
+    assert any(n.name == "Concept A" for n in overlay.nodes)
+    assert not any(n.name == "Solo" for n in overlay.nodes)
+    assert "unusable agent write zzzzhandedited" in capsys.readouterr().err
+    assert good["status"] == "recorded"
+
+
+def test_returned_id_is_flagged_provisional_and_stays_resolvable(tmp_path):
+    """write-safety P4: a minted id is a prediction, so say so and offer a fix.
+
+    The agent writes a Paper by title before extraction has seen it; extraction
+    then seeds the id from the arXiv id and the returned id dereferences
+    nothing. ``write_id`` is the durable handle ``resolve_write_nodes`` reads.
+    """
+    from tesserae.research_graph import ResearchGraph, ResearchNode, ResearchNodeType
+    from tesserae.agent_write import resolve_write_nodes
+
+    seeded = _seed_project(tmp_path / "seed")
+    seeded.compile()
+    title = next(
+        n["name"] for n in _graph(seeded)["nodes"] if n["type"] == "Paper"
+    )
+
+    wiki = _seed_project(tmp_path / "project")
+    response = record_agent_write(
+        wiki.paths.agent_writes,
+        {"nodes": [{"name": title, "type": "Paper"}], "provenance": dict(PROV)},
+        AGENT,
+    )
+    assert response["nodes"][0]["provisional"] is True
+    stale = response["nodes"][0]["id"]
+
+    wiki.compile()
+    live = _graph(wiki)
+    assert stale not in {n["id"] for n in live["nodes"]}  # the id really moved
+
+    graph = ResearchGraph(
+        nodes=[
+            ResearchNode(
+                id=n["id"],
+                name=n["name"],
+                type=ResearchNodeType(n["type"]),
+                aliases=n.get("aliases") or [],
+            )
+            for n in live["nodes"]
+        ],
+        edges=[],
+    )
+    resolved = resolve_write_nodes(
+        wiki.paths.agent_writes, response["write_id"], graph
+    )
+    assert resolved is not None
+    assert resolved[0]["provisional"] is False
+    assert resolved[0]["id"] in {n["id"] for n in live["nodes"]}
+    # An unknown write answers NOT_FOUND rather than guessing.
+    assert resolve_write_nodes(wiki.paths.agent_writes, "deadbeef", graph) is None

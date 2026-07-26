@@ -1097,6 +1097,12 @@ class LLMWikiMCPServer:
                             "default": True,
                             "description": "scope='federated' only: embedding-backed cross-project links so the answer bridges RELATED (not just identical) concepts. ON by default (opt-out); set false for identity-merge only. Degrades cleanly without a real embedding backend.",
                         },
+                        "route": {
+                            "type": "string",
+                            "enum": ["auto", "lookup", "graph"],
+                            "default": "auto",
+                            "description": "How to answer, not where. Mirrors `tesserae ask --route`. 'auto' (default) routes by question shape. 'graph' FORCES the KG planner — use it when you know the question is temporal or multi-hop and the shape heuristic may not see it. 'lookup' pins the cheap BM25 wiki path. Ignored by scope='all-registered'/'federated'.",
+                        },
                     },
                     "required": ["question"],
                     "additionalProperties": False,
@@ -2295,7 +2301,10 @@ class LLMWikiMCPServer:
                     semantic=bool(args.get("semantic", True)),  # opt-out: on unless disabled
                     synthesize=use_llm,
                 )
-            return self._mcp_ask(args, question=question, top_k=top_k, use_llm=use_llm, no_llm=no_llm)
+            return self._mcp_ask(
+                args, question=question, top_k=top_k, use_llm=use_llm, no_llm=no_llm,
+                route=str(args.get("route") or "auto"),
+            )
         if name == "list_projects":
             return self.registry.list_projects()
         if name == "register_project":
@@ -3982,6 +3991,7 @@ class LLMWikiMCPServer:
         top_k: int,
         use_llm: bool = True,
         no_llm: bool = False,
+        route: str = "auto",
     ) -> JSONDict:
         """Dispatch ``ask`` to the compiled-wiki planner/search path.
 
@@ -3989,13 +3999,21 @@ class LLMWikiMCPServer:
         ``ask`` tool and the top-level ``tesserae ask`` command share one
         dispatcher (LLM-planned answer by default; ``llm=false`` pins
         search-only).
+
+        ``route`` mirrors ``tesserae ask --route``. Agents are the primary
+        consumer of this server, so withholding the override left them with
+        only the shape heuristic while a human at a terminal got an escape
+        hatch — an agent that KNOWS its question is temporal had no way to say
+        so. ``ask_project`` validates the value and raises on an unknown one.
         """
         from .project import ProjectWiki
         from .query import ask_project
 
         project_root = self._resolve_project_root_for_ask(args)
         wiki = ProjectWiki.load(project_root)
-        envelope = ask_project(wiki, question, top_k=top_k, use_llm=use_llm, no_llm=no_llm)
+        envelope = ask_project(
+            wiki, question, top_k=top_k, use_llm=use_llm, no_llm=no_llm, route=route
+        )
         # LRU: the retrieved/cited hits count as reads (single-project scope;
         # the cross-project federated/all-registered fan-outs are not bumped).
         self._bump_nodes_access(project_root, _hit_node_ids(envelope))

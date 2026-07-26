@@ -142,6 +142,26 @@ def _end_sort_key(entry: Tuple[str, str, str]) -> Tuple[datetime, str, str]:
     return (dt, superseder_id, basis)
 
 
+def _boundary_precedes_start(valid_from: Optional[str], valid_to: Optional[str]) -> bool:
+    """True when a derived end boundary is NOT strictly after the start.
+
+    This happens for exactly the reasoning edges the contrast pass mints: for
+    ``B criticizes F`` alongside ``F supersedes B``, ``valid_from`` is
+    ``max(ts(B), ts(F)) == ts(F)`` and the derived ``valid_to`` is also
+    ``ts(F)``. The half-open ``[from, to)`` in :func:`facts_as_of` is then
+    empty at EVERY instant, so the fact silently vanishes from every
+    time-travel query. An inverted boundary (``to < from``) is the same defect
+    with a different sign.
+
+    Unparseable/absent endpoints cannot be ordered, so they are not degenerate
+    — the existing boundary stands rather than being second-guessed.
+    """
+    start, end = _parse_iso(valid_from), _parse_iso(valid_to)
+    if start is None or end is None:
+        return False
+    return end <= start
+
+
 @dataclass(frozen=True)
 class TemporalFact:
     id: str
@@ -198,6 +218,8 @@ class TemporalFactProjector:
         # ``ended_by``: ended node id -> (earliest superseder timestamp, basis).
         # Both are built by iterating ``facts`` in list order (which follows
         # ``graph.edges`` list order), so no set/dict iteration reaches output.
+        # ``invalidated_by`` is additionally SORTED before it is written, so it
+        # does not inherit ``graph.edges`` ordering either.
         invalidators: Dict[str, List[str]] = {}
         # ended node id -> (timestamp, basis predicate, superseder node id)
         ended_by: Dict[str, Tuple[str, str, str]] = {}
@@ -242,6 +264,15 @@ class TemporalFactProjector:
                 valid_to, basis = best[0], best[1]
             else:
                 valid_to, basis = None, None
+            if _boundary_precedes_start(fact.valid_from, valid_to):
+                # We know it ended (``current`` still flips below via
+                # ``killers``) but the only boundary we can derive would make
+                # the interval empty at every instant, which reads as "this
+                # fact never held" — a stronger claim than the data supports.
+                # Fall back to the SAME state an undated superseder produces:
+                # valid_to None, basis None. Under-claim, never a guessed
+                # boundary and never a silently empty one.
+                valid_to, basis = None, None
             if not killers and valid_to is None:
                 updated.append(fact)
                 continue
@@ -250,7 +281,12 @@ class TemporalFactProjector:
                     **{
                         **fact.model_dump(),
                         "current": not killers,
-                        "invalidated_by": killers,
+                        # SORTED, not append order: ``killers`` accumulates in
+                        # ``graph.edges`` order, which is stable today but is
+                        # not a guarantee this artifact should inherit. Sorting
+                        # makes temporal_facts.jsonl a pure function of the
+                        # edge SET rather than the edge LIST.
+                        "invalidated_by": sorted(killers),
                         "valid_to": valid_to,
                         "valid_to_basis": basis,
                     }

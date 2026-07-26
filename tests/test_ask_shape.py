@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from tesserae.ask_shape import SHAPE_GRAPH, SHAPE_LOOKUP, classify_ask_shape
 
 
@@ -49,3 +51,64 @@ def test_classification_is_pure_and_stable():
 def test_empty_question_does_not_crash():
     assert classify_ask_shape("").shape == SHAPE_GRAPH
     assert classify_ask_shape(None).shape == SHAPE_GRAPH  # type: ignore[arg-type]
+
+
+# ---------------------------------------------- stemming holes (cost/silence)
+
+
+@pytest.mark.parametrize(
+    "left,right",
+    [
+        ("What is the most recent decision on retry handling?",
+         "What is the latest decision on retry handling?"),
+        ("What is the current owner of the compile lock?",
+         "What is the currently assigned owner of the compile lock?"),
+        ("What is the decision about semantic canonicalization?",
+         "What was decided about semantic canonicalization?"),
+        ("How does extraction handle stale sessions?",
+         "How has extraction changed for stale sessions?"),
+    ],
+)
+def test_paraphrases_do_not_split_across_backends(left, right):
+    """`recent`/`recently`, `current`/`currently`, `decision`/`decided` were each
+    one unstemmed-literal hole: two phrasings of ONE question got different
+    backends and different depths of answer. Both sides must reach the graph."""
+    assert classify_ask_shape(left).shape == SHAPE_GRAPH, left
+    assert classify_ask_shape(right).shape == SHAPE_GRAPH, right
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What is blocking the v0.26 release?",
+        "Who is responsible for the canonicalization module?",
+        "What is the current state of the extract pipeline?",
+        "What are the open questions about the graph engine?",
+        "Which module owns contradicts_claim?",
+        "What is the newest approach to entity resolution?",
+        "How does this interact with the determinism regressions we hit?",
+        "Who is working on the verify tool?",
+    ],
+)
+def test_multi_hop_and_temporal_questions_reach_the_graph(question):
+    """Silent under-answering is the failure mode that matters: these are the
+    multi-hop / temporal categories where the graph beats BM25 by the widest
+    margin, and every one of them used to fall into the cheap band."""
+    assert classify_ask_shape(question).shape == SHAPE_GRAPH
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What is contradicts_claim?",
+        "Define ResearchGraph",
+        "Where is the compile entrypoint?",
+        "Which file defines TemporalFact?",
+        "meaning of byte-idempotence",
+        "who is the maintainer",
+    ],
+)
+def test_the_cheap_band_is_narrowed_not_deleted(question):
+    """Narrowing must not turn `lookup` into dead code — a single wiki page
+    genuinely IS the answer for these, and paying the planner is pure waste."""
+    assert classify_ask_shape(question).shape == SHAPE_LOOKUP

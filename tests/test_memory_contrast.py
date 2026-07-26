@@ -331,3 +331,99 @@ def test_contrast_pass_is_skipped_when_flag_is_off(tmp_path, monkeypatch):
     wiki._run_memory_passes(_pair_graph(), FakeClient({"relation": "none"}))
 
     assert calls == []
+
+
+# ------------------------------------------------- rejections are cached too
+
+
+def test_out_of_vocab_relation_is_cached_and_never_re_billed(tmp_path):
+    """A rejection is a RESULT. Not caching it re-bills the pair forever.
+
+    ``compares_against`` is the natural answer for exactly the comparison-shaped
+    pairs rare-token blocking selects, and it is deliberately outside
+    ``_RELATION_TO_EDGE``. Before the fix that meant one LLM call per pair on
+    EVERY compile, permanently — the module's own "never re-billed" claim was
+    false for the whole systematic-rejection class.
+    """
+    cache = tmp_path / "contrast_cache"
+    client = FakeClient({"relation": "compares_against", "direction": "a_to_b"})
+
+    run_contrast_pass(_pair_graph(), llm=client, cache_dir=cache)
+    first = client.call_count
+    run_contrast_pass(_pair_graph(), llm=client, cache_dir=cache)
+    run_contrast_pass(_pair_graph(), llm=client, cache_dir=cache)
+
+    assert first == 1
+    assert client.call_count == first, "rejection was re-asked on a later compile"
+    written = sorted(cache.glob("*.json"))
+    assert len(written) == 1
+    payload = json.loads(written[0].read_text(encoding="utf-8"))
+    assert payload["relation"] == "none"
+    assert payload["rejected"] == "out_of_vocab_relation"
+
+
+@pytest.mark.parametrize(
+    "response,reason",
+    [
+        ({"relation": "contradicts", "direction": "sideways"}, "invalid_direction"),
+        ("not a dict", "non_dict_response"),
+    ],
+)
+def test_malformed_responses_are_cached_with_a_reason(tmp_path, response, reason):
+    cache = tmp_path / "contrast_cache"
+    client = FakeClient(response)
+
+    run_contrast_pass(_pair_graph(), llm=client, cache_dir=cache)
+    run_contrast_pass(_pair_graph(), llm=client, cache_dir=cache)
+
+    assert client.call_count == 1
+    payload = json.loads(next(iter(cache.glob("*.json"))).read_text(encoding="utf-8"))
+    assert (payload["relation"], payload["rejected"]) == ("none", reason)
+
+
+def test_transient_llm_failure_does_not_make_the_pass_non_idempotent(tmp_path):
+    """Byte-idempotence: identical inputs must not yield different edges.
+
+    A client that 429s once then succeeds used to mint NO edge on compile 1 and
+    an edge on compile 2 from byte-identical inputs — a graph.json change with
+    no input change, the exact regression class this repo has hit four times.
+    """
+
+    class FlakyClient(FakeClient):
+        def complete_json(self, **kwargs):
+            self.calls.append(kwargs.get("user"))
+            if self.call_count == 1:
+                raise RuntimeError("429 rate limited")
+            return {"relation": "contradicts", "direction": "a_to_b"}
+
+    cache = tmp_path / "contrast_cache"
+    client = FlakyClient(None)
+
+    def _edges(graph):
+        return sorted((e.source, e.type, e.target) for e in graph.edges)
+
+    first = _edges(run_contrast_pass(_pair_graph(), llm=client, cache_dir=cache))
+    second = _edges(run_contrast_pass(_pair_graph(), llm=client, cache_dir=cache))
+
+    assert first == second
+    payload = json.loads(next(iter(cache.glob("*.json"))).read_text(encoding="utf-8"))
+    assert payload["rejected"] == "llm_error"
+
+
+def test_pre_existing_cache_files_without_rejected_key_still_read(tmp_path):
+    """``rejected`` is additive — a warm cache written before it stays valid."""
+    from tesserae.memory.contrast import _pair_hash
+
+    graph = _pair_graph()
+    a, b = graph.nodes[0], graph.nodes[1]
+    cache = tmp_path / "contrast_cache"
+    cache.mkdir(parents=True)
+    (cache / f"{_pair_hash(a, b)}.json").write_text(
+        json.dumps({"schema_version": 1, "relation": "none", "direction": "none"}),
+        encoding="utf-8",
+    )
+    client = FakeClient({"relation": "contradicts", "direction": "a_to_b"})
+
+    run_contrast_pass(graph, llm=client, cache_dir=cache)
+
+    assert client.call_count == 0

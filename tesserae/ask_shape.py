@@ -36,19 +36,34 @@ class Shape:
 
 # Cues that a question needs the graph: dated evidence, causality, multi-hop
 # synthesis, or agent activity. Checked FIRST, over the whole question.
+#
+# Cues are STEMMED (``recent(ly)?``, ``current(ly)?``, ``decid|decision``)
+# rather than listed as literals. Unstemmed literals were the failure mode:
+# "the LATEST decision" fired the cue and "the most RECENT decision" did not,
+# so two paraphrases of one question got different backends and different
+# depths of answer. Every hole here is a silent under-answer, which is the
+# direction this module says it will not fail in.
 _GRAPH_CUE = re.compile(
     r"\b("
     # temporal — the benchmark gap where graphs beat vector RAG hardest
-    r"recently|lately|latest|last (week|month)|since|currently|status|"
-    r"what changed|changed|evolved|history|when did|over time|timeline|"
+    r"recent(ly)?|lately|latest|new(er|est)?|last (week|month)|since|"
+    r"current(ly)?|status|state of|now|"
+    r"chang(e|es|ed|ing)|evolved|history|when did|over time|timeline|"
     # causal / decision
-    r"why|rationale|reason|who decided|decided|decides|decide|chose|chosen|"
+    r"why|rationale|reason|decid(e|es|ed|ing)|decision(s)?|chose|chosen|"
     r"trade-?off|instead of|"
+    # ownership / open work — multi-hop over activity, never one wiki page
+    # NOT ``maintainer``: "who is the maintainer" is answerable from one wiki
+    # page and stays in the cheap band. ``responsible``/``owns`` are the
+    # activity-shaped forms that need the graph.
+    r"owns|owner|owned by|responsible|"
+    r"open question(s)?|blocking|blocked|blocker(s)?|"
     # multi-hop / corpus synthesis
     r"summari[sz]e|overview|across|relationship between|difference between|"
-    r"compare|impact|depends on|affects|all the |all |list all|how many|"
+    r"compare|impact|interact(s|ion|ions)?|depends on|affects|"
+    r"all the |all |list all|how many|"
     # activity
-    r"session|commit|PR|worked on|progress"
+    r"session|commit|PR|work(s|ed|ing) on|progress"
     r")\b",
     re.I,
 )
@@ -56,9 +71,16 @@ _GRAPH_CUE = re.compile(
 # Single-entity definitional lookups: BM25 over wiki pages answers these as well
 # as the planner does, for one fewer LLM roundtrip. Only consulted when NO graph
 # cue fired.
+#
+# DELIBERATELY NARROWER than the obvious list. ``how does``/``how do``/``how
+# is`` and ``what are`` were removed: "how does X handle Y" and "what are the
+# open questions about Z" are process and corpus questions, not definitions,
+# and putting them in the cheap band inverted the module's stated asymmetry —
+# the most common English openers were the ones that skipped the graph. What
+# remains is the band where a single wiki page genuinely IS the answer.
 _LOOKUP_PREFIX = re.compile(
-    r"^(what (is|are|'s)|who is|which (file|module)|where is|define|"
-    r"definition of|meaning of|how (does|do|is))\b",
+    r"^(what (is|'s)|who is|which (file|module)|where is|define|"
+    r"definition of|meaning of)\b",
     re.I,
 )
 

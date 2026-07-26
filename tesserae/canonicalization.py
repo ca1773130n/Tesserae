@@ -313,8 +313,68 @@ class GraphCanonicalizer:
         return items, stats
 
 
-def _review_sort_key(item: ReviewItem) -> Tuple[float, str, str, str, str]:
-    """Total order for review items.
+# Tokens that mark a VARIANT of a family rather than a different entity.
+# Digit-bearing tokens ("2", "4", "50") are covered separately.
+_VARIANT_TOKENS = frozenset(
+    {"base", "large", "small", "mini", "tiny", "xl", "xxl", "huge", "lite", "turbo"}
+)
+_NAME_TOKENS = re.compile(r"[0-9]+|[a-z]+")
+
+
+def _name_tokens(name: str) -> List[str]:
+    """Lowercased alphanumeric runs — 'BERT-base' -> ['bert', 'base']."""
+    return _NAME_TOKENS.findall((name or "").casefold())
+
+
+def _is_family_sibling(left_name: str, right_name: str) -> bool:
+    """True when two names differ ONLY by a version/size token.
+
+    This is the never-merge band: 'Llama 2'~'Llama 3', 'GPT-4'~'GPT-3',
+    'BERT-base'~'BERT-large', 'ResNet-50'~'ResNet-101'.
+
+    WHY a name-shape rule and not a cosine cutoff: there is no cutoff. Against
+    the shipped backend those three pairs score 0.9896 / 0.9845 / 0.9458 while
+    the one TRUE merge in the same fixture ('Edwin Aldrin'~'Buzz Aldrin')
+    scores 0.9074 — inside, not below, the sibling range. Any threshold that
+    demoted the siblings would demote the target case with them, which is the
+    same measurement the ponytail note on _build_embedding_review_items
+    records. Name shape separates them cleanly and needs no model.
+    """
+    left, right = _name_tokens(left_name), _name_tokens(right_name)
+    if not left or len(left) != len(right):
+        return False
+    differing = [(a, b) for a, b in zip(left, right) if a != b]
+    if len(differing) != 1:
+        return False
+    a, b = differing[0]
+    return all(t.isdigit() or t in _VARIANT_TOKENS for t in (a, b))
+
+
+def review_band(item: ReviewItem) -> Tuple[int, str]:
+    """``(rank, label)`` for an item — lower rank is MORE actionable.
+
+    Only ``similar_embedding`` inverts, so only it carries a band. The
+    string-similarity items keep rank 0 and an empty label, and their bytes
+    and order are untouched.
+    """
+    if item.reason != "similar_embedding":
+        return (0, "")
+    if _is_family_sibling(item.left_name, item.right_name):
+        return (
+            1,
+            "version/family siblings — the names differ only by a version or "
+            "size token, so these are variants of one family, not one entity; "
+            "expect keep_separate",
+        )
+    return (
+        0,
+        "candidate duplicates — the actionable band; the score ranks topical "
+        "proximity, not identity, so do not read it as confidence",
+    )
+
+
+def _review_sort_key(item: ReviewItem) -> Tuple[int, float, str, str, str, str]:
+    """Total order for review items: ACTIONABILITY first, then score.
 
     Node ids are part of the key because two DIFFERENT pairs can share both
     display names (same names under different types, or genuine name collisions),
@@ -322,7 +382,8 @@ def _review_sort_key(item: ReviewItem) -> Tuple[float, str, str, str, str]:
     the exact shape that caused prior determinism regressions.
     """
 
-    return (-item.score, item.left_name, item.right_name, item.left_node_id, item.right_node_id)
+    band, _ = review_band(item)
+    return (band, -item.score, item.left_name, item.right_name, item.left_node_id, item.right_node_id)
 
 
 class ReviewQueue:

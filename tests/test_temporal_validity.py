@@ -274,3 +274,90 @@ def test_written_rows_carry_the_new_interval_keys(tmp_path):
     assert len(ended) == 1
     assert ended[0]["valid_to"] == "2026-03-01"
     assert ended[0]["valid_to_basis"] == "supersedes"
+
+
+# ------------------------------------- degenerate intervals / list ordering
+
+
+def test_reasoning_edge_onto_its_own_superseder_keeps_a_usable_interval():
+    """A fact whose own endpoint IS the superseder must not vanish from time.
+
+    ``memory.contrast`` mints exactly this shape: ``B criticizes F`` alongside
+    ``F supersedes B``. ``valid_from`` is ``max(ts(B), ts(F)) == ts(F)`` and the
+    derived ``valid_to`` is also ``ts(F)``, so the half-open ``[from, to)`` is
+    empty at EVERY instant and ``facts_as_of`` drops the fact at every pivot —
+    the temporal feature silently not covering the edges this branch mints.
+    """
+    graph = ResearchGraph(
+        nodes=[
+            _finding("Insight:b", "B", first_seen_at="2026-02-01T00:00:00Z"),
+            _finding("Insight:f", "F", first_seen_at="2026-04-01T00:00:00Z"),
+        ],
+        edges=[
+            ResearchEdge(source="Insight:f", target="Insight:b", type="supersedes"),
+            ResearchEdge(source="Insight:b", target="Insight:f", type="criticizes"),
+        ],
+    )
+    facts = TemporalFactProjector().project(graph)
+    crit = _fact(facts, "criticizes")
+
+    # We know it ended; we do NOT know when. Same state an undated superseder
+    # produces — never a guessed boundary, and never a silently empty one.
+    assert crit.valid_from == "2026-04-01T00:00:00Z"
+    assert crit.valid_to is None
+    assert crit.valid_to_basis is None
+    assert crit.current is False
+
+    for pivot in ("2026-04-01T00:00:00Z", "2026-05-01T00:00:00Z"):
+        kept, _ = facts_as_of(facts, pivot)
+        assert any(f.id == crit.id for f in kept), f"invisible at {pivot}"
+
+
+def test_a_real_boundary_after_the_start_is_still_recorded():
+    """The degenerate-interval guard must not swallow genuine boundaries."""
+    graph = ResearchGraph(
+        nodes=[
+            _finding("Insight:a", "A", first_seen_at="2026-01-01T00:00:00Z"),
+            _finding("Insight:b", "B", first_seen_at="2026-02-01T00:00:00Z"),
+            _finding("Insight:c", "C", first_seen_at="2026-03-01T00:00:00Z"),
+        ],
+        edges=[
+            ResearchEdge(source="Insight:a", target="Insight:b", type="derived_from"),
+            ResearchEdge(source="Insight:c", target="Insight:a", type="supersedes"),
+        ],
+    )
+    derived = _fact(TemporalFactProjector().project(graph), "derived_from")
+
+    assert derived.valid_from == "2026-02-01T00:00:00Z"
+    assert derived.valid_to == "2026-03-01T00:00:00Z"
+    assert derived.valid_to_basis == "supersedes"
+
+
+def test_invalidated_by_is_sorted_not_edge_order():
+    """``invalidated_by`` must be a function of the edge SET, not the edge LIST.
+
+    Built by appending in ``graph.edges`` order, it made temporal_facts.jsonl
+    inherit any upstream edge-order churn instead of damping it.
+    """
+    nodes = [
+        _finding("Insight:a", "A", first_seen_at="2026-01-01T00:00:00Z"),
+        _finding("Insight:x", "X", first_seen_at="2026-03-01T00:00:00Z"),
+        _finding("Insight:y", "Y", first_seen_at="2026-03-01T00:00:00Z"),
+        _finding("Insight:z", "Z", first_seen_at="2026-03-01T00:00:00Z"),
+        _doc(),
+    ]
+    killers = [
+        ResearchEdge(source="Insight:x", target="Insight:a", type="supersedes", evidence="x"),
+        ResearchEdge(source="Insight:y", target="Insight:a", type="supersedes", evidence="y"),
+        ResearchEdge(source="Insight:z", target="Insight:a", type="supersedes", evidence="z"),
+    ]
+    target = ResearchEdge(source="Insight:a", target="Paper:doc", type="discussed_in")
+
+    seen = set()
+    for order in ([0, 1, 2], [2, 0, 1], [1, 2, 0], [2, 1, 0]):
+        graph = ResearchGraph(nodes=list(nodes), edges=[killers[i] for i in order] + [target])
+        fact = _fact(TemporalFactProjector().project(graph), "discussed_in")
+        assert fact.invalidated_by == sorted(fact.invalidated_by)
+        seen.add(tuple(fact.invalidated_by))
+
+    assert len(seen) == 1, f"edge order leaked into invalidated_by: {seen}"

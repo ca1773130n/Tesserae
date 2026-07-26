@@ -254,3 +254,76 @@ def test_semantic_pass_does_not_duplicate_a_string_pass_pair():
     reasons = [item.reason for item in result.review_items]
     assert reasons == ["similar_name"]
     assert result.stats["semantic_added"] == 0
+
+
+def test_review_queue_ranks_the_actionable_band_before_family_siblings():
+    """Score-descending put every never-merge pair first.
+
+    Measured against the shipped backend, 'Llama 2'~'Llama 3' (0.9896),
+    'GPT-4'~'GPT-3' (0.9845) and 'BERT-base'~'BERT-large' (0.9458) all outrank
+    the one TRUE merge ('Edwin Aldrin'~'Buzz Aldrin', 0.9074) — so a reviewer
+    working top-down met the most dangerous pairs first. There is no cosine
+    cutoff that separates them; name shape does.
+    """
+    from tesserae.canonicalization import ReviewItem, _review_sort_key
+
+    def item(left, right, score):
+        return ReviewItem(
+            id=f"review:{left}:{right}",
+            left_node_id=f"Model:{left}:t",
+            right_node_id=f"Model:{right}:t",
+            left_name=left,
+            right_name=right,
+            node_type="Model",
+            reason="similar_embedding",
+            score=score,
+        )
+
+    items = [
+        item("Llama 2", "Llama 3", 0.9896),
+        item("GPT-4", "GPT-3", 0.9845),
+        item("BERT-base", "BERT-large", 0.9458),
+        item("Edwin Aldrin", "Buzz Aldrin", 0.9074),
+    ]
+    ordered = sorted(items, key=_review_sort_key)
+
+    assert [i.left_name for i in ordered] == [
+        "Edwin Aldrin", "Llama 2", "GPT-4", "BERT-base",
+    ]
+
+
+def test_family_sibling_band_is_name_shape_not_a_score_threshold():
+    from tesserae.canonicalization import _is_family_sibling
+
+    for left, right in [
+        ("Llama 2", "Llama 3"),
+        ("GPT-4", "GPT-3"),
+        ("BERT-base", "BERT-large"),
+        ("ResNet-50", "ResNet-101"),
+    ]:
+        assert _is_family_sibling(left, right), (left, right)
+
+    for left, right in [
+        ("Edwin Aldrin", "Buzz Aldrin"),
+        ("GPT-4", "GPT4"),          # a genuine spelling duplicate
+        ("Adam", "AdamW"),
+        ("Gaussian Splatting", "4D Gaussian Splatting"),
+    ]:
+        assert not _is_family_sibling(left, right), (left, right)
+
+
+def test_string_similarity_items_carry_no_band():
+    """The band applies only where the score inverts; string items are untouched."""
+    from tesserae.canonicalization import ReviewItem, review_band
+
+    item = ReviewItem(
+        id="review:x",
+        left_node_id="Model:a:t",
+        right_node_id="Model:b:t",
+        left_name="Llama 2",
+        right_name="Llama 3",
+        node_type="Model",
+        reason="similar_name",
+        score=0.99,
+    )
+    assert review_band(item) == (0, "")
