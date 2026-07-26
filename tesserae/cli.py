@@ -5947,20 +5947,37 @@ def _route_verify_claim(rest: List[str]) -> int:
 
 
 def _handle_verify_claim(args: argparse.Namespace) -> int:
-    from .verify import verify_claim
+    from .mcp_server import LLMWikiMCPServer
 
     wiki = ProjectWiki.load(args.project)
     if not wiki.paths.graph.exists():
         print("error: no compiled graph yet — run `compile` first.", file=sys.stderr)
         return 2
-    out = verify_claim(
-        _load_graph_file(wiki.paths.graph),
-        subject=args.subject,
-        predicate=args.predicate,
-        obj=args.object_,
-        reground=args.reground,
-        project_root=wiki.root,
-    )
+    # Route through call_tool rather than calling verify.verify_claim on a bare
+    # _load_graph_file: the tool layer merges the connection-discovery overlay
+    # (associate.apply_overlay), so a bare load sees FEWER edges than the MCP
+    # tool. verify_claim is pair-local, so a discovered edge between exactly
+    # these two endpoints lands in E_{s,o} on one surface and not the other —
+    # the same triple answering differently depending on how you called it, in
+    # the one tool whose whole value is a stable contract. Graph PATH, not a
+    # registry alias, so the verb works without a prior `projects register`.
+    server = LLMWikiMCPServer(default_graph_path=wiki.paths.graph)
+    try:
+        out = server.call_tool(
+            "verify_claim",
+            {
+                "graph_path": str(wiki.paths.graph),
+                "subject": args.subject,
+                "predicate": args.predicate,
+                "object": args.object_,
+                "reground": args.reground,
+            },
+        )
+    except (ValueError, OSError) as exc:
+        # Unresolvable endpoints are a VERDICT, never an exception, so anything
+        # landing here is the graph itself failing to load.
+        print(f"error: verify_claim failed: {exc}", file=sys.stderr)
+        return 1
     print(json.dumps(out, ensure_ascii=False, sort_keys=True))
     # 2 for NOT_RESOLVABLE so a script can tell "could not check" from every
     # verdict that IS an answer — including ABSENT, which is a real answer

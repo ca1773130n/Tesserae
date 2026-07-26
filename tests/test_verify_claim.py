@@ -808,3 +808,79 @@ def test_cli_verb_is_registered(tmp_path):
     from tesserae.cli_tree import KNOWN_COMMANDS
 
     assert "verify-claim" in _NEW_DISPATCH and "verify-claim" in KNOWN_COMMANDS
+
+
+# ---------------------------------------------------------------------------
+# Re-grounding IS part of the gate (follow-up to #89)
+#
+# #89 corrected the MCP schema description but left the module docstring saying
+# re-grounding "can never reach ``verdict``", while ``_Chain.document_backed``
+# has excluded ``regrounded is False`` since it was written. These pin the
+# behaviour AND both doc sites, so the halves cannot drift apart again.
+# ---------------------------------------------------------------------------
+
+
+def test_reground_false_demotes_supported(tmp_path):
+    """Same graph bytes, same triple — only the file on disk differs."""
+    graph = evidenced_graph()
+    kw = dict(subject="P:p", predicate="supports_claim", obj="C:q")
+
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "alpha.md").write_text(SENTENCE, encoding="utf-8")
+    intact = verify_claim(graph, project_root=tmp_path, **kw)
+    assert intact["verdict"] == "SUPPORTED"
+    assert intact["provenance"]["regrounded"] is True
+
+    # The extractor's span is now provably absent from the file it cites.
+    (docs / "alpha.md").write_text("Something else entirely.\n", encoding="utf-8")
+    demoted = verify_claim(graph, project_root=tmp_path, **kw)
+    assert demoted["provenance"]["regrounded"] is False
+    assert demoted["verdict"] == "PRESENT_UNEVIDENCED", (
+        "reground must demote SUPPORTED — it is the gate, not advisory colour"
+    )
+
+    # ...and reground=False restores it, proving reground is the deciding axis.
+    unchecked = verify_claim(graph, project_root=tmp_path, reground=False, **kw)
+    assert unchecked["verdict"] == "SUPPORTED"
+    assert unchecked["provenance"]["regrounded"] is None
+
+
+def test_docs_do_not_claim_reground_is_advisory():
+    """Guard both sites: a consumer must not read a promise the code won't keep."""
+    from tesserae import mcp_server, verify
+
+    schema = next(
+        t for t in mcp_server.LLMWikiMCPServer().list_tools() if t["name"] == "verify_claim"
+    )["inputSchema"]["properties"]["reground"]["description"]
+    for where, text in (("verify.__doc__", verify.__doc__), ("MCP schema", schema)):
+        for lie in ("never change the verdict", "can never reach"):
+            assert lie not in text, f"{where} contradicts _Chain.document_backed: {lie!r}"
+
+
+def test_cli_verb_sees_the_same_graph_as_the_mcp_tool(tmp_path, monkeypatch, capsys):
+    """CLI ≡ MCP on WHICH graph is loaded, not just on the payload shape.
+
+    A bare ``_load_graph_file`` skips the connection-discovery overlay that
+    ``call_tool`` merges. verify_claim is pair-local, so a discovered edge
+    between exactly these endpoints would land in E_{s,o} on one surface only.
+    """
+    import tesserae.cli as cli
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    tess = tmp_path / ".tesserae"
+    tess.mkdir()
+    (tess / "graph.json").write_text(evidenced_graph().to_json(indent=2), encoding="utf-8")
+    (tess / "config.json").write_text("{}\n", encoding="utf-8")
+
+    rc = cli.main(["verify-claim", "--project", str(tmp_path),
+                   "-s", "Alpha", "-p", "supports_claim", "-o", "Beta"])
+    assert rc == 0
+    from_cli = json.loads(capsys.readouterr().out)
+
+    from_mcp = LLMWikiMCPServer(default_graph_path=tess / "graph.json").call_tool(
+        "verify_claim",
+        {"graph_path": str(tess / "graph.json"), "subject": "Alpha",
+         "predicate": "supports_claim", "object": "Beta", "reground": True},
+    )
+    assert from_cli == from_mcp

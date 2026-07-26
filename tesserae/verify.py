@@ -59,9 +59,18 @@ shape. The key exists only when ``evidence_span`` does, so there is no tri-state
 boolean, and like ``advisory`` it is report-only — no verdict may read it.
 
 The one impurity is *re-grounding*: the cited span is checked against the bytes
-of the source file on disk. That file changes independently of the graph, so
-re-grounding may only set ``provenance.regrounded`` — it can never reach
-``verdict``.
+of the source file on disk. It is part of the SUPPORTED gate, NOT advisory
+colour — see ``_Chain.document_backed``. A span the file provably does not
+contain (198 of 2,088 SUPPORTED verdicts on the real graph, where the extractor
+had stitched a fragment across headings) is disproven evidence, and disproven
+evidence may not read SUPPORTED; ``regrounded is False`` therefore demotes the
+verdict to ``PRESENT_UNEVIDENCED``. ``None`` (``reground=False``, or no readable
+``source_path``) never demotes anything: disprove, don't assume.
+
+So the verdict is a pure function of the graph bytes *for a fixed ``reground``*,
+and re-grounding is the ONE axis on which the same graph can answer differently
+— because that axis reads a file the graph does not own. It can only ever move a
+verdict DOWN, in the same direction as the provenance lattice.
 """
 
 from __future__ import annotations
