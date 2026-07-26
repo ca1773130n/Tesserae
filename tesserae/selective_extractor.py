@@ -36,6 +36,13 @@ class SelectiveClaudeResearchExtractor:
         self.include_patterns = list(include_patterns)
         self.claude_limit = claude_limit
         self.claude_calls = 0
+        #: Guards the claude_limit check-and-claim. Concurrent extraction made
+        #: the old read-then-increment lose the cap entirely: every worker read
+        #: ``claude_calls`` before any of them wrote it, so a limit of 1 issued
+        #: one call PER WORKER. This is a spend cap, so it fails closed.
+        #: ponytail: one lock around a counter, not a semaphore — the critical
+        #: section is an int compare, and the LLM call itself stays outside it.
+        self._limit_lock = threading.Lock()
         #: Per-thread, because BatchIngestRunner may extract concurrently: the
         #: runner reads ``last_was_fallback`` right after its own extract_text
         #: call, so the flag must belong to THAT call and not to whichever
@@ -89,8 +96,7 @@ class SelectiveClaudeResearchExtractor:
     def extract_file(self, path: str | Path, source_kind: str = "SourceDocument") -> ResearchGraph:
         file_path = Path(path)
         self.last_was_fallback = False
-        if self._should_use_claude(file_path):
-            self.claude_calls += 1
+        if self._claim_claude_slot(file_path):
             try:
                 return self.claude.extract_file(file_path, source_kind=source_kind)
             except Exception as exc:
@@ -115,8 +121,7 @@ class SelectiveClaudeResearchExtractor:
         pipeline (``BatchIngestRunner``) actually calls. Routes by ``source_path``."""
         path = Path(source_path) if source_path else None
         self.last_was_fallback = False
-        if path is not None and self._should_use_claude(path):
-            self.claude_calls += 1
+        if path is not None and self._claim_claude_slot(path):
             try:
                 return self.claude.extract_text(text, source_path, source_kind)
             except Exception as exc:
@@ -132,6 +137,22 @@ class SelectiveClaudeResearchExtractor:
                       f"({type(exc).__name__}: {exc}); used deterministic", file=sys.stderr)
         result = self.deterministic.extract_text(text, source_path, source_kind)
         return apply_guidance_filter(result, self._guidance_bullets())
+
+    def _claim_claude_slot(self, path: Path) -> bool:
+        """Decide AND claim a ``claude_limit`` slot in one atomic step.
+
+        Callers used to ask ``_should_use_claude`` and increment afterwards.
+        That is a check-then-act race: under ``TESSERAE_EXTRACT_CONCURRENCY``
+        every worker read the counter before any of them wrote it, so
+        ``--llm-limit 1`` bought one call per worker instead of one call. The
+        routing decision itself stays in ``_should_use_claude`` (pure, and
+        still directly unit-tested); only the claim is serialized.
+        """
+        with self._limit_lock:
+            if not self._should_use_claude(path):
+                return False
+            self.claude_calls += 1
+            return True
 
     def _should_use_claude(self, path: Path) -> bool:
         if not self.include_patterns:

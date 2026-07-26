@@ -80,3 +80,65 @@ def test_last_was_fallback_tracks_llm_failure_only():
     )
     sel2.extract_text("x", "/tmp/doc.md")
     assert sel2.last_was_fallback is False
+
+
+def test_llm_limit_holds_under_concurrent_extraction():
+    """``--llm-limit`` is a SPEND cap, so it has to survive parallel workers.
+
+    ``BatchIngestRunner`` extracts on a thread pool. The routing decision used
+    to read ``claude_calls`` and the caller incremented it afterwards, so every
+    worker could pass a limit of 1 before any of them wrote — one paid call per
+    worker instead of one call, silently. The barrier below forces exactly that
+    interleaving; without the lock this asserts 8 == 1.
+    """
+    import threading
+
+    workers = 8
+    # Timed, so the test terminates BOTH ways. Unserialized, all eight decide
+    # before any of them claims and the barrier trips; serialized, the first
+    # holder simply times out and the rest are excluded by the counter. A plain
+    # wait() would deadlock against a correct lock, which proves nothing.
+    barrier = threading.Barrier(workers)
+
+    class Det:
+        def extract_text(self, text, source_path=None, source_kind="SourceDocument"):
+            return ResearchGraph(nodes=[], edges=[])
+
+    class Counting:
+        def __init__(self):
+            self.calls = []
+            self._guard = threading.Lock()
+
+        def extract_text(self, text, source_path=None, source_kind="SourceDocument"):
+            with self._guard:
+                self.calls.append(source_path)
+            return ResearchGraph(nodes=[], edges=[])
+
+    llm = Counting()
+    sel = SelectiveClaudeResearchExtractor(
+        deterministic=Det(), claude=llm, include_patterns=["*.md"], claude_limit=1
+    )
+
+    decide = sel._should_use_claude
+
+    def widen_the_window(path):
+        verdict = decide(path)
+        try:
+            barrier.wait(timeout=1.0)
+        except threading.BrokenBarrierError:
+            pass
+        return verdict
+
+    sel._should_use_claude = widen_the_window
+
+    threads = [
+        threading.Thread(target=lambda i=i: sel.extract_text("x", f"/tmp/doc{i}.md"))
+        for i in range(workers)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(llm.calls) == 1, f"claude_limit=1 issued {len(llm.calls)} LLM calls"
+    assert sel.claude_calls == 1
