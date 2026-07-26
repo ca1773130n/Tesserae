@@ -44,7 +44,6 @@ from .research_graph import (
 )
 from .retrieval.ppr import personalized_pagerank
 from .temporal import TemporalFactProjector, search_facts, timeline
-from .verify import verify_claim
 from .wiki_projector import is_code_graph_node, kind_for_node
 from .wiki_store import WikiPageStore
 
@@ -848,67 +847,6 @@ class LLMWikiMCPServer:
                             ),
                         },
                         "budget_chars": budget_chars_prop,
-                    },
-                    "additionalProperties": False,
-                },
-            },
-            {
-                "name": "verify_claim",
-                "description": (
-                    "Verify ONE triple against the graph — exact lookup, no LLM, "
-                    "no fuzzy matching, no ranked results. This is not a search "
-                    "tool: it returns {verdict, reason, triple, citation, "
-                    "provenance} where verdict is SUPPORTED / CONTRADICTED / "
-                    "NOT_FOUND. NOT_FOUND means the graph does not assert the "
-                    "triple; it is NOT a refutation — read the `reason` slug "
-                    "(subject_unresolved and ambiguous_object are resolution "
-                    "failures, triple_absent is a genuine absence). Endpoints "
-                    "resolve by exact node id, then exact case-folded name, then "
-                    "exact case-folded alias, and nothing else; ambiguity is "
-                    "refused rather than guessed. Chain search_nodes -> "
-                    "verify_claim when you only have prose."
-                ),
-                "inputSchema": {
-                    "type": "object",
-                    "properties": {
-                        "graph_path": graph_path_prop,
-                        "project": project_prop, "agent": agent_prop,
-                        "subject": {
-                            "type": "string",
-                            "description": "Subject endpoint: node id, exact name, or exact alias.",
-                        },
-                        "predicate": {
-                            "type": "string",
-                            "description": (
-                                "Edge type — must be a verbatim member of the "
-                                "ontology (see the `schema` tool). Synonyms are "
-                                "not resolved."
-                            ),
-                        },
-                        "object": {
-                            "type": "string",
-                            "description": "Object endpoint: node id, exact name, or exact alias.",
-                        },
-                        "claim": {
-                            "type": "string",
-                            "description": (
-                                "Natural-language convenience, ignored when "
-                                "subject/predicate/object are supplied. Resolves "
-                                "only when a verbatim scan finds exactly one "
-                                "subject, one predicate token and one object; "
-                                "otherwise NOT_FOUND/nl_not_resolvable."
-                            ),
-                        },
-                        "reground": {
-                            "type": "boolean",
-                            "default": True,
-                            "description": (
-                                "Re-check the cited evidence span against the "
-                                "source file on disk (evidence from outside the "
-                                "graph). Only sets provenance.regrounded; never "
-                                "changes the verdict. null means unknown."
-                            ),
-                        },
                     },
                     "additionalProperties": False,
                 },
@@ -2196,17 +2134,6 @@ class LLMWikiMCPServer:
                 include_superseded=bool(args.get("include_superseded", False)),
                 use_ppr=bool(args.get("use_ppr") or False),
                 budget_chars=_budget_chars_arg(args),
-            )
-        if name == "verify_claim":
-            graph, project_root = self._load_requested_graph_with_root(args)
-            return verify_claim(
-                graph,
-                subject=(str(args["subject"]) if args.get("subject") else None),
-                predicate=(str(args["predicate"]) if args.get("predicate") else None),
-                obj=(str(args["object"]) if args.get("object") else None),
-                claim=(str(args["claim"]) if args.get("claim") else None),
-                reground=bool(args.get("reground", True)),
-                project_root=project_root,
             )
         if name == "search_facts":
             facts = TemporalFactProjector().project(self._load_requested_graph(args))
