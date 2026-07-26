@@ -358,6 +358,22 @@ def _graph_from_record(record: Mapping[str, Any]) -> ResearchGraph:
             str(raw["type"]),
             target,
             evidence=str(raw.get("evidence") or ""),
+            # The marker MUST live on the edge, not only on the nodes. Cross-type
+            # dedup drops a loser node's metadata wholesale
+            # (``research_graph._merge_cross_type_duplicates``) while redirecting
+            # its edges onto the survivor, so an agent write whose endpoints both
+            # align onto curated nodes leaves NO node-level trace — and
+            # ``verify_claim`` then reads the agent's edge as a curated one and
+            # can return SUPPORTED / document_span citing a real document that
+            # never made the claim. Edge metadata survives every dedup pass
+            # verbatim, and ``validate_write``'s edge whitelist accepts only
+            # source/target/type/evidence, so a payload can neither forge nor
+            # clear this. Unlike ``evidence`` above, metadata is safe to key on
+            # the write: ``replay_agent_writes`` replays sorted by write_id and
+            # ``setdefault``s on (source, type, target), so two writes that
+            # collapse onto the same triple converge on the lowest write_id in
+            # both a full and an incremental compile.
+            metadata={"agent_write_id": write_id, "agent_key": agent_key},
         )
     graph = builder.build()
     validate_research_graph(graph)
