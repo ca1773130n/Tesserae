@@ -1103,7 +1103,15 @@ class CodexCLIJsonClient:
             # a single home is "< 2x self.timeout", not "== self.timeout".
             # A hard deadline would mean shrinking the timeout passed to
             # _run_cli, which would change the documented per-ATTEMPT bound.
-            budget_spent = bool(self.timeout) and (time.monotonic() - started) >= self.timeout
+            backoff = _TRANSPORT_BACKOFF * (2 ** attempt)
+            # Charge the SLEEP to the budget: the next rotation starts at
+            # ``elapsed + backoff``, so checking elapsed ALONE let a fast
+            # failure sleep past the bound and start anyway (measured:
+            # timeout=1s, backoff=2s, attempt 2 began at t=2.01s).
+            budget_spent = (
+                bool(self.timeout)
+                and (time.monotonic() - started + backoff) >= self.timeout
+            )
             if (
                 timed_out
                 or binary_missing
@@ -1112,7 +1120,7 @@ class CodexCLIJsonClient:
                 or len(logged_out_homes) == len(self.codex_homes)
             ):
                 break
-            time.sleep(_TRANSPORT_BACKOFF * (2 ** attempt))
+            time.sleep(backoff)
         if last_error is not None:
             # ONE record per call, not one per attempt: three attempts across
             # 137 docs would drown the compile output. Say plainly which

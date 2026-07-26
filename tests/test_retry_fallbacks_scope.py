@@ -16,7 +16,6 @@ from pathlib import Path
 
 import pytest
 
-from tesserae.ports import Source
 from tesserae.project import ProjectWiki
 from tesserae.research_graph import ResearchGraph, ResearchNode, ResearchNodeType
 
@@ -497,6 +496,52 @@ def test_manifest_prune_leaves_loader_keyed_entries_alone(tmp_path):
     files = _manifest(project)
     assert "source:session-42" in files, "an FS run must not erase loader-keyed entries"
     assert {Path(k).name for k in files if not k.startswith("source:")} == {"b.md"}
+
+
+def test_a_loader_keyed_entry_conservatively_disables_the_filesystem_no_op(tmp_path):
+    """A mixed manifest must NOT take the filesystem no-op. Deliberately.
+
+    Both reuse predicates COUNT ``source:`` keys, and nothing stamps one
+    ``graphed`` — so one loader run makes ``corpus_unchanged`` and
+    ``graph_covers_corpus`` permanently false and every later filesystem
+    ``--changed-only`` re-extracts the whole corpus. That is the cost, and it is
+    the point.
+
+    Excluding ``source:`` keys instead buys the scoped fast path back and opens
+    a silent-loss hole in the same move: both origins rebuild graph.json from
+    their OWN sources alone, so a loader run genuinely removes the filesystem
+    documents from the graph while their entries still match by sha. With the
+    exclusion, this predicate calls that graph complete and serves it until a
+    document's bytes change — which, for an untouched corpus, is never. Every
+    attempt to close that hole from inside the exclusion (cross-origin stamp
+    drops, prior-graph reuse arms) introduced a defect of its own.
+
+    Pinned as a REGRESSION GUARD, not as desirable behaviour: re-adding the
+    exclusion must fail here. The honest fix is per-origin coverage tracking,
+    booked as a ceiling in ``project.py`` and unjustified while
+    ``compile(loader=...)`` has no caller.
+    """
+    project, wiki = _make_project(tmp_path, "loader-entry-conservative", ["a", "b"])
+    wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())
+
+    # A no-op is available right up until a loader-keyed entry appears...
+    quiet = FlakyExtractor()
+    assert wiki.compile(changed_only=True, doc_extractor=quiet)["processed_files"] == 0
+    assert quiet.calls == []
+
+    manifest_path = project / ".tesserae" / "manifest.json"
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload["files"]["source:session-42"] = {"sha256": "deadbeef", "source_kind": "Session"}
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    # ...and then it is gone, and the corpus is re-extracted instead of reused.
+    after = FlakyExtractor()
+    result = wiki.compile(changed_only=True, doc_extractor=after)
+    assert result["processed_files"] == 2
+    assert [Path(c).name for c in after.calls] == ["a.md", "b.md"]
+    # Self-healing, not destructive: the graph is whole and the entry survives.
+    assert {"Paper:a", "Paper:b"} <= _graph_node_ids(project)
+    assert "source:session-42" in _manifest(project)
 
 
 def test_retry_fallbacks_keeps_full_recompile_when_trends_on(tmp_path, capsys):
@@ -982,118 +1027,6 @@ def test_incremental_reuse_refuses_a_prior_graph_a_kill_left_partial(
     assert "Paper:c" in _graph_node_ids(project)
 
 
-def test_a_loader_keyed_entry_does_not_disable_scoped_filesystem_reuse(tmp_path, capsys):
-    """``source:`` keys are not filesystem candidates and never carry a stamp.
-
-    ``_ingest_via_loader`` shares this manifest, writing entries keyed on
-    ``source:<id>`` without a ``graphed`` marker (only the FS path stamps). The
-    key-set comparison behind ``corpus_unchanged`` and the all-values scan
-    behind ``graph_covers_corpus`` both counted them, so one loader run made
-    every later filesystem ``--changed-only`` re-extract the WHOLE corpus,
-    permanently — the same erasure the manifest prune already excludes them
-    from.
-    """
-    project, wiki = _make_project(tmp_path, "mixed-loader-fs", ["a", "b", "c"])
-    wiki.compile(changed_only=True, doc_extractor=FlakyExtractor(failing={"c.md"}))
-
-    manifest_path = project / ".tesserae" / "manifest.json"
-    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    payload["files"]["source:session-42"] = {"sha256": "deadbeef", "source_kind": "Session"}
-    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
-    capsys.readouterr()
-
-    recovered = FlakyExtractor(failing=set())
-    result = wiki.compile(changed_only=True, retry_fallbacks=True, doc_extractor=recovered)
-
-    # Still the 137->35 bound: only the marked doc, and the loader entry stays.
-    assert [Path(c).name for c in recovered.calls] == ["c.md"]
-    assert result["processed_files"] == 1
-    assert "source:session-42" in _manifest(project)
-    assert "ResearchTopic:c-typed" in _graph_node_ids(project)
-    assert "could not scope this run" not in capsys.readouterr().err
-
-    # ...and the plain no-op short-circuit survives the loader entry too.
-    rerun = FlakyExtractor()
-    assert wiki.compile(changed_only=True, doc_extractor=rerun)["processed_files"] == 0
-    assert rerun.calls == []
-
-
-class _OneSourceLoader:
-    """Minimal ``SourceLoader``: one in-memory source, never a FS candidate."""
-
-    def __init__(self, content: str = "# Loader doc\n\nOne in-memory source.") -> None:
-        self._source = Source(id="src-1", path="loader/doc.md", content=content)
-
-    def discover(self):
-        yield self._source
-
-    def fetch(self, source_id: str):
-        return self._source
-
-
-def test_a_loader_compile_drops_the_filesystem_graphed_stamps(tmp_path, capsys):
-    """A stamp must not outlive the graph it describes (cross-origin rewrite).
-
-    The loader path rebuilds ``graph.json`` from its own sources ALONE, so after
-    it runs the filesystem documents are simply not in the graph. Their
-    ``graphed`` stamps survived it, and — once the ``source:`` exclusion made
-    ``corpus_unchanged`` reachable in a mixed workspace — the next filesystem
-    ``--changed-only`` saw full coverage, no-opped, and kept serving the
-    loader-only graph forever.
-    """
-    project, wiki = _make_project(tmp_path, "loader-clobbers-stamps", ["a", "b"])
-    wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())
-    assert all(entry.get("graphed") is True for entry in _manifest(project).values())
-
-    wiki.compile(loader=_OneSourceLoader(), changed_only=True, doc_extractor=FlakyExtractor())
-    # The graph genuinely lost the filesystem docs...
-    assert "Paper:a" not in _graph_node_ids(project)
-    # ...so nothing may still claim they are covered (the loader entry stays).
-    assert not any(
-        entry.get("graphed")
-        for key, entry in _manifest(project).items()
-        if not key.startswith("source:")
-    )
-    assert "source:src-1" in _manifest(project)
-    capsys.readouterr()
-
-    after = FlakyExtractor()
-    result = wiki.compile(changed_only=True, doc_extractor=after)
-    # REFUSED the no-op and re-extracted, naming the reason the other reuse
-    # paths already name.
-    assert [Path(c).name for c in after.calls] == ["a.md", "b.md"]
-    assert result["processed_files"] == 2
-    assert {"Paper:a", "Paper:b"} <= _graph_node_ids(project)
-    assert "graph.json is not known to cover every tracked document" in capsys.readouterr().err
-
-    # ...and it is not a standing tax: that recompile re-stamped.
-    again = FlakyExtractor()
-    assert wiki.compile(changed_only=True, doc_extractor=again)["processed_files"] == 0
-    assert again.calls == []
-
-
-def test_a_loader_compile_under_the_differ_keeps_the_filesystem_stamps(tmp_path):
-    """The differ MERGES the prior graph, so filesystem coverage really survives.
-
-    Unstamping there would cost every mixed incremental workspace a full
-    recompile it does not need — the other side of the branch above.
-    """
-    project, wiki = _make_project(tmp_path, "loader-differ-no-tax", ["a", "b"])
-    wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())
-    wiki.compile(
-        loader=_OneSourceLoader(),
-        changed_only=True,
-        doc_extractor=FlakyExtractor(),
-        incremental_override=True,
-    )
-    # graph.json still holds them, so the stamps are still true.
-    assert {"Paper:a", "Paper:b"} <= _graph_node_ids(project)
-
-    after = FlakyExtractor()
-    assert wiki.compile(changed_only=True, doc_extractor=after)["processed_files"] == 0
-    assert after.calls == []
-
-
 class _EmptyLoader:
     """A ``SourceLoader`` whose ``discover()`` yields nothing this run."""
 
@@ -1104,54 +1037,12 @@ class _EmptyLoader:
         raise KeyError(source_id)
 
 
-def test_a_loader_that_discovered_nothing_reuses_the_graph_instead_of_wiping_it(
-    tmp_path,
-):
-    """``discover()`` yielding nothing is not evidence that the corpus is empty.
-
-    ``graphs`` is then empty and ``base_graph`` was ``ResearchGraph()`` — an
-    EMPTY graph — which flowed straight through the trend/artifact passes and
-    overwrote graph.json with nothing. Measured on the fixture below: a seeded
-    4-node graph came back as the Synthesis node alone, with ``node_count: 0``
-    reported and no warning. An unreachable backing store, a filtered batch or a
-    loader pointed at the wrong workspace all reach it, and for a loader-only
-    workspace the loss is unrecoverable: every source's ``sha256`` still matches,
-    so nothing re-extracts them.
-    """
-    project, wiki = _make_project(tmp_path, "loader-empty-discover", ["a", "b"])
-    wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())
-    seeded = _graph_node_ids(project)
-    assert {"Paper:a", "Paper:b"} <= seeded
-
-    result = wiki.compile(
-        loader=_EmptyLoader(), changed_only=True, doc_extractor=FlakyExtractor()
-    )
-
-    assert result["processed_files"] == 0
-    assert _graph_node_ids(project) == seeded
-    # The reported count is the reused graph's, not the ``0`` a wipe reports.
-    # (It excludes the SYNTHESIS node ``_strip_generated_layer`` drops and
-    # ``_write_artifacts`` re-projects — the same accounting the ``noop_skip``
-    # reuse reports.)
-    assert result["node_count"] == len(seeded) - 1
-    # ...and the run that changed nothing charges nothing: the stamps still
-    # describe the graph on disk, so the next ``--changed-only`` still no-ops.
-    assert all(
-        entry.get("graphed") is True
-        for key, entry in _manifest(project).items()
-        if not key.startswith("source:")
-    )
-    after = FlakyExtractor()
-    assert wiki.compile(changed_only=True, doc_extractor=after)["processed_files"] == 0
-    assert after.calls == []
-
-
 def test_an_empty_loader_with_no_graph_on_disk_still_compiles(tmp_path):
-    """The reuse arm must not assume a prior graph.json exists.
+    """The loader branch must not assume a prior graph.json exists.
 
     ``ProjectWiki.init`` writes one, so the only way here is deleting it — but
-    that is exactly what an operator does to force a rebuild, and reading the
-    missing file would turn "nothing to reuse" into a crash.
+    that is exactly what an operator does to force a rebuild, and any read of
+    the missing file would turn "nothing to extract" into a crash.
     """
     project, wiki = _make_project(tmp_path, "loader-empty-nograph", ["a"])
     wiki.paths.graph.unlink()
@@ -1164,56 +1055,10 @@ def test_an_empty_loader_with_no_graph_on_disk_still_compiles(tmp_path):
     assert "Paper:a" not in _graph_node_ids(project)
 
 
-def test_an_empty_loader_with_no_graph_on_disk_drops_the_filesystem_stamps(
-    tmp_path, capsys
-):
-    """A stamp must never outlive the graph it describes — including this arm.
-
-    The unstamp used to be gated on ``bool(graphs)``, which reads as "did this
-    run replace graph.json" and is not the same question. The no-graph.json arm
-    leaves ``graphs`` empty and reuses NOTHING: it writes an empty graph. So the
-    filesystem stamps survived a run that had just emptied the graph they vouch
-    for, the next filesystem ``--changed-only`` saw complete coverage and
-    no-opped, and the documents were gone for good — nothing re-extracts a doc
-    whose bytes never change.
-
-    Reachable exactly the way ``test_an_empty_loader_with_no_graph_on_disk_still
-    _compiles`` is: an operator deletes ``graph.json`` to force a rebuild while
-    the manifest survives. Measured on this fixture before the fix: graph.json
-    came back as the SYNTHESIS node alone, both stamps stayed ``True``, and the
-    next ``--changed-only`` called the extractor ZERO times.
-    """
-    project, wiki = _make_project(tmp_path, "loader-nograph-stamps", ["a", "b"])
-    wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())
-    assert {"Paper:a", "Paper:b"} <= _graph_node_ids(project)
-    fs_keys = [k for k in _manifest(project) if not k.startswith("source:")]
-    assert all(_manifest(project)[k].get("graphed") is True for k in fs_keys)
-
-    wiki.paths.graph.unlink()
-    wiki.compile(loader=_EmptyLoader(), changed_only=True, doc_extractor=FlakyExtractor())
-
-    # The run emptied the graph...
-    assert "Paper:a" not in _graph_node_ids(project)
-    # ...so nothing may still claim it is covered.
-    assert all(_manifest(project)[k].get("graphed") is None for k in fs_keys)
-
-    # And the guard turns that into a repair, not a standing tax: the next
-    # ``--changed-only`` REFUSES the no-op, says why, and re-extracts.
-    capsys.readouterr()
-    healed = FlakyExtractor()
-    wiki.compile(changed_only=True, doc_extractor=healed)
-    assert [Path(c).name for c in healed.calls] == ["a.md", "b.md"]
-    assert "could not reuse the prior graph" in capsys.readouterr().err
-    assert {"Paper:a", "Paper:b"} <= _graph_node_ids(project)
-    quiet = FlakyExtractor()
-    assert wiki.compile(changed_only=True, doc_extractor=quiet)["processed_files"] == 0
-    assert quiet.calls == []
-
-
 def test_an_empty_loader_run_under_the_differ_still_applies_a_deletion(tmp_path):
     """The differ OWNS the reuse on an empty changed-set; the base must stay empty.
 
-    ``graphs`` is empty here, so the arm above hands the differ an EMPTY base
+    ``graphs`` is empty here, so the loader branch hands the differ an EMPTY base
     and lets it rebind ``graph`` to its own prior graph. Handing it the
     POPULATED prior graph instead looks equivalent — and is, until something
     was TOMBSTONED. A deleted ``changed_paths`` entry takes the differ's
@@ -1238,242 +1083,6 @@ def test_an_empty_loader_run_under_the_differ_still_applies_a_deletion(tmp_path)
     node_ids = _graph_node_ids(project)
     assert "Paper:a" not in node_ids, "the deleted document's node was resurrected"
     assert "Paper:b" in node_ids, "...and the survivors must not be collateral"
-
-
-def test_a_filesystem_compile_drops_the_loader_sha_it_clobbered(tmp_path):
-    """The mirror of the unstamp above: an FS run must not leave a stale sha.
-
-    A ``full_run`` rebuilds graph.json from ``batch.graph`` alone, so the
-    loader's nodes leave it — while the loader's ``sha256`` (its only reuse
-    claim) still says they need no re-extraction. Under the experimental differ
-    the next ``compile(loader=...)`` sha-skips every source, reports a clean
-    ``processed=0``, and reuses the FS-only graph, so the loader's nodes are
-    gone PERMANENTLY: nothing re-extracts a source whose sha matches.
-    """
-    project, wiki = _make_project(tmp_path, "fs-clobbers-loader", ["a", "b"])
-    wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())
-
-    # A loader run rebuilds graph.json from its own source alone...
-    wiki.compile(loader=_OneSourceLoader(), doc_extractor=FlakyExtractor())
-    assert "Paper:doc" in _graph_node_ids(project)
-    assert "source:src-1" in _manifest(project)
-
-    # ...and the next filesystem compile clobbers it straight back.
-    wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())
-    assert "Paper:doc" not in _graph_node_ids(project)
-    assert {"Paper:a", "Paper:b"} <= _graph_node_ids(project)
-    # The key survives (the prune must not erase it) but its reuse claim does
-    # not — the graph it vouched for is gone.
-    assert "source:src-1" in _manifest(project)
-    assert "sha256" not in _manifest(project)["source:src-1"]
-
-    # So a loader run under the differ re-extracts and the node comes BACK,
-    # merged over the filesystem layer rather than replacing it.
-    wiki.compile(
-        loader=_OneSourceLoader(),
-        changed_only=True,
-        doc_extractor=FlakyExtractor(),
-        incremental_override=True,
-    )
-    node_ids = _graph_node_ids(project)
-    assert {"Paper:a", "Paper:b", "Paper:doc"} <= node_ids
-    # ...and it re-stamped, so this is not a standing tax: the loader run that
-    # follows it skips by sha again.
-    assert _manifest(project)["source:src-1"].get("sha256")
-
-
-def test_a_scoped_filesystem_run_keeps_the_loader_sha(tmp_path):
-    """The other side of the branch: a SCOPED run merged the prior graph in.
-
-    The loader's nodes are still in graph.json there, so its sha is still an
-    honest reuse claim and dropping it would charge every mixed incremental
-    workspace a loader re-extract per filesystem compile.
-    """
-    project, wiki = _make_project(tmp_path, "fs-scoped-keeps-loader-sha", ["a", "b"])
-    wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())
-    # ...under the differ, so the loader run MERGES rather than replaces and the
-    # filesystem stamps survive it (otherwise the next run is demoted to a full
-    # recompile and there is no scoped run left to test).
-    wiki.compile(
-        loader=_OneSourceLoader(),
-        changed_only=True,
-        doc_extractor=FlakyExtractor(),
-        incremental_override=True,
-    )
-    assert "Paper:doc" in _graph_node_ids(project)
-
-    # Edit one doc so the differ has a subset to re-extract.
-    (project / "docs" / "a.md").write_text("# a\n\nedited\n", encoding="utf-8")
-    wiki.compile(
-        changed_only=True, doc_extractor=FlakyExtractor(), incremental_override=True
-    )
-
-    # The prior graph was merged in, so the loader node really did survive...
-    assert "Paper:doc" in _graph_node_ids(project)
-    # ...and its reuse claim stays.
-    assert _manifest(project)["source:src-1"].get("sha256")
-
-
-class _TwoSourceLoader:
-    """Two in-memory sources, so ``limit=1`` can DEFER the second one."""
-
-    def __init__(self) -> None:
-        self._sources = [
-            Source(id=f"src-{n}", path=f"loader/doc{n}.md", content=f"# Loader doc {n}\n")
-            for n in (1, 2)
-        ]
-
-    def discover(self):
-        yield from self._sources
-
-    def fetch(self, source_id: str):
-        return next(s for s in self._sources if s.id == source_id)
-
-
-def test_a_kill_during_a_loader_compile_is_not_a_silent_success_next_run(
-    tmp_path, capsys, monkeypatch
-):
-    """The loader half of the completeness guard — measured silent data loss.
-
-    ``_ingest_via_loader`` persists each processed source's ``sha256`` in a
-    ``finally``, so a compile killed before ``_write_artifacts`` leaves the sha
-    on disk while ``graph.json`` never got the source's nodes. Under the
-    experimental differ every later run then sha-skips it, reports a clean
-    ``processed=0, skipped=1``, and hands back the graph that will never contain
-    it — no warning, no self-heal, until the source's bytes change. Measured:
-    ``Paper:doc`` was absent forever.
-
-    The remedy is the filesystem path's, over ``source:`` keys: stamp
-    ``graphed`` only after ``_write_artifacts`` returns, and refuse the reuse
-    when the stamp is missing.
-    """
-    project, wiki = _make_project(tmp_path, "loader-kill", ["a", "b"])
-    # Seed a graph + provenance sidecar so the differ is admissible.
-    wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())
-
-    _kill_during(monkeypatch)
-    with pytest.raises(KeyboardInterrupt):
-        wiki.compile(
-            loader=_OneSourceLoader(),
-            changed_only=True,
-            doc_extractor=FlakyExtractor(),
-            incremental_override=True,
-        )
-    monkeypatch.undo()
-
-    # The sha landed; the nodes did not — exactly the window the guard covers.
-    assert _manifest(project)["source:src-1"].get("sha256")
-    assert "graphed" not in _manifest(project)["source:src-1"]
-    assert "Paper:doc" not in _graph_node_ids(project)
-    capsys.readouterr()
-
-    after = FlakyExtractor()
-    result = wiki.compile(
-        loader=_OneSourceLoader(),
-        changed_only=True,
-        doc_extractor=after,
-        incremental_override=True,
-    )
-    # REFUSED the sha-skip, re-extracted, and named the same reason the
-    # filesystem reuse paths name.
-    assert result["processed_files"] == 1
-    assert [Path(c).name for c in after.calls] == ["doc.md"]
-    assert "Paper:doc" in _graph_node_ids(project)
-    assert "graph.json is not known to cover every tracked document" in capsys.readouterr().err
-
-
-def test_a_loader_manifest_with_no_stamps_recompiles_once_then_stays_quiet(
-    tmp_path, capsys
-):
-    """Absent ``graphed`` means "not covered", so existing workspaces pay ONCE.
-
-    Every loader-keyed manifest written before the marker existed has no
-    stamps. Refusing their reuse is correct — nothing proves the graph is whole
-    — but it must be explained, and the recompile must re-stamp, or the guard
-    becomes a standing full-re-extract tax on every incremental loader
-    workspace.
-
-    ONCE is scoped to an UNLIMITED recompile, which is what this test runs. A
-    retained ``--limit`` re-stamps only the sources it reached, so it pays every
-    run — see
-    ``test_the_loader_completeness_guard_says_the_same_under_a_retained_limit``.
-    """
-    project, wiki = _make_project(tmp_path, "loader-legacy", ["a"])
-    wiki.compile(changed_only=True, doc_extractor=FlakyExtractor())
-    wiki.compile(
-        loader=_OneSourceLoader(),
-        changed_only=True,
-        doc_extractor=FlakyExtractor(),
-        incremental_override=True,
-    )
-
-    manifest_path = project / ".tesserae" / "manifest.json"
-    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    payload["files"]["source:src-1"].pop("graphed", None)  # a pre-marker manifest
-    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
-    capsys.readouterr()
-
-    first = FlakyExtractor()
-    once = wiki.compile(
-        loader=_OneSourceLoader(),
-        changed_only=True,
-        doc_extractor=first,
-        incremental_override=True,
-    )
-    assert once["processed_files"] == 1
-    assert "graph.json is not known to cover every tracked document" in capsys.readouterr().err
-    # ...and that recompile re-stamped.
-    assert _manifest(project)["source:src-1"].get("graphed") is True
-
-    for _ in range(2):
-        again = FlakyExtractor()
-        settled = wiki.compile(
-            loader=_OneSourceLoader(),
-            changed_only=True,
-            doc_extractor=again,
-            incremental_override=True,
-        )
-        assert settled["processed_files"] == 0
-        assert again.calls == []
-        assert "could not reuse the prior graph" not in capsys.readouterr().err
-        assert "Paper:doc" in _graph_node_ids(project)
-
-
-def test_limit_unstamps_the_loader_sources_it_left_out_of_the_graph(tmp_path, capsys):
-    """A DEFERRED source is uncovered on a full loader run; its stamp must go.
-
-    ``--limit`` BREAKS out of ``discover()``, so the deferred source is neither
-    processed nor skipped: its manifest entry keeps the sha of a previous run
-    while ``graph.json`` was just rebuilt from the processed sources ALONE. Left
-    stamped, the next differ run sha-skips it onto a graph that no longer holds
-    it — the kill above by a different route.
-    """
-    project, wiki = _make_project(tmp_path, "loader-limit", ["a"])
-    wiki.compile(loader=_TwoSourceLoader(), doc_extractor=FlakyExtractor())
-    manifest = _manifest(project)
-    assert manifest["source:src-1"].get("graphed") is True
-    assert manifest["source:src-2"].get("graphed") is True
-
-    wiki.compile(loader=_TwoSourceLoader(), limit=1, doc_extractor=FlakyExtractor())
-
-    assert "Paper:doc2" not in _graph_node_ids(project), "the limited run dropped it"
-    stamped = {
-        key for key, entry in _manifest(project).items() if entry.get("graphed") is True
-    }
-    assert stamped == {"source:src-1"}, "only the source that reached graph.json stays"
-    capsys.readouterr()
-
-    # So the next differ run refuses the sha-skip and the deferred source
-    # comes BACK, instead of being reused away forever.
-    after = FlakyExtractor()
-    wiki.compile(
-        loader=_TwoSourceLoader(),
-        changed_only=True,
-        doc_extractor=after,
-        incremental_override=True,
-    )
-    assert "Paper:doc2" in _graph_node_ids(project)
-    assert "graph.json is not known to cover every tracked document" in capsys.readouterr().err
 
 
 def test_the_completeness_guard_says_so_when_limit_makes_it_unclearable(tmp_path, capsys):
@@ -1513,98 +1122,6 @@ def test_the_completeness_guard_says_so_when_limit_makes_it_unclearable(tmp_path
         assert "re-extracting up to --limit=2 of 3" in err
         assert "repeats every run until you compile WITHOUT --limit" in err
         assert "re-extracting the whole corpus" not in err
-
-
-def test_the_loader_completeness_guard_says_the_same_under_a_retained_limit(
-    tmp_path, capsys
-):
-    """The loader half of the same livelock, and the same honest message.
-
-    ``full_loader_run`` unstamps a source deferred past ``--limit``; the guard
-    then demotes the next differ run to a full loader run, which is limited
-    again and defers the same source again. Measured: five consecutive runs
-    each warned and each re-extracted ``doc1.md``, and ``src-2`` never
-    re-stamped.
-
-    The loader half cannot name a corpus SIZE — it warns before ``discover()``
-    runs — so it names the limit and the exit without one. See
-    ``test_the_loader_note_does_not_size_the_corpus_from_the_manifest``.
-    """
-    project, wiki = _make_project(tmp_path, "loader-guard-livelock", ["a"])
-    wiki.compile(loader=_TwoSourceLoader(), doc_extractor=FlakyExtractor())
-    wiki.compile(loader=_TwoSourceLoader(), limit=1, doc_extractor=FlakyExtractor())
-    assert "graphed" not in _manifest(project)["source:src-2"]
-    capsys.readouterr()
-
-    for _ in range(3):
-        run = FlakyExtractor()
-        wiki.compile(
-            loader=_TwoSourceLoader(),
-            changed_only=True,
-            limit=1,
-            doc_extractor=run,
-            incremental_override=True,
-        )
-        err = capsys.readouterr().err
-        assert [Path(c).name for c in run.calls] == ["doc1.md"]
-        assert "graphed" not in _manifest(project)["source:src-2"]
-        assert "graph.json is not known to cover every tracked document" in err
-        assert "up to --limit=1" in err
-        assert "repeats every run until you compile WITHOUT --limit" in err
-        assert "re-extracting the whole corpus" not in err
-
-
-class _ThreeSourceLoader(_TwoSourceLoader):
-    """Three in-memory sources — more than the manifest knows about."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._sources.append(
-            Source(id="src-3", path="loader/doc3.md", content="# Loader doc 3\n")
-        )
-
-
-def test_the_loader_note_does_not_size_the_corpus_from_the_manifest(tmp_path, capsys):
-    """The loader guard warns BEFORE ``discover()``, so it must not claim a size.
-
-    It used to pass ``len(source_entries)`` — the manifest's ``source:`` keys —
-    which is neither a superset nor a subset of what the run will see: a source
-    compiled once and since removed still has an entry, a brand-new one has none
-    until it is processed. A ``--limit`` that merely exceeds the ENTRY count then
-    took ``_recompile_note``'s unlimited branch and promised the whole corpus.
-
-    Measured on this fixture: ONE ``source:`` entry in the manifest, a loader
-    discovering THREE, ``--limit=2`` — the run extracted doc1+doc2 and deferred
-    doc3 while the warning said "re-extracting the whole corpus."
-    """
-    project, wiki = _make_project(tmp_path, "loader-note-size", ["a"])
-    wiki.compile(loader=_OneSourceLoader(), doc_extractor=FlakyExtractor())
-    # The interrupted-compile shape: the sha is on disk, the stamp is not.
-    manifest_path = project / ".tesserae" / "manifest.json"
-    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    payload["files"]["source:src-1"].pop("graphed", None)
-    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
-    assert [k for k in _manifest(project) if k.startswith("source:")] == ["source:src-1"]
-    capsys.readouterr()
-
-    run = FlakyExtractor()
-    wiki.compile(
-        loader=_ThreeSourceLoader(),
-        changed_only=True,
-        limit=2,
-        doc_extractor=run,
-        incremental_override=True,
-    )
-
-    err = capsys.readouterr().err
-    # The run really did defer one of the three...
-    assert [Path(c).name for c in run.calls] == ["doc1.md", "doc2.md"]
-    # ...so the whole-corpus promise must not appear, and the limit + the exit
-    # must — without a corpus size this guard is in no position to assert.
-    assert "re-extracting the whole corpus" not in err
-    assert "up to --limit=2" in err
-    assert "compile WITHOUT --limit" in err
-    assert " of 1" not in err
 
 
 def test_an_unlimited_guard_warning_still_promises_the_whole_corpus(tmp_path, capsys):
