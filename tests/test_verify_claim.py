@@ -507,6 +507,96 @@ def test_payload_keys_are_fixed():
 
 
 # ---------------------------------------------------------------------------
+# Tautological citations — SUPPORTED that only re-reads its own edge
+# ---------------------------------------------------------------------------
+
+
+def test_self_evidencing_citation_is_flagged():
+    """Verifying the ``evidenced_by`` edge ITSELF cites its own target.
+
+    Still SUPPORTED — "C evidenced_by S" really is licensed by reading S — but
+    the citation is circular, and the payload must say so.
+    """
+    out = verify_claim(
+        evidenced_graph(), subject="C:q", predicate="evidenced_by", obj="E:s1"
+    )
+    assert out["verdict"] == "SUPPORTED"
+    span = out["citation"]["evidence_span"]
+    assert span["node_id"] == out["citation"]["edge"]["target"] == "E:s1"
+    assert span["is_edge_endpoint"] is True
+
+
+def test_document_backed_citation_is_not_flagged():
+    """The 60% majority: a third node backs the edge. The flag must not fire."""
+    out = verify_claim(
+        evidenced_graph(), subject="P:p", predicate="supports_claim", obj="C:q"
+    )
+    assert out["verdict"] == "SUPPORTED"
+    span = out["citation"]["evidence_span"]
+    assert span["node_id"] == "E:s1"
+    assert span["node_id"] not in out["citation"]["edge"].values()
+    assert span["is_edge_endpoint"] is False
+
+
+def test_flag_reads_both_endpoints_not_just_the_target():
+    """A span can be the deciding edge's SOURCE, not only its target.
+
+    The obvious consumer-side reinvention (``node_id == edge.target``) is wrong
+    here and this is the branch that catches it. 729 spans are the source of 974
+    ``part_of`` / ``discussed_in`` edges on the real graph, so the shape is one
+    extractor change away from producing this citation for real.
+    """
+    graph = ResearchGraph(
+        nodes=[
+            node("D:doc", "Alpha Doc", ResearchNodeType.PAPER),
+            node(
+                "E:s1",
+                "span-1",
+                ResearchNodeType.EVIDENCE_SPAN,
+                description=SENTENCE,
+                path="docs/alpha.md",
+            ),
+        ],
+        edges=[
+            edge("E:s1", "part_of", "D:doc", SENTENCE),
+            edge("D:doc", "evidenced_by", "E:s1", SENTENCE),
+        ],
+    )
+    out = verify_claim(graph, subject="E:s1", predicate="part_of", obj="D:doc")
+    assert out["verdict"] == "SUPPORTED"
+    span = out["citation"]["evidence_span"]
+    assert span["node_id"] == out["citation"]["edge"]["source"] == "E:s1"
+    assert span["node_id"] != out["citation"]["edge"]["target"]
+    assert span["is_edge_endpoint"] is True
+
+
+def test_evidence_span_keys_are_fixed():
+    """Mirror of ``test_payload_keys_are_fixed`` one level down.
+
+    The flag lives INSIDE ``evidence_span`` so it is absent exactly when the
+    span is ``None`` — no tri-state boolean for a caller to misread.
+    """
+    expected = {"node_id", "text", "source_path", "is_edge_endpoint"}
+    graph = evidenced_graph()
+    for kwargs in (
+        {"subject": "P:p", "predicate": "supports_claim", "obj": "C:q"},
+        {"subject": "C:q", "predicate": "evidenced_by", "obj": "E:s1"},
+    ):
+        assert set(verify_claim(graph, **kwargs)["citation"]["evidence_span"]) == expected
+    unevidenced = ResearchGraph(
+        nodes=graph.nodes,
+        edges=[
+            edge("P:p", "supports_claim", "C:q", "because I said so")
+            if e.type == "supports_claim"
+            else e
+            for e in graph.edges
+        ],
+    )
+    out = verify_claim(unevidenced, subject="P:p", predicate="supports_claim", obj="C:q")
+    assert out["citation"]["evidence_span"] is None
+
+
+# ---------------------------------------------------------------------------
 # Determinism + real-graph regression
 # ---------------------------------------------------------------------------
 
@@ -574,6 +664,42 @@ def test_real_graph_distribution_locked():
             "PRESENT_UNEVIDENCED": 13195,
             "NOT_RESOLVABLE": 1,  # the single self-loop, refused
         }
+
+
+def test_real_graph_tautology_share_locked():
+    """Golden lock on the tautological/informative split of SUPPORTED.
+
+    Companion tripwire to ``test_real_graph_distribution_locked``: that one
+    catches SUPPORTED changing COUNT, this one catches it changing KIND. An
+    extractor change that starts co-minting spans for a predicate that did not
+    have them moves informative -> tautological without moving either total.
+    """
+    graph = _load_real()
+    taut = info = no_span = 0
+    for e in graph.edges:
+        out = verify_claim(
+            graph, subject=e.source, predicate=e.type, obj=e.target, reground=False
+        )
+        if out["verdict"] != "SUPPORTED":
+            continue
+        span = out["citation"]["evidence_span"]
+        if span is None:
+            no_span += 1
+            continue
+        if span["is_edge_endpoint"]:
+            taut += 1
+        else:
+            info += 1
+    # ``document_backed`` requires ``cls == "document_span"``, which requires a
+    # span, so SUPPORTED without a citation is unreachable by construction.
+    assert no_span == 0
+    if len(graph.edges) == 15284:
+        # 827 + 1261 == the 2088 SUPPORTED locked above. Corpus-bound, so it
+        # skips rather than fails on a recompile — same trade the sibling lock
+        # already accepts. Every one of the 827 is an ``evidenced_by`` edge
+        # citing its own target; that equivalence is corpus-accidental, which is
+        # why the flag compares ids instead of testing the predicate.
+        assert (taut, info) == (827, 1261)
 
 
 def test_agent_write_on_an_endpoint_does_not_poison_unrelated_verdicts():

@@ -49,6 +49,15 @@ confidence: an edge with no evidence is ``PRESENT_UNEVIDENCED``, not
 nothing found is ``ABSENT``, not refuted; endpoints that do not resolve exactly
 are ``NOT_RESOLVABLE``, not guessed.
 
+A SUPPORTED verdict is not automatically an informative one. When the deciding
+edge is itself the ``evidenced_by`` edge, the span it cites is that edge's own
+endpoint, so the citation confirms the edge by construction — true, and
+uninformative. ``citation.evidence_span.is_edge_endpoint`` marks exactly those
+(827 of 2,088 SUPPORTED verdicts on the real 15,284-edge graph); the remaining
+1,261 cite a third node that a document backs independently of the edge's own
+shape. The key exists only when ``evidence_span`` does, so there is no tri-state
+boolean, and like ``advisory`` it is report-only — no verdict may read it.
+
 The one impurity is *re-grounding*: the cited span is checked against the bytes
 of the source file on disk. That file changes independently of the graph, so
 re-grounding may only set ``provenance.regrounded`` — it can never reach
@@ -408,6 +417,21 @@ class _Chain:
                     "node_id": self.span.id,
                     "text": self.span.description,
                     "source_path": self.span.source_path,
+                    # WHY: when the deciding edge IS the ``evidenced_by`` edge,
+                    # its own target is trivially in ``_matching_spans``' output
+                    # and its text is trivially identical to the edge evidence —
+                    # the extractor co-mints both from one sentence. The verdict
+                    # stays true ("C evidenced_by S" really is licensed by
+                    # reading S) but the citation is circular, and 827 of the
+                    # 2,088 SUPPORTED verdicts on the real 15,284-edge graph are
+                    # this shape. Both operands were already in the payload;
+                    # naming the comparison stops every consumer reinventing it
+                    # as ``node_id == edge.target``, which is WRONG — a span can
+                    # be the edge's SOURCE (729 spans source 974
+                    # part_of/discussed_in edges today). Report-only: nothing
+                    # reads this key, so it can never reach ``verdict``.
+                    "is_edge_endpoint": self.span.id
+                    in (self.edge.source, self.edge.target),
                 }
             ),
         }
@@ -472,6 +496,12 @@ def verify_claim(
     ``verdict`` ∈ :data:`VERDICTS`. ``reason`` is a machine slug, never prose.
     Only ``SUPPORTED`` and ``CONTRADICTED`` are confident; ``ABSENT`` and
     ``PRESENT_UNEVIDENCED`` are NOT refutations.
+
+    ``citation.evidence_span.is_edge_endpoint`` is ``True`` when the cited span
+    IS one of the deciding edge's own endpoints — the verdict holds, but reading
+    the span only re-reads the edge. ``True`` means *uninformative*, never
+    *false*. Callers wanting the citations a separate document backs want
+    ``verdict == "SUPPORTED" and not citation["evidence_span"]["is_edge_endpoint"]``.
 
     There is deliberately no ``claim=`` parameter. Passing natural language is a
     ``TypeError``, not a guess.
