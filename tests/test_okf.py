@@ -44,6 +44,30 @@ def _fm(path: Path) -> dict:
 # v0.1 backward-compatibility suite (unchanged behaviour)                       #
 # --------------------------------------------------------------------------- #
 
+
+def _same(a, b):
+    """Semantic equality across a YAML round-trip.
+
+    PyYAML resolves an unquoted ``2026-09-23`` to ``datetime.date`` and an
+    unquoted ``2026-06-25T09:00:00Z`` to ``datetime``. We normalize those to ISO
+    strings on import, because a datetime cannot survive ``graph.to_json()`` —
+    the reason the CLI used to crash on the spec's own Appendix A bundle.
+    Re-emitting therefore writes the quoted string form: the same date, still
+    valid YAML. Compare meaning, not the parsed Python type.
+    """
+    import datetime as _dt
+
+    if isinstance(a, (_dt.datetime, _dt.date)):
+        a = a.isoformat()
+    if isinstance(b, (_dt.datetime, _dt.date)):
+        b = b.isoformat()
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(_same(a[k], b[k]) for k in a)
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(_same(x, y) for x, y in zip(a, b))
+    return a == b
+
+
 def test_round_trip_is_lossless(tmp_path: Path):
     g = _graph()
     write_okf_bundle(g, tmp_path)
@@ -276,7 +300,7 @@ def test_unknown_frontmatter_keys_survive_round_trip(tmp_path: Path):
     original = yaml.safe_load((src / "orders.md").read_text().split("---\n", 2)[1])
     for key in ("description", "resource", "tags", "status", "stale_after",
                 "generated", "verified", "sources", "usage_window"):
-        assert fm[key] == original[key], key
+        assert _same(fm[key], original[key]), key
     # The foreign `type` is NOT downgraded to Concept on the way out.
     assert fm["type"] == "BigQuery Table"
     assert fm["title"] == "Customer Orders"
@@ -309,7 +333,7 @@ def test_attested_computation_contract_survives_round_trip(tmp_path: Path):
     fm = _fm(out / "concepts" / "revenue-for-fiscal-year.md")
     original = yaml.safe_load((src / "revenue.md").read_text().split("---\n", 2)[1])
     for key in ("runtime", "parameters", "computation", "executor", "attester"):
-        assert fm[key] == original[key], key
+        assert _same(fm[key], original[key]), key
 
 
 def test_legacy_v01_timestamp_and_citations(tmp_path: Path):
@@ -526,3 +550,51 @@ def test_export_never_reads_the_clock_or_the_filesystem(tmp_path: Path):
     for rel in rels:
         assert (tmp_path / "a" / rel).read_bytes() == (tmp_path / "b" / rel).read_bytes(), rel
     assert _fm(tmp_path / "a" / "papers" / "doc.md")["sources"][0]["last_modified"] == "2026-01-09"
+
+
+def test_imports_the_specs_own_canonical_bundle(tmp_path):
+    """§ Appendix A, verbatim shapes. The CLI used to die on all three:
+
+    1. YAML resolves unquoted `at:` / `stale_after:` to datetime/date, which
+       reached metadata["okf"] and made graph.to_json() raise
+       "Object of type datetime is not JSON serializable" — §11 conformance held
+       inside the library and was thrown away by the only shipped consumer.
+    2. The §13.1 timestamp fallback tested isinstance(str), so it silently
+       no-opped on exactly the unquoted form the spec writes.
+    3. §6.1's RECOMMENDED bundle-relative link (`/tables/customers.md`) resolved
+       via os.path.join, which discards its first argument when the second is
+       absolute — a spec-following bundle imported as disconnected nodes.
+    """
+    (tmp_path / "tables").mkdir()
+    (tmp_path / "tables" / "customers.md").write_text(
+        "---\n"
+        "type: Table\n"
+        "title: Customers\n"
+        "generated: { by: reference_agent/gemini-2.5-pro, at: 2026-06-20T22:53:05Z }\n"
+        "verified: { by: human:ahormati, at: 2026-06-25T09:00:00Z }\n"
+        "stale_after: 2026-09-23\n"
+        "---\n\n# Overview\nOne row per customer.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "orders.md").write_text(
+        "---\ntype: Table\ntitle: Orders\ntimestamp: 2026-05-28T14:30:00Z\n---\n\n"
+        "# Overview\nSee the [customers table](/tables/customers.md).\n",
+        encoding="utf-8",
+    )
+
+    graph = read_okf_bundle(tmp_path)
+
+    assert len(graph.nodes) == 2
+    # (3) bundle-relative link resolved
+    assert len(graph.edges) == 1, "spec-RECOMMENDED absolute link produced no edge"
+    # (1) unquoted timestamps cannot break serialization
+    assert graph.to_json(), "graph is not JSON-serializable"
+    cust = next(n for n in graph.nodes if "customer" in n.id.lower())
+    okf = cust.metadata.get("okf") or {}
+    assert okf["stale_after"] == "2026-09-23"
+    # §5.2 MUST: a bare `verified` mapping reads as a one-element list
+    assert isinstance(okf["verified"], list) and len(okf["verified"]) == 1
+    assert okf["verified"][0]["by"] == "human:ahormati"
+    # (2) legacy unquoted `timestamp` still orders the concept
+    orders = next(n for n in graph.nodes if "order" in n.id.lower())
+    assert orders.metadata.get("updated_at"), "unquoted legacy timestamp was dropped"

@@ -39,6 +39,8 @@ bending the Obsidian projector, which is wikilink/dataview-specific.
 
 from __future__ import annotations
 
+import datetime as _dt
+
 import hashlib
 import os
 import re
@@ -538,13 +540,46 @@ def _updated_at(fm: dict) -> Optional[str]:
     """
     generated = fm.get("generated")
     if isinstance(generated, dict):
-        at = generated.get("at")
-        if isinstance(at, str) and at.strip():
-            return at.strip()
-    legacy = fm.get("timestamp")
-    if isinstance(legacy, str) and legacy.strip():
-        return legacy.strip()
+        at = _iso(generated.get("at"))
+        if at:
+            return at
+    return _iso(fm.get("timestamp"))
+
+
+
+def _iso(value: object) -> Optional[str]:
+    """Normalize a YAML scalar to an ISO string, or None.
+
+    PyYAML resolves an UNQUOTED ``2026-06-25T09:00:00Z`` to ``datetime`` — and
+    every ``at`` / ``stale_after`` / ``last_modified`` / ``usage_window`` in the
+    OKF spec is written unquoted, so this is the canonical form, not an edge
+    case. Timestamps reached ``metadata["okf"]`` as datetimes and
+    ``graph.to_json()`` then died with "Object of type datetime is not JSON
+    serializable" — §11 conformance held inside the library and was thrown away
+    by the only shipped consumer.
+    """
+    if isinstance(value, str):
+        return value.strip() or None
+    if isinstance(value, (_dt.datetime, _dt.date)):
+        return value.isoformat()
     return None
+
+
+def _json_safe(value: object) -> object:
+    """Recursively make a parsed-YAML value JSON-serializable.
+
+    Preserving unknown keys (§4.1) means storing whatever a foreign producer
+    wrote, and YAML's type resolution is richer than JSON's. Dates become ISO
+    strings; everything else is passed through untouched so round-tripping stays
+    lossless.
+    """
+    if isinstance(value, (_dt.datetime, _dt.date)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
 
 
 def _body_link_concepts(body: str, concept: str, root: Path) -> List[str]:
@@ -554,7 +589,16 @@ def _body_link_concepts(body: str, concept: str, root: Path) -> List[str]:
     for href in re.findall(r"\]\(([^)]+\.md)\)", body):
         if "://" in href:
             continue
-        target = os.path.normpath(os.path.join(from_dir, href))[:-3]  # drop .md
+        if href.startswith("/"):
+            # §6.1 bundle-relative, and the form the spec RECOMMENDS because it
+            # survives moving a document within its subdirectory. os.path.join
+            # discards its first argument when the second is absolute, so this
+            # used to resolve to "/tables/customers" and match no concept id —
+            # a foreign bundle following the spec's own recommendation imported
+            # as disconnected nodes.
+            target = os.path.normpath(href.lstrip("/"))[:-3]
+        else:
+            target = os.path.normpath(os.path.join(from_dir, href))[:-3]
         out.append(target.replace(os.sep, "/"))
     return out
 
@@ -634,7 +678,10 @@ def read_okf_bundle(in_dir: str | Path) -> ResearchGraph:
             meta: Dict[str, object] = {"okf_type": foreign} if foreign else {}
             preserved = _preserved_frontmatter(fm, body)
             if preserved:
-                meta[_METADATA_OKF_KEY] = preserved
+                # JSON-safe: YAML resolves unquoted timestamps to datetime,
+                # which graph.to_json() cannot serialize (§4.1 preservation
+                # must not make the graph unwritable).
+                meta[_METADATA_OKF_KEY] = _json_safe(preserved)
             updated_at = _updated_at(fm)
             if updated_at:
                 meta["updated_at"] = updated_at
