@@ -159,3 +159,54 @@ Each card reports `size` and `leaf_member_count` from the hierarchy sidecar, plu
 `live_member_count` — how many members the *current* graph actually carries. A
 `0` there means the scope is dead (a sidecar/graph skew): skip it rather than
 descend.
+
+## Agents writing to the graph
+
+`graph_write` (MCP) takes schema-validated typed nodes and edges with mandatory
+provenance, so an agent records a finding as *structure* rather than as prose an
+extractor has to guess the types back out of.
+
+It refuses rather than coerces: untyped edges, node or edge types outside the
+controlled vocabulary, dangling endpoints, and writes missing provenance are all
+rejected. Duplicate writes are idempotent. Agent-written nodes survive a full
+recompile, a deleted `graph.json`, `--limit`, and total corpus deletion.
+
+## Verifying a claim against the graph
+
+`verify_claim` (MCP) answers whether the graph licenses a triple. It takes
+`(subject, predicate, object)` — **there is no natural-language parameter**, by
+design, because a parser is what made the previous version answer SUPPORTED to
+the negation of a claim it supported.
+
+The verdict is a pure function of graph bytes: no LLM, no embedding, no fuzzy
+matching anywhere on the decision path.
+
+| Verdict | Meaning |
+|---|---|
+| `SUPPORTED` | the edge exists, carries its own evidence, and that text was re-grounded against the source file |
+| `PRESENT_UNEVIDENCED` | the edge exists but nothing document-backed stands behind it |
+| `CONTRADICTED` | a document-backed `contradicts_claim` between the same two endpoints |
+| `DISPUTED_UNEVIDENCED` | disagreement asserted, none of it evidenced |
+| `CONFLICTING` | both polarities document-backed — the tool declines to adjudicate |
+| `ABSENT` | this graph does not assert the triple. Not a refutation |
+| `NOT_RESOLVABLE` | an endpoint or predicate could not be resolved exactly |
+
+Two things it deliberately will not do. It never treats `supersedes` as
+refutation — that relation says a *node* was replaced, not that a triple is
+false. And an agent write can only ever *weaken* a provenance class, never
+upgrade one, so nothing an agent asserts can present as document-grounded.
+
+Worth knowing when reading results: on a real 15,284-edge graph about 40% of
+`SUPPORTED` verdicts are tautological — `evidenced_by` edges whose cited span is
+the edge's own target. True, but not informative.
+
+## Routing a question
+
+`tesserae ask` picks a retrieval path by question shape: single-entity lookups go
+to the cheap backend, multi-hop / "what changed" / "why" / corpus-wide questions
+go to the graph. Independent benchmarks put graphs ahead on multi-hop, temporal
+and synthesis questions, and *behind* on simple fact lookup and cost — so paying
+graph prices for every question is a loss.
+
+The decision appears in the returned envelope, so a cheap answer is auditable.
+Override it with `--route` on the CLI, or the `route` parameter on the MCP tool.

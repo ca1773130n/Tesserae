@@ -167,3 +167,42 @@ Chaque carte rapporte `size` et `leaf_member_count` du fichier annexe de
 hiérarchie, plus `live_member_count` — combien de membres le graphe *actuel*
 porte réellement. Un `0` là-bas signifie que la portée est morte
 (anomalie annexe/graphe) : sautez-la plutôt que de descendre.
+
+## Les agents écrivent dans le graphique
+
+\`graph_write\` (MCP) prend des nœuds et des arêtes typés validés par schéma avec provenance obligatoire, de sorte qu'un agent enregistre une découverte en tant que *structure* plutôt que comme prose qu'un extracteur doit deviner les types.
+
+Il refuse plutôt que de coercer : les arêtes non typées, les types de nœud ou d'arête en dehors du vocabulaire contrôlé, les extrémités flottantes et les écritures sans provenance sont tous rejetés. Les écritures dupliquées sont idempotentes. Les nœuds écrits par un agent survivent à une recompilation complète, \`graph.json\` supprimé, \`--limit\` et suppression complète du corpus.
+
+## Vérifier une affirmation contre le graphique
+
+\`verify_claim\` (MCP) répond si le graphique autorise un triple. Il prend \`(subject, predicate, object)\` — **il n'y a pas de paramètre en langage naturel**, par conception, car un parseur a fait que la version précédente réponde SUPPORTED à la négation d'une affirmation qu'elle soutenait.
+
+Le verdict est une fonction pure des octets du graphique : pas de LLM, pas d'imbrication, pas de correspondance floue nulle part sur le chemin de décision.
+
+| Verdict | Sens |
+|---|---|
+| \`SUPPORTED\` | l'arête existe, porte ses propres preuves, et ce texte a été re-ancré au fichier source |
+| \`PRESENT_UNEVIDENCED\` | l'arête existe mais rien adossé à un document ne la soutient |
+| \`CONTRADICTED\` | un \`contradicts_claim\` adossé à un document entre les deux mêmes extrémités |
+| \`DISPUTED_UNEVIDENCED\` | désaccord affirmé, aucun documenté |
+| \`CONFLICTING\` | les deux polarités adossées à un document — l'outil refuse d'arbitrer |
+| \`ABSENT\` | ce graphique n'affirme pas le triple. Pas une réfutation |
+| \`NOT_RESOLVABLE\` | une extrémité ou un prédicat ne peut pas être résolu exactement |
+
+Il y a deux choses qu'il ne fera délibérément pas. Il ne traite jamais \`supersedes\` comme une réfutation — cette relation dit qu'un *nœud* a été remplacé, non qu'un triple est faux. Et une écriture d'agent ne peut que *affaiblir* une classe de provenance, jamais en mettre à jour une, donc rien de ce qu'un agent affirme ne peut se présenter comme adossé à un document.
+
+Il vaut la peine de savoir en lisant les résultats : sur un vrai graphique de 15 284 arêtes, environ 40% des verdicts \`SUPPORTED\` sont tautologiques — des arêtes \`evidenced_by\` dont la portée citée est la cible propre de l'arête. Vrai, mais non informatif.
+
+## Acheminer une question
+
+\`tesserae ask\` choisit un chemin de récupération par forme de question : les recherches d'entité unique vont au backend bon marché, les questions multi-sauts / "qu'est-ce qui a changé" / "pourquoi" / corpus vont au graphique. Les tests indépendants montrent que les graphiques mènent sur les questions multi-sauts, temporelles et de synthèse, et *traînent* sur la recherche de faits simples et le coût — donc payer les tarifs du graphique pour chaque question est une perte.
+
+La décision apparaît dans l'enveloppe retournée, une réponse bon marché est donc auditable. Remplacez-la avec \`--route\` sur la CLI, ou le paramètre \`route\` sur l'outil MCP.
+
+RÈGLES :
+- NE traduisez PAS : graph_write, verify_claim, SUPPORTED, PRESENT_UNEVIDENCED, CONTRADICTED, DISPUTED_UNEVIDENCED, CONFLICTING, ABSENT, NOT_RESOLVABLE, supersedes, contradicts_claim, evidenced_by, subject, predicate, object, MCP, --route
+- Conservez tous les nombres exacts : 15 284, 40 %
+- Conservez la structure du tableau avec les mêmes en-têtes de colonne
+- Traduisez la prose naturellement pour chaque langue
+- Ajoutez à la fin de chaque fichier sans perturber le contenu existant

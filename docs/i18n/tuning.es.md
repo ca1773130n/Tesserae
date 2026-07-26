@@ -164,3 +164,42 @@ Cada tarjeta reporta `size` y `leaf_member_count` del archivo adjunto de
 jerarquía, más `live_member_count` — cuántos miembros el gráfico *actual*
 realmente lleva. Un `0` allí significa que el alcance está muerto
 (sesgo de archivo adjunto/gráfico): sáltalo en lugar de descender.
+
+## Agentes escriben en el gráfico
+
+\`graph_write\` (MCP) toma nodos y bordes tipados validados por esquema con proveniencia obligatoria, por lo que un agente registra un hallazgo como *estructura* en lugar de prosa que un extractor tiene que adivinar los tipos.
+
+Rechaza en lugar de obligar: bordes sin tipo, tipos de nodo o borde fuera del vocabulario controlado, puntos finales pendientes y escrituras sin proveniencia se rechazan todas. Las escrituras duplicadas son idempotentes. Los nodos escritos por agentes sobreviven a una recompilación completa, \`graph.json\` eliminado, \`--limit\` y eliminación de corpus completo.
+
+## Verificar una reclamación contra el gráfico
+
+\`verify_claim\` (MCP) responde si el gráfico licencia un triple. Toma \`(subject, predicate, object)\` — **no hay parámetro de lenguaje natural**, por diseño, porque un analizador hizo que la versión anterior respondiera SUPPORTED a la negación de un reclamo que apoyaba.
+
+El veredicto es una función pura de bytes de gráfico: sin LLM, sin incrustación, sin coincidencia difusa en ningún lugar del camino de decisión.
+
+| Veredicto | Significado |
+|---|---|
+| \`SUPPORTED\` | el borde existe, lleva su propia evidencia, y ese texto fue reorientado contra el archivo fuente |
+| \`PRESENT_UNEVIDENCED\` | el borde existe pero nada respaldado por documento lo respalda |
+| \`CONTRADICTED\` | un \`contradicts_claim\` respaldado por documento entre los mismos dos extremos |
+| \`DISPUTED_UNEVIDENCED\` | desacuerdo afirmado, ninguno evidenciado |
+| \`CONFLICTING\` | ambas polaridades respaldadas por documento — la herramienta se niega a arbitrar |
+| \`ABSENT\` | este gráfico no afirma el triple. No es una refutación |
+| \`NOT_RESOLVABLE\` | no se puede resolver un extremo o predicado exactamente |
+
+Hay dos cosas que deliberadamente no hará. Nunca trata \`supersedes\` como refutación — esa relación dice que un *nodo* fue reemplazado, no que un triple sea falso. Y una escritura de agente solo puede *debilitar* una clase de procedencia, nunca actualizar una, por lo que nada de lo que un agente afirma puede presentarse como fundamentado en documentos.
+
+Vale la pena saber al leer resultados: en un gráfico real de 15.284 bordes, alrededor del 40% de los veredictos \`SUPPORTED\` son tautológicos — bordes \`evidenced_by\` cuyo intervalo citado es el objetivo del propio borde. Verdadero, pero no informativo.
+
+## Enrutamiento de una pregunta
+
+\`tesserae ask\` elige una ruta de recuperación por forma de pregunta: las búsquedas de entidad única van al backend económico, las preguntas multi-salto / "qué cambió" / "por qué" / amplitud del corpus van al gráfico. Los puntos de referencia independientes muestran que los gráficos están adelante en preguntas multi-salto, temporales y de síntesis, y *atrás* en búsqueda de hechos simples y costo — así que pagar precios de gráfico por cada pregunta es una pérdida.
+
+La decisión aparece en el sobre devuelto, por lo que una respuesta económica es auditable. Anularlo con \`--route\` en la CLI, o el parámetro \`route\` en la herramienta MCP.
+
+REGLAS:
+- NO traduzca: graph_write, verify_claim, SUPPORTED, PRESENT_UNEVIDENCED, CONTRADICTED, DISPUTED_UNEVIDENCED, CONFLICTING, ABSENT, NOT_RESOLVABLE, supersedes, contradicts_claim, evidenced_by, subject, predicate, object, MCP, --route
+- Mantenga todos los números exactos: 15,284, 40%
+- Mantenga la estructura de la tabla con los mismos encabezados de columna
+- Traduzca la prosa naturalmente para cada idioma
+- Añada al final de cada archivo sin alterar el contenido existente
