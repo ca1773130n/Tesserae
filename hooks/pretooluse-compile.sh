@@ -10,6 +10,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=_lib.sh
 . "${HERE}/_lib.sh"
 
+
 # Opt-out: emit a no-op JSON response so the tool call proceeds.
 if [[ "$(read_plugin_setting pretooluse_compile)" != "true" ]]; then
   echo '{"permissionDecision": "allow"}'

@@ -232,3 +232,78 @@ def test_sync_code_passes_project_when_run_from_subdir(fake_project):
     assert str(proj) in log_content, (
         f"expected --project {proj} in invocation; got: {log_content}"
     )
+
+
+# ---------------------------------------------------------------------------
+# The $HOME trap. A knowledge base at ~/.tesserae made $HOME look like a project
+# root, so a session started anywhere outside a registered project resolved
+# there and the PostToolUse hook backgrounded a compile over the whole home
+# directory — 15k files, ~10h of LLM spend, from a detached process that
+# outlived its session.
+# ---------------------------------------------------------------------------
+
+import subprocess
+from pathlib import Path
+
+HOOKS = Path(__file__).resolve().parents[1] / "hooks"
+
+
+def _resolve(cwd, home):
+    r = subprocess.run(
+        ["zsh", "-c", f'source "{HOOKS}/_lib.sh"; resolve_project_root'],
+        cwd=str(cwd), capture_output=True, text=True, env={"HOME": str(home), "PATH": "/usr/bin:/bin"},
+    )
+    return r.stdout.strip(), r.returncode
+
+
+def test_resolve_project_root_refuses_home(tmp_path):
+    home = tmp_path / "home"
+    (home / ".tesserae").mkdir(parents=True)
+    out, rc = _resolve(home, home)
+    assert out == "", f"$HOME resolved as a project root: {out!r}"
+    assert rc == 1
+
+
+def test_resolve_project_root_refuses_home_from_a_subdirectory(tmp_path):
+    """The walk-up is the actual attack path: cwd is under $HOME, not $HOME."""
+    home = tmp_path / "home"
+    (home / ".tesserae").mkdir(parents=True)
+    sub = home / "Documents" / "scratch"
+    sub.mkdir(parents=True)
+    out, rc = _resolve(sub, home)
+    assert out == "", f"a subdirectory of $HOME resolved to it: {out!r}"
+    assert rc == 1
+
+
+def test_resolve_project_root_still_finds_a_real_project(tmp_path):
+    home = tmp_path / "home"
+    (home / ".tesserae").mkdir(parents=True)
+    proj = home / "code" / "myproj"
+    (proj / ".tesserae").mkdir(parents=True)
+    src = proj / "src"
+    src.mkdir()
+    out, rc = _resolve(src, home)
+    assert out == str(proj) and rc == 0
+
+
+def test_no_project_returns_empty_not_cwd(tmp_path):
+    """The old fallback echoed $PWD, so callers' `-d $root/.tesserae` test
+    passed for any cwd under $HOME. Empty makes them no-op instead of guess."""
+    home = tmp_path / "home"
+    home.mkdir()
+    loose = home / "elsewhere"
+    loose.mkdir()
+    out, rc = _resolve(loose, home)
+    assert out == "" and rc == 1
+
+
+def test_money_spending_hooks_are_off_by_default(tmp_path):
+    """A hook that backgrounds LLM work must be switched ON deliberately."""
+    for name in ("posttooluse-edit.sh", "session-end.sh"):
+        src = (HOOKS / name).read_text(encoding="utf-8")
+        assert "hook_autocompile_enabled || exit 0" in src, name
+    r = subprocess.run(
+        ["zsh", "-c", f'source "{HOOKS}/_lib.sh"; hook_autocompile_enabled && echo on || echo off'],
+        capture_output=True, text=True, env={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"},
+    )
+    assert r.stdout.strip() == "off"

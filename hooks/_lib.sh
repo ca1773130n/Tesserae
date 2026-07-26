@@ -42,9 +42,24 @@ find_tesserae() {
 # fall back to git toplevel, finally $PWD itself.
 # --------------------------------------------------------------------
 resolve_project_root() {
+  # Walk up to the first .tesserae/ — but REFUSE $HOME, and refuse to guess.
+  #
+  # This cost real money. A knowledge base at ~/.tesserae makes $HOME look like
+  # a project root, so every session started outside a registered project
+  # resolved there and the PostToolUse hook backgrounded a compile over the
+  # entire home directory — 15k files, a 795MB graph, ~10h of LLM spend from a
+  # detached process that outlived the session that spawned it.
+  #
+  # Two changes, both refusals:
+  #   1. $HOME is never a project root, however it is reached.
+  #   2. The old fallback `echo "$PWD"; return 0` claimed ANY directory was a
+  #      project. Callers then tested -d "$root/.tesserae" and, for a cwd under
+  #      $HOME, that test passed. Returning empty with rc=1 makes callers no-op
+  #      instead of guessing.
   local candidate="$PWD"
   while [[ "$candidate" != "/" && -n "$candidate" ]]; do
     if [[ -d "${candidate}/.tesserae" ]]; then
+      [[ "$candidate" == "$HOME" ]] && { echo ""; return 1; }
       echo "$candidate"
       return 0
     fi
@@ -52,11 +67,22 @@ resolve_project_root() {
   done
   local git_root
   if git_root=$(git rev-parse --show-toplevel 2>/dev/null) && [[ -d "${git_root}/.tesserae" ]]; then
+    [[ "$git_root" == "$HOME" ]] && { echo ""; return 1; }
     echo "$git_root"
     return 0
   fi
-  echo "$PWD"
-  return 0
+  echo ""
+  return 1
+}
+
+# Opt-in gate for every hook that spends money. A hook that backgrounds LLM
+# work must be switched ON deliberately, not switched off after the bill.
+# Truthy: 1 true yes on. Anything else, including unset, is OFF.
+hook_autocompile_enabled() {
+  case "${TESSERAE_HOOK_AUTOCOMPILE:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 # --------------------------------------------------------------------

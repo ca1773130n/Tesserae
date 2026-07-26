@@ -10,6 +10,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=_lib.sh
 . "${HERE}/_lib.sh"
 
+
 # Opt-out check.
 if [[ "$(read_plugin_setting session_start)" != "true" ]]; then
   exit 0
