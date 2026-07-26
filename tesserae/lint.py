@@ -808,8 +808,17 @@ class WikiLinter:
                 f"{_REASONING_EDGE_FLOOR_PCT}%."
             ),
             suggested_fix=(
-                "TESSERAE_CONTRAST_PASS=1 tesserae compile  # mint typed "
-                "reasoning edges between blocked claim/finding pairs"
+                # This used to advertise TESSERAE_CONTRAST_PASS=1, which has had
+                # no implementation since the contrast pass was dropped for
+                # measured zero yield. On BOTH real graphs the ratio is below the
+                # floor (Tesserae 1141/15284 = 7.5%, ai-accounts 114/1892 = 6.0%),
+                # so every real `tesserae lint` run handed the user a flag that
+                # silently did nothing. Name a path that exists instead.
+                "No automated pass mints these: reasoning edges come from "
+                "extraction, not from a post-hoc pairing over the compiled "
+                "graph (measured — only 12.4% of assertion nodes carry any "
+                "subject anchor, and 16 topic hubs cover them). Add them "
+                "deliberately with the typed zero-LLM `graph_write` path."
                 if below
                 else None
             ),
