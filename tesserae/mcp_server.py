@@ -44,6 +44,7 @@ from .research_graph import (
 )
 from .retrieval.ppr import personalized_pagerank
 from .temporal import TemporalFactProjector, search_facts, timeline
+from .verify import verify_claim
 from .wiki_projector import is_code_graph_node, kind_for_node
 from .wiki_store import WikiPageStore
 
@@ -852,6 +853,67 @@ class LLMWikiMCPServer:
                 },
             },
             {
+                "name": "verify_claim",
+                "description": (
+                    "Verify ONE triple against the graph — exact lookup, no LLM, "
+                    "no fuzzy matching, no ranked results. This is not a search "
+                    "tool: it returns {verdict, reason, triple, citation, "
+                    "provenance} where verdict is SUPPORTED / CONTRADICTED / "
+                    "NOT_FOUND. NOT_FOUND means the graph does not assert the "
+                    "triple; it is NOT a refutation — read the `reason` slug "
+                    "(subject_unresolved and ambiguous_object are resolution "
+                    "failures, triple_absent is a genuine absence). Endpoints "
+                    "resolve by exact node id, then exact case-folded name, then "
+                    "exact case-folded alias, and nothing else; ambiguity is "
+                    "refused rather than guessed. Chain search_nodes -> "
+                    "verify_claim when you only have prose."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop, "agent": agent_prop,
+                        "subject": {
+                            "type": "string",
+                            "description": "Subject endpoint: node id, exact name, or exact alias.",
+                        },
+                        "predicate": {
+                            "type": "string",
+                            "description": (
+                                "Edge type — must be a verbatim member of the "
+                                "ontology (see the `schema` tool). Synonyms are "
+                                "not resolved."
+                            ),
+                        },
+                        "object": {
+                            "type": "string",
+                            "description": "Object endpoint: node id, exact name, or exact alias.",
+                        },
+                        "claim": {
+                            "type": "string",
+                            "description": (
+                                "Natural-language convenience, ignored when "
+                                "subject/predicate/object are supplied. Resolves "
+                                "only when a verbatim scan finds exactly one "
+                                "subject, one predicate token and one object; "
+                                "otherwise NOT_FOUND/nl_not_resolvable."
+                            ),
+                        },
+                        "reground": {
+                            "type": "boolean",
+                            "default": True,
+                            "description": (
+                                "Re-check the cited evidence span against the "
+                                "source file on disk (evidence from outside the "
+                                "graph). Only sets provenance.regrounded; never "
+                                "changes the verdict. null means unknown."
+                            ),
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            {
                 "name": "search_facts",
                 "description": "Search Graphiti-style temporal facts projected from the validated ResearchGraph, including evidence and provenance.",
                 "inputSchema": {
@@ -1378,6 +1440,79 @@ class LLMWikiMCPServer:
                         "agent": {"type": "string", "description": "Owning agent key (optional; scopes the absorbed-status check to that agent's artifact)."},
                     },
                     "required": ["node_id"],
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "graph_write",
+                "description": (
+                    "Write typed nodes + edges into the project graph directly — "
+                    "no markdown, no LLM extraction pass. The write is appended "
+                    "to an append-only overlay and replayed as a compile producer, "
+                    "so it SURVIVES recompilation instead of being erased by it. "
+                    "Strict: an unknown node/edge type, an edge without evidence, "
+                    "an edge endpoint not in this payload, or a provenance block "
+                    "without an external anchor (url | file | commit | session_id) "
+                    "is REFUSED — nothing is silently dropped. Node types owned by "
+                    "compile producers (Session, CodeFile, CommunitySummary, "
+                    "Agent, ...) are refused too. Writes are durable immediately "
+                    "and appear in the graph on the next compile; pass "
+                    "materialize=true to compile now and read them back. Check the "
+                    "`existing` flag per node: false means you minted a NEW node "
+                    "rather than attaching to the one you meant."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop, "agent": agent_prop,
+                        "nodes": {
+                            "type": "array",
+                            "description": "Nodes to assert.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "type": {"type": "string", "description": "Member of the node-type ontology (see `schema`)."},
+                                    "description": {"type": "string"},
+                                    "aliases": {"type": "array", "items": {"type": "string"}},
+                                    "metadata": {"type": "object"},
+                                },
+                                "required": ["name", "type"],
+                            },
+                        },
+                        "edges": {
+                            "type": "array",
+                            "description": "Edges between nodes in this payload. `evidence` is required.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "source": {"type": "string", "description": "A node `name` from this payload."},
+                                    "target": {"type": "string", "description": "A node `name` from this payload."},
+                                    "type": {"type": "string", "description": "Member of the edge-type ontology (see `schema`)."},
+                                    "evidence": {"type": "string", "description": "Why this edge holds. Required, non-empty."},
+                                },
+                                "required": ["source", "target", "type", "evidence"],
+                            },
+                        },
+                        "provenance": {
+                            "type": "object",
+                            "description": (
+                                "Requires `agent` plus at least one external "
+                                "anchor: url | file | commit | session_id."
+                            ),
+                        },
+                        "materialize": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "Run compile(changed_only=True) so the write is "
+                                "readable immediately. Costs seconds; the write "
+                                "is already durable without it."
+                            ),
+                        },
+                    },
+                    "required": ["nodes", "agent", "provenance"],
                     "additionalProperties": False,
                 },
             },
@@ -2056,6 +2191,17 @@ class LLMWikiMCPServer:
                 use_ppr=bool(args.get("use_ppr") or False),
                 budget_chars=_budget_chars_arg(args),
             )
+        if name == "verify_claim":
+            graph, project_root = self._load_requested_graph_with_root(args)
+            return verify_claim(
+                graph,
+                subject=(str(args["subject"]) if args.get("subject") else None),
+                predicate=(str(args["predicate"]) if args.get("predicate") else None),
+                obj=(str(args["object"]) if args.get("object") else None),
+                claim=(str(args["claim"]) if args.get("claim") else None),
+                reground=bool(args.get("reground", True)),
+                project_root=project_root,
+            )
         if name == "search_facts":
             facts = TemporalFactProjector().project(self._load_requested_graph(args))
             result = search_facts(facts, query=str(args.get("query", "")), limit=int(args.get("limit", 10)), current_only=bool(args.get("current_only", False)))
@@ -2321,6 +2467,8 @@ class LLMWikiMCPServer:
                 tldr=bool(args.get("tldr", True)),
             )
             return report
+        if name == "graph_write":
+            return self._mcp_graph_write(args)
         if name == "list_communities":
             graph = self._load_requested_graph(args)
             return self._mcp_list_communities(
@@ -4202,6 +4350,51 @@ class LLMWikiMCPServer:
             "No graph specified. Pass graph_path or project, cd into a registered project, "
             "start the MCP server with --graph, or pass --graph-store-url."
         )
+
+    def _mcp_graph_write(self, args: JSONDict) -> JSONDict:
+        """Append one typed agent write to the project's overlay.
+
+        The write is durable in ~1 ms and lands in ``graph.json`` on the next
+        compile. ``materialize=true`` compiles now (``changed_only=True``, which
+        on an unchanged corpus takes the no-op arm — no extraction, no LLM).
+        """
+        from .agent_write import record_agent_write
+        from .locking import CompileLockHeldError
+        from .project import ProjectWiki
+
+        agent_key = str(args.get("agent") or "").strip()
+        if not agent_key:
+            raise ValueError("graph_write requires 'agent' (the writing agent's key)")
+        project_root = self._resolve_project_root_for_ask(args)
+        wiki = ProjectWiki.load(project_root)
+
+        graph = None
+        if wiki.paths.graph.exists():
+            try:
+                graph = self._load_graph_cached(wiki.paths.graph)
+            except Exception:  # noqa: BLE001 — an unreadable graph must not block a write
+                graph = None
+
+        result = record_agent_write(
+            wiki.paths.agent_writes,
+            {
+                "nodes": args.get("nodes") or [],
+                "edges": args.get("edges") or [],
+                "provenance": args.get("provenance"),
+            },
+            agent_key,
+            graph=graph,
+        )
+        result["materialized"] = False
+        if args.get("materialize"):
+            try:
+                wiki.compile(changed_only=True)
+                result["materialized"] = True
+            except CompileLockHeldError as exc:
+                # The write already succeeded; a busy compile must not turn a
+                # durable write into an error (same shape ``ingest_clip`` uses).
+                result["materialize_error"] = str(exc)
+        return result
 
     def _drill_down(self, args: JSONDict) -> JSONDict:
         """Resolve a distillate member_ref against raw L0 — audit-logged (§6.4).
