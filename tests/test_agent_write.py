@@ -85,6 +85,30 @@ def _written_ids(response) -> set:
 # ---------------------------------------------------------------------------
 
 
+def test_minted_edges_carry_the_agent_stamp(tmp_path):
+    """The marker must live on the EDGE, not only on the nodes.
+
+    ``align_overlay`` carries node provenance across the same-type redirect, but
+    cross-type dedup drops a loser node's metadata wholesale while redirecting
+    its edges onto the survivor — so an agent write that fuses into curated
+    nodes of another type leaves no node-level trace at all. Edge metadata
+    survives every dedup pass verbatim (``research_graph`` re-emits redirected
+    edges with ``metadata=edge.metadata``), and ``validate_write``'s edge
+    whitelist accepts only source/target/type/evidence, so a payload can neither
+    forge nor clear this. ``verify_claim`` reads it to refuse SUPPORTED for
+    anything an agent asserted.
+    """
+    jsonl = tmp_path / "agent_writes.jsonl"
+    response = record_agent_write(jsonl, _payload(), AGENT)
+    replayed = replay_agent_writes(jsonl)
+    declared = [e for e in replayed.edges if e.type == "supports_claim"]
+    assert len(declared) == 1
+    assert declared[0].metadata == {
+        "agent_write_id": response["write_id"],
+        "agent_key": AGENT,
+    }
+
+
 def test_agent_write_rejects_unknown_edge_type():
     """``graph_from_llm_payload`` DROPS an unknown edge type and prints a note.
 

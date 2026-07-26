@@ -44,6 +44,7 @@ from .research_graph import (
 )
 from .retrieval.ppr import personalized_pagerank
 from .temporal import TemporalFactProjector, search_facts, timeline
+from .verify import verify_claim
 from .wiki_projector import is_code_graph_node, kind_for_node
 from .wiki_store import WikiPageStore
 
@@ -848,6 +849,66 @@ class LLMWikiMCPServer:
                         },
                         "budget_chars": budget_chars_prop,
                     },
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "verify_claim",
+                "description": (
+                    "Verify ONE triple against the graph — exact lookup, no LLM, "
+                    "no fuzzy matching, no ranked results, NO natural language. "
+                    "This is not a search tool. Returns {verdict, reason, triple, "
+                    "citation, provenance, advisory}. verdict is one of: "
+                    "SUPPORTED (the edge exists AND its own evidence is a "
+                    "verbatim document span), PRESENT_UNEVIDENCED (the edge "
+                    "exists but nothing outside the graph backs it), "
+                    "CONTRADICTED (an evidenced contradicts_claim edge joins "
+                    "exactly these two nodes and the edge itself is absent), "
+                    "DISPUTED_UNEVIDENCED (an unevidenced contradiction), "
+                    "CONFLICTING (the graph asserts both polarities — this tool "
+                    "does not adjudicate), ABSENT (the graph does not assert "
+                    "this triple), NOT_RESOLVABLE (endpoints or predicate could "
+                    "not be resolved exactly). ONLY SUPPORTED and CONTRADICTED "
+                    "are confident. ABSENT and PRESENT_UNEVIDENCED are NOT "
+                    "refutations — do not read either as 'false'. Endpoints "
+                    "resolve by exact node id, then exact case-folded name, then "
+                    "exact case-folded alias, and nothing else; ambiguity is "
+                    "refused rather than guessed. `supersedes` never produces a "
+                    "verdict — it reports in advisory.superseded_endpoints. "
+                    "Chain search_nodes -> verify_claim when you only have prose."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "graph_path": graph_path_prop,
+                        "project": project_prop, "agent": agent_prop,
+                        "subject": {
+                            "type": "string",
+                            "description": "Subject endpoint: node id, exact name, or exact alias.",
+                        },
+                        "predicate": {
+                            "type": "string",
+                            "description": (
+                                "Edge type — must be a verbatim member of the "
+                                "ontology (see the `schema` tool). Synonyms are "
+                                "not resolved."
+                            ),
+                        },
+                        "object": {
+                            "type": "string",
+                            "description": "Object endpoint: node id, exact name, or exact alias.",
+                        },
+                        "reground": {
+                            "type": "boolean",
+                            "default": True,
+                            "description": (
+                                "Re-read the cited span from its source file. "
+                                "Advisory only: it sets provenance.regrounded "
+                                "and can never change the verdict."
+                            ),
+                        },
+                    },
+                    "required": ["subject", "predicate", "object"],
                     "additionalProperties": False,
                 },
             },
@@ -2134,6 +2195,16 @@ class LLMWikiMCPServer:
                 include_superseded=bool(args.get("include_superseded", False)),
                 use_ppr=bool(args.get("use_ppr") or False),
                 budget_chars=_budget_chars_arg(args),
+            )
+        if name == "verify_claim":
+            graph, project_root = self._load_requested_graph_with_root(args)
+            return verify_claim(
+                graph,
+                subject=str(args.get("subject") or ""),
+                predicate=str(args.get("predicate") or ""),
+                obj=str(args.get("object") or ""),
+                reground=bool(args.get("reground", True)),
+                project_root=project_root,
             )
         if name == "search_facts":
             facts = TemporalFactProjector().project(self._load_requested_graph(args))
