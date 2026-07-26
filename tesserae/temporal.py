@@ -145,8 +145,8 @@ def _end_sort_key(entry: Tuple[str, str, str]) -> Tuple[datetime, str, str]:
 def _boundary_precedes_start(valid_from: Optional[str], valid_to: Optional[str]) -> bool:
     """True when a derived end boundary is NOT strictly after the start.
 
-    This happens for exactly the reasoning edges the contrast pass mints: for
-    ``B criticizes F`` alongside ``F supersedes B``, ``valid_from`` is
+    This happens whenever two claims carry reasoning edges in both directions:
+    for ``B criticizes F`` alongside ``F supersedes B``, ``valid_from`` is
     ``max(ts(B), ts(F)) == ts(F)`` and the derived ``valid_to`` is also
     ``ts(F)``. The half-open ``[from, to)`` in :func:`facts_as_of` is then
     empty at EVERY instant, so the fact silently vanishes from every
