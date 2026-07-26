@@ -183,7 +183,7 @@ matching anywhere on the decision path.
 
 | Verdict | Meaning |
 |---|---|
-| `SUPPORTED` | the edge exists, carries its own evidence, and that text was re-grounded against the source file |
+| `SUPPORTED` | the edge exists, carries its own evidence, and that text was re-grounded against the source file. **Check `citation.evidence_span.is_edge_endpoint` before quoting it** |
 | `PRESENT_UNEVIDENCED` | the edge exists but nothing document-backed stands behind it |
 | `CONTRADICTED` | a document-backed `contradicts_claim` between the same two endpoints |
 | `DISPUTED_UNEVIDENCED` | disagreement asserted, none of it evidenced |
@@ -196,9 +196,24 @@ refutation — that relation says a *node* was replaced, not that a triple is
 false. And an agent write can only ever *weaken* a provenance class, never
 upgrade one, so nothing an agent asserts can present as document-grounded.
 
-Worth knowing when reading results: on a real 15,284-edge graph about 40% of
-`SUPPORTED` verdicts are tautological — `evidenced_by` edges whose cited span is
-the edge's own target. True, but not informative.
+Worth knowing when reading results: a `SUPPORTED` verdict is not automatically an
+informative one. On a real 15,284-edge graph, 827 of 2,088 `SUPPORTED` verdicts
+(39.6%) cite a span that is the deciding edge's *own endpoint* — reading the span
+just re-reads the edge. Every one of them is marked
+`citation.evidence_span.is_edge_endpoint: true`; the other 1,261 carry `false` and
+cite a third node a document backs separately.
+
+Read the flag the right way round: `true` means **uninformative, not false**. The
+verdict is unchanged and still true — "C evidenced_by S" really is licensed by
+reading S. To select the citations worth quoting to a human, filter on
+
+```
+verdict == "SUPPORTED" and not citation["evidence_span"]["is_edge_endpoint"]
+```
+
+and do **not** reinvent the test as `node_id == edge.target`: a span can be the
+deciding edge's *source* (729 spans source 974 `part_of` / `discussed_in` edges in
+that same graph). The key is present exactly when `evidence_span` is non-null.
 
 ## Routing a question
 
