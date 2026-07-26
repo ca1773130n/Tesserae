@@ -19,6 +19,7 @@ from types import SimpleNamespace
 from typing import Dict, Iterable, List, Mapping, Optional, Set, Tuple
 
 from .agent_harness import AgentHarnessAdapter, SUPPORTED_AGENT_HARNESSES, install_instruction_pointer
+from .agent_write import align_overlay, replay_agent_writes
 from .batch import BatchIngestRunner, read_markdown_text, sha256_text
 from .code_graph import (
     CodeGraphExtractor,
@@ -254,6 +255,12 @@ class ProjectPaths:
     # state (like ``harness_sessions``), never part of any output-hash scope.
     session_chunks: Path = Path(".tesserae/session_chunks.db")
     session_chunks_lock: Path = Path(".tesserae/session_chunks.lock")
+    # Agent-authored graph overlay (see ``tesserae.agent_write``). Append-only
+    # JSONL replayed as a 5th producer (``__agent_write__``) on every compile,
+    # which is what keeps agent writes from being erased by recompilation.
+    # INPUT state like ``extraction_feedback`` — never part of any output-hash
+    # scope, so ``output_snapshot``'s allowlists deliberately exclude it.
+    agent_writes: Path = Path(".tesserae/agent-writes.jsonl")
 
 
 class ProjectWiki:
@@ -298,6 +305,7 @@ class ProjectWiki:
             code_graph_cache=self.root / "code-graph-cache.json",
             session_chunks=self.root / "session_chunks.db",
             session_chunks_lock=self.root / "session_chunks.lock",
+            agent_writes=self.root / "agent-writes.jsonl",
         )
         # In-memory override of the Obsidian vault location, set by
         # obsidian-sync --vault for the duration of a single CLI call.
@@ -1451,6 +1459,34 @@ class ProjectWiki:
         # discussed_in/derived_from_session edges from the harness transcripts
         # every compile. Attribute the minted ids to "__session_graph__".
         self._record_producer_provenance("__session_graph__", _before_session, graph)
+        # Agent-write overlay (5th producer). Placement is load-bearing three
+        # times: AFTER the session graph so the ``Agent`` anchor node already
+        # exists and merges by id instead of forking; BEFORE the canonicalizing
+        # ``merge_graphs([graph])`` below so agent nodes get the same dedup /
+        # canonicalization every other node gets and Louvain sees them; and
+        # extraction-FIRST in the merge list so ``prefer_research_node``'s
+        # ``chosen = existing`` default means extraction wins payload conflicts
+        # — an agent must not be able to rename a curated node out from under
+        # it. This block sits outside the batch path on purpose, so it also
+        # runs on the ``noop_skip`` arm: ``compile --changed-only`` over an
+        # unchanged corpus still materializes new agent writes with zero
+        # extraction.
+        _before_agent = graph
+        # ``align_overlay`` first: an agent name that hashes to a different
+        # stable id than the extracted node (e.g. a Paper whose id is seeded
+        # from its arXiv id) would otherwise FORK, and the same-type collapse
+        # picks its winner with ``max((len(name), id))`` — a lexicographic
+        # coin-flip the agent's node can win, renaming a curated node.
+        overlay = align_overlay(
+            replay_agent_writes(self.paths.agent_writes), graph
+        )
+        if overlay.nodes:
+            graph = merge_graphs([graph, overlay])
+            # Codex #6: without this the reconcile strips the rows and every
+            # later incremental compile tombstones the agent nodes as stale.
+            self._record_producer_provenance(
+                "__agent_write__", _before_agent, graph
+            )
         # Canonicalize the merged graph BEFORE the community-summary pass.
         # ``merge_graphs`` re-runs the same-type/cross-type dedup and edge
         # redirection over the whole node universe, so an incremental compile
