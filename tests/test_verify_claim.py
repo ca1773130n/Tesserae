@@ -755,3 +755,147 @@ def test_deciding_edge_choice_is_order_independent():
     va = verify_claim(a, subject="P:p", predicate="supports_claim", obj="C:q")["verdict"]
     vb = verify_claim(b, subject="P:p", predicate="supports_claim", obj="C:q")["verdict"]
     assert va == vb == "SUPPORTED", f"order-dependent: {va} vs {vb}"
+
+
+# ---------------------------------------------------------------------------
+# `tesserae verify-claim` CLI verb — the non-MCP bridge (parser/dispatch/stdout)
+#
+# Same reason `graph-map` got one in 0.25: consumers that reach tesserae by
+# subprocess rather than as a Python dep cannot call an MCP-only tool at all.
+# ---------------------------------------------------------------------------
+
+
+def _cli_project(tmp_path: Path, *, span_file: str | None = None) -> Path:
+    """A project on disk holding ``evidenced_graph()``.
+
+    ``span_file`` writes ``docs/alpha.md`` with that content, which is what
+    re-grounding reads. Omit it and the file is absent -> ``regrounded is None``.
+    """
+    root = tmp_path / "proj"
+    tess = root / ".tesserae"
+    tess.mkdir(parents=True)
+    (tess / "graph.json").write_text(evidenced_graph().to_json(indent=2), encoding="utf-8")
+    (tess / "config.json").write_text("{}\n", encoding="utf-8")
+    if span_file is not None:
+        (root / "docs").mkdir(parents=True, exist_ok=True)
+        (root / "docs" / "alpha.md").write_text(span_file, encoding="utf-8")
+    return root
+
+
+def _cli_verify(root: Path, capsys, *extra: str) -> tuple[int, dict, str]:
+    import tesserae.cli as cli
+
+    rc = cli.main([
+        "verify-claim", "--project", str(root),
+        "--subject", "Alpha", "--predicate", "supports_claim", "--object", "Beta",
+        *extra,
+    ])
+    # ONE readouterr per run — a second call in the test would see an empty buffer,
+    # so stderr comes back from here rather than being re-read at the call site.
+    captured = capsys.readouterr()
+    return rc, (json.loads(captured.out) if captured.out.strip() else {}), captured.err
+
+
+def test_cli_verify_claim_emits_the_tool_payload(tmp_path, capsys) -> None:
+    """The verb emits exactly what the MCP tool returns, as JSON on stdout."""
+    root = _cli_project(tmp_path, span_file=SENTENCE)
+    rc, payload, _ = _cli_verify(root, capsys)
+    assert rc == 0
+    assert payload["verdict"] == "SUPPORTED"
+    assert set(payload) == {"verdict", "reason", "triple", "citation", "provenance", "advisory"}
+    # Endpoints resolved to ids by name, not by prose parsing.
+    assert payload["triple"]["subject_id"] == "P:p"
+    assert payload["triple"]["object_id"] == "C:q"
+    assert payload["provenance"]["class"] == "document_span"
+    assert payload["provenance"]["regrounded"] is True
+
+
+def test_cli_verify_claim_refusal_still_exits_zero(tmp_path, capsys) -> None:
+    """A refusal is a VERDICT, not a CLI failure.
+
+    Consumers key on .verdict; mapping seven verdicts onto $? would invent the
+    confident/not-confident split the verifier refuses to make. Only a verifier
+    that could not RUN gets a nonzero exit.
+    """
+    root = _cli_project(tmp_path, span_file=SENTENCE)
+    rc, payload, _ = _cli_verify(root, capsys, "--subject", "NoSuchNode")
+    assert rc == 0
+    assert payload["verdict"] == "NOT_RESOLVABLE"
+    assert payload["reason"] == "subject_unresolved"
+
+
+def test_cli_verify_claim_needs_a_compiled_graph(tmp_path, capsys) -> None:
+    """No graph exits 2 with the remedy — not a traceback, not empty JSON."""
+    root = tmp_path / "bare"
+    (root / ".tesserae").mkdir(parents=True)
+    (root / ".tesserae" / "config.json").write_text("{}\n", encoding="utf-8")
+    rc, payload, err = _cli_verify(root, capsys)
+    assert rc == 2 and payload == {}  # no half-written JSON on the happy channel
+    assert "Traceback" not in err and "tesserae compile" in err
+
+
+def test_cli_verify_claim_rejects_prose(tmp_path, capsys) -> None:
+    """There is no --claim. The NL surface is unrepresentable at the CLI too."""
+    import tesserae.cli as cli
+
+    root = _cli_project(tmp_path, span_file=SENTENCE)
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["verify-claim", "--project", str(root), "--claim", "Alpha supports Beta"])
+    assert exc.value.code == 2
+
+
+# ---------------------------------------------------------------------------
+# Re-grounding IS part of the gate (Agented bug report, 2026-07-27)
+#
+# The module docstring and the verify_claim MCP schema both claimed re-grounding
+# "can never change the verdict", while ``_Chain.document_backed`` excludes
+# ``regrounded is False``. The implementation was the correct half — 198 of 2,088
+# SUPPORTED verdicts on the real graph cited a span provably not in its file — so
+# the docs were fixed. These two tests are what make that non-reversible.
+# ---------------------------------------------------------------------------
+
+
+def test_reground_unchecked_never_demotes():
+    """`None` is not `False`: refusing on "not checked" would break reground=False."""
+    graph = evidenced_graph()
+    kw = dict(subject="P:p", predicate="supports_claim", obj="C:q")
+
+    # No project_root -> nothing to read -> unknown, and unknown never demotes.
+    unchecked = verify_claim(graph, reground=False, **kw)
+    assert unchecked["verdict"] == "SUPPORTED"
+    assert unchecked["provenance"]["regrounded"] is None
+
+
+def test_reground_false_demotes_the_verdict_on_disk(tmp_path, capsys) -> None:
+    """End-to-end: rewrite the source file, the verdict drops. Same graph."""
+    root = _cli_project(tmp_path, span_file=SENTENCE)
+    rc, supported, _ = _cli_verify(root, capsys)
+    assert rc == 0 and supported["verdict"] == "SUPPORTED"
+
+    # The extractor's span is now provably absent from the file it cites.
+    (root / "docs" / "alpha.md").write_text("Something else entirely.\n", encoding="utf-8")
+    rc, demoted, _ = _cli_verify(root, capsys)
+    assert rc == 0
+    assert demoted["provenance"]["regrounded"] is False
+    assert demoted["verdict"] == "PRESENT_UNEVIDENCED", (
+        "reground=False must demote SUPPORTED — this is the gate, not advisory colour"
+    )
+    # ...and --no-reground gets the old answer back, proving reground is the axis.
+    rc, unchecked, _ = _cli_verify(root, capsys, "--no-reground")
+    assert rc == 0 and unchecked["verdict"] == "SUPPORTED"
+
+
+def test_docs_do_not_claim_reground_is_advisory():
+    """Guard the exact drift Agented reported: doc says advisory, code gates on it.
+
+    Cheap string check on both sites, because the failure mode is a consumer
+    reading the docs and trusting a promise the code does not keep.
+    """
+    from tesserae import mcp_server, verify
+
+    schema = next(
+        t for t in mcp_server.LLMWikiMCPServer().list_tools() if t["name"] == "verify_claim"
+    )["inputSchema"]["properties"]["reground"]["description"]
+    for where, text in (("verify docstring", verify.__doc__), ("MCP schema", schema)):
+        assert "never change the verdict" not in text, f"{where} contradicts document_backed"
+        assert "can never reach" not in text, f"{where} contradicts document_backed"

@@ -5900,6 +5900,89 @@ def _handle_graph_map(args: argparse.Namespace) -> int:
     return 0
 
 
+def _build_verify_claim_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="tesserae verify-claim",
+        description=(
+            "Verify one triple against the compiled graph (the verify_claim MCP tool, "
+            "exposed as a CLI verb for non-MCP callers). Deterministic: no LLM, no "
+            "fuzzy match, no ranking. Endpoints resolve by exact node id, name, or "
+            "alias — there is no prose surface. Emits the tool's JSON "
+            "{verdict, reason, triple, citation, provenance, advisory} on stdout.\n\n"
+            "Exit code is 0 for ANY computed verdict, including ABSENT and "
+            "NOT_RESOLVABLE. Collapsing seven verdicts onto a shell boolean would "
+            "invent the confident/not-confident split the verifier deliberately "
+            "refuses to make — key on .verdict, not on $?. Nonzero means the "
+            "verifier could not run at all (2 = no compiled graph or usage error, "
+            "1 = graph/project failed to load)."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  tesserae verify-claim --subject Alpha --predicate supports_claim --object Beta\n"
+            "  tesserae verify-claim --subject C:abc123 --predicate evidenced_by --object E:def456\n"
+            "  tesserae verify-claim --project ~/code/app --subject Alpha --predicate supports_claim --object Beta\n"
+            "  tesserae verify-claim --no-reground --subject Alpha --predicate supports_claim --object Beta\n"
+        ),
+    )
+    parser.add_argument("--project", default=".", help="Project root directory; defaults to CWD.")
+    parser.add_argument("--subject", required=True, help="Subject endpoint: node id, exact name, or exact alias.")
+    parser.add_argument("--predicate", required=True, help="Edge type — a verbatim ontology member (see `tesserae lint` / the schema tool). Synonyms are not resolved.")
+    parser.add_argument("--object", required=True, help="Object endpoint: node id, exact name, or exact alias.")
+    parser.add_argument(
+        "--no-reground",
+        dest="reground",
+        action="store_false",
+        help=(
+            "Skip re-reading the cited span from its source file. Re-grounding is "
+            "part of the SUPPORTED gate, not advisory colour: a span provably absent "
+            "from disk cannot be SUPPORTED. Skipping it trades that check for zero "
+            "disk I/O and leaves provenance.regrounded null."
+        ),
+    )
+    parser.set_defaults(reground=True, _handler="_handle_verify_claim")
+    return parser
+
+
+def _route_verify_claim(rest: List[str]) -> int:
+    args = _build_verify_claim_parser().parse_args(rest)
+    return _resolve_handler("_handle_verify_claim")(args)
+
+
+def _handle_verify_claim(args: argparse.Namespace) -> int:
+    from .mcp_server import LLMWikiMCPServer
+
+    wiki = ProjectWiki.load(args.project)
+    if not wiki.paths.graph.exists():
+        print("error: no compiled graph yet — run `tesserae compile` first.", file=sys.stderr)
+        return 2
+    server = LLMWikiMCPServer(default_graph_path=wiki.paths.graph)
+    # Route through call_tool rather than calling verify.verify_claim directly: the
+    # tool layer is what derives project_root (which re-grounding reads) from the
+    # graph path, so the CLI verb and the MCP tool cannot drift on the contract
+    # consumers are keying against. Graph PATH, not a registry alias — the verb
+    # must work on any project dir without a prior `projects register`.
+    try:
+        result = server.call_tool(
+            "verify_claim",
+            {
+                "graph_path": str(wiki.paths.graph),
+                "subject": args.subject,
+                "predicate": args.predicate,
+                "object": args.object,
+                "reground": args.reground,
+            },
+        )
+    except (ValueError, OSError) as exc:
+        # Unresolvable endpoints and off-ontology predicates are VERDICTS
+        # (NOT_RESOLVABLE), never exceptions — so anything landing here is the
+        # graph itself failing to load, not bad user input.
+        print(f"error: verify_claim failed: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
 def _build_distill_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tesserae distill",
@@ -6143,6 +6226,9 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "query": _route_query,
     # Descent (0.25): graph_map MCP tool exposed as a CLI verb for non-MCP callers
     "graph-map": _route_graph_map,
+    # verify_claim as a CLI verb — same reason as graph-map: MCP-only is a no-op
+    # for consumers that reach tesserae by subprocess rather than as a Python dep.
+    "verify-claim": _route_verify_claim,
     # layered agent KG (Phase 2): per-agent L1 distillation
     "distill": _route_distill,
 }

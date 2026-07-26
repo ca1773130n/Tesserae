@@ -903,8 +903,13 @@ class LLMWikiMCPServer:
                             "default": True,
                             "description": (
                                 "Re-read the cited span from its source file. "
-                                "Advisory only: it sets provenance.regrounded "
-                                "and can never change the verdict."
+                                "Part of the SUPPORTED gate, not advisory: a span "
+                                "the file provably does not contain sets "
+                                "provenance.regrounded=false AND demotes the "
+                                "verdict to PRESENT_UNEVIDENCED. Unchecked "
+                                "(false here, or no readable source_path) leaves "
+                                "regrounded null and demotes nothing. Pass false "
+                                "only to avoid disk I/O."
                             ),
                         },
                     },
