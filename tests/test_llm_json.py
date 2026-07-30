@@ -274,6 +274,32 @@ def test_cli_complete_text_returns_prose(monkeypatch):
     assert out == "We decided to ship. [node:abc]"
 
 
+def test_cli_argv_has_no_turn_cap(monkeypatch):
+    """Regression: `--max-turns 1` counted tool calls, so any MCP server in
+    the user's config dir burned the only turn and the CLI exited 1 before
+    emitting JSON — silently degrading every extraction to deterministic.
+    The one-shot guarantee is `--strict-mcp-config` (no tools to call)."""
+    from tesserae.llm_json import ClaudeCLIJsonClient
+
+    seen: List[List[str]] = []
+
+    def fake_run(cmd, **kw):
+        seen.append(list(cmd))
+        return _make_completed_process(returncode=0, stdout="ok\n")
+
+    monkeypatch.setattr(llm_json, "_run_cli", fake_run)
+    ClaudeCLIJsonClient(config_dirs=["/tmp/fake-claude-config"]).complete_text(
+        system="s", user="u"
+    )
+
+    argv = seen[0]
+    assert "--max-turns" not in argv, f"turn cap is back in {argv}"
+    assert "--strict-mcp-config" in argv, f"missing MCP isolation in {argv}"
+    assert "--max-turns" not in llm_extractor.run_claude_cli.__code__.co_consts, (
+        "run_claude_cli still passes --max-turns"
+    )
+
+
 def test_cli_complete_text_rotates_past_rate_limited_account(monkeypatch):
     """A rate-limited account (non-zero exit) is skipped; the next account
     answers — proving multi-account rotation for prose, not just JSON."""

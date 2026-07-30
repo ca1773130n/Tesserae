@@ -668,7 +668,13 @@ class ClaudeCLIJsonClient:
                     "claude",
                     "-p",
                     "--output-format", "text",
-                    "--max-turns", "1",
+                    # ponytail: --strict-mcp-config, NOT --max-turns 1. The
+                    # turn cap counted tool calls, so any MCP server in the
+                    # user's config dir burned the only turn and the CLI
+                    # exited 1 ("Reached max turns (1)") before emitting JSON
+                    # — every extraction then fell back to deterministic.
+                    # Loading no MCP servers is what "one-shot" actually meant.
+                    "--strict-mcp-config",
                 ]
                 if self.model:
                     cmd.extend(["--model", self.model])
