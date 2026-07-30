@@ -90,6 +90,12 @@ _CLIENT_FACTORY: Optional[Callable[..., Any]] = None
 # SessionEnd hook output.
 _LOGGED_LOGIN_WARNING: bool = False
 
+#: The ONLY model Tesserae sends to the Codex CLI right now. Pinned rather than
+#: defaulted: as a default it sat behind ``llm_model``, so a model configured
+#: for a different provider could reach codex and fail on a name it does not
+#: serve. See CodexCLIJsonClient.__init__ for the removal path.
+CODEX_PINNED_MODEL = "gpt-5.6-luna"
+
 #: Latched once EVERY configured account reports a quota/usage limit. Quota is
 #: an account fact, so the verdict holds for the rest of the process — there is
 #: no point spawning a CLI child per remaining document to be told again. Reset
@@ -970,9 +976,23 @@ class CodexCLIJsonClient:
         import os as _os
         from pathlib import Path as _Path
 
-        # Hardcoded literal is a last-resort fallback behind the configured
-        # llm_model (env TESSERAE_LLM_MODEL → global config).
-        self.model = model or _configured_default_model(("codex",)) or "gpt-5.6-luna"
+        # ponytail: every codex call is PINNED to gpt-5.6-luna for now, ahead of
+        # any configured or caller-supplied llm_model. It used to sit last in
+        # the chain, so a model configured for another provider — or a stale one
+        # — reached the Codex CLI and the run failed on a model name codex does
+        # not serve. Remove the pin (restore `model or _configured_default_model
+        # (("codex",)) or CODEX_PINNED_MODEL`) once codex model selection is
+        # worth trusting again.
+        requested = model or _configured_default_model(("codex",))
+        if requested and requested != CODEX_PINNED_MODEL:
+            # Never silently: a request that is ignored without a word is the
+            # exact failure shape this module has been bitten by repeatedly.
+            logger.warning(
+                "[tesserae] codex model %r ignored — pinned to %s for now.",
+                requested,
+                CODEX_PINNED_MODEL,
+            )
+        self.model = CODEX_PINNED_MODEL
         # Reasoning effort for Tesserae's own codex calls. Defaults to
         # ``medium`` — structured graph/finding extraction does NOT need the
         # ``xhigh`` a user may set globally in ``~/.codex/config.toml`` for

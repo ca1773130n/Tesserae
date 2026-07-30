@@ -274,6 +274,28 @@ def test_cli_complete_text_returns_prose(monkeypatch):
     assert out == "We decided to ship. [node:abc]"
 
 
+def test_codex_model_is_pinned(monkeypatch, caplog):
+    """Every codex call uses gpt-5.6-luna, ahead of config and caller.
+
+    As a last-resort default it sat behind llm_model, so a model configured for
+    another provider reached the Codex CLI and failed on a name codex does not
+    serve. The override is logged — silently discarding a caller's request is
+    the failure shape this module keeps getting bitten by.
+    """
+    from tesserae.llm_json import CODEX_PINNED_MODEL, CodexCLIJsonClient
+
+    assert CODEX_PINNED_MODEL == "gpt-5.6-luna"
+    monkeypatch.setattr(llm_json, "_configured_default_model", lambda providers: "sonnet")
+
+    assert CodexCLIJsonClient().model == CODEX_PINNED_MODEL, "config must not unpin"
+
+    with caplog.at_level("WARNING"):
+        assert CodexCLIJsonClient(model="gpt-4o").model == CODEX_PINNED_MODEL
+    assert "gpt-4o" in caplog.text and "pinned" in caplog.text, (
+        f"an overridden model must be reported, got {caplog.text!r}"
+    )
+
+
 def test_quota_exhaustion_stops_spawning_children(monkeypatch, reset_login_warning):
     """Quota is an ACCOUNT fact — once every account reports its limit, later
     documents must not each re-spawn the CLI to be told the same thing.
@@ -1615,7 +1637,12 @@ def test_cli_clients_honour_cache_key(tmp_path, monkeypatch):
     assert len(calls) == 1, "second identical call should have hit the cache"
 
     # A different model must re-ask: the caller's cache_key covers content only.
-    other = lj.CodexCLIJsonClient(codex_homes=["/x"], model="some-other-model")
+    # Codex clients are pinned to one model (CODEX_PINNED_MODEL), so two of them
+    # can no longer differ by constructor argument — move the pin itself to get
+    # a genuinely different model rather than asserting a state the pin forbids.
+    monkeypatch.setattr(lj, "CODEX_PINNED_MODEL", "some-other-model")
+    other = lj.CodexCLIJsonClient(codex_homes=["/x"])
+    assert other.model == "some-other-model"
     other.complete_json(system="s", user="u", schema_name="g", cache_key="k1")
     assert len(calls) == 2, "a different model must not reuse another model's answer"
 
