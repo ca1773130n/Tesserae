@@ -37,6 +37,36 @@ Tesserae 是一个 LLM wiki，因此 `compile` **默认构建概念/断言层**�
 
     tesserae compile --extractor deterministic
 
+### 选择消耗哪些账户（`llm_claude_config_dirs`）
+
+使用 `claude` 提供方时，Tesserae 会在你已登录的 Claude CLI 账户之间轮换：某个账户
+触及速率限制时会切换到下一个，而不是让本次运行的剩余部分退化为确定性提取。默认会
+自动发现所有 `~/.claude*` 目录。
+
+若要精确控制可以消耗哪些账户以及顺序，请在 `.tesserae/config.json`（项目级）或
+`~/.tesserae/config.json`（全局）中设置 `llm_claude_config_dirs`：
+
+```json
+{
+  "llm_claude_config_dirs": [
+    "/Users/you/.claude-work",
+    "/Users/you/.claude-personal"
+  ]
+}
+```
+
+该列表具有最终权威——列表之外的账户一律不会被尝试。它同样**优先于环境中的
+`CLAUDE_CONFIG_DIR`**：该变量会被 Claude Code 会话派生的每个进程继承，否则会把整次
+编译锁定在那一个会话的配额上。若未做任何配置，`CLAUDE_CONFIG_DIR` 仍会作为首个尝试
+的账户。
+
+当所有已配置账户都报告用量上限时，编译会在本次运行的剩余部分停止调用 LLM，而不是
+逐个文档重复询问，并将这些文档标记为 `fallback: true` 并告知你。限额重置后，无需
+重新编译全部内容即可恢复：
+
+    tesserae compile --changed-only --retry-fallbacks
+
+
 **成本感知（`selective-llm`）**——只把匹配的文档路由给 LLM，其余走确定性提取：
 
     tesserae compile --extractor selective-llm \

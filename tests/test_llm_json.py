@@ -274,6 +274,56 @@ def test_cli_complete_text_returns_prose(monkeypatch):
     assert out == "We decided to ship. [node:abc]"
 
 
+def test_quota_exhaustion_stops_spawning_children(monkeypatch, reset_login_warning):
+    """Quota is an ACCOUNT fact — once every account reports its limit, later
+    documents must not each re-spawn the CLI to be told the same thing.
+
+    Regression: one observed compile spawned a child per account per remaining
+    document after the quota ran out — 1,531 documents' worth of subprocesses
+    that could not have succeeded.
+    """
+    from tesserae.llm_json import ClaudeCLIJsonClient
+
+    calls: List[str] = []
+
+    def fake_run(cmd, **kw):
+        calls.append((kw.get("env") or {}).get("CLAUDE_CONFIG_DIR", "default"))
+        return _make_completed_process(
+            returncode=1,
+            stdout="",
+            stderr="You've hit your weekly limit · resets 6am (Asia/Seoul)",
+        )
+
+    monkeypatch.setattr(llm_json, "_run_cli", fake_run)
+    client = ClaudeCLIJsonClient(config_dirs=["/acct/a", "/acct/b"])
+
+    assert client.complete_text(system="s", user="doc 1") is None
+    assert len(calls) == 2, f"first doc must try every account, got {calls}"
+
+    for n in range(2, 12):
+        assert client.complete_text(system="s", user=f"doc {n}") is None
+    assert len(calls) == 2, f"exhausted accounts must not be re-spawned, got {len(calls)} calls"
+
+
+def test_per_document_failure_does_not_latch(monkeypatch, reset_login_warning):
+    """A failure that is NOT account-level quota must keep rotating — latching
+    on it would turn one bad document into a whole-run outage."""
+    from tesserae.llm_json import ClaudeCLIJsonClient
+
+    calls: List[str] = []
+
+    def fake_run(cmd, **kw):
+        calls.append("x")
+        return _make_completed_process(returncode=1, stdout="", stderr="network unreachable")
+
+    monkeypatch.setattr(llm_json, "_run_cli", fake_run)
+    client = ClaudeCLIJsonClient(config_dirs=["/acct/a", "/acct/b"])
+
+    client.complete_text(system="s", user="doc 1")
+    client.complete_text(system="s", user="doc 2")
+    assert len(calls) == 4, f"non-quota failures must keep retrying, got {len(calls)}"
+
+
 def test_cli_env_config_dir_is_preferred_not_exclusive(monkeypatch, tmp_path):
     """CLAUDE_CONFIG_DIR names the account to try FIRST, not the only one.
 
@@ -1431,6 +1481,17 @@ def test_resolve_llm_client_settings_precedence(monkeypatch):
     settings = resolve_llm_client_settings(cfg)
     assert settings["provider"] == "claude"
     assert settings["codex_home"] == "/env/codex"
+    # ...EXCEPT CLAUDE_CONFIG_DIR, which is the one ambient var here: every
+    # process a Claude Code session spawns inherits it, so it is not evidence
+    # of intent the way TESSERAE_* / CODEX_HOME are. Letting it win meant an
+    # accidental value overrode the accounts the user configured and pinned
+    # the run to one account's quota.
+    assert settings["claude_config_dirs"] == ["/cfg/claude"], (
+        "configured accounts must beat the inherited CLAUDE_CONFIG_DIR"
+    )
+
+    # With nothing configured, the ambient var is still the best hint available.
+    settings = resolve_llm_client_settings({})
     assert settings["claude_config_dirs"] == ["/env/claude"]
 
 

@@ -52,6 +52,40 @@ Reproduzierbarkeits-Modus:
 
     tesserae compile --extractor deterministic
 
+### Auswählen, welche Konten verbraucht werden (`llm_claude_config_dirs`)
+
+Mit dem Provider `claude` rotiert Tesserae über deine angemeldeten Claude-CLI-Konten:
+Ein Konto, das sein Limit erreicht, übergibt an das nächste, statt den Rest des Laufs
+an die deterministische Extraktion zu verlieren. Standardmäßig werden alle
+`~/.claude*`-Verzeichnisse automatisch erkannt.
+
+Um genau festzulegen, welche Konten verbraucht werden dürfen und in welcher
+Reihenfolge, setze `llm_claude_config_dirs` in `.tesserae/config.json` (Projekt) oder
+`~/.tesserae/config.json` (global):
+
+```json
+{
+  "llm_claude_config_dirs": [
+    "/Users/you/.claude-work",
+    "/Users/you/.claude-personal"
+  ]
+}
+```
+
+Diese Liste ist maßgeblich — außerhalb davon wird nichts versucht. Sie **schlägt auch
+die ambiente Variable `CLAUDE_CONFIG_DIR`**, die jeder aus einer Claude-Code-Sitzung
+gestartete Prozess erbt und die andernfalls die gesamte Kompilierung an das Kontingent
+genau dieser einen Sitzung binden würde. Ohne Konfiguration bleibt
+`CLAUDE_CONFIG_DIR` das zuerst versuchte Konto.
+
+Melden alle konfigurierten Konten ihr Nutzungslimit, stellt die Kompilierung für den
+Rest des Laufs LLM-Aufrufe ein, statt pro Dokument erneut nachzufragen, markiert diese
+Dokumente mit `fallback: true` und sagt es dir. Nach dem Zurücksetzen des Limits ohne
+vollständige Neukompilierung nachholen:
+
+    tesserae compile --changed-only --retry-fallbacks
+
+
 **Kostenbewusst (`selective-llm`)** — route nur passende Dokumente durch das LLM, den
 Rest deterministisch:
 

@@ -90,11 +90,32 @@ _CLIENT_FACTORY: Optional[Callable[..., Any]] = None
 # SessionEnd hook output.
 _LOGGED_LOGIN_WARNING: bool = False
 
+#: Latched once EVERY configured account reports a quota/usage limit. Quota is
+#: an account fact, so the verdict holds for the rest of the process — there is
+#: no point spawning a CLI child per remaining document to be told again. Reset
+#: per-process only (a new compile re-probes, which is what you want after a
+#: limit resets).
+_ACCOUNTS_EXHAUSTED: bool = False
+
+#: Substrings the Claude CLI uses when an account is out of quota, e.g.
+#: "You've hit your weekly limit · resets 6am (Asia/Seoul)" and the 5-hour
+#: "session limit" variant. Matched case-insensitively against the CLI's own
+#: message. Deliberately NOT matching bare "limit" — a document that trips a
+#: context or rate limit is a per-document fact and must keep rotating.
+_QUOTA_MARKERS = ("hit your weekly limit", "hit your session limit", "hit your usage limit")
+
+
+def _is_quota_exhaustion(error: BaseException) -> bool:
+    """True when the CLI said the ACCOUNT is out of quota, not this call."""
+    text = str(error).lower()
+    return any(marker in text for marker in _QUOTA_MARKERS)
+
 
 def _reset_login_warning_for_tests() -> None:
     """Reset the one-shot login warning flag. Test-only helper."""
-    global _LOGGED_LOGIN_WARNING
+    global _LOGGED_LOGIN_WARNING, _ACCOUNTS_EXHAUSTED
     _LOGGED_LOGIN_WARNING = False
+    _ACCOUNTS_EXHAUSTED = False
 
 
 #: Why the most recent ``complete_json`` on THIS thread returned None.
@@ -645,6 +666,19 @@ class ClaudeCLIJsonClient:
         import subprocess as _subprocess
         from pathlib import Path as _Path
 
+        # Quota exhaustion is an ACCOUNT fact, not a document fact. Once every
+        # configured account has answered "you've hit your … limit", the next
+        # document cannot possibly succeed either — but this used to spawn a
+        # `claude` child per account per remaining document to rediscover that,
+        # 1,531 times in one observed run. Latch it and answer instantly; the
+        # caller still marks each doc `fallback: true`, so
+        # `compile --changed-only --retry-fallbacks` recovers them all once the
+        # limit resets.
+        global _ACCOUNTS_EXHAUSTED
+        if _ACCOUNTS_EXHAUSTED:
+            _note_failure("exhausted")
+            return None
+
         last_error: Optional[Exception] = None
         all_not_logged_in = True  # only True if EVERY tried config_dir was Not-logged-in
         any_attempted = False
@@ -768,6 +802,20 @@ class ClaudeCLIJsonClient:
                     len(self.config_dirs),
                     "dir" if len(self.config_dirs) == 1 else "dirs",
                 )
+            return None
+        if last_error is not None and _is_quota_exhaustion(last_error):
+            # Every account is out of quota. Say so once, with the reset time
+            # the CLI reported, instead of repeating it per document.
+            _ACCOUNTS_EXHAUSTED = True
+            _note_failure("exhausted")
+            logger.warning(
+                "[tesserae] every configured account is out of quota (%d tried); "
+                "remaining documents will use deterministic extraction without "
+                "further LLM calls. Re-run `compile --changed-only "
+                "--retry-fallbacks` after the limit resets. Last: %s",
+                len(self.config_dirs),
+                last_error,
+            )
             return None
         if last_error is not None:
             if timed_out:
@@ -1410,12 +1458,19 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
             return [str(d) for d in raw]
         return None
 
+    # Deliberate config beats the ambient env var, NOT the other way round.
+    # CLAUDE_CONFIG_DIR is inherited by every process a Claude Code session
+    # spawns, so honouring it first meant an accidental value silently
+    # overrode the accounts the user had actually chosen — and pinned the
+    # whole run to one account's quota. Set ``llm_claude_config_dirs`` (a
+    # list) in .tesserae/config.json or ~/.tesserae/config.json to say
+    # exactly which accounts may be spent, in rotation order; that list is
+    # then authoritative and nothing else is tried.
     env_claude = os.environ.get("CLAUDE_CONFIG_DIR")
     claude_config_dirs = (
-        [env_claude]
-        if env_claude
-        else _as_dirs(cfg.get("llm_claude_config_dirs"))
+        _as_dirs(cfg.get("llm_claude_config_dirs"))
         or _as_dirs(global_cfg.get("llm_claude_config_dirs"))
+        or ([env_claude] if env_claude else None)
     )
 
     codex_home = (
