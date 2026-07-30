@@ -274,6 +274,35 @@ def test_cli_complete_text_returns_prose(monkeypatch):
     assert out == "We decided to ship. [node:abc]"
 
 
+def test_cli_env_config_dir_is_preferred_not_exclusive(monkeypatch, tmp_path):
+    """CLAUDE_CONFIG_DIR names the account to try FIRST, not the only one.
+
+    Regression: pinning to the single env dir disabled the rotation loop —
+    the one mechanism that survives a rate-limited account. Everything
+    launched from a Claude Code session inherits the var, so a compile could
+    only ever use that session's account; when its quota ran out, 1,531 docs
+    fell back to deterministic while two other logged-in accounts sat idle.
+    """
+    from tesserae.llm_json import ClaudeCLIJsonClient
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    for name in (".claude", ".claude-personal1", ".claude-personal2"):
+        (fake_home / name).mkdir()
+    monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(fake_home / ".claude-personal2"))
+
+    dirs = ClaudeCLIJsonClient().config_dirs
+
+    assert dirs[0] == str(fake_home / ".claude-personal2"), "env dir must be tried first"
+    assert len(dirs) == 3, f"rotation needs every discovered account, got {dirs}"
+    assert len(set(dirs)) == len(dirs), f"env dir duplicated into the rotation: {dirs}"
+
+    # An explicit argument still wins absolutely (tests / MCP override / flags).
+    pinned = ClaudeCLIJsonClient(config_dirs=["/only/this"]).config_dirs
+    assert pinned == ["/only/this"], f"explicit config_dirs must not rotate, got {pinned}"
+
+
 def test_cli_argv_has_no_turn_cap(monkeypatch):
     """Regression: `--max-turns 1` counted tool calls, so any MCP server in
     the user's config dir burned the only turn and the CLI exited 1 before
@@ -531,14 +560,21 @@ def test_cli_explicit_arg_beats_env_and_autodiscovery(monkeypatch, tmp_path):
 
 
 def test_cli_env_beats_autodiscovery(monkeypatch, tmp_path):
-    """CLAUDE_CONFIG_DIR env wins over the auto-discovery glob."""
+    """CLAUDE_CONFIG_DIR env RANKS ahead of the auto-discovery glob.
+
+    It used to replace the glob outright. "Wins" means tried first — making
+    it exclusive turned the rotation loop off for every caller that inherits
+    the var, which is every caller launched from a Claude Code session.
+    See test_cli_env_config_dir_is_preferred_not_exclusive.
+    """
     fake_home = tmp_path / "home"
     (fake_home / ".claude").mkdir(parents=True)
     (fake_home / ".claude-personal1").mkdir()
     monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(fake_home / ".claude-personal1"))
     client = ClaudeCLIJsonClient()
-    assert client.config_dirs == [str(fake_home / ".claude-personal1")]
+    assert client.config_dirs[0] == str(fake_home / ".claude-personal1")
+    assert str(fake_home / ".claude") in client.config_dirs
 
 
 def test_claude_cli_available_uses_autodiscovery(monkeypatch, tmp_path):

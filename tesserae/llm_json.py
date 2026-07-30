@@ -593,17 +593,27 @@ class ClaudeCLIJsonClient:
         #      tries each in order and uses the first that's logged in.
         #   4. Final fallback: ``[~/.claude]`` — preserves the pre-fix
         #      default for users with a single config dir.
+        home = _Path.home()
+        discovered = sorted(
+            str(p)
+            for p in home.glob(".claude*")
+            if p.is_dir() and not p.name.endswith((".bak", ".old"))
+        )
         if config_dirs:
             self.config_dirs = list(config_dirs)
         elif _os.environ.get("CLAUDE_CONFIG_DIR"):
-            self.config_dirs = [_os.environ["CLAUDE_CONFIG_DIR"]]
+            # PREFERRED-first, not exclusive. This used to pin the client to
+            # the single env dir, which silently disabled the rotation loop
+            # below — the one mechanism that exists to survive a rate-limited
+            # account. Anything launched from a Claude Code session inherits
+            # CLAUDE_CONFIG_DIR, so in practice a compile could only ever use
+            # that one account: when its quota ran out, 1,531 documents fell
+            # back to deterministic extraction while two other logged-in
+            # accounts sat idle. The env var says which account to try FIRST,
+            # not which is the only one that may be tried.
+            env_dir = _os.environ["CLAUDE_CONFIG_DIR"]
+            self.config_dirs = [env_dir] + [d for d in discovered if d != env_dir]
         else:
-            home = _Path.home()
-            discovered = sorted(
-                str(p)
-                for p in home.glob(".claude*")
-                if p.is_dir() and not p.name.endswith((".bak", ".old"))
-            )
             self.config_dirs = discovered or [str(home / ".claude")]
         self.timeout = int(timeout) if timeout is not None else None
 
