@@ -32,18 +32,24 @@ jobs:
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
-      # setup-node@v6, not v4: v4 writes an .npmrc containing
-      # `_authToken=${NODE_AUTH_TOKEN}` and exports a placeholder value for it,
-      # so npm finds a "token", authenticates with garbage, and never reaches
-      # the OIDC path — surfacing as a 404 on PUT rather than an auth error.
+      # No `registry-url:` on purpose. Setting it makes setup-node write an
+      # .npmrc containing `_authToken=${NODE_AUTH_TOKEN}` and export a
+      # placeholder value for that variable — npm then authenticates with
+      # garbage instead of OIDC and the registry answers `E404 PUT`, which
+      # reads like a missing package rather than an auth failure. npm defaults
+      # to registry.npmjs.org anyway, so the setting bought nothing.
       - uses: actions/setup-node@v6
         with:
           node-version: "24" # ships npm >= 11.5.1, the OIDC floor
-          registry-url: "https://registry.npmjs.org"
           package-manager-cache: false # never cache in a release build
 
-      - name: Show npm version
-        run: npm --version # must be >= 11.5.1 or OIDC is unavailable
+      - name: Preflight
+        run: |
+          npm --version   # must be >= 11.5.1 or OIDC is unavailable
+          # Names only, never values — these two are the OIDC handshake.
+          [ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ] \
+            && echo "OIDC: request URL present" \
+            || { echo "OIDC: MISSING — id-token: write was not granted" >&2; exit 1; }
 
       # The tag is the source of truth. A mismatch here means the release
       # commit bumped some version files but not npm/package.json, which
