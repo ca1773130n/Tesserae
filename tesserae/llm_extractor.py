@@ -530,7 +530,10 @@ def run_claude_cli(prompt: str, config_dir: str, model: str, timeout: int) -> st
         env.pop("CLAUDE_CONFIG_DIR", None)
     else:
         env["CLAUDE_CONFIG_DIR"] = config_dir
-    cmd = ["claude", "-p", "--output-format", "text", "--max-turns", "1"]
+    # ponytail: --strict-mcp-config, NOT --max-turns 1 — the turn cap counted
+    # tool calls, so a configured MCP server made the CLI exit 1 before
+    # answering. See the same note in llm_json.ClaudeCLIJsonClient._run_prompt.
+    cmd = ["claude", "-p", "--output-format", "text", "--strict-mcp-config"]
     if model:
         cmd.extend(["--model", model])
     proc = subprocess.run(cmd, input=prompt, text=True, capture_output=True, env=env, timeout=timeout, check=False)
