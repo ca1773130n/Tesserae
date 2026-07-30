@@ -1490,9 +1490,46 @@ def test_resolve_llm_client_settings_precedence(monkeypatch):
         "configured accounts must beat the inherited CLAUDE_CONFIG_DIR"
     )
 
-    # With nothing configured, the ambient var is still the best hint available.
+    # With nothing configured, this must return None — NOT [env_claude].
+    # Whatever it returns is handed to the client as an explicit config_dirs=,
+    # which pins verbatim; returning the env dir here collapsed rotation to one
+    # account regardless of the constructor's own env handling. None delegates
+    # to ClaudeCLIJsonClient, which ranks the env dir first and keeps the rest.
     settings = resolve_llm_client_settings({})
-    assert settings["claude_config_dirs"] == ["/env/claude"]
+    assert settings["claude_config_dirs"] is None, (
+        "an unconfigured env var must not become an explicit single-account pin"
+    )
+
+
+def test_built_client_rotates_when_only_env_is_set(monkeypatch, tmp_path):
+    """End-to-end through the REAL construction path, not the constructor alone.
+
+    Regression: the constructor ranked CLAUDE_CONFIG_DIR first and kept the
+    other accounts, but resolve_llm_client_settings passed [env_dir] down as an
+    explicit config_dirs=, which pinned the client verbatim and re-disabled
+    rotation. Testing the constructor in isolation missed it entirely — a live
+    compile then lost 1,590 documents to one account's expired OAuth while a
+    healthy account sat next to it.
+    """
+    from tesserae.llm_json import ClaudeCLIJsonClient, build_default_json_client
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    for name in (".claude", ".claude-personal1", ".claude-personal2"):
+        (fake_home / name / "settings.json").parent.mkdir()
+        (fake_home / name / "settings.json").write_text("{}")
+    monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(fake_home / ".claude-personal2"))
+    monkeypatch.setattr(llm_json, "_load_global_llm_config", lambda: {})
+    monkeypatch.setattr(llm_json, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(llm_json, "_codex_cli_available", lambda: False)
+    set_client_factory(None)
+
+    client = build_default_json_client(provider="claude")
+    assert isinstance(client, ClaudeCLIJsonClient), f"expected the CLI client, got {client!r}"
+    dirs = client.config_dirs
+    assert dirs[0] == str(fake_home / ".claude-personal2"), f"env dir first, got {dirs}"
+    assert len(dirs) == 3, f"the other accounts must stay in rotation, got {dirs}"
 
 
 def test_run_cli_kills_grandchildren_on_timeout():

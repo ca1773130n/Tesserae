@@ -1466,11 +1466,16 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     # list) in .tesserae/config.json or ~/.tesserae/config.json to say
     # exactly which accounts may be spent, in rotation order; that list is
     # then authoritative and nothing else is tried.
-    env_claude = os.environ.get("CLAUDE_CONFIG_DIR")
+    # NOTE the deliberate absence of a CLAUDE_CONFIG_DIR fallback here. Whatever
+    # this returns is passed to the client as an EXPLICIT ``config_dirs=``, which
+    # pins it verbatim — so returning ``[env_claude]`` collapsed the rotation to
+    # one account no matter what the constructor's own env handling did. Leaving
+    # it None hands the decision to ClaudeCLIJsonClient, which puts
+    # CLAUDE_CONFIG_DIR first and keeps the other discovered accounts behind it.
+    # Only a CONFIGURED list is authoritative, because only that is deliberate.
     claude_config_dirs = (
         _as_dirs(cfg.get("llm_claude_config_dirs"))
         or _as_dirs(global_cfg.get("llm_claude_config_dirs"))
-        or ([env_claude] if env_claude else None)
     )
 
     codex_home = (
