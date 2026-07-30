@@ -1,0 +1,57 @@
+# Publish the @jokerized/tesserae wrapper to npm on every vX.Y.Z tag.
+#
+# Authentication is OIDC trusted publishing — there is no NPM_TOKEN here and
+# there must not be one. npm mints a short-lived credential from the
+# `id-token: write` claim, which is why the trusted-publisher entry on
+# npmjs.com pins THIS filename (npm-publish.yml). Renaming this file breaks
+# publishing with ENEEDAUTH and nothing else will hint at why.
+#
+# Provenance attestations are generated automatically (public repo + public
+# package + OIDC), so `--provenance` is deliberately absent.
+name: npm publish
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (e.g. v0.28.3)"
+        required: true
+
+permissions:
+  id-token: write # OIDC — the whole point; publishing fails without it
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest # self-hosted runners are not supported by npm OIDC
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24" # ships npm >= 11.5.1, the OIDC floor
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false # never cache in a release build
+
+      # The tag is the source of truth. A mismatch here means the release
+      # commit bumped some version files but not npm/package.json, which
+      # would silently publish the wrong version.
+      - name: Verify package version matches the tag
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          pkg=$(node -p "require('./npm/package.json').version")
+          if [ "$tag" != "v$pkg" ]; then
+            echo "tag $tag != npm/package.json $pkg" >&2
+            exit 1
+          fi
+
+      # ponytail: no `npm ci` / `npm test` — the wrapper has no dependencies,
+      # no lockfile and no test script. Add them when it grows any.
+      - name: Publish
+        run: npm publish --access public
+        working-directory: npm
