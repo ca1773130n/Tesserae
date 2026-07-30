@@ -32,11 +32,18 @@ jobs:
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
-      - uses: actions/setup-node@v4
+      # setup-node@v6, not v4: v4 writes an .npmrc containing
+      # `_authToken=${NODE_AUTH_TOKEN}` and exports a placeholder value for it,
+      # so npm finds a "token", authenticates with garbage, and never reaches
+      # the OIDC path — surfacing as a 404 on PUT rather than an auth error.
+      - uses: actions/setup-node@v6
         with:
           node-version: "24" # ships npm >= 11.5.1, the OIDC floor
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false # never cache in a release build
+
+      - name: Show npm version
+        run: npm --version # must be >= 11.5.1 or OIDC is unavailable
 
       # The tag is the source of truth. A mismatch here means the release
       # commit bumped some version files but not npm/package.json, which
