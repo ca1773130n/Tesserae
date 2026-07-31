@@ -324,25 +324,25 @@ def test_codex_homes_list_config(monkeypatch):
     assert resolve_llm_client_settings({})["codex_homes"] is None
 
 
-def test_codex_model_is_pinned(monkeypatch, caplog):
-    """Every codex call uses gpt-5.6-luna, ahead of config and caller.
+def test_codex_model_precedence(monkeypatch):
+    """Model choice is supported on codex: caller > configured > default.
 
-    As a last-resort default it sat behind llm_model, so a model configured for
-    another provider reached the Codex CLI and failed on a name codex does not
-    serve. The override is logged — silently discarding a caller's request is
-    the failure shape this module keeps getting bitten by.
+    gpt-5.6-luna is the DEFAULT, not a pin — `--llm-model`, `llm_model`, and the
+    per-feature community/distill model settings all reach this argument and
+    must be honoured. `_configured_default_model` is provider-scoped, which is
+    what keeps a claude-shaped name from arriving here through config.
     """
-    from tesserae.llm_json import CODEX_PINNED_MODEL, CodexCLIJsonClient
+    from tesserae.llm_json import CODEX_DEFAULT_MODEL, CodexCLIJsonClient
 
-    assert CODEX_PINNED_MODEL == "gpt-5.6-luna"
-    monkeypatch.setattr(llm_json, "_configured_default_model", lambda providers: "sonnet")
+    assert CODEX_DEFAULT_MODEL == "gpt-5.6-luna"
 
-    assert CodexCLIJsonClient().model == CODEX_PINNED_MODEL, "config must not unpin"
+    monkeypatch.setattr(llm_json, "_configured_default_model", lambda providers: None)
+    assert CodexCLIJsonClient().model == CODEX_DEFAULT_MODEL, "default when nothing is set"
 
-    with caplog.at_level("WARNING"):
-        assert CodexCLIJsonClient(model="gpt-4o").model == CODEX_PINNED_MODEL
-    assert "gpt-4o" in caplog.text and "pinned" in caplog.text, (
-        f"an overridden model must be reported, got {caplog.text!r}"
+    monkeypatch.setattr(llm_json, "_configured_default_model", lambda providers: "gpt-5.6-mini")
+    assert CodexCLIJsonClient().model == "gpt-5.6-mini", "configured llm_model must win"
+    assert CodexCLIJsonClient(model="gpt-5.6-max").model == "gpt-5.6-max", (
+        "an explicit caller model must beat config"
     )
 
 
@@ -1749,10 +1749,10 @@ def test_cli_clients_honour_cache_key(tmp_path, monkeypatch):
     assert len(calls) == 1, "second identical call should have hit the cache"
 
     # A different model must re-ask: the caller's cache_key covers content only.
-    # Codex clients are pinned to one model (CODEX_PINNED_MODEL), so two of them
+    # Codex clients are pinned to one model (CODEX_DEFAULT_MODEL), so two of them
     # can no longer differ by constructor argument — move the pin itself to get
     # a genuinely different model rather than asserting a state the pin forbids.
-    monkeypatch.setattr(lj, "CODEX_PINNED_MODEL", "some-other-model")
+    monkeypatch.setattr(lj, "CODEX_DEFAULT_MODEL", "some-other-model")
     other = lj.CodexCLIJsonClient(codex_homes=["/x"])
     assert other.model == "some-other-model"
     other.complete_json(system="s", user="u", schema_name="g", cache_key="k1")

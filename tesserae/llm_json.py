@@ -90,11 +90,10 @@ _CLIENT_FACTORY: Optional[Callable[..., Any]] = None
 # SessionEnd hook output.
 _LOGGED_LOGIN_WARNING: bool = False
 
-#: The ONLY model Tesserae sends to the Codex CLI right now. Pinned rather than
-#: defaulted: as a default it sat behind ``llm_model``, so a model configured
-#: for a different provider could reach codex and fail on a name it does not
-#: serve. See CodexCLIJsonClient.__init__ for the removal path.
-CODEX_PINNED_MODEL = "gpt-5.6-luna"
+#: Default model for the Codex CLI. A caller argument or a provider-scoped
+#: ``llm_model`` still wins — model choice is supported on codex. Named rather
+#: than inlined so the default has one definition and the tests can move it.
+CODEX_DEFAULT_MODEL = "gpt-5.6-luna"
 
 #: Substrings the Claude CLI uses when an account is out of quota, e.g.
 #: "You've hit your weekly limit · resets 6am (Asia/Seoul)" and the 5-hour
@@ -988,23 +987,12 @@ class CodexCLIJsonClient:
         import os as _os
         from pathlib import Path as _Path
 
-        # ponytail: every codex call is PINNED to gpt-5.6-luna for now, ahead of
-        # any configured or caller-supplied llm_model. It used to sit last in
-        # the chain, so a model configured for another provider — or a stale one
-        # — reached the Codex CLI and the run failed on a model name codex does
-        # not serve. Remove the pin (restore `model or _configured_default_model
-        # (("codex",)) or CODEX_PINNED_MODEL`) once codex model selection is
-        # worth trusting again.
-        requested = model or _configured_default_model(("codex",))
-        if requested and requested != CODEX_PINNED_MODEL:
-            # Never silently: a request that is ignored without a word is the
-            # exact failure shape this module has been bitten by repeatedly.
-            logger.warning(
-                "[tesserae] codex model %r ignored — pinned to %s for now.",
-                requested,
-                CODEX_PINNED_MODEL,
-            )
-        self.model = CODEX_PINNED_MODEL
+        # Normal precedence: an explicit caller model, else the configured
+        # llm_model (provider-scoped, so a claude-shaped name cannot land here
+        # via config), else CODEX_DEFAULT_MODEL as the default. Choosing a codex
+        # model is supported — `--llm-model`, `llm_model`, and the per-feature
+        # community/distill model settings all reach this argument.
+        self.model = model or _configured_default_model(("codex",)) or CODEX_DEFAULT_MODEL
         # Reasoning effort for Tesserae's own codex calls. Defaults to
         # ``medium`` — structured graph/finding extraction does NOT need the
         # ``xhigh`` a user may set globally in ``~/.codex/config.toml`` for
