@@ -580,9 +580,13 @@ def test_cli_not_logged_in_returns_none(monkeypatch, caplog, reset_login_warning
     fake_proc = _make_completed_process(
         returncode=1, stderr="Not logged in · Please run /login\n"
     )
-    monkeypatch.setattr(
-        "subprocess.run", lambda *a, **kw: fake_proc,
-    )
+    # Patch ``_run_cli``, the seam every other test in this file uses. This one
+    # patched ``subprocess.run``, which ``_run_cli`` stopped calling when it
+    # moved to ``subprocess.Popen`` (so a timeout could kill the whole process
+    # group). The patch quietly became a no-op: the test shelled out to the real
+    # ``claude`` binary, passing on machines that have it installed and failing
+    # with FileNotFoundError anywhere else. It asserted nothing about the code.
+    monkeypatch.setattr(llm_json, "_run_cli", lambda *a, **kw: fake_proc)
     client = ClaudeCLIJsonClient(config_dirs=["/tmp/fake-claude-config"])
     with caplog.at_level("WARNING", logger="tesserae.llm_json"):
         result = client.complete_json(

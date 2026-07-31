@@ -249,8 +249,14 @@ HOOKS = Path(__file__).resolve().parents[1] / "hooks"
 
 
 def _resolve(cwd, home):
+    # ``bash``, not ``zsh``: _lib.sh documents itself as POSIX-friendly so hooks
+    # run "under either bash or the user's shell of choice", and the rest of this
+    # suite already drives it with bash/sh. Only these two call sites asked for
+    # zsh, which is absent on the CI runners — so five tests here passed on macOS
+    # and failed everywhere else, testing the developer's shell rather than the
+    # library. bash is present wherever the hooks are.
     r = subprocess.run(
-        ["zsh", "-c", f'source "{HOOKS}/_lib.sh"; resolve_project_root'],
+        ["bash", "-c", f'source "{HOOKS}/_lib.sh"; resolve_project_root'],
         cwd=str(cwd), capture_output=True, text=True, env={"HOME": str(home), "PATH": "/usr/bin:/bin"},
     )
     return r.stdout.strip(), r.returncode
@@ -303,7 +309,7 @@ def test_money_spending_hooks_are_off_by_default(tmp_path):
         src = (HOOKS / name).read_text(encoding="utf-8")
         assert "hook_autocompile_enabled || exit 0" in src, name
     r = subprocess.run(
-        ["zsh", "-c", f'source "{HOOKS}/_lib.sh"; hook_autocompile_enabled && echo on || echo off'],
+        ["bash", "-c", f'source "{HOOKS}/_lib.sh"; hook_autocompile_enabled && echo on || echo off'],
         capture_output=True, text=True, env={"HOME": str(tmp_path), "PATH": "/usr/bin:/bin"},
     )
     assert r.stdout.strip() == "off"

@@ -1,0 +1,131 @@
+# Run the pytest suite on every push and pull request.
+#
+# Until this file existed nothing ran the tests on push: the repository had
+# only build-demo.yml (compiles the dogfood wiki) and npm-publish.yml (ships the
+# wrapper on a tag). Neither executes a single test, so "main is green" was an
+# assertion nobody checked.
+#
+# Two things had to be fixed before this workflow could work at all, and both
+# are worth knowing about before editing it:
+#
+#   1. `pytest` was declared NOWHERE — not in pyproject, not in uv.lock. The
+#      suite ran only because pytest had been installed by hand into a local
+#      .venv. A fresh clone got no test runner. It now lives in the `dev`
+#      dependency group, which is what `uv sync` installs by default.
+#   2. `kuzu` had the same problem, but worse: two tests call the Kuzu store
+#      with no `importorskip` guard, so they FAIL rather than skip when it is
+#      absent. It is in the `dev` group for that reason.
+#
+# Python setup uses actions/setup-python rather than uv's managed CPython, and
+# that is deliberate. tests/test_packaging_install.py builds a nested venv with
+# `venv.EnvBuilder(with_pip=True)`; on uv's standalone python distributions the
+# `ensurepip` step inside that nested venv dies with SIGABRT. The setup-python
+# builds have a working ensurepip. build-demo.yml uses setup-python for its own
+# reasons; this workflow matches it.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # One run per branch or PR. A new push cancels the previous run, which matters
+  # because the suite is ~3000 tests and takes several minutes per matrix leg.
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: pytest (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    env:
+      # Forbid uv from downloading its own CPython. It must use the interpreter
+      # actions/setup-python put on PATH, because that is the one with a working
+      # `ensurepip` (see the header note on test_packaging_install). Without
+      # this, uv would silently fetch a standalone build and that test would
+      # fail with SIGABRT for reasons nothing in the log would explain.
+      UV_PYTHON_DOWNLOADS: never
+    strategy:
+      # Do not cancel 3.12 because 3.10 failed — a version-specific break is
+      # exactly what this matrix exists to surface, and seeing which legs pass
+      # is most of the diagnosis.
+      fail-fast: false
+      matrix:
+        # The versions this project claims to support: `requires-python =
+        # ">=3.10"` plus the 3.10/3.11/3.12 classifiers in pyproject.toml. If a
+        # version is added there, add it here — a support claim nothing tests is
+        # the same shape of problem this workflow was written to fix.
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        id: setup-python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          # Re-resolve the cache when the lock changes, not when any file does.
+          cache-dependency-glob: uv.lock
+
+      - name: Sync the locked environment
+        # `--locked` fails if uv.lock is stale rather than silently updating it,
+        # so a lockfile that has drifted from pyproject.toml is a red build
+        # instead of a surprise months later. (main carried exactly that drift
+        # until it was caught by hand.)
+        #
+        # The extras are the ones the suite actually reaches: `semantic` and
+        # `synthesis-llm` back `pytest.importorskip` guards that otherwise skip,
+        # `ingest-url` backs the URL ingest path. The raganything extras are
+        # deliberately absent — they pull torch and are not exercised here.
+        #
+        # `--python` gets setup-python's absolute interpreter path, not the bare
+        # name `python`: uv resolves a bare name against PATH and errors with
+        # "No interpreter found for executable name `python`" wherever only
+        # `python3` exists. The absolute path cannot miss, and it pins the
+        # matrix leg to the interpreter this job actually installed.
+        run: >-
+          uv sync --locked
+          --python "${{ steps.setup-python.outputs.python-path }}"
+          --extra semantic
+          --extra synthesis-llm
+          --extra ingest-url
+
+      - name: Run the suite
+        # Collection is scoped to tests/ by [tool.pytest.ini_options] in
+        # pyproject.toml. Without it pytest walks into evals/, which holds
+        # gitignored upstream clones (cognee, MegaMem) carrying their own
+        # suites — those are absent in CI, so this is belt-and-braces.
+        #
+        # Expect ~2978 passed / ~15 skipped from a clean checkout, against
+        # ~2990 / ~3 on a working dev machine. The 12-test gap is not a
+        # regression and not something to "fix" by seeding fixtures: those
+        # tests guard on gitignored local artifacts that no fresh clone has —
+        # 9 want a `data/research/` corpus, 3 want a compiled
+        # `.tesserae/graph.json`. They skip with an explicit reason rather than
+        # passing vacuously. `-rs` prints those reasons if the count ever moves.
+        run: uv run --no-sync pytest -q -rs
+
+      - name: Report the environment on failure
+        # A failure that only reproduces on one matrix leg is nearly always an
+        # environment difference. Print the resolved set once, here, rather than
+        # asking the next person to re-run with --verbose.
+        if: failure()
+        run: |
+          echo "::group::python"
+          uv run --no-sync python -VV
+          echo "::endgroup::"
+          echo "::group::installed packages"
+          uv pip list
+          echo "::endgroup::"
