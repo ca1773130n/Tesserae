@@ -52,6 +52,25 @@ raganything-semantic = ["raganything[all]>=1.3.0", "sentence-transformers>=3.0"]
 semantic = ["model2vec>=0.3", "numpy>=1.21"]
 ingest-url = ["httpx>=0.24", "markdownify>=0.11"]
 
+[dependency-groups]
+# The test runner was previously undeclared: `pytest` appeared in neither
+# pyproject nor uv.lock, so the suite ran only because it had been installed
+# into a hand-built .venv. A fresh clone got no test runner, and any `uv run`
+# that rebuilt the environment from the lock silently dropped it. Declaring it
+# here is what makes CI — or any second machine — able to run the tests at all.
+#
+# The suite imports nothing beyond the stdlib, the package itself, and pytest.
+# The optional integrations it exercises through `pytest.importorskip`
+# (`anthropic`, `model2vec`) live in the extras below and skip cleanly when
+# absent — they do not belong here.
+#
+# `kuzu` is the exception: two tests (test_persistence, test_cli) call the Kuzu
+# store directly with no importorskip guard, so they FAIL rather than skip when
+# it is missing. It was undeclared for the same reason pytest was — present in a
+# hand-built .venv, invisible to the lock. Either it is a test dependency or
+# those tests need a guard; declaring it keeps today's behaviour.
+dev = ["pytest>=8", "kuzu>=0.6"]
+
 [project.scripts]
 tesserae = "tesserae.cli:main"
 tesserae_mcp = "tesserae.mcp_server:main"
