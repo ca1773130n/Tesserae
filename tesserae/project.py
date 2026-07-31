@@ -920,6 +920,7 @@ class ProjectWiki:
                 graphs = []
                 processed = 0
                 skipped = len(markdown_files)
+                fallback_files: List[str] = []
                 batch = None
             else:
                 batch = BatchIngestRunner(extractor=extractor, manifest_path=self.paths.manifest).run(
@@ -933,6 +934,11 @@ class ProjectWiki:
                 graphs = batch.graphs or [batch.graph]
                 processed = batch.processed
                 skipped = batch.skipped
+                # Documents whose LLM extraction failed and were served by the
+                # deterministic baseline. The count reached only the batch's own
+                # stderr note, so a compile that lost most of its concept layer
+                # still printed a clean summary and exited 0 (issue #92).
+                fallback_files = list(batch.fallback_paths)
                 if fallback_only:
                     # The corpus is byte-unchanged AND the prior graph is
                     # marked complete, so it carries every doc the batch just
@@ -1014,6 +1020,9 @@ class ProjectWiki:
             # sha-skip it. Building the guard properly means per-origin coverage
             # tracking (graph.json accumulated by origin rather than replaced) —
             # a schema migration, correctly deferred until a caller exists.
+            # ponytail: the loader path has no per-doc fallback signal to
+            # report; an empty list is honest, not a placeholder.
+            fallback_files = []
             graphs, processed, skipped = self._ingest_via_loader(
                 loader=loader,
                 extractor=extractor,
@@ -1618,6 +1627,8 @@ class ProjectWiki:
             "source_kind": kind,
             "processed_files": processed,
             "skipped_files": skipped,
+            "fallback_files": len(fallback_files),
+            "fallback_paths": fallback_files,
             "node_count": len(graph.nodes),
             "edge_count": len(graph.edges),
             "graph_path": str(self.paths.graph),

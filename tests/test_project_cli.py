@@ -425,3 +425,32 @@ def test_project_compile_uses_injected_loader_and_store(tmp_path):
     assert not wiki.paths.sqlite.exists(), (
         "injected GraphStore must replace the default SQLite write"
     )
+
+
+def test_compile_summary_reports_fallbacks(capsys):
+    """Issue #92: a compile that lost its concept layer must SAY so.
+
+    The fallback count reached only a per-doc stderr line, so a run that lost
+    LLM extraction on most of its documents still printed a clean summary and
+    exited 0 — which is how four separate root causes stayed undiagnosed for a
+    day. The count now rides the machine-readable summary line, and a majority
+    loss escalates from `note:` to `WARNING:`.
+    """
+    from tesserae.cli import _warn_on_fallbacks
+
+    _warn_on_fallbacks({"fallback_files": 0, "processed_files": 100})
+    assert capsys.readouterr().err == "", "a clean compile must stay quiet"
+
+    _warn_on_fallbacks({"fallback_files": 3, "processed_files": 100})
+    minor = capsys.readouterr().err
+    assert minor.startswith("note:"), minor
+    assert "--retry-fallbacks" in minor, "must name the recovery command"
+
+    _warn_on_fallbacks({"fallback_files": 61, "processed_files": 100})
+    major = capsys.readouterr().err
+    assert major.startswith("WARNING:"), major
+    assert "61 of 100" in major, major
+
+    # An older result dict without the key must not raise.
+    _warn_on_fallbacks({"processed_files": 10})
+    assert capsys.readouterr().err == ""
