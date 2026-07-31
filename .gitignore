@@ -54,7 +54,16 @@ node-compile-cache/
 .aider.conf.yml
 .aider*
 .avante/
-.claude/
+# `.claude/` is per-developer EXCEPT skills/, which are project procedure —
+# the release flow, the UI-verification loop. Keeping those untracked meant a
+# release procedure that existed on exactly one laptop, which is the same class
+# of problem as a test suite that only passes on one laptop.
+#
+# Written as `.claude/*` rather than `.claude/`: git cannot re-include anything
+# under a directory that is itself excluded, so the negation below only works
+# if the contents are excluded individually.
+.claude/*
+!.claude/skills/
 .clinerules
 .cline/
 .codecompanion/
