@@ -473,7 +473,11 @@ class ProjectWiki:
             model=model,
             provider=settings["provider"],
             claude_config_dirs=settings["claude_config_dirs"],
-            codex_home=settings["codex_home"],
+            # codex_homes, not codex_home: the scalar is a one-element list by
+            # the time it reaches the client, which pins it verbatim and turns
+            # rotation off for compile/session/community/distillation — the
+            # exact defect this branch exists to remove, on its primary path.
+            codex_homes=settings.get("codex_homes"),
             codex_reasoning_effort=settings.get("codex_reasoning_effort"),
         )
 
@@ -1020,10 +1024,7 @@ class ProjectWiki:
             # sha-skip it. Building the guard properly means per-origin coverage
             # tracking (graph.json accumulated by origin rather than replaced) —
             # a schema migration, correctly deferred until a caller exists.
-            # ponytail: the loader path has no per-doc fallback signal to
-            # report; an empty list is honest, not a placeholder.
-            fallback_files = []
-            graphs, processed, skipped = self._ingest_via_loader(
+            graphs, processed, skipped, fallback_files = self._ingest_via_loader(
                 loader=loader,
                 extractor=extractor,
                 source_kind=markdown_source_kind,
@@ -2094,7 +2095,7 @@ class ProjectWiki:
         source_kind: str,
         changed_only: bool,
         limit: Optional[int],
-    ) -> tuple[List[ResearchGraph], int, int]:
+    ) -> tuple[List[ResearchGraph], int, int, List[str]]:
         """Drive extraction from a :class:`SourceLoader` instead of the FS walker.
 
         Manifest bookkeeping mirrors :class:`BatchIngestRunner`: entries are
@@ -2110,6 +2111,7 @@ class ProjectWiki:
         graphs: List[ResearchGraph] = []
         processed = 0
         skipped = 0
+        fallback_paths: List[str] = []
         try:
             for source in loader.discover():
                 digest = sha256_text(source.content)
@@ -2127,9 +2129,15 @@ class ProjectWiki:
                 graphs.append(graph)
                 processed += 1
                 manifest[key] = {"sha256": digest, "source_kind": source_kind}
+                # Same duck-typed thread-local BatchIngestRunner reads. Without
+                # it this arm reported fallbacks=0 no matter how much of the
+                # concept layer it lost — #92's silent failure, rebuilt.
+                if bool(getattr(extractor, "last_was_fallback", False)):
+                    fallback_paths.append(key)
+                    manifest[key]["fallback"] = True
         finally:
             self._write_manifest(manifest)
-        return graphs, processed, skipped
+        return graphs, processed, skipped, fallback_paths
 
     def _load_manifest(self) -> dict:
         if not self.paths.manifest.exists():

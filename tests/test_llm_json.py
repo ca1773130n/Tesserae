@@ -377,6 +377,60 @@ def test_quota_exhaustion_stops_spawning_children(monkeypatch, reset_login_warni
     assert len(calls) == 2, f"exhausted accounts must not be re-spawned, got {len(calls)} calls"
 
 
+def test_latch_needs_every_account_proven(monkeypatch, reset_login_warning):
+    """One timeout among the accounts must prevent the latch.
+
+    Codex review of PR #94: the latch read only `last_error`, so account A
+    timing out and account B hitting quota latched the whole run — A was never
+    shown to be exhausted, and every later document lost its LLM call for a
+    reason that may have been a passing network blip.
+    """
+    from tesserae.llm_json import ClaudeCLIJsonClient
+
+    calls: List[str] = []
+
+    def fake_run(cmd, **kw):
+        calls.append("x")
+        if len(calls) % 2:  # account A: transient, proves nothing
+            raise TimeoutError("network stall")
+        return _make_completed_process(  # account B: genuinely out of quota
+            returncode=1, stdout="",
+            stderr="You've hit your weekly limit · resets 6am (Asia/Seoul)",
+        )
+
+    monkeypatch.setattr(llm_json, "_run_cli", fake_run)
+    client = ClaudeCLIJsonClient(config_dirs=["/acct/a", "/acct/b"])
+
+    client.complete_text(system="s", user="doc 1")
+    client.complete_text(system="s", user="doc 2")
+    assert len(calls) == 4, f"a mixed verdict must keep trying, got {len(calls)}"
+    assert not client._accounts_exhausted, "unproven account must not latch the run"
+
+
+def test_latch_is_per_client_not_per_process(monkeypatch, reset_login_warning):
+    """An exhausted client must not disable an unrelated one.
+
+    Codex review of PR #94: the latch was a module global, so a pinned
+    single-account client could switch off every other client in the process —
+    and a daemon/MCP process stayed disabled long after the quota reset.
+    """
+    from tesserae.llm_json import ClaudeCLIJsonClient
+
+    def out_of_quota(cmd, **kw):
+        return _make_completed_process(
+            returncode=1, stdout="",
+            stderr="You've hit your weekly limit · resets 6am (Asia/Seoul)",
+        )
+
+    monkeypatch.setattr(llm_json, "_run_cli", out_of_quota)
+    spent = ClaudeCLIJsonClient(config_dirs=["/acct/a"])
+    spent.complete_text(system="s", user="doc")
+    assert spent._accounts_exhausted, "the exhausted client should latch"
+
+    fresh = ClaudeCLIJsonClient(config_dirs=["/acct/b"])
+    assert not fresh._accounts_exhausted, "a separate client must start clean"
+
+
 def test_per_document_failure_does_not_latch(monkeypatch, reset_login_warning):
     """A failure that is NOT account-level quota must keep rotating — latching
     on it would turn one bad document into a whole-run outage."""

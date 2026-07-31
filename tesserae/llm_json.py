@@ -96,13 +96,6 @@ _LOGGED_LOGIN_WARNING: bool = False
 #: serve. See CodexCLIJsonClient.__init__ for the removal path.
 CODEX_PINNED_MODEL = "gpt-5.6-luna"
 
-#: Latched once EVERY configured account reports a quota/usage limit. Quota is
-#: an account fact, so the verdict holds for the rest of the process — there is
-#: no point spawning a CLI child per remaining document to be told again. Reset
-#: per-process only (a new compile re-probes, which is what you want after a
-#: limit resets).
-_ACCOUNTS_EXHAUSTED: bool = False
-
 #: Substrings the Claude CLI uses when an account is out of quota, e.g.
 #: "You've hit your weekly limit · resets 6am (Asia/Seoul)" and the 5-hour
 #: "session limit" variant. Matched case-insensitively against the CLI's own
@@ -119,9 +112,8 @@ def _is_quota_exhaustion(error: BaseException) -> bool:
 
 def _reset_login_warning_for_tests() -> None:
     """Reset the one-shot login warning flag. Test-only helper."""
-    global _LOGGED_LOGIN_WARNING, _ACCOUNTS_EXHAUSTED
+    global _LOGGED_LOGIN_WARNING
     _LOGGED_LOGIN_WARNING = False
-    _ACCOUNTS_EXHAUSTED = False
 
 
 #: Why the most recent ``complete_json`` on THIS thread returned None.
@@ -643,6 +635,10 @@ class ClaudeCLIJsonClient:
         else:
             self.config_dirs = discovered or [str(home / ".claude")]
         self.timeout = int(timeout) if timeout is not None else None
+        #: Set once every account in :attr:`config_dirs` is a proven dead end
+        #: (quota exhausted, or not logged in). Per-instance on purpose — see
+        #: the guard in :meth:`_run_prompt`.
+        self._accounts_exhausted = False
 
     def _run_prompt(
         self,
@@ -680,18 +676,28 @@ class ClaudeCLIJsonClient:
         # caller still marks each doc `fallback: true`, so
         # `compile --changed-only --retry-fallbacks` recovers them all once the
         # limit resets.
-        global _ACCOUNTS_EXHAUSTED
-        if _ACCOUNTS_EXHAUSTED:
+        # Scoped to THIS client, not the process: a pinned single-account
+        # client must not disable an unrelated one, and a daemon/MCP process
+        # that outlives a quota reset must not stay disabled forever. Each
+        # compile builds its own client, so the verdict expires naturally.
+        if self._accounts_exhausted:
             _note_failure("exhausted")
             return None
 
         last_error: Optional[Exception] = None
         all_not_logged_in = True  # only True if EVERY tried config_dir was Not-logged-in
         any_attempted = False
+        # Latching needs proof about EVERY account, not just the last one. With
+        # only last_error to go on, account A timing out and account B hitting
+        # quota latched the whole run — A was never shown to be exhausted.
+        attempted = 0
+        quota_hits = 0
+        dead_ends = 0  # exhausted OR not-logged-in: cannot serve this run either way
         timed_out = False  # same bug class as the codex client — see below
         default_claude_dir = str(_Path.home() / ".claude")
         for config_dir in self.config_dirs:
             any_attempted = True
+            attempted += 1
             try:
                 env = _os.environ.copy()
                 # WORKAROUND for Claude CLI quirk: setting
@@ -745,6 +751,7 @@ class ClaudeCLIJsonClient:
                         last_error = RuntimeError(
                             f"claude exited {proc.returncode}: {stderr_text or stdout_text}"
                         )
+                        dead_ends += 1
                         continue  # skip to next config_dir
                     # Non-auth failure on this profile (incl. a rate
                     # limit — `claude -p` exits non-zero with "You've
@@ -770,6 +777,9 @@ class ClaudeCLIJsonClient:
                 return proc.stdout
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
+                if _is_quota_exhaustion(exc):
+                    quota_hits += 1
+                    dead_ends += 1
                 # Reaching here means this profile did NOT answer "Not logged
                 # in" (that branch continues above without raising), so the
                 # auth verdict is off the table. It used to be cleared only on
@@ -809,10 +819,12 @@ class ClaudeCLIJsonClient:
                     "dir" if len(self.config_dirs) == 1 else "dirs",
                 )
             return None
-        if last_error is not None and _is_quota_exhaustion(last_error):
-            # Every account is out of quota. Say so once, with the reset time
-            # the CLI reported, instead of repeating it per document.
-            _ACCOUNTS_EXHAUSTED = True
+        if quota_hits and attempted and dead_ends == attempted:
+            # EVERY account tried was out of quota (or not logged in, which
+            # cannot serve this run either) and at least one said so outright.
+            # A timeout or a network blip among them leaves dead_ends short of
+            # attempted, so the run keeps trying — transient != exhausted.
+            self._accounts_exhausted = True
             _note_failure("exhausted")
             logger.warning(
                 "[tesserae] every configured account is out of quota (%d tried); "
