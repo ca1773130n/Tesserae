@@ -26,10 +26,15 @@ tesserae compile --help
 tesserae context --help     # Compilador de contexto bajo demanda
 ```
 
-### Smoke de build de demo (coincide con el job de CI `build-demo`)
+### Smoke de build de demo (manual — nada en CI lo cubre)
 
-Tanto el flujo de release como CI compilan Tesserae contra su propio árbol de
-fuentes con el extractor determinista (sin llamadas a LLM, sin API keys) y construyen el sitio:
+Ejecútalo a mano antes de cada release. Antes replicaba un job de CI `build-demo` que
+corría en cada push a `main`; ese workflow se eliminó, así que esta ruta de compilación
+solo se verifica aquí. `tests.yml` ejecuta la suite unitaria y no ejercita
+`init` → `compile` → `export site` de extremo a extremo.
+
+Compila Tesserae contra su propio árbol de fuentes con el extractor determinista (sin
+llamadas a LLM, sin API keys) y construye el sitio:
 
 ```bash
 .venv/bin/python -m tesserae init --yes --source .
@@ -50,12 +55,14 @@ Conducido por la skill `release` (`.claude/skills/release/SKILL.md`). El tag má
 
 ### GitHub Pages
 
-El workflow `build-demo` (push a `main`) siempre sube el sitio dogfood compilado como un
-artefacto de workflow inspeccionable y, **además**, lo despliega a GitHub Pages cuando Pages
-está habilitado. Los pasos de Pages son `continue-on-error`: el `GITHUB_TOKEN` por defecto no
-puede *crear* un sitio Pages, así que el primer despliegue necesita un cambio manual único en
-**Settings → Pages → Source: GitHub Actions**. Hasta que ese interruptor esté activado, la build
-sigue en verde y el artefacto se sigue produciendo.
+**Ningún workflow despliega ya el sitio.** El workflow `build-demo` lo hacía en cada push
+a `main`; fue eliminado. El sitio que desplegó por última vez se sigue sirviendo, y el
+README lo sigue enlazando como demo en vivo — así que esa página es ahora una instantánea
+congelada en la última ejecución de `build-demo`, no una vista actual de `main`.
+
+Republicar es un `tesserae export site` manual más una subida, o un workflow nuevo. Sea
+como sea, decídelo deliberadamente: un enlace de demo que se desvía en silencio del código
+es peor que no tener enlace de demo.
 
 ## Self-dogfood
 

@@ -26,10 +26,15 @@ tesserae compile --help
 tesserae context --help     # 온디맨드 컨텍스트 컴파일러
 ```
 
-### 데모 빌드 스모크 (`build-demo` CI 잡과 동일)
+### 데모 빌드 스모크 (수동 — CI에서 다루지 않음)
 
-릴리스 흐름과 CI 모두 결정론적 추출기(LLM 호출 없음, API 키 불필요)로 Tesserae를
-자체 소스 트리에 대해 컴파일하고 사이트를 빌드한다:
+릴리스마다 손으로 실행한다. 예전에는 `main` 푸시마다 도는 `build-demo` CI 잡과
+동일했지만 그 워크플로는 제거되었다. 따라서 이 컴파일 경로를 확인하는 곳은 이제
+여기뿐이다. `tests.yml`은 유닛 스위트를 실행할 뿐 `init` → `compile` → `export site`를
+끝까지 실행하지는 않는다.
+
+결정론적 추출기(LLM 호출 없음, API 키 불필요)로 Tesserae를 자체 소스 트리에 대해
+컴파일하고 사이트를 빌드한다:
 
 ```bash
 .venv/bin/python -m tesserae init --yes --source .
@@ -50,11 +55,14 @@ tesserae context --help     # 온디맨드 컨텍스트 컴파일러
 
 ### GitHub Pages
 
-`build-demo` 워크플로(`main` 푸시)는 컴파일된 dogfood 사이트를 검사 가능한 워크플로
-아티팩트로 항상 업로드하고, Pages가 활성화되어 있으면 **추가로** GitHub Pages에 배포한다.
-Pages 단계는 `continue-on-error`다: 기본 `GITHUB_TOKEN`은 Pages 사이트를 *생성*할 수
-없으므로, 최초 배포에는 **Settings → Pages → Source: GitHub Actions**에서 한 번의 수동
-전환이 필요하다. 그 전환을 켜기 전까지도 빌드는 그린으로 유지되고 아티팩트는 계속 생성된다.
+**이제 어떤 워크플로도 사이트를 배포하지 않는다.** `build-demo` 워크플로가 `main`
+푸시마다 배포했지만 제거되었다. 그것이 마지막으로 배포한 사이트는 여전히 서빙되고
+있고 README도 여전히 라이브 데모로 링크한다 — 즉 그 페이지는 마지막 `build-demo`
+실행 시점에 얼어붙은 스냅샷이지 현재 `main`의 모습이 아니다.
+
+다시 게시하려면 수동 `tesserae export site`와 업로드, 또는 새 워크플로가 필요하다.
+어느 쪽이든 의도적으로 결정할 것: 코드와 조용히 어긋나는 데모 링크는 데모 링크가
+없는 것보다 나쁘다.
 
 ## Self-dogfood
 
