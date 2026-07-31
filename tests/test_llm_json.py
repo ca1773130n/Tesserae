@@ -274,6 +274,56 @@ def test_cli_complete_text_returns_prose(monkeypatch):
     assert out == "We decided to ship. [node:abc]"
 
 
+def test_codex_home_is_preferred_not_exclusive(monkeypatch, tmp_path):
+    """CODEX_HOME ranks first; the other authenticated homes stay in rotation.
+
+    Codex had the same defect claude did — the env var replaced the discovered
+    list, so the rotation loop that exists to survive a rate-limited account
+    had nowhere to go.
+    """
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    for name in (".codex", ".codex-personal1", ".codex-personal2"):
+        (fake_home / name).mkdir()
+        (fake_home / name / "auth.json").write_text("{}")
+    # Neither is a codex home: a stray log file, and a dir with no auth.json.
+    (fake_home / ".codex-review-pr208.log").write_text("noise")
+    (fake_home / ".codex-nomcp").mkdir()
+
+    monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
+    monkeypatch.setenv("CODEX_HOME", str(fake_home / ".codex-personal2"))
+
+    homes = CodexCLIJsonClient().codex_homes
+    assert homes[0] == str(fake_home / ".codex-personal2"), f"env home first, got {homes}"
+    assert len(homes) == 3, f"other authenticated homes must stay, got {homes}"
+    assert not any(h.endswith(".log") for h in homes), f"log files are not homes: {homes}"
+    assert not any(h.endswith(".codex-nomcp") for h in homes), (
+        f"a dir without auth.json is not a usable home: {homes}"
+    )
+
+
+def test_codex_homes_list_config(monkeypatch):
+    """llm_codex_homes (list) is the modern key; llm_codex_home (str) still works."""
+    from tesserae.llm_json import resolve_llm_client_settings
+
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.setattr(llm_json, "_load_global_llm_config", lambda: {})
+
+    listed = resolve_llm_client_settings({"llm_codex_homes": ["/a", "/b"]})
+    assert listed["codex_homes"] == ["/a", "/b"]
+    assert listed["codex_home"] == "/a", "scalar back-compat view is the first home"
+
+    legacy = resolve_llm_client_settings({"llm_codex_home": "/only"})
+    assert legacy["codex_homes"] == ["/only"]
+
+    # Unconfigured must be None, never [CODEX_HOME] — that would pin the client
+    # verbatim and re-disable rotation. Same trap as the claude side.
+    monkeypatch.setenv("CODEX_HOME", "/from/env")
+    assert resolve_llm_client_settings({})["codex_homes"] is None
+
+
 def test_codex_model_is_pinned(monkeypatch, caplog):
     """Every codex call uses gpt-5.6-luna, ahead of config and caller.
 
@@ -801,12 +851,17 @@ def test_codex_client_invokes_codex_exec_and_parses_json(monkeypatch, tmp_path):
 def test_codex_client_env_home_used_when_no_arg(monkeypatch, tmp_path):
     from tesserae.llm_json import CodexCLIJsonClient
 
-    env_home = tmp_path / "codex-personal1"
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
+    env_home = fake_home / ".codex-personal1"
     env_home.mkdir()
+    (env_home / "auth.json").write_text("{}")
     monkeypatch.setenv("CODEX_HOME", str(env_home))
 
     client = CodexCLIJsonClient()
-    assert client.codex_homes == [str(env_home)]
+    # Ranked first, not exclusive — see test_codex_home_is_preferred_not_exclusive.
+    assert client.codex_homes[0] == str(env_home)
 
 
 def test_codex_client_explicit_homes_beat_env(monkeypatch, tmp_path):
@@ -1502,7 +1557,10 @@ def test_resolve_llm_client_settings_precedence(monkeypatch):
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/env/claude")
     settings = resolve_llm_client_settings(cfg)
     assert settings["provider"] == "claude"
-    assert settings["codex_home"] == "/env/codex"
+    # CODEX_HOME no longer wins here for the same reason CLAUDE_CONFIG_DIR does
+    # not: whatever this returns is passed down as an explicit pin, which would
+    # collapse rotation to one account. The configured home stands.
+    assert settings["codex_home"] == "/cfg/codex"
     # ...EXCEPT CLAUDE_CONFIG_DIR, which is the one ambient var here: every
     # process a Claude Code session spawns inherits it, so it is not evidence
     # of intent the way TESSERAE_* / CODEX_HOME are. Letting it win meant an

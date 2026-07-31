@@ -59,8 +59,19 @@ accounts: a rate-limited account falls through to the next instead of losing the
 rest of the run to deterministic extraction. By default it auto-discovers every
 `~/.claude*` directory.
 
-To control exactly which accounts may be spent, and in what order, set
-`llm_claude_config_dirs` in `.tesserae/config.json` (project) or
+The **codex** provider works the same way, over authenticated `~/.codex*`
+homes (a directory only counts when it contains `auth.json`), configured with
+`llm_codex_homes`. Each provider has its own key because each has its own
+on-disk account layout — Claude CLI config dirs and Codex homes are not
+interchangeable:
+
+| provider | config key | what it lists |
+|---|---|---|
+| `claude` | `llm_claude_config_dirs` | Claude CLI config dirs (`~/.claude*`) |
+| `codex`  | `llm_codex_homes`        | Codex homes (`~/.codex*`) |
+
+To control exactly which accounts may be spent, and in what order, set the key
+for your provider in `.tesserae/config.json` (project) or
 `~/.tesserae/config.json` (global):
 
 ```json

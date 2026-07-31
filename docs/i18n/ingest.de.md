@@ -59,6 +59,17 @@ Ein Konto, das sein Limit erreicht, übergibt an das nächste, statt den Rest de
 an die deterministische Extraktion zu verlieren. Standardmäßig werden alle
 `~/.claude*`-Verzeichnisse automatisch erkannt.
 
+Der Provider **codex** funktioniert genauso: Er rotiert über authentifizierte
+`~/.codex*`-Homes (ein Verzeichnis zählt nur mit `auth.json`) und wird über
+`llm_codex_homes` konfiguriert. Jeder Provider hat einen eigenen Schlüssel, weil jeder
+sein eigenes Kontenlayout auf der Platte hat — Claude-CLI-Konfigurationsverzeichnisse und
+Codex-Homes sind nicht austauschbar:
+
+| Provider | Konfigurationsschlüssel | was er auflistet |
+|---|---|---|
+| `claude` | `llm_claude_config_dirs` | Claude-CLI-Konfigurationsverzeichnisse (`~/.claude*`) |
+| `codex`  | `llm_codex_homes`        | Codex-Homes (`~/.codex*`) |
+
 Um genau festzulegen, welche Konten verbraucht werden dürfen und in welcher
 Reihenfolge, setze `llm_claude_config_dirs` in `.tesserae/config.json` (Projekt) oder
 `~/.tesserae/config.json` (global):

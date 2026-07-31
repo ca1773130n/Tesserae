@@ -59,6 +59,17 @@ iniciada: una cuenta que alcanza su límite cede el paso a la siguiente en lugar
 perder el resto de la ejecución en extracción determinista. Por defecto detecta
 automáticamente todos los directorios `~/.claude*`.
 
+El proveedor **codex** funciona igual: rota entre los directorios `~/.codex*`
+autenticados (un directorio solo cuenta si contiene `auth.json`) y se configura con
+`llm_codex_homes`. Cada proveedor tiene su propia clave porque cada uno tiene su propia
+disposición de cuentas en disco: los directorios de configuración de Claude CLI y los
+homes de Codex no son intercambiables:
+
+| proveedor | clave de configuración | qué enumera |
+|---|---|---|
+| `claude` | `llm_claude_config_dirs` | directorios de configuración de Claude CLI (`~/.claude*`) |
+| `codex`  | `llm_codex_homes`        | homes de Codex (`~/.codex*`) |
+
 Para controlar exactamente qué cuentas pueden gastarse, y en qué orden, define
 `llm_claude_config_dirs` en `.tesserae/config.json` (proyecto) o
 `~/.tesserae/config.json` (global):

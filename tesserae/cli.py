@@ -3982,7 +3982,7 @@ def _handle_config_status(args: argparse.Namespace) -> int:
 
     client = build_default_json_client(
         provider=provider,
-        codex_home=settings["codex_home"],
+        codex_homes=settings["codex_homes"],
         claude_config_dirs=settings["claude_config_dirs"],
         model=settings.get("model"),
         base_url=settings.get("base_url"),
@@ -5551,7 +5551,7 @@ def _build_doc_extractor(args: argparse.Namespace, cfg: Optional[dict] = None):
         model=getattr(args, "llm_model", None) or getattr(args, "claude_model", None),
         provider=getattr(args, "llm_provider", None) or settings.get("provider"),
         claude_config_dirs=(getattr(args, "claude_config_dir", None) or settings.get("claude_config_dirs")),
-        codex_home=settings.get("codex_home"),
+        codex_homes=settings.get("codex_homes"),
         codex_reasoning_effort=settings.get("codex_reasoning_effort") or "medium",
         timeout=_extract_timeout(),  # per-attempt cutoff, default 1800s (TESSERAE_EXTRACT_TIMEOUT=0 = run to completion)
     )

@@ -59,6 +59,16 @@ LLM バックエンドが未設定/未認証の場合、compile は**決定論�
 すべてが決定論的抽出に落ちることはない。既定では `~/.claude*` ディレクトリを自動検出
 する。
 
+**codex** プロバイダも同じように動作する。認証済みの `~/.codex*` ホーム（ディレクトリ
+に `auth.json` がある場合のみホームとみなす）を巡回し、`llm_codex_homes` で設定する。
+プロバイダごとに別のキーを使うのは、ディスク上のアカウント構成が異なるためだ。Claude CLI
+の設定ディレクトリと Codex ホームは互換ではない:
+
+| プロバイダ | 設定キー | 列挙対象 |
+|---|---|---|
+| `claude` | `llm_claude_config_dirs` | Claude CLI 設定ディレクトリ（`~/.claude*`） |
+| `codex`  | `llm_codex_homes`        | Codex ホーム（`~/.codex*`） |
+
 どのアカウントをどの順序で消費するかを厳密に指定するには、`.tesserae/config.json`
 （プロジェクト）または `~/.tesserae/config.json`（グローバル）に
 `llm_claude_config_dirs` を設定する:

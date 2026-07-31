@@ -1007,17 +1007,27 @@ class CodexCLIJsonClient:
         #      e.g. ``~/.codex-personal1``).
         #   3. Auto-discover every ``~/.codex*`` directory at $HOME.
         #   4. Final fallback: ``[~/.codex]``.
+        home = _Path.home()
+        discovered = sorted(
+            str(p)
+            for p in home.glob(".codex*")
+            # A codex home is a DIRECTORY holding auth.json. The glob otherwise
+            # sweeps up siblings like ~/.codex-review-pr208.log — 24 of them on
+            # one real machine — and every one costs a doomed `codex exec` per
+            # document before rotation moves on.
+            if p.is_dir()
+            and not p.name.endswith((".bak", ".old"))
+            and (p / "auth.json").exists()
+        )
         if codex_homes:
             self.codex_homes = list(codex_homes)
         elif _os.environ.get("CODEX_HOME"):
-            self.codex_homes = [_os.environ["CODEX_HOME"]]
+            # Preferred-first, not exclusive — same reasoning as
+            # ClaudeCLIJsonClient.config_dirs: pinning to the env var disabled
+            # the rotation loop that exists to survive a rate-limited account.
+            env_home = _os.environ["CODEX_HOME"]
+            self.codex_homes = [env_home] + [d for d in discovered if d != env_home]
         else:
-            home = _Path.home()
-            discovered = sorted(
-                str(p)
-                for p in home.glob(".codex*")
-                if p.is_dir() and not p.name.endswith((".bak", ".old"))
-            )
             self.codex_homes = discovered or [str(home / ".codex")]
         self.timeout = int(timeout) if timeout is not None else None
 
@@ -1498,12 +1508,21 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
         or _as_dirs(global_cfg.get("llm_claude_config_dirs"))
     )
 
-    codex_home = (
-        os.environ.get("CODEX_HOME")
-        or cfg.get("llm_codex_home")
-        or global_cfg.get("llm_codex_home")
-        or None
+    # Codex gets the same treatment as claude above, for the same reasons.
+    # ``llm_codex_homes`` (a LIST, rotation order) is the modern key; the older
+    # singular ``llm_codex_home`` still works and means a one-account list.
+    # CODEX_HOME is deliberately NOT a fallback here — see the claude note: a
+    # value returned from this function is passed down as an explicit pin, so
+    # honouring the env var here would collapse rotation to one account. Left
+    # None, CodexCLIJsonClient ranks CODEX_HOME first and keeps the rest.
+    codex_homes = (
+        _as_dirs(cfg.get("llm_codex_homes"))
+        or _as_dirs(cfg.get("llm_codex_home"))
+        or _as_dirs(global_cfg.get("llm_codex_homes"))
+        or _as_dirs(global_cfg.get("llm_codex_home"))
     )
+    # Back-compat scalar for the callers/CLI that still display a single home.
+    codex_home = codex_homes[0] if codex_homes else (os.environ.get("CODEX_HOME") or None)
 
     # Reasoning effort for Tesserae's own codex calls. Default ``medium`` —
     # extraction does not need the ``xhigh`` a user may set globally for
@@ -1540,6 +1559,7 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     return {
         "provider": provider,
         "claude_config_dirs": claude_config_dirs,
+        "codex_homes": codex_homes,
         "codex_home": codex_home,
         "codex_reasoning_effort": codex_reasoning_effort,
         "model": model,
@@ -1556,6 +1576,7 @@ def build_default_json_client(
     provider: Optional[str] = None,
     claude_config_dirs: Optional[List[str]] = None,
     codex_home: Optional[str] = None,
+    codex_homes: Optional[List[str]] = None,
     codex_reasoning_effort: Optional[str] = "medium",
     timeout: Any = _KEEP_TIMEOUT,
     base_url: Optional[str] = None,
@@ -1608,6 +1629,11 @@ def build_default_json_client(
     resolved_provider = (
         provider or settings["provider"] or "claude"
     ).strip().lower()
+    # Explicit list > legacy scalar > configured list. Left None, the client
+    # ranks CODEX_HOME first and keeps the other discovered homes behind it.
+    _resolved_codex_homes = (
+        codex_homes or ([codex_home] if codex_home else None) or settings["codex_homes"]
+    )
     resolved_base_url = base_url or settings["base_url"]
     resolved_api_key = api_key or settings["api_key"]
 
@@ -1619,7 +1645,7 @@ def build_default_json_client(
         if _codex_cli_available():
             return CodexCLIJsonClient(
                 model=model,
-                codex_homes=[codex_home] if codex_home else None,
+                codex_homes=_resolved_codex_homes,
                 reasoning_effort=codex_reasoning_effort,
                 **_tkw,
             )
@@ -1740,6 +1766,7 @@ def build_rotating_client(
     provider: Optional[str] = None,
     claude_config_dirs: Optional[List[str]] = None,
     codex_home: Optional[str] = None,
+    codex_homes: Optional[List[str]] = None,
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> Optional[Any]:
@@ -1762,6 +1789,11 @@ def build_rotating_client(
     resolved_provider = (
         provider or settings["provider"] or "claude"
     ).strip().lower()
+    # Explicit list > legacy scalar > configured list. Left None, the client
+    # ranks CODEX_HOME first and keeps the other discovered homes behind it.
+    _resolved_codex_homes = (
+        codex_homes or ([codex_home] if codex_home else None) or settings["codex_homes"]
+    )
     resolved_base_url = base_url or settings["base_url"]
     resolved_api_key = api_key or settings["api_key"]
 
@@ -1783,7 +1815,7 @@ def build_rotating_client(
     codex_client = (
         CodexCLIJsonClient(
             model=model_codex,
-            codex_homes=[codex_home] if codex_home else None,
+            codex_homes=_resolved_codex_homes,
         )
         if _codex_cli_available()
         else None

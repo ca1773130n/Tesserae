@@ -59,6 +59,16 @@ LLM 백엔드가 설정/인증되어 있지 않으면 compile은 **결정적(det
 한 계정이 사용량 한도에 걸리면 다음 계정으로 넘어가므로, 남은 작업 전체가
 결정론적 추출로 떨어지지 않는다. 기본값은 `~/.claude*` 디렉터리 자동 탐색이다.
 
+**codex** 프로바이더도 동일하게 동작한다. 인증된 `~/.codex*` 홈들(디렉터리에
+`auth.json`이 있어야 홈으로 인정된다)을 순회하며, `llm_codex_homes`로 설정한다.
+프로바이더마다 별도의 키를 쓰는 이유는 디스크상의 계정 구조가 서로 다르기 때문이다.
+Claude CLI 설정 디렉터리와 Codex 홈은 서로 호환되지 않는다:
+
+| 프로바이더 | 설정 키 | 나열 대상 |
+|---|---|---|
+| `claude` | `llm_claude_config_dirs` | Claude CLI 설정 디렉터리 (`~/.claude*`) |
+| `codex`  | `llm_codex_homes`        | Codex 홈 (`~/.codex*`) |
+
 어떤 계정을 어떤 순서로 사용할지 직접 지정하려면 `.tesserae/config.json`(프로젝트)
 또는 `~/.tesserae/config.json`(전역)에 `llm_claude_config_dirs`를 설정한다:
 

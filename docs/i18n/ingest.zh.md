@@ -43,6 +43,15 @@ Tesserae 是一个 LLM wiki，因此 `compile` **默认构建概念/断言层**�
 触及速率限制时会切换到下一个，而不是让本次运行的剩余部分退化为确定性提取。默认会
 自动发现所有 `~/.claude*` 目录。
 
+**codex** 提供方的工作方式相同：在已认证的 `~/.codex*` 主目录之间轮换（目录必须
+包含 `auth.json` 才算数），通过 `llm_codex_homes` 配置。每个提供方使用各自的键，是因为
+它们在磁盘上的账户布局不同——Claude CLI 配置目录和 Codex 主目录并不通用：
+
+| 提供方 | 配置键 | 列出的内容 |
+|---|---|---|
+| `claude` | `llm_claude_config_dirs` | Claude CLI 配置目录（`~/.claude*`） |
+| `codex`  | `llm_codex_homes`        | Codex 主目录（`~/.codex*`） |
+
 若要精确控制可以消耗哪些账户以及顺序，请在 `.tesserae/config.json`（项目级）或
 `~/.tesserae/config.json`（全局）中设置 `llm_claude_config_dirs`：
 
