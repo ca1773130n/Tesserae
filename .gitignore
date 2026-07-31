@@ -77,9 +77,15 @@ node-compile-cache/
 .roo/
 .zed/
 
-# Per-developer agent system prompts and convention overlays
-AGENTS.md
-CLAUDE.md
+# AGENTS.md and CLAUDE.md are TRACKED. They are project convention — the
+# mission statement, the CodeGraph and agentmemory usage rules, the testing
+# invariants, the warning that evals/ holds unrecoverable local work. Every
+# agent and every contributor needs them, and .github/copilot-instructions.md
+# and .codeium/instructions.md already point at them.
+#
+# Keep them free of anything per-developer: no absolute home paths, no account
+# names, no credentials. A machine-specific override belongs in a *.local.md
+# beside them, not inline.
 GEMINI.md
 CONVENTIONS.md
 SYNC-CHANGELOG.md
