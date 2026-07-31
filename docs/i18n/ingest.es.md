@@ -52,6 +52,51 @@ reproducible:
 
     tesserae compile --extractor deterministic
 
+### Elegir qué cuentas se gastan (`llm_claude_config_dirs`)
+
+Con el proveedor `claude`, Tesserae rota entre tus cuentas de Claude CLI con sesión
+iniciada: una cuenta que alcanza su límite cede el paso a la siguiente en lugar de
+perder el resto de la ejecución en extracción determinista. Por defecto detecta
+automáticamente todos los directorios `~/.claude*`.
+
+El proveedor **codex** funciona igual: rota entre los directorios `~/.codex*`
+autenticados (un directorio solo cuenta si contiene `auth.json`) y se configura con
+`llm_codex_homes`. Cada proveedor tiene su propia clave porque cada uno tiene su propia
+disposición de cuentas en disco: los directorios de configuración de Claude CLI y los
+homes de Codex no son intercambiables:
+
+| proveedor | clave de configuración | qué enumera |
+|---|---|---|
+| `claude` | `llm_claude_config_dirs` | directorios de configuración de Claude CLI (`~/.claude*`) |
+| `codex`  | `llm_codex_homes`        | homes de Codex (`~/.codex*`) |
+
+Para controlar exactamente qué cuentas pueden gastarse, y en qué orden, define
+`llm_claude_config_dirs` en `.tesserae/config.json` (proyecto) o
+`~/.tesserae/config.json` (global):
+
+```json
+{
+  "llm_claude_config_dirs": [
+    "/Users/you/.claude-work",
+    "/Users/you/.claude-personal"
+  ]
+}
+```
+
+Esa lista es la autoridad final: no se prueba nada fuera de ella. También **gana a la
+variable ambiental `CLAUDE_CONFIG_DIR`**, que hereda cada proceso lanzado desde una
+sesión de Claude Code y que, de otro modo, ataría toda la compilación a la cuota de
+esa única sesión. Sin nada configurado, `CLAUDE_CONFIG_DIR` sigue siendo la primera
+cuenta que se intenta.
+
+Cuando todas las cuentas configuradas informan de su límite de uso, la compilación
+deja de llamar al LLM durante el resto de la ejecución en vez de volver a preguntar
+documento a documento, marca esos documentos como `fallback: true` y te lo dice.
+Recupéralos cuando el límite se reinicie sin recompilarlo todo:
+
+    tesserae compile --changed-only --retry-fallbacks
+
+
 **Consciente del coste (`selective-llm`)** — enruta solo los docs que coincidan a través del LLM, el
 resto determinista:
 

@@ -473,7 +473,11 @@ class ProjectWiki:
             model=model,
             provider=settings["provider"],
             claude_config_dirs=settings["claude_config_dirs"],
-            codex_home=settings["codex_home"],
+            # codex_homes, not codex_home: the scalar is a one-element list by
+            # the time it reaches the client, which pins it verbatim and turns
+            # rotation off for compile/session/community/distillation — the
+            # exact defect this branch exists to remove, on its primary path.
+            codex_homes=settings.get("codex_homes"),
             codex_reasoning_effort=settings.get("codex_reasoning_effort"),
         )
 
@@ -920,6 +924,7 @@ class ProjectWiki:
                 graphs = []
                 processed = 0
                 skipped = len(markdown_files)
+                fallback_files: List[str] = []
                 batch = None
             else:
                 batch = BatchIngestRunner(extractor=extractor, manifest_path=self.paths.manifest).run(
@@ -933,6 +938,11 @@ class ProjectWiki:
                 graphs = batch.graphs or [batch.graph]
                 processed = batch.processed
                 skipped = batch.skipped
+                # Documents whose LLM extraction failed and were served by the
+                # deterministic baseline. The count reached only the batch's own
+                # stderr note, so a compile that lost most of its concept layer
+                # still printed a clean summary and exited 0 (issue #92).
+                fallback_files = list(batch.fallback_paths)
                 if fallback_only:
                     # The corpus is byte-unchanged AND the prior graph is
                     # marked complete, so it carries every doc the batch just
@@ -1014,7 +1024,7 @@ class ProjectWiki:
             # sha-skip it. Building the guard properly means per-origin coverage
             # tracking (graph.json accumulated by origin rather than replaced) —
             # a schema migration, correctly deferred until a caller exists.
-            graphs, processed, skipped = self._ingest_via_loader(
+            graphs, processed, skipped, fallback_files = self._ingest_via_loader(
                 loader=loader,
                 extractor=extractor,
                 source_kind=markdown_source_kind,
@@ -1618,6 +1628,8 @@ class ProjectWiki:
             "source_kind": kind,
             "processed_files": processed,
             "skipped_files": skipped,
+            "fallback_files": len(fallback_files),
+            "fallback_paths": fallback_files,
             "node_count": len(graph.nodes),
             "edge_count": len(graph.edges),
             "graph_path": str(self.paths.graph),
@@ -2083,7 +2095,7 @@ class ProjectWiki:
         source_kind: str,
         changed_only: bool,
         limit: Optional[int],
-    ) -> tuple[List[ResearchGraph], int, int]:
+    ) -> tuple[List[ResearchGraph], int, int, List[str]]:
         """Drive extraction from a :class:`SourceLoader` instead of the FS walker.
 
         Manifest bookkeeping mirrors :class:`BatchIngestRunner`: entries are
@@ -2099,6 +2111,7 @@ class ProjectWiki:
         graphs: List[ResearchGraph] = []
         processed = 0
         skipped = 0
+        fallback_paths: List[str] = []
         try:
             for source in loader.discover():
                 digest = sha256_text(source.content)
@@ -2116,9 +2129,15 @@ class ProjectWiki:
                 graphs.append(graph)
                 processed += 1
                 manifest[key] = {"sha256": digest, "source_kind": source_kind}
+                # Same duck-typed thread-local BatchIngestRunner reads. Without
+                # it this arm reported fallbacks=0 no matter how much of the
+                # concept layer it lost — #92's silent failure, rebuilt.
+                if bool(getattr(extractor, "last_was_fallback", False)):
+                    fallback_paths.append(key)
+                    manifest[key]["fallback"] = True
         finally:
             self._write_manifest(manifest)
-        return graphs, processed, skipped
+        return graphs, processed, skipped, fallback_paths
 
     def _load_manifest(self) -> dict:
         if not self.paths.manifest.exists():

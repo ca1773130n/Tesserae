@@ -90,6 +90,24 @@ _CLIENT_FACTORY: Optional[Callable[..., Any]] = None
 # SessionEnd hook output.
 _LOGGED_LOGIN_WARNING: bool = False
 
+#: Default model for the Codex CLI. A caller argument or a provider-scoped
+#: ``llm_model`` still wins — model choice is supported on codex. Named rather
+#: than inlined so the default has one definition and the tests can move it.
+CODEX_DEFAULT_MODEL = "gpt-5.6-luna"
+
+#: Substrings the Claude CLI uses when an account is out of quota, e.g.
+#: "You've hit your weekly limit · resets 6am (Asia/Seoul)" and the 5-hour
+#: "session limit" variant. Matched case-insensitively against the CLI's own
+#: message. Deliberately NOT matching bare "limit" — a document that trips a
+#: context or rate limit is a per-document fact and must keep rotating.
+_QUOTA_MARKERS = ("hit your weekly limit", "hit your session limit", "hit your usage limit")
+
+
+def _is_quota_exhaustion(error: BaseException) -> bool:
+    """True when the CLI said the ACCOUNT is out of quota, not this call."""
+    text = str(error).lower()
+    return any(marker in text for marker in _QUOTA_MARKERS)
+
 
 def _reset_login_warning_for_tests() -> None:
     """Reset the one-shot login warning flag. Test-only helper."""
@@ -593,19 +611,33 @@ class ClaudeCLIJsonClient:
         #      tries each in order and uses the first that's logged in.
         #   4. Final fallback: ``[~/.claude]`` — preserves the pre-fix
         #      default for users with a single config dir.
+        home = _Path.home()
+        discovered = sorted(
+            str(p)
+            for p in home.glob(".claude*")
+            if p.is_dir() and not p.name.endswith((".bak", ".old"))
+        )
         if config_dirs:
             self.config_dirs = list(config_dirs)
         elif _os.environ.get("CLAUDE_CONFIG_DIR"):
-            self.config_dirs = [_os.environ["CLAUDE_CONFIG_DIR"]]
+            # PREFERRED-first, not exclusive. This used to pin the client to
+            # the single env dir, which silently disabled the rotation loop
+            # below — the one mechanism that exists to survive a rate-limited
+            # account. Anything launched from a Claude Code session inherits
+            # CLAUDE_CONFIG_DIR, so in practice a compile could only ever use
+            # that one account: when its quota ran out, 1,531 documents fell
+            # back to deterministic extraction while two other logged-in
+            # accounts sat idle. The env var says which account to try FIRST,
+            # not which is the only one that may be tried.
+            env_dir = _os.environ["CLAUDE_CONFIG_DIR"]
+            self.config_dirs = [env_dir] + [d for d in discovered if d != env_dir]
         else:
-            home = _Path.home()
-            discovered = sorted(
-                str(p)
-                for p in home.glob(".claude*")
-                if p.is_dir() and not p.name.endswith((".bak", ".old"))
-            )
             self.config_dirs = discovered or [str(home / ".claude")]
         self.timeout = int(timeout) if timeout is not None else None
+        #: Set once every account in :attr:`config_dirs` is a proven dead end
+        #: (quota exhausted, or not logged in). Per-instance on purpose — see
+        #: the guard in :meth:`_run_prompt`.
+        self._accounts_exhausted = False
 
     def _run_prompt(
         self,
@@ -635,13 +667,36 @@ class ClaudeCLIJsonClient:
         import subprocess as _subprocess
         from pathlib import Path as _Path
 
+        # Quota exhaustion is an ACCOUNT fact, not a document fact. Once every
+        # configured account has answered "you've hit your … limit", the next
+        # document cannot possibly succeed either — but this used to spawn a
+        # `claude` child per account per remaining document to rediscover that,
+        # 1,531 times in one observed run. Latch it and answer instantly; the
+        # caller still marks each doc `fallback: true`, so
+        # `compile --changed-only --retry-fallbacks` recovers them all once the
+        # limit resets.
+        # Scoped to THIS client, not the process: a pinned single-account
+        # client must not disable an unrelated one, and a daemon/MCP process
+        # that outlives a quota reset must not stay disabled forever. Each
+        # compile builds its own client, so the verdict expires naturally.
+        if self._accounts_exhausted:
+            _note_failure("exhausted")
+            return None
+
         last_error: Optional[Exception] = None
         all_not_logged_in = True  # only True if EVERY tried config_dir was Not-logged-in
         any_attempted = False
+        # Latching needs proof about EVERY account, not just the last one. With
+        # only last_error to go on, account A timing out and account B hitting
+        # quota latched the whole run — A was never shown to be exhausted.
+        attempted = 0
+        quota_hits = 0
+        dead_ends = 0  # exhausted OR not-logged-in: cannot serve this run either way
         timed_out = False  # same bug class as the codex client — see below
         default_claude_dir = str(_Path.home() / ".claude")
         for config_dir in self.config_dirs:
             any_attempted = True
+            attempted += 1
             try:
                 env = _os.environ.copy()
                 # WORKAROUND for Claude CLI quirk: setting
@@ -695,6 +750,7 @@ class ClaudeCLIJsonClient:
                         last_error = RuntimeError(
                             f"claude exited {proc.returncode}: {stderr_text or stdout_text}"
                         )
+                        dead_ends += 1
                         continue  # skip to next config_dir
                     # Non-auth failure on this profile (incl. a rate
                     # limit — `claude -p` exits non-zero with "You've
@@ -720,6 +776,9 @@ class ClaudeCLIJsonClient:
                 return proc.stdout
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
+                if _is_quota_exhaustion(exc):
+                    quota_hits += 1
+                    dead_ends += 1
                 # Reaching here means this profile did NOT answer "Not logged
                 # in" (that branch continues above without raising), so the
                 # auth verdict is off the table. It used to be cleared only on
@@ -758,6 +817,22 @@ class ClaudeCLIJsonClient:
                     len(self.config_dirs),
                     "dir" if len(self.config_dirs) == 1 else "dirs",
                 )
+            return None
+        if quota_hits and attempted and dead_ends == attempted:
+            # EVERY account tried was out of quota (or not logged in, which
+            # cannot serve this run either) and at least one said so outright.
+            # A timeout or a network blip among them leaves dead_ends short of
+            # attempted, so the run keeps trying — transient != exhausted.
+            self._accounts_exhausted = True
+            _note_failure("exhausted")
+            logger.warning(
+                "[tesserae] every configured account is out of quota (%d tried); "
+                "remaining documents will use deterministic extraction without "
+                "further LLM calls. Re-run `compile --changed-only "
+                "--retry-fallbacks` after the limit resets. Last: %s",
+                len(self.config_dirs),
+                last_error,
+            )
             return None
         if last_error is not None:
             if timed_out:
@@ -912,9 +987,12 @@ class CodexCLIJsonClient:
         import os as _os
         from pathlib import Path as _Path
 
-        # Hardcoded literal is a last-resort fallback behind the configured
-        # llm_model (env TESSERAE_LLM_MODEL → global config).
-        self.model = model or _configured_default_model(("codex",)) or "gpt-5.6-luna"
+        # Normal precedence: an explicit caller model, else the configured
+        # llm_model (provider-scoped, so a claude-shaped name cannot land here
+        # via config), else CODEX_DEFAULT_MODEL as the default. Choosing a codex
+        # model is supported — `--llm-model`, `llm_model`, and the per-feature
+        # community/distill model settings all reach this argument.
+        self.model = model or _configured_default_model(("codex",)) or CODEX_DEFAULT_MODEL
         # Reasoning effort for Tesserae's own codex calls. Defaults to
         # ``medium`` — structured graph/finding extraction does NOT need the
         # ``xhigh`` a user may set globally in ``~/.codex/config.toml`` for
@@ -929,17 +1007,27 @@ class CodexCLIJsonClient:
         #      e.g. ``~/.codex-personal1``).
         #   3. Auto-discover every ``~/.codex*`` directory at $HOME.
         #   4. Final fallback: ``[~/.codex]``.
+        home = _Path.home()
+        discovered = sorted(
+            str(p)
+            for p in home.glob(".codex*")
+            # A codex home is a DIRECTORY holding auth.json. The glob otherwise
+            # sweeps up siblings like ~/.codex-review-pr208.log — 24 of them on
+            # one real machine — and every one costs a doomed `codex exec` per
+            # document before rotation moves on.
+            if p.is_dir()
+            and not p.name.endswith((".bak", ".old"))
+            and (p / "auth.json").exists()
+        )
         if codex_homes:
             self.codex_homes = list(codex_homes)
         elif _os.environ.get("CODEX_HOME"):
-            self.codex_homes = [_os.environ["CODEX_HOME"]]
+            # Preferred-first, not exclusive — same reasoning as
+            # ClaudeCLIJsonClient.config_dirs: pinning to the env var disabled
+            # the rotation loop that exists to survive a rate-limited account.
+            env_home = _os.environ["CODEX_HOME"]
+            self.codex_homes = [env_home] + [d for d in discovered if d != env_home]
         else:
-            home = _Path.home()
-            discovered = sorted(
-                str(p)
-                for p in home.glob(".codex*")
-                if p.is_dir() and not p.name.endswith((".bak", ".old"))
-            )
             self.codex_homes = discovered or [str(home / ".codex")]
         self.timeout = int(timeout) if timeout is not None else None
 
@@ -1400,20 +1488,41 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
             return [str(d) for d in raw]
         return None
 
-    env_claude = os.environ.get("CLAUDE_CONFIG_DIR")
+    # Deliberate config beats the ambient env var, NOT the other way round.
+    # CLAUDE_CONFIG_DIR is inherited by every process a Claude Code session
+    # spawns, so honouring it first meant an accidental value silently
+    # overrode the accounts the user had actually chosen — and pinned the
+    # whole run to one account's quota. Set ``llm_claude_config_dirs`` (a
+    # list) in .tesserae/config.json or ~/.tesserae/config.json to say
+    # exactly which accounts may be spent, in rotation order; that list is
+    # then authoritative and nothing else is tried.
+    # NOTE the deliberate absence of a CLAUDE_CONFIG_DIR fallback here. Whatever
+    # this returns is passed to the client as an EXPLICIT ``config_dirs=``, which
+    # pins it verbatim — so returning ``[env_claude]`` collapsed the rotation to
+    # one account no matter what the constructor's own env handling did. Leaving
+    # it None hands the decision to ClaudeCLIJsonClient, which puts
+    # CLAUDE_CONFIG_DIR first and keeps the other discovered accounts behind it.
+    # Only a CONFIGURED list is authoritative, because only that is deliberate.
     claude_config_dirs = (
-        [env_claude]
-        if env_claude
-        else _as_dirs(cfg.get("llm_claude_config_dirs"))
+        _as_dirs(cfg.get("llm_claude_config_dirs"))
         or _as_dirs(global_cfg.get("llm_claude_config_dirs"))
     )
 
-    codex_home = (
-        os.environ.get("CODEX_HOME")
-        or cfg.get("llm_codex_home")
-        or global_cfg.get("llm_codex_home")
-        or None
+    # Codex gets the same treatment as claude above, for the same reasons.
+    # ``llm_codex_homes`` (a LIST, rotation order) is the modern key; the older
+    # singular ``llm_codex_home`` still works and means a one-account list.
+    # CODEX_HOME is deliberately NOT a fallback here — see the claude note: a
+    # value returned from this function is passed down as an explicit pin, so
+    # honouring the env var here would collapse rotation to one account. Left
+    # None, CodexCLIJsonClient ranks CODEX_HOME first and keeps the rest.
+    codex_homes = (
+        _as_dirs(cfg.get("llm_codex_homes"))
+        or _as_dirs(cfg.get("llm_codex_home"))
+        or _as_dirs(global_cfg.get("llm_codex_homes"))
+        or _as_dirs(global_cfg.get("llm_codex_home"))
     )
+    # Back-compat scalar for the callers/CLI that still display a single home.
+    codex_home = codex_homes[0] if codex_homes else (os.environ.get("CODEX_HOME") or None)
 
     # Reasoning effort for Tesserae's own codex calls. Default ``medium`` —
     # extraction does not need the ``xhigh`` a user may set globally for
@@ -1450,6 +1559,7 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     return {
         "provider": provider,
         "claude_config_dirs": claude_config_dirs,
+        "codex_homes": codex_homes,
         "codex_home": codex_home,
         "codex_reasoning_effort": codex_reasoning_effort,
         "model": model,
@@ -1466,6 +1576,7 @@ def build_default_json_client(
     provider: Optional[str] = None,
     claude_config_dirs: Optional[List[str]] = None,
     codex_home: Optional[str] = None,
+    codex_homes: Optional[List[str]] = None,
     codex_reasoning_effort: Optional[str] = "medium",
     timeout: Any = _KEEP_TIMEOUT,
     base_url: Optional[str] = None,
@@ -1518,6 +1629,11 @@ def build_default_json_client(
     resolved_provider = (
         provider or settings["provider"] or "claude"
     ).strip().lower()
+    # Explicit list > legacy scalar > configured list. Left None, the client
+    # ranks CODEX_HOME first and keeps the other discovered homes behind it.
+    _resolved_codex_homes = (
+        codex_homes or ([codex_home] if codex_home else None) or settings["codex_homes"]
+    )
     resolved_base_url = base_url or settings["base_url"]
     resolved_api_key = api_key or settings["api_key"]
 
@@ -1529,7 +1645,7 @@ def build_default_json_client(
         if _codex_cli_available():
             return CodexCLIJsonClient(
                 model=model,
-                codex_homes=[codex_home] if codex_home else None,
+                codex_homes=_resolved_codex_homes,
                 reasoning_effort=codex_reasoning_effort,
                 **_tkw,
             )
@@ -1650,6 +1766,7 @@ def build_rotating_client(
     provider: Optional[str] = None,
     claude_config_dirs: Optional[List[str]] = None,
     codex_home: Optional[str] = None,
+    codex_homes: Optional[List[str]] = None,
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
 ) -> Optional[Any]:
@@ -1672,6 +1789,11 @@ def build_rotating_client(
     resolved_provider = (
         provider or settings["provider"] or "claude"
     ).strip().lower()
+    # Explicit list > legacy scalar > configured list. Left None, the client
+    # ranks CODEX_HOME first and keeps the other discovered homes behind it.
+    _resolved_codex_homes = (
+        codex_homes or ([codex_home] if codex_home else None) or settings["codex_homes"]
+    )
     resolved_base_url = base_url or settings["base_url"]
     resolved_api_key = api_key or settings["api_key"]
 
@@ -1693,7 +1815,7 @@ def build_rotating_client(
     codex_client = (
         CodexCLIJsonClient(
             model=model_codex,
-            codex_homes=[codex_home] if codex_home else None,
+            codex_homes=_resolved_codex_homes,
         )
         if _codex_cli_available()
         else None

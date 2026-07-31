@@ -52,6 +52,51 @@ Reproduzierbarkeits-Modus:
 
     tesserae compile --extractor deterministic
 
+### Auswählen, welche Konten verbraucht werden (`llm_claude_config_dirs`)
+
+Mit dem Provider `claude` rotiert Tesserae über deine angemeldeten Claude-CLI-Konten:
+Ein Konto, das sein Limit erreicht, übergibt an das nächste, statt den Rest des Laufs
+an die deterministische Extraktion zu verlieren. Standardmäßig werden alle
+`~/.claude*`-Verzeichnisse automatisch erkannt.
+
+Der Provider **codex** funktioniert genauso: Er rotiert über authentifizierte
+`~/.codex*`-Homes (ein Verzeichnis zählt nur mit `auth.json`) und wird über
+`llm_codex_homes` konfiguriert. Jeder Provider hat einen eigenen Schlüssel, weil jeder
+sein eigenes Kontenlayout auf der Platte hat — Claude-CLI-Konfigurationsverzeichnisse und
+Codex-Homes sind nicht austauschbar:
+
+| Provider | Konfigurationsschlüssel | was er auflistet |
+|---|---|---|
+| `claude` | `llm_claude_config_dirs` | Claude-CLI-Konfigurationsverzeichnisse (`~/.claude*`) |
+| `codex`  | `llm_codex_homes`        | Codex-Homes (`~/.codex*`) |
+
+Um genau festzulegen, welche Konten verbraucht werden dürfen und in welcher
+Reihenfolge, setze `llm_claude_config_dirs` in `.tesserae/config.json` (Projekt) oder
+`~/.tesserae/config.json` (global):
+
+```json
+{
+  "llm_claude_config_dirs": [
+    "/Users/you/.claude-work",
+    "/Users/you/.claude-personal"
+  ]
+}
+```
+
+Diese Liste ist maßgeblich — außerhalb davon wird nichts versucht. Sie **schlägt auch
+die ambiente Variable `CLAUDE_CONFIG_DIR`**, die jeder aus einer Claude-Code-Sitzung
+gestartete Prozess erbt und die andernfalls die gesamte Kompilierung an das Kontingent
+genau dieser einen Sitzung binden würde. Ohne Konfiguration bleibt
+`CLAUDE_CONFIG_DIR` das zuerst versuchte Konto.
+
+Melden alle konfigurierten Konten ihr Nutzungslimit, stellt die Kompilierung für den
+Rest des Laufs LLM-Aufrufe ein, statt pro Dokument erneut nachzufragen, markiert diese
+Dokumente mit `fallback: true` und sagt es dir. Nach dem Zurücksetzen des Limits ohne
+vollständige Neukompilierung nachholen:
+
+    tesserae compile --changed-only --retry-fallbacks
+
+
 **Kostenbewusst (`selective-llm`)** — route nur passende Dokumente durch das LLM, den
 Rest deterministisch:
 

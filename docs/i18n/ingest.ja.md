@@ -52,6 +52,49 @@ LLM バックエンドが未設定/未認証の場合、compile は**決定論�
 
     tesserae compile --extractor deterministic
 
+### どのアカウントを消費するか指定する（`llm_claude_config_dirs`）
+
+`claude` プロバイダでは、Tesserae はログイン済みの Claude CLI アカウントを順に切り
+替える。レート制限に達したアカウントは次のアカウントへ引き継がれるため、実行の残り
+すべてが決定論的抽出に落ちることはない。既定では `~/.claude*` ディレクトリを自動検出
+する。
+
+**codex** プロバイダも同じように動作する。認証済みの `~/.codex*` ホーム（ディレクトリ
+に `auth.json` がある場合のみホームとみなす）を巡回し、`llm_codex_homes` で設定する。
+プロバイダごとに別のキーを使うのは、ディスク上のアカウント構成が異なるためだ。Claude CLI
+の設定ディレクトリと Codex ホームは互換ではない:
+
+| プロバイダ | 設定キー | 列挙対象 |
+|---|---|---|
+| `claude` | `llm_claude_config_dirs` | Claude CLI 設定ディレクトリ（`~/.claude*`） |
+| `codex`  | `llm_codex_homes`        | Codex ホーム（`~/.codex*`） |
+
+どのアカウントをどの順序で消費するかを厳密に指定するには、`.tesserae/config.json`
+（プロジェクト）または `~/.tesserae/config.json`（グローバル）に
+`llm_claude_config_dirs` を設定する:
+
+```json
+{
+  "llm_claude_config_dirs": [
+    "/Users/you/.claude-work",
+    "/Users/you/.claude-personal"
+  ]
+}
+```
+
+このリストが最終的な権威であり、リスト外のアカウントは一切試されない。さらにこの設定
+は**周囲の `CLAUDE_CONFIG_DIR` よりも優先される**。この変数は Claude Code セッション
+が生成するすべてのプロセスに継承されるため、放置するとコンパイル全体がそのセッション
+1つのクォータに縛られる。何も設定されていなければ、`CLAUDE_CONFIG_DIR` が最初に試す
+アカウントとして使われる。
+
+設定されたすべてのアカウントが使用上限に達すると、コンパイルは文書ごとに問い直す代わ
+りに残りの実行で LLM 呼び出しを止め、それらの文書を `fallback: true` と記録して通知
+する。上限がリセットされた後、全体を再コンパイルせずに回復するには:
+
+    tesserae compile --changed-only --retry-fallbacks
+
+
 **コスト意識型（`selective-llm`）** — マッチするドキュメントだけを LLM に通し、
 残りは決定論的に処理します:
 

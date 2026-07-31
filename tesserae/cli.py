@@ -1508,6 +1508,35 @@ def _warn_if_concept_poor(result: dict) -> None:
         pass  # the hint must never break a successful compile
 
 
+def _warn_on_fallbacks(result: dict) -> None:
+    """Say out loud when the concept layer was partly lost to fallbacks.
+
+    Issue #92: a compile whose LLM extraction failed on most of its documents
+    still printed a clean summary and exited 0. The only trace was a per-doc
+    line on stderr, so the loss was invisible until someone noticed the graph
+    had shrunk — which is how four separate root causes went undiagnosed for a
+    day. The count now rides the machine-readable summary line; this adds the
+    part a human reads, and escalates when the majority of the run was lost.
+    """
+    try:
+        fallbacks = int(result.get("fallback_files", 0) or 0)
+        if fallbacks <= 0:
+            return
+        processed = int(result.get("processed_files", 0) or 0)
+        share = (fallbacks / processed) if processed else 1.0
+        headline = "WARNING" if share >= 0.5 else "note"
+        print(
+            f"{headline}: {fallbacks} of {processed} document(s) "
+            f"({share:.1%}) fell back to deterministic extraction — their concept "
+            "layer is missing from this graph. Recover them without recompiling "
+            "everything:\n"
+            "  tesserae compile --changed-only --retry-fallbacks",
+            file=sys.stderr,
+        )
+    except Exception:
+        pass  # a reporting hint must never break a successful compile
+
+
 def _handle_compile_legacy(args: argparse.Namespace) -> int:
     if True:
         _apply_llm_cli_env(args)
@@ -1627,8 +1656,10 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
             print(
                 "Compiled project wiki: "
                 f"processed={result['processed_files']} skipped={result['skipped_files']} "
+                f"fallbacks={result.get('fallback_files', 0)} "
                 f"nodes={result['node_count']} edges={result['edge_count']}"
             )
+        _warn_on_fallbacks(result)
         print(f"Graph: {result['graph_path']}")
         # Output-snapshot no-op signal (see tesserae/output_snapshot.py): a
         # stable, script-parseable line. Omitted when the key is absent
@@ -3982,7 +4013,11 @@ def _handle_config_status(args: argparse.Namespace) -> int:
 
     client = build_default_json_client(
         provider=provider,
-        codex_home=settings["codex_home"],
+        # .get, not []: callers and test doubles supply their own settings dicts,
+        # and a missing key means "not configured" — the correct input here,
+        # since None lets the client rank CODEX_HOME first and keep the other
+        # discovered homes behind it.
+        codex_homes=settings.get("codex_homes"),
         claude_config_dirs=settings["claude_config_dirs"],
         model=settings.get("model"),
         base_url=settings.get("base_url"),
@@ -5551,7 +5586,7 @@ def _build_doc_extractor(args: argparse.Namespace, cfg: Optional[dict] = None):
         model=getattr(args, "llm_model", None) or getattr(args, "claude_model", None),
         provider=getattr(args, "llm_provider", None) or settings.get("provider"),
         claude_config_dirs=(getattr(args, "claude_config_dir", None) or settings.get("claude_config_dirs")),
-        codex_home=settings.get("codex_home"),
+        codex_homes=settings.get("codex_homes"),
         codex_reasoning_effort=settings.get("codex_reasoning_effort") or "medium",
         timeout=_extract_timeout(),  # per-attempt cutoff, default 1800s (TESSERAE_EXTRACT_TIMEOUT=0 = run to completion)
     )

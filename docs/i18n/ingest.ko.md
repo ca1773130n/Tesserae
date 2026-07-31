@@ -53,6 +53,46 @@ LLM 백엔드가 설정/인증되어 있지 않으면 compile은 **결정적(det
 
     tesserae compile --extractor deterministic
 
+### 어떤 계정을 사용할지 지정하기 (`llm_claude_config_dirs`)
+
+`claude` 프로바이더에서 Tesserae는 로그인된 Claude CLI 계정들을 순회한다.
+한 계정이 사용량 한도에 걸리면 다음 계정으로 넘어가므로, 남은 작업 전체가
+결정론적 추출로 떨어지지 않는다. 기본값은 `~/.claude*` 디렉터리 자동 탐색이다.
+
+**codex** 프로바이더도 동일하게 동작한다. 인증된 `~/.codex*` 홈들(디렉터리에
+`auth.json`이 있어야 홈으로 인정된다)을 순회하며, `llm_codex_homes`로 설정한다.
+프로바이더마다 별도의 키를 쓰는 이유는 디스크상의 계정 구조가 서로 다르기 때문이다.
+Claude CLI 설정 디렉터리와 Codex 홈은 서로 호환되지 않는다:
+
+| 프로바이더 | 설정 키 | 나열 대상 |
+|---|---|---|
+| `claude` | `llm_claude_config_dirs` | Claude CLI 설정 디렉터리 (`~/.claude*`) |
+| `codex`  | `llm_codex_homes`        | Codex 홈 (`~/.codex*`) |
+
+어떤 계정을 어떤 순서로 사용할지 직접 지정하려면 `.tesserae/config.json`(프로젝트)
+또는 `~/.tesserae/config.json`(전역)에 `llm_claude_config_dirs`를 설정한다:
+
+```json
+{
+  "llm_claude_config_dirs": [
+    "/Users/you/.claude-work",
+    "/Users/you/.claude-personal"
+  ]
+}
+```
+
+이 목록이 최종 권위를 가지며, 목록 밖의 계정은 시도되지 않는다. 또한 이 설정은
+**주변 환경의 `CLAUDE_CONFIG_DIR`보다 우선한다**. 이 변수는 Claude Code 세션이
+띄우는 모든 프로세스에 상속되므로, 그대로 두면 컴파일 전체가 그 세션 하나의
+할당량에 묶인다. 설정이 없으면 `CLAUDE_CONFIG_DIR`이 첫 번째 시도 계정으로 쓰인다.
+
+설정된 모든 계정이 사용량 한도에 도달하면, 컴파일은 문서마다 다시 묻는 대신 남은
+실행 동안 LLM 호출을 멈추고 해당 문서들을 `fallback: true`로 표시한 뒤 그 사실을
+알린다. 한도가 초기화된 뒤 전체 재컴파일 없이 복구하려면:
+
+    tesserae compile --changed-only --retry-fallbacks
+
+
 **비용 인지형 (`selective-llm`)** — 매칭되는 문서만 LLM을 통해 라우팅하고
 나머지는 결정적으로:
 

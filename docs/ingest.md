@@ -52,6 +52,50 @@ reproducible mode:
 
     tesserae compile --extractor deterministic
 
+### Choosing which accounts get spent (`llm_claude_config_dirs`)
+
+With the `claude` provider, Tesserae rotates over your logged-in Claude CLI
+accounts: a rate-limited account falls through to the next instead of losing the
+rest of the run to deterministic extraction. By default it auto-discovers every
+`~/.claude*` directory.
+
+The **codex** provider works the same way, over authenticated `~/.codex*`
+homes (a directory only counts when it contains `auth.json`), configured with
+`llm_codex_homes`. Each provider has its own key because each has its own
+on-disk account layout — Claude CLI config dirs and Codex homes are not
+interchangeable:
+
+| provider | config key | what it lists |
+|---|---|---|
+| `claude` | `llm_claude_config_dirs` | Claude CLI config dirs (`~/.claude*`) |
+| `codex`  | `llm_codex_homes`        | Codex homes (`~/.codex*`) |
+
+To control exactly which accounts may be spent, and in what order, set the key
+for your provider in `.tesserae/config.json` (project) or
+`~/.tesserae/config.json` (global):
+
+```json
+{
+  "llm_claude_config_dirs": [
+    "/Users/you/.claude-work",
+    "/Users/you/.claude-personal"
+  ]
+}
+```
+
+That list is authoritative — nothing outside it is tried. It also **beats the
+ambient `CLAUDE_CONFIG_DIR`**, which every process spawned from a Claude Code
+session inherits and which would otherwise pin the whole compile to that one
+session's quota. With nothing configured, `CLAUDE_CONFIG_DIR` is still used as
+the first account to try.
+
+When every configured account reports its usage limit, compile stops calling the
+LLM for the rest of the run rather than re-asking per document, marks those
+documents `fallback: true`, and tells you so. Recover them once the limit resets
+without recompiling everything:
+
+    tesserae compile --changed-only --retry-fallbacks
+
 **Cost-aware (`selective-llm`)** — route only matching docs through the LLM, the
 rest deterministic:
 

@@ -274,6 +274,211 @@ def test_cli_complete_text_returns_prose(monkeypatch):
     assert out == "We decided to ship. [node:abc]"
 
 
+def test_codex_home_is_preferred_not_exclusive(monkeypatch, tmp_path):
+    """CODEX_HOME ranks first; the other authenticated homes stay in rotation.
+
+    Codex had the same defect claude did — the env var replaced the discovered
+    list, so the rotation loop that exists to survive a rate-limited account
+    had nowhere to go.
+    """
+    from tesserae.llm_json import CodexCLIJsonClient
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    for name in (".codex", ".codex-personal1", ".codex-personal2"):
+        (fake_home / name).mkdir()
+        (fake_home / name / "auth.json").write_text("{}")
+    # Neither is a codex home: a stray log file, and a dir with no auth.json.
+    (fake_home / ".codex-review-pr208.log").write_text("noise")
+    (fake_home / ".codex-nomcp").mkdir()
+
+    monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
+    monkeypatch.setenv("CODEX_HOME", str(fake_home / ".codex-personal2"))
+
+    homes = CodexCLIJsonClient().codex_homes
+    assert homes[0] == str(fake_home / ".codex-personal2"), f"env home first, got {homes}"
+    assert len(homes) == 3, f"other authenticated homes must stay, got {homes}"
+    assert not any(h.endswith(".log") for h in homes), f"log files are not homes: {homes}"
+    assert not any(h.endswith(".codex-nomcp") for h in homes), (
+        f"a dir without auth.json is not a usable home: {homes}"
+    )
+
+
+def test_codex_homes_list_config(monkeypatch):
+    """llm_codex_homes (list) is the modern key; llm_codex_home (str) still works."""
+    from tesserae.llm_json import resolve_llm_client_settings
+
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.setattr(llm_json, "_load_global_llm_config", lambda: {})
+
+    listed = resolve_llm_client_settings({"llm_codex_homes": ["/a", "/b"]})
+    assert listed["codex_homes"] == ["/a", "/b"]
+    assert listed["codex_home"] == "/a", "scalar back-compat view is the first home"
+
+    legacy = resolve_llm_client_settings({"llm_codex_home": "/only"})
+    assert legacy["codex_homes"] == ["/only"]
+
+    # Unconfigured must be None, never [CODEX_HOME] — that would pin the client
+    # verbatim and re-disable rotation. Same trap as the claude side.
+    monkeypatch.setenv("CODEX_HOME", "/from/env")
+    assert resolve_llm_client_settings({})["codex_homes"] is None
+
+
+def test_codex_model_precedence(monkeypatch):
+    """Model choice is supported on codex: caller > configured > default.
+
+    gpt-5.6-luna is the DEFAULT, not a pin — `--llm-model`, `llm_model`, and the
+    per-feature community/distill model settings all reach this argument and
+    must be honoured. `_configured_default_model` is provider-scoped, which is
+    what keeps a claude-shaped name from arriving here through config.
+    """
+    from tesserae.llm_json import CODEX_DEFAULT_MODEL, CodexCLIJsonClient
+
+    assert CODEX_DEFAULT_MODEL == "gpt-5.6-luna"
+
+    monkeypatch.setattr(llm_json, "_configured_default_model", lambda providers: None)
+    assert CodexCLIJsonClient().model == CODEX_DEFAULT_MODEL, "default when nothing is set"
+
+    monkeypatch.setattr(llm_json, "_configured_default_model", lambda providers: "gpt-5.6-mini")
+    assert CodexCLIJsonClient().model == "gpt-5.6-mini", "configured llm_model must win"
+    assert CodexCLIJsonClient(model="gpt-5.6-max").model == "gpt-5.6-max", (
+        "an explicit caller model must beat config"
+    )
+
+
+def test_quota_exhaustion_stops_spawning_children(monkeypatch, reset_login_warning):
+    """Quota is an ACCOUNT fact — once every account reports its limit, later
+    documents must not each re-spawn the CLI to be told the same thing.
+
+    Regression: one observed compile spawned a child per account per remaining
+    document after the quota ran out — 1,531 documents' worth of subprocesses
+    that could not have succeeded.
+    """
+    from tesserae.llm_json import ClaudeCLIJsonClient
+
+    calls: List[str] = []
+
+    def fake_run(cmd, **kw):
+        calls.append((kw.get("env") or {}).get("CLAUDE_CONFIG_DIR", "default"))
+        return _make_completed_process(
+            returncode=1,
+            stdout="",
+            stderr="You've hit your weekly limit · resets 6am (Asia/Seoul)",
+        )
+
+    monkeypatch.setattr(llm_json, "_run_cli", fake_run)
+    client = ClaudeCLIJsonClient(config_dirs=["/acct/a", "/acct/b"])
+
+    assert client.complete_text(system="s", user="doc 1") is None
+    assert len(calls) == 2, f"first doc must try every account, got {calls}"
+
+    for n in range(2, 12):
+        assert client.complete_text(system="s", user=f"doc {n}") is None
+    assert len(calls) == 2, f"exhausted accounts must not be re-spawned, got {len(calls)} calls"
+
+
+def test_latch_needs_every_account_proven(monkeypatch, reset_login_warning):
+    """One timeout among the accounts must prevent the latch.
+
+    Codex review of PR #94: the latch read only `last_error`, so account A
+    timing out and account B hitting quota latched the whole run — A was never
+    shown to be exhausted, and every later document lost its LLM call for a
+    reason that may have been a passing network blip.
+    """
+    from tesserae.llm_json import ClaudeCLIJsonClient
+
+    calls: List[str] = []
+
+    def fake_run(cmd, **kw):
+        calls.append("x")
+        if len(calls) % 2:  # account A: transient, proves nothing
+            raise TimeoutError("network stall")
+        return _make_completed_process(  # account B: genuinely out of quota
+            returncode=1, stdout="",
+            stderr="You've hit your weekly limit · resets 6am (Asia/Seoul)",
+        )
+
+    monkeypatch.setattr(llm_json, "_run_cli", fake_run)
+    client = ClaudeCLIJsonClient(config_dirs=["/acct/a", "/acct/b"])
+
+    client.complete_text(system="s", user="doc 1")
+    client.complete_text(system="s", user="doc 2")
+    assert len(calls) == 4, f"a mixed verdict must keep trying, got {len(calls)}"
+    assert not client._accounts_exhausted, "unproven account must not latch the run"
+
+
+def test_latch_is_per_client_not_per_process(monkeypatch, reset_login_warning):
+    """An exhausted client must not disable an unrelated one.
+
+    Codex review of PR #94: the latch was a module global, so a pinned
+    single-account client could switch off every other client in the process —
+    and a daemon/MCP process stayed disabled long after the quota reset.
+    """
+    from tesserae.llm_json import ClaudeCLIJsonClient
+
+    def out_of_quota(cmd, **kw):
+        return _make_completed_process(
+            returncode=1, stdout="",
+            stderr="You've hit your weekly limit · resets 6am (Asia/Seoul)",
+        )
+
+    monkeypatch.setattr(llm_json, "_run_cli", out_of_quota)
+    spent = ClaudeCLIJsonClient(config_dirs=["/acct/a"])
+    spent.complete_text(system="s", user="doc")
+    assert spent._accounts_exhausted, "the exhausted client should latch"
+
+    fresh = ClaudeCLIJsonClient(config_dirs=["/acct/b"])
+    assert not fresh._accounts_exhausted, "a separate client must start clean"
+
+
+def test_per_document_failure_does_not_latch(monkeypatch, reset_login_warning):
+    """A failure that is NOT account-level quota must keep rotating — latching
+    on it would turn one bad document into a whole-run outage."""
+    from tesserae.llm_json import ClaudeCLIJsonClient
+
+    calls: List[str] = []
+
+    def fake_run(cmd, **kw):
+        calls.append("x")
+        return _make_completed_process(returncode=1, stdout="", stderr="network unreachable")
+
+    monkeypatch.setattr(llm_json, "_run_cli", fake_run)
+    client = ClaudeCLIJsonClient(config_dirs=["/acct/a", "/acct/b"])
+
+    client.complete_text(system="s", user="doc 1")
+    client.complete_text(system="s", user="doc 2")
+    assert len(calls) == 4, f"non-quota failures must keep retrying, got {len(calls)}"
+
+
+def test_cli_env_config_dir_is_preferred_not_exclusive(monkeypatch, tmp_path):
+    """CLAUDE_CONFIG_DIR names the account to try FIRST, not the only one.
+
+    Regression: pinning to the single env dir disabled the rotation loop —
+    the one mechanism that survives a rate-limited account. Everything
+    launched from a Claude Code session inherits the var, so a compile could
+    only ever use that session's account; when its quota ran out, 1,531 docs
+    fell back to deterministic while two other logged-in accounts sat idle.
+    """
+    from tesserae.llm_json import ClaudeCLIJsonClient
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    for name in (".claude", ".claude-personal1", ".claude-personal2"):
+        (fake_home / name).mkdir()
+    monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(fake_home / ".claude-personal2"))
+
+    dirs = ClaudeCLIJsonClient().config_dirs
+
+    assert dirs[0] == str(fake_home / ".claude-personal2"), "env dir must be tried first"
+    assert len(dirs) == 3, f"rotation needs every discovered account, got {dirs}"
+    assert len(set(dirs)) == len(dirs), f"env dir duplicated into the rotation: {dirs}"
+
+    # An explicit argument still wins absolutely (tests / MCP override / flags).
+    pinned = ClaudeCLIJsonClient(config_dirs=["/only/this"]).config_dirs
+    assert pinned == ["/only/this"], f"explicit config_dirs must not rotate, got {pinned}"
+
+
 def test_cli_argv_has_no_turn_cap(monkeypatch):
     """Regression: `--max-turns 1` counted tool calls, so any MCP server in
     the user's config dir burned the only turn and the CLI exited 1 before
@@ -531,14 +736,21 @@ def test_cli_explicit_arg_beats_env_and_autodiscovery(monkeypatch, tmp_path):
 
 
 def test_cli_env_beats_autodiscovery(monkeypatch, tmp_path):
-    """CLAUDE_CONFIG_DIR env wins over the auto-discovery glob."""
+    """CLAUDE_CONFIG_DIR env RANKS ahead of the auto-discovery glob.
+
+    It used to replace the glob outright. "Wins" means tried first — making
+    it exclusive turned the rotation loop off for every caller that inherits
+    the var, which is every caller launched from a Claude Code session.
+    See test_cli_env_config_dir_is_preferred_not_exclusive.
+    """
     fake_home = tmp_path / "home"
     (fake_home / ".claude").mkdir(parents=True)
     (fake_home / ".claude-personal1").mkdir()
     monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(fake_home / ".claude-personal1"))
     client = ClaudeCLIJsonClient()
-    assert client.config_dirs == [str(fake_home / ".claude-personal1")]
+    assert client.config_dirs[0] == str(fake_home / ".claude-personal1")
+    assert str(fake_home / ".claude") in client.config_dirs
 
 
 def test_claude_cli_available_uses_autodiscovery(monkeypatch, tmp_path):
@@ -693,12 +905,17 @@ def test_codex_client_invokes_codex_exec_and_parses_json(monkeypatch, tmp_path):
 def test_codex_client_env_home_used_when_no_arg(monkeypatch, tmp_path):
     from tesserae.llm_json import CodexCLIJsonClient
 
-    env_home = tmp_path / "codex-personal1"
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
+    env_home = fake_home / ".codex-personal1"
     env_home.mkdir()
+    (env_home / "auth.json").write_text("{}")
     monkeypatch.setenv("CODEX_HOME", str(env_home))
 
     client = CodexCLIJsonClient()
-    assert client.codex_homes == [str(env_home)]
+    # Ranked first, not exclusive — see test_codex_home_is_preferred_not_exclusive.
+    assert client.codex_homes[0] == str(env_home)
 
 
 def test_codex_client_explicit_homes_beat_env(monkeypatch, tmp_path):
@@ -1394,8 +1611,59 @@ def test_resolve_llm_client_settings_precedence(monkeypatch):
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", "/env/claude")
     settings = resolve_llm_client_settings(cfg)
     assert settings["provider"] == "claude"
-    assert settings["codex_home"] == "/env/codex"
-    assert settings["claude_config_dirs"] == ["/env/claude"]
+    # CODEX_HOME no longer wins here for the same reason CLAUDE_CONFIG_DIR does
+    # not: whatever this returns is passed down as an explicit pin, which would
+    # collapse rotation to one account. The configured home stands.
+    assert settings["codex_home"] == "/cfg/codex"
+    # ...EXCEPT CLAUDE_CONFIG_DIR, which is the one ambient var here: every
+    # process a Claude Code session spawns inherits it, so it is not evidence
+    # of intent the way TESSERAE_* / CODEX_HOME are. Letting it win meant an
+    # accidental value overrode the accounts the user configured and pinned
+    # the run to one account's quota.
+    assert settings["claude_config_dirs"] == ["/cfg/claude"], (
+        "configured accounts must beat the inherited CLAUDE_CONFIG_DIR"
+    )
+
+    # With nothing configured, this must return None — NOT [env_claude].
+    # Whatever it returns is handed to the client as an explicit config_dirs=,
+    # which pins verbatim; returning the env dir here collapsed rotation to one
+    # account regardless of the constructor's own env handling. None delegates
+    # to ClaudeCLIJsonClient, which ranks the env dir first and keeps the rest.
+    settings = resolve_llm_client_settings({})
+    assert settings["claude_config_dirs"] is None, (
+        "an unconfigured env var must not become an explicit single-account pin"
+    )
+
+
+def test_built_client_rotates_when_only_env_is_set(monkeypatch, tmp_path):
+    """End-to-end through the REAL construction path, not the constructor alone.
+
+    Regression: the constructor ranked CLAUDE_CONFIG_DIR first and kept the
+    other accounts, but resolve_llm_client_settings passed [env_dir] down as an
+    explicit config_dirs=, which pinned the client verbatim and re-disabled
+    rotation. Testing the constructor in isolation missed it entirely — a live
+    compile then lost 1,590 documents to one account's expired OAuth while a
+    healthy account sat next to it.
+    """
+    from tesserae.llm_json import ClaudeCLIJsonClient, build_default_json_client
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    for name in (".claude", ".claude-personal1", ".claude-personal2"):
+        (fake_home / name / "settings.json").parent.mkdir()
+        (fake_home / name / "settings.json").write_text("{}")
+    monkeypatch.setattr("pathlib.Path.home", lambda: fake_home)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(fake_home / ".claude-personal2"))
+    monkeypatch.setattr(llm_json, "_load_global_llm_config", lambda: {})
+    monkeypatch.setattr(llm_json, "_claude_cli_available", lambda: True)
+    monkeypatch.setattr(llm_json, "_codex_cli_available", lambda: False)
+    set_client_factory(None)
+
+    client = build_default_json_client(provider="claude")
+    assert isinstance(client, ClaudeCLIJsonClient), f"expected the CLI client, got {client!r}"
+    dirs = client.config_dirs
+    assert dirs[0] == str(fake_home / ".claude-personal2"), f"env dir first, got {dirs}"
+    assert len(dirs) == 3, f"the other accounts must stay in rotation, got {dirs}"
 
 
 def test_run_cli_kills_grandchildren_on_timeout():
@@ -1481,7 +1749,12 @@ def test_cli_clients_honour_cache_key(tmp_path, monkeypatch):
     assert len(calls) == 1, "second identical call should have hit the cache"
 
     # A different model must re-ask: the caller's cache_key covers content only.
-    other = lj.CodexCLIJsonClient(codex_homes=["/x"], model="some-other-model")
+    # Codex clients are pinned to one model (CODEX_DEFAULT_MODEL), so two of them
+    # can no longer differ by constructor argument — move the pin itself to get
+    # a genuinely different model rather than asserting a state the pin forbids.
+    monkeypatch.setattr(lj, "CODEX_DEFAULT_MODEL", "some-other-model")
+    other = lj.CodexCLIJsonClient(codex_homes=["/x"])
+    assert other.model == "some-other-model"
     other.complete_json(system="s", user="u", schema_name="g", cache_key="k1")
     assert len(calls) == 2, "a different model must not reuse another model's answer"
 

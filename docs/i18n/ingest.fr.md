@@ -52,6 +52,51 @@ reproductible :
 
     tesserae compile --extractor deterministic
 
+### Choisir les comptes à dépenser (`llm_claude_config_dirs`)
+
+Avec le fournisseur `claude`, Tesserae passe en revue vos comptes Claude CLI
+connectés : un compte qui atteint sa limite laisse la place au suivant, plutôt que de
+faire basculer tout le reste de l'exécution en extraction déterministe. Par défaut,
+tous les répertoires `~/.claude*` sont découverts automatiquement.
+
+Le fournisseur **codex** fonctionne de la même façon : il parcourt les répertoires
+`~/.codex*` authentifiés (un répertoire ne compte que s'il contient `auth.json`) et se
+configure avec `llm_codex_homes`. Chaque fournisseur a sa propre clé parce que chacun a sa
+propre organisation de comptes sur disque — les répertoires de configuration de Claude CLI
+et les homes Codex ne sont pas interchangeables :
+
+| fournisseur | clé de configuration | ce qu'elle liste |
+|---|---|---|
+| `claude` | `llm_claude_config_dirs` | répertoires de configuration Claude CLI (`~/.claude*`) |
+| `codex`  | `llm_codex_homes`        | homes Codex (`~/.codex*`) |
+
+Pour contrôler exactement quels comptes peuvent être dépensés, et dans quel ordre,
+définissez `llm_claude_config_dirs` dans `.tesserae/config.json` (projet) ou
+`~/.tesserae/config.json` (global) :
+
+```json
+{
+  "llm_claude_config_dirs": [
+    "/Users/you/.claude-work",
+    "/Users/you/.claude-personal"
+  ]
+}
+```
+
+Cette liste fait autorité — rien en dehors n'est essayé. Elle **l'emporte aussi sur la
+variable d'environnement ambiante `CLAUDE_CONFIG_DIR`**, héritée par tout processus
+lancé depuis une session Claude Code et qui, sinon, lierait toute la compilation au
+quota de cette seule session. Sans configuration, `CLAUDE_CONFIG_DIR` reste le premier
+compte essayé.
+
+Lorsque tous les comptes configurés signalent leur limite d'usage, la compilation
+cesse d'appeler le LLM pour le reste de l'exécution au lieu de reposer la question
+document par document, marque ces documents `fallback: true` et vous le signale.
+Récupérez-les après réinitialisation de la limite, sans tout recompiler :
+
+    tesserae compile --changed-only --retry-fallbacks
+
+
 **Sensible au coût (`selective-llm`)** — ne router à travers le LLM que les docs correspondants, le
 reste en déterministe :
 
