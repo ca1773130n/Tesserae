@@ -27,10 +27,15 @@ tesserae compile --help
 tesserae context --help     # On-Demand Context Compiler
 ```
 
-### Demo build smoke (matches the `build-demo` CI job)
+### Demo build smoke (manual — nothing in CI covers this)
 
-The release flow and CI both compile Tesserae against its own source tree with
-the deterministic extractor (no LLM calls, no API keys) and build the site:
+Run this by hand before every release. It used to mirror a `build-demo` CI job
+that ran on each push to `main`; that workflow was removed, so this compile path
+is now checked only here. `tests.yml` runs the unit suite and does not exercise
+`init` → `compile` → `export site` end to end.
+
+It compiles Tesserae against its own source tree with the deterministic
+extractor (no LLM calls, no API keys) and builds the site:
 
 ```bash
 .venv/bin/python -m tesserae init --yes --source .
@@ -52,12 +57,14 @@ is `v0.5.0`.
 
 ### GitHub Pages
 
-The `build-demo` workflow (push to `main`) always uploads the compiled dogfood
-site as an inspectable workflow artifact, and **also** deploys it to GitHub Pages
-when Pages is enabled. The Pages steps are `continue-on-error`: the default
-`GITHUB_TOKEN` cannot *create* a Pages site, so the very first deploy needs a
-one-time manual flip at **Settings → Pages → Source: GitHub Actions**. Until
-that toggle is on, the build still stays green and the artifact is still produced.
+**No workflow deploys the site any more.** The `build-demo` workflow did this on
+every push to `main`; it was removed. The site last deployed by it is still
+served, and the README still links it as the live demo — so that page is now a
+snapshot frozen at the final `build-demo` run, not a current view of `main`.
+
+Republishing is a manual `tesserae export site` plus an upload, or a new
+workflow. Whichever way it goes, decide deliberately: a demo link that silently
+drifts from the code is worse than no demo link.
 
 ## Self-dogfood
 

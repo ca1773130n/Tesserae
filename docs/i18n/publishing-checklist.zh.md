@@ -26,10 +26,14 @@ tesserae compile --help
 tesserae context --help     # 按需上下文编译器
 ```
 
-### 演示构建冒烟测试（与 `build-demo` CI 作业一致）
+### 演示构建冒烟测试（手动 — CI 不覆盖）
 
-发布流程和 CI 都使用确定性提取器（无 LLM 调用，无需 API key）将 Tesserae 针对
-其自身源码树编译，并构建站点：
+每次发布前手动运行。它过去与每次推送到 `main` 时运行的 `build-demo` CI 作业一致；
+该工作流已被移除，因此这条编译路径现在只在这里被检查。`tests.yml` 只运行单元测试
+套件，并不端到端地执行 `init` → `compile` → `export site`。
+
+它使用确定性提取器（无 LLM 调用，无需 API key）将 Tesserae 针对其自身源码树编译，
+并构建站点：
 
 ```bash
 .venv/bin/python -m tesserae init --yes --source .
@@ -50,11 +54,12 @@ tesserae context --help     # 按需上下文编译器
 
 ### GitHub Pages
 
-`build-demo` 工作流（推送到 `main`）始终将编译后的 dogfood 站点作为可检查的工作流
-产物上传，并在启用 Pages 时**额外**部署到 GitHub Pages。Pages 步骤为
-`continue-on-error`：默认的 `GITHUB_TOKEN` 无法*创建* Pages 站点，因此首次部署需要在
-**Settings → Pages → Source: GitHub Actions** 处手动切换一次。在打开该开关之前，构建
-仍保持绿色，产物也仍会生成。
+**已经没有任何工作流部署该站点。** `build-demo` 工作流曾在每次推送到 `main` 时部署，
+但它已被移除。它最后一次部署的站点仍在提供服务，README 也仍将其作为在线演示链接 ——
+因此该页面现在是冻结在最后一次 `build-demo` 运行时的快照，而不是 `main` 的当前视图。
+
+重新发布需要手动执行 `tesserae export site` 并上传，或者新建工作流。无论哪种方式，
+都要有意识地决定：一个悄悄与代码脱节的演示链接，比没有演示链接更糟。
 
 ## Self-dogfood
 

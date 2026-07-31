@@ -27,10 +27,15 @@ tesserae compile --help
 tesserae context --help     # On-Demand-Kontext-Compiler
 ```
 
-### Demo-Build-Smoke (deckungsgleich mit dem `build-demo`-CI-Job)
+### Demo-Build-Smoke (manuell — nichts in der CI deckt das ab)
 
-Sowohl der Release-Flow als auch die CI kompilieren Tesserae gegen seinen eigenen
-Quellbaum mit dem deterministischen Extraktor (keine LLM-Aufrufe, keine API-Keys) und bauen die Site:
+Vor jedem Release von Hand ausführen. Früher spiegelte das einen `build-demo`-CI-Job,
+der bei jedem Push auf `main` lief; dieser Workflow wurde entfernt, daher wird dieser
+Kompilierpfad nur noch hier geprüft. `tests.yml` führt die Unit-Suite aus und deckt
+`init` → `compile` → `export site` nicht durchgängig ab.
+
+Es kompiliert Tesserae gegen seinen eigenen Quellbaum mit dem deterministischen
+Extraktor (keine LLM-Aufrufe, keine API-Keys) und baut die Site:
 
 ```bash
 .venv/bin/python -m tesserae init --yes --source .
@@ -51,12 +56,15 @@ Gesteuert durch den `release`-Skill (`.claude/skills/release/SKILL.md`). Der neu
 
 ### GitHub Pages
 
-Der `build-demo`-Workflow (Push auf `main`) lädt die kompilierte Dogfood-Site immer als
-inspizierbares Workflow-Artefakt hoch und deployt sie **zusätzlich** nach GitHub Pages, wenn
-Pages aktiviert ist. Die Pages-Schritte sind `continue-on-error`: das Standard-`GITHUB_TOKEN`
-kann keine Pages-Site *erstellen*, daher braucht der allererste Deploy ein einmaliges manuelles
-Umschalten unter **Settings → Pages → Source: GitHub Actions**. Bis dieser Schalter an ist,
-bleibt der Build grün und das Artefakt wird trotzdem erzeugt.
+**Kein Workflow deployt die Site mehr.** Der `build-demo`-Workflow tat das bei jedem
+Push auf `main`; er wurde entfernt. Die zuletzt von ihm deployte Site wird weiterhin
+ausgeliefert, und die README verlinkt sie weiterhin als Live-Demo — diese Seite ist
+also jetzt ein auf dem letzten `build-demo`-Lauf eingefrorener Schnappschuss und kein
+aktueller Blick auf `main`.
+
+Erneut veröffentlichen heißt: manuelles `tesserae export site` plus Upload, oder ein
+neuer Workflow. Wie auch immer — bewusst entscheiden: ein Demo-Link, der still vom Code
+abdriftet, ist schlimmer als gar kein Demo-Link.
 
 ## Self-Dogfood
 

@@ -23,7 +23,7 @@ fresh against the same angle (the compile model, not the feature list).
 **Links to include in the first comment, not the post body:**
 
 - Repo: `https://github.com/<org>/<repo>` (fill in before posting)
-- Live demo: `https://ca1773130n.github.io/Tesserae` (the dogfood compile of Tesserae's own source, deployed by `.github/workflows/build-demo.yml`)
+- Live demo: `https://ca1773130n.github.io/Tesserae` (the dogfood compile of Tesserae's own source). The `build-demo` workflow that redeployed it on every push to `main` was removed, so this page is frozen at its last run — refresh it manually before linking it anywhere public.
 - Comparison table: link to the README anchor `#how-it-compares`
 - Research doc: `docs/superpowers/specs/2026-05-13-competitive-positioning-research.md`
 
@@ -62,7 +62,7 @@ list — same angle as the HN body. All tweets verified under 280 characters.
 Before posting on HN:
 
 - [ ] Replace `https://ca1773130n.github.io/Tesserae` in the README and in tweet 6 with the real Pages URL.
-- [ ] Confirm the build-demo workflow has run at least once on `main` and the site is reachable.
+- [ ] Rebuild and redeploy the demo site by hand (`tesserae export site`), then confirm it is reachable and reflects current `main` — no workflow does this any more.
 - [ ] Have a comment ready listing repo URL, comparison-table anchor, and the research doc.
 - [ ] Decide which of B1 (streaming compile) or B3 (per-page ask) to ask the audience about — the HN body asks both; pick one if the comments converge.
 - [ ] Pre-write replies to the predictable threads: "why not Obsidian", "this is just GraphRAG", "what does typed buy me".
