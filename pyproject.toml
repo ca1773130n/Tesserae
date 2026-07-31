@@ -58,3 +58,14 @@ tesserae_mcp = "tesserae.mcp_server:main"
 
 [tool.setuptools.packages.find]
 include = ["tesserae*"]
+
+[tool.pytest.ini_options]
+# ``evals/`` holds gitignored upstream clones (cognee, MegaMem) carrying their
+# own test suites. Bare ``pytest`` used to walk into them and fail collection on
+# 39 of their modules. Only ``tests/`` is ours.
+testpaths = ["tests"]
+# Several test modules do ``from tests.X import ...`` for shared fixtures, and
+# ``evals/federation`` is imported by test_federation_eval. Both need the repo
+# root importable; without this, bare ``pytest`` fails collection on 9 modules
+# and only ``python -m pytest`` (which adds cwd implicitly) works.
+pythonpath = ["."]
