@@ -67,6 +67,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Set up Python ${{ matrix.python-version }}
+        id: setup-python
         uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
@@ -88,9 +89,15 @@ jobs:
         # `synthesis-llm` back `pytest.importorskip` guards that otherwise skip,
         # `ingest-url` backs the URL ingest path. The raganything extras are
         # deliberately absent — they pull torch and are not exercised here.
+        #
+        # `--python` gets setup-python's absolute interpreter path, not the bare
+        # name `python`: uv resolves a bare name against PATH and errors with
+        # "No interpreter found for executable name `python`" wherever only
+        # `python3` exists. The absolute path cannot miss, and it pins the
+        # matrix leg to the interpreter this job actually installed.
         run: >-
           uv sync --locked
-          --python python
+          --python "${{ steps.setup-python.outputs.python-path }}"
           --extra semantic
           --extra synthesis-llm
           --extra ingest-url
@@ -100,7 +107,15 @@ jobs:
         # pyproject.toml. Without it pytest walks into evals/, which holds
         # gitignored upstream clones (cognee, MegaMem) carrying their own
         # suites — those are absent in CI, so this is belt-and-braces.
-        run: uv run --no-sync pytest -q
+        #
+        # Expect ~2978 passed / ~15 skipped from a clean checkout, against
+        # ~2990 / ~3 on a working dev machine. The 12-test gap is not a
+        # regression and not something to "fix" by seeding fixtures: those
+        # tests guard on gitignored local artifacts that no fresh clone has —
+        # 9 want a `data/research/` corpus, 3 want a compiled
+        # `.tesserae/graph.json`. They skip with an explicit reason rather than
+        # passing vacuously. `-rs` prints those reasons if the count ever moves.
+        run: uv run --no-sync pytest -q -rs
 
       - name: Report the environment on failure
         # A failure that only reproduces on one matrix leg is nearly always an
