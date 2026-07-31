@@ -44,14 +44,37 @@ tesserae context --help     # オンデマンド・コンテキスト・コン�
 
 ## リリースフロー
 
-`release` スキル（`.claude/skills/release/SKILL.md`）が主導する。最新タグは `v0.5.0`。
+`release` スキル（`.claude/skills/release/SKILL.md`）が駆動する。スキルがこの
+フローの正典であり、両者が食い違ったらスキルが勝つ。直すのはこのリストのほうだ。
 
-- [ ] `main` 上で作業ツリーがクリーン、`git pull --ff-only origin main` を実行。
-- [ ] テスト + デモビルドのスモークテスト（上記）が通る。
-- [ ] `pyproject.toml` の `version = "X.Y.Z"` を上げ（`package.json` があれば同期）、`git log v<prev>..HEAD` から作った 1 段落の変更ログとともに `release: vX.Y.Z` をコミット。
-- [ ] `git tag -a vX.Y.Z -m "vX.Y.Z"` でタグ付けし、コミットの後にタグをプッシュ。
-- [ ] CI のグリーンを待つ（`gh run watch <run-id>`）— 赤いビルドで GitHub リリースを切らない。
-- [ ] GitHub リリースを公開する。PyPI 公開は任意（準備ができたとき）。
+- [ ] `main` 上、作業ツリーがクリーン、`git pull --ff-only origin main`。
+- [ ] テストがグリーン（`uv run pytest tests/ -x`、約 9 分）。デモビルドの
+      スモークは手動であり、もう CI ではカバーされない — 上記参照。
+- [ ] **3 つすべての**バージョンファイルを上げる: `pyproject.toml`、
+      `.claude-plugin/plugin.json`、`npm/package.json`。互いに、そしてタグと
+      一致していること。npm ラッパーは `tesserae==<npm のバージョン>` を固定する。
+- [ ] リリースノートと 7 言語の翻訳を書く。`uv run pytest
+      tests/test_docs_i18n.py -q` がグリーンであること。
+- [ ] `uv lock` を実行し `uv.lock` をステージする — これは `tesserae` を自身の
+      バージョンに固定しており、CI は `uv sync --locked` を走らせるため、古い
+      ロックでは失敗する。
+- [ ] `git log v<prev>..HEAD` から起こした 1 段落の changelog を添えて
+      `release: vX.Y.Z` をコミット。
+- [ ] **PR を開く — `main` は保護されており直接 push は拒否される**（`GH006`。
+      `enforce_admins` が有効、3 つのチェックが必須）。3 レーンすべてグリーンに
+      なってからマージする。赤いビルドにタグを打たないこと。
+- [ ] マージ済みコミットにタグを打ち（`git tag -a vX.Y.Z -m "vX.Y.Z"`）、タグを
+      push する。ここが後戻りできない地点だ: タグ push が npm の OIDC ワーク
+      フローを起動し、公開された npm バージョンは二度と再利用できない。
+- [ ] GitHub リリースを公開する。
+- [ ] **PyPI への公開 — 必須。オプションではない。** タグのクリーンな worktree
+      からビルドしてアップロードし、`--no-cache-dir` 付きで新規 venv への
+      インストールを検証する（pip はインデックスをキャッシュするため、すでに
+      公開済みのバージョンを「見つからない」と報告する）。
+- [ ] **npm への公開 — 必須。** タグ push で OIDC により自動実行される。run を
+      監視し、`npx -y @jokerized/tesserae@X.Y.Z status` でスモークする。手動で
+      publish しないこと — トークンは存在せず、手動公開は provenance 証明を
+      スキップしてしまう。
 
 ### GitHub Pages
 

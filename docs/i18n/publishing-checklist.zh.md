@@ -43,14 +43,32 @@ tesserae context --help     # 按需上下文编译器
 
 ## 发布流程
 
-由 `release` 技能（`.claude/skills/release/SKILL.md`）驱动。最新标签为 `v0.5.0`。
+由 `release` skill（`.claude/skills/release/SKILL.md`）驱动，它是这套流程的权威
+版本 —— 两者若有出入，以 skill 为准，该改的是这份清单。
 
 - [ ] 在 `main` 上，工作树干净，执行 `git pull --ff-only origin main`。
-- [ ] 测试 + 演示构建冒烟测试（上面）通过。
-- [ ] 提升 `pyproject.toml` 的 `version = "X.Y.Z"`（若有 `package.json` 也同步），并以从 `git log v<prev>..HEAD` 生成的一段变更日志提交 `release: vX.Y.Z`。
-- [ ] 用 `git tag -a vX.Y.Z -m "vX.Y.Z"` 打标签，先推送提交再推送标签。
-- [ ] 等待 CI 变绿（`gh run watch <run-id>`）—— 不要在红色构建上发布 GitHub release。
-- [ ] 发布 GitHub release。PyPI 发布为可选（准备就绪时）。
+- [ ] 测试通过（`uv run pytest tests/ -x`，约 9 分钟）。演示构建冒烟测试是手动的，
+      CI 已不再覆盖 —— 见上文。
+- [ ] 提升**全部三个**版本文件：`pyproject.toml`、`.claude-plugin/plugin.json`、
+      `npm/package.json`。三者之间以及与标签都必须一致；npm 包装器固定
+      `tesserae==<npm 版本>`。
+- [ ] 撰写发布说明及全部 7 种翻译；`uv run pytest tests/test_docs_i18n.py -q`
+      必须为绿。
+- [ ] 执行 `uv lock` 并暂存 `uv.lock` —— 它把 `tesserae` 固定到自身版本，而 CI 运行
+      `uv sync --locked`，锁文件过期就会失败。
+- [ ] 提交 `release: vX.Y.Z`，附上取自 `git log v<prev>..HEAD` 的一段变更日志。
+- [ ] **开 PR —— `main` 受保护，直接推送会被拒绝**（`GH006`；`enforce_admins`
+      已开启，需要三项检查）。三条腿全绿后再合并。绝不要给红色构建打标签。
+- [ ] 给合并后的提交打标签（`git tag -a vX.Y.Z -m "vX.Y.Z"`）并推送标签。这是不可
+      回头的一步：标签推送会触发 npm 的 OIDC 工作流，而已发布的 npm 版本永远无法
+      重复使用。
+- [ ] 发布 GitHub release。
+- [ ] **PyPI 发布 —— 必须，而非可选。** 从标签的干净 worktree 构建并上传，然后用
+      `--no-cache-dir` 验证全新 venv 安装（pip 会缓存索引，把已经上线的版本报成
+      找不到）。
+- [ ] **npm 发布 —— 必须。** 推送标签时通过 OIDC 自动执行；观察该 run，并用
+      `npx -y @jokerized/tesserae@X.Y.Z status` 做冒烟测试。绝不要手动发布 ——
+      没有 token，而且手动发布会跳过 provenance 证明。
 
 ### GitHub Pages
 

@@ -44,14 +44,38 @@ llamadas a LLM, sin API keys) y construye el sitio:
 
 ## Flujo de release
 
-Conducido por la skill `release` (`.claude/skills/release/SKILL.md`). El tag más reciente es `v0.5.0`.
+Lo dirige la skill `release` (`.claude/skills/release/SKILL.md`), que es la
+versión autoritativa de este flujo — si ambos discrepan, manda la skill y esta
+lista es lo que hay que corregir.
 
-- [ ] En `main`, árbol de trabajo limpio, ejecuta `git pull --ff-only origin main`.
-- [ ] Los tests + el smoke de build de demo (arriba) pasan.
-- [ ] Sube `version = "X.Y.Z"` en `pyproject.toml` (replica `package.json` si existe); commitea `release: vX.Y.Z` con un changelog de un párrafo desde `git log v<prev>..HEAD`.
-- [ ] Etiqueta `git tag -a vX.Y.Z -m "vX.Y.Z"`; empuja primero el commit y luego el tag.
-- [ ] Espera a que CI esté en verde (`gh run watch <run-id>`) — no publiques el release de GitHub sobre una build roja.
-- [ ] Publica el release de GitHub. La publicación en PyPI es opcional (cuando esté lista).
+- [ ] En `main`, árbol de trabajo limpio, `git pull --ff-only origin main`.
+- [ ] Tests en verde (`uv run pytest tests/ -x`, ~9 min). El smoke de build de
+      demo es manual y ya no lo cubre CI — ver arriba.
+- [ ] Subir **los tres** ficheros de versión: `pyproject.toml`,
+      `.claude-plugin/plugin.json`, `npm/package.json`. Deben coincidir entre sí
+      y con el tag; el wrapper de npm fija `tesserae==<versión npm>`.
+- [ ] Escribir la nota de release y sus 7 traducciones; `uv run pytest
+      tests/test_docs_i18n.py -q` debe estar en verde.
+- [ ] Ejecutar `uv lock` y añadir `uv.lock` al commit — fija `tesserae` a su
+      propia versión, y CI ejecuta `uv sync --locked`, que falla con un lock
+      obsoleto.
+- [ ] Commit `release: vX.Y.Z` con un párrafo de changelog de
+      `git log v<prev>..HEAD`.
+- [ ] **Abrir un PR — `main` está protegida y rechaza pushes directos** (`GH006`;
+      `enforce_admins` activo, tres checks requeridos). Mergear solo con las tres
+      ramas en verde. No etiquetar nunca una build roja.
+- [ ] Etiquetar el commit mergeado (`git tag -a vX.Y.Z -m "vX.Y.Z"`) y subir el
+      tag. Es el punto de no retorno: el push del tag dispara el workflow OIDC de
+      npm, y una versión npm publicada no se puede reutilizar jamás.
+- [ ] Publicar la release de GitHub.
+- [ ] **Publicación en PyPI — OBLIGATORIA, no opcional.** Construir desde un
+      worktree limpio del tag, subir, y verificar una instalación en venv nuevo
+      con `--no-cache-dir` (pip cachea el índice y da por ausente una versión que
+      ya está publicada).
+- [ ] **Publicación en npm — OBLIGATORIA.** Ocurre automáticamente vía OIDC al
+      subir el tag; observa el run y haz el smoke con
+      `npx -y @jokerized/tesserae@X.Y.Z status`. Nunca publiques a mano: no hay
+      token, y una publicación manual se salta la atestación de procedencia.
 
 ### GitHub Pages
 

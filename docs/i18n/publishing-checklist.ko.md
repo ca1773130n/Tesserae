@@ -44,14 +44,34 @@ tesserae context --help     # 온디맨드 컨텍스트 컴파일러
 
 ## 릴리스 흐름
 
-`release` 스킬(`.claude/skills/release/SKILL.md`)이 주도한다. 최신 태그는 `v0.5.0`이다.
+`release` 스킬(`.claude/skills/release/SKILL.md`)이 이 흐름을 주도하며, 그것이
+정본이다 — 둘이 어긋나면 스킬이 이기고, 고쳐야 할 것은 이 목록이다.
 
-- [ ] `main`에서 작업 트리가 깨끗하고 `git pull --ff-only origin main`을 실행한다.
-- [ ] 테스트 + 데모 빌드 스모크(위)가 통과한다.
-- [ ] `pyproject.toml`의 `version = "X.Y.Z"`를 올리고(있다면 `package.json`도 동기화), `git log v<prev>..HEAD`로 만든 한 단락 변경 로그와 함께 `release: vX.Y.Z`를 커밋한다.
-- [ ] `git tag -a vX.Y.Z -m "vX.Y.Z"`로 태그하고 커밋 다음에 태그를 푸시한다.
-- [ ] CI 그린을 기다린다(`gh run watch <run-id>`) — 빨간 빌드에서는 GitHub 릴리스를 만들지 않는다.
-- [ ] GitHub 릴리스를 게시한다. PyPI 게시는 선택 사항(준비되면)이다.
+- [ ] `main`에서, 작업 트리 클린, `git pull --ff-only origin main`.
+- [ ] 테스트 그린(`uv run pytest tests/ -x`, 약 9분). 데모 빌드 스모크는 수동이며
+      더 이상 CI가 다루지 않는다 — 위 참조.
+- [ ] **세 개 모두**의 버전 파일을 올린다: `pyproject.toml`,
+      `.claude-plugin/plugin.json`, `npm/package.json`. 서로 그리고 태그와
+      일치해야 한다. npm 래퍼는 `tesserae==<npm 버전>`을 고정한다.
+- [ ] 릴리스 노트와 7개 번역을 작성한다. `uv run pytest
+      tests/test_docs_i18n.py -q`가 그린이어야 한다.
+- [ ] `uv lock`을 실행하고 `uv.lock`을 스테이징한다 — 이 파일은 `tesserae`를 자기
+      버전으로 고정하며, CI가 `uv sync --locked`를 돌리므로 락이 낡으면 실패한다.
+- [ ] `git log v<prev>..HEAD`에서 뽑은 한 단락 변경 로그와 함께
+      `release: vX.Y.Z`를 커밋한다.
+- [ ] **PR을 연다 — `main`은 보호되어 있어 직접 푸시가 거부된다**(`GH006`;
+      `enforce_admins` 켜짐, 체크 3개 필수). 세 레인이 모두 그린일 때만 머지한다.
+      빨간 빌드에는 절대 태그를 달지 않는다.
+- [ ] 머지된 커밋에 태그를 달고(`git tag -a vX.Y.Z -m "vX.Y.Z"`) 태그를 푸시한다.
+      여기가 되돌릴 수 없는 지점이다: 태그 푸시가 npm OIDC 워크플로를 발동시키고,
+      한 번 게시된 npm 버전은 영원히 재사용할 수 없다.
+- [ ] GitHub 릴리스를 게시한다.
+- [ ] **PyPI 게시 — 선택이 아니라 필수.** 태그의 깨끗한 worktree에서 빌드해
+      업로드한 뒤, `--no-cache-dir`로 새 venv 설치를 검증한다(pip이 인덱스를
+      캐시해서, 이미 올라간 버전을 없다고 보고한다).
+- [ ] **npm 게시 — 필수.** 태그 푸시 시 OIDC로 자동 실행된다. run을 지켜보고
+      `npx -y @jokerized/tesserae@X.Y.Z status`로 스모크한다. 손으로 publish하지
+      말 것 — 토큰이 없고, 수동 게시는 provenance 증명을 건너뛴다.
 
 ### GitHub Pages
 

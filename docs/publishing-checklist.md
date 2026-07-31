@@ -45,15 +45,36 @@ extractor (no LLM calls, no API keys) and builds the site:
 
 ## Release flow
 
-Driven by the `release` skill (`.claude/skills/release/SKILL.md`). The latest tag
-is `v0.5.0`.
+Driven by the `release` skill (`.claude/skills/release/SKILL.md`), which is the
+authoritative version of this flow — if the two ever disagree, the skill wins and
+this list is the thing to fix.
 
 - [ ] On `main`, working tree clean, `git pull --ff-only origin main`.
-- [ ] Tests + demo-build smoke pass (above).
-- [ ] Bump `pyproject.toml` `version = "X.Y.Z"` (mirror `package.json` if present); commit `release: vX.Y.Z` with a one-paragraph changelog from `git log v<prev>..HEAD`.
-- [ ] Tag `git tag -a vX.Y.Z -m "vX.Y.Z"`; push commit then tag.
-- [ ] Wait for CI green (`gh run watch <run-id>`) — do **not** cut the GitHub release on a red build.
-- [ ] Publish the GitHub release. PyPI publish is optional/when-ready.
+- [ ] Tests pass (`uv run pytest tests/ -x`, ~9 min). Demo-build smoke is manual
+      and no longer covered by CI — see above.
+- [ ] Bump **all three** version files: `pyproject.toml`,
+      `.claude-plugin/plugin.json`, `npm/package.json`. They must agree with each
+      other and with the tag; the npm wrapper pins `tesserae==<npm version>`.
+- [ ] Write the release note plus all 7 translations; `uv run pytest
+      tests/test_docs_i18n.py -q` must be green.
+- [ ] `uv lock` and stage `uv.lock` — it pins `tesserae` at its own version, and
+      CI runs `uv sync --locked`, which fails on a stale lock.
+- [ ] Commit `release: vX.Y.Z` with a one-paragraph changelog from
+      `git log v<prev>..HEAD`.
+- [ ] **Open a PR — `main` is protected and rejects direct pushes** (`GH006`;
+      `enforce_admins` is on, three checks required). Merge once all three legs
+      are green. Do **not** tag a red build.
+- [ ] Tag `git tag -a vX.Y.Z -m "vX.Y.Z"` on the merged commit and push the tag.
+      This is the point of no return: the tag push fires the npm OIDC workflow,
+      and a published npm version can never be reused.
+- [ ] Publish the GitHub release.
+- [ ] **PyPI publish — REQUIRED, not optional.** Build from a clean worktree of
+      the tag, upload, then verify a fresh-venv install with `--no-cache-dir`
+      (pip caches the index and will report a live version as missing).
+- [ ] **npm publish — REQUIRED.** It happens automatically via OIDC on the tag
+      push; watch the run and smoke it with `npx -y @jokerized/tesserae@X.Y.Z
+      status`. Never publish npm by hand — there is no token, and a manual
+      publish skips the provenance attestation.
 
 ### GitHub Pages
 

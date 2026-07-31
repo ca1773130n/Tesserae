@@ -45,14 +45,40 @@ Extraktor (keine LLM-Aufrufe, keine API-Keys) und baut die Site:
 
 ## Release-Flow
 
-Gesteuert durch den `release`-Skill (`.claude/skills/release/SKILL.md`). Der neueste Tag ist `v0.5.0`.
+Gesteuert vom `release`-Skill (`.claude/skills/release/SKILL.md`), das die
+maßgebliche Fassung dieses Ablaufs ist — weichen beide voneinander ab, gilt das
+Skill, und diese Liste ist das, was korrigiert gehört.
 
-- [ ] Auf `main`, Arbeitsbaum sauber, `git pull --ff-only origin main` ausführen.
-- [ ] Tests + Demo-Build-Smoke (oben) bestehen.
-- [ ] `version = "X.Y.Z"` in `pyproject.toml` anheben (`package.json` spiegeln, falls vorhanden); `release: vX.Y.Z` mit einem einparagraphigen Changelog aus `git log v<prev>..HEAD` committen.
-- [ ] Mit `git tag -a vX.Y.Z -m "vX.Y.Z"` taggen; erst den Commit, dann den Tag pushen.
-- [ ] Auf grüne CI warten (`gh run watch <run-id>`) — kein GitHub-Release auf einem roten Build.
-- [ ] GitHub-Release veröffentlichen. PyPI-Veröffentlichung ist optional (wenn bereit).
+- [ ] Auf `main`, Arbeitsbaum sauber, `git pull --ff-only origin main`.
+- [ ] Tests grün (`uv run pytest tests/ -x`, ~9 Min.). Der Demo-Build-Smoke ist
+      manuell und nicht mehr von der CI abgedeckt — siehe oben.
+- [ ] **Alle drei** Versionsdateien anheben: `pyproject.toml`,
+      `.claude-plugin/plugin.json`, `npm/package.json`. Sie müssen untereinander
+      und mit dem Tag übereinstimmen; der npm-Wrapper pinnt
+      `tesserae==<npm-Version>`.
+- [ ] Release Note plus alle 7 Übersetzungen schreiben; `uv run pytest
+      tests/test_docs_i18n.py -q` muss grün sein.
+- [ ] `uv lock` ausführen und `uv.lock` stagen — es pinnt `tesserae` auf die
+      eigene Version, und die CI läuft mit `uv sync --locked`, das bei veralteter
+      Lockdatei fehlschlägt.
+- [ ] `release: vX.Y.Z` committen, mit einem Changelog-Absatz aus
+      `git log v<prev>..HEAD`.
+- [ ] **PR öffnen — `main` ist geschützt und weist direkte Pushes ab** (`GH006`;
+      `enforce_admins` ist an, drei Checks erforderlich). Erst mergen, wenn alle
+      drei Läufe grün sind. Niemals einen roten Build taggen.
+- [ ] Den gemergten Commit taggen (`git tag -a vX.Y.Z -m "vX.Y.Z"`) und den Tag
+      pushen. Das ist der Punkt ohne Wiederkehr: der Tag-Push startet den
+      npm-OIDC-Workflow, und eine veröffentlichte npm-Version ist für immer
+      verbraucht.
+- [ ] GitHub-Release veröffentlichen.
+- [ ] **PyPI-Publish — PFLICHT, nicht optional.** Aus einem sauberen Worktree des
+      Tags bauen, hochladen, dann eine Frisch-Venv-Installation mit
+      `--no-cache-dir` verifizieren (pip cached den Index und meldet eine bereits
+      live geschaltete Version als fehlend).
+- [ ] **npm-Publish — PFLICHT.** Läuft beim Tag-Push automatisch per OIDC; den
+      Run beobachten und mit `npx -y @jokerized/tesserae@X.Y.Z status` smoken.
+      Niemals von Hand publishen — es gibt kein Token, und ein manueller Publish
+      überspringt die Provenance-Attestierung.
 
 ### GitHub Pages
 

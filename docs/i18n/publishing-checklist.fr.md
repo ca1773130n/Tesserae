@@ -44,14 +44,40 @@ Il compile Tesserae contre son propre arbre de sources avec l’extracteur déte
 
 ## Flux de release
 
-Piloté par la skill `release` (`.claude/skills/release/SKILL.md`). Le tag le plus récent est `v0.5.0`.
+Piloté par la skill `release` (`.claude/skills/release/SKILL.md`), qui fait
+autorité sur ce flux — en cas de divergence, c’est la skill qui prime et cette
+liste qu’il faut corriger.
 
-- [ ] Sur `main`, arbre de travail propre, exécuter `git pull --ff-only origin main`.
-- [ ] Les tests + le smoke de build démo (ci-dessus) passent.
-- [ ] Monter `version = "X.Y.Z"` dans `pyproject.toml` (répliquer `package.json` s’il existe) ; committer `release: vX.Y.Z` avec un changelog d’un paragraphe issu de `git log v<prev>..HEAD`.
-- [ ] Taguer `git tag -a vX.Y.Z -m "vX.Y.Z"` ; pousser d’abord le commit puis le tag.
-- [ ] Attendre que la CI soit verte (`gh run watch <run-id>`) — ne pas publier la release GitHub sur une build rouge.
-- [ ] Publier la release GitHub. La publication PyPI est optionnelle (quand c’est prêt).
+- [ ] Sur `main`, arbre de travail propre, `git pull --ff-only origin main`.
+- [ ] Tests au vert (`uv run pytest tests/ -x`, ~9 min). Le smoke de build démo
+      est manuel et n’est plus couvert par la CI — voir plus haut.
+- [ ] Incrémenter **les trois** fichiers de version : `pyproject.toml`,
+      `.claude-plugin/plugin.json`, `npm/package.json`. Ils doivent concorder
+      entre eux et avec le tag ; le wrapper npm épingle
+      `tesserae==<version npm>`.
+- [ ] Rédiger la note de release et ses 7 traductions ; `uv run pytest
+      tests/test_docs_i18n.py -q` doit être au vert.
+- [ ] Lancer `uv lock` et stager `uv.lock` — il épingle `tesserae` à sa propre
+      version, et la CI exécute `uv sync --locked`, qui échoue sur un lock
+      obsolète.
+- [ ] Committer `release: vX.Y.Z` avec un paragraphe de changelog issu de
+      `git log v<prev>..HEAD`.
+- [ ] **Ouvrir une PR — `main` est protégée et refuse les pushes directs**
+      (`GH006` ; `enforce_admins` actif, trois checks requis). Merger seulement
+      quand les trois legs sont au vert. Ne jamais taguer un build rouge.
+- [ ] Taguer le commit mergé (`git tag -a vX.Y.Z -m "vX.Y.Z"`) et pousser le tag.
+      C’est le point de non-retour : le push du tag déclenche le workflow OIDC
+      npm, et une version npm publiée ne peut jamais être réutilisée.
+- [ ] Publier la release GitHub.
+- [ ] **Publication PyPI — OBLIGATOIRE, pas optionnelle.** Construire depuis un
+      worktree propre du tag, uploader, puis vérifier une installation en venv
+      neuf avec `--no-cache-dir` (pip met l’index en cache et déclare absente une
+      version déjà en ligne).
+- [ ] **Publication npm — OBLIGATOIRE.** Elle se fait automatiquement via OIDC au
+      push du tag ; surveiller le run et faire le smoke avec
+      `npx -y @jokerized/tesserae@X.Y.Z status`. Ne jamais publier à la main : il
+      n’y a pas de token, et une publication manuelle saute l’attestation de
+      provenance.
 
 ### GitHub Pages
 
