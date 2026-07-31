@@ -1969,6 +1969,19 @@ wheels = [
 ]
 
 [[package]]
+name = "markdownify"
+version = "1.2.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "beautifulsoup4" },
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/92/ab/d1297139c0e2ceb151ae564c8c4f57ac0155d8f1f8b4cbd5d6523c82ea36/markdownify-1.2.3.tar.gz", hash = "sha256:1a176f05522c8a2cb1dd3ab9d307dcdadbed5c26ae717855bfc42b3b6d38d937", size = 18852, upload-time = "2026-06-30T20:27:39.06Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/04/10/fa543d484e8b1199243fe20eedd02cc5af050edebce98a7293a5773df592/markdownify-1.2.3-py3-none-any.whl", hash = "sha256:a189a0bedfd14009030fde5f85bb6f77c56897cb839b5c25315dd7d4e3e290ba", size = 15732, upload-time = "2026-06-30T20:27:38.094Z" },
+]
+
+[[package]]
 name = "markupsafe"
 version = "3.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -2134,6 +2147,24 @@ dependencies = [
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/39/09/9a5e0975622ab4f8b3592961cf6175e39473a3f13964d3d42156666756b0/mineru_vl_utils-1.0.2-py3-none-any.whl", hash = "sha256:8024f0529deeda5990795318d8ff4fd6811dedd12c2d4dfaabe2441e96e0a165", size = 92574, upload-time = "2026-05-26T08:04:32.253Z" },
+]
+
+[[package]]
+name = "model2vec"
+version = "0.8.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jinja2" },
+    { name = "joblib" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "safetensors" },
+    { name = "tokenizers" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/54/c8/8efa9e52d210957b02b1c711f4e3b88d1e9eb5485d1869aaa9833d0cd1c5/model2vec-0.8.2.tar.gz", hash = "sha256:4e88d1a5eb2136475ebd90505689046f61caf25c69371c331f21c6499637c110", size = 4532469, upload-time = "2026-05-29T12:01:21.035Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7b/a1/38101b223fb6cea0f2e401fbacdf4f6121628d45dc9329b255d7ac843234/model2vec-0.8.2-py3-none-any.whl", hash = "sha256:f0ecfe994316e401dca583fbf6dd22079d308c05717dd36d40bff60f265431cf", size = 54749, upload-time = "2026-05-29T12:01:19.411Z" },
 ]
 
 [[package]]
@@ -4760,16 +4791,21 @@ wheels = [
 
 [[package]]
 name = "tesserae"
-version = "0.4.0"
+version = "0.28.4"
 source = { editable = "." }
 dependencies = [
     { name = "networkx", version = "3.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "networkx", version = "3.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pydantic" },
+    { name = "pyyaml" },
     { name = "rich" },
 ]
 
 [package.optional-dependencies]
+ingest-url = [
+    { name = "httpx" },
+    { name = "markdownify" },
+]
 raganything = [
     { name = "raganything" },
 ]
@@ -4780,6 +4816,11 @@ raganything-semantic = [
     { name = "raganything", extra = ["all"] },
     { name = "sentence-transformers" },
 ]
+semantic = [
+    { name = "model2vec" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
 synthesis-llm = [
     { name = "anthropic" },
 ]
@@ -4787,15 +4828,20 @@ synthesis-llm = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", marker = "extra == 'synthesis-llm'", specifier = ">=0.40" },
+    { name = "httpx", marker = "extra == 'ingest-url'", specifier = ">=0.24" },
+    { name = "markdownify", marker = "extra == 'ingest-url'", specifier = ">=0.11" },
+    { name = "model2vec", marker = "extra == 'semantic'", specifier = ">=0.3" },
     { name = "networkx", specifier = ">=3.0" },
+    { name = "numpy", marker = "extra == 'semantic'", specifier = ">=1.21" },
     { name = "pydantic", specifier = ">=2" },
+    { name = "pyyaml", specifier = ">=6" },
     { name = "raganything", marker = "extra == 'raganything'", specifier = ">=1.3.0" },
     { name = "raganything", extras = ["all"], marker = "extra == 'raganything-all'", specifier = ">=1.3.0" },
     { name = "raganything", extras = ["all"], marker = "extra == 'raganything-semantic'", specifier = ">=1.3.0" },
     { name = "rich", specifier = ">=13" },
     { name = "sentence-transformers", marker = "extra == 'raganything-semantic'", specifier = ">=3.0" },
 ]
-provides-extras = ["synthesis-llm", "raganything", "raganything-all", "raganything-semantic"]
+provides-extras = ["synthesis-llm", "raganything", "raganything-all", "raganything-semantic", "semantic", "ingest-url"]
 
 [[package]]
 name = "threadpoolctl"
