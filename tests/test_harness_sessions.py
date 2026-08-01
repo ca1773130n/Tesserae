@@ -327,6 +327,54 @@ def test_write_sessions_replace_prunes_stale_records(tmp_path):
     assert [s.title for s in listed] == ["Replacement session"]
 
 
+def test_write_sessions_replace_spares_records_outside_prune_roots(tmp_path):
+    """Regression (#104): a local discovery must not prune another producer's records.
+
+    `sessions discover --import` replaces with the scanned harness roots as its
+    prune scope. A session imported through `sessions import <path>` carries no
+    transcript under those roots, so it is out of scope and survives.
+    """
+    project = tmp_path / "demo-project"
+    project.mkdir()
+    harness_root = tmp_path / "home" / ".claude"
+    (harness_root / "projects").mkdir(parents=True)
+    store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
+
+    external = HarnessSession.from_dict({
+        **sample_session(project).to_dict(),
+        "id": "external:orchestrator-run",
+        "slug": "orchestrator-run",
+        "title": "Externally imported session",
+        "raw_transcript_path": "",
+    })
+    store.write_sessions([external])  # `tesserae sessions import <path>` semantics
+
+    stale = HarnessSession.from_dict({
+        **sample_session(project).to_dict(),
+        "id": "claude-code:stale",
+        "slug": "stale-session",
+        "title": "Stale local session",
+        "raw_transcript_path": str(harness_root / "projects" / "demo" / "stale.jsonl"),
+    })
+    store.write_sessions([stale], replace=True, prune_roots=[harness_root])
+
+    discovered = HarnessSession.from_dict({
+        **sample_session(project).to_dict(),
+        "id": "claude-code:fresh",
+        "slug": "fresh-session",
+        "title": "Fresh local session",
+        "raw_transcript_path": str(harness_root / "projects" / "demo" / "fresh.jsonl"),
+    })
+    result = store.write_sessions([discovered], replace=True, prune_roots=[harness_root])
+
+    titles = {s.title for s in store.list_sessions()}
+    assert titles == {"Externally imported session", "Fresh local session"}
+    assert result["removed"] == 1  # the stale local record, and only it
+    assert result["total"] == 2
+    manifest = json.loads((store.root / "manifest.json").read_text(encoding="utf-8"))
+    assert len(manifest["sessions"]) == 2
+
+
 def test_cli_sessions_import_with_no_paths_leaves_existing_sessions_intact(tmp_path, capsys):
     """Regression: `tesserae sessions import` (no paths) used to WIPE the store."""
     project = tmp_path / "demo-project"
