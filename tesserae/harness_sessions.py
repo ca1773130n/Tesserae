@@ -112,7 +112,11 @@ class HarnessSessionStore:
         self.manifest_path = self.root / "manifest.json"
 
     def write_sessions(
-        self, sessions: Iterable[HarnessSession], *, replace: bool = False
+        self,
+        sessions: Iterable[HarnessSession],
+        *,
+        replace: bool = False,
+        prune_roots: Optional[Sequence[str | Path]] = None,
     ) -> Dict[str, object]:
         """Write normalized sessions into the store.
 
@@ -121,18 +125,19 @@ class HarnessSessionStore:
         and the manifest is rebuilt from everything on disk. This makes an
         empty import / empty discover a no-op instead of a store wipe.
 
-        ``replace=True`` restores the authoritative-import semantics: stale
-        session records are removed first so changed filename schemes or
-        deduped imports cannot leave orphan pages/search entries behind.
+        ``replace=True`` also prunes stale records, so changed filename
+        schemes or deduped imports cannot leave orphan pages/search entries
+        behind.
+
+        ``prune_roots`` scopes that pruning to what the caller could actually
+        see: a stored record survives unless its ``raw_transcript_path`` lives
+        under one of those roots. A local harness discovery passes the roots it
+        scanned, so records written by another producer — which the scan cannot
+        see and therefore has no authority over — are left alone.
         """
         ordered = sorted(list(sessions), key=lambda s: (s.started_at or "", s.harness, s.slug))
         self.root.mkdir(parents=True, exist_ok=True)
-        if replace:
-            for stale in list(self.root.glob("*/*.json")) + list(self.root.glob("*/*.md")):
-                try:
-                    stale.unlink()
-                except OSError:
-                    pass
+        written: set[Path] = set()
         for session in ordered:
             harness_dir = self.root / safe_slug(session.harness)
             harness_dir.mkdir(parents=True, exist_ok=True)
@@ -141,17 +146,28 @@ class HarnessSessionStore:
             json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             md_path = harness_dir / f"{session.filename}.md"
             md_path.write_text(render_session_markdown(session), encoding="utf-8")
+            written.update((json_path, md_path))
+        removed = 0
         if replace:
-            merged = ordered
-        else:
-            # Rebuild the manifest from disk so pre-existing records survive.
-            merged = sorted(
-                self.list_sessions(),
-                key=lambda s: (s.started_at or "", s.harness, s.slug),
-            )
+            scope = _prune_scope(prune_roots)
+            for stale in list(self.root.glob("*/*.json")) + list(self.root.glob("*/*.md")):
+                if stale in written or not _within_prune_scope(stale, scope):
+                    continue
+                try:
+                    stale.unlink()
+                except OSError:
+                    continue
+                if stale.suffix == ".json":
+                    removed += 1
+        # Rebuild the manifest from disk so records this write did not touch —
+        # and did not prune — survive.
+        merged = sorted(
+            self.list_sessions(),
+            key=lambda s: (s.started_at or "", s.harness, s.slug),
+        )
         manifest = {"version": "1", "sessions": [_manifest_entry(s) for s in merged]}
         self.manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        return {"path": str(self.root), "sessions": len(ordered), "total": len(merged)}
+        return {"path": str(self.root), "sessions": len(ordered), "total": len(merged), "removed": removed}
 
     def list_sessions(self) -> List[HarnessSession]:
         if not self.root.exists():
@@ -165,6 +181,28 @@ class HarnessSessionStore:
                 continue
         sessions.sort(key=lambda s: (s.started_at or "", s.harness, s.slug), reverse=True)
         return sessions
+
+
+def _prune_scope(roots: Optional[Sequence[str | Path]]) -> Optional[List[Path]]:
+    if roots is None:
+        return None
+    return [Path(root).expanduser().resolve() for root in roots]
+
+
+def _within_prune_scope(path: Path, scope: Optional[List[Path]]) -> bool:
+    """Return true when a stored record is the writer's to prune."""
+
+    if scope is None:
+        return True  # unscoped replace: the caller owns the whole store
+    try:
+        payload = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
+        source = str(payload.get("raw_transcript_path") or "")
+    except (OSError, json.JSONDecodeError, TypeError, ValueError, AttributeError):
+        return True  # unreadable or orphaned page: attributable to no producer
+    if not source:
+        return False  # no local-transcript provenance: another producer's record
+    resolved = Path(source).expanduser().resolve()
+    return any(resolved == root or root in resolved.parents for root in scope)
 
 
 DEFAULT_HARNESS_ROOT_NAMES: Tuple[str, ...] = (".claude", ".codex")

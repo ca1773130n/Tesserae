@@ -12,7 +12,7 @@ from typing import Callable, Dict, Iterable, List, Optional
 from .activity_summary import SummaryResult, build_summary, resolve_windows
 from .batch import BatchIngestRunner
 from .canonicalization import GraphCanonicalizer, ReviewDecision
-from .harness_sessions import HarnessSession, HarnessSessionStore, discover_harness_sessions, session_matches_project
+from .harness_sessions import HarnessSession, HarnessSessionStore, discover_harness_roots, discover_harness_sessions, session_matches_project
 from .ingest.orchestrator import ingest_sources
 from .llm_extractor import ClaudeCLIResearchExtractor, LLMResearchExtractor
 from .locking import CompileLockHeldError
@@ -1960,17 +1960,23 @@ def _handle_refresh(args: argparse.Namespace) -> int:
     (Pitfall #6): ``changed_only`` defaults to False (a full compile).
     """
     from .engine.pipeline import Pipeline
-    from .harness_sessions import discover_harness_sessions, HarnessSessionStore
+    # Imported here (not just at module scope) so tests can monkeypatch the
+    # harness_sessions module attributes and have refresh pick them up.
+    from . import harness_sessions as hs
 
     wiki = ProjectWiki.load(args.project)
 
     def step_sessions_import():
-        sessions = discover_harness_sessions(wiki.project_root)
-        store = HarnessSessionStore(wiki.paths.harness_sessions)
-        # A non-empty discovery is authoritative (replace: prunes stale
-        # records); an EMPTY discovery merges (a no-op) so a scan that finds
+        roots = hs.discover_harness_roots()
+        sessions = hs.discover_harness_sessions(wiki.project_root, roots=roots)
+        store = hs.HarnessSessionStore(wiki.paths.harness_sessions)
+        # A non-empty discovery is authoritative over the roots it scanned
+        # (replace + prune_roots: prunes stale records there, never another
+        # producer's); an EMPTY discovery merges (a no-op) so a scan that finds
         # nothing — wrong HOME, detached harness roots — never wipes the store.
-        return store.write_sessions(sessions, replace=bool(sessions))  # {"sessions": n, "path": ...}
+        return store.write_sessions(
+            sessions, replace=bool(sessions), prune_roots=roots
+        )  # {"sessions": n, "path": ...}
 
     def step_compile():
         return wiki.compile(changed_only=args.changed_only)
@@ -2203,9 +2209,10 @@ def _handle_sessions(args: argparse.Namespace) -> int:
                 print(f"Skipped non-project harness sessions: {skipped}")
             return 0
         if args.sessions_command == "discover":
+            roots = [Path(r).expanduser() for r in args.root] if args.root else discover_harness_roots()
             sessions = discover_harness_sessions(
                 wiki.project_root,
-                roots=args.root or None,
+                roots=roots,
                 harnesses=args.harness or None,
             )
             print(f"Project working directory: {wiki.project_root.resolve()}")
@@ -2220,10 +2227,13 @@ def _handle_sessions(args: argparse.Namespace) -> int:
             if len(sessions) > 100:
                 print(f"  ... {len(sessions) - 100} more")
             if args.import_sessions:
-                # Non-empty discovery = authoritative replace; empty = merge
-                # no-op so it never wipes previously imported sessions.
-                result = store.write_sessions(sessions, replace=bool(sessions))
+                # Non-empty discovery = authoritative replace, but only over the
+                # roots it scanned; empty = merge no-op. Neither can reach a
+                # record another importer wrote (issue #104).
+                result = store.write_sessions(sessions, replace=bool(sessions), prune_roots=roots)
                 print(f"Imported harness sessions: {result['sessions']} path={result['path']}")
+                if result["removed"]:
+                    print(f"Pruned stale harness sessions: {result['removed']}")
             return 0
         if args.sessions_command == "list":
             sessions = store.list_sessions()
