@@ -7,7 +7,7 @@ more nodes" is arithmetic; the claim worth testing is that a question which is
 evidence finally exists.
 
 Run:
-    uv run python evals/growth/run.py --out docs/research/<date>-kg-growth.md
+    uv run python evals/growth/run.py --out evals/growth/report.md
 
 Cost: the slices are cumulative and compiled into one project, so the LLM
 extractor pays for each document exactly once across the whole run (~50s/doc,
