@@ -1,0 +1,111 @@
+# Multi-hop questions for the KG growth PoC.
+#
+# Each question names two anchor concepts that must end up CONNECTED in the
+# graph, and the corpus documents that must be present for that connection to be
+# real. A question is scored answerable only when both anchors resolve to
+# grounded nodes AND a path links them AND the path is supported by evidence
+# from documents actually in the slice.
+#
+# `requires` lists arxiv ids, so `unlocked_after` is derived from those papers'
+# own `date:` frontmatter rather than hand-asserted. That matters: the point of
+# the experiment is to observe when a question becomes answerable, not to
+# declare it.
+#
+# WHY grounding is checked separately from node existence: the extractor mints
+# Paper nodes for works cited in related-work sections, so a graph built from 7
+# papers already contains a node named "Mip-NeRF 360" that has no content behind
+# it. Counting that as knowledge would make the growth curve rise for free.
+
+questions:
+  - id: gs-slam
+    text: "Which SLAM systems build their map representation on 3D Gaussian Splatting, and what did they inherit from it?"
+    anchors: ["3D Gaussian Splatting", "SLAM"]
+    requires: ["2308.04079", "2311.11700"]   # 3DGS, GS-SLAM
+    note: "The cleanest case in the corpus. 3DGS lands 2023-08, GS-SLAM 2023-11; before both, no amount of reasoning over the graph can connect them."
+
+  - id: gs-dynamic
+    text: "How was 3D Gaussian Splatting extended to dynamic (time-varying) scenes?"
+    anchors: ["3D Gaussian Splatting", "dynamic scene"]
+    requires: ["2308.04079", "2310.08528"]   # 3DGS, 4DGS
+
+  - id: gs-surface
+    text: "What approaches recover explicit surfaces or meshes from a Gaussian Splatting representation?"
+    anchors: ["3D Gaussian Splatting", "surface reconstruction"]
+    requires: ["2308.04079", "2311.12775"]   # 3DGS, SuGaR
+
+  - id: nerf-antialias
+    text: "How did anti-aliasing in neural radiance fields develop, and how was it extended to unbounded scenes?"
+    anchors: ["anti-aliasing", "unbounded scene"]
+    requires: ["2103.13415", "2111.12077"]   # Mip-NeRF, Mip-NeRF 360
+
+  - id: nerf-explicit
+    text: "Which methods removed the neural network from radiance fields in favour of explicit structures?"
+    anchors: ["radiance field", "explicit representation"]
+    requires: ["2112.05131", "2103.14024"]   # Plenoxels, PlenOctrees
+
+  - id: diffusion-to-3d
+    text: "How are 2D diffusion priors used to supervise 3D generation without 3D training data?"
+    anchors: ["diffusion prior", "text-to-3D"]
+    requires: ["2209.14988", "2211.10440"]   # DreamFusion, Magic3D
+
+  - id: sds-refinement
+    text: "What was proposed to fix the over-saturation and low diversity of score distillation sampling?"
+    anchors: ["score distillation", "variational"]
+    requires: ["2209.14988", "2305.16213"]   # DreamFusion, ProlificDreamer
+
+  - id: implicit-surface
+    text: "How did volume rendering get combined with signed distance functions for multi-view surface reconstruction?"
+    anchors: ["signed distance function", "volume rendering"]
+    requires: ["2106.10689", "2106.12052"]   # NeuS, VolSDF
+
+  - id: monocular-cues
+    text: "How are monocular geometric cues used to constrain neural implicit surface reconstruction?"
+    anchors: ["monocular cue", "implicit surface"]
+    requires: ["2106.10689", "2206.00665"]   # NeuS, MonoSDF
+
+  - id: hash-encoding
+    text: "What encoding made radiance field training fast enough to be interactive?"
+    anchors: ["hash encoding", "training speed"]
+    requires: ["2201.05989", "2003.08934"]   # Instant-NGP, NeRF
+
+  - id: deformable-nerf
+    text: "How were radiance fields adapted to non-rigidly deforming subjects, and what limitation did the follow-up address?"
+    anchors: ["deformation field", "topological change"]
+    requires: ["2011.12948", "2106.13228"]   # Nerfies, HyperNeRF
+
+  - id: slam-neural-implicit
+    text: "How did neural implicit representations enter dense SLAM, and what came before them?"
+    anchors: ["dense SLAM", "neural implicit"]
+    requires: ["2108.10869", "2112.12130"]   # DROID-SLAM, NICE-SLAM
+
+  - id: single-image-3d
+    text: "How did single-image 3D reconstruction move from per-scene optimisation to feed-forward prediction?"
+    anchors: ["single image", "feed-forward"]
+    requires: ["2303.11328", "2311.04400"]   # Zero-1-to-3, LRM
+
+  - id: gs-densification
+    text: "What problems were identified in the original Gaussian Splatting densification heuristic?"
+    anchors: ["densification", "3D Gaussian Splatting"]
+    requires: ["2308.04079", "2404.06109"]   # 3DGS, Revising Densification
+
+  - id: sparse-view-gs
+    text: "How is Gaussian Splatting made to work from only a few input views?"
+    anchors: ["sparse view", "3D Gaussian Splatting"]
+    requires: ["2308.04079", "2403.14627"]   # 3DGS, MVSplat
+
+  # --- Controls -------------------------------------------------------------
+  # These must NEVER become answerable. If the harness reports them as answered,
+  # the checker is finding spurious paths and every other number is suspect.
+  - id: control-absent-topic
+    text: "How does protein folding structure prediction inform radiance field design?"
+    anchors: ["protein folding", "radiance field"]
+    requires: []
+    control: true
+    note: "No protein-folding document exists in this corpus. Any path here is a false positive."
+
+  - id: control-unrelated-pair
+    text: "What is the relationship between direct sparse odometry and text-to-3D content creation?"
+    anchors: ["Direct Sparse Odometry", "text-to-3D"]
+    requires: []
+    control: true
+    note: "Both anchors exist in the corpus but no paper connects them. Tests that mere co-existence is not scored as a connection."

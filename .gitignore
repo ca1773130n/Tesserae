@@ -1,7 +1,20 @@
 # Local research corpus and generated artifacts
 data/
-evals/
 output/
+
+# `evals/` is ignored because it holds 877MB of vendored upstream clones
+# (topoteretes/cognee, C-Bjorn/MegaMem) carrying uncommitted local work that
+# exists in no git repository — see the Testing section of AGENTS.md. Our own
+# eval harnesses live alongside them and ARE project code.
+#
+# Written as `evals/*` plus negations rather than `evals/`: git cannot
+# re-include anything beneath an excluded directory, so the contents have to be
+# excluded individually for the negations to bind. The clones stay ignored
+# because `evals/*` still matches them.
+evals/*
+!evals/__init__.py
+!evals/federation/
+!evals/growth/
 
 # But: the demo corpus under examples/ IS checked in.
 !examples/demo-corpus/data/
