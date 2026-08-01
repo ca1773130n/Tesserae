@@ -14,10 +14,13 @@ DOCS = ROOT / "docs"
 LANGS = ("ko", "zh", "ja", "ru", "es", "fr", "de")
 
 # Directories under docs/ that are excluded from the i18n rule. ``launch/``
-# holds short-lived launch artifacts (e.g. hn-post.md drafts); ``superpowers/``
-# was removed from the remote in May 2026 but the exclusion stays defensive in
-# case the directory ever reappears.
-EXCLUDED_TOP_DIRS = {"i18n", "launch", "superpowers", "screencasts", "assets"}
+# holds short-lived launch artifacts (e.g. hn-post.md drafts); ``handoffs/``
+# holds session handoffs, which are dated working state addressed to whoever
+# picks the work up next and are stale within days — translating them seven ways
+# would cost more than the documents are worth and would age just as fast;
+# ``superpowers/`` was removed from the remote in May 2026 but the exclusion
+# stays defensive in case the directory ever reappears.
+EXCLUDED_TOP_DIRS = {"i18n", "launch", "handoffs", "superpowers", "screencasts", "assets"}
 
 
 def _canonical_docs() -> list[Path]:
