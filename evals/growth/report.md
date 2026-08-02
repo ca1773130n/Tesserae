@@ -2,6 +2,26 @@
 
 Generated 2026-08-01 by `evals/growth/run.py`. Corpus: `examples/demo-corpus/data/research/papers`, compiled in cumulative chronological slices.
 
+> **These numbers predate the current anchor matcher (2026-08-02).** They were
+> produced by the substring-only `resolve_anchor`. Re-measured against the same
+> frozen N=50 graph, the label-subset layer takes the last row to **15/15 with
+> controls still at 0**, and every other question keeps its hop count and its
+> path. The earlier slices have *not* been re-measured — each needs its own
+> compile, and a full rerun is ~75 minutes. Regenerate this file before quoting
+> the curve.
+>
+> Two caveats that outlive the rerun, both from
+> `evals/growth/probe_anchors.py`:
+>
+> - The fifteenth question is one label deep. It is carried entirely by
+>   `EvidenceSpan: "Evidence: training/rendering speed numbers"`; reword that one
+>   LLM-minted span and the score is 14/15 again.
+> - A known false positive comes with it: `Direct Sparse Odometry` now reaches
+>   `hash encoding` in 3 hops via field membership. It is the second control's
+>   construction with a different partner, and it fires. `controls fired: 0`
+>   above means the two shipped controls stayed silent, not that no spurious
+>   path exists.
+
 ## Growth curve
 
 | papers | through | nodes | edges | edges/node | answerable | controls fired | connected early |

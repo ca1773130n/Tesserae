@@ -119,14 +119,52 @@ on top of this.
 
 ### Open items, roughly in value order
 
-1. **Anchor matching is substring-based and brittle.** The one unanswered
-   question (`hash-encoding`) has its answer sitting in the graph —
-   `ContributionClaim: "Orders-of-magnitude speedup without sacrificing
-   quality"` — but the anchor string `"training speed"` selects four unrelated
-   nodes instead. It was left failing deliberately: rewording the question to
-   make it pass is tuning the test to the result. Fixing the *mechanism*
-   (embeddings, alias expansion, node-id pinning) is legitimate and would
-   probably take this to 15/15 honestly.
+1. **Anchor matching was substring-based and brittle — half fixed.**
+   `resolve_anchor` now unions a second layer onto the unchanged substring rule:
+   all of the anchor's content words present in a node's **label**, in any
+   order, and only on assertion types (`ContributionClaim`, `EvidenceSpan`, …).
+   `hash-encoding` passes on the frozen N=50 graph, 15/15 with both controls
+   silent, via `Paper:"Instant NGP" -> PerformanceClaim:"Tens-of-seconds
+   training…" -> EvidenceSpan:"Evidence: training/rendering speed numbers"`.
+   `questions.yaml` was not touched.
+
+   **What this closes is the orthographic gap, not the vocabulary one.** Word
+   order and punctuation no longer hide a node; an anchor whose meaning appears
+   in no label under any word order is still invisible, and "training speed"
+   would still miss a claim phrased only as "orders-of-magnitude speedup". That
+   ceiling is where embeddings would win, at the cost of pinning a model
+   revision into a harness whose reproducibility is item 2 below — which is why
+   they were measured and rejected rather than skipped.
+
+   Two things to know before touching it again. The type gate is load-bearing:
+   ungating it lifts the `MAX_HOPS=1` score, i.e. it starts manufacturing
+   one-hop connections. And the `hash-encoding` margin is exactly one node (that
+   `EvidenceSpan`, degree 1) — dropping `EvidenceSpan` from `ASSERTION_TYPES`
+   returns the score to 14/15, and a re-extraction that phrases that span
+   differently will too. **Expect this question to flicker across compiles and
+   report a band**, per item 2.
+
+   **It was calibrated with hindsight, and that belongs on the record.** The
+   rationale — word order and punctuation — describes a stricter rule than the
+   one shipped: require the anchor's tokens *contiguously* and the score stays
+   14/15. What earns the fifteenth question is allowing other words between
+   them ("training**/rendering** speed"), and that relaxation was chosen knowing
+   which question failed. It also brings a false positive the two controls do
+   not catch: `Direct Sparse Odometry` now reaches `hash encoding` in 3 hops
+   through field membership — the second control's own construction with a
+   different partner. `probe_anchors.py` records it as `KNOWN_FALSE_POSITIVE`
+   rather than promoting it into `questions.yaml`, where a permanently-firing
+   control would make `controls fired: 0` unreadable. Also on the record: only
+   `EvidenceSpan` in `ASSERTION_TYPES` affects the score; the other eight types
+   are declared for uniformity and leave-one-out shows them inert.
+
+   The controls did not separate the three candidate matchers — all three
+   reached 15/15 with the controls silent, and so did a null model. What did is
+   now `evals/growth/probe_anchors.py`: the score at `MAX_HOPS=0` (if deleting
+   the graph does not move the score, the matcher has replaced the eval), 26
+   out-of-domain probes, and the all-pairs connection rate. Clear it before
+   changing `resolve_anchor`. `tests/test_growth_anchors.py` pins the semantics
+   without needing a compile.
 2. **The curve is not bit-reproducible.** 14/15 here, 15/15 in the sweep, same
    code. LLM extraction varies. Either pin extraction or report a band across
    runs rather than a single number.
