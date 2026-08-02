@@ -19,11 +19,11 @@ builds: `<work>/.tesserae/graph.json` plus `<work>/corpus/<paper-dir>/`):
 
     uv run python evals/growth/probe_anchors.py --work ~/.blackhole/Tesserae/<date>/kg-growth
 
-Numbers below were measured on the N=50 graph (2387 nodes, 6169 edges). They are
-ceilings, not targets — every one is a *loosening* budget, so a matcher change
-that stays under all of them has not turned into a keyword soup. Exits non-zero
-on any breach; exits 0 with SKIP if no compiled graph is available, since a
-compile is ~75 minutes and this is not CI-wired.
+The ceilings below are loosening budgets, not targets: a matcher change that
+stays under all of them has not turned into keyword soup. They are corpus-specific
+— see the table at the constants. Exits non-zero on any breach; exits 0 with SKIP
+if no compiled graph is available, since a compile is ~2 hours of LLM extraction
+and this is deliberately not CI-wired.
 """
 from __future__ import annotations
 
@@ -55,15 +55,45 @@ PROBES = [
     "topological insulator",
 ]
 
-#: Ceilings, all measured on the frozen N=50 graph. Shipped matcher in brackets.
+#: Ceilings. These guard a change to `resolve_anchor`: run before and after, and
+#: a matcher that loosened too far breaks one. They are NOT corpus-independent —
+#: every one of them scales with how much graph there is — so they are stated per
+#: corpus, and re-baselining them is only legitimate when the *corpus* changed.
+#:
+#: 2026-08-02, first run over the full 73-document corpus (3394 nodes, 9106
+#: edges) against the previous 50-paper graph (2387 / 6169). The matcher did not
+#: change between them; the corpus did:
+#:
+#:                        50 papers    73 documents
+#:     h=0 answerable        10             10        unchanged — good
+#:     h=1 answerable        13             14        <- the number that matters
+#:     median anchor set     21.5           39.5
+#:     total anchor slots    945           1382
+#:     all-pairs 3-hop       84.7%          87.3%
+#:     DSO anchor reach      11/27          18/27
+#:     early connections    119/50 pfx     163/73 pfx
+#:
+#: Read that h=1 row before trusting a 15/15. Fourteen of fifteen questions
+#: answer in a SINGLE hop on the bigger corpus, and 87% of arbitrary anchor pairs
+#: connect within three. Answerability inflates with corpus size because anchor
+#: resolution is set-based: more nodes means bigger anchor sets, more starting
+#: points, shorter paths. The graph may well be smarter; this instrument can no
+#: longer tell you that from "there is simply more of it". Fixing that — capping
+#: anchor sets, normalising by graph size, or requiring the path to be
+#: evidence-supported — is the top open item on the eval itself.
+#:
+#: The ceilings below are re-baselined to the 73-document corpus so the file
+#: still works as a gate on matcher changes. h=1 is deliberately NOT relaxed to
+#: its measured 14: it is left where it was, failing, because that failure is the
+#: finding and hiding it would make the probe agree with a claim it disproved.
 MAX_ZERO_HOP = 11      # [10] instrument integrity — the criterion that mattered
-MAX_ONE_HOP = 13       # [13] catches loosening that invents one-hop links
-MAX_MEDIAN_SET = 25    # [21.5] a rejected candidate hit 37
-MAX_TOTAL_SLOTS = 1010 # [945] 10% over the substring matcher's 916
-MAX_PAIR_RATE = 86.0   # [84.7%] of all anchor pairs connected within 3 hops
+MAX_ONE_HOP = 13       # [14, FAILING] see above; do not raise to make it pass
+MAX_MEDIAN_SET = 42    # [39.5] was 25 on the 50-paper corpus
+MAX_TOTAL_SLOTS = 1450 # [1382] was 1010
+MAX_PAIR_RATE = 89.0   # [87.3%] was 86.0 — everything-connects is not a smarter graph
 MIN_ANSWERABLE = 14    # [15] a band: extraction varies, see run.py's MAX_HOPS note
-MAX_DSO_REACH = 13     # [11 of 27] see KNOWN_FALSE_POSITIVE below
-MAX_EARLY_TOTAL = 125  # [119] connections before their sources, summed over prefixes
+MAX_DSO_REACH = 20     # [18 of 27] was 13 on the 50-paper corpus; see KNOWN_FALSE_POSITIVE
+MAX_EARLY_TOTAL = 175  # [163 over 73 prefixes] was 125 over 50
 
 #: A false positive the label-subset layer introduces, recorded rather than
 #: hidden. Built by the second control's own construction — an anchor from one
@@ -84,8 +114,8 @@ MAX_EARLY_TOTAL = 125  # [119] connections before their sources, summed over pre
 #: read. It is checked here instead, where a reader gets the finding and the
 #: reason together. Context, in fairness: under the substring matcher DSO
 #: already reached 10 of the other 27 anchors within the budget, so the shipped
-#: control's silence was the luck of its partner, not discrimination. This takes
-#: it to 11.
+#: control's silence was the luck of its partner, not discrimination. The matcher
+#: took it to 11 of 27; the 73-document corpus takes it to 18.
 KNOWN_FALSE_POSITIVE = ("Direct Sparse Odometry", "hash encoding")
 
 
@@ -103,7 +133,9 @@ def main() -> int:
         return 0
 
     graph = json.loads(gpath.read_text(encoding="utf-8"))
-    staged = {p for p in (args.work / "corpus").iterdir() if p.is_dir()}
+    # Files as well as directories: open questions are staged as single .md
+    # files, and skipping them made every node they source look ungrounded.
+    staged = set((args.work / "corpus").iterdir())
     names = {p.name for p in staged}
     arxiv = {ax for _, d, ax, _ in R.corpus_docs() if ax and d.name in names}
     questions = R.load_questions()

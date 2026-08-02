@@ -436,7 +436,13 @@ def evaluate(graph: dict, questions: List[dict], staged: Set[Path],
 
 
 def compile_slice(work: Path, first: bool) -> float:
-    py = str(REPO / ".venv" / "bin" / "python")
+    # The checkout's own venv when there is one — so a bare `python run.py`
+    # still reaches an installed tesserae — otherwise the interpreter already
+    # running this file. A git worktree has no .venv of its own, and hardcoding
+    # the first form made the run die on its first slice there, which is the
+    # workflow this repo asks you to use.
+    venv = REPO / ".venv" / "bin" / "python"
+    py = str(venv if venv.is_file() else sys.executable)
     t0 = time.time()
     if first:
         subprocess.run([py, "-m", "tesserae", "init", "--yes", "--source", "./corpus"],
@@ -555,6 +561,14 @@ def render(results: List[dict], questions: List[dict]) -> str:
           "sections: a 7-paper graph already contains a `Paper` node for "
           "Mip-NeRF 360 with no content behind it, and counting those would make "
           "this curve rise for free.", "",
+          "**This table does not validate itself, and `controls fired: 0` is not "
+          "enough.** Three candidate anchor matchers once reached 15/15 with both "
+          "controls silent, and so did a null model. Run "
+          "`evals/growth/probe_anchors.py --work <the same work dir>` and read its "
+          "output beside this file: it reports the score with the graph removed "
+          "entirely, how much of the graph each anchor claims, and what fraction "
+          "of arbitrary anchor pairs connect. A high `answerable` on a dense graph "
+          "can mean the questions got easier rather than the graph got smarter.", "",
           "## Per-slice detail", ""]
 
     for s in results:
