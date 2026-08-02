@@ -167,7 +167,42 @@ on top of this.
    without needing a compile.
 2. **The curve is not bit-reproducible.** 14/15 here, 15/15 in the sweep, same
    code. LLM extraction varies. Either pin extraction or report a band across
-   runs rather than a single number.
+   runs rather than a single number. Third sample, 2026-08-02 over the full
+   corpus: 15/15. The band across three runs of near-identical code is 14–15.
+
+   **Superseded in importance by what that run exposed.** The whole-corpus run
+   (73 documents, 3394 nodes, 9106 edges, ~2h) scores 15/15 with both controls
+   silent — and `probe_anchors.py` breached five of its six ceilings on the same
+   graph. The matcher did not change; the corpus did:
+
+   |                     | 50 papers | 73 documents |
+   |---|---|---|
+   | h=0 answerable      | 10        | 10 |
+   | **h=1 answerable**  | **13**    | **14** |
+   | median anchor set   | 21.5      | 39.5 |
+   | all-pairs 3-hop     | 84.7%     | 87.3% |
+   | DSO anchor reach    | 11/27     | 18/27 |
+
+   Fourteen of fifteen questions answer in a **single hop** on the bigger graph,
+   and 87% of arbitrary anchor pairs connect within three. Answerability
+   inflates with corpus size because anchor resolution is set-based: more nodes
+   means bigger anchor sets, more starting points, shorter paths. 15/15 on this
+   corpus is a *weaker* result than 14/15 was on the old one, and no amount of
+   rerunning fixes that — **the eval's discriminating power is now the binding
+   problem, not its score.** Candidates: cap anchor set size, normalise by graph
+   size, or require the path to be evidence-supported end to end.
+
+   The breadth ceilings were re-baselined to the new corpus so the probe still
+   gates matcher changes. `MAX_ONE_HOP` deliberately was **not** — it sits at 13
+   and fails at 14, because that failure is the finding.
+
+   Two things the run did confirm, and they are not small: every question
+   unlocks at or after the slice its required papers land (`hash-encoding` at
+   N=24, the two 2024-paper questions only at N=73), and `connected early` falls
+   to 0 at the full corpus. The ordering claim survives; the strength claim does
+   not. Also confirmed: digests and syntheses do **not** need `HUB_TYPES` —
+   adding `SourceDocument` and `ResearchField` changes nothing, 15/15 either
+   way, and the aggregating types were already excluded.
 3. **The corpus stopped at 50 dated papers — wired up, not yet measured.**
    `corpus_docs()` now slices all 73 stageable units: 50 papers, 12 repos, 6
    daily digests, 2 weekly syntheses, 3 open questions. The dates the corpus
