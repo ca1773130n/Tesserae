@@ -80,6 +80,20 @@ tesserae sessions import path/to/session.json path/to/more-sessions.json
 
 Jeder Input darf ein Session-Objekt oder eine Liste von Session-Objekten enthalten.
 
+## Wie der Store geschrieben wird
+
+Beide Entry-Points schreiben in `.tesserae/harness_sessions/`, und sie schreiben es unterschiedlich:
+
+- `sessions import <path>` **führt zusammen**. Existierende Records bleiben erhalten; ein Record mit demselben Dateinamen wird überschrieben.
+- `sessions discover --import` **ersetzt innerhalb der gescannten Roots**. Ein Record, dessen Transkript unter einer gescannten Harness-Root lebt, wird gelöscht, wenn der Scan es nicht mehr findet, sodass ein umbenanntes Dateinamen-Schema oder ein deduplizierter Import keine verwaisten Seiten und Sucheinträge hinterlassen kann. Ein Record von überall anders ist außerhalb dieses Bereichs und bleibt erhalten.
+
+Der Geltungsbereich ist wichtig, wenn du Tesserae von außerhalb der lokalen Harness-Konvention speist — ein Orchestrator exportiert seine eigenen Agent-Sessions, ein CI-Job importiert Transkripte von einer anderen Maschine, ein Migrations-Skript. Diese Records tragen Zuschreibung, die ein lokaler Scan nicht ableiten kann, und ein lokaler Scan hat keine Autorität über sie. Bis 0.28.5 bereinigt eine nicht-leere Discovery den *ganzen* Store, daher wurden sie stillschweigend gelöscht, und der Hook `SessionEnd` des Plugins führt eine Discovery bei jedem Session-Abschluss aus ([#104](https://github.com/ca1773130n/Tesserae/issues/104)).
+
+Zwei Verhaltensweisen, die es zu wissen gilt:
+
+- Eine leere Discovery bereinigt nie. Ein Scan, der nichts findet — falsche `HOME`, gelöste Harness-Roots — führt stattdessen zusammen.
+- Eine Discovery, die Records entfernt, gibt die Anzahl neben der Importanzahl aus, sodass der Store nicht innerhalb einer Zeile schrumpfen kann, die nur Wachstum meldet.
+
 ## Importierte Sessions auflisten
 
 ```bash

@@ -83,6 +83,20 @@ tesserae sessions import path/to/session.json path/to/more-sessions.json
 
 Chaque entrée peut contenir un objet session ou une liste d’objets session.
 
+## Comment le magasin est écrit
+
+Les deux points d’entrée écrivent `.tesserae/harness_sessions/`, et ils l’écrivent différemment :
+
+- `sessions import <path>` **fusionne**. Les enregistrements existants sont conservés ; un enregistrement avec le même nom de fichier est écrasé sur place.
+- `sessions discover --import` **remplace dans les racines analysées**. Un enregistrement dont la transcription se trouve sous une racine harness analysée est supprimé lorsque l’analyse ne le trouve plus, de sorte qu’un schéma de nom de fichier renommé ou un import dédupliqué ne peut pas laisser de pages orphelines et des entrées de recherche derrière. Un enregistrement de partout ailleurs est en dehors de cette portée et survit.
+
+La portée importe si vous alimentez Tesserae en dehors de la convention local-harness — un orchestrateur exportant ses propres sessions d’agent, une tâche CI important des transcriptions d’une autre machine, un script de migration. Ces enregistrements portent une attribution qu’une analyse locale ne peut pas déduire, et une analyse locale n’a aucune autorité sur eux. Jusqu’à 0.28.5, une découverte non vide supprimait le *magasin entier*, de sorte qu’ils étaient supprimés silencieusement, et le hook `SessionEnd` du plugin exécute une découverte à chaque fermeture de session ([#104](https://github.com/ca1773130n/Tesserae/issues/104)).
+
+Deux comportements à connaître :
+
+- Une découverte vide ne supprime jamais. Une analyse qui ne trouve rien — `HOME` incorrect, racines harness détachées — fusionne au lieu d’effacer.
+- Une découverte qui supprime des enregistrements imprime le nombre à côté du nombre d’imports, de sorte que le magasin ne peut pas rétrécir dans une ligne qui signale uniquement une croissance.
+
 ## Lister les sessions importées
 
 ```bash

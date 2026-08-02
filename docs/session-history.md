@@ -80,6 +80,20 @@ tesserae sessions import path/to/session.json path/to/more-sessions.json
 
 Each input may contain one session object or a list of session objects.
 
+## How the store is written
+
+Both entry points write `.tesserae/harness_sessions/`, and they write it differently:
+
+- `sessions import <path>` **merges**. Existing records are kept; a record with the same filename is overwritten in place.
+- `sessions discover --import` **replaces within the roots it scanned**. A record whose transcript lives under a scanned harness root is pruned when the scan no longer finds it, so a renamed filename scheme or a deduped import cannot leave orphan pages and search entries behind. A record from anywhere else is out of that scope and survives.
+
+The scoping matters if you feed Tesserae from outside the local-harness convention — an orchestrator exporting its own agent sessions, a CI job importing transcripts from another machine, a migration script. Those records carry attribution a local scan cannot infer, and a local scan has no authority over them. Through 0.28.5 a non-empty discovery pruned the *whole* store, so they were deleted silently, and the plugin's `SessionEnd` hook runs a discovery at every session close ([#104](https://github.com/ca1773130n/Tesserae/issues/104)).
+
+Two behaviours worth knowing:
+
+- An empty discovery never prunes. A scan that finds nothing — wrong `HOME`, detached harness roots — merges instead of wiping.
+- A discovery that does remove records prints the count next to the import count, so the store cannot shrink inside a line that only reports growth.
+
 ## List imported sessions
 
 ```bash
