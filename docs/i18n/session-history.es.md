@@ -80,6 +80,20 @@ tesserae sessions import path/to/session.json path/to/more-sessions.json
 
 Cada entrada puede contener un objeto de sesión o una lista de objetos de sesión.
 
+## Cómo se escribe el almacén
+
+Ambos puntos de entrada escriben `.tesserae/harness_sessions/`, y lo escriben de forma diferente:
+
+- `sessions import <path>` **combina**. Los registros existentes se conservan; un registro con el mismo nombre de archivo se sobrescribe en su lugar.
+- `sessions discover --import` **reemplaza dentro de las raíces que escaneo**. Un registro cuyo transcript vive bajo una raíz harness escaneada se poda cuando el escaneo ya no lo encuentra, de modo que un esquema de nombre de archivo renombrado o una importación deduplicada no pueden dejar páginas huérfanas y entradas de búsqueda atrás. Un registro de cualquier otro lugar está fuera de ese alcance y sobrevive.
+
+El alcance importa si alimentas Tesserae desde fuera de la convención local-harness — un orquestrador exportando sus propias sesiones de agentes, un trabajo de CI importando transcripts de otra máquina, un script de migración. Esos registros llevan atribución que un escaneo local no puede inferir, y un escaneo local no tiene autoridad sobre ellos. A través de 0.28.5 un descubrimiento no vacío podaba todo el *almacén*, de modo que se borraban silenciosamente, y el hook `SessionEnd` del plugin ejecuta un descubrimiento en cada cierre de sesión ([#104](https://github.com/ca1773130n/Tesserae/issues/104)).
+
+Dos comportamientos que vale la pena conocer:
+
+- Un descubrimiento vacío nunca poda. Un escaneo que no encuentra nada — `HOME` incorrecto, raíces harness desacopladas — combina en lugar de borrar.
+- Un descubrimiento que sí elimina registros imprime el recuento junto al recuento de importación, de modo que el almacén no puede encogerse dentro de una línea que solo reporta crecimiento.
+
 ## Listar las sesiones importadas
 
 ```bash
