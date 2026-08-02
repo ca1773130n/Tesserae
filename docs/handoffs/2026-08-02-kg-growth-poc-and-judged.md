@@ -191,18 +191,17 @@ raise it without re-running that sweep — 4 fails the controls.
 
 ---
 
-## 6. Disk to reclaim
+## 6. Disk to reclaim — done 2026-08-02
 
-`~/.blackhole/Tesserae/2026-08-01/` is **793MB**, mostly 13 `kg-*` work dirs
-from this session and from a failed multi-agent run.
+`~/.blackhole/Tesserae/2026-08-01/` was **793MB**, mostly 13 `kg-*` work dirs
+from this session and from a failed multi-agent run. The 12 disposable ones
+(`kg-growth`, `kg-sweep`, `kg-pprlift`, `kg-edgetype`, `kg-edgetype-work`,
+`kg-pctl`, `kg-pctl-scratch`, `kg-witness-src`, `kg-evidence`,
+`kg-evidence-wt`, `kg-h1`, `kg-growth-probe`) were deleted — 659MB reclaimed,
+and each had already answered its question.
 
-**Keep** `kg-final/` (134MB) — it holds the compiled graph behind the committed
-`evals/growth/report.md`, and regenerating it costs ~75 minutes.
-
-**Disposable** — every one answered its question already: `kg-growth`,
-`kg-sweep`, `kg-pprlift`, `kg-edgetype`, `kg-edgetype-work`, `kg-pctl`,
-`kg-pctl-scratch`, `kg-witness-src`, `kg-evidence`, `kg-evidence-wt`, `kg-h1`,
-`kg-growth-probe`. That is ~660MB.
+**Kept**: `kg-final/` (134MB) — it holds the compiled graph behind the
+committed `evals/growth/report.md`, and regenerating it costs ~75 minutes.
 
 Also on disk and worth keeping until you are sure: `2026-07-31/`
 `branch-prune-restore.txt` (restore commands for 17 pruned branches),
