@@ -105,7 +105,7 @@ def main() -> int:
     graph = json.loads(gpath.read_text(encoding="utf-8"))
     staged = {p for p in (args.work / "corpus").iterdir() if p.is_dir()}
     names = {p.name for p in staged}
-    arxiv = {ax for _, d, ax in R.paper_dates() if d.name in names}
+    arxiv = {ax for _, d, ax, _ in R.corpus_docs() if ax and d.name in names}
     questions = R.load_questions()
     grounded = R.grounded_sources(graph, staged)
     adj = R.adjacency(graph)
@@ -195,7 +195,7 @@ def main() -> int:
     #     so nodes a real k-paper compile would never have minted are present
     #     and merely filtered. It bounds the direction of the error, not its size.
     print("\nearly connections (all prefixes, proxy)")
-    papers = [(iso, d, ax_id) for iso, d, ax_id in R.paper_dates() if d.name in names]
+    papers = [(iso, d, ax_id) for iso, d, ax_id, _ in R.corpus_docs() if d.name in names]
     early = 0
     for k in range(1, len(papers) + 1):
         st = {d for _, d, _ in papers[:k]}

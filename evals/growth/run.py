@@ -27,7 +27,7 @@ import shutil
 import subprocess
 import sys
 import time
-from collections import deque
+from collections import Counter, deque
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
@@ -67,6 +67,28 @@ MAX_HOPS = 3
 # corpus
 
 
+def _front_matter(path: Path) -> str:
+    """The YAML block between the leading `---` fences, or "" if there is none."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0].strip() != "---":
+        return ""
+    out = []
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        out.append(line)
+    return "\n".join(out)
+
+
+def _field(block: str, key: str) -> str:
+    m = re.search(rf"^{re.escape(key)}:\s*(.+)$", block, re.M)
+    return m.group(1).strip().strip('"').strip("'") if m else ""
+
+
+def _listed(block: str, pattern: str = r"arxiv-[\d.]+-?[\d]*") -> List[str]:
+    return re.findall(pattern, block)
+
+
 def paper_dates() -> List[Tuple[str, Path, str]]:
     """(iso_date, paper_dir, arxiv_id) for every dated paper, oldest first."""
     out = []
@@ -74,16 +96,97 @@ def paper_dates() -> List[Tuple[str, Path, str]]:
         abstract = d / "abstract.md"
         if not abstract.is_file():
             continue
-        iso = arxiv = ""
-        for line in abstract.read_text(encoding="utf-8").splitlines()[:30]:
-            if line.startswith("date:"):
-                iso = line.split(":", 1)[1].strip()
-            elif line.startswith("arxiv:"):
-                arxiv = line.split(":", 1)[1].strip().strip('"')
-            if iso and arxiv:
-                break
+        block = _front_matter(abstract)
+        iso, arxiv = _field(block, "date"), _field(block, "arxiv")
         if iso:
             out.append((iso, d, arxiv))
+    return sorted(out)
+
+
+def corpus_docs() -> List[Tuple[str, Path, str, str]]:
+    """(iso_date, path, arxiv_id, kind) for every dated document, oldest first.
+
+    The corpus is not only papers. 12 repos, 6 daily digests, 2 weekly syntheses
+    and 3 open questions carry no `date:`, so slicing saw 50 of 73 stageable
+    units — the 23 it skipped hold 35 markdown files — and every question had to
+    be answerable from paper text alone.
+
+    The missing dates are derived here rather than written into the corpus. That
+    is deliberate: Tesserae extracts what the documents say, so a derived date in
+    front matter would enter the graph as a fact the corpus never stated, and the
+    graph is the thing under test. Each rule uses only what the document already
+    declares:
+
+        paper      its own `date:`
+        repo       the date of the paper in `canonical_paper` — the reference
+                   implementation is contemporaneous with its paper, which is
+                   the claim being made by putting it in the slice at all
+        daily      its own `date:`
+        weekly     the Monday of `iso_week`
+        question   the latest date among the papers it lists
+
+    …and then, for every non-paper kind, the later of that date and the newest
+    paper the document *references anywhere in its text*. Without that floor a
+    document can name a paper the slice has not staged yet, and the extractor
+    mints a node for it whose source is the staged document — so the missing
+    paper's content arrives early, grounded, through the side door. A document
+    did not exist before the last thing it talks about.
+
+    That floor only catches references written as arxiv ids. A repo README that
+    name-drops "Instant-NGP" in prose still leaks a little forward, which is not
+    fixable by dating and is exactly what `connected_early` counts. Watch it.
+
+    Anything with no derivable date is skipped, exactly as an undated paper is.
+    Only papers carry an arxiv id; `requires:` in questions.yaml is checked
+    against those, so a slice's answerability still turns on papers alone.
+
+    Note for whoever re-runs the curve: digests, syntheses and questions are all
+    dated 2026 and therefore land in the final slice together. They add mass at
+    the end, not new steps — and they aggregate, so check the controls and the
+    all-pairs rate in probe_anchors.py before trusting the last row. If they
+    route, their node types belong in HUB_TYPES for the same reason
+    CommunitySummary is already there.
+    """
+    by_dir = {d.name: iso for iso, d, _ in paper_dates()}
+    by_arxiv = {ax.replace(".", "").replace("/", "-"): iso
+                for iso, _, ax in paper_dates() if ax}
+
+    def paper_date(ref: str) -> str:
+        ref = ref.strip()
+        return by_dir.get(ref) or by_arxiv.get(ref.replace("arxiv-", "").replace("-", "")) \
+            or by_dir.get(f"arxiv-{ref}") or ""
+
+    out: List[Tuple[str, Path, str, str]] = [
+        (iso, d, ax, "paper") for iso, d, ax in paper_dates()
+    ]
+
+    def add(declared: Iterable[str], path: Path, kind: str) -> None:
+        """Stage `path` at the later of its declared date and its newest reference."""
+        files = sorted(path.glob("*.md")) if path.is_dir() else [path]
+        referenced = {paper_date(r) for f in files
+                      for r in _listed(f.read_text(encoding="utf-8"))}
+        dates = {d for d in set(declared) | referenced if d}
+        if dates:
+            out.append((max(dates), path, "", kind))
+
+    for d in sorted((CORPUS / "repos").iterdir()) if (CORPUS / "repos").is_dir() else []:
+        add((paper_date(_field(_front_matter(f), "canonical_paper"))
+             for f in sorted(d.glob("*.md"))), d, "repo")
+
+    for d in sorted((CORPUS / "daily").iterdir()) if (CORPUS / "daily").is_dir() else []:
+        add((_field(_front_matter(f), "date") for f in sorted(d.glob("*.md"))), d, "daily")
+
+    for d in sorted((CORPUS / "weekly").iterdir()) if (CORPUS / "weekly").is_dir() else []:
+        mondays = []
+        for f in sorted(d.glob("*.md")):
+            year, _, week = _field(_front_matter(f), "iso_week").partition("-W")
+            if year.isdigit() and week.isdigit():
+                mondays.append(date.fromisocalendar(int(year), int(week), 1).isoformat())
+        add(mondays, d, "weekly")
+
+    for f in sorted((CORPUS / "questions").glob("*.md")) if (CORPUS / "questions").is_dir() else []:
+        add((paper_date(r) for r in _listed(_front_matter(f))), f, "question")
+
     return sorted(out)
 
 
@@ -357,9 +460,11 @@ def main() -> int:
     if (args.work / "pyproject.toml").exists() or args.work.resolve() == REPO:
         sys.exit("refusing to compile inside the repo — that overwrites .tesserae/graph.json")
 
-    papers = paper_dates()
-    cuts = slice_points(papers, args.slices)
-    print(f"{len(papers)} dated papers, slices at {cuts}", flush=True)
+    docs = corpus_docs()
+    cuts = slice_points(docs, args.slices)
+    kinds = Counter(k for _, _, _, k in docs)
+    print(f"{len(docs)} dated documents ({', '.join(f'{n} {k}' for k, n in kinds.most_common())}), "
+          f"slices at {cuts}", flush=True)
 
     work = args.work
     shutil.rmtree(work, ignore_errors=True)
@@ -369,10 +474,12 @@ def main() -> int:
     results, staged, staged_arxiv, staged_n = [], set(), set(), 0
 
     for i, cut in enumerate(cuts):
-        for iso, d, arxiv in papers[staged_n:cut]:
-            shutil.copytree(d, work / "corpus" / d.name)
-            staged.add(d)
-            staged_arxiv.add(arxiv)
+        for iso, src, arxiv, kind in docs[staged_n:cut]:
+            dest = work / "corpus" / src.name
+            shutil.copytree(src, dest) if src.is_dir() else shutil.copy2(src, dest)
+            staged.add(src)
+            if arxiv:                       # papers only; `requires:` checks these
+                staged_arxiv.add(arxiv)
         staged_n = cut
         secs = compile_slice(work, first=(i == 0))
         graph = load_graph(work)
@@ -380,8 +487,9 @@ def main() -> int:
         real = [r for r in rows if not r["control"]]
         ctrl = [r for r in rows if r["control"]]
         results.append({
-            "n_papers": cut,
-            "through": papers[cut - 1][0],
+            "n_papers": cut,            # documents, not papers; see corpus_docs()
+            "through": docs[cut - 1][0],
+            "n_kinds": dict(Counter(k for _, _, _, k in docs[:cut])),
             "nodes": len(graph.get("nodes", [])),
             "edges": len(graph.get("edges", [])),
             "answerable": sum(r["answerable"] for r in real),
@@ -407,15 +515,17 @@ def render(results: List[dict], questions: List[dict]) -> str:
     L = [f"# Does the knowledge graph get smarter as documents accumulate?",
          "",
          f"Generated {date.today().isoformat()} by `evals/growth/run.py`. "
-         f"Corpus: `examples/demo-corpus/data/research/papers`, compiled in "
-         f"cumulative chronological slices.", "",
+         f"Corpus: `examples/demo-corpus/data/research` — papers, repos, digests, "
+         f"syntheses and open questions, compiled in cumulative chronological "
+         f"slices. See `corpus_docs()` for how each kind is dated.", "",
          "## Growth curve", "",
-         "| papers | through | nodes | edges | edges/node | answerable | controls fired | connected early |",
-         "|---|---|---|---|---|---|---|"]
+         "| documents | through | nodes | edges | edges/node | answerable | controls fired | connected early |",
+         "|---|---|---|---|---|---|---|---|"]
     for s in results:
         L.append(f"| {s['n_papers']} | {s['through']} | {s['nodes']} | {s['edges']} | "
                  f"{s['edges']/max(1,s['nodes']):.2f} | "
-                 f"**{s['answerable']}/{s['total']}** | {s['controls_fired']} |")
+                 f"**{s['answerable']}/{s['total']}** | {s['controls_fired']} | "
+                 f"{s['connected_early']} |")
 
     L += ["", "`controls fired` must stay 0. The controls ask questions this corpus "
           "cannot answer; if a path ever appears between their anchors, the checker "

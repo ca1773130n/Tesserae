@@ -2,13 +2,20 @@
 
 Generated 2026-08-01 by `evals/growth/run.py`. Corpus: `examples/demo-corpus/data/research/papers`, compiled in cumulative chronological slices.
 
-> **These numbers predate the current anchor matcher (2026-08-02).** They were
-> produced by the substring-only `resolve_anchor`. Re-measured against the same
-> frozen N=50 graph, the label-subset layer takes the last row to **15/15 with
-> controls still at 0**, and every other question keeps its hop count and its
-> path. The earlier slices have *not* been re-measured — each needs its own
-> compile, and a full rerun is ~75 minutes. Regenerate this file before quoting
-> the curve.
+> **These numbers predate two changes, both from 2026-08-02.** Regenerate this
+> file before quoting the curve.
+>
+> 1. *The anchor matcher.* They were produced by the substring-only
+>    `resolve_anchor`. Re-measured against the same frozen N=50 graph, the
+>    label-subset layer takes the last row to **15/15 with controls still at 0**,
+>    and every other question keeps its hop count and its path. The earlier
+>    slices have not been re-measured — each needs its own compile, ~75 minutes
+>    for a full run.
+> 2. *The corpus.* Slicing covered 50 papers; `corpus_docs()` now stages all 73
+>    units, adding 12 repos that interleave across the paper era plus 6 digests,
+>    2 syntheses and 3 questions. Every row below is therefore a different
+>    experiment from the one the next run will produce — `documents`, not
+>    `papers`.
 >
 > Two caveats that outlive the rerun, both from
 > `evals/growth/probe_anchors.py`:

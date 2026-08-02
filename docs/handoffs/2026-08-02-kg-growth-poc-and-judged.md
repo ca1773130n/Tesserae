@@ -168,10 +168,33 @@ on top of this.
 2. **The curve is not bit-reproducible.** 14/15 here, 15/15 in the sweep, same
    code. LLM extraction varies. Either pin extraction or report a band across
    runs rather than a single number.
-3. **The corpus stops at 50 dated papers.** 24 repos, 6 daily digests, 2 weekly
-   syntheses and 3 open questions carry no `date:` and are therefore excluded
-   from slicing. Adding dates would roughly double the corpus and let questions
-   span document *kinds*, not just papers.
+3. **The corpus stopped at 50 dated papers — wired up, not yet measured.**
+   `corpus_docs()` now slices all 73 stageable units: 50 papers, 12 repos, 6
+   daily digests, 2 weekly syntheses, 3 open questions. The dates the corpus
+   does not state are derived in `run.py`, not written into the documents —
+   Tesserae extracts what a document says, so a derived date in front matter
+   would enter the graph as a fact the corpus never asserted, and the graph is
+   what is under test. A repo takes its canonical paper's date, a weekly the
+   Monday of its ISO week, a question the last paper it lists.
+
+   Then a floor on top of all of them: a document is staged no earlier than the
+   newest paper it *references*. Without it, a doc names a paper the slice has
+   not staged, the extractor mints that paper's content sourced to the staged
+   doc, and the missing paper arrives early and grounded through the side door.
+   `tests/test_growth_corpus.py` pins that property; it caught one real case (a
+   question front-mattered 2023-12 that cites a 2024-04 paper).
+
+   What this buys, measured on the staging dry-run: repos interleave across
+   every slice (3 by the first cut, 11 by the third), so the corpus grows
+   *during* the paper era rather than only at the end. Digests, syntheses and
+   questions are 2026-dated and land together in the final slice — mass, not new
+   steps — and they aggregate, so **check the controls and the all-pairs rate in
+   `probe_anchors.py` on the first real run**. If they route, their node types
+   belong in `HUB_TYPES` alongside `CommunitySummary`.
+
+   Not run: a compile costs quota and the curve in `report.md` is stale twice
+   over now — it predates both the anchor matcher and this. One rerun settles
+   both, and gives item 2 its second sample.
 4. **No CI wiring.** Deliberate — a fresh run is ~75 min. If it ever becomes a
    regression gate it needs a small fixed slice set and a warm cache.
 
