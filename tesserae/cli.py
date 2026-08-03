@@ -1976,7 +1976,7 @@ def _handle_refresh(args: argparse.Namespace) -> int:
         # nothing — wrong HOME, detached harness roots — never wipes the store.
         return store.write_sessions(
             sessions, replace=bool(sessions), prune_roots=roots
-        )  # {"sessions": n, "path": ...}
+        )  # {"path", "sessions", "total", "removed"}
 
     def step_compile():
         return wiki.compile(changed_only=args.changed_only)
@@ -2230,7 +2230,12 @@ def _handle_sessions(args: argparse.Namespace) -> int:
                 # Non-empty discovery = authoritative replace, but only over the
                 # roots it scanned; empty = merge no-op. Neither can reach a
                 # record another importer wrote (issue #104).
-                result = store.write_sessions(sessions, replace=bool(sessions), prune_roots=roots)
+                # prune_harnesses too: --harness narrows what was scanned, and
+                # a scan has no authority over a harness it filtered out.
+                result = store.write_sessions(
+                    sessions, replace=bool(sessions),
+                    prune_roots=roots, prune_harnesses=args.harness or None,
+                )
                 print(f"Imported harness sessions: {result['sessions']} path={result['path']}")
                 if result["removed"]:
                     print(f"Pruned stale harness sessions: {result['removed']}")

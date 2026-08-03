@@ -68,7 +68,7 @@ tesserae sessions import path/to/session.json path/to/more-sessions.json
 两个入口点都会写入 `.tesserae/harness_sessions/`，但写入方式不同：
 
 - `sessions import <path>` **合并**。保留现有记录；同名文件的记录会被原地覆盖。
-- `sessions discover --import` **在扫描的范围内进行替换**。一条转录位于扫描的 harness 根目录下的记录，在扫描不再发现它时会被删除，因此重命名文件名方案或去重导入不会留下孤立的页面和搜索条目。来自其他地方的记录超出该范围，会被保留。
+- `sessions discover --import` **在其扫描的范围内进行替换**。仅当记录的转录既位于扫描的 harness 根目录下，*并且*其 harness 是此次运行扫描的那个时，记录才会被删除——因此重命名文件名方案或去重导入不会留下孤立的页面和搜索条目，而其他任何内容都会被保留。两个条件都会形成限制：`--harness codex` 即使扫描了 `~/.claude` 也会保留 claude-code 记录，而没有本地转录的记录完全超出范围。无法读取文件的记录也会被保留，因为无法识别记录所有者的扫描没有理由删除它。
 
 这个范围的划分在你从本地 harness 惯例之外提供 Tesserae 数据时很重要——一个 orchestrator 导出自己的 agent 会话、一个 CI 作业从另一台机器导入转录、一个迁移脚本。这些记录携带本地扫描无法推断的来源属性，而本地扫描对它们没有权限。在 0.28.5 之前，一次非空发现会删除*整个*存储，因此它们会被无声地删除，而插件的 `SessionEnd` 钩子在每次会话关闭时都会运行发现过程（[#104](https://github.com/ca1773130n/Tesserae/issues/104)）。
 
