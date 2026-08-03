@@ -375,6 +375,87 @@ def test_write_sessions_replace_spares_records_outside_prune_roots(tmp_path):
     assert len(manifest["sessions"]) == 2
 
 
+def _record(project, harness, slug, title, transcript=""):
+    return HarnessSession.from_dict({
+        **sample_session(project).to_dict(),
+        "id": f"{harness}:{slug}", "slug": slug, "harness": harness, "title": title,
+        "raw_transcript_path": transcript,
+    })
+
+
+def test_replace_spares_a_harness_the_scan_filtered_out(tmp_path):
+    """`discover --harness codex --import` must not delete claude-code records.
+
+    --harness narrows what is scanned but roots are discovered before the filter
+    applies, so a codex-only run still carries ~/.claude in its prune scope. Root
+    alone is not the scope; (root AND harness) is.
+    """
+    project = tmp_path / "demo-project"
+    project.mkdir()
+    claude_root, codex_root = tmp_path / "home" / ".claude", tmp_path / "home" / ".codex"
+    (claude_root / "projects").mkdir(parents=True)
+    (codex_root / "sessions").mkdir(parents=True)
+    store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
+
+    store.write_sessions([_record(project, "claude-code", "claude-one", "Claude record",
+                                  str(claude_root / "projects" / "p" / "a.jsonl"))])
+
+    codex = _record(project, "codex", "codex-one", "Codex record",
+                    str(codex_root / "sessions" / "b.jsonl"))
+    result = store.write_sessions([codex], replace=True,
+                                  prune_roots=[claude_root, codex_root],
+                                  prune_harnesses=["codex"])
+
+    assert {s.title for s in store.list_sessions()} == {"Claude record", "Codex record"}
+    assert result["removed"] == 0
+
+
+def test_replace_spares_a_record_it_cannot_read(tmp_path):
+    """A record mid-write by another producer parses as corrupt. Unknown owner
+    means not ours to delete — deleting here would recreate #104 by a narrower
+    door. An orphaned page with no record behind it is still swept."""
+    project = tmp_path / "demo-project"
+    project.mkdir()
+    root = tmp_path / "home" / ".claude"
+    (root / "projects").mkdir(parents=True)
+    store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
+    store.write_sessions([_record(project, "claude-code", "corrupt-one", "Corrupt record",
+                                  str(root / "projects" / "p" / "c.jsonl"))])
+
+    corrupt = next(store.root.glob("*/*.json"))
+    corrupt.write_text("{ this is not json", encoding="utf-8")
+    orphan = corrupt.parent / "2026-05-05-orphan-page.md"
+    orphan.write_text("# a page whose record is gone\n", encoding="utf-8")
+
+    fresh = _record(project, "claude-code", "fresh-one", "Fresh record",
+                    str(root / "projects" / "p" / "f.jsonl"))
+    store.write_sessions([fresh], replace=True, prune_roots=[root])
+
+    assert corrupt.exists(), "unparseable record was deleted; owner was unknown"
+    assert not orphan.exists(), "page with no record behind it should be swept"
+
+
+def test_replace_survives_a_transcript_path_that_cannot_resolve(tmp_path):
+    """An embedded NUL raises ValueError out of Path.resolve(), a symlink loop
+    raises RuntimeError. Either would abort write_sessions after the new files
+    are written but before the manifest is rebuilt, leaving the two disagreeing."""
+    project = tmp_path / "demo-project"
+    project.mkdir()
+    root = tmp_path / "home" / ".claude"
+    (root / "projects").mkdir(parents=True)
+    store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
+    store.write_sessions([_record(project, "claude-code", "bad-path", "Unresolvable record",
+                                  "/tmp/a\x00b.jsonl")])
+
+    fresh = _record(project, "claude-code", "fresh-one", "Fresh record",
+                    str(root / "projects" / "p" / "f.jsonl"))
+    result = store.write_sessions([fresh], replace=True, prune_roots=[root])
+
+    assert {s.title for s in store.list_sessions()} == {"Unresolvable record", "Fresh record"}
+    manifest = json.loads((store.root / "manifest.json").read_text(encoding="utf-8"))
+    assert len(manifest["sessions"]) == result["total"] == 2
+
+
 def test_cli_sessions_import_with_no_paths_leaves_existing_sessions_intact(tmp_path, capsys):
     """Regression: `tesserae sessions import` (no paths) used to WIPE the store."""
     project = tmp_path / "demo-project"

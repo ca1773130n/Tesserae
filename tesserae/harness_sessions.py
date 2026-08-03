@@ -15,7 +15,7 @@ import re
 import sqlite3
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 
 @dataclass(frozen=True)
@@ -117,6 +117,7 @@ class HarnessSessionStore:
         *,
         replace: bool = False,
         prune_roots: Optional[Sequence[str | Path]] = None,
+        prune_harnesses: Optional[Sequence[str]] = None,
     ) -> Dict[str, object]:
         """Write normalized sessions into the store.
 
@@ -129,11 +130,20 @@ class HarnessSessionStore:
         schemes or deduped imports cannot leave orphan pages/search entries
         behind.
 
-        ``prune_roots`` scopes that pruning to what the caller could actually
-        see: a stored record survives unless its ``raw_transcript_path`` lives
-        under one of those roots. A local harness discovery passes the roots it
-        scanned, so records written by another producer — which the scan cannot
-        see and therefore has no authority over — are left alone.
+        ``prune_roots`` and ``prune_harnesses`` scope that pruning to what the
+        caller could actually see. A stored record is only deleted when BOTH
+        hold: its ``raw_transcript_path`` lives under one of ``prune_roots``,
+        and its harness is one of ``prune_harnesses``. A local discovery passes
+        exactly what it scanned, so records written by another producer — or by
+        a harness this run filtered out with ``--harness`` — are left alone.
+        Both narrow independently: scanning `~/.claude` says nothing about a
+        codex record, and scanning for codex says nothing about a record under
+        `~/.claude`.
+
+        **Omitting ``prune_roots`` with ``replace=True`` deletes the entire
+        store**, which is the pre-#104 behaviour and is kept only for callers
+        that genuinely own everything in it. There is no such caller in
+        Tesserae; if you are adding one, pass a scope instead.
         """
         ordered = sorted(list(sessions), key=lambda s: (s.started_at or "", s.harness, s.slug))
         self.root.mkdir(parents=True, exist_ok=True)
@@ -150,8 +160,9 @@ class HarnessSessionStore:
         removed = 0
         if replace:
             scope = _prune_scope(prune_roots)
+            kinds = {h.lower() for h in prune_harnesses} if prune_harnesses is not None else None
             for stale in list(self.root.glob("*/*.json")) + list(self.root.glob("*/*.md")):
-                if stale in written or not _within_prune_scope(stale, scope):
+                if stale in written or not _within_prune_scope(stale, scope, kinds):
                     continue
                 try:
                     stale.unlink()
@@ -186,22 +197,56 @@ class HarnessSessionStore:
 def _prune_scope(roots: Optional[Sequence[str | Path]]) -> Optional[List[Path]]:
     if roots is None:
         return None
-    return [Path(root).expanduser().resolve() for root in roots]
+    scope: List[Path] = []
+    for root in roots:
+        try:
+            scope.append(Path(root).expanduser().resolve())
+        except (OSError, RuntimeError, ValueError):
+            continue  # unresolvable root scopes nothing; see _within_prune_scope
+    return scope
 
 
-def _within_prune_scope(path: Path, scope: Optional[List[Path]]) -> bool:
-    """Return true when a stored record is the writer's to prune."""
+def _within_prune_scope(
+    path: Path,
+    scope: Optional[List[Path]],
+    harnesses: Optional[Set[str]] = None,
+) -> bool:
+    """Return true when a stored record is the writer's to prune.
+
+    Every uncertain case answers *false*. Pruning is destructive and a scan's
+    authority is narrow, so "I cannot show this record is mine" has to mean
+    "leave it alone" — the whole point of issue #104.
+    """
 
     if scope is None:
         return True  # unscoped replace: the caller owns the whole store
+    record = path.with_suffix(".json")
+    if not record.exists():
+        return True  # a page with no record behind it is an orphan by definition
     try:
-        payload = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
+        payload = json.loads(record.read_text(encoding="utf-8"))
         source = str(payload.get("raw_transcript_path") or "")
+        harness = str(payload.get("harness") or "")
     except (OSError, json.JSONDecodeError, TypeError, ValueError, AttributeError):
-        return True  # unreadable or orphaned page: attributable to no producer
+        # The record exists but will not parse: mid-write by another producer,
+        # or corrupt. Either way its owner is unknown, so it is not ours to
+        # delete. Deleting here would recreate #104 through a narrower door.
+        return False
+    if harnesses is not None and harness.lower() not in harnesses:
+        # `--harness codex` scans codex roots only, so a codex run has nothing
+        # to say about a claude-code record even when both live under a root it
+        # happened to walk. Scope is (root AND harness), not root alone.
+        return False
     if not source:
         return False  # no local-transcript provenance: another producer's record
-    resolved = Path(source).expanduser().resolve()
+    try:
+        resolved = Path(source).expanduser().resolve()
+    except (OSError, RuntimeError, ValueError):
+        # A symlink loop raises RuntimeError, an embedded NUL raises ValueError.
+        # Unresolvable means unprovable, and this runs after the new files are
+        # written but before the manifest is rebuilt — raising here would leave
+        # the manifest disagreeing with the disk.
+        return False
     return any(resolved == root or root in resolved.parents for root in scope)
 
 
