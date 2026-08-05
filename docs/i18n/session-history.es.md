@@ -82,17 +82,19 @@ Cada entrada puede contener un objeto de sesión o una lista de objetos de sesi�
 
 ## Cómo se escribe el almacén
 
-Ambos puntos de entrada escriben `.tesserae/harness_sessions/`, y lo escriben de forma diferente:
+Cada registro en `.tesserae/harness_sessions/` lleva un **productor (`producer`)** — el importador que lo escribió. `sessions discover --import` estampa `tesserae:discover`; `sessions import <path>` estampa `tesserae:import`. **Un escritor solo puede tocar registros que produjo**: solo poda los suyos, y no sobrescribirá el registro de otro productor para la misma sesión — la escritura entrante se salta y se reporta como `Left alone (written by another producer)`.
 
-- `sessions import <path>` **combina**. Los registros existentes se conservan; un registro con el mismo nombre de archivo se sobrescribe en su lugar.
-- `sessions discover --import` **reemplaza dentro de lo que escaneo**. Un registro se poda solo cuando su transcript vive bajo una raíz harness escaneada *y* su harness es uno que esta ejecución escaneo, por lo que un esquema de nombre de archivo renombrado o una importación deduplicada no pueden dejar páginas huérfanas y entradas de búsqueda atrás, mientras que cualquier otra cosa sobrevive. Ambas condiciones se reducen: `--harness codex` deja registros de claude-code solos aunque `~/.claude` haya sido escaneado, y un registro sin transcript local está completamente fuera del alcance. Un registro cuyo archivo no puede ser leído también se deja solo, ya que un escaneo que no puede identificar al propietario del registro no tiene motivos para borrarlo.
+Esta regla existe porque la procedencia es lo único que realmente separa a los importadores. Dos de ellos rutinariamente describen la *misma* sesión: el escaneo local de Tesserae acuña un registro simple de un transcript bajo `~/.claude`, mientras que un orquestador exporta esa misma sesión llevando la identidad del agente que solo él conoce. Ambos derivan el mismo nombre de archivo del id de sesión, por lo que chocan. Ni la ubicación del transcript ni el nombre del harness pueden distinguirlos — por eso los arreglos anteriores con alcance root para [#104](https://github.com/ca1773130n/Tesserae/issues/104) no funcionaron, y por eso 0.28.6 seguía perdiendo tales registros de dos maneras: borrados cuando el escaneo ya no encontraba el transcript, silenciosamente sobrescritos cuando lo hacía.
 
-El alcance importa si alimentas Tesserae desde fuera de la convención local-harness — un orquestrador exportando sus propias sesiones de agentes, un trabajo de CI importando transcripts de otra máquina, un script de migración. Esos registros llevan atribución que un escaneo local no puede inferir, y un escaneo local no tiene autoridad sobre ellos. A través de 0.28.5 un descubrimiento no vacío podaba todo el *almacén*, de modo que se borraban silenciosamente, y el hook `SessionEnd` del plugin ejecuta un descubrimiento en cada cierre de sesión ([#104](https://github.com/ca1773130n/Tesserae/issues/104)).
+Si escribes en este almacén desde tu propia herramienta, usa `tesserae sessions import <file>` y tus registros están protegidos a partir de ese momento. Nada más es necesario.
 
-Dos comportamientos que vale la pena conocer:
+El alcance se reduce aún más, como una segunda puerta: un registro solo se poda si su transcript también vive bajo una raíz que esta ejecución escaneo y su harness fue uno que escaneo. Así `--harness codex` deja registros de claude-code solos aunque `~/.claude` fue recorrido.
 
-- Un descubrimiento vacío nunca poda. Un escaneo que no encuentra nada — `HOME` incorrecto, raíces harness desacopladas — combina en lugar de borrar.
-- Un descubrimiento que sí elimina registros imprime el recuento junto al recuento de importación, de modo que el almacén no puede encogerse dentro de una línea que solo reporta crecimiento.
+Tres comportamientos que vale la pena conocer:
+
+- **Registros escritos antes de 0.28.7 no llevan productor.** Son sin dueño, por lo que ningún importador los poda ni sobrescribe — seguro, pero el descubrimiento tampoco los refrescará. `sessions discover --import --adopt-unowned` los reclama para el descubrimiento. Ejecútalo una vez si el escaneo propio de Tesserae es la única cosa escribiendo en este almacén; *no* lo ejecutes si otra herramienta también escribe aquí, ya que entrega tus registros al descubrimiento.
+- Un descubrimiento vacío nunca poda. Un escaneo que no encuentra nada — `HOME` incorrecto, raíces harness desacopladas — fusiona en lugar de borrar.
+- Un descubrimiento que sí elimina o preserva registros imprime ambos recuentos junto al recuento de importación, de modo que el almacén no puede cambiar de tamaño dentro de una línea que solo reporta crecimiento.
 
 ## Listar las sesiones importadas
 

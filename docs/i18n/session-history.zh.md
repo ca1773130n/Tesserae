@@ -65,17 +65,19 @@ tesserae sessions import path/to/session.json path/to/more-sessions.json
 
 ## 存储的写入方式
 
-两个入口点都会写入 `.tesserae/harness_sessions/`，但写入方式不同：
+`.tesserae/harness_sessions/` 中的每条记录都携带一个**生产者(`producer`)**——写入它的导入工具。`sessions discover --import` 会戳上 `tesserae:discover`；`sessions import <path>` 会戳上 `tesserae:import`。**写入者只能触碰自己生成的记录**：它只删除自己的，也不会覆盖同一会话中另一个生产者的记录——传入的写入会被跳过并报告为 `Left alone (written by another producer)`。
 
-- `sessions import <path>` **合并**。保留现有记录；同名文件的记录会被原地覆盖。
-- `sessions discover --import` **在其扫描的范围内进行替换**。仅当记录的转录既位于扫描的 harness 根目录下，*并且*其 harness 是此次运行扫描的那个时，记录才会被删除——因此重命名文件名方案或去重导入不会留下孤立的页面和搜索条目，而其他任何内容都会被保留。两个条件都会形成限制：`--harness codex` 即使扫描了 `~/.claude` 也会保留 claude-code 记录，而没有本地转录的记录完全超出范围。无法读取文件的记录也会被保留，因为无法识别记录所有者的扫描没有理由删除它。
+这条规则存在是因为来源(provenance)是唯一能真正区分导入工具的东西。其中两个通常描述*同一*会话：Tesserae 的本地扫描从 `~/.claude` 下的转录生成一条普通记录，而一个编排器导出同一会话时携带的是只有它知道的代理身份。两者都从会话 id 推导出同样的文件名，所以它们会碰撞。转录的位置和 harness 名字都分不出它们——这就是为什么之前针对 [#104](https://github.com/ca1773130n/Tesserae/issues/104) 的根作用域修复没有起作用，以及为什么 0.28.6 仍然以两种方式丢失这样的记录：扫描不再找到转录时被删除，或在找到时被悄悄覆盖。
 
-这个范围的划分在你从本地 harness 惯例之外提供 Tesserae 数据时很重要——一个 orchestrator 导出自己的 agent 会话、一个 CI 作业从另一台机器导入转录、一个迁移脚本。这些记录携带本地扫描无法推断的来源属性，而本地扫描对它们没有权限。在 0.28.5 之前，一次非空发现会删除*整个*存储，因此它们会被无声地删除，而插件的 `SessionEnd` 钩子在每次会话关闭时都会运行发现过程（[#104](https://github.com/ca1773130n/Tesserae/issues/104)）。
+如果你从自己的工具向这个存储写入，使用 `tesserae sessions import <file>` 就能从那时起保护你的记录。不需要别的。
 
-值得了解的两点行为：
+作用域作为第二道关卡进一步收缩：只有当记录的转录也存在于本次运行扫描的根目录下*且*其 harness 是本次运行扫描过的时，该记录才会被删除。因此 `--harness codex` 即使 `~/.claude` 被扫描过，也会独自留下 claude-code 记录。
 
+值得了解的三点行为：
+
+- **0.28.7 之前写入的记录不携带生产者。** 它们无主，所以没有导入工具会删除或覆盖它们——安全，但 discovery 也不会刷新它们。`sessions discover --import --adopt-unowned` 为 discovery 声明它们。如果 Tesserae 自己的扫描是唯一写入这个存储的东西，就运行一次；如果另一个工具也在这里写入，**不要**运行，因为这会把你的记录交给 discovery。
 - 空发现永远不会删除。一次没有找到任何东西的扫描——错误的 `HOME`、断开的 harness 根目录——会进行合并而不是清空。
-- 删除记录的发现过程会在导入计数旁边打印计数，因此存储不会在只报告增长的一行中缩小。
+- 删除或保留记录的发现过程会在导入计数旁边同时打印两个计数，因此存储不会在只报告增长的一行中改变大小。
 
 ## 列出已导入的会话
 

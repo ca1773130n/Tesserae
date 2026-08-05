@@ -13,7 +13,7 @@ import json
 import os
 import re
 import sqlite3
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace as replace_dc
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
@@ -50,6 +50,16 @@ class HarnessSession:
     raw_transcript_path: str = ""
     redacted_preview: str = ""
     metadata: Dict[str, object] = field(default_factory=dict)
+    #: Which importer wrote this record. Store bookkeeping, not session content:
+    #: it is what lets a writer tell its own records from another producer's, on
+    #: the only axis that actually separates them. Two importers routinely
+    #: describe the SAME transcript — Tesserae's local scan mints a plain record
+    #: from ~/.claude, while an orchestrator exports the same session with the
+    #: agent identity it alone knows — so "where the transcript lives" cannot
+    #: distinguish them and neither can the harness name. Empty means a record
+    #: written before this field existed: unowned, and therefore nobody's to
+    #: delete or overwrite. See PRODUCER_DISCOVERY / PRODUCER_IMPORT.
+    producer: str = ""
 
     @property
     def date(self) -> str:
@@ -118,40 +128,64 @@ class HarnessSessionStore:
         replace: bool = False,
         prune_roots: Optional[Sequence[str | Path]] = None,
         prune_harnesses: Optional[Sequence[str]] = None,
+        producer: str = "",
+        adopt_unowned: bool = False,
     ) -> Dict[str, object]:
         """Write normalized sessions into the store.
 
         Default (``replace=False``) MERGES: existing records are kept, new
-        sessions are added (same-filename records are overwritten in place),
-        and the manifest is rebuilt from everything on disk. This makes an
-        empty import / empty discover a no-op instead of a store wipe.
+        sessions are added, and the manifest is rebuilt from everything on
+        disk. This makes an empty import / empty discover a no-op instead of a
+        store wipe.
 
-        ``replace=True`` also prunes stale records, so changed filename
-        schemes or deduped imports cannot leave orphan pages/search entries
-        behind.
+        ``replace=True`` also prunes stale records, so changed filename schemes
+        or deduped imports cannot leave orphan pages/search entries behind.
 
-        ``prune_roots`` and ``prune_harnesses`` scope that pruning to what the
-        caller could actually see. A stored record is only deleted when BOTH
-        hold: its ``raw_transcript_path`` lives under one of ``prune_roots``,
-        and its harness is one of ``prune_harnesses``. A local discovery passes
-        exactly what it scanned, so records written by another producer — or by
-        a harness this run filtered out with ``--harness`` — are left alone.
-        Both narrow independently: scanning `~/.claude` says nothing about a
-        codex record, and scanning for codex says nothing about a record under
-        `~/.claude`.
+        ``producer`` is what makes either safe. Two importers routinely
+        describe the SAME session: the local scan mints a plain record from a
+        transcript under ``~/.claude``, and an orchestrator exports that same
+        session carrying the agent identity only it knows. They collide on
+        filename, because both derive it from the session id. So a writer may
+        only touch records it produced:
 
-        **Omitting ``prune_roots`` with ``replace=True`` deletes the entire
-        store**, which is the pre-#104 behaviour and is kept only for callers
-        that genuinely own everything in it. There is no such caller in
-        Tesserae; if you are adding one, pass a scope instead.
+        * a record is pruned only if its ``producer`` equals this one;
+        * a record is **not overwritten** by a different producer — the
+          incoming write is skipped and counted in ``preserved``.
+
+        ``prune_roots`` and ``prune_harnesses`` narrow further, to what the
+        caller could see: a record is pruned only if its transcript lives under
+        a scanned root and its harness was scanned. They are a second gate, not
+        the mechanism — two producers reading the same transcripts are
+        indistinguishable by path, which is what issue #104 turned out to be.
+
+        A record with an empty ``producer`` predates this field. It is unowned,
+        so nobody prunes or overwrites it. ``adopt_unowned=True`` claims those
+        records for ``producer`` — a one-time migration for a store written
+        before provenance existed, and wrong to pass if another tool writes
+        into the same store.
+
+        **Omitting ``prune_roots`` with ``replace=True`` deletes every record
+        this producer owns**, and with no ``producer`` either, the whole store.
+        That is the pre-#104 behaviour, kept only for a caller that genuinely
+        owns everything in it. There is no such caller in Tesserae.
         """
         ordered = sorted(list(sessions), key=lambda s: (s.started_at or "", s.harness, s.slug))
         self.root.mkdir(parents=True, exist_ok=True)
         written: set[Path] = set()
+        preserved = 0
         for session in ordered:
             harness_dir = self.root / safe_slug(session.harness)
             harness_dir.mkdir(parents=True, exist_ok=True)
             json_path = harness_dir / f"{session.filename}.json"
+            owner = _record_producer(json_path)
+            if owner is not None and not _may_write(owner, producer, adopt_unowned):
+                # Somebody else's record for this same session. Theirs carries
+                # attribution this writer cannot reconstruct, so it wins; the
+                # store keeps one record per session and this is which one.
+                preserved += 1
+                continue
+            if producer:
+                session = replace_dc(session, producer=producer)
             payload = session.to_dict()
             json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             md_path = harness_dir / f"{session.filename}.md"
@@ -164,6 +198,9 @@ class HarnessSessionStore:
             for stale in list(self.root.glob("*/*.json")) + list(self.root.glob("*/*.md")):
                 if stale in written or not _within_prune_scope(stale, scope, kinds):
                     continue
+                owner = _record_producer(stale.with_suffix(".json"))
+                if owner is not None and not _may_write(owner, producer, adopt_unowned):
+                    continue  # not this producer's record; not this producer's to delete
                 try:
                     stale.unlink()
                 except OSError:
@@ -178,7 +215,8 @@ class HarnessSessionStore:
         )
         manifest = {"version": "1", "sessions": [_manifest_entry(s) for s in merged]}
         self.manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        return {"path": str(self.root), "sessions": len(ordered), "total": len(merged), "removed": removed}
+        return {"path": str(self.root), "sessions": len(written) // 2, "total": len(merged),
+                "removed": removed, "preserved": preserved}
 
     def list_sessions(self) -> List[HarnessSession]:
         if not self.root.exists():
@@ -192,6 +230,35 @@ class HarnessSessionStore:
                 continue
         sessions.sort(key=lambda s: (s.started_at or "", s.harness, s.slug), reverse=True)
         return sessions
+
+
+PRODUCER_DISCOVERY = "tesserae:discover"   #: written by the local harness scan
+PRODUCER_IMPORT = "tesserae:import"        #: written by `sessions import <path>`
+
+
+def _record_producer(json_path: Path) -> Optional[str]:
+    """The producer stamped on a stored record, or None when there is no record.
+
+    An unreadable record answers "" — unowned — rather than raising or being
+    treated as the caller's. Same rule as everywhere else here: what cannot be
+    shown to be mine is not mine.
+    """
+    try:
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+        return str(payload.get("producer") or "")
+    except FileNotFoundError:
+        return None
+    except (OSError, json.JSONDecodeError, TypeError, ValueError, AttributeError):
+        return ""
+
+
+def _may_write(owner: str, producer: str, adopt_unowned: bool) -> bool:
+    """May `producer` overwrite or delete a record owned by `owner`?"""
+    if not producer:
+        return True          # unscoped caller, legacy behaviour
+    if owner == producer:
+        return True          # its own record
+    return not owner and adopt_unowned   # unowned, and the caller asked to adopt
 
 
 def _prune_scope(roots: Optional[Sequence[str | Path]]) -> Optional[List[Path]]:

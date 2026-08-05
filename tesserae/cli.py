@@ -12,7 +12,9 @@ from typing import Callable, Dict, Iterable, List, Optional
 from .activity_summary import SummaryResult, build_summary, resolve_windows
 from .batch import BatchIngestRunner
 from .canonicalization import GraphCanonicalizer, ReviewDecision
-from .harness_sessions import HarnessSession, HarnessSessionStore, discover_harness_roots, discover_harness_sessions, session_matches_project
+from .harness_sessions import (HarnessSession, HarnessSessionStore, PRODUCER_DISCOVERY,
+                               PRODUCER_IMPORT, discover_harness_roots,
+                               discover_harness_sessions, session_matches_project)
 from .ingest.orchestrator import ingest_sources
 from .llm_extractor import ClaudeCLIResearchExtractor, LLMResearchExtractor
 from .locking import CompileLockHeldError
@@ -1975,8 +1977,9 @@ def _handle_refresh(args: argparse.Namespace) -> int:
         # producer's); an EMPTY discovery merges (a no-op) so a scan that finds
         # nothing — wrong HOME, detached harness roots — never wipes the store.
         return store.write_sessions(
-            sessions, replace=bool(sessions), prune_roots=roots
-        )  # {"path", "sessions", "total", "removed"}
+            sessions, replace=bool(sessions), prune_roots=roots,
+            producer=hs.PRODUCER_DISCOVERY,
+        )  # {"path", "sessions", "total", "removed", "preserved"}
 
     def step_compile():
         return wiki.compile(changed_only=args.changed_only)
@@ -2203,8 +2206,10 @@ def _handle_sessions(args: argparse.Namespace) -> int:
                         sessions.append(session)
                     else:
                         skipped += 1
-            result = store.write_sessions(sessions)
+            result = store.write_sessions(sessions, producer=PRODUCER_IMPORT)
             print(f"Imported harness sessions: {result['sessions']} path={result['path']}")
+            if result["preserved"]:
+                print(f"Left alone (written by another producer): {result['preserved']}")
             if skipped:
                 print(f"Skipped non-project harness sessions: {skipped}")
             return 0
@@ -2235,10 +2240,13 @@ def _handle_sessions(args: argparse.Namespace) -> int:
                 result = store.write_sessions(
                     sessions, replace=bool(sessions),
                     prune_roots=roots, prune_harnesses=args.harness or None,
+                    producer=PRODUCER_DISCOVERY, adopt_unowned=args.adopt_unowned,
                 )
                 print(f"Imported harness sessions: {result['sessions']} path={result['path']}")
                 if result["removed"]:
                     print(f"Pruned stale harness sessions: {result['removed']}")
+                if result["preserved"]:
+                    print(f"Left alone (written by another producer): {result['preserved']}")
             return 0
         if args.sessions_command == "list":
             sessions = store.list_sessions()
@@ -3444,6 +3452,7 @@ def _build_sessions_parser() -> argparse.ArgumentParser:
     p_discover.add_argument("--root", action="append", default=[], help="Harness config root to scan; repeat for multiple roots. Defaults to auto-detected Claude/Codex config roots under HOME")
     p_discover.add_argument("--harness", action="append", default=[], choices=["claude-code", "codex"], help="Harness to scan; repeat for multiple harnesses. Defaults to both")
     p_discover.add_argument("--import", dest="import_sessions", action="store_true", help="Import discovered normalized sessions into .tesserae/harness_sessions")
+    p_discover.add_argument("--adopt-unowned", action="store_true", help="Claim records that predate provenance stamping, so discovery may refresh and prune them. One-time migration; do NOT use if another tool writes into this store")
     p_discover.set_defaults(_handler="_handle_sessions_discover")
     p_list = sub.add_parser("list", help="List normalized harness sessions for this project")
     p_list.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
