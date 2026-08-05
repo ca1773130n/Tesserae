@@ -85,17 +85,19 @@ Chaque entrée peut contenir un objet session ou une liste d’objets session.
 
 ## Comment le magasin est écrit
 
-Les deux points d’entrée écrivent `.tesserae/harness_sessions/`, et ils l’écrivent différemment :
+Chaque enregistrement dans `.tesserae/harness_sessions/` porte un **producteur (`producer`)** — l’importateur qui l’a écrit. `sessions discover --import` appose `tesserae:discover` ; `sessions import <path>` appose `tesserae:import`. **Un écrivain ne peut toucher que les enregistrements qu’il a produits** : il n’élagle que les siens, et il ne surchargera pas l’enregistrement d’un autre producteur pour la même session — l’écriture entrante est ignorée et signalée comme `Left alone (written by another producer)`.
 
-- `sessions import <path>` **fusionne**. Les enregistrements existants sont conservés ; un enregistrement avec le même nom de fichier est écrasé sur place.
-- `sessions discover --import` **remplace dans ce qu’il a analysé**. Un enregistrement n’est supprimé que lorsque sa transcription se trouve sous une racine harness analysée *et* que son harness est celui que cette exécution a analysé, de sorte qu’un schéma de nom de fichier renommé ou un import dédupliqué ne peut pas laisser de pages orphelines et des entrées de recherche derrière, tandis que tout le reste survit. Les deux conditions limitent la portée : `--harness codex` laisse les enregistrements claude-code intacts même si `~/.claude` a été analysé, et un enregistrement sans transcription locale est complètement en dehors de la portée. Un enregistrement dont le fichier ne peut pas être lu est aussi laissé intouché, car une analyse qui ne peut pas identifier le propriétaire de l’enregistrement n’a aucune raison de le supprimer.
+Cette règle existe parce que la provenance est la seule chose qui sépare véritablement les importateurs. Deux d’entre eux décrivent régulièrement la *même* session : l’analyse locale de Tesserae crée un enregistrement simple à partir d’une transcription sous `~/.claude`, tandis qu’un orchestrateur exporte cette même session portant l’identité de l’agent que seul il connaît. Les deux dérivent le même nom de fichier à partir de l’id de session, de sorte qu’ils entrent en collision. Ni l’emplacement de la transcription ni le nom du harness ne peuvent les distinguer — c’est pourquoi les corrections antérieures avec portée root pour [#104](https://github.com/ca1773130n/Tesserae/issues/104) n’ont pas fonctionné, et pourquoi 0.28.6 perdait toujours de tels enregistrements de deux façons : supprimés lorsque l’analyse ne trouvait plus la transcription, silencieusement surchargés lorsqu’elle l’était.
 
-La portée importe si vous alimentez Tesserae en dehors de la convention local-harness — un orchestrateur exportant ses propres sessions d’agent, une tâche CI important des transcriptions d’une autre machine, un script de migration. Ces enregistrements portent une attribution qu’une analyse locale ne peut pas déduire, et une analyse locale n’a aucune autorité sur eux. Jusqu’à 0.28.5, une découverte non vide supprimait le *magasin entier*, de sorte qu’ils étaient supprimés silencieusement, et le hook `SessionEnd` du plugin exécute une découverte à chaque fermeture de session ([#104](https://github.com/ca1773130n/Tesserae/issues/104)).
+Si vous écrivez dans ce magasin à partir de votre propre outil, utilisez `tesserae sessions import <file>` et vos enregistrements sont protégés à partir de ce moment. Rien d’autre n’est requis.
 
-Deux comportements à connaître :
+La portée se réduit davantage, en tant que deuxième barrière : un enregistrement n’est élagué que si sa transcription se trouve également sous une racine que cette exécution a analysée et que son harness en était un qu’elle a analysé. Ainsi `--harness codex` laisse les enregistrements claude-code intacts même si `~/.claude` a été parcouru.
 
+Trois comportements à connaître :
+
+- **Les enregistrements écrits avant 0.28.7 ne portent pas de producteur.** Ils sont sans propriétaire, donc aucun importateur ne les élague ni les surcharge — sûr, mais la découverte ne les rafraîchira pas non plus. `sessions discover --import --adopt-unowned` les réclame pour la découverte. Exécutez-le une fois si l’analyse propre de Tesserae est la seule chose écrivant dans ce magasin ; ne l’exécutez *pas* si un autre outil écrit aussi ici, car cela remet vos enregistrements à la découverte.
 - Une découverte vide ne supprime jamais. Une analyse qui ne trouve rien — `HOME` incorrect, racines harness détachées — fusionne au lieu d’effacer.
-- Une découverte qui supprime des enregistrements imprime le nombre à côté du nombre d’imports, de sorte que le magasin ne peut pas rétrécir dans une ligne qui signale uniquement une croissance.
+- Une découverte qui supprime ou préserve des enregistrements imprime les deux nombres à côté du nombre d’imports, de sorte que le magasin ne peut pas changer de taille dans une ligne qui ne signale que la croissance.
 
 ## Lister les sessions importées
 

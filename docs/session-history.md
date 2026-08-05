@@ -82,17 +82,19 @@ Each input may contain one session object or a list of session objects.
 
 ## How the store is written
 
-Both entry points write `.tesserae/harness_sessions/`, and they write it differently:
+Every record in `.tesserae/harness_sessions/` carries a **`producer`** — the importer that wrote it. `sessions discover --import` stamps `tesserae:discover`; `sessions import <path>` stamps `tesserae:import`. **A writer may only touch records it produced**: it prunes only its own, and it will not overwrite another producer's record for the same session — the incoming write is skipped and reported as `Left alone (written by another producer)`.
 
-- `sessions import <path>` **merges**. Existing records are kept; a record with the same filename is overwritten in place.
-- `sessions discover --import` **replaces within what it scanned**. A record is pruned only when its transcript lives under a scanned harness root *and* its harness is one this run scanned — so a renamed filename scheme or a deduped import cannot leave orphan pages and search entries behind, while anything else survives. Both halves narrow: `--harness codex` leaves claude-code records alone even though `~/.claude` was walked, and a record with no local transcript is out of scope entirely. A record whose file cannot be read is also left alone, since a scan that cannot identify a record's owner has no grounds to delete it.
+That rule exists because provenance is the only thing that actually separates importers. Two of them routinely describe the *same* session: Tesserae's local scan mints a plain record from a transcript under `~/.claude`, while an orchestrator exports that same session carrying the agent identity only it knows. Both derive the same filename from the session id, so they collide. Neither the transcript's location nor the harness name can tell them apart — which is why the earlier root-scoped fixes for [#104](https://github.com/ca1773130n/Tesserae/issues/104) did not work, and why 0.28.6 still lost such records two ways: deleted when the scan no longer found the transcript, silently overwritten when it did.
 
-The scoping matters if you feed Tesserae from outside the local-harness convention — an orchestrator exporting its own agent sessions, a CI job importing transcripts from another machine, a migration script. Those records carry attribution a local scan cannot infer, and a local scan has no authority over them. Through 0.28.5 a non-empty discovery pruned the *whole* store, so they were deleted silently, and the plugin's `SessionEnd` hook runs a discovery at every session close ([#104](https://github.com/ca1773130n/Tesserae/issues/104)).
+If you write into this store from your own tool, use `tesserae sessions import <file>` and your records are protected from that point on. Nothing else is required.
 
-Two behaviours worth knowing:
+Scope narrows further, as a second gate: a record is pruned only if its transcript also lives under a root this run scanned and its harness was one it scanned. So `--harness codex` leaves claude-code records alone even though `~/.claude` was walked.
 
+Three behaviours worth knowing:
+
+- **Records written before 0.28.7 carry no producer.** They are unowned, so no importer prunes or overwrites them — safe, but discovery will not refresh them either. `sessions discover --import --adopt-unowned` claims them for discovery. Run it once if Tesserae's own scan is the only thing writing this store; do **not** run it if another tool writes here too, since it hands your records to discovery.
 - An empty discovery never prunes. A scan that finds nothing — wrong `HOME`, detached harness roots — merges instead of wiping.
-- A discovery that does remove records prints the count next to the import count, so the store cannot shrink inside a line that only reports growth.
+- A discovery that removes or preserves records prints both counts next to the import count, so the store cannot change size inside a line that only reports growth.
 
 ## List imported sessions
 

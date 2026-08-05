@@ -4,6 +4,8 @@ from tesserae.cli import main
 from tesserae.harness_sessions import (
     HarnessSession,
     HarnessSessionStore,
+    PRODUCER_DISCOVERY,
+    PRODUCER_IMPORT,
     _is_boilerplate_preamble,
     _title_and_preview,
 )
@@ -499,3 +501,123 @@ def test_long_sessions_are_not_truncated_at_300_turns():
         for i in range(500)
     ]
     assert len(_codex_turns(codex_rows)) == 500
+
+
+# ---------------------------------------------------------------------------
+# Provenance (#104, reopened). Root- and harness-scoping could only separate
+# producers that read different directories. Two importers routinely describe
+# the SAME transcript — the local scan mints a plain record from ~/.claude, an
+# orchestrator exports that session with the agent identity only it knows — so
+# the external record sat inside the scope by construction. Both failure modes
+# below were measured against a real 375-record store on 0.28.6.
+# ---------------------------------------------------------------------------
+
+CLAUDE_ID = "claude-code:abc123"
+
+
+def _same_transcript_record(project, transcript, **kw):
+    payload = {
+        **sample_session(project).to_dict(),
+        "id": CLAUDE_ID, "slug": "a-session", "harness": "claude-code",
+        "agent_label": "Claude Code", "raw_transcript_path": transcript,
+    }
+    payload.update(kw)
+    return HarnessSession.from_dict(payload)
+
+
+def _external_store(tmp_path):
+    project = tmp_path / "demo-project"
+    project.mkdir()
+    root = tmp_path / "home" / ".claude"
+    (root / "projects").mkdir(parents=True)
+    store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
+    transcript = str(root / "projects" / "p" / "run.jsonl")
+    enriched = _same_transcript_record(
+        project, transcript, agent_label="sa-apoc",
+        metadata={"super_agent": "apoc", "role": "reviewer"})
+    store.write_sessions([enriched], producer=PRODUCER_IMPORT)
+    return project, root, store, transcript
+
+
+def test_discovery_cannot_delete_another_producers_record_for_a_scanned_transcript(tmp_path):
+    """Mode 1: the record's transcript is inside the scanned root — that is the
+    point, both tools describe the same session — and the scan no longer finds
+    it. Scope cannot save it; provenance must."""
+    project, root, store, transcript = _external_store(tmp_path)
+
+    elsewhere = _same_transcript_record(
+        project, str(root / "projects" / "p" / "other.jsonl"),
+        id="claude-code:zzz", slug="other")
+    result = store.write_sessions([elsewhere], replace=True, prune_roots=[root],
+                                  prune_harnesses=["claude-code"],
+                                  producer=PRODUCER_DISCOVERY)
+
+    assert any(s.agent_label == "sa-apoc" for s in store.list_sessions())
+    assert result["removed"] == 0
+
+
+def test_discovery_cannot_overwrite_another_producers_record(tmp_path):
+    """Mode 2: not a pruning problem at all. Both records key to the same
+    filename, so the scan's plain version silently replaced the enriched one and
+    reported success — nothing was deleted, so `removed` stayed 0."""
+    project, root, store, transcript = _external_store(tmp_path)
+
+    result = store.write_sessions([_same_transcript_record(project, transcript)],
+                                  replace=True, prune_roots=[root],
+                                  prune_harnesses=["claude-code"],
+                                  producer=PRODUCER_DISCOVERY)
+
+    kept = next(s for s in store.list_sessions() if s.id == CLAUDE_ID)
+    assert kept.agent_label == "sa-apoc"
+    assert kept.metadata == {"super_agent": "apoc", "role": "reviewer"}
+    assert result["preserved"] == 1
+
+
+def test_a_producer_still_manages_its_own_records(tmp_path):
+    """The protection must not freeze the store: discovery refreshes and prunes
+    what discovery wrote."""
+    project = tmp_path / "demo-project"
+    project.mkdir()
+    root = tmp_path / "home" / ".claude"
+    (root / "projects").mkdir(parents=True)
+    store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
+    mine = _same_transcript_record(project, str(root / "projects" / "p" / "run.jsonl"),
+                                   title="First pass")
+    store.write_sessions([mine], producer=PRODUCER_DISCOVERY)
+
+    updated = _same_transcript_record(project, str(root / "projects" / "p" / "run.jsonl"),
+                                      title="Second pass, more turns")
+    result = store.write_sessions([updated], replace=True, prune_roots=[root],
+                                  prune_harnesses=["claude-code"],
+                                  producer=PRODUCER_DISCOVERY)
+
+    assert [s.title for s in store.list_sessions()] == ["Second pass, more turns"]
+    assert result["preserved"] == 0
+
+
+def test_records_predating_provenance_are_nobodys_until_adopted(tmp_path):
+    """An unstamped record is unowned: no producer may prune or overwrite it,
+    because there is no way to tell whose it is. `adopt_unowned` is the one-time
+    migration, and it is wrong to pass when another tool shares the store."""
+    project = tmp_path / "demo-project"
+    project.mkdir()
+    root = tmp_path / "home" / ".claude"
+    (root / "projects").mkdir(parents=True)
+    store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
+    legacy = _same_transcript_record(project, str(root / "projects" / "p" / "run.jsonl"),
+                                     title="Written before provenance existed")
+    store.write_sessions([legacy])                      # no producer: unstamped
+    assert store.list_sessions()[0].producer == ""
+
+    fresh = _same_transcript_record(project, str(root / "projects" / "p" / "run.jsonl"),
+                                    title="Rediscovered")
+    guarded = store.write_sessions([fresh], replace=True, prune_roots=[root],
+                                   producer=PRODUCER_DISCOVERY)
+    assert store.list_sessions()[0].title == "Written before provenance existed"
+    assert guarded["preserved"] == 1
+
+    adopted = store.write_sessions([fresh], replace=True, prune_roots=[root],
+                                   producer=PRODUCER_DISCOVERY, adopt_unowned=True)
+    kept = store.list_sessions()[0]
+    assert kept.title == "Rediscovered" and kept.producer == PRODUCER_DISCOVERY
+    assert adopted["preserved"] == 0

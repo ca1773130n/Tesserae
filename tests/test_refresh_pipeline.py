@@ -70,8 +70,9 @@ def test_refresh_runs_steps_in_order(tmp_path: Path, monkeypatch: pytest.MonkeyP
         def __init__(self, root):
             self.root = root
 
-        def write_sessions(self, sessions, replace=False, prune_roots=None):
-            return {"sessions": 0, "path": "x", "removed": 0}
+        def write_sessions(self, sessions, replace=False, prune_roots=None,
+                           prune_harnesses=None, producer="", adopt_unowned=False):
+            return {"sessions": 0, "path": "x", "removed": 0, "preserved": 0}
 
     def fake_compile(self, changed_only=False, **k):
         order.append("compile")

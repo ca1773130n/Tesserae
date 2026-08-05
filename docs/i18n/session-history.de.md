@@ -82,17 +82,19 @@ Jeder Input darf ein Session-Objekt oder eine Liste von Session-Objekten enthalt
 
 ## Wie der Store geschrieben wird
 
-Beide Entry-Points schreiben in `.tesserae/harness_sessions/`, und sie schreiben es unterschiedlich:
+Jedes Record in `.tesserae/harness_sessions/` trägt einen **Produzent (`producer`)** — den Importer, der es geschrieben hat. `sessions discover --import` stempelt `tesserae:discover`; `sessions import <path>` stempelt `tesserae:import`. **Ein Writer darf nur Records anfassen, die er produziert hat**: er gibt nur seine eigenen frei, und er wird das Record eines anderen Produzenten für dieselbe Session nicht überschreiben — der eingehende Write wird übersprungen und als `Left alone (written by another producer)` gemeldet.
 
-- `sessions import <path>` **führt zusammen**. Existierende Records bleiben erhalten; ein Record mit demselben Dateinamen wird überschrieben.
-- `sessions discover --import` **ersetzt innerhalb dessen, was es gescannt hat**. Ein Record wird nur gelöscht, wenn sein Transkript unter einer gescannten Harness-Root lebt *und* seine Harness diejenige ist, die dieser Lauf gescannt hat, sodass ein umbenanntes Dateinamen-Schema oder ein deduplizierter Import keine verwaisten Seiten und Sucheinträge hinterlassen kann, während alles andere erhalten bleibt. Beide Bedingungen begrenzen den Geltungsbereich: `--harness codex` lässt Records von claude-code unberührt, auch wenn `~/.claude` gescannt wurde, und ein Record ohne lokales Transkript liegt völlig außerhalb des Geltungsbereichs. Ein Record, dessen Datei nicht gelesen werden kann, wird auch in Ruhe gelassen, da ein Scan, der den Besitzer eines Records nicht identifizieren kann, keinen Grund hat, ihn zu löschen.
+Diese Regel existiert, weil Provenienz das einzige ist, das wirklich Importer unterscheidet. Zwei von ihnen beschreiben routinemäßig die *gleiche* Session: Tesseraes lokaler Scan prägt ein einfaches Record aus einem Transkript unter `~/.claude`, während ein Orchestrator diese gleiche Session mit der Agent-Identität exportiert, die nur er kennt. Beide leiten denselben Dateinamen von der Session-Id ab, also kollidieren sie. Weder die Transkript-Location noch der Harness-Name können sie unterscheiden — deshalb funktionierten die früheren Root-scoped Fixes für [#104](https://github.com/ca1773130n/Tesserae/issues/104) nicht, und deshalb verlor 0.28.6 solche Records immer noch auf zwei Arten: gelöscht, wenn der Scan das Transkript nicht mehr fand, stillschweigend überschrieben, wenn er es tat.
 
-Der Geltungsbereich ist wichtig, wenn du Tesserae von außerhalb der lokalen Harness-Konvention speist — ein Orchestrator exportiert seine eigenen Agent-Sessions, ein CI-Job importiert Transkripte von einer anderen Maschine, ein Migrations-Skript. Diese Records tragen Zuschreibung, die ein lokaler Scan nicht ableiten kann, und ein lokaler Scan hat keine Autorität über sie. Bis 0.28.5 bereinigt eine nicht-leere Discovery den *ganzen* Store, daher wurden sie stillschweigend gelöscht, und der Hook `SessionEnd` des Plugins führt eine Discovery bei jedem Session-Abschluss aus ([#104](https://github.com/ca1773130n/Tesserae/issues/104)).
+Wenn du mit deinem eigenen Tool in diesen Store schreibst, verwende `tesserae sessions import <file>` und deine Records sind ab diesem Punkt geschützt. Nichts sonst ist erforderlich.
 
-Zwei Verhaltensweisen, die es zu wissen gilt:
+Der Geltungsbereich verengt sich weiter, als zweites Gate: ein Record wird nur gelöscht, wenn sein Transkript auch unter einer Root lebt, die dieser Run gescannt hat, und sein Harness einer war, den er gescannt hat. Also lässt `--harness codex` claude-code Records in Ruhe, selbst wenn `~/.claude` durchsucht wurde.
 
-- Eine leere Discovery bereinigt nie. Ein Scan, der nichts findet — falsche `HOME`, gelöste Harness-Roots — führt stattdessen zusammen.
-- Eine Discovery, die Records entfernt, gibt die Anzahl neben der Importanzahl aus, sodass der Store nicht innerhalb einer Zeile schrumpfen kann, die nur Wachstum meldet.
+Drei Verhaltensweisen, die es zu wissen gilt:
+
+- **Records, die vor 0.28.7 geschrieben wurden, tragen keinen Produzent.** Sie sind unowned, also kein Importer gibt sie frei oder überschreibt sie — sicher, aber Discovery wird sie auch nicht auffrischen. `sessions discover --import --adopt-unowned` beansprucht sie für Discovery. Führe es einmal aus, wenn Tesseraes eigener Scan das einzige ist, das in diesen Store schreibt; führe es *nicht* aus, wenn auch ein anderes Tool hier schreibt, denn es übergibt deine Records an Discovery.
+- Eine leere Discovery bereinigt nie. Ein Scan, der nichts findet — falsche `HOME`, gelöste Harness-Roots — fusioniert stattdessen.
+- Eine Discovery, die Records entfernt oder behält, gibt beide Zählungen neben der Importanzahl aus, sodass der Store nicht innerhalb einer Zeile, die nur Wachstum meldet, an Größe verlieren kann.
 
 ## Importierte Sessions auflisten
 
