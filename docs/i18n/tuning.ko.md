@@ -135,7 +135,8 @@ cross-project navigate하는 project는 eager pass를 원합니다.
 
 | 변수 | 기본값 | 노트 |
 |---|---|---|
-| `TESSERAE_REGISTRY` | `~/.tesserae/registry.json` | Project registry 위치 |
+| `TESSERAE_REGISTRY` | `~/.tesserae/registry.json` | Project registry 위치. **모든** 명령이 이를 존중합니다 — 0.28.7 이전에는 엔진의 fleet 모드만 이것을 읽었기 때문에, 다른 곳에서 설정해도 조용히 아무 효과가 없었고 명령들은 계속 진짜 registry를 사용했습니다 |
+| `TESSERAE_HOST_ID` | `~/.tesserae/host_id`에 한 번 생성됨 | 이 머신의 정체성. [여러 머신을 하나의 프로젝트에 붙여 돌리기](#여러-머신을-하나의-프로젝트에-붙여-돌리기) 참조 |
 | `TESSERAE_DISCOVERY_CACHE` | — | Session-discovery cache |
 | `TESSERAE_ARXIV_CACHE` | — | arXiv metadata cache |
 | `TESSERAE_NO_FEDERATION_CACHE` | off | federated-graph LRU 비활성화 |
@@ -143,6 +144,84 @@ cross-project navigate하는 project는 eager pass를 원합니다.
 | `TESSERAE_FLEET_PIDFILE` | — | Engine fleet pidfile |
 | `TESSERAE_CLIP_TOKEN` | — | web clipper용 shared secret |
 | `TESSERAE_SCHEMA_DRIFT_APPLY` | off | schema-drift proposals 적용 (`tesserae lab`) |
+
+---
+
+## 여러 머신을 하나의 프로젝트에 붙여 돌리기
+
+이 절이 상정하는 형태: 여러 대의 서버가 각각 코딩 에이전트를 돌리고, 각자
+자신의 로컬 세션 트랜스크립트를 가지며, 디스크를 공유합니다 — 그래서 같은
+프로젝트 디렉터리와 같은 `.tesserae/`를 봅니다.
+
+**한 호스트에게 compile을 맡기고, 나머지는 수집만 하게 하세요.**
+
+```bash
+# on the compiling host
+tesserae engine
+
+# on every other host
+tesserae engine --harvest-only
+```
+
+`--harvest-only`는 그 머신의 로컬 트랜스크립트를 공유 세션 저장소로 tail할 뿐,
+프로젝트의 compile lock은 절대 잡지 않습니다. 경합을 중재하는 대신 아예
+없애는 쪽이고, 그래서 timeout을 조절하는 것보다 낫습니다.
+
+**실패시키는 대신 줄을 서게 하고 싶을 때**는 `--wait`을 넘기세요:
+
+```bash
+tesserae compile --wait          # up to 30 min, reporting every 5s
+tesserae compile --wait 120      # or name your own bound
+```
+
+이것이 없으면 lock이 잡혀 있는 것을 발견한 compile은 2로 종료합니다 — 훅에는
+맞는 동작이고, 사람에게는 속 터지는 동작입니다. `--wait`이 stdout이
+터미널인지에서 유추되지 않고 플래그인 이유는, 같은 명령이 `tee` 아래에서, tmux
+캡처에서, CI에서 동작을 바꿔서는 안 되기 때문입니다.
+`TESSERAE_COMPILE_LOCK_WAIT=<seconds>`는 프로세스 트리 전체에 대해 같은 일을
+합니다.
+
+**모든 프로젝트를 최신으로 유지**하기, 한 번의 호출로:
+
+```bash
+tesserae refresh --all               # every registered project, sequentially
+tesserae refresh --all --jobs 3      # three at a time
+tesserae compile --all --name alpha --name beta
+```
+
+한 프로젝트가 실패해도 나머지가 멈추지는 않습니다. 하나라도 실패했으면 종료
+코드 `2`, 하나라도 다른 실행에 lock되어 있었으면 `1`, 전부 실행되었으면
+`0`입니다. `--jobs`의 기본값이 1인 이유는 compile이 LLM을 많이 쓰기 때문이며,
+값을 올리면 할당량을 병렬로 소모합니다.
+
+### 무엇이 이것을 안전하게 만드는가
+
+머신별 상태는 예전에 하나의 공유된 이름 아래 저장되어 모든 호스트가
+읽었습니다. 아래 각각은 이제 호스트 id로 분할됩니다:
+
+| 상태 | 위치 | 왜 호스트별이어야 하는가 |
+|---|---|---|
+| 세션 레코드 | `.tesserae/harness_sessions/` | 호스트는 자신이 수집한 것만 삭제합니다. 그러지 않으면 호스트 B가 호스트 A의 세션을 삭제하고 성공했다고 보고합니다 — 모든 호스트의 스캔이 같은 producer를 스탬프하고 각자의 `~/.claude` 경로도 동일하게 해석되므로, 그 외에 둘을 구별할 것이 없습니다 |
+| 엔진 pidfile | `.tesserae/daemon.<host>.pid` | liveness는 **로컬** 프로세스 테이블을 상대로 한 `os.kill(pid, 0)`입니다; 다른 머신이 기록한 pid는 아무 관련 없는 로컬 프로세스를 상대로 판정됩니다 |
+| Codex 스캔 하한선 | `.tesserae/harness_sessions.db` | 공유 watermark 하나는, 마지막으로 실행한 호스트가 다른 호스트는 아직 읽지 않은 트랜스크립트 너머로 그것을 밀어 버린다는 뜻이었습니다 — 그 트랜스크립트들은 아예 가져와지지 않았습니다 |
+
+호스트 id는 `~/.tesserae/host_id`에 한 번 생성되며(공유되는 프로젝트 디렉터리가
+**아니라** 머신마다 따로), `TESSERAE_HOST_ID`로 고정할 수 있습니다. 호스트명이
+아니라 영속화된 id인 이유는 하나의 이미지로 찍어낸 fleet이 호스트명을
+재사용하고, 충돌이 나면 한 머신의 레코드를 다른 머신에게 넘겨 버리기
+때문입니다.
+
+### 당신이 직접 시험해 봐야 할 전제
+
+위의 모든 것은 `.tesserae/`를 담고 있는 파일시스템이 `flock(2)`을
+**강제한다**고 전제합니다. NFS와 SMB에서 그것은 설정에 따라 달라지고, 동작하는
+lock 데몬이 없으면 `flock`은 조용히 no-op으로 퇴화할 수 있습니다 — 그 순간 두
+호스트가 각자 배타적 lock을 쥐고 있다고 믿으면서 같은 프로젝트를 동시에
+compile합니다.
+
+`tesserae doctor`는 프로젝트가 네트워크 파일시스템 위에 있으면 경고하지만,
+단일 호스트는 호스트 간 강제를 **증명할 수 없습니다**. 실제 하드웨어에서 직접
+시험하세요: 호스트 A에서 lock을 잡고 호스트 B가 거부되는지 확인하는 겁니다.
 
 ---
 

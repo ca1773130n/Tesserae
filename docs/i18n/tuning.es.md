@@ -141,7 +141,8 @@ la pasada ansiosa activada.
 
 | Variable | Por defecto | Notas |
 |---|---|---|
-| `TESSERAE_REGISTRY` | `~/.tesserae/registry.json` | Ubicación del registro de proyectos |
+| `TESSERAE_REGISTRY` | `~/.tesserae/registry.json` | Ubicación del registro de proyectos. La respetan **todos** los comandos — hasta 0.28.7 solo la leía el modo flota del engine, así que fijarla en cualquier otro sitio no tenía efecto y los comandos seguían usando el registro real |
+| `TESSERAE_HOST_ID` | generado una vez en `~/.tesserae/host_id` | La identidad de esta máquina. Ver [ejecutar varias máquinas](#ejecutar-varias-máquinas-contra-un-mismo-proyecto) |
 | `TESSERAE_DISCOVERY_CACHE` | — | Caché de descubrimiento de sesión |
 | `TESSERAE_ARXIV_CACHE` | — | Caché de metadatos arXiv |
 | `TESSERAE_NO_FEDERATION_CACHE` | desactivado | Deshabilita el LRU del gráfico federado |
@@ -149,6 +150,86 @@ la pasada ansiosa activada.
 | `TESSERAE_FLEET_PIDFILE` | — | Archivo pidfile de la flota del motor |
 | `TESSERAE_CLIP_TOKEN` | — | Secreto compartido para el cortador web |
 | `TESSERAE_SCHEMA_DRIFT_APPLY` | desactivado | Aplica propuestas de desvío de esquema (`tesserae lab`) |
+
+---
+
+## Ejecutar varias máquinas contra un mismo proyecto
+
+La forma para la que está escrito esto: varios servidores ejecutan cada uno un
+agente de código, cada uno tiene sus propios transcripts de sesión locales, y
+comparten un disco — así que ven el mismo directorio de proyecto y el mismo
+`.tesserae/`.
+
+**Dale la compilación a un solo host, y deja que el resto solo cosechen.**
+
+```bash
+# on the compiling host
+tesserae engine
+
+# on every other host
+tesserae engine --harvest-only
+```
+
+`--harvest-only` va volcando los transcripts locales de esa máquina al almacén de
+sesiones compartido y nunca toma el lock de compilación del proyecto. Eso elimina
+la contención en vez de arbitrarla, y por eso gana a ajustar timeouts.
+
+**Cuando sí quieres hacer cola en lugar de fallar**, pasa `--wait`:
+
+```bash
+tesserae compile --wait          # up to 30 min, reporting every 5s
+tesserae compile --wait 120      # or name your own bound
+```
+
+Sin él, una compilación que encuentra el lock retenido sale con 2 — correcto para
+un hook, exasperante para una persona. `--wait` es un flag y no algo inferido de
+si stdout es un terminal, porque el mismo comando no debe cambiar de
+comportamiento bajo `tee`, en una captura de tmux o en CI.
+`TESSERAE_COMPILE_LOCK_WAIT=<seconds>` hace lo mismo para todo un árbol de
+procesos.
+
+**Mantener frescos todos los proyectos** desde una sola invocación:
+
+```bash
+tesserae refresh --all               # every registered project, sequentially
+tesserae refresh --all --jobs 3      # three at a time
+tesserae compile --all --name alpha --name beta
+```
+
+Que un proyecto falle no detiene a los demás. Sale `2` si alguno falló, `1` si
+alguno estaba bloqueado por otra ejecución, `0` si todo se ejecutó. `--jobs` vale
+1 por defecto porque una compilación es pesada en LLM y subirlo gasta cuota en
+paralelo.
+
+### Qué hace que esto sea seguro
+
+El estado por máquina se guardaba antes bajo un único nombre compartido y lo leía
+cada host. Cada uno de estos está ahora particionado por id de host:
+
+| Estado | Dónde | Por qué tiene que ser por host |
+|---|---|---|
+| Registros de sesión | `.tesserae/harness_sessions/` | Un host solo poda lo que él mismo cosechó. Si no, el host B borra las sesiones del host A y reporta éxito — el escaneo de cada host estampa el mismo productor y sus rutas `~/.claude` se resuelven igual, así que nada más los distingue |
+| Pidfile del engine | `.tesserae/daemon.<host>.pid` | La comprobación de vida es `os.kill(pid, 0)` contra la tabla de procesos **local**; un pid escrito por otra máquina se juzga contra un proceso local sin ninguna relación |
+| Suelo de escaneo de Codex | `.tesserae/harness_sessions.db` | Una única marca de agua compartida hacía que el host que se ejecutara el último la moviera más allá de transcripts que el otro no había leído — esos no se importaban en absoluto |
+
+El id de host se genera una sola vez en `~/.tesserae/host_id` (por máquina, **no**
+en el directorio compartido del proyecto) y puede fijarse con `TESSERAE_HOST_ID`.
+Es un id persistido en lugar del hostname porque una flota construida a partir de
+una sola imagen reutiliza hostnames, y una colisión entregaría los registros de
+una máquina a otra.
+
+### La suposición que deberías probar
+
+Todo lo anterior asume que `flock(2)` lo **aplica** el sistema de archivos que
+aloja `.tesserae/`. Sobre NFS y SMB eso depende de la configuración, y sin un
+lock daemon en funcionamiento `flock` puede degradarse silenciosamente a un
+no-op — momento en el cual dos hosts compilan el mismo proyecto simultáneamente,
+creyendo cada uno que tiene un lock exclusivo.
+
+`tesserae doctor` advierte cuando el proyecto está sobre un sistema de archivos
+de red, pero un solo host **no puede** probar que se aplique entre hosts.
+Pruébalo directamente sobre el hardware real: retén un lock en el host A y
+confirma que al host B se le deniega.
 
 ---
 

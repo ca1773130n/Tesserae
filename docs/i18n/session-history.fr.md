@@ -93,6 +93,18 @@ Si vous écrivez dans ce magasin à partir de votre propre outil, utilisez `tess
 
 La portée se réduit davantage, en tant que deuxième barrière : un enregistrement n’est élagué que si sa transcription se trouve également sous une racine que cette exécution a analysée et que son harness en était un qu’elle a analysé. Ainsi `--harness codex` laisse les enregistrements claude-code intacts même si `~/.claude` a été parcouru.
 
+### Plusieurs machines partageant un même répertoire de projet
+
+Chaque enregistrement porte aussi un **hôte (`host`)** — la machine qui l’a moissonné. **Un hôte n’élague que ce qu’il a moissonné lui-même.**
+
+C’est un axe réellement distinct de `producer`, et les barrières ci-dessus ne peuvent pas en tenir lieu. Quand plusieurs serveurs exécutent chacun Claude Code et partagent un disque, ils partagent aussi `.tesserae` — mais chacun ne voit que ses propres transcriptions locales. L’analyse de chaque hôte appose le même `tesserae:discover`, et le `~/.claude` de chaque hôte se résout vers la même chaîne de chemin : la barrière de producteur et la barrière de portée passent donc *toutes les deux* sur une machine qui n’a jamais vu la transcription. Elle supprime alors l’enregistrement d’une autre machine et annonce un succès. Les enregistrements portent désormais l’hôte qui les a moissonnés, et l’élagage exige qu’il corresponde.
+
+L’id d’hôte vit dans `~/.tesserae/host_id` — par machine, pas dans le répertoire de projet partagé — et il est généré une seule fois à la première utilisation. Forcez-le avec `TESSERAE_HOST_ID`. C’est délibérément un id persisté plutôt que le nom d’hôte : une flotte construite à partir d’une même image réutilise les noms d’hôte, et une collision de noms d’hôte livrerait silencieusement les enregistrements d’une machine à une autre.
+
+Le chemin d’**écriture**, lui, est délibérément aveugle à l’hôte. Deux hôtes ne peuvent écrire la même session que si tous deux voient la transcription ; l’écriture est donc idempotente et se contente de réapposer la propriété sur le dernier hôte ayant prouvé qu’il la voyait. Filtrer aussi les écritures par hôte gèlerait à jamais les enregistrements d’une machine mise hors service, sans aucun moyen de les récupérer.
+
+Les enregistrements écrits avant ce champ ne portent pas d’hôte. Ils sont sans propriétaire sur cet axe et survivent à l’élagage de n’importe quel hôte jusqu’à ce que `--adopt-unowned` les réclame — la même règle que `producer` applique déjà, et si elle compte ici, c’est que *tout* enregistrement écrit par 0.28.7 porte un producteur et pas d’hôte : la barrière de producteur s’abstiendrait donc et rien d’autre ne les protégerait.
+
 Trois comportements à connaître :
 
 - **Les enregistrements écrits avant 0.28.7 ne portent pas de producteur.** Ils sont sans propriétaire, donc aucun importateur ne les élague ni les surcharge — sûr, mais la découverte ne les rafraîchira pas non plus. `sessions discover --import --adopt-unowned` les réclame pour la découverte. Exécutez-le une fois si l’analyse propre de Tesserae est la seule chose écrivant dans ce magasin ; ne l’exécutez *pas* si un autre outil écrit aussi ici, car cela remet vos enregistrements à la découverte.

@@ -18,7 +18,7 @@ tesserae doctor --project ~/src/other
 
 ## Ce qu’il vérifie
 
-Vingt vérifications, regroupées par catégorie :
+Les vérifications, regroupées par catégorie :
 
 | Vérification | Catégorie | Ce qu’elle vérifie | Action `--fix` |
 |---|---|---|---|
@@ -32,9 +32,10 @@ Vingt vérifications, regroupées par catégorie :
 | `backend_artifacts` | freshness | les artefacts RAG-Anything sont à jour | rapport seulement (leur rafraîchissement est lourd en LLM/réseau) |
 | `session_chunks` | freshness | la couverture des [chunks de session quotidiens](session-chunks.fr.md) n’a pas de trous dans la fenêtre récente | rapport seulement (suggère `tesserae sessions chunk-backfill`) |
 | `wiki_lint` | graph | dérive graphe ⇄ wiki + constats de lint trivialement corrigeables | **SAFE** : applique les corrections triviales du lint (`fix_trivial`) |
-| `compile_lock` | processes | si un verrou de compilation vivant est détenu, et par quel pid | rapport seulement — doctor **ne tue jamais et ne supprime jamais un verrou vivant** |
-| `daemon_pid` | processes | `daemon.pid` pointe vers un processus moteur vivant | **SAFE** : supprime le pidfile quand son propriétaire est mort |
-| `llm_login` | environment | le backend LLM configuré est réellement utilisable (CLI claude/codex connectée, ou clé API présente) | rapport seulement (suggère `claude /login` / `codex login`) |
+| `compile_lock` | processes | si un verrou de compilation vivant est détenu, et par quel pid **et quel hôte** | rapport seulement — doctor **ne tue jamais et ne supprime jamais un verrou vivant** |
+| `filesystem_locking` | processes | si `.tesserae/` se trouve sur un système de fichiers réseau, où `flock(2)` peut être un no-op silencieux | rapport seulement (il ne peut pas prouver l’application inter-hôtes — voir plus bas) |
+| `daemon_pid` | processes | `daemon.<host>.pid` pointe vers un processus moteur vivant | **SAFE** : supprime le pidfile **de cet hôte** quand son propriétaire est mort ; celui d’une autre machine est rapporté, jamais touché |
+| `llm_login` | environment | si les répertoires de config que le projet utiliserait réellement existent | rapport seulement — **ne vérifie pas les identifiants** (voir plus bas) |
 | `optional_deps` | environment | statut des dépendances optionnelles (memex, raganything) | rapport seulement (les installations passent par le réseau) |
 | `embedding_backend` | environment | un vrai backend d’embeddings sémantiques est disponible | rapport seulement (suggère `pip install tesserae[semantic]`) |
 | `environment` | environment | résumé de détection d’environnement en bloc | section rapport seulement |
@@ -45,6 +46,50 @@ Vingt vérifications, regroupées par catégorie :
 
 Une vérification qui plante est rapportée comme un constat d’erreur — doctor lui-même ne lève jamais d’exception.
 
+## Ce que `llm_login` dit, et ce qu’il ne dit pas
+
+Il rapporte qu’un répertoire de config existe. Il ne rapporte **pas** que la CLI
+qui s’y trouve détient un jeton valide, et il le dit dans le texte de son propre
+constat.
+
+La distinction n’est pas de la pédanterie. La vérification rapportait autrefois
+`credentialed LLM CLI: claude, codex` sur la foi de fichiers comme
+`~/.claude/history.jsonl` — qui prouvent que la CLI a été *utilisée*, pas qu’elle
+peut s’authentifier *maintenant*. Lancés coup sur coup dans la même seconde,
+`tesserae compile` affichait `Claude CLI not logged in (tried 1 config dir)`
+pendant que doctor affichait une coche verte. Un diagnostic qui contredit la
+panne dans laquelle vous êtes est pire que pas de diagnostic du tout.
+
+Vérifier les identifiants revient à dépenser un vrai appel LLM à chaque
+`tesserae doctor`, un coût que cette vérification ne prend pas de sa propre
+initiative. Elle n’énonce donc que ce qu’elle a vérifié. Pour la réponse qui fait
+autorité, utilisez `tesserae compile`.
+
+La vérification est limitée aux répertoires que le projet essaierait réellement,
+résolus par le même chemin qu’emprunte `ProjectWiki._build_json_client` — et elle
+ne dit rien des répertoires de config claude quand le fournisseur du projet est
+`codex`.
+
+## Disques partagés et `flock(2)`
+
+Toute garantie de concurrence dans Tesserae — le verrou de compilation avant tout
+— repose sur le fait que `flock(2)` soit réellement appliqué par le système de
+fichiers qui héberge `.tesserae/`. En NFS et SMB, cela dépend de la configuration :
+sans lock daemon opérationnel, `flock` peut se dégrader silencieusement en no-op,
+et deux hôtes compileront alors le même projet en même temps en croyant chacun
+détenir un verrou exclusif.
+
+`filesystem_locking` rapporte ce qu’un seul hôte peut déterminer : le type de
+système de fichiers qui porte le projet, s’il s’agit d’un système de fichiers
+réseau, et si une acquisition `flock` réussit tout court. Il avertit sur un
+système de fichiers réseau.
+
+Il **ne peut pas** prouver l’application inter-hôtes, et ne prétend pas le faire.
+Qu’un hôte prenne un verrou ne dit rien sur le fait qu’un second hôte soit
+empêché de le prendre. Si vous faites tourner Tesserae depuis plusieurs machines
+sur un stockage partagé, testez-le directement sur le matériel réel avant de vous
+fier au verrou de compilation.
+
 ## Politique `--fix`
 
 - `--fix` exécute **uniquement** les vérifications marquées SAFE ci-dessus, puis
@@ -52,8 +97,13 @@ Une vérification qui plante est rapportée comme un constat d’erreur — doct
 - Chaque correction est idempotente : lancer `doctor --fix` deux fois laisse le
   second passage propre.
 - Doctor **ne tue jamais un processus et ne supprime jamais un verrou de
-  compilation vivant** — un verrou détenu est rapporté avec son pid propriétaire
-  et laissé tranquille.
+  compilation vivant** — un verrou détenu est rapporté avec le pid et l’hôte qui
+  le détiennent, et laissé tranquille.
+- Doctor **ne touche jamais au pidfile d’une autre machine.** Sur un stockage
+  partagé, la table des processus locale ne dit rien d’un pid écrit par un autre
+  hôte, donc `daemon.<other-host>.pid` est rapporté et sauté inconditionnellement
+  — il n’est même pas lu pour tester la vivacité. Seul le pidfile de cet hôte-ci
+  peut être supprimé.
 - Les opérations lourdes ou réseau (recompilations, installations de
   dépendances, rafraîchissements de backend) ne sont jamais intégrées à
   `--fix` ; doctor affiche la commande à lancer vous-même.

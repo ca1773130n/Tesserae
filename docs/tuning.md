@@ -148,7 +148,8 @@ you navigate cross-project wants the eager pass on.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `TESSERAE_REGISTRY` | `~/.tesserae/registry.json` | Project registry location |
+| `TESSERAE_REGISTRY` | `~/.tesserae/registry.json` | Project registry location. Honoured by **every** command — until 0.28.7 only the engine's fleet mode read it, so setting it elsewhere silently had no effect and commands kept using the real registry |
+| `TESSERAE_HOST_ID` | generated once into `~/.tesserae/host_id` | This machine's identity. See [running several machines](#running-several-machines-against-one-project) |
 | `TESSERAE_DISCOVERY_CACHE` | — | Session-discovery cache |
 | `TESSERAE_ARXIV_CACHE` | — | arXiv metadata cache |
 | `TESSERAE_NO_FEDERATION_CACHE` | off | Disables the federated-graph LRU |
@@ -156,6 +157,81 @@ you navigate cross-project wants the eager pass on.
 | `TESSERAE_FLEET_PIDFILE` | — | Engine fleet pidfile |
 | `TESSERAE_CLIP_TOKEN` | — | Shared secret for the web clipper |
 | `TESSERAE_SCHEMA_DRIFT_APPLY` | off | Applies schema-drift proposals (`tesserae lab`) |
+
+---
+
+## Running several machines against one project
+
+The shape this is written for: several servers each run a coding agent, each has
+its own local session transcripts, and they share a disk — so they see the same
+project directory and the same `.tesserae/`.
+
+**Give one host the compile, and let the rest only harvest.**
+
+```bash
+# on the compiling host
+tesserae engine
+
+# on every other host
+tesserae engine --harvest-only
+```
+
+`--harvest-only` tails that machine's local transcripts into the shared session
+store and never takes the project's compile lock. That removes the contention
+rather than arbitrating it, which is why it beats tuning timeouts.
+
+**When you do want to queue rather than fail**, pass `--wait`:
+
+```bash
+tesserae compile --wait          # up to 30 min, reporting every 5s
+tesserae compile --wait 120      # or name your own bound
+```
+
+Without it, a compile that finds the lock held exits 2 — correct for a hook,
+infuriating for a human. `--wait` is a flag rather than something inferred from
+whether stdout is a terminal, because the same command must not change behaviour
+under `tee`, in tmux capture, or in CI. `TESSERAE_COMPILE_LOCK_WAIT=<seconds>`
+does the same thing for a whole process tree.
+
+**Keeping every project fresh** from one invocation:
+
+```bash
+tesserae refresh --all               # every registered project, sequentially
+tesserae refresh --all --jobs 3      # three at a time
+tesserae compile --all --name alpha --name beta
+```
+
+One project failing does not stop the others. Exit `2` if any failed, `1` if any
+was locked by another run, `0` if everything ran. `--jobs` defaults to 1 because
+a compile is LLM-heavy and raising it spends quota in parallel.
+
+### What makes this safe
+
+Per-machine state used to be stored under one shared name and read by every
+host. Each of these is now partitioned by host id:
+
+| State | Where | Why it has to be per-host |
+|---|---|---|
+| Session records | `.tesserae/harness_sessions/` | A host prunes only what it harvested. Otherwise host B deletes host A's sessions and reports success — every host's scan stamps the same producer and their `~/.claude` paths resolve identically, so nothing else distinguishes them |
+| Engine pidfile | `.tesserae/daemon.<host>.pid` | Liveness is `os.kill(pid, 0)` against the **local** process table; a pid written by another machine is judged against an unrelated local process |
+| Codex scan floor | `.tesserae/harness_sessions.db` | One shared watermark meant whichever host ran last moved it past transcripts the other had not read — those were never imported at all |
+
+The host id is generated once into `~/.tesserae/host_id` (per machine, **not** in
+the shared project directory) and can be pinned with `TESSERAE_HOST_ID`. It is a
+persisted id rather than the hostname because a fleet built from one image reuses
+hostnames, and a collision would hand one machine's records to another.
+
+### The assumption you should test
+
+All of the above assumes `flock(2)` is **enforced** by the filesystem holding
+`.tesserae/`. Over NFS and SMB that is configuration-dependent, and without a
+working lock daemon `flock` can silently degrade to a no-op — at which point two
+hosts compile the same project simultaneously, each believing it holds an
+exclusive lock.
+
+`tesserae doctor` warns when the project sits on a network filesystem, but a
+single host **cannot** prove cross-host enforcement. Test it directly on the real
+hardware: hold a lock on host A and confirm host B is refused.
 
 ---
 

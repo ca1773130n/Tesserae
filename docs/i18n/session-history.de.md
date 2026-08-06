@@ -90,6 +90,18 @@ Wenn du mit deinem eigenen Tool in diesen Store schreibst, verwende `tesserae se
 
 Der Geltungsbereich verengt sich weiter, als zweites Gate: ein Record wird nur gelöscht, wenn sein Transkript auch unter einer Root lebt, die dieser Run gescannt hat, und sein Harness einer war, den er gescannt hat. Also lässt `--harness codex` claude-code Records in Ruhe, selbst wenn `~/.claude` durchsucht wurde.
 
+### Mehrere Maschinen teilen sich ein Projektverzeichnis
+
+Jedes Record trägt außerdem einen **`host`** — die Maschine, die es geerntet hat. **Ein Host bereinigt nur, was er selbst geerntet hat.**
+
+Das ist eine wirklich eigene Achse neben `producer`, und die Gates oben können nicht dafür einspringen. Wenn mehrere Server jeweils Claude Code laufen lassen und sich eine Platte teilen, teilen sie sich auch `.tesserae` — aber jeder von ihnen sieht nur seine eigenen lokalen Transkripte. Der Scan jedes Hosts stempelt dasselbe `tesserae:discover`, und das `~/.claude` jedes Hosts löst zum selben Pfad-String auf; also lassen das Produzenten-Gate und das Geltungsbereichs-Gate *beide* eine Maschine durch, die das Transkript nie gesehen hat. Sie löscht dann das Record einer anderen Maschine und meldet Erfolg. Records tragen jetzt den erntenden Host, und Bereinigen setzt voraus, dass er übereinstimmt.
+
+Die Host-Id liegt in `~/.tesserae/host_id` — pro Maschine, nicht im geteilten Projektverzeichnis — und wird bei der ersten Verwendung einmal generiert. Überschreibe sie mit `TESSERAE_HOST_ID`. Dass es eine persistierte Id ist und nicht der Hostname, hat einen Grund: eine Flotte aus einem einzigen Image verwendet Hostnamen wieder, und eine Hostnamen-Kollision würde die Records der einen Maschine still an eine andere übergeben.
+
+Der **Write**-Pfad ist bewusst host-blind. Zwei Hosts können dieselbe Session nur schreiben, wenn beide das Transkript sehen können; der Write ist also idempotent und stempelt die Eigentümerschaft schlicht auf denjenigen Host um, der zuletzt bewiesen hat, dass er sie sehen kann. Writes stattdessen nach Host zu gaten würde die Records einer stillgelegten Maschine für immer einfrieren, ohne jede Möglichkeit, sie zurückzuholen.
+
+Records, die vor diesem Feld geschrieben wurden, tragen keinen Host. Sie sind auf dieser Achse unowned und überleben die Bereinigung jedes Hosts, bis `--adopt-unowned` sie beansprucht — dieselbe Regel, die `producer` bereits verwendet. Und sie zählt hier deshalb, weil *jedes* von 0.28.7 geschriebene Record einen Produzenten und keinen Host trägt: das Produzenten-Gate würde sich enthalten, und nichts sonst würde sie schützen.
+
 Drei Verhaltensweisen, die es zu wissen gilt:
 
 - **Records, die vor 0.28.7 geschrieben wurden, tragen keinen Produzent.** Sie sind unowned, also kein Importer gibt sie frei oder überschreibt sie — sicher, aber Discovery wird sie auch nicht auffrischen. `sessions discover --import --adopt-unowned` beansprucht sie für Discovery. Führe es einmal aus, wenn Tesseraes eigener Scan das einzige ist, das in diesen Store schreibt; führe es *nicht* aus, wenn auch ein anderes Tool hier schreibt, denn es übergibt deine Records an Discovery.
