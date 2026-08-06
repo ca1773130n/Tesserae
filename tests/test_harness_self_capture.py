@@ -112,14 +112,36 @@ def _declared_system_prompts() -> list[tuple[str, str]]:
             tree = ast.parse(path.read_text(encoding="utf-8"))
         except SyntaxError:  # pragma: no cover — a broken file fails elsewhere
             continue
+
+        # Module-level string constants, so `system=_SUMMARY_SYSTEM` resolves.
+        # Catching only inline literals missed the most common shape in this
+        # codebase by far — a named constant above the call — and three more
+        # self-capturing prompts survived the first pass of this fix because of
+        # it (activity_summary._SUMMARY_SYSTEM, ask_router's scope prompt, and
+        # a second activity-summary variant).
+        consts: dict[str, str] = {}
+        for node in tree.body:
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            value = node.value
+            if not (isinstance(value, ast.Constant) and isinstance(value.value, str)):
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    consts[target.id] = value.value
+
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
             for kw in node.keywords or []:
                 if kw.arg not in ("system", "system_prompt"):
                     continue
+                loc = f"{path.relative_to(pkg)}:{kw.value.lineno}"
                 if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
-                    found.append((f"{path.relative_to(pkg)}:{kw.value.lineno}", kw.value.value))
+                    found.append((loc, kw.value.value))
+                elif isinstance(kw.value, ast.Name) and kw.value.id in consts:
+                    found.append((loc, consts[kw.value.id]))
     return found
 
 

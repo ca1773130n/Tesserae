@@ -566,6 +566,16 @@ _TESSERAE_PROMPT_SIGNATURES: tuple[str, ...] = (
     # ``system=`` kwargs from the AST instead of guessing at verbs.
     "You extract a typed research-intelligence graph",
     "You are a Tesserae liveness probe",
+    # Found only once the anti-drift scanner learned to resolve module-level
+    # constants (`system=_SUMMARY_SYSTEM`) rather than inline literals alone.
+    # Every one of these was landing in the session store as a user session;
+    # the activity-summary prompt accounted for 14 surviving records in this
+    # repo even AFTER the first prune.
+    "You summarize a developer's activity for a time period",
+    "You are summarizing a developer's activity for a time period",
+    "You extract EXPLICIT decisions from a developer's agent-session excerpts",
+    "You judge whether a SOURCE text supports a CLAIM",
+    "You route a question to the right project",
     "You are an extractor that reads agent/user conversation transcripts",
     "You are summarizing a community of related typed research-graph nodes",
     "You are extracting a typed research intelligence graph for Tesserae",
