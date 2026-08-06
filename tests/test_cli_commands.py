@@ -596,8 +596,9 @@ def test_compile_flag_surface_is_small():
     # sessions_enabled + distill_enabled + strict) + the provider-agnostic
     # extractor surface: extractor + llm_model/llm_include/llm_limit (LLM is the
     # default), with the deprecated claude_include/limit/timeout/model hidden
-    # aliases, plus lock_wait = 20 dests max.
-    assert len({a.dest for a in flags}) <= 20, sorted({a.dest for a in flags})
+    # aliases, plus lock_wait and the three --all dests
+    # (all_projects/name/jobs) = 23 dests max.
+    assert len({a.dest for a in flags}) <= 23, sorted({a.dest for a in flags})
 
 
 def test_compile_keeps_exactly_the_dieted_dests():
@@ -636,6 +637,15 @@ def test_compile_keeps_exactly_the_dieted_dests():
         # capture and CI. A background engine holding the lock previously made
         # every interactive compile fail outright.
         "lock_wait",
+        # ``--all`` / ``--name`` / ``--jobs`` run one compile per registered
+        # project with per-project failure isolation. They are flags rather
+        # than config because WHICH projects a single invocation covers is a
+        # property of that invocation, and a machine hosting several projects
+        # otherwise needs a shell loop that stops at the first failure and
+        # reports nothing about the rest.
+        "all_projects",
+        "name",
+        "jobs",
         "llm_provider",
         "claude_config_dir",
         "codex_home",

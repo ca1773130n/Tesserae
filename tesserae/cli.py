@@ -1162,6 +1162,78 @@ def _add_llm_client_args(parser: argparse.ArgumentParser, persisted: bool = Fals
 DEFAULT_LOCK_WAIT_SECONDS = 1800.0
 
 
+def _add_all_projects_args(parser: argparse.ArgumentParser, verb: str) -> None:
+    """Attach ``--all`` / ``--name`` / ``--jobs``: run over every registered project."""
+    parser.add_argument(
+        "--all",
+        dest="all_projects",
+        action="store_true",
+        help=f"Run {verb} for every registered project (see `tesserae projects list`). "
+        "One project failing does not stop the others; exit 2 if any failed, "
+        "1 if any was locked by another run.",
+    )
+    parser.add_argument(
+        "--name",
+        action="append",
+        default=None,
+        help="With --all: limit to a registered project by name; repeat for several. "
+        "Unknown names error (exit 2).",
+    )
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=1,
+        help="With --all: how many projects to run concurrently (default 1). "
+        "A compile is LLM-heavy — raising this spends quota in parallel.",
+    )
+
+
+def _run_over_all_projects(args: argparse.Namespace, verb: str, work) -> int:
+    """Shared ``--all`` driver for compile and refresh.
+
+    ``work(args_for_one_project)`` runs the existing single-project handler, so
+    there is exactly one implementation of what compile/refresh MEAN and this
+    only decides which projects get one and what the run is worth as an exit
+    code.
+    """
+    import copy
+
+    from .multiproject import (
+        exit_code_for,
+        render_outcomes,
+        resolve_projects,
+        run_across_projects,
+    )
+
+    try:
+        targets = resolve_projects(getattr(args, "name", None))
+    except ValueError as exc:
+        print(f"tesserae {verb}: {exc}", file=sys.stderr)
+        return 2
+    if not targets:
+        print(
+            f"tesserae {verb} --all: no projects registered. "
+            "Register one with: tesserae projects register <path>",
+            file=sys.stderr,
+        )
+        return 1
+
+    def _one(name: str, root: Path):
+        per_project = copy.copy(args)
+        per_project.project = str(root)
+        per_project.all_projects = False
+        rc = work(per_project)
+        if rc != 0:
+            # The handler already printed why; surface it as a failed project
+            # rather than swallowing a non-zero code into a green batch.
+            raise RuntimeError(f"{verb} exited {rc}")
+        return {"rc": rc}
+
+    outcomes = run_across_projects(targets, _one, jobs=max(1, int(getattr(args, "jobs", 1) or 1)))
+    print(render_outcomes(outcomes))
+    return exit_code_for(outcomes)
+
+
 def _add_lock_wait_arg(parser: argparse.ArgumentParser) -> None:
     """Attach ``--wait [SECONDS]``: queue for the compile lock, don't fail."""
     parser.add_argument(
@@ -2038,6 +2110,18 @@ def _handle_obsidian_sync(args: argparse.Namespace) -> int:
 
 
 def _handle_refresh(args: argparse.Namespace) -> int:
+    """Run the refresh chain, for one project or for every registered one.
+
+    Keeping ``--all`` as a wrapper around this same function (rather than a
+    second pipeline) is what stops the batch and the single-project path from
+    drifting on what a refresh IS.
+    """
+    if getattr(args, "all_projects", False):
+        return _run_over_all_projects(args, "refresh", _handle_refresh_one)
+    return _handle_refresh_one(args)
+
+
+def _handle_refresh_one(args: argparse.Namespace) -> int:
     """Run the refresh chain (sessions-import -> compile -> obsidian-sync) in-process.
 
     This is success criterion #1 of ENG-01: the refresh sequence is CODE routed
@@ -2607,6 +2691,7 @@ def _build_compile_parser() -> argparse.ArgumentParser:
     parser.add_argument("--retry-fallbacks", action="store_true", help="With --changed-only: re-extract docs whose typed extraction previously failed and was served by the deterministic baseline (provider recovered). Without it those docs stay deterministic until their content changes.")
     parser.add_argument("--limit", type=int, help="Maximum number of changed files to process")
     _add_lock_wait_arg(parser)
+    _add_all_projects_args(parser, "compile")
     parser.add_argument("--strict", action="store_true", help="Exit non-zero when the byte-idempotence tripwire fires or the post-compile lint reports problems (lint errors → exit 2, warnings → exit 1; default: report-only)")
     # Document extractor. Tesserae is an LLM wiki: 'llm' is the DEFAULT — it
     # builds the concept/claim layer via the configured provider (codex/claude/api
@@ -2804,6 +2889,7 @@ def _build_refresh_parser() -> argparse.ArgumentParser:
         message="refresh: --skip-sessions has moved → --no-sessions",
     )
     _add_lock_wait_arg(parser)
+    _add_all_projects_args(parser, "refresh")
     return parser
 
 
@@ -3018,7 +3104,19 @@ def _handle_compile(args: argparse.Namespace) -> int:
     """New-tree compile wrapper. With explicit paths → ad-hoc ingest-only;
     otherwise → the full legacy compile via ``_handle_compile_legacy``."""
     if getattr(args, "paths", None):
+        if getattr(args, "all_projects", False):
+            # Ad-hoc paths are relative to ONE project by definition; silently
+            # ingesting the same paths into every registered project would be a
+            # surprising and hard-to-undo thing to do on the user's behalf.
+            print(
+                "tesserae compile: --all cannot be combined with explicit paths "
+                "(ad-hoc ingest targets a single project)",
+                file=sys.stderr,
+            )
+            return 2
         return _handle_compile_paths_ingest(args)
+    if getattr(args, "all_projects", False):
+        return _run_over_all_projects(args, "compile", _handle_compile_legacy)
     return _handle_compile_legacy(args)
 
 

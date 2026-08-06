@@ -841,28 +841,14 @@ def _load_project_graph(root: Path) -> Optional[object]:
 def _resolve_projects(project_names: Optional[List[str]]) -> List[Tuple[str, Path]]:
     """Resolve the projects to summarize: all registered, or the named subset.
 
-    Default scope is every registered project
-    (``ProjectRegistry.iter_registered_projects()``). ``project_names`` opts into
-    a subset (order preserved as registered). Unknown names raise ``ValueError``
-    — a typo must error, not silently mean "no projects". ``mcp_server`` is
-    imported lazily so this module stays importable from ``mcp_server`` without
-    a cycle.
+    The implementation moved to :mod:`tesserae.multiproject` when ``compile``
+    and ``refresh`` grew ``--all`` and needed exactly this resolution, including
+    the "unknown name is an error, not an empty set" rule. One definition, so
+    the two surfaces cannot drift apart on what ``--name`` means.
     """
-    from tesserae.mcp_server import ProjectRegistry
+    from .multiproject import resolve_projects
 
-    registered = list(ProjectRegistry().iter_registered_projects())
-    if not project_names:
-        return registered
-    wanted = set(project_names)
-    known = {name for name, _root in registered}
-    unknown = [n for n in project_names if n not in known]
-    if unknown:
-        available = ", ".join(sorted(known)) or "(none registered)"
-        raise ValueError(
-            f"unknown project name(s): {', '.join(unknown)}. "
-            f"Available: {available} — see `tesserae projects list`."
-        )
-    return [(name, root) for name, root in registered if name in wanted]
+    return resolve_projects(project_names)
 
 
 def _summary_filename(windows: List[Window]) -> str:
