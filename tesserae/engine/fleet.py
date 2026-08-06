@@ -21,7 +21,7 @@ import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Iterator, Optional
+from typing import Callable, Dict, Iterator, List, Optional, Tuple
 
 try:
     import fcntl
@@ -193,17 +193,54 @@ class FleetDaemon:
         """Thread-safe external stop (signals route here too)."""
         self._stop.set()
 
+    def _run_once_over_registry(self) -> int:
+        """One bounded run per registered project; per-project failure isolation.
+
+        Every unit runs even when an earlier one blows up. Without this, a
+        single project whose ``.tesserae`` is corrupt (or whose pidfile is held
+        by a live daemon — ``Daemon.run`` raises ``RuntimeError`` for that)
+        aborts the loop and every project after it in name order is silently
+        never refreshed, while the fleet still returns 0. A batch run over a
+        registry is only trustworthy if "it returned 0" means every unit ran.
+
+        Returns 1 when any unit failed, 0 when they all succeeded.
+        """
+        results: List[Tuple[str, bool, str]] = []
+        for name, root in sorted(self._desired_projects().items()):
+            try:
+                daemon = self._daemon_factory(name, root, self)
+                rc = daemon.run(once=True)
+            except Exception as exc:  # noqa: BLE001 — one bad project must not end the batch
+                logger.error("unit %s once-run failed: %s", name, exc)
+                results.append((name, False, str(exc)))
+                continue
+            if rc == 0:
+                logger.info("unit %s once-run rc=%d", name, rc)
+                results.append((name, True, ""))
+            else:
+                logger.error("unit %s once-run rc=%d", name, rc)
+                results.append((name, False, f"rc={rc}"))
+        failed = [(name, error) for name, ok, error in results if not ok]
+        if failed:
+            # One line naming every casualty: a batch over 20 projects buries
+            # per-unit errors far above the exit code the operator sees.
+            logger.error(
+                "fleet once-run: %d/%d units ok; failed: %s",
+                len(results) - len(failed),
+                len(results),
+                ", ".join(f"{name} ({error})" for name, error in failed),
+            )
+            return 1
+        logger.info("fleet once-run: %d/%d units ok", len(results), len(results))
+        return 0
+
     def run(self, *, once: bool = False) -> int:
         self._write_pidfile()
         try:
             if once:
                 # Deterministic CI mode: one bounded once-run per project,
                 # sequential, no threads, no signals.
-                for name, root in sorted(self._desired_projects().items()):
-                    daemon = self._daemon_factory(name, root, self)
-                    rc = daemon.run(once=True)
-                    logger.info("unit %s once-run rc=%d", name, rc)
-                return 0
+                return self._run_once_over_registry()
             # Fleet uses signal.signal (main-thread only); unit Daemons use loop.add_signal_handler — see daemon.py.
             try:
                 for sig in (signal.SIGTERM, signal.SIGINT):

@@ -2491,11 +2491,23 @@ def _handle_engine(args: argparse.Namespace) -> int:
 
     from .engine.daemon import Daemon
 
+    # --harvest-only is the shape a shared-disk fleet actually wants: N hosts
+    # each tailing the transcripts only they can see, and ONE host compiling.
+    # Every knob is stated rather than inferred, because a flag whose whole
+    # promise is "this process never takes the compile lock" must not depend on
+    # a default elsewhere continuing to imply it. Consolidation is off too: it
+    # does not take the compile lock, but it does spend LLM calls, and a
+    # harvester asked for a transcript tail, not a background summarizer.
+    harvest_only = bool(getattr(args, "harvest_only", False))
     daemon = Daemon(
         Path(args.project or ".").resolve(),
         debounce=args.debounce,
         watch_interval=args.interval,
-        consolidate=getattr(args, "consolidate", True),
+        enable_watch=not harvest_only,
+        enable_vault=not harvest_only,
+        enable_session_tail=True,
+        enable_compile=not harvest_only,
+        consolidate=False if harvest_only else getattr(args, "consolidate", True),
         consolidate_idle_seconds=getattr(args, "consolidate_idle", 300.0),
         consolidate_max_interval_seconds=getattr(args, "consolidate_every", 21600.0),
         consolidate_check_interval=getattr(args, "consolidate_check", 30.0),
@@ -2711,6 +2723,15 @@ def _build_engine_parser() -> argparse.ArgumentParser:
     parser.add_argument("--interval", type=float, default=2.0, help="Polling interval in seconds (default: 2)")
     parser.add_argument("--debounce", type=float, default=1.0, help="Quiet window after a burst of edits before rebuilding (default: 1.0)")
     parser.add_argument("--once", action="store_true", help="Run a single drain cycle then exit (deterministic; no long-running loop)")
+    parser.add_argument(
+        "--harvest-only",
+        action="store_true",
+        help=(
+            "Tail this machine's local agent transcripts into the project's session "
+            "store and never compile. For a fleet of servers sharing one project "
+            "directory: every host harvests what only it can see, one host compiles."
+        ),
+    )
     parser.add_argument(
         "--all",
         action="store_true",
@@ -5943,7 +5964,7 @@ def _build_doctor_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--all", dest="all_projects", action="store_true", help="Doctor every registered project (ignores --project)")
-    parser.add_argument("--fix", action="store_true", help="Apply the safe fixes only: registry prune, site rebuild, lint trivial fixes, stale daemon.pid removal, build-history trim, hook-log rotation, vault mkdir, git worktree prune. Never kills or removes a live compile lock.")
+    parser.add_argument("--fix", action="store_true", help="Apply the safe fixes only: registry prune, site rebuild, lint trivial fixes, stale daemon-pidfile removal (THIS host's only — another machine's pidfile is never touched), build-history trim, hook-log rotation, vault mkdir, git worktree prune. Never kills or removes a live compile lock.")
     parser.add_argument("--json", dest="doctor_json", action="store_true", help="Print the JSON report to stdout instead of the markdown checklist")
     return parser
 

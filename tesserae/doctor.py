@@ -20,8 +20,13 @@ against source):
   carries hashes only. Doctor recomputes the same signal post-hoc: graph
   layer identical to the recorded snapshot while projections drifted.
 * The live compile lock is probed NON-blocking and reported with the holder
-  pid only. Doctor never kills or removes it (recorded failure mode:
-  SessionEnd compile pile-ups).
+  pid and machine only. Doctor never kills or removes it (recorded failure
+  mode: SessionEnd compile pile-ups).
+* Machine-scoped state is judged per machine. Several hosts can mount the
+  same disk and therefore share one ``.tesserae``, so a pidfile or a lock
+  record written elsewhere is described and left alone — ``os.kill(pid, 0)``
+  answers about the local process table and says nothing about another
+  host's pid. ``--fix`` never touches a foreign host's file.
 
 This module never imports :mod:`tesserae.cli`. Heavy or optional subsystems
 (registry, lint, detection, embeddings, session_chunks) are imported lazily
@@ -193,16 +198,57 @@ def _aware(now: datetime) -> datetime:
     return now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
 
 
+def _local_host_id() -> str:
+    """This machine's stable id, or ``""`` when it cannot be resolved.
+
+    Several servers can mount the same disk and therefore share ONE
+    ``.tesserae``. Nothing in a pidfile or a lock record used to say which
+    machine wrote it, so every host read the others' records as its own —
+    and ``doctor --fix`` unlinked a pidfile belonging to a daemon that was
+    running perfectly well on a different server. Imported lazily and
+    defensively for the same reason ``locking._host_tag`` is: doctor must
+    still run when the session store cannot be imported or ``~/.tesserae``
+    is unwritable.
+    """
+    try:
+        from .harness_sessions import local_host_id
+
+        return local_host_id()
+    except Exception:  # noqa: BLE001 — identity is a nicety, the checks are not
+        return ""
+
+
+def _daemon_pidfiles(ctx: DoctorContext) -> List[tuple[str, Path]]:
+    """``[(host, path)]`` for every ``.tesserae/daemon*.pid``.
+
+    ``host`` is the id embedded in ``daemon.<host>.pid``, and ``""`` for the
+    legacy unqualified ``daemon.pid`` written before pidfiles carried an
+    owner. Missing ``.tesserae`` yields ``[]`` — ``Path.glob`` on an absent
+    directory is empty, not an error.
+    """
+    out: List[tuple[str, Path]] = []
+    for path in sorted(_tesserae_dir(ctx).glob("daemon*.pid")):
+        middle = path.name[len("daemon"): -len(".pid")]
+        out.append((middle[1:] if middle.startswith(".") else middle, path))
+    return out
+
+
 # ---------------------------------------------------------------------------
 # monkeypatchable probes (kept module-level so tests can pin them)
 # ---------------------------------------------------------------------------
 
 
 def _llm_login_status() -> Dict[str, Optional[bool]]:
-    """{'claude': True|False|None, 'codex': ...} — credentialed-CLI probe.
+    """{'claude': True|False|None, 'codex': ...} — CLI *config presence*.
 
     Reuses ``setup.detection._probe_credentials`` which defers to
-    ``llm_json._claude_cli_available`` / ``_codex_cli_available``.
+    ``llm_json._claude_cli_available`` / ``_codex_cli_available``. Read what
+    those actually test before trusting a ``True``: the binary is on PATH and
+    some config dir contains one of ``settings.json`` / ``history.jsonl`` /
+    ``auth.json``. Those files prove the CLI has been USED at some point.
+    None of them expires when the OAuth session does, so this cannot answer
+    "is it logged in" and the finding that consumes it must not say it does —
+    see :func:`_detect_llm_login`.
     """
     out: Dict[str, Optional[bool]] = {"claude": None, "codex": None}
     try:
@@ -215,6 +261,137 @@ def _llm_login_status() -> Dict[str, Optional[bool]]:
         except Exception:
             out[name] = None
     return out
+
+
+def _project_claude_config_dirs(ctx: DoctorContext) -> List[str]:
+    """The claude config dirs a compile in THIS project would actually try.
+
+    Resolved through ``llm_json.resolve_llm_client_settings`` — the same call
+    ``ProjectWiki._build_json_client`` makes — so the check talks about the
+    accounts the project configured instead of every ``~/.claude*`` that
+    happens to exist on the box. That glob is how doctor came to name two
+    healthy-looking CLIs while the compile it was meant to explain had tried
+    exactly one config dir and been refused. ``[]`` means there is no
+    project-scoped claude list to report — either nothing is configured (the
+    client then discovers dirs itself) or claude is not what a compile here
+    reaches for first, see below.
+    """
+    try:
+        from .llm_json import resolve_llm_client_settings
+
+        cfg = ctx.wiki.config() if ctx.wiki is not None else {}
+        settings = resolve_llm_client_settings(cfg if isinstance(cfg, dict) else {})
+    except Exception:  # noqa: BLE001 — an unreadable config must never crash doctor
+        return []
+    # ``llm_claude_config_dirs`` is resolved for every provider, but
+    # ``build_default_json_client`` only puts the claude CLI first when the
+    # provider IS claude — under ``llm_provider: codex`` (or the API-key
+    # providers) claude is a fallback that a healthy project never reaches.
+    # Reporting the claude dirs regardless turned a missing ~/.claude into a
+    # WARN and exit 1 on a project whose compiles were succeeding through
+    # codex, which is the same untrue-claim defect this check was rewritten to
+    # stop making, only pointing the other way.
+    if str(settings.get("provider") or "claude") != "claude":
+        return []
+    return [str(d) for d in (settings.get("claude_config_dirs") or [])]
+
+
+#: Filesystem types on which flock(2) is not reliably enforced BETWEEN hosts:
+#: network mounts, and the host/guest shared folders that behave like them.
+#: Some server+client combinations honour it and several silently degrade to
+#: a no-op, and nothing observable from one machine tells those two apart.
+_NETWORK_FS_TYPES = frozenset({
+    "nfs", "nfs3", "nfs4", "cifs", "smbfs", "smb", "smb2", "afpfs",
+    "webdav", "davfs", "davfs2", "fuse.sshfs", "fuse.rclone", "fuse.s3fs",
+    "9p", "ceph", "glusterfs", "lustre", "afs", "vboxsf", "virtiofs",
+})
+
+
+def _mount_table() -> List[tuple[str, str]]:
+    """``[(mountpoint, fstype)]`` for this machine, ``[]`` when unavailable.
+
+    Module-level so tests can pin a filesystem the dev box does not have.
+    Linux answers from ``/proc/mounts`` with no subprocess at all; macOS/BSD
+    have no ``/proc`` and no stdlib call that names a filesystem type, so
+    ``mount`` is parsed. ``df -T`` is deliberately not used: on Linux it
+    prints the type, on macOS the same flag *filters* by type instead.
+    """
+    entries: List[tuple[str, str]] = []
+    proc_mounts = Path("/proc/mounts")
+    if proc_mounts.exists():
+        try:
+            text = proc_mounts.read_text(encoding="utf-8")
+        except OSError:
+            return []
+        for line in text.splitlines():
+            parts = line.split()
+            if len(parts) >= 3:
+                entries.append((parts[1].replace("\\040", " "), parts[2]))
+        return entries
+    try:
+        completed = subprocess.run(["mount"], capture_output=True, text=True, timeout=20)
+    except Exception:
+        return []
+    if completed.returncode != 0:
+        return []
+    for line in completed.stdout.splitlines():
+        # BSD/macOS shape: "<device> on <mountpoint> (<fstype>, <opt>, ...)".
+        if " on " not in line or "(" not in line:
+            continue
+        mountpoint, _, tail = line.split(" on ", 1)[1].rpartition(" (")
+        fstype = tail.split(",", 1)[0].strip().rstrip(")")
+        if mountpoint and fstype:
+            entries.append((mountpoint, fstype))
+    return entries
+
+
+def _filesystem_type(path: Path) -> Optional[str]:
+    """The fs type of the mount ``path`` sits on, or None if undetermined.
+
+    Longest matching mountpoint wins: ``/`` matches everything, so a shorter
+    prefix must never outrank the ``/mnt/shared`` the project is actually on.
+    """
+    try:
+        target = str(Path(path).resolve())
+    except OSError:
+        return None
+    best_len = -1
+    best: Optional[str] = None
+    for mountpoint, fstype in _mount_table():
+        if target == mountpoint or target.startswith(mountpoint.rstrip("/") + "/"):
+            if len(mountpoint) > best_len:
+                best_len, best = len(mountpoint), fstype
+    return best
+
+
+def _flock_probe(directory: Path) -> tuple[bool, str]:
+    """``(acquired, detail)`` for a NON-BLOCKING exclusive flock on ``directory``.
+
+    The directory's own fd is locked rather than a file inside it, because
+    ``run_doctor`` without ``--fix`` is checksum-verified to leave the tree
+    byte-identical — the probe may not create even a temporary file — and a
+    temp file under ``/tmp`` would answer for the wrong filesystem, which is
+    the one thing this check exists to identify.
+    """
+    import fcntl
+
+    try:
+        fd = os.open(str(directory), os.O_RDONLY)
+    except OSError as exc:
+        return False, f"cannot open the directory: {exc}"
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        # Held by someone else — which is itself proof that this kernel is
+        # enforcing flock here, so it counts as a successful probe.
+        return True, "already held by another process, so flock is being enforced"
+    except OSError as exc:
+        return False, f"{type(exc).__name__}: {exc}"
+    else:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return True, "acquired and released"
+    finally:
+        os.close(fd)
 
 
 def _embedding_probe() -> dict:
@@ -575,22 +752,31 @@ def _detect_compile_lock(ctx: DoctorContext) -> Optional[Finding]:
         try:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
-            holder = ""
-            try:
-                handle.seek(0)
-                pid = handle.read().strip()
-                if pid:
-                    holder = f" by pid {pid}"
-            except OSError:
-                pass
+            from .locking import describe_holder, read_holder
+
+            # The holder record is JSON — ``{"pid": …, "host": …}`` — because
+            # several machines can share this ``.tesserae`` and pid 4711 here
+            # says nothing about pid 4711 there; ``read_holder`` still accepts
+            # the bare integer older versions wrote, the same back-compat
+            # idiom ``pidlock.parse`` uses. Naming the machine IS the finding:
+            # "a compile is running" means something entirely different when
+            # it is running on a server the operator is not looking at.
+            holder = read_holder(lock_path)
+            host = str((holder or {}).get("host") or "")
+            elsewhere = " on another machine" if host and host != _local_host_id() else ""
             # NEVER kill or remove a live compile lock (SessionEnd pile-up
             # failure mode). Report the holder and stand down.
             return _f(
                 "compile_lock",
                 "processes",
                 WARN,
-                f"a compile/refresh is running (lock held{holder}) — doctor will not touch it",
-                suggestion="wait for the running compile to finish",
+                f"a compile/refresh is running{elsewhere}"
+                f"{describe_holder(holder)} — doctor will not touch it",
+                suggestion=(
+                    f"wait for the compile on {host} to finish"
+                    if elsewhere
+                    else "wait for the running compile to finish"
+                ),
             )
         fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
         return _f("compile_lock", "processes", OK, "compile.lock present but not held")
@@ -598,51 +784,207 @@ def _detect_compile_lock(ctx: DoctorContext) -> Optional[Finding]:
         handle.close()
 
 
-def _detect_daemon_pid(ctx: DoctorContext) -> Optional[Finding]:
-    if ctx.wiki is None:
-        return None
-    pidfile = _tesserae_dir(ctx) / "daemon.pid"
-    if not pidfile.exists():
-        return _f("daemon_pid", "processes", OK, "no engine daemon pidfile")
-    from .engine import pidlock
-
-    owner = pidlock.read_owner(pidfile)
-    if owner is not None and pidlock.owner_is_alive(owner):
-        return _f("daemon_pid", "processes", OK, f"engine daemon running (pid {owner['pid']})")
-    return _f(
-        "daemon_pid",
-        "processes",
-        WARN,
-        "stale daemon.pid — recorded owner is not running",
-        suggestion="tesserae doctor --fix (removes the stale pidfile)",
-        fixable=True,
+def _foreign_pidfile_note(foreign: List[str]) -> str:
+    """The trailing clause naming pidfiles this host must not judge."""
+    if not foreign:
+        return ""
+    return (
+        f"; {len(foreign)} pidfile(s) belong to other hosts ({', '.join(foreign)}) "
+        "and are neither judged nor removed from here"
     )
 
 
-def _fix_daemon_pid(ctx: DoctorContext) -> Optional[str]:
-    pidfile = _tesserae_dir(ctx) / "daemon.pid"
-    if not pidfile.exists():
+def _detect_daemon_pid(ctx: DoctorContext) -> Optional[Finding]:
+    """Liveness of the engine daemon pidfile THIS host owns, and only that.
+
+    ``pidlock.owner_is_alive`` ends in ``os.kill(pid, 0)``, which interrogates
+    the LOCAL process table. Against a record written by another machine that
+    verdict is not merely unreliable, it is meaningless — and acting on it
+    made ``--fix`` unlink the pidfile of a daemon that was running on a
+    different server, on the shared disk they both mount. So the pidfiles are
+    partitioned by the host id in their name and every foreign one is reported
+    as-is, never probed and never fixable.
+    """
+    if ctx.wiki is None:
         return None
+    entries = _daemon_pidfiles(ctx)
+    if not entries:
+        return _f("daemon_pid", "processes", OK, "no engine daemon pidfile")
     from .engine import pidlock
 
-    owner = pidlock.read_owner(pidfile)
-    if owner is not None and pidlock.owner_is_alive(owner):
-        return None  # re-check at fix time: never remove a live daemon's pidfile
-    pidfile.unlink(missing_ok=True)
-    return "daemon.pid: removed stale pidfile (owner dead)"
+    local = _local_host_id()
+    note = _foreign_pidfile_note(sorted(host for host, _ in entries if host and host != local))
+    stale: List[str] = []
+    live: List[int] = []
+    for host, path in entries:
+        if host and host != local:
+            continue
+        # An unqualified ``daemon.pid`` names no owner, so it can only be
+        # judged the way it was judged before hosts had ids: locally. Keeping
+        # that is what makes upgrading a single-machine install a no-op, and
+        # the ambiguity ends the first time the daemon rewrites the file under
+        # its ``daemon.<host>.pid`` name.
+        owner = pidlock.read_owner(path)
+        if owner is not None and pidlock.owner_is_alive(owner):
+            live.append(owner["pid"])
+        else:
+            stale.append(path.name)
+    if stale:
+        return _f(
+            "daemon_pid",
+            "processes",
+            WARN,
+            f"stale {', '.join(stale)} — recorded owner is not running{note}",
+            suggestion="tesserae doctor --fix (removes the stale pidfile)",
+            fixable=True,
+        )
+    if live:
+        return _f("daemon_pid", "processes", OK, f"engine daemon running (pid {live[0]}){note}")
+    return _f("daemon_pid", "processes", OK, f"no engine daemon pidfile for this host{note}")
+
+
+def _fix_daemon_pid(ctx: DoctorContext) -> Optional[str]:
+    from .engine import pidlock
+
+    local = _local_host_id()
+    removed: List[str] = []
+    for host, path in _daemon_pidfiles(ctx):
+        if host and host != local:
+            continue  # another machine's record — never, under any circumstance
+        owner = pidlock.read_owner(path)
+        if owner is not None and pidlock.owner_is_alive(owner):
+            continue  # re-check at fix time: never remove a live daemon's pidfile
+        path.unlink(missing_ok=True)
+        removed.append(path.name)
+    if not removed:
+        return None
+    return f"{', '.join(removed)}: removed stale pidfile (owner dead)"
 
 
 def _detect_llm_login(ctx: DoctorContext) -> Optional[Finding]:
+    """Report that an LLM CLI is CONFIGURED — never that it is logged in.
+
+    This check used to say "credentialed LLM CLI: claude, codex" on the
+    strength of ``~/.claude/history.jsonl`` existing. A file the CLI wrote
+    the last time it ran does not expire when the OAuth session does, so the
+    check was structurally unable to see a logged-out CLI: ``tesserae
+    compile`` printed "Claude CLI not logged in (tried 1 config dir)" and, in
+    the same second, doctor printed "[ok] llm_login: credentialed LLM CLI:
+    claude, codex".
+
+    Only one thing settles the question, and it is what compile itself does:
+    run ``claude -p`` and read the "not logged in" refusal
+    (``llm_json.ClaudeCLIJsonClient._run_prompt``). That spends a real model
+    call, a network round trip and several seconds on every ``tesserae
+    doctor`` — and on every MCP ``doctor_run`` — which a read-only diagnostic
+    must not do. So the finding is scoped to the config dirs compile would
+    actually try, and states only what it verified: that they exist. The
+    green check no longer contradicts the failure the user is standing in,
+    because it no longer makes the claim that was being contradicted.
+    """
+    dirs = _project_claude_config_dirs(ctx)
+    if dirs:
+        present = [d for d in dirs if Path(d).is_dir()]
+        if not present:
+            return _f(
+                "llm_login",
+                "environment",
+                WARN,
+                "none of the claude config dirs this project is configured to use exist: "
+                + ", ".join(dirs),
+                suggestion="claude /login, or correct llm_claude_config_dirs in .tesserae/config.json",
+            )
+        return _f(
+            "llm_login",
+            "environment",
+            OK,
+            f"claude config dir(s) this project would use exist ({', '.join(present)}) "
+            "— credentials NOT verified: doctor spends no LLM call, so a logged-out CLI "
+            "looks exactly like this",
+            suggestion="if compile reports `not logged in`, run `claude /login` for that config dir",
+        )
     status = _llm_login_status()
-    logged_in = sorted(name for name, value in status.items() if value is True)
-    if logged_in:
-        return _f("llm_login", "environment", OK, f"credentialed LLM CLI: {', '.join(logged_in)}")
+    configured = sorted(name for name, value in status.items() if value is True)
+    if configured:
+        return _f(
+            "llm_login",
+            "environment",
+            OK,
+            f"LLM CLI config present: {', '.join(configured)} — credentials NOT verified "
+            "(a config dir is not a live token; only a compile proves the CLI is logged in)",
+            suggestion="if compile reports `not logged in`, run `claude /login` or `codex login`",
+        )
     return _f(
         "llm_login",
         "environment",
         WARN,
-        "no credentialed LLM CLI detected — LLM-backed features degrade to no-LLM paths",
+        "no LLM CLI config detected — LLM-backed features degrade to no-LLM paths",
         suggestion="claude /login  or  codex login",
+    )
+
+
+def _detect_filesystem_locking(ctx: DoctorContext) -> Optional[Finding]:
+    """Name the filesystem under ``.tesserae`` and probe flock(2) on it.
+
+    Every concurrency guarantee in this project — the compile lock, the
+    agent-write lock, the daemon pidfile handshake — rests on flock(2) being
+    enforced. Over NFS/SMB that is configuration-dependent and silently
+    degrades to a no-op on some setups, which would leave ``compile.lock``
+    protecting nothing while looking exactly as healthy as it does now.
+
+    Be precise about the reach of this probe. One machine can establish two
+    things: which filesystem the project sits on, and whether its own kernel
+    honours flock there. It cannot establish that two hosts flocking the same
+    file see each other — a local acquisition succeeds identically whether
+    the lock is global or private to this host. Only a second machine can
+    settle that, so the finding says so instead of implying the guarantee.
+    """
+    if ctx.wiki is None:
+        return None
+    try:
+        import fcntl  # noqa: F401 — presence is the platform test
+    except ImportError:  # pragma: no cover — Windows
+        return _f(
+            "filesystem_locking",
+            "processes",
+            OK,
+            "flock unsupported on this platform — skipped",
+        )
+    tdir = _tesserae_dir(ctx)
+    if not tdir.is_dir():
+        return None
+    fstype = _filesystem_type(tdir)
+    named = fstype or "an undetermined filesystem type"
+    acquired, detail = _flock_probe(tdir)
+    if not acquired:
+        return _f(
+            "filesystem_locking",
+            "processes",
+            WARN,
+            f"flock(2) was refused on {tdir} ({named}): {detail} — the compile lock and the "
+            "engine pidfile handshake protect nothing on this filesystem",
+            suggestion="put .tesserae on a filesystem that enforces flock, or serialize compiles yourself",
+        )
+    if fstype in _NETWORK_FS_TYPES:
+        return _f(
+            "filesystem_locking",
+            "processes",
+            WARN,
+            f"project is on a network filesystem ({fstype}), where flock(2) is enforced across "
+            f"hosts only on some configurations and is a silent no-op on others. The local probe "
+            f"succeeded ({detail}), which proves only that THIS host honours it — whether another "
+            "machine's lock is visible here cannot be determined from one machine",
+            suggestion=(
+                "if several machines share this .tesserae, verify flock between two of them "
+                "before relying on the compile lock"
+            ),
+        )
+    return _f(
+        "filesystem_locking",
+        "processes",
+        OK,
+        f"project is on {named}; flock(2) {detail} here — a single-host probe, which cannot "
+        "prove enforcement between machines",
     )
 
 
@@ -1032,6 +1374,7 @@ CHECKS: List[Check] = [
     Check("site_search_index", "freshness", _detect_site_stale, fix=_fix_site_stale, safe=True),
     Check("wiki_lint", "graph", _detect_wiki_lint, fix=_fix_wiki_lint, safe=True),
     Check("compile_lock", "processes", _detect_compile_lock),  # report-only, NEVER kill
+    Check("filesystem_locking", "processes", _detect_filesystem_locking),  # read-only probe
     Check("daemon_pid", "processes", _detect_daemon_pid, fix=_fix_daemon_pid, safe=True),
     Check("llm_login", "environment", _detect_llm_login),
     Check("optional_deps", "environment", _detect_optional_deps),

@@ -255,3 +255,94 @@ def test_default_graph_path_still_works_when_no_registry_used(tmp_path):
     summary = server.call_tool("graph_summary", {})
 
     assert summary["node_count"] == 2
+
+
+# ---------------------------------------------------------------------------
+# TESSERAE_REGISTRY override
+# ---------------------------------------------------------------------------
+
+def test_registry_path_honours_tesserae_registry_env(tmp_path, monkeypatch):
+    """``TESSERAE_REGISTRY`` must actually redirect the registry.
+
+    The var is printed by ``tesserae engine --help`` and listed in
+    docs/tuning.md, but only the fleet daemon ever read it: every other entry
+    point (ask, serve, projects list, doctor) constructs ``ProjectRegistry()``
+    with no path, so it fell through to ``~/.tesserae/registry.json``. An
+    auditor set the var to a scratch path for a whole session believing the run
+    was isolated and kept federating across their six real projects.
+    """
+    from tesserae.mcp_server import ProjectRegistry
+
+    scratch = tmp_path / "scratch" / "registry.json"
+    monkeypatch.setenv("TESSERAE_REGISTRY", str(scratch))
+
+    reg = ProjectRegistry()
+    assert reg.path == scratch
+
+    reg.register(str(_make_project(tmp_path, "omicron")))
+    assert scratch.exists()
+    assert json.loads(scratch.read_text(encoding="utf-8"))["projects"].keys() == {"omicron"}
+
+
+def test_explicit_registry_path_beats_the_env_var(tmp_path, monkeypatch):
+    """A caller that passes a path (``--registry``, the MCP server) means it."""
+    from tesserae.mcp_server import ProjectRegistry
+
+    monkeypatch.setenv("TESSERAE_REGISTRY", str(tmp_path / "from-env.json"))
+
+    explicit = tmp_path / "explicit.json"
+    assert ProjectRegistry(explicit).path == explicit
+
+
+def test_registry_env_var_expands_a_leading_tilde(tmp_path, monkeypatch):
+    """The advertised example is ``TESSERAE_REGISTRY=~/.tesserae/registry.json``.
+
+    Anything that passes the var through unexpanded (a config file, a
+    supervisor that does not run a shell) would otherwise create a directory
+    literally named ``~`` in the working directory.
+    """
+    from tesserae.mcp_server import ProjectRegistry
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("TESSERAE_REGISTRY", "~/.tesserae/registry.json")
+
+    assert ProjectRegistry().path == tmp_path / ".tesserae" / "registry.json"
+
+
+def test_unset_env_var_leaves_the_default_registry_path(tmp_path, monkeypatch):
+    """A single-machine deployment with no config keeps the old behaviour."""
+    from tesserae import mcp_server
+
+    monkeypatch.delenv("TESSERAE_REGISTRY", raising=False)
+    default = tmp_path / "default-registry.json"
+    monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", default)
+
+    assert mcp_server.ProjectRegistry().path == default
+
+
+# ---------------------------------------------------------------------------
+# Concurrent saves
+# ---------------------------------------------------------------------------
+
+def test_save_never_uses_one_fixed_temp_path(tmp_path):
+    """``save`` must not publish through ``registry.tmp``.
+
+    ``with_suffix(".tmp")`` REPLACES the suffix, so every writer shared the one
+    path ``registry.tmp``; two concurrent registrations (two hosts on a shared
+    home, or ``register_project`` racing the fleet's reconciliation) interleave
+    their JSON in it and rename the mixture over the registry, which then fails
+    to parse and takes every project down with it. Occupying the fixed name
+    with a *directory* is what tells the two implementations apart.
+    """
+    from tesserae.mcp_server import ProjectRegistry
+
+    registry_path = tmp_path / "registry.json"
+    (tmp_path / "registry.tmp").mkdir()
+
+    reg = ProjectRegistry(registry_path)
+    reg.register(str(_make_project(tmp_path, "sigma")))
+
+    assert json.loads(registry_path.read_text(encoding="utf-8"))["projects"].keys() == {"sigma"}
+    # The per-writer scratch file is cleaned up by the rename; leaving one
+    # orphan per save would be a leak the fixed name did not have.
+    assert list(tmp_path.glob("registry.tmp.*")) == []

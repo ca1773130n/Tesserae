@@ -85,8 +85,34 @@ def _file_signature(path: Path) -> "tuple[int, float]":
 class SessionTailer:
     """Seek-based, partial-line-safe tailer; writes the store, then enqueues."""
 
+    #: Host-agnostic scan-floor key, written by every version before the floor
+    #: was host-qualified. Still READ once as a seed — see :meth:`_host_floor_key`.
     _FLOOR_META_KEY = "codex_dir_floor"
     _FLOOR_LOOKBACK_S = 7 * 86400.0
+
+    @classmethod
+    def _host_floor_key(cls) -> str:
+        """The Codex scan-floor meta key scoped to THIS machine.
+
+        ``harness_sessions.db`` lives in the project's ``.tesserae/``, which
+        several servers can share over one disk — but each of them tails its
+        OWN local transcript tree. Under a single ``codex_dir_floor`` the host
+        that enumerated last pushes the floor past date directories another
+        host has never read, and since the floor only ever moves forward those
+        transcripts are then never imported by anyone. Qualifying the key by
+        host gives each machine the floor it actually earned.
+
+        Degrades to the unqualified key when no host id can be determined,
+        which is exactly the single-host behaviour it replaces.
+        """
+        try:
+            from ..harness_sessions import local_host_id
+
+            host = local_host_id().strip()
+        except Exception as exc:  # noqa: BLE001 — a meta key must not break the tailer
+            logger.debug("no host id available (%s); using the shared scan floor", exc)
+            host = ""
+        return f"{cls._FLOOR_META_KEY}:{host}" if host else cls._FLOOR_META_KEY
 
     def __init__(
         self,
@@ -128,7 +154,20 @@ class SessionTailer:
         # value re-peeks recently-touched date dirs (a Codex session resumed
         # after the previous run may have grown an older rollout).
         self._codex_dir_floor = 0.0
-        persisted_floor = self.sessions_db.get_meta(self._FLOOR_META_KEY)
+        self._floor_key = self._host_floor_key()
+        persisted_floor = self.sessions_db.get_meta(self._floor_key)
+        if not persisted_floor and self._floor_key != self._FLOOR_META_KEY:
+            # Upgrade path: adopt the pre-fix, host-agnostic floor as this
+            # host's seed so an existing single-host store does not redo the
+            # full cold sweep on first start after the upgrade. The legacy row
+            # is only READ — never rewritten, never deleted — because a second
+            # host sharing this store needs the same seed when it upgrades. From
+            # the first enumerate onward each host writes only its own key, so
+            # the collision stops there. On a store two hosts were already
+            # sharing, the seed is whatever the last of them wrote: no worse
+            # than the behaviour being fixed, and the lookback below still
+            # re-peeks recently touched date dirs.
+            persisted_floor = self.sessions_db.get_meta(self._FLOOR_META_KEY)
         if persisted_floor:
             try:
                 self._codex_dir_floor = max(0.0, float(persisted_floor) - self._FLOOR_LOOKBACK_S)
@@ -194,7 +233,7 @@ class SessionTailer:
         # Persist so a restarted tailer resumes here instead of re-sweeping the
         # full history. Best-effort: a DB hiccup must not kill the enumerate.
         try:
-            self.sessions_db.set_meta(self._FLOOR_META_KEY, str(scan_started))
+            self.sessions_db.set_meta(self._floor_key, str(scan_started))
         except Exception as exc:  # noqa: BLE001 — durable floor is an optimization
             logger.warning("could not persist codex dir floor: %s", exc)
 

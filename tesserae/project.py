@@ -1969,12 +1969,15 @@ class ProjectWiki:
         }
         path = self.paths.hierarchy
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(
+        # Published through the shared helper for the same reason the graph
+        # artifacts are: ``with_suffix(".tmp")`` gave every writer the one path
+        # ``.tesserae/hierarchy.tmp``, and ``.tesserae/`` is on the disk the
+        # whole fleet shares, so two hosts compiling the same project at once
+        # interleaved their dendrograms into it and renamed the mixture here.
+        _publish_atomically(
+            path,
             json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
         )
-        os.replace(tmp, path)
         return {cid for level_map in levels_payload for cid in level_map}
 
     def _merge_community_summaries(self, graph: ResearchGraph, cfg: dict) -> ResearchGraph:
@@ -2186,12 +2189,17 @@ class ProjectWiki:
 
     def _write_manifest(self, manifest: dict) -> None:
         self.paths.manifest.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.paths.manifest.with_suffix(".tmp")
-        tmp.write_text(
+        # This one is the least forgiving of the fixed-``.tmp`` writers, which
+        # is why it goes through the same helper: ``_load_manifest`` above
+        # calls ``json.loads`` with no guard, so a manifest two hosts
+        # interleaved into the shared ``.tesserae/manifest.tmp`` does not
+        # degrade to a full re-extraction — it raises ``JSONDecodeError`` out
+        # of every subsequent compile on every host until someone deletes the
+        # file by hand.
+        _publish_atomically(
+            self.paths.manifest,
             json.dumps({"files": manifest}, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
         )
-        tmp.rename(self.paths.manifest)
 
     def compile(
         self,

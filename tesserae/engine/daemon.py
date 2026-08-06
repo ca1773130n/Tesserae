@@ -87,7 +87,14 @@ class Daemon:
     ``Pipeline.run()``.
     """
 
+    #: Host-agnostic pidfile name. Still used verbatim when no host id can be
+    #: determined — see :meth:`_pidfile_name`.
     PIDFILE_NAME = "daemon.pid"
+
+    #: First and largest wait between re-attempts of a compile that found the
+    #: per-project compile lock held by someone else (see :meth:`_run_pipeline`).
+    DEFER_BACKOFF_START = 2.0
+    DEFER_BACKOFF_MAX = 60.0
 
     def __init__(
         self,
@@ -102,6 +109,7 @@ class Daemon:
         enable_watch: bool = True,
         enable_vault: bool = True,
         enable_session_tail: bool = True,
+        enable_compile: Optional[bool] = None,
         consolidate: bool = True,
         consolidate_idle_seconds: float = 300.0,
         consolidate_max_interval_seconds: float = 21600.0,
@@ -125,6 +133,18 @@ class Daemon:
         self._enable_watch = enable_watch
         self._enable_vault = enable_vault
         self._enable_session_tail = enable_session_tail
+        # Harvest-only mode. With both content watchers off there is nothing a
+        # compile here could pick up that the compiling host will not see
+        # anyway, and on a fleet of servers sharing one disk the per-project
+        # compile lock is the contended resource: N-1 hosts should tail their
+        # own local transcripts into the shared sessions store and never reach
+        # for it. Inferred rather than required so no existing caller changes;
+        # pass ``enable_compile=`` explicitly to override the inference.
+        self._enable_compile = (
+            bool(enable_watch or enable_vault)
+            if enable_compile is None
+            else bool(enable_compile)
+        )
         self._consolidate = consolidate
         self._consolidate_idle_seconds = consolidate_idle_seconds
         self._consolidate_max_interval_seconds = consolidate_max_interval_seconds
@@ -143,8 +163,17 @@ class Daemon:
         self._distill_override = distill
         self._associate_override = associate
         self._summary_client_override = summary_client
-        self._pidfile = self.project_root / ".tesserae" / self.PIDFILE_NAME
+        self._pidfile = self.project_root / ".tesserae" / self._pidfile_name()
         self._stop_event = threading.Event()
+        # Backoff state for a compile deferred because another process holds
+        # the per-project compile lock. ``_defer_until`` is a monotonic
+        # deadline that EVERY attempt waits out, including one scheduled by a
+        # fresh burst of triggers — without that, the session tailer (which
+        # fires while an agent is writing, i.e. exactly while a human compile
+        # is running) would re-attempt ProjectWiki.load + a config read + a
+        # flock syscall once per debounce for the whole compile, on every host.
+        self._defer_until = 0.0
+        self._defer_delay = 0.0
         self._threads: List[threading.Thread] = []
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._queue: Optional[asyncio.Queue] = None
@@ -157,6 +186,34 @@ class Daemon:
         now = self._monotonic()
         self._last_activity = now
         self._last_consolidation = now
+
+    @classmethod
+    def _pidfile_name(cls) -> str:
+        """``daemon.<host>.pid`` — the pidfile name scoped to this machine.
+
+        Several servers each running their own agent sessions can share a
+        disk, and therefore share one ``.tesserae/`` directory. A single
+        ``daemon.pid`` there is written by all of them, while liveness is
+        decided by ``os.kill(pid, 0)`` against the LOCAL process table
+        (:mod:`tesserae.engine.pidlock`) — so a PID recorded by another
+        machine is judged alive or dead by whatever unrelated process happens
+        to hold that number here, and a host either refuses to start behind a
+        stranger's pid or clobbers a live daemon's file. Scoping the NAME
+        keeps the pidfile in the shared, greppable project directory (that
+        part was never the bug) while giving each machine its own.
+
+        Degrades to the legacy :attr:`PIDFILE_NAME` if no host id can be
+        determined, so a machine whose home is unwritable keeps exactly
+        today's single-host behaviour rather than failing to start.
+        """
+        try:
+            from ..harness_sessions import local_host_id
+
+            host = local_host_id().strip()
+        except Exception as exc:  # noqa: BLE001 — naming a file must not block startup
+            logger.debug("no host id available (%s); using %s", exc, cls.PIDFILE_NAME)
+            host = ""
+        return f"daemon.{host}.pid" if host else cls.PIDFILE_NAME
 
     # ----- thread -> loop bridge -------------------------------------------
 
@@ -312,7 +369,10 @@ class Daemon:
                     )
             # Run exactly ONE final coalesced pipeline for the queued+pending
             # triggers that never got their run. A failure here must still let
-            # the daemon exit cleanly (exception survival).
+            # the daemon exit cleanly (exception survival). A DEFERRED return is
+            # ignored on purpose: we are shutting down, so there is nothing to
+            # retry into — the next start's compile picks these files up through
+            # the manifest differ.
             if run_pending:
                 try:
                     self._run_pipeline(list(pending_paths))
@@ -339,27 +399,74 @@ class Daemon:
         while not self._queue.empty():
             events.append(self._queue.get_nowait())
         merged = [p for e in events for p in e.changed_paths]
-        await self._debounce_and_run(merged)
+        # ``retry_deferred=False``: a one-shot run must terminate. If another
+        # process holds the compile lock, say so once and exit rather than
+        # waiting it out — the caller asked for one bounded pass, and blocking
+        # a CI invocation behind a human's multi-minute compile is worse than
+        # returning and letting the next run pick the work up via the manifest
+        # differ.
+        await self._debounce_and_run(merged, retry_deferred=False)
 
     async def _debounce_and_run(
-        self, paths: List[Path], on_consumed: Optional[Callable[[], None]] = None
+        self,
+        paths: List[Path],
+        on_consumed: Optional[Callable[[], None]] = None,
+        *,
+        retry_deferred: bool = True,
     ) -> None:
         await asyncio.sleep(self.debounce)
-        try:
-            self._run_pipeline(paths)
-        finally:
-            # Mark these paths consumed once the pipeline was ATTEMPTED — even if
-            # it raised, the run happened, so it must not be retried in the final
-            # drain (preserves exception-survival). If the debounce was cancelled
-            # during the sleep above we never reach here, so the paths survive
-            # into the next / final coalesced run (codex #1).
-            if on_consumed is not None:
-                on_consumed()
+        while True:
+            # Wait out any deferral left by an earlier attempt that found the
+            # compile lock held. Re-read the deadline each pass: a burst that
+            # cancelled a deferred task and re-scheduled this one must serve
+            # the SAME backoff, otherwise the retry degenerates into a
+            # once-per-debounce spin against a multi-minute human compile.
+            remaining = self._defer_until - self._monotonic()
+            if remaining > 0 and retry_deferred:
+                await asyncio.sleep(remaining)
+                continue
+            ran = True
+            try:
+                ran = self._run_pipeline(paths)
+            finally:
+                # Mark these paths consumed once the pipeline was ATTEMPTED —
+                # even if it raised, the run happened, so it must not be retried
+                # in the final drain (preserves exception-survival). A DEFERRED
+                # attempt is not an attempt: nothing ran, so the paths stay
+                # pending and this task loops round to retry them. If the
+                # debounce was cancelled during a sleep above we never reach
+                # here, so the paths survive into the next / final coalesced
+                # run (codex #1).
+                if ran and on_consumed is not None:
+                    on_consumed()
+            if ran or not retry_deferred:
+                return
 
-    def _run_pipeline(self, paths: List[Path]) -> None:
+    def _run_pipeline(self, paths: List[Path]) -> bool:
+        """Run one coalesced pipeline; ``False`` means DEFERRED, not done.
+
+        A ``False`` return says only that another process holds the project's
+        compile lock and this batch has been rescheduled behind
+        :attr:`_defer_until` — the caller must keep ``paths`` pending. Every
+        other outcome, including a step that failed, returns ``True``.
+        """
         # A pipeline run is activity: reset the idle clock so idle-triggered
         # consolidation does not fire immediately after a compile.
         self._last_activity = self._monotonic()
+        if not self._enable_compile and self._run_pipeline_override is None:
+            # Harvest-only: this host tails transcripts into the shared sessions
+            # store and leaves compiling to the host that owns it, so it must
+            # not even reach for the compile lock. Nothing is lost — the
+            # compiling host's next incremental compile falls back to the
+            # manifest differ and still sees these files. The injected
+            # ``run_pipeline`` seam is exempt: supplying one is an explicit
+            # statement that THAT is this daemon's pipeline.
+            logger.debug(
+                "compile disabled (harvest-only); leaving %d changed paths to "
+                "the compiling host",
+                len(paths),
+            )
+            return True
         gate = self._compile_gate if self._compile_gate is not None else nullcontext()
         with gate:
             # Visibility: without this line a long compile looks like a hang —
@@ -371,8 +478,9 @@ class Daemon:
             )
             if self._run_pipeline_override is not None:
                 self._run_pipeline_override(paths)
-                return
+                return True
             from .pipeline import Pipeline
+            from ..locking import CompileLockHeldError
             from ..project import ProjectWiki
 
             wiki = ProjectWiki.load(self.project_root)
@@ -391,12 +499,48 @@ class Daemon:
                 results = Pipeline(steps).run()
             except Exception as exc:  # noqa: BLE001 - daemon must survive
                 logger.error("pipeline raised outside StepResult (daemon survives): %s", exc)
-                return
+                return True
             for r in results:
                 if r.ok:
                     logger.info("step %s: ok", r.name)
+                elif isinstance(r.error, CompileLockHeldError):
+                    # Someone else — usually a human's interactive `tesserae
+                    # compile` — holds the per-project lock. That is normal
+                    # traffic, not a fault, so it logs at info; and the batch is
+                    # deferred rather than dropped, because dropping the trigger
+                    # is how a session's turns sit unincorporated until the next
+                    # unrelated change happens to fire one.
+                    self._defer(r.error)
+                    return False
                 else:
                     logger.error("step %s: FAILED: %s", r.name, r.error)
+            # A pipeline that got the lock clears the backoff, so the next
+            # contended run starts from DEFER_BACKOFF_START rather than
+            # inheriting a minute-long wait earned hours ago.
+            self._defer_until = 0.0
+            self._defer_delay = 0.0
+            return True
+
+    def _defer(self, exc: BaseException) -> None:
+        """Push the next compile attempt out by an exponentially growing wait.
+
+        Capped at :attr:`DEFER_BACKOFF_MAX` so a compile that outlives the
+        backoff ladder is still retried about once a minute. The cost this
+        bounds is not the compile — it is ``ProjectWiki.load`` + a config read
+        + a flock syscall per attempt, paid by every host in the fleet, for as
+        long as one human compile runs.
+        """
+        self._defer_delay = min(
+            self.DEFER_BACKOFF_MAX,
+            self._defer_delay * 2 if self._defer_delay else self.DEFER_BACKOFF_START,
+        )
+        self._defer_until = self._monotonic() + self._defer_delay
+        logger.info(
+            "compile lock held for %s (%s); deferring this batch %.0fs",
+            self.project_root.name,
+            exc,
+            self._defer_delay,
+        )
 
     # ----- trigger-source hook (Plan 02 overrides body) --------------------
 

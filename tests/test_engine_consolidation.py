@@ -332,7 +332,9 @@ def test_run_starts_consolidation_thread_when_enabled(tmp_path):
         thread.join(timeout=5)
 
     assert not thread.is_alive(), "run() did not stop after request_stop()"
-    assert not (root / ".tesserae" / "daemon.pid").exists()
+    # Ask the daemon which file it owns: the pidfile name is host-scoped now,
+    # so a literal "daemon.pid" here would pass without proving anything.
+    assert not d._pidfile.exists()
 
 
 def test_once_mode_never_consolidates(tmp_path):
