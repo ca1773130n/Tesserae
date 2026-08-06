@@ -251,6 +251,59 @@ class HarnessSessionStore:
         return {"path": str(self.root), "sessions": len(written) // 2, "total": len(merged),
                 "removed": removed, "preserved": preserved}
 
+    def prune_internal(self, dry_run: bool = False) -> Dict[str, object]:
+        """Delete records that are Tesserae's OWN compile-time LLM calls.
+
+        The live discovery filter stops NEW ones being written, but it cannot
+        retract what a previous version already stored, and
+        ``HarnessSessionsDB.prune_internal_sessions`` only cleans the sqlite
+        store. This directory is the one ``compile`` actually reads, so a store
+        cleaned only in sqlite still feeds the graph its own extraction calls.
+
+        Deliberately NOT gated on ``producer`` or ``host``, unlike every other
+        prune here. Those gates exist to stop one writer destroying another
+        writer's *work*; a captured extraction prompt is not anyone's work, it
+        is this tool's exhaust, and it is identifiable from its content alone no
+        matter which machine or importer filed it.
+
+        ``dry_run`` counts without deleting — worth using first, because the
+        ratio of noise to real sessions here is high enough that a mistake would
+        be invisible in a summary count.
+        """
+        removed = 0
+        kept = 0
+        unreadable = 0
+        for record in sorted(self.root.glob("*/*.json")):
+            try:
+                session = HarnessSession.from_dict(
+                    json.loads(record.read_text(encoding="utf-8"))
+                )
+            except (OSError, json.JSONDecodeError, TypeError, ValueError):
+                unreadable += 1  # unparseable is not provably internal — keep it
+                continue
+            if not is_tesserae_internal_session(session):
+                kept += 1
+                continue
+            removed += 1
+            if dry_run:
+                continue
+            for path in (record, record.with_suffix(".md")):
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+        if not dry_run and removed:
+            merged = sorted(
+                self.list_sessions(),
+                key=lambda s: (s.started_at or "", s.harness, s.slug),
+            )
+            manifest = {"version": "1", "sessions": [_manifest_entry(s) for s in merged]}
+            self.manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        return {"removed": removed, "kept": kept, "unreadable": unreadable, "dry_run": dry_run}
+
     def list_sessions(self) -> List[HarnessSession]:
         if not self.root.exists():
             return []
@@ -502,6 +555,17 @@ def _root_supports_codex(root: Path) -> bool:
 # ``tests/test_harness_self_capture.py::test_every_system_prompt_is_covered``
 # greps the package for system-prompt constants and fails if one is unlisted.
 _TESSERAE_PROMPT_SIGNATURES: tuple[str, ...] = (
+    # THE highest-volume prompt Tesserae issues: one call per document and per
+    # session, on every compile. It was missing here for months, and the
+    # anti-drift guard could not see it because that guard matched an allowlist
+    # of opening verbs — are|distill|write|decide|arbitrate|split — and this one
+    # opens with "You extract". Measured consequence on this repo: 14,377 of the
+    # 14,606 records in .tesserae/harness_sessions (98.4%) were Tesserae's own
+    # extraction calls, 10,666 of them carrying this exact title. The knowledge
+    # base was mostly the tool talking to itself. The guard now enumerates
+    # ``system=`` kwargs from the AST instead of guessing at verbs.
+    "You extract a typed research-intelligence graph",
+    "You are a Tesserae liveness probe",
     "You are an extractor that reads agent/user conversation transcripts",
     "You are summarizing a community of related typed research-graph nodes",
     "You are extracting a typed research intelligence graph for Tesserae",

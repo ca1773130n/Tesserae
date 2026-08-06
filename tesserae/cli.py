@@ -3647,19 +3647,40 @@ def _handle_sessions_prune_internal(args: argparse.Namespace) -> int:
     real work. This prunes them in one pass; the live filter prevents new ones.
     """
     wiki = ProjectWiki.load(args.project)
+    dry_run = bool(getattr(args, "dry_run", False))
+
+    # The FILE store first, because it is the one `compile` reads. Cleaning only
+    # sqlite left the graph still being built from Tesserae's own extraction
+    # calls — measured on this repo: 14,377 of 14,605 stored records (98.4%).
+    store = HarnessSessionStore(wiki.paths.harness_sessions)
+    files = store.prune_internal(dry_run=dry_run)
+    verb = "Would remove" if dry_run else "Removed"
+    print(
+        f"{verb} {files['removed']} self-captured record(s) from {store.root} "
+        f"(keeping {files['kept']} genuine session(s)"
+        + (f", {files['unreadable']} unreadable left alone" if files["unreadable"] else "")
+        + ")"
+    )
+
     live_db_path = wiki.project_root / ".tesserae" / "harness_sessions.db"
     if not live_db_path.exists():
-        print(f"No live sessions DB at {live_db_path}; nothing to prune.")
+        print(f"No live sessions DB at {live_db_path}; nothing more to prune.")
         return 0
     from .harness_sessions_db import HarnessSessionsDB
 
     db = HarnessSessionsDB(live_db_path)
     before = db.count_sessions()
+    if dry_run:
+        print(f"Would also prune the sessions DB ({before} session(s)) at {live_db_path}")
+        print("Re-run without --dry-run to apply. Then: tesserae compile")
+        return 0
     removed = db.prune_internal_sessions()
     print(
         f"Pruned Tesserae self-captured sessions: removed={removed} "
         f"remaining={before - removed} db={live_db_path}"
     )
+    if files["removed"] or removed:
+        print("Run `tesserae compile` to rebuild the graph without them.")
     return 0
 
 
@@ -3726,6 +3747,7 @@ def _build_sessions_parser() -> argparse.ArgumentParser:
         help="Delete Tesserae's OWN captured compile-time LLM calls from the live sessions DB (self-capture cleanup)",
     )
     p_prune.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_prune.add_argument("--dry-run", action="store_true", help="Count what would be removed without deleting anything")
     p_prune.set_defaults(_handler="_handle_sessions_prune_internal")
     p_chunk = sub.add_parser(
         "chunk-backfill",
@@ -4315,7 +4337,13 @@ def _handle_config_status(args: argparse.Namespace) -> int:
         return 1
     try:
         resp = client.complete_json(
-            system="Return JSON only.",
+            # Deliberately self-identifying. This probe spawns a real CLI call,
+            # which the harness session monitor captures like any other — so the
+            # prompt has to carry a signature the self-capture filter can anchor
+            # on. "Return JSON only." could not: it is generic enough that a
+            # real user session might open with it, so it could not be added to
+            # _TESSERAE_PROMPT_SIGNATURES without risking dropping real work.
+            system="You are a Tesserae liveness probe. Return JSON only.",
             user='Return {"ok": true} exactly.',
             schema_name="probe",
             cache_key="config-status-probe",
