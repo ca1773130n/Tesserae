@@ -129,6 +129,20 @@ def _isolate_global_registry(tmp_path_factory, monkeypatch):
     monkeypatch.setattr(
         "tesserae.mcp_server.DEFAULT_REGISTRY_PATH", isolated, raising=True
     )
+    # TESSERAE_REGISTRY is honoured ahead of DEFAULT_REGISTRY_PATH, so an
+    # operator who exports it in their shell would route the whole suite —
+    # including the registrations `init`/`compile` now perform — at their real
+    # registry, straight past the isolation above.
+    monkeypatch.delenv("TESSERAE_REGISTRY", raising=False)
+    # Same reasoning for the machine's host identity: tests that assert on
+    # session provenance must not depend on which machine runs them.
+    monkeypatch.delenv("TESSERAE_HOST_ID", raising=False)
+    monkeypatch.setattr("tesserae.harness_sessions._HOST_ID_CACHE", None, raising=False)
+    monkeypatch.setattr(
+        "tesserae.harness_sessions.HOST_ID_PATH",
+        tmp_path_factory.mktemp("host-id") / "host_id",
+        raising=True,
+    )
     # Same trap, different file: ``~/.tesserae/config.json`` carries the
     # developer's machine-wide LLM defaults (llm_provider/llm_codex_home).
     # ``resolve_llm_client_settings`` falls back to it, which would make

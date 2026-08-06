@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import secrets
 import shutil
 import sys
 from dataclasses import dataclass, field, replace as dataclasses_replace
@@ -137,6 +138,37 @@ def _recompile_note(limit: Optional[int], corpus_size: int) -> str:
                 "compile WITHOUT --limit."
             )
     return "re-extracting the whole corpus."
+
+
+def _publish_atomically(target: Path, content: str) -> None:
+    """Write ``content`` to ``target`` via a temp file no other writer can share.
+
+    The graph publishes used to go through ``target.with_suffix(".tmp")``, and
+    ``with_suffix`` REPLACES the suffix rather than appending — so every
+    publish of ``graph.json`` ran through the one fixed path
+    ``.tesserae/graph.tmp``. Two publishers hitting that path at once (two
+    hosts on a shared disk, or the engine daemon and an interactive compile on
+    one host) interleave their writes into that single file and then rename the
+    mixture into place, so what lands in ``graph.json`` is neither writer's
+    graph and parses as truncated or duplicated JSON.
+
+    PID + random suffix — the same shape ``batch.py::_write_manifest`` and
+    ``session_graph.py::_write_cache`` already use — gives each writer its own
+    scratch file, so the only thing they contend over is the ``os.replace``,
+    which is atomic: the loser publishes a whole graph, just not the last one.
+    The ``finally`` unlink matters because without it a failed write leaves the
+    scratch file behind forever — a fixed name was at least reused.
+    """
+    tmp = target.with_suffix(f".tmp.{os.getpid()}.{secrets.token_hex(4)}")
+    try:
+        tmp.write_text(content, encoding="utf-8")
+        os.replace(tmp, target)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
 
 
 @dataclass(frozen=True)
@@ -471,6 +503,12 @@ class ProjectWiki:
         settings = resolve_llm_client_settings(cfg)
         return build_default_json_client(
             model=model,
+            # Without ``settings=`` the factory re-resolves against env + the
+            # GLOBAL config only, so a project-level llm_model / llm_base_url /
+            # llm_api_key was dropped on the primary compile path — a custom
+            # endpoint configured in .tesserae/config.json never reached the
+            # client and the run silently used the default backend instead.
+            settings=settings,
             provider=settings["provider"],
             claude_config_dirs=settings["claude_config_dirs"],
             # codex_homes, not codex_home: the scalar is a one-element list by
@@ -3430,9 +3468,7 @@ class ProjectWiki:
             (self.paths.graph, research_graph.to_json(indent=2) + "\n"),
             (self.paths.code_graph, code_graph.to_json(indent=2) + "\n"),
         ):
-            tmp = target.with_suffix(".tmp")
-            tmp.write_text(content, encoding="utf-8")
-            tmp.rename(target)
+            _publish_atomically(target, content)
 
         cfg = self.config() if self.paths.config.exists() else {}
         include_combined = bool(
@@ -3441,9 +3477,7 @@ class ProjectWiki:
             or os.environ.get("TESSERAE_INCLUDE_COMBINED_GRAPH")
         )
         if include_combined:
-            tmp = self.paths.combined_graph.with_suffix(".tmp")
-            tmp.write_text(graph.to_json(indent=2) + "\n", encoding="utf-8")
-            tmp.rename(self.paths.combined_graph)
+            _publish_atomically(self.paths.combined_graph, graph.to_json(indent=2) + "\n")
         elif self.paths.combined_graph.exists():
             # Don't let a stale combined graph survive a config flip.
             self.paths.combined_graph.unlink()

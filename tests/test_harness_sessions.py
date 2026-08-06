@@ -621,3 +621,130 @@ def test_records_predating_provenance_are_nobodys_until_adopted(tmp_path):
     kept = store.list_sessions()[0]
     assert kept.title == "Rediscovered" and kept.producer == PRODUCER_DISCOVERY
     assert adopted["preserved"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Host provenance: several machines sharing one project directory
+# ---------------------------------------------------------------------------
+
+
+def test_a_host_may_not_prune_a_record_it_never_harvested(tmp_path):
+    """Mode 3: the host axis. N servers run Claude Code, each with its OWN
+    local transcripts, all harvesting into one project directory on shared
+    disk. Both stamp PRODUCER_DISCOVERY and both `~/.claude` roots resolve to
+    the same string, so the producer gate and the scope gate BOTH pass — and
+    host B deletes host A's session while reporting success."""
+    project = tmp_path / "demo-project"
+    project.mkdir()
+    root = tmp_path / "home" / ".claude"
+    (root / "projects").mkdir(parents=True)
+    store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
+
+    # Host A harvests a session from its own local transcript.
+    from_a = _same_transcript_record(project, str(root / "projects" / "p" / "a.jsonl"),
+                                     id="claude-code:aaa", slug="from-a", title="Host A work")
+    store.write_sessions([from_a], producer=PRODUCER_DISCOVERY, host="host-a")
+
+    # Host B harvests its own, different session, and prunes as it always does.
+    from_b = _same_transcript_record(project, str(root / "projects" / "p" / "b.jsonl"),
+                                     id="claude-code:bbb", slug="from-b", title="Host B work")
+    result = store.write_sessions([from_b], replace=True, prune_roots=[root],
+                                  prune_harnesses=["claude-code"],
+                                  producer=PRODUCER_DISCOVERY, host="host-b")
+
+    titles = sorted(s.title for s in store.list_sessions())
+    assert titles == ["Host A work", "Host B work"], "host B deleted host A's record"
+    assert result["removed"] == 0
+
+
+def test_a_host_still_prunes_its_own_stale_records(tmp_path):
+    """The host gate must not freeze the store either: a host reclaims what it
+    harvested when the transcript is gone."""
+    project = tmp_path / "demo-project"
+    project.mkdir()
+    root = tmp_path / "home" / ".claude"
+    (root / "projects").mkdir(parents=True)
+    store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
+
+    old = _same_transcript_record(project, str(root / "projects" / "p" / "old.jsonl"),
+                                  id="claude-code:old", slug="old", title="Superseded")
+    store.write_sessions([old], producer=PRODUCER_DISCOVERY, host="host-a")
+
+    new = _same_transcript_record(project, str(root / "projects" / "p" / "new.jsonl"),
+                                  id="claude-code:new", slug="new", title="Current")
+    result = store.write_sessions([new], replace=True, prune_roots=[root],
+                                  prune_harnesses=["claude-code"],
+                                  producer=PRODUCER_DISCOVERY, host="host-a")
+
+    assert [s.title for s in store.list_sessions()] == ["Current"]
+    assert result["removed"] == 1
+
+
+def test_unstamped_records_survive_a_foreign_host_until_adopted(tmp_path):
+    """The migration case: every record written before the host field carries
+    PRODUCER_DISCOVERY and an empty host, so the producer gate abstains. It has
+    to be the host gate that refuses, or nothing protects them."""
+    project = tmp_path / "demo-project"
+    project.mkdir()
+    root = tmp_path / "home" / ".claude"
+    (root / "projects").mkdir(parents=True)
+    store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
+
+    legacy = _same_transcript_record(project, str(root / "projects" / "p" / "legacy.jsonl"),
+                                     id="claude-code:leg", slug="legacy", title="Pre-host")
+    store.write_sessions([legacy], producer=PRODUCER_DISCOVERY)  # producer, no host
+    assert store.list_sessions()[0].host == ""
+
+    other = _same_transcript_record(project, str(root / "projects" / "p" / "other.jsonl"),
+                                    id="claude-code:oth", slug="other", title="Host B work")
+    guarded = store.write_sessions([other], replace=True, prune_roots=[root],
+                                   prune_harnesses=["claude-code"],
+                                   producer=PRODUCER_DISCOVERY, host="host-b")
+    assert "Pre-host" in {s.title for s in store.list_sessions()}
+    assert guarded["removed"] == 0
+
+    adopted = store.write_sessions([other], replace=True, prune_roots=[root],
+                                   prune_harnesses=["claude-code"],
+                                   producer=PRODUCER_DISCOVERY, host="host-b",
+                                   adopt_unowned=True)
+    assert [s.title for s in store.list_sessions()] == ["Host B work"]
+    assert adopted["removed"] == 1
+
+
+def test_host_blind_callers_keep_todays_behaviour(tmp_path):
+    """A single-machine deployment passes no host and must be unchanged."""
+    project = tmp_path / "demo-project"
+    project.mkdir()
+    root = tmp_path / "home" / ".claude"
+    (root / "projects").mkdir(parents=True)
+    store = HarnessSessionStore(project / ".tesserae" / "harness_sessions")
+
+    old = _same_transcript_record(project, str(root / "projects" / "p" / "old.jsonl"),
+                                  id="claude-code:old", slug="old", title="Gone")
+    store.write_sessions([old], producer=PRODUCER_DISCOVERY)
+    new = _same_transcript_record(project, str(root / "projects" / "p" / "new.jsonl"),
+                                  id="claude-code:new", slug="new", title="Kept")
+    result = store.write_sessions([new], replace=True, prune_roots=[root],
+                                  prune_harnesses=["claude-code"],
+                                  producer=PRODUCER_DISCOVERY)
+
+    assert [s.title for s in store.list_sessions()] == ["Kept"]
+    assert result["removed"] == 1
+
+
+def test_local_host_id_is_stable_and_overridable(tmp_path, monkeypatch):
+    """A persisted id, not a bare hostname: a renamed or re-imaged host must
+    not inherit another machine's records."""
+    import tesserae.harness_sessions as hs
+
+    monkeypatch.setenv("TESSERAE_HOST_ID", "srv-a")
+    assert hs.local_host_id() == "srv-a"
+
+    monkeypatch.delenv("TESSERAE_HOST_ID", raising=False)
+    monkeypatch.setattr(hs, "_HOST_ID_CACHE", None, raising=False)
+    monkeypatch.setattr(hs, "HOST_ID_PATH", tmp_path / "host_id")
+    first = hs.local_host_id()
+    assert first and (tmp_path / "host_id").read_text(encoding="utf-8").strip() == first
+
+    monkeypatch.setattr(hs, "_HOST_ID_CACHE", None, raising=False)
+    assert hs.local_host_id() == first  # survives a fresh process

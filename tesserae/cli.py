@@ -14,7 +14,8 @@ from .batch import BatchIngestRunner
 from .canonicalization import GraphCanonicalizer, ReviewDecision
 from .harness_sessions import (HarnessSession, HarnessSessionStore, PRODUCER_DISCOVERY,
                                PRODUCER_IMPORT, discover_harness_roots,
-                               discover_harness_sessions, session_matches_project)
+                               discover_harness_sessions, local_host_id,
+                               session_matches_project)
 from .ingest.orchestrator import ingest_sources
 from .llm_extractor import ClaudeCLIResearchExtractor, LLMResearchExtractor
 from .locking import CompileLockHeldError
@@ -1145,6 +1146,57 @@ def _add_llm_client_args(parser: argparse.ArgumentParser, persisted: bool = Fals
         default=None,
         help="Codex CLI home directory (CODEX_HOME, e.g. ~/.codex-personal1)" + suffix,
     )
+    # Deliberately NO per-run --llm-base-url / --llm-api-key here. `init` and
+    # `config llm` already persist them, and ANTHROPIC_BASE_URL /
+    # ANTHROPIC_API_KEY are honoured at the top of the precedence chain
+    # (resolve_llm_client_settings), so a one-off endpoint override already has
+    # a working channel. Adding flags would cost two dests against compile's
+    # dieted parser surface to buy nothing new.
+
+
+#: Bare ``--wait`` means "queue behind whatever holds the lock, within reason".
+#: Thirty minutes is longer than any compile observed in this repo and short
+#: enough that a genuinely wedged holder still surfaces as a failure rather
+#: than an indefinite hang. ``flock`` offers no fairness, so an unbounded wait
+#: has no starvation bound at all — which is why there is no "wait forever".
+DEFAULT_LOCK_WAIT_SECONDS = 1800.0
+
+
+def _add_lock_wait_arg(parser: argparse.ArgumentParser) -> None:
+    """Attach ``--wait [SECONDS]``: queue for the compile lock, don't fail."""
+    parser.add_argument(
+        "--wait",
+        dest="lock_wait",
+        nargs="?",
+        type=float,
+        const=DEFAULT_LOCK_WAIT_SECONDS,
+        default=None,
+        metavar="SECONDS",
+        help=(
+            "Wait for the project's compile lock instead of failing when a "
+            f"background engine or another run holds it (default {int(DEFAULT_LOCK_WAIT_SECONDS)}s "
+            "with a bare --wait). Progress is reported every 5s."
+        ),
+    )
+
+
+def _lock_wait_reporter(label: str):
+    """An ``on_wait`` callback that says what is being waited for.
+
+    Without this the command looks hung: the lock is held by a process the
+    user cannot see, often on another machine entirely.
+    """
+
+    def _report(elapsed: float, holder) -> None:
+        from .locking import describe_holder
+
+        print(
+            f"{label}: waiting for the project compile lock"
+            f"{describe_holder(holder)} — {int(elapsed)}s elapsed",
+            file=sys.stderr,
+        )
+
+    return _report
 
 
 def _apply_llm_cli_env(args: argparse.Namespace) -> None:
@@ -1161,9 +1213,21 @@ def _apply_llm_cli_env(args: argparse.Namespace) -> None:
         os.environ["TESSERAE_LLM_PROVIDER"] = args.llm_provider
     claude_dirs = getattr(args, "claude_config_dir", None) or []
     if claude_dirs:
+        # CLAUDE_CONFIG_DIR is a scalar, so repeating the flag used to discard
+        # every account after the first — silently pinning a rotation the user
+        # spelled out to one quota. Keep it for the child processes that only
+        # understand the scalar, and carry the FULL list in a Tesserae-owned
+        # var that resolve_llm_client_settings honours in full.
         os.environ["CLAUDE_CONFIG_DIR"] = claude_dirs[0]
+        os.environ["TESSERAE_CLAUDE_CONFIG_DIRS"] = os.pathsep.join(claude_dirs)
     if getattr(args, "codex_home", None):
         os.environ["CODEX_HOME"] = args.codex_home
+    if getattr(args, "llm_model", None):
+        os.environ["TESSERAE_LLM_MODEL"] = args.llm_model
+    if getattr(args, "llm_base_url", None):
+        os.environ["ANTHROPIC_BASE_URL"] = args.llm_base_url
+    if getattr(args, "llm_api_key", None):
+        os.environ["ANTHROPIC_API_KEY"] = args.llm_api_key
 
 
 def _handle_llm_defaults(args: argparse.Namespace) -> int:
@@ -1651,6 +1715,7 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                 doc_extractor=doc_extractor,
                 progress=progress,
                 retry_fallbacks=bool(getattr(args, "retry_fallbacks", False)),
+                lock_wait=getattr(args, "lock_wait", None),
             )
             progress.done(nodes=result["node_count"], edges=result["edge_count"])
         if isinstance(progress, NullCompileProgress):
@@ -1686,6 +1751,29 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                     f"+{d.get('added', 0)} ~{d.get('changed', 0)} -{d.get('removed', 0)})"
                 )
         _warn_if_concept_poor(result)
+        # graph.json exists now, so this is where a project first becomes
+        # registrable — see _register_initialized_project for why an
+        # unregistered project silently gets answers from other repositories.
+        _register_initialized_project(args)
+        # A compile where EVERY document lost its concept layer did not
+        # succeed, and must not report success. Observed first-run: with no
+        # logged-in claude/codex CLI, compile warned, fell back on 100% of
+        # documents, printed "Compiled project wiki: …" and exited 0 — so the
+        # user believed they had a knowledge base when they had a file
+        # listing, and `tesserae query` then matched nothing. A partial
+        # fallback stays a warning (that graph is still useful); only total
+        # loss is an error.
+        processed = int(result.get("processed_files", 0) or 0)
+        fallbacks = int(result.get("fallback_files", 0) or 0)
+        if processed > 0 and fallbacks >= processed:
+            print(
+                "error: every document fell back to deterministic extraction, so "
+                "this graph has no concept layer and retrieval will not match on "
+                "content. Check the LLM backend is reachable and credentialed "
+                "(`tesserae doctor`), then re-run.",
+                file=sys.stderr,
+            )
+            return 1
         # --strict: gate the exit code on the byte-idempotence tripwire first
         # (a suspected determinism regression outranks lint warnings), then on
         # the post-compile lint, reusing the `tesserae lint` exit-code mapping
@@ -1979,10 +2067,14 @@ def _handle_refresh(args: argparse.Namespace) -> int:
         return store.write_sessions(
             sessions, replace=bool(sessions), prune_roots=roots,
             producer=hs.PRODUCER_DISCOVERY,
+            host=hs.local_host_id(),
         )  # {"path", "sessions", "total", "removed", "preserved"}
 
     def step_compile():
-        return wiki.compile(changed_only=args.changed_only)
+        return wiki.compile(
+            changed_only=args.changed_only,
+            lock_wait=getattr(args, "lock_wait", None),
+        )
 
     def step_obsidian_sync():
         vault = wiki.effective_obsidian_vault()
@@ -2240,7 +2332,8 @@ def _handle_sessions(args: argparse.Namespace) -> int:
                 result = store.write_sessions(
                     sessions, replace=bool(sessions),
                     prune_roots=roots, prune_harnesses=args.harness or None,
-                    producer=PRODUCER_DISCOVERY, adopt_unowned=args.adopt_unowned,
+                    producer=PRODUCER_DISCOVERY, host=local_host_id(),
+                    adopt_unowned=args.adopt_unowned,
                 )
                 print(f"Imported harness sessions: {result['sessions']} path={result['path']}")
                 if result["removed"]:
@@ -2501,6 +2594,7 @@ def _build_compile_parser() -> argparse.ArgumentParser:
     parser.add_argument("--changed-only", action="store_true", help="Skip unchanged files using .tesserae/manifest.json")
     parser.add_argument("--retry-fallbacks", action="store_true", help="With --changed-only: re-extract docs whose typed extraction previously failed and was served by the deterministic baseline (provider recovered). Without it those docs stay deterministic until their content changes.")
     parser.add_argument("--limit", type=int, help="Maximum number of changed files to process")
+    _add_lock_wait_arg(parser)
     parser.add_argument("--strict", action="store_true", help="Exit non-zero when the byte-idempotence tripwire fires or the post-compile lint reports problems (lint errors → exit 2, warnings → exit 1; default: report-only)")
     # Document extractor. Tesserae is an LLM wiki: 'llm' is the DEFAULT — it
     # builds the concept/claim layer via the configured provider (codex/claude/api
@@ -2688,6 +2782,7 @@ def _build_refresh_parser() -> argparse.ArgumentParser:
         action=_RemovedFlagAction,
         message="refresh: --skip-sessions has moved → --no-sessions",
     )
+    _add_lock_wait_arg(parser)
     return parser
 
 
@@ -3311,8 +3406,57 @@ def _handle_init_v2(args: argparse.Namespace) -> int:
         _backfill_setup_defaults(args)
         rc = _handle_setup(args)
     if rc == 0:
+        _register_initialized_project(args)
         _maybe_offer_memex_install(args)
     return rc
+
+
+def _register_initialized_project(args: argparse.Namespace) -> None:
+    """Put a project into the machine-wide registry as soon as it can be.
+
+    ``init`` used to leave the registry untouched, and every registry-scoped
+    surface then treated the new project as if it did not exist. Following the
+    README quickstart verbatim — ``init --yes && compile && ask "…"`` — the ask
+    could not resolve a cwd alias, fell back to FEDERATED scope, and answered a
+    question about a 3-file project out of 19,744 nodes belonging to six
+    unrelated repositories; the project's own nodes never appeared, and
+    ``ask --scope current`` exited 2 saying "not inside a registered project"
+    while standing in one. ``serve`` had the matching failure: it rebuilt every
+    other registered project's site before binding the port, and not the one
+    just compiled.
+
+    ``ProjectRegistry.register`` resolves an existing ``.tesserae/graph.json``,
+    which does not exist until the first compile — so this is called from BOTH
+    ``init`` (a no-op on a fresh project) and the end of a successful compile
+    (where it succeeds). Registering is idempotent, so the repeat is free.
+
+    Best-effort on purpose. A registry that cannot be written (read-only home,
+    corrupt file) must not fail an otherwise-successful command — the project
+    on disk is complete either way, and every verb still works with an explicit
+    ``--project``.
+    """
+    root = Path(getattr(args, "project", None) or ".").resolve()
+    if not (root / ".tesserae" / "graph.json").is_file():
+        return  # nothing to register yet; the post-compile call will do it
+    try:
+        from .mcp_server import ProjectRegistry
+
+        registry = ProjectRegistry()
+        known = registry.load().get("projects") or {}
+        already = any(
+            str(Path(entry.get("root", "")).resolve()) == str(root)
+            for entry in known.values()
+            if isinstance(entry, dict)
+        )
+        entry = registry.register(root, getattr(args, "name", None))
+        if not already:
+            print(f"Registered project '{entry['name']}' ({entry['root']})")
+    except Exception as exc:  # registry problems must not fail a good command
+        print(
+            f"note: could not add this project to the registry ({exc}). "
+            f"Add it later with: tesserae projects register {root}",
+            file=sys.stderr,
+        )
 
 
 def _maybe_offer_memex_install(args: argparse.Namespace) -> None:

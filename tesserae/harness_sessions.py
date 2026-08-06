@@ -60,6 +60,15 @@ class HarnessSession:
     #: written before this field existed: unowned, and therefore nobody's to
     #: delete or overwrite. See PRODUCER_DISCOVERY / PRODUCER_IMPORT.
     producer: str = ""
+    #: Which MACHINE harvested this record. The second axis of the same idea as
+    #: ``producer``, and the one that matters when several servers share a disk
+    #: and therefore share ``.tesserae``. ``producer`` cannot separate them:
+    #: every host's local scan stamps the same constant PRODUCER_DISCOVERY, and
+    #: their ``~/.claude`` paths resolve to the same string, so the prune scope
+    #: check passes on a host that never saw the transcript. Empty means a
+    #: record written before this field existed: unowned, and nobody's to
+    #: delete without ``adopt_unowned``. See :func:`local_host_id`.
+    host: str = ""
 
     @property
     def date(self) -> str:
@@ -129,6 +138,7 @@ class HarnessSessionStore:
         prune_roots: Optional[Sequence[str | Path]] = None,
         prune_harnesses: Optional[Sequence[str]] = None,
         producer: str = "",
+        host: str = "",
         adopt_unowned: bool = False,
     ) -> Dict[str, object]:
         """Write normalized sessions into the store.
@@ -164,6 +174,20 @@ class HarnessSessionStore:
         before provenance existed, and wrong to pass if another tool writes
         into the same store.
 
+        ``host`` is the same idea on the axis ``producer`` cannot express: WHICH
+        MACHINE harvested the record. On a shared disk every host's scan stamps
+        the same ``PRODUCER_DISCOVERY`` and their ``~/.claude`` roots resolve to
+        the same string, so both gates above pass on a host that never saw the
+        transcript and it deletes another machine's record. When ``host`` is
+        given, a record is pruned only if it carries the same host (or is
+        unowned and ``adopt_unowned`` is set).
+
+        The WRITE path stays host-blind on purpose. Two hosts can only write the
+        same session id when both can actually see the transcript, so the write
+        is idempotent and simply re-stamps ownership onto whoever last proved
+        visibility. Gating writes by host instead would freeze a decommissioned
+        machine's records in place with no way to reclaim them.
+
         **Omitting ``prune_roots`` with ``replace=True`` deletes every record
         this producer owns**, and with no ``producer`` either, the whole store.
         That is the pre-#104 behaviour, kept only for a caller that genuinely
@@ -184,8 +208,12 @@ class HarnessSessionStore:
                 # store keeps one record per session and this is which one.
                 preserved += 1
                 continue
-            if producer:
-                session = replace_dc(session, producer=producer)
+            if producer or host:
+                session = replace_dc(
+                    session,
+                    producer=producer or session.producer,
+                    host=host or session.host,
+                )
             payload = session.to_dict()
             json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             md_path = harness_dir / f"{session.filename}.md"
@@ -201,6 +229,11 @@ class HarnessSessionStore:
                 owner = _record_producer(stale.with_suffix(".json"))
                 if owner is not None and not _may_write(owner, producer, adopt_unowned):
                     continue  # not this producer's record; not this producer's to delete
+                record_host = _record_host(stale.with_suffix(".json"))
+                if record_host is not None and not _may_prune_host(
+                    record_host, host, adopt_unowned
+                ):
+                    continue  # harvested by another machine; not this one's to delete
                 try:
                     stale.unlink()
                 except OSError:
@@ -235,6 +268,70 @@ class HarnessSessionStore:
 PRODUCER_DISCOVERY = "tesserae:discover"   #: written by the local harness scan
 PRODUCER_IMPORT = "tesserae:import"        #: written by `sessions import <path>`
 
+#: Where a machine's stable Tesserae host id is kept. Deliberately under the
+#: per-host ``~/.tesserae`` rather than inside the (possibly shared) project
+#: directory — the whole point is to distinguish machines that share one.
+HOST_ID_PATH = Path.home() / ".tesserae" / "host_id"
+
+_HOST_ID_CACHE: Optional[str] = None
+
+
+def local_host_id() -> str:
+    """The stable identity of the machine doing the harvesting.
+
+    Resolution order:
+
+    1. ``TESSERAE_HOST_ID`` — an operator override, and what tests pin.
+    2. ``~/.tesserae/host_id`` — generated once, then reused forever.
+    3. A freshly generated ``<hostname>-<8 hex>``, persisted to (2).
+
+    A *persisted* id rather than a bare ``socket.gethostname()`` on purpose:
+    hostnames get changed, duplicated across a fleet built from one image, and
+    reassigned by DHCP. Any of those silently transfers ownership of another
+    machine's session records — which is exactly the failure this exists to
+    stop. The random suffix means two hosts that genuinely share a hostname
+    still differ.
+
+    Falls back to the bare hostname when ``~/.tesserae`` is unwritable: a
+    read-only home should degrade to today's behaviour, not crash a harvest.
+    """
+    global _HOST_ID_CACHE
+
+    override = (os.environ.get("TESSERAE_HOST_ID") or "").strip()
+    if override:
+        return safe_slug(override)
+    if _HOST_ID_CACHE is not None:
+        return _HOST_ID_CACHE
+
+    import socket
+    import uuid
+
+    hostname = ""
+    try:
+        hostname = socket.gethostname().split(".")[0]
+    except OSError:  # pragma: no cover — gethostname failing is exotic
+        hostname = ""
+
+    try:
+        stored = HOST_ID_PATH.read_text(encoding="utf-8").strip()
+        if stored:
+            _HOST_ID_CACHE = safe_slug(stored)
+            return _HOST_ID_CACHE
+    except (OSError, ValueError):
+        pass
+
+    minted = safe_slug(f"{hostname or 'host'}-{uuid.uuid4().hex[:8]}")
+    try:
+        HOST_ID_PATH.parent.mkdir(parents=True, exist_ok=True)
+        HOST_ID_PATH.write_text(minted + "\n", encoding="utf-8")
+    except OSError:
+        # Unwritable home: use the hostname and do NOT cache a random id that
+        # would change on every process, which would make every record look
+        # like it came from a different machine.
+        return safe_slug(hostname or "host")
+    _HOST_ID_CACHE = minted
+    return minted
+
 
 def _record_producer(json_path: Path) -> Optional[str]:
     """The producer stamped on a stored record, or None when there is no record.
@@ -250,6 +347,38 @@ def _record_producer(json_path: Path) -> Optional[str]:
         return None
     except (OSError, json.JSONDecodeError, TypeError, ValueError, AttributeError):
         return ""
+
+
+def _record_host(json_path: Path) -> Optional[str]:
+    """The host stamped on a stored record, or None when there is no record.
+
+    Same conservatism as :func:`_record_producer`: unreadable answers "" —
+    unowned — rather than raising or claiming the record for the caller.
+    """
+    try:
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+        return str(payload.get("host") or "")
+    except FileNotFoundError:
+        return None
+    except (OSError, json.JSONDecodeError, TypeError, ValueError, AttributeError):
+        return ""
+
+
+def _may_prune_host(record_host: str, host: str, adopt_unowned: bool) -> bool:
+    """May the machine identified by `host` delete a record stamped `record_host`?
+
+    Mirrors :func:`_may_write` on the host axis. A caller that passes no
+    ``host`` keeps the pre-host behaviour, so a single-machine deployment is
+    byte-identical and needs no migration. A record with no host is unowned and
+    survives until someone adopts it — the deliberate conservative choice,
+    because every record written before this field existed carries the same
+    ``PRODUCER_DISCOVERY`` and would otherwise stay deletable by any host.
+    """
+    if not host:
+        return True          # host-unaware caller, legacy behaviour
+    if record_host == host:
+        return True          # this machine harvested it
+    return not record_host and adopt_unowned
 
 
 def _may_write(owner: str, producer: str, adopt_unowned: bool) -> bool:
