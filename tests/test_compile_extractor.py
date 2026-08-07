@@ -151,11 +151,16 @@ def test_selective_extract_text_falls_back_when_claude_fails():
 
 
 def test_claude_extract_text_retries_transient_bad_generation():
-    """A transient invalid generation (out-of-vocab node type) is retried, not fatal."""
+    """A transient invalid generation (nameless node) is retried, not fatal.
+
+    The trigger used to be an out-of-vocab node type; that shape is now a
+    counted drop rather than an error, so these retry tests pick a violation
+    that is still fatal — a node the builder cannot name.
+    """
     from tesserae.llm_extractor import ClaudeCLIResearchExtractor
 
     calls = []
-    bad = '{"nodes":[{"name":"X","type":"Vulnerability"}],"edges":[]}'   # not in vocab
+    bad = '{"nodes":[{"name":"   ","type":"Concept"}],"edges":[]}'   # unnameable
     good = '{"nodes":[{"name":"X","type":"Concept"}],"edges":[]}'
 
     def runner(prompt, cd, model, timeout):
@@ -182,7 +187,7 @@ def test_claude_extract_text_gives_up_after_retries():
 
     def runner(prompt, cd, model, timeout):
         calls.append(1)
-        return '{"nodes":[{"name":"X","type":"Vulnerability"}],"edges":[]}'
+        return '{"nodes":[{"name":"   ","type":"Concept"}],"edges":[]}'
 
     ex = ClaudeCLIResearchExtractor(model="sonnet", timeout=5)
     ex.config_dirs = [None]
@@ -281,8 +286,8 @@ def test_llm_extractor_retries_a_bad_generation_then_gives_up(monkeypatch):
     assert len(calls) == _VALIDATION_RETRIES + 1  # initial + retries
 
 
-def test_llm_extractor_retries_an_out_of_vocab_type_then_gives_up():
-    """The other bad-generation shape: parseable JSON that violates the vocab.
+def test_llm_extractor_retries_a_schema_violation_then_gives_up():
+    """The other bad-generation shape: parseable JSON that violates the schema.
 
     Counts calls into a CACHELESS fake, so it pins the loop shape only. The
     "does the retry actually reach the provider" question needs the real
@@ -297,13 +302,13 @@ def test_llm_extractor_retries_an_out_of_vocab_type_then_gives_up():
 
     calls = []
 
-    class _BadVocabClient:
+    class _BadSchemaClient:
         def complete_json(self, **k):
             calls.append(1)
-            return {"nodes": [{"name": "X", "type": "software"}], "edges": []}
+            return {"nodes": [{"name": "   ", "type": "Concept"}], "edges": []}
 
     with pytest.raises(GraphJSONValidationError):
-        LLMResearchExtractor(_BadVocabClient()).extract_text("body", "/proj/doc.md")
+        LLMResearchExtractor(_BadSchemaClient()).extract_text("body", "/proj/doc.md")
     assert len(calls) == _VALIDATION_RETRIES + 1
 
 
@@ -318,6 +323,9 @@ def test_llm_extractor_retry_re_asks_and_leaves_no_poisoned_cache(monkeypatch, t
     ``~/.tesserae/llm_cache`` has no eviction, ``--changed-only
     --retry-fallbacks`` then spent ZERO llm calls on that doc and failed
     identically forever. A fake client with no cache passes this vacuously.
+
+    The rejected answer here is a nameless node: an out-of-vocab node TYPE no
+    longer rejects anything, it is dropped and counted.
     """
     from pathlib import Path
 
@@ -332,7 +340,7 @@ def test_llm_extractor_retry_re_asks_and_leaves_no_poisoned_cache(monkeypatch, t
     monkeypatch.setattr(lj, "_CLI_CACHE_DIR", cache_dir)
     monkeypatch.delenv("TESSERAE_LLM_CACHE", raising=False)
 
-    answer = {"raw": '{"nodes": [{"name": "X", "type": "software"}], "edges": []}'}
+    answer = {"raw": '{"nodes": [{"name": "   ", "type": "Concept"}], "edges": []}'}
     spawns: list = []
 
     class _Proc:
@@ -582,10 +590,10 @@ def test_a_cache_drop_that_raises_does_not_replace_the_validation_error():
 
     calls: list = []
 
-    class _BadVocab:
+    class _BadSchema:
         def complete_json(self, **k):
             calls.append(1)
-            return {"nodes": [{"name": "X", "type": "software"}], "edges": []}
+            return {"nodes": [{"name": "   ", "type": "Concept"}], "edges": []}
 
         def forget_cached_answer(self, cache_key, *, schema_name):
             pass
@@ -597,7 +605,7 @@ def test_a_cache_drop_that_raises_does_not_replace_the_validation_error():
         def forget_cached_answer(self, cache_key, *, schema_name):
             raise OSError("read-only filesystem")
 
-    client = lj.CompositeCLIClient([_BadVocab(), _DropRaises()])
+    client = lj.CompositeCLIClient([_BadSchema(), _DropRaises()])
     with pytest.raises(GraphJSONValidationError):
         LLMResearchExtractor(client).extract_text("body", "/proj/doc.md")
     assert len(calls) == _VALIDATION_RETRIES + 1  # the re-asks still happened

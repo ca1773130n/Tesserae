@@ -3,6 +3,8 @@ from pathlib import Path
 from tesserae.research_graph import (
     ALLOWED_EDGE_TYPES,
     ALLOWED_NODE_TYPES,
+    CODE_GRAPH_TYPES,
+    EXTRACTABLE_NODE_TYPES,
     ResearchGraphExtractor,
     ResearchNodeType,
 )
@@ -201,3 +203,28 @@ def test_session_findings_skip_aggressive_same_type_dedup():
     )
     nodes, _ = merge_same_type_aliased_duplicates([c, d], [])
     assert len(nodes) == 1, "non-session same-type pair should collapse"
+
+
+# ---------------------------------------------------------------------------
+# Read vocabulary vs write vocabulary. Source-code ingestion was dropped from
+# Tesserae's scope (documents and session transcripts only), but the graphs
+# already on disk are full of code nodes, so the two vocabularies had to split.
+# ---------------------------------------------------------------------------
+
+
+def test_extractable_vocabulary_excludes_code_types_and_keeps_document_types():
+    """``EXTRACTABLE_NODE_TYPES`` is ``ALLOWED_NODE_TYPES`` minus exactly the
+    code-graph layer — no more, and in particular not ``Repository`` /
+    ``Project``, which are document types that only look code-adjacent."""
+    assert EXTRACTABLE_NODE_TYPES < ALLOWED_NODE_TYPES
+    assert ALLOWED_NODE_TYPES - EXTRACTABLE_NODE_TYPES == {t.value for t in CODE_GRAPH_TYPES}
+
+    for retired in ("CodeFunction", "CodeClass", "SourceFile", "Dependency", "CodeProject"):
+        assert retired not in EXTRACTABLE_NODE_TYPES
+        # Still loadable: graph_from_payload resolves stored types with a bare
+        # ResearchNodeType(...) and no fallback.
+        assert retired in ALLOWED_NODE_TYPES
+        assert ResearchNodeType(retired).value == retired
+
+    for kept in ("Repository", "Project", "SourceDocument", "Paper", "SessionInsight"):
+        assert kept in EXTRACTABLE_NODE_TYPES, f"{kept} is a document type and must stay extractable"
