@@ -206,3 +206,67 @@ def test_engine_all_reports_held_pidfile_cleanly(tmp_path, monkeypatch, capsys):
     assert rc == 2
     assert "already running" in captured.err
     assert "Traceback" not in captured.err
+
+
+def test_harvest_only_daemon_never_reaches_for_the_compile_lock(tmp_path, monkeypatch):
+    """`engine --harvest-only` is the shape a shared-disk fleet needs: N hosts
+    tail the transcripts only they can see, one host compiles. The promise is
+    load-bearing — if a harvester took the compile lock it would contend with
+    the compiling host exactly as before — so assert the constructor arguments
+    the flag produces rather than trusting a default elsewhere to imply them."""
+    from tesserae.cli import main
+    from tesserae.project import ProjectWiki
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    ProjectWiki.init(project, name="proj")
+
+    seen = {}
+
+    class FakeDaemon:
+        def __init__(self, root, **kwargs):
+            seen.update(kwargs)
+            seen["root"] = root
+
+        def run(self, once=False):
+            return 0
+
+    import tesserae.engine.daemon as daemon_mod
+
+    monkeypatch.setattr(daemon_mod, "Daemon", FakeDaemon)
+
+    rc = main(["engine", "--harvest-only", "--once", "--project", str(project)])
+
+    assert rc == 0
+    assert seen["enable_compile"] is False, "a harvester must never compile"
+    assert seen["enable_watch"] is False
+    assert seen["enable_vault"] is False
+    assert seen["enable_session_tail"] is True, "harvesting is the whole point"
+    assert seen["consolidate"] is False, "a harvester was not asked to spend LLM calls"
+
+
+def test_engine_without_harvest_only_still_compiles(tmp_path, monkeypatch):
+    """The default engine must be unchanged — this flag is opt-in."""
+    from tesserae.cli import main
+    from tesserae.project import ProjectWiki
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    ProjectWiki.init(project, name="proj")
+
+    seen = {}
+
+    class FakeDaemon:
+        def __init__(self, root, **kwargs):
+            seen.update(kwargs)
+
+        def run(self, once=False):
+            return 0
+
+    import tesserae.engine.daemon as daemon_mod
+
+    monkeypatch.setattr(daemon_mod, "Daemon", FakeDaemon)
+
+    assert main(["engine", "--once", "--project", str(project)]) == 0
+    assert seen["enable_compile"] is True
+    assert seen["enable_watch"] is True

@@ -155,6 +155,11 @@ def test_bare_serve_empty_registry_falls_back_to_cwd(tmp_path, monkeypatch, caps
 
     monkeypatch.setattr(mcp_server, "DEFAULT_REGISTRY_PATH", tmp_path / "registry.json")
     assert cli.main(["init", "--bare", "--project", str(tmp_path)]) == 0
+    # `init` now registers the project (without that, `ask`/`serve` treat a
+    # freshly created project as nonexistent and fall back to every OTHER
+    # registered repo). This test is about the remaining genuinely-empty case,
+    # so empty it explicitly rather than relying on init leaving it that way.
+    (tmp_path / "registry.json").unlink(missing_ok=True)
     monkeypatch.chdir(tmp_path)
     rc = cli.main(["serve", "--dry-run"])
     captured = capsys.readouterr()
@@ -591,8 +596,9 @@ def test_compile_flag_surface_is_small():
     # sessions_enabled + distill_enabled + strict) + the provider-agnostic
     # extractor surface: extractor + llm_model/llm_include/llm_limit (LLM is the
     # default), with the deprecated claude_include/limit/timeout/model hidden
-    # aliases = 19 dests max.
-    assert len({a.dest for a in flags}) <= 19, sorted({a.dest for a in flags})
+    # aliases, plus lock_wait and the three --all dests
+    # (all_projects/name/jobs) = 23 dests max.
+    assert len({a.dest for a in flags}) <= 23, sorted({a.dest for a in flags})
 
 
 def test_compile_keeps_exactly_the_dieted_dests():
@@ -623,6 +629,23 @@ def test_compile_keeps_exactly_the_dieted_dests():
         # warnings→1); default stays report-only. A per-run CI/publish knob,
         # so a CLI flag rather than a ``compile_options.*`` key.
         "strict",
+        # ``--wait [SECONDS]`` queues for the per-project compile lock instead
+        # of exiting 2. It has to be a FLAG, not a config key: whether a run
+        # may block is a property of how it was invoked (a human at a terminal
+        # waits; a hook must not), and the alternative — inferring it from
+        # ``stderr.isatty()`` — silently changes behaviour under tee, tmux
+        # capture and CI. A background engine holding the lock previously made
+        # every interactive compile fail outright.
+        "lock_wait",
+        # ``--all`` / ``--name`` / ``--jobs`` run one compile per registered
+        # project with per-project failure isolation. They are flags rather
+        # than config because WHICH projects a single invocation covers is a
+        # property of that invocation, and a machine hosting several projects
+        # otherwise needs a shell loop that stops at the first failure and
+        # reports nothing about the rest.
+        "all_projects",
+        "name",
+        "jobs",
         "llm_provider",
         "claude_config_dir",
         "codex_home",

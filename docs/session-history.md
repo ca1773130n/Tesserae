@@ -90,6 +90,18 @@ If you write into this store from your own tool, use `tesserae sessions import <
 
 Scope narrows further, as a second gate: a record is pruned only if its transcript also lives under a root this run scanned and its harness was one it scanned. So `--harness codex` leaves claude-code records alone even though `~/.claude` was walked.
 
+### Several machines sharing one project directory
+
+Every record also carries a **`host`** — the machine that harvested it. **A host prunes only what it harvested.**
+
+This is a genuinely separate axis from `producer`, and the gates above cannot stand in for it. When several servers each run Claude Code and share a disk, they share `.tesserae` too — but each one sees only its own local transcripts. Every host's scan stamps the same `tesserae:discover`, and every host's `~/.claude` resolves to the same path string, so the producer gate and the scope gate *both pass* on a machine that never saw the transcript. It then deletes another machine's record and reports success. Records now carry the harvesting host, and pruning requires it to match.
+
+The host id lives in `~/.tesserae/host_id` — per machine, not in the shared project directory — and is generated once on first use. Override it with `TESSERAE_HOST_ID`. It is a persisted id rather than the hostname on purpose: a fleet built from one image reuses hostnames, and a hostname collision would silently hand one machine's records to another.
+
+The **write** path is deliberately host-blind. Two hosts can only write the same session when both can see the transcript, so the write is idempotent and simply re-stamps ownership onto whichever host last proved it could see it. Gating writes by host instead would freeze a decommissioned machine's records forever with no way to reclaim them.
+
+Records written before this field carry no host. They are unowned on this axis and survive any host's prune until `--adopt-unowned` claims them — the same rule `producer` already uses, and the reason it matters here is that *every* record written by 0.28.7 carries a producer and no host, so the producer gate would abstain and nothing else would protect them.
+
 Three behaviours worth knowing:
 
 - **Records written before 0.28.7 carry no producer.** They are unowned, so no importer prunes or overwrites them — safe, but discovery will not refresh them either. `sessions discover --import --adopt-unowned` claims them for discovery. Run it once if Tesserae's own scan is the only thing writing this store; do **not** run it if another tool writes here too, since it hands your records to discovery.

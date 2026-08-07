@@ -135,7 +135,8 @@ export TESSERAE_LLM_CACHE=0   # 始终重新询问
 
 | 变量 | 默认值 | 备注 |
 |---|---|---|
-| `TESSERAE_REGISTRY` | `~/.tesserae/registry.json` | 项目注册表位置 |
+| `TESSERAE_REGISTRY` | `~/.tesserae/registry.json` | 项目注册表位置。**每一个**命令都遵守它——在 0.28.7 之前只有引擎的舰队模式会读它，所以在别处设置它会悄无声息地毫无效果，命令仍然使用真正的注册表 |
+| `TESSERAE_HOST_ID` | 首次使用时生成到 `~/.tesserae/host_id` | 本机的身份标识。见[在一个项目上运行多台机器](#在一个项目上运行多台机器) |
 | `TESSERAE_DISCOVERY_CACHE` | — | 会话发现缓存 |
 | `TESSERAE_ARXIV_CACHE` | — | arXiv 元数据缓存 |
 | `TESSERAE_NO_FEDERATION_CACHE` | 关闭 | 禁用联合图 LRU |
@@ -143,6 +144,61 @@ export TESSERAE_LLM_CACHE=0   # 始终重新询问
 | `TESSERAE_FLEET_PIDFILE` | — | 引擎舰队 pidfile |
 | `TESSERAE_CLIP_TOKEN` | — | Web clipper 的共享密钥 |
 | `TESSERAE_SCHEMA_DRIFT_APPLY` | 关闭 | 应用模式漂移提案（`tesserae lab`） |
+
+---
+
+## 在一个项目上运行多台机器
+
+本节针对的形态：多台服务器各自运行一个编码 agent，各自拥有自己本地的会话转录，并且共享一块磁盘——因此它们看到的是同一个项目目录、同一个 `.tesserae/`。
+
+**把编译交给一台主机，其余的只做采集。**
+
+```bash
+# on the compiling host
+tesserae engine
+
+# on every other host
+tesserae engine --harvest-only
+```
+
+`--harvest-only` 把那台机器本地的转录 tail 进共享的会话存储，并且从不去拿项目的编译锁。它是把争用消除掉，而不是去仲裁争用，这正是它胜过调超时的原因。
+
+**当你确实想排队而不是失败时**，传入 `--wait`：
+
+```bash
+tesserae compile --wait          # up to 30 min, reporting every 5s
+tesserae compile --wait 120      # or name your own bound
+```
+
+不加它时，一次发现锁已被持有的编译会以 2 退出——这对钩子是正确的，对人却令人抓狂。`--wait` 是一个显式标志，而不是从 stdout 是否为终端推断出来的东西，因为同一条命令在 `tee` 下、在 tmux 捕获里、在 CI 中都不能改变行为。`TESSERAE_COMPILE_LOCK_WAIT=<seconds>` 为整棵进程树做同样的事。
+
+**用一次调用让每个项目保持新鲜：**
+
+```bash
+tesserae refresh --all               # every registered project, sequentially
+tesserae refresh --all --jobs 3      # three at a time
+tesserae compile --all --name alpha --name beta
+```
+
+一个项目失败不会让其余的停下。只要有失败就退出 `2`，只要有被另一次运行锁住的就退出 `1`，全部跑完则退出 `0`。`--jobs` 默认是 1，因为编译是 LLM 重操作，把它调高就是在并行消耗配额。
+
+### 是什么让这件事安全
+
+每台机器各自的状态过去存放在一个共享的名字下，并被每台主机读取。下面每一项现在都按主机 id 分区：
+
+| 状态 | 位置 | 为什么必须按主机分开 |
+|---|---|---|
+| 会话记录 | `.tesserae/harness_sessions/` | 一台主机只删除自己采集的记录。否则主机 B 会删掉主机 A 的会话并报告成功——每台主机的扫描都戳上同样的生产者，它们的 `~/.claude` 路径也解析得一模一样，没有别的东西能区分它们 |
+| 引擎 pidfile | `.tesserae/daemon.<host>.pid` | 存活判断是对**本地**进程表执行 `os.kill(pid, 0)`；另一台机器写下的 pid 会被拿去和一个毫不相干的本地进程比对 |
+| Codex 扫描下界 | `.tesserae/harness_sessions.db` | 一条共享的水位线意味着最后运行的那台主机会把它推过另一台还没读过的转录——那些转录根本就没被导入过 |
+
+主机 id 在 `~/.tesserae/host_id` 中生成一次（按机器，**不在**共享的项目目录里），并可以用 `TESSERAE_HOST_ID` 固定。之所以是持久化的 id 而不是主机名，是因为由同一个镜像构建出来的机群会重复使用主机名，而一次冲突会把一台机器的记录交给另一台。
+
+### 你应该亲自测试的那个假设
+
+以上一切都假设 `flock(2)` 被承载 `.tesserae/` 的那个文件系统**强制执行**。在 NFS 和 SMB 上这取决于配置，而没有可用的 lock daemon 时，`flock` 可能静默退化为空操作——那时两台主机会同时编译同一个项目，各自都以为自己独占持有那把锁。
+
+`tesserae doctor` 会在项目位于网络文件系统上时告警，但单台主机**无法**证明跨主机的强制生效。请在真实硬件上直接测试：在主机 A 上持有一把锁，确认主机 B 被拒绝。
 
 ---
 

@@ -1503,8 +1503,15 @@ def resolve_llm_client_settings(cfg: Optional[dict] = None) -> dict:
     # it None hands the decision to ClaudeCLIJsonClient, which puts
     # CLAUDE_CONFIG_DIR first and keeps the other discovered accounts behind it.
     # Only a CONFIGURED list is authoritative, because only that is deliberate.
+    # TESSERAE_CLAUDE_CONFIG_DIRS is the CLI's channel for a REPEATED
+    # --claude-config-dir: deliberate, ordered, and explicitly Tesserae's, so
+    # unlike the ambient CLAUDE_CONFIG_DIR it is safe to treat as
+    # authoritative. Scalar CLAUDE_CONFIG_DIR is still deliberately absent —
+    # see the note below.
+    _env_dirs = os.environ.get("TESSERAE_CLAUDE_CONFIG_DIRS") or ""
     claude_config_dirs = (
-        _as_dirs(cfg.get("llm_claude_config_dirs"))
+        _as_dirs([d for d in _env_dirs.split(os.pathsep) if d])
+        or _as_dirs(cfg.get("llm_claude_config_dirs"))
         or _as_dirs(global_cfg.get("llm_claude_config_dirs"))
     )
 
@@ -1581,6 +1588,7 @@ def build_default_json_client(
     timeout: Any = _KEEP_TIMEOUT,
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
+    settings: Optional[dict] = None,
 ) -> Optional[LLMJsonClient]:
     """Return the best-available JSON-completion client.
 
@@ -1625,10 +1633,28 @@ def build_default_json_client(
     # Explicit args (threaded from a project config by the caller) beat the
     # env → global-config resolution. ``settings["provider"]`` already folds
     # in TESSERAE_LLM_PROVIDER.
-    settings = resolve_llm_client_settings()
+    #
+    # ``settings=`` exists because re-resolving here sees only env + the
+    # GLOBAL config: a caller that resolved against a PROJECT config.json
+    # (project.py:_build_json_client) had its llm_model / llm_base_url /
+    # llm_api_key silently discarded on the primary compile path. Passing the
+    # already-resolved dict is what makes project-level LLM config real.
+    settings = settings if settings is not None else resolve_llm_client_settings()
     resolved_provider = (
         provider or settings["provider"] or "claude"
     ).strip().lower()
+
+    # Provider-scope the configured model exactly as ``_configured_default_model``
+    # does inside each client: a claude-shaped ``llm_model`` must not land on the
+    # Codex CLI when the availability chain falls through providers. An explicit
+    # ``model=`` argument always wins and is never scoped.
+    _cfg_model = settings.get("model")
+    _cfg_model_provider = (settings.get("provider") or "claude").strip().lower()
+
+    def _model_for(providers: Sequence[str]) -> Optional[str]:
+        if model:
+            return model
+        return _cfg_model if _cfg_model and _cfg_model_provider in providers else None
     # Explicit list > legacy scalar > configured list. Left None, the client
     # ranks CODEX_HOME first and keeps the other discovered homes behind it.
     _resolved_codex_homes = (
@@ -1644,7 +1670,7 @@ def build_default_json_client(
     def _codex() -> Optional[LLMJsonClient]:
         if _codex_cli_available():
             return CodexCLIJsonClient(
-                model=model,
+                model=_model_for(("codex",)),
                 codex_homes=_resolved_codex_homes,
                 reasoning_effort=codex_reasoning_effort,
                 **_tkw,
@@ -1662,8 +1688,8 @@ def build_default_json_client(
                 else {}
             )
             return ClaudeCLIJsonClient(
-                model=model,
-                config_dirs=claude_config_dirs,
+                model=_model_for(("claude",)),
+                config_dirs=claude_config_dirs or settings.get("claude_config_dirs"),
                 **_ekw,
                 **_tkw,
             )
@@ -1677,7 +1703,7 @@ def build_default_json_client(
         if resolved_api_key:
             try:
                 return AnthropicLLMJsonClient(
-                    model=model,
+                    model=_model_for(("anthropic", "custom")),
                     api_key=resolved_api_key,
                     base_url=resolved_base_url,
                     **_tkw,
@@ -1691,7 +1717,7 @@ def build_default_json_client(
         # claude-compatible endpoints are keyless), resolved knobs applied.
         try:
             return AnthropicLLMJsonClient(
-                model=model,
+                model=_model_for(("anthropic", "custom")),
                 api_key=resolved_api_key,
                 base_url=resolved_base_url,
                 **_tkw,

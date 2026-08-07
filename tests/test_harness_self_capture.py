@@ -9,7 +9,7 @@ next compile "extracts findings" from its own extraction calls.
 
 from __future__ import annotations
 
-import re
+import ast
 from pathlib import Path
 
 from tesserae.harness_sessions import (
@@ -88,31 +88,88 @@ def test_user_quoting_a_prompt_midmessage_is_kept():
         assert is_tesserae_internal_session(s) is False, body[:60]
 
 
-def test_every_system_prompt_is_covered():
-    """Anti-drift guard: every Tesserae-owned LLM system prompt in the package must
-    be covered by a signature, so a newly added prompt cannot silently re-open the
-    self-capture loop. Scans package source for prompt openings of the
-    ``You are/distill/write/decide/arbitrate/split ...`` family and asserts each
-    starts with a known signature. (See the comment on _TESSERAE_PROMPT_SIGNATURES.)
+def _declared_system_prompts() -> list[tuple[str, str]]:
+    """Every ``system=`` / ``system_prompt=`` string literal in the package.
+
+    Parsed from the AST rather than matched with a regex. The regex this
+    replaced looked for openings of the ``You are|distill|write|decide|
+    arbitrate|split`` family — a hand-maintained allowlist of VERBS — and the
+    single highest-volume prompt Tesserae issues opens with "You extract".
+    So the one guard whose job was to prevent the self-capture loop could not
+    see the prompt that re-opened it, and 98.4% of the harvested session store
+    turned out to be Tesserae's own extraction calls.
+
+    A prompt is identified by how it is PASSED, not by how it is worded. New
+    prompts cannot dodge this by picking a different verb.
     """
     pkg = Path(__file__).resolve().parent.parent / "tesserae"
     sig_file = pkg / "harness_sessions.py"  # excluded: it DEFINES the signatures
-    opening = re.compile(
-        r'(?:[fr]{0,2}"""|[fr]{0,2}")'
-        r'(You (?:are|distill|write|decide|arbitrate|split)\b[^"\n]{8,})'
-    )
-    uncovered: list[tuple[str, str]] = []
-    for path in pkg.rglob("*.py"):
+    found: list[tuple[str, str]] = []
+    for path in sorted(pkg.rglob("*.py")):
         if path == sig_file:
             continue
-        for m in opening.finditer(path.read_text(encoding="utf-8")):
-            text = m.group(1)
-            if not text.startswith(_TESSERAE_PROMPT_SIGNATURES):
-                uncovered.append((str(path.relative_to(pkg)), text[:80]))
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:  # pragma: no cover — a broken file fails elsewhere
+            continue
+
+        # Module-level string constants, so `system=_SUMMARY_SYSTEM` resolves.
+        # Catching only inline literals missed the most common shape in this
+        # codebase by far — a named constant above the call — and three more
+        # self-capturing prompts survived the first pass of this fix because of
+        # it (activity_summary._SUMMARY_SYSTEM, ask_router's scope prompt, and
+        # a second activity-summary variant).
+        consts: dict[str, str] = {}
+        for node in tree.body:
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            value = node.value
+            if not (isinstance(value, ast.Constant) and isinstance(value.value, str)):
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    consts[target.id] = value.value
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            for kw in node.keywords or []:
+                if kw.arg not in ("system", "system_prompt"):
+                    continue
+                loc = f"{path.relative_to(pkg)}:{kw.value.lineno}"
+                if isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                    found.append((loc, kw.value.value))
+                elif isinstance(kw.value, ast.Name) and kw.value.id in consts:
+                    found.append((loc, consts[kw.value.id]))
+    return found
+
+
+def test_every_system_prompt_is_covered():
+    """Anti-drift guard: every Tesserae-owned LLM system prompt must be covered
+    by a signature, so a newly added prompt cannot silently re-open the
+    self-capture loop."""
+    declared = _declared_system_prompts()
+    assert declared, "found no system= prompts at all — the scanner is broken, not the code"
+
+    uncovered = [
+        (loc, text[:80])
+        for loc, text in declared
+        if not text.lstrip().startswith(_TESSERAE_PROMPT_SIGNATURES)
+    ]
     assert not uncovered, (
         "Tesserae system prompt(s) not covered by _TESSERAE_PROMPT_SIGNATURES "
-        "(self-capture loop would re-open): " + "; ".join(f"{p}: {t}" for p, t in uncovered)
+        "(the self-capture loop would re-open — every compile would file these "
+        "calls as if they were the user's own coding sessions): "
+        + "; ".join(f"{loc}: {t}" for loc, t in uncovered)
     )
+
+
+def test_the_extraction_prompt_is_recognised_as_internal():
+    """The specific regression: one call per document per compile, and every one
+    of them was landing in the session store as a user session."""
+    title = "You extract a typed research-intelligence graph as ONE JSON object (nodes + edges)."
+    assert is_tesserae_internal_session(_session("x", title)) is True
 
 
 def test_prune_internal_sessions_removes_only_internal(tmp_path: Path):
@@ -131,3 +188,50 @@ def test_prune_internal_sessions_removes_only_internal(tmp_path: Path):
     assert {s.title for s in remaining} == set(_REAL)
     # idempotent: a second prune removes nothing
     assert db.prune_internal_sessions() == 0
+
+
+def test_file_store_prune_removes_only_internal_records(tmp_path: Path):
+    """The DB prune was not enough: `compile` reads the FILE store, so a store
+    cleaned only in sqlite kept feeding the graph Tesserae's own extraction
+    calls. Measured on the dogfood repo before this landed: 14,377 of 14,605
+    stored records (98.4%) were self-captured."""
+    from tesserae.harness_sessions import HarnessSessionStore
+
+    store = HarnessSessionStore(tmp_path / "harness_sessions")
+    internal = [_session(f"int{i}", t) for i, t in enumerate(_INTERNAL)]
+    extraction = _session(
+        "extract",
+        "You extract a typed research-intelligence graph as ONE JSON object (nodes + edges).",
+    )
+    real = [_session(f"real{i}", t) for i, t in enumerate(_REAL)]
+    store.write_sessions(internal + [extraction] + real)
+    assert len(store.list_sessions()) == len(internal) + 1 + len(real)
+
+    preview = store.prune_internal(dry_run=True)
+    assert preview["removed"] == len(internal) + 1
+    assert preview["kept"] == len(real)
+    assert len(store.list_sessions()) == len(internal) + 1 + len(real), "dry run deleted"
+
+    result = store.prune_internal()
+    assert result["removed"] == len(internal) + 1
+    assert {s.title for s in store.list_sessions()} == set(_REAL)
+    # The markdown page goes with its record — an orphan page would keep the
+    # session visible on the site after the record behind it was removed.
+    assert not list((tmp_path / "harness_sessions").glob("*/*extract*.md"))
+    assert store.prune_internal()["removed"] == 0  # idempotent
+
+
+def test_file_store_prune_keeps_unreadable_records(tmp_path: Path):
+    """Unparseable is not provably internal. Same conservatism as every other
+    gate here: what cannot be shown to be ours is not ours to delete."""
+    from tesserae.harness_sessions import HarnessSessionStore
+
+    store = HarnessSessionStore(tmp_path / "harness_sessions")
+    store.write_sessions([_session("real0", _REAL[0])])
+    corrupt = store.root / "claude-code" / "corrupt.json"
+    corrupt.write_text("{not json", encoding="utf-8")
+
+    result = store.prune_internal()
+    assert result["unreadable"] == 1
+    assert result["removed"] == 0
+    assert corrupt.exists()

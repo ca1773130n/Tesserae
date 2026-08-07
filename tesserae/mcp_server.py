@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import sys
 from collections import Counter
 from pathlib import Path
@@ -299,7 +300,26 @@ class ProjectRegistry:
     """
 
     def __init__(self, path: str | Path | None = None) -> None:
-        self.path = Path(path) if path is not None else DEFAULT_REGISTRY_PATH
+        # ``TESSERAE_REGISTRY`` is printed as a usage example by ``tesserae
+        # engine --help`` and listed in docs/tuning.md, but only the fleet
+        # daemon ever read it: every other entry point (ask, serve, projects
+        # list, doctor) builds a ``ProjectRegistry`` with no path, which went
+        # straight to ``~/.tesserae/registry.json``. An auditor pointed the var
+        # at a scratch registry for a whole session believing the run was
+        # isolated, and every command kept federating across their six real
+        # projects. An explicit ``path`` still wins — a caller that passes one
+        # (``--registry``, the tests) means it, and an ambient env var must not
+        # override a deliberate argument.
+        env_path = os.environ.get("TESSERAE_REGISTRY")
+        if path is not None:
+            self.path = Path(path)
+        elif env_path:
+            # The advertised example is literally ``~/.tesserae/registry.json``,
+            # and an unexpanded ``~`` would silently create a directory named
+            # "~" in the cwd instead of failing.
+            self.path = Path(env_path).expanduser()
+        else:
+            self.path = DEFAULT_REGISTRY_PATH
 
     def load(self) -> JSONDict:
         if not self.path.exists():
@@ -315,9 +335,23 @@ class ProjectRegistry:
 
     def save(self, data: JSONDict) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-        tmp.rename(self.path)
+        # PID + random suffix, the same shape ``batch.py::_write_manifest``
+        # uses. The old ``self.path.with_suffix(".tmp")`` was one fixed path
+        # (``registry.tmp``) shared by every writer, so two concurrent
+        # registrations — two hosts on a shared home, or a `register_project`
+        # call racing the fleet's reconciliation — interleaved their JSON into
+        # that single file and renamed the mixture over the registry, which
+        # then fails to parse and takes every project down with it.
+        tmp = self.path.with_suffix(f".tmp.{os.getpid()}.{secrets.token_hex(4)}")
+        try:
+            tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            os.replace(tmp, self.path)
+        finally:
+            if tmp.exists():
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
 
     def register(self, path: str | Path, name: Optional[str] = None) -> JSONDict:
         graph_path, project_root = _discover_graph_and_root(Path(path).expanduser())

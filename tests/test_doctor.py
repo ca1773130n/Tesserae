@@ -26,13 +26,24 @@ from tesserae.project import ProjectWiki
 
 PINNED_NOW = datetime(2026, 7, 10, 12, 0, 0, tzinfo=timezone.utc)
 
+#: Captured before the autouse fixture pins the module attribute, so one test
+#: can exercise the real config-dir resolution.
+_REAL_PROJECT_CLAUDE_DIRS = doctor._project_claude_config_dirs
+
 
 @pytest.fixture(autouse=True)
 def _pin_probes(monkeypatch):
     """Pin the machine-environment probes so doctor results are deterministic."""
     monkeypatch.setattr(doctor, "_llm_login_status", lambda: {"claude": True, "codex": None})
+    monkeypatch.setattr(doctor, "_project_claude_config_dirs", lambda ctx: [])
     monkeypatch.setattr(doctor, "_embedding_probe", lambda: {"backend": "pinned", "semantic": True})
     monkeypatch.setattr(doctor, "_environment_probe", lambda root: "pinned environment summary")
+    # The filesystem under tmp_path differs per box (apfs here, ext4/overlay
+    # in CI) and decides the flock finding's severity, so pin a local one.
+    monkeypatch.setattr(doctor, "_mount_table", lambda: [("/", "ext4")])
+    # This machine's id, which partitions the pidfiles and lock records that
+    # several hosts sharing one .tesserae would otherwise read as their own.
+    monkeypatch.setenv("TESSERAE_HOST_ID", "srv-a")
 
 
 def make_project(root: Path) -> ProjectWiki:
@@ -269,6 +280,44 @@ def test_live_daemon_pid_is_ok_and_never_removed(tmp_path):
     assert pidfile.exists()
 
 
+def test_foreign_host_pidfile_is_reported_but_never_judged_or_removed(tmp_path):
+    """Shared disk: srv-b's daemon is alive on srv-b, and its pid is dead here.
+
+    ``os.kill(pid, 0)`` answers about the LOCAL process table, so --fix used
+    to delete a running daemon's pidfile on the other machine.
+    """
+    make_project(tmp_path)
+    foreign = tmp_path / ".tesserae" / "daemon.srv-b.pid"
+    foreign.write_text(json.dumps({"pid": _dead_pid()}), encoding="utf-8")
+
+    report = doctor.run_doctor(tmp_path, fix=True, now=PINNED_NOW)
+    f = finding(report, "daemon_pid")
+    assert f.severity == "ok"
+    assert not f.fixable
+    assert "srv-b" in f.message
+    assert foreign.exists()
+    assert not any(entry.startswith("daemon_pid:") for entry in report.fixed)
+
+
+def test_this_hosts_stale_pidfile_is_removed_while_a_foreign_one_survives(tmp_path):
+    make_project(tmp_path)
+    mine = tmp_path / ".tesserae" / "daemon.srv-a.pid"
+    foreign = tmp_path / ".tesserae" / "daemon.srv-b.pid"
+    mine.write_text(json.dumps({"pid": _dead_pid()}), encoding="utf-8")
+    foreign.write_text(json.dumps({"pid": _dead_pid()}), encoding="utf-8")
+
+    report = doctor.run_doctor(tmp_path, now=PINNED_NOW)
+    f = finding(report, "daemon_pid")
+    assert f.severity == "warn"
+    assert f.fixable
+    assert "daemon.srv-a.pid" in f.message and "srv-b" in f.message
+
+    fixed = doctor.run_doctor(tmp_path, fix=True, now=PINNED_NOW)
+    assert not mine.exists()
+    assert foreign.exists()  # never, under any circumstance
+    assert finding(fixed, "daemon_pid").severity == "ok"
+
+
 # ---------------------------------------------------------------------------
 # live compile lock — report the holder, NEVER touch it
 # ---------------------------------------------------------------------------
@@ -302,6 +351,152 @@ def test_unheld_compile_lock_is_ok(tmp_path):
     (tmp_path / ".tesserae" / "compile.lock").write_text("", encoding="utf-8")
     report = doctor.run_doctor(tmp_path, now=PINNED_NOW)
     assert finding(report, "compile_lock").severity == "ok"
+
+
+def test_compile_lock_held_by_another_host_says_so(tmp_path):
+    """A JSON holder record names the machine; a lock held elsewhere must not
+    read as "wait, something here is compiling"."""
+    fcntl = pytest.importorskip("fcntl")
+    make_project(tmp_path)
+    lock_path = tmp_path / ".tesserae" / "compile.lock"
+    handle = lock_path.open("a+", encoding="utf-8")
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        handle.write(json.dumps({"pid": 4711, "host": "srv-b"}))
+        handle.flush()
+
+        f = finding(doctor.run_doctor(tmp_path, fix=True, now=PINNED_NOW), "compile_lock")
+        assert f.severity == "warn"
+        assert "another machine" in f.message
+        assert "4711" in f.message and "srv-b" in f.message
+        assert f.suggestion == "wait for the compile on srv-b to finish"
+        assert lock_path.exists()
+    finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
+
+
+# ---------------------------------------------------------------------------
+# flock enforcement / filesystem under the project
+# ---------------------------------------------------------------------------
+
+
+def test_local_filesystem_flock_probe_is_ok_and_claims_nothing_cross_host(tmp_path):
+    make_project(tmp_path)
+    f = finding(doctor.run_doctor(tmp_path, now=PINNED_NOW), "filesystem_locking")
+    assert f.severity == "ok"
+    assert "ext4" in f.message
+    assert "cannot prove enforcement between machines" in f.message
+
+
+def test_network_filesystem_warns_that_flock_may_be_a_no_op(tmp_path, monkeypatch):
+    make_project(tmp_path)
+    monkeypatch.setattr(doctor, "_mount_table", lambda: [("/", "ext4"), (str(tmp_path), "nfs4")])
+    f = finding(doctor.run_doctor(tmp_path, now=PINNED_NOW), "filesystem_locking")
+    assert f.severity == "warn"
+    assert "nfs4" in f.message
+    # Honest about reach: the local probe succeeded, and that proves nothing
+    # about a second machine.
+    assert "cannot be determined from one machine" in f.message
+
+
+def test_refused_flock_is_reported_as_a_broken_guarantee(tmp_path, monkeypatch):
+    make_project(tmp_path)
+    monkeypatch.setattr(doctor, "_flock_probe", lambda d: (False, "OSError: [Errno 45] unsupported"))
+    f = finding(doctor.run_doctor(tmp_path, now=PINNED_NOW), "filesystem_locking")
+    assert f.severity == "warn"
+    assert "protect nothing" in f.message
+
+
+def test_filesystem_type_prefers_the_longest_matching_mountpoint(tmp_path, monkeypatch):
+    monkeypatch.setattr(doctor, "_mount_table", lambda: [("/", "ext4"), (str(tmp_path), "cifs")])
+    assert doctor._filesystem_type(tmp_path / "deep" / "path") == "cifs"
+
+
+# ---------------------------------------------------------------------------
+# llm_login — reports what it verified, never "logged in"
+# ---------------------------------------------------------------------------
+
+
+def test_llm_login_never_claims_credentials_it_did_not_verify(tmp_path):
+    """The green check that contradicted a live `not logged in` compile.
+
+    Presence of a config dir is all doctor checks (running `claude -p` would
+    spend a model call), so the finding must say only that.
+    """
+    make_project(tmp_path)
+    f = finding(doctor.run_doctor(tmp_path, now=PINNED_NOW), "llm_login")
+    assert f.severity == "ok"
+    assert "credentialed" not in f.message
+    assert "NOT verified" in f.message
+
+
+def test_llm_login_is_scoped_to_the_config_dirs_compile_would_try(tmp_path, monkeypatch):
+    make_project(tmp_path)
+    configured = tmp_path / "claude-acct-1"
+    configured.mkdir()
+    monkeypatch.setattr(doctor, "_project_claude_config_dirs", lambda ctx: [str(configured)])
+    f = finding(doctor.run_doctor(tmp_path, now=PINNED_NOW), "llm_login")
+    assert f.severity == "ok"
+    assert str(configured) in f.message
+    assert "NOT verified" in f.message
+
+
+def test_llm_login_warns_when_no_configured_config_dir_exists(tmp_path, monkeypatch):
+    make_project(tmp_path)
+    gone = tmp_path / "claude-acct-gone"
+    monkeypatch.setattr(doctor, "_project_claude_config_dirs", lambda ctx: [str(gone)])
+    f = finding(doctor.run_doctor(tmp_path, now=PINNED_NOW), "llm_login")
+    assert f.severity == "warn"
+    assert str(gone) in f.message
+
+
+def test_llm_login_config_dirs_come_from_the_projects_own_config(tmp_path, monkeypatch):
+    """Resolution goes through llm_json, the same path _build_json_client uses."""
+    wiki = make_project(tmp_path)
+    acct = tmp_path / "acct"
+    acct.mkdir()
+    cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+    cfg["llm_claude_config_dirs"] = [str(acct)]
+    wiki.paths.config.write_text(json.dumps(cfg), encoding="utf-8")
+    monkeypatch.delenv("TESSERAE_CLAUDE_CONFIG_DIRS", raising=False)
+    # The provider is pinned because ~/.tesserae/config.json contributes one:
+    # a dev box set to codex would otherwise resolve no claude dirs at all and
+    # this assertion would pass or fail depending on whose machine ran it.
+    monkeypatch.setenv("TESSERAE_LLM_PROVIDER", "claude")
+    ctx = doctor.DoctorContext(
+        project_root=tmp_path, wiki=ProjectWiki.load(tmp_path), registry=None, now=PINNED_NOW
+    )
+    # _REAL_PROJECT_CLAUDE_DIRS, not the attribute: the autouse fixture pins
+    # that one so every other test stays independent of this box's config.
+    assert _REAL_PROJECT_CLAUDE_DIRS(ctx) == [str(acct)]
+
+
+def test_llm_login_says_nothing_about_claude_dirs_when_the_provider_is_codex(
+    tmp_path, monkeypatch
+):
+    """A codex project must not be warned about a claude account it never uses.
+
+    ``llm_claude_config_dirs`` resolves for every provider, but a compile under
+    ``llm_provider: codex`` runs codex and only falls back to claude — so a
+    missing claude dir turned a healthy project into `warn` and exit 1.
+    """
+    wiki = make_project(tmp_path)
+    cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+    cfg["llm_provider"] = "codex"
+    cfg["llm_claude_config_dirs"] = [str(tmp_path / "claude-acct-gone")]
+    wiki.paths.config.write_text(json.dumps(cfg), encoding="utf-8")
+    monkeypatch.delenv("TESSERAE_CLAUDE_CONFIG_DIRS", raising=False)
+    monkeypatch.delenv("TESSERAE_LLM_PROVIDER", raising=False)
+    ctx = doctor.DoctorContext(
+        project_root=tmp_path, wiki=ProjectWiki.load(tmp_path), registry=None, now=PINNED_NOW
+    )
+    assert _REAL_PROJECT_CLAUDE_DIRS(ctx) == []
+
+    monkeypatch.setattr(doctor, "_project_claude_config_dirs", _REAL_PROJECT_CLAUDE_DIRS)
+    f = finding(doctor.run_doctor(tmp_path, now=PINNED_NOW), "llm_login")
+    assert f.severity == "ok"
+    assert "claude-acct-gone" not in f.message
 
 
 # ---------------------------------------------------------------------------

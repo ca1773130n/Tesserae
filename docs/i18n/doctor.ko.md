@@ -18,7 +18,7 @@ tesserae doctor --project ~/src/other
 
 ## 무엇을 점검하는가
 
-카테고리별로 묶인 20개의 점검 항목:
+카테고리별로 묶인 점검 항목:
 
 | 점검 | 카테고리 | 검증 내용 | `--fix` 동작 |
 |---|---|---|---|
@@ -32,9 +32,10 @@ tesserae doctor --project ~/src/other
 | `backend_artifacts` | freshness | RAG-Anything 아티팩트가 최신인지 | 보고만 (해당 refresh는 LLM/네트워크 비용이 큼) |
 | `session_chunks` | freshness | [일일 session-chunk](session-chunks.ko.md) 커버리지에 최근 윈도우 내 공백이 없는지 | 보고만 (`tesserae sessions chunk-backfill` 제안) |
 | `wiki_lint` | graph | graph ⇄ wiki 드리프트 + 자명하게 고칠 수 있는 lint 발견 사항 | **SAFE**: lint의 자명한 수정(`fix_trivial`)을 적용 |
-| `compile_lock` | processes | 라이브 compile lock이 잡혀 있는지, 어느 pid가 잡고 있는지 | 보고만 — doctor는 **살아 있는 lock을 절대 죽이거나 제거하지 않음** |
-| `daemon_pid` | processes | `daemon.pid`가 살아 있는 엔진 프로세스를 가리키는지 | **SAFE**: 소유자가 죽었을 때 pidfile 제거 |
-| `llm_login` | environment | 설정된 LLM 백엔드가 실제로 사용 가능한지 (claude/codex CLI 로그인 상태이거나 API 키 존재) | 보고만 (`claude /login` / `codex login` 제안) |
+| `compile_lock` | processes | 라이브 compile lock이 잡혀 있는지, 어느 pid **와 어느 호스트**가 잡고 있는지 | 보고만 — doctor는 **살아 있는 lock을 절대 죽이거나 제거하지 않음** |
+| `filesystem_locking` | processes | `.tesserae/`가 `flock(2)`이 조용한 no-op일 수 있는 네트워크 파일시스템 위에 있는지 | 보고만 (호스트 간 강제를 증명할 수는 없음 — 아래 참조) |
+| `daemon_pid` | processes | `daemon.<host>.pid`가 살아 있는 엔진 프로세스를 가리키는지 | **SAFE**: 소유자가 죽었을 때 **이 호스트의** pidfile을 제거; 다른 머신의 것은 보고할 뿐 절대 건드리지 않음 |
+| `llm_login` | environment | 프로젝트가 실제로 사용할 config 디렉터리가 존재하는지 | 보고만 — **자격 증명을 검증하지 않음** (아래 참조) |
 | `optional_deps` | environment | 선택적 의존성 상태 (memex, raganything) | 보고만 (설치는 네트워크가 필요) |
 | `embedding_backend` | environment | 실제 시맨틱 embedding 백엔드가 사용 가능한지 | 보고만 (`pip install tesserae[semantic]` 제안) |
 | `environment` | environment | 환경 전반 감지 요약 | 보고 전용 섹션 |
@@ -46,6 +47,46 @@ tesserae doctor --project ~/src/other
 점검이 크래시하면 error finding으로 보고됩니다 — doctor 자체는 절대 예외를
 던지지 않습니다.
 
+## `llm_login`이 말해 주는 것과 말해 주지 않는 것
+
+config 디렉터리가 존재한다고 보고할 뿐입니다. 그 안의 CLI가 유효한 토큰을 쥐고
+있다는 것은 보고하지 **않으며**, 자신의 finding 텍스트에 그렇게 적어 둡니다.
+
+이 구분은 트집이 아닙니다. 이 점검은 예전에 `~/.claude/history.jsonl` 같은
+파일을 근거로 `credentialed LLM CLI: claude, codex`를 보고했습니다 — 그런
+파일이 증명하는 것은 CLI가 *사용된 적 있다*는 사실이지, *지금* 인증할 수
+있다는 사실이 아닙니다. 같은 초에 연달아 실행했을 때 `tesserae compile`은
+`Claude CLI not logged in (tried 1 config dir)`를 출력하는데 doctor는 초록색
+체크를 출력했습니다. 지금 눈앞에 놓인 실패와 모순되는 진단은 진단이 없는 것보다
+나쁩니다.
+
+자격 증명을 검증한다는 것은 `tesserae doctor`를 실행할 때마다 실제 LLM 호출을
+쓴다는 뜻이며, 이 점검이 스스로 판단해 떠안을 비용은 아닙니다. 그래서 자신이
+실제로 확인한 것만 말합니다. 확정적인 답은 `tesserae compile`로 얻으세요.
+
+이 점검의 범위는 프로젝트가 실제로 시도할 디렉터리로 한정되며,
+`ProjectWiki._build_json_client`가 쓰는 것과 동일한 경로로 해석됩니다 — 그리고
+프로젝트의 provider가 `codex`일 때는 claude config 디렉터리에 대해 아무 말도
+하지 않습니다.
+
+## 공유 디스크와 `flock(2)`
+
+Tesserae의 모든 동시성 보장은 — 무엇보다 compile lock은 — `.tesserae/`를 담고
+있는 파일시스템이 `flock(2)`을 강제한다는 전제 위에 서 있습니다. NFS와 SMB에서
+그것은 설정에 따라 달라집니다: 동작하는 lock 데몬이 없으면 `flock`은 조용히
+no-op으로 퇴화할 수 있고, 그러면 두 호스트가 각자 배타적 lock을 쥐고 있다고
+믿으면서 같은 프로젝트를 동시에 compile합니다.
+
+`filesystem_locking`은 단일 호스트가 판단할 수 있는 것만 보고합니다:
+프로젝트를 받치는 파일시스템 종류, 그것이 네트워크 파일시스템인지, 그리고
+`flock` 획득이 애초에 성공하는지. 네트워크 파일시스템이면 경고합니다.
+
+이 점검은 호스트 간 강제를 **증명할 수 없으며**, 증명한다고 주장하지도
+않습니다. 한 호스트가 lock을 잡았다는 사실은 두 번째 호스트가 그 lock을 잡지
+못하도록 막히는지에 대해 아무것도 말해 주지 않습니다. 여러 대의 머신에서 공유
+스토리지를 상대로 Tesserae를 돌린다면, compile lock에 기대기 전에 실제
+하드웨어에서 직접 시험해 보세요.
+
 ## `--fix` 정책
 
 - `--fix`는 위에서 SAFE로 표시된 점검**만** 실행한 뒤 재감지하여 보고서가
@@ -53,8 +94,13 @@ tesserae doctor --project ~/src/other
 - 모든 수정은 멱등적입니다: `doctor --fix`를 두 번 실행하면 두 번째 실행은
   깨끗하게 통과합니다.
 - Doctor는 **프로세스를 절대 죽이지 않으며 살아 있는 compile lock을 절대
-  제거하지 않습니다** — 잡혀 있는 lock은 소유 pid와 함께 보고되고 그대로
-  남겨집니다.
+  제거하지 않습니다** — 잡혀 있는 lock은 소유 pid와 호스트와 함께 보고되고
+  그대로 남겨집니다.
+- Doctor는 **다른 머신의 pidfile을 절대 건드리지 않습니다.** 공유
+  스토리지에서 로컬 프로세스 테이블은 다른 호스트가 기록한 pid에 대해 아무것도
+  말해 주지 않으므로, `daemon.<other-host>.pid`는 무조건 보고하고
+  건너뜁니다 — liveness 확인을 위해 읽지조차 않습니다. 제거 대상이 될 수 있는
+  것은 이 호스트 자신의 pidfile뿐입니다.
 - 무겁거나 네트워크가 필요한 작업(재compile, 의존성 설치, 백엔드 refresh)은
   절대 `--fix`에 포함되지 않습니다; doctor는 대신 사용자가 실행할 명령을
   출력합니다.

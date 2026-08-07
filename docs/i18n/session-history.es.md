@@ -90,6 +90,18 @@ Si escribes en este almacén desde tu propia herramienta, usa `tesserae sessions
 
 El alcance se reduce aún más, como una segunda puerta: un registro solo se poda si su transcript también vive bajo una raíz que esta ejecución escaneo y su harness fue uno que escaneo. Así `--harness codex` deja registros de claude-code solos aunque `~/.claude` fue recorrido.
 
+### Varias máquinas compartiendo un mismo directorio de proyecto
+
+Cada registro lleva además un **host (`host`)** — la máquina que lo cosechó. **Un host solo poda lo que él mismo cosechó.**
+
+Este es un eje genuinamente distinto de `producer`, y las puertas de arriba no pueden sustituirlo. Cuando varios servidores ejecutan cada uno Claude Code y comparten un disco, comparten también `.tesserae` — pero cada uno solo ve sus propios transcripts locales. El escaneo de cada host estampa el mismo `tesserae:discover`, y el `~/.claude` de cada host se resuelve a la misma cadena de ruta, así que la puerta del productor y la puerta del alcance *pasan ambas* en una máquina que nunca vio el transcript. Acto seguido borra el registro de otra máquina y reporta éxito. Ahora los registros llevan el host que los cosechó, y podar exige que coincida.
+
+El id de host vive en `~/.tesserae/host_id` — por máquina, no en el directorio compartido del proyecto — y se genera una sola vez en el primer uso. Anúlalo con `TESSERAE_HOST_ID`. Es un id persistido en lugar del hostname a propósito: una flota construida a partir de una sola imagen reutiliza hostnames, y una colisión de hostname entregaría en silencio los registros de una máquina a otra.
+
+La ruta de **escritura** es deliberadamente ciega al host. Dos hosts solo pueden escribir la misma sesión cuando ambos ven el transcript, así que la escritura es idempotente y simplemente vuelve a estampar la propiedad sobre el host que demostró más recientemente que podía verlo. Condicionar en cambio las escrituras por host congelaría para siempre los registros de una máquina dada de baja, sin forma de reclamarlos.
+
+Los registros escritos antes de este campo no llevan host. Son sin dueño en este eje y sobreviven a la poda de cualquier host hasta que `--adopt-unowned` los reclame — la misma regla que `producer` ya usa, y la razón por la que importa aquí es que *todo* registro escrito por 0.28.7 lleva productor y ningún host, así que la puerta del productor se abstendría y nada más los protegería.
+
 Tres comportamientos que vale la pena conocer:
 
 - **Registros escritos antes de 0.28.7 no llevan productor.** Son sin dueño, por lo que ningún importador los poda ni sobrescribe — seguro, pero el descubrimiento tampoco los refrescará. `sessions discover --import --adopt-unowned` los reclama para el descubrimiento. Ejecútalo una vez si el escaneo propio de Tesserae es la única cosa escribiendo en este almacén; *no* lo ejecutes si otra herramienta también escribe aquí, ya que entrega tus registros al descubrimiento.

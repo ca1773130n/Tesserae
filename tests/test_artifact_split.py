@@ -331,3 +331,91 @@ def test_graph_json_schema_unchanged(tmp_path: Path) -> None:
         assert "id" in node
         assert "name" in node
         assert "type" in node
+
+
+# ------------------------------------------------------- concurrent publishing
+
+
+def test_publish_never_uses_one_fixed_temp_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No publish may go through ``<artifact>.tmp``.
+
+    ``with_suffix(".tmp")`` REPLACES the suffix, so every publish of
+    ``graph.json`` used to run through the single path ``.tesserae/graph.tmp``.
+    Two publishers holding that one path — two hosts on a shared disk, or the
+    engine daemon and an interactive compile — interleave their writes into it
+    and rename the mixture into place. Occupying each fixed name with a
+    *directory* is how the test tells the two implementations apart: the old
+    code raises ``IsADirectoryError`` on the write, the per-writer name does
+    not notice.
+    """
+    project_root = tmp_path / "project"
+    wiki = _seed_project(project_root)
+    monkeypatch.setenv("TESSERAE_INCLUDE_COMBINED_GRAPH", "1")
+
+    for fixed in ("graph.tmp", "code-graph.tmp", "combined-graph.tmp"):
+        (wiki.root / fixed).mkdir()
+
+    wiki._write_artifacts(_mixed_graph())
+
+    for target in (wiki.paths.graph, wiki.paths.code_graph, wiki.paths.combined_graph):
+        assert json.loads(target.read_text(encoding="utf-8"))["nodes"], (
+            f"{target.name} should have been published past the occupied fixed temp name"
+        )
+    # And the scratch file is gone once the rename lands — a per-writer name
+    # that is never cleaned up is a leak, not a fix.
+    for stem in ("graph", "code-graph", "combined-graph"):
+        assert list(wiki.root.glob(f"{stem}.tmp.*")) == []
+
+
+def test_publish_removes_its_temp_file_when_the_write_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed publish must not leave its unique scratch file on disk.
+
+    A fixed temp name was at least reused by the next attempt; a per-writer
+    name accumulates one orphan per failure inside ``.tesserae/`` forever, so
+    the cleanup is load-bearing for the change above.
+    """
+    from tesserae import project as project_module
+
+    def _fail(src: object, dst: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(os, "replace", _fail)
+
+    target = tmp_path / "graph.json"
+    with pytest.raises(OSError):
+        project_module._publish_atomically(target, '{"nodes": []}\n')
+
+    assert not target.exists()
+    assert list(tmp_path.glob("graph.tmp*")) == []
+
+
+def test_sidecar_publishes_never_use_one_fixed_temp_path(tmp_path: Path) -> None:
+    """The manifest and hierarchy sidecars share the graph publishes' hazard.
+
+    Both live in ``.tesserae/`` — the directory the whole fleet shares — and
+    both used to write through a single fixed name (``manifest.tmp``,
+    ``hierarchy.tmp``). The manifest is the worse of the two: ``_load_manifest``
+    calls ``json.loads`` with no guard, so an interleaved manifest raises
+    ``JSONDecodeError`` out of every later compile on every host rather than
+    degrading to a re-extraction. Occupying each fixed name with a *directory*
+    is what tells the old and new implementations apart.
+    """
+    project_root = tmp_path / "project"
+    wiki = _seed_project(project_root)
+
+    (wiki.root / "manifest.tmp").mkdir()
+    (wiki.root / "hierarchy.tmp").mkdir()
+
+    wiki._write_manifest({"paper.md": {"hash": "abc123"}})
+    wiki._write_hierarchy_sidecar(_mixed_graph())
+
+    assert json.loads(wiki.paths.manifest.read_text(encoding="utf-8"))["files"] == {
+        "paper.md": {"hash": "abc123"}
+    }
+    assert json.loads(wiki.paths.hierarchy.read_text(encoding="utf-8"))["schema_version"] == 1
+    for stem in ("manifest", "hierarchy"):
+        assert list(wiki.root.glob(f"{stem}.tmp.*")) == []

@@ -18,7 +18,7 @@ tesserae doctor --project ~/src/other
 
 ## Qué comprueba
 
-Veinte comprobaciones, agrupadas por categoría:
+Las comprobaciones, agrupadas por categoría:
 
 | Comprobación | Categoría | Qué verifica | Acción de `--fix` |
 |---|---|---|---|
@@ -32,9 +32,10 @@ Veinte comprobaciones, agrupadas por categoría:
 | `backend_artifacts` | freshness | los artefactos de RAG-Anything están al día | solo informe (su refresco es pesado en LLM/red) |
 | `session_chunks` | freshness | la cobertura de [session-chunks diarios](session-chunks.es.md) no tiene huecos en la ventana reciente | solo informe (sugiere `tesserae sessions chunk-backfill`) |
 | `wiki_lint` | graph | deriva grafo ⇄ wiki + hallazgos de lint trivialmente corregibles | **SAFE**: aplica las correcciones triviales del lint (`fix_trivial`) |
-| `compile_lock` | processes | si hay un lock de compilación vivo retenido, y por qué pid | solo informe — doctor **nunca mata ni elimina un lock vivo** |
-| `daemon_pid` | processes | `daemon.pid` apunta a un proceso de engine vivo | **SAFE**: elimina el pidfile cuando su propietario está muerto |
-| `llm_login` | environment | el backend LLM configurado es realmente utilizable (CLI de claude/codex con sesión iniciada, o clave de API presente) | solo informe (sugiere `claude /login` / `codex login`) |
+| `compile_lock` | processes | si hay un lock de compilación vivo retenido, y por qué pid **y qué host** | solo informe — doctor **nunca mata ni elimina un lock vivo** |
+| `filesystem_locking` | processes | si `.tesserae/` está sobre un sistema de archivos de red, donde `flock(2)` puede ser un no-op silencioso | solo informe (no puede probar que se aplique entre hosts — ver abajo) |
+| `daemon_pid` | processes | `daemon.<host>.pid` apunta a un proceso de engine vivo | **SAFE**: elimina el pidfile **de este host** cuando su propietario está muerto; el de otra máquina se reporta, nunca se toca |
+| `llm_login` | environment | si existen los directorios de configuración que el proyecto usaría de verdad | solo informe — **no verifica credenciales** (ver abajo) |
 | `optional_deps` | environment | estado de las dependencias opcionales (memex, raganything) | solo informe (las instalaciones usan red) |
 | `embedding_backend` | environment | hay disponible un backend real de embeddings semánticos | solo informe (sugiere `pip install tesserae[semantic]`) |
 | `environment` | environment | resumen completo de la detección de entorno | sección de solo informe |
@@ -45,6 +46,49 @@ Veinte comprobaciones, agrupadas por categoría:
 
 Una comprobación que crashea se reporta como un hallazgo de error — doctor en sí nunca lanza excepciones.
 
+## Qué te dice `llm_login` y qué no
+
+Informa de que existe un directorio de configuración. **No** informa de que la CLI
+que hay dentro tenga un token válido, y lo dice en el texto de su propio hallazgo.
+
+La distinción no es pedantería. La comprobación solía reportar `credentialed LLM
+CLI: claude, codex` apoyándose en archivos como `~/.claude/history.jsonl` — que
+prueban que la CLI se ha *usado*, no que pueda autenticarse *ahora*. Ejecutados
+uno detrás de otro en el mismo segundo, `tesserae compile` imprimía `Claude CLI
+not logged in (tried 1 config dir)` mientras doctor imprimía una marca verde. Un
+diagnóstico que contradice el fallo que tienes delante es peor que no tener
+diagnóstico.
+
+Verificar credenciales significa gastar una llamada real al LLM en cada
+`tesserae doctor`, y ese no es un coste que esta comprobación asuma por
+iniciativa propia. Así que declara solo lo que comprobó. Usa `tesserae compile`
+para la respuesta autoritativa.
+
+La comprobación se limita a los directorios que el proyecto intentaría de
+verdad, resueltos por la misma ruta que usa `ProjectWiki._build_json_client` — y
+no dice nada sobre los directorios de configuración de claude cuando el provider
+del proyecto es `codex`.
+
+## Discos compartidos y `flock(2)`
+
+Toda garantía de concurrencia en Tesserae — el lock de compilación por encima de
+todo — se apoya en que `flock(2)` lo aplique el sistema de archivos que aloja
+`.tesserae/`. Sobre NFS y SMB eso depende de la configuración: sin un lock daemon
+en funcionamiento, `flock` puede degradarse silenciosamente a un no-op, y
+entonces dos hosts compilarán el mismo proyecto a la vez creyendo cada uno que
+tiene un lock exclusivo.
+
+`filesystem_locking` informa de lo que un solo host puede determinar: el tipo de
+sistema de archivos que respalda el proyecto, si es un sistema de archivos de
+red, y si una adquisición de `flock` llega siquiera a tener éxito. Advierte
+cuando se trata de un sistema de archivos de red.
+
+**No puede** probar que se aplique entre hosts, y no pretende hacerlo. Que un
+host tome un lock no dice nada sobre si a un segundo host se le impide tomarlo.
+Si ejecutas Tesserae desde varias máquinas contra almacenamiento compartido,
+pruébalo directamente sobre el hardware real antes de confiar en el lock de
+compilación.
+
 ## Política de `--fix`
 
 - `--fix` ejecuta **solo** las comprobaciones marcadas SAFE arriba, y luego re-detecta para
@@ -52,7 +96,12 @@ Una comprobación que crashea se reporta como un hallazgo de error — doctor en
 - Cada corrección es idempotente: ejecutar `doctor --fix` dos veces deja la segunda ejecución
   limpia.
 - Doctor **nunca mata un proceso y nunca elimina un lock de compilación vivo** — un
-  lock retenido se reporta con su pid propietario y se deja en paz.
+  lock retenido se reporta con su pid y su host propietarios, y se deja en paz.
+- Doctor **nunca toca el pidfile de otra máquina.** Sobre almacenamiento
+  compartido, la tabla de procesos local no dice nada sobre un pid escrito por
+  otro host, así que `daemon.<other-host>.pid` se reporta y se omite sin
+  excepción — ni siquiera se lee para comprobar si sigue vivo. Solo el pidfile
+  propio de este host es candidato a ser eliminado.
 - Las operaciones pesadas o que usan red (recompilaciones, instalaciones de dependencias,
   refrescos de backends) nunca se incorporan a `--fix`; doctor imprime el comando para que
   lo ejecutes tú.

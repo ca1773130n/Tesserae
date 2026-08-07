@@ -71,7 +71,12 @@ def test_refresh_runs_steps_in_order(tmp_path: Path, monkeypatch: pytest.MonkeyP
             self.root = root
 
         def write_sessions(self, sessions, replace=False, prune_roots=None,
-                           prune_harnesses=None, producer="", adopt_unowned=False):
+                           prune_harnesses=None, producer="", host="",
+                           adopt_unowned=False):
+            # ``host`` is what stops one server pruning another's records when
+            # several share a disk; refresh must pass it, so the double must
+            # accept it or this test stops covering the real signature.
+            assert host, "refresh must stamp the harvesting host"
             return {"sessions": 0, "path": "x", "removed": 0, "preserved": 0}
 
     def fake_compile(self, changed_only=False, **k):

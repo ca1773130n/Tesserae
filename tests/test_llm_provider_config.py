@@ -24,6 +24,9 @@ import pytest
 def _isolate_env(monkeypatch):
     monkeypatch.delenv("TESSERAE_LLM_PROVIDER", raising=False)
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    # _apply_llm_cli_env writes os.environ directly (not via monkeypatch), so
+    # this leaks across tests exactly as CLAUDE_CONFIG_DIR above already did.
+    monkeypatch.delenv("TESSERAE_CLAUDE_CONFIG_DIRS", raising=False)
     monkeypatch.delenv("CODEX_HOME", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
@@ -555,3 +558,92 @@ def test_build_default_threads_endpoint_to_claude_cli_only_with_base_url(
     assert isinstance(client, lj.ClaudeCLIJsonClient)
     assert client.base_url is None
     assert client.api_key is None
+
+
+# ---------------------------------------------------------------------------
+# The PROJECT config must reach the client on the primary compile path
+# ---------------------------------------------------------------------------
+
+
+def test_project_endpoint_config_reaches_the_built_client(tmp_path: Path, monkeypatch):
+    """A custom endpoint set in .tesserae/config.json must actually be used.
+
+    ``ProjectWiki._build_json_client`` resolved the project config and then
+    called ``build_default_json_client`` without it, so the factory
+    re-resolved against env + the GLOBAL config only and every project-level
+    llm_model / llm_base_url / llm_api_key was silently discarded. The compile
+    then ran on the default backend while the config said otherwise.
+    """
+    import tesserae.llm_json as lj
+    from tesserae.project import ProjectWiki
+
+    pytest.importorskip("anthropic")
+    _isolate_endpoint_env(monkeypatch)
+    monkeypatch.setattr(lj, "_CLIENT_FACTORY", None, raising=False)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: False)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: False)
+    # The global layer says nothing — everything below comes from the project.
+    _write_global_cfg(tmp_path, monkeypatch, {})
+
+    wiki = ProjectWiki.init(tmp_path / "proj", name="endpoint-project")
+    cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+    cfg.update(
+        {
+            "llm_provider": "custom",
+            "llm_model": "glm-4.7",
+            "llm_base_url": "https://project.example.com/api",
+            "llm_api_key": "sk-project",
+        }
+    )
+    wiki.paths.config.write_text(json.dumps(cfg), encoding="utf-8")
+
+    client = wiki._build_json_client()
+    assert isinstance(client, lj.AnthropicLLMJsonClient)
+    assert client.model == "glm-4.7"
+    assert client.base_url == "https://project.example.com/api"
+    assert client._client.api_key == "sk-project"
+
+
+def test_project_model_is_provider_scoped_when_threaded(tmp_path: Path, monkeypatch):
+    """Threading the project settings must not leak a claude-shaped model
+    onto the codex CLI when the availability chain falls through."""
+    import tesserae.llm_json as lj
+    from tesserae.project import ProjectWiki
+
+    _isolate_endpoint_env(monkeypatch)
+    monkeypatch.setattr(lj, "_CLIENT_FACTORY", None, raising=False)
+    monkeypatch.setattr(lj, "_claude_cli_available", lambda: False)
+    monkeypatch.setattr(lj, "_codex_cli_available", lambda: True)
+    _write_global_cfg(tmp_path, monkeypatch, {})
+
+    wiki = ProjectWiki.init(tmp_path / "proj", name="scoped-model")
+    cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+    cfg.update({"llm_provider": "claude", "llm_model": "claude-opus-4-6"})
+    wiki.paths.config.write_text(json.dumps(cfg), encoding="utf-8")
+
+    client = wiki._build_json_client()
+    assert isinstance(client, lj.CodexCLIJsonClient)
+    assert client.model != "claude-opus-4-6"
+    assert client.model == lj.CODEX_DEFAULT_MODEL
+
+
+def test_repeated_claude_config_dir_flag_keeps_every_account(monkeypatch, tmp_path: Path):
+    """--claude-config-dir repeated must not collapse to the first account.
+
+    CLAUDE_CONFIG_DIR is a scalar, so the rotation the user spelled out was
+    silently pinned to one quota.
+    """
+    import argparse
+
+    import tesserae.llm_json as lj
+    from tesserae import cli
+
+    _isolate_endpoint_env(monkeypatch)
+    monkeypatch.delenv("TESSERAE_CLAUDE_CONFIG_DIRS", raising=False)
+    _write_global_cfg(tmp_path, monkeypatch, {})
+
+    args = argparse.Namespace(claude_config_dir=["/a/.claude-1", "/b/.claude-2"])
+    cli._apply_llm_cli_env(args)
+
+    settings = lj.resolve_llm_client_settings({})
+    assert settings["claude_config_dirs"] == ["/a/.claude-1", "/b/.claude-2"]

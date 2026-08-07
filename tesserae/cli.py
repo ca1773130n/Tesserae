@@ -14,7 +14,8 @@ from .batch import BatchIngestRunner
 from .canonicalization import GraphCanonicalizer, ReviewDecision
 from .harness_sessions import (HarnessSession, HarnessSessionStore, PRODUCER_DISCOVERY,
                                PRODUCER_IMPORT, discover_harness_roots,
-                               discover_harness_sessions, session_matches_project)
+                               discover_harness_sessions, local_host_id,
+                               session_matches_project)
 from .ingest.orchestrator import ingest_sources
 from .llm_extractor import ClaudeCLIResearchExtractor, LLMResearchExtractor
 from .locking import CompileLockHeldError
@@ -1145,6 +1146,129 @@ def _add_llm_client_args(parser: argparse.ArgumentParser, persisted: bool = Fals
         default=None,
         help="Codex CLI home directory (CODEX_HOME, e.g. ~/.codex-personal1)" + suffix,
     )
+    # Deliberately NO per-run --llm-base-url / --llm-api-key here. `init` and
+    # `config llm` already persist them, and ANTHROPIC_BASE_URL /
+    # ANTHROPIC_API_KEY are honoured at the top of the precedence chain
+    # (resolve_llm_client_settings), so a one-off endpoint override already has
+    # a working channel. Adding flags would cost two dests against compile's
+    # dieted parser surface to buy nothing new.
+
+
+#: Bare ``--wait`` means "queue behind whatever holds the lock, within reason".
+#: Thirty minutes is longer than any compile observed in this repo and short
+#: enough that a genuinely wedged holder still surfaces as a failure rather
+#: than an indefinite hang. ``flock`` offers no fairness, so an unbounded wait
+#: has no starvation bound at all — which is why there is no "wait forever".
+DEFAULT_LOCK_WAIT_SECONDS = 1800.0
+
+
+def _add_all_projects_args(parser: argparse.ArgumentParser, verb: str) -> None:
+    """Attach ``--all`` / ``--name`` / ``--jobs``: run over every registered project."""
+    parser.add_argument(
+        "--all",
+        dest="all_projects",
+        action="store_true",
+        help=f"Run {verb} for every registered project (see `tesserae projects list`). "
+        "One project failing does not stop the others; exit 2 if any failed, "
+        "1 if any was locked by another run.",
+    )
+    parser.add_argument(
+        "--name",
+        action="append",
+        default=None,
+        help="With --all: limit to a registered project by name; repeat for several. "
+        "Unknown names error (exit 2).",
+    )
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=1,
+        help="With --all: how many projects to run concurrently (default 1). "
+        "A compile is LLM-heavy — raising this spends quota in parallel.",
+    )
+
+
+def _run_over_all_projects(args: argparse.Namespace, verb: str, work) -> int:
+    """Shared ``--all`` driver for compile and refresh.
+
+    ``work(args_for_one_project)`` runs the existing single-project handler, so
+    there is exactly one implementation of what compile/refresh MEAN and this
+    only decides which projects get one and what the run is worth as an exit
+    code.
+    """
+    import copy
+
+    from .multiproject import (
+        exit_code_for,
+        render_outcomes,
+        resolve_projects,
+        run_across_projects,
+    )
+
+    try:
+        targets = resolve_projects(getattr(args, "name", None))
+    except ValueError as exc:
+        print(f"tesserae {verb}: {exc}", file=sys.stderr)
+        return 2
+    if not targets:
+        print(
+            f"tesserae {verb} --all: no projects registered. "
+            "Register one with: tesserae projects register <path>",
+            file=sys.stderr,
+        )
+        return 1
+
+    def _one(name: str, root: Path):
+        per_project = copy.copy(args)
+        per_project.project = str(root)
+        per_project.all_projects = False
+        rc = work(per_project)
+        if rc != 0:
+            # The handler already printed why; surface it as a failed project
+            # rather than swallowing a non-zero code into a green batch.
+            raise RuntimeError(f"{verb} exited {rc}")
+        return {"rc": rc}
+
+    outcomes = run_across_projects(targets, _one, jobs=max(1, int(getattr(args, "jobs", 1) or 1)))
+    print(render_outcomes(outcomes))
+    return exit_code_for(outcomes)
+
+
+def _add_lock_wait_arg(parser: argparse.ArgumentParser) -> None:
+    """Attach ``--wait [SECONDS]``: queue for the compile lock, don't fail."""
+    parser.add_argument(
+        "--wait",
+        dest="lock_wait",
+        nargs="?",
+        type=float,
+        const=DEFAULT_LOCK_WAIT_SECONDS,
+        default=None,
+        metavar="SECONDS",
+        help=(
+            "Wait for the project's compile lock instead of failing when a "
+            f"background engine or another run holds it (default {int(DEFAULT_LOCK_WAIT_SECONDS)}s "
+            "with a bare --wait). Progress is reported every 5s."
+        ),
+    )
+
+
+def _lock_wait_reporter(label: str):
+    """An ``on_wait`` callback that says what is being waited for.
+
+    Without this the command looks hung: the lock is held by a process the
+    user cannot see, often on another machine entirely.
+    """
+
+    def _report(elapsed: float, holder) -> None:
+        from .locking import describe_holder
+
+        print(
+            f"{label}: waiting for the project compile lock"
+            f"{describe_holder(holder)} — {int(elapsed)}s elapsed",
+            file=sys.stderr,
+        )
+
+    return _report
 
 
 def _apply_llm_cli_env(args: argparse.Namespace) -> None:
@@ -1161,9 +1285,21 @@ def _apply_llm_cli_env(args: argparse.Namespace) -> None:
         os.environ["TESSERAE_LLM_PROVIDER"] = args.llm_provider
     claude_dirs = getattr(args, "claude_config_dir", None) or []
     if claude_dirs:
+        # CLAUDE_CONFIG_DIR is a scalar, so repeating the flag used to discard
+        # every account after the first — silently pinning a rotation the user
+        # spelled out to one quota. Keep it for the child processes that only
+        # understand the scalar, and carry the FULL list in a Tesserae-owned
+        # var that resolve_llm_client_settings honours in full.
         os.environ["CLAUDE_CONFIG_DIR"] = claude_dirs[0]
+        os.environ["TESSERAE_CLAUDE_CONFIG_DIRS"] = os.pathsep.join(claude_dirs)
     if getattr(args, "codex_home", None):
         os.environ["CODEX_HOME"] = args.codex_home
+    if getattr(args, "llm_model", None):
+        os.environ["TESSERAE_LLM_MODEL"] = args.llm_model
+    if getattr(args, "llm_base_url", None):
+        os.environ["ANTHROPIC_BASE_URL"] = args.llm_base_url
+    if getattr(args, "llm_api_key", None):
+        os.environ["ANTHROPIC_API_KEY"] = args.llm_api_key
 
 
 def _handle_llm_defaults(args: argparse.Namespace) -> int:
@@ -1651,6 +1787,7 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                 doc_extractor=doc_extractor,
                 progress=progress,
                 retry_fallbacks=bool(getattr(args, "retry_fallbacks", False)),
+                lock_wait=getattr(args, "lock_wait", None),
             )
             progress.done(nodes=result["node_count"], edges=result["edge_count"])
         if isinstance(progress, NullCompileProgress):
@@ -1686,6 +1823,29 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                     f"+{d.get('added', 0)} ~{d.get('changed', 0)} -{d.get('removed', 0)})"
                 )
         _warn_if_concept_poor(result)
+        # graph.json exists now, so this is where a project first becomes
+        # registrable — see _register_initialized_project for why an
+        # unregistered project silently gets answers from other repositories.
+        _register_initialized_project(args)
+        # A compile where EVERY document lost its concept layer did not
+        # succeed, and must not report success. Observed first-run: with no
+        # logged-in claude/codex CLI, compile warned, fell back on 100% of
+        # documents, printed "Compiled project wiki: …" and exited 0 — so the
+        # user believed they had a knowledge base when they had a file
+        # listing, and `tesserae query` then matched nothing. A partial
+        # fallback stays a warning (that graph is still useful); only total
+        # loss is an error.
+        processed = int(result.get("processed_files", 0) or 0)
+        fallbacks = int(result.get("fallback_files", 0) or 0)
+        if processed > 0 and fallbacks >= processed:
+            print(
+                "error: every document fell back to deterministic extraction, so "
+                "this graph has no concept layer and retrieval will not match on "
+                "content. Check the LLM backend is reachable and credentialed "
+                "(`tesserae doctor`), then re-run.",
+                file=sys.stderr,
+            )
+            return 1
         # --strict: gate the exit code on the byte-idempotence tripwire first
         # (a suspected determinism regression outranks lint warnings), then on
         # the post-compile lint, reusing the `tesserae lint` exit-code mapping
@@ -1950,6 +2110,18 @@ def _handle_obsidian_sync(args: argparse.Namespace) -> int:
 
 
 def _handle_refresh(args: argparse.Namespace) -> int:
+    """Run the refresh chain, for one project or for every registered one.
+
+    Keeping ``--all`` as a wrapper around this same function (rather than a
+    second pipeline) is what stops the batch and the single-project path from
+    drifting on what a refresh IS.
+    """
+    if getattr(args, "all_projects", False):
+        return _run_over_all_projects(args, "refresh", _handle_refresh_one)
+    return _handle_refresh_one(args)
+
+
+def _handle_refresh_one(args: argparse.Namespace) -> int:
     """Run the refresh chain (sessions-import -> compile -> obsidian-sync) in-process.
 
     This is success criterion #1 of ENG-01: the refresh sequence is CODE routed
@@ -1979,10 +2151,14 @@ def _handle_refresh(args: argparse.Namespace) -> int:
         return store.write_sessions(
             sessions, replace=bool(sessions), prune_roots=roots,
             producer=hs.PRODUCER_DISCOVERY,
+            host=hs.local_host_id(),
         )  # {"path", "sessions", "total", "removed", "preserved"}
 
     def step_compile():
-        return wiki.compile(changed_only=args.changed_only)
+        return wiki.compile(
+            changed_only=args.changed_only,
+            lock_wait=getattr(args, "lock_wait", None),
+        )
 
     def step_obsidian_sync():
         vault = wiki.effective_obsidian_vault()
@@ -2240,7 +2416,8 @@ def _handle_sessions(args: argparse.Namespace) -> int:
                 result = store.write_sessions(
                     sessions, replace=bool(sessions),
                     prune_roots=roots, prune_harnesses=args.harness or None,
-                    producer=PRODUCER_DISCOVERY, adopt_unowned=args.adopt_unowned,
+                    producer=PRODUCER_DISCOVERY, host=local_host_id(),
+                    adopt_unowned=args.adopt_unowned,
                 )
                 print(f"Imported harness sessions: {result['sessions']} path={result['path']}")
                 if result["removed"]:
@@ -2398,11 +2575,23 @@ def _handle_engine(args: argparse.Namespace) -> int:
 
     from .engine.daemon import Daemon
 
+    # --harvest-only is the shape a shared-disk fleet actually wants: N hosts
+    # each tailing the transcripts only they can see, and ONE host compiling.
+    # Every knob is stated rather than inferred, because a flag whose whole
+    # promise is "this process never takes the compile lock" must not depend on
+    # a default elsewhere continuing to imply it. Consolidation is off too: it
+    # does not take the compile lock, but it does spend LLM calls, and a
+    # harvester asked for a transcript tail, not a background summarizer.
+    harvest_only = bool(getattr(args, "harvest_only", False))
     daemon = Daemon(
         Path(args.project or ".").resolve(),
         debounce=args.debounce,
         watch_interval=args.interval,
-        consolidate=getattr(args, "consolidate", True),
+        enable_watch=not harvest_only,
+        enable_vault=not harvest_only,
+        enable_session_tail=True,
+        enable_compile=not harvest_only,
+        consolidate=False if harvest_only else getattr(args, "consolidate", True),
         consolidate_idle_seconds=getattr(args, "consolidate_idle", 300.0),
         consolidate_max_interval_seconds=getattr(args, "consolidate_every", 21600.0),
         consolidate_check_interval=getattr(args, "consolidate_check", 30.0),
@@ -2501,6 +2690,8 @@ def _build_compile_parser() -> argparse.ArgumentParser:
     parser.add_argument("--changed-only", action="store_true", help="Skip unchanged files using .tesserae/manifest.json")
     parser.add_argument("--retry-fallbacks", action="store_true", help="With --changed-only: re-extract docs whose typed extraction previously failed and was served by the deterministic baseline (provider recovered). Without it those docs stay deterministic until their content changes.")
     parser.add_argument("--limit", type=int, help="Maximum number of changed files to process")
+    _add_lock_wait_arg(parser)
+    _add_all_projects_args(parser, "compile")
     parser.add_argument("--strict", action="store_true", help="Exit non-zero when the byte-idempotence tripwire fires or the post-compile lint reports problems (lint errors → exit 2, warnings → exit 1; default: report-only)")
     # Document extractor. Tesserae is an LLM wiki: 'llm' is the DEFAULT — it
     # builds the concept/claim layer via the configured provider (codex/claude/api
@@ -2618,6 +2809,15 @@ def _build_engine_parser() -> argparse.ArgumentParser:
     parser.add_argument("--debounce", type=float, default=1.0, help="Quiet window after a burst of edits before rebuilding (default: 1.0)")
     parser.add_argument("--once", action="store_true", help="Run a single drain cycle then exit (deterministic; no long-running loop)")
     parser.add_argument(
+        "--harvest-only",
+        action="store_true",
+        help=(
+            "Tail this machine's local agent transcripts into the project's session "
+            "store and never compile. For a fleet of servers sharing one project "
+            "directory: every host harvests what only it can see, one host compiles."
+        ),
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
         help="Fleet mode: run every project in ~/.tesserae/registry.json from one process.",
@@ -2688,6 +2888,8 @@ def _build_refresh_parser() -> argparse.ArgumentParser:
         action=_RemovedFlagAction,
         message="refresh: --skip-sessions has moved → --no-sessions",
     )
+    _add_lock_wait_arg(parser)
+    _add_all_projects_args(parser, "refresh")
     return parser
 
 
@@ -2902,7 +3104,19 @@ def _handle_compile(args: argparse.Namespace) -> int:
     """New-tree compile wrapper. With explicit paths → ad-hoc ingest-only;
     otherwise → the full legacy compile via ``_handle_compile_legacy``."""
     if getattr(args, "paths", None):
+        if getattr(args, "all_projects", False):
+            # Ad-hoc paths are relative to ONE project by definition; silently
+            # ingesting the same paths into every registered project would be a
+            # surprising and hard-to-undo thing to do on the user's behalf.
+            print(
+                "tesserae compile: --all cannot be combined with explicit paths "
+                "(ad-hoc ingest targets a single project)",
+                file=sys.stderr,
+            )
+            return 2
         return _handle_compile_paths_ingest(args)
+    if getattr(args, "all_projects", False):
+        return _run_over_all_projects(args, "compile", _handle_compile_legacy)
     return _handle_compile_legacy(args)
 
 
@@ -3311,8 +3525,57 @@ def _handle_init_v2(args: argparse.Namespace) -> int:
         _backfill_setup_defaults(args)
         rc = _handle_setup(args)
     if rc == 0:
+        _register_initialized_project(args)
         _maybe_offer_memex_install(args)
     return rc
+
+
+def _register_initialized_project(args: argparse.Namespace) -> None:
+    """Put a project into the machine-wide registry as soon as it can be.
+
+    ``init`` used to leave the registry untouched, and every registry-scoped
+    surface then treated the new project as if it did not exist. Following the
+    README quickstart verbatim — ``init --yes && compile && ask "…"`` — the ask
+    could not resolve a cwd alias, fell back to FEDERATED scope, and answered a
+    question about a 3-file project out of 19,744 nodes belonging to six
+    unrelated repositories; the project's own nodes never appeared, and
+    ``ask --scope current`` exited 2 saying "not inside a registered project"
+    while standing in one. ``serve`` had the matching failure: it rebuilt every
+    other registered project's site before binding the port, and not the one
+    just compiled.
+
+    ``ProjectRegistry.register`` resolves an existing ``.tesserae/graph.json``,
+    which does not exist until the first compile — so this is called from BOTH
+    ``init`` (a no-op on a fresh project) and the end of a successful compile
+    (where it succeeds). Registering is idempotent, so the repeat is free.
+
+    Best-effort on purpose. A registry that cannot be written (read-only home,
+    corrupt file) must not fail an otherwise-successful command — the project
+    on disk is complete either way, and every verb still works with an explicit
+    ``--project``.
+    """
+    root = Path(getattr(args, "project", None) or ".").resolve()
+    if not (root / ".tesserae" / "graph.json").is_file():
+        return  # nothing to register yet; the post-compile call will do it
+    try:
+        from .mcp_server import ProjectRegistry
+
+        registry = ProjectRegistry()
+        known = registry.load().get("projects") or {}
+        already = any(
+            str(Path(entry.get("root", "")).resolve()) == str(root)
+            for entry in known.values()
+            if isinstance(entry, dict)
+        )
+        entry = registry.register(root, getattr(args, "name", None))
+        if not already:
+            print(f"Registered project '{entry['name']}' ({entry['root']})")
+    except Exception as exc:  # registry problems must not fail a good command
+        print(
+            f"note: could not add this project to the registry ({exc}). "
+            f"Add it later with: tesserae projects register {root}",
+            file=sys.stderr,
+        )
 
 
 def _maybe_offer_memex_install(args: argparse.Namespace) -> None:
@@ -3384,19 +3647,40 @@ def _handle_sessions_prune_internal(args: argparse.Namespace) -> int:
     real work. This prunes them in one pass; the live filter prevents new ones.
     """
     wiki = ProjectWiki.load(args.project)
+    dry_run = bool(getattr(args, "dry_run", False))
+
+    # The FILE store first, because it is the one `compile` reads. Cleaning only
+    # sqlite left the graph still being built from Tesserae's own extraction
+    # calls — measured on this repo: 14,377 of 14,605 stored records (98.4%).
+    store = HarnessSessionStore(wiki.paths.harness_sessions)
+    files = store.prune_internal(dry_run=dry_run)
+    verb = "Would remove" if dry_run else "Removed"
+    print(
+        f"{verb} {files['removed']} self-captured record(s) from {store.root} "
+        f"(keeping {files['kept']} genuine session(s)"
+        + (f", {files['unreadable']} unreadable left alone" if files["unreadable"] else "")
+        + ")"
+    )
+
     live_db_path = wiki.project_root / ".tesserae" / "harness_sessions.db"
     if not live_db_path.exists():
-        print(f"No live sessions DB at {live_db_path}; nothing to prune.")
+        print(f"No live sessions DB at {live_db_path}; nothing more to prune.")
         return 0
     from .harness_sessions_db import HarnessSessionsDB
 
     db = HarnessSessionsDB(live_db_path)
     before = db.count_sessions()
+    if dry_run:
+        print(f"Would also prune the sessions DB ({before} session(s)) at {live_db_path}")
+        print("Re-run without --dry-run to apply. Then: tesserae compile")
+        return 0
     removed = db.prune_internal_sessions()
     print(
         f"Pruned Tesserae self-captured sessions: removed={removed} "
         f"remaining={before - removed} db={live_db_path}"
     )
+    if files["removed"] or removed:
+        print("Run `tesserae compile` to rebuild the graph without them.")
     return 0
 
 
@@ -3463,6 +3747,7 @@ def _build_sessions_parser() -> argparse.ArgumentParser:
         help="Delete Tesserae's OWN captured compile-time LLM calls from the live sessions DB (self-capture cleanup)",
     )
     p_prune.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
+    p_prune.add_argument("--dry-run", action="store_true", help="Count what would be removed without deleting anything")
     p_prune.set_defaults(_handler="_handle_sessions_prune_internal")
     p_chunk = sub.add_parser(
         "chunk-backfill",
@@ -4052,7 +4337,13 @@ def _handle_config_status(args: argparse.Namespace) -> int:
         return 1
     try:
         resp = client.complete_json(
-            system="Return JSON only.",
+            # Deliberately self-identifying. This probe spawns a real CLI call,
+            # which the harness session monitor captures like any other — so the
+            # prompt has to carry a signature the self-capture filter can anchor
+            # on. "Return JSON only." could not: it is generic enough that a
+            # real user session might open with it, so it could not be added to
+            # _TESSERAE_PROMPT_SIGNATURES without risking dropping real work.
+            system="You are a Tesserae liveness probe. Return JSON only.",
             user='Return {"ok": true} exactly.',
             schema_name="probe",
             cache_key="config-status-probe",
@@ -5799,7 +6090,7 @@ def _build_doctor_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--all", dest="all_projects", action="store_true", help="Doctor every registered project (ignores --project)")
-    parser.add_argument("--fix", action="store_true", help="Apply the safe fixes only: registry prune, site rebuild, lint trivial fixes, stale daemon.pid removal, build-history trim, hook-log rotation, vault mkdir, git worktree prune. Never kills or removes a live compile lock.")
+    parser.add_argument("--fix", action="store_true", help="Apply the safe fixes only: registry prune, site rebuild, lint trivial fixes, stale daemon-pidfile removal (THIS host's only — another machine's pidfile is never touched), build-history trim, hook-log rotation, vault mkdir, git worktree prune. Never kills or removes a live compile lock.")
     parser.add_argument("--json", dest="doctor_json", action="store_true", help="Print the JSON report to stdout instead of the markdown checklist")
     return parser
 

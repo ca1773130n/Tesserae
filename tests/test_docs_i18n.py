@@ -64,3 +64,26 @@ def test_root_readme_translations_use_github_markdown_names() -> None:
     for lang in LANGS:
         assert (ROOT / f"README.{lang}.md").exists()
         assert not (ROOT / f"README.md.{lang}").exists()
+
+
+def test_doctor_doc_table_lists_every_registered_check() -> None:
+    """docs/doctor.md's check table must match the checks doctor actually runs.
+
+    The doc used to open with a hard-coded "Twenty checks"; adding
+    `filesystem_locking` made that wrong in English and in all seven
+    translations at once, and nothing failed. The count is gone — this asserts
+    the thing that actually matters instead, which is that the table neither
+    omits a check nor advertises one that no longer exists.
+    """
+    import re
+
+    from tesserae.doctor import CHECKS
+
+    table = (DOCS / "doctor.md").read_text(encoding="utf-8")
+    documented = set(re.findall(r"^\| `([a-z_]+)` \|", table, re.MULTILINE))
+    registered = {c.id for c in CHECKS}
+
+    assert documented == registered, (
+        f"undocumented: {sorted(registered - documented)}; "
+        f"documented but not registered: {sorted(documented - registered)}"
+    )

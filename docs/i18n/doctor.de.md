@@ -18,7 +18,7 @@ tesserae doctor --project ~/src/other
 
 ## Was geprüft wird
 
-Zwanzig Checks, nach Kategorie gruppiert:
+Die Checks, nach Kategorie gruppiert:
 
 | Check | Kategorie | Was er verifiziert | `--fix`-Aktion |
 |---|---|---|---|
@@ -32,9 +32,10 @@ Zwanzig Checks, nach Kategorie gruppiert:
 | `backend_artifacts` | freshness | RAG-Anything-Artefakte sind aktuell | nur Bericht (deren Refresh ist LLM-/Netzwerk-lastig) |
 | `session_chunks` | freshness | die Abdeckung der [täglichen Session-Chunks](session-chunks.de.md) hat keine Lücken im jüngsten Fenster | nur Bericht (schlägt `tesserae sessions chunk-backfill` vor) |
 | `wiki_lint` | graph | Graph-⇄-Wiki-Drift + trivial behebbare Lint-Befunde | **SAFE**: wendet die trivialen Lint-Fixes an (`fix_trivial`) |
-| `compile_lock` | processes | ob ein lebendiger Compile-Lock gehalten wird, und von welcher PID | nur Bericht — doctor **killt nie einen Prozess und entfernt nie einen lebendigen Lock** |
-| `daemon_pid` | processes | `daemon.pid` zeigt auf einen lebendigen Engine-Prozess | **SAFE**: entfernt die Pidfile, wenn ihr Eigentümer tot ist |
-| `llm_login` | environment | das konfigurierte LLM-Backend ist tatsächlich nutzbar (claude/codex-CLI eingeloggt, oder API-Key vorhanden) | nur Bericht (schlägt `claude /login` / `codex login` vor) |
+| `compile_lock` | processes | ob ein lebendiger Compile-Lock gehalten wird, und von welcher PID **und welchem Host** | nur Bericht — doctor **killt nie einen Prozess und entfernt nie einen lebendigen Lock** |
+| `filesystem_locking` | processes | ob `.tesserae/` auf einem Netzwerk-Dateisystem liegt, wo `flock(2)` ein stilles No-op sein kann | nur Bericht (kann host-übergreifende Durchsetzung nicht beweisen — siehe unten) |
+| `daemon_pid` | processes | `daemon.<host>.pid` zeigt auf einen lebendigen Engine-Prozess | **SAFE**: entfernt die Pidfile **dieses Hosts**, wenn ihr Eigentümer tot ist; die einer anderen Maschine wird gemeldet, nie angefasst |
+| `llm_login` | environment | ob die Config-Verzeichnisse existieren, die das Projekt tatsächlich benutzen würde | nur Bericht — **verifiziert keine Credentials** (siehe unten) |
 | `optional_deps` | environment | Status optionaler Abhängigkeiten (memex, raganything) | nur Bericht (Installationen brauchen Netzwerk) |
 | `embedding_backend` | environment | ein echtes semantisches Embedding-Backend ist verfügbar | nur Bericht (schlägt `pip install tesserae[semantic]` vor) |
 | `environment` | environment | Gesamtzusammenfassung der Umgebungserkennung | Berichtsabschnitt |
@@ -45,6 +46,50 @@ Zwanzig Checks, nach Kategorie gruppiert:
 
 Ein abstürzender Check wird als Fehler-Befund gemeldet — doctor selbst wirft nie eine Exception.
 
+## Was `llm_login` dir sagt — und was nicht
+
+Er meldet, dass ein Config-Verzeichnis existiert. Er meldet **nicht**, dass die
+CLI darin ein gültiges Token hält, und sagt das in seinem eigenen Befundtext auch
+so.
+
+Die Unterscheidung ist keine Erbsenzählerei. Der Check meldete früher
+`credentialed LLM CLI: claude, codex`, gestützt auf Dateien wie
+`~/.claude/history.jsonl` — die belegen, dass die CLI *benutzt* wurde, nicht,
+dass sie sich *jetzt* authentifizieren kann. In derselben Sekunde hintereinander
+ausgeführt, gab `tesserae compile` `Claude CLI not logged in (tried 1 config
+dir)` aus, während doctor einen grünen Haken druckte. Eine Diagnose, die dem
+Fehler widerspricht, in dem du gerade steckst, ist schlimmer als gar keine
+Diagnose.
+
+Credentials zu verifizieren hieße, bei jedem `tesserae doctor` einen echten
+LLM-Call auszugeben — Kosten, die dieser Check nicht aus eigenem Antrieb auf sich
+nimmt. Also nennt er nur, was er tatsächlich geprüft hat. Für die verbindliche
+Antwort nimm `tesserae compile`.
+
+Der Check ist auf die Verzeichnisse begrenzt, die das Projekt wirklich probieren
+würde, aufgelöst über denselben Pfad, den `ProjectWiki._build_json_client`
+benutzt — und er sagt nichts über claude-Config-Verzeichnisse, wenn der Provider
+des Projekts `codex` ist.
+
+## Geteilte Platten und `flock(2)`
+
+Jede Nebenläufigkeitsgarantie in Tesserae — der Compile-Lock vor allem — beruht
+darauf, dass `flock(2)` von dem Dateisystem durchgesetzt wird, auf dem
+`.tesserae/` liegt. Über NFS und SMB ist das konfigurationsabhängig: ohne
+funktionierenden Lock-Daemon kann `flock` still zum No-op degradieren, und dann
+kompilieren zwei Hosts dasselbe Projekt zur gleichen Zeit, während jeder glaubt,
+einen exklusiven Lock zu halten.
+
+`filesystem_locking` meldet, was ein einzelner Host feststellen kann: den
+Dateisystemtyp hinter dem Projekt, ob es ein Netzwerk-Dateisystem ist, und ob
+eine `flock`-Akquise überhaupt gelingt. Bei einem Netzwerk-Dateisystem warnt er.
+
+Er **kann** host-übergreifende Durchsetzung **nicht** beweisen und behauptet es
+auch nicht. Dass ein Host einen Lock nimmt, sagt nichts darüber aus, ob ein
+zweiter Host daran gehindert wird, ihn ebenfalls zu nehmen. Wenn du Tesserae von
+mehreren Maschinen gegen geteilten Speicher fährst, teste das direkt auf der
+echten Hardware, bevor du dich auf den Compile-Lock verlässt.
+
 ## `--fix`-Policy
 
 - `--fix` führt **nur** die oben als SAFE markierten Checks aus und detektiert danach
@@ -52,7 +97,13 @@ Ein abstürzender Check wird als Fehler-Befund gemeldet — doctor selbst wirft 
 - Jeder Fix ist idempotent: `doctor --fix` zweimal auszuführen lässt den zweiten
   Lauf sauber.
 - Doctor **killt nie einen Prozess und entfernt nie einen lebendigen Compile-Lock** —
-  ein gehaltener Lock wird mit seiner besitzenden PID gemeldet und in Ruhe gelassen.
+  ein gehaltener Lock wird mit seiner besitzenden PID und deren Host gemeldet und
+  in Ruhe gelassen.
+- Doctor **fasst nie die Pidfile einer anderen Maschine an.** Auf geteiltem
+  Speicher sagt die lokale Prozesstabelle nichts über eine PID aus, die ein
+  anderer Host geschrieben hat; deshalb wird `daemon.<other-host>.pid` gemeldet
+  und bedingungslos übersprungen — sie wird nicht einmal auf Liveness gelesen.
+  Nur die eigene Pidfile dieses Hosts kommt zum Entfernen infrage.
 - Schwere oder netzwerkgebundene Operationen (Recompiles, Dependency-Installationen,
   Backend-Refreshes) werden nie in `--fix` gefaltet; doctor gibt stattdessen den
   Befehl aus, den du selbst ausführen kannst.

@@ -14,7 +14,7 @@ tesserae doctor --project ~/src/other
 
 ## 检查内容
 
-二十项检查，按类别分组：
+各项检查，按类别分组：
 
 | 检查 | 类别 | 验证内容 | `--fix` 动作 |
 |---|---|---|---|
@@ -28,9 +28,10 @@ tesserae doctor --project ~/src/other
 | `backend_artifacts` | freshness | RAG-Anything 产物是最新的 | 仅报告（它们的刷新是 LLM/网络重操作） |
 | `session_chunks` | freshness | [每日 session-chunk](session-chunks.zh.md) 覆盖率在近期窗口内没有缺口 | 仅报告（建议运行 `tesserae sessions chunk-backfill`） |
 | `wiki_lint` | graph | 图谱 ⇄ wiki 漂移 + 可轻易修复的 lint 发现 | **SAFE**：应用 lint 的琐碎修复（`fix_trivial`） |
-| `compile_lock` | processes | 是否有活动的编译锁被持有，以及被哪个 pid 持有 | 仅报告 —— doctor **绝不杀掉进程也绝不移除活动锁** |
-| `daemon_pid` | processes | `daemon.pid` 指向一个存活的 engine 进程 | **SAFE**：当持有者已死亡时删除该 pidfile |
-| `llm_login` | environment | 配置的 LLM 后端确实可用（claude/codex CLI 已登录，或存在 API key） | 仅报告（建议运行 `claude /login` / `codex login`） |
+| `compile_lock` | processes | 是否有活动的编译锁被持有，以及被哪个 pid **和哪台主机**持有 | 仅报告 —— doctor **绝不杀掉进程也绝不移除活动锁** |
+| `filesystem_locking` | processes | `.tesserae/` 是否位于网络文件系统上——在那里 `flock(2)` 可能是一个静默的空操作 | 仅报告（它无法证明跨主机的强制生效——见下文） |
+| `daemon_pid` | processes | `daemon.<host>.pid` 指向一个存活的 engine 进程 | **SAFE**：当持有者已死亡时删除**本机自己的** pidfile；其他机器的只报告，绝不触碰 |
+| `llm_login` | environment | 项目真正会用到的那些配置目录是否存在 | 仅报告 —— **不验证凭据**（见下文） |
 | `optional_deps` | environment | 可选依赖的状态（memex、raganything） | 仅报告（安装需要联网） |
 | `embedding_backend` | environment | 有真正的语义嵌入后端可用 | 仅报告（建议 `pip install tesserae[semantic]`） |
 | `environment` | environment | 整体环境检测摘要 | 仅报告的小节 |
@@ -41,11 +42,30 @@ tesserae doctor --project ~/src/other
 
 崩溃的检查会作为一条 error 级发现被报告——doctor 本身永不抛出异常。
 
+## `llm_login` 告诉你什么，又不告诉你什么
+
+它报告的是某个配置目录存在。它**不**报告目录里的 CLI 是否持有有效令牌，而且它在自己的发现文本里就是这么说的。
+
+这个区分不是咬文嚼字。这项检查过去仅凭 `~/.claude/history.jsonl` 之类的文件就报告 `credentialed LLM CLI: claude, codex`——那些文件只能证明该 CLI 被*用过*，而不是它*现在*能通过认证。在同一秒内背靠背地运行，`tesserae compile` 打印了 `Claude CLI not logged in (tried 1 config dir)`，而 doctor 打印了一个绿色的勾。一个与你正身处其中的故障相互矛盾的诊断，比没有诊断更糟。
+
+验证凭据意味着每次 `tesserae doctor` 都要花掉一次真实的 LLM 调用，而这不是这项检查会自作主张承担的成本。所以它只陈述自己检查过的东西。权威答案请用 `tesserae compile` 拿。
+
+这项检查的范围限定在项目真正会去尝试的那些目录上，并且经由 `ProjectWiki._build_json_client` 所用的同一条路径解析——当项目的 provider 是 `codex` 时，它对 claude 的配置目录只字不提。
+
+## 共享磁盘与 `flock(2)`
+
+Tesserae 中的每一条并发保证——首先就是上面那把编译锁——都建立在 `flock(2)` 被承载 `.tesserae/` 的那个文件系统真正强制执行之上。在 NFS 和 SMB 上，这取决于配置：没有一个可用的 lock daemon，`flock` 可能静默退化为空操作，于是两台主机会同时编译同一个项目，而各自都以为自己独占持有那把锁。
+
+`filesystem_locking` 报告单台主机能够确定的东西：承载项目的文件系统类型、它是否是网络文件系统，以及一次 `flock` 获取是否根本能够成功。位于网络文件系统上时它会告警。
+
+它**无法**证明跨主机的强制生效，也不自称能证明。一台主机拿到了锁，这并不能说明第二台主机会被阻止拿到它。如果你从多台机器对着共享存储运行 Tesserae，请在真实硬件上直接测试这一点，然后再去依赖那把编译锁。
+
 ## `--fix` 策略
 
 - `--fix` **只**运行上表标记为 SAFE 的检查，然后重新检测，使报告反映修复后的状态。
 - 每个修复都是幂等的：连续运行两次 `doctor --fix`，第二次运行结果是干净的。
-- Doctor **绝不杀掉进程，也绝不移除活动的编译锁**——被持有的锁会连同持有它的 pid 一并报告，并保持原样。
+- Doctor **绝不杀掉进程，也绝不移除活动的编译锁**——被持有的锁会连同持有它的 pid 和主机一并报告，并保持原样。
+- Doctor **绝不触碰另一台机器的 pidfile。** 在共享存储上，本地进程表对另一台主机写下的 pid 什么也说明不了，因此 `daemon.<other-host>.pid` 会被报告并无条件跳过——甚至不会被读来判断存活。只有本机自己的 pidfile 才有资格被删除。
 - 重型或联网操作（重新编译、依赖安装、后端刷新）绝不会被折叠进 `--fix`；doctor 会打印出命令供你自己运行。
 
 ## 退出码
