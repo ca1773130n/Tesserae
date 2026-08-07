@@ -94,6 +94,12 @@ hook_autocompile_enabled() {
 # key is missing:
 #   session_start=true, session_end=true,
 #   posttooluse_edit=false, pretooluse_compile=true.
+# Any other key falls to the catch-all "false" rather than erroring, so
+# settings files written for an older Tesserae keep parsing. Two keys are
+# tolerated-but-ignored on that path: ``sync_code_on_start`` and
+# ``sync_code_on_edit`` configured the code-graph sync hooks, and source
+# code is no longer in Tesserae's scope. Nothing reads them; leaving them
+# in tesserae.local.md is harmless.
 # --------------------------------------------------------------------
 read_plugin_setting() {
   local key="$1"
@@ -105,17 +111,6 @@ read_plugin_setting() {
   local default_value
   case "$key" in
     session_start|session_end|pretooluse_compile) default_value="true" ;;
-    # The CodeGraph adapter ships a fast, idempotent sync — opt-in by
-    # default so projects that use ``tesserae code sync`` get
-    # an always-fresh code-graph.json without per-project setup. Set
-    # ``sync_code_on_start: false`` in tesserae.local.md to disable.
-    sync_code_on_start) default_value="true" ;;
-    # PostToolUse(Edit|Write|MultiEdit) re-runs ``tesserae project
-    # sync-code`` after every edit, debounced to once every 30s.
-    # Default on so the typed code-graph keeps tracking CodeGraph
-    # updates in near-real-time. Opt-out via
-    # ``sync_code_on_edit: false`` in tesserae.local.md.
-    sync_code_on_edit) default_value="true" ;;
     posttooluse_edit) default_value="false" ;;
     *) default_value="false" ;;
   esac

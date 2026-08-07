@@ -35,7 +35,6 @@ COMMAND_TREE: list[tuple[str, list[tuple[str, str]]]] = [
         ("sessions", "import | discover | list — agent session history"),
         ("vault", "sync | sync-all | set-root | export | prune — Obsidian projection"),
         ("export", "harness | graphiti | site — artifact exports"),
-        ("code", "ingest | sync — CodeGraph ⇄ project graph (hook-invoked)"),
         ("setup", "Machine-wide setup: LLM defaults + optional deps (interactive by default)"),
         ("config", "llm | deps | show | status | clip-token — LLM backend defaults + resolved view & liveness ping"),
         ("projects", "register | list | unregister | mcp-config — registry"),
@@ -54,6 +53,15 @@ KNOWN_COMMANDS: frozenset[str] = frozenset(
     cmd for _, rows in COMMAND_TREE for cmd, _ in rows
 )
 
+# Source-code ingestion is out of scope: Tesserae reconstructs knowledge from
+# documents and session transcripts, and source code is CodeGraph's job. Four
+# old spellings named some part of that retired layer, so they share one
+# notice rather than four near-identical strings.
+CODE_SCOPE_REMOVED = (
+    "removed — Tesserae indexes documents and session transcripts; "
+    "use CodeGraph (npx @colbymchenry/codegraph) for source code"
+)
+
 # Old invocation prefix -> replacement hint. Keys are token TUPLES matched
 # against the leading argv tokens, longest prefix first (3, then 2, then 1),
 # so `project sessions import` prints its exact replacement instead of the
@@ -62,8 +70,8 @@ MOVED_COMMANDS: dict[tuple[str, ...], str] = {
     ("project", "init"): "tesserae init --bare",
     ("project", "setup"): "tesserae init",
     ("project", "ingest"): "tesserae compile <paths>",
-    ("project", "ingest-code"): "tesserae code ingest",
-    ("project", "sync-code"): "tesserae code sync",
+    ("project", "ingest-code"): CODE_SCOPE_REMOVED,
+    ("project", "sync-code"): CODE_SCOPE_REMOVED,
     ("project", "research"): "tesserae research",
     ("project", "lint"): "tesserae lint",
     ("project", "query"): "tesserae query",
@@ -88,10 +96,18 @@ MOVED_COMMANDS: dict[tuple[str, ...], str] = {
     ("project", "sync-graphiti"): "tesserae export graphiti --sync",
     ("project", "mcp-config"): "tesserae projects mcp-config",
     ("project", "refresh-raganything"): "tesserae integrations refresh raganything",
-    ("project", "refresh-understand-anything"): "removed — code-structure nodes are extracted natively; see tesserae code ingest",
+    ("project", "refresh-understand-anything"): CODE_SCOPE_REMOVED,
     ("project", "evolve"): "tesserae lab evolve",
     ("project", "schema-drift"): "tesserae lab schema-drift",
     ("project",): "tesserae <command> (see tesserae --help)",
+    # `code` is a tombstone, not politeness. The Claude Code plugin's hooks
+    # live in the USER's installed plugin directory, not in this repo, so
+    # deleting them here does not stop them firing: the live hook log recorded
+    # 3,445 `tesserae code sync` invocations over 39 days. Without this entry
+    # every one of those prints "unknown command 'code'" instead of saying
+    # where source code went. Matched before KNOWN_COMMANDS, so the trailing
+    # `--project …` the hooks pass is never parsed.
+    ("code",): CODE_SCOPE_REMOVED,
     ("wiki", "register"): "tesserae projects register",
     ("wiki", "list"): "tesserae projects list",
     # Terminal removal (value starts with "removed"): main() prints it as a

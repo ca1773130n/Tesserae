@@ -455,8 +455,6 @@ def test_init_yes_defaults_disable_optional_integrations(tmp_path, monkeypatch):
         (["lab", "evolve"], "_handle_lab_evolve"),
         (["lab", "schema-drift"], "_handle_lab_schema_drift"),
         (["extract", "x.md"], "_handle_extract"),
-        (["code", "ingest"], "_handle_code_ingest"),
-        (["code", "sync"], "_handle_code_sync"),
         (["research", "some question"], "_handle_research"),
         (["lint"], "_handle_lint"),
         (["query", "some question"], "_handle_query"),
@@ -772,32 +770,23 @@ def test_compile_prints_output_change_line(tmp_path, monkeypatch, capsys):
     assert "Output: changed (sha256 " in capsys.readouterr().out
 
 
-def test_compile_prints_code_graph_cache_line(tmp_path, monkeypatch, capsys):
+def test_compile_reports_nothing_about_a_code_graph(tmp_path, monkeypatch, capsys):
+    """Compile used to print a `Code graph: reused/re-extracted` reuse line.
+
+    Source code left Tesserae's scope, so compile no longer returns a
+    ``code_graph_cache`` key — and must not resurrect the line from a stale
+    one either. A compile that still narrated a code layer would tell the user
+    a layer exists that nothing writes and nothing reads.
+    """
     _bare_project(tmp_path)
     import tesserae.cli as cli
 
-    reused = {"reused": True, "files": 17, "delta": None}
     _patch_compile_canned(
-        monkeypatch, {**_CANNED_COMPILE_RESULT, "code_graph_cache": reused}
+        monkeypatch,
+        {**_CANNED_COMPILE_RESULT, "code_graph_cache": {"reused": True, "files": 17}},
     )
     assert cli.main(["compile", "--project", str(tmp_path)]) == 0
-    assert "Code graph: reused (tree unchanged, 17 files)" in capsys.readouterr().out
-
-    extracted = {
-        "reused": False,
-        "files": 18,
-        "delta": {"added": 1, "changed": 2, "removed": 3},
-    }
-    _patch_compile_canned(
-        monkeypatch, {**_CANNED_COMPILE_RESULT, "code_graph_cache": extracted}
-    )
-    assert cli.main(["compile", "--project", str(tmp_path)]) == 0
-    assert "Code graph: re-extracted (18 files; delta +1 ~2 -3)" in capsys.readouterr().out
-
-    # Absent key (non-code project / older doubles) → no line at all.
-    _patch_compile_canned(monkeypatch, dict(_CANNED_COMPILE_RESULT))
-    assert cli.main(["compile", "--project", str(tmp_path)]) == 0
-    assert "Code graph:" not in capsys.readouterr().out
+    assert "Code graph" not in capsys.readouterr().out
 
 
 def test_compile_strict_fails_on_idempotence_suspect(tmp_path, monkeypatch, capsys):

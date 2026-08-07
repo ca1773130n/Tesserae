@@ -30,12 +30,6 @@ def test_ingest_exact_flag_is_a_removed_stub(capsys):
     assert "ingest: --exact was renamed --full" in capsys.readouterr().err
 
 
-def test_code_ingest_still_exists_unchanged():
-    code_parser = cli._build_code_parser()
-    ns = code_parser.parse_args(["ingest", "--project", "."])
-    assert ns._handler == "_handle_code_ingest"
-
-
 def test_ingest_dispatch_calls_orchestrator(monkeypatch, tmp_path):
     captured = {}
     def _fake_ingest_sources(wiki, inputs, **kw):

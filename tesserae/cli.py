@@ -1555,61 +1555,6 @@ def _handle_ingest(args: argparse.Namespace) -> int:
         return 0
 
 
-def _handle_ingest_code(args: argparse.Namespace) -> int:
-    if True:
-        # Defer the import so the rest of the CLI does not pay the cost
-        # of pulling in ast / pathlib walkers when they're not needed.
-        from .code_graph_extractor import CodeGraphExtractor, DEFAULT_EXCLUDES, write_code_graph
-
-        project_root = Path(args.project).resolve()
-        excludes = set(DEFAULT_EXCLUDES) | set(args.exclude or [])
-        extractor = CodeGraphExtractor(project_root, excludes=excludes)
-        result = extractor.extract(args.paths or None)
-        output = Path(args.output) if args.output else (project_root / ".tesserae" / "code-graph.json")
-        write_code_graph(result.graph, output)
-        print(
-            "Ingested code graph: "
-            f"processed={result.processed_files} skipped_dirs={result.skipped_dirs} "
-            f"nodes={result.nodes} edges={result.edges}"
-        )
-        print(f"Graph: {output}")
-        return 0
-
-
-def _handle_sync_code(args: argparse.Namespace) -> int:
-    if True:
-        from .code_graph_adapter import (
-            CodeGraphAdapter,
-            _default_codegraph_db,
-            _run_codegraph_sync,
-            write_code_graph_from_codegraph,
-        )
-
-        project_root = Path(args.project).resolve()
-        db_path = Path(args.db).resolve() if args.db else _default_codegraph_db(project_root)
-        if args.auto_sync:
-            _run_codegraph_sync(project_root)
-        adapter = CodeGraphAdapter(db_path, project_root=project_root)
-        if not adapter.available():
-            print(
-                f"CodeGraph database not found at {db_path}.\n"
-                "Install CodeGraph and initialize it in this project:\n"
-                f"  npx @colbymchenry/codegraph init -i {project_root}\n"
-                "Then re-run `tesserae code sync` (optionally with --auto-sync).",
-                file=sys.stderr,
-            )
-            return 2
-        output = Path(args.output) if args.output else (project_root / ".tesserae" / "code-graph.json")
-        result = write_code_graph_from_codegraph(db_path, output, project_root=project_root)
-        print(
-            "Synced code graph from CodeGraph: "
-            f"nodes={result.nodes} edges={result.edges} "
-            f"files={result.processed_files} languages={result.languages}"
-        )
-        print(f"Graph: {output}")
-        return 0
-
-
 _CONCEPT_LAYER_TYPES = frozenset({
     "Concept", "TechnicalTerm", "MethodologicalConcept", "MathematicalConcept",
     "Algorithm", "ArchitecturePattern", "TrainingParadigm", "InferenceStrategy",
@@ -1808,20 +1753,6 @@ def _handle_compile_legacy(args: argparse.Namespace) -> int:
                 f"Output: {'changed' if result['output_changed'] else 'unchanged'} "
                 f"(sha256 {str(result.get('output_sha256', ''))[:12]})"
             )
-        # Code-graph reuse signal (delta-scoped regeneration, see
-        # tesserae/code_graph.py). Omitted when the code branch didn't run
-        # (non-code projects, injected compile doubles). Info-only — never a
-        # failure condition, so --strict is deliberately not extended.
-        cg = result.get("code_graph_cache")
-        if cg is not None:
-            if cg["reused"]:
-                print(f"Code graph: reused (tree unchanged, {cg['files']} files)")
-            else:
-                d = cg.get("delta") or {}
-                print(
-                    f"Code graph: re-extracted ({cg['files']} files; delta "
-                    f"+{d.get('added', 0)} ~{d.get('changed', 0)} -{d.get('removed', 0)})"
-                )
         _warn_if_concept_poor(result)
         # graph.json exists now, so this is where a project first becomes
         # registrable — see _register_initialized_project for why an
@@ -4124,61 +4055,6 @@ def _route_export(rest: List[str]) -> int:
     return _resolve_handler(args._handler)(args)
 
 
-# ----- code -----------------------------------------------------------------
-def _handle_code_ingest(args: argparse.Namespace) -> int:
-    """`code ingest` = old `ingest-code`."""
-    return _handle_ingest_code(args)
-
-
-def _handle_code_sync(args: argparse.Namespace) -> int:
-    """`code sync` = old `sync-code`."""
-    return _handle_sync_code(args)
-
-
-def _build_code_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="tesserae code",
-        description="CodeGraph ⇄ project graph: ingest | sync.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "examples:\n"
-            "  tesserae code sync\n"
-            "  tesserae code sync --auto-sync\n"
-            "  tesserae code ingest\n"
-        ),
-    )
-    sub = parser.add_subparsers(dest="code_command", required=True)
-
-    p_ingest = sub.add_parser("ingest", help="Mint a typed code graph from Python source via the stdlib ast module")
-    p_ingest.add_argument("paths", nargs="*", help="Project-relative or absolute paths to walk; defaults to the project root")
-    p_ingest.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    p_ingest.add_argument("--output", help="Override output path; defaults to <project>/.tesserae/code-graph.json")
-    p_ingest.add_argument("--exclude", action="append", default=[], help="Additional directory basename to skip (repeatable). Adds to the built-in exclude set")
-    p_ingest.set_defaults(_handler="_handle_code_ingest")
-
-    p_sync = sub.add_parser(
-        "sync",
-        help="Translate a colbymchenry/codegraph SQLite store into .tesserae/code-graph.json",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "examples:\n"
-            "  tesserae code sync\n"
-            "  tesserae code sync --auto-sync\n"
-        ),
-    )
-    p_sync.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
-    p_sync.add_argument("--db", help="Path to the CodeGraph SQLite database; defaults to <project>/.codegraph/codegraph.db")
-    p_sync.add_argument("--output", help="Override output path; defaults to <project>/.tesserae/code-graph.json")
-    p_sync.add_argument("--auto-sync", action="store_true", help="Run `codegraph sync <project>` first if the binary is on PATH; skip silently otherwise")
-    p_sync.set_defaults(_handler="_handle_code_sync")
-    return parser
-
-
-def _route_code(rest: List[str]) -> int:
-    args = _build_code_parser().parse_args(rest)
-    return _resolve_handler(args._handler)(args)
-
-
 # ----- ingest ---------------------------------------------------------------
 def _build_ingest_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -5626,10 +5502,12 @@ def _handle_integrations_refresh(args: argparse.Namespace) -> int:
     """`integrations refresh <name>` routes to the managed refresh handlers."""
     if args.name == "understand-anything":
         # Clean-break stub (no-silent-aliases convention): one line, exit 2.
-        print(
-            "removed — code-structure nodes are extracted natively; see tesserae code ingest",
-            file=sys.stderr,
-        )
+        # The notice used to send the user on to `tesserae code ingest`; that
+        # command is retired too, so it shares the code-scope removal notice
+        # rather than redirecting to a second dead end.
+        from .cli_tree import CODE_SCOPE_REMOVED
+
+        print(CODE_SCOPE_REMOVED, file=sys.stderr)
         return 2
     return _handle_refresh_raganything(args)
 
@@ -6560,7 +6438,6 @@ _NEW_DISPATCH: Dict[str, Callable[[List[str]], int]] = {
     "sessions": _route_sessions,
     "vault": _route_vault,
     "export": _route_export,
-    "code": _route_code,
     "ingest": _route_ingest,
     "config": _route_config,
     "setup": _route_setup,
