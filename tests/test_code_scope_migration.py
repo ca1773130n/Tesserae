@@ -443,6 +443,23 @@ def test_vacuum_is_skipped_when_the_disk_could_not_hold_the_rebuild(tmp_path, mo
         assert con.execute("select count(*) from node_memory").fetchone()[0] == 1
 
 
+def test_a_project_path_with_uri_metacharacters_still_reads_the_store(tmp_path):
+    """The dry run opens the store through a ``file:`` URI.
+
+    SQLite parses that URI, so an unencoded ``#`` in the project directory
+    truncates the filename and the sweep silently surveys a database that
+    does not exist — reporting a clean workspace for a dirty one.
+    """
+    root = tmp_path / "my#project?v2"
+    wiki = _project(root)
+    _seed_sqlite(wiki.paths.sqlite)
+
+    result = doctor.migrate_code_scope(root)
+
+    assert result.sqlite is not None
+    assert result.sqlite.deleted_rows["node_memory"] == 1
+
+
 def test_a_workspace_with_no_sqlite_is_fine(tmp_path):
     _project(tmp_path)
     result = doctor.migrate_code_scope(tmp_path)

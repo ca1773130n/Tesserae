@@ -1630,6 +1630,18 @@ def _remove_empty_dirs(root: Path) -> None:
 _NODE_ID_SIDECARS = ("node_provenance", "node_memory")
 
 
+def _readonly_sqlite_uri(db_path: Path) -> str:
+    """``file:`` URI that opens ``db_path`` read-only.
+
+    The path is percent-encoded: SQLite parses a ``file:`` URI, so a project
+    directory containing ``#`` or ``?`` would otherwise truncate the filename
+    at that character and open (or fail on) the wrong database.
+    """
+    from urllib.parse import quote
+
+    return f"file:{quote(str(db_path))}?mode=ro"
+
+
 def _sqlite_tables(con) -> set:
     return {
         row[0]
@@ -1660,7 +1672,7 @@ def _sweep_sqlite(db_path: Path, retired: frozenset, *, apply: bool) -> Optional
     connection = (
         sqlite3.connect(db_path)
         if apply
-        else sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        else sqlite3.connect(_readonly_sqlite_uri(db_path), uri=True)
     )
     with contextlib.closing(connection) as con:
         tables = _sqlite_tables(con)
@@ -1899,7 +1911,7 @@ def _detect_code_scope_leftovers(ctx: DoctorContext) -> Optional[Finding]:
         try:
             # Read-only URI: a plain connect() would CREATE the file, and a
             # doctor run without --fix must leave the tree byte-identical.
-            with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as con:
+            with sqlite3.connect(_readonly_sqlite_uri(db_path), uri=True) as con:
                 row = con.execute(
                     f"select 1 from nodes where type in ({placeholders}) limit 1",
                     tuple(sorted(retired)),
