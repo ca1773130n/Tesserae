@@ -769,7 +769,7 @@ def test_compile_tail_lint_never_verifies_claims(
     assert set(result["lint"]) == {"errors", "warnings", "info"}
 
 
-# --------------------------------------------------------------------------- code-graph staleness (git delta)
+# --------------------------------------------------------------------------- graph-vs-HEAD staleness (git delta)
 
 
 def _git_init(root: Path) -> str:
@@ -788,21 +788,30 @@ def _git_init(root: Path) -> str:
 
 def _ledger(project: Path, sha: str) -> None:
     (project / ".tesserae" / ".build-history.jsonl").write_text(
-        json.dumps({"built_at": "2026-07-01T00:00:00Z", "code_edges": 0, "code_nodes": 1,
-                    "git_head": sha, "research_edges": 0, "research_nodes": 0},
+        json.dumps({"built_at": "2026-07-01T00:00:00Z", "git_head": sha,
+                    "research_edges": 0, "research_nodes": 0},
                    sort_keys=True) + "\n",
         encoding="utf-8",
     )
 
 
-def _code_graph(paths: list[str]) -> dict:
-    # Zero-padded ids so the report's (code, node_id, path) sort keeps the
-    # findings in the same lexicographic order the cap selects by path.
-    return {
-        "nodes": [_node(f"sf{i:02d}", "SourceFile", p, metadata={"layer": "raw-code"})
-                  for i, p in enumerate(paths)],
-        "edges": [],
-    }
+# The two codes this check can emit. Named once so a test asserting silence
+# cannot go stale by naming a code that was renamed out from under it.
+_HEAD_STALENESS_CODES = ("GRAPH_BEHIND_HEAD", "GRAPH_HEAD_UNRESOLVED")
+
+
+def _commit_all(project: Path, message: str) -> None:
+    """Commit every corpus file, deliberately leaving ``.tesserae/`` out.
+
+    ``_ledger`` writes ``.build-history.jsonl`` after the initial commit, so a
+    bare ``git add -A`` would sweep Tesserae's own output into the commit and
+    inflate the changed-file count these tests assert on.
+    """
+    for args in (["add", "-A", "--", ".", ":(exclude).tesserae"], ["commit", "-qm", message]):
+        _sp.run(
+            ["git", "-C", str(project), "-c", "user.email=t@t", "-c", "user.name=t", *args],
+            check=True,
+        )
 
 
 def test_read_git_head_returns_sha_in_repo_and_none_outside(
@@ -820,88 +829,91 @@ def test_read_git_head_returns_sha_in_repo_and_none_outside(
     assert len(sha) == 40
 
 
-def test_code_graph_staleness_flags_changed_source_files(tmp_path: Path) -> None:
-    project = _scaffold(tmp_path, graph=_code_graph(["a.py"]))
-    sha = _git_init(project)
-    _ledger(project, sha)
-    (project / "a.py").write_text("def f():\n    return 2\n", encoding="utf-8")
-    _sp.run(["git", "-C", str(project), "-c", "user.email=t@t", "-c", "user.name=t",
-             "commit", "-aqm", "c2"], check=True)
+def test_graph_behind_head_is_flagged_after_a_commit(tmp_path: Path) -> None:
+    """The signal is git distance, so an EMPTY graph still reports staleness.
+
+    Deliberately scaffolded without any nodes: the check used to join changed
+    paths against ``SourceFile`` node names, and a documents-and-sessions
+    project has none. What it measures now is how far the compile is behind the
+    repo that holds the corpus, which is a property of the ledger and git alone.
+    """
+    project = _scaffold(tmp_path)
+    _ledger(project, _git_init(project))
+    (project / "notes.md").write_text("# notes\n", encoding="utf-8")
+    _commit_all(project, "c2")
     report = WikiLinter(project).run()
-    behind = [f for f in report.findings if f.code == "CODE_GRAPH_BEHIND"]
-    stale = [f for f in report.findings if f.code == "CODE_GRAPH_STALE_FILE"]
-    assert len(behind) == 1 and "1 commit(s) behind" in behind[0].message
-    assert len(stale) == 1
-    assert stale[0].node_id == "sf00" and stale[0].path == "a.py"
-    assert stale[0].severity == "info"
+    behind = [f for f in report.findings if f.code == "GRAPH_BEHIND_HEAD"]
+    assert len(behind) == 1
+    assert behind[0].severity == "info"
+    assert "1 commit(s) behind" in behind[0].message
+    assert "1 changed file(s)" in behind[0].message
 
 
-def test_code_graph_staleness_silent_when_head_unchanged(tmp_path: Path) -> None:
-    project = _scaffold(tmp_path, graph=_code_graph(["a.py"]))
+def test_graph_behind_head_emits_one_finding_however_many_files_changed(
+    tmp_path: Path,
+) -> None:
+    """One summary line, never one per file.
+
+    The retired per-file rule needed a 20-finding cap to stay bounded; this one
+    is bounded by construction, and the count is the whole report.
+    """
+    project = _scaffold(tmp_path)
+    _ledger(project, _git_init(project))
+    for i in range(25):
+        (project / f"note{i:02d}.md").write_text("x\n", encoding="utf-8")
+    _commit_all(project, "c2")
+    report = WikiLinter(project).run()
+    behind = [f for f in report.findings if f.code == "GRAPH_BEHIND_HEAD"]
+    assert len(behind) == 1
+    assert "25 changed file(s)" in behind[0].message
+
+
+def test_graph_head_staleness_silent_when_head_unchanged(tmp_path: Path) -> None:
+    project = _scaffold(tmp_path)
     _ledger(project, _git_init(project))
     report = WikiLinter(project).run()
-    assert not [f for f in report.findings if f.code.startswith("CODE_GRAPH")]
+    assert not [f for f in report.findings if f.code in _HEAD_STALENESS_CODES]
 
 
-def test_code_graph_staleness_skips_without_git_repo(
+def test_graph_head_staleness_skips_without_git_repo(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # See test_read_git_head_returns_sha_in_repo_and_none_outside: pin git
     # discovery to the scaffold so an enclosing repo can't leak in.
     monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
-    project = _scaffold(tmp_path, graph=_code_graph(["a.py"]))
+    project = _scaffold(tmp_path)
     _ledger(project, "0" * 40)  # ledger has a head, but no repo exists
     report = WikiLinter(project).run()
-    assert not [f for f in report.findings if f.code.startswith("CODE_GRAPH")]
+    assert not [f for f in report.findings if f.code in _HEAD_STALENESS_CODES]
 
 
-def test_code_graph_staleness_skips_without_recorded_head(tmp_path: Path) -> None:
-    project = _scaffold(tmp_path, graph=_code_graph(["a.py"]))
+def test_graph_head_staleness_skips_without_recorded_head(tmp_path: Path) -> None:
+    project = _scaffold(tmp_path)
     _git_init(project)  # repo exists, but ledger has no git_head key
     (project / ".tesserae" / ".build-history.jsonl").write_text(
         json.dumps({"built_at": "2026-07-01T00:00:00Z"}) + "\n", encoding="utf-8")
     report = WikiLinter(project).run()
-    assert not [f for f in report.findings if f.code.startswith("CODE_GRAPH")]
+    assert not [f for f in report.findings if f.code in _HEAD_STALENESS_CODES]
 
 
-def test_code_graph_staleness_unresolvable_head_emits_single_info(tmp_path: Path) -> None:
-    project = _scaffold(tmp_path, graph=_code_graph(["a.py"]))
+def test_graph_head_staleness_unresolvable_head_emits_single_info(tmp_path: Path) -> None:
+    project = _scaffold(tmp_path)
     _git_init(project)
     _ledger(project, "1234567890abcdef1234567890abcdef12345678")
     report = WikiLinter(project).run()
-    unresolved = [f for f in report.findings if f.code == "CODE_GRAPH_HEAD_UNRESOLVED"]
+    unresolved = [f for f in report.findings if f.code == "GRAPH_HEAD_UNRESOLVED"]
     assert len(unresolved) == 1 and unresolved[0].severity == "info"
-    assert not [f for f in report.findings if f.code == "CODE_GRAPH_STALE_FILE"]
+    # Unresolvable head = staleness UNKNOWN, so the distance is never guessed.
+    assert not [f for f in report.findings if f.code == "GRAPH_BEHIND_HEAD"]
 
 
-def test_code_graph_staleness_caps_per_file_findings_at_twenty(tmp_path: Path) -> None:
-    names = [f"m{i:02d}.py" for i in range(25)]
-    project = _scaffold(tmp_path, graph=_code_graph(names))
-    sha = _git_init(project)
-    _ledger(project, sha)
-    for n in names:
-        (project / n).write_text("x = 1\n", encoding="utf-8")
-    _sp.run(["git", "-C", str(project), "-c", "user.email=t@t", "-c", "user.name=t",
-             "add", "-A"], check=True)
-    _sp.run(["git", "-C", str(project), "-c", "user.email=t@t", "-c", "user.name=t",
-             "commit", "-qm", "c2"], check=True)
-    report = WikiLinter(project).run()
-    stale = [f for f in report.findings if f.code == "CODE_GRAPH_STALE_FILE"]
-    assert len(stale) == 20
-    assert [f.path for f in stale] == sorted(f.path for f in stale)
-    behind = [f for f in report.findings if f.code == "CODE_GRAPH_BEHIND"]
-    assert "25 tracked in graph" in behind[0].message
-
-
-def test_code_graph_staleness_report_is_byte_stable_under_fixed_git_state(
+def test_graph_head_staleness_report_is_byte_stable_under_fixed_git_state(
     tmp_path: Path,
 ) -> None:
-    project = _scaffold(tmp_path, graph=_code_graph(["a.py"]))
-    sha = _git_init(project)
-    _ledger(project, sha)
-    (project / "a.py").write_text("def f():\n    return 2\n", encoding="utf-8")
-    _sp.run(["git", "-C", str(project), "-c", "user.email=t@t", "-c", "user.name=t",
-             "commit", "-aqm", "c2"], check=True)
+    project = _scaffold(tmp_path)
+    _ledger(project, _git_init(project))
+    (project / "notes.md").write_text("# notes\n", encoding="utf-8")
+    _commit_all(project, "c2")
     WikiLinter(project).run()
     report_md = project / ".tesserae" / "lint-report.md"
     report_json = project / ".tesserae" / "lint-report.json"
@@ -925,7 +937,7 @@ def test_compile_records_git_head_and_tail_lint_sees_no_staleness(
     report = json.loads(
         (wiki.project_root / ".tesserae" / "lint-report.json").read_text(encoding="utf-8")
     )
-    assert not [f for f in report["findings"] if f["code"].startswith("CODE_GRAPH")]
+    assert not [f for f in report["findings"] if f["code"] in _HEAD_STALENESS_CODES]
 
 
 # --------------------------------------------------- reasoning-edge ratio

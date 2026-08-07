@@ -10,8 +10,15 @@ The fix is to funnel every consumer through one helper:
 :func:`tesserae.wiki_projector.kind_for_node`. It returns the public wiki
 kind for a node or ``None`` (private). These tests pin that contract by
 exercising every entry in :class:`ResearchNodeType` plus the documented
-edge cases (paper title quality, social-feed source path, code-project vs
-repository, synthesis is always public, etc.).
+edge cases (paper title quality, social-feed source path, synthesis is
+always public, etc.).
+
+The code-graph bucket no longer has a predicate of its own: nothing mints a
+code type, ``is_code_graph_node`` is gone, and the 22 retired types survive
+only as a LOAD vocabulary for graphs compiled before the layer was dropped.
+The classifier must still find a home for each of them — a retired type that
+falls through is exactly the silent drop this file exists to catch — so the
+tests below classify them by membership in ``CODE_GRAPH_TYPES`` instead.
 """
 
 from __future__ import annotations
@@ -21,15 +28,14 @@ from typing import Optional
 import pytest
 
 from tesserae.research_graph import (
+    CODE_GRAPH_TYPES,
     ResearchNode,
     ResearchNodeType,
     is_public_research_node,
 )
 from tesserae.wiki_projector import (
     ASSERTION_LAYER_TYPES,
-    CODE_GRAPH_TYPES,
     is_assertion_node,
-    is_code_graph_node,
     is_private_research_node,
     is_session_finding_node,
     kind_for_node,
@@ -98,46 +104,8 @@ def test_public_types_map_to_public_kind(
 ) -> None:
     node = _node(node_type)
     assert kind_for_node(node) == expected_kind
-    assert not is_code_graph_node(node)
+    assert node.type not in CODE_GRAPH_TYPES
     assert not is_assertion_node(node)
-
-
-# ---------------------------------------------------------- code-graph types
-
-CODE_GRAPH_CASES = [
-    ResearchNodeType.CODE_PROJECT,
-    ResearchNodeType.SOURCE_FILE,
-    ResearchNodeType.CODE_MODULE,
-    ResearchNodeType.CODE_CLASS,
-    ResearchNodeType.CODE_FUNCTION,
-    ResearchNodeType.DEPENDENCY,
-]
-
-
-@pytest.mark.parametrize("node_type", CODE_GRAPH_CASES)
-def test_code_graph_types_are_private(node_type: ResearchNodeType) -> None:
-    """F-9 / F-11: code-graph types never get a public wiki page."""
-    node = _node(node_type)
-    assert kind_for_node(node) is None
-    assert is_code_graph_node(node)
-    assert node.type in CODE_GRAPH_TYPES
-
-
-def test_code_project_is_always_private() -> None:
-    """F-9 explicit: ``CodeProject`` is the *internal* code-graph node.
-
-    The user-facing repo type is ``Repository``; ``CodeProject`` lives only in
-    ``code-graph.json``. Even with a research-looking name and source path, it
-    must never get a ``/repos/`` page.
-    """
-    node = _node(
-        ResearchNodeType.CODE_PROJECT,
-        name="Tesserae",
-        source_path="/Users/neo/Developer/Projects/Tesserae",
-        metadata={"layer": "project", "source_kind": "CodeProject"},
-    )
-    assert kind_for_node(node) is None
-    assert is_code_graph_node(node)
 
 
 # ---------------------------------------------------------- assertion layer
@@ -188,7 +156,7 @@ def test_private_research_types_are_suppressed(node_type: ResearchNodeType) -> N
     node = _node(node_type)
     assert kind_for_node(node) is None
     assert is_private_research_node(node)
-    assert not is_code_graph_node(node)
+    assert node.type not in CODE_GRAPH_TYPES
     assert not is_assertion_node(node)
     assert not is_session_finding_node(node)
 
@@ -217,7 +185,7 @@ def test_session_findings_are_their_own_bucket(node_type: ResearchNodeType) -> N
     assert kind_for_node(node) is None
     assert is_session_finding_node(node)
     assert not is_private_research_node(node)
-    assert not is_code_graph_node(node)
+    assert node.type not in CODE_GRAPH_TYPES
     assert not is_assertion_node(node)
 
 
@@ -294,10 +262,13 @@ def test_every_node_type_classifies() -> None:
       * session findings (public, but on the dedicated /sessions/ route — no
         wiki kind), OR
       * private-research / suppressed (Person / Stub / Session envelope), OR
-      * code-graph layer, OR
+      * the retired code-graph layer, OR
       * assertion layer.
     Nothing may fall through unclassified — a new type with no home here is a
-    bug, not a silent drop.
+    bug, not a silent drop. This matters MORE now that a vocabulary is being
+    retired: the 22 code types stay in the enum so old graphs still load, and
+    this is what proves each of them is still deliberately classified rather
+    than merely forgotten.
     """
     seen = set()
     for node_type in ResearchNodeType:
@@ -312,7 +283,7 @@ def test_every_node_type_classifies() -> None:
         assert (
             is_session_finding_node(node)
             or is_private_research_node(node)
-            or is_code_graph_node(node)
+            or node.type in CODE_GRAPH_TYPES
             or is_assertion_node(node)
         ), f"{node_type.value} is neither public nor explicitly private"
         seen.add(node_type)
@@ -321,5 +292,11 @@ def test_every_node_type_classifies() -> None:
 
 
 def test_partitions_are_disjoint() -> None:
-    """Code-graph and assertion-layer partitions never overlap."""
+    """The retired code layer and the assertion layer never overlap.
+
+    Still worth asserting after the code layer stopped being written: the two
+    sets are now defined in different modules (``research_graph`` and
+    ``wiki_projector``), so nothing but this test stops a type being added to
+    both and getting two contradictory classifications.
+    """
     assert CODE_GRAPH_TYPES.isdisjoint(ASSERTION_LAYER_TYPES)

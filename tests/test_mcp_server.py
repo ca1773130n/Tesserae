@@ -5,7 +5,13 @@ import pytest
 from tesserae.graph_stores import SqliteGraphStore
 from tesserae.graph_stores.url_resolver import resolve_graph_store
 from tesserae.mcp_server import LLMWikiMCPServer, MCPRequestHandler
-from tesserae.research_graph import ResearchEdge, ResearchGraph, ResearchNode, ResearchNodeType
+from tesserae.research_graph import (
+    CODE_GRAPH_TYPES,
+    ResearchEdge,
+    ResearchGraph,
+    ResearchNode,
+    ResearchNodeType,
+)
 
 
 def sample_graph_path(tmp_path):
@@ -485,17 +491,41 @@ def test_graph_summary_excludes_code_graph_types(tmp_path):
     assert summary["node_count"] == 3
 
 
-def test_schema_omits_code_graph_types_and_lists_wiki_kinds(tmp_path):
+def test_schema_omits_every_code_graph_type_and_lists_wiki_kinds(tmp_path):
+    """ALL 22 retired code types stay out of the advertised vocabulary.
+
+    Keyed off ``CODE_GRAPH_TYPES`` rather than a literal list: the server used
+    to subtract its own hand-written set of six, so CodeFile / CodeMethod /
+    CodeSymbol and thirteen others were advertised to agents as writable types
+    for as long as that list was out of step with the ontology.
+    """
     server = LLMWikiMCPServer()
     schema = server.call_tool("schema", {})
 
-    for hidden in ("CodeProject", "SourceFile", "CodeClass", "CodeFunction", "CodeModule", "Dependency"):
-        assert hidden not in schema["node_types"], f"{hidden} leaked into MCP schema"
+    for hidden in CODE_GRAPH_TYPES:
+        assert hidden.value not in schema["node_types"], (
+            f"{hidden.value} leaked into MCP schema"
+        )
     for public_type in ("Paper", "Repository", "Concept", "Synthesis", "OpenQuestion", "SourceDocument"):
         assert public_type in schema["node_types"]
     assert "wiki_kinds" in schema
     assert "papers" in schema["wiki_kinds"]
     assert "syntheses" in schema["wiki_kinds"]
+
+
+def test_find_code_symbol_mentions_is_gone(tmp_path):
+    """The insight->symbol tool went with the layer it read.
+
+    It is worth pinning because nothing is lost by its removal and that is not
+    obvious: its only working path was a live scan of ``code-graph.json``, a
+    file the compile now deletes. The persisted ``discusses`` edges it claimed
+    to prefer never resolved — every one of them dangled, because the two
+    producers of that file minted node ids under incompatible schemes.
+    """
+    server = LLMWikiMCPServer()
+    assert "find_code_symbol_mentions" not in {t["name"] for t in server.list_tools()}
+    with pytest.raises(ValueError, match="Unknown Tesserae MCP tool"):
+        server.call_tool("find_code_symbol_mentions", {"node_id": "SessionInsight:x"})
 
 
 def test_node_context_for_synthesis_returns_synthesizes_and_summarizes_edges(tmp_path):

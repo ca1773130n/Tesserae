@@ -276,41 +276,13 @@ AGENT_LAYER_TYPES: Set[ResearchNodeType] = {
     ResearchNodeType.EXPERTISE_PROFILE,
 }
 
-# Code-graph symbol types. The aggressive same-type dedup pass keys on
-# the casefolded, punctuation-stripped display name — which is wrong
-# for code symbols: a project routinely has two modules each defining
-# ``main()`` or ``Config``, and collapsing them by display name would
-# fuse genuinely distinct symbols (and rewrite their edges onto a
-# single winner) even though :mod:`tesserae.code_graph_extractor`
-# already mints module-qualified ``id_seed``s that keep them as
-# separate nodes. The extractor preserves a short, human-readable
-# display name (``helper`` rather than ``demo_pkg.greet.helper``) for
-# vault / UI ergonomics, so this set carries the "do not collapse by
-# display name" invariant on the graph-builder side instead.
-CODE_SYMBOL_TYPES: Set[ResearchNodeType] = {
-    ResearchNodeType.CODE_FILE,
-    ResearchNodeType.CODE_MODULE,
-    ResearchNodeType.CODE_CLASS,
-    ResearchNodeType.CODE_FUNCTION,
-    ResearchNodeType.CODE_METHOD,
-    # CodeGraph-adapter additions (see ResearchNodeType docstring above).
-    # Every CODE_* variant lives here so same-name collisions across
-    # files are preserved instead of fused by the aggressive dedup pass.
-    ResearchNodeType.CODE_INTERFACE,
-    ResearchNodeType.CODE_TRAIT,
-    ResearchNodeType.CODE_STRUCT,
-    ResearchNodeType.CODE_ENUM,
-    ResearchNodeType.CODE_ENUM_MEMBER,
-    ResearchNodeType.CODE_TYPE_ALIAS,
-    ResearchNodeType.CODE_VARIABLE,
-    ResearchNodeType.CODE_CONSTANT,
-    ResearchNodeType.CODE_ROUTE,
-    ResearchNodeType.CODE_COMPONENT,
-    ResearchNodeType.CODE_FIELD,
-    ResearchNodeType.CODE_PARAMETER,
-    ResearchNodeType.CODE_NAMESPACE,
-    ResearchNodeType.CODE_SYMBOL,
-}
+# There used to be a ``CODE_SYMBOL_TYPES`` here — the CODE_* subset of
+# ``CODE_GRAPH_TYPES``, carried so the aggressive same-type dedup pass would
+# not fuse two modules' ``main()`` by display name. It existed to protect the
+# module-qualified ids :mod:`tesserae.code_graph_extractor` minted; that
+# extractor is gone, no producer mints a code type any more, and anything that
+# still needs to NAME the retired layer keys off ``CODE_GRAPH_TYPES`` (which
+# covers all 22 types, not the 19 this set held).
 
 
 class TitleQuality(str, Enum):
@@ -848,17 +820,6 @@ def _merge_same_type_aliased_duplicates(
         # Merging them here would fuse separate provenance — exactly the hazard
         # the session-finding exemption above guards against.
         if node.type == ResearchNodeType.EVENT or node.type in DISTILLED_MEMORY_TYPES:
-            continue
-        # Code-graph symbols (CodeFile/CodeModule/CodeClass/CodeFunction/
-        # CodeMethod) are likewise NOT collapsed by aggressive same-name
-        # dedup. Two modules each defining ``def main()`` or ``class
-        # Config`` are legitimately distinct nodes — the
-        # :mod:`tesserae.code_graph_extractor` already disambiguates
-        # them via module-qualified ``id_seed``s; merging them here
-        # would silently re-fuse the very symbols the extractor went to
-        # the trouble of separating, and rewrite both files' edges onto
-        # a single survivor.
-        if node.type in CODE_SYMBOL_TYPES:
             continue
         # Agent-layer nodes (Agent/DistilledNote/ExpertiseProfile) are
         # likewise NOT collapsed by aggressive same-name dedup. Two agents

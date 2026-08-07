@@ -51,7 +51,7 @@ from .research_graph import (
     AGENT_LAYER_TYPES,
     ALLOWED_EDGE_TYPES,
     ALLOWED_NODE_TYPES,
-    CODE_SYMBOL_TYPES,
+    CODE_GRAPH_TYPES,
     DISTILLED_MEMORY_TYPES,
     SESSION_FINDING_TYPES,
     ResearchEdge,
@@ -91,12 +91,19 @@ AGENT_WRITE_SOURCE = "__agent_write__"
 # of "evidence originates outside the graph".
 EXTERNAL_ANCHORS: Tuple[str, ...] = ("url", "file", "commit", "session_id")
 
-# Node types an agent may NOT mint, because another producer already owns their
-# id space. Derived from the existing named sets rather than a literal list, so
-# a future CODE_* / agent-layer type is denied automatically the day it is
-# added to the vocabulary.
+# Node types an agent may NOT mint. Two rationales, one gate: the agent-layer
+# and compile-producer types are denied because another producer already owns
+# their id space, and the code-graph types are denied because NOTHING owns them
+# any more — Tesserae stopped ingesting source code, so a write is the only way
+# left to put a code node in graph.json, and letting one through would seed a
+# retired layer inside the artifact every reader actually reads.
+#
+# Derived from the named sets rather than a literal list, so a future agent-layer
+# type is denied automatically the day it is added to the vocabulary. Keyed off
+# ``CODE_GRAPH_TYPES`` (all 22) rather than the retired ``CODE_SYMBOL_TYPES``
+# (19), which left CodeProject / SourceFile / Dependency writable.
 DENIED_NODE_TYPES: frozenset = frozenset(
-    {t.value for t in CODE_SYMBOL_TYPES}
+    {t.value for t in CODE_GRAPH_TYPES}
     | {t.value for t in AGENT_LAYER_TYPES}
     | {
         ResearchNodeType.SESSION.value,
@@ -109,18 +116,23 @@ DENIED_NODE_TYPES: frozenset = frozenset(
 
 # Node types ``_merge_same_type_aliased_duplicates`` deliberately EXEMPTS from
 # aggressive same-name dedup (``research_graph.py``: session findings, Event,
-# distilled memory, code symbols, agent-layer). Two of these with identical text
-# are legitimately separate provenance — merging them loses the link back to the
-# session / cluster / module that produced each one. ``resolve_existing_id``
-# uses the same key that pass uses, so it must honour the same refusals;
-# otherwise an agent's independent observation is fused onto (and erased by)
-# some session's finding that happens to share wording. ``DENIED_NODE_TYPES``
-# already blocks the code/agent/Event families at the door, but SessionInsight,
-# Gotcha, Runbook & co. are writable on purpose.
+# distilled memory, agent-layer). Two of these with identical text are
+# legitimately separate provenance — merging them loses the link back to the
+# session or cluster that produced each one. ``resolve_existing_id`` uses the
+# same key that pass uses, so it must honour the same refusals; otherwise an
+# agent's independent observation is fused onto (and erased by) some session's
+# finding that happens to share wording. ``DENIED_NODE_TYPES`` already blocks
+# the agent/Event families at the door, but SessionInsight, Gotcha, Runbook &
+# co. are writable on purpose.
+#
+# The code-graph types are NOT listed here, and their absence is not an
+# oversight: the dedup pass no longer exempts them either (nothing mints a code
+# symbol, so it never meets one), and naming them here would assert an
+# exemption that does not exist. They are refused earlier and unconditionally,
+# by ``DENIED_NODE_TYPES``.
 NEVER_ALIGNED_TYPES: frozenset = frozenset(
     SESSION_FINDING_TYPES
     | DISTILLED_MEMORY_TYPES
-    | CODE_SYMBOL_TYPES
     | AGENT_LAYER_TYPES
     | {ResearchNodeType.EVENT}
 )

@@ -302,7 +302,7 @@ class WikiLinter:
         findings.extend(self._check_synthesis_ghost_inputs(nodes_by_id))
         findings.extend(self._check_suggested_merges(nodes_by_id))
         findings.extend(self._check_stale_build_history())
-        findings.extend(self._check_code_graph_staleness(nodes_by_id))
+        findings.extend(self._check_graph_head_staleness())
         findings.extend(self._check_agent_metadata_allowlist(nodes_by_id))
         findings.extend(self._check_agent_forget_ledger())
         findings.extend(self._check_undistilled_backlog(nodes_by_id, edges))
@@ -991,19 +991,23 @@ class WikiLinter:
                 suggested_fix="Trim `.build-history.jsonl` to recent entries.",
             )
 
-    def _check_code_graph_staleness(
-        self, nodes_by_id: Dict[str, dict]
-    ) -> Iterable[LintFinding]:
-        """``SourceFile`` nodes whose backing files changed since last compile.
+    def _check_graph_head_staleness(self) -> Iterable[LintFinding]:
+        """How far the compiled graph has drifted from the repo's current HEAD.
 
         Diffs the git HEAD recorded in the build-history ledger against the
-        current HEAD and reports which changed files back ``SourceFile``
-        nodes. Read-only over git and the graph — a staleness *report*, never
-        auto-regeneration. Every finding is ``info``: a repo that merely
-        advanced by a commit must not fail ``compile --strict``. No wall
-        clock, no config-dependent git output (``--no-renames``,
-        ``core.quotepath=false``, full shas sliced in Python), so the report
-        stays a pure function of (graph, ledger, git object state).
+        current HEAD and reports the commit / changed-file distance. This is a
+        git-commit measurement, not a source-code one: it stayed a real
+        staleness signal when Tesserae stopped indexing source, because the
+        documents and session transcripts it does ingest are committed to the
+        same repo, so commits since the recorded head are exactly the window in
+        which the corpus may have moved on without a recompile.
+
+        Read-only over git — a staleness *report*, never auto-regeneration.
+        Every finding is ``info``: a repo that merely advanced by a commit must
+        not fail ``compile --strict``. No wall clock, no config-dependent git
+        output (``--no-renames``, ``core.quotepath=false``, full shas sliced in
+        Python), so the report stays a pure function of (ledger, git object
+        state).
         """
         if not self.build_history_path.exists():
             return
@@ -1023,7 +1027,7 @@ class WikiLinter:
         except OSError:
             return
         if recorded is None:
-            # Pre-feature ledgers and non-code projects produce no noise.
+            # Pre-feature ledgers and projects outside a repo produce no noise.
             return
         head = read_git_head(self.project_root)
         if head is None or head == recorded:
@@ -1031,7 +1035,7 @@ class WikiLinter:
         if _git(self.project_root, "rev-parse", "--verify", "--quiet", recorded + "^{commit}") is None:
             yield LintFinding(
                 severity="info",
-                code="CODE_GRAPH_HEAD_UNRESOLVED",
+                code="GRAPH_HEAD_UNRESOLVED",
                 message=(
                     f"Recorded compile head {recorded[:12]} is not resolvable in "
                     "this repo (history rewritten or pruned); staleness unknown"
@@ -1043,8 +1047,9 @@ class WikiLinter:
         out = _git(self.project_root, "rev-list", "--count", f"{recorded}..HEAD")
         n_commits = int(out.strip()) if out else 0
         # Two-dot snapshot diff (not ``log``) so merges/reverts net out;
-        # ``--relative`` re-roots paths at project_root when the workspace is
-        # a repo subdirectory, matching SourceFile node names.
+        # ``--relative`` re-roots paths at project_root and, when the workspace
+        # is a repo subdirectory, scopes the count to that subtree instead of
+        # the whole repo.
         diff_out = _git(
             self.project_root,
             "-c",
@@ -1052,48 +1057,23 @@ class WikiLinter:
             "diff",
             "--no-renames",
             "--relative",
-            "--name-status",
+            "--name-only",
             recorded,
             "HEAD",
         )
-        changes: List[Tuple[str, str]] = []
-        for raw in (diff_out or "").splitlines():
-            raw = raw.strip()
-            if not raw:
-                continue
-            status, _, path = raw.partition("\t")
-            if path:
-                changes.append((status[:1], path))
-        if not changes and n_commits == 0:
+        changed = [line.strip() for line in (diff_out or "").splitlines() if line.strip()]
+        if not changed and n_commits == 0:
             # Diverged-but-identical trees (e.g. reset + recommit).
             return
-        source_files = {
-            node["name"]: node_id
-            for node_id, node in nodes_by_id.items()
-            if node.get("type") == "SourceFile"
-        }
-        matched = sorted((path, status) for status, path in changes if path in source_files)
         yield LintFinding(
             severity="info",
-            code="CODE_GRAPH_BEHIND",
+            code="GRAPH_BEHIND_HEAD",
             message=(
-                f"Code graph compiled at {recorded[:12]} is {n_commits} commit(s) behind HEAD {head[:12]} "
-                f"({len(changes)} changed file(s), {len(matched)} tracked in graph)"
+                f"Graph compiled at {recorded[:12]} is {n_commits} commit(s) behind HEAD {head[:12]} "
+                f"({len(changed)} changed file(s))"
             ),
             suggested_fix="Run `tesserae compile` to refresh the graph from the current working tree.",
         )
-        # Lexicographic path order = deterministic cap. Deletions matched to a
-        # node are the strongest signal (the graph cites a file that no longer
-        # exists); added files have no node and only count toward the summary.
-        for path, status in matched[:20]:
-            yield LintFinding(
-                severity="info",
-                code="CODE_GRAPH_STALE_FILE",
-                message=f"Source file changed since last compile ({status}): {path}",
-                node_id=source_files[path],
-                path=path,
-                suggested_fix="Run `tesserae compile` to refresh the graph from the current working tree.",
-            )
 
     def _check_claim_support(
         self,
