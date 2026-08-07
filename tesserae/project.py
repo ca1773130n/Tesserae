@@ -1424,10 +1424,12 @@ class ProjectWiki:
         # + hub list to ``.tesserae/hierarchy.json``. Runs on the canonical
         # graph (the same ordering CMP-03 requires) and BEFORE the community-
         # summary merge so Louvain never sees a COMMUNITY_SUMMARY node. The
-        # sidecar partitions off the code layer itself, so hand it the union as
-        # always — but note it is partitioning THIS graph, and the passes below
-        # (plus those inside ``_write_artifacts``) rebind ``graph`` before its
-        # own split runs; see the ordering window in that method's docstring.
+        # sidecar clusters THIS graph whole — there is no code layer left for
+        # it to partition off first. The ordering window that split used to
+        # sit in outlives it: the passes below, and those inside
+        # ``_write_artifacts``, rebind ``graph`` afterwards, so a member named
+        # here can be gone by the time ``graph.json`` is written; see the
+        # ordering window in that method's docstring.
         # Returns the all-level live-cid manifest used to prune stale summary
         # caches after that pass (§9.5).
         live_community_ids = self._write_hierarchy_sidecar(graph)
@@ -1820,15 +1822,22 @@ class ProjectWiki:
         clock, no LLM); atomic tmp + ``os.replace`` with sorted keys, matching
         the sidecar idiom of ``output_snapshot.write_state``.
 
-        Built over the whole graph, which is now the same node universe
-        ``graph.json`` carries. It did not used to be: the compile minted a
-        code layer that ``_write_artifacts`` split into ``code-graph.json``,
+        Built over the whole graph. It did not used to be: the compile minted
+        a code layer that ``_write_artifacts`` split into ``code-graph.json``,
         so this pass had to partition first or it would name members
         ``graph_map`` can never resolve (measured: 169/1360 ai-accounts
         sidecar members absent from ``graph.json``, 100% of them code). With
         the code layer gone at the source there is nothing left to subtract,
         and :meth:`_merge_community_summaries` clusters the same object — so
         its minted cids are still exactly this sidecar's coarsest-level keys.
+
+        That does NOT make this sidecar and ``graph.json`` the same node
+        universe, and reading it that way is how the pruning key gets deleted
+        as redundant. ``_write_artifacts`` rebinds ``graph`` through
+        ``_apply_vault_overlay``, which harvests vault-page deletions, so a
+        member named here can still be absent from the published graph — a
+        much narrower window than the code split opened, but the same shape.
+        :func:`hierarchy.live_member_count` is what reports it.
 
         Returns the live-cid manifest across ALL levels — the §9.5 pruning
         key: a community-summary cache file is stale only when its cid appears
