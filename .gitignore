@@ -60,6 +60,11 @@ pip-modern-metadata-*/
 
 # pytest temp directories — created when tmp_path_factory points at the repo
 pytest-of-*/
+# ...and the bare mkdtemp() names some tests still use instead of tmp_path.
+# `pytest-of-*/` never matched those, so fleet/daemon scratch kept landing in
+# the repo root as untracked dirs — one `git add -A` away from being committed,
+# and enough to block a release pre-flight on a dirty tree.
+tmp??????*/
 node-compile-cache/
 
 # Local IDE / AI-assistant configs — per-developer, do not commit
