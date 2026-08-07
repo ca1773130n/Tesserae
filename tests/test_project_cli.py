@@ -185,7 +185,17 @@ def test_cli_project_export_agent_harness_and_obsidian(tmp_path, capsys):
     assert (project / ".tesserae" / "obsidian_vault" / "_meta" / "dashboard.md").exists()
 
 
-def test_project_compile_includes_code_graph_and_frontend_site_for_repository(tmp_path):
+def test_a_code_project_compiles_to_a_site_and_no_code_graph(tmp_path):
+    """`source_kind="CodeProject"` still compiles; it just reads documents.
+
+    Pointing Tesserae at a repository stays a supported thing to do — the
+    kind routes to ``SourceDocument`` and the compile builds the same site
+    as any other project. What it no longer does is mint a second artifact:
+    this used to assert ``code-graph.json`` carried ``CodeProject`` /
+    ``SourceFile`` nodes while ``graph.json`` stayed research-only, and the
+    disjointness half of that pair is the only part still worth checking,
+    now against the one graph there is.
+    """
     project = tmp_path / "code-project"
     project.mkdir()
     src = project / "src"
@@ -196,14 +206,7 @@ def test_project_compile_includes_code_graph_and_frontend_site_for_repository(tm
     result = wiki.compile()
 
     assert result["site_path"] == str(project / ".tesserae" / "site")
-    # Codex review F-11: code-graph nodes live in their own artifact, not in
-    # ``graph.json``. ``graph.json`` is research-only; ``code-graph.json``
-    # carries ``CodeProject`` / ``SourceFile`` / ``CodeFunction`` / etc.
-    code_graph = json.loads(
-        (project / ".tesserae" / "code-graph.json").read_text(encoding="utf-8")
-    )
-    code_types = {node["type"] for node in code_graph["nodes"]}
-    assert {"CodeProject", "SourceFile"}.issubset(code_types)
+    assert not (project / ".tesserae" / "code-graph.json").exists()
     research_graph = json.loads(
         (project / ".tesserae" / "graph.json").read_text(encoding="utf-8")
     )

@@ -5964,13 +5964,58 @@ def _build_doctor_parser() -> argparse.ArgumentParser:
             "  tesserae doctor\n"
             "  tesserae doctor --fix\n"
             "  tesserae doctor --all --json\n"
+            "  tesserae doctor migrate-code-scope           # dry run\n"
+            "  tesserae doctor migrate-code-scope --apply\n"
         ),
+    )
+    # Optional verb: no verb runs the checks, so `tesserae doctor` is
+    # unchanged. `migrate-code-scope` is a one-shot cleanup of a workspace
+    # compiled before source code left Tesserae's scope. It is a separate verb
+    # rather than another --fix repair because it deletes hundreds of thousands
+    # of projected pages and rebuilds a multi-gigabyte SQLite file, and --fix
+    # promises safe repairs only.
+    parser.add_argument(
+        "verb",
+        nargs="?",
+        choices=["migrate-code-scope"],
+        help="Omit to run the health checks. migrate-code-scope: remove the retired code layer (dry run unless --apply).",
     )
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--all", dest="all_projects", action="store_true", help="Doctor every registered project (ignores --project)")
+    parser.add_argument("--apply", action="store_true", help="With migrate-code-scope: actually delete. Without it the verb reports what it would remove and touches nothing.")
     parser.add_argument("--fix", action="store_true", help="Apply the safe fixes only: registry prune, site rebuild, lint trivial fixes, stale daemon-pidfile removal (THIS host's only — another machine's pidfile is never touched), build-history trim, hook-log rotation, vault mkdir, git worktree prune. Never kills or removes a live compile lock.")
     parser.add_argument("--json", dest="doctor_json", action="store_true", help="Print the JSON report to stdout instead of the markdown checklist")
     return parser
+
+
+def _handle_doctor_migrate_code_scope(args: argparse.Namespace) -> int:
+    from .doctor import (
+        code_scope_migration_json,
+        migrate_code_scope,
+        render_code_scope_migration,
+    )
+
+    if args.all_projects:
+        # Each project's migration reclaims gigabytes and is worth reading
+        # one at a time; fanning it out over the registry would bury the
+        # survivor counts that are the whole point of the dry run.
+        print(
+            "error: --all is not supported with migrate-code-scope;"
+            " run it per project with --project",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        result = migrate_code_scope(args.project, apply=args.apply)
+    except FileNotFoundError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    sys.stdout.write(
+        code_scope_migration_json(result)
+        if args.doctor_json
+        else render_code_scope_migration(result)
+    )
+    return 0
 
 
 def _handle_doctor(args: argparse.Namespace) -> int:
@@ -5983,6 +6028,8 @@ def _handle_doctor(args: argparse.Namespace) -> int:
         write_report,
     )
 
+    if getattr(args, "verb", None) == "migrate-code-scope":
+        return _handle_doctor_migrate_code_scope(args)
     if args.all_projects:
         from .mcp_server import ProjectRegistry
 

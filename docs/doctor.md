@@ -43,6 +43,7 @@ The checks, grouped by category:
 | `idempotence` | hygiene | the output-snapshot `idempotence_suspect` tripwire | report-only (it's a bug signal, not something to auto-repair) |
 | `orphan_worktrees` | hygiene | stale `git worktree` registrations | **SAFE**: `git worktree prune`; deleting directories is report-only |
 | `hook_log_bloat` | hygiene | `.tesserae/.session-*-hook.log` growth | **SAFE**: rotates/truncates logs over 10 MB |
+| `code_scope_leftovers` | hygiene | leftovers from the retired code layer: `code-graph*.json`, code-typed rows in `sqlite.db` | report-only — the cleanup is a mass delete, so it lives on its own verb (see below) |
 
 A crashing check is reported as an error finding — doctor itself never raises.
 
@@ -82,6 +83,49 @@ It **cannot** prove cross-host enforcement, and does not claim to. One host
 taking a lock says nothing about whether a second host is prevented from taking
 it. If you run Tesserae from several machines against shared storage, test that
 directly on the real hardware before relying on the compile lock.
+
+## `tesserae doctor migrate-code-scope`
+
+A one-shot cleanup for a workspace compiled before source code left Tesserae's
+scope. New compiles no longer produce the code layer, but an older workspace
+still carries it, and most of it heals only when you ask.
+
+```bash
+tesserae doctor migrate-code-scope            # dry run — reports, deletes nothing
+tesserae doctor migrate-code-scope --apply    # actually removes
+```
+
+It removes, in this order:
+
+* projected pages under `.tesserae/markdown_projection/` whose own `type:`
+  frontmatter names a retired code type;
+* the same pages in the Obsidian vault — both the configured one and the
+  in-project default, because a project that later pointed at a real vault
+  leaves the old one behind full of them. A code page with non-empty
+  `user-notes` content is kept and counted, never deleted;
+* `code-graph.json` and `code-graph-cache.json`;
+* SQLite sidecar rows (`node_provenance`, `edge_provenance`, `node_memory`)
+  whose node or edge no longer exists, then `VACUUM`.
+
+Two things to know:
+
+**Read the survivor count, not the deletion count.** The projection directory
+is overwhelmingly code-derived — measured here, 218,796 of 224,876 pages — so a
+predicate bug that deleted everything and a correct run look nearly identical
+in the number deleted. The report leads with how many non-code pages survive,
+which is the number that would collapse if the predicate were wrong. Gating is
+strictly per file, on that file's own frontmatter.
+
+**Compile first, then migrate.** The `nodes` / `edges` tables and the
+provenance sidecars are rewritten by every compile, so a compile is what makes
+those rows garbage; this verb is what reclaims the space, because SQLite does
+not shrink on `DELETE`. Running it beforehand is harmless — it says so and
+finds nothing to reclaim. `VACUUM` is never run inside a compile: it takes an
+exclusive lock and needs free disk on the order of the database file, and it is
+skipped with a note when the disk cannot hold the rebuild.
+
+It is deliberately not reachable from `--fix`, which is documented as safe
+repairs only.
 
 ## `--fix` policy
 

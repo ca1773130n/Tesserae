@@ -28,6 +28,11 @@ against source):
   answers about the local process table and says nothing about another
   host's pid. ``--fix`` never touches a foreign host's file.
 
+:func:`migrate_code_scope` is the one exception to "checks never mutate", and
+it is not a check: it is a one-shot migration the operator invokes by name
+(``tesserae doctor migrate-code-scope``), dry-run by default, and it is
+deliberately NOT reachable from ``--fix`` — see its own section below.
+
 This module never imports :mod:`tesserae.cli`. Heavy or optional subsystems
 (registry, lint, detection, embeddings, session_chunks) are imported lazily
 inside individual checks so ``import tesserae.doctor`` stays cheap and works
@@ -48,10 +53,16 @@ from typing import Callable, Dict, List, Optional
 
 __all__ = [
     "Check",
+    "CodeScopeMigration",
     "DoctorContext",
     "DoctorReport",
     "Finding",
+    "PageSweep",
+    "SqliteSweep",
     "CHECKS",
+    "code_scope_migration_json",
+    "migrate_code_scope",
+    "render_code_scope_migration",
     "run_doctor",
     "run_doctor_all",
     "render_markdown",
@@ -1362,6 +1373,555 @@ def _detect_environment(ctx: DoctorContext) -> Optional[Finding]:
 
 
 # ---------------------------------------------------------------------------
+# migrate-code-scope — one-shot cleanup of an already-compiled workspace
+# ---------------------------------------------------------------------------
+#
+# Source code left Tesserae's scope. New compiles no longer mint the code
+# layer, but a workspace compiled by an earlier release still carries it:
+# measured on this repository, 218,796 of 220,005 markdown_projection pages,
+# 1,370 vault pages, a 35 MB ``code-graph.json``, a 291 MB
+# ``code-graph-cache.json``, and the bulk of a 1.19 GB ``sqlite.db``.
+#
+# What is NOT here, because it heals itself on the next compile: the sqlite
+# ``nodes`` / ``edges`` tables (``write_graph(replace=True)`` deletes all rows
+# first), the provenance sidecars (``reconcile_provenance`` /
+# ``prune_provenance_to_graph`` run every compile), the static site (the
+# builder rmtrees its output, taking 8.36 GB of code raw pages with it), and
+# synthesis ``sources`` frontmatter (computed from a graph that no longer has
+# code nodes). Deleting rows does not shrink a SQLite file though, so the
+# space those passes free is only RECLAIMED here, by the VACUUM.
+
+# The retired vocabulary as the strings a page's ``type:`` frontmatter
+# carries. Derived from ``CODE_GRAPH_TYPES`` and never from a name pattern:
+# ``Repository`` and ``Project`` are DOCUMENT types, and a regex over
+# "Code|Source|Dependency|Repository|Project" would take 271 vault Repository
+# pages — anchors of 1,663 Repository->Session edges — with the code layer.
+def _retired_type_values() -> frozenset:
+    from .research_graph import CODE_GRAPH_TYPES
+
+    return frozenset(item.value for item in CODE_GRAPH_TYPES)
+
+
+# Artifacts of the retired layer. ``code-graph.json`` is also unlinked by
+# every compile (``ProjectWiki._write_artifacts``); it is repeated here so an
+# operator who migrates before recompiling still gets a clean workspace.
+_RETIRED_ARTIFACTS = ("code-graph.json", "code-graph-cache.json")
+
+# Frontmatter is a few dozen lines; a page BODY can be megabytes (the largest
+# projected page measured 2.5 MB). Read only far enough to close the block.
+_FRONTMATTER_LINE_CAP = 200
+
+# How many matched paths a dry run prints. Enough to eyeball what the
+# predicate caught, few enough that 218,796 matches stay readable.
+_SAMPLE_CAP = 5
+
+
+def _declared_node_type(path: Path) -> Optional[str]:
+    """The node type this page's OWN frontmatter declares, or None.
+
+    None means "this file does not tell us what it is" — no frontmatter, an
+    unterminated block, or no ``type:`` key. The migration always KEEPS those.
+    Gating on each file's own frontmatter is the whole safety argument: the
+    projection's ``concepts/`` directory is 99.45% code-derived and 0.43%
+    genuine Concept pages, so a predicate that guessed from the directory,
+    the filename or a leftover node id would destroy the survivors and the
+    deletion count would look exactly the same either way.
+    """
+    from .vault_pull import parse_frontmatter
+
+    lines: List[str] = []
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                lines.append(line.rstrip("\n"))
+                # The closing fence — everything the parser needs is in hand.
+                if len(lines) > 1 and lines[-1].rstrip() == "---":
+                    break
+                if len(lines) >= _FRONTMATTER_LINE_CAP:
+                    return None
+    except OSError:
+        return None
+    # ``parse_frontmatter`` is the project's one definition of a well-formed
+    # block (opens on ``---``, closes on ``---``); reusing it keeps this
+    # predicate from drifting away from the renderer that wrote the pages.
+    if not parse_frontmatter("\n".join(lines)):
+        return None
+    # ...but read the type off the FIRST unindented ``type:`` rather than the
+    # parsed dict. ``render_node_page`` emits ``type:`` third and then appends
+    # the node's metadata keys at the same indent level, so a node carrying a
+    # metadata key literally named ``type`` would shadow the real one in a
+    # last-write-wins dict — and a survivor shadowed into a code type is a
+    # deleted page. No node in the measured corpus does this; the ordering
+    # guarantee is free, so take it rather than rely on that staying true.
+    for line in lines[1:]:
+        if line.rstrip() == "---":
+            break
+        if line.startswith(("\t", " ")) or not line.startswith("type:"):
+            continue
+        return line.partition(":")[2].strip()
+    return None
+
+
+@dataclass(frozen=True)
+class PageSweep:
+    """One directory's worth of the frontmatter sweep.
+
+    ``survivors`` is the number to read first. A predicate bug is invisible
+    in ``retired`` — 218,796 deletions and 220,005 deletions look alike — but
+    it is glaring in ``survivors``, which must stay at the count of genuine
+    non-code pages the directory held before the sweep.
+    """
+
+    directory: str
+    scanned: int
+    retired: int
+    survivors: int
+    unclassified: int
+    kept_with_user_notes: int
+    by_type: Dict[str, int]
+    sample: List[str]
+
+    def to_dict(self) -> dict:
+        return {
+            "directory": self.directory,
+            "scanned": self.scanned,
+            "retired": self.retired,
+            "survivors": self.survivors,
+            "unclassified": self.unclassified,
+            "kept_with_user_notes": self.kept_with_user_notes,
+            "by_type": dict(self.by_type),
+            "sample": list(self.sample),
+        }
+
+
+@dataclass(frozen=True)
+class SqliteSweep:
+    """Sidecar rows dropped from ``sqlite.db``, and whether it was VACUUMed."""
+
+    path: str
+    bytes_before: int
+    bytes_after: int
+    deleted_rows: Dict[str, int]
+    code_nodes_remaining: int
+    vacuumed: bool
+    note: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        return {
+            "path": self.path,
+            "bytes_before": self.bytes_before,
+            "bytes_after": self.bytes_after,
+            "deleted_rows": dict(self.deleted_rows),
+            "code_nodes_remaining": self.code_nodes_remaining,
+            "vacuumed": self.vacuumed,
+            "note": self.note,
+        }
+
+
+@dataclass(frozen=True)
+class CodeScopeMigration:
+    """Everything ``migrate_code_scope`` found, or removed under ``apply``."""
+
+    project_root: str
+    applied: bool
+    sweeps: List[PageSweep] = field(default_factory=list)
+    sqlite: Optional[SqliteSweep] = None
+    artifacts: List[dict] = field(default_factory=list)
+    notes: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "project_root": self.project_root,
+            "applied": self.applied,
+            "sweeps": [sweep.to_dict() for sweep in self.sweeps],
+            "sqlite": self.sqlite.to_dict() if self.sqlite else None,
+            "artifacts": list(self.artifacts),
+            "notes": list(self.notes),
+        }
+
+
+def _sweep_pages(
+    directory: Path,
+    retired: frozenset,
+    *,
+    apply: bool,
+    respect_user_notes: bool,
+) -> PageSweep:
+    """Classify every ``*.md`` under ``directory``; delete the code-typed ones.
+
+    ``respect_user_notes`` keeps a code-typed page whose ``<!-- user-notes -->``
+    block has content, mirroring ``vault_pull.prune_orphan_pages``. It is on
+    for the Obsidian vault, where a human may have written in the append zone
+    and no future compile will ever regenerate the page to carry it forward.
+    It is off for ``.tesserae/markdown_projection``, which is compile output
+    nobody is invited to edit — reading every one of 220k pages in full to
+    look for notes that cannot be there costs 383 MB of I/O for nothing.
+    """
+    scanned = retired_count = survivors = unclassified = kept_notes = 0
+    by_type: Dict[str, int] = {}
+    sample: List[str] = []
+    if not directory.is_dir():
+        return PageSweep(str(directory), 0, 0, 0, 0, 0, {}, [])
+
+    for page in sorted(directory.rglob("*.md")):
+        rel = page.relative_to(directory)
+        # Dot-directories are the user's tooling (``.obsidian/``), never ours.
+        if any(part.startswith(".") for part in rel.parts):
+            continue
+        scanned += 1
+        declared = _declared_node_type(page)
+        if declared is None:
+            unclassified += 1
+            continue
+        if declared not in retired:
+            survivors += 1
+            continue
+        if respect_user_notes and _has_user_notes(page):
+            kept_notes += 1
+            continue
+        by_type[declared] = by_type.get(declared, 0) + 1
+        if len(sample) < _SAMPLE_CAP:
+            sample.append(str(rel))
+        retired_count += 1
+        if apply:
+            try:
+                page.unlink()
+            except OSError:
+                continue
+
+    if apply:
+        _remove_empty_dirs(directory)
+    return PageSweep(
+        directory=str(directory),
+        scanned=scanned,
+        retired=retired_count,
+        survivors=survivors,
+        unclassified=unclassified,
+        kept_with_user_notes=kept_notes,
+        by_type=by_type,
+        sample=sample,
+    )
+
+
+def _has_user_notes(page: Path) -> bool:
+    from .markdown_projection import extract_user_notes
+
+    return bool(extract_user_notes(page))
+
+
+def _remove_empty_dirs(root: Path) -> None:
+    """Bottom-up sweep of directories the deletion emptied."""
+    for path in sorted(root.rglob("*"), reverse=True):
+        if not path.is_dir():
+            continue
+        if any(part.startswith(".") for part in path.relative_to(root).parts):
+            continue
+        try:
+            if not any(path.iterdir()):
+                path.rmdir()
+        except OSError:
+            continue
+
+
+# Sidecars keyed on a node id. Both outlive the node: nothing prunes
+# ``node_memory`` at all, and ``node_provenance`` is only reconciled by a
+# compile, so an operator who migrates first would otherwise VACUUM around
+# rows that are already garbage.
+_NODE_ID_SIDECARS = ("node_provenance", "node_memory")
+
+
+def _sqlite_tables(con) -> set:
+    return {
+        row[0]
+        for row in con.execute("select name from sqlite_master where type='table'")
+    }
+
+
+def _sweep_sqlite(db_path: Path, retired: frozenset, *, apply: bool) -> Optional[SqliteSweep]:
+    """Drop orphaned sidecar rows, then reclaim the freed pages.
+
+    "Orphaned" is referential: a sidecar row whose node id is absent from
+    ``nodes``, or whose (source, type, target) triple is absent from
+    ``edges``. Those two tables are the authority precisely because a compile
+    rewrites them wholesale — so the intended order is compile, THEN migrate,
+    and ``code_nodes_remaining`` reports when that has not happened yet.
+    """
+    import sqlite3
+
+    if not db_path.exists():
+        return None
+    bytes_before = db_path.stat().st_size
+    deleted: Dict[str, int] = {}
+    remaining = 0
+    # A dry run opens the store READ-ONLY. Counting rows needs no write
+    # handle, and the database being surveyed is the operator's live one —
+    # "it only ran SELECTs" is not the same promise as never having asked for
+    # a writable connection to a 1.19 GB file.
+    connection = (
+        sqlite3.connect(db_path)
+        if apply
+        else sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    )
+    with contextlib.closing(connection) as con:
+        tables = _sqlite_tables(con)
+        if "nodes" in tables:
+            placeholders = ",".join("?" * len(retired))
+            remaining = int(
+                con.execute(
+                    f"select count(*) from nodes where type in ({placeholders})",
+                    tuple(sorted(retired)),
+                ).fetchone()[0]
+            )
+            for table in _NODE_ID_SIDECARS:
+                if table not in tables:
+                    continue
+                where = "where node_id not in (select id from nodes)"
+                count = int(
+                    con.execute(f"select count(*) from {table} {where}").fetchone()[0]
+                )
+                deleted[table] = count
+                if apply and count:
+                    con.execute(f"delete from {table} {where}")
+        if "edges" in tables and "edge_provenance" in tables:
+            where = (
+                "where not exists (select 1 from edges e"
+                " where e.source = edge_provenance.source"
+                " and e.type = edge_provenance.type"
+                " and e.target = edge_provenance.target)"
+            )
+            count = int(
+                con.execute(
+                    f"select count(*) from edge_provenance {where}"
+                ).fetchone()[0]
+            )
+            deleted["edge_provenance"] = count
+            if apply and count:
+                con.execute(f"delete from edge_provenance {where}")
+        if apply:
+            con.commit()
+
+    note: Optional[str] = None
+    vacuumed = False
+    if apply:
+        # VACUUM rebuilds the database into a temporary copy, so it needs free
+        # space on the order of the file itself and takes an exclusive lock for
+        # the duration. That is why it lives behind an explicit command and is
+        # never run from a compile — a 1.19 GB rebuild inside the compile path
+        # would block every reader and could fail halfway on a full disk.
+        import shutil as _shutil
+
+        free = _shutil.disk_usage(db_path.parent).free
+        if free < bytes_before:
+            note = (
+                f"skipped VACUUM: needs ~{bytes_before} bytes free to rebuild,"
+                f" {free} available"
+            )
+        else:
+            con = sqlite3.connect(db_path, isolation_level=None)
+            try:
+                con.execute("vacuum")
+                vacuumed = True
+            except sqlite3.Error as exc:
+                note = f"VACUUM failed: {exc}"
+            finally:
+                con.close()
+    if remaining and note is None:
+        note = (
+            f"{remaining} code-typed rows still in `nodes` — run `tesserae compile`"
+            " first, then re-run this to reclaim what it frees"
+        )
+    return SqliteSweep(
+        path=str(db_path),
+        bytes_before=bytes_before,
+        bytes_after=db_path.stat().st_size,
+        deleted_rows=deleted,
+        code_nodes_remaining=remaining,
+        vacuumed=vacuumed,
+        note=note,
+    )
+
+
+def migrate_code_scope(
+    project_root: str | Path, *, apply: bool = False
+) -> CodeScopeMigration:
+    """Remove the retired code layer from an already-compiled workspace.
+
+    Reports only, unless ``apply`` is set. The default is a dry run because
+    every step is a mass delete against directories where the code-derived
+    pages outnumber the real ones two hundred to one; an operator gets to
+    read the survivor counts before anything is unlinked.
+    """
+    root = Path(project_root).resolve()
+    tdir = root / ".tesserae"
+    if not tdir.is_dir():
+        raise FileNotFoundError(f"not a Tesserae project: {root}")
+
+    from .project import ProjectWiki
+
+    wiki = ProjectWiki.load(root)
+    retired = _retired_type_values()
+    notes: List[str] = []
+
+    sweeps = [
+        _sweep_pages(
+            wiki.paths.markdown_projection,
+            retired,
+            apply=apply,
+            respect_user_notes=False,
+        )
+    ]
+    # Both vault locations, not just the configured one. A project that later
+    # pointed `obsidian.vault_path` at a real Obsidian vault leaves the
+    # in-project default behind, still full of what the last sync wrote — and
+    # that is exactly where this repository's 1,370 code-typed vault pages
+    # were found, while the configured vault had none. Deduped on the resolved
+    # path so the usual case (they are the same directory) sweeps once.
+    seen: set = set()
+    for vault in (Path(wiki.effective_obsidian_vault()), wiki.paths.obsidian_vault):
+        resolved = vault.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        sweeps.append(
+            _sweep_pages(vault, retired, apply=apply, respect_user_notes=True)
+        )
+
+    artifacts: List[dict] = []
+    for name in _RETIRED_ARTIFACTS:
+        artifact = tdir / name
+        if not artifact.exists():
+            continue
+        artifacts.append({"path": str(artifact), "bytes": artifact.stat().st_size})
+        if apply:
+            try:
+                artifact.unlink()
+            except OSError as exc:
+                notes.append(f"could not remove {artifact}: {exc}")
+
+    sqlite_sweep = _sweep_sqlite(wiki.paths.sqlite, retired, apply=apply)
+    if not apply:
+        notes.append("dry run — nothing was removed; re-run with --apply")
+    return CodeScopeMigration(
+        project_root=str(root),
+        applied=apply,
+        sweeps=sweeps,
+        sqlite=sqlite_sweep,
+        artifacts=artifacts,
+        notes=notes,
+    )
+
+
+def render_code_scope_migration(result: CodeScopeMigration) -> str:
+    """Operator-readable summary. Survivor counts lead, per the PageSweep docstring."""
+    verb = "removed" if result.applied else "would remove"
+    lines = [f"# tesserae doctor migrate-code-scope — {result.project_root}", ""]
+    lines.append("mode: apply" if result.applied else "mode: dry run (default)")
+    lines.append("")
+    for sweep in result.sweeps:
+        lines.append(f"## {sweep.directory}")
+        lines.append("")
+        if not sweep.scanned:
+            lines.append("- no pages found")
+            lines.append("")
+            continue
+        lines.append(f"- {sweep.survivors} non-code pages survive (the check)")
+        lines.append(f"- {verb} {sweep.retired} code-typed pages of {sweep.scanned} scanned")
+        if sweep.by_type:
+            detail = ", ".join(
+                f"{name} {count}" for name, count in sorted(sweep.by_type.items())
+            )
+            lines.append(f"  - by type: {detail}")
+        for path in sweep.sample:
+            lines.append(f"  - e.g. {path}")
+        if sweep.kept_with_user_notes:
+            lines.append(
+                f"- kept {sweep.kept_with_user_notes} code-typed pages carrying"
+                " user notes (delete by hand if you want them gone)"
+            )
+        if sweep.unclassified:
+            lines.append(
+                f"- left {sweep.unclassified} pages alone: no `type:` frontmatter"
+            )
+        lines.append("")
+    if result.artifacts:
+        lines.append("## Artifacts")
+        lines.append("")
+        for entry in result.artifacts:
+            lines.append(f"- {verb} {entry['path']} ({entry['bytes']} bytes)")
+        lines.append("")
+    if result.sqlite:
+        sweep = result.sqlite
+        lines.append("## sqlite.db")
+        lines.append("")
+        for table, count in sorted(sweep.deleted_rows.items()):
+            lines.append(f"- {verb} {count} orphaned rows from {table}")
+        if sweep.vacuumed:
+            reclaimed = sweep.bytes_before - sweep.bytes_after
+            lines.append(f"- VACUUM reclaimed {reclaimed} bytes")
+        elif not result.applied:
+            lines.append(f"- would VACUUM ({sweep.bytes_before} bytes today)")
+        if sweep.note:
+            lines.append(f"- note: {sweep.note}")
+        lines.append("")
+    for note in result.notes:
+        lines.append(f"note: {note}")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def code_scope_migration_json(result: CodeScopeMigration) -> str:
+    return json.dumps(result.to_dict(), ensure_ascii=False, indent=2) + "\n"
+
+
+def _detect_code_scope_leftovers(ctx: DoctorContext) -> Optional[Finding]:
+    """Surface a pre-drop workspace, and name the command that clears it.
+
+    Deliberately cheap: two ``stat`` calls and one indexed count. Doctor runs
+    often, and the sweep this points at walks 225k files.
+
+    Report-only, never ``fixable``. ``--fix`` is documented as safe repairs
+    only, and this deletes hundreds of thousands of pages and rebuilds a
+    multi-gigabyte database — it has to be asked for by name.
+    """
+    if ctx.wiki is None:
+        return None
+    import sqlite3
+
+    leftovers: List[str] = []
+    tdir = _tesserae_dir(ctx)
+    for name in _RETIRED_ARTIFACTS:
+        artifact = tdir / name
+        if artifact.exists():
+            leftovers.append(f"{name} ({artifact.stat().st_size // 1_000_000} MB)")
+    db_path = Path(ctx.wiki.paths.sqlite)
+    if db_path.exists():
+        retired = _retired_type_values()
+        placeholders = ",".join("?" * len(retired))
+        try:
+            # Read-only URI: a plain connect() would CREATE the file, and a
+            # doctor run without --fix must leave the tree byte-identical.
+            with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as con:
+                row = con.execute(
+                    f"select 1 from nodes where type in ({placeholders}) limit 1",
+                    tuple(sorted(retired)),
+                ).fetchone()
+            if row is not None:
+                leftovers.append("code-typed rows in sqlite.db")
+        except sqlite3.Error:
+            pass
+    if not leftovers:
+        return _f(
+            "code_scope_leftovers", "hygiene", OK, "no retired code-layer artifacts"
+        )
+    return _f(
+        "code_scope_leftovers",
+        "hygiene",
+        WARN,
+        "workspace still carries the retired code layer: " + ", ".join(leftovers),
+        suggestion="tesserae doctor migrate-code-scope   (dry run; add --apply)",
+    )
+
+
+# ---------------------------------------------------------------------------
 # registry of checks (data)
 # ---------------------------------------------------------------------------
 
@@ -1381,6 +1941,7 @@ CHECKS: List[Check] = [
     Check("embedding_backend", "environment", _detect_embedding_backend),
     Check("build_history", "hygiene", _detect_build_history, fix=_fix_build_history, safe=True),
     Check("backend_artifacts", "freshness", _detect_backend_artifacts),
+    Check("code_scope_leftovers", "hygiene", _detect_code_scope_leftovers),
     Check("idempotence", "hygiene", _detect_idempotence),
     Check("orphan_worktrees", "hygiene", _detect_orphan_worktrees, fix=_fix_orphan_worktrees, safe=True),
     Check("hook_log_bloat", "hygiene", _detect_hook_logs, fix=_fix_hook_logs, safe=True),

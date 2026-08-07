@@ -486,6 +486,21 @@ def _session_envelope_metadata(session: HarnessSession) -> dict:
     only travel to the LLM extractor at extraction time, never into
     the graph). ``redacted_preview`` is kept as a short human-readable
     teaser for MCP responses.
+
+    ``files_touched`` is now the ONLY record of which files a session
+    worked on. It used to have a graph-shaped sibling: the loop above
+    resolved each path through ``path_index`` and, when the compile
+    still minted ``SourceFile`` nodes, that produced 5,214
+    ``SourceFile -> Session`` ``discussed_in`` edges. Not one of them
+    ever reached a reader — ``partition_graph`` routed every code node
+    into ``code-graph.json`` before ``graph.json`` was written, and no
+    CLI command, MCP tool, site page or vault page read that file. The
+    envelope's plain strings are the surviving, and better, version of
+    that link: they cover every path the harness saw (19,912 distinct,
+    against the 444 ``SourceFile`` nodes that ever bound to a session),
+    they need no code parsing, and they land in ``graph.json`` where
+    things actually read them. So do not trim this key to save bytes
+    without replacing what it answers.
     """
     payload = {
         "session_id": session.id,
