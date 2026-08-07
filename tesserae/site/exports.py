@@ -567,7 +567,6 @@ def render_graph_jsonld(graph: ResearchGraph, ctx: Optional[ExportContext] = Non
         elif type_value in {
             ResearchNodeType.REPOSITORY.value,
             ResearchNodeType.PROJECT.value,
-            ResearchNodeType.CODE_PROJECT.value,
             ResearchNodeType.MODEL.value,
         }:
             entry = _entry_for_repository(node, entry)
