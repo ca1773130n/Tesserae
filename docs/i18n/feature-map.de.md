@@ -263,7 +263,7 @@ Generierte Target-Dateien für:
 
 - ✅ `tesserae_mcp` / `python3 -m tesserae.mcp_server` über stdio JSON-RPC.
 - ✅ Retrieval-/Graph-Tools: `schema`, `graph_summary`, `search_nodes`, `node_context` (mit `use_ppr`), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`, `doctor_report`.
-- ✅ Kontext-Engine-Tools (v0.5.0): `compile_context`, `embedding_status`, `fresh_insights` (decay-gerankt), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`, `ask`.
+- ✅ Kontext-Engine-Tools (v0.5.0): `compile_context`, `embedding_status`, `fresh_insights` (decay-gerankt), `list_communities`, `find_session_findings`, `ask`.
 - ✅ Setup-Tools: `tesserae_setup_plan`, `tesserae_setup_apply`.
 - ✅ Multi-Projekt-Registry: `list_projects`, `register_project`, `unregister_project`, `list_sessions`. Store-URL-Dispatch via `url_resolver`.
 

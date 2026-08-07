@@ -148,4 +148,7 @@ compile합니다. 그 목록은 — **로컬 또는 글로벌** — `sources` �
 
 - `tesserae compile`(인자 없음)은 추적되는 전체 코퍼스를 다시 추출합니다.
 - `tesserae ingest <x>`는 소스 하나를 증분으로 추가합니다.
-- `tesserae code ingest`는 Python 소스에서 코드 그래프를 생성합니다(별개의 명령).
+- 소스 코드는 범위 밖입니다. Tesserae는 문서와 세션 트랜스크립트를 수집(ingest)하며,
+  코드 인텔리전스에는 CodeGraph 같은 전용 도구를 사용하세요. `tesserae code`는 그
+  사실을 알리고 종료 코드 2로 끝나는 툼스톤으로만 남아 있습니다 — Claude Code
+  플러그인 훅이 사용자의 설치본 안에 있어 계속 이 명령을 호출하기 때문입니다.

@@ -263,7 +263,7 @@ Tesserae는 세 개의 기둥 위에서 동작하는 **컨텍스트 엔진**입�
 
 - ✅ stdio JSON-RPC를 통한 `tesserae_mcp` / `python3 -m tesserae.mcp_server`.
 - ✅ Retrieval/그래프 도구: `schema`, `graph_summary`, `search_nodes`, `node_context` (`use_ppr` 지원), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`, `doctor_report`.
-- ✅ 컨텍스트 엔진 도구 (v0.5.0): `compile_context`, `embedding_status`, `fresh_insights` (감쇠 순위), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`, `ask`.
+- ✅ 컨텍스트 엔진 도구 (v0.5.0): `compile_context`, `embedding_status`, `fresh_insights` (감쇠 순위), `list_communities`, `find_session_findings`, `ask`.
 - ✅ 설정 도구: `tesserae_setup_plan`, `tesserae_setup_apply`.
 - ✅ 멀티 프로젝트 레지스트리: `list_projects`, `register_project`, `unregister_project`, `list_sessions`. `url_resolver`를 통한 저장소 URL 디스패치.
 

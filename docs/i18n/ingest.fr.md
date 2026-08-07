@@ -150,4 +150,9 @@ relative en `../` du même répertoire ne comptent jamais double.)
 
 - `tesserae compile` (sans arguments) re-extrait tout le corpus suivi.
 - `tesserae ingest <x>` ajoute une source de façon incrémentale.
-- `tesserae code ingest` frappe un graphe de code depuis des sources Python (une commande différente).
+- Le code source est hors périmètre. Tesserae ingère des documents et des
+  transcriptions de session ; pour l’intelligence de code, utilisez un outil
+  dédié comme CodeGraph. `tesserae code` ne subsiste que comme une pierre
+  tombale qui le dit et sort avec le code 2, parce que les hooks du plugin
+  Claude Code vivent dans l’installation de l’utilisateur et continuent de
+  l’appeler.

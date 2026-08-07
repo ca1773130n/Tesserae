@@ -90,7 +90,6 @@ Chaque outil accepte un `graph_path` ou un `project` (alias du registre) optionn
 |---|---|
 | `list_sessions` | Enveloppes de session (id, started_at, title, files_touched, compteurs de constats) pour le projet actif ; `since`, `limit` |
 | `find_session_findings` | Tous les constats de session liés à `node_id` via `discussed_in` / `references`, filtrables par `kinds` (insight / decision / question / todo / hypothesis / takeaway) |
-| `find_code_symbol_mentions` | Étend un constat de session aux symboles `CodeFunction`/`CodeClass`/`CodeMethod` qu'il mentionne, via les arêtes `discusses` de la passe optionnelle de liaison insight↔symbole |
 
 **Questions-réponses et registre**
 

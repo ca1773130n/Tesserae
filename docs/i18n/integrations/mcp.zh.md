@@ -90,7 +90,6 @@ tesserae projects mcp-config
 |---|---|
 | `list_sessions` | 活动项目的会话信封（id、started_at、title、files_touched、发现计数）；`since`、`limit` |
 | `find_session_findings` | 通过 `discussed_in` / `references` 关联到 `node_id` 的所有会话发现，可按 `kinds`（insight / decision / question / todo / hypothesis / takeaway）过滤 |
-| `find_code_symbol_mentions` | 将一个会话发现扩展为它提及的 `CodeFunction`/`CodeClass`/`CodeMethod` 符号（使用可选启用的 insight↔symbol 关联阶段生成的 `discusses` 边） |
 
 **问答与注册表**
 

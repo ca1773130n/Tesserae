@@ -90,7 +90,6 @@ Cada tool acepta un `graph_path` o `project` (alias del registro) opcional, de m
 |---|---|
 | `list_sessions` | Sobres de sesión (id, started_at, title, files_touched, conteos de hallazgos) del proyecto activo; `since`, `limit` |
 | `find_session_findings` | Todos los hallazgos de sesión vinculados a `node_id` vía `discussed_in` / `references`, filtrables por `kinds` (insight / decision / question / todo / hypothesis / takeaway) |
-| `find_code_symbol_mentions` | Expande un hallazgo de sesión a los símbolos `CodeFunction`/`CodeClass`/`CodeMethod` que menciona, vía aristas `discusses` del paso opcional de enlace insight↔símbolo |
 
 **Preguntas y registro**
 

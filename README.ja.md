@@ -165,7 +165,7 @@ tesserae engine --all --compile-slots 1
 - **グラフ + wiki**：`search_nodes`、`node_context`、`graph_summary`、
   `wiki_page`、`raw_source`、`timeline`、`search_facts`、`lint_report`、`ask`。
 - **セッションメモリ**：`list_sessions`、`find_session_findings`、
-  `find_code_symbol_mentions`、`fresh_insights`（減衰ランキング・重複排除済み）。
+  `fresh_insights`（減衰ランキング・重複排除済み）。
 - **レジストリ**：`list_projects`、`register_project`、`activate_project`。
 
 ## マルチプロジェクト

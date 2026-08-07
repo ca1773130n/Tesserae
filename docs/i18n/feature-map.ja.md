@@ -263,7 +263,7 @@ Tesserae は 3 つの柱で動く**コンテキストエンジン**です: (1) �
 
 - ✅ stdio JSON-RPC 上の `tesserae_mcp` / `python3 -m tesserae.mcp_server`。
 - ✅ 検索/グラフツール: `schema`、`graph_summary`、`search_nodes`、`node_context`（`use_ppr` 付き）、`search_facts`、`timeline`、`graph_ppr`、`wiki_page`、`raw_source`、`lint_report`、`doctor_report`。
-- ✅ コンテキストエンジンツール（v0.5.0）: `compile_context`、`embedding_status`、`fresh_insights`（減衰ランク付き）、`list_communities`、`find_session_findings`、`find_code_symbol_mentions`、`ask`。
+- ✅ コンテキストエンジンツール（v0.5.0）: `compile_context`、`embedding_status`、`fresh_insights`（減衰ランク付き）、`list_communities`、`find_session_findings`、`ask`。
 - ✅ セットアップツール: `tesserae_setup_plan`、`tesserae_setup_apply`。
 - ✅ マルチプロジェクトレジストリ: `list_projects`、`register_project`、`unregister_project`、`list_sessions`。`url_resolver` によるストア URL ディスパッチ。
 

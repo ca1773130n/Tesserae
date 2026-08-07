@@ -149,4 +149,7 @@ just like a local one. (Adds dedupe by resolved location, so the absolute and
 
 - `tesserae compile` (no args) re-extracts the whole tracked corpus.
 - `tesserae ingest <x>` adds one source incrementally.
-- `tesserae code ingest` mints a code graph from Python source (a different command).
+- Source code is out of scope. Tesserae ingests documents and session
+  transcripts; for code intelligence use a dedicated tool such as CodeGraph.
+  `tesserae code` remains only as a tombstone that says so and exits 2, because
+  the Claude Code plugin hooks live in the user's install and keep calling it.

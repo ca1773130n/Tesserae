@@ -263,7 +263,7 @@ Fichiers cibles générés pour :
 
 - ✅ `tesserae_mcp` / `python3 -m tesserae.mcp_server` en JSON-RPC sur stdio.
 - ✅ Outils de récupération/graphe : `schema`, `graph_summary`, `search_nodes`, `node_context` (avec `use_ppr`), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`, `doctor_report`.
-- ✅ Outils du moteur de contexte (v0.5.0) : `compile_context`, `embedding_status`, `fresh_insights` (classés par décrue), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`, `ask`.
+- ✅ Outils du moteur de contexte (v0.5.0) : `compile_context`, `embedding_status`, `fresh_insights` (classés par décrue), `list_communities`, `find_session_findings`, `ask`.
 - ✅ Outils de setup : `tesserae_setup_plan`, `tesserae_setup_apply`.
 - ✅ Registre multi-projets : `list_projects`, `register_project`, `unregister_project`, `list_sessions`. Dispatch d’URL de store via `url_resolver`.
 
