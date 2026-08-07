@@ -4,7 +4,7 @@ The search index that the static site ships powers the in-page command palette
 and any external agents that read ``search-index.json``. By design it lists
 **only the wiki layer** described in §3.1 of the frontend redesign spec:
 
-- sources (``SourceDocument`` / ``Paper`` / ``Repository`` / ``CodeProject``)
+- sources (``SourceDocument`` / ``Paper`` / ``Repository`` / ``Project``)
 - concepts (concept-ish term/algorithm types)
 - entities (``Model`` / ``Dataset`` / ``Benchmark`` / ``Metric`` /
   ``Organization`` / ``Person``)
@@ -13,11 +13,14 @@ and any external agents that read ``search-index.json``. By design it lists
 - syntheses (``Synthesis``)
 - questions (``OpenQuestion``)
 
-Code-graph node types (``CodeClass`` / ``CodeFunction`` / ``CodeModule`` /
-``Dependency`` / ``SourceFile``) and assertion-layer types (``Claim`` and the
-five ``*Claim`` variants, plus ``EvidenceSpan``) are intentionally excluded:
-they remain in ``graph.json`` for MCP/Graphiti consumers but never get
-their own URL or search entry.
+Assertion-layer types (``Claim`` and the five ``*Claim`` variants, plus
+``EvidenceSpan``) are intentionally excluded: they remain in ``graph.json``
+for MCP/Graphiti consumers but never get their own URL or search entry.
+
+The allow-list is also what keeps the retired code-graph types out. Nothing
+mints ``CodeClass`` / ``CodeFunction`` / ``SourceFile`` / ``Dependency`` any
+more, but graphs compiled before they were retired still carry them on disk,
+and this module reads whatever ``graph.json`` holds.
 
 Each entry in the index carries three new fields on top of the original
 ``id/title/kind/href/summary/source_path`` schema:
@@ -60,7 +63,6 @@ WIKI_LAYER_TYPES: frozenset[str] = frozenset(
         ResearchNodeType.PAPER.value,
         ResearchNodeType.REPOSITORY.value,
         ResearchNodeType.PROJECT.value,
-        ResearchNodeType.CODE_PROJECT.value,
         # concepts
         ResearchNodeType.CONCEPT.value,
         ResearchNodeType.TECHNICAL_TERM.value,
@@ -95,15 +97,14 @@ WIKI_LAYER_TYPES: frozenset[str] = frozenset(
 )
 
 
-# Explicit exclusion list (kept as documentation / for tests). These types stay
-# in graph.json but never get an HTML route or a search entry.
+# Explicit exclusion list (kept as documentation / for tests). These types are
+# still MINTED by a compile and stay in graph.json, but never get an HTML route
+# or a search entry — so naming them here is the only record of a deliberate
+# omission. The retired code-graph types are deliberately absent: a type
+# nothing mints needs no exclusion note, and ``WIKI_LAYER_TYPES`` above (an
+# allow-list) is what actually keeps legacy code nodes out of the index.
 EXCLUDED_TYPES: frozenset[str] = frozenset(
     {
-        ResearchNodeType.CODE_CLASS.value,
-        ResearchNodeType.CODE_FUNCTION.value,
-        ResearchNodeType.CODE_MODULE.value,
-        ResearchNodeType.SOURCE_FILE.value,
-        ResearchNodeType.DEPENDENCY.value,
         ResearchNodeType.EVIDENCE_SPAN.value,
         ResearchNodeType.CLAIM.value,
         ResearchNodeType.CONTRIBUTION_CLAIM.value,
@@ -124,7 +125,6 @@ _KIND_BY_TYPE: Dict[str, str] = {
     ResearchNodeType.PAPER.value: "papers",
     ResearchNodeType.REPOSITORY.value: "repos",
     ResearchNodeType.PROJECT.value: "repos",
-    ResearchNodeType.CODE_PROJECT.value: "repos",
     # concepts
     ResearchNodeType.CONCEPT.value: "concepts",
     ResearchNodeType.TECHNICAL_TERM.value: "concepts",

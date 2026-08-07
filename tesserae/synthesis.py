@@ -206,7 +206,7 @@ def _linked_repo_label(repo: ResearchNode, slug: Optional[str] = None) -> str:
 def _linked_source_label(node: ResearchNode, slug: Optional[str] = None) -> str:
     if node.type == ResearchNodeType.PAPER:
         return _linked_paper_label(node, slug=slug)
-    if node.type in {ResearchNodeType.REPOSITORY, ResearchNodeType.PROJECT, ResearchNodeType.CODE_PROJECT}:
+    if node.type in {ResearchNodeType.REPOSITORY, ResearchNodeType.PROJECT}:
         return _linked_repo_label(node, slug=slug)
     if node.type == ResearchNodeType.SOURCE_DOCUMENT:
         return _linked_node_label(node, "sources", slug=slug)

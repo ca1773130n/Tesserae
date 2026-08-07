@@ -7,9 +7,11 @@ These renderers emit the non-HTML files an Tesserae ships next to the HTML:
 - ``sitemap.xml`` / ``rss.xml`` / ``robots.txt`` / ``ai-readme.md``
 - per-page sibling artifacts (``foo.txt`` and ``foo.json`` next to ``foo.html``)
 
-Everything here is wiki-layer only. Code-graph types (``CodeClass`` etc.) and
-assertion-layer types (``Claim`` variants, ``EvidenceSpan``) stay out of these
-exports — the wiki layer is the user-facing surface.
+Everything here is wiki-layer only. Assertion-layer types (``Claim``
+variants, ``EvidenceSpan``) stay out of these exports — the wiki layer is the
+user-facing surface. The retired code types stay out for the same reason, and
+by the same mechanism: every map below is an allow-list, so a code node from a
+graph compiled before they were dropped falls through to ``None``.
 """
 
 from __future__ import annotations
@@ -290,7 +292,6 @@ def render_llms_full_txt(site_title: str, ctx: ExportContext) -> str:
 _JSONLD_TYPE_BY_NODE: Dict[str, str] = {
     ResearchNodeType.PAPER.value: "ScholarlyArticle",
     ResearchNodeType.REPOSITORY.value: "SoftwareSourceCode",
-    ResearchNodeType.CODE_PROJECT.value: "SoftwareSourceCode",
     ResearchNodeType.PROJECT.value: "SoftwareSourceCode",
     ResearchNodeType.SOURCE_DOCUMENT.value: "CreativeWork",
     ResearchNodeType.CONCEPT.value: "DefinedTerm",
@@ -341,7 +342,6 @@ def _kind_for_type(type_value: str) -> Optional[str]:
     if type_value in {
         ResearchNodeType.REPOSITORY.value,
         ResearchNodeType.PROJECT.value,
-        ResearchNodeType.CODE_PROJECT.value,
     }:
         return "repos"
     if type_value in {
@@ -983,8 +983,7 @@ def render_ai_readme(site_title: str, ctx: ExportContext) -> str:
     lines.append("## What is *not* surfaced")
     lines.append("")
     lines.append(
-        "Code-graph nodes (CodeClass / CodeFunction / CodeModule / Dependency / SourceFile) "
-        "and assertion-layer nodes (Claim variants / EvidenceSpan) live in `graph.json` for "
+        "Assertion-layer nodes (Claim variants / EvidenceSpan) live in `graph.json` for "
         "MCP consumers, but they have no HTML route and no entry in "
         "`search-index.json`."
     )

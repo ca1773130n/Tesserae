@@ -4,9 +4,14 @@ These exercise :func:`tesserae.site.pages.build_graph_payload` (the visual
 graph payload serializer) for the per-node scalars the interactive view's
 colour + size encoding read off each node (spec §A/§B):
 
-* ``family`` — one of 8 families (or ``"other"`` fallback for unknown types).
+* ``family`` — one of the colour families (or ``"other"`` fallback for
+  unknown types).
 * ``importance`` — a positive per-type raw signal.
 * ``member_count`` — present on CommunitySummary (outgoing ``summarizes``).
+
+The spec's "code" family is gone along with source-code ingestion, and with
+it the code fan-in importance signal. Code types now behave like any other
+type the payload does not admit: they never reach the serializer at all.
 """
 
 from __future__ import annotations
@@ -30,14 +35,16 @@ def test_family_map_covers_each_family_and_falls_back_to_other():
     # Spot-check one representative type per family.
     assert _family_for_node_type(ResearchNodeType.RESEARCH_TOPIC) == "taxonomy"
     assert _family_for_node_type(ResearchNodeType.PAPER) == "sources"
-    assert _family_for_node_type(ResearchNodeType.CODE_FUNCTION) == "code"
     assert _family_for_node_type(ResearchNodeType.METHODOLOGICAL_CONCEPT) == "concepts"
     assert _family_for_node_type(ResearchNodeType.OPEN_QUESTION) == "claims"
     assert _family_for_node_type(ResearchNodeType.COMMUNITY_SUMMARY) == "synthesis"
     assert _family_for_node_type(ResearchNodeType.SESSION_INSIGHT) == "sessions"
     assert _family_for_node_type(ResearchNodeType.ORGANIZATION) == "actors"
-    # Unknown / unmapped type → neutral "other".
+    # Unknown / unmapped type → neutral "other". A retired code type lands
+    # here too, which is the graceful degradation the fallback exists for —
+    # deleting the "code" family cannot make an old graph raise.
     assert _family_for_node_type(ResearchNodeType.STUB) == "other"
+    assert _family_for_node_type(ResearchNodeType.CODE_FUNCTION) == "other"
 
 
 def test_payload_emits_family_and_positive_importance_per_type():
@@ -51,12 +58,12 @@ def test_payload_emits_family_and_positive_importance_per_type():
     b.add_edge(community, "summarizes", m2)
     b.add_edge(community, "summarizes", m3)
 
-    # CodeFunction with 2 incoming ``calls`` → fan-in importance 2.
+    # A retired code type is not admitted to the payload at all — asserted
+    # below by its absence, which is also what makes the remaining families
+    # the whole of what the view can render.
     fn = b.add_node("target_fn", ResearchNodeType.CODE_FUNCTION)
     caller_a = b.add_node("caller_a", ResearchNodeType.CODE_FUNCTION)
-    caller_b = b.add_node("caller_b", ResearchNodeType.CODE_FUNCTION)
     b.add_edge(caller_a, "calls", fn)
-    b.add_edge(caller_b, "calls", fn)
 
     # SessionInsight with a decay_score in metadata.
     b.add_node(
@@ -75,18 +82,17 @@ def test_payload_emits_family_and_positive_importance_per_type():
 
     # Families.
     assert by_name["Community A"]["family"] == "synthesis"
-    assert by_name["target_fn"]["family"] == "code"
     assert by_name["Insight X"]["family"] == "sessions"
     assert by_name["Big Paper"]["family"] == "sources"
+    assert "target_fn" not in by_name and "caller_a" not in by_name
 
     # Importance is present + positive on each.
-    for name in ("Community A", "target_fn", "Insight X", "Big Paper"):
+    for name in ("Community A", "Insight X", "Big Paper"):
         assert by_name[name]["importance"] > 0, name
 
     # Per-type raw signal.
     assert by_name["Community A"]["member_count"] == 3
     assert by_name["Community A"]["importance"] == 3  # outgoing summarizes
-    assert by_name["target_fn"]["importance"] == 2     # incoming calls fan-in
     assert by_name["Insight X"]["importance"] == 0.75  # decay_score
     assert by_name["Big Paper"]["importance"] == 4      # weighted degree
 
@@ -101,17 +107,19 @@ def test_member_count_only_on_community_summary():
     assert "member_count" not in by_name["Solo Concept"]
 
 
-def test_source_file_node_survives_default_show_sources_false():
-    """Regression — codex PR #21 P2.
+def test_legacy_code_nodes_never_reach_the_payload():
+    """Was: codex PR #21 P2, "SOURCE_FILE survives show_sources=False".
 
-    ``SOURCE_FILE`` is a code-graph node type even though its family/kind
-    maps to ``"sources"`` for visual coherence. Default
-    ``show_sources=False`` MUST NOT strip it — otherwise code-ingested
-    projects render with floating functions and no parent file nodes.
+    That regression existed because ``SOURCE_FILE`` was a code-graph type
+    whose kind mapped to the ``sources`` group, so hiding the group left
+    code-ingested projects with floating functions and no parent files. The
+    carve-out that fixed it is gone with the layer it protected: source code
+    is out of scope, so ``SOURCE_FILE``/``CodeFunction`` are simply not
+    admitted to the visual payload, whether or not sources are shown.
+
+    A graph compiled before the retirement still carries them, which is why
+    this is checked rather than assumed.
     """
-    # The only ``sources``-group hide-by-default today is SOURCE_DOCUMENT;
-    # SOURCE_FILE is a code-graph type that previously got swept up by the
-    # shared "sources" kind label. Carve-out keeps it visible.
     b = ResearchGraphBuilder()
     doc_node = b.add_node("Hide Me Doc", ResearchNodeType.SOURCE_DOCUMENT)
     file_node = b.add_node("keep_me.py", ResearchNodeType.SOURCE_FILE)
@@ -119,18 +127,18 @@ def test_source_file_node_survives_default_show_sources_false():
     b.add_edge(file_node, "contains", fn_node)
     graph = b.build()
 
+    # SOURCE_DOCUMENT is the only hide-by-default ``sources``-group type left;
+    # a code type has no group at all, so the group filter never sees it.
     assert _is_hidden_group_node(doc_node) is True
     assert _is_hidden_group_node(file_node) is False
 
-    # Default-knob payload: SOURCE_FILE survives, SOURCE_DOCUMENT does not.
-    ctx = SiteContext.build(graph=graph, wiki_pages_by_kind={})  # show_sources defaults False
-    payload = build_graph_payload(ctx)
-    names = {n["name"] for n in payload["nodes"]}
-    assert "keep_me.py" in names
-    assert "keep_me_fn" in names
-    assert "Hide Me Doc" not in names
-
-    # The incident ``contains`` edge must survive too.
-    by_name = {n["name"]: n["id"] for n in payload["nodes"]}
-    edge_pairs = {(e["source"], e["target"]) for e in payload["links"]}
-    assert (by_name["keep_me.py"], by_name["keep_me_fn"]) in edge_pairs
+    for show_sources in (False, True):
+        ctx = SiteContext.build(
+            graph=graph, wiki_pages_by_kind={}, show_sources=show_sources
+        )
+        payload = build_graph_payload(ctx)
+        names = {n["name"] for n in payload["nodes"]}
+        assert "keep_me.py" not in names, show_sources
+        assert "keep_me_fn" not in names, show_sources
+        # ...and the ``contains`` edge between them goes with its endpoints.
+        assert not payload["links"], show_sources
