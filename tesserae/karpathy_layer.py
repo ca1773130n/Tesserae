@@ -39,7 +39,6 @@ from .research_graph import (
 )
 from .wiki_projector import (
     ASSERTION_LAYER_TYPES,
-    CODE_GRAPH_TYPES,
     _CONTRADICTIONS_KIND,
     _CONTRADICTIONS_SLUG,
     has_contradictions,
@@ -56,6 +55,12 @@ PURPOSE_MARKER = "<!-- editable below this line — your text is preserved on re
 
 # Ordering of node-type sections in ``schema.md``. We list each kind once;
 # the kind-for-type table at the end shows the full enum.
+#
+# There was a sixth section for the code-graph layer. Nothing mints that layer
+# any more, and ``schema.md`` documents what extraction may WRITE — listing 22
+# types nothing can produce would read as an invitation. The types stay in
+# ``ResearchNodeType`` so graphs compiled before the drop still load; that is
+# a load-vocabulary concern, not a schema-document one.
 _SCHEMA_SECTIONS: Sequence[tuple[str, str, Sequence[ResearchNodeType]]] = (
     (
         "Field / taxonomy layer",
@@ -122,11 +127,6 @@ _SCHEMA_SECTIONS: Sequence[tuple[str, str, Sequence[ResearchNodeType]]] = (
         "Higher-order pages produced by ``SynthesisProjector``.",
         (ResearchNodeType.SYNTHESIS,),
     ),
-    (
-        "Code-graph layer (private — separate artifact)",
-        "Lives in ``code-graph.json``, not in the public website.",
-        tuple(sorted(CODE_GRAPH_TYPES, key=lambda t: t.value)),
-    ),
 )
 
 
@@ -147,12 +147,6 @@ _TYPE_BLURBS: Mapping[ResearchNodeType, str] = {
     ResearchNodeType.RESULT: "A specific numeric result on a benchmark/metric.",
     ResearchNodeType.ORGANIZATION: "An organization (lab, company, university).",
     ResearchNodeType.PERSON: "An author or contributor.",
-    ResearchNodeType.CODE_PROJECT: "Code-graph: the local workspace project.",
-    ResearchNodeType.SOURCE_FILE: "Code-graph: a single source file.",
-    ResearchNodeType.CODE_MODULE: "Code-graph: a logical module / package.",
-    ResearchNodeType.CODE_CLASS: "Code-graph: a class definition.",
-    ResearchNodeType.CODE_FUNCTION: "Code-graph: a function/method definition.",
-    ResearchNodeType.DEPENDENCY: "Code-graph: an external dependency.",
     ResearchNodeType.CONCEPT: "A general research concept.",
     ResearchNodeType.TECHNICAL_TERM: "A technical term, often a vocabulary item.",
     ResearchNodeType.MATHEMATICAL_CONCEPT: "A mathematical idea or construction.",
@@ -300,9 +294,6 @@ class KarpathyLayerWriter:
         lines.append(
             "* **Assertion-layer** types are stored in the graph but rendered inline on "
             "detail pages (no dedicated URL)."
-        )
-        lines.append(
-            "* **Code-graph** types live in a separate artifact (`.tesserae/code-graph.json`)."
         )
         lines.append("")
         return "\n".join(lines).rstrip() + "\n"

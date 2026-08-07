@@ -22,14 +22,6 @@ from typing import Dict, Iterable, List, Mapping, Optional, Set, Tuple
 from .agent_harness import AgentHarnessAdapter, SUPPORTED_AGENT_HARNESSES, install_instruction_pointer
 from .agent_write import align_overlay, replay_agent_writes
 from .batch import BatchIngestRunner, read_markdown_text, sha256_text
-from .code_graph import (
-    CodeGraphExtractor,
-    extractor_fingerprint,
-    manifest_delta,
-    read_code_graph_cache,
-    stat_manifest,
-    write_code_graph_cache,
-)
 from .deploy import GitHubPagesDeployer
 from .graph_stores import SqliteGraphStore
 from .karpathy_layer import KarpathyLayerWriter
@@ -50,7 +42,6 @@ from .report import GraphReporter
 from .research_graph import ResearchCorpusAnalyzer, ResearchGraph, ResearchGraphExtractor, ResearchNode, ResearchNodeType, filter_filename_shaped_concepts, graph_from_payload, link_paper_repo_pairs, prefer_research_node
 from .temporal import TemporalFactProjector, render_competitive_report
 from .raganything_adapter import merge_raganything_graph
-from .wiki_projector import partition_graph
 
 logger = logging.getLogger("tesserae.project")
 
@@ -206,6 +197,9 @@ class ProjectPaths:
     root: Path
     config: Path
     graph: Path
+    # Nothing writes ``code-graph.json`` any more. The path stays so
+    # ``_write_artifacts`` can DELETE one left by an earlier release — an
+    # unowned artifact that still answers reads is worse than a missing one.
     code_graph: Path
     combined_graph: Path
     build_history: Path
@@ -257,12 +251,6 @@ class ProjectPaths:
     # tripwire; see ``tesserae.output_snapshot``). Hex digests + a bool only —
     # never timestamps — and always excluded from the hash by construction.
     output_snapshot: Path = Path(".tesserae/output-snapshot.json")
-    # Code-graph extraction cache (delta-scoped regeneration; see
-    # ``tesserae.code_graph``). INPUT state, not a compiled artifact: it
-    # carries a stat manifest (``mtime_ns`` — volatile across checkouts), so
-    # it must stay excluded from every output-hash scope — the
-    # ``output_snapshot`` allowlists never include it.
-    code_graph_cache: Path = Path(".tesserae/code-graph-cache.json")
     # Daily session-chunk store (see ``tesserae.session_chunks``): normalised
     # turns bucketed by KST day + a day_coverage gate, written live by the
     # engine daemon's tailer and by ``tesserae sessions chunk-backfill``. The
@@ -317,7 +305,6 @@ class ProjectWiki:
             extraction_guidance=self.root / "extraction-guidance.md",
             extraction_guidance_cache=self.root / "extraction_guidance_cache",
             output_snapshot=self.root / "output-snapshot.json",
-            code_graph_cache=self.root / "code-graph-cache.json",
             session_chunks=self.root / "session_chunks.db",
             session_chunks_lock=self.root / "session_chunks.lock",
             agent_writes=self.root / "agent-writes.jsonl",
@@ -592,7 +579,6 @@ class ProjectWiki:
         extractor = doc_extractor if doc_extractor is not None else ResearchGraphExtractor()
         if doc_guidance and hasattr(extractor, "guidance"):
             extractor.guidance = doc_guidance
-        code_inputs: List[Path] = list(input_paths)
         markdown_source_kind = "SourceDocument" if kind in {"CodeProject", "Repository", "Project"} else kind
 
         # ------------------------------------------------------------ B3 / B4
@@ -1110,13 +1096,15 @@ class ProjectWiki:
         # * The differ owns the reuse. The prior graph survives by ONE OF TWO
         #   routes, not just the rebind: that rebind is gated on
         #   ``not graph.nodes``, and between here and there ``graph`` picks up
-        #   the code-graph merge (CodeProject/Repository/Project) and
-        #   ``_merge_configured_raganything_graph``. Either can make it
-        #   non-empty, and the run then takes the differ's ``else`` arm instead
+        #   ``_merge_configured_raganything_graph``, which can make it
+        #   non-empty. The run then takes the differ's ``else`` arm instead
         #   — where the prior graph survives by being MERGED in, after a
         #   tombstone that removes nothing on an empty changed-set. Measured
-        #   both ways: a plain kind rebinds, a CodeProject merges (3 code
-        #   nodes), and graph.json keeps the prior graph either way.
+        #   both ways: with nothing merged in the rebind fires, with a
+        #   raganything slice merged the else arm does, and graph.json keeps
+        #   the prior graph either way. (The code-graph merge used to be the
+        #   second such producer; it minted the CodeProject/SourceFile layer
+        #   that no read path ever consulted, and it is gone.)
         # * A loader run whose ``discover()`` yielded nothing, with the differ
         #   off. That one DOES overwrite graph.json with an empty graph. It is
         #   the ceiling booked at the loader branch above, not an oversight:
@@ -1128,57 +1116,16 @@ class ProjectWiki:
             if trends and graphs
             else base_graph
         )
-        code_graph_report: Optional[Dict[str, object]] = None
-        if kind in {"CodeProject", "Repository", "Project"}:
-            # Delta-scoped regeneration gate (whole-layer grain — reuse
-            # everything or re-extract everything, never a partial graph).
-            # When the stat manifest of the walked file list AND the extractor
-            # fingerprint match the cache, rehydrate the cached extractor
-            # output instead of re-parsing every code file. Cache failures of
-            # any kind degrade to the always-correct full extraction.
-            cg_extractor = CodeGraphExtractor(self.project_root)
-            cg_files = cg_extractor.iter_code_files(code_inputs)
-            manifest = stat_manifest(cg_files, self.project_root)
-            fingerprint = extractor_fingerprint()
-            cached = read_code_graph_cache(self.paths.code_graph_cache)
-            code_graph: Optional[ResearchGraph] = None
-            if (
-                manifest is not None
-                and fingerprint is not None
-                and cached is not None
-                and cached.fingerprint == fingerprint
-                and cached.manifest == manifest
-            ):
-                try:
-                    code_graph = graph_from_payload(cached.graph_payload)
-                except Exception:
-                    logger.exception("code-graph cache rehydration failed; re-extracting")
-                    code_graph = None
-            reused = code_graph is not None
-            if code_graph is None:
-                code_graph = cg_extractor.extract_files(cg_files)
-                if manifest is not None and fingerprint is not None:
-                    write_code_graph_cache(
-                        self.paths.code_graph_cache, code_graph, manifest, fingerprint
-                    )
-            code_graph_report = {
-                "reused": reused,
-                "files": len(cg_files),
-                "delta": None
-                if reused or manifest is None
-                else manifest_delta(cached.manifest if cached else None, manifest),
-            }
-            logger.info(
-                "code graph %s (%d files)",
-                "reused — tree unchanged" if reused else "re-extracted",
-                len(cg_files),
-            )
-            _before_code = graph
-            graph = merge_graphs([graph, code_graph])
-            # Codex #6: code-graph re-derives its nodes/edges from the repo every
-            # compile, so they carry no extraction-file provenance. Attribute the
-            # ids it minted this compile to "__code_graph__".
-            self._record_producer_provenance("__code_graph__", _before_code, graph)
+        # A ``Repository`` / ``CodeProject`` / ``Project`` compile used to walk
+        # the repo here and merge an AST-derived CodeProject/SourceFile/
+        # CodeClass/CodeFunction/Dependency layer into ``graph``. It is gone:
+        # Tesserae ingests documents and session transcripts, and indexing
+        # source code is a different tool's job. The layer was 97.7% of the
+        # compiled store and no CLI command, MCP tool, site page or vault page
+        # ever read a row of it — 96.6% of the SourceFiles it indexed were
+        # vendored third-party code under gitignored clones. ``kind`` still
+        # governs ``markdown_source_kind`` above, so pointing Tesserae at a
+        # repository keeps working; it now reads the repo's DOCUMENTS.
         cfg = self.config()
         _before_rag = graph
         graph = self._merge_configured_raganything_graph(graph, cfg)
@@ -1290,10 +1237,13 @@ class ProjectWiki:
                     canonical = inc_store.surviving_source_paths(stale_ids)
                     # EXCLUDE producer-owned nodes (Plan 02 contract): a node
                     # whose only surviving provenance source is a ``__``-prefixed
-                    # producer sentinel (``__code_graph__`` / ``__session_graph__``
-                    # / ``__raganything__`` /
-                    # ``__vault_overlay__``) is regenerated by its producer every
-                    # compile — there is no markdown file to re-extract it from.
+                    # producer sentinel (``__session_graph__`` /
+                    # ``__raganything__`` / ``__vault_overlay__``, plus
+                    # ``__code_graph__`` in sidecars written before the
+                    # code layer was dropped) is regenerated by its producer
+                    # every compile — there is no markdown file to re-extract
+                    # it from. The test is the ``__`` prefix, not the roster,
+                    # so a retired sentinel still on disk stays excluded.
                     # ``min(source_path)`` returns a real path over a ``__``
                     # sentinel when both exist (``/`` < ``_``), so a ``__`` value
                     # here means the node has NO surviving file owner.
@@ -1677,11 +1627,6 @@ class ProjectWiki:
             "site_path": str(self.paths.site),
             "mcp_server_name": cfg.get("name", sanitize_server_name(self.project_root.name)),
         }
-        if code_graph_report is not None:
-            # Present only when the code branch ran: reuse/extraction signal +
-            # the code-tree delta (surgicality observability, result-dict and
-            # logs only — never serialized into artifacts).
-            result["code_graph_cache"] = code_graph_report
         return result
 
     def _merge_session_graph(
@@ -1854,23 +1799,6 @@ class ProjectWiki:
                 merged, json_client=llm_passes_client, cache_dir=cache_dir
             )
 
-        # Opt-in post-pass: feature H — link each session finding to the
-        # code symbols (CodeFunction / CodeClass / CodeMethod) it
-        # mentions, by scanning finding bodies for backticked
-        # identifiers and dotted ``Class.method`` paths and resolving
-        # them against ``.tesserae/code-graph.json`` (produced by
-        # ``tesserae code ingest``). Guarded by env flag so the
-        # default compile path doesn't depend on the code graph
-        # existing. Purely additive: mints only ``discusses`` edges.
-        from .memory.insight_symbol_link import (
-            insight_symbol_link_enabled,
-            run_insight_symbol_link_pass,
-        )
-
-        if insight_symbol_link_enabled():
-            merged = run_insight_symbol_link_pass(
-                merged, code_graph_path=self.paths.code_graph
-            )
         return merged
 
     def _write_hierarchy_sidecar(self, graph: ResearchGraph) -> Set[str]:
@@ -1892,37 +1820,15 @@ class ProjectWiki:
         clock, no LLM); atomic tmp + ``os.replace`` with sorted keys, matching
         the sidecar idiom of ``output_snapshot.write_state``.
 
-        Built over the RESEARCH layer only (:func:`partition_graph`) — the same
-        split ``_write_artifacts`` uses to decide what goes to ``graph.json``
-        rather than ``code-graph.json``. What that guarantees, exactly: no
-        member id here was in the CODE layer of the graph HANDED TO THIS CALL.
-        That is the systematic cause of the observed skew (measured: 169/1360
-        ai-accounts sidecar members absent from ``graph.json``, 100% of them in
-        ``code-graph.json``) and it is closed. Kept in lockstep with
-        :meth:`_merge_community_summaries`, which partitions identically so its
-        minted cids are exactly this sidecar's coarsest-level keys.
-
-        It is NOT closed by construction, and the residue is an ORDERING window,
-        not an id-rewrite: ``compile()`` calls this on the freshly canonicalized
-        graph, then rebinds ``graph`` through ``_merge_community_summaries`` and
-        ``_merge_distillation``, and ``_write_artifacts`` rebinds it again
-        through ``_apply_vault_overlay``, ``SynthesisProjector.project`` and
-        ``_run_memory_passes`` before its own ``partition_graph`` call. A pass in
-        that window that changes a node's ``type`` moves it across the split
-        without touching its id — concretely ``apply_schema_drift`` inside
-        ``_run_memory_passes`` (opt-in, ``TESSERAE_SCHEMA_DRIFT_APPLY``), which
-        renames types, and :func:`is_code_graph_node` dispatches on type. Such a
-        node is named here and absent from ``graph.json``.
-
-        ponytail: ceiling — writing this from the object ``_write_artifacts``
-        actually partitions is not a small move: the returned live-cid manifest
-        is consumed by ``prune_stale_summary_caches`` BEFORE
-        ``_write_artifacts`` runs, and the dendrogram has to predate
-        ``_merge_community_summaries`` so Louvain never clusters a
-        COMMUNITY_SUMMARY node and the coarsest cids stay equal to the minted
-        summary ids. Upgrade path if a retyping pass ever ships ON by default:
-        have ``_write_artifacts`` re-emit the sidecar's member lists filtered to
-        its own research layer, keeping the cids this pass minted.
+        Built over the whole graph, which is now the same node universe
+        ``graph.json`` carries. It did not used to be: the compile minted a
+        code layer that ``_write_artifacts`` split into ``code-graph.json``,
+        so this pass had to partition first or it would name members
+        ``graph_map`` can never resolve (measured: 169/1360 ai-accounts
+        sidecar members absent from ``graph.json``, 100% of them code). With
+        the code layer gone at the source there is nothing left to subtract,
+        and :meth:`_merge_community_summaries` clusters the same object — so
+        its minted cids are still exactly this sidecar's coarsest-level keys.
 
         Returns the live-cid manifest across ALL levels — the §9.5 pruning
         key: a community-summary cache file is stale only when its cid appears
@@ -1934,29 +1840,11 @@ class ProjectWiki:
             hub_node_ids,
         )
 
-        # F-11: ``graph.json`` carries the RESEARCH layer only — ``partition_graph``
-        # routes CodeProject/SourceFile/CodeClass/Dependency/... into
-        # ``code-graph.json`` and ``_write_artifacts`` writes the two separately.
-        # The dendrogram exists to navigate ``graph.json``, so it must be built
-        # over exactly that node universe: a code-layer member is an id
-        # ``graph_map`` can NEVER resolve (dead "Untitled community" cards,
-        # live_member_count=0). Partition here rather than at the call site so the
-        # writer cannot emit an unresolvable id no matter what a caller hands it —
-        # and so hub degrees come off the same projection PPR actually walks.
-        # ponytail: ceiling — a user who opts into ``combined-graph.json``
-        # (off by default) and points ``graph_map --graph-path`` at it no longer
-        # sees code-layer communities in the map. They were never navigable from
-        # the default artifact anyway. Upgrade path if that surface is ever
-        # wanted: a SECOND, code-layer sidecar, not a union dendrogram.
-        research_layer, _code_layer = partition_graph(graph)
-        levels = detect_community_levels(research_layer)
+        levels = detect_community_levels(graph)
         logger.info(
-            "hierarchy sidecar: %d dendrogram level(s) over %d research-layer "
-            "node(s) (%d code-layer node(s) excluded — they live in "
-            "code-graph.json, never in graph.json)",
+            "hierarchy sidecar: %d dendrogram level(s) over %d node(s)",
             len(levels),
-            len(research_layer.nodes),
-            len(graph.nodes) - len(research_layer.nodes),
+            len(graph.nodes),
         )
         levels_payload = [
             {community_id(members): members for members in level}
@@ -1965,7 +1853,7 @@ class ProjectWiki:
         payload = {
             "schema_version": 1,
             "levels": levels_payload,
-            "hubs": hub_node_ids(research_layer),
+            "hubs": hub_node_ids(graph),
         }
         path = self.paths.hierarchy
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -2027,22 +1915,16 @@ class ProjectWiki:
                 "cached summaries only.",
                 flush=True,
             )
-        # Lockstep with ``_write_hierarchy_sidecar``: cluster the RESEARCH layer
-        # only. ``cid = community_id(member_ids)`` — cluster the union here and
-        # the minted COMMUNITY_SUMMARY ids stop matching the sidecar's
-        # coarsest-level keys, which (a) kills ``community_card``'s
+        # Lockstep with ``_write_hierarchy_sidecar``: both must cluster the same
+        # node universe. ``cid = community_id(member_ids)`` — cluster a different
+        # object here and the minted COMMUNITY_SUMMARY ids stop matching the
+        # sidecar's coarsest-level keys, which (a) kills ``community_card``'s
         # quality="llm" lookup and (b) makes ``prune_stale_summary_caches`` in
-        # ``compile()`` delete every cache file this pass just wrote. It would
-        # also spend LLM calls summarizing code-only clusters whose members
-        # ``graph.json`` never carries.
-        # ponytail: two independent ``partition_graph()`` calls rather than a
-        # threaded view — O(n) twice on an already-in-memory graph, and each
-        # function then defends its own invariant. If a third producer ever
-        # needs the same universe, hoist it to one local in ``compile()`` and
-        # pass it down.
-        research_layer, _code_layer = partition_graph(graph)
+        # ``compile()`` delete every cache file this pass just wrote. Both used
+        # to subtract a code layer first; neither does now that nothing mints
+        # one.
         slice_graph = compile_community_summaries(
-            research_layer,
+            graph,
             cache_dir=self.paths.community_summaries,
             json_client=json_client,
             min_size=int(community_cfg.get("min_size") or 5),
@@ -3041,8 +2923,8 @@ class ProjectWiki:
         the final graph's own ``source_path`` scalars.
 
         ``producer_prov`` carries the deterministic ``__producer__`` rows for
-        the non-extraction graph producers (session-graph, code-graph,
-        raganything, vault-overlay) — see
+        the non-extraction graph producers (session-graph, raganything,
+        vault-overlay) — see
         :meth:`_record_producer_provenance`. Each producer re-derives its
         nodes/edges from a STABLE source every compile, so they would otherwise
         carry NO provenance row and permanently force the readiness gate to
@@ -3452,33 +3334,34 @@ class ProjectWiki:
             project_name=str(cfg_for_layer.get("name") or self.project_root.name),
         ).write_all(graph, build_history_path=self.paths.build_history)
 
-        # ------------------------------------------------------------ F-11
-        # Split the union ``ResearchGraph`` into two artifacts:
-        #   * ``graph.json``       — research-layer nodes/edges only (no
-        #                            ``CodeProject``/``SourceFile``/etc.). MCP,
-        #                            search, llms.txt, sitemap, RSS, and the
-        #                            site graph payload all read this file.
-        #   * ``code-graph.json``  — code-graph layer (``CodeProject``,
-        #                            ``SourceFile``, ``CodeModule``,
-        #                            ``CodeClass``, ``CodeFunction``,
-        #                            ``Dependency``) plus any cross-layer
-        #                            anchor edges so a downstream consumer can
-        #                            rebuild the union if it wants one.
-        #   * ``combined-graph.json`` is only written when the project config
-        #                            opts in via ``combined_graph: true`` (or
-        #                            the ``TESSERAE_INCLUDE_COMBINED_GRAPH``
-        #                            env var is set / a future CLI flag flips
-        #                            it). Default is *off* — code-graph noise
-        #                            should not bloat agent-facing artifacts.
-        research_graph, code_graph = partition_graph(graph)
-
-        for target, content in (
-            (self.paths.graph, research_graph.to_json(indent=2) + "\n"),
-            (self.paths.code_graph, code_graph.to_json(indent=2) + "\n"),
-        ):
-            _publish_atomically(target, content)
+        # ``graph.json`` is the compiled graph, whole. It used to be one half of
+        # an F-11 split: the code layer was routed into ``code-graph.json`` so
+        # it could not bloat the agent-facing artifact. No producer mints that
+        # layer any more, so the split had nothing left to separate and writing
+        # the object directly emits the same bytes it did.
+        #
+        # One residual asymmetry, and it is deliberate: ``graph_write`` still
+        # accepts a code type into the agent overlay (see ``agent_write``), and
+        # such a node now lands HERE rather than in ``code-graph.json``. That
+        # is the honest outcome — the overlay is replayed into this graph, and
+        # silently routing part of it to a file nothing reads is what made the
+        # code layer invisible in the first place.
+        _publish_atomically(self.paths.graph, graph.to_json(indent=2) + "\n")
+        if self.paths.code_graph.exists():
+            # Same hazard the combined-graph flip below guards against: a file
+            # this compile no longer produces must not survive as a stale
+            # artifact that readers (and the output-snapshot hash) still see.
+            # Ceiling: the retired ``code-graph-cache.json`` is INPUT state and
+            # is left alone, like every other cache the user owns.
+            self.paths.code_graph.unlink()
 
         cfg = self.config() if self.paths.config.exists() else {}
+        # ``combined-graph.json`` is opt-in via ``combined_graph: true`` in the
+        # project config or the ``TESSERAE_INCLUDE_COMBINED_GRAPH`` env var. It
+        # was the escape hatch for consumers that wanted the union across the
+        # F-11 split; with the split retired it is a second copy of
+        # ``graph.json``, kept only so an opted-in consumer's path keeps
+        # resolving.
         include_combined = bool(
             cfg.get("combined_graph")
             or cfg.get("include_combined_graph")
@@ -3490,10 +3373,15 @@ class ProjectWiki:
             # Don't let a stale combined graph survive a config flip.
             self.paths.combined_graph.unlink()
 
-        # The downstream stores (SQLite, markdown projection,
-        # report, temporal facts, Graphiti episodes, agent harness, Obsidian
-        # vault) keep operating on the union so existing consumers see the
-        # same structure they always did.
+        # Everything below reads the SAME graph ``graph.json`` just received.
+        # The comment this replaces claimed seven stores "keep operating on the
+        # union", which was wrong for four of them even before the code layer
+        # went away: Graphiti episodes, the agent harness, the Obsidian vault
+        # and the site all call ``load_graph_file(self.paths.graph)`` and so
+        # have always read the research layer off disk. The genuine in-memory
+        # consumers are SQLite, the markdown projection, the report, temporal
+        # facts and the vault snapshot — and now that nothing mints a code
+        # layer, in-memory and on-disk are the same graph either way.
         if store is None:
             # Default path: keep the legacy graph-at-a-time write. This preserves
             # byte-compatibility with any existing ``.tesserae/sqlite.db`` on
@@ -3584,7 +3472,7 @@ class ProjectWiki:
         self.export_obsidian()
         self.build_site()
         self.paths.competitive_report.write_text(render_competitive_report(), encoding="utf-8")
-        self._append_build_history(research_graph, code_graph)
+        self._append_build_history(graph)
 
         # Tier 1a tail: write the snapshot capturing what we just projected
         # so the next compile can diff the vault against it. Always written
@@ -3593,23 +3481,25 @@ class ProjectWiki:
         from .vault_snapshot import write_snapshot
         write_snapshot(graph.nodes, self.paths.vault_snapshot)
 
-    def _append_build_history(
-        self, research_graph: ResearchGraph, code_graph: ResearchGraph
-    ) -> None:
+    def _append_build_history(self, graph: ResearchGraph) -> None:
         """Append one line to the project-level build-history ledger.
 
         Lives at ``.tesserae/.build-history.jsonl`` (next to ``manifest.json``,
         outside the wiped ``site/`` directory) so it survives across
-        recompiles. Each line records the timestamp and node/edge counts for
-        both partitions so an audit consumer can see the artifact split.
+        recompiles. Each line records the timestamp and the compiled graph's
+        node/edge counts.
+
+        New lines no longer carry ``code_nodes`` / ``code_edges``: they
+        reported the second half of the retired artifact split, and writing a
+        permanent zero would assert a layer exists. The ledger is append-only,
+        so historical lines keep theirs — ``KarpathyLayerWriter._render_log``
+        reads both shapes through ``row.get(...) or 0``.
         """
         from datetime import datetime, timezone
         entry = {
             "built_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "research_nodes": len(research_graph.nodes),
-            "research_edges": len(research_graph.edges),
-            "code_nodes": len(code_graph.nodes),
-            "code_edges": len(code_graph.edges),
+            "research_nodes": len(graph.nodes),
+            "research_edges": len(graph.edges),
         }
         head = read_git_head(self.project_root)
         if head:
@@ -3798,8 +3688,9 @@ def _strip_generated_layer(graph: ResearchGraph) -> ResearchGraph:
 
 
 def load_graph_file(path: str | Path) -> ResearchGraph:
-    # Body moved verbatim to ``research_graph.graph_from_payload`` so the
-    # code-graph cache can rehydrate without importing this module (circular).
+    # Body lives in ``research_graph.graph_from_payload`` so callers that
+    # already hold a parsed payload can rehydrate without importing this
+    # module (circular).
     return graph_from_payload(json.loads(Path(path).read_text(encoding="utf-8")))
 
 

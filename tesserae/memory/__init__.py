@@ -1,25 +1,22 @@
-"""Memory primitives — decay, supersede, and SessionFinding ↔ CodeSymbol links.
+"""Memory primitives — decay and supersede over session findings.
 
 A-MEM / MemoryBank inspired layer that sits on top of the session-finding
 nodes minted by :mod:`tesserae.session_graph`. See:
 
 * :mod:`tesserae.memory.decay` — Ebbinghaus-style freshness score.
 * :mod:`tesserae.memory.supersede` — post-compile near-duplicate detection.
-* :mod:`tesserae.memory.insight_symbol_link` — feature H, ``discusses``
-  edges from session findings to the code symbols (CodeFunction /
-  CodeClass / CodeMethod) they mention.
+
+``insight_symbol_link`` used to live here too: feature H, ``discusses`` edges
+from session findings to the code symbols they mention, resolved against
+``code-graph.json``. It is gone with the code layer, and it never worked —
+every one of the 15,873 ``discusses`` edges in the compiled store dangled,
+because the two producers of ``code-graph.json`` minted node ids under
+incompatible schemes.
 """
 
 from __future__ import annotations
 
 from .decay import compute_decay_score
-from .insight_symbol_link import (
-    DISCUSSES_EDGE,
-    build_symbol_index,
-    find_symbol_mentions,
-    insight_symbol_link_enabled,
-    run_insight_symbol_link_pass,
-)
 from .supersede import (
     SUPERSEDE_EDGE,
     SupersedeJudgement,
@@ -29,11 +26,6 @@ from .supersede import (
 
 __all__ = [
     "compute_decay_score",
-    "DISCUSSES_EDGE",
-    "build_symbol_index",
-    "find_symbol_mentions",
-    "insight_symbol_link_enabled",
-    "run_insight_symbol_link_pass",
     "SUPERSEDE_EDGE",
     "SupersedeJudgement",
     "run_supersede_pass",

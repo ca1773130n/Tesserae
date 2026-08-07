@@ -37,6 +37,7 @@ from .retrieval.hybrid import (
 from .research_graph import (
     ALLOWED_EDGE_TYPES,
     ALLOWED_NODE_TYPES,
+    CODE_GRAPH_TYPES,
     ResearchEdge,
     ResearchGraph,
     ResearchNode,
@@ -46,7 +47,7 @@ from .research_graph import (
 from .retrieval.ppr import personalized_pagerank
 from .temporal import TemporalFactProjector, search_facts, timeline
 from .verify import verify_claim
-from .wiki_projector import is_code_graph_node, kind_for_node
+from .wiki_projector import kind_for_node
 from .wiki_store import WikiPageStore
 
 
@@ -3613,9 +3614,10 @@ class LLMWikiMCPServer:
             return {}
 
     def graph_summary(self, graph: ResearchGraph) -> JSONDict:
-        # Code-graph nodes live in code-graph.json; never count them in the
-        # MCP-visible summary even if a graph.json happens to include them.
-        public_nodes = [node for node in graph.nodes if not is_code_graph_node(node)]
+        # Nothing mints code nodes any more, but a caller can still point
+        # ``--graph-path`` at a graph compiled before the layer was dropped.
+        # Never count those in the MCP-visible summary.
+        public_nodes = [node for node in graph.nodes if node.type not in CODE_GRAPH_TYPES]
         public_node_ids = {node.id for node in public_nodes}
         public_edges = [
             edge for edge in graph.edges
@@ -3661,7 +3663,7 @@ class LLMWikiMCPServer:
         type_filter = {str(item) for item in types or []}
         kind_filter = {str(item).lower() for item in kinds or []}
         suppressed = set() if include_superseded else _superseded_ids(graph)
-        public_nodes = [n for n in graph.nodes if not is_code_graph_node(n)]
+        public_nodes = [n for n in graph.nodes if n.type not in CODE_GRAPH_TYPES]
         candidates: List[ResearchNode] = []
         for node in public_nodes:
             if node.id in suppressed:
