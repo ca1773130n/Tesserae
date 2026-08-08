@@ -3905,6 +3905,30 @@ def iter_markdown_files(path: Path) -> List[Path]:
     return list(loader.iter_paths(path))
 
 
+def iter_source_candidates(path: Path) -> List[Path]:
+    """Every file :func:`iter_markdown_files` LOOKED AT under ``path``.
+
+    Same roots, same directory exclusions (``_EXCLUDED_TOPLEVEL_DIRS``:
+    ``i18n``, ``build``, ``node_modules``, ``dist``, ...), same
+    hidden-component filter — only the extension gate is dropped. The pair is
+    the honest way to explain a refusal: ``iter_markdown_files`` says whether
+    the walk found anything readable, and this says what the walk considered
+    while deciding that.
+
+    Re-walking with a bare ``rglob("*")`` instead describes a LARGER set than
+    the decision was made on, which is how a refusal came to report
+    "holds 3 file(s), none of them markdown" about three ``.md`` files living
+    under ``docs/i18n/ko/``, ``docs/build/`` and ``docs/node_modules/pkg/``.
+    """
+    from .source_loaders import FilesystemSourceLoader
+
+    if path.is_file():
+        return [path]
+    if not path.exists():
+        raise FileNotFoundError(f"Input path does not exist: {path}")
+    return list(FilesystemSourceLoader([path], extensions=None).iter_paths(path))
+
+
 def sanitize_server_name(value: str) -> str:
     cleaned = "".join(ch.lower() if ch.isalnum() else "_" for ch in value).strip("_")
     while "__" in cleaned:

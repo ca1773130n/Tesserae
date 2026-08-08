@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import AbstractSet, List, Optional, Sequence
+from typing import List, Optional, Sequence, Set
 
 from tesserae.ingest.fetch import UnsupportedSourceError, fetch_to_source, is_url
 
@@ -51,6 +51,58 @@ def _raganything_hint(path: Path, project_root: Path) -> str:
     )
 
 
+# Suffixes that ARE prose but that the compile walker does not pick up. They
+# must never route into :func:`_raganything_hint`: RAG-Anything's _SUPPORTED_EXT
+# lists them, so the hint fired on markdown and told the user to run a
+# PDF/image parser over a `.md` file. The fix for a markdown-ish suffix is a
+# rename, not a second backend.
+_MARKDOWNISH_EXT = frozenset({".md", ".markdown", ".mdown", ".mkd", ".mdx"})
+
+
+def _is_raganything_candidate(path: Path) -> bool:
+    """True when RAG-Anything is genuinely the right tool for ``path``.
+
+    ``_SUPPORTED_EXT`` includes the text formats too, because raganything's own
+    pass can read them — but reaching THIS code means the compile walker did
+    not, and for a markdown-ish suffix that is a naming problem, not a parsing
+    one. Excluded here rather than at each call site so no future caller can
+    reintroduce "RAG-Anything parses this format" about a `.md`.
+    """
+    from tesserae.raganything_refresh import _SUPPORTED_EXT
+
+    suffix = path.suffix.lower()
+    return suffix in _SUPPORTED_EXT and suffix not in _MARKDOWNISH_EXT
+
+
+def _file_remedy(
+    path: Path, project_root: Path, supported: Sequence[str], *, name_a_path: bool
+) -> str:
+    """The one-line remedy for a single unreadable file.
+
+    ``name_a_path`` is False inside a directory listing, where suggesting a
+    per-file ``tesserae ingest`` command would be wrong advice — the user
+    pointed at the directory, not at the file.
+    """
+    suffix = path.suffix.lower()
+    if suffix in _MARKDOWNISH_EXT:
+        return (
+            f"This is markdown, but compile only reads {', '.join(supported)} "
+            f"— rename it to {path.with_suffix('.md').name} and ingest again."
+        )
+    if _is_raganything_candidate(path):
+        return _raganything_hint(path, project_root)
+    if name_a_path:
+        # ``with_suffix``, not ``stem``: an absolute input must yield an
+        # absolute suggestion. Rebuilding from the stem alone produced
+        # `tesserae ingest figure.md` for /abs/path/figure.zip — a command
+        # that does not resolve from the user's working directory.
+        return (
+            "No Tesserae backend parses this format. Convert it to markdown "
+            f"first, then `tesserae ingest {path.with_suffix('.md')}`."
+        )
+    return "No Tesserae backend parses this format. Convert it to markdown first."
+
+
 def _unsupported_local_input_error(
     offenders: List[Path], project_root: Path, supported: Sequence[str]
 ) -> UnsupportedSourceError:
@@ -60,62 +112,94 @@ def _unsupported_local_input_error(
     line saying why it cannot run, then one indented ``  - <thing>: <hint>`` per
     remedy, each hint a command the user can actually run.
     """
-    from tesserae.raganything_refresh import _SUPPORTED_EXT
-
     lines = [
         "tesserae ingest cannot read these inputs — compile only extracts from "
         f"{', '.join(supported)}:"
     ]
     for path in offenders:
         if path.is_dir():
-            lines.extend(_directory_remedy_lines(path, _SUPPORTED_EXT, project_root))
+            lines.extend(_directory_remedy_lines(path, project_root, supported))
             continue
         suffix = path.suffix.lower() or "<no suffix>"
-        if suffix in _SUPPORTED_EXT:
-            hint = _raganything_hint(path, project_root)
-        else:
-            # ``with_suffix``, not ``stem``: an absolute input must yield an
-            # absolute suggestion. Rebuilding from the stem alone produced
-            # `tesserae ingest figure.md` for /abs/path/figure.zip — a command
-            # that does not resolve from the user's working directory.
-            hint = (
-                "No Tesserae backend parses this format. Convert it to markdown "
-                f"first, then `tesserae ingest {path.with_suffix('.md')}`."
-            )
+        hint = _file_remedy(path, project_root, supported, name_a_path=True)
         lines.append(f"  - {path.name} ({suffix}): {hint}")
     return UnsupportedSourceError("\n".join(lines))
 
 
+def _walker_skipped_dir_names(directory: Path, files: Sequence[Path]) -> List[str]:
+    """The directory names that kept ``files`` out of the walk, if any."""
+    from tesserae.source_loaders.filesystem import (_EXCLUDED_DIR_PREFIXES,
+                                                    _EXCLUDED_TOPLEVEL_DIRS)
+
+    names: Set[str] = set()
+    for path in files:
+        try:
+            rel = path.relative_to(directory)
+        except ValueError:
+            continue
+        for part in rel.parts[:-1]:
+            if (
+                part in _EXCLUDED_TOPLEVEL_DIRS
+                or part.startswith(_EXCLUDED_DIR_PREFIXES)
+                or part.startswith(".")
+            ):
+                names.add(part)
+    return sorted(names)
+
+
 def _directory_remedy_lines(
-    directory: Path, raganything_exts: AbstractSet[str], project_root: Path
+    directory: Path, project_root: Path, supported: Sequence[str]
 ) -> List[str]:
-    """Remedy lines for a directory holding nothing the compile walker reads."""
-    inside = sorted(p for p in directory.rglob("*") if p.is_file())
-    if not inside:
+    """Remedy lines for a directory holding nothing the compile walker reads.
+
+    Describes the SAME file set the refusal decision was made on. The decision
+    comes from ``iter_markdown_files`` -> ``FilesystemSourceLoader``, which
+    never descends into ``_EXCLUDED_TOPLEVEL_DIRS`` (``i18n``, ``build``,
+    ``node_modules``, ``dist``, ...) or hidden components; re-walking with a
+    bare ``rglob("*")`` saw a larger set and reported
+    "holds 3 file(s), none of them markdown" about three real ``.md`` files
+    under ``docs/i18n/ko/``, ``docs/build/`` and ``docs/node_modules/pkg/``,
+    then advised parsing each of them with RAG-Anything. ``docs/i18n/`` is
+    mandatory in this repository, so that shape is not hypothetical — and a
+    branch whose reason for existing is replacing a silent lie with a true
+    statement cannot afford to emit a loud one.
+    """
+    from tesserae.project import iter_source_candidates
+
+    candidates = iter_source_candidates(directory)
+    if candidates:
+        lines = [
+            f"  - {directory.name}/: the compile walker sees "
+            f"{len(candidates)} file(s) here and none of them is "
+            f"{', '.join(supported)}, so a compile driven from it would read "
+            "nothing:"
+        ]
+        for path in candidates[:_MAX_LISTED_PER_DIRECTORY]:
+            suffix = path.suffix.lower() or "<no suffix>"
+            hint = _file_remedy(path, project_root, supported, name_a_path=False)
+            lines.append(f"      - {path.name} ({suffix}): {hint}")
+        if len(candidates) > _MAX_LISTED_PER_DIRECTORY:
+            lines.append(
+                f"      ... and {len(candidates) - _MAX_LISTED_PER_DIRECTORY} more"
+            )
+        return lines
+
+    on_disk = sorted(p for p in directory.rglob("*") if p.is_file())
+    if not on_disk:
         return [
             f"  - {directory.name}/: the directory is empty, so a compile driven "
             "from it would read nothing. Put markdown in it, or ingest a "
             "different path."
         ]
-    lines = [
-        f"  - {directory.name}/: holds {len(inside)} file(s), none of them "
-        "markdown, so a compile driven from it would read nothing:"
+    skipped = _walker_skipped_dir_names(directory, on_disk)
+    where = f" ({', '.join(skipped)})" if skipped else ""
+    return [
+        f"  - {directory.name}/: holds {len(on_disk)} file(s), but every one of "
+        f"them sits under a directory the compile walker never descends into"
+        f"{where}, so a compile driven from it would read nothing. Ingest a "
+        "path outside those directories, or move the documents you want read "
+        "out of them."
     ]
-    for path in inside[:_MAX_LISTED_PER_DIRECTORY]:
-        suffix = path.suffix.lower() or "<no suffix>"
-        if suffix in raganything_exts:
-            hint = _raganything_hint(path, project_root)
-        else:
-            hint = (
-                "No Tesserae backend parses this format. Convert it to markdown "
-                "first."
-            )
-        lines.append(f"      - {path.name} ({suffix}): {hint}")
-    if len(inside) > _MAX_LISTED_PER_DIRECTORY:
-        lines.append(
-            f"      ... and {len(inside) - _MAX_LISTED_PER_DIRECTORY} more"
-        )
-    return lines
 
 
 def _ensure_in_corpus(wiki, path_str: str) -> str:
@@ -190,10 +274,18 @@ def ingest_sources(
         if not path.exists():
             raise FileNotFoundError(f"Input path does not exist: {item}")
         if path.is_dir():
-            # Directories are a supported input shape — iter_markdown_files
-            # walks them deliberately — so the file-only check skipped every
-            # one of them, and `ingest <dir-of-pdfs>` still reported
-            # "processed=1 ... nodes=1" where the 1 counted the DIRECTORY.
+            # A directory ALREADY INSIDE the project root is a supported input
+            # shape — iter_markdown_files walks it deliberately — so the
+            # file-only check skipped every one of them, and
+            # `ingest <dir-of-pdfs>` still reported "processed=1 ... nodes=1"
+            # where the 1 counted the DIRECTORY.
+            #
+            # A directory from OUTSIDE the project root is NOT a supported
+            # shape: ``_ensure_in_corpus`` reaches shutil.copy2 and dies with
+            # IsADirectoryError. That predates this branch (it reproduces
+            # identically on 9890e804) and is left alone here so the refusal
+            # change stays reviewable on its own.
+            #
             # Refuse only when the walk finds NOTHING readable: a docs/ tree
             # that also holds screenshots is a normal, working input and
             # refusing it would be its own regression.

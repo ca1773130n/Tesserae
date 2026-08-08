@@ -308,3 +308,91 @@ def test_importing_the_orchestrator_does_not_drag_in_tesserae_project():
     )
 
     assert out.stdout.strip() == "clean", out.stdout
+
+
+# --- the refusal must describe the set the DECISION was made on ------------
+#
+# The decision comes from iter_markdown_files -> FilesystemSourceLoader, which
+# skips _EXCLUDED_TOPLEVEL_DIRS (i18n, build, node_modules, dist, ...) and
+# hidden components. A remedy re-walked with a bare rglob("*") sees a different,
+# larger set and described it wrongly. docs/i18n/ is mandatory in this
+# repository, so this shape is not hypothetical.
+
+
+def _excluded_only_tree(tmp_path):
+    docs = tmp_path / "data" / "docs"
+    for sub in ("i18n/ko", "build", "node_modules/pkg"):
+        (docs / sub).mkdir(parents=True)
+        (docs / sub / "guide.md").write_text("# Guide\n\nreal markdown\n", encoding="utf-8")
+    return docs
+
+
+def test_directory_refusal_does_not_call_markdown_files_not_markdown(tmp_path):
+    """Three real .md files, all behind walker exclusions. The old message said
+    "holds 3 file(s), none of them markdown" — a loud statement that is false."""
+    wiki = _seed_project(tmp_path)
+    docs = _excluded_only_tree(tmp_path)
+
+    with pytest.raises(Exception) as exc:
+        ingest_sources(wiki, [str(docs)], exact=True)
+
+    message = str(exc.value)
+    assert "none of them markdown" not in message, message
+    # and it must not claim the directory is empty either — it is not.
+    assert "the directory is empty" not in message, message
+
+
+def test_directory_refusal_names_the_exclusion_that_actually_caused_it(tmp_path):
+    """A true reason is the whole point of the branch: say the files were
+    skipped, and name the directories that swallowed them, so the user can act."""
+    wiki = _seed_project(tmp_path)
+    docs = _excluded_only_tree(tmp_path)
+
+    with pytest.raises(Exception) as exc:
+        ingest_sources(wiki, [str(docs)], exact=True)
+
+    message = str(exc.value)
+    assert "i18n" in message, message
+    assert "build" in message, message
+    assert "node_modules" in message, message
+
+
+def test_directory_refusal_never_tells_the_user_to_rag_anything_a_markdown_file(
+    tmp_path,
+):
+    """`.md` is in raganything's _SUPPORTED_EXT, so the hint fired on markdown
+    and told the user to run a PDF/image parser over a .md file."""
+    wiki = _seed_project(tmp_path)
+    docs = _excluded_only_tree(tmp_path)
+
+    with pytest.raises(Exception) as exc:
+        ingest_sources(wiki, [str(docs)], exact=True)
+
+    assert "RAG-Anything" not in str(exc.value), str(exc.value)
+
+
+def test_directory_refusal_lists_only_files_the_walker_would_consider(tmp_path):
+    """A directory holding a readable-format file next to excluded ones must
+    describe the candidate the walker actually saw, not the excluded copies."""
+    wiki = _seed_project(tmp_path)
+    docs = tmp_path / "data" / "mixed_docs"
+    (docs / "node_modules" / "pkg").mkdir(parents=True)
+    (docs / "node_modules" / "pkg" / "readme.md").write_text("# dep\n", encoding="utf-8")
+    (docs / "paper.pdf").write_bytes(_minimal_pdf())
+
+    with pytest.raises(Exception) as exc:
+        ingest_sources(wiki, [str(docs)], exact=True)
+
+    message = str(exc.value)
+    assert "paper.pdf" in message, message
+    assert "readme.md" not in message, message
+
+
+def test_raganything_hint_is_never_produced_for_markdown_suffixes(tmp_path):
+    """Belt and braces on the helper itself: whatever routes into it, a
+    markdown suffix must never come back out with a PDF/image remedy."""
+    from tesserae.ingest import orchestrator
+
+    for name in ("guide.md", "guide.markdown", "GUIDE.MD"):
+        assert not orchestrator._is_raganything_candidate(Path(name)), name
+    assert orchestrator._is_raganything_candidate(Path("paper.pdf"))
