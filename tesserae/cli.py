@@ -16,7 +16,7 @@ from .harness_sessions import (HarnessSession, HarnessSessionStore, PRODUCER_DIS
                                PRODUCER_IMPORT, discover_harness_roots,
                                discover_harness_sessions, local_host_id,
                                session_matches_project)
-from .ingest.orchestrator import ingest_sources
+from .ingest.orchestrator import UnsupportedSourceError, ingest_sources
 from .llm_extractor import ClaudeCLIResearchExtractor, LLMResearchExtractor
 from .locking import CompileLockHeldError
 from .markdown_projection import GraphMarkdownProjector
@@ -2687,6 +2687,12 @@ def main(argv: List[str] | None = None) -> int:
         return 2
     except CompileLockHeldError as exc:
         print(f"tesserae {argv[0]}: {exc}", file=sys.stderr)
+        return 2
+    except UnsupportedSourceError as exc:
+        # The input exists and is reachable but nothing can read it. Its message
+        # is multi-line by design (header + one indented remedy per offender),
+        # so print it as-is rather than prefixing the command name onto line 1.
+        print(str(exc), file=sys.stderr)
         return 2
     except FileNotFoundError as exc:
         # Central catch for "project not initialized" / missing-input errors so

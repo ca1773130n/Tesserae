@@ -1,4 +1,7 @@
+import re
 from pathlib import Path
+
+import pytest
 
 from tesserae.project import ProjectWiki
 from tesserae.ingest.orchestrator import ingest_sources
@@ -104,3 +107,114 @@ def test_ingest_preserves_baseline_and_copies_out_of_corpus(tmp_path):
     assert len(after_ids) > len(baseline_ids), "the new external doc must be added"
     # the external file was copied into the tracked corpus
     assert (tmp_path / "data" / "ingested" / "external_paper.md").exists()
+
+
+# ---------------------------------------------------------------------------
+# Binary inputs must fail LOUDLY. Before this guard, `ingest paper.pdf` copied
+# the file into data/ingested/, drove a compile whose walker matches .md only
+# (project.py:iter_markdown_files returns [] for any other suffix), and printed
+# node/edge counts belonging to the REST of the corpus — reported success for
+# work it had not done.
+# ---------------------------------------------------------------------------
+
+
+def _minimal_pdf() -> bytes:
+    return (
+        b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+        b"2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
+    )
+
+
+def test_ingest_local_pdf_raises_and_names_the_raganything_remedy(tmp_path):
+    from tesserae.ingest.orchestrator import UnsupportedSourceError
+
+    wiki = _seed_project(tmp_path)
+    outside = tmp_path.parent / f"{tmp_path.name}-paper.pdf"
+    outside.write_bytes(_minimal_pdf())
+
+    with pytest.raises(UnsupportedSourceError) as exc:
+        ingest_sources(wiki, [str(outside)], exact=True)
+
+    message = str(exc.value)
+    assert ".pdf" in message
+    assert "raganything" in message
+    # Same shape as raganything_refresh._verify_parsers_or_raise: a header line
+    # saying why it cannot run, then one indented "  - <thing>: <hint>" remedy.
+    assert message.splitlines()[0].endswith(":")
+    assert any(line.startswith("  - ") for line in message.splitlines()[1:])
+    # Nothing was copied into the corpus: the guard runs before the copy.
+    assert not (tmp_path / "data" / "ingested" / outside.name).exists()
+
+
+def test_ingest_pdf_already_inside_the_project_root_also_raises(tmp_path):
+    """_ensure_in_corpus returns in-corpus paths IN PLACE, so a guard at the
+    copy site alone would miss every binary that already lives under the root."""
+    from tesserae.ingest.orchestrator import UnsupportedSourceError
+
+    wiki = _seed_project(tmp_path)
+    inside = tmp_path / "data" / "inside.pdf"
+    inside.write_bytes(_minimal_pdf())
+
+    with pytest.raises(UnsupportedSourceError, match=r"\.pdf"):
+        ingest_sources(wiki, [str(inside)], exact=True)
+
+
+@pytest.mark.parametrize("suffix", [".png", ".jpg", ".jpeg", ".docx"])
+def test_ingest_image_and_office_inputs_are_rejected(tmp_path, suffix):
+    from tesserae.ingest.orchestrator import UnsupportedSourceError
+
+    wiki = _seed_project(tmp_path)
+    binary = tmp_path / "data" / f"figure{suffix}"
+    binary.write_bytes(b"\x89PNG\r\n\x1a\n not really an image")
+
+    with pytest.raises(UnsupportedSourceError, match=re.escape(suffix)):
+        ingest_sources(wiki, [str(binary)], exact=True)
+
+
+def test_ingest_dry_run_also_rejects_a_binary_input(tmp_path):
+    """--dry-run must not report a PDF as something it WOULD ingest: the
+    validation loop already runs before the dry-run short-circuit."""
+    from tesserae.ingest.orchestrator import UnsupportedSourceError
+
+    wiki = _seed_project(tmp_path)
+    binary = tmp_path / "data" / "dry.pdf"
+    binary.write_bytes(_minimal_pdf())
+
+    with pytest.raises(UnsupportedSourceError):
+        ingest_sources(wiki, [str(binary)], dry_run=True)
+
+
+def test_ingest_url_binary_response_is_not_decoded_hashed_or_written_as_md(
+    tmp_path, monkeypatch
+):
+    """A PDF URL used to be decoded lossily into mojibake, hashed as TEXT, and
+    written under a .md suffix — so unlike a local PDF it WAS picked up by the
+    markdown walker and fed to the extractor as prose.
+
+    The stub must return real BYTES: a hand-rolled response whose ``.text`` is
+    already a ``str`` cannot exercise the decode at all.
+    """
+    import httpx
+
+    from tesserae.ingest.orchestrator import UnsupportedSourceError
+
+    wiki = _seed_project(tmp_path)
+    url = "https://arxiv.org/pdf/2310.11511v1"
+    response = httpx.Response(
+        200,
+        content=b"%PDF-1.4\n\x89\xa0\xfe\x0c binary \xff\xfe\x00\x01\n%%EOF\n",
+        headers={"content-type": "application/pdf"},
+        request=httpx.Request("GET", url),
+    )
+    monkeypatch.setattr(
+        "tesserae.ingest.fetch._http_get",
+        lambda u, timeout=None, follow_redirects=True, headers=None: response,
+    )
+    monkeypatch.setattr("tesserae.ingest.fetch._html_to_markdown", lambda html: html)
+
+    with pytest.raises(UnsupportedSourceError) as exc:
+        ingest_sources(wiki, [url], exact=True)
+
+    assert "application/pdf" in str(exc.value)
+    # Writes nothing on refusal — no mojibake .md left in the corpus.
+    assert not list((tmp_path / "data" / "ingested").glob("*.md"))

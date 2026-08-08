@@ -10,6 +10,16 @@ from pathlib import Path
 from typing import Callable, Dict, Optional
 
 
+class UnsupportedSourceError(ValueError):
+    """A source exists and is reachable, but nothing in Tesserae can read it.
+
+    Distinct from :class:`FileNotFoundError` (the input is not there) and from a
+    transport error (the fetch failed): the bytes arrived, and refusing them is
+    the correct outcome. ``tesserae.cli.main`` catches this centrally and turns
+    it into a one-line message plus exit 2, never a traceback.
+    """
+
+
 def is_url(value: str) -> bool:
     """True only for http(s) URLs — everything else is treated as a local path."""
     return value.startswith("http://") or value.startswith("https://")
@@ -64,6 +74,29 @@ def _arxiv_id_from_url(url: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
+# Non-``text/*`` media types whose bodies are still character data we can
+# reasonably persist as markdown. Anything else declared is binary to us.
+_TEXTY_APPLICATION_TYPES = (
+    "application/json",
+    "application/xml",
+    "application/xhtml+xml",
+    "application/atom+xml",
+    "application/rss+xml",
+    "application/ld+json",
+    "application/javascript",
+)
+
+
+def _is_texty(content_type: str) -> bool:
+    """True when a declared content-type names character data, not bytes."""
+    media = content_type.split(";", 1)[0].strip().lower()
+    if media.startswith("text/"):
+        return True
+    if media.endswith("+json") or media.endswith("+xml"):
+        return True
+    return media in _TEXTY_APPLICATION_TYPES
+
+
 _http_get: Optional[Callable] = None
 _html_to_markdown: Optional[Callable] = None
 
@@ -100,6 +133,23 @@ def fetch_to_source(url: str, dest_dir: Path, *, title: Optional[str] = None) ->
     response = _http_get(url, timeout=30.0, follow_redirects=True, headers={"User-Agent": "tesserae-ingest"})
     response.raise_for_status()
     content_type = response.headers.get("content-type", "")
+
+    # Refuse BEFORE touching ``.text``. Decoding a PDF/image body produced
+    # mojibake, hashed the mojibake as ``content_sha256`` (a hash over garbage,
+    # not over what the server sent), and wrote the result under a ``.md``
+    # suffix — so unlike a local PDF, which the markdown walker at least
+    # ignores, this one WAS picked up and fed to the extractor as prose.
+    #
+    # Known gap: a server that sends no content-type at all still reaches the
+    # decode below. Sniffing magic bytes would close it, but declared-type is
+    # what the header is for and every real offender (arxiv.org/pdf/...) sets it.
+    if content_type and not _is_texty(content_type):
+        raise UnsupportedSourceError(
+            f"tesserae ingest cannot read this URL — it served {content_type.split(';')[0].strip()}, not text:\n"
+            f"  - {url}: Download it and convert it to markdown, then "
+            f"`tesserae ingest <file>.md`. RAG-Anything parses PDFs and images, "
+            f"but only from local files via `tesserae refresh raganything`."
+        )
 
     raw = response.text
     if "html" in content_type:

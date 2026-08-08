@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 import tesserae.cli as cli
@@ -108,3 +110,29 @@ def test_cli_ingest_missing_input_exits_2(tmp_path, capsys):
     assert rc == 2
     err = capsys.readouterr().err
     assert "does not exist" in err and "Traceback" not in err
+
+
+# ---------------------------------------------------------------------------
+# Binary inputs at the CLI: a named error and exit 2, never a success line
+# carrying node/edge counts from the rest of the corpus.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("name", ["paper.pdf", "figure.png", "scan.jpg"])
+def test_cli_ingest_binary_input_exits_2_with_a_remedy(tmp_path, capsys, name):
+    from tesserae.project import ProjectWiki
+
+    ProjectWiki.init(tmp_path, name="binary", source_kind="Repository")
+    binary = tmp_path / name
+    binary.write_bytes(b"%PDF-1.4\n\x89PNG\r\n\x1a\n\xff\xd8\xff\xe0 not text\n")
+
+    rc = cli.main(["ingest", str(binary), "--project", str(tmp_path)])
+
+    out = capsys.readouterr()
+    assert rc == 2
+    assert "Traceback" not in out.err
+    assert "raganything" in out.err
+    assert Path(name).suffix in out.err
+    # The old behaviour printed a success line with counts from the rest of
+    # the corpus. It must be gone.
+    assert "Ingested (" not in out.out
