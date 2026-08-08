@@ -8,15 +8,52 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import AbstractSet, List, Optional, Sequence
 
 from tesserae.ingest.fetch import UnsupportedSourceError, fetch_to_source, is_url
-from tesserae.project import COMPILE_SOURCE_EXTENSIONS
 
 __all__ = ["UnsupportedSourceError", "ingest_sources"]
 
+# How many unreadable files a refused directory names before it stops. A
+# refusal is read by a human; a hundred identical lines is not more actionable
+# than five and the count says how many were elided.
+_MAX_LISTED_PER_DIRECTORY = 5
 
-def _unsupported_local_input_error(offenders: List[Path]) -> UnsupportedSourceError:
+
+def _raganything_hint(path: Path, project_root: Path) -> str:
+    """Remedy for a format RAG-Anything can parse, in the order it must be done.
+
+    ``raganything_refresh.discover_sources`` walks the PROJECT ROOT only, and
+    this refusal fires BEFORE ``_ensure_in_corpus`` copies anything — so for the
+    common case (a file the user points at from somewhere else on disk) the
+    file is not, and never becomes, visible to the raganything pass. Telling
+    that user to run `tesserae refresh raganything` and nothing else sends them
+    to a command that parses zero documents. Getting the file into the corpus
+    is step one, and it only belongs in the message when it is actually needed.
+    """
+    steps = []
+    try:
+        path.resolve().relative_to(project_root)
+    except ValueError:
+        steps.append(
+            f"copy it into the corpus first (`mkdir -p '{project_root}/data/ingested' "
+            f"&& cp '{path}' '{project_root}/data/ingested/'`)"
+        )
+    steps.append(
+        "enable the backend with `tesserae setup` (external_tools entry "
+        "id=raganything)"
+    )
+    steps.append("`tesserae refresh raganything` to parse it")
+    steps.append("`tesserae compile` to merge the result")
+    return (
+        "RAG-Anything parses this format, but it is opt-in and it is a SEPARATE "
+        "pass — " + ", then ".join(steps) + "."
+    )
+
+
+def _unsupported_local_input_error(
+    offenders: List[Path], project_root: Path, supported: Sequence[str]
+) -> UnsupportedSourceError:
     """Build the refusal for local inputs the compile walker would never read.
 
     Shape copied from ``raganything_refresh._verify_parsers_or_raise``: a header
@@ -25,26 +62,60 @@ def _unsupported_local_input_error(offenders: List[Path]) -> UnsupportedSourceEr
     """
     from tesserae.raganything_refresh import _SUPPORTED_EXT
 
-    supported = ", ".join(COMPILE_SOURCE_EXTENSIONS)
     lines = [
-        f"tesserae ingest cannot read these files — compile only extracts from {supported}:"
+        "tesserae ingest cannot read these inputs — compile only extracts from "
+        f"{', '.join(supported)}:"
     ]
     for path in offenders:
+        if path.is_dir():
+            lines.extend(_directory_remedy_lines(path, _SUPPORTED_EXT, project_root))
+            continue
         suffix = path.suffix.lower() or "<no suffix>"
         if suffix in _SUPPORTED_EXT:
-            hint = (
-                "RAG-Anything parses this format, but it is opt-in and it is a "
-                "SEPARATE pass — enable it with `tesserae setup` (external_tools "
-                "entry id=raganything), then `tesserae refresh raganything` to "
-                "parse the file and `tesserae compile` to merge the result."
-            )
+            hint = _raganything_hint(path, project_root)
         else:
+            # ``with_suffix``, not ``stem``: an absolute input must yield an
+            # absolute suggestion. Rebuilding from the stem alone produced
+            # `tesserae ingest figure.md` for /abs/path/figure.zip — a command
+            # that does not resolve from the user's working directory.
             hint = (
                 "No Tesserae backend parses this format. Convert it to markdown "
-                f"first, then `tesserae ingest {path.stem}.md`."
+                f"first, then `tesserae ingest {path.with_suffix('.md')}`."
             )
         lines.append(f"  - {path.name} ({suffix}): {hint}")
     return UnsupportedSourceError("\n".join(lines))
+
+
+def _directory_remedy_lines(
+    directory: Path, raganything_exts: AbstractSet[str], project_root: Path
+) -> List[str]:
+    """Remedy lines for a directory holding nothing the compile walker reads."""
+    inside = sorted(p for p in directory.rglob("*") if p.is_file())
+    if not inside:
+        return [
+            f"  - {directory.name}/: the directory is empty, so a compile driven "
+            "from it would read nothing. Put markdown in it, or ingest a "
+            "different path."
+        ]
+    lines = [
+        f"  - {directory.name}/: holds {len(inside)} file(s), none of them "
+        "markdown, so a compile driven from it would read nothing:"
+    ]
+    for path in inside[:_MAX_LISTED_PER_DIRECTORY]:
+        suffix = path.suffix.lower() or "<no suffix>"
+        if suffix in raganything_exts:
+            hint = _raganything_hint(path, project_root)
+        else:
+            hint = (
+                "No Tesserae backend parses this format. Convert it to markdown "
+                "first."
+            )
+        lines.append(f"      - {path.name} ({suffix}): {hint}")
+    if len(inside) > _MAX_LISTED_PER_DIRECTORY:
+        lines.append(
+            f"      ... and {len(inside) - _MAX_LISTED_PER_DIRECTORY} more"
+        )
+    return lines
 
 
 def _ensure_in_corpus(wiki, path_str: str) -> str:
@@ -103,6 +174,14 @@ def ingest_sources(
     # enabled: that backend merges a manifest built by a separate
     # ``refresh raganything`` pass (``_merge_configured_raganything_graph``), so
     # a file this command just copied in is not in it either way.
+    # Imported inside the function on purpose: tesserae/ingest/__init__.py
+    # resolves ingest_sources through a lazy __getattr__ so that importing the
+    # cheap fetch helpers does not drag in the compile stack. A module-scope
+    # import here defeats that for every importer of this module (measured:
+    # 11ms -> ~105ms, and tesserae.project loaded whether or not it is used).
+    from tesserae.project import COMPILE_SOURCE_EXTENSIONS, iter_markdown_files
+
+    project_root = Path(wiki.project_root).resolve()
     unsupported: List[Path] = []
     for item in inputs:
         if is_url(item):
@@ -110,10 +189,22 @@ def ingest_sources(
         path = Path(item)
         if not path.exists():
             raise FileNotFoundError(f"Input path does not exist: {item}")
-        if path.is_file() and path.suffix.lower() not in COMPILE_SOURCE_EXTENSIONS:
+        if path.is_dir():
+            # Directories are a supported input shape — iter_markdown_files
+            # walks them deliberately — so the file-only check skipped every
+            # one of them, and `ingest <dir-of-pdfs>` still reported
+            # "processed=1 ... nodes=1" where the 1 counted the DIRECTORY.
+            # Refuse only when the walk finds NOTHING readable: a docs/ tree
+            # that also holds screenshots is a normal, working input and
+            # refusing it would be its own regression.
+            if not iter_markdown_files(path):
+                unsupported.append(path)
+        elif path.suffix.lower() not in COMPILE_SOURCE_EXTENSIONS:
             unsupported.append(path)
     if unsupported:
-        raise _unsupported_local_input_error(unsupported)
+        raise _unsupported_local_input_error(
+            unsupported, project_root, COMPILE_SOURCE_EXTENSIONS
+        )
 
     if dry_run:
         # Truly dry: no URL fetch, no copy into data/ingested, no compile —

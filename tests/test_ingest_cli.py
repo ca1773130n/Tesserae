@@ -136,3 +136,23 @@ def test_cli_ingest_binary_input_exits_2_with_a_remedy(tmp_path, capsys, name):
     # The old behaviour printed a success line with counts from the rest of
     # the corpus. It must be gone.
     assert "Ingested (" not in out.out
+
+
+def test_cli_ingest_directory_of_binaries_exits_2(tmp_path, capsys):
+    """`tesserae ingest <dir>` printed "processed=1 ... nodes=1" where the 1 was
+    the DIRECTORY — the same success-for-work-not-done the file guard removed."""
+    from tesserae.project import ProjectWiki
+
+    ProjectWiki.init(tmp_path, name="binarydir", source_kind="Repository")
+    papers = tmp_path / "papers"
+    papers.mkdir()
+    (papers / "a.pdf").write_bytes(b"%PDF-1.4\nbinary\n%%EOF\n")
+    (papers / "b.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    rc = cli.main(["ingest", str(papers), "--project", str(tmp_path)])
+
+    out = capsys.readouterr()
+    assert rc == 2
+    assert "Traceback" not in out.err
+    assert "a.pdf" in out.err
+    assert "Ingested (" not in out.out
