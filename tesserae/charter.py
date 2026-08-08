@@ -16,7 +16,8 @@ from __future__ import annotations
 from typing import Sequence
 
 from .agent_distill import _render_member_block
-from .research_graph import ResearchNode
+from .community_summaries import detect_communities
+from .research_graph import ResearchGraph, ResearchNode
 
 #: Split threshold, in rendered member-block characters. A LITERAL, not
 #: ``CHUNK_CHAR_BUDGET // 2``: deriving it would let an env override of
@@ -40,3 +41,18 @@ def mass(nodes: Sequence[ResearchNode]) -> int:
     already the memory-pressure proxy at agent_distill.py:2813.
     """
     return sum(len(_render_member_block(node)) for node in nodes)
+
+
+def sections(graph: ResearchGraph) -> tuple[list[list[str]], list[str]]:
+    """Detect sections, and REPORT what detection threw away.
+
+    ``detect_communities`` filters ``len(c) > 1`` (community_summaries.py:106),
+    so Louvain singletons are dropped silently and the returned clusters do
+    NOT partition the node set. Returning the dropped ids alongside is what
+    keeps the partition invariant (CH-01) provable rather than aspirational —
+    they become intake members in Task 4.
+    """
+    clusters = detect_communities(graph)
+    covered = {nid for cluster in clusters for nid in cluster}
+    dropped = sorted(node.id for node in graph.nodes if node.id not in covered)
+    return clusters, dropped
