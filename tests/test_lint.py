@@ -968,3 +968,208 @@ def test_lint_reasoning_edge_ratio_warns_below_floor(tmp_path: Path) -> None:
     assert len(matches) == 1
     assert matches[0].severity == "warning"
     assert "1 of 100 edges (1.0%)" in matches[0].message
+
+
+# --------------------------------------------------- interval coverage
+
+
+def _coverage_graph(
+    dated: int,
+    undated: int,
+    superseded: int,
+    edge_dated: int = 0,
+    chained: int = 0,
+) -> dict:
+    """Edges whose endpoints carry a first_seen_at get a real ``valid_from``;
+    endpoints without one land in the literal ``"undated"`` bucket that
+    ``timeline()`` sorts under with no signal to the caller.
+
+    ``edge_dated`` and ``chained`` build the two shapes that the probe's dating
+    and invalidation rules BRANCH on. They default to 0 so the arithmetic in
+    the per-number tests below stays round; the anti-drift test passes both,
+    because a fixture that never reaches a branch cannot pin it. See
+    :func:`test_lint_interval_coverage_matches_the_temporal_projector_exactly`.
+    """
+    nodes = [_node("hub", "Concept", "hub")]
+    edges = []
+    for i in range(dated):
+        nodes.append(
+            _node(f"d{i}", "Paper", f"dated {i}", metadata={"first_seen_at": "2026-01-02"})
+        )
+        edges.append({"source": f"d{i}", "target": "hub", "type": "discussed_in"})
+    for i in range(undated):
+        nodes.append(_node(f"u{i}", "Paper", f"undated {i}"))
+        edges.append({"source": f"u{i}", "target": "hub", "type": "summarizes"})
+    # A supersedes edge closes an interval, which is what populates
+    # ``valid_to_basis`` — the second half of the histogram.
+    for i in range(superseded):
+        nodes.append(
+            _node(f"new{i}", "SessionInsight", f"new {i}", metadata={"first_seen_at": "2026-03-04"})
+        )
+        nodes.append(
+            _node(f"old{i}", "SessionInsight", f"old {i}", metadata={"first_seen_at": "2026-01-01"})
+        )
+        edges.append({"source": f"new{i}", "target": f"old{i}", "type": "supersedes"})
+        edges.append({"source": f"old{i}", "target": "hub", "type": "discussed_in"})
+    # An edge whose OWN metadata carries the date, between two endpoints that
+    # carry none. ``_fact_from_edge`` takes valid_from as the MAX over (subject
+    # ts, object ts, edge analysis_date), so this arm is the only thing in the
+    # fixture that can tell the third term from a constant None — without it,
+    # deleting analysis_date from the probe changes no number anyone asserts.
+    for i in range(edge_dated):
+        nodes.append(_node(f"ad_s{i}", "Paper", f"edge-dated subject {i}"))
+        nodes.append(_node(f"ad_o{i}", "Paper", f"edge-dated object {i}"))
+        edges.append(
+            {
+                "source": f"ad_s{i}",
+                "target": f"ad_o{i}",
+                "type": "discussed_in",
+                "metadata": {"analysis_date": "2026-02-02"},
+            }
+        )
+    # A supersedes CHAIN: mid is superseded by new and itself supersedes old,
+    # so mid is both an endpoint of an invalidating fact and an ended node.
+    # That is the only shape where "an invalidating fact is never ended by its
+    # own target" is load-bearing: for (mid supersedes old), the subject-only
+    # rule ends it at ts(new) and the basis is ``supersedes``, while including
+    # the object ends it at ts(mid) == its own valid_from, which
+    # ``_boundary_precedes_start`` rejects and the fact falls to ``open``.
+    for i in range(chained):
+        nodes.append(
+            _node(f"c_new{i}", "SessionInsight", f"chain new {i}",
+                  metadata={"first_seen_at": "2026-03-03"})
+        )
+        nodes.append(
+            _node(f"c_mid{i}", "SessionInsight", f"chain mid {i}",
+                  metadata={"first_seen_at": "2026-02-02"})
+        )
+        nodes.append(
+            _node(f"c_old{i}", "SessionInsight", f"chain old {i}",
+                  metadata={"first_seen_at": "2026-01-01"})
+        )
+        edges.append({"source": f"c_new{i}", "target": f"c_mid{i}", "type": "supersedes"})
+        edges.append({"source": f"c_mid{i}", "target": f"c_old{i}", "type": "supersedes"})
+    # ``metadata.first_seen_at`` must survive graph_from_payload for the dated
+    # arm to be dated at all; if it did not, this fixture would be all-undated
+    # and the assertions below would be vacuous.
+    return {"nodes": nodes, "edges": edges}
+
+
+def test_lint_interval_coverage_reports_undated_percentage(tmp_path: Path) -> None:
+    """The number itself is the instrument — it must land in the report so a
+    later commit can set a floor from a measurement rather than a guess."""
+    project = _scaffold(tmp_path, graph=_coverage_graph(dated=3, undated=7, superseded=0))
+    report = WikiLinter(project).run()
+
+    matches = [f for f in report.findings if f.code == "INTERVAL_COVERAGE"]
+    assert len(matches) == 1
+    assert "7 of 10" in matches[0].message
+    assert "70.0%" in matches[0].message
+
+    payload = json.loads(
+        (project / ".tesserae" / "lint-report.json").read_text(encoding="utf-8")
+    )
+    assert any(f["code"] == "INTERVAL_COVERAGE" for f in payload["findings"])
+
+
+def test_lint_interval_coverage_reports_valid_to_basis_histogram(tmp_path: Path) -> None:
+    project = _scaffold(tmp_path, graph=_coverage_graph(dated=2, undated=2, superseded=1))
+    report = WikiLinter(project).run()
+
+    (finding,) = [f for f in report.findings if f.code == "INTERVAL_COVERAGE"]
+    assert "supersedes=" in finding.message
+    assert "open=" in finding.message
+
+
+def test_lint_interval_coverage_is_info_only(tmp_path: Path) -> None:
+    """Deliberately non-strict, like _check_code_graph_staleness: the live
+    graph's real ratio is 73.38% undated, so any threshold picked today would
+    turn every `compile --strict` red on day one."""
+    project = _scaffold(tmp_path, graph=_coverage_graph(dated=0, undated=20, superseded=0))
+    report = WikiLinter(project).run()
+
+    (finding,) = [f for f in report.findings if f.code == "INTERVAL_COVERAGE"]
+    assert finding.severity == "info"
+    assert "100.0%" in finding.message
+
+
+def test_lint_interval_coverage_silent_when_there_is_nothing_to_place(
+    tmp_path: Path,
+) -> None:
+    """Nodes but no edges means no facts, so there is no ratio to report — and
+    reporting one would divide by zero. The earlier version of this test passed
+    with the guard deleted, because a redundant `if not edges` shadowed the
+    guard that actually does the work; this fixture reaches the real one."""
+    project = _scaffold(
+        tmp_path,
+        graph={"nodes": [_node("lonely", "Concept", "lonely")], "edges": []},
+    )
+
+    report = WikiLinter(project).run()
+
+    assert not [f for f in report.findings if f.code == "INTERVAL_COVERAGE"]
+
+
+def test_lint_interval_coverage_says_so_when_the_probe_itself_fails(
+    tmp_path: Path,
+) -> None:
+    """A probe added to make a degradation loud must not degrade silently.
+
+    A node whose type is outside ResearchNodeType makes graph_from_payload
+    raise; the finding then vanished with no message at all, so an operator
+    reading lint-report.md could not tell "fully dated" from "never ran"."""
+    project = _scaffold(
+        tmp_path,
+        graph={
+            "nodes": [
+                {"id": "n1", "type": "not_a_real_node_type", "name": "X", "metadata": {}}
+            ],
+            "edges": [{"source": "n1", "target": "n1", "type": "supports_claim"}],
+        },
+    )
+
+    report = WikiLinter(project).run()
+
+    (finding,) = [f for f in report.findings if f.code == "LINT_PROBE_FAILED"]
+    assert finding.severity == "info"
+    assert "INTERVAL_COVERAGE" in finding.message
+
+
+def test_lint_interval_coverage_matches_the_temporal_projector_exactly(
+    tmp_path: Path,
+) -> None:
+    """The probe counts undated facts and valid_to_basis WITHOUT building the
+    103k TemporalFact models the projector builds, because doing that cost
+    ~4.2s and ~91MB at the tail of every compile. That is only safe while the
+    cheap path agrees with the projector, so pin the agreement here: if
+    TemporalFactProjector's dating or invalidation rules change, this goes red
+    rather than the probe quietly reporting a number timeline() disagrees with.
+
+    The fixture must REACH both rules the probe reimplements, or the pin is
+    decorative. ``edge_dated`` supplies a fact datable only by the edge's own
+    ``analysis_date``; ``chained`` supplies a supersedes edge whose object is
+    itself superseded, the one shape where the subject-only endpoint rule
+    changes the answer. Verified by mutation: deleting the analysis_date term
+    from the probe, and making its endpoints symmetric, each turn this test red.
+    """
+    from tesserae.research_graph import graph_from_payload
+    from tesserae.temporal import TemporalFactProjector
+
+    payload = _coverage_graph(
+        dated=3, undated=7, superseded=2, edge_dated=1, chained=1
+    )
+    project = _scaffold(tmp_path, graph=payload)
+
+    report = WikiLinter(project).run()
+    (finding,) = [f for f in report.findings if f.code == "INTERVAL_COVERAGE"]
+
+    facts = TemporalFactProjector().project(graph_from_payload(payload))
+    undated = sum(1 for f in facts if (f.valid_from or "undated") == "undated")
+    basis: dict[str, int] = {}
+    for fact in facts:
+        key = fact.valid_to_basis or "open"
+        basis[key] = basis.get(key, 0) + 1
+
+    assert f"{undated} of {len(facts)} facts" in finding.message
+    for key in sorted(basis):
+        assert f"{key}={basis[key]}" in finding.message

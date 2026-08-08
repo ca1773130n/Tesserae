@@ -27,7 +27,7 @@ practice.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Iterator, List, Sequence, Tuple
+from typing import Dict, Iterator, List, Optional, Sequence, Tuple
 
 from ..ports import Source
 
@@ -101,12 +101,21 @@ class FilesystemSourceLoader:
     def __init__(
         self,
         paths: Sequence[Path],
-        extensions: Tuple[str, ...] = DEFAULT_EXTENSIONS,
+        extensions: Optional[Tuple[str, ...]] = DEFAULT_EXTENSIONS,
     ) -> None:
         self._paths: List[Path] = [Path(p) for p in paths]
         # Normalize to lowercase for case-insensitive suffix matching, matching
         # the ``path.suffix.lower() == ".md"`` check in the legacy walker.
-        self._extensions: Tuple[str, ...] = tuple(ext.lower() for ext in extensions)
+        #
+        # ``None`` means NO suffix filter — every file the walk reaches. It
+        # exists so a caller can enumerate the candidate set this loader
+        # considered without also reimplementing the directory exclusions and
+        # hidden-component rules below; a refusal message that re-walks with a
+        # bare ``rglob`` describes a different file set than the one the
+        # decision was made on. See ``tesserae.project.iter_source_candidates``.
+        self._extensions: Optional[Tuple[str, ...]] = (
+            None if extensions is None else tuple(ext.lower() for ext in extensions)
+        )
         # Discovery cache: maps Source.id (relative path) → absolute Path. Used
         # by :meth:`fetch` to re-read a previously discovered file. Populated
         # on every call to :meth:`discover` so callers can rely on the latest
@@ -178,7 +187,8 @@ class FilesystemSourceLoader:
         * Non-existent ``root``: yields nothing (forgiving — mirrors
           :meth:`discover`).
         * Hidden components (path parts starting with ``.``) are skipped.
-        * Non-matching suffixes are skipped.
+        * Non-matching suffixes are skipped, unless ``extensions`` is ``None``
+          — then every file the walk reaches is yielded.
 
         Notes:
             Unlike :meth:`discover`, this method does not populate the
@@ -188,7 +198,7 @@ class FilesystemSourceLoader:
             need the cache populated.
         """
         if root.is_file():
-            if root.suffix.lower() in self._extensions:
+            if self._extensions is None or root.suffix.lower() in self._extensions:
                 yield root
             return
         if not root.exists():
@@ -196,7 +206,7 @@ class FilesystemSourceLoader:
         for child in sorted(root.rglob("*")):
             if not child.is_file():
                 continue
-            if child.suffix.lower() not in self._extensions:
+            if self._extensions is not None and child.suffix.lower() not in self._extensions:
                 continue
             try:
                 rel = child.relative_to(root)

@@ -10,6 +10,16 @@ from pathlib import Path
 from typing import Callable, Dict, Optional
 
 
+class UnsupportedSourceError(ValueError):
+    """A source exists and is reachable, but nothing in Tesserae can read it.
+
+    Distinct from :class:`FileNotFoundError` (the input is not there) and from a
+    transport error (the fetch failed): the bytes arrived, and refusing them is
+    the correct outcome. ``tesserae.cli.main`` catches this centrally and turns
+    it into a one-line message plus exit 2, never a traceback.
+    """
+
+
 def is_url(value: str) -> bool:
     """True only for http(s) URLs — everything else is treated as a local path."""
     return value.startswith("http://") or value.startswith("https://")
@@ -64,6 +74,92 @@ def _arxiv_id_from_url(url: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
+# Non-``text/*`` media types whose bodies are still character data we can
+# reasonably persist as markdown. Anything else declared is binary to us.
+_TEXTY_APPLICATION_TYPES = (
+    "application/json",
+    "application/xml",
+    "application/xhtml+xml",
+    "application/atom+xml",
+    "application/rss+xml",
+    "application/ld+json",
+    "application/javascript",
+)
+
+
+def _is_texty(content_type: str) -> bool:
+    """True when a declared content-type names character data, not bytes."""
+    media = content_type.split(";", 1)[0].strip().lower()
+    if media.startswith("text/"):
+        return True
+    if media.endswith("+json") or media.endswith("+xml"):
+        return True
+    return media in _TEXTY_APPLICATION_TYPES
+
+
+# Leading signatures of formats we would otherwise decode into mojibake. The
+# declared content-type is not enough on its own: a server can omit it, or get
+# it wrong, and either way the bytes are what we end up writing.
+#
+# Every entry must be long enough, or odd enough, that no English sentence
+# starts with it. ``BM`` (bmp) and ``RIFF`` (webp/wav) were here and failed that
+# test: they refused a text/markdown body opening "BM25 is a bag-of-words
+# ranking function...", which on an IR/RAG project is a live opening word, plus
+# "BMW's..." and "RIFF codes are...". Neither loses detection by being absent —
+# a real BMP has reserved NUL bytes at offset 6 and a real RIFF header is NUL-
+# padded, so the first-kilobyte NUL check below catches both. Pinned by
+# ``test_fetch_still_refuses_real_bmp_and_riff_bodies``.
+_BINARY_MAGIC = (
+    b"%PDF-",            # PDF
+    b"\x89PNG\r\n\x1a\n",  # PNG
+    b"\xff\xd8\xff",     # JPEG
+    b"GIF87a",
+    b"GIF89a",
+    b"PK\x03\x04",       # zip, and everything built on it (docx, xlsx, pptx)
+    b"\x1f\x8b",         # gzip
+    b"\x00\x00\x01\x00",  # ico
+    b"\xd0\xcf\x11\xe0",  # legacy MS Office (doc, xls, ppt)
+    b"%!PS",             # postscript
+    b"\x7fELF",
+)
+
+
+def _response_bytes(response: object) -> bytes:
+    """The raw body, when the response object carries one.
+
+    A real ``httpx.Response`` always has ``.content``; hand-rolled test doubles
+    in this repo carry only a ``str`` ``.text``. Falling back to re-encoding
+    that keeps those doubles working without pretending we sniffed the wire
+    bytes — a NUL or a magic number that survived the decode still shows up.
+    """
+    raw = getattr(response, "content", None)
+    if isinstance(raw, (bytes, bytearray)):
+        return bytes(raw)
+    text = getattr(response, "text", None)
+    if isinstance(text, str):
+        return text.encode("utf-8", errors="replace")
+    return b""
+
+
+def _looks_binary(body: bytes) -> bool:
+    """True when ``body`` is bytes we must not decode as text.
+
+    Two tells, both conservative, and NEITHER a guarantee. A known magic number
+    is decisive. Failing that, a NUL byte in the first kilobyte: no real
+    text/markdown source contains one, and most binary containers do — measured
+    on 1,293 local files that fail a utf-8 decode, this misses 18 of them
+    (1.4%), mostly Apple bplists and raw UUID blobs. Those are only reachable
+    when the server ALSO omits or mislabels its content-type, which is why the
+    residue is accepted rather than chased. Deliberately NOT "contains
+    non-ASCII" — that would reject every non-English source.
+    """
+    if not body:
+        return False
+    if body.startswith(_BINARY_MAGIC):
+        return True
+    return b"\x00" in body[:1024]
+
+
 _http_get: Optional[Callable] = None
 _html_to_markdown: Optional[Callable] = None
 
@@ -101,11 +197,64 @@ def fetch_to_source(url: str, dest_dir: Path, *, title: Optional[str] = None) ->
     response.raise_for_status()
     content_type = response.headers.get("content-type", "")
 
+    # Refuse BEFORE touching ``.text``. Decoding a PDF/image body produced
+    # mojibake, hashed the mojibake as ``content_sha256`` (a hash over garbage,
+    # not over what the server sent), and wrote the result under a ``.md``
+    # suffix — so unlike a local PDF, which the markdown walker at least
+    # ignores, this one WAS picked up and fed to the extractor as prose.
+    #
+    # Both the label and the bytes get a vote, because either can be wrong on
+    # its own: arxiv.org/pdf/... declares application/pdf, but a server that
+    # omits content-type entirely, or mislabels a PDF as text/plain, reached
+    # the decode below and wrote the same mojibake. Refusing every response
+    # with no content-type would be simpler and wrong — plenty of plain-text
+    # sources omit it and are perfectly readable — so sniff instead.
+    declared = content_type.split(";", 1)[0].strip()
+    reason = ""
+    if content_type and not _is_texty(content_type):
+        reason = f"it served {declared}, not text"
+    elif _looks_binary(_response_bytes(response)):
+        reason = (
+            f"its body is binary (declared {declared or 'nothing'})"
+            if not declared
+            else f"its body is binary despite being declared {declared}"
+        )
+    if reason:
+        raise UnsupportedSourceError(
+            f"tesserae ingest cannot read this URL — {reason}:\n"
+            f"  - {url}: Download it and convert it to markdown, then "
+            f"`tesserae ingest <file>.md`. RAG-Anything parses PDFs and images, "
+            f"but only from local files under the project root, via "
+            f"`tesserae refresh raganything`."
+        )
+
     raw = response.text
     if "html" in content_type:
         body = _html_to_markdown(raw)
     else:
         body = raw
+
+    # A 200 carrying nothing is a failure that answered politely: a paywall, a
+    # JS-only page, or a soft error. Writing it produced a source file holding
+    # frontmatter and the sha256 of the empty string (e3b0c442...), which
+    # compiles cleanly, reads as nothing, and reports success — the same
+    # silent-success shape the binary refusal above removed.
+    #
+    # Checked on ``body``, AFTER the html->markdown conversion, not on ``raw``.
+    # Checking raw catches only a literally empty response, and the case this
+    # error text names first — a JS-rendered page — is never that: it is a full
+    # HTML document whose every element is a <div id="root"> and a <script>,
+    # which converts to "\n\n". Guarding raw while promising to catch that
+    # advertised coverage the guard did not have, which is the same defect this
+    # branch exists to remove, one layer up.
+    if not body.strip():
+        raise UnsupportedSourceError(
+            "tesserae ingest cannot read this URL — it answered 200 but has no "
+            "readable text (a paywall, a JS-rendered page, or a soft failure "
+            "all look like this):\n"
+            f"  - {url}: Open it in a browser, save the rendered text as "
+            "markdown, then `tesserae ingest <file>.md`."
+        )
 
     sha = hashlib.sha256(raw.encode("utf-8")).hexdigest()
     meta = {

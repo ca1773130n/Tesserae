@@ -1,4 +1,7 @@
+import re
 from pathlib import Path
+
+import pytest
 
 from tesserae.project import ProjectWiki
 from tesserae.ingest.orchestrator import ingest_sources
@@ -104,3 +107,292 @@ def test_ingest_preserves_baseline_and_copies_out_of_corpus(tmp_path):
     assert len(after_ids) > len(baseline_ids), "the new external doc must be added"
     # the external file was copied into the tracked corpus
     assert (tmp_path / "data" / "ingested" / "external_paper.md").exists()
+
+
+# ---------------------------------------------------------------------------
+# Inputs compile will never read must fail LOUDLY. Before this guard,
+# `ingest paper.pdf` copied the file into data/ingested/, drove a compile whose
+# walker matches .md only (project.py:iter_markdown_files returns [] for any
+# other suffix), and printed node/edge counts belonging to the REST of the
+# corpus — reported success for work it had not done.
+#
+# These tests deliberately do NOT import UnsupportedSourceError. A test that
+# imports a symbol the old code lacks fails at collection and never reaches the
+# call, so it proves nothing about behaviour. Catching Exception and asserting
+# on the message makes the old code fail the way it actually fails: by
+# returning a success report.
+# ---------------------------------------------------------------------------
+
+
+def _minimal_pdf() -> bytes:
+    return (
+        b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+        b"2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
+    )
+
+
+def test_ingest_local_pdf_refuses_instead_of_reporting_success(tmp_path):
+    wiki = _seed_project(tmp_path)
+    outside = tmp_path.parent / f"{tmp_path.name}-paper.pdf"
+    outside.write_bytes(_minimal_pdf())
+
+    with pytest.raises(Exception) as exc:
+        ingest_sources(wiki, [str(outside)], exact=True)
+
+    message = str(exc.value)
+    assert ".pdf" in message
+    assert "raganything" in message
+    # Same shape as raganything_refresh._verify_parsers_or_raise: a header line
+    # saying why it cannot run, then one indented "  - <thing>: <hint>" remedy.
+    assert message.splitlines()[0].endswith(":")
+    assert any(line.startswith("  - ") for line in message.splitlines()[1:])
+    # Nothing was copied into the corpus: the guard runs before the copy.
+    assert not (tmp_path / "data" / "ingested" / outside.name).exists()
+
+
+def test_raganything_remedy_starts_by_getting_the_file_under_the_project_root(tmp_path):
+    """raganything_refresh.discover_sources only walks under the project root,
+    and the refusal fires BEFORE the copy into data/ingested — so for the
+    primary case (a PDF outside the corpus) a user who runs the suggested
+    `tesserae refresh raganything` verbatim parses nothing at all. The hint has
+    to name that first step."""
+    wiki = _seed_project(tmp_path)
+    outside = tmp_path.parent / f"{tmp_path.name}-remote.pdf"
+    outside.write_bytes(_minimal_pdf())
+
+    with pytest.raises(Exception) as exc:
+        ingest_sources(wiki, [str(outside)], exact=True)
+
+    message = str(exc.value)
+    remedy = next(line for line in message.splitlines() if line.startswith("  - "))
+    # The copy step has to come first, and it has to name a real destination.
+    assert "data/ingested" in remedy
+    assert remedy.index("data/ingested") < remedy.index("refresh raganything")
+
+
+def test_ingest_pdf_already_inside_the_project_root_also_refuses(tmp_path):
+    """_ensure_in_corpus returns in-corpus paths IN PLACE, so a guard at the
+    copy site alone would miss every binary that already lives under the root."""
+    wiki = _seed_project(tmp_path)
+    inside = tmp_path / "data" / "inside.pdf"
+    inside.write_bytes(_minimal_pdf())
+
+    with pytest.raises(Exception, match=r"\.pdf"):
+        ingest_sources(wiki, [str(inside)], exact=True)
+
+
+@pytest.mark.parametrize("suffix", [".png", ".jpg", ".jpeg", ".docx"])
+def test_ingest_image_and_office_inputs_are_refused(tmp_path, suffix):
+    wiki = _seed_project(tmp_path)
+    binary = tmp_path / "data" / f"figure{suffix}"
+    binary.write_bytes(b"\x89PNG\r\n\x1a\n not really an image")
+
+    with pytest.raises(Exception, match=re.escape(suffix)):
+        ingest_sources(wiki, [str(binary)], exact=True)
+
+
+def test_unknown_format_hint_names_a_path_that_will_actually_resolve(tmp_path):
+    """A .zip is in no backend's supported set, so it takes the else-branch:
+    "convert it to markdown, then ingest <that>". Building that path from
+    ``path.stem`` alone yielded `tesserae ingest figure.md` for an absolute
+    input — a command that does not resolve from the user's cwd."""
+    wiki = _seed_project(tmp_path)
+    archive = tmp_path.parent / f"{tmp_path.name}-figures.zip"
+    archive.write_bytes(b"PK\x03\x04 not a real archive")
+
+    with pytest.raises(Exception) as exc:
+        ingest_sources(wiki, [str(archive)], exact=True)
+
+    message = str(exc.value)
+    assert "raganything" not in message  # no backend parses .zip
+    remedy = next(line for line in message.splitlines() if line.startswith("  - "))
+    suggested = remedy.split("tesserae ingest ", 1)[1].split()[0].rstrip("`.")
+    assert suggested == str(archive.with_suffix(".md"))
+
+
+def test_ingest_dry_run_also_refuses_a_binary_input(tmp_path):
+    """--dry-run must not report a PDF as something it WOULD ingest: the
+    validation loop already runs before the dry-run short-circuit."""
+    wiki = _seed_project(tmp_path)
+    binary = tmp_path / "data" / "dry.pdf"
+    binary.write_bytes(_minimal_pdf())
+
+    with pytest.raises(Exception):
+        ingest_sources(wiki, [str(binary)], dry_run=True)
+
+
+# --- directories -----------------------------------------------------------
+# iter_markdown_files handles directories deliberately, so a directory is a
+# supported input shape — and the file-only guard skipped every one of them.
+
+
+def test_ingest_directory_with_nothing_readable_refuses(tmp_path):
+    """The headline defect, verbatim, for a directory: exit 0 and
+    "processed=1 ... nodes=1" where processed=1 counted the DIRECTORY."""
+    wiki = _seed_project(tmp_path)
+    papers = tmp_path / "data" / "papers"
+    papers.mkdir(parents=True)
+    (papers / "a.pdf").write_bytes(_minimal_pdf())
+    (papers / "b.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    with pytest.raises(Exception) as exc:
+        ingest_sources(wiki, [str(papers)], exact=True)
+
+    message = str(exc.value)
+    assert "a.pdf" in message
+    assert "b.png" in message
+
+
+def test_ingest_empty_directory_refuses(tmp_path):
+    """An empty directory produces the same lie — a success report for a
+    compile that read nothing the user pointed at."""
+    wiki = _seed_project(tmp_path)
+    empty = tmp_path / "data" / "empty"
+    empty.mkdir(parents=True)
+
+    with pytest.raises(Exception, match="empty"):
+        ingest_sources(wiki, [str(empty)], exact=True)
+
+
+def test_ingest_directory_holding_any_markdown_is_still_accepted(tmp_path):
+    """Over-refusal would be its own regression: a docs/ directory that also
+    holds screenshots is a normal, working input. Refuse only when NOTHING in
+    the directory is readable."""
+    wiki = _seed_project(tmp_path)
+    mixed = tmp_path / "data" / "mixed"
+    mixed.mkdir(parents=True)
+    (mixed / "note.md").write_text(
+        "---\ntype: paper\n---\n# Retrieval Augmented Planning\n\nprose.\n",
+        encoding="utf-8",
+    )
+    (mixed / "figure.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    result = ingest_sources(wiki, [str(mixed)], exact=True)
+
+    assert result["node_count"] > 0
+
+
+def test_ingest_nested_markdown_deeper_in_a_directory_is_accepted(tmp_path):
+    """The readability check has to walk the tree the compile walker walks,
+    not just the top level of the directory."""
+    wiki = _seed_project(tmp_path)
+    top = tmp_path / "data" / "tree"
+    (top / "sub" / "deeper").mkdir(parents=True)
+    (top / "cover.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    (top / "sub" / "deeper" / "note.md").write_text(
+        "---\ntype: paper\n---\n# Nested Retrieval Note\n\nprose.\n", encoding="utf-8"
+    )
+
+    result = ingest_sources(wiki, [str(top)], exact=True)
+
+    assert result["node_count"] > 0
+
+
+# --- import cost -----------------------------------------------------------
+
+
+def test_importing_the_orchestrator_does_not_drag_in_tesserae_project():
+    """tesserae/ingest/__init__.py resolves ingest_sources through a lazy
+    __getattr__ specifically so importing the fetch helpers stays cheap. A
+    module-scope `from tesserae.project import ...` in the orchestrator defeats
+    that: it pulls in the whole compile stack for a constant."""
+    import subprocess
+    import sys
+
+    probe = (
+        "import sys, tesserae.ingest.orchestrator as o;"
+        "print('project' if 'tesserae.project' in sys.modules else 'clean')"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, check=True
+    )
+
+    assert out.stdout.strip() == "clean", out.stdout
+
+
+# --- the refusal must describe the set the DECISION was made on ------------
+#
+# The decision comes from iter_markdown_files -> FilesystemSourceLoader, which
+# skips _EXCLUDED_TOPLEVEL_DIRS (i18n, build, node_modules, dist, ...) and
+# hidden components. A remedy re-walked with a bare rglob("*") sees a different,
+# larger set and described it wrongly. docs/i18n/ is mandatory in this
+# repository, so this shape is not hypothetical.
+
+
+def _excluded_only_tree(tmp_path):
+    docs = tmp_path / "data" / "docs"
+    for sub in ("i18n/ko", "build", "node_modules/pkg"):
+        (docs / sub).mkdir(parents=True)
+        (docs / sub / "guide.md").write_text("# Guide\n\nreal markdown\n", encoding="utf-8")
+    return docs
+
+
+def test_directory_refusal_does_not_call_markdown_files_not_markdown(tmp_path):
+    """Three real .md files, all behind walker exclusions. The old message said
+    "holds 3 file(s), none of them markdown" — a loud statement that is false."""
+    wiki = _seed_project(tmp_path)
+    docs = _excluded_only_tree(tmp_path)
+
+    with pytest.raises(Exception) as exc:
+        ingest_sources(wiki, [str(docs)], exact=True)
+
+    message = str(exc.value)
+    assert "none of them markdown" not in message, message
+    # and it must not claim the directory is empty either — it is not.
+    assert "the directory is empty" not in message, message
+
+
+def test_directory_refusal_names_the_exclusion_that_actually_caused_it(tmp_path):
+    """A true reason is the whole point of the branch: say the files were
+    skipped, and name the directories that swallowed them, so the user can act."""
+    wiki = _seed_project(tmp_path)
+    docs = _excluded_only_tree(tmp_path)
+
+    with pytest.raises(Exception) as exc:
+        ingest_sources(wiki, [str(docs)], exact=True)
+
+    message = str(exc.value)
+    assert "i18n" in message, message
+    assert "build" in message, message
+    assert "node_modules" in message, message
+
+
+def test_directory_refusal_never_tells_the_user_to_rag_anything_a_markdown_file(
+    tmp_path,
+):
+    """`.md` is in raganything's _SUPPORTED_EXT, so the hint fired on markdown
+    and told the user to run a PDF/image parser over a .md file."""
+    wiki = _seed_project(tmp_path)
+    docs = _excluded_only_tree(tmp_path)
+
+    with pytest.raises(Exception) as exc:
+        ingest_sources(wiki, [str(docs)], exact=True)
+
+    assert "RAG-Anything" not in str(exc.value), str(exc.value)
+
+
+def test_directory_refusal_lists_only_files_the_walker_would_consider(tmp_path):
+    """A directory holding a readable-format file next to excluded ones must
+    describe the candidate the walker actually saw, not the excluded copies."""
+    wiki = _seed_project(tmp_path)
+    docs = tmp_path / "data" / "mixed_docs"
+    (docs / "node_modules" / "pkg").mkdir(parents=True)
+    (docs / "node_modules" / "pkg" / "readme.md").write_text("# dep\n", encoding="utf-8")
+    (docs / "paper.pdf").write_bytes(_minimal_pdf())
+
+    with pytest.raises(Exception) as exc:
+        ingest_sources(wiki, [str(docs)], exact=True)
+
+    message = str(exc.value)
+    assert "paper.pdf" in message, message
+    assert "readme.md" not in message, message
+
+
+def test_raganything_hint_is_never_produced_for_markdown_suffixes(tmp_path):
+    """Belt and braces on the helper itself: whatever routes into it, a
+    markdown suffix must never come back out with a PDF/image remedy."""
+    from tesserae.ingest import orchestrator
+
+    for name in ("guide.md", "guide.markdown", "GUIDE.MD"):
+        assert not orchestrator._is_raganything_candidate(Path(name)), name
+    assert orchestrator._is_raganything_candidate(Path("paper.pdf"))

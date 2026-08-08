@@ -14,9 +14,10 @@ from .batch import BatchIngestRunner
 from .canonicalization import GraphCanonicalizer, ReviewDecision
 from .harness_sessions import (HarnessSession, HarnessSessionStore, PRODUCER_DISCOVERY,
                                PRODUCER_IMPORT, discover_harness_roots,
-                               discover_harness_sessions, local_host_id,
+                               discover_harness_sessions,
+                               format_dropped_content_blocks, local_host_id,
                                session_matches_project)
-from .ingest.orchestrator import ingest_sources
+from .ingest.orchestrator import UnsupportedSourceError, ingest_sources
 from .llm_extractor import ClaudeCLIResearchExtractor, LLMResearchExtractor
 from .locking import CompileLockHeldError
 from .markdown_projection import GraphMarkdownProjector
@@ -2180,6 +2181,11 @@ def _handle_refresh_one(args: argparse.Namespace) -> int:
     def step_sessions_import():
         roots = hs.discover_harness_roots()
         sessions = hs.discover_harness_sessions(wiki.project_root, roots=roots)
+        # Same reason as `sessions discover`: refresh never configures logging,
+        # so the histogram has to be printed to be seen at all.
+        dropped_summary = hs.format_dropped_content_blocks(sessions)
+        if dropped_summary:
+            print(f"  {dropped_summary}")
         store = hs.HarnessSessionStore(wiki.paths.harness_sessions)
         # A non-empty discovery is authoritative over the roots it scanned
         # (replace + prune_roots: prunes stale records there, never another
@@ -2435,6 +2441,13 @@ def _handle_sessions(args: argparse.Namespace) -> int:
             )
             print(f"Project working directory: {wiki.project_root.resolve()}")
             print(f"Project-attached harness sessions: {len(sessions)}")
+            # PRINT, not logger.info: logging.basicConfig is called only by
+            # `tesserae engine`, so an INFO record from harness_sessions goes
+            # nowhere here. stdout is where this command already reports its
+            # counts, and the drop histogram is one of them.
+            dropped_summary = format_dropped_content_blocks(sessions)
+            if dropped_summary:
+                print(f"  {dropped_summary}")
             for harness, count in sorted(Counter(session.harness for session in sessions).items()):
                 print(f"  {harness}: {count}")
             for session in sessions[:100]:
@@ -2687,6 +2700,12 @@ def main(argv: List[str] | None = None) -> int:
         return 2
     except CompileLockHeldError as exc:
         print(f"tesserae {argv[0]}: {exc}", file=sys.stderr)
+        return 2
+    except UnsupportedSourceError as exc:
+        # The input exists and is reachable but nothing can read it. Its message
+        # is multi-line by design (header + one indented remedy per offender),
+        # so print it as-is rather than prefixing the command name onto line 1.
+        print(str(exc), file=sys.stderr)
         return 2
     except FileNotFoundError as exc:
         # Central catch for "project not initialized" / missing-input errors so

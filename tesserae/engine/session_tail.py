@@ -434,6 +434,10 @@ class SessionTailer:
         new_rows = self._parse_lines(lines)
         # Re-parse the whole (small, project-owned) transcript into a full
         # HarnessSession with metadata["turns"] populated by the verified parsers.
+        # No ``dropped`` accumulator: this runs on every poll cycle, from the
+        # tailer's own thread, and nothing here reads a drop tally. Passing one
+        # would make the count grow for the lifetime of `tesserae engine` and
+        # describe an unbounded span of polls rather than one discovery.
         if harness == "claude":
             session = _parse_claude_session(self.project_root, self._root_for(path), path)
             new_turns = _claude_turns(new_rows)

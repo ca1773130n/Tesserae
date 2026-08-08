@@ -1,4 +1,5 @@
 import json
+import threading
 
 from tesserae.cli import main
 from tesserae.harness_sessions import (
@@ -748,3 +749,312 @@ def test_local_host_id_is_stable_and_overridable(tmp_path, monkeypatch):
 
     monkeypatch.setattr(hs, "_HOST_ID_CACHE", None, raising=False)
     assert hs.local_host_id() == first  # survives a fresh process
+
+
+# ---------------------------------------------------------------------------
+# Non-text content blocks: counted, and SAID OUT LOUD. Images attached to a
+# session used to vanish inside _content_to_text with no trace, so the size of
+# the multimodal gap was unknowable. Two things make it knowable: the tally has
+# to reach the blocks (harness images sit NESTED inside a tool_result, never at
+# the top level), and an operator has to be able to read the number from the
+# command they actually ran.
+#
+# Every test below drives a public entry point — `sessions discover` or
+# discover_harness_sessions() — so it fails on the old code because the
+# BEHAVIOUR is absent, not because a helper it imports is.
+# ---------------------------------------------------------------------------
+
+
+def _transcript(root, project, blocks, name="s1.jsonl"):
+    """Write a one-row Claude transcript whose message carries ``blocks``."""
+    from tesserae import harness_sessions as hs
+
+    directory = root / "projects" / hs._claude_project_dir(project.resolve())
+    directory.mkdir(parents=True, exist_ok=True)
+    row = {
+        "type": "user",
+        "cwd": str(project.resolve()),
+        "timestamp": "2026-05-01T10:00:00Z",
+        "sessionId": name.split(".")[0],
+        "message": {"role": "user", "content": blocks},
+    }
+    path = directory / name
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    return path
+
+
+def _discover_output(tmp_path, blocks, capsys):
+    """Run `tesserae sessions discover` over a transcript and return stdout."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "data").mkdir()
+    (project / "data" / "seed.md").write_text(
+        "---\ntype: paper\n---\n# Seed\n\nx.\n", encoding="utf-8"
+    )
+    ProjectWiki.init(project, name="dropped_blocks")
+    root = tmp_path / "claude"
+    _transcript(root, project, blocks)
+    main(["sessions", "discover", "--project", str(project), "--root", str(root)])
+    return capsys.readouterr().out
+
+
+def test_sessions_discover_says_what_it_dropped(tmp_path, capsys):
+    """The count is only a measurement if the operator can read it.
+
+    `sessions discover` is not `tesserae engine`, so it never calls
+    logging.basicConfig — an INFO record from a library logger goes nowhere.
+    stdout, next to the counts this command already prints, is the channel.
+    """
+    out = _discover_output(
+        tmp_path,
+        [
+            {"type": "text", "text": "what is in this screenshot?"},
+            {"type": "image", "source": {"type": "base64", "media_type": "image/png"}},
+        ],
+        capsys,
+    )
+
+    assert "image=1" in out, out
+    assert "dropped" in out.lower(), out
+
+
+def test_sessions_discover_counts_images_nested_inside_a_tool_result(tmp_path, capsys):
+    """Harness images live INSIDE tool_result["content"], never at the top level.
+
+    A scan of 150 recent transcripts under ~/.claude/projects and
+    ~/.claude-personal2/projects found nine image blocks and ZERO of them at the
+    top level. A tally that stops at the tool_result therefore reports the
+    multimodal gap as zero on a machine that has one.
+    """
+    out = _discover_output(
+        tmp_path,
+        [
+            {"type": "text", "text": "run the tool"},
+            {
+                "type": "tool_result",
+                "content": [
+                    {"type": "text", "text": "here is the render"},
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/png"}},
+                ],
+            },
+        ],
+        capsys,
+    )
+
+    assert "image=1" in out, out
+    assert "tool_result=1" in out, out
+
+
+def test_dropped_blocks_are_counted_once_per_discovery_not_once_per_pass(
+    tmp_path, capsys
+):
+    """_content_to_text runs over the same transcript several times (activity,
+    turns, title/preview). Tallying inside it multiplied every block by the
+    number of passes, so the histogram measured passes, not content."""
+    out = _discover_output(
+        tmp_path,
+        [
+            {"type": "text", "text": "one image, counted once"},
+            {"type": "image", "source": {"type": "base64", "media_type": "image/png"}},
+        ],
+        capsys,
+    )
+
+    assert "image=1" in out, out
+    assert "image=2" not in out, out
+
+
+def test_deeply_nested_content_terminates_and_says_it_was_truncated(tmp_path, capsys):
+    """A malformed transcript must not be able to hang the importer.
+
+    Real content nests one level (image inside tool_result). The walk is capped
+    well above that, and reaching the cap is itself reported rather than
+    silently dropping the tail — the same posture as the count itself.
+    """
+    block = {"type": "image", "source": {}}
+    for _ in range(400):
+        block = {"type": "tool_result", "content": [block]}
+
+    out = _discover_output(tmp_path, [{"type": "text", "text": "deep"}, block], capsys)
+
+    assert "<truncated>" in out, out
+
+
+def test_discover_reports_nothing_when_every_block_is_text(tmp_path, capsys):
+    """No drops, no line: the summary must not become constant noise."""
+    out = _discover_output(
+        tmp_path, [{"type": "text", "text": "plain prose only"}], capsys
+    )
+
+    assert "dropped" not in out.lower(), out
+
+
+def test_dropped_block_tally_does_not_accumulate_across_discoveries(tmp_path, capsys):
+    """The number describes ONE discovery. A tally that survived between runs
+    would grow without bound in the engine daemon, which discovers on a loop."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "data").mkdir()
+    (project / "data" / "seed.md").write_text(
+        "---\ntype: paper\n---\n# Seed\n\nx.\n", encoding="utf-8"
+    )
+    ProjectWiki.init(project, name="accumulate")
+    root = tmp_path / "claude"
+    _transcript(
+        root,
+        project,
+        [{"type": "text", "text": "hi"}, {"type": "image", "source": {"type": "base64"}}],
+    )
+    argv = ["sessions", "discover", "--project", str(project), "--root", str(root)]
+
+    main(argv)
+    first = capsys.readouterr().out
+    main(argv)
+    second = capsys.readouterr().out
+
+    assert "image=1" in first, first
+    assert "image=1" in second, second
+
+
+def test_dropped_content_block_counts_returns_a_snapshot(tmp_path):
+    """Callers reading the tally must not be able to edit the result's copy."""
+    from tesserae import harness_sessions as hs
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    root = tmp_path / "claude"
+    _transcript(root, project, [{"type": "image", "source": {}}])
+
+    sessions = hs.discover_harness_sessions(project, roots=[root])
+    snapshot = hs.dropped_content_blocks(sessions)
+    snapshot["image"] = 999
+
+    assert hs.dropped_content_blocks(sessions) == {"image": 1}
+
+
+def test_content_to_text_has_no_side_effects(tmp_path):
+    """Flattening is a pure function. It is called an unpredictable number of
+    times per transcript, so it is the wrong place to count anything."""
+    from tesserae import harness_sessions as hs
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    root = tmp_path / "claude"
+    _transcript(root, project, [{"type": "image", "source": {}}])
+    sessions = hs.discover_harness_sessions(project, roots=[root])
+    before = hs.dropped_content_blocks(sessions)
+
+    hs._content_to_text([{"type": "image"}, {"type": "document"}])
+
+    assert hs.dropped_content_blocks(sessions) == before
+
+
+# ---------------------------------------------------------------------------
+# The tally travels WITH the discovery it describes. It used to be a module
+# global, reset at the start of a run and read at the end of it — which is only
+# correct while exactly one discovery is in flight. `tesserae refresh --jobs N`
+# dispatches projects into a ThreadPoolExecutor in ONE process, and the engine
+# daemon's tailer thread parses transcripts on a poll loop without ever
+# resetting or reading it.
+# ---------------------------------------------------------------------------
+
+
+def _project_with_images(tmp_path, name, images):
+    """A project, its own harness root, and one transcript carrying ``images``."""
+    project = tmp_path / name
+    project.mkdir()
+    root = tmp_path / f"{name}-claude"
+    blocks = [{"type": "text", "text": "hello"}]
+    blocks += [
+        {"type": "image", "source": {"type": "base64", "media_type": "image/png"}}
+        for _ in range(images)
+    ]
+    _transcript(root, project, blocks, name=f"{name}.jsonl")
+    return project, root
+
+
+def test_two_projects_discovered_concurrently_keep_separate_tallies(tmp_path):
+    """The failure the feature exists to eliminate, in the shape that produces
+    it: alpha has three images, beta has none, and both scans run at once.
+
+    A barrier forces both threads to finish tallying before either reads, so
+    the interleaving is deterministic rather than a scheduling accident. On the
+    module-global tally this fails in BOTH directions depending on which thread
+    resets last: beta reports alpha's three images, or alpha reports none.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    from tesserae import harness_sessions as hs
+
+    alpha = _project_with_images(tmp_path, "alpha", images=3)
+    beta = _project_with_images(tmp_path, "beta", images=0)
+    barrier = threading.Barrier(2, timeout=30)
+    real_parse = hs._parse_claude_session
+
+    def staged(*args, **kwargs):
+        result = real_parse(*args, **kwargs)
+        barrier.wait()
+        return result
+
+    hs._parse_claude_session = staged
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [
+                pool.submit(hs.discover_harness_sessions, project, roots=[root])
+                for project, root in (alpha, beta)
+            ]
+            alpha_sessions, beta_sessions = [f.result() for f in futures]
+    finally:
+        hs._parse_claude_session = real_parse
+
+    assert hs.dropped_content_blocks(alpha_sessions) == {"image": 3}
+    assert hs.dropped_content_blocks(beta_sessions) == {}
+
+
+def test_a_discovery_reports_its_own_counts_whatever_ran_after_it(tmp_path):
+    """Reading the tally after a LATER discovery must not re-read that one.
+
+    `multiproject.run_across_projects` collects every project's output and
+    prints it afterwards, so a read-at-the-end global was already answering
+    with whichever scan finished last even without true concurrency.
+    """
+    from tesserae import harness_sessions as hs
+
+    alpha = _project_with_images(tmp_path, "alpha", images=3)
+    beta = _project_with_images(tmp_path, "beta", images=0)
+
+    alpha_sessions = hs.discover_harness_sessions(alpha[0], roots=[alpha[1]])
+    beta_sessions = hs.discover_harness_sessions(beta[0], roots=[beta[1]])
+
+    assert "image=3" in (hs.format_dropped_content_blocks(alpha_sessions) or "")
+    assert hs.format_dropped_content_blocks(beta_sessions) is None
+
+
+def test_parsing_one_transcript_repeatedly_accumulates_nothing_module_wide(tmp_path):
+    """engine/session_tail.py calls _parse_claude_session on every poll cycle
+    and never resets or reads a tally. Anything module-global therefore grew
+    without bound for the lifetime of `tesserae engine`."""
+    from tesserae import harness_sessions as hs
+
+    project, root = _project_with_images(tmp_path, "engine", images=2)
+    path = (
+        root / "projects" / hs._claude_project_dir(project.resolve()) / "engine.jsonl"
+    )
+
+    for _ in range(3):
+        hs._parse_claude_session(project.resolve(), root, path)
+
+    # A fresh discovery must still see exactly this project's two images, not
+    # six plus whatever the tailer added.
+    sessions = hs.discover_harness_sessions(project, roots=[root])
+    assert hs.dropped_content_blocks(sessions) == {"image": 2}
+
+
+def test_the_tally_is_not_reachable_as_module_state(tmp_path):
+    """A guarded global is still a global. Removing it is what makes the
+    concurrency question unanswerable-by-construction, so pin its absence."""
+    from tesserae import harness_sessions as hs
+
+    assert not hasattr(hs, "_DROPPED_CONTENT_BLOCKS")
+    assert not hasattr(hs, "reset_dropped_content_blocks")
+    assert not hasattr(hs, "dropped_content_block_counts")

@@ -219,9 +219,9 @@ def test_claude_discovery_skips_foreign_transcripts_without_project_marker(tmp_p
     parsed_paths = []
     real_parse = harness_sessions._parse_claude_session
 
-    def counting_parse(proj, scan_root, path):
+    def counting_parse(proj, scan_root, path, dropped=None):
         parsed_paths.append(path)
-        return real_parse(proj, scan_root, path)
+        return real_parse(proj, scan_root, path, dropped=dropped)
 
     monkeypatch.setattr(harness_sessions, "_parse_claude_session", counting_parse)
 
@@ -250,9 +250,9 @@ def test_codex_discovery_skips_transcripts_without_project_marker(tmp_path, monk
     parsed_paths = []
     real_parse = harness_sessions._parse_codex_session
 
-    def counting_parse(proj, scan_root, path):
+    def counting_parse(proj, scan_root, path, dropped=None):
         parsed_paths.append(path)
-        return real_parse(proj, scan_root, path)
+        return real_parse(proj, scan_root, path, dropped=dropped)
 
     monkeypatch.setattr(harness_sessions, "_parse_codex_session", counting_parse)
 
@@ -280,9 +280,9 @@ def test_symlinked_account_roots_are_scanned_once(tmp_path, monkeypatch):
     parsed_paths = []
     real_parse = harness_sessions._parse_claude_session
 
-    def counting_parse(proj, scan_root, path):
+    def counting_parse(proj, scan_root, path, dropped=None):
         parsed_paths.append(path)
-        return real_parse(proj, scan_root, path)
+        return real_parse(proj, scan_root, path, dropped=dropped)
 
     monkeypatch.setattr(harness_sessions, "_parse_claude_session", counting_parse)
 
