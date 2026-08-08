@@ -97,6 +97,58 @@ def _is_texty(content_type: str) -> bool:
     return media in _TEXTY_APPLICATION_TYPES
 
 
+# Leading signatures of formats we would otherwise decode into mojibake. The
+# declared content-type is not enough on its own: a server can omit it, or get
+# it wrong, and either way the bytes are what we end up writing.
+_BINARY_MAGIC = (
+    b"%PDF-",            # PDF
+    b"\x89PNG\r\n\x1a\n",  # PNG
+    b"\xff\xd8\xff",     # JPEG
+    b"GIF87a",
+    b"GIF89a",
+    b"PK\x03\x04",       # zip, and everything built on it (docx, xlsx, pptx)
+    b"\x1f\x8b",         # gzip
+    b"BM",               # bmp
+    b"RIFF",             # webp / wav
+    b"\x00\x00\x01\x00",  # ico
+    b"\xd0\xcf\x11\xe0",  # legacy MS Office (doc, xls, ppt)
+    b"%!PS",             # postscript
+    b"\x7fELF",
+)
+
+
+def _response_bytes(response: object) -> bytes:
+    """The raw body, when the response object carries one.
+
+    A real ``httpx.Response`` always has ``.content``; hand-rolled test doubles
+    in this repo carry only a ``str`` ``.text``. Falling back to re-encoding
+    that keeps those doubles working without pretending we sniffed the wire
+    bytes — a NUL or a magic number that survived the decode still shows up.
+    """
+    raw = getattr(response, "content", None)
+    if isinstance(raw, (bytes, bytearray)):
+        return bytes(raw)
+    text = getattr(response, "text", None)
+    if isinstance(text, str):
+        return text.encode("utf-8", errors="replace")
+    return b""
+
+
+def _looks_binary(body: bytes) -> bool:
+    """True when ``body`` is bytes we must not decode as text.
+
+    Two tells, both conservative. A known magic number is decisive. Failing
+    that, a NUL byte in the first kilobyte: no real text/markdown source
+    contains one, while essentially every binary container does. Deliberately
+    NOT "contains non-ASCII" — that would reject every non-English source.
+    """
+    if not body:
+        return False
+    if body.startswith(_BINARY_MAGIC):
+        return True
+    return b"\x00" in body[:1024]
+
+
 _http_get: Optional[Callable] = None
 _html_to_markdown: Optional[Callable] = None
 
@@ -140,15 +192,29 @@ def fetch_to_source(url: str, dest_dir: Path, *, title: Optional[str] = None) ->
     # suffix — so unlike a local PDF, which the markdown walker at least
     # ignores, this one WAS picked up and fed to the extractor as prose.
     #
-    # Known gap: a server that sends no content-type at all still reaches the
-    # decode below. Sniffing magic bytes would close it, but declared-type is
-    # what the header is for and every real offender (arxiv.org/pdf/...) sets it.
+    # Both the label and the bytes get a vote, because either can be wrong on
+    # its own: arxiv.org/pdf/... declares application/pdf, but a server that
+    # omits content-type entirely, or mislabels a PDF as text/plain, reached
+    # the decode below and wrote the same mojibake. Refusing every response
+    # with no content-type would be simpler and wrong — plenty of plain-text
+    # sources omit it and are perfectly readable — so sniff instead.
+    declared = content_type.split(";", 1)[0].strip()
+    reason = ""
     if content_type and not _is_texty(content_type):
+        reason = f"it served {declared}, not text"
+    elif _looks_binary(_response_bytes(response)):
+        reason = (
+            f"its body is binary (declared {declared or 'nothing'})"
+            if not declared
+            else f"its body is binary despite being declared {declared}"
+        )
+    if reason:
         raise UnsupportedSourceError(
-            f"tesserae ingest cannot read this URL — it served {content_type.split(';')[0].strip()}, not text:\n"
+            f"tesserae ingest cannot read this URL — {reason}:\n"
             f"  - {url}: Download it and convert it to markdown, then "
             f"`tesserae ingest <file>.md`. RAG-Anything parses PDFs and images, "
-            f"but only from local files via `tesserae refresh raganything`."
+            f"but only from local files under the project root, via "
+            f"`tesserae refresh raganything`."
         )
 
     raw = response.text

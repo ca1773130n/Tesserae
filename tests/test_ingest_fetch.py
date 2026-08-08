@@ -130,3 +130,99 @@ def test_fetch_arxiv_url_records_arxiv_id_in_frontmatter(tmp_path, monkeypatch):
     path = fetch_to_source("https://arxiv.org/abs/2401.12345", tmp_path / "ing")
     body = path.read_text(encoding="utf-8")
     assert "arxiv_id: 2401.12345" in body
+
+
+# ---------------------------------------------------------------------------
+# Binary bodies must never be decoded. `.text` over a PDF produces mojibake,
+# content_sha256 then hashes the mojibake rather than what the server sent, and
+# the result is written under a .md suffix — so unlike a local PDF, which the
+# markdown walker at least ignores, this one IS picked up and fed to the
+# extractor as prose.
+#
+# The declared content-type is not enough on its own: a server can omit it, or
+# get it wrong. These tests use a real httpx.Response, which carries the raw
+# bytes the production code path actually has.
+# ---------------------------------------------------------------------------
+
+_PDF_BYTES = b"%PDF-1.4\n\x89\xa0\xfe\x0c binary \xff\xfe\x00\x01\n%%EOF\n"
+
+
+def _httpx_response(url, body, headers):
+    import httpx
+
+    return httpx.Response(
+        200, content=body, headers=headers, request=httpx.Request("GET", url)
+    )
+
+
+def _fetch(monkeypatch, response, dest):
+    monkeypatch.setattr(
+        "tesserae.ingest.fetch._http_get",
+        lambda u, timeout=None, follow_redirects=True, headers=None: response,
+    )
+    monkeypatch.setattr("tesserae.ingest.fetch._html_to_markdown", lambda html: html)
+    return fetch_to_source("https://arxiv.org/pdf/2310.11511v1", dest)
+
+
+def test_fetch_refuses_a_declared_pdf(tmp_path, monkeypatch):
+    url = "https://arxiv.org/pdf/2310.11511v1"
+    response = _httpx_response(url, _PDF_BYTES, {"content-type": "application/pdf"})
+
+    with pytest.raises(Exception) as exc:
+        _fetch(monkeypatch, response, tmp_path)
+
+    assert "application/pdf" in str(exc.value)
+    assert not list(tmp_path.glob("*.md"))
+
+
+def test_fetch_refuses_binary_when_the_server_sends_no_content_type(
+    tmp_path, monkeypatch
+):
+    """Declared-type alone leaves the hole open: omit the header and the same
+    mojibake .md gets written, hashed over the decoded string, and compiled."""
+    url = "https://arxiv.org/pdf/2310.11511v1"
+    response = _httpx_response(
+        url, _PDF_BYTES, {"content-length": str(len(_PDF_BYTES))}
+    )
+
+    with pytest.raises(Exception):
+        _fetch(monkeypatch, response, tmp_path)
+
+    assert not list(tmp_path.glob("*.md"))
+
+
+def test_fetch_refuses_binary_when_the_content_type_is_wrong(tmp_path, monkeypatch):
+    """A server that mislabels a PDF as text/plain must not get a free pass:
+    the bytes decide, not the label."""
+    url = "https://arxiv.org/pdf/2310.11511v1"
+    response = _httpx_response(url, _PDF_BYTES, {"content-type": "text/plain"})
+
+    with pytest.raises(Exception):
+        _fetch(monkeypatch, response, tmp_path)
+
+    assert not list(tmp_path.glob("*.md"))
+
+
+def test_fetch_still_accepts_real_text_without_a_content_type(tmp_path, monkeypatch):
+    """Refusing every missing content-type would break plain-text sources that
+    are perfectly readable. Sniff the bytes; do not punish a missing label."""
+    url = "https://example.com/notes"
+    body = "# Retrieval\n\nReinforcement learning from human feedback.\n".encode("utf-8")
+    response = _httpx_response(url, body, {"content-length": str(len(body))})
+
+    path = _fetch(monkeypatch, response, tmp_path)
+
+    assert path.exists()
+    assert "Reinforcement learning" in path.read_text(encoding="utf-8")
+
+
+def test_fetch_accepts_utf8_text_with_multibyte_characters(tmp_path, monkeypatch):
+    """A binary sniff that keys on "non-ASCII" would reject every non-English
+    source. Only real binary signatures and embedded NULs count."""
+    url = "https://example.com/ko"
+    body = "# 검색 증강\n\n한국어 본문입니다.\n".encode("utf-8")
+    response = _httpx_response(url, body, {"content-type": "text/markdown"})
+
+    path = _fetch(monkeypatch, response, tmp_path)
+
+    assert "한국어" in path.read_text(encoding="utf-8")
