@@ -62,3 +62,55 @@ def test_domains_status_says_so_when_there_is_no_charter(tmp_path: Path, capsys)
 
     assert rc == 0
     assert "no charter" in out.lower()
+
+
+def test_domains_status_tolerates_a_cycle_in_child_slugs(tmp_path: Path, capsys):
+    """A cyclic charter.json must not hang or blow the recursion limit.
+
+    charter.json is a plain file on disk, editable by a person or a bad
+    hand-merge — build_charter/succeed only guarantee a tree for what THEY
+    write, not for what a caller later reads. This feature has already
+    shipped two other unbounded-recursion defects during review (split()'s
+    dense-clique stall, and succeed()'s slug-collision guard); a renderer
+    that walks child_slugs with no cycle check would be a third instance of
+    the identical failure class, just triggered by user-editable JSON
+    instead of the graph. The guard tracks slugs already seen on the current
+    path and stops descending into one a second time.
+    """
+    from tesserae.cli import main
+
+    (tmp_path / ".tesserae").mkdir(parents=True)
+    # Hand-built rather than produced by build_charter/succeed: those always
+    # emit a tree, so a cycle can only arise here, standing in for a
+    # corrupted or hand-edited charter.json.
+    domain_template = {
+        "tier": 1,
+        "own_altitude": "division",
+        "anchor_id": "",
+        "direct_member_ids": [],
+        "member_count": 1,
+        "reorg_seq": 0,
+        "status": "live",
+        "transition": "founded",
+        "unsplittable": False,
+    }
+    charter = {
+        "version": 1,
+        "reorg_seq": 0,
+        "domains": {
+            "a": {**domain_template, "parent_slug": None, "child_slugs": ["b"]},
+            "b": {**domain_template, "tier": 2, "own_altitude": "team",
+                  "parent_slug": "a", "child_slugs": ["a"]},
+        },
+        "member_index": {},
+    }
+    write_charter(tmp_path, charter)
+
+    rc = main(["domains", "status", "--project", str(tmp_path)])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    # Pins the guard's actual behaviour (each slug rendered exactly once),
+    # not merely "the process didn't hang".
+    assert out.count("a  (division, 1 members)") == 1
+    assert out.count("b  (team, 1 members)") == 1
