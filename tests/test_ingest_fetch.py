@@ -156,12 +156,35 @@ def _httpx_response(url, body, headers):
     )
 
 
-def _fetch(monkeypatch, response, dest, url="https://arxiv.org/pdf/2310.11511v1"):
+def _fetch(
+    monkeypatch,
+    response,
+    dest,
+    url="https://arxiv.org/pdf/2310.11511v1",
+    real_markdown=False,
+):
+    """Drive ``fetch_to_source`` against a stubbed response.
+
+    ``_html_to_markdown`` is stubbed to IDENTITY by default, which is fine for
+    every test that only cares what was fetched. It is emphatically NOT fine for
+    a test about what the conversion produces: identity means ``body is raw``,
+    so any assertion that depends on HTML becoming markdown is unreachable, and
+    a guard on the converted body reads exactly like a guard on the raw one.
+
+    Pass ``real_markdown=True`` to run the actual converter. It is a real
+    dependency of the html path, it is installed, and it is the only way a test
+    can tell the two guards apart.
+    """
     monkeypatch.setattr(
         "tesserae.ingest.fetch._http_get",
         lambda u, timeout=None, follow_redirects=True, headers=None: response,
     )
-    monkeypatch.setattr("tesserae.ingest.fetch._html_to_markdown", lambda html: html)
+    if real_markdown:
+        from markdownify import markdownify as _md
+
+        monkeypatch.setattr("tesserae.ingest.fetch._html_to_markdown", lambda html: _md(html))
+    else:
+        monkeypatch.setattr("tesserae.ingest.fetch._html_to_markdown", lambda html: html)
     return fetch_to_source(url, dest)
 
 
@@ -277,20 +300,61 @@ def test_fetch_still_refuses_real_bmp_and_riff_bodies(tmp_path, monkeypatch, bod
     assert not list(tmp_path.glob("*.md"))
 
 
-@pytest.mark.parametrize("body", [b"", b"   \n\t\r\n  "], ids=["empty", "whitespace"])
-def test_fetch_refuses_a_200_with_an_empty_body(tmp_path, monkeypatch, body):
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"",
+        b"   \n\t\r\n  ",
+        # The case the error text names FIRST, and the one a raw-body guard
+        # cannot see: a JS-rendered page is never an empty response. It is a
+        # complete HTML document whose entire content is a mount point and a
+        # script tag, and it converts to "\n\n". Guarding ``raw`` passed both
+        # cases above while writing this one, which is advertised coverage the
+        # guard did not have.
+        b'<html><head></head><body><div id="root"></div>'
+        b'<script src="/static/app.js"></script></body></html>',
+        b'<html><body><style>.p{display:none}</style>'
+        b"<script>paywall.init()</script></body></html>",
+        b"<html><body><!-- nothing rendered --></body></html>",
+    ],
+    ids=["empty", "whitespace", "js-mount-point", "paywall-script", "html-comment"],
+)
+def test_fetch_refuses_a_200_with_no_readable_text(tmp_path, monkeypatch, body):
     """A paywall, a JS-only page or a soft failure answers 200 with nothing.
 
     Writing that produced a source file carrying only frontmatter and the
     sha256 of the empty string — it compiles, reads as nothing, and reports
     success: the same silent-success shape this branch removed for PDFs.
+
+    The last three cases are why the guard reads the CONVERTED body rather than
+    the raw response: all three carry plenty of raw bytes and no readable text.
     """
     url = "https://paywalled.example.com/article/42"
     response = _httpx_response(url, body, {"content-type": "text/html"})
 
     with pytest.raises(UnsupportedSourceError) as exc:
-        _fetch(monkeypatch, response, tmp_path, url=url)
+        _fetch(monkeypatch, response, tmp_path, url=url, real_markdown=True)
 
-    assert "empty" in str(exc.value).lower()
+    assert "no readable text" in str(exc.value).lower()
     assert url in str(exc.value)
     assert not list(tmp_path.glob("*.md"))
+
+
+def test_fetch_still_writes_a_page_that_has_real_text(tmp_path, monkeypatch):
+    """The anti-over-correction pin for the guard above.
+
+    Run with the SAME real converter, so this test and the refusal cases differ
+    only in the body. Without it, "refuse when the converted body is empty" and
+    "refuse every html page" are indistinguishable.
+    """
+    url = "https://example.com/article/7"
+    response = _httpx_response(
+        url,
+        b"<html><body><h1>Splatting</h1><p>Real prose survives.</p></body></html>",
+        {"content-type": "text/html"},
+    )
+
+    path = _fetch(monkeypatch, response, tmp_path, url=url, real_markdown=True)
+
+    assert path.exists()
+    assert "Real prose survives." in path.read_text(encoding="utf-8")

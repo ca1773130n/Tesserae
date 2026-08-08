@@ -229,24 +229,32 @@ def fetch_to_source(url: str, dest_dir: Path, *, title: Optional[str] = None) ->
         )
 
     raw = response.text
-    # A 200 carrying nothing is a failure that answered politely: a paywall, a
-    # JS-only page, or a soft error. Writing it produced a source file holding
-    # frontmatter and the sha256 of the empty string
-    # (e3b0c442...), which compiles cleanly, reads as nothing, and reports
-    # success — the same silent-success shape the binary refusal above removed.
-    # Checked on the DECODED body so a whitespace-only one is caught too.
-    if not raw.strip():
-        raise UnsupportedSourceError(
-            "tesserae ingest cannot read this URL — it answered 200 with an "
-            "empty body (a paywall, a JS-rendered page, or a soft failure "
-            "all look like this):\n"
-            f"  - {url}: Open it in a browser, save the rendered text as "
-            "markdown, then `tesserae ingest <file>.md`."
-        )
     if "html" in content_type:
         body = _html_to_markdown(raw)
     else:
         body = raw
+
+    # A 200 carrying nothing is a failure that answered politely: a paywall, a
+    # JS-only page, or a soft error. Writing it produced a source file holding
+    # frontmatter and the sha256 of the empty string (e3b0c442...), which
+    # compiles cleanly, reads as nothing, and reports success — the same
+    # silent-success shape the binary refusal above removed.
+    #
+    # Checked on ``body``, AFTER the html->markdown conversion, not on ``raw``.
+    # Checking raw catches only a literally empty response, and the case this
+    # error text names first — a JS-rendered page — is never that: it is a full
+    # HTML document whose every element is a <div id="root"> and a <script>,
+    # which converts to "\n\n". Guarding raw while promising to catch that
+    # advertised coverage the guard did not have, which is the same defect this
+    # branch exists to remove, one layer up.
+    if not body.strip():
+        raise UnsupportedSourceError(
+            "tesserae ingest cannot read this URL — it answered 200 but has no "
+            "readable text (a paywall, a JS-rendered page, or a soft failure "
+            "all look like this):\n"
+            f"  - {url}: Open it in a browser, save the rendered text as "
+            "markdown, then `tesserae ingest <file>.md`."
+        )
 
     sha = hashlib.sha256(raw.encode("utf-8")).hexdigest()
     meta = {
