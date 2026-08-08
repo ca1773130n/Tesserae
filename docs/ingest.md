@@ -151,3 +151,17 @@ just like a local one. (Adds dedupe by resolved location, so the absolute and
 - `tesserae ingest <x>` adds one source incrementally.
 - `tesserae code ingest` mints a code graph from Python source (a different command), for
   projects that opt into the code layer with an `external_tools` entry for `codegraph`.
+
+### Enabling the code layer
+
+Source code is **opt-in**. Add an `external_tools` entry to `.tesserae/config.json`:
+
+```json
+{
+  "external_tools": [{"id": "codegraph"}]
+}
+```
+
+With no such entry there is no code layer: compile extracts none, the sync-code hooks stay quiet, and `code-graph.json` is removed if an earlier compile left one. Project kind does not enable it — a `Repository` project with no entry compiles no code.
+
+Set `"enabled": false` to turn it off again. Consider CodeGraph itself for code intelligence; Tesserae's own focus is documents and session transcripts.

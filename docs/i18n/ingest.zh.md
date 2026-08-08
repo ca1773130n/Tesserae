@@ -113,3 +113,17 @@ Tesserae 是一个 LLM wiki，因此 `compile` **默认构建概念/断言层**�
 - `tesserae compile`（无参数）重新提取整个受跟踪语料。
 - `tesserae ingest <x>` 增量添加一个来源。
 - `tesserae code ingest` 从 Python 源码生成代码图（一个不同的命令）。适用于通过 `codegraph` 的 `external_tools` 条目启用代码层的项目。
+
+### 启用代码层
+
+源码是**需显式启用**的。在 `.tesserae/config.json` 中添加一条 `external_tools` 条目：
+
+```json
+{
+  "external_tools": [{"id": "codegraph"}]
+}
+```
+
+没有该条目就没有代码层：编译不提取任何代码，sync-code 钩子保持静默，先前编译遗留的 `code-graph.json` 会被删除。项目类型不会启用它——没有条目的 `Repository` 项目不会编译任何代码。
+
+设置 `"enabled": false` 可再次关闭。代码智能可考虑使用 CodeGraph 本身；Tesserae 专注于文档与会话记录。

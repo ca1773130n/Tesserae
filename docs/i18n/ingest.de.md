@@ -152,3 +152,17 @@ kompiliert wie eine lokale. (Adds dedupen nach aufgelöster Location, sodass die
 - `tesserae ingest <x>` fügt eine Quelle inkrementell hinzu.
 - `tesserae code ingest` prägt einen Code-Graph aus Python-Quellen (ein anderer Befehl) —
   für Projekte, die die Code-Ebene per `external_tools`-Eintrag für `codegraph` aktivieren.
+
+### Die Code-Ebene aktivieren
+
+Quellcode ist **opt-in**. Ergänze einen `external_tools`-Eintrag in `.tesserae/config.json`:
+
+```json
+{
+  "external_tools": [{"id": "codegraph"}]
+}
+```
+
+Ohne diesen Eintrag gibt es keine Code-Ebene: Der Compile extrahiert nichts, die sync-code-Hooks bleiben still, und `code-graph.json` wird entfernt, falls ein früherer Compile eine Datei hinterlassen hat. Die Projektart aktiviert sie nicht — ein `Repository`-Projekt ohne Eintrag kompiliert keinen Code.
+
+Mit `"enabled": false` wieder abschalten. Für Code-Intelligenz bietet sich CodeGraph selbst an; Tesserae konzentriert sich auf Dokumente und Session-Transkripte.

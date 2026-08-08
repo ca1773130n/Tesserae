@@ -152,3 +152,17 @@ relativa con `../` del mismo directorio nunca cuentan doble.)
 - `tesserae ingest <x>` añade una fuente incrementalmente.
 - `tesserae code ingest` acuña un grafo de código desde fuente Python (un comando distinto),
   para proyectos que activan la capa de código con una entrada `external_tools` para `codegraph`.
+
+### Activar la capa de código
+
+El código fuente es **opcional**. Añade una entrada `external_tools` a `.tesserae/config.json`:
+
+```json
+{
+  "external_tools": [{"id": "codegraph"}]
+}
+```
+
+Sin esa entrada no hay capa de código: la compilación no extrae nada, los hooks de sync-code permanecen en silencio y `code-graph.json` se elimina si una compilación anterior dejó uno. El tipo de proyecto no la activa: un proyecto `Repository` sin entrada no compila código.
+
+Usa `"enabled": false` para desactivarla. Considera CodeGraph para inteligencia de código; Tesserae se centra en documentos y transcripciones de sesión.
