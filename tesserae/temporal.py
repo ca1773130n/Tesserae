@@ -12,7 +12,7 @@ import json
 import os
 import re
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -71,6 +71,28 @@ _TS_METADATA_KEYS: Tuple[str, ...] = (
 
 _LEADING_DATE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
 
+# LAST rung: a date the ingest path already spells out. Research corpora land
+# in dated directories (``data/research/daily/2026-04-06/papers/…``), and
+# ``extract_source_metadata`` already reads exactly this segment — but only for
+# the SourceDocument, never for the Claims, EvidenceSpans and Concepts minted
+# from the same file. Those nodes carry NO timestamp metadata of their own, and
+# on this corpus they are the graph: reading the date off their own
+# ``source_path`` lifts node-level ladder coverage 7.6% -> 83.7% and, because
+# ``_fact_from_edge`` dates an edge from EITHER endpoint, edge coverage
+# 26.6% -> 89.2% (measured over the compiled graph, 46,924 nodes / 103,705 edges).
+#
+# SEMANTICS: this is the day Tesserae OBSERVED the document, not the day the
+# underlying paper was published — the Graphiti valid-time reading, and the one
+# ``first_seen_at`` already means everywhere else here. Never read it as a
+# publication date.
+#
+# It is the last rung ON PURPOSE: a directory date is coarser than anything
+# above it, so it may only fill a gap, never shadow one. And it is pure bytes —
+# the path string is already inside graph.json, so no file, no git history and
+# no clock is consulted, which is what keeps it byte-idempotent and portable to
+# a fresh clone.
+_PATH_DATE = re.compile(r"[/\\](\d{4}-\d{2}-\d{2})")
+
 
 def _parse_iso(value: object) -> Optional[datetime]:
     """Parse an ISO-8601 date/datetime into an aware UTC datetime, else None.
@@ -93,6 +115,10 @@ def _parse_iso(value: object) -> Optional[datetime]:
 def _source_ts(node: Optional[ResearchNode]) -> Optional[str]:
     """First source-derived timestamp on ``node``, VERBATIM.
 
+    The ladder, most specific first: :data:`_TS_METADATA_KEYS`, then a leading
+    date in the node's own name, then a dated segment of its ``source_path``
+    (:func:`_source_path_date`).
+
     Returns the raw string exactly as stored so the artifact never
     normalises a source format (a normalisation would drift between a
     date-only and a datetime-precision source). Parsing happens only in
@@ -108,7 +134,30 @@ def _source_ts(node: Optional[ResearchNode]) -> Optional[str]:
     match = _LEADING_DATE.match(getattr(node, "name", "") or "")
     if match:
         return match.group(1)
-    return None
+    return _source_path_date(getattr(node, "source_path", None))
+
+
+def _source_path_date(source_path: object) -> Optional[str]:
+    """``YYYY-MM-DD`` named by a path segment of ``source_path``, else None.
+
+    The DEEPEST match wins: a path may pass through an unrelated dated
+    directory (``/archive/2019-01-01-backup/…``) on the way to the segment
+    that actually dates the document, and the one nearest the file is the
+    observation. Candidates are validated as real calendar dates so a segment
+    that merely looks like one (``2026-13-45``, a version or an id) can never
+    enter the ladder as an unorderable string.
+    """
+    if not isinstance(source_path, str) or not source_path.strip():
+        return None
+    found: Optional[str] = None
+    for match in _PATH_DATE.finditer(source_path):
+        candidate = match.group(1)
+        try:
+            date.fromisoformat(candidate)
+        except ValueError:
+            continue
+        found = candidate
+    return found
 
 
 def _latest_ts(candidates: Iterable[Optional[str]]) -> Optional[str]:

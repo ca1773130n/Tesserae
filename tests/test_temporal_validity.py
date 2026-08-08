@@ -93,6 +93,101 @@ def test_valid_from_is_max_over_both_endpoints():
     assert _fact(facts, "discussed_in").valid_from == "2026-05-09"
 
 
+# ------------------------------------------------- valid_from via source_path
+#
+# Claim / EvidenceSpan nodes carry NO timestamp metadata of their own — they
+# are minted from a document and inherit only its ``source_path``. On a corpus
+# ingested into dated directories (``.../daily/2026-04-06/...``) that path
+# already names the day the document was observed, in bytes already stored in
+# graph.json. These tests pin that as the LAST rung of the ladder: it may only
+# fill a gap, never shadow a rung above it.
+
+
+def _span(node_id, name, source_path, **metadata):
+    return ResearchNode(
+        id=node_id,
+        name=name,
+        type=ResearchNodeType.EVIDENCE_SPAN,
+        description=f"description of {name}",
+        source_path=source_path,
+        metadata=dict(metadata),
+    )
+
+
+def test_valid_from_falls_back_to_the_dated_ingest_path():
+    """A Claim/EvidenceSpan with no metadata is dated by its own source_path."""
+    span = _span(
+        "EvidenceSpan:a",
+        "some evidence",
+        "/repo/data/research/daily/2026-04-06/papers/2510.24907/paper.md",
+    )
+    claim = ResearchNode(
+        id="Claim:a",
+        name="a claim",
+        type=ResearchNodeType.CLAIM,
+        source_path="/repo/data/research/daily/2026-04-06/papers/2510.24907/paper.md",
+    )
+    graph = ResearchGraph(
+        nodes=[claim, span],
+        edges=[ResearchEdge(source=claim.id, target=span.id, type="evidenced_by")],
+    )
+
+    facts = TemporalFactProjector().project(graph)
+
+    assert _fact(facts, "evidenced_by").valid_from == "2026-04-06"
+
+
+def test_dated_source_path_never_shadows_a_metadata_rung():
+    """The path rung is LAST — an explicit metadata timestamp still wins."""
+    span = _span(
+        "EvidenceSpan:a",
+        "some evidence",
+        "/repo/data/research/daily/2026-04-06/p.md",
+        analysis_date="2026-01-15",
+    )
+    doc = _doc()
+    graph = ResearchGraph(
+        nodes=[span, doc],
+        edges=[ResearchEdge(source=span.id, target=doc.id, type="derived_from")],
+    )
+
+    facts = TemporalFactProjector().project(graph)
+
+    assert _fact(facts, "derived_from").valid_from == "2026-01-15"
+
+
+def test_impossible_date_in_source_path_is_not_a_timestamp():
+    """A segment that only LOOKS like a date must not poison the ladder."""
+    span = _span("EvidenceSpan:a", "some evidence", "/repo/runs/2026-13-45/p.md")
+    doc = _doc()
+    graph = ResearchGraph(
+        nodes=[span, doc],
+        edges=[ResearchEdge(source=span.id, target=doc.id, type="derived_from")],
+    )
+
+    facts = TemporalFactProjector().project(graph)
+
+    assert _fact(facts, "derived_from").valid_from == "undated"
+
+
+def test_deepest_dated_path_segment_wins():
+    """With several dated segments the one nearest the file is the observation."""
+    span = _span(
+        "EvidenceSpan:a",
+        "some evidence",
+        "/archive/2019-01-01-backup/data/daily/2026-04-06/p.md",
+    )
+    doc = _doc()
+    graph = ResearchGraph(
+        nodes=[span, doc],
+        edges=[ResearchEdge(source=span.id, target=doc.id, type="derived_from")],
+    )
+
+    facts = TemporalFactProjector().project(graph)
+
+    assert _fact(facts, "derived_from").valid_from == "2026-04-06"
+
+
 # ----------------------------------------------------------------- valid_to
 
 

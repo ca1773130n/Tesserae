@@ -969,10 +969,13 @@ class WikiLinter:
                 f"valid_to_basis: {histogram}."
             ),
             suggested_fix=(
-                "Undated facts come from endpoints carrying none of "
-                "temporal._TS_METADATA_KEYS (first_seen_at, analysis_date, "
-                "ended_at, started_at, updated_at, created). Stamp one at "
-                "extraction time on the node types that dominate the count."
+                "Undated facts come from endpoints where the whole "
+                "temporal._source_ts ladder misses: none of "
+                "_TS_METADATA_KEYS (first_seen_at, analysis_date, ended_at, "
+                "started_at, updated_at, created), no leading date in the "
+                "node name, and no dated segment in its source_path. Stamp "
+                "one at extraction time on the node types that dominate the "
+                "count, or ingest their sources under a dated path."
             ),
         )
 
