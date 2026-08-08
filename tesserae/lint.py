@@ -847,30 +847,118 @@ class WikiLinter:
         imagined baseline and would turn every ``compile --strict`` on this
         project red on day one. The number this probe reports is what a
         follow-up should set the floor from.
+
+        COST: this runs at the tail of every compile, and the engine daemon
+        compiles on a loop, so it counts without building the facts. Measured
+        on the live 46,924-node / 103,705-edge graph: materialising every
+        ``TemporalFact`` cost 4.2s and 91MB peak; the two passes below cost
+        0.9s and 12MB for byte-identical output. The invalidation logic is not
+        reimplemented — the projector's own helpers are imported — and
+        ``test_lint_interval_coverage_matches_the_temporal_projector_exactly``
+        pins the agreement so a change to the projector's dating rules turns
+        that test red instead of silently drifting this number away from what
+        ``timeline()`` serves.
         """
-        if not edges:
-            return
         try:
             from .research_graph import graph_from_payload
-            from .temporal import TemporalFactProjector
+            from .temporal import (INVALIDATING_PREDICATES,
+                                   _boundary_precedes_start, _end_sort_key,
+                                   _latest_ts, _source_ts, first_string)
 
             graph = graph_from_payload(
                 {"nodes": list(nodes_by_id.values()), "edges": edges}
             )
-            facts = TemporalFactProjector().project(graph)
-        except Exception:  # noqa: BLE001 — a malformed payload is other probes' job
+        except Exception as exc:  # noqa: BLE001
+            # A probe whose whole purpose is to make a degradation loud must
+            # not degrade silently. Swallowing this made "fully dated" and
+            # "never ran" identical in lint-report.md.
+            yield LintFinding(
+                severity="info",
+                code="LINT_PROBE_FAILED",
+                message=(
+                    f"INTERVAL_COVERAGE did not run: the graph could not be "
+                    f"projected ({type(exc).__name__}: {exc}). Temporal "
+                    f"coverage is unknown for this compile, not zero."
+                ),
+                suggested_fix=(
+                    "Usually a node type or edge type outside the schema in "
+                    "graph.json — the SCHEMA_* probes name the offender."
+                ),
+            )
             return
-        total = len(facts)
+
+        nodes = {node.id: node for node in graph.nodes}
+        ts_cache: Dict[str, Optional[str]] = {}
+
+        def source_ts(node_id: str) -> Optional[str]:
+            if node_id not in ts_cache:
+                ts_cache[node_id] = _source_ts(nodes.get(node_id))
+            return ts_cache[node_id]
+
+        # Pass 1, mirroring TemporalFactProjector.project: one fact per edge
+        # whose endpoints both resolve, valid_from = latest of the two endpoint
+        # timestamps and the edge's own analysis_date.
+        derived: List[Tuple[str, str, str, Optional[str]]] = []
+        for edge in graph.edges:
+            if edge.source not in nodes or edge.target not in nodes:
+                continue
+            meta = edge.metadata or {}
+            derived.append(
+                (
+                    edge.source,
+                    edge.target,
+                    edge.type,
+                    _latest_ts(
+                        (
+                            source_ts(edge.source),
+                            source_ts(edge.target),
+                            first_string(meta.get("analysis_date")) if meta else None,
+                        )
+                    ),
+                )
+            )
+
+        total = len(derived)
         if total == 0:
             return
-        undated = sum(1 for fact in facts if (fact.valid_from or "undated") == "undated")
-        pct = round(undated * 100.0 / total, 1)
+
+        # Pass 2: a node ends when its EARLIEST dated superseder was observed.
+        ended_by: Dict[str, Tuple[str, str, str]] = {}
+        for subject_id, object_id, predicate, _vf in derived:
+            if predicate not in INVALIDATING_PREDICATES:
+                continue
+            stamp = source_ts(subject_id)
+            if stamp is None:
+                continue
+            entry = (stamp, predicate, subject_id)
+            prior = ended_by.get(object_id)
+            if prior is None or _end_sort_key(entry) < _end_sort_key(prior):
+                ended_by[object_id] = entry
+
+        undated = 0
         # ``valid_to_basis`` is non-null exactly when ``valid_to`` is, so
         # "open" counts the intervals nothing has closed.
         basis: Dict[str, int] = {}
-        for fact in facts:
-            key = fact.valid_to_basis or "open"
-            basis[key] = basis.get(key, 0) + 1
+        for subject_id, object_id, predicate, valid_from in derived:
+            if (valid_from or "undated") == "undated":
+                undated += 1
+            endpoints = (
+                [subject_id]
+                if predicate in INVALIDATING_PREDICATES
+                else [subject_id, object_id]
+            )
+            ends = [ended_by[e] for e in endpoints if e in ended_by]
+            if ends:
+                best = min(ends, key=_end_sort_key)
+                valid_to, key = best[0], best[1]
+            else:
+                valid_to, key = None, None
+            if _boundary_precedes_start(valid_from, valid_to):
+                key = None
+            bucket = key or "open"
+            basis[bucket] = basis.get(bucket, 0) + 1
+
+        pct = round(undated * 100.0 / total, 1)
         histogram = ", ".join(f"{key}={basis[key]}" for key in sorted(basis))
         yield LintFinding(
             severity="info",

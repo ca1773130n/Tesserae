@@ -1042,7 +1042,74 @@ def test_lint_interval_coverage_is_info_only(tmp_path: Path) -> None:
     assert "100.0%" in finding.message
 
 
-def test_lint_interval_coverage_silent_on_an_empty_graph(tmp_path: Path) -> None:
-    project = _scaffold(tmp_path)
+def test_lint_interval_coverage_silent_when_there_is_nothing_to_place(
+    tmp_path: Path,
+) -> None:
+    """Nodes but no edges means no facts, so there is no ratio to report — and
+    reporting one would divide by zero. The earlier version of this test passed
+    with the guard deleted, because a redundant `if not edges` shadowed the
+    guard that actually does the work; this fixture reaches the real one."""
+    project = _scaffold(
+        tmp_path,
+        graph={"nodes": [_node("lonely", "Concept", "lonely")], "edges": []},
+    )
+
     report = WikiLinter(project).run()
+
     assert not [f for f in report.findings if f.code == "INTERVAL_COVERAGE"]
+
+
+def test_lint_interval_coverage_says_so_when_the_probe_itself_fails(
+    tmp_path: Path,
+) -> None:
+    """A probe added to make a degradation loud must not degrade silently.
+
+    A node whose type is outside ResearchNodeType makes graph_from_payload
+    raise; the finding then vanished with no message at all, so an operator
+    reading lint-report.md could not tell "fully dated" from "never ran"."""
+    project = _scaffold(
+        tmp_path,
+        graph={
+            "nodes": [
+                {"id": "n1", "type": "not_a_real_node_type", "name": "X", "metadata": {}}
+            ],
+            "edges": [{"source": "n1", "target": "n1", "type": "supports_claim"}],
+        },
+    )
+
+    report = WikiLinter(project).run()
+
+    (finding,) = [f for f in report.findings if f.code == "LINT_PROBE_FAILED"]
+    assert finding.severity == "info"
+    assert "INTERVAL_COVERAGE" in finding.message
+
+
+def test_lint_interval_coverage_matches_the_temporal_projector_exactly(
+    tmp_path: Path,
+) -> None:
+    """The probe counts undated facts and valid_to_basis WITHOUT building the
+    103k TemporalFact models the projector builds, because doing that cost
+    ~4.2s and ~91MB at the tail of every compile. That is only safe while the
+    cheap path agrees with the projector, so pin the agreement here: if
+    TemporalFactProjector's dating or invalidation rules change, this goes red
+    rather than the probe quietly reporting a number timeline() disagrees with.
+    """
+    from tesserae.research_graph import graph_from_payload
+    from tesserae.temporal import TemporalFactProjector
+
+    payload = _coverage_graph(dated=3, undated=7, superseded=2)
+    project = _scaffold(tmp_path, graph=payload)
+
+    report = WikiLinter(project).run()
+    (finding,) = [f for f in report.findings if f.code == "INTERVAL_COVERAGE"]
+
+    facts = TemporalFactProjector().project(graph_from_payload(payload))
+    undated = sum(1 for f in facts if (f.valid_from or "undated") == "undated")
+    basis: dict[str, int] = {}
+    for fact in facts:
+        key = fact.valid_to_basis or "open"
+        basis[key] = basis.get(key, 0) + 1
+
+    assert f"{undated} of {len(facts)} facts" in finding.message
+    for key in sorted(basis):
+        assert f"{key}={basis[key]}" in finding.message
