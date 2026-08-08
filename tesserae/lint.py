@@ -863,7 +863,8 @@ class WikiLinter:
             from .research_graph import graph_from_payload
             from .temporal import (INVALIDATING_PREDICATES,
                                    _boundary_precedes_start, _end_sort_key,
-                                   _latest_ts, _source_ts, first_string)
+                                   _latest_ts, _source_ts, first_string,
+                                   graph_project_roots)
 
             graph = graph_from_payload(
                 {"nodes": list(nodes_by_id.values()), "edges": edges}
@@ -888,11 +889,15 @@ class WikiLinter:
             return
 
         nodes = {node.id: node for node in graph.nodes}
+        # Same graph-derived roots the projector uses to bound its source_path
+        # rung — this probe must mirror it exactly or the number it reports is
+        # not the one ``timeline()`` serves.
+        roots = graph_project_roots(graph)
         ts_cache: Dict[str, Optional[str]] = {}
 
         def source_ts(node_id: str) -> Optional[str]:
             if node_id not in ts_cache:
-                ts_cache[node_id] = _source_ts(nodes.get(node_id))
+                ts_cache[node_id] = _source_ts(nodes.get(node_id), roots)
             return ts_cache[node_id]
 
         # Pass 1, mirroring TemporalFactProjector.project: one fact per edge
@@ -969,10 +974,17 @@ class WikiLinter:
                 f"valid_to_basis: {histogram}."
             ),
             suggested_fix=(
-                "Undated facts come from endpoints carrying none of "
-                "temporal._TS_METADATA_KEYS (first_seen_at, analysis_date, "
-                "ended_at, started_at, updated_at, created). Stamp one at "
-                "extraction time on the node types that dominate the count."
+                "Undated facts come from endpoints where the whole "
+                "temporal._source_ts ladder misses: none of "
+                "_TS_METADATA_KEYS (first_seen_at, analysis_date, ended_at, "
+                "started_at, updated_at, created), no leading date in the "
+                "node name, and no whole dated DIRECTORY segment in the "
+                "project-root-relative part of its source_path. Stamp one at "
+                "extraction time on the node types that dominate the count, "
+                "or ingest their sources under a dated directory inside the "
+                "project. A path outside every root a Session node declares "
+                "is undated by design — it is not this project's ingest "
+                "layout, so no segment of it names its observation day."
             ),
         )
 

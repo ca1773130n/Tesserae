@@ -12,7 +12,7 @@ import json
 import os
 import re
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -41,10 +41,10 @@ CLAIM_TYPES = {
 # _deterministic_verdict), no LLM. Ceiling: a token-overlap heuristic decides
 # when a fact stopped being true. Upgrade path, in order: (1) the already-wired
 # LLM verdict path in the same pass, (2) the embedding candidates
-# supersede.py deliberately deferred, (3) turn-level granularity — ``turn_ids``
-# are already on finding metadata, so ``first_seen_at`` (= session.started_at,
-# shared by every finding in one long-running session) can be sharpened without
-# a schema change.
+# supersede.py deliberately deferred. Item (3), turn-level granularity, is DONE:
+# ``session_graph._finding_first_seen_at`` dates a finding from its own turns'
+# timestamps, so findings in one long-running session no longer share a
+# boundary.
 INVALIDATING_PREDICATES = {"contradicts_claim", "supersedes", "invalidates"}
 
 # Timestamp ladder for ``valid_from`` — most-specific observation first.
@@ -60,6 +60,31 @@ INVALIDATING_PREDICATES = {"contradicts_claim", "supersedes", "invalidates"}
 # wall-clock leak that broke byte-idempotence four times in this repo. The
 # ladder is the read direction of the same boundary _fact_from_edge already
 # guards in the write direction.
+#
+# Rungs MEASURED and rejected, so nobody re-proposes them:
+#
+# * front-matter ``fetched_at`` (ingest/fetch.py writes it) — 0 of 2,524 corpus
+#   files carry it, and ``extract_source_metadata``'s allowlist would rename it
+#   anyway. The rung reaches nothing.
+# * git commit date of ``source_path`` — ``data/`` is gitignored and holds
+#   80.4% of the dated population, so it reaches 14.4% of nodes and is MORE
+#   clone-fragile than the path rung it would sit beside, which is the exact
+#   constraint that motivated proposing it. A shallow clone breaks it too.
+# * bare ``date`` metadata — present on 1,337 nodes but LLM-transcribed from
+#   prose, not parsed by anything deterministic: of 400 sampled, 22 disagree
+#   with their own file, 148 have no such date in the file at all, and one is
+#   the literal string "April 25". Promoting it would make valid_from a
+#   function of model output and break the source-derived invariant above.
+# * ``last_accessed_at`` — see the paragraph above; never.
+#
+# Propagating a timestamp ALONG edges (Claim <- evidenced_by <- EvidenceSpan
+# <- contains <- SourceDocument) was also designed and dropped as unnecessary,
+# not deferred: every Claim and EvidenceSpan already names its producing file
+# in the top-level ``source_path`` FIELD (21,723 of 21,723), which the path
+# rung below reads directly. Edge propagation caps at 29.8% because 70.2% of
+# those nodes have no document parent under any provenance predicate, and it
+# would drag in a topological order, a cycle rule (``supersedes`` alone adds
+# 3,194 node-to-node edges) and a multi-parent tie-break to get there.
 _TS_METADATA_KEYS: Tuple[str, ...] = (
     "first_seen_at",
     "analysis_date",
@@ -70,6 +95,131 @@ _TS_METADATA_KEYS: Tuple[str, ...] = (
 )
 
 _LEADING_DATE = re.compile(r"^(\d{4}-\d{2}-\d{2})")
+
+# LAST rung: a date the ingest path already spells out. Research corpora land
+# in dated directories (``data/research/daily/2026-04-06/papers/…``), and
+# ``extract_source_metadata`` already reads exactly this segment — but only for
+# the SourceDocument, never for the Claims, EvidenceSpans and Concepts minted
+# from the same file. Those nodes carry NO timestamp metadata of their own, and
+# on this corpus they are the graph: reading the date off their own
+# ``source_path`` lifts node-level ladder coverage 7.6% -> 81.9% and, because
+# ``_fact_from_edge`` dates an edge from EITHER endpoint, edge coverage
+# 26.6% -> 88.1% (measured over the compiled graph, 46,924 nodes / 103,705 edges).
+#
+# SEMANTICS: this is the day Tesserae OBSERVED the document, not the day the
+# underlying paper was published — the Graphiti valid-time reading, and the one
+# ``first_seen_at`` already means everywhere else here. Never read it as a
+# publication date.
+#
+# It is the last rung ON PURPOSE: a directory date is coarser than anything
+# above it, so it may only fill a gap, never shadow one. And it is pure bytes —
+# the path string is already inside graph.json, so no file, no git history and
+# no clock is consulted, which is what keeps it byte-idempotent and portable to
+# a fresh clone.
+#
+# TWO BOUNDS, both load-bearing, both learned the hard way:
+#
+# 1. ROOT-RELATIVE ONLY. ``source_path`` is stored ABSOLUTE (45,350 of 46,924
+#    nodes), so scanning the whole string lets any dated ANCESTOR of the
+#    checkout date every node beneath it. ``~/.agents/OPERATIONS.md`` mandates
+#    ``~/.blackhole/<project>/<YYYY-MM-DD>/<slug>/`` for every agent worktree,
+#    so an unbounded scan makes a compile run from one stamp the entire graph
+#    with the worktree's creation date — a wall clock exactly one indirection
+#    removed, which is the leak class named above. Only the part of the path
+#    BELOW a project root the graph itself declares is scanned. A path under no
+#    declared root is UNDATED by this rung: a relativisation that fails means
+#    this project's ingest did not lay the path out, so no segment of it can be
+#    read as this project's observation day, and guessing from the absolute
+#    string is the defect itself.
+#
+# 2. A WHOLE DIRECTORY SEGMENT. ``docs/handoffs/2026-08-02-kg-growth.md`` is
+#    this repo's own document-naming convention — an AUTHORING date, not an
+#    ingest day — and it dated 854 live nodes. Requiring the date to be an
+#    entire segment excludes it, and gives the match the right boundary it
+#    lacked (``2026-04-25-extra/`` no longer reads as ``2026-04-25``). Cost of
+#    both bounds together on the live corpus: node coverage 83.7% -> 81.9%,
+#    fact coverage 89.2% -> 88.1%.
+#
+# READ-SIDE ON PURPOSE. The roadmap step behind this rung
+# (docs/superpowers/specs/2026-08-08-cognitive-memory-roadmap.md §3) asked for
+# ``metadata['first_seen_at']`` to be STAMPED at node construction. It is not,
+# and the spec now records why: stamping would write a value derived from a
+# directory name into graph.json for ~34,851 nodes, where a later correction to
+# the rule could not reach it, and would overload a key that today means "the
+# moment a session observed this" (written by session_graph / session_event,
+# read by activity_summary and agent_distill) with a second, coarser
+# provenance class. Consumers that need this day must CALL ``_source_ts`` —
+# including CHARTER's ``_domain_clock`` when it is written.
+#
+# ADDITIVE PER NODE, NOT PER FACT. The rung only fills a gap in the node
+# ladder, so no node whose date came from a higher rung changes. It is NOT
+# additive at fact level: ``_latest_ts`` takes the MAX over both endpoints, so
+# dating a previously-undated endpoint changes which endpoint wins for an edge
+# that already had a date. Measured on the live graph: of 103,705 facts, 63,780
+# gain a date they did not have, 1,426 have a real date REPLACED, and 38,499
+# are unchanged. Every one of the 1,426 moves LATER; none moves earlier. That
+# direction is what makes the replacement safe rather than lossy — under the
+# max rule a fact cannot predate either endpoint, so the old value was too
+# early precisely because one endpoint was unknown.
+_PATH_DATE = re.compile(r"(?:^|[/\\])(\d{4}-\d{2}-\d{2})(?=[/\\])")
+
+
+def graph_project_roots(graph: ResearchGraph) -> Tuple[str, ...]:
+    """Project roots declared by the graph's own Session nodes, sorted.
+
+    Derived from the graph rather than passed in, so every consumer of a
+    compiled ``graph.json`` — projector, linter, OKF bundle, MCP server —
+    resolves the same roots without an argument, an ``os.getcwd()`` or a
+    filesystem probe. A graph with no Session node declares no root, which
+    disables the path rung rather than falling back to the absolute path.
+    """
+    roots = {
+        str((node.metadata or {}).get("project_root") or "").rstrip("/")
+        for node in graph.nodes
+        if node.type == ResearchNodeType.SESSION
+    }
+    return tuple(sorted(r for r in roots if r))
+
+
+def relative_source_path(source_path: object, roots: Iterable[str]) -> Optional[str]:
+    """``source_path`` made project-root-relative, else ``None``.
+
+    Pure string work on bytes already in graph.json — no filesystem access, so
+    it cannot depend on what happens to exist on the machine reading the graph.
+    An already-relative path is returned as-is (it is relative to the root by
+    construction); an absolute path under no declared root returns ``None``.
+
+    Two callers depend on the same answer for different reasons: this module
+    refuses to date a path it cannot place, and :mod:`tesserae.okf` refuses to
+    emit one (§6.2 — a raw ``/Users/...`` would be read as bundle-relative and
+    leaks a home directory).
+
+    Roots are tried LONGEST FIRST, which matters only when one declared root
+    nests inside another — and matters completely then. Taking the outermost
+    match leaves the intervening directories in the "relative" path, so a
+    project checked out at ``<workspace>/.blackhole/proj/2026-08-09/slug/``
+    resolves against ``<workspace>`` and hands the date scanner a segment from
+    the checkout location. That is the whole defect this relativisation exists
+    to close, returned by the back door. A compiled graph carries one root
+    today (Session nodes are admitted only on exact resolved-path equality), so
+    this is unreachable now and cheap to keep closed for merged or federated
+    graphs later.
+    """
+    if not isinstance(source_path, str) or not source_path.strip():
+        return None
+    path = source_path.strip()
+    if not os.path.isabs(path):
+        # A relative path is relative to the root by construction, so there is
+        # nothing to strip — but it is NOT therefore safe to scan: ``../`` can
+        # still walk above the root. The date scanner rejects the segments it
+        # would reach; this function's contract is placement, not validation.
+        return path.replace(os.sep, "/")
+    for root in sorted((r for r in roots if r), key=len, reverse=True):
+        if path == root:
+            continue
+        if path.startswith(root + "/"):
+            return path[len(root) + 1:].replace(os.sep, "/")
+    return None
 
 
 def _parse_iso(value: object) -> Optional[datetime]:
@@ -90,8 +240,20 @@ def _parse_iso(value: object) -> Optional[datetime]:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-def _source_ts(node: Optional[ResearchNode]) -> Optional[str]:
+def _source_ts(
+    node: Optional[ResearchNode], roots: Iterable[str] = ()
+) -> Optional[str]:
     """First source-derived timestamp on ``node``, VERBATIM.
+
+    The ladder, most specific first: :data:`_TS_METADATA_KEYS`, then a leading
+    date in the node's own name, then a dated directory segment of its
+    ``source_path`` relative to one of ``roots`` (:func:`_source_path_date`).
+
+    ``roots`` comes from :func:`graph_project_roots`. It defaults to empty, and
+    empty DISABLES the path rung — a caller that does not know where the
+    project lives cannot tell an ingest-chosen directory from the directory the
+    checkout happens to sit in, and must not guess. Every in-tree caller passes
+    the graph's own roots.
 
     Returns the raw string exactly as stored so the artifact never
     normalises a source format (a normalisation would drift between a
@@ -108,7 +270,34 @@ def _source_ts(node: Optional[ResearchNode]) -> Optional[str]:
     match = _LEADING_DATE.match(getattr(node, "name", "") or "")
     if match:
         return match.group(1)
-    return None
+    return _source_path_date(getattr(node, "source_path", None), roots)
+
+
+def _source_path_date(
+    source_path: object, roots: Iterable[str] = ()
+) -> Optional[str]:
+    """``YYYY-MM-DD`` named by a directory segment of ``source_path``, else None.
+
+    Scans only the ROOT-RELATIVE path (bound 1 above), and only whole segments
+    (bound 2). The DEEPEST match wins: a path may pass through an unrelated
+    dated directory (``archive/2019-01-01/…``) on the way to the segment that
+    actually dates the document, and the one nearest the file is the
+    observation. Candidates are validated as real calendar dates so a segment
+    that merely looks like one (``2026-13-45``, a version or an id) can never
+    enter the ladder as an unorderable string.
+    """
+    relative = relative_source_path(source_path, roots)
+    if relative is None:
+        return None
+    found: Optional[str] = None
+    for match in _PATH_DATE.finditer(relative):
+        candidate = match.group(1)
+        try:
+            date.fromisoformat(candidate)
+        except ValueError:
+            continue
+        found = candidate
+    return found
 
 
 def _latest_ts(candidates: Iterable[Optional[str]]) -> Optional[str]:
@@ -200,6 +389,9 @@ class TemporalFactProjector:
         memory_by_id: Optional[Dict[str, Any]] = None,
     ) -> List[TemporalFact]:
         nodes = {node.id: node for node in graph.nodes}
+        # The path rung's bound, read off the graph itself so the projection
+        # stays a pure function of graph.json (see _PATH_DATE, bound 1).
+        roots = graph_project_roots(graph)
         facts: List[TemporalFact] = []
         edge_to_fact_id: Dict[tuple, str] = {}
         for edge in graph.edges:
@@ -209,7 +401,7 @@ class TemporalFactProjector:
                 continue
             fact = self._fact_from_edge(
                 subject, edge.type, obj, edge.evidence, edge.metadata,
-                memory_by_id=memory_by_id,
+                memory_by_id=memory_by_id, roots=roots,
             )
             facts.append(fact)
             edge_to_fact_id[(fact.subject_id, fact.predicate, fact.object_id)] = fact.id
@@ -231,7 +423,7 @@ class TemporalFactProjector:
             # observed. An undated superseder cannot close the interval:
             # ``current`` still flips (we know it ended) but ``valid_to``
             # stays None (we do not know when) — never a guessed boundary.
-            ts = _source_ts(nodes.get(fact.subject_id))
+            ts = _source_ts(nodes.get(fact.subject_id), roots)
             if ts is None:
                 continue
             entry = (ts, fact.predicate, fact.subject_id)
@@ -310,7 +502,7 @@ class TemporalFactProjector:
         os.replace(tmp, output)
         return facts
 
-    def _fact_from_edge(self, subject: ResearchNode, predicate: str, obj: ResearchNode, evidence: Optional[str], metadata: Dict[str, object], *, memory_by_id: Optional[Dict[str, Any]] = None) -> TemporalFact:
+    def _fact_from_edge(self, subject: ResearchNode, predicate: str, obj: ResearchNode, evidence: Optional[str], metadata: Dict[str, object], *, memory_by_id: Optional[Dict[str, Any]] = None, roots: Iterable[str] = ()) -> TemporalFact:
         # valid_from = MAX over (subject ts, object ts, edge-metadata ts).
         # Reading only ``analysis_date`` (which exists on Paper nodes and
         # essentially nowhere else) is why every session finding landed in the
@@ -318,8 +510,8 @@ class TemporalFactProjector:
         # corpus. See _TS_METADATA_KEYS for the ladder and its exclusions.
         valid_from = _latest_ts(
             (
-                _source_ts(subject),
-                _source_ts(obj),
+                _source_ts(subject, roots),
+                _source_ts(obj, roots),
                 first_string(metadata.get("analysis_date")) if metadata else None,
             )
         )

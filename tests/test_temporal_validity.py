@@ -93,6 +93,292 @@ def test_valid_from_is_max_over_both_endpoints():
     assert _fact(facts, "discussed_in").valid_from == "2026-05-09"
 
 
+# ------------------------------------------------- valid_from via source_path
+#
+# Claim / EvidenceSpan nodes carry NO timestamp metadata of their own — they
+# are minted from a document and inherit only its ``source_path``. On a corpus
+# ingested into dated directories (``.../daily/2026-04-06/...``) that path
+# already names the day the document was observed, in bytes already stored in
+# graph.json. These tests pin that as the LAST rung of the ladder, under two
+# bounds that keep it a SOURCE-derived timestamp rather than a disguised
+# wall clock:
+#
+# 1. only the project-root-RELATIVE part of the path is scanned, so a dated
+#    ANCESTOR of the checkout (``~/.blackhole/<proj>/2026-08-09/<slug>/``,
+#    which OPERATIONS.md mandates for every agent worktree) cannot date the
+#    corpus, and
+# 2. the date must be a WHOLE directory segment, so a filename authored as
+#    ``2026-08-02-handoff.md`` is not mistaken for an observation day.
+#
+# The root is read off the graph's own Session nodes (``project_root``), the
+# same graph-intrinsic derivation ``okf`` already uses to relativise a
+# resource — no argument, no cwd, no clock.
+
+_ROOT = "/repo"
+
+
+def _span(node_id, name, source_path, **metadata):
+    return ResearchNode(
+        id=node_id,
+        name=name,
+        type=ResearchNodeType.EVIDENCE_SPAN,
+        description=f"description of {name}",
+        source_path=source_path,
+        metadata=dict(metadata),
+    )
+
+
+def _session(project_root=_ROOT):
+    """A Session node — the only thing that declares the project root."""
+    return ResearchNode(
+        id="Session:root",
+        name="a session",
+        type=ResearchNodeType.SESSION,
+        metadata={"session_id": "s1", "project_root": project_root},
+    )
+
+
+def _rooted(*nodes_and_edges):
+    nodes, edges = nodes_and_edges
+    return ResearchGraph(nodes=[*nodes, _session()], edges=edges)
+
+
+def test_valid_from_falls_back_to_the_dated_ingest_path():
+    """A Claim/EvidenceSpan with no metadata is dated by its own source_path."""
+    path = "/repo/data/research/daily/2026-04-06/papers/2510.24907/paper.md"
+    span = _span("EvidenceSpan:a", "some evidence", path)
+    claim = ResearchNode(
+        id="Claim:a",
+        name="a claim",
+        type=ResearchNodeType.CLAIM,
+        source_path=path,
+    )
+    graph = _rooted(
+        [claim, span],
+        [ResearchEdge(source=claim.id, target=span.id, type="evidenced_by")],
+    )
+
+    facts = TemporalFactProjector().project(graph)
+
+    assert _fact(facts, "evidenced_by").valid_from == "2026-04-06"
+
+
+def test_dated_source_path_never_shadows_a_metadata_rung():
+    """The path rung is LAST — an explicit metadata timestamp still wins."""
+    span = _span(
+        "EvidenceSpan:a",
+        "some evidence",
+        "/repo/data/research/daily/2026-04-06/p.md",
+        analysis_date="2026-01-15",
+    )
+    doc = _doc()
+    graph = _rooted(
+        [span, doc],
+        [ResearchEdge(source=span.id, target=doc.id, type="derived_from")],
+    )
+
+    facts = TemporalFactProjector().project(graph)
+
+    assert _fact(facts, "derived_from").valid_from == "2026-01-15"
+
+
+def test_impossible_date_in_source_path_is_not_a_timestamp():
+    """A segment that only LOOKS like a date must not poison the ladder."""
+    span = _span("EvidenceSpan:a", "some evidence", "/repo/runs/2026-13-45/p.md")
+    doc = _doc()
+    graph = _rooted(
+        [span, doc],
+        [ResearchEdge(source=span.id, target=doc.id, type="derived_from")],
+    )
+
+    facts = TemporalFactProjector().project(graph)
+
+    assert _fact(facts, "derived_from").valid_from == "undated"
+
+
+def test_deepest_dated_path_segment_wins():
+    """With several dated segments the one nearest the file is the observation."""
+    span = _span(
+        "EvidenceSpan:a",
+        "some evidence",
+        "/repo/archive/2019-01-01/data/daily/2026-04-06/p.md",
+    )
+    doc = _doc()
+    graph = _rooted(
+        [span, doc],
+        [ResearchEdge(source=span.id, target=doc.id, type="derived_from")],
+    )
+
+    facts = TemporalFactProjector().project(graph)
+
+    assert _fact(facts, "derived_from").valid_from == "2026-04-06"
+
+
+def test_a_dated_ancestor_of_the_project_root_never_dates_the_corpus():
+    """D1: only the ROOT-RELATIVE path is scanned.
+
+    ``~/.blackhole/<project>/<YYYY-MM-DD>/<slug>/`` is the mandated layout for
+    every agent worktree on this machine, so an unbounded scan turns the
+    directory a checkout happens to sit in into the corpus's observation date
+    — a wall clock one indirection removed. The two paths below name the same
+    file relative to their own roots and must therefore date identically.
+    """
+    plain = _span("EvidenceSpan:a", "some evidence", "/plain/proj/docs/notes/p.md")
+    dated = _span("EvidenceSpan:a", "some evidence", "/blackhole/2026-08-09/proj/docs/notes/p.md")
+
+    def project(span, root):
+        graph = ResearchGraph(
+            nodes=[span, _doc(), _session(project_root=root)],
+            edges=[ResearchEdge(source=span.id, target="Paper:doc", type="derived_from")],
+        )
+        return _fact(TemporalFactProjector().project(graph), "derived_from").valid_from
+
+    assert project(plain, "/plain/proj") == "undated"
+    assert project(dated, "/blackhole/2026-08-09/proj") == "undated"
+
+
+def test_nested_project_roots_relativise_against_the_innermost_one():
+    """D1 by the back door: with nested roots, the outermost match re-leaks.
+
+    ``relative_source_path`` tries roots longest-first. Taking the first
+    declared root instead leaves the intervening directories inside the
+    "relative" path, so a checkout at ``<workspace>/.blackhole/proj/<date>/``
+    hands the date scanner a segment naming the day the worktree was made —
+    the whole defect the relativisation exists to close, restored.
+
+    Unreachable on a graph compiled today: Session nodes are admitted only on
+    exact resolved-path equality, so one root is declared. It is asserted here
+    because merged and federated graphs are the stated direction, and because
+    the failure is silent — a plausible date, wrong for every node.
+    """
+    from tesserae.temporal import _source_path_date, relative_source_path
+
+    roots = (
+        "/Users/dev/workspace",
+        "/Users/dev/workspace/.blackhole/proj/2026-08-09/slug",
+    )
+    checkout_dated = "/Users/dev/workspace/.blackhole/proj/2026-08-09/slug/docs/notes/p.md"
+
+    assert relative_source_path(checkout_dated, roots) == "docs/notes/p.md"
+    assert _source_path_date(checkout_dated, roots) is None
+
+    # ...and the rung must still fire for a date the CORPUS chose.
+    corpus_dated = (
+        "/Users/dev/workspace/.blackhole/proj/2026-08-09/slug"
+        "/data/research/daily/2026-04-06/x.md"
+    )
+    assert _source_path_date(corpus_dated, roots) == "2026-04-06"
+
+
+def test_source_path_outside_every_project_root_is_undated():
+    """D1, stated rule: a path this project's ingest did not lay out is undated.
+
+    A relativisation that fails means no segment of the path was chosen by
+    this project, so none of them can be read as its observation day. Guessing
+    from the absolute path is exactly what dates a graph by its checkout.
+    """
+    span = _span("EvidenceSpan:a", "some evidence", "/elsewhere/2026-04-06/p.md")
+    doc = _doc()
+    graph = _rooted(
+        [span, doc],
+        [ResearchEdge(source=span.id, target=doc.id, type="derived_from")],
+    )
+
+    facts = TemporalFactProjector().project(graph)
+
+    assert _fact(facts, "derived_from").valid_from == "undated"
+
+
+def test_a_dated_filename_is_not_an_observation_day():
+    """D4: the date must be a WHOLE directory segment.
+
+    ``docs/handoffs/2026-08-02-kg-growth.md`` is this repo's own documented
+    document-naming convention (OPERATIONS.md), i.e. an AUTHORING date. The
+    rung means the day Tesserae OBSERVED the file, so a filename must not
+    enter it. 854 live nodes were dated this way.
+    """
+    span = _span("EvidenceSpan:a", "some evidence", "/repo/docs/handoffs/2026-08-02-kg-growth.md")
+    doc = _doc()
+    graph = _rooted(
+        [span, doc],
+        [ResearchEdge(source=span.id, target=doc.id, type="derived_from")],
+    )
+
+    facts = TemporalFactProjector().project(graph)
+
+    assert _fact(facts, "derived_from").valid_from == "undated"
+
+
+def test_a_dated_prefix_of_a_longer_segment_is_not_a_date():
+    """D6: the match has a right boundary — ``2026-04-25-extra`` is not a date.
+
+    Without one, any segment merely BEGINNING with ten date-shaped characters
+    (a run id, a versioned directory) silently becomes an observation day.
+    """
+    span = _span("EvidenceSpan:a", "some evidence", "/repo/runs/2026-04-25-extra/p.md")
+    doc = _doc()
+    graph = _rooted(
+        [span, doc],
+        [ResearchEdge(source=span.id, target=doc.id, type="derived_from")],
+    )
+
+    facts = TemporalFactProjector().project(graph)
+
+    assert _fact(facts, "derived_from").valid_from == "undated"
+
+
+def test_a_newly_dated_endpoint_moves_valid_from_LATER_never_earlier():
+    """D2: the path rung is additive per NODE but NOT per FACT.
+
+    ``_latest_ts`` takes the MAX over both endpoints, so dating a previously
+    undated endpoint can change which endpoint wins for an edge that already
+    had a date. That is correct under the max rule — a fact cannot predate
+    either endpoint — but it means "strictly additive" is false at fact level:
+    1,429 live facts had a real date replaced (all of them moved LATER, none
+    earlier; 1,426 survive the D1/D4 bounds). This pins the direction, which
+    is the property that makes the overwrite safe.
+    """
+    dated = _span("EvidenceSpan:early", "early", None, analysis_date="2026-01-15")
+    undated_but_pathed = ResearchNode(
+        id="Claim:late",
+        name="a claim",
+        type=ResearchNodeType.CLAIM,
+        source_path="/repo/data/daily/2026-06-01/p.md",
+    )
+    graph = _rooted(
+        [dated, undated_but_pathed],
+        [ResearchEdge(source=dated.id, target=undated_but_pathed.id, type="evidenced_by")],
+    )
+
+    facts = TemporalFactProjector().project(graph)
+
+    assert _fact(facts, "evidenced_by").valid_from == "2026-06-01"
+
+
+def test_projecting_facts_never_stamps_first_seen_at_onto_a_node():
+    """D3 ruling, enforced: the path rung is READ-side and stays read-side.
+
+    Stamping the derived day into ``metadata['first_seen_at']`` would bake a
+    value computed from a directory name into graph.json for ~34,851 nodes,
+    where a later correction to the rule could no longer reach it — and would
+    overload a key that today means "the moment a session observed this"
+    (session_graph/session_event write it; activity_summary and agent_distill
+    read it) with a second, coarser provenance class.
+    """
+    span = _span("EvidenceSpan:a", "some evidence", "/repo/data/daily/2026-04-06/p.md")
+    doc = _doc()
+    graph = _rooted(
+        [span, doc],
+        [ResearchEdge(source=span.id, target=doc.id, type="derived_from")],
+    )
+
+    facts = TemporalFactProjector().project(graph)
+
+    assert _fact(facts, "derived_from").valid_from == "2026-04-06"
+    assert "first_seen_at" not in (span.metadata or {})
+    assert "first_seen_at" not in (doc.metadata or {})
+
+
 # ----------------------------------------------------------------- valid_to
 
 

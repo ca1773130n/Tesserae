@@ -355,6 +355,61 @@ def test_snapshot_output_stable_and_ignores_ledgers_and_state(tmp_path: Path) ->
     assert second.output_sha256 != first.output_sha256
 
 
+def test_snapshot_covers_temporal_fact_values_but_not_sidecar_confidence(
+    tmp_path: Path,
+) -> None:
+    """D5: a drift in ``valid_from`` must trip the tripwire; a confidence bump must not.
+
+    ``temporal_facts.jsonl`` was excluded from the hash wholesale because ONE
+    of its fields (``confidence``) is read from the mutable ``node_memory``
+    sidecar — which left every other field, including the 63,780 ``valid_from``
+    values the path rung now decides, invisible to the only guard that watches
+    real compiles rather than the fixture corpus.
+
+    (63,780 is the shipped, root-bounded figure. An earlier draft of this
+    docstring said 64,883, which was measured before the rung was bounded to
+    the root-relative path — i.e. while a dated ancestor directory could still
+    date a node. Quoting the pre-fix number here would have advertised the
+    defect's reach as the feature's.) Everything except
+    ``confidence`` is a pure function of the graph layer, so the file is hashed
+    with that one field elided: full coverage of the derived values, and no
+    false alarm when recurrence reinforcement bumps a confidence.
+    """
+    from tesserae.output_snapshot import snapshot_output
+
+    wiki = _seed_project(tmp_path / "proj")
+    wiki.compile(session_options=SessionExtractionOptions(enabled=False))
+    root = wiki.root
+    facts_path = wiki.paths.temporal_facts
+    assert facts_path.exists(), "compile must write temporal_facts.jsonl"
+    first = snapshot_output(root)
+    original = facts_path.read_text(encoding="utf-8")
+
+    def rewrite(mutate) -> None:
+        lines = [json.loads(ln) for ln in original.splitlines() if ln.strip()]
+        assert lines, "fixture corpus must project at least one fact"
+        mutate(lines[0])
+        facts_path.write_text(
+            "".join(json.dumps(f, ensure_ascii=False, sort_keys=True) + "\n" for f in lines),
+            encoding="utf-8",
+        )
+
+    # A drifted valid_from IS projection drift -> the hash must move.
+    rewrite(lambda fact: fact.__setitem__("valid_from", "1999-01-01"))
+    drifted = snapshot_output(root)
+    assert drifted.projections_sha256 != first.projections_sha256, (
+        "a changed valid_from must reach the drift guard"
+    )
+    assert drifted.graph_sha256 == first.graph_sha256
+
+    # A sidecar-sourced confidence is NOT projection drift -> the hash holds.
+    rewrite(lambda fact: fact.__setitem__("confidence", "0.99"))
+    reconfidenced = snapshot_output(root)
+    assert reconfidenced.projections_sha256 == first.projections_sha256, (
+        "a node_memory confidence bump must not be reported as projection drift"
+    )
+
+
 def test_snapshot_output_handles_missing_artifacts(tmp_path: Path) -> None:
     from tesserae.output_snapshot import snapshot_output
     empty = snapshot_output(tmp_path / "nothing-here")

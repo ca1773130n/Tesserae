@@ -58,7 +58,8 @@ from .research_graph import (
     ResearchNode,
     ResearchNodeType,
 )
-from .temporal import _boundary_precedes_start, _source_ts
+from .temporal import (_boundary_precedes_start, _source_ts,
+                       graph_project_roots, relative_source_path)
 
 OKF_VERSION = "0.2"
 
@@ -160,38 +161,12 @@ def _first_sentence(text: str) -> str:
     return sentence
 
 
-def _project_roots(graph: ResearchGraph) -> List[str]:
-    """Project roots declared by the graph's own Session nodes, sorted.
-
-    Derived from the graph rather than passed in, so the bundle stays a PURE
-    projection: no argument, no ``os.getcwd()``, no wall clock.
-    """
-    roots = {
-        str((n.metadata or {}).get("project_root") or "").rstrip("/")
-        for n in graph.nodes
-        if n.type == ResearchNodeType.SESSION
-    }
-    return sorted(r for r in roots if r)
-
-
-def _relative_resource(source_path: object, roots: Sequence[str]) -> Optional[str]:
-    """``source_path`` made project-root-relative, else ``None``.
-
-    An absolute ``/Users/...`` path emitted raw would be read by a conformant
-    consumer as a *bundle*-relative path (§6.2) AND leak a home directory, so a
-    path we cannot relativise is omitted rather than guessed at.
-    """
-    if not isinstance(source_path, str) or not source_path.strip():
-        return None
-    path = source_path.strip()
-    if not os.path.isabs(path):
-        return path.replace(os.sep, "/")
-    for root in roots:
-        if path == root:
-            continue
-        if path.startswith(root + "/"):
-            return path[len(root) + 1:].replace(os.sep, "/")
-    return None
+# Root derivation and relativisation moved to :mod:`tesserae.temporal`, which
+# needs the same two answers to bound its ``source_path`` dating rung to the
+# project-relative path. One implementation, so a bundle's ``resource`` and a
+# fact's ``valid_from`` can never disagree about where the project is.
+_project_roots = graph_project_roots
+_relative_resource = relative_source_path
 
 
 def _generated_by(node: ResearchNode) -> str:
@@ -352,7 +327,7 @@ def write_okf_bundle(graph: ResearchGraph, out_dir: str | Path) -> List[Path]:
         if resource:
             fm["resource"] = resource
         generated: dict = {"by": _generated_by(node)}
-        at = _source_ts(node)
+        at = _source_ts(node, roots)
         if at:
             generated["at"] = at
         fm["generated"] = generated
@@ -364,8 +339,8 @@ def write_okf_bundle(graph: ResearchGraph, out_dir: str | Path) -> List[Path]:
         supersede_ids = sorted(set(superseded_by.get(node.id, ())))
         if supersede_ids:
             fm["status"] = "deprecated"  # §5.4: kept for links and history
-            own_ts = _source_ts(node)
-            ends = [t for t in (_source_ts(node_by_id.get(i)) for i in supersede_ids) if t]
+            own_ts = _source_ts(node, roots)
+            ends = [t for t in (_source_ts(node_by_id.get(i), roots) for i in supersede_ids) if t]
             end = min(ends) if ends else None
             # Under-claim rather than emit a boundary that precedes the node's
             # own timestamp — the same degenerate-interval guard temporal.py

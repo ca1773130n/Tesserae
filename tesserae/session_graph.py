@@ -44,7 +44,7 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Dict, Iterable, Iterator, List, Optional, Set, Tuple
 
 from .harness_sessions import HarnessSession, session_matches_project
 from .llm_json import LLMJsonClient
@@ -315,6 +315,10 @@ class SessionGraphExtractor:
         # node when it still exists, drop the reference otherwise.
         live_nodes_by_id = {n.id: n for n in self.doc_graph.nodes}
 
+        # Timestamps for the SAME filtered turn sequence the finding turn_ids
+        # index (see _iter_normalised_turns).
+        turn_timestamps = _turn_timestamps(session)
+
         # Find the structural Session node id so we can edge findings to it.
         session_id_str = session.id
         session_node = next(
@@ -336,8 +340,9 @@ class SessionGraphExtractor:
                 f"session:{session_id_str}:{f.kind}:{_short_hash(f.body)}"
             )
             # Deterministic decay anchor ONLY. ``first_seen_at`` is derived
-            # from the session's own ``started_at`` (a property of the source
-            # corpus), so it is byte-stable across compiles and safe to
+            # from the SOURCE TURN's own timestamp, falling back to the
+            # session's ``started_at`` (both properties of the source corpus),
+            # so it is byte-stable across compiles and safe to
             # serialize into graph.json. Mutable memory state
             # (``access_count`` / ``last_accessed_at``) is DELIBERATELY absent
             # here: those columns live exclusively in the ``node_memory``
@@ -355,8 +360,11 @@ class SessionGraphExtractor:
                 "turn_ids": list(f.turn_ids),
                 "content_hash": _short_hash(f.body),
             }
-            if session_started_at:
-                finding_metadata["first_seen_at"] = str(session_started_at)
+            first_seen_at = _finding_first_seen_at(f, turn_timestamps) or (
+                str(session_started_at) if session_started_at else ""
+            )
+            if first_seen_at:
+                finding_metadata["first_seen_at"] = first_seen_at
             if self.model:
                 finding_metadata["llm_model"] = self.model
             # Extraction QUALITY signals (Jonasb8/memex ideas; AGPL, no code
@@ -574,17 +582,44 @@ def _finding_to_dict(f: Finding) -> dict:
     return d
 
 
-def _normalised_turns(session: HarnessSession) -> List[dict]:
-    """Extract a list of {role, text} turns from the session metadata.
+def _finding_first_seen_at(
+    finding: Finding, turn_timestamps: List[str]
+) -> Optional[str]:
+    """Earliest timestamp among the turns a finding came from, else None.
 
-    Per the spec, v1 uses ``session.metadata["turns"]`` ONLY — we never
-    read the raw transcript from disk. Falls back to an empty list if
-    the harness import didn't populate normalized turns.
+    WHY min() and not "the timestamp of the lowest turn_id": turn timestamps
+    are NOT monotonic in the real corpus (14 of 481 imported sessions have an
+    inversion), so indexing by position would give an arbitrary answer there.
+    min() is order-invariant, and ISO-8601-Z strings sort chronologically, so
+    no parsing is needed — which also means a malformed stamp is compared, not
+    crashed on, and is stored VERBATIM.
+
+    ``turn_ids`` come from LLM output and are never range-checked upstream
+    (``session_graph_llm`` only coerces them to int), so an id outside the
+    transcript is DROPPED rather than indexed. A finding left with no usable
+    stamp returns None and the caller falls back to the session's
+    ``started_at`` — never to a clock.
+    """
+    stamps = [
+        turn_timestamps[i]
+        for i in finding.turn_ids
+        if isinstance(i, int) and 0 <= i < len(turn_timestamps) and turn_timestamps[i]
+    ]
+    return min(stamps) if stamps else None
+
+
+def _iter_normalised_turns(session: HarnessSession) -> Iterator[Tuple[dict, str]]:
+    """Yield ``({role, text}, timestamp)`` for each usable turn, in order.
+
+    ONE filter for both projections below. ``turn_ids`` on a finding index the
+    FILTERED sequence (empty-text turns are dropped), so a timestamp lookup
+    built from any other traversal would silently mis-date findings the moment
+    a corpus contains a text-less turn. Deriving both from this generator makes
+    the two index spaces the same by construction rather than by luck.
     """
     raw = session.metadata.get("turns") if session.metadata else None
     if not isinstance(raw, list):
-        return []
-    out: List[dict] = []
+        return
     for turn in raw:
         if not isinstance(turn, dict):
             continue
@@ -592,5 +627,30 @@ def _normalised_turns(session: HarnessSession) -> List[dict]:
         text = str(turn.get("text") or "").strip()
         if not text:
             continue
-        out.append({"role": role, "text": text})
-    return out
+        yield {"role": role, "text": text}, str(turn.get("timestamp") or "").strip()
+
+
+def _normalised_turns(session: HarnessSession) -> List[dict]:
+    """Extract a list of {role, text} turns from the session metadata.
+
+    Per the spec, v1 uses ``session.metadata["turns"]`` ONLY — we never
+    read the raw transcript from disk. Falls back to an empty list if
+    the harness import didn't populate normalized turns.
+
+    The payload stays {role, text} EXACTLY. ``_chunk_content_hash`` hashes
+    these dicts verbatim as the on-disk cache key, so admitting a per-turn
+    timestamp here would invalidate every cached extraction in the corpus and
+    re-bill it to the LLM. Timestamps travel separately, via
+    :func:`_turn_timestamps`.
+    """
+    return [turn for turn, _ts in _iter_normalised_turns(session)]
+
+
+def _turn_timestamps(session: HarnessSession) -> List[str]:
+    """Turn timestamps aligned index-for-index with :func:`_normalised_turns`.
+
+    Empty string where the harness recorded none. Values are the transcript's
+    own bytes, stored VERBATIM — the same discipline ``temporal._source_ts``
+    keeps — so no clock and no normalisation enters graph.json.
+    """
+    return [ts for _turn, ts in _iter_normalised_turns(session)]
