@@ -148,3 +148,81 @@ def test_intake_is_empty_when_every_section_is_routed():
     members = intake_members(graph, clusters, groups)
     # Only the true orphan is unroutable.
     assert members == ["Concept:lonely"]
+
+
+import pytest
+
+from tesserae.charter import SplitResult, induced_subgraph, split
+
+
+def _fat_node(nid: str, filler: int) -> ResearchNode:
+    return ResearchNode(
+        id=nid, name=nid, type=ResearchNodeType.CONCEPT, description="x" * filler
+    )
+
+
+def _two_fat_triangles() -> ResearchGraph:
+    """Two triangles, each heavy enough that the pair exceeds DOMAIN_MASS_CAP
+    and each side clears DOMAIN_MASS_FLOOR."""
+    nodes = [_fat_node(f"Concept:a{i}", 5_000) for i in range(3)]
+    nodes += [_fat_node(f"Concept:b{i}", 5_000) for i in range(3)]
+    edges = []
+    for i in range(3):
+        for j in range(i + 1, 3):
+            edges.append(ResearchEdge(source=f"Concept:a{i}", target=f"Concept:a{j}", type="shares_concept_with"))
+            edges.append(ResearchEdge(source=f"Concept:b{i}", target=f"Concept:b{j}", type="shares_concept_with"))
+    edges.append(ResearchEdge(source="Concept:a0", target="Concept:b0", type="shares_concept_with"))
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def test_induced_subgraph_keeps_only_internal_edges():
+    graph = _two_fat_triangles()
+    sub = induced_subgraph(graph, ["Concept:a0", "Concept:a1", "Concept:a2"])
+    assert {n.id for n in sub.nodes} == {"Concept:a0", "Concept:a1", "Concept:a2"}
+    for edge in sub.edges:
+        assert edge.source in {n.id for n in sub.nodes}
+        assert edge.target in {n.id for n in sub.nodes}
+    assert len(sub.edges) == 3  # the a0-b0 bridge is excluded
+
+
+def test_split_divides_an_oversized_domain_by_sub_community():
+    graph = _two_fat_triangles()
+    members = [n.id for n in graph.nodes]
+    assert mass(graph.nodes) > DOMAIN_MASS_CAP
+
+    result = split(graph, members)
+    assert isinstance(result, SplitResult)
+    assert not result.stalled
+    assert len(result.children) == 2
+    # Children are sorted by (-mass, first id) so the result is stable.
+    assert result.children[0] == ("Concept:a0", "Concept:a1", "Concept:a2") or \
+           result.children[0] == ("Concept:b0", "Concept:b1", "Concept:b2")
+    # CH-01: children plus direct exactly reconstruct the input.
+    covered = {mid for child in result.children for mid in child} | set(result.direct)
+    assert covered == set(members)
+
+
+def test_split_stalls_loudly_rather_than_raising_when_it_cannot_divide():
+    """One node too big to split has no sub-community. It must be flagged
+    unsplittable and degrade, not raise — the artifact layer already has a
+    counted-remainder path for this."""
+    graph = ResearchGraph(nodes=[_fat_node("Concept:huge", 30_000)], edges=[])
+    result = split(graph, ["Concept:huge"])
+    assert result.stalled is True
+    assert result.children == ()
+    assert result.direct == ("Concept:huge",)
+
+
+def test_split_leaves_a_small_domain_alone():
+    graph = _two_triangles_plus_orphan()
+    members = [n.id for n in graph.nodes]
+    result = split(graph, members)
+    assert result.children == ()
+    assert set(result.direct) == set(members)
+    assert result.stalled is False
+
+
+def test_split_is_deterministic():
+    graph = _two_fat_triangles()
+    members = [n.id for n in graph.nodes]
+    assert split(graph, members) == split(graph, members)

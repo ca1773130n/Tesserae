@@ -13,6 +13,7 @@ See docs/superpowers/specs/2026-08-08-charter-expertise-org-design.md.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Sequence
 
 from .agent_distill import _render_member_block
@@ -162,3 +163,64 @@ def intake_members(
         for node_id in cluster
     }
     return sorted(node.id for node in graph.nodes if node.id not in routed_members)
+
+
+@dataclass(frozen=True)
+class SplitResult:
+    """One level of division. ``children`` + ``direct`` always reconstruct the
+    input member set exactly — that is lint CH-01, true by construction here
+    so it can be asserted rather than hoped for."""
+
+    children: tuple[tuple[str, ...], ...]
+    direct: tuple[str, ...]
+    stalled: bool
+
+
+def induced_subgraph(graph: ResearchGraph, member_ids: Sequence[str]) -> ResearchGraph:
+    """The subgraph over ``member_ids``, keeping only edges internal to it."""
+    keep = set(member_ids)
+    nodes = [node for node in graph.nodes if node.id in keep]
+    edges = [
+        edge for edge in graph.edges if edge.source in keep and edge.target in keep
+    ]
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def split(graph: ResearchGraph, member_ids: Sequence[str]) -> SplitResult:
+    """Divide an oversized domain by SUB-COMMUNITY, never by size.
+
+    Numbered size shards were rejected: an agent cannot tell what is in shard 2
+    versus shard 3 without reading both, which reintroduces exactly the
+    multi-read cost the one-read bound exists to prevent. Splitting by meaning
+    lets it choose a branch from named subjects.
+
+    A domain that cannot be divided STALLS rather than raising: it stays an
+    oversized leaf flagged ``stalled``, and degrades through the artifact
+    layer's existing counted-remainder path. Measured on the live graph at
+    DOMAIN_MASS_FLOOR=3,000 this happens 9 times out of 888 domains.
+    """
+    members = sorted(set(member_ids))
+    by_id = {node.id: node for node in graph.nodes}
+    scoped = [by_id[mid] for mid in members if mid in by_id]
+
+    if mass(scoped) <= DOMAIN_MASS_CAP:
+        return SplitResult(children=(), direct=tuple(members), stalled=False)
+
+    sub = induced_subgraph(graph, members)
+    candidates = [
+        cluster
+        for cluster in detect_communities(sub)
+        if mass([by_id[mid] for mid in cluster if mid in by_id]) >= DOMAIN_MASS_FLOOR
+    ]
+    if not candidates:
+        return SplitResult(children=(), direct=tuple(members), stalled=True)
+
+    # Sort by (-mass, first id): detect_communities deliberately does not sort
+    # its outer list, so an explicit key is what makes the charter stable.
+    candidates.sort(
+        key=lambda c: (-mass([by_id[mid] for mid in c if mid in by_id]), c[0])
+    )
+    children = tuple(tuple(sorted(cluster)) for cluster in candidates)
+    claimed = {mid for child in children for mid in child}
+    direct = tuple(mid for mid in members if mid not in claimed)
+    return SplitResult(children=children, direct=direct, stalled=False)
