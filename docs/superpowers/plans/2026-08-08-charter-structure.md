@@ -1374,7 +1374,16 @@ def _handle_domains_status(args: argparse.Namespace) -> int:
     return 0
 ```
 
-Register `domains` in the route table beside the other groups (find `"agents"` in the route dispatch and add `"domains"` alongside it, pointing at `_build_domains_parser`).
+Register `domains` in **two** places, not one — this plan originally named only the
+first, and the verb 404s without the second:
+
+1. `_NEW_DISPATCH` in `tesserae/cli.py` — find `"agents"` there and add `"domains"`
+   alongside it, pointing at `_build_domains_parser`.
+2. `COMMAND_TREE` in `tesserae/cli_tree.py` — `main()` gates on `KNOWN_COMMANDS`,
+   derived from that tree, *before* dispatch runs. A verb present only in
+   `_NEW_DISPATCH` is rejected as an unknown command and never reaches the router.
+   `tests/test_cli_tree.py::test_command_tree_and_dispatch_agree` enforces that the
+   two stay in sync.
 
 - [ ] **Step 4: Run test to verify it passes**
 
