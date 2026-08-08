@@ -695,6 +695,24 @@ git commit -m "feat(charter): recursive split by sub-community, stalling loudly 
 from tesserae.charter import assign_anchors, slug_for
 
 
+def test_anchors_never_collide_even_when_member_sets_overlap():
+    """The fallback path is the trap: a set that lost every tie must not be
+    handed an id a sibling already claimed. Two domains sharing an anchor
+    become indistinguishable to succession, and the failure surfaces months
+    later as a slug silently changing owner."""
+    graph = _two_triangles_plus_orphan()
+    anchors = assign_anchors(graph, [["Concept:a0"], ["Concept:a0"]])
+    assigned = [a for a in anchors if a]
+    assert len(assigned) == len(set(assigned)), "two sets share an anchor"
+
+
+def test_an_empty_member_set_does_not_steal_a_siblings_anchor():
+    graph = _two_triangles_plus_orphan()
+    anchors = assign_anchors(graph, [["Concept:a0", "Concept:a1"], []])
+    assert anchors[1] == ""
+    assert anchors[0] != ""
+
+
 def test_anchors_are_top_degree_and_never_shared_between_siblings():
     graph = _two_triangles_plus_orphan()
     a = ["Concept:a0", "Concept:a1", "Concept:a2"]
@@ -766,7 +784,26 @@ def assign_anchors(
             continue
         anchors[index] = member_id
         claimed.add(member_id)
-    return [anchors.get(i, sorted(m)[0] if m else "") for i, m in enumerate(member_sets)]
+
+    result: list[str] = []
+    for index, members in enumerate(member_sets):
+        if index in anchors:
+            result.append(anchors[index])
+            continue
+        # A set reaches here only if every one of its members lost every tie
+        # to a sibling above (or the set is empty). ``sorted(members)[0]``
+        # alone is NOT safe: that member is by construction already in
+        # ``claimed`` by the sibling that won the tie, so returning it would
+        # hand two domains the same anchor — the exact identity collision
+        # this function exists to rule out, since two domains sharing an
+        # anchor become indistinguishable to succession. Search for a
+        # still-unclaimed member; if none exists, "" is a visible, checkable
+        # degradation rather than a silent one.
+        candidate = next((mid for mid in sorted(members) if mid not in claimed), "")
+        if candidate:
+            claimed.add(candidate)
+        result.append(candidate)
+    return result
 
 
 def slug_for(name: str, taken: Set[str]) -> str:
