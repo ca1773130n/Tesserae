@@ -65,3 +65,46 @@ def test_sections_returns_clusters_and_reports_dropped_singletons():
 def test_sections_is_deterministic():
     graph = _two_triangles_plus_orphan()
     assert sections(graph) == sections(graph)
+
+
+from tesserae.charter import divisions, quotient_graph
+
+
+def test_quotient_graph_nodes_and_edges_are_both_present():
+    """_undirected_projection drops edges whose endpoints are not in
+    graph.nodes (community_summaries.py:131-132), so a quotient graph that
+    carries edges but not their synthetic nodes is INVISIBLE to Louvain."""
+    graph = _two_triangles_plus_orphan()
+    clusters, _ = sections(graph)
+    q = quotient_graph(graph, clusters)
+
+    assert len(q.nodes) == len(clusters)
+    node_ids = {n.id for n in q.nodes}
+    for edge in q.edges:
+        assert edge.source in node_ids and edge.target in node_ids
+    # The single a0-b0 bridge becomes exactly one cross-section edge.
+    assert len(q.edges) == 1
+    assert all(e.type == "part_of" for e in q.edges)
+
+
+def test_quotient_edge_type_is_allowed():
+    """ResearchEdge.__post_init__ raises ValueError for a type outside
+    ALLOWED_EDGE_TYPES. 'part_of' is valid; 'quotient_of' is not."""
+    graph = _two_triangles_plus_orphan()
+    clusters, _ = sections(graph)
+    quotient_graph(graph, clusters)  # must not raise
+
+
+def test_divisions_group_sections_that_share_edges():
+    graph = _two_triangles_plus_orphan()
+    clusters, _ = sections(graph)
+    groups = divisions(graph, clusters)
+    # Both sections are bridged, so they land in one division.
+    assert len(groups) == 1
+    assert sorted(groups[0]) == [0, 1]
+
+
+def test_divisions_is_deterministic():
+    graph = _two_triangles_plus_orphan()
+    clusters, _ = sections(graph)
+    assert divisions(graph, clusters) == divisions(graph, clusters)
