@@ -968,3 +968,81 @@ def test_lint_reasoning_edge_ratio_warns_below_floor(tmp_path: Path) -> None:
     assert len(matches) == 1
     assert matches[0].severity == "warning"
     assert "1 of 100 edges (1.0%)" in matches[0].message
+
+
+# --------------------------------------------------- interval coverage
+
+
+def _coverage_graph(dated: int, undated: int, superseded: int) -> dict:
+    """Edges whose endpoints carry a first_seen_at get a real ``valid_from``;
+    endpoints without one land in the literal ``"undated"`` bucket that
+    ``timeline()`` sorts under with no signal to the caller."""
+    nodes = [_node("hub", "Concept", "hub")]
+    edges = []
+    for i in range(dated):
+        nodes.append(
+            _node(f"d{i}", "Paper", f"dated {i}", metadata={"first_seen_at": "2026-01-02"})
+        )
+        edges.append({"source": f"d{i}", "target": "hub", "type": "discussed_in"})
+    for i in range(undated):
+        nodes.append(_node(f"u{i}", "Paper", f"undated {i}"))
+        edges.append({"source": f"u{i}", "target": "hub", "type": "summarizes"})
+    # A supersedes edge closes an interval, which is what populates
+    # ``valid_to_basis`` — the second half of the histogram.
+    for i in range(superseded):
+        nodes.append(
+            _node(f"new{i}", "SessionInsight", f"new {i}", metadata={"first_seen_at": "2026-03-04"})
+        )
+        nodes.append(
+            _node(f"old{i}", "SessionInsight", f"old {i}", metadata={"first_seen_at": "2026-01-01"})
+        )
+        edges.append({"source": f"new{i}", "target": f"old{i}", "type": "supersedes"})
+        edges.append({"source": f"old{i}", "target": "hub", "type": "discussed_in"})
+    # ``metadata.first_seen_at`` must survive graph_from_payload for the dated
+    # arm to be dated at all; if it did not, this fixture would be all-undated
+    # and the assertions below would be vacuous.
+    return {"nodes": nodes, "edges": edges}
+
+
+def test_lint_interval_coverage_reports_undated_percentage(tmp_path: Path) -> None:
+    """The number itself is the instrument — it must land in the report so a
+    later commit can set a floor from a measurement rather than a guess."""
+    project = _scaffold(tmp_path, graph=_coverage_graph(dated=3, undated=7, superseded=0))
+    report = WikiLinter(project).run()
+
+    matches = [f for f in report.findings if f.code == "INTERVAL_COVERAGE"]
+    assert len(matches) == 1
+    assert "7 of 10" in matches[0].message
+    assert "70.0%" in matches[0].message
+
+    payload = json.loads(
+        (project / ".tesserae" / "lint-report.json").read_text(encoding="utf-8")
+    )
+    assert any(f["code"] == "INTERVAL_COVERAGE" for f in payload["findings"])
+
+
+def test_lint_interval_coverage_reports_valid_to_basis_histogram(tmp_path: Path) -> None:
+    project = _scaffold(tmp_path, graph=_coverage_graph(dated=2, undated=2, superseded=1))
+    report = WikiLinter(project).run()
+
+    (finding,) = [f for f in report.findings if f.code == "INTERVAL_COVERAGE"]
+    assert "supersedes=" in finding.message
+    assert "open=" in finding.message
+
+
+def test_lint_interval_coverage_is_info_only(tmp_path: Path) -> None:
+    """Deliberately non-strict, like _check_code_graph_staleness: the live
+    graph's real ratio is 73.38% undated, so any threshold picked today would
+    turn every `compile --strict` red on day one."""
+    project = _scaffold(tmp_path, graph=_coverage_graph(dated=0, undated=20, superseded=0))
+    report = WikiLinter(project).run()
+
+    (finding,) = [f for f in report.findings if f.code == "INTERVAL_COVERAGE"]
+    assert finding.severity == "info"
+    assert "100.0%" in finding.message
+
+
+def test_lint_interval_coverage_silent_on_an_empty_graph(tmp_path: Path) -> None:
+    project = _scaffold(tmp_path)
+    report = WikiLinter(project).run()
+    assert not [f for f in report.findings if f.code == "INTERVAL_COVERAGE"]

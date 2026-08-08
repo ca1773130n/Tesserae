@@ -307,6 +307,7 @@ class WikiLinter:
         findings.extend(self._check_agent_forget_ledger())
         findings.extend(self._check_undistilled_backlog(nodes_by_id, edges))
         findings.extend(self._check_reasoning_edge_ratio(edges))
+        findings.extend(self._check_interval_coverage(nodes_by_id, edges))
         if verify_claims:
             findings.extend(
                 self._check_claim_support(nodes_by_id, cap=claim_cap, llm_client=llm_client)
@@ -821,6 +822,69 @@ class WikiLinter:
                 "deliberately with the typed zero-LLM `graph_write` path."
                 if below
                 else None
+            ),
+        )
+
+    def _check_interval_coverage(
+        self, nodes_by_id: Dict[str, dict], edges: List[dict]
+    ) -> Iterable[LintFinding]:
+        """Measure how much of the graph can actually be placed in time.
+
+        ``TemporalFactProjector`` derives ``valid_from`` from the LATER of the
+        two endpoint timestamps (:data:`temporal._TS_METADATA_KEYS`), falling
+        back to the literal string ``"undated"``. Every undated fact sorts into
+        one bucket in ``timeline()`` and carries no signal that it did so, so an
+        agent reading an ordering cannot tell a chronology from a pile.
+
+        Measured on this project's own compiled graph (2026-08-09): 76,095 of
+        103,705 research facts (73.38%) are undated, led by ``summarizes``
+        (30,752), ``evidenced_by`` (14,545) and ``supports_claim`` (4,659).
+
+        ALWAYS info, and deliberately WITHOUT a threshold — the same
+        non-strict posture :meth:`_check_code_graph_staleness` takes, for the
+        same reason. That 73.38% was compiled from a session corpus that a
+        later prune removed, so any floor set today would be set from an
+        imagined baseline and would turn every ``compile --strict`` on this
+        project red on day one. The number this probe reports is what a
+        follow-up should set the floor from.
+        """
+        if not edges:
+            return
+        try:
+            from .research_graph import graph_from_payload
+            from .temporal import TemporalFactProjector
+
+            graph = graph_from_payload(
+                {"nodes": list(nodes_by_id.values()), "edges": edges}
+            )
+            facts = TemporalFactProjector().project(graph)
+        except Exception:  # noqa: BLE001 — a malformed payload is other probes' job
+            return
+        total = len(facts)
+        if total == 0:
+            return
+        undated = sum(1 for fact in facts if (fact.valid_from or "undated") == "undated")
+        pct = round(undated * 100.0 / total, 1)
+        # ``valid_to_basis`` is non-null exactly when ``valid_to`` is, so
+        # "open" counts the intervals nothing has closed.
+        basis: Dict[str, int] = {}
+        for fact in facts:
+            key = fact.valid_to_basis or "open"
+            basis[key] = basis.get(key, 0) + 1
+        histogram = ", ".join(f"{key}={basis[key]}" for key in sorted(basis))
+        yield LintFinding(
+            severity="info",
+            code="INTERVAL_COVERAGE",
+            message=(
+                f"{undated} of {total} facts ({pct}%) have no valid_from and sort "
+                f"under the literal 'undated' in timeline(). "
+                f"valid_to_basis: {histogram}."
+            ),
+            suggested_fix=(
+                "Undated facts come from endpoints carrying none of "
+                "temporal._TS_METADATA_KEYS (first_seen_at, analysis_date, "
+                "ended_at, started_at, updated_at, created). Stamp one at "
+                "extraction time on the node types that dominate the count."
             ),
         )
 
