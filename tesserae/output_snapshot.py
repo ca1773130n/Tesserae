@@ -40,17 +40,6 @@ from pathlib import Path
 # ``config.json`` belongs here (not to the projections layer): ``site_title``
 # / ``name`` feed KarpathyLayerWriter and the site build, so a config-only
 # change must read as "inputs changed", not as projection drift.
-#
-# ``code-graph.json`` is no longer produced, and the compile now DELETES a
-# pre-existing one — yet it must stay listed for this release. Deleting the
-# file flips its contribution to the ``_MISSING`` sentinel, which moves
-# ``graph_sha256`` exactly once; ``idempotence_suspect`` fires only when
-# ``graph_sha256`` is UNCHANGED while ``projections_sha256`` changed, so a
-# moved graph hash keeps the tripwire quiet through the one compile that
-# prunes the code-derived projection pages. Trim the entry a release LATER,
-# once every project has taken that compile: drop it now and both snapshots
-# omit the file, ``graph.json``'s bytes need not move at all, and the
-# projection prune reads as a projector regression.
 GRAPH_LAYER_FILES: tuple[str, ...] = (
     "config.json", "graph.json", "code-graph.json", "combined-graph.json",
 )

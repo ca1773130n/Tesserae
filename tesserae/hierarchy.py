@@ -298,12 +298,11 @@ def community_card(
         "leaf_member_count": len(members),
         # Sidecar counts above are the dendrogram's truth; this one is the
         # GRAPH's. They diverge when graph.json is rewritten after the sidecar
-        # was computed (a vault edit that deletes a page, say, harvested by the
-        # overlay pass that runs between the two), leaving cards that advertise
-        # hundreds of members and resolve to nothing. Without this field a
-        # client cannot tell a healthy card from a dead one without re-reading
-        # graph.json itself — so a zero here is the signal to grey the card
-        # out, not to descend.
+        # was computed (a compile ⇄ code-sync ordering skew drops the code
+        # layer, say), leaving cards that advertise hundreds of members and
+        # resolve to nothing. Without this field a client cannot tell a healthy
+        # card from a dead one without re-reading graph.json itself — so a
+        # zero here is the signal to grey the card out, not to descend.
         "live_member_count": sum(1 for m in members if m in by_id),
         "parent_scope": hierarchy.parent_scope(cid),
         "tags": tags,

@@ -36,8 +36,7 @@ from .retrieval.hybrid import (
 )
 from .research_graph import (
     ALLOWED_EDGE_TYPES,
-    CODE_GRAPH_TYPES,
-    EXTRACTABLE_NODE_TYPES,
+    ALLOWED_NODE_TYPES,
     ResearchEdge,
     ResearchGraph,
     ResearchNode,
@@ -47,7 +46,7 @@ from .research_graph import (
 from .retrieval.ppr import personalized_pagerank
 from .temporal import TemporalFactProjector, search_facts, timeline
 from .verify import verify_claim
-from .wiki_projector import kind_for_node
+from .wiki_projector import is_code_graph_node, kind_for_node
 from .wiki_store import WikiPageStore
 
 
@@ -480,13 +479,19 @@ def _materialize_graph(store: GraphStore) -> ResearchGraph:
     return ResearchGraph(nodes=nodes, edges=list(subgraph.edges))
 
 
-# The ontology the MCP `schema` tool advertises: the vocabulary a caller may
-# actually put INTO the graph. That is exactly ``EXTRACTABLE_NODE_TYPES``
-# (``ALLOWED_NODE_TYPES`` minus the retired code layer), so we reuse it rather
-# than subtracting a second, local copy of the code set — the local copy listed
-# 6 of the 22 code types, which is how CodeFile/CodeMethod/CodeSymbol and 13
-# others went on being advertised as public long after the layer was private.
-_PUBLIC_NODE_TYPE_VALUES: frozenset[str] = frozenset(EXTRACTABLE_NODE_TYPES)
+# Public ontology types (everything in ALLOWED_NODE_TYPES minus the code-graph
+# layer). These are the only types ever surfaced by the MCP `schema` tool —
+# CodeProject/SourceFile/CodeClass/CodeFunction/CodeModule/Dependency live in
+# code-graph.json and stay invisible to external coding agents.
+_CODE_GRAPH_TYPE_VALUES: frozenset[str] = frozenset({
+    ResearchNodeType.CODE_PROJECT.value,
+    ResearchNodeType.SOURCE_FILE.value,
+    ResearchNodeType.CODE_MODULE.value,
+    ResearchNodeType.CODE_CLASS.value,
+    ResearchNodeType.CODE_FUNCTION.value,
+    ResearchNodeType.DEPENDENCY.value,
+})
+_PUBLIC_NODE_TYPE_VALUES: frozenset[str] = frozenset(ALLOWED_NODE_TYPES) - _CODE_GRAPH_TYPE_VALUES
 _KNOWN_WIKI_KINDS: frozenset[str] = frozenset({
     "papers", "concepts", "entities", "topics", "questions", "syntheses", "sources", "repos",
 })
@@ -1236,6 +1241,36 @@ class LLMWikiMCPServer:
                             "maximum": 200,
                             "default": 50,
                             "description": "Maximum findings to return (default 50, clamped to 200).",
+                        },
+                    },
+                    "required": ["node_id"],
+                    "additionalProperties": False,
+                },
+            },
+            {
+                "name": "find_code_symbol_mentions",
+                "description": (
+                    "Feature H — expand a session finding into the code "
+                    "symbols (CodeFunction / CodeClass / CodeMethod) it "
+                    "mentions. Reads `discusses` edges minted by the "
+                    "opt-in insight_symbol_link post-compile pass when "
+                    "available; otherwise falls back to a live scan of "
+                    "the finding body against `.tesserae/code-graph.json` "
+                    "(no edges are mutated). Useful for jumping from a "
+                    "decision/insight straight to the symbols it was "
+                    "about."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "node_id": {
+                            "type": "string",
+                            "description": (
+                                "Exact id of a Session<Kind> finding node "
+                                "(SessionInsight / SessionDecision / "
+                                "SessionQuestion / SessionTODO / "
+                                "SessionHypothesis / SessionTakeaway)."
+                            ),
                         },
                     },
                     "required": ["node_id"],
@@ -2348,6 +2383,14 @@ class LLMWikiMCPServer:
                 project_root, (f.get("node_id") for f in result.get("findings", []))
             )
             return result
+        if name == "find_code_symbol_mentions":
+            node_id = args.get("node_id")
+            if not node_id:
+                raise ValueError("find_code_symbol_mentions requires 'node_id'")
+            graph, project_root = self._load_requested_graph_with_root(args)
+            return self._mcp_find_code_symbol_mentions(
+                graph, project_root, node_id=str(node_id),
+            )
         if name == "graph_ppr":
             seed = args.get("seed_node_id")
             if seed is None or (isinstance(seed, (list, tuple)) and not seed):
@@ -2882,6 +2925,87 @@ class LLMWikiMCPServer:
         total = len(out)
         out = out[: max(1, min(int(limit), 200))]
         return {"node_id": node_id, "findings": out, "total": total}
+
+    def _mcp_find_code_symbol_mentions(
+        self,
+        graph: ResearchGraph,
+        project_root: Optional[Path],
+        *,
+        node_id: str,
+    ) -> JSONDict:
+        """Feature H — return code symbols mentioned by a session finding.
+
+        Two-stage resolution:
+
+        1. Walk ``discusses`` edges already on ``graph`` (minted by the
+           opt-in ``insight_symbol_link`` post-compile pass). These are
+           the canonical, persisted matches.
+        2. If no edges are present (pass never ran), fall back to a live
+           scan of the finding body against ``.tesserae/code-graph.json``
+           for the resolved project root. No graph mutation happens here.
+        """
+        from .memory.insight_symbol_link import (
+            build_symbol_index,
+            find_symbol_mentions,
+            load_code_graph_nodes,
+        )
+
+        node = next((n for n in graph.nodes if n.id == node_id), None)
+        if node is None:
+            raise ValueError(f"find_code_symbol_mentions: unknown node_id {node_id!r}")
+        if node.type.value not in self._SESSION_FINDING_TYPES:
+            raise ValueError(
+                f"find_code_symbol_mentions: node {node_id!r} is "
+                f"{node.type.value}, not a Session<Kind> finding"
+            )
+
+        nodes_by_id = {n.id: n for n in graph.nodes}
+
+        # Stage 1 — persisted ``discusses`` edges.
+        mentions: List[JSONDict] = []
+        seen_ids: set = set()
+        for edge in graph.edges:
+            if edge.type != "discusses" or edge.source != node_id:
+                continue
+            tgt = nodes_by_id.get(edge.target)
+            if tgt is None or tgt.id in seen_ids:
+                continue
+            seen_ids.add(tgt.id)
+            mentions.append({
+                "symbol_node_id": tgt.id,
+                "name": tgt.name,
+                "type": tgt.type.value,
+                "source_path": tgt.source_path,
+                "source": "persisted_edge",
+            })
+
+        # Stage 2 — live scan when no edges exist.
+        if not mentions and project_root is not None:
+            code_graph_path = project_root / ".tesserae" / "code-graph.json"
+            if code_graph_path.exists():
+                raw_nodes = load_code_graph_nodes(code_graph_path)
+                if raw_nodes:
+                    index = build_symbol_index(raw_nodes)
+                    for symbol in find_symbol_mentions(node, index):
+                        sid = str(symbol.get("id") or "")
+                        if not sid or sid in seen_ids:
+                            continue
+                        seen_ids.add(sid)
+                        mentions.append({
+                            "symbol_node_id": sid,
+                            "name": str(symbol.get("name") or ""),
+                            "type": str(symbol.get("type") or ""),
+                            "source_path": symbol.get("source_path"),
+                            "source": "live_scan",
+                        })
+
+        mentions.sort(key=lambda d: (d["type"], d["name"]))
+        return {
+            "node_id": node_id,
+            "body": node.name,
+            "mentions": mentions,
+            "total": len(mentions),
+        }
 
     def _mcp_list_communities(
         self, graph: ResearchGraph, *, min_size: int = 3, limit: int = 20,
@@ -3489,10 +3613,9 @@ class LLMWikiMCPServer:
             return {}
 
     def graph_summary(self, graph: ResearchGraph) -> JSONDict:
-        # Nothing mints code nodes any more, but a caller can still point
-        # ``--graph-path`` at a graph compiled before the layer was dropped.
-        # Never count those in the MCP-visible summary.
-        public_nodes = [node for node in graph.nodes if node.type not in CODE_GRAPH_TYPES]
+        # Code-graph nodes live in code-graph.json; never count them in the
+        # MCP-visible summary even if a graph.json happens to include them.
+        public_nodes = [node for node in graph.nodes if not is_code_graph_node(node)]
         public_node_ids = {node.id for node in public_nodes}
         public_edges = [
             edge for edge in graph.edges
@@ -3538,7 +3661,7 @@ class LLMWikiMCPServer:
         type_filter = {str(item) for item in types or []}
         kind_filter = {str(item).lower() for item in kinds or []}
         suppressed = set() if include_superseded else _superseded_ids(graph)
-        public_nodes = [n for n in graph.nodes if n.type not in CODE_GRAPH_TYPES]
+        public_nodes = [n for n in graph.nodes if not is_code_graph_node(n)]
         candidates: List[ResearchNode] = []
         for node in public_nodes:
             if node.id in suppressed:

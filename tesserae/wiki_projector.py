@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Dict, FrozenSet, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from .research_graph import (
+    CODE_GRAPH_TYPES,
     PRIVATE_PUBLIC_RESEARCH_TYPES,
     SESSION_FINDING_TYPES,
     ResearchEdge,
@@ -37,19 +38,19 @@ from .wiki_store import WikiPage, WikiPageStore
 
 # --- Node-type taxonomies ---------------------------------------------------
 #
-# Two disjoint partitions of ``ResearchNodeType``:
+# Three disjoint partitions of ``ResearchNodeType``:
 #
+# * ``CODE_GRAPH_TYPES`` — code-graph layer; lives in ``code-graph.json`` and
+#   never appears in ``graph.json``. Includes ``CodeProject`` (F-9: this is
+#   the *internal* code-graph artifact, not the user-facing research repo —
+#   the public repo type is ``Repository``). Defined in ``research_graph``
+#   (the ontology module subtracts it to build the extractor's write
+#   vocabulary) and re-exported here, which is where every caller looks for it.
 # * ``ASSERTION_LAYER_TYPES`` — claim / evidence layer; lives in the research
 #   graph but is never given a dedicated URL (rendered inline on detail pages
 #   as bullets / badges).
 # * ``PUBLIC_RESEARCH_TYPES`` — every type that gets a public wiki page
 #   (subject to per-node validity, e.g. paper title quality).
-#
-# There used to be a third, ``CODE_GRAPH_TYPES``, re-exported from
-# ``research_graph`` — the code layer that ``code-graph.json`` carried.
-# Nothing mints it now, so this module no longer names it; the set itself
-# survives in ``research_graph`` as the LOAD vocabulary for graphs compiled
-# before it was dropped.
 
 ASSERTION_LAYER_TYPES: FrozenSet[ResearchNodeType] = frozenset({
     ResearchNodeType.CLAIM,
@@ -65,22 +66,23 @@ ASSERTION_LAYER_TYPES: FrozenSet[ResearchNodeType] = frozenset({
 # --- Node-type → wiki kind --------------------------------------------------
 #
 # F-9 note: ``CodeProject`` and ``Repository`` look semantically similar
-# (both wrap a repo-shaped artifact), but only one of them is a research
-# entity. ``CodeProject`` was the internal root of the retired code layer,
-# minted for a local workspace; it has no public route and no entry below.
-# ``Repository`` is the user-facing research entity (GitHub notes, paper/repo
-# pairs) and gets the ``/repos/`` route. Likewise ``Project`` is treated as a
-# public research-layer alias for ``Repository`` so legacy graphs that minted
-# it under the old ontology still surface.
+# (both wrap a repo-shaped artifact), but they live in different layers.
+# ``CodeProject`` is an *internal* code-graph node minted by
+# :class:`CodeGraphExtractor` for the local workspace; it is filtered out by
+# :func:`is_public_research_node` (via ``CODE_GRAPH_TYPES``) and never gets a
+# public route. ``Repository`` is the user-facing research entity (GitHub
+# notes, paper/repo pairs) and gets the ``/repos/`` route. Likewise
+# ``Project`` is treated as a public research-layer alias for ``Repository``
+# so legacy graphs that minted it under the old ontology still surface.
 
 _KIND_FOR_TYPE: Mapping[ResearchNodeType, str] = {
     ResearchNodeType.SOURCE_DOCUMENT: "sources",
     ResearchNodeType.PAPER: "papers",
     ResearchNodeType.REPOSITORY: "repos",
     ResearchNodeType.PROJECT: "repos",
-    # NB: CODE_PROJECT is intentionally *not* mapped to a public kind — it
-    # belongs to the retired code layer, never to the public site. See F-9 in
-    # the extraction review.
+    # NB: CODE_PROJECT is intentionally *not* mapped to a public kind. It is
+    # a code-graph node; it lives in ``code-graph.json``, not in the public
+    # site. See ``CODE_GRAPH_TYPES`` above and F-9 in the extraction review.
     ResearchNodeType.CONCEPT: "concepts",
     ResearchNodeType.TECHNICAL_TERM: "concepts",
     ResearchNodeType.MATHEMATICAL_CONCEPT: "concepts",
@@ -407,20 +409,27 @@ def _local_slug(value: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Public predicate helpers (F-9, F-10)
+# Public predicate / partition helpers (F-9, F-10, F-11)
 # ---------------------------------------------------------------------------
 #
-# Every consumer that asks "is this node public?" goes through one of these
-# helpers. Two layers in play:
+# Every consumer that asks "is this node public?" or "which artifact does this
+# node belong in?" goes through one of these helpers. Three layers in play:
 #
-#   1. ``is_assertion_node(n)``   — claim/evidence layer. Lives in the
+#   1. ``is_code_graph_node(n)``  — code-graph layer (F-11). Always private,
+#      lives in ``code-graph.json``, never appears in ``graph.json``.
+#   2. ``is_assertion_node(n)``   — claim/evidence layer. Lives in the
 #      research graph (so MCP sees it) but never gets a public URL.
-#   2. ``is_public_research_node`` (re-exported from research_graph) — public
+#   3. ``is_public_research_node`` (re-exported from research_graph) — public
 #      research entity (Paper/Repository/Concept/Synthesis/...) subject to
 #      per-node validity gates such as paper title quality.
 #
 # ``kind_for_node()`` is the SSOT for "given a node, which wiki kind is it?".
-# Returns ``None`` for assertion / private-research nodes.
+# Returns ``None`` for code-graph / assertion / private-research nodes.
+
+
+def is_code_graph_node(node: ResearchNode) -> bool:
+    """True iff ``node`` belongs to the code-graph layer (F-11)."""
+    return node.type in CODE_GRAPH_TYPES
 
 
 def is_assertion_node(node: ResearchNode) -> bool:
@@ -467,16 +476,14 @@ def kind_for_node(node: ResearchNode) -> Optional[str]:
     """Return the public wiki kind (``papers`` / ``concepts`` / ...) or ``None``.
 
     A node is considered "public" iff:
+      * it is not a code-graph node (F-9 / F-11), AND
       * it is not an assertion-layer node, AND
       * :func:`is_public_research_node` accepts it (paper title quality,
         social-feed source filter, etc.), AND
       * its type maps to a public wiki kind via ``_KIND_FOR_TYPE``.
-
-    A retired code type reaching this function — possible only from a graph
-    compiled before the code layer was dropped — still returns ``None``: no
-    code type has ever had a ``_KIND_FOR_TYPE`` entry, which is why removing
-    the dedicated ``is_code_graph_node`` guard changed no answer.
     """
+    if is_code_graph_node(node):
+        return None
     if is_assertion_node(node):
         return None
     if not is_public_research_node(node):
@@ -500,12 +507,62 @@ def public_edges(graph: ResearchGraph) -> List[ResearchEdge]:
     return [edge for edge in graph.edges if edge.source in public_ids and edge.target in public_ids]
 
 
+def partition_graph(graph: ResearchGraph) -> Tuple[ResearchGraph, ResearchGraph]:
+    """Split ``graph`` into ``(research_graph, code_graph)``.
+
+    * ``research_graph`` keeps every node that is *not* a code-graph type
+      (so it includes public research nodes plus the private assertion layer
+      that consumers like MCP still want). Edges where either endpoint
+      is a code-graph node are dropped.
+    * ``code_graph`` keeps only code-graph nodes (``CodeProject`` /
+      ``SourceFile`` / ``CodeModule`` / ``CodeClass`` / ``CodeFunction`` /
+      ``Dependency``). Edges where either endpoint is a code-graph node are
+      kept (this includes intra-code edges *and* any cross-layer
+      ``mentioned_in`` edge that anchors a code symbol to a research node;
+      callers can drop the cross-layer half if needed).
+    """
+    research_node_ids: set[str] = set()
+    code_node_ids: set[str] = set()
+    research_nodes: List[ResearchNode] = []
+    code_nodes: List[ResearchNode] = []
+    for node in graph.nodes:
+        if is_code_graph_node(node):
+            code_nodes.append(node)
+            code_node_ids.add(node.id)
+        else:
+            research_nodes.append(node)
+            research_node_ids.add(node.id)
+
+    research_edges: List[ResearchEdge] = []
+    code_edges: List[ResearchEdge] = []
+    for edge in graph.edges:
+        src_in_research = edge.source in research_node_ids
+        tgt_in_research = edge.target in research_node_ids
+        src_in_code = edge.source in code_node_ids
+        tgt_in_code = edge.target in code_node_ids
+        if src_in_research and tgt_in_research:
+            research_edges.append(edge)
+        if src_in_code or tgt_in_code:
+            # Code-graph keeps anything touching the code layer (intra-code +
+            # cross-layer anchors). The cross-layer edges let downstream tools
+            # rebuild a combined view if they want one.
+            code_edges.append(edge)
+
+    return (
+        ResearchGraph(nodes=research_nodes, edges=research_edges),
+        ResearchGraph(nodes=code_nodes, edges=code_edges),
+    )
+
+
 __all__ = [
     "WikiLayerProjector",
+    "CODE_GRAPH_TYPES",
     "ASSERTION_LAYER_TYPES",
     "has_contradictions",
+    "is_code_graph_node",
     "is_assertion_node",
     "kind_for_node",
     "public_nodes",
     "public_edges",
+    "partition_graph",
 ]

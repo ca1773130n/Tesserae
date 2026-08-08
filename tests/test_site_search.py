@@ -27,7 +27,12 @@ from tesserae.wiki_store import WikiPage
 
 
 _DESIGN_SPEC_EXCLUDED = {
+    "CodeClass",
+    "CodeFunction",
+    "CodeModule",
+    "Dependency",
     "EvidenceSpan",
+    "SourceFile",
     "Claim",
     "ContributionClaim",
     "PerformanceClaim",
@@ -43,26 +48,6 @@ def test_wiki_layer_types_excludes_every_design_spec_type():
     for excluded in _DESIGN_SPEC_EXCLUDED:
         assert excluded not in WIKI_LAYER_TYPES, excluded
         assert excluded in EXCLUDED_TYPES, excluded
-
-
-def test_wiki_layer_types_admits_no_retired_code_type():
-    """A graph compiled before code ingestion was dropped still carries them.
-
-    Nothing mints a code type any more, so they are gone from ``EXCLUDED_TYPES``
-    — but ``graph.json`` files on disk are full of them and this module reads
-    whatever it is handed. The allow-list is what keeps them out, and it is
-    checked here against the single surviving definition of the vocabulary
-    rather than a hand-retyped list.
-    """
-    from tesserae.research_graph import CODE_GRAPH_TYPES
-
-    for code_type in CODE_GRAPH_TYPES:
-        assert code_type.value not in WIKI_LAYER_TYPES, code_type.value
-
-    # Repository / Project are DOCUMENT types and must not be swept up with
-    # them — they are the pages a repo-shaped source compiles to.
-    assert ResearchNodeType.REPOSITORY.value in WIKI_LAYER_TYPES
-    assert ResearchNodeType.PROJECT.value in WIKI_LAYER_TYPES
 
 
 def test_wiki_layer_types_includes_the_eight_published_kinds():
@@ -88,12 +73,7 @@ def test_wiki_layer_types_includes_the_eight_published_kinds():
 
 @pytest.fixture
 def mixed_graph() -> ResearchGraph:
-    """Wiki-layer types, the excluded assertion layer, and legacy code nodes.
-
-    The code nodes are the shape a graph compiled before source-code ingestion
-    was dropped still has on disk. Nothing mints them now, but the index is
-    built from whatever ``graph.json`` holds, so they still have to stay out.
-    """
+    """A graph that combines wiki-layer types with explicitly excluded types."""
 
     builder = ResearchGraphBuilder()
 
@@ -107,7 +87,7 @@ def mixed_graph() -> ResearchGraph:
     builder.add_node("3D Reconstruction", ResearchNodeType.RESEARCH_TOPIC)
     builder.add_node("Why does GS scale?", ResearchNodeType.OPEN_QUESTION)
 
-    # Retired code types — legacy rows that must NOT appear in the index.
+    # Excluded types — must NOT appear in the index.
     builder.add_node("MyClass", ResearchNodeType.CODE_CLASS)
     builder.add_node("my_func", ResearchNodeType.CODE_FUNCTION)
     builder.add_node("foo_module", ResearchNodeType.CODE_MODULE)
@@ -197,22 +177,11 @@ def test_build_search_index_uses_wiki_page_for_sources_and_syntheses(tmp_path: P
 
 
 def test_is_wiki_layer_helper(mixed_graph: ResearchGraph):
-    # Allow-list first: everything outside ``WIKI_LAYER_TYPES`` is excluded,
-    # whether it was named in ``EXCLUDED_TYPES`` (the assertion layer, still
-    # minted) or simply retired (the code layer, still on disk in old graphs).
-    # The converse direction only holds because the fixture carries no
-    # private-by-default type (Person is in the allow-list but never public).
-    from tesserae.research_graph import PRIVATE_PUBLIC_RESEARCH_TYPES
-
-    assert not {n.type.value for n in mixed_graph.nodes} & PRIVATE_PUBLIC_RESEARCH_TYPES
-    for node in mixed_graph.nodes:
-        if node.type.value in WIKI_LAYER_TYPES:
-            assert is_wiki_layer(node), node.type.value
-        else:
-            assert not is_wiki_layer(node), node.type.value
     for node in mixed_graph.nodes:
         if node.type.value in EXCLUDED_TYPES:
-            assert node.type.value not in WIKI_LAYER_TYPES
+            assert not is_wiki_layer(node)
+        elif node.type.value in WIKI_LAYER_TYPES:
+            assert is_wiki_layer(node)
 
 
 # ----------------------------------------------------- body indexing & tokens

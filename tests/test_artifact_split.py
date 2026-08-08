@@ -1,19 +1,19 @@
-"""Graph-artifact contract tests for ``ProjectWiki._write_artifacts``.
+"""Artifact-split contract tests (F-11).
 
-This file used to pin the F-11 *artifact split*: ``graph.json`` carried the
-research layer, ``code-graph.json`` the CodeProject / SourceFile / CodeClass /
-CodeFunction / Dependency layer, and ``combined-graph.json`` the union for
-anyone who opted in. The split is retired — nothing mints a code layer any
-more — so what is left to pin is:
+These tests pin the partition that ``ProjectWiki._write_artifacts`` performs
+on the in-memory ``ResearchGraph`` before it lands on disk:
 
-* ``graph.json`` is the compiled graph, whole, in the shape MCP reads.
-* a ``code-graph.json`` left by an earlier release is DELETED, not inherited.
-* the build-history ledger lives at the project-wiki root and grows per build.
-* every publish goes through a per-writer temp name.
+* ``.tesserae/graph.json`` — research-layer nodes only (no ``CodeProject``,
+  ``SourceFile``, ``CodeModule``, ``CodeClass``, ``CodeFunction``,
+  ``Dependency``).
+* ``.tesserae/code-graph.json`` — code-graph nodes only (the same six types).
+* ``.tesserae/combined-graph.json`` — only present when
+  ``combined_graph: true`` is in the project config (or the
+  ``TESSERAE_INCLUDE_COMBINED_GRAPH`` env var is set).
 
 We avoid the full ``compile()`` path here because it round-trips through
-``ResearchGraphExtractor``; these are pure local operations on a hand-built
-graph.
+``ResearchGraphExtractor`` which is being overhauled in parallel by Subagent
+W. The artifact split is a pure local operation on a hand-built graph.
 """
 
 from __future__ import annotations
@@ -36,13 +36,8 @@ from tesserae.research_graph import (
 # --------------------------------------------------------------------- fixtures
 
 
-def _graph() -> ResearchGraph:
-    """A graph with one node from every layer a compile can still produce.
-
-    Public research nodes plus the private assertion layer — the assertion
-    nodes are the reason ``graph.json`` is not just ``public_nodes()``: MCP
-    consumers read them, so they must survive into the artifact.
-    """
+def _mixed_graph() -> ResearchGraph:
+    """A graph with one node from every relevant layer."""
     nodes = [
         # Research layer (public)
         ResearchNode(
@@ -80,11 +75,62 @@ def _graph() -> ResearchGraph:
             name="evidence text",
             type=ResearchNodeType.EVIDENCE_SPAN,
         ),
+        # Code-graph layer
+        ResearchNode(
+            id="CodeProject:Tesserae",
+            name="Tesserae",
+            type=ResearchNodeType.CODE_PROJECT,
+            metadata={"layer": "project"},
+        ),
+        ResearchNode(
+            id="SourceFile:project.py",
+            name="project.py",
+            type=ResearchNodeType.SOURCE_FILE,
+        ),
+        ResearchNode(
+            id="CodeClass:ProjectWiki",
+            name="ProjectWiki",
+            type=ResearchNodeType.CODE_CLASS,
+        ),
+        ResearchNode(
+            id="CodeFunction:compile",
+            name="compile",
+            type=ResearchNodeType.CODE_FUNCTION,
+        ),
+        ResearchNode(
+            id="CodeModule:tesserae",
+            name="tesserae",
+            type=ResearchNodeType.CODE_MODULE,
+        ),
+        ResearchNode(
+            id="Dependency:pytest",
+            name="pytest",
+            type=ResearchNodeType.DEPENDENCY,
+        ),
     ]
     edges = [
+        # research-only
         ResearchEdge(source="Paper:demo", target="Concept:gs", type="mentioned_in"),
         ResearchEdge(source="Repository:demo", target="Paper:demo", type="implemented_in"),
         ResearchEdge(source="Synthesis:pulse", target="Paper:demo", type="synthesizes"),
+        # code-only
+        ResearchEdge(
+            source="CodeProject:Tesserae", target="SourceFile:project.py", type="contains"
+        ),
+        ResearchEdge(
+            source="SourceFile:project.py",
+            target="CodeClass:ProjectWiki",
+            type="defines",
+        ),
+        ResearchEdge(
+            source="CodeClass:ProjectWiki",
+            target="CodeFunction:compile",
+            type="defines",
+        ),
+        # cross-layer (research node → code node, e.g. paper "implemented_in" project)
+        ResearchEdge(
+            source="Paper:demo", target="CodeProject:Tesserae", type="implemented_in"
+        ),
     ]
     return ResearchGraph(nodes=nodes, edges=edges)
 
@@ -94,60 +140,138 @@ def _seed_project(project_root: Path) -> ProjectWiki:
     return ProjectWiki.init(project_root, name="artifact_split_test")
 
 
+# ------------------------------------------------------------ partition helper
+
+
+def test_partition_graph_separates_layers() -> None:
+    """``partition_graph`` returns two disjoint ResearchGraph objects."""
+    from tesserae.wiki_projector import partition_graph
+
+    research, code = partition_graph(_mixed_graph())
+
+    research_types = {n.type.value for n in research.nodes}
+    code_types = {n.type.value for n in code.nodes}
+
+    forbidden_in_research = {
+        "CodeProject",
+        "SourceFile",
+        "CodeModule",
+        "CodeClass",
+        "CodeFunction",
+        "Dependency",
+    }
+    assert research_types.isdisjoint(forbidden_in_research)
+    assert code_types == forbidden_in_research
+
+    # Research graph still includes the assertion layer (claims/evidence) so
+    # MCP/Cognee consumers can read them; only code-graph nodes are removed.
+    assert "PerformanceClaim" in research_types
+    assert "EvidenceSpan" in research_types
+
+    # Cross-layer edges only survive in the code-graph (so consumers that
+    # rebuild a union still see them); research graph drops anything pointing
+    # at a code-layer endpoint.
+    research_edges = [(e.source, e.target, e.type) for e in research.edges]
+    assert ("Paper:demo", "CodeProject:Tesserae", "implemented_in") not in research_edges
+
+    code_edges = [(e.source, e.target, e.type) for e in code.edges]
+    assert ("Paper:demo", "CodeProject:Tesserae", "implemented_in") in code_edges
+
+
 # ------------------------------------------------------------ artifact files
 
 
-def test_write_artifacts_writes_the_whole_graph(tmp_path: Path) -> None:
-    """``graph.json`` carries every node handed to ``_write_artifacts``.
-
-    The split used to subtract a code layer here; nothing subtracts now. A
-    SUPERSET rather than equality because ``_write_artifacts`` also runs the
-    synthesis projector, which legitimately mints pages of its own. The
-    assertion layer in particular must not be filtered out on the way to disk
-    — MCP reads claims and evidence spans out of ``graph.json``.
-    """
+def test_write_artifacts_splits_graph(tmp_path: Path) -> None:
+    """``_write_artifacts`` lands two graph files; the union is *not* written."""
     project_root = tmp_path / "project"
     wiki = _seed_project(project_root)
 
-    graph = _graph()
-    wiki._write_artifacts(graph)
+    wiki._write_artifacts(_mixed_graph())
 
-    payload = json.loads(wiki.paths.graph.read_text(encoding="utf-8"))
-    written_ids = {n["id"] for n in payload["nodes"]}
-    assert {n.id for n in graph.nodes} <= written_ids
-    assert {e.type for e in graph.edges} <= {e["type"] for e in payload["edges"]}
-    assert {"PerformanceClaim", "EvidenceSpan"} <= {n["type"] for n in payload["nodes"]}
+    graph_payload = json.loads(wiki.paths.graph.read_text(encoding="utf-8"))
+    code_payload = json.loads(wiki.paths.code_graph.read_text(encoding="utf-8"))
 
+    research_types = {n["type"] for n in graph_payload["nodes"]}
+    code_types = {n["type"] for n in code_payload["nodes"]}
 
-def test_a_stale_code_graph_is_deleted(tmp_path: Path) -> None:
-    """``code-graph.json`` from an earlier release must not survive a compile.
-
-    Nothing writes the file any more, so leaving it on disk would leave an
-    unowned artifact that still answers reads — and that still feeds the
-    output-snapshot graph hash — forever.
-    """
-    project_root = tmp_path / "project"
-    wiki = _seed_project(project_root)
-
-    wiki.paths.code_graph.write_text(
-        '{"nodes": [{"id": "SourceFile:project.py", "name": "project.py", '
-        '"type": "SourceFile"}], "edges": []}\n',
-        encoding="utf-8",
+    forbidden = {
+        "CodeProject",
+        "SourceFile",
+        "CodeModule",
+        "CodeClass",
+        "CodeFunction",
+        "Dependency",
+    }
+    assert research_types.isdisjoint(forbidden), (
+        f"graph.json should not contain code-graph types: {research_types & forbidden}"
+    )
+    assert code_types == forbidden, (
+        f"code-graph.json should contain exactly the code-graph layer types; got {code_types}"
     )
 
-    wiki._write_artifacts(_graph())
+    # No accidental research types in code-graph.json.
+    research_only_types = {"Paper", "Repository", "MethodologicalConcept", "Synthesis"}
+    assert code_types.isdisjoint(research_only_types)
 
-    assert not wiki.paths.code_graph.exists()
+
+def test_combined_graph_off_by_default(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    wiki = _seed_project(project_root)
+    wiki._write_artifacts(_mixed_graph())
+
+    assert not wiki.paths.combined_graph.exists(), (
+        "combined-graph.json must not be written by default"
+    )
 
 
-def test_no_code_graph_is_written_when_none_existed(tmp_path: Path) -> None:
-    """The delete is conditional — a clean project stays clean, no empty file."""
+def test_combined_graph_via_config(tmp_path: Path) -> None:
+    """Setting ``combined_graph: true`` in config.json materializes the union."""
     project_root = tmp_path / "project"
     wiki = _seed_project(project_root)
 
-    wiki._write_artifacts(_graph())
+    cfg = wiki.config()
+    cfg["combined_graph"] = True
+    wiki.paths.config.write_text(
+        json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
 
-    assert not wiki.paths.code_graph.exists()
+    wiki._write_artifacts(_mixed_graph())
+
+    assert wiki.paths.combined_graph.exists(), (
+        "combined-graph.json should be written when combined_graph=true in config"
+    )
+    payload = json.loads(wiki.paths.combined_graph.read_text(encoding="utf-8"))
+    types = {n["type"] for n in payload["nodes"]}
+    # Combined graph is the full union — both partitions present.
+    assert "Paper" in types
+    assert "CodeFunction" in types
+
+
+def test_combined_graph_via_env_var(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project_root = tmp_path / "project"
+    wiki = _seed_project(project_root)
+    monkeypatch.setenv("TESSERAE_INCLUDE_COMBINED_GRAPH", "1")
+
+    wiki._write_artifacts(_mixed_graph())
+
+    assert wiki.paths.combined_graph.exists()
+
+
+def test_combined_graph_cleaned_when_flag_flips_off(tmp_path: Path) -> None:
+    """Stale combined graph from a previous opt-in is removed on the next compile."""
+    project_root = tmp_path / "project"
+    wiki = _seed_project(project_root)
+
+    # Pretend a previous compile wrote the combined graph.
+    wiki.paths.combined_graph.write_text(
+        '{"nodes": [], "edges": []}\n', encoding="utf-8"
+    )
+    assert wiki.paths.combined_graph.exists()
+
+    # Flag is off (default config).
+    wiki._write_artifacts(_mixed_graph())
+
+    assert not wiki.paths.combined_graph.exists()
 
 
 # ------------------------------------------------------------ build-history
@@ -159,7 +283,7 @@ def test_build_history_lives_at_project_root(tmp_path: Path) -> None:
     """
     project_root = tmp_path / "project"
     wiki = _seed_project(project_root)
-    wiki._write_artifacts(_graph())
+    wiki._write_artifacts(_mixed_graph())
 
     assert wiki.paths.build_history.exists()
     # Path lives directly under .tesserae/, not inside site/.
@@ -172,24 +296,20 @@ def test_build_history_grows_each_compile(tmp_path: Path) -> None:
     """Two consecutive compiles append two lines to the project-root ledger."""
     project_root = tmp_path / "project"
     wiki = _seed_project(project_root)
-    wiki._write_artifacts(_graph())
-    wiki._write_artifacts(_graph())
+    wiki._write_artifacts(_mixed_graph())
+    wiki._write_artifacts(_mixed_graph())
 
     text = wiki.paths.build_history.read_text(encoding="utf-8")
     lines = [line for line in text.splitlines() if line.strip()]
     assert len(lines) == 2, (
         f"expected two build-history entries after two compiles; got {len(lines)}"
     )
-    # Every line is a parseable JSON object with the expected keys. ``code_nodes``
-    # is deliberately absent: it counted the retired half of the split, and a
-    # permanent zero would assert a layer exists.
+    # Every line is a parseable JSON object with the expected keys.
     for line in lines:
         record = json.loads(line)
         assert "built_at" in record
-        assert record["research_nodes"] >= len(_graph().nodes)
-        assert "research_edges" in record
-        assert "code_nodes" not in record
-        assert "code_edges" not in record
+        assert "research_nodes" in record
+        assert "code_nodes" in record
 
 
 # ------------------------------------------------------------ MCP / consumers
@@ -199,7 +319,7 @@ def test_graph_json_schema_unchanged(tmp_path: Path) -> None:
     """``graph.json`` keeps the same top-level shape MCP relies on."""
     project_root = tmp_path / "project"
     wiki = _seed_project(project_root)
-    wiki._write_artifacts(_graph())
+    wiki._write_artifacts(_mixed_graph())
 
     payload = json.loads(wiki.paths.graph.read_text(encoding="utf-8"))
     assert "nodes" in payload
@@ -234,18 +354,18 @@ def test_publish_never_uses_one_fixed_temp_path(
     wiki = _seed_project(project_root)
     monkeypatch.setenv("TESSERAE_INCLUDE_COMBINED_GRAPH", "1")
 
-    for fixed in ("graph.tmp", "combined-graph.tmp"):
+    for fixed in ("graph.tmp", "code-graph.tmp", "combined-graph.tmp"):
         (wiki.root / fixed).mkdir()
 
-    wiki._write_artifacts(_graph())
+    wiki._write_artifacts(_mixed_graph())
 
-    for target in (wiki.paths.graph, wiki.paths.combined_graph):
+    for target in (wiki.paths.graph, wiki.paths.code_graph, wiki.paths.combined_graph):
         assert json.loads(target.read_text(encoding="utf-8"))["nodes"], (
             f"{target.name} should have been published past the occupied fixed temp name"
         )
     # And the scratch file is gone once the rename lands — a per-writer name
     # that is never cleaned up is a leak, not a fix.
-    for stem in ("graph", "combined-graph"):
+    for stem in ("graph", "code-graph", "combined-graph"):
         assert list(wiki.root.glob(f"{stem}.tmp.*")) == []
 
 
@@ -291,7 +411,7 @@ def test_sidecar_publishes_never_use_one_fixed_temp_path(tmp_path: Path) -> None
     (wiki.root / "hierarchy.tmp").mkdir()
 
     wiki._write_manifest({"paper.md": {"hash": "abc123"}})
-    wiki._write_hierarchy_sidecar(_graph())
+    wiki._write_hierarchy_sidecar(_mixed_graph())
 
     assert json.loads(wiki.paths.manifest.read_text(encoding="utf-8"))["files"] == {
         "paper.md": {"hash": "abc123"}

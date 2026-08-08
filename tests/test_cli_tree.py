@@ -14,7 +14,7 @@ def test_root_help_shows_grouped_commands(capsys):
         assert section in out
     for cmd in ("init", "compile", "context", "ask", "serve", "status",
                 "engine", "refresh", "research", "query", "lint",
-                "sessions", "vault", "export", "config", "projects",
+                "sessions", "vault", "export", "code", "config", "projects",
                 "integrations", "extract", "lab"):
         assert f"\n  {cmd}" in out or f" {cmd} " in out
 
@@ -82,6 +82,8 @@ def test_unknown_command_exits_2_and_points_at_help(capsys):
         (["project", "schema-drift"], "tesserae lab schema-drift"),
         (["project", "sessions", "import"], "tesserae sessions import"),
         (["project", "sessions", "discover"], "tesserae sessions discover"),
+        (["project", "ingest-code"], "tesserae code ingest"),
+        (["project", "sync-code", "--auto-sync"], "tesserae code sync"),
         (["project", "research", "q"], "tesserae research"),
         (["project", "lint"], "tesserae lint"),
         (["project", "query", "q"], "tesserae query"),
@@ -118,32 +120,17 @@ def test_wiki_activate_stub_is_a_terminal_removal(capsys):
     assert "has moved" not in err
 
 
-@pytest.mark.parametrize(
-    "old",
-    [
-        # The `code` group itself, and every older spelling of it. The hooks
-        # that drive `code sync` live in the user's installed plugin directory,
-        # not in this repo, so they keep firing after this ships — 3,445 times
-        # over 39 days in the live hook log. Each one has to land on an
-        # explanation rather than "unknown command 'code'", and the trailing
-        # `--project <path>` those hooks pass must not reach argparse.
-        ["code"],
-        ["code", "sync", "--project", "/tmp/p"],
-        ["code", "ingest"],
-        ["project", "ingest-code"],
-        ["project", "sync-code", "--auto-sync"],
-        ["project", "refresh-understand-anything"],
-    ],
-)
-def test_code_scope_stubs_are_terminal_removals(old, capsys):
+def test_refresh_understand_anything_stub_is_a_terminal_removal(capsys):
+    """Backend EOL stage 1: the old `project refresh-understand-anything`
+    surface is a one-line removal notice (exit 2), not a redirect."""
     from tesserae.cli import main
 
-    rc = main(old)
+    rc = main(["project", "refresh-understand-anything"])
     assert rc == 2
     err = capsys.readouterr().err
     assert err.count("\n") == 1, f"stub must be exactly one line, got: {err!r}"
-    assert "removed — Tesserae indexes documents and session transcripts" in err
-    assert "CodeGraph" in err
+    assert "removed — code-structure nodes are extracted natively" in err
+    assert "tesserae code ingest" in err
     assert "has moved" not in err
 
 
@@ -240,7 +227,7 @@ def test_every_command_help_has_examples(capsys):
                 ["status"], ["engine"], ["refresh"], ["research"], ["query"],
                 ["lint"], ["extract"], ["graph-map"],
                 ["sessions", "import"], ["vault", "sync"], ["export", "site"],
-                ["config", "llm"], ["projects", "register"],
+                ["code", "sync"], ["config", "llm"], ["projects", "register"],
                 ["integrations", "refresh"], ["lab", "evolve"]):
         with pytest.raises(SystemExit):
             cli.main([*cmd, "--help"])

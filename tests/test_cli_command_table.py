@@ -25,6 +25,7 @@ EXPECTED_VERBS = {
     "sessions",
     "vault",
     "export",
+    "code",
     "config",
     "projects",
     "integrations",

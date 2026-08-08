@@ -128,9 +128,8 @@ GRAPH_CORE_NODES: int = 80
 def page_href(kind: str, slug: str) -> str:
     """Relative URL (from site root) for a wiki-layer page.
 
-    Returns ``""`` for any kind that has no public route (the assertion layer,
-    and the retired code types older graphs still carry) so callers that walk
-    the graph never accidentally mint a URL for a page that was never written.
+    Returns ``""`` for any kind that has no public route (CodeClass etc.) so
+    callers that walk the graph never accidentally mint a code-layer URL.
     """
     if kind not in ROUTE_FOR_KIND:
         return ""
@@ -203,21 +202,22 @@ _TOPIC_TYPES = {
 def _kind_for_node_type(node_type: ResearchNodeType) -> Optional[str]:
     """Map a graph node type onto its public wiki kind, or ``None``.
 
-    ``None`` means the type has no public detail page — EvidenceSpan and the
-    Claim variants, plus every retired code type (CodeClass / CodeFunction /
-    SourceFile / Dependency / ...) that a graph compiled before they were
-    dropped still carries. Those types stay in ``graph.json`` for MCP
+    ``None`` means the type has no public detail page (CodeClass /
+    CodeFunction / CodeModule / Dependency / EvidenceSpan / SourceFile /
+    Claim variants). Those types stay in ``graph.json`` for MCP
     consumers but never get a URL of their own.
-
-    ``Repository`` and ``Project`` are NOT code types: they are the document
-    nodes a repository-shaped source compiles to, and they keep their
-    ``repos`` route.
     """
-    if node_type == ResearchNodeType.SOURCE_DOCUMENT:
+    if node_type in (ResearchNodeType.SOURCE_DOCUMENT, ResearchNodeType.SOURCE_FILE):
+        # Bug B: ``SOURCE_FILE`` is normally a code-graph type and gets
+        # filtered out before reaching this map (see ``WIKI_LAYER_TYPES`` in
+        # ``site/search.py``). But raganything-projected docs used to be
+        # minted as SOURCE_FILE and may exist in older graphs on disk; map
+        # them to ``sources`` so they group correctly if they ever survive
+        # the visibility filter.
         return "sources"
     if node_type == ResearchNodeType.PAPER:
         return "papers"
-    if node_type in {ResearchNodeType.REPOSITORY, ResearchNodeType.PROJECT}:
+    if node_type in {ResearchNodeType.REPOSITORY, ResearchNodeType.CODE_PROJECT, ResearchNodeType.PROJECT}:
         return "repos"
     if node_type == ResearchNodeType.OPEN_QUESTION:
         return "questions"
@@ -1633,7 +1633,7 @@ def render_home(ctx: SiteContext) -> str:
         card(title="Sources", href="sources/index.html", kind_label="library", description="Raw documents and digests.", footer=f"{counts.get('sources', 0)} pages"),
         card(title="Concepts", href="concepts/index.html", kind_label="library", description="Recurring concepts, terms, and algorithms.", footer=f"{counts.get('concepts', 0)} pages"),
         card(title="Papers", href="papers/index.html", kind_label="library", description="Paper hub with year/topic facets.", footer=f"{counts.get('papers', 0)} pages"),
-        card(title="Repos", href="repos/index.html", kind_label="library", description="Repositories and projects.", footer=f"{counts.get('repos', 0)} pages"),
+        card(title="Repos", href="repos/index.html", kind_label="library", description="Repositories and code projects.", footer=f"{counts.get('repos', 0)} pages"),
         card(title="Topics", href="topics/index.html", kind_label="library", description="Research fields and approach families.", footer=f"{counts.get('topics', 0)} pages"),
         card(title="Syntheses", href="syntheses/index.html", kind_label="library", description="Higher-order synthesis pages.", footer=f"{counts.get('syntheses', 0)} pages"),
         card(title="Open questions", href="questions/index.html", kind_label="library", description="Open research questions.", footer=f"{counts.get('questions', 0)} pages"),
@@ -1809,7 +1809,7 @@ def render_repos_index(ctx: SiteContext) -> str:
     return _index_page(
         ctx=ctx,
         title="Repos",
-        description="Repositories and projects.",
+        description="Repositories and code projects.",
         pages=ctx.wiki_pages_by_kind.get("repos", []),
         nodes=ctx.nodes_by_kind.get("repos", []),
         kind_route="repos",
@@ -2288,24 +2288,22 @@ _GRAPH_HIDDEN_GROUPS: frozenset[str] = frozenset({"sources"})
 
 
 # Graph View v1 — node FAMILY map (spec §B). The interactive view colours
-# nodes by family (plus a neutral "other" fallback) instead of 36 raw types.
-# The family→types map below is the single source of truth and is mirrored by
-# ``FAMILY_COLORS`` in ``js.py``. Any ``ResearchNodeType.value`` not listed
-# here degrades gracefully to ``"other"`` (neutral gray) so new node types
-# never break the legend or the colour scheme. ``Stub`` is hidden upstream
-# (WIKI_LAYER filter) and intentionally absent.
-#
-# One of the spec's eight, "code", is gone. It listed 22 type names by hand —
-# a third copy of the code vocabulary, drifting against the two in
-# ``research_graph``. No producer mints those types now and
-# ``_GRAPH_VIEW_TYPES`` no longer admits them, so a code node from a legacy
-# graph never reaches this map; it would land on "other" if it somehow did.
-# Anything that genuinely needs the code vocabulary should import
-# ``research_graph.CODE_GRAPH_TYPES`` rather than retype it here.
+# nodes by one of 8 families (plus a neutral "other" fallback) instead of 36
+# raw types. The family→types map below is the single source of truth and is
+# mirrored by ``FAMILY_COLORS`` in ``js.py``. Any ``ResearchNodeType.value``
+# not listed here degrades gracefully to ``"other"`` (neutral gray) so new
+# node types never break the legend or the colour scheme. ``Stub`` is hidden
+# upstream (WIKI_LAYER filter) and intentionally absent.
 _FAMILY_BY_TYPE: Dict[str, str] = {}
 for _family, _types in {
     "taxonomy": ("ResearchField", "ResearchTopic", "ProblemArea", "ApproachFamily", "Trend"),
     "sources": ("SourceDocument", "Paper", "Repository", "Project", "Model", "Dataset", "Benchmark", "Metric", "Result"),
+    "code": (
+        "CodeProject", "SourceFile", "CodeFile", "CodeModule", "CodeClass", "CodeFunction",
+        "CodeMethod", "CodeInterface", "CodeTrait", "CodeStruct", "CodeEnum", "CodeEnumMember",
+        "CodeTypeAlias", "CodeVariable", "CodeConstant", "CodeRoute", "CodeComponent", "CodeField",
+        "CodeParameter", "CodeNamespace", "CodeSymbol", "Dependency",
+    ),
     "concepts": (
         "Concept", "TechnicalTerm", "MathematicalConcept", "MethodologicalConcept", "Algorithm",
         "ObjectiveFunction", "ArchitecturePattern", "TrainingParadigm", "InferenceStrategy",
@@ -2328,7 +2326,7 @@ del _family, _types, _t
 
 
 def _family_for_node_type(node_type: ResearchNodeType) -> str:
-    """Map a :class:`ResearchNodeType` to one of the graph families.
+    """Map a :class:`ResearchNodeType` to one of the 8 graph families.
 
     Unknown / unmapped types fall back to ``"other"`` (neutral gray) so the
     colour scheme degrades gracefully as the schema grows (spec §B).
@@ -2338,22 +2336,23 @@ def _family_for_node_type(node_type: ResearchNodeType) -> str:
 
 # Graph View v1 — the interactive view surfaces more families than the
 # SEO/search wiki layer (``WIKI_LAYER_TYPES``): the spec's colour map +
-# node-detail drawer cover Sessions (rose) and CommunitySummary (emerald)
-# nodes, which ``WIKI_LAYER_TYPES`` intentionally omits because they don't get
-# their own HTML page. We extend the allow-list HERE (visual payload only) so
-# those families render in the graph + drawer without changing the search
-# index, sitemap, or JSON-LD exports (which stay keyed on
+# node-detail drawer cover Code (cyan), Sessions (rose) and CommunitySummary
+# (emerald) nodes, which ``WIKI_LAYER_TYPES`` intentionally omits because they
+# don't get their own HTML page. We extend the allow-list HERE (visual payload
+# only) so those families render in the graph + drawer without changing the
+# search index, sitemap, or JSON-LD exports (which stay keyed on
 # ``WIKI_LAYER_TYPES``). Sources stay gated behind ``show_sources`` via the
 # separate group filter.
-#
-# The spec's Code (cyan) family is no longer admitted. Nothing mints those
-# types, and admitting them would surface exactly the layer that made the
-# compiled payload 97.7% code — every one of which the drawer's callers/
-# callees section resolved through edges that never linked back to a document.
 _GRAPH_VIEW_EXTRA_TYPES: frozenset[str] = frozenset(
     {
         # Synthesis family — CommunitySummary anchors the Community drawer section.
         "CommunitySummary",
+        # Code family — callers/callees power the Code drawer section.
+        "CodeProject", "SourceFile", "CodeFile", "CodeModule", "CodeClass",
+        "CodeFunction", "CodeMethod", "CodeInterface", "CodeTrait", "CodeStruct",
+        "CodeEnum", "CodeEnumMember", "CodeTypeAlias", "CodeVariable",
+        "CodeConstant", "CodeRoute", "CodeComponent", "CodeField",
+        "CodeParameter", "CodeNamespace", "CodeSymbol", "Dependency",
         # Sessions family — session memory drawer section.
         "Session", "SessionInsight", "SessionDecision", "SessionQuestion",
         "SessionTODO", "SessionHypothesis", "SessionTakeaway",
@@ -2362,6 +2361,15 @@ _GRAPH_VIEW_EXTRA_TYPES: frozenset[str] = frozenset(
 _GRAPH_VIEW_TYPES: frozenset[str] = WIKI_LAYER_TYPES | _GRAPH_VIEW_EXTRA_TYPES
 
 
+# Code-symbol node types whose ``importance`` is fan-in (incoming calls /
+# references / imports / declared_in), per spec §A. Mirrors
+# ``research_graph.CODE_SYMBOL_TYPES`` but keyed on the string value so the
+# serializer stays decoupled from the enum-set import.
+_CODE_FAMILY = "code"
+# Edge types that count as code fan-in for the importance signal.
+_CODE_FANIN_EDGE_TYPES: frozenset[str] = frozenset(
+    {"calls", "references", "imports", "declared_in"}
+)
 # Session-finding node types whose importance is ``decay_score`` when present.
 _SESSION_FINDING_TYPE_VALUES: frozenset[str] = frozenset(
     {
@@ -2383,13 +2391,16 @@ def _is_hidden_group_node(node: ResearchNode) -> bool:
     payload itself relies on, so a node's classification here cannot drift
     from its classification in the payload.
 
-    This used to carve ``SOURCE_FILE`` out of the hidden ``sources`` group:
-    it was a code-graph type whose kind mapped to ``sources``, so hiding the
-    group left code-ingested projects with floating functions and no parent
-    files. The carve-out is gone with the layer it protected — ``SOURCE_FILE``
-    no longer reaches the payload at all (``_GRAPH_VIEW_TYPES``), so there is
-    nothing left for it to rescue.
+    Codex PR #21 P2 fix: ``SOURCE_FILE`` is a code-graph node type (see
+    the comment at the SOURCE_FILE/SOURCE_DOCUMENT branch in
+    ``_kind_for_node_type``) but its kind maps to the ``sources`` group
+    for visual coherence. Without this carve-out the default
+    ``show_sources=False`` would strip every file node + its incident
+    ``contains``/``declared_in`` edges out of the code graph, leaving
+    code-ingested projects with floating functions and no files.
     """
+    if node.type == ResearchNodeType.SOURCE_FILE:
+        return False
     kind = _kind_for_node_type(node.type)
     group = kind or "other"
     return group in _GRAPH_HIDDEN_GROUPS
@@ -2542,10 +2553,10 @@ def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
 
     degree: Dict[str, int] = {nid: 0 for nid in visible_ids}
     in_degree: Dict[str, int] = {nid: 0 for nid in visible_ids}
-    # Graph View v1 — typed counter that feeds the per-type ``importance``
-    # signal (spec §A): CommunitySummary member count (outgoing ``summarizes``).
-    # The spec's other typed counter was code fan-in; it died with the code
-    # family, which no longer reaches this payload.
+    # Graph View v1 — typed counters that feed the per-type ``importance``
+    # signal (spec §A): code fan-in (incoming calls/references/imports/
+    # declared_in) and CommunitySummary member count (outgoing ``summarizes``).
+    code_fanin: Dict[str, int] = {nid: 0 for nid in visible_ids}
     summarizes_out: Dict[str, int] = {nid: 0 for nid in visible_ids}
     visible_edges: List[ResearchEdge] = []
     for e in ctx.graph.edges:
@@ -2567,6 +2578,8 @@ def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
             degree[e.source] = degree.get(e.source, 0) + 1
             degree[e.target] = degree.get(e.target, 0) + 1
             in_degree[e.target] = in_degree.get(e.target, 0) + 1
+            if e.type in _CODE_FANIN_EDGE_TYPES:
+                code_fanin[e.target] = code_fanin.get(e.target, 0) + 1
             if e.type == "summarizes":
                 summarizes_out[e.source] = summarizes_out.get(e.source, 0) + 1
 
@@ -2615,6 +2628,10 @@ def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
             # member count = outgoing ``summarizes`` edges.
             importance_raw = summarizes_out.get(n.id, 0)
             member_count = importance_raw
+        elif family == _CODE_FAMILY:
+            # code symbols → fan-in (incoming calls/references/imports/declared_in),
+            # falling back to weighted degree when there is no typed fan-in.
+            importance_raw = code_fanin.get(n.id, 0) or deg
         elif type_value in _SESSION_FINDING_TYPE_VALUES:
             # session findings → ``decay_score`` when present, else weighted degree.
             decay = node_meta_full.get("decay_score")
@@ -2658,7 +2675,7 @@ def build_graph_payload(ctx: SiteContext) -> Dict[str, object]:
             "type": n.type.value,
             "kind": kind,
             "group": group,
-            # Graph View v1 — family colour key + single importance metric.
+            # Graph View v1 — 8-family colour key + single importance metric.
             "family": family,
             "importance": importance,
             "href": href,

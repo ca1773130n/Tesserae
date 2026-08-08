@@ -136,18 +136,13 @@ _NEAR_DUP_THRESHOLD = 0.55
 
 #: §5.1 typed-edge allowlist for the ≤2-hop closure, mapped onto the real
 #: edge vocabulary of ``ALLOWED_EDGE_TYPES`` (the spec's ``mentions``/``about``
-#: spell as ``mentioned_in`` / ``discussed_in`` / ``references`` here).
-#:
-#: ``discusses`` is deliberately absent. Only the insight↔symbol linker ever
-#: minted it, always finding→code-symbol, and this pass never had a code
-#: symbol to reach: it walks the research layer. Every such edge in the
-#: compiled store dangled anyway — 15,873 of 15,873 — so the hop it bought
-#: here was always a hop to nothing.
+#: spell as ``mentioned_in`` / ``discusses`` / ``references`` here).
 _SCOPE_EDGE_TYPES: Set[str] = {
     "derived_from",
     "supersedes",
     "part_of",
     "references",
+    "discusses",
     "discussed_in",
     "mentioned_in",
 }
@@ -194,16 +189,16 @@ _STOPWORD_TOKENS: Set[str] = {
 _TOKEN_POSTING_CAP = 64
 
 #: Anchor node types a distillate may cite into the artifact verbatim (§5.4).
-#: ``Repository`` is a document type (the page a repo-shaped source compiles
-#: to), not a code type. The five code-symbol entries this used to carry
-#: (CodeFile / CodeModule / CodeClass / CodeFunction / CodeMethod) were dead
-#: on arrival: this pass reaches anchors over ``_SCOPE_EDGE_TYPES`` from the
-#: research layer, which never contained a code symbol.
 _ANCHOR_TYPES: Set[ResearchNodeType] = {
     ResearchNodeType.CONCEPT,
     ResearchNodeType.REPOSITORY,
     ResearchNodeType.PAPER,
     ResearchNodeType.SOURCE_DOCUMENT,
+    ResearchNodeType.CODE_FILE,
+    ResearchNodeType.CODE_MODULE,
+    ResearchNodeType.CODE_CLASS,
+    ResearchNodeType.CODE_FUNCTION,
+    ResearchNodeType.CODE_METHOD,
 }
 
 #: Cap on verbatim anchor copies per distillate, by ``(-citations, id)``.

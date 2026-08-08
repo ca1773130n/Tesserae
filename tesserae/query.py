@@ -158,6 +158,7 @@ def _ontology_recap() -> str:
             ResearchNodeType.SOURCE_DOCUMENT.value,
             ResearchNodeType.PAPER.value,
             ResearchNodeType.REPOSITORY.value,
+            ResearchNodeType.CODE_PROJECT.value,
         ],
         "Entities": [
             ResearchNodeType.MODEL.value,

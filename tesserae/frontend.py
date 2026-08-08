@@ -48,12 +48,13 @@ RESEARCH_TYPES = {
     ResearchNodeType.OPEN_QUESTION.value,
     ResearchNodeType.EVIDENCE_SPAN.value,
 }
-# Repository and Project are DOCUMENT types — the nodes a repo-shaped source
-# compiles to — not code-graph types. They are all that is left of this bucket
-# now that source-code ingestion is gone; the six code types it also listed
-# (CodeProject / SourceFile / CodeModule / CodeClass / CodeFunction /
-# Dependency) are no longer minted by anything.
 DEVELOPMENT_TYPES = {
+    ResearchNodeType.CODE_PROJECT.value,
+    ResearchNodeType.SOURCE_FILE.value,
+    ResearchNodeType.CODE_MODULE.value,
+    ResearchNodeType.CODE_CLASS.value,
+    ResearchNodeType.CODE_FUNCTION.value,
+    ResearchNodeType.DEPENDENCY.value,
     ResearchNodeType.REPOSITORY.value,
     ResearchNodeType.PROJECT.value,
 }
@@ -162,7 +163,7 @@ def render_home(title: str, graph: ResearchGraph, context: SiteContext, search_i
 <section class="hero panel">
   <p class="eyebrow">self-indexed knowledge graph</p>
   <h1>{esc(title)}</h1>
-  <p class="lead">A browsable Tesserae built from this repository's docs, session transcripts, generated graph artifacts, and agent-facing exports.</p>
+  <p class="lead">A browsable Tesserae built from this repository's docs, source code, tests, generated graph artifacts, and agent-facing exports.</p>
   <div class="actions">
     <a class="button primary" href="nodes/index.html">Browse nodes</a>
     <a class="button" href="sources/index.html">Source files</a>
@@ -173,7 +174,7 @@ def render_home(title: str, graph: ResearchGraph, context: SiteContext, search_i
 <section class="stats">{render_stats(context, len(graph.nodes), len(graph.edges))}</section>
 <section class="grid two">
   <article class="panel"><h2>Wiki documents</h2><p class="muted">Repository README/docs become source-document pages with section headings and provenance, so each compile adds navigable wiki structure.</p>{render_node_cards(wiki_nodes[:10], context)}</article>
-  <article class="panel"><h2>Repositories</h2><p class="muted">Repository and project pages compiled from the documents that describe them.</p>{render_node_cards(development[:10], context)}</article>
+  <article class="panel"><h2>Code graph</h2><p class="muted">Source files, classes, functions, dependencies, and relations extracted from the repository.</p>{render_node_cards(development[:10], context)}</article>
 </section>
 <section class="grid two">
   <article class="panel"><h2>Most connected nodes</h2>{render_node_table(high_degree, context)}</article>
@@ -238,8 +239,9 @@ def graph_view_payload(graph: ResearchGraph, context: SiteContext) -> Dict[str, 
 
 def graph_color(type_name: str) -> str:
     palette = {
-        "Repository": "#7c3aed", "Project": "#7c3aed",
-        "SourceDocument": "#64748b", "Concept": "#0891b2", "Paper": "#be185d",
+        "CodeProject": "#7c3aed", "Repository": "#7c3aed", "Project": "#7c3aed",
+        "SourceFile": "#2563eb", "CodeModule": "#2563eb", "CodeClass": "#0f766e", "CodeFunction": "#059669",
+        "Dependency": "#d97706", "SourceDocument": "#64748b", "Concept": "#0891b2", "Paper": "#be185d",
     }
     return palette.get(type_name, "#64748b")
 

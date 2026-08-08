@@ -1,24 +1,18 @@
 """The Descent sidecar and ``graph.json`` share ONE node universe (F-11).
 
-``.tesserae/hierarchy.json`` used to be built from a union graph that
-``_write_artifacts`` then split: the research layer landed in ``graph.json``,
-the code layer in ``code-graph.json``, and up to 10% of the member ids the
-sidecar advertised were ids ``graph_map`` could never resolve — dead "Untitled
-community" root cards with ``live_member_count == 0``, on runs that completed
-cleanly. Measured on live artifacts: ai-accounts 169/1360 sidecar members
-absent from ``graph.json``, 100% of them present in ``code-graph.json``.
+``_write_artifacts`` splits the union ``ResearchGraph`` with
+:func:`partition_graph`: the research layer lands in ``.tesserae/graph.json``,
+the code layer in ``.tesserae/code-graph.json``, and a code-graph node
+*never* appears in ``graph.json``. ``.tesserae/hierarchy.json`` used to be
+built from the union, so up to 10% of the member ids it advertised were ids
+``graph_map`` could never resolve — dead "Untitled community" root cards with
+``live_member_count == 0``, on runs that completed cleanly. Measured on live
+artifacts: ai-accounts 169/1360 sidecar members absent from ``graph.json``,
+100% of them present in ``code-graph.json``.
 
-That was fixed by making both producers partition first. The split itself is
-now retired — nothing mints a code layer, so there is nothing left to
-subtract — and these tests pin what survives that change:
-
-* the sidecar names only ids the graph carries, and invents none;
-* its hubs are the graph's hubs, resolvable rather than silently dropped;
-* it clusters the WHOLE graph — no filter of any kind;
-* the community-summary pass clusters the same object, so its minted
-  ``cid``s stay equal to the sidecar's coarsest-level keys;
-* and the ordering window between the two is still real, because the passes
-  in between rebind ``graph``.
+These tests pin the by-construction fix: both producers (the sidecar and the
+community-summary pass) cluster the research layer only, so the two can no
+longer diverge and their community ids stay in lockstep.
 
 Hand-built graphs only — no ``compile()``, no LLM, no subprocess.
 """
@@ -38,8 +32,9 @@ from tesserae.research_graph import (
     ResearchNode,
     ResearchNodeType,
 )
+from tesserae.wiki_projector import partition_graph
 
-from tests.test_artifact_split import _graph, _seed_project
+from tests.test_artifact_split import _mixed_graph, _seed_project
 
 
 # --------------------------------------------------------------------- helpers
@@ -90,43 +85,45 @@ def test_hierarchy_sidecar_names_only_nodes_graph_json_carries(tmp_path: Path) -
     """The dendrogram is built over the SAME layer ``graph.json`` gets (F-11),
     so ``graph_map`` can resolve every member the sidecar advertises."""
     wiki = _seed_project(tmp_path / "project")
-    graph = _graph()
-    graph_ids = {n.id for n in graph.nodes}
+    graph = _mixed_graph()
+    research, code = partition_graph(graph)
+    code_ids = {n.id for n in code.nodes}
+    research_ids = {n.id for n in research.nodes}
 
     wiki._write_hierarchy_sidecar(graph)
     payload = _sidecar(wiki)
     members = _members(payload)
 
-    assert members <= graph_ids, (
-        f"sidecar names ids the graph does not carry: {sorted(members - graph_ids)}"
+    # Before the fix Louvain over the union minted a code-ONLY community at
+    # every level (e.g. CommunitySummary:1c72c3e6b2bababc =
+    # [CodeClass:ProjectWiki, CodeFunction:compile, CodeProject:Tesserae,
+    # SourceFile:project.py]) — four ids graph.json will never carry.
+    assert members.isdisjoint(code_ids), (
+        f"sidecar names code-layer ids graph.json never carries: {sorted(members & code_ids)}"
     )
-    assert set(payload["hubs"]) <= graph_ids
+    assert members <= research_ids
+    assert set(payload["hubs"]).isdisjoint(code_ids)
     # A level may legitimately filter to zero clusters (all singletons), but a
     # cluster that survives always has members — an empty member list would be
     # an unresolvable card with nothing to resolve.
     assert all(ms for level in payload["levels"] for ms in level.values())
-    # Non-vacuous: the graph still produces a real community.
+    # Non-vacuous: the research layer still produces a real community.
     assert members
 
 
-def test_sidecar_hubs_are_degrees_on_the_graph_it_writes(tmp_path: Path) -> None:
+def test_sidecar_hubs_are_degrees_on_the_research_projection(tmp_path: Path) -> None:
     """``hub_node_ids`` must see the same projection PPR walks.
 
     ``retrieval/ppr.py`` silently drops hub ids it can't find in
-    ``graph.json``, so a hub the sidecar names but the graph lacks is
-    invisible dead weight. This fixture used to make the hub a ``SourceFile``
-    precisely because ``partition_graph`` then threw it away, and the
-    assertion was ``hubs == []``. With no partition the hub is a document, it
-    is real, and the sidecar must publish it rather than swallow it.
+    ``graph.json``, so a code-layer hub is invisible dead weight. Degree here
+    comes only from cross-layer edges, which ``partition_graph`` drops.
     """
-    from tesserae.community_summaries import HUB_DEGREE_THRESHOLD, hub_node_ids
+    from tesserae.community_summaries import HUB_DEGREE_THRESHOLD
 
     fan = HUB_DEGREE_THRESHOLD + 1
     nodes = [
         ResearchNode(
-            id="SourceDocument:hot.md",
-            name="hot.md",
-            type=ResearchNodeType.SOURCE_DOCUMENT,
+            id="SourceFile:hot.py", name="hot.py", type=ResearchNodeType.SOURCE_FILE
         )
     ]
     edges = []
@@ -140,41 +137,33 @@ def test_sidecar_hubs_are_degrees_on_the_graph_it_writes(tmp_path: Path) -> None
         )
         edges.append(
             ResearchEdge(
-                source=f"Concept:c{i}",
-                target="SourceDocument:hot.md",
-                type="mentioned_in",
+                source=f"Concept:c{i}", target="SourceFile:hot.py", type="mentioned_in"
             )
         )
-    # A genuine second cluster so the dendrogram is not all singletons.
+    # A genuine research-layer cluster so the dendrogram is not all singletons.
     edges.append(ResearchEdge(source="Concept:c0", target="Concept:c1", type="mentioned_in"))
     graph = ResearchGraph(nodes=nodes, edges=edges)
 
-    assert hub_node_ids(graph) == ["SourceDocument:hot.md"], "fixture must make the doc a hub"
+    from tesserae.community_summaries import hub_node_ids
+
+    assert hub_node_ids(graph) == ["SourceFile:hot.py"], "fixture must make the code node a hub"
 
     wiki = _seed_project(tmp_path / "project")
     wiki._write_hierarchy_sidecar(graph)
-    assert _sidecar(wiki)["hubs"] == ["SourceDocument:hot.md"]
-
-    # ...and it resolves, which is the whole point of publishing it.
-    wiki._write_artifacts(graph)
-    graph_ids = {n["id"] for n in json.loads(wiki.paths.graph.read_text())["nodes"]}
-    assert "SourceDocument:hot.md" in graph_ids
+    assert _sidecar(wiki)["hubs"] == []
 
 
-def test_sidecar_logs_the_whole_graph_it_clustered(tmp_path: Path, caplog) -> None:
-    """The log used to report how many code-layer nodes the pass EXCLUDED.
-
-    It excludes nothing now, so the number that matters is the one it took in:
-    a count below ``len(graph.nodes)`` would mean a filter crept back.
-    """
+def test_sidecar_logs_how_many_code_nodes_it_excluded(tmp_path: Path, caplog) -> None:
+    """The exclusion is silent in the artifact, so it is stated in the log."""
     wiki = _seed_project(tmp_path / "project")
-    graph = _graph()
+    graph = _mixed_graph()
+    n_code = len(partition_graph(graph)[1].nodes)
 
     with caplog.at_level(logging.INFO, logger="tesserae.project"):
         wiki._write_hierarchy_sidecar(graph)
 
     line = next(m for m in caplog.messages if m.startswith("hierarchy sidecar:"))
-    assert f"over {len(graph.nodes)} node(s)" in line
+    assert f"{n_code} code-layer node(s) excluded" in line
 
 
 # -------------------------------------------------- lockstep with the summaries
@@ -188,12 +177,12 @@ def test_community_summary_ids_are_hierarchy_coarsest_cids(tmp_path: Path, monke
     project_mod.set_community_summaries_test_client(_ScriptedClient())
 
     wiki = _seed_project(tmp_path / "project")
-    live_cids = wiki._write_hierarchy_sidecar(_graph())
-    # ``min_size`` must be lowered: the wiring default of 5 filters the small
-    # cluster in the fixture and the test would pass vacuously with zero
-    # minted summaries.
+    live_cids = wiki._write_hierarchy_sidecar(_mixed_graph())
+    # ``min_size`` must be lowered: the wiring default of 5 filters the
+    # 4-member research cluster in the fixture and the test would pass
+    # vacuously with zero minted summaries.
     merged = wiki._merge_community_summaries(
-        _graph(), {"community_summaries": {"enabled": True, "min_size": 2}}
+        _mixed_graph(), {"community_summaries": {"enabled": True, "min_size": 2}}
     )
 
     minted = {
@@ -207,44 +196,49 @@ def test_community_summary_ids_are_hierarchy_coarsest_cids(tmp_path: Path, monke
     assert minted <= live_cids
 
 
-def test_merge_community_summaries_adds_to_the_graph_without_dropping_it(
-    tmp_path: Path, monkeypatch
-) -> None:
-    """The pass is additive. ``_write_artifacts`` (SQLite, provenance,
-    Graphiti, vault, graph.json) needs every input node back, so clustering
-    must never be allowed to become a filter on the way through."""
+def test_merge_community_summaries_still_returns_the_union(tmp_path: Path, monkeypatch) -> None:
+    """Only the *clustering* input is partitioned. ``_write_artifacts`` (SQLite,
+    provenance, Graphiti, vault, code-graph.json) still needs the union back."""
     monkeypatch.delenv("TESSERAE_COMMUNITY_SUMMARIES", raising=False)
     project_mod.set_community_summaries_test_client(_ScriptedClient())
 
     wiki = _seed_project(tmp_path / "project")
-    graph = _graph()
+    graph = _mixed_graph()
+    code_ids = {n.id for n in partition_graph(graph)[1].nodes}
 
     merged = wiki._merge_community_summaries(
         graph, {"community_summaries": {"enabled": True, "min_size": 2}}
     )
 
-    assert {n.id for n in graph.nodes} <= {n.id for n in merged.nodes}
-    # Every summary describes members that are actually present.
-    merged_ids = {n.id for n in merged.nodes}
+    assert code_ids <= {n.id for n in merged.nodes}
+    # ...and no summary is minted *for* the code layer any more.
     for node in merged.nodes:
         if node.type is ResearchNodeType.COMMUNITY_SUMMARY:
-            assert set(node.metadata.get("member_ids") or []) <= merged_ids
+            assert set(node.metadata.get("member_ids") or []).isdisjoint(code_ids)
 
 
-def test_the_sidecar_and_graph_json_can_still_diverge(tmp_path: Path) -> None:
-    """The residual ordering window is REAL, so nothing may claim otherwise.
+def test_sidecar_docstring_does_not_promise_more_than_the_ordering_allows(
+    tmp_path: Path,
+) -> None:
+    """The residual window is REAL, so the docstring must name it, not deny it.
 
-    Retiring the split removed the *loudest* way a sidecar member could vanish
-    from ``graph.json`` (a schema-drift rename retyped a node across the two
-    files), but not the window itself: ``compile()`` rebinds ``graph`` through
+    Two halves, and neither works alone. The demonstration shows a node can
+    still leave ``graph.json`` AFTER the sidecar named it: the fix above is
+    systematic (both producers partition identically) but not
+    *by construction*, because ``compile()`` rebinds ``graph`` through
     ``_merge_community_summaries`` / ``_merge_distillation``, and
-    ``_write_artifacts`` rebinds it again through ``_apply_vault_overlay`` —
-    which HARVESTS DELETIONS — before writing. So the two passes can still see
-    different objects, which is exactly what ``live_member_count`` on each
-    hierarchy card exists to report. Demonstrated here directly: the sidecar
-    names a node, and the graph that reaches disk no longer has it.
+    ``_write_artifacts`` rebinds it again through ``_apply_vault_overlay`` /
+    ``SynthesisProjector.project`` / ``_run_memory_passes`` before reaching its
+    own ``partition_graph`` call. ``apply_schema_drift`` — inside the last of
+    those, opt-in via ``TESSERAE_SCHEMA_DRIFT_APPLY`` — RENAMES ``node.type``,
+    and ``is_code_graph_node`` dispatches on type, so a node crosses the split
+    with no id change at all: the original F4 symptom, reproduced here.
+
+    The text half then pins the prose, following
+    ``tests/test_docs_install_and_detach_claims.py``: the defect was a false
+    claim, and prose is the only place a false claim can regress.
     """
-    graph = _graph()
+    graph = _mixed_graph()
     victim_id = "Concept:gs"
 
     wiki = _seed_project(tmp_path / "project")
@@ -252,32 +246,43 @@ def test_the_sidecar_and_graph_json_can_still_diverge(tmp_path: Path) -> None:
     named = _members(_sidecar(wiki))
     assert victim_id in named, "fixture must place the victim in a community"
 
-    # A later pass drops it, exactly as harvesting a deleted vault page does.
-    without_victim = ResearchGraph(
-        nodes=[n for n in graph.nodes if n.id != victim_id],
-        edges=[e for e in graph.edges if victim_id not in (e.source, e.target)],
+    # A later pass retypes it, exactly as an approved schema-drift rename does,
+    # and ``_write_artifacts`` re-derives the split from ITS graph.
+    retyped = ResearchGraph(
+        nodes=[
+            n
+            if n.id != victim_id
+            else ResearchNode(id=n.id, name=n.name, type=ResearchNodeType.CODE_FUNCTION)
+            for n in graph.nodes
+        ],
+        edges=list(graph.edges),
     )
-    wiki._write_artifacts(without_victim)
+    wiki._write_artifacts(retyped)
 
     graph_ids = {n["id"] for n in json.loads(wiki.paths.graph.read_text())["nodes"]}
-    assert victim_id not in graph_ids
-    assert not named <= graph_ids, "the ordering window is real; the prose must say so"
+    code_ids = {n["id"] for n in json.loads(wiki.paths.code_graph.read_text())["nodes"]}
+    assert victim_id in code_ids and victim_id not in graph_ids
+    assert not named <= graph_ids, "the ordering window is real; the docstring must say so"
 
     doc = project_mod.ProjectWiki._write_hierarchy_sidecar.__doc__ or ""
     assert "cannot diverge by construction" not in doc, (
         "the sidecar and graph.json CAN diverge — this test just did it"
     )
+    for cause in ("_run_memory_passes", "apply_schema_drift", "_write_artifacts"):
+        assert cause in doc, f"docstring must name the window's cause: {cause}"
 
 
-def test_every_sidecar_member_resolves_when_nothing_intervenes(tmp_path: Path) -> None:
-    """The happy path, end-to-end on the file that matters: hand the same graph
-    to both passes and every id the sidecar advertises is in ``graph.json``."""
+def test_write_artifacts_still_splits_after_the_sidecar_ran(tmp_path: Path) -> None:
+    """End-to-end on the two files that matter: every sidecar member resolves
+    in ``graph.json``, and ``code-graph.json`` is byte-unaffected by the fix."""
     wiki = _seed_project(tmp_path / "project")
-    graph = _graph()
+    graph = _mixed_graph()
 
     wiki._write_hierarchy_sidecar(graph)
     wiki._write_artifacts(graph)
 
     graph_ids = {n["id"] for n in json.loads(wiki.paths.graph.read_text())["nodes"]}
+    code_ids = {n["id"] for n in json.loads(wiki.paths.code_graph.read_text())["nodes"]}
+
     assert _members(_sidecar(wiki)) <= graph_ids
-    assert not wiki.paths.code_graph.exists()
+    assert code_ids == {n.id for n in partition_graph(graph)[1].nodes}

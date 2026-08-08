@@ -1,5 +1,5 @@
 {
-  "description": "Tesserae plugin hooks — session-start status, session-end auto-compile, docs/ edit incremental recompile (opt-in), large-graph compile gate.",
+  "description": "Tesserae plugin hooks — session-start status, session-end auto-compile, docs/ edit incremental recompile (opt-in), PostToolUse code-graph sync (debounced 30s), large-graph compile gate.",
   "hooks": {
     "SessionStart": [
       {
@@ -30,6 +30,10 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/posttooluse-edit.sh"
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/posttooluse-sync-code.sh"
           }
         ]
       }
