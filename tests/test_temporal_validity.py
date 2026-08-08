@@ -237,6 +237,39 @@ def test_a_dated_ancestor_of_the_project_root_never_dates_the_corpus():
     assert project(dated, "/blackhole/2026-08-09/proj") == "undated"
 
 
+def test_nested_project_roots_relativise_against_the_innermost_one():
+    """D1 by the back door: with nested roots, the outermost match re-leaks.
+
+    ``relative_source_path`` tries roots longest-first. Taking the first
+    declared root instead leaves the intervening directories inside the
+    "relative" path, so a checkout at ``<workspace>/.blackhole/proj/<date>/``
+    hands the date scanner a segment naming the day the worktree was made —
+    the whole defect the relativisation exists to close, restored.
+
+    Unreachable on a graph compiled today: Session nodes are admitted only on
+    exact resolved-path equality, so one root is declared. It is asserted here
+    because merged and federated graphs are the stated direction, and because
+    the failure is silent — a plausible date, wrong for every node.
+    """
+    from tesserae.temporal import _source_path_date, relative_source_path
+
+    roots = (
+        "/Users/dev/workspace",
+        "/Users/dev/workspace/.blackhole/proj/2026-08-09/slug",
+    )
+    checkout_dated = "/Users/dev/workspace/.blackhole/proj/2026-08-09/slug/docs/notes/p.md"
+
+    assert relative_source_path(checkout_dated, roots) == "docs/notes/p.md"
+    assert _source_path_date(checkout_dated, roots) is None
+
+    # ...and the rung must still fire for a date the CORPUS chose.
+    corpus_dated = (
+        "/Users/dev/workspace/.blackhole/proj/2026-08-09/slug"
+        "/data/research/daily/2026-04-06/x.md"
+    )
+    assert _source_path_date(corpus_dated, roots) == "2026-04-06"
+
+
 def test_source_path_outside_every_project_root_is_undated():
     """D1, stated rule: a path this project's ingest did not lay out is undated.
 

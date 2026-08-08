@@ -362,9 +362,15 @@ def test_snapshot_covers_temporal_fact_values_but_not_sidecar_confidence(
 
     ``temporal_facts.jsonl`` was excluded from the hash wholesale because ONE
     of its fields (``confidence``) is read from the mutable ``node_memory``
-    sidecar — which left every other field, including the 64,883 ``valid_from``
+    sidecar — which left every other field, including the 63,780 ``valid_from``
     values the path rung now decides, invisible to the only guard that watches
-    real compiles rather than the fixture corpus. Everything except
+    real compiles rather than the fixture corpus.
+
+    (63,780 is the shipped, root-bounded figure. An earlier draft of this
+    docstring said 64,883, which was measured before the rung was bounded to
+    the root-relative path — i.e. while a dated ancestor directory could still
+    date a node. Quoting the pre-fix number here would have advertised the
+    defect's reach as the feature's.) Everything except
     ``confidence`` is a pure function of the graph layer, so the file is hashed
     with that one field elided: full coverage of the derived values, and no
     false alarm when recurrence reinforcement bumps a confidence.

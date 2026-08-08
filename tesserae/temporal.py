@@ -193,13 +193,28 @@ def relative_source_path(source_path: object, roots: Iterable[str]) -> Optional[
     refuses to date a path it cannot place, and :mod:`tesserae.okf` refuses to
     emit one (§6.2 — a raw ``/Users/...`` would be read as bundle-relative and
     leaks a home directory).
+
+    Roots are tried LONGEST FIRST, which matters only when one declared root
+    nests inside another — and matters completely then. Taking the outermost
+    match leaves the intervening directories in the "relative" path, so a
+    project checked out at ``<workspace>/.blackhole/proj/2026-08-09/slug/``
+    resolves against ``<workspace>`` and hands the date scanner a segment from
+    the checkout location. That is the whole defect this relativisation exists
+    to close, returned by the back door. A compiled graph carries one root
+    today (Session nodes are admitted only on exact resolved-path equality), so
+    this is unreachable now and cheap to keep closed for merged or federated
+    graphs later.
     """
     if not isinstance(source_path, str) or not source_path.strip():
         return None
     path = source_path.strip()
     if not os.path.isabs(path):
+        # A relative path is relative to the root by construction, so there is
+        # nothing to strip — but it is NOT therefore safe to scan: ``../`` can
+        # still walk above the root. The date scanner rejects the segments it
+        # would reach; this function's contract is placement, not validation.
         return path.replace(os.sep, "/")
-    for root in roots:
+    for root in sorted((r for r in roots if r), key=len, reverse=True):
         if path == root:
             continue
         if path.startswith(root + "/"):
