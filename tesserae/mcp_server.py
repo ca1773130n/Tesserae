@@ -17,6 +17,7 @@ import re
 import secrets
 import sys
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
@@ -44,7 +45,18 @@ from .research_graph import (
     is_public_research_node,
 )
 from .retrieval.ppr import personalized_pagerank
-from .temporal import TemporalFactProjector, search_facts, timeline
+from .temporal import (
+    TemporalFact,
+    TemporalFactProjector,
+    # Private on purpose: "undated" is whatever `facts_as_of` cannot parse, and
+    # the count reported beside an as-of answer must apply that same predicate
+    # or it will disagree with the filter it describes. Borrowed, not re-derived
+    # — there are already five copies of `_parse_iso` in this package.
+    _parse_iso as _parse_fact_ts,
+    facts_as_of,
+    search_facts,
+    timeline,
+)
 from .verify import verify_claim
 from .wiki_projector import is_code_graph_node, kind_for_node
 from .wiki_store import WikiPageStore
@@ -281,6 +293,74 @@ def _budget_chars_arg(args: Mapping[str, Any]) -> int:
     """
     raw = args.get("budget_chars")
     return DEFAULT_BUDGET_CHARS if raw is None else int(raw)
+
+
+def _as_of_arg(args: Mapping[str, Any]) -> Optional[str]:
+    """The normalized ``as_of`` pivot, or None when none was asked for.
+
+    One reader for the argument, so the "was a pivot asked for?" question and
+    the "apply the pivot" step can never disagree about a blank string.
+    """
+    raw = args.get("as_of")
+    if raw is None or str(raw).strip() == "":
+        return None
+    return str(raw).strip()
+
+
+def _apply_as_of(
+    facts: List[TemporalFact], as_of: Optional[str]
+) -> List[TemporalFact]:
+    """Apply the optional ``as_of`` bitemporal pivot to a projected fact list.
+
+    With ``as_of`` None the list comes back untouched — callers that never ask
+    for a pivot keep their exact response shape.
+
+    ``facts_as_of`` also returns, positionally, how many undated facts it let
+    through ACROSS THE WHOLE CORPUS. That number is deliberately not the one
+    reported to the caller: the pivot runs before the query filter and before
+    the limit and budget caps, so on any real graph it counts undated rows the
+    caller never sees. Reporting it made a two-row answer claim 41 undated
+    rows — inverting the judgement ("how thin is this answer?") the counter
+    exists to support. The reported figure is computed by ``_undated_included``
+    over the rows that actually ship.
+
+    Propagates ValueError on an unparseable pivot; callers turn it into a tool
+    error rather than answering over the whole corpus.
+    """
+    if as_of is None:
+        return facts
+    kept, _undated_across_corpus = facts_as_of(facts, as_of)
+    return kept
+
+
+def _undated_included(rows: Sequence[JSONDict]) -> int:
+    """How many of the rows in THIS response carry no usable ``valid_from``.
+
+    Undated facts are carried through an ``as_of`` pivot rather than dropped,
+    and interval coverage is thin — ``contradicts_claim`` and ``invalidates``
+    are empty on a real graph, so every boundary rides on ``supersedes``. An
+    agent must never be handed an "as of DATE" answer that is mostly undated
+    rows without being told, and the population it needs told about is the one
+    in front of it. Hence: counted last, over the shipped rows, after the query
+    filter, the limit cap and CTX-01 truncation have each had their say.
+
+    The predicate is ``temporal._parse_iso`` rather than a test for the
+    "undated" sentinel, because that is exactly what ``facts_as_of`` treats as
+    undated; a second opinion here would let the count drift from the filter.
+    """
+    return sum(1 for row in rows if _parse_fact_ts(row.get("valid_from")) is None)
+
+
+# Refusing this pair is the point: see the search_facts dispatcher.
+AS_OF_WITH_CURRENT_ONLY_ERROR = (
+    "as_of and current_only ask different questions and cannot be combined: "
+    "as_of={as_of!r} asks which facts were live at that instant, current_only "
+    "asks which are still live now. Together they drop exactly the facts that "
+    "were the state of knowledge at the pivot and have since been superseded "
+    "— usually the answer a time-travel query is after. Ask for one: drop "
+    "current_only to time-travel to {as_of}, or drop as_of to filter for what "
+    "is current."
+)
 
 
 DEFAULT_REGISTRY_PATH = Path.home() / ".tesserae" / "registry.json"
@@ -693,6 +773,7 @@ class LLMWikiMCPServer:
         project_prop = {"type": "string", "description": "Registered project name (see list_projects). Overridden by graph_path."}
         agent_prop = {"type": "string", "description": "Agent-scoped view: a worker key (own raw + distilled memory), a manager key (federated reports' distillates), or 'org' (all distilled artifacts). Requires a project root; see agents list / tesserae distill."}
         budget_chars_prop = {"type": "integer", "minimum": 0, "default": DEFAULT_BUDGET_CHARS, "description": "CTX-01 response budget in characters: each returned item is clamped to budget_chars/8 and overflow items are dropped behind one '+N more, cursor=K' continuation line. 0 = uncapped."}
+        as_of_prop = {"type": "string", "description": "Bitemporal time-travel pivot, ISO-8601 (e.g. '2026-03-01' or '2026-03-01T12:00:00Z'). Returns only the facts whose validity interval covers that instant: valid_from <= as_of < valid_to. Undated facts are included but counted back as 'undated_included' — how many of the rows IN THIS RESPONSE lack a usable valid_from, so a thin-coverage answer is never mistaken for a complete one. Unparseable values error rather than silently answering over the whole corpus."}
         return [
             {
                 "name": "schema",
@@ -963,8 +1044,20 @@ class LLMWikiMCPServer:
                         "graph_path": graph_path_prop,
                         "project": project_prop, "agent": agent_prop,
                         "query": {"type": "string", "description": "Whitespace-separated fact search terms."},
-                        "current_only": {"type": "boolean", "default": False},
+                        "current_only": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "Keep only facts that are live NOW (not superseded). "
+                                "Cannot be combined with as_of, which asks what was "
+                                "live THEN: together they would drop every fact that "
+                                "was true at the pivot and has since been superseded, "
+                                "so the pair is refused with an error rather than "
+                                "silently answered under one filter or the other."
+                            ),
+                        },
                         "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10},
+                        "as_of": as_of_prop,
                         "budget_chars": budget_chars_prop,
                     },
                     "required": ["query"],
@@ -981,6 +1074,7 @@ class LLMWikiMCPServer:
                         "project": project_prop, "agent": agent_prop,
                         "query": {"type": "string", "description": "Optional fact search terms."},
                         "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
+                        "as_of": as_of_prop,
                         "budget_chars": budget_chars_prop,
                     },
                     "additionalProperties": False,
@@ -1423,6 +1517,66 @@ class LLMWikiMCPServer:
                                 "When true, include superseded / arbitration-losing "
                                 "nodes (losers of `supersedes` / `resolved_by` edges). "
                                 "Default false suppresses them."
+                            ),
+                        },
+                        "strategy": {
+                            "type": "string",
+                            "enum": ["default", "hierarchical"],
+                            "default": "default",
+                            "description": (
+                                "Traversal strategy. 'hierarchical' seeds search "
+                                "against the community summary layer and descends "
+                                "into the matched communities' member union instead "
+                                "of walking the flat graph. Requires a project root "
+                                "(the .tesserae/hierarchy.json sidecar). Falls back "
+                                "to the default path when no summary matches, rather "
+                                "than guessing."
+                            ),
+                        },
+                        "scope": {
+                            "type": "string",
+                            "description": (
+                                "Restrict the whole pipeline — seed search, PPR and "
+                                "the neighbourhood walk — to one community's members. "
+                                "Takes a community id (a graph_map card's scope_id, "
+                                "e.g. 'CommunitySummary:<hash>'); start from "
+                                "graph_map() and descend. Requires a project root."
+                            ),
+                        },
+                        "edge_type_weights": {
+                            "type": "object",
+                            "additionalProperties": {"type": "number", "minimum": 0},
+                            "description": (
+                                "Per-edge-type weight overrides for the PPR walk, "
+                                "MERGED ONTO the defaults — an unlisted type keeps "
+                                "its default weight (session-finding edges are "
+                                "pre-upweighted), it does not fall back to 1.0. "
+                                "Weight 0 DELETES that relation class from the walk "
+                                "entirely, severing multi-hop paths that route "
+                                "through it; use a small positive weight to rank a "
+                                "relation last while keeping it as a transit hop."
+                            ),
+                        },
+                        "tame_hubs": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "Downweight provenance edges into hub nodes so a few "
+                                "high-degree nodes stop dominating the walk. "
+                                "Best-effort: works without a hierarchy sidecar."
+                            ),
+                        },
+                        "recency_weight": {
+                            "type": "number",
+                            "minimum": 0.0,
+                            "maximum": 1.0,
+                            "default": 0.0,
+                            "description": (
+                                "Blend node freshness into the PPR ranking, 0 = pure "
+                                "relevance (default, keeps compiled artifacts "
+                                "byte-identical), 1 = freshness dominates. The pivot "
+                                "defaults to now; undated nodes are not treated as "
+                                "fresh."
                             ),
                         },
                     },
@@ -2249,24 +2403,60 @@ class LLMWikiMCPServer:
                 project_root=project_root,
             )
         if name == "search_facts":
+            as_of = _as_of_arg(args)
+            current_only = bool(args.get("current_only", False))
+            if as_of is not None and current_only:
+                # Two filters, two different clocks. `current_only` keeps facts
+                # that are live NOW; `as_of` keeps facts that were live THEN.
+                # Running both drops every fact that was the state of knowledge
+                # at the pivot and has since been superseded — so "what was
+                # true on 2026-02-01" answers with silence precisely when the
+                # answer has a successor, and nothing in the response says a
+                # second filter ran. Refuse before doing any work: making
+                # either filter quietly win would be the same defect wearing a
+                # different result. Nothing can depend on the combination —
+                # `as_of` and this guard ship together.
+                return {"error": AS_OF_WITH_CURRENT_ONLY_ERROR.format(as_of=as_of)}
             facts = TemporalFactProjector().project(self._load_requested_graph(args))
-            result = search_facts(facts, query=str(args.get("query", "")), limit=int(args.get("limit", 10)), current_only=bool(args.get("current_only", False)))
+            try:
+                facts = _apply_as_of(facts, as_of)
+            except ValueError as exc:
+                # An unparseable pivot must NOT degrade into a whole-corpus
+                # answer wearing an "as of DATE" label (temporal.facts_as_of).
+                return {"error": str(exc)}
+            result = search_facts(facts, query=str(args.get("query", "")), limit=int(args.get("limit", 10)), current_only=current_only)
+            if as_of is not None:
+                # Report what actually ran, the way search_nodes reports `mode`.
+                result["as_of"] = as_of
             # CTX-01: per-fact truncation of evidence blocks (§5.3).
             result["facts"], continuation = _fit_payload_list(
                 result["facts"], _budget_chars_arg(args), text_field="evidence"
             )
             if continuation:
                 result["continuation"] = continuation
+            if as_of is not None:
+                # LAST, so the count describes the rows the caller was handed
+                # rather than a wider population it cannot see (_undated_included).
+                result["undated_included"] = _undated_included(result["facts"])
             return result
         if name == "timeline":
+            as_of = _as_of_arg(args)
             facts = TemporalFactProjector().project(self._load_requested_graph(args))
+            try:
+                facts = _apply_as_of(facts, as_of)
+            except ValueError as exc:
+                return {"error": str(exc)}
             result = timeline(facts, query=str(args.get("query", "")), limit=int(args.get("limit", 50)))
+            if as_of is not None:
+                result["as_of"] = as_of
             # CTX-01: per-fact truncation of evidence blocks (§5.3).
             result["events"], continuation = _fit_payload_list(
                 result["events"], _budget_chars_arg(args), text_field="evidence"
             )
             if continuation:
                 result["continuation"] = continuation
+            if as_of is not None:
+                result["undated_included"] = _undated_included(result["events"])
             return result
         if name == "wiki_page":
             graph, project_root = self._load_requested_graph_with_root(args)
@@ -2436,17 +2626,64 @@ class LLMWikiMCPServer:
             budget = 32_000 if budget_arg is None else int(budget_arg)
             synthesize = bool(args.get("synthesize") or False)
             multi_pool = bool(args.get("multi_pool") or False)
-            bundle = compile_context(
-                graph,
-                project_root,
-                query=query,
-                seeds=seeds,
-                depth=depth,
-                budget=budget,
-                synthesize=synthesize,
-                multi_pool=multi_pool,
-                include_superseded=bool(args.get("include_superseded", False)),
+            # Retrieval knobs: built and tested in context_compiler, but until
+            # now unreachable through MCP. Unpack explicitly — this dispatcher
+            # never does **args, so a schema property without a matching kwarg
+            # here is a silent no-op that still validates and still returns a
+            # bundle.
+            strategy = str(args.get("strategy") or "default")
+            scope_arg = args.get("scope")
+            scope = str(scope_arg) if scope_arg else None
+            weights_arg = args.get("edge_type_weights")
+            edge_type_weights = (
+                {str(k): float(v) for k, v in weights_arg.items()}
+                if isinstance(weights_arg, Mapping)
+                else None
             )
+            tame_hubs = bool(args.get("tame_hubs", False))
+            recency_arg = args.get("recency_weight")
+            recency_weight = 0.0 if recency_arg is None else float(recency_arg)
+            # compile_context gates the whole recency block on
+            # ``recency_now is not None and recency_weight > 0``, so forwarding
+            # the weight alone would ship a knob that reports as having run and
+            # changes nothing. Supply the pivot the weight needs.
+            recency_now = (
+                datetime.now(timezone.utc) if recency_weight > 0 else None
+            )
+            try:
+                bundle = compile_context(
+                    graph,
+                    project_root,
+                    query=query,
+                    seeds=seeds,
+                    depth=depth,
+                    budget=budget,
+                    synthesize=synthesize,
+                    multi_pool=multi_pool,
+                    include_superseded=bool(args.get("include_superseded", False)),
+                    strategy=strategy,
+                    scope=scope,
+                    edge_type_weights=edge_type_weights,
+                    tame_hubs=tame_hubs,
+                    recency_now=recency_now,
+                    recency_weight=recency_weight,
+                )
+            except ValueError as exc:
+                # An unknown strategy/scope, or a scope with no hierarchy
+                # sidecar to resolve it against, is a bad request the caller
+                # can fix — answer it, don't fault the transport.
+                return {"error": str(exc)}
+            # Report which knobs actually ran, the way search_nodes reports
+            # `mode`: the bundle bytes stay idempotent, the settings that
+            # produced them are stated rather than buried.
+            knobs = {
+                "strategy": strategy,
+                "scope": scope,
+                "edge_type_weights": edge_type_weights,
+                "tame_hubs": tame_hubs,
+                "recency_weight": recency_weight,
+                "recency_now": recency_now.isoformat() if recency_now else None,
+            }
             # LRU: the nodes actually selected into the bundle count as reads.
             self._bump_nodes_access(project_root, bundle.selected_nodes)
             preview = int(args.get("preview") or 0)
@@ -2462,6 +2699,7 @@ class LLMWikiMCPServer:
                     "selected_node_ids": bundle.selected_nodes,
                     "char_budget_used": bundle.char_budget_used,
                     "synthesized": bundle.synthesized,
+                    "knobs": knobs,
                 }
             # preview disabled (or body already short): EXACT original shape,
             # body first — back-compat for byte/order-sensitive callers.
@@ -2471,6 +2709,7 @@ class LLMWikiMCPServer:
                 "selected_node_ids": bundle.selected_nodes,
                 "char_budget_used": bundle.char_budget_used,
                 "synthesized": bundle.synthesized,
+                "knobs": knobs,
             }
         if name == "get_handle":
             handle = str(args.get("handle") or "")

@@ -294,3 +294,131 @@ def test_compile_context_tool_in_listing():
     # node_context advertises the opt-in PPR flag.
     nc_props = by_name["node_context"]["inputSchema"]["properties"]
     assert nc_props["use_ppr"]["type"] == "boolean"
+
+
+def test_compile_context_advertises_the_retrieval_knobs():
+    """``compile_context`` takes these five and the dispatcher used to forward
+    none of them, so they were unreachable from MCP despite being tested."""
+    by_name = {t["name"]: t for t in LLMWikiMCPServer().list_tools()}
+    schema = by_name["compile_context"]["inputSchema"]
+    props = schema["properties"]
+
+    assert set(
+        ["strategy", "scope", "edge_type_weights", "tame_hubs", "recency_weight"]
+    ).issubset(props)
+    # additionalProperties is False, so an unadvertised knob is rejected at the
+    # schema boundary — advertising is what makes it reachable at all.
+    assert schema["additionalProperties"] is False
+    assert props["strategy"]["enum"] == ["default", "hierarchical"]
+    assert props["tame_hubs"]["type"] == "boolean"
+    # A negative weight is indistinguishable from zero downstream (ppr.py cuts
+    # on `w <= 0.0`), i.e. it silently deletes an edge class rather than
+    # penalising it. Refuse it at the boundary instead of surprising the caller.
+    assert props["edge_type_weights"]["additionalProperties"] == {
+        "type": "number",
+        "minimum": 0,
+    }
+    assert props["recency_weight"]["minimum"] == 0.0
+    assert props["recency_weight"]["maximum"] == 1.0
+
+
+def test_compile_context_forwards_edge_type_weights_to_ppr(tmp_path):
+    """The knob has to reach personalized_pagerank, not just validate.
+
+    A schema property without a matching dispatcher kwarg still validates and
+    still returns a bundle — a silent no-op. Zeroing the ``uses`` class severs
+    the focal paper's only outgoing edge, which demonstrably reorders the
+    ranked selection.
+    """
+    graph_path, _ = _multihop_graph_path(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+    call = {"seeds": ["Paper:focal"], "query": "focal paper method", "depth": 2}
+
+    default = server.call_tool("compile_context", dict(call))
+    severed = server.call_tool(
+        "compile_context", dict(call, edge_type_weights={"uses": 0.0})
+    )
+
+    assert default["selected_node_ids"][0] == "Paper:focal"
+    # Same membership (the neighbourhood walk still reaches them), different
+    # ranking — proof the weights reached PPR rather than being dropped.
+    assert set(severed["selected_node_ids"]) == set(default["selected_node_ids"])
+    assert severed["selected_node_ids"] != default["selected_node_ids"]
+    assert severed["selected_node_ids"][0] != "Paper:focal"
+
+
+def test_compile_context_reports_which_knobs_ran(tmp_path):
+    """Same honesty split search_nodes uses for ``mode``: the artifact bytes
+    stay idempotent, and what actually ran is reported rather than buried."""
+    graph_path, _ = _multihop_graph_path(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    default = server.call_tool(
+        "compile_context", {"seeds": ["Paper:focal"], "query": "focal"}
+    )
+    tuned = server.call_tool(
+        "compile_context",
+        {
+            "seeds": ["Paper:focal"],
+            "query": "focal",
+            "tame_hubs": True,
+            "edge_type_weights": {"uses": 0.5},
+        },
+    )
+
+    assert default["knobs"] == {
+        "strategy": "default",
+        "scope": None,
+        "edge_type_weights": None,
+        "tame_hubs": False,
+        "recency_weight": 0.0,
+        "recency_now": None,
+    }
+    assert tuned["knobs"]["tame_hubs"] is True
+    assert tuned["knobs"]["edge_type_weights"] == {"uses": 0.5}
+
+
+def test_compile_context_recency_weight_is_not_a_dead_knob(tmp_path):
+    """``recency_weight`` alone does nothing: context_compiler gates the whole
+    recency block on ``recency_now is not None and recency_weight > 0``. The
+    dispatcher must supply a pivot, or the knob reports as having run while
+    changing nothing."""
+    graph_path, _ = _multihop_graph_path(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    result = server.call_tool(
+        "compile_context",
+        {"seeds": ["Paper:focal"], "query": "focal", "recency_weight": 0.5},
+    )
+
+    assert result["knobs"]["recency_weight"] == 0.5
+    assert result["knobs"]["recency_now"] is not None
+
+
+def test_compile_context_rejects_an_unknown_strategy_as_a_tool_error(tmp_path):
+    """compile_context validates ``strategy`` by raising; an uncaught raise in
+    the dispatcher is a transport fault, not an answerable tool result."""
+    graph_path, _ = _multihop_graph_path(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    result = server.call_tool(
+        "compile_context", {"seeds": ["Paper:focal"], "strategy": "bogus"}
+    )
+
+    assert "error" in result
+    assert "bogus" in result["error"]
+    assert "body" not in result
+
+
+def test_compile_context_scope_without_a_project_root_is_a_tool_error(tmp_path):
+    """``scope`` resolves community members from the hierarchy sidecar, so a
+    bare graph path cannot honour it. Say so instead of silently ignoring it."""
+    graph_path, _ = _multihop_graph_path(tmp_path)
+    server = LLMWikiMCPServer(default_graph_path=graph_path)
+
+    result = server.call_tool(
+        "compile_context", {"seeds": ["Paper:focal"], "scope": "CommunitySummary:nope"}
+    )
+
+    assert "error" in result
+    assert "body" not in result

@@ -69,7 +69,7 @@ Cada tool acepta un `graph_path` o `project` (alias del registro) opcional, de m
 | `search_nodes` | Filtra nodos públicos del grafo por `query`, `type`/`types`, `kind`, `limit`, `mode`/`weights` híbridos; `include_superseded` muestra nodos retirados |
 | `node_context` | Un nodo + sus aristas incidentes + nodos vecinos. `use_ppr` ordena los vecinos con PageRank personalizado en lugar de un recorrido de 1 salto; `include_superseded` y `limit` acotan el resultado |
 | `embedding_status` | Informa el backend de embeddings activo que impulsa la búsqueda híbrida |
-| `search_facts` | Hechos temporales proyectados desde el grafo (al estilo Graphiti); `current_only` filtra a los hechos vigentes |
+| `search_facts` | Hechos temporales proyectados desde el grafo (al estilo Graphiti); `current_only` filtra a los hechos vigentes, `as_of` responde a una fecha pasada. Ambos juntos se rechazan — expresan relojes distintos — y `undated_included` informa cuántas de las filas devueltas no llevan fecha |
 | `timeline` | Hechos ordenados por `valid_from` para una vista longitudinal |
 | `graph_ppr` | PageRank personalizado sembrado en uno o varios `seed_node_id`; devuelve los top-K nodos más relevantes con `alpha`, `directed`, `edge_type_weights` ajustables |
 | `wiki_page` | El cuerpo de la página markdown compilada de un nodo, más los enlaces internos que referencia |

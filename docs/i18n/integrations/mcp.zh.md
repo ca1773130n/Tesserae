@@ -69,7 +69,7 @@ tesserae projects mcp-config
 | `search_nodes` | 按 `query`、`type`/`types`、`kind`、`limit`、混合 `mode`/`weights` 过滤公开图节点；`include_superseded` 可显示已废弃节点 |
 | `node_context` | 一个节点 + 它的相邻边 + 邻居节点。`use_ppr` 用个性化 PageRank 而非 1 跳游走对邻居排序；`include_superseded`、`limit` 限定结果 |
 | `embedding_status` | 报告驱动混合检索的活动嵌入后端 |
-| `search_facts` | 从图谱投影出的时序事实（Graphiti 风格）；`current_only` 仅过滤当前事实 |
+| `search_facts` | 从图谱投影出的时序事实（Graphiti 风格）；`current_only` 仅过滤当前事实，`as_of` 按过去某一日期作答。两者不可同时使用（表达不同的时钟），且 `undated_included` 会报告返回行中有多少条没有日期 |
 | `timeline` | 按 `valid_from` 排序的事实，用于纵向视图 |
 | `graph_ppr` | 从一个或多个 `seed_node_id` 出发的个性化 PageRank，返回最相关的 top-K 节点；可调 `alpha`、`directed`、`edge_type_weights` |
 | `wiki_page` | 节点对应的、已编译的 wiki 页面正文，以及它引用的内部链接 |

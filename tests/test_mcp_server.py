@@ -124,6 +124,308 @@ def test_mcp_server_exposes_temporal_fact_search_and_timeline(tmp_path):
     assert timeline["events"][0]["valid_from"]
 
 
+def as_of_graph_path(tmp_path, undated_noise=0):
+    """A graph whose facts carry real validity intervals.
+
+    ``sample_graph_path`` projects only undated facts, so an ``as_of`` pivot
+    cannot exclude anything there. Here ``new supersedes old`` closes the old
+    finding's interval at 2026-03-01, and a third finding stays undated so the
+    ``undated_included`` counter has something to count.
+
+    Facts projected (all matching the query "splatting"):
+        discussed_in old      [2026-01-01, 2026-03-01)
+        discussed_in new      [2026-03-01, open)
+        discussed_in undated  [undated,    open)
+        supersedes   new      [2026-03-01, open)
+
+    ``undated_noise`` adds N undated facts that the pivot keeps but the query
+    "splatting" does NOT match — they hang off their own "Kitten Doc" so not
+    even the object name pulls them in. They exist to separate the three
+    populations an as-of response could be describing: everything the pivot
+    kept, everything the query matched, and the rows actually returned.
+    """
+    old = ResearchNode(
+        id="SessionInsight:old",
+        name="old splatting finding",
+        type=ResearchNodeType.SESSION_INSIGHT,
+        description="old finding about splatting",
+        metadata={"first_seen_at": "2026-01-01"},
+    )
+    new = ResearchNode(
+        id="SessionInsight:new",
+        name="new splatting finding",
+        type=ResearchNodeType.SESSION_INSIGHT,
+        description="new finding about splatting",
+        metadata={"first_seen_at": "2026-03-01"},
+    )
+    undated = ResearchNode(
+        id="SessionInsight:undated",
+        name="undated splatting finding",
+        type=ResearchNodeType.SESSION_INSIGHT,
+        description="undated finding about splatting",
+    )
+    doc = ResearchNode(id="Paper:doc", name="Splatting Doc", type=ResearchNodeType.PAPER)
+    kitten_doc = ResearchNode(id="Paper:kitten-doc", name="Kitten Doc", type=ResearchNodeType.PAPER)
+    nodes = [old, new, undated, doc]
+    edges = [
+        ResearchEdge(source=old.id, target=doc.id, type="discussed_in"),
+        ResearchEdge(source=new.id, target=doc.id, type="discussed_in"),
+        ResearchEdge(source=undated.id, target=doc.id, type="discussed_in"),
+        ResearchEdge(source=new.id, target=old.id, type="supersedes"),
+    ]
+    if undated_noise:
+        nodes.append(kitten_doc)
+        for index in range(undated_noise):
+            kitten = ResearchNode(
+                id=f"SessionInsight:kitten-{index}",
+                name=f"kitten finding {index}",
+                type=ResearchNodeType.SESSION_INSIGHT,
+                description="undated finding about kittens",
+            )
+            nodes.append(kitten)
+            edges.append(ResearchEdge(source=kitten.id, target=kitten_doc.id, type="discussed_in"))
+    graph = ResearchGraph(nodes=nodes, edges=edges)
+    path = tmp_path / "as_of_graph.json"
+    path.write_text(graph.to_json(indent=2), encoding="utf-8")
+    return path
+
+
+def test_search_facts_as_of_time_travels_and_reports_undated(tmp_path):
+    """``as_of`` filters to the facts live at the pivot, and says how many
+    of the survivors are undated — an agent must never get an "as of DATE"
+    answer that is mostly undated rows without being told."""
+    server = LLMWikiMCPServer(default_graph_path=as_of_graph_path(tmp_path))
+
+    everything = server.call_tool("search_facts", {"query": "splatting", "limit": 50})
+    at_february = server.call_tool(
+        "search_facts", {"query": "splatting", "limit": 50, "as_of": "2026-02-01"}
+    )
+
+    assert everything["total_matches"] == 4
+    assert "undated_included" not in everything  # no pivot ran, nothing to report
+    # Only the old finding was live in February; `new` had not started and the
+    # undated one is carried through by design.
+    assert at_february["total_matches"] == 2
+    assert {f["subject_id"] for f in at_february["facts"]} == {
+        "SessionInsight:old",
+        "SessionInsight:undated",
+    }
+    assert at_february["as_of"] == "2026-02-01"
+    assert at_february["undated_included"] == 1
+
+
+def test_timeline_as_of_time_travels_and_reports_undated(tmp_path):
+    server = LLMWikiMCPServer(default_graph_path=as_of_graph_path(tmp_path))
+
+    everything = server.call_tool("timeline", {"query": "splatting", "limit": 50})
+    at_february = server.call_tool(
+        "timeline", {"query": "splatting", "limit": 50, "as_of": "2026-02-01"}
+    )
+
+    assert len(everything["events"]) == 4
+    assert "undated_included" not in everything
+    assert {e["subject_id"] for e in at_february["events"]} == {
+        "SessionInsight:old",
+        "SessionInsight:undated",
+    }
+    assert at_february["as_of"] == "2026-02-01"
+    assert at_february["undated_included"] == 1
+
+
+@pytest.mark.parametrize("tool", ["search_facts", "timeline"])
+def test_as_of_unparseable_is_a_structured_error_not_a_crash(tmp_path, tool):
+    """``facts_as_of`` raises rather than silently answering over the whole
+    corpus; the dispatcher must turn that into a tool error, not a traceback
+    that a client cannot distinguish from a server fault."""
+    server = LLMWikiMCPServer(default_graph_path=as_of_graph_path(tmp_path))
+
+    result = server.call_tool(tool, {"query": "splatting", "as_of": "last tuesday"})
+
+    assert "error" in result
+    assert "last tuesday" in result["error"]
+    # Crucially NOT the full corpus dressed up as an as-of answer.
+    assert "facts" not in result and "events" not in result
+
+
+def _is_dated(valid_from):
+    """True iff ``valid_from`` is a timestamp ``facts_as_of`` can pivot on.
+
+    Undated facts carry the literal string "undated", but the predicate that
+    matters is the one ``temporal.facts_as_of`` applies — parseability — so
+    the tests assert against that rather than against the sentinel.
+    """
+    from tesserae.temporal import _parse_iso
+
+    return _parse_iso(valid_from) is not None
+
+
+@pytest.mark.parametrize(
+    "tool, rows_key", [("search_facts", "facts"), ("timeline", "events")]
+)
+def test_undated_included_counts_the_rows_returned_not_the_corpus(tmp_path, tool, rows_key):
+    """``undated_included`` must describe the answer the caller was handed.
+
+    The pivot runs before the query filter and the limit cap, so counting
+    undated rows where the pivot runs counts them across the whole as-of
+    corpus. With 40 undated off-query facts in the graph, a two-row
+    "splatting" answer would report 41 undated — inverting the very judgement
+    the counter exists to support ("how thin is this answer?") and reading as
+    though every returned row were undated with 39 more besides.
+    """
+    path = as_of_graph_path(tmp_path, undated_noise=40)
+    server = LLMWikiMCPServer(default_graph_path=path)
+
+    result = server.call_tool(
+        tool, {"query": "splatting", "limit": 50, "as_of": "2026-02-01"}
+    )
+
+    rows = result[rows_key]
+    # Two rows survive the pivot AND the query: dated `old`, undated `undated`.
+    assert {r["subject_id"] for r in rows} == {
+        "SessionInsight:old",
+        "SessionInsight:undated",
+    }
+    assert result["undated_included"] == 1
+    # Stated as an invariant, so any future filter added between the pivot and
+    # the response cannot drift the count away from the rows again.
+    assert result["undated_included"] == sum(
+        1 for r in rows if not _is_dated(r["valid_from"])
+    )
+
+
+def test_undated_included_agrees_with_facts_as_of_when_nothing_else_filters(tmp_path):
+    """``facts_as_of`` owns what "undated" means; the response must not drift.
+
+    Strip away the query filter, the limit cap and the budget and the two
+    populations coincide, so the count the server reports has to equal the one
+    the projector counted.
+
+    What this does NOT do, stated because the docstring used to claim it did:
+    it does not pin the *predicate*. Swapping the server's parseability check
+    for a test against the literal "undated" sentinel leaves all nine tests in
+    this module green — verified by mutation, not assumed. The divergence is
+    unreachable anyway: ``temporal.py`` normalises a missing ``valid_from`` to
+    the sentinel and ``_latest_ts`` only ever returns a parseable candidate, so
+    no fact reaches here carrying an unparseable non-sentinel timestamp. The
+    behaviour is correct; the coverage claim was not, and a false claim of
+    coverage is worse than none because it stops anyone looking again.
+    """
+    from tesserae.mcp_server import load_graph
+    from tesserae.temporal import TemporalFactProjector, facts_as_of
+
+    path = as_of_graph_path(tmp_path, undated_noise=40)
+    projected = TemporalFactProjector().project(load_graph(path))
+    _, oracle = facts_as_of(projected, "2026-02-01")
+
+    server = LLMWikiMCPServer(default_graph_path=path)
+    everything = server.call_tool(
+        "search_facts", {"query": "", "limit": 100, "as_of": "2026-02-01", "budget_chars": 0}
+    )
+
+    assert everything["total_matches"] == len(everything["facts"])  # nothing dropped
+    assert everything["undated_included"] == oracle == 41
+
+
+def test_undated_included_shrinks_with_the_limit(tmp_path):
+    """The count follows the page, not the match set.
+
+    Three populations differ here by construction: 41 undated rows survive the
+    pivot, 1 undated row survives the query, and 0 undated rows survive a
+    limit of 1 (dated `old` sorts first). Only a count taken over the returned
+    rows reads 0.
+    """
+    path = as_of_graph_path(tmp_path, undated_noise=40)
+    server = LLMWikiMCPServer(default_graph_path=path)
+
+    page = server.call_tool(
+        "search_facts", {"query": "splatting", "limit": 1, "as_of": "2026-02-01"}
+    )
+
+    assert [f["subject_id"] for f in page["facts"]] == ["SessionInsight:old"]
+    assert page["total_matches"] == 2  # the query matched more than the page shows
+    assert page["undated_included"] == 0
+
+
+def test_undated_included_counts_rows_that_survived_the_budget(tmp_path):
+    """CTX-01 truncation drops whole rows, and the count must drop with them.
+
+    ``_fit_payload_list`` runs after the search, so a count taken any earlier
+    describes rows that were dropped behind the continuation line and are not
+    in the response at all.
+    """
+    server = LLMWikiMCPServer(default_graph_path=as_of_graph_path(tmp_path))
+    query = {"query": "splatting", "as_of": "2026-02-01"}
+
+    assert server.call_tool("search_facts", dict(query))["undated_included"] == 1
+
+    # Sweep rather than pin one magic budget: the exact byte at which
+    # ``fit_to_budget`` stops admitting rows is its business, and a test that
+    # hard-codes it breaks on unrelated payload changes.
+    dropped_somewhere = False
+    for budget in (600, 700, 800, 1200, 2000):
+        capped = server.call_tool("search_facts", {**query, "budget_chars": budget})
+        assert capped["undated_included"] == sum(
+            1 for f in capped["facts"] if not _is_dated(f["valid_from"])
+        )
+        dropped_somewhere |= capped.get("continuation") is not None
+    # Guard against the sweep going vacuous if budgets stop biting.
+    assert dropped_somewhere
+
+
+def test_as_of_with_current_only_is_refused_rather_than_double_filtered(tmp_path):
+    """The two filters ask different questions and must not silently compose.
+
+    ``as_of`` asks what was live at the pivot; ``current_only`` asks what is
+    still live now. Together they drop exactly the facts that were the state
+    of knowledge at the pivot and have since been superseded — which is most
+    of what a time-travel query is for. Answering "0 matches" to "what was
+    true on 2026-02-01" because the answer was later replaced is the silent
+    degradation this surface exists to remove, so the combination is refused
+    with an error the caller can act on.
+    """
+    server = LLMWikiMCPServer(default_graph_path=as_of_graph_path(tmp_path))
+
+    # `old` was the live state of knowledge in February and has since been
+    # superseded, so it is precisely the fact the combination would eat.
+    at_february = server.call_tool(
+        "search_facts", {"query": "old splatting", "as_of": "2026-02-01"}
+    )
+    assert "SessionInsight:old" in {f["subject_id"] for f in at_february["facts"]}
+
+    refused = server.call_tool(
+        "search_facts",
+        {"query": "old splatting", "as_of": "2026-02-01", "current_only": True},
+    )
+
+    assert "facts" not in refused  # not a quietly narrowed answer
+    assert "as_of" in refused["error"] and "current_only" in refused["error"]
+
+
+def test_search_facts_advertises_that_as_of_and_current_only_do_not_compose():
+    by_name = {t["name"]: t for t in LLMWikiMCPServer().list_tools()}
+
+    current_only = by_name["search_facts"]["inputSchema"]["properties"]["current_only"]
+
+    assert "as_of" in current_only["description"]
+
+
+def test_search_facts_and_timeline_advertise_as_of():
+    by_name = {t["name"]: t for t in LLMWikiMCPServer().list_tools()}
+
+    facts_schema = by_name["search_facts"]["inputSchema"]
+    timeline_schema = by_name["timeline"]["inputSchema"]
+
+    # Both refuse unknown keys, so an unadvertised `as_of` is rejected at the
+    # schema boundary rather than silently ignored.
+    assert facts_schema["additionalProperties"] is False
+    assert timeline_schema["additionalProperties"] is False
+    assert facts_schema["properties"]["as_of"]["type"] == "string"
+    assert timeline_schema["properties"]["as_of"]["type"] == "string"
+    # timeline's query is optional and must stay that way.
+    assert facts_schema["required"] == ["query"]
+    assert "required" not in timeline_schema
+
+
 def test_json_rpc_notifications_do_not_emit_response():
     handler = MCPRequestHandler(LLMWikiMCPServer())
 
