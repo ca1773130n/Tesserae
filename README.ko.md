@@ -165,7 +165,7 @@ tesserae engine --all --compile-slots 1
 - **그래프 + 위키**: `search_nodes`, `node_context`, `graph_summary`,
   `wiki_page`, `raw_source`, `timeline`, `search_facts`, `lint_report`, `ask`.
 - **세션 메모리**: `list_sessions`, `find_session_findings`,
-  `fresh_insights` (감쇠 랭킹, 중복 제거).
+  `find_code_symbol_mentions`, `fresh_insights` (감쇠 랭킹, 중복 제거).
 - **레지스트리**: `list_projects`, `register_project`, `activate_project`.
 
 ## 다중 프로젝트

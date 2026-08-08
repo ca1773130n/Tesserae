@@ -263,7 +263,7 @@ Tesserae — это **контекстный движок**, работающи�
 
 - ✅ `tesserae_mcp` / `python3 -m tesserae.mcp_server` по stdio JSON-RPC.
 - ✅ Инструменты retrieval/графа: `schema`, `graph_summary`, `search_nodes`, `node_context` (с `use_ppr`), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`, `doctor_report`.
-- ✅ Инструменты контекстного движка (v0.5.0): `compile_context`, `embedding_status`, `fresh_insights` (ранжированные затуханием), `list_communities`, `find_session_findings`, `ask`.
+- ✅ Инструменты контекстного движка (v0.5.0): `compile_context`, `embedding_status`, `fresh_insights` (ранжированные затуханием), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`, `ask`.
 - ✅ Инструменты настройки: `tesserae_setup_plan`, `tesserae_setup_apply`.
 - ✅ Мультипроектный реестр: `list_projects`, `register_project`, `unregister_project`, `list_sessions`. Диспетчеризация store-URL через `url_resolver`.
 

@@ -112,6 +112,4 @@ Tesserae 是一个 LLM wiki，因此 `compile` **默认构建概念/断言层**�
 
 - `tesserae compile`（无参数）重新提取整个受跟踪语料。
 - `tesserae ingest <x>` 增量添加一个来源。
-- 源代码不在范围内。Tesserae 摄取的是文档与会话记录；代码智能请使用 CodeGraph
-  这类专门工具。`tesserae code` 只作为墓碑保留——它会说明这一点并以退出码 2
-  结束，因为 Claude Code 插件的钩子装在用户自己的安装里，仍会不断调用它。
+- `tesserae code ingest` 从 Python 源码生成代码图（一个不同的命令）。适用于通过 `codegraph` 的 `external_tools` 条目启用代码层的项目。

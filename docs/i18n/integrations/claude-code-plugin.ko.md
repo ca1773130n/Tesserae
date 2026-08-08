@@ -18,7 +18,7 @@ Tesserae는 [Claude Code](https://docs.claude.com/en/docs/claude-code) 플러그
 ## 포함된 것
 
 * **슬래시 명령 9개** — CLI에 1:1로 매핑되는 7개 래퍼(`/tesserae:compile`, `/tesserae:ask`, `/tesserae:sessions-import`, `/tesserae:build-site`, `/tesserae:serve`, `/tesserae:obsidian-sync`, `/tesserae:setup`) + 두 개의 워크플로우 매크로(`/tesserae:refresh`는 import + compile + obsidian-sync를 체인, `/tesserae:status`는 그래프 카운트와 마지막 컴파일 표시).
-* **`tesserae` 서버 자동 등록** — 에이전트가 전체 도구 표면을 수동 설정 편집 없이 `mcp__plugin_tesserae_tesserae__<tool>`로 사용합니다: 그래프 쿼리(`search_nodes`, `node_context`, `graph_ppr`, `search_facts`), 온디맨드 `compile_context` / `list_communities` / `fresh_insights` 컴파일러, 세션 메모리(`ask`, `list_sessions`, `find_session_findings`), 가이드 설정(`tesserae_setup_plan` / `tesserae_setup_apply`). 전체 목록은 [mcp.ko.md](mcp.ko.md) 참조.
+* **`tesserae` 서버 자동 등록** — 에이전트가 전체 도구 표면을 수동 설정 편집 없이 `mcp__plugin_tesserae_tesserae__<tool>`로 사용합니다: 그래프 쿼리(`search_nodes`, `node_context`, `graph_ppr`, `search_facts`), 온디맨드 `compile_context` / `list_communities` / `fresh_insights` 컴파일러, 세션 메모리(`ask`, `list_sessions`, `find_session_findings`, `find_code_symbol_mentions`), 가이드 설정(`tesserae_setup_plan` / `tesserae_setup_apply`). 전체 목록은 [mcp.ko.md](mcp.ko.md) 참조.
 * **`using-tesserae` 스킬** — 사용자가 타입드 그래프, 과거 세션 회수, 위키/볼트 콘텐츠, 또는 tesserae 워크플로우에 대해 질문할 때 자동 로드됩니다. 에이전트에게 어떤 MCP 도구를 사용할지 vs 어떤 슬래시 명령을 제안할지 가르쳐줍니다.
 * **훅 5개** — `SessionStart`는 그래프 요약을 출력; `SessionEnd`는 이번 대화의 인사이트가 다음 세션의 그래프 노드가 되도록 백그라운드 import+compile; `Edit`/`Write`/`MultiEdit`에서 두 개의 `PostToolUse` 훅이 발동 — 하나는 docs/ 편집 시 옵트인 증분 재컴파일, 다른 하나는 코드 그래프 동기화를 디바운스(~30초); `PreToolUse`(`Bash` 대상)는 큰 그래프 컴파일을 확인 대화상자로 게이팅.
 

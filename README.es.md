@@ -188,7 +188,7 @@ cualquier cliente MCP. Herramientas principales:
 - **Grafo + wiki**: `search_nodes`, `node_context`, `graph_summary`,
   `wiki_page`, `raw_source`, `timeline`, `search_facts`, `lint_report`, `ask`.
 - **Memoria de sesiones**: `list_sessions`, `find_session_findings`,
-  `fresh_insights` (clasificado por decaimiento, deduplicado).
+  `find_code_symbol_mentions`, `fresh_insights` (clasificado por decaimiento, deduplicado).
 - **Registro**: `list_projects`, `register_project`, `activate_project`.
 
 ## Múltiples proyectos

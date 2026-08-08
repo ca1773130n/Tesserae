@@ -263,7 +263,7 @@ Tesserae 是一个运行在三大支柱上的**上下文引擎**：(1) 会话监
 
 - ✅ `tesserae_mcp` / `python3 -m tesserae.mcp_server`，基于 stdio JSON-RPC。
 - ✅ 检索/图工具：`schema`、`graph_summary`、`search_nodes`、`node_context`（带 `use_ppr`）、`search_facts`、`timeline`、`graph_ppr`、`wiki_page`、`raw_source`、`lint_report`、`doctor_report`。
-- ✅ 上下文引擎工具（v0.5.0）：`compile_context`、`embedding_status`、`fresh_insights`（按衰减排序）、`list_communities`、`find_session_findings`、`ask`。
+- ✅ 上下文引擎工具（v0.5.0）：`compile_context`、`embedding_status`、`fresh_insights`（按衰减排序）、`list_communities`、`find_session_findings`、`find_code_symbol_mentions`、`ask`。
 - ✅ 设置工具：`tesserae_setup_plan`、`tesserae_setup_apply`。
 - ✅ 多项目注册表：`list_projects`、`register_project`、`unregister_project`、`list_sessions`。通过 `url_resolver` 的存储 URL 分发。
 

@@ -196,7 +196,7 @@ query / seeds
 | [`tesserae/agent_harness.py`](../../tesserae/agent_harness.py) | Claude Code / Codex / Gemini / Kiro / Cursor / OpenCode のハーネスエクスポート。 |
 | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | インバウンドの Claude Code/Codex セッションの発見、正規化、`.tesserae/harness_sessions/` 配下への保存、および秘匿化された markdown サマリ。 |
 | [`tesserae/graphiti_adapter.py`](../../tesserae/graphiti_adapter.py) | 時間的事実の JSONL + オプションのライブ Graphiti 同期。 |
-| [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | MCP stdio サーバー。検索/グラフ: `schema`、`graph_summary`、`search_nodes`、`node_context`（`use_ppr` 付き）、`search_facts`、`timeline`、`graph_ppr`、`wiki_page`、`raw_source`、`lint_report`、`doctor_report`。コンテキストエンジン（v0.5.0）: `compile_context`（オンデマンドコンテキストコンパイラ）、`embedding_status`、`fresh_insights`（減衰ランクのセッション発見）、`list_communities`、`find_session_findings`。さらに `ask`、マルチプロジェクトレジストリのツール（`list_projects`、`register_project`、`unregister_project`、`list_sessions`）、および `tesserae_setup_plan` / `tesserae_setup_apply`。 |
+| [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | MCP stdio サーバー。検索/グラフ: `schema`、`graph_summary`、`search_nodes`、`node_context`（`use_ppr` 付き）、`search_facts`、`timeline`、`graph_ppr`、`wiki_page`、`raw_source`、`lint_report`、`doctor_report`。コンテキストエンジン（v0.5.0）: `compile_context`（オンデマンドコンテキストコンパイラ）、`embedding_status`、`fresh_insights`（減衰ランクのセッション発見）、`list_communities`、`find_session_findings`、`find_code_symbol_mentions`。さらに `ask`、マルチプロジェクトレジストリのツール（`list_projects`、`register_project`、`unregister_project`、`list_sessions`）、および `tesserae_setup_plan` / `tesserae_setup_apply`。 |
 
 ## プロジェクトワークスペースのレイアウト
 

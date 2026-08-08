@@ -90,6 +90,7 @@ tesserae projects mcp-config
 |---|---|
 | `list_sessions` | アクティブなプロジェクトのセッションエンベロープ（id、started_at、title、files_touched、発見数）。`since`、`limit` |
 | `find_session_findings` | `discussed_in` / `references` を介して `node_id` にリンクされた全セッション発見。`kinds`（insight / decision / question / todo / hypothesis / takeaway）でフィルタ可能 |
+| `find_code_symbol_mentions` | セッション発見を、それが言及する `CodeFunction`/`CodeClass`/`CodeMethod` シンボルへ展開（オプトインの insight↔symbol リンクパスが生成する `discusses` edge を使用）。コードレイヤーはオプトインです。`codegraph` の `external_tools` エントリがなければ、何も返しません |
 
 **Q&A とレジストリ**
 

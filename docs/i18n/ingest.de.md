@@ -150,8 +150,5 @@ kompiliert wie eine lokale. (Adds dedupen nach aufgelöster Location, sodass die
 
 - `tesserae compile` (ohne Argumente) re-extrahiert den ganzen getrackten Korpus.
 - `tesserae ingest <x>` fügt eine Quelle inkrementell hinzu.
-- Quellcode liegt außerhalb des Scopes. Tesserae ingestiert Dokumente und
-  Session-Transkripte; für Code-Intelligenz nutze ein dediziertes Werkzeug wie CodeGraph.
-  `tesserae code` bleibt nur als Grabstein bestehen, der genau das sagt und mit 2
-  beendet, weil die Hooks des Claude-Code-Plugins in der Installation des Nutzers
-  liegen und den Befehl weiterhin aufrufen.
+- `tesserae code ingest` prägt einen Code-Graph aus Python-Quellen (ein anderer Befehl) —
+  für Projekte, die die Code-Ebene per `external_tools`-Eintrag für `codegraph` aktivieren.

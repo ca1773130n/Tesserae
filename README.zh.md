@@ -165,7 +165,7 @@ Fleet 模式每 10 秒与 `~/.tesserae/registry.json` 对账 —— 注册或移
 - **图谱 + wiki**：`search_nodes`、`node_context`、`graph_summary`、
   `wiki_page`、`raw_source`、`timeline`、`search_facts`、`lint_report`、`ask`。
 - **会话记忆**：`list_sessions`、`find_session_findings`、
-  `fresh_insights`（衰减排名，去重）。
+  `find_code_symbol_mentions`、`fresh_insights`（衰减排名，去重）。
 - **注册表**：`list_projects`、`register_project`、`activate_project`。
 
 ## 多项目

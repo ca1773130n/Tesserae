@@ -150,8 +150,5 @@ relativa con `../` del mismo directorio nunca cuentan doble.)
 
 - `tesserae compile` (sin argumentos) re-extrae todo el corpus rastreado.
 - `tesserae ingest <x>` añade una fuente incrementalmente.
-- El código fuente está fuera de alcance. Tesserae ingiere documentos y
-  transcripciones de sesión; para inteligencia de código usa una herramienta
-  dedicada como CodeGraph. `tesserae code` sobrevive solo como una lápida que lo
-  dice y sale con código 2, porque los hooks del plugin de Claude Code viven en
-  la instalación del usuario y lo siguen invocando.
+- `tesserae code ingest` acuña un grafo de código desde fuente Python (un comando distinto),
+  para proyectos que activan la capa de código con una entrada `external_tools` para `codegraph`.

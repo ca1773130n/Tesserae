@@ -183,7 +183,7 @@ tesserae engine --all --compile-slots 1
 - **Граф + вики**: `search_nodes`, `node_context`, `graph_summary`,
   `wiki_page`, `raw_source`, `timeline`, `search_facts`, `lint_report`, `ask`.
 - **Память сессий**: `list_sessions`, `find_session_findings`,
-  `fresh_insights` (ранжирование по убыванию свежести, дедупликация).
+  `find_code_symbol_mentions`, `fresh_insights` (ранжирование по убыванию свежести, дедупликация).
 - **Реестр**: `list_projects`, `register_project`, `activate_project`.
 
 ## Несколько проектов

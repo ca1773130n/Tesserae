@@ -196,7 +196,7 @@ Phase 5가 영속적 자기 개선을 활성화했습니다. 가변적인 노드
 | [`tesserae/agent_harness.py`](../../tesserae/agent_harness.py) | Claude Code / Codex / Gemini / Kiro / Cursor / OpenCode harness export. |
 | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | 인바운드 Claude Code/Codex 세션 발견, 정규화, `.tesserae/harness_sessions/` 아래 저장, 그리고 편집(redact)된 markdown 요약. |
 | [`tesserae/graphiti_adapter.py`](../../tesserae/graphiti_adapter.py) | Temporal-fact JSONL + 선택적 라이브 Graphiti 동기화. |
-| [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | MCP stdio 서버. Retrieval/그래프: `schema`, `graph_summary`, `search_nodes`, `node_context` (`use_ppr` 지원), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`, `doctor_report`. 컨텍스트 엔진 (v0.5.0): `compile_context`(온디맨드 컨텍스트 컴파일러), `embedding_status`, `fresh_insights`(감쇠 순위 세션 finding), `list_communities`, `find_session_findings`. 추가로 `ask`, 멀티 프로젝트 레지스트리 도구(`list_projects`, `register_project`, `unregister_project`, `list_sessions`), `tesserae_setup_plan` / `tesserae_setup_apply`. |
+| [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | MCP stdio 서버. Retrieval/그래프: `schema`, `graph_summary`, `search_nodes`, `node_context` (`use_ppr` 지원), `search_facts`, `timeline`, `graph_ppr`, `wiki_page`, `raw_source`, `lint_report`, `doctor_report`. 컨텍스트 엔진 (v0.5.0): `compile_context`(온디맨드 컨텍스트 컴파일러), `embedding_status`, `fresh_insights`(감쇠 순위 세션 finding), `list_communities`, `find_session_findings`, `find_code_symbol_mentions`. 추가로 `ask`, 멀티 프로젝트 레지스트리 도구(`list_projects`, `register_project`, `unregister_project`, `list_sessions`), `tesserae_setup_plan` / `tesserae_setup_apply`. |
 
 ## 프로젝트 워크스페이스 레이아웃
 

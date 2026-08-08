@@ -196,7 +196,7 @@ Phase 5 激活了持久的自我改进。每个节点的可变状态存放在 `n
 | [`tesserae/agent_harness.py`](../../tesserae/agent_harness.py) | Claude Code / Codex / Gemini / Kiro / Cursor / OpenCode harness 导出。 |
 | [`tesserae/harness_sessions.py`](../../tesserae/harness_sessions.py) | 入站的 Claude Code/Codex 会话发现、归一化、存储到 `.tesserae/harness_sessions/`，以及脱敏的 markdown 摘要。 |
 | [`tesserae/graphiti_adapter.py`](../../tesserae/graphiti_adapter.py) | 时间事实 JSONL + 可选的实时 Graphiti 同步。 |
-| [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | MCP stdio 服务器。检索/图谱：`schema`、`graph_summary`、`search_nodes`、`node_context`（带 `use_ppr`）、`search_facts`、`timeline`、`graph_ppr`、`wiki_page`、`raw_source`、`lint_report`、`doctor_report`。上下文引擎（v0.5.0）：`compile_context`（按需上下文编译器）、`embedding_status`、`fresh_insights`（按衰减排名的会话发现）、`list_communities`、`find_session_findings`。外加 `ask`、多项目注册表工具（`list_projects`、`register_project`、`unregister_project`、`list_sessions`），以及 `tesserae_setup_plan` / `tesserae_setup_apply`。 |
+| [`tesserae/mcp_server.py`](../../tesserae/mcp_server.py) | MCP stdio 服务器。检索/图谱：`schema`、`graph_summary`、`search_nodes`、`node_context`（带 `use_ppr`）、`search_facts`、`timeline`、`graph_ppr`、`wiki_page`、`raw_source`、`lint_report`、`doctor_report`。上下文引擎（v0.5.0）：`compile_context`（按需上下文编译器）、`embedding_status`、`fresh_insights`（按衰减排名的会话发现）、`list_communities`、`find_session_findings`、`find_code_symbol_mentions`。外加 `ask`、多项目注册表工具（`list_projects`、`register_project`、`unregister_project`、`list_sessions`），以及 `tesserae_setup_plan` / `tesserae_setup_apply`。 |
 
 ## 项目工作区布局
 

@@ -18,7 +18,7 @@ Tesserae 提供了一个 [Claude Code](https://docs.claude.com/en/docs/claude-co
 ## 内含
 
 * **9 个斜杠命令** —— 7 个 CLI 1:1 包装器(`/tesserae:compile`、`/tesserae:ask`、`/tesserae:sessions-import`、`/tesserae:build-site`、`/tesserae:serve`、`/tesserae:obsidian-sync`、`/tesserae:setup`)+ 两个工作流宏(`/tesserae:refresh` 链式执行 import + compile + obsidian-sync;`/tesserae:status` 显示图谱计数和上次编译)。
-* **`tesserae` 服务器自动注册** —— 代理无需手动编辑配置即可以 `mcp__plugin_tesserae_tesserae__<tool>` 形式使用完整工具面:图谱查询(`search_nodes`、`node_context`、`graph_ppr`、`search_facts`)、按需 `compile_context` / `list_communities` / `fresh_insights` 编译器、会话记忆(`ask`、`list_sessions`、`find_session_findings`)以及引导式设置(`tesserae_setup_plan` / `tesserae_setup_apply`)。完整列表见 [mcp.zh.md](mcp.zh.md)。
+* **`tesserae` 服务器自动注册** —— 代理无需手动编辑配置即可以 `mcp__plugin_tesserae_tesserae__<tool>` 形式使用完整工具面:图谱查询(`search_nodes`、`node_context`、`graph_ppr`、`search_facts`)、按需 `compile_context` / `list_communities` / `fresh_insights` 编译器、会话记忆(`ask`、`list_sessions`、`find_session_findings`、`find_code_symbol_mentions`)以及引导式设置(`tesserae_setup_plan` / `tesserae_setup_apply`)。完整列表见 [mcp.zh.md](mcp.zh.md)。
 * **`using-tesserae` 技能** —— 当你询问类型化图谱、过去会话回忆、wiki/vault 内容或任何 tesserae 工作流时自动加载。教会代理使用哪个 MCP 工具 vs 建议哪个斜杠命令。
 * **5 个 hook** —— `SessionStart` 打印图谱摘要;`SessionEnd` 后台执行 import+compile,使本次对话的洞察成为下次会话的图谱节点;两个 `PostToolUse` hook 在 `Edit`/`Write`/`MultiEdit` 上触发 —— 一个在 docs/ 编辑时做可选的增量重编译,另一个对代码图谱同步做防抖(约 30 秒);`PreToolUse`(作用于 `Bash`)通过确认对话框对大图谱编译进行门控。
 
