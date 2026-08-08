@@ -41,10 +41,10 @@ CLAIM_TYPES = {
 # _deterministic_verdict), no LLM. Ceiling: a token-overlap heuristic decides
 # when a fact stopped being true. Upgrade path, in order: (1) the already-wired
 # LLM verdict path in the same pass, (2) the embedding candidates
-# supersede.py deliberately deferred, (3) turn-level granularity — ``turn_ids``
-# are already on finding metadata, so ``first_seen_at`` (= session.started_at,
-# shared by every finding in one long-running session) can be sharpened without
-# a schema change.
+# supersede.py deliberately deferred. Item (3), turn-level granularity, is DONE:
+# ``session_graph._finding_first_seen_at`` dates a finding from its own turns'
+# timestamps, so findings in one long-running session no longer share a
+# boundary.
 INVALIDATING_PREDICATES = {"contradicts_claim", "supersedes", "invalidates"}
 
 # Timestamp ladder for ``valid_from`` — most-specific observation first.
@@ -60,6 +60,31 @@ INVALIDATING_PREDICATES = {"contradicts_claim", "supersedes", "invalidates"}
 # wall-clock leak that broke byte-idempotence four times in this repo. The
 # ladder is the read direction of the same boundary _fact_from_edge already
 # guards in the write direction.
+#
+# Rungs MEASURED and rejected, so nobody re-proposes them:
+#
+# * front-matter ``fetched_at`` (ingest/fetch.py writes it) — 0 of 2,524 corpus
+#   files carry it, and ``extract_source_metadata``'s allowlist would rename it
+#   anyway. The rung reaches nothing.
+# * git commit date of ``source_path`` — ``data/`` is gitignored and holds
+#   80.4% of the dated population, so it reaches 14.4% of nodes and is MORE
+#   clone-fragile than the path rung it would sit beside, which is the exact
+#   constraint that motivated proposing it. A shallow clone breaks it too.
+# * bare ``date`` metadata — present on 1,337 nodes but LLM-transcribed from
+#   prose, not parsed by anything deterministic: of 400 sampled, 22 disagree
+#   with their own file, 148 have no such date in the file at all, and one is
+#   the literal string "April 25". Promoting it would make valid_from a
+#   function of model output and break the source-derived invariant above.
+# * ``last_accessed_at`` — see the paragraph above; never.
+#
+# Propagating a timestamp ALONG edges (Claim <- evidenced_by <- EvidenceSpan
+# <- contains <- SourceDocument) was also designed and dropped as unnecessary,
+# not deferred: every Claim and EvidenceSpan already names its producing file
+# in the top-level ``source_path`` FIELD (21,723 of 21,723), which the path
+# rung below reads directly. Edge propagation caps at 29.8% because 70.2% of
+# those nodes have no document parent under any provenance predicate, and it
+# would drag in a topological order, a cycle rule (``supersedes`` alone adds
+# 3,194 node-to-node edges) and a multi-parent tie-break to get there.
 _TS_METADATA_KEYS: Tuple[str, ...] = (
     "first_seen_at",
     "analysis_date",
