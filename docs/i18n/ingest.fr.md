@@ -150,4 +150,20 @@ relative en `../` du même répertoire ne comptent jamais double.)
 
 - `tesserae compile` (sans arguments) re-extrait tout le corpus suivi.
 - `tesserae ingest <x>` ajoute une source de façon incrémentale.
-- `tesserae code ingest` frappe un graphe de code depuis des sources Python (une commande différente).
+- `tesserae code ingest` frappe un graphe de code depuis des sources Python (une commande
+  différente), pour les projets qui activent la couche de code via une entrée `external_tools`
+  pour `codegraph`.
+
+### Activer la couche de code
+
+Le code source est **optionnel**. Ajoutez une entrée `external_tools` à `.tesserae/config.json` :
+
+```json
+{
+  "external_tools": [{"id": "codegraph"}]
+}
+```
+
+Sans cette entrée, il n'y a pas de couche de code : la compilation n'extrait rien, les hooks sync-code restent silencieux et `code-graph.json` est supprimé si une compilation antérieure en a laissé un. Le type de projet ne l'active pas — un projet `Repository` sans entrée ne compile aucun code.
+
+Mettez `"enabled": false` pour la désactiver. Pour l'intelligence de code, envisagez CodeGraph ; Tesserae se concentre sur les documents et les transcriptions de session.

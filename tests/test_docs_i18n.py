@@ -87,3 +87,54 @@ def test_doctor_doc_table_lists_every_registered_check() -> None:
         f"undocumented: {sorted(registered - documented)}; "
         f"documented but not registered: {sorted(documented - registered)}"
     )
+
+
+def test_mcp_tool_docs_match_the_real_tool_list() -> None:
+    """docs/integrations/mcp.md must name exactly the tools the server serves.
+
+    Removing `find_code_symbol_mentions` left it documented as available in
+    four English docs plus their seven mirrors each — 47 files naming a tool
+    that now raises. That is worse than stale: an agent following the docs
+    calls something that does not exist.
+
+    Nothing tied the documented tool list to `list_tools()`, so the drift was
+    invisible. The doctor check-table test above is the only other
+    docs-match-code guard in this suite, and it is precisely what forced
+    docs/doctor.md to be corrected in the same change — same pattern, applied
+    to the tool list.
+    """
+    import re
+
+    from tesserae.mcp_server import LLMWikiMCPServer
+
+    served = {t["name"] for t in LLMWikiMCPServer(default_graph_path=None).list_tools()}
+    text = (DOCS / "integrations" / "mcp.md").read_text(encoding="utf-8")
+    documented = set(re.findall(r"^\| `([a-z_]+)` \|", text, re.MULTILINE))
+
+    assert documented, "found no tool rows in mcp.md — the table shape changed, fix this test"
+
+    # The direction that actually breaks an agent: a tool named in the docs
+    # that the server does not serve. Hard failure, no exceptions.
+    phantom = sorted(documented - served)
+    assert not phantom, f"documented but NOT served (agents will call these and fail): {phantom}"
+
+    # The other direction is a discoverability gap, not a broken call, and it
+    # predates this guard — mcp.md has never listed these 14. Frozen as a
+    # ratchet rather than an assertion of zero: the set may SHRINK freely, and
+    # anything new must be documented. Documenting the existing 14 is worth
+    # doing, but it is not this test's job to hold a release hostage to it.
+    KNOWN_UNDOCUMENTED = {
+        "activity_summary", "agent_view_explain", "doctor_report", "doctor_run",
+        "drill_down", "graph_map", "graph_write", "ingest", "list_projects",
+        "query", "query_decisions", "register_project", "unregister_project",
+        "verify_claim",
+    }
+    newly_undocumented = sorted(served - documented - KNOWN_UNDOCUMENTED)
+    assert not newly_undocumented, (
+        f"new tool(s) served but not documented in mcp.md: {newly_undocumented}"
+    )
+    stale_exemptions = sorted(KNOWN_UNDOCUMENTED & documented)
+    assert not stale_exemptions, (
+        "these are documented now — remove them from KNOWN_UNDOCUMENTED so the "
+        f"ratchet keeps tightening: {stale_exemptions}"
+    )

@@ -1555,6 +1555,41 @@ def _handle_ingest(args: argparse.Namespace) -> int:
         return 0
 
 
+def _warn_if_code_layer_disabled(project_root: Path, output: Path) -> None:
+    """Say so when this command writes an artifact the next compile will delete.
+
+    Running ``tesserae code ingest``/``code sync`` by hand IS consent, so
+    neither command refuses. But with the layer opted out, ``_write_artifacts``
+    unlinks ``code-graph.json`` on the next compile — and a file that appears,
+    works, and then vanishes with nothing said reads as a bug in Tesserae
+    rather than as the setting doing exactly what it says.
+
+    Only warns for the default output path. Pointing ``--output`` somewhere
+    else puts the file outside the compile's reach, where the warning would be
+    false.
+    """
+    if output.resolve() != (project_root / ".tesserae" / "code-graph.json"):
+        return
+    config = project_root / ".tesserae" / "config.json"
+    try:
+        tools = json.loads(config.read_text(encoding="utf-8")).get("external_tools") or []
+    except (OSError, json.JSONDecodeError):
+        return
+    for tool in tools:
+        if isinstance(tool, dict) and tool.get("id") == "codegraph":
+            if tool.get("enabled", True) is not False:
+                return
+            break
+    print(
+        f"Warning: the code layer is not enabled for this project, so the next "
+        f"`tesserae compile` will DELETE {output}.\n"
+        f"         To keep it, add an external_tools entry to "
+        f"{config}:\n"
+        f'           {{"id": "codegraph"}}',
+        file=sys.stderr,
+    )
+
+
 def _handle_ingest_code(args: argparse.Namespace) -> int:
     if True:
         # Defer the import so the rest of the CLI does not pay the cost
@@ -1567,6 +1602,7 @@ def _handle_ingest_code(args: argparse.Namespace) -> int:
         result = extractor.extract(args.paths or None)
         output = Path(args.output) if args.output else (project_root / ".tesserae" / "code-graph.json")
         write_code_graph(result.graph, output)
+        _warn_if_code_layer_disabled(project_root, output)
         print(
             "Ingested code graph: "
             f"processed={result.processed_files} skipped_dirs={result.skipped_dirs} "
@@ -1601,6 +1637,7 @@ def _handle_sync_code(args: argparse.Namespace) -> int:
             return 2
         output = Path(args.output) if args.output else (project_root / ".tesserae" / "code-graph.json")
         result = write_code_graph_from_codegraph(db_path, output, project_root=project_root)
+        _warn_if_code_layer_disabled(project_root, output)
         print(
             "Synced code graph from CodeGraph: "
             f"nodes={result.nodes} edges={result.edges} "
@@ -6086,13 +6123,58 @@ def _build_doctor_parser() -> argparse.ArgumentParser:
             "  tesserae doctor\n"
             "  tesserae doctor --fix\n"
             "  tesserae doctor --all --json\n"
+            "  tesserae doctor migrate-code-scope           # dry run\n"
+            "  tesserae doctor migrate-code-scope --apply\n"
         ),
+    )
+    # Optional verb: no verb runs the checks, so `tesserae doctor` is
+    # unchanged. `migrate-code-scope` is a one-shot cleanup of a workspace
+    # compiled before source code left Tesserae's scope. It is a separate verb
+    # rather than another --fix repair because it deletes hundreds of thousands
+    # of projected pages and rebuilds a multi-gigabyte SQLite file, and --fix
+    # promises safe repairs only.
+    parser.add_argument(
+        "verb",
+        nargs="?",
+        choices=["migrate-code-scope"],
+        help="Omit to run the health checks. migrate-code-scope: remove the retired code layer (dry run unless --apply).",
     )
     parser.add_argument("--project", default=".", help="Project root directory; defaults to current working directory")
     parser.add_argument("--all", dest="all_projects", action="store_true", help="Doctor every registered project (ignores --project)")
+    parser.add_argument("--apply", action="store_true", help="With migrate-code-scope: actually delete. Without it the verb reports what it would remove and touches nothing.")
     parser.add_argument("--fix", action="store_true", help="Apply the safe fixes only: registry prune, site rebuild, lint trivial fixes, stale daemon-pidfile removal (THIS host's only — another machine's pidfile is never touched), build-history trim, hook-log rotation, vault mkdir, git worktree prune. Never kills or removes a live compile lock.")
     parser.add_argument("--json", dest="doctor_json", action="store_true", help="Print the JSON report to stdout instead of the markdown checklist")
     return parser
+
+
+def _handle_doctor_migrate_code_scope(args: argparse.Namespace) -> int:
+    from .doctor import (
+        code_scope_migration_json,
+        migrate_code_scope,
+        render_code_scope_migration,
+    )
+
+    if args.all_projects:
+        # Each project's migration reclaims gigabytes and is worth reading
+        # one at a time; fanning it out over the registry would bury the
+        # survivor counts that are the whole point of the dry run.
+        print(
+            "error: --all is not supported with migrate-code-scope;"
+            " run it per project with --project",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        result = migrate_code_scope(args.project, apply=args.apply)
+    except FileNotFoundError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    sys.stdout.write(
+        code_scope_migration_json(result)
+        if args.doctor_json
+        else render_code_scope_migration(result)
+    )
+    return 0
 
 
 def _handle_doctor(args: argparse.Namespace) -> int:
@@ -6105,6 +6187,8 @@ def _handle_doctor(args: argparse.Namespace) -> int:
         write_report,
     )
 
+    if getattr(args, "verb", None) == "migrate-code-scope":
+        return _handle_doctor_migrate_code_scope(args)
     if args.all_projects:
         from .mcp_server import ProjectRegistry
 

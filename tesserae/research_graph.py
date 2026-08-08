@@ -178,6 +178,68 @@ class ResearchNodeType(str, Enum):
 ALLOWED_NODE_TYPES: Set[str] = {item.value for item in ResearchNodeType}
 
 
+# The code-graph layer: the 22 types the retired `tesserae code ingest` /
+# `code sync` passes used to mint. They stay in the enum, and stay in
+# ``ALLOWED_NODE_TYPES``, because that set is the LOAD vocabulary —
+# ``graph_from_payload`` resolves a stored type with a bare
+# ``ResearchNodeType(str(raw["type"]))`` and no fallback, so removing a member
+# would turn every code node in an already-compiled graph.json into a hard
+# ValueError on load. Retirement happens on the WRITE side instead, via
+# ``EXTRACTABLE_NODE_TYPES`` below.
+#
+# ``CodeProject`` belongs here and ``Repository`` / ``Project`` deliberately do
+# not: CodeProject is the internal code-graph root minted for a local
+# workspace, while Repository is the user-facing research entity that owns a
+# vault page and anchors the Repository->Session edges. Anything that needs to
+# name this layer must key off this set — a name regex over
+# "Code|Source|Dependency|Repository|Project" would take the document types
+# with it.
+#
+# Defined here rather than in ``wiki_projector`` (which re-exports it, and was
+# its original home) so the ontology module itself can subtract it without
+# importing a projection layer.
+CODE_GRAPH_TYPES: FrozenSet[ResearchNodeType] = frozenset({
+    ResearchNodeType.CODE_PROJECT,
+    ResearchNodeType.SOURCE_FILE,
+    # Feature A / impl-code-graph (`tesserae code ingest`): new
+    # CodeFile/CodeMethod variants live alongside the older SourceFile/
+    # CodeFunction nodes. Both ontology slices are private code-graph.
+    ResearchNodeType.CODE_FILE,
+    ResearchNodeType.CODE_MODULE,
+    ResearchNodeType.CODE_CLASS,
+    ResearchNodeType.CODE_FUNCTION,
+    ResearchNodeType.CODE_METHOD,
+    ResearchNodeType.DEPENDENCY,
+    # Option-C / CodeGraph-adapter additions (`tesserae code sync`).
+    # Same private-layer treatment — these never appear in the public
+    # research graph or wiki site; they live in ``code-graph.json``.
+    ResearchNodeType.CODE_INTERFACE,
+    ResearchNodeType.CODE_TRAIT,
+    ResearchNodeType.CODE_STRUCT,
+    ResearchNodeType.CODE_ENUM,
+    ResearchNodeType.CODE_ENUM_MEMBER,
+    ResearchNodeType.CODE_TYPE_ALIAS,
+    ResearchNodeType.CODE_VARIABLE,
+    ResearchNodeType.CODE_CONSTANT,
+    ResearchNodeType.CODE_ROUTE,
+    ResearchNodeType.CODE_COMPONENT,
+    ResearchNodeType.CODE_FIELD,
+    ResearchNodeType.CODE_PARAMETER,
+    ResearchNodeType.CODE_NAMESPACE,
+    ResearchNodeType.CODE_SYMBOL,
+})
+
+
+# The vocabulary extraction may MINT. Tesserae ingests documents and session
+# transcripts; indexing source code is a different tool's job (CodeGraph and
+# friends), and the bridge this layer existed to provide never worked — all
+# 15,873 ``discusses`` edges in the compiled store dangle, because the two
+# producers of code-graph.json wrote node ids under incompatible schemes. So
+# documents and sessions may no longer name a code type at all, while
+# ``ALLOWED_NODE_TYPES`` keeps reading the ones already on disk.
+EXTRACTABLE_NODE_TYPES: Set[str] = ALLOWED_NODE_TYPES - {item.value for item in CODE_GRAPH_TYPES}
+
+
 # The six structured-finding types. Used by the same-type aggressive
 # dedup pass to skip these (two same-text findings from two different
 # sessions are legitimately separate provenance — see Phase 1 of the

@@ -90,7 +90,7 @@ Jedes Tool akzeptiert ein optionales `graph_path` oder `project` (Registry-Alias
 |---|---|
 | `list_sessions` | Session-Envelopes (id, started_at, title, files_touched, Befundzähler) für das aktive Projekt; `since`, `limit` |
 | `find_session_findings` | Alle Session-Befunde, die über `discussed_in` / `references` mit `node_id` verknüpft sind, optional gefiltert nach `kinds` (insight / decision / question / todo / hypothesis / takeaway) |
-| `find_code_symbol_mentions` | Erweitert einen Session-Befund auf die `CodeFunction`/`CodeClass`/`CodeMethod`-Symbole, die er erwähnt, über `discusses`-Edges aus dem optionalen Insight↔Symbol-Link-Pass |
+| `find_code_symbol_mentions` | Erweitert einen Session-Befund auf die `CodeFunction`/`CodeClass`/`CodeMethod`-Symbole, die er erwähnt, über `discusses`-Edges aus dem optionalen Insight↔Symbol-Link-Pass. Die Code-Ebene ist opt-in: ohne `external_tools`-Eintrag für `codegraph` liefert dies nichts |
 
 **Q&A und Registry**
 

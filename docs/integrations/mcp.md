@@ -89,7 +89,7 @@ Every tool accepts an optional `graph_path` or `project` (registry alias) so a s
 |---|---|
 | `list_sessions` | Session envelopes (id, started_at, title, files_touched, finding counts) for the resolved project; `since`, `limit` |
 | `find_session_findings` | Every Session-derived finding linked to `node_id` via `discussed_in` / `references`, optionally filtered to `kinds` (insight / decision / question / todo / hypothesis / takeaway) |
-| `find_code_symbol_mentions` | Expand a session finding into the `CodeFunction`/`CodeClass`/`CodeMethod` symbols it mentions, via `discusses` edges from the opt-in insight↔symbol link pass |
+| `find_code_symbol_mentions` | Expand a session finding into the `CodeFunction`/`CodeClass`/`CodeMethod` symbols it mentions, via `discusses` edges from the opt-in insight↔symbol link pass. The code layer is opt-in: with no `external_tools` entry for `codegraph`, this returns nothing |
 
 **Q&A & registry**
 

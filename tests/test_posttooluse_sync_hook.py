@@ -12,10 +12,15 @@ can observe the interesting branches:
 5. ``sync_code_on_edit: false`` in tesserae.local.md → silent skip.
 6. Another ``tesserae code sync <project_root>`` running →
    skipped by the pgrep re-entry guard.
+7. The project has not opted into the code layer → silent skip, and this
+   one comes first: maintaining the layer is opt-in exactly as extracting
+   it is, so ``sync_code_on_edit`` can only narrow a permission the
+   project already granted, never grant one.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import signal
 import subprocess
@@ -35,6 +40,13 @@ def fake_project(tmp_path: Path):
     project = tmp_path / "proj"
     project.mkdir()
     (project / ".tesserae").mkdir()
+    # The code layer is opt-in and the hook honours that, so every test
+    # exercising the sync branches has to switch it on first. The tests that
+    # assert the OFF states rewrite or delete this file.
+    (project / ".tesserae" / "config.json").write_text(
+        json.dumps({"name": "proj", "sources": [], "external_tools": [{"id": "codegraph"}]}),
+        encoding="utf-8",
+    )
 
     # Stubbed tesserae binary — records every invocation.
     invocation_log = tmp_path / "invocations.log"
@@ -196,6 +208,47 @@ def test_silent_when_codegraph_dir_missing(fake_project):
     assert not touch.exists(), (
         "touch-file must not be created for non-CodeGraph projects"
     )
+
+
+@pytest.mark.parametrize(
+    "config, why",
+    [
+        (None, "no config.json at all"),
+        ({"name": "proj", "external_tools": []}, "config with no codegraph entry"),
+        (
+            {"name": "proj", "external_tools": [{"id": "codegraph", "enabled": False}]},
+            "codegraph entry explicitly disabled",
+        ),
+        ({"name": "proj", "external_tools": [{"id": "raganything"}]}, "a DIFFERENT tool enabled"),
+    ],
+)
+def test_silent_when_code_layer_not_opted_in(fake_project, config, why):
+    """No code-layer opt-in → silent skip, even with a CodeGraph DB present.
+
+    A CodeGraph DB on disk is NOT consent: an agent may have run `codegraph
+    init` for its own use with no view on whether Tesserae should be
+    maintaining a typed projection of it every 30 seconds. The project's own
+    config is the only thing that says yes, and every way of not saying yes
+    has to mean no — which is why absence, an empty list, an explicit false,
+    and a different tool's entry are all asserted here rather than just the
+    one the implementation happens to check first.
+    """
+    proj = fake_project["project"]
+    _make_codegraph_db(proj)
+    cfg_path = proj / ".tesserae" / "config.json"
+    if config is None:
+        cfg_path.unlink()
+    else:
+        cfg_path.write_text(json.dumps(config), encoding="utf-8")
+    touch = proj / ".tesserae" / ".last-sync-code"
+
+    result = _run_hook(fake_project["env"], proj)
+    assert result.returncode == 0, why
+    assert result.stdout == "", why
+
+    time.sleep(0.3)
+    assert not fake_project["invocation_log"].exists(), f"sync ran despite {why}"
+    assert not touch.exists(), f"touch-file created despite {why}"
 
 
 def test_silent_when_opted_out(fake_project):

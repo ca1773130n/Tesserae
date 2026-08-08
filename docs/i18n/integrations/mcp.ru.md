@@ -90,7 +90,7 @@ tesserae projects mcp-config
 |---|---|
 | `list_sessions` | Конверты сессий (id, started_at, title, files_touched, счётчики находок) для активного проекта; `since`, `limit` |
 | `find_session_findings` | Все находки сессий, связанные с `node_id` через `discussed_in` / `references`, с возможной фильтрацией по `kinds` (insight / decision / question / todo / hypothesis / takeaway) |
-| `find_code_symbol_mentions` | Расширяет находку сессии до символов `CodeFunction`/`CodeClass`/`CodeMethod`, которые она упоминает, через рёбра `discusses` из опционального прохода связывания insight↔symbol |
+| `find_code_symbol_mentions` | Расширяет находку сессии до символов `CodeFunction`/`CodeClass`/`CodeMethod`, которые она упоминает, через рёбра `discusses` из опционального прохода связывания insight↔symbol. Слой кода включается явно: без записи `external_tools` для `codegraph` он ничего не вернёт |
 
 **Вопрос-ответ и реестр**
 

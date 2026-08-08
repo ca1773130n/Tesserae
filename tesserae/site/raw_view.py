@@ -457,9 +457,8 @@ def build_wiki_link_resolver(
     """Build a :data:`WikiLinkResolver` from the graph.
 
     The graph carries ``Paper`` nodes (with ``metadata.arxiv_id``) and
-    ``Repository`` / ``CodeProject`` / ``Project`` nodes (with
-    ``metadata.github_repo`` like ``"owner/repo"``). The returned resolver
-    maps:
+    ``Repository`` / ``Project`` nodes (with ``metadata.github_repo`` like
+    ``"owner/repo"``). The returned resolver maps:
 
       * ``("papers", "<arxiv-id>")`` — looks up the *repo companion* of that
         paper. Curated digests use ``papers/<id>/repo.md`` to mean "the
@@ -500,7 +499,11 @@ def build_wiki_link_resolver(
         meta = getattr(node, "metadata", None) or {}
         if not isinstance(meta, dict):
             continue
-        if type_str in {"Repository", "CodeProject", "Project"}:
+        # ``CodeProject`` used to be indexed here too. It no longer has a
+        # ``repos`` route (see ``pages._kind_for_node_type``), so indexing one
+        # would mint an href to a page that was never written — the same
+        # ``DANGLING_HTML_LINK`` failure the Paper carve-out above describes.
+        if type_str in {"Repository", "Project"}:
             github_repo = meta.get("github_repo")
             if isinstance(github_repo, str) and github_repo:
                 repo_by_github.setdefault(github_repo.lower(), node)

@@ -148,20 +148,33 @@ def test_graph_payload_json_exists_and_parses(built_site: Path) -> None:
     payload = json.loads(payload_path.read_text(encoding="utf-8"))
     assert "nodes" in payload
     assert "links" in payload
-    # Graph View v1 (spec §B): the visual payload deliberately includes
-    # ``Code*`` node types as one of the 8 colour families. The previous
-    # assertion ("no code-layer leak") reflected the pre-v1 invariant
-    # when the visual layer mirrored ``WIKI_LAYER_TYPES``; search/SEO
-    # exporters still filter on WIKI_LAYER_TYPES, but ``payload.json``
-    # is now the visualization payload. The v1 invariant we still want
-    # to enforce here is that any code node carries the ``code`` family
-    # so the legend + colour map render correctly.
-    for node in payload["nodes"]:
-        if node.get("type") in {"CodeClass", "CodeFunction", "CodeModule", "SourceFile"}:
-            assert node.get("family") == "code", (
-                f"code-layer node {node.get('id')!r} missing/incorrect family "
-                f"(got {node.get('family')!r}, expected 'code')"
-            )
+    # Graph View v1 (spec §B): the visual payload deliberately admits ``Code*``
+    # types as one of its 8 colour families, so a project that opted into a
+    # code layer can see it. What this asserts is that every such node carries
+    # ``family == "code"`` — without it the legend and colour map render wrong.
+    #
+    # This assertion was briefly inverted to "no code node may appear at all",
+    # which was right only while the code layer was being deleted outright.
+    # With the layer restored as opt-in it would fail the moment anyone turned
+    # it on, so the v1 invariant is back.
+    #
+    # The inversion did land one true criticism, and it is fixed here rather
+    # than lost: the v1 loop passed VACUOUSLY on a fixture with no code nodes,
+    # while its comment claimed to be checking them. So the fixture is now
+    # asserted to contain at least one first. A guard that cannot fail is
+    # worse than no guard, because it reads as coverage.
+    from tesserae.research_graph import CODE_GRAPH_TYPES
+
+    code_type_values = {t.value for t in CODE_GRAPH_TYPES}
+    code_nodes = [n for n in payload["nodes"] if n.get("type") in code_type_values]
+    assert code_nodes, (
+        "fixture has no code-layer node, so the family check below would pass "
+        "without checking anything — add one or drop this assertion"
+    )
+    mislabelled = [n["id"] for n in code_nodes if n.get("family") != "code"]
+    assert not mislabelled, (
+        f"code-layer nodes in payload.json missing family 'code': {mislabelled}"
+    )
 
 
 # ------------------------------------------- split payload (core + rest)

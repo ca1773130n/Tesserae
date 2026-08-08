@@ -43,6 +43,7 @@ tesserae doctor --project ~/src/other
 | `idempotence` | hygiene | 출력-스냅샷 `idempotence_suspect` 트립와이어 | 보고만 (이는 버그 신호이지 자동 복구 대상이 아님) |
 | `orphan_worktrees` | hygiene | 오래된 `git worktree` 등록 | **SAFE**: `git worktree prune`; 디렉터리 삭제는 보고만 |
 | `hook_log_bloat` | hygiene | `.tesserae/.session-*-hook.log` 증가 | **SAFE**: 10 MB 초과 로그를 로테이션/절단 |
+| `code_scope_leftovers` | hygiene | 폐기된 코드 레이어의 잔여물: `code-graph*.json`, `sqlite.db`의 코드 타입 행 | 보고만 — 정리는 대량 삭제라 별도 verb로 분리 (아래 참조) |
 
 점검이 크래시하면 error finding으로 보고됩니다 — doctor 자체는 절대 예외를
 던지지 않습니다.
@@ -86,6 +87,47 @@ no-op으로 퇴화할 수 있고, 그러면 두 호스트가 각자 배타적 lo
 못하도록 막히는지에 대해 아무것도 말해 주지 않습니다. 여러 대의 머신에서 공유
 스토리지를 상대로 Tesserae를 돌린다면, compile lock에 기대기 전에 실제
 하드웨어에서 직접 시험해 보세요.
+
+## `tesserae doctor migrate-code-scope`
+
+소스 코드가 Tesserae의 범위에서 빠지기 전에 컴파일된 워크스페이스를 위한 일회성
+정리 작업입니다. 새 컴파일은 더 이상 코드 레이어를 만들지 않지만, 예전 워크스페이스는
+여전히 그것을 안고 있고 대부분은 요청해야만 정리됩니다.
+
+```bash
+tesserae doctor migrate-code-scope            # 드라이런 — 보고만 하고 아무것도 지우지 않음
+tesserae doctor migrate-code-scope --apply    # 실제로 삭제
+```
+
+다음 순서로 제거합니다.
+
+* `.tesserae/markdown_projection/` 아래에서 자기 자신의 `type:` 프런트매터가 폐기된
+  코드 타입을 가리키는 투영 페이지;
+* Obsidian 볼트의 동일한 페이지 — 설정된 볼트와 프로젝트 내부 기본 볼트 양쪽 모두.
+  나중에 실제 볼트를 가리키도록 바꾼 프로젝트는 예전 볼트를 그대로 남겨 두기 때문입니다.
+  `user-notes` 내용이 비어 있지 않은 코드 페이지는 삭제하지 않고 유지하며 개수만 보고합니다;
+* `code-graph.json`과 `code-graph-cache.json`;
+* 노드나 엣지가 더 이상 존재하지 않는 SQLite 사이드카 행(`node_provenance`,
+  `edge_provenance`, `node_memory`), 그 뒤 `VACUUM`.
+
+알아 둘 것 두 가지.
+
+**삭제 수가 아니라 생존 수를 보십시오.** 투영 디렉터리는 압도적으로 코드에서 파생된
+것이며 — 여기서 측정한 값으로 224,876개 중 218,796개 — 전부를 지워 버리는 술어 버그와
+올바른 실행은 삭제 개수만 봐서는 거의 구분되지 않습니다. 보고서는 코드가 아닌 페이지가
+몇 개 살아남는지를 먼저 출력하며, 술어가 틀렸다면 무너질 숫자가 바로 그것입니다. 판정은
+철저히 파일 단위로, 그 파일 자신의 프런트매터를 보고 이루어집니다.
+
+**먼저 컴파일하고, 그다음 마이그레이션하십시오.** `nodes` / `edges` 테이블과 프로비넌스
+사이드카는 매 컴파일마다 다시 쓰이므로 그 행들을 쓰레기로 만드는 것은 컴파일입니다. 이
+verb는 그 공간을 회수하는 쪽이며, SQLite는 `DELETE`만으로는 파일이 줄어들지 않기
+때문입니다. 먼저 실행해도 해롭지는 않습니다 — 그 사실을 알려 주고 회수할 것이 없다고
+보고합니다. `VACUUM`은 컴파일 안에서 절대 실행하지 않습니다. 배타 잠금을 잡고 데이터베이스
+파일 크기만큼의 여유 디스크를 요구하며, 디스크가 재구축을 감당하지 못하면 메모와 함께
+건너뜁니다.
+
+`--fix`에서는 의도적으로 닿을 수 없습니다. `--fix`는 안전한 복구만 한다고 문서화되어
+있기 때문입니다.
 
 ## `--fix` 정책
 

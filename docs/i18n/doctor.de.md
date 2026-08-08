@@ -43,6 +43,7 @@ Die Checks, nach Kategorie gruppiert:
 | `idempotence` | hygiene | der Output-Snapshot-Stolperdraht `idempotence_suspect` | nur Bericht (das ist ein Bug-Signal, nichts zum Auto-Reparieren) |
 | `orphan_worktrees` | hygiene | verwaiste `git worktree`-Registrierungen | **SAFE**: `git worktree prune`; Verzeichnisse löschen ist nur Bericht |
 | `hook_log_bloat` | hygiene | Wachstum von `.tesserae/.session-*-hook.log` | **SAFE**: rotiert/kürzt Logs über 10 MB |
+| `code_scope_leftovers` | hygiene | Überreste der stillgelegten Code-Schicht: `code-graph*.json`, code-typisierte Zeilen in `sqlite.db` | nur Bericht — die Bereinigung ist ein Massenlöschen und lebt daher auf einem eigenen Verb (siehe unten) |
 
 Ein abstürzender Check wird als Fehler-Befund gemeldet — doctor selbst wirft nie eine Exception.
 
@@ -89,6 +90,51 @@ auch nicht. Dass ein Host einen Lock nimmt, sagt nichts darüber aus, ob ein
 zweiter Host daran gehindert wird, ihn ebenfalls zu nehmen. Wenn du Tesserae von
 mehreren Maschinen gegen geteilten Speicher fährst, teste das direkt auf der
 echten Hardware, bevor du dich auf den Compile-Lock verlässt.
+
+## `tesserae doctor migrate-code-scope`
+
+Eine einmalige Bereinigung für einen Workspace, der kompiliert wurde, bevor
+Quellcode aus Tesseraes Geltungsbereich fiel. Neue Compiles erzeugen die
+Code-Schicht nicht mehr, ein älterer Workspace trägt sie aber weiterhin, und das
+meiste davon löst sich nur auf, wenn man darum bittet.
+
+```bash
+tesserae doctor migrate-code-scope            # Trockenlauf — berichtet, löscht nichts
+tesserae doctor migrate-code-scope --apply    # löscht tatsächlich
+```
+
+Entfernt, in dieser Reihenfolge:
+
+* projizierte Seiten unter `.tesserae/markdown_projection/`, deren eigenes
+  `type:`-Frontmatter einen stillgelegten Code-Typ nennt;
+* dieselben Seiten im Obsidian-Vault — sowohl im konfigurierten als auch im
+  projektinternen Standard, denn ein Projekt, das später auf einen echten Vault
+  zeigte, lässt den alten voll davon zurück. Eine Code-Seite mit nicht-leerem
+  `user-notes`-Inhalt bleibt erhalten und wird gezählt, nie gelöscht;
+* `code-graph.json` und `code-graph-cache.json`;
+* SQLite-Sidecar-Zeilen (`node_provenance`, `edge_provenance`, `node_memory`),
+  deren Knoten oder Kante nicht mehr existiert, danach `VACUUM`.
+
+Zwei Dinge sollte man wissen.
+
+**Lies die Zahl der Überlebenden, nicht die der Löschungen.** Das
+Projektionsverzeichnis ist überwältigend code-abgeleitet — hier gemessen 218.796 von
+224.876 Seiten — ein Prädikat-Bug, der alles löscht, und ein korrekter Lauf sehen an
+der Löschzahl daher fast gleich aus. Der Bericht beginnt damit, wie viele
+Nicht-Code-Seiten überleben; genau diese Zahl bräche ein, wäre das Prädikat falsch.
+Entschieden wird strikt pro Datei, anhand ihres eigenen Frontmatters.
+
+**Erst kompilieren, dann migrieren.** Die Tabellen `nodes` / `edges` und die
+Provenance-Sidecars werden von jedem Compile komplett neu geschrieben — der Compile
+macht diese Zeilen also zu Müll, und dieses Verb holt den Platz zurück, weil SQLite
+bei `DELETE` nicht schrumpft. Es vorher auszuführen schadet nicht — es sagt das und
+findet nichts zurückzuholen. `VACUUM` läuft niemals innerhalb eines Compiles: es
+nimmt eine exklusive Sperre und braucht freien Speicher in der Größenordnung der
+Datenbankdatei, und es wird mit einer Notiz übersprungen, wenn die Platte den Umbau
+nicht trägt.
+
+Es ist bewusst nicht über `--fix` erreichbar, das als ausschließlich sichere
+Reparaturen dokumentiert ist.
 
 ## `--fix`-Policy
 

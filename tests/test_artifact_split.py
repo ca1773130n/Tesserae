@@ -136,8 +136,21 @@ def _mixed_graph() -> ResearchGraph:
 
 
 def _seed_project(project_root: Path) -> ProjectWiki:
-    """Init a wiki workspace under ``project_root``."""
-    return ProjectWiki.init(project_root, name="artifact_split_test")
+    """Init a wiki workspace with the code layer switched on.
+
+    This module is entirely about the research/code SPLIT, and
+    ``_write_artifacts`` only emits ``code-graph.json`` for a project that
+    opted into a code layer — with the layer off it deletes the file instead.
+    So the opt-in is part of the fixture, not incidental setup: without it
+    every test here would be asserting the split of a graph that has no second
+    half. ``test_code_graph_json_is_removed_when_the_layer_is_off`` covers the
+    other direction.
+    """
+    wiki = ProjectWiki.init(project_root, name="artifact_split_test")
+    cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+    cfg["external_tools"] = [*(cfg.get("external_tools") or []), {"id": "codegraph"}]
+    wiki.paths.config.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+    return wiki
 
 
 # ------------------------------------------------------------ partition helper
@@ -179,6 +192,36 @@ def test_partition_graph_separates_layers() -> None:
 
 
 # ------------------------------------------------------------ artifact files
+
+
+def test_code_graph_json_is_removed_when_the_layer_is_off(tmp_path: Path) -> None:
+    """The artifact follows the opt-in in BOTH directions.
+
+    Writing it only when enabled is the easy half. The half that matters is
+    what happens on the way back: a project that turns the code layer off, or
+    never had it, must not be left holding a ``code-graph.json`` from an
+    earlier compile. That file carries no timestamp and nothing marks it
+    stale, so it goes on answering reads with a snapshot of a repo that has
+    since moved — the failure mode is silent and gets more wrong over time.
+    """
+    project_root = tmp_path / "project"
+    wiki = _seed_project(project_root)  # opted in
+    wiki._write_artifacts(_mixed_graph())
+    assert wiki.paths.code_graph.exists(), "precondition: the enabled compile wrote it"
+
+    cfg = json.loads(wiki.paths.config.read_text(encoding="utf-8"))
+    cfg["external_tools"] = [{"id": "codegraph", "enabled": False}]
+    wiki.paths.config.write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
+
+    wiki._write_artifacts(_mixed_graph())
+
+    assert not wiki.paths.code_graph.exists(), (
+        "a disabled code layer must remove the artifact, not leave the last one"
+    )
+    # graph.json is still written, and still carries only the research layer.
+    graph_payload = json.loads(wiki.paths.graph.read_text(encoding="utf-8"))
+    assert graph_payload["nodes"], "graph.json must still be written"
+    assert not [n for n in graph_payload["nodes"] if n["type"].startswith("Code")]
 
 
 def test_write_artifacts_splits_graph(tmp_path: Path) -> None:

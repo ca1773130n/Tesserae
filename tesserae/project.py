@@ -1128,8 +1128,9 @@ class ProjectWiki:
             if trends and graphs
             else base_graph
         )
+        cfg = self.config()
         code_graph_report: Optional[Dict[str, object]] = None
-        if kind in {"CodeProject", "Repository", "Project"}:
+        if self._code_layer_enabled(cfg):
             # Delta-scoped regeneration gate (whole-layer grain — reuse
             # everything or re-extract everything, never a partial graph).
             # When the stat manifest of the walked file list AND the extractor
@@ -1179,7 +1180,6 @@ class ProjectWiki:
             # compile, so they carry no extraction-file provenance. Attribute the
             # ids it minted this compile to "__code_graph__".
             self._record_producer_provenance("__code_graph__", _before_code, graph)
-        cfg = self.config()
         _before_rag = graph
         graph = self._merge_configured_raganything_graph(graph, cfg)
         self._record_producer_provenance("__raganything__", _before_rag, graph)
@@ -1474,10 +1474,12 @@ class ProjectWiki:
         # + hub list to ``.tesserae/hierarchy.json``. Runs on the canonical
         # graph (the same ordering CMP-03 requires) and BEFORE the community-
         # summary merge so Louvain never sees a COMMUNITY_SUMMARY node. The
-        # sidecar partitions off the code layer itself, so hand it the union as
-        # always — but note it is partitioning THIS graph, and the passes below
-        # (plus those inside ``_write_artifacts``) rebind ``graph`` before its
-        # own split runs; see the ordering window in that method's docstring.
+        # sidecar clusters THIS graph whole — there is no code layer left for
+        # it to partition off first. The ordering window that split used to
+        # sit in outlives it: the passes below, and those inside
+        # ``_write_artifacts``, rebind ``graph`` afterwards, so a member named
+        # here can be gone by the time ``graph.json`` is written; see the
+        # ordering window in that method's docstring.
         # Returns the all-level live-cid manifest used to prune stale summary
         # caches after that pass (§9.5).
         live_community_ids = self._write_hierarchy_sidecar(graph)
@@ -1924,6 +1926,23 @@ class ProjectWiki:
         have ``_write_artifacts`` re-emit the sidecar's member lists filtered to
         its own research layer, keeping the cids this pass minted.
 
+        The partition is unconditional even though the code layer is now
+        OPT-IN (``tools`` entry ``codegraph``, default off). It has to be:
+        with the layer disabled the split is a no-op over a graph that has no
+        code nodes, and a graph compiled while it was ENABLED keeps its code
+        nodes across later disabled compiles until they are pruned. Gating the
+        partition on the current config would name those stale members here and
+        reopen exactly the skew above, on the one graph least likely to be
+        looked at — the one whose owner just turned the feature off.
+
+        That does NOT make this sidecar and ``graph.json`` the same node
+        universe, and reading it that way is how the pruning key gets deleted
+        as redundant. ``_write_artifacts`` rebinds ``graph`` through
+        ``_apply_vault_overlay``, which harvests vault-page deletions, so a
+        member named here can still be absent from the published graph — a
+        much narrower window than the code split opened, but the same shape.
+        :func:`hierarchy.live_member_count` is what reports it.
+
         Returns the live-cid manifest across ALL levels — the §9.5 pruning
         key: a community-summary cache file is stale only when its cid appears
         at no level.
@@ -2104,6 +2123,40 @@ class ProjectWiki:
                 flush=True,
             )
         return merged
+
+    def _code_layer_enabled(self, cfg: dict) -> bool:
+        """Is the code layer switched on for this project?
+
+        OPT-IN, and absence is the off state: a project gets a code layer only
+        by carrying an ``external_tools`` entry whose ``id`` is ``codegraph``.
+        This reuses the shape ``_merge_configured_raganything_graph`` already
+        reads rather than minting a second, differently-spelled switch — an
+        entry that exists is on unless it says ``"enabled": false``, exactly as
+        raganything behaves.
+
+        What this REPLACES is the important part. The layer used to fire on
+        ``kind in {"CodeProject", "Repository", "Project"}``, which is a
+        description of what a project IS, not a statement that its owner wanted
+        their source parsed. Every repository-shaped project got a code layer
+        whether or not anything read it, and the only way out was to lie about
+        the kind. The cost was never visible in ``graph.json`` either, because
+        ``_write_artifacts`` partitions the code nodes back out to
+        ``code-graph.json`` — it landed in the SQLite projection and the
+        generated pages, roughly 220k rows and 220k pages on this repo, in
+        artifacts nobody thinks to attribute to a setting they never set.
+
+        Project kind is therefore NOT consulted here, deliberately. A
+        ``CodeProject`` with no entry compiles no code layer. Turning it on for
+        a project whose kind has nothing to do with code is equally allowed:
+        the switch means what it says.
+        """
+        for tool in cfg.get("external_tools", []) or []:
+            if not isinstance(tool, dict):
+                continue
+            if tool.get("id") != "codegraph":
+                continue
+            return tool.get("enabled", True) is not False
+        return False
 
     def _merge_configured_raganything_graph(self, graph: ResearchGraph, cfg: dict) -> ResearchGraph:
         """Merge configured RAG-Anything manifest artifacts natively."""
@@ -3471,14 +3524,20 @@ class ProjectWiki:
         #                            it). Default is *off* — code-graph noise
         #                            should not bloat agent-facing artifacts.
         research_graph, code_graph = partition_graph(graph)
-
-        for target, content in (
-            (self.paths.graph, research_graph.to_json(indent=2) + "\n"),
-            (self.paths.code_graph, code_graph.to_json(indent=2) + "\n"),
-        ):
-            _publish_atomically(target, content)
-
         cfg = self.config() if self.paths.config.exists() else {}
+
+        _publish_atomically(self.paths.graph, research_graph.to_json(indent=2) + "\n")
+        # ``code-graph.json`` follows the opt-in, and follows it in BOTH
+        # directions — same shape as ``combined_graph`` below, for the same
+        # reason. Writing it unconditionally left an empty artifact on every
+        # project that never asked for a code layer; leaving the last one in
+        # place when the switch flips off is worse, because a stale
+        # ``code-graph.json`` keeps answering reads with a snapshot of a repo
+        # that has since moved, and nothing in it says how old it is.
+        if self._code_layer_enabled(cfg):
+            _publish_atomically(self.paths.code_graph, code_graph.to_json(indent=2) + "\n")
+        elif self.paths.code_graph.exists():
+            self.paths.code_graph.unlink()
         include_combined = bool(
             cfg.get("combined_graph")
             or cfg.get("include_combined_graph")

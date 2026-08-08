@@ -90,7 +90,7 @@ tesserae projects mcp-config
 |---|---|
 | `list_sessions` | 활성 프로젝트의 세션 엔벨로프(id, started_at, title, files_touched, 발견 개수); `since`, `limit` |
 | `find_session_findings` | `discussed_in` / `references`를 통해 `node_id`에 연결된 모든 세션 발견. `kinds`(insight / decision / question / todo / hypothesis / takeaway)로 필터 가능 |
-| `find_code_symbol_mentions` | 세션 발견을 그것이 언급하는 `CodeFunction`/`CodeClass`/`CodeMethod` 심볼로 확장(옵트인 insight↔symbol 연결 패스의 `discusses` 엣지 사용) |
+| `find_code_symbol_mentions` | 세션 발견을 그것이 언급하는 `CodeFunction`/`CodeClass`/`CodeMethod` 심볼로 확장(옵트인 insight↔symbol 연결 패스의 `discusses` 엣지 사용). 코드 레이어는 옵트인입니다. `codegraph`에 대한 `external_tools` 항목이 없으면 아무것도 반환하지 않습니다 |
 
 **Q&A 및 레지스트리**
 

@@ -43,6 +43,7 @@ Las comprobaciones, agrupadas por categoría:
 | `idempotence` | hygiene | el tripwire `idempotence_suspect` del snapshot de salida | solo informe (es una señal de bug, no algo que auto-reparar) |
 | `orphan_worktrees` | hygiene | registros obsoletos de `git worktree` | **SAFE**: `git worktree prune`; borrar directorios es solo informe |
 | `hook_log_bloat` | hygiene | crecimiento de `.tesserae/.session-*-hook.log` | **SAFE**: rota/trunca los logs de más de 10 MB |
+| `code_scope_leftovers` | hygiene | restos de la capa de código retirada: `code-graph*.json`, filas de tipos de código en `sqlite.db` | solo informe — la limpieza es un borrado masivo, así que vive en su propio verbo (ver abajo) |
 
 Una comprobación que crashea se reporta como un hallazgo de error — doctor en sí nunca lanza excepciones.
 
@@ -88,6 +89,52 @@ host tome un lock no dice nada sobre si a un segundo host se le impide tomarlo.
 Si ejecutas Tesserae desde varias máquinas contra almacenamiento compartido,
 pruébalo directamente sobre el hardware real antes de confiar en el lock de
 compilación.
+
+## `tesserae doctor migrate-code-scope`
+
+Una limpieza de una sola vez para un espacio de trabajo compilado antes de que el
+código fuente saliera del alcance de Tesserae. Las compilaciones nuevas ya no
+producen la capa de código, pero un espacio de trabajo antiguo sigue cargándola, y
+la mayor parte solo se resuelve si lo pides.
+
+```bash
+tesserae doctor migrate-code-scope            # simulación — informa, no borra nada
+tesserae doctor migrate-code-scope --apply    # borra de verdad
+```
+
+Elimina, en este orden:
+
+* las páginas proyectadas bajo `.tesserae/markdown_projection/` cuyo propio
+  frontmatter `type:` nombra un tipo de código retirado;
+* las mismas páginas en la bóveda de Obsidian — tanto la configurada como la
+  predeterminada dentro del proyecto, porque un proyecto que luego apuntó a una
+  bóveda real deja la antigua llena de ellas. Una página de código con contenido
+  no vacío en `user-notes` se conserva y se cuenta, nunca se borra;
+* `code-graph.json` y `code-graph-cache.json`;
+* las filas de las tablas auxiliares de SQLite (`node_provenance`,
+  `edge_provenance`, `node_memory`) cuyo nodo o arista ya no existe, y después
+  `VACUUM`.
+
+Dos cosas que conviene saber.
+
+**Lee el recuento de supervivientes, no el de borrados.** El directorio de
+proyección es abrumadoramente derivado del código — aquí medido, 218 796 de 224 876
+páginas — así que un fallo del predicado que lo borrara todo y una ejecución
+correcta se parecen muchísimo en el número de borrados. El informe empieza por
+cuántas páginas no-código sobreviven, que es el número que se desplomaría si el
+predicado estuviera mal. La decisión es estrictamente por archivo, según su propio
+frontmatter.
+
+**Compila primero, migra después.** Las tablas `nodes` / `edges` y las auxiliares
+de procedencia se reescriben en cada compilación, así que es la compilación la que
+convierte esas filas en basura; este verbo es el que recupera el espacio, porque
+SQLite no encoge con `DELETE`. Ejecutarlo antes es inofensivo — lo dice y no
+encuentra nada que recuperar. `VACUUM` nunca se ejecuta dentro de una compilación:
+toma un bloqueo exclusivo y necesita espacio libre del orden del archivo de base de
+datos, y se omite con una nota cuando el disco no puede con la reconstrucción.
+
+Deliberadamente no es accesible desde `--fix`, que está documentado como
+reparaciones seguras únicamente.
 
 ## Política de `--fix`
 

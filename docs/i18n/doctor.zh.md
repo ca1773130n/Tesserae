@@ -39,6 +39,7 @@ tesserae doctor --project ~/src/other
 | `idempotence` | hygiene | 输出快照的 `idempotence_suspect` 触发线 | 仅报告（这是 bug 信号，不应自动修复） |
 | `orphan_worktrees` | hygiene | 陈旧的 `git worktree` 注册项 | **SAFE**：`git worktree prune`；删除目录仅报告 |
 | `hook_log_bloat` | hygiene | `.tesserae/.session-*-hook.log` 的增长 | **SAFE**：轮转/截断超过 10 MB 的日志 |
+| `code_scope_leftovers` | hygiene | 已退役代码层的残留：`code-graph*.json`、`sqlite.db` 中的代码类型行 | 仅报告 —— 清理是批量删除，因此单独作为一个动词（见下文） |
 
 崩溃的检查会作为一条 error 级发现被报告——doctor 本身永不抛出异常。
 
@@ -59,6 +60,42 @@ Tesserae 中的每一条并发保证——首先就是上面那把编译锁—�
 `filesystem_locking` 报告单台主机能够确定的东西：承载项目的文件系统类型、它是否是网络文件系统，以及一次 `flock` 获取是否根本能够成功。位于网络文件系统上时它会告警。
 
 它**无法**证明跨主机的强制生效，也不自称能证明。一台主机拿到了锁，这并不能说明第二台主机会被阻止拿到它。如果你从多台机器对着共享存储运行 Tesserae，请在真实硬件上直接测试这一点，然后再去依赖那把编译锁。
+
+## `tesserae doctor migrate-code-scope`
+
+针对源代码退出 Tesserae 范围之前编译过的工作区的一次性清理。新的编译不再产生代码层，
+但较早的工作区仍然带着它，而其中大部分只有在你主动要求时才会被清理。
+
+```bash
+tesserae doctor migrate-code-scope            # 演练 —— 只报告，不删除
+tesserae doctor migrate-code-scope --apply    # 真正删除
+```
+
+按此顺序移除：
+
+* `.tesserae/markdown_projection/` 下自身 `type:` frontmatter 指向已退役代码类型的
+  投影页面；
+* Obsidian 仓库中的同类页面 —— 已配置的仓库和项目内默认仓库都包括在内，因为后来指向
+  真实仓库的项目会把旧的那个原封不动地留在那里。`user-notes` 内容非空的代码页面会被
+  保留并计数，绝不删除；
+* `code-graph.json` 和 `code-graph-cache.json`；
+* 节点或边已不存在的 SQLite 附属表行（`node_provenance`、`edge_provenance`、
+  `node_memory`），随后执行 `VACUUM`。
+
+有两点需要知道。
+
+**看幸存数，而不是删除数。** 投影目录绝大部分来自代码 —— 此处实测为 224,876 个页面中的
+218,796 个 —— 因此一个把所有东西都删掉的谓词缺陷和一次正确的运行，从删除数量上几乎看不
+出区别。报告首先给出有多少非代码页面幸存，那才是谓词出错时会崩塌的数字。判定严格按文件
+逐个进行，依据该文件自身的 frontmatter。
+
+**先编译，再迁移。** `nodes` / `edges` 表和 provenance 附属表由每次编译整体重写，所以
+把这些行变成垃圾的是编译；这个动词负责回收空间，因为 SQLite 不会因 `DELETE` 而收缩。
+提前运行也无害 —— 它会说明这一点并报告没有可回收的内容。`VACUUM` 绝不在编译内部执行：
+它会取得排他锁，并需要与数据库文件相当的可用磁盘空间；当磁盘无法容纳重建时会带着说明
+跳过。
+
+它被刻意排除在 `--fix` 之外，因为 `--fix` 的文档承诺只做安全修复。
 
 ## `--fix` 策略
 

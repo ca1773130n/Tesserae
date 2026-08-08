@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Dict, FrozenSet, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from .research_graph import (
+    CODE_GRAPH_TYPES,
     PRIVATE_PUBLIC_RESEARCH_TYPES,
     SESSION_FINDING_TYPES,
     ResearchEdge,
@@ -42,44 +43,14 @@ from .wiki_store import WikiPage, WikiPageStore
 # * ``CODE_GRAPH_TYPES`` — code-graph layer; lives in ``code-graph.json`` and
 #   never appears in ``graph.json``. Includes ``CodeProject`` (F-9: this is
 #   the *internal* code-graph artifact, not the user-facing research repo —
-#   the public repo type is ``Repository``).
+#   the public repo type is ``Repository``). Defined in ``research_graph``
+#   (the ontology module subtracts it to build the extractor's write
+#   vocabulary) and re-exported here, which is where every caller looks for it.
 # * ``ASSERTION_LAYER_TYPES`` — claim / evidence layer; lives in the research
 #   graph but is never given a dedicated URL (rendered inline on detail pages
 #   as bullets / badges).
 # * ``PUBLIC_RESEARCH_TYPES`` — every type that gets a public wiki page
 #   (subject to per-node validity, e.g. paper title quality).
-
-CODE_GRAPH_TYPES: FrozenSet[ResearchNodeType] = frozenset({
-    ResearchNodeType.CODE_PROJECT,
-    ResearchNodeType.SOURCE_FILE,
-    # Feature A / impl-code-graph (`tesserae code ingest`): new
-    # CodeFile/CodeMethod variants live alongside the older SourceFile/
-    # CodeFunction nodes. Both ontology slices are private code-graph.
-    ResearchNodeType.CODE_FILE,
-    ResearchNodeType.CODE_MODULE,
-    ResearchNodeType.CODE_CLASS,
-    ResearchNodeType.CODE_FUNCTION,
-    ResearchNodeType.CODE_METHOD,
-    ResearchNodeType.DEPENDENCY,
-    # Option-C / CodeGraph-adapter additions (`tesserae code sync`).
-    # Same private-layer treatment — these never appear in the public
-    # research graph or wiki site; they live in ``code-graph.json``.
-    ResearchNodeType.CODE_INTERFACE,
-    ResearchNodeType.CODE_TRAIT,
-    ResearchNodeType.CODE_STRUCT,
-    ResearchNodeType.CODE_ENUM,
-    ResearchNodeType.CODE_ENUM_MEMBER,
-    ResearchNodeType.CODE_TYPE_ALIAS,
-    ResearchNodeType.CODE_VARIABLE,
-    ResearchNodeType.CODE_CONSTANT,
-    ResearchNodeType.CODE_ROUTE,
-    ResearchNodeType.CODE_COMPONENT,
-    ResearchNodeType.CODE_FIELD,
-    ResearchNodeType.CODE_PARAMETER,
-    ResearchNodeType.CODE_NAMESPACE,
-    ResearchNodeType.CODE_SYMBOL,
-})
-
 
 ASSERTION_LAYER_TYPES: FrozenSet[ResearchNodeType] = frozenset({
     ResearchNodeType.CLAIM,

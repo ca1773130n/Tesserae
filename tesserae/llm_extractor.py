@@ -19,6 +19,7 @@ from .llm_json import _note_failure, last_failure_kind
 from .research_graph import (
     ALLOWED_EDGE_TYPES,
     ALLOWED_NODE_TYPES,
+    EXTRACTABLE_NODE_TYPES,
     ResearchEdge,
     ResearchGraph,
     ResearchGraphBuilder,
@@ -118,6 +119,7 @@ def graph_from_llm_payload(payload: Mapping[str, object], source_path: Optional[
     builder = ResearchGraphBuilder()
     key_to_node: Dict[str, ResearchNode] = {}
     name_to_node: Dict[str, ResearchNode] = {}
+    dropped_nodes = 0
 
     for raw_node in payload["nodes"]:  # type: ignore[index]
         if not isinstance(raw_node, Mapping):
@@ -126,8 +128,18 @@ def graph_from_llm_payload(payload: Mapping[str, object], source_path: Optional[
         type_name = str(raw_node.get("type", "")).strip()
         if not name:
             raise GraphJSONValidationError("Every node must have a non-empty name")
-        if type_name not in ALLOWED_NODE_TYPES:
-            raise GraphJSONValidationError(f"Unsupported node type: {type_name}")
+        if type_name not in EXTRACTABLE_NODE_TYPES:
+            # Symmetric with the unknown-edge-type drop below, and for the same
+            # reason: one bad entry must not abort a whole multi-doc compile.
+            # It matters more here than it looks, because the vocabulary just
+            # shrank — code types are no longer extractable, and 1,387 of the
+            # 4,368 entries already in the response cache name one. Raising
+            # would re-ask the LLM for every one of them; dropping keeps the
+            # cache warm and salvages the rest of the payload. Edges pointing
+            # at a dropped node fall into the "node the model never defined"
+            # branch and are counted there.
+            dropped_nodes += 1
+            continue
         aliases = raw_node.get("aliases", [])
         if aliases is None:
             aliases = []
@@ -185,6 +197,9 @@ def graph_from_llm_payload(payload: Mapping[str, object], source_path: Optional[
             raise GraphJSONValidationError(f"Edge metadata must be an object: {source_ref} -> {target_ref}")
         builder.add_edge(source, edge_type, target, evidence=str(raw_edge.get("evidence") or "") or None, metadata=dict(metadata))
 
+    if dropped_nodes:  # non-silent: name what we discarded
+        print(f"  extract: dropped {dropped_nodes} node(s) with a non-extractable type "
+              f"from {source_path or 'payload'}", file=sys.stderr)
     if dropped_edges:  # non-silent: name what we discarded
         print(f"  extract: dropped {dropped_edges} edge(s) with unknown type/endpoints "
               f"from {source_path or 'payload'}", file=sys.stderr)
@@ -489,7 +504,7 @@ Schema:
 }}
 
 Allowed node types:
-{json.dumps(sorted(ALLOWED_NODE_TYPES), ensure_ascii=False)}
+{json.dumps(sorted(EXTRACTABLE_NODE_TYPES), ensure_ascii=False)}
 
 Allowed edge types:
 {json.dumps(sorted(ALLOWED_EDGE_TYPES), ensure_ascii=False)}

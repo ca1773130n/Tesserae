@@ -149,4 +149,18 @@ local なソースと同じようにコンパイルされます。（追加は�
 
 - `tesserae compile`（引数なし）は追跡対象のコーパス全体を再抽出します。
 - `tesserae ingest <x>` は 1 つのソースを増分的に追加します。
-- `tesserae code ingest` は Python ソースからコードグラフを生成します（別のコマンドです）。
+- `tesserae code ingest` は Python ソースからコードグラフを生成します（別のコマンドです）。`codegraph` の `external_tools` エントリでコードレイヤーを有効にしたプロジェクト向けです。
+
+### コードレイヤーを有効にする
+
+ソースコードは**オプトイン**です。`.tesserae/config.json` に `external_tools` エントリを追加します。
+
+```json
+{
+  "external_tools": [{"id": "codegraph"}]
+}
+```
+
+このエントリがなければコードレイヤーは存在しません。コンパイルは何も抽出せず、sync-code フックは動かず、以前のコンパイルが残した `code-graph.json` は削除されます。プロジェクトの種別では有効になりません — エントリのない `Repository` プロジェクトはコードをコンパイルしません。
+
+`"enabled": false` で再び無効にできます。コードインテリジェンスには CodeGraph 自体の利用を検討してください。Tesserae が扱うのはドキュメントとセッション記録です。

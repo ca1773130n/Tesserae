@@ -6,6 +6,9 @@ Asserts the deterministic invariants:
 * ``discussed_in`` edges resolve through the multi-key path index.
 * ``decisions`` entries become ``SessionDecision`` nodes with
   ``derived_from_session`` edges.
+* ``files_touched`` survives into the envelope verbatim, including the
+  paths no doc node resolves — the sole surviving record of what a
+  session worked on now that no compile mints ``SourceFile`` nodes.
 * Two calls produce equal graphs (idempotence).
 """
 
@@ -122,6 +125,76 @@ def test_in_project_session_mints_session_node(tmp_path: Path):
     for d in decisions:
         assert d.metadata["session_id"] == "sess-a"
         assert d.metadata["extractor"] == "session-structural"
+
+
+def test_unresolvable_paths_survive_in_the_envelope(tmp_path: Path):
+    """Every ``files_touched`` entry lands in metadata, resolved or not.
+
+    Source files are exactly the paths that resolve to nothing now: the
+    compile no longer mints ``SourceFile`` nodes, so ``path_index`` cannot
+    bind ``tesserae/project.py`` to anything and no edge is drawn for it.
+    The envelope is what is left, so it has to carry the path itself —
+    a filter that kept only the paths the index resolved would silently
+    reduce the session record to its documents.
+    """
+    doc_graph = _doc_graph(tmp_path)
+    idx = DocPathIndex.from_graph(doc_graph, tmp_path)
+    session = _session(
+        id="sess-files",
+        project_root=tmp_path,
+        files_touched=[
+            "data/research/papers/rel/paper.md",  # resolves to Paper:rel
+            "tesserae/project.py",  # no node: source code is out of scope
+            "src/lib.rs",
+        ],
+    )
+
+    graph = extract_structural([session], idx, project_root=tmp_path)
+
+    session_node = next(n for n in graph.nodes if n.type == ResearchNodeType.SESSION)
+    assert session_node.metadata["files_touched"] == [
+        "data/research/papers/rel/paper.md",
+        "tesserae/project.py",
+        "src/lib.rs",
+    ]
+    # Plain strings, not node ids or wikilinks — anything richer would have
+    # to be a graph node, which is what this replaces.
+    assert all(
+        isinstance(item, str) for item in session_node.metadata["files_touched"]
+    )
+    # Only the resolvable path draws an edge. The other two are recoverable
+    # from the envelope alone, which is the whole point.
+    assert [
+        (e.source, e.type) for e in graph.edges if e.type == "discussed_in"
+    ] == [("Paper:rel", "discussed_in")]
+
+
+def test_a_session_that_touched_only_source_files_still_records_them(tmp_path: Path):
+    """The degenerate case the retired code layer used to own.
+
+    A session that edited nothing but source files binds no doc node at
+    all, so it contributes zero ``discussed_in`` edges. Before the code
+    layer was retired those paths became ``SourceFile -> Session`` edges
+    inside ``code-graph.json``, which nothing read. If the envelope also
+    dropped them, such a session would compile to a node that knows it
+    happened and nothing about what it did.
+    """
+    doc_graph = _doc_graph(tmp_path)
+    idx = DocPathIndex.from_graph(doc_graph, tmp_path)
+    session = _session(
+        id="sess-code-only",
+        project_root=tmp_path,
+        files_touched=["tesserae/cli.py", "tests/test_cli.py"],
+    )
+
+    graph = extract_structural([session], idx, project_root=tmp_path)
+
+    assert not [e for e in graph.edges if e.type == "discussed_in"]
+    session_node = next(n for n in graph.nodes if n.type == ResearchNodeType.SESSION)
+    assert session_node.metadata["files_touched"] == [
+        "tesserae/cli.py",
+        "tests/test_cli.py",
+    ]
 
 
 def test_session_outside_project_is_filtered(tmp_path: Path):

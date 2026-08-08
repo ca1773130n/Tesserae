@@ -5,10 +5,16 @@ import pytest
 from tesserae.llm_extractor import (
     ClaudeCLIResearchExtractor,
     GraphJSONValidationError,
+    build_research_extraction_prompt,
     extract_json_object,
     graph_from_llm_payload,
 )
-from tesserae.research_graph import ResearchNodeType
+from tesserae.research_graph import (
+    ALLOWED_NODE_TYPES,
+    CODE_GRAPH_TYPES,
+    EXTRACTABLE_NODE_TYPES,
+    ResearchNodeType,
+)
 
 
 def test_graph_from_llm_payload_validates_controlled_schema_and_resolves_keys():
@@ -35,7 +41,14 @@ def test_graph_from_llm_payload_validates_controlled_schema_and_resolves_keys():
     assert all(edge.source.startswith(tuple(t.value for t in ResearchNodeType)) for edge in graph.edges)
 
 
-def test_graph_from_llm_payload_rejects_freeform_node_and_edge_types():
+def test_graph_from_llm_payload_drops_freeform_node_and_edge_types(capsys):
+    """A node whose type is outside the write vocabulary is DROPPED, not raised on.
+
+    Same reasoning as the pre-existing unknown-edge-type drop: a single
+    hallucinated entry must not abort a whole multi-doc compile. The edge
+    that pointed at the dropped node goes with it, and both counts are
+    reported on stderr rather than swallowed.
+    """
     bad_payload = {
         "nodes": [
             {"key": "paper", "name": "Bad Extraction", "type": "Paper"},
@@ -44,8 +57,62 @@ def test_graph_from_llm_payload_rejects_freeform_node_and_edge_types():
         "edges": [{"source": "paper", "target": "thing", "type": "related_to"}],
     }
 
-    with pytest.raises(GraphJSONValidationError, match="Unsupported node type"):
-        graph_from_llm_payload(bad_payload, source_path="bad.md", source_kind="Paper")
+    graph = graph_from_llm_payload(bad_payload, source_path="bad.md", source_kind="Paper")
+
+    assert [node.name for node in graph.nodes] == ["Bad Extraction"]
+    assert graph.edges == []
+    err = capsys.readouterr().err
+    assert "dropped 1 node(s) with a non-extractable type" in err
+    assert "dropped 1 edge(s)" in err
+
+
+def test_graph_from_llm_payload_drops_code_typed_nodes_but_still_loads_them():
+    """Documents may no longer MINT a code type — but the type still parses.
+
+    The 22 code members stay in ``ResearchNodeType``/``ALLOWED_NODE_TYPES`` as a
+    read vocabulary: ``graph_from_payload`` resolves a stored type with a bare
+    ``ResearchNodeType(...)``, so retiring a member would make every
+    already-compiled graph.json carrying one fail to load.
+    """
+    payload = {
+        "nodes": [
+            {"key": "doc", "name": "Design Note", "type": "SourceDocument"},
+            {"key": "fn", "name": "compile_project", "type": "CodeFunction"},
+            {"key": "file", "name": "tesserae/project.py", "type": "SourceFile"},
+            # Repository is a DOCUMENT type that merely looks code-adjacent;
+            # it must survive, which a name-shaped filter would get wrong.
+            {"key": "repo", "name": "tesserae", "type": "Repository"},
+        ],
+        "edges": [
+            {"source": "doc", "target": "fn", "type": "discusses"},
+            {"source": "doc", "target": "repo", "type": "documents"},
+        ],
+    }
+
+    graph = graph_from_llm_payload(payload, source_path="note.md", source_kind="SourceDocument")
+
+    types = {node.type for node in graph.nodes}
+    assert ResearchNodeType.CODE_FUNCTION not in types
+    assert ResearchNodeType.SOURCE_FILE not in types
+    assert ResearchNodeType.REPOSITORY in types
+    assert ResearchNodeType.SOURCE_DOCUMENT in types
+    # The dangling 'discusses' edge goes with the node it pointed at.
+    assert [edge.type for edge in graph.edges] == ["documents"]
+
+    assert "CodeFunction" in ALLOWED_NODE_TYPES
+    assert "CodeFunction" not in EXTRACTABLE_NODE_TYPES
+
+
+def test_extraction_prompt_offers_no_code_types():
+    """The prompt is the only place the model learns the vocabulary, so the
+    code types have to be absent from it — otherwise the drop path above
+    silently discards work the model was invited to do."""
+    prompt = build_research_extraction_prompt(text="body", source_path="a.md", source_kind="Paper")
+
+    for code_type in CODE_GRAPH_TYPES:
+        assert f'"{code_type.value}"' not in prompt
+    assert '"Repository"' in prompt
+    assert '"SessionInsight"' in prompt
 
 
 def test_extract_json_object_handles_claude_result_wrapper_and_markdown_fences():

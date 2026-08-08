@@ -148,4 +148,18 @@ compile합니다. 그 목록은 — **로컬 또는 글로벌** — `sources` �
 
 - `tesserae compile`(인자 없음)은 추적되는 전체 코퍼스를 다시 추출합니다.
 - `tesserae ingest <x>`는 소스 하나를 증분으로 추가합니다.
-- `tesserae code ingest`는 Python 소스에서 코드 그래프를 생성합니다(별개의 명령).
+- `tesserae code ingest`는 Python 소스에서 코드 그래프를 생성합니다(별개의 명령). `codegraph`에 대한 `external_tools` 항목으로 코드 레이어를 활성화한 프로젝트에서 사용합니다.
+
+### 코드 레이어 활성화
+
+소스 코드는 **옵트인**입니다. `.tesserae/config.json`에 `external_tools` 항목을 추가하세요:
+
+```json
+{
+  "external_tools": [{"id": "codegraph"}]
+}
+```
+
+이 항목이 없으면 코드 레이어도 없습니다. 컴파일은 아무것도 추출하지 않고, sync-code 훅은 조용히 있으며, 이전 컴파일이 남긴 `code-graph.json`은 제거됩니다. 프로젝트 종류로는 켜지지 않습니다 — 항목이 없는 `Repository` 프로젝트는 코드를 컴파일하지 않습니다.
+
+`"enabled": false`로 다시 끌 수 있습니다. 코드 인텔리전스는 CodeGraph 자체를 고려하세요. Tesserae가 집중하는 것은 문서와 세션 기록입니다.
