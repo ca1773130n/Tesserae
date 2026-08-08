@@ -17,13 +17,22 @@ The hash scope is an ALLOWLIST of test-proven byte-stable artifacts only
 (see ``tests/test_idempotence.py::test_compile_is_byte_idempotent`` and the
 phase-5 suite). Deliberately excluded because their byte-stability is
 unproven and one noisy artifact would make the signal cry wolf:
-``report.md``, ``competitive_report.md``, ``temporal_facts.jsonl`` (depends
-on the mutable ``node_memory`` sidecar),
+``report.md``, ``competitive_report.md``,
 ``graphiti_episodes.jsonl``, ``agent_harness/``, ``sqlite.db``, the Obsidian
 vault (bidirectional, user-owned), ``manifest.json`` (input state), lint
 reports, and all ledgers/caches. Extending scope later is a one-line
 allowlist edit. The state file this module writes is excluded from the hash
 by construction (the allowlist never includes it) and carries no timestamps.
+
+``temporal_facts.jsonl`` is in scope but hashed FIELD-WISE. It was excluded
+wholesale because one of its fields — ``confidence`` — is read from the
+mutable ``node_memory`` sidecar, so a recurrence-reinforcement bump would
+have fired the tripwire with no projection drift behind it. Excluding the
+whole file to dodge that also hid every other field, including the
+``valid_from`` of all 103,705 facts, which ``temporal._source_ts`` derives
+purely from graph.json. Since ``confidence`` is the ONLY sidecar-sourced
+field on a ``TemporalFact``, dropping just that key restores full coverage of
+the derived values while keeping the false alarm out.
 
 See docs/superpowers/plans/2026-07-09-openwiki-output-snapshot-plan.md.
 """
@@ -44,6 +53,12 @@ GRAPH_LAYER_FILES: tuple[str, ...] = (
     "config.json", "graph.json", "code-graph.json", "combined-graph.json",
 )
 PROJECTION_LAYER_DIRS: tuple[str, ...] = ("wiki", "site", "markdown_projection")
+# JSONL projections hashed with sidecar-sourced keys dropped per record, so
+# the tripwire watches the graph-derived fields without firing on sidecar
+# churn. See the module docstring for why ``confidence`` is the only one.
+PROJECTION_LAYER_JSONL: tuple[tuple[str, frozenset[str]], ...] = (
+    ("temporal_facts.jsonl", frozenset({"confidence"})),
+)
 # Append-only ledgers / OS noise inside allowlisted dirs — the same
 # exclusions ``tests/test_idempotence.py::_hash_tree`` uses.
 EXCLUDED_BASENAMES: frozenset[str] = frozenset(
@@ -70,6 +85,35 @@ class OutputSnapshot:
         combined.update(self.graph_sha256.encode("ascii"))
         combined.update(self.projections_sha256.encode("ascii"))
         return combined.hexdigest()
+
+
+def _hash_jsonl_without(path: Path, dropped_keys: frozenset[str]) -> bytes:
+    """Digest of a JSONL file with ``dropped_keys`` removed from each record.
+
+    Re-serialised with ``sort_keys`` so the digest depends on record VALUES,
+    not on the writer's key order. A record that will not parse is hashed as
+    its raw bytes rather than skipped: unreadable output is still output, and
+    silently dropping it would make a corrupted projection look stable.
+    """
+    digest = hashlib.sha256()
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return _MISSING
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except (ValueError, TypeError):
+            digest.update(line.encode("utf-8") + b"\0")
+            continue
+        if isinstance(record, dict):
+            record = {k: v for k, v in record.items() if k not in dropped_keys}
+        digest.update(
+            json.dumps(record, ensure_ascii=False, sort_keys=True).encode("utf-8") + b"\0"
+        )
+    return digest.digest()
 
 
 def snapshot_output(root: Path) -> OutputSnapshot:
@@ -101,6 +145,9 @@ def snapshot_output(root: Path) -> OutputSnapshot:
                 projections.update(path.read_bytes())
             except OSError:
                 projections.update(_MISSING)
+    for name, dropped_keys in PROJECTION_LAYER_JSONL:
+        projections.update(name.encode("utf-8") + b"\0")
+        projections.update(_hash_jsonl_without(root / name, dropped_keys))
     return OutputSnapshot(
         graph_sha256=graph.hexdigest(),
         projections_sha256=projections.hexdigest(),
