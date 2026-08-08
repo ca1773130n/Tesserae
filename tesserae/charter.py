@@ -229,6 +229,21 @@ def split(graph: ResearchGraph, member_ids: Sequence[str]) -> SplitResult:
     children = tuple(tuple(sorted(cluster)) for cluster in candidates)
     claimed = {mid for child in children for mid in child}
     direct = tuple(mid for mid in members if mid not in claimed)
+
+    # CRITICAL fix (Task 7 review): a dense/clique-like oversized domain has no
+    # internal substructure for Louvain to exploit, so its coarsest partition
+    # can be a SINGLE community spanning every input member — reproduced
+    # upstream by nx.community.louvain_partitions(nx.complete_graph(20))
+    # having exactly one community at its coarsest level. Handing that back as
+    # a normal one-child result does not shrink the member set at all, so a
+    # caller that recurses on the children (as _emit does) recomputes the
+    # identical result and recurses again, without bound, until RecursionError.
+    # A single candidate that covers every member is not a STRICT
+    # sub-partition of the input, so it is "cannot be divided" in exactly the
+    # sense the stall path already exists for.
+    if len(children) == 1 and not direct:
+        return SplitResult(children=(), direct=tuple(members), stalled=True)
+
     return SplitResult(children=children, direct=direct, stalled=False)
 
 

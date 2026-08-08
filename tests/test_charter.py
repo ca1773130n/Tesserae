@@ -347,6 +347,72 @@ def test_read_charter_returns_none_when_absent(tmp_path: Path):
     assert read_charter(tmp_path) is None
 
 
+def _dense_fat_clique_bridged_to_peripheral() -> ResearchGraph:
+    """An 8-node clique of fat nodes bridged by a single edge to a small
+    peripheral triangle.
+
+    The clique alone exceeds DOMAIN_MASS_CAP and is internally so dense that
+    Louvain's coarsest partition never finds a strict sub-community within
+    it — the same shape as
+    ``nx.community.louvain_partitions(nx.complete_graph(20))`` collapsing to
+    one community at its coarsest level (the reviewer's reproduction for the
+    Task 7 review finding). The bridge to the peripheral triangle exists only
+    so ``sections()``/``divisions()`` route the clique into a real division
+    instead of intake: a fully isolated clique with no cross-section edge is
+    a quotient-graph singleton and is dropped straight to intake, which never
+    calls ``split()`` at all and so cannot exercise the bug — confirmed
+    empirically before writing this fixture.
+    """
+    clique = [_fat_node(f"Concept:c{i}", 4_000) for i in range(8)]
+    clique_edges = [
+        ResearchEdge(source=f"Concept:c{i}", target=f"Concept:c{j}", type="shares_concept_with")
+        for i in range(8) for j in range(i + 1, 8)
+    ]
+    peripheral = [_node(f"Concept:p{i}", f"P{i}") for i in range(3)]
+    peripheral_edges = [
+        ResearchEdge(source=f"Concept:p{i}", target=f"Concept:p{j}", type="shares_concept_with")
+        for i in range(3) for j in range(i + 1, 3)
+    ]
+    bridge = [ResearchEdge(source="Concept:c0", target="Concept:p0", type="shares_concept_with")]
+    return ResearchGraph(
+        nodes=clique + peripheral, edges=clique_edges + peripheral_edges + bridge
+    )
+
+
+def test_split_stalls_on_a_dense_clique_with_no_strict_sub_partition():
+    """CRITICAL regression from Task 7 review: split() only checked whether
+    ZERO candidates cleared DOMAIN_MASS_FLOOR, never whether the candidates it
+    DID find actually shrank the input. A dense/clique-like oversized domain
+    has no internal substructure for Louvain to exploit, so it returns a
+    single candidate covering every member — which is not a strict
+    sub-partition and must stall, not recurse."""
+    graph = _dense_fat_clique_bridged_to_peripheral()
+    clique_ids = sorted(n.id for n in graph.nodes if n.id.startswith("Concept:c"))
+    assert mass([n for n in graph.nodes if n.id in clique_ids]) > DOMAIN_MASS_CAP
+
+    result = split(graph, clique_ids)
+    assert result.stalled is True
+    assert result.children == ()
+    assert set(result.direct) == set(clique_ids)
+
+
+def test_build_charter_terminates_on_a_dense_clique_and_ch01_still_holds():
+    """End-to-end proof the recursion is bounded. Before the fix this raised
+    RecursionError: _emit recursed into the clique child from
+    test_split_stalls_on_a_dense_clique_with_no_strict_sub_partition, and
+    split() kept handing back that unchanged member set as a single 'child'
+    forever. CH-01 (every node in exactly one domain) must still hold once
+    the clique degrades to an unsplittable leaf instead of recursing."""
+    graph = _dense_fat_clique_bridged_to_peripheral()
+    charter = build_charter(graph)
+
+    seen: list[str] = []
+    for entry in charter["domains"].values():
+        seen.extend(entry["direct_member_ids"])
+    assert sorted(seen) == sorted(n.id for n in graph.nodes)
+    assert len(seen) == len(set(seen))
+
+
 from tesserae.charter import succeed
 
 
