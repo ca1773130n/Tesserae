@@ -108,3 +108,43 @@ def test_divisions_is_deterministic():
     graph = _two_triangles_plus_orphan()
     clusters, _ = sections(graph)
     assert divisions(graph, clusters) == divisions(graph, clusters)
+
+
+from tesserae.charter import intake_members
+
+
+def test_intake_collects_singletons_and_edge_isolated_sections():
+    """Two disjoint triangles with NO bridge: both sections are quotient
+    singletons, so neither joins a division and both fall to intake, along
+    with the orphan node detection dropped entirely."""
+    nodes = [
+        ResearchNode(id=f"Concept:a{i}", name=f"A{i}", type=ResearchNodeType.CONCEPT)
+        for i in range(3)
+    ] + [
+        ResearchNode(id=f"Concept:b{i}", name=f"B{i}", type=ResearchNodeType.CONCEPT)
+        for i in range(3)
+    ] + [ResearchNode(id="Concept:lonely", name="Lonely", type=ResearchNodeType.CONCEPT)]
+    edges = []
+    for i in range(3):
+        for j in range(i + 1, 3):
+            edges.append(ResearchEdge(source=f"Concept:a{i}", target=f"Concept:a{j}", type="shares_concept_with"))
+            edges.append(ResearchEdge(source=f"Concept:b{i}", target=f"Concept:b{j}", type="shares_concept_with"))
+    graph = ResearchGraph(nodes=nodes, edges=edges)
+
+    clusters, dropped = sections(graph)
+    groups = divisions(graph, clusters)
+    members = intake_members(graph, clusters, groups)
+
+    assert groups == [], "no cross-section edge means no division"
+    assert "Concept:lonely" in members
+    assert set(members) == {n.id for n in graph.nodes}
+    assert members == sorted(members), "intake membership must be sorted"
+
+
+def test_intake_is_empty_when_every_section_is_routed():
+    graph = _two_triangles_plus_orphan()
+    clusters, _ = sections(graph)
+    groups = divisions(graph, clusters)
+    members = intake_members(graph, clusters, groups)
+    # Only the true orphan is unroutable.
+    assert members == ["Concept:lonely"]

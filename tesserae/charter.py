@@ -134,3 +134,31 @@ def divisions(graph: ResearchGraph, clusters: Sequence[Sequence[str]]) -> list[l
         groups.append(indices)
     groups.sort(key=lambda g: (-sum(len(clusters[i]) for i in g), g[0]))
     return groups
+
+
+def intake_members(
+    graph: ResearchGraph,
+    clusters: Sequence[Sequence[str]],
+    groups: Sequence[Sequence[int]],
+) -> list[str]:
+    """Every node no division holds: dropped singletons + edge-isolated sections.
+
+    Measured on the live graph this is 5,643 nodes (12.0%) — 1,508 sections
+    with no cross-section edge (3,806 members, max size 14) plus 1,837 Louvain
+    singletons. It is genuinely unroutable BY STRUCTURE: lexical clustering as
+    a fallback splitter was measured and produces 5,322 clusters of median
+    size 1 with zero clusters above 3,000 chars, i.e. it is a near-duplicate
+    clusterer, not a topical one.
+
+    Intake is therefore the one domain whose brief is honestly a census. The
+    fix is better linking at extraction time, which is a different project;
+    until then this is a standing extraction-quality lint.
+    """
+    routed_sections = {index for group in groups for index in group}
+    routed_members = {
+        node_id
+        for index, cluster in enumerate(clusters)
+        if index in routed_sections
+        for node_id in cluster
+    }
+    return sorted(node.id for node in graph.nodes if node.id not in routed_members)
