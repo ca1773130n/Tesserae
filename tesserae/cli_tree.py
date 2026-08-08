@@ -40,6 +40,7 @@ COMMAND_TREE: list[tuple[str, list[tuple[str, str]]]] = [
         ("config", "llm | deps | show | status | clip-token — LLM backend defaults + resolved view & liveness ping"),
         ("projects", "register | list | unregister | mcp-config — registry"),
         ("agents", "init | list | tree | show | drill | set-parent | rename — role-grade agent org registry"),
+        ("domains", "status — chartered domain tree (divisions/departments/teams)"),
         ("sources", "add | list | remove — manage compile source dirs (local & global)"),
         ("federation", "status | explain — inspect cross-project federation"),
         ("integrations", "refresh raganything"),
