@@ -456,38 +456,103 @@ def succeed(prior: dict, fresh: dict) -> dict:
     A prior domain whose anchor no longer heads any fresh domain is TOMBSTONED
     rather than deleted: ``status: retired`` keeps a months-old citation
     resolvable to "this subject was reorganised" instead of a missing file.
+
+    Slug TEXT can collide even when identity does not: ``slug_for`` derives a
+    slug from an anchor's display name and dedupes only within one
+    ``build_charter`` call, so two unrelated anchors minted in different eras
+    (e.g. two Concept nodes both named "python") can land on the same base
+    string. Review of the first cut of this function found that resolving
+    that collision implicitly let it silently drop a LIVE domain two ways:
+    (a) a founded fresh domain reusing a dead prior domain's exact slug text
+    made ``slug in survivors`` true, which wrongly shielded that prior domain
+    from ever being tombstoned; (b) a founded fresh domain whose own slug
+    equalled ANOTHER fresh domain's inherited target let the unconditional
+    ``domains[target] = carried`` write in pass 1 silently overwrite one live
+    domain with the other, while ``member_index`` — remapped independently
+    through ``rename[]`` — kept pointing the overwritten domain's members at
+    a slug that no longer held them. ``_claim`` below fixes both: every
+    domain states its desired slug and only gets a different one, via
+    ``slug_for``, when that slug is already taken. Priority is strict rather
+    than arbitrary, because only a live domain's slug is load-bearing for a
+    pinned attach path: a real succession (rank 0) outranks a founded
+    domain's coincidental slug (rank 1), which outranks a tombstone
+    (rank 2) — a tombstone exists purely to be found by an old citation, so
+    it is the one that moves when its text is contested.
     """
+    prior_domains = prior.get("domains", {})
+    fresh_domains = fresh.get("domains", {})
+
     # Only a LIVE prior domain can donate its slug — a domain already retired
     # by an earlier reorg must not be resurrected just because some fresh
     # domain's anchor happens to match its old one.
     anchor_to_prior = {
         entry["anchor_id"]: slug
-        for slug, entry in sorted(prior.get("domains", {}).items())
+        for slug, entry in sorted(prior_domains.items())
         if entry.get("status") == "live" and entry.get("anchor_id")
     }
     next_seq = int(prior.get("reorg_seq", 0)) + 1
 
+    # Whether a fresh domain inherits is decided by ANCHOR MATCH ALONE, up
+    # front, before any slug-text collision is resolved below. Deciding it
+    # from which slug a domain ends up holding in ``domains`` instead — as
+    # the pre-review version did — would let a coincidental string collision
+    # rewrite whether a real succession happened; the anchor match is ground
+    # truth, the slug is just its label.
+    inherited_target: dict[str, Optional[str]] = {
+        slug: anchor_to_prior.get(entry.get("anchor_id") or "")
+        for slug, entry in sorted(fresh_domains.items())
+    }
+    inherited_prior_slugs = {target for target in inherited_target.values() if target}
+
     domains: dict[str, dict] = {}
     rename: dict[str, str] = {}
-    # Pass 1: decide each fresh domain's final slug and stamp reorg_seq /
-    # transition. This has to run to completion before pass 2 below, because
-    # a child's parent_slug can only be remapped once every rename in the
-    # whole fresh charter is known — a single pass would remap a parent
-    # before its child (or vice versa) had decided its own new slug.
-    for slug, entry in sorted(fresh.get("domains", {}).items()):
-        inherited = anchor_to_prior.get(entry.get("anchor_id") or "")
-        target = inherited or slug
-        rename[slug] = target
+    taken: set[str] = set()
+
+    def _claim(desired: str, payload: dict, fresh_slug: Optional[str]) -> None:
+        """Write ``payload`` at ``desired``, or the next free ``slug_for``
+        variant if something already claimed it this call. Never overwrites
+        — an unconditional overwrite is exactly the defect review found: it
+        could erase a live domain's entry while ``member_index`` still
+        pointed members at it."""
+        target = desired if desired not in domains else slug_for(desired, taken)
+        taken.add(target)
+        domains[target] = payload
+        if fresh_slug is not None:
+            rename[fresh_slug] = target
+
+    # Rank 0: real successions. A fresh domain whose anchor matches a live
+    # prior domain has the strongest claim on that prior domain's slug —
+    # dropping it would break the exact pinned attach path succession exists
+    # to protect.
+    for slug, entry in sorted(fresh_domains.items()):
+        target = inherited_target[slug]
+        if not target:
+            continue
         carried = dict(entry)
         carried["reorg_seq"] = next_seq
-        carried["transition"] = "stable" if inherited else "founded"
-        domains[target] = carried
+        carried["transition"] = "stable"
+        _claim(target, carried, slug)
+
+    # Rank 1: founded fresh domains. No inheritance claim, so a collision
+    # against a rank-0 slug (review finding (b): this domain's own base slug
+    # happens to equal ANOTHER fresh domain's inherited target) must yield a
+    # fresh slug rather than overwrite — overwriting here is what let a live
+    # domain vanish from ``domains`` while ``member_index`` still named it.
+    for slug, entry in sorted(fresh_domains.items()):
+        if inherited_target[slug]:
+            continue
+        carried = dict(entry)
+        carried["reorg_seq"] = next_seq
+        carried["transition"] = "founded"
+        _claim(slug, carried, slug)
 
     # Pass 2: remap parent_slug / child_slugs through the same rename map.
-    # Without this second pass, a tree whose child was renamed by inheriting
-    # a prior slug would leave its parent (or siblings) pointing at the
-    # child's old, now-abandoned slug — a dangling reference in the tree.
-    for slug, entry in sorted(fresh.get("domains", {}).items()):
+    # This has to run only after every fresh domain has a FINAL slug
+    # (including any collision relocation above), because a child renamed —
+    # whether by inheritance or by losing a slug collision — would otherwise
+    # leave its parent, or a sibling's child_slugs, pointing at an abandoned
+    # string.
+    for slug, entry in sorted(fresh_domains.items()):
         target = rename[slug]
         domains[target]["parent_slug"] = (
             rename.get(entry["parent_slug"]) if entry.get("parent_slug") else None
@@ -496,18 +561,27 @@ def succeed(prior: dict, fresh: dict) -> dict:
             rename.get(child, child) for child in entry.get("child_slugs", [])
         )
 
-    # Any LIVE prior domain no fresh domain inherited is retired in place,
-    # not dropped: deleting it would turn a stable citation into a 404 the
-    # moment a reorg moved its anchor, defeating the point of a stable slug.
-    survivors = set(domains)
-    for slug, entry in sorted(prior.get("domains", {}).items()):
-        if slug in survivors:
+    # Rank 2: tombstones. A live prior domain no fresh domain inherited is
+    # retired in place, not dropped — deleting it would turn a stable
+    # citation into a 404 the moment a reorg moved its anchor, defeating the
+    # point of a stable slug. Membership in ``inherited_prior_slugs`` (built
+    # from anchor matches above) is what decides this, NOT presence in
+    # ``domains`` — review finding (a): a founded fresh domain occupying the
+    # same slug TEXT as an unrelated dead prior domain must not shield that
+    # prior domain from being tombstoned. Tombstones claim last: if a
+    # retired slug's text collides with a still-live domain, the live domain
+    # keeps the readable slug and the tombstone is what moves.
+    for slug, entry in sorted(prior_domains.items()):
+        if slug in inherited_prior_slugs:
             continue
         tombstone = dict(entry)
         tombstone["status"] = "retired"
         tombstone["transition"] = "retired"
         tombstone.setdefault("superseded_by", None)
-        domains[slug] = tombstone
+        # reorg_seq is intentionally left at whatever it already was: a
+        # tombstone is a frozen snapshot of the domain as it last was live,
+        # not a record this reorg touched.
+        _claim(slug, tombstone, None)
 
     member_index = {
         mid: rename.get(slug, slug) for mid, slug in sorted(fresh.get("member_index", {}).items())

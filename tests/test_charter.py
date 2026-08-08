@@ -464,3 +464,103 @@ def test_succession_is_deterministic():
     prior = _charter_with("alpha", "Concept:hub", ["Concept:hub"])
     fresh = _charter_with("beta", "Concept:hub", ["Concept:hub", "Concept:y"])
     assert succeed(prior, fresh) == succeed(prior, fresh)
+
+
+def test_a_slug_reused_by_an_unrelated_fresh_domain_does_not_shield_the_old_one_from_tombstoning():
+    """Review finding (a): slug_for dedupes only within one build_charter
+    call, so two unrelated anchors minted in different eras can land on the
+    same base slug text. The prior fix decided whether to tombstone by
+    ``slug in survivors`` — plain presence in the OUTPUT domains dict — so a
+    founded fresh domain that coincidentally reused a dead domain's exact
+    slug string silently protected that dead domain from ever being
+    tombstoned. The two domains here share the slug "alpha" but nothing
+    else: different anchors, no overlapping members, no real succession."""
+    prior = _charter_with("alpha", "Concept:old-anchor", ["Concept:old-anchor"])
+    fresh = _charter_with("alpha", "Concept:unrelated-anchor", ["Concept:unrelated-anchor"])
+    merged = succeed(prior, fresh)
+
+    live = {slug: e for slug, e in merged["domains"].items() if e["status"] == "live"}
+    retired = {slug: e for slug, e in merged["domains"].items() if e["status"] == "retired"}
+
+    # The live fresh domain must keep the human-readable slug — it is the
+    # one actually in use, and a tombstone is free to move.
+    assert live == {
+        "alpha": merged["domains"]["alpha"]
+    }, "the live fresh domain must not be displaced by an unrelated tombstone"
+    assert merged["domains"]["alpha"]["anchor_id"] == "Concept:unrelated-anchor"
+    assert merged["domains"]["alpha"]["transition"] == "founded"
+
+    # The old domain must still be tombstoned SOMEWHERE, not silently
+    # dropped because its slug text was already spoken for.
+    assert len(retired) == 1, "the old live domain must still be tombstoned, just elsewhere"
+    (retired_entry,) = retired.values()
+    assert retired_entry["anchor_id"] == "Concept:old-anchor"
+
+
+def test_a_fresh_domains_own_slug_colliding_with_another_fresh_domains_inherited_slug_drops_neither():
+    """Review finding (b), the more serious one: pass 1 wrote
+    ``domains[target] = carried`` unconditionally, so when one fresh domain's
+    OWN slug equalled another fresh domain's INHERITED target, the second
+    write in dict-sorted order silently overwrote the first — one live
+    domain vanished from ``domains`` entirely. Worse, ``member_index`` still
+    pointed the overwritten domain's members at its slug, because the
+    member_index remap goes through ``rename[]`` independently of the
+    collision, breaking the invariant that every member maps to a domain
+    that actually holds it.
+
+    Fixture: prior "hub-domain" is anchored on Concept:hub. In the fresh
+    charter, a domain named "zzz-new" carries that same anchor (a genuine
+    succession, so it inherits the slug "hub-domain"), while a SEPARATE
+    fresh domain is itself literally named "hub-domain" on an unrelated
+    anchor — its own base slug collides with the other domain's inherited
+    target.
+    """
+    prior = _charter_with("hub-domain", "Concept:hub", ["Concept:hub"])
+    fresh = {
+        "version": 1,
+        "reorg_seq": 0,
+        "domains": {
+            "zzz-new": {
+                "tier": 1, "own_altitude": "division", "parent_slug": None,
+                "child_slugs": [], "anchor_id": "Concept:hub",
+                "direct_member_ids": ["Concept:hub", "Concept:y"], "member_count": 2,
+                "reorg_seq": 0, "status": "live", "transition": "founded",
+                "unsplittable": False,
+            },
+            "hub-domain": {
+                "tier": 1, "own_altitude": "division", "parent_slug": None,
+                "child_slugs": [], "anchor_id": "Concept:other",
+                "direct_member_ids": ["Concept:other", "Concept:z"], "member_count": 2,
+                "reorg_seq": 0, "status": "live", "transition": "founded",
+                "unsplittable": False,
+            },
+        },
+        "member_index": {
+            "Concept:hub": "zzz-new", "Concept:y": "zzz-new",
+            "Concept:other": "hub-domain", "Concept:z": "hub-domain",
+        },
+    }
+    merged = succeed(prior, fresh)
+
+    live = {slug: e for slug, e in merged["domains"].items() if e["status"] == "live"}
+    assert len(live) == 2, "both live fresh domains must survive the slug collision"
+
+    by_anchor = {e["anchor_id"]: slug for slug, e in live.items()}
+    assert set(by_anchor) == {"Concept:hub", "Concept:other"}
+    succeeded_slug = by_anchor["Concept:hub"]
+    founded_slug = by_anchor["Concept:other"]
+    assert succeeded_slug != founded_slug
+
+    # The real succession keeps the exact prior slug; the coincidental one
+    # yields to a different slug rather than erasing it.
+    assert succeeded_slug == "hub-domain"
+    assert merged["domains"][succeeded_slug]["transition"] == "stable"
+    assert merged["domains"][founded_slug]["transition"] == "founded"
+
+    # member_index must agree with direct_member_ids for EVERY member — the
+    # exact invariant the review finding said this collision broke.
+    for member_id, slug in merged["member_index"].items():
+        assert member_id in merged["domains"][slug]["direct_member_ids"], (
+            f"{member_id} maps to {slug} but that domain does not hold it"
+        )
+    assert set(merged["member_index"]) == {"Concept:hub", "Concept:y", "Concept:other", "Concept:z"}
