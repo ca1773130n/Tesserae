@@ -973,10 +973,23 @@ def test_lint_reasoning_edge_ratio_warns_below_floor(tmp_path: Path) -> None:
 # --------------------------------------------------- interval coverage
 
 
-def _coverage_graph(dated: int, undated: int, superseded: int) -> dict:
+def _coverage_graph(
+    dated: int,
+    undated: int,
+    superseded: int,
+    edge_dated: int = 0,
+    chained: int = 0,
+) -> dict:
     """Edges whose endpoints carry a first_seen_at get a real ``valid_from``;
     endpoints without one land in the literal ``"undated"`` bucket that
-    ``timeline()`` sorts under with no signal to the caller."""
+    ``timeline()`` sorts under with no signal to the caller.
+
+    ``edge_dated`` and ``chained`` build the two shapes that the probe's dating
+    and invalidation rules BRANCH on. They default to 0 so the arithmetic in
+    the per-number tests below stays round; the anti-drift test passes both,
+    because a fixture that never reaches a branch cannot pin it. See
+    :func:`test_lint_interval_coverage_matches_the_temporal_projector_exactly`.
+    """
     nodes = [_node("hub", "Concept", "hub")]
     edges = []
     for i in range(dated):
@@ -998,6 +1011,44 @@ def _coverage_graph(dated: int, undated: int, superseded: int) -> dict:
         )
         edges.append({"source": f"new{i}", "target": f"old{i}", "type": "supersedes"})
         edges.append({"source": f"old{i}", "target": "hub", "type": "discussed_in"})
+    # An edge whose OWN metadata carries the date, between two endpoints that
+    # carry none. ``_fact_from_edge`` takes valid_from as the MAX over (subject
+    # ts, object ts, edge analysis_date), so this arm is the only thing in the
+    # fixture that can tell the third term from a constant None — without it,
+    # deleting analysis_date from the probe changes no number anyone asserts.
+    for i in range(edge_dated):
+        nodes.append(_node(f"ad_s{i}", "Paper", f"edge-dated subject {i}"))
+        nodes.append(_node(f"ad_o{i}", "Paper", f"edge-dated object {i}"))
+        edges.append(
+            {
+                "source": f"ad_s{i}",
+                "target": f"ad_o{i}",
+                "type": "discussed_in",
+                "metadata": {"analysis_date": "2026-02-02"},
+            }
+        )
+    # A supersedes CHAIN: mid is superseded by new and itself supersedes old,
+    # so mid is both an endpoint of an invalidating fact and an ended node.
+    # That is the only shape where "an invalidating fact is never ended by its
+    # own target" is load-bearing: for (mid supersedes old), the subject-only
+    # rule ends it at ts(new) and the basis is ``supersedes``, while including
+    # the object ends it at ts(mid) == its own valid_from, which
+    # ``_boundary_precedes_start`` rejects and the fact falls to ``open``.
+    for i in range(chained):
+        nodes.append(
+            _node(f"c_new{i}", "SessionInsight", f"chain new {i}",
+                  metadata={"first_seen_at": "2026-03-03"})
+        )
+        nodes.append(
+            _node(f"c_mid{i}", "SessionInsight", f"chain mid {i}",
+                  metadata={"first_seen_at": "2026-02-02"})
+        )
+        nodes.append(
+            _node(f"c_old{i}", "SessionInsight", f"chain old {i}",
+                  metadata={"first_seen_at": "2026-01-01"})
+        )
+        edges.append({"source": f"c_new{i}", "target": f"c_mid{i}", "type": "supersedes"})
+        edges.append({"source": f"c_mid{i}", "target": f"c_old{i}", "type": "supersedes"})
     # ``metadata.first_seen_at`` must survive graph_from_payload for the dated
     # arm to be dated at all; if it did not, this fixture would be all-undated
     # and the assertions below would be vacuous.
@@ -1093,11 +1144,20 @@ def test_lint_interval_coverage_matches_the_temporal_projector_exactly(
     cheap path agrees with the projector, so pin the agreement here: if
     TemporalFactProjector's dating or invalidation rules change, this goes red
     rather than the probe quietly reporting a number timeline() disagrees with.
+
+    The fixture must REACH both rules the probe reimplements, or the pin is
+    decorative. ``edge_dated`` supplies a fact datable only by the edge's own
+    ``analysis_date``; ``chained`` supplies a supersedes edge whose object is
+    itself superseded, the one shape where the subject-only endpoint rule
+    changes the answer. Verified by mutation: deleting the analysis_date term
+    from the probe, and making its endpoints symmetric, each turn this test red.
     """
     from tesserae.research_graph import graph_from_payload
     from tesserae.temporal import TemporalFactProjector
 
-    payload = _coverage_graph(dated=3, undated=7, superseded=2)
+    payload = _coverage_graph(
+        dated=3, undated=7, superseded=2, edge_dated=1, chained=1
+    )
     project = _scaffold(tmp_path, graph=payload)
 
     report = WikiLinter(project).run()
