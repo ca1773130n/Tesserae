@@ -935,3 +935,187 @@ def test_a_fresh_domains_own_slug_colliding_with_another_fresh_domains_inherited
             f"{member_id} maps to {slug} but that domain does not hold it"
         )
     assert set(merged["member_index"]) == {"Concept:hub", "Concept:y", "Concept:other", "Concept:z"}
+
+
+from tesserae.charter import _INTAKE_SLUG
+
+
+def _hub_pair_starved_of_anchors() -> ResearchGraph:
+    """A graph whose deepest split proposes a cluster made ENTIRELY of anchors
+    its own ancestors already took.
+
+    Minimised by delta-debugging from a random graph that reproduced the
+    defect (11 of 400 random graphs did), down to the smallest shape that
+    still exhibits it. Read it as a four-node core with two light tails:
+
+        t2 - t1 - t0 - hub-a - hub-b - t3 - t4
+                          |
+                       mass-a - mass-b
+
+    ``hub-a`` has degree 3 and is the only node that does, so it anchors the
+    single division. ``hub-b`` has degree 2 and sorts before every other
+    degree-2 node, so once ``hub-a`` is claimed it wins the tie and anchors
+    the department below. The department's members are exactly the four core
+    nodes, whose mass clears DOMAIN_MASS_CAP only because ``mass-a`` and
+    ``mass-b`` are fat — so the department splits, and splitting the 4-path
+    ``hub-b - hub-a - mass-a - mass-b`` down its middle edge proposes
+    ``{hub-a, hub-b}``: a cluster whose every member is already an ancestor's
+    anchor. That is the starved set.
+
+    The tails carry almost no mass, so their own clusters fall below
+    DOMAIN_MASS_FLOOR and land in the division's direct block rather than
+    becoming domains — which is what keeps the fixture at nine nodes.
+
+    Every node is a CONCEPT, so ``build_charter``'s synthesis filter is a
+    no-op here and the graph it splits is this graph.
+    """
+    nodes = [
+        _fat_node("Concept:hub-a", 2_000),
+        _fat_node("Concept:hub-b", 2_000),
+        _fat_node("Concept:mass-a", 12_000),
+        _fat_node("Concept:mass-b", 12_000),
+    ] + [_fat_node(f"Concept:t{i}", 400) for i in range(5)]
+    edges = [
+        ResearchEdge(source=a, target=b, type="shares_concept_with")
+        for a, b in (
+            ("Concept:hub-b", "Concept:hub-a"),
+            ("Concept:hub-a", "Concept:mass-a"),
+            ("Concept:mass-a", "Concept:mass-b"),
+            ("Concept:hub-a", "Concept:t0"),
+            ("Concept:t0", "Concept:t1"),
+            ("Concept:t1", "Concept:t2"),
+            ("Concept:hub-b", "Concept:t3"),
+            ("Concept:t3", "Concept:t4"),
+        )
+    ]
+    return ResearchGraph(nodes=nodes, edges=edges)
+
+
+def _anchor_starved_clusters(graph: ResearchGraph, charter: dict) -> list[tuple[str, tuple[str, ...]]]:
+    """Every cluster ``split`` proposes whose members are all already anchors
+    of the proposing domain or one of its ancestors — i.e. exactly the clusters
+    ``assign_anchors`` must return "" for.
+
+    Deliberately derived from the CHARTER rather than from build_charter's
+    internals, so it reads the SAME before and after the fold: folding moves
+    such a cluster's members from a child domain into the parent's direct
+    block, but a domain's total member set is unchanged either way, so
+    ``split`` proposes the identical cluster. That is what lets it guard the
+    fixture in both worlds — a fixture guard that only holds after the fix
+    would make the regression test fail for its own setup rather than for the
+    defect.
+    """
+    domains = charter["domains"]
+
+    def members_of(slug):
+        entry = domains[slug]
+        held = set(entry["direct_member_ids"])
+        for child in entry["child_slugs"]:
+            held |= members_of(child)
+        return held
+
+    def anchors_at_and_above(slug):
+        held = set()
+        cursor = slug
+        while cursor:
+            held.add(domains[cursor]["anchor_id"])
+            cursor = domains[cursor]["parent_slug"]
+        return held - {""}
+
+    starved: list[tuple[str, tuple[str, ...]]] = []
+    for slug, entry in sorted(domains.items()):
+        if entry["status"] != "live" or slug == _INTAKE_SLUG:
+            continue
+        claimed = anchors_at_and_above(slug)
+        for cluster in split(graph, sorted(members_of(slug))).children:
+            if set(cluster) <= claimed:
+                starved.append((slug, cluster))
+    return starved
+
+
+def test_a_cluster_whose_members_are_all_ancestor_anchors_folds_into_its_parent():
+    """``assign_anchors`` returns "" for a cluster every one of whose members
+    an ancestor already anchored — honestly, because no anchor exists. Emitting
+    a domain from that empty string is what broke: ``slug_for("")`` finds no
+    ASCII base, hashes the EMPTY string, and hands every such domain the same
+    slug ``domain-e3b0c442``; and since ``succeed`` matches on anchor and skips
+    empty ones, that domain can never inherit its own prior identity.
+
+    Such a cluster is tiny by construction — member sets partition the graph,
+    so a member can only have been claimed by an ANCESTOR, which bounds the
+    cluster by tree depth — so its members fold into the parent's direct block
+    instead. CH-01 survives the fold: the node moves into the parent's direct
+    set rather than into a child's.
+    """
+    graph = _hub_pair_starved_of_anchors()
+    charter = build_charter(graph)
+
+    # Guard the fixture: it must actually reach the starved path. A fixture
+    # that cannot express the failing shape is how four earlier defects in
+    # this module hid.
+    starved = _anchor_starved_clusters(graph, charter)
+    assert starved == [("concept-hub-b", ("Concept:hub-a", "Concept:hub-b"))], (
+        f"fixture no longer starves a cluster of anchors: {starved}"
+    )
+
+    empty_anchored = sorted(
+        slug for slug, entry in charter["domains"].items()
+        if entry["status"] == "live" and slug != _INTAKE_SLUG and not entry["anchor_id"]
+    )
+    assert empty_anchored == [], (
+        f"{empty_anchored} were emitted with no anchor; every one of them minted "
+        "the slug domain-e3b0c442 and can never succeed itself"
+    )
+
+    # The starved cluster's members are held DIRECTLY by the domain that
+    # proposed it, not by a child of it.
+    parent = charter["domains"]["concept-hub-b"]
+    assert "Concept:hub-a" in parent["direct_member_ids"]
+    assert "Concept:hub-b" in parent["direct_member_ids"]
+    assert charter["member_index"]["Concept:hub-a"] == "concept-hub-b"
+    assert charter["member_index"]["Concept:hub-b"] == "concept-hub-b"
+    # member_count counts the whole subtree, so folding must not change it.
+    assert parent["member_count"] == 4
+
+    # CH-01 still holds, and every member_index entry names a domain that
+    # actually holds the member.
+    held = [m for e in charter["domains"].values() for m in e["direct_member_ids"]]
+    assert sorted(held) == sorted(n.id for n in graph.nodes)
+    assert len(held) == len(set(held))
+    for member_id, slug in charter["member_index"].items():
+        assert member_id in charter["domains"][slug]["direct_member_ids"]
+
+
+def test_repeated_reorgs_never_churn_when_a_cluster_is_starved_of_anchors():
+    """The compounding failure, and the reason the fold is not cosmetic.
+
+    Measured before the fix on this exact fixture, on a graph that never
+    changed: reorg 1 retired ``domain-e3b0c442-2``, reorg 2 added
+    ``domain-e3b0c442-2-2``, reorg 3 ``domain-e3b0c442-2-2-2`` — one new
+    tombstone per reorg, forever, because an empty anchor matches nothing in
+    ``anchor_to_prior`` so the domain re-founded every time and its tombstone
+    was relocated by ``_claim``. The live graph reached depth 5. This is the
+    same unbounded relocation the intake and Critical-2 fixes closed, arriving
+    through a third door.
+    """
+    graph = _hub_pair_starved_of_anchors()
+    charter = build_charter(graph)
+
+    assert _anchor_starved_clusters(graph, charter), "fixture must starve a cluster"
+    baseline = {s for s, e in charter["domains"].items() if e["status"] == "live"}
+    assert len(baseline) >= 3
+
+    current = charter
+    for reorg in range(1, 5):
+        current = succeed(current, build_charter(graph))
+        live = {s for s, e in current["domains"].items() if e["status"] == "live"}
+        retired = sorted(s for s, e in current["domains"].items() if e["status"] == "retired")
+        assert live == baseline, f"reorg {reorg} churned the live slugs to {sorted(live)}"
+        assert retired == [], f"reorg {reorg} retired {retired} on unchanged input"
+        assert set(current["domains"]) == set(charter["domains"]), (
+            f"reorg {reorg} added domains: "
+            f"{sorted(set(current['domains']) - set(charter['domains']))}"
+        )
+        assert current["member_index"] == charter["member_index"], (
+            f"reorg {reorg} moved members between domains on unchanged input"
+        )

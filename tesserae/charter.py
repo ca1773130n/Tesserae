@@ -317,7 +317,10 @@ def assign_anchors(
         # to rule out, since two domains sharing an anchor become
         # indistinguishable to succession. Search for a still-unclaimed
         # member instead; if none exists, an empty string is a visible,
-        # checkable degradation, not a silent one.
+        # checkable degradation, not a silent one. Deciding what to DO about
+        # it belongs to the caller, which has the tree context this function
+        # does not: ``_emit`` folds such a set into its parent's direct block
+        # rather than emitting a domain that could never succeed itself.
         candidate = next((mid for mid in sorted(members) if mid not in claimed), "")
         if candidate:
             claimed.add(candidate)
@@ -482,6 +485,7 @@ def build_charter(graph: ResearchGraph, *, exclude_synthesis: bool = True) -> di
         slug = slug_for(anchor_name, taken)
         taken.add(slug)
         result = split(scoped, members)
+        direct = list(result.direct)
         child_slugs: list[str] = []
         if result.children:
             # Same claimed set as the divisions above, so a child cannot
@@ -491,6 +495,41 @@ def build_charter(graph: ResearchGraph, *, exclude_synthesis: bool = True) -> di
                 scoped, [list(c) for c in result.children], claimed=claimed_anchors
             )
             for child_members, child_anchor in zip(result.children, child_anchors):
+                if not child_anchor:
+                    # A cluster with no anchor left to take. It is NOT emitted
+                    # as a domain: its members fold into this domain's direct
+                    # block instead.
+                    #
+                    # Emitting it was the defect. ``slug_for("")`` finds no
+                    # ASCII base, so it hashes the EMPTY string and every
+                    # anchorless domain charter-wide minted the same base slug
+                    # ``domain-e3b0c442``; and ``succeed`` builds
+                    # ``anchor_to_prior`` only from non-empty anchors, so such
+                    # a domain could never inherit its own prior identity. It
+                    # re-founded on every reorg while its tombstone was
+                    # relocated by ``_claim``, so an UNCHANGED graph piled up
+                    # ``domain-e3b0c442-2``, ``-2-2``, ``-2-2-2`` … one new
+                    # tombstone per reorg, without bound — the same unbounded
+                    # relocation the intake and ancestor-collision fixes
+                    # closed, arriving through a third door. Measured: 11 of
+                    # 400 random graphs, and depth 5 on the live graph.
+                    #
+                    # Folding is safe precisely BECAUSE such a cluster is
+                    # tiny. Member sets partition the graph, so a node claimed
+                    # by a sibling or by any unrelated domain is not in this
+                    # cluster at all; the only way every member is already
+                    # claimed is that every member anchors one of this
+                    # cluster's own ANCESTORS, which bounds it by tree depth
+                    # (~5 nodes on the live graph). A handful of nodes added
+                    # to a router's direct block cannot blow the one-read
+                    # bound, and such a cluster is far too small to have
+                    # meaningful children of its own.
+                    #
+                    # CH-01 survives: the members move into the PARENT's
+                    # direct set rather than into a child's, so each is still
+                    # held exactly once.
+                    direct.extend(child_members)
+                    continue
                 child_slugs.append(_emit(list(child_members), child_anchor, tier + 1, slug))
         domains[slug] = {
             "tier": tier,
@@ -498,18 +537,31 @@ def build_charter(graph: ResearchGraph, *, exclude_synthesis: bool = True) -> di
             "parent_slug": parent,
             "child_slugs": sorted(child_slugs),
             "anchor_id": anchor_id,
-            "direct_member_ids": sorted(result.direct),
+            "direct_member_ids": sorted(direct),
             "member_count": len(members),
             "reorg_seq": 0,
             "status": "live",
             "transition": "founded",
             "unsplittable": result.stalled,
         }
-        for mid in result.direct:
+        for mid in direct:
             member_index[mid] = slug
         return slug
 
     for members, anchor in zip(division_members, anchors):
+        if not anchor:
+            # Unreachable, and stated rather than left implicit for the same
+            # reason as the intake raise below: a domain emitted with an empty
+            # anchor is the defect the fold inside _emit exists to prevent,
+            # and a division is the one place there is no parent to fold into.
+            # It cannot happen because divisions are disjoint and non-empty and
+            # ``claimed_anchors`` is empty on this first call, so the greedy
+            # pass in assign_anchors gives every division a member of its own.
+            raise RuntimeError(
+                f"division with members {members[:3]}... was assigned no anchor; "
+                "a top-level domain has no parent to fold into, so this would "
+                "mint the anchorless slug that can never succeed itself"
+            )
         _emit(members, anchor, 1, None)
 
     if intake:
