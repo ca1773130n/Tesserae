@@ -298,10 +298,17 @@ def test_undated_included_agrees_with_facts_as_of_when_nothing_else_filters(tmp_
 
     Strip away the query filter, the limit cap and the budget and the two
     populations coincide, so the count the server reports has to equal the one
-    the projector counted. That pins the predicate — a response that decided
-    undatedness by testing for the "undated" sentinel instead of parseability
-    would pass every other test here and disagree the moment a fact carries an
-    unparseable-but-non-sentinel timestamp.
+    the projector counted.
+
+    What this does NOT do, stated because the docstring used to claim it did:
+    it does not pin the *predicate*. Swapping the server's parseability check
+    for a test against the literal "undated" sentinel leaves all nine tests in
+    this module green — verified by mutation, not assumed. The divergence is
+    unreachable anyway: ``temporal.py`` normalises a missing ``valid_from`` to
+    the sentinel and ``_latest_ts`` only ever returns a parseable candidate, so
+    no fact reaches here carrying an unparseable non-sentinel timestamp. The
+    behaviour is correct; the coverage claim was not, and a false claim of
+    coverage is worse than none because it stops anyone looking again.
     """
     from tesserae.mcp_server import load_graph
     from tesserae.temporal import TemporalFactProjector, facts_as_of

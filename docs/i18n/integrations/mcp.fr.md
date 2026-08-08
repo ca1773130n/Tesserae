@@ -69,7 +69,7 @@ Chaque outil accepte un `graph_path` ou un `project` (alias du registre) optionn
 | `search_nodes` | Filtre les nœuds publics du graphe par `query`, `type`/`types`, `kind`, `limit`, `mode`/`weights` hybrides ; `include_superseded` affiche les nœuds retirés |
 | `node_context` | Un nœud + ses arêtes incidentes + les nœuds voisins. `use_ppr` classe les voisins via un PageRank personnalisé plutôt qu'un parcours à 1 saut ; `include_superseded` et `limit` bornent le résultat |
 | `embedding_status` | Indique le backend d'embeddings actif qui alimente la recherche hybride |
-| `search_facts` | Faits temporels projetés depuis le graphe (style Graphiti) ; `current_only` filtre les faits courants |
+| `search_facts` | Faits temporels projetés depuis le graphe (style Graphiti) ; `current_only` filtre les faits courants, `as_of` répond à une date passée. Les deux ensemble sont refusés — ils expriment des horloges différentes — et `undated_included` indique combien des lignes renvoyées ne portent aucune date |
 | `timeline` | Faits ordonnés par `valid_from` pour une vue longitudinale |
 | `graph_ppr` | PageRank personnalisé amorcé sur un ou plusieurs `seed_node_id` ; renvoie les top-K nœuds les plus pertinents avec `alpha`, `directed`, `edge_type_weights` réglables |
 | `wiki_page` | Le corps de la page markdown compilée pour un nœud, plus les liens internes qu'elle référence |

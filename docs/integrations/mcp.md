@@ -67,7 +67,7 @@ Every tool accepts an optional `graph_path` or `project` (registry alias) so a s
 | `search_nodes` | Filter public graph nodes by `query`, `type`/`types`, `kind`, `limit`, hybrid `mode`/`weights`; `include_superseded` to surface retired nodes |
 | `node_context` | A node + its incident edges + neighbouring nodes. `use_ppr` ranks neighbours by personalized PageRank instead of a 1-hop walk; `include_superseded` and `limit` bound the result |
 | `embedding_status` | Report the active embedding backend powering hybrid search |
-| `search_facts` | Temporal facts projected from the graph (Graphiti-style); `current_only` filters to live facts |
+| `search_facts` | Temporal facts projected from the graph (Graphiti-style); `current_only` filters to live facts, `as_of` answers as of a past date. The two are refused together — they express different clocks — and `undated_included` reports how many of the rows you got carry no date |
 | `timeline` | Facts ordered by `valid_from` for a longitudinal view |
 | `graph_ppr` | Personalized PageRank seeded at one or more `seed_node_id`s; returns the top-K most relevant nodes with tunable `alpha`, `directed`, `edge_type_weights` |
 | `wiki_page` | The compiled markdown page body for a node, plus the internal links it references |
