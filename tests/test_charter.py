@@ -345,3 +345,56 @@ def test_charter_has_no_timestamps():
 
 def test_read_charter_returns_none_when_absent(tmp_path: Path):
     assert read_charter(tmp_path) is None
+
+
+from tesserae.charter import succeed
+
+
+def _charter_with(slug: str, anchor: str, members: list[str], seq: int = 0) -> dict:
+    return {
+        "version": 1,
+        "reorg_seq": seq,
+        "domains": {
+            slug: {
+                "tier": 1, "own_altitude": "division", "parent_slug": None,
+                "child_slugs": [], "anchor_id": anchor,
+                "direct_member_ids": sorted(members), "member_count": len(members),
+                "reorg_seq": seq, "status": "live", "transition": "founded",
+                "unsplittable": False,
+            }
+        },
+        "member_index": {m: slug for m in members},
+    }
+
+
+def test_a_domain_keeps_its_slug_when_its_anchor_survives():
+    """The whole point: one 15-node document moves ~29% of members, so
+    membership cannot key identity. A hub does not move."""
+    prior = _charter_with("alpha", "Concept:hub", ["Concept:hub", "Concept:x"])
+    fresh = _charter_with("beta", "Concept:hub", ["Concept:hub", "Concept:y", "Concept:z"])
+    merged = succeed(prior, fresh)
+
+    assert "alpha" in merged["domains"], "slug must survive on anchor match"
+    assert "beta" not in merged["domains"]
+    assert merged["domains"]["alpha"]["transition"] == "stable"
+    assert merged["domains"]["alpha"]["direct_member_ids"] == ["Concept:hub", "Concept:y", "Concept:z"]
+    assert merged["reorg_seq"] == 1
+
+
+def test_a_domain_whose_anchor_moved_gets_a_new_slug_and_the_old_is_tombstoned():
+    prior = _charter_with("alpha", "Concept:gone", ["Concept:gone", "Concept:x"])
+    fresh = _charter_with("beta", "Concept:new", ["Concept:new", "Concept:q"])
+    merged = succeed(prior, fresh)
+
+    assert merged["domains"]["beta"]["transition"] == "founded"
+    assert merged["domains"]["alpha"]["status"] == "retired"
+    assert merged["domains"]["alpha"]["superseded_by"] is None
+    # A tombstone stays readable so an old citation degrades to a message
+    # rather than a missing file.
+    assert "alpha" in merged["domains"]
+
+
+def test_succession_is_deterministic():
+    prior = _charter_with("alpha", "Concept:hub", ["Concept:hub"])
+    fresh = _charter_with("beta", "Concept:hub", ["Concept:hub", "Concept:y"])
+    assert succeed(prior, fresh) == succeed(prior, fresh)

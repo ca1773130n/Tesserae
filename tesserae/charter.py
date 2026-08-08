@@ -429,6 +429,82 @@ def build_charter(graph: ResearchGraph, *, exclude_synthesis: bool = True) -> di
     }
 
 
+def succeed(prior: dict, fresh: dict) -> dict:
+    """Carry stable slugs across a reorg by matching on ANCHOR.
+
+    Member-set matching was measured and rejected: Jaccard >= 0.5 fails for
+    roughly 72% of large scopes on a single 15-node document, because large
+    communities land at J=0.39-0.60. The anchor is preserved 97.0% of the time
+    at fine level and 81.0% at coarse, so it is the mechanism that keeps a
+    pinned attach path working.
+
+    A prior domain whose anchor no longer heads any fresh domain is TOMBSTONED
+    rather than deleted: ``status: retired`` keeps a months-old citation
+    resolvable to "this subject was reorganised" instead of a missing file.
+    """
+    # Only a LIVE prior domain can donate its slug — a domain already retired
+    # by an earlier reorg must not be resurrected just because some fresh
+    # domain's anchor happens to match its old one.
+    anchor_to_prior = {
+        entry["anchor_id"]: slug
+        for slug, entry in sorted(prior.get("domains", {}).items())
+        if entry.get("status") == "live" and entry.get("anchor_id")
+    }
+    next_seq = int(prior.get("reorg_seq", 0)) + 1
+
+    domains: dict[str, dict] = {}
+    rename: dict[str, str] = {}
+    # Pass 1: decide each fresh domain's final slug and stamp reorg_seq /
+    # transition. This has to run to completion before pass 2 below, because
+    # a child's parent_slug can only be remapped once every rename in the
+    # whole fresh charter is known — a single pass would remap a parent
+    # before its child (or vice versa) had decided its own new slug.
+    for slug, entry in sorted(fresh.get("domains", {}).items()):
+        inherited = anchor_to_prior.get(entry.get("anchor_id") or "")
+        target = inherited or slug
+        rename[slug] = target
+        carried = dict(entry)
+        carried["reorg_seq"] = next_seq
+        carried["transition"] = "stable" if inherited else "founded"
+        domains[target] = carried
+
+    # Pass 2: remap parent_slug / child_slugs through the same rename map.
+    # Without this second pass, a tree whose child was renamed by inheriting
+    # a prior slug would leave its parent (or siblings) pointing at the
+    # child's old, now-abandoned slug — a dangling reference in the tree.
+    for slug, entry in sorted(fresh.get("domains", {}).items()):
+        target = rename[slug]
+        domains[target]["parent_slug"] = (
+            rename.get(entry["parent_slug"]) if entry.get("parent_slug") else None
+        )
+        domains[target]["child_slugs"] = sorted(
+            rename.get(child, child) for child in entry.get("child_slugs", [])
+        )
+
+    # Any LIVE prior domain no fresh domain inherited is retired in place,
+    # not dropped: deleting it would turn a stable citation into a 404 the
+    # moment a reorg moved its anchor, defeating the point of a stable slug.
+    survivors = set(domains)
+    for slug, entry in sorted(prior.get("domains", {}).items()):
+        if slug in survivors:
+            continue
+        tombstone = dict(entry)
+        tombstone["status"] = "retired"
+        tombstone["transition"] = "retired"
+        tombstone.setdefault("superseded_by", None)
+        domains[slug] = tombstone
+
+    member_index = {
+        mid: rename.get(slug, slug) for mid, slug in sorted(fresh.get("member_index", {}).items())
+    }
+    return {
+        "version": 1,
+        "reorg_seq": next_seq,
+        "domains": domains,
+        "member_index": member_index,
+    }
+
+
 def _altitude_for(tier: int, member_count: int) -> str:
     """Depth maps to altitude, clamped by size so a label means the same thing
     across branches — without the clamp a depth-2 domain of 60 members and one
