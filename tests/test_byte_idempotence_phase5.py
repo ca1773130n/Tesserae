@@ -119,6 +119,55 @@ def test_node_memory_columns_live_in_sidecar_not_graph(tmp_path: Path) -> None:
     assert '"decay_score"' not in text
 
 
+def test_relocating_the_project_does_not_change_the_compiled_output(
+    tmp_path: Path,
+) -> None:
+    """D1: WHERE the project sits must not date its graph.
+
+    ``temporal._source_ts``'s last rung reads a ``YYYY-MM-DD`` directory out of
+    a node's ``source_path``, and ``source_path`` is stored ABSOLUTE. Scanned
+    unbounded, any dated ANCESTOR of the checkout dates every node beneath it —
+    and ``~/.agents/OPERATIONS.md`` mandates
+    ``~/.blackhole/<project>/<YYYY-MM-DD>/<slug>/`` for every agent worktree, so
+    a compile run from one stamps the whole graph with the worktree's creation
+    date. That is a wall clock one indirection removed: the exact leak class
+    that broke byte-idempotence four times in this repo.
+
+    The two projects below hold BYTE-IDENTICAL corpora and differ only in that
+    one root has a dated parent directory. Every compiled artifact must be
+    identical once the root prefix (the one legitimate difference, since
+    ``source_path`` is absolute) is normalised away.
+    """
+    plain_root = tmp_path / "plain" / "proj"
+    dated_root = tmp_path / "2026-08-09" / "proj"
+
+    def compile_at(root: Path) -> tuple[bytes, bytes]:
+        wiki = _seed_project(root)
+        wiki.compile(vault_pull=False)
+        placeholder = b"<PROJECT_ROOT>"
+        raw_root = str(root).encode("utf-8")
+        graph = _graph_path(wiki).read_bytes().replace(raw_root, placeholder)
+        facts = wiki.paths.temporal_facts.read_bytes().replace(raw_root, placeholder)
+        return graph, facts
+
+    plain_graph, plain_facts = compile_at(plain_root)
+    dated_graph, dated_facts = compile_at(dated_root)
+
+    assert hashlib.sha256(dated_graph).hexdigest() == hashlib.sha256(plain_graph).hexdigest(), (
+        "graph.json differs between two roots holding the same corpus"
+    )
+    assert dated_graph == plain_graph
+    # The projection is where the leak actually lands: graph.json only stores
+    # the path, temporal.py turns it into a date.
+    assert hashlib.sha256(dated_facts).hexdigest() == hashlib.sha256(plain_facts).hexdigest(), (
+        "temporal_facts.jsonl differs between two roots holding the same corpus"
+    )
+    assert dated_facts == plain_facts
+    assert b"2026-08-09" not in dated_facts, (
+        "the dated ANCESTOR directory reached valid_from"
+    )
+
+
 def test_compile_after_mcp_read_is_byte_identical(tmp_path: Path) -> None:
     """THE blocker gate: a simulated MCP node read must not leak into graph.json.
 
